@@ -46,7 +46,7 @@ newdom.h（C ABI）を各言語の FFI 機構でラップしたもの。TypeScri
 _Avoid_: SDK, Wrapper, Port
 
 **DOM Adapter**:
-NewDOM コア（C ABI）の上に乗る独立した adapter 層（crate: `newdom-dom`）。設計目標はブラウザの DOM と同等の開発者体験を提供すること。`createElement` / `appendChild` / `getElementById` / `querySelector` / `addEventListener` / `dispatchEvent` 等の DOM 互換 API を提供する。プラットフォームのイベントループを所有し（winit 等）、raw input を受け取って `nd_hit_test` で NodeId を解決し、click / focus / blur の合成・バブリングを担う。`element.style` への代入は `nd_begin_frame()` 直前にバッチで `nd_node_update` へ変換する。`createElement(type)` の型文字列は DOM Adapter 固有の語彙（`"view"`, `"rect"`, `"text"`, `"image"`, `"canvas"` 等）を使い、HTML タグ名（`"div"`, `"span"` 等）は上位の HTML adapter 層が変換する。`createTextNode(text)` はコアの `ND_NODE_TEXT` に 1:1 でマップする。実装は Phase 2 から開始し、初版では API の全域を実装せず段階的に拡張するが、設計の北極星はフル DOM 互換である。Binding（薄いラップ）とは明確に異なる。
+NewDOM コア（C ABI）の上に乗る独立した adapter 層（crate: `newdom-dom`）。設計目標はブラウザの DOM と同等の開発者体験を提供すること。`createElement` / `appendChild` / `getElementById` / `querySelector` / `addEventListener` / `dispatchEvent` 等の DOM 互換 API を提供する。プラットフォームのイベントループを所有し（winit 等）、raw input を受け取って `nd_hit_test` で NodeId を解決し、click / focus / blur の合成・バブリングを担う。`element.style` への代入は `nd_begin_frame()` 直前にバッチで `nd_node_update` へ変換する。`createElement(type)` の型文字列は HTML タグ名（`"div"`, `"span"`, `"section"` 等）をそのまま使う。WebGPU 非対応環境での本物の DOM へのフォールバックがタグ名 1:1 で対応できるため。フォーム系要素（`input`, `button`, `select`, `textarea`, `form`）は初版では未サポート。`createTextNode(text)` はコアの `ND_NODE_TEXT` に 1:1 でマップする。実装は Phase 2 から開始し、初版では API の全域を実装せず段階的に拡張するが、設計の北極星はフル DOM 互換である。Binding（薄いラップ）とは明確に異なる。
 _Avoid_: DOM Layer, Web Layer, HTML Adapter（HTML Parser を内包すると誤解される）
 
 **C ABI**:
