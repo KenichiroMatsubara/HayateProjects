@@ -2,6 +2,10 @@
 # scripts/build-wasm.sh — newdom-wasm を wasm-pack でビルドする
 set -euo pipefail
 
+# Source Cargo env so non-interactive shells (npm, VS Code tasks) find cargo/wasm-pack
+# shellcheck source=/dev/null
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATE_DIR="$ROOT_DIR/crates/newdom-wasm"
