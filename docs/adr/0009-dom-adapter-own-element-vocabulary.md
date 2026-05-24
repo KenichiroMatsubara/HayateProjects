@@ -6,7 +6,7 @@ DOM Adapter の `createElement(type)` が受け取る型文字列は HTML タグ
 
 構造タグ（`div`, `span`, `p`, `h1`〜`h6`, `section`, `article`, `header`, `footer`, `main`, `ul`, `li` 等）は HTML との意味論的乖離が小さく、コンテナとして素直にマップできる。
 
-フォーム系要素（`input`, `button`, `select`, `textarea`, `form`）は HTML 仕様上の挙動（フォーム送信・バリデーション・type 属性ごとの分岐等）が複雑なため、初版では未サポートとする。実装時に動作範囲を明示する。
+フォーム系要素（`input`, `button`, `select`, `textarea`, `form`）は HTML 仕様上の挙動（フォーム送信・バリデーション・type 属性ごとの分岐等）が複雑なため、初版では未実装とする。理論的には DOM Adapter で完全に実装可能であり、これはスコープ外ではなく実装優先度の問題である。
 
 ## Considered Options
 
