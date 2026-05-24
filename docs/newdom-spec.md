@@ -575,6 +575,7 @@ nd.endFrame(ctx);
 
 目標：フレームワークが NewDOM の上に乗れること
 
+- [ ] **DOM Adapter 初版**（`newdom-dom` crate）— `createElement` / `appendChild` / `getElementById` / `addEventListener` / イベント合成・バブリング
 - [ ] CJK / Bidi テキスト
 - [ ] IME サポート
 - [ ] Constraint レイアウト
