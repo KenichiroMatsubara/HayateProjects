@@ -46,7 +46,7 @@ newdom.h（C ABI）を各言語の FFI 機構でラップしたもの。TypeScri
 _Avoid_: SDK, Wrapper, Port
 
 **DOM Adapter**:
-NewDOM コア（C ABI）の上に乗る独立した adapter 層（crate: `newdom-dom`）。`createElement` / `appendChild` / `querySelector` / `addEventListener` 等の DOM 互換 API を提供する。内部では NodeId への変換・イベント合成（click / focus / blur）・バブリング・セレクター解決を担う。NewDOM コアではなく、Web 向けフレームワーク（React / Svelte 等）が NewDOM を使いやすくするための厚い adapter である。Binding（薄いラップ）とは明確に異なる。
+NewDOM コア（C ABI）の上に乗る独立した adapter 層（crate: `newdom-dom`）。`createElement` / `appendChild` / `getElementById` / `addEventListener` 等の DOM 互換 API を提供する。内部では NodeId への変換・イベント合成（click / focus / blur）・バブリング・セレクター解決を担う。`element.style` への代入は `nd_begin_frame()` 直前にバッチで `nd_node_update` へ変換する。`getElementById` から実装し、`querySelector` / `querySelectorAll` は後続フェーズで追加する。NewDOM コアではなく、Web 向けフレームワーク（React / Svelte 等）が NewDOM を使いやすくするための厚い adapter である。Binding（薄いラップ）とは明確に異なる。
 _Avoid_: DOM Layer, Web Layer, HTML Adapter（HTML Parser を内包すると誤解される）
 
 **C ABI**:
