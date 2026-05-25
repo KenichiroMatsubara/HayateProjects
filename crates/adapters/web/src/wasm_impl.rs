@@ -22,7 +22,7 @@ pub fn start() {
 
 /// Holds GPU state for a single canvas.
 #[wasm_bindgen]
-pub struct NdRenderer {
+pub struct HayateRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
@@ -35,10 +35,10 @@ pub struct NdRenderer {
 }
 
 #[wasm_bindgen]
-impl NdRenderer {
+impl HayateRenderer {
     /// Initialise wgpu (WebGPU) + Vello from an HTML canvas element.
-    /// Returns a `Promise<NdRenderer>` because GPU requests are async.
-    pub async fn init(canvas: HtmlCanvasElement) -> Result<NdRenderer, JsValue> {
+    /// Returns a `Promise<HayateRenderer>` because GPU requests are async.
+    pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateRenderer, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
 
@@ -103,7 +103,7 @@ impl NdRenderer {
 
         log::info!("Hayate renderer initialised ({width}x{height}, format={surface_format:?})");
 
-        Ok(NdRenderer {
+        Ok(HayateRenderer {
             device,
             queue,
             surface,
@@ -118,7 +118,7 @@ impl NdRenderer {
 
     /// Add a Rect node to the scene graph. Returns an opaque node ID (as f64).
     /// Color components and position are in logical pixels / 0.0–1.0 range for RGBA.
-    pub fn nd_node_create(
+    pub fn node_create(
         &mut self,
         x: f32,
         y: f32,
@@ -138,8 +138,8 @@ impl NdRenderer {
         id.data().as_ffi() as f64
     }
 
-    /// Remove a node previously created with nd_node_create.
-    pub fn nd_node_remove(&mut self, raw_id: f64) {
+    /// Remove a node previously created with node_create.
+    pub fn node_remove(&mut self, raw_id: f64) {
         use hayate_core::node::NodeId;
         let key_data = KeyData::from_ffi(raw_id as u64);
         let id = NodeId::from(key_data);
@@ -147,14 +147,14 @@ impl NdRenderer {
     }
 
     /// Render the current scene graph to the canvas.
-    pub fn nd_render(&mut self, bg_r: f64, bg_g: f64, bg_b: f64) -> Result<(), JsValue> {
+    pub fn render(&mut self, bg_r: f64, bg_g: f64, bg_b: f64) -> Result<(), JsValue> {
         let base_color = AlphaColor::<Srgb>::new([bg_r as f32, bg_g as f32, bg_b as f32, 1.0]);
         let scene = vello_bridge::build_scene(&self.scene_graph);
         self.present_scene(&scene, base_color)
     }
 
     /// Clear the canvas to an RGB solid colour (components in 0.0 – 1.0).
-    pub fn nd_clear(&mut self, r: f64, g: f64, b: f64) -> Result<(), JsValue> {
+    pub fn clear(&mut self, r: f64, g: f64, b: f64) -> Result<(), JsValue> {
         let base_color = AlphaColor::<Srgb>::new([r as f32, g as f32, b as f32, 1.0]);
         let scene = Scene::new();
         self.present_scene(&scene, base_color)

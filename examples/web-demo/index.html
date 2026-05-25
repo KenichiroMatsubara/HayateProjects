@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NewDOM Phase 0 — Rect Rendering</title>
+  <title>Hayate — Rect Rendering</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -290,7 +290,7 @@
 <body>
 
   <header>
-    <h1>NewDOM Phase 0 — GPU Rect Rendering</h1>
+    <h1>Hayate — GPU Rect Rendering</h1>
     <p>wgpu 29 (WebGPU) + Vello 0.9 で SceneGraph の矩形ノードを GPU 描画するデモ</p>
   </header>
 
@@ -317,18 +317,18 @@
 
     <!-- Background color -->
     <div class="section">
-      <div class="section-title">背景色 · nd_render(bg_r, bg_g, bg_b)</div>
+      <div class="section-title">背景色 · render(bg_r, bg_g, bg_b)</div>
       <div class="section-body">
         <div class="bg-row">
           <label>背景色: <input type="color" id="bgColor" value="#111827" /></label>
-          <button id="renderBtn" disabled>nd_render() を実行</button>
+          <button id="renderBtn" disabled>render() を実行</button>
         </div>
       </div>
     </div>
 
     <!-- Add rect -->
     <div class="section">
-      <div class="section-title">矩形ノードを追加 · nd_node_create(x, y, w, h, r, g, b, a, radius)</div>
+      <div class="section-title">矩形ノードを追加 · node_create(x, y, w, h, r, g, b, a, radius)</div>
       <div class="section-body">
         <div class="form-row">
           <div class="field"><label>X</label><input type="number" id="rx" value="60" min="0" max="620" /></div>
@@ -457,20 +457,20 @@
       step('s2', 'run');
       overlay('📦', 'WASM モジュールを読み込み中...');
 
-      let NdRenderer;
+      let HayateRenderer;
       try {
-        const mod = await import('./pkg/newdom_wasm.js');
+        const mod = await import('./pkg/hayate_adapter_web.js');
         await mod.default();
-        NdRenderer = mod.NdRenderer;
+        HayateRenderer = mod.HayateRenderer;
         step('s2', 'ok');
       } catch (e) {
         step('s2', 'fail'); step('s3', 'fail'); step('s4', 'fail');
         const msg = String(e);
         const hint = msg.includes('fetch') || msg.includes('Failed to fetch')
-          ? 'pkg/newdom_wasm.js が見つかりません。wasm-pack build を実行し、HTTP サーバーで開いてください。'
+          ? 'pkg/hayate_adapter_web.js が見つかりません。wasm-pack build を実行し、HTTP サーバーで開いてください。'
           : msg;
         overlay('❌', 'WASM ロード失敗', hint);
-        console.error('[newdom] WASM load failed:', e);
+        console.error('[hayate] WASM load failed:', e);
         throw e;
       }
 
@@ -480,12 +480,12 @@
 
       let renderer;
       try {
-        renderer = await NdRenderer.init($('canvas'));
+        renderer = await HayateRenderer.init($('canvas'));
         step('s3', 'ok');
       } catch (e) {
         step('s3', 'fail'); step('s4', 'fail');
         overlay('❌', 'wgpu + Vello 初期化失敗', String(e));
-        console.error('[newdom] Renderer init failed:', e);
+        console.error('[hayate] Renderer init failed:', e);
         throw e;
       }
 
@@ -496,8 +496,8 @@
 
       function render() {
         const [br, bg, bb] = hexToRgb01($('bgColor').value);
-        try { renderer.nd_render(br, bg, bb); }
-        catch (e) { console.error('[newdom] nd_render:', e); }
+        try { renderer.render(br, bg, bb); }
+        catch (e) { console.error('[hayate] render:', e); }
       }
 
       function rebuildList() {
@@ -523,7 +523,7 @@
             const seq = Number(btn.dataset.seq);
             const idx = nodes.findIndex(n => n.seq === seq);
             if (idx === -1) return;
-            renderer.nd_node_remove(nodes[idx].id);
+            renderer.node_remove(nodes[idx].id);
             nodes.splice(idx, 1);
             rebuildList();
             render();
@@ -543,7 +543,7 @@
       ];
       for (const s of samples) {
         const [r,g,b] = hexToRgb01(s.hex);
-        const id = renderer.nd_node_create(s.x, s.y, s.w, s.h, r, g, b, s.alpha, s.radius);
+        const id = renderer.node_create(s.x, s.y, s.w, s.h, r, g, b, s.alpha, s.radius);
         nodes.push({ seq: ++nodeSeq, id, ...s });
       }
 
@@ -575,14 +575,14 @@
         const hex = $('rcolor').value;
         const alpha = Number($('ralpha').value);
         const [r, g, b] = hexToRgb01(hex);
-        const id = renderer.nd_node_create(x, y, w, h, r, g, b, alpha, radius);
+        const id = renderer.node_create(x, y, w, h, r, g, b, alpha, radius);
         nodes.push({ seq: ++nodeSeq, id, x, y, w, h, hex, alpha, radius });
         rebuildList();
         render();
       });
 
       $('clearAllBtn').addEventListener('click', () => {
-        for (const n of nodes) renderer.nd_node_remove(n.id);
+        for (const n of nodes) renderer.node_remove(n.id);
         nodes.length = 0;
         rebuildList();
         render();
