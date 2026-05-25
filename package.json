@@ -1,13 +1,13 @@
 {
-  "name": "newdom",
+  "name": "hayate",
   "version": "0.1.0",
   "private": true,
-  "description": "NewDOM — GPU compute UI substrate (Phase 0)",
+  "description": "Hayate — GPU-native UI substrate",
   "scripts": {
     "build":   "bash scripts/build-wasm.sh",
     "dev":     "npm run build && npm run serve",
     "serve":   "serve examples/web-demo --listen 3000",
-    "check":   "cargo check -p newdom-core -p newdom-wasm --target wasm32-unknown-unknown",
+    "check":   "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
     "clean":   "cargo clean && rimraf examples/web-demo/pkg"
   },
   "devDependencies": {

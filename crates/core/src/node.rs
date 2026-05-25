@@ -1,6 +1,18 @@
+use std::sync::Arc;
+
 use slotmap::{DefaultKey, SlotMap};
+use vello::Glyph;
+use vello::peniko::FontData;
 
 pub type NodeId = DefaultKey;
+
+#[derive(Debug, Clone)]
+pub struct TextRunData {
+    pub font: FontData,
+    pub font_size: f32,
+    pub glyphs: Vec<Glyph>,
+    pub text: Arc<str>,
+}
 
 #[derive(Debug, Clone)]
 pub enum NodeKind {
@@ -11,6 +23,12 @@ pub enum NodeKind {
         height: f32,
         color: [f32; 4],
         corner_radius: f32,
+    },
+    TextRun {
+        x: f32,
+        y: f32,
+        color: [f32; 4],
+        data: Arc<TextRunData>,
     },
 }
 
@@ -55,6 +73,14 @@ impl SceneGraph {
 
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &Node)> {
         self.nodes.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
     }
 }
 

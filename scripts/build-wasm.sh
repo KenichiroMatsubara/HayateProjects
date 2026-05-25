@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/build-wasm.sh — newdom-wasm を wasm-pack でビルドする
+# scripts/build-wasm.sh — hayate-adapter-web を wasm-pack でビルドする
 set -euo pipefail
 
 # Source Cargo env so non-interactive shells (npm, VS Code tasks) find cargo/wasm-pack
@@ -8,7 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CRATE_DIR="$ROOT_DIR/crates/newdom-wasm"
+CRATE_DIR="$ROOT_DIR/crates/adapters/web"
 OUT_DIR="$ROOT_DIR/examples/web-demo/pkg"
 
 BOLD='\033[1m'
@@ -17,7 +17,7 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 RESET='\033[0m'
 
-echo -e "${BOLD}━━━ newdom WASM build ━━━${RESET}"
+echo -e "${BOLD}━━━ hayate WASM build ━━━${RESET}"
 echo    "  root : $ROOT_DIR"
 echo    "  crate: $CRATE_DIR"
 echo    "  out  : $OUT_DIR"
@@ -27,8 +27,8 @@ echo
 echo -e "${CYAN}▶ cargo check (wasm32-unknown-unknown)...${RESET}"
 cargo check \
   --manifest-path "$ROOT_DIR/Cargo.toml" \
-  -p newdom-core \
-  -p newdom-wasm \
+  -p hayate-core \
+  -p hayate-adapter-web \
   --target wasm32-unknown-unknown
 echo
 

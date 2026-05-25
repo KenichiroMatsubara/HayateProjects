@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hayate — Rect Rendering</title>
+  <title>Hayate — Element Layer Demo</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -19,45 +19,50 @@
       gap: 0;
     }
 
-    /* ── HEADER ── */
     header {
       text-align: center;
-      margin-bottom: 28px;
+      margin-bottom: 20px;
     }
-    header h1 {
-      font-size: 1rem;
-      font-weight: 900;
-      color: #f8fafc;
-      letter-spacing: -.02em;
+    header h1 { font-size: 1rem; font-weight: 900; color: #f8fafc; letter-spacing: -.02em; }
+    header p { font-size: .7rem; color: #475569; margin-top: 4px; }
+
+    /* ── MODE TOGGLE ── */
+    .mode-toggle {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      padding: 3px;
+      background: #0f172a;
     }
-    header p {
-      font-size: .7rem;
-      color: #475569;
-      margin-top: 4px;
+    .mode-toggle button {
+      padding: 4px 14px;
+      font-size: .65rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+    }
+    .mode-toggle button.active {
+      background: #1d4ed8;
+      color: #fff;
     }
 
     /* ── STEP PIPELINE ── */
     .pipeline {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-bottom: 28px;
-      flex-wrap: wrap;
-      justify-content: center;
+      display: flex; align-items: center; gap: 4px;
+      margin-bottom: 20px; flex-wrap: wrap; justify-content: center;
     }
     .step {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
-      border-radius: 999px;
-      border: 1px solid #334155;
-      background: #1e293b;
-      font-size: .65rem;
-      font-weight: 700;
-      color: #64748b;
-      white-space: nowrap;
-      transition: all .2s;
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      border: 1px solid #334155; background: #1e293b;
+      font-size: .65rem; font-weight: 700; color: #64748b;
+      white-space: nowrap; transition: all .2s;
     }
     .step .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; flex-shrink: 0; }
     .step.ok   { color: #4ade80; border-color: #166534; background: #052e16; }
@@ -70,241 +75,133 @@
     .step.warn .dot { background: #fbbf24; }
     @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
 
-    /* ── CANVAS AREA ── */
     .canvas-wrap {
-      position: relative;
-      border: 2px solid #334155;
-      border-radius: 10px;
-      overflow: hidden;
-      background: #020617;
+      position: relative; border: 2px solid #334155;
+      border-radius: 10px; overflow: hidden; background: #020617;
     }
     canvas { display: block; }
     #canvas-overlay {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
-      gap: 10px;
-      background: #020617ee;
-      font-size: .85rem;
-      color: #64748b;
-      text-align: center;
-      padding: 24px;
-      transition: opacity .3s;
+      gap: 10px; background: #020617ee;
+      font-size: .85rem; color: #64748b; text-align: center;
+      padding: 24px; transition: opacity .3s;
     }
     #canvas-overlay.gone { opacity: 0; pointer-events: none; }
     #overlay-icon { font-size: 2rem; }
     #overlay-msg  { font-weight: 700; }
     #overlay-sub  { font-size: .7rem; color: #475569; max-width: 380px; line-height: 1.6; }
 
-    /* ── MAIN PANEL ── */
     .panel {
-      margin-top: 20px;
-      width: 100%;
-      max-width: 660px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+      margin-top: 20px; width: 100%; max-width: 720px;
+      display: flex; flex-direction: column; gap: 14px;
     }
 
-    /* ── SECTION BOX ── */
     .section {
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      overflow: hidden;
+      border: 1px solid #1e293b; border-radius: 12px; overflow: hidden;
     }
     .section-title {
-      padding: 8px 14px;
-      font-size: .65rem;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: .1em;
-      color: #475569;
-      background: #1e293b44;
+      padding: 8px 14px; font-size: .65rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: #475569; background: #1e293b44;
     }
-    .section-body {
-      padding: 14px;
-    }
+    .section-body { padding: 14px; }
 
-    /* ── FORM ROWS ── */
-    .form-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-bottom: 10px;
+    .row {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      align-items: center; margin-bottom: 10px;
     }
-    .form-row:last-child { margin-bottom: 0; }
+    .row:last-child { margin-bottom: 0; }
 
     .field {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      font-size: .65rem;
-      color: #64748b;
+      display: flex; flex-direction: column; gap: 3px;
+      font-size: .65rem; color: #64748b;
     }
     .field label { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-    .field input[type=number] {
-      width: 72px;
-      padding: 4px 6px;
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-family: inherit;
-      font-size: .7rem;
-    }
-    .field input[type=color] {
-      width: 44px; height: 28px;
+    .field input, .field select, .field textarea {
+      padding: 4px 6px; background: #0f172a;
       border: 1px solid #334155; border-radius: 6px;
-      background: #1e293b; cursor: pointer; padding: 2px;
+      color: #e2e8f0; font-family: inherit; font-size: .7rem;
     }
+    .field input[type=number] { width: 76px; }
+    .field input[type=color] {
+      width: 44px; height: 28px; padding: 2px;
+      background: #1e293b; cursor: pointer;
+    }
+    .field input[type=text] { width: 140px; }
+    .field textarea { width: 220px; height: 38px; resize: vertical; }
 
     button {
-      padding: 6px 16px;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      background: #1e293b;
-      color: #e2e8f0;
-      font-family: inherit;
-      font-size: .72rem;
-      font-weight: 700;
-      cursor: pointer;
+      padding: 6px 14px; border: 1px solid #334155; border-radius: 6px;
+      background: #1e293b; color: #e2e8f0;
+      font-family: inherit; font-size: .72rem; font-weight: 700; cursor: pointer;
       transition: background .15s, border-color .15s;
     }
     button:hover:not(:disabled) { background: #334155; border-color: #475569; }
     button:disabled { opacity: .35; cursor: not-allowed; }
-    button.primary {
-      background: #1d4ed8;
-      border-color: #2563eb;
-      color: #fff;
-    }
+    button.primary { background: #1d4ed8; border-color: #2563eb; color: #fff; }
     button.primary:hover:not(:disabled) { background: #2563eb; }
-    button.danger {
-      background: #7f1d1d;
-      border-color: #b91c1c;
-      color: #fca5a5;
-    }
+    button.danger { background: #7f1d1d; border-color: #b91c1c; color: #fca5a5; }
     button.danger:hover:not(:disabled) { background: #991b1b; }
 
-    /* ── NODE LIST ── */
-    .node-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      max-height: 200px;
-      overflow-y: auto;
+    .chip-row {
+      display: flex; flex-wrap: wrap; gap: 6px;
     }
-    .node-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      font-size: .65rem;
+    .chip {
+      padding: 4px 10px; font-size: .62rem; font-weight: 700;
+      border: 1px solid #334155; border-radius: 999px;
+      background: #0f172a; color: #94a3b8; cursor: pointer;
     }
-    .node-swatch {
-      width: 16px; height: 16px;
-      border-radius: 3px;
-      border: 1px solid #334155;
-      flex-shrink: 0;
+    .chip:hover { background: #1e293b; }
+
+    .tree-list {
+      display: flex; flex-direction: column; gap: 4px;
+      max-height: 180px; overflow-y: auto;
+      font-size: .65rem; font-family: ui-monospace, monospace;
     }
-    .node-label {
-      flex: 1;
+    .tree-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 8px; background: #0f172a;
+      border: 1px solid #1e293b; border-radius: 6px;
       color: #94a3b8;
     }
-    .node-label span { color: #818cf8; }
-    .node-del {
-      padding: 2px 8px;
-      font-size: .6rem;
-    }
-    .node-empty {
-      font-size: .7rem;
-      color: #475569;
-      text-align: center;
-      padding: 12px;
-    }
+    .tree-item.root { border-color: #1d4ed8; }
+    .tree-item .id { color: #818cf8; font-weight: 800; min-width: 40px; }
+    .tree-item .kind { color: #fbbf24; }
+    .tree-item .desc { flex: 1; color: #64748b; }
 
-    /* ── BG CONTROLS ── */
-    .bg-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: .72rem;
-      color: #94a3b8;
-    }
+    .empty { font-size: .7rem; color: #475569; text-align: center; padding: 8px; }
 
-    /* ── DIAGNOSTICS ── */
-    .diag {
-      margin-top: 8px;
-      width: 100%;
-      max-width: 660px;
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      overflow: hidden;
-    }
-    .diag summary {
-      padding: 10px 16px;
-      font-size: .7rem;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: .1em;
-      color: #475569;
-      cursor: pointer;
-      user-select: none;
-      background: #1e293b44;
-    }
-    .diag summary:hover { background: #1e293b88; color: #64748b; }
-    .diag-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      padding: 14px;
-    }
-    .dc {
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font-size: .65rem;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .dc .dc-name { font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: #475569; }
-    .dc .dc-badge {
-      display: inline-block;
-      padding: 1px 7px;
-      border-radius: 999px;
-      font-size: .55rem;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: .1em;
-    }
-    .dc-badge.ok  { background: #052e16; color: #4ade80; border: 1px solid #166534; }
-    .dc-badge.ng  { background: #2d0a0a; color: #f87171; border: 1px solid #7f1d1d; }
-    .dc-badge.wait{ background: #1e293b; color: #475569; border: 1px solid #334155; }
-    .dc .dc-info { color: #475569; line-height: 1.5; word-break: break-all; margin-top: 2px; }
-    .dc .dc-info.hi { color: #818cf8; }
+    /* Raw-layer panel container — hidden when Element Layer mode is active */
+    .raw-only, .el-only { display: none; }
+    body.mode-el .el-only { display: block; }
+    body.mode-raw .raw-only { display: block; }
+
+    .bg-row { display: flex; align-items: center; gap: 10px; font-size: .72rem; color: #94a3b8; }
+
+    /* Mode-specific surface visibility is set imperatively. */
   </style>
 </head>
-<body>
+<body class="mode-el">
 
   <header>
-    <h1>Hayate — GPU Rect Rendering</h1>
-    <p>wgpu 29 (WebGPU) + Vello 0.9 で SceneGraph の矩形ノードを GPU 描画するデモ</p>
+    <h1>Hayate — Element Layer Demo</h1>
+    <p>Element tree + Taffy レイアウト + Parley テキストを Canvas Mode / HTML Mode の両方で描画</p>
   </header>
 
-  <!-- STEP INDICATOR -->
+  <div class="mode-toggle" id="modeToggle">
+    <button data-mode="el" class="active">Element Layer</button>
+    <button data-mode="raw">Raw Layer</button>
+  </div>
+
   <div class="pipeline" id="pipeline">
     <div class="step" id="s1"><span class="dot"></span>WebGPU 検出</div>
     <div class="step" id="s2"><span class="dot"></span>WASM ロード</div>
     <div class="step" id="s3"><span class="dot"></span><span id="s3-label">Renderer 初期化</span></div>
-    <div class="step" id="s4"><span class="dot"></span>矩形描画</div>
+    <div class="step" id="s4"><span class="dot"></span>初期描画</div>
   </div>
 
-  <!-- CANVAS -->
   <div class="canvas-wrap">
     <canvas id="canvas" width="640" height="360"></canvas>
     <div id="html-surface" style="display:none; width:640px; height:360px; position:relative; overflow:hidden;"></div>
@@ -315,25 +212,125 @@
     </div>
   </div>
 
-  <!-- PANEL -->
   <div class="panel">
 
-    <!-- Background color -->
+    <!-- BG color (shared) -->
     <div class="section">
       <div class="section-title">背景色 · render(bg_r, bg_g, bg_b)</div>
       <div class="section-body">
         <div class="bg-row">
-          <label>背景色: <input type="color" id="bgColor" value="#111827" /></label>
+          <label>背景色: <input type="color" id="bgColor" value="#0b1220" /></label>
           <button id="renderBtn" disabled>render() を実行</button>
         </div>
       </div>
     </div>
 
-    <!-- Add rect -->
-    <div class="section">
-      <div class="section-title">矩形ノードを追加 · node_create(x, y, w, h, r, g, b, a, radius)</div>
+    <!-- ── ELEMENT LAYER PANEL ── -->
+    <div class="section el-only">
+      <div class="section-title">Element を作成 · element_create(kind)</div>
       <div class="section-body">
-        <div class="form-row">
+        <div class="row">
+          <div class="field">
+            <label>Kind</label>
+            <select id="elKind">
+              <option value="view">view</option>
+              <option value="text">text</option>
+              <option value="button">button</option>
+              <option value="image">image</option>
+              <option value="scroll-view">scroll-view</option>
+              <option value="text-input">text-input</option>
+            </select>
+          </div>
+          <button class="primary" id="elCreateBtn" disabled>作成</button>
+          <div class="field"><label>set as root</label>
+            <select id="elSetRoot"><option value="">—</option></select>
+          </div>
+          <button id="elSetRootBtn" disabled>set_root</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section el-only">
+      <div class="section-title">Style · element_set_style(id, packed) — chip でプリセット投入</div>
+      <div class="section-body">
+        <div class="row">
+          <div class="field"><label>Target id</label>
+            <select id="styleTarget"></select>
+          </div>
+          <div class="field"><label>BG color</label>
+            <input type="color" id="styleBg" value="#3b82f6" />
+          </div>
+          <button id="styleApplyBg">apply bg</button>
+        </div>
+        <div class="row chip-row" id="styleChips">
+          <button class="chip" data-preset="width-200">width: 200px</button>
+          <button class="chip" data-preset="height-120">height: 120px</button>
+          <button class="chip" data-preset="width-100p">width: 100%</button>
+          <button class="chip" data-preset="height-100p">height: 100%</button>
+          <button class="chip" data-preset="padding-12">padding: 12px</button>
+          <button class="chip" data-preset="gap-10">gap: 10px</button>
+          <button class="chip" data-preset="display-flex">display: flex</button>
+          <button class="chip" data-preset="flex-row">flex-direction: row</button>
+          <button class="chip" data-preset="flex-col">flex-direction: column</button>
+          <button class="chip" data-preset="align-center">align-items: center</button>
+          <button class="chip" data-preset="justify-center">justify-content: center</button>
+          <button class="chip" data-preset="radius-12">border-radius: 12</button>
+          <button class="chip" data-preset="font-24">font-size: 24</button>
+          <button class="chip" data-preset="color-white">color: white</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section el-only">
+      <div class="section-title">Text · element_set_text(id, text)</div>
+      <div class="section-body">
+        <div class="row">
+          <div class="field"><label>Target id</label>
+            <select id="textTarget"></select>
+          </div>
+          <div class="field"><label>Text</label>
+            <textarea id="textValue">Hello, Hayate</textarea>
+          </div>
+          <button id="textApplyBtn">set_text</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section el-only">
+      <div class="section-title">Tree · append-child / insert-before / remove</div>
+      <div class="section-body">
+        <div class="row">
+          <div class="field"><label>parent</label><select id="apParent"></select></div>
+          <div class="field"><label>child</label><select id="apChild"></select></div>
+          <button id="apAppendBtn">append_child</button>
+        </div>
+        <div class="row">
+          <div class="field"><label>parent</label><select id="ibParent"></select></div>
+          <div class="field"><label>child</label><select id="ibChild"></select></div>
+          <div class="field"><label>before</label><select id="ibBefore"></select></div>
+          <button id="ibInsertBtn">insert_before</button>
+        </div>
+        <div class="row">
+          <div class="field"><label>id</label><select id="rmTarget"></select></div>
+          <button class="danger" id="rmBtn">element_remove</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section el-only">
+      <div class="section-title">Tree 一覧</div>
+      <div class="section-body">
+        <div class="tree-list" id="treeList">
+          <div class="empty">まだ要素がありません</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RAW LAYER PANEL ── -->
+    <div class="section raw-only">
+      <div class="section-title">Rect ノードを追加 · node_create(x, y, w, h, r, g, b, a, radius)</div>
+      <div class="section-body">
+        <div class="row">
           <div class="field"><label>X</label><input type="number" id="rx" value="60" min="0" max="620" /></div>
           <div class="field"><label>Y</label><input type="number" id="ry" value="60" min="0" max="340" /></div>
           <div class="field"><label>W</label><input type="number" id="rw" value="200" min="1" max="640" /></div>
@@ -342,252 +339,390 @@
           <div class="field"><label>Fill</label><input type="color" id="rcolor" value="#3b82f6" /></div>
           <div class="field"><label>Alpha</label><input type="number" id="ralpha" value="1.0" min="0" max="1" step="0.05" /></div>
         </div>
-        <div class="form-row">
+        <div class="row">
           <button class="primary" id="addBtn" disabled>矩形を追加</button>
           <button class="danger" id="clearAllBtn" disabled>すべて削除</button>
         </div>
       </div>
     </div>
 
-    <!-- Node list -->
-    <div class="section">
-      <div class="section-title">SceneGraph のノード一覧</div>
-      <div class="section-body">
-        <div class="node-list" id="nodeList">
-          <div class="node-empty">ノードがありません</div>
-        </div>
-      </div>
-    </div>
-
   </div>
 
-  <!-- DIAGNOSTICS -->
-  <details class="diag">
-    <summary>▶ ブラウザ Graphics Diagnostics</summary>
-    <div class="diag-grid">
-      <div class="dc">
-        <div class="dc-name">WebGPU</div>
-        <span class="dc-badge wait" id="d-webgpu-badge">検出中…</span>
-        <div class="dc-info hi" id="d-webgpu-info"></div>
-      </div>
-      <div class="dc">
-        <div class="dc-name">WebGL 2.0</div>
-        <span class="dc-badge wait" id="d-webgl2-badge">検出中…</span>
-        <div class="dc-info" id="d-webgl2-info"></div>
-      </div>
-      <div class="dc">
-        <div class="dc-name">WebGL 1.0</div>
-        <span class="dc-badge wait" id="d-webgl-badge">検出中…</span>
-        <div class="dc-info" id="d-webgl-info"></div>
-      </div>
-    </div>
-  </details>
-
   <script type="module">
-    const $ = id => document.getElementById(id);
+    // ── Style encoding (flat Float32Array packet) ──────────────────────────
+    const TAG = {
+      BACKGROUND_COLOR: 0, OPACITY: 1, BORDER_RADIUS: 2, BORDER_WIDTH: 3, BORDER_COLOR: 4,
+      WIDTH: 5, HEIGHT: 6, MIN_WIDTH: 7, MIN_HEIGHT: 8, MAX_WIDTH: 9, MAX_HEIGHT: 10,
+      DISPLAY: 11, FLEX_DIRECTION: 12, ALIGN_ITEMS: 13, JUSTIFY_CONTENT: 14,
+      GAP: 15, PADDING: 16, PADDING_TOP: 17, PADDING_RIGHT: 18, PADDING_BOTTOM: 19, PADDING_LEFT: 20,
+      MARGIN: 21, MARGIN_TOP: 22, MARGIN_RIGHT: 23, MARGIN_BOTTOM: 24, MARGIN_LEFT: 25,
+      FONT_SIZE: 26, COLOR: 27,
+    };
+    const UNIT = { PX: 0, PERCENT: 1, AUTO: 2, FR: 3 };
+    const DISPLAY = { FLEX: 0, GRID: 1, BLOCK: 2, NONE: 3 };
+    const FLEX_DIR = { ROW: 0, COL: 1, ROW_REV: 2, COL_REV: 3 };
+    const ALIGN = { START: 0, END: 1, CENTER: 2, STRETCH: 3, BASELINE: 4 };
+    const JUSTIFY = { START: 0, END: 1, CENTER: 2, SPACE_BETWEEN: 3, SPACE_AROUND: 4, SPACE_EVENLY: 5 };
 
-    function step(id, state) {
-      $(id).className = `step ${state}`;
+    function packStyle(props) {
+      const out = [];
+      for (const p of props) {
+        out.push(p.tag, ...p.payload);
+      }
+      return new Float32Array(out);
     }
+
+    function hexToRgb01(hex) {
+      return [
+        parseInt(hex.slice(1, 3), 16) / 255,
+        parseInt(hex.slice(3, 5), 16) / 255,
+        parseInt(hex.slice(5, 7), 16) / 255,
+      ];
+    }
+
+    const $ = id => document.getElementById(id);
+    function step(id, state) { $(id).className = `step ${state}`; }
     function overlay(icon, msg, sub = '') {
       $('overlay-icon').textContent = icon;
       $('overlay-msg').textContent  = msg;
       $('overlay-sub').textContent  = sub;
     }
-    function overlayGone() {
-      $('canvas-overlay').classList.add('gone');
-    }
-    function diagBadge(id, ok, detail, reason) {
-      const badge = $(`d-${id}-badge`);
-      const info  = $(`d-${id}-info`);
-      badge.textContent = ok ? 'Supported' : 'Not Supported';
-      badge.className   = `dc-badge ${ok ? 'ok' : 'ng'}`;
-      info.textContent  = ok ? (detail ?? '') : (reason ?? '');
-    }
-    function hexToRgb01(hex) {
-      return [
-        parseInt(hex.slice(1,3), 16) / 255,
-        parseInt(hex.slice(3,5), 16) / 255,
-        parseInt(hex.slice(5,7), 16) / 255,
-      ];
-    }
+    function overlayGone() { $('canvas-overlay').classList.add('gone'); }
 
-    // ── 1. WebGPU + Graphics detection ────────────────────────────────────
+    // ── 1. WebGPU detect ──────────────────────────────────────────────────
     step('s1', 'run');
     overlay('🔍', 'WebGPU を検出中...');
-
-    let webgpuOk = false, webgpuReason = '';
-
-    if (!navigator.gpu) {
-      webgpuReason = 'navigator.gpu が存在しません。Chrome 113+ / Edge 113+ を HTTPS か localhost で開いてください。';
-    } else {
-      try {
+    let webgpuOk = false;
+    try {
+      if (navigator.gpu) {
         const adapter = await navigator.gpu.requestAdapter();
-        if (!adapter) {
-          webgpuReason = 'requestAdapter() が null を返しました。GPU ドライバが WebGPU を拒否しています。';
-        } else {
-          webgpuOk = true;
-          let adapterName = 'Generic WebGPU Adapter';
-          try {
-            const info = await adapter.requestAdapterInfo?.();
-            if (info) adapterName = info.description || info.device || adapterName;
-          } catch { /* ignore */ }
-          diagBadge('webgpu', true, adapterName);
-        }
-      } catch (e) { webgpuReason = String(e); }
-    }
+        webgpuOk = !!adapter;
+      }
+    } catch { webgpuOk = false; }
+    step('s1', webgpuOk ? 'ok' : 'warn');
 
-    const probe = document.createElement('canvas');
-    const gl2 = probe.getContext('webgl2');
-    if (gl2) {
-      const dbg = gl2.getExtension('WEBGL_debug_renderer_info');
-      diagBadge('webgl2', true, dbg ? gl2.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '');
-    } else { diagBadge('webgl2', false, '', 'Not Supported'); }
-    const gl = probe.getContext('webgl');
-    if (gl) {
-      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-      diagBadge('webgl', true, dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '');
-    } else { diagBadge('webgl', false, '', 'Not Supported'); }
-
-    if (webgpuOk) {
-      step('s1', 'ok');
-    } else {
-      step('s1', 'warn');
-      diagBadge('webgpu', false, '', webgpuReason);
-    }
-
-    // ── 2. WASM load (always, regardless of WebGPU) ────────────────────
+    // ── 2. WASM load ──────────────────────────────────────────────────────
     step('s2', 'run');
     overlay('📦', 'WASM モジュールを読み込み中...');
-
-    let HayateRenderer, HayateHtmlRenderer;
+    let mod;
     try {
-      const mod = await import('./pkg/hayate_adapter_web.js');
+      mod = await import('./pkg/hayate_adapter_web.js');
       await mod.default();
-      HayateRenderer = mod.HayateRenderer;
-      HayateHtmlRenderer = mod.HayateHtmlRenderer;
       step('s2', 'ok');
     } catch (e) {
       step('s2', 'fail'); step('s3', 'fail'); step('s4', 'fail');
-      const msg = String(e);
-      const hint = msg.includes('fetch') || msg.includes('Failed to fetch')
-        ? 'pkg/hayate_adapter_web.js が見つかりません。wasm-pack build を実行し、HTTP サーバーで開いてください。'
-        : msg;
-      overlay('❌', 'WASM ロード失敗', hint);
-      console.error('[hayate] WASM load failed:', e);
+      overlay('❌', 'WASM ロード失敗', String(e));
       throw e;
     }
 
-    // ── 3. Renderer init (GPU or HTML fallback) ────────────────────────
-    step('s3', 'run');
+    // ── State ─────────────────────────────────────────────────────────────
+    let mode = 'el';   // 'el' | 'raw'
+    let renderer = null;
+    let usingHtmlFallback = false;
+    const elements = new Map(); // id -> {kind, label}
+    let elementSeq = 0;
+    // Raw-layer nodes
+    const rawNodes = [];
+    let rawSeq = 0;
 
-    let renderer;
-    if (webgpuOk) {
-      $('s3-label').textContent = 'GPU (wgpu + Vello)';
-      overlay('⚙️', 'wgpu + Vello を初期化中...');
-      try {
-        renderer = await HayateRenderer.init($('canvas'));
-        step('s3', 'ok');
-      } catch (e) {
-        step('s3', 'fail'); step('s4', 'fail');
-        overlay('❌', 'wgpu + Vello 初期化失敗', String(e));
-        console.error('[hayate] Renderer init failed:', e);
-        throw e;
-      }
-    } else {
-      $('s3-label').textContent = 'HTML フォールバック';
-      overlay('🌐', 'HTML フォールバックを初期化中...');
-      try {
-        $('canvas').style.display = 'none';
-        $('html-surface').style.display = 'block';
-        renderer = HayateHtmlRenderer.new($('html-surface'));
-        step('s3', 'ok');
-      } catch (e) {
-        step('s3', 'fail'); step('s4', 'fail');
-        overlay('❌', 'HTML Renderer 初期化失敗', String(e));
-        console.error('[hayate] HTML Renderer init failed:', e);
-        throw e;
-      }
-    }
-
-    // ── State ─────────────────────────────────────────────────────────
-    // nodes: Array<{ id: number, x, y, w, h, hex, alpha, radius }>
-    const nodes = [];
-    let nodeSeq = 0;
-
+    function bgColor() { return hexToRgb01($('bgColor').value); }
     function render() {
-      const [br, bg, bb] = hexToRgb01($('bgColor').value);
-      try { renderer.render(br, bg, bb); }
+      if (!renderer) return;
+      const [r, g, b] = bgColor();
+      try { renderer.render(r, g, b); }
       catch (e) { console.error('[hayate] render:', e); }
     }
 
-    function rebuildList() {
-      const list = $('nodeList');
-      if (nodes.length === 0) {
-        list.innerHTML = '<div class="node-empty">ノードがありません</div>';
-        return;
+    // ── Initial Element Layer scene ───────────────────────────────────────
+    function buildInitialElementScene() {
+      const root = renderer.element_create(mod.element_kind_view());
+      renderer.set_root(root);
+      renderer.element_set_style(root, packStyle([
+        { tag: TAG.WIDTH,  payload: [640, UNIT.PX] },
+        { tag: TAG.HEIGHT, payload: [360, UNIT.PX] },
+        { tag: TAG.DISPLAY, payload: [DISPLAY.FLEX] },
+        { tag: TAG.FLEX_DIRECTION, payload: [FLEX_DIR.ROW] },
+        { tag: TAG.ALIGN_ITEMS, payload: [ALIGN.CENTER] },
+        { tag: TAG.JUSTIFY_CONTENT, payload: [JUSTIFY.CENTER] },
+        { tag: TAG.GAP, payload: [12, UNIT.PX] },
+        { tag: TAG.PADDING, payload: [16, UNIT.PX] },
+        { tag: TAG.BACKGROUND_COLOR, payload: [0.06, 0.09, 0.16, 1.0] },
+      ]));
+      elementSeq += 1;
+      elements.set(root, { kind: 'view', label: `#${elementSeq} view (root)`, root: true, raw: root });
+
+      const a = renderer.element_create(mod.element_kind_view());
+      renderer.element_set_style(a, packStyle([
+        { tag: TAG.WIDTH, payload: [180, UNIT.PX] },
+        { tag: TAG.HEIGHT, payload: [180, UNIT.PX] },
+        { tag: TAG.BORDER_RADIUS, payload: [16] },
+        { tag: TAG.BACKGROUND_COLOR, payload: [0.23, 0.51, 0.96, 1.0] },
+      ]));
+      renderer.element_append_child(root, a);
+      elementSeq += 1;
+      elements.set(a, { kind: 'view', label: `#${elementSeq} view`, raw: a });
+
+      const b = renderer.element_create(mod.element_kind_view());
+      renderer.element_set_style(b, packStyle([
+        { tag: TAG.WIDTH, payload: [180, UNIT.PX] },
+        { tag: TAG.HEIGHT, payload: [180, UNIT.PX] },
+        { tag: TAG.BORDER_RADIUS, payload: [16] },
+        { tag: TAG.BACKGROUND_COLOR, payload: [0.96, 0.62, 0.04, 0.9] },
+      ]));
+      renderer.element_append_child(root, b);
+      elementSeq += 1;
+      elements.set(b, { kind: 'view', label: `#${elementSeq} view`, raw: b });
+
+      const t = renderer.element_create(mod.element_kind_text());
+      renderer.element_set_style(t, packStyle([
+        { tag: TAG.FONT_SIZE, payload: [22] },
+        { tag: TAG.COLOR, payload: [1.0, 1.0, 1.0, 1.0] },
+      ]));
+      renderer.element_set_text(t, 'Hello, Hayate');
+      renderer.element_append_child(root, t);
+      elementSeq += 1;
+      elements.set(t, { kind: 'text', label: `#${elementSeq} text`, raw: t });
+    }
+
+    function buildInitialRawScene() {
+      const samples = [
+        { x: 40,  y: 40,  w: 220, h: 130, hex: '#3b82f6', alpha: 1.0,  radius: 16 },
+        { x: 300, y: 60,  w: 160, h: 100, hex: '#f59e0b', alpha: 0.85, radius: 8  },
+        { x: 160, y: 200, w: 300, h: 120, hex: '#10b981', alpha: 0.9,  radius: 24 },
+      ];
+      for (const s of samples) {
+        const [r,g,b] = hexToRgb01(s.hex);
+        const id = renderer.node_create(s.x, s.y, s.w, s.h, r, g, b, s.alpha, s.radius);
+        rawNodes.push({ seq: ++rawSeq, id, ...s });
       }
-      list.innerHTML = nodes.map(n => `
-        <div class="node-item" data-seq="${n.seq}">
-          <div class="node-swatch" style="background:${n.hex};opacity:${n.alpha};border-radius:3px"></div>
-          <div class="node-label">
-            #${n.seq} &nbsp;
-            <span>Rect(${n.x}, ${n.y}, ${n.w}×${n.h})</span>
-            &nbsp; radius=${n.radius} alpha=${n.alpha}
-          </div>
-          <button class="node-del danger" data-seq="${n.seq}">削除</button>
-        </div>
-      `).join('');
-
-      list.querySelectorAll('.node-del').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const seq = Number(btn.dataset.seq);
-          const idx = nodes.findIndex(n => n.seq === seq);
-          if (idx === -1) return;
-          renderer.node_remove(nodes[idx].id);
-          nodes.splice(idx, 1);
-          rebuildList();
-          render();
-        });
-      });
     }
 
-    // ── 4. Initial rects + first paint ───────────────────────────────
-    step('s4', 'run');
-    overlay('🎨', '矩形を描画中...');
+    // ── Initialise the renderer for the current mode ──────────────────────
+    async function initRenderer() {
+      step('s3', 'run');
+      try {
+        if (mode === 'el') {
+          if (webgpuOk) {
+            $('s3-label').textContent = 'Element Layer (Canvas)';
+            overlay('⚙️', 'Element Layer (Canvas Mode) を初期化中...');
+            $('canvas').style.display = 'block';
+            $('html-surface').style.display = 'none';
+            renderer = await mod.HayateElementRenderer.init($('canvas'));
+            usingHtmlFallback = false;
+          } else {
+            $('s3-label').textContent = 'Element Layer (HTML)';
+            overlay('🌐', 'Element Layer (HTML Mode) を初期化中...');
+            $('canvas').style.display = 'none';
+            $('html-surface').style.display = 'block';
+            renderer = mod.HayateElementHtmlRenderer.new($('html-surface'));
+            usingHtmlFallback = true;
+          }
+        } else {
+          if (webgpuOk) {
+            $('s3-label').textContent = 'Raw Layer (Canvas)';
+            overlay('⚙️', 'Raw Layer (Canvas Mode) を初期化中...');
+            $('canvas').style.display = 'block';
+            $('html-surface').style.display = 'none';
+            renderer = await mod.HayateRenderer.init($('canvas'));
+            usingHtmlFallback = false;
+          } else {
+            $('s3-label').textContent = 'Raw Layer (HTML)';
+            overlay('🌐', 'Raw Layer (HTML Mode) を初期化中...');
+            $('canvas').style.display = 'none';
+            $('html-surface').style.display = 'block';
+            renderer = mod.HayateHtmlRenderer.new($('html-surface'));
+            usingHtmlFallback = true;
+          }
+        }
+        step('s3', 'ok');
+      } catch (e) {
+        step('s3', 'fail'); step('s4', 'fail');
+        overlay('❌', 'Renderer 初期化失敗', String(e));
+        throw e;
+      }
 
-    // Add 3 sample rects to show the feature
-    const samples = [
-      { x: 40,  y: 40,  w: 220, h: 130, hex: '#3b82f6', alpha: 1.0,  radius: 16 },
-      { x: 300, y: 60,  w: 160, h: 100, hex: '#f59e0b', alpha: 0.85, radius: 8  },
-      { x: 160, y: 200, w: 300, h: 120, hex: '#10b981', alpha: 0.9,  radius: 24 },
-    ];
-    for (const s of samples) {
-      const [r,g,b] = hexToRgb01(s.hex);
-      const id = renderer.node_create(s.x, s.y, s.w, s.h, r, g, b, s.alpha, s.radius);
-      nodes.push({ seq: ++nodeSeq, id, ...s });
+      step('s4', 'run');
+      overlay('🎨', '初期シーンを構築中...');
+      try {
+        if (mode === 'el') buildInitialElementScene();
+        else buildInitialRawScene();
+        render();
+        step('s4', 'ok');
+        overlayGone();
+      } catch (e) {
+        step('s4', 'fail');
+        overlay('❌', '初期描画失敗', String(e));
+        throw e;
+      }
     }
 
-    try {
-      render();
-      step('s4', 'ok');
-      overlayGone();
-      rebuildList();
-      $('renderBtn').disabled  = false;
-      $('addBtn').disabled     = false;
-      $('clearAllBtn').disabled = false;
-    } catch (e) {
-      step('s4', 'fail');
-      overlay('❌', 'canvas 描画失敗', String(e));
-      throw e;
-    }
+    await initRenderer();
 
-    // ── Event handlers ────────────────────────────────────────────────
+    // ── Common UI wiring ──────────────────────────────────────────────────
+    $('renderBtn').disabled = false;
     $('renderBtn').addEventListener('click', render);
-
     $('bgColor').addEventListener('input', render);
 
+    // ── Mode toggle ───────────────────────────────────────────────────────
+    document.querySelectorAll('#modeToggle button').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const newMode = btn.dataset.mode;
+        if (newMode === mode) return;
+        document.querySelectorAll('#modeToggle button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.body.classList.toggle('mode-el', newMode === 'el');
+        document.body.classList.toggle('mode-raw', newMode === 'raw');
+        mode = newMode;
+        // Drop current renderer + state; clear any DOM nodes the HTML mode left behind.
+        renderer = null;
+        elements.clear(); elementSeq = 0;
+        rawNodes.length = 0; rawSeq = 0;
+        $('html-surface').innerHTML = '';
+        refreshSelects();
+        rebuildTreeList();
+        await initRenderer();
+        $('addBtn').disabled = mode !== 'raw';
+        $('clearAllBtn').disabled = mode !== 'raw';
+        $('elCreateBtn').disabled = mode !== 'el';
+        $('elSetRootBtn').disabled = mode !== 'el';
+      });
+    });
+
+    // ── Element Layer panel wiring ───────────────────────────────────────
+    function elementOptions(includeBlank = false) {
+      const blank = includeBlank ? '<option value="">—</option>' : '';
+      return blank + [...elements.entries()]
+        .map(([id, e]) => `<option value="${id}">${e.label}</option>`)
+        .join('');
+    }
+    function refreshSelects() {
+      const opts = elementOptions();
+      ['styleTarget', 'textTarget', 'apParent', 'apChild',
+       'ibParent', 'ibChild', 'ibBefore', 'rmTarget'].forEach(id => {
+        $(id).innerHTML = opts;
+      });
+      $('elSetRoot').innerHTML = elementOptions(true);
+    }
+    function rebuildTreeList() {
+      const list = $('treeList');
+      if (elements.size === 0) {
+        list.innerHTML = '<div class="empty">まだ要素がありません</div>';
+        return;
+      }
+      list.innerHTML = [...elements.entries()].map(([id, e]) => `
+        <div class="tree-item ${e.root ? 'root' : ''}">
+          <span class="id">${e.label.split(' ')[0]}</span>
+          <span class="kind">${e.kind}</span>
+          <span class="desc">id=${id}${e.root ? ' [root]' : ''}</span>
+        </div>
+      `).join('');
+    }
+
+    $('elCreateBtn').disabled = mode !== 'el';
+    $('elSetRootBtn').disabled = mode !== 'el';
+    $('elCreateBtn').addEventListener('click', () => {
+      const kindName = $('elKind').value;
+      const kindMap = {
+        'view': mod.element_kind_view(),
+        'text': mod.element_kind_text(),
+        'image': mod.element_kind_image(),
+        'button': mod.element_kind_button(),
+        'text-input': mod.element_kind_text_input(),
+        'scroll-view': mod.element_kind_scroll_view(),
+      };
+      const id = renderer.element_create(kindMap[kindName]);
+      elementSeq += 1;
+      elements.set(id, { kind: kindName, label: `#${elementSeq} ${kindName}`, raw: id });
+      refreshSelects();
+      rebuildTreeList();
+      render();
+    });
+
+    $('elSetRootBtn').addEventListener('click', () => {
+      const raw = $('elSetRoot').value;
+      if (!raw) return;
+      const id = Number(raw);
+      renderer.set_root(id);
+      for (const [k, v] of elements) v.root = (k === id);
+      // Rewrite label markers
+      for (const [k, v] of elements) {
+        v.label = v.label.replace(/ \(root\)$/, '');
+        if (v.root) v.label += ' (root)';
+      }
+      rebuildTreeList();
+      refreshSelects();
+      render();
+    });
+
+    $('styleApplyBg').addEventListener('click', () => {
+      const id = Number($('styleTarget').value); if (!id) return;
+      const [r,g,b] = hexToRgb01($('styleBg').value);
+      renderer.element_set_style(id, packStyle([
+        { tag: TAG.BACKGROUND_COLOR, payload: [r, g, b, 1.0] },
+      ]));
+      render();
+    });
+
+    $('styleChips').addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') return;
+      const id = Number($('styleTarget').value); if (!id) return;
+      const preset = e.target.dataset.preset;
+      const presets = {
+        'width-200':   [{ tag: TAG.WIDTH,  payload: [200, UNIT.PX] }],
+        'height-120':  [{ tag: TAG.HEIGHT, payload: [120, UNIT.PX] }],
+        'width-100p':  [{ tag: TAG.WIDTH,  payload: [100, UNIT.PERCENT] }],
+        'height-100p': [{ tag: TAG.HEIGHT, payload: [100, UNIT.PERCENT] }],
+        'padding-12':  [{ tag: TAG.PADDING, payload: [12, UNIT.PX] }],
+        'gap-10':      [{ tag: TAG.GAP,     payload: [10, UNIT.PX] }],
+        'display-flex':[{ tag: TAG.DISPLAY, payload: [DISPLAY.FLEX] }],
+        'flex-row':    [{ tag: TAG.FLEX_DIRECTION, payload: [FLEX_DIR.ROW] }],
+        'flex-col':    [{ tag: TAG.FLEX_DIRECTION, payload: [FLEX_DIR.COL] }],
+        'align-center':[{ tag: TAG.ALIGN_ITEMS,    payload: [ALIGN.CENTER] }],
+        'justify-center':[{ tag: TAG.JUSTIFY_CONTENT, payload: [JUSTIFY.CENTER] }],
+        'radius-12':   [{ tag: TAG.BORDER_RADIUS, payload: [12] }],
+        'font-24':     [{ tag: TAG.FONT_SIZE,     payload: [24] }],
+        'color-white': [{ tag: TAG.COLOR,         payload: [1, 1, 1, 1] }],
+      }[preset];
+      if (!presets) return;
+      renderer.element_set_style(id, packStyle(presets));
+      render();
+    });
+
+    $('textApplyBtn').addEventListener('click', () => {
+      const id = Number($('textTarget').value); if (!id) return;
+      renderer.element_set_text(id, $('textValue').value);
+      render();
+    });
+
+    $('apAppendBtn').addEventListener('click', () => {
+      const p = Number($('apParent').value);
+      const c = Number($('apChild').value);
+      if (!p || !c) return;
+      renderer.element_append_child(p, c);
+      render();
+    });
+
+    $('ibInsertBtn').addEventListener('click', () => {
+      const p = Number($('ibParent').value);
+      const c = Number($('ibChild').value);
+      const b = Number($('ibBefore').value);
+      if (!p || !c || !b) return;
+      renderer.element_insert_before(p, c, b);
+      render();
+    });
+
+    $('rmBtn').addEventListener('click', () => {
+      const id = Number($('rmTarget').value); if (!id) return;
+      renderer.element_remove(id);
+      elements.delete(id);
+      refreshSelects();
+      rebuildTreeList();
+      render();
+    });
+
+    // ── Raw Layer panel wiring (legacy) ──────────────────────────────────
     $('addBtn').addEventListener('click', () => {
+      if (mode !== 'raw') return;
       const x = Number($('rx').value);
       const y = Number($('ry').value);
       const w = Number($('rw').value);
@@ -597,17 +732,23 @@
       const alpha = Number($('ralpha').value);
       const [r, g, b] = hexToRgb01(hex);
       const id = renderer.node_create(x, y, w, h, r, g, b, alpha, radius);
-      nodes.push({ seq: ++nodeSeq, id, x, y, w, h, hex, alpha, radius });
-      rebuildList();
+      rawNodes.push({ seq: ++rawSeq, id, x, y, w, h, hex, alpha, radius });
       render();
     });
 
     $('clearAllBtn').addEventListener('click', () => {
-      for (const n of nodes) renderer.node_remove(n.id);
-      nodes.length = 0;
-      rebuildList();
+      if (mode !== 'raw') return;
+      for (const n of rawNodes) renderer.node_remove(n.id);
+      rawNodes.length = 0;
       render();
     });
+
+    refreshSelects();
+    rebuildTreeList();
+    $('addBtn').disabled = mode !== 'raw';
+    $('clearAllBtn').disabled = mode !== 'raw';
+    $('elCreateBtn').disabled = mode !== 'el';
+    $('elSetRootBtn').disabled = mode !== 'el';
   </script>
 </body>
 </html>
