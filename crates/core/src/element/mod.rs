@@ -12,4 +12,4 @@ pub use style::{
     AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,
     JustifyValue, StyleProp,
 };
-pub use tree::{ElementTree, Event};
+pub use tree::{ElementTree, Event, ResolvedElement};

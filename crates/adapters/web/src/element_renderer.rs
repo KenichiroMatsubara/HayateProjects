@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use hayate_core::{ElementId, ElementKind, ElementTree, NodeKind, vello_bridge};
+use hayate_core::{ElementId, ElementKind, ElementTree, ResolvedElement, vello_bridge};
 use slotmap::{Key, KeyData};
 use vello::peniko::color::{AlphaColor, Srgb};
 use wasm_bindgen::prelude::*;
@@ -121,7 +121,9 @@ impl HayateElementRenderer {
 pub struct HayateElementHtmlRenderer {
     container: HtmlElement,
     tree: ElementTree,
-    // Maps SceneGraph slotmap key → live DOM element so we can diff between frames.
+    // Maps stable ElementId → live DOM element. ElementId persists for the
+    // element's lifetime, so this mapping is correct across structural changes
+    // (unlike SceneGraph NodeId which is reassigned on every build).
     dom_nodes: HashMap<u64, Element>,
 }
 
@@ -197,73 +199,29 @@ impl HayateElementHtmlRenderer {
             ),
         )?;
 
-        let sg = self.tree.render();
+        let resolved = self.tree.resolved_elements();
         let doc = document();
-        let mut seen: HashSet<u64> = HashSet::with_capacity(sg.len());
+        let mut seen: HashSet<u64> = HashSet::with_capacity(resolved.len());
 
-        for (key, node) in sg.iter() {
-            let raw_key = key.data().as_ffi();
-            seen.insert(raw_key);
-            let el = match self.dom_nodes.get(&raw_key) {
+        for (id, el) in &resolved {
+            // Use ElementId as the stable DOM key — valid across structural changes.
+            let raw_id = id.data().as_ffi();
+            seen.insert(raw_id);
+
+            let dom_el = match self.dom_nodes.get(&raw_id) {
                 Some(e) => e.clone(),
                 None => {
-                    let el = doc.create_element("div")?;
-                    self.container.append_child(&el)?;
-                    self.dom_nodes.insert(raw_key, el.clone());
-                    el
+                    let new_el = doc.create_element("div")?;
+                    self.container.append_child(&new_el)?;
+                    self.dom_nodes.insert(raw_id, new_el.clone());
+                    new_el
                 }
             };
-            let html_el = el.unchecked_ref::<HtmlElement>();
-            let style = html_el.style();
-            match &node.kind {
-                NodeKind::Rect { x, y, width, height, color, corner_radius } => {
-                    style.set_property("position", "absolute")?;
-                    style.set_property("left", &format!("{}px", x))?;
-                    style.set_property("top", &format!("{}px", y))?;
-                    style.set_property("width", &format!("{}px", width))?;
-                    style.set_property("height", &format!("{}px", height))?;
-                    style.set_property(
-                        "background-color",
-                        &format!(
-                            "rgba({},{},{},{})",
-                            (color[0] * 255.0) as u8,
-                            (color[1] * 255.0) as u8,
-                            (color[2] * 255.0) as u8,
-                            color[3],
-                        ),
-                    )?;
-                    if *corner_radius > 0.0 {
-                        style.set_property("border-radius", &format!("{}px", corner_radius))?;
-                    } else {
-                        style.set_property("border-radius", "0")?;
-                    }
-                    html_el.set_inner_text("");
-                }
-                NodeKind::TextRun { x, y, color, data } => {
-                    style.set_property("position", "absolute")?;
-                    style.set_property("left", &format!("{}px", x))?;
-                    style.set_property("top", &format!("{}px", y))?;
-                    style.set_property("font-size", &format!("{}px", data.font_size))?;
-                    style.set_property("white-space", "pre")?;
-                    style.set_property("pointer-events", "none")?;
-                    style.set_property(
-                        "color",
-                        &format!(
-                            "rgba({},{},{},{})",
-                            (color[0] * 255.0) as u8,
-                            (color[1] * 255.0) as u8,
-                            (color[2] * 255.0) as u8,
-                            color[3],
-                        ),
-                    )?;
-                    style.set_property("background-color", "transparent")?;
-                    style.set_property("border-radius", "0")?;
-                    html_el.set_inner_text(&data.text);
-                }
-            }
+
+            apply_resolved_to_dom(dom_el.unchecked_ref(), el)?;
         }
 
-        // Drop DOM nodes whose slotmap key disappeared this frame.
+        // Remove DOM elements whose ElementId is no longer in the tree.
         let stale: Vec<u64> = self
             .dom_nodes
             .keys()
@@ -278,4 +236,77 @@ impl HayateElementHtmlRenderer {
 
         Ok(())
     }
+}
+
+fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<(), JsValue> {
+    let style = html_el.style();
+    style.set_property("position", "absolute")?;
+    style.set_property("left", &format!("{}px", el.x))?;
+    style.set_property("top", &format!("{}px", el.y))?;
+    style.set_property("width", &format!("{}px", el.width))?;
+    style.set_property("height", &format!("{}px", el.height))?;
+    style.set_property("opacity", &format!("{}", el.opacity))?;
+
+    if el.border_radius > 0.0 {
+        style.set_property("border-radius", &format!("{}px", el.border_radius))?;
+    } else {
+        style.set_property("border-radius", "0")?;
+    }
+
+    if let Some(bg) = el.background_color {
+        let arr = bg.to_array_f32();
+        style.set_property(
+            "background-color",
+            &format!(
+                "rgba({},{},{},{})",
+                (arr[0] * 255.0) as u8,
+                (arr[1] * 255.0) as u8,
+                (arr[2] * 255.0) as u8,
+                arr[3],
+            ),
+        )?;
+    } else {
+        style.set_property("background-color", "transparent")?;
+    }
+
+    if el.border_width > 0.0 {
+        let border_color = el.border_color.unwrap_or(hayate_core::Color::BLACK);
+        let arr = border_color.to_array_f32();
+        style.set_property(
+            "border",
+            &format!(
+                "{}px solid rgba({},{},{},{})",
+                el.border_width,
+                (arr[0] * 255.0) as u8,
+                (arr[1] * 255.0) as u8,
+                (arr[2] * 255.0) as u8,
+                arr[3],
+            ),
+        )?;
+        style.set_property("box-sizing", "border-box")?;
+    } else {
+        style.set_property("border", "none")?;
+    }
+
+    if let Some(text) = &el.text {
+        let arr = el.text_color.to_array_f32();
+        style.set_property("font-size", &format!("{}px", el.font_size))?;
+        style.set_property(
+            "color",
+            &format!(
+                "rgba({},{},{},{})",
+                (arr[0] * 255.0) as u8,
+                (arr[1] * 255.0) as u8,
+                (arr[2] * 255.0) as u8,
+                arr[3],
+            ),
+        )?;
+        style.set_property("white-space", "pre-wrap")?;
+        style.set_property("overflow", "hidden")?;
+        html_el.set_inner_text(text);
+    } else {
+        html_el.set_inner_text("");
+    }
+
+    Ok(())
 }

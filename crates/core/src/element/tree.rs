@@ -54,6 +54,25 @@ pub(crate) struct Element {
 #[derive(Clone, Debug)]
 pub enum Event {}
 
+/// Fully-resolved per-element state after layout, keyed by stable ElementId.
+/// Used by HTML Mode to update DOM elements without going through SceneGraph.
+#[derive(Clone, Debug)]
+pub struct ResolvedElement {
+    pub kind: ElementKind,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub background_color: Option<Color>,
+    pub opacity: f32,
+    pub border_radius: f32,
+    pub border_width: f32,
+    pub border_color: Option<Color>,
+    pub text_color: Color,
+    pub font_size: f32,
+    pub text: Option<String>,
+}
+
 pub struct ElementTree {
     pub(crate) elements: SlotMap<ElementId, Element>,
     pub(crate) root: Option<ElementId>,
@@ -276,6 +295,19 @@ impl ElementTree {
         Vec::new()
     }
 
+    /// Run layout and return every element with its absolute position and visual state.
+    /// Keyed by stable ElementId — safe to use as a DOM node mapping key across frames.
+    pub fn resolved_elements(&mut self) -> Vec<(ElementId, ResolvedElement)> {
+        if let Some(root) = self.root {
+            self.compute_layout(root);
+        }
+        let mut out = Vec::new();
+        if let Some(root) = self.root {
+            walk_resolved(&self.elements, &self.taffy, root, 0.0, 0.0, &mut out);
+        }
+        out
+    }
+
     // ── internals ────────────────────────────────────────────────────────
 
     fn detach_from_current_parent(&mut self, child: ElementId) {
@@ -372,6 +404,49 @@ impl ElementTree {
 impl Default for ElementTree {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn walk_resolved(
+    elements: &SlotMap<ElementId, Element>,
+    taffy: &TaffyTree<MeasureCtx>,
+    id: ElementId,
+    ox: f32,
+    oy: f32,
+    out: &mut Vec<(ElementId, ResolvedElement)>,
+) {
+    let el = match elements.get(id) {
+        Some(e) => e,
+        None => return,
+    };
+    let layout = match taffy.layout(el.taffy_node) {
+        Ok(l) => l,
+        Err(_) => return,
+    };
+    let x = ox + layout.location.x;
+    let y = oy + layout.location.y;
+
+    out.push((
+        id,
+        ResolvedElement {
+            kind: el.kind,
+            x,
+            y,
+            width: layout.size.width,
+            height: layout.size.height,
+            background_color: el.visual.background_color,
+            opacity: el.visual.opacity,
+            border_radius: el.visual.border_radius,
+            border_width: el.visual.border_width,
+            border_color: el.visual.border_color,
+            text_color: el.visual.text_color,
+            font_size: el.visual.font_size,
+            text: el.text.clone(),
+        },
+    ));
+
+    for &child in &el.children {
+        walk_resolved(elements, taffy, child, x, y, out);
     }
 }
 
