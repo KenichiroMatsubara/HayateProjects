@@ -1,88 +1,76 @@
-# NewDOM
+# Hayate / Hayabusa
 
-NewDOM は、アプリケーション UI のための**命令型・保持型・GPU ネイティブな描画オブジェクトモデル**である。
+**Hayate（疾風）** は、アプリケーション UI のための**命令型・保持型・GPU ネイティブな UI 基盤**である。
+**Hayabusa（隼）** は、Hayate の上で動く **Signal 型 Rust フレームワーク**である。
 
-NewDOM は UI フレームワークではない。状態管理でもない。Reconciler でもない。Component tree でもない。
+Hayate は UI フレームワークではない。状態管理でもない。Reconciler でもない。Component tree でもない。
 
-NewDOM が提供するのは、安定した NodeId を持つ描画オブジェクト群であり、上位層はそれらを直接 create / update / move / destroy する。Tree・Signal・VDOM・ECS・Layout Engine は、NewDOM に mutation を流し込む **producer** であって、NewDOM コアそのものではない。
+Hayate が提供するのは、Element Layer（element tree + CSS 風スタイル解決）と Raw Layer（絶対座標・GPUプリミティブ）の二層 WIT インターフェースである。上位層は Element Layer に element を作成し・スタイルを設定し・ツリーを組み立てる。Hayate 内部でレイアウト計算とスタイル解決を行い、Raw Layer のコマンド列に変換して GPU に送る。
+
+DOM 互換は設計目標に含まない。
 
 ## Language
 
-**NewDOM**:
-命令型・保持型・GPU ネイティブな描画オブジェクトモデル。NodeId で識別される描画オブジェクト群を保持し、上位層からの直接 mutation（create / update / move / destroy）を受け取り、render command を生成して GPU に送る。
-_Avoid_: フレームワーク、ライブラリ、レンダラー単体、UI エンジン
+**Hayate（疾風）**:
+命令型・保持型・GPU ネイティブな UI 基盤。Element Layer と Raw Layer の二層 WIT インターフェースを公開し、内部でレイアウト・スタイル解決・レンダリングを担う。
+_Avoid_: フレームワーク、ライブラリ、レンダラー単体
 
-**Substrate**:
-NewDOM そのものを指す別名。UI フレームワークの下層、GPU の上層に位置する基盤層。
-_Avoid_: エンジン、フレームワーク
+**Hayabusa（隼）**:
+Hayate の Element Layer 上に構築された Signal 型 Rust フレームワーク。`view!` マクロ・`#[component]`・Signal / Memo / Effect・Router・Store・Resource を提供する。Hayate の上を走る存在。
+_Avoid_: Hayate の別名、エンジン
+
+**Element Layer（要素層）**:
+Hayate の上位 WIT インターフェース。element tree の作成・CSS 風スタイルの設定・ツリー組み立てを受け付け、内部でレイアウト計算（Taffy）とスタイル解決を行い Raw Layer に渡す。Hayabusa および他言語 SDK はこの層を使う。
+_Avoid_: 上位 API、UI 層、Scene Layer
+
+**Raw Layer（生座標層）**:
+Hayate の下位 WIT インターフェース。絶対座標・確定スタイル済みの描画コマンドを直接受け付ける。レイアウトを自前で計算するユーザー（ゲーム HUD・Infinite Canvas 等）向けに公開する。Element Layer は内部でこの層に変換して使う。
+_Avoid_: 内部 API（WIT で外部公開されるため）、Draw Layer
+
+**WIT（WebAssembly Interface Types）**:
+Hayate の公開 API の単一ソース。Element Layer と Raw Layer の両方を定義する。Web 向けビルドでは Wasm コンポーネントとしてコンパイルされ、ブラウザの Wasm ランタイム上で動作する。ネイティブ向けビルドでは wit-bindgen を通じてネイティブライブラリとしてコンパイルされ、Wasm ランタイムを必要としない。
+_Avoid_: API 定義ファイル、インターフェース仕様書（言語間の実装契約として機能するため）
 
 **Platform Adapter**:
-描画以外の責務（DOM取得・CSS取得・HTML取得・Event取得・IME取得）を担い、NewDOM Core とプラットフォームを仲介する層。Browser Extension・Tauri・Native・将来のブラウザ等、プラットフォームごとに異なる実装を持つ。Core は Platform Adapter を知らない。
+IME 入力・クリップボード・raw 入力イベント変換を担い、Hayate Core とプラットフォームを仲介する層。プラットフォームごとに異なる実装を持つ（Web: 不可視 textarea + compositionEvent / macOS: TSM / Windows: TSF / Linux: IBus 等）。Core は Platform Adapter を知らない。サーフェス生成とフレームタイミングは wgpu が担うため Adapter の責務に含まない。アクセシビリティ報告は AccessKit がコアに組み込まれるため Adapter の責務に含まない。
 _Avoid_: Runtime, Host, Surface Adapter
 
-**Node**:
-NewDOM が管理する描画オブジェクトの最小単位。`ND_NODE_RECT` / `ND_NODE_TEXT` 等 GPU が直接理解できる型のみ存在する。HTML の div/span や React Component とは異なる。
-_Avoid_: Element, Component, Widget
-
-**NodeId**:
-NewDOM が slotmap（generational arena）で払い出す不透明なハンドル。C ABI では `uint64_t` として公開する。上位層は「どの entity が どの NodeId か」のマッピングを自身で管理する。削除済み Node への誤 update は generational check で検出される。
-_Avoid_: Entity ID
+**Signal**:
+Hayabusa のリアクティビティの基本単位。アリーナ型実装により `Copy` 可能なトークンとして提供され、所有権問題を回避する。Signal の値変化は依存する Memo・Effect・View に自動伝播する。
+_Avoid_: State, Observable, Store（Store は別の概念）
 
 **Scene Graph**:
-NewDOM 内部の描画オブジェクト間の**親子・描画順序・transform / clip 関係**を表す保持型グラフ。React / Vue の UI Tree や Virtual DOM ではなく、NodeId 指定で直接 mutation される実体オブジェクト群である。Tree 構造は z-order / transform 継承 / clip / hit-test / grouping / layering のための補助構造であり、NewDOM の本質ではない。
-_Avoid_: Virtual DOM, Element Tree, Component Tree
+Hayate 内部の描画オブジェクト間の親子・描画順序・transform / clip 関係を表す保持型グラフ。z-order / transform 継承 / clip / hit-test / grouping のための補助構造。NodeId 指定で直接 mutation される実体オブジェクト群。
+_Avoid_: Virtual DOM, Component Tree
 
-**Retained**:
-Scene Graph が前フレームの状態を保持し、上位層は変更のあった Node のみを通知する方式。対義語は Immediate（毎フレーム全 Node を再構築）。
+**Node**:
+Hayate の Raw Layer が管理する描画プリミティブの最小単位。`rect` / `text-run` / `image` / `clip` / `layer` 等、GPU が直接処理できる型のみ存在する。HTML の div/span や React Component とは異なる。
+_Avoid_: Element（Element Layer の element と混同するため）, Component, Widget
 
-**Immediate**:
-NewDOM が採用しない方式。毎フレーム全 Node を CPU で走査するコストと、テキスト shaping キャッシュが効かない問題から不採用。
-
-**Mutation**:
-上位層（フレームワーク・ECS・Signal・VDOM reconciler 等）が NewDOM に送る変更操作。`nd_node_create` / `nd_node_update` / `nd_node_destroy` / `nd_node_set_parent` がその手段。NewDOM は mutation を受け取るだけであり、状態変化を自ら検知しない。
+**NodeId**:
+Hayate が slotmap（generational arena）で払い出す不透明なハンドル。上位層は「どの entity が どの NodeId か」のマッピングを自身で管理する。削除済み Node への誤 mutation は generational check で検出される。
+_Avoid_: Entity ID
 
 **Backend**:
-GPU API 抽象層。NewDOM は wgpu を唯一の Backend として使用し、wgpu が Vulkan / Metal / DX12 / WebGPU（ブラウザ）への変換を担う。NewDOM は独自の Backend 抽象を持たない。
+GPU API 抽象層。Hayate は wgpu を唯一の Backend として使用し、wgpu が Vulkan / Metal / DX12 / WebGPU（ブラウザ）への変換を担う。Hayate は独自の Backend 抽象を持たない。
 _Avoid_: Renderer, Driver
 
-**Binding**:
-newdom.h（C ABI）を各言語の FFI 機構でラップしたもの。TypeScript / Python / Swift / Kotlin 等。Binding は薄いラップであり、ロジックを持たない。
-_Avoid_: SDK, Wrapper, Port
-
-**Absolute Layout Tree**:
-CSS エンジン（Taffy / Servo / Blink 互換）が HTML/CSS を解析・カスケード・レイアウト計算した結果として出力する、絶対座標・確定スタイル済みの要素ツリー。この Tree を NewDOM Mutation に変換することが HTML/CSS 互換の実体。`getBoundingClientRect()` + `getComputedStyle()` でブラウザから抽出する方法は、ブラウザの reflow コストが消えないため採用しない（ADR-0011）。
-_Avoid_: Computed Tree, Layout Result, Resolved Tree
-
-**DOM Adapter**:
-NewDOM コア（C ABI）の上に乗る独立した adapter 層（crate: `newdom-dom`）。設計目標はブラウザの DOM と同等の開発者体験を提供すること。`createElement` / `appendChild` / `getElementById` / `querySelector` / `addEventListener` / `dispatchEvent` 等の DOM 互換 API を提供する。プラットフォームのイベントループを所有し（winit 等）、raw input を受け取って `nd_hit_test` で NodeId を解決し、click / focus / blur の合成・バブリングを担う。`element.style` への代入は `nd_begin_frame()` 直前にバッチで `nd_node_update` へ変換する。`createElement(type)` の型文字列は HTML タグ名（`"div"`, `"span"`, `"section"` 等）をそのまま使う。WebGPU 非対応環境での本物の DOM へのフォールバックがタグ名 1:1 で対応できるため。フォーム系要素（`input`, `button`, `select`, `textarea`, `form`）は初版では未サポート。`createTextNode(text)` はコアの `ND_NODE_TEXT` に 1:1 でマップする。実装は Phase 2 から開始し、初版では API の全域を実装せず段階的に拡張するが、設計の北極星はフル DOM 互換である。Binding（薄いラップ）とは明確に異なる。
-_Avoid_: DOM Layer, Web Layer, HTML Adapter（HTML Parser を内包すると誤解される）
-
-**C ABI**:
-newdom.h として公開される関数群。Rust の `extern "C"` + cbindgen で生成する。すべての Binding はこの C ABI を通じて NewDOM と通信する。
-_Avoid_: API, Interface（文脈が曖昧な場合）
-
-**Dirty Region**:
-前フレームから変化のあった描画領域。**Phase 0 では全画面再描画を許容する**。Dirty Region による部分再描画は Phase 1 以降の最適化である。ただし retained object store により text shaping / layout 計算 / glyph atlas は常にキャッシュされる。
+**Retained**:
+Scene Graph が前フレームの状態を保持し、上位層は変更のあった Node のみを通知する方式。対義語は Immediate（毎フレーム全 Node を再構築）。Hayate は Retained を採用する。
 
 **Glyph Atlas**:
 レンダリング済みグリフを格納する GPU テクスチャ。LRU でエビクションし、UV 座標でアドレス指定する。
 
-**Layout（Optional Module）**:
-NewDOM コアの必須機能ではなく、optional な上位モジュール。Layout Engine は最終的に `nd_node_update(id, { x, y, width, height })` を呼ぶ producer の一種であり、NewDOM コアから見れば通常の Mutation と区別がない。実装は `newdom-layout` crate として `newdom-core` から分離する。
-
-**Phase 0**:
-「ブラウザの canvas に wgpu + Vello で色付き矩形が描画される」状態。C ABI・レイアウト・テキストは Phase 0 のスコープ外。完了時に Qiita に投稿する。
-
 ## Example Dialogue
 
-> 「NewDOM は React の代替か？」
-> → 「違う。React は NewDOM の上に乗る producer の一種。React が VDOM diff を取り、変化分を `nd_node_update()` に流す。NewDOM は受け取って描くだけ」
+> 「Hayate は React の代替か？」
+> → 「違う。Hayabusa が React 相当の役割を担う。Hayabusa が Signal diff を取り、変化分を Hayate Element Layer に流す。Hayate は受け取って描くだけ」
 
-> 「Node を追加したい」
-> → 「`nd_node_create(kind)` で NodeId を受け取り、`nd_node_update(id, props)` で位置・色を設定する。`nd_begin_frame()` / `nd_end_frame()` で GPU に送る」
+> 「他言語（Go・Zig・C）から Hayate を使えるか？」
+> → 「使える。WIT から wit-bindgen で各言語のネイティブ SDK が自動生成される。Element Layer 経由でスタイル付き UI が作れるし、Raw Layer 経由で生座標を直接制御することもできる」
 
-> 「レイアウトはどこでやる？」
-> → 「newdom-layout が Taffy で計算した x/y/width/height を `nd_node_update()` で NewDOM に渡す。NewDOM コアはその値を描くだけで、どう計算されたかを知らない」
+> 「Web とネイティブで挙動が変わるか？」
+> → 「変わらない。WIT が単一ソースで両方にコンパイルされる。Platform Adapter の実装は異なる（Web は invisible textarea、macOS は TSM）が、Hayate Core は実装を知らない。品質は等階級」
 
-> 「全部再描画したい」
-> → 「Phase 0 では全 Node を `nd_node_update()` で通知すれば全体が再描画される。Dirty Region による部分再描画は Phase 1 以降」
+> 「IME はどこが担うか？」
+> → 「Platform Adapter が担う。WIT に IME インターフェース（composition-start / composition-update / composition-end / commit-text）を定義し、各プラットフォームの Adapter が実装する」

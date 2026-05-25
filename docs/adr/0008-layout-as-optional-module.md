@@ -1,3 +1,7 @@
+---
+status: superseded — Hayate への移行により Layout（Taffy）は Element Layer の必須構成要素となり、optional module として分離しない。
+---
+
 # Layout Engine を newdom-core から分離し optional module とする
 
 Layout Engine（Taffy）は `newdom-core` の必須機能ではなく、`newdom-layout` crate として分離する。

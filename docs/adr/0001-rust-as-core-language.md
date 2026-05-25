@@ -8,4 +8,4 @@
 - **Zig**: クロスコンパイルが強力だが、wgpu（Rust）との共存でビルドシステムが二重になる。
 - **Rust**: wgpu とネイティブ統合、cargo 一本、borrow checker による安全性、OSS コントリビューター母数が最大。
 
-C ABI（newdom.h）は `extern "C"` + cbindgen で生成し、Binding 側の体験は C/Zig と変わらない。
+公開インターフェースは WIT（WebAssembly Interface Types）として定義し、wit-bindgen で各言語の SDK を自動生成する（ADR-0015）。C ABI（newdom.h）は廃止。

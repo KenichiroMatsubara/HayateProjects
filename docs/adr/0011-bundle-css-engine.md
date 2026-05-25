@@ -1,3 +1,7 @@
+---
+status: superseded — Browser Extension ユースケースおよび DOM 互換を設計目標から除外。CSS 解釈は Hayate Element Layer が独自スタイルシステムとして内包する（HTML/CSS 完全互換を目指さない）。
+---
+
 # CSS エンジンを同封する
 
 Browser Extension として既存ページの reflow コストを消すには、ブラウザの CSS 計算に依存してはならない。CSS エンジンを WASM に同梱し、ブラウザの rendering pipeline を完全に迂回する。HTML/CSS を自前で解析・カスケード・レイアウト計算し、Absolute Layout Tree を生成して NewDOM Mutation に流す。

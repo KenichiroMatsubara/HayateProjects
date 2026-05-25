@@ -1,3 +1,7 @@
+---
+status: superseded — DOM 互換を設計目標から除外したため DOM Adapter ごと廃止。
+---
+
 # DOM Adapter の型文字列は HTML タグ名を採用し、フォーム系要素は初版で未サポートとする
 
 DOM Adapter の `createElement(type)` が受け取る型文字列は HTML タグ名（`"div"`, `"span"`, `"section"` 等）をそのまま使う。独自語彙（`"view"`, `"rect"` 等）は採用しない。
