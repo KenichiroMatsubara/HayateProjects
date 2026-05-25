@@ -237,10 +237,9 @@ Core は Adapter を知らない。新プラットフォームの追加コスト
 
 **HTML Mode**
 - 条件: WebGPU または EditContext API のいずれかが利用できない場合
-- 描画: Hayate の element tree を HTML 要素にマッピング（`view` → `div`、`text` → `span`、`button` → `button`、`text-input` → `input`、`scroll-view` → `div[overflow:scroll]` 等）し、Hayate CSS を native CSS として適用する
+- 描画: Canvas Mode と同一の統一パイプライン（Element Layer → Taffy → Raw Layer）を経由し、Raw Layer の絶対座標出力を absolutely-positioned な `div` にマッピングして描画する。Canvas Mode との差異は最終的な描画先のみ（DOM vs GPU）
 - IME: ブラウザ native の動作に委ねる
-- 描画性能は SolidJS 相当
-- Canvas Mode の劣化版ではなく、独立した描画パス
+- Canvas Mode との差異はアダプターの最終出力のみ。コアのパイプラインは共通
 
 不可視 `<textarea>` + compositionEvent による IME 実装は廃止済み（ADR-0016）。
 
@@ -366,31 +365,37 @@ wgpu は対象外。巨大すぎ、プラットフォーム対応の追従コス
 
 ## 11. ロードマップ
 
-### Step 1 — Canvas Mode
+### Step 1 — HTML Mode（WIT インターフェース確立）
 
-目標: **Chromium ブラウザで Hayate Element Layer を使った GPU 描画が動作する**
+目標: **HTML Mode を動かし、WIT インターフェース全体と Hayabusa との境界を確立する**
 
-- `hayate-core` + `hayate-adapter-web` の crate 構成確立
-- Element Layer の WIT 定義（`view` / `text` / `image` / `button` / `text-input` / `scroll-view`）
+- Element Layer の WIT 定義（全 6 型: `view` / `text` / `image` / `button` / `text-input` / `scroll-view`）
 - Raw Layer の WIT 定義（`create-rect` / `create-text-run` / `create-image` / `create-clip` / `create-layer`）
-- Scene Graph（NodeId / SceneGraph）実装
+- `hayate-core` に Element Layer モジュール追加（element ツリー管理 + Taffy レイアウト）
+- Element Layer → SceneGraph（Raw Layer）接続
+- HTML Mode アダプター（SceneGraph 絶対座標 → absolutely-positioned `div`）
+- ライフサイクル WIT export（`hayate-init` / `render` / `poll-events`）
+- イベント WIT export（`poll-events` 統一キュー: pointer / focus / text-input / IME）
+- Hit testing
+- Hayabusa との接続（Signal diff → Element Layer mutation → `poll-events`）
+- HTML Mode ブラウザデモ
+
+### Step 2 — Canvas Mode
+
+目標: **HTML Mode と同一パイプラインの最終段を Vello + WebGPU に差し替え、GPU 描画を動作させる**
+
 - wgpu + Vello 初期化（Wasm）
-- SceneGraph → Vello Scene 変換レイヤー
-- Taffy による Element Layer レイアウト計算
-- Hayate CSS スタイル解決（基本プロパティ）
+- SceneGraph → Vello Scene 変換レイヤー（HTML Mode アダプターと差し替え）
+- ランタイム自動検出（Canvas Mode / HTML Mode 切り替え）
 - EditContext API による IME（Canvas Mode）
 - テキスト描画（Parley + Vello glyph rendering）
 - 画像描画
-- Hit testing
-- Hayabusa との接続（Signal diff → Element Layer mutation）
 - Canvas Mode ブラウザデモ
 
-### Step 2 — HTML Mode + 多言語 SDK
+### Step 3 — 多言語 SDK + ネイティブ
 
-目標: **HTML Mode の先行リリースにより WIT インターフェース全体を検証し、他言語 SDK が動作することを確認する**
+目標: **WIT インターフェースを他言語 SDK に展開し、ネイティブ Adapter を追加する**
 
-- HTML Mode 実装（element tree → HTML マッピング・Hayate CSS → native CSS）
-- ランタイム自動検出（Canvas Mode / HTML Mode 切り替え）
 - wit-bindgen による多言語 SDK 生成（TypeScript / C / C++ / Go 等）
 - C / C++ から Hayate Element Layer を使えることの理論的確認と動作検証
 - CJK / Bidi テキスト・IME
