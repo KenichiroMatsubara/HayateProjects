@@ -124,6 +124,7 @@ interface element-layer {
   element-append-child: func(parent: element-id, child: element-id) -> ();
   element-insert-before: func(parent: element-id, child: element-id, before: element-id) -> ();
   element-remove: func(id: element-id) -> ();
+  element-get-text: func(id: element-id) -> string;
 
   // Frame lifecycle (driven by Hayabusa)
   render: func() -> ();
