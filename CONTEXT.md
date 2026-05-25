@@ -63,7 +63,7 @@ Hayate 内部の描画オブジェクト間の親子・描画順序・transform 
 _Avoid_: Virtual DOM, Component Tree
 
 **Scroll Offset**:
-`scroll-view` Element のスクロール位置（x, y）。Hayate は保持せず、上位層（Hayabusa）が `poll-events()` の scroll イベントから delta を積算して管理する。毎フレーム `element_set_scroll_offset(id, x, y)` で Hayate に渡し、Hayate は `scene_build` 時に子要素の座標をオフセット分だけ平行移動しクリップ矩形を適用する。イナーシャ・スナップ等の物理演算は Hayabusa の責務。
+`scroll-view` Element のスクロール位置（x, y）。Hayate は保持せず、上位層（Hayabusa）が `poll-events()` の scroll イベントから delta を積算して管理する。毎フレーム `element_set_scroll_offset(id, x, y)` で Hayate に渡し、Hayate は `scene_build` 時に子要素の座標をオフセット分だけ平行移動しクリップ矩形を適用する。`position: sticky` も同 scroll offset を使って `scene_build` 内でクランプ計算するため、Hayate の責務に含む。イナーシャ・スナップ等の物理演算は Hayabusa の責務。
 _Avoid_: Hayate がスクロール状態を持つ設計、StyleProp::ScrollOffset
 
 **Z-Order**:
