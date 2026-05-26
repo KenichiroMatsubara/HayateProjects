@@ -27,6 +27,8 @@ pub struct Visual {
     pub text_color: Color,
     pub font_size: f32,
     pub z_index: i32,
+    /// Custom font-family name registered via `register_font`.
+    pub font_family: Option<String>,
 }
 
 impl Default for Visual {
@@ -40,6 +42,7 @@ impl Default for Visual {
             text_color: Color::BLACK,
             font_size: 16.0,
             z_index: 0,
+            font_family: None,
         }
     }
 }
@@ -64,6 +67,16 @@ pub(crate) struct Element {
     pub text_content: String,
     /// IME preedit (in-progress composition, not yet committed).
     pub preedit: Option<String>,
+    /// Byte offset of the insertion cursor within text_content (TextInput only).
+    pub cursor_byte_index: usize,
+    /// Whether the cursor should be drawn (true when the element is focused).
+    pub cursor_visible: bool,
+    /// Pre-built Parley layout of text_content + preedit, rebuilt each render pass.
+    pub content_layout: Option<TextLayout>,
+    /// ARIA label for screen readers.
+    pub aria_label: Option<String>,
+    /// ARIA role (e.g. "button", "listitem"). None uses the implicit role.
+    pub role: Option<String>,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -78,6 +91,10 @@ pub enum Event {
     CompositionEnd { target: ElementId, text: String },
     Scroll { target: ElementId, delta_x: f32, delta_y: f32 },
     Resize { width: f32, height: f32 },
+    PointerUp { target: ElementId, x: f32, y: f32 },
+    PointerEnter { target: ElementId },
+    PointerLeave { target: ElementId },
+    KeyDown { target: ElementId, key: String },
 }
 
 /// Fully-resolved per-element state after layout, keyed by stable ElementId.
@@ -101,6 +118,9 @@ pub struct ResolvedElement {
     pub src: Option<String>,
     /// Current value for TextInput elements (text_content + active preedit, combined for display).
     pub text_content: Option<String>,
+    pub font_family: Option<String>,
+    pub aria_label: Option<String>,
+    pub role: Option<String>,
 }
 
 pub struct ElementTree {
@@ -177,6 +197,11 @@ impl ElementTree {
             src_image: None,
             text_content: String::new(),
             preedit: None,
+            cursor_byte_index: 0,
+            cursor_visible: false,
+            content_layout: None,
+            aria_label: None,
+            role: None,
         };
         let id = self.elements.insert(element);
 
@@ -222,6 +247,7 @@ impl ElementTree {
         if let Some(el) = self.elements.get_mut(id) {
             el.text_content = text.to_string();
             el.preedit = None;
+            el.cursor_byte_index = el.text_content.len();
         }
     }
 
@@ -229,7 +255,70 @@ impl ElementTree {
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
         if let Some(el) = self.elements.get_mut(id) {
             el.text_content.push_str(text);
+            el.cursor_byte_index = el.text_content.len();
         }
+    }
+
+    /// Remove the last Unicode scalar value from a TextInput's committed content.
+    pub fn element_backspace(&mut self, id: ElementId) {
+        if let Some(el) = self.elements.get_mut(id) {
+            if el.kind == ElementKind::TextInput && !el.text_content.is_empty() {
+                let last_start = el.text_content
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                el.text_content.truncate(last_start);
+                el.cursor_byte_index = el.text_content.len();
+            }
+        }
+    }
+
+    /// Show or hide the insertion cursor for a TextInput element.
+    pub fn element_set_cursor_visible(&mut self, id: ElementId, visible: bool) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.cursor_visible = visible;
+        }
+    }
+
+    /// Set the font family (by name) for an element. The family must first be registered via
+    /// `register_font`, or be a system font available in the default FontContext.
+    pub fn element_set_font_family(&mut self, id: ElementId, family: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.visual.font_family = if family.is_empty() { None } else { Some(family.to_string()) };
+            el.text_layout = None;
+            el.content_layout = None;
+            let taffy_node = el.taffy_node;
+            let _ = self.taffy.mark_dirty(taffy_node);
+        }
+    }
+
+    /// Set the ARIA label for screen-reader accessibility.
+    pub fn element_set_aria_label(&mut self, id: ElementId, label: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.aria_label = if label.is_empty() { None } else { Some(label.to_string()) };
+        }
+    }
+
+    /// Set the ARIA role (e.g. "button", "listitem", "img"). Pass an empty string to clear.
+    pub fn element_set_role(&mut self, id: ElementId, role: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.role = if role.is_empty() { None } else { Some(role.to_string()) };
+        }
+    }
+
+    /// Register a custom font from raw bytes with a given family name.
+    /// After registration, the name can be used in `element_set_font_family`.
+    pub fn register_font(&mut self, family_name: &str, bytes: Vec<u8>) {
+        use fontique::FontInfoOverride;
+        use std::sync::Arc;
+        use vello::peniko::Blob;
+        let blob = Blob::new(Arc::new(bytes));
+        let override_info = FontInfoOverride {
+            family_name: Some(family_name),
+            ..Default::default()
+        };
+        self.font_cx.collection.register_fonts(blob, Some(override_info));
     }
 
     /// Set the IME preedit for a TextInput (in-progress, not yet committed).
@@ -278,6 +367,45 @@ impl ElementTree {
     /// Read the current scroll offset of an element.
     pub fn element_get_scroll_offset(&self, id: ElementId) -> (f32, f32) {
         self.elements.get(id).map_or((0.0, 0.0), |e| e.scroll_offset)
+    }
+
+    /// Return the absolute layout rect (x, y, w, h) from the last render pass.
+    pub fn element_layout_rect(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
+        self.layout_cache.get(&id).copied()
+    }
+
+    /// Return the bounding dimensions of all descendants (content size) for a ScrollView.
+    /// Values are relative to the element's own top-left corner.
+    pub fn element_content_size(&self, id: ElementId) -> (f32, f32) {
+        let &(ex, ey, _, _) = match self.layout_cache.get(&id) {
+            Some(r) => r,
+            None => return (0.0, 0.0),
+        };
+        let mut max_x: f32 = 0.0;
+        let mut max_y: f32 = 0.0;
+        self.accumulate_content_bounds(id, ex, ey, &mut max_x, &mut max_y);
+        (max_x, max_y)
+    }
+
+    fn accumulate_content_bounds(
+        &self,
+        id: ElementId,
+        origin_x: f32,
+        origin_y: f32,
+        max_x: &mut f32,
+        max_y: &mut f32,
+    ) {
+        let el = match self.elements.get(id) {
+            Some(e) => e,
+            None => return,
+        };
+        for &child in &el.children {
+            if let Some(&(cx, cy, cw, ch)) = self.layout_cache.get(&child) {
+                *max_x = max_x.max(cx - origin_x + cw);
+                *max_y = max_y.max(cy - origin_y + ch);
+                self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
+            }
+        }
     }
 
     pub fn element_set_style(&mut self, id: ElementId, props: &[StyleProp]) {
@@ -506,6 +634,7 @@ impl ElementTree {
                     text,
                     el.visual.font_size,
                     max_advance,
+                    el.visual.font_family.as_deref(),
                 );
                 let size = TaffySize {
                     width: layout.layout.width(),
@@ -527,6 +656,56 @@ impl ElementTree {
             }
             if let Some(el) = elements.get_mut(eid) {
                 el.text_layout = Some(layout);
+            }
+        }
+
+        // Build content layouts for TextInput elements (used for Canvas-mode rendering + cursor).
+        let textinput_ids: Vec<ElementId> = elements
+            .iter()
+            .filter_map(|(id, el)| {
+                if el.kind == ElementKind::TextInput { Some(id) } else { None }
+            })
+            .collect();
+
+        for eid in textinput_ids {
+            let (display_text, font_size) = {
+                let el = match elements.get(eid) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                let text = match &el.preedit {
+                    Some(p) => format!("{}{}", el.text_content, p),
+                    None => el.text_content.clone(),
+                };
+                (text, el.visual.font_size)
+            };
+
+            if display_text.is_empty() {
+                if let Some(el) = elements.get_mut(eid) {
+                    el.content_layout = None;
+                }
+                continue;
+            }
+
+            let (max_advance, font_family) = {
+                let el = elements.get(eid).map(|e| (
+                    taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
+                    e.visual.font_family.clone(),
+                ));
+                el.map(|(a, f)| (a, f)).unwrap_or((None, None))
+            };
+            let content_layout = text::build_text_layout(
+                font_cx,
+                layout_cx,
+                &display_text,
+                font_size,
+                max_advance,
+                font_family.as_deref(),
+            );
+
+            if let Some(el) = elements.get_mut(eid) {
+                el.content_layout = Some(content_layout);
+                el.cursor_byte_index = el.text_content.len();
             }
         }
     }
@@ -586,6 +765,9 @@ fn walk_resolved(
             text: el.text.clone(),
             src: el.src.clone(),
             text_content: display_text_content,
+            font_family: el.visual.font_family.clone(),
+            aria_label: el.aria_label.clone(),
+            role: el.role.clone(),
         },
     ));
 

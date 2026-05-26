@@ -42,6 +42,10 @@ fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
 #[wasm_bindgen] pub fn event_kind_composition_end()     -> f64 { 6.0 }
 #[wasm_bindgen] pub fn event_kind_scroll()              -> f64 { 7.0 }
 #[wasm_bindgen] pub fn event_kind_resize()              -> f64 { 8.0 }
+#[wasm_bindgen] pub fn event_kind_pointer_up()          -> f64 { 9.0 }
+#[wasm_bindgen] pub fn event_kind_pointer_enter()       -> f64 { 10.0 }
+#[wasm_bindgen] pub fn event_kind_pointer_leave()       -> f64 { 11.0 }
+#[wasm_bindgen] pub fn event_kind_key_down()            -> f64 { 12.0 }
 
 // ── Element kind discriminant getters (exposed to JS) ────────────────────
 
@@ -65,6 +69,8 @@ pub struct HayateElementRenderer {
     gpu: GpuSurface,
     tree: ElementTree,
     focused_element: Option<ElementId>,
+    hovered_element: Option<ElementId>,
+    last_pointer_pos: Option<(f32, f32)>,
 }
 
 #[wasm_bindgen]
@@ -75,7 +81,7 @@ impl HayateElementRenderer {
         let gpu = GpuSurface::init(canvas).await?;
         let mut tree = ElementTree::new();
         tree.set_viewport(width, height);
-        Ok(Self { gpu, tree, focused_element: None })
+        Ok(Self { gpu, tree, focused_element: None, hovered_element: None, last_pointer_pos: None })
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -144,11 +150,11 @@ impl HayateElementRenderer {
         self.gpu.present(&scene, base_color)
     }
 
-    /// Fetch a PNG image from `url` and attach it to the Image element with `id`.
+    /// Fetch an image (PNG / JPEG / WebP) from `url` and attach it to the Image element.
     /// Call this after element_set_src; the element renders blank until this resolves.
     pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
         let eid = element_id_from_f64(id);
-        let image_data = fetch_png(&url).await?;
+        let image_data = fetch_image(&url).await?;
         self.tree.element_set_image(eid, Arc::new(image_data));
         Ok(())
     }
@@ -160,25 +166,55 @@ impl HayateElementRenderer {
             if self.focused_element != hit {
                 if let Some(prev) = self.focused_element {
                     self.tree.push_event(Event::Blur(prev));
+                    self.tree.element_set_cursor_visible(prev, false);
                 }
                 self.focused_element = hit;
                 self.tree.push_event(Event::Focus(target));
+                self.tree.element_set_cursor_visible(target, true);
             }
         } else if let Some(prev) = self.focused_element.take() {
             self.tree.push_event(Event::Blur(prev));
+            self.tree.element_set_cursor_visible(prev, false);
         }
     }
 
-    pub fn on_pointer_up(&mut self, _x: f32, _y: f32) {}
+    pub fn on_pointer_up(&mut self, x: f32, y: f32) {
+        if let Some(target) = self.tree.hit_test(x, y) {
+            self.tree.push_event(Event::PointerUp { target, x, y });
+        }
+    }
 
-    pub fn on_pointer_move(&mut self, _x: f32, _y: f32) {}
+    pub fn on_pointer_move(&mut self, x: f32, y: f32) {
+        // Skip if position hasn't moved by at least 1px (P3 throttle).
+        if let Some((lx, ly)) = self.last_pointer_pos {
+            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
+                return;
+            }
+        }
+        self.last_pointer_pos = Some((x, y));
+        let hit = self.tree.hit_test(x, y);
+        if hit != self.hovered_element {
+            if let Some(prev) = self.hovered_element {
+                self.tree.push_event(Event::PointerLeave { target: prev });
+            }
+            if let Some(cur) = hit {
+                self.tree.push_event(Event::PointerEnter { target: cur });
+            }
+            self.hovered_element = hit;
+        }
+    }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
         if let Some(target) = self.tree.hit_test(x, y) {
-            // Find the nearest ScrollView ancestor (or self) to apply offset to.
             if let Some(sv) = nearest_scroll_view(&self.tree, target) {
                 let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-                self.tree.element_set_scroll_offset(sv, ox + delta_x, oy + delta_y);
+                let (content_w, content_h) = self.tree.element_content_size(sv);
+                let sv_rect = self.tree.element_layout_rect(sv).unwrap_or((0.0, 0.0, 0.0, 0.0));
+                let max_x = (content_w - sv_rect.2).max(0.0);
+                let max_y = (content_h - sv_rect.3).max(0.0);
+                let new_x = (ox + delta_x).clamp(0.0, max_x);
+                let new_y = (oy + delta_y).clamp(0.0, max_y);
+                self.tree.element_set_scroll_offset(sv, new_x, new_y);
             }
             self.tree.push_event(Event::Scroll { target, delta_x, delta_y });
         }
@@ -191,6 +227,57 @@ impl HayateElementRenderer {
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    pub fn element_set_font_family(&mut self, id: f64, family: &str) {
+        self.tree.element_set_font_family(element_id_from_f64(id), family);
+    }
+
+    pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
+        self.tree.element_set_aria_label(element_id_from_f64(id), label);
+    }
+
+    pub fn element_set_role(&mut self, id: f64, role: &str) {
+        self.tree.element_set_role(element_id_from_f64(id), role);
+    }
+
+    /// Register a custom font from raw bytes. After this, the family_name can be used
+    /// with `element_set_font_family`.
+    pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
+        self.tree.register_font(family_name, data.to_vec());
+    }
+
+    /// Fetch a font file from a URL and register it under `family_name`.
+    pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
+        let bytes = fetch_bytes(&url).await?;
+        self.tree.register_font(&family_name, bytes);
+        Ok(())
+    }
+
+    /// Paste text into the currently focused element. JS calls this from the paste event handler.
+    pub fn on_clipboard_paste(&mut self, text: &str) {
+        if let Some(focused) = self.focused_element {
+            self.tree.element_append_text_content(focused, text);
+            self.tree.push_event(Event::TextInput { target: focused, text: text.to_string() });
+        }
+    }
+
+    /// Return the focused element's id (as f64), or 0.0 if nothing is focused.
+    /// JS can use this with `element_get_text_content` to implement copy/cut.
+    pub fn focused_element_id(&self) -> f64 {
+        self.focused_element.map(element_id_to_f64).unwrap_or(0.0)
+    }
+
+    /// Handle a key press on the focused element. `key` is the KeyboardEvent.key string.
+    pub fn on_key_down(&mut self, key: &str) {
+        let focused = match self.focused_element {
+            Some(id) => id,
+            None => return,
+        };
+        if key == "Backspace" {
+            self.tree.element_backspace(focused);
+        }
+        self.tree.push_event(Event::KeyDown { target: focused, key: key.to_string() });
     }
 
     /// Called by JS when the user types printable text into the focused TextInput.
@@ -247,6 +334,8 @@ pub struct HayateElementHtmlRenderer {
     // (unlike SceneGraph NodeId which is reassigned on every build).
     dom_nodes: HashMap<u64, Element>,
     focused_element: Option<ElementId>,
+    hovered_element: Option<ElementId>,
+    last_pointer_pos: Option<(f32, f32)>,
 }
 
 #[wasm_bindgen]
@@ -259,7 +348,7 @@ impl HayateElementHtmlRenderer {
         let height = container.client_height().max(1) as f32;
         let mut tree = ElementTree::new();
         tree.set_viewport(width, height);
-        Ok(Self { container, tree, dom_nodes: HashMap::new(), focused_element: None })
+        Ok(Self { container, tree, dom_nodes: HashMap::new(), focused_element: None, hovered_element: None, last_pointer_pos: None })
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -380,24 +469,54 @@ impl HayateElementHtmlRenderer {
             if self.focused_element != hit {
                 if let Some(prev) = self.focused_element {
                     self.tree.push_event(Event::Blur(prev));
+                    self.tree.element_set_cursor_visible(prev, false);
                 }
                 self.focused_element = hit;
                 self.tree.push_event(Event::Focus(target));
+                self.tree.element_set_cursor_visible(target, true);
             }
         } else if let Some(prev) = self.focused_element.take() {
             self.tree.push_event(Event::Blur(prev));
+            self.tree.element_set_cursor_visible(prev, false);
         }
     }
 
-    pub fn on_pointer_up(&mut self, _x: f32, _y: f32) {}
+    pub fn on_pointer_up(&mut self, x: f32, y: f32) {
+        if let Some(target) = self.tree.hit_test(x, y) {
+            self.tree.push_event(Event::PointerUp { target, x, y });
+        }
+    }
 
-    pub fn on_pointer_move(&mut self, _x: f32, _y: f32) {}
+    pub fn on_pointer_move(&mut self, x: f32, y: f32) {
+        if let Some((lx, ly)) = self.last_pointer_pos {
+            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
+                return;
+            }
+        }
+        self.last_pointer_pos = Some((x, y));
+        let hit = self.tree.hit_test(x, y);
+        if hit != self.hovered_element {
+            if let Some(prev) = self.hovered_element {
+                self.tree.push_event(Event::PointerLeave { target: prev });
+            }
+            if let Some(cur) = hit {
+                self.tree.push_event(Event::PointerEnter { target: cur });
+            }
+            self.hovered_element = hit;
+        }
+    }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
         if let Some(target) = self.tree.hit_test(x, y) {
             if let Some(sv) = nearest_scroll_view(&self.tree, target) {
                 let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-                self.tree.element_set_scroll_offset(sv, ox + delta_x, oy + delta_y);
+                let (content_w, content_h) = self.tree.element_content_size(sv);
+                let sv_rect = self.tree.element_layout_rect(sv).unwrap_or((0.0, 0.0, 0.0, 0.0));
+                let max_x = (content_w - sv_rect.2).max(0.0);
+                let max_y = (content_h - sv_rect.3).max(0.0);
+                let new_x = (ox + delta_x).clamp(0.0, max_x);
+                let new_y = (oy + delta_y).clamp(0.0, max_y);
+                self.tree.element_set_scroll_offset(sv, new_x, new_y);
             }
             self.tree.push_event(Event::Scroll { target, delta_x, delta_y });
         }
@@ -410,6 +529,50 @@ impl HayateElementHtmlRenderer {
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    pub fn element_set_font_family(&mut self, id: f64, family: &str) {
+        self.tree.element_set_font_family(element_id_from_f64(id), family);
+    }
+
+    pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
+        self.tree.element_set_aria_label(element_id_from_f64(id), label);
+    }
+
+    pub fn element_set_role(&mut self, id: f64, role: &str) {
+        self.tree.element_set_role(element_id_from_f64(id), role);
+    }
+
+    pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
+        self.tree.register_font(family_name, data.to_vec());
+    }
+
+    pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
+        let bytes = fetch_bytes(&url).await?;
+        self.tree.register_font(&family_name, bytes);
+        Ok(())
+    }
+
+    pub fn on_clipboard_paste(&mut self, text: &str) {
+        if let Some(focused) = self.focused_element {
+            self.tree.element_append_text_content(focused, text);
+            self.tree.push_event(Event::TextInput { target: focused, text: text.to_string() });
+        }
+    }
+
+    pub fn focused_element_id(&self) -> f64 {
+        self.focused_element.map(element_id_to_f64).unwrap_or(0.0)
+    }
+
+    pub fn on_key_down(&mut self, key: &str) {
+        let focused = match self.focused_element {
+            Some(id) => id,
+            None => return,
+        };
+        if key == "Backspace" {
+            self.tree.element_backspace(focused);
+        }
+        self.tree.push_event(Event::KeyDown { target: focused, key: key.to_string() });
     }
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
@@ -445,10 +608,10 @@ impl HayateElementHtmlRenderer {
         self.tree.element_get_text_content(element_id_from_f64(id))
     }
 
-    /// Fetch a PNG and attach it; HTML mode stores src_image for Canvas-compatible behaviour.
+    /// Fetch an image (PNG / JPEG / WebP) and attach it to the element.
     pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
         let eid = element_id_from_f64(id);
-        let image_data = fetch_png(&url).await?;
+        let image_data = fetch_image(&url).await?;
         self.tree.element_set_image(eid, Arc::new(image_data));
         Ok(())
     }
@@ -478,6 +641,27 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
     style.set_property("width", &format!("{}px", el.width))?;
     style.set_property("height", &format!("{}px", el.height))?;
     style.set_property("opacity", &format!("{}", el.opacity))?;
+
+    // Accessibility attributes.
+    let role = el.role.as_deref().or_else(|| match el.kind {
+        ElementKind::Button => Some("button"),
+        _ => None,
+    });
+    if let Some(r) = role {
+        html_el.set_attribute("role", r)?;
+    }
+    if let Some(label) = &el.aria_label {
+        html_el.set_attribute("aria-label", label)?;
+    }
+    // Make interactive elements keyboard-reachable.
+    match el.kind {
+        ElementKind::Button | ElementKind::TextInput => {
+            if html_el.get_attribute("tabindex").is_none() {
+                html_el.set_attribute("tabindex", "0")?;
+            }
+        }
+        _ => {}
+    }
 
     if el.border_radius > 0.0 {
         style.set_property("border-radius", &format!("{}px", el.border_radius))?;
@@ -533,7 +717,6 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
     }
 
     if el.kind == ElementKind::TextInput {
-        // Style the <input> to match the Hayate visual model (no browser defaults).
         style.set_property("box-sizing", "border-box")?;
         style.set_property("outline", "none")?;
         style.set_property("padding", "0")?;
@@ -542,6 +725,9 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
         }
         let arr = el.text_color.to_array_f32();
         style.set_property("font-size", &format!("{}px", el.font_size))?;
+        if let Some(family) = &el.font_family {
+            style.set_property("font-family", family)?;
+        }
         style.set_property(
             "color",
             &format!(
@@ -552,13 +738,15 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
                 arr[3],
             ),
         )?;
-        // Don't overwrite value — the DOM input is source of truth in HTML mode.
         return Ok(());
     }
 
     if let Some(text) = &el.text {
         let arr = el.text_color.to_array_f32();
         style.set_property("font-size", &format!("{}px", el.font_size))?;
+        if let Some(family) = &el.font_family {
+            style.set_property("font-family", family)?;
+        }
         style.set_property(
             "color",
             &format!(
@@ -582,14 +770,19 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
 /// Encode an event list into a flat f64 array for JS consumption.
 ///
 /// Format per event:
-///   click:  [0, target_ffi, x, y]
-///   focus:  [1, target_ffi]
-///   blur:   [2, target_ffi]
-///   scroll: [7, target_ffi, delta_x, delta_y]
-///   resize: [8, width, height]
-///
-/// TextInput / Composition events are omitted here; Phase 5 wires those
-/// via a dedicated string-capable channel.
+///   click:         [0,  target_ffi, x, y]
+///   focus:         [1,  target_ffi]
+///   blur:          [2,  target_ffi]
+///   text_input:    [3,  target_ffi]
+///   comp_start:    [4,  target_ffi]
+///   comp_update:   [5,  target_ffi]
+///   comp_end:      [6,  target_ffi]
+///   scroll:        [7,  target_ffi, delta_x, delta_y]
+///   resize:        [8,  width, height]
+///   pointer_up:    [9,  target_ffi, x, y]
+///   pointer_enter: [10, target_ffi]
+///   pointer_leave: [11, target_ffi]
+///   key_down:      [12, target_ffi]
 fn encode_events(events: &[Event]) -> Box<[f64]> {
     use slotmap::Key;
     let mut out: Vec<f64> = Vec::with_capacity(events.len() * 4);
@@ -609,18 +802,6 @@ fn encode_events(events: &[Event]) -> Box<[f64]> {
                 out.push(2.0);
                 out.push(target.data().as_ffi() as f64);
             }
-            Event::Scroll { target, delta_x, delta_y } => {
-                out.push(7.0);
-                out.push(target.data().as_ffi() as f64);
-                out.push(*delta_x as f64);
-                out.push(*delta_y as f64);
-            }
-            Event::Resize { width, height } => {
-                out.push(8.0);
-                out.push(*width as f64);
-                out.push(*height as f64);
-            }
-            // Text events: [tag, target_ffi] — JS retrieves the text via element_get_text_content.
             Event::TextInput { target, .. } => {
                 out.push(3.0);
                 out.push(target.data().as_ffi() as f64);
@@ -637,13 +818,52 @@ fn encode_events(events: &[Event]) -> Box<[f64]> {
                 out.push(6.0);
                 out.push(target.data().as_ffi() as f64);
             }
+            Event::Scroll { target, delta_x, delta_y } => {
+                out.push(7.0);
+                out.push(target.data().as_ffi() as f64);
+                out.push(*delta_x as f64);
+                out.push(*delta_y as f64);
+            }
+            Event::Resize { width, height } => {
+                out.push(8.0);
+                out.push(*width as f64);
+                out.push(*height as f64);
+            }
+            Event::PointerUp { target, x, y } => {
+                out.push(9.0);
+                out.push(target.data().as_ffi() as f64);
+                out.push(*x as f64);
+                out.push(*y as f64);
+            }
+            Event::PointerEnter { target } => {
+                out.push(10.0);
+                out.push(target.data().as_ffi() as f64);
+            }
+            Event::PointerLeave { target } => {
+                out.push(11.0);
+                out.push(target.data().as_ffi() as f64);
+            }
+            Event::KeyDown { target, .. } => {
+                out.push(12.0);
+                out.push(target.data().as_ffi() as f64);
+            }
         }
     }
     out.into_boxed_slice()
 }
 
-/// Fetch a URL and decode it as PNG, returning peniko ImageData (RGBA8 pixels).
-async fn fetch_png(url: &str) -> Result<ImageData, JsValue> {
+/// Fetch raw bytes from a URL.
+async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
+    use js_sys::{ArrayBuffer, Uint8Array};
+    let window = web_sys::window().ok_or("no window")?;
+    let resp: web_sys::Response =
+        JsFuture::from(window.fetch_with_str(url)).await?.dyn_into()?;
+    let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
+    Ok(Uint8Array::new(&buf).to_vec())
+}
+
+/// Fetch a URL and decode it as RGBA8, supporting PNG / JPEG / WebP.
+async fn fetch_image(url: &str) -> Result<ImageData, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
 
     let window = web_sys::window().ok_or("no window")?;
@@ -652,33 +872,19 @@ async fn fetch_png(url: &str) -> Result<ImageData, JsValue> {
     let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
     let bytes = Uint8Array::new(&buf).to_vec();
 
-    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
-    let mut reader = decoder.read_info().map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let buf_size = reader.output_buffer_size()
-        .ok_or_else(|| JsValue::from_str("PNG: unknown output buffer size"))?;
-    let mut pixels = vec![0u8; buf_size];
-    let info = reader.next_frame(&mut pixels).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let rgba = img.into_rgba8();
+    let width = rgba.width();
+    let height = rgba.height();
+    let raw = rgba.into_raw();
 
-    // Convert to RGBA8 if needed.
-    let rgba = match info.color_type {
-        png::ColorType::Rgba => pixels[..info.buffer_size()].to_vec(),
-        png::ColorType::Rgb => {
-            let mut out = Vec::with_capacity((info.width * info.height * 4) as usize);
-            for chunk in pixels[..info.buffer_size()].chunks(3) {
-                out.extend_from_slice(chunk);
-                out.push(255);
-            }
-            out
-        }
-        _ => return Err(JsValue::from_str("unsupported PNG color type")),
-    };
-
-    let blob = Blob::new(Arc::new(rgba));
+    let blob = Blob::new(Arc::new(raw));
     Ok(ImageData {
         data: blob,
         format: ImageFormat::Rgba8,
         alpha_type: ImageAlphaType::Alpha,
-        width: info.width,
-        height: info.height,
+        width,
+        height,
     })
 }

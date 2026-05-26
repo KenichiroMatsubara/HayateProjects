@@ -151,8 +151,68 @@ fn walk(
         return;
     }
 
-    // 3b) Text runs.
-    if let Some(tl) = el.text_layout.as_ref() {
+    // 3b) Text runs (TextInput uses content_layout; all others use text_layout).
+    if el.kind == ElementKind::TextInput {
+        let color = el.visual.text_color.with_opacity(el.visual.opacity).to_array_f32();
+        // Show content if present, else show placeholder text.
+        let runs = if !el.text_content.is_empty() {
+            el.content_layout.as_ref().map(|tl| tl.runs.as_slice())
+        } else {
+            el.text_layout.as_ref().map(|tl| tl.runs.as_slice())
+        };
+        if let Some(runs) = runs {
+            for run in runs {
+                emit(
+                    sg,
+                    effective_parent,
+                    Node { kind: NodeKind::TextRun { x, y, color, data: run.clone() }, children: Vec::new() },
+                );
+            }
+        }
+        // Cursor rect — only in Canvas mode (HTML mode uses the native <input> cursor).
+        if el.cursor_visible {
+            if let Some(cl) = el.content_layout.as_ref() {
+                let cursor = parley::Cursor::from_byte_index(
+                    &cl.layout,
+                    el.cursor_byte_index,
+                    parley::Affinity::Upstream,
+                );
+                let bbox = cursor.geometry(&cl.layout, 1.5_f32);
+                emit(
+                    sg,
+                    effective_parent,
+                    Node {
+                        kind: NodeKind::Rect {
+                            x: x + bbox.x0 as f32,
+                            y: y + bbox.y0 as f32,
+                            width: ((bbox.x1 - bbox.x0) as f32).max(1.5),
+                            height: (bbox.y1 - bbox.y0) as f32,
+                            color,
+                            corner_radius: 0.0,
+                        },
+                        children: Vec::new(),
+                    },
+                );
+            } else {
+                // Empty text_content: draw cursor at element origin.
+                emit(
+                    sg,
+                    effective_parent,
+                    Node {
+                        kind: NodeKind::Rect {
+                            x,
+                            y,
+                            width: 1.5,
+                            height: el.visual.font_size * 1.2,
+                            color: el.visual.text_color.with_opacity(el.visual.opacity).to_array_f32(),
+                            corner_radius: 0.0,
+                        },
+                        children: Vec::new(),
+                    },
+                );
+            }
+        }
+    } else if let Some(tl) = el.text_layout.as_ref() {
         let color = el.visual.text_color.with_opacity(el.visual.opacity).to_array_f32();
         for run in &tl.runs {
             emit(
