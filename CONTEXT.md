@@ -54,6 +54,10 @@ _Avoid_: フォールバック（劣化の含意を避けるため）、DOM Mode
 ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。Hayate はイベントを通知するだけであり、インタラクション状態に応じたスタイル切り替えは上位層（Hayabusa の Signal / Effect）の責務。Hayate は「ホバー中スタイル」という概念を持たない。
 _Avoid_: :hover スタイル、状態付きスタイル、CSS 擬似クラス
 
+**Component**:
+`.hybs` ファイル一つがコンポーネント一つに対応する。コンポーネント名はファイル名（拡張子除く）のアッパーキャメルケースで決まる（例: `MyButton.hybs` → `<MyButton>`）。名前の明示的な宣言は不要。
+_Avoid_: クラス、関数コンポーネント（`.hybs` ファイルそのものがコンポーネントの単位）
+
 **Template DSL**:
 `.hybs` の `<template>` セクション内で使う言語非依存のマークアップ言語。タグ名は Hayate の `element-kind`（`view` / `text` / `image` / `button` / `text-input` / `scroll-view`）に直接マップされる。HTML タグ名（`div` / `p` / `h1` 等）は使用しない。式は `{}` で囲まれた制限付き DSL で記述し、特定プログラミング言語の構文に依存しない。
 _Avoid_: HTML、JSX、テンプレートエンジン（Handlebars 等）
