@@ -474,6 +474,7 @@ dependencies = [
  "hayate-core",
  "js-sys",
  "log",
+ "png",
  "slotmap",
  "vello",
  "wasm-bindgen",

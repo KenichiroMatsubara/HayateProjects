@@ -4,6 +4,10 @@ use parley::{FontContext, LayoutContext};
 use slotmap::SlotMap;
 use taffy::{AvailableSpace, NodeId as TaffyId, Size as TaffySize, Style as TaffyStyle, TaffyTree};
 
+use std::sync::Arc;
+
+use vello::peniko::ImageData;
+
 use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
@@ -54,6 +58,8 @@ pub(crate) struct Element {
     pub transform: Option<[f64; 6]>,
     /// Scroll offset for ScrollView elements (x, y in pixels).
     pub scroll_offset: (f32, f32),
+    /// Loaded image data for Image elements (populated by the adapter after async fetch).
+    pub src_image: Option<Arc<ImageData>>,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -88,6 +94,7 @@ pub struct ResolvedElement {
     pub font_size: f32,
     pub z_index: i32,
     pub text: Option<String>,
+    pub src: Option<String>,
 }
 
 pub struct ElementTree {
@@ -161,6 +168,7 @@ impl ElementTree {
             text_layout: None,
             transform: None,
             scroll_offset: (0.0, 0.0),
+            src_image: None,
         };
         let id = self.elements.insert(element);
 
@@ -190,6 +198,14 @@ impl ElementTree {
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
         if let Some(el) = self.elements.get_mut(id) {
             el.src = Some(url.to_string());
+            el.src_image = None; // invalidate any previously loaded image
+        }
+    }
+
+    /// Store decoded image data for an Image element (called by the adapter after async load).
+    pub fn element_set_image(&mut self, id: ElementId, image: Arc<ImageData>) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.src_image = Some(image);
         }
     }
 
@@ -507,6 +523,7 @@ fn walk_resolved(
             font_size: el.visual.font_size,
             z_index: el.visual.z_index,
             text: el.text.clone(),
+            src: el.src.clone(),
         },
     ));
 

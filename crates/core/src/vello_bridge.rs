@@ -1,7 +1,7 @@
 use vello::{
     Scene,
     kurbo::{Affine, Rect, RoundedRect},
-    peniko::{Fill, color::{AlphaColor, Srgb}},
+    peniko::{Fill, ImageBrush, color::{AlphaColor, Srgb}},
 };
 
 use crate::node::{NodeId, NodeKind, SceneGraph};
@@ -40,6 +40,15 @@ fn draw_node(graph: &SceneGraph, id: NodeId, scene: &mut Scene) {
                 .brush(brush)
                 .transform(Affine::translate((*x as f64, *y as f64)))
                 .draw(Fill::NonZero, data.glyphs.iter().copied());
+        }
+        NodeKind::Image { x, y, width, height, data } => {
+            let img_w = data.width as f32;
+            let img_h = data.height as f32;
+            let sx = if img_w > 0.0 { *width / img_w } else { 1.0 };
+            let sy = if img_h > 0.0 { *height / img_h } else { 1.0 };
+            let transform = Affine::new([sx as f64, 0.0, 0.0, sy as f64, *x as f64, *y as f64]);
+            let brush = ImageBrush::new((**data).clone());
+            scene.draw_image(&brush, transform);
         }
         NodeKind::Group { transform } => {
             let affine = Affine::new(*transform);

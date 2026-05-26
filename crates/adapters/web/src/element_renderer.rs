@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use hayate_core::{ElementId, ElementKind, ElementTree, Event, ResolvedElement, vello_bridge};
 use slotmap::{Key, KeyData};
-use vello::peniko::color::{AlphaColor, Srgb};
+use vello::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat, color::{AlphaColor, Srgb}};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement};
 
 use crate::gpu_surface::GpuSurface;
@@ -136,6 +138,15 @@ impl HayateElementRenderer {
         let sg = self.tree.render();
         let scene = vello_bridge::build_scene(sg);
         self.gpu.present(&scene, base_color)
+    }
+
+    /// Fetch a PNG image from `url` and attach it to the Image element with `id`.
+    /// Call this after element_set_src; the element renders blank until this resolves.
+    pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
+        let eid = element_id_from_f64(id);
+        let image_data = fetch_png(&url).await?;
+        self.tree.element_set_image(eid, Arc::new(image_data));
+        Ok(())
     }
 
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
@@ -290,7 +301,8 @@ impl HayateElementHtmlRenderer {
             let dom_el = match self.dom_nodes.get(&raw_id) {
                 Some(e) => e.clone(),
                 None => {
-                    let new_el = doc.create_element("div")?;
+                    let tag = if el.kind == ElementKind::Image { "img" } else { "div" };
+                    let new_el = doc.create_element(tag)?;
                     self.container.append_child(&new_el)?;
                     self.dom_nodes.insert(raw_id, new_el.clone());
                     new_el
@@ -353,6 +365,18 @@ impl HayateElementHtmlRenderer {
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
+        self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    /// Fetch a PNG and attach it; HTML mode stores src_image for Canvas-compatible behaviour.
+    pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
+        let eid = element_id_from_f64(id);
+        let image_data = fetch_png(&url).await?;
+        self.tree.element_set_image(eid, Arc::new(image_data));
+        Ok(())
     }
 
     pub fn poll_events(&mut self) -> Box<[f64]> {
@@ -426,6 +450,14 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
         style.set_property("overflow", "hidden")?;
     }
 
+    if el.kind == ElementKind::Image {
+        if let Some(src) = &el.src {
+            html_el.set_attribute("src", src)?;
+        }
+        style.set_property("object-fit", "fill")?;
+        return Ok(());
+    }
+
     if let Some(text) = &el.text {
         let arr = el.text_color.to_array_f32();
         style.set_property("font-size", &format!("{}px", el.font_size))?;
@@ -497,4 +529,43 @@ fn encode_events(events: &[Event]) -> Box<[f64]> {
         }
     }
     out.into_boxed_slice()
+}
+
+/// Fetch a URL and decode it as PNG, returning peniko ImageData (RGBA8 pixels).
+async fn fetch_png(url: &str) -> Result<ImageData, JsValue> {
+    use js_sys::{ArrayBuffer, Uint8Array};
+
+    let window = web_sys::window().ok_or("no window")?;
+    let resp: web_sys::Response =
+        JsFuture::from(window.fetch_with_str(url)).await?.dyn_into()?;
+    let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
+    let bytes = Uint8Array::new(&buf).to_vec();
+
+    let decoder = png::Decoder::new(bytes.as_slice());
+    let mut reader = decoder.read_info().map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let mut pixels = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut pixels).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    // Convert to RGBA8 if needed.
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => pixels[..info.buffer_size()].to_vec(),
+        png::ColorType::Rgb => {
+            let mut out = Vec::with_capacity((info.width * info.height * 4) as usize);
+            for chunk in pixels[..info.buffer_size()].chunks(3) {
+                out.extend_from_slice(chunk);
+                out.push(255);
+            }
+            out
+        }
+        _ => return Err(JsValue::from_str("unsupported PNG color type")),
+    };
+
+    let blob = Blob::new(Arc::new(rgba));
+    Ok(ImageData {
+        data: blob,
+        format: ImageFormat::Rgba8,
+        alpha_type: ImageAlphaType::Alpha,
+        width: info.width,
+        height: info.height,
+    })
 }

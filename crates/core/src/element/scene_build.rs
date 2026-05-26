@@ -126,7 +126,32 @@ fn walk(
         }
     }
 
-    // 3) Text runs.
+    // 3a) Image content.
+    if el.kind == ElementKind::Image {
+        if let Some(img) = el.src_image.clone() {
+            emit(
+                sg,
+                effective_parent,
+                Node {
+                    kind: NodeKind::Image { x, y, width: w, height: h, data: img },
+                    children: Vec::new(),
+                },
+            );
+        }
+        // No text runs for Image elements.
+        let mut children: Vec<(ElementId, i32)> = el
+            .children
+            .iter()
+            .map(|&cid| (cid, tree.elements.get(cid).map_or(0, |c| c.visual.z_index)))
+            .collect();
+        children.sort_by_key(|&(_, z)| z);
+        for (child, _) in children {
+            walk(tree, child, x, y, sg, effective_parent);
+        }
+        return;
+    }
+
+    // 3b) Text runs.
     if let Some(tl) = el.text_layout.as_ref() {
         let color = el.visual.text_color.with_opacity(el.visual.opacity).to_array_f32();
         for run in &tl.runs {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use slotmap::{DefaultKey, SlotMap};
 use vello::Glyph;
-use vello::peniko::FontData;
+use vello::peniko::{FontData, ImageData};
 
 pub type NodeId = DefaultKey;
 
@@ -40,6 +40,14 @@ pub enum NodeKind {
         y: f32,
         width: f32,
         height: f32,
+    },
+    /// Draws a raster image scaled to fit the given rect.
+    Image {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        data: Arc<ImageData>,
     },
 }
 
