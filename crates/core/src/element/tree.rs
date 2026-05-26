@@ -64,6 +64,12 @@ pub(crate) struct Element {
     pub text_content: String,
     /// IME preedit (in-progress composition, not yet committed).
     pub preedit: Option<String>,
+    /// Byte offset of the insertion cursor within text_content (TextInput only).
+    pub cursor_byte_index: usize,
+    /// Whether the cursor should be drawn (true when the element is focused).
+    pub cursor_visible: bool,
+    /// Pre-built Parley layout of text_content + preedit, rebuilt each render pass.
+    pub content_layout: Option<TextLayout>,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -78,6 +84,10 @@ pub enum Event {
     CompositionEnd { target: ElementId, text: String },
     Scroll { target: ElementId, delta_x: f32, delta_y: f32 },
     Resize { width: f32, height: f32 },
+    PointerUp { target: ElementId, x: f32, y: f32 },
+    PointerEnter { target: ElementId },
+    PointerLeave { target: ElementId },
+    KeyDown { target: ElementId, key: String },
 }
 
 /// Fully-resolved per-element state after layout, keyed by stable ElementId.
@@ -177,6 +187,9 @@ impl ElementTree {
             src_image: None,
             text_content: String::new(),
             preedit: None,
+            cursor_byte_index: 0,
+            cursor_visible: false,
+            content_layout: None,
         };
         let id = self.elements.insert(element);
 
@@ -222,6 +235,7 @@ impl ElementTree {
         if let Some(el) = self.elements.get_mut(id) {
             el.text_content = text.to_string();
             el.preedit = None;
+            el.cursor_byte_index = el.text_content.len();
         }
     }
 
@@ -229,6 +243,29 @@ impl ElementTree {
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
         if let Some(el) = self.elements.get_mut(id) {
             el.text_content.push_str(text);
+            el.cursor_byte_index = el.text_content.len();
+        }
+    }
+
+    /// Remove the last Unicode scalar value from a TextInput's committed content.
+    pub fn element_backspace(&mut self, id: ElementId) {
+        if let Some(el) = self.elements.get_mut(id) {
+            if el.kind == ElementKind::TextInput && !el.text_content.is_empty() {
+                let last_start = el.text_content
+                    .char_indices()
+                    .next_back()
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                el.text_content.truncate(last_start);
+                el.cursor_byte_index = el.text_content.len();
+            }
+        }
+    }
+
+    /// Show or hide the insertion cursor for a TextInput element.
+    pub fn element_set_cursor_visible(&mut self, id: ElementId, visible: bool) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.cursor_visible = visible;
         }
     }
 
@@ -278,6 +315,33 @@ impl ElementTree {
     /// Read the current scroll offset of an element.
     pub fn element_get_scroll_offset(&self, id: ElementId) -> (f32, f32) {
         self.elements.get(id).map_or((0.0, 0.0), |e| e.scroll_offset)
+    }
+
+    /// Return the absolute layout rect (x, y, w, h) from the last render pass.
+    pub fn element_layout_rect(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
+        self.layout_cache.get(&id).copied()
+    }
+
+    /// Return the bounding dimensions of all direct children (content size) for a ScrollView.
+    /// Values are relative to the element's own top-left corner.
+    pub fn element_content_size(&self, id: ElementId) -> (f32, f32) {
+        let el = match self.elements.get(id) {
+            Some(e) => e,
+            None => return (0.0, 0.0),
+        };
+        let &(ex, ey, _, _) = match self.layout_cache.get(&id) {
+            Some(r) => r,
+            None => return (0.0, 0.0),
+        };
+        let mut max_x: f32 = 0.0;
+        let mut max_y: f32 = 0.0;
+        for &child in &el.children {
+            if let Some(&(cx, cy, cw, ch)) = self.layout_cache.get(&child) {
+                max_x = max_x.max(cx - ex + cw);
+                max_y = max_y.max(cy - ey + ch);
+            }
+        }
+        (max_x, max_y)
     }
 
     pub fn element_set_style(&mut self, id: ElementId, props: &[StyleProp]) {
@@ -527,6 +591,44 @@ impl ElementTree {
             }
             if let Some(el) = elements.get_mut(eid) {
                 el.text_layout = Some(layout);
+            }
+        }
+
+        // Build content layouts for TextInput elements (used for Canvas-mode rendering + cursor).
+        let textinput_ids: Vec<ElementId> = elements
+            .iter()
+            .filter_map(|(id, el)| {
+                if el.kind == ElementKind::TextInput { Some(id) } else { None }
+            })
+            .collect();
+
+        for eid in textinput_ids {
+            let (display_text, font_size, taffy_node) = {
+                let el = match elements.get(eid) {
+                    Some(e) => e,
+                    None => continue,
+                };
+                let text = match &el.preedit {
+                    Some(p) => format!("{}{}", el.text_content, p),
+                    None => el.text_content.clone(),
+                };
+                (text, el.visual.font_size, el.taffy_node)
+            };
+
+            if display_text.is_empty() {
+                if let Some(el) = elements.get_mut(eid) {
+                    el.content_layout = None;
+                }
+                continue;
+            }
+
+            let max_advance = taffy.layout(taffy_node).ok().map(|l| l.size.width);
+            let content_layout =
+                text::build_text_layout(font_cx, layout_cx, &display_text, font_size, max_advance);
+
+            if let Some(el) = elements.get_mut(eid) {
+                el.content_layout = Some(content_layout);
+                el.cursor_byte_index = el.text_content.len();
             }
         }
     }
