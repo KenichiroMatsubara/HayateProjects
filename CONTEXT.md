@@ -63,7 +63,7 @@ _Avoid_: HTML、JSX、テンプレートエンジン（Handlebars 等）
 _Avoid_: プラグイン、バインディング（WIT binding と混同するため）
 
 **Signal**:
-Hayabusa のリアクティビティの基本単位。値の変化が依存する Computed・Effect に自動伝播する。各 Script Adapter が当該言語のイディオムで実装を提供する（Rust: アリーナ型 Copy トークン / TypeScript: `.value` アクセサ / Python: `.value` プロパティ等）。テンプレートからは識別子のみで参照でき、コンパイラが言語別のアクセス形式に展開する。
+Hayabusa のリアクティビティの基本単位。値の変化が依存する Computed・Effect に自動伝播する。グラフの追跡・伝播・スケジューリングは Hayabusa の単一 WASM ランタイムが担い、全言語の Script Adapter は WIT 経由でこのランタイムを呼び出す。言語ごとの表記（Rust: `.get()` / TypeScript・Python: `.value`）は Script Adapter の薄いラッパーが提供する。テンプレートからは識別子のみで参照でき、コンパイラが言語別のアクセス形式に展開する。
 _Avoid_: State, Observable, Store（Store は別の概念）
 
 **Scene Graph**:
