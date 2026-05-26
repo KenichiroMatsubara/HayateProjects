@@ -33,6 +33,7 @@ pub(crate) const TAG_MARGIN_BOTTOM: u32 = 24;
 pub(crate) const TAG_MARGIN_LEFT: u32 = 25;
 pub(crate) const TAG_FONT_SIZE: u32 = 26;
 pub(crate) const TAG_COLOR: u32 = 27;
+pub(crate) const TAG_Z_INDEX: u32 = 28;
 
 fn dim(value: f32, unit_raw: f32) -> Dimension {
     let unit = match unit_raw as u32 {
@@ -241,6 +242,11 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                     packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
                 )));
                 i += 4;
+            }
+            TAG_Z_INDEX => {
+                need(1, tag)?;
+                out.push(StyleProp::ZIndex(packed[i] as i32));
+                i += 1;
             }
             other => {
                 return Err(JsValue::from_str(&format!("unknown style tag {other}")));

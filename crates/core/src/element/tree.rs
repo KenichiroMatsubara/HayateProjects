@@ -4,6 +4,10 @@ use parley::{FontContext, LayoutContext};
 use slotmap::SlotMap;
 use taffy::{AvailableSpace, NodeId as TaffyId, Size as TaffySize, Style as TaffyStyle, TaffyTree};
 
+use std::sync::Arc;
+
+use vello::peniko::ImageData;
+
 use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
@@ -22,6 +26,7 @@ pub struct Visual {
     pub border_color: Option<Color>,
     pub text_color: Color,
     pub font_size: f32,
+    pub z_index: i32,
 }
 
 impl Default for Visual {
@@ -34,6 +39,7 @@ impl Default for Visual {
             border_color: None,
             text_color: Color::BLACK,
             font_size: 16.0,
+            z_index: 0,
         }
     }
 }
@@ -48,11 +54,31 @@ pub(crate) struct Element {
     pub text: Option<String>,
     pub src: Option<String>,
     pub text_layout: Option<TextLayout>,
+    /// Optional affine transform applied on top of layout (kurbo coefficients [a,b,c,d,e,f]).
+    pub transform: Option<[f64; 6]>,
+    /// Scroll offset for ScrollView elements (x, y in pixels).
+    pub scroll_offset: (f32, f32),
+    /// Loaded image data for Image elements (populated by the adapter after async fetch).
+    pub src_image: Option<Arc<ImageData>>,
+    /// Editable text value for TextInput elements.
+    pub text_content: String,
+    /// IME preedit (in-progress composition, not yet committed).
+    pub preedit: Option<String>,
 }
 
-/// Events drained by `poll_events`. Placeholder until input wiring lands.
+/// Events emitted by input wiring and drained by `poll_events`.
 #[derive(Clone, Debug)]
-pub enum Event {}
+pub enum Event {
+    Click { target: ElementId, x: f32, y: f32 },
+    Focus(ElementId),
+    Blur(ElementId),
+    TextInput { target: ElementId, text: String },
+    CompositionStart { target: ElementId, text: String },
+    CompositionUpdate { target: ElementId, text: String },
+    CompositionEnd { target: ElementId, text: String },
+    Scroll { target: ElementId, delta_x: f32, delta_y: f32 },
+    Resize { width: f32, height: f32 },
+}
 
 /// Fully-resolved per-element state after layout, keyed by stable ElementId.
 /// Used by HTML Mode to update DOM elements without going through SceneGraph.
@@ -70,7 +96,11 @@ pub struct ResolvedElement {
     pub border_color: Option<Color>,
     pub text_color: Color,
     pub font_size: f32,
+    pub z_index: i32,
     pub text: Option<String>,
+    pub src: Option<String>,
+    /// Current value for TextInput elements (text_content + active preedit, combined for display).
+    pub text_content: Option<String>,
 }
 
 pub struct ElementTree {
@@ -81,6 +111,9 @@ pub struct ElementTree {
     pub(crate) layout_cx: LayoutContext<TextBrush>,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
+    pub(crate) event_queue: Vec<Event>,
+    /// Absolute bounding rects (x, y, w, h) per element, refreshed after each layout pass.
+    pub(crate) layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
 }
 
 impl ElementTree {
@@ -93,6 +126,8 @@ impl ElementTree {
             layout_cx: LayoutContext::new(),
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
+            event_queue: Vec::new(),
+            layout_cache: HashMap::new(),
         }
     }
 
@@ -137,6 +172,11 @@ impl ElementTree {
             text: None,
             src: None,
             text_layout: None,
+            transform: None,
+            scroll_offset: (0.0, 0.0),
+            src_image: None,
+            text_content: String::new(),
+            preedit: None,
         };
         let id = self.elements.insert(element);
 
@@ -166,7 +206,78 @@ impl ElementTree {
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
         if let Some(el) = self.elements.get_mut(id) {
             el.src = Some(url.to_string());
+            el.src_image = None; // invalidate any previously loaded image
         }
+    }
+
+    /// Store decoded image data for an Image element (called by the adapter after async load).
+    pub fn element_set_image(&mut self, id: ElementId, image: Arc<ImageData>) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.src_image = Some(image);
+        }
+    }
+
+    /// Replace the editable text content of a TextInput element.
+    pub fn element_set_text_content(&mut self, id: ElementId, text: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.text_content = text.to_string();
+            el.preedit = None;
+        }
+    }
+
+    /// Append text to a TextInput's committed content.
+    pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.text_content.push_str(text);
+        }
+    }
+
+    /// Set the IME preedit for a TextInput (in-progress, not yet committed).
+    pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.preedit = if preedit.is_empty() { None } else { Some(preedit.to_string()) };
+        }
+    }
+
+    /// Commit the current preedit text into text_content and clear the preedit.
+    pub fn element_commit_preedit(&mut self, id: ElementId) {
+        if let Some(el) = self.elements.get_mut(id) {
+            if let Some(preedit) = el.preedit.take() {
+                el.text_content.push_str(&preedit);
+            }
+        }
+    }
+
+    /// Return the combined display text (text_content + any active preedit) for a TextInput.
+    pub fn element_get_text_content(&self, id: ElementId) -> String {
+        let el = match self.elements.get(id) {
+            Some(e) => e,
+            None => return String::new(),
+        };
+        match &el.preedit {
+            Some(p) => format!("{}{}", el.text_content, p),
+            None => el.text_content.clone(),
+        }
+    }
+
+    /// Set a 2D affine transform on the element (6 kurbo coefficients [a,b,c,d,e,f]).
+    /// Pass an empty/None to clear. The transform is applied on top of layout coordinates.
+    pub fn element_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.transform = matrix;
+        }
+    }
+
+    /// Programmatically set the scroll offset of a ScrollView element.
+    pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.scroll_offset = (x, y);
+        }
+    }
+
+    /// Read the current scroll offset of an element.
+    pub fn element_get_scroll_offset(&self, id: ElementId) -> (f32, f32) {
+        self.elements.get(id).map_or((0.0, 0.0), |e| e.scroll_offset)
     }
 
     pub fn element_set_style(&mut self, id: ElementId, props: &[StyleProp]) {
@@ -278,10 +389,16 @@ impl ElementTree {
         self.elements.get(id).map(|e| e.kind)
     }
 
+    pub fn element_parent(&self, id: ElementId) -> Option<ElementId> {
+        self.elements.get(id).and_then(|e| e.parent)
+    }
+
     /// Run layout, lower the element tree into the scene graph, and return it.
     pub fn render(&mut self) -> &SceneGraph {
         if let Some(root) = self.root {
             self.compute_layout(root);
+            self.layout_cache.clear();
+            cache_layout(&self.elements, &self.taffy, root, 0.0, 0.0, &mut self.layout_cache);
         }
         self.scene_cache = scene_build::build(self);
         &self.scene_cache
@@ -292,7 +409,19 @@ impl ElementTree {
     }
 
     pub fn poll_events(&mut self) -> Vec<Event> {
-        Vec::new()
+        std::mem::take(&mut self.event_queue)
+    }
+
+    /// Append an event to the outgoing queue.
+    pub fn push_event(&mut self, event: Event) {
+        self.event_queue.push(event);
+    }
+
+    /// Returns the deepest element whose bounding rect contains (x, y),
+    /// or None if no element is hit. Uses the layout from the last render pass.
+    pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
+        let root = self.root?;
+        hit_test_walk(&self.layout_cache, &self.elements, root, x, y)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -300,6 +429,8 @@ impl ElementTree {
     pub fn resolved_elements(&mut self) -> Vec<(ElementId, ResolvedElement)> {
         if let Some(root) = self.root {
             self.compute_layout(root);
+            self.layout_cache.clear();
+            cache_layout(&self.elements, &self.taffy, root, 0.0, 0.0, &mut self.layout_cache);
         }
         let mut out = Vec::new();
         if let Some(root) = self.root {
@@ -426,6 +557,16 @@ fn walk_resolved(
     let x = ox + layout.location.x;
     let y = oy + layout.location.y;
 
+    let display_text_content = if el.kind == ElementKind::TextInput {
+        let combined = match &el.preedit {
+            Some(p) => format!("{}{}", el.text_content, p),
+            None => el.text_content.clone(),
+        };
+        Some(combined)
+    } else {
+        None
+    };
+
     out.push((
         id,
         ResolvedElement {
@@ -441,13 +582,61 @@ fn walk_resolved(
             border_color: el.visual.border_color,
             text_color: el.visual.text_color,
             font_size: el.visual.font_size,
+            z_index: el.visual.z_index,
             text: el.text.clone(),
+            src: el.src.clone(),
+            text_content: display_text_content,
         },
     ));
 
     for &child in &el.children {
         walk_resolved(elements, taffy, child, x, y, out);
     }
+}
+
+fn cache_layout(
+    elements: &SlotMap<ElementId, Element>,
+    taffy: &TaffyTree<MeasureCtx>,
+    id: ElementId,
+    ox: f32,
+    oy: f32,
+    cache: &mut HashMap<ElementId, (f32, f32, f32, f32)>,
+) {
+    let el = match elements.get(id) {
+        Some(e) => e,
+        None => return,
+    };
+    let layout = match taffy.layout(el.taffy_node) {
+        Ok(l) => l,
+        Err(_) => return,
+    };
+    let x = ox + layout.location.x;
+    let y = oy + layout.location.y;
+    cache.insert(id, (x, y, layout.size.width, layout.size.height));
+    for &child in &el.children {
+        cache_layout(elements, taffy, child, x, y, cache);
+    }
+}
+
+fn hit_test_walk(
+    cache: &HashMap<ElementId, (f32, f32, f32, f32)>,
+    elements: &SlotMap<ElementId, Element>,
+    id: ElementId,
+    x: f32,
+    y: f32,
+) -> Option<ElementId> {
+    let &(ex, ey, ew, eh) = cache.get(&id)?;
+    if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
+        return None;
+    }
+    let el = elements.get(id)?;
+    // Check children in reverse order so the topmost (last drawn) is hit first.
+    for &child in el.children.iter().rev() {
+        if let Some(hit) = hit_test_walk(cache, elements, child, x, y) {
+            return Some(hit);
+        }
+    }
+    Some(id)
 }
 
 fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
@@ -465,6 +654,7 @@ fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
             visual.text_color = c;
             *text_dirty = true;
         }
+        StyleProp::ZIndex(z) => visual.z_index = z,
         _ => {}
     }
 }

@@ -95,6 +95,8 @@ pub enum StyleProp {
     // text
     FontSize(f32),
     Color(Color),
+    // stacking
+    ZIndex(i32),
 }
 
 impl StyleProp {
