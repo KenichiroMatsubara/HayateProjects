@@ -11,6 +11,10 @@ use crate::node::TextRunData;
 /// Brush type stored in Parley styles; color is applied at draw time.
 pub type TextBrush = [u8; 4];
 
+/// The bundled default font family. Always available in canvas (WASM) mode where
+/// system fonts are absent. Unknown font names fall back to this via CSS font stack.
+pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans";
+
 /// A Parley layout cached on an Element, plus the lowered Vello glyph runs.
 pub struct TextLayout {
     pub layout: Layout<TextBrush>,
@@ -33,9 +37,15 @@ pub fn build_text_layout(
 ) -> TextLayout {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(font_size));
-    if let Some(family) = font_family {
-        builder.push_default(StyleProperty::FontFamily(FontFamily::Source(Cow::Borrowed(family))));
-    }
+    // Build a CSS font stack so unknown names fall back to the bundled default.
+    // Parley resolves left-to-right and silently skips unregistered names.
+    let stack = match font_family {
+        Some(f) if !f.is_empty() && f != DEFAULT_FONT_FAMILY => {
+            Cow::Owned(format!("{f}, {DEFAULT_FONT_FAMILY}"))
+        }
+        _ => Cow::Borrowed(DEFAULT_FONT_FAMILY),
+    };
+    builder.push_default(StyleProperty::FontFamily(FontFamily::Source(stack)));
     let mut layout: Layout<TextBrush> = builder.build(text);
     layout.break_all_lines(max_advance);
 

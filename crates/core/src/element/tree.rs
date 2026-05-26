@@ -136,13 +136,36 @@ pub struct ElementTree {
     pub(crate) layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
 }
 
+fn init_bundled_fonts(font_cx: &mut FontContext) {
+    use fontique::{FontInfoOverride, GenericFamily};
+    use vello::peniko::Blob;
+
+    static NOTO_SANS_BYTES: &[u8] =
+        include_bytes!("../../assets/fonts/NotoSans-Regular.ttf");
+
+    let blob = Blob::new(Arc::new(NOTO_SANS_BYTES));
+    let override_info = FontInfoOverride {
+        family_name: Some(text::DEFAULT_FONT_FAMILY),
+        ..Default::default()
+    };
+    let registered = font_cx.collection.register_fonts(blob, Some(override_info));
+    let family_ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+    if !family_ids.is_empty() {
+        font_cx
+            .collection
+            .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
+    }
+}
+
 impl ElementTree {
     pub fn new() -> Self {
+        let mut font_cx = FontContext::new();
+        init_bundled_fonts(&mut font_cx);
         Self {
             elements: SlotMap::with_key(),
             root: None,
             taffy: TaffyTree::new(),
-            font_cx: FontContext::new(),
+            font_cx,
             layout_cx: LayoutContext::new(),
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
