@@ -27,6 +27,8 @@ pub struct Visual {
     pub text_color: Color,
     pub font_size: f32,
     pub z_index: i32,
+    /// Custom font-family name registered via `register_font`.
+    pub font_family: Option<String>,
 }
 
 impl Default for Visual {
@@ -40,6 +42,7 @@ impl Default for Visual {
             text_color: Color::BLACK,
             font_size: 16.0,
             z_index: 0,
+            font_family: None,
         }
     }
 }
@@ -70,6 +73,10 @@ pub(crate) struct Element {
     pub cursor_visible: bool,
     /// Pre-built Parley layout of text_content + preedit, rebuilt each render pass.
     pub content_layout: Option<TextLayout>,
+    /// ARIA label for screen readers.
+    pub aria_label: Option<String>,
+    /// ARIA role (e.g. "button", "listitem"). None uses the implicit role.
+    pub role: Option<String>,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -111,6 +118,9 @@ pub struct ResolvedElement {
     pub src: Option<String>,
     /// Current value for TextInput elements (text_content + active preedit, combined for display).
     pub text_content: Option<String>,
+    pub font_family: Option<String>,
+    pub aria_label: Option<String>,
+    pub role: Option<String>,
 }
 
 pub struct ElementTree {
@@ -190,6 +200,8 @@ impl ElementTree {
             cursor_byte_index: 0,
             cursor_visible: false,
             content_layout: None,
+            aria_label: None,
+            role: None,
         };
         let id = self.elements.insert(element);
 
@@ -269,6 +281,46 @@ impl ElementTree {
         }
     }
 
+    /// Set the font family (by name) for an element. The family must first be registered via
+    /// `register_font`, or be a system font available in the default FontContext.
+    pub fn element_set_font_family(&mut self, id: ElementId, family: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.visual.font_family = if family.is_empty() { None } else { Some(family.to_string()) };
+            el.text_layout = None;
+            el.content_layout = None;
+            let taffy_node = el.taffy_node;
+            let _ = self.taffy.mark_dirty(taffy_node);
+        }
+    }
+
+    /// Set the ARIA label for screen-reader accessibility.
+    pub fn element_set_aria_label(&mut self, id: ElementId, label: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.aria_label = if label.is_empty() { None } else { Some(label.to_string()) };
+        }
+    }
+
+    /// Set the ARIA role (e.g. "button", "listitem", "img"). Pass an empty string to clear.
+    pub fn element_set_role(&mut self, id: ElementId, role: &str) {
+        if let Some(el) = self.elements.get_mut(id) {
+            el.role = if role.is_empty() { None } else { Some(role.to_string()) };
+        }
+    }
+
+    /// Register a custom font from raw bytes with a given family name.
+    /// After registration, the name can be used in `element_set_font_family`.
+    pub fn register_font(&mut self, family_name: &str, bytes: Vec<u8>) {
+        use fontique::FontInfoOverride;
+        use std::sync::Arc;
+        use vello::peniko::Blob;
+        let blob = Blob::new(Arc::new(bytes));
+        let override_info = FontInfoOverride {
+            family_name: Some(family_name),
+            ..Default::default()
+        };
+        self.font_cx.collection.register_fonts(blob, Some(override_info));
+    }
+
     /// Set the IME preedit for a TextInput (in-progress, not yet committed).
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
         if let Some(el) = self.elements.get_mut(id) {
@@ -322,26 +374,38 @@ impl ElementTree {
         self.layout_cache.get(&id).copied()
     }
 
-    /// Return the bounding dimensions of all direct children (content size) for a ScrollView.
+    /// Return the bounding dimensions of all descendants (content size) for a ScrollView.
     /// Values are relative to the element's own top-left corner.
     pub fn element_content_size(&self, id: ElementId) -> (f32, f32) {
-        let el = match self.elements.get(id) {
-            Some(e) => e,
-            None => return (0.0, 0.0),
-        };
         let &(ex, ey, _, _) = match self.layout_cache.get(&id) {
             Some(r) => r,
             None => return (0.0, 0.0),
         };
         let mut max_x: f32 = 0.0;
         let mut max_y: f32 = 0.0;
+        self.accumulate_content_bounds(id, ex, ey, &mut max_x, &mut max_y);
+        (max_x, max_y)
+    }
+
+    fn accumulate_content_bounds(
+        &self,
+        id: ElementId,
+        origin_x: f32,
+        origin_y: f32,
+        max_x: &mut f32,
+        max_y: &mut f32,
+    ) {
+        let el = match self.elements.get(id) {
+            Some(e) => e,
+            None => return,
+        };
         for &child in &el.children {
             if let Some(&(cx, cy, cw, ch)) = self.layout_cache.get(&child) {
-                max_x = max_x.max(cx - ex + cw);
-                max_y = max_y.max(cy - ey + ch);
+                *max_x = max_x.max(cx - origin_x + cw);
+                *max_y = max_y.max(cy - origin_y + ch);
+                self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
             }
         }
-        (max_x, max_y)
     }
 
     pub fn element_set_style(&mut self, id: ElementId, props: &[StyleProp]) {
@@ -570,6 +634,7 @@ impl ElementTree {
                     text,
                     el.visual.font_size,
                     max_advance,
+                    el.visual.font_family.as_deref(),
                 );
                 let size = TaffySize {
                     width: layout.layout.width(),
@@ -603,7 +668,7 @@ impl ElementTree {
             .collect();
 
         for eid in textinput_ids {
-            let (display_text, font_size, taffy_node) = {
+            let (display_text, font_size) = {
                 let el = match elements.get(eid) {
                     Some(e) => e,
                     None => continue,
@@ -612,7 +677,7 @@ impl ElementTree {
                     Some(p) => format!("{}{}", el.text_content, p),
                     None => el.text_content.clone(),
                 };
-                (text, el.visual.font_size, el.taffy_node)
+                (text, el.visual.font_size)
             };
 
             if display_text.is_empty() {
@@ -622,9 +687,21 @@ impl ElementTree {
                 continue;
             }
 
-            let max_advance = taffy.layout(taffy_node).ok().map(|l| l.size.width);
-            let content_layout =
-                text::build_text_layout(font_cx, layout_cx, &display_text, font_size, max_advance);
+            let (max_advance, font_family) = {
+                let el = elements.get(eid).map(|e| (
+                    taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
+                    e.visual.font_family.clone(),
+                ));
+                el.map(|(a, f)| (a, f)).unwrap_or((None, None))
+            };
+            let content_layout = text::build_text_layout(
+                font_cx,
+                layout_cx,
+                &display_text,
+                font_size,
+                max_advance,
+                font_family.as_deref(),
+            );
 
             if let Some(el) = elements.get_mut(eid) {
                 el.content_layout = Some(content_layout);
@@ -688,6 +765,9 @@ fn walk_resolved(
             text: el.text.clone(),
             src: el.src.clone(),
             text_content: display_text_content,
+            font_family: el.visual.font_family.clone(),
+            aria_label: el.aria_label.clone(),
+            role: el.role.clone(),
         },
     ));
 

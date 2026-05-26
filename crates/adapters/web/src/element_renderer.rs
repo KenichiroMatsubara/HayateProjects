@@ -70,6 +70,7 @@ pub struct HayateElementRenderer {
     tree: ElementTree,
     focused_element: Option<ElementId>,
     hovered_element: Option<ElementId>,
+    last_pointer_pos: Option<(f32, f32)>,
 }
 
 #[wasm_bindgen]
@@ -80,7 +81,7 @@ impl HayateElementRenderer {
         let gpu = GpuSurface::init(canvas).await?;
         let mut tree = ElementTree::new();
         tree.set_viewport(width, height);
-        Ok(Self { gpu, tree, focused_element: None, hovered_element: None })
+        Ok(Self { gpu, tree, focused_element: None, hovered_element: None, last_pointer_pos: None })
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -184,6 +185,13 @@ impl HayateElementRenderer {
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
+        // Skip if position hasn't moved by at least 1px (P3 throttle).
+        if let Some((lx, ly)) = self.last_pointer_pos {
+            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
+                return;
+            }
+        }
+        self.last_pointer_pos = Some((x, y));
         let hit = self.tree.hit_test(x, y);
         if hit != self.hovered_element {
             if let Some(prev) = self.hovered_element {
@@ -219,6 +227,45 @@ impl HayateElementRenderer {
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    pub fn element_set_font_family(&mut self, id: f64, family: &str) {
+        self.tree.element_set_font_family(element_id_from_f64(id), family);
+    }
+
+    pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
+        self.tree.element_set_aria_label(element_id_from_f64(id), label);
+    }
+
+    pub fn element_set_role(&mut self, id: f64, role: &str) {
+        self.tree.element_set_role(element_id_from_f64(id), role);
+    }
+
+    /// Register a custom font from raw bytes. After this, the family_name can be used
+    /// with `element_set_font_family`.
+    pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
+        self.tree.register_font(family_name, data.to_vec());
+    }
+
+    /// Fetch a font file from a URL and register it under `family_name`.
+    pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
+        let bytes = fetch_bytes(&url).await?;
+        self.tree.register_font(&family_name, bytes);
+        Ok(())
+    }
+
+    /// Paste text into the currently focused element. JS calls this from the paste event handler.
+    pub fn on_clipboard_paste(&mut self, text: &str) {
+        if let Some(focused) = self.focused_element {
+            self.tree.element_append_text_content(focused, text);
+            self.tree.push_event(Event::TextInput { target: focused, text: text.to_string() });
+        }
+    }
+
+    /// Return the focused element's id (as f64), or 0.0 if nothing is focused.
+    /// JS can use this with `element_get_text_content` to implement copy/cut.
+    pub fn focused_element_id(&self) -> f64 {
+        self.focused_element.map(element_id_to_f64).unwrap_or(0.0)
     }
 
     /// Handle a key press on the focused element. `key` is the KeyboardEvent.key string.
@@ -288,6 +335,7 @@ pub struct HayateElementHtmlRenderer {
     dom_nodes: HashMap<u64, Element>,
     focused_element: Option<ElementId>,
     hovered_element: Option<ElementId>,
+    last_pointer_pos: Option<(f32, f32)>,
 }
 
 #[wasm_bindgen]
@@ -300,7 +348,7 @@ impl HayateElementHtmlRenderer {
         let height = container.client_height().max(1) as f32;
         let mut tree = ElementTree::new();
         tree.set_viewport(width, height);
-        Ok(Self { container, tree, dom_nodes: HashMap::new(), focused_element: None, hovered_element: None })
+        Ok(Self { container, tree, dom_nodes: HashMap::new(), focused_element: None, hovered_element: None, last_pointer_pos: None })
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -440,6 +488,12 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
+        if let Some((lx, ly)) = self.last_pointer_pos {
+            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
+                return;
+            }
+        }
+        self.last_pointer_pos = Some((x, y));
         let hit = self.tree.hit_test(x, y);
         if hit != self.hovered_element {
             if let Some(prev) = self.hovered_element {
@@ -475,6 +529,39 @@ impl HayateElementHtmlRenderer {
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    pub fn element_set_font_family(&mut self, id: f64, family: &str) {
+        self.tree.element_set_font_family(element_id_from_f64(id), family);
+    }
+
+    pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
+        self.tree.element_set_aria_label(element_id_from_f64(id), label);
+    }
+
+    pub fn element_set_role(&mut self, id: f64, role: &str) {
+        self.tree.element_set_role(element_id_from_f64(id), role);
+    }
+
+    pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
+        self.tree.register_font(family_name, data.to_vec());
+    }
+
+    pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
+        let bytes = fetch_bytes(&url).await?;
+        self.tree.register_font(&family_name, bytes);
+        Ok(())
+    }
+
+    pub fn on_clipboard_paste(&mut self, text: &str) {
+        if let Some(focused) = self.focused_element {
+            self.tree.element_append_text_content(focused, text);
+            self.tree.push_event(Event::TextInput { target: focused, text: text.to_string() });
+        }
+    }
+
+    pub fn focused_element_id(&self) -> f64 {
+        self.focused_element.map(element_id_to_f64).unwrap_or(0.0)
     }
 
     pub fn on_key_down(&mut self, key: &str) {
@@ -555,6 +642,27 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
     style.set_property("height", &format!("{}px", el.height))?;
     style.set_property("opacity", &format!("{}", el.opacity))?;
 
+    // Accessibility attributes.
+    let role = el.role.as_deref().or_else(|| match el.kind {
+        ElementKind::Button => Some("button"),
+        _ => None,
+    });
+    if let Some(r) = role {
+        html_el.set_attribute("role", r)?;
+    }
+    if let Some(label) = &el.aria_label {
+        html_el.set_attribute("aria-label", label)?;
+    }
+    // Make interactive elements keyboard-reachable.
+    match el.kind {
+        ElementKind::Button | ElementKind::TextInput => {
+            if html_el.get_attribute("tabindex").is_none() {
+                html_el.set_attribute("tabindex", "0")?;
+            }
+        }
+        _ => {}
+    }
+
     if el.border_radius > 0.0 {
         style.set_property("border-radius", &format!("{}px", el.border_radius))?;
     } else {
@@ -609,7 +717,6 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
     }
 
     if el.kind == ElementKind::TextInput {
-        // Style the <input> to match the Hayate visual model (no browser defaults).
         style.set_property("box-sizing", "border-box")?;
         style.set_property("outline", "none")?;
         style.set_property("padding", "0")?;
@@ -618,6 +725,9 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
         }
         let arr = el.text_color.to_array_f32();
         style.set_property("font-size", &format!("{}px", el.font_size))?;
+        if let Some(family) = &el.font_family {
+            style.set_property("font-family", family)?;
+        }
         style.set_property(
             "color",
             &format!(
@@ -628,13 +738,15 @@ fn apply_resolved_to_dom(html_el: &HtmlElement, el: &ResolvedElement) -> Result<
                 arr[3],
             ),
         )?;
-        // Don't overwrite value — the DOM input is source of truth in HTML mode.
         return Ok(());
     }
 
     if let Some(text) = &el.text {
         let arr = el.text_color.to_array_f32();
         style.set_property("font-size", &format!("{}px", el.font_size))?;
+        if let Some(family) = &el.font_family {
+            style.set_property("font-family", family)?;
+        }
         style.set_property(
             "color",
             &format!(
@@ -738,6 +850,16 @@ fn encode_events(events: &[Event]) -> Box<[f64]> {
         }
     }
     out.into_boxed_slice()
+}
+
+/// Fetch raw bytes from a URL.
+async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
+    use js_sys::{ArrayBuffer, Uint8Array};
+    let window = web_sys::window().ok_or("no window")?;
+    let resp: web_sys::Response =
+        JsFuture::from(window.fetch_with_str(url)).await?.dyn_into()?;
+    let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
+    Ok(Uint8Array::new(&buf).to_vec())
 }
 
 /// Fetch a URL and decode it as RGBA8, supporting PNG / JPEG / WebP.

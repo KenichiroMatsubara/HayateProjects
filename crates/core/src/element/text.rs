@@ -1,7 +1,8 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use parley::{
-    FontContext, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
+    FontContext, FontFamily, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
 };
 use vello::Glyph;
 
@@ -28,9 +29,13 @@ pub fn build_text_layout(
     text: &str,
     font_size: f32,
     max_advance: Option<f32>,
+    font_family: Option<&str>,
 ) -> TextLayout {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(font_size));
+    if let Some(family) = font_family {
+        builder.push_default(StyleProperty::FontFamily(FontFamily::Source(Cow::Borrowed(family))));
+    }
     let mut layout: Layout<TextBrush> = builder.build(text);
     layout.break_all_lines(max_advance);
 
