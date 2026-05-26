@@ -68,6 +68,7 @@ interface types {
     margin-left(dimension),
     // text
     font-size(f32),
+    font-family(string),
     color(color),
     // stacking
     z-index(s32),
