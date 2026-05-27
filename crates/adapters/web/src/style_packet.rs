@@ -3,6 +3,7 @@ use hayate_core::{
     StyleProp,
 };
 use wasm_bindgen::prelude::*;
+use web_sys::CssStyleDeclaration;
 
 // Tag IDs — keep in sync with style-encoding.js in the demo.
 pub(crate) const TAG_BACKGROUND_COLOR: u32 = 0;
@@ -254,4 +255,114 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
         }
     }
     Ok(out)
+}
+
+// ── Hayate CSS → browser CSS mapping (HTML Mode, ADR-0029) ───────────────
+
+/// Apply a list of Hayate CSS props directly to a DOM element's style declaration.
+/// Layout properties (`display`, `gap`, `flex-direction`, …) map 1:1 to browser CSS
+/// so the browser engine performs the layout — no Taffy involved (ADR-0029).
+pub(crate) fn apply_props_to_dom(
+    style: &CssStyleDeclaration,
+    props: &[StyleProp],
+) -> Result<(), JsValue> {
+    for p in props {
+        apply_prop_to_dom(style, p)?;
+    }
+    Ok(())
+}
+
+fn css_dim(d: Dimension) -> String {
+    match d.unit {
+        DimensionUnit::Px => format!("{}px", d.value),
+        DimensionUnit::Percent => format!("{}%", d.value),
+        DimensionUnit::Auto => "auto".into(),
+        DimensionUnit::Fr => format!("{}fr", d.value),
+    }
+}
+
+fn css_rgba(c: Color) -> String {
+    let arr = c.to_array_f32();
+    format!(
+        "rgba({},{},{},{})",
+        (arr[0] * 255.0) as u8,
+        (arr[1] * 255.0) as u8,
+        (arr[2] * 255.0) as u8,
+        arr[3],
+    )
+}
+
+fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {
+    match *prop {
+        StyleProp::BackgroundColor(c) => style.set_property("background-color", &css_rgba(c))?,
+        StyleProp::Opacity(v) => style.set_property("opacity", &format!("{}", v.clamp(0.0, 1.0)))?,
+        StyleProp::BorderRadius(v) => style.set_property("border-radius", &format!("{}px", v.max(0.0)))?,
+        StyleProp::BorderWidth(v) => {
+            let w = v.max(0.0);
+            style.set_property("border-width", &format!("{}px", w))?;
+            // Default to solid so the border actually paints when only width is set.
+            style.set_property("border-style", if w > 0.0 { "solid" } else { "none" })?;
+        }
+        StyleProp::BorderColor(c) => style.set_property("border-color", &css_rgba(c))?,
+        StyleProp::Width(d) => style.set_property("width", &css_dim(d))?,
+        StyleProp::Height(d) => style.set_property("height", &css_dim(d))?,
+        StyleProp::MinWidth(d) => style.set_property("min-width", &css_dim(d))?,
+        StyleProp::MinHeight(d) => style.set_property("min-height", &css_dim(d))?,
+        StyleProp::MaxWidth(d) => style.set_property("max-width", &css_dim(d))?,
+        StyleProp::MaxHeight(d) => style.set_property("max-height", &css_dim(d))?,
+        StyleProp::Display(v) => {
+            let s = match v {
+                DisplayValue::Flex => "flex",
+                DisplayValue::Grid => "grid",
+                DisplayValue::Block => "block",
+                DisplayValue::None => "none",
+            };
+            style.set_property("display", s)?;
+        }
+        StyleProp::FlexDirection(v) => {
+            let s = match v {
+                FlexDirectionValue::Row => "row",
+                FlexDirectionValue::Column => "column",
+                FlexDirectionValue::RowReverse => "row-reverse",
+                FlexDirectionValue::ColumnReverse => "column-reverse",
+            };
+            style.set_property("flex-direction", s)?;
+        }
+        StyleProp::AlignItems(v) => {
+            let s = match v {
+                AlignValue::FlexStart => "flex-start",
+                AlignValue::FlexEnd => "flex-end",
+                AlignValue::Center => "center",
+                AlignValue::Stretch => "stretch",
+                AlignValue::Baseline => "baseline",
+            };
+            style.set_property("align-items", s)?;
+        }
+        StyleProp::JustifyContent(v) => {
+            let s = match v {
+                JustifyValue::FlexStart => "flex-start",
+                JustifyValue::FlexEnd => "flex-end",
+                JustifyValue::Center => "center",
+                JustifyValue::SpaceBetween => "space-between",
+                JustifyValue::SpaceAround => "space-around",
+                JustifyValue::SpaceEvenly => "space-evenly",
+            };
+            style.set_property("justify-content", s)?;
+        }
+        StyleProp::Gap(d) => style.set_property("gap", &css_dim(d))?,
+        StyleProp::Padding(d) => style.set_property("padding", &css_dim(d))?,
+        StyleProp::PaddingTop(d) => style.set_property("padding-top", &css_dim(d))?,
+        StyleProp::PaddingRight(d) => style.set_property("padding-right", &css_dim(d))?,
+        StyleProp::PaddingBottom(d) => style.set_property("padding-bottom", &css_dim(d))?,
+        StyleProp::PaddingLeft(d) => style.set_property("padding-left", &css_dim(d))?,
+        StyleProp::Margin(d) => style.set_property("margin", &css_dim(d))?,
+        StyleProp::MarginTop(d) => style.set_property("margin-top", &css_dim(d))?,
+        StyleProp::MarginRight(d) => style.set_property("margin-right", &css_dim(d))?,
+        StyleProp::MarginBottom(d) => style.set_property("margin-bottom", &css_dim(d))?,
+        StyleProp::MarginLeft(d) => style.set_property("margin-left", &css_dim(d))?,
+        StyleProp::FontSize(v) => style.set_property("font-size", &format!("{}px", v.max(0.0)))?,
+        StyleProp::Color(c) => style.set_property("color", &css_rgba(c))?,
+        StyleProp::ZIndex(z) => style.set_property("z-index", &z.to_string())?,
+    }
+    Ok(())
 }
