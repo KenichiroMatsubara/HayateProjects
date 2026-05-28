@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use hayate_core::{ElementId, ElementKind, ElementTree, Event, vello_bridge};
+use hayate_core::{ElementId, ElementKind, ElementTree, Event, StyleProp, vello_bridge};
 use slotmap::{Key, KeyData, SlotMap};
 use vello::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat, color::{AlphaColor, Srgb}};
 use wasm_bindgen::prelude::*;
@@ -9,6 +9,33 @@ use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlInputElemen
 
 use crate::gpu_surface::GpuSurface;
 use crate::style_packet;
+
+// ── Deferred command queue (ADR-0030) ────────────────────────────────────
+//
+// Every JS-facing `element_*` mutator pushes a `Command` onto a per-renderer
+// queue and returns immediately. `render()` is the sole flush boundary that
+// drains the queue and applies the commands. This batches DOM mutations in
+// HTML mode and amortises the JS→WASM boundary cost across a frame.
+
+enum Command {
+    SetText { id: ElementId, text: String },
+    SetSrc { id: ElementId, url: String },
+    SetStyle { id: ElementId, props: Vec<StyleProp> },
+    SetTransform { id: ElementId, matrix: Option<[f64; 6]> },
+    SetScrollOffset { id: ElementId, x: f32, y: f32 },
+    SetFontFamily { id: ElementId, family: String },
+    SetAriaLabel { id: ElementId, label: String },
+    SetRole { id: ElementId, role: String },
+    SetTextContent { id: ElementId, text: String },
+    AppendChild { parent: ElementId, child: ElementId },
+    InsertBefore { parent: ElementId, child: ElementId, before: ElementId },
+    Remove { id: ElementId },
+    SetRoot { id: ElementId },
+    /// HTML Mode only: materialise the DOM element for an already-allocated
+    /// slot. Canvas Mode allocates the tree entry eagerly inside
+    /// `element_create` and does not emit this command.
+    HtmlCreate { id: ElementId, kind: ElementKind },
+}
 
 fn document() -> Document {
     web_sys::window().unwrap().document().unwrap()
@@ -78,6 +105,8 @@ pub struct HayateElementRenderer {
     focused_element: Option<ElementId>,
     hovered_element: Option<ElementId>,
     last_pointer_pos: Option<(f32, f32)>,
+    /// Deferred mutations applied at the start of every `render()` (ADR-0030).
+    pending: Vec<Command>,
 }
 
 #[wasm_bindgen]
@@ -88,29 +117,49 @@ impl HayateElementRenderer {
         let gpu = GpuSurface::init(canvas).await?;
         let mut tree = ElementTree::new();
         tree.set_viewport(width, height);
-        Ok(Self { gpu, tree, focused_element: None, hovered_element: None, last_pointer_pos: None })
+        Ok(Self {
+            gpu,
+            tree,
+            focused_element: None,
+            hovered_element: None,
+            last_pointer_pos: None,
+            pending: Vec::new(),
+        })
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
     }
 
+    /// Allocates the tree-side ElementId synchronously so JS has a stable
+    /// handle to use in subsequent queued calls. Tree allocation is purely
+    /// in-WASM (a slotmap insert plus a Taffy leaf) so no JS boundary cost is
+    /// paid — only DOM-touching mutations need to be deferred (ADR-0030).
     pub fn element_create(&mut self, kind: u32) -> Result<f64, JsValue> {
         let k = kind_from_u32(kind)?;
         Ok(element_id_to_f64(self.tree.element_create(k)))
     }
 
     pub fn element_set_text(&mut self, id: f64, text: &str) {
-        self.tree.element_set_text(element_id_from_f64(id), text);
+        self.pending.push(Command::SetText {
+            id: element_id_from_f64(id),
+            text: text.to_string(),
+        });
     }
 
     pub fn element_set_src(&mut self, id: f64, url: &str) {
-        self.tree.element_set_src(element_id_from_f64(id), url);
+        self.pending.push(Command::SetSrc {
+            id: element_id_from_f64(id),
+            url: url.to_string(),
+        });
     }
 
     pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
         let props = style_packet::decode(packed)?;
-        self.tree.element_set_style(element_id_from_f64(id), &props);
+        self.pending.push(Command::SetStyle {
+            id: element_id_from_f64(id),
+            props,
+        });
         Ok(())
     }
 
@@ -122,35 +171,44 @@ impl HayateElementRenderer {
         } else {
             None
         };
-        self.tree.element_set_transform(element_id_from_f64(id), m);
+        self.pending.push(Command::SetTransform {
+            id: element_id_from_f64(id),
+            matrix: m,
+        });
     }
 
     pub fn element_append_child(&mut self, parent: f64, child: f64) {
-        self.tree
-            .element_append_child(element_id_from_f64(parent), element_id_from_f64(child));
+        self.pending.push(Command::AppendChild {
+            parent: element_id_from_f64(parent),
+            child: element_id_from_f64(child),
+        });
     }
 
     pub fn element_insert_before(&mut self, parent: f64, child: f64, before: f64) {
-        self.tree.element_insert_before(
-            element_id_from_f64(parent),
-            element_id_from_f64(child),
-            element_id_from_f64(before),
-        );
+        self.pending.push(Command::InsertBefore {
+            parent: element_id_from_f64(parent),
+            child: element_id_from_f64(child),
+            before: element_id_from_f64(before),
+        });
     }
 
     pub fn element_remove(&mut self, id: f64) {
-        self.tree.element_remove(element_id_from_f64(id));
+        self.pending.push(Command::Remove { id: element_id_from_f64(id) });
     }
 
+    /// Returns the text committed by the most recent `render()`. Updates from
+    /// queued `element_set_text` calls are not visible until the next flush
+    /// (ADR-0030).
     pub fn element_get_text(&self, id: f64) -> String {
         self.tree.element_get_text(element_id_from_f64(id))
     }
 
     pub fn set_root(&mut self, id: f64) {
-        self.tree.set_root(element_id_from_f64(id));
+        self.pending.push(Command::SetRoot { id: element_id_from_f64(id) });
     }
 
     pub fn render(&mut self, bg_r: f64, bg_g: f64, bg_b: f64) -> Result<(), JsValue> {
+        self.flush_pending();
         let base_color = AlphaColor::<Srgb>::new([bg_r as f32, bg_g as f32, bg_b as f32, 1.0]);
         let sg = self.tree.render();
         let scene = vello_bridge::build_scene(sg);
@@ -233,19 +291,32 @@ impl HayateElementRenderer {
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
-        self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+        self.pending.push(Command::SetScrollOffset {
+            id: element_id_from_f64(id),
+            x,
+            y,
+        });
     }
 
     pub fn element_set_font_family(&mut self, id: f64, family: &str) {
-        self.tree.element_set_font_family(element_id_from_f64(id), family);
+        self.pending.push(Command::SetFontFamily {
+            id: element_id_from_f64(id),
+            family: family.to_string(),
+        });
     }
 
     pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
-        self.tree.element_set_aria_label(element_id_from_f64(id), label);
+        self.pending.push(Command::SetAriaLabel {
+            id: element_id_from_f64(id),
+            label: label.to_string(),
+        });
     }
 
     pub fn element_set_role(&mut self, id: f64, role: &str) {
-        self.tree.element_set_role(element_id_from_f64(id), role);
+        self.pending.push(Command::SetRole {
+            id: element_id_from_f64(id),
+            role: role.to_string(),
+        });
     }
 
     /// Register a custom font from raw bytes. After this, the family_name can be used
@@ -334,9 +405,15 @@ impl HayateElementRenderer {
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {
-        self.tree.element_set_text_content(element_id_from_f64(id), text);
+        self.pending.push(Command::SetTextContent {
+            id: element_id_from_f64(id),
+            text: text.to_string(),
+        });
     }
 
+    /// Returns the editable text content committed by the most recent `render()`.
+    /// Queued `element_set_text_content` calls are not visible until the next
+    /// flush (ADR-0030).
     pub fn element_get_text_content(&self, id: f64) -> String {
         self.tree.element_get_text_content(element_id_from_f64(id))
     }
@@ -344,6 +421,55 @@ impl HayateElementRenderer {
     pub fn poll_events(&mut self) -> Box<[f64]> {
         let events = self.tree.poll_events();
         encode_events(&events)
+    }
+}
+
+impl HayateElementRenderer {
+    /// Drain the pending command queue and apply each mutation to the
+    /// underlying `ElementTree`. Called from `render()` (the sole flush
+    /// boundary per ADR-0030).
+    fn flush_pending(&mut self) {
+        let commands = std::mem::take(&mut self.pending);
+        for cmd in commands {
+            match cmd {
+                Command::SetText { id, text } => self.tree.element_set_text(id, &text),
+                Command::SetSrc { id, url } => self.tree.element_set_src(id, &url),
+                Command::SetStyle { id, props } => self.tree.element_set_style(id, &props),
+                Command::SetTransform { id, matrix } => self.tree.element_set_transform(id, matrix),
+                Command::SetScrollOffset { id, x, y } => {
+                    self.tree.element_set_scroll_offset(id, x, y);
+                }
+                Command::SetFontFamily { id, family } => {
+                    self.tree.element_set_font_family(id, &family);
+                }
+                Command::SetAriaLabel { id, label } => {
+                    self.tree.element_set_aria_label(id, &label);
+                }
+                Command::SetRole { id, role } => self.tree.element_set_role(id, &role),
+                Command::SetTextContent { id, text } => {
+                    self.tree.element_set_text_content(id, &text);
+                }
+                Command::AppendChild { parent, child } => {
+                    self.tree.element_append_child(parent, child);
+                }
+                Command::InsertBefore { parent, child, before } => {
+                    self.tree.element_insert_before(parent, child, before);
+                }
+                Command::Remove { id } => {
+                    if self.focused_element == Some(id) {
+                        self.focused_element = None;
+                    }
+                    if self.hovered_element == Some(id) {
+                        self.hovered_element = None;
+                    }
+                    self.tree.element_remove(id);
+                }
+                Command::SetRoot { id } => self.tree.set_root(id),
+                // Canvas mode allocates tree entries eagerly in element_create;
+                // this variant is only emitted by HTML mode.
+                Command::HtmlCreate { .. } => {}
+            }
+        }
     }
 }
 
@@ -356,7 +482,10 @@ impl HayateElementRenderer {
 
 struct HtmlNode {
     kind: ElementKind,
-    dom: Element,
+    /// `Some` once the deferred `HtmlCreate` has been flushed in `render()`.
+    /// Operations queued before the first flush observe the slotmap entry but
+    /// no DOM element yet (ADR-0030).
+    dom: Option<Element>,
     parent: Option<ElementId>,
     children: Vec<ElementId>,
     text: Option<String>,
@@ -371,6 +500,8 @@ pub struct HayateElementHtmlRenderer {
     event_queue: Vec<Event>,
     focused_element: Option<ElementId>,
     hovered_element: Option<ElementId>,
+    /// Deferred mutations applied at the start of every `render()` (ADR-0030).
+    pending: Vec<Command>,
 }
 
 #[wasm_bindgen]
@@ -386,6 +517,7 @@ impl HayateElementHtmlRenderer {
             event_queue: Vec::new(),
             focused_element: None,
             hovered_element: None,
+            pending: Vec::new(),
         })
     }
 
@@ -395,165 +527,81 @@ impl HayateElementHtmlRenderer {
         self.event_queue.push(Event::Resize { width, height });
     }
 
+    /// Allocates a slotmap entry synchronously and queues the DOM creation.
+    /// The returned ID is valid for subsequent queued calls; the actual DOM
+    /// element is materialised on the next `render()` (ADR-0030).
     pub fn element_create(&mut self, kind: u32) -> Result<f64, JsValue> {
         let k = kind_from_u32(kind)?;
-        let dom = create_dom_for_kind(&document(), k)?;
-        apply_kind_baseline(&dom, k)?;
-
         let id = self.nodes.insert(HtmlNode {
             kind: k,
-            dom: dom.clone(),
+            dom: None,
             parent: None,
             children: Vec::new(),
             text: None,
             src: None,
         });
-        dom.set_attribute("data-element-id", &format!("{}", id.data().as_ffi()))?;
-        if self.root.is_none() {
-            self.root = Some(id);
-            self.container.append_child(&dom)?;
-        }
+        self.pending.push(Command::HtmlCreate { id, kind: k });
         Ok(element_id_to_f64(id))
     }
 
     pub fn element_set_text(&mut self, id: f64, text: &str) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get_mut(eid) {
-            n.text = Some(text.to_string());
-            match n.kind {
-                ElementKind::TextInput => {
-                    if let Some(input) = n.dom.dyn_ref::<HtmlInputElement>() {
-                        input.set_value(text);
-                    }
-                }
-                _ => {
-                    if let Some(html_el) = n.dom.dyn_ref::<HtmlElement>() {
-                        html_el.set_inner_text(text);
-                    }
-                }
-            }
-        }
+        self.pending.push(Command::SetText {
+            id: element_id_from_f64(id),
+            text: text.to_string(),
+        });
     }
 
     pub fn element_set_src(&mut self, id: f64, url: &str) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get_mut(eid) {
-            n.src = Some(url.to_string());
-            if n.kind == ElementKind::Image {
-                let _ = n.dom.set_attribute("src", url);
-            }
-        }
+        self.pending.push(Command::SetSrc {
+            id: element_id_from_f64(id),
+            url: url.to_string(),
+        });
     }
 
     pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
         let props = style_packet::decode(packed)?;
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get(eid) {
-            if let Some(html_el) = n.dom.dyn_ref::<HtmlElement>() {
-                style_packet::apply_props_to_dom(&html_el.style(), &props)?;
-            }
-        }
+        self.pending.push(Command::SetStyle {
+            id: element_id_from_f64(id),
+            props,
+        });
         Ok(())
     }
 
-    /// Apply a 2D affine transform via CSS `transform: matrix(a,b,c,d,e,f)`,
-    /// or clear it when an empty slice is passed.
+    /// Queue a 2D affine transform update applied as CSS
+    /// `transform: matrix(a,b,c,d,e,f)`, or cleared when an empty slice is passed.
     pub fn element_set_transform(&mut self, id: f64, matrix: &[f64]) {
-        let eid = element_id_from_f64(id);
-        let n = match self.nodes.get(eid) {
-            Some(n) => n,
-            None => return,
-        };
-        let html_el = match n.dom.dyn_ref::<HtmlElement>() {
-            Some(e) => e,
-            None => return,
-        };
-        let style = html_el.style();
-        if matrix.len() == 6 {
-            let css = format!(
-                "matrix({},{},{},{},{},{})",
-                matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]
-            );
-            let _ = style.set_property("transform", &css);
+        let m = if matrix.len() == 6 {
+            Some([matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]])
         } else {
-            let _ = style.set_property("transform", "none");
-        }
+            None
+        };
+        self.pending.push(Command::SetTransform {
+            id: element_id_from_f64(id),
+            matrix: m,
+        });
     }
 
     pub fn element_append_child(&mut self, parent: f64, child: f64) {
-        let pid = element_id_from_f64(parent);
-        let cid = element_id_from_f64(child);
-        if !self.nodes.contains_key(pid) || !self.nodes.contains_key(cid) {
-            return;
-        }
-        self.detach_from_current_parent(cid);
-        let (parent_dom, child_dom) = (
-            self.nodes[pid].dom.clone(),
-            self.nodes[cid].dom.clone(),
-        );
-        let _ = parent_dom.append_child(child_dom.as_ref());
-        self.nodes[pid].children.push(cid);
-        self.nodes[cid].parent = Some(pid);
+        self.pending.push(Command::AppendChild {
+            parent: element_id_from_f64(parent),
+            child: element_id_from_f64(child),
+        });
     }
 
     pub fn element_insert_before(&mut self, parent: f64, child: f64, before: f64) {
-        let pid = element_id_from_f64(parent);
-        let cid = element_id_from_f64(child);
-        let bid = element_id_from_f64(before);
-        if !self.nodes.contains_key(pid)
-            || !self.nodes.contains_key(cid)
-            || !self.nodes.contains_key(bid)
-        {
-            return;
-        }
-        self.detach_from_current_parent(cid);
-        let index = match self.nodes[pid].children.iter().position(|&c| c == bid) {
-            Some(i) => i,
-            None => {
-                self.element_append_child(parent, child);
-                return;
-            }
-        };
-        let parent_dom = self.nodes[pid].dom.clone();
-        let child_dom = self.nodes[cid].dom.clone();
-        let before_dom = self.nodes[bid].dom.clone();
-        let _ = parent_dom
-            .unchecked_ref::<Node>()
-            .insert_before(child_dom.as_ref(), Some(before_dom.as_ref()));
-        self.nodes[pid].children.insert(index, cid);
-        self.nodes[cid].parent = Some(pid);
+        self.pending.push(Command::InsertBefore {
+            parent: element_id_from_f64(parent),
+            child: element_id_from_f64(child),
+            before: element_id_from_f64(before),
+        });
     }
 
     pub fn element_remove(&mut self, id: f64) {
-        let target = element_id_from_f64(id);
-        if !self.nodes.contains_key(target) {
-            return;
-        }
-        self.detach_from_current_parent(target);
-        // DOM removeChild cascades to descendants; we only need to drop the
-        // top-level DOM node from its parent (or the container if it was root).
-        let top_dom = self.nodes[target].dom.clone();
-        if let Some(parent_dom) = top_dom.parent_node() {
-            let _ = parent_dom.remove_child(top_dom.as_ref());
-        }
-        // Drop the slotmap entries for the subtree.
-        let mut stack = vec![target];
-        while let Some(node) = stack.pop() {
-            if let Some(n) = self.nodes.remove(node) {
-                stack.extend(n.children.iter().copied());
-            }
-        }
-        if self.root == Some(target) {
-            self.root = None;
-        }
-        if self.focused_element == Some(target) {
-            self.focused_element = None;
-        }
-        if self.hovered_element == Some(target) {
-            self.hovered_element = None;
-        }
+        self.pending.push(Command::Remove { id: element_id_from_f64(id) });
     }
 
+    /// Returns the text committed by the most recent `render()`. Queued
+    /// `element_set_text` calls are not visible until the next flush (ADR-0030).
     pub fn element_get_text(&self, id: f64) -> String {
         self.nodes
             .get(element_id_from_f64(id))
@@ -562,27 +610,14 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn set_root(&mut self, id: f64) {
-        let new_root = element_id_from_f64(id);
-        if !self.nodes.contains_key(new_root) {
-            return;
-        }
-        // Detach the previous root from the container (if any).
-        if let Some(prev) = self.root {
-            if prev != new_root {
-                let prev_dom = self.nodes[prev].dom.clone();
-                let _ = self.container.remove_child(prev_dom.as_ref());
-            }
-        }
-        // Lift the new root out of any prior parent and mount it on the container.
-        self.detach_from_current_parent(new_root);
-        let dom = self.nodes[new_root].dom.clone();
-        let _ = self.container.append_child(dom.as_ref());
-        self.root = Some(new_root);
+        self.pending.push(Command::SetRoot { id: element_id_from_f64(id) });
     }
 
-    /// In HTML Mode `render` only sets the container's background colour —
-    /// the browser handles incremental reflow on every prior style mutation.
+    /// Drains the queued element mutations, then refreshes the container's
+    /// background colour. The browser handles reflow for the freshly-applied
+    /// styles in a single batch.
     pub fn render(&mut self, bg_r: f64, bg_g: f64, bg_b: f64) -> Result<(), JsValue> {
+        self.flush_pending()?;
         self.container.style().set_property(
             "background-color",
             &format!(
@@ -657,34 +692,32 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get(eid) {
-            n.dom.set_scroll_left(x as i32);
-            n.dom.set_scroll_top(y as i32);
-        }
+        self.pending.push(Command::SetScrollOffset {
+            id: element_id_from_f64(id),
+            x,
+            y,
+        });
     }
 
     pub fn element_set_font_family(&mut self, id: f64, family: &str) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get(eid) {
-            if let Some(html_el) = n.dom.dyn_ref::<HtmlElement>() {
-                let _ = html_el.style().set_property("font-family", family);
-            }
-        }
+        self.pending.push(Command::SetFontFamily {
+            id: element_id_from_f64(id),
+            family: family.to_string(),
+        });
     }
 
     pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get(eid) {
-            let _ = n.dom.set_attribute("aria-label", label);
-        }
+        self.pending.push(Command::SetAriaLabel {
+            id: element_id_from_f64(id),
+            label: label.to_string(),
+        });
     }
 
     pub fn element_set_role(&mut self, id: f64, role: &str) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get(eid) {
-            let _ = n.dom.set_attribute("role", role);
-        }
+        self.pending.push(Command::SetRole {
+            id: element_id_from_f64(id),
+            role: role.to_string(),
+        });
     }
 
     /// Register a Web Font via CSS `@font-face`. Browser renders text in HTML
@@ -748,36 +781,43 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {
-        let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get_mut(eid) {
-            n.text = Some(text.to_string());
-            if let Some(input) = n.dom.dyn_ref::<HtmlInputElement>() {
-                input.set_value(text);
-            } else if let Some(html_el) = n.dom.dyn_ref::<HtmlElement>() {
-                html_el.set_inner_text(text);
-            }
-        }
+        self.pending.push(Command::SetTextContent {
+            id: element_id_from_f64(id),
+            text: text.to_string(),
+        });
     }
 
+    /// Returns the editable text content committed by the most recent `render()`.
+    /// For TextInput elements this falls through to the live DOM value, which
+    /// already reflects user typing (browser-driven, not queue-driven). Queued
+    /// `element_set_text_content` calls are not visible until the next flush
+    /// (ADR-0030).
     pub fn element_get_text_content(&self, id: f64) -> String {
         let eid = element_id_from_f64(id);
         let n = match self.nodes.get(eid) {
             Some(n) => n,
             None => return String::new(),
         };
-        if let Some(input) = n.dom.dyn_ref::<HtmlInputElement>() {
-            return input.value();
+        if let Some(dom) = n.dom.as_ref() {
+            if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
+                return input.value();
+            }
         }
         n.text.clone().unwrap_or_default()
     }
 
     /// Set the image's `src` to the URL. The browser fetches and decodes it.
+    /// `src` is applied to the DOM eagerly here so the browser fetch can start
+    /// before the next `render()`; the slotmap mirror is updated too so reads
+    /// observe the new URL immediately.
     pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
         let eid = element_id_from_f64(id);
         if let Some(n) = self.nodes.get_mut(eid) {
             if n.kind == ElementKind::Image {
                 n.src = Some(url.clone());
-                let _ = n.dom.set_attribute("src", &url);
+                if let Some(dom) = n.dom.as_ref() {
+                    let _ = dom.set_attribute("src", &url);
+                }
             }
         }
         Ok(())
@@ -797,6 +837,266 @@ impl HayateElementHtmlRenderer {
         };
         self.nodes[parent].children.retain(|&c| c != child);
         self.nodes[child].parent = None;
+    }
+
+    /// Drain the pending command queue and apply each mutation to the DOM and
+    /// slotmap. Called from `render()` (the sole flush boundary per ADR-0030).
+    fn flush_pending(&mut self) -> Result<(), JsValue> {
+        let commands = std::mem::take(&mut self.pending);
+        for cmd in commands {
+            self.apply_command(cmd)?;
+        }
+        Ok(())
+    }
+
+    fn apply_command(&mut self, cmd: Command) -> Result<(), JsValue> {
+        match cmd {
+            Command::HtmlCreate { id, kind } => self.flush_create(id, kind)?,
+            Command::SetText { id, text } => self.flush_set_text(id, &text),
+            Command::SetSrc { id, url } => self.flush_set_src(id, &url),
+            Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
+            Command::SetTransform { id, matrix } => self.flush_set_transform(id, matrix),
+            Command::SetScrollOffset { id, x, y } => self.flush_set_scroll_offset(id, x, y),
+            Command::SetFontFamily { id, family } => self.flush_set_font_family(id, &family),
+            Command::SetAriaLabel { id, label } => self.flush_set_aria_label(id, &label),
+            Command::SetRole { id, role } => self.flush_set_role(id, &role),
+            Command::SetTextContent { id, text } => self.flush_set_text_content(id, &text),
+            Command::AppendChild { parent, child } => self.flush_append_child(parent, child),
+            Command::InsertBefore { parent, child, before } => {
+                self.flush_insert_before(parent, child, before);
+            }
+            Command::Remove { id } => self.flush_remove(id),
+            Command::SetRoot { id } => self.flush_set_root(id),
+        }
+        Ok(())
+    }
+
+    fn flush_create(&mut self, id: ElementId, kind: ElementKind) -> Result<(), JsValue> {
+        // The slot was inserted eagerly in `element_create`; if it's missing it
+        // was removed by a subsequent queued `Remove` — skip silently.
+        if !self.nodes.contains_key(id) {
+            return Ok(());
+        }
+        let dom = create_dom_for_kind(&document(), kind)?;
+        apply_kind_baseline(&dom, kind)?;
+        dom.set_attribute("data-element-id", &format!("{}", id.data().as_ffi()))?;
+        self.nodes[id].dom = Some(dom.clone());
+        // Preserve the legacy auto-root behaviour: the first element created
+        // when no root exists becomes the root and is mounted on the container.
+        if self.root.is_none() {
+            self.root = Some(id);
+            self.container.append_child(&dom)?;
+        }
+        Ok(())
+    }
+
+    fn flush_set_text(&mut self, id: ElementId, text: &str) {
+        let n = match self.nodes.get_mut(id) {
+            Some(n) => n,
+            None => return,
+        };
+        n.text = Some(text.to_string());
+        let dom = match n.dom.as_ref() {
+            Some(d) => d,
+            None => return,
+        };
+        match n.kind {
+            ElementKind::TextInput => {
+                if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
+                    input.set_value(text);
+                }
+            }
+            _ => {
+                if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+                    html_el.set_inner_text(text);
+                }
+            }
+        }
+    }
+
+    fn flush_set_src(&mut self, id: ElementId, url: &str) {
+        let n = match self.nodes.get_mut(id) {
+            Some(n) => n,
+            None => return,
+        };
+        n.src = Some(url.to_string());
+        if n.kind == ElementKind::Image {
+            if let Some(dom) = n.dom.as_ref() {
+                let _ = dom.set_attribute("src", url);
+            }
+        }
+    }
+
+    fn flush_set_style(&mut self, id: ElementId, props: &[StyleProp]) -> Result<(), JsValue> {
+        let dom = match self.nodes.get(id).and_then(|n| n.dom.clone()) {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+        if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+            style_packet::apply_props_to_dom(&html_el.style(), props)?;
+        }
+        Ok(())
+    }
+
+    fn flush_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
+        let dom = match self.nodes.get(id).and_then(|n| n.dom.clone()) {
+            Some(d) => d,
+            None => return,
+        };
+        let html_el = match dom.dyn_ref::<HtmlElement>() {
+            Some(e) => e,
+            None => return,
+        };
+        let style = html_el.style();
+        match matrix {
+            Some(m) => {
+                let css = format!(
+                    "matrix({},{},{},{},{},{})",
+                    m[0], m[1], m[2], m[3], m[4], m[5]
+                );
+                let _ = style.set_property("transform", &css);
+            }
+            None => {
+                let _ = style.set_property("transform", "none");
+            }
+        }
+    }
+
+    fn flush_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
+        if let Some(dom) = self.nodes.get(id).and_then(|n| n.dom.as_ref()) {
+            dom.set_scroll_left(x as i32);
+            dom.set_scroll_top(y as i32);
+        }
+    }
+
+    fn flush_set_font_family(&mut self, id: ElementId, family: &str) {
+        let dom = match self.nodes.get(id).and_then(|n| n.dom.clone()) {
+            Some(d) => d,
+            None => return,
+        };
+        if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+            let _ = html_el.style().set_property("font-family", family);
+        }
+    }
+
+    fn flush_set_aria_label(&mut self, id: ElementId, label: &str) {
+        if let Some(dom) = self.nodes.get(id).and_then(|n| n.dom.as_ref()) {
+            let _ = dom.set_attribute("aria-label", label);
+        }
+    }
+
+    fn flush_set_role(&mut self, id: ElementId, role: &str) {
+        if let Some(dom) = self.nodes.get(id).and_then(|n| n.dom.as_ref()) {
+            let _ = dom.set_attribute("role", role);
+        }
+    }
+
+    fn flush_set_text_content(&mut self, id: ElementId, text: &str) {
+        let n = match self.nodes.get_mut(id) {
+            Some(n) => n,
+            None => return,
+        };
+        n.text = Some(text.to_string());
+        let dom = match n.dom.as_ref() {
+            Some(d) => d,
+            None => return,
+        };
+        if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
+            input.set_value(text);
+        } else if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+            html_el.set_inner_text(text);
+        }
+    }
+
+    fn flush_append_child(&mut self, pid: ElementId, cid: ElementId) {
+        if !self.nodes.contains_key(pid) || !self.nodes.contains_key(cid) {
+            return;
+        }
+        self.detach_from_current_parent(cid);
+        let parent_dom = self.nodes[pid].dom.clone();
+        let child_dom = self.nodes[cid].dom.clone();
+        if let (Some(p), Some(c)) = (parent_dom, child_dom) {
+            let _ = p.append_child(c.as_ref());
+        }
+        self.nodes[pid].children.push(cid);
+        self.nodes[cid].parent = Some(pid);
+    }
+
+    fn flush_insert_before(&mut self, pid: ElementId, cid: ElementId, bid: ElementId) {
+        if !self.nodes.contains_key(pid)
+            || !self.nodes.contains_key(cid)
+            || !self.nodes.contains_key(bid)
+        {
+            return;
+        }
+        self.detach_from_current_parent(cid);
+        let index = match self.nodes[pid].children.iter().position(|&c| c == bid) {
+            Some(i) => i,
+            None => {
+                self.flush_append_child(pid, cid);
+                return;
+            }
+        };
+        let parent_dom = self.nodes[pid].dom.clone();
+        let child_dom = self.nodes[cid].dom.clone();
+        let before_dom = self.nodes[bid].dom.clone();
+        if let (Some(p), Some(c), Some(b)) = (parent_dom, child_dom, before_dom) {
+            let _ = p
+                .unchecked_ref::<Node>()
+                .insert_before(c.as_ref(), Some(b.as_ref()));
+        }
+        self.nodes[pid].children.insert(index, cid);
+        self.nodes[cid].parent = Some(pid);
+    }
+
+    fn flush_remove(&mut self, target: ElementId) {
+        if !self.nodes.contains_key(target) {
+            return;
+        }
+        self.detach_from_current_parent(target);
+        // DOM removeChild cascades to descendants; we only need to drop the
+        // top-level DOM node from its parent (or the container if it was root).
+        if let Some(top_dom) = self.nodes[target].dom.clone() {
+            if let Some(parent_dom) = top_dom.parent_node() {
+                let _ = parent_dom.remove_child(top_dom.as_ref());
+            }
+        }
+        // Drop the slotmap entries for the subtree.
+        let mut stack = vec![target];
+        while let Some(node) = stack.pop() {
+            if let Some(n) = self.nodes.remove(node) {
+                stack.extend(n.children.iter().copied());
+            }
+        }
+        if self.root == Some(target) {
+            self.root = None;
+        }
+        if self.focused_element == Some(target) {
+            self.focused_element = None;
+        }
+        if self.hovered_element == Some(target) {
+            self.hovered_element = None;
+        }
+    }
+
+    fn flush_set_root(&mut self, new_root: ElementId) {
+        if !self.nodes.contains_key(new_root) {
+            return;
+        }
+        // Detach the previous root from the container (if any).
+        if let Some(prev) = self.root {
+            if prev != new_root {
+                if let Some(prev_dom) = self.nodes[prev].dom.clone() {
+                    let _ = self.container.remove_child(prev_dom.as_ref());
+                }
+            }
+        }
+        // Lift the new root out of any prior parent and mount it on the container.
+        self.detach_from_current_parent(new_root);
+        if let Some(dom) = self.nodes[new_root].dom.clone() {
+            let _ = self.container.append_child(dom.as_ref());
+        }
+        self.root = Some(new_root);
     }
 }
 
