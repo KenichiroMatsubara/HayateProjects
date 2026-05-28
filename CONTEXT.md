@@ -51,8 +51,8 @@ _Avoid_: Runtime, Host, Surface Adapter
 _Avoid_: フォールバック（劣化の含意を避けるため）、DOM Mode、absolutely-positioned div 方式
 
 **Tsubame（燕）**:
-JS/TS ユーザー向けの純粋 JS フレームワーク。「React Native on Hayate」に相当するポジション。`.tsx` コンポーネント形式を採用し、React 系のリアクティビティ（useState/hooks ベース）を持つ。Vue・Svelte・Solid のような fine-grained Signal モデルではない。プラットフォームのネイティブ JS エンジン（ブラウザ: V8/SpiderMonkey、モバイル: Hermes 等）上で動作し、JS ランタイムを自身にバンドルしない。DOM Mode と Canvas Mode の二つの動作モードを持つ。Hayate HTML Mode は使用しない。Hayabusa・Hayate コアのいずれも Tsubame の存在を知らない。Hayabusa とは完全に独立した別フレームワークであり、コンポーネント形式・リアクティビティ・ビルドパイプラインのいずれも共有しない。
-_Avoid_: Hayabusa の JS アダプタ、Hayabusa のラッパー、Hayabusa のサブセット、Signal ベースフレームワーク
+JS/TS ユーザー向けの純粋 JS フレームワーク。「GPU レンダリング × SolidJS」に相当するポジション。`.tsx` コンポーネント形式・SolidJS 的な fine-grained Signal（`createSignal` / `createEffect` / `createMemo`）を採用する。コンポーネント関数は一度だけ実行され、Signal の変化のみが該当する DOM 操作・Element mutation を発火する。Virtual DOM・reconciler を持たない。プラットフォームのネイティブ JS エンジン（ブラウザ: V8/SpiderMonkey、モバイル: Hermes 等）上で動作し、JS ランタイムを自身にバンドルしない。DOM Mode と Canvas Mode の二つの動作モードを持つ。Hayate HTML Mode は使用しない。Hayabusa・Hayate コアのいずれも Tsubame の存在を知らない。Hayabusa とは完全に独立した別フレームワークであり、コンポーネント形式・リアクティビティ・ビルドパイプラインのいずれも共有しない。
+_Avoid_: React hooks ベース（useState/useEffect ではない）、Virtual DOM、Hayabusa の JS アダプタ、Hayabusa のラッパー
 
 **Tsubame DOM Mode**:
 Tsubame の動作モードの一つ。ビルド時に HTML を生成し、ランタイムでは DOM を直接操作する。Hayate（WASM）を一切使用しない。JS→WASM 境界が存在しない。Hayate の HTML Mode（Hayate が DOM 要素で描画するモード）とは別概念であり、Hayate が関与しない点が根本的に異なる。
