@@ -458,7 +458,7 @@ impl HayateElementRenderer {
         self.tree.element_get_text_content(element_id_from_f64(id))
     }
 
-    pub fn poll_events(&mut self) -> Box<[f64]> {
+    pub fn poll_events(&mut self) -> js_sys::Array {
         let events = self.tree.poll_events();
         encode_events(&events)
     }
@@ -939,7 +939,7 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
-    pub fn poll_events(&mut self) -> Box<[f64]> {
+    pub fn poll_events(&mut self) -> js_sys::Array {
         let events: Vec<Event> = std::mem::take(&mut self.event_queue);
         encode_events(&events)
     }
@@ -1310,99 +1310,72 @@ fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementI
     }
 }
 
-/// Encode an event list into a flat f64 array for JS consumption.
+/// Encode an event list as `Array<Array<any>>` for JS consumption (ADR-0034).
 ///
-/// Format per event (discriminants match the `event_kind_*` getters above):
-///   click:          [0,  target_ffi, x, y]
-///   focus:          [1,  target_ffi]
-///   blur:           [2,  target_ffi]
-///   text_input:     [3,  target_ffi]
-///   comp_start:     [4,  target_ffi]
-///   comp_update:    [5,  target_ffi]
-///   comp_end:       [6,  target_ffi]
-///   scroll:         [7,  target_ffi, delta_x, delta_y]
-///   resize:         [8,  width, height]
-///   active_end:     [9,  target_ffi]
-///   hover_enter:    [10, target_ffi]
-///   hover_leave:    [11, target_ffi]
-///   key_down:       [12, target_ffi, modifiers]
-///   active_start:   [13, target_ffi]
-///   pointer_move:   [14, x, y]               (no target — see ADR-0031)
-fn encode_events(events: &[Event]) -> Box<[f64]> {
+/// Each sub-array is `[kind, ...fields]` where kind matches the `event_kind_*`
+/// constants above. String fields are JS strings; numeric fields are f64.
+///
+///   click:        [0,  target_ffi, x, y]
+///   focus:        [1,  target_ffi]
+///   blur:         [2,  target_ffi]
+///   text_input:   [3,  target_ffi, text: string]
+///   comp_start:   [4,  target_ffi, text: string]
+///   comp_update:  [5,  target_ffi, text: string]
+///   comp_end:     [6,  target_ffi, text: string]
+///   scroll:       [7,  target_ffi, delta_x, delta_y]
+///   resize:       [8,  width, height]
+///   active_end:   [9,  target_ffi]
+///   hover_enter:  [10, target_ffi]
+///   hover_leave:  [11, target_ffi]
+///   key_down:     [12, target_ffi, key: string, modifiers]  (WIT order: target→key→modifiers)
+///   active_start: [13, target_ffi]
+///   pointer_move: [14, x, y]                                (no target — ADR-0031)
+fn encode_events(events: &[Event]) -> js_sys::Array {
+    use js_sys::Array;
     use slotmap::Key;
-    let mut out: Vec<f64> = Vec::with_capacity(events.len() * 4);
+    let result = Array::new();
     for event in events {
+        let sub = Array::new();
+        macro_rules! pf {
+            ($v:expr) => { sub.push(&JsValue::from_f64($v as f64)); };
+        }
+        macro_rules! ps {
+            ($v:expr) => { sub.push(&JsValue::from_str($v)); };
+        }
         match event {
             Event::Click { target, x, y } => {
-                out.push(0.0);
-                out.push(target.data().as_ffi() as f64);
-                out.push(*x as f64);
-                out.push(*y as f64);
+                pf!(0.0); pf!(target.data().as_ffi()); pf!(*x); pf!(*y);
             }
-            Event::Focus(target) => {
-                out.push(1.0);
-                out.push(target.data().as_ffi() as f64);
+            Event::Focus(target) => { pf!(1.0); pf!(target.data().as_ffi()); }
+            Event::Blur(target)  => { pf!(2.0); pf!(target.data().as_ffi()); }
+            Event::TextInput { target, text } => {
+                pf!(3.0); pf!(target.data().as_ffi()); ps!(text);
             }
-            Event::Blur(target) => {
-                out.push(2.0);
-                out.push(target.data().as_ffi() as f64);
+            Event::CompositionStart { target, text } => {
+                pf!(4.0); pf!(target.data().as_ffi()); ps!(text);
             }
-            Event::TextInput { target, .. } => {
-                out.push(3.0);
-                out.push(target.data().as_ffi() as f64);
+            Event::CompositionUpdate { target, text } => {
+                pf!(5.0); pf!(target.data().as_ffi()); ps!(text);
             }
-            Event::CompositionStart { target, .. } => {
-                out.push(4.0);
-                out.push(target.data().as_ffi() as f64);
-            }
-            Event::CompositionUpdate { target, .. } => {
-                out.push(5.0);
-                out.push(target.data().as_ffi() as f64);
-            }
-            Event::CompositionEnd { target, .. } => {
-                out.push(6.0);
-                out.push(target.data().as_ffi() as f64);
+            Event::CompositionEnd { target, text } => {
+                pf!(6.0); pf!(target.data().as_ffi()); ps!(text);
             }
             Event::Scroll { target, delta_x, delta_y } => {
-                out.push(7.0);
-                out.push(target.data().as_ffi() as f64);
-                out.push(*delta_x as f64);
-                out.push(*delta_y as f64);
+                pf!(7.0); pf!(target.data().as_ffi()); pf!(*delta_x); pf!(*delta_y);
             }
-            Event::Resize { width, height } => {
-                out.push(8.0);
-                out.push(*width as f64);
-                out.push(*height as f64);
+            Event::Resize { width, height } => { pf!(8.0); pf!(*width); pf!(*height); }
+            Event::ActiveEnd { target }   => { pf!(9.0);  pf!(target.data().as_ffi()); }
+            Event::HoverEnter { target }  => { pf!(10.0); pf!(target.data().as_ffi()); }
+            Event::HoverLeave { target }  => { pf!(11.0); pf!(target.data().as_ffi()); }
+            Event::KeyDown { target, key, modifiers } => {
+                pf!(12.0); pf!(target.data().as_ffi()); ps!(key); pf!(*modifiers);
             }
-            Event::ActiveEnd { target } => {
-                out.push(9.0);
-                out.push(target.data().as_ffi() as f64);
-            }
-            Event::HoverEnter { target } => {
-                out.push(10.0);
-                out.push(target.data().as_ffi() as f64);
-            }
-            Event::HoverLeave { target } => {
-                out.push(11.0);
-                out.push(target.data().as_ffi() as f64);
-            }
-            Event::KeyDown { target, modifiers, .. } => {
-                out.push(12.0);
-                out.push(target.data().as_ffi() as f64);
-                out.push(*modifiers as f64);
-            }
-            Event::ActiveStart { target } => {
-                out.push(13.0);
-                out.push(target.data().as_ffi() as f64);
-            }
-            Event::PointerMove { x, y } => {
-                out.push(14.0);
-                out.push(*x as f64);
-                out.push(*y as f64);
-            }
+            Event::ActiveStart { target } => { pf!(13.0); pf!(target.data().as_ffi()); }
+            Event::PointerMove { x, y }   => { pf!(14.0); pf!(*x); pf!(*y); }
         }
+        result.push(&sub);
     }
-    out.into_boxed_slice()
+    result
 }
 
 /// Fetch raw bytes from a URL.
