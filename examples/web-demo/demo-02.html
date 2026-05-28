@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hayate — Lv.2 Raw Layer インタラクティブ</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 48px;
+    }
+
+    .back-link {
+      display: inline-block;
+      align-self: flex-start;
+      margin-bottom: 14px;
+      font-size: .68rem;
+      color: #64748b;
+      text-decoration: none;
+      letter-spacing: .04em;
+      padding: 4px 10px;
+      border: 1px solid #334155;
+      border-radius: 999px;
+    }
+    .back-link:hover { color: #94a3b8; border-color: #475569; }
+
+    .lv-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: .6rem;
+      font-weight: 900;
+      letter-spacing: .08em;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 1rem; font-weight: 900; color: #f8fafc; letter-spacing: -.02em; }
+    header p  { font-size: .7rem; color: #475569; margin-top: 4px; }
+
+    .pipeline {
+      display: flex; align-items: center; gap: 4px;
+      margin-bottom: 20px; flex-wrap: wrap; justify-content: center;
+    }
+    .step {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      border: 1px solid #334155; background: #1e293b;
+      font-size: .65rem; font-weight: 700; color: #64748b;
+      white-space: nowrap; transition: all .2s;
+    }
+    .step .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; flex-shrink: 0; }
+    .step.ok   { color: #4ade80; border-color: #166534; background: #052e16; }
+    .step.ok .dot   { background: #4ade80; }
+    .step.run  { color: #818cf8; border-color: #3730a3; background: #1e1b4b; animation: pulse .9s ease-in-out infinite; }
+    .step.run .dot  { background: #818cf8; }
+    .step.fail { color: #f87171; border-color: #7f1d1d; background: #2d0a0a; }
+    .step.fail .dot { background: #f87171; }
+    .step.warn { color: #fbbf24; border-color: #78350f; background: #1c1002; }
+    .step.warn .dot { background: #fbbf24; }
+    @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+
+    .canvas-wrap {
+      position: relative; border: 2px solid #334155;
+      border-radius: 10px; overflow: hidden; background: #020617;
+    }
+    canvas { display: block; }
+    #canvas-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; background: #020617ee;
+      font-size: .85rem; color: #64748b; text-align: center;
+      padding: 24px; transition: opacity .3s;
+    }
+    #canvas-overlay.gone { opacity: 0; pointer-events: none; }
+    #overlay-icon { font-size: 2rem; }
+    #overlay-msg  { font-weight: 700; }
+    #overlay-sub  { font-size: .7rem; color: #475569; max-width: 380px; line-height: 1.6; }
+
+    .panel {
+      margin-top: 20px; width: 100%; max-width: 720px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .section { border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; }
+    .section-title {
+      padding: 8px 14px; font-size: .65rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: #475569; background: #1e293b44;
+    }
+    .section-body { padding: 14px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .row:last-child { margin-bottom: 0; }
+    .field { display: flex; flex-direction: column; gap: 3px; font-size: .65rem; color: #64748b; }
+    .field label { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    .field input {
+      padding: 4px 6px; background: #0f172a;
+      border: 1px solid #334155; border-radius: 6px;
+      color: #e2e8f0; font-family: inherit; font-size: .7rem;
+    }
+    .field input[type=number] { width: 76px; }
+    .field input[type=color]  { width: 44px; height: 28px; padding: 2px; background: #1e293b; cursor: pointer; }
+    button {
+      padding: 6px 14px; border: 1px solid #334155; border-radius: 6px;
+      background: #1e293b; color: #e2e8f0;
+      font-family: inherit; font-size: .72rem; font-weight: 700; cursor: pointer;
+      transition: background .15s, border-color .15s;
+    }
+    button:hover:not(:disabled) { background: #334155; border-color: #475569; }
+    button:disabled { opacity: .35; cursor: not-allowed; }
+    button.primary { background: #1d4ed8; border-color: #2563eb; color: #fff; }
+    button.primary:hover:not(:disabled) { background: #2563eb; }
+    button.danger { background: #7f1d1d; border-color: #b91c1c; color: #fca5a5; }
+    button.danger:hover:not(:disabled) { background: #991b1b; }
+    .bg-row { display: flex; align-items: center; gap: 10px; font-size: .72rem; color: #94a3b8; }
+
+    .feature-row {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 6px 0; font-size: .68rem; color: #94a3b8;
+      border-bottom: 1px solid #1e293b;
+    }
+    .feature-row:last-child { border-bottom: none; }
+    .feat-icon { font-size: .85rem; flex-shrink: 0; line-height: 1.3; }
+    .feat-name { flex: 1; font-family: ui-monospace, monospace; }
+    .feat-err  { color: #f87171; font-size: .6rem; flex: 2; word-break: break-all; opacity: .85; }
+    .feat-pending { font-size: .62rem; color: #475569; font-style: italic; }
+  </style>
+</head>
+<body>
+
+  <a href="./index.html" class="back-link">← 一覧に戻る</a>
+
+  <header>
+    <div class="lv-badge" style="background:#ca8a04">Lv.2</div>
+    <h1>Raw Layer — インタラクティブ</h1>
+    <p>フォームで矩形を追加・削除する。node_create / node_remove の動作確認</p>
+  </header>
+
+  <div class="pipeline" id="pipeline">
+    <div class="step" id="s1"><span class="dot"></span>WebGPU 検出</div>
+    <div class="step" id="s2"><span class="dot"></span>WASM ロード</div>
+    <div class="step" id="s3"><span class="dot"></span><span id="s3-label">Renderer 初期化</span></div>
+    <div class="step" id="s4"><span class="dot"></span>初期描画</div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="640" height="360"></canvas>
+    <div id="html-surface" style="display:none; width:640px; height:360px; position:relative; overflow:hidden;"></div>
+    <div id="canvas-overlay">
+      <div id="overlay-icon">⏳</div>
+      <div id="overlay-msg">初期化中...</div>
+      <div id="overlay-sub"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section">
+      <div class="section-title">背景色 · render(bg_r, bg_g, bg_b)</div>
+      <div class="section-body">
+        <div class="bg-row">
+          <label>背景色: <input type="color" id="bgColor" value="#0b1220" /></label>
+          <button id="renderBtn" disabled>render() を実行</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Rect ノードを追加 · node_create(x, y, w, h, r, g, b, a, radius)</div>
+      <div class="section-body">
+        <div class="row">
+          <div class="field"><label>X</label><input type="number" id="rx" value="60"  min="0"   max="620" /></div>
+          <div class="field"><label>Y</label><input type="number" id="ry" value="60"  min="0"   max="340" /></div>
+          <div class="field"><label>W</label><input type="number" id="rw" value="200" min="1"   max="640" /></div>
+          <div class="field"><label>H</label><input type="number" id="rh" value="120" min="1"   max="360" /></div>
+          <div class="field"><label>Radius</label><input type="number" id="rr" value="12" min="0" max="180" /></div>
+          <div class="field"><label>Fill</label><input type="color" id="rcolor" value="#3b82f6" /></div>
+          <div class="field"><label>Alpha</label><input type="number" id="ralpha" value="1.0" min="0" max="1" step="0.05" /></div>
+        </div>
+        <div class="row">
+          <button class="primary" id="addBtn" disabled>矩形を追加</button>
+          <button class="danger"  id="clearAllBtn" disabled>すべて削除</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">機能テスト結果 — API が例外を投げないことを確認</div>
+      <div class="section-body">
+        <div id="featureResults"><span class="feat-pending">初期化後に自動実行...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const $ = id => document.getElementById(id);
+    function step(id, state) { $(id).className = `step ${state}`; }
+    function overlay(icon, msg, sub = '') {
+      $('overlay-icon').textContent = icon;
+      $('overlay-msg').textContent  = msg;
+      $('overlay-sub').textContent  = sub;
+    }
+    function overlayGone() { $('canvas-overlay').classList.add('gone'); }
+    function hexToRgb01(hex) {
+      return [
+        parseInt(hex.slice(1,3),16)/255,
+        parseInt(hex.slice(3,5),16)/255,
+        parseInt(hex.slice(5,7),16)/255,
+      ];
+    }
+
+    // ── 1. WebGPU 検出 ─────────────────────────────────────────────────────
+    step('s1', 'run');
+    overlay('🔍', 'WebGPU を検出中...');
+    let webgpuOk = false;
+    try {
+      if (navigator.gpu) {
+        const adapter = await navigator.gpu.requestAdapter();
+        webgpuOk = !!adapter;
+      }
+    } catch { webgpuOk = false; }
+    step('s1', webgpuOk ? 'ok' : 'warn');
+
+    // ── 2. WASM ロード ─────────────────────────────────────────────────────
+    step('s2', 'run');
+    overlay('📦', 'WASM モジュールを読み込み中...');
+    let mod;
+    try {
+      mod = await import('./pkg/hayate_adapter_web.js');
+      await mod.default();
+      step('s2', 'ok');
+    } catch(e) {
+      step('s2', 'fail'); step('s3', 'fail'); step('s4', 'fail');
+      overlay('❌', 'WASM ロード失敗', String(e)); throw e;
+    }
+
+    let renderer = null;
+    const rawNodes = [];
+    let rawSeq = 0;
+
+    function bgColor() { return hexToRgb01($('bgColor').value); }
+    function render() {
+      if (!renderer) return;
+      const [r,g,b] = bgColor();
+      try { renderer.render(r, g, b); } catch(e) { console.error('[hayate] render:', e); }
+    }
+
+    function buildScene() {
+      const samples = [
+        { x: 40,  y: 40,  w: 220, h: 130, hex: '#3b82f6', alpha: 1.0,  radius: 16 },
+        { x: 300, y: 60,  w: 160, h: 100, hex: '#f59e0b', alpha: 0.85, radius: 8  },
+        { x: 160, y: 200, w: 300, h: 120, hex: '#10b981', alpha: 0.9,  radius: 24 },
+      ];
+      for (const s of samples) {
+        const [r,g,b] = hexToRgb01(s.hex);
+        const id = renderer.node_create(s.x, s.y, s.w, s.h, r, g, b, s.alpha, s.radius);
+        rawNodes.push({ seq: ++rawSeq, id });
+      }
+    }
+
+    async function initRenderer() {
+      step('s3', 'run');
+      try {
+        if (webgpuOk) {
+          $('s3-label').textContent = 'Raw Layer (Canvas)';
+          overlay('⚙️', 'Raw Layer (Canvas Mode) を初期化中...');
+          $('canvas').style.display = 'block';
+          $('html-surface').style.display = 'none';
+          renderer = await mod.HayateRenderer.init($('canvas'));
+        } else {
+          $('s3-label').textContent = 'Raw Layer (HTML)';
+          overlay('🌐', 'Raw Layer (HTML Mode) を初期化中...');
+          $('canvas').style.display = 'none';
+          $('html-surface').style.display = 'block';
+          renderer = mod.HayateHtmlRenderer.new($('html-surface'));
+        }
+        step('s3', 'ok');
+      } catch(e) {
+        step('s3', 'fail'); step('s4', 'fail');
+        overlay('❌', 'Renderer 初期化失敗', String(e)); throw e;
+      }
+      step('s4', 'run');
+      overlay('🎨', '初期シーンを構築中...');
+      try {
+        buildScene();
+        render();
+        step('s4', 'ok');
+        overlayGone();
+      } catch(e) {
+        step('s4', 'fail');
+        overlay('❌', '初期描画失敗', String(e)); throw e;
+      }
+    }
+
+    await initRenderer();
+
+    // ── 機能テスト ─────────────────────────────────────────────────────────
+    const results = $('featureResults');
+    results.innerHTML = '';
+
+    function test(label, fn) {
+      const row = document.createElement('div');
+      row.className = 'feature-row';
+      try {
+        fn();
+        row.innerHTML = `<span class="feat-icon">✅</span><span class="feat-name">${label}</span>`;
+      } catch(e) {
+        row.innerHTML = `<span class="feat-icon">❌</span><span class="feat-name">${label}</span><span class="feat-err">${String(e).slice(0,140)}</span>`;
+      }
+      results.appendChild(row);
+    }
+
+    test('node_create(x, y, w, h, r, g, b, alpha, radius)', () => {
+      const id = renderer.node_create(0, 0, 1, 1, 0, 0, 0, 0, 0);
+      renderer.node_remove(id);
+    });
+    test('node_remove(id)', () => {
+      const id = renderer.node_create(0, 0, 1, 1, 0, 0, 0, 0, 0);
+      renderer.node_remove(id);
+    });
+    test('render(bg_r, bg_g, bg_b)', () => {
+      const [r,g,b] = bgColor();
+      renderer.render(r, g, b);
+    });
+
+    // ── コントロール配線 ───────────────────────────────────────────────────
+    $('renderBtn').disabled = false;
+    $('renderBtn').addEventListener('click', render);
+    $('bgColor').addEventListener('input', render);
+
+    $('addBtn').disabled = false;
+    $('addBtn').addEventListener('click', () => {
+      const x      = Number($('rx').value);
+      const y      = Number($('ry').value);
+      const w      = Number($('rw').value);
+      const h      = Number($('rh').value);
+      const radius = Number($('rr').value);
+      const alpha  = Number($('ralpha').value);
+      const [r,g,b] = hexToRgb01($('rcolor').value);
+      const id = renderer.node_create(x, y, w, h, r, g, b, alpha, radius);
+      rawNodes.push({ seq: ++rawSeq, id });
+      render();
+    });
+
+    $('clearAllBtn').disabled = false;
+    $('clearAllBtn').addEventListener('click', () => {
+      for (const n of rawNodes) renderer.node_remove(n.id);
+      rawNodes.length = 0;
+      render();
+    });
+  </script>
+</body>
+</html>
