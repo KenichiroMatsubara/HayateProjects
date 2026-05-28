@@ -928,8 +928,18 @@ fn hit_test_walk(
         return None;
     }
     let el = elements.get(id)?;
-    // Check children in reverse order so the topmost (last drawn) is hit first.
-    for &child in el.children.iter().rev() {
+    // Visit children in reverse paint order so the topmost element wins.
+    // scene_build sorts children by ascending z-index (stable, so equal z's
+    // keep document order); the reverse is descending z-index, ties in
+    // reverse document order.
+    let mut ordered: Vec<(usize, ElementId, i32)> = el
+        .children
+        .iter()
+        .enumerate()
+        .map(|(idx, &cid)| (idx, cid, elements.get(cid).map_or(0, |c| c.visual.z_index)))
+        .collect();
+    ordered.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| b.0.cmp(&a.0)));
+    for (_, child, _) in ordered {
         if let Some(hit) = hit_test_walk(cache, elements, child, x, y) {
             return Some(hit);
         }

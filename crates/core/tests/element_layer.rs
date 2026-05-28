@@ -354,6 +354,68 @@ fn hit_test_returns_deepest_element() {
 }
 
 #[test]
+fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
+    // Regression: hit_test walked children in reverse document order, ignoring
+    // z-index. scene_build sorts by z-index for paint order, so the visually
+    // topmost element was unhittable when document order and z-index disagreed.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(ElementKind::View);
+    let back = tree.element_create(ElementKind::View);
+    let front = tree.element_create(ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+    );
+    // Flex column with a negative margin so the two 100×100 siblings overlap.
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    // `back` is appended FIRST but has z_index=1 (intended on top).
+    // `front` is appended SECOND with z_index=0 (intended behind), but a
+    // -100px margin-top makes it overlap `back` exactly.
+    tree.element_append_child(root, back);
+    tree.element_append_child(root, front);
+    tree.element_set_style(
+        back,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+            StyleProp::ZIndex(1),
+        ],
+    );
+    tree.element_set_style(
+        front,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+            StyleProp::MarginTop(Dimension::px(-100.0)),
+            StyleProp::ZIndex(0),
+        ],
+    );
+    tree.render(0.0);
+
+    // Confirm the two children actually overlap at (50, 50).
+    let back_rect = tree.element_layout_rect(back).unwrap();
+    let front_rect = tree.element_layout_rect(front).unwrap();
+    assert!(
+        (back_rect.0 - front_rect.0).abs() < 0.5
+            && (back_rect.1 - front_rect.1).abs() < 0.5,
+        "test setup failed: children must overlap (back={back_rect:?}, front={front_rect:?})"
+    );
+
+    // Visually `back` is on top (z=1 > z=0), so hit_test must return `back`.
+    assert_eq!(tree.hit_test(50.0, 50.0), Some(back));
+}
+
+#[test]
 fn push_and_poll_events() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(ElementKind::View);
@@ -450,6 +512,38 @@ fn preedit_shown_inline_not_committed() {
 
     // Display text includes preedit suffix.
     assert_eq!(tree.element_get_text_content(input), "abcDEF");
+}
+
+#[test]
+fn preedit_renders_when_text_content_is_empty() {
+    // Regression: typing IME composition into an empty TextInput must surface
+    // the preedit as a TextRun. scene_build previously gated content rendering
+    // on text_content alone, hiding the preedit until the user committed.
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(24.0),
+        ],
+    );
+
+    // No committed text yet — only an in-progress IME composition.
+    tree.element_set_preedit(input, "あ");
+
+    let sg = tree.render(0.0);
+    let text_run_count = sg
+        .iter()
+        .filter(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }))
+        .count();
+    assert!(
+        text_run_count > 0,
+        "preedit text must render as a TextRun even when text_content is empty"
+    );
 }
 
 #[test]

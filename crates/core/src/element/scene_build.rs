@@ -154,9 +154,10 @@ fn walk(
     // 3b) Text runs (TextInput uses content_layout; all others use text_layout).
     if el.kind == ElementKind::TextInput {
         let color = el.visual.text_color.with_opacity(el.visual.opacity).to_array_f32();
-        // Show content if present, else show placeholder text.
-        let runs = if !el.text_content.is_empty() {
-            el.content_layout.as_ref().map(|tl| tl.runs.as_slice())
+        // content_layout covers committed text + active preedit; fall back to
+        // placeholder (text_layout) only when neither is present.
+        let runs = if let Some(cl) = el.content_layout.as_ref() {
+            Some(cl.runs.as_slice())
         } else {
             el.text_layout.as_ref().map(|tl| tl.runs.as_slice())
         };
