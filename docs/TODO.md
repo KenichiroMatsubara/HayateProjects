@@ -61,11 +61,6 @@ Phase 1〜5 完了後の未実装項目。優先度順。
 
 ## P3 — アーキテクチャ改善
 
-### 9. イベント f64 エンコードに文字列を持てない
-- **現状**: TextInput/Composition イベントは `[tag, target_ffi]` のみ（テキストなし）
-- JS は `element_get_text_content(id)` で取得する運用
-- **改善案**: `poll_text_events() -> String`（JSON 配列）を追加し、文字列ペイロードを返す
-
 ### 10. `on_pointer_move` のヒットテスト負荷
 - 毎フレーム呼ばれる可能性があるため、layout_cache が空のときは skip する guard が必要
 - `if self.tree.layout_cache.is_empty() { return; }` を各 on_pointer_* の先頭に追加
