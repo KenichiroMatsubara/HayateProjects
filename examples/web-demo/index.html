@@ -275,6 +275,48 @@
       </div>
     </a>
 
+    <a class="card" href="./demo-tsubame-01.html">
+      <div class="card-header">
+        <span class="lv-badge" style="background:#0891b2">Tsubame-01</span>
+        <span class="card-title">apply_mutations — Hello World</span>
+      </div>
+      <div class="card-desc">element_create (バッチ外) + apply_mutations 1回 で "Hello, Tsubame" を描画。ADR-0039 の ops / styles バッファ構造を詳解。T5 (型確認) 対応。</div>
+      <div class="card-tags">
+        <span class="tag">apply_mutations</span>
+        <span class="tag">TsunameBatch</span>
+        <span class="tag">OP_SET_STYLE</span>
+        <span class="tag">Canvas Only</span>
+      </div>
+    </a>
+
+    <a class="card" href="./demo-tsubame-02.html">
+      <div class="card-header">
+        <span class="lv-badge" style="background:#0891b2">Tsubame-02</span>
+        <span class="card-title">動的追加・削除</span>
+      </div>
+      <div class="card-desc">ボタンで要素を追加・削除し OP_APPEND_CHILD / OP_REMOVE の動作を確認。T3 (flush_remove の dangling pointer バグ) 修正の動作確認用。</div>
+      <div class="card-tags">
+        <span class="tag">OP_APPEND_CHILD</span>
+        <span class="tag">OP_REMOVE</span>
+        <span class="tag">rAF ループ</span>
+        <span class="tag">T3 確認</span>
+      </div>
+    </a>
+
+    <a class="card" href="./demo-tsubame-03.html">
+      <div class="card-header">
+        <span class="lv-badge" style="background:#0891b2">Tsubame-03</span>
+        <span class="card-title">rAF ループ + イベント駆動</span>
+      </div>
+      <div class="card-desc">apply_mutations → render → poll_events を毎フレーム回す完全ループ。HoverEnter/Leave でボックスの色が変わる。T4 (layout_cache guard) も確認。</div>
+      <div class="card-tags">
+        <span class="tag">rAF ループ</span>
+        <span class="tag">poll_events</span>
+        <span class="tag">HoverEnter/Leave</span>
+        <span class="tag">T4 確認</span>
+      </div>
+    </a>
+
   </div>
 
   <!-- ── 実装状況ダッシュボード ────────────────────────────────────────── -->
@@ -388,6 +430,15 @@
           <span class="status-note">on_clipboard_paste API はあり。JS 側からの呼び出しフロー P2</span>
         </div>
         <span class="status-badge badge-wip">API のみ</span>
+      </div>
+
+      <div class="status-row">
+        <span class="status-icon">✅</span>
+        <div class="status-info">
+          <span class="status-name">apply_mutations (ADR-0039)</span>
+          <span class="status-note">Tsubame Canvas Renderer 用バッチ API。ops: Float64Array + styles: Float32Array。9 種 op_kind 対応。</span>
+        </div>
+        <span class="status-badge badge-ok">実装済み</span>
       </div>
 
       <div class="status-row">
