@@ -1,4 +1,4 @@
-use hayate_core::{
+﻿use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, Event,
     FlexDirectionValue, NodeKind, StyleProp,
 };
@@ -8,9 +8,9 @@ use hayate_core::{
 #[test]
 fn element_create_and_append_builds_tree() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let child_a = tree.element_create(ElementKind::View);
-    let child_b = tree.element_create(ElementKind::View);
+    let root = tree.element_create(1, ElementKind::View);
+    let child_a = tree.element_create(2, ElementKind::View);
+    let child_b = tree.element_create(3, ElementKind::View);
     tree.set_root(root);
     tree.element_append_child(root, child_a);
     tree.element_append_child(root, child_b);
@@ -20,7 +20,7 @@ fn element_create_and_append_builds_tree() {
 #[test]
 fn set_style_routes_layout_and_visual() {
     let mut tree = ElementTree::new();
-    let id = tree.element_create(ElementKind::View);
+    let id = tree.element_create(4, ElementKind::View);
     tree.set_root(id);
     tree.set_viewport(300.0, 200.0);
     tree.element_set_style(
@@ -48,9 +48,9 @@ fn set_style_routes_layout_and_visual() {
 #[test]
 fn flex_row_positions_children_with_gap() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let a = tree.element_create(ElementKind::View);
-    let b = tree.element_create(ElementKind::View);
+    let root = tree.element_create(5, ElementKind::View);
+    let a = tree.element_create(6, ElementKind::View);
+    let b = tree.element_create(7, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(500.0, 200.0);
 
@@ -95,8 +95,8 @@ fn flex_row_positions_children_with_gap() {
 #[test]
 fn text_element_produces_text_run() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let text = tree.element_create(ElementKind::Text);
+    let root = tree.element_create(8, ElementKind::View);
+    let text = tree.element_create(9, ElementKind::Text);
     tree.set_root(root);
     tree.set_viewport(400.0, 300.0);
     tree.element_append_child(root, text);
@@ -120,8 +120,8 @@ fn text_element_produces_text_run() {
 #[test]
 fn scene_build_walks_absolute_coordinates() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let child = tree.element_create(ElementKind::View);
+    let root = tree.element_create(10, ElementKind::View);
+    let child = tree.element_create(11, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(400.0, 400.0);
     tree.element_set_style(
@@ -165,8 +165,8 @@ fn scene_build_walks_absolute_coordinates() {
 #[test]
 fn scroll_view_emits_clip_node() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::ScrollView);
-    let content = tree.element_create(ElementKind::View);
+    let root = tree.element_create(12, ElementKind::ScrollView);
+    let content = tree.element_create(13, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(300.0, 300.0);
     tree.element_set_style(
@@ -191,8 +191,8 @@ fn scroll_view_emits_clip_node() {
 #[test]
 fn scroll_view_clip_contains_content_as_child() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::ScrollView);
-    let content = tree.element_create(ElementKind::View);
+    let root = tree.element_create(14, ElementKind::ScrollView);
+    let content = tree.element_create(15, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(300.0, 300.0);
     tree.element_set_style(
@@ -236,7 +236,7 @@ fn scroll_view_clip_contains_content_as_child() {
 fn transform_emits_group_node() {
     use hayate_core::{NodeKind};
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
+    let root = tree.element_create(16, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -281,9 +281,9 @@ fn transform_emits_group_node() {
 #[test]
 fn z_index_controls_paint_order() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let back = tree.element_create(ElementKind::View);
-    let front = tree.element_create(ElementKind::View);
+    let root = tree.element_create(17, ElementKind::View);
+    let back = tree.element_create(18, ElementKind::View);
+    let front = tree.element_create(19, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -332,8 +332,8 @@ fn z_index_controls_paint_order() {
 #[test]
 fn hit_test_returns_deepest_element() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let child = tree.element_create(ElementKind::View);
+    let root = tree.element_create(20, ElementKind::View);
+    let child = tree.element_create(21, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(400.0, 400.0);
     tree.element_set_style(
@@ -361,9 +361,9 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
     // z-index. scene_build sorts by z-index for paint order, so the visually
     // topmost element was unhittable when document order and z-index disagreed.
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let back = tree.element_create(ElementKind::View);
-    let front = tree.element_create(ElementKind::View);
+    let root = tree.element_create(22, ElementKind::View);
+    let back = tree.element_create(23, ElementKind::View);
+    let front = tree.element_create(24, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -420,7 +420,7 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
 #[test]
 fn push_and_poll_events() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
+    let root = tree.element_create(25, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -444,7 +444,7 @@ fn push_and_poll_events() {
 #[test]
 fn scroll_event_targets_hit_element() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::ScrollView);
+    let root = tree.element_create(26, ElementKind::ScrollView);
     tree.set_root(root);
     tree.set_viewport(300.0, 300.0);
     tree.element_set_style(
@@ -464,9 +464,9 @@ fn scroll_event_targets_hit_element() {
 #[test]
 fn remove_subtree_drops_children() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let a = tree.element_create(ElementKind::View);
-    let b = tree.element_create(ElementKind::View);
+    let root = tree.element_create(27, ElementKind::View);
+    let a = tree.element_create(28, ElementKind::View);
+    let b = tree.element_create(29, ElementKind::View);
     tree.set_root(root);
     tree.element_append_child(root, a);
     tree.element_append_child(a, b);
@@ -482,7 +482,7 @@ fn remove_subtree_drops_children() {
 #[test]
 fn text_input_append_and_get() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(30, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "hello");
@@ -495,7 +495,7 @@ fn text_input_append_and_get() {
 #[test]
 fn text_input_set_replaces_content() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(31, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "old");
@@ -506,7 +506,7 @@ fn text_input_set_replaces_content() {
 #[test]
 fn preedit_shown_inline_not_committed() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(32, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "abc");
@@ -522,7 +522,7 @@ fn preedit_renders_when_text_content_is_empty() {
     // the preedit as a TextRun. scene_build previously gated content rendering
     // on text_content alone, hiding the preedit until the user committed.
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(33, ElementKind::TextInput);
     tree.set_root(input);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -551,7 +551,7 @@ fn preedit_renders_when_text_content_is_empty() {
 #[test]
 fn commit_preedit_appends_and_clears() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(34, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "abc");
@@ -568,7 +568,7 @@ fn commit_preedit_appends_and_clears() {
 #[test]
 fn text_input_event_queued_on_append() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(35, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "x");
@@ -582,7 +582,7 @@ fn text_input_event_queued_on_append() {
 #[test]
 fn composition_lifecycle_events_queued() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(36, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.push_event(Event::CompositionStart { target: input, text: "あ".to_string() });
@@ -601,7 +601,7 @@ fn composition_lifecycle_events_queued() {
 #[test]
 fn backspace_removes_last_char() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(37, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "hello");
@@ -615,7 +615,7 @@ fn backspace_removes_last_char() {
 #[test]
 fn backspace_on_empty_is_noop() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(38, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_backspace(input);
@@ -625,7 +625,7 @@ fn backspace_on_empty_is_noop() {
 #[test]
 fn enter_key_inserts_newline() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(39, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "line1");
@@ -637,7 +637,7 @@ fn enter_key_inserts_newline() {
 #[test]
 fn key_down_event_carries_modifiers() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(40, ElementKind::TextInput);
     tree.set_root(input);
 
     // Shift+A with modifier bitmask
@@ -654,7 +654,7 @@ fn key_down_event_carries_modifiers() {
 #[test]
 fn cursor_visible_on_focus_hidden_on_blur() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(41, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_set_cursor_visible(input, true);
@@ -695,7 +695,7 @@ fn count_cursor_rects(sg: &hayate_core::SceneGraph) -> usize {
 #[test]
 fn render_timestamp_toggles_focused_cursor_every_500ms() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(42, ElementKind::TextInput);
     tree.set_root(input);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -717,7 +717,7 @@ fn render_timestamp_toggles_focused_cursor_every_500ms() {
 #[test]
 fn render_does_not_blink_when_nothing_is_focused() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(43, ElementKind::TextInput);
     tree.set_root(input);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -732,7 +732,7 @@ fn render_does_not_blink_when_nothing_is_focused() {
 #[test]
 fn blur_stops_blink_and_hides_cursor() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(44, ElementKind::TextInput);
     tree.set_root(input);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -751,7 +751,7 @@ fn blur_stops_blink_and_hides_cursor() {
 #[test]
 fn semantic_event_variants_roundtrip_through_poll() {
     let mut tree = ElementTree::new();
-    let target = tree.element_create(ElementKind::View);
+    let target = tree.element_create(45, ElementKind::View);
     tree.set_root(target);
 
     tree.push_event(Event::HoverEnter { target });
@@ -774,7 +774,7 @@ fn semantic_event_variants_roundtrip_through_poll() {
 #[test]
 fn has_layout_false_before_render_true_after() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
+    let root = tree.element_create(46, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -791,7 +791,7 @@ fn has_layout_false_before_render_true_after() {
 #[test]
 fn paste_into_empty_text_input_sets_content() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(47, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_paste(input, "hello");
@@ -801,7 +801,7 @@ fn paste_into_empty_text_input_sets_content() {
 #[test]
 fn paste_appends_to_existing_content() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(48, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "abc");
@@ -812,7 +812,7 @@ fn paste_appends_to_existing_content() {
 #[test]
 fn paste_commits_active_preedit_then_appends() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(49, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_append_text_content(input, "abc");
@@ -829,7 +829,7 @@ fn paste_commits_active_preedit_then_appends() {
 #[test]
 fn paste_queues_text_input_event() {
     let mut tree = ElementTree::new();
-    let input = tree.element_create(ElementKind::TextInput);
+    let input = tree.element_create(50, ElementKind::TextInput);
     tree.set_root(input);
 
     tree.element_paste(input, "hello");
@@ -844,7 +844,7 @@ fn paste_queues_text_input_event() {
 #[test]
 fn paste_on_non_text_input_is_noop() {
     let mut tree = ElementTree::new();
-    let view = tree.element_create(ElementKind::View);
+    let view = tree.element_create(51, ElementKind::View);
     tree.set_root(view);
 
     tree.element_paste(view, "ignored");
@@ -857,10 +857,10 @@ fn paste_on_non_text_input_is_noop() {
 #[test]
 fn insert_before_reorders_children_in_flex_row() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let a = tree.element_create(ElementKind::View);
-    let b = tree.element_create(ElementKind::View);
-    let c = tree.element_create(ElementKind::View);
+    let root = tree.element_create(52, ElementKind::View);
+    let a = tree.element_create(53, ElementKind::View);
+    let b = tree.element_create(54, ElementKind::View);
+    let c = tree.element_create(55, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(400.0, 200.0);
     tree.element_set_style(
@@ -905,8 +905,8 @@ fn insert_before_reorders_children_in_flex_row() {
 #[test]
 fn element_content_size_returns_children_bounds() {
     let mut tree = ElementTree::new();
-    let sv = tree.element_create(ElementKind::ScrollView);
-    let content = tree.element_create(ElementKind::View);
+    let sv = tree.element_create(56, ElementKind::ScrollView);
+    let content = tree.element_create(57, ElementKind::View);
     tree.set_root(sv);
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
@@ -934,8 +934,8 @@ fn element_content_size_returns_children_bounds() {
 #[test]
 fn resolved_elements_returns_absolute_positions() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let child = tree.element_create(ElementKind::View);
+    let root = tree.element_create(58, ElementKind::View);
+    let child = tree.element_create(59, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(400.0, 300.0);
     tree.element_set_style(
@@ -978,7 +978,7 @@ fn default_font_family_constant_is_noto_sans() {
 #[test]
 fn scroll_offset_readback_matches_set_value() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::ScrollView);
+    let root = tree.element_create(60, ElementKind::ScrollView);
     tree.set_root(root);
 
     tree.element_set_scroll_offset(root, 30.0, 75.0);
@@ -990,8 +990,8 @@ fn scroll_offset_readback_matches_set_value() {
 #[test]
 fn unknown_font_family_falls_back_to_default() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let text = tree.element_create(ElementKind::Text);
+    let root = tree.element_create(61, ElementKind::View);
+    let text = tree.element_create(62, ElementKind::Text);
     tree.set_root(root);
     tree.set_viewport(400.0, 300.0);
     tree.element_append_child(root, text);
@@ -1013,8 +1013,8 @@ fn unknown_font_family_falls_back_to_default() {
 #[test]
 fn remove_clears_focused_element() {
     let mut tree = ElementTree::new();
-    let root = tree.element_create(ElementKind::View);
-    let input = tree.element_create(ElementKind::TextInput);
+    let root = tree.element_create(63, ElementKind::View);
+    let input = tree.element_create(64, ElementKind::TextInput);
     tree.set_root(root);
     tree.element_append_child(root, input);
 

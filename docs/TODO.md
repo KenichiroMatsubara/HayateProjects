@@ -15,9 +15,22 @@
 - Parley の FontContext は `ElementTree` が保持しているため、adapter からアクセスするヘルパーが必要
 
 ### 8. アクセシビリティツリー（accesskit）未実装
-- Parley は accesskit feature フラグあり（`crates/vendor/parley/`）
-- `NodeKind::TextRun` に対応する accesskit Node を SceneGraph から生成する設計が必要
-- 優先度は低いが、本番利用には必要
+設計確定済み（2026-05-30）。実装順序は ADR-0041 参照。
+
+**ネイティブ対応（優先）:**
+- WIT に `poll_accessibility()` を追加（オンデマンド、フレームコストゼロ）
+- WIT に role enum 14種を定義（`generic-container` / `button` / `label` / `text-input` / `scroll-view` / `image` / `list` / `list-item` / `heading` / `link` / `navigation` / `main` / `dialog` / `alert-dialog`）
+- Element Tree を walk し、`layout_cache` から境界矩形を補完して `accesskit::TreeUpdate` を生成
+- `text` / `text-input` のテキスト詳細は Parley の `LayoutAccessibility::build_nodes` を呼ぶ
+- `ElementId` の `u64` キャストで AccessKit `NodeId` に直接変換（マッピングテーブル不要）
+- 返り値は WIT record のフラットリスト
+- Platform Adapter が `TreeUpdate` を受け取り各プラットフォームの AT（UIA / NSAccessibility / AT-SPI）に報告
+
+**Web HTML Mode 対応（ネイティブ後）:**
+- 実 DOM に ARIA 属性を付与する形で対応
+
+**Web Canvas Mode 対応（Safari が EditContext API を正式サポートした時点で最優先）:**
+- `accesskit-web` クレートを使い `<canvas>` 隣に不可視 ARIA DOM を生成
 
 ---
 

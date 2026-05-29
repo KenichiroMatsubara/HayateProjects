@@ -1,7 +1,6 @@
-use std::collections::HashMap;
+﻿use std::collections::HashMap;
 
 use parley::{FontContext, LayoutContext};
-use slotmap::SlotMap;
 use taffy::{AvailableSpace, NodeId as TaffyId, Size as TaffySize, Style as TaffyStyle, TaffyTree};
 
 use std::sync::Arc;
@@ -130,7 +129,7 @@ pub struct ResolvedElement {
 }
 
 pub struct ElementTree {
-    pub(crate) elements: SlotMap<ElementId, Element>,
+    pub(crate) elements: HashMap<ElementId, Element>,
     pub(crate) root: Option<ElementId>,
     pub(crate) taffy: TaffyTree<MeasureCtx>,
     pub(crate) font_cx: FontContext,
@@ -174,7 +173,7 @@ impl ElementTree {
         let mut font_cx = FontContext::new();
         init_bundled_fonts(&mut font_cx);
         Self {
-            elements: SlotMap::with_key(),
+            elements: HashMap::new(),
             root: None,
             taffy: TaffyTree::new(),
             font_cx,
@@ -201,23 +200,21 @@ impl ElementTree {
     }
 
     pub fn set_root(&mut self, id: ElementId) {
-        debug_assert!(self.elements.contains_key(id), "set_root: unknown id");
+        debug_assert!(self.elements.contains_key(&id), "set_root: unknown id");
         self.root = Some(id);
     }
 
-    pub fn element_create(&mut self, kind: ElementKind) -> ElementId {
+    pub fn element_create(&mut self, id: u64, kind: ElementKind) -> ElementId {
+        let id = ElementId::from_u64(id);
         let layout_style = TaffyStyle::default();
-        // Text-like leaves get a measure context so Taffy invokes the closure.
-        let taffy_node = if kind.is_text_like() {
-            // Placeholder ElementId; rewritten below once we know the slotmap key.
-            self.taffy
-                .new_leaf_with_context(layout_style.clone(), MeasureCtx::None)
-                .expect("taffy new_leaf_with_context")
+        let measure_ctx = if kind.is_text_like() {
+            MeasureCtx::Text(id)
         } else {
-            self.taffy
-                .new_leaf_with_context(layout_style.clone(), MeasureCtx::None)
-                .expect("taffy new_leaf_with_context")
+            MeasureCtx::None
         };
+        let taffy_node = self.taffy
+            .new_leaf_with_context(layout_style.clone(), measure_ctx)
+            .expect("taffy new_leaf_with_context");
 
         let element = Element {
             kind,
@@ -240,13 +237,7 @@ impl ElementTree {
             aria_label: None,
             role: None,
         };
-        let id = self.elements.insert(element);
-
-        if kind.is_text_like() {
-            self.taffy
-                .set_node_context(taffy_node, Some(MeasureCtx::Text(id)))
-                .expect("set_node_context");
-        }
+        self.elements.insert(id, element);
 
         if self.root.is_none() {
             self.root = Some(id);
@@ -255,7 +246,7 @@ impl ElementTree {
     }
 
     pub fn element_set_text(&mut self, id: ElementId, text: &str) {
-        let el = match self.elements.get_mut(id) {
+        let el = match self.elements.get_mut(&id) {
             Some(e) => e,
             None => return,
         };
@@ -266,7 +257,7 @@ impl ElementTree {
     }
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.src = Some(url.to_string());
             el.src_image = None; // invalidate any previously loaded image
         }
@@ -274,14 +265,14 @@ impl ElementTree {
 
     /// Store decoded image data for an Image element (called by the adapter after async load).
     pub fn element_set_image(&mut self, id: ElementId, image: Arc<ImageData>) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.src_image = Some(image);
         }
     }
 
     /// Replace the editable text content of a TextInput element.
     pub fn element_set_text_content(&mut self, id: ElementId, text: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.text_content = text.to_string();
             el.preedit = None;
             el.cursor_byte_index = el.text_content.len();
@@ -290,7 +281,7 @@ impl ElementTree {
 
     /// Append text to a TextInput's committed content.
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.text_content.push_str(text);
             el.cursor_byte_index = el.text_content.len();
         }
@@ -298,7 +289,7 @@ impl ElementTree {
 
     /// Remove the last Unicode scalar value from a TextInput's committed content.
     pub fn element_backspace(&mut self, id: ElementId) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             if el.kind == ElementKind::TextInput && !el.text_content.is_empty() {
                 let last_start = el.text_content
                     .char_indices()
@@ -313,7 +304,7 @@ impl ElementTree {
 
     /// Show or hide the insertion cursor for a TextInput element.
     pub fn element_set_cursor_visible(&mut self, id: ElementId, visible: bool) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = visible;
         }
     }
@@ -326,11 +317,11 @@ impl ElementTree {
             return;
         }
         if let Some(prev) = self.focused_element {
-            if let Some(el) = self.elements.get_mut(prev) {
+            if let Some(el) = self.elements.get_mut(&prev) {
                 el.cursor_visible = false;
             }
         }
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = true;
         }
         self.focused_element = Some(id);
@@ -342,7 +333,7 @@ impl ElementTree {
         if self.focused_element != Some(id) {
             return;
         }
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = false;
         }
         self.focused_element = None;
@@ -357,7 +348,7 @@ impl ElementTree {
     /// Set the font family (by name) for an element. The family must first be registered via
     /// `register_font`, or be a system font available in the default FontContext.
     pub fn element_set_font_family(&mut self, id: ElementId, family: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.visual.font_family = if family.is_empty() { None } else { Some(family.to_string()) };
             el.text_layout = None;
             el.content_layout = None;
@@ -368,14 +359,14 @@ impl ElementTree {
 
     /// Set the ARIA label for screen-reader accessibility.
     pub fn element_set_aria_label(&mut self, id: ElementId, label: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.aria_label = if label.is_empty() { None } else { Some(label.to_string()) };
         }
     }
 
     /// Set the ARIA role (e.g. "button", "listitem", "img"). Pass an empty string to clear.
     pub fn element_set_role(&mut self, id: ElementId, role: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.role = if role.is_empty() { None } else { Some(role.to_string()) };
         }
     }
@@ -405,14 +396,14 @@ impl ElementTree {
 
     /// Set the IME preedit for a TextInput (in-progress, not yet committed).
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.preedit = if preedit.is_empty() { None } else { Some(preedit.to_string()) };
         }
     }
 
     /// Commit the current preedit text into text_content and clear the preedit.
     pub fn element_commit_preedit(&mut self, id: ElementId) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             if let Some(preedit) = el.preedit.take() {
                 el.text_content.push_str(&preedit);
             }
@@ -425,7 +416,7 @@ impl ElementTree {
         if text.is_empty() {
             return;
         }
-        let el = match self.elements.get_mut(id) {
+        let el = match self.elements.get_mut(&id) {
             Some(e) if e.kind == ElementKind::TextInput => e,
             _ => return,
         };
@@ -438,7 +429,7 @@ impl ElementTree {
 
     /// Return the combined display text (text_content + any active preedit) for a TextInput.
     pub fn element_get_text_content(&self, id: ElementId) -> String {
-        let el = match self.elements.get(id) {
+        let el = match self.elements.get(&id) {
             Some(e) => e,
             None => return String::new(),
         };
@@ -451,21 +442,21 @@ impl ElementTree {
     /// Set a 2D affine transform on the element (6 kurbo coefficients [a,b,c,d,e,f]).
     /// Pass an empty/None to clear. The transform is applied on top of layout coordinates.
     pub fn element_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.transform = matrix;
         }
     }
 
     /// Programmatically set the scroll offset of a ScrollView element.
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
-        if let Some(el) = self.elements.get_mut(id) {
+        if let Some(el) = self.elements.get_mut(&id) {
             el.scroll_offset = (x, y);
         }
     }
 
     /// Read the current scroll offset of an element.
     pub fn element_get_scroll_offset(&self, id: ElementId) -> (f32, f32) {
-        self.elements.get(id).map_or((0.0, 0.0), |e| e.scroll_offset)
+        self.elements.get(&id).map_or((0.0, 0.0), |e| e.scroll_offset)
     }
 
     /// Return the absolute layout rect (x, y, w, h) from the last render pass.
@@ -494,7 +485,7 @@ impl ElementTree {
         max_x: &mut f32,
         max_y: &mut f32,
     ) {
-        let el = match self.elements.get(id) {
+        let el = match self.elements.get(&id) {
             Some(e) => e,
             None => return,
         };
@@ -508,7 +499,7 @@ impl ElementTree {
     }
 
     pub fn element_set_style(&mut self, id: ElementId, props: &[StyleProp]) {
-        let el = match self.elements.get_mut(id) {
+        let el = match self.elements.get_mut(&id) {
             Some(e) => e,
             None => return,
         };
@@ -536,18 +527,18 @@ impl ElementTree {
     }
 
     pub fn element_append_child(&mut self, parent: ElementId, child: ElementId) {
-        if !self.elements.contains_key(parent) || !self.elements.contains_key(child) {
+        if !self.elements.contains_key(&parent) || !self.elements.contains_key(&child) {
             return;
         }
         self.detach_from_current_parent(child);
         let (parent_taffy, child_taffy) = {
-            let p = &self.elements[parent];
-            let c = &self.elements[child];
+            let p = &self.elements[&parent];
+            let c = &self.elements[&child];
             (p.taffy_node, c.taffy_node)
         };
         let _ = self.taffy.add_child(parent_taffy, child_taffy);
-        self.elements[parent].children.push(child);
-        self.elements[child].parent = Some(parent);
+        self.elements.get_mut(&parent).unwrap().children.push(child);
+        self.elements.get_mut(&child).unwrap().parent = Some(parent);
     }
 
     pub fn element_insert_before(
@@ -556,14 +547,14 @@ impl ElementTree {
         child: ElementId,
         before: ElementId,
     ) {
-        if !self.elements.contains_key(parent)
-            || !self.elements.contains_key(child)
-            || !self.elements.contains_key(before)
+        if !self.elements.contains_key(&parent)
+            || !self.elements.contains_key(&child)
+            || !self.elements.contains_key(&before)
         {
             return;
         }
         self.detach_from_current_parent(child);
-        let index = match self.elements[parent].children.iter().position(|&c| c == before) {
+        let index = match self.elements[&parent].children.iter().position(|&c| c == before) {
             Some(i) => i,
             None => {
                 // `before` is not a child of `parent`; append as a fallback.
@@ -572,17 +563,17 @@ impl ElementTree {
             }
         };
         let (parent_taffy, child_taffy) = {
-            let p = &self.elements[parent];
-            let c = &self.elements[child];
+            let p = &self.elements[&parent];
+            let c = &self.elements[&child];
             (p.taffy_node, c.taffy_node)
         };
         let _ = self.taffy.insert_child_at_index(parent_taffy, index, child_taffy);
-        self.elements[parent].children.insert(index, child);
-        self.elements[child].parent = Some(parent);
+        self.elements.get_mut(&parent).unwrap().children.insert(index, child);
+        self.elements.get_mut(&child).unwrap().parent = Some(parent);
     }
 
     pub fn element_remove(&mut self, id: ElementId) {
-        if !self.elements.contains_key(id) {
+        if !self.elements.contains_key(&id) {
             return;
         }
         self.detach_from_current_parent(id);
@@ -591,12 +582,12 @@ impl ElementTree {
         let mut to_remove = Vec::new();
         while let Some(node) = stack.pop() {
             to_remove.push(node);
-            if let Some(el) = self.elements.get(node) {
+            if let Some(el) = self.elements.get(&node) {
                 stack.extend(el.children.iter().copied());
             }
         }
         for node in to_remove.into_iter().rev() {
-            if let Some(el) = self.elements.remove(node) {
+            if let Some(el) = self.elements.remove(&node) {
                 let _ = self.taffy.remove(el.taffy_node);
             }
             if self.focused_element == Some(node) {
@@ -611,17 +602,17 @@ impl ElementTree {
 
     pub fn element_get_text(&self, id: ElementId) -> String {
         self.elements
-            .get(id)
+            .get(&id)
             .and_then(|e| e.text.clone())
             .unwrap_or_default()
     }
 
     pub fn element_kind(&self, id: ElementId) -> Option<ElementKind> {
-        self.elements.get(id).map(|e| e.kind)
+        self.elements.get(&id).map(|e| e.kind)
     }
 
     pub fn element_parent(&self, id: ElementId) -> Option<ElementId> {
-        self.elements.get(id).and_then(|e| e.parent)
+        self.elements.get(&id).and_then(|e| e.parent)
     }
 
     /// Run layout, lower the element tree into the scene graph, and return it.
@@ -651,13 +642,13 @@ impl ElementTree {
             None => {
                 // First frame after focus: keep cursor visible, start the clock.
                 self.last_cursor_toggle_ms = Some(timestamp_ms);
-                if let Some(el) = self.elements.get_mut(focused) {
+                if let Some(el) = self.elements.get_mut(&focused) {
                     el.cursor_visible = true;
                 }
             }
             Some(prev) if timestamp_ms - prev >= 500.0 => {
                 self.last_cursor_toggle_ms = Some(timestamp_ms);
-                if let Some(el) = self.elements.get_mut(focused) {
+                if let Some(el) = self.elements.get_mut(&focused) {
                     el.cursor_visible = !el.cursor_visible;
                 }
             }
@@ -708,23 +699,22 @@ impl ElementTree {
     // ── internals ────────────────────────────────────────────────────────
 
     fn detach_from_current_parent(&mut self, child: ElementId) {
-        let parent = match self.elements.get(child).and_then(|c| c.parent) {
+        let parent = match self.elements.get(&child).and_then(|c| c.parent) {
             Some(p) => p,
             None => return,
         };
         let (parent_taffy, child_taffy) = {
-            let p = &self.elements[parent];
-            let c = &self.elements[child];
+            let p = &self.elements[&parent];
+            let c = &self.elements[&child];
             (p.taffy_node, c.taffy_node)
         };
         let _ = self.taffy.remove_child(parent_taffy, child_taffy);
-        let p = &mut self.elements[parent];
-        p.children.retain(|&c| c != child);
-        self.elements[child].parent = None;
+        self.elements.get_mut(&parent).unwrap().children.retain(|&c| c != child);
+        self.elements.get_mut(&child).unwrap().parent = None;
     }
 
     fn compute_layout(&mut self, root: ElementId) {
-        let root_taffy = self.elements[root].taffy_node;
+        let root_taffy = self.elements[&root].taffy_node;
         let available = TaffySize {
             width: AvailableSpace::Definite(self.viewport.0),
             height: AvailableSpace::Definite(self.viewport.1),
@@ -749,7 +739,7 @@ impl ElementTree {
                     Some(MeasureCtx::Text(eid)) => *eid,
                     _ => return TaffySize::ZERO,
                 };
-                let el = match elements.get(eid) {
+                let el = match elements.get(&eid) {
                     Some(e) => e,
                     None => return TaffySize::ZERO,
                 };
@@ -792,7 +782,7 @@ impl ElementTree {
                     rd.text = src.clone();
                 }
             }
-            if let Some(el) = elements.get_mut(eid) {
+            if let Some(el) = elements.get_mut(&eid) {
                 el.text_layout = Some(layout);
             }
         }
@@ -801,13 +791,13 @@ impl ElementTree {
         let textinput_ids: Vec<ElementId> = elements
             .iter()
             .filter_map(|(id, el)| {
-                if el.kind == ElementKind::TextInput { Some(id) } else { None }
+                if el.kind == ElementKind::TextInput { Some(*id) } else { None }
             })
             .collect();
 
         for eid in textinput_ids {
             let (display_text, font_size) = {
-                let el = match elements.get(eid) {
+                let el = match elements.get(&eid) {
                     Some(e) => e,
                     None => continue,
                 };
@@ -819,14 +809,14 @@ impl ElementTree {
             };
 
             if display_text.is_empty() {
-                if let Some(el) = elements.get_mut(eid) {
+                if let Some(el) = elements.get_mut(&eid) {
                     el.content_layout = None;
                 }
                 continue;
             }
 
             let (max_advance, font_family) = {
-                let el = elements.get(eid).map(|e| (
+                let el = elements.get(&eid).map(|e| (
                     taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
                     e.visual.font_family.clone(),
                 ));
@@ -841,7 +831,7 @@ impl ElementTree {
                 font_family.as_deref(),
             );
 
-            if let Some(el) = elements.get_mut(eid) {
+            if let Some(el) = elements.get_mut(&eid) {
                 el.content_layout = Some(content_layout);
                 el.cursor_byte_index = el.text_content.len();
             }
@@ -856,14 +846,14 @@ impl Default for ElementTree {
 }
 
 fn walk_resolved(
-    elements: &SlotMap<ElementId, Element>,
+    elements: &HashMap<ElementId, Element>,
     taffy: &TaffyTree<MeasureCtx>,
     id: ElementId,
     ox: f32,
     oy: f32,
     out: &mut Vec<(ElementId, ResolvedElement)>,
 ) {
-    let el = match elements.get(id) {
+    let el = match elements.get(&id) {
         Some(e) => e,
         None => return,
     };
@@ -915,14 +905,14 @@ fn walk_resolved(
 }
 
 fn cache_layout(
-    elements: &SlotMap<ElementId, Element>,
+    elements: &HashMap<ElementId, Element>,
     taffy: &TaffyTree<MeasureCtx>,
     id: ElementId,
     ox: f32,
     oy: f32,
     cache: &mut HashMap<ElementId, (f32, f32, f32, f32)>,
 ) {
-    let el = match elements.get(id) {
+    let el = match elements.get(&id) {
         Some(e) => e,
         None => return,
     };
@@ -940,7 +930,7 @@ fn cache_layout(
 
 fn hit_test_walk(
     cache: &HashMap<ElementId, (f32, f32, f32, f32)>,
-    elements: &SlotMap<ElementId, Element>,
+    elements: &HashMap<ElementId, Element>,
     id: ElementId,
     x: f32,
     y: f32,
@@ -949,7 +939,7 @@ fn hit_test_walk(
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
     }
-    let el = elements.get(id)?;
+    let el = elements.get(&id)?;
     // Visit children in reverse paint order so the topmost element wins.
     // scene_build sorts children by ascending z-index (stable, so equal z's
     // keep document order); the reverse is descending z-index, ties in
@@ -958,7 +948,7 @@ fn hit_test_walk(
         .children
         .iter()
         .enumerate()
-        .map(|(idx, &cid)| (idx, cid, elements.get(cid).map_or(0, |c| c.visual.z_index)))
+        .map(|(idx, &cid)| (idx, cid, elements.get(&cid).map_or(0, |c| c.visual.z_index)))
         .collect();
     ordered.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| b.0.cmp(&a.0)));
     for (_, child, _) in ordered {

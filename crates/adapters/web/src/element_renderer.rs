@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use hayate_core::{ElementId, ElementKind, ElementTree, Event, StyleProp, vello_bridge};
-use slotmap::{Key, KeyData, SlotMap};
+use std::collections::HashMap;
 use vello::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat, color::{AlphaColor, Srgb}};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -46,11 +46,11 @@ fn document() -> Document {
 }
 
 fn element_id_from_f64(raw: f64) -> ElementId {
-    ElementId::from(KeyData::from_ffi(raw as u64))
+    ElementId::from_u64(raw as u64)
 }
 
 fn element_id_to_f64(id: ElementId) -> f64 {
-    id.data().as_ffi() as f64
+    id.to_u64() as f64
 }
 
 fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
@@ -163,13 +163,12 @@ impl HayateElementRenderer {
         self.tree.set_viewport(width, height);
     }
 
-    /// Allocates the tree-side ElementId synchronously so JS has a stable
-    /// handle to use in subsequent queued calls. Tree allocation is purely
-    /// in-WASM (a slotmap insert plus a Taffy leaf) so no JS boundary cost is
-    /// paid — only DOM-touching mutations need to be deferred (ADR-0030).
-    pub fn element_create(&mut self, kind: u32) -> Result<f64, JsValue> {
+    /// Registers an element with a caller-supplied ID. JS generates the ID
+    /// via a monotonic counter, eliminating the WASM round-trip for ID allocation.
+    pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
-        Ok(element_id_to_f64(self.tree.element_create(k)))
+        self.tree.element_create(id as u64, k);
+        Ok(())
     }
 
     pub fn element_set_text(&mut self, id: f64, text: &str) {
@@ -602,7 +601,7 @@ struct HtmlNode {
 #[wasm_bindgen]
 pub struct HayateElementHtmlRenderer {
     container: HtmlElement,
-    nodes: SlotMap<ElementId, HtmlNode>,
+    nodes: HashMap<ElementId, HtmlNode>,
     root: Option<ElementId>,
     event_queue: Vec<Event>,
     focused_element: Option<ElementId>,
@@ -624,7 +623,7 @@ impl HayateElementHtmlRenderer {
         style.set_property("overflow", "hidden")?;
         Ok(Self {
             container,
-            nodes: SlotMap::with_key(),
+            nodes: HashMap::new(),
             root: None,
             event_queue: Vec::new(),
             focused_element: None,
@@ -653,12 +652,12 @@ impl HayateElementHtmlRenderer {
         self.event_queue.push(Event::Resize { width, height });
     }
 
-    /// Allocates a slotmap entry synchronously and queues the DOM creation.
-    /// The returned ID is valid for subsequent queued calls; the actual DOM
-    /// element is materialised on the next `render()` (ADR-0030).
-    pub fn element_create(&mut self, kind: u32) -> Result<f64, JsValue> {
+    /// Registers an element with a caller-supplied ID and queues the DOM creation.
+    /// The actual DOM element is materialised on the next `render()` (ADR-0030).
+    pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
-        let id = self.nodes.insert(HtmlNode {
+        let eid = element_id_from_f64(id);
+        self.nodes.insert(eid, HtmlNode {
             kind: k,
             dom: None,
             parent: None,
@@ -666,8 +665,8 @@ impl HayateElementHtmlRenderer {
             text: None,
             src: None,
         });
-        self.pending.push(Command::HtmlCreate { id, kind: k });
-        Ok(element_id_to_f64(id))
+        self.pending.push(Command::HtmlCreate { id: eid, kind: k });
+        Ok(())
     }
 
     pub fn element_set_text(&mut self, id: f64, text: &str) {
@@ -1421,7 +1420,6 @@ fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementI
 ///   pointer_move: [14, x, y]                                (no target — ADR-0031)
 fn encode_events(events: &[Event]) -> js_sys::Array {
     use js_sys::Array;
-    use slotmap::Key;
     let result = Array::new();
     for event in events {
         let sub = Array::new();
@@ -1433,33 +1431,33 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
         }
         match event {
             Event::Click { target, x, y } => {
-                pf!(0.0); pf!(target.data().as_ffi()); pf!(*x); pf!(*y);
+                pf!(0.0); pf!(target.to_u64()); pf!(*x); pf!(*y);
             }
-            Event::Focus(target) => { pf!(1.0); pf!(target.data().as_ffi()); }
-            Event::Blur(target)  => { pf!(2.0); pf!(target.data().as_ffi()); }
+            Event::Focus(target) => { pf!(1.0); pf!(target.to_u64()); }
+            Event::Blur(target)  => { pf!(2.0); pf!(target.to_u64()); }
             Event::TextInput { target, text } => {
-                pf!(3.0); pf!(target.data().as_ffi()); ps!(text);
+                pf!(3.0); pf!(target.to_u64()); ps!(text);
             }
             Event::CompositionStart { target, text } => {
-                pf!(4.0); pf!(target.data().as_ffi()); ps!(text);
+                pf!(4.0); pf!(target.to_u64()); ps!(text);
             }
             Event::CompositionUpdate { target, text } => {
-                pf!(5.0); pf!(target.data().as_ffi()); ps!(text);
+                pf!(5.0); pf!(target.to_u64()); ps!(text);
             }
             Event::CompositionEnd { target, text } => {
-                pf!(6.0); pf!(target.data().as_ffi()); ps!(text);
+                pf!(6.0); pf!(target.to_u64()); ps!(text);
             }
             Event::Scroll { target, delta_x, delta_y } => {
-                pf!(7.0); pf!(target.data().as_ffi()); pf!(*delta_x); pf!(*delta_y);
+                pf!(7.0); pf!(target.to_u64()); pf!(*delta_x); pf!(*delta_y);
             }
             Event::Resize { width, height } => { pf!(8.0); pf!(*width); pf!(*height); }
-            Event::ActiveEnd { target }   => { pf!(9.0);  pf!(target.data().as_ffi()); }
-            Event::HoverEnter { target }  => { pf!(10.0); pf!(target.data().as_ffi()); }
-            Event::HoverLeave { target }  => { pf!(11.0); pf!(target.data().as_ffi()); }
+            Event::ActiveEnd { target }   => { pf!(9.0);  pf!(target.to_u64()); }
+            Event::HoverEnter { target }  => { pf!(10.0); pf!(target.to_u64()); }
+            Event::HoverLeave { target }  => { pf!(11.0); pf!(target.to_u64()); }
             Event::KeyDown { target, key, modifiers } => {
-                pf!(12.0); pf!(target.data().as_ffi()); ps!(key); pf!(*modifiers);
+                pf!(12.0); pf!(target.to_u64()); ps!(key); pf!(*modifiers);
             }
-            Event::ActiveStart { target } => { pf!(13.0); pf!(target.data().as_ffi()); }
+            Event::ActiveStart { target } => { pf!(13.0); pf!(target.to_u64()); }
             Event::PointerMove { x, y }   => { pf!(14.0); pf!(*x); pf!(*y); }
         }
         result.push(&sub);

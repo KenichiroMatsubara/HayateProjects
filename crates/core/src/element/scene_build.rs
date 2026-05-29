@@ -1,4 +1,4 @@
-use crate::element::id::ElementId;
+﻿use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
@@ -24,7 +24,7 @@ fn walk(
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
 ) {
-    let el = match tree.elements.get(id) {
+    let el = match tree.elements.get(&id) {
         Some(e) => e,
         None => return,
     };
@@ -142,7 +142,7 @@ fn walk(
         let mut children: Vec<(ElementId, i32)> = el
             .children
             .iter()
-            .map(|&cid| (cid, tree.elements.get(cid).map_or(0, |c| c.visual.z_index)))
+            .map(|&cid| (cid, tree.elements.get(&cid).map_or(0, |c| c.visual.z_index)))
             .collect();
         children.sort_by_key(|&(_, z)| z);
         for (child, _) in children {
@@ -228,7 +228,7 @@ fn walk(
     let mut children: Vec<(ElementId, i32)> = el
         .children
         .iter()
-        .map(|&cid| (cid, tree.elements.get(cid).map_or(0, |c| c.visual.z_index)))
+        .map(|&cid| (cid, tree.elements.get(&cid).map_or(0, |c| c.visual.z_index)))
         .collect();
     children.sort_by_key(|&(_, z)| z);
     for (child, _) in children {

@@ -12,7 +12,8 @@ Platform Adapter が担う責務を以下の三つに限定する。
 |------|----------|------|
 | サーフェス生成 | wgpu | wgpu が Web/ネイティブの Canvas・Window 差を吸収する |
 | フレームタイミング | wgpu / winit | wgpu の surface 管理と一体 |
-| アクセシビリティ報告 | AccessKit（Core 組み込み） | クロスプラットフォームライブラリのため Adapter に委譲不要 |
+| アクセシビリティツリー生成 | Hayate Core | Element / SceneGraph からの TreeUpdate 構築はプラットフォーム非依存 |
+| アクセシビリティ報告（AT への橋渡し） | Platform Adapter | AccessKit のプラットフォーム実装（UIA / NSAccessibility / AT-SPI / ARIA）を呼び出す責務は Adapter が担う |
 
 ## Consequences
 
