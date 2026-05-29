@@ -80,13 +80,8 @@ Phase 1〜5 完了後の未実装項目。優先度順。
 
 ## Tsubame 実装準備（ブロッカー順）
 
-### T1. `apply_mutations` バッチエンコーディング仕様の確定【設計】
-- **ファイル**: `crates/adapters/web/src/element_renderer.rs` L446
-- 決めること:
-  - `op_kind` 定数の列挙（element_create / element_append_child / element_set_style / element_remove など）
-  - 各 op の引数レイアウト（f64 フラットパック or js_sys::Array ネスト）
-  - 不正 op_kind 受信時の挙動（panic / skip）
-- 仕様が確定するまで Canvas Mode の Tsubame 統合は不可能
+### ✅ T1. `apply_mutations` バッチエンコーディング仕様の確定【設計】
+- ADR-0039 に仕様を記録。`apply_mutations(ops: Float64Array, styles: Float32Array)` の 2 引数形式、固定長レコード、不明 op_kind は Err 返却。
 
 ### T2. `apply_mutations` の実装【Hayate 側】
 - **ファイル**: `crates/adapters/web/src/element_renderer.rs` L446–450
