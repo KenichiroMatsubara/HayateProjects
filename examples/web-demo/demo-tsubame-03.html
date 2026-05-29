@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tsubame — rAF ループ + イベント駆動</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f172a; color: #e2e8f0;
+      font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; padding: 32px 16px 48px;
+    }
+    .back-link {
+      display: inline-block; align-self: flex-start; margin-bottom: 14px;
+      font-size: .68rem; color: #64748b; text-decoration: none;
+      letter-spacing: .04em; padding: 4px 10px;
+      border: 1px solid #334155; border-radius: 999px;
+    }
+    .back-link:hover { color: #94a3b8; border-color: #475569; }
+    .lv-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 999px;
+      font-size: .6rem; font-weight: 900; letter-spacing: .08em; color: #fff; margin-bottom: 6px;
+    }
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 1rem; font-weight: 900; color: #f8fafc; letter-spacing: -.02em; }
+    header p  { font-size: .7rem; color: #475569; margin-top: 4px; }
+    .pipeline { display: flex; align-items: center; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
+    .step {
+      display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+      border: 1px solid #334155; background: #1e293b;
+      font-size: .65rem; font-weight: 700; color: #64748b; white-space: nowrap;
+    }
+    .step .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; flex-shrink: 0; }
+    .step.ok   { color: #4ade80; border-color: #166534; background: #052e16; }
+    .step.ok .dot   { background: #4ade80; }
+    .step.run  { color: #818cf8; border-color: #3730a3; background: #1e1b4b; animation: pulse .9s ease-in-out infinite; }
+    .step.run .dot  { background: #818cf8; }
+    .step.fail { color: #f87171; border-color: #7f1d1d; background: #2d0a0a; }
+    .step.fail .dot { background: #f87171; }
+    @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+    .canvas-wrap {
+      position: relative; border: 2px solid #334155;
+      border-radius: 10px; overflow: hidden; background: #020617;
+    }
+    canvas { display: block; }
+    #canvas-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      background: #020617ee; font-size: .85rem; color: #64748b;
+      text-align: center; padding: 24px; transition: opacity .3s;
+    }
+    #canvas-overlay.gone { opacity: 0; pointer-events: none; }
+    #overlay-icon { font-size: 2rem; }
+    #overlay-msg  { font-weight: 700; }
+    #overlay-sub  { font-size: .7rem; color: #475569; max-width: 380px; line-height: 1.6; }
+    .panel { margin-top: 20px; width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 14px; }
+    .section { border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; }
+    .section-title {
+      padding: 8px 14px; font-size: .65rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .1em; color: #475569; background: #1e293b44;
+    }
+    .section-body { padding: 14px; }
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    }
+    .stat-box {
+      padding: 10px 14px; border: 1px solid #1e293b; border-radius: 8px;
+      background: #0a1120; text-align: center;
+    }
+    .stat-label { font-size: .58rem; color: #475569; text-transform: uppercase; letter-spacing: .06em; }
+    .stat-value { font-size: 1.3rem; font-weight: 900; color: #f1f5f9; margin-top: 2px; }
+    .loop-row {
+      display: flex; align-items: center; gap: 12px; font-size: .68rem; color: #64748b;
+      padding: 6px 0; border-bottom: 1px solid #1e293b;
+    }
+    .loop-row:last-child { border-bottom: none; }
+    .loop-step { font-family: ui-monospace, monospace; color: #818cf8; }
+    .loop-desc { color: #94a3b8; }
+    .loop-ok   { color: #4ade80; }
+    .loop-warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+
+  <a href="./index.html" class="back-link">← 一覧に戻る</a>
+
+  <header>
+    <div class="lv-badge" style="background:#0891b2">Tsubame-03</div>
+    <h1>rAF ループ + イベント駆動スタイル変更</h1>
+    <p>apply_mutations → render → poll_events の毎フレームループ。hover で色が変わる。</p>
+  </header>
+
+  <div class="pipeline" id="pipeline">
+    <div class="step" id="s1"><span class="dot"></span>WebGPU</div>
+    <div class="step" id="s2"><span class="dot"></span>WASM</div>
+    <div class="step" id="s3"><span class="dot"></span>Renderer</div>
+    <div class="step" id="s4"><span class="dot"></span>初期シーン</div>
+    <div class="step" id="s5"><span class="dot"></span>ループ中</div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="640" height="360"></canvas>
+    <div id="canvas-overlay">
+      <div id="overlay-icon">⏳</div>
+      <div id="overlay-msg">初期化中...</div>
+      <div id="overlay-sub"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section">
+      <div class="section-title">フレームカウンター・イベントログ</div>
+      <div class="section-body">
+        <div class="stats-grid" style="margin-bottom:14px">
+          <div class="stat-box">
+            <div class="stat-label">Frame</div>
+            <div class="stat-value" id="statFrame">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Click 合計</div>
+            <div class="stat-value" id="statClick">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Hover 中</div>
+            <div class="stat-value" id="statHover">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">毎フレームのループ構造 (Tsubame Canvas Renderer)</div>
+      <div class="section-body">
+        <div class="loop-row">
+          <span class="loop-step">1. apply_mutations(ops, styles)</span>
+          <span class="loop-desc">前フレームからの mutation を一括送信</span>
+          <span id="loopMutCount" class="loop-ok">—</span>
+        </div>
+        <div class="loop-row">
+          <span class="loop-step">2. render(timestamp_ms)</span>
+          <span class="loop-desc">Taffy レイアウト + Vello GPU 描画</span>
+          <span class="loop-ok">毎フレーム</span>
+        </div>
+        <div class="loop-row">
+          <span class="loop-step">3. poll_events()</span>
+          <span class="loop-desc">HoverEnter/HoverLeave/Click を受信</span>
+          <span id="loopEvCount" class="loop-ok">—</span>
+        </div>
+        <div class="loop-row">
+          <span class="loop-step">4. JS 側 state 更新</span>
+          <span class="loop-desc">hover 状態が変わった要素に新しいスタイルを積む</span>
+          <span id="loopStateChange" class="loop-warn">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const TAG = {
+      BACKGROUND_COLOR: 0,
+      BORDER_RADIUS:    2,
+      WIDTH:            5, HEIGHT: 6,
+      DISPLAY:          11, ALIGN_ITEMS: 13, JUSTIFY_CONTENT: 14,
+      GAP:              15,
+      FONT_SIZE:        26, COLOR: 27,
+    };
+    const UNIT = { PX: 0 };
+    const OP = { APPEND_CHILD: 0, SET_ROOT: 3, SET_STYLE: 4 };
+
+    // ── 3 つのボックスの定義 ──────────────────────────────────────────────
+    const BOXES = [
+      { label: 'A', base: [0.23, 0.51, 0.96], hover: [0.46, 0.72, 1.0] },
+      { label: 'B', base: [0.06, 0.73, 0.51], hover: [0.18, 0.95, 0.68] },
+      { label: 'C', base: [0.86, 0.27, 0.27], hover: [1.0,  0.50, 0.50] },
+    ];
+
+    class TsunameBatch {
+      constructor() { this.ops = []; this.styles = []; }
+      setRoot(id)       { this.ops.push(OP.SET_ROOT, id); }
+      appendChild(p, c) { this.ops.push(OP.APPEND_CHILD, p, c); }
+      setStyle(id, ...slots) {
+        const off = this.styles.length;
+        this.styles.push(...slots);
+        this.ops.push(OP.SET_STYLE, id, off, slots.length);
+      }
+      get opCount()   { return this.ops.length; }
+      flush(renderer) {
+        if (this.ops.length === 0) return;
+        renderer.apply_mutations(new Float64Array(this.ops), new Float32Array(this.styles));
+        this.ops = []; this.styles = [];
+      }
+    }
+
+    const $ = id => document.getElementById(id);
+    function step(id, st) { $(id).className = `step ${st}`; }
+    function overlay(icon, msg, sub = '') {
+      $('overlay-icon').textContent = icon; $('overlay-msg').textContent = msg; $('overlay-sub').textContent = sub;
+    }
+    function overlayGone() { $('canvas-overlay').classList.add('gone'); }
+
+    // WebGPU
+    step('s1', 'run'); overlay('🔍', 'WebGPU を検出中...');
+    let webgpuOk = false;
+    try { if (navigator.gpu) { const a = await navigator.gpu.requestAdapter(); webgpuOk = !!a; } } catch {}
+    if (!webgpuOk) {
+      step('s1', 'fail'); overlay('❌', 'WebGPU 非対応', 'Chromium 系ブラウザが必要です。'); throw new Error('no WebGPU');
+    }
+    step('s1', 'ok');
+
+    // WASM
+    step('s2', 'run'); overlay('📦', 'WASM を読み込み中...');
+    let mod;
+    try { mod = await import('./pkg/hayate_adapter_web.js'); await mod.default(); step('s2', 'ok'); }
+    catch(e) { step('s2', 'fail'); overlay('❌', String(e)); throw e; }
+
+    // Renderer
+    step('s3', 'run'); overlay('⚙️', 'Renderer を初期化中...');
+    let renderer;
+    try {
+      renderer = await mod.HayateElementRenderer.init($('canvas'));
+      renderer.set_background_color(0.04, 0.09, 0.18);
+      step('s3', 'ok');
+    } catch(e) { step('s3', 'fail'); overlay('❌', String(e)); throw e; }
+
+    // イベント kind 定数 (wasm-bindgen から取得)
+    const EV_CLICK       = mod.event_kind_click();
+    const EV_HOVER_ENTER = mod.event_kind_hover_enter();
+    const EV_HOVER_LEAVE = mod.event_kind_hover_leave();
+
+    // 初期シーン
+    step('s4', 'run'); overlay('🌿', '初期シーンを構築中...');
+    let rootId;
+    const boxIds = [];   // ボックスの ElementId
+    const textIds = [];  // ラベルテキストの ElementId
+
+    try {
+      rootId = renderer.element_create(mod.element_kind_view());
+      for (let i = 0; i < BOXES.length; i++) {
+        boxIds.push(renderer.element_create(mod.element_kind_view()));
+        textIds.push(renderer.element_create(mod.element_kind_text()));
+        renderer.element_set_text(textIds[i], BOXES[i].label);
+      }
+
+      const init = new TsunameBatch();
+
+      // root: 640×360, flex row, center
+      init.setRoot(rootId);
+      init.setStyle(rootId,
+        TAG.BACKGROUND_COLOR, 0.04, 0.09, 0.18, 1.0,
+        TAG.WIDTH,  640, UNIT.PX, TAG.HEIGHT, 360, UNIT.PX,
+        TAG.DISPLAY, 0, TAG.ALIGN_ITEMS, 2, TAG.JUSTIFY_CONTENT, 2,
+        TAG.GAP, 32, UNIT.PX,
+      );
+
+      // 3 ボックス + ラベル
+      for (let i = 0; i < BOXES.length; i++) {
+        const [r, g, b] = BOXES[i].base;
+        init.appendChild(rootId, boxIds[i]);
+        init.setStyle(boxIds[i],
+          TAG.BACKGROUND_COLOR, r, g, b, 1.0,
+          TAG.WIDTH, 140, UNIT.PX, TAG.HEIGHT, 140, UNIT.PX,
+          TAG.BORDER_RADIUS, 16,
+          TAG.DISPLAY, 0, TAG.ALIGN_ITEMS, 2, TAG.JUSTIFY_CONTENT, 2,
+        );
+        init.appendChild(boxIds[i], textIds[i]);
+        init.setStyle(textIds[i],
+          TAG.COLOR, 1, 1, 1, 0.9,
+          TAG.FONT_SIZE, 48,
+        );
+      }
+
+      init.flush(renderer);
+      renderer.render(performance.now());
+      step('s4', 'ok'); overlayGone();
+    } catch(e) { step('s4', 'fail'); overlay('❌', String(e)); throw e; }
+
+    // マウスイベント配線
+    const canvas = $('canvas');
+    function canvasXY(e) {
+      const r = canvas.getBoundingClientRect();
+      return [(e.clientX - r.left) * (canvas.width / r.width),
+              (e.clientY - r.top)  * (canvas.height / r.height)];
+    }
+    canvas.addEventListener('mousemove', e => { const [x,y] = canvasXY(e); renderer.on_pointer_move(x, y); });
+    canvas.addEventListener('mousedown', e => { const [x,y] = canvasXY(e); renderer.on_pointer_down(x, y); });
+    canvas.addEventListener('mouseup',   e => { const [x,y] = canvasXY(e); renderer.on_pointer_up(x, y); });
+
+    // ── JS 側状態 ──────────────────────────────────────────────────────────
+    let hoveredBoxIndex = -1;  // 現在 hover 中のボックスのインデックス (-1 = なし)
+    let frameCount  = 0;
+    let clickCount  = 0;
+    let pendingStyleChange = false;
+
+    // ボックスのスタイルバッチを作る (T3 修正後の正しい動作: hover 状態に応じて毎フレーム style を更新)
+    function buildStyleBatch() {
+      const b = new TsunameBatch();
+      for (let i = 0; i < BOXES.length; i++) {
+        const [r, g, b_] = hoveredBoxIndex === i ? BOXES[i].hover : BOXES[i].base;
+        b.setStyle(boxIds[i],
+          TAG.BACKGROUND_COLOR, r, g, b_, 1.0,
+          TAG.WIDTH, 140, UNIT.PX, TAG.HEIGHT, 140, UNIT.PX,
+          TAG.BORDER_RADIUS, 16,
+          TAG.DISPLAY, 0, TAG.ALIGN_ITEMS, 2, TAG.JUSTIFY_CONTENT, 2,
+        );
+      }
+      return b;
+    }
+
+    step('s5', 'ok');
+
+    // ── メインループ (Tsubame Canvas Renderer の 1 フレーム) ───────────────
+    //
+    //   1. apply_mutations(ops, styles)  — スタイル変化があればバッチ送信
+    //   2. render(timestamp_ms)          — Taffy + Vello GPU 描画
+    //   3. poll_events()                 — HoverEnter / HoverLeave / Click を受信
+    //   4. JS 側 state 更新              — 次フレームのバッチを組み立てる準備
+
+    let uiTick = 0;
+    function loop(ts) {
+      frameCount++;
+
+      // 1. apply_mutations: 状態変化があったフレームだけ送信
+      let opsSent = 0;
+      if (pendingStyleChange) {
+        const b = buildStyleBatch();
+        opsSent = b.opCount;
+        b.flush(renderer);
+        pendingStyleChange = false;
+      }
+
+      // 2. render
+      renderer.render(ts);
+
+      // 3. poll_events
+      const events = renderer.poll_events();
+      let evCount = 0;
+      let stateChanged = false;
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        evCount++;
+        const kind   = ev[0];
+        const target = ev[1];
+
+        if (kind === EV_HOVER_ENTER) {
+          const idx = boxIds.indexOf(target);
+          if (idx !== -1 && hoveredBoxIndex !== idx) {
+            hoveredBoxIndex = idx;
+            stateChanged = true;
+          }
+        } else if (kind === EV_HOVER_LEAVE) {
+          const idx = boxIds.indexOf(target);
+          if (idx !== -1 && hoveredBoxIndex === idx) {
+            hoveredBoxIndex = -1;
+            stateChanged = true;
+          }
+        } else if (kind === EV_CLICK) {
+          const idx = boxIds.indexOf(target);
+          if (idx !== -1) clickCount++;
+        }
+      }
+
+      // 4. 次フレーム用フラグ
+      if (stateChanged) pendingStyleChange = true;
+
+      // UI 更新 (毎フレームより低頻度でよい)
+      if (++uiTick % 6 === 0) {
+        $('statFrame').textContent = frameCount;
+        $('statClick').textContent = clickCount;
+        $('statHover').textContent = hoveredBoxIndex === -1 ? '—' : BOXES[hoveredBoxIndex].label;
+        $('loopMutCount').textContent = opsSent > 0 ? `${opsSent} slots 送信` : 'skip (変化なし)';
+        $('loopEvCount').textContent  = evCount > 0 ? `${evCount} events` : '0';
+        $('loopStateChange').textContent = stateChanged ? '変化あり → 次フレーム再送' : '変化なし';
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

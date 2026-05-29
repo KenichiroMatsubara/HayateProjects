@@ -106,6 +106,18 @@ pub fn element_kind_text_input() -> u32 { 4 }
 #[wasm_bindgen]
 pub fn element_kind_scroll_view() -> u32 { 5 }
 
+// ── apply_mutations op_kind constants (ADR-0039) ─────────────────────────
+
+const OP_APPEND_CHILD: u32      = 0;
+const OP_INSERT_BEFORE: u32     = 1;
+const OP_REMOVE: u32            = 2;
+const OP_SET_ROOT: u32          = 3;
+const OP_SET_STYLE: u32         = 4;
+const OP_SET_TRANSFORM: u32     = 5;
+const OP_SET_SCROLL_OFFSET: u32 = 6;
+const OP_FOCUS: u32             = 7;
+const OP_BLUR: u32              = 8;
+
 // ── Canvas Mode renderer ─────────────────────────────────────────────────
 
 #[wasm_bindgen]
@@ -209,14 +221,23 @@ impl HayateElementRenderer {
     }
 
     pub fn element_remove(&mut self, id: f64) {
-        let id = element_id_from_f64(id);
-        if self.hovered_element == Some(id) {
-            self.hovered_element = None;
+        let eid = element_id_from_f64(id);
+        self.remove_subtree(eid);
+    }
+
+    /// Shared removal path: clears dangling hovered/active pointers for the
+    /// entire subtree, then delegates to ElementTree (which clears focused_element).
+    fn remove_subtree(&mut self, id: ElementId) {
+        if let Some(h) = self.hovered_element {
+            if is_in_subtree(&self.tree, h, id) {
+                self.hovered_element = None;
+            }
         }
-        if self.active_element == Some(id) {
-            self.active_element = None;
+        if let Some(a) = self.active_element {
+            if is_in_subtree(&self.tree, a, id) {
+                self.active_element = None;
+            }
         }
-        // The tree clears its own focused_element on remove.
         self.tree.element_remove(id);
     }
 
@@ -289,6 +310,9 @@ impl HayateElementRenderer {
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
+        if !self.tree.has_layout() {
+            return;
+        }
         // Skip when the pointer hasn't moved by at least 1px (P3 throttle from ADR-0019).
         if let Some((lx, ly)) = self.last_pointer_pos {
             if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
@@ -434,18 +458,116 @@ impl HayateElementRenderer {
         self.tree.element_set_text_content(element_id_from_f64(id), text);
     }
 
-    /// Batch apply: invoked once per frame by Tsubame (Canvas Mode), which
-    /// batches a frame's worth of mutations on the JS side and hands them over
-    /// in one call (ADR-0037). `batch` is a flat `f64` array of repeated
-    /// `[op_kind, args...]` records; `op_kind` follows the same constant style
-    /// as `element_kind_*`.
-    ///
-    /// The concrete encoding is still being finalised with Tsubame, so this is
-    /// a placeholder that will be filled in once that contract is settled.
-    #[wasm_bindgen]
-    pub fn apply_mutations(&mut self, batch: &js_sys::Array) -> Result<(), JsValue> {
-        // TODO: implement once Tsubame's encoding spec is finalised.
-        let _ = batch;
+    /// Batch apply: invoked once per frame by Tsubame Canvas Mode (ADR-0039).
+    /// `ops` is a flat Float64Array of fixed-length records; `styles` is the
+    /// style_packet Float32Array referenced by OP_SET_STYLE records.
+    pub fn apply_mutations(&mut self, ops: &[f64], styles: &[f32]) -> Result<(), JsValue> {
+        let mut i = 0usize;
+        while i < ops.len() {
+            let op_kind = ops[i] as u32;
+            i += 1;
+            match op_kind {
+                OP_APPEND_CHILD => {
+                    if i + 2 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_APPEND_CHILD"));
+                    }
+                    let parent = element_id_from_f64(ops[i]);
+                    let child  = element_id_from_f64(ops[i + 1]);
+                    i += 2;
+                    self.tree.element_append_child(parent, child);
+                }
+                OP_INSERT_BEFORE => {
+                    if i + 3 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_INSERT_BEFORE"));
+                    }
+                    let parent = element_id_from_f64(ops[i]);
+                    let child  = element_id_from_f64(ops[i + 1]);
+                    let before = element_id_from_f64(ops[i + 2]);
+                    i += 3;
+                    self.tree.element_insert_before(parent, child, before);
+                }
+                OP_REMOVE => {
+                    if i + 1 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_REMOVE"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    i += 1;
+                    self.remove_subtree(id);
+                }
+                OP_SET_ROOT => {
+                    if i + 1 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_SET_ROOT"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    i += 1;
+                    self.tree.set_root(id);
+                }
+                OP_SET_STYLE => {
+                    if i + 3 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_SET_STYLE"));
+                    }
+                    let id           = element_id_from_f64(ops[i]);
+                    let style_offset = ops[i + 1] as usize;
+                    let style_len    = ops[i + 2] as usize;
+                    i += 3;
+                    let slice = styles.get(style_offset..style_offset + style_len)
+                        .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE"))?;
+                    let props = style_packet::decode(slice)?;
+                    self.tree.element_set_style(id, &props);
+                }
+                OP_SET_TRANSFORM => {
+                    if i + 8 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_SET_TRANSFORM"));
+                    }
+                    let id         = element_id_from_f64(ops[i]);
+                    let has_matrix = ops[i + 1] != 0.0;
+                    let matrix = if has_matrix {
+                        Some([ops[i+2], ops[i+3], ops[i+4], ops[i+5], ops[i+6], ops[i+7]])
+                    } else {
+                        None
+                    };
+                    i += 8;
+                    self.tree.element_set_transform(id, matrix);
+                }
+                OP_SET_SCROLL_OFFSET => {
+                    if i + 3 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_SET_SCROLL_OFFSET"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    let x  = ops[i + 1] as f32;
+                    let y  = ops[i + 2] as f32;
+                    i += 3;
+                    self.tree.element_set_scroll_offset(id, x, y);
+                }
+                OP_FOCUS => {
+                    if i + 1 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_FOCUS"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    i += 1;
+                    if let Some(prev) = self.tree.focused_element() {
+                        if prev != id {
+                            self.tree.push_event(Event::Blur(prev));
+                            self.tree.element_blur(prev);
+                        }
+                    }
+                    self.tree.element_focus(id);
+                    self.tree.push_event(Event::Focus(id));
+                }
+                OP_BLUR => {
+                    if i + 1 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_BLUR"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    i += 1;
+                    self.tree.element_blur(id);
+                    self.tree.push_event(Event::Blur(id));
+                }
+                other => {
+                    return Err(JsValue::from_str(&format!("unknown op_kind {other}")));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1133,14 +1255,22 @@ impl HayateElementHtmlRenderer {
         if self.root == Some(target) {
             self.root = None;
         }
-        if self.focused_element == Some(target) {
-            self.focused_element = None;
+        // Clear any pointer-state that referred to a removed node (including
+        // descendants — the subtree walk above already removed them from self.nodes).
+        if let Some(f) = self.focused_element {
+            if !self.nodes.contains_key(f) {
+                self.focused_element = None;
+            }
         }
-        if self.hovered_element == Some(target) {
-            self.hovered_element = None;
+        if let Some(h) = self.hovered_element {
+            if !self.nodes.contains_key(h) {
+                self.hovered_element = None;
+            }
         }
-        if self.active_element == Some(target) {
-            self.active_element = None;
+        if let Some(a) = self.active_element {
+            if !self.nodes.contains_key(a) {
+                self.active_element = None;
+            }
         }
     }
 
@@ -1247,6 +1377,21 @@ fn inject_font_face(family: &str, data: &[u8]) -> Result<(), JsValue> {
 }
 
 /// Walk up the element tree to find the nearest ScrollView at or above `id`.
+/// Returns true if `candidate` is `root` or a descendant of `root` in the tree.
+/// Must be called before the subtree is removed from the tree.
+fn is_in_subtree(tree: &ElementTree, candidate: ElementId, root: ElementId) -> bool {
+    let mut cur = candidate;
+    loop {
+        if cur == root {
+            return true;
+        }
+        match tree.element_parent(cur) {
+            Some(p) => cur = p,
+            None => return false,
+        }
+    }
+}
+
 fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementId> {
     loop {
         if tree.element_kind(id) == Some(ElementKind::ScrollView) {

@@ -661,6 +661,11 @@ impl ElementTree {
         self.event_queue.push(event);
     }
 
+    /// Returns true if at least one layout pass has completed (layout_cache is populated).
+    pub fn has_layout(&self) -> bool {
+        !self.layout_cache.is_empty()
+    }
+
     /// Returns the deepest element whose bounding rect contains (x, y),
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
