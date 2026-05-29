@@ -1,43 +1,5 @@
 # Hayate 残課題リスト
 
-Phase 1〜5 完了後の未実装項目。優先度順。
-
----
-
-## ✅ 完了済み（P0・P1）
-
-### ✅ 1. `on_pointer_up` / `on_pointer_move` 実装済み
-- `on_pointer_up` → `Event::PointerUp` を emit
-- `on_pointer_move` → `hovered_element` を追跡し `Event::PointerEnter` / `Event::PointerLeave` を emit
-- `encode_events` で pointer_up(9) / pointer_enter(10) / pointer_leave(11) を JS に送出
-
-### ✅ 2. ScrollView スクロール上限クランプ実装済み
-- `on_wheel()` で `element_content_size()` を取得し `(ox + delta).clamp(0.0, max)` を適用
-
-### ✅ 3. TextInput カーソル描画（Canvas モード）実装済み
-- `crates/core/src/element/scene_build.rs` にカーソル描画ロジック実装済み
-- `element_set_cursor_visible(id, bool)` で on/off 制御
-- Parley `Cursor::from_byte_index` から `geometry()` でピクセル位置を取得して Rect ノードを emit
-
-### ✅ 4. キーボードイベント実装済み
-- `on_key_down(key: &str, modifiers: u32)` を両レンダラーに追加
-- `Backspace`: 最後の文字を削除
-- `Enter`: TextInput に `\n` を挿入
-- `modifiers` bitmask: `modifier_shift()/ctrl()/alt()/meta()` 定数を JS に公開
-- `Event::KeyDown { target, key, modifiers }` に `modifiers` フィールドを追加
-- `encode_events` で `[12, target_ffi, modifiers]` に更新
-
-### ✅ 5. PNG 以外の画像フォーマット対応済み
-- `fetch_image()` が `image` クレートで PNG / JPEG / WebP を自動判別してデコード
-
-### ✅ カーソル点滅
-- `HayateElementRenderer::tick_cursor(timestamp_ms: f64)` を追加
-- JS の `requestAnimationFrame` から呼ぶことで 500ms 周期で点滅
-
----
-
-## P2 — 品質向上
-
 ---
 
 ## P2 — 品質向上
@@ -65,33 +27,15 @@ Phase 1〜5 完了後の未実装項目。優先度順。
 - 毎フレーム呼ばれる可能性があるため、layout_cache が空のときは skip する guard が必要
 - `if self.tree.layout_cache.is_empty() { return; }` を各 on_pointer_* の先頭に追加
 
-### 11. `flush_remove` が子孫の `hovered_element` / `active_element` をクリアしない
+### 11. `flush_remove` の adapter 層回帰テスト未整備
 - **ファイル**: `crates/adapters/web/src/element_renderer.rs`
-  - Canvas Mode: `flush_pending` の `Command::Remove` 分岐（L498-507 付近）
-  - HTML Mode: `flush_remove`（L1190-1198 付近）
-- 削除対象の id 自身しか比較していない。`element_remove` はサブツリー全体を削除するので、子孫を hover/active 中の状態でその祖先を削除すると、`hovered_element` / `active_element` が dangling な `ElementId` を保持し続ける。
-- `focused_element` は `ElementTree::element_remove` 側で全子孫を walk して clear しているので問題なし。アダプタ側でも同じ走査が必要。
-- 影響: 次の `on_pointer_up` が存在しない要素に `ActiveEnd` を emit する、`on_pointer_move` の hover 遷移ロジックが過去フレームの dangling id と比較し続ける、など。
-- 検出: 現状のテストはネイティブ側 ElementTree のみで wasm アダプタを覆っていない。回帰テストは wasm-bindgen-test もしくは E2E が必要。
-
----
+- Core 側 (`element_remove`) の focused_element クリアは `remove_clears_focused_element` でカバー済み
+- Canvas Mode の `remove_subtree`（`is_in_subtree` 走査）および HTML Mode の `flush_remove`（`!nodes.contains_key` チェック）は wasm-bindgen-test または E2E なしにテストできない
+- 回帰テストは wasm-pack test --headless もしくは Playwright E2E が必要
 
 ---
 
 ## Tsubame 実装準備（ブロッカー順）
-
-### ✅ T1. `apply_mutations` バッチエンコーディング仕様の確定【設計】
-- ADR-0039 に仕様を記録。`apply_mutations(ops: Float64Array, styles: Float32Array)` の 2 引数形式、固定長レコード、不明 op_kind は Err 返却。
-
-### ✅ T2. `apply_mutations` の実装【Hayate 側】
-- ADR-0039 仕様に従い実装。9種 op_kind を固定長レコードパーサーでディスパッチ。
-
-### ✅ T3. `flush_remove` の dangling `hovered_element` / `active_element` バグ修正【Hayate 側】
-- Canvas Mode: `is_in_subtree()` で子孫まで hovered/active をクリア。
-- HTML Mode: `!nodes.contains_key()` チェックで子孫・focused も網羅。
-
-### ✅ T4. `on_pointer_move` の空 layout_cache ガード追加【Hayate 側】
-- `ElementTree::has_layout()` を追加し、on_pointer_move 先頭でガード。
 
 ### T5. WASM バインディング動作確認【検証】
 - `wasm-pack build` 後に生成される JS バインディングで `apply_mutations` の引数型が JS から自然に扱えるか確認
@@ -114,4 +58,4 @@ Phase 1〜5 完了後の未実装項目。優先度順。
 | 4 | Image（PNG fetch + Vello描画）| feat(image): Phase 4 |
 | 5 | TextInput + IME composition | feat(text-input): Phase 5 |
 
-テスト: 19件すべて通過（`cargo test --package hayate-core`）
+テスト: 34件すべて通過（`cargo test --package hayate-core`）

@@ -3,6 +3,8 @@ use hayate_core::{
     FlexDirectionValue, NodeKind, StyleProp,
 };
 
+// ── Layout/rendering helpers ─────────────────────────────────────────────
+
 #[test]
 fn element_create_and_append_builds_tree() {
     let mut tree = ElementTree::new();
@@ -767,6 +769,23 @@ fn semantic_event_variants_roundtrip_through_poll() {
     assert!(matches!(&events[4], Event::PointerMove { x, y } if (*x - 12.5).abs() < 1e-3 && (*y - 34.0).abs() < 1e-3));
 }
 
+// ── T4: has_layout guard ─────────────────────────────────────────────────
+
+#[test]
+fn has_layout_false_before_render_true_after() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+    );
+    assert!(!tree.has_layout(), "has_layout must be false before first render");
+    tree.render(0.0);
+    assert!(tree.has_layout(), "has_layout must be true after render");
+}
+
 // ── Clipboard paste tests ─────────────────────────────────────────────────
 
 #[test]
@@ -833,36 +852,7 @@ fn paste_on_non_text_input_is_noop() {
     assert!(tree.poll_events().is_empty());
 }
 
-#[test]
-fn content_size_exceeds_clip_for_tall_content() {
-    let mut tree = ElementTree::new();
-    let scroll = tree.element_create(ElementKind::ScrollView);
-    let content = tree.element_create(ElementKind::View);
-    tree.set_root(scroll);
-    tree.set_viewport(300.0, 200.0);
-    tree.element_set_style(
-        scroll,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
-    );
-    tree.element_set_style(
-        content,
-        &[
-            StyleProp::Width(Dimension::px(200.0)),
-            StyleProp::Height(Dimension::px(500.0)),
-            StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
-        ],
-    );
-    tree.element_append_child(scroll, content);
-    tree.render(0.0);
-
-    let (_, content_h) = tree.element_content_size(scroll);
-    assert!(
-        content_h > 100.0,
-        "content height {content_h} should exceed the 100px clip height"
-    );
-}
-
-// ── ADR-0013: Element Layer tree API ─────────────────────────────────────
+// ── insert_before / OP_INSERT_BEFORE ────────────────────────────────────
 
 #[test]
 fn insert_before_reorders_children_in_flex_row() {
@@ -908,6 +898,35 @@ fn insert_before_reorders_children_in_flex_row() {
     // b is pushed to index 2, so its rect should sit at x=100.
     let b_rect = tree.element_layout_rect(b).expect("b has no layout rect");
     assert!((b_rect.0 - 100.0).abs() < 0.5, "b x = {} (expected 100)", b_rect.0);
+}
+
+// ── element_content_size (scroll clamping) ───────────────────────────────
+
+#[test]
+fn element_content_size_returns_children_bounds() {
+    let mut tree = ElementTree::new();
+    let sv = tree.element_create(ElementKind::ScrollView);
+    let content = tree.element_create(ElementKind::View);
+    tree.set_root(sv);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        sv,
+        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
+    );
+    tree.element_set_style(
+        content,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(400.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_append_child(sv, content);
+    tree.render(0.0);
+
+    let (cw, ch) = tree.element_content_size(sv);
+    assert!((cw - 200.0).abs() < 0.5, "content width = {cw}");
+    assert!((ch - 400.0).abs() < 0.5, "content height = {ch}");
 }
 
 // ── ADR-0013: WIT Dual Layer — resolved_elements for HTML Mode ───────────
@@ -987,4 +1006,25 @@ fn unknown_font_family_falls_back_to_default() {
     let sg = tree.render(0.0);
     let has_text_run = sg.iter().any(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }));
     assert!(has_text_run, "unknown font family must fall back to Noto Sans and produce a TextRun");
+}
+
+// ── T3: focused_element cleared on remove ────────────────────────────────
+
+#[test]
+fn remove_clears_focused_element() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(ElementKind::View);
+    let input = tree.element_create(ElementKind::TextInput);
+    tree.set_root(root);
+    tree.element_append_child(root, input);
+
+    tree.element_focus(input);
+    assert_eq!(tree.focused_element(), Some(input), "focus not set");
+
+    tree.element_remove(input);
+    assert_eq!(
+        tree.focused_element(),
+        None,
+        "focused_element must clear when the focused element is removed"
+    );
 }
