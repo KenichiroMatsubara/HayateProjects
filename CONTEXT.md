@@ -58,6 +58,10 @@ _Avoid_: フレームワーク、React hooks ベース、Virtual DOM、Hayabusa 
 Tsubame の上に構築される上位フレームワーク。`tsubame-solid` / `tsubame-vue` / `tsubame-svelte` / `tsubame-react` の4つを指す。各 adapter は記法層・コンポーネントモデル層のみを担い、signal ランタイムは Tsubame を共有する。Vue の `ref`/`computed`・Svelte の `$state`/`$derived`・React の `useSignal` 等はすべて Tsubame の `createSignal`/`createEffect`/`createMemo` の薄いラッパーとして実装される。signal ロジックはランタイムに依存するだけなので、adapter をまたいでコンポーネントロジックを共有できる。エコシステムを単一 signal ランタイム上に統合することで、adapter ごとに独立した reactivity を持つ場合と比べて工数を削減しメリットを最大化する。
 _Avoid_: Solid-native, Vue-native（既存プロジェクト名との衝突を避けるため）, plugin, binding
 
+**Renderer Protocol**:
+Tsubame と Tsubame Adapter の間の境界インターフェース。element の作成・ツリー操作・スタイル設定・イベント購読を抽象化した仕様。TypeScript では `interface IRenderer` として定義される。DOM Renderer と Canvas Renderer の二つの実装を持つ。Tsubame Adapter はこのプロトコルを通じてのみレンダリングを行い、DOM か Canvas かを意識しない。
+_Avoid_: Host Interface, Host Config, Element Driver
+
 **Tsubame DOM Mode**:
 Tsubame の動作モードの一つ。CSR（Client-Side Rendering）のみ。ビルド時に JS バンドル + HTML シェルを生成し、ランタイムでその成果物を読み込んで Signal が DOM を直接操作する。SSG・SSR・ハイドレーションは行わない。Hayate（WASM）を一切使用しない。JS→WASM 境界が存在しない。Hayate の HTML Mode（Hayate が DOM 要素で描画するモード）とは別概念であり、Hayate が関与しない点が根本的に異なる。
 _Avoid_: SSG, SSR, ハイドレーション, Hayate HTML Mode（Hayate 不使用のため）
