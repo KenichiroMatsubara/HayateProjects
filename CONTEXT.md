@@ -55,8 +55,8 @@ JS/TS 向けの pure JS **signal ランタイム基盤**。フレームワーク
 _Avoid_: フレームワーク、React hooks ベース、Virtual DOM、Hayabusa の JS アダプタ
 
 **Tsubame Adapter**:
-Tsubame の上に構築される上位フレームワーク。`tsubame-solid` / `tsubame-vue` / `tsubame-svelte` / `tsubame-react` の4つを指す。各 adapter は記法層・コンポーネントモデル層のみを担い、signal ランタイムは Tsubame を共有する。Vue の `ref`/`computed`・Svelte の `$state`/`$derived`・React の `useSignal` 等はすべて Tsubame の `createSignal`/`createEffect`/`createMemo` の薄いラッパーとして実装される。signal ロジックはランタイムに依存するだけなので、adapter をまたいでコンポーネントロジックを共有できる。エコシステムを単一 signal ランタイム上に統合することで、adapter ごとに独立した reactivity を持つ場合と比べて工数を削減しメリットを最大化する。
-_Avoid_: Solid-native, Vue-native（既存プロジェクト名との衝突を避けるため）, plugin, binding
+Tsubame の上に構築される上位フレームワーク。`tsubame-solid` / `tsubame-vue` / `tsubame-react` の3つを指す（tsubame-svelte はスコープ外。Svelte ユーザーには tsubame-vue を推奨）。各 adapter は記法層・コンポーネントモデル層のみを担い、signal ランタイムは Tsubame を共有する。Vue の `ref`/`computed`・React の `useSignal` 等はすべて Tsubame の `createSignal`/`createEffect`/`createMemo` の薄いラッパーとして実装される。signal ロジックはランタイムに依存するだけなので、adapter をまたいでコンポーネントロジックを共有できる。
+_Avoid_: Solid-native, Vue-native（既存プロジェクト名との衝突を避けるため）, tsubame-svelte, plugin, binding
 
 **Renderer Protocol**:
 Tsubame と Tsubame Adapter の間の境界インターフェース。element の作成・ツリー操作・スタイル設定・イベント購読を抽象化した仕様。TypeScript では `interface IRenderer` として定義される。DOM Renderer と Canvas Renderer の二つの実装を持つ。Tsubame Adapter はこのプロトコルを通じてのみレンダリングを行い、DOM か Canvas かを意識しない。
