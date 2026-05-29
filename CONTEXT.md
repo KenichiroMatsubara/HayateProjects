@@ -50,6 +50,18 @@ _Avoid_: Runtime, Host, Surface Adapter
 `hayate-adapter-web` の動作モードの一つ。WebGPU または EditContext API のいずれかが利用できない場合に自動選択される。Hayate CSS プロパティをブラウザの CSS プロパティに直接マッピングし、レイアウト計算はブラウザの CSS エンジンに委ねる（Taffy は経由しない）。Canvas Mode とはレンダリングパイプラインが異なるため、レイアウト結果の完全一致は保証されないが、開発時の UI 確認用途には十分な精度を持つ。IME はブラウザ native の動作に委ねる。モード選択はランタイム自動検出で行い、アプリ側は意識しない。
 _Avoid_: フォールバック（劣化の含意を避けるため）、DOM Mode、absolutely-positioned div 方式
 
+**Tsubame（燕）**:
+JS/TS ユーザー向けの純粋 JS フレームワーク。「GPU レンダリング × SolidJS」に相当するポジション。`.tsx` コンポーネント形式・SolidJS 的な fine-grained Signal（`createSignal` / `createEffect` / `createMemo`）を採用する。コンポーネント関数は一度だけ実行され、Signal の変化のみが該当する DOM 操作・Element mutation を発火する。Virtual DOM・reconciler を持たない。プラットフォームのネイティブ JS エンジン（ブラウザ: V8/SpiderMonkey、モバイル: Hermes 等）上で動作し、JS ランタイムを自身にバンドルしない。DOM Mode と Canvas Mode の二つの動作モードを持つ。Hayate HTML Mode は使用しない。Hayabusa・Hayate コアのいずれも Tsubame の存在を知らない。Hayabusa とは完全に独立した別フレームワークであり、コンポーネント形式・リアクティビティ・ビルドパイプラインのいずれも共有しない。
+_Avoid_: React hooks ベース（useState/useEffect ではない）、Virtual DOM、Hayabusa の JS アダプタ、Hayabusa のラッパー
+
+**Tsubame DOM Mode**:
+Tsubame の動作モードの一つ。CSR（Client-Side Rendering）のみ。ビルド時に JS バンドル + HTML シェルを生成し、ランタイムでその成果物を読み込んで Signal が DOM を直接操作する。SSG・SSR・ハイドレーションは行わない。Hayate（WASM）を一切使用しない。JS→WASM 境界が存在しない。Hayate の HTML Mode（Hayate が DOM 要素で描画するモード）とは別概念であり、Hayate が関与しない点が根本的に異なる。
+_Avoid_: SSG, SSR, ハイドレーション, Hayate HTML Mode（Hayate 不使用のため）
+
+**Tsubame Canvas Mode**:
+Tsubame の動作モードの一つ。Tsubame が JS 内でフレーム分の mutations を積み、`apply_mutations(batch)` で Hayate（WASM）に1回/frame で渡す。JS→WASM 境界の コストを O(N) から O(1)/frame に削減する。Hayate の Canvas Mode（Hayate が WebGPU で GPU 描画するモード）と組み合わせて動作する。
+_Avoid_: 個別 element_set_* 呼び出し（Tsubame Canvas Mode では JS 側でバッチ化する）
+
 **Interaction Event**:
 ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。Hayate はイベントを通知するだけであり、インタラクション状態に応じたスタイル切り替えは上位層（Hayabusa の Signal / Effect）の責務。Hayate は「ホバー中スタイル」という概念を持たない。
 _Avoid_: :hover スタイル、状態付きスタイル、CSS 擬似クラス
