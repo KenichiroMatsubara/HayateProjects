@@ -15,12 +15,40 @@ type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
 /// Built-in family-name → CDN URL table for fonts the web adapter fetches
 /// automatically when .notdef glyphs are detected (ADR-0043).
-/// Only TTF/OTF URLs are valid; the font stack (fontique/skrifa) does not
-/// support WOFF2.
+///
+/// All URLs point to TTF variable fonts from google/fonts via jsDelivr.
+/// fontique/skrifa does NOT support WOFF2 — TTF/OTF only.
+/// Brackets in filenames are URL-encoded: `[` → `%5B`, `]` → `%5D`, `,` → `%2C`.
 fn builtin_font_url(family: &str) -> Option<&'static str> {
     match family {
+        // ── CJK ──────────────────────────────────────────────────────────
         "Noto Sans JP" => Some(
             "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
+        ),
+        "Noto Sans KR" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf"
+        ),
+        "Noto Sans SC" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
+        ),
+        "Noto Sans TC" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf"
+        ),
+        // ── Arabic ───────────────────────────────────────────────────────
+        "Noto Sans Arabic" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Thai ─────────────────────────────────────────────────────────
+        "Noto Sans Thai" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Devanagari ───────────────────────────────────────────────────
+        "Noto Sans Devanagari" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Hebrew ───────────────────────────────────────────────────────
+        "Noto Sans Hebrew" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf"
         ),
         _ => None,
     }

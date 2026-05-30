@@ -59,9 +59,18 @@ App（JS/Dart/etc.）: フォント URL を一切知らない。透過的。
 
 fontique/skrifa は WOFF2 を解釈しない（magic bytes `wOF2` 未対応）。`builtin_font_url` に登録するのは TTF/OTF URL のみ。現在のエントリ：
 
-| family | URL | 形式 |
-|--------|-----|------|
-| Noto Sans JP | `cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf` | TTF（variable） |
+| family | スクリプト | ofl dir | 形式 |
+|--------|---------|---------|------|
+| Noto Sans JP | 日本語・CJK共通 | `notosansjp` | TTF variable `[wght]` |
+| Noto Sans KR | 韓国語 | `notosanskr` | TTF variable `[wght]` |
+| Noto Sans SC | 簡体字中国語 | `notosanssc` | TTF variable `[wght]` |
+| Noto Sans TC | 繁体字中国語 | `notosanstc` | TTF variable `[wght]` |
+| Noto Sans Arabic | アラビア語 | `notosansarabic` | TTF variable `[wdth,wght]` |
+| Noto Sans Thai | タイ語 | `notosansthai` | TTF variable `[wdth,wght]` |
+| Noto Sans Devanagari | デーヴァナーガリー（ヒンディー語等） | `notosansdevanagari` | TTF variable `[wdth,wght]` |
+| Noto Sans Hebrew | ヘブライ語 | `notosanshebrew` | TTF variable `[wdth,wght]` |
+
+※ `%5B`/`%5D` は `[`/`]`、`%2C` は `,` の URL エンコード。
 
 ※ `%5B`/`%5D` は `[`/`]` の URL エンコード（ファイル名 `NotoSansJP[wght].ttf`）。
 
