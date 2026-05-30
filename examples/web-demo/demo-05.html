@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hayate — Lv.5 TextInput + IME (EditContext API)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px 48px;
+    }
+
+    .back-link {
+      display: inline-block;
+      align-self: flex-start;
+      margin-bottom: 14px;
+      font-size: .68rem;
+      color: #64748b;
+      text-decoration: none;
+      letter-spacing: .04em;
+      padding: 4px 10px;
+      border: 1px solid #334155;
+      border-radius: 999px;
+    }
+    .back-link:hover { color: #94a3b8; border-color: #475569; }
+
+    .lv-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: .6rem;
+      font-weight: 900;
+      letter-spacing: .08em;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    header { text-align: center; margin-bottom: 20px; }
+    header h1 { font-size: 1rem; font-weight: 900; color: #f8fafc; letter-spacing: -.02em; }
+    header p  { font-size: .7rem; color: #475569; margin-top: 4px; }
+
+    .pipeline {
+      display: flex; align-items: center; gap: 4px;
+      margin-bottom: 20px; flex-wrap: wrap; justify-content: center;
+    }
+    .step {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 999px;
+      border: 1px solid #334155; background: #1e293b;
+      font-size: .65rem; font-weight: 700; color: #64748b;
+      white-space: nowrap; transition: all .2s;
+    }
+    .step .dot { width: 7px; height: 7px; border-radius: 50%; background: #334155; flex-shrink: 0; }
+    .step.ok   { color: #4ade80; border-color: #166534; background: #052e16; }
+    .step.ok .dot   { background: #4ade80; }
+    .step.run  { color: #818cf8; border-color: #3730a3; background: #1e1b4b; animation: pulse .9s ease-in-out infinite; }
+    .step.run .dot  { background: #818cf8; }
+    .step.fail { color: #f87171; border-color: #7f1d1d; background: #2d0a0a; }
+    .step.fail .dot { background: #f87171; }
+    .step.warn { color: #fbbf24; border-color: #78350f; background: #1c1002; }
+    .step.warn .dot { background: #fbbf24; }
+    @keyframes pulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+
+    .canvas-wrap {
+      position: relative; border: 2px solid #334155;
+      border-radius: 10px; overflow: hidden; background: #020617;
+    }
+    canvas { display: block; outline: none; }
+    #html-surface { display: none; width: 640px; height: 360px; position: relative; overflow: hidden; }
+    #canvas-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; background: #020617ee;
+      font-size: .85rem; color: #64748b; text-align: center;
+      padding: 24px; transition: opacity .3s;
+    }
+    #canvas-overlay.gone { opacity: 0; pointer-events: none; }
+    #overlay-icon { font-size: 2rem; }
+    #overlay-msg  { font-weight: 700; }
+    #overlay-sub  { font-size: .7rem; color: #475569; max-width: 380px; line-height: 1.6; }
+
+    .panel {
+      margin-top: 20px; width: 100%; max-width: 640px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .section { border: 1px solid #1e293b; border-radius: 12px; overflow: hidden; }
+    .section-title {
+      padding: 8px 14px; font-size: .65rem; font-weight: 900;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: #475569; background: #1e293b44;
+    }
+    .section-body { padding: 14px; }
+
+    .info-row {
+      display: flex; gap: 8px; align-items: baseline;
+      font-size: .72rem; margin-bottom: 8px;
+    }
+    .info-row:last-child { margin-bottom: 0; }
+    .info-label { color: #475569; font-size: .62rem; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+    .info-value { color: #e2e8f0; word-break: break-all; }
+    .info-value.highlight { color: #4ade80; }
+    .info-value.preedit { color: #fbbf24; font-style: italic; }
+    .info-value.dim { color: #334155; }
+
+    .event-log {
+      max-height: 160px;
+      overflow-y: auto;
+      font-size: .65rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ev { padding: 2px 6px; border-radius: 4px; color: #94a3b8; }
+    .ev.focus   { color: #4ade80; }
+    .ev.blur    { color: #64748b; }
+    .ev.text    { color: #818cf8; }
+    .ev.comp    { color: #fbbf24; }
+    .ev.key     { color: #38bdf8; }
+
+    .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+    .badge {
+      padding: 2px 8px; border-radius: 999px; font-size: .6rem; font-weight: 700;
+      border: 1px solid currentColor;
+    }
+    .badge.ok   { color: #4ade80; }
+    .badge.warn { color: #fbbf24; }
+    .badge.off  { color: #475569; }
+
+    .hint { font-size: .65rem; color: #475569; margin-top: 6px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+  <a href="./index.html" class="back-link">← 一覧に戻る</a>
+
+  <header>
+    <div class="lv-badge" style="background:#7c3aed">Lv.5</div>
+    <h1>TextInput + IME — EditContext API</h1>
+    <p>canvas をクリックして text-input にフォーカスし、日本語 IME を含むテキストを入力する</p>
+  </header>
+
+  <div class="pipeline" id="pipeline">
+    <div class="step" id="s1"><span class="dot"></span>WebGPU</div>
+    <div class="step" id="s2"><span class="dot"></span>EditContext</div>
+    <div class="step" id="s3"><span class="dot"></span>WASM</div>
+    <div class="step" id="s4"><span class="dot"></span><span id="s4-label">Renderer</span></div>
+    <div class="step" id="s5"><span class="dot"></span>初期描画</div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="canvas" width="640" height="360" tabindex="0"></canvas>
+    <div id="html-surface"></div>
+    <div id="canvas-overlay">
+      <div id="overlay-icon">⏳</div>
+      <div id="overlay-msg">初期化中...</div>
+      <div id="overlay-sub"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="section">
+      <div class="section-title">動作状況</div>
+      <div class="section-body">
+        <div class="badge-row" id="badges"></div>
+        <p class="hint" id="hint">初期化後にヒントが表示されます。</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">テキスト状態</div>
+      <div class="section-body">
+        <div class="info-row">
+          <span class="info-label">committed</span>
+          <span class="info-value" id="text-committed"><em class="dim">(未入力)</em></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">preedit</span>
+          <span class="info-value preedit" id="text-preedit">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">focused id</span>
+          <span class="info-value dim" id="focused-id">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">イベントログ（最新 20 件）</div>
+      <div class="section-body">
+        <div class="event-log" id="event-log">
+          <span class="ev dim">イベント待機中...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // ── スタイルタグ定数 ────────────────────────────────────────────────────
+    const TAG = {
+      BACKGROUND_COLOR: 0, BORDER_RADIUS: 2,
+      BORDER_WIDTH: 3, BORDER_COLOR: 4,
+      WIDTH: 5, HEIGHT: 6,
+      DISPLAY: 11, FLEX_DIRECTION: 12, ALIGN_ITEMS: 13, JUSTIFY_CONTENT: 14,
+      GAP: 15, PADDING: 16,
+      FONT_SIZE: 26, COLOR: 27,
+    };
+    const UNIT = { PX: 0 };
+    const DISPLAY = { FLEX: 0 };
+
+    function packStyle(props) {
+      const out = [];
+      for (const p of props) out.push(p.tag, ...p.payload);
+      return new Float32Array(out);
+    }
+
+    // ── DOM ユーティリティ ──────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
+    function step(id, state) { $(id).className = `step ${state}`; }
+    function overlay(icon, msg, sub = '') {
+      $('overlay-icon').textContent = icon;
+      $('overlay-msg').textContent  = msg;
+      $('overlay-sub').textContent  = sub;
+    }
+    function overlayGone() { $('canvas-overlay').classList.add('gone'); }
+
+    const eventLog = $('event-log');
+    const MAX_LOG = 20;
+    function logEvent(cls, text) {
+      const el = document.createElement('span');
+      el.className = `ev ${cls}`;
+      el.textContent = text;
+      if (eventLog.children[0]?.classList.contains('dim')) eventLog.innerHTML = '';
+      eventLog.prepend(el);
+      while (eventLog.children.length > MAX_LOG) eventLog.lastChild.remove();
+    }
+
+    // pkg は web-demo ルート直下。相対 import だと /demo-05/ 等でパスが壊れるため絶対パスを使う。
+    const WASM_JS  = '/pkg/hayate_adapter_web.js';
+    const WASM_BIN = '/pkg/hayate_adapter_web_bg.wasm';
+
+    let nextElementId = 1;
+    function createElement(renderer, kind) {
+      const id = nextElementId++;
+      renderer.element_create(id, kind);
+      return id;
+    }
+
+    function waitWithProgress(label, promise, hint) {
+      const t0 = performance.now();
+      const timer = setInterval(() => {
+        const sec = Math.floor((performance.now() - t0) / 1000);
+        overlay('⏳', label, `${hint}（${sec}s 経過）`);
+      }, 1000);
+      return promise.finally(() => clearInterval(timer));
+    }
+
+    // ── 1. WebGPU 検出 ─────────────────────────────────────────────────────
+    step('s1', 'run');
+    overlay('🔍', 'WebGPU を検出中...');
+    const hasWebGpuApi = !!navigator.gpu;
+    step('s1', hasWebGpuApi ? 'ok' : 'warn');
+
+    // ── 2. EditContext 検出 ─────────────────────────────────────────────────
+    const editContextOk = 'EditContext' in window;
+    step('s2', editContextOk ? 'ok' : 'warn');
+
+    // ── 3. WASM ロード ─────────────────────────────────────────────────────
+    step('s3', 'run');
+    overlay('📦', 'WASM モジュールを読み込み中...', 'pkg の存在を確認中');
+    let mod;
+    try {
+      const head = await fetch(WASM_BIN, { method: 'HEAD' });
+      if (!head.ok) {
+        throw new Error(
+          `${WASM_BIN} が見つかりません。リポジトリ直下で npm run build を実行してください。`
+        );
+      }
+
+      overlay('📦', 'WASM モジュールを読み込み中...', 'JS バインディングを取得中');
+      mod = await import(WASM_JS);
+
+      await waitWithProgress(
+        'WASM モジュールを読み込み中...',
+        mod.default(),
+        '初回は 6MB のコンパイルで 30〜60 秒かかることがあります'
+      );
+      step('s3', 'ok');
+    } catch(e) {
+      step('s3', 'fail'); step('s4', 'fail'); step('s5', 'fail');
+      overlay('❌', 'WASM ロード失敗', String(e)); throw e;
+    }
+
+    // ── イベント種別定数 ────────────────────────────────────────────────────
+    const EV_CLICK       = mod.event_kind_click();
+    const EV_FOCUS       = mod.event_kind_focus();
+    const EV_BLUR        = mod.event_kind_blur();
+    const EV_TEXT_INPUT  = mod.event_kind_text_input();
+    const EV_COMP_START  = mod.event_kind_composition_start();
+    const EV_COMP_UPDATE = mod.event_kind_composition_update();
+    const EV_COMP_END    = mod.event_kind_composition_end();
+    const EV_KEY_DOWN    = mod.event_kind_key_down();
+
+    // ── 4. Renderer 初期化 ─────────────────────────────────────────────────
+    step('s4', 'run');
+    const canvas = $('canvas');
+    const htmlSurface = $('html-surface');
+    let renderer = null;
+    let useCanvas = false;
+
+    const preferCanvas = hasWebGpuApi && editContextOk;
+
+    try {
+      if (preferCanvas) {
+        $('s4-label').textContent = 'Canvas Mode';
+        overlay('⚙️', 'Canvas Mode (WebGPU + EditContext) を初期化中...');
+        canvas.style.display = 'block';
+        htmlSurface.style.display = 'none';
+        try {
+          renderer = await waitWithProgress(
+            'Canvas Mode (WebGPU + EditContext) を初期化中...',
+            mod.HayateElementRenderer.init(canvas),
+            'WebGPU デバイスと Vello シェーダーを初期化中'
+          );
+          useCanvas = true;
+        } catch (canvasErr) {
+          console.warn('[demo-05] Canvas init failed, falling back to HTML:', canvasErr);
+          overlay('🌐', 'HTML Mode にフォールバック中...', String(canvasErr));
+          canvas.style.display = 'none';
+          htmlSurface.style.display = 'block';
+          renderer = mod.HayateElementHtmlRenderer.new(htmlSurface);
+          useCanvas = false;
+        }
+      } else {
+        $('s4-label').textContent = 'HTML Mode';
+        overlay('🌐', 'HTML Mode を初期化中...');
+        canvas.style.display = 'none';
+        htmlSurface.style.display = 'block';
+        renderer = mod.HayateElementHtmlRenderer.new(htmlSurface);
+        useCanvas = false;
+      }
+      step('s4', 'ok');
+    } catch(e) {
+      step('s4', 'fail'); step('s5', 'fail');
+      overlay('❌', 'Renderer 初期化失敗', String(e)); throw e;
+    }
+
+    renderer.set_background_color(0.04, 0.06, 0.1);
+
+    // ── 5. シーン構築 ───────────────────────────────────────────────────────
+    step('s5', 'run');
+    overlay('🎨', 'シーンを構築中...');
+
+    let inputId = null;
+    try {
+      // root view
+      const rootId = createElement(renderer, mod.element_kind_view());
+      renderer.set_root(rootId);
+      renderer.element_set_style(rootId, packStyle([
+        { tag: TAG.WIDTH,           payload: [640, UNIT.PX] },
+        { tag: TAG.HEIGHT,          payload: [360, UNIT.PX] },
+        { tag: TAG.DISPLAY,         payload: [DISPLAY.FLEX] },
+        { tag: TAG.FLEX_DIRECTION,  payload: [1] },   // column
+        { tag: TAG.ALIGN_ITEMS,     payload: [2] },   // center
+        { tag: TAG.JUSTIFY_CONTENT, payload: [2] },   // center
+        { tag: TAG.GAP,             payload: [16, UNIT.PX] },
+        { tag: TAG.BACKGROUND_COLOR,payload: [0.04, 0.06, 0.1, 1.0] },
+      ]));
+
+      // ラベル
+      const labelId = createElement(renderer, mod.element_kind_text());
+      renderer.element_set_text(labelId, 'テキストを入力（IME 対応）');
+      renderer.element_set_style(labelId, packStyle([
+        { tag: TAG.FONT_SIZE, payload: [14] },
+        { tag: TAG.COLOR,     payload: [0.44, 0.52, 0.6, 1.0] },
+      ]));
+      renderer.element_append_child(rootId, labelId);
+
+      // text-input
+      inputId = createElement(renderer, mod.element_kind_text_input());
+      renderer.element_set_style(inputId, packStyle([
+        { tag: TAG.WIDTH,            payload: [480, UNIT.PX] },
+        { tag: TAG.HEIGHT,           payload: [44, UNIT.PX] },
+        { tag: TAG.BACKGROUND_COLOR, payload: [0.08, 0.11, 0.18, 1.0] },
+        { tag: TAG.BORDER_RADIUS,    payload: [8] },
+        { tag: TAG.BORDER_WIDTH,     payload: [1.5] },
+        { tag: TAG.BORDER_COLOR,     payload: [0.2, 0.3, 0.45, 1.0] },
+        { tag: TAG.PADDING,          payload: [10, UNIT.PX] },
+        { tag: TAG.FONT_SIZE,        payload: [16] },
+        { tag: TAG.COLOR,            payload: [0.88, 0.92, 0.96, 1.0] },
+      ]));
+      renderer.element_set_text_content(inputId, '');
+      renderer.element_append_child(rootId, inputId);
+
+      // hint text
+      const hintId = createElement(renderer, mod.element_kind_text());
+      renderer.element_set_text(hintId, useCanvas
+        ? 'クリックしてフォーカス → キーボード入力 / IME'
+        : 'HTML Mode: ネイティブ IME でテキストを入力');
+      renderer.element_set_style(hintId, packStyle([
+        { tag: TAG.FONT_SIZE, payload: [11] },
+        { tag: TAG.COLOR,     payload: [0.28, 0.35, 0.45, 1.0] },
+      ]));
+      renderer.element_append_child(rootId, hintId);
+
+      renderer.render(performance.now());
+      step('s5', 'ok');
+      overlayGone();
+    } catch(e) {
+      step('s5', 'fail');
+      overlay('❌', '初期描画失敗', String(e)); throw e;
+    }
+
+    // ── バッジ・ヒント表示 ──────────────────────────────────────────────────
+    const badgesEl = $('badges');
+    function badge(label, cls) {
+      const el = document.createElement('span');
+      el.className = `badge ${cls}`;
+      el.textContent = label;
+      badgesEl.appendChild(el);
+    }
+    badge(hasWebGpuApi ? 'WebGPU API ✓' : 'WebGPU ✗', hasWebGpuApi ? 'ok' : 'warn');
+    badge(editContextOk ? 'EditContext ✓' : 'EditContext ✗', editContextOk ? 'ok' : 'warn');
+    badge(useCanvas  ? 'Canvas Mode' : 'HTML Mode',    'ok');
+
+    $('hint').textContent = useCanvas
+      ? 'Canvas をクリックしてフォーカス → キーボード・IME で入力。Backspace / Enter 対応。'
+      : 'HTML Mode: EditContext が利用不可のため HTML フォールバック。IME はブラウザネイティブ。';
+
+    // ── IME 状態管理 ────────────────────────────────────────────────────────
+    let focusedId    = null;
+    let composing    = false;
+    let preeditText  = '';
+
+    function updateDisplay() {
+      const committed = inputId !== null ? renderer.element_get_text_content(inputId) : '';
+      const committedEl = $('text-committed');
+      committedEl.innerHTML = committed
+        ? `<span>${committed.replace(/\n/g, '↵')}</span>`
+        : '<em class="dim">(未入力)</em>';
+      $('text-preedit').textContent = preeditText || '—';
+      $('focused-id').textContent = focusedId !== null ? String(focusedId) : '—';
+    }
+
+    // ── Canvas Mode: EditContext API 配線 ──────────────────────────────────
+    if (useCanvas) {
+      const editContext = new EditContext();
+      canvas.editContext = editContext;
+
+      // compositionstart: IME 開始
+      editContext.addEventListener('compositionstart', () => {
+        if (focusedId === null) return;
+        composing = true;
+        preeditText = '';
+        renderer.on_composition_start(focusedId, '');
+        logEvent('comp', `compositionstart`);
+      });
+
+      // textupdate: テキスト更新（直接入力 or preedit）
+      editContext.addEventListener('textupdate', (e) => {
+        if (focusedId === null) return;
+        const text = e.text ?? '';
+        if (composing) {
+          preeditText = text;
+          renderer.on_composition_update(focusedId, text);
+          logEvent('comp', `compositionupdate: "${text}"`);
+        } else {
+          renderer.on_text_input(focusedId, text);
+          logEvent('text', `textinput: "${text}"`);
+        }
+        updateDisplay();
+      });
+
+      // compositionend: IME 確定
+      editContext.addEventListener('compositionend', (e) => {
+        if (focusedId === null) return;
+        const committed = e.data ?? preeditText;
+        composing = false;
+        preeditText = '';
+        renderer.on_composition_end(focusedId, committed);
+        logEvent('comp', `compositionend: "${committed}"`);
+        updateDisplay();
+      });
+
+      // キーボードイベント（Backspace / Enter / 矢印キー等）
+      canvas.addEventListener('keydown', (e) => {
+        if (focusedId === null) return;
+        // IME 中は Backspace 等の制御キーを Hayate に渡さない
+        if (composing && e.key !== 'Escape') { e.preventDefault(); return; }
+
+        let mods = 0;
+        if (e.shiftKey) mods |= mod.modifier_shift();
+        if (e.ctrlKey)  mods |= mod.modifier_ctrl();
+        if (e.altKey)   mods |= mod.modifier_alt();
+        if (e.metaKey)  mods |= mod.modifier_meta();
+        renderer.on_key_down(e.key, mods);
+
+        // Enter は EditContext の textupdate を経由しないため直接送る
+        if (e.key === 'Enter') {
+          // on_key_down 内部で \n が追記される
+        }
+
+        logEvent('key', `keydown: "${e.key}"`);
+        updateDisplay();
+        e.preventDefault();
+      });
+
+      // ポインタイベント
+      canvas.addEventListener('pointerdown', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        renderer.on_pointer_down(e.clientX - rect.left, e.clientY - rect.top);
+        canvas.focus();
+        e.preventDefault();
+      });
+      canvas.addEventListener('pointerup', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        renderer.on_pointer_up(e.clientX - rect.left, e.clientY - rect.top);
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        renderer.on_pointer_move(e.clientX - rect.left, e.clientY - rect.top);
+      });
+    }
+
+    // ── HTML Mode: コンテナから composition イベントを拾う ─────────────────
+    if (!useCanvas) {
+      htmlSurface.addEventListener('compositionstart', () => {
+        const fid = renderer.focused_element_id();
+        if (fid === 0) return;
+        composing = true; preeditText = '';
+        renderer.on_composition_start(fid, '');
+        logEvent('comp', 'compositionstart');
+      });
+      htmlSurface.addEventListener('compositionupdate', (e) => {
+        const fid = renderer.focused_element_id();
+        if (fid === 0) return;
+        preeditText = e.data ?? '';
+        renderer.on_composition_update(fid, preeditText);
+        logEvent('comp', `compositionupdate: "${preeditText}"`);
+      });
+      htmlSurface.addEventListener('compositionend', (e) => {
+        const fid = renderer.focused_element_id();
+        composing = false; preeditText = '';
+        if (fid !== 0) renderer.on_composition_end(fid, e.data ?? '');
+        logEvent('comp', `compositionend: "${e.data ?? ''}"`);
+      });
+    }
+
+    // ── イベントポーリング + レンダーループ ─────────────────────────────────
+    function processEvents() {
+      const events = renderer.poll_events();
+      for (const ev of events) {
+        const kind = ev[0];
+        if (kind === EV_FOCUS) {
+          focusedId = ev[1];
+          logEvent('focus', `focus: id=${ev[1]}`);
+
+          // Canvas Mode: EditContext の制御矩形を更新
+          if (useCanvas && inputId !== null) {
+            try {
+              const b = renderer.element_get_bounds(inputId);
+              const cr = canvas.getBoundingClientRect();
+              canvas.editContext.updateControlBounds(
+                new DOMRect(cr.x + b[0], cr.y + b[1], b[2], b[3])
+              );
+              canvas.editContext.updateSelectionBounds(
+                new DOMRect(cr.x + b[0], cr.y + b[1], b[2], b[3])
+              );
+            } catch(_) {}
+          }
+        } else if (kind === EV_BLUR) {
+          focusedId = null;
+          composing = false; preeditText = '';
+          logEvent('blur', `blur: id=${ev[1]}`);
+        } else if (kind === EV_TEXT_INPUT) {
+          logEvent('text', `TextInput: "${ev[2]}"`);
+        } else if (kind === EV_COMP_START) {
+          // Canvas Mode ではすでに logEvent 済み
+        } else if (kind === EV_COMP_UPDATE) {
+          // 同上
+        } else if (kind === EV_COMP_END) {
+          // 同上
+        } else if (kind === EV_KEY_DOWN) {
+          // Canvas Mode ではすでに logEvent 済み
+        }
+      }
+    }
+
+    function raf(ts) {
+      renderer.render(ts);
+      processEvents();
+      updateDisplay();
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+  </script>
+</body>
+</html>

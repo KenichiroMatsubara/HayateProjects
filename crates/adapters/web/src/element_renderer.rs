@@ -734,7 +734,7 @@ impl HayateElementHtmlRenderer {
     /// `element_set_text` calls are not visible until the next flush (ADR-0030).
     pub fn element_get_text(&self, id: f64) -> String {
         self.nodes
-            .get(element_id_from_f64(id))
+            .get(&element_id_from_f64(id))
             .and_then(|n| n.text.clone())
             .unwrap_or_default()
     }
@@ -762,7 +762,7 @@ impl HayateElementHtmlRenderer {
 
     pub fn on_pointer_down(&mut self, target_id: f64, x: f32, y: f32) {
         let target = element_id_from_f64(target_id);
-        if !self.nodes.contains_key(target) {
+        if !self.nodes.contains_key(&target) {
             return;
         }
         self.event_queue.push(Event::Click { target, x, y });
@@ -785,7 +785,7 @@ impl HayateElementHtmlRenderer {
         let target = self
             .active_element
             .take()
-            .or_else(|| self.nodes.contains_key(explicit).then_some(explicit));
+            .or_else(|| self.nodes.contains_key(&explicit).then_some(explicit));
         if let Some(target) = target {
             self.event_queue.push(Event::ActiveEnd { target });
         }
@@ -799,7 +799,7 @@ impl HayateElementHtmlRenderer {
 
     pub fn on_pointer_enter(&mut self, target_id: f64) {
         let target = element_id_from_f64(target_id);
-        if !self.nodes.contains_key(target) {
+        if !self.nodes.contains_key(&target) {
             return;
         }
         if self.hovered_element != Some(target) {
@@ -821,7 +821,7 @@ impl HayateElementHtmlRenderer {
 
     pub fn on_wheel(&mut self, target_id: f64, delta_x: f32, delta_y: f32) {
         let target = element_id_from_f64(target_id);
-        if self.nodes.contains_key(target) {
+        if self.nodes.contains_key(&target) {
             self.event_queue.push(Event::Scroll { target, delta_x, delta_y });
         }
     }
@@ -892,7 +892,7 @@ impl HayateElementHtmlRenderer {
     /// native `<input>` value separately on the DOM `paste` event.
     pub fn element_paste(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
-        if self.nodes.contains_key(eid) {
+        if self.nodes.contains_key(&eid) {
             self.event_queue.push(Event::TextInput { target: eid, text: text.to_string() });
         }
     }
@@ -902,7 +902,7 @@ impl HayateElementHtmlRenderer {
     /// the element has not been laid out yet.
     pub fn element_get_bounds(&self, id: f64) -> Box<[f32]> {
         let eid = element_id_from_f64(id);
-        let dom = match self.nodes.get(eid).and_then(|n| n.dom.as_ref()) {
+        let dom = match self.nodes.get(&eid).and_then(|n| n.dom.as_ref()) {
             Some(d) => d,
             None => return vec![0.0, 0.0, 0.0, 0.0].into_boxed_slice(),
         };
@@ -935,28 +935,28 @@ impl HayateElementHtmlRenderer {
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
-        if self.nodes.contains_key(eid) {
+        if self.nodes.contains_key(&eid) {
             self.event_queue.push(Event::TextInput { target: eid, text: text.to_string() });
         }
     }
 
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
-        if self.nodes.contains_key(eid) {
+        if self.nodes.contains_key(&eid) {
             self.event_queue.push(Event::CompositionStart { target: eid, text: text.to_string() });
         }
     }
 
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
-        if self.nodes.contains_key(eid) {
+        if self.nodes.contains_key(&eid) {
             self.event_queue.push(Event::CompositionUpdate { target: eid, text: text.to_string() });
         }
     }
 
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
-        if self.nodes.contains_key(eid) {
+        if self.nodes.contains_key(&eid) {
             self.event_queue.push(Event::CompositionEnd { target: eid, text: text.to_string() });
         }
     }
@@ -975,7 +975,7 @@ impl HayateElementHtmlRenderer {
     /// (ADR-0030).
     pub fn element_get_text_content(&self, id: f64) -> String {
         let eid = element_id_from_f64(id);
-        let n = match self.nodes.get(eid) {
+        let n = match self.nodes.get(&eid) {
             Some(n) => n,
             None => return String::new(),
         };
@@ -993,7 +993,7 @@ impl HayateElementHtmlRenderer {
     /// observe the new URL immediately.
     pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
         let eid = element_id_from_f64(id);
-        if let Some(n) = self.nodes.get_mut(eid) {
+        if let Some(n) = self.nodes.get_mut(&eid) {
             if n.kind == ElementKind::Image {
                 n.src = Some(url.clone());
                 if let Some(dom) = n.dom.as_ref() {
@@ -1012,12 +1012,16 @@ impl HayateElementHtmlRenderer {
 
 impl HayateElementHtmlRenderer {
     fn detach_from_current_parent(&mut self, child: ElementId) {
-        let parent = match self.nodes.get(child).and_then(|c| c.parent) {
+        let parent = match self.nodes.get(&child).and_then(|c| c.parent) {
             Some(p) => p,
             None => return,
         };
-        self.nodes[parent].children.retain(|&c| c != child);
-        self.nodes[child].parent = None;
+        if let Some(p) = self.nodes.get_mut(&parent) {
+            p.children.retain(|&c| c != child);
+        }
+        if let Some(c) = self.nodes.get_mut(&child) {
+            c.parent = None;
+        }
     }
 
     /// Drain the pending command queue and apply each mutation to the DOM and
@@ -1055,13 +1059,15 @@ impl HayateElementHtmlRenderer {
     fn flush_create(&mut self, id: ElementId, kind: ElementKind) -> Result<(), JsValue> {
         // The slot was inserted eagerly in `element_create`; if it's missing it
         // was removed by a subsequent queued `Remove` — skip silently.
-        if !self.nodes.contains_key(id) {
+        if !self.nodes.contains_key(&id) {
             return Ok(());
         }
         let dom = create_dom_for_kind(&document(), kind)?;
         apply_kind_baseline(&dom, kind)?;
-        dom.set_attribute("data-element-id", &format!("{}", id.data().as_ffi()))?;
-        self.nodes[id].dom = Some(dom.clone());
+        dom.set_attribute("data-element-id", &format!("{}", id.to_u64()))?;
+        if let Some(n) = self.nodes.get_mut(&id) {
+            n.dom = Some(dom.clone());
+        }
         // Preserve the legacy auto-root behaviour: the first element created
         // when no root exists becomes the root and is mounted on the container.
         if self.root.is_none() {
@@ -1072,7 +1078,7 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_set_text(&mut self, id: ElementId, text: &str) {
-        let n = match self.nodes.get_mut(id) {
+        let n = match self.nodes.get_mut(&id) {
             Some(n) => n,
             None => return,
         };
@@ -1096,7 +1102,7 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_set_src(&mut self, id: ElementId, url: &str) {
-        let n = match self.nodes.get_mut(id) {
+        let n = match self.nodes.get_mut(&id) {
             Some(n) => n,
             None => return,
         };
@@ -1109,7 +1115,7 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_set_style(&mut self, id: ElementId, props: &[StyleProp]) -> Result<(), JsValue> {
-        let dom = match self.nodes.get(id).and_then(|n| n.dom.clone()) {
+        let dom = match self.nodes.get(&id).and_then(|n| n.dom.clone()) {
             Some(d) => d,
             None => return Ok(()),
         };
@@ -1120,7 +1126,7 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
-        let dom = match self.nodes.get(id).and_then(|n| n.dom.clone()) {
+        let dom = match self.nodes.get(&id).and_then(|n| n.dom.clone()) {
             Some(d) => d,
             None => return,
         };
@@ -1144,14 +1150,14 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
-        if let Some(dom) = self.nodes.get(id).and_then(|n| n.dom.as_ref()) {
+        if let Some(dom) = self.nodes.get(&id).and_then(|n| n.dom.as_ref()) {
             dom.set_scroll_left(x as i32);
             dom.set_scroll_top(y as i32);
         }
     }
 
     fn flush_set_font_family(&mut self, id: ElementId, family: &str) {
-        let dom = match self.nodes.get(id).and_then(|n| n.dom.clone()) {
+        let dom = match self.nodes.get(&id).and_then(|n| n.dom.clone()) {
             Some(d) => d,
             None => return,
         };
@@ -1161,19 +1167,19 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_set_aria_label(&mut self, id: ElementId, label: &str) {
-        if let Some(dom) = self.nodes.get(id).and_then(|n| n.dom.as_ref()) {
+        if let Some(dom) = self.nodes.get(&id).and_then(|n| n.dom.as_ref()) {
             let _ = dom.set_attribute("aria-label", label);
         }
     }
 
     fn flush_set_role(&mut self, id: ElementId, role: &str) {
-        if let Some(dom) = self.nodes.get(id).and_then(|n| n.dom.as_ref()) {
+        if let Some(dom) = self.nodes.get(&id).and_then(|n| n.dom.as_ref()) {
             let _ = dom.set_attribute("role", role);
         }
     }
 
     fn flush_set_text_content(&mut self, id: ElementId, text: &str) {
-        let n = match self.nodes.get_mut(id) {
+        let n = match self.nodes.get_mut(&id) {
             Some(n) => n,
             None => return,
         };
@@ -1190,54 +1196,62 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_append_child(&mut self, pid: ElementId, cid: ElementId) {
-        if !self.nodes.contains_key(pid) || !self.nodes.contains_key(cid) {
+        if !self.nodes.contains_key(&pid) || !self.nodes.contains_key(&cid) {
             return;
         }
         self.detach_from_current_parent(cid);
-        let parent_dom = self.nodes[pid].dom.clone();
-        let child_dom = self.nodes[cid].dom.clone();
+        let parent_dom = self.nodes[&pid].dom.clone();
+        let child_dom = self.nodes[&cid].dom.clone();
         if let (Some(p), Some(c)) = (parent_dom, child_dom) {
             let _ = p.append_child(c.as_ref());
         }
-        self.nodes[pid].children.push(cid);
-        self.nodes[cid].parent = Some(pid);
+        if let Some(p) = self.nodes.get_mut(&pid) {
+            p.children.push(cid);
+        }
+        if let Some(c) = self.nodes.get_mut(&cid) {
+            c.parent = Some(pid);
+        }
     }
 
     fn flush_insert_before(&mut self, pid: ElementId, cid: ElementId, bid: ElementId) {
-        if !self.nodes.contains_key(pid)
-            || !self.nodes.contains_key(cid)
-            || !self.nodes.contains_key(bid)
+        if !self.nodes.contains_key(&pid)
+            || !self.nodes.contains_key(&cid)
+            || !self.nodes.contains_key(&bid)
         {
             return;
         }
         self.detach_from_current_parent(cid);
-        let index = match self.nodes[pid].children.iter().position(|&c| c == bid) {
+        let index = match self.nodes[&pid].children.iter().position(|&c| c == bid) {
             Some(i) => i,
             None => {
                 self.flush_append_child(pid, cid);
                 return;
             }
         };
-        let parent_dom = self.nodes[pid].dom.clone();
-        let child_dom = self.nodes[cid].dom.clone();
-        let before_dom = self.nodes[bid].dom.clone();
+        let parent_dom = self.nodes[&pid].dom.clone();
+        let child_dom = self.nodes[&cid].dom.clone();
+        let before_dom = self.nodes[&bid].dom.clone();
         if let (Some(p), Some(c), Some(b)) = (parent_dom, child_dom, before_dom) {
             let _ = p
                 .unchecked_ref::<Node>()
                 .insert_before(c.as_ref(), Some(b.as_ref()));
         }
-        self.nodes[pid].children.insert(index, cid);
-        self.nodes[cid].parent = Some(pid);
+        if let Some(p) = self.nodes.get_mut(&pid) {
+            p.children.insert(index, cid);
+        }
+        if let Some(c) = self.nodes.get_mut(&cid) {
+            c.parent = Some(pid);
+        }
     }
 
     fn flush_remove(&mut self, target: ElementId) {
-        if !self.nodes.contains_key(target) {
+        if !self.nodes.contains_key(&target) {
             return;
         }
         self.detach_from_current_parent(target);
         // DOM removeChild cascades to descendants; we only need to drop the
         // top-level DOM node from its parent (or the container if it was root).
-        if let Some(top_dom) = self.nodes[target].dom.clone() {
+        if let Some(top_dom) = self.nodes[&target].dom.clone() {
             if let Some(parent_dom) = top_dom.parent_node() {
                 let _ = parent_dom.remove_child(top_dom.as_ref());
             }
@@ -1245,7 +1259,7 @@ impl HayateElementHtmlRenderer {
         // Drop the slotmap entries for the subtree.
         let mut stack = vec![target];
         while let Some(node) = stack.pop() {
-            if let Some(n) = self.nodes.remove(node) {
+            if let Some(n) = self.nodes.remove(&node) {
                 stack.extend(n.children.iter().copied());
             }
         }
@@ -1255,37 +1269,37 @@ impl HayateElementHtmlRenderer {
         // Clear any pointer-state that referred to a removed node (including
         // descendants — the subtree walk above already removed them from self.nodes).
         if let Some(f) = self.focused_element {
-            if !self.nodes.contains_key(f) {
+            if !self.nodes.contains_key(&f) {
                 self.focused_element = None;
             }
         }
         if let Some(h) = self.hovered_element {
-            if !self.nodes.contains_key(h) {
+            if !self.nodes.contains_key(&h) {
                 self.hovered_element = None;
             }
         }
         if let Some(a) = self.active_element {
-            if !self.nodes.contains_key(a) {
+            if !self.nodes.contains_key(&a) {
                 self.active_element = None;
             }
         }
     }
 
     fn flush_set_root(&mut self, new_root: ElementId) {
-        if !self.nodes.contains_key(new_root) {
+        if !self.nodes.contains_key(&new_root) {
             return;
         }
         // Detach the previous root from the container (if any).
         if let Some(prev) = self.root {
             if prev != new_root {
-                if let Some(prev_dom) = self.nodes[prev].dom.clone() {
+                if let Some(prev_dom) = self.nodes[&prev].dom.clone() {
                     let _ = self.container.remove_child(prev_dom.as_ref());
                 }
             }
         }
         // Lift the new root out of any prior parent and mount it on the container.
         self.detach_from_current_parent(new_root);
-        if let Some(dom) = self.nodes[new_root].dom.clone() {
+        if let Some(dom) = self.nodes[&new_root].dom.clone() {
             let _ = self.container.append_child(dom.as_ref());
         }
         self.root = Some(new_root);

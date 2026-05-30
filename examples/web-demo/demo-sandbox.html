@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hayate — フルサンドボックス (Lv.5)</title>
+  <title>Hayate — フルサンドボックス (Lv.6)</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -211,7 +211,7 @@
   <a href="./index.html" class="back-link">← 一覧に戻る</a>
 
   <header>
-    <div class="lv-badge" style="background:#9333ea">Lv.5</div>
+    <div class="lv-badge" style="background:#9333ea">Lv.6</div>
     <h1>Hayate — フルサンドボックス</h1>
     <p>Element tree + Taffy レイアウト + Parley テキストを Canvas Mode / HTML Mode の両方で描画</p>
   </header>
@@ -415,25 +415,51 @@
     }
     function overlayGone() { $('canvas-overlay').classList.add('gone'); }
 
+    const WASM_JS  = '/pkg/hayate_adapter_web.js';
+    const WASM_BIN = '/pkg/hayate_adapter_web_bg.wasm';
+
+    let nextElementId = 1;
+    function createElement(kind) {
+      const id = nextElementId++;
+      renderer.element_create(id, kind);
+      return id;
+    }
+
+    function waitWithProgress(label, promise, hint) {
+      const t0 = performance.now();
+      const timer = setInterval(() => {
+        const sec = Math.floor((performance.now() - t0) / 1000);
+        overlay('⏳', label, `${hint}（${sec}s 経過）`);
+      }, 1000);
+      return promise.finally(() => clearInterval(timer));
+    }
+
     // ── 1. WebGPU detect ──────────────────────────────────────────────────
     step('s1', 'run');
     overlay('🔍', 'WebGPU を検出中...');
-    let webgpuOk = false;
-    try {
-      if (navigator.gpu) {
-        const adapter = await navigator.gpu.requestAdapter();
-        webgpuOk = !!adapter;
-      }
-    } catch { webgpuOk = false; }
-    step('s1', webgpuOk ? 'ok' : 'warn');
+    const hasWebGpuApi = !!navigator.gpu;
+    step('s1', hasWebGpuApi ? 'ok' : 'warn');
 
     // ── 2. WASM load ──────────────────────────────────────────────────────
     step('s2', 'run');
-    overlay('📦', 'WASM モジュールを読み込み中...');
+    overlay('📦', 'WASM モジュールを読み込み中...', 'pkg の存在を確認中');
     let mod;
     try {
-      mod = await import('./pkg/hayate_adapter_web.js');
-      await mod.default();
+      const head = await fetch(WASM_BIN, { method: 'HEAD' });
+      if (!head.ok) {
+        throw new Error(
+          `${WASM_BIN} が見つかりません。リポジトリ直下で npm run build を実行してください。`
+        );
+      }
+
+      overlay('📦', 'WASM モジュールを読み込み中...', 'JS バインディングを取得中');
+      mod = await import(WASM_JS);
+
+      await waitWithProgress(
+        'WASM モジュールを読み込み中...',
+        mod.default(),
+        '初回は 6MB のコンパイルで 30〜60 秒かかることがあります'
+      );
       step('s2', 'ok');
     } catch (e) {
       step('s2', 'fail'); step('s3', 'fail'); step('s4', 'fail');
@@ -469,7 +495,7 @@
 
     // ── Initial Element Layer scene ───────────────────────────────────────
     function buildInitialElementScene() {
-      const root = renderer.element_create(mod.element_kind_view());
+      const root = createElement(mod.element_kind_view());
       renderer.set_root(root);
       renderer.element_set_style(root, packStyle([
         { tag: TAG.WIDTH,  payload: [640, UNIT.PX] },
@@ -485,7 +511,7 @@
       elementSeq += 1;
       elements.set(root, { kind: 'view', label: `#${elementSeq} view (root)`, root: true, raw: root });
 
-      const a = renderer.element_create(mod.element_kind_view());
+      const a = createElement(mod.element_kind_view());
       renderer.element_set_style(a, packStyle([
         { tag: TAG.WIDTH, payload: [180, UNIT.PX] },
         { tag: TAG.HEIGHT, payload: [180, UNIT.PX] },
@@ -496,7 +522,7 @@
       elementSeq += 1;
       elements.set(a, { kind: 'view', label: `#${elementSeq} view`, raw: a });
 
-      const b = renderer.element_create(mod.element_kind_view());
+      const b = createElement(mod.element_kind_view());
       renderer.element_set_style(b, packStyle([
         { tag: TAG.WIDTH, payload: [180, UNIT.PX] },
         { tag: TAG.HEIGHT, payload: [180, UNIT.PX] },
@@ -507,7 +533,7 @@
       elementSeq += 1;
       elements.set(b, { kind: 'view', label: `#${elementSeq} view`, raw: b });
 
-      const t = renderer.element_create(mod.element_kind_text());
+      const t = createElement(mod.element_kind_text());
       renderer.element_set_style(t, packStyle([
         { tag: TAG.FONT_SIZE, payload: [22] },
         { tag: TAG.COLOR, payload: [1.0, 1.0, 1.0, 1.0] },
@@ -534,15 +560,29 @@
     // ── Initialise the renderer for the current mode ──────────────────────
     async function initRenderer() {
       step('s3', 'run');
+      nextElementId = 1;
       try {
         if (mode === 'el') {
-          if (webgpuOk) {
+          if (hasWebGpuApi) {
             $('s3-label').textContent = 'Element Layer (Canvas)';
             overlay('⚙️', 'Element Layer (Canvas Mode) を初期化中...');
             $('canvas').style.display = 'block';
             $('html-surface').style.display = 'none';
-            renderer = await mod.HayateElementRenderer.init($('canvas'));
-            usingHtmlFallback = false;
+            try {
+              renderer = await waitWithProgress(
+                'Element Layer (Canvas Mode) を初期化中...',
+                mod.HayateElementRenderer.init($('canvas')),
+                'WebGPU デバイスと Vello シェーダーを初期化中'
+              );
+              usingHtmlFallback = false;
+            } catch (canvasErr) {
+              console.warn('[sandbox] Canvas init failed, falling back to HTML:', canvasErr);
+              overlay('🌐', 'Element Layer (HTML Mode) にフォールバック中...', String(canvasErr));
+              $('canvas').style.display = 'none';
+              $('html-surface').style.display = 'block';
+              renderer = mod.HayateElementHtmlRenderer.new($('html-surface'));
+              usingHtmlFallback = true;
+            }
           } else {
             $('s3-label').textContent = 'Element Layer (HTML)';
             overlay('🌐', 'Element Layer (HTML Mode) を初期化中...');
@@ -552,13 +592,26 @@
             usingHtmlFallback = true;
           }
         } else {
-          if (webgpuOk) {
+          if (hasWebGpuApi) {
             $('s3-label').textContent = 'Raw Layer (Canvas)';
             overlay('⚙️', 'Raw Layer (Canvas Mode) を初期化中...');
             $('canvas').style.display = 'block';
             $('html-surface').style.display = 'none';
-            renderer = await mod.HayateRenderer.init($('canvas'));
-            usingHtmlFallback = false;
+            try {
+              renderer = await waitWithProgress(
+                'Raw Layer (Canvas Mode) を初期化中...',
+                mod.HayateRenderer.init($('canvas')),
+                'WebGPU デバイスと Vello シェーダーを初期化中'
+              );
+              usingHtmlFallback = false;
+            } catch (canvasErr) {
+              console.warn('[sandbox] Raw Canvas init failed, falling back to HTML:', canvasErr);
+              overlay('🌐', 'Raw Layer (HTML Mode) にフォールバック中...', String(canvasErr));
+              $('canvas').style.display = 'none';
+              $('html-surface').style.display = 'block';
+              renderer = mod.HayateHtmlRenderer.new($('html-surface'));
+              usingHtmlFallback = true;
+            }
           } else {
             $('s3-label').textContent = 'Raw Layer (HTML)';
             overlay('🌐', 'Raw Layer (HTML Mode) を初期化中...');
@@ -664,7 +717,7 @@
         'text-input': mod.element_kind_text_input(),
         'scroll-view': mod.element_kind_scroll_view(),
       };
-      const id = renderer.element_create(kindMap[kindName]);
+      const id = createElement(kindMap[kindName]);
       elementSeq += 1;
       elements.set(id, { kind: kindName, label: `#${elementSeq} ${kindName}`, raw: id });
       refreshSelects();
