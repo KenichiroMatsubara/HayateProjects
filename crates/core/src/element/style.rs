@@ -61,7 +61,7 @@ pub enum JustifyValue {
     SpaceEvenly,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum StyleProp {
     // visual
     BackgroundColor(Color),
@@ -94,6 +94,7 @@ pub enum StyleProp {
     MarginLeft(Dimension),
     // text
     FontSize(f32),
+    FontFamily(String),
     Color(Color),
     // stacking
     ZIndex(i32),
@@ -101,7 +102,7 @@ pub enum StyleProp {
 
 impl StyleProp {
     /// Layout-affecting props go to Taffy; visual/text props go to Visual.
-    pub fn is_layout(self) -> bool {
+    pub fn is_layout(&self) -> bool {
         matches!(
             self,
             Self::Width(_)

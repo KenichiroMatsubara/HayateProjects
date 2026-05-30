@@ -35,6 +35,10 @@ pub(crate) const TAG_MARGIN_LEFT: u32 = 25;
 pub(crate) const TAG_FONT_SIZE: u32 = 26;
 pub(crate) const TAG_COLOR: u32 = 27;
 pub(crate) const TAG_Z_INDEX: u32 = 28;
+/// Encoded as: [TAG_FONT_FAMILY, byte_len, byte0, byte1, …, byteN]
+/// Each byte is stored as an f32. ASCII font names are single-byte UTF-8
+/// so this is lossless for all real-world family names.
+pub(crate) const TAG_FONT_FAMILY: u32 = 29;
 
 fn dim(value: f32, unit_raw: f32) -> Dimension {
     let unit = match unit_raw as u32 {
@@ -249,6 +253,17 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                 out.push(StyleProp::ZIndex(packed[i] as i32));
                 i += 1;
             }
+            TAG_FONT_FAMILY => {
+                need(1, tag)?;
+                let len = packed[i] as usize;
+                i += 1;
+                need(len, tag)?;
+                let bytes: Vec<u8> = (0..len).map(|j| packed[i + j] as u8).collect();
+                let family = String::from_utf8(bytes)
+                    .map_err(|_| JsValue::from_str("font-family: invalid UTF-8"))?;
+                out.push(StyleProp::FontFamily(family));
+                i += len;
+            }
             other => {
                 return Err(JsValue::from_str(&format!("unknown style tag {other}")));
             }
@@ -361,6 +376,7 @@ fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<()
         StyleProp::MarginBottom(d) => style.set_property("margin-bottom", &css_dim(d))?,
         StyleProp::MarginLeft(d) => style.set_property("margin-left", &css_dim(d))?,
         StyleProp::FontSize(v) => style.set_property("font-size", &format!("{}px", v.max(0.0)))?,
+        StyleProp::FontFamily(ref f) => style.set_property("font-family", f)?,
         StyleProp::Color(c) => style.set_property("color", &css_rgba(c))?,
         StyleProp::ZIndex(z) => style.set_property("z-index", &z.to_string())?,
     }

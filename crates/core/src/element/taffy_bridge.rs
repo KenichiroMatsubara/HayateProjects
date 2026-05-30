@@ -50,13 +50,13 @@ fn to_taffy_lp_auto(d: Dimension) -> LengthPercentageAuto {
 /// if the prop was a layout prop and was applied; false otherwise (caller
 /// should route to Visual instead).
 pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
-    match *prop {
-        StyleProp::Width(d) => style.size.width = to_taffy_dim(d),
-        StyleProp::Height(d) => style.size.height = to_taffy_dim(d),
-        StyleProp::MinWidth(d) => style.min_size.width = to_taffy_dim(d),
-        StyleProp::MinHeight(d) => style.min_size.height = to_taffy_dim(d),
-        StyleProp::MaxWidth(d) => style.max_size.width = to_taffy_dim(d),
-        StyleProp::MaxHeight(d) => style.max_size.height = to_taffy_dim(d),
+    match prop {
+        StyleProp::Width(d) => style.size.width = to_taffy_dim(*d),
+        StyleProp::Height(d) => style.size.height = to_taffy_dim(*d),
+        StyleProp::MinWidth(d) => style.min_size.width = to_taffy_dim(*d),
+        StyleProp::MinHeight(d) => style.min_size.height = to_taffy_dim(*d),
+        StyleProp::MaxWidth(d) => style.max_size.width = to_taffy_dim(*d),
+        StyleProp::MaxHeight(d) => style.max_size.height = to_taffy_dim(*d),
         StyleProp::Display(v) => {
             style.display = match v {
                 DisplayValue::Flex => Display::Flex,
@@ -93,25 +93,25 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
             });
         }
         StyleProp::Gap(d) => {
-            let lp = to_taffy_lp(d);
+            let lp = to_taffy_lp(*d);
             style.gap = Size { width: lp, height: lp };
         }
         StyleProp::Padding(d) => {
-            let lp = to_taffy_lp(d);
+            let lp = to_taffy_lp(*d);
             style.padding = TaffyRect { left: lp, right: lp, top: lp, bottom: lp };
         }
-        StyleProp::PaddingTop(d) => style.padding.top = to_taffy_lp(d),
-        StyleProp::PaddingRight(d) => style.padding.right = to_taffy_lp(d),
-        StyleProp::PaddingBottom(d) => style.padding.bottom = to_taffy_lp(d),
-        StyleProp::PaddingLeft(d) => style.padding.left = to_taffy_lp(d),
+        StyleProp::PaddingTop(d) => style.padding.top = to_taffy_lp(*d),
+        StyleProp::PaddingRight(d) => style.padding.right = to_taffy_lp(*d),
+        StyleProp::PaddingBottom(d) => style.padding.bottom = to_taffy_lp(*d),
+        StyleProp::PaddingLeft(d) => style.padding.left = to_taffy_lp(*d),
         StyleProp::Margin(d) => {
-            let lpa = to_taffy_lp_auto(d);
+            let lpa = to_taffy_lp_auto(*d);
             style.margin = TaffyRect { left: lpa, right: lpa, top: lpa, bottom: lpa };
         }
-        StyleProp::MarginTop(d) => style.margin.top = to_taffy_lp_auto(d),
-        StyleProp::MarginRight(d) => style.margin.right = to_taffy_lp_auto(d),
-        StyleProp::MarginBottom(d) => style.margin.bottom = to_taffy_lp_auto(d),
-        StyleProp::MarginLeft(d) => style.margin.left = to_taffy_lp_auto(d),
+        StyleProp::MarginTop(d) => style.margin.top = to_taffy_lp_auto(*d),
+        StyleProp::MarginRight(d) => style.margin.right = to_taffy_lp_auto(*d),
+        StyleProp::MarginBottom(d) => style.margin.bottom = to_taffy_lp_auto(*d),
+        StyleProp::MarginLeft(d) => style.margin.left = to_taffy_lp_auto(*d),
         _ => return false,
     }
     true

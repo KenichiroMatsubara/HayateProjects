@@ -87,6 +87,31 @@ fn codepoint_font_family(cp: u32) -> Option<&'static str> {
     }
 }
 
+/// Resolve CSS generic family keywords to concrete font names for Canvas Mode.
+///
+/// HTML Mode passes the value straight to the browser, which resolves generics
+/// natively. Canvas Mode (Parley/Vello) has no system-font access in WASM, so
+/// generic keywords are mapped to bundled or on-demand-fetched Noto fonts.
+pub(crate) fn resolve_generic_family(name: &str) -> &str {
+    match name {
+        // sans-serif generics → default (Noto Sans, already bundled)
+        "sans-serif"
+        | "system-ui"
+        | "ui-sans-serif"
+        | "-apple-system"
+        | "BlinkMacSystemFont"
+        | "cursive"
+        | "fantasy"
+        | "ui-rounded" => DEFAULT_FONT_FAMILY,
+        // serif → Noto Serif (fetched on demand via builtin_font_url)
+        "serif" | "ui-serif" => "Noto Serif",
+        // monospace → Noto Sans Mono (fetched on demand)
+        "monospace" | "ui-monospace" => "Noto Sans Mono",
+        // named or already-resolved family — pass through unchanged
+        other => other,
+    }
+}
+
 /// Build a Parley layout, break lines, and lower its glyph runs into
 /// `TextRunData` instances ready for the Raw Layer.
 pub fn build_text_layout(
@@ -99,11 +124,17 @@ pub fn build_text_layout(
 ) -> TextLayout {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(font_size));
-    // Build a CSS font stack so unknown names fall back to the bundled default.
-    // Parley resolves left-to-right and silently skips unregistered names.
+    // Resolve generic keywords, then build a CSS font stack so unknown names
+    // fall back to the bundled default. Parley resolves left-to-right and
+    // silently skips unregistered names, triggering FetchFont for missing ones.
     let stack = match font_family {
-        Some(f) if !f.is_empty() && f != DEFAULT_FONT_FAMILY => {
-            Cow::Owned(format!("{f}, {DEFAULT_FONT_FAMILY}"))
+        Some(f) if !f.is_empty() => {
+            let resolved = resolve_generic_family(f);
+            if resolved == DEFAULT_FONT_FAMILY {
+                Cow::Borrowed(DEFAULT_FONT_FAMILY)
+            } else {
+                Cow::Owned(format!("{resolved}, {DEFAULT_FONT_FAMILY}"))
+            }
         }
         _ => Cow::Borrowed(DEFAULT_FONT_FAMILY),
     };

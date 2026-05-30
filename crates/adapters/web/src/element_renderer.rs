@@ -14,11 +14,13 @@ use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlInputElemen
 type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
 /// Built-in family-name → CDN URL table for fonts the web adapter fetches
-/// automatically when .notdef glyphs are detected (ADR-0043).
+/// automatically (ADR-0043). Named fonts are fetched proactively when set via
+/// font-family; script-specific fonts are fetched on .notdef detection.
 ///
-/// All URLs point to TTF variable fonts from google/fonts via jsDelivr.
+/// All URLs point to TTF files from google/fonts via jsDelivr.
 /// fontique/skrifa does NOT support WOFF2 — TTF/OTF only.
-/// Brackets in filenames are URL-encoded: `[` → `%5B`, `]` → `%5D`, `,` → `%2C`.
+/// Variable font axes in filenames are URL-encoded: `[` → `%5B`, `]` → `%5D`, `,` → `%2C`.
+/// Static (non-variable) fonts are noted where applicable.
 fn builtin_font_url(family: &str) -> Option<&'static str> {
     match family {
         // ── CJK ──────────────────────────────────────────────────────────
@@ -49,6 +51,67 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
         // ── Hebrew ───────────────────────────────────────────────────────
         "Noto Sans Hebrew" => Some(
             "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Generic family targets (resolved from CSS keywords in text.rs) ─
+        "Noto Serif" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
+        ),
+        "Noto Sans Mono" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansmono/NotoSansMono%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Popular sans-serif ────────────────────────────────────────────
+        "Inter" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf"
+        ),
+        "Roboto" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/apache/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
+        ),
+        "Open Sans" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf"
+        ),
+        "Lato" => Some(
+            // static — no variable version in google/fonts
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lato/Lato-Regular.ttf"
+        ),
+        "Poppins" => Some(
+            // static — no variable version in google/fonts
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Regular.ttf"
+        ),
+        "Montserrat" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
+        ),
+        "Raleway" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/raleway/Raleway%5Bwght%5D.ttf"
+        ),
+        "Nunito" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nunito/Nunito%5Bwght%5D.ttf"
+        ),
+        "Oswald" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/oswald/Oswald%5Bwght%5D.ttf"
+        ),
+        "Source Sans 3" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf"
+        ),
+        // ── Popular serif ─────────────────────────────────────────────────
+        "Playfair Display" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf"
+        ),
+        "Merriweather" => Some(
+            // static — no variable version in google/fonts
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/merriweather/Merriweather-Regular.ttf"
+        ),
+        "Lora" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lora/Lora%5Bwght%5D.ttf"
+        ),
+        // ── Popular monospace (code) ──────────────────────────────────────
+        "JetBrains Mono" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf"
+        ),
+        "Fira Code" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/firacode/FiraCode%5Bwght%5D.ttf"
+        ),
+        "Source Code Pro" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcecodepro/SourceCodePro%5Bital%2Cwght%5D.ttf"
         ),
         _ => None,
     }
@@ -107,6 +170,7 @@ fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
 // ── Style tag constants (exposed to JS) ──────────────────────────────────
 
 #[wasm_bindgen] pub fn style_tag_z_index() -> u32 { crate::style_packet::TAG_Z_INDEX }
+#[wasm_bindgen] pub fn style_tag_font_family() -> u32 { crate::style_packet::TAG_FONT_FAMILY }
 
 // ── Event kind constants (exposed to JS) ─────────────────────────────────
 // Discriminants match `encode_events` below. Naming follows ADR-0031:
