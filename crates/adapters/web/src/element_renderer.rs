@@ -1,11 +1,58 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use hayate_core::{ElementId, ElementKind, ElementTree, Event, StyleProp, vello_bridge};
-use std::collections::HashMap;
 use vello::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat, color::{AlphaColor, Srgb}};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlInputElement, Node};
+
+/// Fonts fetched asynchronously by the adapter; drained into the tree on the
+/// next `poll_events()` call (single-threaded WASM — Rc<RefCell> is safe).
+type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
+
+/// Built-in family-name → CDN URL table for fonts the web adapter fetches
+/// automatically when .notdef glyphs are detected (ADR-0043).
+///
+/// All URLs point to TTF variable fonts from google/fonts via jsDelivr.
+/// fontique/skrifa does NOT support WOFF2 — TTF/OTF only.
+/// Brackets in filenames are URL-encoded: `[` → `%5B`, `]` → `%5D`, `,` → `%2C`.
+fn builtin_font_url(family: &str) -> Option<&'static str> {
+    match family {
+        // ── CJK ──────────────────────────────────────────────────────────
+        "Noto Sans JP" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
+        ),
+        "Noto Sans KR" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf"
+        ),
+        "Noto Sans SC" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
+        ),
+        "Noto Sans TC" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf"
+        ),
+        // ── Arabic ───────────────────────────────────────────────────────
+        "Noto Sans Arabic" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Thai ─────────────────────────────────────────────────────────
+        "Noto Sans Thai" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Devanagari ───────────────────────────────────────────────────
+        "Noto Sans Devanagari" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf"
+        ),
+        // ── Hebrew ───────────────────────────────────────────────────────
+        "Noto Sans Hebrew" => Some(
+            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf"
+        ),
+        _ => None,
+    }
+}
 
 use crate::gpu_surface::GpuSurface;
 use crate::style_packet;
@@ -131,6 +178,8 @@ pub struct HayateElementRenderer {
     /// the WIT `render` signature no longer carries it (ADR-0032 keeps render
     /// timestamp-only); call `set_background_color` separately.
     background: AlphaColor<Srgb>,
+    /// Fonts fetched by spawned futures; applied to the tree on next poll_events.
+    font_queue: FontQueue,
 }
 
 #[wasm_bindgen]
@@ -148,6 +197,7 @@ impl HayateElementRenderer {
             active_element: None,
             last_pointer_pos: None,
             background: AlphaColor::<Srgb>::new([0.0, 0.0, 0.0, 1.0]),
+            font_queue: Rc::new(RefCell::new(Vec::new())),
         })
     }
 
@@ -384,6 +434,34 @@ impl HayateElementRenderer {
         Ok(())
     }
 
+    /// Preload fonts declared in the app's `hayate.config.json`.
+    ///
+    /// Accepts a JS array of `{ family: string, url: string }` objects.
+    /// Fetches each font sequentially and blocks until all are registered,
+    /// so the first `render()` frame uses the correct fonts (no FOUT).
+    ///
+    /// # Example (JS)
+    /// ```js
+    /// const cfg = await fetch('./hayate.config.json').then(r => r.json());
+    /// await renderer.configure_fonts(cfg.fonts);
+    /// ```
+    pub async fn configure_fonts(&mut self, fonts: JsValue) -> Result<(), JsValue> {
+        use js_sys::{Array, Reflect};
+        let arr = Array::from(&fonts);
+        for i in 0..arr.length() {
+            let item = arr.get(i);
+            let family = Reflect::get(&item, &JsValue::from_str("family"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'family'"))?;
+            let url = Reflect::get(&item, &JsValue::from_str("url"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'url'"))?;
+            let bytes = fetch_bytes(&url).await?;
+            self.tree.register_font(&family, bytes);
+        }
+        Ok(())
+    }
+
     /// Load a font using the family name embedded in the font file. Backs the
     /// WIT `element-load-font` export.
     pub fn element_load_font(&mut self, data: &[u8]) {
@@ -574,8 +652,37 @@ impl HayateElementRenderer {
     }
 
     pub fn poll_events(&mut self) -> js_sys::Array {
+        // Apply fonts that finished fetching since the last frame.
+        let loaded: Vec<(String, Vec<u8>)> = self.font_queue.borrow_mut().drain(..).collect();
+        for (family, bytes) in loaded {
+            self.tree.register_font(&family, bytes);
+        }
+
+        // Drain events; intercept FetchFont and handle it here (ADR-0043).
         let events = self.tree.poll_events();
-        encode_events(&events)
+        let mut visible = Vec::with_capacity(events.len());
+        for event in events {
+            match event {
+                Event::FetchFont { family } => {
+                    if let Some(url) = builtin_font_url(&family) {
+                        let queue = self.font_queue.clone();
+                        let url = url.to_string();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match fetch_bytes(&url).await {
+                                Ok(bytes) => queue.borrow_mut().push((family, bytes)),
+                                Err(e) => web_sys::console::warn_1(&e),
+                            }
+                        });
+                    } else {
+                        web_sys::console::warn_1(
+                            &JsValue::from_str(&format!("FetchFont: no URL for \"{family}\"")),
+                        );
+                    }
+                }
+                other => visible.push(other),
+            }
+        }
+        encode_events(&visible)
     }
 }
 
@@ -868,6 +975,25 @@ impl HayateElementHtmlRenderer {
     pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
         let bytes = fetch_bytes(&url).await?;
         let _ = inject_font_face(&family_name, &bytes);
+        Ok(())
+    }
+
+    /// Preload fonts declared in `hayate.config.json` before the first render.
+    /// HTML Mode injects each as a CSS `@font-face` rule so the browser uses them.
+    pub async fn configure_fonts(&mut self, fonts: JsValue) -> Result<(), JsValue> {
+        use js_sys::{Array, Reflect};
+        let arr = Array::from(&fonts);
+        for i in 0..arr.length() {
+            let item = arr.get(i);
+            let family = Reflect::get(&item, &JsValue::from_str("family"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'family'"))?;
+            let url = Reflect::get(&item, &JsValue::from_str("url"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'url'"))?;
+            let bytes = fetch_bytes(&url).await?;
+            let _ = inject_font_face(&family, &bytes);
+        }
         Ok(())
     }
 
@@ -1432,6 +1558,7 @@ fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementI
 ///   key_down:     [12, target_ffi, key: string, modifiers]  (WIT order: target→key→modifiers)
 ///   active_start: [13, target_ffi]
 ///   pointer_move: [14, x, y]                                (no target — ADR-0031)
+/// FetchFont is handled internally by poll_events and never reaches JS (ADR-0043).
 fn encode_events(events: &[Event]) -> js_sys::Array {
     use js_sys::Array;
     let result = Array::new();
@@ -1473,6 +1600,7 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
             }
             Event::ActiveStart { target } => { pf!(13.0); pf!(target.to_u64()); }
             Event::PointerMove { x, y }   => { pf!(14.0); pf!(*x); pf!(*y); }
+            Event::FetchFont { family }   => { pf!(15.0); ps!(family); }
         }
         result.push(&sub);
     }
@@ -1485,6 +1613,13 @@ async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     let window = web_sys::window().ok_or("no window")?;
     let resp: web_sys::Response =
         JsFuture::from(window.fetch_with_str(url)).await?.dyn_into()?;
+    if !resp.ok() {
+        return Err(JsValue::from_str(&format!(
+            "fetch failed: {} {}",
+            resp.status(),
+            resp.status_text()
+        )));
+    }
     let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
     Ok(Uint8Array::new(&buf).to_vec())
 }

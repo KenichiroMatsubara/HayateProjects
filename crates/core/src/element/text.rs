@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use parley::{
@@ -23,6 +24,67 @@ pub struct TextLayout {
     pub text: Arc<str>,
     /// Width constraint last used; if None, single-line.
     pub width_constraint: Option<f32>,
+    /// Font family names with .notdef glyphs detected during shaping.
+    /// Each entry indicates a font that should be dynamically loaded.
+    pub missing_families: Vec<&'static str>,
+}
+
+/// Map a Unicode codepoint to the font family name best suited to render it,
+/// for use when .notdef is detected. Returns `None` for codepoints the
+/// bundled default font is expected to cover.
+///
+/// Family names here are the keys each platform adapter uses in its own
+/// family-name → font-source table (ADR-0043).
+fn codepoint_font_family(cp: u32) -> Option<&'static str> {
+    match cp {
+        // ── CJK (Japanese, Chinese ideographs) ───────────────────────────
+        0x2E80..=0x2EFF   // CJK Radicals Supplement
+        | 0x2F00..=0x2FDF // Kangxi Radicals
+        | 0x3000..=0x303F // CJK Symbols and Punctuation
+        | 0x3040..=0x309F // Hiragana
+        | 0x30A0..=0x30FF // Katakana
+        | 0x31F0..=0x31FF // Katakana Phonetic Extensions
+        | 0x3400..=0x4DBF // CJK Unified Ideographs Extension A
+        | 0x4E00..=0x9FFF // CJK Unified Ideographs
+        | 0xF900..=0xFAFF // CJK Compatibility Ideographs
+        | 0x20000..=0x2A6DF // CJK Unified Ideographs Extension B
+        | 0x2A700..=0x2B73F // CJK Unified Ideographs Extension C
+        | 0x2B740..=0x2B81F // CJK Unified Ideographs Extension D
+        | 0x2B820..=0x2CEAF // CJK Unified Ideographs Extension E
+        | 0x2CEB0..=0x2EBEF // CJK Unified Ideographs Extension F
+        => Some("Noto Sans JP"),
+
+        // ── Korean ───────────────────────────────────────────────────────
+        0x1100..=0x11FF   // Hangul Jamo
+        | 0x3130..=0x318F // Hangul Compatibility Jamo
+        | 0xA960..=0xA97F // Hangul Jamo Extended-A
+        | 0xAC00..=0xD7AF // Hangul Syllables
+        | 0xD7B0..=0xD7FF // Hangul Jamo Extended-B
+        => Some("Noto Sans KR"),
+
+        // ── Arabic ───────────────────────────────────────────────────────
+        0x0600..=0x06FF   // Arabic
+        | 0x0750..=0x077F // Arabic Supplement
+        | 0x08A0..=0x08FF // Arabic Extended-A
+        | 0xFB50..=0xFDFF // Arabic Presentation Forms-A
+        | 0xFE70..=0xFEFF // Arabic Presentation Forms-B
+        => Some("Noto Sans Arabic"),
+
+        // ── Thai ─────────────────────────────────────────────────────────
+        0x0E00..=0x0E7F => Some("Noto Sans Thai"),
+
+        // ── Devanagari (Hindi, Marathi, Sanskrit …) ──────────────────────
+        0x0900..=0x097F   // Devanagari
+        | 0xA8E0..=0xA8FF // Devanagari Extended
+        => Some("Noto Sans Devanagari"),
+
+        // ── Hebrew ───────────────────────────────────────────────────────
+        0x0590..=0x05FF   // Hebrew
+        | 0xFB1D..=0xFB4F // Hebrew Presentation Forms
+        => Some("Noto Sans Hebrew"),
+
+        _ => None,
+    }
 }
 
 /// Build a Parley layout, break lines, and lower its glyph runs into
@@ -49,18 +111,25 @@ pub fn build_text_layout(
     let mut layout: Layout<TextBrush> = builder.build(text);
     layout.break_all_lines(max_advance);
 
-    let runs = lower_glyph_runs(&layout, font_size);
+    let (runs, missing_families) = lower_glyph_runs(&layout, font_size, text);
     TextLayout {
         layout,
         runs,
         font_size,
         text: Arc::<str>::from(text),
         width_constraint: max_advance,
+        missing_families,
     }
 }
 
-fn lower_glyph_runs(layout: &Layout<TextBrush>, font_size: f32) -> Vec<Arc<TextRunData>> {
+fn lower_glyph_runs(
+    layout: &Layout<TextBrush>,
+    font_size: f32,
+    text: &str,
+) -> (Vec<Arc<TextRunData>>, Vec<&'static str>) {
     let mut out: Vec<Arc<TextRunData>> = Vec::new();
+    let mut missing: HashSet<&'static str> = HashSet::new();
+
     for line in layout.lines() {
         for item in line.items() {
             let PositionedLayoutItem::GlyphRun(grun) = item else { continue };
@@ -79,6 +148,17 @@ fn lower_glyph_runs(layout: &Layout<TextBrush>, font_size: f32) -> Vec<Arc<TextR
             if positioned.is_empty() {
                 continue;
             }
+            if positioned.iter().any(|g| g.id == 0) {
+                let range = run.text_range();
+                let end = range.end.min(text.len());
+                if range.start < end {
+                    for ch in text[range.start..end].chars() {
+                        if let Some(fam) = codepoint_font_family(ch as u32) {
+                            missing.insert(fam);
+                        }
+                    }
+                }
+            }
             out.push(Arc::new(TextRunData {
                 font,
                 font_size: run.font_size().max(font_size),
@@ -87,5 +167,5 @@ fn lower_glyph_runs(layout: &Layout<TextBrush>, font_size: f32) -> Vec<Arc<TextR
             }));
         }
     }
-    out
+    (out, missing.into_iter().collect())
 }

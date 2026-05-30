@@ -355,6 +355,16 @@
 
     renderer.set_background_color(0.04, 0.06, 0.1);
 
+    // ── フォント設定 ────────────────────────────────────────────────────────
+    // hayate.config.json に { "fonts": [{ "family": "...", "url": "..." }] } を宣言すると
+    // 最初のフレームより前にロードされ、FOUT（未スタイルテキストの点滅）が起きない。
+    try {
+      const fontConfig = await fetch('./hayate.config.json').then(r => r.json());
+      if (fontConfig.fonts?.length > 0) {
+        await renderer.configure_fonts(fontConfig.fonts);
+      }
+    } catch(_) {}
+
     // ── 5. シーン構築 ───────────────────────────────────────────────────────
     step('s5', 'run');
     overlay('🎨', 'シーンを構築中...');
@@ -503,14 +513,18 @@
         if (e.metaKey)  mods |= mod.modifier_meta();
         renderer.on_key_down(e.key, mods);
 
-        // Enter は EditContext の textupdate を経由しないため直接送る
-        if (e.key === 'Enter') {
-          // on_key_down 内部で \n が追記される
-        }
-
         logEvent('key', `keydown: "${e.key}"`);
         updateDisplay();
-        e.preventDefault();
+
+        // 印刷可能文字は EditContext の textupdate に委ねる（preventDefault しない）。
+        // preventDefault を呼ぶと EditContext がテキスト更新をキャンセルし textupdate が
+        // 発火しなくなるため、ローマ字ダイレクト入力が消えてしまう。
+        // IME 開始トリガーも同様に textupdate / compositionstart 経由で正しく処理される。
+        // 制御キー（Backspace, Enter, 矢印等）はブラウザデフォルトを抑制する。
+        const isPrintable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+        if (!isPrintable) {
+          e.preventDefault();
+        }
       });
 
       // ポインタイベント
