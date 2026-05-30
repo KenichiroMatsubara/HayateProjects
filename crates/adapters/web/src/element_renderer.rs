@@ -434,6 +434,34 @@ impl HayateElementRenderer {
         Ok(())
     }
 
+    /// Preload fonts declared in the app's `hayate.config.json`.
+    ///
+    /// Accepts a JS array of `{ family: string, url: string }` objects.
+    /// Fetches each font sequentially and blocks until all are registered,
+    /// so the first `render()` frame uses the correct fonts (no FOUT).
+    ///
+    /// # Example (JS)
+    /// ```js
+    /// const cfg = await fetch('./hayate.config.json').then(r => r.json());
+    /// await renderer.configure_fonts(cfg.fonts);
+    /// ```
+    pub async fn configure_fonts(&mut self, fonts: JsValue) -> Result<(), JsValue> {
+        use js_sys::{Array, Reflect};
+        let arr = Array::from(&fonts);
+        for i in 0..arr.length() {
+            let item = arr.get(i);
+            let family = Reflect::get(&item, &JsValue::from_str("family"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'family'"))?;
+            let url = Reflect::get(&item, &JsValue::from_str("url"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'url'"))?;
+            let bytes = fetch_bytes(&url).await?;
+            self.tree.register_font(&family, bytes);
+        }
+        Ok(())
+    }
+
     /// Load a font using the family name embedded in the font file. Backs the
     /// WIT `element-load-font` export.
     pub fn element_load_font(&mut self, data: &[u8]) {
@@ -947,6 +975,25 @@ impl HayateElementHtmlRenderer {
     pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
         let bytes = fetch_bytes(&url).await?;
         let _ = inject_font_face(&family_name, &bytes);
+        Ok(())
+    }
+
+    /// Preload fonts declared in `hayate.config.json` before the first render.
+    /// HTML Mode injects each as a CSS `@font-face` rule so the browser uses them.
+    pub async fn configure_fonts(&mut self, fonts: JsValue) -> Result<(), JsValue> {
+        use js_sys::{Array, Reflect};
+        let arr = Array::from(&fonts);
+        for i in 0..arr.length() {
+            let item = arr.get(i);
+            let family = Reflect::get(&item, &JsValue::from_str("family"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'family'"))?;
+            let url = Reflect::get(&item, &JsValue::from_str("url"))?
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("configure_fonts: missing 'url'"))?;
+            let bytes = fetch_bytes(&url).await?;
+            let _ = inject_font_face(&family, &bytes);
+        }
         Ok(())
     }
 

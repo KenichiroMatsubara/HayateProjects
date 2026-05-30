@@ -355,6 +355,16 @@
 
     renderer.set_background_color(0.04, 0.06, 0.1);
 
+    // ── フォント設定 ────────────────────────────────────────────────────────
+    // hayate.config.json に { "fonts": [{ "family": "...", "url": "..." }] } を宣言すると
+    // 最初のフレームより前にロードされ、FOUT（未スタイルテキストの点滅）が起きない。
+    try {
+      const fontConfig = await fetch('./hayate.config.json').then(r => r.json());
+      if (fontConfig.fonts?.length > 0) {
+        await renderer.configure_fonts(fontConfig.fonts);
+      }
+    } catch(_) {}
+
     // ── 5. シーン構築 ───────────────────────────────────────────────────────
     step('s5', 'run');
     overlay('🎨', 'シーンを構築中...');
