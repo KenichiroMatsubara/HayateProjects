@@ -175,7 +175,8 @@ interface element-layer {
   };
 
   // ── Element tree management ──────────────────────────────────────────────
-  element-create: func(kind: element-kind) -> element-id;
+  // id is caller-assigned (monotonic counter on the upper layer side).
+  element-create: func(id: element-id, kind: element-kind);
   element-set-text: func(id: element-id, text: string) -> ();
   element-set-src: func(id: element-id, url: string) -> ();
   element-set-transform: func(id: element-id, matrix: affine) -> ();
@@ -194,6 +195,12 @@ interface element-layer {
   element-paste: func(id: element-id, text: string) -> ();
   // Load a custom font from raw bytes into the font registry (ADR-0028)
   element-load-font: func(data: list<u8>) -> ();
+
+  // ── Batch mutations (ADR-0039) ───────────────────────────────────────────
+  // Hot path called once per frame by Canvas Renderer.
+  // ops:    fixed-length f64 records (op_kind + operands per ADR-0039 table).
+  // styles: flat f32 style-packet buffer referenced by OP_SET_STYLE offsets.
+  apply-mutations: func(ops: list<f64>, styles: list<f32>);
 
   // ── Frame lifecycle ──────────────────────────────────────────────────────
   // timestamp-ms: monotonic milliseconds from the host (e.g. performance.now()).
