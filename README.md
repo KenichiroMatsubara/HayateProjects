@@ -20,7 +20,18 @@ tsubame-solid         tsubame-vue              tsubame-react
 
 ## ステータス
 
-🚧 **設計フェーズ** — ADR 確定済み、実装準備中
+✅ **MVP（T1–T6）実装済み** — Renderer Protocol / DOM / Canvas / tsubame-solid / Hello World デモ
+
+| Phase | 内容 | パッケージ |
+|-------|------|------------|
+| T1 | `IRenderer` + 型定義 | `@tsubame/renderer-protocol` |
+| T2 | DOM Renderer | `@tsubame/renderer-dom` |
+| T3 | tsubame-solid | `@tsubame/solid` |
+| T4 | Canvas Renderer（`apply_mutations` バッチ） | `@tsubame/renderer-canvas` |
+| T5 | バインディング検証（node:test） | `packages/renderer-canvas/test/` |
+| T6 | DOM / Canvas ワンボタン切替デモ | `examples/hello-world` |
+
+T7（tsubame-vue）・T8（tsubame-react）は未着手。
 
 ## パッケージ構成
 
@@ -46,6 +57,19 @@ Adapter コードはどちらの Renderer を使うかを意識しない。Rende
 ## Hayate との関係
 
 Tsubame と Hayate は**完全に独立したリポジトリ**である。結合点は `apply_mutations(ops: Float64Array, styles: Float32Array)` の仕様のみ。Hayabusa・Hayate コアのいずれも Tsubame の存在を知らない。
+
+## クイックスタート
+
+```bash
+pnpm install
+pnpm run build
+pnpm run test          # T5: apply_mutations バインディング
+pnpm run dev:hello     # T6: http://localhost:5173
+```
+
+`pnpm` が PATH に無い場合: `npx pnpm@11.5.0 install` などで代替できます。
+
+Hello World デモでは同一の `App` コンポーネントを **DOM Renderer** と **Canvas Renderer**（`MockHayate` による 2D Canvas スタブ）で切り替えられます。実 Hayate WASM は不要です。
 
 ## ドキュメント
 

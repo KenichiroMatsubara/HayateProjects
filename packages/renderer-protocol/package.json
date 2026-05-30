@@ -1,0 +1,25 @@
+{
+  "name": "@tsubame/renderer-protocol",
+  "version": "0.0.0",
+  "description": "Tsubame Renderer Protocol — IRenderer インターフェースと型定義（DOM / Canvas Renderer 共通の境界）",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

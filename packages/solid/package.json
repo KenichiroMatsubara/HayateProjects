@@ -1,0 +1,32 @@
+{
+  "name": "@tsubame/solid",
+  "version": "0.0.0",
+  "description": "tsubame-solid — solid-js/universal を Tsubame Renderer Protocol に向け替える Adapter",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@tsubame/renderer-protocol": "workspace:*"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "solid-js": "^1.9.3"
+  }
+}
