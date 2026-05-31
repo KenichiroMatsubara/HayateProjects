@@ -297,6 +297,18 @@ export class MockHayate implements HayateWasm {
       grow: k.style.flexGrow ?? 0,
     }));
 
+    // % 指定を親の innerW/innerH で解決する（measure はボトムアップで % を無視するため
+    // トップダウンのこの時点で上書きする）
+    for (const d of kidData) {
+      const s = d.node.style;
+      if (typeof s.width === 'string' && s.width.endsWith('%')) {
+        d.size.w = innerW * parseFloat(s.width) / 100;
+      }
+      if (typeof s.height === 'string' && s.height.endsWith('%')) {
+        d.size.h = innerH * parseFloat(s.height) / 100;
+      }
+    }
+
     const totalGrow = kidData.reduce((sum, d) => sum + d.grow, 0);
     const gapsTotal = gap * Math.max(0, kids.length - 1);
 
@@ -338,10 +350,10 @@ export class MockHayate implements HayateWasm {
       // 交差軸サイズの決定
       const crossAvail = row ? innerH : innerW;
       const kidCrossIntrinsic = row ? size.h : size.w;
-      // 交差軸に明示 px 指定があれば尊重し、なければ stretch/align に従う
+      // 交差軸に明示サイズ（px または %）があれば尊重し、なければ stretch/align に従う
       const hasExplicitCross = row
-        ? typeof kid.style.height === 'number'
-        : typeof kid.style.width === 'number';
+        ? (typeof kid.style.height === 'number' || typeof kid.style.height === 'string')
+        : (typeof kid.style.width === 'number' || typeof kid.style.width === 'string');
       let kidCross: number;
       let crossPos = row ? innerY : innerX;
 
