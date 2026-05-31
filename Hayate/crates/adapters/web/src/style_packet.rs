@@ -55,83 +55,84 @@ fn color(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::new(r as f64, g as f64, b as f64, a as f64)
 }
 
+fn need(packed: &[f32], i: usize, n: usize, tag: u32) -> Result<(), JsValue> {
+    if i + n > packed.len() {
+        Err(JsValue::from_str(&format!(
+            "style packet truncated at tag {tag}"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while i < packed.len() {
         let tag = packed[i] as u32;
         i += 1;
-        let need = |n: usize, tag: u32| -> Result<(), JsValue> {
-            if i + n > packed.len() {
-                Err(JsValue::from_str(&format!(
-                    "style packet truncated at tag {tag}"
-                )))
-            } else {
-                Ok(())
-            }
-        };
         match tag {
             TAG_BACKGROUND_COLOR => {
-                need(4, tag)?;
+                need(packed, i, 4, tag)?;
                 out.push(StyleProp::BackgroundColor(color(
                     packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
                 )));
                 i += 4;
             }
             TAG_OPACITY => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 out.push(StyleProp::Opacity(packed[i]));
                 i += 1;
             }
             TAG_BORDER_RADIUS => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 out.push(StyleProp::BorderRadius(packed[i]));
                 i += 1;
             }
             TAG_BORDER_WIDTH => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 out.push(StyleProp::BorderWidth(packed[i]));
                 i += 1;
             }
             TAG_BORDER_COLOR => {
-                need(4, tag)?;
+                need(packed, i, 4, tag)?;
                 out.push(StyleProp::BorderColor(color(
                     packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
                 )));
                 i += 4;
             }
             TAG_WIDTH => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::Width(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_HEIGHT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::Height(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MIN_WIDTH => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MinWidth(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MIN_HEIGHT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MinHeight(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MAX_WIDTH => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MaxWidth(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MAX_HEIGHT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MaxHeight(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_DISPLAY => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 let v = match packed[i] as u32 {
                     0 => DisplayValue::Flex,
                     1 => DisplayValue::Grid,
@@ -143,7 +144,7 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                 i += 1;
             }
             TAG_FLEX_DIRECTION => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 let v = match packed[i] as u32 {
                     0 => FlexDirectionValue::Row,
                     1 => FlexDirectionValue::Column,
@@ -155,7 +156,7 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                 i += 1;
             }
             TAG_ALIGN_ITEMS => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 let v = match packed[i] as u32 {
                     0 => AlignValue::FlexStart,
                     1 => AlignValue::FlexEnd,
@@ -168,7 +169,7 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                 i += 1;
             }
             TAG_JUSTIFY_CONTENT => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 let v = match packed[i] as u32 {
                     0 => JustifyValue::FlexStart,
                     1 => JustifyValue::FlexEnd,
@@ -182,82 +183,82 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                 i += 1;
             }
             TAG_GAP => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::Gap(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_PADDING => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::Padding(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_PADDING_TOP => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::PaddingTop(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_PADDING_RIGHT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::PaddingRight(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_PADDING_BOTTOM => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::PaddingBottom(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_PADDING_LEFT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::PaddingLeft(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MARGIN => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::Margin(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MARGIN_TOP => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MarginTop(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MARGIN_RIGHT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MarginRight(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MARGIN_BOTTOM => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MarginBottom(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_MARGIN_LEFT => {
-                need(2, tag)?;
+                need(packed, i, 2, tag)?;
                 out.push(StyleProp::MarginLeft(dim(packed[i], packed[i + 1])));
                 i += 2;
             }
             TAG_FONT_SIZE => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 out.push(StyleProp::FontSize(packed[i]));
                 i += 1;
             }
             TAG_COLOR => {
-                need(4, tag)?;
+                need(packed, i, 4, tag)?;
                 out.push(StyleProp::Color(color(
                     packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
                 )));
                 i += 4;
             }
             TAG_Z_INDEX => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 out.push(StyleProp::ZIndex(packed[i] as i32));
                 i += 1;
             }
             TAG_FONT_FAMILY => {
-                need(1, tag)?;
+                need(packed, i, 1, tag)?;
                 let len = packed[i] as usize;
                 i += 1;
-                need(len, tag)?;
+                need(packed, i, len, tag)?;
                 let bytes: Vec<u8> = (0..len).map(|j| packed[i + j] as u8).collect();
                 let family = String::from_utf8(bytes)
                     .map_err(|_| JsValue::from_str("font-family: invalid UTF-8"))?;

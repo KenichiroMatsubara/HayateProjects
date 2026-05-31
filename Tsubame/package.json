@@ -12,9 +12,5 @@
     "clean": "pnpm -r run clean",
     "dev:hello": "pnpm --filter @tsubame/example-hello-world dev"
   },
-  "devDependencies": {
-    "tsup": "^8.3.5",
-    "typescript": "^5.7.2"
-  },
   "packageManager": "pnpm@11.5.0"
 }

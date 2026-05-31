@@ -177,11 +177,17 @@ export class CanvasRenderer implements IRenderer {
   };
 
   private dispatchEvents(): void {
+    // ADR-0034: poll_events() は Array<Array<any>> を返す。
+    // 各サブ配列は [kind: number, target?: number, ...rest] の形式。
     const events = this.hayate.poll_events();
-    for (let i = 0; i + EVENT_RECORD_SLOTS <= events.length; i += EVENT_RECORD_SLOTS) {
-      const kind = EVENT_KIND_BY_CODE[events[i]!];
+    for (const sub of events) {
+      const kindCode = sub[0] as number;
+      const kind = EVENT_KIND_BY_CODE[kindCode];
       if (kind === undefined) continue;
-      this.dispatchOne(kind, asElementId(events[i + 1]!));
+      // target フィールドがある種別（click, focus, blur, hover-enter/leave 等）
+      const targetRaw = sub[1];
+      if (typeof targetRaw !== 'number') continue;
+      this.dispatchOne(kind, asElementId(targetRaw));
     }
   }
 

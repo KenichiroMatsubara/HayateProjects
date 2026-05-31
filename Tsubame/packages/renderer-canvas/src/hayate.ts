@@ -20,10 +20,14 @@ export interface HayateWasm {
   element_set_text(id: number, text: string): void;
 
   /**
-   * 蓄積された Interaction Event を `[kind_code, element_id]` の繰り返しで返す。
-   * 呼び出しでキューは消費される。
-   * Hayate WASM は Array<number> を返す（wasm-bindgen js_sys::Array）ため
-   * ArrayLike<number> で受ける。
+   * 蓄積された Interaction Event を `Array<Array<any>>` で返す（ADR-0034）。
+   *
+   * 各サブ配列は `[kind: number, ...fields]` の形式。
+   * 文字列ペイロード（text_input / key_down 等）を運ぶために
+   * フラット配列ではなく Array<Array<any>> を採用（フラット f64 では文字列不可）。
+   *
+   * Rust 側の event_kind_*() 定数と対応するコード体系:
+   *   click=0, focus=1, blur=2, hover-enter=10, hover-leave=11 ほか
    */
-  poll_events(): ArrayLike<number>;
+  poll_events(): Array<Array<number | string>>;
 }

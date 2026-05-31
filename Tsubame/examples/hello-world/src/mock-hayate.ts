@@ -37,7 +37,7 @@ interface DecodedStyle {
   borderRadius?: number;
   opacity?: number;
   fontSize?: number;
-  fontWeight?: number;
+  // fontWeight: Canvas Renderer（Rust StyleProp）未対応のため除外
 }
 
 interface Node {
@@ -149,10 +149,14 @@ export class MockHayate implements HayateWasm {
     this.render();
   }
 
-  poll_events(): Float64Array {
-    const out = new Float64Array(this.eventQueue);
+  // ADR-0034: Array<Array<any>> 形式で返す
+  poll_events(): Array<Array<number | string>> {
+    const result: Array<[number, number]> = [];
+    for (let i = 0; i + 1 < this.eventQueue.length; i += 2) {
+      result.push([this.eventQueue[i]!, this.eventQueue[i + 1]!]);
+    }
     this.eventQueue.length = 0;
-    return out;
+    return result;
   }
 
   private decodeStyle(
@@ -166,36 +170,36 @@ export class MockHayate implements HayateWasm {
     const s = node.style;
     let i = offset;
     const end = offset + len;
+    // style-packet.ts のエンコード形式（op フィールドなし）:
+    //   color:  [tag, r, g, b, a]
+    //   dim:    [tag, value, unit_code]  (unit_code=0=px は読み捨て)
+    //   scalar: [tag, value]
+    //   enum:   [tag, code]
     while (i < end) {
       const tag = styles[i++]!;
-      const setOp = styles[i++]! === 1;
-      const colorTag = tag === TAG.COLOR || tag === TAG.BACKGROUND_COLOR;
-      if (!setOp) {
-        // reset → 当該プロパティを削除（デフォルトへ）
-        delete s[TAG_TO_KEY[tag] as keyof DecodedStyle];
-        continue;
-      }
-      if (colorTag) {
+      if (tag === TAG.COLOR || tag === TAG.BACKGROUND_COLOR) {
         const value = rgba(styles[i]!, styles[i + 1]!, styles[i + 2]!, styles[i + 3]!);
         i += 4;
         if (tag === TAG.COLOR) s.color = value;
         else s.backgroundColor = value;
-        continue;
-      }
-      const v = styles[i++]!;
-      switch (tag) {
-        case TAG.WIDTH: s.width = v; break;
-        case TAG.HEIGHT: s.height = v; break;
-        case TAG.DISPLAY: s.display = DISPLAY[v]; break;
-        case TAG.FLEX_DIRECTION: s.flexDirection = FLEX_DIRECTION[v]; break;
-        case TAG.ALIGN_ITEMS: s.alignItems = ALIGN_ITEMS[v]; break;
-        case TAG.JUSTIFY_CONTENT: s.justifyContent = JUSTIFY[v]; break;
-        case TAG.GAP: s.gap = v; break;
-        case TAG.BORDER_RADIUS: s.borderRadius = v; break;
-        case TAG.OPACITY: s.opacity = v; break;
-        case TAG.FONT_SIZE: s.fontSize = v; break;
-        case TAG.FONT_WEIGHT: s.fontWeight = v; break;
-        default: break;
+      } else if (tag === TAG.WIDTH || tag === TAG.HEIGHT || tag === TAG.GAP) {
+        const v = styles[i++]!;
+        i++; // unit_code（常に 0=px）を読み捨て
+        if (tag === TAG.WIDTH) s.width = v;
+        else if (tag === TAG.HEIGHT) s.height = v;
+        else s.gap = v;
+      } else {
+        const v = styles[i++]!;
+        switch (tag) {
+          case TAG.DISPLAY: s.display = DISPLAY[v]; break;
+          case TAG.FLEX_DIRECTION: s.flexDirection = FLEX_DIRECTION[v]; break;
+          case TAG.ALIGN_ITEMS: s.alignItems = ALIGN_ITEMS[v]; break;
+          case TAG.JUSTIFY_CONTENT: s.justifyContent = JUSTIFY[v]; break;
+          case TAG.BORDER_RADIUS: s.borderRadius = v; break;
+          case TAG.OPACITY: s.opacity = v; break;
+          case TAG.FONT_SIZE: s.fontSize = v; break;
+          default: break;
+        }
       }
     }
   }
@@ -203,7 +207,7 @@ export class MockHayate implements HayateWasm {
   // --- レイアウト ---
 
   private font(s: DecodedStyle): string {
-    return `${s.fontWeight ?? 400} ${s.fontSize ?? 16}px system-ui, sans-serif`;
+    return `${s.fontSize ?? 16}px system-ui, sans-serif`;
   }
 
   private isLeafText(node: Node): boolean {
@@ -375,18 +379,4 @@ export class MockHayate implements HayateWasm {
   }
 }
 
-const TAG_TO_KEY: Record<number, string> = {
-  [TAG.WIDTH]: 'width',
-  [TAG.HEIGHT]: 'height',
-  [TAG.DISPLAY]: 'display',
-  [TAG.FLEX_DIRECTION]: 'flexDirection',
-  [TAG.ALIGN_ITEMS]: 'alignItems',
-  [TAG.JUSTIFY_CONTENT]: 'justifyContent',
-  [TAG.GAP]: 'gap',
-  [TAG.COLOR]: 'color',
-  [TAG.BACKGROUND_COLOR]: 'backgroundColor',
-  [TAG.BORDER_RADIUS]: 'borderRadius',
-  [TAG.OPACITY]: 'opacity',
-  [TAG.FONT_SIZE]: 'fontSize',
-  [TAG.FONT_WEIGHT]: 'fontWeight',
-};
+// TAG_TO_KEY は decodeStyle の旧実装（op フィールドあり）で使っていたが不要になった。

@@ -17,9 +17,17 @@ export interface ElementNode {
   readonly events: Map<string, Unsubscribe>;
 }
 
-/** text ノード。Tsubame では `text` element 1 つに対応する。 */
+/**
+ * text ノード。IRenderer の element は作らず、親 ElementNode の `setText` を
+ * 通じてテキストを届ける仮想ノード。
+ *
+ * Solid の universal renderer は JSX 文字コンテンツを別 textNode として扱うが、
+ * Tsubame の設計では「text/button element 1 つがスタイルとテキストを両方持つ」
+ * ため、textNode は IRenderer ツリーに追加せず親の setText で集約する。
+ */
 export interface TextNode {
   readonly kind: 'text';
+  /** shadow ツリー内での同一性確認用の仮想 ID。IRenderer には登録しない。 */
   readonly id: ElementId;
   parent: ElementNode | null;
   text: string;
@@ -27,10 +35,13 @@ export interface TextNode {
 
 export type TsubameNode = ElementNode | TextNode;
 
+/** 仮想 TextNode 用の連番（負数）。IRenderer の ElementId と衝突しない。 */
+let _nextVirtualId = -1;
+
 export function createElementNode(id: ElementId): ElementNode {
   return { kind: 'element', id, parent: null, children: [], events: new Map() };
 }
 
-export function createTextShadowNode(id: ElementId, text: string): TextNode {
-  return { kind: 'text', id, parent: null, text };
+export function createTextShadowNode(text: string): TextNode {
+  return { kind: 'text', id: _nextVirtualId-- as ElementId, parent: null, text };
 }

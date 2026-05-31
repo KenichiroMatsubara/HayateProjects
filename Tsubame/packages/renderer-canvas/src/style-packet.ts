@@ -10,70 +10,83 @@ import type {
 /**
  * styles バッファ（flat Float32Array）の TAG エンコーディング。
  *
- * Hayate の `style_packet.rs` の TAG エンコーディングに対応する Tsubame 側の
- * エンコーダ。OP_SET_STYLE の `style_offset` / `style_len` が指す区間に、
- * プロパティごとのエントリを連結して書き込む。
+ * Hayate の `style_packet.rs` の TAG 定数と 1:1 対応。
+ * OP_SET_STYLE レコードが指す区間に、プロパティごとのエントリを連結する。
  *
- * 各エントリのレイアウト:
- *   `[tag, op, ...values]`
- *   - `op`: 1 = set（値あり）/ 0 = reset（値なし、デフォルトへ戻す）
- *   - values の個数は tag の arity で決まる（スカラー=1, color=4[r,g,b,a]）
+ * エントリのレイアウト（op フィールドなし）:
+ *   スカラー:  [tag, value]              (例: opacity, borderRadius, fontSize)
+ *   カラー:    [tag, r, g, b, a]         (0.0–1.0 各成分)
+ *   ディメンジョン: [tag, value, unit_code] (unit_code=0 固定で px 単位)
+ *   列挙:      [tag, code]               (display, flexDirection, …)
  *
- * Hayate 側パーサーは tag から arity を判定し、self-describing に区間を走査する。
+ * null 値（リセット）は Rust が未対応のためスキップする。
+ * FONT_WEIGHT は Rust `StyleProp` に未実装のため Canvas では無視する。
  */
 export const TAG = {
-  WIDTH: 1,
-  HEIGHT: 2,
-  DISPLAY: 3,
-  FLEX_DIRECTION: 4,
-  ALIGN_ITEMS: 5,
-  JUSTIFY_CONTENT: 6,
-  GAP: 7,
-  COLOR: 8,
-  BACKGROUND_COLOR: 9,
-  BORDER_RADIUS: 10,
-  OPACITY: 11,
-  FONT_SIZE: 12,
-  FONT_WEIGHT: 13,
+  BACKGROUND_COLOR:  0,
+  OPACITY:           1,
+  BORDER_RADIUS:     2,
+  // 3=BORDER_WIDTH, 4=BORDER_COLOR は HayateStyle に未定義のためスキップ
+  WIDTH:             5,
+  HEIGHT:            6,
+  // 7=MIN_WIDTH, 8=MIN_HEIGHT, 9=MAX_WIDTH, 10=MAX_HEIGHT は HayateStyle 未定義
+  DISPLAY:          11,
+  FLEX_DIRECTION:   12,
+  ALIGN_ITEMS:      13,
+  JUSTIFY_CONTENT:  14,
+  GAP:              15,
+  // 16–25 = padding/margin 系（HayateStyle 未定義）
+  FONT_SIZE:        26,
+  COLOR:            27,
+  // 28=Z_INDEX, 29=FONT_FAMILY は HayateStyle 未定義
 } as const;
 
-const OP_RESET = 0;
-const OP_SET = 1;
+// ─── 列挙コード（Rust の AlignValue / DisplayValue / … と一致）────────────
 
-const DISPLAY_CODE: Record<Display, number> = { flex: 0, none: 1 };
+const DISPLAY_CODE: Record<Display, number> = { flex: 0, none: 3 };
+
 const FLEX_DIRECTION_CODE: Record<FlexDirection, number> = { row: 0, column: 1 };
+
 const ALIGN_ITEMS_CODE: Record<AlignItems, number> = {
   'flex-start': 0,
-  'flex-end': 1,
-  center: 2,
-  stretch: 3,
+  'flex-end':   1,
+  center:       2,
+  stretch:      3,
 };
+
 const JUSTIFY_CONTENT_CODE: Record<JustifyContent, number> = {
-  'flex-start': 0,
-  'flex-end': 1,
-  center: 2,
+  'flex-start':   0,
+  'flex-end':     1,
+  center:         2,
   'space-between': 3,
-  'space-around': 4,
-  'space-evenly': 5,
+  'space-around':  4,
+  'space-evenly':  5,
 };
 
-/** color プロパティ（4 値 [r,g,b,a]、0..1）か否か。 */
-const COLOR_TAGS = new Set<number>([TAG.COLOR, TAG.BACKGROUND_COLOR]);
+// ─── ディメンジョン系プロパティ（Rust が [value, unit_raw] 2 slots を要求）──
 
-const TAG_BY_KEY: Record<keyof HayateStyle, number> = {
-  width: TAG.WIDTH,
-  height: TAG.HEIGHT,
-  display: TAG.DISPLAY,
-  flexDirection: TAG.FLEX_DIRECTION,
-  alignItems: TAG.ALIGN_ITEMS,
-  justifyContent: TAG.JUSTIFY_CONTENT,
-  gap: TAG.GAP,
-  color: TAG.COLOR,
+const DIM_KEYS = new Set<keyof HayateStyle>(['width', 'height', 'gap']);
+
+// ─── カラー系プロパティ（[r, g, b, a] 4 slots）──────────────────────────────
+
+const COLOR_KEYS = new Set<keyof HayateStyle>(['color', 'backgroundColor']);
+
+// ─── TAG マッピング（FONT_WEIGHT は Rust 未対応のため含めない）──────────────
+
+const TAG_BY_KEY: Partial<Record<keyof HayateStyle, number>> = {
+  width:           TAG.WIDTH,
+  height:          TAG.HEIGHT,
+  display:         TAG.DISPLAY,
+  flexDirection:   TAG.FLEX_DIRECTION,
+  alignItems:      TAG.ALIGN_ITEMS,
+  justifyContent:  TAG.JUSTIFY_CONTENT,
+  gap:             TAG.GAP,
+  color:           TAG.COLOR,
   backgroundColor: TAG.BACKGROUND_COLOR,
-  borderRadius: TAG.BORDER_RADIUS,
-  opacity: TAG.OPACITY,
-  fontSize: TAG.FONT_SIZE,
-  fontWeight: TAG.FONT_WEIGHT,
+  borderRadius:    TAG.BORDER_RADIUS,
+  opacity:         TAG.OPACITY,
+  fontSize:        TAG.FONT_SIZE,
+  // fontWeight: 意図的に除外（Rust StyleProp に未実装）
 };
 
 /** [r,g,b,a]（各 0..1）。未解釈の色は黒・不透明にフォールバック。 */
@@ -87,8 +100,7 @@ export function parseColor(input: string): [number, number, number, number] {
     if (hex.length === 3) return [read(0), read(1), read(2), 1];
     if (hex.length === 4) return [read(0), read(1), read(2), read(3)];
     if (hex.length === 6) return [read2(0), read2(2), read2(4), 1];
-    if (hex.length === 8)
-      return [read2(0), read2(2), read2(4), read2(6)];
+    if (hex.length === 8) return [read2(0), read2(2), read2(4), read2(6)];
   }
   const m = s.match(/rgba?\(([^)]+)\)/);
   if (m) {
@@ -99,23 +111,21 @@ export function parseColor(input: string): [number, number, number, number] {
   return [0, 0, 0, 1];
 }
 
-function valueFor(key: keyof HayateStyle, value: NonNullable<unknown>): number {
+function enumCodeFor(key: keyof HayateStyle, value: NonNullable<unknown>): number {
   switch (key) {
-    case 'display':
-      return DISPLAY_CODE[value as Display];
-    case 'flexDirection':
-      return FLEX_DIRECTION_CODE[value as FlexDirection];
-    case 'alignItems':
-      return ALIGN_ITEMS_CODE[value as AlignItems];
-    case 'justifyContent':
-      return JUSTIFY_CONTENT_CODE[value as JustifyContent];
-    default:
-      return value as number; // width/height/gap/borderRadius/opacity/fontSize/fontWeight
+    case 'display':         return DISPLAY_CODE[value as Display];
+    case 'flexDirection':   return FLEX_DIRECTION_CODE[value as FlexDirection];
+    case 'alignItems':      return ALIGN_ITEMS_CODE[value as AlignItems];
+    case 'justifyContent':  return JUSTIFY_CONTENT_CODE[value as JustifyContent];
+    default: return value as number;
   }
 }
 
 /**
  * {@link StylePatch} を styles バッファへ書き込む。
+ *
+ * - null 値はスキップ（Rust 側に reset 機構がないため）
+ * - fontWeight は Rust 未対応のためスキップ
  *
  * @returns 書き込んだ f32 slot 数（OP_SET_STYLE の style_len）。
  */
@@ -128,22 +138,32 @@ export function encodeStylePatch(
   for (const key in patch) {
     const k = key as keyof StylePatch;
     const value = patch[k];
-    if (value === undefined) continue;
+    // null（リセット）と未対応プロパティはスキップ
+    if (value == null) continue;
     const tag = TAG_BY_KEY[k];
+    if (tag === undefined) continue;
+
     buffer[cursor++] = tag;
-    if (value === null) {
-      buffer[cursor++] = OP_RESET;
-      continue;
-    }
-    buffer[cursor++] = OP_SET;
-    if (COLOR_TAGS.has(tag)) {
+
+    if (COLOR_KEYS.has(k)) {
       const [r, g, b, a] = parseColor(value as string);
       buffer[cursor++] = r;
       buffer[cursor++] = g;
       buffer[cursor++] = b;
       buffer[cursor++] = a;
+    } else if (DIM_KEYS.has(k)) {
+      buffer[cursor++] = value as number;
+      buffer[cursor++] = 0; // unit_code=0 → Px（Rust DimensionUnit::Px）
+    } else if (
+      k === 'display' ||
+      k === 'flexDirection' ||
+      k === 'alignItems' ||
+      k === 'justifyContent'
+    ) {
+      buffer[cursor++] = enumCodeFor(k, value);
     } else {
-      buffer[cursor++] = valueFor(k, value);
+      // スカラー（opacity, borderRadius, fontSize, …）
+      buffer[cursor++] = value as number;
     }
   }
   return cursor - offset;

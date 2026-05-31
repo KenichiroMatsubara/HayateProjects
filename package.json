@@ -4,13 +4,17 @@
   "version": "0.0.0",
   "scripts": {
     "build:wasm":     "pnpm --filter hayate build",
-    "build:tsubame":  "pnpm --filter './Tsubame/packages/**' -r build",
+    "build:tsubame":  "pnpm --filter ./Tsubame/packages/** build",
     "build":          "pnpm run build:wasm && pnpm run build:tsubame",
     "dev":            "pnpm --filter hayate dev",
-    "dev:hello":      "pnpm --filter '@tsubame/example-hello-world' dev",
-    "typecheck":      "pnpm --filter './Tsubame/packages/**' -r typecheck",
+    "dev:hello":      "pnpm --filter @tsubame/example-hello-world dev",
+    "typecheck":      "pnpm --filter ./Tsubame/packages/** typecheck",
     "test":           "pnpm -r run test",
     "clean":          "pnpm -r run clean"
   },
-  "packageManager": "pnpm@9.0.0"
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^6.0.3"
+  },
+  "packageManager": "pnpm@11.5.0"
 }

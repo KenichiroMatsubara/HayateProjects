@@ -218,6 +218,7 @@ pub fn element_kind_text_input() -> u32 { 4 }
 pub fn element_kind_scroll_view() -> u32 { 5 }
 
 // ── apply_mutations op_kind constants (ADR-0039) ─────────────────────────
+// Tsubame の opcodes.ts の OP 定数と 1:1 対応。
 
 const OP_APPEND_CHILD: u32      = 0;
 const OP_INSERT_BEFORE: u32     = 1;
@@ -228,6 +229,9 @@ const OP_SET_TRANSFORM: u32     = 5;
 const OP_SET_SCROLL_OFFSET: u32 = 6;
 const OP_FOCUS: u32             = 7;
 const OP_BLUR: u32              = 8;
+/// JS 側が採番した ElementId と kind_code を WASM へ通知する。
+/// Tsubame CanvasRenderer が createElement 時に発行する (opcodes.ts CREATE=9)。
+const OP_CREATE: u32            = 9;
 
 // ── Canvas Mode renderer ─────────────────────────────────────────────────
 
@@ -377,6 +381,13 @@ impl HayateElementRenderer {
     /// monotonic clock (e.g. `performance.now()`). Mutations are applied eagerly
     /// by the `element_*` setters (ADR-0037), so `render` only drives layout.
     pub fn render(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
+        // フェッチ完了フォントを layout より前に登録することで、同フレーム内で
+        // fonts_dirty → compute_layout → 正しいグリフ、が成立する。
+        // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）
+        let loaded: Vec<(String, Vec<u8>)> = self.font_queue.borrow_mut().drain(..).collect();
+        for (family, bytes) in loaded {
+            self.tree.register_font(&family, bytes);
+        }
         let sg = self.tree.render(timestamp_ms);
         let scene = vello_bridge::build_scene(sg);
         self.gpu.present(&scene, self.background)
@@ -702,6 +713,16 @@ impl HayateElementRenderer {
                     self.tree.element_blur(id);
                     self.tree.push_event(Event::Blur(id));
                 }
+                OP_CREATE => {
+                    if i + 2 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_CREATE"));
+                    }
+                    let id   = ops[i] as u64;
+                    let kind = ops[i + 1] as u32;
+                    i += 2;
+                    let k = kind_from_u32(kind)?;
+                    self.tree.element_create(id, k);
+                }
                 other => {
                     return Err(JsValue::from_str(&format!("unknown op_kind {other}")));
                 }
@@ -715,14 +736,13 @@ impl HayateElementRenderer {
         self.tree.element_get_text_content(element_id_from_f64(id))
     }
 
+    /// ADR-0034: `Array<Array<any>>` を返す。各サブ配列は `[kind: f64, ...fields]`。
+    /// 文字列ペイロード（TextInput / KeyDown 等）を運ぶため意図的にこの形式を採用。
     pub fn poll_events(&mut self) -> js_sys::Array {
-        // Apply fonts that finished fetching since the last frame.
-        let loaded: Vec<(String, Vec<u8>)> = self.font_queue.borrow_mut().drain(..).collect();
-        for (family, bytes) in loaded {
-            self.tree.register_font(&family, bytes);
-        }
+        // font_queue のドレインは render() 先頭に移動済み。
+        // ここでは何もしない（render より先に poll_events が呼ばれた場合も
+        // 次の render() で確実に登録される）。
 
-        // Drain events; intercept FetchFont and handle it here (ADR-0043).
         let events = self.tree.poll_events();
         let mut visible = Vec::with_capacity(events.len());
         for event in events {

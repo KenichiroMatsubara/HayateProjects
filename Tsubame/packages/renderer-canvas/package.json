@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@tsubame/renderer-protocol": "workspace:*",
-    "hayate-adapter-web": "workspace:*"
+    "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg"
   },
   "devDependencies": {
     "rimraf": "^6.0.1"

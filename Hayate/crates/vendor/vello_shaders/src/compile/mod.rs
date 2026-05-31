@@ -290,6 +290,6 @@ fn manifest_dir() -> PathBuf {
     use std::env;
     env::var_os("UNSTABLE_BAZEL_VELLO_SHADERS_CRATE_MANIFEST_PATH")
         .and_then(|p| Path::new(&p).parent().map(|p| p.to_owned()))
+        .or_else(|| env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
-        .to_path_buf()
 }
