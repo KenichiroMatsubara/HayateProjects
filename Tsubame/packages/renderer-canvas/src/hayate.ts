@@ -1,9 +1,9 @@
 /**
  * Canvas Renderer が依存する Hayate WASM の最小バインディング契約。
  *
- * Tsubame と Hayate は独立リポジトリであり、結合点はこのインターフェース
- * （`apply_mutations` の仕様）のみ（CONTEXT.md / ADR-0001）。実体の wasm-bindgen
- * エクスポートをこの形に適合させる。テストやデモでは同形の JS スタブを差し込める。
+ * Tsubame と Hayate の結合点はこのインターフェース（`apply_mutations` の仕様）のみ。
+ * 実体の wasm-bindgen エクスポートをこの形に適合させる。
+ * テストやデモでは同形の JS スタブを差し込める。
  */
 export interface HayateWasm {
   /**

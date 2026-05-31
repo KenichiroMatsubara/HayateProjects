@@ -1,2 +1,5 @@
 # Archived git metadata from repo merge
 Tsubame/.git-merged/
+
+# Dependencies
+node_modules/

@@ -1,5 +1,8 @@
 # Tsubame を Hayate と完全に独立した別リポジトリとする
 
+> **Superseded（リポジトリ構造のみ）**: HayateProjects モノレポへ統合済み（root/docs/adr/0001-monorepo-migration.md）。
+> アーキテクチャ上の分離（Hayate は Tsubame を知らない・結合点は apply_mutations のみ）は引き続き有効。
+
 _origin: Hayate ADR-0035_
 
 Hayabusa は当初 JS（TypeScript）を Script Adapter の一つとして扱い、Hermes 等の JS エンジンをモバイルでバンドルする方向だった。しかしこの設計では JS→WASM 境界（Hayabusa Script Adapter → Hayabusa Runtime WASM → Hayate WASM）が毎フレーム N 回発生し、deferred queue で WASM→JS 側を最適化しても JS→WASM 側は未解決のままだった。

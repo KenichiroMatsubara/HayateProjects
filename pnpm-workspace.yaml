@@ -1,3 +1,11 @@
 packages:
-  - 'Tsubame/packages/*'
+  - 'Hayate'
   - 'Hayate/examples/web-demo/pkg'
+  - 'Tsubame/packages/*'
+  - 'Tsubame/examples/*'
+
+allowBuilds:
+  esbuild: true
+
+onlyBuiltDependencies:
+  - esbuild
