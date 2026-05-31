@@ -12,15 +12,16 @@ import {
  * 契約を JS で解釈し 2D Canvas に描画する。これにより本物の WASM が無くても
  * Canvas Renderer 経路をエンドツーエンドで実演でき、Renderer 切替の訴求を体現する。
  *
- * レイアウトは MVP の Flexbox サブセット（column/row・gap・center 系）に絞った
+ * レイアウトは MVP の Flexbox サブセット（column/row・gap・alignItems・flexGrow）に絞った
  * 簡易実装であり、Hayate の Taffy ベース実装の完全な再現ではない。
  */
 
 const KIND_NAME = ['view', 'text', 'image', 'button', 'text-input', 'scroll-view'];
 
 interface DecodedStyle {
-  width?: number;
-  height?: number;
+  width?: number | string;   // number=px, string='100%' など
+  height?: number | string;
+  flexGrow?: number;
   display?: 'flex' | 'none';
   flexDirection?: 'row' | 'column';
   alignItems?: 'flex-start' | 'flex-end' | 'center' | 'stretch';
@@ -37,7 +38,6 @@ interface DecodedStyle {
   borderRadius?: number;
   opacity?: number;
   fontSize?: number;
-  // fontWeight: Canvas Renderer（Rust StyleProp）未対応のため除外
 }
 
 interface Node {
@@ -82,12 +82,21 @@ export class MockHayate implements HayateWasm {
     this.canvas.removeEventListener('click', this.onClick);
   }
 
+  /** Canvas サーフェスのサイズを更新して再描画する（IRenderer.resize 経由で呼ばれる）。 */
+  resize(width: number, height: number): void {
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${height}px`;
+    this.render();
+  }
+
   apply_mutations(ops: Float64Array, styles: Float32Array): void {
     let i = 0;
     while (i < ops.length) {
       const op = ops[i]!;
       const slots = OP_SLOTS[op];
-      if (slots === undefined) break; // 不明 op は残りを捨てる（ADR-0003）
+      if (slots === undefined) break;
       switch (op) {
         case OP.CREATE:
           this.nodes.set(ops[i + 1]!, {
@@ -136,7 +145,7 @@ export class MockHayate implements HayateWasm {
           this.decodeStyle(ops[i + 1]!, styles, ops[i + 2]!, ops[i + 3]!);
           break;
         default:
-          break; // SET_TRANSFORM / SCROLL / FOCUS / BLUR は MVP デモでは未使用
+          break;
       }
       i += slots;
     }
@@ -149,7 +158,6 @@ export class MockHayate implements HayateWasm {
     this.render();
   }
 
-  // ADR-0034: Array<Array<any>> 形式で返す
   poll_events(): Array<Array<number | string>> {
     const result: Array<[number, number]> = [];
     for (let i = 0; i + 1 < this.eventQueue.length; i += 2) {
@@ -170,11 +178,6 @@ export class MockHayate implements HayateWasm {
     const s = node.style;
     let i = offset;
     const end = offset + len;
-    // style-packet.ts のエンコード形式（op フィールドなし）:
-    //   color:  [tag, r, g, b, a]
-    //   dim:    [tag, value, unit_code]  (unit_code=0=px は読み捨て)
-    //   scalar: [tag, value]
-    //   enum:   [tag, code]
     while (i < end) {
       const tag = styles[i++]!;
       if (tag === TAG.COLOR || tag === TAG.BACKGROUND_COLOR) {
@@ -184,10 +187,10 @@ export class MockHayate implements HayateWasm {
         else s.backgroundColor = value;
       } else if (tag === TAG.WIDTH || tag === TAG.HEIGHT || tag === TAG.GAP) {
         const v = styles[i++]!;
-        i++; // unit_code（常に 0=px）を読み捨て
-        if (tag === TAG.WIDTH) s.width = v;
-        else if (tag === TAG.HEIGHT) s.height = v;
-        else s.gap = v;
+        const unit = styles[i++]!; // 0=px, 1=percent
+        if (tag === TAG.WIDTH) s.width = unit === 1 ? `${v}%` : v;
+        else if (tag === TAG.HEIGHT) s.height = unit === 1 ? `${v}%` : v;
+        else s.gap = v; // gap は常に px
       } else {
         const v = styles[i++]!;
         switch (tag) {
@@ -198,6 +201,7 @@ export class MockHayate implements HayateWasm {
           case TAG.BORDER_RADIUS: s.borderRadius = v; break;
           case TAG.OPACITY: s.opacity = v; break;
           case TAG.FONT_SIZE: s.fontSize = v; break;
+          case TAG.FLEX_GROW: s.flexGrow = v; break;
           default: break;
         }
       }
@@ -218,11 +222,17 @@ export class MockHayate implements HayateWasm {
     return node.kind === 'button' ? { x: 16, y: 10 } : { x: 0, y: 0 };
   }
 
+  /**
+   * ノードの内在サイズを計算する（ボトムアップ）。
+   * - `%` 指定・`flexGrow` は考慮しない（親サイズが未確定のため）
+   * - 明示 px 寸法がある場合はそれを使用
+   */
   private measure(node: Node): { w: number; h: number } {
     const s = node.style;
     const pad = this.padding(node);
-    let w: number;
-    let h: number;
+    let w = 0;
+    let h = 0;
+
     if (this.isLeafText(node)) {
       this.ctx.font = this.font(s);
       w = this.ctx.measureText(node.text).width + pad.x * 2;
@@ -231,23 +241,36 @@ export class MockHayate implements HayateWasm {
       const kids = node.children
         .map((id) => this.nodes.get(id))
         .filter((n): n is Node => n !== undefined && n.style.display !== 'none')
-        .map((n) => ({ n, size: this.measure(n) }));
-      const gap = s.gap ?? 0;
+        // flexGrow 持ちの子は内在サイズ計算から除外（親が割り当てる）
+        .filter((n) => (n.style.flexGrow ?? 0) === 0);
+
       const row = (s.flexDirection ?? 'row') === 'row';
-      const main = kids.reduce((sum, k) => sum + (row ? k.size.w : k.size.h), 0) +
+      const gap = s.gap ?? 0;
+      const sizes = kids.map((k) => this.measure(k));
+      const mainTotal =
+        sizes.reduce((sum, sz) => sum + (row ? sz.w : sz.h), 0) +
         gap * Math.max(0, kids.length - 1);
-      const cross = kids.reduce((m, k) => Math.max(m, row ? k.size.h : k.size.w), 0);
-      w = (row ? main : cross) + pad.x * 2;
-      h = (row ? cross : main) + pad.y * 2;
+      const crossMax = sizes.reduce((m, sz) => Math.max(m, row ? sz.h : sz.w), 0);
+      w = (row ? mainTotal : crossMax) + pad.x * 2;
+      h = (row ? crossMax : mainTotal) + pad.y * 2;
     }
-    if (s.width !== undefined) w = s.width;
-    if (s.height !== undefined) h = s.height;
+
+    // 明示 px 寸法で上書き（'%' は無視して親任せ）
+    if (typeof s.width === 'number') w = s.width;
+    if (typeof s.height === 'number') h = s.height;
     return { w, h };
   }
 
+  /**
+   * ノードを指定矩形に配置する（トップダウン）。
+   * - 渡された (w, h) がこのノードの確定サイズ
+   * - 子の `flexGrow` 分の空きを計算して分配する
+   * - `%` 指定は親サイズで解決する
+   */
   private place(node: Node, x: number, y: number, w: number, h: number): void {
     node.rect = { x, y, w, h };
     if (this.isLeafText(node)) return;
+
     const s = node.style;
     const pad = this.padding(node);
     const innerX = x + pad.x;
@@ -256,48 +279,86 @@ export class MockHayate implements HayateWasm {
     const innerH = h - pad.y * 2;
     const row = (s.flexDirection ?? 'row') === 'row';
     const gap = s.gap ?? 0;
+    const align = s.alignItems ?? 'stretch';
+    const justify = s.justifyContent ?? 'flex-start';
 
     const kids = node.children
       .map((id) => this.nodes.get(id))
-      .filter((n): n is Node => n !== undefined && n.style.display !== 'none')
-      .map((n) => ({ n, size: this.measure(n) }));
+      .filter((n): n is Node => n !== undefined && n.style.display !== 'none');
 
-    const itemsTotal = kids.reduce((sum, k) => sum + (row ? k.size.w : k.size.h), 0);
-    const gapsTotal = gap * Math.max(0, kids.length - 1);
-    const mainTotal = itemsTotal + gapsTotal;
+    if (kids.length === 0) return;
+
     const mainAvail = row ? innerW : innerH;
-    const justify = s.justifyContent ?? 'flex-start';
-    const free = Math.max(0, mainAvail - itemsTotal); // space-* 計算では gap を除いた純空き
+
+    // 各子の内在サイズと flexGrow を収集
+    const kidData = kids.map((k) => ({
+      node: k,
+      size: this.measure(k),
+      grow: k.style.flexGrow ?? 0,
+    }));
+
+    const totalGrow = kidData.reduce((sum, d) => sum + d.grow, 0);
+    const gapsTotal = gap * Math.max(0, kids.length - 1);
+
+    // flexGrow を持たない子の主軸合計
+    const fixedMain = kidData
+      .filter((d) => d.grow === 0)
+      .reduce((sum, d) => sum + (row ? d.size.w : d.size.h), 0);
+
+    const remaining = Math.max(0, mainAvail - fixedMain - gapsTotal);
+
+    // justifyContent オフセット（flexGrow がある場合は無効）
     let cursor = row ? innerX : innerY;
     let extraGap = gap;
-    if (justify === 'center') cursor += (mainAvail - mainTotal) / 2;
-    else if (justify === 'flex-end') cursor += mainAvail - mainTotal;
-    else if (justify === 'space-between' && kids.length > 1) {
-      extraGap = (free - gap * (kids.length - 1)) / (kids.length - 1) + gap;
-    } else if (justify === 'space-around' && kids.length > 0) {
-      const slot = (free - gap * (kids.length - 1)) / kids.length;
-      cursor += slot / 2;
-      extraGap = slot + gap;
-    } else if (justify === 'space-evenly' && kids.length > 0) {
-      const slot = (free - gap * (kids.length - 1)) / (kids.length + 1);
-      cursor += slot;
-      extraGap = slot + gap;
+    if (totalGrow === 0) {
+      const mainTotal = fixedMain + gapsTotal;
+      const free = mainAvail - mainTotal;
+      if (justify === 'center') {
+        cursor += free / 2;
+      } else if (justify === 'flex-end') {
+        cursor += free;
+      } else if (justify === 'space-between' && kids.length > 1) {
+        extraGap = free / (kids.length - 1) + gap;
+      } else if (justify === 'space-around' && kids.length > 0) {
+        const slot = free / kids.length;
+        cursor += slot / 2;
+        extraGap = slot + gap;
+      } else if (justify === 'space-evenly' && kids.length > 0) {
+        const slot = free / (kids.length + 1);
+        cursor += slot;
+        extraGap = slot + gap;
+      }
     }
 
-    const align = s.alignItems ?? 'stretch';
-    for (const { n, size } of kids) {
+    for (const { node: kid, size, grow } of kidData) {
+      // 主軸サイズの決定
+      const kidMainBase = row ? size.w : size.h;
+      const kidMain = grow > 0 ? remaining * (grow / totalGrow) : kidMainBase;
+
+      // 交差軸サイズの決定
       const crossAvail = row ? innerH : innerW;
-      const crossSize = row ? size.h : size.w;
+      const kidCrossIntrinsic = row ? size.h : size.w;
+      // 交差軸に明示 px 指定があれば尊重し、なければ stretch/align に従う
+      const hasExplicitCross = row
+        ? typeof kid.style.height === 'number'
+        : typeof kid.style.width === 'number';
+      let kidCross: number;
       let crossPos = row ? innerY : innerX;
-      if (align === 'center') crossPos += (crossAvail - crossSize) / 2;
-      else if (align === 'flex-end') crossPos += crossAvail - crossSize;
+
+      if (align === 'stretch' && !hasExplicitCross) {
+        kidCross = crossAvail;
+      } else {
+        kidCross = kidCrossIntrinsic;
+        if (align === 'center') crossPos += (crossAvail - kidCross) / 2;
+        else if (align === 'flex-end') crossPos += crossAvail - kidCross;
+      }
 
       if (row) {
-        this.place(n, cursor, crossPos, size.w, align === 'stretch' ? innerH : size.h);
-        cursor += size.w + extraGap;
+        this.place(kid, cursor, crossPos, kidMain, kidCross);
+        cursor += kidMain + extraGap;
       } else {
-        this.place(n, crossPos, cursor, align === 'stretch' ? innerW : size.w, size.h);
-        cursor += size.h + extraGap;
+        this.place(kid, crossPos, cursor, kidCross, kidMain);
+        cursor += kidMain + extraGap;
       }
     }
   }
@@ -310,11 +371,8 @@ export class MockHayate implements HayateWasm {
     if (this.root === null) return;
     const rootNode = this.nodes.get(this.root);
     if (!rootNode) return;
-    const size = this.measure(rootNode);
-    // ルートはキャンバス中央に配置。
-    const x = (canvas.width - size.w) / 2;
-    const y = (canvas.height - size.h) / 2;
-    this.place(rootNode, x, y, size.w, size.h);
+    // ルートは常にキャンバス全体を占める
+    this.place(rootNode, 0, 0, canvas.width, canvas.height);
     this.draw(rootNode);
   }
 
@@ -359,7 +417,7 @@ export class MockHayate implements HayateWasm {
     ctx.closePath();
   }
 
-  // --- ヒットテスト（click） ---
+  // --- ヒットテスト ---
 
   private readonly onClick = (e: MouseEvent): void => {
     const rect = this.canvas.getBoundingClientRect();
@@ -371,14 +429,13 @@ export class MockHayate implements HayateWasm {
     }
   };
 
-  /** 点を含む最も深い（手前の）ノード id を返す。 */
   private hitTest(px: number, py: number): number | null {
     let found: number | null = null;
     const visit = (node: Node): void => {
       const r = node.rect;
       if (!r || node.style.display === 'none') return;
       if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
-        found = node.id; // 後勝ち＝より深いノードで上書き
+        found = node.id;
       }
       for (const id of node.children) {
         const child = this.nodes.get(id);
@@ -392,5 +449,3 @@ export class MockHayate implements HayateWasm {
     return found;
   }
 }
-
-// TAG_TO_KEY は decodeStyle の旧実装（op フィールドあり）で使っていたが不要になった。

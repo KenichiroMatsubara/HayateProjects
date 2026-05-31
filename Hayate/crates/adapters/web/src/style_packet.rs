@@ -39,6 +39,7 @@ pub(crate) const TAG_Z_INDEX: u32 = 28;
 /// Each byte is stored as an f32. ASCII font names are single-byte UTF-8
 /// so this is lossless for all real-world family names.
 pub(crate) const TAG_FONT_FAMILY: u32 = 29;
+pub(crate) const TAG_FLEX_GROW: u32 = 30;
 
 fn dim(value: f32, unit_raw: f32) -> Dimension {
     let unit = match unit_raw as u32 {
@@ -265,6 +266,11 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
                 out.push(StyleProp::FontFamily(family));
                 i += len;
             }
+            TAG_FLEX_GROW => {
+                need(packed, i, 1, tag)?;
+                out.push(StyleProp::FlexGrow(packed[i]));
+                i += 1;
+            }
             other => {
                 return Err(JsValue::from_str(&format!("unknown style tag {other}")));
             }
@@ -380,6 +386,7 @@ fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<()
         StyleProp::FontFamily(ref f) => style.set_property("font-family", f)?,
         StyleProp::Color(c) => style.set_property("color", &css_rgba(c))?,
         StyleProp::ZIndex(z) => style.set_property("z-index", &z.to_string())?,
+        StyleProp::FlexGrow(v) => style.set_property("flex-grow", &format!("{}", v.max(0.0)))?,
     }
     Ok(())
 }

@@ -28,13 +28,17 @@ export type FontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
  */
 export interface HayateStyle {
   // --- レイアウト ---
-  width: number;
-  height: number;
+  /** px 数値または `'100%'`（親コンテナに対する割合）。 */
+  width: number | string;
+  /** px 数値または `'100%'`（親コンテナに対する割合）。 */
+  height: number | string;
   display: Display;
   flexDirection: FlexDirection;
   alignItems: AlignItems;
   justifyContent: JustifyContent;
   gap: number;
+  /** Flexbox の flex-grow。残余空間の配分比率。デフォルト 0。 */
+  flexGrow: number;
 
   // --- ビジュアル ---
   /** CSS color 文字列（例: `#1e90ff` / `rgb(30,144,255)`）。 */
