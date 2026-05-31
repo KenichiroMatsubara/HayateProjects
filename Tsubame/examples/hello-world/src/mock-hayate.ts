@@ -262,13 +262,27 @@ export class MockHayate implements HayateWasm {
       .filter((n): n is Node => n !== undefined && n.style.display !== 'none')
       .map((n) => ({ n, size: this.measure(n) }));
 
-    const mainTotal = kids.reduce((sum, k) => sum + (row ? k.size.w : k.size.h), 0) +
-      gap * Math.max(0, kids.length - 1);
+    const itemsTotal = kids.reduce((sum, k) => sum + (row ? k.size.w : k.size.h), 0);
+    const gapsTotal = gap * Math.max(0, kids.length - 1);
+    const mainTotal = itemsTotal + gapsTotal;
     const mainAvail = row ? innerW : innerH;
     const justify = s.justifyContent ?? 'flex-start';
+    const free = Math.max(0, mainAvail - itemsTotal); // space-* 計算では gap を除いた純空き
     let cursor = row ? innerX : innerY;
+    let extraGap = gap;
     if (justify === 'center') cursor += (mainAvail - mainTotal) / 2;
     else if (justify === 'flex-end') cursor += mainAvail - mainTotal;
+    else if (justify === 'space-between' && kids.length > 1) {
+      extraGap = (free - gap * (kids.length - 1)) / (kids.length - 1) + gap;
+    } else if (justify === 'space-around' && kids.length > 0) {
+      const slot = (free - gap * (kids.length - 1)) / kids.length;
+      cursor += slot / 2;
+      extraGap = slot + gap;
+    } else if (justify === 'space-evenly' && kids.length > 0) {
+      const slot = (free - gap * (kids.length - 1)) / (kids.length + 1);
+      cursor += slot;
+      extraGap = slot + gap;
+    }
 
     const align = s.alignItems ?? 'stretch';
     for (const { n, size } of kids) {
@@ -280,10 +294,10 @@ export class MockHayate implements HayateWasm {
 
       if (row) {
         this.place(n, cursor, crossPos, size.w, align === 'stretch' ? innerH : size.h);
-        cursor += size.w + gap;
+        cursor += size.w + extraGap;
       } else {
         this.place(n, crossPos, cursor, align === 'stretch' ? innerW : size.w, size.h);
-        cursor += size.h + gap;
+        cursor += size.h + extraGap;
       }
     }
   }

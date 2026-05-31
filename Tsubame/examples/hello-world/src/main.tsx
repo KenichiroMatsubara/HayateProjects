@@ -1,0 +1,53 @@
+import type { IRenderer } from '@tsubame/renderer-protocol';
+import { DomRenderer } from '@tsubame/renderer-dom';
+import { CanvasRenderer } from '@tsubame/renderer-canvas';
+import { renderTsubame } from '@tsubame/solid';
+import { TodoApp, type Mode, type ModeSource } from './App';
+import { MockHayate } from './mock-hayate';
+
+function detectMode(): { mode: Mode; source: ModeSource } {
+  const q = new URLSearchParams(window.location.search).get('mode');
+  if (q === 'dom') return { mode: 'DOM', source: 'query' };
+  if (q === 'canvas') return { mode: 'Canvas', source: 'query' };
+  // 自動判定は Hayate の Canvas Mode / HTML Mode の精神を踏襲し、
+  // WebGPU + EditContext API が両方使える環境のみ Canvas を選ぶ。
+  const hasWebGPU = 'gpu' in navigator;
+  const hasEditContext = 'EditContext' in window;
+  return {
+    mode: hasWebGPU && hasEditContext ? 'Canvas' : 'DOM',
+    source: 'auto',
+  };
+}
+
+const { mode, source } = detectMode();
+
+const dom = document.getElementById('dom-host') as HTMLDivElement;
+const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
+const srcLabel = document.getElementById('src-label')!;
+const linkDom = document.getElementById('link-dom')!;
+const linkCanvas = document.getElementById('link-canvas')!;
+const linkAuto = document.getElementById('link-auto')!;
+
+srcLabel.textContent = source === 'query' ? '?mode=' + mode.toLowerCase() : 'auto-detected';
+(source === 'query'
+  ? (mode === 'DOM' ? linkDom : linkCanvas)
+  : linkAuto
+).classList.add('active');
+
+const width = window.innerWidth;
+const height = window.innerHeight;
+
+let renderer: IRenderer;
+if (mode === 'DOM') {
+  dom.hidden = false;
+  renderer = new DomRenderer({ container: dom });
+} else {
+  canvas.hidden = false;
+  canvas.width = width;
+  canvas.height = height;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  renderer = new CanvasRenderer(new MockHayate(canvas));
+}
+
+renderTsubame(() => <TodoApp mode={mode} source={source} width={width} height={height} />, renderer);
