@@ -25,6 +25,6 @@
     "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg"
   },
   "devDependencies": {
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.1.3"
   }
 }
