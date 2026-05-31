@@ -1,0 +1,3 @@
+packages:
+  - 'Tsubame/packages/*'
+  - 'Hayate/examples/web-demo/pkg'

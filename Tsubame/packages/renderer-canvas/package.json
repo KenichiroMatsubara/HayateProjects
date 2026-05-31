@@ -1,0 +1,30 @@
+{
+  "name": "@tsubame/renderer-canvas",
+  "version": "0.0.0",
+  "description": "Tsubame Canvas Renderer — フレーム単位で mutation をバッチ化し Hayate WASM の apply_mutations へ渡す IRenderer 実装",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@tsubame/renderer-protocol": "workspace:*",
+    "hayate-adapter-web": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1"
+  }
+}

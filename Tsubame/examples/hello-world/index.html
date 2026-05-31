@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tsubame — Hello World（DOM / Canvas 切替）</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui, sans-serif;
+        background: #020617;
+        color: #e2e8f0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 32px;
+      }
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      #swap {
+        font: inherit;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        background: #1e293b;
+        color: #e2e8f0;
+        cursor: pointer;
+      }
+      #mode {
+        font-variant-numeric: tabular-nums;
+        color: #38bdf8;
+      }
+      #stage {
+        width: 400px;
+        height: 300px;
+      }
+      /* DOM Renderer / Canvas Renderer のどちらか一方だけ表示する。 */
+      #dom-host[hidden],
+      #canvas-stage[hidden] {
+        display: none;
+      }
+      #canvas-stage {
+        display: block;
+        width: 400px;
+        height: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tsubame 燕 — Hello World</h1>
+    <div id="controls">
+      <button id="swap">Renderer を切り替える</button>
+      <span>現在: <span id="mode">DOM</span> Renderer</span>
+    </div>
+    <div id="stage">
+      <div id="dom-host"></div>
+      <canvas id="canvas-stage" width="400" height="300"></canvas>
+    </div>
+    <p style="max-width: 480px; color: #94a3b8; text-align: center">
+      同一コンポーネントを <code>DomRenderer</code> と
+      <code>CanvasRenderer</code> でワンボタン切替。Adapter コードは
+      どちらの Renderer かを意識しません（Renderer Protocol が差異を吸収）。
+    </p>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

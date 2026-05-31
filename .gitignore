@@ -1,19 +1,2 @@
-# Claude Code local settings (personal, not shared)
-.claude/settings.local.json
-
-# Rust build artifacts
-target/
-
-# Node
-node_modules/
-
-# crates/vendor-all は cargo vendor が生成した全依存の一時鏡
-# ADR-0007 の vendored 5 crates は crates/vendor/ に置き、git 管理する
-crates/vendor-all/
-
-# wasm-pack output (再生成可)
-examples/web-demo/pkg/
-
-# OS
-.DS_Store
-Thumbs.db
+# Archived git metadata from repo merge
+Tsubame/.git-merged/
