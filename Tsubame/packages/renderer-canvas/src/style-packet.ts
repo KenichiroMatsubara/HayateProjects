@@ -7,6 +7,7 @@ import type {
   JustifyContent,
 } from '@tsubame/renderer-protocol';
 
+
 /**
  * styles バッファ（flat Float32Array）の TAG エンコーディング。
  *
@@ -39,6 +40,7 @@ export const TAG = {
   FONT_SIZE:        26,
   COLOR:            27,
   // 28=Z_INDEX, 29=FONT_FAMILY は HayateStyle 未定義
+  FLEX_GROW:        30,
 } as const;
 
 // ─── 列挙コード（Rust の AlignValue / DisplayValue / … と一致）────────────
@@ -67,6 +69,18 @@ const JUSTIFY_CONTENT_CODE: Record<JustifyContent, number> = {
 
 const DIM_KEYS = new Set<keyof HayateStyle>(['width', 'height', 'gap']);
 
+/** `'100%'` のような CSS パーセント文字列を [value, unit_code] にパース。 */
+function parseDimension(value: number | string): [number, number] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.endsWith('%')) {
+      return [parseFloat(trimmed), 1]; // unit_code=1 → Percent
+    }
+    return [parseFloat(trimmed), 0]; // fallback: px
+  }
+  return [value, 0]; // unit_code=0 → Px
+}
+
 // ─── カラー系プロパティ（[r, g, b, a] 4 slots）──────────────────────────────
 
 const COLOR_KEYS = new Set<keyof HayateStyle>(['color', 'backgroundColor']);
@@ -81,6 +95,7 @@ const TAG_BY_KEY: Partial<Record<keyof HayateStyle, number>> = {
   alignItems:      TAG.ALIGN_ITEMS,
   justifyContent:  TAG.JUSTIFY_CONTENT,
   gap:             TAG.GAP,
+  flexGrow:        TAG.FLEX_GROW,
   color:           TAG.COLOR,
   backgroundColor: TAG.BACKGROUND_COLOR,
   borderRadius:    TAG.BORDER_RADIUS,
@@ -152,8 +167,9 @@ export function encodeStylePatch(
       buffer[cursor++] = b;
       buffer[cursor++] = a;
     } else if (DIM_KEYS.has(k)) {
-      buffer[cursor++] = value as number;
-      buffer[cursor++] = 0; // unit_code=0 → Px（Rust DimensionUnit::Px）
+      const [dimVal, unitCode] = parseDimension(value as number | string);
+      buffer[cursor++] = dimVal;
+      buffer[cursor++] = unitCode;
     } else if (
       k === 'display' ||
       k === 'flexDirection' ||

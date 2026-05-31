@@ -92,6 +92,8 @@ pub enum StyleProp {
     MarginRight(Dimension),
     MarginBottom(Dimension),
     MarginLeft(Dimension),
+    // flex
+    FlexGrow(f32),
     // text
     FontSize(f32),
     FontFamily(String),
@@ -116,6 +118,7 @@ impl StyleProp {
                 | Self::AlignItems(_)
                 | Self::JustifyContent(_)
                 | Self::Gap(_)
+                | Self::FlexGrow(_)
                 | Self::Padding(_)
                 | Self::PaddingTop(_)
                 | Self::PaddingRight(_)

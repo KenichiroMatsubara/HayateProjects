@@ -52,4 +52,13 @@ export interface IRenderer {
     event: EventKind,
     handler: EventHandler,
   ): Unsubscribe;
+
+  /**
+   * レンダリングサーフェスのサイズを更新する。
+   *
+   * DOM Renderer では CSS が自動追従するため no-op。
+   * Canvas Renderer では canvas 要素のピクセルサイズを更新し再描画を促す。
+   * `renderTsubame` が ResizeObserver / window.resize から呼び出す。
+   */
+  resize(width: number, height: number): void;
 }

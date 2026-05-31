@@ -34,20 +34,19 @@ srcLabel.textContent = source === 'query' ? '?mode=' + mode.toLowerCase() : 'aut
   : linkAuto
 ).classList.add('active');
 
-const width = window.innerWidth;
-const height = window.innerHeight;
-
 let renderer: IRenderer;
 if (mode === 'DOM') {
   dom.hidden = false;
   renderer = new DomRenderer({ container: dom });
+  renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: dom });
 } else {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
   canvas.hidden = false;
-  canvas.width = width;
-  canvas.height = height;
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
+  canvas.width = w;
+  canvas.height = h;
+  canvas.style.width = `${w}px`;
+  canvas.style.height = `${h}px`;
   renderer = new CanvasRenderer(new MockHayate(canvas));
+  renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: canvas });
 }
-
-renderTsubame(() => <TodoApp mode={mode} source={source} width={width} height={height} />, renderer);

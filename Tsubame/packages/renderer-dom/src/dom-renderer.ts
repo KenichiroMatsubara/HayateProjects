@@ -79,6 +79,9 @@ export class DomRenderer implements IRenderer {
     return () => target.removeEventListener(domEvent, listener);
   }
 
+  /** DOM Renderer では CSS が自動追従するため no-op（IRenderer.resize 実装）。 */
+  resize(_width: number, _height: number): void {}
+
   /** 内部用: ElementId から DOM ノードを引く。未登録なら例外。 */
   private node(id: ElementId): HTMLElement {
     const el = this.nodes.get(id);

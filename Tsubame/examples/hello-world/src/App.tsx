@@ -44,8 +44,6 @@ const SpY = (h: number) => <view style={{ width: 1, height: h }} />;
 export interface TodoAppProps {
   mode: Mode;
   source: ModeSource;
-  width: number;
-  height: number;
 }
 
 export function TodoApp(props: TodoAppProps) {
@@ -85,20 +83,18 @@ export function TodoApp(props: TodoAppProps) {
   const HEADER_H = 64;
   const FILTER_H = 52;
   const FOOTER_H = 104;
-  const listH = props.height - HEADER_H - FILTER_H - FOOTER_H;
-  const itemW = Math.min(720, props.width - 48);
+  const ITEM_W = 680;
 
   return (
     <view style={{
-      width: props.width,
-      height: props.height,
+      width: '100%',
+      height: '100%',
       display: 'flex',
       flexDirection: 'column',
       backgroundColor: C.bg,
     }}>
       {/* ─── Header ─── */}
       <view style={{
-        width: props.width,
         height: HEADER_H,
         display: 'flex',
         flexDirection: 'row',
@@ -149,7 +145,6 @@ export function TodoApp(props: TodoAppProps) {
 
       {/* ─── Filter bar ─── */}
       <view style={{
-        width: props.width,
         height: FILTER_H,
         display: 'flex',
         flexDirection: 'row',
@@ -227,8 +222,7 @@ export function TodoApp(props: TodoAppProps) {
 
       {/* ─── List ─── */}
       <scroll-view style={{
-        width: props.width,
-        height: listH,
+        flexGrow: 1,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -238,7 +232,7 @@ export function TodoApp(props: TodoAppProps) {
         {SpY(16)}
         {filtered().length === 0
           ? <view style={{
-              width: itemW,
+              width: ITEM_W,
               height: 80,
               display: 'flex',
               alignItems: 'center',
@@ -253,7 +247,7 @@ export function TodoApp(props: TodoAppProps) {
             </view>
           : filtered().map((todo) => (
             <view style={{
-              width: itemW,
+              width: ITEM_W,
               height: 56,
               display: 'flex',
               flexDirection: 'row',
@@ -314,7 +308,6 @@ export function TodoApp(props: TodoAppProps) {
 
       {/* ─── Footer: preset add ─── */}
       <view style={{
-        width: props.width,
         height: FOOTER_H,
         display: 'flex',
         flexDirection: 'column',

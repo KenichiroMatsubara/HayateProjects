@@ -83,6 +83,11 @@ export class CanvasRenderer implements IRenderer {
     }
   }
 
+  /** レンダリングサーフェスのサイズを更新する（IRenderer.resize 実装）。 */
+  resize(width: number, height: number): void {
+    this.hayate.resize?.(width, height);
+  }
+
   createElement(kind: ElementKind): ElementId {
     const id = this.nextId++;
     this.pushOp(OP.CREATE, id, KIND_CODE[kind]);

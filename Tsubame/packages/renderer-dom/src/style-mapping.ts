@@ -12,6 +12,7 @@ const CSS_PROP: Record<keyof HayateStyle, string> = {
   alignItems: 'alignItems',
   justifyContent: 'justifyContent',
   gap: 'gap',
+  flexGrow: 'flexGrow',
   color: 'color',
   backgroundColor: 'backgroundColor',
   borderRadius: 'borderRadius',
@@ -20,7 +21,7 @@ const CSS_PROP: Record<keyof HayateStyle, string> = {
   fontWeight: 'fontWeight',
 };
 
-/** px 単位を付与する長さ系プロパティ。 */
+/** px 単位を付与する長さ系プロパティ（値が number の場合のみ付与）。 */
 const PX_PROPS = new Set<keyof HayateStyle>([
   'width',
   'height',

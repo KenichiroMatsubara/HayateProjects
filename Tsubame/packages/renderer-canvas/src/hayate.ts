@@ -20,6 +20,12 @@ export interface HayateWasm {
   element_set_text(id: number, text: string): void;
 
   /**
+   * レンダリングサーフェスのサイズを更新する。
+   * Canvas Renderer が window resize / ResizeObserver から呼び出す。
+   */
+  resize?(width: number, height: number): void;
+
+  /**
    * 蓄積された Interaction Event を `Array<Array<any>>` で返す（ADR-0034）。
    *
    * 各サブ配列は `[kind: number, ...fields]` の形式。
