@@ -111,12 +111,13 @@ const {
     // その他の prop（src / value 等）は MVP スコープ外。
   },
 
-  insertNode(parent: TsubameNode, node: TsubameNode, anchor?: TsubameNode): void {
+  insertNode(parent: TsubameNode, node: TsubameNode, anchor?: TsubameNode | null): void {
     if (parent.kind !== 'element') return;
     node.parent = parent;
 
-    // shadow ツリーにスプライス
-    if (anchor !== undefined) {
+    // shadow ツリーにスプライス（universal の cleanChildren は marker に null を渡す
+    // ケースがあるため undefined/null を等価扱いする）
+    if (anchor != null) {
       const i = parent.children.indexOf(anchor);
       parent.children.splice(i < 0 ? parent.children.length : i, 0, node);
     } else {
@@ -133,7 +134,7 @@ const {
     // anchor が TextNode（IRenderer 非存在）の場合は次の実 ElementNode を使う。
     const r = activeRenderer();
     const realAnchor =
-      anchor === undefined
+      anchor == null
         ? undefined
         : anchor.kind === 'element'
         ? anchor
