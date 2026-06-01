@@ -55,6 +55,13 @@ interface types {
   enum justify-value { flex-start, flex-end, center, space-between, space-around, space-evenly }
   enum flex-direction-value { row, column, row-reverse, column-reverse }
 
+  // Inheritable style-property kinds (ADR-0047)
+  enum style-prop-kind {
+    color,
+    font-size,
+    font-family,
+  }
+
   // Hayate CSS — style properties as variant list
   variant style-prop {
     // visual
@@ -170,7 +177,7 @@ interface types {
 interface element-layer {
   use types.{
     element-id, element-kind,
-    style-prop, event,
+    style-prop, style-prop-kind, event,
     affine, bounds,
   };
 
@@ -182,6 +189,7 @@ interface element-layer {
   element-set-transform: func(id: element-id, matrix: affine) -> ();
   element-set-scroll-offset: func(id: element-id, x: f32, y: f32) -> ();
   element-set-style: func(id: element-id, props: list<style-prop>) -> ();
+  element-unset-style: func(id: element-id, kinds: list<style-prop-kind>) -> ();
   element-append-child: func(parent: element-id, child: element-id) -> ();
   element-insert-before: func(parent: element-id, child: element-id, before: element-id) -> ();
   element-remove: func(id: element-id) -> ();

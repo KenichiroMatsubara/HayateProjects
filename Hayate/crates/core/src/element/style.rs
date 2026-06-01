@@ -1,5 +1,13 @@
 use crate::color::Color;
 
+/// Identifies which style property to unset via `element_unset_style`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StylePropKind {
+    Color,
+    FontSize,
+    FontFamily,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,

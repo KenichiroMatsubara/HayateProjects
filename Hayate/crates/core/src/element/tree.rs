@@ -11,7 +11,7 @@ use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::scene_build;
-use crate::element::style::StyleProp;
+use crate::element::style::{StyleProp, StylePropKind};
 use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::node::SceneGraph;
@@ -23,8 +23,8 @@ pub struct Visual {
     pub border_radius: f32,
     pub border_width: f32,
     pub border_color: Option<Color>,
-    pub text_color: Color,
-    pub font_size: f32,
+    pub text_color: Option<Color>,
+    pub font_size: Option<f32>,
     pub z_index: i32,
     /// Custom font-family name registered via `register_font`.
     pub font_family: Option<String>,
@@ -38,8 +38,8 @@ impl Default for Visual {
             border_radius: 0.0,
             border_width: 0.0,
             border_color: None,
-            text_color: Color::BLACK,
-            font_size: 16.0,
+            text_color: None,
+            font_size: None,
             z_index: 0,
             font_family: None,
         }
@@ -119,8 +119,8 @@ pub struct ResolvedElement {
     pub border_radius: f32,
     pub border_width: f32,
     pub border_color: Option<Color>,
-    pub text_color: Color,
-    pub font_size: f32,
+    pub text_color: Option<Color>,
+    pub font_size: Option<f32>,
     pub z_index: i32,
     pub text: Option<String>,
     pub src: Option<String>,
@@ -557,6 +557,36 @@ impl ElementTree {
         }
     }
 
+    /// Unset one or more inheritable style properties, reverting them to "inherit from parent".
+    pub fn element_unset_style(&mut self, id: ElementId, kinds: &[StylePropKind]) {
+        let el = match self.elements.get_mut(&id) {
+            Some(e) => e,
+            None => return,
+        };
+        let mut text_dirty = false;
+        for kind in kinds {
+            match kind {
+                StylePropKind::Color => {
+                    el.visual.text_color = None;
+                }
+                StylePropKind::FontSize => {
+                    el.visual.font_size = None;
+                    el.text_layout = None;
+                    text_dirty = true;
+                }
+                StylePropKind::FontFamily => {
+                    el.visual.font_family = None;
+                    el.text_layout = None;
+                    text_dirty = true;
+                }
+            }
+        }
+        if text_dirty {
+            let node = el.taffy_node;
+            let _ = self.taffy.mark_dirty(node);
+        }
+    }
+
     pub fn element_append_child(&mut self, parent: ElementId, child: ElementId) {
         if !self.elements.contains_key(&parent) || !self.elements.contains_key(&child) {
             return;
@@ -812,7 +842,7 @@ impl ElementTree {
                     font_cx,
                     layout_cx,
                     text,
-                    el.visual.font_size,
+                    el.visual.font_size.unwrap_or(16.0),
                     max_advance,
                     el.visual.font_family.as_deref(),
                 );
@@ -880,7 +910,7 @@ impl ElementTree {
                     Some(p) => format!("{}{}", el.text_content, p),
                     None => el.text_content.clone(),
                 };
-                (text, el.visual.font_size)
+                (text, el.visual.font_size.unwrap_or(16.0))
             };
 
             if display_text.is_empty() {
@@ -1059,7 +1089,7 @@ fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
         StyleProp::BorderWidth(v) => visual.border_width = v.max(0.0),
         StyleProp::BorderColor(c) => visual.border_color = Some(*c),
         StyleProp::FontSize(v) => {
-            visual.font_size = v.max(0.0);
+            visual.font_size = Some(v.max(0.0));
             *text_dirty = true;
         }
         StyleProp::FontFamily(f) => {
@@ -1067,7 +1097,7 @@ fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
             *text_dirty = true;
         }
         StyleProp::Color(c) => {
-            visual.text_color = *c;
+            visual.text_color = Some(*c);
             *text_dirty = true;
         }
         StyleProp::ZIndex(z) => visual.z_index = *z,
