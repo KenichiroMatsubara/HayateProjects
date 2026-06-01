@@ -14,6 +14,10 @@ import {
  *
  * measure() / place() による JS 内 Flexbox 再実装は行わない。
  * CSS が増えても MockHayate は変更不要。
+ *
+ * ADR-0047 準拠: color は隠し DOM の CSS カスケードが継承を解決する。
+ * getComputedStyle(el).color で確定済みの継承色を取得して Canvas に描く。
+ * element_unset_style() はインラインスタイルを削除してカスケードに委ねる。
  */
 
 const KIND_NAME = ['view', 'text', 'image', 'button', 'text-input', 'scroll-view'];
@@ -130,6 +134,22 @@ export class MockHayate implements HayateWasm {
     this.render();
   }
 
+  /**
+   * 継承対象プロパティのリセット（ADR-0047）。
+   * kinds: 0=Color, 1=FontSize, 2=FontFamily
+   * インラインスタイルを削除することで、ブラウザの CSS カスケード（= 親からの継承）に委ねる。
+   */
+  element_unset_style(id: number, kinds: Uint32Array): void {
+    const el = this.domNodes.get(id);
+    if (!el) return;
+    for (const kind of kinds) {
+      if (kind === 0) el.style.removeProperty('color');
+      if (kind === 1) el.style.removeProperty('font-size');
+      if (kind === 2) el.style.removeProperty('font-family');
+    }
+    this.render();
+  }
+
   poll_events(): Array<Array<number | string>> {
     const result: Array<[number, number]> = [];
     for (let i = 0; i + 1 < this.eventQueue.length; i += 2) {
@@ -241,7 +261,9 @@ export class MockHayate implements HayateWasm {
     if ((kind === 'text' || kind === 'button') && el.children.length === 0 && text) {
       const fontSize = parseFloat(el.style.fontSize) || 16;
       ctx.font          = `${fontSize}px system-ui, sans-serif`;
-      ctx.fillStyle     = el.style.color || '#000';
+      // ADR-0047: getComputedStyle で CSS カスケードを通じた継承色を取得する。
+      // el.style.color（インライン）が未設定でも、親から継承した色が返る。
+      ctx.fillStyle     = getComputedStyle(el).color;
       ctx.textBaseline  = 'middle';
       ctx.textAlign     = 'center';
       ctx.fillText(text, x + w / 2, y + h / 2);

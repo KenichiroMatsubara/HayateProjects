@@ -14,6 +14,14 @@ export interface HayateWasm {
   apply_mutations(ops: Float64Array, styles: Float32Array): void;
 
   /**
+   * 継承対象スタイルプロパティのリセット（ADR-0047）。
+   * `kinds` は StylePropKind コードの配列: 0=Color, 1=FontSize, 2=FontFamily。
+   * 実 Hayate WASM は `element_unset_style(id, kinds)` を実装する。
+   * モックや旧 WASM 向けに optional とする。
+   */
+  element_unset_style?(id: number, kinds: Uint32Array): void;
+
+  /**
    * 文字列 op は typed array に収まらず頻度も低いため、バッチ外の個別呼び出し
    * とする（ADR-0003）。
    */
