@@ -135,6 +135,7 @@ enum Command {
     SetText { id: ElementId, text: String },
     SetSrc { id: ElementId, url: String },
     SetStyle { id: ElementId, props: Vec<StyleProp> },
+    UnsetStyle { id: ElementId, kinds: Vec<u32> },
     SetTransform { id: ElementId, matrix: Option<[f64; 6]> },
     SetScrollOffset { id: ElementId, x: f32, y: f32 },
     SetFontFamily { id: ElementId, family: String },
@@ -486,6 +487,20 @@ impl HayateElementRenderer {
 
     pub fn element_set_font_family(&mut self, id: f64, family: &str) {
         self.tree.element_set_font_family(element_id_from_f64(id), family);
+    }
+
+    /// Unset one or more inheritable text-style properties on `id`, reverting
+    /// them to inherit from the parent (ADR-0047).
+    /// `kinds` is a packed u32 array: 0 = Color, 1 = FontSize, 2 = FontFamily.
+    pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) {
+        use hayate_core::StylePropKind;
+        let parsed: Vec<StylePropKind> = kinds.iter().filter_map(|&k| match k {
+            0 => Some(StylePropKind::Color),
+            1 => Some(StylePropKind::FontSize),
+            2 => Some(StylePropKind::FontFamily),
+            _ => None,
+        }).collect();
+        self.tree.element_unset_style(element_id_from_f64(id), &parsed);
     }
 
     pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
@@ -1036,6 +1051,16 @@ impl HayateElementHtmlRenderer {
         });
     }
 
+    /// Unset one or more inheritable text-style properties, delegating them to
+    /// browser CSS inheritance (ADR-0047).
+    /// `kinds` is a packed u32 array: 0 = Color, 1 = FontSize, 2 = FontFamily.
+    pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) {
+        self.pending.push(Command::UnsetStyle {
+            id: element_id_from_f64(id),
+            kinds: kinds.to_vec(),
+        });
+    }
+
     pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
         self.pending.push(Command::SetAriaLabel {
             id: element_id_from_f64(id),
@@ -1250,6 +1275,7 @@ impl HayateElementHtmlRenderer {
             Command::SetText { id, text } => self.flush_set_text(id, &text),
             Command::SetSrc { id, url } => self.flush_set_src(id, &url),
             Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
+            Command::UnsetStyle { id, kinds } => self.flush_unset_style(id, &kinds),
             Command::SetTransform { id, matrix } => self.flush_set_transform(id, matrix),
             Command::SetScrollOffset { id, x, y } => self.flush_set_scroll_offset(id, x, y),
             Command::SetFontFamily { id, family } => self.flush_set_font_family(id, &family),
@@ -1333,6 +1359,24 @@ impl HayateElementHtmlRenderer {
             style_packet::apply_props_to_dom(&html_el.style(), props)?;
         }
         Ok(())
+    }
+
+    fn flush_unset_style(&mut self, id: ElementId, kinds: &[u32]) {
+        let dom = match self.nodes.get(&id).and_then(|n| n.dom.clone()) {
+            Some(d) => d,
+            None => return,
+        };
+        if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+            let style = html_el.style();
+            for &kind in kinds {
+                match kind {
+                    0 => { let _ = style.remove_property("color"); }
+                    1 => { let _ = style.remove_property("font-size"); }
+                    2 => { let _ = style.remove_property("font-family"); }
+                    _ => {}
+                }
+            }
+        }
     }
 
     fn flush_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {

@@ -10,6 +10,6 @@ pub use id::ElementId;
 pub use kind::ElementKind;
 pub use style::{
     AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,
-    JustifyValue, StyleProp,
+    JustifyValue, StyleProp, StylePropKind,
 };
 pub use tree::{ElementTree, Event, ResolvedElement};
