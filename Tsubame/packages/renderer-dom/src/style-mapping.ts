@@ -1,58 +1,91 @@
-import type { HayateStyle, StylePatch } from '@tsubame/renderer-protocol';
+import type { HayateDimension, HayateStyle, StylePatch } from '@tsubame/renderer-protocol';
 
-/**
- * HayateStyle の各プロパティを CSS プロパティ名（camelCase）へ対応付ける。
- * MVP では DOM Renderer 上ではプロパティ名がほぼそのまま CSS に一致する。
- */
 const CSS_PROP: Record<keyof HayateStyle, string> = {
   width: 'width',
   height: 'height',
+  minWidth: 'minWidth',
+  minHeight: 'minHeight',
+  maxWidth: 'maxWidth',
+  maxHeight: 'maxHeight',
   display: 'display',
   flexDirection: 'flexDirection',
   alignItems: 'alignItems',
   justifyContent: 'justifyContent',
   gap: 'gap',
   flexGrow: 'flexGrow',
+  padding: 'padding',
+  paddingTop: 'paddingTop',
+  paddingRight: 'paddingRight',
+  paddingBottom: 'paddingBottom',
+  paddingLeft: 'paddingLeft',
+  margin: 'margin',
+  marginTop: 'marginTop',
+  marginRight: 'marginRight',
+  marginBottom: 'marginBottom',
+  marginLeft: 'marginLeft',
   color: 'color',
   backgroundColor: 'backgroundColor',
+  borderColor: 'borderColor',
   borderRadius: 'borderRadius',
+  borderWidth: 'borderWidth',
   opacity: 'opacity',
+  zIndex: 'zIndex',
   fontSize: 'fontSize',
+  fontFamily: 'fontFamily',
   fontWeight: 'fontWeight',
 };
 
-/** px 単位を付与する長さ系プロパティ（値が number の場合のみ付与）。 */
-const PX_PROPS = new Set<keyof HayateStyle>([
+const DIM_PROPS = new Set<keyof HayateStyle>([
   'width',
   'height',
+  'minWidth',
+  'minHeight',
+  'maxWidth',
+  'maxHeight',
   'gap',
+  'padding',
+  'paddingTop',
+  'paddingRight',
+  'paddingBottom',
+  'paddingLeft',
+  'margin',
+  'marginTop',
+  'marginRight',
+  'marginBottom',
+  'marginLeft',
+]);
+
+const PX_NUMBER_PROPS = new Set<keyof HayateStyle>([
   'borderRadius',
+  'borderWidth',
   'fontSize',
 ]);
 
+function formatDimension(value: HayateDimension): string {
+  return typeof value === 'number' ? `${value}px` : value;
+}
+
 function format(key: keyof HayateStyle, value: NonNullable<unknown>): string {
-  if (PX_PROPS.has(key) && typeof value === 'number') {
-    return `${value}px`;
-  }
+  if (DIM_PROPS.has(key)) return formatDimension(value as HayateDimension);
+  if (PX_NUMBER_PROPS.has(key) && typeof value === 'number') return `${value}px`;
   return String(value);
 }
 
-/**
- * {@link StylePatch} を DOM 要素のインラインスタイルへ適用する。
- *
- * - 値を持つプロパティは上書き
- * - `null` は空文字を設定してインラインスタイルを解除（デフォルトへ戻す）
- *
- * `display: 'flex'` の DOM では未指定 prop の挙動が CSS のカスケードに従う点に
- * 注意（Protocol の StylePatch セマンティクスは「未指定＝変更なし」）。
- */
 export function applyStylePatch(el: HTMLElement, patch: StylePatch): void {
-  const style = el.style as unknown as Record<string, string>;
   for (const key in patch) {
     const k = key as keyof StylePatch;
     const value = patch[k];
     if (value === undefined) continue;
+
     const cssProp = CSS_PROP[k];
+    if (cssProp === undefined) {
+      throw new Error(`DOMRenderer: unknown Hayate style property "${k}"`);
+    }
+
+    const style = el.style as unknown as Record<string, string>;
     style[cssProp] = value === null ? '' : format(k, value);
+    if (k === 'borderWidth' && value !== null) {
+      el.style.borderStyle = Number(value) > 0 ? 'solid' : 'none';
+    }
   }
 }

@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use hayate_core::{Node, NodeKind, SceneGraph, vello_bridge};
+use hayate_core::{vello_bridge, Node, NodeKind, SceneGraph};
 use slotmap::{Key, KeyData};
-use vello::{Scene, peniko::color::{AlphaColor, Srgb}};
+use vello::{
+    peniko::color::{AlphaColor, Srgb},
+    Scene,
+};
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement};
 
@@ -31,7 +34,10 @@ impl HayateRenderer {
     /// Returns a `Promise<HayateRenderer>` because GPU requests are async.
     pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateRenderer, JsValue> {
         let gpu = GpuSurface::init(canvas).await?;
-        Ok(HayateRenderer { gpu, scene_graph: SceneGraph::new() })
+        Ok(HayateRenderer {
+            gpu,
+            scene_graph: SceneGraph::new(),
+        })
     }
 
     /// Add a Rect node to the scene graph. Returns an opaque node ID (as f64).
@@ -48,7 +54,14 @@ impl HayateRenderer {
         corner_radius: f32,
     ) -> f64 {
         let node = Node {
-            kind: NodeKind::Rect { x, y, width, height, color: [r, g, b, a], corner_radius },
+            kind: NodeKind::Rect {
+                x,
+                y,
+                width,
+                height,
+                color: [r, g, b, a],
+                corner_radius,
+            },
             children: Vec::new(),
         };
         let id = self.scene_graph.insert(node);
@@ -95,7 +108,11 @@ impl HayateHtmlRenderer {
         let style = container.style();
         style.set_property("position", "relative")?;
         style.set_property("overflow", "hidden")?;
-        Ok(HayateHtmlRenderer { container, nodes: HashMap::new(), next_id: 1 })
+        Ok(HayateHtmlRenderer {
+            container,
+            nodes: HashMap::new(),
+            next_id: 1,
+        })
     }
 
     /// Add a Rect node. Returns an opaque node ID (as f64) matching `HayateRenderer`'s API.
@@ -122,7 +139,13 @@ impl HayateHtmlRenderer {
         style.set_property("height", &format!("{}px", height))?;
         style.set_property(
             "background-color",
-            &format!("rgba({},{},{},{})", (r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8, a),
+            &format!(
+                "rgba({},{},{},{})",
+                (r * 255.0) as u8,
+                (g * 255.0) as u8,
+                (b * 255.0) as u8,
+                a
+            ),
         )?;
         if corner_radius > 0.0 {
             style.set_property("border-radius", &format!("{}px", corner_radius))?;
@@ -147,7 +170,12 @@ impl HayateHtmlRenderer {
     pub fn render(&self, bg_r: f64, bg_g: f64, bg_b: f64) -> Result<(), JsValue> {
         self.container.style().set_property(
             "background-color",
-            &format!("rgb({},{},{})", (bg_r * 255.0) as u8, (bg_g * 255.0) as u8, (bg_b * 255.0) as u8),
+            &format!(
+                "rgb({},{},{})",
+                (bg_r * 255.0) as u8,
+                (bg_g * 255.0) as u8,
+                (bg_b * 255.0) as u8
+            ),
         )
     }
 }

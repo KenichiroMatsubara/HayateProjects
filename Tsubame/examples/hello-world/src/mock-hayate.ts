@@ -21,11 +21,21 @@ import {
  */
 
 const KIND_NAME = ['view', 'text', 'image', 'button', 'text-input', 'scroll-view'];
+const textDecoder = new TextDecoder();
 
-const ALIGN_ITEMS_CSS  = ['flex-start', 'flex-end', 'center', 'stretch'] as const;
+const DISPLAY_CSS = ['flex', 'grid', 'block', 'none'] as const;
+const FLEX_DIRECTION_CSS = ['row', 'column', 'row-reverse', 'column-reverse'] as const;
+const ALIGN_ITEMS_CSS  = ['flex-start', 'flex-end', 'center', 'stretch', 'baseline'] as const;
 const JUSTIFY_CSS = [
   'flex-start', 'flex-end', 'center', 'space-between', 'space-around', 'space-evenly',
 ] as const;
+const EVENT = {
+  click: 0,
+  focus: 1,
+  blur: 2,
+  'hover-enter': 10,
+  'hover-leave': 11,
+} as const;
 
 export class MockHayate implements HayateWasm {
   private readonly ctx: CanvasRenderingContext2D;
@@ -38,6 +48,8 @@ export class MockHayate implements HayateWasm {
   private readonly nodeRects = new Map<number, { x: number; y: number; w: number; h: number }>();
   private root: number | null = null;
   private readonly eventQueue: number[] = [];
+  private hoveredId: number | null = null;
+  private focusedId: number | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -53,11 +65,18 @@ export class MockHayate implements HayateWasm {
       `font-family:system-ui,sans-serif;box-sizing:border-box;`;
     document.body.appendChild(this.container);
 
+    if (canvas.tabIndex < 0) canvas.tabIndex = 0;
     canvas.addEventListener('click', this.onClick);
+    canvas.addEventListener('mousemove', this.onMouseMove);
+    canvas.addEventListener('mouseleave', this.onMouseLeave);
+    canvas.addEventListener('blur', this.onCanvasBlur);
   }
 
   dispose(): void {
     this.canvas.removeEventListener('click', this.onClick);
+    this.canvas.removeEventListener('mousemove', this.onMouseMove);
+    this.canvas.removeEventListener('mouseleave', this.onMouseLeave);
+    this.canvas.removeEventListener('blur', this.onCanvasBlur);
     document.body.removeChild(this.container);
   }
 
@@ -168,7 +187,7 @@ export class MockHayate implements HayateWasm {
     const end = offset + len;
     while (i < end) {
       const tag = styles[i++]!;
-      if (tag === TAG.COLOR || tag === TAG.BACKGROUND_COLOR) {
+      if (tag === TAG.COLOR || tag === TAG.BACKGROUND_COLOR || tag === TAG.BORDER_COLOR) {
         const r = Math.round(styles[i]!     * 255);
         const g = Math.round(styles[i + 1]! * 255);
         const b = Math.round(styles[i + 2]! * 255);
@@ -176,22 +195,60 @@ export class MockHayate implements HayateWasm {
         i += 4;
         const css = `rgba(${r},${g},${b},${a})`;
         if (tag === TAG.COLOR) el.style.color = css;
-        else el.style.backgroundColor = css;
-      } else if (tag === TAG.WIDTH || tag === TAG.HEIGHT || tag === TAG.GAP) {
+        else if (tag === TAG.BACKGROUND_COLOR) el.style.backgroundColor = css;
+        else el.style.borderColor = css;
+      } else if (
+        tag === TAG.WIDTH ||
+        tag === TAG.HEIGHT ||
+        tag === TAG.MIN_WIDTH ||
+        tag === TAG.MIN_HEIGHT ||
+        tag === TAG.MAX_WIDTH ||
+        tag === TAG.MAX_HEIGHT ||
+        tag === TAG.GAP ||
+        tag === TAG.PADDING ||
+        tag === TAG.PADDING_TOP ||
+        tag === TAG.PADDING_RIGHT ||
+        tag === TAG.PADDING_BOTTOM ||
+        tag === TAG.PADDING_LEFT ||
+        tag === TAG.MARGIN ||
+        tag === TAG.MARGIN_TOP ||
+        tag === TAG.MARGIN_RIGHT ||
+        tag === TAG.MARGIN_BOTTOM ||
+        tag === TAG.MARGIN_LEFT
+      ) {
         const v    = styles[i++]!;
-        const unit = styles[i++]!;  // 0=px, 1=percent
-        const css  = unit === 1 ? `${v}%` : `${v}px`;
-        if (tag === TAG.WIDTH)       el.style.width  = css;
-        else if (tag === TAG.HEIGHT) el.style.height = css;
-        else                         el.style.gap    = css;
+        const unit = styles[i++]!;  // 0=px, 1=percent, 2=auto, 3=fr
+        const css  = unit === 1 ? `${v}%` : unit === 2 ? 'auto' : unit === 3 ? `${v}fr` : `${v}px`;
+        if (tag === TAG.WIDTH)            el.style.width = css;
+        else if (tag === TAG.HEIGHT)      el.style.height = css;
+        else if (tag === TAG.MIN_WIDTH)   el.style.minWidth = css;
+        else if (tag === TAG.MIN_HEIGHT)  el.style.minHeight = css;
+        else if (tag === TAG.MAX_WIDTH)   el.style.maxWidth = css;
+        else if (tag === TAG.MAX_HEIGHT)  el.style.maxHeight = css;
+        else if (tag === TAG.GAP)         el.style.gap = css;
+        else if (tag === TAG.PADDING)        el.style.padding = css;
+        else if (tag === TAG.PADDING_TOP)    el.style.paddingTop = css;
+        else if (tag === TAG.PADDING_RIGHT)  el.style.paddingRight = css;
+        else if (tag === TAG.PADDING_BOTTOM) el.style.paddingBottom = css;
+        else if (tag === TAG.PADDING_LEFT)   el.style.paddingLeft = css;
+        else if (tag === TAG.MARGIN)         el.style.margin = css;
+        else if (tag === TAG.MARGIN_TOP)     el.style.marginTop = css;
+        else if (tag === TAG.MARGIN_RIGHT)   el.style.marginRight = css;
+        else if (tag === TAG.MARGIN_BOTTOM)  el.style.marginBottom = css;
+        else if (tag === TAG.MARGIN_LEFT)    el.style.marginLeft = css;
+      } else if (tag === TAG.FONT_FAMILY) {
+        const len = styles[i++]!;
+        const bytes = Uint8Array.from(styles.slice(i, i + len));
+        i += len;
+        el.style.fontFamily = textDecoder.decode(bytes);
       } else {
         const v = styles[i++]!;
         switch (tag) {
           case TAG.DISPLAY:
-            el.style.display = v === 0 ? 'flex' : 'none';
+            el.style.display = DISPLAY_CSS[v] ?? 'flex';
             break;
           case TAG.FLEX_DIRECTION:
-            el.style.flexDirection = v === 0 ? 'row' : 'column';
+            el.style.flexDirection = FLEX_DIRECTION_CSS[v] ?? 'row';
             break;
           case TAG.ALIGN_ITEMS:
             el.style.alignItems = ALIGN_ITEMS_CSS[v] ?? 'stretch';
@@ -208,8 +265,18 @@ export class MockHayate implements HayateWasm {
           case TAG.FONT_SIZE:
             el.style.fontSize = `${v}px`;
             break;
+          case TAG.BORDER_WIDTH:
+            el.style.borderWidth = `${v}px`;
+            el.style.borderStyle = v > 0 ? 'solid' : 'none';
+            break;
+          case TAG.Z_INDEX:
+            el.style.zIndex = String(v);
+            break;
           case TAG.FLEX_GROW:
             el.style.flexGrow = String(v);
+            break;
+          case TAG.FONT_WEIGHT:
+            el.style.fontWeight = String(v);
             break;
           default:
             break;
@@ -297,10 +364,51 @@ export class MockHayate implements HayateWasm {
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     const hit = this.hitTest(px, py);
-    if (hit !== null) this.eventQueue.push(0 /* click */, hit);
+    this.syncFocus(hit);
+    if (hit !== null) {
+      this.canvas.focus();
+      this.eventQueue.push(EVENT.click, hit);
+    }
   };
 
   /** 深い子ほど後から上書きされるため、最前面（最深）要素が返る */
+  private readonly onMouseMove = (e: MouseEvent): void => {
+    const rect = this.canvas.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    this.syncHover(this.hitTest(px, py));
+  };
+
+  private readonly onMouseLeave = (): void => {
+    this.syncHover(null);
+  };
+
+  private readonly onCanvasBlur = (): void => {
+    this.syncFocus(null);
+  };
+
+  private syncHover(nextId: number | null): void {
+    if (nextId === this.hoveredId) return;
+    if (this.hoveredId !== null) {
+      this.eventQueue.push(EVENT['hover-leave'], this.hoveredId);
+    }
+    this.hoveredId = nextId;
+    if (nextId !== null) {
+      this.eventQueue.push(EVENT['hover-enter'], nextId);
+    }
+  }
+
+  private syncFocus(nextId: number | null): void {
+    if (nextId === this.focusedId) return;
+    if (this.focusedId !== null) {
+      this.eventQueue.push(EVENT.blur, this.focusedId);
+    }
+    this.focusedId = nextId;
+    if (nextId !== null) {
+      this.eventQueue.push(EVENT.focus, nextId);
+    }
+  }
+
   private hitTest(px: number, py: number): number | null {
     let found: number | null = null;
     for (const [id, r] of this.nodeRects) {

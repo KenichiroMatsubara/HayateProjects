@@ -1,10 +1,6 @@
-/**
- * Hayate CSS のレイアウトプロパティ列挙。レイアウト系は Taffy の
- * CSS Flexbox 実装を仕様とする。MVP では Flexbox サブセットのみ対応。
- */
-export type Display = 'flex' | 'none';
-export type FlexDirection = 'row' | 'column';
-export type AlignItems = 'flex-start' | 'flex-end' | 'center' | 'stretch';
+export type Display = 'flex' | 'grid' | 'block' | 'none';
+export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
+export type AlignItems = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 'baseline';
 export type JustifyContent =
   | 'flex-start'
   | 'flex-end'
@@ -13,55 +9,67 @@ export type JustifyContent =
   | 'space-around'
   | 'space-evenly';
 
-/** CSS の font-weight に対応する数値ウェイト。 */
 export type FontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+export type HayateDimension = number | `${number}px` | `${number}%` | `${number}fr` | 'auto';
 
 /**
- * Tsubame が Renderer 経由で扱うスタイル仕様（MVP サブセット）。
+ * Style properties accepted by the Renderer Protocol.
  *
- * Canvas Renderer 経由では Hayate の `style_packet.rs` TAG エンコーディングへ、
- * DOM Renderer では対応する CSS プロパティへ直接マッピングされる。
- * 長さ系プロパティ（width / height / gap / borderRadius / fontSize）の単位は
- * px とする。
- *
- * Grid・overflow・border・shadow 等は MVP 後に追加する。
+ * Canvas Renderer converts these properties to Hayate's style packet format.
+ * DOM Renderer maps the same names to browser inline styles for direct DOM rendering.
  */
 export interface HayateStyle {
-  // --- レイアウト ---
-  /** px 数値または `'100%'`（親コンテナに対する割合）。 */
-  width: number | string;
-  /** px 数値または `'100%'`（親コンテナに対する割合）。 */
-  height: number | string;
+  // Sizing
+  width: HayateDimension;
+  height: HayateDimension;
+  minWidth: HayateDimension;
+  minHeight: HayateDimension;
+  maxWidth: HayateDimension;
+  maxHeight: HayateDimension;
+
+  // Layout
   display: Display;
   flexDirection: FlexDirection;
   alignItems: AlignItems;
   justifyContent: JustifyContent;
-  gap: number;
-  /** Flexbox の flex-grow。残余空間の配分比率。デフォルト 0。 */
+  gap: HayateDimension;
   flexGrow: number;
+  padding: HayateDimension;
+  paddingTop: HayateDimension;
+  paddingRight: HayateDimension;
+  paddingBottom: HayateDimension;
+  paddingLeft: HayateDimension;
+  margin: HayateDimension;
+  marginTop: HayateDimension;
+  marginRight: HayateDimension;
+  marginBottom: HayateDimension;
+  marginLeft: HayateDimension;
 
-  // --- ビジュアル ---
-  /** CSS color 文字列（例: `#1e90ff` / `rgb(30,144,255)`）。 */
+  // Visual
   color: string;
-  /** CSS color 文字列。 */
   backgroundColor: string;
+  borderColor: string;
   borderRadius: number;
-  /** 0.0〜1.0。 */
+  borderWidth: number;
   opacity: number;
+  zIndex: number;
 
-  // --- テキスト ---
+  // Text
   fontSize: number;
+  fontFamily: string;
+  /**
+   * DOM Renderer only for now. Hayate Core has no FontWeight StyleProp yet,
+   * so Canvas Renderer rejects this instead of silently dropping it.
+   */
   fontWeight: FontWeight;
 }
 
 /**
- * `IRenderer.setStyle` の第二引数。
+ * Patch semantics for `IRenderer.setStyle`.
  *
- * - 指定されたプロパティのみ上書き
- * - 未指定のプロパティは変更なし
- * - `null` はリセット（デフォルト値に戻す）
- *
- * 毎フレーム全プロパティを送るフル置換は行わない。
+ * - Present properties overwrite the previous value.
+ * - Missing properties leave the previous value unchanged.
+ * - `null` resets the property when the target renderer supports reset.
  */
 export type StylePatch = {
   [K in keyof HayateStyle]?: HayateStyle[K] | null;

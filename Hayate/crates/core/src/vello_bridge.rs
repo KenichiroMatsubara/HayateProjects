@@ -1,7 +1,10 @@
 use vello::{
-    Scene,
     kurbo::{Affine, Rect, RoundedRect},
-    peniko::{Fill, ImageBrush, color::{AlphaColor, Srgb}},
+    peniko::{
+        color::{AlphaColor, Srgb},
+        Fill, ImageBrush,
+    },
+    Scene,
 };
 
 use crate::node::{NodeId, NodeKind, SceneGraph};
@@ -20,16 +23,35 @@ fn draw_node(graph: &SceneGraph, id: NodeId, scene: &mut Scene) {
         None => return,
     };
     match &node.kind {
-        NodeKind::Rect { x, y, width, height, color, corner_radius } => {
+        NodeKind::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+            corner_radius,
+        } => {
             let brush = AlphaColor::<Srgb>::new(*color);
             let x0 = *x as f64;
             let y0 = *y as f64;
             let x1 = (*x + *width) as f64;
             let y1 = (*y + *height) as f64;
             if *corner_radius == 0.0 {
-                scene.fill(Fill::NonZero, Affine::IDENTITY, brush, None, &Rect::new(x0, y0, x1, y1));
+                scene.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    brush,
+                    None,
+                    &Rect::new(x0, y0, x1, y1),
+                );
             } else {
-                scene.fill(Fill::NonZero, Affine::IDENTITY, brush, None, &RoundedRect::new(x0, y0, x1, y1, *corner_radius as f64));
+                scene.fill(
+                    Fill::NonZero,
+                    Affine::IDENTITY,
+                    brush,
+                    None,
+                    &RoundedRect::new(x0, y0, x1, y1, *corner_radius as f64),
+                );
             }
         }
         NodeKind::TextRun { x, y, color, data } => {
@@ -41,7 +63,13 @@ fn draw_node(graph: &SceneGraph, id: NodeId, scene: &mut Scene) {
                 .transform(Affine::translate((*x as f64, *y as f64)))
                 .draw(Fill::NonZero, data.glyphs.iter().copied());
         }
-        NodeKind::Image { x, y, width, height, data } => {
+        NodeKind::Image {
+            x,
+            y,
+            width,
+            height,
+            data,
+        } => {
             let img_w = data.width as f32;
             let img_h = data.height as f32;
             let sx = if img_w > 0.0 { *width / img_w } else { 1.0 };
@@ -60,8 +88,18 @@ fn draw_node(graph: &SceneGraph, id: NodeId, scene: &mut Scene) {
             }
             scene.append(&sub, Some(affine));
         }
-        NodeKind::Clip { x, y, width, height } => {
-            let clip = Rect::new(*x as f64, *y as f64, (*x + *width) as f64, (*y + *height) as f64);
+        NodeKind::Clip {
+            x,
+            y,
+            width,
+            height,
+        } => {
+            let clip = Rect::new(
+                *x as f64,
+                *y as f64,
+                (*x + *width) as f64,
+                (*y + *height) as f64,
+            );
             let children: Vec<NodeId> = node.children.clone();
             scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &clip);
             for child_id in children {

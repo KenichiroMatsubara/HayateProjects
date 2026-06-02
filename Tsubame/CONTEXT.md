@@ -53,8 +53,8 @@ _Avoid_: div, span, HTML タグ
 Tsubame が Canvas Renderer 経由で Hayate に渡すスタイル仕様。レイアウトプロパティ（display / gap / align-items / grid-template-columns 等）は Taffy の CSS Flexbox / Grid / Block 実装を仕様書とする。ビジュアルプロパティ（color / background-color / border-radius / opacity 等）は CSS プロパティ名を踏襲しつつ Hayate が対応サブセットを定義する。DOM Renderer では対応する CSS プロパティに直接マッピングする。
 _Avoid_: CSS、CSS 風スタイル
 
-**HayateStyle（MVP サブセット）**:
-MVP で対応する `HayateStyle` のプロパティ一覧。レイアウト: `width` / `height` / `display` / `flexDirection` / `alignItems` / `justifyContent` / `gap`。ビジュアル: `color` / `backgroundColor` / `borderRadius` / `opacity`。テキスト: `fontSize` / `fontWeight`。Grid・overflow・border・shadow 等は MVP 後。
+**HayateStyle（WIT 公開サブセット）**:
+`wit/hayate.wit` の `style-prop` に定義済みのプロパティは Renderer Protocol から公開する。レイアウト: `width` / `height` / `minWidth` / `minHeight` / `maxWidth` / `maxHeight` / `display` / `flexDirection` / `alignItems` / `justifyContent` / `gap` / `padding*` / `margin*`。ビジュアル: `color` / `backgroundColor` / `borderColor` / `borderRadius` / `borderWidth` / `opacity` / `zIndex`。テキスト: `fontSize` / `fontFamily`。`fontWeight` は DOM Renderer 専用、`flexGrow` は互換拡張。
 _Avoid_: MVP での全プロパティ実装
 
 **Interaction Event**:

@@ -7,6 +7,7 @@ export type {
   AlignItems,
   JustifyContent,
   FontWeight,
+  HayateDimension,
   HayateStyle,
   StylePatch,
 } from './style.js';

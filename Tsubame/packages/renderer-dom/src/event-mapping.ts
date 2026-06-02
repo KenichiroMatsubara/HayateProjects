@@ -8,6 +8,9 @@ import type { EventKind } from '@tsubame/renderer-protocol';
  */
 export const DOM_EVENT_NAME: Record<EventKind, string> = {
   click: 'click',
+  input: 'input',
+  change: 'change',
+  keydown: 'keydown',
   'hover-enter': 'mouseenter',
   'hover-leave': 'mouseleave',
   focus: 'focus',

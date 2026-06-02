@@ -10,6 +10,9 @@ import type { StylePatch, EventHandler } from '@tsubame/renderer-protocol';
 export interface TsubameProps {
   style?: StylePatch;
   onClick?: EventHandler;
+  onInput?: EventHandler;
+  onChange?: EventHandler;
+  onKeyDown?: EventHandler;
   onHoverEnter?: EventHandler;
   onHoverLeave?: EventHandler;
   onFocus?: EventHandler;
@@ -33,7 +36,11 @@ declare global {
       text: TsubameProps;
       image: TsubameProps & { src?: string };
       button: TsubameProps;
-      'text-input': TsubameProps & { value?: string };
+      'text-input': TsubameProps & {
+        value?: string;
+        placeholder?: string;
+        disabled?: boolean;
+      };
       'scroll-view': TsubameProps;
     }
   }

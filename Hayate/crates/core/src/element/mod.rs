@@ -9,7 +9,7 @@ pub mod tree;
 pub use id::ElementId;
 pub use kind::ElementKind;
 pub use style::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,
-    JustifyValue, StyleProp, StylePropKind,
+    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue,
+    StyleProp, StylePropKind,
 };
 pub use tree::{ElementTree, Event, ResolvedElement};

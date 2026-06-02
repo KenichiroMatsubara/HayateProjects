@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use slotmap::{DefaultKey, SlotMap};
-use vello::Glyph;
 use vello::peniko::{FontData, ImageData};
+use vello::Glyph;
 
 pub type NodeId = DefaultKey;
 
@@ -31,9 +31,7 @@ pub enum NodeKind {
         data: Arc<TextRunData>,
     },
     /// Applies an affine transform (kurbo coefficients [a,b,c,d,e,f]) to its children.
-    Group {
-        transform: [f64; 6],
-    },
+    Group { transform: [f64; 6] },
     /// Clips its children to the given axis-aligned rectangle.
     Clip {
         x: f32,
@@ -65,7 +63,10 @@ pub struct SceneGraph {
 
 impl SceneGraph {
     pub fn new() -> Self {
-        Self { nodes: SlotMap::new(), roots: Vec::new() }
+        Self {
+            nodes: SlotMap::new(),
+            roots: Vec::new(),
+        }
     }
 
     /// Insert a top-level (root) node.

@@ -6,6 +6,9 @@ import type { EventKind } from '@tsubame/renderer-protocol';
  */
 export const EVENT_PROP: Record<string, EventKind> = {
   onClick: 'click',
+  onInput: 'input',
+  onChange: 'change',
+  onKeyDown: 'keydown',
   onHoverEnter: 'hover-enter',
   onHoverLeave: 'hover-leave',
   onFocus: 'focus',

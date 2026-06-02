@@ -6,6 +6,7 @@ pub enum StylePropKind {
     Color,
     FontSize,
     FontFamily,
+    FontWeight,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,14 +24,23 @@ pub struct Dimension {
 }
 
 impl Dimension {
-    pub const AUTO: Self = Self { value: 0.0, unit: DimensionUnit::Auto };
+    pub const AUTO: Self = Self {
+        value: 0.0,
+        unit: DimensionUnit::Auto,
+    };
 
     pub const fn px(value: f32) -> Self {
-        Self { value, unit: DimensionUnit::Px }
+        Self {
+            value,
+            unit: DimensionUnit::Px,
+        }
     }
 
     pub const fn percent(value: f32) -> Self {
-        Self { value, unit: DimensionUnit::Percent }
+        Self {
+            value,
+            unit: DimensionUnit::Percent,
+        }
     }
 }
 
@@ -105,6 +115,7 @@ pub enum StyleProp {
     // text
     FontSize(f32),
     FontFamily(String),
+    FontWeight(f32),
     Color(Color),
     // stacking
     ZIndex(i32),

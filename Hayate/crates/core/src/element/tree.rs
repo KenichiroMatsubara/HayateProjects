@@ -1,4 +1,4 @@
-﻿use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use parley::{FontContext, LayoutContext};
 use taffy::{AvailableSpace, NodeId as TaffyId, Size as TaffySize, Style as TaffyStyle, TaffyTree};
@@ -25,6 +25,7 @@ pub struct Visual {
     pub border_color: Option<Color>,
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<f32>,
     pub z_index: i32,
     /// Custom font-family name registered via `register_font`.
     pub font_family: Option<String>,
@@ -40,6 +41,7 @@ impl Default for Visual {
             border_color: None,
             text_color: None,
             font_size: None,
+            font_weight: None,
             z_index: 0,
             font_family: None,
         }
@@ -85,24 +87,64 @@ pub(crate) struct Element {
 /// exception is `PointerMove`, which is a coordinate stream with no target.
 #[derive(Clone, Debug)]
 pub enum Event {
-    Click { target: ElementId, x: f32, y: f32 },
+    Click {
+        target: ElementId,
+        x: f32,
+        y: f32,
+    },
     Focus(ElementId),
     Blur(ElementId),
-    TextInput { target: ElementId, text: String },
-    CompositionStart { target: ElementId, text: String },
-    CompositionUpdate { target: ElementId, text: String },
-    CompositionEnd { target: ElementId, text: String },
-    Scroll { target: ElementId, delta_x: f32, delta_y: f32 },
-    Resize { width: f32, height: f32 },
-    HoverEnter { target: ElementId },
-    HoverLeave { target: ElementId },
-    ActiveStart { target: ElementId },
-    ActiveEnd { target: ElementId },
-    PointerMove { x: f32, y: f32 },
-    KeyDown { target: ElementId, key: String, modifiers: u32 },
+    TextInput {
+        target: ElementId,
+        text: String,
+    },
+    CompositionStart {
+        target: ElementId,
+        text: String,
+    },
+    CompositionUpdate {
+        target: ElementId,
+        text: String,
+    },
+    CompositionEnd {
+        target: ElementId,
+        text: String,
+    },
+    Scroll {
+        target: ElementId,
+        delta_x: f32,
+        delta_y: f32,
+    },
+    Resize {
+        width: f32,
+        height: f32,
+    },
+    HoverEnter {
+        target: ElementId,
+    },
+    HoverLeave {
+        target: ElementId,
+    },
+    ActiveStart {
+        target: ElementId,
+    },
+    ActiveEnd {
+        target: ElementId,
+    },
+    PointerMove {
+        x: f32,
+        y: f32,
+    },
+    KeyDown {
+        target: ElementId,
+        key: String,
+        modifiers: u32,
+    },
     /// A font family with .notdef glyphs was detected during shaping.
     /// The adapter should fetch the font and call `load_font_from_url`.
-    FetchFont { family: String },
+    FetchFont {
+        family: String,
+    },
 }
 
 /// Fully-resolved per-element state after layout, keyed by stable ElementId.
@@ -121,6 +163,7 @@ pub struct ResolvedElement {
     pub border_color: Option<Color>,
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
+    pub font_weight: Option<f32>,
     pub z_index: i32,
     pub text: Option<String>,
     pub src: Option<String>,
@@ -160,8 +203,7 @@ fn init_bundled_fonts(font_cx: &mut FontContext) {
     use fontique::{FontInfoOverride, GenericFamily};
     use vello::peniko::Blob;
 
-    static NOTO_SANS_BYTES: &[u8] =
-        include_bytes!("../../assets/fonts/NotoSansJP.ttf");
+    static NOTO_SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/NotoSansJP.ttf");
 
     let blob = Blob::new(Arc::new(NOTO_SANS_BYTES));
     let override_info = FontInfoOverride {
@@ -223,7 +265,8 @@ impl ElementTree {
         } else {
             MeasureCtx::None
         };
-        let taffy_node = self.taffy
+        let taffy_node = self
+            .taffy
             .new_leaf_with_context(layout_style.clone(), measure_ctx)
             .expect("taffy new_leaf_with_context");
 
@@ -302,7 +345,8 @@ impl ElementTree {
     pub fn element_backspace(&mut self, id: ElementId) {
         if let Some(el) = self.elements.get_mut(&id) {
             if el.kind == ElementKind::TextInput && !el.text_content.is_empty() {
-                let last_start = el.text_content
+                let last_start = el
+                    .text_content
                     .char_indices()
                     .next_back()
                     .map(|(i, _)| i)
@@ -360,7 +404,11 @@ impl ElementTree {
     /// `register_font`, or be a system font available in the default FontContext.
     pub fn element_set_font_family(&mut self, id: ElementId, family: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
-            el.visual.font_family = if family.is_empty() { None } else { Some(family.to_string()) };
+            el.visual.font_family = if family.is_empty() {
+                None
+            } else {
+                Some(family.to_string())
+            };
             el.text_layout = None;
             el.content_layout = None;
             let taffy_node = el.taffy_node;
@@ -371,14 +419,22 @@ impl ElementTree {
     /// Set the ARIA label for screen-reader accessibility.
     pub fn element_set_aria_label(&mut self, id: ElementId, label: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
-            el.aria_label = if label.is_empty() { None } else { Some(label.to_string()) };
+            el.aria_label = if label.is_empty() {
+                None
+            } else {
+                Some(label.to_string())
+            };
         }
     }
 
     /// Set the ARIA role (e.g. "button", "listitem", "img"). Pass an empty string to clear.
     pub fn element_set_role(&mut self, id: ElementId, role: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
-            el.role = if role.is_empty() { None } else { Some(role.to_string()) };
+            el.role = if role.is_empty() {
+                None
+            } else {
+                Some(role.to_string())
+            };
         }
     }
 
@@ -397,7 +453,9 @@ impl ElementTree {
             family_name: Some(family_name),
             ..Default::default()
         };
-        self.font_cx.collection.register_fonts(blob, Some(override_info));
+        self.font_cx
+            .collection
+            .register_fonts(blob, Some(override_info));
 
         // デフォルトファミリ ("Noto Sans") にも登録する。
         // build_text_layout のデフォルトスタックは常に DEFAULT_FONT_FAMILY を参照するため、
@@ -409,7 +467,9 @@ impl ElementTree {
                 family_name: Some(text::DEFAULT_FONT_FAMILY),
                 ..Default::default()
             };
-            self.font_cx.collection.register_fonts(fallback_blob, Some(fallback_override));
+            self.font_cx
+                .collection
+                .register_fonts(fallback_blob, Some(fallback_override));
         }
 
         self.pending_font_fetches.remove(family_name);
@@ -428,7 +488,11 @@ impl ElementTree {
     /// Set the IME preedit for a TextInput (in-progress, not yet committed).
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
-            el.preedit = if preedit.is_empty() { None } else { Some(preedit.to_string()) };
+            el.preedit = if preedit.is_empty() {
+                None
+            } else {
+                Some(preedit.to_string())
+            };
         }
     }
 
@@ -455,7 +519,10 @@ impl ElementTree {
             el.text_content.push_str(&preedit);
         }
         el.text_content.push_str(text);
-        self.event_queue.push(Event::TextInput { target: id, text: text.to_string() });
+        self.event_queue.push(Event::TextInput {
+            target: id,
+            text: text.to_string(),
+        });
     }
 
     /// Return the combined display text (text_content + any active preedit) for a TextInput.
@@ -487,7 +554,9 @@ impl ElementTree {
 
     /// Read the current scroll offset of an element.
     pub fn element_get_scroll_offset(&self, id: ElementId) -> (f32, f32) {
-        self.elements.get(&id).map_or((0.0, 0.0), |e| e.scroll_offset)
+        self.elements
+            .get(&id)
+            .map_or((0.0, 0.0), |e| e.scroll_offset)
     }
 
     /// Return the absolute layout rect (x, y, w, h) from the last render pass.
@@ -579,6 +648,11 @@ impl ElementTree {
                     el.text_layout = None;
                     text_dirty = true;
                 }
+                StylePropKind::FontWeight => {
+                    el.visual.font_weight = None;
+                    el.text_layout = None;
+                    text_dirty = true;
+                }
             }
         }
         if text_dirty {
@@ -615,7 +689,11 @@ impl ElementTree {
             return;
         }
         self.detach_from_current_parent(child);
-        let index = match self.elements[&parent].children.iter().position(|&c| c == before) {
+        let index = match self.elements[&parent]
+            .children
+            .iter()
+            .position(|&c| c == before)
+        {
             Some(i) => i,
             None => {
                 // `before` is not a child of `parent`; append as a fallback.
@@ -628,8 +706,14 @@ impl ElementTree {
             let c = &self.elements[&child];
             (p.taffy_node, c.taffy_node)
         };
-        let _ = self.taffy.insert_child_at_index(parent_taffy, index, child_taffy);
-        self.elements.get_mut(&parent).unwrap().children.insert(index, child);
+        let _ = self
+            .taffy
+            .insert_child_at_index(parent_taffy, index, child_taffy);
+        self.elements
+            .get_mut(&parent)
+            .unwrap()
+            .children
+            .insert(index, child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
     }
 
@@ -686,7 +770,14 @@ impl ElementTree {
         if let Some(root) = self.root {
             self.compute_layout(root);
             self.layout_cache.clear();
-            cache_layout(&self.elements, &self.taffy, root, 0.0, 0.0, &mut self.layout_cache);
+            cache_layout(
+                &self.elements,
+                &self.taffy,
+                root,
+                0.0,
+                0.0,
+                &mut self.layout_cache,
+            );
         }
         self.scene_cache = scene_build::build(self);
         &self.scene_cache
@@ -748,7 +839,14 @@ impl ElementTree {
         if let Some(root) = self.root {
             self.compute_layout(root);
             self.layout_cache.clear();
-            cache_layout(&self.elements, &self.taffy, root, 0.0, 0.0, &mut self.layout_cache);
+            cache_layout(
+                &self.elements,
+                &self.taffy,
+                root,
+                0.0,
+                0.0,
+                &mut self.layout_cache,
+            );
         }
         let mut out = Vec::new();
         if let Some(root) = self.root {
@@ -770,7 +868,11 @@ impl ElementTree {
             (p.taffy_node, c.taffy_node)
         };
         let _ = self.taffy.remove_child(parent_taffy, child_taffy);
-        self.elements.get_mut(&parent).unwrap().children.retain(|&c| c != child);
+        self.elements
+            .get_mut(&parent)
+            .unwrap()
+            .children
+            .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
     }
 
@@ -779,9 +881,15 @@ impl ElementTree {
         // are re-shaped with the new font data on this pass.
         if self.fonts_dirty {
             self.fonts_dirty = false;
-            let text_ids: Vec<ElementId> = self.elements.iter()
+            let text_ids: Vec<ElementId> = self
+                .elements
+                .iter()
                 .filter_map(|(id, el)| {
-                    if el.kind.is_text_like() { Some(*id) } else { None }
+                    if el.kind.is_text_like() {
+                        Some(*id)
+                    } else {
+                        None
+                    }
                 })
                 .collect();
             for id in text_ids {
@@ -845,6 +953,7 @@ impl ElementTree {
                     el.visual.font_size.unwrap_or(16.0),
                     max_advance,
                     el.visual.font_family.as_deref(),
+                    el.visual.font_weight,
                 );
                 let size = TaffySize {
                     width: layout.layout.width(),
@@ -867,7 +976,9 @@ impl ElementTree {
             for &fam in &layout.missing_families {
                 if !pending_font_fetches.contains(fam) {
                     pending_font_fetches.insert(fam.to_string());
-                    event_queue.push(Event::FetchFont { family: fam.to_string() });
+                    event_queue.push(Event::FetchFont {
+                        family: fam.to_string(),
+                    });
                 }
             }
             // Proactively fetch named fonts: Latin fonts produce no .notdef glyphs
@@ -896,12 +1007,16 @@ impl ElementTree {
         let textinput_ids: Vec<ElementId> = elements
             .iter()
             .filter_map(|(id, el)| {
-                if el.kind == ElementKind::TextInput { Some(*id) } else { None }
+                if el.kind == ElementKind::TextInput {
+                    Some(*id)
+                } else {
+                    None
+                }
             })
             .collect();
 
         for eid in textinput_ids {
-            let (display_text, font_size) = {
+            let (display_text, font_size, font_weight) = {
                 let el = match elements.get(&eid) {
                     Some(e) => e,
                     None => continue,
@@ -910,7 +1025,7 @@ impl ElementTree {
                     Some(p) => format!("{}{}", el.text_content, p),
                     None => el.text_content.clone(),
                 };
-                (text, el.visual.font_size.unwrap_or(16.0))
+                (text, el.visual.font_size.unwrap_or(16.0), el.visual.font_weight)
             };
 
             if display_text.is_empty() {
@@ -921,10 +1036,12 @@ impl ElementTree {
             }
 
             let (max_advance, font_family) = {
-                let el = elements.get(&eid).map(|e| (
-                    taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
-                    e.visual.font_family.clone(),
-                ));
+                let el = elements.get(&eid).map(|e| {
+                    (
+                        taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
+                        e.visual.font_family.clone(),
+                    )
+                });
                 el.map(|(a, f)| (a, f)).unwrap_or((None, None))
             };
             let content_layout = text::build_text_layout(
@@ -934,12 +1051,15 @@ impl ElementTree {
                 font_size,
                 max_advance,
                 font_family.as_deref(),
+                font_weight,
             );
 
             for &fam in &content_layout.missing_families {
                 if !pending_font_fetches.contains(fam) {
                     pending_font_fetches.insert(fam.to_string());
-                    event_queue.push(Event::FetchFont { family: fam.to_string() });
+                    event_queue.push(Event::FetchFont {
+                        family: fam.to_string(),
+                    });
                 }
             }
             if let Some(ref fam) = font_family {
@@ -1011,6 +1131,7 @@ fn walk_resolved(
             border_color: el.visual.border_color,
             text_color: el.visual.text_color,
             font_size: el.visual.font_size,
+            font_weight: el.visual.font_weight,
             z_index: el.visual.z_index,
             text: el.text.clone(),
             src: el.src.clone(),
@@ -1094,6 +1215,10 @@ fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
         }
         StyleProp::FontFamily(f) => {
             visual.font_family = if f.is_empty() { None } else { Some(f.clone()) };
+            *text_dirty = true;
+        }
+        StyleProp::FontWeight(v) => {
+            visual.font_weight = Some(v.clamp(1.0, 1000.0));
             *text_dirty = true;
         }
         StyleProp::Color(c) => {

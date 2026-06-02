@@ -3,7 +3,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use parley::{
-    FontContext, FontFamily, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
+    FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem,
+    StyleProperty,
 };
 use vello::Glyph;
 
@@ -95,14 +96,8 @@ fn codepoint_font_family(cp: u32) -> Option<&'static str> {
 pub(crate) fn resolve_generic_family(name: &str) -> &str {
     match name {
         // sans-serif generics → default (Noto Sans, already bundled)
-        "sans-serif"
-        | "system-ui"
-        | "ui-sans-serif"
-        | "-apple-system"
-        | "BlinkMacSystemFont"
-        | "cursive"
-        | "fantasy"
-        | "ui-rounded" => DEFAULT_FONT_FAMILY,
+        "sans-serif" | "system-ui" | "ui-sans-serif" | "-apple-system" | "BlinkMacSystemFont"
+        | "cursive" | "fantasy" | "ui-rounded" => DEFAULT_FONT_FAMILY,
         // serif → Noto Serif (fetched on demand via builtin_font_url)
         "serif" | "ui-serif" => "Noto Serif",
         // monospace → Noto Sans Mono (fetched on demand)
@@ -121,9 +116,13 @@ pub fn build_text_layout(
     font_size: f32,
     max_advance: Option<f32>,
     font_family: Option<&str>,
+    font_weight: Option<f32>,
 ) -> TextLayout {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(font_size));
+    if let Some(weight) = font_weight {
+        builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
+    }
     // Resolve generic keywords, then build a CSS font stack so unknown names
     // fall back to the bundled default. Parley resolves left-to-right and
     // silently skips unregistered names, triggering FetchFont for missing ones.
@@ -163,7 +162,9 @@ fn lower_glyph_runs(
 
     for line in layout.lines() {
         for item in line.items() {
-            let PositionedLayoutItem::GlyphRun(grun) = item else { continue };
+            let PositionedLayoutItem::GlyphRun(grun) = item else {
+                continue;
+            };
             let run = grun.run();
             let baseline = grun.baseline();
             let offset = grun.offset();
@@ -171,7 +172,11 @@ fn lower_glyph_runs(
             let positioned: Vec<Glyph> = grun
                 .glyphs()
                 .scan(offset, |x, g| {
-                    let glyph = Glyph { id: g.id, x: *x + g.x, y: baseline + g.y };
+                    let glyph = Glyph {
+                        id: g.id,
+                        x: *x + g.x,
+                        y: baseline + g.y,
+                    };
                     *x += g.advance;
                     Some(glyph)
                 })

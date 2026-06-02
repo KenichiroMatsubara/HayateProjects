@@ -1,4 +1,4 @@
-﻿use crate::color::Color;
+use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::tree::ElementTree;
@@ -26,7 +26,15 @@ impl Default for InheritedStyle {
 pub fn build(tree: &ElementTree) -> SceneGraph {
     let mut sg = SceneGraph::new();
     if let Some(root) = tree.root() {
-        walk(tree, root, 0.0, 0.0, &mut sg, None, InheritedStyle::default());
+        walk(
+            tree,
+            root,
+            0.0,
+            0.0,
+            &mut sg,
+            None,
+            InheritedStyle::default(),
+        );
     }
     sg
 }
@@ -61,7 +69,11 @@ fn walk(
     // Resolve inherited text-style values for this element and its subtree.
     let confirmed_color = el.visual.text_color.unwrap_or(inherited.color);
     let confirmed_font_size = el.visual.font_size.unwrap_or(inherited.font_size);
-    let confirmed_font_family = el.visual.font_family.clone().or(inherited.font_family.clone());
+    let confirmed_font_family = el
+        .visual
+        .font_family
+        .clone()
+        .or(inherited.font_family.clone());
     let child_inherited = InheritedStyle {
         color: confirmed_color,
         font_size: confirmed_font_size,
@@ -73,7 +85,10 @@ fn walk(
         let group_id = emit(
             sg,
             parent_group,
-            Node { kind: NodeKind::Group { transform }, children: Vec::new() },
+            Node {
+                kind: NodeKind::Group { transform },
+                children: Vec::new(),
+            },
         );
         Some(group_id)
     } else {
@@ -85,7 +100,15 @@ fn walk(
         let clip_id = emit(
             sg,
             effective_parent,
-            Node { kind: NodeKind::Clip { x, y, width: w, height: h }, children: Vec::new() },
+            Node {
+                kind: NodeKind::Clip {
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                },
+                children: Vec::new(),
+            },
         );
         let (sx, sy) = el.scroll_offset;
         if sx != 0.0 || sy != 0.0 {
@@ -164,7 +187,13 @@ fn walk(
                 sg,
                 effective_parent,
                 Node {
-                    kind: NodeKind::Image { x, y, width: w, height: h, data: img },
+                    kind: NodeKind::Image {
+                        x,
+                        y,
+                        width: w,
+                        height: h,
+                        data: img,
+                    },
                     children: Vec::new(),
                 },
             );
@@ -177,14 +206,24 @@ fn walk(
             .collect();
         children.sort_by_key(|&(_, z)| z);
         for (child, _) in children {
-            walk(tree, child, x, y, sg, effective_parent, child_inherited.clone());
+            walk(
+                tree,
+                child,
+                x,
+                y,
+                sg,
+                effective_parent,
+                child_inherited.clone(),
+            );
         }
         return;
     }
 
     // 3b) Text runs (TextInput uses content_layout; all others use text_layout).
     if el.kind == ElementKind::TextInput {
-        let color = confirmed_color.with_opacity(el.visual.opacity).to_array_f32();
+        let color = confirmed_color
+            .with_opacity(el.visual.opacity)
+            .to_array_f32();
         // content_layout covers committed text + active preedit; fall back to
         // placeholder (text_layout) only when neither is present.
         let runs = if let Some(cl) = el.content_layout.as_ref() {
@@ -197,7 +236,15 @@ fn walk(
                 emit(
                     sg,
                     effective_parent,
-                    Node { kind: NodeKind::TextRun { x, y, color, data: run.clone() }, children: Vec::new() },
+                    Node {
+                        kind: NodeKind::TextRun {
+                            x,
+                            y,
+                            color,
+                            data: run.clone(),
+                        },
+                        children: Vec::new(),
+                    },
                 );
             }
         }
@@ -236,7 +283,9 @@ fn walk(
                             y,
                             width: 1.5,
                             height: confirmed_font_size * 1.2,
-                            color: confirmed_color.with_opacity(el.visual.opacity).to_array_f32(),
+                            color: confirmed_color
+                                .with_opacity(el.visual.opacity)
+                                .to_array_f32(),
                             corner_radius: 0.0,
                         },
                         children: Vec::new(),
@@ -245,12 +294,22 @@ fn walk(
             }
         }
     } else if let Some(tl) = el.text_layout.as_ref() {
-        let color = confirmed_color.with_opacity(el.visual.opacity).to_array_f32();
+        let color = confirmed_color
+            .with_opacity(el.visual.opacity)
+            .to_array_f32();
         for run in &tl.runs {
             emit(
                 sg,
                 effective_parent,
-                Node { kind: NodeKind::TextRun { x, y, color, data: run.clone() }, children: Vec::new() },
+                Node {
+                    kind: NodeKind::TextRun {
+                        x,
+                        y,
+                        color,
+                        data: run.clone(),
+                    },
+                    children: Vec::new(),
+                },
             );
         }
     }
@@ -263,7 +322,15 @@ fn walk(
         .collect();
     children.sort_by_key(|&(_, z)| z);
     for (child, _) in children {
-        walk(tree, child, x, y, sg, effective_parent, child_inherited.clone());
+        walk(
+            tree,
+            child,
+            x,
+            y,
+            sg,
+            effective_parent,
+            child_inherited.clone(),
+        );
     }
 }
 

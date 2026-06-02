@@ -20,6 +20,9 @@ impl Color {
     }
 
     pub fn with_opacity(self, opacity: f32) -> Self {
-        Self { a: self.a * opacity as f64, ..self }
+        Self {
+            a: self.a * opacity as f64,
+            ..self
+        }
     }
 }

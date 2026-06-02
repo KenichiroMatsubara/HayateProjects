@@ -1,4 +1,4 @@
-﻿use hayate_core::{
+use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, Event,
     FlexDirectionValue, NodeKind, StyleProp,
 };
@@ -35,7 +35,13 @@ fn set_style_routes_layout_and_visual() {
     // Expect a single Rect node with the layout-computed size.
     let mut found = false;
     for (_, n) in sg.iter() {
-        if let NodeKind::Rect { width, height, color, .. } = &n.kind {
+        if let NodeKind::Rect {
+            width,
+            height,
+            color,
+            ..
+        } = &n.kind
+        {
             assert!((*width - 100.0).abs() < 0.5);
             assert!((*height - 50.0).abs() < 0.5);
             assert!((color[0] - 1.0).abs() < 1e-3);
@@ -93,6 +99,63 @@ fn flex_row_positions_children_with_gap() {
 }
 
 #[test]
+fn flex_grow_expands_flex_children() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(7001, ElementKind::View);
+    let a = tree.element_create(7002, ElementKind::View);
+    let b = tree.element_create(7003, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(300.0, 100.0);
+
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+            StyleProp::Width(Dimension::px(300.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
+    );
+    for &child in &[a, b] {
+        tree.element_append_child(root, child);
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::px(50.0)),
+                StyleProp::Height(Dimension::px(50.0)),
+                StyleProp::FlexGrow(1.0),
+                StyleProp::BackgroundColor(Color::new(0.0, 0.5, 1.0, 1.0)),
+            ],
+        );
+    }
+
+    let sg = tree.render(0.0);
+    let mut widths: Vec<f32> = sg
+        .iter()
+        .filter_map(|(_, n)| match &n.kind {
+            NodeKind::Rect { width, height, .. } if (*height - 50.0).abs() < 0.5 => Some(*width),
+            _ => None,
+        })
+        .collect();
+    widths.sort_by(|p, q| p.partial_cmp(q).unwrap());
+    assert_eq!(
+        widths.len(),
+        2,
+        "expected two flex child rects, got {widths:?}"
+    );
+    assert!(
+        (widths[0] - 150.0).abs() < 0.5,
+        "first child width = {}",
+        widths[0]
+    );
+    assert!(
+        (widths[1] - 150.0).abs() < 0.5,
+        "second child width = {}",
+        widths[1]
+    );
+}
+
+#[test]
 fn text_element_produces_text_run() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(8, ElementKind::View);
@@ -146,7 +209,15 @@ fn scene_build_walks_absolute_coordinates() {
     let sg = tree.render(0.0);
     let mut child_pos = None;
     for (_, n) in sg.iter() {
-        if let NodeKind::Rect { x, y, width, height, color, .. } = &n.kind {
+        if let NodeKind::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+            ..
+        } = &n.kind
+        {
             if (*width - 50.0).abs() < 0.5
                 && (*height - 50.0).abs() < 0.5
                 && (color[1] - 1.0).abs() < 1e-3
@@ -171,7 +242,10 @@ fn scroll_view_emits_clip_node() {
     tree.set_viewport(300.0, 300.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
     );
     tree.element_set_style(
         content,
@@ -184,8 +258,14 @@ fn scroll_view_emits_clip_node() {
     tree.element_append_child(root, content);
     let sg = tree.render(0.0);
 
-    let clip_count = sg.iter().filter(|(_, n)| matches!(n.kind, NodeKind::Clip { .. })).count();
-    assert_eq!(clip_count, 1, "ScrollView should emit exactly one Clip node");
+    let clip_count = sg
+        .iter()
+        .filter(|(_, n)| matches!(n.kind, NodeKind::Clip { .. }))
+        .count();
+    assert_eq!(
+        clip_count, 1,
+        "ScrollView should emit exactly one Clip node"
+    );
 }
 
 #[test]
@@ -197,7 +277,10 @@ fn scroll_view_clip_contains_content_as_child() {
     tree.set_viewport(300.0, 300.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
     );
     tree.element_set_style(
         content,
@@ -234,7 +317,7 @@ fn scroll_view_clip_contains_content_as_child() {
 
 #[test]
 fn transform_emits_group_node() {
-    use hayate_core::{NodeKind};
+    use hayate_core::NodeKind;
     let mut tree = ElementTree::new();
     let root = tree.element_create(16, ElementKind::View);
     tree.set_root(root);
@@ -273,7 +356,11 @@ fn transform_emits_group_node() {
         .collect();
     assert_eq!(groups.len(), 1, "Group should be a root node");
     let group_node = sg.get(groups[0]).unwrap();
-    assert_eq!(group_node.children.len(), 1, "Rect should be a child of Group");
+    assert_eq!(
+        group_node.children.len(),
+        1,
+        "Rect should be a child of Group"
+    );
 }
 
 // ── ZIndex tests ─────────────────────────────────────────────────────────
@@ -288,7 +375,10 @@ fn z_index_controls_paint_order() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
     );
     // back is appended first but gets z_index 1; front appended second but z_index 0.
     // After sort, front (z=0) should be painted before back (z=1).
@@ -338,11 +428,17 @@ fn hit_test_returns_deepest_element() {
     tree.set_viewport(400.0, 400.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(400.0)), StyleProp::Height(Dimension::px(400.0))],
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(400.0)),
+        ],
     );
     tree.element_set_style(
         child,
-        &[StyleProp::Width(Dimension::px(100.0)), StyleProp::Height(Dimension::px(100.0))],
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
     );
     tree.element_append_child(root, child);
     tree.render(0.0);
@@ -368,7 +464,10 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
     );
     // Flex column with a negative margin so the two 100×100 siblings overlap.
     tree.element_set_style(
@@ -408,8 +507,7 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
     let back_rect = tree.element_layout_rect(back).unwrap();
     let front_rect = tree.element_layout_rect(front).unwrap();
     assert!(
-        (back_rect.0 - front_rect.0).abs() < 0.5
-            && (back_rect.1 - front_rect.1).abs() < 0.5,
+        (back_rect.0 - front_rect.0).abs() < 0.5 && (back_rect.1 - front_rect.1).abs() < 0.5,
         "test setup failed: children must overlap (back={back_rect:?}, front={front_rect:?})"
     );
 
@@ -425,12 +523,22 @@ fn push_and_poll_events() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
     );
     tree.render(0.0);
 
-    tree.push_event(Event::Click { target: root, x: 10.0, y: 20.0 });
-    tree.push_event(Event::Resize { width: 300.0, height: 400.0 });
+    tree.push_event(Event::Click {
+        target: root,
+        x: 10.0,
+        y: 20.0,
+    });
+    tree.push_event(Event::Resize {
+        width: 300.0,
+        height: 400.0,
+    });
 
     let events = tree.poll_events();
     assert_eq!(events.len(), 2);
@@ -449,12 +557,19 @@ fn scroll_event_targets_hit_element() {
     tree.set_viewport(300.0, 300.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(300.0)), StyleProp::Height(Dimension::px(300.0))],
+        &[
+            StyleProp::Width(Dimension::px(300.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+        ],
     );
     tree.render(0.0);
 
     let target = tree.hit_test(100.0, 100.0).expect("no hit");
-    tree.push_event(Event::Scroll { target, delta_x: 0.0, delta_y: 20.0 });
+    tree.push_event(Event::Scroll {
+        target,
+        delta_x: 0.0,
+        delta_y: 20.0,
+    });
 
     let events = tree.poll_events();
     assert_eq!(events.len(), 1);
@@ -572,7 +687,10 @@ fn text_input_event_queued_on_append() {
     tree.set_root(input);
 
     tree.element_append_text_content(input, "x");
-    tree.push_event(Event::TextInput { target: input, text: "x".to_string() });
+    tree.push_event(Event::TextInput {
+        target: input,
+        text: "x".to_string(),
+    });
 
     let events = tree.poll_events();
     assert_eq!(events.len(), 1);
@@ -585,9 +703,18 @@ fn composition_lifecycle_events_queued() {
     let input = tree.element_create(36, ElementKind::TextInput);
     tree.set_root(input);
 
-    tree.push_event(Event::CompositionStart { target: input, text: "あ".to_string() });
-    tree.push_event(Event::CompositionUpdate { target: input, text: "あい".to_string() });
-    tree.push_event(Event::CompositionEnd { target: input, text: "愛".to_string() });
+    tree.push_event(Event::CompositionStart {
+        target: input,
+        text: "あ".to_string(),
+    });
+    tree.push_event(Event::CompositionUpdate {
+        target: input,
+        text: "あい".to_string(),
+    });
+    tree.push_event(Event::CompositionEnd {
+        target: input,
+        text: "愛".to_string(),
+    });
 
     let events = tree.poll_events();
     assert_eq!(events.len(), 3);
@@ -641,7 +768,11 @@ fn key_down_event_carries_modifiers() {
     tree.set_root(input);
 
     // Shift+A with modifier bitmask
-    tree.push_event(Event::KeyDown { target: input, key: "A".to_string(), modifiers: 1 });
+    tree.push_event(Event::KeyDown {
+        target: input,
+        key: "A".to_string(),
+        modifiers: 1,
+    });
     let events = tree.poll_events();
     assert_eq!(events.len(), 1);
     assert!(
@@ -659,7 +790,13 @@ fn cursor_visible_on_focus_hidden_on_blur() {
 
     tree.element_set_cursor_visible(input, true);
     tree.set_viewport(200.0, 200.0);
-    tree.element_set_style(input, &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(40.0))]);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
+    );
 
     let sg = tree.render(0.0);
     // When cursor is visible and text_content is empty, a fallback Rect cursor is emitted.
@@ -670,7 +807,10 @@ fn cursor_visible_on_focus_hidden_on_blur() {
             _ => None,
         })
         .collect();
-    assert!(!cursor_rects.is_empty(), "cursor rect should be emitted when cursor_visible=true");
+    assert!(
+        !cursor_rects.is_empty(),
+        "cursor rect should be emitted when cursor_visible=true"
+    );
 
     tree.element_set_cursor_visible(input, false);
     let sg = tree.render(0.0);
@@ -681,14 +821,19 @@ fn cursor_visible_on_focus_hidden_on_blur() {
             _ => None,
         })
         .collect();
-    assert!(cursor_rects.is_empty(), "cursor rect should not be emitted when cursor_visible=false");
+    assert!(
+        cursor_rects.is_empty(),
+        "cursor rect should not be emitted when cursor_visible=false"
+    );
 }
 
 // ── ADR-0032: render(timestamp_ms) drives cursor blink internally ────────
 
 fn count_cursor_rects(sg: &hayate_core::SceneGraph) -> usize {
     sg.iter()
-        .filter(|(_, n)| matches!(&n.kind, NodeKind::Rect { width, .. } if (*width - 1.5).abs() < 0.1))
+        .filter(
+            |(_, n)| matches!(&n.kind, NodeKind::Rect { width, .. } if (*width - 1.5).abs() < 0.1),
+        )
         .count()
 }
 
@@ -700,18 +845,37 @@ fn render_timestamp_toggles_focused_cursor_every_500ms() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         input,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(40.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
     );
 
     tree.element_focus(input);
     // First frame: cursor visible, blink clock starts.
-    assert_eq!(count_cursor_rects(tree.render(1000.0)), 1, "frame 0: visible");
+    assert_eq!(
+        count_cursor_rects(tree.render(1000.0)),
+        1,
+        "frame 0: visible"
+    );
     // Same frame budget — no toggle yet.
-    assert_eq!(count_cursor_rects(tree.render(1499.0)), 1, "<500ms: still visible");
+    assert_eq!(
+        count_cursor_rects(tree.render(1499.0)),
+        1,
+        "<500ms: still visible"
+    );
     // Crossed 500ms threshold — toggle to hidden.
-    assert_eq!(count_cursor_rects(tree.render(1500.0)), 0, ">=500ms: hidden");
+    assert_eq!(
+        count_cursor_rects(tree.render(1500.0)),
+        0,
+        ">=500ms: hidden"
+    );
     // Another 500ms — back to visible.
-    assert_eq!(count_cursor_rects(tree.render(2000.0)), 1, "+500ms: visible again");
+    assert_eq!(
+        count_cursor_rects(tree.render(2000.0)),
+        1,
+        "+500ms: visible again"
+    );
 }
 
 #[test]
@@ -722,7 +886,10 @@ fn render_does_not_blink_when_nothing_is_focused() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         input,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(40.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
     );
     // No focus → cursor stays hidden no matter how much time passes.
     assert_eq!(count_cursor_rects(tree.render(0.0)), 0);
@@ -737,13 +904,24 @@ fn blur_stops_blink_and_hides_cursor() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         input,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(40.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
     );
     tree.element_focus(input);
     assert_eq!(count_cursor_rects(tree.render(0.0)), 1);
     tree.element_blur(input);
-    assert_eq!(count_cursor_rects(tree.render(600.0)), 0, "blur hides cursor");
-    assert_eq!(count_cursor_rects(tree.render(1200.0)), 0, "blur stops blink");
+    assert_eq!(
+        count_cursor_rects(tree.render(600.0)),
+        0,
+        "blur hides cursor"
+    );
+    assert_eq!(
+        count_cursor_rects(tree.render(1200.0)),
+        0,
+        "blur stops blink"
+    );
 }
 
 // ── ADR-0031: semantic event variant smoke tests ─────────────────────────
@@ -766,7 +944,9 @@ fn semantic_event_variants_roundtrip_through_poll() {
     assert!(matches!(&events[1], Event::ActiveStart { .. }));
     assert!(matches!(&events[2], Event::ActiveEnd { .. }));
     assert!(matches!(&events[3], Event::HoverLeave { .. }));
-    assert!(matches!(&events[4], Event::PointerMove { x, y } if (*x - 12.5).abs() < 1e-3 && (*y - 34.0).abs() < 1e-3));
+    assert!(
+        matches!(&events[4], Event::PointerMove { x, y } if (*x - 12.5).abs() < 1e-3 && (*y - 34.0).abs() < 1e-3)
+    );
 }
 
 // ── T4: has_layout guard ─────────────────────────────────────────────────
@@ -779,9 +959,15 @@ fn has_layout_false_before_render_true_after() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
     );
-    assert!(!tree.has_layout(), "has_layout must be false before first render");
+    assert!(
+        !tree.has_layout(),
+        "has_layout must be false before first render"
+    );
     tree.render(0.0);
     assert!(tree.has_layout(), "has_layout must be true after render");
 }
@@ -877,7 +1063,10 @@ fn insert_before_reorders_children_in_flex_row() {
         tree.element_append_child(root, child);
         tree.element_set_style(
             child,
-            &[StyleProp::Width(Dimension::px(50.0)), StyleProp::Height(Dimension::px(50.0))],
+            &[
+                StyleProp::Width(Dimension::px(50.0)),
+                StyleProp::Height(Dimension::px(50.0)),
+            ],
         );
     }
     // Insert c (red) before b — expected paint order: a, c, b.
@@ -894,10 +1083,18 @@ fn insert_before_reorders_children_in_flex_row() {
     let sg = tree.render(0.0);
     // c is now at index 1, so its rect should sit at x=50.
     let c_rect = tree.element_layout_rect(c).expect("c has no layout rect");
-    assert!((c_rect.0 - 50.0).abs() < 0.5, "c x = {} (expected 50)", c_rect.0);
+    assert!(
+        (c_rect.0 - 50.0).abs() < 0.5,
+        "c x = {} (expected 50)",
+        c_rect.0
+    );
     // b is pushed to index 2, so its rect should sit at x=100.
     let b_rect = tree.element_layout_rect(b).expect("b has no layout rect");
-    assert!((b_rect.0 - 100.0).abs() < 0.5, "b x = {} (expected 100)", b_rect.0);
+    assert!(
+        (b_rect.0 - 100.0).abs() < 0.5,
+        "b x = {} (expected 100)",
+        b_rect.0
+    );
 }
 
 // ── element_content_size (scroll clamping) ───────────────────────────────
@@ -911,7 +1108,10 @@ fn element_content_size_returns_children_bounds() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         sv,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
     );
     tree.element_set_style(
         content,
@@ -949,7 +1149,10 @@ fn resolved_elements_returns_absolute_positions() {
     );
     tree.element_set_style(
         child,
-        &[StyleProp::Width(Dimension::px(50.0)), StyleProp::Height(Dimension::px(50.0))],
+        &[
+            StyleProp::Width(Dimension::px(50.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+        ],
     );
     tree.element_append_child(root, child);
 
@@ -997,15 +1200,23 @@ fn unknown_font_family_falls_back_to_default() {
     tree.element_append_child(root, text);
     tree.element_set_style(
         root,
-        &[StyleProp::Width(Dimension::px(400.0)), StyleProp::Height(Dimension::px(300.0))],
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+        ],
     );
     tree.element_set_style(text, &[StyleProp::FontSize(24.0)]);
     tree.element_set_font_family(text, "NonExistentFont-XYZ-12345");
     tree.element_set_text(text, "hello");
 
     let sg = tree.render(0.0);
-    let has_text_run = sg.iter().any(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }));
-    assert!(has_text_run, "unknown font family must fall back to Noto Sans and produce a TextRun");
+    let has_text_run = sg
+        .iter()
+        .any(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }));
+    assert!(
+        has_text_run,
+        "unknown font family must fall back to Noto Sans and produce a TextRun"
+    );
 }
 
 // ── T3: focused_element cleared on remove ────────────────────────────────

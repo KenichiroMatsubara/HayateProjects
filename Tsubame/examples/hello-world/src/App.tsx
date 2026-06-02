@@ -1,302 +1,666 @@
-import { createSignal, createMemo } from 'solid-js';
+import { createMemo, createSignal } from 'solid-js';
 
 export type Mode = 'DOM' | 'Canvas';
 export type ModeSource = 'query' | 'auto';
 
+type Status = 'todo' | 'doing' | 'done';
+type Filter = 'all' | Status;
+type Priority = 'P0' | 'P1' | 'P2';
+
 interface Todo {
   id: number;
-  text: string;
-  done: boolean;
+  title: string;
+  detail: string;
+  project: string;
+  priority: Priority;
+  status: Status;
+  due: string;
+  estimate: number;
 }
-
-type Filter = 'all' | 'active' | 'completed';
-
-const PRESETS = [
-  '📚 ドキュメント執筆',
-  '☕ コーヒーを淹れる',
-  '🚶 散歩する',
-  '📧 メール返信',
-  '🎵 音楽鑑賞',
-  '💪 運動',
-];
-
-const C = {
-  bg:        '#020617',
-  header:    '#0f172a',
-  headerHi:  '#111b30',
-  item:      '#1e293b',
-  itemDone:  '#0b1426',
-  text:      '#f1f5f9',
-  textDim:   '#94a3b8',
-  textMuted: '#64748b',
-  primary:   '#38bdf8',
-  primaryFg: '#021029',
-  success:   '#22c55e',
-  danger:    '#f87171',
-  dangerBg:  '#4c1010',
-  chip:      '#1e293b',
-};
-
-const SpX = (w: number) => <view style={{ width: w, height: 1 }} />;
-const SpY = (h: number) => <view style={{ width: 1, height: h }} />;
 
 export interface TodoAppProps {
   mode: Mode;
   source: ModeSource;
 }
 
+const COLORS = {
+  bg: '#0b1020',
+  rail: '#111827',
+  panel: '#162033',
+  panel2: '#1b2a3f',
+  panel3: '#21344e',
+  ink: '#eef4ff',
+  text: '#d8e2f2',
+  muted: '#8ea1bb',
+  quiet: '#5f728d',
+  line: '#31425b',
+  accent: '#4fd1c5',
+  accent2: '#f59e0b',
+  danger: '#fb7185',
+  dangerBg: '#3d1722',
+  success: '#65d38c',
+  successBg: '#163526',
+  blue: '#60a5fa',
+  violet: '#a78bfa',
+  black: '#070b14',
+};
+
+const STATUS_LABEL: Record<Status, string> = {
+  todo: 'Ready',
+  doing: 'Doing',
+  done: 'Done',
+};
+
+const STATUS_COLOR: Record<Status, string> = {
+  todo: COLORS.blue,
+  doing: COLORS.accent2,
+  done: COLORS.success,
+};
+
+const PRIORITY_COLOR: Record<Priority, string> = {
+  P0: COLORS.danger,
+  P1: COLORS.accent2,
+  P2: COLORS.accent,
+};
+
+const INITIAL_TODOS: Todo[] = [
+  {
+    id: 1,
+    title: 'Ship renderer mode switcher',
+    detail: 'Keep DOM, Canvas, and auto detection visible while the app is running.',
+    project: 'Tsubame',
+    priority: 'P1',
+    status: 'done',
+    due: 'Today',
+    estimate: 1,
+  },
+  {
+    id: 2,
+    title: 'Polish the task board surface',
+    detail: 'Use nested panels, counters, hover states, and clear task actions.',
+    project: 'Demo UX',
+    priority: 'P0',
+    status: 'doing',
+    due: 'Today',
+    estimate: 3,
+  },
+  {
+    id: 3,
+    title: 'Exercise hover event bindings',
+    detail: 'Highlight cards and action buttons through Tsubame hover-enter and hover-leave.',
+    project: 'Events',
+    priority: 'P1',
+    status: 'doing',
+    due: 'Next',
+    estimate: 2,
+  },
+  {
+    id: 4,
+    title: 'Prepare real Hayate integration notes',
+    detail: 'Record the adapter gaps without touching the runtime from this demo pass.',
+    project: 'Hayate',
+    priority: 'P2',
+    status: 'todo',
+    due: 'Soon',
+    estimate: 2,
+  },
+  {
+    id: 5,
+    title: 'Add release checklist presets',
+    detail: 'Make quick-add tasks useful enough for repeated demo sessions.',
+    project: 'Workflow',
+    priority: 'P2',
+    status: 'todo',
+    due: 'Later',
+    estimate: 1,
+  },
+];
+
+const PRESETS: Array<Omit<Todo, 'id' | 'status'>> = [
+  {
+    title: 'Write acceptance notes',
+    detail: 'Capture what a serious Todo demo must prove before it is called done.',
+    project: 'Quality',
+    priority: 'P1',
+    due: 'Today',
+    estimate: 2,
+  },
+  {
+    title: 'Review mobile density',
+    detail: 'Check compact spacing and make sure labels do not collide in narrow windows.',
+    project: 'Layout',
+    priority: 'P2',
+    due: 'Next',
+    estimate: 1,
+  },
+  {
+    title: 'Audit Canvas parity',
+    detail: 'Compare DOM and Canvas rendering behavior after the app layer is improved.',
+    project: 'Renderer',
+    priority: 'P0',
+    due: 'Soon',
+    estimate: 3,
+  },
+];
+
+const SpX = (w: number) => <view style={{ width: w, height: 1 }} />;
+const SpY = (h: number) => <view style={{ width: 1, height: h }} />;
+
+function nextStatus(status: Status): Status {
+  if (status === 'todo') return 'doing';
+  if (status === 'doing') return 'done';
+  return 'todo';
+}
+
+function statusAction(status: Status): string {
+  if (status === 'todo') return 'Start';
+  if (status === 'doing') return 'Finish';
+  return 'Reopen';
+}
+
 export function TodoApp(props: TodoAppProps) {
-  const [todos, setTodos] = createSignal<Todo[]>([
-    { id: 1, text: '✨ Tsubame で Hello World を描く',     done: true  },
-    { id: 2, text: '🎨 DOM Renderer の動作確認',           done: true  },
-    { id: 3, text: '⚡ Canvas Renderer (mock) の動作確認', done: true  },
-    { id: 4, text: '📝 本格的な TODO デモを書く',          done: false },
-    { id: 5, text: '🚀 Hayate 実 WASM を配備',             done: false },
-    { id: 6, text: '🔧 scene_build スタイル継承を実装',    done: false },
-  ]);
+  const [todos, setTodos] = createSignal<Todo[]>(INITIAL_TODOS);
   const [filter, setFilter] = createSignal<Filter>('all');
+  const [selectedId, setSelectedId] = createSignal(2);
+  const [hoveredCard, setHoveredCard] = createSignal<number | null>(null);
+  const [hoveredControl, setHoveredControl] = createSignal<string | null>(null);
   let nextId = 100;
 
-  const filtered = createMemo<Todo[]>(() => {
-    const f = filter();
-    if (f === 'all') return todos();
-    if (f === 'active') return todos().filter((t) => !t.done);
-    return todos().filter((t) => t.done);
+  const activeTodos = createMemo(() => todos().filter((todo) => todo.status !== 'done'));
+  const doneTodos = createMemo(() => todos().filter((todo) => todo.status === 'done'));
+  const doingTodos = createMemo(() => todos().filter((todo) => todo.status === 'doing'));
+  const totalEstimate = createMemo(() => activeTodos().reduce((sum, todo) => sum + todo.estimate, 0));
+  const completion = createMemo(() => {
+    const total = todos().length;
+    return total === 0 ? 0 : Math.round((doneTodos().length / total) * 100);
   });
-  const activeCount = createMemo(() => todos().filter((t) => !t.done).length);
-  const doneCount  = createMemo(() => todos().filter((t) =>  t.done).length);
+  const visibleTodos = createMemo(() => {
+    const current = filter();
+    if (current === 'all') return todos();
+    return todos().filter((todo) => todo.status === current);
+  });
+  const selected = createMemo(() => {
+    const current = todos().find((todo) => todo.id === selectedId());
+    return current ?? todos()[0] ?? null;
+  });
 
-  const add       = (text: string) => setTodos([...todos(), { id: nextId++, text, done: false }]);
-  const toggle    = (id: number)   => setTodos(todos().map((t) => t.id === id ? { ...t, done: !t.done } : t));
-  const remove    = (id: number)   => setTodos(todos().filter((t) => t.id !== id));
-  const clearDone = ()             => setTodos(todos().filter((t) => !t.done));
+  const addPreset = (preset: Omit<Todo, 'id' | 'status'>) => {
+    const id = nextId++;
+    setTodos([{ id, status: 'todo', ...preset }, ...todos()]);
+    setSelectedId(id);
+    setFilter('all');
+  };
 
-  const ITEM_W = 680;
+  const advance = (id: number) => {
+    setTodos(todos().map((todo) => (
+      todo.id === id ? { ...todo, status: nextStatus(todo.status) } : todo
+    )));
+    setSelectedId(id);
+  };
 
-  // ルート view に color と fontSize を設定し、全子孫がこれを継承する（ADR-0047）。
-  // 個々の text 要素は「差分のみ」を明示的に上書きすればよく、
-  // C.text / fontSize:15 の繰り返し指定が不要になる。
+  const remove = (id: number) => {
+    const remaining = todos().filter((todo) => todo.id !== id);
+    setTodos(remaining);
+    if (selectedId() === id) setSelectedId(remaining[0]?.id ?? 0);
+  };
+
+  const clearDone = () => {
+    const remaining = todos().filter((todo) => todo.status !== 'done');
+    setTodos(remaining);
+    if (selected()?.status === 'done') setSelectedId(remaining[0]?.id ?? 0);
+  };
+
+  const controlStyle = (key: string, active = false) => ({
+    height: 34,
+    paddingLeft: 14,
+    paddingRight: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: active
+      ? COLORS.accent
+      : hoveredControl() === key
+        ? COLORS.panel3
+        : COLORS.panel,
+    color: active ? COLORS.black : COLORS.text,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: active ? COLORS.accent : COLORS.line,
+    fontSize: 13,
+  });
+
   return (
     <view style={{
       width: '100%',
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: C.bg,
-      color: C.text,  // 継承基底: 子孫 text の未設定 color はすべてここに帰着
-      fontSize: 15,   // 継承基底: 子孫 text の未設定 fontSize はすべてここに帰着
+      backgroundColor: COLORS.bg,
+      color: COLORS.text,
+      fontSize: 14,
+      fontFamily: 'Inter, Segoe UI, system-ui, sans-serif',
     }}>
-
-      {/* ─── Header ─── */}
       <view style={{
-        height: 64,
+        height: 72,
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: C.header,
+        backgroundColor: COLORS.rail,
+        borderWidth: 1,
+        borderColor: COLORS.line,
       }}>
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           {SpX(28)}
-          {/* ロゴバッジ: primaryFg 配色のため color を明示オーバーライド */}
           <view style={{
-            width: 36, height: 36,
-            backgroundColor: C.primary, borderRadius: 10,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 42,
+            height: 42,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: COLORS.accent,
+            color: COLORS.black,
+            borderRadius: 8,
           }}>
-            <text style={{ color: C.primaryFg, fontSize: 20 }}>燕</text>
+            <text style={{ fontSize: 19 }}>TS</text>
           </view>
-          {/* タイトル: color はルートから継承 (C.text)、fontSize のみ上書き */}
-          <text style={{ fontSize: 20, fontWeight: 700 }}>Tsubame TODO Board</text>
-          {/* サブタイトル: muted 色とサイズをオーバーライド */}
-          <text style={{ color: C.textMuted, fontSize: 12 }}>— Solid Native Demo</text>
+          <view style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <text style={{ fontSize: 22, color: COLORS.ink }}>Tsubame Task Studio</text>
+            <text style={{ fontSize: 12, color: COLORS.muted }}>Serious Todo demo built only in the app layer</text>
+          </view>
         </view>
 
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <text style={{ color: C.textMuted, fontSize: 11 }}>renderer</text>
+          <text style={{ color: COLORS.quiet, fontSize: 11 }}>renderer</text>
           <view style={{
-            backgroundColor: C.primary, borderRadius: 999, height: 24,
-            display: 'flex', flexDirection: 'row', alignItems: 'center',
+            height: 28,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: COLORS.panel,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: COLORS.line,
           }}>
             {SpX(12)}
-            <text style={{ color: C.primaryFg, fontSize: 12, fontWeight: 700 }}>{props.mode}</text>
+            <text style={{ color: COLORS.accent, fontSize: 13 }}>{props.mode}</text>
+            {SpX(10)}
+            <view style={{ width: 1, height: 16, backgroundColor: COLORS.line }} />
+            {SpX(10)}
+            <text style={{ color: COLORS.muted, fontSize: 12 }}>{props.source === 'query' ? 'query' : 'auto'}</text>
             {SpX(12)}
           </view>
-          <text style={{ color: C.textMuted, fontSize: 10 }}>
-            {props.source === 'query' ? '?mode' : 'auto'}
-          </text>
           {SpX(28)}
         </view>
       </view>
 
-      {/* ─── Filter bar ─── */}
       <view style={{
-        height: 52,
+        height: 70,
         display: 'flex',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: C.headerHi,
+        backgroundColor: COLORS.panel,
       }}>
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {SpX(28)}
-          <view style={{
-            backgroundColor: C.chip, borderRadius: 8, height: 28,
-            display: 'flex', flexDirection: 'row', alignItems: 'center',
-          }}>
-            {SpX(10)}
-            {/* カウント数: color をルートから継承 (C.text)、fontWeight のみ指定 */}
-            <text style={{ fontWeight: 700 }}>{`${activeCount()}`}</text>
-            {SpX(4)}
-            <text style={{ color: C.textMuted, fontSize: 12 }}>active</text>
-            {SpX(8)}
-            <view style={{ width: 1, height: 14, backgroundColor: C.headerHi }} />
-            {SpX(8)}
-            {/* dim 色にオーバーライド */}
-            <text style={{ color: C.textDim, fontWeight: 700 }}>{`${doneCount()}`}</text>
-            {SpX(4)}
-            <text style={{ color: C.textMuted, fontSize: 12 }}>done</text>
-            {SpX(10)}
-          </view>
-        </view>
-
-        <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          {(['all', 'active', 'completed'] as const).map((f) => (
-            <button
-              style={{
-                backgroundColor: filter() === f ? C.primary : C.chip,
-                color: filter() === f ? C.primaryFg : C.textDim,
-                fontSize: 12,
-                fontWeight: 700,
-                borderRadius: 999,
-                height: 28,
-              }}
-              onClick={() => setFilter(f)}
-            >
-              {f === 'all' ? 'すべて' : f === 'active' ? '未完了' : '完了'}
-            </button>
-          ))}
+          <Metric label="active" value={`${activeTodos().length}`} tone={COLORS.blue} />
+          <Metric label="doing" value={`${doingTodos().length}`} tone={COLORS.accent2} />
+          <Metric label="done" value={`${doneTodos().length}`} tone={COLORS.success} />
+          <Metric label="hours left" value={`${totalEstimate()}`} tone={COLORS.violet} />
         </view>
 
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {(['all', 'todo', 'doing', 'done'] as const).map((item) => (
+            <button
+              style={controlStyle(`filter-${item}`, filter() === item)}
+              onClick={() => setFilter(item)}
+              onHoverEnter={() => setHoveredControl(`filter-${item}`)}
+              onHoverLeave={() => setHoveredControl(null)}
+            >
+              {item === 'all' ? 'All' : STATUS_LABEL[item]}
+            </button>
+          ))}
           <button
-            style={{
-              backgroundColor: doneCount() > 0 ? C.dangerBg : C.chip,
-              color: doneCount() > 0 ? C.danger : C.textMuted,
-              fontSize: 12,
-              fontWeight: 700,
-              borderRadius: 8,
-              height: 28,
-              opacity: doneCount() > 0 ? 1 : 0.5,
-            }}
+            style={controlStyle('clear', false)}
             onClick={clearDone}
+            onHoverEnter={() => setHoveredControl('clear')}
+            onHoverLeave={() => setHoveredControl(null)}
           >
-            完了をクリア
+            Clear done
           </button>
           {SpX(28)}
         </view>
       </view>
 
-      {/* ─── List ─── */}
-      <scroll-view style={{
+      <view style={{
         flexGrow: 1,
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: C.bg,
+        flexDirection: 'row',
+        backgroundColor: COLORS.bg,
       }}>
-        {SpY(16)}
-        {filtered().length === 0
-          ? <view style={{
-              width: ITEM_W, height: 80,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              backgroundColor: C.headerHi, borderRadius: 12, opacity: 0.6,
-            }}>
-              <text style={{ color: C.textMuted, fontSize: 14 }}>
-                該当する TODO がありません
-              </text>
+        <scroll-view style={{
+          width: '67%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+          paddingTop: 18,
+          paddingLeft: 28,
+          paddingRight: 16,
+          paddingBottom: 18,
+        }}>
+          <view style={{
+            height: 54,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            backgroundColor: COLORS.panel,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: COLORS.line,
+          }}>
+            <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {SpX(16)}
+              <text style={{ color: COLORS.ink, fontSize: 16 }}>Task queue</text>
+              <text style={{ color: COLORS.muted, fontSize: 12 }}>{`${visibleTodos().length} visible`}</text>
             </view>
-          : filtered().map((todo) => (
-            // アイテムコンテナに done 状態の color を設定。
-            // 子の <text> はここから color を継承するため、
-            // テキスト要素ごとに色を繰り返す必要がない（ADR-0047 の効用）。
-            <view style={{
-              width: ITEM_W, height: 56,
-              display: 'flex', flexDirection: 'row', alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: todo.done ? C.itemDone : C.item,
-              borderRadius: 12,
-              opacity: todo.done ? 0.7 : 1,
-              color: todo.done ? C.textMuted : C.text,
-            }}>
-              <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                {SpX(14)}
-                <button
-                  style={{
-                    backgroundColor: todo.done ? C.success : C.chip,
-                    color: todo.done ? '#ffffff' : C.textMuted,
-                    borderRadius: 8,
-                    width: 32, height: 32,
-                    fontSize: 16,
-                    fontWeight: 700,
-                  }}
-                  onClick={() => toggle(todo.id)}
-                >
-                  {todo.done ? '✓' : ' '}
-                </button>
-                {/* color も fontSize も指定しない: アイテムコンテナから継承 */}
-                <text style={{ fontWeight: 500 }}>{todo.text}</text>
-              </view>
-              <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
-                <button
-                  style={{
-                    backgroundColor: C.dangerBg,
-                    color: C.danger,
-                    borderRadius: 8,
-                    height: 28,
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                  onClick={() => remove(todo.id)}
-                >
-                  削除
-                </button>
-                {SpX(14)}
-              </view>
+            <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <text style={{ color: COLORS.quiet, fontSize: 12 }}>completion</text>
+              <Progress percent={completion()} />
+              {SpX(16)}
             </view>
-          ))}
-        {SpY(16)}
-      </scroll-view>
+          </view>
 
-      {/* ─── Footer: preset add ─── */}
-      <view style={{
-        height: 104,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        backgroundColor: C.header, gap: 12,
-      }}>
-        <text style={{ color: C.textDim, fontSize: 12, fontWeight: 600 }}>
-          + プリセットから追加
-        </text>
-        <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {/* color はルートから継承 (C.text)、fontSize のみ上書き */}
-          {PRESETS.map((p) => (
-            <button
-              style={{
-                backgroundColor: C.chip,
-                borderRadius: 999,
-                height: 34,
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-              onClick={() => add(p)}
-            >
-              {p}
-            </button>
-          ))}
+          {visibleTodos().length === 0
+            ? <EmptyState />
+            : visibleTodos().map((todo) => (
+              <TodoCard
+                todo={todo}
+                selected={selectedId() === todo.id}
+                hovered={hoveredCard() === todo.id}
+                actionHot={hoveredControl() === `advance-${todo.id}`}
+                deleteHot={hoveredControl() === `delete-${todo.id}`}
+                onSelect={() => setSelectedId(todo.id)}
+                onAdvance={() => advance(todo.id)}
+                onRemove={() => remove(todo.id)}
+                onHoverEnter={() => setHoveredCard(todo.id)}
+                onHoverLeave={() => setHoveredCard(null)}
+                onActionHoverEnter={() => setHoveredControl(`advance-${todo.id}`)}
+                onDeleteHoverEnter={() => setHoveredControl(`delete-${todo.id}`)}
+                onButtonHoverLeave={() => setHoveredControl(null)}
+              />
+            ))}
+          {SpY(12)}
+        </scroll-view>
+
+        <view style={{
+          width: '33%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          paddingTop: 18,
+          paddingRight: 28,
+          paddingBottom: 18,
+          paddingLeft: 8,
+        }}>
+          <DetailPanel todo={selected()} />
+          <view style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            backgroundColor: COLORS.panel,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: COLORS.line,
+            padding: 14,
+          }}>
+            <text style={{ color: COLORS.ink, fontSize: 16 }}>Quick add</text>
+            <text style={{ color: COLORS.muted, fontSize: 12 }}>Preset tasks replace fake input until text events land.</text>
+            {PRESETS.map((preset, index) => (
+              <button
+                style={{
+                  height: 42,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hoveredControl() === `preset-${index}` ? COLORS.panel3 : COLORS.panel2,
+                  color: COLORS.text,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: hoveredControl() === `preset-${index}` ? COLORS.accent : COLORS.line,
+                  fontSize: 13,
+                }}
+                onClick={() => addPreset(preset)}
+                onHoverEnter={() => setHoveredControl(`preset-${index}`)}
+                onHoverLeave={() => setHoveredControl(null)}
+              >
+                {`+ ${preset.title}`}
+              </button>
+            ))}
+          </view>
         </view>
       </view>
+    </view>
+  );
+}
+
+function Metric(props: { label: string; value: string; tone: string }) {
+  return (
+    <view style={{
+      height: 42,
+      minWidth: 104,
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: COLORS.panel2,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: COLORS.line,
+    }}>
+      <text style={{ color: props.tone, fontSize: 18 }}>{props.value}</text>
+      <text style={{ color: COLORS.muted, fontSize: 12 }}>{props.label}</text>
+    </view>
+  );
+}
+
+function Progress(props: { percent: number }) {
+  const filled = Math.max(2, Math.round(props.percent * 1.2));
+  return (
+    <view style={{
+      width: 126,
+      height: 18,
+      display: 'flex',
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: COLORS.black,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: COLORS.line,
+    }}>
+      <view style={{ width: filled, height: 10, marginLeft: 4, backgroundColor: COLORS.success, borderRadius: 6 }} />
+      <text style={{ width: 42, color: COLORS.muted, fontSize: 11 }}>{`${props.percent}%`}</text>
+    </view>
+  );
+}
+
+function TodoCard(props: {
+  todo: Todo;
+  selected: boolean;
+  hovered: boolean;
+  actionHot: boolean;
+  deleteHot: boolean;
+  onSelect: () => void;
+  onAdvance: () => void;
+  onRemove: () => void;
+  onHoverEnter: () => void;
+  onHoverLeave: () => void;
+  onActionHoverEnter: () => void;
+  onDeleteHoverEnter: () => void;
+  onButtonHoverLeave: () => void;
+}) {
+  const border = props.selected ? COLORS.accent : props.hovered ? COLORS.blue : COLORS.line;
+  const bg = props.selected ? COLORS.panel3 : props.hovered ? COLORS.panel2 : COLORS.panel;
+  return (
+    <view
+      style={{
+        minHeight: 118,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        padding: 14,
+        backgroundColor: bg,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: border,
+        opacity: props.todo.status === 'done' ? 0.78 : 1,
+      }}
+      onClick={props.onSelect}
+      onHoverEnter={props.onHoverEnter}
+      onHoverLeave={props.onHoverLeave}
+    >
+      <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Badge label={props.todo.priority} color={PRIORITY_COLOR[props.todo.priority]} />
+          <Badge label={STATUS_LABEL[props.todo.status]} color={STATUS_COLOR[props.todo.status]} />
+          <text style={{ color: COLORS.muted, fontSize: 12 }}>{props.todo.project}</text>
+        </view>
+        <text style={{ color: COLORS.quiet, fontSize: 12 }}>{`${props.todo.estimate}h - ${props.todo.due}`}</text>
+      </view>
+
+      <text style={{ color: COLORS.ink, fontSize: 17 }}>{props.todo.title}</text>
+      <text style={{ color: COLORS.muted, fontSize: 13 }}>{props.todo.detail}</text>
+
+      <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <text style={{ color: props.hovered ? COLORS.accent : COLORS.quiet, fontSize: 12 }}>
+          {props.hovered ? 'Hover active - actions are live' : 'Select for details'}
+        </text>
+        <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <button
+            style={{
+              height: 32,
+              paddingLeft: 14,
+              paddingRight: 14,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: props.actionHot ? COLORS.accent : COLORS.panel3,
+              color: props.actionHot ? COLORS.black : COLORS.text,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: props.actionHot ? COLORS.accent : COLORS.line,
+              fontSize: 12,
+            }}
+            onClick={props.onAdvance}
+            onHoverEnter={props.onActionHoverEnter}
+            onHoverLeave={props.onButtonHoverLeave}
+          >
+            {statusAction(props.todo.status)}
+          </button>
+          <button
+            style={{
+              width: 34,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: props.deleteHot ? COLORS.dangerBg : COLORS.panel3,
+              color: props.deleteHot ? COLORS.danger : COLORS.muted,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: props.deleteHot ? COLORS.danger : COLORS.line,
+              fontSize: 15,
+            }}
+            onClick={props.onRemove}
+            onHoverEnter={props.onDeleteHoverEnter}
+            onHoverLeave={props.onButtonHoverLeave}
+          >
+            x
+          </button>
+        </view>
+      </view>
+    </view>
+  );
+}
+
+function Badge(props: { label: string; color: string }) {
+  return (
+    <view style={{
+      height: 24,
+      minWidth: 50,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.black,
+      color: props.color,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: props.color,
+    }}>
+      <text style={{ fontSize: 11 }}>{props.label}</text>
+    </view>
+  );
+}
+
+function DetailPanel(props: { todo: Todo | null }) {
+  const todo = props.todo;
+  return (
+    <view style={{
+      minHeight: 248,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 12,
+      backgroundColor: COLORS.panel,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: COLORS.line,
+      padding: 16,
+    }}>
+      <text style={{ color: COLORS.ink, fontSize: 16 }}>Selected task</text>
+      {todo === null
+        ? <text style={{ color: COLORS.muted, fontSize: 13 }}>No task selected.</text>
+        : <>
+          <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Badge label={todo.priority} color={PRIORITY_COLOR[todo.priority]} />
+            <Badge label={STATUS_LABEL[todo.status]} color={STATUS_COLOR[todo.status]} />
+          </view>
+          <text style={{ color: COLORS.ink, fontSize: 20 }}>{todo.title}</text>
+          <text style={{ color: COLORS.muted, fontSize: 13 }}>{todo.detail}</text>
+          <view style={{ height: 1, backgroundColor: COLORS.line }} />
+          <InfoRow label="Project" value={todo.project} />
+          <InfoRow label="Due" value={todo.due} />
+          <InfoRow label="Estimate" value={`${todo.estimate}h`} />
+        </>}
+    </view>
+  );
+}
+
+function InfoRow(props: { label: string; value: string }) {
+  return (
+    <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+      <text style={{ color: COLORS.quiet, fontSize: 12 }}>{props.label}</text>
+      <text style={{ color: COLORS.text, fontSize: 13 }}>{props.value}</text>
+    </view>
+  );
+}
+
+function EmptyState() {
+  return (
+    <view style={{
+      height: 136,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.panel,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: COLORS.line,
+    }}>
+      <text style={{ color: COLORS.muted, fontSize: 14 }}>No tasks match this filter.</text>
     </view>
   );
 }

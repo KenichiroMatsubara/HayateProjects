@@ -1,8 +1,8 @@
 use std::num::NonZeroUsize;
 
 use vello::{
-    AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
     peniko::color::{AlphaColor, Srgb},
+    AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
 };
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
@@ -61,7 +61,11 @@ impl GpuSurface {
 
         let target_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("hayate_vello_target"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -86,7 +90,16 @@ impl GpuSurface {
 
         log::info!("Hayate GPU surface initialised ({width}x{height}, format={surface_format:?})");
 
-        Ok(Self { device, queue, surface, renderer, target_view, blitter, width, height })
+        Ok(Self {
+            device,
+            queue,
+            surface,
+            renderer,
+            target_view,
+            blitter,
+            width,
+            height,
+        })
     }
 
     pub(crate) fn present(
@@ -110,7 +123,8 @@ impl GpuSurface {
             .map_err(|e| JsValue::from_str(&format!("render_to_texture: {e}")))?;
 
         let surface_texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Timeout => {
                 return Err(JsValue::from_str("get_current_texture: timeout"));
             }
@@ -132,7 +146,9 @@ impl GpuSurface {
 
         let mut encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hayate_blit") });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("hayate_blit"),
+            });
         self.blitter
             .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
         self.queue.submit(std::iter::once(encoder.finish()));

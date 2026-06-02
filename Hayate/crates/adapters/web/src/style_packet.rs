@@ -40,6 +40,7 @@ pub(crate) const TAG_Z_INDEX: u32 = 28;
 /// so this is lossless for all real-world family names.
 pub(crate) const TAG_FONT_FAMILY: u32 = 29;
 pub(crate) const TAG_FLEX_GROW: u32 = 30;
+pub(crate) const TAG_FONT_WEIGHT: u32 = 31;
 
 fn dim(value: f32, unit_raw: f32) -> Dimension {
     let unit = match unit_raw as u32 {
@@ -76,7 +77,10 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
             TAG_BACKGROUND_COLOR => {
                 need(packed, i, 4, tag)?;
                 out.push(StyleProp::BackgroundColor(color(
-                    packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
+                    packed[i],
+                    packed[i + 1],
+                    packed[i + 2],
+                    packed[i + 3],
                 )));
                 i += 4;
             }
@@ -98,7 +102,10 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
             TAG_BORDER_COLOR => {
                 need(packed, i, 4, tag)?;
                 out.push(StyleProp::BorderColor(color(
-                    packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
+                    packed[i],
+                    packed[i + 1],
+                    packed[i + 2],
+                    packed[i + 3],
                 )));
                 i += 4;
             }
@@ -246,7 +253,10 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
             TAG_COLOR => {
                 need(packed, i, 4, tag)?;
                 out.push(StyleProp::Color(color(
-                    packed[i], packed[i + 1], packed[i + 2], packed[i + 3],
+                    packed[i],
+                    packed[i + 1],
+                    packed[i + 2],
+                    packed[i + 3],
                 )));
                 i += 4;
             }
@@ -269,6 +279,11 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
             TAG_FLEX_GROW => {
                 need(packed, i, 1, tag)?;
                 out.push(StyleProp::FlexGrow(packed[i]));
+                i += 1;
+            }
+            TAG_FONT_WEIGHT => {
+                need(packed, i, 1, tag)?;
+                out.push(StyleProp::FontWeight(packed[i]));
                 i += 1;
             }
             other => {
@@ -317,8 +332,12 @@ fn css_rgba(c: Color) -> String {
 fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {
     match *prop {
         StyleProp::BackgroundColor(c) => style.set_property("background-color", &css_rgba(c))?,
-        StyleProp::Opacity(v) => style.set_property("opacity", &format!("{}", v.clamp(0.0, 1.0)))?,
-        StyleProp::BorderRadius(v) => style.set_property("border-radius", &format!("{}px", v.max(0.0)))?,
+        StyleProp::Opacity(v) => {
+            style.set_property("opacity", &format!("{}", v.clamp(0.0, 1.0)))?
+        }
+        StyleProp::BorderRadius(v) => {
+            style.set_property("border-radius", &format!("{}px", v.max(0.0)))?
+        }
         StyleProp::BorderWidth(v) => {
             let w = v.max(0.0);
             style.set_property("border-width", &format!("{}px", w))?;
@@ -384,6 +403,7 @@ fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<()
         StyleProp::MarginLeft(d) => style.set_property("margin-left", &css_dim(d))?,
         StyleProp::FontSize(v) => style.set_property("font-size", &format!("{}px", v.max(0.0)))?,
         StyleProp::FontFamily(ref f) => style.set_property("font-family", f)?,
+        StyleProp::FontWeight(v) => style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?,
         StyleProp::Color(c) => style.set_property("color", &css_rgba(c))?,
         StyleProp::ZIndex(z) => style.set_property("z-index", &z.to_string())?,
         StyleProp::FlexGrow(v) => style.set_property("flex-grow", &format!("{}", v.max(0.0)))?,

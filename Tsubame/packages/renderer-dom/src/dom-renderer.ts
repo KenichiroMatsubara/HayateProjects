@@ -4,31 +4,44 @@ import type {
   EventHandler,
   EventKind,
   IRenderer,
+  InteractionEvent,
   StylePatch,
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
 import { asElementId } from '@tsubame/renderer-protocol';
-import { createDomElement } from './element-mapping.js';
+import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 import { DOM_EVENT_NAME } from './event-mapping.js';
 
 export interface DomRendererOptions {
-  /** ルート element をマウントするコンテナ。省略時は `document.body`。 */
   container?: HTMLElement;
-  /** テスト等で差し替えるための Document。省略時は `globalThis.document`。 */
   document?: Document;
 }
 
-/**
- * Renderer Protocol の DOM 実装。Hayate（WASM）を一切使用しない純 JS CSR。
- *
- * ElementId は JS 側モノトニックカウンターで採番し、Map で DOM ノードと
- * 対応付ける（ADR-0005）。JS→WASM 境界は存在しない。
- */
+function isTextInputLike(el: EventTarget | null): el is HTMLInputElement | HTMLTextAreaElement {
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+}
+
+function eventPayload(id: ElementId, eventKind: EventKind, event: Event): InteractionEvent {
+  const target = event.target instanceof HTMLElement ? event.target : event.currentTarget;
+  const payload: InteractionEvent = { kind: eventKind, target: id };
+
+  if (isTextInputLike(target)) {
+    payload.value = target.value;
+  }
+  if (event instanceof KeyboardEvent) {
+    payload.key = event.key;
+  }
+
+  return payload;
+}
+
 export class DomRenderer implements IRenderer {
   private readonly doc: Document;
   private readonly container: HTMLElement;
   private readonly nodes = new Map<ElementId, HTMLElement>();
+  private readonly parentOf = new Map<ElementId, ElementId>();
+  private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
   constructor(options: DomRendererOptions = {}) {
@@ -48,15 +61,19 @@ export class DomRenderer implements IRenderer {
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
+    this.linkParent(parent, child);
     this.node(parent).appendChild(this.node(child));
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
+    this.linkParent(parent, child);
     this.node(parent).insertBefore(this.node(child), this.node(before));
   }
 
-  removeChild(parent: ElementId, child: ElementId): void {
-    this.node(parent).removeChild(this.node(child));
+  removeChild(_parent: ElementId, child: ElementId): void {
+    const el = this.node(child);
+    el.parentElement?.removeChild(el);
+    this.pruneSubtree(child);
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
@@ -67,6 +84,50 @@ export class DomRenderer implements IRenderer {
     this.node(id).textContent = text;
   }
 
+  setProperty(id: ElementId, name: string, value: unknown): void {
+    const target = this.node(id);
+
+    switch (name) {
+      case 'value':
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          target.value = typeof value === 'string' ? value : value == null ? '' : String(value);
+        }
+        return;
+      case 'placeholder':
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+          target.placeholder = typeof value === 'string' ? value : '';
+        }
+        return;
+      case 'disabled':
+        if (
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLButtonElement ||
+          target instanceof HTMLTextAreaElement
+        ) {
+          target.disabled = Boolean(value);
+        }
+        return;
+      case 'src':
+        if (target instanceof HTMLImageElement) {
+          if (typeof value === 'string' && value.length > 0) target.src = value;
+          else target.removeAttribute('src');
+        }
+        return;
+      default:
+        break;
+    }
+
+    if (value == null || value === false) {
+      target.removeAttribute(name);
+      return;
+    }
+    if (value === true) {
+      target.setAttribute(name, '');
+      return;
+    }
+    target.setAttribute(name, String(value));
+  }
+
   addEventListener(
     id: ElementId,
     event: EventKind,
@@ -74,20 +135,56 @@ export class DomRenderer implements IRenderer {
   ): Unsubscribe {
     const target = this.node(id);
     const domEvent = DOM_EVENT_NAME[event];
-    const listener = (): void => handler({ kind: event, target: id });
+    const listener = (nativeEvent: Event): void => {
+      handler(eventPayload(id, event, nativeEvent));
+    };
     target.addEventListener(domEvent, listener);
     return () => target.removeEventListener(domEvent, listener);
   }
 
-  /** DOM Renderer では CSS が自動追従するため no-op（IRenderer.resize 実装）。 */
   resize(_width: number, _height: number): void {}
 
-  /** 内部用: ElementId から DOM ノードを引く。未登録なら例外。 */
   private node(id: ElementId): HTMLElement {
     const el = this.nodes.get(id);
     if (el === undefined) {
       throw new Error(`DomRenderer: unknown ElementId ${id as number}`);
     }
     return el;
+  }
+
+  private linkParent(parent: ElementId, child: ElementId): void {
+    const prevParent = this.parentOf.get(child);
+    if (prevParent !== undefined) {
+      this.childrenOf.get(prevParent)?.delete(child);
+    }
+    this.parentOf.set(child, parent);
+    let children = this.childrenOf.get(parent);
+    if (children === undefined) {
+      children = new Set();
+      this.childrenOf.set(parent, children);
+    }
+    children.add(child);
+  }
+
+  private pruneSubtree(root: ElementId): void {
+    const parent = this.parentOf.get(root);
+    if (parent !== undefined) {
+      this.childrenOf.get(parent)?.delete(root);
+      this.parentOf.delete(root);
+    }
+
+    const stack: ElementId[] = [root];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      const children = this.childrenOf.get(node);
+      if (children !== undefined) {
+        for (const child of children) {
+          this.parentOf.delete(child);
+          stack.push(child);
+        }
+        this.childrenOf.delete(node);
+      }
+      this.nodes.delete(node);
+    }
   }
 }

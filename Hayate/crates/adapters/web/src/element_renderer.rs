@@ -3,8 +3,11 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use hayate_core::{ElementId, ElementKind, ElementTree, Event, StyleProp, vello_bridge};
-use vello::peniko::{Blob, ImageAlphaType, ImageData, ImageFormat, color::{AlphaColor, Srgb}};
+use hayate_core::{vello_bridge, ElementId, ElementKind, ElementTree, Event, StyleProp};
+use vello::peniko::{
+    color::{AlphaColor, Srgb},
+    Blob, ImageAlphaType, ImageData, ImageFormat,
+};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlInputElement, Node};
@@ -132,24 +135,69 @@ use crate::style_packet;
 // `HayateElementRenderer` setters apply to the `ElementTree` eagerly.
 
 enum Command {
-    SetText { id: ElementId, text: String },
-    SetSrc { id: ElementId, url: String },
-    SetStyle { id: ElementId, props: Vec<StyleProp> },
-    UnsetStyle { id: ElementId, kinds: Vec<u32> },
-    SetTransform { id: ElementId, matrix: Option<[f64; 6]> },
-    SetScrollOffset { id: ElementId, x: f32, y: f32 },
-    SetFontFamily { id: ElementId, family: String },
-    SetAriaLabel { id: ElementId, label: String },
-    SetRole { id: ElementId, role: String },
-    SetTextContent { id: ElementId, text: String },
-    AppendChild { parent: ElementId, child: ElementId },
-    InsertBefore { parent: ElementId, child: ElementId, before: ElementId },
-    Remove { id: ElementId },
-    SetRoot { id: ElementId },
+    SetText {
+        id: ElementId,
+        text: String,
+    },
+    SetSrc {
+        id: ElementId,
+        url: String,
+    },
+    SetStyle {
+        id: ElementId,
+        props: Vec<StyleProp>,
+    },
+    UnsetStyle {
+        id: ElementId,
+        kinds: Vec<u32>,
+    },
+    SetTransform {
+        id: ElementId,
+        matrix: Option<[f64; 6]>,
+    },
+    SetScrollOffset {
+        id: ElementId,
+        x: f32,
+        y: f32,
+    },
+    SetFontFamily {
+        id: ElementId,
+        family: String,
+    },
+    SetAriaLabel {
+        id: ElementId,
+        label: String,
+    },
+    SetRole {
+        id: ElementId,
+        role: String,
+    },
+    SetTextContent {
+        id: ElementId,
+        text: String,
+    },
+    AppendChild {
+        parent: ElementId,
+        child: ElementId,
+    },
+    InsertBefore {
+        parent: ElementId,
+        child: ElementId,
+        before: ElementId,
+    },
+    Remove {
+        id: ElementId,
+    },
+    SetRoot {
+        id: ElementId,
+    },
     /// HTML Mode only: materialise the DOM element for an already-allocated
     /// slot. Canvas Mode allocates the tree entry eagerly inside
     /// `element_create` and does not emit this command.
-    HtmlCreate { id: ElementId, kind: ElementKind },
+    HtmlCreate {
+        id: ElementId,
+        kind: ElementKind,
+    },
 }
 
 fn document() -> Document {
@@ -170,8 +218,14 @@ fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
 
 // ── Style tag constants (exposed to JS) ──────────────────────────────────
 
-#[wasm_bindgen] pub fn style_tag_z_index() -> u32 { crate::style_packet::TAG_Z_INDEX }
-#[wasm_bindgen] pub fn style_tag_font_family() -> u32 { crate::style_packet::TAG_FONT_FAMILY }
+#[wasm_bindgen]
+pub fn style_tag_z_index() -> u32 {
+    crate::style_packet::TAG_Z_INDEX
+}
+#[wasm_bindgen]
+pub fn style_tag_font_family() -> u32 {
+    crate::style_packet::TAG_FONT_FAMILY
+}
 
 // ── Event kind constants (exposed to JS) ─────────────────────────────────
 // Discriminants match `encode_events` below. Naming follows ADR-0031:
@@ -179,60 +233,129 @@ fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
 // pointer events. `PointerMove` is the only physical-name carryover, since
 // it has no target.
 
-#[wasm_bindgen] pub fn event_kind_click()               -> f64 { 0.0 }
-#[wasm_bindgen] pub fn event_kind_focus()               -> f64 { 1.0 }
-#[wasm_bindgen] pub fn event_kind_blur()                -> f64 { 2.0 }
-#[wasm_bindgen] pub fn event_kind_text_input()          -> f64 { 3.0 }
-#[wasm_bindgen] pub fn event_kind_composition_start()   -> f64 { 4.0 }
-#[wasm_bindgen] pub fn event_kind_composition_update()  -> f64 { 5.0 }
-#[wasm_bindgen] pub fn event_kind_composition_end()     -> f64 { 6.0 }
-#[wasm_bindgen] pub fn event_kind_scroll()              -> f64 { 7.0 }
-#[wasm_bindgen] pub fn event_kind_resize()              -> f64 { 8.0 }
-#[wasm_bindgen] pub fn event_kind_active_end()          -> f64 { 9.0 }
-#[wasm_bindgen] pub fn event_kind_hover_enter()         -> f64 { 10.0 }
-#[wasm_bindgen] pub fn event_kind_hover_leave()         -> f64 { 11.0 }
-#[wasm_bindgen] pub fn event_kind_key_down()            -> f64 { 12.0 }
-#[wasm_bindgen] pub fn event_kind_active_start()        -> f64 { 13.0 }
-#[wasm_bindgen] pub fn event_kind_pointer_move()        -> f64 { 14.0 }
+#[wasm_bindgen]
+pub fn event_kind_click() -> f64 {
+    0.0
+}
+#[wasm_bindgen]
+pub fn event_kind_focus() -> f64 {
+    1.0
+}
+#[wasm_bindgen]
+pub fn event_kind_blur() -> f64 {
+    2.0
+}
+#[wasm_bindgen]
+pub fn event_kind_text_input() -> f64 {
+    3.0
+}
+#[wasm_bindgen]
+pub fn event_kind_composition_start() -> f64 {
+    4.0
+}
+#[wasm_bindgen]
+pub fn event_kind_composition_update() -> f64 {
+    5.0
+}
+#[wasm_bindgen]
+pub fn event_kind_composition_end() -> f64 {
+    6.0
+}
+#[wasm_bindgen]
+pub fn event_kind_scroll() -> f64 {
+    7.0
+}
+#[wasm_bindgen]
+pub fn event_kind_resize() -> f64 {
+    8.0
+}
+#[wasm_bindgen]
+pub fn event_kind_active_end() -> f64 {
+    9.0
+}
+#[wasm_bindgen]
+pub fn event_kind_hover_enter() -> f64 {
+    10.0
+}
+#[wasm_bindgen]
+pub fn event_kind_hover_leave() -> f64 {
+    11.0
+}
+#[wasm_bindgen]
+pub fn event_kind_key_down() -> f64 {
+    12.0
+}
+#[wasm_bindgen]
+pub fn event_kind_active_start() -> f64 {
+    13.0
+}
+#[wasm_bindgen]
+pub fn event_kind_pointer_move() -> f64 {
+    14.0
+}
 
 // ── Modifier key bitmask constants (exposed to JS) ───────────────────────
 // Match KeyboardEvent.getModifierState flags for JS interop.
 
-#[wasm_bindgen] pub fn modifier_shift() -> u32 { 1 }
-#[wasm_bindgen] pub fn modifier_ctrl()  -> u32 { 2 }
-#[wasm_bindgen] pub fn modifier_alt()   -> u32 { 4 }
-#[wasm_bindgen] pub fn modifier_meta()  -> u32 { 8 }
+#[wasm_bindgen]
+pub fn modifier_shift() -> u32 {
+    1
+}
+#[wasm_bindgen]
+pub fn modifier_ctrl() -> u32 {
+    2
+}
+#[wasm_bindgen]
+pub fn modifier_alt() -> u32 {
+    4
+}
+#[wasm_bindgen]
+pub fn modifier_meta() -> u32 {
+    8
+}
 
 // ── Element kind discriminant getters (exposed to JS) ────────────────────
 
 #[wasm_bindgen]
-pub fn element_kind_view() -> u32 { 0 }
+pub fn element_kind_view() -> u32 {
+    0
+}
 #[wasm_bindgen]
-pub fn element_kind_text() -> u32 { 1 }
+pub fn element_kind_text() -> u32 {
+    1
+}
 #[wasm_bindgen]
-pub fn element_kind_image() -> u32 { 2 }
+pub fn element_kind_image() -> u32 {
+    2
+}
 #[wasm_bindgen]
-pub fn element_kind_button() -> u32 { 3 }
+pub fn element_kind_button() -> u32 {
+    3
+}
 #[wasm_bindgen]
-pub fn element_kind_text_input() -> u32 { 4 }
+pub fn element_kind_text_input() -> u32 {
+    4
+}
 #[wasm_bindgen]
-pub fn element_kind_scroll_view() -> u32 { 5 }
+pub fn element_kind_scroll_view() -> u32 {
+    5
+}
 
 // ── apply_mutations op_kind constants (ADR-0039) ─────────────────────────
 // Tsubame の opcodes.ts の OP 定数と 1:1 対応。
 
-const OP_APPEND_CHILD: u32      = 0;
-const OP_INSERT_BEFORE: u32     = 1;
-const OP_REMOVE: u32            = 2;
-const OP_SET_ROOT: u32          = 3;
-const OP_SET_STYLE: u32         = 4;
-const OP_SET_TRANSFORM: u32     = 5;
+const OP_APPEND_CHILD: u32 = 0;
+const OP_INSERT_BEFORE: u32 = 1;
+const OP_REMOVE: u32 = 2;
+const OP_SET_ROOT: u32 = 3;
+const OP_SET_STYLE: u32 = 4;
+const OP_SET_TRANSFORM: u32 = 5;
 const OP_SET_SCROLL_OFFSET: u32 = 6;
-const OP_FOCUS: u32             = 7;
-const OP_BLUR: u32              = 8;
+const OP_FOCUS: u32 = 7;
+const OP_BLUR: u32 = 8;
 /// JS 側が採番した ElementId と kind_code を WASM へ通知する。
 /// Tsubame CanvasRenderer が createElement 時に発行する (opcodes.ts CREATE=9)。
-const OP_CREATE: u32            = 9;
+const OP_CREATE: u32 = 9;
 
 // ── Canvas Mode renderer ─────────────────────────────────────────────────
 
@@ -317,17 +440,13 @@ impl HayateElementRenderer {
         dx: f64,
         dy: f64,
     ) {
-        self.tree.element_set_transform(
-            element_id_from_f64(id),
-            Some([xx, yx, xy, yy, dx, dy]),
-        );
+        self.tree
+            .element_set_transform(element_id_from_f64(id), Some([xx, yx, xy, yy, dx, dy]));
     }
 
     pub fn element_append_child(&mut self, parent: f64, child: f64) {
-        self.tree.element_append_child(
-            element_id_from_f64(parent),
-            element_id_from_f64(child),
-        );
+        self.tree
+            .element_append_child(element_id_from_f64(parent), element_id_from_f64(child));
     }
 
     pub fn element_insert_before(&mut self, parent: f64, child: f64, before: f64) {
@@ -370,7 +489,10 @@ impl HayateElementRenderer {
     /// has not been laid out yet. WIT-aligned (`element-get-bounds`).
     pub fn element_get_bounds(&self, id: f64) -> Box<[f32]> {
         let eid = element_id_from_f64(id);
-        let (x, y, w, h) = self.tree.element_layout_rect(eid).unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (x, y, w, h) = self
+            .tree
+            .element_layout_rect(eid)
+            .unwrap_or((0.0, 0.0, 0.0, 0.0));
         vec![x, y, w, h].into_boxed_slice()
     }
 
@@ -428,7 +550,10 @@ impl HayateElementRenderer {
         // is one active session). The release coordinate has no field on the
         // event variant — callers that need it should track PointerMove.
         let _ = (x, y);
-        let target = self.active_element.take().or_else(|| self.tree.hit_test(x, y));
+        let target = self
+            .active_element
+            .take()
+            .or_else(|| self.tree.hit_test(x, y));
         if let Some(target) = target {
             self.tree.push_event(Event::ActiveEnd { target });
         }
@@ -465,14 +590,21 @@ impl HayateElementRenderer {
             if let Some(sv) = nearest_scroll_view(&self.tree, target) {
                 let (ox, oy) = self.tree.element_get_scroll_offset(sv);
                 let (content_w, content_h) = self.tree.element_content_size(sv);
-                let sv_rect = self.tree.element_layout_rect(sv).unwrap_or((0.0, 0.0, 0.0, 0.0));
+                let sv_rect = self
+                    .tree
+                    .element_layout_rect(sv)
+                    .unwrap_or((0.0, 0.0, 0.0, 0.0));
                 let max_x = (content_w - sv_rect.2).max(0.0);
                 let max_y = (content_h - sv_rect.3).max(0.0);
                 let new_x = (ox + delta_x).clamp(0.0, max_x);
                 let new_y = (oy + delta_y).clamp(0.0, max_y);
                 self.tree.element_set_scroll_offset(sv, new_x, new_y);
             }
-            self.tree.push_event(Event::Scroll { target, delta_x, delta_y });
+            self.tree.push_event(Event::Scroll {
+                target,
+                delta_x,
+                delta_y,
+            });
         }
     }
 
@@ -482,11 +614,13 @@ impl HayateElementRenderer {
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
-        self.tree.element_set_scroll_offset(element_id_from_f64(id), x, y);
+        self.tree
+            .element_set_scroll_offset(element_id_from_f64(id), x, y);
     }
 
     pub fn element_set_font_family(&mut self, id: f64, family: &str) {
-        self.tree.element_set_font_family(element_id_from_f64(id), family);
+        self.tree
+            .element_set_font_family(element_id_from_f64(id), family);
     }
 
     /// Unset one or more inheritable text-style properties on `id`, reverting
@@ -494,17 +628,23 @@ impl HayateElementRenderer {
     /// `kinds` is a packed u32 array: 0 = Color, 1 = FontSize, 2 = FontFamily.
     pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) {
         use hayate_core::StylePropKind;
-        let parsed: Vec<StylePropKind> = kinds.iter().filter_map(|&k| match k {
-            0 => Some(StylePropKind::Color),
-            1 => Some(StylePropKind::FontSize),
-            2 => Some(StylePropKind::FontFamily),
-            _ => None,
-        }).collect();
-        self.tree.element_unset_style(element_id_from_f64(id), &parsed);
+        let parsed: Vec<StylePropKind> = kinds
+            .iter()
+            .filter_map(|&k| match k {
+                0 => Some(StylePropKind::Color),
+                1 => Some(StylePropKind::FontSize),
+                2 => Some(StylePropKind::FontFamily),
+                3 => Some(StylePropKind::FontWeight),
+                _ => None,
+            })
+            .collect();
+        self.tree
+            .element_unset_style(element_id_from_f64(id), &parsed);
     }
 
     pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
-        self.tree.element_set_aria_label(element_id_from_f64(id), label);
+        self.tree
+            .element_set_aria_label(element_id_from_f64(id), label);
     }
 
     pub fn element_set_role(&mut self, id: f64, role: &str) {
@@ -518,7 +658,11 @@ impl HayateElementRenderer {
     }
 
     /// Fetch a font file from a URL and register it under `family_name`.
-    pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
+    pub async fn load_font_from_url(
+        &mut self,
+        family_name: String,
+        url: String,
+    ) -> Result<(), JsValue> {
         let bytes = fetch_bytes(&url).await?;
         self.tree.register_font(&family_name, bytes);
         Ok(())
@@ -567,7 +711,10 @@ impl HayateElementRenderer {
     /// Return the focused element's id (as f64), or 0.0 if nothing is focused.
     /// JS can use this with `element_get_text_content` to implement copy/cut.
     pub fn focused_element_id(&self) -> f64 {
-        self.tree.focused_element().map(element_id_to_f64).unwrap_or(0.0)
+        self.tree
+            .focused_element()
+            .map(element_id_to_f64)
+            .unwrap_or(0.0)
     }
 
     /// Handle a key press on the focused element.
@@ -583,32 +730,48 @@ impl HayateElementRenderer {
             }
             "Enter" => {
                 self.tree.element_append_text_content(focused, "\n");
-                self.tree.push_event(Event::TextInput { target: focused, text: "\n".to_string() });
+                self.tree.push_event(Event::TextInput {
+                    target: focused,
+                    text: "\n".to_string(),
+                });
             }
             _ => {}
         }
-        self.tree.push_event(Event::KeyDown { target: focused, key: key.to_string(), modifiers });
+        self.tree.push_event(Event::KeyDown {
+            target: focused,
+            key: key.to_string(),
+            modifiers,
+        });
     }
 
     /// Called by JS when the user types printable text into the focused TextInput.
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_append_text_content(eid, text);
-        self.tree.push_event(Event::TextInput { target: eid, text: text.to_string() });
+        self.tree.push_event(Event::TextInput {
+            target: eid,
+            text: text.to_string(),
+        });
     }
 
     /// Called by JS when an IME composition begins.
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.tree.push_event(Event::CompositionStart { target: eid, text: text.to_string() });
+        self.tree.push_event(Event::CompositionStart {
+            target: eid,
+            text: text.to_string(),
+        });
     }
 
     /// Called by JS when the IME preedit updates.
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.tree.push_event(Event::CompositionUpdate { target: eid, text: text.to_string() });
+        self.tree.push_event(Event::CompositionUpdate {
+            target: eid,
+            text: text.to_string(),
+        });
     }
 
     /// Called by JS when IME composition is finalized.
@@ -616,11 +779,15 @@ impl HayateElementRenderer {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, "");
         self.tree.element_append_text_content(eid, text);
-        self.tree.push_event(Event::CompositionEnd { target: eid, text: text.to_string() });
+        self.tree.push_event(Event::CompositionEnd {
+            target: eid,
+            text: text.to_string(),
+        });
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {
-        self.tree.element_set_text_content(element_id_from_f64(id), text);
+        self.tree
+            .element_set_text_content(element_id_from_f64(id), text);
     }
 
     /// Batch apply: invoked once per frame by Tsubame Canvas Mode (ADR-0039).
@@ -637,7 +804,7 @@ impl HayateElementRenderer {
                         return Err(JsValue::from_str("ops truncated at OP_APPEND_CHILD"));
                     }
                     let parent = element_id_from_f64(ops[i]);
-                    let child  = element_id_from_f64(ops[i + 1]);
+                    let child = element_id_from_f64(ops[i + 1]);
                     i += 2;
                     self.tree.element_append_child(parent, child);
                 }
@@ -646,7 +813,7 @@ impl HayateElementRenderer {
                         return Err(JsValue::from_str("ops truncated at OP_INSERT_BEFORE"));
                     }
                     let parent = element_id_from_f64(ops[i]);
-                    let child  = element_id_from_f64(ops[i + 1]);
+                    let child = element_id_from_f64(ops[i + 1]);
                     let before = element_id_from_f64(ops[i + 2]);
                     i += 3;
                     self.tree.element_insert_before(parent, child, before);
@@ -671,12 +838,15 @@ impl HayateElementRenderer {
                     if i + 3 > ops.len() {
                         return Err(JsValue::from_str("ops truncated at OP_SET_STYLE"));
                     }
-                    let id           = element_id_from_f64(ops[i]);
+                    let id = element_id_from_f64(ops[i]);
                     let style_offset = ops[i + 1] as usize;
-                    let style_len    = ops[i + 2] as usize;
+                    let style_len = ops[i + 2] as usize;
                     i += 3;
-                    let slice = styles.get(style_offset..style_offset + style_len)
-                        .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE"))?;
+                    let slice = styles
+                        .get(style_offset..style_offset + style_len)
+                        .ok_or_else(|| {
+                            JsValue::from_str("styles slice out of bounds in OP_SET_STYLE")
+                        })?;
                     let props = style_packet::decode(slice)?;
                     self.tree.element_set_style(id, &props);
                 }
@@ -684,10 +854,17 @@ impl HayateElementRenderer {
                     if i + 8 > ops.len() {
                         return Err(JsValue::from_str("ops truncated at OP_SET_TRANSFORM"));
                     }
-                    let id         = element_id_from_f64(ops[i]);
+                    let id = element_id_from_f64(ops[i]);
                     let has_matrix = ops[i + 1] != 0.0;
                     let matrix = if has_matrix {
-                        Some([ops[i+2], ops[i+3], ops[i+4], ops[i+5], ops[i+6], ops[i+7]])
+                        Some([
+                            ops[i + 2],
+                            ops[i + 3],
+                            ops[i + 4],
+                            ops[i + 5],
+                            ops[i + 6],
+                            ops[i + 7],
+                        ])
                     } else {
                         None
                     };
@@ -699,8 +876,8 @@ impl HayateElementRenderer {
                         return Err(JsValue::from_str("ops truncated at OP_SET_SCROLL_OFFSET"));
                     }
                     let id = element_id_from_f64(ops[i]);
-                    let x  = ops[i + 1] as f32;
-                    let y  = ops[i + 2] as f32;
+                    let x = ops[i + 1] as f32;
+                    let y = ops[i + 2] as f32;
                     i += 3;
                     self.tree.element_set_scroll_offset(id, x, y);
                 }
@@ -732,7 +909,7 @@ impl HayateElementRenderer {
                     if i + 2 > ops.len() {
                         return Err(JsValue::from_str("ops truncated at OP_CREATE"));
                     }
-                    let id   = ops[i] as u64;
+                    let id = ops[i] as u64;
                     let kind = ops[i + 1] as u32;
                     i += 2;
                     let k = kind_from_u32(kind)?;
@@ -773,9 +950,9 @@ impl HayateElementRenderer {
                             }
                         });
                     } else {
-                        web_sys::console::warn_1(
-                            &JsValue::from_str(&format!("FetchFont: no URL for \"{family}\"")),
-                        );
+                        web_sys::console::warn_1(&JsValue::from_str(&format!(
+                            "FetchFont: no URL for \"{family}\""
+                        )));
                     }
                 }
                 other => visible.push(other),
@@ -863,14 +1040,17 @@ impl HayateElementHtmlRenderer {
     pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
         let eid = element_id_from_f64(id);
-        self.nodes.insert(eid, HtmlNode {
-            kind: k,
-            dom: None,
-            parent: None,
-            children: Vec::new(),
-            text: None,
-            src: None,
-        });
+        self.nodes.insert(
+            eid,
+            HtmlNode {
+                kind: k,
+                dom: None,
+                parent: None,
+                children: Vec::new(),
+                text: None,
+                src: None,
+            },
+        );
         self.pending.push(Command::HtmlCreate { id: eid, kind: k });
         Ok(())
     }
@@ -933,7 +1113,9 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn element_remove(&mut self, id: f64) {
-        self.pending.push(Command::Remove { id: element_id_from_f64(id) });
+        self.pending.push(Command::Remove {
+            id: element_id_from_f64(id),
+        });
     }
 
     /// Returns the text committed by the most recent `render()`. Queued
@@ -946,7 +1128,9 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn set_root(&mut self, id: f64) {
-        self.pending.push(Command::SetRoot { id: element_id_from_f64(id) });
+        self.pending.push(Command::SetRoot {
+            id: element_id_from_f64(id),
+        });
     }
 
     /// Drains the queued element mutations, then refreshes the container's
@@ -956,7 +1140,9 @@ impl HayateElementHtmlRenderer {
     /// native `<input>` element handles it).
     pub fn render(&mut self, _timestamp_ms: f64) -> Result<(), JsValue> {
         self.flush_pending()?;
-        self.container.style().set_property("background-color", &self.background_css)?;
+        self.container
+            .style()
+            .set_property("background-color", &self.background_css)?;
         Ok(())
     }
 
@@ -1028,7 +1214,11 @@ impl HayateElementHtmlRenderer {
     pub fn on_wheel(&mut self, target_id: f64, delta_x: f32, delta_y: f32) {
         let target = element_id_from_f64(target_id);
         if self.nodes.contains_key(&target) {
-            self.event_queue.push(Event::Scroll { target, delta_x, delta_y });
+            self.event_queue.push(Event::Scroll {
+                target,
+                delta_x,
+                delta_y,
+            });
         }
     }
 
@@ -1081,7 +1271,11 @@ impl HayateElementHtmlRenderer {
         let _ = inject_font_face(family_name, data);
     }
 
-    pub async fn load_font_from_url(&mut self, family_name: String, url: String) -> Result<(), JsValue> {
+    pub async fn load_font_from_url(
+        &mut self,
+        family_name: String,
+        url: String,
+    ) -> Result<(), JsValue> {
         let bytes = fetch_bytes(&url).await?;
         let _ = inject_font_face(&family_name, &bytes);
         Ok(())
@@ -1128,7 +1322,10 @@ impl HayateElementHtmlRenderer {
     pub fn element_paste(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::TextInput { target: eid, text: text.to_string() });
+            self.event_queue.push(Event::TextInput {
+                target: eid,
+                text: text.to_string(),
+            });
         }
     }
 
@@ -1165,34 +1362,50 @@ impl HayateElementHtmlRenderer {
             Some(id) => id,
             None => return,
         };
-        self.event_queue.push(Event::KeyDown { target: focused, key: key.to_string(), modifiers });
+        self.event_queue.push(Event::KeyDown {
+            target: focused,
+            key: key.to_string(),
+            modifiers,
+        });
     }
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::TextInput { target: eid, text: text.to_string() });
+            self.event_queue.push(Event::TextInput {
+                target: eid,
+                text: text.to_string(),
+            });
         }
     }
 
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::CompositionStart { target: eid, text: text.to_string() });
+            self.event_queue.push(Event::CompositionStart {
+                target: eid,
+                text: text.to_string(),
+            });
         }
     }
 
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::CompositionUpdate { target: eid, text: text.to_string() });
+            self.event_queue.push(Event::CompositionUpdate {
+                target: eid,
+                text: text.to_string(),
+            });
         }
     }
 
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::CompositionEnd { target: eid, text: text.to_string() });
+            self.event_queue.push(Event::CompositionEnd {
+                target: eid,
+                text: text.to_string(),
+            });
         }
     }
 
@@ -1283,7 +1496,11 @@ impl HayateElementHtmlRenderer {
             Command::SetRole { id, role } => self.flush_set_role(id, &role),
             Command::SetTextContent { id, text } => self.flush_set_text_content(id, &text),
             Command::AppendChild { parent, child } => self.flush_append_child(parent, child),
-            Command::InsertBefore { parent, child, before } => {
+            Command::InsertBefore {
+                parent,
+                child,
+                before,
+            } => {
                 self.flush_insert_before(parent, child, before);
             }
             Command::Remove { id } => self.flush_remove(id),
@@ -1370,9 +1587,18 @@ impl HayateElementHtmlRenderer {
             let style = html_el.style();
             for &kind in kinds {
                 match kind {
-                    0 => { let _ = style.remove_property("color"); }
-                    1 => { let _ = style.remove_property("font-size"); }
-                    2 => { let _ = style.remove_property("font-family"); }
+                    0 => {
+                        let _ = style.remove_property("color");
+                    }
+                    1 => {
+                        let _ = style.remove_property("font-size");
+                    }
+                    2 => {
+                        let _ = style.remove_property("font-family");
+                    }
+                    3 => {
+                        let _ = style.remove_property("font-weight");
+                    }
                     _ => {}
                 }
             }
@@ -1627,9 +1853,8 @@ fn inject_font_face(family: &str, data: &[u8]) -> Result<(), JsValue> {
     let bin: String = data.iter().map(|&b| b as char).collect();
     let window = web_sys::window().ok_or("no window")?;
     let b64 = window.btoa(&bin)?;
-    let css = format!(
-        "@font-face {{ font-family: '{family}'; src: url(data:font/ttf;base64,{b64}); }}"
-    );
+    let css =
+        format!("@font-face {{ font-family: '{family}'; src: url(data:font/ttf;base64,{b64}); }}");
     let doc = window.document().ok_or("no document")?;
     let head = doc.head().ok_or("no head")?;
     let style_el = doc.create_element("style")?;
@@ -1693,42 +1918,100 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
     for event in events {
         let sub = Array::new();
         macro_rules! pf {
-            ($v:expr) => { sub.push(&JsValue::from_f64($v as f64)); };
+            ($v:expr) => {
+                sub.push(&JsValue::from_f64($v as f64));
+            };
         }
         macro_rules! ps {
-            ($v:expr) => { sub.push(&JsValue::from_str($v)); };
+            ($v:expr) => {
+                sub.push(&JsValue::from_str($v));
+            };
         }
         match event {
             Event::Click { target, x, y } => {
-                pf!(0.0); pf!(target.to_u64()); pf!(*x); pf!(*y);
+                pf!(0.0);
+                pf!(target.to_u64());
+                pf!(*x);
+                pf!(*y);
             }
-            Event::Focus(target) => { pf!(1.0); pf!(target.to_u64()); }
-            Event::Blur(target)  => { pf!(2.0); pf!(target.to_u64()); }
+            Event::Focus(target) => {
+                pf!(1.0);
+                pf!(target.to_u64());
+            }
+            Event::Blur(target) => {
+                pf!(2.0);
+                pf!(target.to_u64());
+            }
             Event::TextInput { target, text } => {
-                pf!(3.0); pf!(target.to_u64()); ps!(text);
+                pf!(3.0);
+                pf!(target.to_u64());
+                ps!(text);
             }
             Event::CompositionStart { target, text } => {
-                pf!(4.0); pf!(target.to_u64()); ps!(text);
+                pf!(4.0);
+                pf!(target.to_u64());
+                ps!(text);
             }
             Event::CompositionUpdate { target, text } => {
-                pf!(5.0); pf!(target.to_u64()); ps!(text);
+                pf!(5.0);
+                pf!(target.to_u64());
+                ps!(text);
             }
             Event::CompositionEnd { target, text } => {
-                pf!(6.0); pf!(target.to_u64()); ps!(text);
+                pf!(6.0);
+                pf!(target.to_u64());
+                ps!(text);
             }
-            Event::Scroll { target, delta_x, delta_y } => {
-                pf!(7.0); pf!(target.to_u64()); pf!(*delta_x); pf!(*delta_y);
+            Event::Scroll {
+                target,
+                delta_x,
+                delta_y,
+            } => {
+                pf!(7.0);
+                pf!(target.to_u64());
+                pf!(*delta_x);
+                pf!(*delta_y);
             }
-            Event::Resize { width, height } => { pf!(8.0); pf!(*width); pf!(*height); }
-            Event::ActiveEnd { target }   => { pf!(9.0);  pf!(target.to_u64()); }
-            Event::HoverEnter { target }  => { pf!(10.0); pf!(target.to_u64()); }
-            Event::HoverLeave { target }  => { pf!(11.0); pf!(target.to_u64()); }
-            Event::KeyDown { target, key, modifiers } => {
-                pf!(12.0); pf!(target.to_u64()); ps!(key); pf!(*modifiers);
+            Event::Resize { width, height } => {
+                pf!(8.0);
+                pf!(*width);
+                pf!(*height);
             }
-            Event::ActiveStart { target } => { pf!(13.0); pf!(target.to_u64()); }
-            Event::PointerMove { x, y }   => { pf!(14.0); pf!(*x); pf!(*y); }
-            Event::FetchFont { family }   => { pf!(15.0); ps!(family); }
+            Event::ActiveEnd { target } => {
+                pf!(9.0);
+                pf!(target.to_u64());
+            }
+            Event::HoverEnter { target } => {
+                pf!(10.0);
+                pf!(target.to_u64());
+            }
+            Event::HoverLeave { target } => {
+                pf!(11.0);
+                pf!(target.to_u64());
+            }
+            Event::KeyDown {
+                target,
+                key,
+                modifiers,
+            } => {
+                pf!(12.0);
+                pf!(target.to_u64());
+                ps!(key);
+                pf!(*modifiers);
+            }
+            Event::ActiveStart { target } => {
+                pf!(13.0);
+                pf!(target.to_u64());
+            }
+            Event::PointerMove { x, y } => {
+                pf!(14.0);
+                pf!(*x);
+                pf!(*y);
+            }
+            Event::FetchFont { family } => {
+                pf!(15.0);
+                ps!(family);
+            }
         }
         result.push(&sub);
     }
@@ -1739,8 +2022,9 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
 async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
     let window = web_sys::window().ok_or("no window")?;
-    let resp: web_sys::Response =
-        JsFuture::from(window.fetch_with_str(url)).await?.dyn_into()?;
+    let resp: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
+        .await?
+        .dyn_into()?;
     if !resp.ok() {
         return Err(JsValue::from_str(&format!(
             "fetch failed: {} {}",
@@ -1757,13 +2041,13 @@ async fn fetch_image(url: &str) -> Result<ImageData, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
 
     let window = web_sys::window().ok_or("no window")?;
-    let resp: web_sys::Response =
-        JsFuture::from(window.fetch_with_str(url)).await?.dyn_into()?;
+    let resp: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
+        .await?
+        .dyn_into()?;
     let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
     let bytes = Uint8Array::new(&buf).to_vec();
 
-    let img = image::load_from_memory(&bytes)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let img = image::load_from_memory(&bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let rgba = img.into_rgba8();
     let width = rgba.width();
     let height = rgba.height();

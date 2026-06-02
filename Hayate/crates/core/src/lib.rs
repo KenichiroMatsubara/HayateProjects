@@ -5,7 +5,7 @@ pub mod vello_bridge;
 
 pub use color::Color;
 pub use element::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, ElementId, ElementKind, ElementTree,
-    Event, FlexDirectionValue, JustifyValue, ResolvedElement, StyleProp, StylePropKind,
+    AlignValue, Dimension, DimensionUnit, DisplayValue, ElementId, ElementKind, ElementTree, Event,
+    FlexDirectionValue, JustifyValue, ResolvedElement, StyleProp, StylePropKind,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextRunData};

@@ -10,7 +10,6 @@ import {
 } from './node.js';
 import { EVENT_PROP } from './events.js';
 
-/** 当該ノードと配下サブツリーのイベント購読をすべて解除する。 */
 function disposeEvents(node: TsubameNode): void {
   if (node.kind !== 'element') return;
   for (const unsub of node.events.values()) unsub();
@@ -18,15 +17,6 @@ function disposeEvents(node: TsubameNode): void {
   for (const child of node.children) disposeEvents(child);
 }
 
-/**
- * 親 ElementNode の text 系子ノードを走査してテキストを連結し、
- * IRenderer.setText を呼んで親 element のテキスト内容を更新する。
- *
- * Solid は `<text>Hello {name()}</text>` を
- *   TextNode("Hello ") + TextNode(name())
- * という複数の TextNode として扱う。これらは IRenderer には追加されず、
- * ここで連結されて setText に渡される。
- */
 function refreshText(parent: ElementNode): void {
   const text = parent.children
     .filter((n): n is TextNode => n.kind === 'text')
@@ -35,11 +25,6 @@ function refreshText(parent: ElementNode): void {
   activeRenderer().setText(parent.id, text);
 }
 
-/**
- * children 配列の from 以降にある最初の ElementNode を返す。
- * ElementNode を IRenderer に挿入するとき、anchor が TextNode（IRenderer に
- * 存在しない仮想ノード）の場合に実 anchor を探すために使う。
- */
 function nextElementSibling(parent: ElementNode, from: TsubameNode): ElementNode | undefined {
   const start = parent.children.indexOf(from);
   for (let i = start + 1; i < parent.children.length; i++) {
@@ -66,10 +51,6 @@ const {
     return createElementNode(activeRenderer().createElement(tag as ElementKind));
   },
 
-  /**
-   * Solid のテキストノードを仮想ノードとして作成する。
-   * IRenderer には element を作らず、親への setText 経由でのみ届ける。
-   */
   createTextNode(value: string): TsubameNode {
     return createTextShadowNode(value);
   },
@@ -77,7 +58,6 @@ const {
   replaceText(textNode: TsubameNode, value: string): void {
     if (textNode.kind !== 'text') return;
     textNode.text = value;
-    // 親 ElementNode の setText を更新する
     if (textNode.parent !== null) {
       refreshText(textNode.parent);
     }
@@ -108,15 +88,15 @@ const {
       }
       return;
     }
-    // その他の prop（src / value 等）は MVP スコープ外。
+
+    if (name === 'children' || name === 'ref') return;
+    r.setProperty(node.id, name, value);
   },
 
   insertNode(parent: TsubameNode, node: TsubameNode, anchor?: TsubameNode | null): void {
     if (parent.kind !== 'element') return;
     node.parent = parent;
 
-    // shadow ツリーにスプライス（universal の cleanChildren は marker に null を渡す
-    // ケースがあるため undefined/null を等価扱いする）
     if (anchor != null) {
       const i = parent.children.indexOf(anchor);
       parent.children.splice(i < 0 ? parent.children.length : i, 0, node);
@@ -125,13 +105,10 @@ const {
     }
 
     if (node.kind === 'text') {
-      // TextNode は IRenderer ツリーに挿入しない。親の setText を更新する。
       refreshText(parent);
       return;
     }
 
-    // ElementNode: IRenderer ツリーに実際に挿入する。
-    // anchor が TextNode（IRenderer 非存在）の場合は次の実 ElementNode を使う。
     const r = activeRenderer();
     const realAnchor =
       anchor == null
@@ -154,7 +131,6 @@ const {
     node.parent = null;
 
     if (node.kind === 'text') {
-      // TextNode は IRenderer ツリーになかったので removeChild は不要。
       refreshText(parent);
       return;
     }

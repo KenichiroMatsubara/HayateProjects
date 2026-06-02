@@ -12,6 +12,9 @@ import type { ElementId } from './element.js';
  */
 export type EventKind =
   | 'click'
+  | 'input'
+  | 'change'
+  | 'keydown'
   | 'hover-enter'
   | 'hover-leave'
   | 'focus'
@@ -25,6 +28,10 @@ export interface InteractionEvent {
   kind: EventKind;
   /** イベントが発生した element。 */
   target: ElementId;
+  /** text-input など入力系イベントで使う現在値。 */
+  value?: string;
+  /** keydown などキーボード系イベントで使うキー名。 */
+  key?: string;
 }
 
 export type EventHandler = (event: InteractionEvent) => void;

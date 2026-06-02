@@ -1,12 +1,11 @@
 use taffy::{
-    AlignItems, Dimension as TaffyDim, Display, FlexDirection, JustifyContent,
-    LengthPercentage, LengthPercentageAuto, Rect as TaffyRect, Size, Style,
+    AlignItems, Dimension as TaffyDim, Display, FlexDirection, JustifyContent, LengthPercentage,
+    LengthPercentageAuto, Rect as TaffyRect, Size, Style,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,
-    JustifyValue, StyleProp,
+    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue, StyleProp,
 };
 
 /// Context attached to each Taffy leaf so the measure closure can dispatch.
@@ -94,11 +93,19 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         }
         StyleProp::Gap(d) => {
             let lp = to_taffy_lp(*d);
-            style.gap = Size { width: lp, height: lp };
+            style.gap = Size {
+                width: lp,
+                height: lp,
+            };
         }
         StyleProp::Padding(d) => {
             let lp = to_taffy_lp(*d);
-            style.padding = TaffyRect { left: lp, right: lp, top: lp, bottom: lp };
+            style.padding = TaffyRect {
+                left: lp,
+                right: lp,
+                top: lp,
+                bottom: lp,
+            };
         }
         StyleProp::PaddingTop(d) => style.padding.top = to_taffy_lp(*d),
         StyleProp::PaddingRight(d) => style.padding.right = to_taffy_lp(*d),
@@ -106,12 +113,18 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         StyleProp::PaddingLeft(d) => style.padding.left = to_taffy_lp(*d),
         StyleProp::Margin(d) => {
             let lpa = to_taffy_lp_auto(*d);
-            style.margin = TaffyRect { left: lpa, right: lpa, top: lpa, bottom: lpa };
+            style.margin = TaffyRect {
+                left: lpa,
+                right: lpa,
+                top: lpa,
+                bottom: lpa,
+            };
         }
         StyleProp::MarginTop(d) => style.margin.top = to_taffy_lp_auto(*d),
         StyleProp::MarginRight(d) => style.margin.right = to_taffy_lp_auto(*d),
         StyleProp::MarginBottom(d) => style.margin.bottom = to_taffy_lp_auto(*d),
         StyleProp::MarginLeft(d) => style.margin.left = to_taffy_lp_auto(*d),
+        StyleProp::FlexGrow(v) => style.flex_grow = (*v).max(0.0),
         _ => return false,
     }
     true

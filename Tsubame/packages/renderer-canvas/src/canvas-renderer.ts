@@ -8,58 +8,28 @@ import type {
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
 import { asElementId } from '@tsubame/renderer-protocol';
-import type { HayateWasm } from './hayate.js';
-import {
-  OP,
-  KIND_CODE,
-  EVENT_KIND_BY_CODE,
-  EVENT_RECORD_SLOTS,
-} from './opcodes.js';
-import { encodeStylePatch } from './style-packet.js';
-
-/** ops バッファ（Float64Array）の固定長。フレームごとに書き込み位置をリセットする。 */
-export const MAX_OPS = 1 << 16;
-/** styles バッファ（Float32Array）の固定長。 */
-export const MAX_STYLE_FLOATS = 1 << 16;
-
-/**
- * 祖先の handler までバブリングする EventKind。
- *
- * DOM Renderer はネイティブイベントのバブリングに依存して、子要素上の click を
- * 親（例: button > text）の handler へ届ける。Canvas Renderer も親子関係を保持して
- * 同じ意味論を再現し、両 Renderer の挙動を一致させる。focus/blur/hover は DOM でも
- * バブリングしないため対象外。
- */
-const BUBBLING_EVENTS: ReadonlySet<EventKind> = new Set(['click']);
+import type { HayateEvent, HayateWasm } from './hayate.js';
+import { stylePatchToMutation } from './hayate.js';
 
 export interface CanvasRendererOptions {
-  /** RAF スケジューラの差し替え（テスト用）。省略時は requestAnimationFrame。 */
   requestFrame?: (cb: FrameRequestCallback) => number;
   cancelFrame?: (handle: number) => void;
 }
 
+const BUBBLING_EVENTS: ReadonlySet<EventKind> = new Set([
+  'click',
+  'input',
+  'change',
+  'keydown',
+]);
+
 type HandlerMap = Map<EventKind, Set<EventHandler>>;
 
-/**
- * Renderer Protocol の Canvas 実装。フレーム分の mutation を JS 側で積み、
- * `apply_mutations(ops, styles)` で 1 回/frame に集約して Hayate WASM に渡す
- * （JS→WASM 境界コストを O(1)/frame に削減）。
- *
- * - ElementId は JS 側モノトニックカウンターで採番（ADR-0005）
- * - createElement も OP_CREATE としてバッチに乗せる
- * - RAF ループは本クラスが所有し、コンストラクタで開始する
- * - RAF ループ内で poll_events() を呼び、登録済み handler を invoke する
- */
 export class CanvasRenderer implements IRenderer {
   private readonly hayate: HayateWasm;
-  private readonly ops = new Float64Array(MAX_OPS);
-  private readonly styles = new Float32Array(MAX_STYLE_FLOATS);
-  private opsCursor = 0;
-  private styleCursor = 0;
-  private readonly pendingText: Array<{ id: number; text: string }> = [];
   private readonly handlers = new Map<ElementId, HandlerMap>();
-  /** child → parent。イベントのバブリングに用いる（ツリー操作 op から構築）。 */
   private readonly parentOf = new Map<ElementId, ElementId>();
+  private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
@@ -75,7 +45,6 @@ export class CanvasRenderer implements IRenderer {
     this.frameHandle = this.requestFrame(this.frame);
   }
 
-  /** RAF ループを停止する。 */
   stop(): void {
     if (this.frameHandle !== null) {
       this.cancelFrame(this.frameHandle);
@@ -83,30 +52,28 @@ export class CanvasRenderer implements IRenderer {
     }
   }
 
-  /** レンダリングサーフェスのサイズを更新する（IRenderer.resize 実装）。 */
   resize(width: number, height: number): void {
-    this.hayate.resize?.(width, height);
+    this.hayate.on_resize(width, height);
   }
 
   createElement(kind: ElementKind): ElementId {
     const id = this.nextId++;
-    this.pushOp(OP.CREATE, id, KIND_CODE[kind]);
+    this.hayate.element_create(id, kind);
     return asElementId(id);
   }
 
   setRoot(id: ElementId): void {
-    this.pushOp(OP.SET_ROOT, id as number);
+    this.hayate.set_root(id as number);
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
-    this.parentOf.set(child, parent);
-    this.pushOp(OP.APPEND_CHILD, parent as number, child as number);
+    this.linkParent(parent, child);
+    this.hayate.element_append_child(parent as number, child as number);
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
-    this.parentOf.set(child, parent);
-    this.pushOp(
-      OP.INSERT_BEFORE,
+    this.linkParent(parent, child);
+    this.hayate.element_insert_before(
       parent as number,
       child as number,
       before as number,
@@ -114,28 +81,25 @@ export class CanvasRenderer implements IRenderer {
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
-    this.parentOf.delete(child);
-    this.pushOp(OP.REMOVE, child as number);
+    this.hayate.element_remove(child as number);
+    this.pruneLocalSubtree(child);
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    const offset = this.styleCursor;
-    const len = encodeStylePatch(style, this.styles, offset);
-    if (len === 0) return;
-    this.styleCursor += len;
-    if (this.styleCursor > MAX_STYLE_FLOATS) {
-      throw new Error(
-        `CanvasRenderer: styles バッファ超過（MAX_STYLE_FLOATS=${MAX_STYLE_FLOATS}）`,
-      );
+    const { props, unsetKinds } = stylePatchToMutation(style);
+    if (props.length > 0) {
+      this.hayate.element_set_style(id as number, props);
     }
-    this.pushOp(OP.SET_STYLE, id as number, offset, len);
+    if (unsetKinds.length > 0) {
+      this.hayate.element_unset_style(id as number, unsetKinds);
+    }
   }
 
   setText(id: ElementId, text: string): void {
-    // 文字列 op はバッチ外（ADR-0003）。ただし OP_CREATE のフラッシュ後に
-    // 適用されるよう、フレーム末で apply_mutations 後に実行する。
-    this.pendingText.push({ id: id as number, text });
+    this.hayate.element_set_text(id as number, text);
   }
+
+  setProperty(_id: ElementId, _name: string, _value: unknown): void {}
 
   addEventListener(
     id: ElementId,
@@ -155,70 +119,97 @@ export class CanvasRenderer implements IRenderer {
     set.add(handler);
     return () => {
       set.delete(handler);
+      if (set.size === 0) byKind.delete(event);
+      if (byKind.size === 0) this.handlers.delete(id);
     };
   }
 
-  // --- フレームループ ---
-
-  private readonly frame = (): void => {
-    if (this.opsCursor > 0) {
-      this.hayate.apply_mutations(
-        this.ops.subarray(0, this.opsCursor),
-        this.styles.subarray(0, this.styleCursor),
-      );
-      this.opsCursor = 0;
-      this.styleCursor = 0;
-    }
-
-    if (this.pendingText.length > 0) {
-      for (const { id, text } of this.pendingText) {
-        this.hayate.element_set_text(id, text);
-      }
-      this.pendingText.length = 0;
-    }
-
-    this.dispatchEvents();
+  private readonly frame = (timestampMs: number): void => {
+    this.hayate.render(timestampMs);
+    this.dispatchEvents(this.hayate.poll_events());
     this.frameHandle = this.requestFrame(this.frame);
   };
 
-  private dispatchEvents(): void {
-    // ADR-0034: poll_events() は Array<Array<any>> を返す。
-    // 各サブ配列は [kind: number, target?: number, ...rest] の形式。
-    const events = this.hayate.poll_events();
-    for (const sub of events) {
-      const kindCode = sub[0] as number;
-      const kind = EVENT_KIND_BY_CODE[kindCode];
-      if (kind === undefined) continue;
-      // target フィールドがある種別（click, focus, blur, hover-enter/leave 等）
-      const targetRaw = sub[1];
-      if (typeof targetRaw !== 'number') continue;
-      this.dispatchOne(kind, asElementId(targetRaw));
+  private dispatchEvents(events: HayateEvent[]): void {
+    for (const event of events) {
+      switch (event.type) {
+        case 'click':
+        case 'text-input':
+        case 'key-down':
+        case 'focus':
+        case 'blur':
+        case 'hover-enter':
+        case 'hover-leave':
+          this.dispatchOne(
+            event.type === 'text-input'
+              ? 'input'
+              : event.type === 'key-down'
+              ? 'keydown'
+              : event.type,
+            asElementId(event.target),
+            event.type === 'text-input'
+              ? { value: event.text }
+              : event.type === 'key-down'
+              ? { key: event.key }
+              : undefined,
+          );
+          break;
+        default:
+          break;
+      }
     }
   }
 
-  /**
-   * ヒットした element から、必要なら祖先へバブリングしつつ handler を invoke する。
-   * DOM Renderer 同様、`target` は handler が登録された element とする。
-   */
-  private dispatchOne(kind: EventKind, hit: ElementId): void {
+  private dispatchOne(
+    kind: EventKind,
+    hit: ElementId,
+    detail?: { value?: string; key?: string },
+  ): void {
     const bubbles = BUBBLING_EVENTS.has(kind);
     let node: ElementId | undefined = hit;
     while (node !== undefined) {
       const set = this.handlers.get(node)?.get(kind);
       if (set !== undefined) {
-        for (const handler of set) handler({ kind, target: node });
+        for (const handler of set) handler({ kind, target: node, ...detail });
       }
       if (!bubbles) break;
       node = this.parentOf.get(node);
     }
   }
 
-  private pushOp(...slots: number[]): void {
-    if (this.opsCursor + slots.length > MAX_OPS) {
-      throw new Error(
-        `CanvasRenderer: ops バッファ超過（MAX_OPS=${MAX_OPS}）。1 フレームの mutation 数を見直してください。`,
-      );
+  private linkParent(parent: ElementId, child: ElementId): void {
+    const prevParent = this.parentOf.get(child);
+    if (prevParent !== undefined) {
+      this.childrenOf.get(prevParent)?.delete(child);
     }
-    for (const slot of slots) this.ops[this.opsCursor++] = slot;
+    this.parentOf.set(child, parent);
+    let set = this.childrenOf.get(parent);
+    if (set === undefined) {
+      set = new Set();
+      this.childrenOf.set(parent, set);
+    }
+    set.add(child);
+  }
+
+  private pruneLocalSubtree(root: ElementId): void {
+    const parent = this.parentOf.get(root);
+    if (parent !== undefined) {
+      this.childrenOf.get(parent)?.delete(root);
+      this.parentOf.delete(root);
+    }
+
+    const stack: ElementId[] = [root];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      const children = this.childrenOf.get(node);
+      if (children !== undefined) {
+        for (const child of children) {
+          this.parentOf.delete(child);
+          stack.push(child);
+        }
+        this.childrenOf.delete(node);
+      }
+      this.handlers.delete(node);
+    }
   }
 }
