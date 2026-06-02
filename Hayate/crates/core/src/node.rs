@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use slotmap::{DefaultKey, SlotMap};
-use vello::peniko::{FontData, ImageData};
-use vello::Glyph;
+
+use crate::render::{RenderFont, RenderGlyph, RenderImage};
 
 pub type NodeId = DefaultKey;
 
 #[derive(Debug, Clone)]
 pub struct TextRunData {
-    pub font: FontData,
+    pub font: RenderFont,
     pub font_size: f32,
-    pub glyphs: Vec<Glyph>,
+    pub glyphs: Vec<RenderGlyph>,
     pub text: Arc<str>,
 }
 
@@ -45,7 +45,7 @@ pub enum NodeKind {
         y: f32,
         width: f32,
         height: f32,
-        data: Arc<ImageData>,
+        data: Arc<RenderImage>,
     },
 }
 
@@ -55,6 +55,7 @@ pub struct Node {
     pub children: Vec<NodeId>,
 }
 
+#[derive(Debug, Clone)]
 pub struct SceneGraph {
     nodes: SlotMap<NodeId, Node>,
     /// Top-level nodes in paint order (no parent). Children of Group/Clip are not listed here.

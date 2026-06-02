@@ -1,11 +1,10 @@
+use linebender_resource_handle::Blob;
 use std::collections::{HashMap, HashSet};
 
 use parley::{FontContext, LayoutContext};
 use taffy::{AvailableSpace, NodeId as TaffyId, Size as TaffySize, Style as TaffyStyle, TaffyTree};
 
 use std::sync::Arc;
-
-use vello::peniko::ImageData;
 
 use crate::color::Color;
 use crate::element::id::ElementId;
@@ -15,6 +14,7 @@ use crate::element::style::{StyleProp, StylePropKind};
 use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::node::SceneGraph;
+use crate::render::RenderImage;
 
 #[derive(Clone, Debug)]
 pub struct Visual {
@@ -63,7 +63,7 @@ pub(crate) struct Element {
     /// Scroll offset for ScrollView elements (x, y in pixels).
     pub scroll_offset: (f32, f32),
     /// Loaded image data for Image elements (populated by the adapter after async fetch).
-    pub src_image: Option<Arc<ImageData>>,
+    pub src_image: Option<Arc<RenderImage>>,
     /// Editable text value for TextInput elements.
     pub text_content: String,
     /// IME preedit (in-progress composition, not yet committed).
@@ -201,7 +201,6 @@ pub struct ElementTree {
 
 fn init_bundled_fonts(font_cx: &mut FontContext) {
     use fontique::{FontInfoOverride, GenericFamily};
-    use vello::peniko::Blob;
 
     static NOTO_SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/NotoSansJP.ttf");
 
@@ -318,7 +317,7 @@ impl ElementTree {
     }
 
     /// Store decoded image data for an Image element (called by the adapter after async load).
-    pub fn element_set_image(&mut self, id: ElementId, image: Arc<ImageData>) {
+    pub fn element_set_image(&mut self, id: ElementId, image: Arc<RenderImage>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.src_image = Some(image);
         }
@@ -443,7 +442,6 @@ impl ElementTree {
     pub fn register_font(&mut self, family_name: &str, bytes: Vec<u8>) {
         use fontique::FontInfoOverride;
         use std::sync::Arc;
-        use vello::peniko::Blob;
 
         let data = Arc::new(bytes);
 
@@ -480,7 +478,6 @@ impl ElementTree {
     /// font file itself. Backs the WIT `element-load-font` export.
     pub fn register_font_bytes(&mut self, bytes: Vec<u8>) {
         use std::sync::Arc;
-        use vello::peniko::Blob;
         let blob = Blob::new(Arc::new(bytes));
         self.font_cx.collection.register_fonts(blob, None);
     }
@@ -1025,7 +1022,11 @@ impl ElementTree {
                     Some(p) => format!("{}{}", el.text_content, p),
                     None => el.text_content.clone(),
                 };
-                (text, el.visual.font_size.unwrap_or(16.0), el.visual.font_weight)
+                (
+                    text,
+                    el.visual.font_size.unwrap_or(16.0),
+                    el.visual.font_weight,
+                )
             };
 
             if display_text.is_empty() {

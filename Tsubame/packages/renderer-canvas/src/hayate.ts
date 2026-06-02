@@ -52,7 +52,8 @@ export type HayateStyleProp =
   | { 'font-size': number }
   | { 'font-family': string }
   | { color: HayateColorRecord }
-  | { 'z-index': number };
+  | { 'z-index': number }
+  | { 'flex-grow': number };
 
 export type HayateStylePropKind = 'color' | 'font-size' | 'font-family';
 
@@ -208,7 +209,8 @@ export function stylePatchToMutation(patch: StylePatch): {
         props.push({ 'z-index': finiteInteger(k, value) });
         break;
       case 'flexGrow':
-        throw new Error('CanvasRenderer: "flexGrow" is not defined in WIT');
+        props.push({ 'flex-grow': finiteNumber(k, value) });
+        break;
       case 'fontWeight':
         throw new Error('CanvasRenderer: "fontWeight" is not defined in WIT');
       default:

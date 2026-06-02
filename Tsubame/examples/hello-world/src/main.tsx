@@ -1,9 +1,7 @@
 import type { IRenderer } from '@tsubame/renderer-protocol';
 import { DomRenderer } from '@tsubame/renderer-dom';
-import { CanvasRenderer } from '@tsubame/renderer-canvas';
 import { renderTsubame } from '@tsubame/solid';
 import { TodoApp, type Mode, type ModeSource } from './App';
-import { MockHayate } from './mock-hayate';
 
 function detectMode(): { mode: Mode; source: ModeSource } {
   const q = new URLSearchParams(window.location.search).get('mode');
@@ -40,6 +38,10 @@ if (mode === 'DOM') {
   renderer = new DomRenderer({ container: dom });
   renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: dom });
 } else {
+  const [{ CanvasRenderer }, { MockHayate }] = await Promise.all([
+    import('@tsubame/renderer-canvas'),
+    import('./mock-hayate'),
+  ]);
   const w = window.innerWidth;
   const h = window.innerHeight;
   canvas.hidden = false;

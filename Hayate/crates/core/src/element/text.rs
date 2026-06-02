@@ -3,12 +3,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use parley::{
-    FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem,
-    StyleProperty,
+    FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
 };
-use vello::Glyph;
 
 use crate::node::TextRunData;
+use crate::render::{RenderFont, RenderGlyph};
 
 /// Brush type stored in Parley styles; color is applied at draw time.
 pub type TextBrush = [u8; 4];
@@ -168,11 +167,11 @@ fn lower_glyph_runs(
             let run = grun.run();
             let baseline = grun.baseline();
             let offset = grun.offset();
-            let font = run.font().clone();
-            let positioned: Vec<Glyph> = grun
+            let font = RenderFont::from(run.font().clone());
+            let positioned: Vec<RenderGlyph> = grun
                 .glyphs()
                 .scan(offset, |x, g| {
-                    let glyph = Glyph {
+                    let glyph = RenderGlyph {
                         id: g.id,
                         x: *x + g.x,
                         y: baseline + g.y,

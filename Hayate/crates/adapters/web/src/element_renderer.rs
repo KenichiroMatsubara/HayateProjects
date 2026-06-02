@@ -3,10 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use hayate_core::{vello_bridge, ElementId, ElementKind, ElementTree, Event, StyleProp};
-use vello::peniko::{
-    color::{AlphaColor, Srgb},
-    Blob, ImageAlphaType, ImageData, ImageFormat,
+use hayate_core::{
+    ElementId, ElementKind, ElementTree, Event, RenderImage, RenderImageAlphaType,
+    RenderImageFormat, StyleProp,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -120,7 +119,7 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
     }
 }
 
-use crate::gpu_surface::GpuSurface;
+use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::style_packet;
 
 // ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
@@ -361,7 +360,7 @@ const OP_CREATE: u32 = 9;
 
 #[wasm_bindgen]
 pub struct HayateElementRenderer {
-    gpu: GpuSurface,
+    backend: SelectedBackend,
     tree: ElementTree,
     hovered_element: Option<ElementId>,
     active_element: Option<ElementId>,
@@ -369,7 +368,7 @@ pub struct HayateElementRenderer {
     /// wgpu surface clear colour. Decoupled from `render(timestamp_ms)` because
     /// the WIT `render` signature no longer carries it (ADR-0032 keeps render
     /// timestamp-only); call `set_background_color` separately.
-    background: AlphaColor<Srgb>,
+    background: [f32; 4],
     /// Fonts fetched by spawned futures; applied to the tree on next poll_events.
     font_queue: FontQueue,
 }
@@ -379,16 +378,16 @@ impl HayateElementRenderer {
     pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateElementRenderer, JsValue> {
         let width = canvas.width() as f32;
         let height = canvas.height() as f32;
-        let gpu = GpuSurface::init(canvas).await?;
+        let backend = SelectedBackend::init(canvas).await?;
         let mut tree = ElementTree::new();
         tree.set_viewport(width, height);
         Ok(Self {
-            gpu,
+            backend,
             tree,
             hovered_element: None,
             active_element: None,
             last_pointer_pos: None,
-            background: AlphaColor::<Srgb>::new([0.0, 0.0, 0.0, 1.0]),
+            background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
         })
     }
@@ -398,7 +397,7 @@ impl HayateElementRenderer {
     /// ADR-0032 so demos can still drive their colour pickers without
     /// re-issuing the colour each frame.
     pub fn set_background_color(&mut self, r: f64, g: f64, b: f64) {
-        self.background = AlphaColor::<Srgb>::new([r as f32, g as f32, b as f32, 1.0]);
+        self.background = [r as f32, g as f32, b as f32, 1.0];
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -512,8 +511,7 @@ impl HayateElementRenderer {
             self.tree.register_font(&family, bytes);
         }
         let sg = self.tree.render(timestamp_ms);
-        let scene = vello_bridge::build_scene(sg);
-        self.gpu.present(&scene, self.background)
+        self.backend.render_scene(sg, self.background)
     }
 
     /// Fetch an image (PNG / JPEG / WebP) from `url` and attach it to the Image element.
@@ -2037,7 +2035,7 @@ async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
 }
 
 /// Fetch a URL and decode it as RGBA8, supporting PNG / JPEG / WebP.
-async fn fetch_image(url: &str) -> Result<ImageData, JsValue> {
+async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
 
     let window = web_sys::window().ok_or("no window")?;
@@ -2053,11 +2051,10 @@ async fn fetch_image(url: &str) -> Result<ImageData, JsValue> {
     let height = rgba.height();
     let raw = rgba.into_raw();
 
-    let blob = Blob::new(Arc::new(raw));
-    Ok(ImageData {
-        data: blob,
-        format: ImageFormat::Rgba8,
-        alpha_type: ImageAlphaType::Alpha,
+    Ok(RenderImage {
+        data: Arc::from(raw.into_boxed_slice()),
+        format: RenderImageFormat::Rgba8,
+        alpha_type: RenderImageAlphaType::Alpha,
         width,
         height,
     })

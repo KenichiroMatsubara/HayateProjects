@@ -495,11 +495,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "fontique",
+ "linebender_resource_handle",
  "log",
  "parley",
  "slotmap",
  "taffy",
- "vello",
 ]
 
 [[package]]

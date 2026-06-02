@@ -403,7 +403,9 @@ fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<()
         StyleProp::MarginLeft(d) => style.set_property("margin-left", &css_dim(d))?,
         StyleProp::FontSize(v) => style.set_property("font-size", &format!("{}px", v.max(0.0)))?,
         StyleProp::FontFamily(ref f) => style.set_property("font-family", f)?,
-        StyleProp::FontWeight(v) => style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?,
+        StyleProp::FontWeight(v) => {
+            style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?
+        }
         StyleProp::Color(c) => style.set_property("color", &css_rgba(c))?,
         StyleProp::ZIndex(z) => style.set_property("z-index", &z.to_string())?,
         StyleProp::FlexGrow(v) => style.set_property("flex-grow", &format!("{}", v.max(0.0)))?,

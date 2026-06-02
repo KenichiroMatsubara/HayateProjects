@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
-mod element_renderer;
+mod backend;
 #[cfg(target_arch = "wasm32")]
-mod gpu_surface;
+mod element_renderer;
 #[cfg(target_arch = "wasm32")]
 mod style_packet;
 #[cfg(target_arch = "wasm32")]

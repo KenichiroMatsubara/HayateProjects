@@ -5,10 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-vello.workspace = true
 taffy.workspace = true
 parley.workspace = true
 fontique.workspace = true
 slotmap.workspace = true
 anyhow.workspace = true
 log.workspace = true
+linebender_resource_handle = "0.1.1"

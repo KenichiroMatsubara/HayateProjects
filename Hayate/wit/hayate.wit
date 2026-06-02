@@ -99,6 +99,8 @@ interface types {
     color(color),
     // stacking
     z-index(s32),
+    // flex
+    flex-grow(f32),
   }
 
   // ── Event types ──────────────────────────────────────────────────────────

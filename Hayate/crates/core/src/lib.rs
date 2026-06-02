@@ -1,7 +1,7 @@
 pub mod color;
 pub mod element;
 pub mod node;
-pub mod vello_bridge;
+pub mod render;
 
 pub use color::Color;
 pub use element::{
@@ -9,3 +9,7 @@ pub use element::{
     FlexDirectionValue, JustifyValue, ResolvedElement, StyleProp, StylePropKind,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextRunData};
+pub use render::{
+    NullBackend, RecordedFrame, RecordingBackend, RenderFont, RenderGlyph, RenderImage,
+    RenderImageAlphaType, RenderImageFormat,
+};

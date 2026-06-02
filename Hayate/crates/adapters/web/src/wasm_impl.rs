@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 
-use hayate_core::{vello_bridge, Node, NodeKind, SceneGraph};
+use hayate_core::{Node, NodeKind, SceneGraph};
 use slotmap::{Key, KeyData};
-use vello::{
-    peniko::color::{AlphaColor, Srgb},
-    Scene,
-};
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement};
 
-use crate::gpu_surface::GpuSurface;
+use crate::backend::{CanvasBackend, SelectedBackend};
 
 fn document() -> Document {
     web_sys::window().unwrap().document().unwrap()
@@ -24,7 +20,7 @@ pub fn start() {
 /// Raw Layer renderer — exposes direct Rect node mutation backed by Vello.
 #[wasm_bindgen]
 pub struct HayateRenderer {
-    gpu: GpuSurface,
+    backend: SelectedBackend,
     scene_graph: SceneGraph,
 }
 
@@ -33,9 +29,9 @@ impl HayateRenderer {
     /// Initialise wgpu (WebGPU) + Vello from an HTML canvas element.
     /// Returns a `Promise<HayateRenderer>` because GPU requests are async.
     pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateRenderer, JsValue> {
-        let gpu = GpuSurface::init(canvas).await?;
+        let backend = SelectedBackend::init(canvas).await?;
         Ok(HayateRenderer {
-            gpu,
+            backend,
             scene_graph: SceneGraph::new(),
         })
     }
@@ -78,16 +74,15 @@ impl HayateRenderer {
 
     /// Render the current scene graph to the canvas.
     pub fn render(&mut self, bg_r: f64, bg_g: f64, bg_b: f64) -> Result<(), JsValue> {
-        let base_color = AlphaColor::<Srgb>::new([bg_r as f32, bg_g as f32, bg_b as f32, 1.0]);
-        let scene = vello_bridge::build_scene(&self.scene_graph);
-        self.gpu.present(&scene, base_color)
+        self.backend.render_scene(
+            &self.scene_graph,
+            [bg_r as f32, bg_g as f32, bg_b as f32, 1.0],
+        )
     }
 
     /// Clear the canvas to an RGB solid colour (components in 0.0 – 1.0).
     pub fn clear(&mut self, r: f64, g: f64, b: f64) -> Result<(), JsValue> {
-        let base_color = AlphaColor::<Srgb>::new([r as f32, g as f32, b as f32, 1.0]);
-        let scene = Scene::new();
-        self.gpu.present(&scene, base_color)
+        self.backend.clear([r as f32, g as f32, b as f32, 1.0])
     }
 }
 
