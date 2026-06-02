@@ -58,8 +58,8 @@ export interface HayateStyle {
   fontSize: number;
   fontFamily: string;
   /**
-   * DOM Renderer only for now. Hayate Core has no FontWeight StyleProp yet,
-   * so Canvas Renderer rejects this instead of silently dropping it.
+   * Mapped by both renderers: DOM sets `font-weight`, Canvas encodes it as
+   * the `font-weight` style-packet TAG (Hayate Core `StyleProp::FontWeight`).
    */
   fontWeight: FontWeight;
 }

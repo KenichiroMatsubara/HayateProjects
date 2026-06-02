@@ -8,8 +8,9 @@ import type {
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
 import { asElementId } from '@tsubame/renderer-protocol';
-import type { HayateEvent, HayateWasm } from './hayate.js';
-import { stylePatchToMutation } from './hayate.js';
+import type { RawHayate } from './hayate.js';
+import { encodeStylePatch, unsetKindsOf } from './style-encoder.js';
+import { ELEMENT_KIND, OP } from './opcodes.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
@@ -26,18 +27,23 @@ const BUBBLING_EVENTS: ReadonlySet<EventKind> = new Set([
 type HandlerMap = Map<EventKind, Set<EventHandler>>;
 
 export class CanvasRenderer implements IRenderer {
-  private readonly hayate: HayateWasm;
+  private readonly raw: RawHayate;
   private readonly handlers = new Map<ElementId, HandlerMap>();
   private readonly parentOf = new Map<ElementId, ElementId>();
   private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
+  /** Per-frame mutation batch (ADR-0039). Flushed once per frame via `apply_mutations`. */
+  private readonly ops: number[] = [];
+  /** Flat style-packet buffer referenced by `OP_SET_STYLE` offsets. */
+  private readonly styles: number[] = [];
+
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
   private frameHandle: number | null = null;
 
-  constructor(hayate: HayateWasm, options: CanvasRendererOptions = {}) {
-    this.hayate = hayate;
+  constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
+    this.raw = raw;
     this.requestFrame =
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
     this.cancelFrame =
@@ -53,27 +59,28 @@ export class CanvasRenderer implements IRenderer {
   }
 
   resize(width: number, height: number): void {
-    this.hayate.on_resize(width, height);
+    this.raw.on_resize(width, height);
   }
 
   createElement(kind: ElementKind): ElementId {
     const id = this.nextId++;
-    this.hayate.element_create(id, kind);
+    this.ops.push(OP.CREATE, id, ELEMENT_KIND[kind]);
     return asElementId(id);
   }
 
   setRoot(id: ElementId): void {
-    this.hayate.set_root(id as number);
+    this.ops.push(OP.SET_ROOT, id as number);
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
     this.linkParent(parent, child);
-    this.hayate.element_append_child(parent as number, child as number);
+    this.ops.push(OP.APPEND_CHILD, parent as number, child as number);
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
     this.linkParent(parent, child);
-    this.hayate.element_insert_before(
+    this.ops.push(
+      OP.INSERT_BEFORE,
       parent as number,
       child as number,
       before as number,
@@ -81,22 +88,34 @@ export class CanvasRenderer implements IRenderer {
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
-    this.hayate.element_remove(child as number);
+    this.ops.push(OP.REMOVE, child as number);
     this.pruneLocalSubtree(child);
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    const { props, unsetKinds } = stylePatchToMutation(style);
-    if (props.length > 0) {
-      this.hayate.element_set_style(id as number, props);
+    // SET part → style-packet appended to the shared per-frame buffer.
+    const offset = this.styles.length;
+    encodeStylePatch(style, this.styles);
+    const len = this.styles.length - offset;
+    if (len > 0) {
+      this.ops.push(OP.SET_STYLE, id as number, offset, len);
     }
-    if (unsetKinds.length > 0) {
-      this.hayate.element_unset_style(id as number, unsetKinds);
+
+    // UNSET part (ADR-0047) is out-of-band — `element_unset_style` is not an op
+    // in `apply_mutations`. Flush first so a same-patch SET applies before the
+    // reset, preserving order.
+    const kinds = unsetKindsOf(style);
+    if (kinds.length > 0) {
+      this.flush();
+      this.raw.element_unset_style(id as number, Uint32Array.from(kinds));
     }
   }
 
   setText(id: ElementId, text: string): void {
-    this.hayate.element_set_text(id as number, text);
+    // Text is a string op, kept out of the typed-array batch. Flush pending ops
+    // so the element's OP_CREATE has been applied before we set its text.
+    this.flush();
+    this.raw.element_set_text(id as number, text);
   }
 
   setProperty(_id: ElementId, _name: string, _value: unknown): void {}
@@ -124,35 +143,59 @@ export class CanvasRenderer implements IRenderer {
     };
   }
 
+  /** Drain the per-frame batch into a single `apply_mutations` call. */
+  private flush(): void {
+    if (this.ops.length === 0) return;
+    this.raw.apply_mutations(
+      new Float64Array(this.ops),
+      new Float32Array(this.styles),
+    );
+    this.ops.length = 0;
+    this.styles.length = 0;
+  }
+
   private readonly frame = (timestampMs: number): void => {
-    this.hayate.render(timestampMs);
-    this.dispatchEvents(this.hayate.poll_events());
+    this.flush();
+    this.raw.render(timestampMs);
+    this.dispatchEvents(this.raw.poll_events());
     this.frameHandle = this.requestFrame(this.frame);
   };
 
-  private dispatchEvents(events: HayateEvent[]): void {
-    for (const event of events) {
-      switch (event.type) {
-        case 'click':
-        case 'text-input':
-        case 'key-down':
-        case 'focus':
-        case 'blur':
-        case 'hover-enter':
-        case 'hover-leave':
-          this.dispatchOne(
-            event.type === 'text-input'
-              ? 'input'
-              : event.type === 'key-down'
-              ? 'keydown'
-              : event.type,
-            asElementId(event.target),
-            event.type === 'text-input'
-              ? { value: event.text }
-              : event.type === 'key-down'
-              ? { key: event.key }
-              : undefined,
-          );
+  /**
+   * Decode Hayate's `poll_events()` array-of-arrays (ADR-0034) into protocol
+   * events. Each entry is `[kindCode, ...fields]`; kind codes match
+   * `encode_events` in `element_renderer.rs`. Events without a protocol
+   * `EventKind` (resize / pointer-move / scroll / composition / active-*) are
+   * ignored.
+   */
+  private dispatchEvents(events: unknown[]): void {
+    for (const entry of events) {
+      const ev = entry as Array<number | string>;
+      switch (ev[0]) {
+        case 0: // click [0, target, x, y]
+          this.dispatchOne('click', asElementId(ev[1] as number));
+          break;
+        case 1: // focus [1, target]
+          this.dispatchOne('focus', asElementId(ev[1] as number));
+          break;
+        case 2: // blur [2, target]
+          this.dispatchOne('blur', asElementId(ev[1] as number));
+          break;
+        case 3: // text-input [3, target, text]
+          this.dispatchOne('input', asElementId(ev[1] as number), {
+            value: ev[2] as string,
+          });
+          break;
+        case 10: // hover-enter [10, target]
+          this.dispatchOne('hover-enter', asElementId(ev[1] as number));
+          break;
+        case 11: // hover-leave [11, target]
+          this.dispatchOne('hover-leave', asElementId(ev[1] as number));
+          break;
+        case 12: // key-down [12, target, key, modifiers]
+          this.dispatchOne('keydown', asElementId(ev[1] as number), {
+            key: ev[2] as string,
+          });
           break;
         default:
           break;

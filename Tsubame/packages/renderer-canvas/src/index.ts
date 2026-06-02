@@ -1,12 +1,7 @@
-export {
-  CanvasRenderer,
-} from './canvas-renderer.js';
+export { CanvasRenderer } from './canvas-renderer.js';
 export type { CanvasRendererOptions } from './canvas-renderer.js';
-export type {
-  HayateWasm,
-  HayateEvent,
-  HayateStyleProp,
-  HayateStylePropKind,
-} from './hayate.js';
+export type { RawHayate } from './hayate.js';
+export { parseColor } from './hayate.js';
 export { initCanvasRenderer } from './init.js';
-export { parseColor, stylePatchToMutation } from './hayate.js';
+export { encodeStylePatch, unsetKindsOf, TAG, UNSET_KIND } from './style-encoder.js';
+export { OP, ELEMENT_KIND } from './opcodes.js';
