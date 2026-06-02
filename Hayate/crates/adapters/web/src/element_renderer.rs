@@ -999,6 +999,7 @@ pub struct HayateElementHtmlRenderer {
 #[wasm_bindgen]
 impl HayateElementHtmlRenderer {
     pub fn new(container: HtmlElement) -> Result<HayateElementHtmlRenderer, JsValue> {
+        inject_baseline_stylesheet()?;
         let style = container.style();
         style.set_property("position", "relative")?;
         style.set_property("overflow", "hidden")?;
@@ -1838,6 +1839,31 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
         }
         _ => {}
     }
+    Ok(())
+}
+
+/// Document-level CSS baseline injected once per page load.
+///
+/// Uses a `<style id="hayate-reset">` sentinel to be idempotent.
+/// A global rule covers all elements in the document — including hidden
+/// DOM trees created by Canvas-mode mocks — with no per-element overhead.
+fn inject_baseline_stylesheet() -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or("no window")?;
+    let doc = window.document().ok_or("no document")?;
+    if doc.get_element_by_id("hayate-reset").is_some() {
+        return Ok(());
+    }
+    let head = doc.head().ok_or("no head")?;
+    let style_el = doc.create_element("style")?;
+    style_el.set_id("hayate-reset");
+    style_el.set_text_content(Some(
+        "*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; } \
+         html { font-size: 16px; line-height: 1; -webkit-text-size-adjust: 100%; } \
+         body { font-size: inherit; line-height: inherit; } \
+         img, canvas, svg, video { display: block; } \
+         input, button, select, textarea { font: inherit; color: inherit; appearance: none; }",
+    ));
+    head.append_child(style_el.as_ref())?;
     Ok(())
 }
 

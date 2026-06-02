@@ -38,10 +38,7 @@ if (mode === 'DOM') {
   renderer = new DomRenderer({ container: dom });
   renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: dom });
 } else {
-  const [{ CanvasRenderer }, { MockHayate }] = await Promise.all([
-    import('@tsubame/renderer-canvas'),
-    import('./mock-hayate'),
-  ]);
+  const { initCanvasRenderer } = await import('@tsubame/renderer-canvas');
   const w = window.innerWidth;
   const h = window.innerHeight;
   canvas.hidden = false;
@@ -49,6 +46,6 @@ if (mode === 'DOM') {
   canvas.height = h;
   canvas.style.width = `${w}px`;
   canvas.style.height = `${h}px`;
-  renderer = new CanvasRenderer(new MockHayate(canvas));
+  renderer = await initCanvasRenderer(canvas);
   renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: canvas });
 }

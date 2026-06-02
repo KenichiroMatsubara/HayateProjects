@@ -1,43 +1,58 @@
 import initWasm, { HayateElementRenderer } from 'hayate-adapter-web';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { CanvasRendererOptions } from './canvas-renderer.js';
-import type { HayateWasm } from './hayate.js';
+import type { RawHayate } from './hayate.js';
 
 /**
- * Hayate WASM を初期化し CanvasRenderer を返す。
- * アプリ側はこの関数を呼ぶだけでよく、WASM ロードや HayateElementRenderer の
- * ライフサイクルを意識する必要がない。
+ * 実 Hayate WASM を初期化し `CanvasRenderer` を返す。
+ *
+ * アプリ側はこの関数を呼ぶだけでよく、WASM ロードや `HayateElementRenderer`
+ * のライフサイクルを意識する必要がない。`HayateElementRenderer` は WIT
+ * element-layer の wasm-bindgen 実装で、構造的に {@link RawHayate} を充足する。
  */
 export async function initCanvasRenderer(
   canvas: HTMLCanvasElement,
   options?: CanvasRendererOptions,
 ): Promise<CanvasRenderer> {
   await initWasm();
-  const raw = await HayateElementRenderer.init(canvas) as unknown as Record<string, unknown>;
-  const hayate: HayateWasm = {
-    element_create: (id, kind) => (raw.element_create as (id: number, kind: string) => void)(id, kind),
-    set_root: (id) => (raw.set_root as (id: number) => void)(id),
-    element_append_child: (parent, child) =>
-      (raw.element_append_child as (parent: number, child: number) => void)(parent, child),
-    element_insert_before: (parent, child, before) =>
-      (raw.element_insert_before as (
-        parent: number,
-        child: number,
-        before: number,
-      ) => void)(parent, child, before),
-    element_remove: (id) => (raw.element_remove as (id: number) => void)(id),
-    element_set_style: (id, props) =>
-      (raw.element_set_style as (id: number, props: unknown[]) => void)(id, props),
-    element_unset_style: (id, kinds) =>
-      (raw.element_unset_style as (id: number, kinds: string[]) => void)(id, kinds),
-    element_set_text: (id, text) =>
-      (raw.element_set_text as (id: number, text: string) => void)(id, text),
-    on_resize: (width, height) =>
-      (raw.on_resize as (width: number, height: number) => void)(width, height),
-    render: (timestampMs) =>
-      (raw.render as (timestampMs: number) => void)(timestampMs),
-    poll_events: () =>
-      (raw.poll_events as () => ReturnType<HayateWasm['poll_events']>)(),
+  const raw = (await HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  attachPointerInput(canvas, raw);
+  return new CanvasRenderer(raw, options);
+}
+
+/**
+ * ポインタ入力を実 Canvas renderer に供給する。
+ *
+ * DOM Mode と異なり Canvas renderer はブラウザのヒットテストを持たないため、
+ * ホストが canvas 座標系の生 (x, y) を `on_pointer_*` に渡す責務を負う。
+ * renderer 内部でヒットテストして click / hover-enter / hover-leave を生成し、
+ * `poll_events()` 経由で返す。これが無いと一切のインタラクションが発火しない。
+ */
+function attachPointerInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
+  const toCanvas = (e: MouseEvent): readonly [number, number] => {
+    const rect = canvas.getBoundingClientRect();
+    const sx = rect.width === 0 ? 1 : canvas.width / rect.width;
+    const sy = rect.height === 0 ? 1 : canvas.height / rect.height;
+    return [(e.clientX - rect.left) * sx, (e.clientY - rect.top) * sy];
   };
-  return new CanvasRenderer(hayate, options);
+  canvas.addEventListener('mousemove', (e) => {
+    const [x, y] = toCanvas(e);
+    raw.on_pointer_move(x, y);
+  });
+  canvas.addEventListener('mousedown', (e) => {
+    const [x, y] = toCanvas(e);
+    raw.on_pointer_down(x, y);
+  });
+  canvas.addEventListener('mouseup', (e) => {
+    const [x, y] = toCanvas(e);
+    raw.on_pointer_up(x, y);
+  });
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      const [x, y] = toCanvas(e);
+      raw.on_wheel(x, y, e.deltaX, e.deltaY);
+    },
+    { passive: true },
+  );
 }
