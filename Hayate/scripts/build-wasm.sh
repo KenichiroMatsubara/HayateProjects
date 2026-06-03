@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATE_DIR="$ROOT_DIR/crates/adapters/web"
 OUT_DIR="$ROOT_DIR/examples/web-demo/pkg"
+OUT_DIR_CPU="$ROOT_DIR/examples/web-demo/pkg-tiny-skia"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -39,5 +40,15 @@ wasm-pack build "$CRATE_DIR" \
   --out-dir "$OUT_DIR"
 echo
 
-echo -e "${GREEN}${BOLD}✓ Done!${RESET}  pkg → examples/web-demo/pkg/"
+# ── Step 3: wasm-pack build (tiny-skia CPU backend) ─────────────────────────
+echo -e "${CYAN}▶ wasm-pack build --target web (backend-tiny-skia)...${RESET}"
+wasm-pack build "$CRATE_DIR" \
+  --target web \
+  --out-dir "$OUT_DIR_CPU" \
+  -- --no-default-features --features backend-tiny-skia
+echo
+
+echo -e "${GREEN}${BOLD}✓ Done!${RESET}"
+echo    "  pkg         → examples/web-demo/pkg/"
+echo    "  pkg-tiny-skia → examples/web-demo/pkg-tiny-skia/"
 echo    "  Next : npm run serve"
