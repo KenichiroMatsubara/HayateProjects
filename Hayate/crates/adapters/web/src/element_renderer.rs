@@ -120,6 +120,7 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
 }
 
 use crate::backend::{CanvasBackend, SelectedBackend};
+use crate::renderer_event_state::RendererEventState;
 use crate::style_packet;
 
 // ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
@@ -362,9 +363,7 @@ const OP_CREATE: u32 = 9;
 pub struct HayateElementRenderer {
     backend: SelectedBackend,
     tree: ElementTree,
-    hovered_element: Option<ElementId>,
-    active_element: Option<ElementId>,
-    last_pointer_pos: Option<(f32, f32)>,
+    events: RendererEventState,
     /// wgpu surface clear colour. Decoupled from `render(timestamp_ms)` because
     /// the WIT `render` signature no longer carries it (ADR-0032 keeps render
     /// timestamp-only); call `set_background_color` separately.
@@ -384,9 +383,7 @@ impl HayateElementRenderer {
         Ok(Self {
             backend,
             tree,
-            hovered_element: None,
-            active_element: None,
-            last_pointer_pos: None,
+            events: RendererEventState::new(),
             background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
         })
@@ -464,16 +461,7 @@ impl HayateElementRenderer {
     /// Shared removal path: clears dangling hovered/active pointers for the
     /// entire subtree, then delegates to ElementTree (which clears focused_element).
     fn remove_subtree(&mut self, id: ElementId) {
-        if let Some(h) = self.hovered_element {
-            if is_in_subtree(&self.tree, h, id) {
-                self.hovered_element = None;
-            }
-        }
-        if let Some(a) = self.active_element {
-            if is_in_subtree(&self.tree, a, id) {
-                self.active_element = None;
-            }
-        }
+        self.events.on_subtree_remove(|c| is_in_subtree(&self.tree, c, id));
         self.tree.element_remove(id);
     }
 
@@ -525,20 +513,16 @@ impl HayateElementRenderer {
 
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
         let hit = self.tree.hit_test(x, y);
-        if let Some(target) = hit {
-            self.tree.push_event(Event::Click { target, x, y });
-            self.tree.push_event(Event::ActiveStart { target });
-            self.active_element = Some(target);
-            if self.tree.focused_element() != hit {
-                if let Some(prev) = self.tree.focused_element() {
-                    self.tree.push_event(Event::Blur(prev));
-                }
-                self.tree.element_focus(target);
-                self.tree.push_event(Event::Focus(target));
+        let old_focus = self.events.focused_element;
+        self.events.pointer_down(hit, x, y);
+        let new_focus = self.events.focused_element;
+        if old_focus != new_focus {
+            if let Some(p) = old_focus {
+                self.tree.element_blur(p);
             }
-        } else if let Some(prev) = self.tree.focused_element() {
-            self.tree.push_event(Event::Blur(prev));
-            self.tree.element_blur(prev);
+            if let Some(n) = new_focus {
+                self.tree.element_focus(n);
+            }
         }
     }
 
@@ -547,40 +531,19 @@ impl HayateElementRenderer {
         // the pointer drifted off it before release (ADR-0031: drag-then-release
         // is one active session). The release coordinate has no field on the
         // event variant — callers that need it should track PointerMove.
-        let _ = (x, y);
-        let target = self
-            .active_element
-            .take()
-            .or_else(|| self.tree.hit_test(x, y));
-        if let Some(target) = target {
-            self.tree.push_event(Event::ActiveEnd { target });
-        }
+        let fallback = self.tree.hit_test(x, y);
+        self.events.pointer_up(fallback);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
         if !self.tree.has_layout() {
             return;
         }
-        // Skip when the pointer hasn't moved by at least 1px (P3 throttle from ADR-0019).
-        if let Some((lx, ly)) = self.last_pointer_pos {
-            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
-                return;
-            }
-        }
-        self.last_pointer_pos = Some((x, y));
         // Per ADR-0031 `pointer-move` is a target-less coordinate stream; emit
         // alongside any hover state changes so dragging code can track motion.
-        self.tree.push_event(Event::PointerMove { x, y });
+        // 1 px throttle (ADR-0019) is enforced inside pointer_move_to.
         let hit = self.tree.hit_test(x, y);
-        if hit != self.hovered_element {
-            if let Some(prev) = self.hovered_element {
-                self.tree.push_event(Event::HoverLeave { target: prev });
-            }
-            if let Some(cur) = hit {
-                self.tree.push_event(Event::HoverEnter { target: cur });
-            }
-            self.hovered_element = hit;
-        }
+        self.events.pointer_move_to(hit, x, y);
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
@@ -598,18 +561,14 @@ impl HayateElementRenderer {
                 let new_y = (oy + delta_y).clamp(0.0, max_y);
                 self.tree.element_set_scroll_offset(sv, new_x, new_y);
             }
-            self.tree.push_event(Event::Scroll {
-                target,
-                delta_x,
-                delta_y,
-            });
+            self.events.wheel(target, delta_x, delta_y);
         }
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
         self.backend.resize(width as u32, height as u32);
-        self.tree.push_event(Event::Resize { width, height });
+        self.events.resize(width, height);
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
@@ -710,8 +669,8 @@ impl HayateElementRenderer {
     /// Return the focused element's id (as f64), or 0.0 if nothing is focused.
     /// JS can use this with `element_get_text_content` to implement copy/cut.
     pub fn focused_element_id(&self) -> f64 {
-        self.tree
-            .focused_element()
+        self.events
+            .focused_element
             .map(element_id_to_f64)
             .unwrap_or(0.0)
     }
@@ -719,7 +678,7 @@ impl HayateElementRenderer {
     /// Handle a key press on the focused element.
     /// `key` is KeyboardEvent.key; `modifiers` is a bitmask of modifier_shift/ctrl/alt/meta.
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        let focused = match self.tree.focused_element() {
+        let focused = match self.events.focused_element {
             Some(id) => id,
             None => return,
         };
@@ -729,14 +688,11 @@ impl HayateElementRenderer {
             }
             "Enter" => {
                 self.tree.element_append_text_content(focused, "\n");
-                self.tree.push_event(Event::TextInput {
-                    target: focused,
-                    text: "\n".to_string(),
-                });
+                self.events.text_input(focused, "\n");
             }
             _ => {}
         }
-        self.tree.push_event(Event::KeyDown {
+        self.events.push(Event::KeyDown {
             target: focused,
             key: key.to_string(),
             modifiers,
@@ -747,30 +703,21 @@ impl HayateElementRenderer {
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_append_text_content(eid, text);
-        self.tree.push_event(Event::TextInput {
-            target: eid,
-            text: text.to_string(),
-        });
+        self.events.text_input(eid, text);
     }
 
     /// Called by JS when an IME composition begins.
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.tree.push_event(Event::CompositionStart {
-            target: eid,
-            text: text.to_string(),
-        });
+        self.events.composition_start(eid, text);
     }
 
     /// Called by JS when the IME preedit updates.
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.tree.push_event(Event::CompositionUpdate {
-            target: eid,
-            text: text.to_string(),
-        });
+        self.events.composition_update(eid, text);
     }
 
     /// Called by JS when IME composition is finalized.
@@ -778,10 +725,7 @@ impl HayateElementRenderer {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, "");
         self.tree.element_append_text_content(eid, text);
-        self.tree.push_event(Event::CompositionEnd {
-            target: eid,
-            text: text.to_string(),
-        });
+        self.events.composition_end(eid, text);
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {
@@ -886,14 +830,14 @@ impl HayateElementRenderer {
                     }
                     let id = element_id_from_f64(ops[i]);
                     i += 1;
-                    if let Some(prev) = self.tree.focused_element() {
-                        if prev != id {
-                            self.tree.push_event(Event::Blur(prev));
-                            self.tree.element_blur(prev);
+                    let old = self.events.focused_element;
+                    self.events.focus(id);
+                    if old != Some(id) {
+                        if let Some(p) = old {
+                            self.tree.element_blur(p);
                         }
+                        self.tree.element_focus(id);
                     }
-                    self.tree.element_focus(id);
-                    self.tree.push_event(Event::Focus(id));
                 }
                 OP_BLUR => {
                     if i + 1 > ops.len() {
@@ -901,8 +845,8 @@ impl HayateElementRenderer {
                     }
                     let id = element_id_from_f64(ops[i]);
                     i += 1;
+                    self.events.blur(id);
                     self.tree.element_blur(id);
-                    self.tree.push_event(Event::Blur(id));
                 }
                 OP_CREATE => {
                     if i + 2 > ops.len() {
@@ -930,13 +874,10 @@ impl HayateElementRenderer {
     /// ADR-0034: `Array<Array<any>>` を返す。各サブ配列は `[kind: f64, ...fields]`。
     /// 文字列ペイロード（TextInput / KeyDown 等）を運ぶため意図的にこの形式を採用。
     pub fn poll_events(&mut self) -> js_sys::Array {
-        // font_queue のドレインは render() 先頭に移動済み。
-        // ここでは何もしない（render より先に poll_events が呼ばれた場合も
-        // 次の render() で確実に登録される）。
-
-        let events = self.tree.poll_events();
-        let mut visible = Vec::with_capacity(events.len());
-        for event in events {
+        // Input events are in self.events; only FetchFont (and element_paste's
+        // TextInput) come from the tree's internal queue.
+        let mut visible = self.events.drain();
+        for event in self.tree.poll_events() {
             match event {
                 Event::FetchFont { family } => {
                     if let Some(url) = builtin_font_url(&family) {
@@ -985,10 +926,7 @@ pub struct HayateElementHtmlRenderer {
     container: HtmlElement,
     nodes: HashMap<ElementId, HtmlNode>,
     root: Option<ElementId>,
-    event_queue: Vec<Event>,
-    focused_element: Option<ElementId>,
-    hovered_element: Option<ElementId>,
-    active_element: Option<ElementId>,
+    events: RendererEventState,
     /// Container CSS background colour. HTML Mode delegates rendering to the
     /// browser; `set_background_color` stores it and `render(timestamp_ms)`
     /// applies it once at flush time.
@@ -1008,10 +946,7 @@ impl HayateElementHtmlRenderer {
             container,
             nodes: HashMap::new(),
             root: None,
-            event_queue: Vec::new(),
-            focused_element: None,
-            hovered_element: None,
-            active_element: None,
+            events: RendererEventState::new(),
             background_css: "rgb(0,0,0)".to_string(),
             pending: Vec::new(),
         })
@@ -1032,7 +967,7 @@ impl HayateElementHtmlRenderer {
     /// Viewport is browser-managed in HTML Mode; this is kept for API parity
     /// with the Canvas renderer and only emits a Resize event.
     pub fn set_viewport(&mut self, width: f32, height: f32) {
-        self.event_queue.push(Event::Resize { width, height });
+        self.events.resize(width, height);
     }
 
     /// Registers an element with a caller-supplied ID and queues the DOM creation.
@@ -1157,16 +1092,7 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.event_queue.push(Event::Click { target, x, y });
-        self.event_queue.push(Event::ActiveStart { target });
-        self.active_element = Some(target);
-        if self.focused_element != Some(target) {
-            if let Some(prev) = self.focused_element {
-                self.event_queue.push(Event::Blur(prev));
-            }
-            self.focused_element = Some(target);
-            self.event_queue.push(Event::Focus(target));
-        }
+        self.events.pointer_down(Some(target), x, y);
     }
 
     pub fn on_pointer_up(&mut self, target_id: f64, _x: f32, _y: f32) {
@@ -1174,19 +1100,14 @@ impl HayateElementHtmlRenderer {
         // matching the natural drag/release semantics. Coordinates are no longer
         // part of the variant — use PointerMove for trailing-position tracking.
         let explicit = element_id_from_f64(target_id);
-        let target = self
-            .active_element
-            .take()
-            .or_else(|| self.nodes.contains_key(&explicit).then_some(explicit));
-        if let Some(target) = target {
-            self.event_queue.push(Event::ActiveEnd { target });
-        }
+        let fallback = self.nodes.contains_key(&explicit).then_some(explicit);
+        self.events.pointer_up(fallback);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
         // Target-less coordinate stream — hover state is driven separately by
         // the DOM mouseenter/mouseleave events.
-        self.event_queue.push(Event::PointerMove { x, y });
+        self.events.push(Event::PointerMove { x, y });
     }
 
     pub fn on_pointer_enter(&mut self, target_id: f64) {
@@ -1194,36 +1115,23 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        if self.hovered_element != Some(target) {
-            if let Some(prev) = self.hovered_element {
-                self.event_queue.push(Event::HoverLeave { target: prev });
-            }
-            self.hovered_element = Some(target);
-            self.event_queue.push(Event::HoverEnter { target });
-        }
+        self.events.hover_enter(target);
     }
 
     pub fn on_pointer_leave(&mut self, target_id: f64) {
         let target = element_id_from_f64(target_id);
-        if self.hovered_element == Some(target) {
-            self.hovered_element = None;
-            self.event_queue.push(Event::HoverLeave { target });
-        }
+        self.events.hover_leave(target);
     }
 
     pub fn on_wheel(&mut self, target_id: f64, delta_x: f32, delta_y: f32) {
         let target = element_id_from_f64(target_id);
         if self.nodes.contains_key(&target) {
-            self.event_queue.push(Event::Scroll {
-                target,
-                delta_x,
-                delta_y,
-            });
+            self.events.wheel(target, delta_x, delta_y);
         }
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
-        self.event_queue.push(Event::Resize { width, height });
+        self.events.resize(width, height);
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
@@ -1322,10 +1230,7 @@ impl HayateElementHtmlRenderer {
     pub fn element_paste(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::TextInput {
-                target: eid,
-                text: text.to_string(),
-            });
+            self.events.paste(eid, text);
         }
     }
 
@@ -1354,58 +1259,38 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn focused_element_id(&self) -> f64 {
-        self.focused_element.map(element_id_to_f64).unwrap_or(0.0)
+        self.events.focused_element.map(element_id_to_f64).unwrap_or(0.0)
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        let focused = match self.focused_element {
-            Some(id) => id,
-            None => return,
-        };
-        self.event_queue.push(Event::KeyDown {
-            target: focused,
-            key: key.to_string(),
-            modifiers,
-        });
+        self.events.key_down(key, modifiers);
     }
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::TextInput {
-                target: eid,
-                text: text.to_string(),
-            });
+            self.events.text_input(eid, text);
         }
     }
 
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::CompositionStart {
-                target: eid,
-                text: text.to_string(),
-            });
+            self.events.composition_start(eid, text);
         }
     }
 
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::CompositionUpdate {
-                target: eid,
-                text: text.to_string(),
-            });
+            self.events.composition_update(eid, text);
         }
     }
 
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.event_queue.push(Event::CompositionEnd {
-                target: eid,
-                text: text.to_string(),
-            });
+            self.events.composition_end(eid, text);
         }
     }
 
@@ -1453,7 +1338,7 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn poll_events(&mut self) -> js_sys::Array {
-        let events: Vec<Event> = std::mem::take(&mut self.event_queue);
+        let events = self.events.drain();
         encode_events(&events)
     }
 }
@@ -1748,21 +1633,7 @@ impl HayateElementHtmlRenderer {
         }
         // Clear any pointer-state that referred to a removed node (including
         // descendants — the subtree walk above already removed them from self.nodes).
-        if let Some(f) = self.focused_element {
-            if !self.nodes.contains_key(&f) {
-                self.focused_element = None;
-            }
-        }
-        if let Some(h) = self.hovered_element {
-            if !self.nodes.contains_key(&h) {
-                self.hovered_element = None;
-            }
-        }
-        if let Some(a) = self.active_element {
-            if !self.nodes.contains_key(&a) {
-                self.active_element = None;
-            }
-        }
+        self.events.on_subtree_remove(|c| !self.nodes.contains_key(&c));
     }
 
     fn flush_set_root(&mut self, new_root: ElementId) {
