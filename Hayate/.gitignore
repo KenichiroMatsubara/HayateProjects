@@ -17,3 +17,4 @@ examples/web-demo/pkg/
 # OS
 .DS_Store
 Thumbs.db
+test-results/
