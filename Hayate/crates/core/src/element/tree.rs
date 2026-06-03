@@ -1,21 +1,18 @@
-use linebender_resource_handle::Blob;
-use std::collections::{HashMap, HashSet};
-
-use parley::{FontContext, LayoutContext};
-use taffy::{
-    AvailableSpace, Dimension as TaffyDim, NodeId as TaffyId, Size as TaffySize,
-    Style as TaffyStyle, TaffyTree,
-};
-
+use std::collections::HashMap;
 use std::sync::Arc;
+
+use fontique::FontInfoOverride;
+use linebender_resource_handle::Blob;
+use taffy::TaffyTree;
 
 use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::layout_pass::LayoutPass;
 use crate::element::scene_build;
 use crate::element::style::{StyleProp, StylePropKind};
 use crate::element::taffy_bridge::{self, MeasureCtx};
-use crate::element::text::{self, TextBrush, TextLayout};
+use crate::element::text;
 use crate::node::SceneGraph;
 use crate::render::RenderImage;
 
@@ -55,12 +52,12 @@ pub(crate) struct Element {
     pub kind: ElementKind,
     pub parent: Option<ElementId>,
     pub children: Vec<ElementId>,
-    pub taffy_node: TaffyId,
-    pub layout_style: TaffyStyle,
+    pub taffy_node: taffy::NodeId,
+    pub layout_style: taffy::Style,
     pub visual: Visual,
     pub text: Option<String>,
     pub src: Option<String>,
-    pub text_layout: Option<TextLayout>,
+    pub text_layout: Option<crate::element::text::TextLayout>,
     /// Optional affine transform applied on top of layout (kurbo coefficients [a,b,c,d,e,f]).
     pub transform: Option<[f64; 6]>,
     /// Scroll offset for ScrollView elements (x, y in pixels).
@@ -76,7 +73,7 @@ pub(crate) struct Element {
     /// Whether the cursor should be drawn (true when the element is focused).
     pub cursor_visible: bool,
     /// Pre-built Parley layout of text_content + preedit, rebuilt each render pass.
-    pub content_layout: Option<TextLayout>,
+    pub content_layout: Option<crate::element::text::TextLayout>,
     /// ARIA label for screen readers.
     pub aria_label: Option<String>,
     /// ARIA role (e.g. "button", "listitem"). None uses the implicit role.
@@ -180,65 +177,28 @@ pub struct ResolvedElement {
 pub struct ElementTree {
     pub(crate) elements: HashMap<ElementId, Element>,
     pub(crate) root: Option<ElementId>,
-    pub(crate) taffy: TaffyTree<MeasureCtx>,
-    pub(crate) font_cx: FontContext,
-    pub(crate) layout_cx: LayoutContext<TextBrush>,
+    /// Layout-computation and text-shaping state. Grouped here so callers
+    /// cross one seam (`layout.run(...)`) instead of touching Taffy, Parley,
+    /// font dirty state, and cursor timing directly.
+    pub(crate) layout: LayoutPass,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
     pub(crate) event_queue: Vec<Event>,
-    /// Absolute bounding rects (x, y, w, h) per element, refreshed after each layout pass.
-    pub(crate) layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
     /// Element that owns the text-input cursor blink. Tracked here (not in the
     /// adapter) so `render(timestamp_ms)` can advance the blink itself per ADR-0032.
     pub(crate) focused_element: Option<ElementId>,
-    /// Wall-clock millis (host-provided) of the last cursor-visibility toggle.
-    /// `None` until the first frame after focus; reset on focus change.
-    pub(crate) last_cursor_toggle_ms: Option<f64>,
-    /// Set by `register_font`; cleared at the start of the next `compute_layout`.
-    /// Causes all text elements to be re-shaped with the newly registered font.
-    pub(crate) fonts_dirty: bool,
-    /// Family names already requested via `FetchFont` but not yet loaded.
-    /// Prevents duplicate events for the same family across frames.
-    pub(crate) pending_font_fetches: HashSet<String>,
-}
-
-fn init_bundled_fonts(font_cx: &mut FontContext) {
-    use fontique::{FontInfoOverride, GenericFamily};
-
-    static NOTO_SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/NotoSansJP.ttf");
-
-    let blob = Blob::new(Arc::new(NOTO_SANS_BYTES));
-    let override_info = FontInfoOverride {
-        family_name: Some(text::DEFAULT_FONT_FAMILY),
-        ..Default::default()
-    };
-    let registered = font_cx.collection.register_fonts(blob, Some(override_info));
-    let family_ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
-    if !family_ids.is_empty() {
-        font_cx
-            .collection
-            .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
-    }
 }
 
 impl ElementTree {
     pub fn new() -> Self {
-        let mut font_cx = FontContext::new();
-        init_bundled_fonts(&mut font_cx);
         Self {
             elements: HashMap::new(),
             root: None,
-            taffy: TaffyTree::new(),
-            font_cx,
-            layout_cx: LayoutContext::new(),
+            layout: LayoutPass::new(),
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
             event_queue: Vec::new(),
-            layout_cache: HashMap::new(),
             focused_element: None,
-            last_cursor_toggle_ms: None,
-            fonts_dirty: false,
-            pending_font_fetches: HashSet::new(),
         }
     }
 
@@ -261,13 +221,14 @@ impl ElementTree {
 
     pub fn element_create(&mut self, id: u64, kind: ElementKind) -> ElementId {
         let id = ElementId::from_u64(id);
-        let layout_style = TaffyStyle::default();
+        let layout_style = taffy::Style::default();
         let measure_ctx = if kind.is_text_like() {
             MeasureCtx::Text(id)
         } else {
             MeasureCtx::None
         };
         let taffy_node = self
+            .layout
             .taffy
             .new_leaf_with_context(layout_style.clone(), measure_ctx)
             .expect("taffy new_leaf_with_context");
@@ -309,13 +270,13 @@ impl ElementTree {
         el.text = Some(text.to_string());
         el.text_layout = None;
         let taffy_node = el.taffy_node;
-        let _ = self.taffy.mark_dirty(taffy_node);
+        let _ = self.layout.taffy.mark_dirty(taffy_node);
     }
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.src = Some(url.to_string());
-            el.src_image = None; // invalidate any previously loaded image
+            el.src_image = None;
         }
     }
 
@@ -382,7 +343,7 @@ impl ElementTree {
             el.cursor_visible = true;
         }
         self.focused_element = Some(id);
-        self.last_cursor_toggle_ms = None;
+        self.layout.last_cursor_toggle_ms = None;
     }
 
     /// Clear focus from `id` (no-op if `id` is not currently focused).
@@ -394,7 +355,7 @@ impl ElementTree {
             el.cursor_visible = false;
         }
         self.focused_element = None;
-        self.last_cursor_toggle_ms = None;
+        self.layout.last_cursor_toggle_ms = None;
     }
 
     /// Currently-focused element, if any.
@@ -414,7 +375,7 @@ impl ElementTree {
             el.text_layout = None;
             el.content_layout = None;
             let taffy_node = el.taffy_node;
-            let _ = self.taffy.mark_dirty(taffy_node);
+            let _ = self.layout.taffy.mark_dirty(taffy_node);
         }
     }
 
@@ -443,9 +404,6 @@ impl ElementTree {
     /// Register a custom font from raw bytes with a given family name.
     /// After registration, the name can be used in `element_set_font_family`.
     pub fn register_font(&mut self, family_name: &str, bytes: Vec<u8>) {
-        use fontique::FontInfoOverride;
-        use std::sync::Arc;
-
         let data = Arc::new(bytes);
 
         // 要求名で登録（element_set_font_family による明示的な指定に対応）
@@ -454,7 +412,8 @@ impl ElementTree {
             family_name: Some(family_name),
             ..Default::default()
         };
-        self.font_cx
+        self.layout
+            .font_cx
             .collection
             .register_fonts(blob, Some(override_info));
 
@@ -468,21 +427,21 @@ impl ElementTree {
                 family_name: Some(text::DEFAULT_FONT_FAMILY),
                 ..Default::default()
             };
-            self.font_cx
+            self.layout
+                .font_cx
                 .collection
                 .register_fonts(fallback_blob, Some(fallback_override));
         }
 
-        self.pending_font_fetches.remove(family_name);
-        self.fonts_dirty = true;
+        self.layout.pending_font_fetches.remove(family_name);
+        self.layout.fonts_dirty = true;
     }
 
     /// Register a font from raw bytes using the family name(s) embedded in the
     /// font file itself. Backs the WIT `element-load-font` export.
     pub fn register_font_bytes(&mut self, bytes: Vec<u8>) {
-        use std::sync::Arc;
         let blob = Blob::new(Arc::new(bytes));
-        self.font_cx.collection.register_fonts(blob, None);
+        self.layout.font_cx.collection.register_fonts(blob, None);
     }
 
     /// Set the IME preedit for a TextInput (in-progress, not yet committed).
@@ -561,13 +520,13 @@ impl ElementTree {
 
     /// Return the absolute layout rect (x, y, w, h) from the last render pass.
     pub fn element_layout_rect(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
-        self.layout_cache.get(&id).copied()
+        self.layout.layout_cache.get(&id).copied()
     }
 
     /// Return the bounding dimensions of all descendants (content size) for a ScrollView.
     /// Values are relative to the element's own top-left corner.
     pub fn element_content_size(&self, id: ElementId) -> (f32, f32) {
-        let &(ex, ey, _, _) = match self.layout_cache.get(&id) {
+        let &(ex, ey, _, _) = match self.layout.layout_cache.get(&id) {
             Some(r) => r,
             None => return (0.0, 0.0),
         };
@@ -590,7 +549,7 @@ impl ElementTree {
             None => return,
         };
         for &child in &el.children {
-            if let Some(&(cx, cy, cw, ch)) = self.layout_cache.get(&child) {
+            if let Some(&(cx, cy, cw, ch)) = self.layout.layout_cache.get(&child) {
                 *max_x = max_x.max(cx - origin_x + cw);
                 *max_y = max_y.max(cy - origin_y + ch);
                 self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
@@ -619,10 +578,10 @@ impl ElementTree {
         if layout_changed {
             let style = el.layout_style.clone();
             let node = el.taffy_node;
-            let _ = self.taffy.set_style(node, style);
+            let _ = self.layout.taffy.set_style(node, style);
         } else if text_dirty {
             let node = el.taffy_node;
-            let _ = self.taffy.mark_dirty(node);
+            let _ = self.layout.taffy.mark_dirty(node);
         }
     }
 
@@ -657,7 +616,7 @@ impl ElementTree {
         }
         if text_dirty {
             let node = el.taffy_node;
-            let _ = self.taffy.mark_dirty(node);
+            let _ = self.layout.taffy.mark_dirty(node);
         }
     }
 
@@ -671,7 +630,7 @@ impl ElementTree {
             let c = &self.elements[&child];
             (p.taffy_node, c.taffy_node)
         };
-        let _ = self.taffy.add_child(parent_taffy, child_taffy);
+        let _ = self.layout.taffy.add_child(parent_taffy, child_taffy);
         self.elements.get_mut(&parent).unwrap().children.push(child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
     }
@@ -707,6 +666,7 @@ impl ElementTree {
             (p.taffy_node, c.taffy_node)
         };
         let _ = self
+            .layout
             .taffy
             .insert_child_at_index(parent_taffy, index, child_taffy);
         self.elements
@@ -733,11 +693,11 @@ impl ElementTree {
         }
         for node in to_remove.into_iter().rev() {
             if let Some(el) = self.elements.remove(&node) {
-                let _ = self.taffy.remove(el.taffy_node);
+                let _ = self.layout.taffy.remove(el.taffy_node);
             }
             if self.focused_element == Some(node) {
                 self.focused_element = None;
-                self.last_cursor_toggle_ms = None;
+                self.layout.last_cursor_toggle_ms = None;
             }
         }
         if self.root == Some(id) {
@@ -763,49 +723,21 @@ impl ElementTree {
     /// Run layout, lower the element tree into the scene graph, and return it.
     ///
     /// `timestamp_ms` is a monotonic host clock (e.g. `performance.now()`); it
-    /// drives the focused TextInput's cursor blink without exposing
-    /// `tick_cursor` to the host (ADR-0032).
+    /// drives the focused TextInput's cursor blink without exposing a cursor-tick
+    /// function to the host (ADR-0032).
     pub fn render(&mut self, timestamp_ms: f64) -> &SceneGraph {
-        self.tick_cursor_blink(timestamp_ms);
         if let Some(root) = self.root {
-            self.compute_layout(root);
-            self.layout_cache.clear();
-            cache_layout(
-                &self.elements,
-                &self.taffy,
+            self.layout
+                .advance_cursor_blink(&mut self.elements, self.focused_element, timestamp_ms);
+            self.layout.run(
+                &mut self.elements,
                 root,
-                0.0,
-                0.0,
-                &mut self.layout_cache,
+                self.viewport,
+                &mut self.event_queue,
             );
         }
         self.scene_cache = scene_build::build(self);
         &self.scene_cache
-    }
-
-    /// Toggle the focused element's cursor every 500 ms. Idempotent if called
-    /// multiple times in the same frame, and a no-op when nothing is focused.
-    fn tick_cursor_blink(&mut self, timestamp_ms: f64) {
-        let focused = match self.focused_element {
-            Some(id) => id,
-            None => return,
-        };
-        match self.last_cursor_toggle_ms {
-            None => {
-                // First frame after focus: keep cursor visible, start the clock.
-                self.last_cursor_toggle_ms = Some(timestamp_ms);
-                if let Some(el) = self.elements.get_mut(&focused) {
-                    el.cursor_visible = true;
-                }
-            }
-            Some(prev) if timestamp_ms - prev >= 500.0 => {
-                self.last_cursor_toggle_ms = Some(timestamp_ms);
-                if let Some(el) = self.elements.get_mut(&focused) {
-                    el.cursor_visible = !el.cursor_visible;
-                }
-            }
-            _ => {}
-        }
     }
 
     pub fn scene_graph(&self) -> &SceneGraph {
@@ -823,34 +755,30 @@ impl ElementTree {
 
     /// Returns true if at least one layout pass has completed (layout_cache is populated).
     pub fn has_layout(&self) -> bool {
-        !self.layout_cache.is_empty()
+        !self.layout.layout_cache.is_empty()
     }
 
     /// Returns the deepest element whose bounding rect contains (x, y),
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        hit_test_walk(&self.layout_cache, &self.elements, root, x, y)
+        hit_test_walk(&self.layout.layout_cache, &self.elements, root, x, y)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
     /// Keyed by stable ElementId — safe to use as a DOM node mapping key across frames.
     pub fn resolved_elements(&mut self) -> Vec<(ElementId, ResolvedElement)> {
         if let Some(root) = self.root {
-            self.compute_layout(root);
-            self.layout_cache.clear();
-            cache_layout(
-                &self.elements,
-                &self.taffy,
+            self.layout.run(
+                &mut self.elements,
                 root,
-                0.0,
-                0.0,
-                &mut self.layout_cache,
+                self.viewport,
+                &mut self.event_queue,
             );
         }
         let mut out = Vec::new();
         if let Some(root) = self.root {
-            walk_resolved(&self.elements, &self.taffy, root, 0.0, 0.0, &mut out);
+            walk_resolved(&self.elements, &self.layout.taffy, root, 0.0, 0.0, &mut out);
         }
         out
     }
@@ -867,239 +795,13 @@ impl ElementTree {
             let c = &self.elements[&child];
             (p.taffy_node, c.taffy_node)
         };
-        let _ = self.taffy.remove_child(parent_taffy, child_taffy);
+        let _ = self.layout.taffy.remove_child(parent_taffy, child_taffy);
         self.elements
             .get_mut(&parent)
             .unwrap()
             .children
             .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
-    }
-
-    fn compute_layout(&mut self, root: ElementId) {
-        // When a new font was registered, invalidate all text layouts so they
-        // are re-shaped with the new font data on this pass.
-        if self.fonts_dirty {
-            self.fonts_dirty = false;
-            let text_ids: Vec<ElementId> = self
-                .elements
-                .iter()
-                .filter_map(|(id, el)| {
-                    if el.kind.is_text_like() {
-                        Some(*id)
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            for id in text_ids {
-                if let Some(el) = self.elements.get_mut(&id) {
-                    el.text_layout = None;
-                    el.content_layout = None;
-                    let node = el.taffy_node;
-                    let _ = self.taffy.mark_dirty(node);
-                }
-            }
-        }
-
-        let root_taffy = self.elements[&root].taffy_node;
-
-        // Pin the root node to the viewport in definite pixels. The root has no
-        // parent, so an app-level `width: 100%` / `height: 100%` (Percent) has no
-        // containing block to resolve against and collapses to auto — the tree
-        // then shrinks to its min-content width instead of filling the canvas.
-        // Re-apply only when it actually changes so we don't dirty the layout and
-        // force a full reflow every frame.
-        let viewport_size = TaffySize {
-            width: TaffyDim::Length(self.viewport.0),
-            height: TaffyDim::Length(self.viewport.1),
-        };
-        if self.taffy.style(root_taffy).map(|s| s.size) != Ok(viewport_size) {
-            if let Ok(mut style) = self.taffy.style(root_taffy).cloned() {
-                style.size = viewport_size;
-                let _ = self.taffy.set_style(root_taffy, style);
-            }
-        }
-
-        let available = TaffySize {
-            width: AvailableSpace::Definite(self.viewport.0),
-            height: AvailableSpace::Definite(self.viewport.1),
-        };
-
-        let Self {
-            taffy,
-            elements,
-            font_cx,
-            layout_cx,
-            event_queue,
-            pending_font_fetches,
-            ..
-        } = self;
-
-        // Two-pass: stash text layouts produced inside the measure closure,
-        // then drain them back onto the elements once compute_layout returns.
-        let mut pending: HashMap<ElementId, TextLayout> = HashMap::new();
-        let _ = taffy.compute_layout_with_measure(
-            root_taffy,
-            available,
-            |known_dims, available_space, _node_id, ctx, _style| {
-                let eid = match ctx {
-                    Some(MeasureCtx::Text(eid)) => *eid,
-                    _ => return TaffySize::ZERO,
-                };
-                let el = match elements.get(&eid) {
-                    Some(e) => e,
-                    None => return TaffySize::ZERO,
-                };
-                let text = match el.text.as_deref() {
-                    Some(s) if !s.is_empty() => s,
-                    _ => return TaffySize::ZERO,
-                };
-
-                let max_advance = match known_dims.width {
-                    Some(w) => Some(w),
-                    None => match available_space.width {
-                        AvailableSpace::Definite(w) => Some(w),
-                        AvailableSpace::MaxContent => None,
-                        AvailableSpace::MinContent => Some(0.0),
-                    },
-                };
-                let layout = text::build_text_layout(
-                    font_cx,
-                    layout_cx,
-                    text,
-                    el.visual.font_size.unwrap_or(16.0),
-                    max_advance,
-                    el.visual.font_family.as_deref(),
-                    el.visual.font_weight,
-                );
-                let size = TaffySize {
-                    width: layout.layout.width(),
-                    height: layout.layout.height(),
-                };
-                pending.insert(eid, layout);
-                size
-            },
-        );
-
-        for (eid, mut layout) in pending {
-            // Re-stamp the source text onto each lowered run so HTML mode can
-            // place it back into a DOM text node.
-            let src: std::sync::Arc<str> = layout.text.clone();
-            for run in &mut layout.runs {
-                if let Some(rd) = std::sync::Arc::get_mut(run) {
-                    rd.text = src.clone();
-                }
-            }
-            for &fam in &layout.missing_families {
-                if !pending_font_fetches.contains(fam) {
-                    pending_font_fetches.insert(fam.to_string());
-                    event_queue.push(Event::FetchFont {
-                        family: fam.to_string(),
-                    });
-                }
-            }
-            // Proactively fetch named fonts: Latin fonts produce no .notdef glyphs
-            // so script-based detection never fires for them. If the resolved family
-            // is not yet in the fontique collection, request it now so the next
-            // register_font() → fonts_dirty cycle will re-shape with the real font.
-            if let Some(el) = elements.get(&eid) {
-                if let Some(ref fam) = el.visual.font_family {
-                    let resolved = text::resolve_generic_family(fam);
-                    if resolved != text::DEFAULT_FONT_FAMILY
-                        && !pending_font_fetches.contains(resolved)
-                        && font_cx.collection.family_id(resolved).is_none()
-                    {
-                        let owned = resolved.to_string();
-                        pending_font_fetches.insert(owned.clone());
-                        event_queue.push(Event::FetchFont { family: owned });
-                    }
-                }
-            }
-            if let Some(el) = elements.get_mut(&eid) {
-                el.text_layout = Some(layout);
-            }
-        }
-
-        // Build content layouts for TextInput elements (used for Canvas-mode rendering + cursor).
-        let textinput_ids: Vec<ElementId> = elements
-            .iter()
-            .filter_map(|(id, el)| {
-                if el.kind == ElementKind::TextInput {
-                    Some(*id)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for eid in textinput_ids {
-            let (display_text, font_size, font_weight) = {
-                let el = match elements.get(&eid) {
-                    Some(e) => e,
-                    None => continue,
-                };
-                let text = match &el.preedit {
-                    Some(p) => format!("{}{}", el.text_content, p),
-                    None => el.text_content.clone(),
-                };
-                (
-                    text,
-                    el.visual.font_size.unwrap_or(16.0),
-                    el.visual.font_weight,
-                )
-            };
-
-            if display_text.is_empty() {
-                if let Some(el) = elements.get_mut(&eid) {
-                    el.content_layout = None;
-                }
-                continue;
-            }
-
-            let (max_advance, font_family) = {
-                let el = elements.get(&eid).map(|e| {
-                    (
-                        taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
-                        e.visual.font_family.clone(),
-                    )
-                });
-                el.map(|(a, f)| (a, f)).unwrap_or((None, None))
-            };
-            let content_layout = text::build_text_layout(
-                font_cx,
-                layout_cx,
-                &display_text,
-                font_size,
-                max_advance,
-                font_family.as_deref(),
-                font_weight,
-            );
-
-            for &fam in &content_layout.missing_families {
-                if !pending_font_fetches.contains(fam) {
-                    pending_font_fetches.insert(fam.to_string());
-                    event_queue.push(Event::FetchFont {
-                        family: fam.to_string(),
-                    });
-                }
-            }
-            if let Some(ref fam) = font_family {
-                let resolved = text::resolve_generic_family(fam);
-                if resolved != text::DEFAULT_FONT_FAMILY
-                    && !pending_font_fetches.contains(resolved)
-                    && font_cx.collection.family_id(resolved).is_none()
-                {
-                    let owned = resolved.to_string();
-                    pending_font_fetches.insert(owned.clone());
-                    event_queue.push(Event::FetchFont { family: owned });
-                }
-            }
-            if let Some(el) = elements.get_mut(&eid) {
-                el.content_layout = Some(content_layout);
-                el.cursor_byte_index = el.text_content.len();
-            }
-        }
     }
 }
 
@@ -1169,30 +871,6 @@ fn walk_resolved(
     }
 }
 
-fn cache_layout(
-    elements: &HashMap<ElementId, Element>,
-    taffy: &TaffyTree<MeasureCtx>,
-    id: ElementId,
-    ox: f32,
-    oy: f32,
-    cache: &mut HashMap<ElementId, (f32, f32, f32, f32)>,
-) {
-    let el = match elements.get(&id) {
-        Some(e) => e,
-        None => return,
-    };
-    let layout = match taffy.layout(el.taffy_node) {
-        Ok(l) => l,
-        Err(_) => return,
-    };
-    let x = ox + layout.location.x;
-    let y = oy + layout.location.y;
-    cache.insert(id, (x, y, layout.size.width, layout.size.height));
-    for &child in &el.children {
-        cache_layout(elements, taffy, child, x, y, cache);
-    }
-}
-
 fn hit_test_walk(
     cache: &HashMap<ElementId, (f32, f32, f32, f32)>,
     elements: &HashMap<ElementId, Element>,
@@ -1206,9 +884,6 @@ fn hit_test_walk(
     }
     let el = elements.get(&id)?;
     // Visit children in reverse paint order so the topmost element wins.
-    // scene_build sorts children by ascending z-index (stable, so equal z's
-    // keep document order); the reverse is descending z-index, ties in
-    // reverse document order.
     let mut ordered: Vec<(usize, ElementId, i32)> = el
         .children
         .iter()
