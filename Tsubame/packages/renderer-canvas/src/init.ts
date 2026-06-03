@@ -1,33 +1,47 @@
-import initWasm, { HayateElementRenderer } from 'hayate-adapter-web';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { CanvasRendererOptions } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
 
+async function probeWebGPU(): Promise<boolean> {
+  try {
+    const gpu = (navigator as any).gpu;
+    if (!gpu) return false;
+    const adapter = await gpu.requestAdapter();
+    return adapter != null;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * 実 Hayate WASM を初期化し `CanvasRenderer` を返す。
+ * Hayate WASM を初期化し `CanvasRenderer` を返す。
  *
- * アプリ側はこの関数を呼ぶだけでよく、WASM ロードや `HayateElementRenderer`
- * のライフサイクルを意識する必要がない。`HayateElementRenderer` は WIT
- * element-layer の wasm-bindgen 実装で、構造的に {@link RawHayate} を充足する。
+ * WebGPU が利用可能なら Vello バックエンドを、利用不可なら
+ * tiny-skia CPU バックエンドをロードする。
+ *
+ * canvas のコンテキスト型は一度決まると変更できないため、
+ * WebGPU の可否を事前に判定してから WASM 初期化に進む。
  */
 export async function initCanvasRenderer(
   canvas: HTMLCanvasElement,
   options?: CanvasRendererOptions,
 ): Promise<CanvasRenderer> {
-  await initWasm();
-  const raw = (await HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  let raw: RawHayate;
+
+  if (await probeWebGPU()) {
+    const velloMod = await import('hayate-adapter-web');
+    await velloMod.default();
+    raw = (await velloMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  } else {
+    const cpuMod = await import('hayate-adapter-web-cpu');
+    await cpuMod.default();
+    raw = (await cpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  }
+
   attachPointerInput(canvas, raw);
   return new CanvasRenderer(raw, options);
 }
 
-/**
- * ポインタ入力を実 Canvas renderer に供給する。
- *
- * DOM Mode と異なり Canvas renderer はブラウザのヒットテストを持たないため、
- * ホストが canvas 座標系の生 (x, y) を `on_pointer_*` に渡す責務を負う。
- * renderer 内部でヒットテストして click / hover-enter / hover-leave を生成し、
- * `poll_events()` 経由で返す。これが無いと一切のインタラクションが発火しない。
- */
 function attachPointerInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
   const toCanvas = (e: MouseEvent): readonly [number, number] => {
     const rect = canvas.getBoundingClientRect();

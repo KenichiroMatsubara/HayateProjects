@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "@tsubame/renderer-protocol": "workspace:*",
-    "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg"
+    "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg",
+    "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia"
   },
   "devDependencies": {
     "rimraf": "^6.1.3"
