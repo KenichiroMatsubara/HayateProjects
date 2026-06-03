@@ -2,7 +2,10 @@ use linebender_resource_handle::Blob;
 use std::collections::{HashMap, HashSet};
 
 use parley::{FontContext, LayoutContext};
-use taffy::{AvailableSpace, NodeId as TaffyId, Size as TaffySize, Style as TaffyStyle, TaffyTree};
+use taffy::{
+    AvailableSpace, Dimension as TaffyDim, NodeId as TaffyId, Size as TaffySize,
+    Style as TaffyStyle, TaffyTree,
+};
 
 use std::sync::Arc;
 
@@ -900,6 +903,24 @@ impl ElementTree {
         }
 
         let root_taffy = self.elements[&root].taffy_node;
+
+        // Pin the root node to the viewport in definite pixels. The root has no
+        // parent, so an app-level `width: 100%` / `height: 100%` (Percent) has no
+        // containing block to resolve against and collapses to auto — the tree
+        // then shrinks to its min-content width instead of filling the canvas.
+        // Re-apply only when it actually changes so we don't dirty the layout and
+        // force a full reflow every frame.
+        let viewport_size = TaffySize {
+            width: TaffyDim::Length(self.viewport.0),
+            height: TaffyDim::Length(self.viewport.1),
+        };
+        if self.taffy.style(root_taffy).map(|s| s.size) != Ok(viewport_size) {
+            if let Ok(mut style) = self.taffy.style(root_taffy).cloned() {
+                style.size = viewport_size;
+                let _ = self.taffy.set_style(root_taffy, style);
+            }
+        }
+
         let available = TaffySize {
             width: AvailableSpace::Definite(self.viewport.0),
             height: AvailableSpace::Definite(self.viewport.1),

@@ -21,16 +21,6 @@ const { mode, source } = detectMode();
 
 const dom = document.getElementById('dom-host') as HTMLDivElement;
 const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
-const srcLabel = document.getElementById('src-label')!;
-const linkDom = document.getElementById('link-dom')!;
-const linkCanvas = document.getElementById('link-canvas')!;
-const linkAuto = document.getElementById('link-auto')!;
-
-srcLabel.textContent = source === 'query' ? '?mode=' + mode.toLowerCase() : 'auto-detected';
-(source === 'query'
-  ? (mode === 'DOM' ? linkDom : linkCanvas)
-  : linkAuto
-).classList.add('active');
 
 let renderer: IRenderer;
 if (mode === 'DOM') {
@@ -39,13 +29,7 @@ if (mode === 'DOM') {
   renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: dom });
 } else {
   const { initCanvasRenderer } = await import('@tsubame/renderer-canvas');
-  const w = window.innerWidth;
-  const h = window.innerHeight;
   canvas.hidden = false;
-  canvas.width = w;
-  canvas.height = h;
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
   renderer = await initCanvasRenderer(canvas);
   renderTsubame(() => <TodoApp mode={mode} source={source} />, renderer, { element: canvas });
 }

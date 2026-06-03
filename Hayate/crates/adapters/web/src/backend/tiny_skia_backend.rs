@@ -66,6 +66,17 @@ impl CanvasBackend for SelectedBackend {
         self.pixmap.fill(to_premultiplied_color(clear_color));
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
     }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 || (width == self.width && height == self.height) {
+            return;
+        }
+        if let Some(pixmap) = Pixmap::new(width, height) {
+            self.pixmap = pixmap;
+            self.width = width;
+            self.height = height;
+        }
+    }
 }
 
 fn blit_to_canvas(

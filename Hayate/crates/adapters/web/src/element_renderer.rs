@@ -608,6 +608,7 @@ impl HayateElementRenderer {
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
+        self.backend.resize(width as u32, height as u32);
         self.tree.push_event(Event::Resize { width, height });
     }
 

@@ -58,4 +58,10 @@ compile_error!(
 pub(crate) trait CanvasBackend {
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue>;
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
+
+    /// Resize the render surface to match the canvas's new pixel dimensions.
+    /// Backends that draw to an off-screen target (GPU texture / CPU pixmap)
+    /// must reallocate it here, otherwise content stays clipped to the init
+    /// size while the canvas grows. Default is a no-op for sizeless backends.
+    fn resize(&mut self, _width: u32, _height: u32) {}
 }

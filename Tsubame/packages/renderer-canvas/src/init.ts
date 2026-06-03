@@ -26,6 +26,13 @@ export async function initCanvasRenderer(
   canvas: HTMLCanvasElement,
   options?: CanvasRendererOptions,
 ): Promise<CanvasRenderer> {
+  // Sync the canvas pixel buffer to its current CSS layout size before WASM init.
+  // CSS (position:fixed; inset:0; width:100vw; height:100vh) drives the display
+  // size; we read it here so app code never needs to know about canvas dimensions.
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width);
+  canvas.height = Math.round(rect.height);
+
   let raw: RawHayate;
 
   if (await probeWebGPU()) {
@@ -39,7 +46,7 @@ export async function initCanvasRenderer(
   }
 
   attachPointerInput(canvas, raw);
-  return new CanvasRenderer(raw, options);
+  return new CanvasRenderer(raw, { ...options, canvas });
 }
 
 function attachPointerInput(canvas: HTMLCanvasElement, raw: RawHayate): void {

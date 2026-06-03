@@ -22,11 +22,32 @@ pub(crate) struct SelectedBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
+    surface_config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
     target_view: wgpu::TextureView,
     blitter: TextureBlitter,
     width: u32,
     height: u32,
+}
+
+/// Create the off-screen RGBA8 texture Vello renders into before it is blitted
+/// to the surface. Used at init and on every resize.
+fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
+    let target_texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("hayate_vello_target"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    target_texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 impl SelectedBackend {
@@ -66,21 +87,7 @@ impl SelectedBackend {
         surface.configure(&device, &surface_config);
 
         let surface_format = surface_config.format;
-        let target_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hayate_vello_target"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-        let target_view = target_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let target_view = create_target_view(&device, width, height);
 
         let renderer = Renderer::new(
             &device,
@@ -99,6 +106,7 @@ impl SelectedBackend {
             device,
             queue,
             surface,
+            surface_config,
             renderer,
             target_view,
             blitter,
@@ -161,6 +169,18 @@ impl CanvasBackend for SelectedBackend {
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
         self.render_scene(&SceneGraph::new(), clear_color)
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 || (width == self.width && height == self.height) {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        self.surface_config.width = width;
+        self.surface_config.height = height;
+        self.surface.configure(&self.device, &self.surface_config);
+        self.target_view = create_target_view(&self.device, width, height);
     }
 }
 

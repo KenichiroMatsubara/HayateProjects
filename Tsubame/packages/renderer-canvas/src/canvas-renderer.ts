@@ -15,6 +15,7 @@ import { ELEMENT_KIND, OP } from './opcodes.js';
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
   cancelFrame?: (handle: number) => void;
+  canvas?: HTMLCanvasElement;
 }
 
 const BUBBLING_EVENTS: ReadonlySet<EventKind> = new Set([
@@ -38,12 +39,14 @@ export class CanvasRenderer implements IRenderer {
   /** Flat style-packet buffer referenced by `OP_SET_STYLE` offsets. */
   private readonly styles: number[] = [];
 
+  private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
   private frameHandle: number | null = null;
 
   constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
     this.raw = raw;
+    this.canvas = options.canvas ?? null;
     this.requestFrame =
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
     this.cancelFrame =
@@ -59,6 +62,10 @@ export class CanvasRenderer implements IRenderer {
   }
 
   resize(width: number, height: number): void {
+    if (this.canvas !== null) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
     this.raw.on_resize(width, height);
   }
 

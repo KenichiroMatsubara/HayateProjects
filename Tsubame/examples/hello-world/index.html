@@ -19,48 +19,9 @@
       }
       #dom-host[hidden], #canvas-stage[hidden] { display: none; }
       #canvas-stage { display: block; }
-      #mode-bar {
-        position: fixed;
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 10;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 10px;
-        background: rgba(17, 24, 39, 0.88);
-        border: 1px solid #31425b;
-        border-radius: 999px;
-        backdrop-filter: blur(8px);
-        font-size: 11px;
-        font-family: ui-monospace, Menlo, monospace;
-        color: #8ea1bb;
-        pointer-events: auto;
-      }
-      #mode-bar a {
-        color: #8ea1bb;
-        text-decoration: none;
-        padding: 3px 10px;
-        border-radius: 999px;
-        transition: background .15s, color .15s;
-      }
-      #mode-bar a:hover { color: #eef4ff; background: #21344e; }
-      #mode-bar a.active { color: #070b14; background: #4fd1c5; }
-      #mode-bar .sep { color: #5f728d; }
-      #mode-bar .src { color: #5f728d; font-size: 10px; }
     </style>
   </head>
   <body>
-    <div id="mode-bar">
-      <a id="link-dom" href="?mode=dom">DOM</a>
-      <span class="sep">/</span>
-      <a id="link-canvas" href="?mode=canvas">Canvas</a>
-      <span class="sep">/</span>
-      <a id="link-auto" href="./">auto</a>
-      <span class="sep">|</span>
-      <span class="src" id="src-label">source</span>
-    </div>
     <div id="dom-host" hidden></div>
     <canvas id="canvas-stage" hidden></canvas>
     <script type="module" src="/src/main.tsx"></script>
