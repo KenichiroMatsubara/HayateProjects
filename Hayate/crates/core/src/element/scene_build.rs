@@ -57,7 +57,7 @@ fn walk(
         Some(e) => e,
         None => return,
     };
-    let layout = match tree.taffy.layout(el.taffy_node) {
+    let layout = match tree.layout.taffy.layout(el.taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };

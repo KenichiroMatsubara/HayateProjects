@@ -1,5 +1,6 @@
 pub mod id;
 pub mod kind;
+pub mod layout_pass;
 pub mod scene_build;
 pub mod style;
 pub mod taffy_bridge;
@@ -8,6 +9,7 @@ pub mod tree;
 
 pub use id::ElementId;
 pub use kind::ElementKind;
+pub use layout_pass::LayoutPass;
 pub use style::{
     AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue,
     StyleProp, StylePropKind,
