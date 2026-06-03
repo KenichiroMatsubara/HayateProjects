@@ -18,6 +18,21 @@ pub(crate) use recording::SelectedBackend;
 #[cfg(all(
     not(feature = "backend-vello"),
     not(feature = "backend-recording"),
+    feature = "backend-tiny-skia"
+))]
+mod tiny_skia_backend;
+
+#[cfg(all(
+    not(feature = "backend-vello"),
+    not(feature = "backend-recording"),
+    feature = "backend-tiny-skia"
+))]
+pub(crate) use tiny_skia_backend::SelectedBackend;
+
+#[cfg(all(
+    not(feature = "backend-vello"),
+    not(feature = "backend-recording"),
+    not(feature = "backend-tiny-skia"),
     feature = "backend-null"
 ))]
 mod null;
@@ -25,6 +40,7 @@ mod null;
 #[cfg(all(
     not(feature = "backend-vello"),
     not(feature = "backend-recording"),
+    not(feature = "backend-tiny-skia"),
     feature = "backend-null"
 ))]
 pub(crate) use null::SelectedBackend;
@@ -32,9 +48,12 @@ pub(crate) use null::SelectedBackend;
 #[cfg(not(any(
     feature = "backend-vello",
     feature = "backend-recording",
+    feature = "backend-tiny-skia",
     feature = "backend-null"
 )))]
-compile_error!("Enable one of: backend-vello, backend-recording, backend-null");
+compile_error!(
+    "Enable one of: backend-vello, backend-recording, backend-tiny-skia, backend-null"
+);
 
 pub(crate) trait CanvasBackend {
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue>;
