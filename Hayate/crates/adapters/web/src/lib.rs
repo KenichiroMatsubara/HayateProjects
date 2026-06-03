@@ -3,6 +3,8 @@ mod backend;
 #[cfg(target_arch = "wasm32")]
 mod element_renderer;
 #[cfg(target_arch = "wasm32")]
+mod renderer_event_state;
+#[cfg(target_arch = "wasm32")]
 mod style_packet;
 #[cfg(target_arch = "wasm32")]
 mod wasm_impl;
