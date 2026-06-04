@@ -557,3 +557,11 @@ wgpu は対象外。巨大すぎ、プラットフォーム対応の追従コス
 
 *Hayate Specification v1.1 — 2026*
 *"Document web は HTML が作った。Application web は Hayate が描く。"*
+> **Archive Notice**
+> この文書は旧仕様であり、現行 ADR と矛盾する記述を含む可能性がある。
+> 現在の正規の入口は [`../spec.md`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/docs/spec.md) と `docs/adr/`。
+> この文書は歴史参照専用として保持する。
+> **Archive Notice**
+> This document is retained for historical reference only.
+> The current entry point is [`../spec.md`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/docs/spec.md) and `docs/adr/`.
+> Some statements below may conflict with current ADRs.

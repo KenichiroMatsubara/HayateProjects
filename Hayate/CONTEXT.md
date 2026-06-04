@@ -1,227 +1,86 @@
-# Hayate / Hayabusa
+# Hayate Glossary
 
-**Hayate（疾風）** は、アプリケーション UI のための**命令型・保持型・GPU ネイティブな UI 基盤**である。
-**Hayabusa（隼）** は、Hayate の上で動く **Signal ベース SFC フレームワーク**である。
+Hayate / Tsubame 周辺で現在使う語彙だけをまとめる。現行仕様の根拠は [`docs/spec.md`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/docs/spec.md) と各 ADR に置き、ここには古い構想や詳細設計を書き込まない。
 
-Hayate は UI フレームワークではない。状態管理でもない。Reconciler でもない。Component tree でもない。
+## Product Names
 
-Hayate が提供するのは、Element Layer（element tree + CSS 風スタイル解決）と Raw Layer（絶対座標・GPUプリミティブ）の二層 WIT インターフェースである。上位層は Element Layer に element を作成し・スタイルを設定し・ツリーを組み立てる。Hayate 内部でレイアウト計算とスタイル解決を行い、Raw Layer のコマンド列に変換して GPU に送る。
+**Hayate**:
+GPU 描画を担う Rust/WASM 側の描画基盤。`SceneGraph` を保持し、`Scene Renderer` を通じて描画する。現行の外部契約は Hayabusa 向けの Rust 直結と、Tsubame 向けの `protocol.yaml` ベース契約が中心。
+_Avoid_: WIT が現行の単一正本であるという説明、Hayabusa 中心の説明
 
-DOM 互換は設計目標に含まない。
+**Tsubame**:
+JS/TS 向けのレンダラーターゲット基盤。`Renderer Protocol`・`DOM Renderer`・`Canvas Renderer` を提供し、各フレームワーク固有ランタイムをそのまま持ち込む。
+_Avoid_: signal ランタイム、フレームワーク本体
 
-## Language
+**Hayabusa**:
+Hayate 上に構築する Rust フレームワーク構想。ADR-0045 により Hayate とは WIT 境界ではなく Rust crate 依存で接続する。現時点の開発優先は Tsubame 側であり、Hayabusa は長期構想として扱う。
+_Avoid_: 現在の最優先実装対象
 
-**Hayate（疾風）**:
-命令型・保持型・GPU ネイティブな UI 基盤。Element Layer と Raw Layer の二層 WIT インターフェースを公開し、内部でレイアウト・スタイル解決・レンダリングを担う。
-_Avoid_: フレームワーク、ライブラリ、レンダラー単体
+## Current Contracts
 
-**Hayabusa（隼）**:
-Hayate の Element Layer 上に構築された Signal ベースの SFC（Single-File Component）フレームワーク。`.hybs` ファイル形式を採用し、テンプレートとスタイルは言語非依存の Hayabusa DSL で記述する。スクリプト層はプロジェクト単位で選択された単一言語（TypeScript / Rust / Python 等）で記述され、言語アダプタ経由で Signal・Computed・Effect 等のリアクティブプリミティブを提供する。Hayate コアは Hayabusa の存在を知らない。
-_Avoid_: Hayate の別名、エンジン、Rust 専用フレームワーク
+**protocol.yaml**:
+[`proto/protocol.yaml`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/proto/protocol.yaml) は Hayate-Tsubame 間プロトコル定数の単一正本。`opcodes`・`style_tags`・`event_kinds`・`element_kinds`・`unset_kinds`・`modifier_keys` を定義する。
+_Avoid_: WIT 由来の定数定義、TS/Rust 手書きの定数表
 
-**Element Layer（要素層）**:
-Hayate の上位 WIT インターフェース。element tree の作成・Hayate CSS スタイルの設定・ツリー組み立てを受け付け、内部でレイアウト計算（Taffy）とスタイル解決を行い Raw Layer に渡す。Hayabusa および他言語 SDK はこの層を使う。
-_Avoid_: 上位 API、UI 層、Scene Layer
+**apply_mutations**:
+Tsubame `Canvas Renderer` が Hayate に渡すフレーム単位バッチ入口。シグネチャは `apply_mutations(ops: Float64Array, styles: Float32Array)`。
+_Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明
 
-**Element（要素）**:
-Element Layer が受け付ける UI の構成単位。React Native 語彙を採用し、`view` / `text` / `image` / `button` / `text-input` / `scroll-view` を基本型とする。HTML タグ名（div / span / input 等）は使用しない。LLM の訓練データ上で React Native・SwiftUI・Jetpack Compose の三系統に共通する語彙であり、文脈なしでも意味が一意になる。
-_Avoid_: div, span, section, p, h1〜h6（HTML 語彙全般）
-
-**Hayate CSS**:
-Hayate 固有のスタイルシステム。レイアウトプロパティ（display / gap / align-items / grid-template-columns 等）は Taffy の CSS Flexbox / Grid / Block 実装を仕様書とする。ビジュアルプロパティ（color / background-color / border-radius / opacity 等）は CSS プロパティ名を踏襲しつつ Hayate が対応サブセットを定義する。CSS 互換実装ではなく、CSS 命名を採用した Hayate 固有の仕様である。テキスト系プロパティ（color / font-size / font-family）は制限継承の対象であり、明示設定がない場合は祖先 element の値を引き継ぐ（ADR-0047）。
-_Avoid_: CSS、CSS 風スタイル、Element Style
-
-**Inherited Style（継承スタイル）**:
-`scene_build` の `walk()` がトップダウンで伝播させる継承済みテキスト系スタイル値のコンテキスト。`color` / `font-size` / `font-family` を保持し、各 element が明示値（`explicit_*: Option<T>`）を持たない場合の解決値として使われる。全 element kind（view / text / scroll-view 等）を通過・上書きできる。Canvas Mode の `scene_build` が解決し、HTML Mode では `ResolvedElement` の `Option<T>` フィールドがブラウザ CSS 継承に委ねる（ADR-0047）。
-_Avoid_: CSS cascade、CSS 継承、スタイル伝播
-
-**StylePropKind**:
-スタイルプロパティの種別を値なしで列挙する enum。`StyleProp` が「種別＋値」の命令であるのに対し、`StylePropKind` は種別のみを識別する。`element_unset_style(id, kinds: &[StylePropKind])` で継承対象プロパティを「未設定（親から継承）」に戻す際に使う。
-_Avoid_: StyleProp の variant 名（値を持つ StyleProp と混同するため）
-
-**Raw Layer（生座標層）**:
-Hayate の下位 WIT インターフェース。絶対座標・確定スタイル済みの描画コマンドを直接受け付ける。レイアウトを自前で計算するユーザー（ゲーム HUD・Infinite Canvas 等）向けに公開する。Element Layer は内部でこの層に変換して使う。
-_Avoid_: 内部 API（WIT で外部公開されるため）、Draw Layer
-
-**WIT（WebAssembly Interface Types）**:
-Hayate の公開 API の単一ソース。Element Layer と Raw Layer の両方を定義する。Web 向けビルドでは Wasm コンポーネントとしてコンパイルされ、ブラウザの Wasm ランタイム上で動作する。ネイティブ向けビルドでは wit-bindgen を通じてネイティブライブラリとしてコンパイルされ、Wasm ランタイムを必要としない。Hayate の WIT は原則として export のみで構成される。Hayate は上位層を知らず、上位層が Hayate をインポートして使う一方向依存が原則である。Hayabusa は Rust クレートとして hayate-core に直接依存するため WIT 境界を経由しない（ADR-0045）。WIT は Hayate の外部公開 API であり、Tsubame・他言語フレームワーク・サードパーティ SDK が使う契約として機能する。
-_Avoid_: API 定義ファイル、インターフェース仕様書（言語間の実装契約として機能するため）
-
-**Platform Adapter**:
-IME 入力・クリップボード・raw 入力イベント変換を担い、Hayate Core とプラットフォームを仲介する層。プラットフォームごとに異なる実装を持つ（Web: Canvas Mode では EditContext API / HTML Mode では native DOM IME / macOS: TSM / Windows: TSF / Linux: IBus 等）。IME イベント（composition-start / composition-update / composition-end / commit-text）は Element Layer に届く。`text-input` が Element Layer の概念であり、IME 候補窓の位置計算に Taffy レイアウト結果が必要なため。Core は Platform Adapter を知らない。サーフェス生成とフレームタイミングは wgpu が担うため Adapter の責務に含まない。アクセシビリティ報告は AccessKit がコアに組み込まれるため Adapter の責務に含まない。
-_Avoid_: Runtime, Host, Surface Adapter
-
-**Text Input Bridge**:
-`text-input` Element のための入力仲介層。Platform Adapter から IME / caret / selection / composition の状態変化を受け取り、標準化済みの入力視覚要素へ解決して `SceneGraph` に流し込む。`text-input` Element 自体はプラットフォーム差異を抱え込まない。
-_Avoid_: text-input renderer, platform-specific text-input, hidden renderer logic
-
-**Canvas Mode**:
-`hayate-adapter-web` の動作モードの一つ。Vello + wgpu（WebGPU）で全 UI を Canvas に GPU 描画し、IME に EditContext API を使用する。WebGPU（`navigator.gpu`）と EditContext API の両方が利用可能な場合に自動選択される。現時点では Chromium 系ブラウザが該当する。レイアウト（Taffy）・描画（Vello）・フォント（バンドルフォント）がネイティブビルドと同一コード・同一データを使用するため、アプリがフォントをバンドルする限りネイティブとのピクセル完全一致が保証される。
-
-**HTML Mode**:
-`hayate-adapter-web` の動作モードの一つ。WebGPU または EditContext API のいずれかが利用できない場合に自動選択される。Hayate CSS プロパティをブラウザの CSS プロパティに直接マッピングし、レイアウト計算はブラウザの CSS エンジンに委ねる（Taffy は経由しない）。Canvas Mode とはレンダリングパイプラインが異なるため、レイアウト結果の完全一致は保証されないが、開発時の UI 確認用途には十分な精度を持つ。IME はブラウザ native の動作に委ねる。モード選択はランタイム自動検出で行い、アプリ側は意識しない。
-_Avoid_: フォールバック（劣化の含意を避けるため）、DOM Mode、absolutely-positioned div 方式
-
-**Tsubame（燕）**:
-JS/TS 向けの**レンダラーターゲット基盤**。フレームワークでも signal ランタイムでもなく、Renderer Protocol（`IRenderer`）・DOM Renderer・Canvas Renderer の3つを提供する層である。各 Tsubame Adapter は自身のフレームワーク固有のランタイム（SolidJS の signals / Vue の `@vue/reactivity` / React の Fiber）をそのまま持ち込み、レンダリング先を Tsubame の Renderer Protocol に向け替える。Tsubame は signal・コンポーネントモデル・スケジューラを持たない。Hayabusa・Hayate コアのいずれも Tsubame の存在を知らない。Hayate とは完全に独立した別リポジトリ（pure JS モノレポ）。
-_Avoid_: signal ランタイム、フレームワーク、React hooks ベース、Virtual DOM を持たない（adapter が持ち込む）
-
-**tsubame-solid**:
-Tsubame Adapter の一つ。SolidJS の `solid-js/universal` カスタムレンダラー API を使い、SolidJS のランタイム（fine-grained signals / `onMount` / `onCleanup` 等）をそのまま維持しつつレンダリング先を Tsubame の Renderer Protocol に向け替える。SolidJS のエコシステム（Solid Router・SolidQuery 等）がそのまま動く。`.tsx` 形式・コンポーネント関数は一度だけ実行・Virtual DOM なし。
-_Avoid_: Tsubame signal への依存（SolidJS 自身の signal を使う）
-
-**tsubame-react**:
-Tsubame Adapter の一つ。`react-reconciler` を使い、React の Fiber ランタイム（hooks・Suspense・Context 等）をそのまま維持しつつレンダリング先を Tsubame の Renderer Protocol に向け替える。TanStack Query・Zustand・Jotai 等の React エコシステムがそのまま動く。JSX/TSX 形式。既存の React コードを最小限の変更で Hayate（GPU Canvas）と DOM に対応させられる。
-_Avoid_: Tsubame signal への依存（React 自身の Fiber ランタイムを使う）、hooks 互換シム（React 本体を使うため不要）
-
-**tsubame-vue**:
-Tsubame Adapter の一つ。`@vue/runtime-core` の `createRenderer()` API を使い、Vue のランタイム（`@vue/reactivity` の `ref`/`computed`/`watchEffect`・VDOM・コンポーネントライフサイクル）をそのまま維持しつつレンダリング先を Tsubame の Renderer Protocol に向け替える。Pinia・VueUse・VueRouter 等の Vue エコシステムがそのまま動く。`.vue` SFC 形式を採用し、`<template>` は `@vue/compiler-dom` のコードジェネレータ部分を差し替えて Renderer Protocol 呼び出しに変換する。`.vue` ファイル形式により Vue ユーザーおよび Svelte ユーザー（SFC 構文に親しみがある）が移行しやすい。
-_Avoid_: @vue/reactivity を Tsubame signal に置き換える設計（Vue エコシステムが全滅するため）
-
-**Tsubame Adapter**:
-各フレームワークの既存ランタイムを Hayate（GPU Canvas）と DOM の両方にターゲットさせるブリッジ層。`tsubame-solid` / `tsubame-vue` / `tsubame-react` の3つを指す（tsubame-svelte はスコープ外。Svelte ユーザーには tsubame-vue を推奨）。各 adapter は自身のフレームワークのエコシステム（Pinia・TanStack Query 等の 3rd party ライブラリを含む）をそのまま維持し、レンダリング先を Tsubame の Renderer Protocol に向け替えるだけである。コンポーネントの UI ロジックは adapter をまたいで共有しない（記法が異なるため定義上不可能）。Tsubame リポジトリ内のモノレポ（`packages/renderer-protocol` / `packages/renderer-dom` / `packages/renderer-canvas` / `packages/solid` / `packages/vue` / `packages/react`）として管理される。Hayate リポジトリとは完全に独立した別リポジトリであり、結合点は `apply_mutations` の仕様のみ。
-_Avoid_: Solid-native, Vue-native（既存プロジェクト名との衝突を避けるため）, tsubame-svelte, signal共有（各adapterが独自ランタイムを持つため）
+**poll_events**:
+Hayate から Tsubame 側へ返すイベント列。イベント種別とフィールド名は `protocol.yaml` を正本とする。
+_Avoid_: event kind の手書き switch を正本とみなす説明
 
 **Renderer Protocol**:
-Tsubame と Tsubame Adapter の間の境界インターフェース。element の作成・ツリー操作・スタイル設定・イベント購読を抽象化した仕様。TypeScript では `interface IRenderer` として定義される。DOM Renderer と Canvas Renderer の二つの実装を持つ。Tsubame Adapter はこのプロトコルを通じてのみレンダリングを行い、DOM か Canvas かを意識しない。
-_Avoid_: Host Interface, Host Config, Element Driver
+Tsubame と各 `Tsubame Adapter` の境界インターフェース。TypeScript では `IRenderer` として表現される。
+_Avoid_: Host Interface, signal API
 
-**DOM Renderer**:
-Renderer Protocol の実装の一つ。CSR（Client-Side Rendering）のみ。Signal が DOM を直接操作する。Hayate（WASM）を一切使用しない。JS→WASM 境界が存在しない。SSG・SSR・ハイドレーションは行わない。Hayate の HTML Mode とは別概念であり、Hayate が関与しない点が根本的に異なる。
-_Avoid_: Tsubame DOM Mode, SSG, SSR, ハイドレーション, Hayate HTML Mode（Hayate 不使用のため）
+## Rendering Terms
 
-**Canvas Renderer**:
-Renderer Protocol の実装の一つ。JS 内でフレーム分の mutations を積み、`apply_mutations(batch)` で Hayate（WASM）に 1回/frame で渡す。JS→WASM 境界のコストを O(N) から O(1)/frame に削減する。Hayate の Canvas Mode（WebGPU GPU 描画）と組み合わせて動作する。Renderer Protocol を実装しているため、Tsubame Adapter はどちらの Renderer を使うかを意識しない。
-_Avoid_: Tsubame Canvas Mode, 個別 element_set_* 呼び出し（Canvas Renderer では JS 側でバッチ化する）
-
-**Interaction Event**:
-ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。Hayate はイベントを通知するだけであり、インタラクション状態に応じたスタイル切り替えは上位層（Hayabusa の Signal / Effect）の責務。Hayate は「ホバー中スタイル」という概念を持たない。
-_Avoid_: :hover スタイル、状態付きスタイル、CSS 擬似クラス
-
-**Component**:
-`.hybs` ファイル一つがコンポーネント一つに対応する。コンポーネント名はファイル名（拡張子除く）のアッパーキャメルケースで決まる（例: `MyButton.hybs` → `<MyButton>`）。名前の明示的な宣言は不要。`<script>` のトップレベルに宣言されたすべての名前は `<template>` から参照可能である。エクスポート宣言は不要。
-_Avoid_: クラス、関数コンポーネント（`.hybs` ファイルそのものがコンポーネントの単位）
-
-**Template DSL**:
-`.hybs` の `<template>` セクション内で使う言語非依存のマークアップ言語。タグ名は Hayate の `element-kind`（`view` / `text` / `image` / `button` / `text-input` / `scroll-view`）に直接マップされる。HTML タグ名（`div` / `p` / `h1` 等）は使用しない。式は `{}` で囲まれた制限付き DSL で記述し、特定プログラミング言語の構文に依存しない。
-_Avoid_: HTML、JSX、テンプレートエンジン（Handlebars 等）
-
-**Script Adapter**:
-特定言語向けの Hayabusa SDK 実装。Signal・Computed・Effect・on_mount・on_destroy・prop・emit の各プリミティブを当該言語のイディオムで提供する。Hayabusa Rust コアに言語ランタイムを埋め込む形で実装され（TypeScript: QuickJS、Python: PyO3、Rust: native）、Signal グラフの実体は Hayabusa Rust コアが保持する（ADR-0045）。一プロジェクトで使用できる Script Adapter は一つだけであり、`hayabusa.toml` の `[script] language` で宣言する。
-_Avoid_: プラグイン、バインディング（WIT binding と混同するため）
-
-**Prop**:
-コンポーネントが外部から受け取る入力値。`<script>` 内で `prop("name")` 関数呼び出しにより宣言する（例: `const label = prop<string>("label")`）。コンパイラは `<script>` の AST を静的スキャンして `prop()` 呼び出しを検出し、コンポーネントの props インターフェースを確定する。`<template>` からは通常の識別子として参照できる。
-_Avoid_: export（言語ごとのエクスポート構文はコンパイラの判定ルールが言語依存になるため使わない）
-
-**Signal**:
-Hayabusa のリアクティビティの基本単位。値の変化が依存する Computed・Effect に自動伝播する。グラフの追跡・伝播・スケジューリングは Hayabusa Rust コアが担い、各言語の Script Adapter は埋め込まれた言語ランタイム経由でこれを呼び出す（ADR-0045）。WIT は使わない。言語ごとの表記（Rust: `.get()` / TypeScript・Python: `.value`）は Script Adapter の薄いラッパーが提供する。テンプレートからは識別子のみで参照でき、コンパイラが言語別のアクセス形式に展開する。
-_Avoid_: State, Observable, Store（Store は別の概念）
-
-**Vite Plugin**:
-TypeScript 向け Phase 1 のビルド統合形式。`vite.config.ts` に `hayabusa()` プラグインを追加することで `.hybs` ファイルのコンパイルが有効になる。`hayabusa.toml` はプラグインが参照する設定ファイルとして機能する。ユーザーは Vite を直接操作し、Hayabusa は Vite の変換パイプラインに乗る。Rust・Python 向け Phase 2 以降ではそれぞれの言語ツールチェーンに対応した統合形式を別途定義する。
-_Avoid_: hayabusa CLI（TypeScript Phase 1 ではビルドの主役は Vite）
-
-**Hot Reload**:
-開発中にファイル変更を保存した際にブラウザを手動リロードせず変更を反映する仕組み。セクションごとに反映範囲が異なる。`<template>` と `<style>` の変更はすべての言語で即時反映される（Hayabusa コンパイラが処理し、Rust バイナリの再コンパイルを必要としない）。`<script>` の変更は言語によって異なり、TypeScript・Python は即時反映、Rust はフルリビルド後にリロードとなる。
-_Avoid_: HMR（Hot Module Replacement）（モジュールシステムを持たない言語では意味をなさないため）
-
-**Router**:
-Hayabusa が提供する URL ベースのナビゲーション管理。現在の URL に対応するコンポーネントをレンダリングする責務を持つ。Signal ベースのリアクティブシステムと統合され、URL 変化がコンポーネントツリーに自動伝播する。
-_Avoid_: ページ遷移ライブラリ（Hayabusa 組み込みのため）
-
-**Store**:
-コンポーネントをまたいで共有されるリアクティブ状態。単一コンポーネント内の Signal と異なり、アプリケーション全体またはサブツリーで参照可能な状態の器。Signal ランタイム上に構築される。
-_Avoid_: Signal（単一コンポーネントスコープの Signal とは異なる）、Redux Store（実装モデルが異なる）
-
-**Resource**:
-非同期データ取得をリアクティブシステムに統合する仕組み。fetch・DB 問い合わせ等の非同期操作の結果を Signal として扱い、loading / error / data の各状態を Signal で表現する。
-_Avoid_: Promise、async/await（Resource はリアクティブグラフの一部として機能する）
-
-**Scene Graph**:
-Hayate 内部の描画オブジェクト間の親子・描画順序・transform / clip 関係を表す保持型グラフ。z-order / transform 継承 / clip / hit-test / grouping のための補助構造。NodeId 指定で直接 mutation される実体オブジェクト群。
+**SceneGraph**:
+Hayate が保持する描画用の retained graph。UI フレームワークやコンポーネントツリーそのものではない。
 _Avoid_: Virtual DOM, Component Tree
 
-**Scroll Offset**:
-`scroll-view` Element のスクロール位置（x, y）。Platform Adapter がスクロール物理（delta 積算・イナーシャ・rubber-band・スナップ）を担い、`element_set_scroll_offset(id, x, y)` で Hayate に渡す。Hayate は `scene_build` 時に子要素の座標をオフセット分だけ平行移動しクリップ矩形を適用する。`position: sticky` も同 scroll offset を使って `scene_build` 内でクランプ計算するため、Hayate の責務に含む。スクロール挙動の設定（スナップ等）は `scroll-view` の Hayate CSS プロパティで宣言し Platform Adapter が読む。`element_set_scroll_offset` WIT はプログラマティックスクロール（ボタンによるスクロールトップ等）専用。`scroll` イベントはアプリへの通知専用であり、Hayabusa が offset 積算目的に使うことはない。
-_Avoid_: Hayate がスクロール状態を持つ設計、Hayabusa がスクロール offset を積算する設計、StyleProp::ScrollOffset
-
-**Z-Order**:
-SceneGraph の描画順序制御。同一 parent 内で `StyleProp::ZIndex(n)` が高い子ほど後に walk され、前景に描画される（painter's algorithm）。「親の兄弟より前景に出る」ケース（モーダル・tooltip）はアプリ側が root 直下に要素を配置することで解決し、CSS stacking context 相当の概念は Hayate に持ち込まない。
-_Avoid_: NodeKind::Layer、stacking context
-
-**Transform Group**:
-SceneGraph の Node 種別の一つ（`NodeKind::Group`）。affine 変換行列を保持し、子 Node 群に GPU 側で matrix を適用する。Vello の `push_transform()` / `pop()` に対応する。`StyleProp::Transform` として座標に焼き込む方式とは異なり、layout 再計算ゼロでサブツリー全体を変換できるため、アニメーションの基盤となる。
-_Avoid_: StyleProp::Transform（座標焼き込み方式は layout 再計算が不要にならない）
-
-**Node**:
-Hayate の Raw Layer が管理する描画プリミティブの最小単位。`rect` / `text-run` / `image` / `clip` / `layer` 等、GPU が直接処理できる型のみ存在する。HTML の div/span や React Component とは異なる。
-_Avoid_: Element（Element Layer の element と混同するため）, Component, Widget
-
-**NodeId**:
-Hayate が slotmap（generational arena）で払い出す不透明なハンドル。上位層は「どの entity が どの NodeId か」のマッピングを自身で管理する。削除済み Node への誤 mutation は generational check で検出される。
-_Avoid_: Entity ID
-
-**Backend**:
-GPU API 抽象層。Hayate は wgpu を唯一の Backend として使用し、wgpu が Vulkan / Metal / DX12 / WebGPU（ブラウザ）への変換を担う。Hayate は独自の Backend 抽象を持たない。
-_Avoid_: Renderer, Driver
-
 **Scene Renderer**:
-`SceneGraph` を消費して描画結果を生成する実装単位。Vello や `tiny-skia` は `Scene Renderer` であり、`Backend` ではない。`Backend` は GPU API 層、`Scene Renderer` は Hayate の描画モデルを特定の描画系へ写像する層を指す。
-_Avoid_: Backend, Driver, Surface
+`SceneGraph` を消費して描画結果を生成する実装単位。現行の標準候補は Vello、代替候補は `tiny-skia`。
+_Avoid_: Backend, Driver
 
 **Render Host**:
-Canvas や surface の初期化・resize・capability 判定・fallback 選択・資源寿命管理を担う外側の協調層。`Scene Renderer` は描画だけを担当し、`Render Host` がどの `Scene Renderer` を使うかと、どの描画先へ出すかを決める。
-_Avoid_: Platform Adapter, Backend, Renderer
-
-**Renderer Selection Reason**:
-`Render Host` が特定の `Scene Renderer` を採用しなかった、または別の `Scene Renderer` へ切り替えた理由を表す共通語彙。`WebGpuUnavailable` / `RendererInitFailed` / `SurfaceLost` / `CapabilityUnsupported` / `DisabledByPolicy` のように、技術的失敗と policy 判断を同じ選択語彙で扱う。
-_Avoid_: backend error string, ad-hoc fallback reason
+surface 初期化、capability 判定、renderer 切替、資源寿命管理を担う外側の協調層。描画そのものは `Scene Renderer` が担う。
+_Avoid_: Platform Adapter, Backend
 
 **Renderer Selection Policy**:
-どの `Scene Renderer` を優先し、どの条件で採用・不採用にするかを決める決定ルール。`Render Host` から分離され、host は実行と切替を担い、policy は選択順・許容条件・one-way fallback ルールを決める。
-_Avoid_: host-embedded policy, renderer-specific if ladder
+どの `Scene Renderer` を優先し、どの条件で採用・不採用にするかを決めるルール。`Render Host` から分離する。
+_Avoid_: host に埋め込まれた if 文連鎖
 
-**Allowed Renderers**:
-`Renderer Selection Policy` が採用候補としてよい `Scene Renderer` の許可集合。標準では自動選択の内部設定として扱い、深く設定したい利用者だけが明示的に絞り込める。
-_Avoid_: host override, hardcoded backend switch
+**Renderer Selection Reason**:
+`Render Host` が renderer を採用しなかった、または切り替えた理由を表す共通語彙。`WebGpuUnavailable` / `RendererInitFailed` / `SurfaceLost` / `CapabilityUnsupported` / `DisabledByPolicy` など。
+_Avoid_: 場当たり的な文字列エラー
 
-**Preferred Renderer Order**:
-`Allowed Renderers` の中でどの `Scene Renderer` を先に試すかを表す優先順。`Render Host` ではなく `Renderer Selection Policy` が解釈する。
-_Avoid_: renderer-specific startup logic in host
+## Runtime Boundaries
 
-**Preferred Default Renderer**:
-標準の `Renderer Selection Policy` が、環境と policy が許すなら最初に採用を試みる `Scene Renderer`。Hayate では当面 Vello がこれにあたる。
-_Avoid_: the only renderer, guaranteed renderer
+**Platform Adapter**:
+IME、入力、surface、クリップボード、アクセシビリティなどのプラットフォーム依存処理を担う層。Hayate Core はその実装詳細を知らない。
+_Avoid_: Renderer, Host
 
-**Standard Alternative Renderer**:
-標準 policy における正式な代替 `Scene Renderer`。主候補が採用できないときのために同質性を保って用意される候補であり、場当たり的な暫定 fallback ではない。Hayate では当面 `tiny-skia` がこれにあたる。
-_Avoid_: second-class fallback, temporary renderer
+**Tsubame Adapter**:
+`tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持したまま、レンダリング先だけを `Renderer Protocol` に向け替える。
+_Avoid_: shared component runtime, unified signal runtime
 
-**Retained**:
-Scene Graph が前フレームの状態を保持し、上位層は変更のあった Node のみを通知する方式。対義語は Immediate（毎フレーム全 Node を再構築）。Hayate は Retained を採用する。
+## Historical Terms
 
-**Glyph Atlas**:
-レンダリング済みグリフを格納する GPU テクスチャ。LRU でエビクションし、UV 座標でアドレス指定する。
+**WIT**:
+Hayate の公開境界として使っていた過去の設計語彙。ADR-0049 以降、Hayate-Tsubame 間の現行プロトコル正本ではない。現行文書で使う場合は過去設計であることを明示する。
 
-**AccessKit**:
-GUI アプリがプラットフォームの AT（Assistive Technology）へアクセシビリティツリーを報告するためのクロスプラットフォーム Rust ライブラリ。アプリ側は `TreeUpdate`（ツリー差分）を生成するだけでよく、Windows UIA / macOS NSAccessibility / AT-SPI / Web ARIA への橋渡しは AccessKit が担う。Hayate Core はツリーの生成責務を持ち、Platform Adapter が AccessKit のプラットフォーム実装を呼び出してシステムの AT に報告する。
-_Avoid_: アクセシビリティ API、スクリーンリーダー（AT の一種に過ぎない）
-
-**Lightweight DOM**:
-Hayate を指す語としては使わない。Hayate は DOM 互換や DOM 縮小版ではなく、汎用アプリ UI 基盤のための retained UI runtime として扱う。
-_Avoid_: Hayate の別名としての lightweight DOM, mini DOM
+**wit-bindgen**:
+WIT ベース設計に付随する歴史用語。現行の Hayate-Tsubame 契約説明では使わない。
 
 ## Example Dialogue
 
-> 「Hayate は React の代替か？」
-> → 「違う。Hayabusa が React 相当の役割を担う。Hayabusa が Signal diff を取り、変化分を Hayate Element Layer に流す。Hayate は受け取って描くだけ」
+> 「今の Hayate と Tsubame の結合点は何？」
+> → 「`protocol.yaml` と、それに基づく `apply_mutations` / `poll_events` だよ」
 
-> 「他言語（Go・Zig・C）から Hayate を使えるか？」
-> → 「使える。WIT から wit-bindgen で各言語のネイティブ SDK が自動生成される。Element Layer 経由でスタイル付き UI が作れるし、Raw Layer 経由で生座標を直接制御することもできる」
+> 「Tsubame は signal ランタイムなの？」
+> → 「違う。各フレームワークの既存ランタイムをそのまま使い、レンダリング先だけを差し替える基盤だよ」
 
-> 「Web とネイティブで挙動が変わるか？」
-> → 「変わらない。WIT が単一ソースで両方にコンパイルされる。Platform Adapter の実装は異なる（Web Canvas Mode は EditContext API / Web HTML Mode は native DOM IME / macOS は TSM）が、Hayate Core は実装を知らない。品質は等階級」
-
-> 「IME はどこが担うか？」
-> → 「Platform Adapter が担う。WIT に IME インターフェース（composition-start / composition-update / composition-end / commit-text）を定義し、各プラットフォームの Adapter が実装する」
+> 「Hayabusa は消えたの？」
+> → 「消えていない。Rust 側の長期構想として残っている。ただし現状の開発優先は Tsubame 側」

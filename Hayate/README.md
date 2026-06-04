@@ -60,7 +60,8 @@ crates/
 
 ## ドキュメント
 
-- [設計仕様書](docs/hayate-spec.md)
+- [現行仕様書](docs/spec.md)
+- [旧仕様アーカイブ](docs/archive/hayate-spec-v1.1.md)
 - [ドメイン用語集](CONTEXT.md)
 - [アーキテクチャ決定記録](docs/adr/)
 
