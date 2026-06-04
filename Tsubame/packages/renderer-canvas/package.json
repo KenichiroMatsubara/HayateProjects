@@ -15,6 +15,9 @@
   },
   "files": ["dist"],
   "scripts": {
+    "generate": "node scripts/gen-protocol.mjs",
+    "prebuild": "npm run generate",
+    "pretypecheck": "npm run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
@@ -26,6 +29,7 @@
     "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia"
   },
   "devDependencies": {
+    "js-yaml": "^4.1.0",
     "rimraf": "^6.1.3"
   }
 }

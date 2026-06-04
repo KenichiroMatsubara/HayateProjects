@@ -1,0 +1,513 @@
+version: 1
+
+# 8 canonical sections. build.rs and gen-protocol.mjs read this file.
+# Block-only YAML (no inline braces) for simple line-by-line parsing.
+
+types:
+  - name: color
+    raw_slots: 4
+    fields:
+      - name: r
+        type: f32
+      - name: g
+        type: f32
+      - name: b
+        type: f32
+      - name: a
+        type: f32
+  - name: dimension
+    raw_slots: 2
+    fields:
+      - name: value
+        type: f32
+      - name: unit
+        type: dimension_unit
+
+enums:
+  - name: dimension_unit
+    values:
+      - name: px
+        value: 0
+      - name: percent
+        value: 1
+      - name: auto
+        value: 2
+      - name: fr
+        value: 3
+  - name: display
+    values:
+      - name: flex
+        value: 0
+      - name: grid
+        value: 1
+      - name: block
+        value: 2
+      - name: none
+        value: 3
+  - name: flex_direction
+    values:
+      - name: row
+        value: 0
+      - name: column
+        value: 1
+      - name: row_reverse
+        value: 2
+      - name: column_reverse
+        value: 3
+  - name: align_items
+    values:
+      - name: flex_start
+        value: 0
+      - name: flex_end
+        value: 1
+      - name: center
+        value: 2
+      - name: stretch
+        value: 3
+      - name: baseline
+        value: 4
+  - name: justify_content
+    values:
+      - name: flex_start
+        value: 0
+      - name: flex_end
+        value: 1
+      - name: center
+        value: 2
+      - name: space_between
+        value: 3
+      - name: space_around
+        value: 4
+      - name: space_evenly
+        value: 5
+  - name: font_family
+    string_values: true
+    values:
+      - name: NotoSansJP
+        value: "Noto Sans JP"
+      - name: NotoSansKR
+        value: "Noto Sans KR"
+      - name: NotoSansSC
+        value: "Noto Sans SC"
+      - name: NotoSansTC
+        value: "Noto Sans TC"
+      - name: NotoSansArabic
+        value: "Noto Sans Arabic"
+      - name: NotoSansThai
+        value: "Noto Sans Thai"
+      - name: NotoSansDevanagari
+        value: "Noto Sans Devanagari"
+      - name: NotoSansHebrew
+        value: "Noto Sans Hebrew"
+      - name: NotoSerif
+        value: "Noto Serif"
+      - name: NotoSansMono
+        value: "Noto Sans Mono"
+      - name: Inter
+        value: "Inter"
+      - name: Roboto
+        value: "Roboto"
+      - name: OpenSans
+        value: "Open Sans"
+      - name: Lato
+        value: "Lato"
+      - name: Poppins
+        value: "Poppins"
+      - name: Montserrat
+        value: "Montserrat"
+      - name: Raleway
+        value: "Raleway"
+      - name: Nunito
+        value: "Nunito"
+      - name: Oswald
+        value: "Oswald"
+      - name: SourceSans3
+        value: "Source Sans 3"
+      - name: PlayfairDisplay
+        value: "Playfair Display"
+      - name: Merriweather
+        value: "Merriweather"
+      - name: Lora
+        value: "Lora"
+      - name: JetBrainsMono
+        value: "JetBrains Mono"
+      - name: FiraCode
+        value: "Fira Code"
+      - name: SourceCodePro
+        value: "Source Code Pro"
+
+opcodes:
+  - name: APPEND_CHILD
+    value: 0
+    params:
+      - name: parent_id
+        type: element_id
+      - name: child_id
+        type: element_id
+  - name: INSERT_BEFORE
+    value: 1
+    params:
+      - name: parent_id
+        type: element_id
+      - name: child_id
+        type: element_id
+      - name: before_id
+        type: element_id
+  - name: REMOVE
+    value: 2
+    params:
+      - name: id
+        type: element_id
+  - name: SET_ROOT
+    value: 3
+    params:
+      - name: id
+        type: element_id
+  - name: SET_STYLE
+    value: 4
+    params:
+      - name: id
+        type: element_id
+      - name: style_offset
+        type: usize
+      - name: style_len
+        type: usize
+  - name: SET_TRANSFORM
+    value: 5
+    params:
+      - name: id
+        type: element_id
+      - name: has_matrix
+        type: bool
+      - name: matrix
+        type: f64
+        count: 6
+  - name: SET_SCROLL_OFFSET
+    value: 6
+    params:
+      - name: id
+        type: element_id
+      - name: x
+        type: f32
+      - name: y
+        type: f32
+  - name: FOCUS
+    value: 7
+    params:
+      - name: id
+        type: element_id
+  - name: BLUR
+    value: 8
+    params:
+      - name: id
+        type: element_id
+  - name: CREATE
+    value: 9
+    params:
+      - name: id
+        type: element_id
+      - name: kind
+        type: u32
+
+style_tags:
+  - name: BACKGROUND_COLOR
+    value: 0
+    params:
+      - name: color
+        type: color
+  - name: OPACITY
+    value: 1
+    params:
+      - name: value
+        type: f32
+  - name: BORDER_RADIUS
+    value: 2
+    params:
+      - name: value
+        type: f32
+  - name: BORDER_WIDTH
+    value: 3
+    params:
+      - name: value
+        type: f32
+  - name: BORDER_COLOR
+    value: 4
+    params:
+      - name: color
+        type: color
+  - name: WIDTH
+    value: 5
+    params:
+      - name: dim
+        type: dimension
+  - name: HEIGHT
+    value: 6
+    params:
+      - name: dim
+        type: dimension
+  - name: MIN_WIDTH
+    value: 7
+    params:
+      - name: dim
+        type: dimension
+  - name: MIN_HEIGHT
+    value: 8
+    params:
+      - name: dim
+        type: dimension
+  - name: MAX_WIDTH
+    value: 9
+    params:
+      - name: dim
+        type: dimension
+  - name: MAX_HEIGHT
+    value: 10
+    params:
+      - name: dim
+        type: dimension
+  - name: DISPLAY
+    value: 11
+    params:
+      - name: value
+        type: display
+  - name: FLEX_DIRECTION
+    value: 12
+    params:
+      - name: value
+        type: flex_direction
+  - name: ALIGN_ITEMS
+    value: 13
+    params:
+      - name: value
+        type: align_items
+  - name: JUSTIFY_CONTENT
+    value: 14
+    params:
+      - name: value
+        type: justify_content
+  - name: GAP
+    value: 15
+    params:
+      - name: dim
+        type: dimension
+  - name: PADDING
+    value: 16
+    params:
+      - name: dim
+        type: dimension
+  - name: PADDING_TOP
+    value: 17
+    params:
+      - name: dim
+        type: dimension
+  - name: PADDING_RIGHT
+    value: 18
+    params:
+      - name: dim
+        type: dimension
+  - name: PADDING_BOTTOM
+    value: 19
+    params:
+      - name: dim
+        type: dimension
+  - name: PADDING_LEFT
+    value: 20
+    params:
+      - name: dim
+        type: dimension
+  - name: MARGIN
+    value: 21
+    params:
+      - name: dim
+        type: dimension
+  - name: MARGIN_TOP
+    value: 22
+    params:
+      - name: dim
+        type: dimension
+  - name: MARGIN_RIGHT
+    value: 23
+    params:
+      - name: dim
+        type: dimension
+  - name: MARGIN_BOTTOM
+    value: 24
+    params:
+      - name: dim
+        type: dimension
+  - name: MARGIN_LEFT
+    value: 25
+    params:
+      - name: dim
+        type: dimension
+  - name: FONT_SIZE
+    value: 26
+    params:
+      - name: value
+        type: f32
+  - name: COLOR
+    value: 27
+    params:
+      - name: color
+        type: color
+  - name: Z_INDEX
+    value: 28
+    params:
+      - name: value
+        type: f32
+  - name: FONT_FAMILY
+    value: 29
+    variable_length: true
+    params:
+      - name: family
+        type: string
+  - name: FLEX_GROW
+    value: 30
+    params:
+      - name: value
+        type: f32
+  - name: FONT_WEIGHT
+    value: 31
+    params:
+      - name: value
+        type: f32
+
+event_kinds:
+  - name: click
+    value: 0
+    params:
+      - name: target_id
+        type: element_id
+      - name: x
+        type: f32
+      - name: y
+        type: f32
+  - name: focus
+    value: 1
+    params:
+      - name: target_id
+        type: element_id
+  - name: blur
+    value: 2
+    params:
+      - name: target_id
+        type: element_id
+  - name: text_input
+    value: 3
+    params:
+      - name: target_id
+        type: element_id
+      - name: text
+        type: string
+  - name: composition_start
+    value: 4
+    params:
+      - name: target_id
+        type: element_id
+      - name: text
+        type: string
+  - name: composition_update
+    value: 5
+    params:
+      - name: target_id
+        type: element_id
+      - name: text
+        type: string
+  - name: composition_end
+    value: 6
+    params:
+      - name: target_id
+        type: element_id
+      - name: text
+        type: string
+  - name: scroll
+    value: 7
+    params:
+      - name: target_id
+        type: element_id
+      - name: delta_x
+        type: f32
+      - name: delta_y
+        type: f32
+  - name: resize
+    value: 8
+    params:
+      - name: width
+        type: f32
+      - name: height
+        type: f32
+  - name: active_end
+    value: 9
+    params:
+      - name: target_id
+        type: element_id
+  - name: hover_enter
+    value: 10
+    params:
+      - name: target_id
+        type: element_id
+  - name: hover_leave
+    value: 11
+    params:
+      - name: target_id
+        type: element_id
+  - name: key_down
+    value: 12
+    params:
+      - name: target_id
+        type: element_id
+      - name: key
+        type: string
+      - name: modifiers
+        type: u32
+  - name: active_start
+    value: 13
+    params:
+      - name: target_id
+        type: element_id
+  - name: pointer_move
+    value: 14
+    params:
+      - name: x
+        type: f32
+      - name: y
+        type: f32
+  - name: fetch_font
+    value: 15
+    params:
+      - name: family
+        type: string
+
+element_kinds:
+  - name: view
+    value: 0
+  - name: text
+    value: 1
+  - name: image
+    value: 2
+  - name: button
+    value: 3
+  - name: text_input
+    value: 4
+  - name: scroll_view
+    value: 5
+
+unset_kinds:
+  - name: color
+    value: 0
+  - name: font_size
+    value: 1
+  - name: font_family
+    value: 2
+  - name: font_weight
+    value: 3
+
+modifier_keys:
+  - name: shift
+    value: 1
+  - name: ctrl
+    value: 2
+  - name: alt
+    value: 4
+  - name: meta
+    value: 8

@@ -2,7 +2,7 @@ use hayate_core::SceneGraph;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use super::{CanvasBackend, ClearColor};
+use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend;
 
@@ -14,6 +14,10 @@ impl SelectedBackend {
 }
 
 impl CanvasBackend for SelectedBackend {
+    fn kind(&self) -> SceneRendererKind {
+        SceneRendererKind::Null
+    }
+
     fn render_scene(
         &mut self,
         _scene: &SceneGraph,

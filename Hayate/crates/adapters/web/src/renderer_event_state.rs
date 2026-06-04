@@ -68,8 +68,8 @@ impl RendererEventState {
     /// `focus()` / `blur()`.
     pub fn pointer_down(&mut self, target: Option<ElementId>, x: f32, y: f32) {
         if let Some(t) = target {
-            self.events.push(Event::Click { target: t, x, y });
-            self.events.push(Event::ActiveStart { target: t });
+            self.events.push(Event::Click { target_id: t, x, y });
+            self.events.push(Event::ActiveStart { target_id: t });
             self.active_element = Some(t);
             self.focus(t);
         } else if let Some(prev) = self.focused_element.take() {
@@ -83,7 +83,7 @@ impl RendererEventState {
     pub fn pointer_up(&mut self, explicit_fallback: Option<ElementId>) {
         let target = self.active_element.take().or(explicit_fallback);
         if let Some(t) = target {
-            self.events.push(Event::ActiveEnd { target: t });
+            self.events.push(Event::ActiveEnd { target_id: t });
         }
     }
 
@@ -108,10 +108,10 @@ impl RendererEventState {
     pub fn hover_enter(&mut self, target: ElementId) {
         if self.hovered_element != Some(target) {
             if let Some(prev) = self.hovered_element {
-                self.events.push(Event::HoverLeave { target: prev });
+                self.events.push(Event::HoverLeave { target_id: prev });
             }
             self.hovered_element = Some(target);
-            self.events.push(Event::HoverEnter { target });
+            self.events.push(Event::HoverEnter { target_id: target });
         }
     }
 
@@ -119,14 +119,14 @@ impl RendererEventState {
     pub fn hover_leave(&mut self, target: ElementId) {
         if self.hovered_element == Some(target) {
             self.hovered_element = None;
-            self.events.push(Event::HoverLeave { target });
+            self.events.push(Event::HoverLeave { target_id: target });
         }
     }
 
     /// Push a Scroll event.
     pub fn wheel(&mut self, target: ElementId, delta_x: f32, delta_y: f32) {
         self.events.push(Event::Scroll {
-            target,
+            target_id: target,
             delta_x,
             delta_y,
         });
@@ -142,7 +142,7 @@ impl RendererEventState {
     pub fn key_down(&mut self, key: &str, modifiers: u32) {
         if let Some(focused) = self.focused_element {
             self.events.push(Event::KeyDown {
-                target: focused,
+                target_id: focused,
                 key: key.to_string(),
                 modifiers,
             });
@@ -152,7 +152,7 @@ impl RendererEventState {
     /// Push a TextInput event.
     pub fn text_input(&mut self, target: ElementId, text: &str) {
         self.events.push(Event::TextInput {
-            target,
+            target_id: target,
             text: text.to_string(),
         });
     }
@@ -160,7 +160,7 @@ impl RendererEventState {
     /// Push a CompositionStart event.
     pub fn composition_start(&mut self, target: ElementId, text: &str) {
         self.events.push(Event::CompositionStart {
-            target,
+            target_id: target,
             text: text.to_string(),
         });
     }
@@ -168,7 +168,7 @@ impl RendererEventState {
     /// Push a CompositionUpdate event.
     pub fn composition_update(&mut self, target: ElementId, text: &str) {
         self.events.push(Event::CompositionUpdate {
-            target,
+            target_id: target,
             text: text.to_string(),
         });
     }
@@ -176,7 +176,7 @@ impl RendererEventState {
     /// Push a CompositionEnd event.
     pub fn composition_end(&mut self, target: ElementId, text: &str) {
         self.events.push(Event::CompositionEnd {
-            target,
+            target_id: target,
             text: text.to_string(),
         });
     }
@@ -184,7 +184,7 @@ impl RendererEventState {
     /// Push a TextInput event (used for paste operations).
     pub fn paste(&mut self, target: ElementId, text: &str) {
         self.events.push(Event::TextInput {
-            target,
+            target_id: target,
             text: text.to_string(),
         });
     }
@@ -217,10 +217,10 @@ impl RendererEventState {
     fn apply_hover(&mut self, new_hover: Option<ElementId>) {
         if new_hover != self.hovered_element {
             if let Some(prev) = self.hovered_element {
-                self.events.push(Event::HoverLeave { target: prev });
+                self.events.push(Event::HoverLeave { target_id: prev });
             }
             if let Some(cur) = new_hover {
-                self.events.push(Event::HoverEnter { target: cur });
+                self.events.push(Event::HoverEnter { target_id: cur });
             }
             self.hovered_element = new_hover;
         }

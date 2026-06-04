@@ -2,7 +2,7 @@ use hayate_core::{RecordingBackend, SceneGraph};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use super::{CanvasBackend, ClearColor};
+use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
     recorder: RecordingBackend,
@@ -18,6 +18,10 @@ impl SelectedBackend {
 }
 
 impl CanvasBackend for SelectedBackend {
+    fn kind(&self) -> SceneRendererKind {
+        SceneRendererKind::Recording
+    }
+
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
         self.recorder.render(scene, clear_color);
         Ok(())

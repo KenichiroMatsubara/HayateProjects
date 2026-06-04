@@ -88,30 +88,30 @@ pub(crate) struct Element {
 #[derive(Clone, Debug)]
 pub enum Event {
     Click {
-        target: ElementId,
+        target_id: ElementId,
         x: f32,
         y: f32,
     },
     Focus(ElementId),
     Blur(ElementId),
     TextInput {
-        target: ElementId,
+        target_id: ElementId,
         text: String,
     },
     CompositionStart {
-        target: ElementId,
+        target_id: ElementId,
         text: String,
     },
     CompositionUpdate {
-        target: ElementId,
+        target_id: ElementId,
         text: String,
     },
     CompositionEnd {
-        target: ElementId,
+        target_id: ElementId,
         text: String,
     },
     Scroll {
-        target: ElementId,
+        target_id: ElementId,
         delta_x: f32,
         delta_y: f32,
     },
@@ -120,23 +120,23 @@ pub enum Event {
         height: f32,
     },
     HoverEnter {
-        target: ElementId,
+        target_id: ElementId,
     },
     HoverLeave {
-        target: ElementId,
+        target_id: ElementId,
     },
     ActiveStart {
-        target: ElementId,
+        target_id: ElementId,
     },
     ActiveEnd {
-        target: ElementId,
+        target_id: ElementId,
     },
     PointerMove {
         x: f32,
         y: f32,
     },
     KeyDown {
-        target: ElementId,
+        target_id: ElementId,
         key: String,
         modifiers: u32,
     },
@@ -479,7 +479,7 @@ impl ElementTree {
         }
         el.text_content.push_str(text);
         self.event_queue.push(Event::TextInput {
-            target: id,
+            target_id: id,
             text: text.to_string(),
         });
     }
