@@ -127,54 +127,82 @@ modifier_keys:
 ```
 Hayate/proto/protocol.yaml
 ├── enums:
-│   ├── dimension_unit   (px/percent/auto/fr)
-│   ├── display_value    (flex/grid/block/none)
+│   ├── dimension_unit        (px/percent/auto/fr)
+│   ├── display_value         (flex/grid/block/none)
 │   ├── flex_direction_value
 │   ├── align_value
 │   ├── justify_value
-│   └── font_family      (sans_serif/serif/monospace/system_ui)
+│   └── font_family           (sans_serif/serif/monospace/system_ui)
 ├── types:
-│   ├── color            (r/g/b/a × f32)
-│   └── dimension        (value: f32 + unit: dimension_unit)
-├── opcodes:             (apply_mutations 第1引数 f64)
-├── element_kinds:       (OP_CREATE の kind_code)
-└── style_tags:          (apply_mutations 第2引数 f32)
+│   ├── color                 (r/g/b/a × f32)
+│   └── dimension             (value: f32 + unit: dimension_unit)
+├── opcodes:                  (apply_mutations 第1引数 f64、params/type/count付き)
+├── element_kinds:            (OP_CREATE の kind_code)
+├── style_tags:               (apply_mutations 第2引数 f32、params/type付き)
+├── event_kinds:              (poll_events の kind discriminant、params/type付き、string型含む)
+├── unset_kinds:              (element_unset_style の kind コード)
+└── modifier_keys:            (キー修飾子ビットマスク 1/2/4/8)
 ```
+
+**型システム:**
+- プリミティブ: `element_id`, `u32`, `bool`, `f32`, `f64`, `usize`, `string`
+- 複合型 (`types:` セクション): `color`, `dimension`
+- 配列: `{ type: f64, count: 6 }` 形式
+- enum 参照: `enums:` セクションの名前を type に指定
+
+**`string` 型の使用方針:** 「使う必要があるから使う」。不要な場面（font_family）は enum に変えた。
+必要な場面（event_kinds の text_input.text、key_down.key）では使う。
 
 ### 3-2. コード生成（確定済み）
 
 **Rust (build.rs → OUT_DIR/protocol.rs):**
-- `OP_*: u32` 定数
-- `OP_SLOTS: &[usize]` テーブル
-- `ELEMENT_KIND_*: u32` 定数
-- `TAG_*: u32` 定数
-- `Op` enum + `parse_next_op()` 関数
-- `StyleTag` enum + `parse_next_style_tag()` 関数
+- `OP_*: u32`、`TAG_*: u32`、`EVENT_KIND_*: f64`、`ELEMENT_KIND_*: u32`、`UNSET_KIND_*: u32`、`MODIFIER_*: u32` 定数
+- `OP_SLOTS: &[usize]` テーブル（param count から導出）
+- `Op` enum + `parse_next_op(ops, i)` 関数
+- `StyleTag` enum + `parse_next_style_tag(packed, i)` 関数
+- `encode_event(ev: &Event) -> js_sys::Array` 関数（encode_events の内部ループを生成）
 
 **TS (scripts/gen-protocol.mjs → src/protocol.ts):**
-- `export const OP = {...} as const`
-- `export const ELEMENT_KIND = {...} as const`
-- `export const TAG = {...} as const`
-- `export const FONT_FAMILY = {...} as const`（enum 定数）
-- `export const DIMENSION_UNIT = {...} as const`（enum 定数）
-- `export const DISPLAY = {...} as const` 等（enum 定数）
+- `export const OP`, `TAG`, `EVENT_KIND`, `ELEMENT_KIND`, `UNSET_KIND`, `MODIFIER` as const
+- `export const FONT_FAMILY`, `DIMENSION_UNIT`, `DISPLAY`, `FLEX_DIRECTION`, `ALIGN_ITEMS`, `JUSTIFY_CONTENT` as const（enum 定数）
 - `push*` encoder 関数（全 op・全 style tag）
+- `export type EventPayload = ...`（discriminated union）
+- `export function parseEvent(ev: unknown[]): EventPayload`
 
 ### 3-3. 削除するもの（確定済み）
 
 - `Hayate/wit/` ディレクトリ全体
-- `element_kind_*()` wasm-bindgen 関数群
+- `element_kind_*()` wasm-bindgen 関数群（6関数）
+- `event_kind_*()` wasm-bindgen 関数群（15関数）
+- `modifier_shift/ctrl/alt/meta()` wasm-bindgen 関数群（4関数）
 - ADR-0013, 0015, 0033, 0039 → Superseded にマーク
 - `Tsubame/packages/renderer-canvas/src/opcodes.ts` → `protocol.ts` に置き換え
-- `Tsubame/packages/renderer-canvas/src/style-encoder.ts` の TAG/UNIT_CODE/DISPLAY_CODE 等 → `protocol.ts` に移動
+- `Tsubame/packages/renderer-canvas/src/style-encoder.ts` の `TAG`/`UNSET_KIND`/`UNIT_CODE`/`DISPLAY_CODE` 等 → `protocol.ts` に移動
+- `canvas-renderer.ts` の switch 文（magic number）→ `parseEvent()` を使う形に変更
 
 ### 3-4. 新規 ADR（確定済み）
 
-- **ADR-0049:** `Hayate/proto/protocol.yaml` を apply_mutations プロトコル定数の機械可読な単一正本とする
+- **ADR-0049:** `Hayate/proto/protocol.yaml` を Hayate-Tsubame 間プロトコル定数の機械可読な単一正本とする
 
 ---
 
-## 4. CONTEXT.md 更新候補
+## 4. 未決定として残った事項（次セッションで確認）
+
+### 4-1. event_kinds のフィールド構造の codegen 範囲（確認済み）
+- TS: `parseEvent()` 生成 ✅
+- Rust: `encode_events` 生成 ✅
+- 上記は確定済み。実装時に event_kinds の全 params を protocol.yaml に書き出す必要あり。
+  `poll_events` の返り値フォーマットは ADR-0034 を参照して各 event の fields を確認すること。
+
+### 4-2. 動的フォント追加（hayate.config.json との接続）
+`protocol.yaml` の `font_family` enum（プリセット）と
+`hayate.config.json` のユーザー追加フォント（文字列）の ID 接続が未設計。
+- 案: enum 値 0-99 = プリセット、100+ = ユーザー定義（hayate.config.json で family_id を指定）
+- ADR として起こす前に設計を詰める必要あり
+
+---
+
+## 5. CONTEXT.md 更新候補
 
 以下の語彙が今セッションで使われたが CONTEXT.md にない可能性がある。
 
