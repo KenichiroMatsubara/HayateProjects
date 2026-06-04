@@ -1,5 +1,6 @@
 use hayate_core::SceneGraph;
 use wasm_bindgen::prelude::*;
+use web_sys::HtmlCanvasElement;
 
 pub(crate) type ClearColor = [f32; 4];
 
@@ -63,43 +64,25 @@ pub(crate) fn diagnostic_renderer_selection_policy() -> RendererSelectionPolicy 
 mod vello;
 
 #[cfg(feature = "backend-vello")]
-pub(crate) use vello::SelectedBackend;
+use vello::SelectedBackend as VelloBackend;
 
-#[cfg(all(not(feature = "backend-vello"), feature = "backend-recording"))]
+#[cfg(feature = "backend-recording")]
 mod recording;
 
-#[cfg(all(not(feature = "backend-vello"), feature = "backend-recording"))]
-pub(crate) use recording::SelectedBackend;
+#[cfg(feature = "backend-recording")]
+use recording::SelectedBackend as RecordingBackend;
 
-#[cfg(all(
-    not(feature = "backend-vello"),
-    not(feature = "backend-recording"),
-    feature = "backend-tiny-skia"
-))]
+#[cfg(feature = "backend-tiny-skia")]
 mod tiny_skia_backend;
 
-#[cfg(all(
-    not(feature = "backend-vello"),
-    not(feature = "backend-recording"),
-    feature = "backend-tiny-skia"
-))]
-pub(crate) use tiny_skia_backend::SelectedBackend;
+#[cfg(feature = "backend-tiny-skia")]
+use tiny_skia_backend::SelectedBackend as TinySkiaBackend;
 
-#[cfg(all(
-    not(feature = "backend-vello"),
-    not(feature = "backend-recording"),
-    not(feature = "backend-tiny-skia"),
-    feature = "backend-null"
-))]
+#[cfg(feature = "backend-null")]
 mod null;
 
-#[cfg(all(
-    not(feature = "backend-vello"),
-    not(feature = "backend-recording"),
-    not(feature = "backend-tiny-skia"),
-    feature = "backend-null"
-))]
-pub(crate) use null::SelectedBackend;
+#[cfg(feature = "backend-null")]
+use null::SelectedBackend as NullBackend;
 
 #[cfg(not(any(
     feature = "backend-vello",
@@ -123,4 +106,183 @@ pub(crate) trait SceneRenderer {
     fn resize(&mut self, _width: u32, _height: u32) {}
 }
 
+pub(crate) struct RenderHost {
+    renderer: Box<dyn SceneRenderer>,
+    selection_policy: RendererSelectionPolicy,
+}
+
+impl RenderHost {
+    pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+        Self::init_with_policy(canvas, standard_renderer_selection_policy()).await
+    }
+
+    pub(crate) async fn init_with_policy(
+        canvas: HtmlCanvasElement,
+        selection_policy: RendererSelectionPolicy,
+    ) -> Result<Self, JsValue> {
+        let mut attempts = Vec::new();
+
+        for &renderer_kind in selection_policy.preferred_renderer_order() {
+            if !selection_policy.allows(renderer_kind) {
+                attempts.push(format!(
+                    "{}: {:?}",
+                    renderer_name(renderer_kind),
+                    RendererSelectionReason::DisabledByPolicy
+                ));
+                continue;
+            }
+
+            match init_renderer(renderer_kind, canvas.clone()).await {
+                Ok(renderer) => {
+                    log::info!("selected scene renderer: {}", renderer_name(renderer.kind()));
+                    return Ok(Self {
+                        renderer,
+                        selection_policy,
+                    });
+                }
+                Err(error) => {
+                    let reason = classify_selection_reason(renderer_kind, &error);
+                    log::warn!(
+                        "scene renderer init failed: {} ({reason:?})",
+                        renderer_name(renderer_kind)
+                    );
+                    attempts.push(format!(
+                        "{}: {reason:?} ({})",
+                        renderer_name(renderer_kind),
+                        js_error_message(&error)
+                    ));
+                }
+            }
+        }
+
+        Err(JsValue::from_str(&format!(
+            "no scene renderer could be selected; attempts: {}",
+            attempts.join(", ")
+        )))
+    }
+
+}
+
+impl SceneRenderer for RenderHost {
+    fn kind(&self) -> SceneRendererKind {
+        debug_assert!(self.selection_policy.allows(self.renderer.kind()));
+        self.renderer.kind()
+    }
+
+    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
+        debug_assert!(self.selection_policy.allows(self.renderer.kind()));
+        self.renderer.render_scene(scene, clear_color)
+    }
+
+    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
+        debug_assert!(self.selection_policy.allows(self.renderer.kind()));
+        self.renderer.clear(clear_color)
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        self.renderer.resize(width, height);
+    }
+}
+
+async fn init_renderer(
+    renderer_kind: SceneRendererKind,
+    canvas: HtmlCanvasElement,
+) -> Result<Box<dyn SceneRenderer>, JsValue> {
+    match renderer_kind {
+        SceneRendererKind::Vello => {
+            #[cfg(feature = "backend-vello")]
+            {
+                return Ok(Box::new(VelloBackend::init(canvas).await?));
+            }
+            #[cfg(not(feature = "backend-vello"))]
+            {
+                let _ = canvas;
+                Err(JsValue::from_str("renderer not compiled: vello"))
+            }
+        }
+        SceneRendererKind::TinySkia => {
+            #[cfg(feature = "backend-tiny-skia")]
+            {
+                return Ok(Box::new(TinySkiaBackend::init(canvas).await?));
+            }
+            #[cfg(not(feature = "backend-tiny-skia"))]
+            {
+                let _ = canvas;
+                Err(JsValue::from_str("renderer not compiled: tiny-skia"))
+            }
+        }
+        SceneRendererKind::Recording => {
+            #[cfg(feature = "backend-recording")]
+            {
+                return Ok(Box::new(RecordingBackend::init(canvas).await?));
+            }
+            #[cfg(not(feature = "backend-recording"))]
+            {
+                let _ = canvas;
+                Err(JsValue::from_str("renderer not compiled: recording"))
+            }
+        }
+        SceneRendererKind::Null => {
+            #[cfg(feature = "backend-null")]
+            {
+                return Ok(Box::new(NullBackend::init(canvas).await?));
+            }
+            #[cfg(not(feature = "backend-null"))]
+            {
+                let _ = canvas;
+                Err(JsValue::from_str("renderer not compiled: null"))
+            }
+        }
+    }
+}
+
+fn classify_selection_reason(
+    renderer_kind: SceneRendererKind,
+    error: &JsValue,
+) -> RendererSelectionReason {
+    let message = js_error_message(error);
+    let message = message.to_ascii_lowercase();
+
+    if renderer_kind == SceneRendererKind::Vello
+        && (message.contains("webgpu")
+            || message.contains("navigator.gpu")
+            || message.contains("adapter not found"))
+    {
+        return RendererSelectionReason::WebGpuUnavailable;
+    }
+
+    if message.contains("surface lost") {
+        return RendererSelectionReason::SurfaceLost;
+    }
+
+    if message.contains("surface not supported")
+        || message.contains("context unavailable")
+        || message.contains("failed to cast")
+    {
+        return RendererSelectionReason::CapabilityUnsupported;
+    }
+
+    if message.contains("not compiled") {
+        return RendererSelectionReason::DisabledByPolicy;
+    }
+
+    RendererSelectionReason::RendererInitFailed
+}
+
+fn renderer_name(renderer_kind: SceneRendererKind) -> &'static str {
+    match renderer_kind {
+        SceneRendererKind::Vello => "vello",
+        SceneRendererKind::TinySkia => "tiny-skia",
+        SceneRendererKind::Recording => "recording",
+        SceneRendererKind::Null => "null",
+    }
+}
+
+fn js_error_message(error: &JsValue) -> String {
+    error
+        .as_string()
+        .unwrap_or_else(|| format!("{error:?}"))
+}
+
+pub(crate) use RenderHost as SelectedBackend;
 pub(crate) use SceneRenderer as CanvasBackend;

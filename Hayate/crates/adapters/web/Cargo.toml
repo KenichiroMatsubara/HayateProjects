@@ -8,7 +8,7 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["backend-vello"]
+default = ["backend-vello", "backend-tiny-skia"]
 backend-vello = ["dep:wgpu", "dep:vello"]
 backend-tiny-skia = ["dep:tiny-skia", "dep:skrifa"]
 backend-recording = []
