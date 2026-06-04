@@ -531,7 +531,7 @@ fn push_and_poll_events() {
     tree.render(0.0);
 
     tree.push_event(Event::Click {
-        target: root,
+        target_id: root,
         x: 10.0,
         y: 20.0,
     });
@@ -566,7 +566,7 @@ fn scroll_event_targets_hit_element() {
 
     let target = tree.hit_test(100.0, 100.0).expect("no hit");
     tree.push_event(Event::Scroll {
-        target,
+        target_id: target,
         delta_x: 0.0,
         delta_y: 20.0,
     });
@@ -688,7 +688,7 @@ fn text_input_event_queued_on_append() {
 
     tree.element_append_text_content(input, "x");
     tree.push_event(Event::TextInput {
-        target: input,
+        target_id: input,
         text: "x".to_string(),
     });
 
@@ -704,15 +704,15 @@ fn composition_lifecycle_events_queued() {
     tree.set_root(input);
 
     tree.push_event(Event::CompositionStart {
-        target: input,
+        target_id: input,
         text: "あ".to_string(),
     });
     tree.push_event(Event::CompositionUpdate {
-        target: input,
+        target_id: input,
         text: "あい".to_string(),
     });
     tree.push_event(Event::CompositionEnd {
-        target: input,
+        target_id: input,
         text: "愛".to_string(),
     });
 
@@ -769,7 +769,7 @@ fn key_down_event_carries_modifiers() {
 
     // Shift+A with modifier bitmask
     tree.push_event(Event::KeyDown {
-        target: input,
+        target_id: input,
         key: "A".to_string(),
         modifiers: 1,
     });
@@ -932,10 +932,10 @@ fn semantic_event_variants_roundtrip_through_poll() {
     let target = tree.element_create(45, ElementKind::View);
     tree.set_root(target);
 
-    tree.push_event(Event::HoverEnter { target });
-    tree.push_event(Event::ActiveStart { target });
-    tree.push_event(Event::ActiveEnd { target });
-    tree.push_event(Event::HoverLeave { target });
+    tree.push_event(Event::HoverEnter { target_id: target });
+    tree.push_event(Event::ActiveStart { target_id: target });
+    tree.push_event(Event::ActiveEnd { target_id: target });
+    tree.push_event(Event::HoverLeave { target_id: target });
     tree.push_event(Event::PointerMove { x: 12.5, y: 34.0 });
 
     let events = tree.poll_events();

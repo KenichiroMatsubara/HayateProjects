@@ -10,7 +10,7 @@ import type {
 import { asElementId } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { encodeStylePatch, unsetKindsOf } from './style-encoder.js';
-import { ELEMENT_KIND, OP } from './opcodes.js';
+import { ELEMENT_KIND, OP, parseEvent } from './protocol.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
@@ -71,7 +71,7 @@ export class CanvasRenderer implements IRenderer {
 
   createElement(kind: ElementKind): ElementId {
     const id = this.nextId++;
-    this.ops.push(OP.CREATE, id, ELEMENT_KIND[kind]);
+    this.ops.push(OP.CREATE, id, (ELEMENT_KIND as Record<string, number>)[kind]!);
     return asElementId(id);
   }
 
@@ -177,32 +177,28 @@ export class CanvasRenderer implements IRenderer {
    */
   private dispatchEvents(events: unknown[]): void {
     for (const entry of events) {
-      const ev = entry as Array<number | string>;
-      switch (ev[0]) {
-        case 0: // click [0, target, x, y]
-          this.dispatchOne('click', asElementId(ev[1] as number));
+      const ev = parseEvent(entry as unknown[]);
+      switch (ev.kind) {
+        case 'click':
+          this.dispatchOne('click', asElementId(ev.targetId));
           break;
-        case 1: // focus [1, target]
-          this.dispatchOne('focus', asElementId(ev[1] as number));
+        case 'focus':
+          this.dispatchOne('focus', asElementId(ev.targetId));
           break;
-        case 2: // blur [2, target]
-          this.dispatchOne('blur', asElementId(ev[1] as number));
+        case 'blur':
+          this.dispatchOne('blur', asElementId(ev.targetId));
           break;
-        case 3: // text-input [3, target, text]
-          this.dispatchOne('input', asElementId(ev[1] as number), {
-            value: ev[2] as string,
-          });
+        case 'text_input':
+          this.dispatchOne('input', asElementId(ev.targetId), { value: ev.text });
           break;
-        case 10: // hover-enter [10, target]
-          this.dispatchOne('hover-enter', asElementId(ev[1] as number));
+        case 'hover_enter':
+          this.dispatchOne('hover-enter', asElementId(ev.targetId));
           break;
-        case 11: // hover-leave [11, target]
-          this.dispatchOne('hover-leave', asElementId(ev[1] as number));
+        case 'hover_leave':
+          this.dispatchOne('hover-leave', asElementId(ev.targetId));
           break;
-        case 12: // key-down [12, target, key, modifiers]
-          this.dispatchOne('keydown', asElementId(ev[1] as number), {
-            key: ev[2] as string,
-          });
+        case 'key_down':
+          this.dispatchOne('keydown', asElementId(ev.targetId), { key: ev.key });
           break;
         default:
           break;
