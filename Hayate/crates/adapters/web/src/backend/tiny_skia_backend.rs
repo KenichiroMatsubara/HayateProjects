@@ -1,11 +1,9 @@
-use hayate_core::{
-    NodeId, NodeKind, RenderImage, RenderImageAlphaType, SceneGraph, TextRunData,
-};
+use hayate_core::{NodeId, NodeKind, RenderImage, RenderImageAlphaType, SceneGraph, TextRunData};
 use skrifa::{
+    GlyphId, MetadataProvider,
     instance::{LocationRef, Size},
     outline::{DrawSettings, OutlinePen},
     raw::FontRef,
-    GlyphId, MetadataProvider,
 };
 use tiny_skia::{
     Color, FillRule, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
@@ -24,6 +22,10 @@ pub(crate) struct SelectedBackend {
 
 impl SelectedBackend {
     pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+        Self::init_sync(canvas)
+    }
+
+    pub(crate) fn init_sync(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
 
@@ -51,16 +53,18 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::TinySkia
     }
 
-    fn render_scene(
-        &mut self,
-        scene: &SceneGraph,
-        clear_color: ClearColor,
-    ) -> Result<(), JsValue> {
+    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
         let bg = to_premultiplied_color(clear_color);
         self.pixmap.fill(bg);
 
         for &root_id in scene.roots() {
-            draw_node(scene, root_id, &mut self.pixmap, Transform::identity(), None);
+            draw_node(
+                scene,
+                root_id,
+                &mut self.pixmap,
+                Transform::identity(),
+                None,
+            );
         }
 
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
@@ -114,8 +118,13 @@ fn premultiplied_to_straight(data: &mut [u8]) {
 
 fn to_premultiplied_color(c: ClearColor) -> Color {
     let [r, g, b, a] = c;
-    Color::from_rgba(r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0), a.clamp(0.0, 1.0))
-        .unwrap_or(Color::TRANSPARENT)
+    Color::from_rgba(
+        r.clamp(0.0, 1.0),
+        g.clamp(0.0, 1.0),
+        b.clamp(0.0, 1.0),
+        a.clamp(0.0, 1.0),
+    )
+    .unwrap_or(Color::TRANSPARENT)
 }
 
 fn draw_node(
@@ -161,9 +170,8 @@ fn draw_node(
         }
         NodeKind::Group { transform: t } => {
             let [a, b, c, d, e, f] = *t;
-            let group_ts = Transform::from_row(
-                a as f32, b as f32, c as f32, d as f32, e as f32, f as f32,
-            );
+            let group_ts =
+                Transform::from_row(a as f32, b as f32, c as f32, d as f32, e as f32, f as f32);
             let combined = transform.pre_concat(group_ts);
             for &child_id in &node.children {
                 draw_node(graph, child_id, pixmap, combined, mask);
@@ -200,8 +208,13 @@ fn color_to_paint(color: [f32; 4]) -> Paint<'static> {
     let [r, g, b, a] = color;
     let mut paint = Paint::default();
     paint.set_color(
-        Color::from_rgba(r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0), a.clamp(0.0, 1.0))
-            .unwrap_or(Color::TRANSPARENT),
+        Color::from_rgba(
+            r.clamp(0.0, 1.0),
+            g.clamp(0.0, 1.0),
+            b.clamp(0.0, 1.0),
+            a.clamp(0.0, 1.0),
+        )
+        .unwrap_or(Color::TRANSPARENT),
     );
     paint.anti_alias = true;
     paint
