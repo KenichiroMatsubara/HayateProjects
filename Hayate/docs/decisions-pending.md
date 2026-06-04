@@ -162,6 +162,16 @@ Hayate/proto/protocol.yaml
 - `StyleTag` enum + `parse_next_style_tag(packed, i)` 関数
 - `encode_event(ev: &Event) -> js_sys::Array` 関数（encode_events の内部ループを生成）
 
+**重要: Event enum のフィールド名を YAML に合わせて変更する**
+protocol.yaml の `params[].name` が Rust `Event` enum のフィールド名の正本。
+対応テーブルは作らない。生成コードが YAML の名前を直接使い、
+Rust 側のフィールド名がそれに合っていなければコンパイルエラーで検出できる。
+
+例: `Event::Click { target, x, y }` → `Event::Click { target_id, x, y }`
+（YAML が `target_id` と定義しているため）
+
+このリネームは `hayate-core` 全体に波及するが機械的な変更。
+
 **TS (scripts/gen-protocol.mjs → src/protocol.ts):**
 - `export const OP`, `TAG`, `EVENT_KIND`, `ELEMENT_KIND`, `UNSET_KIND`, `MODIFIER` as const
 - `export const FONT_FAMILY`, `DIMENSION_UNIT`, `DISPLAY`, `FLEX_DIRECTION`, `ALIGN_ITEMS`, `JUSTIFY_CONTENT` as const（enum 定数）
