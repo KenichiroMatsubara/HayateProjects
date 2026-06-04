@@ -14,6 +14,23 @@ interface types {
     scroll-view,
   }
 
+  // apply-mutations ops ストリームの op_kind 判別子（ADR-0039）。
+  // 宣言順がそのまま wire 上の discriminant（append-child=0 … create=9）。
+  // この enum が op_kind の単一ソース：Rust の OP_* 定数も Tsubame の
+  // opcodes.ts の OP も scripts/gen-from-wit.mjs がここから生成する。
+  enum op-kind {
+    append-child,
+    insert-before,
+    remove,
+    set-root,
+    set-style,
+    set-transform,
+    set-scroll-offset,
+    focus,
+    blur,
+    create,
+  }
+
   // Dimension
   enum dimension-unit { px, percent, auto, fr }
   record dimension {
@@ -60,6 +77,7 @@ interface types {
     color,
     font-size,
     font-family,
+    font-weight,
   }
 
   // Hayate CSS — style properties as variant list
@@ -149,17 +167,16 @@ interface types {
     y: f32,
   }
 
-  // All events emitted by Hayate and polled by the upper layer (ADR-0018, ADR-0031)
+  // All events emitted by Hayate and polled by the upper layer (ADR-0018, ADR-0031).
+  //
+  // 宣言順は poll-events() の wire 上の discriminant と一致させること
+  // （click=0 … pointer-move=14）。encode_events（Rust）と dispatchEvents
+  // （Tsubame canvas-renderer）の数値はこの順序から導かれる。順序を変えると
+  // wire 互換が壊れる。FetchFont は adapter 内部専用で JS に到達しないため
+  // （ADR-0043）この variant には含めない。
   variant event {
     // pointer / interaction
     click(click-event),
-    hover-enter(element-id),
-    hover-leave(element-id),
-    active-start(element-id),
-    active-end(element-id),
-    pointer-move(pointer-move-event),
-    // keyboard
-    key-down(key-down-event),
     // focus
     focus(element-id),
     blur(element-id),
@@ -171,6 +188,15 @@ interface types {
     // viewport
     scroll(scroll-event),
     resize(resize-event),
+    // pointer / interaction（continued）
+    active-end(element-id),
+    hover-enter(element-id),
+    hover-leave(element-id),
+    // keyboard
+    key-down(key-down-event),
+    // pointer / interaction（continued）
+    active-start(element-id),
+    pointer-move(pointer-move-event),
   }
 }
 

@@ -122,6 +122,9 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::renderer_event_state::RendererEventState;
 use crate::style_packet;
+// op_kind / element_kind / event_kind / modifier 判別子は wit/hayate.wit から
+// scripts/gen-from-wit.mjs が生成（wit_generated.rs）。手書き定義はしない。
+use crate::wit_generated::*;
 
 // ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
 //
@@ -227,135 +230,10 @@ pub fn style_tag_font_family() -> u32 {
     crate::style_packet::TAG_FONT_FAMILY
 }
 
-// ── Event kind constants (exposed to JS) ─────────────────────────────────
-// Discriminants match `encode_events` below. Naming follows ADR-0031:
-// semantic state transitions (`hover-*`, `active-*`) rather than physical
-// pointer events. `PointerMove` is the only physical-name carryover, since
-// it has no target.
-
-#[wasm_bindgen]
-pub fn event_kind_click() -> f64 {
-    0.0
-}
-#[wasm_bindgen]
-pub fn event_kind_focus() -> f64 {
-    1.0
-}
-#[wasm_bindgen]
-pub fn event_kind_blur() -> f64 {
-    2.0
-}
-#[wasm_bindgen]
-pub fn event_kind_text_input() -> f64 {
-    3.0
-}
-#[wasm_bindgen]
-pub fn event_kind_composition_start() -> f64 {
-    4.0
-}
-#[wasm_bindgen]
-pub fn event_kind_composition_update() -> f64 {
-    5.0
-}
-#[wasm_bindgen]
-pub fn event_kind_composition_end() -> f64 {
-    6.0
-}
-#[wasm_bindgen]
-pub fn event_kind_scroll() -> f64 {
-    7.0
-}
-#[wasm_bindgen]
-pub fn event_kind_resize() -> f64 {
-    8.0
-}
-#[wasm_bindgen]
-pub fn event_kind_active_end() -> f64 {
-    9.0
-}
-#[wasm_bindgen]
-pub fn event_kind_hover_enter() -> f64 {
-    10.0
-}
-#[wasm_bindgen]
-pub fn event_kind_hover_leave() -> f64 {
-    11.0
-}
-#[wasm_bindgen]
-pub fn event_kind_key_down() -> f64 {
-    12.0
-}
-#[wasm_bindgen]
-pub fn event_kind_active_start() -> f64 {
-    13.0
-}
-#[wasm_bindgen]
-pub fn event_kind_pointer_move() -> f64 {
-    14.0
-}
-
-// ── Modifier key bitmask constants (exposed to JS) ───────────────────────
-// Match KeyboardEvent.getModifierState flags for JS interop.
-
-#[wasm_bindgen]
-pub fn modifier_shift() -> u32 {
-    1
-}
-#[wasm_bindgen]
-pub fn modifier_ctrl() -> u32 {
-    2
-}
-#[wasm_bindgen]
-pub fn modifier_alt() -> u32 {
-    4
-}
-#[wasm_bindgen]
-pub fn modifier_meta() -> u32 {
-    8
-}
-
-// ── Element kind discriminant getters (exposed to JS) ────────────────────
-
-#[wasm_bindgen]
-pub fn element_kind_view() -> u32 {
-    0
-}
-#[wasm_bindgen]
-pub fn element_kind_text() -> u32 {
-    1
-}
-#[wasm_bindgen]
-pub fn element_kind_image() -> u32 {
-    2
-}
-#[wasm_bindgen]
-pub fn element_kind_button() -> u32 {
-    3
-}
-#[wasm_bindgen]
-pub fn element_kind_text_input() -> u32 {
-    4
-}
-#[wasm_bindgen]
-pub fn element_kind_scroll_view() -> u32 {
-    5
-}
-
-// ── apply_mutations op_kind constants (ADR-0039) ─────────────────────────
-// Tsubame の opcodes.ts の OP 定数と 1:1 対応。
-
-const OP_APPEND_CHILD: u32 = 0;
-const OP_INSERT_BEFORE: u32 = 1;
-const OP_REMOVE: u32 = 2;
-const OP_SET_ROOT: u32 = 3;
-const OP_SET_STYLE: u32 = 4;
-const OP_SET_TRANSFORM: u32 = 5;
-const OP_SET_SCROLL_OFFSET: u32 = 6;
-const OP_FOCUS: u32 = 7;
-const OP_BLUR: u32 = 8;
-/// JS 側が採番した ElementId と kind_code を WASM へ通知する。
-/// Tsubame CanvasRenderer が createElement 時に発行する (opcodes.ts CREATE=9)。
-const OP_CREATE: u32 = 9;
+// event_kind_* / modifier_* / element_kind_* の JS 公開関数と OP_* 定数は
+// wit_generated.rs（wit/hayate.wit から生成）に移設した。判別子はすべて WIT が
+// 単一ソース。FetchFont のみ adapter 内部イベント（JS 非到達, ADR-0043）のため
+// 下の encode_events 直近で個別に定義する。
 
 // ── Canvas Mode renderer ─────────────────────────────────────────────────
 
@@ -1808,6 +1686,10 @@ fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementI
 ///   active_start: [13, target_ffi]
 ///   pointer_move: [14, x, y]                                (no target — ADR-0031)
 /// FetchFont is handled internally by poll_events and never reaches JS (ADR-0043).
+/// FetchFont は adapter 内部で消費され JS に到達しない（ADR-0043）ため WIT の
+/// event variant には含めない。wire 判別子だけここで定義する。
+const EVENT_FETCH_FONT: f64 = 15.0;
+
 fn encode_events(events: &[Event]) -> js_sys::Array {
     use js_sys::Array;
     let result = Array::new();
@@ -1825,36 +1707,36 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
         }
         match event {
             Event::Click { target, x, y } => {
-                pf!(0.0);
+                pf!(EVENT_CLICK);
                 pf!(target.to_u64());
                 pf!(*x);
                 pf!(*y);
             }
             Event::Focus(target) => {
-                pf!(1.0);
+                pf!(EVENT_FOCUS);
                 pf!(target.to_u64());
             }
             Event::Blur(target) => {
-                pf!(2.0);
+                pf!(EVENT_BLUR);
                 pf!(target.to_u64());
             }
             Event::TextInput { target, text } => {
-                pf!(3.0);
+                pf!(EVENT_TEXT_INPUT);
                 pf!(target.to_u64());
                 ps!(text);
             }
             Event::CompositionStart { target, text } => {
-                pf!(4.0);
+                pf!(EVENT_COMPOSITION_START);
                 pf!(target.to_u64());
                 ps!(text);
             }
             Event::CompositionUpdate { target, text } => {
-                pf!(5.0);
+                pf!(EVENT_COMPOSITION_UPDATE);
                 pf!(target.to_u64());
                 ps!(text);
             }
             Event::CompositionEnd { target, text } => {
-                pf!(6.0);
+                pf!(EVENT_COMPOSITION_END);
                 pf!(target.to_u64());
                 ps!(text);
             }
@@ -1863,26 +1745,26 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
                 delta_x,
                 delta_y,
             } => {
-                pf!(7.0);
+                pf!(EVENT_SCROLL);
                 pf!(target.to_u64());
                 pf!(*delta_x);
                 pf!(*delta_y);
             }
             Event::Resize { width, height } => {
-                pf!(8.0);
+                pf!(EVENT_RESIZE);
                 pf!(*width);
                 pf!(*height);
             }
             Event::ActiveEnd { target } => {
-                pf!(9.0);
+                pf!(EVENT_ACTIVE_END);
                 pf!(target.to_u64());
             }
             Event::HoverEnter { target } => {
-                pf!(10.0);
+                pf!(EVENT_HOVER_ENTER);
                 pf!(target.to_u64());
             }
             Event::HoverLeave { target } => {
-                pf!(11.0);
+                pf!(EVENT_HOVER_LEAVE);
                 pf!(target.to_u64());
             }
             Event::KeyDown {
@@ -1890,22 +1772,22 @@ fn encode_events(events: &[Event]) -> js_sys::Array {
                 key,
                 modifiers,
             } => {
-                pf!(12.0);
+                pf!(EVENT_KEY_DOWN);
                 pf!(target.to_u64());
                 ps!(key);
                 pf!(*modifiers);
             }
             Event::ActiveStart { target } => {
-                pf!(13.0);
+                pf!(EVENT_ACTIVE_START);
                 pf!(target.to_u64());
             }
             Event::PointerMove { x, y } => {
-                pf!(14.0);
+                pf!(EVENT_POINTER_MOVE);
                 pf!(*x);
                 pf!(*y);
             }
             Event::FetchFont { family } => {
-                pf!(15.0);
+                pf!(EVENT_FETCH_FONT);
                 ps!(family);
             }
         }

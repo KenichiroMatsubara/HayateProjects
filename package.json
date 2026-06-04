@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
+    "gen":            "node Hayate/scripts/gen-from-wit.mjs",
+    "gen:check":      "node Hayate/scripts/gen-from-wit.mjs && git diff --exit-code -- Hayate/crates/adapters/web/src/wit_generated.rs Tsubame/packages/renderer-canvas/src/opcodes.ts",
     "build:wasm":     "pnpm --filter hayate build",
     "build:tsubame":  "pnpm --filter ./Tsubame/packages/** build",
     "build":          "pnpm run build:wasm && pnpm run build:tsubame",

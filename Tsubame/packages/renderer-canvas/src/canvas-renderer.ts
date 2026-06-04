@@ -10,7 +10,7 @@ import type {
 import { asElementId } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { encodeStylePatch, unsetKindsOf } from './style-encoder.js';
-import { ELEMENT_KIND, OP } from './opcodes.js';
+import { ELEMENT_KIND, EVENT, OP } from './opcodes.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
@@ -179,27 +179,27 @@ export class CanvasRenderer implements IRenderer {
     for (const entry of events) {
       const ev = entry as Array<number | string>;
       switch (ev[0]) {
-        case 0: // click [0, target, x, y]
+        case EVENT.CLICK: // [target, x, y]
           this.dispatchOne('click', asElementId(ev[1] as number));
           break;
-        case 1: // focus [1, target]
+        case EVENT.FOCUS: // [target]
           this.dispatchOne('focus', asElementId(ev[1] as number));
           break;
-        case 2: // blur [2, target]
+        case EVENT.BLUR: // [target]
           this.dispatchOne('blur', asElementId(ev[1] as number));
           break;
-        case 3: // text-input [3, target, text]
+        case EVENT.TEXT_INPUT: // [target, text]
           this.dispatchOne('input', asElementId(ev[1] as number), {
             value: ev[2] as string,
           });
           break;
-        case 10: // hover-enter [10, target]
+        case EVENT.HOVER_ENTER: // [target]
           this.dispatchOne('hover-enter', asElementId(ev[1] as number));
           break;
-        case 11: // hover-leave [11, target]
+        case EVENT.HOVER_LEAVE: // [target]
           this.dispatchOne('hover-leave', asElementId(ev[1] as number));
           break;
-        case 12: // key-down [12, target, key, modifiers]
+        case EVENT.KEY_DOWN: // [target, key, modifiers]
           this.dispatchOne('keydown', asElementId(ev[1] as number), {
             key: ev[2] as string,
           });

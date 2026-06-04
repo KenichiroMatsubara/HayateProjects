@@ -24,6 +24,14 @@ echo    "  crate: $CRATE_DIR"
 echo    "  out  : $OUT_DIR"
 echo
 
+# ── Step 0: WIT codegen ──────────────────────────────────────────────────────
+# wit/hayate.wit を単一ソースに op_kind / element_kind / event_kind / modifier の
+# 判別子を Rust（wit_generated.rs）と Tsubame（opcodes.ts）へ生成する。判別子を
+# 増やすときは WIT を編集して再ビルドすれば両言語が同時に追従する。
+echo -e "${CYAN}▶ codegen from wit/hayate.wit...${RESET}"
+node "$SCRIPT_DIR/gen-from-wit.mjs"
+echo
+
 # ── Step 1: cargo check (wasm32) ─────────────────────────────────────────────
 echo -e "${CYAN}▶ cargo check (wasm32-unknown-unknown)...${RESET}"
 cargo check \
