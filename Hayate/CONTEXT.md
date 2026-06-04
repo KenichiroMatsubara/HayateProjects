@@ -26,6 +26,10 @@ _Avoid_: WIT 由来の定数定義、TS/Rust 手書きの定数表
 Tsubame `Canvas Renderer` が Hayate に渡すフレーム単位バッチ入口。シグネチャは `apply_mutations(ops: Float64Array, styles: Float32Array)`。
 _Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明
 
+**Hayate Mutation Packet**:
+Tsubame `Canvas Renderer` と Hayate WASM の間で、`Renderer Protocol` の意味的操作を Hayate 境界へ渡すための順序付き mutation batch 表現。`apply_mutations` に渡す `ops: Float64Array` と `styles: Float32Array`、および batch 外で順序制御される低頻度 string/unset 呼び出しまでを含む Hayate 固有の契約として扱う。
+_Avoid_: DOM Renderer にも要求される汎用 Renderer Protocol、単なる opcode 定数表、slot 配列だけの狭い codec
+
 **poll_events**:
 Hayate から Tsubame 側へ返すイベント列。イベント種別とフィールド名は `protocol.yaml` を正本とする。
 _Avoid_: event kind の手書き switch を正本とみなす説明
