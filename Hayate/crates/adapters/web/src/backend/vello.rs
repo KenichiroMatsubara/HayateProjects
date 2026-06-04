@@ -5,12 +5,12 @@ use hayate_core::{
     NodeId, NodeKind, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph,
 };
 use vello::{
+    AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
     kurbo::{Affine, Rect, RoundedRect},
     peniko::{
-        color::{AlphaColor, Srgb},
         Blob, Fill, FontData, ImageAlphaType, ImageBrush, ImageData, ImageFormat,
+        color::{AlphaColor, Srgb},
     },
-    AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
 };
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
@@ -19,15 +19,23 @@ use wgpu::util::TextureBlitter;
 use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
+    surface_host: VelloSurfaceHost,
+    scene_renderer: VelloSceneRenderer,
+}
+
+struct VelloSurfaceHost {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    renderer: Renderer,
     target_view: wgpu::TextureView,
     blitter: TextureBlitter,
     width: u32,
     height: u32,
+}
+
+struct VelloSceneRenderer {
+    renderer: Renderer,
 }
 
 /// Create the off-screen RGBA8 texture Vello renders into before it is blitted
@@ -52,6 +60,17 @@ fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::T
 
 impl SelectedBackend {
     pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+        let surface_host = VelloSurfaceHost::init(canvas).await?;
+        let scene_renderer = VelloSceneRenderer::new(surface_host.device())?;
+        Ok(Self {
+            surface_host,
+            scene_renderer,
+        })
+    }
+}
+
+impl VelloSurfaceHost {
+    async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let width = canvas.width();
         let height = canvas.height();
 
@@ -88,18 +107,6 @@ impl SelectedBackend {
 
         let surface_format = surface_config.format;
         let target_view = create_target_view(&device, width, height);
-
-        let renderer = Renderer::new(
-            &device,
-            RendererOptions {
-                use_cpu: false,
-                antialiasing_support: AaSupport::area_only(),
-                num_init_threads: NonZeroUsize::new(1),
-                pipeline_cache: None,
-            },
-        )
-        .map_err(|e| JsValue::from_str(&format!("Vello init failed: {e}")))?;
-
         let blitter = TextureBlitter::new(&device, surface_format);
 
         Ok(Self {
@@ -107,37 +114,35 @@ impl SelectedBackend {
             queue,
             surface,
             surface_config,
-            renderer,
             target_view,
             blitter,
             width,
             height,
         })
     }
-}
 
-impl CanvasBackend for SelectedBackend {
-    fn kind(&self) -> SceneRendererKind {
-        SceneRendererKind::Vello
+    fn device(&self) -> &wgpu::Device {
+        &self.device
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
-        let encoded = encode_scene(scene);
-        self.renderer
-            .render_to_texture(
-                &self.device,
-                &self.queue,
-                &encoded,
-                &self.target_view,
-                &RenderParams {
-                    base_color: AlphaColor::<Srgb>::new(clear_color),
-                    width: self.width,
-                    height: self.height,
-                    antialiasing_method: AaConfig::Area,
-                },
-            )
-            .map_err(|e| JsValue::from_str(&format!("render_to_texture: {e}")))?;
+    fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
 
+    fn target_view(&self) -> &wgpu::TextureView {
+        &self.target_view
+    }
+
+    fn render_params(&self, clear_color: ClearColor) -> RenderParams {
+        RenderParams {
+            base_color: AlphaColor::<Srgb>::new(clear_color),
+            width: self.width,
+            height: self.height,
+            antialiasing_method: AaConfig::Area,
+        }
+    }
+
+    fn present_target(&mut self) -> Result<(), JsValue> {
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
@@ -171,10 +176,6 @@ impl CanvasBackend for SelectedBackend {
         Ok(())
     }
 
-    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
-        self.render_scene(&SceneGraph::new(), clear_color)
-    }
-
     fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 || (width == self.width && height == self.height) {
             return;
@@ -185,6 +186,60 @@ impl CanvasBackend for SelectedBackend {
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
         self.target_view = create_target_view(&self.device, width, height);
+    }
+}
+
+impl VelloSceneRenderer {
+    fn new(device: &wgpu::Device) -> Result<Self, JsValue> {
+        let renderer = Renderer::new(
+            device,
+            RendererOptions {
+                use_cpu: false,
+                antialiasing_support: AaSupport::area_only(),
+                num_init_threads: NonZeroUsize::new(1),
+                pipeline_cache: None,
+            },
+        )
+        .map_err(|e| JsValue::from_str(&format!("Vello init failed: {e}")))?;
+        Ok(Self { renderer })
+    }
+
+    fn render_to_target(
+        &mut self,
+        surface_host: &VelloSurfaceHost,
+        scene: &Scene,
+        clear_color: ClearColor,
+    ) -> Result<(), JsValue> {
+        self.renderer
+            .render_to_texture(
+                surface_host.device(),
+                surface_host.queue(),
+                scene,
+                surface_host.target_view(),
+                &surface_host.render_params(clear_color),
+            )
+            .map_err(|e| JsValue::from_str(&format!("render_to_texture: {e}")))
+    }
+}
+
+impl CanvasBackend for SelectedBackend {
+    fn kind(&self) -> SceneRendererKind {
+        SceneRendererKind::Vello
+    }
+
+    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
+        let encoded = encode_scene(scene);
+        self.scene_renderer
+            .render_to_target(&self.surface_host, &encoded, clear_color)?;
+        self.surface_host.present_target()
+    }
+
+    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
+        self.render_scene(&SceneGraph::new(), clear_color)
+    }
+
+    fn resize(&mut self, width: u32, height: u32) {
+        self.surface_host.resize(width, height);
     }
 }
 

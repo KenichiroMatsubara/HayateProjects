@@ -10,6 +10,10 @@ pub(crate) struct SelectedBackend {
 
 impl SelectedBackend {
     pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
+        Self::init_sync(canvas)
+    }
+
+    pub(crate) fn init_sync(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let _ = canvas;
         Ok(Self {
             recorder: RecordingBackend::new(),
