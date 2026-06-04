@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wgpu::util::TextureBlitter;
 
-use super::{CanvasBackend, ClearColor};
+use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
     device: wgpu::Device,
@@ -117,6 +117,10 @@ impl SelectedBackend {
 }
 
 impl CanvasBackend for SelectedBackend {
+    fn kind(&self) -> SceneRendererKind {
+        SceneRendererKind::Vello
+    }
+
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
         let encoded = encode_scene(scene);
         self.renderer

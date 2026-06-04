@@ -13,7 +13,7 @@ use tiny_skia::{
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use super::{CanvasBackend, ClearColor};
+use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
     ctx: web_sys::CanvasRenderingContext2d,
@@ -47,6 +47,10 @@ impl SelectedBackend {
 }
 
 impl CanvasBackend for SelectedBackend {
+    fn kind(&self) -> SceneRendererKind {
+        SceneRendererKind::TinySkia
+    }
+
     fn render_scene(
         &mut self,
         scene: &SceneGraph,
