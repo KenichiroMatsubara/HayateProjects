@@ -13,6 +13,7 @@ crates/vendor-all/
 
 # wasm-pack output (再生成可)
 examples/web-demo/pkg/
+examples/web-demo/pkg-tiny-skia/
 
 # OS
 .DS_Store

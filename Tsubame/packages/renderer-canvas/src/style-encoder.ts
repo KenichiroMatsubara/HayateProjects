@@ -13,96 +13,47 @@ import {
   parseDimension,
   type HayateDimensionUnit,
 } from './hayate.js';
+import {
+  TAG,
+  UNSET_KIND,
+  UNIT_CODE,
+  DISPLAY,
+  FLEX_DIRECTION,
+  ALIGN_ITEMS,
+  JUSTIFY_CONTENT,
+} from './protocol.js';
 
-/**
- * style-packet の TAG 定数。
- *
- * Hayate `crates/adapters/web/src/style_packet.rs` の `TAG_*` と 1:1 で
- * 一致させること。実 WASM の `element_set_style` / `apply_mutations` は
- * この flat f32 エンコーディングを `decode()` でデコードする（ADR-0039）。
- */
-export const TAG = {
-  BACKGROUND_COLOR: 0,
-  OPACITY: 1,
-  BORDER_RADIUS: 2,
-  BORDER_WIDTH: 3,
-  BORDER_COLOR: 4,
-  WIDTH: 5,
-  HEIGHT: 6,
-  MIN_WIDTH: 7,
-  MIN_HEIGHT: 8,
-  MAX_WIDTH: 9,
-  MAX_HEIGHT: 10,
-  DISPLAY: 11,
-  FLEX_DIRECTION: 12,
-  ALIGN_ITEMS: 13,
-  JUSTIFY_CONTENT: 14,
-  GAP: 15,
-  PADDING: 16,
-  PADDING_TOP: 17,
-  PADDING_RIGHT: 18,
-  PADDING_BOTTOM: 19,
-  PADDING_LEFT: 20,
-  MARGIN: 21,
-  MARGIN_TOP: 22,
-  MARGIN_RIGHT: 23,
-  MARGIN_BOTTOM: 24,
-  MARGIN_LEFT: 25,
-  FONT_SIZE: 26,
-  COLOR: 27,
-  Z_INDEX: 28,
-  FONT_FAMILY: 29,
-  FLEX_GROW: 30,
-  FONT_WEIGHT: 31,
-} as const;
-
-/**
- * `element_unset_style` の kind コード（Hayate `element_renderer.rs` と一致）。
- * 継承プロパティのみリセット可能（ADR-0047）。
- */
-export const UNSET_KIND = {
-  color: 0,
-  fontSize: 1,
-  fontFamily: 2,
-  fontWeight: 3,
-} as const;
-
-const UNIT_CODE: Record<HayateDimensionUnit, number> = {
-  px: 0,
-  percent: 1,
-  auto: 2,
-  fr: 3,
-};
+export { TAG, UNSET_KIND };
 
 const DISPLAY_CODE: Record<Display, number> = {
-  flex: 0,
-  grid: 1,
-  block: 2,
-  none: 3,
+  flex: DISPLAY.flex,
+  grid: DISPLAY.grid,
+  block: DISPLAY.block,
+  none: DISPLAY.none,
 };
 
 const FLEX_DIRECTION_CODE: Record<FlexDirection, number> = {
-  row: 0,
-  column: 1,
-  'row-reverse': 2,
-  'column-reverse': 3,
+  row: FLEX_DIRECTION.row,
+  column: FLEX_DIRECTION.column,
+  'row-reverse': FLEX_DIRECTION.rowReverse,
+  'column-reverse': FLEX_DIRECTION.columnReverse,
 };
 
 const ALIGN_ITEMS_CODE: Record<AlignItems, number> = {
-  'flex-start': 0,
-  'flex-end': 1,
-  center: 2,
-  stretch: 3,
-  baseline: 4,
+  'flex-start': ALIGN_ITEMS.flexStart,
+  'flex-end': ALIGN_ITEMS.flexEnd,
+  center: ALIGN_ITEMS.center,
+  stretch: ALIGN_ITEMS.stretch,
+  baseline: ALIGN_ITEMS.baseline,
 };
 
 const JUSTIFY_CONTENT_CODE: Record<JustifyContent, number> = {
-  'flex-start': 0,
-  'flex-end': 1,
-  center: 2,
-  'space-between': 3,
-  'space-around': 4,
-  'space-evenly': 5,
+  'flex-start': JUSTIFY_CONTENT.flexStart,
+  'flex-end': JUSTIFY_CONTENT.flexEnd,
+  center: JUSTIFY_CONTENT.center,
+  'space-between': JUSTIFY_CONTENT.spaceBetween,
+  'space-around': JUSTIFY_CONTENT.spaceAround,
+  'space-evenly': JUSTIFY_CONTENT.spaceEvenly,
 };
 
 /** Inheritable props (ADR-0047). A `null` value resets these to inherit. */
@@ -120,7 +71,7 @@ function pushColor(out: number[], tag: number, css: string): void {
 
 function pushDimension(out: number[], tag: number, value: HayateDimension): void {
   const d = parseDimension(value);
-  out.push(tag, d.value, UNIT_CODE[d.unit]);
+  out.push(tag, d.value, UNIT_CODE[d.unit]!);
 }
 
 function pushFontFamily(out: number[], family: string): void {
@@ -180,16 +131,16 @@ export function encodeStylePatch(patch: StylePatch, out: number[]): void {
         pushDimension(out, TAG.MAX_HEIGHT, value as HayateDimension);
         break;
       case 'display':
-        out.push(TAG.DISPLAY, DISPLAY_CODE[value as Display]);
+        out.push(TAG.DISPLAY, DISPLAY_CODE[value as Display]!);
         break;
       case 'flexDirection':
-        out.push(TAG.FLEX_DIRECTION, FLEX_DIRECTION_CODE[value as FlexDirection]);
+        out.push(TAG.FLEX_DIRECTION, FLEX_DIRECTION_CODE[value as FlexDirection]!);
         break;
       case 'alignItems':
-        out.push(TAG.ALIGN_ITEMS, ALIGN_ITEMS_CODE[value as AlignItems]);
+        out.push(TAG.ALIGN_ITEMS, ALIGN_ITEMS_CODE[value as AlignItems]!);
         break;
       case 'justifyContent':
-        out.push(TAG.JUSTIFY_CONTENT, JUSTIFY_CONTENT_CODE[value as JustifyContent]);
+        out.push(TAG.JUSTIFY_CONTENT, JUSTIFY_CONTENT_CODE[value as JustifyContent]!);
         break;
       case 'gap':
         pushDimension(out, TAG.GAP, value as HayateDimension);
@@ -240,7 +191,7 @@ export function encodeStylePatch(patch: StylePatch, out: number[]): void {
         out.push(TAG.Z_INDEX, finiteInteger(k, value));
         break;
       default:
-        throw new Error(`CanvasRenderer: unsupported style property "${k}"`);
+        throw new Error(`CanvasRenderer: unsupported style property "${String(k)}"`);
     }
   }
 }
@@ -256,7 +207,7 @@ export function unsetKindsOf(patch: StylePatch): number[] {
     if (patch[k] !== null) continue;
     const code = INHERITED_UNSET[k];
     if (code === undefined) {
-      throw new Error(`CanvasRenderer: cannot reset non-inheritable property "${k}"`);
+      throw new Error(`CanvasRenderer: cannot reset non-inheritable property "${String(k)}"`);
     }
     kinds.push(code);
   }
