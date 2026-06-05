@@ -9,8 +9,8 @@ import type {
 } from '@tsubame/renderer-protocol';
 import { asElementId } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
-import { encodeStylePatch, unsetKindsOf } from './style-encoder.js';
-import { ELEMENT_KIND, OP, parseEvent } from './protocol.js';
+import { HayateMutationPacket } from './hayate-mutation-packet.js';
+import { parseEvent } from './protocol.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
@@ -34,10 +34,7 @@ export class CanvasRenderer implements IRenderer {
   private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
-  /** Per-frame mutation batch (ADR-0039). Flushed once per frame via `apply_mutations`. */
-  private readonly ops: number[] = [];
-  /** Flat style-packet buffer referenced by `OP_SET_STYLE` offsets. */
-  private readonly styles: number[] = [];
+  private readonly packet = new HayateMutationPacket();
 
   private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
@@ -70,59 +67,40 @@ export class CanvasRenderer implements IRenderer {
   }
 
   createElement(kind: ElementKind): ElementId {
-    const id = this.nextId++;
-    this.ops.push(OP.CREATE, id, (ELEMENT_KIND as Record<string, number>)[kind]!);
-    return asElementId(id);
+    const id = asElementId(this.nextId++);
+    this.packet.enqueueCreateElement(id, kind);
+    return id;
   }
 
   setRoot(id: ElementId): void {
-    this.ops.push(OP.SET_ROOT, id as number);
+    this.packet.enqueueSetRoot(id);
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
     this.linkParent(parent, child);
-    this.ops.push(OP.APPEND_CHILD, parent as number, child as number);
+    this.packet.enqueueAppendChild(parent, child);
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
     this.linkParent(parent, child);
-    this.ops.push(
-      OP.INSERT_BEFORE,
-      parent as number,
-      child as number,
-      before as number,
-    );
+    this.packet.enqueueInsertBefore(parent, child, before);
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
-    this.ops.push(OP.REMOVE, child as number);
+    this.packet.enqueueRemove(child);
     this.pruneLocalSubtree(child);
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    // SET part → style-packet appended to the shared per-frame buffer.
-    const offset = this.styles.length;
-    encodeStylePatch(style, this.styles);
-    const len = this.styles.length - offset;
-    if (len > 0) {
-      this.ops.push(OP.SET_STYLE, id as number, offset, len);
-    }
-
-    // UNSET part (ADR-0047) is out-of-band — `element_unset_style` is not an op
-    // in `apply_mutations`. Flush first so a same-patch SET applies before the
-    // reset, preserving order.
-    const kinds = unsetKindsOf(style);
-    if (kinds.length > 0) {
+    if (this.packet.enqueueSetStyle(id, style)) {
       this.flush();
-      this.raw.element_unset_style(id as number, Uint32Array.from(kinds));
     }
   }
 
   setText(id: ElementId, text: string): void {
-    // Text is a string op, kept out of the typed-array batch. Flush pending ops
-    // so the element's OP_CREATE has been applied before we set its text.
-    this.flush();
-    this.raw.element_set_text(id as number, text);
+    if (this.packet.enqueueSetText(id, text)) {
+      this.flush();
+    }
   }
 
   setProperty(_id: ElementId, _name: string, _value: unknown): void {}
@@ -150,15 +128,9 @@ export class CanvasRenderer implements IRenderer {
     };
   }
 
-  /** Drain the per-frame batch into a single `apply_mutations` call. */
+  /** Drain the ordered mutation packet into the Hayate WASM boundary. */
   private flush(): void {
-    if (this.ops.length === 0) return;
-    this.raw.apply_mutations(
-      new Float64Array(this.ops),
-      new Float32Array(this.styles),
-    );
-    this.ops.length = 0;
-    this.styles.length = 0;
+    this.packet.flush(this.raw);
   }
 
   private readonly frame = (timestampMs: number): void => {
