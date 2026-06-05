@@ -42,7 +42,14 @@ type SemanticMutation =
  * does not merge, prune, coalesce, or otherwise optimise queued semantic mutations.
  */
 export class HayateMutationPacket {
+  private readonly raw: RawHayate;
   private readonly mutations: SemanticMutation[] = [];
+  private readonly ops: number[] = [];
+  private readonly styles: number[] = [];
+
+  constructor(raw: RawHayate) {
+    this.raw = raw;
+  }
 
   enqueueCreateElement(id: ElementId, kind: ElementKind): void {
     this.mutations.push({ kind: 'createElement', id, elementKind: kind });
@@ -68,64 +75,48 @@ export class HayateMutationPacket {
     this.mutations.push({ kind: 'remove', id });
   }
 
-  /**
-   * Enqueue a style patch. Returns true when the patch contains an out-of-band
-   * unset that should be flushed immediately to preserve Renderer Protocol order.
-   */
-  enqueueSetStyle(id: ElementId, style: StylePatch): boolean {
+  enqueueSetStyle(id: ElementId, style: StylePatch): void {
     const copiedStyle: StylePatch = { ...style };
     const unsetKinds = unsetKindsOf(copiedStyle);
-    this.mutations.push({
-      kind: 'setStyle',
-      id,
-      style: copiedStyle,
-      unsetKinds,
-    });
-    return unsetKinds.length > 0;
+    this.mutations.push({ kind: 'setStyle', id, style: copiedStyle, unsetKinds });
+    if (unsetKinds.length > 0) {
+      this.flush();
+    }
   }
 
-  /**
-   * Enqueue an out-of-band text mutation. The caller should flush immediately so
-   * text is sent after any earlier typed-array mutations and before later ones.
-   */
-  enqueueSetText(id: ElementId, text: string): boolean {
+  enqueueSetText(id: ElementId, text: string): void {
     this.mutations.push({ kind: 'setText', id, text });
-    return true;
+    this.flush();
   }
 
-  flush(raw: RawHayate): void {
+  flush(): void {
     if (this.mutations.length === 0) return;
+    this.encodePendingMutations();
+    this.drainTypedBatch();
+  }
 
-    const ops: number[] = [];
-    const styles: number[] = [];
-    const drainTypedBatch = (): void => {
-      if (ops.length === 0) return;
-      raw.apply_mutations(new Float64Array(ops), new Float32Array(styles));
-      ops.length = 0;
-      styles.length = 0;
-    };
-
+  private encodePendingMutations(): void {
     for (const mutation of this.mutations) {
       switch (mutation.kind) {
         case 'createElement':
-          ops.push(
+          this.ops.push(
             OP.CREATE,
             mutation.id as number,
             (ELEMENT_KIND as Record<string, number>)[mutation.elementKind]!,
           );
           break;
         case 'setRoot':
-          ops.push(OP.SET_ROOT, mutation.id as number);
+          this.ops.push(OP.SET_ROOT, mutation.id as number);
           break;
         case 'appendChild':
-          ops.push(
+          this.ops.push(
             OP.APPEND_CHILD,
             mutation.parent as number,
             mutation.child as number,
           );
           break;
         case 'insertBefore':
-          ops.push(
+          this.ops.push(
             OP.INSERT_BEFORE,
             mutation.parent as number,
             mutation.child as number,
@@ -133,18 +124,18 @@ export class HayateMutationPacket {
           );
           break;
         case 'remove':
-          ops.push(OP.REMOVE, mutation.id as number);
+          this.ops.push(OP.REMOVE, mutation.id as number);
           break;
         case 'setStyle': {
-          const offset = styles.length;
-          encodeStylePatch(mutation.style, styles);
-          const len = styles.length - offset;
+          const offset = this.styles.length;
+          encodeStylePatch(mutation.style, this.styles);
+          const len = this.styles.length - offset;
           if (len > 0) {
-            ops.push(OP.SET_STYLE, mutation.id as number, offset, len);
+            this.ops.push(OP.SET_STYLE, mutation.id as number, offset, len);
           }
           if (mutation.unsetKinds.length > 0) {
-            drainTypedBatch();
-            raw.element_unset_style(
+            this.drainTypedBatch();
+            this.raw.element_unset_style(
               mutation.id as number,
               Uint32Array.from(mutation.unsetKinds),
             );
@@ -152,13 +143,18 @@ export class HayateMutationPacket {
           break;
         }
         case 'setText':
-          drainTypedBatch();
-          raw.element_set_text(mutation.id as number, mutation.text);
+          this.drainTypedBatch();
+          this.raw.element_set_text(mutation.id as number, mutation.text);
           break;
       }
     }
-
-    drainTypedBatch();
     this.mutations.length = 0;
+  }
+
+  private drainTypedBatch(): void {
+    if (this.ops.length === 0) return;
+    this.raw.apply_mutations(new Float64Array(this.ops), new Float32Array(this.styles));
+    this.ops.length = 0;
+    this.styles.length = 0;
   }
 }

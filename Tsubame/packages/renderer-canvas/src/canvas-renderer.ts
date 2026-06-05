@@ -34,7 +34,7 @@ export class CanvasRenderer implements IRenderer {
   private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
-  private readonly packet = new HayateMutationPacket();
+  private readonly packet: HayateMutationPacket;
 
   private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
@@ -43,6 +43,7 @@ export class CanvasRenderer implements IRenderer {
 
   constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
     this.raw = raw;
+    this.packet = new HayateMutationPacket(raw);
     this.canvas = options.canvas ?? null;
     this.requestFrame =
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
@@ -92,15 +93,11 @@ export class CanvasRenderer implements IRenderer {
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    if (this.packet.enqueueSetStyle(id, style)) {
-      this.flush();
-    }
+    this.packet.enqueueSetStyle(id, style);
   }
 
   setText(id: ElementId, text: string): void {
-    if (this.packet.enqueueSetText(id, text)) {
-      this.flush();
-    }
+    this.packet.enqueueSetText(id, text);
   }
 
   setProperty(_id: ElementId, _name: string, _value: unknown): void {}
@@ -130,7 +127,7 @@ export class CanvasRenderer implements IRenderer {
 
   /** Drain the ordered mutation packet into the Hayate WASM boundary. */
   private flush(): void {
-    this.packet.flush(this.raw);
+    this.packet.flush();
   }
 
   private readonly frame = (timestampMs: number): void => {
