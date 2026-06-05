@@ -40,6 +40,9 @@ type SemanticMutation =
  * This is the B-lite form of the packet: it preserves semantic operation order and
  * emits the low-level op/style buffers only at boundary flush time. It deliberately
  * does not merge, prune, coalesce, or otherwise optimise queued semantic mutations.
+ *
+ * String/unset ordering (boolean returns, caller-driven flush) is a stop-gap for
+ * the current split WASM API. See ADR-0052 for the planned unified apply_mutations.
  */
 export class HayateMutationPacket {
   private readonly mutations: SemanticMutation[] = [];
