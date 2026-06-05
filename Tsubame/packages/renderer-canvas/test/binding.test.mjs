@@ -15,14 +15,18 @@ class StubHayate {
   renders = [];
   resizes = [];
   events = [];
+  calls = [];
 
   apply_mutations(ops, styles) {
+    this.calls.push('apply_mutations');
     this.mutations.push({ ops: Array.from(ops), styles: Array.from(styles) });
   }
   element_set_text(id, text) {
+    this.calls.push('element_set_text');
     this.texts.push({ id, text });
   }
   element_unset_style(id, kinds) {
+    this.calls.push('element_unset_style');
     this.unset.push({ id, kinds: Array.from(kinds) });
   }
   on_resize(width, height) {
@@ -95,6 +99,66 @@ test('setStyle null resets route to element_unset_style with numeric codes', () 
 
   // color=0, font-size=1, font-family=2
   assert.deepEqual(hayate.unset, [{ id: 1, kinds: [0, 1, 2] }]);
+});
+
+test('CanvasRenderer preserves text before later style mutations', () => {
+  const hayate = new StubHayate();
+  const sched = manualScheduler();
+  const renderer = new CanvasRenderer(hayate, sched);
+
+  const text = renderer.createElement('text');
+  renderer.setText(text, 'Hello');
+
+  assert.equal(hayate.mutations.length, 1);
+  assert.deepEqual(hayate.mutations[0].ops, [9, 1, 1]);
+  assert.deepEqual(hayate.texts, [{ id: 1, text: 'Hello' }]);
+
+  renderer.setStyle(text, { color: '#00ff00' });
+  assert.equal(hayate.mutations.length, 1);
+
+  sched.tick(24);
+  assert.equal(hayate.mutations.length, 2);
+  assert.deepEqual(hayate.mutations[1].ops, [4, 1, 0, 5]);
+  assert.deepEqual(hayate.mutations[1].styles, [27, 0, 1, 0, 1]);
+  assert.deepEqual(hayate.calls, [
+    'apply_mutations',
+    'element_set_text',
+    'apply_mutations',
+  ]);
+});
+
+test('setStyle with SET and null unset flushes SET before element_unset_style', () => {
+  const hayate = new StubHayate();
+  const sched = manualScheduler();
+  const renderer = new CanvasRenderer(hayate, sched);
+
+  const node = renderer.createElement('text');
+  renderer.setStyle(node, { color: '#ff0000', fontSize: null });
+
+  assert.deepEqual(hayate.calls, ['apply_mutations', 'element_unset_style']);
+  assert.deepEqual(hayate.mutations[0].ops, [9, 1, 1, 4, 1, 0, 5]);
+  assert.deepEqual(hayate.mutations[0].styles, [27, 1, 0, 0, 1]);
+  assert.deepEqual(hayate.unset, [{ id: 1, kinds: [1] }]);
+});
+
+test('multiple setText calls are emitted in order without coalescing', () => {
+  const hayate = new StubHayate();
+  const sched = manualScheduler();
+  const renderer = new CanvasRenderer(hayate, sched);
+
+  const text = renderer.createElement('text');
+  renderer.setText(text, 'A');
+  renderer.setText(text, 'B');
+
+  assert.deepEqual(hayate.texts, [
+    { id: 1, text: 'A' },
+    { id: 1, text: 'B' },
+  ]);
+  assert.deepEqual(hayate.calls, [
+    'apply_mutations',
+    'element_set_text',
+    'element_set_text',
+  ]);
 });
 
 test('encodeStylePatch mirrors the style_packet TAG format', () => {
