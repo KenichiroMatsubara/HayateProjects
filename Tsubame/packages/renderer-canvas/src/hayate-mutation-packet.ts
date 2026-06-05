@@ -30,7 +30,6 @@ type SemanticMutation =
       readonly kind: 'setStyle';
       readonly id: ElementId;
       readonly style: StylePatch;
-      readonly unsetKinds: readonly number[];
     }
   | { readonly kind: 'setText'; readonly id: ElementId; readonly text: string };
 
@@ -38,11 +37,8 @@ type SemanticMutation =
  * Ordered Hayate Mutation Packet queue for the CanvasRenderer → Hayate WASM boundary.
  *
  * This is the B-lite form of the packet: it preserves semantic operation order and
- * emits the low-level op/style buffers only at boundary flush time. It deliberately
+ * emits the low-level op/style/text buffers only at boundary flush time. It deliberately
  * does not merge, prune, coalesce, or otherwise optimise queued semantic mutations.
- *
- * String/unset ordering (boolean returns, caller-driven flush) is a stop-gap for
- * the current split WASM API. See ADR-0052 for the planned unified apply_mutations.
  */
 export class HayateMutationPacket {
   private readonly mutations: SemanticMutation[] = [];
@@ -71,29 +67,12 @@ export class HayateMutationPacket {
     this.mutations.push({ kind: 'remove', id });
   }
 
-  /**
-   * Enqueue a style patch. Returns true when the patch contains an out-of-band
-   * unset that should be flushed immediately to preserve Renderer Protocol order.
-   */
-  enqueueSetStyle(id: ElementId, style: StylePatch): boolean {
-    const copiedStyle: StylePatch = { ...style };
-    const unsetKinds = unsetKindsOf(copiedStyle);
-    this.mutations.push({
-      kind: 'setStyle',
-      id,
-      style: copiedStyle,
-      unsetKinds,
-    });
-    return unsetKinds.length > 0;
+  enqueueSetStyle(id: ElementId, style: StylePatch): void {
+    this.mutations.push({ kind: 'setStyle', id, style: { ...style } });
   }
 
-  /**
-   * Enqueue an out-of-band text mutation. The caller should flush immediately so
-   * text is sent after any earlier typed-array mutations and before later ones.
-   */
-  enqueueSetText(id: ElementId, text: string): boolean {
+  enqueueSetText(id: ElementId, text: string): void {
     this.mutations.push({ kind: 'setText', id, text });
-    return true;
   }
 
   flush(raw: RawHayate): void {
@@ -101,12 +80,7 @@ export class HayateMutationPacket {
 
     const ops: number[] = [];
     const styles: number[] = [];
-    const drainTypedBatch = (): void => {
-      if (ops.length === 0) return;
-      raw.apply_mutations(new Float64Array(ops), new Float32Array(styles));
-      ops.length = 0;
-      styles.length = 0;
-    };
+    const texts: string[] = [];
 
     for (const mutation of this.mutations) {
       switch (mutation.kind) {
@@ -145,23 +119,23 @@ export class HayateMutationPacket {
           if (len > 0) {
             ops.push(OP.SET_STYLE, mutation.id as number, offset, len);
           }
-          if (mutation.unsetKinds.length > 0) {
-            drainTypedBatch();
-            raw.element_unset_style(
-              mutation.id as number,
-              Uint32Array.from(mutation.unsetKinds),
-            );
+          for (const unsetKind of unsetKindsOf(mutation.style)) {
+            ops.push(OP.UNSET_STYLE, mutation.id as number, unsetKind);
           }
           break;
         }
-        case 'setText':
-          drainTypedBatch();
-          raw.element_set_text(mutation.id as number, mutation.text);
+        case 'setText': {
+          const textIndex = texts.length;
+          texts.push(mutation.text);
+          ops.push(OP.SET_TEXT, mutation.id as number, textIndex);
           break;
+        }
       }
     }
 
-    drainTypedBatch();
+    if (ops.length > 0) {
+      raw.apply_mutations(new Float64Array(ops), new Float32Array(styles), texts);
+    }
     this.mutations.length = 0;
   }
 }

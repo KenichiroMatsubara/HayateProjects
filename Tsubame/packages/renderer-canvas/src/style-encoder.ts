@@ -197,8 +197,8 @@ export function encodeStylePatch(patch: StylePatch, out: number[]): void {
 }
 
 /**
- * `StylePatch` 内の `null` 値（リセット）を `element_unset_style` の
- * kind コード列に変換する。継承プロパティ（ADR-0047）以外への `null` は throw。
+ * `StylePatch` 内の `null` 値（リセット）を `OP_UNSET_STYLE` の kind コード列に変換する。
+ * 継承プロパティ（ADR-0047）以外への `null` は throw。
  */
 export function unsetKindsOf(patch: StylePatch): number[] {
   const kinds: number[] = [];

@@ -23,11 +23,11 @@ _Avoid_: 現在の最優先実装対象
 _Avoid_: WIT 由来の定数定義、TS/Rust 手書きの定数表
 
 **apply_mutations**:
-Tsubame `Canvas Renderer` が Hayate に渡すフレーム単位バッチ入口。シグネチャは `apply_mutations(ops: Float64Array, styles: Float32Array)`。
+Tsubame `Canvas Renderer` が Hayate に渡すフレーム単位バッチ入口。シグネチャは `apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[])`。
 _Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明
 
 **Hayate Mutation Packet**:
-Tsubame `Canvas Renderer` と Hayate WASM の間で、typed batch mutations（`ops/styles`）と batch 外の低頻度 string/unset 呼び出しの発行順序を規定する、CanvasRenderer–Hayate WASM 間の Hayate 固有の契約。現行は WASM 境界の型制約により TypeScript 側（HayateMutationPacket）が発行順序を管理しているが、これは一時的な補償設計である（ADR-0052 参照）。
+Tsubame `Canvas Renderer` と Hayate WASM の間で、フレーム内 mutation を `ops/styles/texts` の unified batch として発行する順序契約。HayateMutationPacket は semantic mutation の順序を保持し、flush 時に ADR-0052 の `apply_mutations` 境界へ一括エンコードする。
 _Avoid_: DOM Renderer にも要求される汎用 Renderer Protocol、単なる opcode 定数表、slot 配列だけの狭い codec、TypeScript 側の順序管理を永続設計とみなす説明
 
 **poll_events**:

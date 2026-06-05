@@ -7,7 +7,7 @@ import type { HayateDimension } from '@tsubame/renderer-protocol';
  * wasm-bindgen 生成クラスは構造的にこれを充足するため、`init.ts` では
  * 生成インスタンスをそのまま `RawHayate` として渡せる。スタイルは
  * `Float32Array`（style-packet TAG 形式）、ミューテーションは
- * `apply_mutations(ops, styles)`（ADR-0039）、イベントは array-of-arrays
+ * `apply_mutations(ops, styles, texts)`（ADR-0052）、イベントは array-of-arrays
  * （ADR-0034）でやり取りする。
  */
 export interface RawHayate {
@@ -17,9 +17,11 @@ export interface RawHayate {
   element_insert_before(parent: number, child: number, before: number): void;
   element_remove(id: number): void;
   element_set_style(id: number, packed: Float32Array): void;
-  element_unset_style(id: number, kinds: Uint32Array): void;
-  element_set_text(id: number, text: string): void;
-  apply_mutations(ops: Float64Array, styles: Float32Array): void;
+  apply_mutations(
+    ops: Float64Array,
+    styles: Float32Array,
+    texts: string[],
+  ): void;
   on_resize(width: number, height: number): void;
   on_pointer_move(x: number, y: number): void;
   on_pointer_down(x: number, y: number): void;
