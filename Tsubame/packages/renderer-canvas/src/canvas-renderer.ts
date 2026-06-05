@@ -92,15 +92,11 @@ export class CanvasRenderer implements IRenderer {
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    if (this.packet.enqueueSetStyle(id, style)) {
-      this.flush();
-    }
+    this.packet.enqueueSetStyle(id, style);
   }
 
   setText(id: ElementId, text: string): void {
-    if (this.packet.enqueueSetText(id, text)) {
-      this.flush();
-    }
+    this.packet.enqueueSetText(id, text);
   }
 
   setProperty(_id: ElementId, _name: string, _value: unknown): void {}

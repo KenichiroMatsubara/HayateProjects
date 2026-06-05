@@ -15,7 +15,7 @@
 
 ### 2.1 Tsubame boundary
 
-Hayate-Tsubame 間の現行正本は [`proto/protocol.yaml`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/proto/protocol.yaml) である。`apply_mutations(ops: Float64Array, styles: Float32Array)` と `poll_events` の定数・種別・フィールド名はこの YAML に従う。
+Hayate-Tsubame 間の現行正本は [`proto/protocol.yaml`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/proto/protocol.yaml) である。`apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[])` と `poll_events` の定数・種別・フィールド名はこの YAML に従う。
 
 根拠:
 - ADR-0049

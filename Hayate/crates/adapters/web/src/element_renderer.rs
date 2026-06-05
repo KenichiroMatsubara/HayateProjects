@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use hayate_core::{
     ElementId, ElementKind, ElementTree, Event, RenderImage, RenderImageAlphaType,
-    RenderImageFormat, StyleProp,
+    RenderImageFormat, StyleProp, StylePropKind,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -214,6 +214,16 @@ fn element_id_to_f64(id: ElementId) -> f64 {
 
 fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
     ElementKind::from_u32(v).ok_or_else(|| JsValue::from_str(&format!("unknown element kind {v}")))
+}
+
+fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, JsValue> {
+    match v {
+        0 => Ok(StylePropKind::Color),
+        1 => Ok(StylePropKind::FontSize),
+        2 => Ok(StylePropKind::FontFamily),
+        3 => Ok(StylePropKind::FontWeight),
+        _ => Err(JsValue::from_str(&format!("unknown unset style kind {v}"))),
+    }
 }
 
 // ── Style tag constants (exposed to JS) ──────────────────────────────────
@@ -458,20 +468,14 @@ impl HayateElementRenderer {
     /// Unset one or more inheritable text-style properties on `id`, reverting
     /// them to inherit from the parent (ADR-0047).
     /// `kinds` is a packed u32 array: 0 = Color, 1 = FontSize, 2 = FontFamily.
-    pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) {
-        use hayate_core::StylePropKind;
-        let parsed: Vec<StylePropKind> = kinds
+    pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) -> Result<(), JsValue> {
+        let parsed: Result<Vec<StylePropKind>, JsValue> = kinds
             .iter()
-            .filter_map(|&k| match k {
-                0 => Some(StylePropKind::Color),
-                1 => Some(StylePropKind::FontSize),
-                2 => Some(StylePropKind::FontFamily),
-                3 => Some(StylePropKind::FontWeight),
-                _ => None,
-            })
+            .map(|&kind| unset_kind_from_u32(kind))
             .collect();
         self.tree
-            .element_unset_style(element_id_from_f64(id), &parsed);
+            .element_unset_style(element_id_from_f64(id), &parsed?);
+        Ok(())
     }
 
     pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
@@ -607,10 +611,16 @@ impl HayateElementRenderer {
             .element_set_text_content(element_id_from_f64(id), text);
     }
 
-    /// Batch apply: invoked once per frame by Tsubame Canvas Mode (ADR-0039).
+    /// Batch apply: invoked once per frame by Tsubame Canvas Mode (ADR-0052).
     /// `ops` is a flat Float64Array of fixed-length records; `styles` is the
-    /// style_packet Float32Array referenced by OP_SET_STYLE records.
-    pub fn apply_mutations(&mut self, ops: &[f64], styles: &[f32]) -> Result<(), JsValue> {
+    /// style_packet Float32Array referenced by OP_SET_STYLE records; `texts` is
+    /// the string table referenced by OP_SET_TEXT records.
+    pub fn apply_mutations(
+        &mut self,
+        ops: &[f64],
+        styles: &[f32],
+        texts: js_sys::Array,
+    ) -> Result<(), JsValue> {
         let mut i = 0usize;
         while i < ops.len() {
             let op_kind = ops[i] as u32;
@@ -731,6 +741,30 @@ impl HayateElementRenderer {
                     i += 2;
                     let k = kind_from_u32(kind)?;
                     self.tree.element_create(id, k);
+                }
+                OP_SET_TEXT => {
+                    if i + 2 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_SET_TEXT"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    let text_index = ops[i + 1] as u32;
+                    i += 2;
+                    if text_index >= texts.length() {
+                        return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT"));
+                    }
+                    let text = texts.get(text_index).as_string().ok_or_else(|| {
+                        JsValue::from_str("text table entry is not a string in OP_SET_TEXT")
+                    })?;
+                    self.tree.element_set_text(id, &text);
+                }
+                OP_UNSET_STYLE => {
+                    if i + 2 > ops.len() {
+                        return Err(JsValue::from_str("ops truncated at OP_UNSET_STYLE"));
+                    }
+                    let id = element_id_from_f64(ops[i]);
+                    let kind = unset_kind_from_u32(ops[i + 1] as u32)?;
+                    i += 2;
+                    self.tree.element_unset_style(id, &[kind]);
                 }
                 other => {
                     return Err(JsValue::from_str(&format!("unknown op_kind {other}")));

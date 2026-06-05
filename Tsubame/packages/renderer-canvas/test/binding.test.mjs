@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CanvasRenderer,
+  OP,
   parseColor,
   encodeStylePatch,
   unsetKindsOf,
@@ -9,25 +10,19 @@ import {
 
 /** Records the WIT-shaped calls the real WASM would receive. */
 class StubHayate {
-  mutations = []; // { ops: number[], styles: number[] }
-  texts = [];
-  unset = [];
+  mutations = []; // { ops: number[], styles: number[], texts: string[] }
   renders = [];
   resizes = [];
   events = [];
   calls = [];
 
-  apply_mutations(ops, styles) {
+  apply_mutations(ops, styles, texts) {
     this.calls.push('apply_mutations');
-    this.mutations.push({ ops: Array.from(ops), styles: Array.from(styles) });
-  }
-  element_set_text(id, text) {
-    this.calls.push('element_set_text');
-    this.texts.push({ id, text });
-  }
-  element_unset_style(id, kinds) {
-    this.calls.push('element_unset_style');
-    this.unset.push({ id, kinds: Array.from(kinds) });
+    this.mutations.push({
+      ops: Array.from(ops),
+      styles: Array.from(styles),
+      texts: Array.from(texts),
+    });
   }
   on_resize(width, height) {
     this.resizes.push({ width, height });
@@ -60,7 +55,7 @@ function manualScheduler() {
   };
 }
 
-test('CanvasRenderer batches tree mutations into apply_mutations (ADR-0039)', () => {
+test('CanvasRenderer batches tree, style, and text mutations into unified apply_mutations (ADR-0052)', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);
@@ -70,26 +65,29 @@ test('CanvasRenderer batches tree mutations into apply_mutations (ADR-0039)', ()
   renderer.setRoot(root);
   renderer.appendChild(root, text);
   renderer.setStyle(root, { width: '50%', backgroundColor: '#ff0000' });
-  renderer.setText(text, 'Hello'); // out-of-band string op → flushes the batch
+  renderer.setText(text, 'Hello');
+
+  assert.equal(hayate.mutations.length, 0);
+
+  sched.tick(33);
 
   assert.equal(hayate.mutations.length, 1);
-  // OP_CREATE=9 (view=0, text=1), OP_SET_ROOT=3, OP_APPEND_CHILD=0, OP_SET_STYLE=4
   assert.deepEqual(hayate.mutations[0].ops, [
-    9, 1, 0, // create view #1
-    9, 2, 1, // create text #2
-    3, 1, // set_root #1
-    0, 1, 2, // append #2 under #1
-    4, 1, 0, 8, // set_style #1, offset 0, len 8
+    OP.CREATE, 1, 0, // create view #1
+    OP.CREATE, 2, 1, // create text #2
+    OP.SET_ROOT, 1, // set_root #1
+    OP.APPEND_CHILD, 1, 2, // append #2 under #1
+    OP.SET_STYLE, 1, 0, 8, // set_style #1, offset 0, len 8
+    OP.SET_TEXT, 2, 0, // set_text #2, texts[0]
   ]);
   // TAG_WIDTH=5 (50, percent=1), TAG_BACKGROUND_COLOR=0 (r,g,b,a)
   assert.deepEqual(hayate.mutations[0].styles, [5, 50, 1, 0, 1, 0, 0, 1]);
-  assert.deepEqual(hayate.texts, [{ id: 2, text: 'Hello' }]);
-
-  sched.tick(33);
+  assert.deepEqual(hayate.mutations[0].texts, ['Hello']);
+  assert.deepEqual(hayate.calls, ['apply_mutations']);
   assert.deepEqual(hayate.renders, [33]);
 });
 
-test('setStyle null resets route to element_unset_style with numeric codes', () => {
+test('setStyle null resets route to unified OP_UNSET_STYLE records', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);
@@ -97,37 +95,45 @@ test('setStyle null resets route to element_unset_style with numeric codes', () 
   const node = renderer.createElement('text');
   renderer.setStyle(node, { color: null, fontSize: null, fontFamily: null });
 
+  sched.tick(16);
+
   // color=0, font-size=1, font-family=2
-  assert.deepEqual(hayate.unset, [{ id: 1, kinds: [0, 1, 2] }]);
+  assert.deepEqual(hayate.calls, ['apply_mutations']);
+  assert.deepEqual(hayate.mutations[0].ops, [
+    OP.CREATE, 1, 1,
+    OP.UNSET_STYLE, 1, 0,
+    OP.UNSET_STYLE, 1, 1,
+    OP.UNSET_STYLE, 1, 2,
+  ]);
+  assert.deepEqual(hayate.mutations[0].styles, []);
+  assert.deepEqual(hayate.mutations[0].texts, []);
 });
 
-test('CanvasRenderer preserves text before later style mutations', () => {
+test('CanvasRenderer preserves text before later style mutations in one unified batch', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);
 
   const text = renderer.createElement('text');
   renderer.setText(text, 'Hello');
-
-  assert.equal(hayate.mutations.length, 1);
-  assert.deepEqual(hayate.mutations[0].ops, [9, 1, 1]);
-  assert.deepEqual(hayate.texts, [{ id: 1, text: 'Hello' }]);
-
   renderer.setStyle(text, { color: '#00ff00' });
-  assert.equal(hayate.mutations.length, 1);
+
+  assert.equal(hayate.mutations.length, 0);
 
   sched.tick(24);
-  assert.equal(hayate.mutations.length, 2);
-  assert.deepEqual(hayate.mutations[1].ops, [4, 1, 0, 5]);
-  assert.deepEqual(hayate.mutations[1].styles, [27, 0, 1, 0, 1]);
-  assert.deepEqual(hayate.calls, [
-    'apply_mutations',
-    'element_set_text',
-    'apply_mutations',
+
+  assert.equal(hayate.mutations.length, 1);
+  assert.deepEqual(hayate.mutations[0].ops, [
+    OP.CREATE, 1, 1,
+    OP.SET_TEXT, 1, 0,
+    OP.SET_STYLE, 1, 0, 5,
   ]);
+  assert.deepEqual(hayate.mutations[0].styles, [27, 0, 1, 0, 1]);
+  assert.deepEqual(hayate.mutations[0].texts, ['Hello']);
+  assert.deepEqual(hayate.calls, ['apply_mutations']);
 });
 
-test('setStyle with SET and null unset flushes SET before element_unset_style', () => {
+test('setStyle with SET and null unset emits ordered SET_STYLE then OP_UNSET_STYLE', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);
@@ -135,10 +141,16 @@ test('setStyle with SET and null unset flushes SET before element_unset_style', 
   const node = renderer.createElement('text');
   renderer.setStyle(node, { color: '#ff0000', fontSize: null });
 
-  assert.deepEqual(hayate.calls, ['apply_mutations', 'element_unset_style']);
-  assert.deepEqual(hayate.mutations[0].ops, [9, 1, 1, 4, 1, 0, 5]);
+  sched.tick(16);
+
+  assert.deepEqual(hayate.calls, ['apply_mutations']);
+  assert.deepEqual(hayate.mutations[0].ops, [
+    OP.CREATE, 1, 1,
+    OP.SET_STYLE, 1, 0, 5,
+    OP.UNSET_STYLE, 1, 1,
+  ]);
   assert.deepEqual(hayate.mutations[0].styles, [27, 1, 0, 0, 1]);
-  assert.deepEqual(hayate.unset, [{ id: 1, kinds: [1] }]);
+  assert.deepEqual(hayate.mutations[0].texts, []);
 });
 
 test('multiple setText calls are emitted in order without coalescing', () => {
@@ -150,15 +162,15 @@ test('multiple setText calls are emitted in order without coalescing', () => {
   renderer.setText(text, 'A');
   renderer.setText(text, 'B');
 
-  assert.deepEqual(hayate.texts, [
-    { id: 1, text: 'A' },
-    { id: 1, text: 'B' },
+  sched.tick(16);
+
+  assert.deepEqual(hayate.mutations[0].ops, [
+    OP.CREATE, 1, 1,
+    OP.SET_TEXT, 1, 0,
+    OP.SET_TEXT, 1, 1,
   ]);
-  assert.deepEqual(hayate.calls, [
-    'apply_mutations',
-    'element_set_text',
-    'element_set_text',
-  ]);
+  assert.deepEqual(hayate.mutations[0].texts, ['A', 'B']);
+  assert.deepEqual(hayate.calls, ['apply_mutations']);
 });
 
 test('encodeStylePatch mirrors the style_packet TAG format', () => {

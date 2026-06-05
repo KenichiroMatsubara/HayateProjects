@@ -208,6 +208,20 @@ opcodes:
         type: element_id
       - name: kind
         type: u32
+  - name: SET_TEXT
+    value: 10
+    params:
+      - name: id
+        type: element_id
+      - name: text_index
+        type: usize
+  - name: UNSET_STYLE
+    value: 11
+    params:
+      - name: id
+        type: element_id
+      - name: kind
+        type: u32
 
 style_tags:
   - name: BACKGROUND_COLOR
