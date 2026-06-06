@@ -747,6 +747,21 @@ fn generate(proto: &Proto) -> String {
     out.push_str("        result.push(&encode_event(ev));\n");
     out.push_str("    }\n");
     out.push_str("    result\n");
+    out.push_str("}\n\n");
+
+    // encode_deliveries — ADR-0053: [listener_id, kind, ...fields]
+    out.push_str("pub fn encode_deliveries(deliveries: &[hayate_core::EventDelivery]) -> js_sys::Array {\n");
+    out.push_str("    let result = js_sys::Array::new();\n");
+    out.push_str("    for delivery in deliveries {\n");
+    out.push_str("        let sub = encode_event(&delivery.event);\n");
+    out.push_str("        let row = js_sys::Array::new();\n");
+    out.push_str("        row.push(&JsValue::from_f64(delivery.listener_id.to_u64() as f64));\n");
+    out.push_str("        for i in 0..sub.length() {\n");
+    out.push_str("            row.push(&sub.get(i));\n");
+    out.push_str("        }\n");
+    out.push_str("        result.push(&row);\n");
+    out.push_str("    }\n");
+    out.push_str("    result\n");
     out.push_str("}\n");
 
     out

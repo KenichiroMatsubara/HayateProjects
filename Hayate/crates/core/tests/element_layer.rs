@@ -1,5 +1,5 @@
 use hayate_core::{
-    AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, Event,
+    AlignValue, Color, Dimension, DisplayValue, DocumentEventKind, ElementKind, ElementTree, Event,
     FlexDirectionValue, NodeKind, StyleProp,
 };
 
@@ -1018,12 +1018,13 @@ fn paste_queues_text_input_event() {
     let input = tree.element_create(50, ElementKind::TextInput);
     tree.set_root(input);
 
+    let _listener = tree.register_listener(input, DocumentEventKind::TextInput);
     tree.element_paste(input, "hello");
-    let events = tree.poll_events();
-    assert_eq!(events.len(), 1);
+    let deliveries = tree.poll_deliveries();
+    assert_eq!(deliveries.len(), 1);
     assert!(
-        matches!(&events[0], Event::TextInput { text, .. } if text == "hello"),
-        "expected TextInput event with pasted text"
+        matches!(&deliveries[0].event, Event::TextInput { text, .. } if text == "hello"),
+        "expected TextInput delivery with pasted text"
     );
 }
 

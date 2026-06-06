@@ -5,8 +5,9 @@ pub mod render;
 
 pub use color::Color;
 pub use element::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, ElementId, ElementKind, ElementTree, Event,
-    FlexDirectionValue, JustifyValue, LayoutPass, ResolvedElement, StyleProp, StylePropKind,
+    AlignValue, Dimension, DimensionUnit, DisplayValue, DocumentEventKind, ElementId, ElementKind,
+    ElementTree, Event, EventDelivery, FlexDirectionValue, JustifyValue, LayoutPass, ListenerId,
+    ResolvedElement, StyleProp, StylePropKind,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextRunData};
 pub use render::{

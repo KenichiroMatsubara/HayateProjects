@@ -1,14 +1,42 @@
-use hayate_core::{ElementId, Event};
+use hayate_core::{DocumentEventKind, ElementId, ElementTree, Event};
+
+/// Map a core [`Event`] to the document-runtime subscription kind, if deliverable.
+pub(crate) fn document_event_kind(event: &Event) -> Option<DocumentEventKind> {
+    match event {
+        Event::Click { .. } => Some(DocumentEventKind::Click),
+        Event::Focus(_) => Some(DocumentEventKind::Focus),
+        Event::Blur(_) => Some(DocumentEventKind::Blur),
+        Event::TextInput { .. } => Some(DocumentEventKind::TextInput),
+        Event::CompositionStart { .. } => Some(DocumentEventKind::CompositionStart),
+        Event::CompositionUpdate { .. } => Some(DocumentEventKind::CompositionUpdate),
+        Event::CompositionEnd { .. } => Some(DocumentEventKind::CompositionEnd),
+        Event::Scroll { .. } => Some(DocumentEventKind::Scroll),
+        Event::HoverEnter { .. } => Some(DocumentEventKind::HoverEnter),
+        Event::HoverLeave { .. } => Some(DocumentEventKind::HoverLeave),
+        Event::ActiveStart { .. } => Some(DocumentEventKind::ActiveStart),
+        Event::ActiveEnd { .. } => Some(DocumentEventKind::ActiveEnd),
+        Event::KeyDown { .. } => Some(DocumentEventKind::KeyDown),
+        Event::Resize { .. } | Event::PointerMove { .. } | Event::FetchFont { .. } => None,
+    }
+}
+
+/// Deliver `event` through the document runtime when `tree` is present; otherwise
+/// queue for HTML Mode raw poll (until HTML path adopts deliveries).
+pub(crate) fn emit_event(tree: Option<&mut ElementTree>, raw_fallback: &mut Vec<Event>, event: Event) {
+    if let Some(t) = tree {
+        if let Some(kind) = document_event_kind(&event) {
+            t.dispatch_event(kind, event);
+        }
+    } else {
+        raw_fallback.push(event);
+    }
+}
 
 /// Shared input-handling state for both renderer backends.
 ///
-/// Tracks hover/active/focus pointer state and accumulates `Event`s in a local
-/// queue. Both `HayateElementRenderer` (Canvas) and
-/// `HayateElementHtmlRenderer` (HTML) embed this so the state-transition
-/// logic lives in exactly one place.
-///
-/// Canvas mode must also call `tree.element_focus` / `tree.element_blur`
-/// alongside `focus` / `blur` here to keep the cursor-blink render state in sync.
+/// Tracks hover/active/focus pointer state. Canvas Mode routes interaction
+/// events into `ElementTree`'s document runtime; HTML Mode still accumulates
+/// raw events for `poll_events` until that path migrates.
 pub(crate) struct RendererEventState {
     pub hovered_element: Option<ElementId>,
     pub active_element: Option<ElementId>,
@@ -16,7 +44,7 @@ pub(crate) struct RendererEventState {
     /// `ElementTree` for cursor-blink rendering.
     pub focused_element: Option<ElementId>,
     pub last_pointer_pos: Option<(f32, f32)>,
-    events: Vec<Event>,
+    raw_events: Vec<Event>,
 }
 
 impl RendererEventState {
@@ -26,176 +54,228 @@ impl RendererEventState {
             active_element: None,
             focused_element: None,
             last_pointer_pos: None,
-            events: Vec::new(),
+            raw_events: Vec::new(),
         }
     }
 
-    /// Push an arbitrary event into the queue.
-    pub fn push(&mut self, event: Event) {
-        self.events.push(event);
+    pub fn drain_raw(&mut self) -> Vec<Event> {
+        std::mem::take(&mut self.raw_events)
     }
 
-    /// Drain all queued events, leaving the queue empty.
-    pub fn drain(&mut self) -> Vec<Event> {
-        std::mem::take(&mut self.events)
+    pub fn push_raw(&mut self, event: Event) {
+        emit_event(None, &mut self.raw_events, event);
     }
 
-    /// Set `id` as the focused element.
-    /// Pushes `Blur(prev)` then `Focus(id)` if focus changed; no-op when already focused.
-    pub fn focus(&mut self, id: ElementId) {
+    pub fn focus(&mut self, tree: Option<&mut ElementTree>, id: ElementId) {
         if self.focused_element == Some(id) {
             return;
         }
         if let Some(prev) = self.focused_element {
-            self.events.push(Event::Blur(prev));
+            emit_event(tree, &mut self.raw_events, Event::Blur(prev));
         }
         self.focused_element = Some(id);
-        self.events.push(Event::Focus(id));
+        emit_event(tree, &mut self.raw_events, Event::Focus(id));
     }
 
-    /// Clear focus from `id`.
-    /// Pushes `Blur(id)` if `id` is currently focused; no-op otherwise.
-    pub fn blur(&mut self, id: ElementId) {
+    pub fn blur(&mut self, tree: Option<&mut ElementTree>, id: ElementId) {
         if self.focused_element != Some(id) {
             return;
         }
         self.focused_element = None;
-        self.events.push(Event::Blur(id));
+        emit_event(tree, &mut self.raw_events, Event::Blur(id));
     }
 
-    /// Handle pointer-down on `target` (None = pointer missed all elements).
-    /// Pushes Click + ActiveStart events and manages focus transitions via
-    /// `focus()` / `blur()`.
-    pub fn pointer_down(&mut self, target: Option<ElementId>, x: f32, y: f32) {
+    pub fn pointer_down(
+        &mut self,
+        tree: Option<&mut ElementTree>,
+        target: Option<ElementId>,
+        x: f32,
+        y: f32,
+    ) {
         if let Some(t) = target {
-            self.events.push(Event::Click { target_id: t, x, y });
-            self.events.push(Event::ActiveStart { target_id: t });
+            emit_event(
+                tree,
+                &mut self.raw_events,
+                Event::Click {
+                    target_id: t,
+                    x,
+                    y,
+                },
+            );
+            emit_event(
+                tree,
+                &mut self.raw_events,
+                Event::ActiveStart { target_id: t },
+            );
             self.active_element = Some(t);
-            self.focus(t);
+            self.focus(tree, t);
         } else if let Some(prev) = self.focused_element.take() {
-            self.events.push(Event::Blur(prev));
+            emit_event(tree, &mut self.raw_events, Event::Blur(prev));
         }
     }
 
-    /// Handle pointer-up.
-    /// Uses `active_element` if tracked; falls back to `explicit_fallback`
-    /// (pass `None` when no position-based fallback is available).
-    pub fn pointer_up(&mut self, explicit_fallback: Option<ElementId>) {
+    pub fn pointer_up(&mut self, tree: Option<&mut ElementTree>, explicit_fallback: Option<ElementId>) {
         let target = self.active_element.take().or(explicit_fallback);
         if let Some(t) = target {
-            self.events.push(Event::ActiveEnd { target_id: t });
+            emit_event(
+                tree,
+                &mut self.raw_events,
+                Event::ActiveEnd { target_id: t },
+            );
         }
     }
 
-    /// Update hover state and push a PointerMove event for Canvas mode
-    /// (where hover is derived from a hit-test at the new pointer position).
-    ///
-    /// Applies the 1 px throttle from ADR-0019; returns `false` when the move
-    /// was below the threshold and no events were pushed.
-    pub fn pointer_move_to(&mut self, new_hover: Option<ElementId>, x: f32, y: f32) -> bool {
+    pub fn pointer_move_to(
+        &mut self,
+        tree: Option<&mut ElementTree>,
+        new_hover: Option<ElementId>,
+        x: f32,
+        y: f32,
+    ) -> bool {
         if let Some((lx, ly)) = self.last_pointer_pos {
             if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
                 return false;
             }
         }
         self.last_pointer_pos = Some((x, y));
-        self.events.push(Event::PointerMove { x, y });
-        self.apply_hover(new_hover);
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::PointerMove { x, y },
+        );
+        self.apply_hover(tree, new_hover);
         true
     }
 
-    /// Handle DOM `mouseenter` (HTML mode): transition hover to `target`.
-    pub fn hover_enter(&mut self, target: ElementId) {
+    pub fn hover_enter(&mut self, tree: Option<&mut ElementTree>, target: ElementId) {
         if self.hovered_element != Some(target) {
             if let Some(prev) = self.hovered_element {
-                self.events.push(Event::HoverLeave { target_id: prev });
+                emit_event(
+                    tree,
+                    &mut self.raw_events,
+                    Event::HoverLeave { target_id: prev },
+                );
             }
             self.hovered_element = Some(target);
-            self.events.push(Event::HoverEnter { target_id: target });
+            emit_event(
+                tree,
+                &mut self.raw_events,
+                Event::HoverEnter { target_id: target },
+            );
         }
     }
 
-    /// Handle DOM `mouseleave` (HTML mode): clear hover from `target`.
-    pub fn hover_leave(&mut self, target: ElementId) {
+    pub fn hover_leave(&mut self, tree: Option<&mut ElementTree>, target: ElementId) {
         if self.hovered_element == Some(target) {
             self.hovered_element = None;
-            self.events.push(Event::HoverLeave { target_id: target });
+            emit_event(
+                tree,
+                &mut self.raw_events,
+                Event::HoverLeave { target_id: target },
+            );
         }
     }
 
-    /// Push a Scroll event.
-    pub fn wheel(&mut self, target: ElementId, delta_x: f32, delta_y: f32) {
-        self.events.push(Event::Scroll {
-            target_id: target,
-            delta_x,
-            delta_y,
-        });
+    pub fn wheel(
+        &mut self,
+        tree: Option<&mut ElementTree>,
+        target: ElementId,
+        delta_x: f32,
+        delta_y: f32,
+    ) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::Scroll {
+                target_id: target,
+                delta_x,
+                delta_y,
+            },
+        );
     }
 
-    /// Push a Resize event.
-    pub fn resize(&mut self, width: f32, height: f32) {
-        self.events.push(Event::Resize { width, height });
+    pub fn resize(&mut self, tree: Option<&mut ElementTree>, width: f32, height: f32) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::Resize { width, height },
+        );
     }
 
-    /// Push a KeyDown event for the currently-focused element.
-    /// No-op when nothing is focused.
-    pub fn key_down(&mut self, key: &str, modifiers: u32) {
+    pub fn key_down(&mut self, tree: Option<&mut ElementTree>, key: &str, modifiers: u32) {
         if let Some(focused) = self.focused_element {
-            self.events.push(Event::KeyDown {
-                target_id: focused,
-                key: key.to_string(),
-                modifiers,
-            });
+            emit_event(
+                tree,
+                &mut self.raw_events,
+                Event::KeyDown {
+                    target_id: focused,
+                    key: key.to_string(),
+                    modifiers,
+                },
+            );
         }
     }
 
-    /// Push a TextInput event.
-    pub fn text_input(&mut self, target: ElementId, text: &str) {
-        self.events.push(Event::TextInput {
-            target_id: target,
-            text: text.to_string(),
-        });
+    pub fn text_input(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::TextInput {
+                target_id: target,
+                text: text.to_string(),
+            },
+        );
     }
 
-    /// Push a CompositionStart event.
-    pub fn composition_start(&mut self, target: ElementId, text: &str) {
-        self.events.push(Event::CompositionStart {
-            target_id: target,
-            text: text.to_string(),
-        });
+    pub fn composition_start(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::CompositionStart {
+                target_id: target,
+                text: text.to_string(),
+            },
+        );
     }
 
-    /// Push a CompositionUpdate event.
-    pub fn composition_update(&mut self, target: ElementId, text: &str) {
-        self.events.push(Event::CompositionUpdate {
-            target_id: target,
-            text: text.to_string(),
-        });
+    pub fn composition_update(
+        &mut self,
+        tree: Option<&mut ElementTree>,
+        target: ElementId,
+        text: &str,
+    ) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::CompositionUpdate {
+                target_id: target,
+                text: text.to_string(),
+            },
+        );
     }
 
-    /// Push a CompositionEnd event.
-    pub fn composition_end(&mut self, target: ElementId, text: &str) {
-        self.events.push(Event::CompositionEnd {
-            target_id: target,
-            text: text.to_string(),
-        });
+    pub fn composition_end(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::CompositionEnd {
+                target_id: target,
+                text: text.to_string(),
+            },
+        );
     }
 
-    /// Push a TextInput event (used for paste operations).
-    pub fn paste(&mut self, target: ElementId, text: &str) {
-        self.events.push(Event::TextInput {
-            target_id: target,
-            text: text.to_string(),
-        });
+    pub fn paste(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        emit_event(
+            tree,
+            &mut self.raw_events,
+            Event::TextInput {
+                target_id: target,
+                text: text.to_string(),
+            },
+        );
     }
 
-    /// Clear hover/active/focused state for elements belonging to a removed
-    /// subtree.
-    ///
-    /// `in_subtree(id)` must return `true` when `id` should be cleared — for
-    /// Canvas mode this means "is a descendant of the removed root" (called
-    /// *before* tree removal); for HTML mode this means "is no longer in the
-    /// node map" (called *after* removal).
     pub fn on_subtree_remove<F: Fn(ElementId) -> bool>(&mut self, in_subtree: F) {
         if let Some(h) = self.hovered_element {
             if in_subtree(h) {
@@ -214,13 +294,21 @@ impl RendererEventState {
         }
     }
 
-    fn apply_hover(&mut self, new_hover: Option<ElementId>) {
+    fn apply_hover(&mut self, tree: Option<&mut ElementTree>, new_hover: Option<ElementId>) {
         if new_hover != self.hovered_element {
             if let Some(prev) = self.hovered_element {
-                self.events.push(Event::HoverLeave { target_id: prev });
+                emit_event(
+                    tree,
+                    &mut self.raw_events,
+                    Event::HoverLeave { target_id: prev },
+                );
             }
             if let Some(cur) = new_hover {
-                self.events.push(Event::HoverEnter { target_id: cur });
+                emit_event(
+                    tree,
+                    &mut self.raw_events,
+                    Event::HoverEnter { target_id: cur },
+                );
             }
             self.hovered_element = new_hover;
         }

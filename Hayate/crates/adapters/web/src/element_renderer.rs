@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use hayate_core::{
-    ElementId, ElementKind, ElementTree, Event, RenderImage, RenderImageAlphaType,
+    DocumentEventKind, ElementId, ElementKind, ElementTree, Event, RenderImage, RenderImageAlphaType,
     RenderImageFormat, StyleProp, StylePropKind,
 };
 use wasm_bindgen::prelude::*;
@@ -121,7 +121,7 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
 
 use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost};
 use crate::backend::{CanvasBackend, SelectedBackend};
-use crate::generated::encode_events;
+use crate::generated::{encode_deliveries, encode_events};
 use crate::renderer_event_state::RendererEventState;
 use crate::style_packet;
 
@@ -386,7 +386,8 @@ impl HayateElementRenderer {
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
         let hit = self.tree.hit_test(x, y);
         let old_focus = self.events.focused_element;
-        self.events.pointer_down(hit, x, y);
+        self.events
+            .pointer_down(Some(&mut self.tree), hit, x, y);
         let new_focus = self.events.focused_element;
         if old_focus != new_focus {
             if let Some(p) = old_focus {
@@ -404,7 +405,7 @@ impl HayateElementRenderer {
         // is one active session). The release coordinate has no field on the
         // event variant — callers that need it should track PointerMove.
         let fallback = self.tree.hit_test(x, y);
-        self.events.pointer_up(fallback);
+        self.events.pointer_up(Some(&mut self.tree), fallback);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
@@ -415,32 +416,33 @@ impl HayateElementRenderer {
         // alongside any hover state changes so dragging code can track motion.
         // 1 px throttle (ADR-0019) is enforced inside pointer_move_to.
         let hit = self.tree.hit_test(x, y);
-        self.events.pointer_move_to(hit, x, y);
+        self.events
+            .pointer_move_to(Some(&mut self.tree), hit, x, y);
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
         if let Some(target) = self.tree.hit_test(x, y) {
-            if let Some(sv) = nearest_scroll_view(&self.tree, target) {
-                let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-                let (content_w, content_h) = self.tree.element_content_size(sv);
-                let sv_rect = self
-                    .tree
-                    .element_layout_rect(sv)
-                    .unwrap_or((0.0, 0.0, 0.0, 0.0));
-                let max_x = (content_w - sv_rect.2).max(0.0);
-                let max_y = (content_h - sv_rect.3).max(0.0);
-                let new_x = (ox + delta_x).clamp(0.0, max_x);
-                let new_y = (oy + delta_y).clamp(0.0, max_y);
-                self.tree.element_set_scroll_offset(sv, new_x, new_y);
-            }
-            self.events.wheel(target, delta_x, delta_y);
+            self.tree.apply_wheel_delta(target, delta_x, delta_y);
+            self.events
+                .wheel(Some(&mut self.tree), target, delta_x, delta_y);
         }
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
         self.backend.resize(width as u32, height as u32);
-        self.events.resize(width, height);
+        self.events
+            .resize(Some(&mut self.tree), width, height);
+    }
+
+    pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {
+        let kind = DocumentEventKind::from_u32(event_kind).ok_or_else(|| {
+            JsValue::from_str(&format!("unknown event kind {event_kind}"))
+        })?;
+        let id = self
+            .tree
+            .register_listener(element_id_from_f64(element_id), kind);
+        Ok(id.to_u64() as f64)
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
@@ -554,36 +556,37 @@ impl HayateElementRenderer {
             }
             "Enter" => {
                 self.tree.element_append_text_content(focused, "\n");
-                self.events.text_input(focused, "\n");
+                self.events
+                    .text_input(Some(&mut self.tree), focused, "\n");
             }
             _ => {}
         }
-        self.events.push(Event::KeyDown {
-            target_id: focused,
-            key: key.to_string(),
-            modifiers,
-        });
+        self.events
+            .key_down(Some(&mut self.tree), key, modifiers);
     }
 
     /// Called by JS when the user types printable text into the focused TextInput.
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_append_text_content(eid, text);
-        self.events.text_input(eid, text);
+        self.events
+            .text_input(Some(&mut self.tree), eid, text);
     }
 
     /// Called by JS when an IME composition begins.
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.events.composition_start(eid, text);
+        self.events
+            .composition_start(Some(&mut self.tree), eid, text);
     }
 
     /// Called by JS when the IME preedit updates.
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.events.composition_update(eid, text);
+        self.events
+            .composition_update(Some(&mut self.tree), eid, text);
     }
 
     /// Called by JS when IME composition is finalized.
@@ -591,7 +594,8 @@ impl HayateElementRenderer {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, "");
         self.tree.element_append_text_content(eid, text);
-        self.events.composition_end(eid, text);
+        self.events
+            .composition_end(Some(&mut self.tree), eid, text);
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {
@@ -617,34 +621,28 @@ impl HayateElementRenderer {
         self.tree.element_get_text_content(element_id_from_f64(id))
     }
 
-    /// ADR-0034: `Array<Array<any>>` を返す。各サブ配列は `[kind: f64, ...fields]`。
-    /// 文字列ペイロード（TextInput / KeyDown 等）を運ぶため意図的にこの形式を採用。
+    /// ADR-0053: delivery rows `[listener_id, kind, ...fields]`.
+    /// `fetch_font` is consumed here and never delivered to the host.
     pub fn poll_events(&mut self) -> js_sys::Array {
-        // Input events are in self.events; only FetchFont (and element_paste's
-        // TextInput) come from the tree's internal queue.
-        let mut visible = self.events.drain();
         for event in self.tree.poll_events() {
-            match event {
-                Event::FetchFont { family } => {
-                    if let Some(url) = builtin_font_url(&family) {
-                        let queue = self.font_queue.clone();
-                        let url = url.to_string();
-                        wasm_bindgen_futures::spawn_local(async move {
-                            match fetch_bytes(&url).await {
-                                Ok(bytes) => queue.borrow_mut().push((family, bytes)),
-                                Err(e) => web_sys::console::warn_1(&e),
-                            }
-                        });
-                    } else {
-                        web_sys::console::warn_1(&JsValue::from_str(&format!(
-                            "FetchFont: no URL for \"{family}\""
-                        )));
-                    }
+            if let Event::FetchFont { family } = event {
+                if let Some(url) = builtin_font_url(&family) {
+                    let queue = self.font_queue.clone();
+                    let url = url.to_string();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match fetch_bytes(&url).await {
+                            Ok(bytes) => queue.borrow_mut().push((family, bytes)),
+                            Err(e) => web_sys::console::warn_1(&e),
+                        }
+                    });
+                } else {
+                    web_sys::console::warn_1(&JsValue::from_str(&format!(
+                        "FetchFont: no URL for \"{family}\""
+                    )));
                 }
-                other => visible.push(other),
             }
         }
-        encode_events(&visible)
+        encode_deliveries(&self.tree.poll_deliveries())
     }
 }
 
@@ -729,7 +727,7 @@ impl HayateElementHtmlRenderer {
     /// Viewport is browser-managed in HTML Mode; this is kept for API parity
     /// with the Canvas renderer and only emits a Resize event.
     pub fn set_viewport(&mut self, width: f32, height: f32) {
-        self.events.resize(width, height);
+        self.events.resize(None, width, height);
     }
 
     /// Registers an element with a caller-supplied ID and queues the DOM creation.
@@ -854,7 +852,7 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.events.pointer_down(Some(target), x, y);
+        self.events.pointer_down(None, target, x, y);
     }
 
     pub fn on_pointer_up(&mut self, target_id: f64, _x: f32, _y: f32) {
@@ -863,13 +861,13 @@ impl HayateElementHtmlRenderer {
         // part of the variant — use PointerMove for trailing-position tracking.
         let explicit = element_id_from_f64(target_id);
         let fallback = self.nodes.contains_key(&explicit).then_some(explicit);
-        self.events.pointer_up(fallback);
+        self.events.pointer_up(None, fallback);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
         // Target-less coordinate stream — hover state is driven separately by
         // the DOM mouseenter/mouseleave events.
-        self.events.push(Event::PointerMove { x, y });
+        self.events.push_raw(Event::PointerMove { x, y });
     }
 
     pub fn on_pointer_enter(&mut self, target_id: f64) {
@@ -877,23 +875,23 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.events.hover_enter(target);
+        self.events.hover_enter(None, target);
     }
 
     pub fn on_pointer_leave(&mut self, target_id: f64) {
         let target = element_id_from_f64(target_id);
-        self.events.hover_leave(target);
+        self.events.hover_leave(None, target);
     }
 
     pub fn on_wheel(&mut self, target_id: f64, delta_x: f32, delta_y: f32) {
         let target = element_id_from_f64(target_id);
         if self.nodes.contains_key(&target) {
-            self.events.wheel(target, delta_x, delta_y);
+            self.events.wheel(None, target, delta_x, delta_y);
         }
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
-        self.events.resize(width, height);
+        self.events.resize(None, width, height);
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
@@ -992,7 +990,7 @@ impl HayateElementHtmlRenderer {
     pub fn element_paste(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.paste(eid, text);
+            self.events.paste(None, eid, text);
         }
     }
 
@@ -1025,34 +1023,34 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        self.events.key_down(key, modifiers);
+        self.events.key_down(None, key, modifiers);
     }
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.text_input(eid, text);
+            self.events.text_input(None, eid, text);
         }
     }
 
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_start(eid, text);
+            self.events.composition_start(None, eid, text);
         }
     }
 
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_update(eid, text);
+            self.events.composition_update(None, eid, text);
         }
     }
 
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_end(eid, text);
+            self.events.composition_end(None, eid, text);
         }
     }
 
@@ -1100,7 +1098,7 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn poll_events(&mut self) -> js_sys::Array {
-        let events = self.events.drain();
+        let events = self.events.drain_raw();
         encode_events(&events)
     }
 }
@@ -1537,15 +1535,6 @@ fn is_in_subtree(tree: &ElementTree, candidate: ElementId, root: ElementId) -> b
             Some(p) => cur = p,
             None => return false,
         }
-    }
-}
-
-fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementId> {
-    loop {
-        if tree.element_kind(id) == Some(ElementKind::ScrollView) {
-            return Some(id);
-        }
-        id = tree.element_parent(id)?;
     }
 }
 

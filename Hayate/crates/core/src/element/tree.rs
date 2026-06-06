@@ -6,6 +6,7 @@ use linebender_resource_handle::Blob;
 use taffy::TaffyTree;
 
 use crate::color::Color;
+use crate::element::document_runtime::{self, DocumentEventKind, DocumentRuntime, EventDelivery, ListenerId};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::layout_pass::LayoutPass;
@@ -187,6 +188,7 @@ pub struct ElementTree {
     /// Element that owns the text-input cursor blink. Tracked here (not in the
     /// adapter) so `render(timestamp_ms)` can advance the blink itself per ADR-0032.
     pub(crate) focused_element: Option<ElementId>,
+    pub(crate) runtime: DocumentRuntime,
 }
 
 impl ElementTree {
@@ -199,6 +201,7 @@ impl ElementTree {
             scene_cache: SceneGraph::new(),
             event_queue: Vec::new(),
             focused_element: None,
+            runtime: DocumentRuntime::new(),
         }
     }
 
@@ -478,10 +481,13 @@ impl ElementTree {
             el.text_content.push_str(&preedit);
         }
         el.text_content.push_str(text);
-        self.event_queue.push(Event::TextInput {
-            target_id: id,
-            text: text.to_string(),
-        });
+        self.dispatch_event(
+            DocumentEventKind::TextInput,
+            Event::TextInput {
+                target_id: id,
+                text: text.to_string(),
+            },
+        );
     }
 
     /// Return the combined display text (text_content + any active preedit) for a TextInput.
@@ -695,6 +701,7 @@ impl ElementTree {
             if let Some(el) = self.elements.remove(&node) {
                 let _ = self.layout.taffy.remove(el.taffy_node);
             }
+            self.runtime.remove_element_listeners(node);
             if self.focused_element == Some(node) {
                 self.focused_element = None;
                 self.layout.last_cursor_toggle_ms = None;
@@ -746,6 +753,52 @@ impl ElementTree {
 
     pub fn poll_events(&mut self) -> Vec<Event> {
         std::mem::take(&mut self.event_queue)
+    }
+
+    pub fn register_listener(
+        &mut self,
+        element_id: ElementId,
+        kind: DocumentEventKind,
+    ) -> ListenerId {
+        self.runtime.register_listener(element_id, kind)
+    }
+
+    pub fn dispatch_event(&mut self, kind: DocumentEventKind, event: Event) {
+        let mut path = Vec::new();
+        let mut node = document_runtime::event_target(&event);
+        while let Some(id) = node {
+            path.push(id);
+            if !kind.bubbles() {
+                break;
+            }
+            node = self.element_parent(id);
+        }
+        self.runtime.dispatch_to_path(&path, kind, event);
+    }
+
+    pub fn poll_deliveries(&mut self) -> Vec<EventDelivery> {
+        self.runtime.poll_deliveries()
+    }
+
+    /// Apply wheel delta to the nearest ancestor ScrollView of `hit`, clamped to content bounds.
+    pub fn apply_wheel_delta(
+        &mut self,
+        hit: ElementId,
+        delta_x: f32,
+        delta_y: f32,
+    ) -> Option<ElementId> {
+        let sv = nearest_scroll_view(self, hit)?;
+        let (ox, oy) = self.element_get_scroll_offset(sv);
+        let (content_w, content_h) = self.element_content_size(sv);
+        let sv_rect = self
+            .element_layout_rect(sv)
+            .unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let max_x = (content_w - sv_rect.2).max(0.0);
+        let max_y = (content_h - sv_rect.3).max(0.0);
+        let new_x = (ox + delta_x).clamp(0.0, max_x);
+        let new_y = (oy + delta_y).clamp(0.0, max_y);
+        self.element_set_scroll_offset(sv, new_x, new_y);
+        Some(sv)
     }
 
     /// Append an event to the outgoing queue.
@@ -924,5 +977,14 @@ fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
         }
         StyleProp::ZIndex(z) => visual.z_index = *z,
         _ => {}
+    }
+}
+
+fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementId> {
+    loop {
+        if tree.element_kind(id) == Some(ElementKind::ScrollView) {
+            return Some(id);
+        }
+        id = tree.element_parent(id)?;
     }
 }

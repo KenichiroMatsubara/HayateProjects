@@ -22,7 +22,7 @@ taffy = "0.7"
 
 # Text stack
 parley = "0.9"
-fontique = "0.9"
+fontique = { path = "crates/vendor/fontique", features = ["fontconfig-dlopen"] }
 skrifa = "0.42"
 
 # WASM
