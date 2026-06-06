@@ -1,3 +1,4 @@
+import { MODIFIER } from '@tsubame/protocol-generated/protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { CanvasRendererOptions } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
@@ -46,6 +47,7 @@ export async function initCanvasRenderer(
   }
 
   attachPointerInput(canvas, raw);
+  attachTextInput(canvas, raw);
   return new CanvasRenderer(raw, { ...options, canvas });
 }
 
@@ -76,4 +78,60 @@ function attachPointerInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
     },
     { passive: true },
   );
+}
+
+/** EditContext IME / keyboard path (adapterTier: deferred). */
+function attachTextInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
+  if (typeof EditContext === 'undefined') return;
+
+  canvas.tabIndex = 0;
+  const editContext = new EditContext();
+  canvas.editContext = editContext;
+  let composing = false;
+
+  editContext.addEventListener('compositionstart', () => {
+    const id = raw.focused_element_id();
+    if (id === 0) return;
+    composing = true;
+    raw.on_composition_start(id, '');
+  });
+
+  editContext.addEventListener('textupdate', (e) => {
+    const id = raw.focused_element_id();
+    if (id === 0) return;
+    const text = e.text ?? '';
+    if (composing) {
+      raw.on_composition_update(id, text);
+    } else {
+      raw.on_text_input(id, text);
+    }
+  });
+
+  editContext.addEventListener('compositionend', (e) => {
+    const id = raw.focused_element_id();
+    if (id === 0) return;
+    composing = false;
+    raw.on_composition_end(id, e.data ?? '');
+  });
+
+  canvas.addEventListener('keydown', (e) => {
+    const id = raw.focused_element_id();
+    if (id === 0) return;
+    if (composing && e.key !== 'Escape') {
+      e.preventDefault();
+      return;
+    }
+
+    let mods = 0;
+    if (e.shiftKey) mods |= MODIFIER.SHIFT;
+    if (e.ctrlKey) mods |= MODIFIER.CTRL;
+    if (e.altKey) mods |= MODIFIER.ALT;
+    if (e.metaKey) mods |= MODIFIER.META;
+    raw.on_key_down(e.key, mods);
+
+    const isPrintable = e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (!isPrintable) {
+      e.preventDefault();
+    }
+  });
 }

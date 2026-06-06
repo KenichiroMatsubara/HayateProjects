@@ -93,8 +93,12 @@ pub enum Event {
         x: f32,
         y: f32,
     },
-    Focus(ElementId),
-    Blur(ElementId),
+    Focus {
+        target_id: ElementId,
+    },
+    Blur {
+        target_id: ElementId,
+    },
     TextInput {
         target_id: ElementId,
         text: String,

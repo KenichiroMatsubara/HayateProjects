@@ -61,6 +61,8 @@ struct Entry {
     value: u32,
     variable_length: bool,
     params: Vec<Param>,
+    wire_role: Option<String>,
+    adapter_tier: Option<String>,
 }
 
 #[derive(Default, Clone)]
@@ -97,6 +99,10 @@ struct EntryJson {
     variable_length: bool,
     #[serde(default)]
     params: Vec<ParamJson>,
+    #[serde(default, rename = "wireRole")]
+    wire_role: Option<String>,
+    #[serde(default, rename = "adapterTier")]
+    adapter_tier: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -209,6 +215,8 @@ fn entries_from_json(entries: Vec<EntryJson>) -> Vec<Entry> {
                     count: p.count,
                 })
                 .collect(),
+            wire_role: e.wire_role,
+            adapter_tier: e.adapter_tier,
         })
         .collect()
 }
@@ -294,6 +302,29 @@ fn generate(proto: &Proto) -> String {
             "pub const EVENT_KIND_{}: f64 = {}.0;\n",
             ev.name.to_uppercase(),
             ev.value
+        ));
+    }
+    out.push('\n');
+
+    out.push_str("// Event wire metadata (from event_kinds.json)\n");
+    for ev in &proto.event_kinds {
+        let wire_role = ev
+            .wire_role
+            .as_deref()
+            .unwrap_or_else(|| panic!("event_kinds.{}: missing wireRole", ev.name));
+        let adapter_tier = ev
+            .adapter_tier
+            .as_deref()
+            .unwrap_or_else(|| panic!("event_kinds.{}: missing adapterTier", ev.name));
+        out.push_str(&format!(
+            "pub const EVENT_WIRE_ROLE_{}: &str = \"{}\";\n",
+            ev.name.to_uppercase(),
+            wire_role
+        ));
+        out.push_str(&format!(
+            "pub const EVENT_ADAPTER_TIER_{}: &str = \"{}\";\n",
+            ev.name.to_uppercase(),
+            adapter_tier
         ));
     }
     out.push('\n');
@@ -487,132 +518,7 @@ fn generate(proto: &Proto) -> String {
     out.push_str("}\n\n");
 
     out.push_str(&generate_style_codec(proto));
-
-    // encode_event
-    out.push_str("pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {\n");
-    out.push_str("    use wasm_bindgen::JsValue;\n");
-    out.push_str("    let sub = js_sys::Array::new();\n");
-    out.push_str("    match ev {\n");
-
-    out.push_str("        hayate_core::Event::Click { target_id, x, y } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(0.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*x as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*y as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::Focus(target_id) => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(1.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::Blur(target_id) => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(2.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::TextInput { target_id, text } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(3.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_str(text));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::CompositionStart { target_id, text } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(4.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_str(text));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::CompositionUpdate { target_id, text } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(5.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_str(text));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::CompositionEnd { target_id, text } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(6.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_str(text));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::Scroll { target_id, delta_x, delta_y } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(7.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*delta_x as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*delta_y as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::Resize { width, height } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(8.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*width as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*height as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::ActiveEnd { target_id } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(9.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::HoverEnter { target_id } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(10.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::HoverLeave { target_id } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(11.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::KeyDown { target_id, key, modifiers } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(12.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_str(key));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*modifiers as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::ActiveStart { target_id } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(13.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::PointerMove { x, y } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(14.0));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*x as f64));\n");
-    out.push_str("            sub.push(&JsValue::from_f64(*y as f64));\n");
-    out.push_str("        }\n");
-
-    out.push_str("        hayate_core::Event::FetchFont { family } => {\n");
-    out.push_str("            sub.push(&JsValue::from_f64(15.0));\n");
-    out.push_str("            sub.push(&JsValue::from_str(family));\n");
-    out.push_str("        }\n");
-
-    out.push_str("    }\n");
-    out.push_str("    sub\n");
-    out.push_str("}\n\n");
-
-    // encode_events
-    out.push_str("pub fn encode_events(events: &[hayate_core::Event]) -> js_sys::Array {\n");
-    out.push_str("    let result = js_sys::Array::new();\n");
-    out.push_str("    for ev in events {\n");
-    out.push_str("        result.push(&encode_event(ev));\n");
-    out.push_str("    }\n");
-    out.push_str("    result\n");
-    out.push_str("}\n\n");
-
-    // encode_deliveries — ADR-0053: [listener_id, kind, ...fields]
-    out.push_str("pub fn encode_deliveries(deliveries: &[hayate_core::EventDelivery]) -> js_sys::Array {\n");
-    out.push_str("    let result = js_sys::Array::new();\n");
-    out.push_str("    for delivery in deliveries {\n");
-    out.push_str("        let sub = encode_event(&delivery.event);\n");
-    out.push_str("        let row = js_sys::Array::new();\n");
-    out.push_str("        row.push(&JsValue::from_f64(delivery.listener_id.to_u64() as f64));\n");
-    out.push_str("        for i in 0..sub.length() {\n");
-    out.push_str("            row.push(&sub.get(i));\n");
-    out.push_str("        }\n");
-    out.push_str("        result.push(&row);\n");
-    out.push_str("    }\n");
-    out.push_str("    result\n");
-    out.push_str("}\n");
+    out.push_str(&generate_encode_event(proto));
 
     out
 }
@@ -1111,6 +1017,81 @@ fn flatten_tag_params(params: &[Param], proto: &Proto) -> Vec<(String, String)> 
         }
     }
     result
+}
+
+fn event_match_pattern(ev: &Entry) -> String {
+    let variant = to_pascal(&ev.name);
+    if ev.params.is_empty() {
+        format!("hayate_core::Event::{}", variant)
+    } else {
+        let fields: Vec<String> = ev.params.iter().map(|p| p.name.clone()).collect();
+        format!("hayate_core::Event::{} {{ {} }}", variant, fields.join(", "))
+    }
+}
+
+fn encode_event_param_push(param: &Param, field: &str) -> String {
+    match param.typ.as_str() {
+        "element_id" => format!(
+            "            sub.push(&JsValue::from_f64({}.to_u64() as f64));\n",
+            field
+        ),
+        "string" => format!("            sub.push(&JsValue::from_str({}));\n", field),
+        "f32" | "f64" | "u32" | "usize" | "bool" => {
+            format!("            sub.push(&JsValue::from_f64(*{} as f64));\n", field)
+        }
+        other => panic!("unsupported event param type: {other}"),
+    }
+}
+
+fn generate_encode_event(proto: &Proto) -> String {
+    let mut out = String::new();
+
+    out.push_str("pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {\n");
+    out.push_str("    use wasm_bindgen::JsValue;\n");
+    out.push_str("    let sub = js_sys::Array::new();\n");
+    out.push_str("    match ev {\n");
+
+    for ev in &proto.event_kinds {
+        out.push_str(&format!("        {} => {{\n", event_match_pattern(ev)));
+        out.push_str(&format!(
+            "            sub.push(&JsValue::from_f64({}.0));\n",
+            ev.value
+        ));
+        for p in &ev.params {
+            out.push_str(&encode_event_param_push(p, &p.name));
+        }
+        out.push_str("        }\n");
+    }
+
+    out.push_str("    }\n");
+    out.push_str("    sub\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub fn encode_events(events: &[hayate_core::Event]) -> js_sys::Array {\n");
+    out.push_str("    let result = js_sys::Array::new();\n");
+    out.push_str("    for ev in events {\n");
+    out.push_str("        result.push(&encode_event(ev));\n");
+    out.push_str("    }\n");
+    out.push_str("    result\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "pub fn encode_deliveries(deliveries: &[hayate_core::EventDelivery]) -> js_sys::Array {\n",
+    );
+    out.push_str("    let result = js_sys::Array::new();\n");
+    out.push_str("    for delivery in deliveries {\n");
+    out.push_str("        let sub = encode_event(&delivery.event);\n");
+    out.push_str("        let row = js_sys::Array::new();\n");
+    out.push_str("        row.push(&JsValue::from_f64(delivery.listener_id.to_u64() as f64));\n");
+    out.push_str("        for i in 0..sub.length() {\n");
+    out.push_str("            row.push(&sub.get(i));\n");
+    out.push_str("        }\n");
+    out.push_str("        result.push(&row);\n");
+    out.push_str("    }\n");
+    out.push_str("    result\n");
+    out.push_str("}\n");
+
+    out
 }
 
 /// Convert SCREAMING_SNAKE_CASE to PascalCase.

@@ -16,22 +16,14 @@
   根拠: ADR-0050
 - WIT / `wit-bindgen` を Hayate-Tsubame 間の現行正本として扱う方針は廃止する。
   根拠: ADR-0049
+- `event_kinds` の完全 codegen（`encode_event` spec 駆動、`wireRole` / `adapterTier` 反映、Rust `Event` フィールド名と `params[].name` 一致）。
+  根拠: ADR-0053
+- `modifier_keys` / `unset_kinds` の JSON spec 表現（bitmask 説明・`description` 必須 schema）。
+  根拠: ADR-0047 / ADR-0053
 
 ## Open
 
-### 1. `event_kinds` の完全 codegen
-
-- `event_kinds.json` に全 event の `params` を書き切る。
-- Rust `Event` enum のフィールド名を `params[].name` と一致させる。
-- TS 側 `parseEvent()` と Rust 側 `encode_events()` を spec 正本前提で揃える。
-- `wireRole` / `adapterTier` / Event Delivery wire 型を JSON spec に含める。
-
-根拠:
-- ADR-0034
-- ADR-0049
-- ADR-0053
-
-### 2. アプリ固有フォント ID と `font_family` enum の接続
+### 1. アプリ固有フォント ID と `font_family` enum の接続
 
 - spec のプリセット `font_family` と、`hayate.config.json` 由来の app font ID をどう接続するか決める。
 - 必要なら `100+` を app font 用予約帯にするなどの運用を ADR 化する。
@@ -39,15 +31,6 @@
 根拠:
 - ADR-0043
 - ADR-0044
-- ADR-0049
-
-### 3. `modifier_keys` / `unset_kinds` の spec 表現細部
-
-- bitmask 表現を JSON spec 上でどう説明するかを決める。
-- `unset_kinds` の説明粒度を codegen に十分な形まで揃える。
-
-根拠:
-- ADR-0047
 - ADR-0049
 
 ## Out Of Scope For This File

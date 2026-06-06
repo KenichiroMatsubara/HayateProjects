@@ -73,6 +73,46 @@ export const EVENT_KIND = {
 } as const;
 export type EVENT_KIND = typeof EVENT_KIND;
 
+export const EVENT_WIRE_ROLE = {
+  CLICK: 'interaction',
+  FOCUS: 'interaction',
+  BLUR: 'interaction',
+  TEXT_INPUT: 'interaction',
+  COMPOSITION_START: 'ime',
+  COMPOSITION_UPDATE: 'ime',
+  COMPOSITION_END: 'ime',
+  SCROLL: 'interaction',
+  RESIZE: 'host-echo',
+  ACTIVE_END: 'interaction',
+  HOVER_ENTER: 'interaction',
+  HOVER_LEAVE: 'interaction',
+  KEY_DOWN: 'interaction',
+  ACTIVE_START: 'interaction',
+  POINTER_MOVE: 'interaction',
+  FETCH_FONT: 'hayate-internal',
+} as const;
+export type EVENT_WIRE_ROLE = typeof EVENT_WIRE_ROLE;
+
+export const EVENT_ADAPTER_TIER = {
+  CLICK: 'forward',
+  FOCUS: 'forward',
+  BLUR: 'forward',
+  TEXT_INPUT: 'forward',
+  COMPOSITION_START: 'deferred',
+  COMPOSITION_UPDATE: 'deferred',
+  COMPOSITION_END: 'deferred',
+  SCROLL: 'deferred',
+  RESIZE: 'none',
+  ACTIVE_END: 'forward',
+  HOVER_ENTER: 'forward',
+  HOVER_LEAVE: 'forward',
+  KEY_DOWN: 'forward',
+  ACTIVE_START: 'forward',
+  POINTER_MOVE: 'deferred',
+  FETCH_FONT: 'none',
+} as const;
+export type EVENT_ADAPTER_TIER = typeof EVENT_ADAPTER_TIER;
+
 export const ELEMENT_KIND = {
   'view': 0,
   'text': 1,

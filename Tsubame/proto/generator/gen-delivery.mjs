@@ -24,14 +24,34 @@ export function generateDelivery() {
     (ev) => ev.adapterTier === 'forward' && WIRE_TO_EVENT_KIND[ev.name] !== undefined,
   );
 
+  /** Wire events registerable via Hayate but not mapped to InteractionEvent (adapterTier: deferred). */
+  const deferredEntries = events.filter(
+    (ev) =>
+      ev.adapterTier === 'deferred' &&
+      ev.wireRole !== 'hayate-internal' &&
+      ev.wireRole !== 'host-echo' &&
+      ev.name !== 'pointer_move',
+  );
+
   const ignoredNames = events
-    .filter((ev) => WIRE_TO_EVENT_KIND[ev.name] === undefined)
+    .filter(
+      (ev) =>
+        ev.adapterTier !== 'forward' ||
+        ev.wireRole === 'hayate-internal' ||
+        ev.wireRole === 'host-echo' ||
+        WIRE_TO_EVENT_KIND[ev.name] === undefined,
+    )
     .map((ev) => `'${ev.name}'`);
 
   const listenerLines = listenerEntries.map((ev) => {
     const kind = WIRE_TO_EVENT_KIND[ev.name];
     const constKey = ev.name.toUpperCase();
     return `  '${kind}': EVENT_KIND.${constKey},`;
+  });
+
+  const deferredLines = deferredEntries.map((ev) => {
+    const constKey = ev.name.toUpperCase();
+    return `  '${ev.name}': EVENT_KIND.${constKey},`;
   });
 
   const switchCases = listenerEntries.map((ev) => {
@@ -53,6 +73,11 @@ export function generateDelivery() {
     '/** EventKinds registerable via Hayate `register_listener` (adapterTier: forward). */',
     'export const HAYATE_LISTENER_KIND: Partial<Record<EventKind, number>> = {',
     ...listenerLines,
+    '};',
+    '',
+    '/** Hayate wire kinds with adapterTier deferred (scroll, composition_*, …). */',
+    'export const HAYATE_DEFERRED_LISTENER_KIND: Readonly<Record<string, number>> = {',
+    ...deferredLines,
     '};',
     '',
     'const IGNORED_KINDS: ReadonlySet<EventPayload[\'kind\']> = new Set([',

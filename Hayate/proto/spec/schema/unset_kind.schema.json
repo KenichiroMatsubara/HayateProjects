@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/unset_kind.schema.json",
+  "title": "element_unset_style kind entry",
+  "type": "object",
+  "required": ["name", "value", "description"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "value": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Opcode payload for element_unset_style — which StyleProp field to clear."
+    },
+    "description": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

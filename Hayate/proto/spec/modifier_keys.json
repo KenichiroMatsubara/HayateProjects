@@ -1,18 +1,22 @@
 [
   {
     "name": "shift",
-    "value": 1
+    "value": 1,
+    "description": "Shift key bit in key_down.modifiers (bitmask, combine with |)"
   },
   {
     "name": "ctrl",
-    "value": 2
+    "value": 2,
+    "description": "Control key bit in key_down.modifiers"
   },
   {
     "name": "alt",
-    "value": 4
+    "value": 4,
+    "description": "Alt / Option key bit in key_down.modifiers"
   },
   {
     "name": "meta",
-    "value": 8
+    "value": 8,
+    "description": "Meta / Command / Windows key bit in key_down.modifiers"
   }
 ]

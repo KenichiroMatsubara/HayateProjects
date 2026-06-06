@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/modifier_key.schema.json",
+  "title": "Keyboard modifier bitmask entry",
+  "type": "object",
+  "required": ["name", "value", "description"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "value": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Single-bit mask (power of two). Combine with bitwise OR in key_down.modifiers."
+    },
+    "description": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

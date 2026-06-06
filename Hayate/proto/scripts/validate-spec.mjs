@@ -33,10 +33,10 @@ const validators = {
   enums: validatorFor('enum.schema.json'),
   opcodes: validatorFor('entry.schema.json'),
   style_tags: validatorFor('entry.schema.json'),
-  event_kinds: validatorFor('entry.schema.json'),
+  event_kinds: validatorFor('event_kind.schema.json'),
   element_kinds: validatorFor('simple_entry.schema.json'),
-  unset_kinds: validatorFor('simple_entry.schema.json'),
-  modifier_keys: validatorFor('simple_entry.schema.json'),
+  unset_kinds: validatorFor('unset_kind.schema.json'),
+  modifier_keys: validatorFor('modifier_key.schema.json'),
 };
 
 const validateManifest = validatorFor('manifest.schema.json');
@@ -73,6 +73,14 @@ for (const section of SPEC_SECTIONS) {
   const validator = validators[section];
   for (let i = 0; i < data.length; i++) {
     assertValid(validator, data[i], `${section}.json[${i}]`);
+    if (section === 'modifier_keys') {
+      const { value } = data[i];
+      if ((value & (value - 1)) !== 0) {
+        throw new Error(
+          `modifier_keys.json[${i}]: value ${value} must be a single-bit mask (power of two)`,
+        );
+      }
+    }
   }
 }
 

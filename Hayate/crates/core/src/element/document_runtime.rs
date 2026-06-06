@@ -165,8 +165,8 @@ impl Default for DocumentRuntime {
 pub(crate) fn event_target(event: &Event) -> Option<ElementId> {
     match event {
         Event::Click { target_id, .. }
-        | Event::Focus(target_id)
-        | Event::Blur(target_id)
+        | Event::Focus { target_id }
+        | Event::Blur { target_id }
         | Event::TextInput { target_id, .. }
         | Event::CompositionStart { target_id, .. }
         | Event::CompositionUpdate { target_id, .. }
@@ -252,7 +252,12 @@ mod tests {
         let l_root = tree.register_listener(root, DocumentEventKind::Focus);
         let l_leaf = tree.register_listener(leaf, DocumentEventKind::Focus);
 
-        tree.dispatch_event(DocumentEventKind::Focus, Event::Focus(leaf));
+        tree.dispatch_event(
+            DocumentEventKind::Focus,
+            Event::Focus {
+                target_id: leaf,
+            },
+        );
 
         let deliveries = tree.poll_deliveries();
         assert_eq!(deliveries.len(), 1);

@@ -27,6 +27,12 @@ export interface RawHayate {
   on_pointer_down(x: number, y: number): void;
   on_pointer_up(x: number, y: number): void;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
+  on_key_down(key: string, modifiers: number): void;
+  on_text_input(id: number, text: string): void;
+  on_composition_start(id: number, text: string): void;
+  on_composition_update(id: number, text: string): void;
+  on_composition_end(id: number, text: string): void;
+  focused_element_id(): number;
   render(timestampMs: number): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;

@@ -4,8 +4,8 @@ use hayate_core::{DocumentEventKind, ElementId, ElementTree, Event};
 pub(crate) fn document_event_kind(event: &Event) -> Option<DocumentEventKind> {
     match event {
         Event::Click { .. } => Some(DocumentEventKind::Click),
-        Event::Focus(_) => Some(DocumentEventKind::Focus),
-        Event::Blur(_) => Some(DocumentEventKind::Blur),
+        Event::Focus { .. } => Some(DocumentEventKind::Focus),
+        Event::Blur { .. } => Some(DocumentEventKind::Blur),
         Event::TextInput { .. } => Some(DocumentEventKind::TextInput),
         Event::CompositionStart { .. } => Some(DocumentEventKind::CompositionStart),
         Event::CompositionUpdate { .. } => Some(DocumentEventKind::CompositionUpdate),
@@ -79,10 +79,22 @@ impl RendererEventState {
         }
         let mut tree = tree;
         if let Some(prev) = self.focused_element {
-            emit_event(&mut tree, &mut self.raw_events, Event::Blur(prev));
+            emit_event(
+                &mut tree,
+                &mut self.raw_events,
+                Event::Blur {
+                    target_id: prev,
+                },
+            );
         }
         self.focused_element = Some(id);
-        emit_event(&mut tree, &mut self.raw_events, Event::Focus(id));
+        emit_event(
+            &mut tree,
+            &mut self.raw_events,
+            Event::Focus {
+                target_id: id,
+            },
+        );
     }
 
     pub fn blur(&mut self, tree: Option<&mut ElementTree>, id: ElementId) {
@@ -91,7 +103,13 @@ impl RendererEventState {
         }
         let mut tree = tree;
         self.focused_element = None;
-        emit_event(&mut tree, &mut self.raw_events, Event::Blur(id));
+        emit_event(
+            &mut tree,
+            &mut self.raw_events,
+            Event::Blur {
+                target_id: id,
+            },
+        );
     }
 
     pub fn pointer_down(
@@ -120,7 +138,13 @@ impl RendererEventState {
             self.active_element = Some(t);
             self.focus(tree, t);
         } else if let Some(prev) = self.focused_element.take() {
-            emit_event(&mut tree, &mut self.raw_events, Event::Blur(prev));
+            emit_event(
+                &mut tree,
+                &mut self.raw_events,
+                Event::Blur {
+                    target_id: prev,
+                },
+            );
         }
     }
 
@@ -373,7 +397,7 @@ mod tests {
         assert_eq!(raw.len(), 3); // Click + ActiveStart + Focus
         assert!(matches!(&raw[0], Event::Click { .. }));
         assert!(matches!(&raw[1], Event::ActiveStart { .. }));
-        assert!(matches!(&raw[2], Event::Focus(_)));
+        assert!(matches!(&raw[2], Event::Focus { .. }));
     }
 
     #[test]
