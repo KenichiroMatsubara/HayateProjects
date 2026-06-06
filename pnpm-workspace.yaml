@@ -1,6 +1,7 @@
 packages:
   - 'Hayate'
   - 'Hayate/examples/web-demo/pkg'
+  - 'Hayate/examples/web-demo/pkg-tiny-skia'
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
 

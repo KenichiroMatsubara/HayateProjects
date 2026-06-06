@@ -11,9 +11,7 @@ node_modules/
 # ADR-0007 の vendored 5 crates は crates/vendor/ に置き、git 管理する
 crates/vendor-all/
 
-# wasm-pack output (再生成可)
-examples/web-demo/pkg/
-examples/web-demo/pkg-tiny-skia/
+# wasm-pack output は各 pkg/.gitignore で管理（スタブは git 管理）
 
 # OS
 .DS_Store

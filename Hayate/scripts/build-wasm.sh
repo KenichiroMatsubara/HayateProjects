@@ -11,6 +11,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATE_DIR="$ROOT_DIR/crates/adapters/web"
 OUT_DIR="$ROOT_DIR/examples/web-demo/pkg"
 OUT_DIR_CPU="$ROOT_DIR/examples/web-demo/pkg-tiny-skia"
+PKG_GITIGNORE=$'*\n!package.json'
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -23,6 +24,9 @@ echo    "  root : $ROOT_DIR"
 echo    "  crate: $CRATE_DIR"
 echo    "  out  : $OUT_DIR"
 echo
+
+# wasm-pack expects LICENSE beside the crate manifest.
+cp "$ROOT_DIR/LICENSE" "$CRATE_DIR/LICENSE"
 
 # ── Step 1: cargo check (wasm32) ─────────────────────────────────────────────
 echo -e "${CYAN}▶ cargo check (wasm32-unknown-unknown)...${RESET}"
@@ -38,6 +42,7 @@ echo -e "${CYAN}▶ wasm-pack build --target web...${RESET}"
 wasm-pack build "$CRATE_DIR" \
   --target web \
   --out-dir "$OUT_DIR"
+printf '%s\n' "$PKG_GITIGNORE" > "$OUT_DIR/.gitignore"
 echo
 
 # ── Step 3: wasm-pack build (tiny-skia CPU backend) ─────────────────────────
@@ -46,6 +51,7 @@ wasm-pack build "$CRATE_DIR" \
   --target web \
   --out-dir "$OUT_DIR_CPU" \
   -- --no-default-features --features backend-tiny-skia
+printf '%s\n' "$PKG_GITIGNORE" > "$OUT_DIR_CPU/.gitignore"
 echo
 
 echo -e "${GREEN}${BOLD}✓ Done!${RESET}"

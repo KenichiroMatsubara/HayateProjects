@@ -3,12 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
+    "preinstall":     "node scripts/bootstrap-wasm-pkgs.mjs",
     "build:wasm":     "pnpm --filter hayate build",
-    "build:tsubame":  "pnpm --filter ./Tsubame/packages/** build",
+    "build:tsubame":  "pnpm --filter \"./Tsubame/packages/*\" build",
     "build":          "pnpm run build:wasm && pnpm run build:tsubame",
     "dev":            "pnpm --filter hayate dev",
     "dev:hello":      "pnpm --filter @tsubame/example-hello-world dev",
-    "typecheck":      "pnpm --filter ./Tsubame/packages/** typecheck",
+    "typecheck":      "pnpm --filter \"./Tsubame/packages/*\" typecheck",
     "test":           "pnpm -r run test",
     "clean":          "pnpm -r run clean"
   },
