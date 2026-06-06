@@ -1,0 +1,18 @@
+[
+  {
+    "name": "shift",
+    "value": 1
+  },
+  {
+    "name": "ctrl",
+    "value": 2
+  },
+  {
+    "name": "alt",
+    "value": 4
+  },
+  {
+    "name": "meta",
+    "value": 8
+  }
+]

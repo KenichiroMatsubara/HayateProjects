@@ -5,14 +5,15 @@
   "description": "Hayate — GPU-native UI substrate",
   "license": "Apache-2.0",
   "scripts": {
-    "build":   "bash scripts/build-wasm.sh",
-    "dev":     "npm run build && npm run serve",
-    "serve":   "serve examples/web-demo --listen 3000",
-    "check":   "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
-    "clean":   "cargo clean && rimraf examples/web-demo/pkg examples/web-demo/pkg-tiny-skia && node ../scripts/bootstrap-wasm-pkgs.mjs"
+    "build": "bash scripts/build-wasm.sh",
+    "dev": "npm run build && npm run serve",
+    "serve": "serve examples/web-demo --listen 3000",
+    "check": "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
+    "validate:proto": "node proto/scripts/validate-spec.mjs",
+    "clean": "cargo clean && rimraf examples/web-demo/pkg examples/web-demo/pkg-tiny-skia && node ../scripts/bootstrap-wasm-pkgs.mjs"
   },
   "devDependencies": {
     "rimraf": "^6.1.3",
-    "serve":  "^14.2.6"
+    "serve": "^14.2.6"
   }
 }

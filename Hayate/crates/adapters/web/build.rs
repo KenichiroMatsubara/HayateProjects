@@ -1,17 +1,32 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
 
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let yaml_path = PathBuf::from(&manifest_dir).join("../../../proto/protocol.yaml");
+    let spec_dir = PathBuf::from(&manifest_dir).join("../../../proto/spec");
 
-    println!("cargo:rerun-if-changed={}", yaml_path.display());
+    for section in [
+        "types",
+        "enums",
+        "opcodes",
+        "style_tags",
+        "event_kinds",
+        "element_kinds",
+        "unset_kinds",
+        "modifier_keys",
+    ] {
+        let path = spec_dir.join(format!("{section}.json"));
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
+    println!(
+        "cargo:rerun-if-changed={}",
+        spec_dir.join("manifest.json").display()
+    );
 
-    let yaml = fs::read_to_string(&yaml_path)
-        .unwrap_or_else(|e| panic!("cannot read {}: {}", yaml_path.display(), e));
-
-    let proto = parse_yaml(&yaml);
+    let proto = load_spec(&spec_dir);
     let code = generate(&proto);
     let dispatch = generate_dispatch(&proto);
     let dom_mapper = generate_dom_style_mapper(&proto);
@@ -81,295 +96,154 @@ struct Param {
 #[derive(Default)]
 struct SimpleEntry {
     name: String,
-    value: String,
+    value: u32,
 }
 
 // ---------------------------------------------------------------------------
-// YAML parser
+// JSON spec loader (proto/spec/*.json)
 // ---------------------------------------------------------------------------
 
-fn parse_yaml(yaml: &str) -> Proto {
-    let mut proto = Proto::default();
+#[derive(Deserialize)]
+struct ParamJson {
+    name: String,
+    #[serde(rename = "type")]
+    typ: String,
+    #[serde(default)]
+    count: usize,
+}
 
-    // section names
-    const SEC_TYPES: &str = "types";
-    const SEC_ENUMS: &str = "enums";
-    const SEC_OPCODES: &str = "opcodes";
-    const SEC_STYLE_TAGS: &str = "style_tags";
-    const SEC_EVENT_KINDS: &str = "event_kinds";
-    const SEC_ELEMENT_KINDS: &str = "element_kinds";
-    const SEC_UNSET_KINDS: &str = "unset_kinds";
-    const SEC_MODIFIER_KEYS: &str = "modifier_keys";
+#[derive(Deserialize)]
+struct EntryJson {
+    name: String,
+    value: u32,
+    #[serde(default)]
+    variable_length: bool,
+    #[serde(default)]
+    params: Vec<ParamJson>,
+}
 
-    let sections = [
-        SEC_TYPES,
-        SEC_ENUMS,
-        SEC_OPCODES,
-        SEC_STYLE_TAGS,
-        SEC_EVENT_KINDS,
-        SEC_ELEMENT_KINDS,
-        SEC_UNSET_KINDS,
-        SEC_MODIFIER_KEYS,
-    ];
+#[derive(Deserialize)]
+struct TypeJson {
+    name: String,
+    raw_slots: usize,
+    fields: Vec<ParamJson>,
+}
 
-    let mut current_section: Option<&str> = None;
+#[derive(Deserialize)]
+struct EnumValueJson {
+    name: String,
+    value: serde_json::Value,
+}
 
-    // For types
-    let mut cur_type: Option<TypeDef> = None;
-    let mut cur_type_field: Option<Param> = None;
+#[derive(Deserialize)]
+struct EnumJson {
+    name: String,
+    #[serde(default)]
+    string_values: bool,
+    values: Vec<EnumValueJson>,
+}
 
-    // For enums
-    let mut cur_enum: Option<EnumDef> = None;
-    let mut cur_enum_val: Option<EnumValue> = None;
+#[derive(Deserialize)]
+struct SimpleJson {
+    name: String,
+    value: u32,
+}
 
-    // For opcodes / style_tags / event_kinds
-    let mut cur_entry: Option<Entry> = None;
-    let mut cur_param: Option<Param> = None;
+fn read_json<T: for<'de> Deserialize<'de>>(spec_dir: &Path, name: &str) -> T {
+    let path = spec_dir.join(name);
+    let text = fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {}", path.display(), e));
+    serde_json::from_str(&text)
+        .unwrap_or_else(|e| panic!("invalid JSON in {}: {}", path.display(), e))
+}
 
-    // For element_kinds / unset_kinds / modifier_keys
-    let mut cur_simple: Option<SimpleEntry> = None;
-
-    macro_rules! flush_type_field {
-        () => {{
-            if let Some(f) = cur_type_field.take() {
-                if let Some(t) = cur_type.as_mut() {
-                    t.fields.push(f);
-                }
-            }
-        }};
+fn enum_value_string(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => s.clone(),
+        other => panic!("invalid enum value: {other}"),
     }
-    macro_rules! flush_type {
-        () => {{
-            flush_type_field!();
-            if let Some(t) = cur_type.take() {
-                proto.types.push(t);
-            }
-        }};
+}
+
+fn load_spec(spec_dir: &Path) -> Proto {
+    let types: Vec<TypeJson> = read_json(spec_dir, "types.json");
+    let enums: Vec<EnumJson> = read_json(spec_dir, "enums.json");
+    let opcodes: Vec<EntryJson> = read_json(spec_dir, "opcodes.json");
+    let style_tags: Vec<EntryJson> = read_json(spec_dir, "style_tags.json");
+    let event_kinds: Vec<EntryJson> = read_json(spec_dir, "event_kinds.json");
+    let element_kinds: Vec<SimpleJson> = read_json(spec_dir, "element_kinds.json");
+    let unset_kinds: Vec<SimpleJson> = read_json(spec_dir, "unset_kinds.json");
+    let modifier_keys: Vec<SimpleJson> = read_json(spec_dir, "modifier_keys.json");
+
+    Proto {
+        types: types
+            .into_iter()
+            .map(|t| TypeDef {
+                name: t.name,
+                raw_slots: t.raw_slots,
+                fields: t
+                    .fields
+                    .into_iter()
+                    .map(|f| Param {
+                        name: f.name,
+                        typ: f.typ,
+                        count: f.count,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        enums: enums
+            .into_iter()
+            .map(|e| EnumDef {
+                name: e.name,
+                string_values: e.string_values,
+                values: e
+                    .values
+                    .into_iter()
+                    .map(|v| EnumValue {
+                        name: v.name,
+                        value: enum_value_string(&v.value),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        opcodes: entries_from_json(opcodes),
+        style_tags: entries_from_json(style_tags),
+        event_kinds: entries_from_json(event_kinds),
+        element_kinds: simple_from_json(element_kinds),
+        unset_kinds: simple_from_json(unset_kinds),
+        modifier_keys: simple_from_json(modifier_keys),
     }
+}
 
-    macro_rules! flush_enum_val {
-        () => {{
-            if let Some(v) = cur_enum_val.take() {
-                if let Some(e) = cur_enum.as_mut() {
-                    e.values.push(v);
-                }
-            }
-        }};
-    }
-    macro_rules! flush_enum {
-        () => {{
-            flush_enum_val!();
-            if let Some(e) = cur_enum.take() {
-                proto.enums.push(e);
-            }
-        }};
-    }
+fn entries_from_json(entries: Vec<EntryJson>) -> Vec<Entry> {
+    entries
+        .into_iter()
+        .map(|e| Entry {
+            name: e.name,
+            value: e.value,
+            variable_length: e.variable_length,
+            params: e
+                .params
+                .into_iter()
+                .map(|p| Param {
+                    name: p.name,
+                    typ: p.typ,
+                    count: p.count,
+                })
+                .collect(),
+        })
+        .collect()
+}
 
-    macro_rules! flush_param {
-        () => {{
-            if let Some(p) = cur_param.take() {
-                if let Some(e) = cur_entry.as_mut() {
-                    e.params.push(p);
-                }
-            }
-        }};
-    }
-    macro_rules! flush_entry {
-        () => {{
-            flush_param!();
-            if let Some(e) = cur_entry.take() {
-                match current_section {
-                    Some(SEC_OPCODES) => proto.opcodes.push(e),
-                    Some(SEC_STYLE_TAGS) => proto.style_tags.push(e),
-                    Some(SEC_EVENT_KINDS) => proto.event_kinds.push(e),
-                    _ => {}
-                }
-            }
-        }};
-    }
-
-    macro_rules! flush_simple {
-        () => {{
-            if let Some(s) = cur_simple.take() {
-                match current_section {
-                    Some(SEC_ELEMENT_KINDS) => proto.element_kinds.push(s),
-                    Some(SEC_UNSET_KINDS) => proto.unset_kinds.push(s),
-                    Some(SEC_MODIFIER_KEYS) => proto.modifier_keys.push(s),
-                    _ => {}
-                }
-            }
-        }};
-    }
-
-    for raw_line in yaml.lines() {
-        // skip comments and empty lines
-        let trimmed = raw_line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        // count leading spaces
-        let indent = raw_line.len() - raw_line.trim_start().len();
-
-        // section header: no indent, ends with ':'
-        if indent == 0 {
-            // Flush whatever was in progress
-            match current_section {
-                Some(SEC_TYPES) => flush_type!(),
-                Some(SEC_ENUMS) => flush_enum!(),
-                Some(SEC_OPCODES) | Some(SEC_STYLE_TAGS) | Some(SEC_EVENT_KINDS) => {
-                    flush_entry!()
-                }
-                Some(SEC_ELEMENT_KINDS) | Some(SEC_UNSET_KINDS) | Some(SEC_MODIFIER_KEYS) => {
-                    flush_simple!()
-                }
-                _ => {}
-            }
-
-            if let Some(sec_name) = trimmed.strip_suffix(':') {
-                if sections.contains(&sec_name) {
-                    current_section = Some(
-                        sections
-                            .iter()
-                            .copied()
-                            .find(|&s| s == sec_name)
-                            .unwrap(),
-                    );
-                } else {
-                    current_section = None;
-                }
-            }
-            continue;
-        }
-
-        let sec = match current_section {
-            Some(s) => s,
-            None => continue,
-        };
-
-        // parse key: value from trimmed
-        let (key, val) = if let Some(pos) = trimmed.find(':') {
-            let k = trimmed[..pos].trim();
-            let v = trimmed[pos + 1..].trim();
-            (k, v)
-        } else {
-            continue;
-        };
-
-        // Remove surrounding quotes from value
-        let val = val.trim_matches('"');
-
-        match sec {
-            SEC_TYPES => {
-                if indent == 2 && key == "- name" {
-                    flush_type!();
-                    cur_type = Some(TypeDef {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 4 && key == "raw_slots" {
-                    if let Some(t) = cur_type.as_mut() {
-                        t.raw_slots = val.parse().unwrap_or(0);
-                    }
-                } else if indent == 6 && key == "- name" {
-                    flush_type_field!();
-                    cur_type_field = Some(Param {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 8 && key == "type" {
-                    if let Some(f) = cur_type_field.as_mut() {
-                        f.typ = val.to_string();
-                    }
-                }
-            }
-
-            SEC_ENUMS => {
-                if indent == 2 && key == "- name" {
-                    flush_enum!();
-                    cur_enum = Some(EnumDef {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 4 && key == "string_values" {
-                    if let Some(e) = cur_enum.as_mut() {
-                        e.string_values = val == "true";
-                    }
-                } else if indent == 6 && key == "- name" {
-                    flush_enum_val!();
-                    cur_enum_val = Some(EnumValue {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 8 && key == "value" {
-                    if let Some(v) = cur_enum_val.as_mut() {
-                        v.value = val.to_string();
-                    }
-                }
-            }
-
-            SEC_OPCODES | SEC_STYLE_TAGS | SEC_EVENT_KINDS => {
-                if indent == 2 && key == "- name" {
-                    flush_entry!();
-                    cur_entry = Some(Entry {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 4 && key == "value" {
-                    if let Some(e) = cur_entry.as_mut() {
-                        e.value = val.parse().unwrap_or(0);
-                    }
-                } else if indent == 4 && key == "variable_length" {
-                    if let Some(e) = cur_entry.as_mut() {
-                        e.variable_length = val == "true";
-                    }
-                } else if indent == 6 && key == "- name" {
-                    flush_param!();
-                    cur_param = Some(Param {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 8 && key == "type" {
-                    if let Some(p) = cur_param.as_mut() {
-                        p.typ = val.to_string();
-                    }
-                } else if indent == 8 && key == "count" {
-                    if let Some(p) = cur_param.as_mut() {
-                        p.count = val.parse().unwrap_or(0);
-                    }
-                }
-            }
-
-            SEC_ELEMENT_KINDS | SEC_UNSET_KINDS | SEC_MODIFIER_KEYS => {
-                if indent == 2 && key == "- name" {
-                    flush_simple!();
-                    cur_simple = Some(SimpleEntry {
-                        name: val.to_string(),
-                        ..Default::default()
-                    });
-                } else if indent == 4 && key == "value" {
-                    if let Some(s) = cur_simple.as_mut() {
-                        s.value = val.to_string();
-                    }
-                }
-            }
-
-            _ => {}
-        }
-    }
-
-    // flush last items
-    match current_section {
-        Some(SEC_TYPES) => flush_type!(),
-        Some(SEC_ENUMS) => flush_enum!(),
-        Some(SEC_OPCODES) | Some(SEC_STYLE_TAGS) | Some(SEC_EVENT_KINDS) => flush_entry!(),
-        Some(SEC_ELEMENT_KINDS) | Some(SEC_UNSET_KINDS) | Some(SEC_MODIFIER_KEYS) => {
-            flush_simple!()
-        }
-        _ => {}
-    }
-
-    proto
+fn simple_from_json(entries: Vec<SimpleJson>) -> Vec<SimpleEntry> {
+    entries
+        .into_iter()
+        .map(|e| SimpleEntry {
+            name: e.name,
+            value: e.value,
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +277,7 @@ fn generate(proto: &Proto) -> String {
     let mut out = String::new();
 
     out.push_str("// AUTO-GENERATED by build.rs — do not edit\n");
-    out.push_str("// Source: proto/protocol.yaml\n\n");
+    out.push_str("// Source: proto/spec/*.json\n\n");
 
     // OP_* constants
     out.push_str("// Opcode constants\n");
@@ -1094,7 +968,7 @@ fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> S
 fn generate_dispatch(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str("// AUTO-GENERATED by build.rs — do not edit\n");
-    out.push_str("// Source: proto/protocol.yaml\n\n");
+    out.push_str("// Source: proto/spec/*.json\n\n");
     out.push_str("use hayate_core::{ElementId, ElementKind, StylePropKind};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
     out.push_str("use super::ApplyMutationsHost;\n");

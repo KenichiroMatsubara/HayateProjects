@@ -1,0 +1,22 @@
+{
+  "name": "@tsubame/protocol-generated",
+  "version": "0.0.0",
+  "description": "Tsubame protocol codegen — wire constants and adapter vocabulary from @hayate/protocol-spec",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./generated/index.ts",
+    "./protocol": "./generated/protocol.ts",
+    "./catalog": "./generated/catalog.ts",
+    "./catalog.json": "./generated/catalog.json",
+    "./delivery": "./generated/delivery.ts"
+  },
+  "files": ["generated"],
+  "scripts": {
+    "generate": "node generator/generate.mjs"
+  },
+  "dependencies": {
+    "@hayate/protocol-spec": "workspace:*",
+    "@tsubame/renderer-protocol": "workspace:*"
+  }
+}

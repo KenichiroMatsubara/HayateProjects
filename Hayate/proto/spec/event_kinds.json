@@ -1,0 +1,242 @@
+[
+  {
+    "name": "click",
+    "value": 0,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "x",
+        "type": "f32"
+      },
+      {
+        "name": "y",
+        "type": "f32"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "focus",
+    "value": 1,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "blur",
+    "value": 2,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "text_input",
+    "value": 3,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "composition_start",
+    "value": 4,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      }
+    ],
+    "wireRole": "ime",
+    "adapterTier": "deferred"
+  },
+  {
+    "name": "composition_update",
+    "value": 5,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      }
+    ],
+    "wireRole": "ime",
+    "adapterTier": "deferred"
+  },
+  {
+    "name": "composition_end",
+    "value": 6,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "text",
+        "type": "string"
+      }
+    ],
+    "wireRole": "ime",
+    "adapterTier": "deferred"
+  },
+  {
+    "name": "scroll",
+    "value": 7,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "delta_x",
+        "type": "f32"
+      },
+      {
+        "name": "delta_y",
+        "type": "f32"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "deferred"
+  },
+  {
+    "name": "resize",
+    "value": 8,
+    "params": [
+      {
+        "name": "width",
+        "type": "f32"
+      },
+      {
+        "name": "height",
+        "type": "f32"
+      }
+    ],
+    "wireRole": "host-echo",
+    "adapterTier": "none"
+  },
+  {
+    "name": "active_end",
+    "value": 9,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "hover_enter",
+    "value": 10,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "hover_leave",
+    "value": 11,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "key_down",
+    "value": 12,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      },
+      {
+        "name": "key",
+        "type": "string"
+      },
+      {
+        "name": "modifiers",
+        "type": "u32"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "active_start",
+    "value": 13,
+    "params": [
+      {
+        "name": "target_id",
+        "type": "element_id"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "forward"
+  },
+  {
+    "name": "pointer_move",
+    "value": 14,
+    "params": [
+      {
+        "name": "x",
+        "type": "f32"
+      },
+      {
+        "name": "y",
+        "type": "f32"
+      }
+    ],
+    "wireRole": "interaction",
+    "adapterTier": "deferred"
+  },
+  {
+    "name": "fetch_font",
+    "value": 15,
+    "params": [
+      {
+        "name": "family",
+        "type": "string"
+      }
+    ],
+    "wireRole": "hayate-internal",
+    "adapterTier": "none"
+  }
+]

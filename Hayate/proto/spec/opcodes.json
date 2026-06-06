@@ -1,0 +1,171 @@
+[
+  {
+    "name": "APPEND_CHILD",
+    "value": 0,
+    "params": [
+      {
+        "name": "parent_id",
+        "type": "element_id"
+      },
+      {
+        "name": "child_id",
+        "type": "element_id"
+      }
+    ]
+  },
+  {
+    "name": "INSERT_BEFORE",
+    "value": 1,
+    "params": [
+      {
+        "name": "parent_id",
+        "type": "element_id"
+      },
+      {
+        "name": "child_id",
+        "type": "element_id"
+      },
+      {
+        "name": "before_id",
+        "type": "element_id"
+      }
+    ]
+  },
+  {
+    "name": "REMOVE",
+    "value": 2,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      }
+    ]
+  },
+  {
+    "name": "SET_ROOT",
+    "value": 3,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      }
+    ]
+  },
+  {
+    "name": "SET_STYLE",
+    "value": 4,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "style_offset",
+        "type": "usize"
+      },
+      {
+        "name": "style_len",
+        "type": "usize"
+      }
+    ]
+  },
+  {
+    "name": "SET_TRANSFORM",
+    "value": 5,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "has_matrix",
+        "type": "bool"
+      },
+      {
+        "name": "matrix",
+        "type": "f64",
+        "count": 6
+      }
+    ]
+  },
+  {
+    "name": "SET_SCROLL_OFFSET",
+    "value": 6,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "x",
+        "type": "f32"
+      },
+      {
+        "name": "y",
+        "type": "f32"
+      }
+    ]
+  },
+  {
+    "name": "FOCUS",
+    "value": 7,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      }
+    ]
+  },
+  {
+    "name": "BLUR",
+    "value": 8,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      }
+    ]
+  },
+  {
+    "name": "CREATE",
+    "value": 9,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "kind",
+        "type": "u32"
+      }
+    ]
+  },
+  {
+    "name": "SET_TEXT",
+    "value": 10,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "text_index",
+        "type": "usize"
+      }
+    ]
+  },
+  {
+    "name": "UNSET_STYLE",
+    "value": 11,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "kind",
+        "type": "u32"
+      }
+    ]
+  }
+]

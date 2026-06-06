@@ -4,7 +4,7 @@ import type {
   StylePatch,
 } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
-import { ELEMENT_KIND, OP } from './protocol.js';
+import { ELEMENT_KIND, OP } from '@tsubame/protocol-generated/protocol';
 import { encodeStylePatch, unsetKindsOf } from './style-encoder.js';
 
 type SemanticMutation =

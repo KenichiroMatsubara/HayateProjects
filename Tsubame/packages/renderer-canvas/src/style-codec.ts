@@ -20,7 +20,7 @@ import {
   FLEX_DIRECTION,
   ALIGN_ITEMS,
   JUSTIFY_CONTENT,
-} from './protocol.js';
+} from '@tsubame/protocol-generated/protocol';
 import { INHERITED_UNSET, STYLE_ENCODE_META } from '@tsubame/hayate-css-catalog';
 
 export { TAG, UNSET_KIND };

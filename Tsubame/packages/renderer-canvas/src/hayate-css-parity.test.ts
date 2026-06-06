@@ -7,7 +7,7 @@ import {
   applyDomExtras,
 } from '@tsubame/hayate-css-catalog';
 import { encodeStylePatch } from './style-codec.js';
-import { TAG } from './protocol.js';
+import { TAG } from '@tsubame/protocol-generated/protocol';
 
 /** Representative sample values per wireKind for semantic parity checks. */
 const SAMPLES: Record<string, unknown> = {

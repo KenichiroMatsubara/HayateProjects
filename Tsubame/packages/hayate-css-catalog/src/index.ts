@@ -6,11 +6,11 @@ export {
   INHERITED_UNSET,
   formatDomCSSValue,
   applyDomExtras,
-} from './catalog.js';
+} from '@tsubame/protocol-generated/catalog';
 export type {
   CatalogEntry,
   DomExtra,
   DomFormat,
   StyleEncodeEntry,
   WireKind,
-} from './catalog.js';
+} from '@tsubame/protocol-generated/catalog';

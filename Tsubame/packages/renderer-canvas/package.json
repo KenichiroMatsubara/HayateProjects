@@ -15,9 +15,8 @@
   },
   "files": ["dist"],
   "scripts": {
-    "generate": "pnpm --filter @tsubame/hayate-css-catalog run generate && node scripts/gen-protocol.mjs",
-    "prebuild": "npm run generate",
-    "pretypecheck": "npm run generate",
+    "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
+    "pretypecheck": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -26,12 +25,12 @@
   },
   "dependencies": {
     "@tsubame/hayate-css-catalog": "workspace:*",
+    "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
     "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg",
     "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia"
   },
   "devDependencies": {
-    "js-yaml": "^4.1.0",
     "rimraf": "^6.1.3",
     "vitest": "^3.2.0"
   }

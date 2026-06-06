@@ -1,0 +1,38 @@
+[
+  {
+    "name": "color",
+    "raw_slots": 4,
+    "fields": [
+      {
+        "name": "r",
+        "type": "f32"
+      },
+      {
+        "name": "g",
+        "type": "f32"
+      },
+      {
+        "name": "b",
+        "type": "f32"
+      },
+      {
+        "name": "a",
+        "type": "f32"
+      }
+    ]
+  },
+  {
+    "name": "dimension",
+    "raw_slots": 2,
+    "fields": [
+      {
+        "name": "value",
+        "type": "f32"
+      },
+      {
+        "name": "unit",
+        "type": "dimension_unit"
+      }
+    ]
+  }
+]

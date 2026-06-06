@@ -1,0 +1,26 @@
+[
+  {
+    "name": "view",
+    "value": 0
+  },
+  {
+    "name": "text",
+    "value": 1
+  },
+  {
+    "name": "image",
+    "value": 2
+  },
+  {
+    "name": "button",
+    "value": 3
+  },
+  {
+    "name": "text_input",
+    "value": 4
+  },
+  {
+    "name": "scroll_view",
+    "value": 5
+  }
+]

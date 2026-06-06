@@ -1,4 +1,4 @@
-//! Protocol constants and codecs generated from `proto/protocol.yaml`.
+//! Protocol constants and codecs generated from `proto/spec/*.json`.
 //!
 //! `OP_*` / `TAG_*` / `EVENT_KIND_*` constants are mirrored for TypeScript;
 //! Rust uses `Op`, `StyleTag`, and generated parsers instead.

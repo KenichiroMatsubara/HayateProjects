@@ -1,7 +1,7 @@
 {
   "name": "@tsubame/hayate-css-catalog",
   "version": "0.0.0",
-  "description": "Hayate CSS Catalog — protocol.yaml 駆動の style prop 正本（Canvas encode / DOM CSS / Rust mapper 共通）",
+  "description": "Hayate CSS Catalog — protocol spec 駆動の style prop 正本（Canvas encode / DOM CSS / Rust mapper 共通）",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./src/index.ts",
@@ -12,18 +12,17 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
-    "./catalog.json": "./src/catalog.json"
+    "./catalog.json": "@tsubame/protocol-generated/catalog.json"
   },
-  "files": ["dist", "src/catalog.json"],
+  "files": ["dist"],
   "scripts": {
-    "generate": "node scripts/gen-catalog.mjs",
-    "prebuild": "npm run generate",
-    "pretypecheck": "npm run generate",
+    "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*"
   },
   "devDependencies": {

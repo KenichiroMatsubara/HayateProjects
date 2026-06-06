@@ -1,0 +1,18 @@
+[
+  {
+    "name": "color",
+    "value": 0
+  },
+  {
+    "name": "font_size",
+    "value": 1
+  },
+  {
+    "name": "font_family",
+    "value": 2
+  },
+  {
+    "name": "font_weight",
+    "value": 3
+  }
+]

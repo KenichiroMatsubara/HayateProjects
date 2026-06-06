@@ -15,9 +15,7 @@
   },
   "files": ["dist"],
   "scripts": {
-    "generate": "pnpm --filter @tsubame/hayate-css-catalog run generate",
-    "prebuild": "npm run generate",
-    "pretypecheck": "npm run generate",
+    "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/entry.schema.json",
+  "title": "Protocol entry with params",
+  "type": "object",
+  "required": ["name", "value"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "value": { "type": "integer", "minimum": 0 },
+    "variable_length": { "type": "boolean" },
+    "wireRole": {
+      "type": "string",
+      "enum": ["interaction", "ime", "hayate-internal", "host-echo"]
+    },
+    "adapterTier": {
+      "type": "string",
+      "enum": ["forward", "deferred", "none"]
+    },
+    "params": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/param" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "param": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

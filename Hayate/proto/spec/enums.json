@@ -1,0 +1,229 @@
+[
+  {
+    "name": "dimension_unit",
+    "values": [
+      {
+        "name": "px",
+        "value": 0
+      },
+      {
+        "name": "percent",
+        "value": 1
+      },
+      {
+        "name": "auto",
+        "value": 2
+      },
+      {
+        "name": "fr",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "name": "display",
+    "values": [
+      {
+        "name": "flex",
+        "value": 0
+      },
+      {
+        "name": "grid",
+        "value": 1
+      },
+      {
+        "name": "block",
+        "value": 2
+      },
+      {
+        "name": "none",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "name": "flex_direction",
+    "values": [
+      {
+        "name": "row",
+        "value": 0
+      },
+      {
+        "name": "column",
+        "value": 1
+      },
+      {
+        "name": "row_reverse",
+        "value": 2
+      },
+      {
+        "name": "column_reverse",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "name": "align_items",
+    "values": [
+      {
+        "name": "flex_start",
+        "value": 0
+      },
+      {
+        "name": "flex_end",
+        "value": 1
+      },
+      {
+        "name": "center",
+        "value": 2
+      },
+      {
+        "name": "stretch",
+        "value": 3
+      },
+      {
+        "name": "baseline",
+        "value": 4
+      }
+    ]
+  },
+  {
+    "name": "justify_content",
+    "values": [
+      {
+        "name": "flex_start",
+        "value": 0
+      },
+      {
+        "name": "flex_end",
+        "value": 1
+      },
+      {
+        "name": "center",
+        "value": 2
+      },
+      {
+        "name": "space_between",
+        "value": 3
+      },
+      {
+        "name": "space_around",
+        "value": 4
+      },
+      {
+        "name": "space_evenly",
+        "value": 5
+      }
+    ]
+  },
+  {
+    "name": "font_family",
+    "string_values": true,
+    "values": [
+      {
+        "name": "NotoSansJP",
+        "value": "Noto Sans JP"
+      },
+      {
+        "name": "NotoSansKR",
+        "value": "Noto Sans KR"
+      },
+      {
+        "name": "NotoSansSC",
+        "value": "Noto Sans SC"
+      },
+      {
+        "name": "NotoSansTC",
+        "value": "Noto Sans TC"
+      },
+      {
+        "name": "NotoSansArabic",
+        "value": "Noto Sans Arabic"
+      },
+      {
+        "name": "NotoSansThai",
+        "value": "Noto Sans Thai"
+      },
+      {
+        "name": "NotoSansDevanagari",
+        "value": "Noto Sans Devanagari"
+      },
+      {
+        "name": "NotoSansHebrew",
+        "value": "Noto Sans Hebrew"
+      },
+      {
+        "name": "NotoSerif",
+        "value": "Noto Serif"
+      },
+      {
+        "name": "NotoSansMono",
+        "value": "Noto Sans Mono"
+      },
+      {
+        "name": "Inter",
+        "value": "Inter"
+      },
+      {
+        "name": "Roboto",
+        "value": "Roboto"
+      },
+      {
+        "name": "OpenSans",
+        "value": "Open Sans"
+      },
+      {
+        "name": "Lato",
+        "value": "Lato"
+      },
+      {
+        "name": "Poppins",
+        "value": "Poppins"
+      },
+      {
+        "name": "Montserrat",
+        "value": "Montserrat"
+      },
+      {
+        "name": "Raleway",
+        "value": "Raleway"
+      },
+      {
+        "name": "Nunito",
+        "value": "Nunito"
+      },
+      {
+        "name": "Oswald",
+        "value": "Oswald"
+      },
+      {
+        "name": "SourceSans3",
+        "value": "Source Sans 3"
+      },
+      {
+        "name": "PlayfairDisplay",
+        "value": "Playfair Display"
+      },
+      {
+        "name": "Merriweather",
+        "value": "Merriweather"
+      },
+      {
+        "name": "Lora",
+        "value": "Lora"
+      },
+      {
+        "name": "JetBrainsMono",
+        "value": "JetBrains Mono"
+      },
+      {
+        "name": "FiraCode",
+        "value": "Fira Code"
+      },
+      {
+        "name": "SourceCodePro",
+        "value": "Source Code Pro"
+      }
+    ]
+  }
+]

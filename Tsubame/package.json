@@ -9,6 +9,7 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
+    "generate": "pnpm --filter @tsubame/protocol-generated run generate",
     "clean": "pnpm -r run clean",
     "dev:hello": "pnpm --filter @tsubame/example-hello-world dev"
   },

@@ -1,0 +1,23 @@
+{
+  "name": "@hayate/protocol-spec",
+  "version": "0.0.0",
+  "description": "Hayate-Tsubame Protocol Contract — JSON spec (ADR-0053)",
+  "license": "Apache-2.0",
+  "type": "module",
+  "files": ["spec", "scripts/load-spec.mjs", "scripts/validate-spec.mjs"],
+  "exports": {
+    "./manifest": "./spec/manifest.json",
+    "./types": "./spec/types.json",
+    "./enums": "./spec/enums.json",
+    "./opcodes": "./spec/opcodes.json",
+    "./style_tags": "./spec/style_tags.json",
+    "./event_kinds": "./spec/event_kinds.json",
+    "./element_kinds": "./spec/element_kinds.json",
+    "./unset_kinds": "./spec/unset_kinds.json",
+    "./modifier_keys": "./spec/modifier_keys.json",
+    "./load": "./scripts/load-spec.mjs"
+  },
+  "scripts": {
+    "validate": "node scripts/validate-spec.mjs"
+  }
+}

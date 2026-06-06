@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDelivery, toInteractionEvent } from './delivery.js';
+import { parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
 
 describe('parseDelivery', () => {
   it('decodes listener id prefix before event fields', () => {

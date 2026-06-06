@@ -2,7 +2,7 @@ use hayate_core::StyleProp;
 use wasm_bindgen::prelude::*;
 use web_sys::CssStyleDeclaration;
 
-/// Decode a style-packet slice into `StyleProp` values (generated from protocol.yaml).
+/// Decode a style-packet slice into `StyleProp` values (generated from proto/spec).
 pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
     crate::generated::decode_style_packet(packed)
 }

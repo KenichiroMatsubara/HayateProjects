@@ -10,7 +10,7 @@ import type {
 import { asElementId } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
-import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from './delivery.js';
+import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
