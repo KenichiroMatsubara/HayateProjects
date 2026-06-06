@@ -25,7 +25,13 @@ export function generateDelivery() {
   );
 
   const ignoredNames = events
-    .filter((ev) => WIRE_TO_EVENT_KIND[ev.name] === undefined)
+    .filter(
+      (ev) =>
+        ev.adapterTier !== 'forward' ||
+        ev.wireRole === 'hayate-internal' ||
+        ev.wireRole === 'host-echo' ||
+        WIRE_TO_EVENT_KIND[ev.name] === undefined,
+    )
     .map((ev) => `'${ev.name}'`);
 
   const listenerLines = listenerEntries.map((ev) => {

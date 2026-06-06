@@ -39,6 +39,22 @@ export function generateWire() {
   lines.push('export type EVENT_KIND = typeof EVENT_KIND;');
   lines.push('');
 
+  lines.push('export const EVENT_WIRE_ROLE = {');
+  for (const ev of proto.event_kinds ?? []) {
+    lines.push(`  ${ev.name.toUpperCase()}: '${ev.wireRole}',`);
+  }
+  lines.push('} as const;');
+  lines.push('export type EVENT_WIRE_ROLE = typeof EVENT_WIRE_ROLE;');
+  lines.push('');
+
+  lines.push('export const EVENT_ADAPTER_TIER = {');
+  for (const ev of proto.event_kinds ?? []) {
+    lines.push(`  ${ev.name.toUpperCase()}: '${ev.adapterTier}',`);
+  }
+  lines.push('} as const;');
+  lines.push('export type EVENT_ADAPTER_TIER = typeof EVENT_ADAPTER_TIER;');
+  lines.push('');
+
   lines.push('export const ELEMENT_KIND = {');
   for (const ek of proto.element_kinds ?? []) {
     const key = ek.name.replace(/_/g, '-');

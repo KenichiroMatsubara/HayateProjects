@@ -83,6 +83,40 @@ pub const EVENT_KIND_ACTIVE_START: f64 = 13.0;
 pub const EVENT_KIND_POINTER_MOVE: f64 = 14.0;
 pub const EVENT_KIND_FETCH_FONT: f64 = 15.0;
 
+// Event wire metadata (from event_kinds.json)
+pub const EVENT_WIRE_ROLE_CLICK: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_CLICK: &str = "forward";
+pub const EVENT_WIRE_ROLE_FOCUS: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_FOCUS: &str = "forward";
+pub const EVENT_WIRE_ROLE_BLUR: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_BLUR: &str = "forward";
+pub const EVENT_WIRE_ROLE_TEXT_INPUT: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_TEXT_INPUT: &str = "forward";
+pub const EVENT_WIRE_ROLE_COMPOSITION_START: &str = "ime";
+pub const EVENT_ADAPTER_TIER_COMPOSITION_START: &str = "deferred";
+pub const EVENT_WIRE_ROLE_COMPOSITION_UPDATE: &str = "ime";
+pub const EVENT_ADAPTER_TIER_COMPOSITION_UPDATE: &str = "deferred";
+pub const EVENT_WIRE_ROLE_COMPOSITION_END: &str = "ime";
+pub const EVENT_ADAPTER_TIER_COMPOSITION_END: &str = "deferred";
+pub const EVENT_WIRE_ROLE_SCROLL: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_SCROLL: &str = "deferred";
+pub const EVENT_WIRE_ROLE_RESIZE: &str = "host-echo";
+pub const EVENT_ADAPTER_TIER_RESIZE: &str = "none";
+pub const EVENT_WIRE_ROLE_ACTIVE_END: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_ACTIVE_END: &str = "forward";
+pub const EVENT_WIRE_ROLE_HOVER_ENTER: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_HOVER_ENTER: &str = "forward";
+pub const EVENT_WIRE_ROLE_HOVER_LEAVE: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_HOVER_LEAVE: &str = "forward";
+pub const EVENT_WIRE_ROLE_KEY_DOWN: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_KEY_DOWN: &str = "forward";
+pub const EVENT_WIRE_ROLE_ACTIVE_START: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_ACTIVE_START: &str = "forward";
+pub const EVENT_WIRE_ROLE_POINTER_MOVE: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_POINTER_MOVE: &str = "deferred";
+pub const EVENT_WIRE_ROLE_FETCH_FONT: &str = "hayate-internal";
+pub const EVENT_ADAPTER_TIER_FETCH_FONT: &str = "none";
+
 // Element kind constants
 pub const ELEMENT_KIND_VIEW: u32 = 0;
 pub const ELEMENT_KIND_TEXT: u32 = 1;

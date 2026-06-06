@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/event_kind.schema.json",
+  "title": "Event kind entry (wireRole / adapterTier required)",
+  "allOf": [
+    { "$ref": "entry.schema.json" },
+    {
+      "required": ["wireRole", "adapterTier"]
+    }
+  ]
+}

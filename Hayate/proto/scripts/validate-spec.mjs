@@ -33,7 +33,7 @@ const validators = {
   enums: validatorFor('enum.schema.json'),
   opcodes: validatorFor('entry.schema.json'),
   style_tags: validatorFor('entry.schema.json'),
-  event_kinds: validatorFor('entry.schema.json'),
+  event_kinds: validatorFor('event_kind.schema.json'),
   element_kinds: validatorFor('simple_entry.schema.json'),
   unset_kinds: validatorFor('simple_entry.schema.json'),
   modifier_keys: validatorFor('simple_entry.schema.json'),
