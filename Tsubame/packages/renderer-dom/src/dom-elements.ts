@@ -8,6 +8,7 @@ interface ElementDomSpec {
   readonly style?: StyleDefaults;
 }
 
+/** RN Web 現行方式: 全 kind に stacking ベースを付与（ADR-0006） */
 const BASE_STYLE: StyleDefaults = {
   appearance: 'none',
   background: 'none',
@@ -19,8 +20,10 @@ const BASE_STYLE: StyleDefaults = {
   margin: '0',
   outline: 'none',
   padding: '0',
+  position: 'relative',
   textAlign: 'inherit',
   webkitAppearance: 'none',
+  zIndex: '0',
 };
 
 const ELEMENT_SPECS: Record<ElementKind, ElementDomSpec> = {

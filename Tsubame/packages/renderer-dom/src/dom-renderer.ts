@@ -12,6 +12,7 @@ import { asElementId } from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 import { DOM_EVENT_NAME } from './event-mapping.js';
+import { warnZOrderDivergence } from './z-order-divergence.js';
 
 export interface DomRendererOptions {
   container?: HTMLElement;
@@ -77,6 +78,11 @@ export class DomRenderer implements IRenderer {
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
+    for (const key of Object.keys(style)) {
+      if (style[key as keyof StylePatch] !== undefined) {
+        warnZOrderDivergence(id, key);
+      }
+    }
     applyStylePatch(this.node(id), style);
   }
 
