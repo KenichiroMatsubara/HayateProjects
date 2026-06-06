@@ -10,6 +10,7 @@
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
     "generate": "pnpm --filter @tsubame/protocol-generated run generate",
+    "check:proto": "pnpm run generate && git diff --exit-code proto/generated",
     "clean": "pnpm -r run clean",
     "dev:hello": "pnpm --filter @tsubame/example-hello-world dev"
   },

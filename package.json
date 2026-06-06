@@ -11,6 +11,7 @@
     "dev:hello":      "pnpm --filter @tsubame/example-hello-world dev",
     "typecheck":      "pnpm --filter \"./Tsubame/packages/*\" typecheck",
     "test":           "pnpm -r run test",
+    "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
     "clean":          "pnpm -r run clean"
   },
   "devDependencies": {

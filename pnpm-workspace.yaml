@@ -3,6 +3,7 @@ packages:
   - 'Hayate/proto'
   - 'Hayate/examples/web-demo/pkg'
   - 'Hayate/examples/web-demo/pkg-tiny-skia'
+  - 'Tsubame'
   - 'Tsubame/proto'
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'

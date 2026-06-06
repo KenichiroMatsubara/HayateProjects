@@ -40,7 +40,7 @@ _Avoid_: shared component runtime
 ## Related Products
 
 **Hayate**:
-Tsubame が Canvas Renderer 経由で利用する描画基盤。Tsubame は Hayate の内部実装には依存せず、`protocol.yaml` と `apply_mutations` / `poll_events` 契約だけを見る。
+Tsubame が Canvas Renderer 経由で利用する描画基盤。Tsubame は Hayate の内部実装には依存せず、`@hayate/protocol-spec`（`proto/spec/*.json`）と `apply_mutations` / `poll_events` 契約だけを見る。
 
 **Hayabusa**:
 Rust 側の長期構想。Tsubame は Hayabusa の JS 版ではない。
@@ -51,4 +51,4 @@ Rust 側の長期構想。Tsubame は Hayabusa の JS 版ではない。
 > → 「違う。framework 固有ランタイムをそのまま使い、描画先を差し替える基盤」
 
 > 「Hayate との結合点は？」
-> → 「`protocol.yaml` と `apply_mutations` / `poll_events`」
+> → 「`@hayate/protocol-spec` と `apply_mutations` / `poll_events`」

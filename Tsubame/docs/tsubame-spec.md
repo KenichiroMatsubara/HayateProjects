@@ -21,7 +21,7 @@ Tsubame は JS/TS 向けの renderer target 基盤である。責務は `Rendere
 
 ### 2.2 Hayate boundary
 
-Tsubame と Hayate の結合点は `apply_mutations(ops: Float64Array, styles: Float32Array)` と `poll_events` 契約である。定数・opcode・style tag・event field 名の正本は [`Hayate/proto/protocol.yaml`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Hayate/proto/protocol.yaml)。
+Tsubame と Hayate の結合点は `apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[])` と `poll_events` 契約である。定数・opcode・style tag・event field 名の正本は Hayate の [`proto/spec/`](../../Hayate/proto/spec/)（`@hayate/protocol-spec`）である。
 
 根拠:
 - [`ADR-0003`](/C:/Users/pinara/Desktop/myapps/HayateProjects/Tsubame/docs/adr/0003-apply-mutations-encoding.md)
@@ -35,7 +35,7 @@ Tsubame と Hayate の結合点は `apply_mutations(ops: Float64Array, styles: F
 
 ### 3.2 Canvas Renderer
 
-JS 内でフレーム分の変更を積み、`requestAnimationFrame` ごとに `apply_mutations` を 1回呼ぶ。`ops` と `styles` の意味論は `protocol.yaml` に従う。
+JS 内でフレーム分の変更を積み、`requestAnimationFrame` ごとに `apply_mutations` を 1回呼ぶ。`ops` と `styles` の意味論は `@hayate/protocol-spec` に従う。
 
 根拠:
 - ADR-0003
