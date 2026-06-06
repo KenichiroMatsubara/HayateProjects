@@ -6,7 +6,7 @@ mod generated;
 mod apply_mutations_dispatch;
 #[cfg(target_arch = "wasm32")]
 mod element_renderer;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 mod renderer_event_state;
 #[cfg(any(target_arch = "wasm32", test))]
 mod style_packet;

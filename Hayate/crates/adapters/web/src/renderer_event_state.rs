@@ -38,9 +38,9 @@ pub(crate) fn emit_event(
 
 /// Shared input-handling state for both renderer backends.
 ///
-/// Tracks hover/active/focus pointer state. Canvas Mode routes interaction
-/// events into `ElementTree`'s document runtime; HTML Mode still accumulates
-/// raw events for `poll_events` until that path migrates.
+/// Tracks hover/active/focus pointer state. When a host passes `Some(tree)`,
+/// interaction events route through `ElementTree`'s document runtime and surface
+/// as poll deliveries; otherwise they accumulate in `raw_events` (legacy path).
 pub(crate) struct RendererEventState {
     pub hovered_element: Option<ElementId>,
     pub active_element: Option<ElementId>,
@@ -333,5 +333,66 @@ impl RendererEventState {
             }
             self.hovered_element = new_hover;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hayate_core::ElementKind;
+
+    #[test]
+    fn with_tree_routes_click_to_deliveries_not_raw() {
+        let mut tree = ElementTree::new();
+        let btn = tree.element_create(1, ElementKind::Button);
+        tree.set_root(btn);
+        let listener = tree.register_listener(btn, DocumentEventKind::Click);
+
+        let mut state = RendererEventState::new();
+        state.pointer_down(Some(&mut tree), Some(btn), 10.0, 20.0);
+
+        assert!(state.drain_raw().is_empty());
+        let deliveries = tree.poll_deliveries();
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].listener_id, listener);
+        assert!(matches!(
+            &deliveries[0].event,
+            Event::Click { target_id, x, y }
+                if *target_id == btn && (*x - 10.0).abs() < f32::EPSILON && (*y - 20.0).abs() < f32::EPSILON
+        ));
+    }
+
+    #[test]
+    fn without_tree_falls_back_to_raw_events() {
+        let mut state = RendererEventState::new();
+        state.pointer_down(None, Some(ElementId::from_u64(1)), 0.0, 0.0);
+
+        let raw = state.drain_raw();
+        assert_eq!(raw.len(), 3); // Click + ActiveStart + Focus
+        assert!(matches!(&raw[0], Event::Click { .. }));
+        assert!(matches!(&raw[1], Event::ActiveStart { .. }));
+        assert!(matches!(&raw[2], Event::Focus(_)));
+    }
+
+    #[test]
+    fn hover_with_tree_delivers_to_target_listener() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(10, ElementKind::View);
+        let child = tree.element_create(11, ElementKind::Button);
+        tree.set_root(root);
+        tree.element_append_child(root, child);
+        let listener = tree.register_listener(child, DocumentEventKind::HoverEnter);
+
+        let mut state = RendererEventState::new();
+        state.hover_enter(Some(&mut tree), child);
+
+        assert!(state.drain_raw().is_empty());
+        let deliveries = tree.poll_deliveries();
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].listener_id, listener);
+        assert!(matches!(
+            &deliveries[0].event,
+            Event::HoverEnter { target_id } if *target_id == child
+        ));
     }
 }

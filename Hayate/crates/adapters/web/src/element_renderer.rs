@@ -121,7 +121,7 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
 
 use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost};
 use crate::backend::{CanvasBackend, SelectedBackend};
-use crate::generated::{encode_deliveries, encode_events};
+use crate::generated::encode_deliveries;
 use crate::renderer_event_state::RendererEventState;
 use crate::style_packet;
 
@@ -700,6 +700,9 @@ struct HtmlNode {
 #[wasm_bindgen]
 pub struct HayateElementHtmlRenderer {
     container: HtmlElement,
+    /// Element tree for document runtime (listeners, bubble, scroll offset).
+    /// HTML Mode does not run Taffy layout; this tree mirrors structure only.
+    tree: ElementTree,
     nodes: HashMap<ElementId, HtmlNode>,
     root: Option<ElementId>,
     events: RendererEventState,
@@ -720,6 +723,7 @@ impl HayateElementHtmlRenderer {
         style.set_property("overflow", "hidden")?;
         Ok(Self {
             container,
+            tree: ElementTree::new(),
             nodes: HashMap::new(),
             root: None,
             events: RendererEventState::new(),
@@ -743,7 +747,8 @@ impl HayateElementHtmlRenderer {
     /// Viewport is browser-managed in HTML Mode; this is kept for API parity
     /// with the Canvas renderer and only emits a Resize event.
     pub fn set_viewport(&mut self, width: f32, height: f32) {
-        self.events.resize(None, width, height);
+        self.tree.set_viewport(width, height);
+        self.events.resize(Some(&mut self.tree), width, height);
     }
 
     /// Registers an element with a caller-supplied ID and queues the DOM creation.
@@ -751,6 +756,7 @@ impl HayateElementHtmlRenderer {
     pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
         let eid = element_id_from_f64(id);
+        self.tree.element_create(id as u64, k);
         self.nodes.insert(
             eid,
             HtmlNode {
@@ -809,24 +815,30 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn element_append_child(&mut self, parent: f64, child: f64) {
-        self.pending.push(Command::AppendChild {
-            parent: element_id_from_f64(parent),
-            child: element_id_from_f64(child),
-        });
+        let p = element_id_from_f64(parent);
+        let c = element_id_from_f64(child);
+        self.tree.element_append_child(p, c);
+        self.pending.push(Command::AppendChild { parent: p, child: c });
     }
 
     pub fn element_insert_before(&mut self, parent: f64, child: f64, before: f64) {
+        let p = element_id_from_f64(parent);
+        let c = element_id_from_f64(child);
+        let b = element_id_from_f64(before);
+        self.tree.element_insert_before(p, c, b);
         self.pending.push(Command::InsertBefore {
-            parent: element_id_from_f64(parent),
-            child: element_id_from_f64(child),
-            before: element_id_from_f64(before),
+            parent: p,
+            child: c,
+            before: b,
         });
     }
 
     pub fn element_remove(&mut self, id: f64) {
-        self.pending.push(Command::Remove {
-            id: element_id_from_f64(id),
-        });
+        let eid = element_id_from_f64(id);
+        self.events
+            .on_subtree_remove(|c| is_in_subtree(&self.tree, c, eid));
+        self.tree.element_remove(eid);
+        self.pending.push(Command::Remove { id: eid });
     }
 
     /// Returns the text committed by the most recent `render()`. Queued
@@ -839,9 +851,9 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn set_root(&mut self, id: f64) {
-        self.pending.push(Command::SetRoot {
-            id: element_id_from_f64(id),
-        });
+        let eid = element_id_from_f64(id);
+        self.tree.set_root(eid);
+        self.pending.push(Command::SetRoot { id: eid });
     }
 
     /// Drains the queued element mutations, then refreshes the container's
@@ -868,7 +880,18 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.events.pointer_down(None, Some(target), x, y);
+        let old_focus = self.events.focused_element;
+        self.events
+            .pointer_down(Some(&mut self.tree), Some(target), x, y);
+        let new_focus = self.events.focused_element;
+        if old_focus != new_focus {
+            if let Some(p) = old_focus {
+                self.tree.element_blur(p);
+            }
+            if let Some(n) = new_focus {
+                self.tree.element_focus(n);
+            }
+        }
     }
 
     pub fn on_pointer_up(&mut self, target_id: f64, _x: f32, _y: f32) {
@@ -877,13 +900,14 @@ impl HayateElementHtmlRenderer {
         // part of the variant — use PointerMove for trailing-position tracking.
         let explicit = element_id_from_f64(target_id);
         let fallback = self.nodes.contains_key(&explicit).then_some(explicit);
-        self.events.pointer_up(None, fallback);
+        self.events.pointer_up(Some(&mut self.tree), fallback);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
         // Target-less coordinate stream — hover state is driven separately by
         // the DOM mouseenter/mouseleave events.
-        self.events.push_raw(Event::PointerMove { x, y });
+        self.events
+            .pointer_move_to(Some(&mut self.tree), None, x, y);
     }
 
     pub fn on_pointer_enter(&mut self, target_id: f64) {
@@ -891,31 +915,46 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.events.hover_enter(None, target);
+        self.events.hover_enter(Some(&mut self.tree), target);
     }
 
     pub fn on_pointer_leave(&mut self, target_id: f64) {
         let target = element_id_from_f64(target_id);
-        self.events.hover_leave(None, target);
+        self.events.hover_leave(Some(&mut self.tree), target);
     }
 
     pub fn on_wheel(&mut self, target_id: f64, delta_x: f32, delta_y: f32) {
         let target = element_id_from_f64(target_id);
-        if self.nodes.contains_key(&target) {
-            self.events.wheel(None, target, delta_x, delta_y);
+        if !self.nodes.contains_key(&target) {
+            return;
         }
+        if let Some(sv) = self.tree.apply_wheel_delta(target, delta_x, delta_y) {
+            let (x, y) = self.tree.element_get_scroll_offset(sv);
+            self.flush_set_scroll_offset(sv, x, y);
+        }
+        self.events
+            .wheel(Some(&mut self.tree), target, delta_x, delta_y);
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
-        self.events.resize(None, width, height);
+        self.tree.set_viewport(width, height);
+        self.events.resize(Some(&mut self.tree), width, height);
+    }
+
+    pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {
+        let kind = DocumentEventKind::from_u32(event_kind).ok_or_else(|| {
+            JsValue::from_str(&format!("unknown event kind {event_kind}"))
+        })?;
+        let id = self
+            .tree
+            .register_listener(element_id_from_f64(element_id), kind);
+        Ok(id.to_u64() as f64)
     }
 
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
-        self.pending.push(Command::SetScrollOffset {
-            id: element_id_from_f64(id),
-            x,
-            y,
-        });
+        let eid = element_id_from_f64(id);
+        self.tree.element_set_scroll_offset(eid, x, y);
+        self.pending.push(Command::SetScrollOffset { id: eid, x, y });
     }
 
     pub fn element_set_font_family(&mut self, id: f64, family: &str) {
@@ -1006,7 +1045,7 @@ impl HayateElementHtmlRenderer {
     pub fn element_paste(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.paste(None, eid, text);
+            self.tree.element_paste(eid, text);
         }
     }
 
@@ -1039,34 +1078,36 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        self.events.key_down(None, key, modifiers);
+        self.events.key_down(Some(&mut self.tree), key, modifiers);
     }
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.text_input(None, eid, text);
+            self.events.text_input(Some(&mut self.tree), eid, text);
         }
     }
 
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_start(None, eid, text);
+            self.events
+                .composition_start(Some(&mut self.tree), eid, text);
         }
     }
 
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_update(None, eid, text);
+            self.events
+                .composition_update(Some(&mut self.tree), eid, text);
         }
     }
 
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_end(None, eid, text);
+            self.events.composition_end(Some(&mut self.tree), eid, text);
         }
     }
 
@@ -1113,9 +1154,9 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
+    /// ADR-0053: delivery rows `[listener_id, kind, ...fields]`.
     pub fn poll_events(&mut self) -> js_sys::Array {
-        let events = self.events.drain_raw();
-        encode_events(&events)
+        encode_deliveries(&self.tree.poll_deliveries())
     }
 }
 
@@ -1407,9 +1448,7 @@ impl HayateElementHtmlRenderer {
         if self.root == Some(target) {
             self.root = None;
         }
-        // Clear any pointer-state that referred to a removed node (including
-        // descendants — the subtree walk above already removed them from self.nodes).
-        self.events.on_subtree_remove(|c| !self.nodes.contains_key(&c));
+        // Pointer state for removed nodes was cleared eagerly in `element_remove`.
     }
 
     fn flush_set_root(&mut self, new_root: ElementId) {
