@@ -8,7 +8,7 @@ import type { ElementId } from './element.js';
  * インタラクション状態に応じたスタイル切り替え（:hover 相当）は
  * 各 Adapter フレームワークの reactivity の責務であり、Protocol は扱わない。
  *
- * MVP 後に追加予定: keydown / keyup / scroll / active-start / active-end。
+ * MVP 後に追加予定: keyup / scroll / active-start / active-end。
  */
 export type EventKind =
   | 'click'

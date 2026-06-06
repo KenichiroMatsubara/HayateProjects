@@ -329,6 +329,334 @@ fn css_rgba(c: Color) -> String {
     )
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hayate_core::{DimensionUnit, DisplayValue, FlexDirectionValue, AlignValue, JustifyValue};
+
+    fn ok(packed: &[f32]) -> Vec<StyleProp> {
+        decode(packed).expect("decode should not fail")
+    }
+
+    // ── Color properties ──────────────────────────────────────────────────────
+
+    #[test]
+    fn background_color_rgba() {
+        // TAG_BACKGROUND_COLOR=0, r=1.0, g=0.5, b=0.25, a=1.0
+        let props = ok(&[0.0, 1.0, 0.5, 0.25, 1.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::BackgroundColor(c) => {
+                assert!((c.r - 1.0).abs() < 1e-6);
+                assert!((c.g - 0.5).abs() < 1e-6);
+                assert!((c.b - 0.25).abs() < 1e-6);
+                assert!((c.a - 1.0).abs() < 1e-6);
+            }
+            other => panic!("expected BackgroundColor, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn border_color_rgba() {
+        // TAG_BORDER_COLOR=4
+        let props = ok(&[4.0, 0.0, 0.0, 1.0, 0.5]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::BorderColor(c) => {
+                assert!((c.r - 0.0).abs() < 1e-6);
+                assert!((c.b - 1.0).abs() < 1e-6);
+                assert!((c.a - 0.5).abs() < 1e-6);
+            }
+            other => panic!("expected BorderColor, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn color_rgba() {
+        // TAG_COLOR=27
+        let props = ok(&[27.0, 1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::Color(c) => {
+                assert!((c.r - 1.0).abs() < 1e-6);
+                assert!((c.g - 0.0).abs() < 1e-6);
+                assert!((c.b - 0.0).abs() < 1e-6);
+                assert!((c.a - 1.0).abs() < 1e-6);
+            }
+            other => panic!("expected Color, got {:?}", other),
+        }
+    }
+
+    // ── Dimension properties ──────────────────────────────────────────────────
+
+    #[test]
+    fn width_px() {
+        // TAG_WIDTH=5, value=100.0, unit=0 (px)
+        let props = ok(&[5.0, 100.0, 0.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::Width(d) => {
+                assert!((d.value - 100.0).abs() < 1e-6);
+                assert!(matches!(d.unit, DimensionUnit::Px));
+            }
+            other => panic!("expected Width, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn width_percent() {
+        // TAG_WIDTH=5, value=50.0, unit=1 (percent)
+        let props = ok(&[5.0, 50.0, 1.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::Width(d) => {
+                assert!((d.value - 50.0).abs() < 1e-6);
+                assert!(matches!(d.unit, DimensionUnit::Percent));
+            }
+            other => panic!("expected Width, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn width_auto() {
+        // TAG_WIDTH=5, value=0.0, unit=2 (auto)
+        let props = ok(&[5.0, 0.0, 2.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::Width(d) => {
+                assert!(matches!(d.unit, DimensionUnit::Auto));
+            }
+            other => panic!("expected Width, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn height_px() {
+        // TAG_HEIGHT=6
+        let props = ok(&[6.0, 200.0, 0.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::Height(d) => {
+                assert!((d.value - 200.0).abs() < 1e-6);
+                assert!(matches!(d.unit, DimensionUnit::Px));
+            }
+            other => panic!("expected Height, got {:?}", other),
+        }
+    }
+
+    // ── Display enum ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn display_flex() {
+        // TAG_DISPLAY=11, code=0 (flex)
+        let props = ok(&[11.0, 0.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::Display(v) => assert!(matches!(v, DisplayValue::Flex)),
+            other => panic!("expected Display(Flex), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn display_grid() {
+        let props = ok(&[11.0, 1.0]);
+        match &props[0] {
+            StyleProp::Display(v) => assert!(matches!(v, DisplayValue::Grid)),
+            other => panic!("expected Display(Grid), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn display_none() {
+        let props = ok(&[11.0, 3.0]);
+        match &props[0] {
+            StyleProp::Display(v) => assert!(matches!(v, DisplayValue::None)),
+            other => panic!("expected Display(None), got {:?}", other),
+        }
+    }
+
+    // ── FlexDirection enum ────────────────────────────────────────────────────
+
+    #[test]
+    fn flex_direction_row() {
+        // TAG_FLEX_DIRECTION=12, code=0 (row)
+        let props = ok(&[12.0, 0.0]);
+        match &props[0] {
+            StyleProp::FlexDirection(v) => assert!(matches!(v, FlexDirectionValue::Row)),
+            other => panic!("expected FlexDirection(Row), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn flex_direction_column() {
+        let props = ok(&[12.0, 1.0]);
+        match &props[0] {
+            StyleProp::FlexDirection(v) => assert!(matches!(v, FlexDirectionValue::Column)),
+            other => panic!("expected FlexDirection(Column), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn flex_direction_row_reverse() {
+        let props = ok(&[12.0, 2.0]);
+        match &props[0] {
+            StyleProp::FlexDirection(v) => assert!(matches!(v, FlexDirectionValue::RowReverse)),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    // ── AlignItems enum ───────────────────────────────────────────────────────
+
+    #[test]
+    fn align_items_flex_start() {
+        // TAG_ALIGN_ITEMS=13, code=0 (flex-start)
+        let props = ok(&[13.0, 0.0]);
+        match &props[0] {
+            StyleProp::AlignItems(v) => assert!(matches!(v, AlignValue::FlexStart)),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn align_items_center() {
+        let props = ok(&[13.0, 2.0]);
+        match &props[0] {
+            StyleProp::AlignItems(v) => assert!(matches!(v, AlignValue::Center)),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    // ── JustifyContent enum ───────────────────────────────────────────────────
+
+    #[test]
+    fn justify_content_flex_start() {
+        // TAG_JUSTIFY_CONTENT=14, code=0
+        let props = ok(&[14.0, 0.0]);
+        match &props[0] {
+            StyleProp::JustifyContent(v) => assert!(matches!(v, JustifyValue::FlexStart)),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn justify_content_space_between() {
+        let props = ok(&[14.0, 3.0]);
+        match &props[0] {
+            StyleProp::JustifyContent(v) => assert!(matches!(v, JustifyValue::SpaceBetween)),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    // ── FontFamily ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn font_family_inter() {
+        // TAG_FONT_FAMILY=29, byte_len=5, 'I'=73,'n'=110,'t'=116,'e'=101,'r'=114
+        let family = "Inter";
+        let bytes: Vec<f32> = family.bytes().map(|b| b as f32).collect();
+        let mut packet = vec![29.0_f32, bytes.len() as f32];
+        packet.extend_from_slice(&bytes);
+        let props = ok(&packet);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::FontFamily(f) => assert_eq!(f, "Inter"),
+            other => panic!("expected FontFamily, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn font_family_noto_sans_jp() {
+        let family = "Noto Sans JP";
+        let bytes: Vec<f32> = family.bytes().map(|b| b as f32).collect();
+        let mut packet = vec![29.0_f32, bytes.len() as f32];
+        packet.extend_from_slice(&bytes);
+        let props = ok(&packet);
+        match &props[0] {
+            StyleProp::FontFamily(f) => assert_eq!(f, "Noto Sans JP"),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    // ── Scalar properties ─────────────────────────────────────────────────────
+
+    #[test]
+    fn opacity() {
+        // TAG_OPACITY=1
+        let props = ok(&[1.0, 0.5]);
+        match &props[0] {
+            StyleProp::Opacity(v) => assert!((v - 0.5).abs() < 1e-6),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn border_radius() {
+        // TAG_BORDER_RADIUS=2
+        let props = ok(&[2.0, 8.0]);
+        match &props[0] {
+            StyleProp::BorderRadius(v) => assert!((v - 8.0).abs() < 1e-6),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn font_size() {
+        // TAG_FONT_SIZE=26
+        let props = ok(&[26.0, 16.0]);
+        match &props[0] {
+            StyleProp::FontSize(v) => assert!((v - 16.0).abs() < 1e-6),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn font_weight() {
+        // TAG_FONT_WEIGHT=31
+        let props = ok(&[31.0, 700.0]);
+        match &props[0] {
+            StyleProp::FontWeight(v) => assert!((v - 700.0).abs() < 1e-6),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    #[test]
+    fn z_index() {
+        // TAG_Z_INDEX=28
+        let props = ok(&[28.0, 10.0]);
+        match &props[0] {
+            StyleProp::ZIndex(v) => assert_eq!(*v, 10),
+            other => panic!("{:?}", other),
+        }
+    }
+
+    // ── Multi-prop packet ─────────────────────────────────────────────────────
+
+    #[test]
+    fn multiple_props_in_sequence() {
+        // background_color + width + display
+        let packet = [
+            0.0_f32, 1.0, 0.0, 0.0, 1.0,  // TAG_BACKGROUND_COLOR=0 + rgba
+            5.0, 100.0, 0.0,               // TAG_WIDTH=5 + px
+            11.0, 0.0,                     // TAG_DISPLAY=11 + flex
+        ];
+        let props = ok(&packet);
+        assert_eq!(props.len(), 3);
+        assert!(matches!(&props[0], StyleProp::BackgroundColor(_)));
+        assert!(matches!(&props[1], StyleProp::Width(_)));
+        assert!(matches!(&props[2], StyleProp::Display(_)));
+    }
+
+    #[test]
+    fn empty_packet_returns_empty_vec() {
+        let props = ok(&[]);
+        assert!(props.is_empty());
+    }
+
+    // NOTE: Error-path tests (truncated / unknown tag) are not run in native
+    // mode because JsValue::from_str() is a stub that calls process::abort()
+    // outside of wasm32. These code paths are covered by wasm-pack tests.
+}
+
 fn apply_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {
     match *prop {
         StyleProp::BackgroundColor(c) => style.set_property("background-color", &css_rgba(c))?,
