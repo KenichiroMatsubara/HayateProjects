@@ -12,6 +12,14 @@ CRATE_DIR="$ROOT_DIR/crates/adapters/web"
 OUT_DIR="$ROOT_DIR/examples/web-demo/pkg"
 OUT_DIR_CPU="$ROOT_DIR/examples/web-demo/pkg-tiny-skia"
 PKG_GITIGNORE=$'*\n!package.json'
+LOCK_FILE="${TMPDIR:-/tmp}/hayate-wasm-build.lock"
+
+# pnpm -r can invoke this script concurrently; serialize wasm-pack on one crate dir.
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Waiting for another hayate WASM build to finish..."
+  flock 9
+fi
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'

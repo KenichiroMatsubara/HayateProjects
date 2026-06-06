@@ -1,5 +1,6 @@
 use hayate_core::StyleProp;
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
 use web_sys::CssStyleDeclaration;
 
 /// Decode a style-packet slice into `StyleProp` values (generated from proto/spec).
@@ -12,6 +13,7 @@ pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
 /// Apply a list of Hayate CSS props directly to a DOM element's style declaration.
 /// Layout properties (`display`, `gap`, `flex-direction`, …) map 1:1 to browser CSS
 /// so the browser engine performs the layout — no Taffy involved (ADR-0029).
+#[cfg(target_arch = "wasm32")]
 pub(crate) fn apply_props_to_dom(
     style: &CssStyleDeclaration,
     props: &[StyleProp],

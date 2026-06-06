@@ -651,10 +651,6 @@ impl ApplyMutationsHost for HayateElementRenderer {
         &mut self.tree
     }
 
-    fn events_mut(&mut self) -> &mut RendererEventState {
-        &mut self.events
-    }
-
     fn remove_subtree(&mut self, id: ElementId) {
         self.events
             .on_subtree_remove(|c| is_in_subtree(&self.tree, c, id));

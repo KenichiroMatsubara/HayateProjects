@@ -96,7 +96,7 @@ function attachTextInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
     raw.on_composition_start(id, '');
   });
 
-  editContext.addEventListener('textupdate', (e) => {
+  editContext.addEventListener('textupdate', (e: TextUpdateEvent) => {
     const id = raw.focused_element_id();
     if (id === 0) return;
     const text = e.text ?? '';
@@ -107,7 +107,7 @@ function attachTextInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
     }
   });
 
-  editContext.addEventListener('compositionend', (e) => {
+  editContext.addEventListener('compositionend', (e: CompositionEndEvent) => {
     const id = raw.focused_element_id();
     if (id === 0) return;
     composing = false;

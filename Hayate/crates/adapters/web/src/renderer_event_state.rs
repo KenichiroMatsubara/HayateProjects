@@ -1,24 +1,4 @@
-use hayate_core::{DocumentEventKind, ElementId, ElementTree, Event};
-
-/// Map a core [`Event`] to the document-runtime subscription kind, if deliverable.
-pub(crate) fn document_event_kind(event: &Event) -> Option<DocumentEventKind> {
-    match event {
-        Event::Click { .. } => Some(DocumentEventKind::Click),
-        Event::Focus { .. } => Some(DocumentEventKind::Focus),
-        Event::Blur { .. } => Some(DocumentEventKind::Blur),
-        Event::TextInput { .. } => Some(DocumentEventKind::TextInput),
-        Event::CompositionStart { .. } => Some(DocumentEventKind::CompositionStart),
-        Event::CompositionUpdate { .. } => Some(DocumentEventKind::CompositionUpdate),
-        Event::CompositionEnd { .. } => Some(DocumentEventKind::CompositionEnd),
-        Event::Scroll { .. } => Some(DocumentEventKind::Scroll),
-        Event::HoverEnter { .. } => Some(DocumentEventKind::HoverEnter),
-        Event::HoverLeave { .. } => Some(DocumentEventKind::HoverLeave),
-        Event::ActiveStart { .. } => Some(DocumentEventKind::ActiveStart),
-        Event::ActiveEnd { .. } => Some(DocumentEventKind::ActiveEnd),
-        Event::KeyDown { .. } => Some(DocumentEventKind::KeyDown),
-        Event::Resize { .. } | Event::PointerMove { .. } | Event::FetchFont { .. } => None,
-    }
-}
+use hayate_core::{event_document_kind, ElementId, ElementTree, Event};
 
 /// Deliver `event` through the document runtime when `tree` is present.
 ///
@@ -30,7 +10,7 @@ pub(crate) fn emit_event(
     event: Event,
 ) {
     if let Some(t) = tree.as_mut() {
-        if let Some(kind) = document_event_kind(&event) {
+        if let Some(kind) = event_document_kind(&event) {
             t.dispatch_event(kind, event);
         }
     } else {
@@ -53,6 +33,7 @@ pub(crate) struct RendererEventState {
     raw_events: Vec<Event>,
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 impl RendererEventState {
     pub fn new() -> Self {
         Self {
@@ -64,13 +45,9 @@ impl RendererEventState {
         }
     }
 
+    #[cfg(test)]
     pub fn drain_raw(&mut self) -> Vec<Event> {
         std::mem::take(&mut self.raw_events)
-    }
-
-    pub fn push_raw(&mut self, event: Event) {
-        let mut tree = None;
-        emit_event(&mut tree, &mut self.raw_events, event);
     }
 
     pub fn focus(&mut self, tree: Option<&mut ElementTree>, id: ElementId) {
@@ -310,18 +287,6 @@ impl RendererEventState {
         );
     }
 
-    pub fn paste(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
-        let mut tree = tree;
-        emit_event(
-            &mut tree,
-            &mut self.raw_events,
-            Event::TextInput {
-                target_id: target,
-                text: text.to_string(),
-            },
-        );
-    }
-
     pub fn on_subtree_remove<F: Fn(ElementId) -> bool>(&mut self, in_subtree: F) {
         if let Some(h) = self.hovered_element {
             if in_subtree(h) {
@@ -365,7 +330,7 @@ impl RendererEventState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::ElementKind;
+    use hayate_core::{DocumentEventKind, ElementKind};
 
     #[test]
     fn with_tree_routes_click_to_deliveries_not_raw() {
@@ -386,6 +351,14 @@ mod tests {
             Event::Click { target_id, x, y }
                 if *target_id == btn && (*x - 10.0).abs() < f32::EPSILON && (*y - 20.0).abs() < f32::EPSILON
         ));
+    }
+
+    #[test]
+    fn pointer_move_skips_duplicate_coordinates() {
+        let mut state = RendererEventState::new();
+        assert!(state.pointer_move_to(None, None, 1.0, 2.0));
+        assert!(!state.pointer_move_to(None, None, 1.0, 2.0));
+        assert!(state.pointer_move_to(None, None, 2.0, 2.0));
     }
 
     #[test]

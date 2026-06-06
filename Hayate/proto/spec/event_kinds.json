@@ -3,240 +3,191 @@
     "name": "click",
     "value": 0,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "x",
-        "type": "f32"
-      },
-      {
-        "name": "y",
-        "type": "f32"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" }
     ],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": true,
+    "interactionKind": "click"
   },
   {
     "name": "focus",
     "value": 1,
-    "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      }
-    ],
+    "params": [{ "name": "target_id", "type": "element_id" }],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": "focus"
   },
   {
     "name": "blur",
     "value": 2,
-    "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      }
-    ],
+    "params": [{ "name": "target_id", "type": "element_id" }],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": "blur"
   },
   {
     "name": "text_input",
     "value": 3,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "text",
-        "type": "string"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "text", "type": "string" }
     ],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": true,
+    "interactionKind": "input"
   },
   {
     "name": "composition_start",
     "value": 4,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "text",
-        "type": "string"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "text", "type": "string" }
     ],
     "wireRole": "ime",
-    "adapterTier": "deferred"
+    "adapterTier": "deferred",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "composition_update",
     "value": 5,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "text",
-        "type": "string"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "text", "type": "string" }
     ],
     "wireRole": "ime",
-    "adapterTier": "deferred"
+    "adapterTier": "deferred",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "composition_end",
     "value": 6,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "text",
-        "type": "string"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "text", "type": "string" }
     ],
     "wireRole": "ime",
-    "adapterTier": "deferred"
+    "adapterTier": "deferred",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "scroll",
     "value": 7,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "delta_x",
-        "type": "f32"
-      },
-      {
-        "name": "delta_y",
-        "type": "f32"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "delta_x", "type": "f32" },
+      { "name": "delta_y", "type": "f32" }
     ],
     "wireRole": "interaction",
-    "adapterTier": "deferred"
+    "adapterTier": "deferred",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "resize",
     "value": 8,
     "params": [
-      {
-        "name": "width",
-        "type": "f32"
-      },
-      {
-        "name": "height",
-        "type": "f32"
-      }
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
     ],
     "wireRole": "host-echo",
-    "adapterTier": "none"
+    "adapterTier": "none",
+    "documentRuntime": false,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "active_end",
     "value": 9,
-    "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      }
-    ],
+    "params": [{ "name": "target_id", "type": "element_id" }],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "hover_enter",
     "value": 10,
-    "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      }
-    ],
+    "params": [{ "name": "target_id", "type": "element_id" }],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": "hover-enter"
   },
   {
     "name": "hover_leave",
     "value": 11,
-    "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      }
-    ],
+    "params": [{ "name": "target_id", "type": "element_id" }],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": "hover-leave"
   },
   {
     "name": "key_down",
     "value": 12,
     "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      },
-      {
-        "name": "key",
-        "type": "string"
-      },
-      {
-        "name": "modifiers",
-        "type": "u32"
-      }
+      { "name": "target_id", "type": "element_id" },
+      { "name": "key", "type": "string" },
+      { "name": "modifiers", "type": "u32" }
     ],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": true,
+    "interactionKind": "keydown"
   },
   {
     "name": "active_start",
     "value": 13,
-    "params": [
-      {
-        "name": "target_id",
-        "type": "element_id"
-      }
-    ],
+    "params": [{ "name": "target_id", "type": "element_id" }],
     "wireRole": "interaction",
-    "adapterTier": "forward"
+    "adapterTier": "forward",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "pointer_move",
     "value": 14,
     "params": [
-      {
-        "name": "x",
-        "type": "f32"
-      },
-      {
-        "name": "y",
-        "type": "f32"
-      }
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" }
     ],
     "wireRole": "interaction",
-    "adapterTier": "deferred"
+    "adapterTier": "deferred",
+    "documentRuntime": false,
+    "bubbles": false,
+    "interactionKind": null
   },
   {
     "name": "fetch_font",
     "value": 15,
-    "params": [
-      {
-        "name": "family",
-        "type": "string"
-      }
-    ],
+    "params": [{ "name": "family", "type": "string" }],
     "wireRole": "hayate-internal",
-    "adapterTier": "none"
+    "adapterTier": "none",
+    "documentRuntime": false,
+    "bubbles": false,
+    "interactionKind": null,
+    "description": "A font family with .notdef glyphs was detected during shaping. The adapter should fetch the font and call `load_font_from_url`."
   }
 ]

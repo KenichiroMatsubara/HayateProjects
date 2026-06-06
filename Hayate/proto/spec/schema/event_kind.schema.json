@@ -5,7 +5,7 @@
   "allOf": [
     { "$ref": "entry.schema.json" },
     {
-      "required": ["wireRole", "adapterTier"]
+      "required": ["wireRole", "adapterTier", "documentRuntime", "bubbles"]
     }
   ]
 }

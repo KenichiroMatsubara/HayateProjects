@@ -11,6 +11,6 @@ fn main() {
 
     generate_all(&spec_dir, &out_dir);
     println!(
-        "Generated Hayate/proto/generated/{{protocol,dispatch,dom_style_mapper}}.rs"
+        "Generated Hayate/proto/generated/{{protocol,dispatch,dom_style_mapper,event_types}}.rs"
     );
 }

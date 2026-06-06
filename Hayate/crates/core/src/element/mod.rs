@@ -1,4 +1,5 @@
 pub mod document_runtime;
+pub mod event_spec;
 pub mod id;
 pub mod kind;
 pub mod layout_pass;
@@ -8,9 +9,8 @@ pub mod taffy_bridge;
 pub mod text;
 pub mod tree;
 
-pub use document_runtime::{
-    DocumentEventKind, DocumentRuntime, EventDelivery, ListenerId,
-};
+pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
+pub use event_spec::{event_document_kind, DocumentEventKind, Event};
 pub use id::ElementId;
 pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;
@@ -18,4 +18,4 @@ pub use style::{
     AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue,
     StyleProp, StylePropKind,
 };
-pub use tree::{ElementTree, Event, ResolvedElement};
+pub use tree::{ElementTree, ResolvedElement};

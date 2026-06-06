@@ -19,6 +19,22 @@
     "params": {
       "type": "array",
       "items": { "$ref": "#/$defs/param" }
+    },
+    "documentRuntime": {
+      "type": "boolean",
+      "description": "Participates in Element Document Runtime (register_listener / DocumentEventKind)."
+    },
+    "bubbles": {
+      "type": "boolean",
+      "description": "Bubble dispatch to ancestor listeners."
+    },
+    "interactionKind": {
+      "type": ["string", "null"],
+      "description": "Tsubame EventKind mapping for toInteractionEvent (null = not mapped)."
+    },
+    "description": {
+      "type": "string",
+      "description": "Rust doc comment on the Event variant."
     }
   },
   "additionalProperties": false,

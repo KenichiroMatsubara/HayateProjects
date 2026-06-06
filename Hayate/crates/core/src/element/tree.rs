@@ -6,7 +6,10 @@ use linebender_resource_handle::Blob;
 use taffy::TaffyTree;
 
 use crate::color::Color;
-use crate::element::document_runtime::{self, DocumentEventKind, DocumentRuntime, EventDelivery, ListenerId};
+use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
+use crate::element::event_spec::DocumentEventKind;
+
+pub use crate::element::event_spec::Event;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::layout_pass::LayoutPass;
@@ -82,76 +85,6 @@ pub(crate) struct Element {
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
-///
-/// Naming follows ADR-0031: semantic state transitions (`hover-enter`,
-/// `active-start`, …) instead of physical Pointer Events names. The single
-/// exception is `PointerMove`, which is a coordinate stream with no target.
-#[derive(Clone, Debug)]
-pub enum Event {
-    Click {
-        target_id: ElementId,
-        x: f32,
-        y: f32,
-    },
-    Focus {
-        target_id: ElementId,
-    },
-    Blur {
-        target_id: ElementId,
-    },
-    TextInput {
-        target_id: ElementId,
-        text: String,
-    },
-    CompositionStart {
-        target_id: ElementId,
-        text: String,
-    },
-    CompositionUpdate {
-        target_id: ElementId,
-        text: String,
-    },
-    CompositionEnd {
-        target_id: ElementId,
-        text: String,
-    },
-    Scroll {
-        target_id: ElementId,
-        delta_x: f32,
-        delta_y: f32,
-    },
-    Resize {
-        width: f32,
-        height: f32,
-    },
-    HoverEnter {
-        target_id: ElementId,
-    },
-    HoverLeave {
-        target_id: ElementId,
-    },
-    ActiveStart {
-        target_id: ElementId,
-    },
-    ActiveEnd {
-        target_id: ElementId,
-    },
-    PointerMove {
-        x: f32,
-        y: f32,
-    },
-    KeyDown {
-        target_id: ElementId,
-        key: String,
-        modifiers: u32,
-    },
-    /// A font family with .notdef glyphs was detected during shaping.
-    /// The adapter should fetch the font and call `load_font_from_url`.
-    FetchFont {
-        family: String,
-    },
-}
-
 /// Fully-resolved per-element state after layout, keyed by stable ElementId.
 /// Used by HTML Mode to update DOM elements without going through SceneGraph.
 #[derive(Clone, Debug)]

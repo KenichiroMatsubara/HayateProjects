@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use slotmap::{DefaultKey, KeyData, SlotMap};
 
+use crate::element::event_spec::{DocumentEventKind, Event};
 use crate::element::id::ElementId;
-use crate::element::tree::Event;
 
 /// Opaque listener handle issued by `register_listener`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -16,49 +16,6 @@ impl ListenerId {
 
     pub fn from_u64(raw: u64) -> Self {
         Self(DefaultKey::from(KeyData::from_ffi(raw)))
-    }
-}
-
-/// Event kinds that can be subscribed to via `register_listener`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DocumentEventKind {
-    Click,
-    Focus,
-    Blur,
-    TextInput,
-    CompositionStart,
-    CompositionUpdate,
-    CompositionEnd,
-    Scroll,
-    HoverEnter,
-    HoverLeave,
-    ActiveStart,
-    ActiveEnd,
-    KeyDown,
-}
-
-impl DocumentEventKind {
-    pub fn bubbles(self) -> bool {
-        matches!(self, Self::Click | Self::TextInput | Self::KeyDown)
-    }
-
-    pub fn from_u32(value: u32) -> Option<Self> {
-        match value {
-            0 => Some(Self::Click),
-            1 => Some(Self::Focus),
-            2 => Some(Self::Blur),
-            3 => Some(Self::TextInput),
-            4 => Some(Self::CompositionStart),
-            5 => Some(Self::CompositionUpdate),
-            6 => Some(Self::CompositionEnd),
-            7 => Some(Self::Scroll),
-            9 => Some(Self::ActiveEnd),
-            10 => Some(Self::HoverEnter),
-            11 => Some(Self::HoverLeave),
-            12 => Some(Self::KeyDown),
-            13 => Some(Self::ActiveStart),
-            _ => None,
-        }
     }
 }
 

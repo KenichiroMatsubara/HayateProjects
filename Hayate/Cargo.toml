@@ -11,6 +11,7 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 description = "Hayate — GPU-native UI substrate"
+repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 
 [workspace.dependencies]
 # GPU / rendering

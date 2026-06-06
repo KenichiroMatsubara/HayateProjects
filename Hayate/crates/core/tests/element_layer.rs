@@ -1081,7 +1081,7 @@ fn insert_before_reorders_children_in_flex_row() {
     );
     tree.element_insert_before(root, c, b);
 
-    let sg = tree.render(0.0);
+    tree.render(0.0);
     // c is now at index 1, so its rect should sit at x=50.
     let c_rect = tree.element_layout_rect(c).expect("c has no layout rect");
     assert!(
