@@ -10,20 +10,13 @@ import type {
 import { asElementId } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
-import { parseEvent } from './protocol.js';
+import { createInteractionStream, type InteractionStream } from './interaction-stream.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
   cancelFrame?: (handle: number) => void;
   canvas?: HTMLCanvasElement;
 }
-
-const BUBBLING_EVENTS: ReadonlySet<EventKind> = new Set([
-  'click',
-  'input',
-  'change',
-  'keydown',
-]);
 
 type HandlerMap = Map<EventKind, Set<EventHandler>>;
 
@@ -41,6 +34,8 @@ export class CanvasRenderer implements IRenderer {
   private readonly cancelFrame: (handle: number) => void;
   private frameHandle: number | null = null;
 
+  private readonly stream: InteractionStream;
+
   constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
     this.raw = raw;
     this.canvas = options.canvas ?? null;
@@ -48,6 +43,10 @@ export class CanvasRenderer implements IRenderer {
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
     this.cancelFrame =
       options.cancelFrame ?? globalThis.cancelAnimationFrame.bind(globalThis);
+    this.stream = createInteractionStream({
+      getParent: id => this.parentOf.get(id),
+      getHandlers: (id, kind) => this.handlers.get(id)?.get(kind),
+    });
     this.frameHandle = this.requestFrame(this.frame);
   }
 
@@ -132,64 +131,9 @@ export class CanvasRenderer implements IRenderer {
   private readonly frame = (timestampMs: number): void => {
     this.flush();
     this.raw.render(timestampMs);
-    this.dispatchEvents(this.raw.poll_events());
+    this.stream.dispatchRawEvents(this.raw.poll_events());
     this.frameHandle = this.requestFrame(this.frame);
   };
-
-  /**
-   * Decode Hayate's `poll_events()` array-of-arrays (ADR-0034) into protocol
-   * events. Each entry is `[kindCode, ...fields]`; kind codes match
-   * `encode_events` in `element_renderer.rs`. Events without a protocol
-   * `EventKind` (resize / pointer-move / scroll / composition / active-*) are
-   * ignored.
-   */
-  private dispatchEvents(events: unknown[]): void {
-    for (const entry of events) {
-      const ev = parseEvent(entry as unknown[]);
-      switch (ev.kind) {
-        case 'click':
-          this.dispatchOne('click', asElementId(ev.targetId));
-          break;
-        case 'focus':
-          this.dispatchOne('focus', asElementId(ev.targetId));
-          break;
-        case 'blur':
-          this.dispatchOne('blur', asElementId(ev.targetId));
-          break;
-        case 'text_input':
-          this.dispatchOne('input', asElementId(ev.targetId), { value: ev.text });
-          break;
-        case 'hover_enter':
-          this.dispatchOne('hover-enter', asElementId(ev.targetId));
-          break;
-        case 'hover_leave':
-          this.dispatchOne('hover-leave', asElementId(ev.targetId));
-          break;
-        case 'key_down':
-          this.dispatchOne('keydown', asElementId(ev.targetId), { key: ev.key });
-          break;
-        default:
-          break;
-      }
-    }
-  }
-
-  private dispatchOne(
-    kind: EventKind,
-    hit: ElementId,
-    detail?: { value?: string; key?: string },
-  ): void {
-    const bubbles = BUBBLING_EVENTS.has(kind);
-    let node: ElementId | undefined = hit;
-    while (node !== undefined) {
-      const set = this.handlers.get(node)?.get(kind);
-      if (set !== undefined) {
-        for (const handler of set) handler({ kind, target: node, ...detail });
-      }
-      if (!bubbles) break;
-      node = this.parentOf.get(node);
-    }
-  }
 
   private linkParent(parent: ElementId, child: ElementId): void {
     const prevParent = this.parentOf.get(child);

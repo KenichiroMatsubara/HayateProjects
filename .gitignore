@@ -3,3 +3,4 @@ Tsubame/.git-merged/
 
 # Dependencies
 node_modules/
+.claude/worktrees/
