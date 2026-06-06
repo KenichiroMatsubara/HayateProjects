@@ -135,8 +135,8 @@ _Avoid_: Virtual DOM, Component Tree
 _Avoid_: Hayate がスクロール状態を持つ設計、StyleProp::ScrollOffset
 
 **Z-Order**:
-SceneGraph の描画順序制御。同一 parent 内で `StyleProp::ZIndex(n)` が高い子ほど後に walk され、前景に描画される（painter's algorithm）。「親の兄弟より前景に出る」ケース（モーダル・tooltip）はアプリ側が root 直下に要素を配置することで解決し、CSS stacking context 相当の概念は Hayate に持ち込まない。
-_Avoid_: NodeKind::Layer、stacking context
+React Native 方式の描画順序制御。同一 parent 内の兄弟間でのみ有効。デフォルトは document order（後から追加された兄弟が上、いわゆる後勝ち）。`StyleProp::ZIndex(n)` はこのデフォルト順の上書きとして働き、数値が高い兄弟が前景に描画される。親の兄弟より前景に出す必要がある場合（モーダル・tooltip）は root 直下への配置で解決する。Hayate コアは CSS stacking context を持たない。Tsubame DOM Renderer は RN Web 現行方式（各 element に `position: relative` + デフォルト `zIndex: 0`）で同一セマンティクスを DOM 上にエミュレートする。ブラウザ CSS との完全一致は目標にしない。
+_Avoid_: NodeKind::Layer、グローバル z-index 順序
 
 **Transform Group**:
 SceneGraph の Node 種別の一つ（`NodeKind::Group`）。affine 変換行列を保持し、子 Node 群に GPU 側で matrix を適用する。Vello の `push_transform()` / `pop()` に対応する。`StyleProp::Transform` として座標に焼き込む方式とは異なり、layout 再計算ゼロでサブツリー全体を変換できるため、アニメーションの基盤となる。
