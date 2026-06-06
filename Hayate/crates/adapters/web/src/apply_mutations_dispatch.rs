@@ -7,6 +7,8 @@ pub(crate) trait ApplyMutationsHost {
     fn tree_mut(&mut self) -> &mut ElementTree;
     fn events_mut(&mut self) -> &mut RendererEventState;
     fn remove_subtree(&mut self, id: hayate_core::ElementId);
+    fn apply_focus(&mut self, id: hayate_core::ElementId);
+    fn apply_blur(&mut self, id: hayate_core::ElementId);
 }
 
 mod dispatch {

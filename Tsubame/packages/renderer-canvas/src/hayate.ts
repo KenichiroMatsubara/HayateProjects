@@ -7,8 +7,8 @@ import type { HayateDimension } from '@tsubame/renderer-protocol';
  * wasm-bindgen 生成クラスは構造的にこれを充足するため、`init.ts` では
  * 生成インスタンスをそのまま `RawHayate` として渡せる。スタイルは
  * `Float32Array`（style-packet TAG 形式）、ミューテーションは
- * `apply_mutations(ops, styles, texts)`（ADR-0052）、イベントは array-of-arrays
- * （ADR-0034）でやり取りする。
+ * `apply_mutations(ops, styles, texts)`（ADR-0052）、イベントは delivery
+ * poll（ADR-0053: `[listener_id, kind, ...fields]`）でやり取りする。
  */
 export interface RawHayate {
   element_create(id: number, kind: number): void;
@@ -29,6 +29,7 @@ export interface RawHayate {
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   render(timestampMs: number): void;
   poll_events(): unknown[];
+  register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;
 }
 

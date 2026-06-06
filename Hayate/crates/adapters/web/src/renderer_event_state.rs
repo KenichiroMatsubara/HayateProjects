@@ -22,8 +22,12 @@ pub(crate) fn document_event_kind(event: &Event) -> Option<DocumentEventKind> {
 
 /// Deliver `event` through the document runtime when `tree` is present; otherwise
 /// queue for HTML Mode raw poll (until HTML path adopts deliveries).
-pub(crate) fn emit_event(tree: Option<&mut ElementTree>, raw_fallback: &mut Vec<Event>, event: Event) {
-    if let Some(t) = tree {
+pub(crate) fn emit_event(
+    tree: &mut Option<&mut ElementTree>,
+    raw_fallback: &mut Vec<Event>,
+    event: Event,
+) {
+    if let Some(t) = tree.as_mut() {
         if let Some(kind) = document_event_kind(&event) {
             t.dispatch_event(kind, event);
         }
@@ -63,26 +67,29 @@ impl RendererEventState {
     }
 
     pub fn push_raw(&mut self, event: Event) {
-        emit_event(None, &mut self.raw_events, event);
+        let mut tree = None;
+        emit_event(&mut tree, &mut self.raw_events, event);
     }
 
     pub fn focus(&mut self, tree: Option<&mut ElementTree>, id: ElementId) {
         if self.focused_element == Some(id) {
             return;
         }
+        let mut tree = tree;
         if let Some(prev) = self.focused_element {
-            emit_event(tree, &mut self.raw_events, Event::Blur(prev));
+            emit_event(&mut tree, &mut self.raw_events, Event::Blur(prev));
         }
         self.focused_element = Some(id);
-        emit_event(tree, &mut self.raw_events, Event::Focus(id));
+        emit_event(&mut tree, &mut self.raw_events, Event::Focus(id));
     }
 
     pub fn blur(&mut self, tree: Option<&mut ElementTree>, id: ElementId) {
         if self.focused_element != Some(id) {
             return;
         }
+        let mut tree = tree;
         self.focused_element = None;
-        emit_event(tree, &mut self.raw_events, Event::Blur(id));
+        emit_event(&mut tree, &mut self.raw_events, Event::Blur(id));
     }
 
     pub fn pointer_down(
@@ -92,9 +99,10 @@ impl RendererEventState {
         x: f32,
         y: f32,
     ) {
+        let mut tree = tree;
         if let Some(t) = target {
             emit_event(
-                tree,
+                &mut tree,
                 &mut self.raw_events,
                 Event::Click {
                     target_id: t,
@@ -103,22 +111,23 @@ impl RendererEventState {
                 },
             );
             emit_event(
-                tree,
+                &mut tree,
                 &mut self.raw_events,
                 Event::ActiveStart { target_id: t },
             );
             self.active_element = Some(t);
             self.focus(tree, t);
         } else if let Some(prev) = self.focused_element.take() {
-            emit_event(tree, &mut self.raw_events, Event::Blur(prev));
+            emit_event(&mut tree, &mut self.raw_events, Event::Blur(prev));
         }
     }
 
     pub fn pointer_up(&mut self, tree: Option<&mut ElementTree>, explicit_fallback: Option<ElementId>) {
+        let mut tree = tree;
         let target = self.active_element.take().or(explicit_fallback);
         if let Some(t) = target {
             emit_event(
-                tree,
+                &mut tree,
                 &mut self.raw_events,
                 Event::ActiveEnd { target_id: t },
             );
@@ -138,8 +147,9 @@ impl RendererEventState {
             }
         }
         self.last_pointer_pos = Some((x, y));
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::PointerMove { x, y },
         );
@@ -148,17 +158,18 @@ impl RendererEventState {
     }
 
     pub fn hover_enter(&mut self, tree: Option<&mut ElementTree>, target: ElementId) {
+        let mut tree = tree;
         if self.hovered_element != Some(target) {
             if let Some(prev) = self.hovered_element {
                 emit_event(
-                    tree,
+                    &mut tree,
                     &mut self.raw_events,
                     Event::HoverLeave { target_id: prev },
                 );
             }
             self.hovered_element = Some(target);
             emit_event(
-                tree,
+                &mut tree,
                 &mut self.raw_events,
                 Event::HoverEnter { target_id: target },
             );
@@ -166,10 +177,11 @@ impl RendererEventState {
     }
 
     pub fn hover_leave(&mut self, tree: Option<&mut ElementTree>, target: ElementId) {
+        let mut tree = tree;
         if self.hovered_element == Some(target) {
             self.hovered_element = None;
             emit_event(
-                tree,
+                &mut tree,
                 &mut self.raw_events,
                 Event::HoverLeave { target_id: target },
             );
@@ -183,8 +195,9 @@ impl RendererEventState {
         delta_x: f32,
         delta_y: f32,
     ) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::Scroll {
                 target_id: target,
@@ -195,17 +208,19 @@ impl RendererEventState {
     }
 
     pub fn resize(&mut self, tree: Option<&mut ElementTree>, width: f32, height: f32) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::Resize { width, height },
         );
     }
 
     pub fn key_down(&mut self, tree: Option<&mut ElementTree>, key: &str, modifiers: u32) {
+        let mut tree = tree;
         if let Some(focused) = self.focused_element {
             emit_event(
-                tree,
+                &mut tree,
                 &mut self.raw_events,
                 Event::KeyDown {
                     target_id: focused,
@@ -217,8 +232,9 @@ impl RendererEventState {
     }
 
     pub fn text_input(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::TextInput {
                 target_id: target,
@@ -228,8 +244,9 @@ impl RendererEventState {
     }
 
     pub fn composition_start(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::CompositionStart {
                 target_id: target,
@@ -244,8 +261,9 @@ impl RendererEventState {
         target: ElementId,
         text: &str,
     ) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::CompositionUpdate {
                 target_id: target,
@@ -255,8 +273,9 @@ impl RendererEventState {
     }
 
     pub fn composition_end(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::CompositionEnd {
                 target_id: target,
@@ -266,8 +285,9 @@ impl RendererEventState {
     }
 
     pub fn paste(&mut self, tree: Option<&mut ElementTree>, target: ElementId, text: &str) {
+        let mut tree = tree;
         emit_event(
-            tree,
+            &mut tree,
             &mut self.raw_events,
             Event::TextInput {
                 target_id: target,
@@ -295,17 +315,18 @@ impl RendererEventState {
     }
 
     fn apply_hover(&mut self, tree: Option<&mut ElementTree>, new_hover: Option<ElementId>) {
+        let mut tree = tree;
         if new_hover != self.hovered_element {
             if let Some(prev) = self.hovered_element {
                 emit_event(
-                    tree,
+                    &mut tree,
                     &mut self.raw_events,
                     Event::HoverLeave { target_id: prev },
                 );
             }
             if let Some(cur) = new_hover {
                 emit_event(
-                    tree,
+                    &mut tree,
                     &mut self.raw_events,
                     Event::HoverEnter { target_id: cur },
                 );

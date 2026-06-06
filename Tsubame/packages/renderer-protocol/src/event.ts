@@ -3,7 +3,7 @@ import type { ElementId } from './element.js';
 /**
  * 要素単位の Interaction Event の種別（MVP）。
  *
- * Canvas Renderer 使用時は Hayate の `poll_events()` から受け取り、
+ * Canvas Renderer 使用時は Hayate の `poll_events()` delivery から受け取り、
  * DOM Renderer 使用時はネイティブ DOM イベントから橋渡しする。
  * インタラクション状態に応じたスタイル切り替え（:hover 相当）は
  * 各 Adapter フレームワークの reactivity の責務であり、Protocol は扱わない。

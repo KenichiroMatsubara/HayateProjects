@@ -660,6 +660,22 @@ impl ApplyMutationsHost for HayateElementRenderer {
             .on_subtree_remove(|c| is_in_subtree(&self.tree, c, id));
         self.tree.element_remove(id);
     }
+
+    fn apply_focus(&mut self, id: ElementId) {
+        let old = self.events.focused_element;
+        self.events.focus(Some(&mut self.tree), id);
+        if old != Some(id) {
+            if let Some(prev) = old {
+                self.tree.element_blur(prev);
+            }
+            self.tree.element_focus(id);
+        }
+    }
+
+    fn apply_blur(&mut self, id: ElementId) {
+        self.events.blur(Some(&mut self.tree), id);
+        self.tree.element_blur(id);
+    }
 }
 
 // ── HTML Mode renderer (ADR-0029: browser CSS layout) ────────────────────
@@ -852,7 +868,7 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.events.pointer_down(None, target, x, y);
+        self.events.pointer_down(None, Some(target), x, y);
     }
 
     pub fn on_pointer_up(&mut self, target_id: f64, _x: f32, _y: f32) {

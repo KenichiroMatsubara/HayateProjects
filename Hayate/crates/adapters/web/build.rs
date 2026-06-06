@@ -1200,22 +1200,12 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
 "#.to_string()
         }
         "FOCUS" => {
-            r#"            let eid = ElementId::from_u64(id);
-            let old = host.events_mut().focused_element;
-            host.events_mut().focus(eid);
-            if old != Some(eid) {
-                if let Some(p) = old {
-                    host.tree_mut().element_blur(p);
-                }
-                host.tree_mut().element_focus(eid);
-            }
+            r#"            host.apply_focus(ElementId::from_u64(id));
             Ok(())
 "#.to_string()
         }
         "BLUR" => {
-            r#"            let eid = ElementId::from_u64(id);
-            host.events_mut().blur(eid);
-            host.tree_mut().element_blur(eid);
+            r#"            host.apply_blur(ElementId::from_u64(id));
             Ok(())
 "#.to_string()
         }

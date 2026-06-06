@@ -15,6 +15,8 @@ class StubHayate {
   resizes = [];
   events = [];
   calls = [];
+  listenerSeq = 1;
+  registeredListeners = []; // { elementId, eventKind, listenerId }
 
   apply_mutations(ops, styles, texts) {
     this.calls.push('apply_mutations');
@@ -34,6 +36,12 @@ class StubHayate {
     const current = this.events;
     this.events = [];
     return current;
+  }
+  register_listener(elementId, eventKind) {
+    const listenerId = this.listenerSeq++;
+    this.registeredListeners.push({ elementId, eventKind, listenerId });
+    this.calls.push('register_listener');
+    return listenerId;
   }
 }
 
@@ -217,7 +225,7 @@ test('parseColor keeps colour records explicit', () => {
   });
 });
 
-test('CanvasRenderer decodes array-of-arrays events (ADR-0034) and bubbles', () => {
+test('CanvasRenderer registers listeners and dispatches poll deliveries (ADR-0053)', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);
@@ -228,10 +236,18 @@ test('CanvasRenderer decodes array-of-arrays events (ADR-0034) and bubbles', () 
   const received = [];
   renderer.addEventListener(button, 'click', (event) => received.push(event));
 
-  hayate.events = [[0, 2, 10, 20]]; // click on id 2 → bubbles to button #1
+  assert.equal(hayate.registeredListeners.length, 1);
+  assert.deepEqual(hayate.registeredListeners[0], {
+    elementId: 1,
+    eventKind: 0,
+    listenerId: 1,
+  });
+
+  // Hayate runtime bubble already resolved; host receives delivery for button listener.
+  hayate.events = [[1, 0, 2, 10, 20]];
   sched.tick();
 
-  assert.deepEqual(received, [{ kind: 'click', target: 1 }]);
+  assert.deepEqual(received, [{ kind: 'click', target: 2 }]);
 });
 
 test('removeChild clears local subtree bookkeeping', () => {
@@ -248,6 +264,6 @@ test('removeChild clears local subtree bookkeeping', () => {
 
   renderer.removeChild(parent, child);
 
-  hayate.events = [[0, 3, 0, 0]]; // click on a pruned id must not throw
+  hayate.events = [[99, 0, 3, 0, 0]]; // delivery for unknown listener id must not throw
   assert.doesNotThrow(() => sched.tick());
 });
