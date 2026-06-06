@@ -1,11 +1,11 @@
 # Decisions Pending
 
-2026-06-04 時点の未決定事項だけを残す。完了済み事項と廃止済み事項は ADR または archive に委ねる。
+2026-06-06 時点の未決定事項だけを残す。完了済み事項と廃止済み事項は ADR または archive に委ねる。
 
 ## Closed
 
-- `protocol.yaml` を Hayate-Tsubame 間プロトコル定数の単一正本にする。
-  根拠: ADR-0049（形式は ADR-0053 により JSON spec へ移行）
+- Hayate-Tsubame 間プロトコル定数の機械可読な単一正本を導入する。
+  根拠: ADR-0049（形式は ADR-0053 により `proto/spec/*.json` + `@hayate/protocol-spec` へ移行）
 - Element Document Runtime を hayate-core に置き、poll deliveries で host に通知する。
   根拠: ADR-0053
 - Tsubame は signal ランタイムではなく renderer target 基盤とする。
@@ -21,9 +21,9 @@
 
 ### 1. `event_kinds` の完全 codegen
 
-- `protocol.yaml` の `event_kinds` に全 event の `params` を書き切る。
+- `event_kinds.json` に全 event の `params` を書き切る。
 - Rust `Event` enum のフィールド名を `params[].name` と一致させる。
-- TS 側 `parseEvent()` と Rust 側 `encode_events()` を YAML 正本前提で揃える。
+- TS 側 `parseEvent()` と Rust 側 `encode_events()` を spec 正本前提で揃える。
 - `wireRole` / `adapterTier` / Event Delivery wire 型を JSON spec に含める。
 
 根拠:
@@ -33,7 +33,7 @@
 
 ### 2. アプリ固有フォント ID と `font_family` enum の接続
 
-- `protocol.yaml` のプリセット `font_family` と、`hayate.config.json` 由来の app font ID をどう接続するか決める。
+- spec のプリセット `font_family` と、`hayate.config.json` 由来の app font ID をどう接続するか決める。
 - 必要なら `100+` を app font 用予約帯にするなどの運用を ADR 化する。
 
 根拠:
@@ -41,9 +41,9 @@
 - ADR-0044
 - ADR-0049
 
-### 3. `modifier_keys` / `unset_kinds` の YAML 表現細部
+### 3. `modifier_keys` / `unset_kinds` の spec 表現細部
 
-- bitmask 表現を `protocol.yaml` 上でどう説明するかを決める。
+- bitmask 表現を JSON spec 上でどう説明するかを決める。
 - `unset_kinds` の説明粒度を codegen に十分な形まで揃える。
 
 根拠:

@@ -89,7 +89,7 @@ WIT ベース設計に付随する歴史用語。現行の Hayate-Tsubame 契約
 ## Example Dialogue
 
 > 「今の Hayate と Tsubame の結合点は何？」
-> → 「`protocol.yaml` と、それに基づく `apply_mutations` / `poll_events` だよ」
+> → 「`@hayate/protocol-spec`（`proto/spec/*.json`）と、それに基づく `apply_mutations` / `poll_events` だよ」
 
 > 「Tsubame は signal ランタイムなの？」
 > → 「違う。各フレームワークの既存ランタイムをそのまま使い、レンダリング先だけを差し替える基盤だよ」

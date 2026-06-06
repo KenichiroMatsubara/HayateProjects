@@ -1,4 +1,4 @@
-> **Superseded by ADR-0049** — WIT は廃止。proto/protocol.yaml が機械可読な単一正本となった。
+> **Superseded by ADR-0049** — WIT は廃止。`@hayate/protocol-spec`（`proto/spec/*.json`）が機械可読な単一正本となった。
 
 # Hayate の WIT インターフェースを Element Layer と Raw Layer の二層とする
 

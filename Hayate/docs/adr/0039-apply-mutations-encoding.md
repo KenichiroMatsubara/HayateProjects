@@ -1,6 +1,6 @@
 # apply_mutations のエンコーディングを Float64Array + Float32Array の 2 引数とする
 
-> **Superseded by ADR-0049** — OP_* 定数は proto/protocol.yaml が単一正本となり、build.rs で生成される。
+> **Superseded by ADR-0049** — OP_* 定数は `@hayate/protocol-spec`（`proto/spec/*.json`）が単一正本となり、generator で生成される。
 
 > **Status: 一部廃止（Partially Superseded）**
 > `element_create` を「バッチ外の個別呼び出し」とした記述は **Tsubame ADR-0005 により廃止**。
