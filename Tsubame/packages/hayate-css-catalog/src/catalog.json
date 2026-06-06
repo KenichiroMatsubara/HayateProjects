@@ -1,0 +1,426 @@
+[
+  {
+    "patchKey": "backgroundColor",
+    "tag": 0,
+    "unsetKind": null,
+    "wireKind": "color",
+    "domFormat": "color",
+    "cssName": "backgroundColor",
+    "cssProperty": "background-color",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "opacity",
+    "tag": 1,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "number",
+    "cssName": "opacity",
+    "cssProperty": "opacity",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "borderRadius",
+    "tag": 2,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "px",
+    "cssName": "borderRadius",
+    "cssProperty": "border-radius",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "borderWidth",
+    "tag": 3,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "px",
+    "cssName": "borderWidth",
+    "cssProperty": "border-width",
+    "targets": [
+      "packet",
+      "css"
+    ],
+    "domExtras": [
+      {
+        "cssName": "borderStyle",
+        "cssProperty": "border-style",
+        "whenPositive": "solid",
+        "whenZero": "none"
+      }
+    ]
+  },
+  {
+    "patchKey": "borderColor",
+    "tag": 4,
+    "unsetKind": null,
+    "wireKind": "color",
+    "domFormat": "color",
+    "cssName": "borderColor",
+    "cssProperty": "border-color",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "width",
+    "tag": 5,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "width",
+    "cssProperty": "width",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "height",
+    "tag": 6,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "height",
+    "cssProperty": "height",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "minWidth",
+    "tag": 7,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "minWidth",
+    "cssProperty": "min-width",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "minHeight",
+    "tag": 8,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "minHeight",
+    "cssProperty": "min-height",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "maxWidth",
+    "tag": 9,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "maxWidth",
+    "cssProperty": "max-width",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "maxHeight",
+    "tag": 10,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "maxHeight",
+    "cssProperty": "max-height",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "display",
+    "tag": 11,
+    "unsetKind": null,
+    "wireKind": "display",
+    "domFormat": "enum",
+    "cssName": "display",
+    "cssProperty": "display",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "flexDirection",
+    "tag": 12,
+    "unsetKind": null,
+    "wireKind": "flexDirection",
+    "domFormat": "enum",
+    "cssName": "flexDirection",
+    "cssProperty": "flex-direction",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "alignItems",
+    "tag": 13,
+    "unsetKind": null,
+    "wireKind": "alignItems",
+    "domFormat": "enum",
+    "cssName": "alignItems",
+    "cssProperty": "align-items",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "justifyContent",
+    "tag": 14,
+    "unsetKind": null,
+    "wireKind": "justifyContent",
+    "domFormat": "enum",
+    "cssName": "justifyContent",
+    "cssProperty": "justify-content",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gap",
+    "tag": 15,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "gap",
+    "cssProperty": "gap",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "padding",
+    "tag": 16,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "padding",
+    "cssProperty": "padding",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "paddingTop",
+    "tag": 17,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "paddingTop",
+    "cssProperty": "padding-top",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "paddingRight",
+    "tag": 18,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "paddingRight",
+    "cssProperty": "padding-right",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "paddingBottom",
+    "tag": 19,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "paddingBottom",
+    "cssProperty": "padding-bottom",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "paddingLeft",
+    "tag": 20,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "paddingLeft",
+    "cssProperty": "padding-left",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "margin",
+    "tag": 21,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "margin",
+    "cssProperty": "margin",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "marginTop",
+    "tag": 22,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "marginTop",
+    "cssProperty": "margin-top",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "marginRight",
+    "tag": 23,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "marginRight",
+    "cssProperty": "margin-right",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "marginBottom",
+    "tag": 24,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "marginBottom",
+    "cssProperty": "margin-bottom",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "marginLeft",
+    "tag": 25,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "marginLeft",
+    "cssProperty": "margin-left",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "fontSize",
+    "tag": 26,
+    "unsetKind": 1,
+    "wireKind": "f32",
+    "domFormat": "px",
+    "cssName": "fontSize",
+    "cssProperty": "font-size",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "color",
+    "tag": 27,
+    "unsetKind": 0,
+    "wireKind": "color",
+    "domFormat": "color",
+    "cssName": "color",
+    "cssProperty": "color",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "zIndex",
+    "tag": 28,
+    "unsetKind": null,
+    "wireKind": "zIndex",
+    "domFormat": "integer",
+    "cssName": "zIndex",
+    "cssProperty": "z-index",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "fontFamily",
+    "tag": 29,
+    "unsetKind": 2,
+    "wireKind": "fontFamily",
+    "domFormat": "string",
+    "cssName": "fontFamily",
+    "cssProperty": "font-family",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "flexGrow",
+    "tag": 30,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "number",
+    "cssName": "flexGrow",
+    "cssProperty": "flex-grow",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "fontWeight",
+    "tag": 31,
+    "unsetKind": 3,
+    "wireKind": "f32",
+    "domFormat": "number",
+    "cssName": "fontWeight",
+    "cssProperty": "font-weight",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  }
+]

@@ -8,7 +8,11 @@ pub(crate) type ClearColor = [f32; 4];
 pub(crate) enum SceneRendererKind {
     Vello,
     TinySkia,
+    /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
+    #[allow(dead_code)]
     Recording,
+    /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
+    #[allow(dead_code)]
     Null,
 }
 
@@ -49,6 +53,8 @@ impl RendererSelectionPolicy {
 
 const PRODUCTION_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
+/// Reserved for diagnostic init (ADR-0050); not used in production `init`.
+#[allow(dead_code)]
 const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Recording, SceneRendererKind::Null];
 
@@ -56,6 +62,8 @@ pub(crate) fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
 }
 
+/// Reserved for diagnostic init (ADR-0050); not used in production `init`.
+#[allow(dead_code)]
 pub(crate) fn diagnostic_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(DIAGNOSTIC_RENDERERS, DIAGNOSTIC_RENDERERS)
 }
@@ -115,6 +123,8 @@ impl RenderHost {
         Self::init_with_policy(canvas, standard_renderer_selection_policy()).await
     }
 
+    /// Reserved for tests and diagnostics (ADR-0050); production uses `init`.
+    #[allow(dead_code)]
     pub(crate) async fn init_diagnostic(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         Self::init_with_policy(canvas, diagnostic_renderer_selection_policy()).await
     }

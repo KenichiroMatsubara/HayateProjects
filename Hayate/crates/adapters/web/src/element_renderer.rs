@@ -119,7 +119,9 @@ fn builtin_font_url(family: &str) -> Option<&'static str> {
     }
 }
 
+use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost};
 use crate::backend::{CanvasBackend, SelectedBackend};
+use crate::generated::encode_events;
 use crate::renderer_event_state::RendererEventState;
 use crate::style_packet;
 
@@ -216,30 +218,16 @@ fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
     ElementKind::from_u32(v).ok_or_else(|| JsValue::from_str(&format!("unknown element kind {v}")))
 }
 
-fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, JsValue> {
-    match v {
-        0 => Ok(StylePropKind::Color),
-        1 => Ok(StylePropKind::FontSize),
-        2 => Ok(StylePropKind::FontFamily),
-        3 => Ok(StylePropKind::FontWeight),
-        _ => Err(JsValue::from_str(&format!("unknown unset style kind {v}"))),
-    }
-}
-
 // ── Style tag constants (exposed to JS) ──────────────────────────────────
 
 #[wasm_bindgen]
 pub fn style_tag_z_index() -> u32 {
-    crate::style_packet::TAG_Z_INDEX
+    crate::generated::TAG_Z_INDEX
 }
 #[wasm_bindgen]
 pub fn style_tag_font_family() -> u32 {
-    crate::style_packet::TAG_FONT_FAMILY
+    crate::generated::TAG_FONT_FAMILY
 }
-
-// Generated protocol constants, Op enum, parse_next_op, StyleTag enum,
-// parse_next_style_tag, encode_event, encode_events — from proto/protocol.yaml.
-include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
 
 // ── Canvas Mode renderer ─────────────────────────────────────────────────
 
@@ -621,157 +609,7 @@ impl HayateElementRenderer {
         styles: &[f32],
         texts: js_sys::Array,
     ) -> Result<(), JsValue> {
-        let mut i = 0usize;
-        while i < ops.len() {
-            let op_kind = ops[i] as u32;
-            i += 1;
-            match op_kind {
-                OP_APPEND_CHILD => {
-                    if i + 2 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_APPEND_CHILD"));
-                    }
-                    let parent = element_id_from_f64(ops[i]);
-                    let child = element_id_from_f64(ops[i + 1]);
-                    i += 2;
-                    self.tree.element_append_child(parent, child);
-                }
-                OP_INSERT_BEFORE => {
-                    if i + 3 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_INSERT_BEFORE"));
-                    }
-                    let parent = element_id_from_f64(ops[i]);
-                    let child = element_id_from_f64(ops[i + 1]);
-                    let before = element_id_from_f64(ops[i + 2]);
-                    i += 3;
-                    self.tree.element_insert_before(parent, child, before);
-                }
-                OP_REMOVE => {
-                    if i + 1 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_REMOVE"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    i += 1;
-                    self.remove_subtree(id);
-                }
-                OP_SET_ROOT => {
-                    if i + 1 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_SET_ROOT"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    i += 1;
-                    self.tree.set_root(id);
-                }
-                OP_SET_STYLE => {
-                    if i + 3 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_SET_STYLE"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    let style_offset = ops[i + 1] as usize;
-                    let style_len = ops[i + 2] as usize;
-                    i += 3;
-                    let slice = styles
-                        .get(style_offset..style_offset + style_len)
-                        .ok_or_else(|| {
-                            JsValue::from_str("styles slice out of bounds in OP_SET_STYLE")
-                        })?;
-                    let props = style_packet::decode(slice)?;
-                    self.tree.element_set_style(id, &props);
-                }
-                OP_SET_TRANSFORM => {
-                    if i + 8 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_SET_TRANSFORM"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    let has_matrix = ops[i + 1] != 0.0;
-                    let matrix = if has_matrix {
-                        Some([
-                            ops[i + 2],
-                            ops[i + 3],
-                            ops[i + 4],
-                            ops[i + 5],
-                            ops[i + 6],
-                            ops[i + 7],
-                        ])
-                    } else {
-                        None
-                    };
-                    i += 8;
-                    self.tree.element_set_transform(id, matrix);
-                }
-                OP_SET_SCROLL_OFFSET => {
-                    if i + 3 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_SET_SCROLL_OFFSET"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    let x = ops[i + 1] as f32;
-                    let y = ops[i + 2] as f32;
-                    i += 3;
-                    self.tree.element_set_scroll_offset(id, x, y);
-                }
-                OP_FOCUS => {
-                    if i + 1 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_FOCUS"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    i += 1;
-                    let old = self.events.focused_element;
-                    self.events.focus(id);
-                    if old != Some(id) {
-                        if let Some(p) = old {
-                            self.tree.element_blur(p);
-                        }
-                        self.tree.element_focus(id);
-                    }
-                }
-                OP_BLUR => {
-                    if i + 1 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_BLUR"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    i += 1;
-                    self.events.blur(id);
-                    self.tree.element_blur(id);
-                }
-                OP_CREATE => {
-                    if i + 2 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_CREATE"));
-                    }
-                    let id = ops[i] as u64;
-                    let kind = ops[i + 1] as u32;
-                    i += 2;
-                    let k = kind_from_u32(kind)?;
-                    self.tree.element_create(id, k);
-                }
-                OP_SET_TEXT => {
-                    if i + 2 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_SET_TEXT"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    let text_index = ops[i + 1] as u32;
-                    i += 2;
-                    if text_index >= texts.length() {
-                        return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT"));
-                    }
-                    let text = texts.get(text_index).as_string().ok_or_else(|| {
-                        JsValue::from_str("text table entry is not a string in OP_SET_TEXT")
-                    })?;
-                    self.tree.element_set_text(id, &text);
-                }
-                OP_UNSET_STYLE => {
-                    if i + 2 > ops.len() {
-                        return Err(JsValue::from_str("ops truncated at OP_UNSET_STYLE"));
-                    }
-                    let id = element_id_from_f64(ops[i]);
-                    let kind = unset_kind_from_u32(ops[i + 1] as u32)?;
-                    i += 2;
-                    self.tree.element_unset_style(id, &[kind]);
-                }
-                other => {
-                    return Err(JsValue::from_str(&format!("unknown op_kind {other}")));
-                }
-            }
-        }
-        Ok(())
+        apply_mutations_batch(self, ops, styles, &texts)
     }
 
     /// Returns the editable text content from the live tree.
@@ -807,6 +645,22 @@ impl HayateElementRenderer {
             }
         }
         encode_events(&visible)
+    }
+}
+
+impl ApplyMutationsHost for HayateElementRenderer {
+    fn tree_mut(&mut self) -> &mut ElementTree {
+        &mut self.tree
+    }
+
+    fn events_mut(&mut self) -> &mut RendererEventState {
+        &mut self.events
+    }
+
+    fn remove_subtree(&mut self, id: ElementId) {
+        self.events
+            .on_subtree_remove(|c| is_in_subtree(&self.tree, c, id));
+        self.tree.element_remove(id);
     }
 }
 

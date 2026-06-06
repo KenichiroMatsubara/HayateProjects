@@ -1,0 +1,16 @@
+//! Seam for applying parsed `apply_mutations` ops to the Canvas Mode ElementTree.
+use hayate_core::ElementTree;
+
+use crate::renderer_event_state::RendererEventState;
+
+pub(crate) trait ApplyMutationsHost {
+    fn tree_mut(&mut self) -> &mut ElementTree;
+    fn events_mut(&mut self) -> &mut RendererEventState;
+    fn remove_subtree(&mut self, id: hayate_core::ElementId);
+}
+
+mod dispatch {
+    include!(concat!(env!("OUT_DIR"), "/dispatch.rs"));
+}
+
+pub(crate) use dispatch::{apply_mutations_batch, unset_kind_from_u32};

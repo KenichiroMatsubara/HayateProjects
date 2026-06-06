@@ -15,11 +15,15 @@
   },
   "files": ["dist"],
   "scripts": {
+    "generate": "pnpm --filter @tsubame/hayate-css-catalog run generate",
+    "prebuild": "npm run generate",
+    "pretypecheck": "npm run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@tsubame/hayate-css-catalog": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*"
   },
   "devDependencies": {

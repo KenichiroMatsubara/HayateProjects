@@ -13,10 +13,18 @@ fn main() {
 
     let proto = parse_yaml(&yaml);
     let code = generate(&proto);
+    let dispatch = generate_dispatch(&proto);
+    let dom_mapper = generate_dom_style_mapper(&proto);
 
     let out_dir = env::var("OUT_DIR").unwrap();
-    let out_path = PathBuf::from(out_dir).join("protocol.rs");
+    let out_path = PathBuf::from(&out_dir).join("protocol.rs");
     fs::write(&out_path, code).unwrap();
+    fs::write(PathBuf::from(&out_dir).join("dispatch.rs"), dispatch).unwrap();
+    fs::write(
+        PathBuf::from(&out_dir).join("dom_style_mapper.rs"),
+        dom_mapper,
+    )
+    .unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -589,24 +597,14 @@ fn generate(proto: &Proto) -> String {
         let slot_count = fields.len();
         out.push_str(&format!("        {} => {{\n", tag.value));
         if tag.variable_length {
-            // string: first slot is byte length, then bytes packed as f32
+            // string: [byte_len, byte0, byte1, …] — one UTF-8 byte per f32 slot (wire format)
             out.push_str("            if i >= packed.len() { return Err(\"style tag string truncated\"); }\n");
             out.push_str("            let byte_len = packed[i] as usize;\n");
-            out.push_str("            let slot_len = (byte_len + 3) / 4;\n");
-            out.push_str("            if i + 1 + slot_len > packed.len() { return Err(\"style tag string data truncated\"); }\n");
-            out.push_str("            let bytes_start = i + 1;\n");
-            out.push_str("            let mut bytes = Vec::with_capacity(byte_len);\n");
-            out.push_str("            for si in 0..slot_len {\n");
-            out.push_str("                let word = packed[bytes_start + si].to_bits();\n");
-            out.push_str("                let remaining = byte_len - bytes.len();\n");
-            out.push_str("                let take = remaining.min(4);\n");
-            out.push_str("                for bi in 0..take {\n");
-            out.push_str("                    bytes.push(((word >> (bi * 8)) & 0xFF) as u8);\n");
-            out.push_str("                }\n");
-            out.push_str("            }\n");
+            out.push_str("            if i + 1 + byte_len > packed.len() { return Err(\"style tag string data truncated\"); }\n");
+            out.push_str("            let bytes: Vec<u8> = (0..byte_len).map(|j| packed[i + 1 + j] as u8).collect();\n");
             out.push_str("            let family = String::from_utf8(bytes).map_err(|_| \"invalid utf8 in font family\")?;\n");
             out.push_str(&format!(
-                "            Ok((StyleTag::{} {{ family }}, i + 1 + slot_len))\n",
+                "            Ok((StyleTag::{} {{ family }}, i + 1 + byte_len))\n",
                 variant
             ));
         } else if fields.is_empty() {
@@ -637,6 +635,8 @@ fn generate(proto: &Proto) -> String {
     out.push_str("        _ => Err(\"unknown style tag\"),\n");
     out.push_str("    }\n");
     out.push_str("}\n\n");
+
+    out.push_str(&generate_style_codec(proto));
 
     // encode_event
     out.push_str("pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {\n");
@@ -750,6 +750,491 @@ fn generate(proto: &Proto) -> String {
     out.push_str("}\n");
 
     out
+}
+
+fn generate_style_codec(proto: &Proto) -> String {
+    let mut out = String::new();
+
+    out.push_str("// ── Style packet codec (generated) ─────────────────────────────────────\n\n");
+    out.push_str("use hayate_core::{\n");
+    out.push_str("    AlignValue, Color, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,\n");
+    out.push_str("    JustifyValue, StyleProp,\n");
+    out.push_str("};\n");
+    out.push_str("use wasm_bindgen::prelude::*;\n\n");
+
+    out.push_str("fn codec_dim(value: f32, unit_raw: f32) -> Dimension {\n");
+    out.push_str("    let unit = match unit_raw as u32 {\n");
+    out.push_str("        0 => DimensionUnit::Px,\n");
+    out.push_str("        1 => DimensionUnit::Percent,\n");
+    out.push_str("        2 => DimensionUnit::Auto,\n");
+    out.push_str("        3 => DimensionUnit::Fr,\n");
+    out.push_str("        _ => DimensionUnit::Px,\n");
+    out.push_str("    };\n");
+    out.push_str("    Dimension { value, unit }\n");
+    out.push_str("}\n\n");
+
+    out.push_str("fn codec_color(r: f32, g: f32, b: f32, a: f32) -> Color {\n");
+    out.push_str("    Color::new(r as f64, g as f64, b as f64, a as f64)\n");
+    out.push_str("}\n\n");
+
+    for en in &proto.enums {
+        let rust_enum = match en.name.as_str() {
+            "display" => "DisplayValue",
+            "flex_direction" => "FlexDirectionValue",
+            "align_items" => "AlignValue",
+            "justify_content" => "JustifyValue",
+            _ => continue,
+        };
+        let fn_name = format!("codec_{}", en.name);
+        out.push_str(&format!("fn {fn_name}(raw: f32) -> {rust_enum} {{\n"));
+        out.push_str("    match raw as u32 {\n");
+        for v in &en.values {
+            let variant = to_pascal(&v.name);
+            out.push_str(&format!(
+                "        {} => {rust_enum}::{variant},\n",
+                v.value
+            ));
+        }
+        let default_variant = to_pascal(&en.values[0].name);
+        out.push_str(&format!("        _ => {rust_enum}::{default_variant},\n"));
+        out.push_str("    }\n");
+        out.push_str("}\n\n");
+    }
+
+    out.push_str("fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {\n");
+    out.push_str("    Ok(match tag {\n");
+    for tag in &proto.style_tags {
+        let variant = to_pascal(&tag.name);
+        let prop_variant = to_pascal(&tag.name);
+        out.push_str(&format!("        StyleTag::{variant}"));
+        let fields = flatten_tag_params(&tag.params, proto);
+        if fields.is_empty() {
+            out.push_str(" => ");
+        } else {
+            let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+            out.push_str(&format!(" {{ {} }} => ", field_names.join(", ")));
+        }
+        let expr = style_tag_to_prop_expr(&tag.name, &tag.params, proto);
+        out.push_str(&format!("StyleProp::{prop_variant}({expr}),\n"));
+    }
+    out.push_str("    })\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {\n",
+    );
+    out.push_str("    let mut out = Vec::new();\n");
+    out.push_str("    let mut i = 0usize;\n");
+    out.push_str("    while i < packed.len() {\n");
+    out.push_str("        let (tag, next) = parse_next_style_tag(packed, i)\n");
+    out.push_str("            .map_err(|e| JsValue::from_str(e))?;\n");
+    out.push_str("        i = next;\n");
+    out.push_str("        out.push(style_tag_to_prop(tag)?);\n");
+    out.push_str("    }\n");
+    out.push_str("    Ok(out)\n");
+    out.push_str("}\n\n");
+
+    out
+}
+
+fn generate_dom_style_mapper(proto: &Proto) -> String {
+    let mut out = String::new();
+
+    out.push_str("// ── Hayate CSS → browser CSS mapper (generated) ─────────────────────────\n\n");
+    out.push_str("use web_sys::CssStyleDeclaration;\n\n");
+
+    out.push_str("fn dom_css_dim(d: Dimension) -> String {\n");
+    out.push_str("    match d.unit {\n");
+    out.push_str("        DimensionUnit::Px => format!(\"{}px\", d.value),\n");
+    out.push_str("        DimensionUnit::Percent => format!(\"{}%\", d.value),\n");
+    out.push_str("        DimensionUnit::Auto => \"auto\".into(),\n");
+    out.push_str("        DimensionUnit::Fr => format!(\"{}fr\", d.value),\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str("fn dom_css_rgba(c: Color) -> String {\n");
+    out.push_str("    let arr = c.to_array_f32();\n");
+    out.push_str("    format!(\n");
+    out.push_str("        \"rgba({},{},{},{})\",\n");
+    out.push_str("        (arr[0] * 255.0) as u8,\n");
+    out.push_str("        (arr[1] * 255.0) as u8,\n");
+    out.push_str("        (arr[2] * 255.0) as u8,\n");
+    out.push_str("        arr[3],\n");
+    out.push_str("    )\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {\n",
+    );
+    out.push_str("    match *prop {\n");
+
+    for tag in &proto.style_tags {
+        let variant = to_pascal(&tag.name);
+        let css_prop = patch_key_to_kebab(&tag_to_patch_key(&tag.name));
+        let (binding, value_var) = style_prop_match_binding(&tag.name, &tag.params);
+
+        out.push_str(&format!("        StyleProp::{variant}{binding} => {{\n"));
+        let body = dom_apply_body(&tag.name, &tag.params, &css_prop, value_var);
+        for line in body.lines() {
+            out.push_str(&format!("            {line}\n"));
+        }
+        out.push_str("        }\n");
+    }
+
+    out.push_str("    }\n");
+    out.push_str("    Ok(())\n");
+    out.push_str("}\n");
+
+    out
+}
+
+fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'static str) {
+    if tag_name == "FONT_FAMILY" {
+        return ("(ref f)".to_string(), "f");
+    }
+    if tag_name == "Z_INDEX" {
+        return ("(z)".to_string(), "z");
+    }
+    for p in params {
+        match p.typ.as_str() {
+            "color" => return ("(c)".to_string(), "c"),
+            "dimension" => return ("(d)".to_string(), "d"),
+            "display" | "flex_direction" | "align_items" | "justify_content" => {
+                return ("(v)".to_string(), "v");
+            }
+            "f32" => return ("(v)".to_string(), "v"),
+            _ => {}
+        }
+    }
+    ("(v)".to_string(), "v")
+}
+
+fn dom_apply_body(tag_name: &str, params: &[Param], css_prop: &str, value_var: &str) -> String {
+    if tag_name == "FONT_FAMILY" {
+        return format!("style.set_property(\"{css_prop}\", {value_var})?;");
+    }
+    if tag_name == "Z_INDEX" {
+        return format!("style.set_property(\"{css_prop}\", &{value_var}.to_string())?;");
+    }
+    for p in params {
+        match p.typ.as_str() {
+            "color" => {
+                return format!("style.set_property(\"{css_prop}\", &dom_css_rgba({value_var}))?;");
+            }
+            "dimension" => {
+                return format!("style.set_property(\"{css_prop}\", &dom_css_dim({value_var}))?;");
+            }
+            "display" => {
+                return format!(
+                    "let s = match {value_var} {{\n\
+                    DisplayValue::Flex => \"flex\",\n\
+                    DisplayValue::Grid => \"grid\",\n\
+                    DisplayValue::Block => \"block\",\n\
+                    DisplayValue::None => \"none\",\n\
+                }};\n\
+                style.set_property(\"{css_prop}\", s)?;"
+                );
+            }
+            "flex_direction" => {
+                return format!(
+                    "let s = match {value_var} {{\n\
+                    FlexDirectionValue::Row => \"row\",\n\
+                    FlexDirectionValue::Column => \"column\",\n\
+                    FlexDirectionValue::RowReverse => \"row-reverse\",\n\
+                    FlexDirectionValue::ColumnReverse => \"column-reverse\",\n\
+                }};\n\
+                style.set_property(\"{css_prop}\", s)?;"
+                );
+            }
+            "align_items" => {
+                return format!(
+                    "let s = match {value_var} {{\n\
+                    AlignValue::FlexStart => \"flex-start\",\n\
+                    AlignValue::FlexEnd => \"flex-end\",\n\
+                    AlignValue::Center => \"center\",\n\
+                    AlignValue::Stretch => \"stretch\",\n\
+                    AlignValue::Baseline => \"baseline\",\n\
+                }};\n\
+                style.set_property(\"{css_prop}\", s)?;"
+                );
+            }
+            "justify_content" => {
+                return format!(
+                    "let s = match {value_var} {{\n\
+                    JustifyValue::FlexStart => \"flex-start\",\n\
+                    JustifyValue::FlexEnd => \"flex-end\",\n\
+                    JustifyValue::Center => \"center\",\n\
+                    JustifyValue::SpaceBetween => \"space-between\",\n\
+                    JustifyValue::SpaceAround => \"space-around\",\n\
+                    JustifyValue::SpaceEvenly => \"space-evenly\",\n\
+                }};\n\
+                style.set_property(\"{css_prop}\", s)?;"
+                );
+            }
+            "f32" => match tag_name {
+                "OPACITY" => {
+                    return format!(
+                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}.clamp(0.0, 1.0)))?;"
+                    );
+                }
+                "BORDER_RADIUS" | "FONT_SIZE" => {
+                    return format!(
+                        "style.set_property(\"{css_prop}\", &format!(\"{{}}px\", {value_var}.max(0.0)))?;"
+                    );
+                }
+                "BORDER_WIDTH" => {
+                    return format!(
+                        "let w = {value_var}.max(0.0);\n\
+                        style.set_property(\"{css_prop}\", &format!(\"{{}}px\", w))?;\n\
+                        style.set_property(\"border-style\", if w > 0.0 {{ \"solid\" }} else {{ \"none\" }})?;"
+                    );
+                }
+                "FONT_WEIGHT" => {
+                    return format!(
+                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}.clamp(1.0, 1000.0)))?;"
+                    );
+                }
+                "FLEX_GROW" => {
+                    return format!(
+                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}.max(0.0)))?;"
+                    );
+                }
+                _ => {
+                    return format!(
+                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}))?;"
+                    );
+                }
+            },
+            _ => {}
+        }
+    }
+    format!(
+        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}))?;"
+    )
+}
+
+fn tag_to_patch_key(s: &str) -> String {
+    let lower = s.to_lowercase();
+    let mut result = String::new();
+    let mut capitalize_next = false;
+    for ch in lower.chars() {
+        if ch == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.extend(ch.to_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(ch);
+        }
+    }
+    result
+}
+
+fn patch_key_to_kebab(s: &str) -> String {
+    let mut out = String::new();
+    for (i, ch) in s.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                out.push('-');
+            }
+            out.extend(ch.to_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> String {
+    if tag_name == "FONT_FAMILY" {
+        return "family".to_string();
+    }
+    if tag_name == "Z_INDEX" {
+        return "value as i32".to_string();
+    }
+    for p in params {
+        match p.typ.as_str() {
+            "color" => {
+                let prefix = &p.name;
+                return format!(
+                    "codec_color({prefix}_r, {prefix}_g, {prefix}_b, {prefix}_a)"
+                );
+            }
+            "dimension" => return format!("codec_dim({}_value, {}_unit)", p.name, p.name),
+            "display" => return "codec_display(value)".to_string(),
+            "flex_direction" => return "codec_flex_direction(value)".to_string(),
+            "align_items" => return "codec_align_items(value)".to_string(),
+            "justify_content" => return "codec_justify_content(value)".to_string(),
+            "f32" => return "value".to_string(),
+            _ => {}
+        }
+    }
+    if params.is_empty() {
+        "()".to_string()
+    } else {
+        "value".to_string()
+    }
+}
+
+fn generate_dispatch(proto: &Proto) -> String {
+    let mut out = String::new();
+    out.push_str("// AUTO-GENERATED by build.rs — do not edit\n");
+    out.push_str("// Source: proto/protocol.yaml\n\n");
+    out.push_str("use hayate_core::{ElementId, ElementKind, StylePropKind};\n");
+    out.push_str("use wasm_bindgen::prelude::*;\n\n");
+    out.push_str("use super::ApplyMutationsHost;\n");
+    out.push_str("use crate::generated::{Op, decode_style_packet, parse_next_op};\n\n");
+
+    out.push_str("pub(crate) fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, JsValue> {\n");
+    out.push_str("    match v {\n");
+    for uk in &proto.unset_kinds {
+        out.push_str(&format!(
+            "        {} => Ok(StylePropKind::{}),\n",
+            uk.value,
+            to_pascal(&uk.name)
+        ));
+    }
+    out.push_str(
+        "        _ => Err(JsValue::from_str(&format!(\"unknown unset style kind {v}\"))),\n",
+    );
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub(crate) fn apply_mutations_batch<H: ApplyMutationsHost>(\n");
+    out.push_str("    host: &mut H,\n");
+    out.push_str("    ops: &[f64],\n");
+    out.push_str("    styles: &[f32],\n");
+    out.push_str("    texts: &js_sys::Array,\n");
+    out.push_str(") -> Result<(), JsValue> {\n");
+    out.push_str("    let mut i = 0usize;\n");
+    out.push_str("    while i < ops.len() {\n");
+    out.push_str("        let (op, next) = parse_next_op(ops, i).map_err(|e| JsValue::from_str(e))?;\n");
+    out.push_str("        i = next;\n");
+    out.push_str("        apply_parsed_op(host, op, styles, texts)?;\n");
+    out.push_str("    }\n");
+    out.push_str("    Ok(())\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(\n");
+    out.push_str("    host: &mut H,\n");
+    out.push_str("    op: Op,\n");
+    out.push_str("    styles: &[f32],\n");
+    out.push_str("    texts: &js_sys::Array,\n");
+    out.push_str(") -> Result<(), JsValue> {\n");
+    out.push_str("    match op {\n");
+
+    for op in &proto.opcodes {
+        let variant = to_pascal(&op.name);
+        if op.params.is_empty() {
+            continue;
+        }
+        let fields: Vec<String> = op.params.iter().map(|p| p.name.clone()).collect();
+        out.push_str(&format!(
+            "        Op::{variant} {{ {} }} => {{\n",
+            fields.join(", ")
+        ));
+        out.push_str(&dispatch_op_body(&op.name, &op.params));
+        out.push_str("        }\n");
+    }
+
+    out.push_str("    }\n");
+    out.push_str("}\n");
+    out
+}
+
+fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
+    match op_name {
+        "APPEND_CHILD" => {
+            "            host.tree_mut().element_append_child(\n                ElementId::from_u64(parent_id),\n                ElementId::from_u64(child_id),\n            );\n            Ok(())\n".to_string()
+        }
+        "INSERT_BEFORE" => {
+            "            host.tree_mut().element_insert_before(\n                ElementId::from_u64(parent_id),\n                ElementId::from_u64(child_id),\n                ElementId::from_u64(before_id),\n            );\n            Ok(())\n".to_string()
+        }
+        "REMOVE" => {
+            "            host.remove_subtree(ElementId::from_u64(id));\n            Ok(())\n".to_string()
+        }
+        "SET_ROOT" => {
+            "            host.tree_mut().set_root(ElementId::from_u64(id));\n            Ok(())\n".to_string()
+        }
+        "SET_STYLE" => {
+            r#"            let slice = styles
+                .get(style_offset..style_offset + style_len)
+                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE"))?;
+            let props = decode_style_packet(slice)?;
+            host.tree_mut().element_set_style(ElementId::from_u64(id), &props);
+            Ok(())
+"#.to_string()
+        }
+        "SET_TRANSFORM" => {
+            r#"            let matrix = if has_matrix {
+                Some(matrix)
+            } else {
+                None
+            };
+            host.tree_mut().element_set_transform(ElementId::from_u64(id), matrix);
+            Ok(())
+"#.to_string()
+        }
+        "SET_SCROLL_OFFSET" => {
+            r#"            host.tree_mut().element_set_scroll_offset(
+                ElementId::from_u64(id),
+                x as f32,
+                y as f32,
+            );
+            Ok(())
+"#.to_string()
+        }
+        "FOCUS" => {
+            r#"            let eid = ElementId::from_u64(id);
+            let old = host.events_mut().focused_element;
+            host.events_mut().focus(eid);
+            if old != Some(eid) {
+                if let Some(p) = old {
+                    host.tree_mut().element_blur(p);
+                }
+                host.tree_mut().element_focus(eid);
+            }
+            Ok(())
+"#.to_string()
+        }
+        "BLUR" => {
+            r#"            let eid = ElementId::from_u64(id);
+            host.events_mut().blur(eid);
+            host.tree_mut().element_blur(eid);
+            Ok(())
+"#.to_string()
+        }
+        "CREATE" => {
+            r#"            let k = ElementKind::from_u32(kind)
+                .ok_or_else(|| JsValue::from_str(&format!("unknown element kind {kind}")))?;
+            host.tree_mut().element_create(id, k);
+            Ok(())
+"#.to_string()
+        }
+        "SET_TEXT" => {
+            r#"            if text_index >= texts.length() as usize {
+                return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT"));
+            }
+            let text = texts
+                .get(text_index as u32)
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_TEXT"))?;
+            host.tree_mut()
+                .element_set_text(ElementId::from_u64(id), &text);
+            Ok(())
+"#.to_string()
+        }
+        "UNSET_STYLE" => {
+            r#"            let kind = unset_kind_from_u32(kind)?;
+            host.tree_mut()
+                .element_unset_style(ElementId::from_u64(id), &[kind]);
+            Ok(())
+"#.to_string()
+        }
+        other => format!(
+            "            Err(JsValue::from_str(\"unknown op {other}\"))\n",
+        ),
+    }
 }
 
 /// Flatten style tag params: expand compound types (color, dimension) into raw f32 fields.

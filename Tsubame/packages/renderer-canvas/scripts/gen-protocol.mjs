@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // gen-protocol.mjs — reads Hayate/proto/protocol.yaml and writes src/protocol.ts
-// Hand-written YAML parser: block-only format, fixed indentation.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { parseYaml, toCamelCase } from '../../hayate-css-catalog/scripts/parse-protocol-yaml.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const yamlPath = join(__dirname, '../../../../Hayate/proto/protocol.yaml');
@@ -12,148 +12,9 @@ const outPath = join(__dirname, '../src/protocol.ts');
 
 const yaml = readFileSync(yamlPath, 'utf8');
 
-// ── Simple line-by-line YAML parser ──────────────────────────────────────────
-// Handles the exact fixed format of protocol.yaml (block-only, no inline braces).
-
-function parseYaml(text) {
-  const result = {};
-  let section = null;
-  let currentItem = null;
-  let currentParam = null;
-
-  function setKv(obj, key, rawVal) {
-    // Strip surrounding double quotes
-    const val = rawVal.replace(/^"(.*)"$/, '$1');
-    obj[key] = val;
-  }
-
-  for (const rawLine of text.split('\n')) {
-    // Strip inline comments and trailing whitespace
-    const noComment = rawLine.replace(/#.*$/, '').trimEnd();
-    if (!noComment.trim()) continue;
-
-    const indent = noComment.length - noComment.trimStart().length;
-    const content = noComment.trim();
-
-    // ── indent 0: section header ──────────────────────────────────────────
-    if (indent === 0) {
-      if (content.endsWith(':')) {
-        const name = content.slice(0, -1);
-        if (name !== 'version') {
-          section = name;
-          result[section] = [];
-        }
-      }
-      currentItem = null;
-      currentParam = null;
-      continue;
-    }
-
-    if (!section) continue;
-
-    // ── indent 2: list item start ("  - name: VALUE") ─────────────────────
-    if (indent === 2) {
-      if (content.startsWith('- ')) {
-        const rest = content.slice(2);
-        currentItem = {};
-        result[section].push(currentItem);
-        currentParam = null;
-        if (rest.includes(':')) {
-          const colonIdx = rest.indexOf(':');
-          const k = rest.slice(0, colonIdx).trim();
-          const v = rest.slice(colonIdx + 1).trim();
-          setKv(currentItem, k, v);
-        }
-      }
-      continue;
-    }
-
-    if (!currentItem) continue;
-
-    // ── indent 4: item property OR sub-list key ───────────────────────────
-    if (indent === 4) {
-      if (content.startsWith('- ')) {
-        // This shouldn't happen at indent=4 in our format, but handle gracefully
-        const rest = content.slice(2);
-        currentParam = {};
-        if (!Array.isArray(currentItem._cur_list)) currentItem._cur_list = [];
-        currentItem._cur_list.push(currentParam);
-        if (rest.includes(':')) {
-          const colonIdx = rest.indexOf(':');
-          const k = rest.slice(0, colonIdx).trim();
-          const v = rest.slice(colonIdx + 1).trim();
-          setKv(currentParam, k, v);
-        }
-      } else if (content.includes(':')) {
-        const colonIdx = content.indexOf(':');
-        const key = content.slice(0, colonIdx).trim();
-        const val = content.slice(colonIdx + 1).trim();
-        if (val === '') {
-          // This starts a new sub-list (params:, values:, fields:)
-          currentItem[key] = [];
-          currentItem._active_list = key;
-          currentParam = null;
-        } else {
-          const cleanVal = val.replace(/^"(.*)"$/, '$1');
-          currentItem[key] = cleanVal;
-        }
-      }
-      continue;
-    }
-
-    // ── indent 6: sub-list item start ("      - name: VALUE") ───────────
-    if (indent === 6) {
-      if (content.startsWith('- ')) {
-        const rest = content.slice(2);
-        currentParam = {};
-        const listKey = currentItem._active_list;
-        if (listKey && Array.isArray(currentItem[listKey])) {
-          currentItem[listKey].push(currentParam);
-        }
-        if (rest.includes(':')) {
-          const colonIdx = rest.indexOf(':');
-          const k = rest.slice(0, colonIdx).trim();
-          const v = rest.slice(colonIdx + 1).trim();
-          setKv(currentParam, k, v);
-        }
-      } else if (content.includes(':') && currentParam) {
-        const colonIdx = content.indexOf(':');
-        const k = content.slice(0, colonIdx).trim();
-        const v = content.slice(colonIdx + 1).trim();
-        setKv(currentParam, k, v);
-      }
-      continue;
-    }
-
-    // ── indent 8: sub-list item property ──────────────────────────────────
-    if (indent === 8 && currentParam) {
-      if (content.includes(':')) {
-        const colonIdx = content.indexOf(':');
-        const k = content.slice(0, colonIdx).trim();
-        const v = content.slice(colonIdx + 1).trim();
-        setKv(currentParam, k, v);
-      }
-    }
-  }
-
-  // Clean up internal tracking keys
-  for (const items of Object.values(result)) {
-    for (const item of items) {
-      delete item._active_list;
-      delete item._cur_list;
-    }
-  }
-
-  return result;
-}
-
 const proto = parseYaml(yaml);
 
 // ── Code generation ───────────────────────────────────────────────────────────
-
-function toCamelCase(s) {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
 
 const lines = [
   '// AUTO-GENERATED by scripts/gen-protocol.mjs — DO NOT EDIT',

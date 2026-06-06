@@ -15,7 +15,7 @@
   },
   "files": ["dist"],
   "scripts": {
-    "generate": "node scripts/gen-protocol.mjs",
+    "generate": "pnpm --filter @tsubame/hayate-css-catalog run generate && node scripts/gen-protocol.mjs",
     "prebuild": "npm run generate",
     "pretypecheck": "npm run generate",
     "build": "tsup",
@@ -25,6 +25,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@tsubame/hayate-css-catalog": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
     "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg",
     "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia"
