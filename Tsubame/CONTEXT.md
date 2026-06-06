@@ -22,15 +22,16 @@ _Avoid_: SSR, hydration, Hayate HTML Mode（Hayate 不使用のため）
 
 ## Integration Terms
 
-**protocol.yaml**:
-Hayate-Tsubame 間プロトコル定数の単一正本。`apply_mutations` / `poll_events` の enum、opcode、style tag はここに従う。
+**Hayate Protocol Contract**:
+Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API・`resize` は Renderer Protocol 独自 surface として Contract 外。
+_Avoid_: wire only 生成、adapter 向け型の手書き維持、Contract から Renderer 実装まで生成する設計
 
 **apply_mutations**:
 Canvas Renderer のフレームバッチ入口。Tsubame と Hayate の結合点の中心。
 
 **Interaction Stream**:
-Canvas Renderer 内で `poll_events()` 由来の raw events を decode → filter → bubble → handler dispatch する Module。`createInteractionStream(options)` で生成し、`dispatchRawEvents` / `dispatchParsedEvent` / `dispatchOne` の3層 Interface を持つ。bubbling policy（click / input / keydown はバブル、focus / blur / hover-enter / hover-leave は非バブル）はこの Module に集約する。無視ポリシー（composition / scroll / resize / active / pointer_move / fetch_font は現状 no-op）も table として明示する。
-_Avoid_: event bus, event emitter（状態を持たない dispatch Module である）
+（移行対象）Canvas Renderer 内の JS 側 event dispatch Module。`Element Document Runtime` 移管後は Hayate 内 dispatch に置き換え、Tsubame 側は host callback のみ残す。
+_Avoid_: 長期設計として Tsubame 側 bubble を正とする説明
 
 **Tsubame Adapter**:
 `tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持しつつレンダリング先だけを差し替える。

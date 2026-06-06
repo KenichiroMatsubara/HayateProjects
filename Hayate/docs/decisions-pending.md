@@ -5,7 +5,9 @@
 ## Closed
 
 - `protocol.yaml` を Hayate-Tsubame 間プロトコル定数の単一正本にする。
-  根拠: ADR-0049
+  根拠: ADR-0049（形式は ADR-0053 により JSON spec へ移行）
+- Element Document Runtime を hayate-core に置き、poll deliveries で host に通知する。
+  根拠: ADR-0053
 - Tsubame は signal ランタイムではなく renderer target 基盤とする。
   根拠: ADR-0040
 - Hayabusa は Hayate に Rust crate 依存で接続し、WIT 境界を使わない。
@@ -22,10 +24,12 @@
 - `protocol.yaml` の `event_kinds` に全 event の `params` を書き切る。
 - Rust `Event` enum のフィールド名を `params[].name` と一致させる。
 - TS 側 `parseEvent()` と Rust 側 `encode_events()` を YAML 正本前提で揃える。
+- `wireRole` / `adapterTier` / Event Delivery wire 型を JSON spec に含める。
 
 根拠:
 - ADR-0034
 - ADR-0049
+- ADR-0053
 
 ### 2. アプリ固有フォント ID と `font_family` enum の接続
 

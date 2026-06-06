@@ -131,8 +131,8 @@ Hayate 内部の描画オブジェクト間の親子・描画順序・transform 
 _Avoid_: Virtual DOM, Component Tree
 
 **Scroll Offset**:
-`scroll-view` Element のスクロール位置（x, y）。Hayate は保持せず、上位層（Hayabusa）が `poll-events()` の scroll イベントから delta を積算して管理する。毎フレーム `element_set_scroll_offset(id, x, y)` で Hayate に渡し、Hayate は `scene_build` 時に子要素の座標をオフセット分だけ平行移動しクリップ矩形を適用する。`position: sticky` も同 scroll offset を使って `scene_build` 内でクランプ計算するため、Hayate の責務に含む。イナーシャ・スナップ等の物理演算は Hayabusa の責務。
-_Avoid_: Hayate がスクロール状態を持つ設計、StyleProp::ScrollOffset
+`scroll-view` Element のスクロール位置（x, y）。`Element Document Runtime` が基本 wheel 入力から offset を更新・保持する。Hayate は `scene_build` 時に offset 分だけ子を平行移動しクリップを適用する。`position: sticky` も同 offset を使って `scene_build` 内でクランプする。イナーシャ・スナップ・rubber-band 等の物理演算だけ上位層（Hayabusa / Framework）が任意で上書きする。
+_Avoid_: Hayate が scroll 状態を一切持たない設計、StyleProp::ScrollOffset
 
 **Z-Order**:
 React Native 方式の描画順序制御。同一 parent 内の兄弟間でのみ有効。デフォルトは document order（後から追加された兄弟が上、いわゆる後勝ち）。`StyleProp::ZIndex(n)` はこのデフォルト順の上書きとして働き、数値が高い兄弟が前景に描画される。親の兄弟より前景に出す必要がある場合（モーダル・tooltip）は root 直下への配置で解決する。Hayate コアは CSS stacking context を持たない。Tsubame DOM Renderer は RN Web 現行方式（各 element に `position: relative` + デフォルト `zIndex: 0`）で同一セマンティクスを DOM 上にエミュレートする。ブラウザ CSS との完全一致は目標にしない。
