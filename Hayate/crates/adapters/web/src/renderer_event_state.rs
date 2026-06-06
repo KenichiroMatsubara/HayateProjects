@@ -20,8 +20,10 @@ pub(crate) fn document_event_kind(event: &Event) -> Option<DocumentEventKind> {
     }
 }
 
-/// Deliver `event` through the document runtime when `tree` is present; otherwise
-/// queue for HTML Mode raw poll (until HTML path adopts deliveries).
+/// Deliver `event` through the document runtime when `tree` is present.
+///
+/// Without a tree, events accumulate in `raw_events` (unit-test / null-tree only;
+/// both Canvas and HTML renderers always pass `Some(tree)` in production).
 pub(crate) fn emit_event(
     tree: &mut Option<&mut ElementTree>,
     raw_fallback: &mut Vec<Event>,
@@ -38,9 +40,9 @@ pub(crate) fn emit_event(
 
 /// Shared input-handling state for both renderer backends.
 ///
-/// Tracks hover/active/focus pointer state. When a host passes `Some(tree)`,
-/// interaction events route through `ElementTree`'s document runtime and surface
-/// as poll deliveries; otherwise they accumulate in `raw_events` (legacy path).
+/// Tracks hover/active/focus pointer state. Canvas and HTML renderers pass
+/// `Some(tree)` so interaction events route through the document runtime and
+/// surface as poll deliveries via `ElementTree::poll_deliveries()`.
 pub(crate) struct RendererEventState {
     pub hovered_element: Option<ElementId>,
     pub active_element: Option<ElementId>,
@@ -363,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn without_tree_falls_back_to_raw_events() {
+    fn without_tree_accumulates_raw_events_for_tests() {
         let mut state = RendererEventState::new();
         state.pointer_down(None, Some(ElementId::from_u64(1)), 0.0, 0.0);
 
