@@ -27,6 +27,7 @@ export class CanvasRenderer implements IRenderer {
   private readonly raw: RawHayate;
   /** Hayate-issued listener id → host handler (ADR-0053). */
   private readonly listeners = new Map<number, ListenerEntry>();
+  /** Local parent/child index for subtree prune on `removeChild` (not bubble dispatch). */
   private readonly parentOf = new Map<ElementId, ElementId>();
   private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;

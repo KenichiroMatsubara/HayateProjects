@@ -727,11 +727,11 @@ pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {
             sub.push(&JsValue::from_f64(*x as f64));
             sub.push(&JsValue::from_f64(*y as f64));
         }
-        hayate_core::Event::Focus(target_id) => {
+        hayate_core::Event::Focus { target_id } => {
             sub.push(&JsValue::from_f64(1.0));
             sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
         }
-        hayate_core::Event::Blur(target_id) => {
+        hayate_core::Event::Blur { target_id } => {
             sub.push(&JsValue::from_f64(2.0));
             sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
         }

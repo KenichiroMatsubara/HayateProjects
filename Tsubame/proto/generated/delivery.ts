@@ -16,6 +16,14 @@ export const HAYATE_LISTENER_KIND: Partial<Record<EventKind, number>> = {
   'keydown': EVENT_KIND.KEY_DOWN,
 };
 
+/** Hayate wire kinds with adapterTier deferred (scroll, composition_*, …). */
+export const HAYATE_DEFERRED_LISTENER_KIND: Readonly<Record<string, number>> = {
+  'composition_start': EVENT_KIND.COMPOSITION_START,
+  'composition_update': EVENT_KIND.COMPOSITION_UPDATE,
+  'composition_end': EVENT_KIND.COMPOSITION_END,
+  'scroll': EVENT_KIND.SCROLL,
+};
+
 const IGNORED_KINDS: ReadonlySet<EventPayload['kind']> = new Set([
   'composition_start',
   'composition_update',

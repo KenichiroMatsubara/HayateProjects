@@ -28,6 +28,14 @@ class StubHayate implements RawHayate {
   on_pointer_down(): void {}
   on_pointer_up(): void {}
   on_wheel(): void {}
+  on_key_down(): void {}
+  on_text_input(): void {}
+  on_composition_start(): void {}
+  on_composition_update(): void {}
+  on_composition_end(): void {}
+  focused_element_id(): number {
+    return 0;
+  }
   render(timestampMs: number): void {
     this.renders.push(timestampMs);
   }

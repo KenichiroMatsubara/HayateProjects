@@ -1019,12 +1019,8 @@ fn flatten_tag_params(params: &[Param], proto: &Proto) -> Vec<(String, String)> 
     result
 }
 
-/// `hayate_core::Event` uses tuple variants for Focus/Blur only.
 fn event_match_pattern(ev: &Entry) -> String {
     let variant = to_pascal(&ev.name);
-    if (ev.name == "focus" || ev.name == "blur") && ev.params.len() == 1 {
-        return format!("hayate_core::Event::{}({})", variant, ev.params[0].name);
-    }
     if ev.params.is_empty() {
         format!("hayate_core::Event::{}", variant)
     } else {
