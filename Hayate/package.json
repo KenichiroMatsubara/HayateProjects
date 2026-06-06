@@ -10,6 +10,8 @@
     "serve": "serve examples/web-demo --listen 3000",
     "check": "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
     "validate:proto": "node proto/scripts/validate-spec.mjs",
+    "generate:proto": "cargo run -p hayate-proto-generator",
+    "check:proto": "npm run validate:proto && npm run generate:proto && git diff --exit-code proto/generated",
     "clean": "cargo clean && rimraf examples/web-demo/pkg examples/web-demo/pkg-tiny-skia && node ../scripts/bootstrap-wasm-pkgs.mjs"
   },
   "devDependencies": {

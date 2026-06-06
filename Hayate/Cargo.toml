@@ -2,6 +2,7 @@
 members = [
     "crates/core",
     "crates/adapters/web",
+    "proto/generator",
 ]
 resolver = "2"
 

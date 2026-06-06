@@ -28,7 +28,11 @@ importers:
 
   Hayate/examples/web-demo/pkg-tiny-skia: {}
 
-  Hayate/proto: {}
+  Hayate/proto:
+    devDependencies:
+      ajv:
+        specifier: ^8.17.1
+        version: 8.18.0
 
   Tsubame/examples/hello-world:
     dependencies:

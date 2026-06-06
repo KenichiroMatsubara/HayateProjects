@@ -1,58 +1,81 @@
 #!/usr/bin/env node
-/** Validate proto/spec/*.json structure (ADR-0053). */
+/** Validate proto/spec/*.json against JSON Schema (ADR-0053). */
 
-import { loadProtocolSpec, SPEC_SECTIONS } from './load-spec.mjs';
+import Ajv2020 from 'ajv/dist/2020.js';
+import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
-const specDir = join(dirname(fileURLToPath(import.meta.url)), '../spec');
-const proto = loadProtocolSpec(specDir);
+import { SPEC_SECTIONS } from './load-spec.mjs';
 
-function assertArray(name, value) {
-  if (!Array.isArray(value)) {
-    throw new Error(`${name} must be an array`);
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const specDir = join(root, 'spec');
+const schemaDir = join(specDir, 'schema');
+
+const ajv = new Ajv2020({ allErrors: true, strict: false, validateSchema: false });
+
+function loadSchema(name) {
+  const path = join(schemaDir, name);
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+const compiled = new Map();
+
+function validatorFor(name) {
+  if (!compiled.has(name)) {
+    compiled.set(name, ajv.compile(loadSchema(name)));
+  }
+  return compiled.get(name);
+}
+
+const validators = {
+  types: validatorFor('type.schema.json'),
+  enums: validatorFor('enum.schema.json'),
+  opcodes: validatorFor('entry.schema.json'),
+  style_tags: validatorFor('entry.schema.json'),
+  event_kinds: validatorFor('entry.schema.json'),
+  element_kinds: validatorFor('simple_entry.schema.json'),
+  unset_kinds: validatorFor('simple_entry.schema.json'),
+  modifier_keys: validatorFor('simple_entry.schema.json'),
+};
+
+const validateManifest = validatorFor('manifest.schema.json');
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function assertValid(validator, data, label) {
+  if (!validator(data)) {
+    const detail = (validator.errors ?? [])
+      .map((e) => `${e.instancePath || '/'} ${e.message}`)
+      .join('; ');
+    throw new Error(`${label}: ${detail}`);
   }
 }
 
-function assertEntry(entry, section) {
-  if (typeof entry.name !== 'string' || entry.name.length === 0) {
-    throw new Error(`${section}: entry missing name`);
-  }
-  if (typeof entry.value !== 'number') {
-    throw new Error(`${section}.${entry.name}: value must be a number`);
+const manifest = readJson(join(specDir, 'manifest.json'));
+assertValid(validateManifest, manifest, 'manifest.json');
+
+const manifestSections = new Set(manifest.sections);
+for (const section of SPEC_SECTIONS) {
+  if (!manifestSections.has(section)) {
+    throw new Error(`manifest.json missing section: ${section}`);
   }
 }
 
 for (const section of SPEC_SECTIONS) {
-  assertArray(section, proto[section]);
-}
-
-for (const t of proto.types) {
-  if (typeof t.name !== 'string' || typeof t.raw_slots !== 'number') {
-    throw new Error(`types.${t.name ?? '?'}: invalid type definition`);
+  const path = join(specDir, `${section}.json`);
+  const data = readJson(path);
+  if (!Array.isArray(data)) {
+    throw new Error(`${section}.json must be an array`);
   }
-  if (!Array.isArray(t.fields)) throw new Error(`types.${t.name}: fields must be array`);
-}
-
-for (const en of proto.enums) {
-  if (typeof en.name !== 'string' || !Array.isArray(en.values)) {
-    throw new Error(`enums.${en.name ?? '?'}: invalid enum definition`);
+  const validator = validators[section];
+  for (let i = 0; i < data.length; i++) {
+    assertValid(validator, data[i], `${section}.json[${i}]`);
   }
 }
 
-for (const section of ['opcodes', 'style_tags', 'event_kinds']) {
-  for (const entry of proto[section]) {
-    assertEntry(entry, section);
-    if (entry.params !== undefined && !Array.isArray(entry.params)) {
-      throw new Error(`${section}.${entry.name}: params must be array`);
-    }
-  }
-}
-
-for (const section of ['element_kinds', 'unset_kinds', 'modifier_keys']) {
-  for (const entry of proto[section]) {
-    assertEntry(entry, section);
-  }
-}
-
-console.log(`Validated ${SPEC_SECTIONS.length} spec sections in ${specDir}`);
+console.log(
+  `Validated ${SPEC_SECTIONS.length} spec sections + manifest against JSON Schema in ${specDir}`,
+);

@@ -4,7 +4,7 @@
   "description": "Hayate-Tsubame Protocol Contract — JSON spec (ADR-0053)",
   "license": "Apache-2.0",
   "type": "module",
-  "files": ["spec", "scripts/load-spec.mjs", "scripts/validate-spec.mjs"],
+  "files": ["spec", "scripts/load-spec.mjs", "scripts/validate-spec.mjs", "generated"],
   "exports": {
     "./manifest": "./spec/manifest.json",
     "./types": "./spec/types.json",
@@ -19,5 +19,8 @@
   },
   "scripts": {
     "validate": "node scripts/validate-spec.mjs"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1"
   }
 }

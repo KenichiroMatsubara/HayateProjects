@@ -487,8 +487,6 @@ dependencies = [
  "image",
  "js-sys",
  "log",
- "serde",
- "serde_json",
  "skrifa",
  "slotmap",
  "tiny-skia",
@@ -510,6 +508,14 @@ dependencies = [
  "parley",
  "slotmap",
  "taffy",
+]
+
+[[package]]
+name = "hayate-proto-generator"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

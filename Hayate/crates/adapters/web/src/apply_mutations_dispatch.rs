@@ -12,7 +12,10 @@ pub(crate) trait ApplyMutationsHost {
 }
 
 mod dispatch {
-    include!(concat!(env!("OUT_DIR"), "/dispatch.rs"));
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../proto/generated/dispatch.rs"
+    ));
 }
 
 pub(crate) use dispatch::{apply_mutations_batch, unset_kind_from_u32};
