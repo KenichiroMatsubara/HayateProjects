@@ -6,7 +6,7 @@ use skrifa::{
     raw::FontRef,
 };
 use tiny_skia::{
-    Color, FillRule, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
+    BlendMode, Color, FillRule, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
 };
 
 use crate::straight_to_premultiplied;
@@ -56,6 +56,41 @@ impl ScenePainter for TinySkiaPainter<'_> {
             }
         } else if let Some(path) = rounded_rect_path(x, y, width, height, corner_radius) {
             pixmap.fill_path(&path, &paint, FillRule::Winding, transform, mask);
+        }
+    }
+
+    fn fill_rounded_ring(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        let transform = self.state.transform;
+        let mask = self.state.clip_masks.last();
+        let pixmap = &mut self.pixmap;
+        let bw = border_width.max(0.0);
+        let inner_w = (width - 2.0 * bw).max(0.0);
+        let inner_h = (height - 2.0 * bw).max(0.0);
+        if inner_w <= 0.0 || inner_h <= 0.0 {
+            self.fill_rect(x, y, width, height, color, outer_radius);
+            return;
+        }
+
+        let paint = color_to_paint(color);
+        if let Some(outer) = rounded_rect_path(x, y, width, height, outer_radius) {
+            pixmap.fill_path(&outer, &paint, FillRule::Winding, transform, mask);
+        }
+        let inner_r = (outer_radius - bw).max(0.0);
+        if let Some(inner) = rounded_rect_path(x + bw, y + bw, inner_w, inner_h, inner_r) {
+            let mut clear = Paint::default();
+            clear.set_color(Color::TRANSPARENT);
+            clear.blend_mode = BlendMode::Clear;
+            clear.anti_alias = true;
+            pixmap.fill_path(&inner, &clear, FillRule::Winding, transform, mask);
         }
     }
 

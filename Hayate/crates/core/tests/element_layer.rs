@@ -52,6 +52,125 @@ fn set_style_routes_layout_and_visual() {
 }
 
 #[test]
+fn border_radius_emits_rounded_background_rect() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(40, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+
+    let sg = tree.render(0.0);
+    let rects: Vec<_> = sg
+        .iter()
+        .filter_map(|(_, n)| match &n.kind {
+            NodeKind::Rect {
+                width,
+                height,
+                corner_radius,
+                ..
+            } if (*width - 100.0).abs() < 0.5 && (*height - 80.0).abs() < 0.5 => {
+                Some(*corner_radius)
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(rects, vec![12.0], "expected one rounded background rect");
+}
+
+#[test]
+fn border_radius_with_border_and_background_emits_nested_rounded_fills() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(41, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+            StyleProp::BorderColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::BorderWidth(4.0),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+
+    let sg = tree.render(0.0);
+    let mut outer = None;
+    let mut inner = None;
+    for (_, n) in sg.iter() {
+        if let NodeKind::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+            corner_radius,
+        } = &n.kind
+        {
+            if (*width - 100.0).abs() < 0.5 && (*height - 80.0).abs() < 0.5 {
+                outer = Some((*corner_radius, color[0]));
+            } else if (*width - 92.0).abs() < 0.5
+                && (*height - 72.0).abs() < 0.5
+                && (*x - 4.0).abs() < 0.5
+                && (*y - 4.0).abs() < 0.5
+            {
+                inner = Some((*corner_radius, color[2]));
+            }
+        }
+    }
+
+    assert_eq!(outer, Some((12.0, 1.0)), "outer border frame");
+    assert_eq!(inner, Some((8.0, 1.0)), "inner background inset");
+}
+
+#[test]
+fn border_radius_without_background_emits_rounded_ring() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(42, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BorderColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::BorderWidth(4.0),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+
+    let sg = tree.render(0.0);
+    let rings: Vec<_> = sg
+        .iter()
+        .filter_map(|(_, n)| match &n.kind {
+            NodeKind::RoundedRing {
+                width,
+                height,
+                outer_radius,
+                border_width,
+                ..
+            } if (*width - 100.0).abs() < 0.5 && (*height - 80.0).abs() < 0.5 => {
+                Some((*outer_radius, *border_width))
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(rings, vec![(12.0, 4.0)]);
+}
+
+#[test]
 fn flex_row_positions_children_with_gap() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(5, ElementKind::View);

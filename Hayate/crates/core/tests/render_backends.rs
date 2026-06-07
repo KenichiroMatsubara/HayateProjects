@@ -133,3 +133,64 @@ fn null_painter_accepts_walk() {
     let mut painter = NullPainter;
     render_scene_graph(&scene, &mut painter);
 }
+
+#[test]
+fn recording_painter_records_rounded_ring() {
+    let mut scene = SceneGraph::new();
+    scene.insert(Node {
+        kind: NodeKind::RoundedRing {
+            x: 4.0,
+            y: 4.0,
+            width: 40.0,
+            height: 30.0,
+            outer_radius: 8.0,
+            border_width: 2.0,
+            color: [0.0, 0.0, 1.0, 1.0],
+        },
+        children: Vec::new(),
+    });
+
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(&scene, &mut painter);
+
+    assert_eq!(painter.ops().len(), 1);
+    assert!(matches!(
+        painter.ops()[0],
+        DrawOp::FillRoundedRing {
+            x: 4.0,
+            y: 4.0,
+            width: 40.0,
+            height: 30.0,
+            outer_radius: 8.0,
+            border_width: 2.0,
+            color: [0.0, 0.0, 1.0, 1.0],
+        }
+    ));
+}
+
+#[test]
+fn recording_painter_records_rounded_rect_corner_radius() {
+    let mut scene = SceneGraph::new();
+    scene.insert(Node {
+        kind: NodeKind::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 20.0,
+            height: 20.0,
+            color: [1.0, 0.0, 0.0, 1.0],
+            corner_radius: 6.0,
+        },
+        children: Vec::new(),
+    });
+
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(&scene, &mut painter);
+
+    assert!(matches!(
+        painter.ops()[0],
+        DrawOp::FillRect {
+            corner_radius: 6.0,
+            ..
+        }
+    ));
+}

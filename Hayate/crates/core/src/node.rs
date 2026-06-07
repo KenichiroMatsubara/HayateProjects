@@ -24,6 +24,16 @@ pub enum NodeKind {
         color: [f32; 4],
         corner_radius: f32,
     },
+    /// Filled ring between an outer rounded rect and an inset inner rounded rect.
+    RoundedRing {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    },
     TextRun {
         x: f32,
         y: f32,
