@@ -1,0 +1,11 @@
+[package]
+name = "hayate-scene-renderer-vello"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Vello Scene Renderer for Hayate"
+
+[dependencies]
+hayate-core = { path = "../../core" }
+vello = { workspace = true }
+wgpu = { workspace = true }

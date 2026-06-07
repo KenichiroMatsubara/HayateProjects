@@ -57,7 +57,7 @@ _Avoid_: Virtual DOM, Component Tree
 _Avoid_: Backend, Driver, adapter 内での SceneGraph walk
 
 **ScenePainter**:
-`hayate-core` 内部の walk callback interface。`fill_rect` / `draw_text_run` / `draw_image` と `with_transform` / `with_clip_rect` を実装する。host 向け公開契約ではない（ADR-0054）。
+`hayate-core` 内部の walk callback interface。`fill_rect` / `draw_text_run` / `draw_image` と `push_transform` / `pop_transform` / `push_clip_rect` / `pop_clip` を実装する。host 向け公開契約ではない（ADR-0054）。
 _Avoid_: Scene Renderer と混同、Platform Adapter の責務
 
 **Render Host**:
