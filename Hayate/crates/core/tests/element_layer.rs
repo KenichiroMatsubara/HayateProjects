@@ -536,6 +536,32 @@ fn z_index_controls_paint_order() {
     assert!((order[1] - 1.0).abs() < 1e-3, "back (red) second");
 }
 
+// ── ADR-0060: Z-Order single ordering seam (ordered_children) ─────────────
+
+#[test]
+fn ordered_children_is_stable_paint_order() {
+    // document order a,b,c,d ; z: a=0, b=2, c=0, d=1
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(700, ElementKind::View);
+    let a = tree.element_create(701, ElementKind::View);
+    let b = tree.element_create(702, ElementKind::View);
+    let c = tree.element_create(703, ElementKind::View);
+    let d = tree.element_create(704, ElementKind::View);
+    tree.set_root(root);
+    for &ch in &[a, b, c, d] {
+        tree.element_append_child(root, ch);
+    }
+    tree.element_set_style(b, &[StyleProp::ZIndex(2)]);
+    tree.element_set_style(d, &[StyleProp::ZIndex(1)]);
+
+    // paint order = z 昇順、同 z は document 順で安定（後勝ち: a の後に c）
+    assert_eq!(tree.ordered_children(root), vec![a, c, d, b]);
+
+    // hit-test = paint の逆順（最前面 = z 最大 / 同 z は後の兄弟）
+    let hit_order: Vec<ElementId> = tree.ordered_children(root).into_iter().rev().collect();
+    assert_eq!(hit_order, vec![b, d, c, a]);
+}
+
 // ── Event system tests ───────────────────────────────────────────────────
 
 #[test]

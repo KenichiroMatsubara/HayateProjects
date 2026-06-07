@@ -169,13 +169,7 @@ fn walk(
             );
         }
         // No text runs for Image elements.
-        let mut children: Vec<(ElementId, i32)> = el
-            .children
-            .iter()
-            .map(|&cid| (cid, tree.elements.get(&cid).map_or(0, |c| c.visual.z_index)))
-            .collect();
-        children.sort_by_key(|&(_, z)| z);
-        for (child, _) in children {
+        for child in tree.ordered_children(id) {
             walk(
                 tree,
                 child,
@@ -285,14 +279,8 @@ fn walk(
         }
     }
 
-    // 4) Recurse into children, sorted by z_index (stable — preserves document order for ties).
-    let mut children: Vec<(ElementId, i32)> = el
-        .children
-        .iter()
-        .map(|&cid| (cid, tree.elements.get(&cid).map_or(0, |c| c.visual.z_index)))
-        .collect();
-    children.sort_by_key(|&(_, z)| z);
-    for (child, _) in children {
+    // 4) Recurse into children in paint order (Z-Order の単一正本: ADR-0060).
+    for child in tree.ordered_children(id) {
         walk(
             tree,
             child,

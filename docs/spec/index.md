@@ -26,7 +26,7 @@
 | §1 | [Hayate Core 原則](./01-core.md) | 5 | – | – |
 | §2 | [Element Layer](./02-element-layer.md) | 3 | 2 | – |
 | §3 | [Layout](./03-layout.md) | 2 | 1 | – |
-| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 9 | 2 | 1 |
+| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 10 | 1 | 1 |
 | §5 | [Text / Font / IME](./05-text-font-ime.md) | 7 | – | – |
 | §6 | [Event Model](./06-event-model.md) | 6 | – | – |
 | §7 | [Scroll](./07-scroll.md) | 3 | – | – |
@@ -35,9 +35,9 @@
 | §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 15 | 2 | 2 |
 | §11 | [Tsubame](./11-tsubame.md) | 6 | 1 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **68** | **10** | **10** |
+| | **合計** | **69** | **9** | **10** |
 
-全 **88 要件**。実装率（✅）77%。
+全 **88 要件**。実装率（✅）78%。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
@@ -47,7 +47,6 @@
 | ELEM-04 | Element変更モデル eager/deferred | §8 WEBA に集約済（実体は✅） |
 | ELEM-05 ★ | text-as-element | Canvasは property扱い、DOMは独立要素（非対称） |
 | LAY-03 | Raw Layer は layout なしで使用可 | 構造分離済、no-layout実利用/公開契約 未整備 |
-| REND-03 ★ | Z-Order は子順序 | 順序解決が3箇所に分散、単一seam無し |
 | REND-09 | Renderer Selection Policy | 5箇所に分散、単一seam無し |
 | WEBA-01 | モード自動判定 | 判定主体は host(Tsubame)側 |
 | PLAT-03 ★ | AccessKit を Core が所有 | a11yデータ✅、TreeUpdate生成/poll未実装 |
@@ -73,7 +72,6 @@
 | ID | 内容 | 関連項目 |
 |---|---|---|
 | C-2.1 | text-as-element が Canvas(property) と DOM(独立要素) で非対称。ADR-0058 の徹底に Canvas 修正が要る | ELEM-05 |
-| C-4.1 | Z-Order の順序規範が単一の居場所を持たず3箇所に分散（paint昇順 / hit-test降順 / resolved無ソート） | REND-03（アーキ候補1） |
 | C-10.5 | ADR-0055 の検証層が apply_mutations 方向のみ。delivery 方向の共有 fixture 欠落で両言語一致が無保証 | PROTO-17（アーキ候補3） |
 | C-10.6 | app font ID と font_family enum の値域接続が未決（100+予約帯案） | PROTO-19 |
 
@@ -102,6 +100,7 @@
 ### [解決]（ユーザー指示）
 | ID | 内容 | 対応 |
 |---|---|---|
+| C-4.1 | Z-Order の順序3分散（paint昇順 / hit-test降順 / resolved無ソート） | grill で `ordered_children` 単一 seam に集約決定。ADR-0060 / REND-03 ✅ |
 | C-11.1 | `tsubame-spec.md`「Tsubame は archive 化せず維持」 vs 単一正本への統合 | ユーザー指示で archive 送り。「維持」記述は破棄 |
 
 ## 運用（governance）

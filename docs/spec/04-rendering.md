@@ -24,11 +24,11 @@
 
 ## Z-Order
 
-### REND-03 — Z-Order は子順序（stacking context なし）★
-**規範文:** Z-Order は同一親内の兄弟順序で実現する。デフォルトは document order（後勝ち）、`StyleProp::ZIndex(n)` がその上書き。CSS stacking context は持たない。描画は昇順（低 z→高 z）、hit-test は降順（最上面から）で、両者は同一順序の逆順として一貫させる。
-**出典:** ADR-0021
-**状況:** 🟡 — 順序解決が3箇所に分散し、コンパレータが分岐: `scene_build.rs:177,294`（昇順安定・paint）、`tree.rs:988`（降順・hit-test）、`tree.rs:964` `walk_resolved`（無ソート・z_index を consumer へ委譲）。現状は paint/hit-test が偶然一貫しているが、単一の順序 seam がないため保証されない。
-**備考:** [要判断 C-4.1] Z-Order の順序規範が単一の居場所を持たない（アーキテクチャレビュー候補1）。`ordered_children` seam への集約候補。エスカレーション対象。
+### REND-03 — Z-Order は子順序（stacking context なし）
+**規範文:** Z-Order は同一親内の兄弟順序で実現する。デフォルトは document order（後勝ち）、`StyleProp::ZIndex(n)` がその上書き。CSS stacking context は持たない。順序解決は `ElementTree::ordered_children(id)`（paint order = z 昇順・同 z は document 安定）の単一 seam に集約し、paint は前方反復、hit-test は `.rev()` で消費する（hit = paint の逆順を構造的に保証）。`resolved_elements` / HTML 経路は意図的にこの seam を通さず document order を保つ（CSS / AT が stacking・読み上げ順を担う）。
+**出典:** ADR-0021, ADR-0060
+**状況:** ✅ — `tree.rs` `ordered_children()` に集約。`scene_build` の2 sort site と hit-test の独立コンパレータを撤去。回帰テスト（tie-break 後勝ち / paint・hit 逆順一致）あり。
+**備考:** [解決 C-4.1] 旧・順序3分散（paint昇順 / hit-test降順 / resolved無ソート）を単一 seam に統一。`walk_resolved` の document-order は ADR-0060 で意図的に seam 対象外（再ソート禁止）。
 
 ---
 
@@ -101,6 +101,6 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 9 | REND-01,02,04,05,06,07,08,10,11 |
-| 🟡部分 | 2 | REND-03, REND-09 |
+| ✅実装済み | 10 | REND-01,02,03,04,05,06,07,08,10,11 |
+| 🟡部分 | 1 | REND-09 |
 | ⬜（非公開・意図通り） | 1 | REND-12 |
