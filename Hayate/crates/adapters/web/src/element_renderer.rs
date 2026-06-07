@@ -445,6 +445,15 @@ impl HayateElementRenderer {
         Ok(id.to_u64() as f64)
     }
 
+    /// Returns element ids in `id` and its descendants. Query Hayate before remove.
+    pub fn element_subtree_ids(&self, id: f64) -> Vec<f64> {
+        self.tree
+            .subtree_element_ids(element_id_from_f64(id))
+            .into_iter()
+            .map(element_id_to_f64)
+            .collect()
+    }
+
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree
             .element_set_scroll_offset(element_id_from_f64(id), x, y);

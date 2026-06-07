@@ -664,6 +664,22 @@ impl ElementTree {
         self.elements.get(&id).and_then(|e| e.parent)
     }
 
+    /// Element ids in `root` and its descendants (pre-order). Empty when unknown.
+    pub fn subtree_element_ids(&self, root: ElementId) -> Vec<ElementId> {
+        if !self.elements.contains_key(&root) {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        let mut stack = vec![root];
+        while let Some(node) = stack.pop() {
+            out.push(node);
+            if let Some(el) = self.elements.get(&node) {
+                stack.extend(el.children.iter().copied());
+            }
+        }
+        out
+    }
+
     /// Run layout, lower the element tree into the scene graph, and return it.
     ///
     /// `timestamp_ms` is a monotonic host clock (e.g. `performance.now()`); it

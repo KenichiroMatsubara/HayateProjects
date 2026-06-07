@@ -9,13 +9,72 @@ class StubHayate implements RawHayate {
   listenerSeq = 1;
   registeredListeners: Array<{ elementId: number; eventKind: number; listenerId: number }> =
     [];
+  private readonly parentOf = new Map<number, number>();
+  private readonly childrenOf = new Map<number, Set<number>>();
 
   element_create(): void {}
   set_root(): void {}
-  element_append_child(): void {}
-  element_insert_before(): void {}
-  element_remove(): void {}
+  element_set_text(): void {}
+
+  element_append_child(parent: number, child: number): void {
+    this.linkParent(parent, child);
+  }
+
+  element_insert_before(parent: number, child: number, _before: number): void {
+    this.linkParent(parent, child);
+  }
+
+  element_remove(root: number): void {
+    const stack = [root];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      const children = this.childrenOf.get(node);
+      if (children !== undefined) {
+        for (const child of children) {
+          this.parentOf.delete(child);
+          stack.push(child);
+        }
+        this.childrenOf.delete(node);
+      }
+      const parent = this.parentOf.get(node);
+      if (parent !== undefined) {
+        this.childrenOf.get(parent)?.delete(node);
+        this.parentOf.delete(node);
+      }
+    }
+  }
+
+  element_subtree_ids(root: number): number[] {
+    const ids: number[] = [];
+    const stack = [root];
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      ids.push(node);
+      const children = this.childrenOf.get(node);
+      if (children !== undefined) {
+        for (const child of children) {
+          stack.push(child);
+        }
+      }
+    }
+    return ids;
+  }
+
   element_set_style(): void {}
+
+  private linkParent(parent: number, child: number): void {
+    const prevParent = this.parentOf.get(child);
+    if (prevParent !== undefined) {
+      this.childrenOf.get(prevParent)?.delete(child);
+    }
+    this.parentOf.set(child, parent);
+    let children = this.childrenOf.get(parent);
+    if (children === undefined) {
+      children = new Set();
+      this.childrenOf.set(parent, children);
+    }
+    children.add(child);
+  }
   apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void {
     this.mutations.push({
       ops: Array.from(ops),

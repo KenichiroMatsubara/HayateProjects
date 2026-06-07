@@ -16,6 +16,9 @@ export interface RawHayate {
   element_append_child(parent: number, child: number): void;
   element_insert_before(parent: number, child: number, before: number): void;
   element_remove(id: number): void;
+  element_set_text(id: number, text: string): void;
+  /** Element ids in `id` and its descendants (Hayate ElementTree is authoritative). */
+  element_subtree_ids(id: number): number[];
   element_set_style(id: number, packed: Float32Array): void;
   apply_mutations(
     ops: Float64Array,
