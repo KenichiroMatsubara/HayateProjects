@@ -12,6 +12,6 @@ pub use element::{
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextRunData};
 pub use render::{
-    NullBackend, RecordedFrame, RecordingBackend, RenderFont, RenderGlyph, RenderImage,
-    RenderImageAlphaType, RenderImageFormat,
+    DrawOp, NullPainter, RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage,
+    RenderImageAlphaType, RenderImageFormat, ScenePainter, SceneRecorder, render_scene_graph,
 };

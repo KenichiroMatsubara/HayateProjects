@@ -1,8 +1,13 @@
+mod painter;
+
 use std::sync::Arc;
 
 use linebender_resource_handle::{Blob, FontData};
 
-use crate::SceneGraph;
+pub use painter::{
+    DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,
+    render_scene_graph,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderGlyph {
@@ -55,49 +60,4 @@ pub struct RenderImage {
     pub format: RenderImageFormat,
     pub alpha_type: RenderImageAlphaType,
     pub data: Arc<[u8]>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RecordedFrame {
-    pub clear_color: [f32; 4],
-    pub scene: SceneGraph,
-}
-
-#[derive(Debug, Default)]
-pub struct RecordingBackend {
-    frames: Vec<RecordedFrame>,
-}
-
-impl RecordingBackend {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn render(&mut self, scene: &SceneGraph, clear_color: [f32; 4]) {
-        self.frames.push(RecordedFrame {
-            clear_color,
-            scene: scene.clone(),
-        });
-    }
-
-    pub fn clear(&mut self, clear_color: [f32; 4]) {
-        self.render(&SceneGraph::new(), clear_color);
-    }
-
-    pub fn frames(&self) -> &[RecordedFrame] {
-        &self.frames
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct NullBackend;
-
-impl NullBackend {
-    pub fn new() -> Self {
-        Self
-    }
-
-    pub fn render(&mut self, _scene: &SceneGraph, _clear_color: [f32; 4]) {}
-
-    pub fn clear(&mut self, _clear_color: [f32; 4]) {}
 }

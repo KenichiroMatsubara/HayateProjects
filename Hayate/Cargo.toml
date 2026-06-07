@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "crates/core",
+    "crates/scene-renderers/vello",
+    "crates/scene-renderers/tiny-skia",
     "crates/adapters/web",
     "proto/generator",
 ]

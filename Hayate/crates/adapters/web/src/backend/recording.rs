@@ -1,11 +1,11 @@
-use hayate_core::{RecordingBackend, SceneGraph};
+use hayate_core::{SceneGraph, SceneRecorder};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
 use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
-    recorder: RecordingBackend,
+    recorder: SceneRecorder,
 }
 
 impl SelectedBackend {
@@ -16,7 +16,7 @@ impl SelectedBackend {
     pub(crate) fn init_sync(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let _ = canvas;
         Ok(Self {
-            recorder: RecordingBackend::new(),
+            recorder: SceneRecorder::new(),
         })
     }
 }
@@ -27,7 +27,7 @@ impl CanvasBackend for SelectedBackend {
     }
 
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
-        self.recorder.render(scene, clear_color);
+        self.recorder.record(scene, clear_color);
         Ok(())
     }
 

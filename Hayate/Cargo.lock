@@ -484,13 +484,13 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "hayate-core",
+ "hayate-scene-renderer-tiny-skia",
+ "hayate-scene-renderer-vello",
  "image",
  "js-sys",
  "log",
- "skrifa",
  "slotmap",
  "tiny-skia",
- "vello",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -516,6 +516,24 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "hayate-scene-renderer-tiny-skia"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+ "skrifa",
+ "tiny-skia",
+]
+
+[[package]]
+name = "hayate-scene-renderer-vello"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+ "vello",
+ "wgpu",
 ]
 
 [[package]]

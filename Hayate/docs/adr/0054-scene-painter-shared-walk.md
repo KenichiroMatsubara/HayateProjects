@@ -23,12 +23,14 @@ pub trait ScenePainter {
     fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32, color: [f32; 4], corner_radius: f32);
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
     fn draw_image(&mut self, x: f32, y: f32, w: f32, h: f32, data: &RenderImage);
-    fn with_transform(&mut self, transform: [f64; 6], draw: impl FnOnce(&mut Self));
-    fn with_clip_rect(&mut self, x: f32, y: f32, w: f32, h: f32, draw: impl FnOnce(&mut Self));
+    fn push_transform(&mut self, transform: [f64; 6]);
+    fn pop_transform(&mut self);
+    fn push_clip_rect(&mut self, x: f32, y: f32, w: f32, h: f32);
+    fn pop_clip(&mut self);
 }
 ```
 
-Group → `with_transform`、Clip → `with_clip_rect`。z-order は `scene_build` 済みの children 順を信頼する。
+Group → `push_transform` / `pop_transform`、Clip → `push_clip_rect` / `pop_clip`。walk は対で呼ぶ。z-order は `scene_build` 済みの children 順を信頼する。grill 時の RAII scope（`with_*`）は Vello sub-scene の lifetime と両立しないため、trait は明示 stack API を採用した。
 
 ### 記録と診断
 
