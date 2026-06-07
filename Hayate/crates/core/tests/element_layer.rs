@@ -1382,6 +1382,48 @@ fn remove_clears_focused_element() {
 }
 
 #[test]
+fn pseudo_hover_applies_to_ancestor_when_pointer_over_child() {
+    use hayate_core::PseudoState;
+
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(70, ElementKind::View);
+    let child = tree.element_create(71, ElementKind::Button);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::BackgroundColor(Color::WHITE),
+        ],
+    );
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(Dimension::px(80.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
+    );
+    tree.element_append_child(root, child);
+    tree.element_set_pseudo_style(
+        root,
+        PseudoState::Hover,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+    );
+    tree.render(0.0);
+
+    let (entered, left) = tree.update_pointer_hover(Some(child));
+    assert!(entered.contains(&root), "parent must enter :hover with child");
+    assert!(entered.contains(&child));
+    assert!(left.is_empty());
+
+    let sg = tree.scene_graph();
+    // Scene graph should reflect hovered blue on root background.
+    assert!(!sg.roots().is_empty());
+}
+
+#[test]
 fn viewport_resize_reflows_percent_children() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(8001, ElementKind::View);
@@ -1473,46 +1515,4 @@ fn viewport_resize_does_not_override_explicit_root_px_size() {
         "explicit root px height must not track viewport, got {}",
         rect.3
     );
-}
-
-#[test]
-fn pseudo_hover_applies_to_ancestor_when_pointer_over_child() {
-    use hayate_core::PseudoState;
-
-    let mut tree = ElementTree::new();
-    let root = tree.element_create(70, ElementKind::View);
-    let child = tree.element_create(71, ElementKind::Button);
-    tree.set_root(root);
-    tree.set_viewport(200.0, 200.0);
-    tree.element_set_style(
-        root,
-        &[
-            StyleProp::Width(Dimension::px(200.0)),
-            StyleProp::Height(Dimension::px(200.0)),
-            StyleProp::BackgroundColor(Color::WHITE),
-        ],
-    );
-    tree.element_set_style(
-        child,
-        &[
-            StyleProp::Width(Dimension::px(80.0)),
-            StyleProp::Height(Dimension::px(40.0)),
-        ],
-    );
-    tree.element_append_child(root, child);
-    tree.element_set_pseudo_style(
-        root,
-        PseudoState::Hover,
-        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
-    );
-    tree.render(0.0);
-
-    let (entered, left) = tree.update_pointer_hover(Some(child));
-    assert!(entered.contains(&root), "parent must enter :hover with child");
-    assert!(entered.contains(&child));
-    assert!(left.is_empty());
-
-    let sg = tree.scene_graph();
-    // Scene graph should reflect hovered blue on root background.
-    assert!(!sg.roots().is_empty());
 }

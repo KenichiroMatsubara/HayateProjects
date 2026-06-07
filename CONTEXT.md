@@ -83,7 +83,7 @@ Renderer Protocol の実装の一つ。JS 内でフレーム分の mutations を
 _Avoid_: Tsubame Canvas Mode, 個別 element_set_* 呼び出し（Canvas Renderer では JS 側でバッチ化する）
 
 **Interaction Event**:
-ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。アプリロジック（ツールチップ表示等）用。`:hover` / `:active` / `:focus` に応じた**スタイル切替**は Hayate Render Layer が解決する（ADR-0056）。
+ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。アプリロジック（ツールチップ表示等）用。`:hover` / `:active` / `:focus` に応じた**スタイル切替**は Hayate Render Layer が解決する（ADR-0056）。Framework が Signal で毎フレーム `setStyle` する必要はない。
 _Avoid_: Signal ベースの hover スタイル切替をデフォルトパターンにする（擬似スタイル宣言を使う）
 
 **Pseudo-state Style**:
