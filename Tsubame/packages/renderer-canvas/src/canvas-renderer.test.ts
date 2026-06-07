@@ -12,9 +12,13 @@ class StubHayate implements RawHayate {
 
   element_create(): void {}
   set_root(): void {}
+  element_set_text(): void {}
   element_append_child(): void {}
   element_insert_before(): void {}
   element_remove(): void {}
+  element_subtree_ids(): number[] {
+    return [];
+  }
   element_set_style(): void {}
   element_set_pseudo_style(): void {}
   apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void {
@@ -94,7 +98,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(received).toEqual([{ kind: 'click', target: 2 }]);
   });
 
-  it('ignores deliveries for unknown listener ids after subtree removal', () => {
+  it('removeChild requires adapter unsubscribe before stale deliveries stop', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
     const renderer = new CanvasRenderer(hayate, sched);
@@ -106,11 +110,12 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     renderer.appendChild(child, grandchild);
 
     const handler = vi.fn();
-    renderer.addEventListener(grandchild, 'click', handler);
+    const unsub = renderer.addEventListener(grandchild, 'click', handler);
     renderer.removeChild(parent, child);
+    unsub();
 
     hayate.events = [[1, 0, 3, 0, 0]];
-    expect(() => sched.tick()).not.toThrow();
+    sched.tick();
     expect(handler).not.toHaveBeenCalled();
   });
 

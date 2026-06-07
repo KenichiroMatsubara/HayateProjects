@@ -34,8 +34,16 @@ Canvas Renderer のフレームバッチ入口。Tsubame と Hayate の結合点
 _Avoid_: 長期設計として Tsubame 側 bubble を正とする説明
 
 **Tsubame Adapter**:
-`tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持しつつレンダリング先だけを差し替える。
-_Avoid_: shared component runtime
+`tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持しつつレンダリング先だけを差し替える。document 構造の正本は持たず、`ElementId` ハンドルと mutation のみを `IRenderer` へ届ける（ADR-0057）。
+_Avoid_: shared component runtime, shadow document tree
+
+**Shadow Tree（移行対象）**:
+`tsubame-solid` が `solid-js/universal` のツリー走査 API 要件を満たすために JS 側に保持している `TsubameNode` 構造。Hayate `ElementTree` / ブラウザ DOM と三重管理になっており撤去対象（ADR-0057）。
+_Avoid_: 恒久設計、Virtual DOM なしの根拠として引用
+
+**Text Element**:
+Solid の文字列・`createTextNode` の正本表現。Hayate `ElementKind::Text` として Document Tree の子に載せる。`button` 直下のラベルも子 `text` element とする（ADR-0058）。性能が拮抗し計測で優劣がつかない場合、DOM Renderer の構造（`button` > `span`）を仕様 tie-break とする。
+_Avoid_: 仮想 TextNode、親への `setText` 集約、Hayate 未登録の負 ID
 
 ## Related Products
 

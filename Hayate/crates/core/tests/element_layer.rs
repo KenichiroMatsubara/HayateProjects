@@ -1,6 +1,6 @@
 use hayate_core::{
-    AlignValue, Color, Dimension, DisplayValue, DocumentEventKind, ElementKind, ElementTree, Event,
-    FlexDirectionValue, NodeKind, StyleProp,
+    AlignValue, Color, Dimension, DisplayValue, DocumentEventKind, ElementId, ElementKind,
+    ElementTree, Event, FlexDirectionValue, NodeKind, StyleProp,
 };
 
 // ── Layout/rendering helpers ─────────────────────────────────────────────
@@ -709,6 +709,27 @@ fn remove_subtree_drops_children() {
     assert_eq!(tree.element_kind(root), Some(ElementKind::View));
     assert_eq!(tree.element_kind(a), None);
     assert_eq!(tree.element_kind(b), None);
+}
+
+#[test]
+fn subtree_element_ids_returns_root_and_descendants() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(200, ElementKind::View);
+    let child = tree.element_create(201, ElementKind::View);
+    let grandchild = tree.element_create(202, ElementKind::Text);
+    tree.set_root(root);
+    tree.element_append_child(root, child);
+    tree.element_append_child(child, grandchild);
+
+    let ids: Vec<u64> = tree
+        .subtree_element_ids(child)
+        .into_iter()
+        .map(|id| id.to_u64())
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&child.to_u64()));
+    assert!(ids.contains(&grandchild.to_u64()));
+    assert!(tree.subtree_element_ids(ElementId::from_u64(999)).is_empty());
 }
 
 // ── Phase 5: TextInput + IME tests ──────────────────────────────────────

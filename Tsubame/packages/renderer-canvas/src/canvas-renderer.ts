@@ -28,9 +28,6 @@ export class CanvasRenderer implements IRenderer {
   private readonly raw: RawHayate;
   /** Hayate-issued listener id → host handler (ADR-0053). */
   private readonly listeners = new Map<number, ListenerEntry>();
-  /** Local parent/child index for subtree prune on `removeChild` (not bubble dispatch). */
-  private readonly parentOf = new Map<ElementId, ElementId>();
-  private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
   private readonly packet = new HayateMutationPacket();
@@ -76,18 +73,15 @@ export class CanvasRenderer implements IRenderer {
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
-    this.linkParent(parent, child);
     this.packet.enqueueAppendChild(parent, child);
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
-    this.linkParent(parent, child);
     this.packet.enqueueInsertBefore(parent, child, before);
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
     this.packet.enqueueRemove(child);
-    this.pruneLocalSubtree(child);
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
@@ -144,47 +138,4 @@ export class CanvasRenderer implements IRenderer {
     this.dispatchDeliveries(this.raw.poll_events());
     this.frameHandle = this.requestFrame(this.frame);
   };
-
-  private linkParent(parent: ElementId, child: ElementId): void {
-    const prevParent = this.parentOf.get(child);
-    if (prevParent !== undefined) {
-      this.childrenOf.get(prevParent)?.delete(child);
-    }
-    this.parentOf.set(child, parent);
-    let set = this.childrenOf.get(parent);
-    if (set === undefined) {
-      set = new Set();
-      this.childrenOf.set(parent, set);
-    }
-    set.add(child);
-  }
-
-  private pruneLocalSubtree(root: ElementId): void {
-    const removed = new Set<ElementId>();
-    const stack: ElementId[] = [root];
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      removed.add(node);
-      const children = this.childrenOf.get(node);
-      if (children !== undefined) {
-        for (const child of children) {
-          this.parentOf.delete(child);
-          stack.push(child);
-        }
-        this.childrenOf.delete(node);
-      }
-    }
-
-    const parent = this.parentOf.get(root);
-    if (parent !== undefined) {
-      this.childrenOf.get(parent)?.delete(root);
-      this.parentOf.delete(root);
-    }
-
-    for (const [listenerId, entry] of this.listeners) {
-      if (removed.has(entry.elementId)) {
-        this.listeners.delete(listenerId);
-      }
-    }
-  }
 }

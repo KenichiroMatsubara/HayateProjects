@@ -43,6 +43,15 @@ class StubHayate {
     this.calls.push('register_listener');
     return listenerId;
   }
+  element_create() {}
+  set_root() {}
+  element_set_text() {}
+  element_append_child() {}
+  element_insert_before() {}
+  element_remove() {}
+  element_subtree_ids() {
+    return [];
+  }
 }
 
 function manualScheduler() {
@@ -250,7 +259,7 @@ test('CanvasRenderer registers listeners and dispatches poll deliveries (ADR-005
   assert.deepEqual(received, [{ kind: 'click', target: 2 }]);
 });
 
-test('removeChild clears local subtree bookkeeping', () => {
+test('removeChild enqueues REMOVE without throwing on later poll', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);

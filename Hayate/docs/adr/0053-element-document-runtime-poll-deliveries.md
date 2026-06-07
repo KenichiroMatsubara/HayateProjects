@@ -112,3 +112,4 @@ Tsubame 生成射程は **wire + adapter vocabulary**（`StylePatch`, `EventKind
 - **Amends ADR-0049** — 正本形式を `protocol.yaml` 単体から `proto/spec/*.json` + JSON Schema へ
 - **Amends ADR-0018** — raw event poll から delivery poll へ進化（export poll 原則は維持）
 - **Amends ADR-0046** — scroll 基本セマンティクスを hayate-core runtime に集約。物理演算は Platform Adapter のまま
+- **Extended by ADR-0057** — `parentOf` 撤去に加え、`tsubame-solid` shadow tree 撤去で document tree 正本を backend 一箇所に限定

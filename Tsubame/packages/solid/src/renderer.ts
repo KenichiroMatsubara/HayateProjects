@@ -8,35 +8,28 @@ import { splitHayateStyle } from '@tsubame/renderer-protocol';
 import { activeRenderer } from './active-renderer.js';
 import {
   createElementNode,
-  createTextShadowNode,
-  type ElementNode,
-  type TextNode,
+  isTextInTextCollapse,
   type TsubameNode,
 } from './node.js';
 import { EVENT_PROP } from './events.js';
 
 function disposeEvents(node: TsubameNode): void {
-  if (node.kind !== 'element') return;
   for (const unsub of node.events.values()) unsub();
   node.events.clear();
   for (const child of node.children) disposeEvents(child);
 }
 
-function refreshText(parent: ElementNode): void {
-  const text = parent.children
-    .filter((n): n is TextNode => n.kind === 'text')
-    .map((n) => n.text)
-    .join('');
-  activeRenderer().setText(parent.id, text);
-}
-
-function nextElementSibling(parent: ElementNode, from: TsubameNode): ElementNode | undefined {
-  const start = parent.children.indexOf(from);
-  for (let i = start + 1; i < parent.children.length; i++) {
-    const n = parent.children[i];
-    if (n?.kind === 'element') return n;
+function insertIntoChildren(
+  parent: TsubameNode,
+  node: TsubameNode,
+  anchor?: TsubameNode | null,
+): void {
+  if (anchor != null) {
+    const i = parent.children.indexOf(anchor);
+    parent.children.splice(i < 0 ? parent.children.length : i, 0, node);
+  } else {
+    parent.children.push(node);
   }
-  return undefined;
 }
 
 const {
@@ -53,27 +46,35 @@ const {
   mergeProps,
 } = createRenderer<TsubameNode>({
   createElement(tag: string): TsubameNode {
-    return createElementNode(activeRenderer().createElement(tag as ElementKind));
+    const kind = tag as ElementKind;
+    const id = activeRenderer().createElement(kind);
+    return createElementNode(id, kind);
   },
 
   createTextNode(value: string): TsubameNode {
-    return createTextShadowNode(value);
+    const r = activeRenderer();
+    const id = r.createElement('text');
+    r.setText(id, value);
+    return createElementNode(id, 'text', value);
   },
 
   replaceText(textNode: TsubameNode, value: string): void {
-    if (textNode.kind !== 'text') return;
+    if (textNode.elementKind !== 'text') return;
     textNode.text = value;
-    if (textNode.parent !== null) {
-      refreshText(textNode.parent);
+    const parent = textNode.parent;
+    if (parent !== null && isTextInTextCollapse(parent, textNode)) {
+      activeRenderer().setText(parent.id, value);
+      return;
     }
+    activeRenderer().setText(textNode.id, value);
   },
 
   isTextNode(node: TsubameNode): boolean {
-    return node.kind === 'text';
+    return node.elementKind === 'text';
   },
 
   setProperty(node: TsubameNode, name: string, value: unknown): void {
-    if (node.kind !== 'element') return;
+    if (node.elementKind === 'text') return;
     const r = activeRenderer();
 
     if (name === 'style') {
@@ -111,44 +112,32 @@ const {
   },
 
   insertNode(parent: TsubameNode, node: TsubameNode, anchor?: TsubameNode | null): void {
-    if (parent.kind !== 'element') return;
     node.parent = parent;
+    insertIntoChildren(parent, node, anchor);
 
-    if (anchor != null) {
-      const i = parent.children.indexOf(anchor);
-      parent.children.splice(i < 0 ? parent.children.length : i, 0, node);
-    } else {
-      parent.children.push(node);
-    }
+    const r = activeRenderer();
 
-    if (node.kind === 'text') {
-      refreshText(parent);
+    if (isTextInTextCollapse(parent, node)) {
+      r.setText(parent.id, node.text);
+      r.removeChild(parent.id, node.id);
       return;
     }
 
-    const r = activeRenderer();
-    const realAnchor =
-      anchor == null
-        ? undefined
-        : anchor.kind === 'element'
-        ? anchor
-        : nextElementSibling(parent, anchor);
-
-    if (realAnchor !== undefined) {
-      r.insertBefore(parent.id, node.id, realAnchor.id);
-    } else {
+    if (anchor == null) {
       r.appendChild(parent.id, node.id);
+      return;
     }
+    r.insertBefore(parent.id, node.id, anchor.id);
   },
 
   removeNode(parent: TsubameNode, node: TsubameNode): void {
-    if (parent.kind !== 'element') return;
     const i = parent.children.indexOf(node);
     if (i >= 0) parent.children.splice(i, 1);
     node.parent = null;
 
-    if (node.kind === 'text') {
-      refreshText(parent);
+    if (isTextInTextCollapse(parent, node)) {
+      activeRenderer().setText(parent.id, '');
+      activeRenderer().removeChild(parent.id, node.id);
       return;
     }
 
@@ -161,7 +150,7 @@ const {
   },
 
   getFirstChild(node: TsubameNode): TsubameNode | undefined {
-    return node.kind === 'element' ? node.children[0] : undefined;
+    return node.children[0];
   },
 
   getNextSibling(node: TsubameNode): TsubameNode | undefined {
@@ -186,4 +175,4 @@ export {
   mergeProps,
 };
 
-export type { ElementNode };
+export type { TsubameNode as ElementNode };
