@@ -226,6 +226,13 @@ impl ElementTree {
             Some(e) => e,
             None => return,
         };
+        // ADR-0058: text は text-like 要素にのみ宿る — `Text`（内容）/ `TextInput`
+        // （placeholder）。`view` / `button` / `image` / `scroll-view` はテキストを
+        // 子 `text` 要素で持ち、親へ集約しない。非 text 要素への set は無視する
+        // （wire 駆動の外部入力なので panic せず防御的に no-op）。
+        if !matches!(el.kind, ElementKind::Text | ElementKind::TextInput) {
+            return;
+        }
         el.text = Some(text.to_string());
         el.text_layout = None;
         let taffy_node = el.taffy_node;
@@ -842,11 +849,29 @@ impl ElementTree {
         !self.layout.layout_cache.is_empty()
     }
 
+    /// Z-Order の単一正本。`id` の子兄弟を **paint order**（z 昇順・同 z は
+    /// document 順で安定 = 後勝ち）で返す。
+    ///
+    /// 描画（`scene_build`）はこの順で前方反復し、hit-test は `.rev()` で最前面から
+    /// 走る。「hit-test = paint の逆順」を構造的に保証するため、Z-Order の順序解決は
+    /// この 1 メソッドに集約する。`resolved_elements` / HTML 経路は意図的にこの seam を
+    /// 通さず document order を保つ（CSS が stacking、将来の a11y 読み上げ順は document
+    /// order）。ADR-0021 / ADR-0060。
+    pub fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
+        let mut children = match self.elements.get(&id) {
+            Some(el) => el.children.clone(),
+            None => return Vec::new(),
+        };
+        // 安定ソート: 同 z は元の document 順を保持する。
+        children.sort_by_key(|cid| self.elements.get(cid).map_or(0, |c| c.visual.z_index));
+        children
+    }
+
     /// Returns the deepest element whose bounding rect contains (x, y),
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        hit_test_walk(&self.layout.layout_cache, &self.elements, root, x, y)
+        hit_test_walk(self, root, x, y)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -966,28 +991,16 @@ fn walk_resolved(
     }
 }
 
-fn hit_test_walk(
-    cache: &HashMap<ElementId, (f32, f32, f32, f32)>,
-    elements: &HashMap<ElementId, Element>,
-    id: ElementId,
-    x: f32,
-    y: f32,
-) -> Option<ElementId> {
-    let &(ex, ey, ew, eh) = cache.get(&id)?;
+fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {
+    let &(ex, ey, ew, eh) = tree.layout.layout_cache.get(&id)?;
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
     }
-    let el = elements.get(&id)?;
-    // Visit children in reverse paint order so the topmost element wins.
-    let mut ordered: Vec<(usize, ElementId, i32)> = el
-        .children
-        .iter()
-        .enumerate()
-        .map(|(idx, &cid)| (idx, cid, elements.get(&cid).map_or(0, |c| c.visual.z_index)))
-        .collect();
-    ordered.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| b.0.cmp(&a.0)));
-    for (_, child, _) in ordered {
-        if let Some(hit) = hit_test_walk(cache, elements, child, x, y) {
+    tree.elements.get(&id)?;
+    // Visit children in reverse paint order (`.rev()`) so the topmost element wins.
+    // Sharing `ordered_children` keeps hit-test as the exact reverse of paint order.
+    for child in tree.ordered_children(id).into_iter().rev() {
+        if let Some(hit) = hit_test_walk(tree, child, x, y) {
             return Some(hit);
         }
     }
