@@ -1,4 +1,5 @@
 import type { ElementId, ElementKind } from './element.js';
+import type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
 import type { StylePatch } from './style.js';
 import type { EventHandler, EventKind, Unsubscribe } from './event.js';
 
@@ -16,6 +17,8 @@ export interface IRenderer {
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void;
   removeChild(parent: ElementId, child: ElementId): void;
   setStyle(id: ElementId, style: StylePatch): void;
+  /** Hayate CSS pseudo-class block (`:hover` / `:active` / `:focus`). */
+  setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void;
   setText(id: ElementId, text: string): void;
 
   /**

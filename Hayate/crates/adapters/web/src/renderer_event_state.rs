@@ -24,7 +24,6 @@ pub(crate) fn emit_event(
 /// `Some(tree)` so interaction events route through the document runtime and
 /// surface as poll deliveries via `ElementTree::poll_deliveries()`.
 pub(crate) struct RendererEventState {
-    pub hovered_element: Option<ElementId>,
     pub active_element: Option<ElementId>,
     /// Focused element for event routing. Canvas mode mirrors this into
     /// `ElementTree` for cursor-blink rendering.
@@ -37,7 +36,6 @@ pub(crate) struct RendererEventState {
 impl RendererEventState {
     pub fn new() -> Self {
         Self {
-            hovered_element: None,
             active_element: None,
             focused_element: None,
             last_pointer_pos: None,
@@ -113,6 +111,9 @@ impl RendererEventState {
                 Event::ActiveStart { target_id: t },
             );
             self.active_element = Some(t);
+            if let Some(tree) = tree.as_mut() {
+                tree.set_active_element(Some(t));
+            }
             self.focus(tree, t);
         } else if let Some(prev) = self.focused_element.take() {
             emit_event(
@@ -128,6 +129,9 @@ impl RendererEventState {
     pub fn pointer_up(&mut self, tree: Option<&mut ElementTree>, explicit_fallback: Option<ElementId>) {
         let mut tree = tree;
         let target = self.active_element.take().or(explicit_fallback);
+        if let Some(tree) = tree.as_mut() {
+            tree.set_active_element(None);
+        }
         if let Some(t) = target {
             emit_event(
                 &mut tree,
@@ -162,15 +166,11 @@ impl RendererEventState {
 
     pub fn hover_enter(&mut self, tree: Option<&mut ElementTree>, target: ElementId) {
         let mut tree = tree;
-        if self.hovered_element != Some(target) {
-            if let Some(prev) = self.hovered_element {
-                emit_event(
-                    &mut tree,
-                    &mut self.raw_events,
-                    Event::HoverLeave { target_id: prev },
-                );
-            }
-            self.hovered_element = Some(target);
+        let entered = tree
+            .as_mut()
+            .map(|t| t.hover_enter_element(target))
+            .unwrap_or(false);
+        if entered {
             emit_event(
                 &mut tree,
                 &mut self.raw_events,
@@ -181,8 +181,11 @@ impl RendererEventState {
 
     pub fn hover_leave(&mut self, tree: Option<&mut ElementTree>, target: ElementId) {
         let mut tree = tree;
-        if self.hovered_element == Some(target) {
-            self.hovered_element = None;
+        let left = tree
+            .as_mut()
+            .map(|t| t.hover_leave_element(target))
+            .unwrap_or(false);
+        if left {
             emit_event(
                 &mut tree,
                 &mut self.raw_events,
@@ -288,11 +291,6 @@ impl RendererEventState {
     }
 
     pub fn on_subtree_remove<F: Fn(ElementId) -> bool>(&mut self, in_subtree: F) {
-        if let Some(h) = self.hovered_element {
-            if in_subtree(h) {
-                self.hovered_element = None;
-            }
-        }
         if let Some(a) = self.active_element {
             if in_subtree(a) {
                 self.active_element = None;
@@ -305,24 +303,25 @@ impl RendererEventState {
         }
     }
 
-    fn apply_hover(&mut self, tree: Option<&mut ElementTree>, new_hover: Option<ElementId>) {
+    fn apply_hover(&mut self, tree: Option<&mut ElementTree>, deepest_hit: Option<ElementId>) {
         let mut tree = tree;
-        if new_hover != self.hovered_element {
-            if let Some(prev) = self.hovered_element {
-                emit_event(
-                    &mut tree,
-                    &mut self.raw_events,
-                    Event::HoverLeave { target_id: prev },
-                );
-            }
-            if let Some(cur) = new_hover {
-                emit_event(
-                    &mut tree,
-                    &mut self.raw_events,
-                    Event::HoverEnter { target_id: cur },
-                );
-            }
-            self.hovered_element = new_hover;
+        let Some(t) = tree.as_mut() else {
+            return;
+        };
+        let (entered, left) = t.update_pointer_hover(deepest_hit);
+        for id in left {
+            emit_event(
+                &mut tree,
+                &mut self.raw_events,
+                Event::HoverLeave { target_id: id },
+            );
+        }
+        for id in entered {
+            emit_event(
+                &mut tree,
+                &mut self.raw_events,
+                Event::HoverEnter { target_id: id },
+            );
         }
     }
 }

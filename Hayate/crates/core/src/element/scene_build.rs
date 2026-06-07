@@ -1,6 +1,7 @@
 use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::pseudo_state::resolve_visual;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 
@@ -25,6 +26,7 @@ impl Default for InheritedStyle {
 
 pub fn build(tree: &ElementTree) -> SceneGraph {
     let mut sg = SceneGraph::new();
+    let interaction = tree.interaction_snapshot();
     if let Some(root) = tree.root() {
         walk(
             tree,
@@ -34,6 +36,7 @@ pub fn build(tree: &ElementTree) -> SceneGraph {
             &mut sg,
             None,
             InheritedStyle::default(),
+            &interaction,
         );
     }
     sg
@@ -52,11 +55,13 @@ fn walk(
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
     inherited: InheritedStyle,
+    interaction: &crate::element::pseudo_state::InteractionSnapshot,
 ) {
     let el = match tree.elements.get(&id) {
         Some(e) => e,
         None => return,
     };
+    let visual = resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
     let layout = match tree.layout.taffy.layout(el.taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -67,10 +72,9 @@ fn walk(
     let h = layout.size.height;
 
     // Resolve inherited text-style values for this element and its subtree.
-    let confirmed_color = el.visual.text_color.unwrap_or(inherited.color);
-    let confirmed_font_size = el.visual.font_size.unwrap_or(inherited.font_size);
-    let confirmed_font_family = el
-        .visual
+    let confirmed_color = visual.text_color.unwrap_or(inherited.color);
+    let confirmed_font_size = visual.font_size.unwrap_or(inherited.font_size);
+    let confirmed_font_family = visual
         .font_family
         .clone()
         .or(inherited.font_family.clone());
@@ -131,7 +135,7 @@ fn walk(
         effective_parent
     };
 
-    // 1–2) Background and border fills.
+    // 1–2) Background and border fills (effective visual includes pseudo states).
     emit_visual_box(
         sg,
         effective_parent,
@@ -139,11 +143,11 @@ fn walk(
         y,
         w,
         h,
-        el.visual.border_radius,
-        el.visual.border_width,
-        el.visual.background_color,
-        el.visual.border_color,
-        el.visual.opacity,
+        visual.border_radius,
+        visual.border_width,
+        visual.background_color,
+        visual.border_color,
+        visual.opacity,
     );
 
     // 3a) Image content.
@@ -180,6 +184,7 @@ fn walk(
                 sg,
                 effective_parent,
                 child_inherited.clone(),
+                interaction,
             );
         }
         return;
@@ -188,7 +193,7 @@ fn walk(
     // 3b) Text runs (TextInput uses content_layout; all others use text_layout).
     if el.kind == ElementKind::TextInput {
         let color = confirmed_color
-            .with_opacity(el.visual.opacity)
+            .with_opacity(visual.opacity)
             .to_array_f32();
         // content_layout covers committed text + active preedit; fall back to
         // placeholder (text_layout) only when neither is present.
@@ -250,7 +255,7 @@ fn walk(
                             width: 1.5,
                             height: confirmed_font_size * 1.2,
                             color: confirmed_color
-                                .with_opacity(el.visual.opacity)
+                                .with_opacity(visual.opacity)
                                 .to_array_f32(),
                             corner_radius: 0.0,
                         },
@@ -261,7 +266,7 @@ fn walk(
         }
     } else if let Some(tl) = el.text_layout.as_ref() {
         let color = confirmed_color
-            .with_opacity(el.visual.opacity)
+            .with_opacity(visual.opacity)
             .to_array_f32();
         for run in &tl.runs {
             emit(
@@ -296,6 +301,7 @@ fn walk(
             sg,
             effective_parent,
             child_inherited.clone(),
+            interaction,
         );
     }
 }

@@ -17,6 +17,7 @@ export interface RawHayate {
   element_insert_before(parent: number, child: number, before: number): void;
   element_remove(id: number): void;
   element_set_style(id: number, packed: Float32Array): void;
+  element_set_pseudo_style(id: number, state: number, packed: Float32Array): void;
   apply_mutations(
     ops: Float64Array,
     styles: Float32Array,

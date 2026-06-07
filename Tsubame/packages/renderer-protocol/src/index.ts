@@ -10,6 +10,7 @@ export type {
   HayateDimension,
   HayateStyle,
   StylePatch,
+  HayateCssStyle,
 } from './style.js';
 
 export type {
@@ -20,3 +21,11 @@ export type {
 } from './event.js';
 
 export type { IRenderer } from './renderer.js';
+
+export type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
+export {
+  PSEUDO_STATE_CODE,
+  PSEUDO_STYLE_KEYS,
+  isPseudoStyleKey,
+  splitHayateStyle,
+} from './pseudo-style.js';
