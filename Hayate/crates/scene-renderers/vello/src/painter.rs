@@ -71,6 +71,54 @@ impl ScenePainter for VelloPainter<'_> {
         }
     }
 
+    fn fill_rounded_ring(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        let bw = border_width.max(0.0);
+        let inner_w = (width - 2.0 * bw).max(0.0);
+        let inner_h = (height - 2.0 * bw).max(0.0);
+        if inner_w <= 0.0 || inner_h <= 0.0 {
+            self.fill_rect(x, y, width, height, color, outer_radius);
+            return;
+        }
+
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        let outer_r = outer_radius.max(0.0) as f64;
+        let inner_r = (outer_radius - bw).max(0.0) as f64;
+        let x0 = x as f64;
+        let y0 = y as f64;
+        let x1 = (x + width) as f64;
+        let y1 = (y + height) as f64;
+        let ix0 = (x + bw) as f64;
+        let iy0 = (y + bw) as f64;
+        let ix1 = (x + bw + inner_w) as f64;
+        let iy1 = (y + bw + inner_h) as f64;
+
+        use vello::kurbo::{BezPath, RoundedRect, Shape};
+
+        let mut path = BezPath::new();
+        path.extend(
+            RoundedRect::new(x0, y0, x1, y1, outer_r)
+                .path_elements(0.1),
+        );
+        let mut inner = BezPath::new();
+        inner.extend(
+            RoundedRect::new(ix0, iy0, ix1, iy1, inner_r)
+                .path_elements(0.1),
+        );
+        inner.reverse_subpaths();
+        path.extend(inner);
+        scene.fill(Fill::EvenOdd, Affine::IDENTITY, brush, None, &path);
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
