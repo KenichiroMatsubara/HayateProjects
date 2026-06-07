@@ -83,8 +83,12 @@ Renderer Protocol の実装の一つ。JS 内でフレーム分の mutations を
 _Avoid_: Tsubame Canvas Mode, 個別 element_set_* 呼び出し（Canvas Renderer では JS 側でバッチ化する）
 
 **Interaction Event**:
-ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。Hayate はイベントを通知するだけであり、インタラクション状態に応じたスタイル切り替えは上位層（Hayabusa の Signal / Effect）の責務。Hayate は「ホバー中スタイル」という概念を持たない。
-_Avoid_: :hover スタイル、状態付きスタイル、CSS 擬似クラス
+ポインタやキーボード操作に起因する要素単位のイベント。`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等を含み、`poll-events()` で上位層に通知される。アプリロジック用の通知であり、`:hover` 等の擬似クラススタイル解決とは分離する（ADR-0056）。
+_Avoid_: 擬似クラススタイルを Signal + `setStyle` で表現する設計
+
+**Document Tree（文書ツリー）**:
+UI の element 親子構造の正本。Canvas/HTML 経路では Hayate `ElementTree`、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。Tsubame Adapter は `ElementId` ハンドルのみ保持し、構造を JS 側に複製しない（ADR-0057）。
+_Avoid_: shadow tree、Virtual DOM、renderer 側 parent map を正本とする設計
 
 **Component**:
 `.hybs` ファイル一つがコンポーネント一つに対応する。コンポーネント名はファイル名（拡張子除く）のアッパーキャメルケースで決まる（例: `MyButton.hybs` → `<MyButton>`）。名前の明示的な宣言は不要。`<script>` のトップレベルに宣言されたすべての名前は `<template>` から参照可能である。エクスポート宣言は不要。

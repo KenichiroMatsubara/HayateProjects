@@ -9,8 +9,8 @@ GPU 描画を担う Rust/WASM 側の UI 基盤。`Element Document Runtime`（el
 _Avoid_: layout/GPU のみの paint server としてのみ説明する、Hayabusa 中心の説明
 
 **Element Document Runtime**:
-`hayate-core` Element Layer 内の軽量 document engine。element tree・listener 登録・bubble/non-bubble dispatch・scroll-view の基本 offset 更新・focus 等を担う。Platform Adapter は raw 入力（pointer / wheel / EditContext 等）をここへ渡す。`hayate-adapter-web` 等は input 変換と描画 flush のみ。host は dispatch 結果を `poll_events()`（または後継 export）で受け取り、listener id に紐づく callback を実行する。慣性 scroll・:hover スタイル切替は担わない。
-_Avoid_: adapter 層ごとの document semantics、Tsubame 側 bubble、Hayate から host への import callback（ADR-0018 参照）
+`hayate-core` Element Layer 内の軽量 document engine。element tree・listener 登録・bubble/non-bubble dispatch・scroll-view の基本 offset 更新・focus 等を担う。Canvas/HTML 経路の **Document Tree 正本**（ADR-0057）。Platform Adapter は raw 入力（pointer / wheel / EditContext 等）をここへ渡す。`hayate-adapter-web` 等は input 変換と描画 flush のみ。host は dispatch 結果を `poll_events()`（または後継 export）で受け取り、listener id に紐づく callback を実行する。慣性 scroll は担わない。
+_Avoid_: adapter 層ごとの document semantics、Tsubame 側 bubble、Tsubame 側 shadow tree、Hayate から host への import callback（ADR-0018 参照）
 
 **Tsubame**:
 JS/TS 向けのレンダラーターゲット基盤。`Renderer Protocol`・`DOM Renderer`・`Canvas Renderer` を提供し、各フレームワーク固有ランタイムをそのまま持ち込む。
