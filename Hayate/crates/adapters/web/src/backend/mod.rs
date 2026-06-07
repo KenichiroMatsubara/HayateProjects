@@ -112,6 +112,152 @@ pub(crate) trait SceneRenderer {
     fn resize(&mut self, _width: u32, _height: u32) {}
 }
 
+impl SceneRendererKind {
+    /// Stable renderer id for logs and error messages.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Vello => "vello",
+            Self::TinySkia => "tiny-skia",
+            Self::Recording => "recording",
+            Self::Null => "null",
+        }
+    }
+
+    pub(crate) async fn try_init(
+        self,
+        canvas: HtmlCanvasElement,
+    ) -> Result<Box<dyn SceneRenderer>, JsValue> {
+        match self {
+            Self::Vello => {
+                #[cfg(feature = "backend-vello")]
+                {
+                    return Ok(Box::new(VelloBackend::init(canvas).await?));
+                }
+                #[cfg(not(feature = "backend-vello"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+            Self::TinySkia => {
+                #[cfg(feature = "backend-tiny-skia")]
+                {
+                    return Ok(Box::new(TinySkiaBackend::init(canvas).await?));
+                }
+                #[cfg(not(feature = "backend-tiny-skia"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+            Self::Recording => {
+                #[cfg(feature = "backend-recording")]
+                {
+                    return Ok(Box::new(RecordingBackend::init(canvas).await?));
+                }
+                #[cfg(not(feature = "backend-recording"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+            Self::Null => {
+                #[cfg(feature = "backend-null")]
+                {
+                    return Ok(Box::new(NullBackend::init(canvas).await?));
+                }
+                #[cfg(not(feature = "backend-null"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+        }
+    }
+
+    /// Synchronous init for one-way runtime fallback (ADR-0050).
+    pub(crate) fn try_init_sync_for_fallback(
+        self,
+        canvas: HtmlCanvasElement,
+    ) -> Result<Box<dyn SceneRenderer>, JsValue> {
+        match self {
+            Self::Vello => Err(JsValue::from_str(&format!(
+                "renderer cannot be initialized synchronously for runtime fallback: {}",
+                self.name()
+            ))),
+            Self::TinySkia => {
+                #[cfg(feature = "backend-tiny-skia")]
+                {
+                    return Ok(Box::new(TinySkiaBackend::init_sync(canvas)?));
+                }
+                #[cfg(not(feature = "backend-tiny-skia"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+            Self::Recording => {
+                #[cfg(feature = "backend-recording")]
+                {
+                    return Ok(Box::new(RecordingBackend::init_sync(canvas)?));
+                }
+                #[cfg(not(feature = "backend-recording"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+            Self::Null => {
+                #[cfg(feature = "backend-null")]
+                {
+                    return Ok(Box::new(NullBackend::init_sync(canvas)?));
+                }
+                #[cfg(not(feature = "backend-null"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(self))
+                }
+            }
+        }
+    }
+
+    pub(crate) fn classify_init_error(self, error: &JsValue) -> RendererSelectionReason {
+        let message = js_error_message(error).to_ascii_lowercase();
+
+        if self == Self::Vello
+            && (message.contains("webgpu")
+                || message.contains("navigator.gpu")
+                || message.contains("adapter not found"))
+        {
+            return RendererSelectionReason::WebGpuUnavailable;
+        }
+
+        if message.contains("surface lost")
+            || message.contains("surface outdated")
+            || message.contains("validation error")
+        {
+            return RendererSelectionReason::SurfaceLost;
+        }
+
+        if message.contains("surface not supported")
+            || message.contains("context unavailable")
+            || message.contains("failed to cast")
+        {
+            return RendererSelectionReason::CapabilityUnsupported;
+        }
+
+        if message.contains("not compiled") {
+            return RendererSelectionReason::DisabledByPolicy;
+        }
+
+        RendererSelectionReason::RendererInitFailed
+    }
+}
+
+fn not_compiled_error(kind: SceneRendererKind) -> JsValue {
+    JsValue::from_str(&format!("renderer not compiled: {}", kind.name()))
+}
+
 pub(crate) struct RenderHost {
     canvas: HtmlCanvasElement,
     renderer: Option<Box<dyn SceneRenderer>>,
@@ -139,17 +285,17 @@ impl RenderHost {
             if !selection_policy.allows(renderer_kind) {
                 attempts.push(format!(
                     "{}: {:?}",
-                    renderer_name(renderer_kind),
+                    renderer_kind.name(),
                     RendererSelectionReason::DisabledByPolicy
                 ));
                 continue;
             }
 
-            match init_renderer(renderer_kind, canvas.clone()).await {
+            match renderer_kind.try_init(canvas.clone()).await {
                 Ok(renderer) => {
                     log::info!(
                         "selected scene renderer: {}",
-                        renderer_name(renderer.kind())
+                        renderer.kind().name()
                     );
                     return Ok(Self {
                         canvas,
@@ -158,14 +304,14 @@ impl RenderHost {
                     });
                 }
                 Err(error) => {
-                    let reason = classify_selection_reason(renderer_kind, &error);
+                    let reason = renderer_kind.classify_init_error(&error);
                     log::warn!(
                         "scene renderer init failed: {} ({reason:?})",
-                        renderer_name(renderer_kind)
+                        renderer_kind.name()
                     );
                     attempts.push(format!(
                         "{}: {reason:?} ({})",
-                        renderer_name(renderer_kind),
+                        renderer_kind.name(),
                         js_error_message(&error)
                     ));
                 }
@@ -186,7 +332,7 @@ impl RenderHost {
         let Some(failed_kind) = self.renderer.as_ref().map(|renderer| renderer.kind()) else {
             return Err(error);
         };
-        let reason = classify_selection_reason(failed_kind, &error);
+        let reason = failed_kind.classify_init_error(&error);
         if !is_runtime_fallback_reason(reason) {
             return Err(error);
         }
@@ -197,8 +343,8 @@ impl RenderHost {
 
         log::warn!(
             "scene renderer runtime failure: {} ({reason:?}); one-way fallback to {}",
-            renderer_name(failed_kind),
-            renderer_name(next_kind)
+            failed_kind.name(),
+            next_kind.name()
         );
 
         let failed_renderer = self
@@ -207,7 +353,7 @@ impl RenderHost {
             .expect("runtime fallback requires an active scene renderer");
         drop(failed_renderer);
 
-        match init_renderer_for_runtime_fallback(next_kind, self.canvas.clone()) {
+        match next_kind.try_init_sync_for_fallback(self.canvas.clone()) {
             Ok(mut renderer) => {
                 debug_assert!(self.selection_policy.allows(renderer.kind()));
                 renderer.resize(self.canvas.width(), self.canvas.height());
@@ -217,9 +363,9 @@ impl RenderHost {
             }
             Err(fallback_error) => Err(JsValue::from_str(&format!(
                 "{} failed with {reason:?} ({}); fallback to {} also failed ({})",
-                renderer_name(failed_kind),
+                failed_kind.name(),
                 js_error_message(&error),
-                renderer_name(next_kind),
+                next_kind.name(),
                 js_error_message(&fallback_error)
             ))),
         }
@@ -287,58 +433,6 @@ impl SceneRenderer for RenderHost {
     }
 }
 
-async fn init_renderer(
-    renderer_kind: SceneRendererKind,
-    canvas: HtmlCanvasElement,
-) -> Result<Box<dyn SceneRenderer>, JsValue> {
-    match renderer_kind {
-        SceneRendererKind::Vello => {
-            #[cfg(feature = "backend-vello")]
-            {
-                return Ok(Box::new(VelloBackend::init(canvas).await?));
-            }
-            #[cfg(not(feature = "backend-vello"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: vello"))
-            }
-        }
-        SceneRendererKind::TinySkia => {
-            #[cfg(feature = "backend-tiny-skia")]
-            {
-                return Ok(Box::new(TinySkiaBackend::init(canvas).await?));
-            }
-            #[cfg(not(feature = "backend-tiny-skia"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: tiny-skia"))
-            }
-        }
-        SceneRendererKind::Recording => {
-            #[cfg(feature = "backend-recording")]
-            {
-                return Ok(Box::new(RecordingBackend::init(canvas).await?));
-            }
-            #[cfg(not(feature = "backend-recording"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: recording"))
-            }
-        }
-        SceneRendererKind::Null => {
-            #[cfg(feature = "backend-null")]
-            {
-                return Ok(Box::new(NullBackend::init(canvas).await?));
-            }
-            #[cfg(not(feature = "backend-null"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: null"))
-            }
-        }
-    }
-}
-
 fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
     matches!(
         reason,
@@ -346,95 +440,6 @@ fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
             | RendererSelectionReason::CapabilityUnsupported
             | RendererSelectionReason::RendererInitFailed
     )
-}
-
-fn init_renderer_for_runtime_fallback(
-    renderer_kind: SceneRendererKind,
-    canvas: HtmlCanvasElement,
-) -> Result<Box<dyn SceneRenderer>, JsValue> {
-    match renderer_kind {
-        SceneRendererKind::TinySkia => {
-            #[cfg(feature = "backend-tiny-skia")]
-            {
-                return Ok(Box::new(TinySkiaBackend::init_sync(canvas)?));
-            }
-            #[cfg(not(feature = "backend-tiny-skia"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: tiny-skia"))
-            }
-        }
-        SceneRendererKind::Recording => {
-            #[cfg(feature = "backend-recording")]
-            {
-                return Ok(Box::new(RecordingBackend::init_sync(canvas)?));
-            }
-            #[cfg(not(feature = "backend-recording"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: recording"))
-            }
-        }
-        SceneRendererKind::Null => {
-            #[cfg(feature = "backend-null")]
-            {
-                return Ok(Box::new(NullBackend::init_sync(canvas)?));
-            }
-            #[cfg(not(feature = "backend-null"))]
-            {
-                let _ = canvas;
-                Err(JsValue::from_str("renderer not compiled: null"))
-            }
-        }
-        SceneRendererKind::Vello => Err(JsValue::from_str(
-            "renderer cannot be initialized synchronously for runtime fallback: vello",
-        )),
-    }
-}
-
-fn classify_selection_reason(
-    renderer_kind: SceneRendererKind,
-    error: &JsValue,
-) -> RendererSelectionReason {
-    let message = js_error_message(error);
-    let message = message.to_ascii_lowercase();
-
-    if renderer_kind == SceneRendererKind::Vello
-        && (message.contains("webgpu")
-            || message.contains("navigator.gpu")
-            || message.contains("adapter not found"))
-    {
-        return RendererSelectionReason::WebGpuUnavailable;
-    }
-
-    if message.contains("surface lost")
-        || message.contains("surface outdated")
-        || message.contains("validation error")
-    {
-        return RendererSelectionReason::SurfaceLost;
-    }
-
-    if message.contains("surface not supported")
-        || message.contains("context unavailable")
-        || message.contains("failed to cast")
-    {
-        return RendererSelectionReason::CapabilityUnsupported;
-    }
-
-    if message.contains("not compiled") {
-        return RendererSelectionReason::DisabledByPolicy;
-    }
-
-    RendererSelectionReason::RendererInitFailed
-}
-
-fn renderer_name(renderer_kind: SceneRendererKind) -> &'static str {
-    match renderer_kind {
-        SceneRendererKind::Vello => "vello",
-        SceneRendererKind::TinySkia => "tiny-skia",
-        SceneRendererKind::Recording => "recording",
-        SceneRendererKind::Null => "null",
-    }
 }
 
 fn js_error_message(error: &JsValue) -> String {

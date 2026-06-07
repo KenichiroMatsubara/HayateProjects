@@ -46,6 +46,7 @@ web-sys = { version = "0.3", features = [
 slotmap = "1"
 anyhow = "1"
 log = "0.4"
+accesskit = { version = "0.24.0", features = ["serde"] }
 
 [patch.crates-io]
 # Vendored crates — upstream は切断し workspace path 依存に切り替え (ADR-0007)

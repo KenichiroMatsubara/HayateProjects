@@ -69,10 +69,10 @@
 **備考:** web surface 初期化は当面 adapter-web に残留（ADR-0054 H1、decisions-pending Open #2 → §未決）。
 
 ### REND-09 — Renderer Selection Policy
-**規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。
+**規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
 **出典:** ADR-0050
-**状況:** 🟡 — `backend/mod.rs` に `PRODUCTION_RENDERERS=[Vello, TinySkia]` と policy 関数は存在。ただし選択・分類・命名・fallback の論理が複数の match/文字列箇所に分散（policy が単一 seam に集約されていない）。
-**備考:** [改善候補] アーキテクチャレビュー候補7（5編集箇所の集約）。機能はするが拡張時にコスト。
+**状況:** ✅ — `SceneRendererKind::{name, try_init, try_init_sync_for_fallback, classify_init_error}`（`backend/mod.rs`）；`RenderHost::init_with_policy` が preference list を反復。
+**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。
 
 ### REND-10 — Vello を主候補 renderer とする
 **規範文:** GPU 描画の主候補 renderer は Vello（Linebender, wgpu ベース）とし、`SceneGraph`→Vello Scene 変換は薄い独立 crate（`scene-renderers/vello`）に置く。公開 API は `render_scene` のみ。
@@ -101,6 +101,6 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 10 | REND-01,02,03,04,05,06,07,08,10,11 |
-| 🟡部分 | 1 | REND-09 |
+| ✅実装済み | 11 | REND-01〜11 |
+| 🟡部分 | 0 | — |
 | ⬜（非公開・意図通り） | 1 | REND-12 |

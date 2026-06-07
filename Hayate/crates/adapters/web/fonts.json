@@ -1,0 +1,114 @@
+[
+  {
+    "family": "Noto Sans JP",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
+    "scripts": ["cjk", "japanese"]
+  },
+  {
+    "family": "Noto Sans KR",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf",
+    "scripts": ["cjk", "korean"]
+  },
+  {
+    "family": "Noto Sans SC",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+    "scripts": ["cjk", "simplified-chinese"]
+  },
+  {
+    "family": "Noto Sans TC",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf",
+    "scripts": ["cjk", "traditional-chinese"]
+  },
+  {
+    "family": "Noto Sans Arabic",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
+    "scripts": ["arabic"]
+  },
+  {
+    "family": "Noto Sans Thai",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf",
+    "scripts": ["thai"]
+  },
+  {
+    "family": "Noto Sans Devanagari",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf",
+    "scripts": ["devanagari"]
+  },
+  {
+    "family": "Noto Sans Hebrew",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf",
+    "scripts": ["hebrew"]
+  },
+  {
+    "family": "Noto Serif",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
+  },
+  {
+    "family": "Noto Sans Mono",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansmono/NotoSansMono%5Bwdth%2Cwght%5D.ttf"
+  },
+  {
+    "family": "Inter",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf"
+  },
+  {
+    "family": "Roboto",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/apache/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
+  },
+  {
+    "family": "Open Sans",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf"
+  },
+  {
+    "family": "Lato",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lato/Lato-Regular.ttf"
+  },
+  {
+    "family": "Poppins",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Regular.ttf"
+  },
+  {
+    "family": "Montserrat",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Raleway",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/raleway/Raleway%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Nunito",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nunito/Nunito%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Oswald",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/oswald/Oswald%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Source Sans 3",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Playfair Display",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Merriweather",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/merriweather/Merriweather-Regular.ttf"
+  },
+  {
+    "family": "Lora",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lora/Lora%5Bwght%5D.ttf"
+  },
+  {
+    "family": "JetBrains Mono",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Fira Code",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/firacode/FiraCode%5Bwght%5D.ttf"
+  },
+  {
+    "family": "Source Code Pro",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcecodepro/SourceCodePro%5Bital%2Cwght%5D.ttf"
+  }
+]

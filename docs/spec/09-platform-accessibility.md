@@ -21,14 +21,14 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 ### PLAT-03 — AccessKit は Core が所有
 **規範文:** Core はアクセシビリティツリー（`accesskit::TreeUpdate`）の生成責務を持ち、`role` / `aria_label` 等の a11y データを Element に保持する。Platform Adapter は AccessKit のプラットフォーム実装を呼び OS の AT（UIA / NSAccessibility / AT-SPI / Web ARIA）に報告する。
 **出典:** ADR-0041, `CONTEXT.md`「AccessKit」
-**状況:** 🟡 — a11y データ捕捉は実装済み（`Element` / `ResolvedElement` の `aria_label` / `role`、`element_set_aria_label`、`walk_resolved` で emit）。ただし `accesskit` クレート依存・`TreeUpdate` 生成・`poll_accessibility` export は未実装（Hayate crates に accesskit 依存なし）。
-**備考:** TODO.md item 8「accesskit 未実装（設計確定 2026-05-30）」と一致。
+**状況:** ✅ — `accesskit` 依存（`hayate-core`）；`ElementTree::accessibility_update()` が `layout_cache` 境界矩形 + `aria_label` / `role` から `TreeUpdate` を生成（`element/accessibility.rs`）；Canvas adapter `poll_accessibility()` が JSON 返却（`element_renderer.rs`）。
+**備考:** Parley `LayoutAccessibility::build_nodes` による text run 詳細は将来。ネイティブ Platform Adapter への報告は PLAT-04。
 
 ### PLAT-04 — AccessKit 展開順序：ネイティブ優先
 **規範文:** AccessKit 対応はネイティブ（UIA / NSAccessibility / AT-SPI）を優先し、Web Canvas Mode は Safari が EditContext API を正式サポートした時点で `accesskit-web`（不可視 ARIA DOM）を最優先で対応する。Web HTML Mode は実 DOM に ARIA 属性付与で対応する。
 **出典:** ADR-0041
-**状況:** ⬜ — 設計確定・実装は将来。コードなし。
-**備考:** PLAT-03 の TreeUpdate 生成が前提。
+**状況:** 🟡 — 設計確定。Core `TreeUpdate` 生成は完了（PLAT-03）。ネイティブ AT 報告（UIA/NSAccessibility/AT-SPI）と Web Canvas `accesskit-web` は未着手。
+**備考:** ネイティブ Platform Adapter crate が前提。
 
 ### PLAT-05 — surface / frame timing / a11y はアダプタ責務外（設計境界）
 **規範文:** サーフェス生成・フレームタイミングは wgpu、アクセシビリティ報告は AccessKit が担い、Platform Adapter の責務に含めない。
@@ -41,6 +41,6 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 3 | PLAT-01, PLAT-02, PLAT-05 |
-| 🟡部分 | 1 | PLAT-03 |
-| ⬜未実装 | 1 | PLAT-04 |
+| ✅実装済み | 4 | PLAT-01, PLAT-02, PLAT-03, PLAT-05 |
+| 🟡部分 | 1 | PLAT-04 |
+| ⬜未実装 | 0 | — |

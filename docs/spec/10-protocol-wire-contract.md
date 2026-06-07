@@ -121,8 +121,8 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-17 — codec 検証（event/delivery 方向）
 **規範文:** delivery wire を `proto/spec/fixtures/delivery_encode.json`（`[{name, kind, fields, wire}]`、positional、全 event kind）の共有 fixture で固定し、Rust は `event → encode_event → wire` 照合、TS は `wire → parseEvent → kind+fields` 照合（ADR-0055 検証層 C5）。両側が同一 fixture を本番方向で参照し、両言語の delivery wire 一致を保証する。
 **出典:** ADR-0055（2026-06-07 amend で検証層 C5 を追加）
-**状況:** ⬜ — **設計確定・実装未着手**。検証トポロジ（fixture 形式・両側の検証方向）は grill で確定し ADR-0055 に C5 として記録済み。`delivery_encode.json` と Rust/TS テストの実装が残る。現状 `proto/spec/fixtures/` は `ops_encode.json` / `style_encode.json` のみ、TS `delivery.test.ts` はハードコード行。
-**備考:** [解決→実装待ち C-10.5] ADR-0055 の「event 方向は既に対称」の仮定（盲点）を amend で是正。設計は固定済みで、徹底実装フェーズの作業項目。アーキテクチャレビュー候補3。
+**状況:** ✅ — `proto/spec/fixtures/delivery_encode.json`（全16 event kind）；Rust `delivery_codec_fixtures.rs`（`encode_event_wire` 照合）；TS `delivery-fixtures.test.ts`（`parseEvent` 照合）；`delivery.test.ts` は fixture 駆動。
+**備考:** [解決 C-10.5] generator に `encode_event_wire`（native テスト用）を追加し `encode_event` はそれを委譲。
 
 ---
 
@@ -137,8 +137,8 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-19 — app font と font_family の接続
 **規範文:** `font_family` は wire 上も登録上も**文字列**を正とする。app font は `hayate.config`（ADR-0044）で `{family, url}` を宣言し `register_font` に**名前**で接続する（数値 app font ID は導入しない）。web プリセットの名前は spec `enums.json` `font_family` が正本、名前→CDN URL は web adapter の `fonts.json` から `builtin_font_url` を codegen し、`fonts.json` は spec プリセット名を網羅する。
 **出典:** ADR-0061（decisions-pending Open #1 を解決。ADR-0043/0044/0049）
-**状況:** 🟡 — 文字列ベースの接続は実装済み（`register_font`/`configure_fonts` が名前で登録、`build_text_layout` が解決、app登録 > builtin fetch > bundled default）。残: web `fonts.json` 新設と `builtin_font_url` の codegen 化、spec↔manifest の coverage check（ADR-0061 実装タスク、Cursor 担当）。
-**備考:** [解決→codegen待ち C-10.6] 「100+ 予約帯」案は font_family が文字列のため obsolete として正式 reject（ADR-0061）。URL は web adapter 層に留め spec に入れない（ADR-0043 維持）。
+**状況:** ✅ — `fonts.json` + `build.rs` codegen → `builtin_fonts.rs`；`enums.json` 全 preset の URL カバレッジテスト。文字列接続（`register_font`/`configure_fonts`、app登録 > builtin fetch > bundled default）も実装済み。
+**備考:** [解決 C-10.6] 「100+ 予約帯」案は obsolete として正式 reject（ADR-0061）。URL は web adapter 層に留め spec に入れない（ADR-0043 維持）。
 
 ---
 
@@ -146,8 +146,8 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 15 | PROTO-01〜08, 10, 12〜16, 18 |
-| 🟡部分 | 3 | PROTO-09, PROTO-11, PROTO-19 |
-| ⬜未実装 | 1 | PROTO-17 |
+| ✅実装済み | 17 | PROTO-01〜08, 10, 12〜19 |
+| 🟡部分 | 2 | PROTO-09, PROTO-11 |
+| ⬜未実装 | 0 | — |
 
-**所見:** §10 は驚くほど実装が進んでいる結合点である。WIT 廃止・JSON 単一正本・string table・wire codec 両側生成・C1/C2 fixture・event encoder spec 駆動・Event フィールド名一致まで完了。残るギャップは設計確定済みで実装待ち — **delivery 方向の検証 fixture（PROTO-17, ADR-0055 C5）** と **フォントプリセットの codegen 化（PROTO-19, ADR-0061）**。いずれも徹底実装フェーズ（Cursor）の作業対象。
+**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き parser 疑い）と PROTO-11（WASM 実結合 C3）のみ。

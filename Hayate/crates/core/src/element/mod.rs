@@ -1,3 +1,4 @@
+pub mod accessibility;
 pub mod document_runtime;
 pub mod event_spec;
 pub mod id;

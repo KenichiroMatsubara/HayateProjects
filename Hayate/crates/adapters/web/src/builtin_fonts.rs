@@ -1,0 +1,81 @@
+//! Web adapter built-in font URL lookup (ADR-0043, ADR-0061).
+//!
+//! `fonts.json` is the manifest; `build.rs` generates the match table.
+
+include!(concat!(env!("OUT_DIR"), "/builtin_fonts_gen.rs"));
+
+#[cfg(test)]
+mod tests {
+    use super::builtin_font_url;
+    use std::collections::HashMap;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn manifest_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    }
+
+    fn fonts_manifest() -> Vec<serde_json::Value> {
+        let text = fs::read_to_string(manifest_dir().join("fonts.json")).expect("read fonts.json");
+        serde_json::from_str(&text).expect("parse fonts.json")
+    }
+
+    fn font_family_enum_values() -> Vec<String> {
+        let enums_path = manifest_dir().join("../../../proto/spec/enums.json");
+        let text = fs::read_to_string(&enums_path).expect("read enums.json");
+        let enums: Vec<serde_json::Value> = serde_json::from_str(&text).expect("parse enums.json");
+        let font_family = enums
+            .iter()
+            .find(|e| e["name"] == "font_family")
+            .expect("font_family enum");
+        font_family["values"]
+            .as_array()
+            .expect("font_family values")
+            .iter()
+            .map(|v| v["value"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn every_font_family_preset_has_url() {
+        let manifest = fonts_manifest();
+        let urls: HashMap<String, String> = manifest
+            .iter()
+            .map(|entry| {
+                (
+                    entry["family"].as_str().unwrap().to_string(),
+                    entry["url"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+
+        for family in font_family_enum_values() {
+            assert!(
+                urls.contains_key(&family),
+                "font_family preset {family:?} missing from fonts.json"
+            );
+        }
+    }
+
+    #[test]
+    fn known_families_return_expected_urls() {
+        assert_eq!(
+            builtin_font_url("Noto Sans JP"),
+            Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf")
+        );
+        assert_eq!(
+            builtin_font_url("Inter"),
+            Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf")
+        );
+        assert_eq!(
+            builtin_font_url("Lato"),
+            Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lato/Lato-Regular.ttf")
+        );
+    }
+
+    #[test]
+    fn unknown_family_returns_none() {
+        assert_eq!(builtin_font_url("Comic Sans MS"), None);
+        assert_eq!(builtin_font_url(""), None);
+    }
+}
