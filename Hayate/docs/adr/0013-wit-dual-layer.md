@@ -1,4 +1,6 @@
 > **Superseded by ADR-0049** — WIT は廃止。`@hayate/protocol-spec`（`proto/spec/*.json`）が機械可読な単一正本となった。
+>
+> **Superseded by ADR-0060** — 外部二層 export（Raw Layer の独立公開）は棄却。現行契約は Element path のみ。
 
 # Hayate の WIT インターフェースを Element Layer と Raw Layer の二層とする
 

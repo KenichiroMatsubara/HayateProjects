@@ -9,8 +9,16 @@ GPU 描画を担う Rust/WASM 側の UI 基盤。`Element Document Runtime`（el
 _Avoid_: layout/GPU のみの paint server としてのみ説明する、Hayabusa 中心の説明
 
 **Element Document Runtime**:
-`hayate-core` Element Layer 内の軽量 document engine。element tree・listener 登録・bubble/non-bubble dispatch・scroll-view の基本 offset 更新・focus 等を担う。Canvas/HTML 経路の **Document Tree 正本**（ADR-0057）。`:hover` / `:active` / `:focus` を Hayate CSS の一部として保持し、render 時に effective style へ合成する（ADR-0056）。Platform Adapter は raw 入力（pointer / wheel / EditContext 等）をここへ渡す。`hayate-adapter-web` 等は input 変換と描画 flush のみ。host は dispatch 結果を `poll_events()`（または後継 export）で受け取り、listener id に紐づく callback を実行する。慣性 scroll は担わない。
-_Avoid_: adapter 層ごとの document semantics、Tsubame 側 bubble、Tsubame 側 shadow tree、Hayate から host への import callback（ADR-0018 参照）
+`hayate-core` Element Layer 内の軽量 document engine。**Interaction Session**（focus / active / hover の正本）・element tree・listener 登録・bubble/non-bubble dispatch・scroll-view の基本 offset 更新を担う。Canvas/HTML 経路の **Document Tree 正本**（ADR-0057）。`:hover` / `:active` / `:focus` 擬似スタイル宣言は element に保持し、Session 状態に応じて render 時 effective style へ合成する（ADR-0056）。Platform Adapter は raw 入力（pointer / wheel / EditContext 等）を Session 更新命令に変換して渡すだけ。`hayate-adapter-web` 等は input 変換と描画 flush のみ。host は dispatch 結果を `poll_events()` で受け取り、listener id に紐づく callback を実行する。慣性 scroll は担わない。
+_Avoid_: adapter 層ごとの document semantics、adapter 側での focus/active 二重保持、Tsubame 側 bubble、Tsubame 側 shadow tree、Hayate から host への import callback（ADR-0018 参照）
+
+**Interaction Session**:
+Element Document Runtime が保持する pointer 由来の一時状態。focus（単一）・active（単一）・hover（祖先鎖の集合）の trio を正本とし、listener dispatch と擬似スタイル解決の両方の入力になる。Platform Adapter は座標や DOM target を element id に解決して Session を更新するだけで、状態を複製しない。
+_Avoid_: RendererEventState を正本とする設計、ElementTree と Adapter による focus 手動同期
+
+**Platform Input**:
+Platform Adapter が document へ渡す入力の変換結果。座標 hit-test や DOM `target` から得た element id と、wheel / key / IME 等の platform イベント種別を、Runtime の Session 更新に使う。Adapter は状態を持たない（ADR-0060・Interaction Session 深掘りと整合）。
+_Avoid_: RendererEventState、adapter 側 focus/active 保持
 
 **Tsubame**:
 JS/TS 向けのレンダラーターゲット基盤。`Renderer Protocol`・`DOM Renderer`・`Canvas Renderer` を提供し、各フレームワーク固有ランタイムをそのまま持ち込む。
