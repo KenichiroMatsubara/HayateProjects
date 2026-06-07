@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use fontique::FontInfoOverride;
@@ -13,6 +13,9 @@ pub use crate::element::event_spec::Event;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::layout_pass::LayoutPass;
+use crate::element::pseudo_state::{
+    self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
+};
 use crate::element::scene_build;
 use crate::element::style::{StyleProp, StylePropKind};
 use crate::element::taffy_bridge::{self, MeasureCtx};
@@ -82,6 +85,8 @@ pub(crate) struct Element {
     pub aria_label: Option<String>,
     /// ARIA role (e.g. "button", "listitem"). None uses the implicit role.
     pub role: Option<String>,
+    /// Hayate CSS pseudo-class overrides (`:hover` / `:active` / `:focus`).
+    pub pseudo_styles: PseudoStyles,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -125,6 +130,9 @@ pub struct ElementTree {
     /// Element that owns the text-input cursor blink. Tracked here (not in the
     /// adapter) so `render(timestamp_ms)` can advance the blink itself per ADR-0032.
     pub(crate) focused_element: Option<ElementId>,
+    /// Elements matching CSS `:hover` (self or descendant under pointer).
+    pub(crate) hovered_elements: HashSet<ElementId>,
+    pub(crate) active_element: Option<ElementId>,
     pub(crate) runtime: DocumentRuntime,
 }
 
@@ -138,7 +146,17 @@ impl ElementTree {
             scene_cache: SceneGraph::new(),
             event_queue: Vec::new(),
             focused_element: None,
+            hovered_elements: HashSet::new(),
+            active_element: None,
             runtime: DocumentRuntime::new(),
+        }
+    }
+
+    pub fn interaction_snapshot(&self) -> InteractionSnapshot {
+        InteractionSnapshot {
+            hovered: self.hovered_elements.clone(),
+            active: self.active_element,
+            focused: self.focused_element,
         }
     }
 
@@ -193,6 +211,7 @@ impl ElementTree {
             content_layout: None,
             aria_label: None,
             role: None,
+            pseudo_styles: PseudoStyles::default(),
         };
         self.elements.insert(id, element);
 
@@ -643,9 +662,68 @@ impl ElementTree {
                 self.focused_element = None;
                 self.layout.last_cursor_toggle_ms = None;
             }
+            self.hovered_elements.remove(&node);
+            if self.active_element == Some(node) {
+                self.active_element = None;
+            }
         }
         if self.root == Some(id) {
             self.root = None;
+        }
+    }
+
+    /// Update CSS `:hover` set from the deepest hit under the pointer.
+    /// Returns `(entered, left)` for event dispatch.
+    pub fn update_pointer_hover(&mut self, deepest_hit: Option<ElementId>) -> (Vec<ElementId>, Vec<ElementId>) {
+        let next = match deepest_hit {
+            Some(hit) => hover_set_for_hit(&self.elements, hit),
+            None => HashSet::new(),
+        };
+        let (entered, left) = diff_hover_sets(&self.hovered_elements, &next);
+        self.hovered_elements = next;
+        (entered, left)
+    }
+
+    /// HTML `mouseenter` path: mark a single element hovered (parent retains hover over children).
+    pub fn hover_enter_element(&mut self, id: ElementId) -> bool {
+        self.hovered_elements.insert(id)
+    }
+
+    /// HTML `mouseleave` path: clear hover on the element that was left.
+    pub fn hover_leave_element(&mut self, id: ElementId) -> bool {
+        self.hovered_elements.remove(&id)
+    }
+
+    pub fn set_active_element(&mut self, id: Option<ElementId>) {
+        self.active_element = id;
+    }
+
+    pub fn element_set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: &[StyleProp]) {
+        let el = match self.elements.get_mut(&id) {
+            Some(e) => e,
+            None => return,
+        };
+        let slot = el.pseudo_styles.props_mut(state);
+        for prop in props {
+            if prop.is_layout() {
+                continue;
+            }
+            pseudo_state::upsert_style_prop(slot, prop);
+        }
+    }
+
+    pub fn element_unset_pseudo_style(
+        &mut self,
+        id: ElementId,
+        state: PseudoState,
+        kinds: &[StylePropKind],
+    ) {
+        let el = match self.elements.get_mut(&id) {
+            Some(e) => e,
+            None => return,
+        };
+        for kind in kinds {
+            pseudo_state::unset_pseudo_prop(&mut el.pseudo_styles, state, *kind);
         }
     }
 
@@ -766,9 +844,18 @@ impl ElementTree {
                 &mut self.event_queue,
             );
         }
+        let interaction = self.interaction_snapshot();
         let mut out = Vec::new();
         if let Some(root) = self.root {
-            walk_resolved(&self.elements, &self.layout.taffy, root, 0.0, 0.0, &mut out);
+            walk_resolved(
+                &self.elements,
+                &self.layout.taffy,
+                root,
+                0.0,
+                0.0,
+                &interaction,
+                &mut out,
+            );
         }
         out
     }
@@ -807,6 +894,7 @@ fn walk_resolved(
     id: ElementId,
     ox: f32,
     oy: f32,
+    interaction: &InteractionSnapshot,
     out: &mut Vec<(ElementId, ResolvedElement)>,
 ) {
     let el = match elements.get(&id) {
@@ -819,6 +907,7 @@ fn walk_resolved(
     };
     let x = ox + layout.location.x;
     let y = oy + layout.location.y;
+    let visual = pseudo_state::resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
 
     let display_text_content = if el.kind == ElementKind::TextInput {
         let combined = match &el.preedit {
@@ -838,26 +927,26 @@ fn walk_resolved(
             y,
             width: layout.size.width,
             height: layout.size.height,
-            background_color: el.visual.background_color,
-            opacity: el.visual.opacity,
-            border_radius: el.visual.border_radius,
-            border_width: el.visual.border_width,
-            border_color: el.visual.border_color,
-            text_color: el.visual.text_color,
-            font_size: el.visual.font_size,
-            font_weight: el.visual.font_weight,
-            z_index: el.visual.z_index,
+            background_color: visual.background_color,
+            opacity: visual.opacity,
+            border_radius: visual.border_radius,
+            border_width: visual.border_width,
+            border_color: visual.border_color,
+            text_color: visual.text_color,
+            font_size: visual.font_size,
+            font_weight: visual.font_weight,
+            z_index: visual.z_index,
             text: el.text.clone(),
             src: el.src.clone(),
             text_content: display_text_content,
-            font_family: el.visual.font_family.clone(),
+            font_family: visual.font_family.clone(),
             aria_label: el.aria_label.clone(),
             role: el.role.clone(),
         },
     ));
 
     for &child in &el.children {
-        walk_resolved(elements, taffy, child, x, y, out);
+        walk_resolved(elements, taffy, child, x, y, interaction, out);
     }
 }
 
@@ -889,7 +978,7 @@ fn hit_test_walk(
     Some(id)
 }
 
-fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
+pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
     match prop {
         StyleProp::BackgroundColor(c) => visual.background_color = Some(*c),
         StyleProp::Opacity(v) => visual.opacity = v.clamp(0.0, 1.0),

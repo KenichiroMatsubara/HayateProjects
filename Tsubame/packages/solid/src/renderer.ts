@@ -1,5 +1,10 @@
 import { createRenderer } from 'solid-js/universal';
-import type { ElementKind, EventHandler, StylePatch } from '@tsubame/renderer-protocol';
+import type {
+  ElementKind,
+  EventHandler,
+  StylePatch,
+} from '@tsubame/renderer-protocol';
+import { splitHayateStyle } from '@tsubame/renderer-protocol';
 import { activeRenderer } from './active-renderer.js';
 import {
   createElementNode,
@@ -72,7 +77,19 @@ const {
     const r = activeRenderer();
 
     if (name === 'style') {
-      r.setStyle(node.id, (value ?? {}) as StylePatch);
+      const { base, pseudo } = splitHayateStyle(
+        (value ?? {}) as Record<string, unknown>,
+      );
+      r.setStyle(node.id, base);
+      for (const [key, block] of Object.entries(pseudo)) {
+        if (block !== undefined) {
+          r.setPseudoStyle(
+            node.id,
+            key as ':hover' | ':active' | ':focus',
+            block,
+          );
+        }
+      }
       return;
     }
 

@@ -16,6 +16,7 @@ class StubHayate implements RawHayate {
   element_insert_before(): void {}
   element_remove(): void {}
   element_set_style(): void {}
+  element_set_pseudo_style(): void {}
   apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void {
     this.mutations.push({
       ops: Array.from(ops),

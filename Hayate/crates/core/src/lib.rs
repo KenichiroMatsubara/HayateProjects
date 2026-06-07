@@ -8,7 +8,7 @@ pub use element::{
     AlignValue, Dimension, DimensionUnit, DisplayValue, DocumentEventKind, ElementId, ElementKind,
     ElementTree, Event, EventDelivery, FlexDirectionValue, JustifyValue, LayoutPass, ListenerId,
     event_document_kind,
-    ResolvedElement, StyleProp, StylePropKind,
+    PseudoState, ResolvedElement, StyleProp, StylePropKind,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextRunData};
 pub use render::{

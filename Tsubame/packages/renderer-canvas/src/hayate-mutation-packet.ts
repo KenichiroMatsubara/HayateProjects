@@ -1,8 +1,10 @@
 import type {
   ElementId,
   ElementKind,
+  PseudoStyleKey,
   StylePatch,
 } from '@tsubame/renderer-protocol';
+import { PSEUDO_STATE_CODE } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { ELEMENT_KIND } from '@tsubame/protocol-generated/protocol';
 import {
@@ -42,7 +44,13 @@ type SemanticMutation =
       readonly id: ElementId;
       readonly style: StylePatch;
     }
-  | { readonly kind: 'setText'; readonly id: ElementId; readonly text: string };
+  | { readonly kind: 'setText'; readonly id: ElementId; readonly text: string }
+  | {
+      readonly kind: 'setPseudoStyle';
+      readonly id: ElementId;
+      readonly pseudo: PseudoStyleKey;
+      readonly style: StylePatch;
+    };
 
 /**
  * Ordered Hayate Mutation Packet queue for the CanvasRenderer → Hayate WASM boundary.
@@ -84,6 +92,19 @@ export class HayateMutationPacket {
 
   enqueueSetText(id: ElementId, text: string): void {
     this.mutations.push({ kind: 'setText', id, text });
+  }
+
+  enqueueSetPseudoStyle(
+    id: ElementId,
+    pseudo: PseudoStyleKey,
+    style: StylePatch,
+  ): void {
+    this.mutations.push({
+      kind: 'setPseudoStyle',
+      id,
+      pseudo,
+      style: { ...style },
+    });
   }
 
   flush(raw: RawHayate): void {
@@ -139,6 +160,18 @@ export class HayateMutationPacket {
           const textIndex = texts.length;
           texts.push(mutation.text);
           appendSetText(ops, mutation.id as number, textIndex);
+          break;
+        }
+        case 'setPseudoStyle': {
+          const buf: number[] = [];
+          encodeStylePatch(mutation.style, buf);
+          if (buf.length > 0) {
+            raw.element_set_pseudo_style(
+              mutation.id as number,
+              PSEUDO_STATE_CODE[mutation.pseudo],
+              new Float32Array(buf),
+            );
+          }
           break;
         }
       }

@@ -149,6 +149,11 @@ enum Command {
         id: ElementId,
         props: Vec<StyleProp>,
     },
+    SetPseudoStyle {
+        id: ElementId,
+        state: hayate_core::PseudoState,
+        props: Vec<StyleProp>,
+    },
     UnsetStyle {
         id: ElementId,
         kinds: Vec<u32>,
@@ -292,6 +297,22 @@ impl HayateElementRenderer {
     pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
         let props = style_packet::decode(packed)?;
         self.tree.element_set_style(element_id_from_f64(id), &props);
+        Ok(())
+    }
+
+    /// Hayate CSS pseudo-class block (`:hover` / `:active` / `:focus`).
+    pub fn element_set_pseudo_style(
+        &mut self,
+        id: f64,
+        state: u32,
+        packed: &[f32],
+    ) -> Result<(), JsValue> {
+        let pseudo = hayate_core::PseudoState::from_u32(state).ok_or_else(|| {
+            JsValue::from_str(&format!("unknown pseudo-state {state}"))
+        })?;
+        let props = style_packet::decode(packed)?;
+        self.tree
+            .element_set_pseudo_style(element_id_from_f64(id), pseudo, &props);
         Ok(())
     }
 
@@ -791,6 +812,24 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
+    pub fn element_set_pseudo_style(
+        &mut self,
+        id: f64,
+        state: u32,
+        packed: &[f32],
+    ) -> Result<(), JsValue> {
+        let pseudo = hayate_core::PseudoState::from_u32(state).ok_or_else(|| {
+            JsValue::from_str(&format!("unknown pseudo-state {state}"))
+        })?;
+        let props = style_packet::decode(packed)?;
+        self.pending.push(Command::SetPseudoStyle {
+            id: element_id_from_f64(id),
+            state: pseudo,
+            props,
+        });
+        Ok(())
+    }
+
     /// Queue a 2D affine transform update applied as CSS
     /// `transform: matrix(xx,yx,xy,yy,dx,dy)`. Matches the WIT `affine` record
     /// — identity is (1,0,0,1,0,0); there is no clear path.
@@ -1186,6 +1225,9 @@ impl HayateElementHtmlRenderer {
             Command::SetText { id, text } => self.flush_set_text(id, &text),
             Command::SetSrc { id, url } => self.flush_set_src(id, &url),
             Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
+            Command::SetPseudoStyle { id, state, props } => {
+                self.tree.element_set_pseudo_style(id, state, &props);
+            }
             Command::UnsetStyle { id, kinds } => self.flush_unset_style(id, &kinds),
             Command::SetTransform { id, matrix } => self.flush_set_transform(id, matrix),
             Command::SetScrollOffset { id, x, y } => self.flush_set_scroll_offset(id, x, y),

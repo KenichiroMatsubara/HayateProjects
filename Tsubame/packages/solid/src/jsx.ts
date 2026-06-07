@@ -1,4 +1,4 @@
-import type { StylePatch, EventHandler } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle, EventHandler } from '@tsubame/renderer-protocol';
 
 /**
  * Tsubame の Element 語彙に対する JSX 型定義。
@@ -8,7 +8,7 @@ import type { StylePatch, EventHandler } from '@tsubame/renderer-protocol';
  * solid-js の jsxImportSource は設定しない（本宣言と衝突するため）。
  */
 export interface TsubameProps {
-  style?: StylePatch;
+  style?: HayateCssStyle;
   onClick?: EventHandler;
   onInput?: EventHandler;
   onChange?: EventHandler;

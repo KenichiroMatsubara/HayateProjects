@@ -5,9 +5,11 @@ import type {
   EventKind,
   IRenderer,
   InteractionEvent,
+  PseudoStyleKey,
   StylePatch,
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
+import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
 import { asElementId } from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
@@ -43,16 +45,23 @@ export class DomRenderer implements IRenderer {
   private readonly nodes = new Map<ElementId, HTMLElement>();
   private readonly parentOf = new Map<ElementId, ElementId>();
   private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
+  private readonly pseudoRuleKeys = new Map<string, number>();
+  private readonly pseudoStyleEl: HTMLStyleElement;
   private nextId = 1;
 
   constructor(options: DomRendererOptions = {}) {
     this.doc = options.document ?? globalThis.document;
     this.container = options.container ?? this.doc.body;
+    this.pseudoStyleEl = this.doc.createElement('style');
+    this.pseudoStyleEl.setAttribute('data-tsubame-pseudo', '');
+    this.doc.head.appendChild(this.pseudoStyleEl);
   }
 
   createElement(kind: ElementKind): ElementId {
     const id = asElementId(this.nextId++);
-    this.nodes.set(id, createDomElement(this.doc, kind));
+    const el = createDomElement(this.doc, kind);
+    el.setAttribute('data-tsubame-id', String(id as number));
+    this.nodes.set(id, el);
     return id;
   }
 
@@ -84,6 +93,27 @@ export class DomRenderer implements IRenderer {
       }
     }
     applyStylePatch(this.node(id), style);
+  }
+
+  setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
+    const selector = `[data-tsubame-id="${id as number}"]${pseudo}`;
+    const body = pseudoStyleDeclarations(style);
+    if (body.length === 0) return;
+    const sheet = this.pseudoStyleEl.sheet;
+    if (sheet === null) return;
+    const key = `${id as number}${pseudo}`;
+    const cssText = `${selector}{${body}}`;
+    const existing = this.pseudoRuleKeys.get(key);
+    if (existing !== undefined) {
+      const rule = sheet.cssRules.item(existing);
+      if (rule !== null && 'style' in rule) {
+        (rule as CSSStyleRule).style.cssText = body;
+        return;
+      }
+      sheet.deleteRule(existing);
+    }
+    const index = sheet.insertRule(cssText, sheet.cssRules.length);
+    this.pseudoRuleKeys.set(key, index);
   }
 
   setText(id: ElementId, text: string): void {
@@ -173,6 +203,9 @@ export class DomRenderer implements IRenderer {
   }
 
   private pruneSubtree(root: ElementId): void {
+    for (const pseudo of [':hover', ':active', ':focus'] as const) {
+      this.pseudoRuleKeys.delete(`${root as number}${pseudo}`);
+    }
     const parent = this.parentOf.get(root);
     if (parent !== undefined) {
       this.childrenOf.get(parent)?.delete(root);
@@ -193,4 +226,17 @@ export class DomRenderer implements IRenderer {
       this.nodes.delete(node);
     }
   }
+}
+
+function pseudoStyleDeclarations(patch: StylePatch): string {
+  const parts: string[] = [];
+  for (const key in patch) {
+    const k = key as keyof StylePatch;
+    const value = patch[k];
+    if (value === undefined || value === null) continue;
+    const entry = CATALOG_BY_KEY[k as string];
+    if (entry === undefined) continue;
+    parts.push(`${entry.cssName}:${formatDomCSSValue(entry, value)}`);
+  }
+  return parts.join(';');
 }
