@@ -91,8 +91,8 @@ Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base 
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替
 
 **Document Tree（文書ツリー）**:
-UI の element 親子構造の正本。Canvas/HTML 経路では Hayate `ElementTree`、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子は tree 上の element として表現する（ADR-0058）。Tsubame Adapter は `ElementId` ハンドルのみ保持し、構造を JS 側に複製しない（ADR-0057）。
-_Avoid_: shadow tree、Virtual DOM、仮想 TextNode、renderer 側 parent map を正本とする設計
+**描画・layout・hit-test の正本**。Canvas/HTML 経路では Hayate `ElementTree`、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子は tree 上の element として表現する（ADR-0058）。`tsubame-solid` は例外として、`solid-js/universal` が同期で読めるホストツリーを要求するため `TsubameNode` を**構造専用 reconcile index**（parent / 順序付き children のみ）として保持する（ADR-0062 が ADR-0057 を supersede）。これは描画正本の複製ではなく、batch 境界の向こうに正本を置く構成での reconcile 作業セット。`CanvasRenderer` / `DomRenderer` は構造を持たない（write-only）。
+_Avoid_: 描画正本を JS 側に複製する設計、Virtual DOM（shadow tree は diff されないので VDOM ではない）、仮想 TextNode、renderer 側 parent map を正本とする設計
 
 **Component**:
 `.hybs` ファイル一つがコンポーネント一つに対応する。コンポーネント名はファイル名（拡張子除く）のアッパーキャメルケースで決まる（例: `MyButton.hybs` → `<MyButton>`）。名前の明示的な宣言は不要。`<script>` のトップレベルに宣言されたすべての名前は `<template>` から参照可能である。エクスポート宣言は不要。

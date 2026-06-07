@@ -34,12 +34,12 @@ Canvas Renderer のフレームバッチ入口。Tsubame と Hayate の結合点
 _Avoid_: 長期設計として Tsubame 側 bubble を正とする説明
 
 **Tsubame Adapter**:
-`tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持しつつレンダリング先だけを差し替える。document 構造の正本は持たず、`ElementId` ハンドルと mutation のみを `IRenderer` へ届ける（ADR-0057）。
+`tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持しつつレンダリング先だけを差し替える。**描画正本**は持たず、`ElementId` ハンドルと mutation を `IRenderer` へ届ける。例外として `tsubame-solid` は `solid-js/universal` の同期走査要件のため構造専用 shadow tree（reconcile index）を保持する（ADR-0062 が ADR-0057 を supersede。§Shadow Tree 参照）。
 _Avoid_: shared component runtime, shadow document tree
 
-**Shadow Tree（移行対象）**:
-`tsubame-solid` が `solid-js/universal` のツリー走査 API 要件を満たすために JS 側に保持している `TsubameNode` 構造。Hayate `ElementTree` / ブラウザ DOM と三重管理になっており撤去対象（ADR-0057）。
-_Avoid_: 恒久設計、Virtual DOM なしの根拠として引用
+**Shadow Tree（構造専用 reconcile index）**:
+`tsubame-solid` が `solid-js/universal` のツリー走査 API（`getParentNode` / `getFirstChild` / `getNextSibling`）を同期で満たすために JS 側に保持する `TsubameNode` 構造（`parent` / 順序付き `children` / `elementKind`）。`solid-js/universal` は VDOM を持たず reconcile 時にホスト構造を同期で読むため、正本ツリーが WASM batch 境界の向こう（Hayate）にある Canvas 経路では近側に構造インデックスが不可避。**正式採用**（ADR-0062 が ADR-0057 の撤去方針を覆す）。diff されないため VDOM ではない。描画正本（text 内容・style・layout）は backend が持ち、shadow は構造のみ。CPU は signal 経路で +0、メモリ増分 ~70 B/node。
+_Avoid_: VDOM（diff しないので該当しない）、描画正本の複製、`text` 内容を shadow の正本とする設計、tsubame-react / tsubame-vue にも shadow を要求する説明（VDOM reconciler は不要）
 
 **Text Element**:
 Solid の文字列・`createTextNode` の正本表現。Hayate `ElementKind::Text` として Document Tree の子に載せる。`button` 直下のラベルも子 `text` element とする（ADR-0058）。性能が拮抗し計測で優劣がつかない場合、DOM Renderer の構造（`button` > `span`）を仕様 tie-break とする。

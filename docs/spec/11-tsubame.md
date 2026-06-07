@@ -35,7 +35,7 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **規範文:** 各 Tsubame Adapter は自身のフレームワークの既存ランタイム（SolidJS signals / Vue reactivity / React Fiber）をそのまま維持し、レンダリング先のみ Renderer Protocol に向け替える。signal 統一はしない。
 **出典:** Tsubame ADR-0004, Hayate ADR-0040
 **状況:** 🟡 — `tsubame-solid` は実装済み（`solid-js/universal` カスタムレンダラー、`solid-js` 依存維持）。`tsubame-vue` / `tsubame-react` は ⬜未実装（packages に不在）。
-**備考:** tsubame-svelte はスコープ外（Svelte ユーザーには tsubame-vue 推奨）。
+**備考:** tsubame-svelte はスコープ外（Svelte ユーザーには tsubame-vue 推奨）。`tsubame-solid` は `TsubameNode` を**構造専用 shadow tree**（reconcile index）として保持する — `solid-js/universal` が VDOM を持たず reconcile 時にホスト構造を同期で読むため、batch 境界越しに正本を置く Canvas 経路では不可避（ADR-0062 が ADR-0057 を supersede、§2 ELEM-03）。VDOM reconciler の tsubame-vue / tsubame-react は shadow 不要。
 
 ### TSUB-06 — DOM Renderer の Z-Order は RN Web 方式エミュレート
 **規範文:** DOM Renderer は RN Web 現行方式で Z-Order をエミュレートする。全 element kind に `position: relative` + `zIndex: 0` をベース付与し、開発者指定 zIndex で上書き、兄弟内のみ有効とする。ブラウザ CSS との完全一致は目標にしない。
