@@ -135,54 +135,20 @@ fn walk(
         effective_parent
     };
 
-    // 1) Background fill.
-    if let Some(bg) = visual.background_color {
-        emit(
-            sg,
-            effective_parent,
-            Node {
-                kind: NodeKind::Rect {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    color: bg.with_opacity(visual.opacity).to_array_f32(),
-                    corner_radius: visual.border_radius,
-                },
-                children: Vec::new(),
-            },
-        );
-    }
-
-    // 2) Border — four side rects until a dedicated BorderRect lands.
-    if visual.border_width > 0.0 {
-        if let Some(bc) = visual.border_color {
-            let bw = visual.border_width;
-            let color = bc.with_opacity(visual.opacity).to_array_f32();
-            for (bx, by, bw2, bh2) in [
-                (x, y, w, bw),
-                (x, y + h - bw, w, bw),
-                (x, y + bw, bw, (h - 2.0 * bw).max(0.0)),
-                (x + w - bw, y + bw, bw, (h - 2.0 * bw).max(0.0)),
-            ] {
-                emit(
-                    sg,
-                    effective_parent,
-                    Node {
-                        kind: NodeKind::Rect {
-                            x: bx,
-                            y: by,
-                            width: bw2,
-                            height: bh2,
-                            color,
-                            corner_radius: 0.0,
-                        },
-                        children: Vec::new(),
-                    },
-                );
-            }
-        }
-    }
+    // 1–2) Background and border fills (effective visual includes pseudo states).
+    emit_visual_box(
+        sg,
+        effective_parent,
+        x,
+        y,
+        w,
+        h,
+        visual.border_radius,
+        visual.border_width,
+        visual.background_color,
+        visual.border_color,
+        visual.opacity,
+    );
 
     // 3a) Image content.
     if el.kind == ElementKind::Image {
@@ -346,4 +312,127 @@ fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId
         None => sg.insert(node),
         Some(p) => sg.insert_child(p, node),
     }
+}
+
+fn emit_visual_box(
+    sg: &mut SceneGraph,
+    parent_group: Option<NodeId>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    border_radius: f32,
+    border_width: f32,
+    background_color: Option<Color>,
+    border_color: Option<Color>,
+    opacity: f32,
+) {
+    let radius = border_radius.max(0.0);
+    let border_w = border_width.max(0.0);
+    let background = background_color.map(|c| c.with_opacity(opacity).to_array_f32());
+    let border = border_color.map(|c| c.with_opacity(opacity).to_array_f32());
+
+    if border_w > 0.0 {
+        let Some(border_rgba) = border else {
+            if let Some(bg) = background {
+                emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
+            }
+            return;
+        };
+
+        if let Some(bg) = background {
+            emit_fill_rect(
+                sg,
+                parent_group,
+                x,
+                y,
+                width,
+                height,
+                border_rgba,
+                radius,
+            );
+            let inner_w = (width - 2.0 * border_w).max(0.0);
+            let inner_h = (height - 2.0 * border_w).max(0.0);
+            if inner_w > 0.0 && inner_h > 0.0 {
+                let inner_radius = (radius - border_w).max(0.0);
+                emit_fill_rect(
+                    sg,
+                    parent_group,
+                    x + border_w,
+                    y + border_w,
+                    inner_w,
+                    inner_h,
+                    bg,
+                    inner_radius,
+                );
+            }
+            return;
+        }
+
+        if radius > 0.0 {
+            emit(
+                sg,
+                parent_group,
+                Node {
+                    kind: NodeKind::RoundedRing {
+                        x,
+                        y,
+                        width,
+                        height,
+                        outer_radius: radius,
+                        border_width: border_w,
+                        color: border_rgba,
+                    },
+                    children: Vec::new(),
+                },
+            );
+            return;
+        }
+
+        for (bx, by, bw2, bh2) in [
+            (x, y, width, border_w),
+            (x, y + height - border_w, width, border_w),
+            (x, y + border_w, border_w, (height - 2.0 * border_w).max(0.0)),
+            (
+                x + width - border_w,
+                y + border_w,
+                border_w,
+                (height - 2.0 * border_w).max(0.0),
+            ),
+        ] {
+            emit_fill_rect(sg, parent_group, bx, by, bw2, bh2, border_rgba, 0.0);
+        }
+        return;
+    }
+
+    if let Some(bg) = background {
+        emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
+    }
+}
+
+fn emit_fill_rect(
+    sg: &mut SceneGraph,
+    parent_group: Option<NodeId>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    color: [f32; 4],
+    corner_radius: f32,
+) {
+    emit(
+        sg,
+        parent_group,
+        Node {
+            kind: NodeKind::Rect {
+                x,
+                y,
+                width,
+                height,
+                color,
+                corner_radius,
+            },
+            children: Vec::new(),
+        },
+    );
 }

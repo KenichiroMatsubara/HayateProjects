@@ -52,6 +52,125 @@ fn set_style_routes_layout_and_visual() {
 }
 
 #[test]
+fn border_radius_emits_rounded_background_rect() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(40, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+
+    let sg = tree.render(0.0);
+    let rects: Vec<_> = sg
+        .iter()
+        .filter_map(|(_, n)| match &n.kind {
+            NodeKind::Rect {
+                width,
+                height,
+                corner_radius,
+                ..
+            } if (*width - 100.0).abs() < 0.5 && (*height - 80.0).abs() < 0.5 => {
+                Some(*corner_radius)
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(rects, vec![12.0], "expected one rounded background rect");
+}
+
+#[test]
+fn border_radius_with_border_and_background_emits_nested_rounded_fills() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(41, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+            StyleProp::BorderColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::BorderWidth(4.0),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+
+    let sg = tree.render(0.0);
+    let mut outer = None;
+    let mut inner = None;
+    for (_, n) in sg.iter() {
+        if let NodeKind::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+            corner_radius,
+        } = &n.kind
+        {
+            if (*width - 100.0).abs() < 0.5 && (*height - 80.0).abs() < 0.5 {
+                outer = Some((*corner_radius, color[0]));
+            } else if (*width - 92.0).abs() < 0.5
+                && (*height - 72.0).abs() < 0.5
+                && (*x - 4.0).abs() < 0.5
+                && (*y - 4.0).abs() < 0.5
+            {
+                inner = Some((*corner_radius, color[2]));
+            }
+        }
+    }
+
+    assert_eq!(outer, Some((12.0, 1.0)), "outer border frame");
+    assert_eq!(inner, Some((8.0, 1.0)), "inner background inset");
+}
+
+#[test]
+fn border_radius_without_background_emits_rounded_ring() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(42, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BorderColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::BorderWidth(4.0),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+
+    let sg = tree.render(0.0);
+    let rings: Vec<_> = sg
+        .iter()
+        .filter_map(|(_, n)| match &n.kind {
+            NodeKind::RoundedRing {
+                width,
+                height,
+                outer_radius,
+                border_width,
+                ..
+            } if (*width - 100.0).abs() < 0.5 && (*height - 80.0).abs() < 0.5 => {
+                Some((*outer_radius, *border_width))
+            }
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(rings, vec![(12.0, 4.0)]);
+}
+
+#[test]
 fn flex_row_positions_children_with_gap() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(5, ElementKind::View);
@@ -1281,4 +1400,98 @@ fn pseudo_hover_applies_to_ancestor_when_pointer_over_child() {
     let sg = tree.scene_graph();
     // Scene graph should reflect hovered blue on root background.
     assert!(!sg.roots().is_empty());
+}
+
+#[test]
+fn viewport_resize_reflows_percent_children() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8001, ElementKind::View);
+    let left = tree.element_create(8002, ElementKind::View);
+    let right = tree.element_create(8003, ElementKind::View);
+    tree.set_root(root);
+    tree.element_append_child(root, left);
+    tree.element_append_child(root, right);
+
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::percent(100.0)),
+        ],
+    );
+    for (child, pct) in [(left, 67.0), (right, 33.0)] {
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::percent(pct)),
+                StyleProp::Height(Dimension::percent(100.0)),
+            ],
+        );
+    }
+
+    tree.set_viewport(900.0, 600.0);
+    tree.render(0.0);
+    let left_wide = tree.element_layout_rect(left).expect("left layout");
+    let right_wide = tree.element_layout_rect(right).expect("right layout");
+    assert!(
+        (left_wide.2 - 603.0).abs() < 1.0,
+        "67% of 900 should be ~603, got {}",
+        left_wide.2
+    );
+    assert!(
+        (right_wide.2 - 297.0).abs() < 1.0,
+        "33% of 900 should be ~297, got {}",
+        right_wide.2
+    );
+
+    tree.set_viewport(300.0, 600.0);
+    tree.render(0.0);
+    let left_narrow = tree.element_layout_rect(left).expect("left layout after resize");
+    let right_narrow = tree.element_layout_rect(right).expect("right layout after resize");
+    assert!(
+        (left_narrow.2 - 201.0).abs() < 1.0,
+        "67% of 300 should be ~201 after resize, got {}",
+        left_narrow.2
+    );
+    assert!(
+        (right_narrow.2 - 99.0).abs() < 1.0,
+        "33% of 300 should be ~99 after resize, got {}",
+        right_narrow.2
+    );
+}
+
+#[test]
+fn viewport_resize_does_not_override_explicit_root_px_size() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8101, ElementKind::View);
+    tree.set_root(root);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+        ],
+    );
+
+    tree.set_viewport(900.0, 600.0);
+    tree.render(0.0);
+    let rect = tree.element_layout_rect(root).expect("root layout");
+    assert!((rect.2 - 100.0).abs() < 0.5);
+    assert!((rect.3 - 50.0).abs() < 0.5);
+
+    tree.set_viewport(300.0, 200.0);
+    tree.render(0.0);
+    let rect = tree.element_layout_rect(root).expect("root layout after resize");
+    assert!(
+        (rect.2 - 100.0).abs() < 0.5,
+        "explicit root px width must not track viewport, got {}",
+        rect.2
+    );
+    assert!(
+        (rect.3 - 50.0).abs() < 0.5,
+        "explicit root px height must not track viewport, got {}",
+        rect.3
+    );
 }

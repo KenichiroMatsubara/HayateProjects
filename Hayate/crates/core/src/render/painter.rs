@@ -11,6 +11,15 @@ pub enum DrawOp {
         color: [f32; 4],
         corner_radius: f32,
     },
+    FillRoundedRing {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    },
     DrawTextRun {
         x: f32,
         y: f32,
@@ -46,6 +55,17 @@ pub trait ScenePainter {
         height: f32,
         color: [f32; 4],
         corner_radius: f32,
+    );
+
+    fn fill_rounded_ring(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
     );
 
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
@@ -104,6 +124,27 @@ impl ScenePainter for RecordingPainter {
             height,
             color,
             corner_radius,
+        });
+    }
+
+    fn fill_rounded_ring(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        self.ops.push(DrawOp::FillRoundedRing {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
         });
     }
 
@@ -167,6 +208,18 @@ impl ScenePainter for NullPainter {
         _height: f32,
         _color: [f32; 4],
         _corner_radius: f32,
+    ) {
+    }
+
+    fn fill_rounded_ring(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _outer_radius: f32,
+        _border_width: f32,
+        _color: [f32; 4],
     ) {
     }
 
@@ -246,6 +299,23 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             color,
             corner_radius,
         } => painter.fill_rect(*x, *y, *width, *height, *color, *corner_radius),
+        NodeKind::RoundedRing {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
+        } => painter.fill_rounded_ring(
+            *x,
+            *y,
+            *width,
+            *height,
+            *outer_radius,
+            *border_width,
+            *color,
+        ),
         NodeKind::TextRun { x, y, color, data } => {
             painter.draw_text_run(*x, *y, *color, data.as_ref());
         }
