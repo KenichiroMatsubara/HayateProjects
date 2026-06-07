@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | §0 | [システム & ドキュメント運用](./00-system.md) | 3 | – | – |
 | §1 | [Hayate Core 原則](./01-core.md) | 5 | – | – |
-| §2 | [Element Layer](./02-element-layer.md) | 3 | 2 | – |
+| §2 | [Element Layer](./02-element-layer.md) | 4 | 1 | – |
 | §3 | [Layout](./03-layout.md) | 2 | 1 | – |
 | §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 10 | 1 | 1 |
 | §5 | [Text / Font / IME](./05-text-font-ime.md) | 7 | – | – |
@@ -35,17 +35,16 @@
 | §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 15 | 2 | 2 |
 | §11 | [Tsubame](./11-tsubame.md) | 6 | 1 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **69** | **9** | **10** |
+| | **合計** | **70** | **8** | **10** |
 
-全 **88 要件**。実装率（✅）78%。
+全 **88 要件**。実装率（✅）80%。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
-### 🟡 部分実装（10件）
+### 🟡 部分実装（8件）
 | ID | 規範文要約 | 欠落 |
 |---|---|---|
 | ELEM-04 | Element変更モデル eager/deferred | §8 WEBA に集約済（実体は✅） |
-| ELEM-05 ★ | text-as-element | Canvasは property扱い、DOMは独立要素（非対称） |
 | LAY-03 | Raw Layer は layout なしで使用可 | 構造分離済、no-layout実利用/公開契約 未整備 |
 | REND-09 | Renderer Selection Policy | 5箇所に分散、単一seam無し |
 | WEBA-01 | モード自動判定 | 判定主体は host(Tsubame)側 |
@@ -71,7 +70,6 @@
 ### ★ 要判断（grill エスカレーション対象）
 | ID | 内容 | 関連項目 |
 |---|---|---|
-| C-2.1 | text-as-element が Canvas(property) と DOM(独立要素) で非対称。ADR-0058 の徹底に Canvas 修正が要る | ELEM-05 |
 | C-10.6 | app font ID と font_family enum の値域接続が未決（100+予約帯案） | PROTO-19 |
 
 ### [衝突]
@@ -99,6 +97,7 @@
 ### [解決]（ユーザー指示）
 | ID | 内容 | 対応 |
 |---|---|---|
+| C-2.1 | text-as-element が Canvas/DOM で非対称（と旧評価） | grill で誤読と判明（両側 text element が文字列をプロパティで持つ同型）。`element_set_text` を Text/TextInput に構造化。ELEM-05 ✅ |
 | C-4.1 | Z-Order の順序3分散（paint昇順 / hit-test降順 / resolved無ソート） | grill で `ordered_children` 単一 seam に集約決定。ADR-0060 / REND-03 ✅ |
 | C-10.5 | ADR-0055 の検証層が apply_mutations 方向のみ（delivery 方向の共有 fixture 欠落） | grill で検証トポロジ確定。ADR-0055 amend（C5 層）/ PROTO-17。**実装は未着手** |
 | C-11.1 | `tsubame-spec.md`「Tsubame は archive 化せず維持」 vs 単一正本への統合 | ユーザー指示で archive 送り。「維持」記述は破棄 |

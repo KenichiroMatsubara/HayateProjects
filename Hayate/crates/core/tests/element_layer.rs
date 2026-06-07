@@ -562,6 +562,43 @@ fn ordered_children_is_stable_paint_order() {
     assert_eq!(hit_order, vec![b, d, c, a]);
 }
 
+// ── ADR-0058: text は text-like 要素にのみ宿る ─────────────────────────────
+
+#[test]
+fn element_set_text_is_ignored_on_non_text_elements() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(720, ElementKind::View);
+    let btn = tree.element_create(721, ElementKind::Button);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_append_child(root, btn);
+    tree.element_set_style(
+        btn,
+        &[
+            StyleProp::Width(Dimension::px(80.0)),
+            StyleProp::Height(Dimension::px(30.0)),
+        ],
+    );
+    // ADR-0058: button ラベルは子 text 要素で持つ。button 自身への set は無視される。
+    tree.element_set_text(btn, "Save");
+    let sg = tree.render(0.0);
+    let text_runs = sg
+        .iter()
+        .filter(|(_, n)| matches!(n.kind, NodeKind::TextRun { .. }))
+        .count();
+    assert_eq!(
+        text_runs, 0,
+        "button.text must not render; labels go on a child text element (ADR-0058)"
+    );
+}
+
 // ── Event system tests ───────────────────────────────────────────────────
 
 #[test]

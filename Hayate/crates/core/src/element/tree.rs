@@ -226,6 +226,13 @@ impl ElementTree {
             Some(e) => e,
             None => return,
         };
+        // ADR-0058: text は text-like 要素にのみ宿る — `Text`（内容）/ `TextInput`
+        // （placeholder）。`view` / `button` / `image` / `scroll-view` はテキストを
+        // 子 `text` 要素で持ち、親へ集約しない。非 text 要素への set は無視する
+        // （wire 駆動の外部入力なので panic せず防御的に no-op）。
+        if !matches!(el.kind, ElementKind::Text | ElementKind::TextInput) {
+            return;
+        }
         el.text = Some(text.to_string());
         el.text_layout = None;
         let taffy_node = el.taffy_node;
