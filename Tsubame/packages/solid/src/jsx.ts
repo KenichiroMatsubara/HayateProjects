@@ -13,8 +13,6 @@ export interface TsubameProps {
   onInput?: EventHandler;
   onChange?: EventHandler;
   onKeyDown?: EventHandler;
-  onHoverEnter?: EventHandler;
-  onHoverLeave?: EventHandler;
   onFocus?: EventHandler;
   onBlur?: EventHandler;
   children?: unknown;
