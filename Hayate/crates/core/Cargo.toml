@@ -12,3 +12,4 @@ slotmap.workspace = true
 anyhow.workspace = true
 log.workspace = true
 linebender_resource_handle = "0.1.1"
+accesskit.workspace = true

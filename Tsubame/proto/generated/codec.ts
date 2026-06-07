@@ -301,7 +301,7 @@ function encode_fontWeight(out: number[], value: unknown): void {
   out.push(TAG.FONT_WEIGHT, finiteNumber('fontWeight', value));
 }
 
-const STYLE_ENCODERS: Partial<Record<keyof StylePatch, (out: number[], value: NonNullable<StylePatch[keyof StylePatch]>) => void>> = {
+const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
   borderRadius: encode_borderRadius,
@@ -334,7 +334,7 @@ const STYLE_ENCODERS: Partial<Record<keyof StylePatch, (out: number[], value: No
   fontFamily: encode_fontFamily,
   flexGrow: encode_flexGrow,
   fontWeight: encode_fontWeight,
-};
+} as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {
   color: UNSET_KIND.color,
@@ -353,7 +353,7 @@ export function encodeStylePatch(patch: StylePatch, out: number[]): void {
     if (encoder === undefined) {
       throw new Error(`CanvasRenderer: unsupported style property "${String(k)}"`);
     }
-    encoder(out, value as NonNullable<StylePatch[keyof StylePatch]>);
+    encoder(out, value);
   }
 }
 
@@ -402,7 +402,7 @@ export function appendSetStyle(buf: number[], id: number, styleOffset: number, s
   buf.push(styleLen);
 }
 
-export function appendSetTransform(buf: number[], id: number, hasMatrix: number, matrix: number): void {
+export function appendSetTransform(buf: number[], id: number, hasMatrix: number, matrix: number[]): void {
   buf.push(OP.SET_TRANSFORM);
   buf.push(id);
   buf.push(hasMatrix);

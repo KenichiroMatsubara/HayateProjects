@@ -19,7 +19,7 @@
 
 つまり **font_family は端から端まで文字列**で、app font は名前だけで既に動く。**数値 app font ID も「100+ 予約帯」も不要（前提が数値 enum だった旧案であり obsolete）。**
 
-残る実問題は、プリセットの二重手書きである: `enums.json` の `font_family` 名（platform 非依存）と、web adapter `element_renderer.rs` の手書き 126 エントリ `builtin_font_url`（名前→CDN URL）が別管理で drift しうる。
+残る実問題は、プリセットの二重手書きである: `enums.json` の `font_family` 名（platform 非依存）と、web adapter `element_renderer.rs` の手書き `builtin_font_url`（名前→CDN URL）が別管理で drift しうる。
 
 ADR-0043 は「名前→CDN URL は web adapter 所有（platform 固有。native は OS から解決）」と決めており、URL を spec/core に入れることは却下済み。
 
@@ -32,7 +32,7 @@ ADR-0043 は「名前→CDN URL は web adapter 所有（platform 固有。nativ
 ### 2. プリセット名の正本は spec、URL は web adapter（α）
 
 - **spec `proto/spec/enums.json` の `font_family`** = プリセット「名前」の正本（platform 非依存。cross-adapter で同一名＝同一 fallback、ADR-0012 等階級）。
-- **web adapter の font マニフェスト `Hayate/crates/adapters/web/fonts.json`** = `[{ family, url, scripts? }]`（web 固有の調達情報）。これから **`builtin_font_url` を codegen**（手書き 126 エントリを廃止）。
+- **web adapter の font マニフェスト `Hayate/crates/adapters/web/fonts.json`** = `[{ family, url, scripts? }]`（web 固有の調達情報）。これから **`builtin_font_url` を codegen**（手書き match を廃止）。
 - **URL は web adapter 層に留める**（ADR-0043 維持）。native adapter は将来 自身の manifest（OS フォント名）を持つ。
 - **coverage check**: `fonts.json` は `enums.json` の全プリセット名に URL を与える。欠けは check エラー。プリセットは cross-adapter 契約なので、まず spec に名前を足してから各 adapter が調達手段を与える。
 
@@ -53,15 +53,15 @@ ADR-0043 は「名前→CDN URL は web adapter 所有（platform 固有。nativ
 
 ## Consequences
 
-- web adapter の手書き `builtin_font_url`（126 行）が `fonts.json` からの生成物に置き換わる。
+- web adapter の手書き `builtin_font_url` が `fonts.json` からの生成物に置き換わる。
 - `enums.json` プリセット名と `fonts.json` の coverage が CI で検証される。
 - app font は数値 ID 不要・名前のみで接続。decisions-pending Open #1 を closed とする。
 - 関連: ADR-0042（codepoint→family は core 所有・本 ADR の対象外）、ADR-0043（URL dispatch は adapter）、ADR-0044（app font config）、ADR-0012（等階級）。
 
-## Implementation Tasks（Cursor 向け）
+## Implementation Tasks（完了）
 
-1. **`Hayate/crates/adapters/web/fonts.json` を新設** — `[{ "family": string, "url": string, "scripts"?: string[] }]`。現 `builtin_font_url`（`element_renderer.rs:26-119`）の全エントリを移植（family→url）。
-2. **codegen を追加** — web adapter ローカル（`build.rs` か `scripts/gen-fonts.mjs`）で `fonts.json` を読み `pub fn builtin_font_url(family: &str) -> Option<&'static str>` を生成。`element_renderer.rs` の手書き match を生成物に差し替え。`check:proto` 相当の diff ゲートに含める（proto/spec の generator とは分離。URL は web 専用）。
-3. **coverage check** — `enums.json` の `font_family` 各 value に対し `fonts.json` に url が存在することを検証するスクリプト/テストを追加。欠けは失敗。
-4. **（任意）TS autocomplete** — spec `font_family` から `PresetFontFamily` を生成し `fontFamily: PresetFontFamily | (string & {})` を提供。
-5. **回帰** — `builtin_font_url("Noto Sans JP")` 等が生成後も従来 URL を返すこと、未知名が `None` を返すことをテスト。
+1. ✅ `Hayate/crates/adapters/web/fonts.json` 新設 — 全プリセット family→url を移植。
+2. ✅ `build.rs` codegen — `OUT_DIR/builtin_fonts_gen.rs` を生成、`builtin_fonts.rs` が include。
+3. ✅ coverage check — `builtin_fonts.rs` テストで `enums.json` 全 preset を検証。
+4. ⬜ （任意）TS `PresetFontFamily` autocomplete。
+5. ✅ 回帰 — `builtin_font_url("Noto Sans JP")` 等の URL 固定テスト。

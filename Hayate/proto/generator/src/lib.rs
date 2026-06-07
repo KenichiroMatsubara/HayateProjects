@@ -1216,15 +1216,18 @@ fn event_match_wildcard(ev: &Entry) -> String {
     }
 }
 
-fn encode_event_param_push(param: &Param, field: &str) -> String {
+fn encode_event_wire_param_push(param: &Param, field: &str) -> String {
     match param.typ.as_str() {
         "element_id" => format!(
-            "            sub.push(&JsValue::from_f64({}.to_u64() as f64));\n",
+            "            out.push(EventWireValue::Number({}.to_u64() as f64));\n",
             field
         ),
-        "string" => format!("            sub.push(&JsValue::from_str({}));\n", field),
+        "string" => format!(
+            "            out.push(EventWireValue::Text({}.clone()));\n",
+            field
+        ),
         "f32" | "f64" | "u32" | "usize" | "bool" => {
-            format!("            sub.push(&JsValue::from_f64(*{} as f64));\n", field)
+            format!("            out.push(EventWireValue::Number(*{} as f64));\n", field)
         }
         other => panic!("unsupported event param type: {other}"),
     }
@@ -1233,23 +1236,40 @@ fn encode_event_param_push(param: &Param, field: &str) -> String {
 fn generate_encode_event(proto: &Proto) -> String {
     let mut out = String::new();
 
-    out.push_str("pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {\n");
-    out.push_str("    use wasm_bindgen::JsValue;\n");
-    out.push_str("    let sub = js_sys::Array::new();\n");
+    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    out.push_str("pub enum EventWireValue {\n");
+    out.push_str("    Number(f64),\n");
+    out.push_str("    Text(String),\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {\n");
     out.push_str("    match ev {\n");
 
     for ev in &proto.event_kinds {
         out.push_str(&format!("        {} => {{\n", event_match_pattern(ev, true)));
+        out.push_str("            let mut out = Vec::new();\n");
         out.push_str(&format!(
-            "            sub.push(&JsValue::from_f64({}.0));\n",
+            "            out.push(EventWireValue::Number({}.0));\n",
             ev.value
         ));
         for p in &ev.params {
-            out.push_str(&encode_event_param_push(p, &p.name));
+            out.push_str(&encode_event_wire_param_push(p, &p.name));
         }
+        out.push_str("            out\n");
         out.push_str("        }\n");
     }
 
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {\n");
+    out.push_str("    use wasm_bindgen::JsValue;\n");
+    out.push_str("    let sub = js_sys::Array::new();\n");
+    out.push_str("    for atom in encode_event_wire(ev) {\n");
+    out.push_str("        match atom {\n");
+    out.push_str("            EventWireValue::Number(n) => { sub.push(&JsValue::from_f64(n)); }\n");
+    out.push_str("            EventWireValue::Text(s) => { sub.push(&JsValue::from_str(&s)); }\n");
+    out.push_str("        }\n");
     out.push_str("    }\n");
     out.push_str("    sub\n");
     out.push_str("}\n\n");

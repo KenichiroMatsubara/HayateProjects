@@ -258,7 +258,8 @@ function generateAppendOps(proto) {
     const fnName = appendOpName(op.name);
     const params = (op.params ?? []).map((p) => {
       const tsName = toCamelCase(p.name);
-      return `${tsName}: number`;
+      const count = p.count ?? 0;
+      return count > 1 ? `${tsName}: number[]` : `${tsName}: number`;
     });
     const sig = params.length > 0 ? `buf: number[], ${params.join(', ')}` : 'buf: number[]';
     lines.push(`export function ${fnName}(${sig}): void {`);
@@ -308,9 +309,9 @@ export function generateCodec() {
     '',
     generateEnumCodeMaps(proto),
     generateStyleEncoders(proto),
-    'const STYLE_ENCODERS: Partial<Record<keyof StylePatch, (out: number[], value: NonNullable<StylePatch[keyof StylePatch]>) => void>> = {',
+    'const STYLE_ENCODERS = {',
     styleEncoderMap,
-    '};',
+    '} as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;',
     '',
     'const INHERITED_UNSET: Partial<Record<string, number>> = {',
     inheritedUnset,
@@ -326,7 +327,7 @@ export function generateCodec() {
     '    if (encoder === undefined) {',
     '      throw new Error(`CanvasRenderer: unsupported style property "${String(k)}"`);',
     '    }',
-    '    encoder(out, value as NonNullable<StylePatch[keyof StylePatch]>);',
+    '    encoder(out, value);',
     '  }',
     '}',
     '',

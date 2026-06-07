@@ -717,85 +717,132 @@ pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
     Ok(out)
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum EventWireValue {
+    Number(f64),
+    Text(String),
+}
+
+pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {
+    match ev {
+        hayate_core::Event::Click { target_id, x, y } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(0.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Number(*x as f64));
+            out.push(EventWireValue::Number(*y as f64));
+            out
+        }
+        hayate_core::Event::Focus { target_id } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(1.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out
+        }
+        hayate_core::Event::Blur { target_id } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(2.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out
+        }
+        hayate_core::Event::TextInput { target_id, text } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(3.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Text(text.clone()));
+            out
+        }
+        hayate_core::Event::CompositionStart { target_id, text } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(4.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Text(text.clone()));
+            out
+        }
+        hayate_core::Event::CompositionUpdate { target_id, text } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(5.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Text(text.clone()));
+            out
+        }
+        hayate_core::Event::CompositionEnd { target_id, text } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(6.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Text(text.clone()));
+            out
+        }
+        hayate_core::Event::Scroll { target_id, delta_x, delta_y } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(7.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Number(*delta_x as f64));
+            out.push(EventWireValue::Number(*delta_y as f64));
+            out
+        }
+        hayate_core::Event::Resize { width, height } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(8.0));
+            out.push(EventWireValue::Number(*width as f64));
+            out.push(EventWireValue::Number(*height as f64));
+            out
+        }
+        hayate_core::Event::ActiveEnd { target_id } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(9.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out
+        }
+        hayate_core::Event::HoverEnter { target_id } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(10.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out
+        }
+        hayate_core::Event::HoverLeave { target_id } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(11.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out
+        }
+        hayate_core::Event::KeyDown { target_id, key, modifiers } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(12.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Text(key.clone()));
+            out.push(EventWireValue::Number(*modifiers as f64));
+            out
+        }
+        hayate_core::Event::ActiveStart { target_id } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(13.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out
+        }
+        hayate_core::Event::PointerMove { x, y } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(14.0));
+            out.push(EventWireValue::Number(*x as f64));
+            out.push(EventWireValue::Number(*y as f64));
+            out
+        }
+        hayate_core::Event::FetchFont { family } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(15.0));
+            out.push(EventWireValue::Text(family.clone()));
+            out
+        }
+    }
+}
+
 pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {
     use wasm_bindgen::JsValue;
     let sub = js_sys::Array::new();
-    match ev {
-        hayate_core::Event::Click { target_id, x, y } => {
-            sub.push(&JsValue::from_f64(0.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_f64(*x as f64));
-            sub.push(&JsValue::from_f64(*y as f64));
-        }
-        hayate_core::Event::Focus { target_id } => {
-            sub.push(&JsValue::from_f64(1.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-        }
-        hayate_core::Event::Blur { target_id } => {
-            sub.push(&JsValue::from_f64(2.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-        }
-        hayate_core::Event::TextInput { target_id, text } => {
-            sub.push(&JsValue::from_f64(3.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_str(text));
-        }
-        hayate_core::Event::CompositionStart { target_id, text } => {
-            sub.push(&JsValue::from_f64(4.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_str(text));
-        }
-        hayate_core::Event::CompositionUpdate { target_id, text } => {
-            sub.push(&JsValue::from_f64(5.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_str(text));
-        }
-        hayate_core::Event::CompositionEnd { target_id, text } => {
-            sub.push(&JsValue::from_f64(6.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_str(text));
-        }
-        hayate_core::Event::Scroll { target_id, delta_x, delta_y } => {
-            sub.push(&JsValue::from_f64(7.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_f64(*delta_x as f64));
-            sub.push(&JsValue::from_f64(*delta_y as f64));
-        }
-        hayate_core::Event::Resize { width, height } => {
-            sub.push(&JsValue::from_f64(8.0));
-            sub.push(&JsValue::from_f64(*width as f64));
-            sub.push(&JsValue::from_f64(*height as f64));
-        }
-        hayate_core::Event::ActiveEnd { target_id } => {
-            sub.push(&JsValue::from_f64(9.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-        }
-        hayate_core::Event::HoverEnter { target_id } => {
-            sub.push(&JsValue::from_f64(10.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-        }
-        hayate_core::Event::HoverLeave { target_id } => {
-            sub.push(&JsValue::from_f64(11.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-        }
-        hayate_core::Event::KeyDown { target_id, key, modifiers } => {
-            sub.push(&JsValue::from_f64(12.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-            sub.push(&JsValue::from_str(key));
-            sub.push(&JsValue::from_f64(*modifiers as f64));
-        }
-        hayate_core::Event::ActiveStart { target_id } => {
-            sub.push(&JsValue::from_f64(13.0));
-            sub.push(&JsValue::from_f64(target_id.to_u64() as f64));
-        }
-        hayate_core::Event::PointerMove { x, y } => {
-            sub.push(&JsValue::from_f64(14.0));
-            sub.push(&JsValue::from_f64(*x as f64));
-            sub.push(&JsValue::from_f64(*y as f64));
-        }
-        hayate_core::Event::FetchFont { family } => {
-            sub.push(&JsValue::from_f64(15.0));
-            sub.push(&JsValue::from_str(family));
+    for atom in encode_event_wire(ev) {
+        match atom {
+            EventWireValue::Number(n) => { sub.push(&JsValue::from_f64(n)); }
+            EventWireValue::Text(s) => { sub.push(&JsValue::from_str(&s)); }
         }
     }
     sub

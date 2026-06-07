@@ -1,9 +1,33 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
+import type { EventPayload } from '@tsubame/protocol-generated/protocol';
 import { parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
+
+const fixturesPath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../Hayate/proto/spec/fixtures/delivery_encode.json',
+);
+
+interface DeliveryFixture {
+  readonly name: string;
+  readonly kind: EventPayload['kind'];
+  readonly wire: readonly (string | number)[];
+}
+
+const fixtures = JSON.parse(readFileSync(fixturesPath, 'utf8')) as DeliveryFixture[];
+
+function fixtureByName(name: string): DeliveryFixture {
+  const fixture = fixtures.find((f) => f.name === name);
+  if (!fixture) throw new Error(`missing delivery fixture: ${name}`);
+  return fixture;
+}
 
 describe('parseDelivery', () => {
   it('decodes listener id prefix before event fields', () => {
-    const { listenerId, event } = parseDelivery([42, 0, 3, 10, 20]);
+    const click = fixtureByName('click');
+    const { listenerId, event } = parseDelivery([42, ...click.wire]);
     expect(listenerId).toBe(42);
     expect(event).toEqual({
       kind: 'click',
@@ -15,7 +39,8 @@ describe('parseDelivery', () => {
   });
 
   it('decodes text_input delivery', () => {
-    const { listenerId, event } = parseDelivery([7, 3, 5, 'hello']);
+    const textInput = fixtureByName('text_input');
+    const { listenerId, event } = parseDelivery([7, ...textInput.wire]);
     expect(listenerId).toBe(7);
     expect(event).toEqual({
       kind: 'text_input',

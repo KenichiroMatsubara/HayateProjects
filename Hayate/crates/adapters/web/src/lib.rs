@@ -1,7 +1,11 @@
 #[cfg(target_arch = "wasm32")]
 mod backend;
 #[cfg(any(target_arch = "wasm32", test))]
+mod builtin_fonts;
+#[cfg(any(target_arch = "wasm32", test))]
 mod generated;
+#[cfg(test)]
+mod delivery_codec_fixtures;
 #[cfg(test)]
 mod wire_codec_roundtrip;
 #[cfg(target_arch = "wasm32")]

@@ -15,111 +15,8 @@ use web_sys::{Document, Element, HtmlCanvasElement, HtmlElement, HtmlInputElemen
 /// next `poll_events()` call (single-threaded WASM — Rc<RefCell> is safe).
 type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
-/// Built-in family-name → CDN URL table for fonts the web adapter fetches
-/// automatically (ADR-0043). Named fonts are fetched proactively when set via
-/// font-family; script-specific fonts are fetched on .notdef detection.
-///
-/// All URLs point to TTF files from google/fonts via jsDelivr.
-/// fontique/skrifa does NOT support WOFF2 — TTF/OTF only.
-/// Variable font axes in filenames are URL-encoded: `[` → `%5B`, `]` → `%5D`, `,` → `%2C`.
-/// Static (non-variable) fonts are noted where applicable.
-fn builtin_font_url(family: &str) -> Option<&'static str> {
-    match family {
-        // ── CJK ──────────────────────────────────────────────────────────
-        "Noto Sans JP" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
-        ),
-        "Noto Sans KR" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf"
-        ),
-        "Noto Sans SC" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf"
-        ),
-        "Noto Sans TC" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf"
-        ),
-        // ── Arabic ───────────────────────────────────────────────────────
-        "Noto Sans Arabic" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf"
-        ),
-        // ── Thai ─────────────────────────────────────────────────────────
-        "Noto Sans Thai" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf"
-        ),
-        // ── Devanagari ───────────────────────────────────────────────────
-        "Noto Sans Devanagari" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf"
-        ),
-        // ── Hebrew ───────────────────────────────────────────────────────
-        "Noto Sans Hebrew" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf"
-        ),
-        // ── Generic family targets (resolved from CSS keywords in text.rs) ─
-        "Noto Serif" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
-        ),
-        "Noto Sans Mono" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansmono/NotoSansMono%5Bwdth%2Cwght%5D.ttf"
-        ),
-        // ── Popular sans-serif ────────────────────────────────────────────
-        "Inter" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf"
-        ),
-        "Roboto" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/apache/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
-        ),
-        "Open Sans" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf"
-        ),
-        "Lato" => Some(
-            // static — no variable version in google/fonts
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lato/Lato-Regular.ttf"
-        ),
-        "Poppins" => Some(
-            // static — no variable version in google/fonts
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Regular.ttf"
-        ),
-        "Montserrat" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
-        ),
-        "Raleway" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/raleway/Raleway%5Bwght%5D.ttf"
-        ),
-        "Nunito" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nunito/Nunito%5Bwght%5D.ttf"
-        ),
-        "Oswald" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/oswald/Oswald%5Bwght%5D.ttf"
-        ),
-        "Source Sans 3" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf"
-        ),
-        // ── Popular serif ─────────────────────────────────────────────────
-        "Playfair Display" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf"
-        ),
-        "Merriweather" => Some(
-            // static — no variable version in google/fonts
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/merriweather/Merriweather-Regular.ttf"
-        ),
-        "Lora" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lora/Lora%5Bwght%5D.ttf"
-        ),
-        // ── Popular monospace (code) ──────────────────────────────────────
-        "JetBrains Mono" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf"
-        ),
-        "Fira Code" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/firacode/FiraCode%5Bwght%5D.ttf"
-        ),
-        "Source Code Pro" => Some(
-            "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcecodepro/SourceCodePro%5Bital%2Cwght%5D.ttf"
-        ),
-        _ => None,
-    }
-}
-
 use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost};
+use crate::builtin_fonts::builtin_font_url;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::generated::encode_deliveries;
 use crate::renderer_event_state::RendererEventState;
@@ -673,6 +570,17 @@ impl HayateElementRenderer {
             }
         }
         encode_deliveries(&self.tree.poll_deliveries())
+    }
+
+    /// JSON-encoded AccessKit `TreeUpdate` (ADR-0041). Returns null before layout.
+    pub fn poll_accessibility(&self) -> JsValue {
+        match self.tree.accessibility_update() {
+            Some(update) => match serde_json::to_string(&update) {
+                Ok(json) => JsValue::from_str(&json),
+                Err(_) => JsValue::NULL,
+            },
+            None => JsValue::NULL,
+        }
     }
 }
 
