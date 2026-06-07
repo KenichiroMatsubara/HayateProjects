@@ -4,6 +4,8 @@
 
 **Date: 2026-06-07**
 
+> **2026-06-07 追記:** 本 ADR は当初「event 方向（Rust encode / TS decode）は既に対称」と仮定し、検証層 C1–C4 を `apply_mutations` 方向に限定した。しかし「両側が同一 spec から生成される」ことは「両生成器が spec を同一解釈する」保証にはならない（`encodeFrom` は TS のみ、`adapterTier` / `interactionKind` は TS delivery 生成のみが消費する等の非対称が現存）。delivery wire（`poll_events` の `[listener_id, kind, ...fields]`）には両言語を突き合わせる共有 fixture が無く、TS `delivery.test.ts` はハードコード行に依存していた。**この盲点を是正し、delivery 方向にも共有 fixture による検証層（C5、下記）を追加する。** 設計確定・実装は未着手（設計書 §10 PROTO-17）。
+
 ## Context
 
 ADR-0049 はプロトコル**定数**の単一正本を導入した。`apply_mutations` については Rust 側 decode（`parse_next_op` / `decode_style_packet`）のみ生成され、TS 側 encode（`hayate-mutation-packet.ts` / `style-codec.ts`）は手書きのまま残っていた。event 方向（Rust encode / TS decode）は既に対称。mutation/style の op セマンティクスが二重管理になっている。
@@ -63,6 +65,7 @@ ADR-0049 はプロトコル**定数**の単一正本を導入した。`apply_mut
 | **C1** | Rust: fixture → encode → decode roundtrip |
 | **C2** | TS: fixture → encode 出力を fixture と照合 |
 | **C3** | TS flush → WASM `apply_mutations` 結合テスト |
+| **C5**（delivery 方向。2026-06-07 追加） | `proto/spec/fixtures/delivery_encode.json`（`[{name, kind, fields, wire}]`、positional、全 event kind）を正本とし、Rust は `event → encode_event → wire` 照合、TS は `wire → parseEvent → kind+fields` 照合。両側が同一 fixture を本番方向で参照し delivery wire の drift を検出する。 |
 
 C3 は WASM ビルドコストが高い場合、CI で wasm 変更時ゲートに分離してよい。
 

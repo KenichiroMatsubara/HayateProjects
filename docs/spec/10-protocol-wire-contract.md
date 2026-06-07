@@ -118,11 +118,11 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 **状況:** ✅ — `event_kinds.json`: `fetch_font` = `hayate-internal`、`resize` = `host-echo`、`composition_*` = `ime`。
 **備考:** —
 
-### PROTO-17 — codec 検証（event/delivery 方向）★
-**規範文:** delivery wire（`[listener_id, kind, ...fields]`）も apply_mutations 方向と同様に、Rust encoder と TS `parseDelivery` を**共有 fixture**で突き合わせ、両言語の一致を保証する。
-**出典:** ADR-0055（検証層の対称化）
-**状況:** ⬜ — delivery 方向の共有 fixture が存在しない。`proto/spec/fixtures/` は `ops_encode.json` / `style_encode.json` のみ。TS `delivery.test.ts` は `[42,0,3,10,20]` 等のハードコード行で、Rust event encoder と突き合わせていない。
-**備考:** [要判断 C-10.5] ADR-0055 は「event 方向（Rust encode / TS decode）は既に対称」と仮定し、検証層 C1–C4 を apply_mutations 方向に限定した。「生成されている＝対称」は両生成器が spec を同一解釈する保証にはならない（`encodeFrom` は TS のみ消費、`adapterTier` は TS のみ消費 等の非対称が現存）。→ アーキテクチャレビュー候補3。**ユーザー判断要**: delivery fixture（C3 相当の対称層）を追加するか。
+### PROTO-17 — codec 検証（event/delivery 方向）
+**規範文:** delivery wire を `proto/spec/fixtures/delivery_encode.json`（`[{name, kind, fields, wire}]`、positional、全 event kind）の共有 fixture で固定し、Rust は `event → encode_event → wire` 照合、TS は `wire → parseEvent → kind+fields` 照合（ADR-0055 検証層 C5）。両側が同一 fixture を本番方向で参照し、両言語の delivery wire 一致を保証する。
+**出典:** ADR-0055（2026-06-07 amend で検証層 C5 を追加）
+**状況:** ⬜ — **設計確定・実装未着手**。検証トポロジ（fixture 形式・両側の検証方向）は grill で確定し ADR-0055 に C5 として記録済み。`delivery_encode.json` と Rust/TS テストの実装が残る。現状 `proto/spec/fixtures/` は `ops_encode.json` / `style_encode.json` のみ、TS `delivery.test.ts` はハードコード行。
+**備考:** [解決→実装待ち C-10.5] ADR-0055 の「event 方向は既に対称」の仮定（盲点）を amend で是正。設計は固定済みで、徹底実装フェーズの作業項目。アーキテクチャレビュー候補3。
 
 ---
 

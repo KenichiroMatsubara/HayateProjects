@@ -60,7 +60,7 @@
 | REND-12 | Raw Layer 非公開（WIT撤去） | 意図通り（公開なし） |
 | WEBA-08 | ADR-0010/0011 は歴史的 | 歴史（実装不要） |
 | PLAT-04 ★ | AccessKit 展開順序 | 設計確定・将来 |
-| PROTO-17 ★ | delivery方向 codec検証 fixture | 真のギャップ（要判断） |
+| PROTO-17 | delivery方向 codec検証 fixture | 設計確定（ADR-0055 C5）・実装未着手 |
 | PROTO-19 ★ | app font ID 接続 | 未決（要判断） |
 | HAYA-01〜05 | Hayabusa 全般 | 設計確定・将来（凍結） |
 
@@ -72,7 +72,6 @@
 | ID | 内容 | 関連項目 |
 |---|---|---|
 | C-2.1 | text-as-element が Canvas(property) と DOM(独立要素) で非対称。ADR-0058 の徹底に Canvas 修正が要る | ELEM-05 |
-| C-10.5 | ADR-0055 の検証層が apply_mutations 方向のみ。delivery 方向の共有 fixture 欠落で両言語一致が無保証 | PROTO-17（アーキ候補3） |
 | C-10.6 | app font ID と font_family enum の値域接続が未決（100+予約帯案） | PROTO-19 |
 
 ### [衝突]
@@ -101,6 +100,7 @@
 | ID | 内容 | 対応 |
 |---|---|---|
 | C-4.1 | Z-Order の順序3分散（paint昇順 / hit-test降順 / resolved無ソート） | grill で `ordered_children` 単一 seam に集約決定。ADR-0060 / REND-03 ✅ |
+| C-10.5 | ADR-0055 の検証層が apply_mutations 方向のみ（delivery 方向の共有 fixture 欠落） | grill で検証トポロジ確定。ADR-0055 amend（C5 層）/ PROTO-17。**実装は未着手** |
 | C-11.1 | `tsubame-spec.md`「Tsubame は archive 化せず維持」 vs 単一正本への統合 | ユーザー指示で archive 送り。「維持」記述は破棄 |
 
 ## 運用（governance）
