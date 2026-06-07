@@ -87,8 +87,8 @@ _Avoid_: Tsubame Canvas Mode, 個別 element_set_* 呼び出し（Canvas Rendere
 _Avoid_: 擬似クラススタイルを Signal + `setStyle` で表現する設計
 
 **Document Tree（文書ツリー）**:
-UI の element 親子構造の正本。Canvas/HTML 経路では Hayate `ElementTree`、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。Tsubame Adapter は `ElementId` ハンドルのみ保持し、構造を JS 側に複製しない（ADR-0057）。
-_Avoid_: shadow tree、Virtual DOM、renderer 側 parent map を正本とする設計
+UI の element 親子構造の正本。Canvas/HTML 経路では Hayate `ElementTree`、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子は tree 上の element として表現する（ADR-0058）。Tsubame Adapter は `ElementId` ハンドルのみ保持し、構造を JS 側に複製しない（ADR-0057）。
+_Avoid_: shadow tree、Virtual DOM、仮想 TextNode、renderer 側 parent map を正本とする設計
 
 **Component**:
 `.hybs` ファイル一つがコンポーネント一つに対応する。コンポーネント名はファイル名（拡張子除く）のアッパーキャメルケースで決まる（例: `MyButton.hybs` → `<MyButton>`）。名前の明示的な宣言は不要。`<script>` のトップレベルに宣言されたすべての名前は `<template>` から参照可能である。エクスポート宣言は不要。

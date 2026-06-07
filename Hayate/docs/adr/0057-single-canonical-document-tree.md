@@ -14,6 +14,6 @@ Canvas 経路では Hayate `ElementTree`、Tsubame `CanvasRenderer` の parent m
 
 - `CanvasRenderer` / `DomRenderer` の `parentOf` / `childrenOf` を撤去（ADR-0053 consequence の完了）
 - `tsubame-solid` の `TsubameNode` から構造ミラー（`parent` / `children`）を撤去し、`ElementId` ハンドル化
-- text shadow node は Hayate の `setText` 集約との橋渡しのみ。構造ツリーには含めない
+- text は ADR-0058 に従い Hayate `text` element として Document Tree に載せる（仮想 TextNode 廃止）
 - `removeChild` の subtree 片付けは backend が担う
 - React Fiber / Vue VDOM は各ランタイムの reconciler として別論点。Tsubame が第二の document tree を持たないことが本 ADR の境界
