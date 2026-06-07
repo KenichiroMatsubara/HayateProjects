@@ -5,8 +5,8 @@ import type { ElementId } from './element.js';
  *
  * Canvas Renderer 使用時は Hayate の `poll_events()` delivery から受け取り、
  * DOM Renderer 使用時はネイティブ DOM イベントから橋渡しする。
- * インタラクション状態に応じたスタイル切り替え（:hover 相当）は
- * 各 Adapter フレームワークの reactivity の責務であり、Protocol は扱わない。
+ * `:hover` / `:active` / `:focus` スタイルは Hayate Render Layer（ADR-0056）が
+ * 解決する。本 Protocol のイベントはアプリロジック用。スタイル切替に Signal は不要。
  *
  * MVP 後に追加予定: keyup / scroll / active-start / active-end。
  */

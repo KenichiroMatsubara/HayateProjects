@@ -4,6 +4,7 @@ import type {
   EventHandler,
   EventKind,
   IRenderer,
+  PseudoStyleKey,
   StylePatch,
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
@@ -85,6 +86,10 @@ export class CanvasRenderer implements IRenderer {
 
   setStyle(id: ElementId, style: StylePatch): void {
     this.packet.enqueueSetStyle(id, style);
+  }
+
+  setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
+    this.packet.enqueueSetPseudoStyle(id, pseudo, style);
   }
 
   setText(id: ElementId, text: string): void {

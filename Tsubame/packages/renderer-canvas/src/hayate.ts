@@ -20,6 +20,7 @@ export interface RawHayate {
   /** Element ids in `id` and its descendants (Hayate ElementTree is authoritative). */
   element_subtree_ids(id: number): number[];
   element_set_style(id: number, packed: Float32Array): void;
+  element_set_pseudo_style(id: number, state: number, packed: Float32Array): void;
   apply_mutations(
     ops: Float64Array,
     styles: Float32Array,

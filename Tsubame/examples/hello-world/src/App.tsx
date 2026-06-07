@@ -163,7 +163,6 @@ export function TodoApp(props: TodoAppProps) {
   const [filter, setFilter] = createSignal<Filter>('all');
   const [selectedId, setSelectedId] = createSignal(2);
   const [hoveredCard, setHoveredCard] = createSignal<number | null>(null);
-  const [hoveredControl, setHoveredControl] = createSignal<string | null>(null);
   let nextId = 100;
 
   const activeTodos = createMemo(() => todos().filter((todo) => todo.status !== 'done'));
@@ -210,23 +209,23 @@ export function TodoApp(props: TodoAppProps) {
     if (selected()?.status === 'done') setSelectedId(remaining[0]?.id ?? 0);
   };
 
-  const controlStyle = (key: string, active = false) => ({
+  const controlStyle = (active = false) => ({
     height: 34,
     paddingLeft: 14,
     paddingRight: 14,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: active
-      ? COLORS.accent
-      : hoveredControl() === key
-        ? COLORS.panel3
-        : COLORS.panel,
+    backgroundColor: active ? COLORS.accent : COLORS.panel,
     color: active ? COLORS.black : COLORS.text,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: active ? COLORS.accent : COLORS.line,
     fontSize: 13,
+    ':hover': {
+      backgroundColor: active ? COLORS.accent : COLORS.panel3,
+      borderColor: active ? COLORS.accent : COLORS.line,
+    },
   });
 
   return (
@@ -313,19 +312,15 @@ export function TodoApp(props: TodoAppProps) {
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           {(['all', 'todo', 'doing', 'done'] as const).map((item) => (
             <button
-              style={controlStyle(`filter-${item}`, filter() === item)}
+              style={controlStyle(filter() === item)}
               onClick={() => setFilter(item)}
-              onHoverEnter={() => setHoveredControl(`filter-${item}`)}
-              onHoverLeave={() => setHoveredControl(null)}
             >
               {item === 'all' ? 'All' : STATUS_LABEL[item]}
             </button>
           ))}
           <button
-            style={controlStyle('clear', false)}
+            style={controlStyle(false)}
             onClick={clearDone}
-            onHoverEnter={() => setHoveredControl('clear')}
-            onHoverLeave={() => setHoveredControl(null)}
           >
             Clear done
           </button>
@@ -380,16 +375,11 @@ export function TodoApp(props: TodoAppProps) {
                 todo={todo}
                 selected={selectedId() === todo.id}
                 hovered={hoveredCard() === todo.id}
-                actionHot={hoveredControl() === `advance-${todo.id}`}
-                deleteHot={hoveredControl() === `delete-${todo.id}`}
                 onSelect={() => setSelectedId(todo.id)}
                 onAdvance={() => advance(todo.id)}
                 onRemove={() => remove(todo.id)}
                 onHoverEnter={() => setHoveredCard(todo.id)}
                 onHoverLeave={() => setHoveredCard(null)}
-                onActionHoverEnter={() => setHoveredControl(`advance-${todo.id}`)}
-                onDeleteHoverEnter={() => setHoveredControl(`delete-${todo.id}`)}
-                onButtonHoverLeave={() => setHoveredControl(null)}
               />
             ))}
           {SpY(12)}
@@ -426,16 +416,18 @@ export function TodoApp(props: TodoAppProps) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: hoveredControl() === `preset-${index}` ? COLORS.panel3 : COLORS.panel2,
+                  backgroundColor: COLORS.panel2,
                   color: COLORS.text,
                   borderRadius: 8,
                   borderWidth: 1,
-                  borderColor: hoveredControl() === `preset-${index}` ? COLORS.accent : COLORS.line,
+                  borderColor: COLORS.line,
                   fontSize: 13,
+                  ':hover': {
+                    backgroundColor: COLORS.panel3,
+                    borderColor: COLORS.accent,
+                  },
                 }}
                 onClick={() => addPreset(preset)}
-                onHoverEnter={() => setHoveredControl(`preset-${index}`)}
-                onHoverLeave={() => setHoveredControl(null)}
               >
                 {`+ ${preset.title}`}
               </button>
@@ -492,19 +484,12 @@ function TodoCard(props: {
   todo: Todo;
   selected: boolean;
   hovered: boolean;
-  actionHot: boolean;
-  deleteHot: boolean;
   onSelect: () => void;
   onAdvance: () => void;
   onRemove: () => void;
   onHoverEnter: () => void;
   onHoverLeave: () => void;
-  onActionHoverEnter: () => void;
-  onDeleteHoverEnter: () => void;
-  onButtonHoverLeave: () => void;
 }) {
-  const border = props.selected ? COLORS.accent : props.hovered ? COLORS.blue : COLORS.line;
-  const bg = props.selected ? COLORS.panel3 : props.hovered ? COLORS.panel2 : COLORS.panel;
   return (
     <view
       style={{
@@ -513,11 +498,14 @@ function TodoCard(props: {
         flexDirection: 'column',
         gap: 10,
         padding: 14,
-        backgroundColor: bg,
+        backgroundColor: props.selected ? COLORS.panel3 : COLORS.panel,
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: border,
+        borderColor: props.selected ? COLORS.accent : COLORS.line,
         opacity: props.todo.status === 'done' ? 0.78 : 1,
+        ':hover': props.selected
+          ? { backgroundColor: COLORS.panel3, borderColor: COLORS.accent }
+          : { backgroundColor: COLORS.panel2, borderColor: COLORS.blue },
       }}
       onClick={props.onSelect}
       onHoverEnter={props.onHoverEnter}
@@ -548,16 +536,19 @@ function TodoCard(props: {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: props.actionHot ? COLORS.accent : COLORS.panel3,
-              color: props.actionHot ? COLORS.black : COLORS.text,
+              backgroundColor: COLORS.panel3,
+              color: COLORS.text,
               borderRadius: 8,
               borderWidth: 1,
-              borderColor: props.actionHot ? COLORS.accent : COLORS.line,
+              borderColor: COLORS.line,
               fontSize: 12,
+              ':hover': {
+                backgroundColor: COLORS.accent,
+                borderColor: COLORS.accent,
+                color: COLORS.black,
+              },
             }}
             onClick={props.onAdvance}
-            onHoverEnter={props.onActionHoverEnter}
-            onHoverLeave={props.onButtonHoverLeave}
           >
             {statusAction(props.todo.status)}
           </button>
@@ -568,16 +559,19 @@ function TodoCard(props: {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: props.deleteHot ? COLORS.dangerBg : COLORS.panel3,
-              color: props.deleteHot ? COLORS.danger : COLORS.muted,
+              backgroundColor: COLORS.panel3,
+              color: COLORS.muted,
               borderRadius: 8,
               borderWidth: 1,
-              borderColor: props.deleteHot ? COLORS.danger : COLORS.line,
+              borderColor: COLORS.line,
               fontSize: 15,
+              ':hover': {
+                backgroundColor: COLORS.dangerBg,
+                borderColor: COLORS.danger,
+                color: COLORS.danger,
+              },
             }}
             onClick={props.onRemove}
-            onHoverEnter={props.onDeleteHoverEnter}
-            onHoverLeave={props.onButtonHoverLeave}
           >
             x
           </button>

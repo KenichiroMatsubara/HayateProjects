@@ -1,5 +1,9 @@
 # インタラクション状態はイベント通知のみ。スタイル切替は上位層の責務
 
+> **Status: superseded（スタイル切替の責務分担）**
+>
+> 擬似状態スタイル（`:hover` / `:active` / `:focus`）の解決は **ADR-0056** に移った。本 ADR のイベント通知（`hover-enter` / `hover-leave` 等）は温存される。
+
 ## Context
 
 ポインタ操作やキーボード操作によるインタラクション状態（hover / active / focus 等）に応じてスタイルを変えるUI表現は一般的である。CSS では `:hover` / `:active` / `:focus` 擬似クラスとしてレンダラー側が担う。

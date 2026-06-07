@@ -1,3 +1,5 @@
+import type { PseudoStylePatch } from './pseudo-style.js';
+
 export type Display = 'flex' | 'grid' | 'block' | 'none';
 export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
 export type AlignItems = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 'baseline';
@@ -74,3 +76,6 @@ export interface HayateStyle {
 export type StylePatch = {
   [K in keyof HayateStyle]?: HayateStyle[K] | null;
 };
+
+/** Hayate CSS declaration: base patch plus optional pseudo-class blocks. */
+export type HayateCssStyle = StylePatch & PseudoStylePatch;
