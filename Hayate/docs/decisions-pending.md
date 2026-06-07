@@ -1,6 +1,6 @@
 # Decisions Pending
 
-2026-06-06 時点の未決定事項だけを残す。完了済み事項と廃止済み事項は ADR または archive に委ねる。
+2026-06-07 時点の未決定事項だけを残す。完了済み事項と廃止済み事項は ADR または archive に委ねる。
 
 ## Closed
 
@@ -20,6 +20,10 @@
   根拠: ADR-0053
 - `modifier_keys` / `unset_kinds` の JSON spec 表現（bitmask 説明・`description` 必須 schema）。
   根拠: ADR-0047 / ADR-0053
+- Scene Renderer 契約の粒度: `SceneGraph` 入力のまま、walk は `hayate-core` の `ScenePainter` seam に集約。実装は `scene-renderers/{vello,tiny-skia}`。
+  根拠: ADR-0054
+- 単一正本の scope を wire codec（mutation/style encode + decode）まで拡張。`style_tags.encodeFrom` で TS 入力変換を spec 化。
+  根拠: ADR-0055
 
 ## Open
 
@@ -33,10 +37,17 @@
 - ADR-0044
 - ADR-0049
 
+### 2. Render Host の web surface を scene-renderers に移管するか
+
+- 現状は ADR-0054 H1: web surface 初期化・present は `hayate-adapter-web` に残留。
+- native adapter 追加時、または ADR-0050 の Render Host / Scene Renderer 層分離を完結させるタイミングで `scene-renderers/vello` 等へ移管するか決める。
+
+根拠:
+- ADR-0050
+- ADR-0054
+
 ## Out Of Scope For This File
 
 - WIT 削除 TODO の履歴
-- `opcodes.ts` / `style-encoder.ts` 置換の実装手順
 - 古い spec 文書の移行メモ
-
-それらは各 ADR、issue、または archive 文書に残す。
+- ADR-0054 / ADR-0055 の実装手順（各 ADR の Implementation Tasks を参照）
