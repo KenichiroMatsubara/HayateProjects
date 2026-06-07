@@ -1240,3 +1240,97 @@ fn remove_clears_focused_element() {
         "focused_element must clear when the focused element is removed"
     );
 }
+
+#[test]
+fn viewport_resize_reflows_percent_children() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8001, ElementKind::View);
+    let left = tree.element_create(8002, ElementKind::View);
+    let right = tree.element_create(8003, ElementKind::View);
+    tree.set_root(root);
+    tree.element_append_child(root, left);
+    tree.element_append_child(root, right);
+
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::percent(100.0)),
+        ],
+    );
+    for (child, pct) in [(left, 67.0), (right, 33.0)] {
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::percent(pct)),
+                StyleProp::Height(Dimension::percent(100.0)),
+            ],
+        );
+    }
+
+    tree.set_viewport(900.0, 600.0);
+    tree.render(0.0);
+    let left_wide = tree.element_layout_rect(left).expect("left layout");
+    let right_wide = tree.element_layout_rect(right).expect("right layout");
+    assert!(
+        (left_wide.2 - 603.0).abs() < 1.0,
+        "67% of 900 should be ~603, got {}",
+        left_wide.2
+    );
+    assert!(
+        (right_wide.2 - 297.0).abs() < 1.0,
+        "33% of 900 should be ~297, got {}",
+        right_wide.2
+    );
+
+    tree.set_viewport(300.0, 600.0);
+    tree.render(0.0);
+    let left_narrow = tree.element_layout_rect(left).expect("left layout after resize");
+    let right_narrow = tree.element_layout_rect(right).expect("right layout after resize");
+    assert!(
+        (left_narrow.2 - 201.0).abs() < 1.0,
+        "67% of 300 should be ~201 after resize, got {}",
+        left_narrow.2
+    );
+    assert!(
+        (right_narrow.2 - 99.0).abs() < 1.0,
+        "33% of 300 should be ~99 after resize, got {}",
+        right_narrow.2
+    );
+}
+
+#[test]
+fn viewport_resize_does_not_override_explicit_root_px_size() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8101, ElementKind::View);
+    tree.set_root(root);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+        ],
+    );
+
+    tree.set_viewport(900.0, 600.0);
+    tree.render(0.0);
+    let rect = tree.element_layout_rect(root).expect("root layout");
+    assert!((rect.2 - 100.0).abs() < 0.5);
+    assert!((rect.3 - 50.0).abs() < 0.5);
+
+    tree.set_viewport(300.0, 200.0);
+    tree.render(0.0);
+    let rect = tree.element_layout_rect(root).expect("root layout after resize");
+    assert!(
+        (rect.2 - 100.0).abs() < 0.5,
+        "explicit root px width must not track viewport, got {}",
+        rect.2
+    );
+    assert!(
+        (rect.3 - 50.0).abs() < 0.5,
+        "explicit root px height must not track viewport, got {}",
+        rect.3
+    );
+}

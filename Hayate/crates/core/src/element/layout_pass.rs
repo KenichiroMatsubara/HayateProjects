@@ -122,21 +122,29 @@ impl LayoutPass {
         }
 
         let root_taffy = elements[&root].taffy_node;
+        let root_source_size = elements[&root].layout_style.size;
 
-        // Pin root dimensions to viewport only when they are not already an
-        // explicit Length — Auto/Percent roots have no containing block to
-        // resolve against and would collapse to min-content without this.
-        // Explicit Length values set by the caller are left untouched so tests
-        // and apps that size the root explicitly still get their size honoured.
+        // Pin root dimensions to viewport when the app asked for Auto/Percent.
+        // The root has no containing block, so Percent would collapse to min-content
+        // without this. Use layout_style (author intent), not the current Taffy style:
+        // after the first pin the Taffy node holds a definite Length that must still
+        // track viewport changes on resize.
+        // Explicit px Length values set on the root are left untouched.
         if let Ok(mut style) = self.taffy.style(root_taffy).cloned() {
             let mut changed = false;
-            if !matches!(style.size.width, TaffyDim::Length(_)) {
-                style.size.width = TaffyDim::Length(viewport.0);
-                changed = true;
+            if !matches!(root_source_size.width, TaffyDim::Length(_)) {
+                let pinned = TaffyDim::Length(viewport.0);
+                if style.size.width != pinned {
+                    style.size.width = pinned;
+                    changed = true;
+                }
             }
-            if !matches!(style.size.height, TaffyDim::Length(_)) {
-                style.size.height = TaffyDim::Length(viewport.1);
-                changed = true;
+            if !matches!(root_source_size.height, TaffyDim::Length(_)) {
+                let pinned = TaffyDim::Length(viewport.1);
+                if style.size.height != pinned {
+                    style.size.height = pinned;
+                    changed = true;
+                }
             }
             if changed {
                 let _ = self.taffy.set_style(root_taffy, style);
