@@ -2,7 +2,7 @@
 
 > **Status: superseded（スタイル切替の責務分担）**
 >
-> 擬似状態スタイル（`:hover` / `:active` / `:focus`）の解決は **ADR-0056** に移った。本 ADR のイベント通知（`hover-enter` / `hover-leave` 等）は温存される。
+> 擬似状態スタイル（`:hover` / `:active` / `:focus`）の解決は **ADR-0056** に移った。Hayate Element Layer のイベント通知（`hover-enter` / `hover-leave` 等）は温存される。Tsubame Adapter 経由の hover 購読は **ADR-0059** で拒否。
 
 ## Context
 

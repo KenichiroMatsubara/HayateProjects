@@ -82,4 +82,27 @@ describe('renderer integration (stub IRenderer)', () => {
 
     expect(ops).toContain('append:1,2');
   });
+
+  it('rejects onHoverEnter (ADR-0059)', async () => {
+    const { setProp, createElement } = await import('./renderer.js');
+    const { setActiveRenderer } = await import('./active-renderer.js');
+
+    setActiveRenderer({
+      createElement: () => 1 as never,
+      setRoot: () => {},
+      appendChild: () => {},
+      insertBefore: () => {},
+      removeChild: () => {},
+      setStyle: () => {},
+      setText: () => {},
+      setProperty: () => {},
+      addEventListener: () => () => {},
+      resize: () => {},
+    } as never);
+
+    const view = createElement('view');
+    expect(() => setProp(view, 'onHoverEnter', () => {})).toThrow(
+      /onHoverEnter is not supported/,
+    );
+  });
 });

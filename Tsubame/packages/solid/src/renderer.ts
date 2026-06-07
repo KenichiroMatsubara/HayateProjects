@@ -11,7 +11,7 @@ import {
   isTextInTextCollapse,
   type TsubameNode,
 } from './node.js';
-import { EVENT_PROP } from './events.js';
+import { EVENT_PROP, REJECTED_EVENT_PROPS } from './events.js';
 
 function disposeEvents(node: TsubameNode): void {
   for (const unsub of node.events.values()) unsub();
@@ -92,6 +92,12 @@ const {
         }
       }
       return;
+    }
+
+    if (REJECTED_EVENT_PROPS.has(name)) {
+      throw new Error(
+        `${name} is not supported in tsubame-solid. Use ':hover' in style for visual feedback (ADR-0056, ADR-0059).`,
+      );
     }
 
     const eventKind = EVENT_PROP[name];

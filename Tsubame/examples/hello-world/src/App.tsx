@@ -86,8 +86,8 @@ const INITIAL_TODOS: Todo[] = [
   },
   {
     id: 3,
-    title: 'Exercise hover event bindings',
-    detail: 'Highlight cards and action buttons through Tsubame hover-enter and hover-leave.',
+    title: 'Exercise pseudo-style hover',
+    detail: 'Highlight cards and action buttons through Hayate CSS :hover blocks.',
     project: 'Events',
     priority: 'P1',
     status: 'doing',
@@ -162,7 +162,6 @@ export function TodoApp(props: TodoAppProps) {
   const [todos, setTodos] = createSignal<Todo[]>(INITIAL_TODOS);
   const [filter, setFilter] = createSignal<Filter>('all');
   const [selectedId, setSelectedId] = createSignal(2);
-  const [hoveredCard, setHoveredCard] = createSignal<number | null>(null);
   let nextId = 100;
 
   const activeTodos = createMemo(() => todos().filter((todo) => todo.status !== 'done'));
@@ -374,12 +373,9 @@ export function TodoApp(props: TodoAppProps) {
               <TodoCard
                 todo={todo}
                 selected={selectedId() === todo.id}
-                hovered={hoveredCard() === todo.id}
                 onSelect={() => setSelectedId(todo.id)}
                 onAdvance={() => advance(todo.id)}
                 onRemove={() => remove(todo.id)}
-                onHoverEnter={() => setHoveredCard(todo.id)}
-                onHoverLeave={() => setHoveredCard(null)}
               />
             ))}
           {SpY(12)}
@@ -483,12 +479,9 @@ function Progress(props: { percent: number }) {
 function TodoCard(props: {
   todo: Todo;
   selected: boolean;
-  hovered: boolean;
   onSelect: () => void;
   onAdvance: () => void;
   onRemove: () => void;
-  onHoverEnter: () => void;
-  onHoverLeave: () => void;
 }) {
   return (
     <view
@@ -508,8 +501,6 @@ function TodoCard(props: {
           : { backgroundColor: COLORS.panel2, borderColor: COLORS.blue },
       }}
       onClick={props.onSelect}
-      onHoverEnter={props.onHoverEnter}
-      onHoverLeave={props.onHoverLeave}
     >
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -524,9 +515,7 @@ function TodoCard(props: {
       <text style={{ color: COLORS.muted, fontSize: 13 }}>{props.todo.detail}</text>
 
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <text style={{ color: props.hovered ? COLORS.accent : COLORS.quiet, fontSize: 12 }}>
-          {props.hovered ? 'Hover active - actions are live' : 'Select for details'}
-        </text>
+        <text style={{ color: COLORS.quiet, fontSize: 12 }}>Select for details</text>
         <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <button
             style={{
