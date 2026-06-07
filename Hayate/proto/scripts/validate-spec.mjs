@@ -32,7 +32,7 @@ const validators = {
   types: validatorFor('type.schema.json'),
   enums: validatorFor('enum.schema.json'),
   opcodes: validatorFor('entry.schema.json'),
-  style_tags: validatorFor('entry.schema.json'),
+  style_tags: validatorFor('style_tag.schema.json'),
   event_kinds: validatorFor('event_kind.schema.json'),
   element_kinds: validatorFor('simple_entry.schema.json'),
   unset_kinds: validatorFor('unset_kind.schema.json'),

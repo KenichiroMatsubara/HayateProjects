@@ -6,7 +6,7 @@ import {
   formatDomCSSValue,
   applyDomExtras,
 } from '@tsubame/hayate-css-catalog';
-import { encodeStylePatch } from './style-codec.js';
+import { encodeStylePatch } from '@tsubame/protocol-generated/codec';
 import { TAG } from '@tsubame/protocol-generated/protocol';
 
 /** Representative sample values per wireKind for semantic parity checks. */

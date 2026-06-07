@@ -11,11 +11,13 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
 
     let proto = load_spec(spec_dir);
     let code = generate(&proto);
+    let codec = generate_codec(&proto);
     let dispatch = generate_dispatch(&proto);
     let dom_mapper = generate_dom_style_mapper(&proto);
     let event_types = generate_event_types(&proto);
 
     fs::write(out_dir.join("protocol.rs"), code).unwrap();
+    fs::write(out_dir.join("codec.rs"), codec).unwrap();
     fs::write(out_dir.join("dispatch.rs"), dispatch).unwrap();
     fs::write(out_dir.join("dom_style_mapper.rs"), dom_mapper).unwrap();
     fs::write(out_dir.join("event_types.rs"), event_types).unwrap();
@@ -65,6 +67,8 @@ struct Entry {
     value: u32,
     variable_length: bool,
     params: Vec<Param>,
+    #[allow(dead_code)]
+    encode_from: Option<String>,
     wire_role: Option<String>,
     adapter_tier: Option<String>,
     document_runtime: bool,
@@ -108,6 +112,8 @@ struct EntryJson {
     variable_length: bool,
     #[serde(default)]
     params: Vec<ParamJson>,
+    #[serde(default, rename = "encodeFrom")]
+    encode_from: Option<String>,
     #[serde(default, rename = "wireRole")]
     wire_role: Option<String>,
     #[serde(default, rename = "adapterTier")]
@@ -232,6 +238,7 @@ fn entries_from_json(entries: Vec<EntryJson>) -> Vec<Entry> {
                     count: p.count,
                 })
                 .collect(),
+            encode_from: e.encode_from,
             wire_role: e.wire_role,
             adapter_tier: e.adapter_tier,
             document_runtime: e.document_runtime,
@@ -627,6 +634,155 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("}\n\n");
 
     out
+}
+
+fn generate_codec(proto: &Proto) -> String {
+    let mut out = String::new();
+    out.push_str(GENERATED_HEADER);
+    out.push_str("// ── Wire codec encode (generated) ────────────────────────────────────────\n\n");
+
+    out.push_str("fn encode_dim_unit(unit: DimensionUnit) -> f32 {\n");
+    out.push_str("    match unit {\n");
+    out.push_str("        DimensionUnit::Px => 0.0,\n");
+    out.push_str("        DimensionUnit::Percent => 1.0,\n");
+    out.push_str("        DimensionUnit::Auto => 2.0,\n");
+    out.push_str("        DimensionUnit::Fr => 3.0,\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    for en in &proto.enums {
+        let rust_enum = match en.name.as_str() {
+            "display" => "DisplayValue",
+            "flex_direction" => "FlexDirectionValue",
+            "align_items" => "AlignValue",
+            "justify_content" => "JustifyValue",
+            _ => continue,
+        };
+        let fn_name = format!("encode_{}", en.name);
+        out.push_str(&format!("fn {fn_name}(value: {rust_enum}) -> f32 {{\n"));
+        out.push_str("    match value {\n");
+        for v in &en.values {
+            let variant = to_pascal(&v.name);
+            out.push_str(&format!(
+                "        {rust_enum}::{variant} => {}.0,\n",
+                v.value
+            ));
+        }
+        out.push_str("    }\n");
+        out.push_str("}\n\n");
+    }
+
+    out.push_str("pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {\n");
+    out.push_str("    match op {\n");
+    for op in &proto.opcodes {
+        let variant = to_pascal(&op.name);
+        if op.params.is_empty() {
+            out.push_str(&format!("        Op::{variant} => buf.push(OP_{} as f64),\n", op.name));
+            continue;
+        }
+        let fields: Vec<String> = op.params.iter().map(|p| p.name.clone()).collect();
+        out.push_str(&format!(
+            "        Op::{variant} {{ {} }} => {{\n",
+            fields.join(", ")
+        ));
+        out.push_str(&format!("            buf.push(OP_{} as f64);\n", op.name));
+        for p in &op.params {
+            let count = if p.count == 0 { 1 } else { p.count };
+            if count > 1 {
+                out.push_str(&format!("            for slot in {name}.iter() {{\n", name = p.name));
+                out.push_str("                buf.push(*slot);\n");
+                out.push_str("            }\n");
+            } else {
+                let push = match p.typ.as_str() {
+                    "element_id" | "u32" | "usize" => format!("buf.push(*{name} as f64);", name = p.name),
+                    "f32" => format!("buf.push(*{name} as f64);", name = p.name),
+                    "f64" => format!("buf.push(*{name});", name = p.name),
+                    "bool" => format!("buf.push(if *{name} {{ 1.0 }} else {{ 0.0 }});", name = p.name),
+                    other => panic!("unsupported op param type for encode: {other}"),
+                };
+                out.push_str(&format!("            {push}\n"));
+            }
+        }
+        out.push_str("        }\n");
+    }
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub fn encode_style_packet(buf: &mut Vec<f32>, props: &[StyleProp]) {\n");
+    out.push_str("    for prop in props {\n");
+    out.push_str("        match prop {\n");
+    for tag in &proto.style_tags {
+        let prop_variant = to_pascal(&tag.name);
+        let binding = style_prop_encode_binding(&tag.name, &tag.params);
+        out.push_str(&format!("            StyleProp::{prop_variant}{binding} => {{\n"));
+        out.push_str(&format!("                buf.push(TAG_{} as f32);\n", tag.name));
+        out.push_str(&style_prop_encode_body(&tag.name, &tag.params));
+        out.push_str("            }\n");
+    }
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("}\n");
+
+    out
+}
+
+fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
+    if tag_name == "FONT_FAMILY" {
+        return "(f)".to_string();
+    }
+    if tag_name == "Z_INDEX" {
+        return "(z)".to_string();
+    }
+    for p in params {
+        match p.typ.as_str() {
+            "color" => return "(c)".to_string(),
+            "dimension" => return "(d)".to_string(),
+            "display" | "flex_direction" | "align_items" | "justify_content" | "f32" => {
+                return "(v)".to_string();
+            }
+            _ => {}
+        }
+    }
+    "(v)".to_string()
+}
+
+fn style_prop_encode_body(tag_name: &str, params: &[Param]) -> String {
+    if tag_name == "FONT_FAMILY" {
+        return "                let bytes = f.as_bytes();\n\
+                buf.push(bytes.len() as f32);\n\
+                for byte in bytes {\n\
+                    buf.push(*byte as f32);\n\
+                }\n"
+            .to_string();
+    }
+    if tag_name == "Z_INDEX" {
+        return "                buf.push(*z as f32);\n".to_string();
+    }
+    for p in params {
+        match p.typ.as_str() {
+            "color" => {
+                return "                let arr = c.to_array_f32();\n\
+                buf.extend_from_slice(&arr);\n"
+                    .to_string();
+            }
+            "dimension" => {
+                return "                buf.push(d.value);\n\
+                buf.push(encode_dim_unit(d.unit));\n"
+                    .to_string();
+            }
+            "display" => return "                buf.push(encode_display(*v));\n".to_string(),
+            "flex_direction" => {
+                return "                buf.push(encode_flex_direction(*v));\n".to_string();
+            }
+            "align_items" => return "                buf.push(encode_align_items(*v));\n".to_string(),
+            "justify_content" => {
+                return "                buf.push(encode_justify_content(*v));\n".to_string();
+            }
+            "f32" => return "                buf.push(*v);\n".to_string(),
+            _ => {}
+        }
+    }
+    "                buf.push(*v);\n".to_string()
 }
 
 fn generate_dom_style_mapper(proto: &Proto) -> String {

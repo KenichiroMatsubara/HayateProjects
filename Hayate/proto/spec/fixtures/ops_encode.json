@@ -1,0 +1,24 @@
+[
+  {
+    "name": "create-and-set-text",
+    "ops": [
+      { "kind": "CREATE", "id": 1, "elementKind": 1 },
+      { "kind": "SET_TEXT", "id": 1, "textIndex": 0 },
+      { "kind": "SET_TEXT", "id": 1, "textIndex": 1 }
+    ],
+    "wire": [9, 1, 1, 10, 1, 0, 10, 1, 1],
+    "texts": ["A", "B"]
+  },
+  {
+    "name": "append-child",
+    "ops": [
+      { "kind": "APPEND_CHILD", "parentId": 1, "childId": 2 }
+    ],
+    "wire": [0, 1, 2]
+  },
+  {
+    "name": "set-root",
+    "ops": [{ "kind": "SET_ROOT", "id": 42 }],
+    "wire": [3, 42]
+  }
+]

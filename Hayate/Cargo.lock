@@ -489,6 +489,7 @@ dependencies = [
  "image",
  "js-sys",
  "log",
+ "serde_json",
  "slotmap",
  "tiny-skia",
  "wasm-bindgen",
