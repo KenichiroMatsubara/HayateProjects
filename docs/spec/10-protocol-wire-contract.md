@@ -134,11 +134,11 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 **状況:** ✅ — spec は wire（定数・codec・delivery）のみを所有し、semantic 型を含まない（意図通りの境界）。
 **備考:** これは「やらないこと」の規範。spec の肥大化と Renderer Protocol への侵食を防ぐ。
 
-### PROTO-19 — app font ID と font_family の接続 ★
-**規範文:** spec プリセットの `font_family` enum と、`hayate.config` 由来の app font ID をどう接続するかを定める（例: `100+` を app font 用予約帯にする）。
-**出典:** ADR-0043, ADR-0044, ADR-0049
-**状況:** ⬜ — 未決。`decisions-pending.md` Open #1。
-**備考:** font 調達自体は §5 の責務。ここでは wire 上の font_family 値域の運用のみが対象。予約帯案を採るなら ADR 化が要る（不可逆な値域分割のため）。
+### PROTO-19 — app font と font_family の接続
+**規範文:** `font_family` は wire 上も登録上も**文字列**を正とする。app font は `hayate.config`（ADR-0044）で `{family, url}` を宣言し `register_font` に**名前**で接続する（数値 app font ID は導入しない）。web プリセットの名前は spec `enums.json` `font_family` が正本、名前→CDN URL は web adapter の `fonts.json` から `builtin_font_url` を codegen し、`fonts.json` は spec プリセット名を網羅する。
+**出典:** ADR-0061（decisions-pending Open #1 を解決。ADR-0043/0044/0049）
+**状況:** 🟡 — 文字列ベースの接続は実装済み（`register_font`/`configure_fonts` が名前で登録、`build_text_layout` が解決、app登録 > builtin fetch > bundled default）。残: web `fonts.json` 新設と `builtin_font_url` の codegen 化、spec↔manifest の coverage check（ADR-0061 実装タスク、Cursor 担当）。
+**備考:** [解決→codegen待ち C-10.6] 「100+ 予約帯」案は font_family が文字列のため obsolete として正式 reject（ADR-0061）。URL は web adapter 層に留め spec に入れない（ADR-0043 維持）。
 
 ---
 
@@ -147,7 +147,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 15 | PROTO-01〜08, 10, 12〜16, 18 |
-| 🟡部分 | 2 | PROTO-09, PROTO-11 |
-| ⬜未実装 | 2 | PROTO-17, PROTO-19 |
+| 🟡部分 | 3 | PROTO-09, PROTO-11, PROTO-19 |
+| ⬜未実装 | 1 | PROTO-17 |
 
-**所見:** §10 は驚くほど実装が進んでいる結合点である。WIT 廃止・JSON 単一正本・string table・wire codec 両側生成・C1/C2 fixture・event encoder spec 駆動・Event フィールド名一致まで完了。残るギャップは2点に集約される — **delivery 方向の検証非対称（PROTO-17, 要判断）** と **app font ID 接続（PROTO-19, 未決）**。「徹底実装フェーズ」で §10 から着手するなら、この2項目が作業対象。
+**所見:** §10 は驚くほど実装が進んでいる結合点である。WIT 廃止・JSON 単一正本・string table・wire codec 両側生成・C1/C2 fixture・event encoder spec 駆動・Event フィールド名一致まで完了。残るギャップは設計確定済みで実装待ち — **delivery 方向の検証 fixture（PROTO-17, ADR-0055 C5）** と **フォントプリセットの codegen 化（PROTO-19, ADR-0061）**。いずれも徹底実装フェーズ（Cursor）の作業対象。

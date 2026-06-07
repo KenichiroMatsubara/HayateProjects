@@ -30,7 +30,7 @@
 **規範文:** ファミリ名→CDN URL のマッピングと非同期 fetch は Web Adapter が所有する（Core は所有しない）。`builtin_font_url(family)` テーブルを adapter Rust に持ち、TTF/OTF のみ登録する（fontique/skrifa は WOFF2 非対応）。アプリはフォント URL を書かない。
 **出典:** ADR-0043（ADR-0042 の責務分離）
 **状況:** ✅ — `element_renderer.rs:26` `builtin_font_url()`、`FontQueue = Rc<RefCell<Vec<(String,Vec<u8>)>>>`、`poll_events()` が `FetchFont` を intercept し `spawn_local` で fetch→queue→`render()` で drain・register。
-**備考:** WASM 専用（`spawn_local`）。native Rust ユニットテスト不可。
+**備考:** WASM 専用（`spawn_local`）。native Rust ユニットテスト不可。手書き 126 エントリの `builtin_font_url` は web `fonts.json` からの codegen に置換予定（ADR-0061 / §10 PROTO-19、Cursor 担当）。
 
 ### TEXT-05 — アプリフォント設定ファイル
 **規範文:** アプリのプライマリフォントは `hayate.config` に `[{family, url}]` で宣言し、`configure_fonts()` で描画前にブロッキング preload して FOUT を防ぐ（.notdef 遅延 fetch とは別経路の宣言駆動）。

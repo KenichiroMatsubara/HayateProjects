@@ -32,35 +32,35 @@
 | §7 | [Scroll](./07-scroll.md) | 3 | – | – |
 | §8 | [Web Adapter & Modes](./08-web-adapter-modes.md) | 6 | 1 | 1 |
 | §9 | [Platform Adapter & Accessibility](./09-platform-accessibility.md) | 3 | 1 | 1 |
-| §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 15 | 2 | 2 |
+| §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 15 | 3 | 1 |
 | §11 | [Tsubame](./11-tsubame.md) | 6 | 1 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **70** | **8** | **10** |
+| | **合計** | **70** | **9** | **9** |
 
-全 **88 要件**。実装率（✅）80%。
+全 **88 要件**。実装率（✅）80%。残る 🟡/⬜ 18件はすべて設計確定済み（要判断ゼロ）— 徹底実装フェーズ（Cursor）の作業キュー。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
-### 🟡 部分実装（8件）
+### 🟡 部分実装（9件）
 | ID | 規範文要約 | 欠落 |
 |---|---|---|
 | ELEM-04 | Element変更モデル eager/deferred | §8 WEBA に集約済（実体は✅） |
 | LAY-03 | Raw Layer は layout なしで使用可 | 構造分離済、no-layout実利用/公開契約 未整備 |
 | REND-09 | Renderer Selection Policy | 5箇所に分散、単一seam無し |
 | WEBA-01 | モード自動判定 | 判定主体は host(Tsubame)側 |
-| PLAT-03 ★ | AccessKit を Core が所有 | a11yデータ✅、TreeUpdate生成/poll未実装 |
+| PLAT-03 | AccessKit を Core が所有 | a11yデータ✅、TreeUpdate生成/poll未実装 |
 | PROTO-09 | wire codec 単一正本 | 手書きhayate.ts parser残存疑い |
 | PROTO-11 | codec検証 C3 | StubモックでありWASM実結合でない |
+| PROTO-19 | app font / font_family 接続 | 文字列接続✅、builtin_font_url の codegen化が残（ADR-0061） |
 | TSUB-05 | adapter は既存ランタイム持込 | solid✅、vue/react未実装 |
 
-### ⬜ 未実装（10件）
+### ⬜ 未実装（9件）
 | ID | 規範文要約 | 種別 |
 |---|---|---|
 | REND-12 | Raw Layer 非公開（WIT撤去） | 意図通り（公開なし） |
 | WEBA-08 | ADR-0010/0011 は歴史的 | 歴史（実装不要） |
-| PLAT-04 ★ | AccessKit 展開順序 | 設計確定・将来 |
+| PLAT-04 | AccessKit 展開順序 | 設計確定・将来 |
 | PROTO-17 | delivery方向 codec検証 fixture | 設計確定（ADR-0055 C5）・実装未着手 |
-| PROTO-19 ★ | app font ID 接続 | 未決（要判断） |
 | HAYA-01〜05 | Hayabusa 全般 | 設計確定・将来（凍結） |
 
 ## 矛盾マップ
@@ -68,9 +68,7 @@
 種別: **[履歴]** = 機械的supersession/amend、ADR本文が勝者を宣言済み → 自動解決。**[衝突]** = 番号衝突等の表記問題。**[要判断]** = 真の未解決矛盾・実コードとの食い違い → grill でエスカレーション。**[解決]** = ユーザー指示等で確定。
 
 ### ★ 要判断（grill エスカレーション対象）
-| ID | 内容 | 関連項目 |
-|---|---|---|
-| C-10.6 | app font ID と font_family enum の値域接続が未決（100+予約帯案） | PROTO-19 |
+**現在 0 件** — 4 件の要判断（C-2.1 / C-4.1 / C-10.5 / C-10.6）はすべて grill で決着（下記 [解決]）。残る 🟡/⬜ は設計確定済みの実装作業のみ。
 
 ### [衝突]
 | ID | 内容 | 対応 |
@@ -100,6 +98,7 @@
 | C-2.1 | text-as-element が Canvas/DOM で非対称（と旧評価） | grill で誤読と判明（両側 text element が文字列をプロパティで持つ同型）。`element_set_text` を Text/TextInput に構造化。ELEM-05 ✅ |
 | C-4.1 | Z-Order の順序3分散（paint昇順 / hit-test降順 / resolved無ソート） | grill で `ordered_children` 単一 seam に集約決定。ADR-0060 / REND-03 ✅ |
 | C-10.5 | ADR-0055 の検証層が apply_mutations 方向のみ（delivery 方向の共有 fixture 欠落） | grill で検証トポロジ確定。ADR-0055 amend（C5 層）/ PROTO-17。**実装は未着手** |
+| C-10.6 | app font ID と font_family の接続（旧「100+ 予約帯」案） | grill で前提（数値enum）が obsolete と判明。文字列接続を確定、web fonts.json→codegen（α）。ADR-0061 / PROTO-19。**codegen実装は未着手** |
 | C-11.1 | `tsubame-spec.md`「Tsubame は archive 化せず維持」 vs 単一正本への統合 | ユーザー指示で archive 送り。「維持」記述は破棄 |
 
 ## 運用（governance）
