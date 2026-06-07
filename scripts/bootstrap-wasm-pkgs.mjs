@@ -12,6 +12,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG_DIRS = [
   join(root, 'Hayate/examples/web-demo/pkg'),
   join(root, 'Hayate/examples/web-demo/pkg-tiny-skia'),
+  join(root, 'Hayate/examples/web-demo/pkg-null'),
 ];
 
 const PACKAGE_JSON = `{

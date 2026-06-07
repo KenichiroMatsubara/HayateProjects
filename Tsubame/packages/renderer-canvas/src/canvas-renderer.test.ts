@@ -75,6 +75,7 @@ function manualScheduler() {
   };
 }
 
+// Delivery poll only — apply_mutations wire integration (C3) lives in wasm-integration.test.ts.
 describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('registers Hayate listeners and dispatches poll deliveries', () => {
     const hayate = new StubHayate();

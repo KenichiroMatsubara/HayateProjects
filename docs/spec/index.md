@@ -32,16 +32,16 @@
 | §7 | [Scroll](./07-scroll.md) | 3 | – | – |
 | §8 | [Web Adapter & Modes](./08-web-adapter-modes.md) | 6 | 1 | 1 |
 | §9 | [Platform Adapter & Accessibility](./09-platform-accessibility.md) | 4 | 1 | 0 |
-| §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 17 | 2 | 0 |
+| §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 18 | 1 | 0 |
 | §11 | [Tsubame](./11-tsubame.md) | 6 | 1 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **74** | **7** | **7** |
+| | **合計** | **75** | **6** | **7** |
 
-全 **88 要件**。実装率（✅）84%。
+全 **88 要件**。実装率（✅）85%。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
-### 🟡 部分実装（7件）
+### 🟡 部分実装（6件）
 | ID | 規範文要約 | 欠落 |
 |---|---|---|
 | ELEM-04 | Element変更モデル eager/deferred | §8 WEBA に集約済（実体は✅） |
@@ -49,7 +49,6 @@
 | WEBA-01 | モード自動判定 | 判定主体は host(Tsubame)側 |
 | PLAT-04 ★ | AccessKit 展開順序 | Core TreeUpdate✅、ネイティブ/Web AT 報告未着手 |
 | PROTO-09 | wire codec 単一正本 | 手書きhayate.ts parser残存疑い |
-| PROTO-11 | codec検証 C3 | StubモックでありWASM実結合でない |
 | TSUB-05 | adapter は既存ランタイム持込 | solid✅、vue/react未実装 |
 
 ### ⬜ 未実装（7件）

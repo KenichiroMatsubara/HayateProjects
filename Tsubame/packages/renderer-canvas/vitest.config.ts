@@ -2,15 +2,40 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    environment: 'node',
-    exclude: ['test/**', '**/node_modules/**'],
-    server: {
-      deps: {
-        inline: [
-          '@tsubame/protocol-generated',
-          '@tsubame/hayate-css-catalog',
-        ],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          environment: 'node',
+          include: ['src/**/*.test.ts'],
+          exclude: ['src/wasm-integration.test.ts', 'test/**', '**/node_modules/**'],
+          server: {
+            deps: {
+              inline: [
+                '@tsubame/protocol-generated',
+                '@tsubame/hayate-css-catalog',
+              ],
+            },
+          },
+        },
       },
-    },
+      {
+        extends: true,
+        test: {
+          name: 'wasm',
+          environment: 'happy-dom',
+          include: ['src/wasm-integration.test.ts'],
+          server: {
+            deps: {
+              inline: [
+                '@tsubame/protocol-generated',
+                'hayate-adapter-web-null',
+              ],
+            },
+          },
+        },
+      },
+    ],
   },
 });

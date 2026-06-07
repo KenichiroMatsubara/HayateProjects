@@ -51,8 +51,16 @@ impl RendererSelectionPolicy {
     }
 }
 
+#[cfg(any(feature = "backend-vello", feature = "backend-tiny-skia"))]
 const PRODUCTION_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
+
+/// C3 codec integration tests build with `--features backend-null` only.
+#[cfg(all(
+    feature = "backend-null",
+    not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
+))]
+const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
 /// Reserved for diagnostic init (ADR-0050); not used in production `init`.
 #[allow(dead_code)]
 const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =

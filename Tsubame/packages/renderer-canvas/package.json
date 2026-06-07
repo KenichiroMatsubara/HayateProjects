@@ -13,13 +13,17 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
     "pretypecheck": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:wasm": "vitest run --project wasm",
     "test:watch": "vitest",
     "clean": "rimraf dist"
   },
@@ -28,9 +32,11 @@
     "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
     "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg",
-    "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia"
+    "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia",
+    "hayate-adapter-web-null": "file:../../../Hayate/examples/web-demo/pkg-null"
   },
   "devDependencies": {
+    "happy-dom": "^17.6.3",
     "rimraf": "^6.1.3",
     "vitest": "^3.2.0"
   }

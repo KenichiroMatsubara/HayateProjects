@@ -11,6 +11,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATE_DIR="$ROOT_DIR/crates/adapters/web"
 OUT_DIR="$ROOT_DIR/examples/web-demo/pkg"
 OUT_DIR_CPU="$ROOT_DIR/examples/web-demo/pkg-tiny-skia"
+OUT_DIR_NULL="$ROOT_DIR/examples/web-demo/pkg-null"
 PKG_GITIGNORE=$'*\n!package.json'
 LOCK_FILE="${TMPDIR:-/tmp}/hayate-wasm-build.lock"
 
@@ -62,7 +63,17 @@ wasm-pack build "$CRATE_DIR" \
 printf '%s\n' "$PKG_GITIGNORE" > "$OUT_DIR_CPU/.gitignore"
 echo
 
+# ── Step 4: wasm-pack build (null backend — C3 codec integration tests) ─────
+echo -e "${CYAN}▶ wasm-pack build --target web (backend-null)...${RESET}"
+wasm-pack build "$CRATE_DIR" \
+  --target web \
+  --out-dir "$OUT_DIR_NULL" \
+  -- --no-default-features --features backend-null
+printf '%s\n' "$PKG_GITIGNORE" > "$OUT_DIR_NULL/.gitignore"
+echo
+
 echo -e "${GREEN}${BOLD}✓ Done!${RESET}"
 echo    "  pkg         → examples/web-demo/pkg/"
 echo    "  pkg-tiny-skia → examples/web-demo/pkg-tiny-skia/"
+echo    "  pkg-null    → examples/web-demo/pkg-null/"
 echo    "  Next : npm run serve"

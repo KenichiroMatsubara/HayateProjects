@@ -1,0 +1,50 @@
+name: WASM C3 integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Hayate/**'
+      - 'Tsubame/packages/renderer-canvas/**'
+      - 'Tsubame/proto/**'
+      - 'Hayate/proto/**'
+      - '.github/workflows/wasm-c3.yml'
+  pull_request:
+    paths:
+      - 'Hayate/**'
+      - 'Tsubame/packages/renderer-canvas/**'
+      - 'Tsubame/proto/**'
+      - 'Hayate/proto/**'
+      - '.github/workflows/wasm-c3.yml'
+
+concurrency:
+  group: wasm-c3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codec-c3:
+    name: TS flush → WASM apply_mutations (ADR-0055 C3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Hayate WASM (incl. pkg-null for C3)
+        run: pnpm run build:wasm
+
+      - name: Run renderer-canvas C3 tests
+        working-directory: Tsubame/packages/renderer-canvas
+        run: pnpm run test:wasm

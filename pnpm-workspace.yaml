@@ -3,12 +3,14 @@ packages:
   - 'Hayate/proto'
   - 'Hayate/examples/web-demo/pkg'
   - 'Hayate/examples/web-demo/pkg-tiny-skia'
+  - 'Hayate/examples/web-demo/pkg-null'
   - 'Tsubame'
   - 'Tsubame/proto'
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
 
 allowBuilds:
+  canvas: true
   esbuild: true
 
 minimumReleaseAgeExclude:

@@ -81,8 +81,8 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-11 — codec 検証（C3 結合）
 **規範文:** TS flush → WASM `apply_mutations` の結合テスト（C3）で、生成 codec 経由の実 wire が WASM に通ることを保証する。
 **出典:** ADR-0055（C3）
-**状況:** 🟡 — `Tsubame/packages/renderer-canvas/src/canvas-renderer.test.ts` は `apply_mutations` を呼ぶが `StubHayate` でモックしており、実 WASM 結合ではない。
-**備考:** 0055 は「WASM ビルドコストが高ければ CI で wasm 変更時ゲートに分離してよい」と許容。実 WASM C3 は未整備。
+**状況:** ✅ — `Tsubame/packages/renderer-canvas/src/wasm-integration.test.ts` が `HayateMutationPacket` flush → 実 `apply_mutations`（`pkg-null` / `backend-null`）を検証。`element_get_text` / `element_subtree_ids` でツリー反映を確認。CI: `.github/workflows/wasm-c3.yml`（wasm 変更時ゲート）。
+**備考:** delivery poll の単体は `canvas-renderer.test.ts` が `StubHayate` を継続利用（関心の分離）。C3 は wasm プロジェクトに分離。
 
 ---
 
@@ -146,8 +146,8 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 17 | PROTO-01〜08, 10, 12〜19 |
-| 🟡部分 | 2 | PROTO-09, PROTO-11 |
+| ✅実装済み | 18 | PROTO-01〜08, 10〜19 |
+| 🟡部分 | 1 | PROTO-09 |
 | ⬜未実装 | 0 | — |
 
-**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き parser 疑い）と PROTO-11（WASM 実結合 C3）のみ。
+**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き parser 疑い）のみ。
