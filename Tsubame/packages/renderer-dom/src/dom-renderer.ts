@@ -37,12 +37,17 @@ function eventPayload(id: ElementId, eventKind: EventKind, event: Event): Intera
   return payload;
 }
 
+function elementIdFromDom(el: Element): ElementId | undefined {
+  const raw = el.getAttribute('data-tsubame-id');
+  if (raw === null) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? asElementId(n) : undefined;
+}
+
 export class DomRenderer implements IRenderer {
   private readonly doc: Document;
   private readonly container: HTMLElement;
   private readonly nodes = new Map<ElementId, HTMLElement>();
-  private readonly parentOf = new Map<ElementId, ElementId>();
-  private readonly childrenOf = new Map<ElementId, Set<ElementId>>();
   private nextId = 1;
 
   constructor(options: DomRendererOptions = {}) {
@@ -52,7 +57,9 @@ export class DomRenderer implements IRenderer {
 
   createElement(kind: ElementKind): ElementId {
     const id = asElementId(this.nextId++);
-    this.nodes.set(id, createDomElement(this.doc, kind));
+    const el = createDomElement(this.doc, kind);
+    el.setAttribute('data-tsubame-id', String(id as number));
+    this.nodes.set(id, el);
     return id;
   }
 
@@ -62,19 +69,17 @@ export class DomRenderer implements IRenderer {
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
-    this.linkParent(parent, child);
     this.node(parent).appendChild(this.node(child));
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
-    this.linkParent(parent, child);
     this.node(parent).insertBefore(this.node(child), this.node(before));
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
     const el = this.node(child);
     el.parentElement?.removeChild(el);
-    this.pruneSubtree(child);
+    this.forgetDomSubtree(el);
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
@@ -158,39 +163,18 @@ export class DomRenderer implements IRenderer {
     return el;
   }
 
-  private linkParent(parent: ElementId, child: ElementId): void {
-    const prevParent = this.parentOf.get(child);
-    if (prevParent !== undefined) {
-      this.childrenOf.get(prevParent)?.delete(child);
-    }
-    this.parentOf.set(child, parent);
-    let children = this.childrenOf.get(parent);
-    if (children === undefined) {
-      children = new Set();
-      this.childrenOf.set(parent, children);
-    }
-    children.add(child);
-  }
-
-  private pruneSubtree(root: ElementId): void {
-    const parent = this.parentOf.get(root);
-    if (parent !== undefined) {
-      this.childrenOf.get(parent)?.delete(root);
-      this.parentOf.delete(root);
-    }
-
-    const stack: ElementId[] = [root];
+  /** Drop `nodes` entries for `root` and registered DOM descendants. */
+  private forgetDomSubtree(root: HTMLElement): void {
+    const stack: Element[] = [root];
     while (stack.length > 0) {
-      const node = stack.pop()!;
-      const children = this.childrenOf.get(node);
-      if (children !== undefined) {
-        for (const child of children) {
-          this.parentOf.delete(child);
-          stack.push(child);
-        }
-        this.childrenOf.delete(node);
+      const el = stack.pop()!;
+      for (const child of el.children) {
+        stack.push(child);
       }
-      this.nodes.delete(node);
+      const id = elementIdFromDom(el);
+      if (id !== undefined) {
+        this.nodes.delete(id);
+      }
     }
   }
 }

@@ -9,72 +9,18 @@ class StubHayate implements RawHayate {
   listenerSeq = 1;
   registeredListeners: Array<{ elementId: number; eventKind: number; listenerId: number }> =
     [];
-  private readonly parentOf = new Map<number, number>();
-  private readonly childrenOf = new Map<number, Set<number>>();
 
   element_create(): void {}
   set_root(): void {}
   element_set_text(): void {}
-
-  element_append_child(parent: number, child: number): void {
-    this.linkParent(parent, child);
+  element_append_child(): void {}
+  element_insert_before(): void {}
+  element_remove(): void {}
+  element_subtree_ids(): number[] {
+    return [];
   }
-
-  element_insert_before(parent: number, child: number, _before: number): void {
-    this.linkParent(parent, child);
-  }
-
-  element_remove(root: number): void {
-    const stack = [root];
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      const children = this.childrenOf.get(node);
-      if (children !== undefined) {
-        for (const child of children) {
-          this.parentOf.delete(child);
-          stack.push(child);
-        }
-        this.childrenOf.delete(node);
-      }
-      const parent = this.parentOf.get(node);
-      if (parent !== undefined) {
-        this.childrenOf.get(parent)?.delete(node);
-        this.parentOf.delete(node);
-      }
-    }
-  }
-
-  element_subtree_ids(root: number): number[] {
-    const ids: number[] = [];
-    const stack = [root];
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      ids.push(node);
-      const children = this.childrenOf.get(node);
-      if (children !== undefined) {
-        for (const child of children) {
-          stack.push(child);
-        }
-      }
-    }
-    return ids;
-  }
-
   element_set_style(): void {}
 
-  private linkParent(parent: number, child: number): void {
-    const prevParent = this.parentOf.get(child);
-    if (prevParent !== undefined) {
-      this.childrenOf.get(prevParent)?.delete(child);
-    }
-    this.parentOf.set(child, parent);
-    let children = this.childrenOf.get(parent);
-    if (children === undefined) {
-      children = new Set();
-      this.childrenOf.set(parent, children);
-    }
-    children.add(child);
-  }
   apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void {
     this.mutations.push({
       ops: Array.from(ops),
@@ -152,7 +98,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(received).toEqual([{ kind: 'click', target: 2 }]);
   });
 
-  it('ignores deliveries for unknown listener ids after subtree removal', () => {
+  it('removeChild requires adapter unsubscribe before stale deliveries stop', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
     const renderer = new CanvasRenderer(hayate, sched);
@@ -164,11 +110,12 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     renderer.appendChild(child, grandchild);
 
     const handler = vi.fn();
-    renderer.addEventListener(grandchild, 'click', handler);
+    const unsub = renderer.addEventListener(grandchild, 'click', handler);
     renderer.removeChild(parent, child);
+    unsub();
 
     hayate.events = [[1, 0, 3, 0, 0]];
-    expect(() => sched.tick()).not.toThrow();
+    sched.tick();
     expect(handler).not.toHaveBeenCalled();
   });
 

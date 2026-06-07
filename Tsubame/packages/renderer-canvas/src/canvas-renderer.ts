@@ -80,11 +80,6 @@ export class CanvasRenderer implements IRenderer {
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
-    this.packet.flushStructure(this.raw);
-    const removed = new Set(
-      this.raw.element_subtree_ids(child as number).map((id) => asElementId(id)),
-    );
-    this.purgeListeners(removed);
     this.packet.enqueueRemove(child);
   }
 
@@ -118,14 +113,6 @@ export class CanvasRenderer implements IRenderer {
   /** Drain the ordered mutation packet into the Hayate WASM boundary. */
   private flush(): void {
     this.packet.flush(this.raw);
-  }
-
-  private purgeListeners(removed: ReadonlySet<ElementId>): void {
-    for (const [listenerId, entry] of this.listeners) {
-      if (removed.has(entry.elementId)) {
-        this.listeners.delete(listenerId);
-      }
-    }
   }
 
   private dispatchDeliveries(rows: unknown[]): void {

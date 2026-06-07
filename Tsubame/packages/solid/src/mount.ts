@@ -28,7 +28,7 @@ export function renderTsubame(
   setActiveRenderer(renderer);
   const rootId = renderer.createElement('view');
   renderer.setRoot(rootId);
-  const root = createElementNode(rootId);
+  const root = createElementNode(rootId, 'view');
 
   // RAF でデバウンスしてリサイズを renderer に通知する
   let rafHandle: number | null = null;

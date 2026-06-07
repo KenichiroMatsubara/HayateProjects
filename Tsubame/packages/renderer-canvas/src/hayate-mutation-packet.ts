@@ -86,53 +86,6 @@ export class HayateMutationPacket {
     this.mutations.push({ kind: 'setText', id, text });
   }
 
-  /**
-   * Apply queued structural mutations to Hayate immediately so the WASM
-   * ElementTree stays authoritative (ADR-0057). Style patches remain batched.
-   */
-  flushStructure(raw: RawHayate): void {
-    if (this.mutations.length === 0) return;
-
-    const pending: SemanticMutation[] = [];
-    for (const mutation of this.mutations) {
-      switch (mutation.kind) {
-        case 'createElement':
-          raw.element_create(
-            mutation.id as number,
-            (ELEMENT_KIND as Record<string, number>)[mutation.elementKind]!,
-          );
-          break;
-        case 'setRoot':
-          raw.set_root(mutation.id as number);
-          break;
-        case 'appendChild':
-          raw.element_append_child(
-            mutation.parent as number,
-            mutation.child as number,
-          );
-          break;
-        case 'insertBefore':
-          raw.element_insert_before(
-            mutation.parent as number,
-            mutation.child as number,
-            mutation.before as number,
-          );
-          break;
-        case 'remove':
-          raw.element_remove(mutation.id as number);
-          break;
-        case 'setText':
-          raw.element_set_text(mutation.id as number, mutation.text);
-          break;
-        case 'setStyle':
-          pending.push(mutation);
-          break;
-      }
-    }
-    this.mutations.length = 0;
-    this.mutations.push(...pending);
-  }
-
   flush(raw: RawHayate): void {
     if (this.mutations.length === 0) return;
 

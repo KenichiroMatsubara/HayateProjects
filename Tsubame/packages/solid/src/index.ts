@@ -18,7 +18,7 @@ export {
 export { renderTsubame } from './mount.js';
 export { setActiveRenderer, activeRenderer } from './active-renderer.js';
 
-export type { TsubameNode, ElementNode, TextNode } from './node.js';
+export type { TsubameNode, ElementNode } from './node.js';
 export type { TsubameProps } from './jsx.js';
 
 // グローバル JSX 名前空間の副作用 import。

@@ -46,61 +46,12 @@ class StubHayate {
   element_create() {}
   set_root() {}
   element_set_text() {}
-  element_append_child(parent, child) {
-    this.linkParent(parent, child);
+  element_append_child() {}
+  element_insert_before() {}
+  element_remove() {}
+  element_subtree_ids() {
+    return [];
   }
-  element_insert_before(parent, child) {
-    this.linkParent(parent, child);
-  }
-  element_remove(root) {
-    const stack = [root];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      const children = this.childrenOf.get(node);
-      if (children !== undefined) {
-        for (const child of children) {
-          this.parentOf.delete(child);
-          stack.push(child);
-        }
-        this.childrenOf.delete(node);
-      }
-      const parent = this.parentOf.get(node);
-      if (parent !== undefined) {
-        this.childrenOf.get(parent)?.delete(node);
-        this.parentOf.delete(node);
-      }
-    }
-  }
-  element_subtree_ids(root) {
-    const ids = [];
-    const stack = [root];
-    while (stack.length > 0) {
-      const node = stack.pop();
-      ids.push(node);
-      const children = this.childrenOf.get(node);
-      if (children !== undefined) {
-        for (const child of children) {
-          stack.push(child);
-        }
-      }
-    }
-    return ids;
-  }
-  linkParent(parent, child) {
-    const prevParent = this.parentOf.get(child);
-    if (prevParent !== undefined) {
-      this.childrenOf.get(prevParent)?.delete(child);
-    }
-    this.parentOf.set(child, parent);
-    let children = this.childrenOf.get(parent);
-    if (children === undefined) {
-      children = new Set();
-      this.childrenOf.set(parent, children);
-    }
-    children.add(child);
-  }
-  parentOf = new Map();
-  childrenOf = new Map();
 }
 
 function manualScheduler() {
@@ -308,7 +259,7 @@ test('CanvasRenderer registers listeners and dispatches poll deliveries (ADR-005
   assert.deepEqual(received, [{ kind: 'click', target: 2 }]);
 });
 
-test('removeChild purges listeners via Hayate subtree query', () => {
+test('removeChild enqueues REMOVE without throwing on later poll', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
   const renderer = new CanvasRenderer(hayate, sched);

@@ -1,47 +1,41 @@
-import type { ElementId, Unsubscribe } from '@tsubame/renderer-protocol';
+import type { ElementId, ElementKind, Unsubscribe } from '@tsubame/renderer-protocol';
 
 /**
- * tsubame-solid が保持する shadow ノード。
+ * Solid host handle bound to a Hayate / DOM element (`ElementId`).
  *
- * solid-js/universal はツリー走査（getParentNode / getFirstChild /
- * getNextSibling）と text ノード判定を Renderer 側に要求するが、Tsubame の
- * {@link IRenderer} はこれらを公開しない（mutation のみの境界）。そのため
- * Adapter 側で軽量なツリー構造を保持し、{@link ElementId} と対応付ける。
+ * Document Tree structure lives in Hayate (Canvas) or the browser DOM (DOM
+ * Renderer). This object satisfies `solid-js/universal` tree walks and holds
+ * listener unsubscribes only.
  */
-export interface ElementNode {
-  readonly kind: 'element';
+export interface TsubameNode {
   readonly id: ElementId;
-  parent: ElementNode | null;
+  readonly elementKind: ElementKind;
+  parent: TsubameNode | null;
   readonly children: TsubameNode[];
-  /** prop 名（onClick 等）→ 購読解除関数。 */
   readonly events: Map<string, Unsubscribe>;
-}
-
-/**
- * text ノード。IRenderer の element は作らず、親 ElementNode の `setText` を
- * 通じてテキストを届ける仮想ノード。
- *
- * Solid の universal renderer は JSX 文字コンテンツを別 textNode として扱うが、
- * Tsubame の設計では「text/button element 1 つがスタイルとテキストを両方持つ」
- * ため、textNode は IRenderer ツリーに追加せず親の setText で集約する。
- */
-export interface TextNode {
-  readonly kind: 'text';
-  /** shadow ツリー内での同一性確認用の仮想 ID。IRenderer には登録しない。 */
-  readonly id: ElementId;
-  parent: ElementNode | null;
+  /** Latest text for `text` elements (Solid `replaceText`). */
   text: string;
 }
 
-export type TsubameNode = ElementNode | TextNode;
+/** @deprecated Use {@link TsubameNode}. */
+export type ElementNode = TsubameNode;
 
-/** 仮想 TextNode 用の連番（負数）。IRenderer の ElementId と衝突しない。 */
-let _nextVirtualId = -1;
-
-export function createElementNode(id: ElementId): ElementNode {
-  return { kind: 'element', id, parent: null, children: [], events: new Map() };
+export function createElementNode(
+  id: ElementId,
+  elementKind: ElementKind,
+  text = '',
+): TsubameNode {
+  return {
+    id,
+    elementKind,
+    parent: null,
+    children: [],
+    events: new Map(),
+    text,
+  };
 }
 
-export function createTextShadowNode(text: string): TextNode {
-  return { kind: 'text', id: _nextVirtualId-- as ElementId, parent: null, text };
+/** `<text>…</text>`: Solid text child collapsed into parent (DOM `<span>` model). */
+export function isTextInTextCollapse(parent: TsubameNode, child: TsubameNode): boolean {
+  return parent.elementKind === 'text' && child.elementKind === 'text';
 }
