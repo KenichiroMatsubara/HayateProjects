@@ -2,6 +2,8 @@
 mod backend;
 #[cfg(any(target_arch = "wasm32", test))]
 mod generated;
+#[cfg(test)]
+mod wire_codec_roundtrip;
 #[cfg(target_arch = "wasm32")]
 mod apply_mutations_dispatch;
 #[cfg(target_arch = "wasm32")]

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encodeStylePatch, unsetKindsOf, TAG, UNSET_KIND } from './style-encoder.js';
+import { encodeStylePatch, unsetKindsOf, TAG, UNSET_KIND } from '@tsubame/protocol-generated/codec';
 
 // ── encodeStylePatch ──────────────────────────────────────────────────────────
 

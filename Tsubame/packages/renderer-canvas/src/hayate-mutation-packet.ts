@@ -4,8 +4,19 @@ import type {
   StylePatch,
 } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
-import { ELEMENT_KIND, OP } from '@tsubame/protocol-generated/protocol';
-import { encodeStylePatch, unsetKindsOf } from './style-encoder.js';
+import { ELEMENT_KIND } from '@tsubame/protocol-generated/protocol';
+import {
+  appendCreate,
+  appendSetRoot,
+  appendChild,
+  insertBefore,
+  appendRemove,
+  appendSetStyle,
+  appendSetText,
+  appendUnsetStyle,
+  encodeStylePatch,
+  unsetKindsOf,
+} from '@tsubame/protocol-generated/codec';
 
 type SemanticMutation =
   | {
@@ -85,49 +96,49 @@ export class HayateMutationPacket {
     for (const mutation of this.mutations) {
       switch (mutation.kind) {
         case 'createElement':
-          ops.push(
-            OP.CREATE,
+          appendCreate(
+            ops,
             mutation.id as number,
             (ELEMENT_KIND as Record<string, number>)[mutation.elementKind]!,
           );
           break;
         case 'setRoot':
-          ops.push(OP.SET_ROOT, mutation.id as number);
+          appendSetRoot(ops, mutation.id as number);
           break;
         case 'appendChild':
-          ops.push(
-            OP.APPEND_CHILD,
+          appendChild(
+            ops,
             mutation.parent as number,
             mutation.child as number,
           );
           break;
         case 'insertBefore':
-          ops.push(
-            OP.INSERT_BEFORE,
+          insertBefore(
+            ops,
             mutation.parent as number,
             mutation.child as number,
             mutation.before as number,
           );
           break;
         case 'remove':
-          ops.push(OP.REMOVE, mutation.id as number);
+          appendRemove(ops, mutation.id as number);
           break;
         case 'setStyle': {
           const offset = styles.length;
           encodeStylePatch(mutation.style, styles);
           const len = styles.length - offset;
           if (len > 0) {
-            ops.push(OP.SET_STYLE, mutation.id as number, offset, len);
+            appendSetStyle(ops, mutation.id as number, offset, len);
           }
           for (const unsetKind of unsetKindsOf(mutation.style)) {
-            ops.push(OP.UNSET_STYLE, mutation.id as number, unsetKind);
+            appendUnsetStyle(ops, mutation.id as number, unsetKind);
           }
           break;
         }
         case 'setText': {
           const textIndex = texts.length;
           texts.push(mutation.text);
-          ops.push(OP.SET_TEXT, mutation.id as number, textIndex);
+          appendSetText(ops, mutation.id as number, textIndex);
           break;
         }
       }

@@ -7,6 +7,7 @@
   "exports": {
     ".": "./generated/index.ts",
     "./protocol": "./generated/protocol.ts",
+    "./codec": "./generated/codec.ts",
     "./catalog": "./generated/catalog.ts",
     "./catalog.json": "./generated/catalog.json",
     "./delivery": "./generated/delivery.ts"

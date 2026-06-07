@@ -2,322 +2,194 @@
   {
     "name": "BACKGROUND_COLOR",
     "value": 0,
-    "params": [
-      {
-        "name": "color",
-        "type": "color"
-      }
-    ]
+    "encodeFrom": "css-color",
+    "params": [{ "name": "color", "type": "color" }]
   },
   {
     "name": "OPACITY",
     "value": 1,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   },
   {
     "name": "BORDER_RADIUS",
     "value": 2,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   },
   {
     "name": "BORDER_WIDTH",
     "value": 3,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   },
   {
     "name": "BORDER_COLOR",
     "value": 4,
-    "params": [
-      {
-        "name": "color",
-        "type": "color"
-      }
-    ]
+    "encodeFrom": "css-color",
+    "params": [{ "name": "color", "type": "color" }]
   },
   {
     "name": "WIDTH",
     "value": 5,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "HEIGHT",
     "value": 6,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MIN_WIDTH",
     "value": 7,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MIN_HEIGHT",
     "value": 8,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MAX_WIDTH",
     "value": 9,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MAX_HEIGHT",
     "value": 10,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "DISPLAY",
     "value": 11,
-    "params": [
-      {
-        "name": "value",
-        "type": "display"
-      }
-    ]
+    "encodeFrom": "enum:display",
+    "params": [{ "name": "value", "type": "display" }]
   },
   {
     "name": "FLEX_DIRECTION",
     "value": 12,
-    "params": [
-      {
-        "name": "value",
-        "type": "flex_direction"
-      }
-    ]
+    "encodeFrom": "enum:flex_direction",
+    "params": [{ "name": "value", "type": "flex_direction" }]
   },
   {
     "name": "ALIGN_ITEMS",
     "value": 13,
-    "params": [
-      {
-        "name": "value",
-        "type": "align_items"
-      }
-    ]
+    "encodeFrom": "enum:align_items",
+    "params": [{ "name": "value", "type": "align_items" }]
   },
   {
     "name": "JUSTIFY_CONTENT",
     "value": 14,
-    "params": [
-      {
-        "name": "value",
-        "type": "justify_content"
-      }
-    ]
+    "encodeFrom": "enum:justify_content",
+    "params": [{ "name": "value", "type": "justify_content" }]
   },
   {
     "name": "GAP",
     "value": 15,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "PADDING",
     "value": 16,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "PADDING_TOP",
     "value": 17,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "PADDING_RIGHT",
     "value": 18,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "PADDING_BOTTOM",
     "value": 19,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "PADDING_LEFT",
     "value": 20,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MARGIN",
     "value": 21,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MARGIN_TOP",
     "value": 22,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MARGIN_RIGHT",
     "value": 23,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MARGIN_BOTTOM",
     "value": 24,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "MARGIN_LEFT",
     "value": 25,
-    "params": [
-      {
-        "name": "dim",
-        "type": "dimension"
-      }
-    ]
+    "encodeFrom": "dimension",
+    "params": [{ "name": "dim", "type": "dimension" }]
   },
   {
     "name": "FONT_SIZE",
     "value": 26,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   },
   {
     "name": "COLOR",
     "value": 27,
-    "params": [
-      {
-        "name": "color",
-        "type": "color"
-      }
-    ]
+    "encodeFrom": "css-color",
+    "params": [{ "name": "color", "type": "color" }]
   },
   {
     "name": "Z_INDEX",
     "value": 28,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "z-index",
+    "params": [{ "name": "value", "type": "f32" }]
   },
   {
     "name": "FONT_FAMILY",
     "value": 29,
     "variable_length": true,
-    "params": [
-      {
-        "name": "family",
-        "type": "string"
-      }
-    ]
+    "encodeFrom": "font-family",
+    "params": [{ "name": "family", "type": "string" }]
   },
   {
     "name": "FLEX_GROW",
     "value": 30,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   },
   {
     "name": "FONT_WEIGHT",
     "value": 31,
-    "params": [
-      {
-        "name": "value",
-        "type": "f32"
-      }
-    ]
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   }
 ]

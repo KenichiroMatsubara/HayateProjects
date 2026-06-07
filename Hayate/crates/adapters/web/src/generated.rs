@@ -10,5 +10,9 @@ include!(concat!(
 ));
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
+    "/../../../proto/generated/codec.rs"
+));
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
     "/../../../proto/generated/dom_style_mapper.rs"
 ));

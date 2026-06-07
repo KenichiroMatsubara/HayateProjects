@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/style_tag.schema.json",
+  "title": "Style tag entry with encodeFrom",
+  "type": "object",
+  "required": ["name", "value", "encodeFrom"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "value": { "type": "integer", "minimum": 0 },
+    "variable_length": { "type": "boolean" },
+    "encodeFrom": {
+      "type": "string",
+      "enum": [
+        "css-color",
+        "dimension",
+        "f32",
+        "enum:display",
+        "enum:flex_direction",
+        "enum:align_items",
+        "enum:justify_content",
+        "font-family",
+        "z-index"
+      ]
+    },
+    "params": {
+      "type": "array",
+      "items": { "$ref": "entry.schema.json#/$defs/param" }
+    }
+  },
+  "additionalProperties": false
+}
