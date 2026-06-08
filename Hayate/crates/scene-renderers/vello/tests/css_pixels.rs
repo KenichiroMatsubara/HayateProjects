@@ -1,0 +1,61 @@
+//! Pixel-level regression tests for every Hayate CSS catalog property (Vello).
+//!
+//! Skips entirely when no wgpu adapter is available.
+
+use hayate_scene_test_support::{run_all_vello, run_vello, try_vello_harness, CSS_PIXEL_CASES};
+
+#[test]
+fn all_catalog_css_properties_vello() {
+    let _ran = run_all_vello(CSS_PIXEL_CASES);
+}
+
+macro_rules! vello_property_test {
+    ($fn_name:ident, $idx:literal) => {
+        #[test]
+        fn $fn_name() {
+            let Some(mut harness) = try_vello_harness() else {
+                eprintln!(
+                    "skip {}: no wgpu adapter",
+                    CSS_PIXEL_CASES[$idx].css_property
+                );
+                return;
+            };
+            run_vello(&CSS_PIXEL_CASES[$idx], &mut harness);
+        }
+    };
+}
+
+vello_property_test!(css_pixel_background_color, 0);
+vello_property_test!(css_pixel_opacity, 1);
+vello_property_test!(css_pixel_border_radius, 2);
+vello_property_test!(css_pixel_border_width, 3);
+vello_property_test!(css_pixel_border_color, 4);
+vello_property_test!(css_pixel_width, 5);
+vello_property_test!(css_pixel_height, 6);
+vello_property_test!(css_pixel_min_width, 7);
+vello_property_test!(css_pixel_min_height, 8);
+vello_property_test!(css_pixel_max_width, 9);
+vello_property_test!(css_pixel_max_height, 10);
+vello_property_test!(css_pixel_display_flex, 11);
+vello_property_test!(css_pixel_display_none, 12);
+vello_property_test!(css_pixel_display_grid, 13);
+vello_property_test!(css_pixel_flex_direction, 14);
+vello_property_test!(css_pixel_align_items, 15);
+vello_property_test!(css_pixel_justify_content, 16);
+vello_property_test!(css_pixel_gap, 17);
+vello_property_test!(css_pixel_padding, 18);
+vello_property_test!(css_pixel_padding_top, 19);
+vello_property_test!(css_pixel_padding_right, 20);
+vello_property_test!(css_pixel_padding_bottom, 21);
+vello_property_test!(css_pixel_padding_left, 22);
+vello_property_test!(css_pixel_margin, 23);
+vello_property_test!(css_pixel_margin_top, 24);
+vello_property_test!(css_pixel_margin_right, 25);
+vello_property_test!(css_pixel_margin_bottom, 26);
+vello_property_test!(css_pixel_margin_left, 27);
+vello_property_test!(css_pixel_font_size, 28);
+vello_property_test!(css_pixel_color, 29);
+vello_property_test!(css_pixel_font_family, 30);
+vello_property_test!(css_pixel_font_weight, 31);
+vello_property_test!(css_pixel_z_index, 32);
+vello_property_test!(css_pixel_flex_grow, 33);
