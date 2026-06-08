@@ -13,11 +13,11 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **状況:** ✅ — `Tsubame/packages/`：renderer-protocol / renderer-dom / renderer-canvas / solid。`tsubame-spec.md` が責務を明示。
 **備考:** [履歴 C-11.2] Hayate ADR-0038「Tsubame を signal 統一ランタイムに」は ADR-0040 が supersede（記法差で adapter 間共有不可、Vue/React ecosystem が全滅するため）。
 
-### TSUB-02 — Renderer Protocol（IRenderer）
-**規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・プロパティ・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。
-**出典:** Tsubame ADR-0002
-**状況:** 🟡 — interface は `renderer-protocol/src/renderer.ts` に定義済（`setPseudoStyle` で `:hover`/`:active`/`:focus` 分離）。**ただし `setProperty` の実装が adapter 間で非対称** — DOM Renderer は実装済（`dom-renderer.ts:126`、`value`/`placeholder`/`disabled`/`src` を処理）だが、Canvas Renderer は no-op（`canvas-renderer.ts:99`）で同プロパティを silent drop する。規範文「adapter は DOM か Canvas かを意識しない」が property 経路で未達。
-**備考:** setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（アーキテクチャレビュー候補5、§改善）。残タスク: Canvas 側で `setProperty` を semantic mutation として encode するか、未対応を型レベルで明示する。
+### TSUB-02 — Renderer Protocol（IRenderer）／property は閉じた語彙
+**規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・property・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。**element property は閉じた typed 語彙**とし、既知の意味プロパティ（`value`/`placeholder`/`disabled`/`src`、`aria-label`/`role` は first-class 経由）を両 renderer が実装する。**未知 property 名はエラー**（任意 HTML 属性のフォールバックは禁止＝ELEM-01 のタグ禁止と同格）。
+**出典:** Tsubame ADR-0002、ADR-0071（property 閉じた語彙）
+**状況:** ⬜未実装 — interface は `renderer-protocol/src/renderer.ts` に定義済だが、`setProperty` が untyped エスケープハッチで実装非対称：DOM Renderer は4意味プロパティ＋任意 `setAttribute` フォールバック（`dom-renderer.ts:126,159–167`）、Canvas Renderer は no-op（`canvas-renderer.ts:99`）で silent drop。意味プロパティの first-class 化（両 renderer）・未知 property の throw（build-time 型＋runtime、`REJECTED_EVENT_PROPS` パターン）・DOM の任意 attr 撤去・`disabled` state 新設が残タスク。
+**備考:** ADR-0071。`aria` は first-class（`element_set_aria_label`/`role`）経由のみ。setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（別改善）。
 
 ### TSUB-03 — DOM Renderer（CSR、Hayate 不使用）
 **規範文:** DOM Renderer は HTML 直接操作で CSR を行い、Hayate（WASM）を一切使わない。element-kind を HTML tag に 1:1 マップ（view→div / text→span / button→button / text-input→input / image→img / scroll-view→div）し、各要素に `data-tsubame-id` を付与して `ElementId` を保持する。
@@ -55,4 +55,5 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 5 | TSUB-01, 03, 04, 06, 07 |
-| 🟡部分 | 2 | TSUB-02（Canvas `setProperty` が no-op で `src`/`value`/`placeholder`/`disabled` を silent drop）, TSUB-05（solid のみ実装、vue/react 未実装） |
+| 🟡部分 | 1 | TSUB-05（solid のみ実装、vue/react 未実装） |
+| ⬜未実装 | 1 | TSUB-02（property を閉じた語彙に・未知はエラー、ADR-0071） |
