@@ -27,6 +27,14 @@ _Avoid_: 上位 API、UI 層、Scene Layer
 Element Layer が受け付ける UI の構成単位。React Native 語彙を採用し、`view` / `text` / `image` / `button` / `text-input` / `scroll-view` を基本型とする。HTML タグ名（div / span / input 等）は使用しない。LLM の訓練データ上で React Native・SwiftUI・Jetpack Compose の三系統に共通する語彙であり、文脈なしでも意味が一意になる。
 _Avoid_: div, span, section, p, h1〜h6（HTML 語彙全般）
 
+**Inline Formatting Context（IFC）**:
+`text` element が確立する inline 整形単位。**IFC root**（親が `text` でない `text`）は subtree（自身の `el.text` ＋ 子 `text` span を document 順）を1つの Parley ranged layout として整形する Taffy leaf。**inline span**（親が `text` の `text`）は Taffy box を持たず、親 IFC の styled range（font-family/size/weight/style/color/decoration）として合成される。シンタックスハイライト等の inline styled text を可能にする。Canvas Mode（Parley）が実装し、DOM Renderer / HTML Mode はブラウザ native IFC に委ねる。内部 seam は `InlineText`（ADR-0063）。
+_Avoid_: leaf-string + 親 collapse モデル（ADR-0058 旧式、ADR-0063 が supersede）、inline span を Taffy box とする設計
+
+**Element クラス（block box / inline span）**:
+2b（ADR-0063）以降、element は2クラス。**block box**（`view`/`button`/`image`/`scroll-view`/`text-input` および IFC root の `text`）は Taffy ノードを1つ持つ。**inline span**（IFC 内の子 `text`）は Taffy ノードを持たず親 IFC の range。
+_Avoid_: 全 element = 1 Taffy box という旧前提
+
 **Hayate CSS**:
 要素ごとのインラインスタイル宣言。レイアウトプロパティは Taffy の CSS サブセット、ビジュアルプロパティは CSS 名の Hayate 対応サブセット。要素ローカルの擬似状態（`:hover` / `:active` / `:focus`）を同一宣言内に nest でき、Render Layer がポインタ状態に応じて effective style を合成する。セレクタ・カスケード・スタイルシートは含まない。
 _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style
