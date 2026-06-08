@@ -287,10 +287,11 @@ impl HayateElementRenderer {
             self.tree.register_font(&family, bytes);
         }
         let sg = self.tree.render(timestamp_ms);
+        let present = self.backend.render_scene(sg, self.background);
         if let Some(focused) = self.tree.focused_element() {
             sync_ime_character_bounds(&self.tree, focused, &mut self.ime);
         }
-        self.backend.render_scene(sg, self.background)
+        present
     }
 
     /// Fetch an image (PNG / JPEG / WebP) from `url` and attach it to the Image element.

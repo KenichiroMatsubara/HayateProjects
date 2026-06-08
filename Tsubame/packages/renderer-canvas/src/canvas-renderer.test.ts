@@ -13,11 +13,14 @@ class StubHayate implements RawHayate {
   element_create(): void {}
   set_root(): void {}
   element_set_text(): void {}
+  element_get_text(): string {
+    return '';
+  }
   element_append_child(): void {}
   element_insert_before(): void {}
   element_remove(): void {}
-  element_subtree_ids(): number[] {
-    return [];
+  element_subtree_ids(): Float64Array {
+    return new Float64Array();
   }
   element_set_style(): void {}
   element_set_pseudo_style(): void {}
