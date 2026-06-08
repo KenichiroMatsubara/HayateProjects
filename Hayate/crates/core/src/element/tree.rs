@@ -133,6 +133,8 @@ pub struct ElementTree {
     /// Elements matching CSS `:hover` (self or descendant under pointer).
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
+    /// Last pointer position for sub-pixel move dedup (ADR-0066).
+    pub(crate) last_pointer_pos: Option<(f32, f32)>,
     pub(crate) runtime: DocumentRuntime,
 }
 
@@ -148,6 +150,7 @@ impl ElementTree {
             focused_element: None,
             hovered_elements: HashSet::new(),
             active_element: None,
+            last_pointer_pos: None,
             runtime: DocumentRuntime::new(),
         }
     }
@@ -678,10 +681,6 @@ impl ElementTree {
     /// HTML `mouseleave` path: clear hover on the element that was left.
     pub fn hover_leave_element(&mut self, id: ElementId) -> bool {
         self.hovered_elements.remove(&id)
-    }
-
-    pub fn set_active_element(&mut self, id: Option<ElementId>) {
-        self.active_element = id;
     }
 
     pub fn element_set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: &[StyleProp]) {
