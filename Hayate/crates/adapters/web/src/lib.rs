@@ -12,7 +12,7 @@ mod wire_codec_roundtrip;
 mod apply_mutations_dispatch;
 #[cfg(target_arch = "wasm32")]
 mod element_renderer;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 mod ime_bridge;
 #[cfg(any(target_arch = "wasm32", test))]
 mod html_delivery;

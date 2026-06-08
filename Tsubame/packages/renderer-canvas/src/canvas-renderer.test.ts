@@ -41,6 +41,9 @@ class StubHayate implements RawHayate {
   focused_element_id(): number {
     return 0;
   }
+  ime_character_bounds(): number[] {
+    return [0, 0, 0, 0];
+  }
   render(timestampMs: number): void {
     this.renders.push(timestampMs);
   }

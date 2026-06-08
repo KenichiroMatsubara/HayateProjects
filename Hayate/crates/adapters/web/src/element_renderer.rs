@@ -19,6 +19,7 @@ use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32
 use crate::builtin_fonts::builtin_font_url;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::generated::encode_deliveries;
+use crate::ime_bridge::{sync_ime_character_bounds, WebImeBridge};
 use crate::style_packet;
 
 // ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
@@ -142,6 +143,8 @@ pub struct HayateElementRenderer {
     background: [f32; 4],
     /// Fonts fetched by spawned futures; applied to the tree on next poll_events.
     font_queue: FontQueue,
+    /// IME candidate-window bounds synced each render (ADR-0069).
+    ime: WebImeBridge,
 }
 
 #[wasm_bindgen]
@@ -157,6 +160,7 @@ impl HayateElementRenderer {
             tree,
             background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
+            ime: WebImeBridge::default(),
         })
     }
 
@@ -283,6 +287,9 @@ impl HayateElementRenderer {
             self.tree.register_font(&family, bytes);
         }
         let sg = self.tree.render(timestamp_ms);
+        if let Some(focused) = self.tree.focused_element() {
+            sync_ime_character_bounds(&self.tree, focused, &mut self.ime);
+        }
         self.backend.render_scene(sg, self.background)
     }
 
@@ -471,6 +478,12 @@ impl HayateElementRenderer {
             Some(b) => vec![b.x, b.y, b.width, b.height].into_boxed_slice(),
             None => vec![0.0, 0.0, 0.0, 0.0].into_boxed_slice(),
         }
+    }
+
+    /// Last IME character bounds synced during the most recent `render()`.
+    pub fn ime_character_bounds(&self) -> Box<[f32]> {
+        let b = self.ime.last_bounds();
+        vec![b.x, b.y, b.width, b.height].into_boxed_slice()
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {

@@ -37,6 +37,8 @@ export interface RawHayate {
   on_composition_update(id: number, text: string): void;
   on_composition_end(id: number, text: string): void;
   focused_element_id(): number;
+  /** Cursor rect synced during the last render (ADR-0069). */
+  ime_character_bounds(): number[];
   render(timestampMs: number): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;

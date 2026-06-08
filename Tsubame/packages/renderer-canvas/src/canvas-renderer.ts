@@ -12,6 +12,7 @@ import { asElementId } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
+import { syncEditContextBounds } from './edit-context-sync.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
@@ -135,6 +136,9 @@ export class CanvasRenderer implements IRenderer {
   private readonly frame = (timestampMs: number): void => {
     this.flush();
     this.raw.render(timestampMs);
+    if (this.canvas !== null) {
+      syncEditContextBounds(this.canvas, this.raw);
+    }
     this.dispatchDeliveries(this.raw.poll_events());
     this.frameHandle = this.requestFrame(this.frame);
   };
