@@ -35,6 +35,10 @@ _Avoid_: leaf-string + 親 collapse モデル（ADR-0058 旧式、ADR-0063 が s
 2b（ADR-0063）以降、element は2クラス。**block box**（`view`/`button`/`image`/`scroll-view`/`text-input` および IFC root の `text`）は Taffy ノードを1つ持つ。**inline span**（IFC 内の子 `text`）は Taffy ノードを持たず親 IFC の range。
 _Avoid_: 全 element = 1 Taffy box という旧前提
 
+**Taffy Projection**:
+`ElementTree` の block-box 部分集合から **lazy に派生する Taffy ツリー**（ADR-0064）。`ElementTree` が構造・データの唯一 owner で、Taffy は peer ではなく derived projection。構造 mutation は `ElementTree` と structure-dirty 集合のみ触り、Taffy は `LayoutPass::run` 冒頭で dirty-scoped に reconcile される。inline span は投影に含まれない。RN の Fiber↔Yoga shadow tree、Flutter の Element↔RenderObject tree と同形。`TaffyProjection` seam が `TaffyTree` と ElementId↔NodeId マップを所有する。
+_Avoid_: Taffy ツリーを owner とする設計（`TaffyTree<Element>`・span を `Display::None`）、各 mutation site での手 sync、layout ツリーと document ツリーの 1:1 視
+
 **Hayate CSS**:
 要素ごとのインラインスタイル宣言。レイアウトプロパティは Taffy の CSS サブセット、ビジュアルプロパティは CSS 名の Hayate 対応サブセット。要素ローカルの擬似状態（`:hover` / `:active` / `:focus`）を同一宣言内に nest でき、Render Layer がポインタ状態に応じて effective style を合成する。セレクタ・カスケード・スタイルシートは含まない。
 _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style
