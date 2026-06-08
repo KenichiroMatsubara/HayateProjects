@@ -63,6 +63,6 @@ ADR-0057 の有効な核（「正本は単一」）は **「描画・layout・hi
 - tsubame-react / tsubame-vue は shadow tree を持たない（VDOM reconciler・write-only host）。
 - 関連: ADR-0053（Element Document Runtime）、ADR-0052 / TSUB-04（apply_mutations batch）、ADR-0058（text-as-element）。
 
-## ADR-0057 との関係
+## 関係
 
 ADR-0057 は **superseded**。その「描画正本は単一」という核は本 ADR が継承し、「JS 側に構造を一切持たない」部分のみを覆す。

@@ -10,7 +10,7 @@
 
 ADR-0054 H1 / decisions-pending #2 は「web surface の共有層移管は **native adapter 追加時まで deferred**」とした。LANGUAGE.md も「1 adapter＝仮説の seam、2 adapter＝本物の seam」と投機的 seam を戒める。
 
-**しかし native は仮説ではなく確定した設計目標である**：CONTEXT.md は WIT が web/native デュアルターゲットにコンパイルされ「品質は等階級」と定める。Hayate の存在意義自体が web ＋ native。したがって `Surface` / `FontFetcher` の variation は **roadmap 上で確定**しており、「起きないかもしれない変化」ではない。2-adapter 則の目的（無駄な seam の回避）はここでは当てはまらない。**確定した第2ターゲットのために seam を今引くのは投機ではなく前払い**である。
+**しかし native は本体（primary target）であり、web 先行は開発速度の事情にすぎない**（ADR-0012 追記：描画確認の速さ・AI 自身のスクショ動作確認・DOM Mode 比較）。CONTEXT.md も WIT の web/native デュアルターゲット・品質等階級を定める。したがって `Surface` / `FontFetcher` の variation は **確定**しており、「起きないかもしれない変化」ではない。2-adapter 則の目的（無駄な seam の回避）はここでは当てはまらない。**本体ターゲットのために seam を今引くのは投機ではなく前払い**である。
 
 ## Decision
 
