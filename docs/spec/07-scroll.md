@@ -21,7 +21,7 @@
 ### SCR-03 — scroll delivery はアプリ通知専用
 **規範文:** `scroll` delivery イベントは parallax / lazy-load 等のアプリ通知専用であり、offset 積算目的には使わない。
 **出典:** ADR-0046, ADR-0053
-**状況:** ✅ — `renderer_event_state.rs` の `wheel()` が `Event::Scroll` を通知用に emit。積算は SCR-01 が別途担う。
+**状況:** ✅ — `ElementTree::on_wheel` が `Event::Scroll` を dispatch。積算は SCR-01 が別途担う。
 **備考:** §6 EVT と整合（scroll は `adapterTier: deferred`）。
 
 ---
