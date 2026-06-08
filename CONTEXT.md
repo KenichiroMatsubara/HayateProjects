@@ -5,14 +5,14 @@
 
 Hayate は UI フレームワークではない。状態管理でもない。Reconciler でもない。Component tree でもない。
 
-Hayate が提供するのは、Element Layer（element tree + CSS 風スタイル解決）と Raw Layer（絶対座標・GPUプリミティブ）の二層 WIT インターフェースである。上位層は Element Layer に element を作成し・スタイルを設定し・ツリーを組み立てる。Hayate 内部でレイアウト計算とスタイル解決を行い、Raw Layer のコマンド列に変換して GPU に送る。
+Hayate の**外部公開サーフェスは Element Layer ベースの proto 契約の一つだけ**である（ADR-0049/0072）。上位層は Element Layer に element を作成し・スタイルを設定し・ツリーを組み立てる。Hayate 内部でレイアウト計算とスタイル解決を行い、**内部の Raw Layer**（絶対座標・GPUプリミティブの lowering target）のコマンド列に変換して GPU に送る。Raw Layer は内部実装であり外部公開しない（ADR-0072）。
 
 DOM 互換は設計目標に含まない。
 
 ## Language
 
 **Hayate（疾風）**:
-命令型・保持型・GPU ネイティブな UI 基盤。Element Layer と Raw Layer の二層 WIT インターフェースを公開し、内部でレイアウト・スタイル解決・レンダリングを担う。
+命令型・保持型・GPU ネイティブな UI 基盤。**外部公開は Element Layer ベースの proto 契約のみ**（Raw Layer は内部の lowering target で非公開、ADR-0072）。内部でレイアウト・スタイル解決・レンダリングを担う。
 _Avoid_: フレームワーク、ライブラリ、レンダラー単体
 
 **Hayabusa（隼）**:
@@ -52,8 +52,8 @@ _Avoid_: 通常 `font-family` 等を block 貫通させる設計、global と呼
 _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style
 
 **Raw Layer（生座標層）**:
-Hayate の下位 WIT インターフェース。絶対座標・確定スタイル済みの描画コマンドを直接受け付ける。レイアウトを自前で計算するユーザー（ゲーム HUD・Infinite Canvas 等）向けに公開する。Element Layer は内部でこの層に変換して使う。
-_Avoid_: 内部 API（WIT で外部公開されるため）、Draw Layer
+Hayate の**内部** lowering target。絶対座標・確定スタイル済みの描画コマンド（`SceneGraph` / `Node`）。Element Layer がレイアウト・スタイル解決の結果をこの層に変換して GPU に送る。**外部公開しない**（公開 Raw Layer 契約は ADR-0072 で棄却）。layout-free な game HUD / Infinite Canvas 等の需要は Element Layer の絶対座標 / transform で賄うか scope 外。
+_Avoid_: 外部公開 API・公開 WIT/proto サーフェス（内部実装である）、Draw Layer
 
 **WIT（WebAssembly Interface Types）**:
 Hayate の公開 API の単一ソース。Element Layer と Raw Layer の両方を定義する。Web 向けビルドでは Wasm コンポーネントとしてコンパイルされ、ブラウザの Wasm ランタイム上で動作する。ネイティブ向けビルドでは wit-bindgen を通じてネイティブライブラリとしてコンパイルされ、Wasm ランタイムを必要としない。Hayate の WIT は原則として export のみで構成される。Hayate は上位層を知らず、上位層が Hayate をインポートして使う一方向依存が原則である。Hayabusa は Rust クレートとして hayate-core に直接依存するため WIT 境界を経由しない（ADR-0045）。WIT は Hayate の外部公開 API であり、Tsubame・他言語フレームワーク・サードパーティ SDK が使う契約として機能する。

@@ -90,17 +90,17 @@
 
 ## Raw Layer の公開
 
-### REND-12 — Raw Layer は当面非公開（WIT 撤去）
-**規範文:** Raw Layer（`Node` / `SceneGraph` の絶対座標直接制御）は Rust 内部実装に留め、外部公開契約（旧 Raw Layer WIT）は持たない。外部公開は Element Layer / §10 protocol contract に限る。
-**出典:** ADR-0033 → ADR-0049（WIT 撤去で supersede）
-**状況:** ⬜（公開なし、意図通り） — `Hayate/wit/` 不在。Raw Layer は Rust 内部 API のみ。
-**備考:** [履歴] ADR-0033「Raw Layer WIT を world export から除外」は、WIT 自体の撤去（0049）で上書き。Raw Layer の外部公開は将来再検討。
+### REND-12 — Raw Layer は外部非公開（確定）
+**規範文:** Raw Layer（`Node` / `SceneGraph` の絶対座標直接制御）は Rust 内部 lowering target に留め、**外部公開契約を持たない（確定棄却）**。Hayate の外部公開は Element Layer / §10 protocol contract の一つだけ。
+**出典:** ADR-0072（公開 Raw Layer を正式棄却。ADR-0033→0049 を継承）
+**状況:** ✅ — `Hayate/wit/` 不在、Raw Layer は Rust 内部 API のみ＝規範どおり。ADR-0072 で「将来再検討」を閉じ確定。
+**備考:** [履歴] ADR-0013 の二層**公開**は ADR-0049（WIT 撤去）で機構が消え、ADR-0072 が公開意図を正式棄却。内部の二層分離（Element→Raw lowering）は §3 LAY-03 で維持。将来 layout-free 公開が真に必要になれば ADR-0072 を supersede して reopen。
 
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 10 | REND-01〜07, 09〜11 |
+| ✅実装済み | 11 | REND-01〜07, 09〜12 |
 | 🟡部分 | 1 | REND-08（Render Host 芯の共有層 hoist、ADR-0068） |
-| ⬜（非公開・意図通り） | 1 | REND-12 |
+| ⬜未実装 | 0 | — |
