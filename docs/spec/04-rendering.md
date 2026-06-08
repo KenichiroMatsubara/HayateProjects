@@ -65,8 +65,8 @@
 ### REND-08 — Render Host（surface / 選択 / fallback）
 **規範文:** `Render Host` が renderer の surface 初期化・present・resize・選択・資源寿命管理・一方向 fallback を担う。
 **出典:** ADR-0050, ADR-0054
-**状況:** ✅ — `backend/mod.rs` の `RenderHost`（`init_with_policy`、runtime 失敗時の `fallback_after_runtime_failure`）。
-**備考:** web surface 初期化は当面 adapter-web に残留（ADR-0054 H1、decisions-pending Open #2 → §未決）。
+**状況:** 🟡 — `backend/mod.rs` の `RenderHost`（`init_with_policy`、runtime 失敗時の `fallback_after_runtime_failure`）は実装済みだが **adapter-web 内**。ADR-0068 により**プラットフォーム非依存の Render Host 芯（policy/orchestration/資源寿命）と Font ロードを共有層へ hoist し、`Surface`/`FontFetcher` trait で web 特有部分を分離**する設計が確定（実装は残）。
+**備考:** ADR-0054 H1「surface は adapter-web 残留」は ADR-0068 が revisit — surface **生成**は `impl Surface`（web: canvas / native: window）として platform に残るが Host 芯は共有。native は2 trait 実装＋binding の薄い adapter。
 
 ### REND-09 — Renderer Selection Policy
 **規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
@@ -101,6 +101,6 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 11 | REND-01〜11 |
-| 🟡部分 | 0 | — |
+| ✅実装済み | 10 | REND-01〜07, 09〜11 |
+| 🟡部分 | 1 | REND-08（Render Host 芯の共有層 hoist、ADR-0068） |
 | ⬜（非公開・意図通り） | 1 | REND-12 |
