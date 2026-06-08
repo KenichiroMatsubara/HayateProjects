@@ -18,9 +18,9 @@ ADR-0047 は「text 系スタイル（`color`/`font-size`/`font-family`）を全
 
 `font-family` / `font-size` / `font-weight` / `color` / `font-style`（新）/ `text-decoration`（新）。
 
-- text/span に適用。継承は **text→text（IFC 内の span chain）のみ**。`view` 等の block を**貫通しない**。
+- text/inline text に適用。継承は **text→text（IFC 内の inline text 連鎖）のみ**。`view` 等の block を**貫通しない**。
 - `view` にこれらを置いても text に影響しない（view は text ではない）。
-- 解決は `InlineText`（ADR-0063）の span cascade が担う。
+- 解決は `InlineText`（ADR-0063）の inline text cascade が担う。
 
 ### チャネル2：ambient Default Text Style（block 貫通）
 
@@ -30,7 +30,7 @@ ADR-0047 は「text 系スタイル（`color`/`font-size`/`font-family`）を全
 - text 要素が明示値も text 継承値も持たないときの**既定値**を供給する（app 全体の既定フォント/サイズ/色）。
 - `scene_build.walk` の既存 top-down 機構を**この用途に転用**（`InheritedStyle` の意味を「通常スタイルの継承」から「ambient 既定の供給」へ変更）。
 
-### 解決順（text/span のプロパティ）
+### 解決順（text/inline text のプロパティ）
 
 1. 自身の明示値
 2. text 祖先からの継承（text→text・IFC 内）

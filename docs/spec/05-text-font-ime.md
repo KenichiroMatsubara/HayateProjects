@@ -55,10 +55,10 @@
 **備考:** Raw Layer ユーザーは IME を自前実装（§4）。
 
 ### TEXT-08 — text element は inline formatting context（IFC）
-**規範文:** `text` element は inline formatting context とする。IFC root（親が `text` でない `text`）は subtree（自身の `el.text` ＋ 子 `text` span を document 順）を**1つの Parley ranged layout** として整形する Taffy leaf。inline span（親が `text` の `text`）は Taffy box を持たず、親 IFC の styled range（font-family/size/weight/style/color/decoration）になる。inline span への mutation は IFC root の layout を dirty にする。hit-test は IFC root の byte-range→`ElementId` マップで span を解決する。DOM Renderer / HTML Mode はブラウザの native IFC に委ねる。MVP: inline atom（`text` 中の image/icon）は後続、`text-input` は leaf editable のまま、inline span の box 系スタイルは無視。
+**規範文:** `text` element は inline formatting context とする。IFC root（親が `text` でない `text`）は subtree（自身の `el.text` ＋ 子 `text`（inline text element） を document 順）を**1つの Parley ranged layout** として整形する Taffy leaf。inline text element（親が `text` の `text`）は Taffy box を持たず、親 IFC の styled range（font-family/size/weight/style/color/decoration）になる。inline text element への mutation は IFC root の layout を dirty にする。hit-test は IFC root の byte-range→`ElementId` マップで inline text element を解決する。DOM Renderer / HTML Mode はブラウザの native IFC に委ねる。MVP: inline atom（`text` 中の image/icon）は後続、`text-input` は leaf editable のまま、inline text element の box 系スタイルは無視。
 **出典:** ADR-0063（ADR-0058 の leaf-string/collapse を supersede、ADR-0005 を拡張）
-**状況:** ⬜未実装 — 設計確定。現状は leaf-string + `tsubame-solid` collapse（`text.rs` は単一文字列、`renderer.ts` の `isTextInTextCollapse`）。`InlineText` seam（`shape(ifc_root, width)->(Layout, RangeMap)`）・Taffy span 除外・dirty 遡上・scene_build 合成 run・hit-test range マップ・collapse 撤去（→ ADR-0062 の `node.text` 残課題が閉じる）が残タスク。Canvas Mode のみ実装コスト。
-**備考:** 現 leaf 整形は span 数=1 の縮退ケースとして IFC 経路に吸収。per-span color は Parley brush（`TextBrush=[u8;4]`）を range push。AccessKit range 化は PLAT-04 下流。
+**状況:** ⬜未実装 — 設計確定。現状は leaf-string + `tsubame-solid` collapse（`text.rs` は単一文字列、`renderer.ts` の `isTextInTextCollapse`）。`InlineText` seam（`shape(ifc_root, width)->(Layout, RangeMap)`）・Taffy inline text element 除外・dirty 遡上・scene_build 合成 run・hit-test range マップ・collapse 撤去（→ ADR-0062 の `node.text` 残課題が閉じる）が残タスク。Canvas Mode のみ実装コスト。
+**備考:** 現 leaf 整形は inline text element 数=1 の縮退ケースとして IFC 経路に吸収。区間ごとの color は Parley brush（`TextBrush=[u8;4]`）を range push。AccessKit range 化は PLAT-04 下流。
 
 ---
 
