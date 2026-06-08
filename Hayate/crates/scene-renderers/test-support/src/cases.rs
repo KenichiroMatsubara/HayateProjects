@@ -1,6 +1,6 @@
 use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementId, ElementKind, ElementTree,
-    FlexDirectionValue, JustifyValue, StyleProp,
+    FlexDirectionValue, JustifyValue, StyleProp, TextDecorationValue,
 };
 
 use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
@@ -689,6 +689,46 @@ fn check_font_weight(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 4, 20), "font-weight bold renders");
 }
 
+fn build_text_decoration_underline() -> ElementTree {
+    text_tree(&[
+        StyleProp::Color(Color::new(0.0, 0.0, 0.0, 1.0)),
+        StyleProp::TextDecoration(TextDecorationValue::Underline),
+    ])
+}
+
+fn check_text_decoration_underline(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 4, 20), "underline glyph body");
+    assert_not_clear(pixel(data, CANVAS_W, 4, 24), "underline decoration below glyph");
+}
+
+fn build_text_decoration_line_through() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 62);
+    let text = child_text(&mut tree, 63);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
+    );
+    tree.element_append_child(root, text);
+    tree.element_set_style(
+        text,
+        &[
+            StyleProp::FontSize(24.0),
+            StyleProp::Color(Color::new(0.0, 0.0, 0.0, 1.0)),
+            StyleProp::TextDecoration(TextDecorationValue::LineThrough),
+        ],
+    );
+    tree.element_set_text(text, "O");
+    tree
+}
+
+fn check_text_decoration_line_through(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 8, 35), "line-through decoration ink");
+}
+
 // ── stacking / flex ─────────────────────────────────────────────────────
 
 fn build_z_index() -> ElementTree {
@@ -921,6 +961,16 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         check: check_font_weight,
     },
     CssPixelCase {
+        css_property: "text-decoration-underline",
+        build: build_text_decoration_underline,
+        check: check_text_decoration_underline,
+    },
+    CssPixelCase {
+        css_property: "text-decoration-line-through",
+        build: build_text_decoration_line_through,
+        check: check_text_decoration_line_through,
+    },
+    CssPixelCase {
         css_property: "z-index",
         build: build_z_index,
         check: check_z_index,
@@ -972,6 +1022,7 @@ mod catalog_coverage {
         "color",
         "font-family",
         "font-weight",
+        "text-decoration",
         "z-index",
         "flex-grow",
     ];
@@ -984,6 +1035,7 @@ mod catalog_coverage {
                     c.css_property == *prop
                         || (c.css_property == "display-none" && *prop == "display")
                         || (c.css_property == "display-grid" && *prop == "display")
+                        || (c.css_property.starts_with("text-decoration-") && *prop == "text-decoration")
                 }),
                 "missing pixel case for {prop}"
             );

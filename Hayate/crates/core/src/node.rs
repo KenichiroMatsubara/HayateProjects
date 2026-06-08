@@ -7,10 +7,20 @@ use crate::render::{RenderFont, RenderGlyph, RenderImage};
 pub type NodeId = DefaultKey;
 
 #[derive(Debug, Clone)]
+pub struct TextDecorationLine {
+    pub x0: f32,
+    pub x1: f32,
+    /// Center y in run-local coordinates (same space as [`RenderGlyph::y`]).
+    pub y: f32,
+    pub thickness: f32,
+}
+
+#[derive(Debug, Clone)]
 pub struct TextRunData {
     pub font: RenderFont,
     pub font_size: f32,
     pub glyphs: Vec<RenderGlyph>,
+    pub decorations: Vec<TextDecorationLine>,
     pub text: Arc<str>,
 }
 

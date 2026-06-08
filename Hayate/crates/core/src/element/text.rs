@@ -9,7 +9,7 @@ use parley::{
 
 use crate::element::style::{FontStyleValue, TextDecorationValue};
 
-use crate::node::TextRunData;
+use crate::node::{TextDecorationLine, TextRunData};
 use crate::render::{RenderFont, RenderGlyph};
 
 /// Brush type stored in Parley styles; color is applied at draw time.
@@ -310,6 +310,33 @@ fn lower_glyph_runs(
             if positioned.is_empty() {
                 continue;
             }
+            let style = grun.style();
+            let metrics = run.metrics();
+            let mut decorations = Vec::new();
+            if let Some(underline) = &style.underline {
+                let deco_offset = underline.offset.unwrap_or(metrics.underline_offset);
+                let size = underline.size.unwrap_or(metrics.underline_size);
+                if size > 0.0 {
+                    decorations.push(TextDecorationLine {
+                        x0: grun.offset(),
+                        x1: grun.offset() + grun.advance(),
+                        y: grun.baseline() + deco_offset + size * 0.5,
+                        thickness: size.max(1.0),
+                    });
+                }
+            }
+            if let Some(strike) = &style.strikethrough {
+                let offset = strike.offset.unwrap_or(metrics.strikethrough_offset);
+                let size = strike.size.unwrap_or(metrics.strikethrough_size);
+                if size > 0.0 {
+                    decorations.push(TextDecorationLine {
+                        x0: grun.offset(),
+                        x1: grun.offset() + grun.advance(),
+                        y: grun.baseline() + offset + size * 0.5,
+                        thickness: size.max(1.0),
+                    });
+                }
+            }
             if positioned.iter().any(|g| g.id == 0) {
                 let range = run.text_range();
                 let end = range.end.min(text.len());
@@ -325,6 +352,7 @@ fn lower_glyph_runs(
                 font,
                 font_size: run.font_size().max(font_size),
                 glyphs: positioned,
+                decorations,
                 text: Arc::<str>::from(""),
             }));
         }
