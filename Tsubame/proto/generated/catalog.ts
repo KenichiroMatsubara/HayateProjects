@@ -3,7 +3,7 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'f32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
@@ -445,6 +445,84 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "domFormat": "number",
     "cssName": "fontWeight",
     "cssProperty": "font-weight",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "fontStyle",
+    "tag": 32,
+    "unsetKind": null,
+    "wireKind": "fontStyle",
+    "domFormat": "enum",
+    "cssName": "fontStyle",
+    "cssProperty": "font-style",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "textDecoration",
+    "tag": 33,
+    "unsetKind": null,
+    "wireKind": "textDecoration",
+    "domFormat": "enum",
+    "cssName": "textDecoration",
+    "cssProperty": "text-decoration",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "defaultColor",
+    "tag": 34,
+    "unsetKind": null,
+    "wireKind": "color",
+    "domFormat": "color",
+    "cssName": "defaultColor",
+    "cssProperty": "default-color",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "defaultFontFamily",
+    "tag": 35,
+    "unsetKind": null,
+    "wireKind": "fontFamily",
+    "domFormat": "string",
+    "cssName": "defaultFontFamily",
+    "cssProperty": "default-font-family",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "defaultFontSize",
+    "tag": 36,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "px",
+    "cssName": "defaultFontSize",
+    "cssProperty": "default-font-size",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "defaultFontWeight",
+    "tag": 37,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "px",
+    "cssName": "defaultFontWeight",
+    "cssProperty": "default-font-weight",
     "targets": [
       "packet",
       "css"

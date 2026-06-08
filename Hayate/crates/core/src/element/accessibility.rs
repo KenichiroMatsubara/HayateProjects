@@ -53,13 +53,7 @@ fn resolve_role(el: &Element, is_root: bool) -> Role {
 fn element_value(el: &Element) -> Option<String> {
     match el.kind {
         ElementKind::Text => el.text.clone(),
-        ElementKind::TextInput => {
-            let combined = match &el.preedit {
-                Some(p) => format!("{}{}", el.text_content, p),
-                None => el.text_content.clone(),
-            };
-            Some(combined)
-        }
+        ElementKind::TextInput => el.edit.as_ref().map(|edit| edit.display_text()),
         ElementKind::Button => el.text.clone(),
         _ => None,
     }

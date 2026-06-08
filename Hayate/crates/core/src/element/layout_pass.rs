@@ -291,14 +291,16 @@ impl LayoutPass {
                     Some(e) => e,
                     None => continue,
                 };
-                let text = match &el.preedit {
-                    Some(p) => format!("{}{}", el.text_content, p),
-                    None => el.text_content.clone(),
-                };
+                let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
+                let text = el
+                    .edit
+                    .as_ref()
+                    .map(|edit| edit.display_text())
+                    .unwrap_or_default();
                 (
                     text,
-                    el.visual.font_size.unwrap_or(16.0),
-                    el.visual.font_weight,
+                    el.visual.font_size.unwrap_or(ambient.font_size),
+                    el.visual.font_weight.or(ambient.font_weight),
                 )
             };
 
@@ -310,11 +312,15 @@ impl LayoutPass {
             }
 
             let (max_advance, font_family) = {
+                let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
                 let el = elements.get(&eid).map(|e| {
                     (
                         e.taffy_node
                             .and_then(|n| taffy.layout(n).ok().map(|l| l.size.width)),
-                        e.visual.font_family.clone(),
+                        e.visual
+                            .font_family
+                            .clone()
+                            .or(ambient.font_family.clone()),
                     )
                 });
                 el.map(|(a, f)| (a, f)).unwrap_or((None, None))
@@ -350,7 +356,9 @@ impl LayoutPass {
             }
             if let Some(el) = elements.get_mut(&eid) {
                 el.content_layout = Some(content_layout);
-                el.cursor_byte_index = el.text_content.len();
+                if let Some(edit) = el.edit.as_mut() {
+                    edit.cursor_byte_index = edit.text_content.len();
+                }
             }
         }
     }

@@ -89,16 +89,38 @@ impl ElementTree {
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        if let Some(focused) = self.focused_element {
-            self.emit_interaction(Event::KeyDown {
-                target_id: focused,
-                key: key.to_string(),
-                modifiers,
-            });
+        let Some(focused) = self.focused_element else {
+            return;
+        };
+        if let Some(edit) = self
+            .elements
+            .get_mut(&focused)
+            .and_then(|el| el.edit.as_mut())
+        {
+            if edit.apply_key_down(key) {
+                if key == "Enter" {
+                    self.emit_interaction(Event::TextInput {
+                        target_id: focused,
+                        text: "\n".to_string(),
+                    });
+                }
+            }
         }
+        self.emit_interaction(Event::KeyDown {
+            target_id: focused,
+            key: key.to_string(),
+            modifiers,
+        });
     }
 
     pub fn on_text_input(&mut self, target: ElementId, text: &str) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&target)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.append(text);
+        }
         self.emit_interaction(Event::TextInput {
             target_id: target,
             text: text.to_string(),
@@ -106,6 +128,13 @@ impl ElementTree {
     }
 
     pub fn on_composition_start(&mut self, target: ElementId, text: &str) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&target)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.set_preedit(text);
+        }
         self.emit_interaction(Event::CompositionStart {
             target_id: target,
             text: text.to_string(),
@@ -113,6 +142,13 @@ impl ElementTree {
     }
 
     pub fn on_composition_update(&mut self, target: ElementId, text: &str) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&target)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.set_preedit(text);
+        }
         self.emit_interaction(Event::CompositionUpdate {
             target_id: target,
             text: text.to_string(),
@@ -120,6 +156,13 @@ impl ElementTree {
     }
 
     pub fn on_composition_end(&mut self, target: ElementId, text: &str) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&target)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.finish_composition(text);
+        }
         self.emit_interaction(Event::CompositionEnd {
             target_id: target,
             text: text.to_string(),

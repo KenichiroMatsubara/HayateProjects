@@ -7,6 +7,9 @@ use taffy::TaffyTree;
 
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
+use crate::element::edit_state::EditState;
+use crate::element::effective_visual::{self, child_inherited_context};
+use crate::element::ime_bridge::CharacterBounds;
 use crate::element::event_spec::DocumentEventKind;
 
 pub use crate::element::event_spec::Event;
@@ -18,7 +21,7 @@ use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
-use crate::element::style::{StyleProp, StylePropKind};
+use crate::element::style::{FontStyleValue, StyleProp, StylePropKind, TextDecorationValue};
 use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::text;
 use crate::node::SceneGraph;
@@ -34,9 +37,16 @@ pub struct Visual {
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
+    pub font_style: Option<FontStyleValue>,
+    pub text_decoration: Option<TextDecorationValue>,
     pub z_index: i32,
     /// Custom font-family name registered via `register_font`.
     pub font_family: Option<String>,
+    /// Ambient default text style (block-penetrating, ADR-0065 ch2).
+    pub default_color: Option<Color>,
+    pub default_font_size: Option<f32>,
+    pub default_font_weight: Option<f32>,
+    pub default_font_family: Option<String>,
 }
 
 impl Default for Visual {
@@ -50,8 +60,14 @@ impl Default for Visual {
             text_color: None,
             font_size: None,
             font_weight: None,
+            font_style: None,
+            text_decoration: None,
             z_index: 0,
             font_family: None,
+            default_color: None,
+            default_font_size: None,
+            default_font_weight: None,
+            default_font_family: None,
         }
     }
 }
@@ -72,12 +88,8 @@ pub(crate) struct Element {
     pub scroll_offset: (f32, f32),
     /// Loaded image data for Image elements (populated by the adapter after async fetch).
     pub src_image: Option<Arc<RenderImage>>,
-    /// Editable text value for TextInput elements.
-    pub text_content: String,
-    /// IME preedit (in-progress composition, not yet committed).
-    pub preedit: Option<String>,
-    /// Byte offset of the insertion cursor within text_content (TextInput only).
-    pub cursor_byte_index: usize,
+    /// Text-input edit model (TextInput only). ADR-0069.
+    pub edit: Option<EditState>,
     /// Whether the cursor should be drawn (true when the element is focused).
     pub cursor_visible: bool,
     /// Pre-built Parley layout of text_content + preedit, rebuilt each render pass.
@@ -198,9 +210,11 @@ impl ElementTree {
             transform: None,
             scroll_offset: (0.0, 0.0),
             src_image: None,
-            text_content: String::new(),
-            preedit: None,
-            cursor_byte_index: 0,
+            edit: if kind == ElementKind::TextInput {
+                Some(EditState::default())
+            } else {
+                None
+            },
             cursor_visible: false,
             content_layout: None,
             aria_label: None,
@@ -248,34 +262,34 @@ impl ElementTree {
 
     /// Replace the editable text content of a TextInput element.
     pub fn element_set_text_content(&mut self, id: ElementId, text: &str) {
-        if let Some(el) = self.elements.get_mut(&id) {
-            el.text_content = text.to_string();
-            el.preedit = None;
-            el.cursor_byte_index = el.text_content.len();
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.set(text);
         }
     }
 
     /// Append text to a TextInput's committed content.
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
-        if let Some(el) = self.elements.get_mut(&id) {
-            el.text_content.push_str(text);
-            el.cursor_byte_index = el.text_content.len();
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.append(text);
         }
     }
 
     /// Remove the last Unicode scalar value from a TextInput's committed content.
     pub fn element_backspace(&mut self, id: ElementId) {
-        if let Some(el) = self.elements.get_mut(&id) {
-            if el.kind == ElementKind::TextInput && !el.text_content.is_empty() {
-                let last_start = el
-                    .text_content
-                    .char_indices()
-                    .next_back()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                el.text_content.truncate(last_start);
-                el.cursor_byte_index = el.text_content.len();
-            }
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.backspace();
         }
     }
 
@@ -406,57 +420,56 @@ impl ElementTree {
 
     /// Set the IME preedit for a TextInput (in-progress, not yet committed).
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
-        if let Some(el) = self.elements.get_mut(&id) {
-            el.preedit = if preedit.is_empty() {
-                None
-            } else {
-                Some(preedit.to_string())
-            };
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.set_preedit(preedit);
         }
     }
 
     /// Commit the current preedit text into text_content and clear the preedit.
     pub fn element_commit_preedit(&mut self, id: ElementId) {
-        if let Some(el) = self.elements.get_mut(&id) {
-            if let Some(preedit) = el.preedit.take() {
-                el.text_content.push_str(&preedit);
-            }
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.commit_preedit();
         }
     }
 
     /// Deliver pasted text to a TextInput: commits any active preedit, appends the
     /// pasted text, then queues a TextInput event. No-op for non-TextInput elements.
     pub fn element_paste(&mut self, id: ElementId, text: &str) {
-        if text.is_empty() {
-            return;
-        }
+        let pasted = text.to_string();
         let el = match self.elements.get_mut(&id) {
             Some(e) if e.kind == ElementKind::TextInput => e,
             _ => return,
         };
-        if let Some(preedit) = el.preedit.take() {
-            el.text_content.push_str(&preedit);
+        let Some(edit) = el.edit.as_mut() else {
+            return;
+        };
+        if !edit.paste(&pasted) {
+            return;
         }
-        el.text_content.push_str(text);
         self.dispatch_event(
             DocumentEventKind::TextInput,
             Event::TextInput {
                 target_id: id,
-                text: text.to_string(),
+                text: pasted,
             },
         );
     }
 
     /// Return the combined display text (text_content + any active preedit) for a TextInput.
     pub fn element_get_text_content(&self, id: ElementId) -> String {
-        let el = match self.elements.get(&id) {
-            Some(e) => e,
-            None => return String::new(),
-        };
-        match &el.preedit {
-            Some(p) => format!("{}{}", el.text_content, p),
-            None => el.text_content.clone(),
-        }
+        self.elements
+            .get(&id)
+            .and_then(|el| el.edit.as_ref())
+            .map(|edit| edit.display_text())
+            .unwrap_or_default()
     }
 
     /// Set a 2D affine transform on the element (6 kurbo coefficients [a,b,c,d,e,f]).
@@ -853,6 +866,43 @@ impl ElementTree {
 
     /// Returns the deepest element whose bounding rect contains (x, y),
     /// or None if no element is hit. Uses the layout from the last render pass.
+    /// Character bounds for IME candidate window (ADR-0069). Requires prior layout.
+    pub fn element_character_bounds(&self, id: ElementId) -> Option<CharacterBounds> {
+        let el = self.elements.get(&id)?;
+        let edit = el.edit.as_ref()?;
+        let cl = el.content_layout.as_ref()?;
+        let &(ex, ey, _, _) = self.layout.layout_cache.get(&id)?;
+        use parley::{Affinity, Cursor};
+        let cursor = Cursor::from_byte_index(
+            &cl.layout,
+            edit.cursor_byte_index,
+            Affinity::Upstream,
+        );
+        let bbox = cursor.geometry(&cl.layout, 1.5_f32);
+        Some(CharacterBounds {
+            x: ex + bbox.x0 as f32,
+            y: ey + bbox.y0 as f32,
+            width: ((bbox.x1 - bbox.x0) as f32).max(1.5),
+            height: (bbox.y1 - bbox.y0) as f32,
+        })
+    }
+
+    /// Resolved effective visual for `id` (inheritance + pseudo). ADR-0067.
+    pub fn element_effective_visual(&self, id: ElementId) -> Option<Visual> {
+        let el = self.elements.get(&id)?;
+        let ctx = effective_visual::inherited_context_at(&self.elements, id);
+        let interaction = self.interaction_snapshot();
+        Some(effective_visual::resolve_effective(
+            &ctx,
+            &el.visual,
+            &el.pseudo_styles,
+            &interaction,
+            id,
+        ))
+    }
+
+    /// Returns the deepest element whose bounding rect contains (x, y),
+    /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
         let box_hit = hit_test_walk(self, root, x, y)?;
@@ -879,6 +929,7 @@ impl ElementTree {
                 root,
                 0.0,
                 0.0,
+                effective_visual::InheritedVisualContext::root(),
                 &interaction,
                 &mut out,
             );
@@ -946,6 +997,7 @@ fn walk_resolved(
     id: ElementId,
     ox: f32,
     oy: f32,
+    inherited: effective_visual::InheritedVisualContext,
     interaction: &InteractionSnapshot,
     out: &mut Vec<(ElementId, ResolvedElement)>,
 ) {
@@ -953,11 +1005,27 @@ fn walk_resolved(
         Some(e) => e,
         None => return,
     };
+    let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
+    let child_inherited = child_inherited_context(
+        &inherited,
+        el.kind,
+        &inherited_base,
+        &el.visual,
+    );
     let taffy_node = match el.taffy_node {
         Some(n) => n,
         None => {
             for &child in &el.children {
-                walk_resolved(elements, taffy, child, ox, oy, interaction, out);
+                walk_resolved(
+                    elements,
+                    taffy,
+                    child,
+                    ox,
+                    oy,
+                    child_inherited.clone(),
+                    interaction,
+                    out,
+                );
             }
             return;
         }
@@ -968,14 +1036,16 @@ fn walk_resolved(
     };
     let x = ox + layout.location.x;
     let y = oy + layout.location.y;
-    let visual = pseudo_state::resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
+    let visual = effective_visual::resolve_effective(
+        &inherited,
+        &el.visual,
+        &el.pseudo_styles,
+        interaction,
+        id,
+    );
 
     let display_text_content = if el.kind == ElementKind::TextInput {
-        let combined = match &el.preedit {
-            Some(p) => format!("{}{}", el.text_content, p),
-            None => el.text_content.clone(),
-        };
-        Some(combined)
+        el.edit.as_ref().map(|edit| edit.display_text())
     } else {
         None
     };
@@ -1007,7 +1077,16 @@ fn walk_resolved(
     ));
 
     for &child in &el.children {
-        walk_resolved(elements, taffy, child, x, y, interaction, out);
+        walk_resolved(
+            elements,
+            taffy,
+            child,
+            x,
+            y,
+            child_inherited.clone(),
+            interaction,
+            out,
+        );
     }
 }
 
@@ -1070,6 +1149,26 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::Color(c) => {
             visual.text_color = Some(*c);
             *text_dirty = true;
+        }
+        StyleProp::FontStyle(v) => {
+            visual.font_style = Some(*v);
+            *text_dirty = true;
+        }
+        StyleProp::TextDecoration(v) => {
+            visual.text_decoration = Some(*v);
+            *text_dirty = true;
+        }
+        StyleProp::DefaultColor(c) => visual.default_color = Some(*c),
+        StyleProp::DefaultFontSize(v) => visual.default_font_size = Some(v.max(0.0)),
+        StyleProp::DefaultFontWeight(v) => {
+            visual.default_font_weight = Some(v.clamp(1.0, 1000.0));
+        }
+        StyleProp::DefaultFontFamily(f) => {
+            visual.default_font_family = if f.is_empty() {
+                None
+            } else {
+                Some(f.clone())
+            };
         }
         StyleProp::ZIndex(z) => visual.z_index = *z,
         _ => {}

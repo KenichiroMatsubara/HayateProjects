@@ -64,6 +64,12 @@ pub const TAG_Z_INDEX: u32 = 28;
 pub const TAG_FONT_FAMILY: u32 = 29;
 pub const TAG_FLEX_GROW: u32 = 30;
 pub const TAG_FONT_WEIGHT: u32 = 31;
+pub const TAG_FONT_STYLE: u32 = 32;
+pub const TAG_TEXT_DECORATION: u32 = 33;
+pub const TAG_DEFAULT_COLOR: u32 = 34;
+pub const TAG_DEFAULT_FONT_FAMILY: u32 = 35;
+pub const TAG_DEFAULT_FONT_SIZE: u32 = 36;
+pub const TAG_DEFAULT_FONT_WEIGHT: u32 = 37;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -402,6 +408,27 @@ pub enum StyleTag {
     FontWeight {
         value: f32,
     },
+    FontStyle {
+        value: f32,
+    },
+    TextDecoration {
+        value: f32,
+    },
+    DefaultColor {
+        color_r: f32,
+        color_g: f32,
+        color_b: f32,
+        color_a: f32,
+    },
+    DefaultFontFamily {
+        family: String,
+    },
+    DefaultFontSize {
+        value: f32,
+    },
+    DefaultFontWeight {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -598,6 +625,42 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::FontWeight { value }, i + 1))
         }
+        32 => {
+            if i + 1 > packed.len() { return Err("style tag FONT_STYLE truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::FontStyle { value }, i + 1))
+        }
+        33 => {
+            if i + 1 > packed.len() { return Err("style tag TEXT_DECORATION truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::TextDecoration { value }, i + 1))
+        }
+        34 => {
+            if i + 4 > packed.len() { return Err("style tag DEFAULT_COLOR truncated"); }
+            let color_r = packed[i + 0];
+            let color_g = packed[i + 1];
+            let color_b = packed[i + 2];
+            let color_a = packed[i + 3];
+            Ok((StyleTag::DefaultColor { color_r, color_g, color_b, color_a }, i + 4))
+        }
+        35 => {
+            if i >= packed.len() { return Err("style tag string truncated"); }
+            let byte_len = packed[i] as usize;
+            if i + 1 + byte_len > packed.len() { return Err("style tag string data truncated"); }
+            let bytes: Vec<u8> = (0..byte_len).map(|j| packed[i + 1 + j] as u8).collect();
+            let family = String::from_utf8(bytes).map_err(|_| "invalid utf8 in font family")?;
+            Ok((StyleTag::DefaultFontFamily { family }, i + 1 + byte_len))
+        }
+        36 => {
+            if i + 1 > packed.len() { return Err("style tag DEFAULT_FONT_SIZE truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::DefaultFontSize { value }, i + 1))
+        }
+        37 => {
+            if i + 1 > packed.len() { return Err("style tag DEFAULT_FONT_WEIGHT truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::DefaultFontWeight { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -606,7 +669,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 
 use hayate_core::{
     AlignValue, Color, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,
-    JustifyValue, StyleProp,
+    FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 
@@ -668,6 +731,24 @@ fn codec_justify_content(raw: f32) -> JustifyValue {
     }
 }
 
+fn codec_font_style(raw: f32) -> FontStyleValue {
+    match raw as u32 {
+        0 => FontStyleValue::Normal,
+        1 => FontStyleValue::Italic,
+        2 => FontStyleValue::Oblique,
+        _ => FontStyleValue::Normal,
+    }
+}
+
+fn codec_text_decoration(raw: f32) -> TextDecorationValue {
+    match raw as u32 {
+        0 => TextDecorationValue::None,
+        1 => TextDecorationValue::Underline,
+        2 => TextDecorationValue::LineThrough,
+        _ => TextDecorationValue::None,
+    }
+}
+
 fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
@@ -702,6 +783,12 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::FontFamily { family } => StyleProp::FontFamily(family),
         StyleTag::FlexGrow { value } => StyleProp::FlexGrow(value),
         StyleTag::FontWeight { value } => StyleProp::FontWeight(value),
+        StyleTag::FontStyle { value } => StyleProp::FontStyle(codec_font_style(value)),
+        StyleTag::TextDecoration { value } => StyleProp::TextDecoration(codec_text_decoration(value)),
+        StyleTag::DefaultColor { color_r, color_g, color_b, color_a } => StyleProp::DefaultColor(codec_color(color_r, color_g, color_b, color_a)),
+        StyleTag::DefaultFontFamily { family } => StyleProp::DefaultFontFamily(family),
+        StyleTag::DefaultFontSize { value } => StyleProp::DefaultFontSize(value),
+        StyleTag::DefaultFontWeight { value } => StyleProp::DefaultFontWeight(value),
     })
 }
 

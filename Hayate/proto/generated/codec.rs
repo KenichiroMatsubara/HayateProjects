@@ -51,6 +51,22 @@ fn encode_justify_content(value: JustifyValue) -> f32 {
     }
 }
 
+fn encode_font_style(value: FontStyleValue) -> f32 {
+    match value {
+        FontStyleValue::Normal => 0.0,
+        FontStyleValue::Italic => 1.0,
+        FontStyleValue::Oblique => 2.0,
+    }
+}
+
+fn encode_text_decoration(value: TextDecorationValue) -> f32 {
+    match value {
+        TextDecorationValue::None => 0.0,
+        TextDecorationValue::Underline => 1.0,
+        TextDecorationValue::LineThrough => 2.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -271,6 +287,35 @@ buf.push(*byte as f32);
             }
             StyleProp::FontWeight(v) => {
                 buf.push(TAG_FONT_WEIGHT as f32);
+                buf.push(*v);
+            }
+            StyleProp::FontStyle(v) => {
+                buf.push(TAG_FONT_STYLE as f32);
+                buf.push(encode_font_style(*v));
+            }
+            StyleProp::TextDecoration(v) => {
+                buf.push(TAG_TEXT_DECORATION as f32);
+                buf.push(encode_text_decoration(*v));
+            }
+            StyleProp::DefaultColor(c) => {
+                buf.push(TAG_DEFAULT_COLOR as f32);
+                let arr = c.to_array_f32();
+buf.extend_from_slice(&arr);
+            }
+            StyleProp::DefaultFontFamily(f) => {
+                buf.push(TAG_DEFAULT_FONT_FAMILY as f32);
+                let bytes = f.as_bytes();
+buf.push(bytes.len() as f32);
+for byte in bytes {
+buf.push(*byte as f32);
+}
+            }
+            StyleProp::DefaultFontSize(v) => {
+                buf.push(TAG_DEFAULT_FONT_SIZE as f32);
+                buf.push(*v);
+            }
+            StyleProp::DefaultFontWeight(v) => {
+                buf.push(TAG_DEFAULT_FONT_WEIGHT as f32);
                 buf.push(*v);
             }
         }

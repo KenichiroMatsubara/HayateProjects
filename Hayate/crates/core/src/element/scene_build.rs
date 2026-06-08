@@ -1,28 +1,11 @@
 use crate::color::Color;
+use crate::element::effective_visual::{
+    self, child_inherited_context, InheritedVisualContext,
+};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::pseudo_state::resolve_visual;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
-
-/// Resolved text-style values passed top-down through the element tree during
-/// scene_build. Elements without an explicit value inherit from the parent.
-#[derive(Clone)]
-pub struct InheritedStyle {
-    pub color: Color,
-    pub font_size: f32,
-    pub font_family: Option<String>,
-}
-
-impl Default for InheritedStyle {
-    fn default() -> Self {
-        Self {
-            color: Color::BLACK,
-            font_size: 16.0,
-            font_family: None,
-        }
-    }
-}
 
 pub fn build(tree: &ElementTree) -> SceneGraph {
     let mut sg = SceneGraph::new();
@@ -35,7 +18,7 @@ pub fn build(tree: &ElementTree) -> SceneGraph {
             0.0,
             &mut sg,
             None,
-            InheritedStyle::default(),
+            InheritedVisualContext::root(),
             &interaction,
         );
     }
@@ -54,7 +37,7 @@ fn walk(
     oy: f32,
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
-    inherited: InheritedStyle,
+    inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
 ) {
     let el = match tree.elements.get(&id) {
@@ -80,7 +63,20 @@ fn walk(
             return;
         }
     };
-    let visual = resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
+    let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
+    let child_inherited = child_inherited_context(
+        &inherited,
+        el.kind,
+        &inherited_base,
+        &el.visual,
+    );
+    let visual = effective_visual::resolve_effective(
+        &inherited,
+        &el.visual,
+        &el.pseudo_styles,
+        interaction,
+        id,
+    );
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -90,18 +86,8 @@ fn walk(
     let w = layout.size.width;
     let h = layout.size.height;
 
-    // Resolve inherited text-style values for this element and its subtree.
-    let confirmed_color = visual.text_color.unwrap_or(inherited.color);
-    let confirmed_font_size = visual.font_size.unwrap_or(inherited.font_size);
-    let confirmed_font_family = visual
-        .font_family
-        .clone()
-        .or(inherited.font_family.clone());
-    let child_inherited = InheritedStyle {
-        color: confirmed_color,
-        font_size: confirmed_font_size,
-        font_family: confirmed_font_family,
-    };
+    let confirmed_color = visual.text_color.unwrap_or(Color::BLACK);
+    let confirmed_font_size = visual.font_size.unwrap_or(16.0);
 
     // If the element has a transform, wrap everything (including children) in a Group.
     let effective_parent = if let Some(transform) = el.transform {
@@ -235,9 +221,14 @@ fn walk(
         // Cursor rect — only in Canvas mode (HTML mode uses the native <input> cursor).
         if el.cursor_visible {
             if let Some(cl) = el.content_layout.as_ref() {
+                let cursor_index = el
+                    .edit
+                    .as_ref()
+                    .map(|edit| edit.cursor_byte_index)
+                    .unwrap_or(0);
                 let cursor = parley::Cursor::from_byte_index(
                     &cl.layout,
-                    el.cursor_byte_index,
+                    cursor_index,
                     parley::Affinity::Upstream,
                 );
                 let bbox = cursor.geometry(&cl.layout, 1.5_f32);

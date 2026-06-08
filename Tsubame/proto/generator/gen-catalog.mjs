@@ -25,7 +25,7 @@ const DOM_EXTRAS = {
 };
 
 function wireKind(tag) {
-  if (tag.name === 'FONT_FAMILY') return 'fontFamily';
+  if (tag.name === 'FONT_FAMILY' || tag.name === 'DEFAULT_FONT_FAMILY') return 'fontFamily';
   if (tag.name === 'Z_INDEX') return 'zIndex';
   const param = (tag.params ?? [])[0];
   if (!param) return 'f32';
@@ -42,6 +42,10 @@ function wireKind(tag) {
       return 'alignItems';
     case 'justify_content':
       return 'justifyContent';
+    case 'font_style':
+      return 'fontStyle';
+    case 'text_decoration':
+      return 'textDecoration';
     case 'f32':
       return 'f32';
     default:
@@ -54,7 +58,14 @@ function domFormat(tag, kind) {
   if (kind === 'color') return 'color';
   if (kind === 'fontFamily') return 'string';
   if (kind === 'zIndex') return 'integer';
-  if (kind === 'display' || kind === 'flexDirection' || kind === 'alignItems' || kind === 'justifyContent') {
+  if (
+    kind === 'display' ||
+    kind === 'flexDirection' ||
+    kind === 'alignItems' ||
+    kind === 'justifyContent' ||
+    kind === 'fontStyle' ||
+    kind === 'textDecoration'
+  ) {
     return 'enum';
   }
   if (kind === 'f32') {
@@ -103,7 +114,7 @@ export function generateCatalog() {
     '',
     "import type { HayateDimension } from '@tsubame/renderer-protocol';",
     '',
-    "export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'f32' | 'zIndex' | 'fontFamily';",
+    "export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
     "export type DomFormat = 'dimension' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
     '',
     'export interface DomExtra {',

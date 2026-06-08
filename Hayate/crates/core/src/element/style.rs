@@ -10,6 +10,20 @@ pub enum StylePropKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FontStyleValue {
+    Normal,
+    Italic,
+    Oblique,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextDecorationValue {
+    None,
+    Underline,
+    LineThrough,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,
     Percent,
@@ -117,6 +131,13 @@ pub enum StyleProp {
     FontFamily(String),
     FontWeight(f32),
     Color(Color),
+    FontStyle(FontStyleValue),
+    TextDecoration(TextDecorationValue),
+    // ambient default text style (block-penetrating)
+    DefaultColor(Color),
+    DefaultFontFamily(String),
+    DefaultFontSize(f32),
+    DefaultFontWeight(f32),
     // stacking
     ZIndex(i32),
 }

@@ -57,13 +57,13 @@
 ### TEXT-08 — text element は inline formatting context（IFC）
 **規範文:** `text` element は inline formatting context とする。IFC root（親が `text` でない `text`）は subtree（自身の `el.text` ＋ 子 `text`（inline text element） を document 順）を**1つの Parley ranged layout** として整形する Taffy leaf。inline text element（親が `text` の `text`）は Taffy box を持たず、親 IFC の styled range（font-family/size/weight/style/color/decoration）になる。inline text element への mutation は IFC root の layout を dirty にする。hit-test は IFC root の byte-range→`ElementId` マップで inline text element を解決する。DOM Renderer / HTML Mode はブラウザの native IFC に委ねる。MVP: inline atom（`text` 中の image/icon）は後続、`text-input` は leaf editable のまま、inline text element の box 系スタイルは無視。
 **出典:** ADR-0063（ADR-0058 の leaf-string/collapse を supersede、ADR-0005 を拡張）
-**状況:** ✅ — hayate-core: `inline_text.rs` の `shape(ifc_root, width)->(Layout, RangeMap)`、`build_ranged_text_layout`、`shape_dirty` 伝播、measure 経路の IFC 合成整形、二段 hit-test（byte→inline text element）。`tsubame-solid`: `isTextInTextCollapse` / `node.text` / collapse 撤去、text-in-text は `appendChild` + 各 `text` element へ `setText`（`node.ts` は構造のみ）。
+**状況:** ✅ — hayate-core: `inline_text.rs` の `shape(ifc_root, width)->(Layout, RangeMap)`、`build_ranged_text_layout`、`shape_dirty` 伝播、measure 経路の IFC 合成整形、二段 hit-test（byte→inline text element）。`tsubame-solid`: collapse 撤去済み、text-in-text は `appendChild` + 各 `text` element へ `setText`（`node.ts` は構造のみ）。
 **備考:** 現 leaf 整形は inline text element 数=1 の縮退ケースとして IFC 経路に吸収。区間ごとの color は Parley brush（`TextBrush=[u8;4]`）を range push。AccessKit range 化は PLAT-04 下流。
 
 ### TEXT-09 — 編集は core の EditState、IME は ImeBridge trait
 **規範文:** text-input の編集状態と操作は core の `EditState`（`text_content`/`preedit`/`cursor_byte_index` ＋ insert/append/backspace/set/paste/set_preedit/commit/display_text）に集約する。編集セマンティクス（キー→編集・commit・入力 append）は core が持ち、A1（ADR-0066）で core へ移る入力ハンドラが `EditState` を呼ぶ。platform IME は `ImeBridge` trait の裏に置き、adapter は EditContext（web）/ TSF・TSM・IBus（native）を**ラップするだけ**。core が cursor rect（`cursor_byte_index`＋`content_layout`＋Taffy 由来）を character bounds として `ImeBridge` へ供給し IME 候補窓位置を満たす。`cursor_visible`（点滅・ADR-0032）と `content_layout` は render-side。
 **出典:** ADR-0069（ADR-0066/0068 と統合、ADR-0014/0016/0017 を精緻化）
-**状況:** ⬜未実装 — 設計確定。現状は編集セマンティクスが adapter に漏れ（`on_key_down:480` のキー→編集、`on_composition_end` が commit をインライン再実装し core の `element_commit_preedit` 未使用）、EditContext ラップは JS で ad-hoc、character bounds 供給が欠落。`EditState` 抽出・`ImeBridge` trait・character bounds export・adapter 痩化が残タスク。
+**状況:** ✅ — `edit_state.rs`（`EditState` 集約）、`interaction.rs`（キー/composition/text-input 編集セマンティクス）、`ime_bridge.rs`（`ImeBridge` trait + `CharacterBounds` + `sync_ime_character_bounds`）、`ElementTree::element_character_bounds`、Canvas adapter は `render()` で `WebImeBridge` に bounds 同期＋`ime_character_bounds` export、Tsubame `edit-context-sync.ts` が EditContext へ反映。回帰テスト `edit_input.rs` / `ime_bridge` / `edit-context-sync.test.ts`。
 **備考:** IME plumbing は adapter（ImeBridge）、編集 model は core。native は薄い ImeBridge 実装で `EditState`/bounds を再利用（native 本体・ADR-0012）。cursor の点→byte は #3 と共有。
 
 ---
@@ -71,6 +71,4 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 7 | TEXT-01〜07 |
-| 🟡部分 | 1 | TEXT-08（core IFC 経路、ADR-0063。tsubame-solid collapse は残タスク10） |
-| ⬜未実装 | 1 | TEXT-09（EditState＋ImeBridge、ADR-0069） |
+| ✅実装済み | 9 | TEXT-01〜09 |

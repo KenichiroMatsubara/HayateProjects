@@ -19,6 +19,7 @@ use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32
 use crate::builtin_fonts::builtin_font_url;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::generated::encode_deliveries;
+use crate::ime_bridge::{sync_ime_character_bounds, WebImeBridge};
 use crate::style_packet;
 
 // ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
@@ -142,6 +143,8 @@ pub struct HayateElementRenderer {
     background: [f32; 4],
     /// Fonts fetched by spawned futures; applied to the tree on next poll_events.
     font_queue: FontQueue,
+    /// IME candidate-window bounds synced each render (ADR-0069).
+    ime: WebImeBridge,
 }
 
 #[wasm_bindgen]
@@ -157,6 +160,7 @@ impl HayateElementRenderer {
             tree,
             background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
+            ime: WebImeBridge::default(),
         })
     }
 
@@ -283,7 +287,11 @@ impl HayateElementRenderer {
             self.tree.register_font(&family, bytes);
         }
         let sg = self.tree.render(timestamp_ms);
-        self.backend.render_scene(sg, self.background)
+        let present = self.backend.render_scene(sg, self.background);
+        if let Some(focused) = self.tree.focused_element() {
+            sync_ime_character_bounds(&self.tree, focused, &mut self.ime);
+        }
+        present
     }
 
     /// Fetch an image (PNG / JPEG / WebP) from `url` and attach it to the Image element.
@@ -437,53 +445,46 @@ impl HayateElementRenderer {
             .unwrap_or(0.0)
     }
 
-    /// Handle a key press on the focused element.
-    /// `key` is KeyboardEvent.key; `modifiers` is a bitmask of modifier_shift/ctrl/alt/meta.
+    /// Handle a key press on the focused element (edit semantics in core — ADR-0069).
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        let focused = match self.tree.focused_element() {
-            Some(id) => id,
-            None => return,
-        };
-        match key {
-            "Backspace" => {
-                self.tree.element_backspace(focused);
-            }
-            "Enter" => {
-                self.tree.element_append_text_content(focused, "\n");
-                self.tree.on_text_input(focused, "\n");
-            }
-            _ => {}
-        }
         self.tree.on_key_down(key, modifiers);
     }
 
     /// Called by JS when the user types printable text into the focused TextInput.
     pub fn on_text_input(&mut self, id: f64, text: &str) {
-        let eid = element_id_from_f64(id);
-        self.tree.element_append_text_content(eid, text);
-        self.tree.on_text_input(eid, text);
+        self.tree.on_text_input(element_id_from_f64(id), text);
     }
 
     /// Called by JS when an IME composition begins.
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
-        let eid = element_id_from_f64(id);
-        self.tree.element_set_preedit(eid, text);
-        self.tree.on_composition_start(eid, text);
+        self.tree
+            .on_composition_start(element_id_from_f64(id), text);
     }
 
     /// Called by JS when the IME preedit updates.
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
-        let eid = element_id_from_f64(id);
-        self.tree.element_set_preedit(eid, text);
-        self.tree.on_composition_update(eid, text);
+        self.tree
+            .on_composition_update(element_id_from_f64(id), text);
     }
 
     /// Called by JS when IME composition is finalized.
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
+        self.tree.on_composition_end(element_id_from_f64(id), text);
+    }
+
+    /// Cursor character bounds for IME (ADR-0069). `[x, y, width, height]` in layout space.
+    pub fn element_character_bounds(&self, id: f64) -> Box<[f32]> {
         let eid = element_id_from_f64(id);
-        self.tree.element_set_preedit(eid, "");
-        self.tree.element_append_text_content(eid, text);
-        self.tree.on_composition_end(eid, text);
+        match self.tree.element_character_bounds(eid) {
+            Some(b) => vec![b.x, b.y, b.width, b.height].into_boxed_slice(),
+            None => vec![0.0, 0.0, 0.0, 0.0].into_boxed_slice(),
+        }
+    }
+
+    /// Last IME character bounds synced during the most recent `render()`.
+    pub fn ime_character_bounds(&self) -> Box<[f32]> {
+        let b = self.ime.last_bounds();
+        vec![b.x, b.y, b.width, b.height].into_boxed_slice()
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {

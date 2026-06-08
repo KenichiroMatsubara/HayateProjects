@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, JUSTIFY_CONTENT } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -141,6 +141,18 @@ const JUSTIFY_CONTENT_CODE: Record<string, number> = {
   'space-between': JUSTIFY_CONTENT.spaceBetween,
   'space-around': JUSTIFY_CONTENT.spaceAround,
   'space-evenly': JUSTIFY_CONTENT.spaceEvenly,
+};
+
+const FONT_STYLE_CODE: Record<string, number> = {
+  'normal': FONT_STYLE.normal,
+  'italic': FONT_STYLE.italic,
+  'oblique': FONT_STYLE.oblique,
+};
+
+const TEXT_DECORATION_CODE: Record<string, number> = {
+  'none': TEXT_DECORATION.none,
+  'underline': TEXT_DECORATION.underline,
+  'line-through': TEXT_DECORATION.lineThrough,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -301,6 +313,37 @@ function encode_fontWeight(out: number[], value: unknown): void {
   out.push(TAG.FONT_WEIGHT, finiteNumber('fontWeight', value));
 }
 
+function encode_fontStyle(out: number[], value: string): void {
+  const code = FONT_STYLE_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported fontStyle "${value}"`);
+  out.push(TAG.FONT_STYLE, code);
+}
+
+function encode_textDecoration(out: number[], value: string): void {
+  const code = TEXT_DECORATION_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported textDecoration "${value}"`);
+  out.push(TAG.TEXT_DECORATION, code);
+}
+
+function encode_defaultColor(out: number[], value: string): void {
+  const c = parseColor(value);
+  out.push(TAG.DEFAULT_COLOR, c.r, c.g, c.b, c.a);
+}
+
+function encode_defaultFontFamily(out: number[], value: string): void {
+  const bytes = new TextEncoder().encode(value);
+  out.push(TAG.DEFAULT_FONT_FAMILY, bytes.length);
+  for (const byte of bytes) out.push(byte);
+}
+
+function encode_defaultFontSize(out: number[], value: unknown): void {
+  out.push(TAG.DEFAULT_FONT_SIZE, finiteNumber('defaultFontSize', value));
+}
+
+function encode_defaultFontWeight(out: number[], value: unknown): void {
+  out.push(TAG.DEFAULT_FONT_WEIGHT, finiteNumber('defaultFontWeight', value));
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -334,6 +377,12 @@ const STYLE_ENCODERS = {
   fontFamily: encode_fontFamily,
   flexGrow: encode_flexGrow,
   fontWeight: encode_fontWeight,
+  fontStyle: encode_fontStyle,
+  textDecoration: encode_textDecoration,
+  defaultColor: encode_defaultColor,
+  defaultFontFamily: encode_defaultFontFamily,
+  defaultFontSize: encode_defaultFontSize,
+  defaultFontWeight: encode_defaultFontWeight,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

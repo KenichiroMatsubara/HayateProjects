@@ -17,8 +17,9 @@ export interface RawHayate {
   element_insert_before(parent: number, child: number, before: number): void;
   element_remove(id: number): void;
   element_set_text(id: number, text: string): void;
+  element_get_text(id: number): string;
   /** Element ids in `id` and its descendants (Hayate ElementTree is authoritative). */
-  element_subtree_ids(id: number): number[];
+  element_subtree_ids(id: number): Float64Array;
   element_set_style(id: number, packed: Float32Array): void;
   element_set_pseudo_style(id: number, state: number, packed: Float32Array): void;
   apply_mutations(
@@ -37,6 +38,8 @@ export interface RawHayate {
   on_composition_update(id: number, text: string): void;
   on_composition_end(id: number, text: string): void;
   focused_element_id(): number;
+  /** Cursor rect synced during the last render (ADR-0069). */
+  ime_character_bounds(): number[];
   render(timestampMs: number): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;

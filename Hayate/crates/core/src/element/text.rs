@@ -2,9 +2,12 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use fontique::FontStyle;
 use parley::{
     FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
 };
+
+use crate::element::style::{FontStyleValue, TextDecorationValue};
 
 use crate::node::TextRunData;
 use crate::render::{RenderFont, RenderGlyph};
@@ -50,6 +53,8 @@ pub struct RangedTextSpan {
     pub font_size: f32,
     pub font_weight: Option<f32>,
     pub font_family: Option<String>,
+    pub font_style: Option<FontStyleValue>,
+    pub text_decoration: Option<TextDecorationValue>,
     pub brush: TextBrush,
 }
 
@@ -66,6 +71,14 @@ pub struct TextLayout {
     pub missing_families: Vec<&'static str>,
     /// IFC byte ranges → inline text element owners (ADR-0063).
     pub range_map: Option<RangeMap>,
+}
+
+fn parley_font_style(value: FontStyleValue) -> FontStyle {
+    match value {
+        FontStyleValue::Normal => FontStyle::Normal,
+        FontStyleValue::Italic => FontStyle::Italic,
+        FontStyleValue::Oblique => FontStyle::Oblique(None),
+    }
 }
 
 /// Map a Unicode codepoint to the font family name best suited to render it,
@@ -229,6 +242,23 @@ pub fn build_ranged_text_layout(
                 StyleProperty::FontFamily(FontFamily::Source(stack)),
                 range.clone(),
             );
+        }
+        if let Some(style) = span.font_style {
+            builder.push(
+                StyleProperty::FontStyle(parley_font_style(style)),
+                range.clone(),
+            );
+        }
+        if let Some(dec) = span.text_decoration {
+            match dec {
+                TextDecorationValue::Underline => {
+                    builder.push(StyleProperty::Underline(true), range.clone());
+                }
+                TextDecorationValue::LineThrough => {
+                    builder.push(StyleProperty::Strikethrough(true), range.clone());
+                }
+                TextDecorationValue::None => {}
+            }
         }
         builder.push(StyleProperty::Brush(span.brush), range);
     }

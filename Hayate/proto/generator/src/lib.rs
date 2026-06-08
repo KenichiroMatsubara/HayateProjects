@@ -557,7 +557,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("// ── Style packet codec (generated) ─────────────────────────────────────\n\n");
     out.push_str("use hayate_core::{\n");
     out.push_str("    AlignValue, Color, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,\n");
-    out.push_str("    JustifyValue, StyleProp,\n");
+    out.push_str("    FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,\n");
     out.push_str("};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
 
@@ -582,6 +582,8 @@ fn generate_style_codec(proto: &Proto) -> String {
             "flex_direction" => "FlexDirectionValue",
             "align_items" => "AlignValue",
             "justify_content" => "JustifyValue",
+            "font_style" => "FontStyleValue",
+            "text_decoration" => "TextDecorationValue",
             _ => continue,
         };
         let fn_name = format!("codec_{}", en.name);
@@ -656,6 +658,8 @@ fn generate_codec(proto: &Proto) -> String {
             "flex_direction" => "FlexDirectionValue",
             "align_items" => "AlignValue",
             "justify_content" => "JustifyValue",
+            "font_style" => "FontStyleValue",
+            "text_decoration" => "TextDecorationValue",
             _ => continue,
         };
         let fn_name = format!("encode_{}", en.name);
@@ -726,8 +730,12 @@ fn generate_codec(proto: &Proto) -> String {
     out
 }
 
+fn is_variable_font_family_tag(tag_name: &str) -> bool {
+    matches!(tag_name, "FONT_FAMILY" | "DEFAULT_FONT_FAMILY")
+}
+
 fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
-    if tag_name == "FONT_FAMILY" {
+    if is_variable_font_family_tag(tag_name) {
         return "(f)".to_string();
     }
     if tag_name == "Z_INDEX" {
@@ -737,7 +745,8 @@ fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
         match p.typ.as_str() {
             "color" => return "(c)".to_string(),
             "dimension" => return "(d)".to_string(),
-            "display" | "flex_direction" | "align_items" | "justify_content" | "f32" => {
+            "display" | "flex_direction" | "align_items" | "justify_content" | "font_style"
+            | "text_decoration" | "f32" => {
                 return "(v)".to_string();
             }
             _ => {}
@@ -747,7 +756,7 @@ fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
 }
 
 fn style_prop_encode_body(tag_name: &str, params: &[Param]) -> String {
-    if tag_name == "FONT_FAMILY" {
+    if is_variable_font_family_tag(tag_name) {
         return "                let bytes = f.as_bytes();\n\
                 buf.push(bytes.len() as f32);\n\
                 for byte in bytes {\n\
@@ -777,6 +786,10 @@ fn style_prop_encode_body(tag_name: &str, params: &[Param]) -> String {
             "align_items" => return "                buf.push(encode_align_items(*v));\n".to_string(),
             "justify_content" => {
                 return "                buf.push(encode_justify_content(*v));\n".to_string();
+            }
+            "font_style" => return "                buf.push(encode_font_style(*v));\n".to_string(),
+            "text_decoration" => {
+                return "                buf.push(encode_text_decoration(*v));\n".to_string();
             }
             "f32" => return "                buf.push(*v);\n".to_string(),
             _ => {}
@@ -838,7 +851,7 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
 }
 
 fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'static str) {
-    if tag_name == "FONT_FAMILY" {
+    if is_variable_font_family_tag(tag_name) {
         return ("(ref f)".to_string(), "f");
     }
     if tag_name == "Z_INDEX" {
@@ -848,7 +861,8 @@ fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'stat
         match p.typ.as_str() {
             "color" => return ("(c)".to_string(), "c"),
             "dimension" => return ("(d)".to_string(), "d"),
-            "display" | "flex_direction" | "align_items" | "justify_content" => {
+            "display" | "flex_direction" | "align_items" | "justify_content" | "font_style"
+            | "text_decoration" => {
                 return ("(v)".to_string(), "v");
             }
             "f32" => return ("(v)".to_string(), "v"),
@@ -859,7 +873,26 @@ fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'stat
 }
 
 fn dom_apply_body(tag_name: &str, params: &[Param], css_prop: &str, value_var: &str) -> String {
-    if tag_name == "FONT_FAMILY" {
+    match tag_name {
+        "DEFAULT_COLOR" => {
+            return format!("style.set_property(\"color\", &dom_css_rgba({value_var}))?;");
+        }
+        "DEFAULT_FONT_SIZE" => {
+            return format!(
+                "style.set_property(\"font-size\", &format!(\"{{}}px\", {value_var}.max(0.0)))?;"
+            );
+        }
+        "DEFAULT_FONT_FAMILY" => {
+            return format!("style.set_property(\"font-family\", {value_var})?;");
+        }
+        "DEFAULT_FONT_WEIGHT" => {
+            return format!(
+                "style.set_property(\"font-weight\", &format!(\"{{}}\", {value_var}.clamp(1.0, 1000.0)))?;"
+            );
+        }
+        _ => {}
+    }
+    if is_variable_font_family_tag(tag_name) {
         return format!("style.set_property(\"{css_prop}\", {value_var})?;");
     }
     if tag_name == "Z_INDEX" {
@@ -916,6 +949,26 @@ fn dom_apply_body(tag_name: &str, params: &[Param], css_prop: &str, value_var: &
                     JustifyValue::SpaceBetween => \"space-between\",\n\
                     JustifyValue::SpaceAround => \"space-around\",\n\
                     JustifyValue::SpaceEvenly => \"space-evenly\",\n\
+                }};\n\
+                style.set_property(\"{css_prop}\", s)?;"
+                );
+            }
+            "font_style" => {
+                return format!(
+                    "let s = match {value_var} {{\n\
+                    FontStyleValue::Normal => \"normal\",\n\
+                    FontStyleValue::Italic => \"italic\",\n\
+                    FontStyleValue::Oblique => \"oblique\",\n\
+                }};\n\
+                style.set_property(\"{css_prop}\", s)?;"
+                );
+            }
+            "text_decoration" => {
+                return format!(
+                    "let s = match {value_var} {{\n\
+                    TextDecorationValue::None => \"none\",\n\
+                    TextDecorationValue::Underline => \"underline\",\n\
+                    TextDecorationValue::LineThrough => \"line-through\",\n\
                 }};\n\
                 style.set_property(\"{css_prop}\", s)?;"
                 );
@@ -995,7 +1048,7 @@ fn patch_key_to_kebab(s: &str) -> String {
 }
 
 fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> String {
-    if tag_name == "FONT_FAMILY" {
+    if is_variable_font_family_tag(tag_name) {
         return "family".to_string();
     }
     if tag_name == "Z_INDEX" {
@@ -1014,6 +1067,8 @@ fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> S
             "flex_direction" => return "codec_flex_direction(value)".to_string(),
             "align_items" => return "codec_align_items(value)".to_string(),
             "justify_content" => return "codec_justify_content(value)".to_string(),
+            "font_style" => return "codec_font_style(value)".to_string(),
+            "text_decoration" => return "codec_text_decoration(value)".to_string(),
             "f32" => return "value".to_string(),
             _ => {}
         }
