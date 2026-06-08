@@ -76,6 +76,21 @@ struct Entry {
     #[allow(dead_code)]
     interaction_kind: Option<String>,
     description: Option<String>,
+    dom_css: Option<DomCss>,
+}
+
+#[derive(Default, Clone)]
+struct DomCss {
+    property: String,
+    format: String,
+    extras: Vec<DomExtra>,
+}
+
+#[derive(Default, Clone)]
+struct DomExtra {
+    property: String,
+    when_positive: String,
+    when_zero: String,
 }
 
 #[derive(Default, Clone)]
@@ -126,6 +141,25 @@ struct EntryJson {
     interaction_kind: Option<String>,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default, rename = "domCss")]
+    dom_css: Option<DomCssJson>,
+}
+
+#[derive(Deserialize)]
+struct DomCssJson {
+    property: String,
+    format: String,
+    #[serde(default)]
+    extras: Vec<DomExtraJson>,
+}
+
+#[derive(Deserialize)]
+struct DomExtraJson {
+    property: String,
+    #[serde(rename = "whenPositive")]
+    when_positive: String,
+    #[serde(rename = "whenZero")]
+    when_zero: String,
 }
 
 #[derive(Deserialize)]
@@ -245,6 +279,19 @@ fn entries_from_json(entries: Vec<EntryJson>) -> Vec<Entry> {
             bubbles: e.bubbles,
             interaction_kind: e.interaction_kind,
             description: e.description,
+            dom_css: e.dom_css.map(|d| DomCss {
+                property: d.property,
+                format: d.format,
+                extras: d
+                    .extras
+                    .into_iter()
+                    .map(|x| DomExtra {
+                        property: x.property,
+                        when_positive: x.when_positive,
+                        when_zero: x.when_zero,
+                    })
+                    .collect(),
+            }),
         })
         .collect()
 }
@@ -832,11 +879,14 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
 
     for tag in &proto.style_tags {
         let variant = to_pascal(&tag.name);
-        let css_prop = patch_key_to_kebab(&tag_to_patch_key(&tag.name));
         let (binding, value_var) = style_prop_match_binding(&tag.name, &tag.params);
+        let dom_css = tag
+            .dom_css
+            .as_ref()
+            .unwrap_or_else(|| panic!("style tag {} missing domCss", tag.name));
 
         out.push_str(&format!("        StyleProp::{variant}{binding} => {{\n"));
-        let body = dom_apply_body(&tag.name, &tag.params, &css_prop, value_var);
+        let body = dom_apply_from_spec(dom_css, value_var);
         for line in body.lines() {
             out.push_str(&format!("            {line}\n"));
         }
@@ -872,179 +922,130 @@ fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'stat
     ("(v)".to_string(), "v")
 }
 
-fn dom_apply_body(tag_name: &str, params: &[Param], css_prop: &str, value_var: &str) -> String {
-    match tag_name {
-        "DEFAULT_COLOR" => {
-            return format!("style.set_property(\"color\", &dom_css_rgba({value_var}))?;");
-        }
-        "DEFAULT_FONT_SIZE" => {
-            return format!(
-                "style.set_property(\"font-size\", &format!(\"{{}}px\", {value_var}.max(0.0)))?;"
-            );
-        }
-        "DEFAULT_FONT_FAMILY" => {
-            return format!("style.set_property(\"font-family\", {value_var})?;");
-        }
-        "DEFAULT_FONT_WEIGHT" => {
-            return format!(
-                "style.set_property(\"font-weight\", &format!(\"{{}}\", {value_var}.clamp(1.0, 1000.0)))?;"
-            );
-        }
-        _ => {}
-    }
-    if is_variable_font_family_tag(tag_name) {
-        return format!("style.set_property(\"{css_prop}\", {value_var})?;");
-    }
-    if tag_name == "Z_INDEX" {
-        return format!("style.set_property(\"{css_prop}\", &{value_var}.to_string())?;");
-    }
-    for p in params {
-        match p.typ.as_str() {
-            "color" => {
-                return format!("style.set_property(\"{css_prop}\", &dom_css_rgba({value_var}))?;");
-            }
-            "dimension" => {
-                return format!("style.set_property(\"{css_prop}\", &dom_css_dim({value_var}))?;");
-            }
-            "display" => {
-                return format!(
-                    "let s = match {value_var} {{\n\
-                    DisplayValue::Flex => \"flex\",\n\
-                    DisplayValue::Grid => \"grid\",\n\
-                    DisplayValue::Block => \"block\",\n\
-                    DisplayValue::None => \"none\",\n\
-                }};\n\
-                style.set_property(\"{css_prop}\", s)?;"
-                );
-            }
-            "flex_direction" => {
-                return format!(
-                    "let s = match {value_var} {{\n\
-                    FlexDirectionValue::Row => \"row\",\n\
-                    FlexDirectionValue::Column => \"column\",\n\
-                    FlexDirectionValue::RowReverse => \"row-reverse\",\n\
-                    FlexDirectionValue::ColumnReverse => \"column-reverse\",\n\
-                }};\n\
-                style.set_property(\"{css_prop}\", s)?;"
-                );
-            }
-            "align_items" => {
-                return format!(
-                    "let s = match {value_var} {{\n\
-                    AlignValue::FlexStart => \"flex-start\",\n\
-                    AlignValue::FlexEnd => \"flex-end\",\n\
-                    AlignValue::Center => \"center\",\n\
-                    AlignValue::Stretch => \"stretch\",\n\
-                    AlignValue::Baseline => \"baseline\",\n\
-                }};\n\
-                style.set_property(\"{css_prop}\", s)?;"
-                );
-            }
-            "justify_content" => {
-                return format!(
-                    "let s = match {value_var} {{\n\
-                    JustifyValue::FlexStart => \"flex-start\",\n\
-                    JustifyValue::FlexEnd => \"flex-end\",\n\
-                    JustifyValue::Center => \"center\",\n\
-                    JustifyValue::SpaceBetween => \"space-between\",\n\
-                    JustifyValue::SpaceAround => \"space-around\",\n\
-                    JustifyValue::SpaceEvenly => \"space-evenly\",\n\
-                }};\n\
-                style.set_property(\"{css_prop}\", s)?;"
-                );
-            }
-            "font_style" => {
-                return format!(
-                    "let s = match {value_var} {{\n\
-                    FontStyleValue::Normal => \"normal\",\n\
-                    FontStyleValue::Italic => \"italic\",\n\
-                    FontStyleValue::Oblique => \"oblique\",\n\
-                }};\n\
-                style.set_property(\"{css_prop}\", s)?;"
-                );
-            }
-            "text_decoration" => {
-                return format!(
-                    "let s = match {value_var} {{\n\
-                    TextDecorationValue::None => \"none\",\n\
-                    TextDecorationValue::Underline => \"underline\",\n\
-                    TextDecorationValue::LineThrough => \"line-through\",\n\
-                }};\n\
-                style.set_property(\"{css_prop}\", s)?;"
-                );
-            }
-            "f32" => match tag_name {
-                "OPACITY" => {
-                    return format!(
-                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}.clamp(0.0, 1.0)))?;"
-                    );
-                }
-                "BORDER_RADIUS" | "FONT_SIZE" => {
-                    return format!(
-                        "style.set_property(\"{css_prop}\", &format!(\"{{}}px\", {value_var}.max(0.0)))?;"
-                    );
-                }
-                "BORDER_WIDTH" => {
-                    return format!(
-                        "let w = {value_var}.max(0.0);\n\
-                        style.set_property(\"{css_prop}\", &format!(\"{{}}px\", w))?;\n\
-                        style.set_property(\"border-style\", if w > 0.0 {{ \"solid\" }} else {{ \"none\" }})?;"
-                    );
-                }
-                "FONT_WEIGHT" => {
-                    return format!(
-                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}.clamp(1.0, 1000.0)))?;"
-                    );
-                }
-                "FLEX_GROW" => {
-                    return format!(
-                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}.max(0.0)))?;"
-                    );
-                }
-                _ => {
-                    return format!(
-                        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}))?;"
-                    );
-                }
-            },
-            _ => {}
-        }
-    }
-    format!(
-        "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {value_var}))?;"
-    )
-}
+fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
+    let css_prop = &dom.property;
+    let mut lines = Vec::new();
 
-fn tag_to_patch_key(s: &str) -> String {
-    let lower = s.to_lowercase();
-    let mut result = String::new();
-    let mut capitalize_next = false;
-    for ch in lower.chars() {
-        if ch == '_' {
-            capitalize_next = true;
-        } else if capitalize_next {
-            result.extend(ch.to_uppercase());
-            capitalize_next = false;
-        } else {
-            result.push(ch);
+    match dom.format.as_str() {
+        "color" => {
+            lines.push(format!(
+                "style.set_property(\"{css_prop}\", &dom_css_rgba({value_var}))?;"
+            ));
         }
-    }
-    result
-}
-
-fn patch_key_to_kebab(s: &str) -> String {
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if ch.is_uppercase() {
-            if i > 0 {
-                out.push('-');
+        "dimension" => {
+            lines.push(format!(
+                "style.set_property(\"{css_prop}\", &dom_css_dim({value_var}))?;"
+            ));
+        }
+        "px" => {
+            if dom.extras.is_empty() {
+                lines.push(format!(
+                    "style.set_property(\"{css_prop}\", &format!(\"{{}}px\", {value_var}.max(0.0)))?;"
+                ));
+            } else {
+                lines.push(format!("let w = {value_var}.max(0.0);"));
+                lines.push(format!(
+                    "style.set_property(\"{css_prop}\", &format!(\"{{}}px\", w))?;"
+                ));
             }
-            out.extend(ch.to_lowercase());
-        } else {
-            out.push(ch);
         }
+        "integer" => {
+            lines.push(format!(
+                "style.set_property(\"{css_prop}\", &{value_var}.to_string())?;"
+            ));
+        }
+        "string" => {
+            lines.push(format!("style.set_property(\"{css_prop}\", {value_var})?;"));
+        }
+        "number" => {
+            let expr = match css_prop.as_str() {
+                "opacity" => format!("{value_var}.clamp(0.0, 1.0)"),
+                "font-weight" => format!("{value_var}.clamp(1.0, 1000.0)"),
+                "flex-grow" => format!("{value_var}.max(0.0)"),
+                _ => value_var.to_string(),
+            };
+            lines.push(format!(
+                "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {expr}))?;"
+            ));
+        }
+        "enum:display" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                DisplayValue::Flex => \"flex\",\n\
+                DisplayValue::Grid => \"grid\",\n\
+                DisplayValue::Block => \"block\",\n\
+                DisplayValue::None => \"none\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:flex_direction" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                FlexDirectionValue::Row => \"row\",\n\
+                FlexDirectionValue::Column => \"column\",\n\
+                FlexDirectionValue::RowReverse => \"row-reverse\",\n\
+                FlexDirectionValue::ColumnReverse => \"column-reverse\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:align_items" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                AlignValue::FlexStart => \"flex-start\",\n\
+                AlignValue::FlexEnd => \"flex-end\",\n\
+                AlignValue::Center => \"center\",\n\
+                AlignValue::Stretch => \"stretch\",\n\
+                AlignValue::Baseline => \"baseline\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:justify_content" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                JustifyValue::FlexStart => \"flex-start\",\n\
+                JustifyValue::FlexEnd => \"flex-end\",\n\
+                JustifyValue::Center => \"center\",\n\
+                JustifyValue::SpaceBetween => \"space-between\",\n\
+                JustifyValue::SpaceAround => \"space-around\",\n\
+                JustifyValue::SpaceEvenly => \"space-evenly\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:font_style" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                FontStyleValue::Normal => \"normal\",\n\
+                FontStyleValue::Italic => \"italic\",\n\
+                FontStyleValue::Oblique => \"oblique\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:text_decoration" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                TextDecorationValue::None => \"none\",\n\
+                TextDecorationValue::Underline => \"underline\",\n\
+                TextDecorationValue::LineThrough => \"line-through\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        other => panic!("unknown domCss format: {other}"),
     }
-    out
+
+    for extra in &dom.extras {
+        lines.push(format!(
+            "style.set_property(\"{}\", if w > 0.0 {{ \"{}\" }} else {{ \"{}\" }})?;",
+            extra.property, extra.when_positive, extra.when_zero
+        ));
+    }
+
+    lines.join("\n")
 }
 
 fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> String {

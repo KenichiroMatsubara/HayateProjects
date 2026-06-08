@@ -218,7 +218,7 @@ function pseudoStyleDeclarations(patch: StylePatch): string {
     if (value === undefined || value === null) continue;
     const entry = CATALOG_BY_KEY[k as string];
     if (entry === undefined) continue;
-    parts.push(`${entry.cssName}:${formatDomCSSValue(entry, value)}`);
+    parts.push(`${entry.cssProperty}:${formatDomCSSValue(entry, value)}`);
   }
   return parts.join(';');
 }

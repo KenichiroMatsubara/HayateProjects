@@ -482,8 +482,8 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "unsetKind": null,
     "wireKind": "color",
     "domFormat": "color",
-    "cssName": "defaultColor",
-    "cssProperty": "default-color",
+    "cssName": "color",
+    "cssProperty": "color",
     "targets": [
       "packet",
       "css"
@@ -495,8 +495,8 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "unsetKind": null,
     "wireKind": "fontFamily",
     "domFormat": "string",
-    "cssName": "defaultFontFamily",
-    "cssProperty": "default-font-family",
+    "cssName": "fontFamily",
+    "cssProperty": "font-family",
     "targets": [
       "packet",
       "css"
@@ -508,8 +508,8 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "unsetKind": null,
     "wireKind": "f32",
     "domFormat": "px",
-    "cssName": "defaultFontSize",
-    "cssProperty": "default-font-size",
+    "cssName": "fontSize",
+    "cssProperty": "font-size",
     "targets": [
       "packet",
       "css"
@@ -520,9 +520,9 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "tag": 37,
     "unsetKind": null,
     "wireKind": "f32",
-    "domFormat": "px",
-    "cssName": "defaultFontWeight",
-    "cssProperty": "default-font-weight",
+    "domFormat": "number",
+    "cssName": "fontWeight",
+    "cssProperty": "font-weight",
     "targets": [
       "packet",
       "css"

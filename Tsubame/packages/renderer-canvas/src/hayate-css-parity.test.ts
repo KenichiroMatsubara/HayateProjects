@@ -17,6 +17,8 @@ const SAMPLES: Record<string, unknown> = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'space-between',
+  fontStyle: 'italic',
+  textDecoration: 'underline',
   f32: 0.75,
   zIndex: 10,
   fontFamily: 'Inter, sans-serif',
@@ -28,6 +30,8 @@ function sampleFor(entry: (typeof HAYATE_CSS_CATALOG)[number]): unknown {
   if (entry.patchKey === 'fontWeight') return 600;
   if (entry.patchKey === 'flexGrow') return 1;
   if (entry.patchKey === 'opacity') return 0.5;
+  if (entry.patchKey === 'defaultFontSize') return 16;
+  if (entry.patchKey === 'defaultFontWeight') return 600;
   return SAMPLES[entry.wireKind];
 }
 
@@ -91,5 +95,21 @@ describe('hayate-css catalog parity', () => {
     expect(out[1]).toBe(100);
     expect(out[2]).toBe(0);
     expect(domCssForPatch(patch).width).toBe('100px');
+  });
+
+  it('ambient default* tags map to inheritable CSS properties (ADR-0070)', () => {
+    const ambient = [
+      ['defaultColor', 'color', 'color'],
+      ['defaultFontFamily', 'fontFamily', 'font-family'],
+      ['defaultFontSize', 'fontSize', 'font-size'],
+      ['defaultFontWeight', 'fontWeight', 'font-weight'],
+    ] as const;
+    for (const [patchKey, cssName, cssProperty] of ambient) {
+      const entry = CATALOG_BY_KEY[patchKey]!;
+      expect(entry.cssProperty).toBe(cssProperty);
+      expect(entry.cssName).toBe(cssName);
+    }
+    expect(CATALOG_BY_KEY.defaultFontWeight!.domFormat).toBe('number');
+    expect(domCssForPatch({ defaultFontWeight: 600 }).fontWeight).toBe('600');
   });
 });

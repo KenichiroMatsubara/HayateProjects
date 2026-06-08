@@ -3,230 +3,579 @@
     "name": "BACKGROUND_COLOR",
     "value": 0,
     "encodeFrom": "css-color",
-    "params": [{ "name": "color", "type": "color" }]
+    "params": [
+      {
+        "name": "color",
+        "type": "color"
+      }
+    ],
+    "domCss": {
+      "property": "background-color",
+      "format": "color"
+    }
   },
   {
     "name": "OPACITY",
     "value": 1,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "opacity",
+      "format": "number"
+    }
   },
   {
     "name": "BORDER_RADIUS",
     "value": 2,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "border-radius",
+      "format": "px"
+    }
   },
   {
     "name": "BORDER_WIDTH",
     "value": 3,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "border-width",
+      "format": "px",
+      "extras": [
+        {
+          "property": "border-style",
+          "whenPositive": "solid",
+          "whenZero": "none"
+        }
+      ]
+    }
   },
   {
     "name": "BORDER_COLOR",
     "value": 4,
     "encodeFrom": "css-color",
-    "params": [{ "name": "color", "type": "color" }]
+    "params": [
+      {
+        "name": "color",
+        "type": "color"
+      }
+    ],
+    "domCss": {
+      "property": "border-color",
+      "format": "color"
+    }
   },
   {
     "name": "WIDTH",
     "value": 5,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "width",
+      "format": "dimension"
+    }
   },
   {
     "name": "HEIGHT",
     "value": 6,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "height",
+      "format": "dimension"
+    }
   },
   {
     "name": "MIN_WIDTH",
     "value": 7,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "min-width",
+      "format": "dimension"
+    }
   },
   {
     "name": "MIN_HEIGHT",
     "value": 8,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "min-height",
+      "format": "dimension"
+    }
   },
   {
     "name": "MAX_WIDTH",
     "value": 9,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "max-width",
+      "format": "dimension"
+    }
   },
   {
     "name": "MAX_HEIGHT",
     "value": 10,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "max-height",
+      "format": "dimension"
+    }
   },
   {
     "name": "DISPLAY",
     "value": 11,
     "encodeFrom": "enum:display",
-    "params": [{ "name": "value", "type": "display" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "display"
+      }
+    ],
+    "domCss": {
+      "property": "display",
+      "format": "enum:display"
+    }
   },
   {
     "name": "FLEX_DIRECTION",
     "value": 12,
     "encodeFrom": "enum:flex_direction",
-    "params": [{ "name": "value", "type": "flex_direction" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "flex_direction"
+      }
+    ],
+    "domCss": {
+      "property": "flex-direction",
+      "format": "enum:flex_direction"
+    }
   },
   {
     "name": "ALIGN_ITEMS",
     "value": 13,
     "encodeFrom": "enum:align_items",
-    "params": [{ "name": "value", "type": "align_items" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "align_items"
+      }
+    ],
+    "domCss": {
+      "property": "align-items",
+      "format": "enum:align_items"
+    }
   },
   {
     "name": "JUSTIFY_CONTENT",
     "value": 14,
     "encodeFrom": "enum:justify_content",
-    "params": [{ "name": "value", "type": "justify_content" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "justify_content"
+      }
+    ],
+    "domCss": {
+      "property": "justify-content",
+      "format": "enum:justify_content"
+    }
   },
   {
     "name": "GAP",
     "value": 15,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "gap",
+      "format": "dimension"
+    }
   },
   {
     "name": "PADDING",
     "value": 16,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "padding",
+      "format": "dimension"
+    }
   },
   {
     "name": "PADDING_TOP",
     "value": 17,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "padding-top",
+      "format": "dimension"
+    }
   },
   {
     "name": "PADDING_RIGHT",
     "value": 18,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "padding-right",
+      "format": "dimension"
+    }
   },
   {
     "name": "PADDING_BOTTOM",
     "value": 19,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "padding-bottom",
+      "format": "dimension"
+    }
   },
   {
     "name": "PADDING_LEFT",
     "value": 20,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "padding-left",
+      "format": "dimension"
+    }
   },
   {
     "name": "MARGIN",
     "value": 21,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "margin",
+      "format": "dimension"
+    }
   },
   {
     "name": "MARGIN_TOP",
     "value": 22,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "margin-top",
+      "format": "dimension"
+    }
   },
   {
     "name": "MARGIN_RIGHT",
     "value": 23,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "margin-right",
+      "format": "dimension"
+    }
   },
   {
     "name": "MARGIN_BOTTOM",
     "value": 24,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "margin-bottom",
+      "format": "dimension"
+    }
   },
   {
     "name": "MARGIN_LEFT",
     "value": 25,
     "encodeFrom": "dimension",
-    "params": [{ "name": "dim", "type": "dimension" }]
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "margin-left",
+      "format": "dimension"
+    }
   },
   {
     "name": "FONT_SIZE",
     "value": 26,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "font-size",
+      "format": "px"
+    }
   },
   {
     "name": "COLOR",
     "value": 27,
     "encodeFrom": "css-color",
-    "params": [{ "name": "color", "type": "color" }]
+    "params": [
+      {
+        "name": "color",
+        "type": "color"
+      }
+    ],
+    "domCss": {
+      "property": "color",
+      "format": "color"
+    }
   },
   {
     "name": "Z_INDEX",
     "value": 28,
     "encodeFrom": "z-index",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "z-index",
+      "format": "integer"
+    }
   },
   {
     "name": "FONT_FAMILY",
     "value": 29,
     "variable_length": true,
     "encodeFrom": "font-family",
-    "params": [{ "name": "family", "type": "string" }]
+    "params": [
+      {
+        "name": "family",
+        "type": "string"
+      }
+    ],
+    "domCss": {
+      "property": "font-family",
+      "format": "string"
+    }
   },
   {
     "name": "FLEX_GROW",
     "value": 30,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "flex-grow",
+      "format": "number"
+    }
   },
   {
     "name": "FONT_WEIGHT",
     "value": 31,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "font-weight",
+      "format": "number"
+    }
   },
   {
     "name": "FONT_STYLE",
     "value": 32,
     "encodeFrom": "enum:font_style",
-    "params": [{ "name": "value", "type": "font_style" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "font_style"
+      }
+    ],
+    "domCss": {
+      "property": "font-style",
+      "format": "enum:font_style"
+    }
   },
   {
     "name": "TEXT_DECORATION",
     "value": 33,
     "encodeFrom": "enum:text_decoration",
-    "params": [{ "name": "value", "type": "text_decoration" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "text_decoration"
+      }
+    ],
+    "domCss": {
+      "property": "text-decoration",
+      "format": "enum:text_decoration"
+    }
   },
   {
     "name": "DEFAULT_COLOR",
     "value": 34,
     "encodeFrom": "css-color",
-    "params": [{ "name": "color", "type": "color" }]
+    "params": [
+      {
+        "name": "color",
+        "type": "color"
+      }
+    ],
+    "domCss": {
+      "property": "color",
+      "format": "color"
+    }
   },
   {
     "name": "DEFAULT_FONT_FAMILY",
     "value": 35,
     "variable_length": true,
     "encodeFrom": "font-family",
-    "params": [{ "name": "family", "type": "string" }]
+    "params": [
+      {
+        "name": "family",
+        "type": "string"
+      }
+    ],
+    "domCss": {
+      "property": "font-family",
+      "format": "string"
+    }
   },
   {
     "name": "DEFAULT_FONT_SIZE",
     "value": 36,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "font-size",
+      "format": "px"
+    }
   },
   {
     "name": "DEFAULT_FONT_WEIGHT",
     "value": 37,
     "encodeFrom": "f32",
-    "params": [{ "name": "value", "type": "f32" }]
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "font-weight",
+      "format": "number"
+    }
   }
 ]

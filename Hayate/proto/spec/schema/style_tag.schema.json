@@ -3,7 +3,7 @@
   "$id": "https://hayate.dev/proto/spec/schema/style_tag.schema.json",
   "title": "Style tag entry with encodeFrom",
   "type": "object",
-  "required": ["name", "value", "encodeFrom"],
+  "required": ["name", "value", "encodeFrom", "domCss"],
   "properties": {
     "name": { "type": "string", "minLength": 1 },
     "value": { "type": "integer", "minimum": 0 },
@@ -27,7 +27,54 @@
     "params": {
       "type": "array",
       "items": { "$ref": "entry.schema.json#/$defs/param" }
+    },
+    "domCss": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/domCss" }
+      ]
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "domCss": {
+      "type": "object",
+      "required": ["property", "format"],
+      "properties": {
+        "property": { "type": "string", "minLength": 1 },
+        "format": {
+          "type": "string",
+          "enum": [
+            "color",
+            "dimension",
+            "px",
+            "number",
+            "integer",
+            "string",
+            "enum:display",
+            "enum:flex_direction",
+            "enum:align_items",
+            "enum:justify_content",
+            "enum:font_style",
+            "enum:text_decoration"
+          ]
+        },
+        "extras": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/domExtra" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "domExtra": {
+      "type": "object",
+      "required": ["property", "whenPositive", "whenZero"],
+      "properties": {
+        "property": { "type": "string", "minLength": 1 },
+        "whenPositive": { "type": "string" },
+        "whenZero": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
 }
