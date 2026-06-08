@@ -7,6 +7,7 @@ use taffy::TaffyTree;
 
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
+use crate::element::effective_visual::{self, child_inherited_context};
 use crate::element::event_spec::DocumentEventKind;
 
 pub use crate::element::event_spec::Event;
@@ -866,6 +867,22 @@ impl ElementTree {
 
     /// Returns the deepest element whose bounding rect contains (x, y),
     /// or None if no element is hit. Uses the layout from the last render pass.
+    /// Resolved effective visual for `id` (inheritance + pseudo). ADR-0067.
+    pub fn element_effective_visual(&self, id: ElementId) -> Option<Visual> {
+        let el = self.elements.get(&id)?;
+        let ctx = effective_visual::inherited_context_at(&self.elements, id);
+        let interaction = self.interaction_snapshot();
+        Some(effective_visual::resolve_effective(
+            &ctx,
+            &el.visual,
+            &el.pseudo_styles,
+            &interaction,
+            id,
+        ))
+    }
+
+    /// Returns the deepest element whose bounding rect contains (x, y),
+    /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
         let box_hit = hit_test_walk(self, root, x, y)?;
@@ -892,6 +909,7 @@ impl ElementTree {
                 root,
                 0.0,
                 0.0,
+                effective_visual::InheritedVisualContext::root(),
                 &interaction,
                 &mut out,
             );
@@ -959,6 +977,7 @@ fn walk_resolved(
     id: ElementId,
     ox: f32,
     oy: f32,
+    inherited: effective_visual::InheritedVisualContext,
     interaction: &InteractionSnapshot,
     out: &mut Vec<(ElementId, ResolvedElement)>,
 ) {
@@ -966,11 +985,27 @@ fn walk_resolved(
         Some(e) => e,
         None => return,
     };
+    let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
+    let child_inherited = child_inherited_context(
+        &inherited,
+        el.kind,
+        &inherited_base,
+        &el.visual,
+    );
     let taffy_node = match el.taffy_node {
         Some(n) => n,
         None => {
             for &child in &el.children {
-                walk_resolved(elements, taffy, child, ox, oy, interaction, out);
+                walk_resolved(
+                    elements,
+                    taffy,
+                    child,
+                    ox,
+                    oy,
+                    child_inherited.clone(),
+                    interaction,
+                    out,
+                );
             }
             return;
         }
@@ -981,7 +1016,13 @@ fn walk_resolved(
     };
     let x = ox + layout.location.x;
     let y = oy + layout.location.y;
-    let visual = pseudo_state::resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
+    let visual = effective_visual::resolve_effective(
+        &inherited,
+        &el.visual,
+        &el.pseudo_styles,
+        interaction,
+        id,
+    );
 
     let display_text_content = if el.kind == ElementKind::TextInput {
         let combined = match &el.preedit {
@@ -1020,7 +1061,16 @@ fn walk_resolved(
     ));
 
     for &child in &el.children {
-        walk_resolved(elements, taffy, child, x, y, interaction, out);
+        walk_resolved(
+            elements,
+            taffy,
+            child,
+            x,
+            y,
+            child_inherited.clone(),
+            interaction,
+            out,
+        );
     }
 }
 

@@ -3,9 +3,13 @@ use std::collections::HashMap;
 use parley::{FontContext, LayoutContext};
 
 use crate::color::Color;
-use crate::element::ambient_defaults::{self, AmbientDefaults};
+use crate::element::ambient_defaults;
+use crate::element::effective_visual::{
+    self, child_inherited_context, InheritedVisualContext,
+};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::pseudo_state::InteractionSnapshot;
 use crate::element::style::{FontStyleValue, TextDecorationValue};
 use crate::element::text::{
     self, RangeMap, TextBrush, TextLayout, build_ranged_text_layout, RangedTextSpan,
@@ -59,30 +63,15 @@ struct ResolvedTextStyle {
 }
 
 impl ResolvedTextStyle {
-    fn from_ambient(ambient: &AmbientDefaults) -> Self {
+    fn from_effective(visual: &Visual) -> Self {
         Self {
-            font_size: ambient.font_size,
-            font_weight: ambient.font_weight,
-            font_family: ambient.font_family.clone(),
-            color: ambient.color,
-            font_style: None,
-            text_decoration: None,
+            font_size: visual.font_size.unwrap_or(16.0),
+            font_weight: visual.font_weight,
+            font_family: visual.font_family.clone(),
+            color: visual.text_color.unwrap_or(Color::BLACK),
+            font_style: visual.font_style,
+            text_decoration: visual.text_decoration,
         }
-    }
-}
-
-/// ch1 text→text cascade; ambient fallbacks are seeded before the IFC walk.
-fn resolve_text_style(visual: &Visual, inherited: &ResolvedTextStyle) -> ResolvedTextStyle {
-    ResolvedTextStyle {
-        font_size: visual.font_size.unwrap_or(inherited.font_size),
-        font_weight: visual.font_weight.or(inherited.font_weight),
-        font_family: visual
-            .font_family
-            .clone()
-            .or_else(|| inherited.font_family.clone()),
-        color: visual.text_color.unwrap_or(inherited.color),
-        font_style: visual.font_style.or(inherited.font_style),
-        text_decoration: visual.text_decoration.or(inherited.text_decoration),
     }
 }
 
@@ -124,7 +113,7 @@ impl CollectCtx<'_> {
         });
     }
 
-    fn walk_ifc_subtree(&mut self, id: ElementId, inherited: &ResolvedTextStyle) {
+    fn walk_ifc_subtree(&mut self, id: ElementId, inherited: InheritedVisualContext) {
         let el = match self.elements.get(&id) {
             Some(e) => e,
             None => return,
@@ -132,10 +121,25 @@ impl CollectCtx<'_> {
         if el.kind != ElementKind::Text {
             return;
         }
-        let style = resolve_text_style(&el.visual, inherited);
+        let interaction = InteractionSnapshot::default();
+        let effective = effective_visual::resolve_effective(
+            &inherited,
+            &el.visual,
+            &el.pseudo_styles,
+            &interaction,
+            id,
+        );
+        let style = ResolvedTextStyle::from_effective(&effective);
         if let Some(t) = el.text.as_deref() {
             self.append_segment(id, t, &style);
         }
+        let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
+        let child_inherited = child_inherited_context(
+            &inherited,
+            el.kind,
+            &inherited_base,
+            &el.visual,
+        );
         let mut children = el.children.clone();
         children.sort_by_key(|cid| {
             self.elements
@@ -143,7 +147,7 @@ impl CollectCtx<'_> {
                 .map_or(0, |c| c.visual.z_index)
         });
         for child in children {
-            self.walk_ifc_subtree(child, &style);
+            self.walk_ifc_subtree(child, child_inherited.clone());
         }
     }
 }
@@ -162,9 +166,11 @@ pub(crate) fn shape(
         spans: Vec::new(),
         range_map: RangeMap::default(),
     };
-    let ambient = ambient_defaults::ambient_at(elements, ifc_root_id);
-    let root_style = ResolvedTextStyle::from_ambient(&ambient);
-    ctx.walk_ifc_subtree(ifc_root_id, &root_style);
+    let root_ctx = InheritedVisualContext {
+        ambient: ambient_defaults::ambient_at(elements, ifc_root_id),
+        text_local: None,
+    };
+    ctx.walk_ifc_subtree(ifc_root_id, root_ctx);
 
     if ctx.text.is_empty() {
         return TextLayout {

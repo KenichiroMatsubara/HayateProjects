@@ -1,6 +1,7 @@
 pub mod accessibility;
 pub mod ambient_defaults;
 pub mod document_runtime;
+pub mod effective_visual;
 pub mod event_spec;
 pub mod id;
 pub mod inline_text;

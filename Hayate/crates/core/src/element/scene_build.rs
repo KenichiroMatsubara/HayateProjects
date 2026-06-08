@@ -1,8 +1,9 @@
 use crate::color::Color;
-use crate::element::ambient_defaults::AmbientDefaults;
+use crate::element::effective_visual::{
+    self, child_inherited_context, InheritedVisualContext,
+};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::pseudo_state::resolve_visual;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 
@@ -17,7 +18,7 @@ pub fn build(tree: &ElementTree) -> SceneGraph {
             0.0,
             &mut sg,
             None,
-            AmbientDefaults::default(),
+            InheritedVisualContext::root(),
             &interaction,
         );
     }
@@ -36,7 +37,7 @@ fn walk(
     oy: f32,
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
-    ambient: AmbientDefaults,
+    inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
 ) {
     let el = match tree.elements.get(&id) {
@@ -55,14 +56,27 @@ fn walk(
                     oy,
                     sg,
                     parent_group,
-                    ambient.clone(),
+                    inherited.clone(),
                     interaction,
                 );
             }
             return;
         }
     };
-    let visual = resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
+    let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
+    let child_inherited = child_inherited_context(
+        &inherited,
+        el.kind,
+        &inherited_base,
+        &el.visual,
+    );
+    let visual = effective_visual::resolve_effective(
+        &inherited,
+        &el.visual,
+        &el.pseudo_styles,
+        interaction,
+        id,
+    );
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -72,15 +86,8 @@ fn walk(
     let w = layout.size.width;
     let h = layout.size.height;
 
-    // Ambient default text style (ch2): only `default-*` props penetrate blocks.
-    let child_ambient = ambient.merge_visual(&el.visual);
-    // Text elements resolve explicit → ambient → hard default (not parent view styles).
-    let confirmed_color = visual.text_color.unwrap_or(child_ambient.color);
-    let confirmed_font_size = visual.font_size.unwrap_or(child_ambient.font_size);
-    let _confirmed_font_family = visual
-        .font_family
-        .clone()
-        .or(child_ambient.font_family.clone());
+    let confirmed_color = visual.text_color.unwrap_or(Color::BLACK);
+    let confirmed_font_size = visual.font_size.unwrap_or(16.0);
 
     // If the element has a transform, wrap everything (including children) in a Group.
     let effective_parent = if let Some(transform) = el.transform {
@@ -175,7 +182,7 @@ fn walk(
                 y,
                 sg,
                 effective_parent,
-                child_ambient.clone(),
+                child_inherited.clone(),
                 interaction,
             );
         }
@@ -286,7 +293,7 @@ fn walk(
             y,
             sg,
             effective_parent,
-            child_ambient.clone(),
+            child_inherited.clone(),
             interaction,
         );
     }
