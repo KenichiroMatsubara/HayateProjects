@@ -6,11 +6,7 @@ import type {
 } from '@tsubame/renderer-protocol';
 import { splitHayateStyle } from '@tsubame/renderer-protocol';
 import { activeRenderer } from './active-renderer.js';
-import {
-  createElementNode,
-  isTextInTextCollapse,
-  type TsubameNode,
-} from './node.js';
+import { createElementNode, type TsubameNode } from './node.js';
 import { EVENT_PROP, REJECTED_EVENT_PROPS } from './events.js';
 
 function disposeEvents(node: TsubameNode): void {
@@ -55,17 +51,11 @@ const {
     const r = activeRenderer();
     const id = r.createElement('text');
     r.setText(id, value);
-    return createElementNode(id, 'text', value);
+    return createElementNode(id, 'text');
   },
 
   replaceText(textNode: TsubameNode, value: string): void {
     if (textNode.elementKind !== 'text') return;
-    textNode.text = value;
-    const parent = textNode.parent;
-    if (parent !== null && isTextInTextCollapse(parent, textNode)) {
-      activeRenderer().setText(parent.id, value);
-      return;
-    }
     activeRenderer().setText(textNode.id, value);
   },
 
@@ -122,13 +112,6 @@ const {
     insertIntoChildren(parent, node, anchor);
 
     const r = activeRenderer();
-
-    if (isTextInTextCollapse(parent, node)) {
-      r.setText(parent.id, node.text);
-      r.removeChild(parent.id, node.id);
-      return;
-    }
-
     if (anchor == null) {
       r.appendChild(parent.id, node.id);
       return;
@@ -140,12 +123,6 @@ const {
     const i = parent.children.indexOf(node);
     if (i >= 0) parent.children.splice(i, 1);
     node.parent = null;
-
-    if (isTextInTextCollapse(parent, node)) {
-      activeRenderer().setText(parent.id, '');
-      activeRenderer().removeChild(parent.id, node.id);
-      return;
-    }
 
     activeRenderer().removeChild(parent.id, node.id);
     disposeEvents(node);

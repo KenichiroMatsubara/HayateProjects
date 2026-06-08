@@ -1,8 +1,8 @@
 //! HTML Mode delivery path — native integration tests without DOM.
 //!
-//! `HayateElementHtmlRenderer` wires `RendererEventState` with `Some(&mut tree)` and
-//! drains `tree.poll_deliveries()` from `poll_events()`. This harness mirrors that
-//! event routing for unit tests.
+//! `HayateElementHtmlRenderer` routes input through `ElementTree::on_*` and
+//! drains `tree.poll_deliveries()` from `poll_events()`. This harness mirrors
+//! that event routing for unit tests.
 
 #[cfg(test)]
 mod tests {
@@ -13,12 +13,9 @@ mod tests {
         StyleProp,
     };
 
-    use crate::renderer_event_state::RendererEventState;
-
-    /// Mirrors `HayateElementHtmlRenderer`'s `tree` + `events` + node membership gate.
+    /// Mirrors `HayateElementHtmlRenderer`'s `tree` + node membership gate.
     struct HtmlDeliveryHarness {
         tree: ElementTree,
-        events: RendererEventState,
         nodes: HashSet<ElementId>,
     }
 
@@ -26,7 +23,6 @@ mod tests {
         fn new() -> Self {
             Self {
                 tree: ElementTree::new(),
-                events: RendererEventState::new(),
                 nodes: HashSet::new(),
             }
         }
@@ -52,8 +48,7 @@ mod tests {
         fn on_pointer_down(&mut self, target_id: u64, x: f32, y: f32) {
             let target = ElementId::from_u64(target_id);
             if self.nodes.contains(&target) {
-                self.events
-                    .pointer_down(Some(&mut self.tree), Some(target), x, y);
+                self.tree.on_pointer_down_on(target, x, y);
             }
         }
 
@@ -65,13 +60,12 @@ mod tests {
             if let Some(sv) = self.tree.apply_wheel_delta(target, delta_x, delta_y) {
                 let _ = self.tree.element_get_scroll_offset(sv);
             }
-            self.events
-                .wheel(Some(&mut self.tree), target, delta_x, delta_y);
+            self.tree.on_wheel(target, delta_x, delta_y);
         }
 
         fn on_resize(&mut self, width: f32, height: f32) {
             self.tree.set_viewport(width, height);
-            self.events.resize(Some(&mut self.tree), width, height);
+            self.tree.on_resize(width, height);
         }
 
         fn poll_deliveries(&mut self) -> Vec<hayate_core::EventDelivery> {
@@ -129,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn click_bubbles_through_renderer_event_state() {
+    fn click_bubbles_through_element_tree() {
         let mut h = HtmlDeliveryHarness::new();
         let root = h.create(10, ElementKind::View);
         let leaf = h.create(11, ElementKind::Button);

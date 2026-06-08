@@ -1,22 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
-import { isTextInTextCollapse, createElementNode } from './node.js';
-
-describe('isTextInTextCollapse', () => {
-  it('is true for text child of text parent (DOM span model)', () => {
-    const parent = createElementNode(1 as never, 'text');
-    const child = createElementNode(2 as never, 'text', 'Hi');
-    expect(isTextInTextCollapse(parent, child)).toBe(true);
-  });
-
-  it('is false for text child of button (ADR-0058)', () => {
-    const parent = createElementNode(1 as never, 'button');
-    const child = createElementNode(2 as never, 'text', 'Go');
-    expect(isTextInTextCollapse(parent, child)).toBe(false);
-  });
-});
+import { describe, it, expect } from 'vitest';
 
 describe('renderer integration (stub IRenderer)', () => {
-  it('insertNode collapses text-in-text and destroys orphan id', async () => {
+  it('insertNode appends text under text parent (IFC inline element)', async () => {
     const { insertNode, createElement, createTextNode } = await import('./renderer.js');
     const { setActiveRenderer } = await import('./active-renderer.js');
 
@@ -47,9 +32,9 @@ describe('renderer integration (stub IRenderer)', () => {
 
     expect(ops).toContain('create:text');
     expect(ops).toContain('text:2=TS');
-    expect(ops).toContain('text:1=TS');
-    expect(ops).toContain('remove:2');
-    expect(ops.some((o) => o.startsWith('append:'))).toBe(false);
+    expect(ops).toContain('append:1,2');
+    expect(ops).not.toContain('text:1=TS');
+    expect(ops).not.toContain('remove:2');
   });
 
   it('insertNode appends text under button', async () => {

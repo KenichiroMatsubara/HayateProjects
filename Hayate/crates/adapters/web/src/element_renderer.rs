@@ -19,7 +19,6 @@ use crate::apply_mutations_dispatch::{apply_mutations_batch, unset_kind_from_u32
 use crate::builtin_fonts::builtin_font_url;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::generated::encode_deliveries;
-use crate::renderer_event_state::RendererEventState;
 use crate::style_packet;
 
 // ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
@@ -137,7 +136,6 @@ pub fn style_tag_font_family() -> u32 {
 pub struct HayateElementRenderer {
     backend: SelectedBackend,
     tree: ElementTree,
-    events: RendererEventState,
     /// wgpu surface clear colour. Decoupled from `render(timestamp_ms)` because
     /// the WIT `render` signature no longer carries it (ADR-0032 keeps render
     /// timestamp-only); call `set_background_color` separately.
@@ -157,7 +155,6 @@ impl HayateElementRenderer {
         Ok(Self {
             backend,
             tree,
-            events: RendererEventState::new(),
             background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
         })
@@ -248,10 +245,7 @@ impl HayateElementRenderer {
         self.remove_subtree(eid);
     }
 
-    /// Shared removal path: clears dangling hovered/active pointers for the
-    /// entire subtree, then delegates to ElementTree (which clears focused_element).
     fn remove_subtree(&mut self, id: ElementId) {
-        self.events.on_subtree_remove(|c| is_in_subtree(&self.tree, c, id));
         self.tree.element_remove(id);
     }
 
@@ -302,55 +296,28 @@ impl HayateElementRenderer {
     }
 
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
-        let hit = self.tree.hit_test(x, y);
-        let old_focus = self.events.focused_element;
-        self.events
-            .pointer_down(Some(&mut self.tree), hit, x, y);
-        let new_focus = self.events.focused_element;
-        if old_focus != new_focus {
-            if let Some(p) = old_focus {
-                self.tree.element_blur(p);
-            }
-            if let Some(n) = new_focus {
-                self.tree.element_focus(n);
-            }
-        }
+        self.tree.on_pointer_down(x, y);
     }
 
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
-        // `active-end` reports the element that received `active-start`, even if
-        // the pointer drifted off it before release (ADR-0031: drag-then-release
-        // is one active session). The release coordinate has no field on the
-        // event variant — callers that need it should track PointerMove.
-        let fallback = self.tree.hit_test(x, y);
-        self.events.pointer_up(Some(&mut self.tree), fallback);
+        self.tree.on_pointer_up(x, y);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
-        if !self.tree.has_layout() {
-            return;
-        }
-        // Per ADR-0031 `pointer-move` is a target-less coordinate stream; emit
-        // alongside any hover state changes so dragging code can track motion.
-        // 1 px throttle (ADR-0019) is enforced inside pointer_move_to.
-        let hit = self.tree.hit_test(x, y);
-        self.events
-            .pointer_move_to(Some(&mut self.tree), hit, x, y);
+        let _ = self.tree.on_pointer_move(x, y);
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
         if let Some(target) = self.tree.hit_test(x, y) {
             self.tree.apply_wheel_delta(target, delta_x, delta_y);
-            self.events
-                .wheel(Some(&mut self.tree), target, delta_x, delta_y);
+            self.tree.on_wheel(target, delta_x, delta_y);
         }
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
         self.backend.resize(width as u32, height as u32);
-        self.events
-            .resize(Some(&mut self.tree), width, height);
+        self.tree.on_resize(width, height);
     }
 
     pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {
@@ -464,8 +431,8 @@ impl HayateElementRenderer {
     /// Return the focused element's id (as f64), or 0.0 if nothing is focused.
     /// JS can use this with `element_get_text_content` to implement copy/cut.
     pub fn focused_element_id(&self) -> f64 {
-        self.events
-            .focused_element
+        self.tree
+            .focused_element()
             .map(element_id_to_f64)
             .unwrap_or(0.0)
     }
@@ -473,7 +440,7 @@ impl HayateElementRenderer {
     /// Handle a key press on the focused element.
     /// `key` is KeyboardEvent.key; `modifiers` is a bitmask of modifier_shift/ctrl/alt/meta.
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        let focused = match self.events.focused_element {
+        let focused = match self.tree.focused_element() {
             Some(id) => id,
             None => return,
         };
@@ -483,37 +450,32 @@ impl HayateElementRenderer {
             }
             "Enter" => {
                 self.tree.element_append_text_content(focused, "\n");
-                self.events
-                    .text_input(Some(&mut self.tree), focused, "\n");
+                self.tree.on_text_input(focused, "\n");
             }
             _ => {}
         }
-        self.events
-            .key_down(Some(&mut self.tree), key, modifiers);
+        self.tree.on_key_down(key, modifiers);
     }
 
     /// Called by JS when the user types printable text into the focused TextInput.
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_append_text_content(eid, text);
-        self.events
-            .text_input(Some(&mut self.tree), eid, text);
+        self.tree.on_text_input(eid, text);
     }
 
     /// Called by JS when an IME composition begins.
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.events
-            .composition_start(Some(&mut self.tree), eid, text);
+        self.tree.on_composition_start(eid, text);
     }
 
     /// Called by JS when the IME preedit updates.
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, text);
-        self.events
-            .composition_update(Some(&mut self.tree), eid, text);
+        self.tree.on_composition_update(eid, text);
     }
 
     /// Called by JS when IME composition is finalized.
@@ -521,8 +483,7 @@ impl HayateElementRenderer {
         let eid = element_id_from_f64(id);
         self.tree.element_set_preedit(eid, "");
         self.tree.element_append_text_content(eid, text);
-        self.events
-            .composition_end(Some(&mut self.tree), eid, text);
+        self.tree.on_composition_end(eid, text);
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {
@@ -590,25 +551,15 @@ impl ApplyMutationsHost for HayateElementRenderer {
     }
 
     fn remove_subtree(&mut self, id: ElementId) {
-        self.events
-            .on_subtree_remove(|c| is_in_subtree(&self.tree, c, id));
         self.tree.element_remove(id);
     }
 
     fn apply_focus(&mut self, id: ElementId) {
-        let old = self.events.focused_element;
-        self.events.focus(Some(&mut self.tree), id);
-        if old != Some(id) {
-            if let Some(prev) = old {
-                self.tree.element_blur(prev);
-            }
-            self.tree.element_focus(id);
-        }
+        self.tree.on_focus(id);
     }
 
     fn apply_blur(&mut self, id: ElementId) {
-        self.events.blur(Some(&mut self.tree), id);
-        self.tree.element_blur(id);
+        self.tree.on_blur(id);
     }
 }
 
@@ -639,7 +590,6 @@ pub struct HayateElementHtmlRenderer {
     tree: ElementTree,
     nodes: HashMap<ElementId, HtmlNode>,
     root: Option<ElementId>,
-    events: RendererEventState,
     /// Container CSS background colour. HTML Mode delegates rendering to the
     /// browser; `set_background_color` stores it and `render(timestamp_ms)`
     /// applies it once at flush time.
@@ -660,7 +610,6 @@ impl HayateElementHtmlRenderer {
             tree: ElementTree::new(),
             nodes: HashMap::new(),
             root: None,
-            events: RendererEventState::new(),
             background_css: "rgb(0,0,0)".to_string(),
             pending: Vec::new(),
         })
@@ -682,7 +631,7 @@ impl HayateElementHtmlRenderer {
     /// with the Canvas renderer and only emits a Resize event.
     pub fn set_viewport(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
-        self.events.resize(Some(&mut self.tree), width, height);
+        self.tree.on_resize(width, height);
     }
 
     /// Registers an element with a caller-supplied ID and queues the DOM creation.
@@ -787,8 +736,6 @@ impl HayateElementHtmlRenderer {
 
     pub fn element_remove(&mut self, id: f64) {
         let eid = element_id_from_f64(id);
-        self.events
-            .on_subtree_remove(|c| is_in_subtree(&self.tree, c, eid));
         self.tree.element_remove(eid);
         self.pending.push(Command::Remove { id: eid });
     }
@@ -832,34 +779,17 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        let old_focus = self.events.focused_element;
-        self.events
-            .pointer_down(Some(&mut self.tree), Some(target), x, y);
-        let new_focus = self.events.focused_element;
-        if old_focus != new_focus {
-            if let Some(p) = old_focus {
-                self.tree.element_blur(p);
-            }
-            if let Some(n) = new_focus {
-                self.tree.element_focus(n);
-            }
-        }
+        self.tree.on_pointer_down_on(target, x, y);
     }
 
     pub fn on_pointer_up(&mut self, target_id: f64, _x: f32, _y: f32) {
-        // Per ADR-0031 active-end reports the element that received active-start,
-        // matching the natural drag/release semantics. Coordinates are no longer
-        // part of the variant — use PointerMove for trailing-position tracking.
         let explicit = element_id_from_f64(target_id);
         let fallback = self.nodes.contains_key(&explicit).then_some(explicit);
-        self.events.pointer_up(Some(&mut self.tree), fallback);
+        self.tree.on_pointer_up_on(fallback);
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
-        // Target-less coordinate stream — hover state is driven separately by
-        // the DOM mouseenter/mouseleave events.
-        self.events
-            .pointer_move_to(Some(&mut self.tree), None, x, y);
+        let _ = self.tree.on_pointer_move_coords(x, y);
     }
 
     pub fn on_pointer_enter(&mut self, target_id: f64) {
@@ -867,12 +797,12 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
-        self.events.hover_enter(Some(&mut self.tree), target);
+        self.tree.on_hover_enter(target);
     }
 
     pub fn on_pointer_leave(&mut self, target_id: f64) {
         let target = element_id_from_f64(target_id);
-        self.events.hover_leave(Some(&mut self.tree), target);
+        self.tree.on_hover_leave(target);
     }
 
     pub fn on_wheel(&mut self, target_id: f64, delta_x: f32, delta_y: f32) {
@@ -884,13 +814,12 @@ impl HayateElementHtmlRenderer {
             let (x, y) = self.tree.element_get_scroll_offset(sv);
             self.flush_set_scroll_offset(sv, x, y);
         }
-        self.events
-            .wheel(Some(&mut self.tree), target, delta_x, delta_y);
+        self.tree.on_wheel(target, delta_x, delta_y);
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
-        self.events.resize(Some(&mut self.tree), width, height);
+        self.tree.on_resize(width, height);
     }
 
     pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {
@@ -1026,40 +955,41 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn focused_element_id(&self) -> f64 {
-        self.events.focused_element.map(element_id_to_f64).unwrap_or(0.0)
+        self.tree
+            .focused_element()
+            .map(element_id_to_f64)
+            .unwrap_or(0.0)
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        self.events.key_down(Some(&mut self.tree), key, modifiers);
+        self.tree.on_key_down(key, modifiers);
     }
 
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.text_input(Some(&mut self.tree), eid, text);
+            self.tree.on_text_input(eid, text);
         }
     }
 
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events
-                .composition_start(Some(&mut self.tree), eid, text);
+            self.tree.on_composition_start(eid, text);
         }
     }
 
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events
-                .composition_update(Some(&mut self.tree), eid, text);
+            self.tree.on_composition_update(eid, text);
         }
     }
 
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
-            self.events.composition_end(Some(&mut self.tree), eid, text);
+            self.tree.on_composition_end(eid, text);
         }
     }
 
@@ -1530,22 +1460,6 @@ fn inject_font_face(family: &str, data: &[u8]) -> Result<(), JsValue> {
     // when we later switch to FontFace API.
     let _ = Uint8Array::new_with_length(0);
     Ok(())
-}
-
-/// Walk up the element tree to find the nearest ScrollView at or above `id`.
-/// Returns true if `candidate` is `root` or a descendant of `root` in the tree.
-/// Must be called before the subtree is removed from the tree.
-fn is_in_subtree(tree: &ElementTree, candidate: ElementId, root: ElementId) -> bool {
-    let mut cur = candidate;
-    loop {
-        if cur == root {
-            return true;
-        }
-        match tree.element_parent(cur) {
-            Some(p) => cur = p,
-            None => return false,
-        }
-    }
 }
 
 /// Fetch raw bytes from a URL.

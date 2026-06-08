@@ -16,6 +16,43 @@ pub type TextBrush = [u8; 4];
 /// system fonts are absent. Unknown font names fall back to this via CSS font stack.
 pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans";
 
+/// Byte range → owning inline text element (deepest wins on lookup).
+#[derive(Clone, Debug, Default)]
+pub struct RangeMap {
+    pub(crate) entries: Vec<(usize, usize, crate::element::id::ElementId)>,
+}
+
+impl RangeMap {
+    pub fn insert(
+        &mut self,
+        byte_start: usize,
+        byte_end: usize,
+        id: crate::element::id::ElementId,
+    ) {
+        if byte_start < byte_end {
+            self.entries.push((byte_start, byte_end, id));
+        }
+    }
+
+    pub fn lookup(&self, byte: usize) -> Option<crate::element::id::ElementId> {
+        self.entries
+            .iter()
+            .rev()
+            .find(|(start, end, _)| byte >= *start && byte < *end)
+            .map(|(_, _, id)| *id)
+    }
+}
+
+/// A styled byte range for ranged Parley shaping (ADR-0063).
+pub struct RangedTextSpan {
+    pub byte_start: usize,
+    pub byte_end: usize,
+    pub font_size: f32,
+    pub font_weight: Option<f32>,
+    pub font_family: Option<String>,
+    pub brush: TextBrush,
+}
+
 /// A Parley layout cached on an Element, plus the lowered Vello glyph runs.
 pub struct TextLayout {
     pub layout: Layout<TextBrush>,
@@ -27,6 +64,8 @@ pub struct TextLayout {
     /// Font family names with .notdef glyphs detected during shaping.
     /// Each entry indicates a font that should be dynamically loaded.
     pub missing_families: Vec<&'static str>,
+    /// IFC byte ranges → inline text element owners (ADR-0063).
+    pub range_map: Option<RangeMap>,
 }
 
 /// Map a Unicode codepoint to the font family name best suited to render it,
@@ -148,6 +187,64 @@ pub fn build_text_layout(
         text: Arc::<str>::from(text),
         width_constraint: max_advance,
         missing_families,
+        range_map: None,
+    }
+}
+
+/// Build a Parley layout with per-byte-range styles (IFC / inline text).
+pub fn build_ranged_text_layout(
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<TextBrush>,
+    text: &str,
+    spans: &[RangedTextSpan],
+    max_advance: Option<f32>,
+) -> TextLayout {
+    let default_font_size = spans
+        .first()
+        .map(|s| s.font_size)
+        .unwrap_or(16.0);
+    let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
+    builder.push_default(StyleProperty::FontSize(default_font_size));
+    builder.push_default(StyleProperty::FontFamily(FontFamily::Source(
+        std::borrow::Cow::Borrowed(DEFAULT_FONT_FAMILY),
+    )));
+
+    for span in spans {
+        let range = span.byte_start..span.byte_end;
+        builder.push(StyleProperty::FontSize(span.font_size), range.clone());
+        if let Some(weight) = span.font_weight {
+            builder.push(
+                StyleProperty::FontWeight(FontWeight::new(weight)),
+                range.clone(),
+            );
+        }
+        if let Some(ref fam) = span.font_family {
+            let resolved = resolve_generic_family(fam);
+            let stack = if resolved == DEFAULT_FONT_FAMILY {
+                std::borrow::Cow::Borrowed(DEFAULT_FONT_FAMILY)
+            } else {
+                std::borrow::Cow::Owned(format!("{resolved}, {DEFAULT_FONT_FAMILY}"))
+            };
+            builder.push(
+                StyleProperty::FontFamily(FontFamily::Source(stack)),
+                range.clone(),
+            );
+        }
+        builder.push(StyleProperty::Brush(span.brush), range);
+    }
+
+    let mut layout: Layout<TextBrush> = builder.build(text);
+    layout.break_all_lines(max_advance);
+
+    let (runs, missing_families) = lower_glyph_runs(&layout, default_font_size, text);
+    TextLayout {
+        layout,
+        runs,
+        font_size: default_font_size,
+        text: Arc::<str>::from(text),
+        width_constraint: max_advance,
+        missing_families,
+        range_map: None,
     }
 }
 

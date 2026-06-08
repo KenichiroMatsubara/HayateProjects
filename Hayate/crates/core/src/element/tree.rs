@@ -12,6 +12,7 @@ use crate::element::event_spec::DocumentEventKind;
 pub use crate::element::event_spec::Event;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::inline_text::{self, ifc_root, is_ifc_root};
 use crate::element::layout_pass::LayoutPass;
 use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
@@ -59,7 +60,7 @@ pub(crate) struct Element {
     pub kind: ElementKind,
     pub parent: Option<ElementId>,
     pub children: Vec<ElementId>,
-    pub taffy_node: taffy::NodeId,
+    pub taffy_node: Option<taffy::NodeId>,
     pub layout_style: taffy::Style,
     pub visual: Visual,
     pub text: Option<String>,
@@ -133,6 +134,8 @@ pub struct ElementTree {
     /// Elements matching CSS `:hover` (self or descendant under pointer).
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
+    /// Last pointer position for sub-pixel move dedup (ADR-0066).
+    pub(crate) last_pointer_pos: Option<(f32, f32)>,
     pub(crate) runtime: DocumentRuntime,
 }
 
@@ -148,6 +151,7 @@ impl ElementTree {
             focused_element: None,
             hovered_elements: HashSet::new(),
             active_element: None,
+            last_pointer_pos: None,
             runtime: DocumentRuntime::new(),
         }
     }
@@ -180,22 +184,12 @@ impl ElementTree {
     pub fn element_create(&mut self, id: u64, kind: ElementKind) -> ElementId {
         let id = ElementId::from_u64(id);
         let layout_style = taffy::Style::default();
-        let measure_ctx = if kind.is_text_like() {
-            MeasureCtx::Text(id)
-        } else {
-            MeasureCtx::None
-        };
-        let taffy_node = self
-            .layout
-            .taffy
-            .new_leaf_with_context(layout_style.clone(), measure_ctx)
-            .expect("taffy new_leaf_with_context");
 
         let element = Element {
             kind,
             parent: None,
             children: Vec::new(),
-            taffy_node,
+            taffy_node: None,
             layout_style,
             visual: Visual::default(),
             text: None,
@@ -235,8 +229,7 @@ impl ElementTree {
         }
         el.text = Some(text.to_string());
         el.text_layout = None;
-        let taffy_node = el.taffy_node;
-        let _ = self.layout.taffy.mark_dirty(taffy_node);
+        self.mark_text_content_dirty(id);
     }
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
@@ -340,8 +333,9 @@ impl ElementTree {
             };
             el.text_layout = None;
             el.content_layout = None;
-            let taffy_node = el.taffy_node;
-            let _ = self.layout.taffy.mark_dirty(taffy_node);
+            if let Some(node) = el.taffy_node {
+                let _ = self.layout.projection.taffy.mark_dirty(node);
+            }
         }
     }
 
@@ -546,11 +540,9 @@ impl ElementTree {
         }
         if layout_changed {
             let style = el.layout_style.clone();
-            let node = el.taffy_node;
-            let _ = self.layout.taffy.set_style(node, style);
+            self.layout.projection.set_style(id, style);
         } else if text_dirty {
-            let node = el.taffy_node;
-            let _ = self.layout.taffy.mark_dirty(node);
+            self.mark_text_content_dirty(id);
         }
     }
 
@@ -584,8 +576,7 @@ impl ElementTree {
             }
         }
         if text_dirty {
-            let node = el.taffy_node;
-            let _ = self.layout.taffy.mark_dirty(node);
+            self.mark_text_content_dirty(id);
         }
     }
 
@@ -594,14 +585,9 @@ impl ElementTree {
             return;
         }
         self.detach_from_current_parent(child);
-        let (parent_taffy, child_taffy) = {
-            let p = &self.elements[&parent];
-            let c = &self.elements[&child];
-            (p.taffy_node, c.taffy_node)
-        };
-        let _ = self.layout.taffy.add_child(parent_taffy, child_taffy);
         self.elements.get_mut(&parent).unwrap().children.push(child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
+        self.mark_child_attachment_dirty(parent, child);
     }
 
     pub fn element_insert_before(
@@ -629,21 +615,13 @@ impl ElementTree {
                 return;
             }
         };
-        let (parent_taffy, child_taffy) = {
-            let p = &self.elements[&parent];
-            let c = &self.elements[&child];
-            (p.taffy_node, c.taffy_node)
-        };
-        let _ = self
-            .layout
-            .taffy
-            .insert_child_at_index(parent_taffy, index, child_taffy);
         self.elements
             .get_mut(&parent)
             .unwrap()
             .children
             .insert(index, child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
+        self.mark_child_attachment_dirty(parent, child);
     }
 
     pub fn element_remove(&mut self, id: ElementId) {
@@ -660,10 +638,11 @@ impl ElementTree {
                 stack.extend(el.children.iter().copied());
             }
         }
+        if let Some(root) = self.root {
+            self.layout.mark_structure_dirty(root);
+        }
         for node in to_remove.into_iter().rev() {
-            if let Some(el) = self.elements.remove(&node) {
-                let _ = self.layout.taffy.remove(el.taffy_node);
-            }
+            self.elements.remove(&node);
             self.runtime.remove_element_listeners(node);
             if self.focused_element == Some(node) {
                 self.focused_element = None;
@@ -699,10 +678,6 @@ impl ElementTree {
     /// HTML `mouseleave` path: clear hover on the element that was left.
     pub fn hover_leave_element(&mut self, id: ElementId) -> bool {
         self.hovered_elements.remove(&id)
-    }
-
-    pub fn set_active_element(&mut self, id: Option<ElementId>) {
-        self.active_element = id;
     }
 
     pub fn element_set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: &[StyleProp]) {
@@ -747,6 +722,15 @@ impl ElementTree {
 
     pub fn element_parent(&self, id: ElementId) -> Option<ElementId> {
         self.elements.get(&id).and_then(|e| e.parent)
+    }
+
+    /// Whether `id` was projected to a Taffy node on the last layout pass.
+    #[doc(hidden)]
+    pub fn element_has_taffy_node(&self, id: ElementId) -> bool {
+        self.elements
+            .get(&id)
+            .and_then(|e| e.taffy_node)
+            .is_some()
     }
 
     /// Element ids in `root` and its descendants (pre-order). Empty when unknown.
@@ -871,7 +855,8 @@ impl ElementTree {
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        hit_test_walk(self, root, x, y)
+        let box_hit = hit_test_walk(self, root, x, y)?;
+        resolve_ifc_inline_hit(self, box_hit, x, y)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -890,7 +875,7 @@ impl ElementTree {
         if let Some(root) = self.root {
             walk_resolved(
                 &self.elements,
-                &self.layout.taffy,
+                &self.layout.projection.taffy,
                 root,
                 0.0,
                 0.0,
@@ -908,18 +893,44 @@ impl ElementTree {
             Some(p) => p,
             None => return,
         };
-        let (parent_taffy, child_taffy) = {
-            let p = &self.elements[&parent];
-            let c = &self.elements[&child];
-            (p.taffy_node, c.taffy_node)
-        };
-        let _ = self.layout.taffy.remove_child(parent_taffy, child_taffy);
         self.elements
             .get_mut(&parent)
             .unwrap()
             .children
             .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
+        self.mark_child_detachment_dirty(parent, child);
+    }
+
+    fn mark_text_content_dirty(&mut self, id: ElementId) {
+        if let Some(root) = ifc_root(&self.elements, id) {
+            self.layout.mark_shape_dirty(root);
+        } else if self
+            .elements
+            .get(&id)
+            .and_then(|e| e.taffy_node)
+            .is_some()
+        {
+            self.layout.projection.mark_dirty(id);
+        }
+    }
+
+    fn mark_child_attachment_dirty(&mut self, parent: ElementId, child: ElementId) {
+        if is_ifc_root(&self.elements, parent)
+            && self
+                .elements
+                .get(&child)
+                .is_some_and(|e| e.kind == ElementKind::Text)
+        {
+            self.layout.mark_shape_dirty(parent);
+        } else {
+            self.layout.mark_structure_dirty(parent);
+            self.layout.mark_structure_dirty(child);
+        }
+    }
+
+    fn mark_child_detachment_dirty(&mut self, parent: ElementId, child: ElementId) {
+        self.mark_child_attachment_dirty(parent, child);
     }
 }
 
@@ -942,7 +953,16 @@ fn walk_resolved(
         Some(e) => e,
         None => return,
     };
-    let layout = match taffy.layout(el.taffy_node) {
+    let taffy_node = match el.taffy_node {
+        Some(n) => n,
+        None => {
+            for &child in &el.children {
+                walk_resolved(elements, taffy, child, ox, oy, interaction, out);
+            }
+            return;
+        }
+    };
+    let layout = match taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };
@@ -989,6 +1009,27 @@ fn walk_resolved(
     for &child in &el.children {
         walk_resolved(elements, taffy, child, x, y, interaction, out);
     }
+}
+
+fn resolve_ifc_inline_hit(
+    tree: &ElementTree,
+    box_hit: ElementId,
+    x: f32,
+    y: f32,
+) -> Option<ElementId> {
+    if !is_ifc_root(&tree.elements, box_hit) {
+        return Some(box_hit);
+    }
+    let el = tree.elements.get(&box_hit)?;
+    let tl = el.text_layout.as_ref()?;
+    let &(ex, ey, _, _) = tree.layout.layout_cache.get(&box_hit)?;
+    let byte = inline_text::byte_index_at_point(tl, x - ex, y - ey);
+    if let Some(map) = &tl.range_map {
+        if let Some(inline_id) = map.lookup(byte) {
+            return Some(inline_id);
+        }
+    }
+    Some(box_hit)
 }
 
 fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {
