@@ -12,6 +12,7 @@ use crate::element::event_spec::DocumentEventKind;
 pub use crate::element::event_spec::Event;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::inline_text::{self, ifc_root, is_ifc_root};
 use crate::element::layout_pass::LayoutPass;
 use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
@@ -228,9 +229,7 @@ impl ElementTree {
         }
         el.text = Some(text.to_string());
         el.text_layout = None;
-        if let Some(node) = el.taffy_node {
-            let _ = self.layout.projection.taffy.mark_dirty(node);
-        }
+        self.mark_text_content_dirty(id);
     }
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
@@ -543,7 +542,7 @@ impl ElementTree {
             let style = el.layout_style.clone();
             self.layout.projection.set_style(id, style);
         } else if text_dirty {
-            self.layout.projection.mark_dirty(id);
+            self.mark_text_content_dirty(id);
         }
     }
 
@@ -577,7 +576,7 @@ impl ElementTree {
             }
         }
         if text_dirty {
-            self.layout.projection.mark_dirty(id);
+            self.mark_text_content_dirty(id);
         }
     }
 
@@ -588,8 +587,7 @@ impl ElementTree {
         self.detach_from_current_parent(child);
         self.elements.get_mut(&parent).unwrap().children.push(child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
-        self.layout.mark_structure_dirty(parent);
-        self.layout.mark_structure_dirty(child);
+        self.mark_child_attachment_dirty(parent, child);
     }
 
     pub fn element_insert_before(
@@ -623,8 +621,7 @@ impl ElementTree {
             .children
             .insert(index, child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
-        self.layout.mark_structure_dirty(parent);
-        self.layout.mark_structure_dirty(child);
+        self.mark_child_attachment_dirty(parent, child);
     }
 
     pub fn element_remove(&mut self, id: ElementId) {
@@ -858,7 +855,8 @@ impl ElementTree {
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        hit_test_walk(self, root, x, y)
+        let box_hit = hit_test_walk(self, root, x, y)?;
+        resolve_ifc_inline_hit(self, box_hit, x, y)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -901,8 +899,38 @@ impl ElementTree {
             .children
             .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
-        self.layout.mark_structure_dirty(parent);
-        self.layout.mark_structure_dirty(child);
+        self.mark_child_detachment_dirty(parent, child);
+    }
+
+    fn mark_text_content_dirty(&mut self, id: ElementId) {
+        if let Some(root) = ifc_root(&self.elements, id) {
+            self.layout.mark_shape_dirty(root);
+        } else if self
+            .elements
+            .get(&id)
+            .and_then(|e| e.taffy_node)
+            .is_some()
+        {
+            self.layout.projection.mark_dirty(id);
+        }
+    }
+
+    fn mark_child_attachment_dirty(&mut self, parent: ElementId, child: ElementId) {
+        if is_ifc_root(&self.elements, parent)
+            && self
+                .elements
+                .get(&child)
+                .is_some_and(|e| e.kind == ElementKind::Text)
+        {
+            self.layout.mark_shape_dirty(parent);
+        } else {
+            self.layout.mark_structure_dirty(parent);
+            self.layout.mark_structure_dirty(child);
+        }
+    }
+
+    fn mark_child_detachment_dirty(&mut self, parent: ElementId, child: ElementId) {
+        self.mark_child_attachment_dirty(parent, child);
     }
 }
 
@@ -981,6 +1009,27 @@ fn walk_resolved(
     for &child in &el.children {
         walk_resolved(elements, taffy, child, x, y, interaction, out);
     }
+}
+
+fn resolve_ifc_inline_hit(
+    tree: &ElementTree,
+    box_hit: ElementId,
+    x: f32,
+    y: f32,
+) -> Option<ElementId> {
+    if !is_ifc_root(&tree.elements, box_hit) {
+        return Some(box_hit);
+    }
+    let el = tree.elements.get(&box_hit)?;
+    let tl = el.text_layout.as_ref()?;
+    let &(ex, ey, _, _) = tree.layout.layout_cache.get(&box_hit)?;
+    let byte = inline_text::byte_index_at_point(tl, x - ex, y - ey);
+    if let Some(map) = &tl.range_map {
+        if let Some(inline_id) = map.lookup(byte) {
+            return Some(inline_id);
+        }
+    }
+    Some(box_hit)
 }
 
 fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {

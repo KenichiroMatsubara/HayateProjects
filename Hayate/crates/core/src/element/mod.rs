@@ -2,6 +2,7 @@ pub mod accessibility;
 pub mod document_runtime;
 pub mod event_spec;
 pub mod id;
+pub mod inline_text;
 pub mod interaction;
 pub mod kind;
 pub mod layout_pass;

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use taffy::{NodeId, TaffyTree};
 
 use crate::element::id::ElementId;
-use crate::element::kind::ElementKind;
+use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::taffy_bridge::MeasureCtx;
 use crate::element::tree::Element;
 
@@ -67,29 +67,6 @@ impl Default for TaffyProjection {
     }
 }
 
-/// `text` element whose parent is also `text` — no Taffy box (ADR-0063).
-pub(crate) fn is_inline_text_element(
-    elements: &HashMap<ElementId, Element>,
-    id: ElementId,
-) -> bool {
-    let el = match elements.get(&id) {
-        Some(e) => e,
-        None => return false,
-    };
-    if el.kind != ElementKind::Text {
-        return false;
-    }
-    el.parent
-        .and_then(|p| elements.get(&p))
-        .is_some_and(|p| p.kind == ElementKind::Text)
-}
-
-fn is_ifc_root(elements: &HashMap<ElementId, Element>, id: ElementId) -> bool {
-    elements
-        .get(&id)
-        .is_some_and(|el| el.kind == ElementKind::Text && !is_inline_text_element(elements, id))
-}
-
 fn build_subtree(
     projection: &mut TaffyProjection,
     elements: &mut HashMap<ElementId, Element>,
@@ -144,6 +121,7 @@ fn build_subtree(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::element::kind::ElementKind;
     use crate::element::tree::Visual;
 
     fn make_text(id: u64, parent: Option<ElementId>, text: &str) -> (ElementId, Element) {
