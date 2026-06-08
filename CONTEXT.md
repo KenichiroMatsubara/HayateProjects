@@ -39,6 +39,14 @@ _Avoid_: 全 element = 1 Taffy box という旧前提
 `ElementTree` の block-box 部分集合から **lazy に派生する Taffy ツリー**（ADR-0064）。`ElementTree` が構造・データの唯一 owner で、Taffy は peer ではなく derived projection。構造 mutation は `ElementTree` と structure-dirty 集合のみ触り、Taffy は `LayoutPass::run` 冒頭で dirty-scoped に reconcile される。inline span は投影に含まれない。RN の Fiber↔Yoga shadow tree、Flutter の Element↔RenderObject tree と同形。`TaffyProjection` seam が `TaffyTree` と ElementId↔NodeId マップを所有する。
 _Avoid_: Taffy ツリーを owner とする設計（`TaffyTree<Element>`・span を `Display::None`）、各 mutation site での手 sync、layout ツリーと document ツリーの 1:1 視
 
+**テキスト継承（2チャネル）**:
+ADR-0065 のテキストスタイル継承モデル。プロパティ名は CSS 準拠、適用セマンティクスは実物 Flutter 寄せ（LLM 予測可能性）。**(1) 通常 text スタイル**（`color`/`font-size`/`font-family`/`font-weight`/`font-style`/`text-decoration`）は **text→text（IFC 内）のみ**継承し block（`view` 等）を貫通しない。`InlineText` が解決。**(2) ambient Default Text Style**（`default-*`）は任意 element に設定でき block を貫通して既定値を供給する（Flutter `DefaultTextStyle` 相当）。解決順: 自身明示 → text 祖先継承 → ambient 既定 → ハード既定。
+_Avoid_: CSS 式の全要素 font 継承（ADR-0047 旧式、`view` の font が text に漏れる）、RN の ambient 既定なし設計
+
+**Default Text Style（ambient）**:
+`default-font-family` / `default-font-size` / `default-font-weight` / `default-color`。block を貫通して top-down に降りる既定値専用チャネル（`scene_build.walk` が運ぶ）。text 要素が明示値も text 継承値も持たないときの fallback。nested 上書き可。app 全体の既定フォント/サイズ/色をここで置く。
+_Avoid_: 通常 `font-family` 等を block 貫通させる設計、global と呼ぶ（nested 上書き可能な ambient であり真の global ではない）
+
 **Hayate CSS**:
 要素ごとのインラインスタイル宣言。レイアウトプロパティは Taffy の CSS サブセット、ビジュアルプロパティは CSS 名の Hayate 対応サブセット。要素ローカルの擬似状態（`:hover` / `:active` / `:focus`）を同一宣言内に nest でき、Render Layer がポインタ状態に応じて effective style を合成する。セレクタ・カスケード・スタイルシートは含まない。
 _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style
