@@ -1,4 +1,5 @@
 pub mod accessibility;
+pub mod ambient_defaults;
 pub mod document_runtime;
 pub mod event_spec;
 pub mod id;
@@ -21,7 +22,7 @@ pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use style::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue,
-    StyleProp, StylePropKind,
+    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, FontStyleValue,
+    JustifyValue, StyleProp, StylePropKind, TextDecorationValue,
 };
 pub use tree::{ElementTree, ResolvedElement};

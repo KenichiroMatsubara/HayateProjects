@@ -50,6 +50,12 @@ export const TAG = {
   FONT_FAMILY: 29,
   FLEX_GROW: 30,
   FONT_WEIGHT: 31,
+  FONT_STYLE: 32,
+  TEXT_DECORATION: 33,
+  DEFAULT_COLOR: 34,
+  DEFAULT_FONT_FAMILY: 35,
+  DEFAULT_FONT_SIZE: 36,
+  DEFAULT_FONT_WEIGHT: 37,
 } as const;
 export type TAG = typeof TAG;
 
@@ -181,6 +187,20 @@ export const JUSTIFY_CONTENT = {
   spaceEvenly: 5,
 } as const;
 export type JUSTIFY_CONTENT = typeof JUSTIFY_CONTENT;
+
+export const FONT_STYLE = {
+  normal: 0,
+  italic: 1,
+  oblique: 2,
+} as const;
+export type FONT_STYLE = typeof FONT_STYLE;
+
+export const TEXT_DECORATION = {
+  none: 0,
+  underline: 1,
+  lineThrough: 2,
+} as const;
+export type TEXT_DECORATION = typeof TEXT_DECORATION;
 
 export const FONT_FAMILY = {
   NotoSansJP: 'Noto Sans JP',

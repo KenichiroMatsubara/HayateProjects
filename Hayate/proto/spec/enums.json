@@ -117,6 +117,40 @@
     ]
   },
   {
+    "name": "font_style",
+    "values": [
+      {
+        "name": "normal",
+        "value": 0
+      },
+      {
+        "name": "italic",
+        "value": 1
+      },
+      {
+        "name": "oblique",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "name": "text_decoration",
+    "values": [
+      {
+        "name": "none",
+        "value": 0
+      },
+      {
+        "name": "underline",
+        "value": 1
+      },
+      {
+        "name": "line_through",
+        "value": 2
+      }
+    ]
+  },
+  {
     "name": "font_family",
     "string_values": true,
     "values": [

@@ -57,7 +57,7 @@
 ### TEXT-08 — text element は inline formatting context（IFC）
 **規範文:** `text` element は inline formatting context とする。IFC root（親が `text` でない `text`）は subtree（自身の `el.text` ＋ 子 `text`（inline text element） を document 順）を**1つの Parley ranged layout** として整形する Taffy leaf。inline text element（親が `text` の `text`）は Taffy box を持たず、親 IFC の styled range（font-family/size/weight/style/color/decoration）になる。inline text element への mutation は IFC root の layout を dirty にする。hit-test は IFC root の byte-range→`ElementId` マップで inline text element を解決する。DOM Renderer / HTML Mode はブラウザの native IFC に委ねる。MVP: inline atom（`text` 中の image/icon）は後続、`text-input` は leaf editable のまま、inline text element の box 系スタイルは無視。
 **出典:** ADR-0063（ADR-0058 の leaf-string/collapse を supersede、ADR-0005 を拡張）
-**状況:** ✅ — hayate-core: `inline_text.rs` の `shape(ifc_root, width)->(Layout, RangeMap)`、`build_ranged_text_layout`、`shape_dirty` 伝播、measure 経路の IFC 合成整形、二段 hit-test（byte→inline text element）。`tsubame-solid`: `isTextInTextCollapse` / `node.text` / collapse 撤去、text-in-text は `appendChild` + 各 `text` element へ `setText`（`node.ts` は構造のみ）。
+**状況:** ✅ — hayate-core: `inline_text.rs` の `shape(ifc_root, width)->(Layout, RangeMap)`、`build_ranged_text_layout`、`shape_dirty` 伝播、measure 経路の IFC 合成整形、二段 hit-test（byte→inline text element）。`tsubame-solid`: collapse 撤去済み、text-in-text は `appendChild` + 各 `text` element へ `setText`（`node.ts` は構造のみ）。
 **備考:** 現 leaf 整形は inline text element 数=1 の縮退ケースとして IFC 経路に吸収。区間ごとの color は Parley brush（`TextBrush=[u8;4]`）を range push。AccessKit range 化は PLAT-04 下流。
 
 ### TEXT-09 — 編集は core の EditState、IME は ImeBridge trait
@@ -71,6 +71,5 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 7 | TEXT-01〜07 |
-| 🟡部分 | 1 | TEXT-08（core IFC 経路、ADR-0063。tsubame-solid collapse は残タスク10） |
+| ✅実装済み | 8 | TEXT-01〜08 |
 | ⬜未実装 | 1 | TEXT-09（EditState＋ImeBridge、ADR-0069） |

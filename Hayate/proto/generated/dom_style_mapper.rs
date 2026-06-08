@@ -152,6 +152,34 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
         StyleProp::FontWeight(v) => {
             style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?;
         }
+        StyleProp::FontStyle(v) => {
+            let s = match v {
+            FontStyleValue::Normal => "normal",
+            FontStyleValue::Italic => "italic",
+            FontStyleValue::Oblique => "oblique",
+            };
+            style.set_property("font-style", s)?;
+        }
+        StyleProp::TextDecoration(v) => {
+            let s = match v {
+            TextDecorationValue::None => "none",
+            TextDecorationValue::Underline => "underline",
+            TextDecorationValue::LineThrough => "line-through",
+            };
+            style.set_property("text-decoration", s)?;
+        }
+        StyleProp::DefaultColor(c) => {
+            style.set_property("color", &dom_css_rgba(c))?;
+        }
+        StyleProp::DefaultFontFamily(ref f) => {
+            style.set_property("font-family", f)?;
+        }
+        StyleProp::DefaultFontSize(v) => {
+            style.set_property("font-size", &format!("{}px", v.max(0.0)))?;
+        }
+        StyleProp::DefaultFontWeight(v) => {
+            style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?;
+        }
     }
     Ok(())
 }

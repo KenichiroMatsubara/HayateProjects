@@ -144,6 +144,8 @@ function generateEnumCodeMaps(proto) {
     flex_direction: 'FLEX_DIRECTION',
     align_items: 'ALIGN_ITEMS',
     justify_content: 'JUSTIFY_CONTENT',
+    font_style: 'FONT_STYLE',
+    text_decoration: 'TEXT_DECORATION',
   };
   for (const [specName, constName] of Object.entries(enumNames)) {
     const en = (proto.enums ?? []).find((e) => e.name === specName);
@@ -244,6 +246,24 @@ function generateStyleEncoders(proto) {
           '}',
         );
         break;
+      case 'enum:font_style':
+        lines.push(
+          `function ${fnName}(out: number[], value: string): void {`,
+          `  const code = FONT_STYLE_CODE[value];`,
+          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported fontStyle "\${value}"\`);`,
+          `  out.push(TAG.${tag.name}, code);`,
+          '}',
+        );
+        break;
+      case 'enum:text_decoration':
+        lines.push(
+          `function ${fnName}(out: number[], value: string): void {`,
+          `  const code = TEXT_DECORATION_CODE[value];`,
+          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported textDecoration "\${value}"\`);`,
+          `  out.push(TAG.${tag.name}, code);`,
+          '}',
+        );
+        break;
       default:
         throw new Error(`unsupported encodeFrom: ${encodeFrom}`);
     }
@@ -301,7 +321,7 @@ export function generateCodec() {
     '// Source: @hayate/protocol-spec',
     '',
     "import type { StylePatch } from '@tsubame/renderer-protocol';",
-    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, JUSTIFY_CONTENT } from './protocol.js';",
+    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',
     '',

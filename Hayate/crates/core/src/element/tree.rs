@@ -18,7 +18,7 @@ use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
-use crate::element::style::{StyleProp, StylePropKind};
+use crate::element::style::{FontStyleValue, StyleProp, StylePropKind, TextDecorationValue};
 use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::text;
 use crate::node::SceneGraph;
@@ -34,9 +34,16 @@ pub struct Visual {
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
+    pub font_style: Option<FontStyleValue>,
+    pub text_decoration: Option<TextDecorationValue>,
     pub z_index: i32,
     /// Custom font-family name registered via `register_font`.
     pub font_family: Option<String>,
+    /// Ambient default text style (block-penetrating, ADR-0065 ch2).
+    pub default_color: Option<Color>,
+    pub default_font_size: Option<f32>,
+    pub default_font_weight: Option<f32>,
+    pub default_font_family: Option<String>,
 }
 
 impl Default for Visual {
@@ -50,8 +57,14 @@ impl Default for Visual {
             text_color: None,
             font_size: None,
             font_weight: None,
+            font_style: None,
+            text_decoration: None,
             z_index: 0,
             font_family: None,
+            default_color: None,
+            default_font_size: None,
+            default_font_weight: None,
+            default_font_family: None,
         }
     }
 }
@@ -1070,6 +1083,26 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::Color(c) => {
             visual.text_color = Some(*c);
             *text_dirty = true;
+        }
+        StyleProp::FontStyle(v) => {
+            visual.font_style = Some(*v);
+            *text_dirty = true;
+        }
+        StyleProp::TextDecoration(v) => {
+            visual.text_decoration = Some(*v);
+            *text_dirty = true;
+        }
+        StyleProp::DefaultColor(c) => visual.default_color = Some(*c),
+        StyleProp::DefaultFontSize(v) => visual.default_font_size = Some(v.max(0.0)),
+        StyleProp::DefaultFontWeight(v) => {
+            visual.default_font_weight = Some(v.clamp(1.0, 1000.0));
+        }
+        StyleProp::DefaultFontFamily(f) => {
+            visual.default_font_family = if f.is_empty() {
+                None
+            } else {
+                Some(f.clone())
+            };
         }
         StyleProp::ZIndex(z) => visual.z_index = *z,
         _ => {}

@@ -104,6 +104,12 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::FontFamily(_) => "font-family",
         StyleProp::FontWeight(_) => "font-weight",
         StyleProp::Color(_) => "color",
+        StyleProp::FontStyle(_) => "font-style",
+        StyleProp::TextDecoration(_) => "text-decoration",
+        StyleProp::DefaultColor(_) => "default-color",
+        StyleProp::DefaultFontFamily(_) => "default-font-family",
+        StyleProp::DefaultFontSize(_) => "default-font-size",
+        StyleProp::DefaultFontWeight(_) => "default-font-weight",
         StyleProp::ZIndex(_) => "z-index",
     }
 }

@@ -191,5 +191,42 @@
     "value": 31,
     "encodeFrom": "f32",
     "params": [{ "name": "value", "type": "f32" }]
+  },
+  {
+    "name": "FONT_STYLE",
+    "value": 32,
+    "encodeFrom": "enum:font_style",
+    "params": [{ "name": "value", "type": "font_style" }]
+  },
+  {
+    "name": "TEXT_DECORATION",
+    "value": 33,
+    "encodeFrom": "enum:text_decoration",
+    "params": [{ "name": "value", "type": "text_decoration" }]
+  },
+  {
+    "name": "DEFAULT_COLOR",
+    "value": 34,
+    "encodeFrom": "css-color",
+    "params": [{ "name": "color", "type": "color" }]
+  },
+  {
+    "name": "DEFAULT_FONT_FAMILY",
+    "value": 35,
+    "variable_length": true,
+    "encodeFrom": "font-family",
+    "params": [{ "name": "family", "type": "string" }]
+  },
+  {
+    "name": "DEFAULT_FONT_SIZE",
+    "value": 36,
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
+  },
+  {
+    "name": "DEFAULT_FONT_WEIGHT",
+    "value": 37,
+    "encodeFrom": "f32",
+    "params": [{ "name": "value", "type": "f32" }]
   }
 ]

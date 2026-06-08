@@ -1,28 +1,10 @@
 use crate::color::Color;
+use crate::element::ambient_defaults::AmbientDefaults;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pseudo_state::resolve_visual;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
-
-/// Resolved text-style values passed top-down through the element tree during
-/// scene_build. Elements without an explicit value inherit from the parent.
-#[derive(Clone)]
-pub struct InheritedStyle {
-    pub color: Color,
-    pub font_size: f32,
-    pub font_family: Option<String>,
-}
-
-impl Default for InheritedStyle {
-    fn default() -> Self {
-        Self {
-            color: Color::BLACK,
-            font_size: 16.0,
-            font_family: None,
-        }
-    }
-}
 
 pub fn build(tree: &ElementTree) -> SceneGraph {
     let mut sg = SceneGraph::new();
@@ -35,7 +17,7 @@ pub fn build(tree: &ElementTree) -> SceneGraph {
             0.0,
             &mut sg,
             None,
-            InheritedStyle::default(),
+            AmbientDefaults::default(),
             &interaction,
         );
     }
@@ -54,7 +36,7 @@ fn walk(
     oy: f32,
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
-    inherited: InheritedStyle,
+    ambient: AmbientDefaults,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
 ) {
     let el = match tree.elements.get(&id) {
@@ -73,7 +55,7 @@ fn walk(
                     oy,
                     sg,
                     parent_group,
-                    inherited.clone(),
+                    ambient.clone(),
                     interaction,
                 );
             }
@@ -90,18 +72,15 @@ fn walk(
     let w = layout.size.width;
     let h = layout.size.height;
 
-    // Resolve inherited text-style values for this element and its subtree.
-    let confirmed_color = visual.text_color.unwrap_or(inherited.color);
-    let confirmed_font_size = visual.font_size.unwrap_or(inherited.font_size);
-    let confirmed_font_family = visual
+    // Ambient default text style (ch2): only `default-*` props penetrate blocks.
+    let child_ambient = ambient.merge_visual(&el.visual);
+    // Text elements resolve explicit → ambient → hard default (not parent view styles).
+    let confirmed_color = visual.text_color.unwrap_or(child_ambient.color);
+    let confirmed_font_size = visual.font_size.unwrap_or(child_ambient.font_size);
+    let _confirmed_font_family = visual
         .font_family
         .clone()
-        .or(inherited.font_family.clone());
-    let child_inherited = InheritedStyle {
-        color: confirmed_color,
-        font_size: confirmed_font_size,
-        font_family: confirmed_font_family,
-    };
+        .or(child_ambient.font_family.clone());
 
     // If the element has a transform, wrap everything (including children) in a Group.
     let effective_parent = if let Some(transform) = el.transform {
@@ -196,7 +175,7 @@ fn walk(
                 y,
                 sg,
                 effective_parent,
-                child_inherited.clone(),
+                child_ambient.clone(),
                 interaction,
             );
         }
@@ -307,7 +286,7 @@ fn walk(
             y,
             sg,
             effective_parent,
-            child_inherited.clone(),
+            child_ambient.clone(),
             interaction,
         );
     }

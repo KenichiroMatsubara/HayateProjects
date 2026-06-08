@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use parley::{FontContext, LayoutContext};
 
 use crate::color::Color;
+use crate::element::ambient_defaults::{self, AmbientDefaults};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::style::{FontStyleValue, TextDecorationValue};
 use crate::element::text::{
     self, RangeMap, TextBrush, TextLayout, build_ranged_text_layout, RangedTextSpan,
 };
@@ -52,19 +54,24 @@ struct ResolvedTextStyle {
     font_weight: Option<f32>,
     font_family: Option<String>,
     color: Color,
+    font_style: Option<FontStyleValue>,
+    text_decoration: Option<TextDecorationValue>,
 }
 
-impl Default for ResolvedTextStyle {
-    fn default() -> Self {
+impl ResolvedTextStyle {
+    fn from_ambient(ambient: &AmbientDefaults) -> Self {
         Self {
-            font_size: 16.0,
-            font_weight: None,
-            font_family: None,
-            color: Color::BLACK,
+            font_size: ambient.font_size,
+            font_weight: ambient.font_weight,
+            font_family: ambient.font_family.clone(),
+            color: ambient.color,
+            font_style: None,
+            text_decoration: None,
         }
     }
 }
 
+/// ch1 text→text cascade; ambient fallbacks are seeded before the IFC walk.
 fn resolve_text_style(visual: &Visual, inherited: &ResolvedTextStyle) -> ResolvedTextStyle {
     ResolvedTextStyle {
         font_size: visual.font_size.unwrap_or(inherited.font_size),
@@ -74,6 +81,8 @@ fn resolve_text_style(visual: &Visual, inherited: &ResolvedTextStyle) -> Resolve
             .clone()
             .or_else(|| inherited.font_family.clone()),
         color: visual.text_color.unwrap_or(inherited.color),
+        font_style: visual.font_style.or(inherited.font_style),
+        text_decoration: visual.text_decoration.or(inherited.text_decoration),
     }
 }
 
@@ -109,6 +118,8 @@ impl CollectCtx<'_> {
             font_size: style.font_size,
             font_weight: style.font_weight,
             font_family: style.font_family.clone(),
+            font_style: style.font_style,
+            text_decoration: style.text_decoration,
             brush: color_to_brush(style.color),
         });
     }
@@ -151,7 +162,8 @@ pub(crate) fn shape(
         spans: Vec::new(),
         range_map: RangeMap::default(),
     };
-    let root_style = ResolvedTextStyle::default();
+    let ambient = ambient_defaults::ambient_at(elements, ifc_root_id);
+    let root_style = ResolvedTextStyle::from_ambient(&ambient);
     ctx.walk_ifc_subtree(ifc_root_id, &root_style);
 
     if ctx.text.is_empty() {
