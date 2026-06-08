@@ -61,8 +61,27 @@ fn walk(
         Some(e) => e,
         None => return,
     };
+    // Inline text elements have no Taffy box (ADR-0063/0064); recurse without emitting.
+    let taffy_node = match el.taffy_node {
+        Some(n) => n,
+        None => {
+            for child in tree.ordered_children(id) {
+                walk(
+                    tree,
+                    child,
+                    ox,
+                    oy,
+                    sg,
+                    parent_group,
+                    inherited.clone(),
+                    interaction,
+                );
+            }
+            return;
+        }
+    };
     let visual = resolve_visual(&el.visual, &el.pseudo_styles, interaction, id);
-    let layout = match tree.layout.taffy.layout(el.taffy_node) {
+    let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };

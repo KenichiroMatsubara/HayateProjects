@@ -3,11 +3,12 @@ use std::sync::Arc;
 
 use linebender_resource_handle::Blob;
 use parley::{FontContext, LayoutContext};
-use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize, TaffyTree};
+use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::taffy_bridge::MeasureCtx;
+use crate::element::taffy_projection::TaffyProjection;
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::element::tree::{Element, Event};
 
@@ -16,7 +17,7 @@ use crate::element::tree::{Element, Event};
 /// call drives Taffy layout, Parley text shaping, font-dirty propagation,
 /// FetchFont event emission, and layout-cache population.
 pub struct LayoutPass {
-    pub(crate) taffy: TaffyTree<MeasureCtx>,
+    pub(crate) projection: TaffyProjection,
     pub(crate) font_cx: FontContext,
     pub(crate) layout_cx: LayoutContext<TextBrush>,
     /// Set by `register_font`; cleared at the start of the next `run`.
@@ -36,7 +37,7 @@ impl LayoutPass {
         let mut font_cx = FontContext::new();
         init_bundled_fonts(&mut font_cx);
         Self {
-            taffy: TaffyTree::new(),
+            projection: TaffyProjection::new(),
             font_cx,
             layout_cx: LayoutContext::new(),
             fonts_dirty: false,
@@ -55,9 +56,21 @@ impl LayoutPass {
         viewport: (f32, f32),
         event_queue: &mut Vec<Event>,
     ) {
+        self.projection.reconcile(elements, root);
         self.compute(elements, root, viewport, event_queue);
         self.layout_cache.clear();
-        cache_layout(elements, &self.taffy, root, 0.0, 0.0, &mut self.layout_cache);
+        cache_layout(
+            elements,
+            &self.projection.taffy,
+            root,
+            0.0,
+            0.0,
+            &mut self.layout_cache,
+        );
+    }
+
+    pub(crate) fn mark_structure_dirty(&mut self, id: ElementId) {
+        self.projection.mark_structure_dirty(id);
     }
 
     /// Toggle the focused element's cursor every 500 ms (ADR-0032).
@@ -115,13 +128,17 @@ impl LayoutPass {
                 if let Some(el) = elements.get_mut(&id) {
                     el.text_layout = None;
                     el.content_layout = None;
-                    let node = el.taffy_node;
-                    let _ = self.taffy.mark_dirty(node);
+                    if let Some(node) = el.taffy_node {
+                        let _ = self.projection.taffy.mark_dirty(node);
+                    }
                 }
             }
         }
 
-        let root_taffy = elements[&root].taffy_node;
+        let root_taffy = match elements[&root].taffy_node {
+            Some(n) => n,
+            None => return,
+        };
         let root_source_size = elements[&root].layout_style.size;
 
         // Pin root dimensions to viewport when the app asked for Auto/Percent.
@@ -130,7 +147,7 @@ impl LayoutPass {
         // after the first pin the Taffy node holds a definite Length that must still
         // track viewport changes on resize.
         // Explicit px Length values set on the root are left untouched.
-        if let Ok(mut style) = self.taffy.style(root_taffy).cloned() {
+        if let Ok(mut style) = self.projection.taffy.style(root_taffy).cloned() {
             let mut changed = false;
             if !matches!(root_source_size.width, TaffyDim::Length(_)) {
                 let pinned = TaffyDim::Length(viewport.0);
@@ -147,7 +164,7 @@ impl LayoutPass {
                 }
             }
             if changed {
-                let _ = self.taffy.set_style(root_taffy, style);
+                let _ = self.projection.taffy.set_style(root_taffy, style);
             }
         }
 
@@ -157,12 +174,13 @@ impl LayoutPass {
         };
 
         let LayoutPass {
-            taffy,
+            projection,
             font_cx,
             layout_cx,
             pending_font_fetches,
             ..
         } = self;
+        let taffy = &mut projection.taffy;
 
         // Two-pass: stash text layouts produced inside the measure closure,
         // then drain them back onto the elements once compute_layout returns.
@@ -288,7 +306,8 @@ impl LayoutPass {
             let (max_advance, font_family) = {
                 let el = elements.get(&eid).map(|e| {
                     (
-                        taffy.layout(e.taffy_node).ok().map(|l| l.size.width),
+                        e.taffy_node
+                            .and_then(|n| taffy.layout(n).ok().map(|l| l.size.width)),
                         e.visual.font_family.clone(),
                     )
                 });
@@ -358,7 +377,7 @@ fn init_bundled_fonts(font_cx: &mut FontContext) {
 
 pub(crate) fn cache_layout(
     elements: &HashMap<ElementId, Element>,
-    taffy: &TaffyTree<MeasureCtx>,
+    taffy: &taffy::TaffyTree<MeasureCtx>,
     id: ElementId,
     ox: f32,
     oy: f32,
@@ -368,7 +387,17 @@ pub(crate) fn cache_layout(
         Some(e) => e,
         None => return,
     };
-    let layout = match taffy.layout(el.taffy_node) {
+    let taffy_node = match el.taffy_node {
+        Some(n) => n,
+        None => {
+            // Inline text elements have no box geometry; still walk descendants.
+            for &child in &el.children {
+                cache_layout(elements, taffy, child, ox, oy, cache);
+            }
+            return;
+        }
+    };
+    let layout = match taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };

@@ -59,7 +59,7 @@ pub(crate) struct Element {
     pub kind: ElementKind,
     pub parent: Option<ElementId>,
     pub children: Vec<ElementId>,
-    pub taffy_node: taffy::NodeId,
+    pub taffy_node: Option<taffy::NodeId>,
     pub layout_style: taffy::Style,
     pub visual: Visual,
     pub text: Option<String>,
@@ -180,22 +180,12 @@ impl ElementTree {
     pub fn element_create(&mut self, id: u64, kind: ElementKind) -> ElementId {
         let id = ElementId::from_u64(id);
         let layout_style = taffy::Style::default();
-        let measure_ctx = if kind.is_text_like() {
-            MeasureCtx::Text(id)
-        } else {
-            MeasureCtx::None
-        };
-        let taffy_node = self
-            .layout
-            .taffy
-            .new_leaf_with_context(layout_style.clone(), measure_ctx)
-            .expect("taffy new_leaf_with_context");
 
         let element = Element {
             kind,
             parent: None,
             children: Vec::new(),
-            taffy_node,
+            taffy_node: None,
             layout_style,
             visual: Visual::default(),
             text: None,
@@ -235,8 +225,9 @@ impl ElementTree {
         }
         el.text = Some(text.to_string());
         el.text_layout = None;
-        let taffy_node = el.taffy_node;
-        let _ = self.layout.taffy.mark_dirty(taffy_node);
+        if let Some(node) = el.taffy_node {
+            let _ = self.layout.projection.taffy.mark_dirty(node);
+        }
     }
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
@@ -340,8 +331,9 @@ impl ElementTree {
             };
             el.text_layout = None;
             el.content_layout = None;
-            let taffy_node = el.taffy_node;
-            let _ = self.layout.taffy.mark_dirty(taffy_node);
+            if let Some(node) = el.taffy_node {
+                let _ = self.layout.projection.taffy.mark_dirty(node);
+            }
         }
     }
 
@@ -546,11 +538,9 @@ impl ElementTree {
         }
         if layout_changed {
             let style = el.layout_style.clone();
-            let node = el.taffy_node;
-            let _ = self.layout.taffy.set_style(node, style);
+            self.layout.projection.set_style(id, style);
         } else if text_dirty {
-            let node = el.taffy_node;
-            let _ = self.layout.taffy.mark_dirty(node);
+            self.layout.projection.mark_dirty(id);
         }
     }
 
@@ -584,8 +574,7 @@ impl ElementTree {
             }
         }
         if text_dirty {
-            let node = el.taffy_node;
-            let _ = self.layout.taffy.mark_dirty(node);
+            self.layout.projection.mark_dirty(id);
         }
     }
 
@@ -594,14 +583,10 @@ impl ElementTree {
             return;
         }
         self.detach_from_current_parent(child);
-        let (parent_taffy, child_taffy) = {
-            let p = &self.elements[&parent];
-            let c = &self.elements[&child];
-            (p.taffy_node, c.taffy_node)
-        };
-        let _ = self.layout.taffy.add_child(parent_taffy, child_taffy);
         self.elements.get_mut(&parent).unwrap().children.push(child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
+        self.layout.mark_structure_dirty(parent);
+        self.layout.mark_structure_dirty(child);
     }
 
     pub fn element_insert_before(
@@ -629,21 +614,14 @@ impl ElementTree {
                 return;
             }
         };
-        let (parent_taffy, child_taffy) = {
-            let p = &self.elements[&parent];
-            let c = &self.elements[&child];
-            (p.taffy_node, c.taffy_node)
-        };
-        let _ = self
-            .layout
-            .taffy
-            .insert_child_at_index(parent_taffy, index, child_taffy);
         self.elements
             .get_mut(&parent)
             .unwrap()
             .children
             .insert(index, child);
         self.elements.get_mut(&child).unwrap().parent = Some(parent);
+        self.layout.mark_structure_dirty(parent);
+        self.layout.mark_structure_dirty(child);
     }
 
     pub fn element_remove(&mut self, id: ElementId) {
@@ -660,10 +638,11 @@ impl ElementTree {
                 stack.extend(el.children.iter().copied());
             }
         }
+        if let Some(root) = self.root {
+            self.layout.mark_structure_dirty(root);
+        }
         for node in to_remove.into_iter().rev() {
-            if let Some(el) = self.elements.remove(&node) {
-                let _ = self.layout.taffy.remove(el.taffy_node);
-            }
+            self.elements.remove(&node);
             self.runtime.remove_element_listeners(node);
             if self.focused_element == Some(node) {
                 self.focused_element = None;
@@ -747,6 +726,15 @@ impl ElementTree {
 
     pub fn element_parent(&self, id: ElementId) -> Option<ElementId> {
         self.elements.get(&id).and_then(|e| e.parent)
+    }
+
+    /// Whether `id` was projected to a Taffy node on the last layout pass.
+    #[doc(hidden)]
+    pub fn element_has_taffy_node(&self, id: ElementId) -> bool {
+        self.elements
+            .get(&id)
+            .and_then(|e| e.taffy_node)
+            .is_some()
     }
 
     /// Element ids in `root` and its descendants (pre-order). Empty when unknown.
@@ -890,7 +878,7 @@ impl ElementTree {
         if let Some(root) = self.root {
             walk_resolved(
                 &self.elements,
-                &self.layout.taffy,
+                &self.layout.projection.taffy,
                 root,
                 0.0,
                 0.0,
@@ -908,18 +896,14 @@ impl ElementTree {
             Some(p) => p,
             None => return,
         };
-        let (parent_taffy, child_taffy) = {
-            let p = &self.elements[&parent];
-            let c = &self.elements[&child];
-            (p.taffy_node, c.taffy_node)
-        };
-        let _ = self.layout.taffy.remove_child(parent_taffy, child_taffy);
         self.elements
             .get_mut(&parent)
             .unwrap()
             .children
             .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
+        self.layout.mark_structure_dirty(parent);
+        self.layout.mark_structure_dirty(child);
     }
 }
 
@@ -942,7 +926,16 @@ fn walk_resolved(
         Some(e) => e,
         None => return,
     };
-    let layout = match taffy.layout(el.taffy_node) {
+    let taffy_node = match el.taffy_node {
+        Some(n) => n,
+        None => {
+            for &child in &el.children {
+                walk_resolved(elements, taffy, child, ox, oy, interaction, out);
+            }
+            return;
+        }
+    };
+    let layout = match taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };

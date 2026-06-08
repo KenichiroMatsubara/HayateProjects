@@ -8,6 +8,7 @@ pub mod pseudo_state;
 pub mod scene_build;
 pub mod style;
 pub mod taffy_bridge;
+pub mod taffy_projection;
 pub mod text;
 pub mod tree;
 

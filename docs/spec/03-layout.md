@@ -27,7 +27,7 @@
 ### LAY-04 — Taffy は ElementTree から lazy に派生する投影
 **規範文:** `ElementTree` が構造とデータの唯一の owner。Taffy ツリーはその block-box 部分集合の derived projection（inline text element 除外・IFC root は measured leaf）であり peer ではない。構造 mutation は `ElementTree` と structure-dirty 集合のみ触り、Taffy には触れない。Taffy 投影は `LayoutPass::run` 冒頭で dirty-scoped に reconcile する（`TaffyProjection` seam が `TaffyTree` と ElementId↔NodeId マップを所有）。`el.taffy_node` は `Option`（inline text element は None）。Taffy-as-owner（`Display::None` で inline text element を載せる案）は不採用。
 **出典:** ADR-0064（ADR-0004/0008 を継承、ADR-0063 が引き金）
-**状況:** ⬜未実装 — 設計確定。現状は eager で各 mutation site が inline `taffy.add_child`（`tree.rs:602`）し、全 element に Taffy leaf を確保（`:188`）。`TaffyProjection` 抽出・structure-dirty 集合・lazy reconcile・inline taffy 呼び出し撤去が残タスク。RN(Fiber↔Yoga)・Flutter(Element↔RenderObject) と同形。
+**状況:** ✅ — `taffy_projection.rs` が `TaffyTree` + ElementId↔NodeId マップを所有。構造 mutation（`element_create`/`append_child`/`insert_before`/`remove`）は `structure_dirty` 記録のみ。`LayoutPass::run` 冒頭で `projection.reconcile()`。inline text element は `taffy_node: None`、IFC root は measured leaf。
 **備考:** 2b（ADR-0063）が Taffy を 1:1 ミラーから非自明投影（inline text element 除外・IFC leaf・reparent クラス反転）に変えたことが本項目の引き金。
 
 ---
@@ -35,6 +35,6 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 3 | LAY-01, LAY-02, LAY-03 |
+| ✅実装済み | 4 | LAY-01, LAY-02, LAY-03, LAY-04 |
 | 🟡部分 | 0 | — |
-| ⬜未実装 | 1 | LAY-04（Taffy lazy 投影、ADR-0064） |
+| ⬜未実装 | 0 | — |
