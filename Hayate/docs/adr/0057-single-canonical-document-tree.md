@@ -1,5 +1,8 @@
 # 文書ツリーは backend ごとに一つだけ保持する
 
+> **Status: Superseded by [ADR-0062](0062-tsubame-solid-structure-only-shadow-tree.md)（2026-06-07）。**
+> 本 ADR の核「描画・layout・hit-test の正本は単一（Canvas: Hayate `ElementTree` / DOM: ブラウザ DOM）」は ADR-0062 が継承する。一方、「`tsubame-solid` の `TsubameNode` から構造ミラーを撤去し JS 側に構造を一切持たない」という結論は ADR-0062 が**覆した** — solid-js/universal が VDOM を持たず同期で読めるホストツリーを要求する以上、batch 境界の向こうに正本を置く Tsubame では近側に構造専用 reconcile index が不可避だから。詳細・コスト分析は ADR-0062。下記 Consequences のうち「`TsubameNode` 構造ミラー撤去」は無効、それ以外（renderer parent map 撤去・仮想 TextNode 廃止・subtree 片付けは backend）は有効。
+
 Canvas 経路では Hayate `ElementTree`、Tsubame `CanvasRenderer` の parent map、`tsubame-solid` の `TsubameNode` shadow tree が同じ document 構造を並行管理している。`solid-js/universal` がホストツリー走査（`getParentNode` 等）を要求するため Adapter 側に shadow を置いたが、構造の正本が JS に複製され、Solid の fine-grained mutation モデルと二重化している。実質 React の VDOM 上に Solid を乗せた形であり、Signal の変化はツリー差分ではなく `IRenderer` mutation として backend へ届くべきである。文書構造の正本は backend 一箇所に限定する。
 
 ## Considered Options

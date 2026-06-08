@@ -37,14 +37,14 @@
 - ADR-0044
 - ADR-0049
 
-### 2. Render Host の web surface を scene-renderers に移管するか
+### 2. Render Host の web surface を scene-renderers に移管するか 〔解決 → ADR-0068〕
 
-- 現状は ADR-0054 H1: web surface 初期化・present は `hayate-adapter-web` に残留。
-- native adapter 追加時、または ADR-0050 の Render Host / Scene Renderer 層分離を完結させるタイミングで `scene-renderers/vello` 等へ移管するか決める。
+- ~~現状は ADR-0054 H1: web surface 初期化・present は `hayate-adapter-web` に残留。~~
+- **決定（ADR-0068）**: native が確定設計目標である以上、プラットフォーム非依存の Render Host 芯（policy/orchestration/資源寿命）と Font ロードを**共有層へ今 hoist**し、web 特有部分（surface 生成・fetch）を `Surface` / `FontFetcher` trait の裏に置く。surface **生成**の web 実装は `impl Surface` として adapter-web に残る（H1 の事実は trait 化して維持）。2-adapter 則の例外＝variation が roadmap 上確定しているため投機ではない。
 
 根拠:
-- ADR-0050
-- ADR-0054
+- ADR-0068（ADR-0054 H1 を revisit）
+- ADR-0050 / ADR-0054 / ADR-0066
 
 ## Out Of Scope For This File
 

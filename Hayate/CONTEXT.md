@@ -9,7 +9,7 @@ GPU 描画を担う Rust/WASM 側の UI 基盤。`Element Document Runtime`（el
 _Avoid_: layout/GPU のみの paint server としてのみ説明する、Hayabusa 中心の説明
 
 **Element Document Runtime**:
-`hayate-core` Element Layer 内の軽量 document engine。element tree・listener 登録・bubble/non-bubble dispatch・scroll-view の基本 offset 更新・focus 等を担う。Canvas/HTML 経路の **Document Tree 正本**（ADR-0057）。`:hover` / `:active` / `:focus` を Hayate CSS の一部として保持し、render 時に effective style へ合成する（ADR-0056）。Platform Adapter は raw 入力（pointer / wheel / EditContext 等）をここへ渡す。`hayate-adapter-web` 等は input 変換と描画 flush のみ。host は dispatch 結果を `poll_events()`（または後継 export）で受け取り、listener id に紐づく callback を実行する。慣性 scroll は担わない。
+`hayate-core` Element Layer 内の軽量 document engine。element tree・listener 登録・bubble/non-bubble dispatch・scroll-view の基本 offset 更新・focus 等を担う。**interaction 状態機械（focus/active/hover の単独所有と `on_pointer_*`/`on_key_down`/`on_wheel`/`on_text_input`/`on_composition_*` の入力 surface）も runtime が持つ**（ADR-0066）。Canvas/HTML 経路の **Document Tree 正本（描画・layout・hit-test の単一正本）**（ADR-0062 が ADR-0057 の核を継承。tsubame-solid のみ構造専用 shadow tree を別途保持）。`:hover` / `:active` / `:focus` を Hayate CSS の一部として保持し、render 時に effective style へ合成する（ADR-0056）。Platform Adapter は raw 入力（pointer / wheel / EditContext 等）をここへ渡す。`hayate-adapter-web` 等は input 変換と描画 flush のみ。host は dispatch 結果を `poll_events()`（または後継 export）で受け取り、listener id に紐づく callback を実行する。慣性 scroll は担わない。
 _Avoid_: adapter 層ごとの document semantics、Tsubame 側 bubble、Tsubame 側 shadow tree、Hayate から host への import callback（ADR-0018 参照）
 
 **Tsubame**:
@@ -23,7 +23,7 @@ _Avoid_: 現在の最優先実装対象
 ## Current Contracts
 
 **Hayate Protocol Contract**:
-Hayate リポジトリの `proto/spec/` に置く、Hayate-Tsubame 間の機械可読な契約。`opcodes`・`style_tags`・`event_kinds`・`element_kinds`・`unset_kinds`・`modifier_keys` 等を JSON で定義し、`proto/spec/schema/` の JSON Schema で検証する。正本は Hayate 側のみ。Hayate は `proto/generator/` から wire 定数・decode・encode（`codec.rs`）を `proto/generated/` に生成し commit する。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で Contract を取り込み、`Tsubame/proto/generator/` から wire 定数・TS encode（`codec.ts`）・adapter vocabulary（`catalog.ts` 等）を `Tsubame/proto/generated/` に生成し commit する。`style_tags` の `encodeFrom` は TS 向け入力変換規則（ADR-0055）。Renderer Protocol 独自の surface（`setProperty`・`addEventListener` 購読 API・`resize`）と semantic mutation キュー（`HayateMutationPacket`）は Contract 外として手書きのまま残す。
+Hayate リポジトリの `proto/spec/` に置く、Hayate-Tsubame 間の機械可読な契約。`opcodes`・`style_tags`・`event_kinds`・`element_kinds`・`unset_kinds`・`modifier_keys` 等を JSON で定義し、`proto/spec/schema/` の JSON Schema で検証する。正本は Hayate 側のみ。Hayate は `proto/generator/` から wire 定数・decode・encode（`codec.rs`）を `proto/generated/` に生成し commit する。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で Contract を取り込み、`Tsubame/proto/generator/` から wire 定数・TS encode（`codec.ts`）・adapter vocabulary（`catalog.ts` 等）を `Tsubame/proto/generated/` に生成し commit する。`style_tags` の `encodeFrom` は TS 向け入力変換規則（ADR-0055）。`style_tags` の `domCss`（tag→ブラウザ CSS 写像・`DOM_EXTRAS` 含む）も spec 正本で、`dom_style_mapper.rs`（Rust HTML Mode）と `catalog.ts`（TS DOM Renderer）を両側生成する（ADR-0070）。Renderer Protocol 独自の surface（`setProperty`・`addEventListener` 購読 API・`resize`）と semantic mutation キュー（`HayateMutationPacket`）は Contract 外として手書きのまま残す。
 _Avoid_: YAML 正本、定数だけ生成して mutation/style encode を手書きし続ける運用、Contract から IRenderer 実装まで生成する設計
 
 **apply_mutations**:

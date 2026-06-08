@@ -65,8 +65,8 @@
 ### REND-08 — Render Host（surface / 選択 / fallback）
 **規範文:** `Render Host` が renderer の surface 初期化・present・resize・選択・資源寿命管理・一方向 fallback を担う。
 **出典:** ADR-0050, ADR-0054
-**状況:** ✅ — `backend/mod.rs` の `RenderHost`（`init_with_policy`、runtime 失敗時の `fallback_after_runtime_failure`）。
-**備考:** web surface 初期化は当面 adapter-web に残留（ADR-0054 H1、decisions-pending Open #2 → §未決）。
+**状況:** 🟡 — `backend/mod.rs` の `RenderHost`（`init_with_policy`、runtime 失敗時の `fallback_after_runtime_failure`）は実装済みだが **adapter-web 内**。ADR-0068 により**プラットフォーム非依存の Render Host 芯（policy/orchestration/資源寿命）と Font ロードを共有層へ hoist し、`Surface`/`FontFetcher` trait で web 特有部分を分離**する設計が確定（実装は残）。
+**備考:** ADR-0054 H1「surface は adapter-web 残留」は ADR-0068 が revisit — surface **生成**は `impl Surface`（web: canvas / native: window）として platform に残るが Host 芯は共有。native は2 trait 実装＋binding の薄い adapter。
 
 ### REND-09 — Renderer Selection Policy
 **規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
@@ -90,17 +90,17 @@
 
 ## Raw Layer の公開
 
-### REND-12 — Raw Layer は当面非公開（WIT 撤去）
-**規範文:** Raw Layer（`Node` / `SceneGraph` の絶対座標直接制御）は Rust 内部実装に留め、外部公開契約（旧 Raw Layer WIT）は持たない。外部公開は Element Layer / §10 protocol contract に限る。
-**出典:** ADR-0033 → ADR-0049（WIT 撤去で supersede）
-**状況:** ⬜（公開なし、意図通り） — `Hayate/wit/` 不在。Raw Layer は Rust 内部 API のみ。
-**備考:** [履歴] ADR-0033「Raw Layer WIT を world export から除外」は、WIT 自体の撤去（0049）で上書き。Raw Layer の外部公開は将来再検討。
+### REND-12 — Raw Layer は外部非公開（確定）
+**規範文:** Raw Layer（`Node` / `SceneGraph` の絶対座標直接制御）は Rust 内部 lowering target に留め、**外部公開契約を持たない（確定棄却）**。Hayate の外部公開は Element Layer / §10 protocol contract の一つだけ。
+**出典:** ADR-0072（公開 Raw Layer を正式棄却。ADR-0033→0049 を継承）
+**状況:** ✅ — `Hayate/wit/` 不在、Raw Layer は Rust 内部 API のみ＝規範どおり。ADR-0072 で「将来再検討」を閉じ確定。
+**備考:** [履歴] ADR-0013 の二層**公開**は ADR-0049（WIT 撤去）で機構が消え、ADR-0072 が公開意図を正式棄却。内部の二層分離（Element→Raw lowering）は §3 LAY-03 で維持。将来 layout-free 公開が真に必要になれば ADR-0072 を supersede して reopen。
 
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 11 | REND-01〜11 |
-| 🟡部分 | 0 | — |
-| ⬜（非公開・意図通り） | 1 | REND-12 |
+| ✅実装済み | 11 | REND-01〜07, 09〜12 |
+| 🟡部分 | 1 | REND-08（Render Host 芯の共有層 hoist、ADR-0068） |
+| ⬜未実装 | 0 | — |

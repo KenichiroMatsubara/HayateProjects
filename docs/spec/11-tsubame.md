@@ -13,11 +13,11 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **状況:** ✅ — `Tsubame/packages/`：renderer-protocol / renderer-dom / renderer-canvas / solid。`tsubame-spec.md` が責務を明示。
 **備考:** [履歴 C-11.2] Hayate ADR-0038「Tsubame を signal 統一ランタイムに」は ADR-0040 が supersede（記法差で adapter 間共有不可、Vue/React ecosystem が全滅するため）。
 
-### TSUB-02 — Renderer Protocol（IRenderer）
-**規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・プロパティ・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。
-**出典:** Tsubame ADR-0002
-**状況:** ✅ — `renderer-protocol/src/renderer.ts` の `interface IRenderer`。`setPseudoStyle` で `:hover`/`:active`/`:focus` を分離。
-**備考:** setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（アーキテクチャレビュー候補5、§改善）。
+### TSUB-02 — Renderer Protocol（IRenderer）／property は閉じた語彙
+**規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・property・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。**element property は閉じた typed 語彙**とし、既知の意味プロパティ（`value`/`placeholder`/`disabled`/`src`、`aria-label`/`role` は first-class 経由）を両 renderer が実装する。**未知 property 名はエラー**（任意 HTML 属性のフォールバックは禁止＝ELEM-01 のタグ禁止と同格）。
+**出典:** Tsubame ADR-0002、ADR-0071（property 閉じた語彙）
+**状況:** ⬜未実装 — interface は `renderer-protocol/src/renderer.ts` に定義済だが、`setProperty` が untyped エスケープハッチで実装非対称：DOM Renderer は4意味プロパティ＋任意 `setAttribute` フォールバック（`dom-renderer.ts:126,159–167`）、Canvas Renderer は no-op（`canvas-renderer.ts:99`）で silent drop。意味プロパティの first-class 化（両 renderer）・未知 property の throw（build-time 型＋runtime、`REJECTED_EVENT_PROPS` パターン）・DOM の任意 attr 撤去・`disabled` state 新設が残タスク。
+**備考:** ADR-0071。`aria` は first-class（`element_set_aria_label`/`role`）経由のみ。setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（別改善）。
 
 ### TSUB-03 — DOM Renderer（CSR、Hayate 不使用）
 **規範文:** DOM Renderer は HTML 直接操作で CSR を行い、Hayate（WASM）を一切使わない。element-kind を HTML tag に 1:1 マップ（view→div / text→span / button→button / text-input→input / image→img / scroll-view→div）し、各要素に `data-tsubame-id` を付与して `ElementId` を保持する。
@@ -35,7 +35,7 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **規範文:** 各 Tsubame Adapter は自身のフレームワークの既存ランタイム（SolidJS signals / Vue reactivity / React Fiber）をそのまま維持し、レンダリング先のみ Renderer Protocol に向け替える。signal 統一はしない。
 **出典:** Tsubame ADR-0004, Hayate ADR-0040
 **状況:** 🟡 — `tsubame-solid` は実装済み（`solid-js/universal` カスタムレンダラー、`solid-js` 依存維持）。`tsubame-vue` / `tsubame-react` は ⬜未実装（packages に不在）。
-**備考:** tsubame-svelte はスコープ外（Svelte ユーザーには tsubame-vue 推奨）。
+**備考:** tsubame-svelte はスコープ外（Svelte ユーザーには tsubame-vue 推奨）。`tsubame-solid` は `TsubameNode` を**構造専用 shadow tree**（reconcile index）として保持する — `solid-js/universal` が VDOM を持たず reconcile 時にホスト構造を同期で読むため、batch 境界越しに正本を置く Canvas 経路では不可避（ADR-0062 が ADR-0057 を supersede、§2 ELEM-03）。VDOM reconciler の tsubame-vue / tsubame-react は shadow 不要。
 
 ### TSUB-06 — DOM Renderer の Z-Order は RN Web 方式エミュレート
 **規範文:** DOM Renderer は RN Web 現行方式で Z-Order をエミュレートする。全 element kind に `position: relative` + `zIndex: 0` をベース付与し、開発者指定 zIndex で上書き、兄弟内のみ有効とする。ブラウザ CSS との完全一致は目標にしない。
@@ -54,5 +54,6 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 6 | TSUB-01〜04, 06, 07 |
+| ✅実装済み | 5 | TSUB-01, 03, 04, 06, 07 |
 | 🟡部分 | 1 | TSUB-05（solid のみ実装、vue/react 未実装） |
+| ⬜未実装 | 1 | TSUB-02（property を閉じた語彙に・未知はエラー、ADR-0071） |

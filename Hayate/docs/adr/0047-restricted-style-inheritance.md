@@ -1,5 +1,8 @@
 # Restricted Style Inheritance in Hayate Core
 
+> **Status: Superseded by [ADR-0065](0065-text-inheritance-two-channel-default-text-style.md)（2026-06-07）。**
+> 本 ADR は text 系スタイルを全 element 横断で継承する「Flutter モデル」を採用したが、これは誤記（実物の Flutter は `DefaultTextStyle` のみ block 貫通、通常スタイルは text-local）。ADR-0065 が **text-local（通常スタイル）＋ ambient Default Text Style（block 貫通の既定値専用チャネル）** の2チャネルに置換した。`scene_build` の top-down 機構・`Option` 化された `Visual` フィールド・`element_unset_style` は維持（運ぶ値が「ambient 既定」に変わる）。
+
 テキスト系スタイルプロパティ（`color` / `font-size` / `font-family`）に限定した継承を Hayate コアの `scene_build` レイヤーで実装する。`scene_build` の `walk()` に `InheritedStyle` 構造体をトップダウンで渡し、各 element は `explicit_*: Option<T>` を持ち、`None` の場合は親から引き継いだ値を使う。
 
 ## Considered Options

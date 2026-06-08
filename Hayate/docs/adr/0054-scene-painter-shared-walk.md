@@ -49,7 +49,7 @@ hayate-adapter-web            Render Host（surface/present/resize/selection）+
 
 - package 名: `hayate-scene-renderer-vello` / `hayate-scene-renderer-tiny-skia`
 - **公開 API は `render_scene` のみ**（walk / Painter は crate 内部）。
-- **Render Host の web surface（`VelloSurfaceHost` 等）は当面 adapter-web に残留**（H1）。native adapter 追加時に renderer crate へ移管を再検討（decisions-pending Open #2）。
+- **Render Host の web surface（`VelloSurfaceHost` 等）は当面 adapter-web に残留**（H1）。native adapter 追加時に renderer crate へ移管を再検討（decisions-pending Open #2）。**［revisit: ADR-0068］** native が確定設計目標である以上、プラットフォーム非依存の Render Host 芯（policy/orchestration）と Font ロードを共有層へ **今 hoist** し、web 特有部分を `Surface` / `FontFetcher` trait の裏に置く。surface **生成**の web 実装が adapter-web に残る点（H1 の事実）は trait 実装として維持。
 
 ### 命名
 

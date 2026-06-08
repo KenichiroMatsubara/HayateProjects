@@ -140,6 +140,12 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 **状況:** ✅ — `fonts.json` + `build.rs` codegen → `builtin_fonts.rs`；`enums.json` 全 preset の URL カバレッジテスト。文字列接続（`register_font`/`configure_fonts`、app登録 > builtin fetch > bundled default）も実装済み。
 **備考:** [解決 C-10.6] 「100+ 予約帯」案は obsolete として正式 reject（ADR-0061）。URL は web adapter 層に留め spec に入れない（ADR-0043 維持）。
 
+### PROTO-20 — tag→CSS DOM 写像は spec が所有し両側生成
+**規範文:** Hayate CSS tag → ブラウザ CSS の DOM 写像（CSS プロパティ名・値フォーマット・`DOM_EXTRAS` 副作用）は `style_tags.json` の各 entry の `domCss`（`{ property, format, extras }`、DOM 写像なしは `null`）が単一正本。`dom_style_mapper.rs`（Rust・Hayate HTML Mode）と `catalog.ts`（TS・Tsubame DOM Renderer）を spec から生成し、Rust generator のハンドコード dispatch と `gen-catalog.mjs` の `DOM_EXTRAS` config を撤去する。
+**出典:** ADR-0070（ADR-0049/0055 の単一正本を DOM 写像まで拡張）
+**状況:** ⬜未実装 — 設計確定。現状は tag→CSS が `dom_style_mapper.rs`（Rust generator ハンドコード）と `catalog.ts`（`gen-catalog.mjs` config の `DOM_EXTRAS`）に二分。`style_tags.json` への `domCss` 追加・両 generator の spec 駆動化・`DOM_EXTRAS` の spec 移管が残タスク。
+**備考:** DOM 写像は web 専用だが、単一化で Hayate HTML Mode と Tsubame DOM Renderer が一致し web の Canvas↔DOM デザイン比較（ADR-0012）が信用できる。
+
 ---
 
 ## このパートの集計
@@ -148,6 +154,6 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 |---|---|---|
 | ✅実装済み | 18 | PROTO-01〜08, 10〜19 |
 | 🟡部分 | 1 | PROTO-09 |
-| ⬜未実装 | 0 | — |
+| ⬜未実装 | 1 | PROTO-20（tag→CSS DOM 写像の spec 単一正本、ADR-0070） |
 
-**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き parser 疑い）のみ。
+**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き parser 疑い）と PROTO-20（DOM 写像の単一正本化、ADR-0070）。

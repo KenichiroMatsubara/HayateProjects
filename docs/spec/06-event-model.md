@@ -43,9 +43,16 @@ delivery の wire 形式そのものは §10（PROTO-12〜17）に置く。
 **状況:** ✅ — `Tsubame/packages/solid/src/events.ts` の `REJECTED_EVENT_PROPS = {onHoverEnter, onHoverLeave}`。event mapping に onHover* なし。
 **備考:** tsubame-vue/react は未実装のため当該検証は solid のみ（§11）。
 
+### EVT-07 — Interaction 状態機械は ElementTree が所有
+**規範文:** 入力→セマンティックイベントの状態機械（focus/active/hover の所有、`on_pointer_down/up/move`・`on_key_down`・`on_wheel`・`on_text_input`・`on_composition_*`）は `ElementTree`（Element Document Runtime）が持つ。各メソッドは hit-test（必要時）＋状態遷移＋イベント生成/dispatch を core で行う。Platform Adapter は raw platform 入力を `tree.on_*` に翻訳し描画を flush するだけで、interaction 状態を複製しない。
+**出典:** ADR-0066（ADR-0053 を完遂）
+**状況:** ⬜未実装 — 設計確定。現状は `hayate-adapter-web` の `RendererEventState` が状態機械を持ち、`active_element`/`focused_element` を `tree` と二重管理（`renderer_event_state.rs:27,30`、手動同期 `element_renderer.rs:304–318`）。状態機械の core 移管・二重フィールド削除・`Option<tree>` 引き回しと `raw_events` 撤去・adapter 薄化が残タスク。hover は既に tree 単独（EVT-02）。
+**備考:** D2（`element_renderer.rs` god-module 分割）の前提を整える。Web/native adapter が同一 core 状態機械を共有。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 6 | EVT-01〜06 |
+| ⬜未実装 | 1 | EVT-07（interaction 状態機械の core 移管、ADR-0066） |
