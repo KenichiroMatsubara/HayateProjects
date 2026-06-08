@@ -221,9 +221,14 @@ fn walk(
         // Cursor rect — only in Canvas mode (HTML mode uses the native <input> cursor).
         if el.cursor_visible {
             if let Some(cl) = el.content_layout.as_ref() {
+                let cursor_index = el
+                    .edit
+                    .as_ref()
+                    .map(|edit| edit.cursor_byte_index)
+                    .unwrap_or(0);
                 let cursor = parley::Cursor::from_byte_index(
                     &cl.layout,
-                    el.cursor_byte_index,
+                    cursor_index,
                     parley::Affinity::Upstream,
                 );
                 let bbox = cursor.geometry(&cl.layout, 1.5_f32);

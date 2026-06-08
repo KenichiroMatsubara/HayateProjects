@@ -63,7 +63,7 @@
 ### TEXT-09 — 編集は core の EditState、IME は ImeBridge trait
 **規範文:** text-input の編集状態と操作は core の `EditState`（`text_content`/`preedit`/`cursor_byte_index` ＋ insert/append/backspace/set/paste/set_preedit/commit/display_text）に集約する。編集セマンティクス（キー→編集・commit・入力 append）は core が持ち、A1（ADR-0066）で core へ移る入力ハンドラが `EditState` を呼ぶ。platform IME は `ImeBridge` trait の裏に置き、adapter は EditContext（web）/ TSF・TSM・IBus（native）を**ラップするだけ**。core が cursor rect（`cursor_byte_index`＋`content_layout`＋Taffy 由来）を character bounds として `ImeBridge` へ供給し IME 候補窓位置を満たす。`cursor_visible`（点滅・ADR-0032）と `content_layout` は render-side。
 **出典:** ADR-0069（ADR-0066/0068 と統合、ADR-0014/0016/0017 を精緻化）
-**状況:** ⬜未実装 — 設計確定。現状は編集セマンティクスが adapter に漏れ（`on_key_down:480` のキー→編集、`on_composition_end` が commit をインライン再実装し core の `element_commit_preedit` 未使用）、EditContext ラップは JS で ad-hoc、character bounds 供給が欠落。`EditState` 抽出・`ImeBridge` trait・character bounds export・adapter 痩化が残タスク。
+**状況:** ✅ — `edit_state.rs`（`EditState` 集約）、`interaction.rs`（キー/composition/text-input 編集セマンティクス）、`ime_bridge.rs`（`ImeBridge` trait + `CharacterBounds`）、`ElementTree::element_character_bounds`、adapter は raw 翻訳のみ（`element_renderer.rs` 編集ロジック撤去、`WebImeBridge`）。回帰テスト `edit_input.rs`。
 **備考:** IME plumbing は adapter（ImeBridge）、編集 model は core。native は薄い ImeBridge 実装で `EditState`/bounds を再利用（native 本体・ADR-0012）。cursor の点→byte は #3 と共有。
 
 ---
@@ -71,5 +71,4 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 8 | TEXT-01〜08 |
-| ⬜未実装 | 1 | TEXT-09（EditState＋ImeBridge、ADR-0069） |
+| ✅実装済み | 9 | TEXT-01〜09 |
