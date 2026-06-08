@@ -9,3 +9,7 @@ description = "Vello Scene Renderer for Hayate"
 hayate-core = { path = "../../core" }
 vello = { workspace = true }
 wgpu = { workspace = true }
+
+[dev-dependencies]
+hayate-scene-test-support = { path = "../test-support" }
+pollster = { workspace = true }

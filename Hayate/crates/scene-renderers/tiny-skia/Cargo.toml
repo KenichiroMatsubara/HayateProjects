@@ -9,3 +9,6 @@ description = "tiny-skia Scene Renderer for Hayate"
 hayate-core = { path = "../../core" }
 tiny-skia = { workspace = true }
 skrifa = { workspace = true }
+
+[dev-dependencies]
+hayate-scene-test-support = { path = "../test-support" }

@@ -1,0 +1,15 @@
+[package]
+name = "hayate-scene-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared pixel-test fixtures and harnesses for Hayate scene renderers"
+publish = false
+
+[dependencies]
+hayate-core = { path = "../../core" }
+hayate-scene-renderer-tiny-skia = { path = "../tiny-skia" }
+hayate-scene-renderer-vello = { path = "../vello" }
+tiny-skia = { workspace = true }
+wgpu = { workspace = true }
+pollster = "0.4"

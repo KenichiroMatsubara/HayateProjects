@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/scene-renderers/vello",
     "crates/scene-renderers/tiny-skia",
+    "crates/scene-renderers/test-support",
     "crates/adapters/web",
     "proto/generator",
 ]
@@ -46,6 +47,7 @@ web-sys = { version = "0.3", features = [
 slotmap = "1"
 anyhow = "1"
 log = "0.4"
+pollster = "0.4"
 accesskit = { version = "0.24.0", features = ["serde"] }
 
 [patch.crates-io]
