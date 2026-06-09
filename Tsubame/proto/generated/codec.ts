@@ -516,3 +516,21 @@ export function appendUnsetStyle(buf: number[], id: number, kind: number): void 
   buf.push(id);
   buf.push(kind);
 }
+
+export function appendSetTextContent(buf: number[], id: number, textIndex: number): void {
+  buf.push(OP.SET_TEXT_CONTENT);
+  buf.push(id);
+  buf.push(textIndex);
+}
+
+export function appendSetDisabled(buf: number[], id: number, disabled: number): void {
+  buf.push(OP.SET_DISABLED);
+  buf.push(id);
+  buf.push(disabled);
+}
+
+export function appendSetSrc(buf: number[], id: number, textIndex: number): void {
+  buf.push(OP.SET_SRC);
+  buf.push(id);
+  buf.push(textIndex);
+}

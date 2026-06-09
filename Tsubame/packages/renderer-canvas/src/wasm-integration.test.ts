@@ -91,6 +91,23 @@ describe('codec integration (C3)', () => {
     expect(() => hayate.element_get_text(3)).not.toThrow();
   });
 
+  it('applies setProperty value through apply_mutations on text-input', async () => {
+    fixture = await createNullHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(fixture.raw, sched);
+
+    const input = renderer.createElement('text-input');
+    renderer.setRoot(input);
+    renderer.setProperty(input, 'value', 'committed');
+
+    sched.tick(16);
+
+    const hayate = fixture.raw as {
+      element_get_text_content(id: number): string;
+    };
+    expect(hayate.element_get_text_content(1)).toBe('committed');
+  });
+
   it('matches binding.test ops wire for unified batch', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();

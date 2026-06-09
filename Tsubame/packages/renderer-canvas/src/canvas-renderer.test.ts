@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { OP } from '@tsubame/protocol-generated/protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
 
@@ -141,6 +142,47 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('batches setProperty with structure mutations in one apply_mutations', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const parent = renderer.createElement('view');
+    const child = renderer.createElement('text-input');
+    renderer.appendChild(parent, child);
+    renderer.setProperty(child, 'value', 'typed');
+
+    sched.tick();
+
+    expect(hayate.mutations).toHaveLength(1);
+    const batch = hayate.mutations[0]!;
+    expect(batch.ops).toContain(OP.APPEND_CHILD);
+    expect(batch.ops).toContain(OP.SET_TEXT_CONTENT);
+    expect(batch.texts).toContain('typed');
+  });
+
+  it('defers setProperty value until frame flush via apply_mutations', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const input = renderer.createElement('text-input');
+
+    renderer.setProperty(input, 'value', 'hi');
+
+    expect(hayate.mutations).toHaveLength(0);
+    expect(hayate.textContentCalls).toHaveLength(0);
+
+    sched.tick();
+
+    expect(hayate.textContentCalls).toHaveLength(0);
+    expect(hayate.mutations).toHaveLength(1);
+    const batch = hayate.mutations[0]!;
+    expect(batch.texts).toContain('hi');
+    const opIndex = batch.ops.indexOf(OP.SET_TEXT_CONTENT);
+    expect(opIndex).toBeGreaterThanOrEqual(0);
+    expect(batch.ops[opIndex + 1]).toBe(1);
+    expect(batch.texts[batch.ops[opIndex + 2]!]).toBe('hi');
+  });
+
   it('throws on unknown setProperty names (ADR-0071)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
@@ -164,10 +206,16 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     renderer.setProperty(image, 'src', 'https://example.com/x.png');
     sched.tick();
 
-    expect(hayate.textContentCalls).toEqual([[1, 'hi']]);
-    expect(hayate.textCalls).toEqual([[1, 'enter']]);
-    expect(hayate.disabledCalls).toEqual([[1, true]]);
-    expect(hayate.srcCalls).toEqual([[2, 'https://example.com/x.png']]);
+    const batch = hayate.mutations[0]!;
+    expect(batch.texts).toContain('hi');
+    expect(batch.ops).toContain(OP.SET_TEXT_CONTENT);
+    expect(batch.texts).toContain('enter');
+    expect(batch.ops).toContain(OP.SET_TEXT);
+    expect(batch.ops).toContain(OP.SET_DISABLED);
+    expect(batch.ops).toContain(OP.SET_SRC);
+    expect(hayate.textCalls).toHaveLength(0);
+    expect(hayate.disabledCalls).toHaveLength(0);
+    expect(hayate.srcCalls).toHaveLength(0);
   });
 
   it('unsubscribe stops delivery dispatch', () => {

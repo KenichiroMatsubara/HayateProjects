@@ -167,5 +167,47 @@
         "type": "u32"
       }
     ]
+  },
+  {
+    "name": "SET_TEXT_CONTENT",
+    "value": 12,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "text_index",
+        "type": "usize"
+      }
+    ]
+  },
+  {
+    "name": "SET_DISABLED",
+    "value": 13,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "disabled",
+        "type": "bool"
+      }
+    ]
+  },
+  {
+    "name": "SET_SRC",
+    "value": 14,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "text_index",
+        "type": "usize"
+      }
+    ]
   }
 ]

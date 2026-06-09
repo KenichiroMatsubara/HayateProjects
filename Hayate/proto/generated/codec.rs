@@ -131,6 +131,21 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*id as f64);
             buf.push(*kind as f64);
         }
+        Op::SetTextContent { id, text_index } => {
+            buf.push(OP_SET_TEXT_CONTENT as f64);
+            buf.push(*id as f64);
+            buf.push(*text_index as f64);
+        }
+        Op::SetDisabled { id, disabled } => {
+            buf.push(OP_SET_DISABLED as f64);
+            buf.push(*id as f64);
+            buf.push(if *disabled { 1.0 } else { 0.0 });
+        }
+        Op::SetSrc { id, text_index } => {
+            buf.push(OP_SET_SRC as f64);
+            buf.push(*id as f64);
+            buf.push(*text_index as f64);
+        }
     }
 }
 
