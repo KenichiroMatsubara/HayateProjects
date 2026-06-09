@@ -1,5 +1,11 @@
 # HTML Mode の z-index は絶対座標レイヤー方式で実現する
 
+> **Status: superseded**
+>
+> **ADR-0029**（`html-mode-browser-css-layout`）が ADR-0016 の Taffy → `position: absolute` パイプラインを廃止したため、本 ADR が前提とする「全要素が絶対座標レイヤー」モデルは現行 HTML Mode では採用しない。現行はブラウザ CSS の `z-index` セマンティクスに委ねる（**ADR-0060** 参照）。歴史的記録として残す。
+>
+> **Date: 2026-03（初版。番号は ADR-0029 衝突解消のため ADR-0074 に改番）**
+
 ## Context
 
 ADR-0021 では z-index を「同一 parent 内の子ソート（painter's algorithm）」で実現することを決定した。
