@@ -111,6 +111,7 @@ compile_error!("Enable one of: backend-vello, backend-recording, backend-tiny-sk
 pub(crate) trait SceneRenderer {
     fn kind(&self) -> SceneRendererKind;
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue>;
+    #[allow(dead_code)]
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
 
     /// Resize the render surface to match the canvas's new pixel dimensions.
