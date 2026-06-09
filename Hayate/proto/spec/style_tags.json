@@ -577,5 +577,37 @@
       "property": "font-weight",
       "format": "number"
     }
+  },
+  {
+    "name": "GRID_TEMPLATE_COLUMNS",
+    "value": 38,
+    "variable_length": true,
+    "encodeFrom": "dimension-list",
+    "params": [
+      {
+        "name": "tracks",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "grid-template-columns",
+      "format": "dimension-list"
+    }
+  },
+  {
+    "name": "GRID_TEMPLATE_ROWS",
+    "value": 39,
+    "variable_length": true,
+    "encodeFrom": "dimension-list",
+    "params": [
+      {
+        "name": "tracks",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "grid-template-rows",
+      "format": "dimension-list"
+    }
   }
 ]

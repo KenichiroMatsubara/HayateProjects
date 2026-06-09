@@ -210,6 +210,20 @@ function generateStyleEncoders(proto) {
           '}',
         );
         break;
+      case 'dimension-list':
+        lines.push(
+          `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {`,
+          `  if (!Array.isArray(value)) {`,
+          `    throw new Error(\`CanvasRenderer: "${patchKey}" must be an array of dimensions\`);`,
+          `  }`,
+          `  out.push(TAG.${tag.name}, value.length);`,
+          `  for (const item of value) {`,
+          `    const d = parseDimension(item);`,
+          `    out.push(d.value, UNIT_CODE[d.unit]!);`,
+          `  }`,
+          '}',
+        );
+        break;
       case 'enum:display':
         lines.push(
           `function ${fnName}(out: number[], value: string): void {`,

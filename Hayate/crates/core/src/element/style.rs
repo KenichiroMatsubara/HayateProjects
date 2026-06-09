@@ -56,6 +56,13 @@ impl Dimension {
             unit: DimensionUnit::Percent,
         }
     }
+
+    pub const fn fr(value: f32) -> Self {
+        Self {
+            value,
+            unit: DimensionUnit::Fr,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -138,6 +145,9 @@ pub enum StyleProp {
     DefaultFontFamily(String),
     DefaultFontSize(f32),
     DefaultFontWeight(f32),
+    // grid
+    GridTemplateColumns(Vec<Dimension>),
+    GridTemplateRows(Vec<Dimension>),
     // stacking
     ZIndex(i32),
 }
@@ -169,6 +179,8 @@ impl StyleProp {
                 | Self::MarginRight(_)
                 | Self::MarginBottom(_)
                 | Self::MarginLeft(_)
+                | Self::GridTemplateColumns(_)
+                | Self::GridTemplateRows(_)
         )
     }
 }

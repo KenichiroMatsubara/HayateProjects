@@ -3,8 +3,8 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
-export type DomFormat = 'dimension' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
+export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
   readonly cssName: string;
@@ -527,6 +527,32 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "gridTemplateColumns",
+    "tag": 38,
+    "unsetKind": null,
+    "wireKind": "dimensionList",
+    "domFormat": "dimension-list",
+    "cssName": "gridTemplateColumns",
+    "cssProperty": "grid-template-columns",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gridTemplateRows",
+    "tag": 39,
+    "unsetKind": null,
+    "wireKind": "dimensionList",
+    "domFormat": "dimension-list",
+    "cssName": "gridTemplateRows",
+    "cssProperty": "grid-template-rows",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 
@@ -557,10 +583,19 @@ function formatDimension(value: HayateDimension): string {
   return typeof value === "number" ? `${value}px` : value;
 }
 
+function formatDimensionList(value: unknown): string {
+  if (!Array.isArray(value)) {
+    throw new Error("DOMRenderer: grid track list must be an array");
+  }
+  return value.map((item) => formatDimension(item as HayateDimension)).join(" ");
+}
+
 export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
   switch (entry.domFormat) {
     case "dimension":
       return formatDimension(value as HayateDimension);
+    case "dimension-list":
+      return formatDimensionList(value);
     case "px":
       return `${value}px`;
     case "integer":

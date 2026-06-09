@@ -350,6 +350,90 @@ fn check_display_grid(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 10, 10), "display:grid child visible");
 }
 
+fn build_grid_template_columns_fr() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 50);
+    let left = child_view(&mut tree, 51);
+    let right = child_view(&mut tree, 52);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Grid),
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+            StyleProp::GridTemplateColumns(vec![Dimension::fr(1.0), Dimension::fr(1.0)]),
+        ],
+    );
+    tree.element_append_child(root, left);
+    tree.element_append_child(root, right);
+    tree.element_set_style(
+        left,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        right,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_grid_template_columns_fr(data: &[u8]) {
+    let left = pixel(data, CANVAS_W, 20, 25);
+    let right = pixel(data, CANVAS_W, 75, 25);
+    assert_channel_min(left, 0, 200, "grid 1fr left column red");
+    assert_channel_max(left, 1, 30, "grid 1fr left column red");
+    assert_channel_min(right, 1, 200, "grid 1fr right column green");
+    assert_channel_max(right, 0, 30, "grid 1fr right column green");
+}
+
+fn build_grid_template_columns_px() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 53);
+    let left = child_view(&mut tree, 54);
+    let right = child_view(&mut tree, 55);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Grid),
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+            StyleProp::GridTemplateColumns(vec![Dimension::px(35.0), Dimension::px(65.0)]),
+        ],
+    );
+    tree.element_append_child(root, left);
+    tree.element_append_child(root, right);
+    tree.element_set_style(
+        left,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        right,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_grid_template_columns_px(data: &[u8]) {
+    let left = pixel(data, CANVAS_W, 15, 25);
+    let right = pixel(data, CANVAS_W, 70, 25);
+    assert_channel_min(left, 0, 200, "grid px left column red");
+    assert_channel_max(left, 2, 30, "grid px left column red");
+    assert_channel_min(right, 2, 200, "grid px right column blue");
+    assert_channel_max(right, 0, 30, "grid px right column blue");
+}
+
 fn build_flex_direction() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 26);
@@ -869,6 +953,16 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         css_property: "display-grid",
         build: build_display_grid,
         check: check_display_grid,
+    },
+    CssPixelCase {
+        css_property: "grid-template-columns",
+        build: build_grid_template_columns_fr,
+        check: check_grid_template_columns_fr,
+    },
+    CssPixelCase {
+        css_property: "grid-template-columns-px",
+        build: build_grid_template_columns_px,
+        check: check_grid_template_columns_px,
     },
     CssPixelCase {
         css_property: "flex-direction",

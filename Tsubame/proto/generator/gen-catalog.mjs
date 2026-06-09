@@ -16,6 +16,7 @@ function propertyToCamelCase(kebab) {
 }
 
 function wireKind(tag) {
+  if (tag.encodeFrom === 'dimension-list') return 'dimensionList';
   if (tag.name === 'FONT_FAMILY' || tag.name === 'DEFAULT_FONT_FAMILY') return 'fontFamily';
   if (tag.name === 'Z_INDEX') return 'zIndex';
   const param = (tag.params ?? [])[0];
@@ -102,8 +103,8 @@ export function generateCatalog() {
     '',
     "import type { HayateDimension } from '@tsubame/renderer-protocol';",
     '',
-    "export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
-    "export type DomFormat = 'dimension' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
+    "export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
+    "export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
     '',
     'export interface DomExtra {',
     '  readonly cssName: string;',
@@ -153,10 +154,19 @@ export function generateCatalog() {
     '  return typeof value === "number" ? `${value}px` : value;',
     '}',
     '',
+    'function formatDimensionList(value: unknown): string {',
+    '  if (!Array.isArray(value)) {',
+    '    throw new Error("DOMRenderer: grid track list must be an array");',
+    '  }',
+    '  return value.map((item) => formatDimension(item as HayateDimension)).join(" ");',
+    '}',
+    '',
     'export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {',
     '  switch (entry.domFormat) {',
     '    case "dimension":',
     '      return formatDimension(value as HayateDimension);',
+    '    case "dimension-list":',
+    '      return formatDimensionList(value);',
     '    case "px":',
     '      return `${value}px`;',
     '    case "integer":',

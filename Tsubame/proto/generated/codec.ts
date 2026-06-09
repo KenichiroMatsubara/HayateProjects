@@ -344,6 +344,28 @@ function encode_defaultFontWeight(out: number[], value: unknown): void {
   out.push(TAG.DEFAULT_FONT_WEIGHT, finiteNumber('defaultFontWeight', value));
 }
 
+function encode_gridTemplateColumns(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`CanvasRenderer: "gridTemplateColumns" must be an array of dimensions`);
+  }
+  out.push(TAG.GRID_TEMPLATE_COLUMNS, value.length);
+  for (const item of value) {
+    const d = parseDimension(item);
+    out.push(d.value, UNIT_CODE[d.unit]!);
+  }
+}
+
+function encode_gridTemplateRows(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`CanvasRenderer: "gridTemplateRows" must be an array of dimensions`);
+  }
+  out.push(TAG.GRID_TEMPLATE_ROWS, value.length);
+  for (const item of value) {
+    const d = parseDimension(item);
+    out.push(d.value, UNIT_CODE[d.unit]!);
+  }
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -383,6 +405,8 @@ const STYLE_ENCODERS = {
   defaultFontFamily: encode_defaultFontFamily,
   defaultFontSize: encode_defaultFontSize,
   defaultFontWeight: encode_defaultFontWeight,
+  gridTemplateColumns: encode_gridTemplateColumns,
+  gridTemplateRows: encode_gridTemplateRows,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

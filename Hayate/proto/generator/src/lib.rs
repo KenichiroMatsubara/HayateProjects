@@ -523,7 +523,11 @@ fn generate(proto: &Proto) -> String {
     out.push_str("pub enum StyleTag {\n");
     for tag in &proto.style_tags {
         let variant = to_pascal(&tag.name);
-        if tag.params.is_empty() {
+        if is_dimension_list_tag(tag) {
+            out.push_str(&format!("    {} {{\n", variant));
+            out.push_str("        tracks: Vec<(f32, f32)>,\n");
+            out.push_str("    },\n");
+        } else if tag.params.is_empty() {
             out.push_str(&format!("    {},\n", variant));
         } else {
             // flatten compound types to raw f32
@@ -552,7 +556,21 @@ fn generate(proto: &Proto) -> String {
         let fields = flatten_tag_params(&tag.params, proto);
         let slot_count = fields.len();
         out.push_str(&format!("        {} => {{\n", tag.value));
-        if tag.variable_length {
+        if tag.variable_length && is_dimension_list_tag(tag) {
+            out.push_str("            if i >= packed.len() { return Err(\"style tag track list truncated\"); }\n");
+            out.push_str("            let track_count = packed[i] as usize;\n");
+            out.push_str("            let mut tracks = Vec::with_capacity(track_count);\n");
+            out.push_str("            let mut j = i + 1;\n");
+            out.push_str("            for _ in 0..track_count {\n");
+            out.push_str("                if j + 2 > packed.len() { return Err(\"style tag track list data truncated\"); }\n");
+            out.push_str("                tracks.push((packed[j], packed[j + 1]));\n");
+            out.push_str("                j += 2;\n");
+            out.push_str("            }\n");
+            out.push_str(&format!(
+                "            Ok((StyleTag::{} {{ tracks }}, j))\n",
+                variant
+            ));
+        } else if tag.variable_length {
             // string: [byte_len, byte0, byte1, …] — one UTF-8 byte per f32 slot (wire format)
             out.push_str("            if i >= packed.len() { return Err(\"style tag string truncated\"); }\n");
             out.push_str("            let byte_len = packed[i] as usize;\n");
@@ -655,12 +673,16 @@ fn generate_style_codec(proto: &Proto) -> String {
         let variant = to_pascal(&tag.name);
         let prop_variant = to_pascal(&tag.name);
         out.push_str(&format!("        StyleTag::{variant}"));
-        let fields = flatten_tag_params(&tag.params, proto);
-        if fields.is_empty() {
-            out.push_str(" => ");
+        if is_dimension_list_tag(tag) {
+            out.push_str(" { tracks } => ");
         } else {
-            let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-            out.push_str(&format!(" {{ {} }} => ", field_names.join(", ")));
+            let fields = flatten_tag_params(&tag.params, proto);
+            if fields.is_empty() {
+                out.push_str(" => ");
+            } else {
+                let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                out.push_str(&format!(" {{ {} }} => ", field_names.join(", ")));
+            }
         }
         let expr = style_tag_to_prop_expr(&tag.name, &tag.params, proto);
         out.push_str(&format!("StyleProp::{prop_variant}({expr}),\n"));
@@ -781,7 +803,18 @@ fn is_variable_font_family_tag(tag_name: &str) -> bool {
     matches!(tag_name, "FONT_FAMILY" | "DEFAULT_FONT_FAMILY")
 }
 
+fn is_dimension_list_tag(tag: &Entry) -> bool {
+    tag.encode_from.as_deref() == Some("dimension-list")
+}
+
+fn is_dimension_list_tag_name(tag_name: &str) -> bool {
+    matches!(tag_name, "GRID_TEMPLATE_COLUMNS" | "GRID_TEMPLATE_ROWS")
+}
+
 fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
+    if is_dimension_list_tag_name(tag_name) {
+        return "(tracks)".to_string();
+    }
     if is_variable_font_family_tag(tag_name) {
         return "(f)".to_string();
     }
@@ -803,6 +836,17 @@ fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
 }
 
 fn style_prop_encode_body(tag_name: &str, params: &[Param]) -> String {
+    if is_dimension_list_tag_name(tag_name) {
+        return [
+            "                buf.push(tracks.len() as f32);",
+            "                for d in tracks.iter().copied() {",
+            "                    buf.push(d.value);",
+            "                    buf.push(encode_dim_unit(d.unit));",
+            "                }",
+            "",
+        ]
+        .join("\n");
+    }
     if is_variable_font_family_tag(tag_name) {
         return "                let bytes = f.as_bytes();\n\
                 buf.push(bytes.len() as f32);\n\
@@ -901,6 +945,9 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
 }
 
 fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'static str) {
+    if is_dimension_list_tag_name(tag_name) {
+        return ("(ref tracks)".to_string(), "tracks");
+    }
     if is_variable_font_family_tag(tag_name) {
         return ("(ref f)".to_string(), "f");
     }
@@ -967,6 +1014,16 @@ fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
             lines.push(format!(
                 "style.set_property(\"{css_prop}\", &format!(\"{{}}\", {expr}))?;"
             ));
+        }
+        "dimension-list" => {
+            lines.push(format!(
+                "let s = {value_var}\n\
+                .iter()\n\
+                .map(|d| dom_css_dim(*d))\n\
+                .collect::<Vec<_>>()\n\
+                .join(\" \");"
+            ));
+            lines.push(format!("style.set_property(\"{css_prop}\", &s)?;"));
         }
         "enum:display" => {
             lines.push(format!(
@@ -1049,6 +1106,10 @@ fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
 }
 
 fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> String {
+    if is_dimension_list_tag_name(tag_name) {
+        return "tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()"
+            .to_string();
+    }
     if is_variable_font_family_tag(tag_name) {
         return "family".to_string();
     }

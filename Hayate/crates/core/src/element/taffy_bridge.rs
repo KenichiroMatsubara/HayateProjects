@@ -1,6 +1,7 @@
 use taffy::{
+    style_helpers::{fr, length, percent, TaffyAuto},
     AlignItems, Dimension as TaffyDim, Display, FlexDirection, JustifyContent, LengthPercentage,
-    LengthPercentageAuto, Rect as TaffyRect, Size, Style,
+    LengthPercentageAuto, Rect as TaffyRect, Size, Style, TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
@@ -33,6 +34,15 @@ fn to_taffy_lp(d: Dimension) -> LengthPercentage {
         DimensionUnit::Percent => LengthPercentage::Percent(d.value / 100.0),
         // Padding/gap don't accept Auto — clamp to 0.
         DimensionUnit::Auto | DimensionUnit::Fr => LengthPercentage::Length(0.0),
+    }
+}
+
+fn to_taffy_track(d: Dimension) -> TrackSizingFunction {
+    match d.unit {
+        DimensionUnit::Px => length(d.value),
+        DimensionUnit::Percent => percent(d.value / 100.0),
+        DimensionUnit::Fr => fr(d.value),
+        DimensionUnit::Auto => TrackSizingFunction::AUTO,
     }
 }
 
@@ -125,6 +135,12 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         StyleProp::MarginBottom(d) => style.margin.bottom = to_taffy_lp_auto(*d),
         StyleProp::MarginLeft(d) => style.margin.left = to_taffy_lp_auto(*d),
         StyleProp::FlexGrow(v) => style.flex_grow = (*v).max(0.0),
+        StyleProp::GridTemplateColumns(tracks) => {
+            style.grid_template_columns = tracks.iter().copied().map(to_taffy_track).collect();
+        }
+        StyleProp::GridTemplateRows(tracks) => {
+            style.grid_template_rows = tracks.iter().copied().map(to_taffy_track).collect();
+        }
         _ => return false,
     }
     true

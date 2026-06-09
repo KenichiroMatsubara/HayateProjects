@@ -36,6 +36,8 @@ export interface HayateStyle {
   justifyContent: JustifyContent;
   gap: HayateDimension;
   flexGrow: number;
+  gridTemplateColumns: HayateDimension[];
+  gridTemplateRows: HayateDimension[];
   padding: HayateDimension;
   paddingTop: HayateDimension;
   paddingRight: HayateDimension;

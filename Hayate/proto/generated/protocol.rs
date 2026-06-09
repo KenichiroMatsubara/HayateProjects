@@ -70,6 +70,8 @@ pub const TAG_DEFAULT_COLOR: u32 = 34;
 pub const TAG_DEFAULT_FONT_FAMILY: u32 = 35;
 pub const TAG_DEFAULT_FONT_SIZE: u32 = 36;
 pub const TAG_DEFAULT_FONT_WEIGHT: u32 = 37;
+pub const TAG_GRID_TEMPLATE_COLUMNS: u32 = 38;
+pub const TAG_GRID_TEMPLATE_ROWS: u32 = 39;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -429,6 +431,12 @@ pub enum StyleTag {
     DefaultFontWeight {
         value: f32,
     },
+    GridTemplateColumns {
+        tracks: Vec<(f32, f32)>,
+    },
+    GridTemplateRows {
+        tracks: Vec<(f32, f32)>,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -661,6 +669,30 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::DefaultFontWeight { value }, i + 1))
         }
+        38 => {
+            if i >= packed.len() { return Err("style tag track list truncated"); }
+            let track_count = packed[i] as usize;
+            let mut tracks = Vec::with_capacity(track_count);
+            let mut j = i + 1;
+            for _ in 0..track_count {
+                if j + 2 > packed.len() { return Err("style tag track list data truncated"); }
+                tracks.push((packed[j], packed[j + 1]));
+                j += 2;
+            }
+            Ok((StyleTag::GridTemplateColumns { tracks }, j))
+        }
+        39 => {
+            if i >= packed.len() { return Err("style tag track list truncated"); }
+            let track_count = packed[i] as usize;
+            let mut tracks = Vec::with_capacity(track_count);
+            let mut j = i + 1;
+            for _ in 0..track_count {
+                if j + 2 > packed.len() { return Err("style tag track list data truncated"); }
+                tracks.push((packed[j], packed[j + 1]));
+                j += 2;
+            }
+            Ok((StyleTag::GridTemplateRows { tracks }, j))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -789,6 +821,8 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::DefaultFontFamily { family } => StyleProp::DefaultFontFamily(family),
         StyleTag::DefaultFontSize { value } => StyleProp::DefaultFontSize(value),
         StyleTag::DefaultFontWeight { value } => StyleProp::DefaultFontWeight(value),
+        StyleTag::GridTemplateColumns { tracks } => StyleProp::GridTemplateColumns(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
+        StyleTag::GridTemplateRows { tracks } => StyleProp::GridTemplateRows(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
     })
 }
 

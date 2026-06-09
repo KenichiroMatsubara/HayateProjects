@@ -318,6 +318,22 @@ buf.push(*byte as f32);
                 buf.push(TAG_DEFAULT_FONT_WEIGHT as f32);
                 buf.push(*v);
             }
+            StyleProp::GridTemplateColumns(tracks) => {
+                buf.push(TAG_GRID_TEMPLATE_COLUMNS as f32);
+                buf.push(tracks.len() as f32);
+                for d in tracks.iter().copied() {
+                    buf.push(d.value);
+                    buf.push(encode_dim_unit(d.unit));
+                }
+            }
+            StyleProp::GridTemplateRows(tracks) => {
+                buf.push(TAG_GRID_TEMPLATE_ROWS as f32);
+                buf.push(tracks.len() as f32);
+                for d in tracks.iter().copied() {
+                    buf.push(d.value);
+                    buf.push(encode_dim_unit(d.unit));
+                }
+            }
         }
     }
 }

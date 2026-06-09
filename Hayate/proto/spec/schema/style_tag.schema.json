@@ -21,6 +21,7 @@
         "enum:font_style",
         "enum:text_decoration",
         "font-family",
+        "dimension-list",
         "z-index"
       ]
     },
@@ -56,7 +57,8 @@
             "enum:align_items",
             "enum:justify_content",
             "enum:font_style",
-            "enum:text_decoration"
+            "enum:text_decoration",
+            "dimension-list"
           ]
         },
         "extras": {
