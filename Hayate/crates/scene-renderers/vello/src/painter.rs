@@ -128,12 +128,24 @@ impl ScenePainter for VelloPainter<'_> {
             x: glyph.x,
             y: glyph.y,
         });
+        let transform = Affine::translate((x as f64, y as f64));
         scene
             .draw_glyphs(&font)
             .font_size(data.font_size)
             .brush(brush)
-            .transform(Affine::translate((x as f64, y as f64)))
+            .transform(transform)
             .draw(Fill::NonZero, glyphs);
+
+        use vello::kurbo::Shape;
+        for deco in &data.decorations {
+            let rect = Rect::new(
+                deco.x0 as f64,
+                (deco.y - deco.thickness * 0.5) as f64,
+                deco.x1 as f64,
+                (deco.y + deco.thickness * 0.5) as f64,
+            );
+            scene.fill(Fill::NonZero, transform, brush, None, &rect.to_path(0.1));
+        }
     }
 
     fn draw_image(

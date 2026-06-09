@@ -100,6 +100,8 @@ pub(crate) struct Element {
     pub role: Option<String>,
     /// Hayate CSS pseudo-class overrides (`:hover` / `:active` / `:focus`).
     pub pseudo_styles: PseudoStyles,
+    /// When true, suppresses hit-testing and interaction (ADR-0071).
+    pub disabled: bool,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -220,6 +222,7 @@ impl ElementTree {
             aria_label: None,
             role: None,
             pseudo_styles: PseudoStyles::default(),
+            disabled: false,
         };
         self.elements.insert(id, element);
 
@@ -248,8 +251,18 @@ impl ElementTree {
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
-            el.src = Some(url.to_string());
+            el.src = if url.is_empty() {
+                None
+            } else {
+                Some(url.to_string())
+            };
             el.src_image = None;
+        }
+    }
+
+    pub fn element_set_disabled(&mut self, id: ElementId, disabled: bool) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.disabled = disabled;
         }
     }
 
@@ -1123,6 +1136,9 @@ fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<El
         if let Some(hit) = hit_test_walk(tree, child, x, y) {
             return Some(hit);
         }
+    }
+    if tree.elements.get(&id).is_some_and(|e| e.disabled) {
+        return None;
     }
     Some(id)
 }

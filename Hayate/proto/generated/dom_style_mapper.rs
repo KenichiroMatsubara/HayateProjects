@@ -180,6 +180,22 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
         StyleProp::DefaultFontWeight(v) => {
             style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?;
         }
+        StyleProp::GridTemplateColumns(ref tracks) => {
+            let s = tracks
+            .iter()
+            .map(|d| dom_css_dim(*d))
+            .collect::<Vec<_>>()
+            .join(" ");
+            style.set_property("grid-template-columns", &s)?;
+        }
+        StyleProp::GridTemplateRows(ref tracks) => {
+            let s = tracks
+            .iter()
+            .map(|d| dom_css_dim(*d))
+            .collect::<Vec<_>>()
+            .join(" ");
+            style.set_property("grid-template-rows", &s)?;
+        }
     }
     Ok(())
 }

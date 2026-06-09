@@ -56,6 +56,8 @@ export const TAG = {
   DEFAULT_FONT_FAMILY: 35,
   DEFAULT_FONT_SIZE: 36,
   DEFAULT_FONT_WEIGHT: 37,
+  GRID_TEMPLATE_COLUMNS: 38,
+  GRID_TEMPLATE_ROWS: 39,
 } as const;
 export type TAG = typeof TAG;
 

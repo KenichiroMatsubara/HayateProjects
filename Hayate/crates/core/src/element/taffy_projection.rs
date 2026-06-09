@@ -145,6 +145,7 @@ mod tests {
             aria_label: None,
             role: None,
             pseudo_styles: Default::default(),
+            disabled: false,
         };
         (eid, el)
     }

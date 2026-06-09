@@ -1,5 +1,9 @@
 # HTML Mode のレンダリングをブラウザ CSS レイアウト方式に切り替える
 
+**Status: accepted（ADR-0016 の HTML Mode 描画パイプラインを supersede。旧 z-index 絶対座標モデルは ADR-0074 が歴史的記録）**
+
+**Date: 2026-03**
+
 ADR-0016 で確定した HTML Mode の描画アプローチ（Taffy → absolutely-positioned div）を廃止し、
 ブラウザの CSS エンジンにレイアウトを委ねる方式に切り替える。
 

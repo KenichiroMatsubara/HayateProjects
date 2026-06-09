@@ -198,15 +198,10 @@
 
     .empty { font-size: .7rem; color: #475569; text-align: center; padding: 8px; }
 
-    /* Raw-layer panel container — hidden when Element Layer mode is active */
-    .raw-only, .el-only { display: none; }
-    body.mode-el .el-only { display: block; }
-    body.mode-raw .raw-only { display: block; }
-
     .bg-row { display: flex; align-items: center; gap: 10px; font-size: .72rem; color: #94a3b8; }
   </style>
 </head>
-<body class="mode-el">
+<body>
 
   <a href="./index.html" class="back-link">← 一覧に戻る</a>
 
@@ -215,11 +210,6 @@
     <h1>Hayate — フルサンドボックス</h1>
     <p>Element tree + Taffy レイアウト + Parley テキストを Canvas Mode / HTML Mode の両方で描画</p>
   </header>
-
-  <div class="mode-toggle" id="modeToggle">
-    <button data-mode="el" class="active">Element Layer</button>
-    <button data-mode="raw">Raw Layer</button>
-  </div>
 
   <div class="pipeline" id="pipeline">
     <div class="step" id="s1"><span class="dot"></span>WebGPU 検出</div>
@@ -252,7 +242,7 @@
     </div>
 
     <!-- ── ELEMENT LAYER PANEL ── -->
-    <div class="section el-only">
+    <div class="section">
       <div class="section-title">Element を作成 · element_create(kind)</div>
       <div class="section-body">
         <div class="row">
@@ -276,7 +266,7 @@
       </div>
     </div>
 
-    <div class="section el-only">
+    <div class="section">
       <div class="section-title">Style · element_set_style(id, packed) — chip でプリセット投入</div>
       <div class="section-body">
         <div class="row">
@@ -307,7 +297,7 @@
       </div>
     </div>
 
-    <div class="section el-only">
+    <div class="section">
       <div class="section-title">Text · element_set_text(id, text)</div>
       <div class="section-body">
         <div class="row">
@@ -322,7 +312,7 @@
       </div>
     </div>
 
-    <div class="section el-only">
+    <div class="section">
       <div class="section-title">Tree · append-child / insert-before / remove</div>
       <div class="section-body">
         <div class="row">
@@ -343,31 +333,11 @@
       </div>
     </div>
 
-    <div class="section el-only">
+    <div class="section">
       <div class="section-title">Tree 一覧</div>
       <div class="section-body">
         <div class="tree-list" id="treeList">
           <div class="empty">まだ要素がありません</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── RAW LAYER PANEL ── -->
-    <div class="section raw-only">
-      <div class="section-title">Rect ノードを追加 · node_create(x, y, w, h, r, g, b, a, radius)</div>
-      <div class="section-body">
-        <div class="row">
-          <div class="field"><label>X</label><input type="number" id="rx" value="60" min="0" max="620" /></div>
-          <div class="field"><label>Y</label><input type="number" id="ry" value="60" min="0" max="340" /></div>
-          <div class="field"><label>W</label><input type="number" id="rw" value="200" min="1" max="640" /></div>
-          <div class="field"><label>H</label><input type="number" id="rh" value="120" min="1" max="360" /></div>
-          <div class="field"><label>Radius</label><input type="number" id="rr" value="12" min="0" max="180" /></div>
-          <div class="field"><label>Fill</label><input type="color" id="rcolor" value="#3b82f6" /></div>
-          <div class="field"><label>Alpha</label><input type="number" id="ralpha" value="1.0" min="0" max="1" step="0.05" /></div>
-        </div>
-        <div class="row">
-          <button class="primary" id="addBtn" disabled>矩形を追加</button>
-          <button class="danger" id="clearAllBtn" disabled>すべて削除</button>
         </div>
       </div>
     </div>
@@ -468,14 +438,10 @@
     }
 
     // ── State ─────────────────────────────────────────────────────────────
-    let mode = 'el';   // 'el' | 'raw'
     let renderer = null;
     let usingHtmlFallback = false;
     const elements = new Map(); // id -> {kind, label}
     let elementSeq = 0;
-    // Raw-layer nodes
-    const rawNodes = [];
-    let rawSeq = 0;
 
     function bgColor() { return hexToRgb01($('bgColor').value); }
     function render() {
@@ -483,13 +449,8 @@
       const [r, g, b] = bgColor();
       try {
         // Element Layer (WIT v2): timestamp-only render(), bg color via setter.
-        // Raw Layer: still `render(bg_r, bg_g, bg_b)` per its own WIT signature.
-        if (mode === 'el') {
-          renderer.set_background_color(r, g, b);
-          renderer.render(performance.now());
-        } else {
-          renderer.render(r, g, b);
-        }
+        renderer.set_background_color(r, g, b);
+        renderer.render(performance.now());
       } catch (e) { console.error('[hayate] render:', e); }
     }
 
@@ -544,82 +505,37 @@
       elements.set(t, { kind: 'text', label: `#${elementSeq} text`, raw: t });
     }
 
-    function buildInitialRawScene() {
-      const samples = [
-        { x: 40,  y: 40,  w: 220, h: 130, hex: '#3b82f6', alpha: 1.0,  radius: 16 },
-        { x: 300, y: 60,  w: 160, h: 100, hex: '#f59e0b', alpha: 0.85, radius: 8  },
-        { x: 160, y: 200, w: 300, h: 120, hex: '#10b981', alpha: 0.9,  radius: 24 },
-      ];
-      for (const s of samples) {
-        const [r,g,b] = hexToRgb01(s.hex);
-        const id = renderer.node_create(s.x, s.y, s.w, s.h, r, g, b, s.alpha, s.radius);
-        rawNodes.push({ seq: ++rawSeq, id, ...s });
-      }
-    }
-
-    // ── Initialise the renderer for the current mode ──────────────────────
     async function initRenderer() {
       step('s3', 'run');
       nextElementId = 1;
       try {
-        if (mode === 'el') {
-          if (hasWebGpuApi) {
-            $('s3-label').textContent = 'Element Layer (Canvas)';
-            overlay('⚙️', 'Element Layer (Canvas Mode) を初期化中...');
-            $('canvas').style.display = 'block';
-            $('html-surface').style.display = 'none';
-            try {
-              renderer = await waitWithProgress(
-                'Element Layer (Canvas Mode) を初期化中...',
-                mod.HayateElementRenderer.init($('canvas')),
-                'WebGPU デバイスと Vello シェーダーを初期化中'
-              );
-              usingHtmlFallback = false;
-            } catch (canvasErr) {
-              console.warn('[sandbox] Canvas init failed, falling back to HTML:', canvasErr);
-              overlay('🌐', 'Element Layer (HTML Mode) にフォールバック中...', String(canvasErr));
-              $('canvas').style.display = 'none';
-              $('html-surface').style.display = 'block';
-              renderer = mod.HayateElementHtmlRenderer.new($('html-surface'));
-              usingHtmlFallback = true;
-            }
-          } else {
-            $('s3-label').textContent = 'Element Layer (HTML)';
-            overlay('🌐', 'Element Layer (HTML Mode) を初期化中...');
+        if (hasWebGpuApi) {
+          $('s3-label').textContent = 'Element Layer (Canvas)';
+          overlay('⚙️', 'Element Layer (Canvas Mode) を初期化中...');
+          $('canvas').style.display = 'block';
+          $('html-surface').style.display = 'none';
+          try {
+            renderer = await waitWithProgress(
+              'Element Layer (Canvas Mode) を初期化中...',
+              mod.HayateElementRenderer.init($('canvas')),
+              'WebGPU デバイスと Vello シェーダーを初期化中'
+            );
+            usingHtmlFallback = false;
+          } catch (canvasErr) {
+            console.warn('[sandbox] Canvas init failed, falling back to HTML:', canvasErr);
+            overlay('🌐', 'Element Layer (HTML Mode) にフォールバック中...', String(canvasErr));
             $('canvas').style.display = 'none';
             $('html-surface').style.display = 'block';
             renderer = mod.HayateElementHtmlRenderer.new($('html-surface'));
             usingHtmlFallback = true;
           }
         } else {
-          if (hasWebGpuApi) {
-            $('s3-label').textContent = 'Raw Layer (Canvas)';
-            overlay('⚙️', 'Raw Layer (Canvas Mode) を初期化中...');
-            $('canvas').style.display = 'block';
-            $('html-surface').style.display = 'none';
-            try {
-              renderer = await waitWithProgress(
-                'Raw Layer (Canvas Mode) を初期化中...',
-                mod.HayateRenderer.init($('canvas')),
-                'WebGPU デバイスと Vello シェーダーを初期化中'
-              );
-              usingHtmlFallback = false;
-            } catch (canvasErr) {
-              console.warn('[sandbox] Raw Canvas init failed, falling back to HTML:', canvasErr);
-              overlay('🌐', 'Raw Layer (HTML Mode) にフォールバック中...', String(canvasErr));
-              $('canvas').style.display = 'none';
-              $('html-surface').style.display = 'block';
-              renderer = mod.HayateHtmlRenderer.new($('html-surface'));
-              usingHtmlFallback = true;
-            }
-          } else {
-            $('s3-label').textContent = 'Raw Layer (HTML)';
-            overlay('🌐', 'Raw Layer (HTML Mode) を初期化中...');
-            $('canvas').style.display = 'none';
-            $('html-surface').style.display = 'block';
-            renderer = mod.HayateHtmlRenderer.new($('html-surface'));
-            usingHtmlFallback = true;
-          }
+          $('s3-label').textContent = 'Element Layer (HTML)';
+          overlay('🌐', 'Element Layer (HTML Mode) を初期化中...');
+          $('canvas').style.display = 'none';
+          $('html-surface').style.display = 'block';
+          renderer = mod.HayateElementHtmlRenderer.new($('html-surface'));
+          usingHtmlFallback = true;
         }
         step('s3', 'ok');
       } catch (e) {
@@ -631,8 +547,7 @@
       step('s4', 'run');
       overlay('🎨', '初期シーンを構築中...');
       try {
-        if (mode === 'el') buildInitialElementScene();
-        else buildInitialRawScene();
+        buildInitialElementScene();
         render();
         step('s4', 'ok');
         overlayGone();
@@ -649,31 +564,6 @@
     $('renderBtn').disabled = false;
     $('renderBtn').addEventListener('click', render);
     $('bgColor').addEventListener('input', render);
-
-    // ── Mode toggle ───────────────────────────────────────────────────────
-    document.querySelectorAll('#modeToggle button').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const newMode = btn.dataset.mode;
-        if (newMode === mode) return;
-        document.querySelectorAll('#modeToggle button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        document.body.classList.toggle('mode-el', newMode === 'el');
-        document.body.classList.toggle('mode-raw', newMode === 'raw');
-        mode = newMode;
-        // Drop current renderer + state; clear any DOM nodes the HTML mode left behind.
-        renderer = null;
-        elements.clear(); elementSeq = 0;
-        rawNodes.length = 0; rawSeq = 0;
-        $('html-surface').innerHTML = '';
-        refreshSelects();
-        rebuildTreeList();
-        await initRenderer();
-        $('addBtn').disabled = mode !== 'raw';
-        $('clearAllBtn').disabled = mode !== 'raw';
-        $('elCreateBtn').disabled = mode !== 'el';
-        $('elSetRootBtn').disabled = mode !== 'el';
-      });
-    });
 
     // ── Element Layer panel wiring ───────────────────────────────────────
     function elementOptions(includeBlank = false) {
@@ -705,8 +595,6 @@
       `).join('');
     }
 
-    $('elCreateBtn').disabled = mode !== 'el';
-    $('elSetRootBtn').disabled = mode !== 'el';
     $('elCreateBtn').addEventListener('click', () => {
       const kindName = $('elKind').value;
       const kindMap = {
@@ -806,35 +694,8 @@
       render();
     });
 
-    // ── Raw Layer panel wiring ───────────────────────────────────────────
-    $('addBtn').addEventListener('click', () => {
-      if (mode !== 'raw') return;
-      const x = Number($('rx').value);
-      const y = Number($('ry').value);
-      const w = Number($('rw').value);
-      const h = Number($('rh').value);
-      const radius = Number($('rr').value);
-      const hex = $('rcolor').value;
-      const alpha = Number($('ralpha').value);
-      const [r, g, b] = hexToRgb01(hex);
-      const id = renderer.node_create(x, y, w, h, r, g, b, alpha, radius);
-      rawNodes.push({ seq: ++rawSeq, id, x, y, w, h, hex, alpha, radius });
-      render();
-    });
-
-    $('clearAllBtn').addEventListener('click', () => {
-      if (mode !== 'raw') return;
-      for (const n of rawNodes) renderer.node_remove(n.id);
-      rawNodes.length = 0;
-      render();
-    });
-
     refreshSelects();
     rebuildTreeList();
-    $('addBtn').disabled = mode !== 'raw';
-    $('clearAllBtn').disabled = mode !== 'raw';
-    $('elCreateBtn').disabled = mode !== 'el';
-    $('elSetRootBtn').disabled = mode !== 'el';
   </script>
 </body>
 </html>

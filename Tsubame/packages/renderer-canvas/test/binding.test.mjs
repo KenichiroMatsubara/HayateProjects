@@ -46,6 +46,9 @@ class StubHayate {
   element_create() {}
   set_root() {}
   element_set_text() {}
+  element_set_text_content() {}
+  element_set_src() {}
+  element_set_disabled() {}
   element_append_child() {}
   element_insert_before() {}
   element_remove() {}

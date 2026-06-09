@@ -100,6 +100,8 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::MarginBottom(_) => "margin-bottom",
         StyleProp::MarginLeft(_) => "margin-left",
         StyleProp::FlexGrow(_) => "flex-grow",
+        StyleProp::GridTemplateColumns(_) => "grid-template-columns",
+        StyleProp::GridTemplateRows(_) => "grid-template-rows",
         StyleProp::FontSize(_) => "font-size",
         StyleProp::FontFamily(_) => "font-family",
         StyleProp::FontWeight(_) => "font-weight",

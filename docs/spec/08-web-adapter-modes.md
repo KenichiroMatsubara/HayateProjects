@@ -28,19 +28,19 @@
 **規範文:** HTML Mode は Hayate CSS をブラウザ CSS に 1:1 マッピングし、レイアウト計算をブラウザ CSS エンジンに委ねる（Taffy 不経由）。絶対配置 div 方式は採らない。
 **出典:** ADR-0029（browser-css-layout）
 **状況:** ✅ — `style_packet.rs:17` `apply_props_to_dom()`→生成 `dom_style_mapper.rs`（background-color/display/flex-direction/gap 等の 1:1 写像）。HTML 経路に Taffy なし。`inject_baseline_stylesheet()` で box-sizing 等を正規化。
-**備考:** [衝突 C-8.1] 番号 `0029` を WEBA-06 と共有（番号衝突、意味的衝突ではない）。
+**備考:** —
 
 ### WEBA-05 — HTML Mode のテキストはブラウザ native 描画
 **規範文:** HTML Mode のテキストは `set_inner_text()` でブラウザ native 描画に委ね、font-family/size/color を CSS で設定する。Parley/Vello/fontique/skrifa は HTML Mode では呼ばない。
 **出典:** ADR-0028（html-mode-text-uses-browser-rendering）
 **状況:** ✅ — `flush_set_text_content():1410`（`set_inner_text`）、`flush_set_font_family():1388`。HTML 経路に Parley/Vello なし。
-**備考:** [衝突 C-8.1] 番号 `0028` を §5 TEXT-02 と共有。Canvas（Parley+Vello）と HTML（ブラウザ）でテキスト品質が異なるのは ADR-0028 が受容した設計。
+**備考:** Canvas（Parley+Vello）と HTML（ブラウザ）でテキスト品質が異なるのは ADR-0028 が受容した設計。
 
 ### WEBA-06 — HTML Mode の z-index は CSS プロパティ直書き
-**規範文:** HTML Mode は CSS `z-index` を要素に直接設定し、stacking は単一コンテナ内のブラウザ描画順に委ねる（要素は root 直下の兄弟、ネスト stacking context を作らない）。
-**出典:** ADR-0029（html-mode-zindex-as-absolute-layer）
-**状況:** ✅ — `dom_style_mapper.rs` の `ZIndex(z)`→`z-index` 設定。baseline でネスト context を作らない。
-**備考:** Canvas Mode の子再ソート（§4 REND-03）とは別経路。意図的差異。
+**規範文:** HTML Mode は CSS `z-index` を要素に直接設定し、stacking はブラウザ CSS エンジンに委ねる（`ordered_children` による再ソートは行わない）。
+**出典:** ADR-0029（browser-css-layout）, ADR-0060（z-order seam）
+**状況:** ✅ — `dom_style_mapper.rs` の `ZIndex(z)`→`z-index` 設定。`walk_resolved` は document order のまま（ADR-0060）。
+**備考:** [履歴] 旧絶対座標レイヤー方式の z-index 記述は ADR-0074（superseded）。Canvas Mode の子再ソート（§4 REND-03）とは別経路。
 
 ### WEBA-07 — HTML Mode のレイアウト差異は許容
 **規範文:** HTML Mode は CSS セマンティクス（transform/opacity の stacking、z-index scope）で Canvas Mode と差異が出る。これは「開発時 UI 確認」「非 Chromium フォールバック」用途であり、ピクセル完全一致は目標にしない。

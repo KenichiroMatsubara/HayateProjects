@@ -192,7 +192,7 @@
 
   <header>
     <h1>Hayate Demo Gallery</h1>
-    <p>GPU-native UI Substrate — Element Layer + Raw Layer のデモ集（難易度順）</p>
+    <p>GPU-native UI Substrate — Element Layer デモ集（難易度順）</p>
   </header>
 
   <div class="mode-note">
@@ -206,12 +206,12 @@
     <a class="card" href="./demo-01.html">
       <div class="card-header">
         <span class="lv-badge" style="background:#16a34a">Lv.1</span>
-        <span class="card-title">Raw Layer — 静的描画</span>
+        <span class="card-title">Element Layer — 静的描画</span>
       </div>
-      <div class="card-desc">ハードコードされた 3 つの矩形を node_create で描画する最もシンプルなデモ。コメント付きで API の全呼び出しを解説。</div>
+      <div class="card-desc">apply_mutations で 3 つの View を描画する最小デモ（ADR-0072）。</div>
       <div class="card-tags">
-        <span class="tag">Raw Layer</span>
-        <span class="tag">node_create</span>
+        <span class="tag">Element Layer</span>
+        <span class="tag">apply_mutations</span>
         <span class="tag">render</span>
         <span class="tag">静的</span>
       </div>
@@ -220,13 +220,12 @@
     <a class="card" href="./demo-02.html">
       <div class="card-header">
         <span class="lv-badge" style="background:#ca8a04">Lv.2</span>
-        <span class="card-title">Raw Layer — インタラクティブ</span>
+        <span class="card-title">Element Layer — インタラクティブ</span>
       </div>
-      <div class="card-desc">フォームで x / y / w / h / 色 / alpha / radius を指定して矩形を追加・一括削除できる。node_create / node_remove の動作確認。</div>
+      <div class="card-desc">フォームで w / h / 色 / alpha / radius を指定して View を追加・一括削除。apply_mutations の動作確認。</div>
       <div class="card-tags">
-        <span class="tag">Raw Layer</span>
-        <span class="tag">node_create</span>
-        <span class="tag">node_remove</span>
+        <span class="tag">Element Layer</span>
+        <span class="tag">apply_mutations</span>
         <span class="tag">インタラクティブ</span>
       </div>
     </a>
@@ -280,10 +279,9 @@
         <span class="lv-badge" style="background:#9333ea">Lv.6</span>
         <span class="card-title">フルサンドボックス</span>
       </div>
-      <div class="card-desc">Element Layer と Raw Layer を切り替えながら、ツリー操作・スタイル・テキスト設定を自由に試せる開発者向けサンドボックス。</div>
+      <div class="card-desc">Element Layer のツリー操作・スタイル・テキスト設定を自由に試せる開発者向けサンドボックス。</div>
       <div class="card-tags">
         <span class="tag">Element Layer</span>
-        <span class="tag">Raw Layer</span>
         <span class="tag">Tree 操作</span>
         <span class="tag">Style チップ</span>
         <span class="tag">全 API</span>
@@ -342,8 +340,8 @@
       <div class="status-row">
         <span class="status-icon">✅</span>
         <div class="status-info">
-          <span class="status-name">Raw Layer 描画</span>
-          <span class="status-note">node_create / node_remove / render — Canvas + HTML 両モード</span>
+          <span class="status-name">Raw Layer 公開 API</span>
+          <span class="status-note">ADR-0072 で棄却 — Element Layer のみ公開</span>
         </div>
         <span class="status-badge badge-ok">実装済み</span>
       </div>

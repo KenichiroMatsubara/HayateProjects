@@ -23,5 +23,3 @@ mod wasm_impl;
 
 #[cfg(target_arch = "wasm32")]
 pub use element_renderer::*;
-#[cfg(target_arch = "wasm32")]
-pub use wasm_impl::*;

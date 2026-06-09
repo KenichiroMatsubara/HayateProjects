@@ -16,9 +16,9 @@
 
 ### TEXT-02 — バンドルデフォルトフォント
 **規範文:** Canvas Mode はシステムフォント不可のため、CJK 対応のデフォルトフォントをバイナリに `include_bytes!` で埋め込み、`ElementTree::new()` で `FontContext` に登録する。未知のファミリ名は CSS フォントスタック `"<requested>, <default>"` でデフォルトにフォールバックする。
-**出典:** ADR-0028（canvas-bundled-fonts-default-fallback）, ADR-0005
+**出典:** ADR-0073（canvas-bundled-fonts-default-fallback）, ADR-0005
 **状況:** ✅ — `text.rs:17` `DEFAULT_FONT_FAMILY`、`build_text_layout()` が `"{resolved}, {DEFAULT}"` の stack を構成、`resolve_generic_family()` で generic keyword 解決。
-**備考:** [衝突 C-8.1] このファイルは番号 `0028` を `0028-html-mode-text-uses-browser-rendering`（§8 WEBA-05）と共有する。意味的衝突ではなく番号衝突。
+**備考:** —
 
 ### TEXT-03 — CJK .notdef 検出による動的調達
 **規範文:** glyph run 走査で `.notdef`（`glyph.id==0`）を検出し、コードポイント範囲（CJK / かな / ハングル / アラビア / タイ / デーヴァナーガリー / ヘブライ等）からファミリ名を逆引きして `FetchFont { family }` を発火する。同一フレームの重複は `HashSet` で1回に抑制し、登録後 `fonts_dirty` で全テキストを再シェーピングする。

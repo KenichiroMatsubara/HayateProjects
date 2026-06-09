@@ -10,7 +10,7 @@ import type {
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
 import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
-import { asElementId } from '@tsubame/renderer-protocol';
+import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 import { DOM_EVENT_NAME } from './event-mapping.js';
@@ -124,6 +124,7 @@ export class DomRenderer implements IRenderer {
   }
 
   setProperty(id: ElementId, name: string, value: unknown): void {
+    assertKnownElementProperty(name);
     const target = this.node(id);
 
     switch (name) {
@@ -152,19 +153,7 @@ export class DomRenderer implements IRenderer {
           else target.removeAttribute('src');
         }
         return;
-      default:
-        break;
     }
-
-    if (value == null || value === false) {
-      target.removeAttribute(name);
-      return;
-    }
-    if (value === true) {
-      target.setAttribute(name, '');
-      return;
-    }
-    target.setAttribute(name, String(value));
   }
 
   addEventListener(
@@ -218,7 +207,7 @@ function pseudoStyleDeclarations(patch: StylePatch): string {
     if (value === undefined || value === null) continue;
     const entry = CATALOG_BY_KEY[k as string];
     if (entry === undefined) continue;
-    parts.push(`${entry.cssName}:${formatDomCSSValue(entry, value)}`);
+    parts.push(`${entry.cssProperty}:${formatDomCSSValue(entry, value)}`);
   }
   return parts.join(';');
 }

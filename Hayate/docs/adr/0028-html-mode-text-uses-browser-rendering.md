@@ -1,5 +1,9 @@
 # HTML Mode のテキスト描画はブラウザネイティブレンダリングを使う
 
+**Status: accepted**
+
+**Date: 2026-03**
+
 ## Context
 
 Canvas Mode では Parley（シェイピング・行折り返し）→ Vello（GPU グリフ描画）という自前のテキストパイプラインを使う。

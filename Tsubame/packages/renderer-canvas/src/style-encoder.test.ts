@@ -112,6 +112,32 @@ describe('encodeStylePatch – dimension properties', () => {
     expect(out[1]).toBe(0);
     expect(out[2]).toBe(2);
   });
+
+  it('encodes gridTemplateColumns with fr tracks', () => {
+    const out: number[] = [];
+    encodeStylePatch({ gridTemplateColumns: ['1fr', '1fr'] }, out);
+    expect(out).toEqual([
+      TAG.GRID_TEMPLATE_COLUMNS,
+      2,
+      1,
+      3,
+      1,
+      3,
+    ]);
+  });
+
+  it('encodes gridTemplateRows with px tracks', () => {
+    const out: number[] = [];
+    encodeStylePatch({ gridTemplateRows: ['40px', 60] }, out);
+    expect(out).toEqual([
+      TAG.GRID_TEMPLATE_ROWS,
+      2,
+      40,
+      0,
+      60,
+      0,
+    ]);
+  });
 });
 
 describe('encodeStylePatch – enum properties', () => {

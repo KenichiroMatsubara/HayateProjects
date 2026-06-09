@@ -3,8 +3,8 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
-export type DomFormat = 'dimension' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
+export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
   readonly cssName: string;
@@ -482,8 +482,8 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "unsetKind": null,
     "wireKind": "color",
     "domFormat": "color",
-    "cssName": "defaultColor",
-    "cssProperty": "default-color",
+    "cssName": "color",
+    "cssProperty": "color",
     "targets": [
       "packet",
       "css"
@@ -495,8 +495,8 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "unsetKind": null,
     "wireKind": "fontFamily",
     "domFormat": "string",
-    "cssName": "defaultFontFamily",
-    "cssProperty": "default-font-family",
+    "cssName": "fontFamily",
+    "cssProperty": "font-family",
     "targets": [
       "packet",
       "css"
@@ -508,8 +508,8 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "unsetKind": null,
     "wireKind": "f32",
     "domFormat": "px",
-    "cssName": "defaultFontSize",
-    "cssProperty": "default-font-size",
+    "cssName": "fontSize",
+    "cssProperty": "font-size",
     "targets": [
       "packet",
       "css"
@@ -520,9 +520,35 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "tag": 37,
     "unsetKind": null,
     "wireKind": "f32",
-    "domFormat": "px",
-    "cssName": "defaultFontWeight",
-    "cssProperty": "default-font-weight",
+    "domFormat": "number",
+    "cssName": "fontWeight",
+    "cssProperty": "font-weight",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gridTemplateColumns",
+    "tag": 38,
+    "unsetKind": null,
+    "wireKind": "dimensionList",
+    "domFormat": "dimension-list",
+    "cssName": "gridTemplateColumns",
+    "cssProperty": "grid-template-columns",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gridTemplateRows",
+    "tag": 39,
+    "unsetKind": null,
+    "wireKind": "dimensionList",
+    "domFormat": "dimension-list",
+    "cssName": "gridTemplateRows",
+    "cssProperty": "grid-template-rows",
     "targets": [
       "packet",
       "css"
@@ -557,10 +583,19 @@ function formatDimension(value: HayateDimension): string {
   return typeof value === "number" ? `${value}px` : value;
 }
 
+function formatDimensionList(value: unknown): string {
+  if (!Array.isArray(value)) {
+    throw new Error("DOMRenderer: grid track list must be an array");
+  }
+  return value.map((item) => formatDimension(item as HayateDimension)).join(" ");
+}
+
 export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
   switch (entry.domFormat) {
     case "dimension":
       return formatDimension(value as HayateDimension);
+    case "dimension-list":
+      return formatDimensionList(value);
     case "px":
       return `${value}px`;
     case "integer":

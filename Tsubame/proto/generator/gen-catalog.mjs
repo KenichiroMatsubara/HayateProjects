@@ -5,26 +5,18 @@ import {
   loadProtocolSpec,
   tagToPatchKey,
   toCamelCase,
-  toKebabCase,
 } from '@hayate/protocol-spec/load';
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '../generated');
 const jsonOutPath = join(outDir, 'catalog.json');
 const tsOutPath = join(outDir, 'catalog.ts');
 
-/** DOM-only side effects not represented in protocol spec wire format. */
-const DOM_EXTRAS = {
-  borderWidth: [
-    {
-      cssName: 'borderStyle',
-      cssProperty: 'border-style',
-      whenPositive: 'solid',
-      whenZero: 'none',
-    },
-  ],
-};
+function propertyToCamelCase(kebab) {
+  return kebab.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+}
 
 function wireKind(tag) {
+  if (tag.encodeFrom === 'dimension-list') return 'dimensionList';
   if (tag.name === 'FONT_FAMILY' || tag.name === 'DEFAULT_FONT_FAMILY') return 'fontFamily';
   if (tag.name === 'Z_INDEX') return 'zIndex';
   const param = (tag.params ?? [])[0];
@@ -53,26 +45,19 @@ function wireKind(tag) {
   }
 }
 
-function domFormat(tag, kind) {
-  if (kind === 'dimension') return 'dimension';
-  if (kind === 'color') return 'color';
-  if (kind === 'fontFamily') return 'string';
-  if (kind === 'zIndex') return 'integer';
-  if (
-    kind === 'display' ||
-    kind === 'flexDirection' ||
-    kind === 'alignItems' ||
-    kind === 'justifyContent' ||
-    kind === 'fontStyle' ||
-    kind === 'textDecoration'
-  ) {
-    return 'enum';
-  }
-  if (kind === 'f32') {
-    if (tag.name === 'OPACITY' || tag.name === 'FLEX_GROW' || tag.name === 'FONT_WEIGHT') return 'number';
-    return 'px';
-  }
-  return 'number';
+function domFormatFromSpec(format) {
+  if (format.startsWith('enum:')) return 'enum';
+  return format;
+}
+
+function domExtrasFromSpec(extras) {
+  if (!extras?.length) return undefined;
+  return extras.map((extra) => ({
+    cssName: propertyToCamelCase(extra.property),
+    cssProperty: extra.property,
+    whenPositive: extra.whenPositive,
+    whenZero: extra.whenZero,
+  }));
 }
 
 export function generateCatalog() {
@@ -90,17 +75,21 @@ export function generateCatalog() {
     const patchKey = tagToPatchKey(tag.name);
     const kind = wireKind(tag);
     const unset = unsetByPatchKey.get(patchKey);
+    const domCss = tag.domCss;
+    if (domCss == null) {
+      throw new Error(`style_tags.${tag.name}: missing domCss`);
+    }
     const entry = {
       patchKey,
       tag: tag.value,
       unsetKind: unset ? unset.value : null,
       wireKind: kind,
-      domFormat: domFormat(tag, kind),
-      cssName: patchKey,
-      cssProperty: toKebabCase(patchKey),
+      domFormat: domFormatFromSpec(domCss.format),
+      cssName: propertyToCamelCase(domCss.property),
+      cssProperty: domCss.property,
       targets: ['packet', 'css'],
     };
-    const extras = DOM_EXTRAS[patchKey];
+    const extras = domExtrasFromSpec(domCss.extras);
     if (extras) entry.domExtras = extras;
     return entry;
   });
@@ -114,8 +103,8 @@ export function generateCatalog() {
     '',
     "import type { HayateDimension } from '@tsubame/renderer-protocol';",
     '',
-    "export type WireKind = 'color' | 'dimension' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
-    "export type DomFormat = 'dimension' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
+    "export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
+    "export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
     '',
     'export interface DomExtra {',
     '  readonly cssName: string;',
@@ -165,10 +154,19 @@ export function generateCatalog() {
     '  return typeof value === "number" ? `${value}px` : value;',
     '}',
     '',
+    'function formatDimensionList(value: unknown): string {',
+    '  if (!Array.isArray(value)) {',
+    '    throw new Error("DOMRenderer: grid track list must be an array");',
+    '  }',
+    '  return value.map((item) => formatDimension(item as HayateDimension)).join(" ");',
+    '}',
+    '',
     'export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {',
     '  switch (entry.domFormat) {',
     '    case "dimension":',
     '      return formatDimension(value as HayateDimension);',
+    '    case "dimension-list":',
+    '      return formatDimensionList(value);',
     '    case "px":',
     '      return `${value}px`;',
     '    case "integer":',

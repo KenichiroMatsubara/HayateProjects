@@ -11,7 +11,7 @@ pub use element::{
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PseudoState, ResolvedElement,
     StyleProp, StylePropKind, TextDecorationValue,
 };
-pub use node::{Node, NodeId, NodeKind, SceneGraph, TextRunData};
+pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
 pub use render::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage,
     RenderImageAlphaType, RenderImageFormat, ScenePainter, SceneRecorder, render_scene_graph,

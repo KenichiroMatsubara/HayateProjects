@@ -1373,7 +1373,7 @@ fn resolved_elements_returns_absolute_positions() {
     assert!((re.height - 50.0).abs() < 0.5);
 }
 
-// ── ADR-0028: Canvas bundled fonts ───────────────────────────────────────
+// ── ADR-0073: Canvas bundled fonts ───────────────────────────────────────
 
 #[test]
 fn default_font_family_constant_is_noto_sans() {

@@ -232,6 +232,21 @@ fn draw_text_run(
 
         pixmap.fill_path(&path, &paint, FillRule::Winding, glyph_transform, mask);
     }
+
+    for deco in &data.decorations {
+        if let Some(rect) = tiny_skia::Rect::from_xywh(
+            run_x + deco.x0,
+            run_y + deco.y - deco.thickness * 0.5,
+            (deco.x1 - deco.x0).max(0.0),
+            deco.thickness,
+        ) {
+            let mut pb = PathBuilder::new();
+            pb.push_rect(rect);
+            if let Some(path) = pb.finish() {
+                pixmap.fill_path(&path, &paint, FillRule::Winding, transform, mask);
+            }
+        }
+    }
 }
 
 fn draw_image(

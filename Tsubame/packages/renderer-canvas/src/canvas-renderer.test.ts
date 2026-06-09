@@ -9,10 +9,25 @@ class StubHayate implements RawHayate {
   listenerSeq = 1;
   registeredListeners: Array<{ elementId: number; eventKind: number; listenerId: number }> =
     [];
+  textContentCalls: Array<[number, string]> = [];
+  textCalls: Array<[number, string]> = [];
+  srcCalls: Array<[number, string]> = [];
+  disabledCalls: Array<[number, boolean]> = [];
 
   element_create(): void {}
   set_root(): void {}
-  element_set_text(): void {}
+  element_set_text(id: number, text: string): void {
+    this.textCalls.push([id, text]);
+  }
+  element_set_text_content(id: number, text: string): void {
+    this.textContentCalls.push([id, text]);
+  }
+  element_set_src(id: number, url: string): void {
+    this.srcCalls.push([id, url]);
+  }
+  element_set_disabled(id: number, disabled: boolean): void {
+    this.disabledCalls.push([id, disabled]);
+  }
   element_get_text(): string {
     return '';
   }
@@ -124,6 +139,35 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     hayate.events = [[1, 0, 3, 0, 0]];
     sched.tick();
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('throws on unknown setProperty names (ADR-0071)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const id = renderer.createElement('view');
+    expect(() => renderer.setProperty(id, 'className', 'x')).toThrow(
+      /Unknown element property/,
+    );
+  });
+
+  it('routes known setProperty names to Hayate (ADR-0071)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const input = renderer.createElement('text-input');
+    const image = renderer.createElement('image');
+
+    renderer.setProperty(input, 'value', 'hi');
+    renderer.setProperty(input, 'placeholder', 'enter');
+    renderer.setProperty(input, 'disabled', true);
+    renderer.setProperty(image, 'src', 'https://example.com/x.png');
+    sched.tick();
+
+    expect(hayate.textContentCalls).toEqual([[1, 'hi']]);
+    expect(hayate.textCalls).toEqual([[1, 'enter']]);
+    expect(hayate.disabledCalls).toEqual([[1, true]]);
+    expect(hayate.srcCalls).toEqual([[2, 'https://example.com/x.png']]);
   });
 
   it('unsubscribe stops delivery dispatch', () => {

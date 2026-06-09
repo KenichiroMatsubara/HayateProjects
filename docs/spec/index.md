@@ -65,14 +65,10 @@
 ### ★ 要判断（grill エスカレーション対象）
 **現在 0 件** — 4 件の要判断（C-2.1 / C-4.1 / C-10.5 / C-10.6）はすべて grill で決着（下記 [解決]）。残る 🟡/⬜ は設計確定済みの実装作業のみ。
 
-### [衝突]
-| ID | 内容 | 対応 |
-|---|---|---|
-| C-8.1 | ADR 番号衝突: `0028`×2（canvas-bundled-fonts / html-mode-text）, `0029`×2（html-css-layout / html-zindex） | slug参照で曖昧性除去。物理改番は archive フェーズの別タスク |
-
 ### [履歴]（自動解決済み）
 | ID | supersede/amend | 解決先 |
 |---|---|---|
+| C-8.1 | ADR 番号衝突: `0028`×2 / `0029`×2 → `0073`（canvas fonts）/ `0074`（html z-index 歴史）に改番 | §5 TEXT-02 / §8 WEBA-04〜06 |
 | C-0.1 | Tsubame 0001 独立リポ → ROOT 0001 モノレポ（アーキ分離は維持） | SYS-01 |
 | C-1.1 | 「wgpu唯一」の文言 vs tiny-skia 併存（GPU層の規範であり CPU fallback と非矛盾） | CORE-02 / REND-11 |
 | C-7.1 | 0022 上位層所有 → 0046/0053 core集約（CONTEXT.md が0022参照する軽微drift要修正） | SCR-01 |

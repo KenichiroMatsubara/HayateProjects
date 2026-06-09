@@ -1,6 +1,6 @@
 use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementId, ElementKind, ElementTree,
-    FlexDirectionValue, JustifyValue, StyleProp,
+    FlexDirectionValue, JustifyValue, StyleProp, TextDecorationValue,
 };
 
 use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
@@ -350,6 +350,90 @@ fn check_display_grid(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 10, 10), "display:grid child visible");
 }
 
+fn build_grid_template_columns_fr() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 50);
+    let left = child_view(&mut tree, 51);
+    let right = child_view(&mut tree, 52);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Grid),
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+            StyleProp::GridTemplateColumns(vec![Dimension::fr(1.0), Dimension::fr(1.0)]),
+        ],
+    );
+    tree.element_append_child(root, left);
+    tree.element_append_child(root, right);
+    tree.element_set_style(
+        left,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        right,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_grid_template_columns_fr(data: &[u8]) {
+    let left = pixel(data, CANVAS_W, 20, 25);
+    let right = pixel(data, CANVAS_W, 75, 25);
+    assert_channel_min(left, 0, 200, "grid 1fr left column red");
+    assert_channel_max(left, 1, 30, "grid 1fr left column red");
+    assert_channel_min(right, 1, 200, "grid 1fr right column green");
+    assert_channel_max(right, 0, 30, "grid 1fr right column green");
+}
+
+fn build_grid_template_columns_px() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 53);
+    let left = child_view(&mut tree, 54);
+    let right = child_view(&mut tree, 55);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Grid),
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+            StyleProp::GridTemplateColumns(vec![Dimension::px(35.0), Dimension::px(65.0)]),
+        ],
+    );
+    tree.element_append_child(root, left);
+    tree.element_append_child(root, right);
+    tree.element_set_style(
+        left,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        right,
+        &[
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_grid_template_columns_px(data: &[u8]) {
+    let left = pixel(data, CANVAS_W, 15, 25);
+    let right = pixel(data, CANVAS_W, 70, 25);
+    assert_channel_min(left, 0, 200, "grid px left column red");
+    assert_channel_max(left, 2, 30, "grid px left column red");
+    assert_channel_min(right, 2, 200, "grid px right column blue");
+    assert_channel_max(right, 0, 30, "grid px right column blue");
+}
+
 fn build_flex_direction() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 26);
@@ -689,6 +773,46 @@ fn check_font_weight(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 4, 20), "font-weight bold renders");
 }
 
+fn build_text_decoration_underline() -> ElementTree {
+    text_tree(&[
+        StyleProp::Color(Color::new(0.0, 0.0, 0.0, 1.0)),
+        StyleProp::TextDecoration(TextDecorationValue::Underline),
+    ])
+}
+
+fn check_text_decoration_underline(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 4, 20), "underline glyph body");
+    assert_not_clear(pixel(data, CANVAS_W, 4, 24), "underline decoration below glyph");
+}
+
+fn build_text_decoration_line_through() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 62);
+    let text = child_text(&mut tree, 63);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
+    );
+    tree.element_append_child(root, text);
+    tree.element_set_style(
+        text,
+        &[
+            StyleProp::FontSize(24.0),
+            StyleProp::Color(Color::new(0.0, 0.0, 0.0, 1.0)),
+            StyleProp::TextDecoration(TextDecorationValue::LineThrough),
+        ],
+    );
+    tree.element_set_text(text, "O");
+    tree
+}
+
+fn check_text_decoration_line_through(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 8, 35), "line-through decoration ink");
+}
+
 // ── stacking / flex ─────────────────────────────────────────────────────
 
 fn build_z_index() -> ElementTree {
@@ -831,6 +955,16 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         check: check_display_grid,
     },
     CssPixelCase {
+        css_property: "grid-template-columns",
+        build: build_grid_template_columns_fr,
+        check: check_grid_template_columns_fr,
+    },
+    CssPixelCase {
+        css_property: "grid-template-columns-px",
+        build: build_grid_template_columns_px,
+        check: check_grid_template_columns_px,
+    },
+    CssPixelCase {
         css_property: "flex-direction",
         build: build_flex_direction,
         check: check_flex_direction,
@@ -921,6 +1055,16 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         check: check_font_weight,
     },
     CssPixelCase {
+        css_property: "text-decoration-underline",
+        build: build_text_decoration_underline,
+        check: check_text_decoration_underline,
+    },
+    CssPixelCase {
+        css_property: "text-decoration-line-through",
+        build: build_text_decoration_line_through,
+        check: check_text_decoration_line_through,
+    },
+    CssPixelCase {
         css_property: "z-index",
         build: build_z_index,
         check: check_z_index,
@@ -972,6 +1116,7 @@ mod catalog_coverage {
         "color",
         "font-family",
         "font-weight",
+        "text-decoration",
         "z-index",
         "flex-grow",
     ];
@@ -984,6 +1129,7 @@ mod catalog_coverage {
                     c.css_property == *prop
                         || (c.css_property == "display-none" && *prop == "display")
                         || (c.css_property == "display-grid" && *prop == "display")
+                        || (c.css_property.starts_with("text-decoration-") && *prop == "text-decoration")
                 }),
                 "missing pixel case for {prop}"
             );

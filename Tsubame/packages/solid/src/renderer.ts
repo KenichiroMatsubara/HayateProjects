@@ -4,6 +4,7 @@ import type {
   EventHandler,
   StylePatch,
 } from '@tsubame/renderer-protocol';
+import { assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import { splitHayateStyle } from '@tsubame/renderer-protocol';
 import { activeRenderer } from './active-renderer.js';
 import { createElementNode, type TsubameNode } from './node.js';
@@ -104,6 +105,7 @@ const {
     }
 
     if (name === 'children' || name === 'ref') return;
+    assertKnownElementProperty(name);
     r.setProperty(node.id, name, value);
   },
 
