@@ -143,7 +143,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-20 — tag→CSS DOM 写像は spec が所有し両側生成
 **規範文:** Hayate CSS tag → ブラウザ CSS の DOM 写像（CSS プロパティ名・値フォーマット・`DOM_EXTRAS` 副作用）は `style_tags.json` の各 entry の `domCss`（`{ property, format, extras }`、DOM 写像なしは `null`）が単一正本。`dom_style_mapper.rs`（Rust・Hayate HTML Mode）と `catalog.ts`（TS・Tsubame DOM Renderer）を spec から生成し、Rust generator のハンドコード dispatch と `gen-catalog.mjs` の `DOM_EXTRAS` config を撤去する。
 **出典:** ADR-0070（ADR-0049/0055 の単一正本を DOM 写像まで拡張）
-**状況:** ⬜未実装 — 設計確定。現状は tag→CSS が `dom_style_mapper.rs`（Rust generator ハンドコード）と `catalog.ts`（`gen-catalog.mjs` config の `DOM_EXTRAS`）に二分。`style_tags.json` への `domCss` 追加・両 generator の spec 駆動化・`DOM_EXTRAS` の spec 移管が残タスク。
+**状況:** ✅ — `style_tags.json` 全 entry に `domCss`（写像なしは省略可）。`proto/generator/src/lib.rs` が `dom_style_mapper.rs`（Rust・Hayate HTML Mode）、`gen-catalog.mjs` が `catalog.ts`（TS・Tsubame DOM Renderer）を spec 駆動生成。Rust ハンドコード dispatch と `gen-catalog.mjs` の `DOM_EXTRAS` config は撤去済み。parity テスト `hayate-css-parity.test.ts`。
 **備考:** DOM 写像は web 専用だが、単一化で Hayate HTML Mode と Tsubame DOM Renderer が一致し web の Canvas↔DOM デザイン比較（ADR-0012）が信用できる。
 
 ---
@@ -152,8 +152,8 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 18 | PROTO-01〜08, 10〜19 |
+| ✅実装済み | 19 | PROTO-01〜08, 10〜20 |
 | 🟡部分 | 1 | PROTO-09 |
-| ⬜未実装 | 1 | PROTO-20（tag→CSS DOM 写像の spec 単一正本、ADR-0070） |
+| ⬜未実装 | 0 | — |
 
-**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き parser 疑い）と PROTO-20（DOM 写像の単一正本化、ADR-0070）。
+**所見:** §10 の wire 契約は実装完了。残るギャップは PROTO-09（手書き `hayate.ts` parser の dead code 整理）のみ。

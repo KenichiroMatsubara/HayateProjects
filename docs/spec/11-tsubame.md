@@ -16,8 +16,8 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 ### TSUB-02 — Renderer Protocol（IRenderer）／property は閉じた語彙
 **規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・property・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。**element property は閉じた typed 語彙**とし、既知の意味プロパティ（`value`/`placeholder`/`disabled`/`src`、`aria-label`/`role` は first-class 経由）を両 renderer が実装する。**未知 property 名はエラー**（任意 HTML 属性のフォールバックは禁止＝ELEM-01 のタグ禁止と同格）。
 **出典:** Tsubame ADR-0002、ADR-0071（property 閉じた語彙）
-**状況:** ⬜未実装 — interface は `renderer-protocol/src/renderer.ts` に定義済だが、`setProperty` が untyped エスケープハッチで実装非対称：DOM Renderer は4意味プロパティ＋任意 `setAttribute` フォールバック（`dom-renderer.ts:126,159–167`）、Canvas Renderer は no-op（`canvas-renderer.ts:99`）で silent drop。意味プロパティの first-class 化（両 renderer）・未知 property の throw（build-time 型＋runtime、`REJECTED_EVENT_PROPS` パターン）・DOM の任意 attr 撤去・`disabled` state 新設が残タスク。
-**備考:** ADR-0071。`aria` は first-class（`element_set_aria_label`/`role`）経由のみ。setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（別改善）。
+**状況:** 🟡 — `property.ts` の `ELEMENT_PROPERTY_NAMES`（`value`/`placeholder`/`disabled`/`src`）と `assertKnownElementProperty`（未知 throw）を DOM/Canvas renderer と `tsubame-solid` が共有（`dom-renderer.property.test.ts` / `canvas-renderer.test.ts`）。DOM の任意 `setAttribute` フォールバック撤去済み。Canvas の silent drop 撤去済み。**残:** `aria-label`/`role` の first-class `IRenderer` API と Canvas wire 経路（Hayate WASM の `element_set_aria_label`/`element_set_role` は存在するが Tsubame 未接続。`setProperty('aria-label')` は意図的に throw）。
+**備考:** ADR-0071。setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（別改善）。
 
 ### TSUB-03 — DOM Renderer（CSR、Hayate 不使用）
 **規範文:** DOM Renderer は HTML 直接操作で CSR を行い、Hayate（WASM）を一切使わない。element-kind を HTML tag に 1:1 マップ（view→div / text→span / button→button / text-input→input / image→img / scroll-view→div）し、各要素に `data-tsubame-id` を付与して `ElementId` を保持する。
@@ -55,5 +55,5 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 5 | TSUB-01, 03, 04, 06, 07 |
-| 🟡部分 | 1 | TSUB-05（solid のみ実装、vue/react 未実装） |
-| ⬜未実装 | 1 | TSUB-02（property を閉じた語彙に・未知はエラー、ADR-0071） |
+| 🟡部分 | 2 | TSUB-02（property 閉じ語彙・aria first-class 未接続、ADR-0071）、TSUB-05（solid のみ、vue/react 未実装） |
+| ⬜未実装 | 0 | — |
