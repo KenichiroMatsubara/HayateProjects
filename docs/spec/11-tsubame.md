@@ -14,7 +14,7 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **備考:** [履歴 C-11.2] Hayate ADR-0038「Tsubame を signal 統一ランタイムに」は ADR-0040 が supersede（記法差で adapter 間共有不可、Vue/React ecosystem が全滅するため）。
 
 ### TSUB-02 — Renderer Protocol（IRenderer）／property は閉じた語彙
-**規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・property・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。**element property は閉じた typed 語彙**とし、既知の意味プロパティ（`value`/`placeholder`/`disabled`/`src`、`aria-label`/`role` は first-class 経由）を両 renderer が実装する。**未知 property 名はエラー**（任意 HTML 属性のフォールバックは禁止＝ELEM-01 のタグ禁止と同格）。
+**規範文:** `IRenderer` は element 作成・ツリー操作（appendChild/insertBefore/removeChild/setRoot）・スタイル（setStyle/setPseudoStyle/setText）・property・イベント購読・resize を抽象化する。adapter はこの interface を通じてのみ描画し、DOM か Canvas かを意識しない。**element property は閉じた typed 語彙**とし、既知の意味プロパティ（現状 `value`/`placeholder`/`disabled`/`src`）を両 renderer が実装する。`aria-label`/`role` は first-class API 経由で接続する設計だが**未実装**（下記 状況）。**未知 property 名はエラー**（任意 HTML 属性のフォールバックは禁止＝ELEM-01 のタグ禁止と同格）。
 **出典:** Tsubame ADR-0002、ADR-0071（property 閉じた語彙）
 **状況:** 🟡 — `property.ts` の `ELEMENT_PROPERTY_NAMES`（`value`/`placeholder`/`disabled`/`src`）と `assertKnownElementProperty`（未知 throw）を DOM/Canvas renderer と `tsubame-solid` が共有（`dom-renderer.property.test.ts` / `canvas-renderer.test.ts`）。DOM の任意 `setAttribute` フォールバック撤去済み。Canvas の silent drop 撤去済み。**残:** `aria-label`/`role` の first-class `IRenderer` API と Canvas wire 経路（Hayate WASM の `element_set_aria_label`/`element_set_role` は存在するが Tsubame 未接続。`setProperty('aria-label')` は意図的に throw）。
 **備考:** ADR-0071。setPseudoStyle のキー単位 API はアダプタ側に分割ロジックを漏らす（別改善）。

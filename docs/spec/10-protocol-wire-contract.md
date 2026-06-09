@@ -35,7 +35,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-04 — apply_mutations 署名
 **規範文:** `apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[])` の3引数。hot path（1回/frame）のため typed array で転送効率を最優先する。
 **出典:** ADR-0052（supersedes ADR-0039 の2引数署名）
-**状況:** ✅ — Rust `element_renderer.rs:640`、TS `hayate-mutation-packet.ts:181`。
+**状況:** ✅ — Rust `element_renderer.rs:504`、TS `hayate-mutation-packet.ts:181`。
 **備考:** [履歴] 0039 は `(ops, styles)` の2引数だった。string table 導入（PROTO-07）で `texts` を追加。
 
 ### PROTO-05 — ops 固定長レコード
@@ -70,7 +70,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 **規範文:** encode/decode のアルゴリズムを spec から生成する（Rust: encode + decode、TS: encode）。手書き codec shim は持たない。`style_tags.encodeFrom` が TS 入力変換規則を spec 化する。
 **出典:** ADR-0055
 **状況:** 🟡 — 生成 codec は両側に存在（`Hayate/proto/generated/codec.rs`、`Tsubame/proto/generated/codec.ts`）。ただし手書き `renderer-canvas/src/hayate.ts` に `parseColor`/`parseDimension` が残存し、生成 codec と二重定義の疑い（ADR-0055 Task 4.3「dead code 削除を判断」が未完）。
-**備考:** 残存 parser が生成 codec に吸収済みなら削除、テスト専用なら明示。要コード精査。
+**備考:** 精査結果（2026-06-09）— `hayate.ts` の `parseColor`/`parseDimension` は生成 `codec.ts` 版と byte 一致の重複で、リポ内のどこからも import されていない（package `index.ts` から export のみ）。生成 codec に吸収済みの dead code。削除が筋だが exported package API のため除去は外部影響確認のうえ別途（C5 フォローアップ）。
 
 ### PROTO-10 — codec 検証（apply_mutations 方向, C1/C2）
 **規範文:** `proto/spec/fixtures/{ops,style}_encode.json` を期待 wire の正本とし、Rust が roundtrip（C1: wire→decode→encode）、TS が encode 出力照合（C2）で両側を fixture に固定する。
@@ -91,7 +91,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-12 — delivery poll（export-only）
 **規範文:** Hayate は host へ import callback しない。`register_listener(element_id, event_kind) -> ListenerId` を export し、runtime が bubble dispatch 後にキューへ Event Delivery `{ listener_id, event }` を積む。host は `poll_events()` で drain し `ListenerId` に紐づく handler を実行する。
 **出典:** ADR-0018, ADR-0053
-**状況:** ✅ — `register_listener` export、delivery encode は生成 `protocol.rs:804-815`（`encode_events` / delivery 分岐）。
+**状況:** ✅ — `register_listener` export、delivery encode は生成 `protocol.rs:972`（`encode_events`）/ `:980`（`encode_deliveries`）。
 **備考:** [履歴] 0018 の raw event poll から 0053 で delivery poll へ進化（export-only 原則は維持）。
 
 ### PROTO-13 — poll_events の形状
