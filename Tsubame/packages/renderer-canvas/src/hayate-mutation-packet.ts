@@ -15,6 +15,9 @@ import {
   appendRemove,
   appendSetStyle,
   appendSetText,
+  appendSetTextContent,
+  appendSetDisabled,
+  appendSetSrc,
   appendUnsetStyle,
   encodeStylePatch,
   unsetKindsOf,
@@ -45,6 +48,17 @@ type SemanticMutation =
       readonly style: StylePatch;
     }
   | { readonly kind: 'setText'; readonly id: ElementId; readonly text: string }
+  | {
+      readonly kind: 'setTextContent';
+      readonly id: ElementId;
+      readonly text: string;
+    }
+  | {
+      readonly kind: 'setDisabled';
+      readonly id: ElementId;
+      readonly disabled: boolean;
+    }
+  | { readonly kind: 'setSrc'; readonly id: ElementId; readonly url: string }
   | {
       readonly kind: 'setPseudoStyle';
       readonly id: ElementId;
@@ -92,6 +106,18 @@ export class HayateMutationPacket {
 
   enqueueSetText(id: ElementId, text: string): void {
     this.mutations.push({ kind: 'setText', id, text });
+  }
+
+  enqueueSetTextContent(id: ElementId, text: string): void {
+    this.mutations.push({ kind: 'setTextContent', id, text });
+  }
+
+  enqueueSetDisabled(id: ElementId, disabled: boolean): void {
+    this.mutations.push({ kind: 'setDisabled', id, disabled });
+  }
+
+  enqueueSetSrc(id: ElementId, url: string): void {
+    this.mutations.push({ kind: 'setSrc', id, url });
   }
 
   enqueueSetPseudoStyle(
@@ -160,6 +186,21 @@ export class HayateMutationPacket {
           const textIndex = texts.length;
           texts.push(mutation.text);
           appendSetText(ops, mutation.id as number, textIndex);
+          break;
+        }
+        case 'setTextContent': {
+          const textIndex = texts.length;
+          texts.push(mutation.text);
+          appendSetTextContent(ops, mutation.id as number, textIndex);
+          break;
+        }
+        case 'setDisabled':
+          appendSetDisabled(ops, mutation.id as number, mutation.disabled ? 1 : 0);
+          break;
+        case 'setSrc': {
+          const textIndex = texts.length;
+          texts.push(mutation.url);
+          appendSetSrc(ops, mutation.id as number, textIndex);
           break;
         }
         case 'setPseudoStyle': {

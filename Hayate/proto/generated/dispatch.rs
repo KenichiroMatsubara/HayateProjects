@@ -119,5 +119,34 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
                 .element_unset_style(ElementId::from_u64(id), &[kind]);
             Ok(())
         }
+        Op::SetTextContent { id, text_index } => {
+            if text_index >= texts.length() as usize {
+                return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT_CONTENT"));
+            }
+            let text = texts
+                .get(text_index as u32)
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_TEXT_CONTENT"))?;
+            host.tree_mut()
+                .element_set_text_content(ElementId::from_u64(id), &text);
+            Ok(())
+        }
+        Op::SetDisabled { id, disabled } => {
+            host.tree_mut()
+                .element_set_disabled(ElementId::from_u64(id), disabled);
+            Ok(())
+        }
+        Op::SetSrc { id, text_index } => {
+            if text_index >= texts.length() as usize {
+                return Err(JsValue::from_str("text index out of bounds in OP_SET_SRC"));
+            }
+            let url = texts
+                .get(text_index as u32)
+                .as_string()
+                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_SRC"))?;
+            host.tree_mut()
+                .element_set_src(ElementId::from_u64(id), &url);
+            Ok(())
+        }
     }
 }

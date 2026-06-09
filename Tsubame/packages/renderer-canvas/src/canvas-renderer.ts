@@ -99,26 +99,25 @@ export class CanvasRenderer implements IRenderer {
 
   setProperty(id: ElementId, name: string, value: unknown): void {
     assertKnownElementProperty(name);
-    const numericId = id as number;
     switch (name) {
       case 'value':
-        this.raw.element_set_text_content(
-          numericId,
+        this.packet.enqueueSetTextContent(
+          id,
           value == null ? '' : String(value),
         );
         break;
       case 'placeholder':
-        this.raw.element_set_text(
-          numericId,
+        this.packet.enqueueSetText(
+          id,
           typeof value === 'string' ? value : '',
         );
         break;
       case 'disabled':
-        this.raw.element_set_disabled(numericId, Boolean(value));
+        this.packet.enqueueSetDisabled(id, Boolean(value));
         break;
       case 'src':
-        this.raw.element_set_src(
-          numericId,
+        this.packet.enqueueSetSrc(
+          id,
           typeof value === 'string' ? value : '',
         );
         break;

@@ -14,6 +14,9 @@ pub const OP_BLUR: u32 = 8;
 pub const OP_CREATE: u32 = 9;
 pub const OP_SET_TEXT: u32 = 10;
 pub const OP_UNSET_STYLE: u32 = 11;
+pub const OP_SET_TEXT_CONTENT: u32 = 12;
+pub const OP_SET_DISABLED: u32 = 13;
+pub const OP_SET_SRC: u32 = 14;
 
 // Payload slot counts per opcode (op discriminant excluded)
 pub const OP_SLOTS: &[usize] = &[
@@ -29,6 +32,9 @@ pub const OP_SLOTS: &[usize] = &[
     2, // CREATE
     2, // SET_TEXT
     2, // UNSET_STYLE
+    2, // SET_TEXT_CONTENT
+    2, // SET_DISABLED
+    2, // SET_SRC
 ];
 
 // Style tag constants
@@ -196,6 +202,18 @@ pub enum Op {
         id: u64,
         kind: u32,
     },
+    SetTextContent {
+        id: u64,
+        text_index: usize,
+    },
+    SetDisabled {
+        id: u64,
+        disabled: bool,
+    },
+    SetSrc {
+        id: u64,
+        text_index: usize,
+    },
 }
 
 pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str> {
@@ -280,6 +298,24 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             let id = ops[i + 0] as u64;
             let kind = ops[i + 1] as u32;
             Ok((Op::UnsetStyle { id, kind }, i + 2))
+        }
+        12 => {
+            if i + 2 > ops.len() { return Err("op SET_TEXT_CONTENT truncated"); }
+            let id = ops[i + 0] as u64;
+            let text_index = ops[i + 1] as usize;
+            Ok((Op::SetTextContent { id, text_index }, i + 2))
+        }
+        13 => {
+            if i + 2 > ops.len() { return Err("op SET_DISABLED truncated"); }
+            let id = ops[i + 0] as u64;
+            let disabled = ops[i + 1] != 0.0;
+            Ok((Op::SetDisabled { id, disabled }, i + 2))
+        }
+        14 => {
+            if i + 2 > ops.len() { return Err("op SET_SRC truncated"); }
+            let id = ops[i + 0] as u64;
+            let text_index = ops[i + 1] as usize;
+            Ok((Op::SetSrc { id, text_index }, i + 2))
         }
         _ => Err("unknown opcode"),
     }
