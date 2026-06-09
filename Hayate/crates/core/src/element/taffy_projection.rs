@@ -30,7 +30,6 @@ impl TaffyProjection {
 
     pub fn mark_structure_dirty(&mut self, id: ElementId) {
         self.structure_dirty.insert(id);
-        self.built = false;
     }
 
     pub fn mark_dirty(&mut self, id: ElementId) {
@@ -45,19 +44,34 @@ impl TaffyProjection {
         }
     }
 
-    /// Rebuild the Taffy projection when structure has changed.
-    pub fn reconcile(&mut self, elements: &mut HashMap<ElementId, Element>, root: ElementId) {
+    pub fn has_node(&self, id: ElementId) -> bool {
+        self.element_to_node.contains_key(&id)
+    }
+
+    pub fn node_id(&self, id: ElementId) -> Option<NodeId> {
+        self.element_to_node.get(&id).copied()
+    }
+
+    /// Reconcile the Taffy projection when structure has changed.
+    pub fn reconcile(&mut self, elements: &HashMap<ElementId, Element>, root: ElementId) {
         if self.built && self.structure_dirty.is_empty() {
             return;
         }
-        self.structure_dirty.clear();
-        self.taffy = TaffyTree::new();
-        self.element_to_node.clear();
 
-        if elements.contains_key(&root) {
-            build_subtree(self, elements, root);
+        if !self.built {
+            if elements.contains_key(&root) {
+                build_subtree(self, elements, root);
+            }
+            self.built = true;
+            self.structure_dirty.clear();
+            return;
         }
-        self.built = true;
+
+        let dirty: Vec<ElementId> = self.structure_dirty.drain().collect();
+        let patch_roots = minimal_patch_roots(&dirty, elements);
+        for patch_root in patch_roots {
+            patch_subtree(self, elements, patch_root);
+        }
     }
 }
 
@@ -67,15 +81,175 @@ impl Default for TaffyProjection {
     }
 }
 
+fn minimal_patch_roots(
+    dirty: &[ElementId],
+    elements: &HashMap<ElementId, Element>,
+) -> Vec<ElementId> {
+    dirty
+        .iter()
+        .copied()
+        .filter(|&id| !has_dirty_ancestor(id, dirty, elements))
+        .collect()
+}
+
+fn has_dirty_ancestor(
+    id: ElementId,
+    dirty: &[ElementId],
+    elements: &HashMap<ElementId, Element>,
+) -> bool {
+    let mut cur = elements.get(&id).and_then(|e| e.parent);
+    while let Some(ancestor) = cur {
+        if dirty.contains(&ancestor) {
+            return true;
+        }
+        cur = elements.get(&ancestor).and_then(|e| e.parent);
+    }
+    false
+}
+
+fn patch_subtree(
+    projection: &mut TaffyProjection,
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+) {
+    if !elements.contains_key(&id) {
+        return;
+    }
+
+    if is_inline_text_element(elements, id) {
+        if let Some(children) = elements.get(&id).map(|el| el.children.clone()) {
+            for child in children {
+                remove_element_projection(projection, elements, child);
+            }
+        }
+        return;
+    }
+
+    let existing_node = projection.element_to_node.get(&id).copied();
+    clear_descendant_projections(projection, elements, id);
+
+    let node = if let Some(node) = existing_node {
+        clear_taffy_children(&mut projection.taffy, node);
+        sync_node_from_element(projection, elements, id, node);
+        node
+    } else {
+        let node = create_projected_node(projection, elements, id);
+        projection.element_to_node.insert(id, node);
+        if let Some(parent_id) = elements.get(&id).and_then(|e| e.parent) {
+            if let Some(parent_node) = projection.node_id(parent_id) {
+                let _ = projection.taffy.add_child(parent_node, node);
+            }
+        }
+        node
+    };
+
+    for child in elements
+        .get(&id)
+        .map(|el| el.children.clone())
+        .unwrap_or_default()
+    {
+        if let Some(child_node) = build_subtree(projection, elements, child) {
+            let _ = projection.taffy.add_child(node, child_node);
+        }
+    }
+}
+
+fn clear_descendant_projections(
+    projection: &mut TaffyProjection,
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+) {
+    if let Some(children) = elements.get(&id).map(|el| el.children.clone()) {
+        for child in children {
+            remove_element_projection(projection, elements, child);
+        }
+    }
+}
+
+fn remove_element_projection(
+    projection: &mut TaffyProjection,
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+) {
+    if let Some(node) = projection.element_to_node.remove(&id) {
+        clear_taffy_children(&mut projection.taffy, node);
+        let _ = projection.taffy.remove(node);
+    }
+    if let Some(children) = elements.get(&id).map(|el| el.children.clone()) {
+        for child in children {
+            remove_element_projection(projection, elements, child);
+        }
+    }
+}
+
+fn clear_taffy_children(taffy: &mut TaffyTree<MeasureCtx>, node: NodeId) {
+    loop {
+        let children = match taffy.children(node) {
+            Ok(c) => c,
+            Err(_) => break,
+        };
+        if children.is_empty() {
+            break;
+        }
+        for child in children {
+            remove_taffy_subtree(taffy, child);
+        }
+    }
+}
+
+fn remove_taffy_subtree(taffy: &mut TaffyTree<MeasureCtx>, node: NodeId) {
+    if let Ok(children) = taffy.children(node) {
+        for child in children {
+            remove_taffy_subtree(taffy, child);
+        }
+    }
+    let _ = taffy.remove(node);
+}
+
+fn sync_node_from_element(
+    projection: &mut TaffyProjection,
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+    node: NodeId,
+) {
+    let el = match elements.get(&id) {
+        Some(e) => e,
+        None => return,
+    };
+    let measure_ctx = if is_ifc_root(elements, id) {
+        MeasureCtx::Text(id)
+    } else {
+        MeasureCtx::None
+    };
+    let _ = projection.taffy.set_style(node, el.layout_style.clone());
+    let _ = projection
+        .taffy
+        .set_node_context(node, Some(measure_ctx));
+}
+
+fn create_projected_node(
+    projection: &mut TaffyProjection,
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+) -> NodeId {
+    let el = elements.get(&id).expect("create_projected_node: missing element");
+    let measure_ctx = if is_ifc_root(elements, id) {
+        MeasureCtx::Text(id)
+    } else {
+        MeasureCtx::None
+    };
+    projection
+        .taffy
+        .new_leaf_with_context(el.layout_style.clone(), measure_ctx)
+        .expect("taffy new_leaf_with_context")
+}
+
 fn build_subtree(
     projection: &mut TaffyProjection,
-    elements: &mut HashMap<ElementId, Element>,
+    elements: &HashMap<ElementId, Element>,
     id: ElementId,
 ) -> Option<NodeId> {
     if is_inline_text_element(elements, id) {
-        if let Some(el) = elements.get_mut(&id) {
-            el.taffy_node = None;
-        }
         let children = elements
             .get(&id)
             .map(|el| el.children.clone())
@@ -86,23 +260,7 @@ fn build_subtree(
         return None;
     }
 
-    let (layout_style, measure_ctx) = {
-        let el = elements.get(&id)?;
-        let measure_ctx = if is_ifc_root(elements, id) {
-            MeasureCtx::Text(id)
-        } else {
-            MeasureCtx::None
-        };
-        (el.layout_style.clone(), measure_ctx)
-    };
-
-    let node = projection
-        .taffy
-        .new_leaf_with_context(layout_style, measure_ctx)
-        .expect("taffy new_leaf_with_context");
-    if let Some(el) = elements.get_mut(&id) {
-        el.taffy_node = Some(node);
-    }
+    let node = create_projected_node(projection, elements, id);
     projection.element_to_node.insert(id, node);
 
     let children = elements
@@ -124,13 +282,37 @@ mod tests {
     use crate::element::kind::ElementKind;
     use crate::element::tree::Visual;
 
+    fn make_view(id: u64, parent: Option<ElementId>) -> (ElementId, Element) {
+        let eid = ElementId::from_u64(id);
+        let el = Element {
+            kind: ElementKind::View,
+            parent,
+            children: Vec::new(),
+            layout_style: taffy::Style::default(),
+            visual: Visual::default(),
+            text: None,
+            src: None,
+            text_layout: None,
+            transform: None,
+            scroll_offset: (0.0, 0.0),
+            src_image: None,
+            edit: None,
+            cursor_visible: false,
+            content_layout: None,
+            aria_label: None,
+            role: None,
+            pseudo_styles: Default::default(),
+            disabled: false,
+        };
+        (eid, el)
+    }
+
     fn make_text(id: u64, parent: Option<ElementId>, text: &str) -> (ElementId, Element) {
         let eid = ElementId::from_u64(id);
         let el = Element {
             kind: ElementKind::Text,
             parent,
             children: Vec::new(),
-            taffy_node: None,
             layout_style: taffy::Style::default(),
             visual: Visual::default(),
             text: Some(text.to_string()),
@@ -165,9 +347,52 @@ mod tests {
             .children
             .push(inline_id);
 
-        projection.reconcile(&mut elements, root_id);
+        projection.reconcile(&elements, root_id);
 
-        assert!(elements[&inline_id].taffy_node.is_none());
-        assert!(elements[&root_id].taffy_node.is_some());
+        assert!(!projection.has_node(inline_id));
+        assert!(projection.has_node(root_id));
+    }
+
+    #[test]
+    fn reconcile_append_to_deep_branch_preserves_unrelated_node_ids() {
+        let mut projection = TaffyProjection::new();
+        let mut elements = HashMap::new();
+
+        let (root_id, mut root) = make_view(1, None);
+        let (branch_a_id, branch_a) = make_view(2, Some(root_id));
+        let (branch_b_id, branch_b) = make_view(3, Some(root_id));
+        root.children = vec![branch_a_id, branch_b_id];
+        elements.insert(root_id, root);
+        elements.insert(branch_a_id, branch_a);
+        elements.insert(branch_b_id, branch_b);
+
+        projection.reconcile(&elements, root_id);
+        let branch_b_node_before = projection
+            .node_id(branch_b_id)
+            .expect("branch_b must be projected");
+
+        let (new_child_id, new_child) = make_view(4, Some(branch_a_id));
+        elements
+            .get_mut(&branch_a_id)
+            .unwrap()
+            .children
+            .push(new_child_id);
+        elements.insert(new_child_id, new_child);
+        projection.mark_structure_dirty(branch_a_id);
+        projection.mark_structure_dirty(new_child_id);
+
+        projection.reconcile(&elements, root_id);
+
+        let branch_b_node_after = projection
+            .node_id(branch_b_id)
+            .expect("branch_b must remain projected");
+        assert_eq!(
+            branch_b_node_before, branch_b_node_after,
+            "append under sibling branch must not rebuild unrelated Taffy nodes"
+        );
+        assert!(
+            projection.has_node(new_child_id),
+            "new child must be projected"
+        );
     }
 }

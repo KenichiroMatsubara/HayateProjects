@@ -3,8 +3,6 @@ use std::sync::Arc;
 
 use fontique::FontInfoOverride;
 use linebender_resource_handle::Blob;
-use taffy::TaffyTree;
-
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
 use crate::element::edit_state::EditState;
@@ -17,12 +15,13 @@ use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::inline_text::{self, ifc_root, is_ifc_root};
 use crate::element::layout_pass::LayoutPass;
+use crate::element::taffy_projection::TaffyProjection;
 use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
 use crate::element::style::{FontStyleValue, StyleProp, StylePropKind, TextDecorationValue};
-use crate::element::taffy_bridge::{self, MeasureCtx};
+use crate::element::taffy_bridge;
 use crate::element::text;
 use crate::node::SceneGraph;
 use crate::render::RenderImage;
@@ -76,7 +75,6 @@ pub(crate) struct Element {
     pub kind: ElementKind,
     pub parent: Option<ElementId>,
     pub children: Vec<ElementId>,
-    pub taffy_node: Option<taffy::NodeId>,
     pub layout_style: taffy::Style,
     pub visual: Visual,
     pub text: Option<String>,
@@ -203,7 +201,6 @@ impl ElementTree {
             kind,
             parent: None,
             children: Vec::new(),
-            taffy_node: None,
             layout_style,
             visual: Visual::default(),
             text: None,
@@ -360,9 +357,7 @@ impl ElementTree {
             };
             el.text_layout = None;
             el.content_layout = None;
-            if let Some(node) = el.taffy_node {
-                let _ = self.layout.projection.taffy.mark_dirty(node);
-            }
+            self.layout.projection.mark_dirty(id);
         }
     }
 
@@ -753,10 +748,7 @@ impl ElementTree {
     /// Whether `id` was projected to a Taffy node on the last layout pass.
     #[doc(hidden)]
     pub fn element_has_taffy_node(&self, id: ElementId) -> bool {
-        self.elements
-            .get(&id)
-            .and_then(|e| e.taffy_node)
-            .is_some()
+        self.layout.projection.has_node(id)
     }
 
     /// Element ids in `root` and its descendants (pre-order). Empty when unknown.
@@ -938,7 +930,7 @@ impl ElementTree {
         if let Some(root) = self.root {
             walk_resolved(
                 &self.elements,
-                &self.layout.projection.taffy,
+                &self.layout.projection,
                 root,
                 0.0,
                 0.0,
@@ -969,12 +961,7 @@ impl ElementTree {
     fn mark_text_content_dirty(&mut self, id: ElementId) {
         if let Some(root) = ifc_root(&self.elements, id) {
             self.layout.mark_shape_dirty(root);
-        } else if self
-            .elements
-            .get(&id)
-            .and_then(|e| e.taffy_node)
-            .is_some()
-        {
+        } else if self.layout.projection.has_node(id) {
             self.layout.projection.mark_dirty(id);
         }
     }
@@ -1006,7 +993,7 @@ impl Default for ElementTree {
 
 fn walk_resolved(
     elements: &HashMap<ElementId, Element>,
-    taffy: &TaffyTree<MeasureCtx>,
+    projection: &TaffyProjection,
     id: ElementId,
     ox: f32,
     oy: f32,
@@ -1025,13 +1012,13 @@ fn walk_resolved(
         &inherited_base,
         &el.visual,
     );
-    let taffy_node = match el.taffy_node {
+    let taffy_node = match projection.node_id(id) {
         Some(n) => n,
         None => {
             for &child in &el.children {
                 walk_resolved(
                     elements,
-                    taffy,
+                    projection,
                     child,
                     ox,
                     oy,
@@ -1043,7 +1030,7 @@ fn walk_resolved(
             return;
         }
     };
-    let layout = match taffy.layout(taffy_node) {
+    let layout = match projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };
@@ -1092,7 +1079,7 @@ fn walk_resolved(
     for &child in &el.children {
         walk_resolved(
             elements,
-            taffy,
+            projection,
             child,
             x,
             y,

@@ -220,7 +220,6 @@ mod tests {
             kind: ElementKind::Text,
             parent,
             children: Vec::new(),
-            taffy_node: None,
             layout_style: taffy::Style::default(),
             visual,
             text: Some(content.to_string()),

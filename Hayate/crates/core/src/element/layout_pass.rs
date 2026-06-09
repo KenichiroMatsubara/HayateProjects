@@ -60,12 +60,12 @@ impl LayoutPass {
         viewport: (f32, f32),
         event_queue: &mut Vec<Event>,
     ) {
-        self.projection.reconcile(elements, root);
+        self.projection.reconcile(&*elements, root);
         self.compute(elements, root, viewport, event_queue);
         self.layout_cache.clear();
         cache_layout(
             elements,
-            &self.projection.taffy,
+            &self.projection,
             root,
             0.0,
             0.0,
@@ -143,14 +143,12 @@ impl LayoutPass {
                 if let Some(el) = elements.get_mut(&id) {
                     el.text_layout = None;
                     el.content_layout = None;
-                    if let Some(node) = el.taffy_node {
-                        let _ = self.projection.taffy.mark_dirty(node);
-                    }
+                    self.projection.mark_dirty(id);
                 }
             }
         }
 
-        let root_taffy = match elements[&root].taffy_node {
+        let root_taffy = match self.projection.node_id(root) {
             Some(n) => n,
             None => return,
         };
@@ -193,45 +191,48 @@ impl LayoutPass {
             font_cx,
             layout_cx,
             pending_font_fetches,
+            shape_dirty,
             ..
         } = self;
-        let taffy = &mut projection.taffy;
 
         // Two-pass: stash text layouts produced inside the measure closure,
         // then drain them back onto the elements once compute_layout returns.
         let mut pending: HashMap<ElementId, TextLayout> = HashMap::new();
-        let _ = taffy.compute_layout_with_measure(
-            root_taffy,
-            available,
-            |known_dims, available_space, _node_id, ctx, _style| {
-                let eid = match ctx {
-                    Some(MeasureCtx::Text(eid)) => *eid,
-                    _ => return TaffySize::ZERO,
-                };
-                if elements.get(&eid).is_none() {
-                    return TaffySize::ZERO;
-                }
-                let max_advance = match known_dims.width {
-                    Some(w) => Some(w),
-                    None => match available_space.width {
-                        AvailableSpace::Definite(w) => Some(w),
-                        AvailableSpace::MaxContent => None,
-                        AvailableSpace::MinContent => Some(0.0),
-                    },
-                };
-                let layout =
-                    inline_text::shape(elements, eid, max_advance, font_cx, layout_cx);
-                if layout.text.is_empty() {
-                    return TaffySize::ZERO;
-                }
-                let size = TaffySize {
-                    width: layout.layout.width(),
-                    height: layout.layout.height(),
-                };
-                pending.insert(eid, layout);
-                size
-            },
-        );
+        {
+            let taffy = &mut projection.taffy;
+            let _ = taffy.compute_layout_with_measure(
+                root_taffy,
+                available,
+                |known_dims, available_space, _node_id, ctx, _style| {
+                    let eid = match ctx {
+                        Some(MeasureCtx::Text(eid)) => *eid,
+                        _ => return TaffySize::ZERO,
+                    };
+                    if elements.get(&eid).is_none() {
+                        return TaffySize::ZERO;
+                    }
+                    let max_advance = match known_dims.width {
+                        Some(w) => Some(w),
+                        None => match available_space.width {
+                            AvailableSpace::Definite(w) => Some(w),
+                            AvailableSpace::MaxContent => None,
+                            AvailableSpace::MinContent => Some(0.0),
+                        },
+                    };
+                    let layout =
+                        inline_text::shape(elements, eid, max_advance, font_cx, layout_cx);
+                    if layout.text.is_empty() {
+                        return TaffySize::ZERO;
+                    }
+                    let size = TaffySize {
+                        width: layout.layout.width(),
+                        height: layout.layout.height(),
+                    };
+                    pending.insert(eid, layout);
+                    size
+                },
+            );
+        }
 
         for (eid, mut layout) in pending {
             // Re-stamp the source text onto each lowered run so HTML mode can
@@ -270,7 +271,7 @@ impl LayoutPass {
             if let Some(el) = elements.get_mut(&eid) {
                 el.text_layout = Some(layout);
             }
-            self.shape_dirty.remove(&eid);
+            shape_dirty.remove(&eid);
         }
 
         // Build content layouts for TextInput elements (used for Canvas-mode rendering + cursor).
@@ -315,8 +316,9 @@ impl LayoutPass {
                 let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
                 let el = elements.get(&eid).map(|e| {
                     (
-                        e.taffy_node
-                            .and_then(|n| taffy.layout(n).ok().map(|l| l.size.width)),
+                        projection
+                            .node_id(eid)
+                            .and_then(|n| projection.taffy.layout(n).ok().map(|l| l.size.width)),
                         e.visual
                             .font_family
                             .clone()
@@ -391,7 +393,7 @@ fn init_bundled_fonts(font_cx: &mut FontContext) {
 
 pub(crate) fn cache_layout(
     elements: &HashMap<ElementId, Element>,
-    taffy: &taffy::TaffyTree<MeasureCtx>,
+    projection: &TaffyProjection,
     id: ElementId,
     ox: f32,
     oy: f32,
@@ -401,17 +403,17 @@ pub(crate) fn cache_layout(
         Some(e) => e,
         None => return,
     };
-    let taffy_node = match el.taffy_node {
+    let taffy_node = match projection.node_id(id) {
         Some(n) => n,
         None => {
             // Inline text elements have no box geometry; still walk descendants.
             for &child in &el.children {
-                cache_layout(elements, taffy, child, ox, oy, cache);
+                cache_layout(elements, projection, child, ox, oy, cache);
             }
             return;
         }
     };
-    let layout = match taffy.layout(taffy_node) {
+    let layout = match projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
     };
@@ -419,6 +421,6 @@ pub(crate) fn cache_layout(
     let y = oy + layout.location.y;
     cache.insert(id, (x, y, layout.size.width, layout.size.height));
     for &child in &el.children {
-        cache_layout(elements, taffy, child, x, y, cache);
+        cache_layout(elements, projection, child, x, y, cache);
     }
 }

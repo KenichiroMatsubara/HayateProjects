@@ -45,7 +45,7 @@ fn walk(
         None => return,
     };
     // Inline text elements have no Taffy box (ADR-0063/0064); recurse without emitting.
-    let taffy_node = match el.taffy_node {
+    let taffy_node = match tree.layout.projection.node_id(id) {
         Some(n) => n,
         None => {
             for child in tree.ordered_children(id) {
