@@ -5,14 +5,13 @@ use web_sys::HtmlCanvasElement;
 pub(crate) type ClearColor = [f32; 4];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)] // only one backend variant is live per feature set
 pub(crate) enum SceneRendererKind {
     Vello,
     TinySkia,
     /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
-    #[allow(dead_code)]
     Recording,
     /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
-    #[allow(dead_code)]
     Null,
 }
 
