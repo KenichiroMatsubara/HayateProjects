@@ -39,11 +39,22 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build Hayate WASM (incl. pkg-null for C3)
         run: pnpm run build:wasm
+
+      - name: Build renderer-canvas test dependencies
+        run: |
+          pnpm --filter @tsubame/protocol-generated run generate
+          pnpm --filter @tsubame/renderer-protocol build
 
       - name: Run renderer-canvas C3 tests
         working-directory: Tsubame/packages/renderer-canvas

@@ -17,6 +17,7 @@ pub const OP_UNSET_STYLE: u32 = 11;
 pub const OP_SET_TEXT_CONTENT: u32 = 12;
 pub const OP_SET_DISABLED: u32 = 13;
 pub const OP_SET_SRC: u32 = 14;
+pub const OP_SET_PSEUDO_STYLE: u32 = 15;
 
 // Payload slot counts per opcode (op discriminant excluded)
 pub const OP_SLOTS: &[usize] = &[
@@ -35,6 +36,7 @@ pub const OP_SLOTS: &[usize] = &[
     2, // SET_TEXT_CONTENT
     2, // SET_DISABLED
     2, // SET_SRC
+    4, // SET_PSEUDO_STYLE
 ];
 
 // Style tag constants
@@ -214,6 +216,12 @@ pub enum Op {
         id: u64,
         text_index: usize,
     },
+    SetPseudoStyle {
+        id: u64,
+        state: u32,
+        style_offset: usize,
+        style_len: usize,
+    },
 }
 
 pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str> {
@@ -316,6 +324,14 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             let id = ops[i + 0] as u64;
             let text_index = ops[i + 1] as usize;
             Ok((Op::SetSrc { id, text_index }, i + 2))
+        }
+        15 => {
+            if i + 4 > ops.len() { return Err("op SET_PSEUDO_STYLE truncated"); }
+            let id = ops[i + 0] as u64;
+            let state = ops[i + 1] as u32;
+            let style_offset = ops[i + 2] as usize;
+            let style_len = ops[i + 3] as usize;
+            Ok((Op::SetPseudoStyle { id, state, style_offset, style_len }, i + 4))
         }
         _ => Err("unknown opcode"),
     }

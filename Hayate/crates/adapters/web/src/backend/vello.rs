@@ -93,10 +93,12 @@ impl VelloSurfaceHost {
         &self.device
     }
 
+    #[allow(dead_code)]
     fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
 
+    #[allow(dead_code)]
     fn target_view(&self) -> &wgpu::TextureView {
         &self.target_view
     }

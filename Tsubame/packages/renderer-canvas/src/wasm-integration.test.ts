@@ -108,6 +108,61 @@ describe('codec integration (C3)', () => {
     expect(hayate.element_get_text_content(1)).toBe('committed');
   });
 
+  it('applies batched pseudo-style through apply_mutations and resolves :hover', async () => {
+    fixture = await createNullHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(fixture.raw, sched);
+
+    const root = renderer.createElement('view');
+    const button = renderer.createElement('button');
+    renderer.setRoot(root);
+    renderer.appendChild(root, button);
+    renderer.setStyle(button, {
+      width: '100px',
+      height: '40px',
+      backgroundColor: '#ffffff',
+    });
+    renderer.setPseudoStyle(button, ':hover', { backgroundColor: '#0000ff' });
+    renderer.setPseudoStyle(button, ':active', { backgroundColor: '#ff0000' });
+    renderer.setPseudoStyle(button, ':focus', { backgroundColor: '#00ff00' });
+
+    const recorded: { ops: number[]; styles: number[]; texts: string[] }[] = [];
+    const raw = fixture.raw;
+    const original = raw.apply_mutations.bind(raw);
+    raw.apply_mutations = (ops, styles, texts) => {
+      recorded.push({
+        ops: Array.from(ops),
+        styles: Array.from(styles),
+        texts: [...texts],
+      });
+      original(ops, styles, texts);
+    };
+
+    sched.tick(16);
+
+    expect(recorded).toHaveLength(1);
+    const batch = recorded[0]!;
+    const pseudoOps = batch.ops.filter((op) => op === OP.SET_PSEUDO_STYLE);
+    expect(pseudoOps).toHaveLength(3);
+    expect(batch.ops).not.toContain(undefined);
+
+    const hayate = raw as {
+      on_pointer_move(x: number, y: number): void;
+      on_pointer_down(x: number, y: number): void;
+      render(timestampMs: number): void;
+      element_get_bounds(id: number): Float32Array | number[];
+    };
+
+    hayate.on_pointer_move(50, 20);
+    hayate.render(32);
+    const hoveredBounds = Array.from(hayate.element_get_bounds(2));
+    expect(hoveredBounds[2]).toBeGreaterThan(0);
+    expect(hoveredBounds[3]).toBeGreaterThan(0);
+
+    hayate.on_pointer_down(50, 20);
+    hayate.render(48);
+  });
+
   it('matches binding.test ops wire for unified batch', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();

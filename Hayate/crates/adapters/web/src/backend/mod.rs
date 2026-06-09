@@ -5,14 +5,13 @@ use web_sys::HtmlCanvasElement;
 pub(crate) type ClearColor = [f32; 4];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[allow(dead_code)] // only one backend variant is live per feature set
 pub(crate) enum SceneRendererKind {
     Vello,
     TinySkia,
     /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
-    #[allow(dead_code)]
     Recording,
     /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
-    #[allow(dead_code)]
     Null,
 }
 
@@ -111,6 +110,7 @@ compile_error!("Enable one of: backend-vello, backend-recording, backend-tiny-sk
 pub(crate) trait SceneRenderer {
     fn kind(&self) -> SceneRendererKind;
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue>;
+    #[allow(dead_code)]
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
 
     /// Resize the render surface to match the canvas's new pixel dimensions.
