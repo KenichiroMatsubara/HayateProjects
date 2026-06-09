@@ -8,7 +8,7 @@ import type {
   StylePatch,
   Unsubscribe,
 } from '@tsubame/renderer-protocol';
-import { asElementId } from '@tsubame/renderer-protocol';
+import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
@@ -97,7 +97,33 @@ export class CanvasRenderer implements IRenderer {
     this.packet.enqueueSetText(id, text);
   }
 
-  setProperty(_id: ElementId, _name: string, _value: unknown): void {}
+  setProperty(id: ElementId, name: string, value: unknown): void {
+    assertKnownElementProperty(name);
+    const numericId = id as number;
+    switch (name) {
+      case 'value':
+        this.raw.element_set_text_content(
+          numericId,
+          value == null ? '' : String(value),
+        );
+        break;
+      case 'placeholder':
+        this.raw.element_set_text(
+          numericId,
+          typeof value === 'string' ? value : '',
+        );
+        break;
+      case 'disabled':
+        this.raw.element_set_disabled(numericId, Boolean(value));
+        break;
+      case 'src':
+        this.raw.element_set_src(
+          numericId,
+          typeof value === 'string' ? value : '',
+        );
+        break;
+    }
+  }
 
   addEventListener(
     id: ElementId,

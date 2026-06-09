@@ -192,6 +192,11 @@ impl HayateElementRenderer {
         self.tree.element_set_src(element_id_from_f64(id), url);
     }
 
+    pub fn element_set_disabled(&mut self, id: f64, disabled: bool) {
+        self.tree
+            .element_set_disabled(element_id_from_f64(id), disabled);
+    }
+
     pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
         let props = style_packet::decode(packed)?;
         self.tree.element_set_style(element_id_from_f64(id), &props);

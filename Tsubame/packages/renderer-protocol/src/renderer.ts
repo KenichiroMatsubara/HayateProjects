@@ -22,8 +22,8 @@ export interface IRenderer {
   setText(id: ElementId, text: string): void;
 
   /**
-   * Applies non-style props such as `src`, `value`, `placeholder`, or
-   * `disabled`. Renderers may ignore unsupported props.
+   * Applies closed semantic props (`value` / `placeholder` / `disabled` / `src`).
+   * Unknown names must throw (ADR-0071). `aria-*` uses first-class APIs only.
    */
   setProperty(id: ElementId, name: string, value: unknown): void;
 
