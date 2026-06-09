@@ -3,7 +3,8 @@ mod painter;
 use hayate_core::{render_scene_graph, SceneGraph};
 use tiny_skia::{Color, Pixmap};
 
-pub use painter::TinySkiaPainter;
+// ADR-0054: ScenePainter は crate 内部 seam。host 向け公開契約ではない。
+use painter::TinySkiaPainter;
 
 pub struct TinySkiaSceneRenderer;
 
@@ -47,7 +48,8 @@ pub fn premultiplied_to_straight(data: &mut [u8]) {
     }
 }
 
-pub fn straight_to_premultiplied(data: &mut [u8]) {
+// crate 内部のみ（painter.rs が image lowering で使用）。公開しない。
+fn straight_to_premultiplied(data: &mut [u8]) {
     for pixel in data.chunks_exact_mut(4) {
         let a = pixel[3] as u32;
         if a == 255 {

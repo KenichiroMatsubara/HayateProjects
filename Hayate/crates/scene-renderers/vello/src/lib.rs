@@ -11,7 +11,8 @@ use vello::{
 use vello::peniko::color::{AlphaColor, Srgb};
 use wgpu::util::TextureBlitter;
 
-pub use painter::VelloPainter;
+// ADR-0054: ScenePainter は crate 内部 seam。host 向け公開契約ではない。
+use painter::VelloPainter;
 
 pub struct VelloRenderTarget<'a> {
     pub device: &'a wgpu::Device,

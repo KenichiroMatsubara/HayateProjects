@@ -70,7 +70,7 @@
 | C-8.1 | ADR 番号衝突: `0028`×2 / `0029`×2 → `0073`（canvas fonts）/ `0074`（html z-index 歴史）に改番 | §5 TEXT-02 / §8 WEBA-04〜06 |
 | C-0.1 | Tsubame 0001 独立リポ → ROOT 0001 モノレポ（アーキ分離は維持） | SYS-01 |
 | C-1.1 | 「wgpu唯一」の文言 vs tiny-skia 併存（GPU層の規範であり CPU fallback と非矛盾） | CORE-02 / REND-11 |
-| C-7.1 | 0022 上位層所有 → 0046/0053 core集約（CONTEXT.md が0022参照する軽微drift要修正） | SCR-01 |
+| C-7.1 | 0022 上位層所有 → 0046/0053 core集約（CONTEXT.md「Scroll Offset」の 0022 参照 drift は 2026-06-09 修正済み） | SCR-01 |
 | C-10.1 | WIT契約正本（0013/0015/0033/0039）→ 0049 JSON spec | PROTO-01/02 |
 | C-10.2 | protocol.yaml（0049原案）→ 0053 proto/spec/*.json | PROTO-01 |
 | C-10.3 | element_create batch外（0039）→ 0005 OP_CREATE=9 batch内 | PROTO-06 |
@@ -90,6 +90,9 @@
 | C-10.5 | ADR-0055 の検証層が apply_mutations 方向のみ（delivery 方向の共有 fixture 欠落） | grill で検証トポロジ確定。ADR-0055 amend（C5 層）/ PROTO-17 ✅ |
 | C-10.6 | app font ID と font_family の接続（旧「100+ 予約帯」案） | grill で前提（数値enum）が obsolete と判明。文字列接続を確定、web fonts.json→codegen。ADR-0061 / PROTO-19 ✅ |
 | C-11.1 | `tsubame-spec.md`「Tsubame は archive 化せず維持」 vs 単一正本への統合 | ユーザー指示で archive 送り。「維持」記述は破棄 |
+| C-4.2 | ADR-0054「公開 API は `render_scene` のみ・walk/Painter は crate 内部」 vs 実装が `VelloPainter`/`TinySkiaPainter` を `pub use` 公開（外部利用なし） | grill（ADR↔実装乖離監査 2026-06-09）。Painter を非公開化、`straight_to_premultiplied` も非公開。ADR-0054 を amend し「公開＝`render_scene` + surface 補助」を明文化。REND-10 ✅ |
+| C-8.2 | root `CONTEXT.md`「WIT＝現行の公開 API 単一ソース・Raw Layer 公開」 vs ADR-0049（WIT 廃止→JSON proto）/ ADR-0072（Raw Layer 公開棄却） | ADR↔実装乖離監査 2026-06-09。WIT エントリを【歴史】化（Hayate/CONTEXT.md と整合）。Tsubame「別リポジトリ」記述も ADR-0001 モノレポへ更新 |
+| C-8.3 | §8 WEBA-01「probeWebGPU で Canvas/HTML モード自動判定」 vs 実装は GPU/CPU バックエンド選択のみ（HTML renderer は Tsubame init から到達不能） | ADR↔実装乖離監査 2026-06-09。WEBA-01 状況を実態（モード自動判定は未配線、HTML renderer は dead path）に訂正。★ Tsubame init への EditContext probe + HTML 経路追加は実装ギャップとして残置 |
 
 ## 運用（governance）
 

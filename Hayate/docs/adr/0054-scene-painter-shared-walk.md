@@ -48,7 +48,10 @@ hayate-adapter-web            Render Host（surface/present/resize/selection）+
 ```
 
 - package 名: `hayate-scene-renderer-vello` / `hayate-scene-renderer-tiny-skia`
-- **公開 API は `render_scene` のみ**（walk / Painter は crate 内部）。
+- **公開 API は `render_scene` と、Render Host が surface/present に使う補助のみ**（walk / `ScenePainter` 実装は crate 内部）。
+  - 公開可: `*SceneRenderer::render_scene`、surface/present 補助（vello: `VelloRenderTarget` / `create_target_view` / `create_blitter`、tiny-skia: `premultiplied_to_straight`）。adapter-web の Render Host（本 ADR が adapter-web に置くと決めた層）が消費する。
+  - 非公開: `VelloPainter` / `TinySkiaPainter`（`ScenePainter` 実装＝core walk のコールバック）と内部 premultiply 変換 `straight_to_premultiplied`。`render_scene` が内部で構築・駆動し、crate 外へ出さない。
+  - **［amend 2026-06-09］** 当初「公開 API は `render_scene` のみ」と書いたが、Render Host が surface 構築に必要とする補助関数を見落としていた。Painter/walk を crate 内部に閉じる意図はそのまま、surface 補助という第二の公開カテゴリを明文化する。実装は当初 `VelloPainter` / `TinySkiaPainter` を `pub use` していたが（外部利用なし）、本 amend で非公開化。なお ADR-0072 の「単一公開サーフェス」原則は Hayate の **外部** 契約（Element Layer proto）に関するもので、renderer crate ↔ adapter-web 間の **内部** crate API はその射程外。
 - **Render Host の web surface（`VelloSurfaceHost` 等）は当面 adapter-web に残留**（H1）。native adapter 追加時に renderer crate へ移管を再検討（decisions-pending Open #2）。**［revisit: ADR-0068］** native が確定設計目標である以上、プラットフォーム非依存の Render Host 芯（policy/orchestration）と Font ロードを共有層へ **今 hoist** し、web 特有部分を `Surface` / `FontFetcher` trait の裏に置く。surface **生成**の web 実装が adapter-web に残る点（H1 の事実）は trait 実装として維持。
 
 ### 命名

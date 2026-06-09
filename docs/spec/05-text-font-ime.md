@@ -23,7 +23,7 @@
 ### TEXT-03 — CJK .notdef 検出による動的調達
 **規範文:** glyph run 走査で `.notdef`（`glyph.id==0`）を検出し、コードポイント範囲（CJK / かな / ハングル / アラビア / タイ / デーヴァナーガリー / ヘブライ等）からファミリ名を逆引きして `FetchFont { family }` を発火する。同一フレームの重複は `HashSet` で1回に抑制し、登録後 `fonts_dirty` で全テキストを再シェーピングする。
 **出典:** ADR-0042
-**状況:** ✅ — `text.rs:38` `codepoint_font_family()`（Unicode ブロックテーブル）、`lower_glyph_runs()` の .notdef 検出、`TextLayout.missing_families`、`event_types.rs` の `FetchFont`。
+**状況:** ✅ — `text.rs:90` `codepoint_font_family()`（Unicode ブロックテーブル）、`text.rs:281` `lower_glyph_runs()` の .notdef 検出、`TextLayout.missing_families`、`event_types.rs` の `FetchFont`。
 **備考:** Core はコードポイント→ファミリ名のみ所有（URL は §5 TEXT-04 / adapter）。
 
 ### TEXT-04 — フォント URL ディスパッチは Adapter が所有
@@ -35,7 +35,7 @@
 ### TEXT-05 — アプリフォント設定ファイル
 **規範文:** アプリのプライマリフォントは `hayate.config` に `[{family, url}]` で宣言し、`configure_fonts()` で描画前にブロッキング preload して FOUT を防ぐ（.notdef 遅延 fetch とは別経路の宣言駆動）。
 **出典:** ADR-0044
-**状況:** ✅ — `element_renderer.rs:535` `configure_fonts()`（fetch→`tree.register_font`）、HTML Mode 側にも実装。
+**状況:** ✅ — `element_renderer.rs:415` `configure_fonts()`（fetch→`tree.register_font`）、HTML Mode 側にも `element_renderer.rs:896`。
 **備考:** spec プリセットと app font はいずれもファミリ名文字列で接続（§10 PROTO-19 / ADR-0061）。
 
 ---
@@ -45,13 +45,13 @@
 ### TEXT-06 — Web Canvas Mode の IME は EditContext 専用
 **規範文:** Canvas Mode の IME は EditContext API に統一する。EditContext がないブラウザは HTML Mode にフォールバックし、ブラウザ native の `<input>` に委ねる。
 **出典:** ADR-0016
-**状況:** ✅ — adapter の `on_composition_start/update/end`（`element_renderer.rs:606`）→ Element Layer へ composition イベント dispatch。
+**状況:** ✅ — adapter の `on_composition_start/update/end`（Canvas Mode `element_renderer.rs:464/470/476`、HTML Mode `:981/988/995`）→ Element Layer へ composition イベント dispatch。
 **備考:** モード選択は §8 WEBA-01。
 
 ### TEXT-07 — preedit は Element Layer が保持
-**規範文:** IME 組成中テキスト（preedit）は `Element::preedit: Option<String>` に保持し、レイアウト時に `text_content + preedit` を合成する（ADR-0058 の text-as-element と整合）。
-**出典:** ADR-0017, ADR-0058
-**状況:** ✅ — `tree.rs:76` `preedit`、`content_layout`、`layout_pass.rs:270` の合成、`scene_build.rs` の content_layout 描画。Parley editor（vendored）の compose API を利用。
+**規範文:** IME 組成中テキスト（preedit）は Element Layer が保持し（`Element::edit: Option<EditState>` の `EditState::preedit: Option<String>`）、表示時に `text_content + preedit` を合成する（ADR-0058 の text-as-element と整合）。
+**出典:** ADR-0017, ADR-0058, ADR-0069（preedit を `EditState` に集約）
+**状況:** ✅ — `edit_state.rs:5` `EditState::preedit`、`tree.rs:92` `Element::edit`、`edit_state.rs:10` `display_text()` の合成（`tree.rs:435` `element_set_preedit`）、`scene_build.rs` の content_layout 描画。Parley editor（vendored）の compose API を利用。
 **備考:** Raw Layer ユーザーは IME を自前実装（§4）。
 
 ### TEXT-08 — text element は inline formatting context（IFC）

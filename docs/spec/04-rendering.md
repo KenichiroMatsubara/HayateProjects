@@ -77,8 +77,8 @@
 ### REND-10 — Vello を主候補 renderer とする
 **規範文:** GPU 描画の主候補 renderer は Vello（Linebender, wgpu ベース）とし、`SceneGraph`→Vello Scene 変換は薄い独立 crate（`scene-renderers/vello`）に置く。公開 API は `render_scene` のみ。
 **出典:** ADR-0006, ADR-0054
-**状況:** ✅ — `scene-renderers/vello`（`VelloPainter` + `VelloSceneRenderer::render_scene`）。
-**備考:** —
+**状況:** ✅ — `scene-renderers/vello`。公開 API は `VelloSceneRenderer::render_scene` と surface 補助（`VelloRenderTarget`/`create_target_view`/`create_blitter`、Render Host が使用）。`VelloPainter`（`ScenePainter` 実装＝walk コールバック）は crate 内部。
+**備考:** [訂正 2026-06-09] 旧実装は `VelloPainter`/`TinySkiaPainter` を `pub use` 公開していたが（外部利用なし、ADR-0054「walk/Painter は内部」違反）非公開化。ADR-0054 を amend し「公開 API＝`render_scene` + surface 補助」を明文化。
 
 ### REND-11 — tiny-skia を CPU フォールバックとする
 **規範文:** Vello が使えない環境（GPU/WebGPU 不可）向けに tiny-skia を CPU レンダリングの Scene Renderer として持つ。feature-gate で1つだけ link し、二 WASM バイナリを維持する。
