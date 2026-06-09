@@ -44,7 +44,13 @@
 
 ## Implementation gaps (tracked as issues)
 
-accepted ADR に対する実装不足は GitHub Issues で追跡する（`ready-for-agent`）。本ファイルには列挙しない。
+accepted ADR に対する実装不足は GitHub Issues で追跡する（`ready-for-agent`）:
+
+| ADR | Issue | Scope |
+| --- | ----- | ----- |
+| ADR-0071 | [#94](https://github.com/KenichiroMatsubara/HayateProjects/issues/94) | Semantic properties through `apply_mutations` |
+| ADR-0071 / ADR-0052 | [#95](https://github.com/KenichiroMatsubara/HayateProjects/issues/95) | Pseudo-style through `apply_mutations` |
+| ADR-0064 | [#96](https://github.com/KenichiroMatsubara/HayateProjects/issues/96) | Dirty-scoped Taffy Projection reconcile |
 
 ## Out of scope
 
