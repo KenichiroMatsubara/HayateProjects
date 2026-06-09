@@ -38,8 +38,9 @@ jobs:
           cache: pnpm
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          targets: wasm32-unknown-unknown
+
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
