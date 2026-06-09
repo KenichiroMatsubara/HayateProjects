@@ -18,6 +18,7 @@ import {
   appendSetTextContent,
   appendSetDisabled,
   appendSetSrc,
+  appendSetPseudoStyle,
   appendUnsetStyle,
   encodeStylePatch,
   unsetKindsOf,
@@ -204,13 +205,16 @@ export class HayateMutationPacket {
           break;
         }
         case 'setPseudoStyle': {
-          const buf: number[] = [];
-          encodeStylePatch(mutation.style, buf);
-          if (buf.length > 0) {
-            raw.element_set_pseudo_style(
+          const offset = styles.length;
+          encodeStylePatch(mutation.style, styles);
+          const len = styles.length - offset;
+          if (len > 0) {
+            appendSetPseudoStyle(
+              ops,
               mutation.id as number,
               PSEUDO_STATE_CODE[mutation.pseudo],
-              new Float32Array(buf),
+              offset,
+              len,
             );
           }
           break;

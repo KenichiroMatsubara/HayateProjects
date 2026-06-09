@@ -534,3 +534,11 @@ export function appendSetSrc(buf: number[], id: number, textIndex: number): void
   buf.push(id);
   buf.push(textIndex);
 }
+
+export function appendSetPseudoStyle(buf: number[], id: number, state: number, styleOffset: number, styleLen: number): void {
+  buf.push(OP.SET_PSEUDO_STYLE);
+  buf.push(id);
+  buf.push(state);
+  buf.push(styleOffset);
+  buf.push(styleLen);
+}

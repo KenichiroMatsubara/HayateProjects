@@ -1145,7 +1145,7 @@ fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> S
 fn generate_dispatch(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
-    out.push_str("use hayate_core::{ElementId, ElementKind, StylePropKind};\n");
+    out.push_str("use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
     out.push_str("use super::ApplyMutationsHost;\n");
     out.push_str("use crate::generated::{Op, decode_style_packet, parse_next_op};\n\n");
@@ -1315,6 +1315,19 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
             r#"            let kind = unset_kind_from_u32(kind)?;
             host.tree_mut()
                 .element_unset_style(ElementId::from_u64(id), &[kind]);
+            Ok(())
+"#.to_string()
+        }
+        "SET_PSEUDO_STYLE" => {
+            r#"            let pseudo = PseudoState::from_u32(state).ok_or_else(|| {
+                JsValue::from_str(&format!("unknown pseudo-state {state}"))
+            })?;
+            let slice = styles
+                .get(style_offset..style_offset + style_len)
+                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_PSEUDO_STYLE"))?;
+            let props = decode_style_packet(slice)?;
+            host.tree_mut()
+                .element_set_pseudo_style(ElementId::from_u64(id), pseudo, &props);
             Ok(())
 "#.to_string()
         }

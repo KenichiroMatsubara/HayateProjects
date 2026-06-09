@@ -209,5 +209,27 @@
         "type": "usize"
       }
     ]
+  },
+  {
+    "name": "SET_PSEUDO_STYLE",
+    "value": 15,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "state",
+        "type": "u32"
+      },
+      {
+        "name": "style_offset",
+        "type": "usize"
+      },
+      {
+        "name": "style_len",
+        "type": "usize"
+      }
+    ]
   }
 ]

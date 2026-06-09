@@ -14,6 +14,7 @@ class StubHayate implements RawHayate {
   textCalls: Array<[number, string]> = [];
   srcCalls: Array<[number, string]> = [];
   disabledCalls: Array<[number, boolean]> = [];
+  pseudoStyleCalls: Array<[number, number, number[]]> = [];
 
   element_create(): void {}
   set_root(): void {}
@@ -39,7 +40,9 @@ class StubHayate implements RawHayate {
     return new Float64Array();
   }
   element_set_style(): void {}
-  element_set_pseudo_style(): void {}
+  element_set_pseudo_style(id: number, state: number, packed: Float32Array): void {
+    this.pseudoStyleCalls.push([id, state, Array.from(packed)]);
+  }
   apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void {
     this.mutations.push({
       ops: Array.from(ops),
@@ -140,6 +143,53 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     hayate.events = [[1, 0, 3, 0, 0]];
     sched.tick();
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('batches setPseudoStyle through apply_mutations without element_set_pseudo_style', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const button = renderer.createElement('button');
+
+    renderer.setPseudoStyle(button, ':hover', { backgroundColor: '#0000ff' });
+
+    sched.tick();
+
+    expect(hayate.pseudoStyleCalls).toHaveLength(0);
+    expect(hayate.mutations).toHaveLength(1);
+    const batch = hayate.mutations[0]!;
+    expect(batch.ops).toContain(OP.SET_PSEUDO_STYLE);
+    expect(batch.ops[batch.ops.indexOf(OP.SET_PSEUDO_STYLE) + 1]).toBe(1);
+    expect(batch.ops[batch.ops.indexOf(OP.SET_PSEUDO_STYLE) + 2]).toBe(0);
+    expect(batch.styles.length).toBeGreaterThan(0);
+  });
+
+  it('preserves pseudo-style, base style, and structure order in one batch', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const root = renderer.createElement('view');
+    const button = renderer.createElement('button');
+    renderer.setRoot(root);
+    renderer.appendChild(root, button);
+    renderer.setStyle(button, { backgroundColor: '#ffffff' });
+    renderer.setPseudoStyle(button, ':hover', { backgroundColor: '#0000ff' });
+
+    sched.tick();
+
+    expect(hayate.pseudoStyleCalls).toHaveLength(0);
+    expect(hayate.mutations).toHaveLength(1);
+    const batch = hayate.mutations[0]!;
+    const appendIdx = batch.ops.indexOf(OP.APPEND_CHILD);
+    const setStyleIdx = batch.ops.indexOf(OP.SET_STYLE);
+    const setPseudoIdx = batch.ops.indexOf(OP.SET_PSEUDO_STYLE);
+
+    expect(appendIdx).toBeGreaterThanOrEqual(0);
+    expect(setStyleIdx).toBeGreaterThan(appendIdx);
+    expect(setPseudoIdx).toBeGreaterThan(setStyleIdx);
+    expect(batch.ops[setPseudoIdx + 1]).toBe(2);
+    expect(batch.ops[setPseudoIdx + 2]).toBe(0);
+    expect(batch.styles.length).toBeGreaterThan(0);
   });
 
   it('batches setProperty with structure mutations in one apply_mutations', () => {

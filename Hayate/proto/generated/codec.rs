@@ -146,6 +146,13 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*id as f64);
             buf.push(*text_index as f64);
         }
+        Op::SetPseudoStyle { id, state, style_offset, style_len } => {
+            buf.push(OP_SET_PSEUDO_STYLE as f64);
+            buf.push(*id as f64);
+            buf.push(*state as f64);
+            buf.push(*style_offset as f64);
+            buf.push(*style_len as f64);
+        }
     }
 }
 
