@@ -7,6 +7,15 @@ use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::taffy_bridge::MeasureCtx;
 use crate::element::tree::Element;
 
+/// Result of [`TaffyProjection::traversal_step`].
+pub(crate) enum TraversalStep<'a> {
+    /// `id` has no Taffy node; recurse into this element's children without
+    /// yielding `id` itself.
+    Skip(&'a Element),
+    /// `id` has a Taffy node; yield it along with the element.
+    Visit(NodeId, &'a Element),
+}
+
 /// Derived Taffy layout tree for the block-box subset of an `ElementTree`.
 ///
 /// Inline text elements (text whose parent is also text) are excluded per ADR-0063/0064.
@@ -50,6 +59,26 @@ impl TaffyProjection {
 
     pub fn node_id(&self, id: ElementId) -> Option<NodeId> {
         self.element_to_node.get(&id).copied()
+    }
+
+    /// Shared skeleton for the three Canonical Tree traversals (`scene_build`,
+    /// `walk_resolved`, `walk_accessibility`): look up `id`'s Taffy node.
+    ///
+    /// If `id` has no element, returns `None` — callers should stop. If `id`
+    /// has no Taffy node (e.g. an inline text element inside an IFC), returns
+    /// `Skip` so callers recurse into `id`'s children without yielding `id`
+    /// itself, mirroring `layout_pass::cache_layout`. Otherwise returns
+    /// `Visit` with the Taffy node and the element to yield.
+    pub fn traversal_step<'a>(
+        &self,
+        elements: &'a HashMap<ElementId, Element>,
+        id: ElementId,
+    ) -> Option<TraversalStep<'a>> {
+        let el = elements.get(&id)?;
+        match self.node_id(id) {
+            Some(node) => Some(TraversalStep::Visit(node, el)),
+            None => Some(TraversalStep::Skip(el)),
+        }
     }
 
     /// Reconcile the Taffy projection when structure has changed.

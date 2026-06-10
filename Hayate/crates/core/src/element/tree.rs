@@ -15,7 +15,7 @@ use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::inline_text::{self, ifc_root, is_ifc_root};
 use crate::element::layout_pass::LayoutPass;
-use crate::element::taffy_projection::TaffyProjection;
+use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
@@ -911,7 +911,7 @@ impl ElementTree {
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
         let box_hit = hit_test_walk(self, root, x, y)?;
-        resolve_ifc_inline_hit(self, box_hit, x, y)
+        inline_text::resolve_ifc_inline_hit(self, box_hit, x, y)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -1001,8 +1001,9 @@ fn walk_resolved(
     interaction: &InteractionSnapshot,
     out: &mut Vec<(ElementId, ResolvedElement)>,
 ) {
-    let el = match elements.get(&id) {
-        Some(e) => e,
+    let (taffy_node, el) = match projection.traversal_step(elements, id) {
+        Some(TraversalStep::Visit(taffy_node, el)) => (Some(taffy_node), el),
+        Some(TraversalStep::Skip(el)) => (None, el),
         None => return,
     };
     let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
@@ -1012,7 +1013,7 @@ fn walk_resolved(
         &inherited_base,
         &el.visual,
     );
-    let taffy_node = match projection.node_id(id) {
+    let taffy_node = match taffy_node {
         Some(n) => n,
         None => {
             for &child in &el.children {
@@ -1088,27 +1089,6 @@ fn walk_resolved(
             out,
         );
     }
-}
-
-fn resolve_ifc_inline_hit(
-    tree: &ElementTree,
-    box_hit: ElementId,
-    x: f32,
-    y: f32,
-) -> Option<ElementId> {
-    if !is_ifc_root(&tree.elements, box_hit) {
-        return Some(box_hit);
-    }
-    let el = tree.elements.get(&box_hit)?;
-    let tl = el.text_layout.as_ref()?;
-    let &(ex, ey, _, _) = tree.layout.layout_cache.get(&box_hit)?;
-    let byte = inline_text::byte_index_at_point(tl, x - ex, y - ey);
-    if let Some(map) = &tl.range_map {
-        if let Some(inline_id) = map.lookup(byte) {
-            return Some(inline_id);
-        }
-    }
-    Some(box_hit)
 }
 
 fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {

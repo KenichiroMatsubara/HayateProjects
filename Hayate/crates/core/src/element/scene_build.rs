@@ -4,6 +4,7 @@ use crate::element::effective_visual::{
 };
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 
@@ -40,14 +41,10 @@ fn walk(
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
 ) {
-    let el = match tree.elements.get(&id) {
-        Some(e) => e,
-        None => return,
-    };
     // Inline text elements have no Taffy box (ADR-0063/0064); recurse without emitting.
-    let taffy_node = match tree.layout.projection.node_id(id) {
-        Some(n) => n,
-        None => {
+    let (taffy_node, el) = match tree.layout.projection.traversal_step(&tree.elements, id) {
+        Some(TraversalStep::Visit(taffy_node, el)) => (taffy_node, el),
+        Some(TraversalStep::Skip(_)) => {
             for child in tree.ordered_children(id) {
                 walk(
                     tree,
@@ -62,6 +59,7 @@ fn walk(
             }
             return;
         }
+        None => return,
     };
     let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
     let child_inherited = child_inherited_context(

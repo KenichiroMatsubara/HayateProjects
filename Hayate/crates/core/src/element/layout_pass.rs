@@ -9,7 +9,7 @@ use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::taffy_bridge::MeasureCtx;
 use crate::element::inline_text;
-use crate::element::taffy_projection::TaffyProjection;
+use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::element::tree::{Element, Event};
 
@@ -399,28 +399,25 @@ pub(crate) fn cache_layout(
     oy: f32,
     cache: &mut HashMap<ElementId, (f32, f32, f32, f32)>,
 ) {
-    let el = match elements.get(&id) {
-        Some(e) => e,
-        None => return,
-    };
-    let taffy_node = match projection.node_id(id) {
-        Some(n) => n,
-        None => {
-            // Inline text elements have no box geometry; still walk descendants.
+    match projection.traversal_step(elements, id) {
+        // Inline text elements have no box geometry; still walk descendants.
+        Some(TraversalStep::Skip(el)) => {
             for &child in &el.children {
                 cache_layout(elements, projection, child, ox, oy, cache);
             }
-            return;
         }
-    };
-    let layout = match projection.taffy.layout(taffy_node) {
-        Ok(l) => l,
-        Err(_) => return,
-    };
-    let x = ox + layout.location.x;
-    let y = oy + layout.location.y;
-    cache.insert(id, (x, y, layout.size.width, layout.size.height));
-    for &child in &el.children {
-        cache_layout(elements, projection, child, x, y, cache);
+        Some(TraversalStep::Visit(taffy_node, el)) => {
+            let layout = match projection.taffy.layout(taffy_node) {
+                Ok(l) => l,
+                Err(_) => return,
+            };
+            let x = ox + layout.location.x;
+            let y = oy + layout.location.y;
+            cache.insert(id, (x, y, layout.size.width, layout.size.height));
+            for &child in &el.children {
+                cache_layout(elements, projection, child, x, y, cache);
+            }
+        }
+        None => {}
     }
 }
