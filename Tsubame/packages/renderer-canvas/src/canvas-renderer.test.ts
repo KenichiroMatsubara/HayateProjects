@@ -66,6 +66,18 @@ class StubHayate implements RawHayate {
   ime_character_bounds(): number[] {
     return [0, 0, 0, 0];
   }
+  element_get_text_content(): string {
+    return '';
+  }
+  element_get_bounds(): number[] {
+    return [0, 0, 0, 0];
+  }
+  element_effective_visual(): null {
+    return null;
+  }
+  poll_accessibility(): string | null {
+    return null;
+  }
   render(timestampMs: number): void {
     this.renders.push(timestampMs);
   }
@@ -80,9 +92,6 @@ class StubHayate implements RawHayate {
     return listenerId;
   }
   set_background_color(): void {}
-  element_effective_visual(): null {
-    return null;
-  }
 }
 
 function manualScheduler() {
