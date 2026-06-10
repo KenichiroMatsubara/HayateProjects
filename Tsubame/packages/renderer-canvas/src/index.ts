@@ -2,7 +2,10 @@ export { CanvasRenderer } from './canvas-renderer.js';
 export type { CanvasRendererOptions } from './canvas-renderer.js';
 export type { RawHayate } from './hayate.js';
 export { parseColor } from './hayate.js';
-export { initCanvasRenderer } from './init.js';
+export { initCanvasRenderer, probeWebGPU } from './init.js';
+export type { InitCanvasRendererOptions } from './init.js';
+export { resolveCanvasBackend } from './resolve-canvas-backend.js';
+export type { CanvasBackend } from './resolve-canvas-backend.js';
 export {
   encodeStylePatch,
   unsetKindsOf,

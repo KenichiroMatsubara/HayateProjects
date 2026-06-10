@@ -1,0 +1,37 @@
+export const COLORS = {
+  bg: '#0b1020',
+  rail: '#111827',
+  panel: '#162033',
+  panel2: '#1b2a3f',
+  panel3: '#21344e',
+  ink: '#eef4ff',
+  text: '#d8e2f2',
+  muted: '#8ea1bb',
+  quiet: '#5f728d',
+  line: '#31425b',
+  accent: '#4fd1c5',
+  accent2: '#f59e0b',
+  danger: '#fb7185',
+  dangerBg: '#3d1722',
+  success: '#65d38c',
+  successBg: '#163526',
+  blue: '#60a5fa',
+  violet: '#a78bfa',
+  black: '#070b14',
+};
+
+export const inputStyle = {
+  height: 38,
+  paddingLeft: 12,
+  paddingRight: 12,
+  backgroundColor: COLORS.panel2,
+  color: COLORS.text,
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: COLORS.line,
+  fontSize: 13,
+  ':focus': {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.panel3,
+  },
+} as const;
