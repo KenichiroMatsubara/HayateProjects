@@ -72,6 +72,11 @@ export class DomRenderer implements IRenderer {
 
   setRoot(id: ElementId): void {
     const root = this.node(id);
+    // Canvas 経路ではルートがサーフェスサイズで layout されるのに合わせ、
+    // DOM 経路でもルートを container いっぱいに広げる。これがないと
+    // 子の height:100% が解決できず scroll-view がスクロールしない。
+    root.style.width = '100%';
+    root.style.height = '100%';
     this.container.replaceChildren(root);
   }
 

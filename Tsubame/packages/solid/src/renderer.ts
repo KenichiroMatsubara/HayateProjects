@@ -65,9 +65,10 @@ const {
   },
 
   setProperty(node: TsubameNode, name: string, value: unknown): void {
-    if (node.elementKind === 'text') return;
     const r = activeRenderer();
 
+    // text も Hayate element なので style は適用する（ADR-0058）。
+    // style 以外のプロパティは text には存在しないため従来通り無視する。
     if (name === 'style') {
       const { base, pseudo } = splitHayateStyle(
         (value ?? {}) as Record<string, unknown>,
@@ -84,6 +85,8 @@ const {
       }
       return;
     }
+
+    if (node.elementKind === 'text') return;
 
     if (REJECTED_EVENT_PROPS.has(name)) {
       throw new Error(
