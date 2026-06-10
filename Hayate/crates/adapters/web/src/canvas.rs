@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use hayate_core::{
-    DocumentEventKind, ElementId, ElementTree, Event, RenderImage, RenderImageAlphaType,
-    RenderImageFormat, StylePropKind,
+    Color, DocumentEventKind, ElementId, ElementTree, Event, FontStyleValue, RenderImage,
+    RenderImageAlphaType, RenderImageFormat, StylePropKind, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -169,6 +169,52 @@ impl HayateElementRenderer {
             .element_layout_rect(eid)
             .unwrap_or((0.0, 0.0, 0.0, 0.0));
         vec![x, y, w, h].into_boxed_slice()
+    }
+
+    /// Resolved style of `id` after inheritance + pseudo-state (ADR-0067).
+    /// Returns `null` if `id` is unknown, otherwise a JS object with the
+    /// effective `Visual` fields (camelCase keys, colors as `{r,g,b,a}`).
+    pub fn element_effective_visual(&self, id: f64) -> JsValue {
+        let eid = element_id_from_f64(id);
+        let Some(visual) = self.tree.element_effective_visual(eid) else {
+            return JsValue::NULL;
+        };
+
+        let obj = js_sys::Object::new();
+        let set = |key: &str, value: JsValue| {
+            js_sys::Reflect::set(&obj, &JsValue::from_str(key), &value).unwrap();
+        };
+        set("backgroundColor", color_to_js(visual.background_color));
+        set("opacity", JsValue::from_f64(visual.opacity as f64));
+        set("borderRadius", JsValue::from_f64(visual.border_radius as f64));
+        set("borderWidth", JsValue::from_f64(visual.border_width as f64));
+        set("borderColor", color_to_js(visual.border_color));
+        set("textColor", color_to_js(visual.text_color));
+        set(
+            "fontSize",
+            visual
+                .font_size
+                .map(|v| JsValue::from_f64(v as f64))
+                .unwrap_or(JsValue::NULL),
+        );
+        set(
+            "fontWeight",
+            visual
+                .font_weight
+                .map(|v| JsValue::from_f64(v as f64))
+                .unwrap_or(JsValue::NULL),
+        );
+        set("fontStyle", font_style_to_js(visual.font_style));
+        set("textDecoration", text_decoration_to_js(visual.text_decoration));
+        set("zIndex", JsValue::from_f64(visual.z_index as f64));
+        set(
+            "fontFamily",
+            visual
+                .font_family
+                .map(|f| JsValue::from_str(&f))
+                .unwrap_or(JsValue::NULL),
+        );
+        obj.into()
     }
 
     pub fn set_root(&mut self, id: f64) {
@@ -460,6 +506,37 @@ impl ApplyMutationsHost for HayateElementRenderer {
 
     fn apply_blur(&mut self, id: ElementId) {
         self.tree.on_blur(id);
+    }
+}
+
+/// `Some(Color)` -> `{r,g,b,a}`, `None` -> `null`.
+fn color_to_js(color: Option<Color>) -> JsValue {
+    let Some(c) = color else {
+        return JsValue::NULL;
+    };
+    let obj = js_sys::Object::new();
+    js_sys::Reflect::set(&obj, &JsValue::from_str("r"), &JsValue::from_f64(c.r)).unwrap();
+    js_sys::Reflect::set(&obj, &JsValue::from_str("g"), &JsValue::from_f64(c.g)).unwrap();
+    js_sys::Reflect::set(&obj, &JsValue::from_str("b"), &JsValue::from_f64(c.b)).unwrap();
+    js_sys::Reflect::set(&obj, &JsValue::from_str("a"), &JsValue::from_f64(c.a)).unwrap();
+    obj.into()
+}
+
+fn font_style_to_js(value: Option<FontStyleValue>) -> JsValue {
+    match value {
+        Some(FontStyleValue::Normal) => JsValue::from_str("normal"),
+        Some(FontStyleValue::Italic) => JsValue::from_str("italic"),
+        Some(FontStyleValue::Oblique) => JsValue::from_str("oblique"),
+        None => JsValue::NULL,
+    }
+}
+
+fn text_decoration_to_js(value: Option<TextDecorationValue>) -> JsValue {
+    match value {
+        Some(TextDecorationValue::None) => JsValue::from_str("none"),
+        Some(TextDecorationValue::Underline) => JsValue::from_str("underline"),
+        Some(TextDecorationValue::LineThrough) => JsValue::from_str("line-through"),
+        None => JsValue::NULL,
     }
 }
 

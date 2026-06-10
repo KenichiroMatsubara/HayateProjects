@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { OP } from '@tsubame/protocol-generated/protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
+import type { RawHayate } from './hayate.js';
 import { createNullHayate, type WasmHayateFixture } from './test-helpers/wasm-hayate.js';
 
 function manualScheduler() {
@@ -161,6 +162,30 @@ describe('codec integration (C3)', () => {
 
     hayate.on_pointer_down(50, 20);
     hayate.render(48);
+  });
+
+  it('element_effective_visual resolves :hover pseudo style (ADR-0067)', async () => {
+    fixture = await createNullHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(fixture.raw, sched);
+
+    const root = renderer.createElement('view');
+    renderer.setRoot(root);
+    renderer.setStyle(root, { width: '100%', height: '100%', backgroundColor: '#ffffff' });
+    renderer.setPseudoStyle(root, ':hover', { backgroundColor: '#0000ff' });
+
+    sched.tick(16);
+
+    const hayate = fixture.raw as RawHayate;
+
+    const base = hayate.element_effective_visual(1);
+    expect(base?.backgroundColor).toEqual({ r: 1, g: 1, b: 1, a: 1 });
+
+    hayate.on_pointer_move(50, 20);
+    hayate.render(32);
+
+    const hovered = hayate.element_effective_visual(1);
+    expect(hovered?.backgroundColor).toEqual({ r: 0, g: 0, b: 1, a: 1 });
   });
 
   it('matches binding.test ops wire for unified batch', async () => {
