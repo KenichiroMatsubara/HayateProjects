@@ -5,10 +5,15 @@ import { generateCodec } from './gen-codec.mjs';
 import { generateDelivery } from './gen-delivery.mjs';
 import { generateWire } from './gen-wire.mjs';
 import { writeIndex } from './gen-index.mjs';
+import { generateStyleTypes } from './gen-style-types.mjs';
+import { generateEventKind } from './gen-event-kind.mjs';
 
 generateWire();
 generateCatalog();
 generateCodec();
 generateDelivery();
 writeIndex();
+generateStyleTypes();
+generateEventKind();
 console.log('Generated Tsubame/proto/generated/*');
+console.log('Generated Tsubame/packages/renderer-protocol/src/generated/*');
