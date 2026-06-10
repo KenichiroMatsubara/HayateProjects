@@ -2,7 +2,11 @@
 
 > ⚠️ **部分的に上書き済み**: HTML Mode の描画アプローチ（Taffy → absolutely-positioned div）は
 > **ADR-0029** によって廃止された。HTML Mode の現行アプローチはブラウザ CSS レイアウト方式。
-> IME・モード選択・Canvas Mode に関する決定は本 ADR が引き続き有効。
+> Canvas/HTML Mode の境界条件（「WebGPU と EditContext の両方が必須」）は **ADR-0048** の
+> tiny-skia CPU フォールバック導入により上書き済み: EditContext の有無のみで Canvas Mode
+> （Vello または tiny-skia バックエンド）/ HTML(DOM) Mode を切り分け、WebGPU の有無は
+> Canvas Mode 内で Vello / tiny-skia のどちらのバックエンドを使うかのみを決める。
+> IME・モード選択（上記の通り改定）・Canvas Mode に関するそれ以外の決定は本 ADR が引き続き有効。
 
 ## Context
 
