@@ -14,7 +14,6 @@ use crate::element::tree::Element;
 pub(crate) struct TaffyProjection {
     pub(crate) taffy: TaffyTree<MeasureCtx>,
     element_to_node: HashMap<ElementId, NodeId>,
-    structure_dirty: HashSet<ElementId>,
     built: bool,
 }
 
@@ -23,13 +22,8 @@ impl TaffyProjection {
         Self {
             taffy: TaffyTree::new(),
             element_to_node: HashMap::new(),
-            structure_dirty: HashSet::new(),
             built: false,
         }
-    }
-
-    pub fn mark_structure_dirty(&mut self, id: ElementId) {
-        self.structure_dirty.insert(id);
     }
 
     pub fn mark_dirty(&mut self, id: ElementId) {
@@ -53,8 +47,15 @@ impl TaffyProjection {
     }
 
     /// Reconcile the Taffy projection when structure has changed.
-    pub fn reconcile(&mut self, elements: &HashMap<ElementId, Element>, root: ElementId) {
-        if self.built && self.structure_dirty.is_empty() {
+    ///
+    /// `structure_dirty` is owned by `ElementEngine` (ADR-0075); this drains it.
+    pub fn reconcile(
+        &mut self,
+        elements: &HashMap<ElementId, Element>,
+        root: ElementId,
+        structure_dirty: &mut HashSet<ElementId>,
+    ) {
+        if self.built && structure_dirty.is_empty() {
             return;
         }
 
@@ -63,11 +64,11 @@ impl TaffyProjection {
                 build_subtree(self, elements, root);
             }
             self.built = true;
-            self.structure_dirty.clear();
+            structure_dirty.clear();
             return;
         }
 
-        let dirty: Vec<ElementId> = self.structure_dirty.drain().collect();
+        let dirty: Vec<ElementId> = structure_dirty.drain().collect();
         let patch_roots = minimal_patch_roots(&dirty, elements);
         for patch_root in patch_roots {
             patch_subtree(self, elements, patch_root);
@@ -347,7 +348,7 @@ mod tests {
             .children
             .push(inline_id);
 
-        projection.reconcile(&elements, root_id);
+        projection.reconcile(&elements, root_id, &mut HashSet::new());
 
         assert!(!projection.has_node(inline_id));
         assert!(projection.has_node(root_id));
@@ -366,7 +367,7 @@ mod tests {
         elements.insert(branch_a_id, branch_a);
         elements.insert(branch_b_id, branch_b);
 
-        projection.reconcile(&elements, root_id);
+        projection.reconcile(&elements, root_id, &mut HashSet::new());
         let branch_b_node_before = projection
             .node_id(branch_b_id)
             .expect("branch_b must be projected");
@@ -378,10 +379,11 @@ mod tests {
             .children
             .push(new_child_id);
         elements.insert(new_child_id, new_child);
-        projection.mark_structure_dirty(branch_a_id);
-        projection.mark_structure_dirty(new_child_id);
+        let mut structure_dirty = HashSet::new();
+        structure_dirty.insert(branch_a_id);
+        structure_dirty.insert(new_child_id);
 
-        projection.reconcile(&elements, root_id);
+        projection.reconcile(&elements, root_id, &mut structure_dirty);
 
         let branch_b_node_after = projection
             .node_id(branch_b_id)
