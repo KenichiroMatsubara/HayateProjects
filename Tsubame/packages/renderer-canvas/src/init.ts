@@ -2,8 +2,17 @@ import { MODIFIER } from '@tsubame/protocol-generated/protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { CanvasRendererOptions } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
+import {
+  resolveCanvasBackend,
+  type CanvasBackend,
+} from './resolve-canvas-backend.js';
 
-async function probeWebGPU(): Promise<boolean> {
+export interface InitCanvasRendererOptions extends CanvasRendererOptions {
+  /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
+  backend?: CanvasBackend;
+}
+
+export async function probeWebGPU(): Promise<boolean> {
   try {
     const gpu = (navigator as any).gpu;
     if (!gpu) return false;
@@ -23,9 +32,23 @@ async function probeWebGPU(): Promise<boolean> {
  * canvas のコンテキスト型は一度決まると変更できないため、
  * WebGPU の可否を事前に判定してから WASM 初期化に進む。
  */
+async function loadCanvasBackend(
+  backend: CanvasBackend,
+  canvas: HTMLCanvasElement,
+): Promise<RawHayate> {
+  if (backend === 'vello') {
+    const velloMod = await import('hayate-adapter-web');
+    await velloMod.default();
+    return (await velloMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  }
+  const cpuMod = await import('hayate-adapter-web-cpu');
+  await cpuMod.default();
+  return (await cpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+}
+
 export async function initCanvasRenderer(
   canvas: HTMLCanvasElement,
-  options?: CanvasRendererOptions,
+  options?: InitCanvasRendererOptions,
 ): Promise<CanvasRenderer> {
   // Sync the canvas pixel buffer to its current CSS layout size before WASM init.
   // CSS (position:fixed; inset:0; width:100vw; height:100vh) drives the display
@@ -34,17 +57,9 @@ export async function initCanvasRenderer(
   canvas.width = Math.round(rect.width);
   canvas.height = Math.round(rect.height);
 
-  let raw: RawHayate;
-
-  if (await probeWebGPU()) {
-    const velloMod = await import('hayate-adapter-web');
-    await velloMod.default();
-    raw = (await velloMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
-  } else {
-    const cpuMod = await import('hayate-adapter-web-cpu');
-    await cpuMod.default();
-    raw = (await cpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
-  }
+  const webgpuAvailable = await probeWebGPU();
+  const backend = resolveCanvasBackend(options, webgpuAvailable);
+  const raw = await loadCanvasBackend(backend, canvas);
 
   attachPointerInput(canvas, raw);
   attachTextInput(canvas, raw);

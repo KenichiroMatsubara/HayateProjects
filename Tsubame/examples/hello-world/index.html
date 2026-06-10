@@ -19,11 +19,68 @@
       }
       #dom-host[hidden], #canvas-stage[hidden] { display: none; }
       #canvas-stage { display: block; cursor: default; }
+      #renderer-switch {
+        position: fixed;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        border-radius: 999px;
+        border: 1px solid #31425b;
+        background: #111827ee;
+        backdrop-filter: blur(6px);
+      }
+      #renderer-switch button {
+        padding: 4px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        color: #8ea1bb;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      #renderer-switch button.active {
+        background: #4fd1c5;
+        color: #070b14;
+      }
+      #renderer-switch button:hover:not(.active) {
+        color: #d8e2f2;
+        background: #21344e;
+      }
     </style>
   </head>
   <body>
+    <div id="renderer-switch" aria-label="Renderer switch">
+      <button type="button" data-renderer="auto">auto</button>
+      <button type="button" data-renderer="vello">vello</button>
+      <button type="button" data-renderer="tiny-skia">tiny-skia</button>
+      <button type="button" data-renderer="dom">dom</button>
+    </div>
     <div id="dom-host" hidden></div>
     <canvas id="canvas-stage" hidden></canvas>
+    <script>
+      (function initRendererSwitch() {
+        const params = new URLSearchParams(window.location.search);
+        const current = params.get('renderer') ?? 'auto';
+        const switcher = document.getElementById('renderer-switch');
+        for (const button of switcher.querySelectorAll('button[data-renderer]')) {
+          const value = button.getAttribute('data-renderer');
+          if (value === current) button.classList.add('active');
+          button.addEventListener('click', () => {
+            const next = new URLSearchParams(window.location.search);
+            next.set('renderer', value);
+            const query = next.toString();
+            window.location.search = query ? `?${query}` : '';
+          });
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
