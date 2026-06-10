@@ -6,6 +6,7 @@ use linebender_resource_handle::Blob;
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
 use crate::element::edit_state::EditState;
+use crate::element::engine::ElementEngine;
 use crate::element::effective_visual::{self, child_inherited_context};
 use crate::element::ime_bridge::CharacterBounds;
 use crate::element::event_spec::DocumentEventKind;
@@ -134,9 +135,11 @@ pub struct ElementTree {
     pub(crate) elements: HashMap<ElementId, Element>,
     pub(crate) root: Option<ElementId>,
     /// Layout-computation and text-shaping state. Grouped here so callers
-    /// cross one seam (`layout.run(...)`) instead of touching Taffy, Parley,
+    /// cross one seam (`commit_frame()`) instead of touching Taffy, Parley,
     /// font dirty state, and cursor timing directly.
     pub(crate) layout: LayoutPass,
+    /// Dirty-tracking sets and frame-resolution logic (ADR-0075).
+    pub(crate) engine: ElementEngine,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
     pub(crate) event_queue: Vec<Event>,
@@ -157,6 +160,7 @@ impl ElementTree {
             elements: HashMap::new(),
             root: None,
             layout: LayoutPass::new(),
+            engine: ElementEngine::new(),
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
             event_queue: Vec::new(),
@@ -416,7 +420,7 @@ impl ElementTree {
         }
 
         self.layout.pending_font_fetches.remove(family_name);
-        self.layout.fonts_dirty = true;
+        self.engine.mark_fonts_dirty();
     }
 
     /// Register a font from raw bytes using the family name(s) embedded in the
@@ -660,7 +664,7 @@ impl ElementTree {
             }
         }
         if let Some(root) = self.root {
-            self.layout.mark_structure_dirty(root);
+            self.engine.mark_structure_dirty(root);
         }
         for node in to_remove.into_iter().rev() {
             self.elements.remove(&node);
@@ -773,18 +777,28 @@ impl ElementTree {
     /// drives the focused TextInput's cursor blink without exposing a cursor-tick
     /// function to the host (ADR-0032).
     pub fn render(&mut self, timestamp_ms: f64) -> &SceneGraph {
-        if let Some(root) = self.root {
+        if self.root.is_some() {
             self.layout
                 .advance_cursor_blink(&mut self.elements, self.focused_element, timestamp_ms);
-            self.layout.run(
+        }
+        self.commit_frame();
+        self.scene_cache = scene_build::build(self);
+        &self.scene_cache
+    }
+
+    /// Resolve dirty state and settle layout (`LayoutPass::run()` equivalent, ADR-0075
+    /// scope A): Taffy projection reconcile, Parley text shaping, and layout-cache refresh.
+    /// Does not lower the scene graph or advance the cursor blink.
+    pub fn commit_frame(&mut self) {
+        if let Some(root) = self.root {
+            self.engine.resolve(
+                &mut self.layout,
                 &mut self.elements,
                 root,
                 self.viewport,
                 &mut self.event_queue,
             );
         }
-        self.scene_cache = scene_build::build(self);
-        &self.scene_cache
     }
 
     pub fn scene_graph(&self) -> &SceneGraph {
@@ -917,14 +931,7 @@ impl ElementTree {
     /// Run layout and return every element with its absolute position and visual state.
     /// Keyed by stable ElementId — safe to use as a DOM node mapping key across frames.
     pub fn resolved_elements(&mut self) -> Vec<(ElementId, ResolvedElement)> {
-        if let Some(root) = self.root {
-            self.layout.run(
-                &mut self.elements,
-                root,
-                self.viewport,
-                &mut self.event_queue,
-            );
-        }
+        self.commit_frame();
         let interaction = self.interaction_snapshot();
         let mut out = Vec::new();
         if let Some(root) = self.root {
@@ -960,7 +967,8 @@ impl ElementTree {
 
     fn mark_text_content_dirty(&mut self, id: ElementId) {
         if let Some(root) = ifc_root(&self.elements, id) {
-            self.layout.mark_shape_dirty(root);
+            self.engine.mark_shape_dirty(root);
+            self.layout.projection.mark_dirty(root);
         } else if self.layout.projection.has_node(id) {
             self.layout.projection.mark_dirty(id);
         }
@@ -973,10 +981,11 @@ impl ElementTree {
                 .get(&child)
                 .is_some_and(|e| e.kind == ElementKind::Text)
         {
-            self.layout.mark_shape_dirty(parent);
+            self.engine.mark_shape_dirty(parent);
+            self.layout.projection.mark_dirty(parent);
         } else {
-            self.layout.mark_structure_dirty(parent);
-            self.layout.mark_structure_dirty(child);
+            self.engine.mark_structure_dirty(parent);
+            self.engine.mark_structure_dirty(child);
         }
     }
 

@@ -21,18 +21,13 @@ pub struct LayoutPass {
     pub(crate) projection: TaffyProjection,
     pub(crate) font_cx: FontContext,
     pub(crate) layout_cx: LayoutContext<TextBrush>,
-    /// Set by `register_font`; cleared at the start of the next `run`.
-    /// Causes all text elements to be re-shaped with the newly registered font.
-    pub(crate) fonts_dirty: bool,
     /// Family names already requested via `FetchFont` but not yet loaded.
     /// Prevents duplicate events for the same family across frames.
     pub(crate) pending_font_fetches: HashSet<String>,
     /// Wall-clock millis of the last cursor-visibility toggle (ADR-0032).
     pub(crate) last_cursor_toggle_ms: Option<f64>,
-    /// Absolute bounding rects (x, y, w, h) per element, refreshed after each `run`.
+    /// Absolute bounding rects (x, y, w, h) per element, refreshed after each `commit_frame`.
     pub(crate) layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
-    /// IFC roots needing Parley re-compose before layout (ADR-0063).
-    pub(crate) shape_dirty: HashSet<ElementId>,
 }
 
 impl LayoutPass {
@@ -43,43 +38,10 @@ impl LayoutPass {
             projection: TaffyProjection::new(),
             font_cx,
             layout_cx: LayoutContext::new(),
-            fonts_dirty: false,
             pending_font_fetches: HashSet::new(),
             last_cursor_toggle_ms: None,
             layout_cache: HashMap::new(),
-            shape_dirty: HashSet::new(),
         }
-    }
-
-    /// Run a full layout pass: Taffy layout + Parley text shaping + layout-cache update.
-    /// Emits `FetchFont` events into `event_queue` for any missing font families.
-    pub(crate) fn run(
-        &mut self,
-        elements: &mut HashMap<ElementId, Element>,
-        root: ElementId,
-        viewport: (f32, f32),
-        event_queue: &mut Vec<Event>,
-    ) {
-        self.projection.reconcile(&*elements, root);
-        self.compute(elements, root, viewport, event_queue);
-        self.layout_cache.clear();
-        cache_layout(
-            elements,
-            &self.projection,
-            root,
-            0.0,
-            0.0,
-            &mut self.layout_cache,
-        );
-    }
-
-    pub(crate) fn mark_structure_dirty(&mut self, id: ElementId) {
-        self.projection.mark_structure_dirty(id);
-    }
-
-    pub(crate) fn mark_shape_dirty(&mut self, id: ElementId) {
-        self.shape_dirty.insert(id);
-        self.projection.mark_dirty(id);
     }
 
     /// Toggle the focused element's cursor every 500 ms (ADR-0032).
@@ -112,23 +74,27 @@ impl LayoutPass {
         }
     }
 
-    fn compute(
+    /// Resolve `shape_dirty`/`fonts_dirty` and run Taffy layout + Parley shaping.
+    /// `shape_dirty`/`fonts_dirty` are owned by `ElementEngine` (ADR-0075).
+    pub(crate) fn compute(
         &mut self,
         elements: &mut HashMap<ElementId, Element>,
         root: ElementId,
         viewport: (f32, f32),
         event_queue: &mut Vec<Event>,
+        shape_dirty: &mut HashSet<ElementId>,
+        fonts_dirty: &mut bool,
     ) {
         // When a new font was registered, invalidate all text layouts so they
         // are re-shaped with the new font data on this pass.
-        for &id in self.shape_dirty.iter() {
+        for &id in shape_dirty.iter() {
             if let Some(el) = elements.get_mut(&id) {
                 el.text_layout = None;
             }
         }
 
-        if self.fonts_dirty {
-            self.fonts_dirty = false;
+        if *fonts_dirty {
+            *fonts_dirty = false;
             let text_ids: Vec<ElementId> = elements
                 .iter()
                 .filter_map(|(id, el)| {
@@ -191,7 +157,6 @@ impl LayoutPass {
             font_cx,
             layout_cx,
             pending_font_fetches,
-            shape_dirty,
             ..
         } = self;
 

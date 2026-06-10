@@ -1579,3 +1579,94 @@ fn viewport_resize_does_not_override_explicit_root_px_size() {
         rect.3
     );
 }
+
+// ── ElementEngine / commit_frame (ADR-0075) ──────────────────────────────
+
+#[test]
+fn commit_frame_resolves_layout_without_render() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8200, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(300.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(120.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+        ],
+    );
+
+    assert!(!tree.has_layout(), "layout cache should be empty before commit_frame");
+
+    tree.commit_frame();
+
+    let rect = tree
+        .element_layout_rect(root)
+        .expect("commit_frame should populate layout_cache");
+    assert!((rect.2 - 120.0).abs() < 0.5);
+    assert!((rect.3 - 80.0).abs() < 0.5);
+}
+
+#[test]
+fn commit_frame_resolves_structure_dirty_for_appended_child() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8210, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(300.0, 200.0);
+    tree.element_set_style(root, &[StyleProp::Width(Dimension::px(200.0))]);
+    tree.commit_frame();
+
+    let child = tree.element_create(8211, ElementKind::View);
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(Dimension::px(50.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
+    );
+    tree.element_append_child(root, child);
+
+    assert!(
+        tree.element_layout_rect(child).is_none(),
+        "newly appended child should have no layout until commit_frame resolves structure_dirty"
+    );
+
+    tree.commit_frame();
+
+    let rect = tree
+        .element_layout_rect(child)
+        .expect("commit_frame should resolve structure_dirty and project the new child");
+    assert!((rect.2 - 50.0).abs() < 0.5);
+    assert!((rect.3 - 40.0).abs() < 0.5);
+}
+
+#[test]
+fn commit_frame_then_effective_visual_reflects_pseudo_hover_state() {
+    use hayate_core::PseudoState;
+
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(8220, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(300.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_pseudo_style(
+        root,
+        PseudoState::Hover,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
+
+    tree.commit_frame();
+    assert!(tree.element_layout_rect(root).is_some());
+
+    tree.hover_enter_element(root);
+    let visual = tree
+        .element_effective_visual(root)
+        .expect("root should resolve effective visual");
+    assert_eq!(visual.background_color, Some(Color::new(1.0, 0.0, 0.0, 1.0)));
+}
