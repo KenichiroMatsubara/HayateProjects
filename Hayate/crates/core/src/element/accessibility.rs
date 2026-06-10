@@ -2,6 +2,7 @@
 
 use accesskit::{Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
 
+use super::taffy_projection::TraversalStep;
 use super::tree::Element;
 use super::{ElementId, ElementKind, ElementTree};
 
@@ -77,28 +78,51 @@ fn build_node(el: &Element, bounds: (f32, f32, f32, f32), is_root: bool) -> Node
     node
 }
 
+/// Walk the Canonical Tree building AccessKit nodes, returning the ids of the
+/// top-level nodes produced for `id`'s subtree (so the caller can attach them
+/// as children).
+///
+/// Elements with no Taffy node (e.g. inline text elements inside an IFC) are
+/// skipped but their children are still recursed into and their top-level
+/// nodes bubble up to the nearest ancestor with a Taffy node — this is what
+/// fixes the IFC subtree drop.
 fn walk_accessibility(
     tree: &ElementTree,
     id: ElementId,
     root_id: ElementId,
     nodes: &mut Vec<(NodeId, Node)>,
-) {
-    let Some(el) = tree.elements.get(&id) else {
-        return;
+) -> Vec<NodeId> {
+    let step = match tree.layout.projection.traversal_step(&tree.elements, id) {
+        Some(step) => step,
+        None => return Vec::new(),
     };
+
+    let el = match step {
+        TraversalStep::Skip(el) => {
+            let mut top_ids = Vec::new();
+            for &child in &el.children {
+                top_ids.extend(walk_accessibility(tree, child, root_id, nodes));
+            }
+            return top_ids;
+        }
+        TraversalStep::Visit(_, el) => el,
+    };
+
     let Some(&(x, y, w, h)) = tree.layout.layout_cache.get(&id) else {
-        return;
+        return Vec::new();
     };
 
     let mut node = build_node(el, (x, y, w, h), id == root_id);
     let this_id = node_id(id);
 
     for &child in &el.children {
-        walk_accessibility(tree, child, root_id, nodes);
-        node.push_child(node_id(child));
+        for child_id in walk_accessibility(tree, child, root_id, nodes) {
+            node.push_child(child_id);
+        }
     }
 
     nodes.push((this_id, node));
+    vec![this_id]
 }
 
 impl ElementTree {
@@ -171,5 +195,49 @@ mod tests {
             .expect("input node");
         assert_eq!(input_node.role(), Role::TextInput);
         assert_eq!(input_node.value(), Some("hello"));
+    }
+
+    #[test]
+    fn accessibility_update_does_not_drop_ifc_inline_text_subtree() {
+        use std::collections::HashSet;
+
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+
+        // IFC root: a `text` element under a non-text parent.
+        let ifc_root = tree.element_create(2, ElementKind::Text);
+        tree.element_append_child(root, ifc_root);
+        tree.element_set_text(ifc_root, "Hello ");
+
+        // Inline text element: a `text` element under a `text` parent — has no
+        // Taffy node (ADR-0063/0064).
+        let inline = tree.element_create(3, ElementKind::Text);
+        tree.element_append_child(ifc_root, inline);
+        tree.element_set_text(inline, "world");
+
+        tree.render(0.0);
+
+        let update = tree.accessibility_update().expect("tree update");
+
+        // The IFC root itself must still be present in the AccessKit tree.
+        assert!(
+            update.nodes.iter().any(|(id, _)| *id == node_id(ifc_root)),
+            "IFC root subtree was dropped from the AccessKit tree"
+        );
+
+        // No node may reference a child id that has no corresponding node —
+        // that would indicate a dropped subtree.
+        let node_ids: HashSet<NodeId> = update.nodes.iter().map(|(id, _)| *id).collect();
+        for (_, node) in &update.nodes {
+            for child in node.children() {
+                assert!(
+                    node_ids.contains(child),
+                    "dangling child reference: {child:?}"
+                );
+            }
+        }
     }
 }

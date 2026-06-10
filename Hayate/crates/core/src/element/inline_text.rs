@@ -207,6 +207,31 @@ pub(crate) fn byte_index_at_point(layout: &text::TextLayout, local_x: f32, local
     }
 }
 
+/// Refine a box-level hit (`box_hit`) into the inline text element under the
+/// point, when `box_hit` is an IFC root. Falls back to `box_hit` itself when
+/// it's not an IFC root, has no shaped layout, or the point doesn't map to a
+/// specific inline element.
+pub(crate) fn resolve_ifc_inline_hit(
+    tree: &crate::element::tree::ElementTree,
+    box_hit: ElementId,
+    x: f32,
+    y: f32,
+) -> Option<ElementId> {
+    if !is_ifc_root(&tree.elements, box_hit) {
+        return Some(box_hit);
+    }
+    let el = tree.elements.get(&box_hit)?;
+    let tl = el.text_layout.as_ref()?;
+    let &(ex, ey, _, _) = tree.layout.layout_cache.get(&box_hit)?;
+    let byte = byte_index_at_point(tl, x - ex, y - ey);
+    if let Some(map) = &tl.range_map {
+        if let Some(inline_id) = map.lookup(byte) {
+            return Some(inline_id);
+        }
+    }
+    Some(box_hit)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
