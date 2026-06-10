@@ -9,7 +9,12 @@ export default defineConfig({
           name: 'unit',
           environment: 'node',
           include: ['src/**/*.test.ts'],
-          exclude: ['src/wasm-integration.test.ts', 'test/**', '**/node_modules/**'],
+          exclude: [
+            'src/wasm-integration.test.ts',
+            'src/golden-frame.test.ts',
+            'test/**',
+            '**/node_modules/**',
+          ],
           server: {
             deps: {
               inline: [
@@ -25,12 +30,13 @@ export default defineConfig({
         test: {
           name: 'wasm',
           environment: 'happy-dom',
-          include: ['src/wasm-integration.test.ts'],
+          include: ['src/wasm-integration.test.ts', 'src/golden-frame.test.ts'],
           server: {
             deps: {
               inline: [
                 '@tsubame/protocol-generated',
                 'hayate-adapter-web-null',
+                '@tsubame/solid',
               ],
             },
           },

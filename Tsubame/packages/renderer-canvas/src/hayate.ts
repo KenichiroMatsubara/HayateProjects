@@ -21,6 +21,10 @@ export interface RawHayate {
   element_set_src(id: number, url: string): void;
   element_set_disabled(id: number, disabled: boolean): void;
   element_get_text(id: number): string;
+  /** Returns the editable text content from the live tree. */
+  element_get_text_content(id: number): string;
+  /** Absolute layout bounds `[x, y, width, height]` from `layout_cache`. */
+  element_get_bounds(id: number): Float32Array | number[];
   /** Element ids in `id` and its descendants (Hayate ElementTree is authoritative). */
   element_subtree_ids(id: number): Float64Array;
   element_set_style(id: number, packed: Float32Array): void;
@@ -43,6 +47,8 @@ export interface RawHayate {
   focused_element_id(): number;
   /** Cursor rect synced during the last render (ADR-0069). */
   ime_character_bounds(): number[];
+  /** JSON-encoded AccessKit `TreeUpdate` (ADR-0041), or `null` before layout. */
+  poll_accessibility(): string | null;
   render(timestampMs: number): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;

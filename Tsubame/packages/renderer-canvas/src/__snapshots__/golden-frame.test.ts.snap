@@ -1,0 +1,128 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed text-input and captures a tree/style/layout/a11y/IME golden frame 1`] = `
+{
+  "accessibility": {
+    "focus": 2,
+    "nodes": [
+      [
+        2,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 120,
+              "y0": 0,
+              "y1": 32,
+            },
+            "value": "Hi!",
+          },
+          "role": "textInput",
+        },
+      ],
+      [
+        1,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 320,
+              "y0": 0,
+              "y1": 240,
+            },
+            "children": [
+              2,
+            ],
+          },
+          "role": "window",
+        },
+      ],
+    ],
+    "tree": {
+      "root": 1,
+      "toolkitName": null,
+      "toolkitVersion": null,
+    },
+    "treeId": "00000000-0000-0000-0000-000000000000",
+  },
+  "elements": [
+    {
+      "bounds": [
+        0,
+        0,
+        320,
+        240,
+      ],
+      "id": 1,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        120,
+        32,
+      ],
+      "id": 2,
+      "text": "",
+      "textContent": "Hi!",
+      "visual": {
+        "backgroundColor": {
+          "a": 1,
+          "b": 1,
+          "g": 1,
+          "r": 1,
+        },
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+  ],
+  "imeBounds": {
+    "height": 24,
+    "width": 1.5,
+    "x": 21.215999603271484,
+    "y": -1,
+  },
+}
+`;
