@@ -42,7 +42,7 @@ _Avoid_: shared component runtime, shadow document tree
 _Avoid_: VDOM（diff しないので該当しない）、描画正本の複製、`text` 内容を shadow の正本とする設計、tsubame-react / tsubame-vue にも shadow を要求する説明（VDOM reconciler は不要）
 
 **Text Element**:
-Solid の文字列・`createTextNode` の正本表現。Hayate `ElementKind::Text` として Document Tree の子に載せる。`button` 直下のラベルも子 `text` element とする（ADR-0058）。性能が拮抗し計測で優劣がつかない場合、DOM Renderer の構造（`button` > `span`）を仕様 tie-break とする。
+Solid の文字列・`createTextNode` の正本表現。Hayate `ElementKind::Text` として Canonical Tree の子に載せる。`button` 直下のラベルも子 `text` element とする（ADR-0058）。性能が拮抗し計測で優劣がつかない場合、DOM Renderer の構造（`button` > `span`）を仕様 tie-break とする。
 _Avoid_: 仮想 TextNode、親への `setText` 集約、Hayate 未登録の負 ID
 
 ## Related Products
