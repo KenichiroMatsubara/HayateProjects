@@ -11,7 +11,11 @@ mod wire_codec_roundtrip;
 #[cfg(target_arch = "wasm32")]
 mod apply_mutations_dispatch;
 #[cfg(target_arch = "wasm32")]
-mod element_renderer;
+mod canvas;
+#[cfg(target_arch = "wasm32")]
+mod html;
+#[cfg(target_arch = "wasm32")]
+mod shared;
 #[cfg(any(target_arch = "wasm32", test))]
 mod ime_bridge;
 #[cfg(any(target_arch = "wasm32", test))]
@@ -22,4 +26,8 @@ mod style_packet;
 mod wasm_impl;
 
 #[cfg(target_arch = "wasm32")]
-pub use element_renderer::*;
+pub use canvas::*;
+#[cfg(target_arch = "wasm32")]
+pub use html::*;
+#[cfg(target_arch = "wasm32")]
+pub use shared::*;
