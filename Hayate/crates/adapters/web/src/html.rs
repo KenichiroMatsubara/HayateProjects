@@ -959,6 +959,7 @@ fn inject_baseline_stylesheet() -> Result<(), JsValue> {
          html { font-size: 16px; line-height: 1; -webkit-text-size-adjust: 100%; } \
          body { font-size: inherit; line-height: inherit; } \
          img, canvas, svg, video { display: block; } \
+         canvas { cursor: default; } \
          input, button, select, textarea { font: inherit; color: inherit; appearance: none; }",
     ));
     head.append_child(style_el.as_ref())?;
