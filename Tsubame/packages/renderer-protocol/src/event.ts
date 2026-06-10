@@ -10,14 +10,8 @@ import type { ElementId } from './element.js';
  *
  * MVP 後に追加予定: keyup / scroll / active-start / active-end。
  */
-export type EventKind =
-  | 'click'
-  | 'input'
-  | 'keydown'
-  | 'hover-enter'
-  | 'hover-leave'
-  | 'focus'
-  | 'blur';
+export type { EventKind } from './generated/event-kind.js';
+import type { EventKind } from './generated/event-kind.js';
 
 /**
  * ハンドラに渡される Interaction Event。Renderer 実装の差異

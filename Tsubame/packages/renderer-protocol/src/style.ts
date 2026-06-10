@@ -1,83 +1,17 @@
 import type { PseudoStylePatch } from './pseudo-style.js';
+import type { StylePatch } from './generated/style-types.js';
 
-export type Display = 'flex' | 'grid' | 'block' | 'none';
-export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
-export type AlignItems = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 'baseline';
-export type JustifyContent =
-  | 'flex-start'
-  | 'flex-end'
-  | 'center'
-  | 'space-between'
-  | 'space-around'
-  | 'space-evenly';
-
-export type FontWeight = 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
-export type HayateDimension = number | `${number}px` | `${number}%` | `${number}fr` | 'auto';
-
-/**
- * Style properties accepted by the Renderer Protocol.
- *
- * Canvas Renderer converts these properties to Hayate's style packet format.
- * DOM Renderer maps the same names to browser inline styles for direct DOM rendering.
- */
-export interface HayateStyle {
-  // Sizing
-  width: HayateDimension;
-  height: HayateDimension;
-  minWidth: HayateDimension;
-  minHeight: HayateDimension;
-  maxWidth: HayateDimension;
-  maxHeight: HayateDimension;
-
-  // Layout
-  display: Display;
-  flexDirection: FlexDirection;
-  alignItems: AlignItems;
-  justifyContent: JustifyContent;
-  gap: HayateDimension;
-  flexGrow: number;
-  gridTemplateColumns: HayateDimension[];
-  gridTemplateRows: HayateDimension[];
-  padding: HayateDimension;
-  paddingTop: HayateDimension;
-  paddingRight: HayateDimension;
-  paddingBottom: HayateDimension;
-  paddingLeft: HayateDimension;
-  margin: HayateDimension;
-  marginTop: HayateDimension;
-  marginRight: HayateDimension;
-  marginBottom: HayateDimension;
-  marginLeft: HayateDimension;
-
-  // Visual
-  color: string;
-  backgroundColor: string;
-  borderColor: string;
-  borderRadius: number;
-  borderWidth: number;
-  opacity: number;
-  zIndex: number;
-
-  // Text
-  fontSize: number;
-  fontFamily: string;
-  /**
-   * Mapped by both renderers: DOM sets `font-weight`, Canvas encodes it as
-   * the `font-weight` style-packet TAG (Hayate Core `StyleProp::FontWeight`).
-   */
-  fontWeight: FontWeight;
-}
-
-/**
- * Patch semantics for `IRenderer.setStyle`.
- *
- * - Present properties overwrite the previous value.
- * - Missing properties leave the previous value unchanged.
- * - `null` resets the property when the target renderer supports reset.
- */
-export type StylePatch = {
-  [K in keyof HayateStyle]?: HayateStyle[K] | null;
-};
+export type { HayateDimension } from './style-primitives.js';
+export type {
+  Display,
+  FlexDirection,
+  AlignItems,
+  JustifyContent,
+  FontStyle,
+  TextDecoration,
+  HayateStyle,
+  StylePatch,
+} from './generated/style-types.js';
 
 /** Hayate CSS declaration: base patch plus optional pseudo-class blocks. */
 export type HayateCssStyle = StylePatch & PseudoStylePatch;
