@@ -47,6 +47,24 @@ export interface RawHayate {
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;
+  /** Resolved style after inheritance + pseudo-state (ADR-0067), or `null` if `id` is unknown. */
+  element_effective_visual(id: number): HayateEffectiveVisual | null;
+}
+
+/** JS-friendly mirror of `hayate_core::Visual` after effective-style resolution (ADR-0067). */
+export interface HayateEffectiveVisual {
+  backgroundColor: HayateColorRecord | null;
+  opacity: number;
+  borderRadius: number;
+  borderWidth: number;
+  borderColor: HayateColorRecord | null;
+  textColor: HayateColorRecord | null;
+  fontSize: number | null;
+  fontWeight: number | null;
+  fontStyle: 'normal' | 'italic' | 'oblique' | null;
+  textDecoration: 'none' | 'underline' | 'line-through' | null;
+  zIndex: number;
+  fontFamily: string | null;
 }
 
 export type HayateDimensionUnit = 'px' | 'percent' | 'auto' | 'fr';
