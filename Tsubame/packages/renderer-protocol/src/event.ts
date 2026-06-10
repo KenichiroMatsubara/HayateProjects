@@ -13,7 +13,6 @@ import type { ElementId } from './element.js';
 export type EventKind =
   | 'click'
   | 'input'
-  | 'change'
   | 'keydown'
   | 'hover-enter'
   | 'hover-leave'

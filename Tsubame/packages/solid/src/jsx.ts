@@ -11,7 +11,6 @@ export interface TsubameProps {
   style?: HayateCssStyle;
   onClick?: EventHandler;
   onInput?: EventHandler;
-  onChange?: EventHandler;
   onKeyDown?: EventHandler;
   onFocus?: EventHandler;
   onBlur?: EventHandler;

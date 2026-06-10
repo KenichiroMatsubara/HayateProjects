@@ -16,7 +16,6 @@ export const REJECTED_EVENT_PROPS: ReadonlySet<string> = new Set([
 export const EVENT_PROP: Record<string, EventKind> = {
   onClick: 'click',
   onInput: 'input',
-  onChange: 'change',
   onKeyDown: 'keydown',
   onFocus: 'focus',
   onBlur: 'blur',
