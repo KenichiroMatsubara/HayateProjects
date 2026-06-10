@@ -109,9 +109,9 @@ _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover 
 Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替
 
-**Document Tree（文書ツリー）**:
-描画・layout・hit-test の正本ツリー。Canvas/HTML 経路では Hayate の element ツリー、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子を tree 上の element として表現する。
-_Avoid_: 描画正本を JS 側に複製する設計、Virtual DOM、仮想 TextNode、renderer 側 parent map を正本とする設計
+**Canonical Tree（正本ツリー）**:
+描画・layout・hit-test の正本ツリー。Canvas/HTML 経路では Hayate の element ツリー、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子を tree 上の element として表現する。経路ごとに実体は一つのみで、複製や mirror は持たない（`tsubame-solid` の Shadow Tree は構造専用の別索引であり、これ自体は正本ではない）。
+_Avoid_: 描画正本を JS 側に複製する設計、Virtual DOM、仮想 TextNode、renderer 側 parent map を正本とする設計、Document Tree（旧称）
 
 **Component**:
 `.hybs` ファイル一つがコンポーネント一つに対応する。コンポーネント名はファイル名（拡張子除く）のアッパーキャメルケース。

@@ -12,7 +12,7 @@
 - **未決:** `commit_frame()` の責務境界、dirty propagation policy の owner、interaction 状態機械との同居 vs 分離。
 - **根拠:** ADR-0066（候補 D2）、ADR-0053
 
-### 2. Document Tree 走査の単一化（DocumentFrameWalker）
+### 2. Canonical Tree 走査の単一化（DocumentFrameWalker）
 
 - **状況:** ADR-0067 は effective style resolver の単一 seam までで止め、**caller ごとに継承 context 取得が違う**ことを許容。`scene_build` と `walk_resolved` の二重走査はスコープ外のまま残存。
 - **未決:** 単一 traversal + visitor（SceneGraphEmitter / ResolvedElementCollector）を採用するか、HTML Mode の document-order 要件と Canvas paint-order の差を visitor 層でどう扱うか。

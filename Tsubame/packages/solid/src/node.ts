@@ -3,7 +3,7 @@ import type { ElementId, ElementKind, Unsubscribe } from '@tsubame/renderer-prot
 /**
  * Solid host handle bound to a Hayate / DOM element (`ElementId`).
  *
- * Document Tree structure lives in Hayate (Canvas) or the browser DOM (DOM
+ * Canonical Tree structure lives in Hayate (Canvas) or the browser DOM (DOM
  * Renderer). This object satisfies `solid-js/universal` tree walks and holds
  * listener unsubscribes only. Text content lives on the backend element, not
  * here (ADR-0063).
