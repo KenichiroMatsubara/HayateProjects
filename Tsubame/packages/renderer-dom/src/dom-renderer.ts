@@ -10,11 +10,13 @@ import type {
   Unsubscribe,
   ViewportCondition,
 } from '@tsubame/renderer-protocol';
-import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
 import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
-import { shouldApplyTextLocalPatch } from './text-style-semantics.js';
+import {
+  declarationsFromStylePatch,
+  declarationsToRuleBody,
+} from './style-declarations.js';
 import { DOM_EVENT_NAME } from './event-mapping.js';
 import { warnZOrderDivergence } from './z-order-divergence.js';
 
@@ -265,15 +267,7 @@ export class DomRenderer implements IRenderer {
 }
 
 function pseudoStyleDeclarations(el: HTMLElement, patch: StylePatch): string {
-  const parts: string[] = [];
-  for (const key in patch) {
-    const k = key as keyof StylePatch;
-    const value = patch[k];
-    if (value === undefined || value === null) continue;
-    if (!shouldApplyTextLocalPatch(el, k as string)) continue;
-    const entry = CATALOG_BY_KEY[k as string];
-    if (entry === undefined) continue;
-    parts.push(`${entry.cssProperty}:${formatDomCSSValue(entry, value)}`);
-  }
-  return parts.join(';');
+  return declarationsToRuleBody(
+    declarationsFromStylePatch(el, patch, { onUnknownKey: 'skip' }),
+  );
 }
