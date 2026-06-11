@@ -29,8 +29,7 @@ function Section(props: { title: string; children: unknown }) {
   return (
     <view style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <text style={{ color: COLORS.ink, fontSize: 18 }}>{props.title}</text>
-      {/* flexWrap は style_tags.json の語彙外（両レンダラーで例外）なので grid で折り返す */}
-      <view style={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr', '1fr', '1fr'], gap: 12 }}>
+      <view style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         {props.children}
       </view>
     </view>
@@ -161,6 +160,21 @@ function FlexLayoutSection() {
         <view style={{ display: 'flex', flexDirection: 'column', gap: 6, height: 72 }}>
           <view style={{ width: 48, height: 16, backgroundColor: COLORS.accent }} />
           <view style={{ width: 48, height: 16, backgroundColor: COLORS.blue }} />
+        </view>
+      </PropertySample>
+      <PropertySample name="flexWrap">
+        <view style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          width: 100,
+          gap: 4,
+          backgroundColor: COLORS.panel2,
+          padding: 4,
+        }}>
+          <view style={{ width: 44, height: 16, backgroundColor: COLORS.accent }} />
+          <view style={{ width: 44, height: 16, backgroundColor: COLORS.blue }} />
+          <view style={{ width: 44, height: 16, backgroundColor: COLORS.violet }} />
         </view>
       </PropertySample>
       <PropertySample name="alignItems">

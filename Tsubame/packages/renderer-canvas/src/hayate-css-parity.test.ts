@@ -16,6 +16,7 @@ const SAMPLES: Record<string, unknown> = {
   dimensionList: ['100px', '1fr', '50%'],
   display: 'flex',
   flexDirection: 'column',
+  flexWrap: 'wrap',
   alignItems: 'center',
   alignSelf: 'flex-end',
   alignContent: 'space-between',

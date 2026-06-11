@@ -225,6 +225,14 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             };
             style.set_property("align-content", s)?;
         }
+        StyleProp::FlexWrap(v) => {
+            let s = match v {
+            FlexWrapValue::NoWrap => "nowrap",
+            FlexWrapValue::Wrap => "wrap",
+            FlexWrapValue::WrapReverse => "wrap-reverse",
+            };
+            style.set_property("flex-wrap", s)?;
+        }
     }
     Ok(())
 }

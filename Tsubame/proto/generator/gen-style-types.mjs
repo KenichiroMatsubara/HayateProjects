@@ -16,6 +16,7 @@ function enumTsKey(name) {
 const ENUM_TYPES = [
   { specName: 'display', typeName: 'Display' },
   { specName: 'flex_direction', typeName: 'FlexDirection' },
+  { specName: 'flex_wrap', typeName: 'FlexWrap' },
   { specName: 'align_items', typeName: 'AlignItems' },
   { specName: 'align_self', typeName: 'AlignSelf' },
   { specName: 'align_content', typeName: 'AlignContent' },
@@ -31,6 +32,7 @@ const PARAM_TYPE_MAP = {
   string: 'string',
   display: 'Display',
   flex_direction: 'FlexDirection',
+  flex_wrap: 'FlexWrap',
   align_items: 'AlignItems',
   align_self: 'AlignSelf',
   align_content: 'AlignContent',

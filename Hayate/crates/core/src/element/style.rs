@@ -106,6 +106,13 @@ pub enum FlexDirectionValue {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub enum FlexWrapValue {
+    NoWrap,
+    Wrap,
+    WrapReverse,
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum AlignValue {
     FlexStart,
     FlexEnd,
@@ -163,6 +170,7 @@ pub enum StyleProp {
     // layout
     Display(DisplayValue),
     FlexDirection(FlexDirectionValue),
+    FlexWrap(FlexWrapValue),
     AlignItems(AlignValue),
     JustifyContent(JustifyValue),
     Gap(Dimension),
@@ -214,6 +222,7 @@ impl StyleProp {
                 | Self::MaxHeight(_)
                 | Self::Display(_)
                 | Self::FlexDirection(_)
+                | Self::FlexWrap(_)
                 | Self::AlignItems(_)
                 | Self::JustifyContent(_)
                 | Self::Gap(_)

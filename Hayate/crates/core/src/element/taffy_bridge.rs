@@ -1,13 +1,14 @@
 use taffy::{
     style_helpers::{fr, length, percent, TaffyAuto},
-    AlignContent, AlignItems, Dimension as TaffyDim, Display, FlexDirection, JustifyContent,
+    AlignContent, AlignItems, Dimension as TaffyDim, Display, FlexDirection, FlexWrap,
+    JustifyContent,
     LengthPercentage, LengthPercentageAuto, Rect as TaffyRect, Size, Style, TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
     AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
-    FlexDirectionValue, JustifyValue, StyleProp,
+    FlexDirectionValue, FlexWrapValue, JustifyValue, StyleProp,
 };
 
 /// Context attached to each Taffy leaf so the measure closure can dispatch.
@@ -81,6 +82,13 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
                 FlexDirectionValue::Column => FlexDirection::Column,
                 FlexDirectionValue::RowReverse => FlexDirection::RowReverse,
                 FlexDirectionValue::ColumnReverse => FlexDirection::ColumnReverse,
+            };
+        }
+        StyleProp::FlexWrap(v) => {
+            style.flex_wrap = match v {
+                FlexWrapValue::NoWrap => FlexWrap::NoWrap,
+                FlexWrapValue::Wrap => FlexWrap::Wrap,
+                FlexWrapValue::WrapReverse => FlexWrap::WrapReverse,
             };
         }
         StyleProp::AlignItems(v) => {

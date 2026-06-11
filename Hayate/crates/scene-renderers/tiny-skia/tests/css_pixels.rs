@@ -58,3 +58,4 @@ tiny_skia_property_test!(css_pixel_flex_shrink, 38);
 tiny_skia_property_test!(css_pixel_flex_basis, 39);
 tiny_skia_property_test!(css_pixel_align_self, 40);
 tiny_skia_property_test!(css_pixel_align_content, 41);
+tiny_skia_property_test!(css_pixel_flex_wrap, 42);

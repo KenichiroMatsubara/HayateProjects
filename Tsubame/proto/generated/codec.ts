@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -124,6 +124,12 @@ const FLEX_DIRECTION_CODE: Record<string, number> = {
   'column': FLEX_DIRECTION.column,
   'row-reverse': FLEX_DIRECTION.rowReverse,
   'column-reverse': FLEX_DIRECTION.columnReverse,
+};
+
+const FLEX_WRAP_CODE: Record<string, number> = {
+  'nowrap': FLEX_WRAP.nowrap,
+  'wrap': FLEX_WRAP.wrap,
+  'wrap-reverse': FLEX_WRAP.wrapReverse,
 };
 
 const ALIGN_ITEMS_CODE: Record<string, number> = {
@@ -406,6 +412,12 @@ function encode_alignContent(out: number[], value: string): void {
   out.push(TAG.ALIGN_CONTENT, code);
 }
 
+function encode_flexWrap(out: number[], value: string): void {
+  const code = FLEX_WRAP_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported flexWrap "${value}"`);
+  out.push(TAG.FLEX_WRAP, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -451,6 +463,7 @@ const STYLE_ENCODERS = {
   flexBasis: encode_flexBasis,
   alignSelf: encode_alignSelf,
   alignContent: encode_alignContent,
+  flexWrap: encode_flexWrap,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {
