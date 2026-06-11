@@ -97,6 +97,19 @@ describe('DOM Renderer two-channel text inheritance (ADR-0002)', () => {
     expect(computedColor(innerEl)).toBe('#336699');
   });
 
+  it('applies fontStyle on text elements for DOM rendering', () => {
+    const renderer = new DomRenderer({ document, container });
+    const root = renderer.createElement('view');
+    const text = renderer.createElement('text');
+    renderer.appendChild(root, text);
+    renderer.setRoot(root);
+    renderer.setText(text, 'slant');
+    renderer.setStyle(text, { fontStyle: 'italic' });
+
+    const textEl = container.querySelector('span')!;
+    expect(textEl.style.fontStyle).toBe('italic');
+  });
+
   it('applies text-local styles on text-input for its own field text', () => {
     const renderer = new DomRenderer({ document, container });
     const input = renderer.createElement('text-input');
