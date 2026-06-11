@@ -86,6 +86,129 @@ fn element_effective_visual_viewport_condition_at_min_width_uses_variant() {
 }
 
 #[test]
+fn element_effective_visual_viewport_compound_and_condition() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.element_set_style(
+        id,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
+    tree.element_set_style_variant(
+        id,
+        ViewportCondition {
+            min_width: Some(768.0),
+            max_width: Some(1024.0),
+            ..Default::default()
+        },
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+    );
+
+    tree.set_viewport(900.0, 800.0);
+    let inside = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        inside.background_color,
+        Some(Color::new(0.0, 0.0, 1.0, 1.0)),
+        "viewport inside min-width and max-width range must apply the variant"
+    );
+
+    tree.set_viewport(1100.0, 800.0);
+    let above_max = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        above_max.background_color,
+        Some(Color::new(1.0, 0.0, 0.0, 1.0)),
+        "viewport above max-width must keep the base style"
+    );
+}
+
+#[test]
+fn element_effective_visual_viewport_variant_cascade_last_match_wins() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(1100.0, 800.0);
+    tree.element_set_style(
+        id,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
+    tree.element_set_style_variant(
+        id,
+        ViewportCondition {
+            min_width: Some(768.0),
+            ..Default::default()
+        },
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+    );
+    tree.element_set_style_variant(
+        id,
+        ViewportCondition {
+            min_width: Some(1024.0),
+            ..Default::default()
+        },
+        StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
+    );
+
+    let visual = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        visual.background_color,
+        Some(Color::new(0.0, 1.0, 0.0, 1.0)),
+        "when multiple variants match, declaration order last match must win"
+    );
+
+    tree.set_viewport(900.0, 800.0);
+    let single_match = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        single_match.background_color,
+        Some(Color::new(0.0, 0.0, 1.0, 1.0)),
+        "only the first matching variant must apply when later variants do not match"
+    );
+
+    tree.set_viewport(500.0, 800.0);
+    let no_match = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        no_match.background_color,
+        Some(Color::new(1.0, 0.0, 0.0, 1.0)),
+        "when no variant matches, base style must remain"
+    );
+}
+
+#[test]
+fn element_effective_visual_viewport_height_axes() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.element_set_style(
+        id,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
+    tree.element_set_style_variant(
+        id,
+        ViewportCondition {
+            min_height: Some(600.0),
+            max_height: Some(900.0),
+            ..Default::default()
+        },
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+    );
+
+    tree.set_viewport(1024.0, 700.0);
+    let inside = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        inside.background_color,
+        Some(Color::new(0.0, 0.0, 1.0, 1.0)),
+        "viewport height inside min-height and max-height range must apply the variant"
+    );
+
+    tree.set_viewport(1024.0, 500.0);
+    let below_min = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        below_min.background_color,
+        Some(Color::new(1.0, 0.0, 0.0, 1.0)),
+        "viewport height below min-height must keep the base style"
+    );
+}
+
+#[test]
 fn element_effective_visual_hover_pseudo_overrides_active_viewport_variant() {
     let mut tree = ElementTree::new();
     let id = tree.element_create(1, ElementKind::View);
