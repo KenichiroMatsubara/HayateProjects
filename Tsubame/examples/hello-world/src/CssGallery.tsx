@@ -358,6 +358,42 @@ function InteractionSection() {
           </view>
         </scroll-view>
       </PropertySample>
+      <PropertySample name="nested scroll (chaining)">
+        <scroll-view style={{
+          width: 180,
+          height: 120,
+          backgroundColor: COLORS.panel,
+          borderWidth: 1,
+          borderColor: COLORS.accent,
+          padding: 6,
+        }}>
+          <view style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <text style={{ color: COLORS.muted, fontSize: 11 }}>Outer — scroll past inner edge</text>
+            <scroll-view style={{
+              width: 160,
+              height: 64,
+              backgroundColor: COLORS.panel2,
+              borderWidth: 1,
+              borderColor: COLORS.line,
+              padding: 6,
+            }}>
+              <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <text style={{ color: COLORS.text, fontSize: 11 }}>Inner A</text>
+                <text style={{ color: COLORS.text, fontSize: 11 }}>Inner B</text>
+                <text style={{ color: COLORS.text, fontSize: 11 }}>Inner C</text>
+                <text style={{ color: COLORS.text, fontSize: 11 }}>Inner D</text>
+                <text style={{ color: COLORS.text, fontSize: 11 }}>Inner E</text>
+              </view>
+            </scroll-view>
+            <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <text style={{ color: COLORS.text, fontSize: 11 }}>Outer tail 1</text>
+              <text style={{ color: COLORS.text, fontSize: 11 }}>Outer tail 2</text>
+              <text style={{ color: COLORS.text, fontSize: 11 }}>Outer tail 3</text>
+              <text style={{ color: COLORS.text, fontSize: 11 }}>Outer tail 4</text>
+            </view>
+          </view>
+        </scroll-view>
+      </PropertySample>
       <PropertySample name="text-input">
         <text-input
           placeholder="Type here"

@@ -269,4 +269,169 @@ mod tests {
         let (_, y) = tree.element_get_scroll_offset(sv);
         assert!((y - 10.0).abs() < 1e-3);
     }
+
+    fn nested_scroll_tree() -> (ElementTree, ElementId, ElementId, ElementId) {
+        let mut tree = ElementTree::new();
+        let outer = tree.element_create(100, ElementKind::ScrollView);
+        let inner = tree.element_create(101, ElementKind::ScrollView);
+        let leaf = tree.element_create(102, ElementKind::View);
+        let tail = tree.element_create(103, ElementKind::View);
+        tree.set_root(outer);
+        tree.set_viewport(240.0, 240.0);
+        tree.element_append_child(outer, inner);
+        tree.element_append_child(inner, leaf);
+        tree.element_append_child(outer, tail);
+        tree.element_set_style(
+            outer,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(200.0)),
+            ],
+        );
+        tree.element_set_style(
+            inner,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.element_set_style(
+            leaf,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(300.0)),
+            ],
+        );
+        tree.element_set_style(
+            tail,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(250.0)),
+            ],
+        );
+        tree.render(0.0);
+        (tree, outer, inner, leaf)
+    }
+
+    #[test]
+    fn apply_wheel_delta_chains_to_ancestor_when_inner_at_edge() {
+        let (mut tree, outer, inner, leaf) = nested_scroll_tree();
+        tree.element_set_scroll_offset(inner, 0.0, 200.0);
+
+        tree.apply_wheel_delta(leaf, 0.0, 40.0);
+
+        let (_, inner_y) = tree.element_get_scroll_offset(inner);
+        assert!(
+            (inner_y - 200.0).abs() < 1e-3,
+            "inner should stay clamped at max, got {inner_y}"
+        );
+        let (_, outer_y) = tree.element_get_scroll_offset(outer);
+        assert!(
+            (outer_y - 40.0).abs() < 1e-3,
+            "outer should absorb chained delta, got {outer_y}"
+        );
+    }
+
+    fn nested_scroll_tree_axis_split() -> (ElementTree, ElementId, ElementId, ElementId) {
+        let mut tree = ElementTree::new();
+        let outer = tree.element_create(200, ElementKind::ScrollView);
+        let inner = tree.element_create(201, ElementKind::ScrollView);
+        let leaf = tree.element_create(202, ElementKind::View);
+        let tail = tree.element_create(203, ElementKind::View);
+        tree.set_root(outer);
+        tree.set_viewport(240.0, 240.0);
+        tree.element_append_child(outer, inner);
+        tree.element_append_child(inner, leaf);
+        tree.element_append_child(outer, tail);
+        tree.element_set_style(
+            outer,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(200.0)),
+            ],
+        );
+        tree.element_set_style(
+            inner,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::MaxWidth(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.element_set_style(
+            leaf,
+            &[
+                StyleProp::MinWidth(Dimension::px(400.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.element_set_style(
+            tail,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(250.0)),
+            ],
+        );
+        tree.render(0.0);
+        (tree, outer, inner, leaf)
+    }
+
+    #[test]
+    fn apply_wheel_delta_chains_axes_independently() {
+        let (mut tree, outer, inner, leaf) = nested_scroll_tree_axis_split();
+        let (inner_cw, inner_ch) = tree.element_content_size(inner);
+        let inner_rect = tree.element_layout_rect(inner).unwrap();
+        let inner_max_x = (inner_cw - inner_rect.2).max(0.0);
+        let inner_max_y = (inner_ch - inner_rect.3).max(0.0);
+        assert!(
+            inner_max_x > 50.0,
+            "inner must scroll horizontally (max_x={inner_max_x})"
+        );
+        assert!(
+            inner_max_y < 1e-3,
+            "inner must not scroll vertically (max_y={inner_max_y})"
+        );
+        let (_, outer_ch) = tree.element_content_size(outer);
+        let outer_rect = tree.element_layout_rect(outer).unwrap();
+        let outer_max_y = (outer_ch - outer_rect.3).max(0.0);
+        assert!(
+            outer_max_y > 30.0,
+            "outer must scroll vertically (max_y={outer_max_y})"
+        );
+
+        tree.apply_wheel_delta(leaf, 50.0, 30.0);
+
+        let (inner_x, inner_y) = tree.element_get_scroll_offset(inner);
+        assert!(
+            (inner_x - 50.0).abs() < 1e-3,
+            "inner should consume horizontal delta, got {inner_x}"
+        );
+        assert!(
+            inner_y.abs() < 1e-3,
+            "inner should not scroll vertically, got {inner_y}"
+        );
+        let (outer_x, outer_y) = tree.element_get_scroll_offset(outer);
+        assert!(
+            outer_x.abs() < 1e-3,
+            "outer should not scroll horizontally when inner consumed x, got {outer_x}"
+        );
+        assert!(
+            (outer_y - 30.0).abs() < 1e-3,
+            "outer should consume chained vertical delta, got {outer_y}"
+        );
+    }
+
+    #[test]
+    fn apply_wheel_delta_drops_remainder_without_scroll_view_ancestor() {
+        let (mut tree, sv, child) = scroll_tree(300.0);
+        tree.element_set_scroll_offset(sv, 0.0, 200.0);
+
+        tree.apply_wheel_delta(child, 0.0, 40.0);
+
+        let (_, y) = tree.element_get_scroll_offset(sv);
+        assert!(
+            (y - 200.0).abs() < 1e-3,
+            "single scroll view should stay clamped at max, got {y}"
+        );
+    }
 }
