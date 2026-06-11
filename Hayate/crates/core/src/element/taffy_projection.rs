@@ -102,6 +102,7 @@ impl TaffyProjection {
         for patch_root in patch_roots {
             patch_subtree(self, elements, patch_root);
         }
+        prune_orphan_projections(self, elements);
     }
 }
 
@@ -143,20 +144,20 @@ fn patch_subtree(
     id: ElementId,
 ) {
     if !elements.contains_key(&id) {
+        purge_element_projection(projection, id);
         return;
     }
 
     if is_inline_text_element(elements, id) {
         if let Some(children) = elements.get(&id).map(|el| el.children.clone()) {
             for child in children {
-                remove_element_projection(projection, elements, child);
+                patch_subtree(projection, elements, child);
             }
         }
         return;
     }
 
     let existing_node = projection.element_to_node.get(&id).copied();
-    clear_descendant_projections(projection, elements, id);
 
     let node = if let Some(node) = existing_node {
         clear_taffy_children(&mut projection.taffy, node);
@@ -184,32 +185,22 @@ fn patch_subtree(
     }
 }
 
-fn clear_descendant_projections(
-    projection: &mut TaffyProjection,
-    elements: &HashMap<ElementId, Element>,
-    id: ElementId,
-) {
-    if let Some(children) = elements.get(&id).map(|el| el.children.clone()) {
-        for child in children {
-            remove_element_projection(projection, elements, child);
-        }
-    }
+/// Drop stale `element_to_node` mapping for a removed element.
+///
+/// Taffy nodes for removed subtrees are detached during the ancestor's
+/// `clear_taffy_children` in `patch_subtree` (ADR-0064 lazy reconcile).
+fn purge_element_projection(projection: &mut TaffyProjection, id: ElementId) {
+    projection.element_to_node.remove(&id);
 }
 
-fn remove_element_projection(
+/// Remove `element_to_node` entries whose elements were deleted before reconcile.
+fn prune_orphan_projections(
     projection: &mut TaffyProjection,
     elements: &HashMap<ElementId, Element>,
-    id: ElementId,
 ) {
-    if let Some(node) = projection.element_to_node.remove(&id) {
-        clear_taffy_children(&mut projection.taffy, node);
-        let _ = projection.taffy.remove(node);
-    }
-    if let Some(children) = elements.get(&id).map(|el| el.children.clone()) {
-        for child in children {
-            remove_element_projection(projection, elements, child);
-        }
-    }
+    projection
+        .element_to_node
+        .retain(|id, _| elements.contains_key(id));
 }
 
 fn clear_taffy_children(taffy: &mut TaffyTree<MeasureCtx>, node: NodeId) {
@@ -383,6 +374,52 @@ mod tests {
 
         assert!(!projection.has_node(inline_id));
         assert!(projection.has_node(root_id));
+    }
+
+    #[test]
+    fn reconcile_after_subtree_removal_clears_stale_projection_entries() {
+        let mut projection = TaffyProjection::new();
+        let mut elements = HashMap::new();
+
+        let (root_id, mut root) = make_view(1, None);
+        let (branch_id, branch) = make_view(2, Some(root_id));
+        let (leaf_id, leaf) = make_view(3, Some(branch_id));
+        root.children = vec![branch_id];
+        elements.insert(root_id, root);
+        elements.insert(branch_id, branch);
+        elements.insert(leaf_id, leaf);
+        elements
+            .get_mut(&branch_id)
+            .unwrap()
+            .children
+            .push(leaf_id);
+
+        projection.reconcile(&elements, root_id, &mut HashSet::new());
+        assert!(projection.has_node(branch_id));
+        assert!(projection.has_node(leaf_id));
+
+        // Simulate `element_remove(branch)` after detach: parent stays, subtree gone.
+        elements.get_mut(&root_id).unwrap().children.clear();
+        elements.remove(&branch_id);
+        elements.remove(&leaf_id);
+
+        let mut structure_dirty = HashSet::new();
+        structure_dirty.insert(root_id);
+        structure_dirty.insert(branch_id);
+
+        projection.reconcile(&elements, root_id, &mut structure_dirty);
+
+        assert!(
+            !projection.has_node(branch_id),
+            "removed branch projection must be cleared"
+        );
+        assert!(
+            !projection.has_node(leaf_id),
+            "removed descendant projection must be cleared"
+        );
+
+        // Second reconcile must not panic on stale SlotMap keys.
+        projection.reconcile(&elements, root_id, &mut HashSet::new());
     }
 
     #[test]
