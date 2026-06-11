@@ -375,7 +375,7 @@ impl GridItem {
         tree.measure_child_size(
             self.node,
             known_dimensions,
-            inner_node_size,
+            available_space,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
                 None => AvailableSpace::MinContent,
@@ -414,7 +414,7 @@ impl GridItem {
         tree.measure_child_size(
             self.node,
             known_dimensions,
-            inner_node_size,
+            available_space,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
                 None => AvailableSpace::MaxContent,
@@ -457,20 +457,20 @@ impl GridItem {
         known_dimensions: Size<Option<f32>>,
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
-        let padding = self.padding.resolve_or_zero(inner_node_size);
-        let border = self.border.resolve_or_zero(inner_node_size);
+        let padding = self.padding.resolve_or_zero(known_dimensions);
+        let border = self.border.resolve_or_zero(known_dimensions);
         let padding_border_size = (padding + border).sum_axes();
         let box_sizing_adjustment =
             if self.box_sizing == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
         let size = self
             .size
-            .maybe_resolve(inner_node_size)
+            .maybe_resolve(known_dimensions)
             .maybe_apply_aspect_ratio(self.aspect_ratio)
             .maybe_add(box_sizing_adjustment)
             .get(axis)
             .or_else(|| {
                 self.min_size
-                    .maybe_resolve(inner_node_size)
+                    .maybe_resolve(known_dimensions)
                     .maybe_apply_aspect_ratio(self.aspect_ratio)
                     .maybe_add(box_sizing_adjustment)
                     .get(axis)
