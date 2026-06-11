@@ -14,6 +14,7 @@ import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
 import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
+import { shouldApplyTextLocalPatch } from './text-style-semantics.js';
 import { DOM_EVENT_NAME } from './event-mapping.js';
 import { warnZOrderDivergence } from './z-order-divergence.js';
 
@@ -125,7 +126,7 @@ export class DomRenderer implements IRenderer {
 
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
     const selector = `[data-tsubame-id="${id as number}"]${pseudo}`;
-    const body = pseudoStyleDeclarations(style);
+    const body = pseudoStyleDeclarations(this.node(id), style);
     if (body.length === 0) return;
     const sheet = this.pseudoStyleEl.sheet;
     if (sheet === null) return;
@@ -148,7 +149,7 @@ export class DomRenderer implements IRenderer {
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
     const media = mediaQueryFor(condition);
     const selector = `[data-tsubame-id="${id as number}"]`;
-    const body = pseudoStyleDeclarations(style);
+    const body = pseudoStyleDeclarations(this.node(id), style);
     if (body.length === 0) return;
     const sheet = this.variantStyleEl.sheet;
     if (sheet === null) return;
@@ -263,12 +264,13 @@ export class DomRenderer implements IRenderer {
   }
 }
 
-function pseudoStyleDeclarations(patch: StylePatch): string {
+function pseudoStyleDeclarations(el: HTMLElement, patch: StylePatch): string {
   const parts: string[] = [];
   for (const key in patch) {
     const k = key as keyof StylePatch;
     const value = patch[k];
     if (value === undefined || value === null) continue;
+    if (!shouldApplyTextLocalPatch(el, k as string)) continue;
     const entry = CATALOG_BY_KEY[k as string];
     if (entry === undefined) continue;
     parts.push(`${entry.cssProperty}:${formatDomCSSValue(entry, value)}`);

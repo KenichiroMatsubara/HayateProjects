@@ -211,11 +211,11 @@ export function TodoApp(props: TodoAppProps) {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: active ? COLORS.accent : COLORS.panel,
-    color: active ? COLORS.black : COLORS.text,
+    defaultColor: active ? COLORS.black : COLORS.text,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: active ? COLORS.accent : COLORS.line,
-    fontSize: 13,
+    defaultFontSize: 13,
     ':hover': {
       backgroundColor: active ? COLORS.accent : COLORS.panel3,
       borderColor: active ? COLORS.accent : COLORS.line,
@@ -231,9 +231,9 @@ export function TodoApp(props: TodoAppProps) {
       display: 'flex',
       flexDirection: 'column',
       backgroundColor: COLORS.bg,
-      color: COLORS.text,
-      fontSize: 14,
-      fontFamily: 'Inter, Segoe UI, system-ui, sans-serif',
+      defaultColor: COLORS.text,
+      defaultFontSize: 14,
+      defaultFontFamily: 'Inter, Segoe UI, system-ui, sans-serif',
     }}>
       <view style={{
         height: 72,
@@ -254,10 +254,9 @@ export function TodoApp(props: TodoAppProps) {
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: COLORS.accent,
-            color: COLORS.black,
             borderRadius: 8,
           }}>
-            <text style={{ fontSize: 19 }}>TS</text>
+            <text style={{ fontSize: 19, color: COLORS.black }}>TS</text>
           </view>
           <view style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <text style={{ fontSize: 22, color: COLORS.ink }}>Tsubame Task Studio</text>
@@ -433,11 +432,11 @@ export function TodoApp(props: TodoAppProps) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor: COLORS.accent,
-                    color: COLORS.black,
+                    defaultColor: COLORS.black,
                     borderRadius: 8,
                     borderWidth: 1,
                     borderColor: COLORS.accent,
-                    fontSize: 13,
+                    defaultFontSize: 13,
                     ':hover': {
                       backgroundColor: COLORS.success,
                       borderColor: COLORS.success,
@@ -546,15 +545,15 @@ function TodoCard(props: {
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: COLORS.panel3,
-              color: COLORS.text,
+              defaultColor: COLORS.text,
               borderRadius: 8,
               borderWidth: 1,
               borderColor: COLORS.line,
-              fontSize: 12,
+              defaultFontSize: 12,
               ':hover': {
                 backgroundColor: COLORS.accent,
                 borderColor: COLORS.accent,
-                color: COLORS.black,
+                defaultColor: COLORS.black,
               },
             }}
             onClick={props.onAdvance}
@@ -569,15 +568,15 @@ function TodoCard(props: {
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: COLORS.panel3,
-              color: COLORS.muted,
+              defaultColor: COLORS.muted,
               borderRadius: 8,
               borderWidth: 1,
               borderColor: COLORS.line,
-              fontSize: 15,
+              defaultFontSize: 15,
               ':hover': {
                 backgroundColor: COLORS.dangerBg,
                 borderColor: COLORS.danger,
-                color: COLORS.danger,
+                defaultColor: COLORS.danger,
               },
             }}
             onClick={props.onRemove}
@@ -599,7 +598,6 @@ function Badge(props: { label: string; color: string }) {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: COLORS.black,
-      color: props.color,
       borderRadius: 8,
       borderWidth: 1,
       borderColor: props.color,
