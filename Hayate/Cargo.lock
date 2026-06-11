@@ -572,6 +572,7 @@ dependencies = [
  "hayate-core",
  "hayate-scene-renderer-tiny-skia",
  "hayate-scene-renderer-vello",
+ "png",
  "pollster",
  "tiny-skia",
  "wgpu",

@@ -12,6 +12,7 @@ export default defineConfig({
           exclude: [
             'src/wasm-integration.test.ts',
             'src/golden-frame.test.ts',
+            'src/golden-frame-parity.test.ts',
             'test/**',
             '**/node_modules/**',
           ],
@@ -30,7 +31,11 @@ export default defineConfig({
         test: {
           name: 'wasm',
           environment: 'happy-dom',
-          include: ['src/wasm-integration.test.ts', 'src/golden-frame.test.ts'],
+          include: [
+            'src/wasm-integration.test.ts',
+            'src/golden-frame.test.ts',
+            'src/golden-frame-parity.test.ts',
+          ],
           server: {
             deps: {
               inline: [
