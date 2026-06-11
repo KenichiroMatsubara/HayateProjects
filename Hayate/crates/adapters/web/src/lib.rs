@@ -10,6 +10,8 @@ mod delivery_codec_fixtures;
 mod wire_codec_roundtrip;
 #[cfg(target_arch = "wasm32")]
 mod apply_mutations_dispatch;
+#[cfg(any(target_arch = "wasm32", test))]
+mod resize_observer;
 #[cfg(target_arch = "wasm32")]
 mod canvas;
 #[cfg(target_arch = "wasm32")]

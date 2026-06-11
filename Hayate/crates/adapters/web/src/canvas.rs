@@ -4,6 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::resize_observer::{self, ResizeObserverGuard};
+
 use hayate_core::{
     Color, DocumentEventKind, ElementId, ElementTree, Event, FontStyleValue, RenderImage,
     RenderImageAlphaType, RenderImageFormat, StylePropKind, TextDecorationValue,
@@ -31,6 +33,7 @@ type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
 #[wasm_bindgen]
 pub struct HayateElementRenderer {
+    canvas: HtmlCanvasElement,
     backend: SelectedBackend,
     tree: ElementTree,
     /// wgpu surface clear colour. Decoupled from `render(timestamp_ms)` because
@@ -41,22 +44,49 @@ pub struct HayateElementRenderer {
     font_queue: FontQueue,
     /// IME candidate-window bounds synced each render (ADR-0069).
     ime: WebImeBridge,
+    /// ResizeObserver callback queues viewport (CSS px) for the next `render()`.
+    pending_resize: Rc<RefCell<Option<(f32, f32)>>>,
+    last_viewport: Rc<RefCell<(f32, f32)>>,
+    _resize_observer: ResizeObserverGuard,
 }
 
 #[wasm_bindgen]
 impl HayateElementRenderer {
     pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateElementRenderer, JsValue> {
-        let width = canvas.width() as f32;
-        let height = canvas.height() as f32;
-        let backend = SelectedBackend::init(canvas).await?;
+        let rect = canvas.get_bounding_client_rect();
+        let dpr = web_sys::window()
+            .map(|w| w.device_pixel_ratio())
+            .unwrap_or(1.0);
+        let metrics =
+            resize_observer::canvas_resize_metrics(rect.width() as f32, rect.height() as f32, dpr);
+        canvas.set_width(metrics.buffer_width);
+        canvas.set_height(metrics.buffer_height);
+
+        let backend = SelectedBackend::init(canvas.clone()).await?;
         let mut tree = ElementTree::new();
-        tree.set_viewport(width, height);
+        tree.set_viewport(metrics.viewport_width, metrics.viewport_height);
+
+        let pending_resize = Rc::new(RefCell::new(None));
+        let last_viewport = Rc::new(RefCell::new((
+            metrics.viewport_width,
+            metrics.viewport_height,
+        )));
+        let resize_guard = resize_observer::attach_resize_observer(
+            &canvas,
+            pending_resize.clone(),
+            last_viewport.clone(),
+        )?;
+
         Ok(Self {
+            canvas,
             backend,
             tree,
             background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
             ime: WebImeBridge::default(),
+            pending_resize,
+            last_viewport,
+            _resize_observer: resize_guard,
         })
     }
 
@@ -225,6 +255,10 @@ impl HayateElementRenderer {
     /// monotonic clock (e.g. `performance.now()`). Mutations are applied eagerly
     /// by the `element_*` setters (ADR-0037), so `render` only drives layout.
     pub fn render(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
+        let pending = self.pending_resize.borrow_mut().take();
+        if let Some((width, height)) = pending {
+            self.apply_resize(width, height);
+        }
         // フェッチ完了フォントを layout より前に登録することで、同フレーム内で
         // fonts_dirty → compute_layout → 正しいグリフ、が成立する。
         // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）
@@ -269,9 +303,15 @@ impl HayateElementRenderer {
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
+        self.apply_resize(width, height);
+    }
+
+    fn apply_resize(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
-        self.backend.resize(width as u32, height as u32);
+        self.backend
+            .resize(self.canvas.width(), self.canvas.height());
         self.tree.on_resize(width, height);
+        *self.last_viewport.borrow_mut() = (width, height);
     }
 
     pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {
