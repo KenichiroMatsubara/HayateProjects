@@ -87,6 +87,7 @@ fn color_to_brush(color: Color) -> TextBrush {
 
 struct CollectCtx<'a> {
     elements: &'a HashMap<ElementId, Element>,
+    viewport: (f32, f32),
     text: String,
     spans: Vec<RangedTextSpan>,
     range_map: RangeMap,
@@ -122,9 +123,14 @@ impl CollectCtx<'_> {
             return;
         }
         let interaction = InteractionSnapshot::default();
+        let own = effective_visual::own_with_viewport_variants(
+            &el.visual,
+            &el.viewport_variants,
+            self.viewport,
+        );
         let effective = effective_visual::resolve_effective(
             &inherited,
-            &el.visual,
+            &own,
             &el.pseudo_styles,
             &interaction,
             id,
@@ -159,9 +165,11 @@ pub(crate) fn shape(
     max_advance: Option<f32>,
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
+    viewport: (f32, f32),
 ) -> TextLayout {
     let mut ctx = CollectCtx {
         elements,
+        viewport,
         text: String::new(),
         spans: Vec::new(),
         range_map: RangeMap::default(),
@@ -277,7 +285,14 @@ mod tests {
 
         let mut font_cx = FontContext::new();
         let mut layout_cx = LayoutContext::new();
-        let layout = shape(&elements, ifc, None, &mut font_cx, &mut layout_cx);
+        let layout = shape(
+            &elements,
+            ifc,
+            None,
+            &mut font_cx,
+            &mut layout_cx,
+            (800.0, 600.0),
+        );
         assert_eq!(layout.text.as_ref(), "Hello world");
         let map = layout.range_map.as_ref().unwrap();
         assert_eq!(map.lookup(0), Some(ifc));

@@ -85,6 +85,7 @@ impl ElementTree {
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32) {
+        self.set_viewport(width, height);
         self.push_event(Event::Resize { width, height });
     }
 

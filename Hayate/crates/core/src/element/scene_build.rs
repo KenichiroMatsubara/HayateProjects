@@ -68,9 +68,14 @@ fn walk(
         &inherited_base,
         &el.visual,
     );
+    let own = effective_visual::own_with_viewport_variants(
+        &el.visual,
+        &el.viewport_variants,
+        tree.viewport(),
+    );
     let visual = effective_visual::resolve_effective(
         &inherited,
-        &el.visual,
+        &own,
         &el.pseudo_styles,
         interaction,
         id,

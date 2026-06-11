@@ -184,8 +184,14 @@ impl LayoutPass {
                             AvailableSpace::MinContent => Some(0.0),
                         },
                     };
-                    let layout =
-                        inline_text::shape(elements, eid, max_advance, font_cx, layout_cx);
+                    let layout = inline_text::shape(
+                        elements,
+                        eid,
+                        max_advance,
+                        font_cx,
+                        layout_cx,
+                        viewport,
+                    );
                     if layout.text.is_empty() {
                         return TaffySize::ZERO;
                     }
