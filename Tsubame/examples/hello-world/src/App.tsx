@@ -131,7 +131,9 @@ function rendererBadge(detected: DetectModeResult): string {
 }
 
 export function TodoApp(props: TodoAppProps) {
-  const [page, setPage] = createSignal<Page>('tasks');
+  const initialPage: Page =
+    new URLSearchParams(window.location.search).get('page') === 'gallery' ? 'gallery' : 'tasks';
+  const [page, setPage] = createSignal<Page>(initialPage);
   const [todos, setTodos] = createSignal<Todo[]>(INITIAL_TODOS);
   const [filter, setFilter] = createSignal<Filter>('all');
   const [selectedId, setSelectedId] = createSignal(2);
@@ -602,7 +604,8 @@ function Badge(props: { label: string; color: string }) {
       borderWidth: 1,
       borderColor: props.color,
     }}>
-      <text style={{ fontSize: 11 }}>{props.label}</text>
+      {/* color は block（view）を貫通しないため text に明示指定する（2チャネル継承） */}
+      <text style={{ fontSize: 11, color: props.color }}>{props.label}</text>
     </view>
   );
 }

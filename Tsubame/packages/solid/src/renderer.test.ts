@@ -68,6 +68,32 @@ describe('renderer integration (stub IRenderer)', () => {
     expect(ops).toContain('append:1,2');
   });
 
+  it('applies style to text elements (ADR-0058: text も Hayate element)', async () => {
+    const { setProp, createElement } = await import('./renderer.js');
+    const { setActiveRenderer } = await import('./active-renderer.js');
+
+    const styles: Array<[number, unknown]> = [];
+    setActiveRenderer({
+      createElement: () => 1 as never,
+      setRoot: () => {},
+      appendChild: () => {},
+      insertBefore: () => {},
+      removeChild: () => {},
+      setStyle: (id: number, patch: unknown) => styles.push([id, patch]),
+      setText: () => {},
+      setProperty: () => {},
+      addEventListener: () => () => {},
+      resize: () => {},
+    } as never);
+
+    const text = createElement('text');
+    setProp(text, 'style', { fontSize: 22, color: '#4fd1c5' });
+
+    expect(styles).toEqual([[1, { fontSize: 22, color: '#4fd1c5' }]]);
+    // style 以外のプロパティは text では従来通り無視される
+    expect(() => setProp(text, 'value', 'x')).not.toThrow();
+  });
+
   it('rejects unknown element properties (ADR-0071)', async () => {
     const { setProp, createElement } = await import('./renderer.js');
     const { setActiveRenderer } = await import('./active-renderer.js');
