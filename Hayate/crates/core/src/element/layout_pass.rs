@@ -258,7 +258,7 @@ impl LayoutPass {
             .collect();
 
         for eid in textinput_ids {
-            let (display_text, font_size, font_weight) = {
+            let (display_text, font_size, font_weight, font_style) = {
                 let el = match elements.get(&eid) {
                     Some(e) => e,
                     None => continue,
@@ -273,6 +273,7 @@ impl LayoutPass {
                     text,
                     el.visual.font_size.unwrap_or(ambient.font_size),
                     el.visual.font_weight.or(ambient.font_weight),
+                    el.visual.font_style,
                 )
             };
 
@@ -306,6 +307,7 @@ impl LayoutPass {
                 max_advance,
                 font_family.as_deref(),
                 font_weight,
+                font_style,
             );
 
             for &fam in &content_layout.missing_families {

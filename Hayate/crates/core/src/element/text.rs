@@ -168,11 +168,15 @@ pub fn build_text_layout(
     max_advance: Option<f32>,
     font_family: Option<&str>,
     font_weight: Option<f32>,
+    font_style: Option<FontStyleValue>,
 ) -> TextLayout {
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(font_size));
     if let Some(weight) = font_weight {
         builder.push_default(StyleProperty::FontWeight(FontWeight::new(weight)));
+    }
+    if let Some(style) = font_style {
+        builder.push_default(StyleProperty::FontStyle(parley_font_style(style)));
     }
     // Resolve generic keywords, then build a CSS font stack so unknown names
     // fall back to the bundled default. Parley resolves left-to-right and
@@ -358,4 +362,98 @@ fn lower_glyph_runs(
         }
     }
     (out, missing.into_iter().collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use fontique::{FontInfoOverride, FontStyle, GenericFamily};
+    use linebender_resource_handle::Blob;
+    use parley::{FontContext, LayoutContext, PositionedLayoutItem};
+
+    use super::*;
+
+    fn test_font_context() -> FontContext {
+        let mut font_cx = FontContext::new();
+        static NOTO_SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/NotoSansJP.ttf");
+        let blob = Blob::new(Arc::new(NOTO_SANS_BYTES));
+        let override_info = FontInfoOverride {
+            family_name: Some(DEFAULT_FONT_FAMILY),
+            ..Default::default()
+        };
+        let registered = font_cx.collection.register_fonts(blob, Some(override_info));
+        let family_ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+        if !family_ids.is_empty() {
+            font_cx
+                .collection
+                .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
+        }
+        font_cx
+    }
+
+    fn glyph_run_font_styles(layout: &TextLayout) -> Vec<FontStyle> {
+        layout
+            .layout
+            .lines()
+            .flat_map(|line| line.items())
+            .filter_map(|item| {
+                let PositionedLayoutItem::GlyphRun(grun) = item else {
+                    return None;
+                };
+                Some(grun.run().font_attrs().style)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn build_text_layout_pushes_font_style_to_parley() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let tl = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "Hello",
+            16.0,
+            None,
+            None,
+            None,
+            Some(FontStyleValue::Italic),
+        );
+        let styles = glyph_run_font_styles(&tl);
+        assert!(!styles.is_empty(), "expected shaped glyph runs");
+        assert!(
+            styles.iter().all(|s| *s == FontStyle::Italic),
+            "expected italic font style on all runs, got {styles:?}"
+        );
+    }
+
+    #[test]
+    fn build_ranged_text_layout_pushes_font_style_to_parley() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let spans = [RangedTextSpan {
+            byte_start: 0,
+            byte_end: 5,
+            font_size: 16.0,
+            font_weight: None,
+            font_family: None,
+            font_style: Some(FontStyleValue::Italic),
+            text_decoration: None,
+            brush: [0, 0, 0, 255],
+        }];
+        let tl = build_ranged_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "Hello",
+            &spans,
+            None,
+        );
+        let styles = glyph_run_font_styles(&tl);
+        assert!(!styles.is_empty(), "expected shaped glyph runs");
+        assert!(
+            styles.iter().all(|s| *s == FontStyle::Italic),
+            "expected italic font style on all runs, got {styles:?}"
+        );
+    }
 }
