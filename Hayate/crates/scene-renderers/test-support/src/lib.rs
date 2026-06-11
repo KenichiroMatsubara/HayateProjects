@@ -1,6 +1,7 @@
 pub mod cases;
 pub mod pixel;
 pub mod runner;
+pub mod synthesis;
 pub mod tiny_skia;
 pub mod vello;
 

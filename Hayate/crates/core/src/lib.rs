@@ -18,4 +18,5 @@ pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunDa
 pub use render::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage,
     RenderImageAlphaType, RenderImageFormat, ScenePainter, SceneRecorder, render_scene_graph,
+    text_synthesis,
 };

@@ -10,6 +10,12 @@ use crate::pixel::CANVAS_W;
 const VW: f32 = 100.0;
 const VH: f32 = 100.0;
 
+static NOTO_SANS_JP_BYTES: &[u8] = include_bytes!("../../../core/assets/fonts/NotoSansJP.ttf");
+
+fn register_bundled_font(tree: &mut ElementTree) {
+    tree.register_font("Noto Sans", NOTO_SANS_JP_BYTES.to_vec());
+}
+
 fn viewport(tree: &mut ElementTree) {
     tree.set_viewport(VW, VH);
 }
@@ -721,8 +727,9 @@ fn check_margin_left(data: &[u8]) {
 
 // ── text ──────────────────────────────────────────────────────────────────
 
-fn text_tree(extra: &[StyleProp]) -> ElementTree {
+pub fn text_tree(extra: &[StyleProp]) -> ElementTree {
     let mut tree = ElementTree::new();
+    register_bundled_font(&mut tree);
     let root = root_view(&mut tree, 60);
     let text = child_text(&mut tree, 61);
     tree.element_set_style(

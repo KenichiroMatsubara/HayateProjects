@@ -1,4 +1,5 @@
 mod painter;
+pub mod text_synthesis;
 
 use std::sync::Arc;
 

@@ -1,13 +1,22 @@
-use hayate_core::{RenderImage, RenderImageAlphaType, ScenePainter, TextRunData};
+use hayate_core::{
+    RenderImage, RenderImageAlphaType, ScenePainter, TextRunData,
+    text_synthesis::{embolden_amount_font_units, italic_skew_tangent},
+};
 use skrifa::{
     GlyphId, MetadataProvider,
-    instance::{LocationRef, Size},
+    instance::{LocationRef, NormalizedCoord, Size},
     outline::{DrawSettings, OutlinePen},
-    raw::FontRef,
+    raw::{FontRef, TableProvider},
 };
 use tiny_skia::{
-    BlendMode, Color, FillRule, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Transform,
+    BlendMode, Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap,
+    PixmapPaint, PixmapRef, Stroke, Transform,
 };
+
+fn normalized_coords_ref(coords: &[i16]) -> &[NormalizedCoord] {
+    // Parley stores harfrust/skrifa normalized coords as i16 (F2Dot14).
+    unsafe { std::slice::from_raw_parts(coords.as_ptr().cast(), coords.len()) }
+}
 
 use crate::straight_to_premultiplied;
 
@@ -212,6 +221,18 @@ fn draw_text_run(
     let outlines = font.outline_glyphs();
     let font_size = data.font_size;
     let size = Size::new(font_size);
+    let location = if data.normalized_coords.is_empty() {
+        LocationRef::default()
+    } else {
+        LocationRef::new(normalized_coords_ref(&data.normalized_coords))
+    };
+    let skew = data.synthesis.skew().map(italic_skew_tangent);
+    let embolden_width = data.synthesis.embolden().then(|| {
+        font.head()
+            .ok()
+            .map(|head| embolden_amount_font_units(head.units_per_em()) as f32)
+            .unwrap_or(32.0)
+    });
 
     for glyph in &data.glyphs {
         let outline = match outlines.get(GlyphId::new(glyph.id)) {
@@ -222,7 +243,7 @@ fn draw_text_run(
         let mut pen = TinySkiaPen {
             pb: PathBuilder::new(),
         };
-        let settings = DrawSettings::unhinted(size, LocationRef::default());
+        let settings = DrawSettings::unhinted(size, location);
         if outline.draw(settings, &mut pen).is_err() {
             continue;
         }
@@ -231,11 +252,24 @@ fn draw_text_run(
             None => continue,
         };
 
-        let glyph_transform = transform
+        let mut glyph_transform = transform
             .pre_translate(run_x + glyph.x, run_y + glyph.y)
             .pre_scale(1.0, -1.0);
+        if let Some(tangent) = skew {
+            glyph_transform = glyph_transform
+                .pre_concat(Transform::from_row(1.0, 0.0, tangent, 1.0, 0.0, 0.0));
+        }
 
         pixmap.fill_path(&path, &paint, FillRule::Winding, glyph_transform, mask);
+        if let Some(stroke_width) = embolden_width {
+            let stroke = Stroke {
+                width: stroke_width,
+                line_join: LineJoin::Round,
+                line_cap: LineCap::Round,
+                ..Stroke::default()
+            };
+            pixmap.stroke_path(&path, &paint, &stroke, glyph_transform, mask);
+        }
     }
 
     for deco in &data.decorations {

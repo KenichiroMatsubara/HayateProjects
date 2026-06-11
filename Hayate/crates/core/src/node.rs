@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use fontique::Synthesis;
 use slotmap::{DefaultKey, SlotMap};
 
 use crate::render::{RenderFont, RenderGlyph, RenderImage};
@@ -22,6 +23,10 @@ pub struct TextRunData {
     pub glyphs: Vec<RenderGlyph>,
     pub decorations: Vec<TextDecorationLine>,
     pub text: Arc<str>,
+    /// Font synthesis from fontique (faux bold / italic skew / variation axes).
+    pub synthesis: Synthesis,
+    /// Normalized variation coordinates from Parley shaping.
+    pub normalized_coords: Vec<i16>,
 }
 
 #[derive(Debug, Clone)]

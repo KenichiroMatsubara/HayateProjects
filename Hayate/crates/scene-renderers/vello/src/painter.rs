@@ -1,8 +1,16 @@
-use hayate_core::{RenderImage, ScenePainter, TextRunData};
+use hayate_core::{
+    RenderImage, ScenePainter, TextRunData,
+    text_synthesis::{embolden_amount_font_units, italic_skew_tangent},
+};
+use skrifa::raw::{FontRef, TableProvider};
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
-    peniko::{Fill, FontData, ImageBrush, color::{AlphaColor, Srgb}},
-    Scene,
+    peniko::{
+        Fill, FontData, ImageBrush,
+        color::{AlphaColor, Srgb},
+        kurbo::Diagonal2,
+    },
+    FontEmbolden, Scene,
 };
 
 use crate::to_vello_image;
@@ -129,12 +137,28 @@ impl ScenePainter for VelloPainter<'_> {
             y: glyph.y,
         });
         let transform = Affine::translate((x as f64, y as f64));
-        scene
+        let mut builder = scene
             .draw_glyphs(&font)
             .font_size(data.font_size)
             .brush(brush)
-            .transform(transform)
-            .draw(Fill::NonZero, glyphs);
+            .transform(transform);
+        if !data.normalized_coords.is_empty() {
+            builder = builder.normalized_coords(data.normalized_coords.as_slice());
+        }
+        if let Some(degrees) = data.synthesis.skew() {
+            let tangent = italic_skew_tangent(degrees) as f64;
+            builder = builder.glyph_transform(Some(Affine::new([1.0, 0.0, tangent, 1.0, 0.0, 0.0])));
+        }
+        if data.synthesis.embolden() {
+            let units_per_em = FontRef::from_index(data.font.data.as_ref(), data.font.index)
+                .ok()
+                .and_then(|font| font.head().ok())
+                .map(|head| head.units_per_em())
+                .unwrap_or(1000);
+            let amount = embolden_amount_font_units(units_per_em);
+            builder = builder.font_embolden(FontEmbolden::new(Diagonal2::new(amount, amount)));
+        }
+        builder.draw(Fill::NonZero, glyphs);
 
         use vello::kurbo::Shape;
         for deco in &data.decorations {
