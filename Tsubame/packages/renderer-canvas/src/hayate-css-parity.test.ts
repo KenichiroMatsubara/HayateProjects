@@ -13,6 +13,7 @@ import { TAG } from '@tsubame/protocol-generated/protocol';
 const SAMPLES: Record<string, unknown> = {
   color: '#ff6600',
   dimension: '48px',
+  dimensionList: ['100px', '1fr', '50%'],
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -49,6 +50,12 @@ function domCssForPatch(patch: StylePatch): Record<string, string> {
 }
 
 describe('hayate-css catalog parity', () => {
+  it('sampleFor provides a defined value for every catalog entry', () => {
+    for (const entry of HAYATE_CSS_CATALOG) {
+      expect(sampleFor(entry), entry.patchKey).toBeDefined();
+    }
+  });
+
   it('covers every catalog entry with packet and css targets', () => {
     expect(HAYATE_CSS_CATALOG.length).toBeGreaterThan(0);
     for (const entry of HAYATE_CSS_CATALOG) {
