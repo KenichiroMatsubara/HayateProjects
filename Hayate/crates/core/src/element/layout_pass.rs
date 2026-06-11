@@ -277,13 +277,6 @@ impl LayoutPass {
                 )
             };
 
-            if display_text.is_empty() {
-                if let Some(el) = elements.get_mut(&eid) {
-                    el.content_layout = None;
-                }
-                continue;
-            }
-
             let (max_advance, font_family) = {
                 let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
                 let el = elements.get(&eid).map(|e| {
@@ -299,41 +292,63 @@ impl LayoutPass {
                 });
                 el.map(|(a, f)| (a, f)).unwrap_or((None, None))
             };
-            let content_layout = text::build_text_layout(
-                font_cx,
-                layout_cx,
-                &display_text,
-                font_size,
-                max_advance,
-                font_family.as_deref(),
-                font_weight,
-                font_style,
-            );
 
-            for &fam in &content_layout.missing_families {
-                if !pending_font_fetches.contains(fam) {
-                    pending_font_fetches.insert(fam.to_string());
-                    event_queue.push(Event::FetchFont {
-                        family: fam.to_string(),
-                    });
+            let is_placeholder = display_text.is_empty();
+            let text_to_layout: Option<String> = if is_placeholder {
+                elements
+                    .get(&eid)
+                    .and_then(|el| el.text.clone())
+                    .filter(|t| !t.is_empty())
+            } else {
+                Some(display_text)
+            };
+
+            if let Some(text) = text_to_layout {
+                let layout = text::build_text_layout(
+                    font_cx,
+                    layout_cx,
+                    &text,
+                    font_size,
+                    max_advance,
+                    font_family.as_deref(),
+                    font_weight,
+                    font_style,
+                );
+
+                for &fam in &layout.missing_families {
+                    if !pending_font_fetches.contains(fam) {
+                        pending_font_fetches.insert(fam.to_string());
+                        event_queue.push(Event::FetchFont {
+                            family: fam.to_string(),
+                        });
+                    }
                 }
-            }
-            if let Some(ref fam) = font_family {
-                let resolved = text::resolve_generic_family(fam);
-                if resolved != text::DEFAULT_FONT_FAMILY
-                    && !pending_font_fetches.contains(resolved)
-                    && font_cx.collection.family_id(resolved).is_none()
-                {
-                    let owned = resolved.to_string();
-                    pending_font_fetches.insert(owned.clone());
-                    event_queue.push(Event::FetchFont { family: owned });
+                if let Some(ref fam) = font_family {
+                    let resolved = text::resolve_generic_family(fam);
+                    if resolved != text::DEFAULT_FONT_FAMILY
+                        && !pending_font_fetches.contains(resolved)
+                        && font_cx.collection.family_id(resolved).is_none()
+                    {
+                        let owned = resolved.to_string();
+                        pending_font_fetches.insert(owned.clone());
+                        event_queue.push(Event::FetchFont { family: owned });
+                    }
                 }
-            }
-            if let Some(el) = elements.get_mut(&eid) {
-                el.content_layout = Some(content_layout);
-                if let Some(edit) = el.edit.as_mut() {
-                    edit.cursor_byte_index = edit.text_content.len();
+                if let Some(el) = elements.get_mut(&eid) {
+                    if is_placeholder {
+                        el.content_layout = None;
+                        el.text_layout = Some(layout);
+                    } else {
+                        el.content_layout = Some(layout);
+                        el.text_layout = None;
+                        if let Some(edit) = el.edit.as_mut() {
+                            edit.cursor_byte_index = edit.text_content.len();
+                        }
+                    }
                 }
+            } else if let Some(el) = elements.get_mut(&eid) {
+                el.content_layout = None;
+                el.text_layout = None;
             }
         }
     }

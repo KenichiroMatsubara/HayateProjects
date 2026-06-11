@@ -835,6 +835,78 @@ fn preedit_shown_inline_not_committed() {
 }
 
 #[test]
+fn placeholder_renders_when_text_content_is_empty() {
+    // Regression: Canvas-mode TextInput must render placeholder text when value is empty.
+    // layout_pass previously skipped text_layout construction for TextInput, leaving
+    // scene_build's content_layout → text_layout fallback as dead code.
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(36, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(24.0),
+        ],
+    );
+
+    tree.element_set_text(input, "Type here");
+
+    let sg = tree.render(0.0);
+    let text_run_count = sg
+        .iter()
+        .filter(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }))
+        .count();
+    assert!(
+        text_run_count > 0,
+        "placeholder text must render as a TextRun when text_content is empty"
+    );
+}
+
+#[test]
+fn placeholder_hidden_when_text_content_is_present() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(37, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(24.0),
+        ],
+    );
+
+    tree.element_set_text(input, "Type here");
+    tree.element_set_text_content(input, "Hello");
+
+    let sg = tree.render(0.0);
+    let text_run_count = sg
+        .iter()
+        .filter(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }))
+        .count();
+    assert!(
+        text_run_count > 0,
+        "committed text must render as a TextRun when value is present"
+    );
+
+    // Clearing value restores placeholder rendering.
+    tree.element_set_text_content(input, "");
+    let sg = tree.render(0.0);
+    let text_run_count = sg
+        .iter()
+        .filter(|(_, n)| matches!(&n.kind, NodeKind::TextRun { .. }))
+        .count();
+    assert!(
+        text_run_count > 0,
+        "placeholder must render again after value is cleared"
+    );
+}
+
+#[test]
 fn preedit_renders_when_text_content_is_empty() {
     // Regression: typing IME composition into an empty TextInput must surface
     // the preedit as a TextRun. scene_build previously gated content rendering
