@@ -59,6 +59,29 @@ fn encode_font_style(value: FontStyleValue) -> f32 {
     }
 }
 
+fn encode_align_self(value: AlignSelfValue) -> f32 {
+    match value {
+        AlignSelfValue::Auto => 0.0,
+        AlignSelfValue::FlexStart => 1.0,
+        AlignSelfValue::FlexEnd => 2.0,
+        AlignSelfValue::Center => 3.0,
+        AlignSelfValue::Stretch => 4.0,
+        AlignSelfValue::Baseline => 5.0,
+    }
+}
+
+fn encode_align_content(value: AlignContentValue) -> f32 {
+    match value {
+        AlignContentValue::FlexStart => 0.0,
+        AlignContentValue::FlexEnd => 1.0,
+        AlignContentValue::Center => 2.0,
+        AlignContentValue::Stretch => 3.0,
+        AlignContentValue::SpaceBetween => 4.0,
+        AlignContentValue::SpaceAround => 5.0,
+        AlignContentValue::SpaceEvenly => 6.0,
+    }
+}
+
 fn encode_text_decoration(value: TextDecorationValue) -> f32 {
     match value {
         TextDecorationValue::None => 0.0,
@@ -365,6 +388,23 @@ buf.push(*byte as f32);
                     buf.push(d.value);
                     buf.push(encode_dim_unit(d.unit));
                 }
+            }
+            StyleProp::FlexShrink(v) => {
+                buf.push(TAG_FLEX_SHRINK as f32);
+                buf.push(*v);
+            }
+            StyleProp::FlexBasis(d) => {
+                buf.push(TAG_FLEX_BASIS as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::AlignSelf(v) => {
+                buf.push(TAG_ALIGN_SELF as f32);
+                buf.push(encode_align_self(*v));
+            }
+            StyleProp::AlignContent(v) => {
+                buf.push(TAG_ALIGN_CONTENT as f32);
+                buf.push(encode_align_content(*v));
             }
         }
     }

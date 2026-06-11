@@ -5,7 +5,9 @@ pub mod render;
 
 pub use color::Color;
 pub use element::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, DocumentEventKind, ElementId, ElementKind,
+    AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
+    DocumentEventKind,
+    ElementId, ElementKind,
     ElementTree, Event, EventDelivery, FlexDirectionValue, JustifyValue, LayoutPass, ListenerId,
     event_document_kind,
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PseudoState, ResolvedElement,

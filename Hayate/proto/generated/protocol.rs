@@ -82,6 +82,10 @@ pub const TAG_DEFAULT_FONT_SIZE: u32 = 36;
 pub const TAG_DEFAULT_FONT_WEIGHT: u32 = 37;
 pub const TAG_GRID_TEMPLATE_COLUMNS: u32 = 38;
 pub const TAG_GRID_TEMPLATE_ROWS: u32 = 39;
+pub const TAG_FLEX_SHRINK: u32 = 40;
+pub const TAG_FLEX_BASIS: u32 = 41;
+pub const TAG_ALIGN_SELF: u32 = 42;
+pub const TAG_ALIGN_CONTENT: u32 = 43;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -511,6 +515,19 @@ pub enum StyleTag {
     GridTemplateRows {
         tracks: Vec<(f32, f32)>,
     },
+    FlexShrink {
+        value: f32,
+    },
+    FlexBasis {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    AlignSelf {
+        value: f32,
+    },
+    AlignContent {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -767,6 +784,27 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             }
             Ok((StyleTag::GridTemplateRows { tracks }, j))
         }
+        40 => {
+            if i + 1 > packed.len() { return Err("style tag FLEX_SHRINK truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::FlexShrink { value }, i + 1))
+        }
+        41 => {
+            if i + 2 > packed.len() { return Err("style tag FLEX_BASIS truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::FlexBasis { dim_value, dim_unit }, i + 2))
+        }
+        42 => {
+            if i + 1 > packed.len() { return Err("style tag ALIGN_SELF truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::AlignSelf { value }, i + 1))
+        }
+        43 => {
+            if i + 1 > packed.len() { return Err("style tag ALIGN_CONTENT truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::AlignContent { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -774,8 +812,9 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 // ── Style packet codec (generated) ─────────────────────────────────────
 
 use hayate_core::{
-    AlignValue, Color, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,
-    FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
+    AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DimensionUnit,
+    DisplayValue,
+    FlexDirectionValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 
@@ -846,6 +885,31 @@ fn codec_font_style(raw: f32) -> FontStyleValue {
     }
 }
 
+fn codec_align_self(raw: f32) -> AlignSelfValue {
+    match raw as u32 {
+        0 => AlignSelfValue::Auto,
+        1 => AlignSelfValue::FlexStart,
+        2 => AlignSelfValue::FlexEnd,
+        3 => AlignSelfValue::Center,
+        4 => AlignSelfValue::Stretch,
+        5 => AlignSelfValue::Baseline,
+        _ => AlignSelfValue::Auto,
+    }
+}
+
+fn codec_align_content(raw: f32) -> AlignContentValue {
+    match raw as u32 {
+        0 => AlignContentValue::FlexStart,
+        1 => AlignContentValue::FlexEnd,
+        2 => AlignContentValue::Center,
+        3 => AlignContentValue::Stretch,
+        4 => AlignContentValue::SpaceBetween,
+        5 => AlignContentValue::SpaceAround,
+        6 => AlignContentValue::SpaceEvenly,
+        _ => AlignContentValue::FlexStart,
+    }
+}
+
 fn codec_text_decoration(raw: f32) -> TextDecorationValue {
     match raw as u32 {
         0 => TextDecorationValue::None,
@@ -897,6 +961,10 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::DefaultFontWeight { value } => StyleProp::DefaultFontWeight(value),
         StyleTag::GridTemplateColumns { tracks } => StyleProp::GridTemplateColumns(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
         StyleTag::GridTemplateRows { tracks } => StyleProp::GridTemplateRows(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
+        StyleTag::FlexShrink { value } => StyleProp::FlexShrink(value),
+        StyleTag::FlexBasis { dim_value, dim_unit } => StyleProp::FlexBasis(codec_dim(dim_value, dim_unit)),
+        StyleTag::AlignSelf { value } => StyleProp::AlignSelf(codec_align_self(value)),
+        StyleTag::AlignContent { value } => StyleProp::AlignContent(codec_align_content(value)),
     })
 }
 

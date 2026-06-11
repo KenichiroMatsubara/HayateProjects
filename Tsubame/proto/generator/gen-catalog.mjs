@@ -32,6 +32,10 @@ function wireKind(tag) {
       return 'flexDirection';
     case 'align_items':
       return 'alignItems';
+    case 'align_self':
+      return 'alignSelf';
+    case 'align_content':
+      return 'alignContent';
     case 'justify_content':
       return 'justifyContent';
     case 'font_style':
@@ -103,7 +107,7 @@ export function generateCatalog() {
     '',
     "import type { HayateDimension } from '@tsubame/renderer-protocol';",
     '',
-    "export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
+    "export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';",
     "export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
     '',
     'export interface DomExtra {',

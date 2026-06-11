@@ -63,3 +63,7 @@ vello_property_test!(css_pixel_text_decoration_underline, 34);
 vello_property_test!(css_pixel_text_decoration_line_through, 35);
 vello_property_test!(css_pixel_z_index, 36);
 vello_property_test!(css_pixel_flex_grow, 37);
+vello_property_test!(css_pixel_flex_shrink, 38);
+vello_property_test!(css_pixel_flex_basis, 39);
+vello_property_test!(css_pixel_align_self, 40);
+vello_property_test!(css_pixel_align_content, 41);

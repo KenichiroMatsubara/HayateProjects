@@ -196,6 +196,35 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             .join(" ");
             style.set_property("grid-template-rows", &s)?;
         }
+        StyleProp::FlexShrink(v) => {
+            style.set_property("flex-shrink", &format!("{}", v))?;
+        }
+        StyleProp::FlexBasis(d) => {
+            style.set_property("flex-basis", &dom_css_dim(d))?;
+        }
+        StyleProp::AlignSelf(v) => {
+            let s = match v {
+            AlignSelfValue::Auto => "auto",
+            AlignSelfValue::FlexStart => "flex-start",
+            AlignSelfValue::FlexEnd => "flex-end",
+            AlignSelfValue::Center => "center",
+            AlignSelfValue::Stretch => "stretch",
+            AlignSelfValue::Baseline => "baseline",
+            };
+            style.set_property("align-self", s)?;
+        }
+        StyleProp::AlignContent(v) => {
+            let s = match v {
+            AlignContentValue::FlexStart => "flex-start",
+            AlignContentValue::FlexEnd => "flex-end",
+            AlignContentValue::Center => "center",
+            AlignContentValue::Stretch => "stretch",
+            AlignContentValue::SpaceBetween => "space-between",
+            AlignContentValue::SpaceAround => "space-around",
+            AlignContentValue::SpaceEvenly => "space-evenly",
+            };
+            style.set_property("align-content", s)?;
+        }
     }
     Ok(())
 }

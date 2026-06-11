@@ -124,6 +124,27 @@ pub enum JustifyValue {
     SpaceEvenly,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum AlignSelfValue {
+    Auto,
+    FlexStart,
+    FlexEnd,
+    Center,
+    Stretch,
+    Baseline,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum AlignContentValue {
+    FlexStart,
+    FlexEnd,
+    Center,
+    Stretch,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
 #[derive(Clone, Debug)]
 pub enum StyleProp {
     // visual
@@ -157,6 +178,10 @@ pub enum StyleProp {
     MarginLeft(Dimension),
     // flex
     FlexGrow(f32),
+    FlexShrink(f32),
+    FlexBasis(Dimension),
+    AlignSelf(AlignSelfValue),
+    AlignContent(AlignContentValue),
     // text
     FontSize(f32),
     FontFamily(String),
@@ -193,6 +218,10 @@ impl StyleProp {
                 | Self::JustifyContent(_)
                 | Self::Gap(_)
                 | Self::FlexGrow(_)
+                | Self::FlexShrink(_)
+                | Self::FlexBasis(_)
+                | Self::AlignSelf(_)
+                | Self::AlignContent(_)
                 | Self::Padding(_)
                 | Self::PaddingTop(_)
                 | Self::PaddingRight(_)

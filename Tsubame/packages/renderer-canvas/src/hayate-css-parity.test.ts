@@ -17,6 +17,8 @@ const SAMPLES: Record<string, unknown> = {
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
+  alignSelf: 'flex-end',
+  alignContent: 'space-between',
   justifyContent: 'space-between',
   fontStyle: 'italic',
   textDecoration: 'underline',
@@ -30,6 +32,8 @@ function sampleFor(entry: (typeof HAYATE_CSS_CATALOG)[number]): unknown {
   if (entry.patchKey === 'borderRadius' || entry.patchKey === 'fontSize') return 16;
   if (entry.patchKey === 'fontWeight') return 600;
   if (entry.patchKey === 'flexGrow') return 1;
+  if (entry.patchKey === 'flexShrink') return 0.5;
+  if (entry.patchKey === 'flexBasis') return '80px';
   if (entry.patchKey === 'opacity') return 0.5;
   if (entry.patchKey === 'defaultFontSize') return 16;
   if (entry.patchKey === 'defaultFontWeight') return 600;

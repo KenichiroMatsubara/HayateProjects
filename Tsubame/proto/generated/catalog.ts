@@ -3,7 +3,7 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
@@ -549,6 +549,58 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "domFormat": "dimension-list",
     "cssName": "gridTemplateRows",
     "cssProperty": "grid-template-rows",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "flexShrink",
+    "tag": 40,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "number",
+    "cssName": "flexShrink",
+    "cssProperty": "flex-shrink",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "flexBasis",
+    "tag": 41,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "flexBasis",
+    "cssProperty": "flex-basis",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "alignSelf",
+    "tag": 42,
+    "unsetKind": null,
+    "wireKind": "alignSelf",
+    "domFormat": "enum",
+    "cssName": "alignSelf",
+    "cssProperty": "align-self",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "alignContent",
+    "tag": 43,
+    "unsetKind": null,
+    "wireKind": "alignContent",
+    "domFormat": "enum",
+    "cssName": "alignContent",
+    "cssProperty": "align-content",
     "targets": [
       "packet",
       "css"

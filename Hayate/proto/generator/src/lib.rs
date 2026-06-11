@@ -621,8 +621,9 @@ fn generate_style_codec(proto: &Proto) -> String {
 
     out.push_str("// ── Style packet codec (generated) ─────────────────────────────────────\n\n");
     out.push_str("use hayate_core::{\n");
-    out.push_str("    AlignValue, Color, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue,\n");
-    out.push_str("    FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,\n");
+    out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DimensionUnit,\n");
+    out.push_str("    DisplayValue,\n");
+    out.push_str("    FlexDirectionValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,\n");
     out.push_str("};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
 
@@ -646,6 +647,8 @@ fn generate_style_codec(proto: &Proto) -> String {
             "display" => "DisplayValue",
             "flex_direction" => "FlexDirectionValue",
             "align_items" => "AlignValue",
+            "align_self" => "AlignSelfValue",
+            "align_content" => "AlignContentValue",
             "justify_content" => "JustifyValue",
             "font_style" => "FontStyleValue",
             "text_decoration" => "TextDecorationValue",
@@ -726,6 +729,8 @@ fn generate_codec(proto: &Proto) -> String {
             "display" => "DisplayValue",
             "flex_direction" => "FlexDirectionValue",
             "align_items" => "AlignValue",
+            "align_self" => "AlignSelfValue",
+            "align_content" => "AlignContentValue",
             "justify_content" => "JustifyValue",
             "font_style" => "FontStyleValue",
             "text_decoration" => "TextDecorationValue",
@@ -825,8 +830,8 @@ fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
         match p.typ.as_str() {
             "color" => return "(c)".to_string(),
             "dimension" => return "(d)".to_string(),
-            "display" | "flex_direction" | "align_items" | "justify_content" | "font_style"
-            | "text_decoration" | "f32" => {
+            "display" | "flex_direction" | "align_items" | "align_self" | "align_content"
+            | "justify_content" | "font_style" | "text_decoration" | "f32" => {
                 return "(v)".to_string();
             }
             _ => {}
@@ -875,6 +880,8 @@ fn style_prop_encode_body(tag_name: &str, params: &[Param]) -> String {
                 return "                buf.push(encode_flex_direction(*v));\n".to_string();
             }
             "align_items" => return "                buf.push(encode_align_items(*v));\n".to_string(),
+            "align_self" => return "                buf.push(encode_align_self(*v));\n".to_string(),
+            "align_content" => return "                buf.push(encode_align_content(*v));\n".to_string(),
             "justify_content" => {
                 return "                buf.push(encode_justify_content(*v));\n".to_string();
             }
@@ -1059,6 +1066,33 @@ fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
             style.set_property(\"{css_prop}\", s)?;"
             ));
         }
+        "enum:align_self" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                AlignSelfValue::Auto => \"auto\",\n\
+                AlignSelfValue::FlexStart => \"flex-start\",\n\
+                AlignSelfValue::FlexEnd => \"flex-end\",\n\
+                AlignSelfValue::Center => \"center\",\n\
+                AlignSelfValue::Stretch => \"stretch\",\n\
+                AlignSelfValue::Baseline => \"baseline\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:align_content" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                AlignContentValue::FlexStart => \"flex-start\",\n\
+                AlignContentValue::FlexEnd => \"flex-end\",\n\
+                AlignContentValue::Center => \"center\",\n\
+                AlignContentValue::Stretch => \"stretch\",\n\
+                AlignContentValue::SpaceBetween => \"space-between\",\n\
+                AlignContentValue::SpaceAround => \"space-around\",\n\
+                AlignContentValue::SpaceEvenly => \"space-evenly\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
         "enum:justify_content" => {
             lines.push(format!(
                 "let s = match {value_var} {{\n\
@@ -1128,6 +1162,8 @@ fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> S
             "display" => return "codec_display(value)".to_string(),
             "flex_direction" => return "codec_flex_direction(value)".to_string(),
             "align_items" => return "codec_align_items(value)".to_string(),
+            "align_self" => return "codec_align_self(value)".to_string(),
+            "align_content" => return "codec_align_content(value)".to_string(),
             "justify_content" => return "codec_justify_content(value)".to_string(),
             "font_style" => return "codec_font_style(value)".to_string(),
             "text_decoration" => return "codec_text_decoration(value)".to_string(),

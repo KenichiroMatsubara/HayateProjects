@@ -1,12 +1,13 @@
 use taffy::{
     style_helpers::{fr, length, percent, TaffyAuto},
-    AlignItems, Dimension as TaffyDim, Display, FlexDirection, JustifyContent, LengthPercentage,
-    LengthPercentageAuto, Rect as TaffyRect, Size, Style, TrackSizingFunction,
+    AlignContent, AlignItems, Dimension as TaffyDim, Display, FlexDirection, JustifyContent,
+    LengthPercentage, LengthPercentageAuto, Rect as TaffyRect, Size, Style, TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
-    AlignValue, Dimension, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue, StyleProp,
+    AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
+    FlexDirectionValue, JustifyValue, StyleProp,
 };
 
 /// Context attached to each Taffy leaf so the measure closure can dispatch.
@@ -135,6 +136,29 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         StyleProp::MarginBottom(d) => style.margin.bottom = to_taffy_lp_auto(*d),
         StyleProp::MarginLeft(d) => style.margin.left = to_taffy_lp_auto(*d),
         StyleProp::FlexGrow(v) => style.flex_grow = (*v).max(0.0),
+        StyleProp::FlexShrink(v) => style.flex_shrink = (*v).max(0.0),
+        StyleProp::FlexBasis(d) => style.flex_basis = to_taffy_dim(*d),
+        StyleProp::AlignSelf(v) => {
+            style.align_self = match v {
+                AlignSelfValue::Auto => None,
+                AlignSelfValue::FlexStart => Some(AlignItems::FlexStart),
+                AlignSelfValue::FlexEnd => Some(AlignItems::FlexEnd),
+                AlignSelfValue::Center => Some(AlignItems::Center),
+                AlignSelfValue::Stretch => Some(AlignItems::Stretch),
+                AlignSelfValue::Baseline => Some(AlignItems::Baseline),
+            };
+        }
+        StyleProp::AlignContent(v) => {
+            style.align_content = Some(match v {
+                AlignContentValue::FlexStart => AlignContent::FlexStart,
+                AlignContentValue::FlexEnd => AlignContent::FlexEnd,
+                AlignContentValue::Center => AlignContent::Center,
+                AlignContentValue::Stretch => AlignContent::Stretch,
+                AlignContentValue::SpaceBetween => AlignContent::SpaceBetween,
+                AlignContentValue::SpaceAround => AlignContent::SpaceAround,
+                AlignContentValue::SpaceEvenly => AlignContent::SpaceEvenly,
+            });
+        }
         StyleProp::GridTemplateColumns(tracks) => {
             style.grid_template_columns = tracks.iter().copied().map(to_taffy_track).collect();
         }

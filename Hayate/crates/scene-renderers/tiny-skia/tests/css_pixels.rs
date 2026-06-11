@@ -54,3 +54,7 @@ tiny_skia_property_test!(css_pixel_text_decoration_underline, 34);
 tiny_skia_property_test!(css_pixel_text_decoration_line_through, 35);
 tiny_skia_property_test!(css_pixel_z_index, 36);
 tiny_skia_property_test!(css_pixel_flex_grow, 37);
+tiny_skia_property_test!(css_pixel_flex_shrink, 38);
+tiny_skia_property_test!(css_pixel_flex_basis, 39);
+tiny_skia_property_test!(css_pixel_align_self, 40);
+tiny_skia_property_test!(css_pixel_align_content, 41);

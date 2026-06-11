@@ -134,6 +134,68 @@
     ]
   },
   {
+    "name": "align_self",
+    "values": [
+      {
+        "name": "auto",
+        "value": 0
+      },
+      {
+        "name": "flex_start",
+        "value": 1
+      },
+      {
+        "name": "flex_end",
+        "value": 2
+      },
+      {
+        "name": "center",
+        "value": 3
+      },
+      {
+        "name": "stretch",
+        "value": 4
+      },
+      {
+        "name": "baseline",
+        "value": 5
+      }
+    ]
+  },
+  {
+    "name": "align_content",
+    "values": [
+      {
+        "name": "flex_start",
+        "value": 0
+      },
+      {
+        "name": "flex_end",
+        "value": 1
+      },
+      {
+        "name": "center",
+        "value": 2
+      },
+      {
+        "name": "stretch",
+        "value": 3
+      },
+      {
+        "name": "space_between",
+        "value": 4
+      },
+      {
+        "name": "space_around",
+        "value": 5
+      },
+      {
+        "name": "space_evenly",
+        "value": 6
+      }
+    ]
+  },
+  {
     "name": "text_decoration",
     "values": [
       {

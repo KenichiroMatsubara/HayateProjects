@@ -6,6 +6,8 @@ export type {
   Display,
   FlexDirection,
   AlignItems,
+  AlignSelf,
+  AlignContent,
   JustifyContent,
   FontStyle,
   TextDecoration,
