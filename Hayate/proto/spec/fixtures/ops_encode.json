@@ -36,5 +36,47 @@
       }
     ],
     "wire": [16, 7, 768, -1, -1, -1, 0, 5]
+  },
+  {
+    "name": "set-style-variant-compound-and",
+    "ops": [
+      {
+        "kind": "SET_STYLE_VARIANT",
+        "id": 8,
+        "minWidth": 768,
+        "maxWidth": 1024,
+        "minHeight": 600,
+        "maxHeight": 900,
+        "styleOffset": 0,
+        "styleLen": 5
+      }
+    ],
+    "wire": [16, 8, 768, 1024, 600, 900, 0, 5]
+  },
+  {
+    "name": "set-style-variant-multiple-cascade",
+    "ops": [
+      {
+        "kind": "SET_STYLE_VARIANT",
+        "id": 9,
+        "minWidth": 768,
+        "maxWidth": -1,
+        "minHeight": -1,
+        "maxHeight": -1,
+        "styleOffset": 0,
+        "styleLen": 5
+      },
+      {
+        "kind": "SET_STYLE_VARIANT",
+        "id": 9,
+        "minWidth": 1024,
+        "maxWidth": -1,
+        "minHeight": -1,
+        "maxHeight": -1,
+        "styleOffset": 5,
+        "styleLen": 5
+      }
+    ],
+    "wire": [16, 9, 768, -1, -1, -1, 0, 5, 16, 9, 1024, -1, -1, -1, 5, 5]
   }
 ]

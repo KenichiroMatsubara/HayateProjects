@@ -47,6 +47,44 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
     expect(mediaRule.conditionText).toBe('(min-width: 768px) and (max-width: 1024px)');
   });
 
+  it('emits all four viewport axes in the media query', () => {
+    const renderer = new DomRenderer({ document: window.document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyleVariant(
+      id,
+      { minWidth: 768, maxWidth: 1024, minHeight: 600, maxHeight: 900 },
+      { backgroundColor: '#0000ff' },
+    );
+
+    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+      sheet: CSSStyleSheet;
+    };
+    const mediaRule = styleEl.sheet.cssRules[0] as unknown as CSSMediaRule;
+    expect(mediaRule.conditionText).toBe(
+      '(min-width: 768px) and (max-width: 1024px) and (min-height: 600px) and (max-height: 900px)',
+    );
+  });
+
+  it('keeps multiple variant rules in declaration order', () => {
+    const renderer = new DomRenderer({ document: window.document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyleVariant(id, { minWidth: 768 }, { backgroundColor: '#0000ff' });
+    renderer.setStyleVariant(id, { minWidth: 1024 }, { backgroundColor: '#00ff00' });
+
+    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+      sheet: CSSStyleSheet;
+    };
+    expect(styleEl.sheet.cssRules.length).toBe(2);
+    const first = styleEl.sheet.cssRules[0] as unknown as CSSMediaRule;
+    const second = styleEl.sheet.cssRules[1] as unknown as CSSMediaRule;
+    expect(first.conditionText).toBe('(min-width: 768px)');
+    expect(second.conditionText).toBe('(min-width: 1024px)');
+  });
+
   it('updates an existing variant rule in place', () => {
     const renderer = new DomRenderer({ document: window.document, container });
     const id = renderer.createElement('view');

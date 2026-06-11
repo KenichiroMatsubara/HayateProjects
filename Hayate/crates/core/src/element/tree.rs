@@ -576,8 +576,11 @@ impl ElementTree {
         }
     }
 
-    /// Set a viewport-conditional style override for one property (ADR-0081).
-    /// Replaces any existing variant for the same property.
+    /// Append a viewport-conditional style override (ADR-0081).
+    ///
+    /// Multiple variants for the same property are kept in declaration order;
+    /// `element_effective_visual` applies every matching variant and later
+    /// entries win (CSS `@media` cascade).
     pub fn element_set_style_variant(
         &mut self,
         id: ElementId,
@@ -588,9 +591,6 @@ impl ElementTree {
             Some(e) => e,
             None => return,
         };
-        let kind = std::mem::discriminant(&prop);
-        el.viewport_variants
-            .retain(|(_, existing)| std::mem::discriminant(existing) != kind);
         el.viewport_variants.push((condition, prop));
     }
 
