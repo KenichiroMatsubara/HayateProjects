@@ -1,25 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Window } from 'happy-dom';
 import { DomRenderer } from './dom-renderer.js';
+import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 
 describe('DomRenderer setStyleVariant (ADR-0081)', () => {
-  let window: Window;
+  let document: Document;
   let container: HTMLElement;
 
   beforeEach(() => {
-    window = new Window();
-    container = window.document.createElement('div');
-    window.document.body.appendChild(container);
+    ({ document, container } = createHappyDomFixture());
   });
 
   it('emits an @media (min-width: ...) rule for the element', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
     renderer.setStyleVariant(id, { minWidth: 768 }, { backgroundColor: '#0000ff' });
 
-    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+    const styleEl = document.querySelector('style[data-tsubame-variant]')! as unknown as {
       sheet: CSSStyleSheet;
     };
     const mediaRule = styleEl.sheet.cssRules[0] as unknown as CSSMediaRule;
@@ -30,7 +28,7 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
   });
 
   it('combines multiple condition axes with "and"', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
@@ -40,7 +38,7 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
       { backgroundColor: '#00ff00' },
     );
 
-    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+    const styleEl = document.querySelector('style[data-tsubame-variant]')! as unknown as {
       sheet: CSSStyleSheet;
     };
     const mediaRule = styleEl.sheet.cssRules[0] as unknown as CSSMediaRule;
@@ -48,7 +46,7 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
   });
 
   it('emits all four viewport axes in the media query', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
@@ -58,7 +56,7 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
       { backgroundColor: '#0000ff' },
     );
 
-    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+    const styleEl = document.querySelector('style[data-tsubame-variant]')! as unknown as {
       sheet: CSSStyleSheet;
     };
     const mediaRule = styleEl.sheet.cssRules[0] as unknown as CSSMediaRule;
@@ -68,14 +66,14 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
   });
 
   it('keeps multiple variant rules in declaration order', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
     renderer.setStyleVariant(id, { minWidth: 768 }, { backgroundColor: '#0000ff' });
     renderer.setStyleVariant(id, { minWidth: 1024 }, { backgroundColor: '#00ff00' });
 
-    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+    const styleEl = document.querySelector('style[data-tsubame-variant]')! as unknown as {
       sheet: CSSStyleSheet;
     };
     expect(styleEl.sheet.cssRules.length).toBe(2);
@@ -86,14 +84,14 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
   });
 
   it('updates an existing variant rule in place', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
     renderer.setStyleVariant(id, { minWidth: 768 }, { backgroundColor: '#0000ff' });
     renderer.setStyleVariant(id, { minWidth: 768 }, { backgroundColor: '#ff0000' });
 
-    const styleEl = window.document.querySelector('style[data-tsubame-variant]')! as unknown as {
+    const styleEl = document.querySelector('style[data-tsubame-variant]')! as unknown as {
       sheet: CSSStyleSheet;
     };
     expect(styleEl.sheet.cssRules.length).toBe(1);
