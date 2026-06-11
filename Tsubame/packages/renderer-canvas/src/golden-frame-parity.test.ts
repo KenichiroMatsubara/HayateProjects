@@ -151,4 +151,90 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(text?.visual?.fontWeight).toBe(700);
     expect(frame).toMatchSnapshot();
   });
+
+  it('flexWrap wrap places overflow flex children on a second row', async () => {
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp }) => {
+      const row = createElement('view');
+      setProp(row, 'style', {
+        display: 'flex',
+        flexWrap: 'wrap',
+        width: '70px',
+        gap: 0,
+      });
+      for (let i = 0; i < 3; i++) {
+        const child = createElement('view');
+        insertNode(row, child);
+        setProp(child, 'style', { width: '40px', height: '15px' });
+      }
+      return row;
+    });
+
+    const frame = harness.capture();
+    const children = frame.elements
+      .filter((el) => el.bounds[2] === 40 && el.bounds[3] === 15)
+      .sort((a, b) => a.bounds[0]! - b.bounds[0]! || a.bounds[1]! - b.bounds[1]!);
+    expect(children).toHaveLength(3);
+    expect(children[2]!.bounds[1]).toBeGreaterThan(children[0]!.bounds[1]!);
+    expect(frame).toMatchSnapshot();
+  });
+
+  it('defaultFontSize on a block box penetrates to descendant text', async () => {
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      const view = createElement('view');
+      const text = createElement('text');
+      insertNode(view, text);
+      setProp(view, 'style', {
+        width: '200px',
+        height: '100px',
+        defaultFontSize: 22,
+      });
+      setText(text, 'sized');
+      return view;
+    });
+
+    const frame = harness.capture();
+    const text = findElementByText(frame, 'sized');
+    expect(text?.visual?.fontSize).toBe(22);
+    expect(frame).toMatchSnapshot();
+  });
+
+  it('defaultFontFamily on a block box penetrates to descendant text', async () => {
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      const view = createElement('view');
+      const text = createElement('text');
+      insertNode(view, text);
+      setProp(view, 'style', {
+        width: '200px',
+        height: '100px',
+        defaultFontFamily: 'Noto Sans',
+      });
+      setText(text, 'family');
+      return view;
+    });
+
+    const frame = harness.capture();
+    const text = findElementByText(frame, 'family');
+    expect(text?.visual?.fontFamily).toBe('Noto Sans');
+    expect(frame).toMatchSnapshot();
+  });
+
+  it('defaultFontWeight on a block box penetrates to descendant text', async () => {
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      const view = createElement('view');
+      const text = createElement('text');
+      insertNode(view, text);
+      setProp(view, 'style', {
+        width: '200px',
+        height: '100px',
+        defaultFontWeight: 600,
+      });
+      setText(text, 'weighted');
+      return view;
+    });
+
+    const frame = harness.capture();
+    const text = findElementByText(frame, 'weighted');
+    expect(text?.visual?.fontWeight).toBe(600);
+    expect(frame).toMatchSnapshot();
+  });
 });

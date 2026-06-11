@@ -334,6 +334,769 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultColor on a block
 }
 `;
 
+exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontFamily on a block box penetrates to descendant text 1`] = `
+{
+  "accessibility": {
+    "focus": 1,
+    "nodes": [
+      [
+        3,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 46,
+              "y0": 0,
+              "y1": 100,
+            },
+            "value": "family",
+          },
+          "role": "label",
+        },
+      ],
+      [
+        2,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 46,
+              "y0": 0,
+              "y1": 100,
+            },
+            "children": [
+              3,
+            ],
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        1,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 0,
+              "y0": 0,
+              "y1": 0,
+            },
+            "children": [
+              2,
+            ],
+          },
+          "role": "window",
+        },
+      ],
+    ],
+    "tree": {
+      "root": 1,
+      "toolkitName": null,
+      "toolkitVersion": null,
+    },
+    "treeId": "00000000-0000-0000-0000-000000000000",
+  },
+  "elements": [
+    {
+      "bounds": [
+        0,
+        0,
+        0,
+        0,
+      ],
+      "id": 1,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        46,
+        100,
+      ],
+      "id": 2,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": "Noto Sans",
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        46,
+        100,
+      ],
+      "id": 3,
+      "text": "family",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": "Noto Sans",
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+  ],
+  "imeBounds": null,
+}
+`;
+
+exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontSize on a block box penetrates to descendant text 1`] = `
+{
+  "accessibility": {
+    "focus": 1,
+    "nodes": [
+      [
+        3,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 52,
+              "y0": 0,
+              "y1": 100,
+            },
+            "value": "sized",
+          },
+          "role": "label",
+        },
+      ],
+      [
+        2,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 52,
+              "y0": 0,
+              "y1": 100,
+            },
+            "children": [
+              3,
+            ],
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        1,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 0,
+              "y0": 0,
+              "y1": 0,
+            },
+            "children": [
+              2,
+            ],
+          },
+          "role": "window",
+        },
+      ],
+    ],
+    "tree": {
+      "root": 1,
+      "toolkitName": null,
+      "toolkitVersion": null,
+    },
+    "treeId": "00000000-0000-0000-0000-000000000000",
+  },
+  "elements": [
+    {
+      "bounds": [
+        0,
+        0,
+        0,
+        0,
+      ],
+      "id": 1,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        52,
+        100,
+      ],
+      "id": 2,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 22,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        52,
+        100,
+      ],
+      "id": 3,
+      "text": "sized",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 22,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+  ],
+  "imeBounds": null,
+}
+`;
+
+exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontWeight on a block box penetrates to descendant text 1`] = `
+{
+  "accessibility": {
+    "focus": 1,
+    "nodes": [
+      [
+        3,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 72,
+              "y0": 0,
+              "y1": 100,
+            },
+            "value": "weighted",
+          },
+          "role": "label",
+        },
+      ],
+      [
+        2,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 72,
+              "y0": 0,
+              "y1": 100,
+            },
+            "children": [
+              3,
+            ],
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        1,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 0,
+              "y0": 0,
+              "y1": 0,
+            },
+            "children": [
+              2,
+            ],
+          },
+          "role": "window",
+        },
+      ],
+    ],
+    "tree": {
+      "root": 1,
+      "toolkitName": null,
+      "toolkitVersion": null,
+    },
+    "treeId": "00000000-0000-0000-0000-000000000000",
+  },
+  "elements": [
+    {
+      "bounds": [
+        0,
+        0,
+        0,
+        0,
+      ],
+      "id": 1,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        72,
+        100,
+      ],
+      "id": 2,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 600,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        72,
+        100,
+      ],
+      "id": 3,
+      "text": "weighted",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 600,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+  ],
+  "imeBounds": null,
+}
+`;
+
+exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places overflow flex children on a second row 1`] = `
+{
+  "accessibility": {
+    "focus": 1,
+    "nodes": [
+      [
+        3,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 40,
+              "y0": 0,
+              "y1": 15,
+            },
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        4,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 40,
+              "y0": 15,
+              "y1": 30,
+            },
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        5,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 40,
+              "y0": 30,
+              "y1": 45,
+            },
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        2,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 40,
+              "y0": 0,
+              "y1": 0,
+            },
+            "children": [
+              3,
+              4,
+              5,
+            ],
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        1,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 0,
+              "y0": 0,
+              "y1": 0,
+            },
+            "children": [
+              2,
+            ],
+          },
+          "role": "window",
+        },
+      ],
+    ],
+    "tree": {
+      "root": 1,
+      "toolkitName": null,
+      "toolkitVersion": null,
+    },
+    "treeId": "00000000-0000-0000-0000-000000000000",
+  },
+  "elements": [
+    {
+      "bounds": [
+        0,
+        0,
+        0,
+        0,
+      ],
+      "id": 1,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        40,
+        0,
+      ],
+      "id": 2,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        30,
+        40,
+        15,
+      ],
+      "id": 5,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        15,
+        40,
+        15,
+      ],
+      "id": 4,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        40,
+        15,
+      ],
+      "id": 3,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+  ],
+  "imeBounds": null,
+}
+`;
+
 exports[`golden frame semantic parity (ADR-0079, #151) > fontStyle italic resolves on text for faux-italic synthesis 1`] = `
 {
   "accessibility": {
