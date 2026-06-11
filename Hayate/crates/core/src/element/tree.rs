@@ -868,25 +868,58 @@ impl ElementTree {
         self.runtime.poll_deliveries()
     }
 
-    /// Apply wheel delta to the nearest ancestor ScrollView of `hit`, clamped to content bounds.
+    /// Apply wheel delta to ancestor ScrollViews of `hit` with browser-style scroll chaining.
+    ///
+    /// Starting at the nearest ScrollView, each axis consumes delta up to content bounds;
+    /// unconsumed remainder propagates to the next ancestor ScrollView until the root.
     pub fn apply_wheel_delta(
         &mut self,
         hit: ElementId,
         delta_x: f32,
         delta_y: f32,
     ) -> Option<ElementId> {
-        let sv = nearest_scroll_view(self, hit)?;
-        let (ox, oy) = self.element_get_scroll_offset(sv);
-        let (content_w, content_h) = self.element_content_size(sv);
-        let sv_rect = self
-            .element_layout_rect(sv)
-            .unwrap_or((0.0, 0.0, 0.0, 0.0));
-        let max_x = (content_w - sv_rect.2).max(0.0);
-        let max_y = (content_h - sv_rect.3).max(0.0);
-        let new_x = (ox + delta_x).clamp(0.0, max_x);
-        let new_y = (oy + delta_y).clamp(0.0, max_y);
-        self.element_set_scroll_offset(sv, new_x, new_y);
-        Some(sv)
+        let first_sv = nearest_scroll_view(self, hit)?;
+        let mut current_sv = first_sv;
+        let mut remaining_x = delta_x;
+        let mut remaining_y = delta_y;
+        let mut any_applied = false;
+
+        loop {
+            if remaining_x.abs() < 1e-6 && remaining_y.abs() < 1e-6 {
+                break;
+            }
+
+            let (ox, oy) = self.element_get_scroll_offset(current_sv);
+            let (content_w, content_h) = self.element_content_size(current_sv);
+            let sv_rect = self
+                .element_layout_rect(current_sv)
+                .unwrap_or((0.0, 0.0, 0.0, 0.0));
+            let max_x = (content_w - sv_rect.2).max(0.0);
+            let max_y = (content_h - sv_rect.3).max(0.0);
+            let new_x = (ox + remaining_x).clamp(0.0, max_x);
+            let new_y = (oy + remaining_y).clamp(0.0, max_y);
+            let consumed_x = new_x - ox;
+            let consumed_y = new_y - oy;
+
+            if consumed_x.abs() > 1e-6 || consumed_y.abs() > 1e-6 {
+                self.element_set_scroll_offset(current_sv, new_x, new_y);
+                any_applied = true;
+            }
+
+            remaining_x -= consumed_x;
+            remaining_y -= consumed_y;
+
+            match next_ancestor_scroll_view(self, current_sv) {
+                Some(next) => current_sv = next,
+                None => break,
+            }
+        }
+
+        if any_applied {
+            Some(first_sv)
+        } else {
+            None
+        }
     }
 
     /// Append an event to the outgoing queue.
@@ -1240,6 +1273,16 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
 }
 
 fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementId> {
+    loop {
+        if tree.element_kind(id) == Some(ElementKind::ScrollView) {
+            return Some(id);
+        }
+        id = tree.element_parent(id)?;
+    }
+}
+
+fn next_ancestor_scroll_view(tree: &ElementTree, after: ElementId) -> Option<ElementId> {
+    let mut id = tree.element_parent(after)?;
     loop {
         if tree.element_kind(id) == Some(ElementKind::ScrollView) {
             return Some(id);
