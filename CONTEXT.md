@@ -110,8 +110,8 @@ _Avoid_: Tsubame Canvas Mode, 個別 element_set_* 呼び出し
 _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover イベント購読
 
 **Pseudo-state Style**:
-Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。
-_Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替
+Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。複数状態が同時成立したときの正準優先順は `focus < hover < active`（後勝ち）で、これは wire コード（hover=0 / active=1 / focus=2）とは別物。優先順は spec（`proto/spec/pseudo_states.json`）が正本で、Hayate core の `resolve_visual` と Tsubame DOM Renderer のルールバンド順が共にそこから生成・参照する（Semantics Parity）。
+_Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替、wire コード順を優先順と同一視する理解、DOM の挿入順（authoring 順）に優先順を委ねる設計
 
 **Canonical Tree（正本ツリー）**:
 描画・layout・hit-test の正本ツリー。Canvas/HTML 経路では Hayate の element ツリー、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子を tree 上の element として表現する。経路ごとに実体は一つのみで、複製や mirror は持たない（`tsubame-solid` の Shadow Tree は構造専用の別索引であり、これ自体は正本ではない）。
