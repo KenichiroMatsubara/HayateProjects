@@ -320,7 +320,8 @@ fn lower_glyph_runs(
                     decorations.push(TextDecorationLine {
                         x0: grun.offset(),
                         x1: grun.offset() + grun.advance(),
-                        y: grun.baseline() + deco_offset + size * 0.5,
+                        // Font metrics offsets are baseline-relative in y-up coords; flip for y-down.
+                        y: grun.baseline() - deco_offset + size * 0.5,
                         thickness: size.max(1.0),
                     });
                 }
@@ -332,7 +333,7 @@ fn lower_glyph_runs(
                     decorations.push(TextDecorationLine {
                         x0: grun.offset(),
                         x1: grun.offset() + grun.advance(),
-                        y: grun.baseline() + offset + size * 0.5,
+                        y: grun.baseline() - offset + size * 0.5,
                         thickness: size.max(1.0),
                     });
                 }
