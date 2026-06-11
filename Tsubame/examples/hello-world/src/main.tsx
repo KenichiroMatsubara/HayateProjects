@@ -25,5 +25,6 @@ if (detected.mode === 'DOM') {
   const { initCanvasRenderer } = await import('@tsubame/renderer-canvas');
   canvas.hidden = false;
   renderer = await initCanvasRenderer(canvas, { backend: detected.backend });
-  renderTsubame(() => <TodoApp detected={detected} />, renderer, { element: canvas });
+  // CanvasRenderer owns viewport sizing (ADR-0007); no element option needed.
+  renderTsubame(() => <TodoApp detected={detected} />, renderer);
 }

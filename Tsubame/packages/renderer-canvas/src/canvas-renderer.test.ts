@@ -50,7 +50,10 @@ class StubHayate implements RawHayate {
       texts: Array.from(texts),
     });
   }
-  on_resize(): void {}
+  resizes: Array<{ width: number; height: number; scale: number }> = [];
+  on_resize(width: number, height: number, scale: number): void {
+    this.resizes.push({ width, height, scale });
+  }
   on_pointer_move(): void {}
   on_pointer_down(): void {}
   on_pointer_up(): void {}
@@ -315,5 +318,153 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     hayate.events = [[1, 0, 1, 0, 0]];
     sched.tick();
     expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+class MockResizeObserver {
+  static instances: MockResizeObserver[] = [];
+  readonly observed: Element[] = [];
+
+  constructor(private readonly callback: ResizeObserverCallback) {
+    MockResizeObserver.instances.push(this);
+  }
+
+  observe(target: Element): void {
+    this.observed.push(target);
+  }
+
+  disconnect(): void {
+    this.observed.length = 0;
+  }
+
+  emit(width: number, height: number): void {
+    const contentRect = {
+      width,
+      height,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: height,
+      right: width,
+      toJSON: () => ({}),
+    };
+    this.callback(
+      [{ contentRect } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  }
+}
+
+function createCanvas(cssWidth: number, cssHeight: number): HTMLCanvasElement {
+  const canvas = {
+    width: 0,
+    height: 0,
+    getBoundingClientRect: () => ({
+      width: cssWidth,
+      height: cssHeight,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: cssHeight,
+      right: cssWidth,
+      toJSON: () => ({}),
+    }),
+  };
+  return canvas as unknown as HTMLCanvasElement;
+}
+
+function viewportOptions(
+  canvas: HTMLCanvasElement,
+  devicePixelRatio = 2,
+): {
+  canvas: HTMLCanvasElement;
+  devicePixelRatio: number;
+  createResizeObserver: typeof ResizeObserver;
+} {
+  MockResizeObserver.instances = [];
+  return {
+    canvas,
+    devicePixelRatio,
+    createResizeObserver: MockResizeObserver as unknown as typeof ResizeObserver,
+  };
+}
+
+describe('CanvasRenderer viewport sizing (ADR-0007)', () => {
+  it('observes the canvas and applies initial CSS layout size with devicePixelRatio', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const canvas = createCanvas(800, 600);
+    const renderer = new CanvasRenderer(hayate, {
+      ...sched,
+      ...viewportOptions(canvas, 2),
+    });
+
+    expect(MockResizeObserver.instances).toHaveLength(1);
+    expect(MockResizeObserver.instances[0]!.observed).toEqual([canvas]);
+    expect(hayate.resizes).toEqual([{ width: 800, height: 600, scale: 2 }]);
+    expect(canvas.width).toBe(1600);
+    expect(canvas.height).toBe(1200);
+
+    renderer.stop();
+  });
+
+  it('syncs the pixel buffer and notifies Hayate when the observed size changes', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const canvas = createCanvas(400, 300);
+    const renderer = new CanvasRenderer(hayate, {
+      ...sched,
+      ...viewportOptions(canvas, 2),
+    });
+
+    MockResizeObserver.instances[0]!.emit(1024, 768);
+
+    expect(hayate.resizes).toEqual([
+      { width: 400, height: 300, scale: 2 },
+      { width: 1024, height: 768, scale: 2 },
+    ]);
+    expect(canvas.width).toBe(2048);
+    expect(canvas.height).toBe(1536);
+
+    renderer.stop();
+  });
+
+  it('does not attach a ResizeObserver when autoResize is false', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const canvas = createCanvas(800, 600);
+    const renderer = new CanvasRenderer(hayate, {
+      ...sched,
+      ...viewportOptions(canvas, 2),
+      autoResize: false,
+    });
+
+    expect(MockResizeObserver.instances).toHaveLength(0);
+    expect(hayate.resizes).toEqual([]);
+    expect(canvas.width).toBe(0);
+    expect(canvas.height).toBe(0);
+
+    renderer.stop();
+  });
+
+  it('allows manual resize when autoResize is false', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const canvas = createCanvas(800, 600);
+    const renderer = new CanvasRenderer(hayate, {
+      ...sched,
+      canvas,
+      autoResize: false,
+    });
+
+    renderer.resize(640, 480, 3);
+
+    expect(hayate.resizes).toEqual([{ width: 640, height: 480, scale: 3 }]);
+    expect(canvas.width).toBe(1920);
+    expect(canvas.height).toBe(1440);
+
+    renderer.stop();
   });
 });

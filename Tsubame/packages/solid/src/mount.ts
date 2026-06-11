@@ -5,9 +5,9 @@ import { createElementNode, type TsubameNode } from './node.js';
 
 export interface RenderTsubameOptions {
   /**
-   * リサイズを監視する DOM 要素。
+   * リサイズを監視する DOM 要素（DOM Renderer の container など）。
+   * Canvas Renderer は ADR-0007 で自身が ResizeObserver を所有するため不要。
    * 省略時は `window` の resize イベントを使う。
-   * Canvas Renderer には canvas 要素を、DOM Renderer には container を渡す。
    */
   element?: Element;
 }
@@ -15,8 +15,8 @@ export interface RenderTsubameOptions {
 /**
  * 指定 {@link IRenderer}（DOM / Canvas）にコンポーネントツリーをマウントする。
  *
- * `element` を渡すと ResizeObserver でサーフェスサイズを自動追従する。
- * アプリ側はウィンドウサイズを意識する必要がない。
+ * DOM Renderer では `element` を渡すと ResizeObserver でサーフェスサイズを自動追従する。
+ * Canvas Renderer はレンダラー側がビューポート追従を担当する（ADR-0007）。
  *
  * @returns dispose 関数。SolidJS の reactive スコープとリサイズ監視を破棄する。
  */
