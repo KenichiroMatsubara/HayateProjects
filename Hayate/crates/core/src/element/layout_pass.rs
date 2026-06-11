@@ -281,9 +281,13 @@ impl LayoutPass {
                 let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
                 let el = elements.get(&eid).map(|e| {
                     (
-                        projection
-                            .node_id(eid)
-                            .and_then(|n| projection.taffy.layout(n).ok().map(|l| l.size.width)),
+                        projection.node_id(eid).and_then(|n| {
+                            projection
+                                .taffy
+                                .layout(n)
+                                .ok()
+                                .map(|l| l.content_box_width())
+                        }),
                         e.visual
                             .font_family
                             .clone()

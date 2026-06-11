@@ -925,6 +925,10 @@ impl ElementTree {
         let edit = el.edit.as_ref()?;
         let cl = el.content_layout.as_ref()?;
         let &(ex, ey, _, _) = self.layout.layout_cache.get(&id)?;
+        let taffy_node = self.layout.projection.node_id(id)?;
+        let box_layout = self.layout.projection.taffy.layout(taffy_node).ok()?;
+        let content_x = ex + box_layout.border.left + box_layout.padding.left;
+        let content_y = ey + box_layout.border.top + box_layout.padding.top;
         use parley::{Affinity, Cursor};
         let cursor = Cursor::from_byte_index(
             &cl.layout,
@@ -933,8 +937,8 @@ impl ElementTree {
         );
         let bbox = cursor.geometry(&cl.layout, 1.5_f32);
         Some(CharacterBounds {
-            x: ex + bbox.x0 as f32,
-            y: ey + bbox.y0 as f32,
+            x: content_x + bbox.x0 as f32,
+            y: content_y + bbox.y0 as f32,
             width: ((bbox.x1 - bbox.x0) as f32).max(1.5),
             height: (bbox.y1 - bbox.y0) as f32,
         })

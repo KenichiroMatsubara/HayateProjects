@@ -194,6 +194,8 @@ fn walk(
 
     // 3b) Text runs (TextInput uses content_layout; all others use text_layout).
     if el.kind == ElementKind::TextInput {
+        let content_x = x + layout.border.left + layout.padding.left;
+        let content_y = y + layout.border.top + layout.padding.top;
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
@@ -211,8 +213,8 @@ fn walk(
                     effective_parent,
                     Node {
                         kind: NodeKind::TextRun {
-                            x,
-                            y,
+                            x: content_x,
+                            y: content_y,
                             color,
                             data: run.clone(),
                         },
@@ -240,8 +242,8 @@ fn walk(
                     effective_parent,
                     Node {
                         kind: NodeKind::Rect {
-                            x: x + bbox.x0 as f32,
-                            y: y + bbox.y0 as f32,
+                            x: content_x + bbox.x0 as f32,
+                            y: content_y + bbox.y0 as f32,
                             width: ((bbox.x1 - bbox.x0) as f32).max(1.5),
                             height: (bbox.y1 - bbox.y0) as f32,
                             color,
@@ -251,14 +253,14 @@ fn walk(
                     },
                 );
             } else {
-                // Empty text_content: draw cursor at element origin.
+                // Empty text_content: draw cursor at content-box origin.
                 emit(
                     sg,
                     effective_parent,
                     Node {
                         kind: NodeKind::Rect {
-                            x,
-                            y,
+                            x: content_x,
+                            y: content_y,
                             width: 1.5,
                             height: confirmed_font_size * 1.2,
                             color: confirmed_color
