@@ -231,5 +231,39 @@
         "type": "usize"
       }
     ]
+  },
+  {
+    "name": "SET_STYLE_VARIANT",
+    "value": 16,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "min_width",
+        "type": "f32"
+      },
+      {
+        "name": "max_width",
+        "type": "f32"
+      },
+      {
+        "name": "min_height",
+        "type": "f32"
+      },
+      {
+        "name": "max_height",
+        "type": "f32"
+      },
+      {
+        "name": "style_offset",
+        "type": "usize"
+      },
+      {
+        "name": "style_len",
+        "type": "usize"
+      }
+    ]
   }
 ]

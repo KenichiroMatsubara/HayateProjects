@@ -103,8 +103,8 @@ pub(crate) struct Element {
     pub pseudo_styles: PseudoStyles,
     /// When true, suppresses hit-testing and interaction (ADR-0071).
     pub disabled: bool,
-    /// Viewport-conditional style override (ADR-0081).
-    pub viewport_variant: Option<(ViewportCondition, Vec<StyleProp>)>,
+    /// Viewport-conditional style overrides, one variant per property (ADR-0081).
+    pub viewport_variants: Vec<(ViewportCondition, StyleProp)>,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -228,7 +228,7 @@ impl ElementTree {
             role: None,
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
-            viewport_variant: None,
+            viewport_variants: Vec::new(),
         };
         self.elements.insert(id, element);
 
@@ -576,18 +576,22 @@ impl ElementTree {
         }
     }
 
-    /// Set a viewport-conditional style override (ADR-0081). Replaces any existing variant.
+    /// Set a viewport-conditional style override for one property (ADR-0081).
+    /// Replaces any existing variant for the same property.
     pub fn element_set_style_variant(
         &mut self,
         id: ElementId,
         condition: ViewportCondition,
-        props: &[StyleProp],
+        prop: StyleProp,
     ) {
         let el = match self.elements.get_mut(&id) {
             Some(e) => e,
             None => return,
         };
-        el.viewport_variant = Some((condition, props.to_vec()));
+        let kind = std::mem::discriminant(&prop);
+        el.viewport_variants
+            .retain(|(_, existing)| std::mem::discriminant(existing) != kind);
+        el.viewport_variants.push((condition, prop));
     }
 
     /// Unset one or more inheritable style properties, reverting them to "inherit from parent".
@@ -931,13 +935,11 @@ impl ElementTree {
         let ctx = effective_visual::inherited_context_at(&self.elements, id);
         let interaction = self.interaction_snapshot();
         let mut own = el.visual.clone();
-        if let Some((condition, props)) = &el.viewport_variant {
-            let (viewport_width, viewport_height) = self.viewport;
+        let (viewport_width, viewport_height) = self.viewport;
+        let mut text_dirty = false;
+        for (condition, prop) in &el.viewport_variants {
             if condition.matches(viewport_width, viewport_height) {
-                let mut text_dirty = false;
-                for prop in props {
-                    apply_visual(&mut own, prop, &mut text_dirty);
-                }
+                apply_visual(&mut own, prop, &mut text_dirty);
             }
         }
         Some(effective_visual::resolve_effective(

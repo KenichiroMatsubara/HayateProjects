@@ -45,8 +45,9 @@ fn element_effective_visual_viewport_condition_below_min_width_uses_base() {
         id,
         ViewportCondition {
             min_width: Some(768.0),
+            ..Default::default()
         },
-        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
     );
 
     let visual = tree.element_effective_visual(id).unwrap();
@@ -71,8 +72,9 @@ fn element_effective_visual_viewport_condition_at_min_width_uses_variant() {
         id,
         ViewportCondition {
             min_width: Some(768.0),
+            ..Default::default()
         },
-        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
     );
 
     let visual = tree.element_effective_visual(id).unwrap();
@@ -97,8 +99,9 @@ fn element_effective_visual_hover_pseudo_overrides_active_viewport_variant() {
         id,
         ViewportCondition {
             min_width: Some(768.0),
+            ..Default::default()
         },
-        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
     );
     tree.element_set_pseudo_style(
         id,

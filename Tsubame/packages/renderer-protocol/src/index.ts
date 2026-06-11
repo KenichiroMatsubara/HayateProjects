@@ -37,3 +37,5 @@ export {
   isPseudoStyleKey,
   splitHayateStyle,
 } from './pseudo-style.js';
+
+export type { ViewportCondition } from './viewport-condition.js';

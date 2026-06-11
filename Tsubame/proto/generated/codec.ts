@@ -542,3 +542,14 @@ export function appendSetPseudoStyle(buf: number[], id: number, state: number, s
   buf.push(styleOffset);
   buf.push(styleLen);
 }
+
+export function appendSetStyleVariant(buf: number[], id: number, minWidth: number, maxWidth: number, minHeight: number, maxHeight: number, styleOffset: number, styleLen: number): void {
+  buf.push(OP.SET_STYLE_VARIANT);
+  buf.push(id);
+  buf.push(minWidth);
+  buf.push(maxWidth);
+  buf.push(minHeight);
+  buf.push(maxHeight);
+  buf.push(styleOffset);
+  buf.push(styleLen);
+}

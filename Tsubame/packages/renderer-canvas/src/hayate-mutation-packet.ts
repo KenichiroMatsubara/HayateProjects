@@ -3,6 +3,7 @@ import type {
   ElementKind,
   PseudoStyleKey,
   StylePatch,
+  ViewportCondition,
 } from '@tsubame/renderer-protocol';
 import { PSEUDO_STATE_CODE } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
@@ -19,10 +20,16 @@ import {
   appendSetDisabled,
   appendSetSrc,
   appendSetPseudoStyle,
+  appendSetStyleVariant,
   appendUnsetStyle,
   encodeStylePatch,
   unsetKindsOf,
 } from '@tsubame/protocol-generated/codec';
+
+/** ADR-0081: an unset viewport-condition axis is encoded as -1 on the wire. */
+function viewportAxis(value: number | undefined): number {
+  return value === undefined ? -1 : value;
+}
 
 type SemanticMutation =
   | {
@@ -64,6 +71,12 @@ type SemanticMutation =
       readonly kind: 'setPseudoStyle';
       readonly id: ElementId;
       readonly pseudo: PseudoStyleKey;
+      readonly style: StylePatch;
+    }
+  | {
+      readonly kind: 'setStyleVariant';
+      readonly id: ElementId;
+      readonly condition: ViewportCondition;
       readonly style: StylePatch;
     };
 
@@ -130,6 +143,19 @@ export class HayateMutationPacket {
       kind: 'setPseudoStyle',
       id,
       pseudo,
+      style: { ...style },
+    });
+  }
+
+  enqueueSetStyleVariant(
+    id: ElementId,
+    condition: ViewportCondition,
+    style: StylePatch,
+  ): void {
+    this.mutations.push({
+      kind: 'setStyleVariant',
+      id,
+      condition,
       style: { ...style },
     });
   }
@@ -216,6 +242,30 @@ export class HayateMutationPacket {
               offset,
               len,
             );
+          }
+          break;
+        }
+        case 'setStyleVariant': {
+          // OP_SET_STYLE_VARIANT carries exactly one style property (ADR-0081),
+          // so a multi-property patch is split into one op per property.
+          for (const key in mutation.style) {
+            const k = key as keyof StylePatch;
+            if (mutation.style[k] === undefined) continue;
+            const offset = styles.length;
+            encodeStylePatch({ [k]: mutation.style[k] } as StylePatch, styles);
+            const len = styles.length - offset;
+            if (len > 0) {
+              appendSetStyleVariant(
+                ops,
+                mutation.id as number,
+                viewportAxis(mutation.condition.minWidth),
+                viewportAxis(mutation.condition.maxWidth),
+                viewportAxis(mutation.condition.minHeight),
+                viewportAxis(mutation.condition.maxHeight),
+                offset,
+                len,
+              );
+            }
           }
           break;
         }

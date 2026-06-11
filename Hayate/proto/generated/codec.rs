@@ -153,6 +153,16 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*style_offset as f64);
             buf.push(*style_len as f64);
         }
+        Op::SetStyleVariant { id, min_width, max_width, min_height, max_height, style_offset, style_len } => {
+            buf.push(OP_SET_STYLE_VARIANT as f64);
+            buf.push(*id as f64);
+            buf.push(*min_width as f64);
+            buf.push(*max_width as f64);
+            buf.push(*min_height as f64);
+            buf.push(*max_height as f64);
+            buf.push(*style_offset as f64);
+            buf.push(*style_len as f64);
+        }
     }
 }
 

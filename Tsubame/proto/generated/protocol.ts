@@ -18,6 +18,7 @@ export const OP = {
   SET_DISABLED: 13,
   SET_SRC: 14,
   SET_PSEUDO_STYLE: 15,
+  SET_STYLE_VARIANT: 16,
 } as const;
 export type OP = typeof OP;
 
@@ -240,7 +241,7 @@ export type FONT_FAMILY = typeof FONT_FAMILY;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 
-export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4];
+export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7];
 
 // ── Event payload types ─────────────────────────────────────────────────────
 

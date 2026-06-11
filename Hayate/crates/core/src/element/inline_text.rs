@@ -260,7 +260,7 @@ mod tests {
             role: None,
             pseudo_styles: Default::default(),
             disabled: false,
-            viewport_variant: None,
+            viewport_variants: Vec::new(),
         };
         (eid, el)
     }
