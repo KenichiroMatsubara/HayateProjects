@@ -9,6 +9,25 @@ pub enum StylePropKind {
     FontWeight,
 }
 
+/// Viewport-based condition for a style variant (ADR-0081).
+///
+/// `min_width` is in px and matches inclusively (`viewport_width >= min_width`),
+/// mirroring CSS `@media (min-width: ...)`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewportCondition {
+    pub min_width: Option<f32>,
+}
+
+impl ViewportCondition {
+    /// Whether this condition matches the given viewport size.
+    pub fn matches(&self, viewport_width: f32, _viewport_height: f32) -> bool {
+        match self.min_width {
+            Some(min_width) => viewport_width >= min_width,
+            None => true,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FontStyleValue {
     Normal,

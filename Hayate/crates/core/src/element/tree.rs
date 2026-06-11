@@ -21,7 +21,9 @@ use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
-use crate::element::style::{FontStyleValue, StyleProp, StylePropKind, TextDecorationValue};
+use crate::element::style::{
+    FontStyleValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
+};
 use crate::element::taffy_bridge;
 use crate::element::text;
 use crate::node::SceneGraph;
@@ -101,6 +103,8 @@ pub(crate) struct Element {
     pub pseudo_styles: PseudoStyles,
     /// When true, suppresses hit-testing and interaction (ADR-0071).
     pub disabled: bool,
+    /// Viewport-conditional style override (ADR-0081).
+    pub viewport_variant: Option<(ViewportCondition, Vec<StyleProp>)>,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -224,6 +228,7 @@ impl ElementTree {
             role: None,
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
+            viewport_variant: None,
         };
         self.elements.insert(id, element);
 
@@ -571,6 +576,20 @@ impl ElementTree {
         }
     }
 
+    /// Set a viewport-conditional style override (ADR-0081). Replaces any existing variant.
+    pub fn element_set_style_variant(
+        &mut self,
+        id: ElementId,
+        condition: ViewportCondition,
+        props: &[StyleProp],
+    ) {
+        let el = match self.elements.get_mut(&id) {
+            Some(e) => e,
+            None => return,
+        };
+        el.viewport_variant = Some((condition, props.to_vec()));
+    }
+
     /// Unset one or more inheritable style properties, reverting them to "inherit from parent".
     pub fn element_unset_style(&mut self, id: ElementId, kinds: &[StylePropKind]) {
         let el = match self.elements.get_mut(&id) {
@@ -906,14 +925,24 @@ impl ElementTree {
         })
     }
 
-    /// Resolved effective visual for `id` (inheritance + pseudo). ADR-0067.
+    /// Resolved effective visual for `id` (inheritance + viewport variant + pseudo). ADR-0067, ADR-0081.
     pub fn element_effective_visual(&self, id: ElementId) -> Option<Visual> {
         let el = self.elements.get(&id)?;
         let ctx = effective_visual::inherited_context_at(&self.elements, id);
         let interaction = self.interaction_snapshot();
+        let mut own = el.visual.clone();
+        if let Some((condition, props)) = &el.viewport_variant {
+            let (viewport_width, viewport_height) = self.viewport;
+            if condition.matches(viewport_width, viewport_height) {
+                let mut text_dirty = false;
+                for prop in props {
+                    apply_visual(&mut own, prop, &mut text_dirty);
+                }
+            }
+        }
         Some(effective_visual::resolve_effective(
             &ctx,
-            &el.visual,
+            &own,
             &el.pseudo_styles,
             &interaction,
             id,
