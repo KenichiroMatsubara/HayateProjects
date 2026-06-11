@@ -114,6 +114,7 @@ struct PseudoStateEntry {
     name: String,
     value: u32,
     priority: u32,
+    css_pseudo: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +205,8 @@ struct PseudoStateJson {
     name: String,
     value: u32,
     priority: u32,
+    #[serde(rename = "cssPseudo")]
+    css_pseudo: String,
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(spec_dir: &Path, name: &str) -> T {
@@ -277,6 +280,7 @@ fn load_spec(spec_dir: &Path) -> Proto {
                 name: e.name,
                 value: e.value,
                 priority: e.priority,
+                css_pseudo: e.css_pseudo,
             })
             .collect(),
     }
@@ -941,19 +945,18 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
-    out.push_str("fn dom_css_rgba(c: Color) -> String {\n");
+    out.push_str("fn dom_css_hex(c: Color) -> String {\n");
     out.push_str("    let arr = c.to_array_f32();\n");
     out.push_str("    format!(\n");
-    out.push_str("        \"rgba({},{},{},{})\",\n");
-    out.push_str("        (arr[0] * 255.0) as u8,\n");
-    out.push_str("        (arr[1] * 255.0) as u8,\n");
-    out.push_str("        (arr[2] * 255.0) as u8,\n");
-    out.push_str("        arr[3],\n");
+    out.push_str("        \"#{:02x}{:02x}{:02x}\",\n");
+    out.push_str("        (arr[0] * 255.0).round() as u8,\n");
+    out.push_str("        (arr[1] * 255.0).round() as u8,\n");
+    out.push_str("        (arr[2] * 255.0).round() as u8,\n");
     out.push_str("    )\n");
     out.push_str("}\n\n");
 
     out.push_str(
-        "pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {\n",
+        "pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>) {\n",
     );
     out.push_str("    match *prop {\n");
 
@@ -966,13 +969,23 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
             .unwrap_or_else(|| panic!("style tag {} missing domCss", tag.name));
 
         out.push_str(&format!("        StyleProp::{variant}{binding} => {{\n"));
-        let body = dom_apply_from_spec(dom_css, value_var);
+        let body = css_collect_from_spec(dom_css, value_var);
         for line in body.lines() {
             out.push_str(&format!("            {line}\n"));
         }
         out.push_str("        }\n");
     }
 
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {\n",
+    );
+    out.push_str("    let mut entries = Vec::new();\n");
+    out.push_str("    style_prop_css_entries(prop, &mut entries);\n");
+    out.push_str("    for (property, value) in entries {\n");
+    out.push_str("        style.set_property(&property, &value)?;\n");
     out.push_str("    }\n");
     out.push_str("    Ok(())\n");
     out.push_str("}\n");
@@ -1012,7 +1025,7 @@ fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
     match dom.format.as_str() {
         "color" => {
             lines.push(format!(
-                "style.set_property(\"{css_prop}\", &dom_css_rgba({value_var}))?;"
+                "style.set_property(\"{css_prop}\", &dom_css_hex({value_var}))?;"
             ));
         }
         "dimension" => {
@@ -1171,6 +1184,181 @@ fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
     for extra in &dom.extras {
         lines.push(format!(
             "style.set_property(\"{}\", if w > 0.0 {{ \"{}\" }} else {{ \"{}\" }})?;",
+            extra.property, extra.when_positive, extra.when_zero
+        ));
+    }
+
+    lines.join("\n")
+}
+
+fn css_collect_from_spec(dom: &DomCss, value_var: &str) -> String {
+    let css_prop = &dom.property;
+    let mut lines = Vec::new();
+
+    match dom.format.as_str() {
+        "color" => {
+            lines.push(format!(
+                "out.push((\"{css_prop}\".into(), dom_css_hex({value_var})));"
+            ));
+        }
+        "dimension" => {
+            lines.push(format!(
+                "out.push((\"{css_prop}\".into(), dom_css_dim({value_var})));"
+            ));
+        }
+        "px" => {
+            if dom.extras.is_empty() {
+                lines.push(format!(
+                    "out.push((\"{css_prop}\".into(), format!(\"{{}}px\", {value_var}.max(0.0))));"
+                ));
+            } else {
+                lines.push(format!("let w = {value_var}.max(0.0);"));
+                lines.push(format!(
+                    "out.push((\"{css_prop}\".into(), format!(\"{{}}px\", w)));"
+                ));
+            }
+        }
+        "integer" => {
+            lines.push(format!(
+                "out.push((\"{css_prop}\".into(), {value_var}.to_string()));"
+            ));
+        }
+        "string" => {
+            lines.push(format!(
+                "out.push((\"{css_prop}\".into(), {value_var}.to_string()));"
+            ));
+        }
+        "number" => {
+            let expr = match css_prop.as_str() {
+                "opacity" => format!("{value_var}.clamp(0.0, 1.0)"),
+                "font-weight" => format!("{value_var}.clamp(1.0, 1000.0)"),
+                "flex-grow" => format!("{value_var}.max(0.0)"),
+                _ => value_var.to_string(),
+            };
+            lines.push(format!(
+                "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {expr})));"
+            ));
+        }
+        "dimension-list" => {
+            lines.push(format!(
+                "let s = {value_var}\n\
+                .iter()\n\
+                .map(|d| dom_css_dim(*d))\n\
+                .collect::<Vec<_>>()\n\
+                .join(\" \");"
+            ));
+            lines.push(format!("out.push((\"{css_prop}\".into(), s));"));
+        }
+        "enum:display" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                DisplayValue::Flex => \"flex\",\n\
+                DisplayValue::Grid => \"grid\",\n\
+                DisplayValue::Block => \"block\",\n\
+                DisplayValue::None => \"none\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:flex_direction" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                FlexDirectionValue::Row => \"row\",\n\
+                FlexDirectionValue::Column => \"column\",\n\
+                FlexDirectionValue::RowReverse => \"row-reverse\",\n\
+                FlexDirectionValue::ColumnReverse => \"column-reverse\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:flex_wrap" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                FlexWrapValue::Nowrap => \"nowrap\",\n\
+                FlexWrapValue::Wrap => \"wrap\",\n\
+                FlexWrapValue::WrapReverse => \"wrap-reverse\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:align_items" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                AlignValue::FlexStart => \"flex-start\",\n\
+                AlignValue::FlexEnd => \"flex-end\",\n\
+                AlignValue::Center => \"center\",\n\
+                AlignValue::Stretch => \"stretch\",\n\
+                AlignValue::Baseline => \"baseline\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:align_self" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                AlignSelfValue::Auto => \"auto\",\n\
+                AlignSelfValue::FlexStart => \"flex-start\",\n\
+                AlignSelfValue::FlexEnd => \"flex-end\",\n\
+                AlignSelfValue::Center => \"center\",\n\
+                AlignSelfValue::Stretch => \"stretch\",\n\
+                AlignSelfValue::Baseline => \"baseline\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:align_content" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                AlignContentValue::FlexStart => \"flex-start\",\n\
+                AlignContentValue::FlexEnd => \"flex-end\",\n\
+                AlignContentValue::Center => \"center\",\n\
+                AlignContentValue::Stretch => \"stretch\",\n\
+                AlignContentValue::SpaceBetween => \"space-between\",\n\
+                AlignContentValue::SpaceAround => \"space-around\",\n\
+                AlignContentValue::SpaceEvenly => \"space-evenly\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:justify_content" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                JustifyValue::FlexStart => \"flex-start\",\n\
+                JustifyValue::FlexEnd => \"flex-end\",\n\
+                JustifyValue::Center => \"center\",\n\
+                JustifyValue::SpaceBetween => \"space-between\",\n\
+                JustifyValue::SpaceAround => \"space-around\",\n\
+                JustifyValue::SpaceEvenly => \"space-evenly\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:font_style" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                FontStyleValue::Normal => \"normal\",\n\
+                FontStyleValue::Italic => \"italic\",\n\
+                FontStyleValue::Oblique => \"oblique\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        "enum:text_decoration" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                TextDecorationValue::None => \"none\",\n\
+                TextDecorationValue::Underline => \"underline\",\n\
+                TextDecorationValue::LineThrough => \"line-through\",\n\
+            }};\n\
+            out.push((\"{css_prop}\".into(), s.into()));"
+            ));
+        }
+        other => panic!("unknown domCss format: {other}"),
+    }
+
+    for extra in &dom.extras {
+        lines.push(format!(
+            "out.push((\"{}\".into(), if w > 0.0 {{ \"{}\".into() }} else {{ \"{}\".into() }}));",
             extra.property, extra.when_positive, extra.when_zero
         ));
     }
@@ -1699,7 +1887,31 @@ fn generate_pseudo_state_tables(proto: &Proto) -> String {
     for ps in &resolve_order {
         out.push_str(&format!("    PseudoState::{},\n", to_pascal(&ps.name)));
     }
-    out.push_str("];\n");
+    out.push_str("];\n\n");
+
+    out.push_str("pub fn pseudo_state_css_suffix(state: PseudoState) -> &'static str {\n");
+    out.push_str("    match state {\n");
+    for ps in &proto.pseudo_states {
+        out.push_str(&format!(
+            "        PseudoState::{} => \"{}\",\n",
+            to_pascal(&ps.name),
+            ps.css_pseudo
+        ));
+    }
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str("pub fn pseudo_state_css_priority(state: PseudoState) -> u32 {\n");
+    out.push_str("    match state {\n");
+    for ps in &proto.pseudo_states {
+        out.push_str(&format!(
+            "        PseudoState::{} => {},\n",
+            to_pascal(&ps.name),
+            ps.priority
+        ));
+    }
+    out.push_str("    }\n");
+    out.push_str("}\n");
 
     out
 }

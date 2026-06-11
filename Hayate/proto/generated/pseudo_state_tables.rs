@@ -18,3 +18,19 @@ pub const PSEUDO_RESOLVE_ORDER: [PseudoState; 3] = [
     PseudoState::Hover,
     PseudoState::Active,
 ];
+
+pub fn pseudo_state_css_suffix(state: PseudoState) -> &'static str {
+    match state {
+        PseudoState::Focus => ":focus",
+        PseudoState::Hover => ":hover",
+        PseudoState::Active => ":active",
+    }
+}
+
+pub fn pseudo_state_css_priority(state: PseudoState) -> u32 {
+    match state {
+        PseudoState::Focus => 0,
+        PseudoState::Hover => 1,
+        PseudoState::Active => 2,
+    }
+}

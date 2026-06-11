@@ -14,53 +14,52 @@ fn dom_css_dim(d: Dimension) -> String {
     }
 }
 
-fn dom_css_rgba(c: Color) -> String {
+fn dom_css_hex(c: Color) -> String {
     let arr = c.to_array_f32();
     format!(
-        "rgba({},{},{},{})",
-        (arr[0] * 255.0) as u8,
-        (arr[1] * 255.0) as u8,
-        (arr[2] * 255.0) as u8,
-        arr[3],
+        "#{:02x}{:02x}{:02x}",
+        (arr[0] * 255.0).round() as u8,
+        (arr[1] * 255.0).round() as u8,
+        (arr[2] * 255.0).round() as u8,
     )
 }
 
-pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {
+pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>) {
     match *prop {
         StyleProp::BackgroundColor(c) => {
-            style.set_property("background-color", &dom_css_rgba(c))?;
+            out.push(("background-color".into(), dom_css_hex(c)));
         }
         StyleProp::Opacity(v) => {
-            style.set_property("opacity", &format!("{}", v.clamp(0.0, 1.0)))?;
+            out.push(("opacity".into(), format!("{}", v.clamp(0.0, 1.0))));
         }
         StyleProp::BorderRadius(v) => {
-            style.set_property("border-radius", &format!("{}px", v.max(0.0)))?;
+            out.push(("border-radius".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::BorderWidth(v) => {
             let w = v.max(0.0);
-            style.set_property("border-width", &format!("{}px", w))?;
-            style.set_property("border-style", if w > 0.0 { "solid" } else { "none" })?;
+            out.push(("border-width".into(), format!("{}px", w)));
+            out.push(("border-style".into(), if w > 0.0 { "solid".into() } else { "none".into() }));
         }
         StyleProp::BorderColor(c) => {
-            style.set_property("border-color", &dom_css_rgba(c))?;
+            out.push(("border-color".into(), dom_css_hex(c)));
         }
         StyleProp::Width(d) => {
-            style.set_property("width", &dom_css_dim(d))?;
+            out.push(("width".into(), dom_css_dim(d)));
         }
         StyleProp::Height(d) => {
-            style.set_property("height", &dom_css_dim(d))?;
+            out.push(("height".into(), dom_css_dim(d)));
         }
         StyleProp::MinWidth(d) => {
-            style.set_property("min-width", &dom_css_dim(d))?;
+            out.push(("min-width".into(), dom_css_dim(d)));
         }
         StyleProp::MinHeight(d) => {
-            style.set_property("min-height", &dom_css_dim(d))?;
+            out.push(("min-height".into(), dom_css_dim(d)));
         }
         StyleProp::MaxWidth(d) => {
-            style.set_property("max-width", &dom_css_dim(d))?;
+            out.push(("max-width".into(), dom_css_dim(d)));
         }
         StyleProp::MaxHeight(d) => {
-            style.set_property("max-height", &dom_css_dim(d))?;
+            out.push(("max-height".into(), dom_css_dim(d)));
         }
         StyleProp::Display(v) => {
             let s = match v {
@@ -69,7 +68,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             DisplayValue::Block => "block",
             DisplayValue::None => "none",
             };
-            style.set_property("display", s)?;
+            out.push(("display".into(), s.into()));
         }
         StyleProp::FlexDirection(v) => {
             let s = match v {
@@ -78,7 +77,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             FlexDirectionValue::RowReverse => "row-reverse",
             FlexDirectionValue::ColumnReverse => "column-reverse",
             };
-            style.set_property("flex-direction", s)?;
+            out.push(("flex-direction".into(), s.into()));
         }
         StyleProp::AlignItems(v) => {
             let s = match v {
@@ -88,7 +87,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             AlignValue::Stretch => "stretch",
             AlignValue::Baseline => "baseline",
             };
-            style.set_property("align-items", s)?;
+            out.push(("align-items".into(), s.into()));
         }
         StyleProp::JustifyContent(v) => {
             let s = match v {
@@ -99,58 +98,58 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             JustifyValue::SpaceAround => "space-around",
             JustifyValue::SpaceEvenly => "space-evenly",
             };
-            style.set_property("justify-content", s)?;
+            out.push(("justify-content".into(), s.into()));
         }
         StyleProp::Gap(d) => {
-            style.set_property("gap", &dom_css_dim(d))?;
+            out.push(("gap".into(), dom_css_dim(d)));
         }
         StyleProp::Padding(d) => {
-            style.set_property("padding", &dom_css_dim(d))?;
+            out.push(("padding".into(), dom_css_dim(d)));
         }
         StyleProp::PaddingTop(d) => {
-            style.set_property("padding-top", &dom_css_dim(d))?;
+            out.push(("padding-top".into(), dom_css_dim(d)));
         }
         StyleProp::PaddingRight(d) => {
-            style.set_property("padding-right", &dom_css_dim(d))?;
+            out.push(("padding-right".into(), dom_css_dim(d)));
         }
         StyleProp::PaddingBottom(d) => {
-            style.set_property("padding-bottom", &dom_css_dim(d))?;
+            out.push(("padding-bottom".into(), dom_css_dim(d)));
         }
         StyleProp::PaddingLeft(d) => {
-            style.set_property("padding-left", &dom_css_dim(d))?;
+            out.push(("padding-left".into(), dom_css_dim(d)));
         }
         StyleProp::Margin(d) => {
-            style.set_property("margin", &dom_css_dim(d))?;
+            out.push(("margin".into(), dom_css_dim(d)));
         }
         StyleProp::MarginTop(d) => {
-            style.set_property("margin-top", &dom_css_dim(d))?;
+            out.push(("margin-top".into(), dom_css_dim(d)));
         }
         StyleProp::MarginRight(d) => {
-            style.set_property("margin-right", &dom_css_dim(d))?;
+            out.push(("margin-right".into(), dom_css_dim(d)));
         }
         StyleProp::MarginBottom(d) => {
-            style.set_property("margin-bottom", &dom_css_dim(d))?;
+            out.push(("margin-bottom".into(), dom_css_dim(d)));
         }
         StyleProp::MarginLeft(d) => {
-            style.set_property("margin-left", &dom_css_dim(d))?;
+            out.push(("margin-left".into(), dom_css_dim(d)));
         }
         StyleProp::FontSize(v) => {
-            style.set_property("font-size", &format!("{}px", v.max(0.0)))?;
+            out.push(("font-size".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::Color(c) => {
-            style.set_property("color", &dom_css_rgba(c))?;
+            out.push(("color".into(), dom_css_hex(c)));
         }
         StyleProp::ZIndex(z) => {
-            style.set_property("z-index", &z.to_string())?;
+            out.push(("z-index".into(), z.to_string()));
         }
         StyleProp::FontFamily(ref f) => {
-            style.set_property("font-family", f)?;
+            out.push(("font-family".into(), f.to_string()));
         }
         StyleProp::FlexGrow(v) => {
-            style.set_property("flex-grow", &format!("{}", v.max(0.0)))?;
+            out.push(("flex-grow".into(), format!("{}", v.max(0.0))));
         }
         StyleProp::FontWeight(v) => {
-            style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?;
+            out.push(("font-weight".into(), format!("{}", v.clamp(1.0, 1000.0))));
         }
         StyleProp::FontStyle(v) => {
             let s = match v {
@@ -158,7 +157,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             FontStyleValue::Italic => "italic",
             FontStyleValue::Oblique => "oblique",
             };
-            style.set_property("font-style", s)?;
+            out.push(("font-style".into(), s.into()));
         }
         StyleProp::TextDecoration(v) => {
             let s = match v {
@@ -166,19 +165,19 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             TextDecorationValue::Underline => "underline",
             TextDecorationValue::LineThrough => "line-through",
             };
-            style.set_property("text-decoration", s)?;
+            out.push(("text-decoration".into(), s.into()));
         }
         StyleProp::DefaultColor(c) => {
-            style.set_property("color", &dom_css_rgba(c))?;
+            out.push(("color".into(), dom_css_hex(c)));
         }
         StyleProp::DefaultFontFamily(ref f) => {
-            style.set_property("font-family", f)?;
+            out.push(("font-family".into(), f.to_string()));
         }
         StyleProp::DefaultFontSize(v) => {
-            style.set_property("font-size", &format!("{}px", v.max(0.0)))?;
+            out.push(("font-size".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::DefaultFontWeight(v) => {
-            style.set_property("font-weight", &format!("{}", v.clamp(1.0, 1000.0)))?;
+            out.push(("font-weight".into(), format!("{}", v.clamp(1.0, 1000.0))));
         }
         StyleProp::GridTemplateColumns(ref tracks) => {
             let s = tracks
@@ -186,7 +185,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             .map(|d| dom_css_dim(*d))
             .collect::<Vec<_>>()
             .join(" ");
-            style.set_property("grid-template-columns", &s)?;
+            out.push(("grid-template-columns".into(), s));
         }
         StyleProp::GridTemplateRows(ref tracks) => {
             let s = tracks
@@ -194,13 +193,13 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             .map(|d| dom_css_dim(*d))
             .collect::<Vec<_>>()
             .join(" ");
-            style.set_property("grid-template-rows", &s)?;
+            out.push(("grid-template-rows".into(), s));
         }
         StyleProp::FlexShrink(v) => {
-            style.set_property("flex-shrink", &format!("{}", v))?;
+            out.push(("flex-shrink".into(), format!("{}", v)));
         }
         StyleProp::FlexBasis(d) => {
-            style.set_property("flex-basis", &dom_css_dim(d))?;
+            out.push(("flex-basis".into(), dom_css_dim(d)));
         }
         StyleProp::AlignSelf(v) => {
             let s = match v {
@@ -211,7 +210,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             AlignSelfValue::Stretch => "stretch",
             AlignSelfValue::Baseline => "baseline",
             };
-            style.set_property("align-self", s)?;
+            out.push(("align-self".into(), s.into()));
         }
         StyleProp::AlignContent(v) => {
             let s = match v {
@@ -223,7 +222,7 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             AlignContentValue::SpaceAround => "space-around",
             AlignContentValue::SpaceEvenly => "space-evenly",
             };
-            style.set_property("align-content", s)?;
+            out.push(("align-content".into(), s.into()));
         }
         StyleProp::FlexWrap(v) => {
             let s = match v {
@@ -231,8 +230,16 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
             FlexWrapValue::Wrap => "wrap",
             FlexWrapValue::WrapReverse => "wrap-reverse",
             };
-            style.set_property("flex-wrap", s)?;
+            out.push(("flex-wrap".into(), s.into()));
         }
+    }
+}
+
+pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) -> Result<(), JsValue> {
+    let mut entries = Vec::new();
+    style_prop_css_entries(prop, &mut entries);
+    for (property, value) in entries {
+        style.set_property(&property, &value)?;
     }
     Ok(())
 }
