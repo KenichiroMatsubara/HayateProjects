@@ -623,7 +623,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("use hayate_core::{\n");
     out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
-    out.push_str("    FlexDirectionValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,\n");
+    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,\n");
     out.push_str("};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
 
@@ -646,6 +646,7 @@ fn generate_style_codec(proto: &Proto) -> String {
         let rust_enum = match en.name.as_str() {
             "display" => "DisplayValue",
             "flex_direction" => "FlexDirectionValue",
+            "flex_wrap" => "FlexWrapValue",
             "align_items" => "AlignValue",
             "align_self" => "AlignSelfValue",
             "align_content" => "AlignContentValue",
@@ -728,6 +729,7 @@ fn generate_codec(proto: &Proto) -> String {
         let rust_enum = match en.name.as_str() {
             "display" => "DisplayValue",
             "flex_direction" => "FlexDirectionValue",
+            "flex_wrap" => "FlexWrapValue",
             "align_items" => "AlignValue",
             "align_self" => "AlignSelfValue",
             "align_content" => "AlignContentValue",
@@ -830,8 +832,8 @@ fn style_prop_encode_binding(tag_name: &str, params: &[Param]) -> String {
         match p.typ.as_str() {
             "color" => return "(c)".to_string(),
             "dimension" => return "(d)".to_string(),
-            "display" | "flex_direction" | "align_items" | "align_self" | "align_content"
-            | "justify_content" | "font_style" | "text_decoration" | "f32" => {
+            "display" | "flex_direction" | "flex_wrap" | "align_items" | "align_self"
+            | "align_content" | "justify_content" | "font_style" | "text_decoration" | "f32" => {
                 return "(v)".to_string();
             }
             _ => {}
@@ -879,6 +881,7 @@ fn style_prop_encode_body(tag_name: &str, params: &[Param]) -> String {
             "flex_direction" => {
                 return "                buf.push(encode_flex_direction(*v));\n".to_string();
             }
+            "flex_wrap" => return "                buf.push(encode_flex_wrap(*v));\n".to_string(),
             "align_items" => return "                buf.push(encode_align_items(*v));\n".to_string(),
             "align_self" => return "                buf.push(encode_align_self(*v));\n".to_string(),
             "align_content" => return "                buf.push(encode_align_content(*v));\n".to_string(),
@@ -965,8 +968,8 @@ fn style_prop_match_binding(tag_name: &str, params: &[Param]) -> (String, &'stat
         match p.typ.as_str() {
             "color" => return ("(c)".to_string(), "c"),
             "dimension" => return ("(d)".to_string(), "d"),
-            "display" | "flex_direction" | "align_items" | "justify_content" | "font_style"
-            | "text_decoration" => {
+            "display" | "flex_direction" | "flex_wrap" | "align_items" | "justify_content"
+            | "font_style" | "text_decoration" => {
                 return ("(v)".to_string(), "v");
             }
             "f32" => return ("(v)".to_string(), "v"),
@@ -1050,6 +1053,16 @@ fn dom_apply_from_spec(dom: &DomCss, value_var: &str) -> String {
                 FlexDirectionValue::Column => \"column\",\n\
                 FlexDirectionValue::RowReverse => \"row-reverse\",\n\
                 FlexDirectionValue::ColumnReverse => \"column-reverse\",\n\
+            }};\n\
+            style.set_property(\"{css_prop}\", s)?;"
+            ));
+        }
+        "enum:flex_wrap" => {
+            lines.push(format!(
+                "let s = match {value_var} {{\n\
+                FlexWrapValue::Nowrap => \"nowrap\",\n\
+                FlexWrapValue::Wrap => \"wrap\",\n\
+                FlexWrapValue::WrapReverse => \"wrap-reverse\",\n\
             }};\n\
             style.set_property(\"{css_prop}\", s)?;"
             ));
@@ -1161,6 +1174,7 @@ fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> S
             "dimension" => return format!("codec_dim({}_value, {}_unit)", p.name, p.name),
             "display" => return "codec_display(value)".to_string(),
             "flex_direction" => return "codec_flex_direction(value)".to_string(),
+            "flex_wrap" => return "codec_flex_wrap(value)".to_string(),
             "align_items" => return "codec_align_items(value)".to_string(),
             "align_self" => return "codec_align_self(value)".to_string(),
             "align_content" => return "codec_align_content(value)".to_string(),

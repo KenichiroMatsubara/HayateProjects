@@ -86,6 +86,7 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::MaxHeight(_) => "max-height",
         StyleProp::Display(_) => "display",
         StyleProp::FlexDirection(_) => "flex-direction",
+        StyleProp::FlexWrap(_) => "flex-wrap",
         StyleProp::AlignItems(_) => "align-items",
         StyleProp::JustifyContent(_) => "justify-content",
         StyleProp::Gap(_) => "gap",

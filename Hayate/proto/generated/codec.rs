@@ -70,6 +70,14 @@ fn encode_align_self(value: AlignSelfValue) -> f32 {
     }
 }
 
+fn encode_flex_wrap(value: FlexWrapValue) -> f32 {
+    match value {
+        FlexWrapValue::Nowrap => 0.0,
+        FlexWrapValue::Wrap => 1.0,
+        FlexWrapValue::WrapReverse => 2.0,
+    }
+}
+
 fn encode_align_content(value: AlignContentValue) -> f32 {
     match value {
         AlignContentValue::FlexStart => 0.0,
@@ -405,6 +413,10 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::AlignContent(v) => {
                 buf.push(TAG_ALIGN_CONTENT as f32);
                 buf.push(encode_align_content(*v));
+            }
+            StyleProp::FlexWrap(v) => {
+                buf.push(TAG_FLEX_WRAP as f32);
+                buf.push(encode_flex_wrap(*v));
             }
         }
     }

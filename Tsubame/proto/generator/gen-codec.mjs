@@ -142,6 +142,7 @@ function generateEnumCodeMaps(proto) {
   const enumNames = {
     display: 'DISPLAY',
     flex_direction: 'FLEX_DIRECTION',
+    flex_wrap: 'FLEX_WRAP',
     align_items: 'ALIGN_ITEMS',
     align_self: 'ALIGN_SELF',
     align_content: 'ALIGN_CONTENT',
@@ -240,6 +241,15 @@ function generateStyleEncoders(proto) {
           `function ${fnName}(out: number[], value: string): void {`,
           `  const code = FLEX_DIRECTION_CODE[value];`,
           `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported flexDirection "\${value}"\`);`,
+          `  out.push(TAG.${tag.name}, code);`,
+          '}',
+        );
+        break;
+      case 'enum:flex_wrap':
+        lines.push(
+          `function ${fnName}(out: number[], value: string): void {`,
+          `  const code = FLEX_WRAP_CODE[value];`,
+          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported flexWrap "\${value}"\`);`,
           `  out.push(TAG.${tag.name}, code);`,
           '}',
         );
@@ -355,7 +365,7 @@ export function generateCodec() {
     '// Source: @hayate/protocol-spec',
     '',
     "import type { StylePatch } from '@tsubame/renderer-protocol';",
-    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';",
+    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',
     '',

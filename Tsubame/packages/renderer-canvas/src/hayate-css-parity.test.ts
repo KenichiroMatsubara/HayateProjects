@@ -16,6 +16,7 @@ const SAMPLES: Record<string, unknown> = {
   dimensionList: ['100px', '1fr', '50%'],
   display: 'flex',
   flexDirection: 'column',
+  flexWrap: 'wrap',
   alignItems: 'center',
   alignSelf: 'flex-end',
   alignContent: 'space-between',
@@ -96,6 +97,14 @@ describe('hayate-css catalog parity', () => {
     const css = domCssForPatch({ borderWidth: 0 });
     expect(css.borderWidth).toBe('0px');
     expect(css.borderStyle).toBe('none');
+  });
+
+  it('flexbox completion properties produce expected DOM CSS strings', () => {
+    expect(domCssForPatch({ flexShrink: 0.5 }).flexShrink).toBe('0.5');
+    expect(domCssForPatch({ flexBasis: '80px' }).flexBasis).toBe('80px');
+    expect(domCssForPatch({ alignSelf: 'flex-end' }).alignSelf).toBe('flex-end');
+    expect(domCssForPatch({ alignContent: 'space-between' }).alignContent).toBe('space-between');
+    expect(domCssForPatch({ flexWrap: 'wrap-reverse' }).flexWrap).toBe('wrap-reverse');
   });
 
   it('dimension encode and DOM css both use px for numeric values', () => {

@@ -669,5 +669,20 @@
       "property": "align-content",
       "format": "enum:align_content"
     }
+  },
+  {
+    "name": "FLEX_WRAP",
+    "value": 44,
+    "encodeFrom": "enum:flex_wrap",
+    "params": [
+      {
+        "name": "value",
+        "type": "flex_wrap"
+      }
+    ],
+    "domCss": {
+      "property": "flex-wrap",
+      "format": "enum:flex_wrap"
+    }
   }
 ]

@@ -5,6 +5,7 @@ export type { HayateDimension } from './style-primitives.js';
 export type {
   Display,
   FlexDirection,
+  FlexWrap,
   AlignItems,
   AlignSelf,
   AlignContent,

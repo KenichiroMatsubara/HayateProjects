@@ -578,5 +578,18 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "flexWrap",
+    "tag": 44,
+    "unsetKind": null,
+    "wireKind": "flexWrap",
+    "domFormat": "enum",
+    "cssName": "flexWrap",
+    "cssProperty": "flex-wrap",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

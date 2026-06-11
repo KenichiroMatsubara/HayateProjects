@@ -86,6 +86,7 @@ pub const TAG_FLEX_SHRINK: u32 = 40;
 pub const TAG_FLEX_BASIS: u32 = 41;
 pub const TAG_ALIGN_SELF: u32 = 42;
 pub const TAG_ALIGN_CONTENT: u32 = 43;
+pub const TAG_FLEX_WRAP: u32 = 44;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -528,6 +529,9 @@ pub enum StyleTag {
     AlignContent {
         value: f32,
     },
+    FlexWrap {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -805,6 +809,11 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::AlignContent { value }, i + 1))
         }
+        44 => {
+            if i + 1 > packed.len() { return Err("style tag FLEX_WRAP truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::FlexWrap { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -814,7 +823,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 
@@ -897,6 +906,15 @@ fn codec_align_self(raw: f32) -> AlignSelfValue {
     }
 }
 
+fn codec_flex_wrap(raw: f32) -> FlexWrapValue {
+    match raw as u32 {
+        0 => FlexWrapValue::Nowrap,
+        1 => FlexWrapValue::Wrap,
+        2 => FlexWrapValue::WrapReverse,
+        _ => FlexWrapValue::Nowrap,
+    }
+}
+
 fn codec_align_content(raw: f32) -> AlignContentValue {
     match raw as u32 {
         0 => AlignContentValue::FlexStart,
@@ -965,6 +983,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::FlexBasis { dim_value, dim_unit } => StyleProp::FlexBasis(codec_dim(dim_value, dim_unit)),
         StyleTag::AlignSelf { value } => StyleProp::AlignSelf(codec_align_self(value)),
         StyleTag::AlignContent { value } => StyleProp::AlignContent(codec_align_content(value)),
+        StyleTag::FlexWrap { value } => StyleProp::FlexWrap(codec_flex_wrap(value)),
     })
 }
 

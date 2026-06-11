@@ -67,6 +67,7 @@ export const TAG = {
   FLEX_BASIS: 41,
   ALIGN_SELF: 42,
   ALIGN_CONTENT: 43,
+  FLEX_WRAP: 44,
 } as const;
 export type TAG = typeof TAG;
 
@@ -215,6 +216,13 @@ export const ALIGN_SELF = {
   baseline: 5,
 } as const;
 export type ALIGN_SELF = typeof ALIGN_SELF;
+
+export const FLEX_WRAP = {
+  nowrap: 0,
+  wrap: 1,
+  wrapReverse: 2,
+} as const;
+export type FLEX_WRAP = typeof FLEX_WRAP;
 
 export const ALIGN_CONTENT = {
   flexStart: 0,
