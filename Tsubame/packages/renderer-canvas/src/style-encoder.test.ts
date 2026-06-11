@@ -197,6 +197,27 @@ describe('encodeStylePatch – enum properties', () => {
     expect(out[1]).toBe(3);
   });
 
+  it('encodes flexWrap: nowrap', () => {
+    const out: number[] = [];
+    encodeStylePatch({ flexWrap: 'nowrap' }, out);
+    expect(out[0]).toBe(TAG.FLEX_WRAP);
+    expect(out[1]).toBe(0);
+  });
+
+  it('encodes flexWrap: wrap', () => {
+    const out: number[] = [];
+    encodeStylePatch({ flexWrap: 'wrap' }, out);
+    expect(out[0]).toBe(TAG.FLEX_WRAP);
+    expect(out[1]).toBe(1);
+  });
+
+  it('encodes flexWrap: wrap-reverse', () => {
+    const out: number[] = [];
+    encodeStylePatch({ flexWrap: 'wrap-reverse' }, out);
+    expect(out[0]).toBe(TAG.FLEX_WRAP);
+    expect(out[1]).toBe(2);
+  });
+
   it('encodes alignItems: flex-start', () => {
     const out: number[] = [];
     encodeStylePatch({ alignItems: 'flex-start' }, out);
@@ -230,6 +251,34 @@ describe('encodeStylePatch – enum properties', () => {
     encodeStylePatch({ justifyContent: 'space-evenly' }, out);
     expect(out[0]).toBe(TAG.JUSTIFY_CONTENT);
     expect(out[1]).toBe(5);
+  });
+
+  it('encodes alignSelf: auto', () => {
+    const out: number[] = [];
+    encodeStylePatch({ alignSelf: 'auto' }, out);
+    expect(out[0]).toBe(TAG.ALIGN_SELF);
+    expect(out[1]).toBe(0);
+  });
+
+  it('encodes alignSelf: flex-end', () => {
+    const out: number[] = [];
+    encodeStylePatch({ alignSelf: 'flex-end' }, out);
+    expect(out[0]).toBe(TAG.ALIGN_SELF);
+    expect(out[1]).toBe(2);
+  });
+
+  it('encodes alignContent: stretch', () => {
+    const out: number[] = [];
+    encodeStylePatch({ alignContent: 'stretch' }, out);
+    expect(out[0]).toBe(TAG.ALIGN_CONTENT);
+    expect(out[1]).toBe(3);
+  });
+
+  it('encodes alignContent: space-between', () => {
+    const out: number[] = [];
+    encodeStylePatch({ alignContent: 'space-between' }, out);
+    expect(out[0]).toBe(TAG.ALIGN_CONTENT);
+    expect(out[1]).toBe(4);
   });
 });
 
@@ -296,6 +345,21 @@ describe('encodeStylePatch – numeric properties', () => {
     encodeStylePatch({ flexGrow: 1 }, out);
     expect(out[0]).toBe(TAG.FLEX_GROW);
     expect(out[1]).toBe(1);
+  });
+
+  it('encodes flexShrink', () => {
+    const out: number[] = [];
+    encodeStylePatch({ flexShrink: 0.5 }, out);
+    expect(out[0]).toBe(TAG.FLEX_SHRINK);
+    expect(out[1]).toBe(0.5);
+  });
+
+  it('encodes flexBasis', () => {
+    const out: number[] = [];
+    encodeStylePatch({ flexBasis: '80px' }, out);
+    expect(out[0]).toBe(TAG.FLEX_BASIS);
+    expect(out[1]).toBe(80);
+    expect(out[2]).toBe(0);
   });
 
   it('encodes borderWidth', () => {

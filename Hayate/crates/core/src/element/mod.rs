@@ -29,7 +29,7 @@ pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
-    FlexDirectionValue,
+    FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
     JustifyValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
 };

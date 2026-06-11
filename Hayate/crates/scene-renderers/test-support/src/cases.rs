@@ -1,6 +1,7 @@
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DisplayValue, ElementId,
-    ElementKind, ElementTree, FlexDirectionValue, JustifyValue, StyleProp, TextDecorationValue,
+    ElementKind, ElementTree, FlexDirectionValue, FlexWrapValue, JustifyValue, StyleProp,
+    TextDecorationValue,
 };
 
 use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
@@ -993,6 +994,46 @@ fn check_align_content(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 10, 10), "align-content child visible");
 }
 
+fn build_flex_wrap() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 99);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+            StyleProp::FlexWrap(FlexWrapValue::Wrap),
+            StyleProp::Width(Dimension::px(70.0)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
+    );
+    let colors = [
+        Color::new(1.0, 0.0, 0.0, 1.0),
+        Color::new(0.0, 1.0, 0.0, 1.0),
+        Color::new(0.0, 0.0, 1.0, 1.0),
+    ];
+    for (i, color) in colors.into_iter().enumerate() {
+        let child = child_view(&mut tree, 100 + i as u64);
+        tree.element_append_child(root, child);
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::px(40.0)),
+                StyleProp::Height(Dimension::px(15.0)),
+                StyleProp::BackgroundColor(color),
+            ],
+        );
+    }
+    tree
+}
+
+fn check_flex_wrap(data: &[u8]) {
+    let first = pixel(data, CANVAS_W, 10, 5);
+    assert_channel_min(first, 0, 150, "flex-wrap first row red");
+    let wrapped = pixel(data, CANVAS_W, 10, 20);
+    assert_channel_min(wrapped, 1, 150, "flex-wrap second row green");
+}
+
 /// Every entry in `style_tags.json` / `HAYATE_CSS_CATALOG`.
 pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
     CssPixelCase {
@@ -1205,6 +1246,11 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         build: build_align_content,
         check: check_align_content,
     },
+    CssPixelCase {
+        css_property: "flex-wrap",
+        build: build_flex_wrap,
+        check: check_flex_wrap,
+    },
 ];
 
 pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneGraph {
@@ -1254,6 +1300,7 @@ mod catalog_coverage {
         "flex-basis",
         "align-self",
         "align-content",
+        "flex-wrap",
     ];
 
     #[test]

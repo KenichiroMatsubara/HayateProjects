@@ -163,6 +163,23 @@
     ]
   },
   {
+    "name": "flex_wrap",
+    "values": [
+      {
+        "name": "nowrap",
+        "value": 0
+      },
+      {
+        "name": "wrap",
+        "value": 1
+      },
+      {
+        "name": "wrap_reverse",
+        "value": 2
+      }
+    ]
+  },
+  {
     "name": "align_content",
     "values": [
       {

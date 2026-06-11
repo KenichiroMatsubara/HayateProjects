@@ -5,6 +5,7 @@ import type { HayateDimension } from '../style-primitives.js';
 
 export type Display = 'flex' | 'grid' | 'block' | 'none';
 export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
+export type FlexWrap = 'nowrap' | 'wrap' | 'wrap-reverse';
 export type AlignItems = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 'baseline';
 export type AlignSelf = 'auto' | 'flex-start' | 'flex-end' | 'center' | 'stretch' | 'baseline';
 export type AlignContent = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 'space-between' | 'space-around' | 'space-evenly';
@@ -57,6 +58,7 @@ export interface HayateStyle {
   flexBasis: HayateDimension;
   alignSelf: AlignSelf;
   alignContent: AlignContent;
+  flexWrap: FlexWrap;
 }
 
 /**

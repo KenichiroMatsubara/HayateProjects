@@ -29,8 +29,7 @@ function Section(props: { title: string; children: unknown }) {
   return (
     <view style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <text style={{ color: COLORS.ink, fontSize: 18 }}>{props.title}</text>
-      {/* flexWrap は style_tags.json の語彙外（両レンダラーで例外）なので grid で折り返す */}
-      <view style={{ display: 'grid', gridTemplateColumns: ['1fr', '1fr', '1fr', '1fr'], gap: 12 }}>
+      <view style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         {props.children}
       </view>
     </view>
@@ -163,6 +162,18 @@ function FlexLayoutSection() {
           <view style={{ width: 48, height: 16, backgroundColor: COLORS.blue }} />
         </view>
       </PropertySample>
+      <PropertySample name="flexWrap">
+        <view style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          width: 120,
+          gap: 4,
+        }}>
+          <view style={{ width: 48, height: 20, backgroundColor: COLORS.accent }} />
+          <view style={{ width: 48, height: 20, backgroundColor: COLORS.blue }} />
+          <view style={{ width: 48, height: 20, backgroundColor: COLORS.violet }} />
+        </view>
+      </PropertySample>
       <PropertySample name="alignItems">
         <view style={{
           display: 'flex',
@@ -192,6 +203,47 @@ function FlexLayoutSection() {
         <view style={{ display: 'flex', flexDirection: 'row', width: 140, gap: 4 }}>
           <view style={{ flexGrow: 1, height: 24, backgroundColor: COLORS.accent }} />
           <view style={{ width: 24, height: 24, backgroundColor: COLORS.blue }} />
+        </view>
+      </PropertySample>
+      <PropertySample name="flexShrink">
+        <view style={{ display: 'flex', flexDirection: 'row', width: 100, gap: 4 }}>
+          <view style={{ width: 80, flexShrink: 2, height: 24, backgroundColor: COLORS.accent }} />
+          <view style={{ width: 80, flexShrink: 0, height: 24, backgroundColor: COLORS.blue }} />
+        </view>
+      </PropertySample>
+      <PropertySample name="flexBasis">
+        <view style={{ display: 'flex', flexDirection: 'row', width: 140, gap: 4 }}>
+          <view style={{ flexBasis: 60, height: 24, backgroundColor: COLORS.accent }} />
+          <view style={{ flexGrow: 1, height: 24, backgroundColor: COLORS.blue }} />
+        </view>
+      </PropertySample>
+      <PropertySample name="alignSelf">
+        <view style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          gap: 6,
+          height: 56,
+          backgroundColor: COLORS.panel2,
+        }}>
+          <view style={{ width: 20, height: 20, backgroundColor: COLORS.muted }} />
+          <view style={{ width: 20, height: 36, alignSelf: 'flex-end', backgroundColor: COLORS.accent }} />
+        </view>
+      </PropertySample>
+      <PropertySample name="alignContent">
+        <view style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignContent: 'space-between',
+          width: 100,
+          height: 72,
+          gap: 4,
+          backgroundColor: COLORS.panel2,
+        }}>
+          <view style={{ width: 40, height: 20, backgroundColor: COLORS.accent }} />
+          <view style={{ width: 40, height: 20, backgroundColor: COLORS.blue }} />
+          <view style={{ width: 40, height: 20, backgroundColor: COLORS.violet }} />
+          <view style={{ width: 40, height: 20, backgroundColor: COLORS.accent }} />
         </view>
       </PropertySample>
       <PropertySample name="zIndex">
