@@ -4,6 +4,7 @@ import {
   applyDomExtras,
   formatDomCSSValue,
 } from '@tsubame/hayate-css-catalog';
+import { shouldApplyTextLocalPatch } from './text-style-semantics.js';
 
 export function applyStylePatch(el: HTMLElement, patch: StylePatch): void {
   const style = el.style as unknown as Record<string, string>;
@@ -12,6 +13,7 @@ export function applyStylePatch(el: HTMLElement, patch: StylePatch): void {
     const k = key as keyof StylePatch;
     const value = patch[k];
     if (value === undefined) continue;
+    if (!shouldApplyTextLocalPatch(el, k as string)) continue;
 
     const entry = CATALOG_BY_KEY[k as string];
     if (entry === undefined) {
