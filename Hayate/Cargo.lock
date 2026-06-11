@@ -560,6 +560,7 @@ dependencies = [
  "hayate-core",
  "hayate-scene-test-support",
  "pollster",
+ "skrifa",
  "vello",
  "wgpu",
 ]

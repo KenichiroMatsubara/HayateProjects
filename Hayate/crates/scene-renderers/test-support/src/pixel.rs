@@ -42,3 +42,21 @@ pub fn assert_not_clear(px: [u8; 4], label: &str) {
         "{label}: expected painted pixel, got clear {px:?}"
     );
 }
+
+/// Horizontal ink extent `(min_x, max_x)` for dark pixels on the canvas.
+pub fn ink_extent_x(data: &[u8], width: u32, height: u32) -> Option<(u32, u32)> {
+    let mut min_x = width;
+    let mut max_x = 0;
+    let mut found = false;
+    for y in 0..height {
+        for x in 0..width {
+            let px = pixel(data, width, x, y);
+            if px[0] < 240 || px[1] < 240 || px[2] < 240 {
+                found = true;
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+            }
+        }
+    }
+    found.then_some((min_x, max_x))
+}

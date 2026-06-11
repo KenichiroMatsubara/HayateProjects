@@ -277,10 +277,17 @@ function TextSection() {
         <text style={{ fontFamily: 'Georgia, serif', color: COLORS.text }}>Sample</text>
       </PropertySample>
       <PropertySample name="fontWeight">
-        <text style={{ fontWeight: 700, color: COLORS.text }}>Sample</text>
+        <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <text style={{ fontWeight: 400, color: COLORS.text }}>Regular 400</text>
+          <text style={{ fontWeight: 600, color: COLORS.text }}>Semibold 600</text>
+          <text style={{ fontWeight: 700, color: COLORS.text }}>Bold 700</text>
+        </view>
       </PropertySample>
       <PropertySample name="fontStyle">
-        <text style={{ fontStyle: 'italic', color: COLORS.text }}>Sample</text>
+        <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <text style={{ fontStyle: 'normal', color: COLORS.text }}>Upright</text>
+          <text style={{ fontStyle: 'italic', color: COLORS.text }}>Italic (synth)</text>
+        </view>
       </PropertySample>
       <PropertySample name="textDecoration">
         <text style={{ textDecoration: 'underline', color: COLORS.text }}>Sample</text>

@@ -359,6 +359,8 @@ fn lower_glyph_runs(
                 glyphs: positioned,
                 decorations,
                 text: Arc::<str>::from(""),
+                synthesis: run.synthesis(),
+                normalized_coords: run.normalized_coords().to_vec(),
             }));
         }
     }
@@ -391,6 +393,10 @@ mod tests {
                 .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
         }
         font_cx
+    }
+
+    fn text_run_syntheses(layout: &TextLayout) -> Vec<fontique::Synthesis> {
+        layout.runs.iter().map(|run| run.synthesis).collect()
     }
 
     fn glyph_run_font_styles(layout: &TextLayout) -> Vec<FontStyle> {
@@ -427,6 +433,97 @@ mod tests {
             styles.iter().all(|s| *s == FontStyle::Italic),
             "expected italic font style on all runs, got {styles:?}"
         );
+    }
+
+    #[test]
+    fn build_text_layout_preserves_italic_synthesis_on_text_run() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let tl = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "Hello",
+            16.0,
+            None,
+            None,
+            None,
+            Some(FontStyleValue::Italic),
+        );
+        let synths = text_run_syntheses(&tl);
+        assert!(!synths.is_empty(), "expected shaped text runs");
+        assert!(
+            synths.iter().any(|s| s.skew() == Some(14.0)),
+            "expected faux italic skew on bundled font, got {synths:?}"
+        );
+    }
+
+    #[test]
+    fn build_text_layout_preserves_wght_axis_for_intermediate_weight() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let regular = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "Hello",
+            16.0,
+            None,
+            None,
+            Some(400.0),
+            None,
+        );
+        let semibold = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "Hello",
+            16.0,
+            None,
+            None,
+            Some(600.0),
+            None,
+        );
+        let regular_coords = regular.runs.first().map(|r| r.normalized_coords.as_slice());
+        let semibold_coords = semibold.runs.first().map(|r| r.normalized_coords.as_slice());
+        assert!(
+            regular_coords.is_some() && semibold_coords.is_some(),
+            "expected shaped text runs"
+        );
+        assert_ne!(
+            regular_coords,
+            semibold_coords,
+            "font-weight 600 should change variable font coordinates"
+        );
+        assert!(
+            text_run_syntheses(&semibold)
+                .iter()
+                .any(|s| !s.variation_settings().is_empty()),
+            "expected wght variation synthesis for semibold"
+        );
+    }
+
+    #[test]
+    fn build_text_layout_uses_wght_not_embolden_for_bold_variable_font() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let tl = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "Hello",
+            16.0,
+            None,
+            None,
+            Some(700.0),
+            None,
+        );
+        for synth in text_run_syntheses(&tl) {
+            assert!(
+                !synth.embolden(),
+                "variable font bold should use wght axis, not faux embolden"
+            );
+            assert!(
+                !synth.variation_settings().is_empty(),
+                "expected wght variation for bold on variable font"
+            );
+        }
     }
 
     #[test]
