@@ -74,3 +74,64 @@ fn element_character_bounds_available_after_layout() {
     assert!(bounds.width > 0.0);
     assert!(bounds.height > 0.0);
 }
+
+#[test]
+fn element_character_bounds_respects_padding() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(6, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingTop(Dimension::px(8.0)),
+            StyleProp::FontSize(13.0),
+        ],
+    );
+    tree.element_append_text_content(input, "hi");
+    tree.element_focus(input);
+    let cursor_rect = {
+        let sg = tree.render(0.0);
+        sg.iter().find_map(|(_, n)| {
+            if let hayate_core::NodeKind::Rect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius,
+                ..
+            } = &n.kind
+            {
+                if *width <= 2.0 && *height > 10.0 && *corner_radius == 0.0 {
+                    Some((*x, *y))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+    };
+
+    let bounds = tree
+        .element_character_bounds(input)
+        .expect("character bounds with padding");
+    if let Some((cursor_x, cursor_y)) = cursor_rect {
+        assert!(
+            (bounds.x - cursor_x).abs() < 0.5,
+            "IME bounds x should match canvas cursor x"
+        );
+        assert!(
+            (bounds.y - cursor_y).abs() < 0.5,
+            "IME bounds y should match canvas cursor y"
+        );
+    }
+    assert!(
+        bounds.x >= 12.0,
+        "IME bounds x should be inset by padding-left, got x={}",
+        bounds.x
+    );
+}

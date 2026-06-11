@@ -798,6 +798,99 @@ fn subtree_element_ids_returns_root_and_descendants() {
 // ── Phase 5: TextInput + IME tests ──────────────────────────────────────
 
 #[test]
+fn text_input_text_run_respects_padding() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(29, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingTop(Dimension::px(8.0)),
+            StyleProp::FontSize(13.0),
+        ],
+    );
+    tree.element_append_text_content(input, "Focus me");
+
+    let sg = tree.render(0.0);
+    let text_run = sg
+        .iter()
+        .find_map(|(_, n)| {
+            if let NodeKind::TextRun { x, y, data, .. } = &n.kind {
+                Some((*x, *y, data.glyphs.first().map(|g| g.x)))
+            } else {
+                None
+            }
+        })
+        .expect("TextRun for padded text-input");
+    let (run_x, run_y, first_glyph_x) = text_run;
+    let text_x = run_x + first_glyph_x.unwrap_or(0.0);
+    assert!(
+        (text_x - 12.0).abs() < 0.5,
+        "text should start at padding-left inset, got x={text_x}"
+    );
+    assert!(
+        (run_y - 8.0).abs() < 0.5,
+        "text run y should include padding-top inset, got y={run_y}"
+    );
+}
+
+#[test]
+fn text_input_cursor_respects_padding() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(28, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingTop(Dimension::px(8.0)),
+            StyleProp::FontSize(13.0),
+        ],
+    );
+    tree.element_focus(input);
+
+    let sg = tree.render(0.0);
+    let cursor = sg
+        .iter()
+        .find_map(|(_, n)| {
+            if let NodeKind::Rect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius,
+                ..
+            } = &n.kind
+            {
+                if *width <= 2.0 && *height > 10.0 && *corner_radius == 0.0 {
+                    Some((*x, *y))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .expect("cursor rect for empty padded text-input");
+    let (cursor_x, cursor_y) = cursor;
+    assert!(
+        (cursor_x - 12.0).abs() < 0.5,
+        "empty-input cursor x should start at padding-left inset, got x={cursor_x}"
+    );
+    assert!(
+        (cursor_y - 8.0).abs() < 0.5,
+        "empty-input cursor y should start at padding-top inset, got y={cursor_y}"
+    );
+}
+
+#[test]
 fn text_input_append_and_get() {
     let mut tree = ElementTree::new();
     let input = tree.element_create(30, ElementKind::TextInput);
@@ -832,6 +925,39 @@ fn preedit_shown_inline_not_committed() {
 
     // Display text includes preedit suffix.
     assert_eq!(tree.element_get_text_content(input), "abcDEF");
+}
+
+#[test]
+fn preedit_text_run_respects_padding() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(27, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingTop(Dimension::px(8.0)),
+            StyleProp::FontSize(13.0),
+        ],
+    );
+    tree.element_set_preedit(input, "あ");
+
+    let sg = tree.render(0.0);
+    let (run_x, run_y) = sg
+        .iter()
+        .find_map(|(_, n)| {
+            if let NodeKind::TextRun { x, y, .. } = &n.kind {
+                Some((*x, *y))
+            } else {
+                None
+            }
+        })
+        .expect("preedit TextRun with padding");
+    assert!((run_x - 12.0).abs() < 0.5, "preedit x should include padding-left");
+    assert!((run_y - 8.0).abs() < 0.5, "preedit y should include padding-top");
 }
 
 #[test]
