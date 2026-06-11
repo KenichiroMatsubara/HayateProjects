@@ -782,7 +782,9 @@ fn build_text_decoration_underline() -> ElementTree {
 
 fn check_text_decoration_underline(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 4, 20), "underline glyph body");
-    assert_not_clear(pixel(data, CANVAS_W, 4, 24), "underline decoration below glyph");
+    // Underline sits below the alphabetic baseline (~y=27 for 24px "A"); not at strikethrough height.
+    assert_clear(pixel(data, CANVAS_W, 4, 24), "underline not at strikethrough height");
+    assert_not_clear(pixel(data, CANVAS_W, 4, 30), "underline decoration below baseline");
 }
 
 fn build_text_decoration_line_through() -> ElementTree {
@@ -810,7 +812,8 @@ fn build_text_decoration_line_through() -> ElementTree {
 }
 
 fn check_text_decoration_line_through(data: &[u8]) {
-    assert_not_clear(pixel(data, CANVAS_W, 8, 35), "line-through decoration ink");
+    assert_not_clear(pixel(data, CANVAS_W, 8, 20), "line-through decoration ink");
+    assert_clear(pixel(data, CANVAS_W, 8, 35), "line-through not at glyph bottom");
 }
 
 // ── stacking / flex ─────────────────────────────────────────────────────
