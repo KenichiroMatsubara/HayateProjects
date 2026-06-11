@@ -63,6 +63,10 @@ export const TAG = {
   DEFAULT_FONT_WEIGHT: 37,
   GRID_TEMPLATE_COLUMNS: 38,
   GRID_TEMPLATE_ROWS: 39,
+  FLEX_SHRINK: 40,
+  FLEX_BASIS: 41,
+  ALIGN_SELF: 42,
+  ALIGN_CONTENT: 43,
 } as const;
 export type TAG = typeof TAG;
 
@@ -201,6 +205,27 @@ export const FONT_STYLE = {
   oblique: 2,
 } as const;
 export type FONT_STYLE = typeof FONT_STYLE;
+
+export const ALIGN_SELF = {
+  auto: 0,
+  flexStart: 1,
+  flexEnd: 2,
+  center: 3,
+  stretch: 4,
+  baseline: 5,
+} as const;
+export type ALIGN_SELF = typeof ALIGN_SELF;
+
+export const ALIGN_CONTENT = {
+  flexStart: 0,
+  flexEnd: 1,
+  center: 2,
+  stretch: 3,
+  spaceBetween: 4,
+  spaceAround: 5,
+  spaceEvenly: 6,
+} as const;
+export type ALIGN_CONTENT = typeof ALIGN_CONTENT;
 
 export const TEXT_DECORATION = {
   none: 0,

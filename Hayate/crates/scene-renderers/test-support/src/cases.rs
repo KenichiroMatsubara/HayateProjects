@@ -1,6 +1,6 @@
 use hayate_core::{
-    AlignValue, Color, Dimension, DisplayValue, ElementId, ElementKind, ElementTree,
-    FlexDirectionValue, JustifyValue, StyleProp, TextDecorationValue,
+    AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DisplayValue, ElementId,
+    ElementKind, ElementTree, FlexDirectionValue, JustifyValue, StyleProp, TextDecorationValue,
 };
 
 use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
@@ -885,6 +885,114 @@ fn check_flex_grow(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 60, 5), "flex-grow expanded second child");
 }
 
+fn build_flex_shrink() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = flex_row_root(&mut tree, 90);
+    let a = child_view(&mut tree, 91);
+    let b = child_view(&mut tree, 92);
+    for (child, shrink) in [(a, 0.0), (b, 1.0)] {
+        tree.element_append_child(root, child);
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::px(80.0)),
+                StyleProp::Height(Dimension::px(20.0)),
+                StyleProp::FlexShrink(shrink),
+                StyleProp::BackgroundColor(Color::new(1.0, 0.5, 0.0, 1.0)),
+            ],
+        );
+    }
+    tree
+}
+
+fn check_flex_shrink(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 50, 5), "flex-shrink child visible");
+    assert_not_clear(pixel(data, CANVAS_W, 90, 5), "flex-shrink sibling visible");
+}
+
+fn build_flex_basis() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = flex_row_root(&mut tree, 93);
+    let child = child_view(&mut tree, 94);
+    tree.element_append_child(root, child);
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::FlexBasis(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(20.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.5, 0.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_flex_basis(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 30, 5), "flex-basis child visible");
+    assert_clear(pixel(data, CANVAS_W, 70, 5), "flex-basis width respected");
+}
+
+fn build_align_self() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 95);
+    let child = child_view(&mut tree, 96);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::AlignItems(AlignValue::FlexStart),
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
+    );
+    tree.element_append_child(root, child);
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Height(Dimension::px(20.0)),
+            StyleProp::AlignSelf(AlignSelfValue::FlexEnd),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.5, 0.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_align_self(data: &[u8]) {
+    assert_clear(pixel(data, CANVAS_W, 10, 10), "align-self left margin clear");
+    assert_not_clear(pixel(data, CANVAS_W, 70, 10), "align-self child at cross-axis flex-end");
+}
+
+fn build_align_content() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 97);
+    let child = child_view(&mut tree, 98);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::AlignContent(AlignContentValue::Center),
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
+    );
+    tree.element_append_child(root, child);
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Height(Dimension::px(20.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.5, 0.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_align_content(data: &[u8]) {
+    assert_not_clear(pixel(data, CANVAS_W, 10, 10), "align-content child visible");
+}
+
 /// Every entry in `style_tags.json` / `HAYATE_CSS_CATALOG`.
 pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
     CssPixelCase {
@@ -1077,6 +1185,26 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         build: build_flex_grow,
         check: check_flex_grow,
     },
+    CssPixelCase {
+        css_property: "flex-shrink",
+        build: build_flex_shrink,
+        check: check_flex_shrink,
+    },
+    CssPixelCase {
+        css_property: "flex-basis",
+        build: build_flex_basis,
+        check: check_flex_basis,
+    },
+    CssPixelCase {
+        css_property: "align-self",
+        build: build_align_self,
+        check: check_align_self,
+    },
+    CssPixelCase {
+        css_property: "align-content",
+        build: build_align_content,
+        check: check_align_content,
+    },
 ];
 
 pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneGraph {
@@ -1122,6 +1250,10 @@ mod catalog_coverage {
         "text-decoration",
         "z-index",
         "flex-grow",
+        "flex-shrink",
+        "flex-basis",
+        "align-self",
+        "align-content",
     ];
 
     #[test]

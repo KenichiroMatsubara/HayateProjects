@@ -143,6 +143,8 @@ function generateEnumCodeMaps(proto) {
     display: 'DISPLAY',
     flex_direction: 'FLEX_DIRECTION',
     align_items: 'ALIGN_ITEMS',
+    align_self: 'ALIGN_SELF',
+    align_content: 'ALIGN_CONTENT',
     justify_content: 'JUSTIFY_CONTENT',
     font_style: 'FONT_STYLE',
     text_decoration: 'TEXT_DECORATION',
@@ -251,6 +253,24 @@ function generateStyleEncoders(proto) {
           '}',
         );
         break;
+      case 'enum:align_self':
+        lines.push(
+          `function ${fnName}(out: number[], value: string): void {`,
+          `  const code = ALIGN_SELF_CODE[value];`,
+          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported alignSelf "\${value}"\`);`,
+          `  out.push(TAG.${tag.name}, code);`,
+          '}',
+        );
+        break;
+      case 'enum:align_content':
+        lines.push(
+          `function ${fnName}(out: number[], value: string): void {`,
+          `  const code = ALIGN_CONTENT_CODE[value];`,
+          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported alignContent "\${value}"\`);`,
+          `  out.push(TAG.${tag.name}, code);`,
+          '}',
+        );
+        break;
       case 'enum:justify_content':
         lines.push(
           `function ${fnName}(out: number[], value: string): void {`,
@@ -335,7 +355,7 @@ export function generateCodec() {
     '// Source: @hayate/protocol-spec',
     '',
     "import type { StylePatch } from '@tsubame/renderer-protocol';",
-    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';",
+    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',
     '',

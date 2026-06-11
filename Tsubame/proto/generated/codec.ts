@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -132,6 +132,25 @@ const ALIGN_ITEMS_CODE: Record<string, number> = {
   'center': ALIGN_ITEMS.center,
   'stretch': ALIGN_ITEMS.stretch,
   'baseline': ALIGN_ITEMS.baseline,
+};
+
+const ALIGN_SELF_CODE: Record<string, number> = {
+  'auto': ALIGN_SELF.auto,
+  'flex-start': ALIGN_SELF.flexStart,
+  'flex-end': ALIGN_SELF.flexEnd,
+  'center': ALIGN_SELF.center,
+  'stretch': ALIGN_SELF.stretch,
+  'baseline': ALIGN_SELF.baseline,
+};
+
+const ALIGN_CONTENT_CODE: Record<string, number> = {
+  'flex-start': ALIGN_CONTENT.flexStart,
+  'flex-end': ALIGN_CONTENT.flexEnd,
+  'center': ALIGN_CONTENT.center,
+  'stretch': ALIGN_CONTENT.stretch,
+  'space-between': ALIGN_CONTENT.spaceBetween,
+  'space-around': ALIGN_CONTENT.spaceAround,
+  'space-evenly': ALIGN_CONTENT.spaceEvenly,
 };
 
 const JUSTIFY_CONTENT_CODE: Record<string, number> = {
@@ -366,6 +385,27 @@ function encode_gridTemplateRows(out: number[], value: import('@tsubame/renderer
   }
 }
 
+function encode_flexShrink(out: number[], value: unknown): void {
+  out.push(TAG.FLEX_SHRINK, finiteNumber('flexShrink', value));
+}
+
+function encode_flexBasis(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.FLEX_BASIS, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_alignSelf(out: number[], value: string): void {
+  const code = ALIGN_SELF_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported alignSelf "${value}"`);
+  out.push(TAG.ALIGN_SELF, code);
+}
+
+function encode_alignContent(out: number[], value: string): void {
+  const code = ALIGN_CONTENT_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported alignContent "${value}"`);
+  out.push(TAG.ALIGN_CONTENT, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -407,6 +447,10 @@ const STYLE_ENCODERS = {
   defaultFontWeight: encode_defaultFontWeight,
   gridTemplateColumns: encode_gridTemplateColumns,
   gridTemplateRows: encode_gridTemplateRows,
+  flexShrink: encode_flexShrink,
+  flexBasis: encode_flexBasis,
+  alignSelf: encode_alignSelf,
+  alignContent: encode_alignContent,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

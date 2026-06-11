@@ -609,5 +609,65 @@
       "property": "grid-template-rows",
       "format": "dimension-list"
     }
+  },
+  {
+    "name": "FLEX_SHRINK",
+    "value": 40,
+    "encodeFrom": "f32",
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "flex-shrink",
+      "format": "number"
+    }
+  },
+  {
+    "name": "FLEX_BASIS",
+    "value": 41,
+    "encodeFrom": "dimension",
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "flex-basis",
+      "format": "dimension"
+    }
+  },
+  {
+    "name": "ALIGN_SELF",
+    "value": 42,
+    "encodeFrom": "enum:align_self",
+    "params": [
+      {
+        "name": "value",
+        "type": "align_self"
+      }
+    ],
+    "domCss": {
+      "property": "align-self",
+      "format": "enum:align_self"
+    }
+  },
+  {
+    "name": "ALIGN_CONTENT",
+    "value": 43,
+    "encodeFrom": "enum:align_content",
+    "params": [
+      {
+        "name": "value",
+        "type": "align_content"
+      }
+    ],
+    "domCss": {
+      "property": "align-content",
+      "format": "enum:align_content"
+    }
   }
 ]
