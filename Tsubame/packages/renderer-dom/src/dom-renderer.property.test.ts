@@ -1,19 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Window } from 'happy-dom';
 import { DomRenderer } from './dom-renderer.js';
+import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 
 describe('DomRenderer setProperty (ADR-0071)', () => {
-  let window: Window;
+  let document: Document;
   let container: HTMLElement;
 
   beforeEach(() => {
-    window = new Window();
-    container = window.document.createElement('div');
-    window.document.body.appendChild(container);
+    ({ document, container } = createHappyDomFixture());
   });
 
   it('throws on unknown property names', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     expect(() => renderer.setProperty(id, 'data-foo', 'bar')).toThrow(
       /Unknown element property/,
@@ -24,7 +22,7 @@ describe('DomRenderer setProperty (ADR-0071)', () => {
   });
 
   it('applies value and placeholder on text-input', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('text-input');
     renderer.setRoot(id);
     renderer.setProperty(id, 'value', 'hello');
@@ -35,7 +33,7 @@ describe('DomRenderer setProperty (ADR-0071)', () => {
   });
 
   it('applies disabled and src on supported elements', () => {
-    const renderer = new DomRenderer({ document: window.document, container });
+    const renderer = new DomRenderer({ document, container });
     const root = renderer.createElement('view');
     const button = renderer.createElement('button');
     const image = renderer.createElement('image');
