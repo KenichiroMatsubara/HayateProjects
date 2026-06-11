@@ -37,6 +37,7 @@ const validators = {
   element_kinds: validatorFor('simple_entry.schema.json'),
   unset_kinds: validatorFor('unset_kind.schema.json'),
   modifier_keys: validatorFor('modifier_key.schema.json'),
+  pseudo_states: validatorFor('pseudo_state.schema.json'),
 };
 
 const validateManifest = validatorFor('manifest.schema.json');
@@ -79,6 +80,13 @@ for (const section of SPEC_SECTIONS) {
         throw new Error(
           `modifier_keys.json[${i}]: value ${value} must be a single-bit mask (power of two)`,
         );
+      }
+    }
+    if (section === 'pseudo_states') {
+      const priorities = data.map((e) => e.priority);
+      const unique = new Set(priorities);
+      if (unique.size !== priorities.length) {
+        throw new Error('pseudo_states.json: priority values must be unique');
       }
     }
   }

@@ -18,6 +18,7 @@ export const SPEC_SECTIONS = [
   'element_kinds',
   'unset_kinds',
   'modifier_keys',
+  'pseudo_states',
 ];
 
 export function loadProtocolSpec(specDir = DEFAULT_SPEC_DIR) {

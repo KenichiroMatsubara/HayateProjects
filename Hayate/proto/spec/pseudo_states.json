@@ -1,0 +1,20 @@
+[
+  {
+    "name": "focus",
+    "value": 2,
+    "cssPseudo": ":focus",
+    "priority": 0
+  },
+  {
+    "name": "hover",
+    "value": 0,
+    "cssPseudo": ":hover",
+    "priority": 1
+  },
+  {
+    "name": "active",
+    "value": 1,
+    "cssPseudo": ":active",
+    "priority": 2
+  }
+]

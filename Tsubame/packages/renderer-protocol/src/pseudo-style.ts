@@ -1,15 +1,20 @@
+export type {
+  PseudoStyleKey,
+  PseudoStylePatch,
+} from './generated/pseudo-state.js';
+export {
+  PSEUDO_STATE_CODE,
+  PSEUDO_STATE_PRIORITY,
+  PSEUDO_STYLE_KEYS,
+  PSEUDO_STYLE_KEYS_BY_PRIORITY,
+} from './generated/pseudo-state.js';
+
+import {
+  PSEUDO_STYLE_KEYS,
+  type PseudoStyleKey,
+  type PseudoStylePatch,
+} from './generated/pseudo-state.js';
 import type { StylePatch } from './style.js';
-
-export const PSEUDO_STYLE_KEYS = [':hover', ':active', ':focus'] as const;
-export type PseudoStyleKey = (typeof PSEUDO_STYLE_KEYS)[number];
-
-export type PseudoStylePatch = Partial<Record<PseudoStyleKey, StylePatch>>;
-
-export const PSEUDO_STATE_CODE: Record<PseudoStyleKey, number> = {
-  ':hover': 0,
-  ':active': 1,
-  ':focus': 2,
-};
 
 export function isPseudoStyleKey(key: string): key is PseudoStyleKey {
   return (PSEUDO_STYLE_KEYS as readonly string[]).includes(key);
