@@ -79,12 +79,18 @@ _Avoid_: 場当たり的な文字列エラー
 ## Runtime Boundaries
 
 **Platform Adapter**:
-IME、入力、surface、クリップボード、アクセシビリティなどのプラットフォーム依存処理を担う層。Hayate Core はその実装詳細を知らない。
-_Avoid_: Renderer, Host
+IME、入力、surface、クリップボード、アクセシビリティなどのプラットフォーム依存処理を担う層。Hayate Core はその実装詳細を知らない。ネイティブプラットフォームが自動で提供するイベント（Web の DOM pointer/wheel/resize/touch 等）は host 側 glue を介さず Platform Adapter 自身が購読・変換まで完結させる（ADR-0080）。host/app からのプログラマティック操作はオプトインの追加経路として共存する。
+_Avoid_: Renderer, Host, host 側 glue コードでの DOM イベント購読を前提とした説明
 
 **Tsubame Adapter**:
 `tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持したまま、レンダリング先だけを `Renderer Protocol` に向け替える。
 _Avoid_: shared component runtime, unified signal runtime
+
+## Style Resolution Terms
+
+**Viewport Condition**:
+スタイルプロパティの値が、ルートサーフェスの幅・高さに対する `min-width`/`max-width`/`min-height`/`max-height`（px固定、1エントリ内はAND評価）の組み合わせに応じて切り替わるバリアント。`effective_visual` resolver が継承（ch1+ch2）→ 自身 → pseudo (`focus<hover<active`) に続く解決軸として扱う。同一プロパティに複数の Viewport Condition が同時マッチする場合は宣言順で後勝ち（CSSの `@media` カスケードに準拠）。
+_Avoid_: 要素自身の `min-width`/`max-width` style tag（box constraint としての CSS `min-width`/`max-width` プロパティ）と同一視する説明、Container Query（要素自身の確定サイズに基づく条件。現時点ではスコープ外）
 
 ## Historical Terms
 

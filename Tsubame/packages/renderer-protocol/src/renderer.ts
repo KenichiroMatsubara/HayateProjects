@@ -1,6 +1,7 @@
 import type { ElementId, ElementKind } from './element.js';
 import type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
 import type { StylePatch } from './style.js';
+import type { ViewportCondition } from './viewport-condition.js';
 import type { EventHandler, EventKind, Unsubscribe } from './event.js';
 
 /**
@@ -19,6 +20,8 @@ export interface IRenderer {
   setStyle(id: ElementId, style: StylePatch): void;
   /** Hayate CSS pseudo-class block (`:hover` / `:active` / `:focus`). */
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void;
+  /** Viewport-conditional style override, one variant per property (ADR-0081). */
+  setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void;
   setText(id: ElementId, text: string): void;
 
   /**

@@ -1145,7 +1145,9 @@ fn style_tag_to_prop_expr(tag_name: &str, params: &[Param], _proto: &Proto) -> S
 fn generate_dispatch(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
-    out.push_str("use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind};\n");
+    out.push_str(
+        "use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, ViewportCondition};\n",
+    );
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
     out.push_str("use super::ApplyMutationsHost;\n");
     out.push_str("use crate::generated::{Op, decode_style_packet, parse_next_op};\n\n");
@@ -1163,6 +1165,13 @@ fn generate_dispatch(proto: &Proto) -> String {
         "        _ => Err(JsValue::from_str(&format!(\"unknown unset style kind {v}\"))),\n",
     );
     out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "/// `OP_SET_STYLE_VARIANT` encodes an unset viewport-condition axis as -1.0 (ADR-0081).\n",
+    );
+    out.push_str("fn viewport_axis(raw: f32) -> Option<f32> {\n");
+    out.push_str("    if raw < 0.0 { None } else { Some(raw) }\n");
     out.push_str("}\n\n");
 
     out.push_str("pub(crate) fn apply_mutations_batch<H: ApplyMutationsHost>(\n");
@@ -1328,6 +1337,26 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
             let props = decode_style_packet(slice)?;
             host.tree_mut()
                 .element_set_pseudo_style(ElementId::from_u64(id), pseudo, &props);
+            Ok(())
+"#.to_string()
+        }
+        "SET_STYLE_VARIANT" => {
+            r#"            let slice = styles
+                .get(style_offset..style_offset + style_len)
+                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE_VARIANT"))?;
+            let mut props = decode_style_packet(slice)?;
+            if props.len() != 1 {
+                return Err(JsValue::from_str("OP_SET_STYLE_VARIANT requires exactly one style property"));
+            }
+            let prop = props.remove(0);
+            let condition = ViewportCondition {
+                min_width: viewport_axis(min_width),
+                max_width: viewport_axis(max_width),
+                min_height: viewport_axis(min_height),
+                max_height: viewport_axis(max_height),
+            };
+            host.tree_mut()
+                .element_set_style_variant(ElementId::from_u64(id), condition, prop);
             Ok(())
 "#.to_string()
         }

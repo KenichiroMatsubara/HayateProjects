@@ -9,6 +9,30 @@ pub enum StylePropKind {
     FontWeight,
 }
 
+/// Viewport-based condition for a style variant (ADR-0081).
+///
+/// All axes are in px and AND-combined; `min_*` match inclusively
+/// (`actual >= min_*`) and `max_*` match inclusively (`actual <= max_*`),
+/// mirroring CSS `@media (min-width: ...)` / `(max-width: ...)` etc.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewportCondition {
+    pub min_width: Option<f32>,
+    pub max_width: Option<f32>,
+    pub min_height: Option<f32>,
+    pub max_height: Option<f32>,
+}
+
+impl ViewportCondition {
+    /// Whether this condition matches the given viewport size.
+    pub fn matches(&self, viewport_width: f32, viewport_height: f32) -> bool {
+        let min_width_ok = self.min_width.is_none_or(|v| viewport_width >= v);
+        let max_width_ok = self.max_width.is_none_or(|v| viewport_width <= v);
+        let min_height_ok = self.min_height.is_none_or(|v| viewport_height >= v);
+        let max_height_ok = self.max_height.is_none_or(|v| viewport_height <= v);
+        min_width_ok && max_width_ok && min_height_ok && max_height_ok
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FontStyleValue {
     Normal,

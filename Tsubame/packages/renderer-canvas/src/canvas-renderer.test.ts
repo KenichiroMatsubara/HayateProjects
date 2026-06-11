@@ -157,6 +157,28 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it('batches setStyleVariant through apply_mutations as OP_SET_STYLE_VARIANT (ADR-0081)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const view = renderer.createElement('view');
+
+    renderer.setStyleVariant(view, { minWidth: 768 }, { backgroundColor: '#0000ff' });
+
+    sched.tick();
+
+    expect(hayate.mutations).toHaveLength(1);
+    const batch = hayate.mutations[0]!;
+    const opIndex = batch.ops.indexOf(OP.SET_STYLE_VARIANT);
+    expect(opIndex).toBeGreaterThanOrEqual(0);
+    expect(batch.ops[opIndex + 1]).toBe(view as unknown as number);
+    expect(batch.ops[opIndex + 2]).toBe(768); // minWidth
+    expect(batch.ops[opIndex + 3]).toBe(-1); // maxWidth (unset, ADR-0081 sentinel)
+    expect(batch.ops[opIndex + 4]).toBe(-1); // minHeight
+    expect(batch.ops[opIndex + 5]).toBe(-1); // maxHeight
+    expect(batch.styles.length).toBeGreaterThan(0);
+  });
+
   it('batches setPseudoStyle through apply_mutations without element_set_pseudo_style', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();

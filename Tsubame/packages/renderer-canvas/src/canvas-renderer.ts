@@ -7,6 +7,7 @@ import type {
   PseudoStyleKey,
   StylePatch,
   Unsubscribe,
+  ViewportCondition,
 } from '@tsubame/renderer-protocol';
 import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
@@ -91,6 +92,10 @@ export class CanvasRenderer implements IRenderer {
 
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
     this.packet.enqueueSetPseudoStyle(id, pseudo, style);
+  }
+
+  setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
+    this.packet.enqueueSetStyleVariant(id, condition, style);
   }
 
   setText(id: ElementId, text: string): void {

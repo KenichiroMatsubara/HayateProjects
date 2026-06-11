@@ -18,6 +18,7 @@ pub const OP_SET_TEXT_CONTENT: u32 = 12;
 pub const OP_SET_DISABLED: u32 = 13;
 pub const OP_SET_SRC: u32 = 14;
 pub const OP_SET_PSEUDO_STYLE: u32 = 15;
+pub const OP_SET_STYLE_VARIANT: u32 = 16;
 
 // Payload slot counts per opcode (op discriminant excluded)
 pub const OP_SLOTS: &[usize] = &[
@@ -37,6 +38,7 @@ pub const OP_SLOTS: &[usize] = &[
     2, // SET_DISABLED
     2, // SET_SRC
     4, // SET_PSEUDO_STYLE
+    7, // SET_STYLE_VARIANT
 ];
 
 // Style tag constants
@@ -222,6 +224,15 @@ pub enum Op {
         style_offset: usize,
         style_len: usize,
     },
+    SetStyleVariant {
+        id: u64,
+        min_width: f32,
+        max_width: f32,
+        min_height: f32,
+        max_height: f32,
+        style_offset: usize,
+        style_len: usize,
+    },
 }
 
 pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str> {
@@ -332,6 +343,17 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             let style_offset = ops[i + 2] as usize;
             let style_len = ops[i + 3] as usize;
             Ok((Op::SetPseudoStyle { id, state, style_offset, style_len }, i + 4))
+        }
+        16 => {
+            if i + 7 > ops.len() { return Err("op SET_STYLE_VARIANT truncated"); }
+            let id = ops[i + 0] as u64;
+            let min_width = ops[i + 1] as f32;
+            let max_width = ops[i + 2] as f32;
+            let min_height = ops[i + 3] as f32;
+            let max_height = ops[i + 4] as f32;
+            let style_offset = ops[i + 5] as usize;
+            let style_len = ops[i + 6] as usize;
+            Ok((Op::SetStyleVariant { id, min_width, max_width, min_height, max_height, style_offset, style_len }, i + 7))
         }
         _ => Err("unknown opcode"),
     }

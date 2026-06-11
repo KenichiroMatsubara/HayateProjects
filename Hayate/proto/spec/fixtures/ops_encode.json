@@ -20,5 +20,21 @@
     "name": "set-root",
     "ops": [{ "kind": "SET_ROOT", "id": 42 }],
     "wire": [3, 42]
+  },
+  {
+    "name": "set-style-variant-min-width",
+    "ops": [
+      {
+        "kind": "SET_STYLE_VARIANT",
+        "id": 7,
+        "minWidth": 768,
+        "maxWidth": -1,
+        "minHeight": -1,
+        "maxHeight": -1,
+        "styleOffset": 0,
+        "styleLen": 5
+      }
+    ],
+    "wire": [16, 7, 768, -1, -1, -1, 0, 5]
   }
 ]

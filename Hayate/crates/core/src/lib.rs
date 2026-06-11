@@ -9,7 +9,7 @@ pub use element::{
     ElementTree, Event, EventDelivery, FlexDirectionValue, JustifyValue, LayoutPass, ListenerId,
     event_document_kind,
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PseudoState, ResolvedElement,
-    StyleProp, StylePropKind, TextDecorationValue,
+    StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
 pub use render::{
