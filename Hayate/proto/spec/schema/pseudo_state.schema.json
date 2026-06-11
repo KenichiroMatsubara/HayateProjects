@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/pseudo_state.schema.json",
+  "title": "Pseudo-state entry (wire code + CSS priority band)",
+  "type": "object",
+  "required": ["name", "value", "cssPseudo", "priority"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "value": { "type": "integer", "minimum": 0 },
+    "cssPseudo": {
+      "type": "string",
+      "pattern": "^:[a-z-]+$"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Merge / cascade band order (ascending; last wins). focus=0, hover=1, active=2."
+    }
+  },
+  "additionalProperties": false
+}

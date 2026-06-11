@@ -5,12 +5,17 @@ import type {
   EventKind,
   IRenderer,
   InteractionEvent,
-  PseudoStyleKey,
   StylePatch,
   Unsubscribe,
   ViewportCondition,
 } from '@tsubame/renderer-protocol';
-import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
+import {
+  asElementId,
+  assertKnownElementProperty,
+  PSEUDO_STATE_PRIORITY,
+  PSEUDO_STYLE_KEYS,
+  type PseudoStyleKey,
+} from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 import {
@@ -134,6 +139,7 @@ export class DomRenderer implements IRenderer {
     if (sheet === null) return;
     const key = `${id as number}${pseudo}`;
     const cssText = `${selector}{${body}}`;
+    const priority = PSEUDO_STATE_PRIORITY[pseudo];
     const existing = this.pseudoRuleKeys.get(key);
     if (existing !== undefined) {
       const rule = sheet.cssRules.item(existing);
@@ -142,8 +148,12 @@ export class DomRenderer implements IRenderer {
         return;
       }
       sheet.deleteRule(existing);
+      this.bumpPseudoRuleIndices(existing, -1);
+      this.pseudoRuleKeys.delete(key);
     }
-    const index = sheet.insertRule(cssText, sheet.cssRules.length);
+    const index = insertionIndexForPseudoBand(sheet, priority);
+    sheet.insertRule(cssText, index);
+    this.bumpPseudoRuleIndices(index, 1);
     this.pseudoRuleKeys.set(key, index);
   }
 
@@ -232,6 +242,15 @@ export class DomRenderer implements IRenderer {
 
   resize(_width: number, _height: number): void {}
 
+  /** Shift tracked rule indices when the pseudo stylesheet gains or loses a rule. */
+  private bumpPseudoRuleIndices(from: number, delta: number): void {
+    for (const [key, idx] of this.pseudoRuleKeys) {
+      if (idx >= from) {
+        this.pseudoRuleKeys.set(key, idx + delta);
+      }
+    }
+  }
+
   private node(id: ElementId): HTMLElement {
     const el = this.nodes.get(id);
     if (el === undefined) {
@@ -250,7 +269,7 @@ export class DomRenderer implements IRenderer {
       }
       const id = elementIdFromDom(el);
       if (id !== undefined) {
-        for (const pseudo of [':hover', ':active', ':focus'] as const) {
+        for (const pseudo of PSEUDO_STYLE_KEYS) {
           this.pseudoRuleKeys.delete(`${id as number}${pseudo}`);
         }
         const mediaSet = this.variantMediaByElement.get(id);
@@ -264,6 +283,26 @@ export class DomRenderer implements IRenderer {
       }
     }
   }
+}
+
+function pseudoPriorityFromSelector(selectorText: string): number {
+  for (const pseudo of PSEUDO_STYLE_KEYS) {
+    if (selectorText.endsWith(pseudo)) {
+      return PSEUDO_STATE_PRIORITY[pseudo];
+    }
+  }
+  return 0;
+}
+
+function insertionIndexForPseudoBand(sheet: CSSStyleSheet, priority: number): number {
+  for (let i = 0; i < sheet.cssRules.length; i++) {
+    const rule = sheet.cssRules[i] as CSSStyleRule;
+    const rulePriority = pseudoPriorityFromSelector(rule.selectorText);
+    if (rulePriority > priority) {
+      return i;
+    }
+  }
+  return sheet.cssRules.length;
 }
 
 function pseudoStyleDeclarations(el: HTMLElement, patch: StylePatch): string {

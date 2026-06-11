@@ -209,6 +209,37 @@ fn element_effective_visual_viewport_height_axes() {
 }
 
 #[test]
+fn element_effective_visual_active_pseudo_wins_over_hover_when_both_match() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.element_set_style(
+        id,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0))],
+    );
+    tree.element_set_pseudo_style(
+        id,
+        PseudoState::Hover,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
+    tree.element_set_pseudo_style(
+        id,
+        PseudoState::Active,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+    );
+
+    tree.update_pointer_hover(Some(id));
+    tree.on_pointer_down_on(id, 0.0, 0.0);
+
+    let visual = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        visual.background_color,
+        Some(Color::new(0.0, 0.0, 1.0, 1.0)),
+        ":active pseudo must win over :hover (focus < hover < active)"
+    );
+}
+
+#[test]
 fn element_effective_visual_hover_pseudo_overrides_active_viewport_variant() {
     let mut tree = ElementTree::new();
     let id = tree.element_create(1, ElementKind::View);

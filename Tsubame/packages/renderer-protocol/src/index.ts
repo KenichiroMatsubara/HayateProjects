@@ -33,7 +33,9 @@ export {
 export type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
 export {
   PSEUDO_STATE_CODE,
+  PSEUDO_STATE_PRIORITY,
   PSEUDO_STYLE_KEYS,
+  PSEUDO_STYLE_KEYS_BY_PRIORITY,
   isPseudoStyleKey,
   splitHayateStyle,
 } from './pseudo-style.js';

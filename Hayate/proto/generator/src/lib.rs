@@ -15,12 +15,14 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
     let dispatch = generate_dispatch(&proto);
     let dom_mapper = generate_dom_style_mapper(&proto);
     let event_types = generate_event_types(&proto);
+    let pseudo_state_tables = generate_pseudo_state_tables(&proto);
 
     fs::write(out_dir.join("protocol.rs"), code).unwrap();
     fs::write(out_dir.join("codec.rs"), codec).unwrap();
     fs::write(out_dir.join("dispatch.rs"), dispatch).unwrap();
     fs::write(out_dir.join("dom_style_mapper.rs"), dom_mapper).unwrap();
     fs::write(out_dir.join("event_types.rs"), event_types).unwrap();
+    fs::write(out_dir.join("pseudo_state_tables.rs"), pseudo_state_tables).unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -37,6 +39,7 @@ struct Proto {
     element_kinds: Vec<SimpleEntry>,
     unset_kinds: Vec<SimpleEntry>,
     modifier_keys: Vec<SimpleEntry>,
+    pseudo_states: Vec<PseudoStateEntry>,
 }
 
 #[derive(Default)]
@@ -104,6 +107,13 @@ struct Param {
 struct SimpleEntry {
     name: String,
     value: u32,
+}
+
+#[derive(Default)]
+struct PseudoStateEntry {
+    name: String,
+    value: u32,
+    priority: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +199,13 @@ struct SimpleJson {
     value: u32,
 }
 
+#[derive(Deserialize)]
+struct PseudoStateJson {
+    name: String,
+    value: u32,
+    priority: u32,
+}
+
 fn read_json<T: for<'de> Deserialize<'de>>(spec_dir: &Path, name: &str) -> T {
     let path = spec_dir.join(name);
     let text = fs::read_to_string(&path)
@@ -214,6 +231,7 @@ fn load_spec(spec_dir: &Path) -> Proto {
     let element_kinds: Vec<SimpleJson> = read_json(spec_dir, "element_kinds.json");
     let unset_kinds: Vec<SimpleJson> = read_json(spec_dir, "unset_kinds.json");
     let modifier_keys: Vec<SimpleJson> = read_json(spec_dir, "modifier_keys.json");
+    let pseudo_states: Vec<PseudoStateJson> = read_json(spec_dir, "pseudo_states.json");
 
     Proto {
         types: types
@@ -253,6 +271,14 @@ fn load_spec(spec_dir: &Path) -> Proto {
         element_kinds: simple_from_json(element_kinds),
         unset_kinds: simple_from_json(unset_kinds),
         modifier_keys: simple_from_json(modifier_keys),
+        pseudo_states: pseudo_states
+            .into_iter()
+            .map(|e| PseudoStateEntry {
+                name: e.name,
+                value: e.value,
+                priority: e.priority,
+            })
+            .collect(),
     }
 }
 
@@ -1641,6 +1667,39 @@ fn generate_event_types(proto: &Proto) -> String {
     out.push_str("        _ => None,\n");
     out.push_str("    }\n");
     out.push_str("}\n");
+
+    out
+}
+
+fn generate_pseudo_state_tables(proto: &Proto) -> String {
+    let mut out = String::new();
+    out.push_str(GENERATED_HEADER);
+    out.push_str("use super::PseudoState;\n\n");
+
+    out.push_str("pub fn pseudo_state_from_u32(v: u32) -> Option<PseudoState> {\n");
+    out.push_str("    match v {\n");
+    for ps in &proto.pseudo_states {
+        out.push_str(&format!(
+            "        {} => Some(PseudoState::{}),\n",
+            ps.value,
+            to_pascal(&ps.name)
+        ));
+    }
+    out.push_str("        _ => None,\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    let mut resolve_order: Vec<&PseudoStateEntry> = proto.pseudo_states.iter().collect();
+    resolve_order.sort_by_key(|ps| ps.priority);
+
+    out.push_str("/// Application order for `resolve_visual` (ascending priority; last wins).\n");
+    out.push_str("pub const PSEUDO_RESOLVE_ORDER: [PseudoState; ");
+    out.push_str(&resolve_order.len().to_string());
+    out.push_str("] = [\n");
+    for ps in &resolve_order {
+        out.push_str(&format!("    PseudoState::{},\n", to_pascal(&ps.name)));
+    }
+    out.push_str("];\n");
 
     out
 }

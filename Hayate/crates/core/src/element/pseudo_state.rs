@@ -4,6 +4,13 @@ use crate::element::id::ElementId;
 use crate::element::style::{StyleProp, StylePropKind};
 use crate::element::tree::{Element, Visual};
 
+mod tables {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../proto/generated/pseudo_state_tables.rs"
+    ));
+}
+
 /// Element-local pseudo-class matching Hayate CSS (`:hover`, `:active`, `:focus`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PseudoState {
@@ -14,12 +21,7 @@ pub enum PseudoState {
 
 impl PseudoState {
     pub fn from_u32(v: u32) -> Option<Self> {
-        match v {
-            0 => Some(Self::Hover),
-            1 => Some(Self::Active),
-            2 => Some(Self::Focus),
-            _ => None,
-        }
+        tables::pseudo_state_from_u32(v)
     }
 }
 
@@ -137,7 +139,7 @@ pub fn apply_visual_props(visual: &mut Visual, props: &[StyleProp], text_dirty: 
     }
 }
 
-/// Merge base `visual` with pseudo overrides in CSS priority order: focus < hover < active.
+/// Merge base `visual` with pseudo overrides in spec priority order (last wins).
 pub fn resolve_visual(
     base: &Visual,
     pseudo: &PseudoStyles,
@@ -146,14 +148,15 @@ pub fn resolve_visual(
 ) -> Visual {
     let mut out = base.clone();
     let mut text_dirty = false;
-    if interaction.is_focused(id) {
-        apply_visual_props(&mut out, &pseudo.focus, &mut text_dirty);
-    }
-    if interaction.is_hovered(id) {
-        apply_visual_props(&mut out, &pseudo.hover, &mut text_dirty);
-    }
-    if interaction.is_active(id) {
-        apply_visual_props(&mut out, &pseudo.active, &mut text_dirty);
+    for state in tables::PSEUDO_RESOLVE_ORDER {
+        let active = match state {
+            PseudoState::Focus => interaction.is_focused(id),
+            PseudoState::Hover => interaction.is_hovered(id),
+            PseudoState::Active => interaction.is_active(id),
+        };
+        if active {
+            apply_visual_props(&mut out, pseudo.props(state), &mut text_dirty);
+        }
     }
     let _ = text_dirty;
     out

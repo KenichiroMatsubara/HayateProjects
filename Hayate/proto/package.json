@@ -15,6 +15,7 @@
     "./element_kinds": "./spec/element_kinds.json",
     "./unset_kinds": "./spec/unset_kinds.json",
     "./modifier_keys": "./spec/modifier_keys.json",
+    "./pseudo_states": "./spec/pseudo_states.json",
     "./load": "./scripts/load-spec.mjs"
   },
   "scripts": {

@@ -8,6 +8,7 @@
     "event_kinds",
     "element_kinds",
     "unset_kinds",
-    "modifier_keys"
+    "modifier_keys",
+    "pseudo_states"
   ]
 }
