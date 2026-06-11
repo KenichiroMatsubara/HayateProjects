@@ -93,6 +93,10 @@ _Avoid_: Solid-native, Vue-native, tsubame-svelte, signal 共有
 Tsubame と Tsubame Adapter の境界インターフェース（`IRenderer`）。element 作成・ツリー操作・スタイル設定・イベント購読を抽象化し、DOM Renderer と Canvas Renderer の二実装を持つ。element property は閉じた typed 語彙で、未知 property 名はエラー。
 _Avoid_: Host Interface, Host Config, Element Driver、untyped な setProperty で任意 HTML 属性を通す設計
 
+**意味論パリティ（Semantics Parity）**:
+Renderer Protocol のスタイル・イベント語彙は名前だけでなく**意味論ごと**契約であるという原則。継承・スクロール連鎖・フォント合成等の挙動は全レンダラーで同一でなければならず、Hayate CSS の定義が正準、DOM 系レンダラーがブラウザ既定挙動を抑制・補完して合わせる。
+_Avoid_: 「DOM で動けば OK」、レンダラーごとの方言、語彙＝プロパティ名リストという理解
+
 **DOM Renderer**:
 Renderer Protocol 実装の一つ。Signal が DOM を直接操作する CSR 専用で、Hayate（WASM）を使わない。Hayate の HTML Mode とは別概念。
 _Avoid_: Tsubame DOM Mode, SSG, SSR, ハイドレーション, Hayate HTML Mode
