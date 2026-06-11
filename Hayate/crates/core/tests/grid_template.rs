@@ -74,3 +74,43 @@ fn grid_template_columns_px_uses_fixed_tracks() {
     assert!((right_rect.0 - 30.0).abs() < 1.0);
     assert!((right_rect.2 - 70.0).abs() < 1.0);
 }
+
+#[test]
+fn grid_item_width_percent_resolves_against_grid_area_not_container() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(20, ElementKind::View);
+    let item = tree.element_create(21, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 100.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(DisplayValue::Grid),
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+            StyleProp::GridTemplateColumns(vec![
+                Dimension::fr(1.0),
+                Dimension::fr(1.0),
+                Dimension::fr(1.0),
+                Dimension::fr(1.0),
+            ]),
+        ],
+    );
+    tree.element_append_child(root, item);
+    tree.element_set_style(
+        item,
+        &[
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
+        ],
+    );
+    tree.render(0.0);
+
+    let item_rect = tree.element_layout_rect(item).expect("grid item layout");
+    assert!(
+        (item_rect.2 - 100.0).abs() < 1.0,
+        "width:100% on a grid item should resolve to one track (~100px), got {}",
+        item_rect.2
+    );
+}
