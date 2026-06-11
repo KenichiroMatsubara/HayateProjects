@@ -59,6 +59,81 @@ fn append_before_layout_still_produces_valid_geometry() {
     assert!((rect.3 - 40.0).abs() < 0.5);
 }
 
+/// Subtree removed before the first layout pass must reconcile without panic (#134).
+#[test]
+fn remove_lazy_subtree_before_first_layout_does_not_panic() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(25, ElementKind::View);
+    let branch = tree.element_create(26, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_append_child(root, branch);
+    tree.element_remove(branch);
+    tree.commit_frame();
+}
+
+/// Removing one branch must not panic when a sibling branch stays projected (#134).
+#[test]
+fn remove_subtree_with_sibling_branch_does_not_panic_on_reconcile() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(50, ElementKind::View);
+    let branch_a = tree.element_create(51, ElementKind::View);
+    let branch_b = tree.element_create(52, ElementKind::View);
+    let leaf_a = tree.element_create(53, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_append_child(root, branch_a);
+    tree.element_append_child(root, branch_b);
+    tree.element_append_child(branch_a, leaf_a);
+    tree.render(0.0);
+
+    tree.element_remove(branch_a);
+    tree.commit_frame();
+
+    assert!(
+        tree.element_has_taffy_node(branch_b),
+        "sibling branch must remain projected"
+    );
+    assert!(!tree.element_has_taffy_node(branch_a));
+    assert!(!tree.element_has_taffy_node(leaf_a));
+}
+
+/// Removing a projected subtree after layout must not panic on reconcile (#134).
+#[test]
+fn remove_projected_subtree_does_not_panic_on_reconcile() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(30, ElementKind::View);
+    let branch = tree.element_create(31, ElementKind::View);
+    let leaf = tree.element_create(32, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_append_child(root, branch);
+    tree.element_append_child(branch, leaf);
+    tree.render(0.0);
+
+    tree.element_remove(branch);
+    tree.commit_frame();
+}
+
+/// Removing a subtree with inline text after layout must not double-delete Taffy nodes (#134).
+#[test]
+fn remove_subtree_with_inline_text_does_not_panic_on_reconcile() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(40, ElementKind::View);
+    let ifc_root = tree.element_create(41, ElementKind::Text);
+    let inline = tree.element_create(42, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_append_child(root, ifc_root);
+    tree.element_append_child(ifc_root, inline);
+    tree.element_set_text(ifc_root, "Hello ");
+    tree.element_set_text(inline, "world");
+    tree.render(0.0);
+
+    tree.element_remove(ifc_root);
+    tree.commit_frame();
+}
+
 /// Reparenting text under text flips projection class (block IFC root → inline).
 #[test]
 fn reparent_text_under_text_clears_taffy_node() {
