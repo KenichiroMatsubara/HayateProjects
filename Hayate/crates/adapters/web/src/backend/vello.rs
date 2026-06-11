@@ -12,6 +12,7 @@ use super::{CanvasBackend, ClearColor, SceneRendererKind};
 pub(crate) struct SelectedBackend {
     surface_host: VelloSurfaceHost,
     scene_renderer: VelloSceneRenderer,
+    content_scale: f32,
 }
 
 struct VelloSurfaceHost {
@@ -33,6 +34,7 @@ impl SelectedBackend {
         Ok(Self {
             surface_host,
             scene_renderer,
+            content_scale: 1.0,
         })
     }
 }
@@ -168,7 +170,7 @@ impl CanvasBackend for SelectedBackend {
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
         let target = self.surface_host.render_target();
         self.scene_renderer
-            .render_scene(scene, &target, clear_color)
+            .render_scene(scene, &target, clear_color, self.content_scale)
             .map_err(|e| JsValue::from_str(&e))?;
         self.surface_host.present_target()
     }
@@ -177,7 +179,8 @@ impl CanvasBackend for SelectedBackend {
         self.render_scene(&SceneGraph::new(), clear_color)
     }
 
-    fn resize(&mut self, width: u32, height: u32) {
+    fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+        self.content_scale = content_scale.max(1.0);
         self.surface_host.resize(width, height);
     }
 }

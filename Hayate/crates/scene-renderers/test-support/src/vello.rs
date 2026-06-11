@@ -36,11 +36,21 @@ pub fn try_vello_harness() -> Option<VelloHarness> {
 }
 
 pub fn render_scene_to_pixels(harness: &mut VelloHarness, graph: &SceneGraph) -> Option<Vec<u8>> {
+    render_scene_to_pixels_scaled(harness, graph, CANVAS_W, CANVAS_H, 1.0)
+}
+
+pub fn render_scene_to_pixels_scaled(
+    harness: &mut VelloHarness,
+    graph: &SceneGraph,
+    width: u32,
+    height: u32,
+    content_scale: f32,
+) -> Option<Vec<u8>> {
     let texture = harness.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("hayate_css_pixel_test"),
         size: wgpu::Extent3d {
-            width: CANVAS_W,
-            height: CANVAS_H,
+            width,
+            height,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -63,14 +73,15 @@ pub fn render_scene_to_pixels(harness: &mut VelloHarness, graph: &SceneGraph) ->
                 device: &harness.device,
                 queue: &harness.queue,
                 target_view: &view,
-                width: CANVAS_W,
-                height: CANVAS_H,
+                width,
+                height,
             },
             CLEAR_COLOR,
+            content_scale,
         )
         .ok()?;
 
-    readback_texture_rgba8(&harness.device, &harness.queue, &texture, CANVAS_W, CANVAS_H)
+    readback_texture_rgba8(&harness.device, &harness.queue, &texture, width, height)
 }
 
 fn readback_texture_rgba8(

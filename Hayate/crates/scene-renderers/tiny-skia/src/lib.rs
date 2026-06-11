@@ -18,9 +18,10 @@ impl TinySkiaSceneRenderer {
         graph: &SceneGraph,
         pixmap: &mut Pixmap,
         clear_color: [f32; 4],
+        content_scale: f32,
     ) {
         pixmap.fill(to_premultiplied_color(clear_color));
-        let mut painter = TinySkiaPainter::new(pixmap);
+        let mut painter = TinySkiaPainter::new(pixmap, content_scale);
         render_scene_graph(graph, &mut painter);
     }
 }

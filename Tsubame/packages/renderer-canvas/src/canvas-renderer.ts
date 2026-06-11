@@ -56,12 +56,13 @@ export class CanvasRenderer implements IRenderer {
     }
   }
 
-  resize(width: number, height: number): void {
+  resize(width: number, height: number, scale = 1): void {
+    const dpr = Math.max(1, scale);
     if (this.canvas !== null) {
-      this.canvas.width = width;
-      this.canvas.height = height;
+      this.canvas.width = Math.round(width * dpr);
+      this.canvas.height = Math.round(height * dpr);
     }
-    this.raw.on_resize(width, height);
+    this.raw.on_resize(width, height, dpr);
   }
 
   createElement(kind: ElementKind): ElementId {

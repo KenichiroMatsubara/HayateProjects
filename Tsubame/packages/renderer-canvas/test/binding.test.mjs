@@ -26,8 +26,8 @@ class StubHayate {
       texts: Array.from(texts),
     });
   }
-  on_resize(width, height) {
-    this.resizes.push({ width, height });
+  on_resize(width, height, scale) {
+    this.resizes.push({ width, height, scale });
   }
   render(timestampMs) {
     this.renders.push(timestampMs);
