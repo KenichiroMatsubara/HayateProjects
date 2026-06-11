@@ -531,6 +531,7 @@ dependencies = [
  "linebender_resource_handle",
  "log",
  "parley",
+ "serde_json",
  "slotmap",
  "taffy",
 ]
