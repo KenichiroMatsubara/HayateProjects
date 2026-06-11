@@ -24,7 +24,7 @@ fn rounded_rect_leaves_corner_pixels_clear() {
     });
 
     let mut pixmap = Pixmap::new(64, 64).unwrap();
-    TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0]);
+    TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
 
     assert_eq!(
         pixel(&pixmap, 9, 9),
@@ -54,7 +54,7 @@ fn rounded_ring_draws_border_and_hollow_center() {
     });
 
     let mut pixmap = Pixmap::new(64, 64).unwrap();
-    TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0]);
+    TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
 
     assert_eq!(
         pixel(&pixmap, 32, 32)[3],
@@ -94,7 +94,7 @@ fn border_and_background_renders_rounded_frame() {
     });
 
     let mut pixmap = Pixmap::new(64, 64).unwrap();
-    TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0]);
+    TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
 
     assert_eq!(
         pixel(&pixmap, 9, 9),

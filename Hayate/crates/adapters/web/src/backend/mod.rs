@@ -114,10 +114,11 @@ pub(crate) trait SceneRenderer {
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
 
     /// Resize the render surface to match the canvas's new pixel dimensions.
+    /// `content_scale` maps CSS layout coordinates to physical pixels (dpr).
     /// Backends that draw to an off-screen target (GPU texture / CPU pixmap)
     /// must reallocate it here, otherwise content stays clipped to the init
     /// size while the canvas grows. Default is a no-op for sizeless backends.
-    fn resize(&mut self, _width: u32, _height: u32) {}
+    fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {}
 }
 
 impl SceneRendererKind {
@@ -364,7 +365,7 @@ impl RenderHost {
         match next_kind.try_init_sync_for_fallback(self.canvas.clone()) {
             Ok(mut renderer) => {
                 debug_assert!(self.selection_policy.allows(renderer.kind()));
-                renderer.resize(self.canvas.width(), self.canvas.height());
+                renderer.resize(self.canvas.width(), self.canvas.height(), 1.0);
                 let retry_result = retry(renderer.as_mut());
                 self.renderer = Some(renderer);
                 retry_result
@@ -434,9 +435,9 @@ impl SceneRenderer for RenderHost {
         }
     }
 
-    fn resize(&mut self, width: u32, height: u32) {
+    fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
         if let Some(renderer) = self.renderer.as_mut() {
-            renderer.resize(width, height);
+            renderer.resize(width, height, content_scale);
         }
     }
 }

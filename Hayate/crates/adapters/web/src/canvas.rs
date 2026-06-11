@@ -44,8 +44,8 @@ pub struct HayateElementRenderer {
     font_queue: FontQueue,
     /// IME candidate-window bounds synced each render (ADR-0069).
     ime: WebImeBridge,
-    /// ResizeObserver callback queues viewport (CSS px) for the next `render()`.
-    pending_resize: Rc<RefCell<Option<(f32, f32)>>>,
+    /// ResizeObserver callback queues viewport metrics for the next `render()`.
+    pending_resize: Rc<RefCell<Option<resize_observer::CanvasResizeMetrics>>>,
     last_viewport: Rc<RefCell<(f32, f32)>>,
     _resize_observer: ResizeObserverGuard,
 }
@@ -62,7 +62,12 @@ impl HayateElementRenderer {
         canvas.set_width(metrics.buffer_width);
         canvas.set_height(metrics.buffer_height);
 
-        let backend = SelectedBackend::init(canvas.clone()).await?;
+        let mut backend = SelectedBackend::init(canvas.clone()).await?;
+        backend.resize(
+            metrics.buffer_width,
+            metrics.buffer_height,
+            metrics.content_scale,
+        );
         let mut tree = ElementTree::new();
         tree.set_viewport(metrics.viewport_width, metrics.viewport_height);
 
@@ -256,8 +261,8 @@ impl HayateElementRenderer {
     /// by the `element_*` setters (ADR-0037), so `render` only drives layout.
     pub fn render(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
         let pending = self.pending_resize.borrow_mut().take();
-        if let Some((width, height)) = pending {
-            self.apply_resize(width, height);
+        if let Some(metrics) = pending {
+            self.apply_resize(metrics);
         }
         // フェッチ完了フォントを layout より前に登録することで、同フレーム内で
         // fonts_dirty → compute_layout → 正しいグリフ、が成立する。
@@ -302,16 +307,24 @@ impl HayateElementRenderer {
         }
     }
 
-    pub fn on_resize(&mut self, width: f32, height: f32) {
-        self.apply_resize(width, height);
+    pub fn on_resize(&mut self, width: f32, height: f32, scale: f32) {
+        let metrics = resize_observer::canvas_resize_metrics(width, height, scale as f64);
+        self.canvas.set_width(metrics.buffer_width);
+        self.canvas.set_height(metrics.buffer_height);
+        self.apply_resize(metrics);
     }
 
-    fn apply_resize(&mut self, width: f32, height: f32) {
-        self.tree.set_viewport(width, height);
-        self.backend
-            .resize(self.canvas.width(), self.canvas.height());
-        self.tree.on_resize(width, height);
-        *self.last_viewport.borrow_mut() = (width, height);
+    fn apply_resize(&mut self, metrics: resize_observer::CanvasResizeMetrics) {
+        self.tree
+            .set_viewport(metrics.viewport_width, metrics.viewport_height);
+        self.backend.resize(
+            metrics.buffer_width,
+            metrics.buffer_height,
+            metrics.content_scale,
+        );
+        self.tree
+            .on_resize(metrics.viewport_width, metrics.viewport_height);
+        *self.last_viewport.borrow_mut() = (metrics.viewport_width, metrics.viewport_height);
     }
 
     pub fn register_listener(&mut self, element_id: f64, event_kind: u32) -> Result<f64, JsValue> {

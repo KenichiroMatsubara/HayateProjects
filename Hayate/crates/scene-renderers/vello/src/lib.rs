@@ -3,7 +3,10 @@ mod painter;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use hayate_core::{render_scene_graph, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph};
+use hayate_core::{
+    render_scene_graph, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph,
+    ScenePainter,
+};
 use vello::{
     peniko::{Blob, ImageAlphaType, ImageData, ImageFormat},
     AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
@@ -46,11 +49,26 @@ impl VelloSceneRenderer {
         graph: &SceneGraph,
         target: &VelloRenderTarget<'_>,
         clear_color: [f32; 4],
+        content_scale: f32,
     ) -> Result<(), String> {
         let mut scene = Scene::new();
         {
             let mut painter = VelloPainter::new(&mut scene);
+            let scaled = content_scale != 1.0;
+            if scaled {
+                painter.push_transform([
+                    content_scale as f64,
+                    0.0,
+                    0.0,
+                    content_scale as f64,
+                    0.0,
+                    0.0,
+                ]);
+            }
             render_scene_graph(graph, &mut painter);
+            if scaled {
+                painter.pop_transform();
+            }
         }
         self.renderer
             .render_to_texture(

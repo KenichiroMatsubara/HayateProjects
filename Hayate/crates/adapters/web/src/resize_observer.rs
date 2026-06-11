@@ -15,13 +15,14 @@ use wasm_bindgen::closure::Closure;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{HtmlCanvasElement, ResizeObserver, ResizeObserverEntry};
 
-/// Layout viewport (CSS px) and backing-store size (physical px).
+/// Layout viewport (CSS px), backing-store size (physical px), and content scale (dpr).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CanvasResizeMetrics {
     pub viewport_width: f32,
     pub viewport_height: f32,
     pub buffer_width: u32,
     pub buffer_height: u32,
+    pub content_scale: f32,
 }
 
 /// Derive viewport + buffer dimensions from a CSS content box and DPR.
@@ -33,6 +34,7 @@ pub fn canvas_resize_metrics(
     let viewport_width = css_width.max(0.0);
     let viewport_height = css_height.max(0.0);
     let dpr = device_pixel_ratio.max(1.0);
+    let content_scale = dpr as f32;
     let buffer_width = (f64::from(viewport_width) * dpr).round().max(1.0) as u32;
     let buffer_height = (f64::from(viewport_height) * dpr).round().max(1.0) as u32;
     CanvasResizeMetrics {
@@ -40,6 +42,7 @@ pub fn canvas_resize_metrics(
         viewport_height,
         buffer_width,
         buffer_height,
+        content_scale,
     }
 }
 
@@ -58,7 +61,7 @@ pub(crate) struct ResizeObserverGuard {
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn attach_resize_observer(
     canvas: &HtmlCanvasElement,
-    pending_resize: Rc<RefCell<Option<(f32, f32)>>>,
+    pending_resize: Rc<RefCell<Option<CanvasResizeMetrics>>>,
     last_viewport: Rc<RefCell<(f32, f32)>>,
 ) -> Result<ResizeObserverGuard, JsValue> {
     let canvas_for_cb = canvas.clone();
@@ -79,7 +82,7 @@ pub(crate) fn attach_resize_observer(
         *last_viewport.borrow_mut() = next;
         let _ = canvas_for_cb.set_width(metrics.buffer_width);
         let _ = canvas_for_cb.set_height(metrics.buffer_height);
-        *pending_resize.borrow_mut() = Some(next);
+        *pending_resize.borrow_mut() = Some(metrics);
     }) as Box<dyn Fn(js_sys::Array)>);
 
     let observer = ResizeObserver::new(closure.as_ref().unchecked_ref())?;
@@ -104,6 +107,7 @@ mod tests {
                 viewport_height: 300.0,
                 buffer_width: 800,
                 buffer_height: 600,
+                content_scale: 2.0,
             }
         );
     }
@@ -118,6 +122,7 @@ mod tests {
                 viewport_height: 480.0,
                 buffer_width: 640,
                 buffer_height: 480,
+                content_scale: 1.0,
             }
         );
     }
@@ -140,5 +145,15 @@ mod tests {
     fn viewport_size_changed_detects_css_pixel_changes() {
         assert!(viewport_size_changed((800.0, 600.0), (801.0, 600.0)));
         assert!(viewport_size_changed((800.0, 600.0), (800.0, 601.0)));
+    }
+
+    #[test]
+    fn adapter_resize_contract_keeps_layout_css_px_and_buffer_physical_px() {
+        let metrics = canvas_resize_metrics(800.0, 600.0, 2.0);
+        assert_eq!(metrics.viewport_width, 800.0);
+        assert_eq!(metrics.viewport_height, 600.0);
+        assert_eq!(metrics.content_scale, 2.0);
+        assert_eq!(metrics.buffer_width, 1600);
+        assert_eq!(metrics.buffer_height, 1200);
     }
 }

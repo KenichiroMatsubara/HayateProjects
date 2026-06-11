@@ -12,6 +12,7 @@ pub(crate) struct SelectedBackend {
     scene_renderer: TinySkiaSceneRenderer,
     width: u32,
     height: u32,
+    content_scale: f32,
 }
 
 impl SelectedBackend {
@@ -39,6 +40,7 @@ impl SelectedBackend {
             scene_renderer: TinySkiaSceneRenderer::new(),
             width,
             height,
+            content_scale: 1.0,
         })
     }
 }
@@ -49,18 +51,27 @@ impl CanvasBackend for SelectedBackend {
     }
 
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
-        self.scene_renderer
-            .render_scene(scene, &mut self.pixmap, clear_color);
+        self.scene_renderer.render_scene(
+            scene,
+            &mut self.pixmap,
+            clear_color,
+            self.content_scale,
+        );
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
     }
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
-        self.scene_renderer
-            .render_scene(&SceneGraph::new(), &mut self.pixmap, clear_color);
+        self.scene_renderer.render_scene(
+            &SceneGraph::new(),
+            &mut self.pixmap,
+            clear_color,
+            self.content_scale,
+        );
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
     }
 
-    fn resize(&mut self, width: u32, height: u32) {
+    fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+        self.content_scale = content_scale.max(1.0);
         if width == 0 || height == 0 || (width == self.width && height == self.height) {
             return;
         }

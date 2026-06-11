@@ -34,7 +34,7 @@ export interface RawHayate {
     styles: Float32Array,
     texts: string[],
   ): void;
-  on_resize(width: number, height: number): void;
+  on_resize(width: number, height: number, scale: number): void;
   on_pointer_move(x: number, y: number): void;
   on_pointer_down(x: number, y: number): void;
   on_pointer_up(x: number, y: number): void;

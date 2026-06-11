@@ -23,11 +23,16 @@ pub struct TinySkiaPainter<'a> {
 }
 
 impl<'a> TinySkiaPainter<'a> {
-    pub fn new(pixmap: &'a mut Pixmap) -> Self {
+    pub fn new(pixmap: &'a mut Pixmap, content_scale: f32) -> Self {
+        let transform = if content_scale == 1.0 {
+            Transform::identity()
+        } else {
+            Transform::from_scale(content_scale, content_scale)
+        };
         Self {
             pixmap,
             state: PainterState {
-                transform: Transform::identity(),
+                transform,
                 transform_stack: Vec::new(),
                 clip_masks: Vec::new(),
             },
