@@ -4,8 +4,8 @@ use crate::element::ambient_defaults::{self, AmbientDefaults};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pseudo_state::{self, InteractionSnapshot, PseudoStyles};
-use crate::element::style::{FontStyleValue, TextDecorationValue};
-use crate::element::tree::{Element, Visual};
+use crate::element::style::{FontStyleValue, StyleProp, TextDecorationValue, ViewportCondition};
+use crate::element::tree::{apply_visual, Element, Visual};
 use crate::color::Color;
 
 /// ch1 text→text inherited text-style fields (ADR-0065).
@@ -87,6 +87,58 @@ pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Vis
         v.text_decoration = ctx.text_local.as_ref().and_then(|t| t.text_decoration);
     }
     v
+}
+
+/// Apply matching viewport variants onto a copy of `base` (ADR-0081).
+pub fn own_with_viewport_variants(
+    base: &Visual,
+    variants: &[(ViewportCondition, StyleProp)],
+    viewport: (f32, f32),
+) -> Visual {
+    let mut own = base.clone();
+    let (viewport_width, viewport_height) = viewport;
+    let mut text_dirty = false;
+    for (condition, prop) in variants {
+        if condition.matches(viewport_width, viewport_height) {
+            apply_visual(&mut own, prop, &mut text_dirty);
+        }
+    }
+    let _ = text_dirty;
+    own
+}
+
+/// Whether viewport-conditioned own-style would change between two viewport sizes.
+pub fn viewport_variant_resolution_changed(
+    base: &Visual,
+    variants: &[(ViewportCondition, StyleProp)],
+    old_viewport: (f32, f32),
+    new_viewport: (f32, f32),
+) -> bool {
+    if variants.is_empty() || old_viewport == new_viewport {
+        return false;
+    }
+    let old = own_with_viewport_variants(base, variants, old_viewport);
+    let new = own_with_viewport_variants(base, variants, new_viewport);
+    own_visual_differs(&old, &new)
+}
+
+fn own_visual_differs(a: &Visual, b: &Visual) -> bool {
+    a.background_color != b.background_color
+        || (a.opacity - b.opacity).abs() > f32::EPSILON
+        || (a.border_radius - b.border_radius).abs() > f32::EPSILON
+        || (a.border_width - b.border_width).abs() > f32::EPSILON
+        || a.border_color != b.border_color
+        || a.text_color != b.text_color
+        || a.font_size != b.font_size
+        || a.font_weight != b.font_weight
+        || a.font_style != b.font_style
+        || a.text_decoration != b.text_decoration
+        || a.z_index != b.z_index
+        || a.font_family != b.font_family
+        || a.default_color != b.default_color
+        || a.default_font_size != b.default_font_size
+        || a.default_font_weight != b.default_font_weight
+        || a.default_font_family != b.default_font_family
 }
 
 /// Shared effective visual resolver (ADR-0067): inheritance → own → pseudo.

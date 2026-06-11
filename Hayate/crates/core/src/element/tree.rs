@@ -185,7 +185,18 @@ impl ElementTree {
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
-        self.viewport = (width, height);
+        let new_viewport = (width, height);
+        if new_viewport == self.viewport {
+            return;
+        }
+        let old_viewport = self.viewport;
+        self.viewport = new_viewport;
+        self.mark_viewport_dirty_on_resize(old_viewport, new_viewport);
+    }
+
+    #[cfg(test)]
+    pub fn test_viewport_dirty_len(&self) -> usize {
+        self.engine.viewport_dirty.len()
     }
 
     pub fn viewport(&self) -> (f32, f32) {
@@ -934,14 +945,11 @@ impl ElementTree {
         let el = self.elements.get(&id)?;
         let ctx = effective_visual::inherited_context_at(&self.elements, id);
         let interaction = self.interaction_snapshot();
-        let mut own = el.visual.clone();
-        let (viewport_width, viewport_height) = self.viewport;
-        let mut text_dirty = false;
-        for (condition, prop) in &el.viewport_variants {
-            if condition.matches(viewport_width, viewport_height) {
-                apply_visual(&mut own, prop, &mut text_dirty);
-            }
-        }
+        let own = effective_visual::own_with_viewport_variants(
+            &el.visual,
+            &el.viewport_variants,
+            self.viewport,
+        );
         Some(effective_visual::resolve_effective(
             &ctx,
             &own,
@@ -974,6 +982,7 @@ impl ElementTree {
                 0.0,
                 effective_visual::InheritedVisualContext::root(),
                 &interaction,
+                self.viewport,
                 &mut out,
             );
         }
@@ -1023,6 +1032,26 @@ impl ElementTree {
     fn mark_child_detachment_dirty(&mut self, parent: ElementId, child: ElementId) {
         self.mark_child_attachment_dirty(parent, child);
     }
+
+    fn mark_viewport_dirty_on_resize(
+        &mut self,
+        old_viewport: (f32, f32),
+        new_viewport: (f32, f32),
+    ) {
+        for (&id, el) in &self.elements {
+            if el.viewport_variants.is_empty() {
+                continue;
+            }
+            if effective_visual::viewport_variant_resolution_changed(
+                &el.visual,
+                &el.viewport_variants,
+                old_viewport,
+                new_viewport,
+            ) {
+                self.engine.mark_viewport_dirty(id);
+            }
+        }
+    }
 }
 
 impl Default for ElementTree {
@@ -1039,6 +1068,7 @@ fn walk_resolved(
     oy: f32,
     inherited: effective_visual::InheritedVisualContext,
     interaction: &InteractionSnapshot,
+    viewport: (f32, f32),
     out: &mut Vec<(ElementId, ResolvedElement)>,
 ) {
     let (taffy_node, el) = match projection.traversal_step(elements, id) {
@@ -1065,6 +1095,7 @@ fn walk_resolved(
                     oy,
                     child_inherited.clone(),
                     interaction,
+                    viewport,
                     out,
                 );
             }
@@ -1077,9 +1108,14 @@ fn walk_resolved(
     };
     let x = ox + layout.location.x;
     let y = oy + layout.location.y;
+    let own = effective_visual::own_with_viewport_variants(
+        &el.visual,
+        &el.viewport_variants,
+        viewport,
+    );
     let visual = effective_visual::resolve_effective(
         &inherited,
-        &el.visual,
+        &own,
         &el.pseudo_styles,
         interaction,
         id,
@@ -1126,6 +1162,7 @@ fn walk_resolved(
             y,
             child_inherited.clone(),
             interaction,
+            viewport,
             out,
         );
     }
@@ -1204,5 +1241,64 @@ fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementI
             return Some(id);
         }
         id = tree.element_parent(id)?;
+    }
+}
+
+#[cfg(test)]
+mod viewport_resize_tests {
+    use super::*;
+    use crate::element::kind::ElementKind;
+
+    #[test]
+    fn set_viewport_marks_viewport_dirty_when_breakpoint_crossed() {
+        let mut tree = ElementTree::new();
+        let id = tree.element_create(13210, ElementKind::View);
+        tree.set_root(id);
+        tree.set_viewport(500.0, 800.0);
+        tree.element_set_style_variant(
+            id,
+            ViewportCondition {
+                min_width: Some(768.0),
+                ..Default::default()
+            },
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        );
+
+        tree.set_viewport(900.0, 800.0);
+        assert_eq!(tree.test_viewport_dirty_len(), 1);
+
+        tree.commit_frame();
+        assert_eq!(tree.test_viewport_dirty_len(), 0);
+    }
+
+    #[test]
+    fn set_viewport_skips_viewport_dirty_without_variants() {
+        let mut tree = ElementTree::new();
+        let id = tree.element_create(13211, ElementKind::View);
+        tree.set_root(id);
+        tree.set_viewport(400.0, 300.0);
+
+        tree.set_viewport(900.0, 800.0);
+        assert_eq!(tree.test_viewport_dirty_len(), 0);
+        let _ = id;
+    }
+
+    #[test]
+    fn set_viewport_skips_viewport_dirty_within_same_breakpoint() {
+        let mut tree = ElementTree::new();
+        let id = tree.element_create(13212, ElementKind::View);
+        tree.set_root(id);
+        tree.set_viewport(900.0, 800.0);
+        tree.element_set_style_variant(
+            id,
+            ViewportCondition {
+                min_width: Some(768.0),
+                ..Default::default()
+            },
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        );
+
+        tree.set_viewport(950.0, 850.0);
+        assert_eq!(tree.test_viewport_dirty_len(), 0);
     }
 }
