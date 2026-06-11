@@ -1,0 +1,129 @@
+[
+  {
+    "name": "single_hover_background",
+    "elementKind": "view",
+    "pseudo": {
+      ":hover": { "backgroundColor": "#0000ff" }
+    },
+    "interaction": { "hover": true },
+    "expected": {
+      "properties": [{ "property": "background-color", "value": "#0000ff" }]
+    }
+  },
+  {
+    "name": "single_active_opacity",
+    "elementKind": "view",
+    "pseudo": {
+      ":active": { "opacity": 0.5 }
+    },
+    "interaction": { "active": true },
+    "expected": {
+      "properties": [{ "property": "opacity", "value": "0.5" }]
+    }
+  },
+  {
+    "name": "single_focus_border_radius",
+    "elementKind": "view",
+    "pseudo": {
+      ":focus": { "borderRadius": 8 }
+    },
+    "interaction": { "focus": true },
+    "expected": {
+      "properties": [{ "property": "border-radius", "value": "8px" }]
+    }
+  },
+  {
+    "name": "hover_active_priority_active_wins",
+    "elementKind": "view",
+    "pseudo": {
+      ":hover": { "backgroundColor": "#00ff00" },
+      ":active": { "backgroundColor": "#0000ff" }
+    },
+    "interaction": { "hover": true, "active": true },
+    "expected": {
+      "properties": [{ "property": "background-color", "value": "#0000ff" }]
+    }
+  },
+  {
+    "name": "focus_hover_priority_hover_wins",
+    "elementKind": "view",
+    "pseudo": {
+      ":focus": { "backgroundColor": "#ff0000" },
+      ":hover": { "backgroundColor": "#00ff00" }
+    },
+    "interaction": { "focus": true, "hover": true },
+    "expected": {
+      "properties": [{ "property": "background-color", "value": "#00ff00" }]
+    }
+  },
+  {
+    "name": "focus_active_priority_active_wins",
+    "elementKind": "view",
+    "pseudo": {
+      ":focus": { "backgroundColor": "#ff0000" },
+      ":active": { "backgroundColor": "#0000ff" }
+    },
+    "interaction": { "focus": true, "active": true },
+    "expected": {
+      "properties": [{ "property": "background-color", "value": "#0000ff" }]
+    }
+  },
+  {
+    "name": "hover_border_width_dom_extra",
+    "elementKind": "view",
+    "pseudo": {
+      ":hover": { "borderWidth": 2 }
+    },
+    "interaction": { "hover": true },
+    "expected": {
+      "properties": [
+        { "property": "border-width", "value": "2px" },
+        { "property": "border-style", "value": "solid", "domOnly": true }
+      ]
+    }
+  },
+  {
+    "name": "inactive_pseudo_emits_nothing",
+    "elementKind": "view",
+    "pseudo": {
+      ":hover": { "backgroundColor": "#0000ff" }
+    },
+    "interaction": {},
+    "expected": {
+      "properties": []
+    }
+  },
+  {
+    "name": "text_gating_block_skips_color",
+    "elementKind": "view",
+    "pseudo": {
+      ":hover": { "color": "#ff0000", "fontSize": 20 }
+    },
+    "interaction": { "hover": true },
+    "expected": {
+      "properties": []
+    }
+  },
+  {
+    "name": "text_gating_text_applies_color",
+    "elementKind": "text",
+    "pseudo": {
+      ":hover": { "color": "#ff0000" }
+    },
+    "interaction": { "hover": true },
+    "expected": {
+      "properties": [{ "property": "color", "value": "#ff0000" }]
+    }
+  },
+  {
+    "name": "text_gating_text_applies_font_size",
+    "elementKind": "text",
+    "pseudo": {
+      ":hover": { "fontSize": 22 }
+    },
+    "interaction": { "hover": true },
+    "expected": {
+      "properties": [{ "property": "font-size", "value": "22px" }]
+    }
+  }
+]
