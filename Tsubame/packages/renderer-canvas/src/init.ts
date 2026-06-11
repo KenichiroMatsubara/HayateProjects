@@ -50,13 +50,6 @@ export async function initCanvasRenderer(
   canvas: HTMLCanvasElement,
   options?: InitCanvasRendererOptions,
 ): Promise<CanvasRenderer> {
-  // Sync the canvas pixel buffer to its current CSS layout size before WASM init.
-  // CSS (position:fixed; inset:0; width:100vw; height:100vh) drives the display
-  // size; we read it here so app code never needs to know about canvas dimensions.
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = Math.round(rect.width);
-  canvas.height = Math.round(rect.height);
-
   const webgpuAvailable = await probeWebGPU();
   const backend = resolveCanvasBackend(options, webgpuAvailable);
   const raw = await loadCanvasBackend(backend, canvas);

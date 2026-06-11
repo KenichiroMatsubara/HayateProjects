@@ -15,10 +15,23 @@ import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
 import { syncEditContextBounds } from './edit-context-sync.js';
 
+export type ResizeObserverFactory = new (
+  callback: ResizeObserverCallback,
+) => ResizeObserver;
+
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
   cancelFrame?: (handle: number) => void;
   canvas?: HTMLCanvasElement;
+  /**
+   * When `false`, skip attaching a ResizeObserver (embedded hosts resize manually).
+   * Defaults to `true` when `canvas` is set.
+   */
+  autoResize?: boolean;
+  /** Injectable ResizeObserver constructor for tests. */
+  createResizeObserver?: ResizeObserverFactory;
+  /** Override `devicePixelRatio` (tests). Defaults to `globalThis.devicePixelRatio ?? 1`. */
+  devicePixelRatio?: number;
 }
 
 interface ListenerEntry {
@@ -37,6 +50,8 @@ export class CanvasRenderer implements IRenderer {
   private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
+  private readonly devicePixelRatio: number;
+  private resizeObserver: ResizeObserver | null = null;
   private frameHandle: number | null = null;
 
   constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
@@ -46,6 +61,13 @@ export class CanvasRenderer implements IRenderer {
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
     this.cancelFrame =
       options.cancelFrame ?? globalThis.cancelAnimationFrame.bind(globalThis);
+    this.devicePixelRatio = options.devicePixelRatio ?? globalThis.devicePixelRatio ?? 1;
+
+    const autoResize = options.autoResize ?? this.canvas !== null;
+    if (this.canvas !== null && autoResize) {
+      this.attachResizeObserver(this.canvas, options.createResizeObserver);
+    }
+
     this.frameHandle = this.requestFrame(this.frame);
   }
 
@@ -54,6 +76,38 @@ export class CanvasRenderer implements IRenderer {
       this.cancelFrame(this.frameHandle);
       this.frameHandle = null;
     }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+  }
+
+  private attachResizeObserver(
+    canvas: HTMLCanvasElement,
+    createResizeObserver?: ResizeObserverFactory,
+  ): void {
+    const ResizeObserverCtor =
+      createResizeObserver ??
+      (typeof globalThis.ResizeObserver !== 'undefined'
+        ? globalThis.ResizeObserver
+        : undefined);
+    if (ResizeObserverCtor === undefined) {
+      return;
+    }
+
+    const syncFromContentBox = (width: number, height: number): void => {
+      this.resize(Math.round(width), Math.round(height), this.devicePixelRatio);
+    };
+
+    const rect = canvas.getBoundingClientRect();
+    syncFromContentBox(rect.width, rect.height);
+
+    const observer = new ResizeObserverCtor((entries) => {
+      const entry = entries[0];
+      if (entry === undefined) return;
+      const { width, height } = entry.contentRect;
+      syncFromContentBox(width, height);
+    });
+    observer.observe(canvas);
+    this.resizeObserver = observer;
   }
 
   resize(width: number, height: number, scale = 1): void {
