@@ -21,6 +21,7 @@ use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
+use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
 use crate::element::style::{
     FontStyleValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
 };
@@ -146,6 +147,7 @@ pub struct ElementTree {
     pub(crate) engine: ElementEngine,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
+    pub(crate) scene_lowering: SceneLowering,
     pub(crate) event_queue: Vec<Event>,
     /// Element that owns the text-input cursor blink. Tracked here (not in the
     /// adapter) so `render(timestamp_ms)` can advance the blink itself per ADR-0032.
@@ -167,6 +169,7 @@ impl ElementTree {
             engine: ElementEngine::new(),
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
+            scene_lowering: SceneLowering::default(),
             event_queue: Vec::new(),
             focused_element: None,
             hovered_elements: HashSet::new(),
@@ -287,6 +290,7 @@ impl ElementTree {
     pub fn element_set_image(&mut self, id: ElementId, image: Arc<RenderImage>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.src_image = Some(image);
+            self.engine.mark_visual_dirty(id);
         }
     }
 
@@ -327,6 +331,7 @@ impl ElementTree {
     pub fn element_set_cursor_visible(&mut self, id: ElementId, visible: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = visible;
+            self.engine.mark_visual_dirty(id);
         }
     }
 
@@ -341,10 +346,12 @@ impl ElementTree {
             if let Some(el) = self.elements.get_mut(&prev) {
                 el.cursor_visible = false;
             }
+            self.engine.mark_visual_dirty(prev);
         }
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = true;
         }
+        self.engine.mark_visual_dirty(id);
         self.focused_element = Some(id);
         self.layout.last_cursor_toggle_ms = None;
     }
@@ -357,6 +364,7 @@ impl ElementTree {
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = false;
         }
+        self.engine.mark_visual_dirty(id);
         self.focused_element = None;
         self.layout.last_cursor_toggle_ms = None;
     }
@@ -505,6 +513,7 @@ impl ElementTree {
     pub fn element_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.transform = matrix;
+            self.engine.mark_visual_dirty(id);
         }
     }
 
@@ -512,6 +521,7 @@ impl ElementTree {
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.scroll_offset = (x, y);
+            self.engine.mark_visual_dirty(id);
         }
     }
 
@@ -584,6 +594,8 @@ impl ElementTree {
             self.layout.projection.set_style(id, style);
         } else if text_dirty {
             self.mark_text_content_dirty(id);
+        } else {
+            self.engine.mark_visual_dirty(id);
         }
     }
 
@@ -751,6 +763,7 @@ impl ElementTree {
             }
             pseudo_state::upsert_style_prop(slot, prop);
         }
+        self.engine.mark_visual_dirty(id);
     }
 
     pub fn element_unset_pseudo_style(
@@ -811,12 +824,34 @@ impl ElementTree {
     /// drives the focused TextInput's cursor blink without exposing a cursor-tick
     /// function to the host (ADR-0032).
     pub fn render(&mut self, timestamp_ms: f64) -> &SceneGraph {
-        if self.root.is_some() {
-            self.layout
-                .advance_cursor_blink(&mut self.elements, self.focused_element, timestamp_ms);
-        }
+        let interaction_before = self.scene_lowering.last_interaction.clone();
+        let cursor_dirty = if self.root.is_some() {
+            self.layout.advance_cursor_blink(
+                &mut self.elements,
+                self.focused_element,
+                timestamp_ms,
+            )
+        } else {
+            None
+        };
+        let dirty = collect_lowering_dirty(
+            self,
+            &self.engine.structure_dirty,
+            &self.engine.shape_dirty,
+            &self.engine.viewport_dirty,
+            &self.engine.visual_dirty,
+            self.engine.fonts_dirty,
+            &self.interaction_snapshot(),
+            &interaction_before,
+            cursor_dirty,
+        );
         self.commit_frame();
-        self.scene_cache = scene_build::build(self);
+        let _ = self.engine.drain_visual_dirty();
+        let mut scene_cache = std::mem::take(&mut self.scene_cache);
+        let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
+        scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty);
+        self.scene_cache = scene_cache;
+        self.scene_lowering = scene_lowering;
         &self.scene_cache
     }
 
@@ -1288,6 +1323,33 @@ fn next_ancestor_scroll_view(tree: &ElementTree, after: ElementId) -> Option<Ele
             return Some(id);
         }
         id = tree.element_parent(id)?;
+    }
+}
+
+#[doc(hidden)]
+impl ElementTree {
+    pub fn test_scene_lowering_built(&self) -> bool {
+        self.scene_lowering.built
+    }
+
+    pub fn test_scene_lowering_walk_count(&self) -> usize {
+        self.scene_lowering.walk_count
+    }
+
+    pub fn test_element_anchor_id(&self, id: ElementId) -> crate::node::NodeId {
+        self.scene_lowering
+            .anchors
+            .get(&id)
+            .expect("element anchor")
+            .anchor_id
+    }
+
+    pub fn test_scene_full_rebuild_draw_ops(&self) -> Vec<crate::render::DrawOp> {
+        use crate::render::{render_scene_graph, RecordingPainter};
+        let sg = scene_build::build_ephemeral(self);
+        let mut painter = RecordingPainter::new();
+        render_scene_graph(&sg, &mut painter);
+        painter.into_ops()
     }
 }
 

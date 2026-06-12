@@ -52,7 +52,7 @@ impl PseudoStyles {
 }
 
 /// Pointer-derived interaction flags used during effective-style resolution.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct InteractionSnapshot {
     pub hovered: HashSet<ElementId>,
     pub active: Option<ElementId>,

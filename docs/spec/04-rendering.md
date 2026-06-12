@@ -9,7 +9,7 @@
 ## Scene Graph
 
 ### REND-01 — 保持型 Scene Graph と Node 種別
-**規範文:** Hayate は保持型（retained）`SceneGraph` を持ち、Node 種別は `Rect` / `RoundedRing` / `TextRun` / `Image` / `Group` / `Clip` の GPU 直接処理可能な型のみとする。slotmap（generational arena）で NodeId を払い出す。
+**規範文:** Hayate は保持型（retained）`SceneGraph` を持ち、Node 種別は `Rect` / `RoundedRing` / `TextRun` / `Image` / `Group` / `Clip` に加え、element retained identity 用の `ElementAnchor` を持つ。slotmap（generational arena）で NodeId を払い出す。lowering は dirty-gated incremental（ADR-0086）。
 **出典:** ADR-0006, ADR-0054
 **状況:** ✅ — `node.rs` の `NodeKind`、`SceneGraph { nodes: SlotMap, roots: Vec }`。
 **備考:** —

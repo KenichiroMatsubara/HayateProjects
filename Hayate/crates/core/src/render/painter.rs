@@ -347,5 +347,11 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             }
             painter.pop_clip();
         }
+        NodeKind::ElementAnchor { .. } => {
+            let children = node.children.clone();
+            for child_id in children {
+                walk_node(graph, child_id, painter);
+            }
+        }
     }
 }

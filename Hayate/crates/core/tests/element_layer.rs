@@ -415,14 +415,12 @@ fn scroll_view_clip_contains_content_as_child() {
     tree.element_set_scroll_offset(root, 0.0, 50.0);
     let sg = tree.render(0.0);
 
-    // Find the Clip node — it should be in the roots list.
-    let clip_root = sg
-        .roots()
+    let clip_id = sg
         .iter()
-        .find(|&&id| matches!(sg.get(id).unwrap().kind, NodeKind::Clip { .. }))
-        .copied()
-        .expect("Clip should be a root node");
-    let clip_node = sg.get(clip_root).unwrap();
+        .find(|(_, n)| matches!(n.kind, NodeKind::Clip { .. }))
+        .map(|(id, _)| id)
+        .expect("ScrollView should emit a Clip node");
+    let clip_node = sg.get(clip_id).unwrap();
     // Clip's first child should be a Group (scroll translate).
     assert!(!clip_node.children.is_empty(), "Clip should have children");
     let first_child = sg.get(clip_node.children[0]).unwrap();
@@ -466,15 +464,12 @@ fn transform_emits_group_node() {
     assert_eq!(group_count, 1, "expected one Group node");
     assert_eq!(rect_count, 1, "expected one Rect node (background)");
 
-    // Group should be a root; Rect should be inside the Group (a child, not a root).
-    let groups: Vec<_> = sg
-        .roots()
+    let group_id = sg
         .iter()
-        .filter(|&&id| matches!(sg.get(id).unwrap().kind, NodeKind::Group { .. }))
-        .copied()
-        .collect();
-    assert_eq!(groups.len(), 1, "Group should be a root node");
-    let group_node = sg.get(groups[0]).unwrap();
+        .find(|(_, n)| matches!(n.kind, NodeKind::Group { .. }))
+        .map(|(id, _)| id)
+        .expect("transform should emit a Group node");
+    let group_node = sg.get(group_id).unwrap();
     assert_eq!(
         group_node.children.len(),
         1,

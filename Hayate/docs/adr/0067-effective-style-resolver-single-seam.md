@@ -1,6 +1,6 @@
 # Effective Style 解決を単一 seam に集約し query 露出する（候補 C1）
 
-**Status: accepted（ADR-0056/0065/0063 の解決を統合）**
+**Status: superseded（effective resolver seam は維持。scene lowering の「毎フレーム捨て」前提は ADR-0086 で置換）**
 
 **Date: 2026-06-07**
 

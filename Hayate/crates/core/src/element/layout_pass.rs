@@ -51,10 +51,10 @@ impl LayoutPass {
         elements: &mut HashMap<ElementId, Element>,
         focused_element: Option<ElementId>,
         timestamp_ms: f64,
-    ) {
+    ) -> Option<ElementId> {
         let focused = match focused_element {
             Some(id) => id,
-            None => return,
+            None => return None,
         };
         match self.last_cursor_toggle_ms {
             None => {
@@ -63,14 +63,16 @@ impl LayoutPass {
                 if let Some(el) = elements.get_mut(&focused) {
                     el.cursor_visible = true;
                 }
+                Some(focused)
             }
             Some(prev) if timestamp_ms - prev >= 500.0 => {
                 self.last_cursor_toggle_ms = Some(timestamp_ms);
                 if let Some(el) = elements.get_mut(&focused) {
                     el.cursor_visible = !el.cursor_visible;
                 }
+                Some(focused)
             }
-            _ => {}
+            _ => None,
         }
     }
 
