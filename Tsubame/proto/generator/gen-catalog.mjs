@@ -6,6 +6,7 @@ import {
   tagToPatchKey,
   toCamelCase,
 } from '@hayate/protocol-spec/load';
+import { classify, wireKind } from './value-type.mjs';
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '../generated');
 const jsonOutPath = join(outDir, 'catalog.json');
@@ -13,42 +14,6 @@ const tsOutPath = join(outDir, 'catalog.ts');
 
 function propertyToCamelCase(kebab) {
   return kebab.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-function wireKind(tag) {
-  if (tag.encodeFrom === 'dimension-list') return 'dimensionList';
-  if (tag.name === 'FONT_FAMILY' || tag.name === 'DEFAULT_FONT_FAMILY') return 'fontFamily';
-  if (tag.name === 'Z_INDEX') return 'zIndex';
-  const param = (tag.params ?? [])[0];
-  if (!param) return 'f32';
-  switch (param.type) {
-    case 'color':
-      return 'color';
-    case 'dimension':
-      return 'dimension';
-    case 'display':
-      return 'display';
-    case 'flex_direction':
-      return 'flexDirection';
-    case 'flex_wrap':
-      return 'flexWrap';
-    case 'align_items':
-      return 'alignItems';
-    case 'align_self':
-      return 'alignSelf';
-    case 'align_content':
-      return 'alignContent';
-    case 'justify_content':
-      return 'justifyContent';
-    case 'font_style':
-      return 'fontStyle';
-    case 'text_decoration':
-      return 'textDecoration';
-    case 'f32':
-      return 'f32';
-    default:
-      return 'f32';
-  }
 }
 
 function domFormatFromSpec(format) {
@@ -79,7 +44,7 @@ export function generateCatalog() {
 
   const catalog = (proto.style_tags ?? []).map((tag) => {
     const patchKey = tagToPatchKey(tag.name);
-    const kind = wireKind(tag);
+    const kind = wireKind(classify(tag));
     const unset = unsetByPatchKey.get(patchKey);
     const domCss = tag.domCss;
     if (domCss == null) {

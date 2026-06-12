@@ -6,6 +6,7 @@ import {
   tagToPatchKey,
   toCamelCase,
 } from '@hayate/protocol-spec/load';
+import { classify, styleEncoderLines } from './value-type.mjs';
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '../generated');
 const outPath = join(outDir, 'codec.ts');
@@ -168,149 +169,7 @@ function generateStyleEncoders(proto) {
   const lines = [];
   for (const tag of proto.style_tags ?? []) {
     const patchKey = tagToPatchKey(tag.name);
-    const encodeFrom = tag.encodeFrom;
-    if (!encodeFrom) {
-      throw new Error(`style_tags.${tag.name}: missing encodeFrom`);
-    }
-    const fnName = `encode_${patchKey}`;
-    switch (encodeFrom) {
-      case 'css-color':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const c = parseColor(value);`,
-          `  out.push(TAG.${tag.name}, c.r, c.g, c.b, c.a);`,
-          '}',
-        );
-        break;
-      case 'dimension':
-        lines.push(
-          `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {`,
-          `  const d = parseDimension(value);`,
-          `  out.push(TAG.${tag.name}, d.value, UNIT_CODE[d.unit]!);`,
-          '}',
-        );
-        break;
-      case 'f32':
-        lines.push(
-          `function ${fnName}(out: number[], value: unknown): void {`,
-          `  out.push(TAG.${tag.name}, finiteNumber('${patchKey}', value));`,
-          '}',
-        );
-        break;
-      case 'z-index':
-        lines.push(
-          `function ${fnName}(out: number[], value: unknown): void {`,
-          `  out.push(TAG.${tag.name}, finiteInteger('${patchKey}', value));`,
-          '}',
-        );
-        break;
-      case 'font-family':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const bytes = new TextEncoder().encode(value);`,
-          `  out.push(TAG.${tag.name}, bytes.length);`,
-          `  for (const byte of bytes) out.push(byte);`,
-          '}',
-        );
-        break;
-      case 'dimension-list':
-        lines.push(
-          `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {`,
-          `  if (!Array.isArray(value)) {`,
-          `    throw new Error(\`CanvasRenderer: "${patchKey}" must be an array of dimensions\`);`,
-          `  }`,
-          `  out.push(TAG.${tag.name}, value.length);`,
-          `  for (const item of value) {`,
-          `    const d = parseDimension(item);`,
-          `    out.push(d.value, UNIT_CODE[d.unit]!);`,
-          `  }`,
-          '}',
-        );
-        break;
-      case 'enum:display':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = DISPLAY_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported display "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:flex_direction':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = FLEX_DIRECTION_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported flexDirection "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:flex_wrap':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = FLEX_WRAP_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported flexWrap "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:align_items':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = ALIGN_ITEMS_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported alignItems "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:align_self':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = ALIGN_SELF_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported alignSelf "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:align_content':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = ALIGN_CONTENT_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported alignContent "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:justify_content':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = JUSTIFY_CONTENT_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported justifyContent "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:font_style':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = FONT_STYLE_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported fontStyle "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      case 'enum:text_decoration':
-        lines.push(
-          `function ${fnName}(out: number[], value: string): void {`,
-          `  const code = TEXT_DECORATION_CODE[value];`,
-          `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported textDecoration "\${value}"\`);`,
-          `  out.push(TAG.${tag.name}, code);`,
-          '}',
-        );
-        break;
-      default:
-        throw new Error(`unsupported encodeFrom: ${encodeFrom}`);
-    }
+    lines.push(...styleEncoderLines(classify(tag), tag.name, patchKey));
     lines.push('');
   }
   return lines.join('\n');
