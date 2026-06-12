@@ -433,7 +433,7 @@
     "params": [
       {
         "name": "value",
-        "type": "f32"
+        "type": "i32"
       }
     ],
     "domCss": {
