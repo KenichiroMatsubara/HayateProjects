@@ -27,6 +27,9 @@ use crate::element::style::{
 };
 use crate::element::taffy_bridge;
 use crate::element::text;
+use crate::element::visual_invalidation::{
+    self, VisualInvalidationReach,
+};
 use crate::node::SceneGraph;
 use crate::render::RenderImage;
 
@@ -266,7 +269,7 @@ impl ElementTree {
         }
         el.text = Some(text.to_string());
         el.text_layout = None;
-        self.mark_text_content_dirty(id);
+        self.mark_text_content_dirty(id, VisualInvalidationReach::Subtree);
     }
 
     pub fn element_set_src(&mut self, id: ElementId, url: &str) {
@@ -290,7 +293,8 @@ impl ElementTree {
     pub fn element_set_image(&mut self, id: ElementId, image: Arc<RenderImage>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.src_image = Some(image);
-            self.engine.mark_visual_dirty(id);
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
     }
 
@@ -331,7 +335,8 @@ impl ElementTree {
     pub fn element_set_cursor_visible(&mut self, id: ElementId, visible: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = visible;
-            self.engine.mark_visual_dirty(id);
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
     }
 
@@ -346,13 +351,15 @@ impl ElementTree {
             if let Some(el) = self.elements.get_mut(&prev) {
                 el.cursor_visible = false;
             }
-            self.engine.mark_visual_dirty(prev);
+            self.engine
+                .mark_visual_dirty(prev, VisualInvalidationReach::SelfOnly);
             self.mark_pseudo_activation_dirty(prev, PseudoState::Focus);
         }
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = true;
         }
-        self.engine.mark_visual_dirty(id);
+        self.engine
+            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         self.mark_pseudo_activation_dirty(id, PseudoState::Focus);
         self.focused_element = Some(id);
         self.layout.last_cursor_toggle_ms = None;
@@ -366,7 +373,8 @@ impl ElementTree {
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = false;
         }
-        self.engine.mark_visual_dirty(id);
+        self.engine
+            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         self.mark_pseudo_activation_dirty(id, PseudoState::Focus);
         self.focused_element = None;
         self.layout.last_cursor_toggle_ms = None;
@@ -516,7 +524,8 @@ impl ElementTree {
     pub fn element_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.transform = matrix;
-            self.engine.mark_visual_dirty(id);
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
     }
 
@@ -524,7 +533,8 @@ impl ElementTree {
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.scroll_offset = (x, y);
-            self.engine.mark_visual_dirty(id);
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
     }
 
@@ -596,9 +606,15 @@ impl ElementTree {
             let style = el.layout_style.clone();
             self.layout.projection.set_style(id, style);
         } else if text_dirty {
-            self.mark_text_content_dirty(id);
+            self.mark_text_content_dirty(
+                id,
+                visual_invalidation::invalidation_reach_for_props(props),
+            );
         } else {
-            self.engine.mark_visual_dirty(id);
+            self.engine.mark_visual_dirty(
+                id,
+                visual_invalidation::invalidation_reach_for_props(props),
+            );
         }
     }
 
@@ -650,7 +666,7 @@ impl ElementTree {
             }
         }
         if text_dirty {
-            self.mark_text_content_dirty(id);
+            self.mark_text_content_dirty(id, VisualInvalidationReach::Subtree);
         }
     }
 
@@ -772,7 +788,10 @@ impl ElementTree {
             }
             pseudo_state::upsert_style_prop(slot, prop);
         }
-        self.engine.mark_visual_dirty(id);
+        self.engine.mark_visual_dirty(
+            id,
+            visual_invalidation::invalidation_reach_for_props(props),
+        );
     }
 
     pub fn element_unset_pseudo_style(
@@ -788,7 +807,8 @@ impl ElementTree {
         for kind in kinds {
             pseudo_state::unset_pseudo_prop(&mut el.pseudo_styles, state, *kind);
         }
-        self.engine.mark_visual_dirty(id);
+        self.engine
+            .mark_visual_dirty(id, VisualInvalidationReach::Subtree);
     }
 
     pub fn element_get_text(&self, id: ElementId) -> String {
@@ -840,19 +860,22 @@ impl ElementTree {
                 self.focused_element,
                 timestamp_ms,
             ) {
-                self.engine.mark_visual_dirty(id);
+                self.engine
+                    .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
             }
         }
         let dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
             &self.engine.shape_dirty,
+            &self.engine.shape_lowering_reach,
             &self.engine.viewport_dirty,
             &self.engine.visual_dirty,
             self.engine.fonts_dirty,
         );
         self.commit_frame();
         let _ = self.engine.drain_visual_dirty();
+        let _ = self.engine.drain_shape_lowering_reach();
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty);
@@ -1091,17 +1114,24 @@ impl ElementTree {
         if props.is_empty() {
             return;
         }
-        self.engine.mark_visual_dirty(id);
+        self.engine.mark_visual_dirty(
+            id,
+            visual_invalidation::invalidation_reach_for_props(props),
+        );
         if pseudo_state::pseudo_affects_text_shaping(props) {
-            self.mark_text_content_dirty(id);
+            self.mark_text_content_dirty(
+                id,
+                visual_invalidation::invalidation_reach_for_props(props),
+            );
         }
     }
 
-    fn mark_text_content_dirty(&mut self, id: ElementId) {
+    fn mark_text_content_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
         if let Some(root) = ifc_root(&self.elements, id) {
-            self.engine.mark_shape_dirty(root);
+            self.engine.mark_shape_dirty(root, reach);
             self.layout.projection.mark_dirty(root);
         } else if self.layout.projection.has_node(id) {
+            self.engine.mark_shape_dirty(id, reach);
             self.layout.projection.mark_dirty(id);
         }
     }
@@ -1113,7 +1143,8 @@ impl ElementTree {
                 .get(&child)
                 .is_some_and(|e| e.kind == ElementKind::Text)
         {
-            self.engine.mark_shape_dirty(parent);
+            self.engine
+                .mark_shape_dirty(parent, VisualInvalidationReach::Subtree);
             self.layout.projection.mark_dirty(parent);
         } else {
             self.engine.mark_structure_dirty(parent);
@@ -1357,7 +1388,7 @@ impl ElementTree {
     }
 
     pub fn test_visual_dirty_contains(&self, id: ElementId) -> bool {
-        self.engine.visual_dirty.contains(&id)
+        self.engine.visual_dirty.contains_key(&id)
     }
 
     pub fn test_shape_dirty_contains(&self, id: ElementId) -> bool {
@@ -1373,7 +1404,8 @@ impl ElementTree {
         ) else {
             return false;
         };
-        self.engine.mark_visual_dirty(id);
+        self.engine
+            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         true
     }
 

@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::element::id::ElementId;
+use crate::element::visual_invalidation::{
+    self, VisualInvalidationReach,
+};
 use crate::element::layout_pass::{cache_layout, LayoutPass};
 use crate::element::tree::{apply_visual, Element, Event};
 
@@ -14,10 +17,12 @@ pub(crate) struct ElementEngine {
     pub(crate) structure_dirty: HashSet<ElementId>,
     /// IFC roots needing Parley re-compose before layout (ADR-0063).
     pub(crate) shape_dirty: HashSet<ElementId>,
+    /// Scene re-lowering reach for `shape_dirty` seeds (issue #185).
+    pub(crate) shape_lowering_reach: HashMap<ElementId, VisualInvalidationReach>,
     /// Elements whose viewport-conditioned own-style changed on resize (ADR-0081).
     pub(crate) viewport_dirty: HashSet<ElementId>,
     /// Scene-only visual changes (issue #182). Drained after each `render()`.
-    pub(crate) visual_dirty: HashSet<ElementId>,
+    pub(crate) visual_dirty: HashMap<ElementId, VisualInvalidationReach>,
     /// Set by `register_font`; cleared at the start of the next `resolve`.
     /// Causes all text elements to be re-shaped with the newly registered font.
     pub(crate) fonts_dirty: bool,
@@ -28,8 +33,9 @@ impl ElementEngine {
         Self {
             structure_dirty: HashSet::new(),
             shape_dirty: HashSet::new(),
+            shape_lowering_reach: HashMap::new(),
             viewport_dirty: HashSet::new(),
-            visual_dirty: HashSet::new(),
+            visual_dirty: HashMap::new(),
             fonts_dirty: false,
         }
     }
@@ -38,24 +44,29 @@ impl ElementEngine {
         self.structure_dirty.insert(id);
     }
 
-    pub fn mark_shape_dirty(&mut self, id: ElementId) {
+    pub fn mark_shape_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
         self.shape_dirty.insert(id);
+        visual_invalidation::merge_reach(&mut self.shape_lowering_reach, id, reach);
     }
 
     pub fn mark_viewport_dirty(&mut self, id: ElementId) {
         self.viewport_dirty.insert(id);
     }
 
-    pub fn mark_visual_dirty(&mut self, id: ElementId) {
-        self.visual_dirty.insert(id);
+    pub fn mark_visual_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+        visual_invalidation::merge_reach(&mut self.visual_dirty, id, reach);
     }
 
     pub fn mark_fonts_dirty(&mut self) {
         self.fonts_dirty = true;
     }
 
-    pub fn drain_visual_dirty(&mut self) -> HashSet<ElementId> {
+    pub fn drain_visual_dirty(&mut self) -> HashMap<ElementId, VisualInvalidationReach> {
         std::mem::take(&mut self.visual_dirty)
+    }
+
+    pub fn drain_shape_lowering_reach(&mut self) -> HashMap<ElementId, VisualInvalidationReach> {
+        std::mem::take(&mut self.shape_lowering_reach)
     }
 
     /// Resolve dirty state and settle layout: Taffy projection reconcile +
@@ -111,9 +122,18 @@ impl ElementEngine {
             }
             if text_dirty {
                 self.shape_dirty.insert(id);
+                visual_invalidation::merge_reach(
+                    &mut self.shape_lowering_reach,
+                    id,
+                    VisualInvalidationReach::Subtree,
+                );
                 layout.projection.mark_dirty(id);
             } else {
-                self.visual_dirty.insert(id);
+                visual_invalidation::merge_reach(
+                    &mut self.visual_dirty,
+                    id,
+                    VisualInvalidationReach::Subtree,
+                );
             }
         }
     }
