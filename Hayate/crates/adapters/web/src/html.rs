@@ -3,11 +3,12 @@
 
 use std::collections::HashMap;
 
-use hayate_core::{DocumentEventKind, ElementId, ElementKind, ElementTree, StyleProp};
+use hayate_core::{DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp};
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, Element, HtmlElement, HtmlInputElement, Node};
+use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, Node};
 
 use crate::generated::encode_deliveries;
+use crate::pseudo_style_dom::{pseudo_patch_rule_body, pseudo_state_css_priority, pseudo_state_css_suffix};
 use crate::style_packet;
 
 use crate::shared::{document, element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
@@ -120,12 +121,17 @@ pub struct HayateElementHtmlRenderer {
     background_css: String,
     /// Deferred mutations applied at the start of every `render()` (ADR-0030).
     pending: Vec<Command>,
+    /// Spec-ordered pseudo-state stylesheet (`<style data-hayate-pseudo>`).
+    pseudo_style_el: HtmlStyleElement,
+    /// Rule index in `pseudo_style_el` per `(element_id, pseudo_state)`.
+    pseudo_rule_keys: HashMap<(ElementId, PseudoState), u32>,
 }
 
 #[wasm_bindgen]
 impl HayateElementHtmlRenderer {
     pub fn new(container: HtmlElement) -> Result<HayateElementHtmlRenderer, JsValue> {
         inject_baseline_stylesheet()?;
+        let pseudo_style_el = ensure_pseudo_stylesheet()?;
         let style = container.style();
         style.set_property("position", "relative")?;
         style.set_property("overflow", "hidden")?;
@@ -136,6 +142,8 @@ impl HayateElementHtmlRenderer {
             root: None,
             background_css: "rgb(0,0,0)".to_string(),
             pending: Vec::new(),
+            pseudo_style_el,
+            pseudo_rule_keys: HashMap::new(),
         })
     }
 
@@ -600,6 +608,7 @@ impl HayateElementHtmlRenderer {
             Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
             Command::SetPseudoStyle { id, state, props } => {
                 self.tree.element_set_pseudo_style(id, state, &props);
+                self.flush_set_pseudo_style(id, state, &props)?;
             }
             Command::UnsetStyle { id, kinds } => self.flush_unset_style(id, &kinds),
             Command::SetTransform { id, matrix } => self.flush_set_transform(id, matrix),
@@ -689,6 +698,97 @@ impl HayateElementHtmlRenderer {
             style_packet::apply_props_to_dom(&html_el.style(), props)?;
         }
         Ok(())
+    }
+
+    fn flush_set_pseudo_style(
+        &mut self,
+        id: ElementId,
+        state: PseudoState,
+        props: &[StyleProp],
+    ) -> Result<(), JsValue> {
+        let kind = match self.nodes.get(&id).map(|n| n.kind) {
+            Some(k) => k,
+            None => return Ok(()),
+        };
+        let body = pseudo_patch_rule_body(kind, props);
+        if body.is_empty() {
+            self.remove_pseudo_rule(id, state)?;
+            return Ok(());
+        }
+
+        let sheet = match self.pseudo_style_el.sheet() {
+            Some(s) => s.dyn_into::<CssStyleSheet>().ok(),
+            None => None,
+        };
+        let sheet = match sheet {
+            Some(s) => s,
+            None => return Ok(()),
+        };
+
+        let selector = format!(
+            "[data-element-id=\"{}\"]{}",
+            id.to_u64(),
+            pseudo_state_css_suffix(state)
+        );
+        let css_text = format!("{selector}{{{body}}}");
+        let key = (id, state);
+        let priority = pseudo_state_css_priority(state);
+
+        if let Some(&index) = self.pseudo_rule_keys.get(&key) {
+            if let Ok(rules) = sheet.css_rules() {
+                if let Some(rule) = rules.item(index) {
+                    if let Ok(style_rule) = rule.dyn_into::<CssStyleRule>() {
+                        style_rule.style().set_css_text(&body);
+                        return Ok(());
+                    }
+                }
+            }
+            sheet.delete_rule(index)?;
+            self.bump_pseudo_rule_indices(index, -1);
+            self.pseudo_rule_keys.remove(&key);
+        }
+
+        let index = insertion_index_for_pseudo_band(&sheet, priority)?;
+        sheet.insert_rule_with_index(&css_text, index)?;
+        self.bump_pseudo_rule_indices(index, 1);
+        self.pseudo_rule_keys.insert(key, index);
+        Ok(())
+    }
+
+    fn remove_pseudo_rule(&mut self, id: ElementId, state: PseudoState) -> Result<(), JsValue> {
+        let key = (id, state);
+        let index = match self.pseudo_rule_keys.remove(&key) {
+            Some(i) => i,
+            None => return Ok(()),
+        };
+        if let Some(sheet) = self
+            .pseudo_style_el
+            .sheet()
+            .and_then(|s| s.dyn_into::<CssStyleSheet>().ok())
+        {
+            let _ = sheet.delete_rule(index);
+            self.bump_pseudo_rule_indices(index, -1);
+        }
+        Ok(())
+    }
+
+    fn remove_all_pseudo_rules_for(&mut self, id: ElementId) -> Result<(), JsValue> {
+        for state in [
+            PseudoState::Focus,
+            PseudoState::Hover,
+            PseudoState::Active,
+        ] {
+            self.remove_pseudo_rule(id, state)?;
+        }
+        Ok(())
+    }
+
+    fn bump_pseudo_rule_indices(&mut self, from: u32, delta: i32) {
+        for index in self.pseudo_rule_keys.values_mut() {
+            if *index >= from {
+                *index = (*index as i32 + delta) as u32;
+            }
+        }
     }
 
     fn flush_unset_style(&mut self, id: ElementId, kinds: &[u32]) {
@@ -841,6 +941,7 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&target) {
             return;
         }
+        let _ = self.remove_all_pseudo_rules_for(target);
         self.detach_from_current_parent(target);
         // DOM removeChild cascades to descendants; we only need to drop the
         // top-level DOM node from its parent (or the container if it was root).
@@ -881,6 +982,48 @@ impl HayateElementHtmlRenderer {
         }
         self.root = Some(new_root);
     }
+}
+
+fn ensure_pseudo_stylesheet() -> Result<HtmlStyleElement, JsValue> {
+    let doc = document();
+    if let Some(existing) = doc.get_element_by_id("hayate-pseudo") {
+        return existing
+            .dyn_into::<HtmlStyleElement>()
+            .map_err(|_| JsValue::from_str("hayate-pseudo is not a style element"));
+    }
+    let head = doc.head().ok_or("no head")?;
+    let style_el = doc.create_element("style")?.dyn_into::<HtmlStyleElement>()?;
+    style_el.set_id("hayate-pseudo");
+    let _ = style_el.set_attribute("data-hayate-pseudo", "");
+    head.append_child(&style_el)?;
+    Ok(style_el)
+}
+
+fn pseudo_priority_from_selector(selector: &str) -> u32 {
+    if selector.ends_with(":focus") {
+        return pseudo_state_css_priority(PseudoState::Focus);
+    }
+    if selector.ends_with(":hover") {
+        return pseudo_state_css_priority(PseudoState::Hover);
+    }
+    if selector.ends_with(":active") {
+        return pseudo_state_css_priority(PseudoState::Active);
+    }
+    0
+}
+
+fn insertion_index_for_pseudo_band(sheet: &CssStyleSheet, priority: u32) -> Result<u32, JsValue> {
+    let rules = sheet.css_rules()?;
+    for i in 0..rules.length() {
+        if let Some(rule) = rules.item(i) {
+            if let Ok(style_rule) = rule.dyn_into::<CssStyleRule>() {
+                if pseudo_priority_from_selector(&style_rule.selector_text()) > priority {
+                    return Ok(i);
+                }
+            }
+        }
+    }
+    Ok(rules.length())
 }
 
 fn create_dom_for_kind(doc: &Document, kind: ElementKind) -> Result<Element, JsValue> {

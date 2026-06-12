@@ -2,8 +2,8 @@
 mod backend;
 #[cfg(any(target_arch = "wasm32", test))]
 mod builtin_fonts;
-#[cfg(any(target_arch = "wasm32", test))]
 mod generated;
+pub mod pseudo_style_dom;
 #[cfg(test)]
 mod delivery_codec_fixtures;
 #[cfg(test)]
