@@ -24,3 +24,17 @@ ndk = "0.9"
 # cargo-apk packaging metadata for the stage A smoke-test app (ADR-0087).
 [package.metadata.android]
 package = "com.hayateprojects.hayate.adapter_android_demo"
+build_targets = ["aarch64-linux-android"]
+apk_name = "hayate-adapter-android"
+
+[package.metadata.android.sdk]
+min_sdk_version = 21
+target_sdk_version = 30
+
+[package.metadata.android.application]
+label = "Hayate Stage A"
+
+[[package.metadata.android.uses_feature]]
+name = "android.hardware.vulkan.level"
+required = true
+version = 1

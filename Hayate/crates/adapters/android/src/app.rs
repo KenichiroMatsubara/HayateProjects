@@ -1,11 +1,6 @@
 //! Stage A render smoke test (ADR-0087): clear an empty `SceneGraph` to a
 //! GPU surface backed by the `ANativeWindow` that `android-activity` hands
 //! us. No touch input, IME, or AccessKit yet (stages B/C).
-//!
-//! Crate/feature versions below (`android-activity`, its `ndk`/
-//! `raw-window-handle` re-exports, and `wgpu`'s `raw-window-handle`
-//! version) need to line up; this is verified locally with the Android NDK,
-//! which is unavailable in the sandbox that authored this file (ADR-0087).
 
 use std::time::Duration;
 
@@ -16,8 +11,10 @@ use hayate_scene_renderer_vello::{
 };
 use wgpu::util::TextureBlitter;
 
+use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
+
 /// RGBA clear color for the stage A smoke test.
-const CLEAR_COLOR: [f32; 4] = [0.1, 0.1, 0.12, 1.0];
+pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
 
 struct GpuSurface {
     device: wgpu::Device,
@@ -38,26 +35,47 @@ pub fn android_main(app: AndroidApp) {
     );
 
     let mut gpu: Option<GpuSurface> = None;
+    let mut lifecycle = SurfaceLifecycleState::new();
     let empty_scene = SceneGraph::new();
     let mut quit = false;
 
     while !quit {
         app.poll_events(Some(Duration::from_millis(16)), |event| {
             if let PollEvent::Main(main_event) = event {
-                match main_event {
-                    MainEvent::InitWindow { .. } => {
-                        if let Some(window) = app.native_window() {
-                            match pollster::block_on(init_gpu_surface(&window)) {
-                                Ok(surface) => gpu = Some(surface),
-                                Err(err) => log::error!("hayate-adapter-android: GPU init failed: {err}"),
+                let lifecycle_event = match main_event {
+                    MainEvent::InitWindow { .. } => Some(crate::surface_lifecycle::SurfaceLifecycleEvent::InitWindow),
+                    MainEvent::TerminateWindow { .. } => {
+                        Some(crate::surface_lifecycle::SurfaceLifecycleEvent::TerminateWindow)
+                    }
+                    MainEvent::WindowResized { .. } => app.native_window().map(|window| {
+                        let (width, height) = window_dimensions(window.width(), window.height());
+                        crate::surface_lifecycle::SurfaceLifecycleEvent::WindowResized { width, height }
+                    }),
+                    MainEvent::Destroy => Some(crate::surface_lifecycle::SurfaceLifecycleEvent::Destroy),
+                    _ => None,
+                };
+
+                if let Some(event) = lifecycle_event {
+                    match lifecycle.handle(event) {
+                        SurfaceLifecycleAction::CreateSurface => {
+                            if let Some(window) = app.native_window() {
+                                match pollster::block_on(init_gpu_surface(&window)) {
+                                    Ok(surface) => gpu = Some(surface),
+                                    Err(err) => {
+                                        log::error!("hayate-adapter-android: GPU init failed: {err}")
+                                    }
+                                }
                             }
                         }
+                        SurfaceLifecycleAction::DestroySurface => gpu = None,
+                        SurfaceLifecycleAction::ResizeSurface { width, height } => {
+                            if let Some(surface) = gpu.as_mut() {
+                                surface.resize(width, height);
+                            }
+                        }
+                        SurfaceLifecycleAction::Quit => quit = true,
+                        SurfaceLifecycleAction::NoOp => {}
                     }
-                    MainEvent::TerminateWindow { .. } => {
-                        gpu = None;
-                    }
-                    MainEvent::Destroy => quit = true,
-                    _ => {}
                 }
             }
         });
@@ -71,8 +89,7 @@ pub fn android_main(app: AndroidApp) {
 }
 
 async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<GpuSurface, String> {
-    let width = window.width().max(1) as u32;
-    let height = window.height().max(1) as u32;
+    let (width, height) = window_dimensions(window.width(), window.height());
 
     let instance = wgpu::Instance::default();
 
@@ -161,7 +178,6 @@ impl GpuSurface {
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 || (width == self.width && height == self.height) {
             return;

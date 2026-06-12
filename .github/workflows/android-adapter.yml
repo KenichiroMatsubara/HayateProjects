@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'Hayate/crates/adapters/android/**'
+      - 'Hayate/scripts/verify-android-stage-a.sh'
       - '.github/workflows/android-adapter.yml'
   pull_request:
     paths:
       - 'Hayate/crates/adapters/android/**'
+      - 'Hayate/scripts/verify-android-stage-a.sh'
       - '.github/workflows/android-adapter.yml'
 
 concurrency:
@@ -16,6 +18,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  host-tests:
+    name: hayate-adapter-android (host tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Hayate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Run adapter unit and packaging tests
+        run: cargo test -p hayate-adapter-android
+
   cross-compile:
     name: hayate-adapter-android (aarch64-linux-android)
     runs-on: ubuntu-latest
@@ -44,6 +60,7 @@ jobs:
           echo "AR_aarch64_linux_android=${NDK_BIN}/llvm-ar" >> "$GITHUB_ENV"
           echo "RANLIB_aarch64_linux_android=${NDK_BIN}/llvm-ranlib" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
 
       - name: Cross-compile hayate-adapter-android
         # Host CI uses -Dwarnings from setup-rust-toolchain; Android builds
@@ -52,3 +69,52 @@ jobs:
         env:
           RUSTFLAGS: ""
         run: cargo build -p hayate-adapter-android --target aarch64-linux-android
+
+  apk-build:
+    name: hayate-adapter-android (cargo apk build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Hayate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install cargo-apk
+        run: cargo install cargo-apk --locked
+
+      - name: Install Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Add aarch64-linux-android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Configure Android linker (API 21)
+        run: |
+          NDK_BIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "CC_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=${NDK_BIN}/llvm-ar" >> "$GITHUB_ENV"
+          echo "RANLIB_aarch64_linux_android=${NDK_BIN}/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> "$GITHUB_ENV"
+
+      - name: Install Android platform for cargo-apk
+        run: sdkmanager "platforms;android-30"
+
+      - name: Build installable APK
+        env:
+          RUSTFLAGS: ""
+        run: cargo apk build -p hayate-adapter-android --lib
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hayate-adapter-android-apk
+          path: Hayate/target/debug/apk/hayate-adapter-android.apk
