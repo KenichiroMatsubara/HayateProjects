@@ -19,6 +19,7 @@ pub mod taffy_bridge;
 pub mod taffy_projection;
 pub mod text;
 pub mod tree;
+mod visual_invalidation;
 
 pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
 pub use edit_state::EditState;

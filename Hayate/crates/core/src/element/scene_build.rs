@@ -4,9 +4,11 @@ use crate::element::effective_visual::{
 };
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::scene_lowering::{
     clear_lowered_content, AnchorEntry, LoweringDirtySnapshot, SceneLowering,
 };
+use crate::element::visual_invalidation::VisualInvalidationReach;
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
@@ -54,7 +56,7 @@ pub(crate) fn update(
                 None,
                 InheritedVisualContext::root(),
                 &interaction,
-                true,
+                VisualInvalidationReach::Subtree,
             );
         }
         lowering.built = true;
@@ -65,8 +67,17 @@ pub(crate) fn update(
         return;
     }
 
-    let patch_roots = minimal_patch_roots(&dirty.elements, &tree.elements);
+    for &parent_id in &dirty.z_index_reorder_parents {
+        reorder_children_for_z_index(tree, scene_cache, lowering, parent_id);
+    }
+
+    let patch_roots = minimal_patch_roots(dirty.elements.keys(), &tree.elements);
     for patch_root in patch_roots {
+        let reach = dirty
+            .elements
+            .get(&patch_root)
+            .copied()
+            .unwrap_or(VisualInvalidationReach::Subtree);
         let parent_anchor = tree
             .elements
             .get(&patch_root)
@@ -89,8 +100,28 @@ pub(crate) fn update(
             parent_anchor,
             inherited_for_patch_root(tree, patch_root),
             &interaction,
-            true,
+            reach,
         );
+    }
+}
+
+fn reorder_children_for_z_index(
+    tree: &ElementTree,
+    sg: &mut SceneGraph,
+    lowering: &SceneLowering,
+    parent_id: ElementId,
+) {
+    let Some(parent_entry) = lowering.anchors.get(&parent_id) else {
+        return;
+    };
+    let parent_anchor = parent_entry.anchor_id;
+    let ordered = tree.ordered_children(parent_id);
+    let child_anchors: Vec<NodeId> = ordered
+        .iter()
+        .filter_map(|child| lowering.anchors.get(child).map(|e| e.anchor_id))
+        .collect();
+    if let Some(parent) = sg.get_mut(parent_anchor) {
+        parent.children = child_anchors;
     }
 }
 
@@ -113,14 +144,15 @@ fn inherited_for_patch_root(tree: &ElementTree, id: ElementId) -> InheritedVisua
     }
 }
 
-fn minimal_patch_roots(
-    dirty: &std::collections::HashSet<ElementId>,
+fn minimal_patch_roots<'a>(
+    dirty: impl IntoIterator<Item = &'a ElementId>,
     elements: &std::collections::HashMap<ElementId, crate::element::tree::Element>,
 ) -> Vec<ElementId> {
-    dirty
+    let dirty_set: std::collections::HashSet<ElementId> = dirty.into_iter().copied().collect();
+    dirty_set
         .iter()
         .copied()
-        .filter(|&id| !has_dirty_ancestor(id, dirty, elements))
+        .filter(|&id| !has_dirty_ancestor(id, &dirty_set, elements))
         .collect()
 }
 
@@ -192,7 +224,7 @@ fn walk_retained(
     parent_anchor: Option<NodeId>,
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
-    force: bool,
+    reach: VisualInvalidationReach,
 ) {
     lowering.walk_count += 1;
 
@@ -202,7 +234,7 @@ fn walk_retained(
             let anchor_id = ensure_anchor(sg, lowering, id, parent_anchor);
             let children = tree.ordered_children(id);
             clear_lowered_content(sg, anchor_id, &children, lowering);
-            for child in children {
+            for child in children_for_reach(tree, id, reach) {
                 walk_retained(
                     tree,
                     child,
@@ -213,7 +245,7 @@ fn walk_retained(
                     Some(anchor_id),
                     inherited.clone(),
                     interaction,
-                    force,
+                    VisualInvalidationReach::Subtree,
                 );
             }
             return;
@@ -223,9 +255,7 @@ fn walk_retained(
 
     let anchor_id = ensure_anchor(sg, lowering, id, parent_anchor);
     let children = tree.ordered_children(id);
-    if force {
-        clear_lowered_content(sg, anchor_id, &children, lowering);
-    }
+    clear_lowered_content(sg, anchor_id, &children, lowering);
 
     emit_element(
         tree,
@@ -239,8 +269,50 @@ fn walk_retained(
         anchor_id,
         inherited,
         interaction,
-        force,
+        reach,
     );
+}
+
+fn children_for_reach(
+    tree: &ElementTree,
+    id: ElementId,
+    reach: VisualInvalidationReach,
+) -> Vec<ElementId> {
+    match reach {
+        VisualInvalidationReach::SelfOnly | VisualInvalidationReach::ZIndex => Vec::new(),
+        VisualInvalidationReach::Subtree => tree.ordered_children(id),
+        VisualInvalidationReach::TextLocal => {
+            if is_ifc_root(&tree.elements, id) {
+                tree.ordered_children(id)
+                    .into_iter()
+                    .filter(|&child| is_inline_text_element(&tree.elements, child))
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+    }
+}
+
+fn child_reach(
+    tree: &ElementTree,
+    parent_id: ElementId,
+    child_id: ElementId,
+    parent_reach: VisualInvalidationReach,
+) -> VisualInvalidationReach {
+    match parent_reach {
+        VisualInvalidationReach::Subtree => VisualInvalidationReach::Subtree,
+        VisualInvalidationReach::TextLocal
+            if is_ifc_root(&tree.elements, parent_id)
+                && is_inline_text_element(&tree.elements, child_id) =>
+        {
+            VisualInvalidationReach::TextLocal
+        }
+        VisualInvalidationReach::SelfOnly | VisualInvalidationReach::ZIndex => {
+            VisualInvalidationReach::SelfOnly
+        }
+        VisualInvalidationReach::TextLocal => VisualInvalidationReach::SelfOnly,
+    }
 }
 
 fn emit_element(
@@ -255,7 +327,7 @@ fn emit_element(
     anchor_id: NodeId,
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
-    force: bool,
+    reach: VisualInvalidationReach,
 ) {
     let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
     let child_inherited = child_inherited_context(
@@ -366,7 +438,7 @@ fn emit_element(
                 },
             );
         }
-        for child in tree.ordered_children(id) {
+        for child in children_for_reach(tree, id, reach) {
             walk_retained(
                 tree,
                 child,
@@ -377,7 +449,7 @@ fn emit_element(
                 Some(anchor_id),
                 child_inherited.clone(),
                 interaction,
-                force,
+                child_reach(tree, id, child, reach),
             );
         }
         return;
@@ -480,7 +552,7 @@ fn emit_element(
         }
     }
 
-    for child in tree.ordered_children(id) {
+    for child in children_for_reach(tree, id, reach) {
         walk_retained(
             tree,
             child,
@@ -491,7 +563,7 @@ fn emit_element(
             Some(anchor_id),
             child_inherited.clone(),
             interaction,
-            force,
+            child_reach(tree, id, child, reach),
         );
     }
 }

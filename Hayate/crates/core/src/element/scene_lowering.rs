@@ -1,7 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::element::id::ElementId;
 use crate::element::tree::ElementTree;
+use crate::element::visual_invalidation::{
+    self, VisualInvalidationReach,
+};
 use crate::node::{NodeId, SceneGraph};
 
 #[derive(Debug, Clone)]
@@ -28,7 +31,8 @@ impl SceneLowering {
 /// Dirty elements scheduled for scene re-lowering this frame.
 #[derive(Debug, Default)]
 pub(crate) struct LoweringDirtySnapshot {
-    pub elements: HashSet<ElementId>,
+    pub elements: HashMap<ElementId, VisualInvalidationReach>,
+    pub z_index_reorder_parents: HashSet<ElementId>,
     pub fonts: bool,
     pub full_rebuild: bool,
 }
@@ -37,8 +41,9 @@ pub(crate) fn collect_lowering_dirty(
     tree: &ElementTree,
     structure_dirty: &HashSet<ElementId>,
     shape_dirty: &HashSet<ElementId>,
+    shape_lowering_reach: &HashMap<ElementId, VisualInvalidationReach>,
     viewport_dirty: &HashSet<ElementId>,
-    visual_dirty: &HashSet<ElementId>,
+    visual_dirty: &HashMap<ElementId, VisualInvalidationReach>,
     fonts_dirty: bool,
 ) -> LoweringDirtySnapshot {
     let mut snapshot = LoweringDirtySnapshot::default();
@@ -47,34 +52,35 @@ pub(crate) fn collect_lowering_dirty(
         return snapshot;
     }
 
-    for &id in visual_dirty {
-        snapshot.elements.insert(id);
+    for (&id, &reach) in visual_dirty {
+        visual_invalidation::apply_visual_invalidation(
+            tree,
+            id,
+            reach,
+            &mut snapshot.elements,
+            &mut snapshot.z_index_reorder_parents,
+        );
     }
     for &id in viewport_dirty {
-        snapshot.elements.insert(id);
-        expand_descendants(tree, id, &mut snapshot.elements);
+        visual_invalidation::expand_subtree(tree, id, &mut snapshot.elements);
     }
     for &id in structure_dirty {
-        snapshot.elements.insert(id);
-        expand_descendants(tree, id, &mut snapshot.elements);
+        visual_invalidation::expand_subtree(tree, id, &mut snapshot.elements);
     }
     for &id in shape_dirty {
-        snapshot.elements.insert(id);
-        expand_descendants(tree, id, &mut snapshot.elements);
+        let reach = shape_lowering_reach
+            .get(&id)
+            .copied()
+            .unwrap_or(VisualInvalidationReach::Subtree);
+        visual_invalidation::apply_visual_invalidation(
+            tree,
+            id,
+            reach,
+            &mut snapshot.elements,
+            &mut snapshot.z_index_reorder_parents,
+        );
     }
     snapshot
-}
-
-fn expand_descendants(tree: &ElementTree, root: ElementId, out: &mut HashSet<ElementId>) {
-    let mut stack = vec![root];
-    while let Some(id) = stack.pop() {
-        if !out.insert(id) {
-            continue;
-        }
-        if let Some(el) = tree.elements.get(&id) {
-            stack.extend(el.children.iter().copied());
-        }
-    }
 }
 
 pub(crate) fn clear_lowered_content(
