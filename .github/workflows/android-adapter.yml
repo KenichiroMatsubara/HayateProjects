@@ -1,0 +1,49 @@
+name: Android adapter cross-compile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Hayate/crates/adapters/android/**'
+      - '.github/workflows/android-adapter.yml'
+  pull_request:
+    paths:
+      - 'Hayate/crates/adapters/android/**'
+      - '.github/workflows/android-adapter.yml'
+
+concurrency:
+  group: android-adapter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cross-compile:
+    name: hayate-adapter-android (aarch64-linux-android)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Hayate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          # r27 LTS; compatible with android-activity 0.6 / ndk 0.9 (ADR-0087).
+          ndk-version: r27c
+
+      - name: Add aarch64-linux-android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Configure Android linker (API 21)
+        run: |
+          NDK_BIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "CC_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+          echo "AR_aarch64_linux_android=${NDK_BIN}/llvm-ar" >> "$GITHUB_ENV"
+          echo "RANLIB_aarch64_linux_android=${NDK_BIN}/llvm-ranlib" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+
+      - name: Cross-compile hayate-adapter-android
+        run: cargo build -p hayate-adapter-android --target aarch64-linux-android
