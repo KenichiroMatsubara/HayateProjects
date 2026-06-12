@@ -1,0 +1,26 @@
+[package]
+name = "hayate-adapter-android"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Android Platform Adapter for Hayate (ADR-0087, stage A: render smoke test)"
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+hayate-core = { path = "../../core" }
+hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
+wgpu = { workspace = true }
+log.workspace = true
+pollster.workspace = true
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = { version = "0.6", features = ["native-activity"] }
+android_logger = "0.14"
+ndk = "0.9"
+
+# cargo-apk packaging metadata for the stage A smoke-test app (ADR-0087).
+[package.metadata.android]
+package = "com.hayateprojects.hayate.adapter_android_demo"
