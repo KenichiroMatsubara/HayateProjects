@@ -34,5 +34,15 @@
         "type": "dimension_unit"
       }
     ]
+  },
+  {
+    "name": "i32",
+    "raw_slots": 1,
+    "fields": [
+      {
+        "name": "wire",
+        "type": "f32"
+      }
+    ]
   }
 ]
