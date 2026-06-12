@@ -2,6 +2,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { loadProtocolSpec, tagToPatchKey } from '@hayate/protocol-spec/load';
+import { classify, tsType } from './value-type.mjs';
 
 const outDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -25,37 +26,6 @@ const ENUM_TYPES = [
   { specName: 'text_decoration', typeName: 'TextDecoration' },
 ];
 
-const PARAM_TYPE_MAP = {
-  color: 'string',
-  f32: 'number',
-  dimension: 'HayateDimension',
-  string: 'string',
-  display: 'Display',
-  flex_direction: 'FlexDirection',
-  flex_wrap: 'FlexWrap',
-  align_items: 'AlignItems',
-  align_self: 'AlignSelf',
-  align_content: 'AlignContent',
-  justify_content: 'JustifyContent',
-  font_style: 'FontStyle',
-  text_decoration: 'TextDecoration',
-};
-
-function styleTagTsType(tag) {
-  if (tag.encodeFrom === 'dimension-list') {
-    return 'HayateDimension[]';
-  }
-  const param = (tag.params ?? [])[0];
-  if (!param) {
-    throw new Error(`style_tags.${tag.name}: missing params`);
-  }
-  const tsType = PARAM_TYPE_MAP[param.type];
-  if (!tsType) {
-    throw new Error(`style_tags.${tag.name}: unsupported param type "${param.type}"`);
-  }
-  return tsType;
-}
-
 function generateEnumTypes(proto) {
   const lines = [];
   for (const { specName, typeName } of ENUM_TYPES) {
@@ -73,7 +43,7 @@ function generateHayateStyle(proto) {
   const lines = ['export interface HayateStyle {'];
   for (const tag of proto.style_tags ?? []) {
     const patchKey = tagToPatchKey(tag.name);
-    lines.push(`  ${patchKey}: ${styleTagTsType(tag)};`);
+    lines.push(`  ${patchKey}: ${tsType(classify(tag))};`);
   }
   lines.push('}');
   return lines.join('\n');

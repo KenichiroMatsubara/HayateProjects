@@ -14,10 +14,14 @@
   },
   "files": ["generated"],
   "scripts": {
-    "generate": "node generator/generate.mjs"
+    "generate": "node generator/generate.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hayate/protocol-spec": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.0"
   }
 }
