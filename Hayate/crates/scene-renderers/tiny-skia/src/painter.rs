@@ -151,13 +151,25 @@ impl ScenePainter for TinySkiaPainter<'_> {
     }
 
     fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+        let transform = self.state.transform;
         if let Some(rect) = tiny_skia::Rect::from_xywh(x, y, width, height) {
             let mut pb = PathBuilder::new();
             pb.push_rect(rect);
             if let Some(path) = pb.finish() {
-                if let Some(mut clip_mask) = Mask::new(self.pixmap.width(), self.pixmap.height()) {
-                    clip_mask.fill_path(&path, FillRule::Winding, true, Transform::identity());
-                    self.state.clip_masks.push(clip_mask);
+                match self.state.clip_masks.last() {
+                    Some(parent) => {
+                        let mut clip_mask = parent.clone();
+                        clip_mask.intersect_path(&path, FillRule::Winding, true, transform);
+                        self.state.clip_masks.push(clip_mask);
+                    }
+                    None => {
+                        if let Some(mut clip_mask) =
+                            Mask::new(self.pixmap.width(), self.pixmap.height())
+                        {
+                            clip_mask.fill_path(&path, FillRule::Winding, true, transform);
+                            self.state.clip_masks.push(clip_mask);
+                        }
+                    }
                 }
             }
         }
