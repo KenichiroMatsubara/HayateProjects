@@ -186,7 +186,12 @@ GPU API 抽象層。Hayate は wgpu を唯一の Backend とし、wgpu が Vulka
 _Avoid_: Renderer, Driver
 
 **Retained**:
-Scene Graph が前フレームの状態を保持し、上位層は変更のあった Node のみ通知する方式。対義語は Immediate（毎フレーム全再構築）。Hayate は Retained を採用する。
+Scene Graph が前フレームの lowering 結果（element anchor とその subtree）を保持し、dirty 集合に載った element のみ再 lowering する方式。クリーンフレームでは re-lowering walk ゼロ。対義語は Immediate（毎フレーム全再構築）。Hayate は Retained incremental lowering を採用する（ADR-0086）。
+_Avoid_: 毎フレーム allocate-and-discard する Immediate lowering
+
+**Element Anchor（要素アンカー）**:
+element ごとの retained scene identity を担う構造専用 `NodeKind::ElementAnchor`。transform を持たず、子 element は親 anchor の子リストで子 anchor を参照する。1 element の border / rect / text run / Group / Clip は anchor 配下に lowering される。
+_Avoid_: Group（transform 用語との混同）
 
 **Glyph Atlas**:
 レンダリング済みグリフを格納する GPU テクスチャ。

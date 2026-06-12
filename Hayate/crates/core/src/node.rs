@@ -72,6 +72,11 @@ pub enum NodeKind {
         height: f32,
         data: Arc<RenderImage>,
     },
+    /// Structural-only node giving an element retained scene identity (issue #182).
+    /// Carries no transform; painters walk its children transparently.
+    ElementAnchor {
+        element_id: crate::element::id::ElementId,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -115,8 +120,46 @@ impl SceneGraph {
         self.nodes.get(id)
     }
 
+    pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(id)
+    }
+
+    pub fn retain_roots(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
+        self.roots.retain(|&id| keep(id));
+    }
+
     pub fn remove(&mut self, id: NodeId) -> Option<Node> {
-        self.nodes.remove(id)
+        let node = self.nodes.remove(id)?;
+        self.roots.retain(|&root| root != id);
+        if let Some(parent) = self.parent_of(id) {
+            if let Some(p) = self.nodes.get_mut(parent) {
+                p.children.retain(|&child| child != id);
+            }
+        }
+        Some(node)
+    }
+
+    /// Parent of `id` when nested under a Group, Clip, or ElementAnchor.
+    pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
+        for (parent_id, parent) in self.nodes.iter() {
+            if parent.children.contains(&id) {
+                return Some(parent_id);
+            }
+        }
+        None
+    }
+
+    /// Remove `id` and every descendant from the graph.
+    pub fn remove_subtree(&mut self, id: NodeId) {
+        let children = self
+            .nodes
+            .get(id)
+            .map(|n| n.children.clone())
+            .unwrap_or_default();
+        for child in children {
+            self.remove_subtree(child);
+        }
+        let _ = self.remove(id);
     }
 
     /// First root node (backward compat).

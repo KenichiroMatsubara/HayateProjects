@@ -53,8 +53,11 @@ _Avoid_: Host Interface, signal API
 ## Rendering Terms
 
 **SceneGraph**:
-Hayate が保持する描画用の retained graph。UI フレームワークやコンポーネントツリーそのものではない。
+Hayate が保持する描画用の retained graph。element→scene lowering は dirty-gated incremental で、未 dirty の subtree はフレーム間で再利用する（ADR-0086）。UI フレームワークやコンポーネントツリーそのものではない。
 _Avoid_: Virtual DOM, Component Tree
+
+**Element Anchor（要素アンカー）**:
+`NodeKind::ElementAnchor` — element ごとの構造専用 retained Node。詳細はルート `CONTEXT.md` の Rendering Terms。
 
 **Scene Renderer**:
 `SceneGraph` を消費して描画結果を生成する実装単位。現行の標準候補は Vello、代替候補は `tiny-skia`。実装は `crates/scene-renderers/{vello,tiny-skia}` に置く。`SceneGraph` の walk は `hayate-core` の `render_scene_graph` が一度だけ行い、実装は内部 `ScenePainter` への委譲のみ（ADR-0054）。

@@ -16,6 +16,8 @@ pub(crate) struct ElementEngine {
     pub(crate) shape_dirty: HashSet<ElementId>,
     /// Elements whose viewport-conditioned own-style changed on resize (ADR-0081).
     pub(crate) viewport_dirty: HashSet<ElementId>,
+    /// Scene-only visual changes (issue #182). Drained after each `render()`.
+    pub(crate) visual_dirty: HashSet<ElementId>,
     /// Set by `register_font`; cleared at the start of the next `resolve`.
     /// Causes all text elements to be re-shaped with the newly registered font.
     pub(crate) fonts_dirty: bool,
@@ -27,6 +29,7 @@ impl ElementEngine {
             structure_dirty: HashSet::new(),
             shape_dirty: HashSet::new(),
             viewport_dirty: HashSet::new(),
+            visual_dirty: HashSet::new(),
             fonts_dirty: false,
         }
     }
@@ -43,8 +46,16 @@ impl ElementEngine {
         self.viewport_dirty.insert(id);
     }
 
+    pub fn mark_visual_dirty(&mut self, id: ElementId) {
+        self.visual_dirty.insert(id);
+    }
+
     pub fn mark_fonts_dirty(&mut self) {
         self.fonts_dirty = true;
+    }
+
+    pub fn drain_visual_dirty(&mut self) -> HashSet<ElementId> {
+        std::mem::take(&mut self.visual_dirty)
     }
 
     /// Resolve dirty state and settle layout: Taffy projection reconcile +
@@ -101,6 +112,8 @@ impl ElementEngine {
             if text_dirty {
                 self.shape_dirty.insert(id);
                 layout.projection.mark_dirty(id);
+            } else {
+                self.visual_dirty.insert(id);
             }
         }
     }
