@@ -1,5 +1,6 @@
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
+use crate::element::pseudo_state::PseudoState;
 use crate::element::tree::ElementTree;
 
 impl ElementTree {
@@ -23,6 +24,7 @@ impl ElementTree {
             });
             self.emit_interaction(Event::ActiveStart { target_id: t });
             self.active_element = Some(t);
+            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
             self.transition_focus(t);
         } else if let Some(prev) = self.focused_element {
             self.blur_with_events(prev);
@@ -44,6 +46,7 @@ impl ElementTree {
         let target = self.active_element.take().or(explicit_target);
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
+            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
         }
     }
 

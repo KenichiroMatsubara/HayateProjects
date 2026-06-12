@@ -39,7 +39,6 @@ pub(crate) fn update(
 ) {
     lowering.walk_count = 0;
     let interaction = tree.interaction_snapshot();
-    lowering.last_interaction = interaction.clone();
 
     if dirty.full_rebuild || !lowering.built {
         *scene_cache = SceneGraph::new();
