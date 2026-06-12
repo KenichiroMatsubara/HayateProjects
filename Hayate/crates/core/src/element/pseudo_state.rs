@@ -199,6 +199,21 @@ pub fn diff_hover_sets(
     (entered, left)
 }
 
+/// Whether a pseudo block contains properties that re-shape inline text (issue #183).
+pub fn pseudo_affects_text_shaping(props: &[StyleProp]) -> bool {
+    props.iter().any(|p| {
+        matches!(
+            p,
+            StyleProp::FontSize(_)
+                | StyleProp::FontFamily(_)
+                | StyleProp::FontWeight(_)
+                | StyleProp::FontStyle(_)
+                | StyleProp::Color(_)
+                | StyleProp::TextDecoration(_)
+        )
+    })
+}
+
 /// Style property kinds unsettable on a pseudo block (mirrors base unset).
 pub fn unset_pseudo_prop(pseudo: &mut PseudoStyles, state: PseudoState, kind: StylePropKind) {
     let props = pseudo.props_mut(state);

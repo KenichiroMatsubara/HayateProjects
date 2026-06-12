@@ -347,11 +347,13 @@ impl ElementTree {
                 el.cursor_visible = false;
             }
             self.engine.mark_visual_dirty(prev);
+            self.mark_pseudo_activation_dirty(prev, PseudoState::Focus);
         }
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = true;
         }
         self.engine.mark_visual_dirty(id);
+        self.mark_pseudo_activation_dirty(id, PseudoState::Focus);
         self.focused_element = Some(id);
         self.layout.last_cursor_toggle_ms = None;
     }
@@ -365,6 +367,7 @@ impl ElementTree {
             el.cursor_visible = false;
         }
         self.engine.mark_visual_dirty(id);
+        self.mark_pseudo_activation_dirty(id, PseudoState::Focus);
         self.focused_element = None;
         self.layout.last_cursor_toggle_ms = None;
     }
@@ -737,6 +740,12 @@ impl ElementTree {
             None => HashSet::new(),
         };
         let (entered, left) = diff_hover_sets(&self.hovered_elements, &next);
+        for id in &entered {
+            self.mark_pseudo_activation_dirty(*id, PseudoState::Hover);
+        }
+        for id in &left {
+            self.mark_pseudo_activation_dirty(*id, PseudoState::Hover);
+        }
         self.hovered_elements = next;
         (entered, left)
     }
@@ -779,6 +788,7 @@ impl ElementTree {
         for kind in kinds {
             pseudo_state::unset_pseudo_prop(&mut el.pseudo_styles, state, *kind);
         }
+        self.engine.mark_visual_dirty(id);
     }
 
     pub fn element_get_text(&self, id: ElementId) -> String {
@@ -824,16 +834,15 @@ impl ElementTree {
     /// drives the focused TextInput's cursor blink without exposing a cursor-tick
     /// function to the host (ADR-0032).
     pub fn render(&mut self, timestamp_ms: f64) -> &SceneGraph {
-        let interaction_before = self.scene_lowering.last_interaction.clone();
-        let cursor_dirty = if self.root.is_some() {
-            self.layout.advance_cursor_blink(
+        if self.root.is_some() {
+            if let Some(id) = self.layout.advance_cursor_blink(
                 &mut self.elements,
                 self.focused_element,
                 timestamp_ms,
-            )
-        } else {
-            None
-        };
+            ) {
+                self.engine.mark_visual_dirty(id);
+            }
+        }
         let dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
@@ -841,9 +850,6 @@ impl ElementTree {
             &self.engine.viewport_dirty,
             &self.engine.visual_dirty,
             self.engine.fonts_dirty,
-            &self.interaction_snapshot(),
-            &interaction_before,
-            cursor_dirty,
         );
         self.commit_frame();
         let _ = self.engine.drain_visual_dirty();
@@ -1075,6 +1081,20 @@ impl ElementTree {
             .retain(|&c| c != child);
         self.elements.get_mut(&child).unwrap().parent = None;
         self.mark_child_detachment_dirty(parent, child);
+    }
+
+    pub(crate) fn mark_pseudo_activation_dirty(&mut self, id: ElementId, state: PseudoState) {
+        let props = match self.elements.get(&id) {
+            Some(el) => el.pseudo_styles.props(state),
+            None => return,
+        };
+        if props.is_empty() {
+            return;
+        }
+        self.engine.mark_visual_dirty(id);
+        if pseudo_state::pseudo_affects_text_shaping(props) {
+            self.mark_text_content_dirty(id);
+        }
     }
 
     fn mark_text_content_dirty(&mut self, id: ElementId) {
@@ -1334,6 +1354,27 @@ impl ElementTree {
 
     pub fn test_scene_lowering_walk_count(&self) -> usize {
         self.scene_lowering.walk_count
+    }
+
+    pub fn test_visual_dirty_contains(&self, id: ElementId) -> bool {
+        self.engine.visual_dirty.contains(&id)
+    }
+
+    pub fn test_shape_dirty_contains(&self, id: ElementId) -> bool {
+        self.engine.shape_dirty.contains(&id)
+    }
+
+    /// Mirror of `render()` cursor-blink tick without draining dirty sets (issue #183).
+    pub fn test_tick_cursor_blink(&mut self, timestamp_ms: f64) -> bool {
+        let Some(id) = self.layout.advance_cursor_blink(
+            &mut self.elements,
+            self.focused_element,
+            timestamp_ms,
+        ) else {
+            return false;
+        };
+        self.engine.mark_visual_dirty(id);
+        true
     }
 
     pub fn test_element_anchor_id(&self, id: ElementId) -> crate::node::NodeId {
