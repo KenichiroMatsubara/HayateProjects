@@ -53,7 +53,7 @@ pub fn android_main(app: AndroidApp) {
                             }
                         }
                     }
-                    MainEvent::TerminatingWindow { .. } => {
+                    MainEvent::TerminateWindow { .. } => {
                         gpu = None;
                     }
                     MainEvent::Destroy => quit = true,
@@ -77,7 +77,7 @@ async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<G
     let instance = wgpu::Instance::default();
 
     // SAFETY: `window` outlives the surface for the lifetime of this adapter
-    // (recreated on `InitWindow`, dropped on `TerminatingWindow`).
+    // (recreated on `InitWindow`, dropped on `TerminateWindow`).
     let surface = unsafe {
         instance
             .create_surface_unsafe(
