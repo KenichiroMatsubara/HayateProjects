@@ -1,7 +1,0 @@
-{
-  "trailingSlash": false,
-  "rewrites": [
-    { "source": "/demo-05/", "destination": "/demo-05.html" },
-    { "source": "/demo-sandbox/", "destination": "/demo-sandbox.html" }
-  ]
-}
