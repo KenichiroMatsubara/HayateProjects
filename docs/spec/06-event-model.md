@@ -58,14 +58,14 @@ delivery の wire 形式そのものは §10（PROTO-12〜17）に置く。
 ### EVT-09 — transition は effective visual の変化を Render Layer が補間する
 **規範文:** 要素の effective visual が変化したとき、Render Layer が変化前の表示値から target へ連続値プロパティ（`background-color` / `border-color` / `text-color` / `opacity` / `border-radius` / `border-width`）を `transition-duration`（ms）/ `transition-timing` に従って補間する。トリガは `resolve_effective`（ADR-0067）の per-property 差分で、擬似状態切替・`setStyle`・継承変化を区別しない（ブラウザ/Blink の computed-style 差分と同型）。enum・離散は target 即時。duration/timing は after-change（解決済み）の値を使う。`render(timestamp_ms)` の frame loop ＋ `visual_dirty`（ADR-0086/0032 を再利用）で進める。DOM はブラウザの CSS transition に委譲。
 **出典:** ADR-0089（Render Layer 補間・frame loop・補間対象6連続値・DOM 委譲）、ADR-0093（トリガを resolve シームへ＝up-level パリティ・`from`=表示値の連続反転・per-property state・after-change duration）
-**状況:** 🟡 — 擬似状態切替の補間は実装済み（ADR-0089、`transition.rs` / `transition_interpolation.rs`）。up-level（resolve シーム diff・`setStyle`/継承変化の補間・連続反転・after-change duration・per-property state）は未実装（ADR-0093）。現実装は pseudo-only トリガ・`from`=解決値・duration の base 直読。
-**備考:** up-level 化で Canvas/DOM の Semantics Parity（ADR-0002）破れ（setStyle 即時 vs 補間・逆方向ジャンプ vs 連続）が解消される。
+**状況:** ✅ — トリガを `emit_element` の `resolve_effective` シームへ移設（ADR-0093、issue #227）。前フレームの表示値（post-blend）を retained 描画状態（`SceneLowering` の `AnchorEntry.last_displayed`）に memo し、解決値との per-property diff で `ElementTransitions`（要素×プロパティ単位）を起動/調整する。`from`=表示値で逆方向割り込みを連続反転、duration/timing は after-change 解決値、初回 emit・full ephemeral rebuild は補間しない。`transition.rs` / `transition_interpolation.rs`。
+**備考:** up-level 化で Canvas/DOM の Semantics Parity（ADR-0002）破れ（setStyle 即時 vs 補間・逆方向ジャンプ vs 連続）が解消された。
 
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 8 | EVT-01〜08 |
-| 🟡部分 | 1 | EVT-09（pseudo 補間は実装済み・up-level 未実装、ADR-0093） |
+| ✅実装済み | 9 | EVT-01〜09 |
+| 🟡部分 | 0 | — |
 | ⬜未実装 | 0 | — |
