@@ -51,6 +51,7 @@ pub enum DrawOp {
         y: f32,
         width: f32,
         height: f32,
+        corner_radii: [f32; 4],
     },
     PopClip,
 }
@@ -104,7 +105,9 @@ pub trait ScenePainter {
 
     fn pop_transform(&mut self);
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32);
+    /// Push a clip region. `corner_radii` (TL, TR, BR, BL) rounds the corners;
+    /// all-zero is a plain rectangular clip.
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]);
 
     fn pop_clip(&mut self);
 }
@@ -224,12 +227,13 @@ impl ScenePainter for RecordingPainter {
         self.ops.push(DrawOp::PopTransform);
     }
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         self.ops.push(DrawOp::PushClipRect {
             x,
             y,
             width,
             height,
+            corner_radii,
         });
     }
 
@@ -293,7 +297,7 @@ impl ScenePainter for NullPainter {
 
     fn pop_transform(&mut self) {}
 
-    fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32) {}
+    fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _corner_radii: [f32; 4]) {}
 
     fn pop_clip(&mut self) {}
 }
@@ -410,9 +414,10 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             y,
             width,
             height,
+            corner_radii,
         } => {
             let children = node.children.clone();
-            painter.push_clip_rect(*x, *y, *width, *height);
+            painter.push_clip_rect(*x, *y, *width, *height, *corner_radii);
             for child_id in children {
                 walk_node(graph, child_id, painter);
             }

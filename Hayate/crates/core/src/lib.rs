@@ -11,7 +11,7 @@ pub use element::{
     DocumentEventKind,
     ElementId, ElementKind,
     ElementTree, Event, EventDelivery, FlexDirectionValue, FlexWrapValue, JustifyValue, LayoutPass,
-    ListenerId,
+    ListenerId, OverflowValue,
     event_document_kind,
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PointerMoveResult, PseudoState,
     ResolvedElement,

@@ -68,12 +68,15 @@ pub enum NodeKind {
     },
     /// Applies an affine transform (kurbo coefficients [a,b,c,d,e,f]) to its children.
     Group { transform: [f64; 6] },
-    /// Clips its children to the given axis-aligned rectangle.
+    /// Clips its children to the given axis-aligned rectangle. `corner_radii`
+    /// (top-left, top-right, bottom-right, bottom-left) rounds the clip; all
+    /// zero means a plain rectangular clip (issue #206).
     Clip {
         x: f32,
         y: f32,
         width: f32,
         height: f32,
+        corner_radii: [f32; 4],
     },
     /// Draws a raster image scaled to fit the given rect.
     Image {

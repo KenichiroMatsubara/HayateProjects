@@ -70,6 +70,7 @@ export const TAG = {
   FLEX_WRAP: 44,
   BORDER_STYLE: 45,
   CURSOR: 46,
+  OVERFLOW: 47,
 } as const;
 export type TAG = typeof TAG;
 
@@ -250,6 +251,12 @@ export const BORDER_STYLE = {
   dashed: 2,
 } as const;
 export type BORDER_STYLE = typeof BORDER_STYLE;
+
+export const OVERFLOW = {
+  visible: 0,
+  hidden: 1,
+} as const;
+export type OVERFLOW = typeof OVERFLOW;
 
 export const CURSOR = {
   default: 0,

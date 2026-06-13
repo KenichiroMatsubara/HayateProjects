@@ -247,6 +247,19 @@
     ]
   },
   {
+    "name": "overflow",
+    "values": [
+      {
+        "name": "visible",
+        "value": 0
+      },
+      {
+        "name": "hidden",
+        "value": 1
+      }
+    ]
+  },
+  {
     "name": "cursor",
     "values": [
       {

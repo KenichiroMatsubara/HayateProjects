@@ -707,5 +707,20 @@
       "property": "cursor",
       "format": "enum:cursor"
     }
+  },
+  {
+    "name": "OVERFLOW",
+    "value": 47,
+    "encodeFrom": "enum:overflow",
+    "params": [
+      {
+        "name": "value",
+        "type": "overflow"
+      }
+    ],
+    "domCss": {
+      "property": "overflow",
+      "format": "enum:overflow"
+    }
   }
 ]

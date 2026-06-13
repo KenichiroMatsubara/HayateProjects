@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::element::effective_visual::{
     self, child_inherited_context, InheritedVisualContext,
 };
-use crate::element::style::BorderStyleValue;
+use crate::element::style::{BorderStyleValue, OverflowValue};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
@@ -468,6 +468,7 @@ fn emit_element(
                     y,
                     width: w,
                     height: h,
+                    corner_radii: [0.0; 4],
                 },
                 children: Vec::new(),
             },
@@ -488,6 +489,22 @@ fn emit_element(
         } else {
             Some(clip_id)
         }
+    } else if visual.overflow == OverflowValue::Hidden {
+        let clip_id = emit(
+            sg,
+            effective_parent,
+            Node {
+                kind: NodeKind::Clip {
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                    corner_radii: [visual.border_radius; 4],
+                },
+                children: Vec::new(),
+            },
+        );
+        Some(clip_id)
     } else {
         effective_parent
     };
@@ -752,6 +769,7 @@ fn walk_ephemeral(
                     y,
                     width: w,
                     height: h,
+                    corner_radii: [0.0; 4],
                 },
                 children: Vec::new(),
             },
@@ -772,6 +790,22 @@ fn walk_ephemeral(
         } else {
             Some(clip_id)
         }
+    } else if visual.overflow == OverflowValue::Hidden {
+        let clip_id = emit(
+            sg,
+            effective_parent,
+            Node {
+                kind: NodeKind::Clip {
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                    corner_radii: [visual.border_radius; 4],
+                },
+                children: Vec::new(),
+            },
+        );
+        Some(clip_id)
     } else {
         effective_parent
     };

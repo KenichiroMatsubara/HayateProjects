@@ -52,6 +52,7 @@ fn recording_painter_records_group_and_clip_nesting() {
                 y: 0.0,
                 width: 100.0,
                 height: 50.0,
+                corner_radii: [0.0; 4],
             },
             children: Vec::new(),
         },
@@ -88,6 +89,7 @@ fn recording_painter_records_group_and_clip_nesting() {
             y: 0.0,
             width: 100.0,
             height: 50.0,
+            corner_radii: [0.0, 0.0, 0.0, 0.0],
         }
     ));
     assert!(matches!(

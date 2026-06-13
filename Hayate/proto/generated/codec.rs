@@ -106,6 +106,13 @@ fn encode_border_style(value: BorderStyleValue) -> f32 {
     }
 }
 
+fn encode_overflow(value: OverflowValue) -> f32 {
+    match value {
+        OverflowValue::Visible => 0.0,
+        OverflowValue::Hidden => 1.0,
+    }
+}
+
 fn encode_cursor(value: CursorValue) -> f32 {
     match value {
         CursorValue::Default => 0.0,
@@ -445,6 +452,10 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::Cursor(v) => {
                 buf.push(TAG_CURSOR as f32);
                 buf.push(encode_cursor(*v));
+            }
+            StyleProp::Overflow(v) => {
+                buf.push(TAG_OVERFLOW as f32);
+                buf.push(encode_overflow(*v));
             }
         }
     }

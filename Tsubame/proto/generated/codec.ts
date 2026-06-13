@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -194,6 +194,11 @@ const CURSOR_CODE: Record<string, number> = {
   'not-allowed': CURSOR.notAllowed,
   'grab': CURSOR.grab,
   'grabbing': CURSOR.grabbing,
+};
+
+const OVERFLOW_CODE: Record<string, number> = {
+  'visible': OVERFLOW.visible,
+  'hidden': OVERFLOW.hidden,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -446,6 +451,12 @@ function encode_cursor(out: number[], value: string): void {
   out.push(TAG.CURSOR, code);
 }
 
+function encode_overflow(out: number[], value: string): void {
+  const code = OVERFLOW_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported overflow "${value}"`);
+  out.push(TAG.OVERFLOW, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -494,6 +505,7 @@ const STYLE_ENCODERS = {
   flexWrap: encode_flexWrap,
   borderStyle: encode_borderStyle,
   cursor: encode_cursor,
+  overflow: encode_overflow,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

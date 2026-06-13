@@ -250,6 +250,13 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("cursor".into(), s.into()));
         }
+        StyleProp::Overflow(v) => {
+            let s = match v {
+            OverflowValue::Visible => "visible",
+            OverflowValue::Hidden => "hidden",
+            };
+            out.push(("overflow".into(), s.into()));
+        }
     }
 }
 

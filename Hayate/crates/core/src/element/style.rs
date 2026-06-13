@@ -71,6 +71,17 @@ pub enum CursorValue {
     Grabbing,
 }
 
+/// Child-overflow handling (ADR-0090/issue #206).
+///
+/// `Visible` is the default: children may paint outside the element's box,
+/// mirroring CSS where `overflow` defaults to `visible`. `Hidden` clips
+/// children to the element's (optionally rounded) border box.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OverflowValue {
+    Visible,
+    Hidden,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,
@@ -185,6 +196,7 @@ pub enum StyleProp {
     BorderWidth(f32),
     BorderColor(Color),
     BorderStyle(BorderStyleValue),
+    Overflow(OverflowValue),
     // sizing
     Width(Dimension),
     Height(Dimension),
