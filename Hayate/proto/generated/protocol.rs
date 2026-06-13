@@ -95,8 +95,10 @@ pub const TAG_LEFT: u32 = 49;
 pub const TAG_RIGHT: u32 = 50;
 pub const TAG_BOTTOM: u32 = 51;
 pub const TAG_OVERFLOW: u32 = 52;
-pub const TAG_TRANSITION_DURATION: u32 = 53;
-pub const TAG_TRANSITION_TIMING: u32 = 54;
+pub const TAG_MAX_LINES: u32 = 53;
+pub const TAG_TEXT_OVERFLOW: u32 = 54;
+pub const TAG_TRANSITION_DURATION: u32 = 55;
+pub const TAG_TRANSITION_TIMING: u32 = 56;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -570,6 +572,12 @@ pub enum StyleTag {
     Overflow {
         value: f32,
     },
+    MaxLines {
+        value: f32,
+    },
+    TextOverflow {
+        value: f32,
+    },
     TransitionDuration {
         value: f32,
     },
@@ -903,11 +911,21 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             Ok((StyleTag::Overflow { value }, i + 1))
         }
         53 => {
+            if i + 1 > packed.len() { return Err("style tag MAX_LINES truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::MaxLines { value }, i + 1))
+        }
+        54 => {
+            if i + 1 > packed.len() { return Err("style tag TEXT_OVERFLOW truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::TextOverflow { value }, i + 1))
+        }
+        55 => {
             if i + 1 > packed.len() { return Err("style tag TRANSITION_DURATION truncated"); }
             let value = packed[i + 0];
             Ok((StyleTag::TransitionDuration { value }, i + 1))
         }
-        54 => {
+        56 => {
             if i + 1 > packed.len() { return Err("style tag TRANSITION_TIMING truncated"); }
             let value = packed[i + 0];
             Ok((StyleTag::TransitionTiming { value }, i + 1))
@@ -921,7 +939,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
 };
 use wasm_bindgen::prelude::*;
@@ -1053,6 +1071,14 @@ fn codec_overflow(raw: f32) -> OverflowValue {
     }
 }
 
+fn codec_text_overflow(raw: f32) -> TextOverflowValue {
+    match raw as u32 {
+        0 => TextOverflowValue::Clip,
+        1 => TextOverflowValue::Ellipsis,
+        _ => TextOverflowValue::Clip,
+    }
+}
+
 fn codec_cursor(raw: f32) -> CursorValue {
     match raw as u32 {
         0 => CursorValue::Default,
@@ -1140,6 +1166,8 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::Right { dim_value, dim_unit } => StyleProp::Right(codec_dim(dim_value, dim_unit)),
         StyleTag::Bottom { dim_value, dim_unit } => StyleProp::Bottom(codec_dim(dim_value, dim_unit)),
         StyleTag::Overflow { value } => StyleProp::Overflow(codec_overflow(value)),
+        StyleTag::MaxLines { value } => StyleProp::MaxLines(value as u32),
+        StyleTag::TextOverflow { value } => StyleProp::TextOverflow(codec_text_overflow(value)),
         StyleTag::TransitionDuration { value } => StyleProp::TransitionDuration(value),
         StyleTag::TransitionTiming { value } => StyleProp::TransitionTiming(codec_transition_timing(value)),
     })

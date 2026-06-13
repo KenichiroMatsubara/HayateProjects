@@ -113,6 +113,13 @@ fn encode_overflow(value: OverflowValue) -> f32 {
     }
 }
 
+fn encode_text_overflow(value: TextOverflowValue) -> f32 {
+    match value {
+        TextOverflowValue::Clip => 0.0,
+        TextOverflowValue::Ellipsis => 1.0,
+    }
+}
+
 fn encode_cursor(value: CursorValue) -> f32 {
     match value {
         CursorValue::Default => 0.0,
@@ -497,6 +504,14 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::Overflow(v) => {
                 buf.push(TAG_OVERFLOW as f32);
                 buf.push(encode_overflow(*v));
+            }
+            StyleProp::MaxLines(v) => {
+                buf.push(TAG_MAX_LINES as f32);
+                buf.push(*v as f32);
+            }
+            StyleProp::TextOverflow(v) => {
+                buf.push(TAG_TEXT_OVERFLOW as f32);
+                buf.push(encode_text_overflow(*v));
             }
             StyleProp::TransitionDuration(v) => {
                 buf.push(TAG_TRANSITION_DURATION as f32);

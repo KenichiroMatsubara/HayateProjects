@@ -6,6 +6,8 @@ pub(crate) enum ValueType {
     Color,
     Dimension,
     Scalar,
+    /// Unsigned integer carried on one f32 wire slot (e.g. `max-lines`).
+    U32,
     Enum(&'static str),
     DimensionList,
     FontFamily,
@@ -25,6 +27,7 @@ impl ValueType {
             "css-color" => ValueType::Color,
             "dimension" => ValueType::Dimension,
             "f32" => ValueType::Scalar,
+            "u32" => ValueType::U32,
             "font-family" => {
                 assert!(
                     tag.variable_length,
@@ -72,7 +75,7 @@ impl ValueType {
         match self {
             ValueType::Color => "(c)",
             ValueType::Dimension => "(d)",
-            ValueType::Scalar | ValueType::Enum(_) => "(v)",
+            ValueType::Scalar | ValueType::U32 | ValueType::Enum(_) => "(v)",
             ValueType::DimensionList => "(tracks)",
             ValueType::FontFamily => "(f)",
             ValueType::ZIndex => "(z)",
@@ -88,6 +91,7 @@ impl ValueType {
                 buf.push(encode_dim_unit(d.unit));\n"
                 .to_string(),
             ValueType::Scalar => "                buf.push(*v);\n".to_string(),
+            ValueType::U32 => "                buf.push(*v as f32);\n".to_string(),
             ValueType::Enum(kind) => format!("                buf.push(encode_{kind}(*v));\n"),
             ValueType::DimensionList => [
                 "                buf.push(tracks.len() as f32);",
@@ -119,6 +123,7 @@ impl ValueType {
                 format!("codec_dim({name}_value, {name}_unit)")
             }
             ValueType::Scalar => "value".to_string(),
+            ValueType::U32 => "value as u32".to_string(),
             ValueType::Enum(kind) => format!("codec_{kind}(value)"),
             ValueType::DimensionList => {
                 "tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()"
@@ -133,7 +138,7 @@ impl ValueType {
         match self {
             ValueType::Color => ("(c)".to_string(), "c"),
             ValueType::Dimension => ("(d)".to_string(), "d"),
-            ValueType::Scalar | ValueType::Enum(_) => ("(v)".to_string(), "v"),
+            ValueType::Scalar | ValueType::U32 | ValueType::Enum(_) => ("(v)".to_string(), "v"),
             ValueType::DimensionList => ("(ref tracks)".to_string(), "tracks"),
             ValueType::FontFamily => ("(ref f)".to_string(), "f"),
             ValueType::ZIndex => ("(z)".to_string(), "z"),
@@ -181,6 +186,13 @@ impl ValueType {
                 }
                 other => panic!("Scalar tag domCss.format must be px, ms or number, got {other}"),
             },
+            ValueType::U32 => {
+                // `w` is consumed by the shared `extras` loop below (whenPositive/whenZero).
+                lines.push(format!("let w = {value_var} as f32;"));
+                lines.push(format!(
+                    "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {value_var})));"
+                ));
+            }
             ValueType::ZIndex => {
                 lines.push(format!(
                     "out.push((\"{css_prop}\".into(), {value_var}.to_string()));"
@@ -239,6 +251,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "border_style" => "border_style",
         "cursor" => "cursor",
         "overflow" => "overflow",
+        "text_overflow" => "text_overflow",
         "position" => "position",
         "transition_timing" => "transition_timing",
         other => panic!("unknown enum encodeFrom kind: {other}"),
@@ -332,6 +345,10 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
         "overflow" => {
             "OverflowValue::Visible => \"visible\",\n\
             OverflowValue::Hidden => \"hidden\","
+        }
+        "text_overflow" => {
+            "TextOverflowValue::Clip => \"clip\",\n\
+            TextOverflowValue::Ellipsis => \"ellipsis\","
         }
         "position" => {
             "PositionValue::Relative => \"relative\",\n\

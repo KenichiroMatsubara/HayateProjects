@@ -24,7 +24,7 @@ use crate::element::scene_build;
 use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
 use crate::element::style::{
     BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, StyleProp, StylePropKind,
-    TextDecorationValue, TransitionTimingValue, ViewportCondition,
+    TextDecorationValue, TextOverflowValue, TransitionTimingValue, ViewportCondition,
 };
 use crate::element::taffy_bridge;
 use crate::element::text;
@@ -46,6 +46,11 @@ pub struct Visual {
     /// Child-overflow handling (issue #206). `Hidden` clips children to the
     /// element's (optionally rounded) border box; `Visible` is the default.
     pub overflow: OverflowValue,
+    /// Max number of text lines before truncation (issue #207). `None` = unbounded.
+    /// The sole trigger for text truncation; `text_overflow` is inert without it.
+    pub max_lines: Option<u32>,
+    /// How the last visible line is truncated when `max_lines` is exceeded.
+    pub text_overflow: TextOverflowValue,
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
@@ -78,6 +83,8 @@ impl Default for Visual {
             border_color: None,
             border_style: BorderStyleValue::None,
             overflow: OverflowValue::Visible,
+            max_lines: None,
+            text_overflow: TextOverflowValue::Clip,
             text_color: None,
             font_size: None,
             font_weight: None,
@@ -1398,6 +1405,14 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::BorderColor(c) => visual.border_color = Some(*c),
         StyleProp::BorderStyle(v) => visual.border_style = *v,
         StyleProp::Overflow(v) => visual.overflow = *v,
+        StyleProp::MaxLines(v) => {
+            visual.max_lines = if *v == 0 { None } else { Some(*v) };
+            *text_dirty = true;
+        }
+        StyleProp::TextOverflow(v) => {
+            visual.text_overflow = *v;
+            *text_dirty = true;
+        }
         StyleProp::FontSize(v) => {
             visual.font_size = Some(v.max(0.0));
             *text_dirty = true;
@@ -1493,6 +1508,22 @@ impl ElementTree {
     /// Whether a pseudo-state transition is currently in flight for `id`.
     pub fn test_transition_active(&self, id: ElementId) -> bool {
         self.transitions.contains_key(&id)
+    }
+
+    /// Number of laid-out lines in an element's shaped text (issue #207 tests).
+    pub fn test_text_line_count(&self, id: ElementId) -> Option<usize> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.text_layout.as_ref())
+            .map(|tl| tl.layout.lines().count())
+    }
+
+    /// The shaped text of an element's IFC layout, after any truncation (issue #207 tests).
+    pub fn test_shaped_text(&self, id: ElementId) -> Option<String> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.text_layout.as_ref())
+            .map(|tl| tl.text.to_string())
     }
 
     /// Mirror of `render()` cursor-blink tick without draining dirty sets (issue #183).

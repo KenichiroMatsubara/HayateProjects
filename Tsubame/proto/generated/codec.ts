@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, POSITION, TRANSITION_TIMING } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -199,6 +199,11 @@ const CURSOR_CODE: Record<string, number> = {
 const OVERFLOW_CODE: Record<string, number> = {
   'visible': OVERFLOW.visible,
   'hidden': OVERFLOW.hidden,
+};
+
+const TEXT_OVERFLOW_CODE: Record<string, number> = {
+  'clip': TEXT_OVERFLOW.clip,
+  'ellipsis': TEXT_OVERFLOW.ellipsis,
 };
 
 const POSITION_CODE: Record<string, number> = {
@@ -496,6 +501,16 @@ function encode_overflow(out: number[], value: string): void {
   out.push(TAG.OVERFLOW, code);
 }
 
+function encode_maxLines(out: number[], value: unknown): void {
+  out.push(TAG.MAX_LINES, finiteInteger('maxLines', value));
+}
+
+function encode_textOverflow(out: number[], value: string): void {
+  const code = TEXT_OVERFLOW_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported textOverflow "${value}"`);
+  out.push(TAG.TEXT_OVERFLOW, code);
+}
+
 function encode_transitionDuration(out: number[], value: unknown): void {
   out.push(TAG.TRANSITION_DURATION, finiteNumber('transitionDuration', value));
 }
@@ -560,6 +575,8 @@ const STYLE_ENCODERS = {
   right: encode_right,
   bottom: encode_bottom,
   overflow: encode_overflow,
+  maxLines: encode_maxLines,
+  textOverflow: encode_textOverflow,
   transitionDuration: encode_transitionDuration,
   transitionTiming: encode_transitionTiming,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;

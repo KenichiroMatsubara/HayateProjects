@@ -276,6 +276,20 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("overflow".into(), s.into()));
         }
+        StyleProp::MaxLines(v) => {
+            let w = v as f32;
+            out.push(("-webkit-line-clamp".into(), format!("{}", v)));
+            out.push(("display".into(), if w > 0.0 { "-webkit-box".into() } else { "block".into() }));
+            out.push(("-webkit-box-orient".into(), if w > 0.0 { "vertical".into() } else { "horizontal".into() }));
+            out.push(("overflow".into(), if w > 0.0 { "hidden".into() } else { "visible".into() }));
+        }
+        StyleProp::TextOverflow(v) => {
+            let s = match v {
+            TextOverflowValue::Clip => "clip",
+            TextOverflowValue::Ellipsis => "ellipsis",
+            };
+            out.push(("text-overflow".into(), s.into()));
+        }
         StyleProp::TransitionDuration(v) => {
             out.push(("transition-duration".into(), format!("{}ms", v.max(0.0))));
         }

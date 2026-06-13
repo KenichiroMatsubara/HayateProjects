@@ -260,6 +260,19 @@
     ]
   },
   {
+    "name": "text_overflow",
+    "values": [
+      {
+        "name": "clip",
+        "value": 0
+      },
+      {
+        "name": "ellipsis",
+        "value": 1
+      }
+    ]
+  },
+  {
     "name": "cursor",
     "values": [
       {

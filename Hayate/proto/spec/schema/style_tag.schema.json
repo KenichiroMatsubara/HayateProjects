@@ -14,6 +14,7 @@
         "css-color",
         "dimension",
         "f32",
+        "u32",
         "enum:display",
         "enum:flex_direction",
         "enum:flex_wrap",
@@ -27,6 +28,7 @@
         "enum:cursor",
         "enum:overflow",
         "enum:position",
+        "enum:text_overflow",
         "enum:transition_timing",
         "font-family",
         "dimension-list",
@@ -74,6 +76,7 @@
             "enum:cursor",
             "enum:overflow",
             "enum:position",
+            "enum:text_overflow",
             "enum:transition_timing",
             "dimension-list"
           ]

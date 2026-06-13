@@ -108,6 +108,18 @@ pub enum TransitionTimingValue {
     EaseInOut,
 }
 
+/// Text truncation behavior for the last visible line of a `max-lines` block
+/// (ADR-0090/issue #207).
+///
+/// `Clip` is the default: text beyond `max-lines` is silently cut. `Ellipsis`
+/// appends `…` to the last visible line. `text-overflow` has no effect unless
+/// `max-lines` is also set — `max-lines` is the sole truncation trigger.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextOverflowValue {
+    Clip,
+    Ellipsis,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,
@@ -266,6 +278,9 @@ pub enum StyleProp {
     Color(Color),
     FontStyle(FontStyleValue),
     TextDecoration(TextDecorationValue),
+    // text truncation (ADR-0090/issue #207)
+    MaxLines(u32),
+    TextOverflow(TextOverflowValue),
     // pointer
     Cursor(CursorValue),
     // ambient default text style (block-penetrating)

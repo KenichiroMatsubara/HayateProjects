@@ -7,7 +7,7 @@ use parley::{
     FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
 };
 
-use crate::element::style::{FontStyleValue, TextDecorationValue};
+use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowValue};
 
 use crate::node::{TextDecorationLine, TextRunData};
 use crate::render::{RenderFont, RenderGlyph};
@@ -47,6 +47,7 @@ impl RangeMap {
 }
 
 /// A styled byte range for ranged Parley shaping (ADR-0063).
+#[derive(Clone)]
 pub struct RangedTextSpan {
     pub byte_start: usize,
     pub byte_end: usize,
@@ -208,18 +209,16 @@ pub fn build_text_layout(
     }
 }
 
-/// Build a Parley layout with per-byte-range styles (IFC / inline text).
-pub fn build_ranged_text_layout(
+/// Build a Parley layout with per-byte-range styles and break it into lines.
+/// Shared by the public IFC entry point and the `max-lines` re-shape passes.
+fn build_broken_ranged_layout(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
     text: &str,
     spans: &[RangedTextSpan],
     max_advance: Option<f32>,
-) -> TextLayout {
-    let default_font_size = spans
-        .first()
-        .map(|s| s.font_size)
-        .unwrap_or(16.0);
+) -> Layout<TextBrush> {
+    let default_font_size = spans.first().map(|s| s.font_size).unwrap_or(16.0);
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
     builder.push_default(StyleProperty::FontSize(default_font_size));
     builder.push_default(StyleProperty::FontFamily(FontFamily::Source(
@@ -269,16 +268,127 @@ pub fn build_ranged_text_layout(
 
     let mut layout: Layout<TextBrush> = builder.build(text);
     layout.break_all_lines(max_advance);
+    layout
+}
 
-    let (runs, missing_families) = lower_glyph_runs(&layout, default_font_size, text);
+/// Build a Parley layout with per-byte-range styles (IFC / inline text),
+/// optionally truncated to `max_lines` with `text-overflow` handling (issue #207).
+///
+/// `max_lines` is the sole truncation trigger; `text_overflow` is inert without
+/// it. `Ellipsis` appends `…` to the last visible line (trimming to fit the
+/// width constraint); `Clip` cuts silently.
+pub fn build_ranged_text_layout(
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<TextBrush>,
+    text: &str,
+    spans: &[RangedTextSpan],
+    max_advance: Option<f32>,
+    max_lines: Option<u32>,
+    text_overflow: TextOverflowValue,
+) -> TextLayout {
+    let default_font_size = spans.first().map(|s| s.font_size).unwrap_or(16.0);
+    let mut layout = build_broken_ranged_layout(font_cx, layout_cx, text, spans, max_advance);
+
+    let mut truncated_text: Option<String> = None;
+    if let Some(max) = max_lines.map(|m| m as usize).filter(|m| *m >= 1) {
+        if layout.lines().count() > max {
+            let cut = layout
+                .lines()
+                .nth(max - 1)
+                .map(|l| l.text_range().end)
+                .unwrap_or(text.len())
+                .min(text.len());
+            let ellipsis = matches!(text_overflow, TextOverflowValue::Ellipsis);
+            let (new_text, new_spans) = if ellipsis {
+                fit_ellipsis(font_cx, layout_cx, text, spans, max_advance, max, cut)
+            } else {
+                let kept = text[..cut].trim_end();
+                (kept.to_string(), clip_spans(spans, kept.len()))
+            };
+            layout = build_broken_ranged_layout(font_cx, layout_cx, &new_text, &new_spans, max_advance);
+            truncated_text = Some(new_text);
+        }
+    }
+
+    let final_text: &str = truncated_text.as_deref().unwrap_or(text);
+    let (runs, missing_families) = lower_glyph_runs(&layout, default_font_size, final_text);
     TextLayout {
         layout,
         runs,
         font_size: default_font_size,
-        text: Arc::<str>::from(text),
+        text: Arc::<str>::from(final_text),
         width_constraint: max_advance,
         missing_families,
         range_map: None,
+    }
+}
+
+/// Clip styled spans to the first `len` bytes, dropping any that fall entirely past it.
+fn clip_spans(spans: &[RangedTextSpan], len: usize) -> Vec<RangedTextSpan> {
+    spans
+        .iter()
+        .filter(|s| s.byte_start < len)
+        .map(|s| {
+            let mut clipped = s.clone();
+            clipped.byte_end = clipped.byte_end.min(len);
+            clipped
+        })
+        .filter(|s| s.byte_start < s.byte_end)
+        .collect()
+}
+
+/// Append an ellipsis (`…`) span at byte offset `at`, inheriting the trailing
+/// span's text style (but never its decoration).
+fn push_ellipsis_span(spans: &mut Vec<RangedTextSpan>, at: usize) {
+    let ellipsis_len = '…'.len_utf8();
+    let mut span = spans.last().cloned().unwrap_or(RangedTextSpan {
+        byte_start: at,
+        byte_end: at,
+        font_size: 16.0,
+        font_weight: None,
+        font_family: None,
+        font_style: None,
+        text_decoration: None,
+        brush: [0, 0, 0, 255],
+    });
+    span.byte_start = at;
+    span.byte_end = at + ellipsis_len;
+    span.text_decoration = None;
+    spans.push(span);
+}
+
+fn prev_char_boundary(s: &str, mut idx: usize) -> usize {
+    if idx == 0 {
+        return 0;
+    }
+    idx -= 1;
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
+}
+
+/// Build the `text-overflow: ellipsis` truncation: the longest prefix of `text`
+/// (up to `cut`) such that `prefix + …` still fits within `max` lines.
+fn fit_ellipsis(
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<TextBrush>,
+    text: &str,
+    spans: &[RangedTextSpan],
+    max_advance: Option<f32>,
+    max: usize,
+    cut: usize,
+) -> (String, Vec<RangedTextSpan>) {
+    let mut keep = text[..cut].trim_end().len();
+    loop {
+        let candidate = format!("{}…", &text[..keep]);
+        let mut candidate_spans = clip_spans(spans, keep);
+        push_ellipsis_span(&mut candidate_spans, keep);
+        let probe = build_broken_ranged_layout(font_cx, layout_cx, &candidate, &candidate_spans, max_advance);
+        if keep == 0 || probe.lines().count() <= max {
+            return (candidate, candidate_spans);
+        }
+        keep = text[..prev_char_boundary(text, keep)].trim_end().len();
     }
 }
 
@@ -546,6 +656,8 @@ mod tests {
             "Hello",
             &spans,
             None,
+            None,
+            TextOverflowValue::Clip,
         );
         let styles = glyph_run_font_styles(&tl);
         assert!(!styles.is_empty(), "expected shaped glyph runs");
