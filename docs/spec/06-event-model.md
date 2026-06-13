@@ -49,10 +49,23 @@ delivery の wire 形式そのものは §10（PROTO-12〜17）に置く。
 **状況:** ✅ — `interaction.rs` が `ElementTree::on_pointer_down/up/move`・`on_wheel`・`on_key_down`・`on_text_input`・`on_composition_*`・`on_hover_enter/leave`・`on_focus/blur` を提供。focus/active/hover は tree 単独所有。`hayate-adapter-web` は raw 入力→`tree.on_*` の薄い翻訳のみ（`RendererEventState` 撤去）。
 **備考:** D2（`element_renderer.rs` god-module 分割）の前提を整える。Web/native adapter が同一 core 状態機械を共有。
 
+### EVT-08 — pointer cursor は要素から解決し Platform Adapter が適用
+**規範文:** `cursor` はポインタ直下の要素から解決し、`on_pointer_move` の出力（`PointerMoveResult.resolved_cursor`）として Platform Adapter に渡す。Adapter は OS/ブラウザのカーソルを駆動し、要素スタイルには触れない。coalesce された move（layout 未準備 / 1px dedup）では再計算せず直近値を持ち越す。Canvas adapter は生成 Hayate-CSS → browser-CSS マッパー（ADR-0070）を再利用し値リストを単一正本に保つ。
+**出典:** ADR-0088、ADR-0066（interaction 状態機械）、ADR-0070（生成マッパー）
+**状況:** ✅ — `style_tags.json` に `CURSOR`（enum = default/pointer/text/crosshair/not-allowed/grab/grabbing）、`CursorValue`。`interaction.rs` の `PointerMoveResult { moved, resolved_cursor }` ＋ `last_cursor` 持ち越し。Canvas adapter `apply_resolved_cursor`（`document.body.style.cursor`）。
+**備考:** カーソルは要素ごと push でなくビューポート単位で1つ適用。DOM Mode は CSS `cursor` に直接写像。
+
+### EVT-09 — transition は effective visual の変化を Render Layer が補間する
+**規範文:** 要素の effective visual が変化したとき、Render Layer が変化前の表示値から target へ連続値プロパティ（`background-color` / `border-color` / `text-color` / `opacity` / `border-radius` / `border-width`）を `transition-duration`（ms）/ `transition-timing` に従って補間する。トリガは `resolve_effective`（ADR-0067）の per-property 差分で、擬似状態切替・`setStyle`・継承変化を区別しない（ブラウザ/Blink の computed-style 差分と同型）。enum・離散は target 即時。duration/timing は after-change（解決済み）の値を使う。`render(timestamp_ms)` の frame loop ＋ `visual_dirty`（ADR-0086/0032 を再利用）で進める。DOM はブラウザの CSS transition に委譲。
+**出典:** ADR-0089（Render Layer 補間・frame loop・補間対象6連続値・DOM 委譲）、ADR-0093（トリガを resolve シームへ＝up-level パリティ・`from`=表示値の連続反転・per-property state・after-change duration）
+**状況:** 🟡 — 擬似状態切替の補間は実装済み（ADR-0089、`transition.rs` / `transition_interpolation.rs`）。up-level（resolve シーム diff・`setStyle`/継承変化の補間・連続反転・after-change duration・per-property state）は未実装（ADR-0093）。現実装は pseudo-only トリガ・`from`=解決値・duration の base 直読。
+**備考:** up-level 化で Canvas/DOM の Semantics Parity（ADR-0002）破れ（setStyle 即時 vs 補間・逆方向ジャンプ vs 連続）が解消される。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 7 | EVT-01〜07 |
+| ✅実装済み | 8 | EVT-01〜08 |
+| 🟡部分 | 1 | EVT-09（pseudo 補間は実装済み・up-level 未実装、ADR-0093） |
 | ⬜未実装 | 0 | — |

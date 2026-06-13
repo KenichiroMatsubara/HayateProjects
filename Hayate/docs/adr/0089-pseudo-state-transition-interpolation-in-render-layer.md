@@ -1,6 +1,6 @@
 # 擬似状態切替の補間アニメーションを Render Layer が担う（`transition` 語彙）
 
-**Status: accepted（HITL — issue #209）**
+**Status: accepted（HITL — issue #209）。トリガ範囲・`from` 捕捉・state 粒度は ADR-0093 が更新（supersede）。**
 
 **Date: 2026-06-13**
 
