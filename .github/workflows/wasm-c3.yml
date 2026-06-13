@@ -59,3 +59,23 @@ jobs:
       - name: Run renderer-canvas C3 tests
         working-directory: Tsubame/packages/renderer-canvas
         run: pnpm run test:wasm
+
+  pointer-input-firefox:
+    name: Self-wired pointer input (ADR-0092, Firefox headless)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Add WASM target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Run pointer-input wasm-bindgen tests (backend-null)
+        working-directory: Hayate
+        run: |
+          wasm-pack test --headless --firefox crates/adapters/web \
+            -- --no-default-features --features backend-null --test pointer_input_browser
