@@ -2,6 +2,7 @@ use crate::color::Color;
 use crate::element::effective_visual::{
     self, child_inherited_context, InheritedVisualContext,
 };
+use crate::element::style::BorderStyleValue;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
@@ -502,6 +503,7 @@ fn emit_element(
         visual.border_width,
         visual.background_color,
         visual.border_color,
+        visual.border_style,
         visual.opacity,
     );
 
@@ -785,6 +787,7 @@ fn walk_ephemeral(
         visual.border_width,
         visual.background_color,
         visual.border_color,
+        visual.border_style,
         visual.opacity,
     );
 
@@ -949,6 +952,7 @@ fn emit_visual_box(
     border_width: f32,
     background_color: Option<Color>,
     border_color: Option<Color>,
+    border_style: BorderStyleValue,
     opacity: f32,
 ) {
     let radius = border_radius.max(0.0);
@@ -956,13 +960,41 @@ fn emit_visual_box(
     let background = background_color.map(|c| c.with_opacity(opacity).to_array_f32());
     let border = border_color.map(|c| c.with_opacity(opacity).to_array_f32());
 
-    if border_w > 0.0 {
+    // A border is drawn only when it has both a positive width and an explicit
+    // style (CSS-like: `border-style` defaults to `none`, issue #204).
+    let draw_border = border_w > 0.0 && border_style != BorderStyleValue::None;
+
+    if draw_border {
         let Some(border_rgba) = border else {
             if let Some(bg) = background {
                 emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
             }
             return;
         };
+
+        if border_style == BorderStyleValue::Dashed {
+            // Background fills the full box; dashes stroke the perimeter on top.
+            if let Some(bg) = background {
+                emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
+            }
+            emit(
+                sg,
+                parent_group,
+                Node {
+                    kind: NodeKind::DashedBorder {
+                        x,
+                        y,
+                        width,
+                        height,
+                        outer_radius: radius,
+                        border_width: border_w,
+                        color: border_rgba,
+                    },
+                    children: Vec::new(),
+                },
+            );
+            return;
+        }
 
         if let Some(bg) = background {
             emit_fill_rect(

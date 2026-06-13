@@ -230,6 +230,23 @@
     ]
   },
   {
+    "name": "border_style",
+    "values": [
+      {
+        "name": "none",
+        "value": 0
+      },
+      {
+        "name": "solid",
+        "value": 1
+      },
+      {
+        "name": "dashed",
+        "value": 2
+      }
+    ]
+  },
+  {
     "name": "font_family",
     "string_values": true,
     "values": [

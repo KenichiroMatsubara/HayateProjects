@@ -12,6 +12,7 @@ export type {
   JustifyContent,
   FontStyle,
   TextDecoration,
+  BorderStyle,
   HayateStyle,
   StylePatch,
 } from './generated/style-types.js';

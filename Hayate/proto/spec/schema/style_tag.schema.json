@@ -23,6 +23,7 @@
         "enum:justify_content",
         "enum:font_style",
         "enum:text_decoration",
+        "enum:border_style",
         "font-family",
         "dimension-list",
         "z-index"
@@ -64,6 +65,7 @@
             "enum:justify_content",
             "enum:font_style",
             "enum:text_decoration",
+            "enum:border_style",
             "dimension-list"
           ]
         },

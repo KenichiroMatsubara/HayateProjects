@@ -49,14 +49,6 @@
     "targets": [
       "packet",
       "css"
-    ],
-    "domExtras": [
-      {
-        "cssName": "borderStyle",
-        "cssProperty": "border-style",
-        "whenPositive": "solid",
-        "whenZero": "none"
-      }
     ]
   },
   {
@@ -587,6 +579,19 @@
     "domFormat": "enum",
     "cssName": "flexWrap",
     "cssProperty": "flex-wrap",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "borderStyle",
+    "tag": 45,
+    "unsetKind": null,
+    "wireKind": "borderStyle",
+    "domFormat": "enum",
+    "cssName": "borderStyle",
+    "cssProperty": "border-style",
     "targets": [
       "packet",
       "css"

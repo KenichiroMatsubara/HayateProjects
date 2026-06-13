@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use hayate_adapter_web::pseudo_style_dom::{
     resolve_pseudo_css_map, ParityInteraction, PseudoStylesFixture,
 };
-use hayate_core::{Color, ElementKind, StyleProp};
+use hayate_core::{BorderStyleValue, Color, ElementKind, StyleProp};
 use serde_json::Value;
 
 fn fixture_path() -> PathBuf {
@@ -35,6 +35,7 @@ fn style_props_from_patch(obj: &serde_json::Map<String, Value>) -> Vec<StyleProp
         let prop = match key.as_str() {
             "backgroundColor" => StyleProp::BackgroundColor(parse_hex_color(value.as_str().unwrap())),
             "borderWidth" => StyleProp::BorderWidth(value.as_f64().unwrap() as f32),
+            "borderStyle" => StyleProp::BorderStyle(parse_border_style(value.as_str().unwrap())),
             "borderRadius" => StyleProp::BorderRadius(value.as_f64().unwrap() as f32),
             "opacity" => StyleProp::Opacity(value.as_f64().unwrap() as f32),
             "color" => StyleProp::Color(parse_hex_color(value.as_str().unwrap())),
@@ -44,6 +45,15 @@ fn style_props_from_patch(obj: &serde_json::Map<String, Value>) -> Vec<StyleProp
         props.push(prop);
     }
     props
+}
+
+fn parse_border_style(s: &str) -> BorderStyleValue {
+    match s {
+        "none" => BorderStyleValue::None,
+        "solid" => BorderStyleValue::Solid,
+        "dashed" => BorderStyleValue::Dashed,
+        other => panic!("unknown border-style: {other}"),
+    }
 }
 
 fn element_kind_from_str(s: &str) -> ElementKind {
@@ -124,11 +134,11 @@ fn pseudo_state_parity_corpus_html_mode() {
 }
 
 #[test]
-fn corpus_catches_dropped_dom_extras() {
+fn corpus_catches_dropped_border_style() {
     let fixture = load_fixtures()
         .into_iter()
-        .find(|f| f["name"] == "hover_border_width_dom_extra")
-        .expect("hover_border_width_dom_extra fixture");
+        .find(|f| f["name"] == "hover_border_style_dashed")
+        .expect("hover_border_style_dashed fixture");
     let element_kind = element_kind_from_str(fixture["elementKind"].as_str().unwrap());
     let pseudo = pseudo_styles_from_fixture(&fixture["pseudo"]);
     let interaction = interaction_from_fixture(&fixture["interaction"]);
@@ -138,7 +148,7 @@ fn corpus_catches_dropped_dom_extras() {
 
     let expected = expected_property_map(&fixture);
     assert!(actual.get("border-style").is_none());
-    assert_ne!(actual, expected, "dropped border-style extra must diverge from corpus");
+    assert_ne!(actual, expected, "dropped border-style must diverge from corpus");
 }
 
 #[test]

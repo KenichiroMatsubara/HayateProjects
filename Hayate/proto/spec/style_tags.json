@@ -56,14 +56,7 @@
     ],
     "domCss": {
       "property": "border-width",
-      "format": "px",
-      "extras": [
-        {
-          "property": "border-style",
-          "whenPositive": "solid",
-          "whenZero": "none"
-        }
-      ]
+      "format": "px"
     }
   },
   {
@@ -683,6 +676,21 @@
     "domCss": {
       "property": "flex-wrap",
       "format": "enum:flex_wrap"
+    }
+  },
+  {
+    "name": "BORDER_STYLE",
+    "value": 45,
+    "encodeFrom": "enum:border_style",
+    "params": [
+      {
+        "name": "value",
+        "type": "border_style"
+      }
+    ],
+    "domCss": {
+      "property": "border-style",
+      "format": "enum:border_style"
     }
   }
 ]

@@ -12,6 +12,7 @@ export type AlignContent = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 's
 export type JustifyContent = 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly';
 export type FontStyle = 'normal' | 'italic' | 'oblique';
 export type TextDecoration = 'none' | 'underline' | 'line-through';
+export type BorderStyle = 'none' | 'solid' | 'dashed';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -59,6 +60,7 @@ export interface HayateStyle {
   alignSelf: AlignSelf;
   alignContent: AlignContent;
   flexWrap: FlexWrap;
+  borderStyle: BorderStyle;
 }
 
 /**
