@@ -268,27 +268,26 @@ fn hover_transition_keeps_visual_dirty_until_complete() {
     tree.render(0.0);
 
     tree.update_pointer_hover(Some(root));
+
+    // The first post-hover render anchors the transition at the resolve seam.
+    tree.render(0.0);
     assert!(tree.test_transition_active(root), "hover starts a transition");
 
-    // Each in-window frame re-marks visual-dirty; clear it between frames the
-    // way a real render() pass would.
-    for t in [0.0, 50.0, 100.0, 150.0] {
-        tree.test_advance_transitions(t);
+    // Each in-window frame keeps the element visual-dirty for the next frame so
+    // the host frame loop keeps running.
+    for t in [50.0, 100.0, 150.0] {
+        tree.render(t);
         assert!(
             tree.test_visual_dirty_contains(root),
             "frame at {t}ms must keep the element visual-dirty"
         );
-        tree.test_drain_visual_dirty();
     }
 
-    // The frame that reaches the end still paints (final target) and is dirty.
-    tree.test_advance_transitions(200.0);
-    assert!(tree.test_visual_dirty_contains(root), "final frame still paints");
-    tree.test_drain_visual_dirty();
+    // The frame that reaches the end paints the final target and drops the track.
+    tree.render(200.0);
     assert!(!tree.test_transition_active(root), "transition is dropped when done");
 
     // Once finished, the loop goes quiet: no further re-marking.
-    tree.test_advance_transitions(250.0);
     assert!(
         !tree.test_visual_dirty_contains(root),
         "completed transition must stop driving frames"

@@ -28,7 +28,6 @@ use crate::element::style::{
 };
 use crate::element::taffy_bridge;
 use crate::element::text;
-use crate::element::transition;
 use crate::element::visual_invalidation::{
     self, VisualInvalidationReach,
 };
@@ -188,8 +187,6 @@ pub struct ElementTree {
     /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
     pub(crate) last_cursor: CursorValue,
     pub(crate) runtime: DocumentRuntime,
-    /// In-flight pseudo-state transitions, keyed by element (ADR-0089, #209).
-    pub(crate) transitions: HashMap<ElementId, transition::TransitionState>,
 }
 
 impl ElementTree {
@@ -209,7 +206,6 @@ impl ElementTree {
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
-            transitions: HashMap::new(),
         }
     }
 
@@ -895,7 +891,6 @@ impl ElementTree {
                     .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
             }
         }
-        self.advance_transitions(timestamp_ms);
         let dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
@@ -910,7 +905,15 @@ impl ElementTree {
         let _ = self.engine.drain_shape_lowering_reach();
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
-        scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty);
+        scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
+        // Transitions advance at the lowering seam; keep any still-interpolating
+        // element visual-dirty so the next frame re-lowers and advances it. When
+        // the last track settles this frame the element is not re-marked and the
+        // frame loop goes quiet (ADR-0086/0093).
+        for id in scene_lowering.active_transition_ids() {
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
         self.scene_cache = scene_cache;
         self.scene_lowering = scene_lowering;
         &self.scene_cache
@@ -1156,60 +1159,9 @@ impl ElementTree {
                 visual_invalidation::invalidation_reach_for_props(props),
             );
         }
-        self.maybe_begin_transition(id);
-    }
-
-    /// Begin (or restart) a transition for `id` when its resolved
-    /// `transition-duration` is positive (ADR-0089, #209). Captures the current
-    /// on-screen effective visual as the curve's start. Callers invoke this from
-    /// `mark_pseudo_activation_dirty`, before the interaction state is mutated,
-    /// so the captured `from` is the pre-switch appearance.
-    fn maybe_begin_transition(&mut self, id: ElementId) {
-        let Some(el) = self.elements.get(&id) else {
-            return;
-        };
-        let duration = el.visual.transition_duration;
-        if duration <= 0.0 {
-            self.transitions.remove(&id);
-            return;
-        }
-        let timing = el.visual.transition_timing;
-        let Some(from) = self.element_effective_visual(id) else {
-            return;
-        };
-        self.transitions
-            .insert(id, transition::TransitionState::new(from, duration, timing));
-    }
-
-    /// Advance every in-flight transition to `now_ms`, keeping animating
-    /// elements visual-dirty so the frame loop continues, and dropping
-    /// transitions that have reached their end (after one final target frame).
-    fn advance_transitions(&mut self, now_ms: f64) {
-        if self.transitions.is_empty() {
-            return;
-        }
-        let mut finished = Vec::new();
-        let ids: Vec<ElementId> = self.transitions.keys().copied().collect();
-        for id in &ids {
-            if let Some(state) = self.transitions.get_mut(id) {
-                if state.advance(now_ms) {
-                    finished.push(*id);
-                }
-            }
-            self.engine
-                .mark_visual_dirty(*id, VisualInvalidationReach::SelfOnly);
-        }
-        for id in finished {
-            self.transitions.remove(&id);
-        }
-    }
-
-    /// Blend `target` with `id`'s in-flight transition, if any (ADR-0089).
-    pub(crate) fn blend_transition(&self, id: ElementId, target: Visual) -> Visual {
-        match self.transitions.get(&id) {
-            Some(state) => state.blend(&target),
-            None => target,
-        }
+        // The transition trigger lives at the `resolve_effective` lowering seam
+        // (ADR-0093), not here: marking the element visual-dirty is enough to
+        // re-lower it, where the per-property diff starts any interpolation.
     }
 
     fn mark_text_content_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
@@ -1494,20 +1446,14 @@ impl ElementTree {
         self.engine.shape_dirty.contains(&id)
     }
 
-    /// Mirror of `render()`'s transition advance without draining dirty sets,
-    /// for asserting multi-frame `visual_dirty` continuity (issue #209).
-    pub fn test_advance_transitions(&mut self, timestamp_ms: f64) {
-        self.advance_transitions(timestamp_ms);
-    }
-
-    /// Clear the visual-dirty set, simulating the end of a `render()` frame.
-    pub fn test_drain_visual_dirty(&mut self) {
-        let _ = self.engine.drain_visual_dirty();
-    }
-
-    /// Whether a pseudo-state transition is currently in flight for `id`.
+    /// Whether a continuous-property transition is currently in flight for `id`
+    /// (issue #227). State lives in the retained lowering, so this reflects the
+    /// last `render()` pass.
     pub fn test_transition_active(&self, id: ElementId) -> bool {
-        self.transitions.contains_key(&id)
+        self.scene_lowering
+            .anchors
+            .get(&id)
+            .is_some_and(|entry| entry.transitions.is_active())
     }
 
     /// Number of laid-out lines in an element's shaped text (issue #207 tests).

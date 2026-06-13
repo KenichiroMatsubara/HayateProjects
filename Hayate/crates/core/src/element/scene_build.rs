@@ -34,11 +34,16 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
 }
 
 /// Incrementally update a scene graph using retained element anchors.
+///
+/// `now_ms` is the host clock driving in-flight transitions; the per-element
+/// `resolve_effective` seam diffs the resolved visual against the stored
+/// displayed value to start/advance interpolation (ADR-0093).
 pub(crate) fn update(
     tree: &ElementTree,
     scene_cache: &mut SceneGraph,
     lowering: &mut SceneLowering,
     dirty: LoweringDirtySnapshot,
+    now_ms: f64,
 ) {
     lowering.walk_count = 0;
     let interaction = tree.interaction_snapshot();
@@ -58,6 +63,7 @@ pub(crate) fn update(
                 InheritedVisualContext::root(),
                 &interaction,
                 VisualInvalidationReach::Subtree,
+                now_ms,
             );
         }
         lowering.built = true;
@@ -102,6 +108,7 @@ pub(crate) fn update(
             inherited_for_patch_root(tree, patch_root),
             &interaction,
             reach,
+            now_ms,
         );
     }
 }
@@ -255,9 +262,7 @@ fn ensure_anchor(
             children: Vec::new(),
         })
     };
-    lowering
-        .anchors
-        .insert(id, AnchorEntry { anchor_id });
+    lowering.anchors.insert(id, AnchorEntry::new(anchor_id));
     anchor_id
 }
 
@@ -310,6 +315,7 @@ fn walk_retained(
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
     reach: VisualInvalidationReach,
+    now_ms: f64,
 ) {
     lowering.walk_count += 1;
 
@@ -331,6 +337,7 @@ fn walk_retained(
                     inherited.clone(),
                     interaction,
                     VisualInvalidationReach::Subtree,
+                    now_ms,
                 );
             }
             return;
@@ -355,6 +362,7 @@ fn walk_retained(
         inherited,
         interaction,
         reach,
+        now_ms,
     );
 }
 
@@ -413,6 +421,7 @@ fn emit_element(
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
     reach: VisualInvalidationReach,
+    now_ms: f64,
 ) {
     let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
     let child_inherited = child_inherited_context(
@@ -426,14 +435,21 @@ fn emit_element(
         &el.viewport_variants,
         tree.viewport(),
     );
-    let visual = effective_visual::resolve_effective(
+    let resolved = effective_visual::resolve_effective(
         &inherited,
         &own,
         &el.pseudo_styles,
         interaction,
         id,
     );
-    let visual = tree.blend_transition(id, visual);
+    // Diff the after-change resolved visual against the previous frame's
+    // displayed value at the resolve seam, interpolating changed continuous
+    // properties (ADR-0093). The retained anchor holds the before-change value.
+    let visual = lowering
+        .anchors
+        .get_mut(&id)
+        .map(|entry| entry.resolve_displayed(&resolved, now_ms))
+        .unwrap_or(resolved);
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -554,6 +570,7 @@ fn emit_element(
                 child_inherited.clone(),
                 interaction,
                 child_reach(tree, id, child, reach),
+                now_ms,
             );
         }
         reparent_child_anchors_under(
@@ -675,6 +692,7 @@ fn emit_element(
             child_inherited.clone(),
             interaction,
             child_reach(tree, id, child, reach),
+            now_ms,
         );
     }
     reparent_child_anchors_under(
@@ -727,6 +745,8 @@ fn walk_ephemeral(
         &el.viewport_variants,
         tree.viewport(),
     );
+    // Full ephemeral rebuild has no retained `last_displayed`, so it never
+    // interpolates — it paints the resolved target directly (ADR-0093).
     let visual = effective_visual::resolve_effective(
         &inherited,
         &own,
@@ -734,7 +754,6 @@ fn walk_ephemeral(
         interaction,
         id,
     );
-    let visual = tree.blend_transition(id, visual);
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,

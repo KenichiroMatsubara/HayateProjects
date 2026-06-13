@@ -1,38 +1,76 @@
-//! Pseudo-state transition interpolation (ADR-0089, issue #209).
+//! Effective-visual transition interpolation (ADR-0089 / ADR-0093, issue #227).
 //!
-//! When a `:hover` / `:active` / `:focus` switch occurs on an element whose
-//! resolved `transition-duration` is positive, the render layer interpolates
-//! the element's continuous visual properties from their on-screen value
-//! (`from`) toward the freshly-resolved target over the duration, eased by
-//! `transition-timing`. Enum-valued and discrete properties are not
-//! interpolated — they take the target value immediately. The interpolation is
-//! advanced by `render(timestamp_ms)` and keeps the element visual-dirty until
-//! it completes, reusing the existing dirty/frame-loop infrastructure rather
+//! When an element's resolved effective visual (ADR-0067) changes a continuous
+//! property and the after-change `transition-duration` is positive, the render
+//! layer interpolates that property from its on-screen value (`from`) toward the
+//! freshly-resolved target over the duration, eased by `transition-timing`. The
+//! trigger is the per-property diff at the `resolve_effective` seam, so pseudo
+//! switches, `setStyle`, and inherited changes are treated alike (Blink's
+//! computed-style diff). Enum-valued and discrete properties are not
+//! interpolated — they take the target value immediately. State is kept per
+//! element × property so several properties interpolate from independent `from`
+//! values and anchor their own start time. Interpolation is advanced by
+//! `render(timestamp_ms)` and keeps the element visual-dirty until it completes,
+//! reusing the existing dirty/frame-loop infrastructure (ADR-0086/0032) rather
 //! than introducing a separate timer.
 
 use crate::color::Color;
 use crate::element::style::TransitionTimingValue;
 use crate::element::tree::Visual;
 
-/// A single in-flight transition for one element.
+/// A continuous value that can be linearly interpolated during a transition.
+pub(crate) trait Lerp: Clone + PartialEq {
+    fn lerp(&self, to: &Self, t: f32) -> Self;
+}
+
+impl Lerp for f32 {
+    fn lerp(&self, to: &Self, t: f32) -> Self {
+        self + (to - self) * t
+    }
+}
+
+impl Lerp for Option<Color> {
+    /// When only one side is set there is no continuous path between them, so
+    /// snap straight to the target.
+    fn lerp(&self, to: &Self, t: f32) -> Self {
+        match (self, to) {
+            (Some(a), Some(b)) => {
+                let t = t as f64;
+                let lerp = |x: f64, y: f64| x + (y - x) * t;
+                Some(Color::new(
+                    lerp(a.r, b.r),
+                    lerp(a.g, b.g),
+                    lerp(a.b, b.b),
+                    lerp(a.a, b.a),
+                ))
+            }
+            _ => *to,
+        }
+    }
+}
+
+/// One in-flight transition for a single continuous property.
 #[derive(Clone, Debug)]
-pub(crate) struct TransitionState {
-    /// Visual snapshot displayed when the transition began (the curve's start).
-    from: Visual,
+struct Track<T> {
+    /// Value displayed when this curve began (its start).
+    from: T,
+    /// Resolved value the curve runs toward.
+    target: T,
     duration_ms: f32,
     timing: TransitionTimingValue,
     /// Host clock at which interpolation started. `None` until the first
-    /// `render` after the trigger anchors the clock (CSS starts a transition on
-    /// first observation, not at the input event).
+    /// `advance` after the trigger anchors the clock (CSS starts a transition on
+    /// first observation, not at the triggering mutation).
     start_ms: Option<f64>,
     /// Eased progress in `[0, 1]` from the most recent `advance`.
     progress: f32,
 }
 
-impl TransitionState {
-    pub(crate) fn new(from: Visual, duration_ms: f32, timing: TransitionTimingValue) -> Self {
+impl<T: Lerp> Track<T> {
+    fn new(from: T, target: T, duration_ms: f32, timing: TransitionTimingValue) -> Self {
         Self {
             from,
+            target,
             duration_ms,
             timing,
             start_ms: None,
@@ -40,10 +78,10 @@ impl TransitionState {
         }
     }
 
-    /// Advance the clock to `now_ms`, returning `true` once the transition has
-    /// reached its end (the caller drops finished transitions after a final
-    /// frame that paints the target).
-    pub(crate) fn advance(&mut self, now_ms: f64) -> bool {
+    /// Advance the clock to `now_ms`, returning `true` once the curve has
+    /// reached its end (the caller drops finished tracks after the final frame
+    /// that paints the target).
+    fn advance(&mut self, now_ms: f64) -> bool {
         let start = *self.start_ms.get_or_insert(now_ms);
         let raw = if self.duration_ms > 0.0 {
             ((now_ms - start) as f32 / self.duration_ms).clamp(0.0, 1.0)
@@ -54,43 +92,142 @@ impl TransitionState {
         raw >= 1.0
     }
 
-    /// Blend `from` toward `target` at the current eased progress.
-    pub(crate) fn blend(&self, target: &Visual) -> Visual {
-        lerp_visual(&self.from, target, self.progress)
+    /// The currently displayed value (`from` blended toward `target`).
+    fn current(&self) -> T {
+        self.from.lerp(&self.target, self.progress)
     }
 }
 
-/// Interpolate the continuous visual properties; discrete props take `to`.
-fn lerp_visual(from: &Visual, to: &Visual, t: f32) -> Visual {
-    let mut out = to.clone();
-    out.background_color = lerp_color_opt(from.background_color, to.background_color, t);
-    out.border_color = lerp_color_opt(from.border_color, to.border_color, t);
-    out.text_color = lerp_color_opt(from.text_color, to.text_color, t);
-    out.opacity = lerp_f32(from.opacity, to.opacity, t);
-    out.border_radius = lerp_f32(from.border_radius, to.border_radius, t);
-    out.border_width = lerp_f32(from.border_width, to.border_width, t);
-    out
-}
-
-fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-/// Interpolate two optional colours. When only one side is set there is no
-/// continuous path between them, so snap to the target.
-fn lerp_color_opt(a: Option<Color>, b: Option<Color>, t: f32) -> Option<Color> {
-    match (a, b) {
-        (Some(a), Some(b)) => {
-            let t = t as f64;
-            let lerp = |x: f64, y: f64| x + (y - x) * t;
-            Some(Color::new(
-                lerp(a.r, b.r),
-                lerp(a.g, b.g),
-                lerp(a.b, b.b),
-                lerp(a.a, b.a),
-            ))
+/// Step one property's `track` toward `target`, returning the value to display.
+///
+/// `prev_displayed` is last frame's on-screen value for this property (`None` on
+/// the element's first emit — initial styles never transition). A change of
+/// `target` redirects continuously from the current displayed value, so a
+/// reverse interrupt never jumps. `duration_ms` / `timing` are read from the
+/// after-change resolved visual.
+fn step<T: Lerp>(
+    track: &mut Option<Track<T>>,
+    prev_displayed: Option<T>,
+    target: T,
+    duration_ms: f32,
+    timing: TransitionTimingValue,
+    now_ms: f64,
+) -> T {
+    let target_changed = match track {
+        Some(tr) => tr.target != target,
+        None => prev_displayed.as_ref().is_some_and(|p| *p != target),
+    };
+    if target_changed {
+        if duration_ms > 0.0 {
+            let from = match track {
+                Some(tr) => tr.current(),
+                None => prev_displayed.expect("target_changed implies a previous value"),
+            };
+            *track = Some(Track::new(from, target.clone(), duration_ms, timing));
+        } else {
+            // After-change duration is zero: snap immediately (CSS/DOM parity).
+            *track = None;
         }
-        _ => b,
+    }
+    match track {
+        Some(tr) => {
+            let done = tr.advance(now_ms);
+            let cur = tr.current();
+            if done {
+                *track = None;
+            }
+            cur
+        }
+        None => target,
+    }
+}
+
+/// Per-property transition state for one element (ADR-0093). Each continuous
+/// property interpolates independently from its own `from` and start time.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ElementTransitions {
+    background_color: Option<Track<Option<Color>>>,
+    border_color: Option<Track<Option<Color>>>,
+    text_color: Option<Track<Option<Color>>>,
+    opacity: Option<Track<f32>>,
+    border_radius: Option<Track<f32>>,
+    border_width: Option<Track<f32>>,
+}
+
+impl ElementTransitions {
+    /// Whether any property is still interpolating.
+    pub(crate) fn is_active(&self) -> bool {
+        self.background_color.is_some()
+            || self.border_color.is_some()
+            || self.text_color.is_some()
+            || self.opacity.is_some()
+            || self.border_radius.is_some()
+            || self.border_width.is_some()
+    }
+
+    /// Diff the after-change resolved `target` against the previous frame's
+    /// displayed visual, (re)starting per-property transitions where it differs,
+    /// and return the visual to display this frame. Discrete / enum properties
+    /// take the target immediately. duration / timing come from `target` (the
+    /// after-change resolved effective visual).
+    pub(crate) fn blend(
+        &mut self,
+        prev_displayed: Option<&Visual>,
+        target: &Visual,
+        now_ms: f64,
+    ) -> Visual {
+        let dur = target.transition_duration;
+        let timing = target.transition_timing;
+        let mut out = target.clone();
+        out.background_color = step(
+            &mut self.background_color,
+            prev_displayed.map(|v| v.background_color),
+            target.background_color,
+            dur,
+            timing,
+            now_ms,
+        );
+        out.border_color = step(
+            &mut self.border_color,
+            prev_displayed.map(|v| v.border_color),
+            target.border_color,
+            dur,
+            timing,
+            now_ms,
+        );
+        out.text_color = step(
+            &mut self.text_color,
+            prev_displayed.map(|v| v.text_color),
+            target.text_color,
+            dur,
+            timing,
+            now_ms,
+        );
+        out.opacity = step(
+            &mut self.opacity,
+            prev_displayed.map(|v| v.opacity),
+            target.opacity,
+            dur,
+            timing,
+            now_ms,
+        );
+        out.border_radius = step(
+            &mut self.border_radius,
+            prev_displayed.map(|v| v.border_radius),
+            target.border_radius,
+            dur,
+            timing,
+            now_ms,
+        );
+        out.border_width = step(
+            &mut self.border_width,
+            prev_displayed.map(|v| v.border_width),
+            target.border_width,
+            dur,
+            timing,
+            now_ms,
+        );
+        out
     }
 }
 
