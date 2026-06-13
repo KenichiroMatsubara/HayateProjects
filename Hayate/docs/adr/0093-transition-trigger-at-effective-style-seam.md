@@ -63,6 +63,24 @@ up-level でパリティを取る。Blink と同型に倒す。
 - border-width の layout 結合差は transition 固有でなく box モデルのパリティ問題のため、
   本 ADR の対象外。
 
+## 実装方針（before-change の保持と発火点）
+
+- **before-change（前フレーム表示値）の保持先**: retained 描画状態（`SceneLowering.anchors`
+  の `AnchorEntry`）に、表示中（post-blend）の `Visual` を memo する。lifecycle が要素の
+  寿命と一致し、要素削除時に anchor と同じ経路で掃除されるため。これは派生値のキャッシュ
+  であり第二の正本ではない（ADR-0057 非抵触。既に `TransitionState.from` が Visual
+  スナップショットを ElementId キーで持つのと同種）。`tree.transitions` への相乗りは
+  「進行中だけ」という寿命差から不適として却下。
+- **発火点**: `emit_element`（scene_build）の `resolve_effective` 直後に diff する
+  （resolve を二度引かない）。順序は resolve →（cached `last_visual` と per-property diff、
+  差があり `transition-duration > 0` なら from=cached で transition 開始/調整）→ blend →
+  lower → 新しい post-blend を `last_visual` へ格納。
+- **初回 emit は transition しない**: cache（before）が無いため。Blink の「初期スタイルは
+  transition しない」と一致し、要素生成時の意図しないフェードインを防ぐ。
+- **retained incremental 経路への依存**: 補間は ADR-0086 の retained anchor 経路で成立する。
+  full ephemeral rebuild（`walk_ephemeral`、parity 参照 / テスト用）は `last_visual` を
+  持たず補間しない。「ephemeral はパリティ参照でありアニメーションしない」と割り切る。
+
 ## Considered Options
 
 - **Down-level（DOM 側で `setStyle` 時に transition 抑止）**: パリティは安価に回復するが、
