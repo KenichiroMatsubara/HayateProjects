@@ -33,6 +33,6 @@ pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Dimension, DimensionUnit,
     DisplayValue, FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
-    JustifyValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
+    JustifyValue, PositionValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
 };
 pub use tree::{ElementTree, ResolvedElement};

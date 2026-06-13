@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, POSITION } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -184,6 +184,11 @@ const BORDER_STYLE_CODE: Record<string, number> = {
   'none': BORDER_STYLE.none,
   'solid': BORDER_STYLE.solid,
   'dashed': BORDER_STYLE.dashed,
+};
+
+const POSITION_CODE: Record<string, number> = {
+  'relative': POSITION.relative,
+  'absolute': POSITION.absolute,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -430,6 +435,32 @@ function encode_borderStyle(out: number[], value: string): void {
   out.push(TAG.BORDER_STYLE, code);
 }
 
+function encode_position(out: number[], value: string): void {
+  const code = POSITION_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported position "${value}"`);
+  out.push(TAG.POSITION, code);
+}
+
+function encode_top(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.TOP, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_left(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.LEFT, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_right(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.RIGHT, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_bottom(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.BOTTOM, d.value, UNIT_CODE[d.unit]!);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -477,6 +508,11 @@ const STYLE_ENCODERS = {
   alignContent: encode_alignContent,
   flexWrap: encode_flexWrap,
   borderStyle: encode_borderStyle,
+  position: encode_position,
+  top: encode_top,
+  left: encode_left,
+  right: encode_right,
+  bottom: encode_bottom,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

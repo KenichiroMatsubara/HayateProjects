@@ -106,6 +106,13 @@ fn encode_border_style(value: BorderStyleValue) -> f32 {
     }
 }
 
+fn encode_position(value: PositionValue) -> f32 {
+    match value {
+        PositionValue::Relative => 0.0,
+        PositionValue::Absolute => 1.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -429,6 +436,30 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::BorderStyle(v) => {
                 buf.push(TAG_BORDER_STYLE as f32);
                 buf.push(encode_border_style(*v));
+            }
+            StyleProp::Position(v) => {
+                buf.push(TAG_POSITION as f32);
+                buf.push(encode_position(*v));
+            }
+            StyleProp::Top(d) => {
+                buf.push(TAG_TOP as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Left(d) => {
+                buf.push(TAG_LEFT as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Right(d) => {
+                buf.push(TAG_RIGHT as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Bottom(d) => {
+                buf.push(TAG_BOTTOM as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
             }
         }
     }

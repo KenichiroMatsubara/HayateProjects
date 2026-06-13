@@ -10,7 +10,7 @@ pub use element::{
     DocumentEventKind,
     ElementId, ElementKind,
     ElementTree, Event, EventDelivery, FlexDirectionValue, FlexWrapValue, JustifyValue, LayoutPass,
-    ListenerId,
+    ListenerId, PositionValue,
     event_document_kind,
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PseudoState, ResolvedElement,
     StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,

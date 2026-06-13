@@ -247,6 +247,19 @@
     ]
   },
   {
+    "name": "position",
+    "values": [
+      {
+        "name": "relative",
+        "value": 0
+      },
+      {
+        "name": "absolute",
+        "value": 1
+      }
+    ]
+  },
+  {
     "name": "font_family",
     "string_values": true,
     "values": [

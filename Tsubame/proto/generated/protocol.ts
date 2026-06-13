@@ -69,6 +69,11 @@ export const TAG = {
   ALIGN_CONTENT: 43,
   FLEX_WRAP: 44,
   BORDER_STYLE: 45,
+  POSITION: 46,
+  TOP: 47,
+  LEFT: 48,
+  RIGHT: 49,
+  BOTTOM: 50,
 } as const;
 export type TAG = typeof TAG;
 
@@ -249,6 +254,12 @@ export const BORDER_STYLE = {
   dashed: 2,
 } as const;
 export type BORDER_STYLE = typeof BORDER_STYLE;
+
+export const POSITION = {
+  relative: 0,
+  absolute: 1,
+} as const;
+export type POSITION = typeof POSITION;
 
 export const FONT_FAMILY = {
   NotoSansJP: 'Noto Sans JP',

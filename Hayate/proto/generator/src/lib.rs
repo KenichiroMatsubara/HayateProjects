@@ -656,7 +656,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("use hayate_core::{\n");
     out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
-    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,\n");
+    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, PositionValue, StyleProp, TextDecorationValue,\n");
     out.push_str("};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
 
@@ -687,6 +687,7 @@ fn generate_style_codec(proto: &Proto) -> String {
             "font_style" => "FontStyleValue",
             "text_decoration" => "TextDecorationValue",
             "border_style" => "BorderStyleValue",
+            "position" => "PositionValue",
             _ => continue,
         };
         let fn_name = format!("codec_{}", en.name);
@@ -772,6 +773,7 @@ fn generate_codec(proto: &Proto) -> String {
             "font_style" => "FontStyleValue",
             "text_decoration" => "TextDecorationValue",
             "border_style" => "BorderStyleValue",
+            "position" => "PositionValue",
             _ => continue,
         };
         let fn_name = format!("encode_{}", en.name);

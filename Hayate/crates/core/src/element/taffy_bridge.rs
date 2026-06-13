@@ -1,13 +1,14 @@
 use taffy::{
     style_helpers::{fr, length, percent, TaffyAuto},
     AlignContent, AlignItems, Dimension as TaffyDim, Display, FlexDirection, FlexWrap, JustifyContent,
-    LengthPercentage, LengthPercentageAuto, Rect as TaffyRect, Size, Style, TrackSizingFunction,
+    LengthPercentage, LengthPercentageAuto, Position, Rect as TaffyRect, Size, Style,
+    TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
     AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
-    FlexDirectionValue, FlexWrapValue, JustifyValue, StyleProp,
+    FlexDirectionValue, FlexWrapValue, JustifyValue, PositionValue, StyleProp,
 };
 
 /// Context attached to each Taffy leaf so the measure closure can dispatch.
@@ -142,6 +143,16 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         StyleProp::MarginRight(d) => style.margin.right = to_taffy_lp_auto(*d),
         StyleProp::MarginBottom(d) => style.margin.bottom = to_taffy_lp_auto(*d),
         StyleProp::MarginLeft(d) => style.margin.left = to_taffy_lp_auto(*d),
+        StyleProp::Position(v) => {
+            style.position = match v {
+                PositionValue::Relative => Position::Relative,
+                PositionValue::Absolute => Position::Absolute,
+            };
+        }
+        StyleProp::Top(d) => style.inset.top = to_taffy_lp_auto(*d),
+        StyleProp::Left(d) => style.inset.left = to_taffy_lp_auto(*d),
+        StyleProp::Right(d) => style.inset.right = to_taffy_lp_auto(*d),
+        StyleProp::Bottom(d) => style.inset.bottom = to_taffy_lp_auto(*d),
         StyleProp::FlexGrow(v) => style.flex_grow = (*v).max(0.0),
         StyleProp::FlexShrink(v) => style.flex_shrink = (*v).max(0.0),
         StyleProp::FlexBasis(d) => style.flex_basis = to_taffy_dim(*d),
