@@ -10,7 +10,7 @@ use crate::element::effective_visual::{
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pseudo_state::InteractionSnapshot;
-use crate::element::style::{FontStyleValue, TextDecorationValue};
+use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowValue};
 use crate::element::text::{
     self, RangeMap, TextBrush, TextLayout, build_ranged_text_layout, RangedTextSpan,
 };
@@ -194,12 +194,18 @@ pub(crate) fn shape(
         };
     }
 
+    let (max_lines, text_overflow) = elements
+        .get(&ifc_root_id)
+        .map(|el| (el.visual.max_lines, el.visual.text_overflow))
+        .unwrap_or((None, TextOverflowValue::Clip));
     let mut layout = build_ranged_text_layout(
         font_cx,
         layout_cx,
         &ctx.text,
         &ctx.spans,
         max_advance,
+        max_lines,
+        text_overflow,
     );
     layout.range_map = Some(ctx.range_map);
     layout

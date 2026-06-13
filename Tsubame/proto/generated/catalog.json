@@ -687,5 +687,51 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "maxLines",
+    "tag": 53,
+    "unsetKind": null,
+    "wireKind": "u32",
+    "domFormat": "integer",
+    "cssName": "WebkitLineClamp",
+    "cssProperty": "-webkit-line-clamp",
+    "targets": [
+      "packet",
+      "css"
+    ],
+    "domExtras": [
+      {
+        "cssName": "display",
+        "cssProperty": "display",
+        "whenPositive": "-webkit-box",
+        "whenZero": "block"
+      },
+      {
+        "cssName": "WebkitBoxOrient",
+        "cssProperty": "-webkit-box-orient",
+        "whenPositive": "vertical",
+        "whenZero": "horizontal"
+      },
+      {
+        "cssName": "overflow",
+        "cssProperty": "overflow",
+        "whenPositive": "hidden",
+        "whenZero": "visible"
+      }
+    ]
+  },
+  {
+    "patchKey": "textOverflow",
+    "tag": 54,
+    "unsetKind": null,
+    "wireKind": "textOverflow",
+    "domFormat": "enum",
+    "cssName": "textOverflow",
+    "cssProperty": "text-overflow",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

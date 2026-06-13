@@ -3,7 +3,7 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'position' | 'f32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'textOverflow' | 'position' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
@@ -710,6 +710,52 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "domFormat": "enum",
     "cssName": "overflow",
     "cssProperty": "overflow",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "maxLines",
+    "tag": 53,
+    "unsetKind": null,
+    "wireKind": "u32",
+    "domFormat": "integer",
+    "cssName": "WebkitLineClamp",
+    "cssProperty": "-webkit-line-clamp",
+    "targets": [
+      "packet",
+      "css"
+    ],
+    "domExtras": [
+      {
+        "cssName": "display",
+        "cssProperty": "display",
+        "whenPositive": "-webkit-box",
+        "whenZero": "block"
+      },
+      {
+        "cssName": "WebkitBoxOrient",
+        "cssProperty": "-webkit-box-orient",
+        "whenPositive": "vertical",
+        "whenZero": "horizontal"
+      },
+      {
+        "cssName": "overflow",
+        "cssProperty": "overflow",
+        "whenPositive": "hidden",
+        "whenZero": "visible"
+      }
+    ]
+  },
+  {
+    "patchKey": "textOverflow",
+    "tag": 54,
+    "unsetKind": null,
+    "wireKind": "textOverflow",
+    "domFormat": "enum",
+    "cssName": "textOverflow",
+    "cssProperty": "text-overflow",
     "targets": [
       "packet",
       "css"
