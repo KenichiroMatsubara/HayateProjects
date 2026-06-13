@@ -113,6 +113,10 @@ _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover 
 Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。複数状態が同時成立したときの正準優先順は `focus < hover < active`（後勝ち）で、これは wire コード（hover=0 / active=1 / focus=2）とは別物。優先順は spec（`proto/spec/pseudo_states.json`）が正本で、Hayate core の `resolve_visual` と Tsubame DOM Renderer のルールバンド順が共にそこから生成・参照する（Semantics Parity）。
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替、wire コード順を優先順と同一視する理解、DOM の挿入順（authoring 順）に優先順を委ねる設計
 
+**Transition（擬似状態の補間）**:
+擬似状態（`:hover` / `:active` / `:focus`）切替時に effective visual を切替前の見た目から target へ補間するアニメーション。`transition-duration`（ms）と `transition-timing`（`ease` / `linear` / `ease-in` / `ease-out` / `ease-in-out`）を Hayate CSS の visual プロパティとして持ち、Render Layer が `render(timestamp_ms)` のフレームループ上で進める（カーソル点滅と同じ時間駆動 `visual_dirty` 機構を再利用）。補間対象は連続値の `background-color` / `border-color` / `text-color` / `opacity` / `border-radius` / `border-width` のみで、enum・離散値は target を即時採用する。擬似状態を経由しない `setStyle` 直接 mutation は補間せず即時反映。
+_Avoid_: 任意プロパティ・任意トリガに効く汎用 CSS transition、Signal によるアニメーション、layout/text への補間、setStyle 直接 mutation への適用
+
 **Canonical Tree（正本ツリー）**:
 描画・layout・hit-test の正本ツリー。Canvas/HTML 経路では Hayate の element ツリー、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子を tree 上の element として表現する。経路ごとに実体は一つのみで、複製や mirror は持たない（`tsubame-solid` の Shadow Tree は構造専用の別索引であり、これ自体は正本ではない）。
 _Avoid_: 描画正本を JS 側に複製する設計、Virtual DOM、仮想 TextNode、renderer 側 parent map を正本とする設計、Document Tree（旧称）
@@ -165,6 +169,10 @@ _Avoid_: Virtual DOM, Component Tree
 `scroll-view` element のスクロール位置（x, y）。基本 offset は Element Document Runtime が保持し、慣性・スナップ・rubber-band 等の物理演算は Platform Adapter が担う。`scroll` イベントはアプリ通知専用。
 _Avoid_: Hayate が scroll 状態を一切持たない設計、物理演算を上位層が持つ設計、StyleProp::ScrollOffset
 
+**Scroll Chaining（スクロール連鎖）**:
+ネストした `scroll-view` のホイール挙動。最寄り祖先 ScrollView から軸ごとにデルタを消費し、clamp で消費しきれなかった残デルタを次の祖先 ScrollView へルートまで伝播する、ブラウザ準拠の意味論。Hayate の仕様であり、DOM 系レンダラーはブラウザ既定のまま一致する（意味論パリティ）。
+_Avoid_: 内側スクローラーで打ち止めにする設計、残デルタを捨てる設計、chaining をレンダラー方言とする理解（opt-out の `overscroll-behavior` 語彙は将来）
+
 **Z-Order**:
 React Native 方式の描画順序制御。同一 parent 内の兄弟間でのみ有効で、デフォルトは document order（後勝ち）、`z-index` で上書きする。CSS stacking context は持たない。
 _Avoid_: NodeKind::Layer、グローバル z-index 順序
@@ -195,6 +203,10 @@ _Avoid_: Group（transform 用語との混同）
 
 **Glyph Atlas**:
 レンダリング済みグリフを格納する GPU テクスチャ。
+
+**Font Synthesis（フォント合成）**:
+要求された `font-weight` / `font-style` が実フェイスや variable 軸で表現できないとき、ブラウザ準拠で見た目を合成する仕組み。faux italic はグリフランの skew（約14度）、faux bold は embolden で表す。意味論パリティのため既定 ON で、Canvas / DOM 双方が同一の合成挙動を示す。
+_Avoid_: 表現できない指定を no-op にする設計、italic 実フェイスのバンドル前提、レンダラーごとに合成有無が異なる設計、font-synthesis を常時オフ前提とする説明（opt-out 語彙は将来）
 
 **AccessKit**:
 プラットフォームの AT（Assistive Technology）へアクセシビリティツリーを報告するクロスプラットフォーム Rust ライブラリ。Hayate Core がツリーを生成し、Platform Adapter が AccessKit のプラットフォーム実装を呼んで AT に報告する。
