@@ -25,6 +25,7 @@ const SAMPLES: Record<string, unknown> = {
   textDecoration: 'underline',
   borderStyle: 'dashed',
   cursor: 'pointer',
+  position: 'absolute',
   f32: 0.75,
   zIndex: 10,
   fontFamily: 'Inter, sans-serif',

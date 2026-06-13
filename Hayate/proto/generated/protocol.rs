@@ -89,7 +89,12 @@ pub const TAG_ALIGN_CONTENT: u32 = 43;
 pub const TAG_FLEX_WRAP: u32 = 44;
 pub const TAG_BORDER_STYLE: u32 = 45;
 pub const TAG_CURSOR: u32 = 46;
-pub const TAG_OVERFLOW: u32 = 47;
+pub const TAG_POSITION: u32 = 47;
+pub const TAG_TOP: u32 = 48;
+pub const TAG_LEFT: u32 = 49;
+pub const TAG_RIGHT: u32 = 50;
+pub const TAG_BOTTOM: u32 = 51;
+pub const TAG_OVERFLOW: u32 = 52;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -541,6 +546,25 @@ pub enum StyleTag {
     Cursor {
         value: f32,
     },
+    Position {
+        value: f32,
+    },
+    Top {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Left {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Right {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Bottom {
+        dim_value: f32,
+        dim_unit: f32,
+    },
     Overflow {
         value: f32,
     },
@@ -837,6 +861,35 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             Ok((StyleTag::Cursor { value }, i + 1))
         }
         47 => {
+            if i + 1 > packed.len() { return Err("style tag POSITION truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::Position { value }, i + 1))
+        }
+        48 => {
+            if i + 2 > packed.len() { return Err("style tag TOP truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Top { dim_value, dim_unit }, i + 2))
+        }
+        49 => {
+            if i + 2 > packed.len() { return Err("style tag LEFT truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Left { dim_value, dim_unit }, i + 2))
+        }
+        50 => {
+            if i + 2 > packed.len() { return Err("style tag RIGHT truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Right { dim_value, dim_unit }, i + 2))
+        }
+        51 => {
+            if i + 2 > packed.len() { return Err("style tag BOTTOM truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Bottom { dim_value, dim_unit }, i + 2))
+        }
+        52 => {
             if i + 1 > packed.len() { return Err("style tag OVERFLOW truncated"); }
             let value = packed[i + 0];
             Ok((StyleTag::Overflow { value }, i + 1))
@@ -850,7 +903,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, StyleProp, TextDecorationValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 
@@ -994,6 +1047,14 @@ fn codec_cursor(raw: f32) -> CursorValue {
     }
 }
 
+fn codec_position(raw: f32) -> PositionValue {
+    match raw as u32 {
+        0 => PositionValue::Relative,
+        1 => PositionValue::Absolute,
+        _ => PositionValue::Relative,
+    }
+}
+
 fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
@@ -1043,6 +1104,11 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::FlexWrap { value } => StyleProp::FlexWrap(codec_flex_wrap(value)),
         StyleTag::BorderStyle { value } => StyleProp::BorderStyle(codec_border_style(value)),
         StyleTag::Cursor { value } => StyleProp::Cursor(codec_cursor(value)),
+        StyleTag::Position { value } => StyleProp::Position(codec_position(value)),
+        StyleTag::Top { dim_value, dim_unit } => StyleProp::Top(codec_dim(dim_value, dim_unit)),
+        StyleTag::Left { dim_value, dim_unit } => StyleProp::Left(codec_dim(dim_value, dim_unit)),
+        StyleTag::Right { dim_value, dim_unit } => StyleProp::Right(codec_dim(dim_value, dim_unit)),
+        StyleTag::Bottom { dim_value, dim_unit } => StyleProp::Bottom(codec_dim(dim_value, dim_unit)),
         StyleTag::Overflow { value } => StyleProp::Overflow(codec_overflow(value)),
     })
 }

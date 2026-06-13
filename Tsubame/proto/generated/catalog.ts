@@ -3,7 +3,7 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'f32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'position' | 'f32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
@@ -638,8 +638,73 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     ]
   },
   {
-    "patchKey": "overflow",
+    "patchKey": "position",
     "tag": 47,
+    "unsetKind": null,
+    "wireKind": "position",
+    "domFormat": "enum",
+    "cssName": "position",
+    "cssProperty": "position",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "top",
+    "tag": 48,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "top",
+    "cssProperty": "top",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "left",
+    "tag": 49,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "left",
+    "cssProperty": "left",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "right",
+    "tag": 50,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "right",
+    "cssProperty": "right",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "bottom",
+    "tag": 51,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "bottom",
+    "cssProperty": "bottom",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "overflow",
+    "tag": 52,
     "unsetKind": null,
     "wireKind": "overflow",
     "domFormat": "enum",

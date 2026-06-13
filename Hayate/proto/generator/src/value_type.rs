@@ -234,6 +234,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "border_style" => "border_style",
         "cursor" => "cursor",
         "overflow" => "overflow",
+        "position" => "position",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -325,6 +326,10 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
         "overflow" => {
             "OverflowValue::Visible => \"visible\",\n\
             OverflowValue::Hidden => \"hidden\","
+        }
+        "position" => {
+            "PositionValue::Relative => \"relative\",\n\
+            PositionValue::Absolute => \"absolute\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };

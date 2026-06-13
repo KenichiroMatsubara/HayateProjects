@@ -70,7 +70,12 @@ export const TAG = {
   FLEX_WRAP: 44,
   BORDER_STYLE: 45,
   CURSOR: 46,
-  OVERFLOW: 47,
+  POSITION: 47,
+  TOP: 48,
+  LEFT: 49,
+  RIGHT: 50,
+  BOTTOM: 51,
+  OVERFLOW: 52,
 } as const;
 export type TAG = typeof TAG;
 
@@ -268,6 +273,12 @@ export const CURSOR = {
   grabbing: 6,
 } as const;
 export type CURSOR = typeof CURSOR;
+
+export const POSITION = {
+  relative: 0,
+  absolute: 1,
+} as const;
+export type POSITION = typeof POSITION;
 
 export const FONT_FAMILY = {
   NotoSansJP: 'Noto Sans JP',

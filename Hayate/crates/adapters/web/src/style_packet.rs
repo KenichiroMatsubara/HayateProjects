@@ -247,8 +247,8 @@ mod tests {
     #[test]
     fn overflow_hidden() {
         use hayate_core::OverflowValue;
-        // TAG_OVERFLOW=47, code=1 (hidden)
-        let props = ok(&[47.0, 1.0]);
+        // TAG_OVERFLOW=52, code=1 (hidden)
+        let props = ok(&[52.0, 1.0]);
         match &props[0] {
             StyleProp::Overflow(v) => assert!(matches!(v, OverflowValue::Hidden)),
             other => panic!("expected Overflow(Hidden), got {:?}", other),
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn overflow_visible() {
         use hayate_core::OverflowValue;
-        let props = ok(&[47.0, 0.0]);
+        let props = ok(&[52.0, 0.0]);
         match &props[0] {
             StyleProp::Overflow(v) => assert!(matches!(v, OverflowValue::Visible)),
             other => panic!("expected Overflow(Visible), got {:?}", other),

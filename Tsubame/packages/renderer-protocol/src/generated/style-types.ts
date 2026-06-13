@@ -15,6 +15,7 @@ export type TextDecoration = 'none' | 'underline' | 'line-through';
 export type BorderStyle = 'none' | 'solid' | 'dashed';
 export type Cursor = 'default' | 'pointer' | 'text' | 'crosshair' | 'not-allowed' | 'grab' | 'grabbing';
 export type Overflow = 'visible' | 'hidden';
+export type Position = 'relative' | 'absolute';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -64,6 +65,11 @@ export interface HayateStyle {
   flexWrap: FlexWrap;
   borderStyle: BorderStyle;
   cursor: Cursor;
+  position: Position;
+  top: HayateDimension;
+  left: HayateDimension;
+  right: HayateDimension;
+  bottom: HayateDimension;
   overflow: Overflow;
 }
 
