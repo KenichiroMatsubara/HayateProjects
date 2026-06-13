@@ -331,9 +331,7 @@ impl HayateElementRenderer {
             return;
         }
         let inputs = pointer_input::coalesce_pointer_inputs(buffered, self.last_pointer_move);
-        if let Some(pos) = pointer_input::last_move_position(&inputs) {
-            self.last_pointer_move = Some(pos);
-        }
+        self.last_pointer_move = pointer_input::final_anchor(&inputs, self.last_pointer_move);
         for input in inputs {
             self.apply_pointer_input(input);
         }
@@ -346,6 +344,7 @@ impl HayateElementRenderer {
                 let _ = self.tree.on_pointer_move(x, y);
             }
             PointerInput::Up { x, y } => self.tree.on_pointer_up(x, y),
+            PointerInput::Leave => self.tree.on_pointer_leave(),
             PointerInput::Wheel {
                 x,
                 y,
