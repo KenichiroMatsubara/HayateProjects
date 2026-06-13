@@ -9,6 +9,7 @@
 //! workspace without affecting `cargo build`/`cargo check` on the host.
 
 mod surface_lifecycle;
+mod touch_input;
 
 #[cfg(target_os = "android")]
 mod app;

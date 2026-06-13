@@ -1,17 +1,21 @@
 //! Stage A render smoke test (ADR-0087): clear an empty `SceneGraph` to a
 //! GPU surface backed by the `ANativeWindow` that `android-activity` hands
-//! us. No touch input, IME, or AccessKit yet (stages B/C).
+//! us. Stage B adds touch input: `MotionEvent`s are translated into
+//! `hayate-core`'s coordinate-based pointer API. IME / AccessKit (stage C)
+//! are not implemented yet.
 
 use std::time::Duration;
 
+use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
-use hayate_core::SceneGraph;
+use hayate_core::{ElementTree, SceneGraph};
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
 };
 use wgpu::util::TextureBlitter;
 
 use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
+use crate::touch_input::{translate_touch, PointerInput, TouchAction};
 
 /// RGBA clear color for the stage A smoke test.
 pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
@@ -37,21 +41,29 @@ pub fn android_main(app: AndroidApp) {
     let mut gpu: Option<GpuSurface> = None;
     let mut lifecycle = SurfaceLifecycleState::new();
     let empty_scene = SceneGraph::new();
+    let mut tree = ElementTree::new();
     let mut quit = false;
 
     while !quit {
         app.poll_events(Some(Duration::from_millis(16)), |event| {
             if let PollEvent::Main(main_event) = event {
                 let lifecycle_event = match main_event {
-                    MainEvent::InitWindow { .. } => Some(crate::surface_lifecycle::SurfaceLifecycleEvent::InitWindow),
+                    MainEvent::InitWindow { .. } => {
+                        Some(crate::surface_lifecycle::SurfaceLifecycleEvent::InitWindow)
+                    }
                     MainEvent::TerminateWindow { .. } => {
                         Some(crate::surface_lifecycle::SurfaceLifecycleEvent::TerminateWindow)
                     }
                     MainEvent::WindowResized { .. } => app.native_window().map(|window| {
                         let (width, height) = window_dimensions(window.width(), window.height());
-                        crate::surface_lifecycle::SurfaceLifecycleEvent::WindowResized { width, height }
+                        crate::surface_lifecycle::SurfaceLifecycleEvent::WindowResized {
+                            width,
+                            height,
+                        }
                     }),
-                    MainEvent::Destroy => Some(crate::surface_lifecycle::SurfaceLifecycleEvent::Destroy),
+                    MainEvent::Destroy => {
+                        Some(crate::surface_lifecycle::SurfaceLifecycleEvent::Destroy)
+                    }
                     _ => None,
                 };
 
@@ -62,7 +74,9 @@ pub fn android_main(app: AndroidApp) {
                                 match pollster::block_on(init_gpu_surface(&window)) {
                                     Ok(surface) => gpu = Some(surface),
                                     Err(err) => {
-                                        log::error!("hayate-adapter-android: GPU init failed: {err}")
+                                        log::error!(
+                                            "hayate-adapter-android: GPU init failed: {err}"
+                                        )
                                     }
                                 }
                             }
@@ -80,11 +94,61 @@ pub fn android_main(app: AndroidApp) {
             }
         });
 
+        process_touch_input(&app, &mut tree);
+
         if let Some(surface) = gpu.as_mut() {
             if let Err(err) = surface.render_clear(&empty_scene) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
         }
+    }
+}
+
+/// Drain pending `MotionEvent`s and drive `tree`'s coordinate-based pointer API.
+///
+/// Single-pointer tap/drag only (ADR-0082 stage B); multi-touch gestures and
+/// scroll inertia (ADR-0046) are out of scope. The per-event math lives in the
+/// host-testable [`translate_touch`]; this wrapper is thin NDK glue.
+fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
+    let mut iter = match app.input_events_iter() {
+        Ok(iter) => iter,
+        Err(err) => {
+            log::error!("hayate-adapter-android: input_events_iter failed: {err}");
+            return;
+        }
+    };
+
+    loop {
+        let read = iter.next(|event| {
+            if let InputEvent::MotionEvent(motion) = event {
+                if let Some(action) = motion_action_to_touch(motion.action()) {
+                    let pointer = motion.pointer_at_index(motion.pointer_index());
+                    match translate_touch(action, pointer.x(), pointer.y()) {
+                        PointerInput::Down { x, y } => tree.on_pointer_down(x, y),
+                        PointerInput::Move { x, y } => {
+                            let _ = tree.on_pointer_move(x, y);
+                        }
+                        PointerInput::Up { x, y } => tree.on_pointer_up(x, y),
+                    }
+                }
+            }
+            android_activity::input::InputStatus::Unhandled
+        });
+        if !read {
+            break;
+        }
+    }
+}
+
+/// Map an Android `MotionAction` to a single-pointer [`TouchAction`], or `None`
+/// for actions outside the basic tap/drag set (hover, scroll, buttons, …).
+fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
+    match action {
+        MotionAction::Down | MotionAction::PointerDown => Some(TouchAction::Down),
+        MotionAction::Move => Some(TouchAction::Move),
+        MotionAction::Up | MotionAction::PointerUp => Some(TouchAction::Up),
+        MotionAction::Cancel => Some(TouchAction::Cancel),
+        _ => None,
     }
 }
 
