@@ -27,6 +27,7 @@ const ENUM_TYPES = [
   { specName: 'border_style', typeName: 'BorderStyle' },
   { specName: 'cursor', typeName: 'Cursor' },
   { specName: 'overflow', typeName: 'Overflow' },
+  { specName: 'text_overflow', typeName: 'TextOverflow' },
   { specName: 'position', typeName: 'Position' },
 ];
 

@@ -265,6 +265,41 @@ mod tests {
         }
     }
 
+    // ── MAX_LINES (u32) + TEXT_OVERFLOW enum (issue #207) ─────────────────────
+
+    #[test]
+    fn max_lines_u32() {
+        // TAG_MAX_LINES=53, value=3
+        let props = ok(&[53.0, 3.0]);
+        assert_eq!(props.len(), 1);
+        match &props[0] {
+            StyleProp::MaxLines(v) => assert_eq!(*v, 3),
+            other => panic!("expected MaxLines(3), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_overflow_clip() {
+        use hayate_core::TextOverflowValue;
+        // TAG_TEXT_OVERFLOW=54, code=0 (clip)
+        let props = ok(&[54.0, 0.0]);
+        match &props[0] {
+            StyleProp::TextOverflow(v) => assert!(matches!(v, TextOverflowValue::Clip)),
+            other => panic!("expected TextOverflow(Clip), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn text_overflow_ellipsis() {
+        use hayate_core::TextOverflowValue;
+        // TAG_TEXT_OVERFLOW=54, code=1 (ellipsis)
+        let props = ok(&[54.0, 1.0]);
+        match &props[0] {
+            StyleProp::TextOverflow(v) => assert!(matches!(v, TextOverflowValue::Ellipsis)),
+            other => panic!("expected TextOverflow(Ellipsis), got {:?}", other),
+        }
+    }
+
     // ── FontFamily ────────────────────────────────────────────────────────────
 
     #[test]

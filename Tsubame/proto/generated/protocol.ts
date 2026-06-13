@@ -76,6 +76,8 @@ export const TAG = {
   RIGHT: 50,
   BOTTOM: 51,
   OVERFLOW: 52,
+  MAX_LINES: 53,
+  TEXT_OVERFLOW: 54,
 } as const;
 export type TAG = typeof TAG;
 
@@ -262,6 +264,12 @@ export const OVERFLOW = {
   hidden: 1,
 } as const;
 export type OVERFLOW = typeof OVERFLOW;
+
+export const TEXT_OVERFLOW = {
+  clip: 0,
+  ellipsis: 1,
+} as const;
+export type TEXT_OVERFLOW = typeof TEXT_OVERFLOW;
 
 export const CURSOR = {
   default: 0,

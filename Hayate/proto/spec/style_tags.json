@@ -797,5 +797,52 @@
       "property": "overflow",
       "format": "enum:overflow"
     }
+  },
+  {
+    "name": "MAX_LINES",
+    "value": 53,
+    "encodeFrom": "u32",
+    "params": [
+      {
+        "name": "value",
+        "type": "u32"
+      }
+    ],
+    "domCss": {
+      "property": "-webkit-line-clamp",
+      "format": "integer",
+      "extras": [
+        {
+          "property": "display",
+          "whenPositive": "-webkit-box",
+          "whenZero": "block"
+        },
+        {
+          "property": "-webkit-box-orient",
+          "whenPositive": "vertical",
+          "whenZero": "horizontal"
+        },
+        {
+          "property": "overflow",
+          "whenPositive": "hidden",
+          "whenZero": "visible"
+        }
+      ]
+    }
+  },
+  {
+    "name": "TEXT_OVERFLOW",
+    "value": 54,
+    "encodeFrom": "enum:text_overflow",
+    "params": [
+      {
+        "name": "value",
+        "type": "text_overflow"
+      }
+    ],
+    "domCss": {
+      "property": "text-overflow",
+      "format": "enum:text_overflow"
+    }
   }
 ]

@@ -35,6 +35,6 @@ pub use style::{
     DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
     JustifyValue, OverflowValue, PositionValue, StyleProp, StylePropKind, TextDecorationValue,
-    ViewportCondition,
+    TextOverflowValue, ViewportCondition,
 };
 pub use tree::{ElementTree, ResolvedElement};
