@@ -3,7 +3,7 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'position' | 'f32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'position' | 'f32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
@@ -625,8 +625,21 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     ]
   },
   {
-    "patchKey": "position",
+    "patchKey": "cursor",
     "tag": 46,
+    "unsetKind": null,
+    "wireKind": "cursor",
+    "domFormat": "enum",
+    "cssName": "cursor",
+    "cssProperty": "cursor",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "position",
+    "tag": 47,
     "unsetKind": null,
     "wireKind": "position",
     "domFormat": "enum",
@@ -639,7 +652,7 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
   },
   {
     "patchKey": "top",
-    "tag": 47,
+    "tag": 48,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",
@@ -652,7 +665,7 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
   },
   {
     "patchKey": "left",
-    "tag": 48,
+    "tag": 49,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",
@@ -665,7 +678,7 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
   },
   {
     "patchKey": "right",
-    "tag": 49,
+    "tag": 50,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",
@@ -678,7 +691,7 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
   },
   {
     "patchKey": "bottom",
-    "tag": 50,
+    "tag": 51,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",

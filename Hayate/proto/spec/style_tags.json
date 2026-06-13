@@ -694,8 +694,23 @@
     }
   },
   {
-    "name": "POSITION",
+    "name": "CURSOR",
     "value": 46,
+    "encodeFrom": "enum:cursor",
+    "params": [
+      {
+        "name": "value",
+        "type": "cursor"
+      }
+    ],
+    "domCss": {
+      "property": "cursor",
+      "format": "enum:cursor"
+    }
+  },
+  {
+    "name": "POSITION",
+    "value": 47,
     "encodeFrom": "enum:position",
     "params": [
       {
@@ -710,7 +725,7 @@
   },
   {
     "name": "TOP",
-    "value": 47,
+    "value": 48,
     "encodeFrom": "dimension",
     "params": [
       {
@@ -725,7 +740,7 @@
   },
   {
     "name": "LEFT",
-    "value": 48,
+    "value": 49,
     "encodeFrom": "dimension",
     "params": [
       {
@@ -740,7 +755,7 @@
   },
   {
     "name": "RIGHT",
-    "value": 49,
+    "value": 50,
     "encodeFrom": "dimension",
     "params": [
       {
@@ -755,7 +770,7 @@
   },
   {
     "name": "BOTTOM",
-    "value": 50,
+    "value": 51,
     "encodeFrom": "dimension",
     "params": [
       {

@@ -238,6 +238,18 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("border-style".into(), s.into()));
         }
+        StyleProp::Cursor(v) => {
+            let s = match v {
+            CursorValue::Default => "default",
+            CursorValue::Pointer => "pointer",
+            CursorValue::Text => "text",
+            CursorValue::Crosshair => "crosshair",
+            CursorValue::NotAllowed => "not-allowed",
+            CursorValue::Grab => "grab",
+            CursorValue::Grabbing => "grabbing",
+            };
+            out.push(("cursor".into(), s.into()));
+        }
         StyleProp::Position(v) => {
             let s = match v {
             PositionValue::Relative => "relative",

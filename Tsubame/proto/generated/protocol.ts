@@ -69,11 +69,12 @@ export const TAG = {
   ALIGN_CONTENT: 43,
   FLEX_WRAP: 44,
   BORDER_STYLE: 45,
-  POSITION: 46,
-  TOP: 47,
-  LEFT: 48,
-  RIGHT: 49,
-  BOTTOM: 50,
+  CURSOR: 46,
+  POSITION: 47,
+  TOP: 48,
+  LEFT: 49,
+  RIGHT: 50,
+  BOTTOM: 51,
 } as const;
 export type TAG = typeof TAG;
 
@@ -254,6 +255,17 @@ export const BORDER_STYLE = {
   dashed: 2,
 } as const;
 export type BORDER_STYLE = typeof BORDER_STYLE;
+
+export const CURSOR = {
+  default: 0,
+  pointer: 1,
+  text: 2,
+  crosshair: 3,
+  notAllowed: 4,
+  grab: 5,
+  grabbing: 6,
+} as const;
+export type CURSOR = typeof CURSOR;
 
 export const POSITION = {
   relative: 0,

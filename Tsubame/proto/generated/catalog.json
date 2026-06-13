@@ -598,8 +598,21 @@
     ]
   },
   {
-    "patchKey": "position",
+    "patchKey": "cursor",
     "tag": 46,
+    "unsetKind": null,
+    "wireKind": "cursor",
+    "domFormat": "enum",
+    "cssName": "cursor",
+    "cssProperty": "cursor",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "position",
+    "tag": 47,
     "unsetKind": null,
     "wireKind": "position",
     "domFormat": "enum",
@@ -612,7 +625,7 @@
   },
   {
     "patchKey": "top",
-    "tag": 47,
+    "tag": 48,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",
@@ -625,7 +638,7 @@
   },
   {
     "patchKey": "left",
-    "tag": 48,
+    "tag": 49,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",
@@ -638,7 +651,7 @@
   },
   {
     "patchKey": "right",
-    "tag": 49,
+    "tag": 50,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",
@@ -651,7 +664,7 @@
   },
   {
     "patchKey": "bottom",
-    "tag": 50,
+    "tag": 51,
     "unsetKind": null,
     "wireKind": "dimension",
     "domFormat": "dimension",

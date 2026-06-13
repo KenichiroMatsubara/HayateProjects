@@ -13,6 +13,7 @@ export type JustifyContent = 'flex-start' | 'flex-end' | 'center' | 'space-betwe
 export type FontStyle = 'normal' | 'italic' | 'oblique';
 export type TextDecoration = 'none' | 'underline' | 'line-through';
 export type BorderStyle = 'none' | 'solid' | 'dashed';
+export type Cursor = 'default' | 'pointer' | 'text' | 'crosshair' | 'not-allowed' | 'grab' | 'grabbing';
 export type Position = 'relative' | 'absolute';
 
 export interface HayateStyle {
@@ -62,6 +63,7 @@ export interface HayateStyle {
   alignContent: AlignContent;
   flexWrap: FlexWrap;
   borderStyle: BorderStyle;
+  cursor: Cursor;
   position: Position;
   top: HayateDimension;
   left: HayateDimension;

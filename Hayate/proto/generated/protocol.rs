@@ -88,11 +88,12 @@ pub const TAG_ALIGN_SELF: u32 = 42;
 pub const TAG_ALIGN_CONTENT: u32 = 43;
 pub const TAG_FLEX_WRAP: u32 = 44;
 pub const TAG_BORDER_STYLE: u32 = 45;
-pub const TAG_POSITION: u32 = 46;
-pub const TAG_TOP: u32 = 47;
-pub const TAG_LEFT: u32 = 48;
-pub const TAG_RIGHT: u32 = 49;
-pub const TAG_BOTTOM: u32 = 50;
+pub const TAG_CURSOR: u32 = 46;
+pub const TAG_POSITION: u32 = 47;
+pub const TAG_TOP: u32 = 48;
+pub const TAG_LEFT: u32 = 49;
+pub const TAG_RIGHT: u32 = 50;
+pub const TAG_BOTTOM: u32 = 51;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -541,6 +542,9 @@ pub enum StyleTag {
     BorderStyle {
         value: f32,
     },
+    Cursor {
+        value: f32,
+    },
     Position {
         value: f32,
     },
@@ -848,29 +852,34 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             Ok((StyleTag::BorderStyle { value }, i + 1))
         }
         46 => {
+            if i + 1 > packed.len() { return Err("style tag CURSOR truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::Cursor { value }, i + 1))
+        }
+        47 => {
             if i + 1 > packed.len() { return Err("style tag POSITION truncated"); }
             let value = packed[i + 0];
             Ok((StyleTag::Position { value }, i + 1))
         }
-        47 => {
+        48 => {
             if i + 2 > packed.len() { return Err("style tag TOP truncated"); }
             let dim_value = packed[i + 0];
             let dim_unit = packed[i + 1];
             Ok((StyleTag::Top { dim_value, dim_unit }, i + 2))
         }
-        48 => {
+        49 => {
             if i + 2 > packed.len() { return Err("style tag LEFT truncated"); }
             let dim_value = packed[i + 0];
             let dim_unit = packed[i + 1];
             Ok((StyleTag::Left { dim_value, dim_unit }, i + 2))
         }
-        49 => {
+        50 => {
             if i + 2 > packed.len() { return Err("style tag RIGHT truncated"); }
             let dim_value = packed[i + 0];
             let dim_unit = packed[i + 1];
             Ok((StyleTag::Right { dim_value, dim_unit }, i + 2))
         }
-        50 => {
+        51 => {
             if i + 2 > packed.len() { return Err("style tag BOTTOM truncated"); }
             let dim_value = packed[i + 0];
             let dim_unit = packed[i + 1];
@@ -883,7 +892,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 // ── Style packet codec (generated) ─────────────────────────────────────
 
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension, DimensionUnit,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
     FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, PositionValue, StyleProp, TextDecorationValue,
 };
@@ -1008,6 +1017,19 @@ fn codec_border_style(raw: f32) -> BorderStyleValue {
     }
 }
 
+fn codec_cursor(raw: f32) -> CursorValue {
+    match raw as u32 {
+        0 => CursorValue::Default,
+        1 => CursorValue::Pointer,
+        2 => CursorValue::Text,
+        3 => CursorValue::Crosshair,
+        4 => CursorValue::NotAllowed,
+        5 => CursorValue::Grab,
+        6 => CursorValue::Grabbing,
+        _ => CursorValue::Default,
+    }
+}
+
 fn codec_position(raw: f32) -> PositionValue {
     match raw as u32 {
         0 => PositionValue::Relative,
@@ -1064,6 +1086,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::AlignContent { value } => StyleProp::AlignContent(codec_align_content(value)),
         StyleTag::FlexWrap { value } => StyleProp::FlexWrap(codec_flex_wrap(value)),
         StyleTag::BorderStyle { value } => StyleProp::BorderStyle(codec_border_style(value)),
+        StyleTag::Cursor { value } => StyleProp::Cursor(codec_cursor(value)),
         StyleTag::Position { value } => StyleProp::Position(codec_position(value)),
         StyleTag::Top { dim_value, dim_unit } => StyleProp::Top(codec_dim(dim_value, dim_unit)),
         StyleTag::Left { dim_value, dim_unit } => StyleProp::Left(codec_dim(dim_value, dim_unit)),

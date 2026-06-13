@@ -1,5 +1,5 @@
 use hayate_core::{
-    Dimension, DocumentEventKind, ElementKind, ElementTree, Event, StyleProp,
+    CursorValue, Dimension, DocumentEventKind, ElementKind, ElementTree, Event, StyleProp,
 };
 
 /// A root View filling a 200×200 viewport, laid out so hit-testing has bounds.
@@ -26,7 +26,7 @@ fn pointer_leave_delivers_hover_leave_and_re_hover_re_enters() {
     let leave = tree.register_listener(root, DocumentEventKind::HoverLeave);
 
     // Hover into the surface — HoverEnter for the root.
-    assert!(tree.on_pointer_move(10.0, 10.0));
+    assert!(tree.on_pointer_move(10.0, 10.0).moved);
     let entered: Vec<_> = tree
         .poll_deliveries()
         .into_iter()
@@ -46,7 +46,7 @@ fn pointer_leave_delivers_hover_leave_and_re_hover_re_enters() {
     assert_eq!(left, vec![leave]);
 
     // Re-hovering reapplies `:hover` — HoverEnter fires again.
-    assert!(tree.on_pointer_move(20.0, 20.0));
+    assert!(tree.on_pointer_move(20.0, 20.0).moved);
     let re_entered: Vec<_> = tree
         .poll_deliveries()
         .into_iter()
@@ -61,19 +61,19 @@ fn pointer_leave_resets_last_pointer_pos_so_repeat_coord_is_not_deduped() {
     let (mut tree, _root) = hoverable_root();
 
     // First move establishes last-pointer-position; an identical move coalesces.
-    assert!(tree.on_pointer_move(30.0, 30.0));
-    assert!(!tree.on_pointer_move(30.0, 30.0));
+    assert!(tree.on_pointer_move(30.0, 30.0).moved);
+    assert!(!tree.on_pointer_move(30.0, 30.0).moved);
 
     // Leaving the surface clears the stored position, so re-entering at the
     // exact same coordinate is delivered rather than swallowed by the 1px dedup.
     tree.on_pointer_leave();
-    assert!(tree.on_pointer_move(30.0, 30.0));
+    assert!(tree.on_pointer_move(30.0, 30.0).moved);
 }
 
 #[test]
 fn pointer_leave_does_not_push_phantom_pointer_move() {
     let (mut tree, _root) = hoverable_root();
-    assert!(tree.on_pointer_move(40.0, 40.0));
+    assert!(tree.on_pointer_move(40.0, 40.0).moved);
     let _ = tree.poll_events(); // drain the move from the enter
 
     tree.on_pointer_leave();
@@ -129,9 +129,63 @@ fn pointer_move_skips_duplicate_coordinates() {
     );
     tree.render(0.0);
 
-    assert!(tree.on_pointer_move(1.0, 2.0));
-    assert!(!tree.on_pointer_move(1.0, 2.0));
-    assert!(tree.on_pointer_move(2.0, 2.0));
+    assert!(tree.on_pointer_move(1.0, 2.0).moved);
+    assert!(!tree.on_pointer_move(1.0, 2.0).moved);
+    assert!(tree.on_pointer_move(2.0, 2.0).moved);
+}
+
+#[test]
+fn pointer_move_resolves_cursor_from_hovered_element() {
+    let (mut tree, root) = hoverable_root();
+    tree.element_set_style(root, &[StyleProp::Cursor(CursorValue::Pointer)]);
+    tree.render(0.0);
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert!(result.moved, "a real move must not be coalesced");
+    assert_eq!(result.resolved_cursor, CursorValue::Pointer);
+}
+
+#[test]
+fn pointer_move_resolves_default_cursor_when_unset() {
+    let (mut tree, _root) = hoverable_root();
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert_eq!(result.resolved_cursor, CursorValue::Default);
+}
+
+#[test]
+fn pointer_move_inherits_cursor_from_ancestor() {
+    // A child with no cursor of its own inherits its ancestor's `cursor`,
+    // mirroring CSS inheritance, so hovering a button's text still shows the
+    // pointer cursor set on the button.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(40, ElementKind::View);
+    let child = tree.element_create(41, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_append_child(root, child);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::Cursor(CursorValue::Pointer),
+        ],
+    );
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
+    );
+    tree.render(0.0);
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert_eq!(result.resolved_cursor, CursorValue::Pointer);
 }
 
 #[test]

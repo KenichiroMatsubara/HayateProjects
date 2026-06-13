@@ -654,7 +654,7 @@ fn generate_style_codec(proto: &Proto) -> String {
 
     out.push_str("// ── Style packet codec (generated) ─────────────────────────────────────\n\n");
     out.push_str("use hayate_core::{\n");
-    out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension, DimensionUnit,\n");
+    out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
     out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, PositionValue, StyleProp, TextDecorationValue,\n");
     out.push_str("};\n");
@@ -687,6 +687,7 @@ fn generate_style_codec(proto: &Proto) -> String {
             "font_style" => "FontStyleValue",
             "text_decoration" => "TextDecorationValue",
             "border_style" => "BorderStyleValue",
+            "cursor" => "CursorValue",
             "position" => "PositionValue",
             _ => continue,
         };
@@ -773,6 +774,7 @@ fn generate_codec(proto: &Proto) -> String {
             "font_style" => "FontStyleValue",
             "text_decoration" => "TextDecorationValue",
             "border_style" => "BorderStyleValue",
+            "cursor" => "CursorValue",
             "position" => "PositionValue",
             _ => continue,
         };

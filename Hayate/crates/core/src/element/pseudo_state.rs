@@ -121,6 +121,7 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::Color(_) => "color",
         StyleProp::FontStyle(_) => "font-style",
         StyleProp::TextDecoration(_) => "text-decoration",
+        StyleProp::Cursor(_) => "cursor",
         StyleProp::DefaultColor(_) => "default-color",
         StyleProp::DefaultFontFamily(_) => "default-font-family",
         StyleProp::DefaultFontSize(_) => "default-font-size",

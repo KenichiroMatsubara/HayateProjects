@@ -24,6 +24,7 @@
         "enum:font_style",
         "enum:text_decoration",
         "enum:border_style",
+        "enum:cursor",
         "enum:position",
         "font-family",
         "dimension-list",
@@ -67,6 +68,7 @@
             "enum:font_style",
             "enum:text_decoration",
             "enum:border_style",
+            "enum:cursor",
             "enum:position",
             "dimension-list"
           ]

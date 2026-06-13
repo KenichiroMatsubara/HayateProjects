@@ -232,6 +232,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "font_style" => "font_style",
         "text_decoration" => "text_decoration",
         "border_style" => "border_style",
+        "cursor" => "cursor",
         "position" => "position",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
@@ -311,6 +312,15 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
             "BorderStyleValue::None => \"none\",\n\
             BorderStyleValue::Solid => \"solid\",\n\
             BorderStyleValue::Dashed => \"dashed\","
+        }
+        "cursor" => {
+            "CursorValue::Default => \"default\",\n\
+            CursorValue::Pointer => \"pointer\",\n\
+            CursorValue::Text => \"text\",\n\
+            CursorValue::Crosshair => \"crosshair\",\n\
+            CursorValue::NotAllowed => \"not-allowed\",\n\
+            CursorValue::Grab => \"grab\",\n\
+            CursorValue::Grabbing => \"grabbing\","
         }
         "position" => {
             "PositionValue::Relative => \"relative\",\n\
