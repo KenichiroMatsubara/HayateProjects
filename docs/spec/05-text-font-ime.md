@@ -66,9 +66,15 @@
 **状況:** ✅ — `edit_state.rs`（`EditState` 集約）、`interaction.rs`（キー/composition/text-input 編集セマンティクス）、`ime_bridge.rs`（`ImeBridge` trait + `CharacterBounds` + `sync_ime_character_bounds`）、`ElementTree::element_character_bounds`、Canvas adapter は `render()` で `WebImeBridge` に bounds 同期＋`ime_character_bounds` export、Tsubame `edit-context-sync.ts` が EditContext へ反映。回帰テスト `edit_input.rs` / `ime_bridge` / `edit-context-sync.test.ts`。
 **備考:** IME plumbing は adapter（ImeBridge）、編集 model は core。native は薄い ImeBridge 実装で `EditState`/bounds を再利用（native 本体・ADR-0012）。cursor の点→byte は #3 と共有。
 
+### TEXT-10 — text truncation（`max-lines` が唯一のトリガ）
+**規範文:** テキスト打ち切りは `max-lines`（行数）と `text-overflow: clip | ellipsis`（既定 `clip`）で表す。`max-lines` が唯一の打ち切りトリガで、`text-overflow` は `max-lines` 設定時のみ効果を持つ。`clip` は超過行を切り捨て、`ellipsis` は最後の可視行に `…` を付加する。
+**出典:** ADR-0090（issue #207）
+**状況:** ✅ — `style_tags.json` に `MAX_LINES`（u32）/ `TEXT_OVERFLOW`（enum）、`TextOverflowValue::{Clip, Ellipsis}`、`StyleProp::{MaxLines, TextOverflow}`。
+**備考:** `max-lines` を唯一トリガとするのは CSS の text-overflow 挙動との意図的な簡約（ADR-0090）。両レンダラーのパリティ検証対象。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 9 | TEXT-01〜09 |
+| ✅実装済み | 10 | TEXT-01〜10 |

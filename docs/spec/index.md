@@ -24,20 +24,20 @@
 |---|---|---|---|---|
 | §0 | [システム & ドキュメント運用](./00-system.md) | 3 | – | – |
 | §1 | [Hayate Core 原則](./01-core.md) | 5 | – | – |
-| §2 | [Element Layer](./02-element-layer.md) | 5 | – | – |
-| §3 | [Layout](./03-layout.md) | 5 | – | – |
-| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 12 | 1 | – |
-| §5 | [Text / Font / IME](./05-text-font-ime.md) | 7 | – | – |
-| §6 | [Event Model](./06-event-model.md) | 6 | – | – |
+| §2 | [Element Layer](./02-element-layer.md) | 6 | – | – |
+| §3 | [Layout](./03-layout.md) | 7 | – | – |
+| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 11 | 1 | – |
+| §5 | [Text / Font / IME](./05-text-font-ime.md) | 10 | – | – |
+| §6 | [Event Model](./06-event-model.md) | 8 | – | – |
 | §7 | [Scroll](./07-scroll.md) | 3 | – | – |
 | §8 | [Web Adapter & Modes](./08-web-adapter-modes.md) | 6 | 1 | 1 |
 | §9 | [Platform Adapter & Accessibility](./09-platform-accessibility.md) | 4 | 2 | 0 |
 | §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 19 | 1 | – |
 | §11 | [Tsubame](./11-tsubame.md) | 6 | 2 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **81** | **7** | **6** |
+| | **合計** | **88** | **7** | **6** |
 
-全 **91 要件**。実装率（✅）89%。⬜ 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外。
+全 **101 要件**。実装率（✅）87%。⬜ 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 

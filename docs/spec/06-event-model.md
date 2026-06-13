@@ -49,10 +49,16 @@ delivery の wire 形式そのものは §10（PROTO-12〜17）に置く。
 **状況:** ✅ — `interaction.rs` が `ElementTree::on_pointer_down/up/move`・`on_wheel`・`on_key_down`・`on_text_input`・`on_composition_*`・`on_hover_enter/leave`・`on_focus/blur` を提供。focus/active/hover は tree 単独所有。`hayate-adapter-web` は raw 入力→`tree.on_*` の薄い翻訳のみ（`RendererEventState` 撤去）。
 **備考:** D2（`element_renderer.rs` god-module 分割）の前提を整える。Web/native adapter が同一 core 状態機械を共有。
 
+### EVT-08 — pointer cursor は要素から解決し Platform Adapter が適用
+**規範文:** `cursor` はポインタ直下の要素から解決し、`on_pointer_move` の出力（`PointerMoveResult.resolved_cursor`）として Platform Adapter に渡す。Adapter は OS/ブラウザのカーソルを駆動し、要素スタイルには触れない。coalesce された move（layout 未準備 / 1px dedup）では再計算せず直近値を持ち越す。Canvas adapter は生成 Hayate-CSS → browser-CSS マッパー（ADR-0070）を再利用し値リストを単一正本に保つ。
+**出典:** ADR-0088、ADR-0066（interaction 状態機械）、ADR-0070（生成マッパー）
+**状況:** ✅ — `style_tags.json` に `CURSOR`（enum = default/pointer/text/crosshair/not-allowed/grab/grabbing）、`CursorValue`。`interaction.rs` の `PointerMoveResult { moved, resolved_cursor }` ＋ `last_cursor` 持ち越し。Canvas adapter `apply_resolved_cursor`（`document.body.style.cursor`）。
+**備考:** カーソルは要素ごと push でなくビューポート単位で1つ適用。DOM Mode は CSS `cursor` に直接写像。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 7 | EVT-01〜07 |
+| ✅実装済み | 8 | EVT-01〜08 |
 | ⬜未実装 | 0 | — |

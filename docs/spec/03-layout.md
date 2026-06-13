@@ -38,9 +38,21 @@
 
 ---
 
+### LAY-06 — box positioning（`position` ＋ insets）
+**規範文:** 要素の配置方式は `position: relative | absolute` と insets `top` / `right` / `bottom` / `left` で表す。既定は `relative`（Taffy 既定に一致。CSS の `static` 既定とは異なる）。`absolute` は通常フローから外し、insets で positioned ancestor 基準に配置する。フロー内の兄弟はその要素が居ないものとして再レイアウトされる。`sticky` / `fixed` は Taffy 非対応のためスコープ外。
+**出典:** ADR-0091（issue #205）、ADR-0004（Taffy）
+**状況:** ✅ — `style_tags.json` に `POSITION`（enum）/ `TOP` / `RIGHT` / `BOTTOM` / `LEFT`。`PositionValue::{Relative, Absolute}`。回帰テスト `tests/position_layout.rs`（absolute がフローを抜け inset 配置・in-flow 兄弟が再フロー）。
+**備考:** 既定 `relative` は CSS（`static` 既定）との明示的乖離。レイアウトエンジン（Taffy）の実挙動を正本とする方針の帰結。
+
+### LAY-07 — child overflow クリップ（`overflow: hidden`）
+**規範文:** `overflow: visible | hidden`。既定 `visible`（CSS 既定に一致、子は box 外に描画可）。`hidden` は子を要素の border box（角丸があれば丸めた形状）にクリップする。クリップは scene build で適用する。
+**出典:** ADR-0090（issue #206）
+**状況:** ✅ — `style_tags.json` に `OVERFLOW`（enum）、`OverflowValue::{Visible, Hidden}`。`border-radius` と整合する形状でクリップ。
+**備考:** `overflow-x` / `overflow-y` 個別・`scroll` 値は語彙外。スクロールは `scroll-view`（§7）が担う。
+
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 5 | LAY-01, LAY-02, LAY-03, LAY-04, LAY-05 |
+| ✅実装済み | 7 | LAY-01, LAY-02, LAY-03, LAY-04, LAY-05, LAY-06, LAY-07 |
 | 🟡部分 | 0 | — |
 | ⬜未実装 | 0 | — |
