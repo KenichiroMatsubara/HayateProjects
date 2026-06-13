@@ -80,6 +80,18 @@ up-level でパリティを取る。Blink と同型に倒す。
 - **retained incremental 経路への依存**: 補間は ADR-0086 の retained anchor 経路で成立する。
   full ephemeral rebuild（`walk_ephemeral`、parity 参照 / テスト用）は `last_visual` を
   持たず補間しない。「ephemeral はパリティ参照でありアニメーションしない」と割り切る。
+- **開始時刻（per-property、明示グループ無し）**: state は要素×プロパティ単位で、各々
+  `start_ms` を「切替後最初の render」で遅延アンカーする（ADR-0089 の遅延方式を踏襲）。
+  同フレームで変わった複数プロパティは次の render で一斉に advance されるため**結果的に
+  同一 `start_ms` を共有**し、別フレーム変更は自然に別 start になる。明示的な transition
+  group は導入しない。`advance_transitions(now_ms)` が単一 `now_ms` を配る前提に依存する。
+- **duration / timing は after-change（resolve 済み effective visual）から読む**: CSS の
+  「開始する transition の `transition-*` は after-change style を使う」規定に合わせる。
+  diff 地点では resolve 済みの `visual`（pseudo / viewport / 継承 反映済み・blend 前）が
+  手元にあるので、その `transition_duration` / `transition_timing` をそのまま使う。in/out で
+  duration が非対称になり得る（例: `:hover { transition-duration: 0 }` → 即時 in・base の
+  duration で out）のが CSS/DOM 準拠の正しい挙動。現コードの `el.visual`（base）直読は
+  pseudo 上書きを無視する潜在バグであり、本決定で廃止する。
 
 ## Considered Options
 
