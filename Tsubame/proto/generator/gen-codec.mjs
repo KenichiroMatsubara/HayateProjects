@@ -154,6 +154,7 @@ function generateEnumCodeMaps(proto) {
     cursor: 'CURSOR',
     overflow: 'OVERFLOW',
     position: 'POSITION',
+    transition_timing: 'TRANSITION_TIMING',
   };
   for (const [specName, constName] of Object.entries(enumNames)) {
     const en = (proto.enums ?? []).find((e) => e.name === specName);
@@ -228,7 +229,7 @@ export function generateCodec() {
     '// Source: @hayate/protocol-spec',
     '',
     "import type { StylePatch } from '@tsubame/renderer-protocol';",
-    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, POSITION } from './protocol.js';",
+    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, POSITION, TRANSITION_TIMING } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',
     '',

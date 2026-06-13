@@ -15,7 +15,7 @@ pub use element::{
     event_document_kind,
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PointerMoveResult, PseudoState,
     ResolvedElement,
-    StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
+    StyleProp, StylePropKind, TextDecorationValue, TransitionTimingValue, ViewportCondition,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
 pub use render::{

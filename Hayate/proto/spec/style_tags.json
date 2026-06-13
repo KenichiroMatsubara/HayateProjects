@@ -797,5 +797,35 @@
       "property": "overflow",
       "format": "enum:overflow"
     }
+  },
+  {
+    "name": "TRANSITION_DURATION",
+    "value": 53,
+    "encodeFrom": "f32",
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "transition-duration",
+      "format": "ms"
+    }
+  },
+  {
+    "name": "TRANSITION_TIMING",
+    "value": 54,
+    "encodeFrom": "enum:transition_timing",
+    "params": [
+      {
+        "name": "value",
+        "type": "transition_timing"
+      }
+    ],
+    "domCss": {
+      "property": "transition-timing-function",
+      "format": "enum:transition_timing"
+    }
   }
 ]

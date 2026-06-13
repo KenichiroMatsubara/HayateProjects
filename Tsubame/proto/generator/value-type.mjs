@@ -27,6 +27,7 @@ const KNOWN_ENUM_KINDS = new Set([
   'cursor',
   'overflow',
   'position',
+  'transition_timing',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -153,6 +154,7 @@ const ENUM_CONST_NAMES = {
   cursor: 'CURSOR',
   overflow: 'OVERFLOW',
   position: 'POSITION',
+  transition_timing: 'TRANSITION_TIMING',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -169,6 +171,7 @@ const ENUM_PATCH_LABELS = {
   cursor: 'cursor',
   overflow: 'overflow',
   position: 'position',
+  transition_timing: 'transitionTiming',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */

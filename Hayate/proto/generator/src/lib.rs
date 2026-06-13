@@ -657,6 +657,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
     out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue,\n");
+    out.push_str("    TransitionTimingValue,\n");
     out.push_str("};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
 
@@ -690,6 +691,7 @@ fn generate_style_codec(proto: &Proto) -> String {
             "cursor" => "CursorValue",
             "overflow" => "OverflowValue",
             "position" => "PositionValue",
+            "transition_timing" => "TransitionTimingValue",
             _ => continue,
         };
         let fn_name = format!("codec_{}", en.name);
@@ -778,6 +780,7 @@ fn generate_codec(proto: &Proto) -> String {
             "cursor" => "CursorValue",
             "overflow" => "OverflowValue",
             "position" => "PositionValue",
+            "transition_timing" => "TransitionTimingValue",
             _ => continue,
         };
         let fn_name = format!("encode_{}", en.name);

@@ -94,6 +94,20 @@ pub enum OverflowValue {
     Hidden,
 }
 
+/// Easing function for pseudo-state transition interpolation (ADR-0089, issue #209).
+///
+/// `Ease` is the CSS default. Each variant maps to the matching CSS
+/// `transition-timing-function` keyword in HTML mode and drives the
+/// interpolation curve in the render layer for Canvas mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransitionTimingValue {
+    Ease,
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,
@@ -264,6 +278,9 @@ pub enum StyleProp {
     GridTemplateRows(Vec<Dimension>),
     // stacking
     ZIndex(i32),
+    // transition (ADR-0089, issue #209)
+    TransitionDuration(f32),
+    TransitionTiming(TransitionTimingValue),
 }
 
 impl StyleProp {

@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, POSITION } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, POSITION, TRANSITION_TIMING } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -204,6 +204,14 @@ const OVERFLOW_CODE: Record<string, number> = {
 const POSITION_CODE: Record<string, number> = {
   'relative': POSITION.relative,
   'absolute': POSITION.absolute,
+};
+
+const TRANSITION_TIMING_CODE: Record<string, number> = {
+  'ease': TRANSITION_TIMING.ease,
+  'linear': TRANSITION_TIMING.linear,
+  'ease-in': TRANSITION_TIMING.easeIn,
+  'ease-out': TRANSITION_TIMING.easeOut,
+  'ease-in-out': TRANSITION_TIMING.easeInOut,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -488,6 +496,16 @@ function encode_overflow(out: number[], value: string): void {
   out.push(TAG.OVERFLOW, code);
 }
 
+function encode_transitionDuration(out: number[], value: unknown): void {
+  out.push(TAG.TRANSITION_DURATION, finiteNumber('transitionDuration', value));
+}
+
+function encode_transitionTiming(out: number[], value: string): void {
+  const code = TRANSITION_TIMING_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported transitionTiming "${value}"`);
+  out.push(TAG.TRANSITION_TIMING, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -542,6 +560,8 @@ const STYLE_ENCODERS = {
   right: encode_right,
   bottom: encode_bottom,
   overflow: encode_overflow,
+  transitionDuration: encode_transitionDuration,
+  transitionTiming: encode_transitionTiming,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

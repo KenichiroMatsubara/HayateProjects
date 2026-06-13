@@ -276,6 +276,19 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("overflow".into(), s.into()));
         }
+        StyleProp::TransitionDuration(v) => {
+            out.push(("transition-duration".into(), format!("{}ms", v.max(0.0))));
+        }
+        StyleProp::TransitionTiming(v) => {
+            let s = match v {
+            TransitionTimingValue::Ease => "ease",
+            TransitionTimingValue::Linear => "linear",
+            TransitionTimingValue::EaseIn => "ease-in",
+            TransitionTimingValue::EaseOut => "ease-out",
+            TransitionTimingValue::EaseInOut => "ease-in-out",
+            };
+            out.push(("transition-timing-function".into(), s.into()));
+        }
     }
 }
 

@@ -16,6 +16,7 @@ export type BorderStyle = 'none' | 'solid' | 'dashed';
 export type Cursor = 'default' | 'pointer' | 'text' | 'crosshair' | 'not-allowed' | 'grab' | 'grabbing';
 export type Overflow = 'visible' | 'hidden';
 export type Position = 'relative' | 'absolute';
+export type TransitionTiming = 'ease' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -71,6 +72,8 @@ export interface HayateStyle {
   right: HayateDimension;
   bottom: HayateDimension;
   overflow: Overflow;
+  transitionDuration: number;
+  transitionTiming: TransitionTiming;
 }
 
 /**

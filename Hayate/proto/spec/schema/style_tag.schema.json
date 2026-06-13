@@ -25,7 +25,9 @@
         "enum:text_decoration",
         "enum:border_style",
         "enum:cursor",
+        "enum:overflow",
         "enum:position",
+        "enum:transition_timing",
         "font-family",
         "dimension-list",
         "z-index"
@@ -55,6 +57,7 @@
             "color",
             "dimension",
             "px",
+            "ms",
             "number",
             "integer",
             "string",
@@ -69,7 +72,9 @@
             "enum:text_decoration",
             "enum:border_style",
             "enum:cursor",
+            "enum:overflow",
             "enum:position",
+            "enum:transition_timing",
             "dimension-list"
           ]
         },

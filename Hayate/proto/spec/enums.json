@@ -414,5 +414,30 @@
         "value": "Source Code Pro"
       }
     ]
+  },
+  {
+    "name": "transition_timing",
+    "values": [
+      {
+        "name": "ease",
+        "value": 0
+      },
+      {
+        "name": "linear",
+        "value": 1
+      },
+      {
+        "name": "ease_in",
+        "value": 2
+      },
+      {
+        "name": "ease_out",
+        "value": 3
+      },
+      {
+        "name": "ease_in_out",
+        "value": 4
+      }
+    ]
   }
 ]

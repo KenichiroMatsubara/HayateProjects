@@ -168,13 +168,18 @@ impl ValueType {
                         ));
                     }
                 }
+                "ms" => {
+                    lines.push(format!(
+                        "out.push((\"{css_prop}\".into(), format!(\"{{}}ms\", {value_var}.max(0.0))));"
+                    ));
+                }
                 "number" => {
                     let expr = scalar_number_expr(css_prop, value_var);
                     lines.push(format!(
                         "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {expr})));"
                     ));
                 }
-                other => panic!("Scalar tag domCss.format must be px or number, got {other}"),
+                other => panic!("Scalar tag domCss.format must be px, ms or number, got {other}"),
             },
             ValueType::ZIndex => {
                 lines.push(format!(
@@ -235,6 +240,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "cursor" => "cursor",
         "overflow" => "overflow",
         "position" => "position",
+        "transition_timing" => "transition_timing",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -330,6 +336,13 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
         "position" => {
             "PositionValue::Relative => \"relative\",\n\
             PositionValue::Absolute => \"absolute\","
+        }
+        "transition_timing" => {
+            "TransitionTimingValue::Ease => \"ease\",\n\
+            TransitionTimingValue::Linear => \"linear\",\n\
+            TransitionTimingValue::EaseIn => \"ease-in\",\n\
+            TransitionTimingValue::EaseOut => \"ease-out\",\n\
+            TransitionTimingValue::EaseInOut => \"ease-in-out\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };

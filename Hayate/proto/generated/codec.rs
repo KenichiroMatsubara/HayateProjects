@@ -132,6 +132,16 @@ fn encode_position(value: PositionValue) -> f32 {
     }
 }
 
+fn encode_transition_timing(value: TransitionTimingValue) -> f32 {
+    match value {
+        TransitionTimingValue::Ease => 0.0,
+        TransitionTimingValue::Linear => 1.0,
+        TransitionTimingValue::EaseIn => 2.0,
+        TransitionTimingValue::EaseOut => 3.0,
+        TransitionTimingValue::EaseInOut => 4.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -487,6 +497,14 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::Overflow(v) => {
                 buf.push(TAG_OVERFLOW as f32);
                 buf.push(encode_overflow(*v));
+            }
+            StyleProp::TransitionDuration(v) => {
+                buf.push(TAG_TRANSITION_DURATION as f32);
+                buf.push(*v);
+            }
+            StyleProp::TransitionTiming(v) => {
+                buf.push(TAG_TRANSITION_TIMING as f32);
+                buf.push(encode_transition_timing(*v));
             }
         }
     }

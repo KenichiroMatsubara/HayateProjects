@@ -28,6 +28,7 @@ const ENUM_TYPES = [
   { specName: 'cursor', typeName: 'Cursor' },
   { specName: 'overflow', typeName: 'Overflow' },
   { specName: 'position', typeName: 'Position' },
+  { specName: 'transition_timing', typeName: 'TransitionTiming' },
 ];
 
 function generateEnumTypes(proto) {

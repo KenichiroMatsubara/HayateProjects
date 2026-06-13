@@ -76,6 +76,8 @@ export const TAG = {
   RIGHT: 50,
   BOTTOM: 51,
   OVERFLOW: 52,
+  TRANSITION_DURATION: 53,
+  TRANSITION_TIMING: 54,
 } as const;
 export type TAG = typeof TAG;
 
@@ -309,6 +311,15 @@ export const FONT_FAMILY = {
   SourceCodePro: 'Source Code Pro',
 } as const;
 export type FONT_FAMILY = typeof FONT_FAMILY;
+
+export const TRANSITION_TIMING = {
+  ease: 0,
+  linear: 1,
+  easeIn: 2,
+  easeOut: 3,
+  easeInOut: 4,
+} as const;
+export type TRANSITION_TIMING = typeof TRANSITION_TIMING;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 
