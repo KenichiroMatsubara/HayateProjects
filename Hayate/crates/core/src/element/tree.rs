@@ -23,8 +23,8 @@ use crate::element::pseudo_state::{
 use crate::element::scene_build;
 use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
 use crate::element::style::{
-    BorderStyleValue, CursorValue, FontStyleValue, StyleProp, StylePropKind, TextDecorationValue,
-    ViewportCondition,
+    BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, StyleProp, StylePropKind,
+    TextDecorationValue, ViewportCondition,
 };
 use crate::element::taffy_bridge;
 use crate::element::text;
@@ -42,6 +42,9 @@ pub struct Visual {
     pub border_width: f32,
     pub border_color: Option<Color>,
     pub border_style: BorderStyleValue,
+    /// Child-overflow handling (issue #206). `Hidden` clips children to the
+    /// element's (optionally rounded) border box; `Visible` is the default.
+    pub overflow: OverflowValue,
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
@@ -68,6 +71,7 @@ impl Default for Visual {
             border_width: 0.0,
             border_color: None,
             border_style: BorderStyleValue::None,
+            overflow: OverflowValue::Visible,
             text_color: None,
             font_size: None,
             font_weight: None,
@@ -1327,6 +1331,7 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::BorderWidth(v) => visual.border_width = v.max(0.0),
         StyleProp::BorderColor(c) => visual.border_color = Some(*c),
         StyleProp::BorderStyle(v) => visual.border_style = *v,
+        StyleProp::Overflow(v) => visual.overflow = *v,
         StyleProp::FontSize(v) => {
             visual.font_size = Some(v.max(0.0));
             *text_dirty = true;

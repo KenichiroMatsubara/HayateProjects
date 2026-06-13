@@ -269,6 +269,13 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
         StyleProp::Bottom(d) => {
             out.push(("bottom".into(), dom_css_dim(d)));
         }
+        StyleProp::Overflow(v) => {
+            let s = match v {
+            OverflowValue::Visible => "visible",
+            OverflowValue::Hidden => "hidden",
+            };
+            out.push(("overflow".into(), s.into()));
+        }
     }
 }
 

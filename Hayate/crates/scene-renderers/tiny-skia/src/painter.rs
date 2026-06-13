@@ -192,25 +192,32 @@ impl ScenePainter for TinySkiaPainter<'_> {
         }
     }
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         let transform = self.state.transform;
-        if let Some(rect) = tiny_skia::Rect::from_xywh(x, y, width, height) {
+        // Uniform radii (the only shape Hayate currently emits); 0 → rect clip.
+        let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
+        let path = if radius > 0.0 {
+            rounded_rect_path(x, y, width, height, radius)
+        } else if let Some(rect) = tiny_skia::Rect::from_xywh(x, y, width, height) {
             let mut pb = PathBuilder::new();
             pb.push_rect(rect);
-            if let Some(path) = pb.finish() {
-                match self.state.clip_masks.last() {
-                    Some(parent) => {
-                        let mut clip_mask = parent.clone();
-                        clip_mask.intersect_path(&path, FillRule::Winding, true, transform);
+            pb.finish()
+        } else {
+            None
+        };
+        if let Some(path) = path {
+            match self.state.clip_masks.last() {
+                Some(parent) => {
+                    let mut clip_mask = parent.clone();
+                    clip_mask.intersect_path(&path, FillRule::Winding, true, transform);
+                    self.state.clip_masks.push(clip_mask);
+                }
+                None => {
+                    if let Some(mut clip_mask) =
+                        Mask::new(self.pixmap.width(), self.pixmap.height())
+                    {
+                        clip_mask.fill_path(&path, FillRule::Winding, true, transform);
                         self.state.clip_masks.push(clip_mask);
-                    }
-                    None => {
-                        if let Some(mut clip_mask) =
-                            Mask::new(self.pixmap.width(), self.pixmap.height())
-                        {
-                            clip_mask.fill_path(&path, FillRule::Winding, true, transform);
-                            self.state.clip_masks.push(clip_mask);
-                        }
                     }
                 }
             }

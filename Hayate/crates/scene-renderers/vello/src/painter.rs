@@ -248,15 +248,22 @@ impl ScenePainter for VelloPainter<'_> {
         }
     }
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         let scene = self.target();
-        let clip = Rect::new(
+        let rect = Rect::new(
             x as f64,
             y as f64,
             (x + width) as f64,
             (y + height) as f64,
         );
-        scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &clip);
+        // Uniform radii (the only shape Hayate currently emits); 0 → rect clip.
+        let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
+        if radius > 0.0 {
+            let clip = RoundedRect::from_rect(rect, radius as f64);
+            scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &clip);
+        } else {
+            scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &rect);
+        }
         self.clip_depth += 1;
     }
 

@@ -25,6 +25,7 @@ const KNOWN_ENUM_KINDS = new Set([
   'text_decoration',
   'border_style',
   'cursor',
+  'overflow',
   'position',
 ]);
 
@@ -150,6 +151,7 @@ const ENUM_CONST_NAMES = {
   text_decoration: 'TEXT_DECORATION',
   border_style: 'BORDER_STYLE',
   cursor: 'CURSOR',
+  overflow: 'OVERFLOW',
   position: 'POSITION',
 };
 
@@ -165,6 +167,7 @@ const ENUM_PATCH_LABELS = {
   text_decoration: 'textDecoration',
   border_style: 'borderStyle',
   cursor: 'cursor',
+  overflow: 'overflow',
   position: 'position',
 };
 

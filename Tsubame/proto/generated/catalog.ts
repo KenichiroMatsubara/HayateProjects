@@ -701,6 +701,19 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "overflow",
+    "tag": 52,
+    "unsetKind": null,
+    "wireKind": "overflow",
+    "domFormat": "enum",
+    "cssName": "overflow",
+    "cssProperty": "overflow",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 

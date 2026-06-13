@@ -14,6 +14,7 @@ export type FontStyle = 'normal' | 'italic' | 'oblique';
 export type TextDecoration = 'none' | 'underline' | 'line-through';
 export type BorderStyle = 'none' | 'solid' | 'dashed';
 export type Cursor = 'default' | 'pointer' | 'text' | 'crosshair' | 'not-allowed' | 'grab' | 'grabbing';
+export type Overflow = 'visible' | 'hidden';
 export type Position = 'relative' | 'absolute';
 
 export interface HayateStyle {
@@ -69,6 +70,7 @@ export interface HayateStyle {
   left: HayateDimension;
   right: HayateDimension;
   bottom: HayateDimension;
+  overflow: Overflow;
 }
 
 /**

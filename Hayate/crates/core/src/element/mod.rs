@@ -34,6 +34,7 @@ pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
     DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
-    JustifyValue, PositionValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
+    JustifyValue, OverflowValue, PositionValue, StyleProp, StylePropKind, TextDecorationValue,
+    ViewportCondition,
 };
 pub use tree::{ElementTree, ResolvedElement};

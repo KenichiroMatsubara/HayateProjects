@@ -782,5 +782,20 @@
       "property": "bottom",
       "format": "dimension"
     }
+  },
+  {
+    "name": "OVERFLOW",
+    "value": 52,
+    "encodeFrom": "enum:overflow",
+    "params": [
+      {
+        "name": "value",
+        "type": "overflow"
+      }
+    ],
+    "domCss": {
+      "property": "overflow",
+      "format": "enum:overflow"
+    }
   }
 ]

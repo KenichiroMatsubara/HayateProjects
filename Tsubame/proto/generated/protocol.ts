@@ -75,6 +75,7 @@ export const TAG = {
   LEFT: 49,
   RIGHT: 50,
   BOTTOM: 51,
+  OVERFLOW: 52,
 } as const;
 export type TAG = typeof TAG;
 
@@ -255,6 +256,12 @@ export const BORDER_STYLE = {
   dashed: 2,
 } as const;
 export type BORDER_STYLE = typeof BORDER_STYLE;
+
+export const OVERFLOW = {
+  visible: 0,
+  hidden: 1,
+} as const;
+export type OVERFLOW = typeof OVERFLOW;
 
 export const CURSOR = {
   default: 0,

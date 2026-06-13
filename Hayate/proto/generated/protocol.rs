@@ -94,6 +94,7 @@ pub const TAG_TOP: u32 = 48;
 pub const TAG_LEFT: u32 = 49;
 pub const TAG_RIGHT: u32 = 50;
 pub const TAG_BOTTOM: u32 = 51;
+pub const TAG_OVERFLOW: u32 = 52;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -564,6 +565,9 @@ pub enum StyleTag {
         dim_value: f32,
         dim_unit: f32,
     },
+    Overflow {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -885,6 +889,11 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let dim_unit = packed[i + 1];
             Ok((StyleTag::Bottom { dim_value, dim_unit }, i + 2))
         }
+        52 => {
+            if i + 1 > packed.len() { return Err("style tag OVERFLOW truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::Overflow { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -894,7 +903,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, PositionValue, StyleProp, TextDecorationValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 
@@ -1017,6 +1026,14 @@ fn codec_border_style(raw: f32) -> BorderStyleValue {
     }
 }
 
+fn codec_overflow(raw: f32) -> OverflowValue {
+    match raw as u32 {
+        0 => OverflowValue::Visible,
+        1 => OverflowValue::Hidden,
+        _ => OverflowValue::Visible,
+    }
+}
+
 fn codec_cursor(raw: f32) -> CursorValue {
     match raw as u32 {
         0 => CursorValue::Default,
@@ -1092,6 +1109,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::Left { dim_value, dim_unit } => StyleProp::Left(codec_dim(dim_value, dim_unit)),
         StyleTag::Right { dim_value, dim_unit } => StyleProp::Right(codec_dim(dim_value, dim_unit)),
         StyleTag::Bottom { dim_value, dim_unit } => StyleProp::Bottom(codec_dim(dim_value, dim_unit)),
+        StyleTag::Overflow { value } => StyleProp::Overflow(codec_overflow(value)),
     })
 }
 

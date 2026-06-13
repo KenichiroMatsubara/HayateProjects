@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, POSITION } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, POSITION } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -194,6 +194,11 @@ const CURSOR_CODE: Record<string, number> = {
   'not-allowed': CURSOR.notAllowed,
   'grab': CURSOR.grab,
   'grabbing': CURSOR.grabbing,
+};
+
+const OVERFLOW_CODE: Record<string, number> = {
+  'visible': OVERFLOW.visible,
+  'hidden': OVERFLOW.hidden,
 };
 
 const POSITION_CODE: Record<string, number> = {
@@ -477,6 +482,12 @@ function encode_bottom(out: number[], value: import('@tsubame/renderer-protocol'
   out.push(TAG.BOTTOM, d.value, UNIT_CODE[d.unit]!);
 }
 
+function encode_overflow(out: number[], value: string): void {
+  const code = OVERFLOW_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported overflow "${value}"`);
+  out.push(TAG.OVERFLOW, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -530,6 +541,7 @@ const STYLE_ENCODERS = {
   left: encode_left,
   right: encode_right,
   bottom: encode_bottom,
+  overflow: encode_overflow,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {
