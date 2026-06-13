@@ -22,6 +22,17 @@ Canvas モードでは、ポインタが canvas サーフェスを出ても hove
 
 - `pointerleave` は座標非依存のため `toCanvas` 変換は不要。`pending_pointer` バッファには座標を持たない `PointerInput::Leave` として enqueue され、`render()` 冒頭の drain で arrival 順に `on_pointer_leave()` へ適用される。
 - leave は 1px move-dedup の coalescing アンカーを reset する（Core が `last_pointer_pos` を None に戻すのと対称）。これにより leave 直後の同一座標への再 hover が drop されず `:hover` が確実に再適用される。
-- `pointercancel` での hover ＋ `:active` 解除（`on_pointer_cancel()`）は #213 で追加する。
 
 `render(timestamp_ms)` フレームループと backend（Vello / tiny-skia）には変更なし。hover 状態は Core で管理されるため backend 非依存で同一挙動。
+
+## Amendment: `pointercancel` での hover ＋ `:active` 解除 (#213)
+
+タッチデバイスでブラウザがポインタをキャンセルする（スクロール takeover や Pointer Capture 喪失）と、押下中のコントロールが `:active` のまま残り、永続的に押されたように見えるバグがあった。`pointerleave`（#212）は hover を解除するが、active な押下セッションは解除しない。
+
+これを正すため、Pointer Events 自己配線の対象に **`pointercancel`** を追加し、Core に座標非依存の `ElementTree::on_pointer_cancel()` を新設する。`on_pointer_cancel()` は `on_pointer_leave()` と同じ hover-clear（`apply_pointer_hover(None)` + `last_pointer_pos` reset）を行い、**加えて** active な押下を終了する（`active_element.take()` → `ActiveEnd` 発火 + pseudo-activation dirty マーク）。これは既存の pointer-up 経路の active 終了処理を鏡写しにしたもの。**幻の `PointerMove` は生成しない**。
+
+- `pointercancel` も座標非依存のため `toCanvas` 変換は不要。`pending_pointer` バッファには座標を持たない `PointerInput::Cancel` として enqueue され、`render()` 冒頭の drain で arrival 順に `on_pointer_cancel()` へ適用される。
+- cancel は leave と同様に 1px move-dedup の coalescing アンカーを reset する（Core が `last_pointer_pos` を None に戻すのと対称）。これにより cancel 直後の同一座標への再 hover が drop されない。
+- `pointerdown`/`up`/`move` の Core 側シグネチャは変更不要（座標ベースで pointerType 非依存のまま）。
+
+self-wired な end-to-end 経路（実 DOM `pointermove`→`pointerleave` を headless browser で駆動し `poll_events()` で `HoverLeave` を assert）の回帰テスト戦略は ADR-0092 を参照。
