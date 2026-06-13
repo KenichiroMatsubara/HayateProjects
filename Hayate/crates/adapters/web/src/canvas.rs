@@ -8,8 +8,9 @@ use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
 
 use hayate_core::{
-    Color, DocumentEventKind, ElementId, ElementTree, Event, FontStyleValue, RenderImage,
-    RenderImageAlphaType, RenderImageFormat, StylePropKind, TextDecorationValue,
+    Color, CursorValue, DocumentEventKind, ElementId, ElementTree, Event, FontStyleValue,
+    RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp, StylePropKind,
+    TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -313,7 +314,8 @@ impl HayateElementRenderer {
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
-        let _ = self.tree.on_pointer_move(x, y);
+        let result = self.tree.on_pointer_move(x, y);
+        apply_resolved_cursor(result.resolved_cursor);
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
@@ -341,7 +343,8 @@ impl HayateElementRenderer {
         match input {
             PointerInput::Down { x, y } => self.tree.on_pointer_down(x, y),
             PointerInput::Move { x, y } => {
-                let _ = self.tree.on_pointer_move(x, y);
+                let result = self.tree.on_pointer_move(x, y);
+                apply_resolved_cursor(result.resolved_cursor);
             }
             PointerInput::Up { x, y } => self.tree.on_pointer_up(x, y),
             PointerInput::Leave => self.tree.on_pointer_leave(),
@@ -669,4 +672,22 @@ async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
         width,
         height,
     })
+}
+
+/// Drive the browser cursor from the cursor resolved under the pointer
+/// (ADR-0088). Reuses the generated Hayate-CSS → browser-CSS mapper so the
+/// `cursor` value list stays single-sourced, and applies it to
+/// `document.body.style.cursor`.
+fn apply_resolved_cursor(cursor: CursorValue) {
+    let mut entries: Vec<(String, String)> = Vec::new();
+    crate::generated::style_prop_css_entries(&StyleProp::Cursor(cursor), &mut entries);
+    let Some((_, value)) = entries.into_iter().next() else {
+        return;
+    };
+    if let Some(body) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.body())
+    {
+        let _ = body.style().set_property("cursor", &value);
+    }
 }

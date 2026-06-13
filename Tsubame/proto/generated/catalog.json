@@ -591,5 +591,18 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "cursor",
+    "tag": 45,
+    "unsetKind": null,
+    "wireKind": "cursor",
+    "domFormat": "enum",
+    "cssName": "cursor",
+    "cssProperty": "cursor",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

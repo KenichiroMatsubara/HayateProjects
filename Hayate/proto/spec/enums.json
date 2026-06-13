@@ -230,6 +230,39 @@
     ]
   },
   {
+    "name": "cursor",
+    "values": [
+      {
+        "name": "default",
+        "value": 0
+      },
+      {
+        "name": "pointer",
+        "value": 1
+      },
+      {
+        "name": "text",
+        "value": 2
+      },
+      {
+        "name": "crosshair",
+        "value": 3
+      },
+      {
+        "name": "not_allowed",
+        "value": 4
+      },
+      {
+        "name": "grab",
+        "value": 5
+      },
+      {
+        "name": "grabbing",
+        "value": 6
+      }
+    ]
+  },
+  {
     "name": "font_family",
     "string_values": true,
     "values": [

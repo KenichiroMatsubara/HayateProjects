@@ -23,6 +23,7 @@ const SAMPLES: Record<string, unknown> = {
   justifyContent: 'space-between',
   fontStyle: 'italic',
   textDecoration: 'underline',
+  cursor: 'pointer',
   f32: 0.75,
   zIndex: 10,
   fontFamily: 'Inter, sans-serif',

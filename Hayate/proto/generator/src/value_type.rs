@@ -231,6 +231,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "justify_content" => "justify_content",
         "font_style" => "font_style",
         "text_decoration" => "text_decoration",
+        "cursor" => "cursor",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -304,6 +305,15 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
             "TextDecorationValue::None => \"none\",\n\
             TextDecorationValue::Underline => \"underline\",\n\
             TextDecorationValue::LineThrough => \"line-through\","
+        }
+        "cursor" => {
+            "CursorValue::Default => \"default\",\n\
+            CursorValue::Pointer => \"pointer\",\n\
+            CursorValue::Text => \"text\",\n\
+            CursorValue::Crosshair => \"crosshair\",\n\
+            CursorValue::NotAllowed => \"not-allowed\",\n\
+            CursorValue::Grab => \"grab\",\n\
+            CursorValue::Grabbing => \"grabbing\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };

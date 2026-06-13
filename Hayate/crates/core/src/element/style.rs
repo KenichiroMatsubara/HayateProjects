@@ -47,6 +47,19 @@ pub enum TextDecorationValue {
     LineThrough,
 }
 
+/// Pointer cursor appearance (ADR-0088). Resolved from the element under the
+/// pointer and handed to the Platform Adapter via `on_pointer_move`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorValue {
+    Default,
+    Pointer,
+    Text,
+    Crosshair,
+    NotAllowed,
+    Grab,
+    Grabbing,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,
@@ -197,6 +210,8 @@ pub enum StyleProp {
     Color(Color),
     FontStyle(FontStyleValue),
     TextDecoration(TextDecorationValue),
+    // pointer
+    Cursor(CursorValue),
     // ambient default text style (block-penetrating)
     DefaultColor(Color),
     DefaultFontFamily(String),

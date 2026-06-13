@@ -1,7 +1,18 @@
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::pseudo_state::PseudoState;
+use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
+
+/// Output of `on_pointer_move` (ADR-0088). `moved` is false when the move was
+/// coalesced by the 1px dedup or skipped because layout is not ready; `cursor`
+/// carries the cursor resolved from the element under the pointer so the
+/// Platform Adapter can drive the OS/browser cursor without touching styles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerMoveResult {
+    pub moved: bool,
+    pub resolved_cursor: CursorValue,
+}
 
 impl ElementTree {
     /// Pointer down at canvas coordinates (hit-test driven).
@@ -50,21 +61,51 @@ impl ElementTree {
         }
     }
 
-    /// Pointer move with layout guard and 1 px dedup. Returns false when coalesced.
-    pub fn on_pointer_move(&mut self, x: f32, y: f32) -> bool {
+    /// Pointer move with layout guard and 1 px dedup. `moved` is false when
+    /// coalesced; `cursor` is the cursor resolved from the element under the
+    /// pointer (ADR-0088), carried forward unchanged on coalesced moves.
+    pub fn on_pointer_move(&mut self, x: f32, y: f32) -> PointerMoveResult {
         if !self.has_layout() {
-            return false;
+            return PointerMoveResult {
+                moved: false,
+                resolved_cursor: self.last_cursor,
+            };
         }
         if let Some((lx, ly)) = self.last_pointer_pos {
             if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
-                return false;
+                return PointerMoveResult {
+                    moved: false,
+                    resolved_cursor: self.last_cursor,
+                };
             }
         }
         self.last_pointer_pos = Some((x, y));
         self.push_event(Event::PointerMove { x, y });
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
-        true
+        let resolved_cursor = self.resolve_cursor(hit);
+        self.last_cursor = resolved_cursor;
+        PointerMoveResult {
+            moved: true,
+            resolved_cursor,
+        }
+    }
+
+    /// Resolve the effective cursor for the element under the pointer, walking
+    /// up the ancestor chain (CSS `cursor` inherits). `Default` when nothing in
+    /// the chain sets a cursor or the pointer hit nothing.
+    fn resolve_cursor(&self, hit: Option<ElementId>) -> CursorValue {
+        let mut current = hit;
+        while let Some(id) = current {
+            let Some(el) = self.elements.get(&id) else {
+                break;
+            };
+            if let Some(cursor) = el.visual.cursor {
+                return cursor;
+            }
+            current = el.parent;
+        }
+        CursorValue::Default
     }
 
     /// Target-less pointer move (HTML Mode coordinate stream without hit-test hover).

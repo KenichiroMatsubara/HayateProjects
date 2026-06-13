@@ -68,6 +68,7 @@ export const TAG = {
   ALIGN_SELF: 42,
   ALIGN_CONTENT: 43,
   FLEX_WRAP: 44,
+  CURSOR: 45,
 } as const;
 export type TAG = typeof TAG;
 
@@ -241,6 +242,17 @@ export const TEXT_DECORATION = {
   lineThrough: 2,
 } as const;
 export type TEXT_DECORATION = typeof TEXT_DECORATION;
+
+export const CURSOR = {
+  default: 0,
+  pointer: 1,
+  text: 2,
+  crosshair: 3,
+  notAllowed: 4,
+  grab: 5,
+  grabbing: 6,
+} as const;
+export type CURSOR = typeof CURSOR;
 
 export const FONT_FAMILY = {
   NotoSansJP: 'Noto Sans JP',

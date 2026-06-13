@@ -684,5 +684,20 @@
       "property": "flex-wrap",
       "format": "enum:flex_wrap"
     }
+  },
+  {
+    "name": "CURSOR",
+    "value": 45,
+    "encodeFrom": "enum:cursor",
+    "params": [
+      {
+        "name": "value",
+        "type": "cursor"
+      }
+    ],
+    "domCss": {
+      "property": "cursor",
+      "format": "enum:cursor"
+    }
   }
 ]

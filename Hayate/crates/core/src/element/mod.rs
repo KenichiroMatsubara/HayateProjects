@@ -26,11 +26,13 @@ pub use edit_state::EditState;
 pub use ime_bridge::{CharacterBounds, ImeBridge};
 pub use event_spec::{event_document_kind, DocumentEventKind, Event};
 pub use id::ElementId;
+pub use interaction::PointerMoveResult;
 pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use style::{
-    AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
+    AlignContentValue, AlignSelfValue, AlignValue, CursorValue, Dimension, DimensionUnit,
+    DisplayValue,
     FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
     JustifyValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,

@@ -24,6 +24,7 @@ const ENUM_TYPES = [
   { specName: 'justify_content', typeName: 'JustifyContent' },
   { specName: 'font_style', typeName: 'FontStyle' },
   { specName: 'text_decoration', typeName: 'TextDecoration' },
+  { specName: 'cursor', typeName: 'Cursor' },
 ];
 
 function generateEnumTypes(proto) {
