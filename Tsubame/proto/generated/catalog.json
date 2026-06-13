@@ -49,14 +49,6 @@
     "targets": [
       "packet",
       "css"
-    ],
-    "domExtras": [
-      {
-        "cssName": "borderStyle",
-        "cssProperty": "border-style",
-        "whenPositive": "solid",
-        "whenZero": "none"
-      }
     ]
   },
   {
@@ -593,8 +585,21 @@
     ]
   },
   {
-    "patchKey": "cursor",
+    "patchKey": "borderStyle",
     "tag": 45,
+    "unsetKind": null,
+    "wireKind": "borderStyle",
+    "domFormat": "enum",
+    "cssName": "borderStyle",
+    "cssProperty": "border-style",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "cursor",
+    "tag": 46,
     "unsetKind": null,
     "wireKind": "cursor",
     "domFormat": "enum",

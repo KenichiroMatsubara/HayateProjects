@@ -36,9 +36,7 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             out.push(("border-radius".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::BorderWidth(v) => {
-            let w = v.max(0.0);
-            out.push(("border-width".into(), format!("{}px", w)));
-            out.push(("border-style".into(), if w > 0.0 { "solid".into() } else { "none".into() }));
+            out.push(("border-width".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::BorderColor(c) => {
             out.push(("border-color".into(), dom_css_hex(c)));
@@ -231,6 +229,14 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             FlexWrapValue::WrapReverse => "wrap-reverse",
             };
             out.push(("flex-wrap".into(), s.into()));
+        }
+        StyleProp::BorderStyle(v) => {
+            let s = match v {
+            BorderStyleValue::None => "none",
+            BorderStyleValue::Solid => "solid",
+            BorderStyleValue::Dashed => "dashed",
+            };
+            out.push(("border-style".into(), s.into()));
         }
         StyleProp::Cursor(v) => {
             let s = match v {

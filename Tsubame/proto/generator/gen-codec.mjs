@@ -150,6 +150,7 @@ function generateEnumCodeMaps(proto) {
     justify_content: 'JUSTIFY_CONTENT',
     font_style: 'FONT_STYLE',
     text_decoration: 'TEXT_DECORATION',
+    border_style: 'BORDER_STYLE',
     cursor: 'CURSOR',
   };
   for (const [specName, constName] of Object.entries(enumNames)) {
@@ -225,7 +226,7 @@ export function generateCodec() {
     '// Source: @hayate/protocol-spec',
     '',
     "import type { StylePatch } from '@tsubame/renderer-protocol';",
-    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, CURSOR } from './protocol.js';",
+    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',
     '',

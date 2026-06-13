@@ -1,13 +1,15 @@
-//! Self-wired canvas pointer input (ADR-0080 / ADR-0082, #211 / #212).
+//! Self-wired canvas pointer input (ADR-0080 / ADR-0082, #211 / #212 / #213).
 //!
 //! Canvas DOM Pointer Events (`pointerdown` / `pointermove` / `pointerup` /
-//! `pointerleave`) plus `wheel` are subscribed behind `attach_pointer_input`
-//! (wasm32 only), mirroring `attach_resize_observer`: the listener `Closure`s are
-//! held alive by a guard and enqueue into an ordered `pending_pointer` buffer
-//! drained at the start of `render()`. `pointerleave` is coordinate-independent
-//! and clears hover via `ElementTree::on_pointer_leave()` (#212). The `toCanvas`
-//! coordinate transform and the 1px move-coalescing (including the leave-driven
-//! anchor reset) are pure and unit-tested on all targets.
+//! `pointerleave` / `pointercancel`) plus `wheel` are subscribed behind
+//! `attach_pointer_input` (wasm32 only), mirroring `attach_resize_observer`: the
+//! listener `Closure`s are held alive by a guard and enqueue into an ordered
+//! `pending_pointer` buffer drained at the start of `render()`. `pointerleave`
+//! and `pointercancel` are coordinate-independent and clear hover via
+//! `ElementTree::on_pointer_leave()` (#212) / `on_pointer_cancel()` (#213, which
+//! also ends the active press). The `toCanvas` coordinate transform and the 1px
+//! move-coalescing (including the leave/cancel-driven anchor reset) are pure and
+//! unit-tested on all targets.
 
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -34,6 +36,10 @@ pub enum PointerInput {
     /// Pointer left the canvas surface (`pointerleave`). Coordinate-independent:
     /// drains to `ElementTree::on_pointer_leave()`, clearing hover.
     Leave,
+    /// `pointercancel`: touch interruption / pointer-capture loss. Carries no
+    /// coordinates — Core `on_pointer_cancel` is coordinate-independent (it
+    /// clears hover and ends the active press regardless of position).
+    Cancel,
     Wheel {
         x: f32,
         y: f32,
@@ -90,10 +96,10 @@ pub fn coalesce_pointer_inputs(
                 }
                 anchor = Some((x, y));
             }
-            // A leave clears hover and resets Core's last_pointer_pos, so it must
-            // also reset the coalescing anchor — a re-entry move at the same
-            // coordinate has to pass through to reapply `:hover`.
-            PointerInput::Leave => anchor = None,
+            // A leave/cancel clears hover and resets Core's last_pointer_pos, so
+            // it must also reset the coalescing anchor — a re-entry move at the
+            // same coordinate has to pass through to reapply `:hover`.
+            PointerInput::Leave | PointerInput::Cancel => anchor = None,
             _ => {}
         }
         out.push(input);
@@ -111,7 +117,7 @@ pub fn final_anchor(inputs: &[PointerInput], seed: Option<(f32, f32)>) -> Option
     for input in inputs {
         match input {
             PointerInput::Move { x, y } => anchor = Some((*x, *y)),
-            PointerInput::Leave => anchor = None,
+            PointerInput::Leave | PointerInput::Cancel => anchor = None,
             _ => {}
         }
     }
@@ -173,6 +179,20 @@ pub(crate) fn attach_pointer_input(
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback("pointerleave", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointerleave", closure));
+    }
+
+    {
+        // `pointercancel` is coordinate-independent (Core clears hover + active
+        // regardless of position), so it enqueues a bare `Cancel`.
+        let pending = pending.clone();
+        let closure = Closure::wrap(Box::new(move |event: Event| {
+            if event.dyn_ref::<PointerEvent>().is_none() {
+                return;
+            }
+            pending.borrow_mut().push(PointerInput::Cancel);
+        }) as Box<dyn FnMut(Event)>);
+        canvas.add_event_listener_with_callback("pointercancel", closure.as_ref().unchecked_ref())?;
+        listeners.push(("pointercancel", closure));
     }
 
     {
@@ -284,6 +304,27 @@ mod tests {
                 PointerInput::Move { x: 50.0, y: 50.0 },
                 PointerInput::Down { x: 50.0, y: 50.0 },
             ]
+        );
+    }
+
+    #[test]
+    fn coalesce_resets_anchor_on_cancel_so_re_entry_move_survives() {
+        // `pointercancel` clears hover and resets Core's last_pointer_pos (just
+        // like leave), so it must also reset the coalescing anchor: a re-entry
+        // move at the same coordinate has to pass through to reapply `:hover`.
+        let inputs = vec![
+            PointerInput::Move { x: 10.0, y: 10.0 },
+            PointerInput::Cancel,
+            PointerInput::Move { x: 10.2, y: 10.0 }, // within 1px of (10,10) but anchor reset → kept
+        ];
+        let out = coalesce_pointer_inputs(inputs, None);
+        assert_eq!(
+            out,
+            vec![
+                PointerInput::Move { x: 10.0, y: 10.0 },
+                PointerInput::Cancel,
+                PointerInput::Move { x: 10.2, y: 10.0 },
+            ],
         );
     }
 

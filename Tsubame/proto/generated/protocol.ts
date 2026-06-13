@@ -68,7 +68,8 @@ export const TAG = {
   ALIGN_SELF: 42,
   ALIGN_CONTENT: 43,
   FLEX_WRAP: 44,
-  CURSOR: 45,
+  BORDER_STYLE: 45,
+  CURSOR: 46,
 } as const;
 export type TAG = typeof TAG;
 
@@ -242,6 +243,13 @@ export const TEXT_DECORATION = {
   lineThrough: 2,
 } as const;
 export type TEXT_DECORATION = typeof TEXT_DECORATION;
+
+export const BORDER_STYLE = {
+  none: 0,
+  solid: 1,
+  dashed: 2,
+} as const;
+export type BORDER_STYLE = typeof BORDER_STYLE;
 
 export const CURSOR = {
   default: 0,

@@ -108,6 +108,48 @@ impl ScenePainter for TinySkiaPainter<'_> {
         }
     }
 
+    fn stroke_dashed_border(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        let bw = border_width.max(0.0);
+        if bw <= 0.0 || width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        let half = bw / 2.0;
+        let inset_w = width - bw;
+        let inset_h = height - bw;
+        // Border thicker than the box collapses to a solid fill.
+        if inset_w <= 0.0 || inset_h <= 0.0 {
+            self.fill_rect(x, y, width, height, color, outer_radius);
+            return;
+        }
+
+        let transform = self.state.transform;
+        let mask = self.state.clip_masks.last();
+        let inner_r = (outer_radius - half).max(0.0);
+        let Some(path) = rounded_rect_path(x + half, y + half, inset_w, inset_h, inner_r) else {
+            return;
+        };
+        let paint = color_to_paint(color);
+        let dash = bw * 2.0;
+        let mut stroke = Stroke {
+            width: bw,
+            line_cap: LineCap::Butt,
+            line_join: LineJoin::Miter,
+            ..Stroke::default()
+        };
+        stroke.dash = tiny_skia::StrokeDash::new(vec![dash, dash], 0.0);
+        self.pixmap
+            .stroke_path(&path, &paint, &stroke, transform, mask);
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         let transform = self.state.transform;
         let mask = self.state.clip_masks.last();

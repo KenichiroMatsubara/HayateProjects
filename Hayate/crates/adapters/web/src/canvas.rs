@@ -8,8 +8,8 @@ use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
 
 use hayate_core::{
-    Color, CursorValue, DocumentEventKind, ElementId, ElementTree, Event, FontStyleValue,
-    RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp, StylePropKind,
+    BorderStyleValue, Color, CursorValue, DocumentEventKind, ElementId, ElementTree, Event,
+    FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp, StylePropKind,
     TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
@@ -240,6 +240,7 @@ impl HayateElementRenderer {
         set("borderRadius", JsValue::from_f64(visual.border_radius as f64));
         set("borderWidth", JsValue::from_f64(visual.border_width as f64));
         set("borderColor", color_to_js(visual.border_color));
+        set("borderStyle", border_style_to_js(visual.border_style));
         set("textColor", color_to_js(visual.text_color));
         set(
             "fontSize",
@@ -348,6 +349,7 @@ impl HayateElementRenderer {
             }
             PointerInput::Up { x, y } => self.tree.on_pointer_up(x, y),
             PointerInput::Leave => self.tree.on_pointer_leave(),
+            PointerInput::Cancel => self.tree.on_pointer_cancel(),
             PointerInput::Wheel {
                 x,
                 y,
@@ -645,6 +647,14 @@ fn text_decoration_to_js(value: Option<TextDecorationValue>) -> JsValue {
         Some(TextDecorationValue::Underline) => JsValue::from_str("underline"),
         Some(TextDecorationValue::LineThrough) => JsValue::from_str("line-through"),
         None => JsValue::NULL,
+    }
+}
+
+fn border_style_to_js(value: BorderStyleValue) -> JsValue {
+    match value {
+        BorderStyleValue::None => JsValue::from_str("none"),
+        BorderStyleValue::Solid => JsValue::from_str("solid"),
+        BorderStyleValue::Dashed => JsValue::from_str("dashed"),
     }
 }
 

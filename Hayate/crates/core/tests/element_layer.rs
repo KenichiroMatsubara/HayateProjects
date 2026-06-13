@@ -1,6 +1,6 @@
 use hayate_core::{
-    AlignValue, Color, Dimension, DisplayValue, DocumentEventKind, ElementId, ElementKind,
-    ElementTree, Event, FlexDirectionValue, NodeKind, StyleProp,
+    AlignValue, BorderStyleValue, Color, Dimension, DisplayValue, DocumentEventKind, ElementId,
+    ElementKind, ElementTree, Event, FlexDirectionValue, NodeKind, StyleProp,
 };
 
 // ── Layout/rendering helpers ─────────────────────────────────────────────
@@ -100,6 +100,7 @@ fn border_radius_with_border_and_background_emits_nested_rounded_fills() {
             StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
             StyleProp::BorderColor(Color::new(1.0, 0.0, 0.0, 1.0)),
             StyleProp::BorderWidth(4.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderRadius(12.0),
         ],
     );
@@ -146,6 +147,7 @@ fn border_radius_without_background_emits_rounded_ring() {
             StyleProp::Height(Dimension::px(80.0)),
             StyleProp::BorderColor(Color::new(1.0, 0.0, 0.0, 1.0)),
             StyleProp::BorderWidth(4.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderRadius(12.0),
         ],
     );

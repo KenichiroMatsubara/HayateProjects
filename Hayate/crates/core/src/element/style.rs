@@ -47,6 +47,17 @@ pub enum TextDecorationValue {
     LineThrough,
 }
 
+/// Border line style (ADR-0083 module-complete border vocabulary, issue #204).
+///
+/// `None` is the default: a border is only drawn when an explicit style is set,
+/// mirroring CSS where `border-style` defaults to `none`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BorderStyleValue {
+    None,
+    Solid,
+    Dashed,
+}
+
 /// Pointer cursor appearance (ADR-0088). Resolved from the element under the
 /// pointer and handed to the Platform Adapter via `on_pointer_move`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -173,6 +184,7 @@ pub enum StyleProp {
     BorderRadius(f32),
     BorderWidth(f32),
     BorderColor(Color),
+    BorderStyle(BorderStyleValue),
     // sizing
     Width(Dimension),
     Height(Dimension),

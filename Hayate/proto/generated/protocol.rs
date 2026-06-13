@@ -87,7 +87,8 @@ pub const TAG_FLEX_BASIS: u32 = 41;
 pub const TAG_ALIGN_SELF: u32 = 42;
 pub const TAG_ALIGN_CONTENT: u32 = 43;
 pub const TAG_FLEX_WRAP: u32 = 44;
-pub const TAG_CURSOR: u32 = 45;
+pub const TAG_BORDER_STYLE: u32 = 45;
+pub const TAG_CURSOR: u32 = 46;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -533,6 +534,9 @@ pub enum StyleTag {
     FlexWrap {
         value: f32,
     },
+    BorderStyle {
+        value: f32,
+    },
     Cursor {
         value: f32,
     },
@@ -819,6 +823,11 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             Ok((StyleTag::FlexWrap { value }, i + 1))
         }
         45 => {
+            if i + 1 > packed.len() { return Err("style tag BORDER_STYLE truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::BorderStyle { value }, i + 1))
+        }
+        46 => {
             if i + 1 > packed.len() { return Err("style tag CURSOR truncated"); }
             let value = packed[i + 0];
             Ok((StyleTag::Cursor { value }, i + 1))
@@ -830,7 +839,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 // ── Style packet codec (generated) ─────────────────────────────────────
 
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, AlignValue, Color, CursorValue, Dimension, DimensionUnit,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
     FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
 };
@@ -946,6 +955,15 @@ fn codec_text_decoration(raw: f32) -> TextDecorationValue {
     }
 }
 
+fn codec_border_style(raw: f32) -> BorderStyleValue {
+    match raw as u32 {
+        0 => BorderStyleValue::None,
+        1 => BorderStyleValue::Solid,
+        2 => BorderStyleValue::Dashed,
+        _ => BorderStyleValue::None,
+    }
+}
+
 fn codec_cursor(raw: f32) -> CursorValue {
     match raw as u32 {
         0 => CursorValue::Default,
@@ -1006,6 +1024,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::AlignSelf { value } => StyleProp::AlignSelf(codec_align_self(value)),
         StyleTag::AlignContent { value } => StyleProp::AlignContent(codec_align_content(value)),
         StyleTag::FlexWrap { value } => StyleProp::FlexWrap(codec_flex_wrap(value)),
+        StyleTag::BorderStyle { value } => StyleProp::BorderStyle(codec_border_style(value)),
         StyleTag::Cursor { value } => StyleProp::Cursor(codec_cursor(value)),
     })
 }

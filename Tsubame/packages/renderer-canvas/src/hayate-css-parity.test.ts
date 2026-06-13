@@ -23,6 +23,7 @@ const SAMPLES: Record<string, unknown> = {
   justifyContent: 'space-between',
   fontStyle: 'italic',
   textDecoration: 'underline',
+  borderStyle: 'dashed',
   cursor: 'pointer',
   f32: 0.75,
   zIndex: 10,
@@ -88,16 +89,14 @@ describe('hayate-css catalog parity', () => {
       const patch = { [entry.patchKey]: sample } as StylePatch;
       const css = domCssForPatch(patch);
       expect(css[entry.cssName]).toBeTruthy();
-      if (entry.patchKey === 'borderWidth') {
-        expect(css.borderStyle).toBe('solid');
-      }
     }
   });
 
-  it('borderWidth zero sets borderStyle none (dom_extras)', () => {
-    const css = domCssForPatch({ borderWidth: 0 });
-    expect(css.borderWidth).toBe('0px');
-    expect(css.borderStyle).toBe('none');
+  it('borderStyle maps directly to CSS border-style (no width coupling, #204)', () => {
+    expect(domCssForPatch({ borderStyle: 'dashed' }).borderStyle).toBe('dashed');
+    expect(domCssForPatch({ borderStyle: 'none' }).borderStyle).toBe('none');
+    // border-width no longer emits a border-style of its own.
+    expect(domCssForPatch({ borderWidth: 2 }).borderStyle).toBeUndefined();
   });
 
   it('flexbox completion properties produce expected DOM CSS strings', () => {

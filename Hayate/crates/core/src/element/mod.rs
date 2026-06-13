@@ -31,9 +31,8 @@ pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use style::{
-    AlignContentValue, AlignSelfValue, AlignValue, CursorValue, Dimension, DimensionUnit,
-    DisplayValue,
-    FlexDirectionValue, FlexWrapValue,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
+    DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
     JustifyValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
 };

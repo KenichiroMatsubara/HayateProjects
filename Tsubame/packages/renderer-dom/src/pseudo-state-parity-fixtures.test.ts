@@ -39,12 +39,12 @@ describe('pseudo-state parity corpus (DOM declaration emitter)', () => {
     });
   }
 
-  it('corpus catches dropped DOM extras', () => {
-    const fixture = fixtures.find((f) => f.name === 'hover_border_width_dom_extra')!;
+  it('corpus catches dropped border-style', () => {
+    const fixture = fixtures.find((f) => f.name === 'hover_border_style_dashed')!;
     const el = createParityElement(document, fixture.elementKind);
     const declarations = resolvePseudoDeclarations(el, fixture.pseudo, fixture.interaction);
-    const withoutExtras = declarations.filter((d) => d.cssProperty !== 'border-style');
-    const actual = declarationsToPropertyMap(withoutExtras);
+    const withoutBorderStyle = declarations.filter((d) => d.cssProperty !== 'border-style');
+    const actual = declarationsToPropertyMap(withoutBorderStyle);
     const expected = expectedPropertyMap(fixture, 'ts');
 
     expect(actual.get('border-style')).toBeUndefined();

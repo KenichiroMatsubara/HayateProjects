@@ -203,6 +203,52 @@ fn pointer_down_on_miss_blurs_focused_element() {
 }
 
 #[test]
+fn pointer_cancel_ends_active_press_and_clears_hover() {
+    let (mut tree, root) = hoverable_root();
+    let l_hover_leave = tree.register_listener(root, DocumentEventKind::HoverLeave);
+    let l_active_end = tree.register_listener(root, DocumentEventKind::ActiveEnd);
+
+    // Establish hover (pointer over the element) and an active press.
+    tree.on_pointer_move(10.0, 10.0);
+    tree.on_pointer_down(10.0, 10.0);
+    assert_eq!(tree.active_element(), Some(root));
+    let _ = tree.poll_deliveries(); // drain the enter/start deliveries
+
+    tree.on_pointer_cancel();
+
+    let deliveries = tree.poll_deliveries();
+    assert!(
+        deliveries.iter().any(|d| d.listener_id == l_active_end
+            && matches!(&d.event, Event::ActiveEnd { target_id } if *target_id == root)),
+        "expected ActiveEnd delivered to the active element"
+    );
+    assert!(
+        deliveries.iter().any(|d| d.listener_id == l_hover_leave
+            && matches!(&d.event, Event::HoverLeave { target_id } if *target_id == root)),
+        "expected HoverLeave delivered for the cleared hover chain"
+    );
+    assert_eq!(tree.active_element(), None);
+}
+
+#[test]
+fn pointer_cancel_does_not_fabricate_pointer_move() {
+    let (mut tree, _root) = hoverable_root();
+
+    tree.on_pointer_move(40.0, 40.0);
+    let _ = tree.poll_events(); // drain the real PointerMove from the move above
+
+    tree.on_pointer_cancel();
+
+    let events = tree.poll_events();
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, Event::PointerMove { .. })),
+        "on_pointer_cancel must not push a phantom PointerMove"
+    );
+}
+
+#[test]
 fn click_bubbles_to_ancestors() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(20, ElementKind::View);

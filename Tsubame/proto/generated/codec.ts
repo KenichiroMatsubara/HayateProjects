@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, CURSOR } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -178,6 +178,12 @@ const TEXT_DECORATION_CODE: Record<string, number> = {
   'none': TEXT_DECORATION.none,
   'underline': TEXT_DECORATION.underline,
   'line-through': TEXT_DECORATION.lineThrough,
+};
+
+const BORDER_STYLE_CODE: Record<string, number> = {
+  'none': BORDER_STYLE.none,
+  'solid': BORDER_STYLE.solid,
+  'dashed': BORDER_STYLE.dashed,
 };
 
 const CURSOR_CODE: Record<string, number> = {
@@ -428,6 +434,12 @@ function encode_flexWrap(out: number[], value: string): void {
   out.push(TAG.FLEX_WRAP, code);
 }
 
+function encode_borderStyle(out: number[], value: string): void {
+  const code = BORDER_STYLE_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported borderStyle "${value}"`);
+  out.push(TAG.BORDER_STYLE, code);
+}
+
 function encode_cursor(out: number[], value: string): void {
   const code = CURSOR_CODE[value];
   if (code === undefined) throw new Error(`CanvasRenderer: unsupported cursor "${value}"`);
@@ -480,6 +492,7 @@ const STYLE_ENCODERS = {
   alignSelf: encode_alignSelf,
   alignContent: encode_alignContent,
   flexWrap: encode_flexWrap,
+  borderStyle: encode_borderStyle,
   cursor: encode_cursor,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 

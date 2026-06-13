@@ -98,6 +98,14 @@ fn encode_text_decoration(value: TextDecorationValue) -> f32 {
     }
 }
 
+fn encode_border_style(value: BorderStyleValue) -> f32 {
+    match value {
+        BorderStyleValue::None => 0.0,
+        BorderStyleValue::Solid => 1.0,
+        BorderStyleValue::Dashed => 2.0,
+    }
+}
+
 fn encode_cursor(value: CursorValue) -> f32 {
     match value {
         CursorValue::Default => 0.0,
@@ -429,6 +437,10 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::FlexWrap(v) => {
                 buf.push(TAG_FLEX_WRAP as f32);
                 buf.push(encode_flex_wrap(*v));
+            }
+            StyleProp::BorderStyle(v) => {
+                buf.push(TAG_BORDER_STYLE as f32);
+                buf.push(encode_border_style(*v));
             }
             StyleProp::Cursor(v) => {
                 buf.push(TAG_CURSOR as f32);

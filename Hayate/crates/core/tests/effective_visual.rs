@@ -1,7 +1,8 @@
 //! ADR-0067: shared effective visual resolver + query API.
 
 use hayate_core::{
-    Color, Dimension, ElementKind, ElementTree, PseudoState, StyleProp, ViewportCondition,
+    BorderStyleValue, Color, Dimension, ElementKind, ElementTree, PseudoState, StyleProp,
+    ViewportCondition,
 };
 
 #[test]
@@ -28,6 +29,59 @@ fn element_effective_visual_applies_hover_pseudo() {
         hovered.background_color,
         Some(Color::new(0.0, 0.0, 1.0, 1.0)),
         ":hover pseudo must apply via element_effective_visual"
+    );
+}
+
+#[test]
+fn element_effective_visual_defaults_border_style_to_none() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+
+    let base = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        base.border_style,
+        BorderStyleValue::None,
+        "border-style must default to none (a border needs an explicit style)"
+    );
+}
+
+#[test]
+fn element_effective_visual_resolves_explicit_border_style() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.element_set_style(id, &[StyleProp::BorderStyle(BorderStyleValue::Dashed)]);
+
+    let resolved = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        resolved.border_style,
+        BorderStyleValue::Dashed,
+        "explicit border-style must resolve through effective visual"
+    );
+}
+
+#[test]
+fn element_effective_visual_border_style_pseudo_override() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.element_set_style(id, &[StyleProp::BorderStyle(BorderStyleValue::Solid)]);
+    tree.element_set_pseudo_style(
+        id,
+        PseudoState::Hover,
+        &[StyleProp::BorderStyle(BorderStyleValue::Dashed)],
+    );
+
+    let base = tree.element_effective_visual(id).unwrap();
+    assert_eq!(base.border_style, BorderStyleValue::Solid);
+
+    tree.update_pointer_hover(Some(id));
+    let hovered = tree.element_effective_visual(id).unwrap();
+    assert_eq!(
+        hovered.border_style,
+        BorderStyleValue::Dashed,
+        ":hover border-style must override the base border-style"
     );
 }
 
