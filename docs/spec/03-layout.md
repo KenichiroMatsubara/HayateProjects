@@ -30,11 +30,17 @@
 **状況:** ✅ — `taffy_projection.rs` が `TaffyTree` + ElementId↔NodeId マップを所有。構造 mutation（`element_create`/`append_child`/`insert_before`/`remove`）は `structure_dirty` 記録のみ。`LayoutPass::run` 冒頭で `projection.reconcile()`。inline text element は `taffy_node: None`、IFC root は measured leaf。
 **備考:** 2b（ADR-0063）が Taffy を 1:1 ミラーから非自明投影（inline text element 除外・IFC leaf・reparent クラス反転）に変えたことが本項目の引き金。
 
+### LAY-05 — スタイル語彙はレイアウトモジュール単位で完結させる（flexbox 完結）
+**規範文:** 語彙の拡張はレイアウトモジュール単位の完結を原則とする。あるモジュールのプロパティを語彙に含めるなら、そのモジュールを一通り使うのに必要なプロパティ群（Taffy が対応する範囲）を揃えて追加し、「語彙にあるモジュールは両レンダラーで一通り動く」をユーザーと LLM への保証とする。本原則に従い flexbox モジュールを完結させ、`flex-wrap` / `flex-shrink` / `flex-basis` / `align-self` / `align-content` を追加した。
+**出典:** ADR-0083（ADR-0071 閉じた語彙・ADR-0078 codegen 経由）
+**状況:** ✅ — `style_tags.json` に `FLEX_WRAP` / `FLEX_SHRINK` / `FLEX_BASIS` / `ALIGN_SELF` / `ALIGN_CONTENT`（既存 `FLEX_DIRECTION` / `FLEX_GROW` / `ALIGN_ITEMS` と合わせ flexbox 完結）。enum 新設 `flex_wrap` / `align_self` / `align_content`。追加プロパティは両レンダラーのパリティ検証（hayate-css-parity / golden frame）対象。
+**備考:** grid の item 配置（`grid-column` / `grid-row` 等）は語彙外＝grid モジュールは未完結。grid 本格対応時に同原則で一括追加する。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 4 | LAY-01, LAY-02, LAY-03, LAY-04 |
+| ✅実装済み | 5 | LAY-01, LAY-02, LAY-03, LAY-04, LAY-05 |
 | 🟡部分 | 0 | — |
 | ⬜未実装 | 0 | — |

@@ -36,11 +36,17 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 **状況:** ✅ — 「やらないこと」の境界規範。surface は Render Host、a11y は Core+AccessKit に分離（PLAT-01/03 と整合）。
 **備考:** —
 
+### PLAT-06 — Android を最初のネイティブ Platform Adapter とする（winit 不採用）
+**規範文:** Android を最初のネイティブ Platform Adapter ターゲットとする（iOS は後続・本ラウンド範囲外）。段階スコープは (A) 描画スモークテスト（`hayate-adapter-android` crate + example、wgpu/Vulkan surface、入力/IME/AccessKit なし）→ (B) タッチ入力を Element Document Runtime に接続 → (C) `hayate-adapter-web` 同等のフルパリティ（IME ブリッジ・AccessKit・クリップボード）。Platform Adapter は `winit` 等の汎用ウィンドウ抽象を使わず、各プラットフォームのネイティブ API（Android は `android-activity`）に直接バインドする。`hayate-core` はどのプラットフォーム依存も持たない。ADR-0051（Tsubame 優先）と並行トラックであり supersede ではない。
+**出典:** ADR-0087
+**状況:** 🟡 — `crates/adapters/android`（`lib.rs` / `surface_lifecycle.rs` / `touch_input.rs` / `app.rs`、`tests/apk_packaging.rs`）が存在。(A) 描画スモーク + (B) タッチ入力は着手済み。(C) フルパリティ（IME / AccessKit / clipboard）は未着手。NDK 不在環境では `cargo build --target aarch64-linux-android` のコンパイル確認に限定。
+**備考:** アダプタ間でウィンドウ/イベントループの共有コードは持たない（各アダプタが lifecycle/surface を再実装）。PLAT-04 のネイティブ AccessKit 報告は本アダプタを前提とする。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 4 | PLAT-01, PLAT-02, PLAT-03, PLAT-05 |
-| 🟡部分 | 1 | PLAT-04 |
+| 🟡部分 | 2 | PLAT-04, PLAT-06 |
 | ⬜未実装 | 0 | — |

@@ -49,11 +49,17 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **状況:** ✅ — DOM/Canvas 両 renderer で `private nextId = 1` → `createElement` で `nextId++`。
 **備考:** [履歴 C-11.3] 旧案は WASM が `element_create→ElementId` を同期返却。JS 採番で createElement を batch 内に乗せ境界を1回/frame に削減（§10 PROTO-06 と整合）。
 
+### TSUB-08 — ビューポートのサイズ追従は CanvasRenderer の責務
+**規範文:** ビューポートのサイズ追従は CanvasRenderer が所有する。レンダラーが自身の canvas に `ResizeObserver` を張り、CSS レイアウトサイズ × `devicePixelRatio` でピクセルバッファを同期し、Hayate へ resize を通知する。レイアウト座標は CSS px・描画は物理 px。アプリコードはどちらのレンダラーでもサイズ管理を書かない（レンダラー間パリティ）。公開 `resize()` はテスト・特殊ホスト向けに残し、observer は options で opt-out 可能。
+**出典:** Tsubame ADR-0007、system-wide ADR-0002
+**状況:** ✅ — `renderer-canvas/src/canvas-renderer.ts` が `ResizeObserver` + `devicePixelRatio` で canvas バッファを同期し Hayate へ resize 通知。DOM Renderer はブラウザの reflow に委ね、対称のサイズ追従コードを持たない。
+**備考:** Hayate adapter 契約に scale（dpr）受け渡しを追加。DOM モードはブラウザが reflow を無償で行うため非対称が正。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 5 | TSUB-01, 03, 04, 06, 07 |
+| ✅実装済み | 6 | TSUB-01, 03, 04, 06, 07, 08 |
 | 🟡部分 | 2 | TSUB-02（property 閉じ語彙・aria first-class 未接続、ADR-0071）、TSUB-05（solid のみ、vue/react 未実装） |
 | ⬜未実装 | 0 | — |
