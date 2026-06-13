@@ -106,6 +106,18 @@ fn encode_border_style(value: BorderStyleValue) -> f32 {
     }
 }
 
+fn encode_cursor(value: CursorValue) -> f32 {
+    match value {
+        CursorValue::Default => 0.0,
+        CursorValue::Pointer => 1.0,
+        CursorValue::Text => 2.0,
+        CursorValue::Crosshair => 3.0,
+        CursorValue::NotAllowed => 4.0,
+        CursorValue::Grab => 5.0,
+        CursorValue::Grabbing => 6.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -429,6 +441,10 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::BorderStyle(v) => {
                 buf.push(TAG_BORDER_STYLE as f32);
                 buf.push(encode_border_style(*v));
+            }
+            StyleProp::Cursor(v) => {
+                buf.push(TAG_CURSOR as f32);
+                buf.push(encode_cursor(*v));
             }
         }
     }

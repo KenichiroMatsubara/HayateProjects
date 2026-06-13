@@ -23,7 +23,7 @@ use crate::element::pseudo_state::{
 use crate::element::scene_build;
 use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
 use crate::element::style::{
-    BorderStyleValue, FontStyleValue, StyleProp, StylePropKind, TextDecorationValue,
+    BorderStyleValue, CursorValue, FontStyleValue, StyleProp, StylePropKind, TextDecorationValue,
     ViewportCondition,
 };
 use crate::element::taffy_bridge;
@@ -47,6 +47,8 @@ pub struct Visual {
     pub font_weight: Option<f32>,
     pub font_style: Option<FontStyleValue>,
     pub text_decoration: Option<TextDecorationValue>,
+    /// Pointer cursor appearance (ADR-0088). `None` resolves to `Default`.
+    pub cursor: Option<CursorValue>,
     pub z_index: i32,
     /// Custom font-family name registered via `register_font`.
     pub font_family: Option<String>,
@@ -71,6 +73,7 @@ impl Default for Visual {
             font_weight: None,
             font_style: None,
             text_decoration: None,
+            cursor: None,
             z_index: 0,
             font_family: None,
             default_color: None,
@@ -163,6 +166,8 @@ pub struct ElementTree {
     pub(crate) active_element: Option<ElementId>,
     /// Last pointer position for sub-pixel move dedup (ADR-0066).
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
+    /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
+    pub(crate) last_cursor: CursorValue,
     pub(crate) runtime: DocumentRuntime,
 }
 
@@ -181,6 +186,7 @@ impl ElementTree {
             hovered_elements: HashSet::new(),
             active_element: None,
             last_pointer_pos: None,
+            last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
         }
     }
@@ -1345,6 +1351,7 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
             visual.text_decoration = Some(*v);
             *text_dirty = true;
         }
+        StyleProp::Cursor(v) => visual.cursor = Some(*v),
         StyleProp::DefaultColor(c) => visual.default_color = Some(*c),
         StyleProp::DefaultFontSize(v) => visual.default_font_size = Some(v.max(0.0)),
         StyleProp::DefaultFontWeight(v) => {

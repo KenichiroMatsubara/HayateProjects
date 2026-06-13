@@ -692,5 +692,20 @@
       "property": "border-style",
       "format": "enum:border_style"
     }
+  },
+  {
+    "name": "CURSOR",
+    "value": 46,
+    "encodeFrom": "enum:cursor",
+    "params": [
+      {
+        "name": "value",
+        "type": "cursor"
+      }
+    ],
+    "domCss": {
+      "property": "cursor",
+      "format": "enum:cursor"
+    }
   }
 ]
