@@ -113,9 +113,9 @@ _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover 
 Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。複数状態が同時成立したときの正準優先順は `focus < hover < active`（後勝ち）で、これは wire コード（hover=0 / active=1 / focus=2）とは別物。優先順は spec（`proto/spec/pseudo_states.json`）が正本で、Hayate core の `resolve_visual` と Tsubame DOM Renderer のルールバンド順が共にそこから生成・参照する（Semantics Parity）。
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替、wire コード順を優先順と同一視する理解、DOM の挿入順（authoring 順）に優先順を委ねる設計
 
-**Transition（擬似状態の補間）**:
-擬似状態（`:hover` / `:active` / `:focus`）切替時に effective visual を切替前の見た目から target へ補間するアニメーション。`transition-duration`（ms）と `transition-timing`（`ease` / `linear` / `ease-in` / `ease-out` / `ease-in-out`）を Hayate CSS の visual プロパティとして持ち、Render Layer が `render(timestamp_ms)` のフレームループ上で進める（カーソル点滅と同じ時間駆動 `visual_dirty` 機構を再利用）。補間対象は連続値の `background-color` / `border-color` / `text-color` / `opacity` / `border-radius` / `border-width` のみで、enum・離散値は target を即時採用する。擬似状態を経由しない `setStyle` 直接 mutation は補間せず即時反映。
-_Avoid_: 任意プロパティ・任意トリガに効く汎用 CSS transition、Signal によるアニメーション、layout/text への補間、setStyle 直接 mutation への適用
+**Transition（visual 変化の補間）**:
+要素の effective visual が変化したとき、変化前の**画面上の見た目**（補間中ならその時点の途中値）から新しい target へ連続値プロパティを補間するアニメーション。トリガは effective style 解決シーム（`resolve_effective`・ADR-0067）の差分であり、擬似状態切替・`setStyle`・継承変化を区別しない（ブラウザ/Blink の computed-style 差分と同型）。`transition-duration`（ms）/ `transition-timing`（`ease` / `linear` / `ease-in` / `ease-out` / `ease-in-out`）を Hayate CSS の visual プロパティとして持ち、Render Layer が `render(timestamp_ms)` のフレームループで進める（カーソル点滅と同じ時間駆動 `visual_dirty` を再利用）。補間対象は連続値（`background-color` / `border-color` / `text-color` / `opacity` / `border-radius` / `border-width`）のみで、enum・離散値は target を即時採用。state は要素×プロパティ単位。`transition-duration: 0`（未指定）は即時切替。
+_Avoid_: 擬似状態切替のみをトリガとする理解（旧スコープ・ADR-0089）、wire 入口の生 mutation を diff する設計、setStyle を恒久的に即時固定とする理解、Signal によるアニメーション、layout/text への補間
 
 **Canonical Tree（正本ツリー）**:
 描画・layout・hit-test の正本ツリー。Canvas/HTML 経路では Hayate の element ツリー、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子を tree 上の element として表現する。経路ごとに実体は一つのみで、複製や mirror は持たない（`tsubame-solid` の Shadow Tree は構造専用の別索引であり、これ自体は正本ではない）。
