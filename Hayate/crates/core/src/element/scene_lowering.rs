@@ -93,6 +93,18 @@ pub(crate) fn clear_lowered_content(
         .iter()
         .filter_map(|child| lowering.anchors.get(child).map(|e| e.anchor_id))
         .collect();
+
+    // Child anchors may live under ephemeral Clip/Group wrappers from a prior pass.
+    // Hoist them back under `anchor_id` so wrapper teardown does not remove_subtree them.
+    for &child_anchor in &preserve {
+        if let Some(parent) = sg.parent_of(child_anchor) {
+            if parent != anchor_id {
+                detach_child(sg, child_anchor);
+                attach_child(sg, anchor_id, child_anchor);
+            }
+        }
+    }
+
     let to_remove: Vec<NodeId> = sg
         .get(anchor_id)
         .map(|anchor| {
@@ -109,5 +121,21 @@ pub(crate) fn clear_lowered_content(
     }
     if let Some(anchor) = sg.get_mut(anchor_id) {
         anchor.children.retain(|id| preserve.contains(id));
+    }
+}
+
+fn detach_child(sg: &mut SceneGraph, child: NodeId) {
+    if let Some(parent) = sg.parent_of(child) {
+        if let Some(p) = sg.get_mut(parent) {
+            p.children.retain(|&id| id != child);
+        }
+    }
+}
+
+fn attach_child(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
+    if let Some(p) = sg.get_mut(parent) {
+        if !p.children.contains(&child) {
+            p.children.push(child);
+        }
     }
 }

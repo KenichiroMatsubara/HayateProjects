@@ -171,21 +171,76 @@ fn has_dirty_ancestor(
     false
 }
 
+fn first_child_matching(
+    sg: &SceneGraph,
+    parent: NodeId,
+    pred: impl Fn(&NodeKind) -> bool,
+) -> Option<NodeId> {
+    let parent_node = sg.get(parent)?;
+    parent_node.children.iter().copied().find(|&child| {
+        sg.get(child).is_some_and(|n| pred(&n.kind))
+    })
+}
+
+/// Node under which child element anchors should attach — follows Clip/scroll Group
+/// wrappers when the parent is a ScrollView (issue #199).
+fn find_content_attachment_point(
+    sg: &SceneGraph,
+    anchor_id: NodeId,
+    el: &crate::element::tree::Element,
+) -> NodeId {
+    let mut node = anchor_id;
+    if el.transform.is_some() {
+        node = first_child_matching(sg, node, |kind| matches!(kind, NodeKind::Group { .. }))
+            .unwrap_or(node);
+    }
+    if el.kind == ElementKind::ScrollView {
+        node = first_child_matching(sg, node, |kind| matches!(kind, NodeKind::Clip { .. }))
+            .unwrap_or(node);
+        let (sx, sy) = el.scroll_offset;
+        if sx != 0.0 || sy != 0.0 {
+            node = first_child_matching(sg, node, |kind| matches!(kind, NodeKind::Group { .. }))
+                .unwrap_or(node);
+        }
+    }
+    node
+}
+
+fn resolve_parent_attachment(
+    tree: &ElementTree,
+    sg: &SceneGraph,
+    lowering: &SceneLowering,
+    id: ElementId,
+    parent_anchor: Option<NodeId>,
+) -> Option<NodeId> {
+    let parent_id = tree.elements.get(&id).and_then(|el| el.parent)?;
+    let parent_entry = lowering.anchors.get(&parent_id)?;
+    let parent_el = tree.elements.get(&parent_id)?;
+    Some(find_content_attachment_point(
+        sg,
+        parent_entry.anchor_id,
+        parent_el,
+    ))
+    .or(parent_anchor)
+}
+
 fn ensure_anchor(
+    tree: &ElementTree,
     sg: &mut SceneGraph,
     lowering: &mut SceneLowering,
     id: ElementId,
     parent_anchor: Option<NodeId>,
 ) -> NodeId {
+    let attach_parent = resolve_parent_attachment(tree, sg, lowering, id, parent_anchor);
     if let Some(entry) = lowering.anchors.get(&id) {
         let anchor_id = entry.anchor_id;
-        if let Some(parent) = parent_anchor {
+        if let Some(parent) = attach_parent {
             attach_under(sg, parent, anchor_id);
         }
         return anchor_id;
     }
 
-    let anchor_id = if let Some(parent) = parent_anchor {
+    let anchor_id = if let Some(parent) = attach_parent {
         sg.insert_child(
             parent,
             Node {
@@ -207,10 +262,39 @@ fn ensure_anchor(
 
 fn attach_under(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
     sg.retain_roots(|root| root != child);
+    if let Some(old_parent) = sg.parent_of(child) {
+        if let Some(p) = sg.get_mut(old_parent) {
+            p.children.retain(|&id| id != child);
+        }
+    }
     if let Some(p) = sg.get_mut(parent) {
         if !p.children.contains(&child) {
             p.children.push(child);
         }
+    }
+}
+
+/// When wrapper nodes (Clip/scroll Group) are rebuilt but child subtrees are not
+/// re-walked (`SelfOnly` reach), hoisted child anchors must be slid under the new
+/// `effective_parent` so clipping still applies.
+fn reparent_child_anchors_under(
+    sg: &mut SceneGraph,
+    anchor_id: NodeId,
+    effective_parent: Option<NodeId>,
+    children: &[ElementId],
+    lowering: &SceneLowering,
+) {
+    let Some(parent) = effective_parent else {
+        return;
+    };
+    if parent == anchor_id {
+        return;
+    }
+    for &child_id in children {
+        let Some(child_anchor) = lowering.anchors.get(&child_id).map(|e| e.anchor_id) else {
+            continue;
+        };
+        attach_under(sg, parent, child_anchor);
     }
 }
 
@@ -231,7 +315,7 @@ fn walk_retained(
     let (taffy_node, el) = match tree.layout.projection.traversal_step(&tree.elements, id) {
         Some(TraversalStep::Visit(taffy_node, el)) => (taffy_node, el),
         Some(TraversalStep::Skip(_)) => {
-            let anchor_id = ensure_anchor(sg, lowering, id, parent_anchor);
+            let anchor_id = ensure_anchor(tree, sg, lowering, id, parent_anchor);
             let children = tree.ordered_children(id);
             clear_lowered_content(sg, anchor_id, &children, lowering);
             for child in children_for_reach(tree, id, reach) {
@@ -253,7 +337,7 @@ fn walk_retained(
         None => return,
     };
 
-    let anchor_id = ensure_anchor(sg, lowering, id, parent_anchor);
+    let anchor_id = ensure_anchor(tree, sg, lowering, id, parent_anchor);
     let children = tree.ordered_children(id);
     clear_lowered_content(sg, anchor_id, &children, lowering);
 
@@ -446,12 +530,19 @@ fn emit_element(
                 y,
                 sg,
                 lowering,
-                Some(anchor_id),
+                effective_parent,
                 child_inherited.clone(),
                 interaction,
                 child_reach(tree, id, child, reach),
             );
         }
+        reparent_child_anchors_under(
+            sg,
+            anchor_id,
+            effective_parent,
+            &tree.ordered_children(id),
+            lowering,
+        );
         return;
     }
 
@@ -560,12 +651,19 @@ fn emit_element(
             y,
             sg,
             lowering,
-            Some(anchor_id),
+            effective_parent,
             child_inherited.clone(),
             interaction,
             child_reach(tree, id, child, reach),
         );
     }
+    reparent_child_anchors_under(
+        sg,
+        anchor_id,
+        effective_parent,
+        &tree.ordered_children(id),
+        lowering,
+    );
 }
 
 fn walk_ephemeral(
