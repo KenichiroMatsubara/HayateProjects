@@ -28,6 +28,7 @@ const SAMPLES: Record<string, unknown> = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   position: 'absolute',
+  transitionTiming: 'ease',
   f32: 0.75,
   u32: 2,
   zIndex: 10,

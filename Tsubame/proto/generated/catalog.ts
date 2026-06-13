@@ -3,8 +3,8 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'textOverflow' | 'position' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
-export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
+export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
   readonly cssName: string;
@@ -760,6 +760,32 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "transitionDuration",
+    "tag": 55,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "ms",
+    "cssName": "transitionDuration",
+    "cssProperty": "transition-duration",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "transitionTiming",
+    "tag": 56,
+    "unsetKind": null,
+    "wireKind": "transitionTiming",
+    "domFormat": "enum",
+    "cssName": "transitionTimingFunction",
+    "cssProperty": "transition-timing-function",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 
@@ -805,6 +831,8 @@ export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
       return formatDimensionList(value);
     case "px":
       return `${value}px`;
+    case "ms":
+      return `${value}ms`;
     case "integer":
     case "number":
     case "color":

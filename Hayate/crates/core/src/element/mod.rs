@@ -18,6 +18,7 @@ pub mod style;
 pub mod taffy_bridge;
 pub mod taffy_projection;
 pub mod text;
+mod transition;
 pub mod tree;
 mod visual_invalidation;
 
@@ -35,6 +36,6 @@ pub use style::{
     DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,
     FontStyleValue,
     JustifyValue, OverflowValue, PositionValue, StyleProp, StylePropKind, TextDecorationValue,
-    TextOverflowValue, ViewportCondition,
+    TextOverflowValue, TransitionTimingValue, ViewportCondition,
 };
 pub use tree::{ElementTree, ResolvedElement};

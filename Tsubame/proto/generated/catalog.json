@@ -733,5 +733,31 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "transitionDuration",
+    "tag": 55,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "ms",
+    "cssName": "transitionDuration",
+    "cssProperty": "transition-duration",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "transitionTiming",
+    "tag": 56,
+    "unsetKind": null,
+    "wireKind": "transitionTiming",
+    "domFormat": "enum",
+    "cssName": "transitionTimingFunction",
+    "cssProperty": "transition-timing-function",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

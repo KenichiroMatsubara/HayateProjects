@@ -34,8 +34,11 @@ impl ElementTree {
                 y,
             });
             self.emit_interaction(Event::ActiveStart { target_id: t });
-            self.active_element = Some(t);
+            // Mark (and capture the transition's pre-switch visual) before the
+            // active state flips, so `:active` transitions start from the
+            // not-yet-active appearance (ADR-0089).
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+            self.active_element = Some(t);
             self.transition_focus(t);
         } else if let Some(prev) = self.focused_element {
             self.blur_with_events(prev);
@@ -54,10 +57,13 @@ impl ElementTree {
     }
 
     fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>) {
-        let target = self.active_element.take().or(explicit_target);
+        let target = self.active_element.or(explicit_target);
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
+            // Capture the still-active appearance as the transition start before
+            // clearing the active state (ADR-0089).
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+            self.active_element = None;
         }
     }
 
@@ -70,9 +76,10 @@ impl ElementTree {
     pub fn on_pointer_cancel(&mut self) {
         self.apply_pointer_hover(None);
         self.last_pointer_pos = None;
-        if let Some(t) = self.active_element.take() {
+        if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+            self.active_element = None;
         }
     }
 

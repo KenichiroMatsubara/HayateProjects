@@ -17,6 +17,7 @@ export type Cursor = 'default' | 'pointer' | 'text' | 'crosshair' | 'not-allowed
 export type Overflow = 'visible' | 'hidden';
 export type TextOverflow = 'clip' | 'ellipsis';
 export type Position = 'relative' | 'absolute';
+export type TransitionTiming = 'ease' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -74,6 +75,8 @@ export interface HayateStyle {
   overflow: Overflow;
   maxLines: number;
   textOverflow: TextOverflow;
+  transitionDuration: number;
+  transitionTiming: TransitionTiming;
 }
 
 /**

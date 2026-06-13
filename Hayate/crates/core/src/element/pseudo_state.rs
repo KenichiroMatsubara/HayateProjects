@@ -130,6 +130,8 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::DefaultFontSize(_) => "default-font-size",
         StyleProp::DefaultFontWeight(_) => "default-font-weight",
         StyleProp::ZIndex(_) => "z-index",
+        StyleProp::TransitionDuration(_) => "transition-duration",
+        StyleProp::TransitionTiming(_) => "transition-timing",
     }
 }
 

@@ -29,6 +29,7 @@ const ENUM_TYPES = [
   { specName: 'overflow', typeName: 'Overflow' },
   { specName: 'text_overflow', typeName: 'TextOverflow' },
   { specName: 'position', typeName: 'Position' },
+  { specName: 'transition_timing', typeName: 'TransitionTiming' },
 ];
 
 function generateEnumTypes(proto) {

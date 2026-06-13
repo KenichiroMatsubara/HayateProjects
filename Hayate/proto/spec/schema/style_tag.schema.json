@@ -29,6 +29,7 @@
         "enum:overflow",
         "enum:position",
         "enum:text_overflow",
+        "enum:transition_timing",
         "font-family",
         "dimension-list",
         "z-index"
@@ -58,6 +59,7 @@
             "color",
             "dimension",
             "px",
+            "ms",
             "number",
             "integer",
             "string",
@@ -75,6 +77,7 @@
             "enum:overflow",
             "enum:position",
             "enum:text_overflow",
+            "enum:transition_timing",
             "dimension-list"
           ]
         },

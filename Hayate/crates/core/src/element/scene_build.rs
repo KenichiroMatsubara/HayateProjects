@@ -433,6 +433,7 @@ fn emit_element(
         interaction,
         id,
     );
+    let visual = tree.blend_transition(id, visual);
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -733,6 +734,7 @@ fn walk_ephemeral(
         interaction,
         id,
     );
+    let visual = tree.blend_transition(id, visual);
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
