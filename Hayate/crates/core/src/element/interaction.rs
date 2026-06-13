@@ -50,6 +50,21 @@ impl ElementTree {
         }
     }
 
+    /// Pointer cancel (touch interruption / pointer-capture loss). Coordinate-
+    /// independent: clears the whole hover set — emitting `HoverLeave` for each
+    /// left element and resetting the stored last-pointer position, identical to
+    /// the surface-leave hover-clear — and additionally ends the active press
+    /// (`active_element.take()` → `ActiveEnd` + pseudo-activation dirty, mirroring
+    /// the pointer-up path). Does not fabricate a `PointerMove`.
+    pub fn on_pointer_cancel(&mut self) {
+        self.apply_pointer_hover(None);
+        self.last_pointer_pos = None;
+        if let Some(t) = self.active_element.take() {
+            self.emit_interaction(Event::ActiveEnd { target_id: t });
+            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+        }
+    }
+
     /// Pointer move with layout guard and 1 px dedup. Returns false when coalesced.
     pub fn on_pointer_move(&mut self, x: f32, y: f32) -> bool {
         if !self.has_layout() {
