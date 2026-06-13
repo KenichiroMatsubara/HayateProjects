@@ -49,6 +49,17 @@ pub enum NodeKind {
         border_width: f32,
         color: [f32; 4],
     },
+    /// Dashed border stroked along the box perimeter (`border-style: dashed`).
+    /// The stroke is inset by `border_width / 2` so it stays inside the box.
+    DashedBorder {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    },
     TextRun {
         x: f32,
         y: f32,

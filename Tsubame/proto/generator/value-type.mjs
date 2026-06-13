@@ -23,6 +23,7 @@ const KNOWN_ENUM_KINDS = new Set([
   'justify_content',
   'font_style',
   'text_decoration',
+  'border_style',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -145,6 +146,7 @@ const ENUM_CONST_NAMES = {
   justify_content: 'JUSTIFY_CONTENT',
   font_style: 'FONT_STYLE',
   text_decoration: 'TEXT_DECORATION',
+  border_style: 'BORDER_STYLE',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -157,6 +159,7 @@ const ENUM_PATCH_LABELS = {
   justify_content: 'justifyContent',
   font_style: 'fontStyle',
   text_decoration: 'textDecoration',
+  border_style: 'borderStyle',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */

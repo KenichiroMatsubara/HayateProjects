@@ -20,6 +20,15 @@ pub enum DrawOp {
         border_width: f32,
         color: [f32; 4],
     },
+    DashedBorder {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    },
     DrawTextRun {
         x: f32,
         y: f32,
@@ -58,6 +67,18 @@ pub trait ScenePainter {
     );
 
     fn fill_rounded_ring(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    );
+
+    /// Stroke a dashed border along the box perimeter (`border-style: dashed`).
+    fn stroke_dashed_border(
         &mut self,
         x: f32,
         y: f32,
@@ -148,6 +169,27 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
+    fn stroke_dashed_border(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        self.ops.push(DrawOp::DashedBorder {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
+        });
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         self.ops.push(DrawOp::DrawTextRun {
             x,
@@ -212,6 +254,18 @@ impl ScenePainter for NullPainter {
     }
 
     fn fill_rounded_ring(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _outer_radius: f32,
+        _border_width: f32,
+        _color: [f32; 4],
+    ) {
+    }
+
+    fn stroke_dashed_border(
         &mut self,
         _x: f32,
         _y: f32,
@@ -308,6 +362,23 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             border_width,
             color,
         } => painter.fill_rounded_ring(
+            *x,
+            *y,
+            *width,
+            *height,
+            *outer_radius,
+            *border_width,
+            *color,
+        ),
+        NodeKind::DashedBorder {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
+        } => painter.stroke_dashed_border(
             *x,
             *y,
             *width,

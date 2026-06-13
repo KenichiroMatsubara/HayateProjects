@@ -68,3 +68,4 @@ vello_property_test!(css_pixel_flex_basis, 39);
 vello_property_test!(css_pixel_align_self, 40);
 vello_property_test!(css_pixel_align_content, 41);
 vello_property_test!(css_pixel_flex_wrap, 42);
+vello_property_test!(css_pixel_border_style, 43);

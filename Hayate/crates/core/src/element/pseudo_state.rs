@@ -80,6 +80,7 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::BorderRadius(_) => "border-radius",
         StyleProp::BorderWidth(_) => "border-width",
         StyleProp::BorderColor(_) => "border-color",
+        StyleProp::BorderStyle(_) => "border-style",
         StyleProp::Width(_) => "width",
         StyleProp::Height(_) => "height",
         StyleProp::MinWidth(_) => "min-width",

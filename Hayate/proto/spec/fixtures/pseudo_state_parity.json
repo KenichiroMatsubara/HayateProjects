@@ -69,16 +69,15 @@
     }
   },
   {
-    "name": "hover_border_width_dom_extra",
+    "name": "hover_border_style_dashed",
     "elementKind": "view",
     "pseudo": {
-      ":hover": { "borderWidth": 2 }
+      ":hover": { "borderStyle": "dashed" }
     },
     "interaction": { "hover": true },
     "expected": {
       "properties": [
-        { "property": "border-width", "value": "2px" },
-        { "property": "border-style", "value": "solid", "domOnly": true }
+        { "property": "border-style", "value": "dashed" }
       ]
     }
   },

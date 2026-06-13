@@ -8,7 +8,7 @@ use hayate_core::element::pseudo_state::{
     self, apply_visual_props, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use hayate_core::element::tree::Visual;
-use hayate_core::{Color, ElementId, ElementKind, StyleProp};
+use hayate_core::{BorderStyleValue, Color, ElementId, ElementKind, StyleProp};
 use serde_json::Value;
 
 fn fixture_path() -> PathBuf {
@@ -35,6 +35,7 @@ fn style_props_from_patch(obj: &serde_json::Map<String, Value>) -> Vec<StyleProp
         let prop = match key.as_str() {
             "backgroundColor" => StyleProp::BackgroundColor(parse_hex_color(value.as_str().unwrap())),
             "borderWidth" => StyleProp::BorderWidth(value.as_f64().unwrap() as f32),
+            "borderStyle" => StyleProp::BorderStyle(parse_border_style(value.as_str().unwrap())),
             "borderRadius" => StyleProp::BorderRadius(value.as_f64().unwrap() as f32),
             "opacity" => StyleProp::Opacity(value.as_f64().unwrap() as f32),
             "color" => StyleProp::Color(parse_hex_color(value.as_str().unwrap())),
@@ -44,6 +45,23 @@ fn style_props_from_patch(obj: &serde_json::Map<String, Value>) -> Vec<StyleProp
         props.push(prop);
     }
     props
+}
+
+fn parse_border_style(s: &str) -> BorderStyleValue {
+    match s {
+        "none" => BorderStyleValue::None,
+        "solid" => BorderStyleValue::Solid,
+        "dashed" => BorderStyleValue::Dashed,
+        other => panic!("unknown border-style: {other}"),
+    }
+}
+
+fn border_style_css(value: BorderStyleValue) -> &'static str {
+    match value {
+        BorderStyleValue::None => "none",
+        BorderStyleValue::Solid => "solid",
+        BorderStyleValue::Dashed => "dashed",
+    }
 }
 
 fn element_kind_from_str(s: &str) -> ElementKind {
@@ -120,6 +138,9 @@ fn visual_to_parity_map(visual: &Visual, element_kind: ElementKind) -> HashMap<S
     }
     if visual.border_width > f32::EPSILON {
         map.insert("border-width".into(), format!("{}px", visual.border_width));
+    }
+    if visual.border_style != BorderStyleValue::None {
+        map.insert("border-style".into(), border_style_css(visual.border_style).into());
     }
     if element_kind == ElementKind::Text {
         if let Some(c) = visual.text_color {

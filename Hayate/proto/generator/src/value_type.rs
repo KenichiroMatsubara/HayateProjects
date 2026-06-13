@@ -231,6 +231,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "justify_content" => "justify_content",
         "font_style" => "font_style",
         "text_decoration" => "text_decoration",
+        "border_style" => "border_style",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -304,6 +305,11 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
             "TextDecorationValue::None => \"none\",\n\
             TextDecorationValue::Underline => \"underline\",\n\
             TextDecorationValue::LineThrough => \"line-through\","
+        }
+        "border_style" => {
+            "BorderStyleValue::None => \"none\",\n\
+            BorderStyleValue::Solid => \"solid\",\n\
+            BorderStyleValue::Dashed => \"dashed\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };
