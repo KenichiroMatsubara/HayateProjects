@@ -1,11 +1,13 @@
-//! Self-wired canvas pointer input (ADR-0080 / ADR-0082, #211).
+//! Self-wired canvas pointer input (ADR-0080 / ADR-0082, #211 / #212).
 //!
-//! Canvas DOM Pointer Events (`pointerdown` / `pointermove` / `pointerup`) plus
-//! `wheel` are subscribed behind `attach_pointer_input` (wasm32 only), mirroring
-//! `attach_resize_observer`: the listener `Closure`s are held alive by a guard
-//! and enqueue into an ordered `pending_pointer` buffer drained at the start of
-//! `render()`. The `toCanvas` coordinate transform and the 1px move-coalescing
-//! are pure and unit-tested on all targets.
+//! Canvas DOM Pointer Events (`pointerdown` / `pointermove` / `pointerup` /
+//! `pointerleave`) plus `wheel` are subscribed behind `attach_pointer_input`
+//! (wasm32 only), mirroring `attach_resize_observer`: the listener `Closure`s are
+//! held alive by a guard and enqueue into an ordered `pending_pointer` buffer
+//! drained at the start of `render()`. `pointerleave` is coordinate-independent
+//! and clears hover via `ElementTree::on_pointer_leave()` (#212). The `toCanvas`
+//! coordinate transform and the 1px move-coalescing (including the leave-driven
+//! anchor reset) are pure and unit-tested on all targets.
 
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -29,6 +31,9 @@ pub enum PointerInput {
     Down { x: f32, y: f32 },
     Move { x: f32, y: f32 },
     Up { x: f32, y: f32 },
+    /// Pointer left the canvas surface (`pointerleave`). Coordinate-independent:
+    /// drains to `ElementTree::on_pointer_leave()`, clearing hover.
+    Leave,
     Wheel {
         x: f32,
         y: f32,
@@ -76,26 +81,41 @@ pub fn coalesce_pointer_inputs(
     let mut anchor = seed;
     let mut out = Vec::new();
     for input in inputs {
-        if let PointerInput::Move { x, y } = input {
-            if let Some((ax, ay)) = anchor {
-                if (x - ax).abs() < 1.0 && (y - ay).abs() < 1.0 {
-                    continue;
+        match input {
+            PointerInput::Move { x, y } => {
+                if let Some((ax, ay)) = anchor {
+                    if (x - ax).abs() < 1.0 && (y - ay).abs() < 1.0 {
+                        continue;
+                    }
                 }
+                anchor = Some((x, y));
             }
-            anchor = Some((x, y));
+            // A leave clears hover and resets Core's last_pointer_pos, so it must
+            // also reset the coalescing anchor — a re-entry move at the same
+            // coordinate has to pass through to reapply `:hover`.
+            PointerInput::Leave => anchor = None,
+            _ => {}
         }
         out.push(input);
     }
     out
 }
 
-/// The most recent move position in `inputs`, used to seed the next drain so
-/// coalescing carries across frame boundaries.
-pub fn last_move_position(inputs: &[PointerInput]) -> Option<(f32, f32)> {
-    inputs.iter().rev().find_map(|input| match input {
-        PointerInput::Move { x, y } => Some((*x, *y)),
-        _ => None,
-    })
+/// The coalescing anchor that should seed the next drain, replaying the same
+/// move/leave anchor logic over `inputs` starting from `seed`. A move sets the
+/// anchor, a leave clears it, and other inputs leave it unchanged — so the 1px
+/// dedup carries across frame boundaries without leaking a stale position past a
+/// `pointerleave`.
+pub fn final_anchor(inputs: &[PointerInput], seed: Option<(f32, f32)>) -> Option<(f32, f32)> {
+    let mut anchor = seed;
+    for input in inputs {
+        match input {
+            PointerInput::Move { x, y } => anchor = Some((*x, *y)),
+            PointerInput::Leave => anchor = None,
+            _ => {}
+        }
+    }
+    anchor
 }
 
 // ── web-sys wiring (wasm32 only, thin & untested — mirrors attach_resize_observer)
@@ -142,6 +162,17 @@ pub(crate) fn attach_pointer_input(
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback(name, closure.as_ref().unchecked_ref())?;
         listeners.push((name, closure));
+    }
+
+    {
+        // `pointerleave` is coordinate-independent — it clears the whole hover
+        // set in Core, so no `toCanvas` transform is needed.
+        let pending = pending.clone();
+        let closure = Closure::wrap(Box::new(move |_event: Event| {
+            pending.borrow_mut().push(PointerInput::Leave);
+        }) as Box<dyn FnMut(Event)>);
+        canvas.add_event_listener_with_callback("pointerleave", closure.as_ref().unchecked_ref())?;
+        listeners.push(("pointerleave", closure));
     }
 
     {
@@ -265,17 +296,38 @@ mod tests {
     }
 
     #[test]
-    fn last_move_position_finds_the_most_recent_move() {
+    fn coalesce_resets_anchor_on_leave_so_re_entry_move_survives() {
+        // A leave clears the coalescing anchor (Core resets last_pointer_pos),
+        // so re-entering at the same coordinate must NOT be dropped — otherwise
+        // the re-hover would never reach Core and `:hover` would not reapply.
         let inputs = vec![
-            PointerInput::Move { x: 10.0, y: 10.0 },
-            PointerInput::Move { x: 30.0, y: 40.0 },
-            PointerInput::Up { x: 30.0, y: 40.0 },
+            PointerInput::Move { x: 50.0, y: 50.0 },
+            PointerInput::Leave,
+            PointerInput::Move { x: 50.0, y: 50.0 },
         ];
-        assert_eq!(last_move_position(&inputs), Some((30.0, 40.0)));
-        assert_eq!(
-            last_move_position(&[PointerInput::Down { x: 1.0, y: 2.0 }]),
-            None
-        );
+        let out = coalesce_pointer_inputs(inputs.clone(), None);
+        assert_eq!(out, inputs);
+    }
+
+    #[test]
+    fn final_anchor_carries_last_move_and_clears_on_leave() {
+        // Most recent move becomes the next-drain anchor; non-move inputs don't.
+        let moved = vec![
+            PointerInput::Move { x: 10.0, y: 20.0 },
+            PointerInput::Up { x: 10.0, y: 20.0 },
+        ];
+        assert_eq!(final_anchor(&moved, None), Some((10.0, 20.0)));
+
+        // A trailing leave clears the anchor so the next frame's re-entry move
+        // (even at the same coordinate) is not coalesced across the boundary.
+        let left = vec![
+            PointerInput::Move { x: 10.0, y: 20.0 },
+            PointerInput::Leave,
+        ];
+        assert_eq!(final_anchor(&left, None), None);
+
+        // No moves and no leave preserves the incoming seed (position unchanged).
+        assert_eq!(final_anchor(&[], Some((5.0, 5.0))), Some((5.0, 5.0)));
     }
 
     #[test]

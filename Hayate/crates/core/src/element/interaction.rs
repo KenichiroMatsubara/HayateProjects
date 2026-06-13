@@ -79,6 +79,16 @@ impl ElementTree {
         true
     }
 
+    /// Pointer left the surface (coordinate-independent). Clears the entire
+    /// hover set — emitting `HoverLeave` for each left element and marking
+    /// pseudo-activation dirty — and resets the stored last-pointer-position so
+    /// a subsequent re-entry is not coalesced away. Does NOT push a phantom
+    /// `PointerMove`. Symmetric with the HTML adapter's per-element leave seam.
+    pub fn on_pointer_leave(&mut self) {
+        self.apply_pointer_hover(None);
+        self.last_pointer_pos = None;
+    }
+
     pub fn on_wheel(&mut self, target: ElementId, delta_x: f32, delta_y: f32) {
         self.emit_interaction(Event::Scroll {
             target_id: target,
