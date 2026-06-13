@@ -1,5 +1,7 @@
 use hayate_core::element::taffy_bridge::apply_to_style;
-use hayate_core::{AlignContentValue, AlignSelfValue, Dimension, FlexWrapValue, StyleProp};
+use hayate_core::{
+    AlignContentValue, AlignSelfValue, Dimension, FlexWrapValue, PositionValue, StyleProp,
+};
 use taffy::prelude::*;
 
 #[test]
@@ -64,6 +66,43 @@ fn flex_wrap_reverse_maps_to_taffy_style() {
         &StyleProp::FlexWrap(FlexWrapValue::WrapReverse)
     ));
     assert_eq!(style.flex_wrap, FlexWrap::WrapReverse);
+}
+
+#[test]
+fn position_absolute_maps_to_taffy_style() {
+    let mut style = Style::default();
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::Position(PositionValue::Absolute)
+    ));
+    assert_eq!(style.position, Position::Absolute);
+}
+
+#[test]
+fn position_relative_maps_to_taffy_style() {
+    let mut style = Style::default();
+    style.position = Position::Absolute;
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::Position(PositionValue::Relative)
+    ));
+    assert_eq!(style.position, Position::Relative);
+}
+
+#[test]
+fn inset_maps_each_edge_to_taffy_style() {
+    let mut style = Style::default();
+    assert!(apply_to_style(&mut style, &StyleProp::Top(Dimension::px(10.0))));
+    assert!(apply_to_style(&mut style, &StyleProp::Left(Dimension::px(20.0))));
+    assert!(apply_to_style(&mut style, &StyleProp::Right(Dimension::px(30.0))));
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::Bottom(Dimension::px(40.0))
+    ));
+    assert_eq!(style.inset.top, LengthPercentageAuto::Length(10.0));
+    assert_eq!(style.inset.left, LengthPercentageAuto::Length(20.0));
+    assert_eq!(style.inset.right, LengthPercentageAuto::Length(30.0));
+    assert_eq!(style.inset.bottom, LengthPercentageAuto::Length(40.0));
 }
 
 #[test]

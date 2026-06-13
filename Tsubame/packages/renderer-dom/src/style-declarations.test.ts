@@ -74,6 +74,21 @@ describe('StylePatch declaration emitter parity', () => {
     expect(body).toContain('border-style: solid');
   });
 
+  it('maps position + insets to CSS for absolute positioning (#205)', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyle(id, { position: 'absolute', top: 10, left: 20, right: 30, bottom: 40 });
+
+    const el = container.querySelector('div')!;
+    expect(el.style.position).toBe('absolute');
+    expect(el.style.top).toBe('10px');
+    expect(el.style.left).toBe('20px');
+    expect(el.style.right).toBe('30px');
+    expect(el.style.bottom).toBe('40px');
+  });
+
   it('skips channel-1 text-local keys on block boxes for all three paths', () => {
     const renderer = new DomRenderer({ document, container });
     const viewId = renderer.createElement('view');

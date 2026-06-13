@@ -707,5 +707,80 @@
       "property": "cursor",
       "format": "enum:cursor"
     }
+  },
+  {
+    "name": "POSITION",
+    "value": 47,
+    "encodeFrom": "enum:position",
+    "params": [
+      {
+        "name": "value",
+        "type": "position"
+      }
+    ],
+    "domCss": {
+      "property": "position",
+      "format": "enum:position"
+    }
+  },
+  {
+    "name": "TOP",
+    "value": 48,
+    "encodeFrom": "dimension",
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "top",
+      "format": "dimension"
+    }
+  },
+  {
+    "name": "LEFT",
+    "value": 49,
+    "encodeFrom": "dimension",
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "left",
+      "format": "dimension"
+    }
+  },
+  {
+    "name": "RIGHT",
+    "value": 50,
+    "encodeFrom": "dimension",
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "right",
+      "format": "dimension"
+    }
+  },
+  {
+    "name": "BOTTOM",
+    "value": 51,
+    "encodeFrom": "dimension",
+    "params": [
+      {
+        "name": "dim",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "bottom",
+      "format": "dimension"
+    }
   }
 ]

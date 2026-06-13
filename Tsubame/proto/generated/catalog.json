@@ -609,5 +609,70 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "position",
+    "tag": 47,
+    "unsetKind": null,
+    "wireKind": "position",
+    "domFormat": "enum",
+    "cssName": "position",
+    "cssProperty": "position",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "top",
+    "tag": 48,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "top",
+    "cssProperty": "top",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "left",
+    "tag": 49,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "left",
+    "cssProperty": "left",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "right",
+    "tag": 50,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "right",
+    "cssProperty": "right",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "bottom",
+    "tag": 51,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "bottom",
+    "cssProperty": "bottom",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

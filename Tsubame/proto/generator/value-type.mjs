@@ -25,6 +25,7 @@ const KNOWN_ENUM_KINDS = new Set([
   'text_decoration',
   'border_style',
   'cursor',
+  'position',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -149,6 +150,7 @@ const ENUM_CONST_NAMES = {
   text_decoration: 'TEXT_DECORATION',
   border_style: 'BORDER_STYLE',
   cursor: 'CURSOR',
+  position: 'POSITION',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -163,6 +165,7 @@ const ENUM_PATCH_LABELS = {
   text_decoration: 'textDecoration',
   border_style: 'borderStyle',
   cursor: 'cursor',
+  position: 'position',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */

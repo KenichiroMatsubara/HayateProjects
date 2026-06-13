@@ -250,6 +250,25 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("cursor".into(), s.into()));
         }
+        StyleProp::Position(v) => {
+            let s = match v {
+            PositionValue::Relative => "relative",
+            PositionValue::Absolute => "absolute",
+            };
+            out.push(("position".into(), s.into()));
+        }
+        StyleProp::Top(d) => {
+            out.push(("top".into(), dom_css_dim(d)));
+        }
+        StyleProp::Left(d) => {
+            out.push(("left".into(), dom_css_dim(d)));
+        }
+        StyleProp::Right(d) => {
+            out.push(("right".into(), dom_css_dim(d)));
+        }
+        StyleProp::Bottom(d) => {
+            out.push(("bottom".into(), dom_css_dim(d)));
+        }
     }
 }
 

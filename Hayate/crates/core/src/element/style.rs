@@ -58,6 +58,18 @@ pub enum BorderStyleValue {
     Dashed,
 }
 
+/// Box positioning scheme (ADR-0091, issue #205).
+///
+/// `Relative` is the default and matches Taffy's default (in contrast to CSS,
+/// where `static` is the default). `Absolute` takes the element out of normal
+/// flow; `top`/`left`/`right`/`bottom` insets then position it. `sticky` /
+/// `fixed` are out of scope (Taffy has no support).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PositionValue {
+    Relative,
+    Absolute,
+}
+
 /// Pointer cursor appearance (ADR-0088). Resolved from the element under the
 /// pointer and handed to the Platform Adapter via `on_pointer_move`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -209,6 +221,12 @@ pub enum StyleProp {
     MarginRight(Dimension),
     MarginBottom(Dimension),
     MarginLeft(Dimension),
+    // positioning
+    Position(PositionValue),
+    Top(Dimension),
+    Left(Dimension),
+    Right(Dimension),
+    Bottom(Dimension),
     // flex
     FlexGrow(f32),
     FlexShrink(f32),
@@ -268,6 +286,11 @@ impl StyleProp {
                 | Self::MarginRight(_)
                 | Self::MarginBottom(_)
                 | Self::MarginLeft(_)
+                | Self::Position(_)
+                | Self::Top(_)
+                | Self::Left(_)
+                | Self::Right(_)
+                | Self::Bottom(_)
                 | Self::GridTemplateColumns(_)
                 | Self::GridTemplateRows(_)
         )
