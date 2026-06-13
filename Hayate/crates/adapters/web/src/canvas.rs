@@ -345,6 +345,7 @@ impl HayateElementRenderer {
             }
             PointerInput::Up { x, y } => self.tree.on_pointer_up(x, y),
             PointerInput::Leave => self.tree.on_pointer_leave(),
+            PointerInput::Cancel => self.tree.on_pointer_cancel(),
             PointerInput::Wheel {
                 x,
                 y,
