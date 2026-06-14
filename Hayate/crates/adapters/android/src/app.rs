@@ -15,6 +15,9 @@ use hayate_scene_renderer_vello::{
 };
 use wgpu::util::TextureBlitter;
 
+use hayate_core::ElementId;
+
+use crate::ime_input::{apply_ime_action, translate_text_input, TextInputState, TextSpan};
 use crate::scene_demo::build_demo_tree;
 use crate::surface_lifecycle::{
     viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
@@ -46,6 +49,10 @@ pub fn android_main(app: AndroidApp) {
     let mut lifecycle = SurfaceLifecycleState::new();
     let mut tree = build_demo_tree();
     let start = Instant::now();
+    // Last GameTextInput buffer we synced, and which element the soft keyboard is
+    // currently shown for (stage C IME, ADR-0094).
+    let mut ime_state = TextInputState::default();
+    let mut keyboard_shown_for: Option<ElementId> = None;
     let mut quit = false;
 
     while !quit {
@@ -105,6 +112,7 @@ pub fn android_main(app: AndroidApp) {
         });
 
         process_touch_input(&app, &mut tree);
+        sync_ime(&app, &mut tree, &mut ime_state, &mut keyboard_shown_for);
 
         if let Some(surface) = gpu.as_mut() {
             // Drive layout + cursor blink off a monotonic clock, then present the
@@ -115,6 +123,55 @@ pub fn android_main(app: AndroidApp) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
         }
+    }
+}
+
+/// Sync GameTextInput into the focused TextInput (stage C IME, ADR-0094).
+///
+/// Shows/hides the soft keyboard as focus enters/leaves an element (focus is set
+/// by tap; core no-ops text edits on non-TextInput targets) and diffs
+/// GameTextInput's absolute buffer into core edit calls. The diff/apply logic
+/// lives in the host-testable [`crate::ime_input`]; this wrapper is thin glue
+/// over `android-activity`'s text-input API and is verified on-device (#195).
+fn sync_ime(
+    app: &AndroidApp,
+    tree: &mut ElementTree,
+    prev: &mut TextInputState,
+    keyboard_shown_for: &mut Option<ElementId>,
+) {
+    let focused = tree.focused_element();
+
+    if *keyboard_shown_for != focused {
+        match focused {
+            Some(_) => app.show_soft_input(true),
+            None => app.hide_soft_input(true),
+        }
+        *keyboard_shown_for = focused;
+        // A fresh focus starts from an empty baseline buffer.
+        *prev = TextInputState::default();
+    }
+
+    let Some(target) = focused else {
+        return;
+    };
+
+    // GameTextInput reports the full buffer plus an optional composing span
+    // (byte offsets into `text`); mirror it into the NDK-free type and diff.
+    let next = app.text_input_state(|state| TextInputState {
+        text: state.text.clone(),
+        compose_region: state
+            .compose_region
+            .map(|span| TextSpan {
+                start: span.start,
+                end: span.end,
+            }),
+    });
+
+    if next != *prev {
+        for action in translate_text_input(prev, &next) {
+            apply_ime_action(tree, target, &action);
+        }
+        *prev = next;
     }
 }
 

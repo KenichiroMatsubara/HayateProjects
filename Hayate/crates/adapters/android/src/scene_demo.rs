@@ -11,22 +11,24 @@
 //! glue that sizes the viewport and renders it each frame.
 
 use hayate_core::{
-    AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, JustifyValue,
-    PseudoState, StyleProp,
+    AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, FlexDirectionValue,
+    JustifyValue, PseudoState, StyleProp,
 };
 
-/// Stable element ids for the stage B demo tree (so on-device logs can refer to
-/// them, mirroring how `hayate-adapter-web` assigns ids from the JS side).
+/// Stable element ids for the demo tree (so on-device logs can refer to them,
+/// mirroring how `hayate-adapter-web` assigns ids from the JS side).
 pub const ROOT_ID: u64 = 1;
 pub const BUTTON_ID: u64 = 2;
+pub const TEXT_INPUT_ID: u64 = 3;
 
 /// Idle (un-pressed) button background.
 pub const BUTTON_IDLE: Color = Color::new(0.16, 0.45, 0.92, 1.0);
 /// `:active` (pressed) button background — flips visibly under a finger.
 pub const BUTTON_ACTIVE: Color = Color::new(0.92, 0.35, 0.16, 1.0);
 
-/// Build the stage B demo tree: a full-viewport flex container centering a
-/// button that flips its background color while pressed.
+/// Build the demo tree: a full-viewport flex column centering a button that
+/// flips color while pressed (stage B) above a text-input that receives the
+/// soft keyboard for the stage C IME bridge (ADR-0094).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn build_demo_tree() -> ElementTree {
     let mut tree = ElementTree::new();
@@ -39,8 +41,10 @@ pub fn build_demo_tree() -> ElementTree {
             StyleProp::Width(Dimension::percent(100.0)),
             StyleProp::Height(Dimension::percent(100.0)),
             StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
             StyleProp::JustifyContent(JustifyValue::Center),
             StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::Gap(Dimension::px(24.0)),
         ],
     );
 
@@ -61,6 +65,22 @@ pub fn build_demo_tree() -> ElementTree {
         &[StyleProp::BackgroundColor(BUTTON_ACTIVE)],
     );
 
+    let input = tree.element_create(TEXT_INPUT_ID, ElementKind::TextInput);
+    tree.element_append_child(root, input);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(260.0)),
+            StyleProp::Height(Dimension::px(56.0)),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BorderWidth(2.0),
+            StyleProp::BorderColor(Color::new(0.4, 0.4, 0.45, 1.0)),
+            StyleProp::BackgroundColor(Color::WHITE),
+            StyleProp::FontSize(20.0),
+            StyleProp::Color(Color::BLACK),
+        ],
+    );
+
     tree
 }
 
@@ -79,19 +99,20 @@ mod tests {
         assert_eq!(visual.background_color, Some(BUTTON_IDLE));
     }
 
-    // Pressing the centered button must flip its effective background to the
-    // `:active` color and release must restore it — this is the end-to-end
-    // behavior the on-device tap is meant to make visible.
+    // Pressing the button must flip its effective background to the `:active`
+    // color and release must restore it — the end-to-end behavior the on-device
+    // tap is meant to make visible.
     #[test]
-    fn pressing_the_centered_button_flips_its_background() {
+    fn pressing_the_button_flips_its_background() {
         let mut tree = build_demo_tree();
         tree.set_viewport(400.0, 800.0);
         tree.render(0.0);
 
         let button = ElementId::from_u64(BUTTON_ID);
 
-        // 220×96 button centered in a 400×800 viewport contains (200, 400).
-        tree.on_pointer_down(200.0, 400.0);
+        // Column-centered in 400×800: button spans x 90..310, y 312..408; its
+        // center is (200, 360).
+        tree.on_pointer_down(200.0, 360.0);
         assert_eq!(
             tree.element_effective_visual(button)
                 .expect("button visual")
@@ -100,13 +121,32 @@ mod tests {
             "press should flip to the :active background"
         );
 
-        tree.on_pointer_up(200.0, 400.0);
+        tree.on_pointer_up(200.0, 360.0);
         assert_eq!(
             tree.element_effective_visual(button)
                 .expect("button visual")
                 .background_color,
             Some(BUTTON_IDLE),
             "release should restore the idle background"
+        );
+    }
+
+    // Tapping the text-input focuses it, which is the precondition for the glue
+    // to show the soft keyboard and route GameTextInput into it (stage C).
+    #[test]
+    fn tapping_the_text_input_focuses_it() {
+        let mut tree = build_demo_tree();
+        tree.set_viewport(400.0, 800.0);
+        tree.render(0.0);
+
+        // The text-input sits below the button at y 432..488; center (200, 460).
+        tree.on_pointer_down(200.0, 460.0);
+        tree.on_pointer_up(200.0, 460.0);
+
+        assert_eq!(
+            tree.focused_element(),
+            Some(ElementId::from_u64(TEXT_INPUT_ID)),
+            "tapping the text-input should focus it"
         );
     }
 }
