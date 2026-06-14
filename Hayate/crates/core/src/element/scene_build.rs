@@ -78,7 +78,7 @@ pub(crate) fn update(
         reorder_children_for_z_index(tree, scene_cache, lowering, parent_id);
     }
 
-    let patch_roots = minimal_patch_roots(dirty.elements.keys(), &tree.elements);
+    let patch_roots = minimal_patch_roots(tree, &dirty.elements);
     for patch_root in patch_roots {
         let reach = dirty
             .elements
@@ -152,31 +152,83 @@ fn inherited_for_patch_root(tree: &ElementTree, id: ElementId) -> InheritedVisua
     }
 }
 
-fn minimal_patch_roots<'a>(
-    dirty: impl IntoIterator<Item = &'a ElementId>,
-    elements: &std::collections::HashMap<ElementId, crate::element::tree::Element>,
+fn minimal_patch_roots(
+    tree: &ElementTree,
+    dirty: &std::collections::HashMap<ElementId, VisualInvalidationReach>,
 ) -> Vec<ElementId> {
-    let dirty_set: std::collections::HashSet<ElementId> = dirty.into_iter().copied().collect();
-    dirty_set
-        .iter()
+    dirty
+        .keys()
         .copied()
-        .filter(|&id| !has_dirty_ancestor(id, &dirty_set, elements))
+        .filter(|&id| !covered_by_dirty_ancestor(tree, id, dirty))
         .collect()
 }
 
-fn has_dirty_ancestor(
+/// Whether re-walking some dirty ancestor will itself re-emit `id`, so `id` need
+/// not be its own patch root. True only when the ancestor's reach actually
+/// propagates down the ancestor→id path: a `SelfOnly` / `ZIndex` ancestor
+/// re-emits only itself, so a dirty descendant under it (e.g. an independent
+/// in-flight transition beneath a transitioning parent, issue #228) must remain
+/// its own patch root or its re-lowering would be skipped.
+fn covered_by_dirty_ancestor(
+    tree: &ElementTree,
     id: ElementId,
-    dirty: &std::collections::HashSet<ElementId>,
-    elements: &std::collections::HashMap<ElementId, crate::element::tree::Element>,
+    dirty: &std::collections::HashMap<ElementId, VisualInvalidationReach>,
 ) -> bool {
-    let mut current = elements.get(&id).and_then(|el| el.parent);
+    // Path id → root: chain[0] = id, chain[i+1] = parent(chain[i]).
+    let mut chain = vec![id];
+    let mut current = tree.elements.get(&id).and_then(|el| el.parent);
     while let Some(parent) = current {
-        if dirty.contains(&parent) {
+        chain.push(parent);
+        current = tree.elements.get(&parent).and_then(|el| el.parent);
+    }
+    // For each dirty ancestor, simulate the reach propagating down to `id`,
+    // mirroring `children_for_reach` / `child_reach` in the retained walk.
+    for (ancestor_idx, &ancestor) in chain.iter().enumerate().skip(1) {
+        let Some(&ancestor_reach) = dirty.get(&ancestor) else {
+            continue;
+        };
+        let mut reach = ancestor_reach;
+        let mut parent = ancestor;
+        let mut reached = true;
+        for child_idx in (0..ancestor_idx).rev() {
+            let child = chain[child_idx];
+            match step_reach(tree, parent, child, reach) {
+                Some(next) => {
+                    reach = next;
+                    parent = child;
+                }
+                None => {
+                    reached = false;
+                    break;
+                }
+            }
+        }
+        if reached {
             return true;
         }
-        current = elements.get(&parent).and_then(|el| el.parent);
     }
     false
+}
+
+/// The reach a retained walk would carry into `child` when descending from
+/// `parent` under `reach`, or `None` when the walk does not visit `child` at all.
+/// Kept in lockstep with `children_for_reach` + `child_reach`.
+fn step_reach(
+    tree: &ElementTree,
+    parent: ElementId,
+    child: ElementId,
+    reach: VisualInvalidationReach,
+) -> Option<VisualInvalidationReach> {
+    match reach {
+        VisualInvalidationReach::Subtree => Some(VisualInvalidationReach::Subtree),
+        VisualInvalidationReach::TextLocal
+            if is_ifc_root(&tree.elements, parent)
+                && is_inline_text_element(&tree.elements, child) =>
+        {
+            Some(VisualInvalidationReach::TextLocal)
+        }
+        _ => None,
+    }
 }
 
 fn first_child_matching(
