@@ -17,6 +17,7 @@ import {
   type StorageLike,
   toggleDone,
   type Todo,
+  visibleTodos,
 } from './todo-model.js';
 
 function fakeStorage(initial: Record<string, string> = {}): StorageLike {
@@ -161,6 +162,25 @@ describe('sortTodos', () => {
   it('does not mutate the input array when sorting', () => {
     const todos = [t(1, 'b', 1, false), t(2, 'a', 1, false)];
     sortTodos(todos, 'name');
+    expect(todos.map((x) => x.id)).toEqual([1, 2]);
+  });
+});
+
+describe('visibleTodos', () => {
+  it('applies the filter before sorting so the list shows only matching, ordered todos', () => {
+    const todos = [
+      t(1, 'low active', 1, false),
+      t(2, 'high done', 3, true),
+      t(3, 'high active', 3, false),
+      t(4, 'mid active', 2, false),
+    ];
+    // active hides the done todo; prio then orders the survivors high->low.
+    expect(visibleTodos(todos, 'active', 'prio').map((x) => x.id)).toEqual([3, 4, 1]);
+  });
+
+  it('does not mutate the input list', () => {
+    const todos = [t(1, 'b', 1, false), t(2, 'a', 1, false)];
+    visibleTodos(todos, 'all', 'name');
     expect(todos.map((x) => x.id)).toEqual([1, 2]);
   });
 });

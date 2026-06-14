@@ -77,6 +77,14 @@ export function sortTodos(todos: readonly Todo[], sort: SortMode): Todo[] {
   return next;
 }
 
+/**
+ * 単カードのリストに表示する Todo を導出する。
+ * フィルタ → ソートの順で適用する（gomi の単カードと同じ可視化規則）。常に新配列。
+ */
+export function visibleTodos(todos: readonly Todo[], filter: Filter, sort: SortMode): Todo[] {
+  return sortTodos(filterTodos(todos, filter), sort);
+}
+
 export interface Completion {
   total: number;
   remaining: number;
