@@ -911,7 +911,7 @@ impl ElementTree {
                     .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
             }
         }
-        let dirty = collect_lowering_dirty(
+        let mut dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
             &self.engine.shape_dirty,
@@ -921,8 +921,24 @@ impl ElementTree {
             self.engine.fonts_dirty,
         );
         self.commit_frame();
+        // `commit_frame` re-ran layout; fold any element whose box geometry
+        // changed into this frame's lowering set so reflowed-but-otherwise-clean
+        // boxes (grown ancestors, pushed siblings) re-lower instead of painting
+        // stale geometry. Done after commit because the diff is only known once
+        // the new layout cache exists, and before `scene_build::update` consumes
+        // `dirty`.
+        let geometry_dirty = self.engine.drain_layout_geometry_dirty();
         let _ = self.engine.drain_visual_dirty();
         let _ = self.engine.drain_shape_lowering_reach();
+        for id in geometry_dirty {
+            visual_invalidation::apply_visual_invalidation(
+                self,
+                id,
+                VisualInvalidationReach::SelfOnly,
+                &mut dirty.elements,
+                &mut dirty.z_index_reorder_parents,
+            );
+        }
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);

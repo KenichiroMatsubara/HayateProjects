@@ -12,6 +12,7 @@ use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
+use std::collections::HashSet;
 
 /// Full ephemeral rebuild without retained anchors (parity reference / tests).
 pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
@@ -277,27 +278,71 @@ fn ensure_anchor(
     if let Some(entry) = lowering.anchors.get(&id) {
         let anchor_id = entry.anchor_id;
         if let Some(parent) = attach_parent {
-            attach_under(sg, parent, anchor_id);
+            insert_anchor_ordered(tree, sg, lowering, id, parent, anchor_id);
         }
         return anchor_id;
     }
 
-    let anchor_id = if let Some(parent) = attach_parent {
-        sg.insert_child(
-            parent,
-            Node {
-                kind: NodeKind::ElementAnchor { element_id: id },
-                children: Vec::new(),
-            },
-        )
-    } else {
-        sg.insert(Node {
-            kind: NodeKind::ElementAnchor { element_id: id },
-            children: Vec::new(),
-        })
-    };
+    let anchor_id = sg.insert(Node {
+        kind: NodeKind::ElementAnchor { element_id: id },
+        children: Vec::new(),
+    });
+    if let Some(parent) = attach_parent {
+        insert_anchor_ordered(tree, sg, lowering, id, parent, anchor_id);
+    }
     lowering.anchors.insert(id, AnchorEntry::new(anchor_id));
     anchor_id
+}
+
+/// Attach `child` (the anchor for element `id`) under `parent` at the scene-child
+/// index that matches `id`'s position among its element siblings.
+///
+/// A partial patch re-walks only some of a parent's children (e.g. a hovered card,
+/// or the grown/pushed siblings of an insert). Blindly appending a re-walked anchor
+/// to the end of `parent.children` scrambles paint order, so the interacted element
+/// paints over the wrong sibling — the "hover/click corrupts a *different* element"
+/// symptom. Positioning relative to the preceding sibling *anchors actually present
+/// under `parent`* keeps the retained child order in lockstep with element order and
+/// is robust to Clip/Group content-attachment wrappers (all siblings share one
+/// attachment point).
+fn insert_anchor_ordered(
+    tree: &ElementTree,
+    sg: &mut SceneGraph,
+    lowering: &SceneLowering,
+    id: ElementId,
+    parent: NodeId,
+    child: NodeId,
+) {
+    sg.retain_roots(|root| root != child);
+    if let Some(old_parent) = sg.parent_of(child) {
+        if let Some(p) = sg.get_mut(old_parent) {
+            p.children.retain(|&c| c != child);
+        }
+    }
+    // Anchors of siblings that follow `id` in element order. Insert `child` just
+    // before the first one present under `parent`; if none are present yet, append.
+    // Inserting *before following siblings* (rather than *after preceding ones*)
+    // keeps the parent's own content nodes — fill/border emitted before any child
+    // anchor — ahead of every child, so the box still paints under its children.
+    let following: HashSet<NodeId> = tree
+        .elements
+        .get(&id)
+        .and_then(|el| el.parent)
+        .map(|p| tree.ordered_children(p))
+        .unwrap_or_default()
+        .into_iter()
+        .skip_while(|&sib| sib != id)
+        .skip(1)
+        .filter_map(|sib| lowering.anchors.get(&sib).map(|e| e.anchor_id))
+        .collect();
+    if let Some(p) = sg.get_mut(parent) {
+        let index = p
+            .children
+            .iter()
+            .position(|c| following.contains(c))
+            .unwrap_or(p.children.len());
+        p.children.insert(index, child);
+    }
 }
 
 fn attach_under(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
@@ -314,12 +359,19 @@ fn attach_under(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
     }
 }
 
-/// When wrapper nodes (Clip/scroll Group) are rebuilt but child subtrees are not
-/// re-walked (`SelfOnly` reach), hoisted child anchors must be slid under the new
-/// `effective_parent` so clipping still applies.
+/// Re-stack a re-walked element's child anchors after its own content, in element
+/// order. `emit_element` emits the box's own content (fill/border/text) by
+/// appending, but `clear_lowered_content` preserves child anchors at the front of
+/// the list — so without this pass the box's own fill paints *over* its children
+/// (and stale sibling order survives). Re-attaching every child in element order
+/// after content emission restores `[content..., child0, child1, ...]`.
+///
+/// Also handles the Clip/scroll-Group wrapper case it was written for: when
+/// `effective_parent` is a wrapper inside the anchor, children slide under the
+/// wrapper so clipping still applies.
 fn reparent_child_anchors_under(
     sg: &mut SceneGraph,
-    anchor_id: NodeId,
+    _anchor_id: NodeId,
     effective_parent: Option<NodeId>,
     children: &[ElementId],
     lowering: &SceneLowering,
@@ -327,9 +379,6 @@ fn reparent_child_anchors_under(
     let Some(parent) = effective_parent else {
         return;
     };
-    if parent == anchor_id {
-        return;
-    }
     for &child_id in children {
         let Some(child_anchor) = lowering.anchors.get(&child_id).map(|e| e.anchor_id) else {
             continue;

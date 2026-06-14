@@ -23,6 +23,12 @@ pub(crate) struct ElementEngine {
     pub(crate) viewport_dirty: HashSet<ElementId>,
     /// Scene-only visual changes (issue #182). Drained after each `render()`.
     pub(crate) visual_dirty: HashMap<ElementId, VisualInvalidationReach>,
+    /// Elements whose absolute box geometry `(x, y, w, h)` changed (or appeared)
+    /// in the latest `resolve()` layout pass. Bridges the layout→lowering gap so a
+    /// flex reflow that ripples up to ancestors / sideways to siblings re-lowers
+    /// their (now stale) retained boxes. Filled in `resolve`, drained in `render`
+    /// after `commit_frame()`.
+    pub(crate) layout_geometry_dirty: HashSet<ElementId>,
     /// Set by `register_font`; cleared at the start of the next `resolve`.
     /// Causes all text elements to be re-shaped with the newly registered font.
     pub(crate) fonts_dirty: bool,
@@ -36,6 +42,7 @@ impl ElementEngine {
             shape_lowering_reach: HashMap::new(),
             viewport_dirty: HashSet::new(),
             visual_dirty: HashMap::new(),
+            layout_geometry_dirty: HashSet::new(),
             fonts_dirty: false,
         }
     }
@@ -65,6 +72,10 @@ impl ElementEngine {
         std::mem::take(&mut self.visual_dirty)
     }
 
+    pub fn drain_layout_geometry_dirty(&mut self) -> HashSet<ElementId> {
+        std::mem::take(&mut self.layout_geometry_dirty)
+    }
+
     pub fn drain_shape_lowering_reach(&mut self) -> HashMap<ElementId, VisualInvalidationReach> {
         std::mem::take(&mut self.shape_lowering_reach)
     }
@@ -92,7 +103,14 @@ impl ElementEngine {
             &mut self.shape_dirty,
             &mut self.fonts_dirty,
         );
-        layout.layout_cache.clear();
+        // Snapshot the previous absolute geometry before rebuilding, then diff:
+        // any element whose box `(x, y, w, h)` moved/resized (or newly appeared)
+        // is flagged so `render` can re-lower its stale retained box. A flex
+        // reflow from an insert/select ripples up to ancestors and sideways to
+        // siblings that are never structure/visual-dirty on their own; absolute
+        // coords mean every moved descendant lands in the diff independently, so
+        // per-id `SelfOnly` re-lowering is sufficient (no subtree expansion).
+        let previous = std::mem::take(&mut layout.layout_cache);
         cache_layout(
             elements,
             &layout.projection,
@@ -101,6 +119,11 @@ impl ElementEngine {
             0.0,
             &mut layout.layout_cache,
         );
+        for (&id, geometry) in &layout.layout_cache {
+            if previous.get(&id) != Some(geometry) {
+                self.layout_geometry_dirty.insert(id);
+            }
+        }
     }
 
     fn promote_viewport_dirty(
