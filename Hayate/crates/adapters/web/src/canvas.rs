@@ -144,6 +144,11 @@ impl HayateElementRenderer {
             .element_set_disabled(element_id_from_f64(id), disabled);
     }
 
+    pub fn element_set_selectable(&mut self, id: f64, selectable: bool) {
+        self.tree
+            .element_set_selectable(element_id_from_f64(id), selectable);
+    }
+
     pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
         let props = style_packet::decode(packed)?;
         self.tree.element_set_style(element_id_from_f64(id), &props);

@@ -29,8 +29,8 @@ declare global {
       children: Record<string, never>;
     }
     interface IntrinsicElements {
-      view: TsubameProps;
-      text: TsubameProps;
+      view: TsubameProps & { selectable?: boolean };
+      text: TsubameProps & { selectable?: boolean };
       image: TsubameProps & { src?: string };
       button: TsubameProps;
       'text-input': TsubameProps & {
@@ -38,7 +38,7 @@ declare global {
         placeholder?: string;
         disabled?: boolean;
       };
-      'scroll-view': TsubameProps;
+      'scroll-view': TsubameProps & { selectable?: boolean };
     }
   }
 }

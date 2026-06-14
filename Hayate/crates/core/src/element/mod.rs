@@ -14,6 +14,7 @@ pub mod layout_pass;
 pub mod pseudo_state;
 pub mod scene_build;
 mod scene_lowering;
+pub mod selection;
 pub mod style;
 pub mod taffy_bridge;
 pub mod taffy_projection;
@@ -31,6 +32,7 @@ pub use interaction::PointerMoveResult;
 pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
+pub use selection::{Selection, SelectionPoint};
 pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
     DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,

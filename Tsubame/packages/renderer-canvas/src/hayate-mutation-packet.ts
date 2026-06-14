@@ -61,6 +61,10 @@ export class HayateMutationPacket {
     this.mutations.push({ kind: 'setDisabled', id, disabled });
   }
 
+  enqueueSetSelectable(id: ElementId, selectable: boolean): void {
+    this.mutations.push({ kind: 'setSelectable', id, selectable });
+  }
+
   enqueueSetSrc(id: ElementId, url: string): void {
     this.mutations.push({ kind: 'setSrc', id, url });
   }

@@ -324,6 +324,7 @@ mod tests {
             role: None,
             pseudo_styles: Default::default(),
             disabled: false,
+            selectable: false,
             viewport_variants: Vec::new(),
         };
         (eid, el)
@@ -350,6 +351,7 @@ mod tests {
             role: None,
             pseudo_styles: Default::default(),
             disabled: false,
+            selectable: false,
             viewport_variants: Vec::new(),
         };
         (eid, el)

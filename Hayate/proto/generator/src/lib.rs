@@ -1187,6 +1187,12 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
             Ok(())
 "#.to_string()
         }
+        "SET_SELECTABLE" => {
+            r#"            host.tree_mut()
+                .element_set_selectable(ElementId::from_u64(id), selectable);
+            Ok(())
+"#.to_string()
+        }
         "SET_SRC" => {
             r#"            if text_index >= texts.length() as usize {
                 return Err(JsValue::from_str("text index out of bounds in OP_SET_SRC"));

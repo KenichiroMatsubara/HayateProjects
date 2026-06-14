@@ -1,8 +1,11 @@
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
+use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pseudo_state::PseudoState;
+use crate::element::selection::{Selection, SelectionPoint};
 use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
+use crate::element::visual_invalidation::VisualInvalidationReach;
 
 /// Output of `on_pointer_move` (ADR-0088). `moved` is false when the move was
 /// coalesced by the 1px dedup or skipped because layout is not ready; `cursor`
@@ -19,6 +22,9 @@ impl ElementTree {
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
         let hit = self.hit_test(x, y);
         self.pointer_down_on_target(hit, x, y);
+        // Selection drag rides on the same active-session capture (ADR-0097):
+        // a press inside a Selection Region collapses the selection to a caret.
+        self.begin_selection_at(x, y);
     }
 
     /// Pointer down on an explicit target (HTML Mode).
@@ -49,6 +55,7 @@ impl ElementTree {
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
         let fallback = self.hit_test(x, y);
         self.pointer_up_with_fallback(fallback);
+        self.selection_drag = false;
     }
 
     /// Pointer up with an explicit fallback target (HTML Mode).
@@ -76,6 +83,7 @@ impl ElementTree {
     pub fn on_pointer_cancel(&mut self) {
         self.apply_pointer_hover(None);
         self.last_pointer_pos = None;
+        self.selection_drag = false;
         if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
@@ -107,6 +115,12 @@ impl ElementTree {
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
         self.last_cursor = resolved_cursor;
+        // Extend the in-flight selection's focus to follow the drag (ADR-0097).
+        if self.selection_drag {
+            if let Some(point) = self.selection_point_at(x, y) {
+                self.update_selection_focus(point);
+            }
+        }
         PointerMoveResult {
             moved: true,
             resolved_cursor,
@@ -270,6 +284,92 @@ impl ElementTree {
 
     pub fn active_element(&self) -> Option<ElementId> {
         self.active_element
+    }
+
+    /// The single document-wide text selection, if any (ADR-0097).
+    pub fn selection(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
+    /// Begin a selection from a pointer-down: collapse to a caret at the hit
+    /// point when inside a Selection Region, otherwise clear any selection and
+    /// stay out of drag mode (a press outside `selectable` does not start one).
+    fn begin_selection_at(&mut self, x: f32, y: f32) {
+        match self.selection_point_at(x, y) {
+            Some(point) => {
+                self.selection_drag = true;
+                self.set_selection(Some(Selection::caret(point)));
+            }
+            None => {
+                self.selection_drag = false;
+                if self.selection.is_some() {
+                    self.set_selection(None);
+                }
+            }
+        }
+    }
+
+    /// Resolve a canvas point to a selection endpoint `(IFC root, byte offset)`,
+    /// using the IFC's Parley content layout (ADR-0097). `None` when the point is
+    /// outside any `selectable` subtree or hits no shaped text.
+    fn selection_point_at(&self, x: f32, y: f32) -> Option<SelectionPoint> {
+        let hit = self.hit_test(x, y)?;
+        if !self.within_selectable(hit) {
+            return None;
+        }
+        let ifc = ifc_root(&self.elements, hit).unwrap_or(hit);
+        let tl = self.elements.get(&ifc)?.text_layout.as_ref()?;
+        let &(ex, ey, _, _) = self.layout.layout_cache.get(&ifc)?;
+        let offset = byte_index_at_point(tl, x - ex, y - ey);
+        Some(SelectionPoint::new(ifc, offset))
+    }
+
+    /// Whether `id` lies within a `selectable` subtree (nearest ancestor wins).
+    fn within_selectable(&self, id: ElementId) -> bool {
+        let mut current = Some(id);
+        while let Some(eid) = current {
+            let Some(el) = self.elements.get(&eid) else {
+                break;
+            };
+            if el.selectable {
+                return true;
+            }
+            current = el.parent;
+        }
+        false
+    }
+
+    fn set_selection(&mut self, next: Option<Selection>) {
+        if self.selection == next {
+            return;
+        }
+        if let Some(prev) = self.selection {
+            self.mark_selection_dirty(prev);
+        }
+        self.selection = next;
+        if let Some(now) = self.selection {
+            self.mark_selection_dirty(now);
+        }
+    }
+
+    fn update_selection_focus(&mut self, point: SelectionPoint) {
+        let Some(sel) = self.selection.as_mut() else {
+            return;
+        };
+        if sel.focus == point {
+            return;
+        }
+        sel.focus = point;
+        self.engine
+            .mark_visual_dirty(point.element, VisualInvalidationReach::SelfOnly);
+    }
+
+    /// Re-lower the elements a selection touches so the highlight follows it.
+    fn mark_selection_dirty(&mut self, sel: Selection) {
+        self.engine
+            .mark_visual_dirty(sel.anchor.element, VisualInvalidationReach::SelfOnly);
+        self.engine
+            .mark_visual_dirty(sel.focus.element, VisualInvalidationReach::SelfOnly);
     }
 
     fn emit_interaction(&mut self, event: Event) {
