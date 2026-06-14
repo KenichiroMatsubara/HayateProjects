@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>POP TODO — CSS Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&amp;family=IBM+Plex+Mono:wght@400;600&amp;display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="todo-demo.css" />
+</head>
+<body>
+
+<!-- position: sticky のテスト -->
+<header class="app-header" data-screen-label="ヘッダー">
+  <div class="logo">
+    <span class="logo-mark"></span>
+    <span>POP TODO</span>
+  </div>
+  <div class="bp-indicator" title="現在のブレークポイント (メディアクエリ)">
+    <span class="bp bp-s">S &lt;720px</span>
+    <span class="bp bp-m">M 720–1099px</span>
+    <span class="bp bp-l">L ≥1100px</span>
+  </div>
+  <span class="header-spacer"></span>
+  <div class="hue-swatches" role="group" aria-label="アクセント色">
+    <button type="button" class="hue-swatch" data-hue="330" style="--h: 330;" title="ピンク" aria-pressed="true"></button>
+    <button type="button" class="hue-swatch" data-hue="260" style="--h: 260;" title="バイオレット" aria-pressed="false"></button>
+    <button type="button" class="hue-swatch" data-hue="215" style="--h: 215;" title="シアン" aria-pressed="false"></button>
+    <button type="button" class="hue-swatch" data-hue="140" style="--h: 140;" title="グリーン" aria-pressed="false"></button>
+    <button type="button" class="hue-swatch" data-hue="55" style="--h: 55;" title="オレンジ" aria-pressed="false"></button>
+  </div>
+  <button type="button" class="theme-toggle">● ダーク</button>
+</header>
+
+<main>
+  <!-- ============ TODOアプリ ============ -->
+  <section class="todo-wrap" data-screen-label="TODOアプリ">
+    <div id="todo-app"></div>
+  </section>
+
+  <!-- ============ CSSテストカード ============ -->
+  <section data-screen-label="CSSテストカード">
+    <h2 class="section-title">CSS テストカード</h2>
+    <p class="section-sub">各カードが特定のCSS機能をテストします。見た目がラベル通りなら描画OK。</p>
+
+    <div class="tests-grid">
+
+      <!-- 1. Flexbox -->
+      <div class="test-card">
+        <span class="card-num">01</span>
+        <div class="test-head">
+          <h3>Flexbox / Gap</h3>
+          <code>display:flex · gap · wrap · justify · align</code>
+        </div>
+        <div class="test-body">
+          <div class="flex-row">
+            <span class="pill">flex</span><span class="pill">gap:10px</span><span class="pill">wrap</span><span class="pill">で</span><span class="pill">折り返す</span><span class="pill">ピル</span><span class="pill">たち</span>
+          </div>
+          <div class="flex-row between">
+            <span class="pill">start</span><span class="pill">center</span><span class="pill">end</span>
+          </div>
+          <div class="flex-row center-cross">
+            <span class="flex-box h1"></span><span class="flex-box h3"></span><span class="flex-box h2"></span><span class="flex-box h1"></span>
+            <span class="pill">align-items:center</span>
+          </div>
+          <p class="test-note">1段目: gap+折り返し / 2段目: space-between / 3段目: 交差軸センター揃え</p>
+        </div>
+      </div>
+
+      <!-- 2. Grid -->
+      <div class="test-card">
+        <span class="card-num">02</span>
+        <div class="test-head">
+          <h3>CSS Grid</h3>
+          <code>grid-template-columns · span · auto-rows · gap</code>
+        </div>
+        <div class="test-body">
+          <div class="demo-grid">
+            <div class="g span2c">col span 2</div>
+            <div class="g">1</div>
+            <div class="g span2r">row<br />span 2</div>
+            <div class="g tint">2</div>
+            <div class="g">3</div>
+            <div class="g">4</div>
+            <div class="g spanboth">2 × 2</div>
+            <div class="g tint">5</div>
+            <div class="g">6</div>
+          </div>
+          <p class="test-note">4カラムグリッド。色付きセルが行/列をまたいでいれば span が効いている</p>
+        </div>
+      </div>
+
+      <!-- 3. Position -->
+      <div class="test-card">
+        <span class="card-num">03</span>
+        <div class="test-head">
+          <h3>Position</h3>
+          <code>sticky · absolute · fixed · overflow:auto</code>
+        </div>
+        <div class="test-body">
+          <div class="scrollbox">
+            <div class="sticky-head">position: sticky ← スクロールしても残る</div>
+            <div class="row">スクロール行 1</div>
+            <div class="row">スクロール行 2</div>
+            <div class="row">スクロール行 3</div>
+            <div class="row">スクロール行 4</div>
+            <div class="row">スクロール行 5</div>
+            <div class="row">スクロール行 6</div>
+            <div class="row">スクロール行 7</div>
+            <div class="row">スクロール行 8</div>
+          </div>
+          <div class="abs-stage">
+            <span class="abs-badge tl">top/left</span>
+            <span class="abs-badge ctr">中央 (50%/50%)</span>
+            <span class="abs-badge br">bottom/right</span>
+          </div>
+          <p class="test-note">fixed は画面右下のチップ。ページ上部のヘッダーは sticky</p>
+        </div>
+      </div>
+
+      <!-- 4. Border / Shadow / Radius -->
+      <div class="test-card">
+        <span class="card-num">04</span>
+        <div class="test-head">
+          <h3>Border / Shadow / Radius</h3>
+          <code>box-shadow · inset · border-style · border-radius</code>
+        </div>
+        <div class="test-body">
+          <div class="swatch-grid">
+            <div class="swatch"><span class="tile t-hard"></span><small>hard shadow</small></div>
+            <div class="swatch"><span class="tile t-soft"></span><small>blur shadow</small></div>
+            <div class="swatch"><span class="tile t-inset"></span><small>inset</small></div>
+            <div class="swatch"><span class="tile t-mixed"></span><small>radius mix</small></div>
+            <div class="swatch"><span class="tile t-circle"></span><small>50%</small></div>
+            <div class="swatch"><span class="tile t-dashed"></span><small>dashed</small></div>
+            <div class="swatch"><span class="tile t-double"></span><small>double</small></div>
+            <div class="swatch"><span class="tile t-thick"></span><small>6px border</small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. 疑似クラス / 疑似要素 -->
+      <div class="test-card">
+        <span class="card-num">05</span>
+        <div class="test-head">
+          <h3>疑似クラス / 疑似要素</h3>
+          <code>:hover · :active · :focus · :checked · ::before/::after · :nth-child</code>
+        </div>
+        <div class="test-body">
+          <div class="pseudo-row">
+            <button type="button" class="hover-btn">ホバー / 押してみて</button>
+            <input type="text" class="focus-input" placeholder=":focus テスト" />
+            <label class="toggle-demo">
+              <input type="checkbox" checked="checked" />
+              <span class="track"></span>
+              <span>:checked</span>
+            </label>
+          </div>
+          <p class="quote">::before と ::after でカギ括弧を描画</p>
+          <ul class="stripes">
+            <li>:nth-child(odd) でストライプ</li>
+            <li>偶数行</li>
+            <li>奇数行</li>
+            <li>偶数行 (:not(:last-child) で罫線)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 6. メディアクエリ -->
+      <div class="test-card">
+        <span class="card-num">06</span>
+        <div class="test-head">
+          <h3>メディアクエリ</h3>
+          <code>@media (min-width / max-width)</code>
+        </div>
+        <div class="test-body">
+          <div class="mq-tiles">
+            <div class="mq-tile s">S — <code>max-width: 719px</code></div>
+            <div class="mq-tile m">M — <code>720px – 1099px</code></div>
+            <div class="mq-tile l">L — <code>min-width: 1100px</code></div>
+          </div>
+          <p class="test-note">ウィンドウ幅を変えると表示タイルが切り替わる。カード一覧の列数とヘッダーのバッジも連動</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<!-- position: fixed のテスト -->
+<div class="fixed-chip">
+  <span><code>position: fixed</code></span>
+  <button type="button" class="scroll-top" title="トップへ">↑</button>
+</div>
+
+<script type="module" src="todo-app.js"></script>
+</body>
+</html>

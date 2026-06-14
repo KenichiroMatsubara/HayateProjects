@@ -11,7 +11,7 @@ export interface WasmHayateFixture {
 
 const wasmPath = join(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../../../Hayate/examples/web-demo/pkg-null/hayate_adapter_web_bg.wasm',
+  '../../../../../Hayate/wasm-pkgs/pkg-null/hayate_adapter_web_bg.wasm',
 );
 
 let wasmReady = false;

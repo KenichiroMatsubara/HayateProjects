@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>POP TODO — CSS Demo v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="todo-demo-v2.css" />
+</head>
+<body>
+
+<!-- position: sticky のテスト -->
+<header class="app-header">
+  <div class="logo">
+    <span class="logo-mark"></span>
+    <span>POP TODO</span>
+  </div>
+  <div class="bp-indicator" title="現在のブレークポイント">
+    <span class="bp bp-s">S &lt;720px</span>
+    <span class="bp bp-m">M 720–1099px</span>
+    <span class="bp bp-l">L ≥1100px</span>
+  </div>
+  <span class="header-spacer"></span>
+  <div class="hue-swatches" role="group" aria-label="アクセント色">
+    <button type="button" class="hue-swatch" data-hue="330" style="--h:330" title="ピンク"      aria-pressed="true"></button>
+    <button type="button" class="hue-swatch" data-hue="260" style="--h:260" title="バイオレット" aria-pressed="false"></button>
+    <button type="button" class="hue-swatch" data-hue="215" style="--h:215" title="シアン"      aria-pressed="false"></button>
+    <button type="button" class="hue-swatch" data-hue="140" style="--h:140" title="グリーン"    aria-pressed="false"></button>
+    <button type="button" class="hue-swatch" data-hue="55"  style="--h:55"  title="オレンジ"   aria-pressed="false"></button>
+  </div>
+  <button type="button" class="theme-toggle">● ダーク</button>
+</header>
+
+<main>
+
+  <!-- ============ TODOアプリ ============ -->
+  <section class="todo-wrap">
+    <div id="todo-app"></div>
+  </section>
+
+  <!-- ============ CSSテストカード ============ -->
+  <section>
+    <div class="section-hero">
+      <div class="section-hero-text">
+        <h2 class="section-title">CSS テストカード</h2>
+        <p class="section-sub">各カードが特定のCSS機能をテストします。見た目がラベル通りなら描画OK。</p>
+      </div>
+      <div class="spec-badge">
+        <span class="spec-num">12</span>
+        <span class="spec-label">CSS<br />specs</span>
+      </div>
+    </div>
+
+    <div class="tests-grid">
+
+      <!-- 01. Flexbox -->
+      <div class="test-card" data-cc="pink">
+        <span class="card-num">01</span>
+        <div class="test-head">
+          <h3>Flexbox / Gap</h3>
+          <code>display:flex · gap · flex-wrap · justify-content · align-items</code>
+        </div>
+        <div class="test-body">
+          <div class="flex-row">
+            <span class="pill">flex</span><span class="pill">gap:10px</span><span class="pill">wrap</span><span class="pill">で</span><span class="pill">折り返す</span><span class="pill">ピル</span><span class="pill">たち</span>
+          </div>
+          <div class="flex-row between">
+            <span class="pill">start</span><span class="pill">center</span><span class="pill">end</span>
+          </div>
+          <div class="flex-row center-cross">
+            <span class="flex-box h1"></span><span class="flex-box h3"></span><span class="flex-box h2"></span><span class="flex-box h1"></span>
+            <span class="pill">align-items:center</span>
+          </div>
+          <p class="test-note">1段目: gap+折り返し / 2段目: space-between / 3段目: 交差軸センター揃え</p>
+        </div>
+      </div>
+
+      <!-- 02. CSS Grid -->
+      <div class="test-card" data-cc="violet">
+        <span class="card-num">02</span>
+        <div class="test-head">
+          <h3>CSS Grid</h3>
+          <code>grid-template-columns · grid-column/row span · auto-rows · gap</code>
+        </div>
+        <div class="test-body">
+          <div class="demo-grid">
+            <div class="g span2c">col span 2</div>
+            <div class="g">1</div>
+            <div class="g span2r">row<br />span 2</div>
+            <div class="g tint">2</div>
+            <div class="g">3</div>
+            <div class="g">4</div>
+            <div class="g spanboth">2 × 2</div>
+            <div class="g tint">5</div>
+            <div class="g">6</div>
+          </div>
+          <p class="test-note">4カラムグリッド。色付きセルが行/列をまたいでいれば span が効いている</p>
+        </div>
+      </div>
+
+      <!-- 03. Position -->
+      <div class="test-card" data-cc="cyan">
+        <span class="card-num">03</span>
+        <div class="test-head">
+          <h3>Position</h3>
+          <code>sticky · absolute · fixed · relative · overflow:auto</code>
+        </div>
+        <div class="test-body">
+          <div class="scrollbox">
+            <div class="sticky-head">position: sticky ← スクロールしても残る</div>
+            <div class="row">スクロール行 1</div>
+            <div class="row">スクロール行 2</div>
+            <div class="row">スクロール行 3</div>
+            <div class="row">スクロール行 4</div>
+            <div class="row">スクロール行 5</div>
+            <div class="row">スクロール行 6</div>
+            <div class="row">スクロール行 7</div>
+            <div class="row">スクロール行 8</div>
+          </div>
+          <div class="abs-stage">
+            <span class="abs-badge tl">top/left</span>
+            <span class="abs-badge ctr">中央 (50%/50%)</span>
+            <span class="abs-badge br">bottom/right</span>
+          </div>
+          <p class="test-note">fixed は画面右下のチップ。ページ上部のヘッダーは sticky</p>
+        </div>
+      </div>
+
+      <!-- 04. Border / Shadow / Radius -->
+      <div class="test-card" data-cc="lime">
+        <span class="card-num">04</span>
+        <div class="test-head">
+          <h3>Border / Shadow / Radius</h3>
+          <code>box-shadow · inset · border-style · border-radius</code>
+        </div>
+        <div class="test-body">
+          <div class="swatch-grid">
+            <div class="swatch"><span class="tile t-hard"></span><small>hard shadow</small></div>
+            <div class="swatch"><span class="tile t-soft"></span><small>blur shadow</small></div>
+            <div class="swatch"><span class="tile t-inset"></span><small>inset</small></div>
+            <div class="swatch"><span class="tile t-mixed"></span><small>radius mix</small></div>
+            <div class="swatch"><span class="tile t-circle"></span><small>50%</small></div>
+            <div class="swatch"><span class="tile t-dashed"></span><small>dashed</small></div>
+            <div class="swatch"><span class="tile t-double"></span><small>double</small></div>
+            <div class="swatch"><span class="tile t-thick"></span><small>6px border</small></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 05. 疑似クラス / 疑似要素 -->
+      <div class="test-card" data-cc="orange">
+        <span class="card-num">05</span>
+        <div class="test-head">
+          <h3>疑似クラス / 疑似要素</h3>
+          <code>:hover · :active · :focus · :checked · ::before/::after · :nth-child</code>
+        </div>
+        <div class="test-body">
+          <div class="pseudo-row">
+            <button type="button" class="hover-btn">ホバー / 押してみて</button>
+            <input type="text" class="focus-input" placeholder=":focus テスト" />
+            <label class="toggle-demo">
+              <input type="checkbox" checked />
+              <span class="track"></span>
+              <span>:checked</span>
+            </label>
+          </div>
+          <p class="quote">::before と ::after でカギ括弧を描画</p>
+          <ul class="stripes">
+            <li>:nth-child(odd) でストライプ</li>
+            <li>偶数行</li>
+            <li>奇数行</li>
+            <li>偶数行 (:not(:last-child) で罫線)</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 06. メディアクエリ -->
+      <div class="test-card" data-cc="pink">
+        <span class="card-num">06</span>
+        <div class="test-head">
+          <h3>メディアクエリ</h3>
+          <code>@media (min-width / max-width / prefers-color-scheme)</code>
+        </div>
+        <div class="test-body">
+          <div class="mq-tiles">
+            <div class="mq-tile s">S — <code>max-width: 719px</code></div>
+            <div class="mq-tile m">M — <code>720px – 1099px</code></div>
+            <div class="mq-tile l">L — <code>min-width: 1100px</code></div>
+          </div>
+          <p class="test-note">ウィンドウ幅を変えると表示タイルが切り替わる。カード列数とバッジも連動</p>
+        </div>
+      </div>
+
+      <!-- 07. CSS Transform -->
+      <div class="test-card" data-cc="violet">
+        <span class="card-num">07</span>
+        <div class="test-head">
+          <h3>CSS Transform</h3>
+          <code>rotate · scale · skewX · perspective + rotateY</code>
+        </div>
+        <div class="test-body">
+          <div class="transform-row">
+            <div class="tf-demo">
+              <div class="tf-box tf-rotate">rotate</div>
+              <small>rotate()</small>
+            </div>
+            <div class="tf-demo">
+              <div class="tf-box tf-scale">scale</div>
+              <small>scale()</small>
+            </div>
+            <div class="tf-demo">
+              <div class="tf-box tf-skew">skew</div>
+              <small>skewX()</small>
+            </div>
+            <div class="tf-demo">
+              <div class="tf-box tf-flip">3D</div>
+              <small>rotateY()</small>
+            </div>
+          </div>
+          <p class="test-note">ホバーで変形アニメーション。3D は perspective を適用</p>
+        </div>
+      </div>
+
+      <!-- 08. @keyframes / Animation -->
+      <div class="test-card" data-cc="cyan">
+        <span class="card-num">08</span>
+        <div class="test-head">
+          <h3>@keyframes / Animation</h3>
+          <code>animation · timing-function · iteration-count · animation-delay</code>
+        </div>
+        <div class="test-body">
+          <div class="anim-row">
+            <div class="anim-demo">
+              <div class="anim-bounce"></div>
+              <small>bounce</small>
+            </div>
+            <div class="anim-demo">
+              <div class="anim-spin"></div>
+              <small>spin</small>
+            </div>
+            <div class="anim-demo">
+              <div class="anim-pulse"></div>
+              <small>pulse</small>
+            </div>
+            <div class="anim-demo">
+              <div class="anim-progress-track"><div class="anim-progress-fill"></div></div>
+              <small>progress</small>
+            </div>
+          </div>
+          <p class="test-note">すべてループ再生中。animation-delay で位相をずらすと wave 効果も可能</p>
+        </div>
+      </div>
+
+      <!-- 09. CSS Gradient -->
+      <div class="test-card" data-cc="lime">
+        <span class="card-num">09</span>
+        <div class="test-head">
+          <h3>CSS Gradient</h3>
+          <code>linear-gradient · radial-gradient · conic-gradient · multi-layer</code>
+        </div>
+        <div class="test-body">
+          <div class="grad-grid">
+            <div class="grad-box grad-linear">linear</div>
+            <div class="grad-box grad-radial">radial</div>
+            <div class="grad-box grad-conic">conic</div>
+            <div class="grad-box grad-mesh">mesh</div>
+          </div>
+          <p class="test-note">mesh は linear + 2つの radial を重ねたマルチレイヤーグラデーション</p>
+        </div>
+      </div>
+
+      <!-- 10. CSS Filter -->
+      <div class="test-card" data-cc="orange">
+        <span class="card-num">10</span>
+        <div class="test-head">
+          <h3>CSS Filter</h3>
+          <code>blur · brightness · contrast · saturate · hue-rotate · drop-shadow</code>
+        </div>
+        <div class="test-body">
+          <div class="filter-grid">
+            <div class="fi-item"><div class="fi-box fi-blur"></div><small>blur(4px)</small></div>
+            <div class="fi-item"><div class="fi-box fi-bright"></div><small>brightness(.35)</small></div>
+            <div class="fi-item"><div class="fi-box fi-contrast"></div><small>contrast(3)</small></div>
+            <div class="fi-item"><div class="fi-box fi-saturate"></div><small>saturate(0)</small></div>
+            <div class="fi-item"><div class="fi-box fi-huerot"></div><small>hue-rotate(150deg)</small></div>
+            <div class="fi-item"><div class="fi-box fi-dropshadow"></div><small>drop-shadow</small></div>
+          </div>
+          <p class="test-note">ホバーで filter なしの状態と比較できる</p>
+        </div>
+      </div>
+
+      <!-- 11. Clip-path -->
+      <div class="test-card" data-cc="pink">
+        <span class="card-num">11</span>
+        <div class="test-head">
+          <h3>Clip-path</h3>
+          <code>polygon() · circle() · ellipse() · inset() · star polygon</code>
+        </div>
+        <div class="test-body">
+          <div class="clip-row">
+            <div class="cp-item"><div class="cp-box cp-triangle"></div><small>polygon</small></div>
+            <div class="cp-item"><div class="cp-box cp-circle"></div><small>circle()</small></div>
+            <div class="cp-item"><div class="cp-box cp-ellipse"></div><small>ellipse()</small></div>
+            <div class="cp-item"><div class="cp-box cp-inset"></div><small>inset()</small></div>
+            <div class="cp-item"><div class="cp-box cp-star"></div><small>star</small></div>
+          </div>
+          <p class="test-note">ホバーで clip-path をアニメーション。polygon 頂点数が一致すると補間できる</p>
+        </div>
+      </div>
+
+      <!-- 12. clamp() / min() / max() / calc() -->
+      <div class="test-card" data-cc="violet">
+        <span class="card-num">12</span>
+        <div class="test-head">
+          <h3>clamp() / min() / max() / calc()</h3>
+          <code>CSS 比較関数 · 数学関数</code>
+        </div>
+        <div class="test-body">
+          <div class="math-list">
+            <div class="math-row">
+              <code class="math-label">clamp(80px, 40%, 240px)</code>
+              <div class="math-bar math-clamp"></div>
+            </div>
+            <div class="math-row">
+              <code class="math-label">min(60%, 200px)</code>
+              <div class="math-bar math-min"></div>
+            </div>
+            <div class="math-row">
+              <code class="math-label">max(20%, 100px)</code>
+              <div class="math-bar math-max"></div>
+            </div>
+            <div class="math-row">
+              <code class="math-label">calc(100% - 64px)</code>
+              <div class="math-bar math-calc"></div>
+            </div>
+          </div>
+          <p class="test-note">ウィンドウ幅を変えるとバーの長さが変化する</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- position: fixed のテスト -->
+<div class="fixed-chip">
+  <span><code>position: fixed</code></span>
+  <button type="button" class="scroll-top" title="トップへ">↑</button>
+</div>
+
+<script type="module" src="todo-app.js"></script>
+</body>
+</html>

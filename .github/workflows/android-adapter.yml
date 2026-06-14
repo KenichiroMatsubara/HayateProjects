@@ -30,6 +30,10 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Run adapter unit and packaging tests
+        # Host CI uses -Dwarnings from setup-rust-toolchain; hayate-core has
+        # unrelated dead_code on the host path. Match the cross-compile seam (#194).
+        env:
+          RUSTFLAGS: ""
         run: cargo test -p hayate-adapter-android
 
   cross-compile:

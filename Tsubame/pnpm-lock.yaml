@@ -39,8 +39,8 @@ importers:
         specifier: workspace:*
         version: link:../renderer-protocol
       hayate-adapter-web:
-        specifier: file:../../../Hayate/examples/web-demo/pkg
-        version: file:../Hayate/examples/web-demo/pkg
+        specifier: file:../../../Hayate/wasm-pkgs/pkg
+        version: file:../Hayate/wasm-pkgs/pkg
     devDependencies:
       rimraf:
         specifier: ^6.0.1
@@ -571,8 +571,8 @@ packages:
     resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
     engines: {node: 18 || 20 || >=22}
 
-  hayate-adapter-web@file:../Hayate/examples/web-demo/pkg:
-    resolution: {directory: ../Hayate/examples/web-demo/pkg, type: directory}
+  hayate-adapter-web@file:../Hayate/wasm-pkgs/pkg:
+    resolution: {directory: ../Hayate/wasm-pkgs/pkg, type: directory}
 
   html-entities@2.3.3:
     resolution: {integrity: sha512-DV5Ln36z34NNTDgnz0EWGBLZENelNAtkiFA4kyNOG2tDI6Mz1uSWiq1wAKdyjnJwyDiDO7Fa2SO1CTxPXL8VxA==}
@@ -1153,7 +1153,7 @@ snapshots:
       minipass: 7.1.3
       path-scurry: 2.0.2
 
-  hayate-adapter-web@file:../Hayate/examples/web-demo/pkg: {}
+  hayate-adapter-web@file:../Hayate/wasm-pkgs/pkg: {}
 
   html-entities@2.3.3: {}
 

@@ -31,9 +31,9 @@
     "@tsubame/hayate-css-catalog": "workspace:*",
     "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
-    "hayate-adapter-web": "file:../../../Hayate/examples/web-demo/pkg",
-    "hayate-adapter-web-cpu": "file:../../../Hayate/examples/web-demo/pkg-tiny-skia",
-    "hayate-adapter-web-null": "file:../../../Hayate/examples/web-demo/pkg-null"
+    "hayate-adapter-web": "file:../../../Hayate/wasm-pkgs/pkg",
+    "hayate-adapter-web-cpu": "file:../../../Hayate/wasm-pkgs/pkg-tiny-skia",
+    "hayate-adapter-web-null": "file:../../../Hayate/wasm-pkgs/pkg-null"
   },
   "devDependencies": {
     "@tsubame/solid": "workspace:*",

@@ -150,6 +150,16 @@ mod tests {
     }
 
     #[test]
+    fn terminate_window_without_active_surface_is_noop() {
+        let mut state = SurfaceLifecycleState::new();
+        assert_eq!(
+            state.handle(SurfaceLifecycleEvent::TerminateWindow),
+            SurfaceLifecycleAction::NoOp
+        );
+        assert!(!state.surface_active());
+    }
+
+    #[test]
     fn background_foreground_cycle_recreates_surface() {
         let mut state = SurfaceLifecycleState::new();
         state.handle(SurfaceLifecycleEvent::InitWindow);

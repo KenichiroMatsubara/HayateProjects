@@ -9,9 +9,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 CRATE_DIR="$ROOT_DIR/crates/adapters/web"
-OUT_DIR="$ROOT_DIR/examples/web-demo/pkg"
-OUT_DIR_CPU="$ROOT_DIR/examples/web-demo/pkg-tiny-skia"
-OUT_DIR_NULL="$ROOT_DIR/examples/web-demo/pkg-null"
+OUT_DIR="$ROOT_DIR/wasm-pkgs/pkg"
+OUT_DIR_CPU="$ROOT_DIR/wasm-pkgs/pkg-tiny-skia"
+OUT_DIR_NULL="$ROOT_DIR/wasm-pkgs/pkg-null"
 PKG_GITIGNORE=$'*\n!package.json'
 LOCK_FILE="${TMPDIR:-/tmp}/hayate-wasm-build.lock"
 
@@ -73,7 +73,7 @@ printf '%s\n' "$PKG_GITIGNORE" > "$OUT_DIR_NULL/.gitignore"
 echo
 
 echo -e "${GREEN}${BOLD}✓ Done!${RESET}"
-echo    "  pkg         → examples/web-demo/pkg/"
-echo    "  pkg-tiny-skia → examples/web-demo/pkg-tiny-skia/"
-echo    "  pkg-null    → examples/web-demo/pkg-null/"
-echo    "  Next : npm run serve"
+echo    "  pkg         → wasm-pkgs/pkg/"
+echo    "  pkg-tiny-skia → wasm-pkgs/pkg-tiny-skia/"
+echo    "  pkg-null    → wasm-pkgs/pkg-null/"
+echo    "  consumed by Tsubame renderer-canvas (file: deps in wasm-pkgs/*)"

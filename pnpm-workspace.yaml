@@ -1,9 +1,9 @@
 packages:
   - 'Hayate'
   - 'Hayate/proto'
-  - 'Hayate/examples/web-demo/pkg'
-  - 'Hayate/examples/web-demo/pkg-tiny-skia'
-  - 'Hayate/examples/web-demo/pkg-null'
+  - 'Hayate/wasm-pkgs/pkg'
+  - 'Hayate/wasm-pkgs/pkg-tiny-skia'
+  - 'Hayate/wasm-pkgs/pkg-null'
   - 'Tsubame'
   - 'Tsubame/proto'
   - 'Tsubame/packages/*'
