@@ -12,6 +12,7 @@ import type {
 import {
   asElementId,
   assertKnownElementProperty,
+  coerceElementProperty,
   PSEUDO_STATE_PRIORITY,
   PSEUDO_STYLE_KEYS,
   type PseudoStyleKey,
@@ -196,16 +197,17 @@ export class DomRenderer implements IRenderer {
   setProperty(id: ElementId, name: string, value: unknown): void {
     assertKnownElementProperty(name);
     const target = this.node(id);
+    const op = coerceElementProperty(name, value);
 
-    switch (name) {
-      case 'value':
+    switch (op.kind) {
+      case 'text-content':
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-          target.value = typeof value === 'string' ? value : value == null ? '' : String(value);
+          target.value = op.text;
         }
         return;
       case 'placeholder':
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-          target.placeholder = typeof value === 'string' ? value : '';
+          target.placeholder = op.text;
         }
         return;
       case 'disabled':
@@ -214,12 +216,12 @@ export class DomRenderer implements IRenderer {
           target instanceof HTMLButtonElement ||
           target instanceof HTMLTextAreaElement
         ) {
-          target.disabled = Boolean(value);
+          target.disabled = op.disabled;
         }
         return;
       case 'src':
         if (target instanceof HTMLImageElement) {
-          if (typeof value === 'string' && value.length > 0) target.src = value;
+          if (op.text.length > 0) target.src = op.text;
           else target.removeAttribute('src');
         }
         return;
