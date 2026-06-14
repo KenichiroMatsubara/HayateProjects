@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- wgpu renders via Vulkan on Android (ADR-0002 / ADR-0094). -->
+    <uses-feature
+        android:name="android.hardware.vulkan.level"
+        android:version="1"
+        android:required="true" />
+
+    <application
+        android:label="Hayate Stage B"
+        android:hasCode="true">
+
+        <!-- GameActivity host; loads the Rust cdylib that android-activity's
+             game-activity backend drives via `android_main`. The native library
+             name is declared with `android.app.lib_name` (no `lib` prefix, no
+             `.so` suffix). `adjustResize` lets the soft keyboard reflow layout
+             for the stage C IME bridge. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="hayate_adapter_android" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,10 +1,11 @@
-//! Stage A render smoke test (ADR-0087): clear an empty `SceneGraph` to a
-//! GPU surface backed by the `ANativeWindow` that `android-activity` hands
-//! us. Stage B adds touch input: `MotionEvent`s are translated into
-//! `hayate-core`'s coordinate-based pointer API. IME / AccessKit (stage C)
-//! are not implemented yet.
+//! Stage B render + touch loop (ADR-0087): lower an interactive `ElementTree`
+//! (`scene_demo`) to a `SceneGraph` and present it each frame to the GPU
+//! surface backed by the `ANativeWindow` that `android-activity` hands us.
+//! `MotionEvent`s are translated into `hayate-core`'s coordinate-based pointer
+//! API, so a tap flips the demo button's `:active` color on screen. IME /
+//! AccessKit / clipboard (stage C) are not implemented yet.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
@@ -14,7 +15,13 @@ use hayate_scene_renderer_vello::{
 };
 use wgpu::util::TextureBlitter;
 
-use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
+use hayate_core::ElementId;
+
+use crate::ime_input::{apply_ime_action, translate_text_input, TextInputState, TextSpan};
+use crate::scene_demo::build_demo_tree;
+use crate::surface_lifecycle::{
+    viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
+};
 use crate::touch_input::{translate_touch, PointerInput, TouchAction};
 
 /// RGBA clear color for the stage A smoke test.
@@ -40,8 +47,12 @@ pub fn android_main(app: AndroidApp) {
 
     let mut gpu: Option<GpuSurface> = None;
     let mut lifecycle = SurfaceLifecycleState::new();
-    let empty_scene = SceneGraph::new();
-    let mut tree = ElementTree::new();
+    let mut tree = build_demo_tree();
+    let start = Instant::now();
+    // Last GameTextInput buffer we synced, and which element the soft keyboard is
+    // currently shown for (stage C IME, ADR-0094).
+    let mut ime_state = TextInputState::default();
+    let mut keyboard_shown_for: Option<ElementId> = None;
     let mut quit = false;
 
     while !quit {
@@ -71,6 +82,10 @@ pub fn android_main(app: AndroidApp) {
                     match lifecycle.handle(event) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
+                                let (w, h) =
+                                    window_dimensions(window.width(), window.height());
+                                let (vw, vh) = viewport_for_surface(w, h);
+                                tree.set_viewport(vw, vh);
                                 match pollster::block_on(init_gpu_surface(&window)) {
                                     Ok(surface) => gpu = Some(surface),
                                     Err(err) => {
@@ -86,6 +101,8 @@ pub fn android_main(app: AndroidApp) {
                             if let Some(surface) = gpu.as_mut() {
                                 surface.resize(width, height);
                             }
+                            let (vw, vh) = viewport_for_surface(width, height);
+                            tree.set_viewport(vw, vh);
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
                         SurfaceLifecycleAction::NoOp => {}
@@ -95,12 +112,66 @@ pub fn android_main(app: AndroidApp) {
         });
 
         process_touch_input(&app, &mut tree);
+        sync_ime(&app, &mut tree, &mut ime_state, &mut keyboard_shown_for);
 
         if let Some(surface) = gpu.as_mut() {
-            if let Err(err) = surface.render_clear(&empty_scene) {
+            // Drive layout + cursor blink off a monotonic clock, then present the
+            // lowered scene (mirrors `hayate-adapter-web`'s `render`).
+            let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
+            let scene = tree.render(timestamp_ms);
+            if let Err(err) = surface.render_frame(scene) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
         }
+    }
+}
+
+/// Sync GameTextInput into the focused TextInput (stage C IME, ADR-0094).
+///
+/// Shows/hides the soft keyboard as focus enters/leaves an element (focus is set
+/// by tap; core no-ops text edits on non-TextInput targets) and diffs
+/// GameTextInput's absolute buffer into core edit calls. The diff/apply logic
+/// lives in the host-testable [`crate::ime_input`]; this wrapper is thin glue
+/// over `android-activity`'s text-input API and is verified on-device (#195).
+fn sync_ime(
+    app: &AndroidApp,
+    tree: &mut ElementTree,
+    prev: &mut TextInputState,
+    keyboard_shown_for: &mut Option<ElementId>,
+) {
+    let focused = tree.focused_element();
+
+    if *keyboard_shown_for != focused {
+        match focused {
+            Some(_) => app.show_soft_input(true),
+            None => app.hide_soft_input(true),
+        }
+        *keyboard_shown_for = focused;
+        // A fresh focus starts from an empty baseline buffer.
+        *prev = TextInputState::default();
+    }
+
+    let Some(target) = focused else {
+        return;
+    };
+
+    // GameTextInput reports the full buffer plus an optional composing span
+    // (byte offsets into `text`); mirror it into the NDK-free type and diff.
+    let next = app.text_input_state(|state| TextInputState {
+        text: state.text.clone(),
+        compose_region: state
+            .compose_region
+            .map(|span| TextSpan {
+                start: span.start,
+                end: span.end,
+            }),
+    });
+
+    if next != *prev {
+        for action in translate_text_input(prev, &next) {
+            apply_ime_action(tree, target, &action);
+        }
+        *prev = next;
     }
 }
 
@@ -209,7 +280,7 @@ async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<G
 }
 
 impl GpuSurface {
-    fn render_clear(&mut self, scene: &SceneGraph) -> Result<(), String> {
+    fn render_frame(&mut self, scene: &SceneGraph) -> Result<(), String> {
         let target = VelloRenderTarget {
             device: &self.device,
             queue: &self.queue,

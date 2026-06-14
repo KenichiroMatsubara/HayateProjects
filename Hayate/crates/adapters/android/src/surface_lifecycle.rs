@@ -83,6 +83,18 @@ pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
     (width.max(1) as u32, height.max(1) as u32)
 }
 
+/// Map clamped surface dimensions (physical px) to the `ElementTree` viewport.
+///
+/// Stage B renders at content scale 1.0, so the layout/viewport space *is* the
+/// physical surface pixels — the same space `translate_touch` feeds the pointer
+/// API, which keeps hit-testing aligned with what's drawn on screen. DPI-aware
+/// content scaling is a later refinement and must rescale touch coordinates in
+/// lockstep to preserve that alignment.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn viewport_for_surface(width: u32, height: u32) -> (f32, f32) {
+    (width as f32, height as f32)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +188,11 @@ mod tests {
     fn window_dimensions_clamp_to_at_least_one_pixel() {
         assert_eq!(window_dimensions(0, -3), (1, 1));
         assert_eq!(window_dimensions(640, 480), (640, 480));
+    }
+
+    #[test]
+    fn viewport_tracks_surface_pixels_at_unit_scale() {
+        assert_eq!(viewport_for_surface(1080, 1920), (1080.0, 1920.0));
+        assert_eq!(viewport_for_surface(1, 1), (1.0, 1.0));
     }
 }
