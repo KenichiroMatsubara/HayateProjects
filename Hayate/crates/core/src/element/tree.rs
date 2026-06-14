@@ -29,7 +29,7 @@ use crate::element::style::{
 use crate::element::taffy_bridge;
 use crate::element::text;
 use crate::element::visual_invalidation::{
-    self, VisualInvalidationReach,
+    self, DirtyKind, ElementContext, VisualInvalidationReach,
 };
 use crate::node::SceneGraph;
 use crate::render::RenderImage;
@@ -632,16 +632,38 @@ impl ElementTree {
         if layout_changed {
             let style = el.layout_style.clone();
             self.layout.projection.set_style(id, style);
-        } else if text_dirty {
-            self.mark_text_content_dirty(
-                id,
-                visual_invalidation::invalidation_reach_for_props(props),
-            );
-        } else {
-            self.engine.mark_visual_dirty(
-                id,
-                visual_invalidation::invalidation_reach_for_props(props),
-            );
+            return;
+        }
+        let change = self.classify_style_props(id, props);
+        self.apply_style_change(id, change);
+    }
+
+    /// Merge the invalidation of every non-layout prop in a style change against
+    /// the element's context (the *what*). Empty/all-layout lists fall back to a
+    /// scene-only self repaint.
+    fn classify_style_props(
+        &self,
+        id: ElementId,
+        props: &[StyleProp],
+    ) -> visual_invalidation::Change {
+        let ctx = self.element_context(id);
+        props
+            .iter()
+            .filter(|p| !p.is_layout())
+            .map(|p| visual_invalidation::classify(p, ctx))
+            .reduce(visual_invalidation::Change::merge)
+            .unwrap_or_else(visual_invalidation::Change::visual_self_only)
+    }
+
+    /// Route a classified style change to its dirty set. The *what* (dirty kind
+    /// + reach) is decided by `classify`; this only resolves the *which* element
+    /// (e.g. the enclosing IFC root for a shape change).
+    fn apply_style_change(&mut self, id: ElementId, change: visual_invalidation::Change) {
+        match change.dirty_kind {
+            DirtyKind::Shape => self.mark_text_content_dirty(id, change.reach),
+            DirtyKind::Visual | DirtyKind::Structure => {
+                self.engine.mark_visual_dirty(id, change.reach)
+            }
         }
     }
 
@@ -815,10 +837,8 @@ impl ElementTree {
             }
             pseudo_state::upsert_style_prop(slot, prop);
         }
-        self.engine.mark_visual_dirty(
-            id,
-            visual_invalidation::invalidation_reach_for_props(props),
-        );
+        let reach = self.classify_style_props(id, props).reach;
+        self.engine.mark_visual_dirty(id, reach);
     }
 
     pub fn element_unset_pseudo_style(
@@ -1149,15 +1169,10 @@ impl ElementTree {
         if props.is_empty() {
             return;
         }
-        self.engine.mark_visual_dirty(
-            id,
-            visual_invalidation::invalidation_reach_for_props(props),
-        );
+        let reach = self.classify_style_props(id, props).reach;
+        self.engine.mark_visual_dirty(id, reach);
         if pseudo_state::pseudo_affects_text_shaping(props) {
-            self.mark_text_content_dirty(
-                id,
-                visual_invalidation::invalidation_reach_for_props(props),
-            );
+            self.mark_text_content_dirty(id, reach);
         }
         // The transition trigger lives at the `resolve_effective` lowering seam
         // (ADR-0093), not here: marking the element visual-dirty is enough to
@@ -1175,18 +1190,34 @@ impl ElementTree {
     }
 
     fn mark_child_attachment_dirty(&mut self, parent: ElementId, child: ElementId) {
-        if is_ifc_root(&self.elements, parent)
-            && self
-                .elements
-                .get(&child)
-                .is_some_and(|e| e.kind == ElementKind::Text)
-        {
-            self.engine
-                .mark_shape_dirty(parent, VisualInvalidationReach::Subtree);
-            self.layout.projection.mark_dirty(parent);
-        } else {
-            self.engine.mark_structure_dirty(parent);
-            self.engine.mark_structure_dirty(child);
+        let parent_ctx = self.element_context(parent);
+        let child_ctx = self.element_context(child);
+        match visual_invalidation::classify_attachment(parent_ctx, child_ctx).dirty_kind {
+            DirtyKind::Shape => {
+                self.engine
+                    .mark_shape_dirty(parent, VisualInvalidationReach::Subtree);
+                self.layout.projection.mark_dirty(parent);
+            }
+            DirtyKind::Visual | DirtyKind::Structure => {
+                self.engine.mark_structure_dirty(parent);
+                self.engine.mark_structure_dirty(child);
+            }
+        }
+    }
+
+    /// Build the topological context of an element for the invalidation
+    /// classifier. Reads the live tree; the classifier itself stays pure.
+    pub(crate) fn element_context(&self, id: ElementId) -> ElementContext {
+        let el = self.elements.get(&id);
+        let kind = el.map_or(ElementKind::View, |e| e.kind);
+        let has_text_parent = el
+            .and_then(|e| e.parent)
+            .and_then(|p| self.elements.get(&p))
+            .is_some_and(|p| p.kind == ElementKind::Text);
+        ElementContext {
+            kind,
+            is_ifc_root: is_ifc_root(&self.elements, id),
+            has_text_parent,
         }
     }
 
