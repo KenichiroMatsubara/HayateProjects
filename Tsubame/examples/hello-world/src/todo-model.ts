@@ -82,6 +82,14 @@ export function moveDown(todos: readonly Todo[], id: number): Todo[] {
   return swap(todos, todos.findIndex((todo) => todo.id === id));
 }
 
+/**
+ * 手動並べ替え（moveUp/moveDown）が意味を持つ並び順かを返す。
+ * name/prio は表示順が導出されるため、上/下ボタンは manual のときだけ有効。
+ */
+export function canReorder(sort: SortMode): boolean {
+  return sort === 'manual';
+}
+
 /** 表示フィルタを適用する（all / active=未完了 / done=完了）。 */
 export function filterTodos(todos: readonly Todo[], filter: Filter): Todo[] {
   if (filter === 'active') return todos.filter((todo) => !todo.done);
