@@ -53,6 +53,9 @@ importers:
         specifier: ^1.9.13
         version: 1.9.13
     devDependencies:
+      '@tsubame/hayate-css-catalog':
+        specifier: workspace:*
+        version: link:../../packages/hayate-css-catalog
       vite:
         specifier: ^8.0.14
         version: 8.0.14(@types/node@22.19.19)(esbuild@0.27.7)
