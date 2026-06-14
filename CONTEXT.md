@@ -117,6 +117,18 @@ _Avoid_: Tsubame Canvas Mode, 個別 element_set_* 呼び出し
 ポインタ・キーボード操作に起因する要素単位のイベント（`hover-enter` / `hover-leave` / `focus` / `blur` / `active-start` / `active-end` 等）。`:hover` / `:active` / `:focus` に応じたスタイル切替は Render Layer が解決する。
 _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover イベント購読
 
+**Selection（選択）**:
+アプリ全体で同時に一つだけ存在する有効な文字選択。anchor と focus を `(ElementId, byte offset)` で表し、document 順に正規化した連続範囲。Element Document Runtime が単独所有し、Selection Region の選択と text-input の選択は排他（新規選択で旧選択は解除）。単一キャレット（EditState の `cursor_byte_index`）は anchor=focus の縮退形。
+_Avoid_: 領域ごとに独立した複数の同時選択、cursor を selection と別概念とする理解
+
+**Selection Region（選択領域）**:
+block box の `selectable` プロパティが確立する、連続選択が広がれる subtree 境界。Flutter の SelectionArea に相当し、選択はこの境界を越えない。nested は最寄り祖先の Selection Region が有効。text-input は境界に依らず常に選択可能。
+_Avoid_: 全 text を既定で選択可能とする設計、text ごとの selectable で領域境界を持たない設計、専用 element-kind（`selectable` は typed property・ADR-0096 の `draggable` と同型）
+
+**Selection Chrome（選択 chrome）**:
+有効な選択に対して core が SceneGraph に描く視覚要素 — highlight・ドラッグ handle・フローティングツールバー（拡大鏡は将来）。OS ネイティブ widget ではなく core が一度だけ描画し、スタイルのみ Material / Cupertino へテーマ切替する。DOM 経路ではブラウザネイティブの選択 chrome に委ねる（Selection Region の意味論のみパリティ対象）。
+_Avoid_: OS ネイティブ選択 UI を Platform Adapter ごとに再実装する設計、レンダラーごとの chrome 方言、chrome の見た目までを意味論パリティの対象とする理解
+
 **Pseudo-state Style**:
 Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。複数状態が同時成立したときの正準優先順は `focus < hover < active`（後勝ち）で、これは wire コード（hover=0 / active=1 / focus=2）とは別物。優先順は spec（`proto/spec/pseudo_states.json`）が正本で、Hayate core の `resolve_visual` と Tsubame DOM Renderer のルールバンド順が共にそこから生成・参照する（Semantics Parity）。
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替、wire コード順を優先順と同一視する理解、DOM の挿入順（authoring 順）に優先順を委ねる設計
