@@ -93,6 +93,25 @@ function buildSections(p: Palette): readonly GallerySection[] {
             </view>
           ),
         },
+        {
+          title: 'boxShadow',
+          properties: ['boxShadow'],
+          note: 'elevation + inset ring — ADR-0095',
+          render: () => (
+            <view style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 6 }}>
+              <SampleBox
+                colors={p}
+                label="lift"
+                style={{ boxShadow: [{ offsetX: 0, offsetY: 6, blur: 16, spread: 0, color: p.shadow, inset: false }] }}
+              />
+              <SampleBox
+                colors={p}
+                label="inset"
+                style={{ boxShadow: [{ offsetX: 0, offsetY: 0, blur: 0, spread: 3, color: p.accent, inset: true }] }}
+              />
+            </view>
+          ),
+        },
       ],
     },
     {
@@ -686,10 +705,9 @@ function buildSections(p: Palette): readonly GallerySection[] {
 }
 
 // Future CSS candidates not yet in style_tags.json — shown as static reference.
-// `box-shadow` is promoted to a live card once ADR-0095 (#252) ships it to the
-// catalog; `cursor` already graduated to the live Interaction section.
+// `box-shadow` graduated to a live Visual card once ADR-0095 (#252) shipped it to
+// the catalog; `cursor` likewise already graduated to the live Interaction section.
 const ROADMAP: readonly (readonly [string, string])[] = [
-  ['boxShadow', 'Drop shadows and elevation — ADR-0095 (#252)'],
   ['transform', '2D/3D transforms (translate, scale, rotate)'],
   ['textAlign', 'Horizontal text alignment'],
   ['lineHeight', 'Line box height for text'],

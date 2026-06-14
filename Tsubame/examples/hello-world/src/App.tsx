@@ -198,6 +198,7 @@ export function TodoApp(props: TodoAppProps) {
             borderRadius: 18,
             borderWidth: 1,
             borderColor: colors().line,
+            boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
           }}>
             <Header colors={colors()} remaining={summary().remaining} total={summary().total} percent={summary().percent} />
             <AddForm
@@ -583,7 +584,12 @@ function TodoRow(props: {
       borderWidth: 1,
       borderColor: p.line,
       opacity: done ? 0.62 : 1,
-      ':hover': { backgroundColor: p.panel3, borderColor: p.line },
+      boxShadow: [{ offsetX: 0, offsetY: 2, blur: 6, spread: -1, color: p.shadow, inset: false }],
+      ':hover': {
+        backgroundColor: p.panel3,
+        borderColor: p.line,
+        boxShadow: [{ offsetX: 0, offsetY: 6, blur: 16, spread: -2, color: p.shadow, inset: false }],
+      },
     }}>
       <button
         style={{

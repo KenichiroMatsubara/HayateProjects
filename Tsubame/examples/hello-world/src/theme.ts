@@ -41,6 +41,8 @@ export interface Palette {
   violet: string;
   /** 明るいアクセント/塗りの上に載るテキスト色（両テーマとも near-black の ink）。 */
   black: string;
+  /** POP な浮きを表す影色（`box-shadow`・ADR-0095）。テーマで濃さを変える。 */
+  shadow: string;
 }
 
 /** テーマ非依存の基調色（アクセントを除く）。 */
@@ -65,6 +67,7 @@ const LIGHT_BASE: BasePalette = {
   blue: '#4b8ef0',
   violet: '#8b5cf6',
   black: '#14101c',
+  shadow: '#2621301f',
 };
 
 const DARK_BASE: BasePalette = {
@@ -86,6 +89,7 @@ const DARK_BASE: BasePalette = {
   blue: '#60a5fa',
   violet: '#a78bfa',
   black: '#070b14',
+  shadow: '#00000066',
 };
 
 /** 各アクセントのテーマ別 hex。明色は dark、彩度を上げた版は light で読みやすいよう分ける。 */

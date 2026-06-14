@@ -29,9 +29,10 @@ describe('CssGallery property coverage', () => {
     expect(GALLERY_ROADMAP_PROPERTIES).not.toContain('cursor');
   });
 
-  it('keeps box-shadow on the roadmap until the catalog ships it (#252)', () => {
-    expect(GALLERY_ROADMAP_PROPERTIES).toContain('boxShadow');
-    expect(catalogKeys).not.toContain('boxShadow');
+  it('promotes box-shadow to a live card now that the catalog ships it (#252)', () => {
+    expect(catalogKeys).toContain('boxShadow');
+    expect(GALLERY_LIVE_PROPERTIES).toContain('boxShadow');
+    expect(GALLERY_ROADMAP_PROPERTIES).not.toContain('boxShadow');
   });
 
   it('only lists genuinely-unimplemented properties on the roadmap', () => {
