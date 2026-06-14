@@ -10,7 +10,7 @@ ADR-0080 / ADR-0082 により、canvas の raw 入力イベント（`pointerdown
 
 この経路には native `#[test]` では到達できない部分がある：
 
-- 純粋ロジック（`to_canvas_coords` 座標変換、`coalesce_pointer_inputs` の 1px dedup、`final_anchor`）は `pointer_input.rs` の `#[cfg(test)]` で全ターゲット検証済み。
+- 純粋ロジック（`to_layout_coords` 座標変換、`coalesce_pointer_inputs` の 1px dedup、`final_anchor`）は `pointer_input.rs` の `#[cfg(test)]` で全ターゲット検証済み。
 - Core の hover/active 解除セマンティクス（`on_pointer_leave` / `on_pointer_cancel`）は `crates/core/tests/interaction.rs` の native `#[test]` で検証済み。
 - しかし **実 DOM イベント → `web-sys` リスナー → 座標変換 → `pending_pointer` → drain → Core → `poll_events()`** という自己配線そのものは、ブラウザ無しでは一度も通らない。`#[cfg(target_arch = "wasm32")]` のクロージャ登録部分が静かに壊れても native テストは緑のまま。
 

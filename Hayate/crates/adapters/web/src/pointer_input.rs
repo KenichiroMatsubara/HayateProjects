@@ -48,30 +48,23 @@ pub enum PointerInput {
     },
 }
 
-/// Transform a viewport-relative client point into canvas backing-store
-/// coordinates, mirroring the former `toCanvas` in `init.ts`. A zero-sized rect
-/// falls back to unit scale (avoids a divide-by-zero before first layout).
-pub fn to_canvas_coords(
+/// Transform a viewport-relative client point into Hayate **layout
+/// coordinates** (CSS px), the space Core hit-testing and `layout_cache` live
+/// in. The layout viewport is set from the canvas' CSS content box
+/// (`canvas_resize_metrics`: `viewport = css_size`), so a client point is mapped
+/// by subtracting the canvas' CSS origin — no `devicePixelRatio` scaling.
+///
+/// Scaling into the backing-store buffer (CSS px × dpr) here would feed Core
+/// physical-pixel coordinates and miss the hit-test on every HiDPI display
+/// (clicks landing at `dpr×` the intended position). Rendering applies the dpr
+/// scale separately via `content_scale` at the backend (`backend::mod` doc).
+pub fn to_layout_coords(
     client_x: f32,
     client_y: f32,
     rect_left: f32,
     rect_top: f32,
-    rect_width: f32,
-    rect_height: f32,
-    canvas_width: f32,
-    canvas_height: f32,
 ) -> (f32, f32) {
-    let sx = if rect_width == 0.0 {
-        1.0
-    } else {
-        canvas_width / rect_width
-    };
-    let sy = if rect_height == 0.0 {
-        1.0
-    } else {
-        canvas_height / rect_height
-    };
-    ((client_x - rect_left) * sx, (client_y - rect_top) * sy)
+    (client_x - rect_left, client_y - rect_top)
 }
 
 /// Coalesce consecutive pointer moves within 1px of the previous applied move,
@@ -239,20 +232,16 @@ fn make_up(x: f32, y: f32) -> PointerInput {
     PointerInput::Up { x, y }
 }
 
-/// Read `clientX/clientY` off a `MouseEvent` (or subclass) and convert to canvas
-/// coordinates using the canvas' live bounding rect + backing-store size.
+/// Read `clientX/clientY` off a `MouseEvent` (or subclass) and convert to Hayate
+/// layout coordinates (CSS px) using the canvas' live CSS bounding rect origin.
 #[cfg(target_arch = "wasm32")]
 fn pointer_event_to_canvas(canvas: &HtmlCanvasElement, event: &MouseEvent) -> (f32, f32) {
     let rect = canvas.get_bounding_client_rect();
-    to_canvas_coords(
+    to_layout_coords(
         event.client_x() as f32,
         event.client_y() as f32,
         rect.left() as f32,
         rect.top() as f32,
-        rect.width() as f32,
-        rect.height() as f32,
-        canvas.width() as f32,
-        canvas.height() as f32,
     )
 }
 
@@ -372,16 +361,24 @@ mod tests {
     }
 
     #[test]
-    fn to_canvas_coords_scales_client_point_into_backing_store() {
-        // 400px CSS box backed by an 800px buffer (dpr 2): client (210,110) with
-        // rect origin (10,10) maps to ((210-10)*2, (110-10)*2) = (400, 200).
-        let (x, y) = to_canvas_coords(210.0, 110.0, 10.0, 10.0, 400.0, 300.0, 800.0, 600.0);
-        assert_eq!((x, y), (400.0, 200.0));
+    fn to_layout_coords_maps_client_into_css_layout_space() {
+        // Client (210,110) on a canvas whose CSS box origin is (10,10) maps to
+        // the canvas-local CSS point (200, 100) — the same space as layout and
+        // hit-testing.
+        let (x, y) = to_layout_coords(210.0, 110.0, 10.0, 10.0);
+        assert_eq!((x, y), (200.0, 100.0));
     }
 
     #[test]
-    fn to_canvas_coords_falls_back_to_unit_scale_for_zero_sized_rect() {
-        let (x, y) = to_canvas_coords(30.0, 20.0, 0.0, 0.0, 0.0, 0.0, 800.0, 600.0);
-        assert_eq!((x, y), (30.0, 20.0));
+    fn to_layout_coords_does_not_scale_by_device_pixel_ratio() {
+        // Regression: layout/hit-test live in CSS px, while the backing store is
+        // CSS px × dpr. The pointer transform must stay translation-only —
+        // scaling by dpr (the old `canvas_width / rect_width` factor) put every
+        // click at dpr× the intended position on HiDPI displays, so hit_test
+        // missed and onClick never fired (Canvas mode, both backends, dpr ≠ 1).
+        // A client point one CSS px inside a 400-CSS-px-wide box stays at CSS 1.0,
+        // never the 2.0 a dpr-2 backing buffer would have produced.
+        let (x, _) = to_layout_coords(1.0, 0.0, 0.0, 0.0);
+        assert_eq!(x, 1.0);
     }
 }

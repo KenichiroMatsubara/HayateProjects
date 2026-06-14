@@ -3,10 +3,13 @@ name = "hayate-adapter-android"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Android Platform Adapter for Hayate (ADR-0087, stage A: render smoke test)"
+description = "Android Platform Adapter for Hayate (ADR-0087 / ADR-0094, GameActivity + Gradle)"
 repository.workspace = true
 
 [lib]
+# cdylib is loaded by GameActivity via `android.app.lib_name`; rlib lets the
+# host-testable seams (surface_lifecycle / touch_input / scene_demo) run under
+# `cargo test` on the dev machine.
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
@@ -17,24 +20,9 @@ log.workspace = true
 pollster.workspace = true
 
 [target.'cfg(target_os = "android")'.dependencies]
-android-activity = { version = "0.6", features = ["native-activity"] }
+# GameActivity backend (ADR-0094): GameTextInput surfaces the soft-keyboard
+# InputConnection to native code for the stage C IME bridge. Packaging is the
+# Gradle project under `android-app/`, not cargo-apk.
+android-activity = { version = "0.6", features = ["game-activity"] }
 android_logger = "0.14"
 ndk = "0.9"
-
-# cargo-apk packaging metadata for the stage A smoke-test app (ADR-0087).
-[package.metadata.android]
-package = "com.hayateprojects.hayate.adapter_android_demo"
-build_targets = ["aarch64-linux-android"]
-apk_name = "hayate-adapter-android"
-
-[package.metadata.android.sdk]
-min_sdk_version = 21
-target_sdk_version = 30
-
-[package.metadata.android.application]
-label = "Hayate Stage A"
-
-[[package.metadata.android.uses_feature]]
-name = "android.hardware.vulkan.level"
-required = true
-version = 1
