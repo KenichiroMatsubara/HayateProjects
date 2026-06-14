@@ -23,3 +23,4 @@ parity_golden_test!(parity_golden_ifc_inheritance, 3);
 parity_golden_test!(parity_golden_font_weight_600, 4);
 parity_golden_test!(parity_golden_font_style_italic, 5);
 parity_golden_test!(parity_golden_font_weight_700_bold, 6);
+parity_golden_test!(parity_golden_box_shadow_drop, 7);

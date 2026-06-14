@@ -2,7 +2,7 @@ use crate::color::Color;
 use crate::element::effective_visual::{
     self, child_inherited_context, InheritedVisualContext,
 };
-use crate::element::style::{BorderStyleValue, OverflowValue};
+use crate::element::style::{BorderStyleValue, OverflowValue, Shadow};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::scene_lowering::{
@@ -584,6 +584,21 @@ fn emit_element(
         effective_parent
     };
 
+    if !visual.box_shadow.is_empty() {
+        emit_box_shadows(
+            sg,
+            effective_parent,
+            x,
+            y,
+            w,
+            h,
+            visual.border_radius,
+            &visual.box_shadow,
+            visual.opacity,
+            false,
+        );
+    }
+
     emit_visual_box(
         sg,
         effective_parent,
@@ -598,6 +613,21 @@ fn emit_element(
         visual.border_style,
         visual.opacity,
     );
+
+    if !visual.box_shadow.is_empty() {
+        emit_box_shadows(
+            sg,
+            effective_parent,
+            x,
+            y,
+            w,
+            h,
+            visual.border_radius,
+            &visual.box_shadow,
+            visual.opacity,
+            true,
+        );
+    }
 
     if el.kind == ElementKind::Image {
         if let Some(img) = el.src_image.clone() {
@@ -889,6 +919,21 @@ fn walk_ephemeral(
         effective_parent
     };
 
+    if !visual.box_shadow.is_empty() {
+        emit_box_shadows(
+            sg,
+            effective_parent,
+            x,
+            y,
+            w,
+            h,
+            visual.border_radius,
+            &visual.box_shadow,
+            visual.opacity,
+            false,
+        );
+    }
+
     emit_visual_box(
         sg,
         effective_parent,
@@ -903,6 +948,21 @@ fn walk_ephemeral(
         visual.border_style,
         visual.opacity,
     );
+
+    if !visual.box_shadow.is_empty() {
+        emit_box_shadows(
+            sg,
+            effective_parent,
+            x,
+            y,
+            w,
+            h,
+            visual.border_radius,
+            &visual.box_shadow,
+            visual.opacity,
+            true,
+        );
+    }
 
     if el.kind == ElementKind::Image {
         if let Some(img) = el.src_image.clone() {
@@ -1204,4 +1264,163 @@ fn emit_fill_rect(
             children: Vec::new(),
         },
     );
+}
+
+/// Number of translucent layers used to approximate a shadow's gaussian blur
+/// (ADR-0095: "blur は許容範囲のガウス近似でよい"). Box-shadow is lowered to plain
+/// rounded-rect fills so the Vello and tiny-skia painters render it identically
+/// (semantic DOM/Canvas parity); blur ≈ overlapping translucent rounded rects.
+const SHADOW_BLUR_LAYERS: usize = 6;
+
+/// Emit the `inset == want_inset` subset of an element's box-shadow layers.
+///
+/// CSS paints the first-listed shadow on top, so we emit in reverse order (the
+/// last-listed shadow first / bottom-most). Outset shadows are emitted behind
+/// the box; inset shadows on top of the background, clipped to the border box.
+#[allow(clippy::too_many_arguments)]
+fn emit_box_shadows(
+    sg: &mut SceneGraph,
+    parent_group: Option<NodeId>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    border_radius: f32,
+    shadows: &[Shadow],
+    opacity: f32,
+    want_inset: bool,
+) {
+    let radius = border_radius.max(0.0);
+    for shadow in shadows.iter().rev() {
+        if shadow.inset != want_inset {
+            continue;
+        }
+        let color = shadow.color.with_opacity(opacity);
+        if color.a <= 0.0 {
+            continue;
+        }
+        if want_inset {
+            emit_inset_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
+        } else {
+            emit_drop_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
+        }
+    }
+}
+
+/// Outset (drop) shadow: a rounded rect grown by `spread`, shifted by the
+/// offset, and blurred by overlapping translucent rounded rects.
+#[allow(clippy::too_many_arguments)]
+fn emit_drop_shadow(
+    sg: &mut SceneGraph,
+    parent_group: Option<NodeId>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    radius: f32,
+    shadow: &Shadow,
+    color: Color,
+) {
+    let sx = x + shadow.offset_x - shadow.spread;
+    let sy = y + shadow.offset_y - shadow.spread;
+    let sw = (width + 2.0 * shadow.spread).max(0.0);
+    let sh = (height + 2.0 * shadow.spread).max(0.0);
+    let sr = (radius + shadow.spread).max(0.0);
+    if sw <= 0.0 || sh <= 0.0 {
+        return;
+    }
+
+    let blur = shadow.blur.max(0.0);
+    if blur <= 0.5 {
+        emit_fill_rect(sg, parent_group, sx, sy, sw, sh, color.to_array_f32(), sr);
+        return;
+    }
+
+    // Distribute the colour alpha across overlapping layers so the dense centre
+    // sums to ≈ the shadow's alpha while the outer edge fades to a soft halo.
+    let n = SHADOW_BLUR_LAYERS;
+    let layer = Color {
+        a: color.a / (n as f64 + 1.0),
+        ..color
+    };
+    let layer_rgba = layer.to_array_f32();
+    for i in (0..=n).rev() {
+        let grow = blur * (i as f32) / (n as f32);
+        emit_fill_rect(
+            sg,
+            parent_group,
+            sx - grow,
+            sy - grow,
+            sw + 2.0 * grow,
+            sh + 2.0 * grow,
+            layer_rgba,
+            (sr + grow).max(0.0),
+        );
+    }
+}
+
+/// Inset shadow: a darkened inner-edge band, layered from the border-box edge
+/// inward (spread + blur thick) and clipped to the border box.
+#[allow(clippy::too_many_arguments)]
+fn emit_inset_shadow(
+    sg: &mut SceneGraph,
+    parent_group: Option<NodeId>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    radius: f32,
+    shadow: &Shadow,
+    color: Color,
+) {
+    if width <= 0.0 || height <= 0.0 {
+        return;
+    }
+    let clip_id = emit(
+        sg,
+        parent_group,
+        Node {
+            kind: NodeKind::Clip {
+                x,
+                y,
+                width,
+                height,
+                corner_radii: [radius; 4],
+            },
+            children: Vec::new(),
+        },
+    );
+
+    let band = (shadow.spread + shadow.blur).max(0.5);
+    let max_band = width.min(height) * 0.5;
+    let n = SHADOW_BLUR_LAYERS;
+    let layer = Color {
+        a: color.a / n as f64,
+        ..color
+    };
+    let layer_rgba = layer.to_array_f32();
+    // Additive translucent edge bands, clipped to the (rounded) border box.
+    // Overlapping layers darken the inner perimeter and fade toward the centre,
+    // approximating an inset shadow without clearing the background (unlike a
+    // ring fill). The offset only nudges the band rectangle.
+    let bx = x + shadow.offset_x;
+    let by = y + shadow.offset_y;
+    for i in 1..=n {
+        let bw = (band * (i as f32) / (n as f32)).min(max_band);
+        if bw <= 0.0 {
+            continue;
+        }
+        // top, bottom, left, right bands
+        for (rx, ry, rw, rh) in [
+            (bx, by, width, bw),
+            (bx, by + height - bw, width, bw),
+            (bx, by + bw, bw, (height - 2.0 * bw).max(0.0)),
+            (bx + width - bw, by + bw, bw, (height - 2.0 * bw).max(0.0)),
+        ] {
+            if rw <= 0.0 || rh <= 0.0 {
+                continue;
+            }
+            emit_fill_rect(sg, Some(clip_id), rx, ry, rw, rh, layer_rgba, 0.0);
+        }
+    }
 }
