@@ -47,6 +47,16 @@ describe('classify', () => {
     expect(classify(tag)).toEqual({ type: 'zIndex' });
   });
 
+  it('derives shadow list from encodeFrom', () => {
+    const tag = sampleTag('shadow-list', [['shadows', 'shadow']], true);
+    expect(classify(tag)).toEqual({ type: 'shadowList' });
+  });
+
+  it('requires variable_length for shadow-list', () => {
+    const tag = sampleTag('shadow-list', [['shadows', 'shadow']], false);
+    expect(() => classify(tag)).toThrow(/variable_length/);
+  });
+
   it('classifies every style tag in the protocol spec', () => {
     const proto = loadProtocolSpec();
     expect(proto.style_tags.length).toBeGreaterThan(0);
@@ -62,6 +72,7 @@ describe('wireKind', () => {
     expect(wireKind({ type: 'dimension' })).toBe('dimension');
     expect(wireKind({ type: 'scalar' })).toBe('f32');
     expect(wireKind({ type: 'dimensionList' })).toBe('dimensionList');
+    expect(wireKind({ type: 'shadowList' })).toBe('shadowList');
     expect(wireKind({ type: 'fontFamily' })).toBe('fontFamily');
     expect(wireKind({ type: 'zIndex' })).toBe('zIndex');
     expect(wireKind({ type: 'enum', kind: 'display' })).toBe('display');
@@ -83,6 +94,7 @@ describe('tsType', () => {
     expect(tsType({ type: 'dimension' })).toBe('HayateDimension');
     expect(tsType({ type: 'scalar' })).toBe('number');
     expect(tsType({ type: 'dimensionList' })).toBe('HayateDimension[]');
+    expect(tsType({ type: 'shadowList' })).toBe('HayateShadow[]');
     expect(tsType({ type: 'fontFamily' })).toBe('string');
     expect(tsType({ type: 'zIndex' })).toBe('number');
     expect(tsType({ type: 'enum', kind: 'display' })).toBe('Display');
