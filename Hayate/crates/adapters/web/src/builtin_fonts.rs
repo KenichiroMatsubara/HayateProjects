@@ -71,6 +71,10 @@ mod tests {
             builtin_font_url("Lato"),
             Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lato/Lato-Regular.ttf")
         );
+        assert_eq!(
+            builtin_font_url("M PLUS Rounded 1c"),
+            Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mplusrounded1c/MPLUSRounded1c-Regular.ttf")
+        );
     }
 
     #[test]

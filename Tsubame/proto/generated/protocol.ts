@@ -318,6 +318,7 @@ export const FONT_FAMILY = {
   JetBrainsMono: 'JetBrains Mono',
   FiraCode: 'Fira Code',
   SourceCodePro: 'Source Code Pro',
+  MPlusRounded1c: 'M PLUS Rounded 1c',
 } as const;
 export type FONT_FAMILY = typeof FONT_FAMILY;
 
