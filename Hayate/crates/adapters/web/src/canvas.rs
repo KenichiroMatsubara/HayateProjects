@@ -347,7 +347,9 @@ impl HayateElementRenderer {
 
     fn apply_pointer_input(&mut self, input: PointerInput) {
         match input {
-            PointerInput::Down { x, y } => self.tree.on_pointer_down(x, y),
+            PointerInput::Down { x, y, modifiers } => {
+                self.tree.on_pointer_down_with(x, y, modifiers)
+            }
             PointerInput::Move { x, y } => {
                 let result = self.tree.on_pointer_move(x, y);
                 apply_resolved_cursor(result.resolved_cursor);
@@ -503,6 +505,13 @@ impl HayateElementRenderer {
             .focused_element()
             .map(element_id_to_f64)
             .unwrap_or(0.0)
+    }
+
+    /// Whether a document-wide text selection is active (ADR-0097, #267). The
+    /// host dispatches keyboard selection gestures (Ctrl/Cmd+A, Shift+Arrow) when
+    /// this is true even if no element is focused (read-only Selection Region).
+    pub fn has_selection(&self) -> bool {
+        self.tree.selection().is_some()
     }
 
     /// Handle a key press on the focused element (edit semantics in core — ADR-0069).

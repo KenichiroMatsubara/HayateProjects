@@ -2,7 +2,9 @@ use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pseudo_state::PseudoState;
-use crate::element::selection::{Selection, SelectionPoint};
+use crate::element::selection::{
+    self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
+};
 use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
 use crate::element::visual_invalidation::VisualInvalidationReach;
@@ -20,11 +22,18 @@ pub struct PointerMoveResult {
 impl ElementTree {
     /// Pointer down at canvas coordinates (hit-test driven).
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
+        self.on_pointer_down_with(x, y, 0);
+    }
+
+    /// Pointer down carrying keyboard modifiers (ADR-0097, #267): Shift extends
+    /// the current selection's focus instead of starting a fresh one.
+    pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
         let hit = self.hit_test(x, y);
         self.pointer_down_on_target(hit, x, y);
         // Selection drag rides on the same active-session capture (ADR-0097):
-        // a press inside a Selection Region collapses the selection to a caret.
-        self.begin_selection_at(x, y);
+        // a press inside a Selection Region collapses the selection to a caret,
+        // double/triple presses expand to word/paragraph, Shift extends focus.
+        self.begin_selection_at(x, y, modifiers);
     }
 
     /// Pointer down on an explicit target (HTML Mode).
@@ -180,6 +189,12 @@ impl ElementTree {
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
+        // Selection keyboard gestures (#267) act on the document-wide selection
+        // and are independent of element focus, so they run first and consume the
+        // key when they apply (e.g. Ctrl/Cmd+A, Shift+Arrow over a SelectionArea).
+        if self.handle_selection_key(key, modifiers) {
+            return;
+        }
         let Some(focused) = self.focused_element else {
             return;
         };
@@ -291,22 +306,151 @@ impl ElementTree {
         self.selection.as_ref()
     }
 
-    /// Begin a selection from a pointer-down: collapse to a caret at the hit
-    /// point when inside a Selection Region, otherwise clear any selection and
-    /// stay out of drag mode (a press outside `selectable` does not start one).
-    fn begin_selection_at(&mut self, x: f32, y: f32) {
-        match self.selection_point_at(x, y) {
-            Some(point) => {
+    /// Begin a selection from a pointer-down inside a Selection Region:
+    ///
+    /// - Shift+click keeps the existing anchor and moves the focus to the hit
+    ///   point (range extension), when an anchor lives in the same IFC.
+    /// - Otherwise the press count near the same spot cycles the gesture:
+    ///   1 = caret (drag-extendable), 2 = word, 3 = paragraph.
+    ///
+    /// A press outside any `selectable` subtree clears the selection and does not
+    /// start a drag.
+    fn begin_selection_at(&mut self, x: f32, y: f32, modifiers: u32) {
+        let Some(point) = self.selection_point_at(x, y) else {
+            self.selection_drag = false;
+            self.click_count = 0;
+            self.last_click_pos = None;
+            if self.selection.is_some() {
+                self.set_selection(None);
+            }
+            return;
+        };
+
+        if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
+            // Shift+click adjusts focus; stay in drag so the user can keep
+            // dragging, but do not advance the multi-click cycle.
+            self.selection_drag = true;
+            self.last_click_pos = Some((x, y));
+            self.click_count = 1;
+            return;
+        }
+
+        match self.advance_click_phase(x, y) {
+            1 => {
                 self.selection_drag = true;
                 self.set_selection(Some(Selection::caret(point)));
             }
-            None => {
+            2 => {
                 self.selection_drag = false;
-                if self.selection.is_some() {
-                    self.set_selection(None);
-                }
+                self.select_bounds_at(point, selection::word_bounds);
+            }
+            _ => {
+                self.selection_drag = false;
+                self.select_bounds_at(point, selection::line_bounds);
             }
         }
+    }
+
+    /// Increment the consecutive-press counter when the pointer-down lands near
+    /// the previous one, else restart it, and return the 1-based gesture phase
+    /// cycling caret → word → paragraph (1, 2, 3, 1, …).
+    fn advance_click_phase(&mut self, x: f32, y: f32) -> u32 {
+        const MULTI_CLICK_TOLERANCE: f32 = 4.0;
+        let near = self.last_click_pos.is_some_and(|(lx, ly)| {
+            (x - lx).abs() <= MULTI_CLICK_TOLERANCE && (y - ly).abs() <= MULTI_CLICK_TOLERANCE
+        });
+        self.click_count = if near { self.click_count + 1 } else { 1 };
+        self.last_click_pos = Some((x, y));
+        (self.click_count - 1) % 3 + 1
+    }
+
+    /// Replace the selection with the byte range that `bounds` computes around
+    /// `point` within its IFC's shaped text. Falls back to a caret when the IFC
+    /// has no shaped text.
+    fn select_bounds_at(&mut self, point: SelectionPoint, bounds: fn(&str, usize) -> (usize, usize)) {
+        let Some(text) = self.ifc_text(point.element) else {
+            self.set_selection(Some(Selection::caret(point)));
+            return;
+        };
+        let (start, end) = bounds(&text, point.offset);
+        self.set_selection(Some(Selection {
+            anchor: SelectionPoint::new(point.element, start),
+            focus: SelectionPoint::new(point.element, end),
+        }));
+    }
+
+    /// Move the current selection's focus to `point`, keeping the anchor, when an
+    /// active selection's anchor is in the same IFC. Returns whether it applied.
+    fn extend_focus_to(&mut self, point: SelectionPoint) -> bool {
+        let Some(sel) = self.selection else {
+            return false;
+        };
+        if sel.anchor.element != point.element {
+            return false;
+        }
+        self.set_selection(Some(Selection {
+            anchor: sel.anchor,
+            focus: point,
+        }));
+        true
+    }
+
+    /// Apply a keyboard selection gesture to the active selection (#267) and
+    /// report whether the key was consumed:
+    ///
+    /// - Ctrl/Cmd+A selects the whole Selection Region (the focus IFC).
+    /// - Shift+Arrow moves the focus by one character, or by a word when Alt
+    ///   (macOS) or Ctrl (Win/Linux) is also held; the anchor stays fixed, so
+    ///   repeated presses extend or contract the range.
+    fn handle_selection_key(&mut self, key: &str, modifiers: u32) -> bool {
+        let Some(sel) = self.selection else {
+            return false;
+        };
+        if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("a") {
+            return self.select_all_in(sel.focus.element);
+        }
+        if modifiers & MOD_SHIFT == 0 {
+            return false;
+        }
+        let Some(text) = self.ifc_text(sel.focus.element) else {
+            return false;
+        };
+        let by_word = modifiers & (MOD_ALT | MOD_CTRL) != 0;
+        let offset = sel.focus.offset;
+        let next = match (key, by_word) {
+            ("ArrowRight", false) => selection::next_grapheme(&text, offset),
+            ("ArrowLeft", false) => selection::prev_grapheme(&text, offset),
+            ("ArrowRight", true) => selection::next_word(&text, offset),
+            ("ArrowLeft", true) => selection::prev_word(&text, offset),
+            _ => return false,
+        };
+        self.set_selection(Some(Selection {
+            anchor: sel.anchor,
+            focus: SelectionPoint::new(sel.focus.element, next),
+        }));
+        true
+    }
+
+    /// Select the entire shaped text of `ifc` (Ctrl/Cmd+A). Returns whether a
+    /// range was set (false when the element carries no shaped text).
+    fn select_all_in(&mut self, ifc: ElementId) -> bool {
+        let Some(text) = self.ifc_text(ifc) else {
+            return false;
+        };
+        self.set_selection(Some(Selection {
+            anchor: SelectionPoint::new(ifc, 0),
+            focus: SelectionPoint::new(ifc, text.len()),
+        }));
+        true
+    }
+
+    /// The concatenated shaped text of an IFC root, for byte-boundary gestures.
+    fn ifc_text(&self, ifc: ElementId) -> Option<std::sync::Arc<str>> {
+        self.elements
+            .get(&ifc)?
+            .text_layout
+            .as_ref()
+            .map(|tl| tl.text.clone())
     }
 
     /// Resolve a canvas point to a selection endpoint `(IFC root, byte offset)`,

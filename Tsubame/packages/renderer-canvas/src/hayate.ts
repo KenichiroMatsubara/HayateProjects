@@ -55,6 +55,8 @@ export interface RawHayate {
   on_pointer_up(x: number, y: number): void;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   on_key_down(key: string, modifiers: number): void;
+  /** Whether a document-wide text selection is active (ADR-0097, #267). */
+  has_selection(): boolean;
   on_text_input(id: number, text: string): void;
   on_composition_start(id: number, text: string): void;
   on_composition_update(id: number, text: string): void;

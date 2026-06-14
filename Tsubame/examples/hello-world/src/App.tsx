@@ -389,9 +389,11 @@ function Header(props: { colors: Palette; remaining: number; total: number; perc
 }
 
 /**
- * 読み取り専用テキストのドラッグ選択デモ（ADR-0097 / issue #266）。`selectable`
- * な view が Selection Region を確立し、Canvas Mode では core が選択ハイライトを
- * SceneGraph に描画する。DOM Mode ではブラウザネイティブ選択に委ねる。
+ * 読み取り専用テキストの選択ジェスチャデモ（ADR-0097 / issue #266・#267）。
+ * `selectable` な view が Selection Region を確立し、Canvas Mode では core が選択
+ * ハイライトを SceneGraph に描画する。DOM Mode ではブラウザネイティブ選択に委ねる。
+ * ドラッグに加え、ダブルクリックで単語・トリプルクリックで段落、Shift+クリック /
+ * Shift+矢印で範囲拡張、Cmd/Ctrl+A で全選択ができる。
  */
 function SelectableNote(props: { colors: Palette }) {
   return (
@@ -406,7 +408,7 @@ function SelectableNote(props: { colors: Palette }) {
       }}
     >
       <text style={{ color: props.colors.muted, fontSize: 13 }}>
-        この段落はドラッグで選択できます。Canvas Mode では core が選択ハイライトを描画し、DOM Mode ではブラウザのネイティブ選択に委ねます。
+        この段落は選択できます。ダブルクリックで単語、トリプルクリックで段落を選び、Shift+クリックや Shift+矢印で範囲を伸縮、Cmd/Ctrl+A で全選択できます。Canvas Mode では core が選択ハイライトを描画し、DOM Mode ではブラウザのネイティブ選択に委ねます。
       </text>
     </view>
   );

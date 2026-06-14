@@ -108,6 +108,98 @@ fn selected_range_lowers_a_highlight_rect_behind_the_text_run() {
     }
 }
 
+/// The substring currently selected within `text`, for asserting gesture ranges.
+fn selected_text<'a>(tree: &ElementTree, text: ElementId, content: &'a str) -> &'a str {
+    let sel = tree.selection().expect("a selection");
+    let (start, end) = sel.range_within(text).expect("both endpoints in text");
+    &content[start..end]
+}
+
+#[test]
+fn double_click_selects_the_word_under_the_pointer() {
+    let (mut tree, _view, text) = selectable_paragraph(true);
+
+    // Two presses at the same spot inside "Hello" expand to the whole word.
+    tree.on_pointer_down(15.0, 8.0);
+    tree.on_pointer_up(15.0, 8.0);
+    tree.on_pointer_down(15.0, 8.0);
+
+    assert_eq!(selected_text(&tree, text, "Hello world"), "Hello");
+}
+
+#[test]
+fn triple_click_selects_the_whole_paragraph() {
+    let (mut tree, _view, text) = selectable_paragraph(true);
+
+    tree.on_pointer_down(15.0, 8.0);
+    tree.on_pointer_up(15.0, 8.0);
+    tree.on_pointer_down(15.0, 8.0);
+    tree.on_pointer_up(15.0, 8.0);
+    tree.on_pointer_down(15.0, 8.0);
+
+    assert_eq!(selected_text(&tree, text, "Hello world"), "Hello world");
+}
+
+const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
+const CTRL: u32 = 2; // MODIFIER_CTRL.
+
+#[test]
+fn select_all_covers_the_whole_region() {
+    let (mut tree, _view, text) = selectable_paragraph(true);
+
+    // A caret must exist in the region first (click to place it), then Ctrl+A.
+    tree.on_pointer_down(15.0, 8.0);
+    tree.on_pointer_up(15.0, 8.0);
+    tree.on_key_down("a", CTRL);
+
+    let sel = tree.selection().expect("a selection after Ctrl+A");
+    let (start, end) = sel.range_within(text).expect("both endpoints in text");
+    assert_eq!((start, end), (0, "Hello world".len()), "whole region selected");
+}
+
+#[test]
+fn shift_arrow_extends_the_focus_by_one_character() {
+    let (mut tree, _view, text) = selectable_paragraph(true);
+
+    tree.on_pointer_down(8.0, 8.0);
+    let anchor = tree.selection().unwrap().anchor;
+    let caret = tree.selection().unwrap().focus.offset;
+    tree.on_pointer_up(8.0, 8.0);
+
+    tree.on_key_down("ArrowRight", SHIFT);
+    let sel = tree.selection().expect("a selection after Shift+ArrowRight");
+    assert_eq!(sel.anchor, anchor, "anchor stays fixed");
+    assert!(sel.focus.offset > caret, "focus advances one character right");
+
+    // Shift+ArrowLeft contracts back toward (and onto) the anchor.
+    let extended = sel.focus.offset;
+    tree.on_key_down("ArrowLeft", SHIFT);
+    let sel = tree.selection().unwrap();
+    assert!(sel.focus.offset < extended, "focus retreats, contracting the range");
+    let _ = text;
+}
+
+#[test]
+fn shift_click_extends_focus_keeping_the_anchor_fixed() {
+    let (mut tree, _view, text) = selectable_paragraph(true);
+
+    // Drop a caret near the start, then Shift+click further along the line.
+    tree.on_pointer_down(8.0, 8.0);
+    let anchor = tree.selection().unwrap().anchor;
+    tree.on_pointer_up(8.0, 8.0);
+
+    tree.on_pointer_down_with(70.0, 8.0, SHIFT);
+
+    let sel = tree.selection().expect("a selection after shift+click");
+    assert_eq!(sel.anchor, anchor, "anchor must stay where the caret was");
+    assert!(
+        sel.focus.offset > sel.anchor.offset,
+        "focus should extend past the anchor toward the shift+click",
+    );
+    let (start, end) = sel.range_within(text).expect("both endpoints in text");
+    assert!(start < end, "shift+click should produce a non-empty range");
+}
+
 #[test]
 fn drag_outside_selectable_region_does_not_start_a_selection() {
     let (mut tree, _view, _text) = selectable_paragraph(false);

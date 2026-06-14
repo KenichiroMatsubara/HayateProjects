@@ -60,6 +60,9 @@ class StubHayate implements RawHayate {
   on_pointer_up(): void {}
   on_wheel(): void {}
   on_key_down(): void {}
+  has_selection(): boolean {
+    return false;
+  }
   on_text_input(): void {}
   on_composition_start(): void {}
   on_composition_update(): void {}
