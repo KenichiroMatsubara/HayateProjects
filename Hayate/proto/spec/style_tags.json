@@ -2,6 +2,7 @@
   {
     "name": "BACKGROUND_COLOR",
     "value": 0,
+    "inherit": "none",
     "encodeFrom": "css-color",
     "params": [
       {
@@ -17,6 +18,7 @@
   {
     "name": "OPACITY",
     "value": 1,
+    "inherit": "none",
     "encodeFrom": "f32",
     "params": [
       {
@@ -32,6 +34,7 @@
   {
     "name": "BORDER_RADIUS",
     "value": 2,
+    "inherit": "none",
     "encodeFrom": "f32",
     "params": [
       {
@@ -47,6 +50,7 @@
   {
     "name": "BORDER_WIDTH",
     "value": 3,
+    "inherit": "none",
     "encodeFrom": "f32",
     "params": [
       {
@@ -62,6 +66,7 @@
   {
     "name": "BORDER_COLOR",
     "value": 4,
+    "inherit": "none",
     "encodeFrom": "css-color",
     "params": [
       {
@@ -77,6 +82,7 @@
   {
     "name": "WIDTH",
     "value": 5,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -92,6 +98,7 @@
   {
     "name": "HEIGHT",
     "value": 6,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -107,6 +114,7 @@
   {
     "name": "MIN_WIDTH",
     "value": 7,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -122,6 +130,7 @@
   {
     "name": "MIN_HEIGHT",
     "value": 8,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -137,6 +146,7 @@
   {
     "name": "MAX_WIDTH",
     "value": 9,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -152,6 +162,7 @@
   {
     "name": "MAX_HEIGHT",
     "value": 10,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -167,6 +178,7 @@
   {
     "name": "DISPLAY",
     "value": 11,
+    "inherit": "none",
     "encodeFrom": "enum:display",
     "params": [
       {
@@ -182,6 +194,7 @@
   {
     "name": "FLEX_DIRECTION",
     "value": 12,
+    "inherit": "none",
     "encodeFrom": "enum:flex_direction",
     "params": [
       {
@@ -197,6 +210,7 @@
   {
     "name": "ALIGN_ITEMS",
     "value": 13,
+    "inherit": "none",
     "encodeFrom": "enum:align_items",
     "params": [
       {
@@ -212,6 +226,7 @@
   {
     "name": "JUSTIFY_CONTENT",
     "value": 14,
+    "inherit": "none",
     "encodeFrom": "enum:justify_content",
     "params": [
       {
@@ -227,6 +242,7 @@
   {
     "name": "GAP",
     "value": 15,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -242,6 +258,7 @@
   {
     "name": "PADDING",
     "value": 16,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -257,6 +274,7 @@
   {
     "name": "PADDING_TOP",
     "value": 17,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -272,6 +290,7 @@
   {
     "name": "PADDING_RIGHT",
     "value": 18,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -287,6 +306,7 @@
   {
     "name": "PADDING_BOTTOM",
     "value": 19,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -302,6 +322,7 @@
   {
     "name": "PADDING_LEFT",
     "value": 20,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -317,6 +338,7 @@
   {
     "name": "MARGIN",
     "value": 21,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -332,6 +354,7 @@
   {
     "name": "MARGIN_TOP",
     "value": 22,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -347,6 +370,7 @@
   {
     "name": "MARGIN_RIGHT",
     "value": 23,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -362,6 +386,7 @@
   {
     "name": "MARGIN_BOTTOM",
     "value": 24,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -377,6 +402,7 @@
   {
     "name": "MARGIN_LEFT",
     "value": 25,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -392,6 +418,7 @@
   {
     "name": "FONT_SIZE",
     "value": 26,
+    "inherit": "text-local",
     "encodeFrom": "f32",
     "params": [
       {
@@ -407,6 +434,7 @@
   {
     "name": "COLOR",
     "value": 27,
+    "inherit": "text-local",
     "encodeFrom": "css-color",
     "params": [
       {
@@ -422,6 +450,7 @@
   {
     "name": "Z_INDEX",
     "value": 28,
+    "inherit": "none",
     "encodeFrom": "z-index",
     "params": [
       {
@@ -437,6 +466,7 @@
   {
     "name": "FONT_FAMILY",
     "value": 29,
+    "inherit": "text-local",
     "variable_length": true,
     "encodeFrom": "font-family",
     "params": [
@@ -453,6 +483,7 @@
   {
     "name": "FLEX_GROW",
     "value": 30,
+    "inherit": "none",
     "encodeFrom": "f32",
     "params": [
       {
@@ -468,6 +499,7 @@
   {
     "name": "FONT_WEIGHT",
     "value": 31,
+    "inherit": "text-local",
     "encodeFrom": "f32",
     "params": [
       {
@@ -483,6 +515,7 @@
   {
     "name": "FONT_STYLE",
     "value": 32,
+    "inherit": "text-local",
     "encodeFrom": "enum:font_style",
     "params": [
       {
@@ -498,6 +531,7 @@
   {
     "name": "TEXT_DECORATION",
     "value": 33,
+    "inherit": "text-local",
     "encodeFrom": "enum:text_decoration",
     "params": [
       {
@@ -513,6 +547,7 @@
   {
     "name": "DEFAULT_COLOR",
     "value": 34,
+    "inherit": "ambient",
     "encodeFrom": "css-color",
     "params": [
       {
@@ -528,6 +563,7 @@
   {
     "name": "DEFAULT_FONT_FAMILY",
     "value": 35,
+    "inherit": "ambient",
     "variable_length": true,
     "encodeFrom": "font-family",
     "params": [
@@ -544,6 +580,7 @@
   {
     "name": "DEFAULT_FONT_SIZE",
     "value": 36,
+    "inherit": "ambient",
     "encodeFrom": "f32",
     "params": [
       {
@@ -559,6 +596,7 @@
   {
     "name": "DEFAULT_FONT_WEIGHT",
     "value": 37,
+    "inherit": "ambient",
     "encodeFrom": "f32",
     "params": [
       {
@@ -574,6 +612,7 @@
   {
     "name": "GRID_TEMPLATE_COLUMNS",
     "value": 38,
+    "inherit": "none",
     "variable_length": true,
     "encodeFrom": "dimension-list",
     "params": [
@@ -590,6 +629,7 @@
   {
     "name": "GRID_TEMPLATE_ROWS",
     "value": 39,
+    "inherit": "none",
     "variable_length": true,
     "encodeFrom": "dimension-list",
     "params": [
@@ -606,6 +646,7 @@
   {
     "name": "FLEX_SHRINK",
     "value": 40,
+    "inherit": "none",
     "encodeFrom": "f32",
     "params": [
       {
@@ -621,6 +662,7 @@
   {
     "name": "FLEX_BASIS",
     "value": 41,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -636,6 +678,7 @@
   {
     "name": "ALIGN_SELF",
     "value": 42,
+    "inherit": "none",
     "encodeFrom": "enum:align_self",
     "params": [
       {
@@ -651,6 +694,7 @@
   {
     "name": "ALIGN_CONTENT",
     "value": 43,
+    "inherit": "none",
     "encodeFrom": "enum:align_content",
     "params": [
       {
@@ -666,6 +710,7 @@
   {
     "name": "FLEX_WRAP",
     "value": 44,
+    "inherit": "none",
     "encodeFrom": "enum:flex_wrap",
     "params": [
       {
@@ -681,6 +726,7 @@
   {
     "name": "BORDER_STYLE",
     "value": 45,
+    "inherit": "none",
     "encodeFrom": "enum:border_style",
     "params": [
       {
@@ -696,6 +742,7 @@
   {
     "name": "CURSOR",
     "value": 46,
+    "inherit": "none",
     "encodeFrom": "enum:cursor",
     "params": [
       {
@@ -711,6 +758,7 @@
   {
     "name": "POSITION",
     "value": 47,
+    "inherit": "none",
     "encodeFrom": "enum:position",
     "params": [
       {
@@ -726,6 +774,7 @@
   {
     "name": "TOP",
     "value": 48,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -741,6 +790,7 @@
   {
     "name": "LEFT",
     "value": 49,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -756,6 +806,7 @@
   {
     "name": "RIGHT",
     "value": 50,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -771,6 +822,7 @@
   {
     "name": "BOTTOM",
     "value": 51,
+    "inherit": "none",
     "encodeFrom": "dimension",
     "params": [
       {
@@ -786,6 +838,7 @@
   {
     "name": "OVERFLOW",
     "value": 52,
+    "inherit": "none",
     "encodeFrom": "enum:overflow",
     "params": [
       {
@@ -801,6 +854,7 @@
   {
     "name": "MAX_LINES",
     "value": 53,
+    "inherit": "none",
     "encodeFrom": "u32",
     "params": [
       {
@@ -833,6 +887,7 @@
   {
     "name": "TEXT_OVERFLOW",
     "value": 54,
+    "inherit": "none",
     "encodeFrom": "enum:text_overflow",
     "params": [
       {
@@ -848,6 +903,7 @@
   {
     "name": "TRANSITION_DURATION",
     "value": 55,
+    "inherit": "none",
     "encodeFrom": "f32",
     "params": [
       {
@@ -863,6 +919,7 @@
   {
     "name": "TRANSITION_TIMING",
     "value": 56,
+    "inherit": "none",
     "encodeFrom": "enum:transition_timing",
     "params": [
       {

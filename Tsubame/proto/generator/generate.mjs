@@ -8,6 +8,7 @@ import { writeIndex } from './gen-index.mjs';
 import { generateStyleTypes } from './gen-style-types.mjs';
 import { generateEventKind } from './gen-event-kind.mjs';
 import { generatePseudoState } from './gen-pseudo-state.mjs';
+import { generateStyleChannel } from './gen-style-channel.mjs';
 
 generateWire();
 generateCatalog();
@@ -17,5 +18,6 @@ writeIndex();
 generateStyleTypes();
 generateEventKind();
 generatePseudoState();
+generateStyleChannel();
 console.log('Generated Tsubame/proto/generated/*');
 console.log('Generated Tsubame/packages/renderer-protocol/src/generated/*');

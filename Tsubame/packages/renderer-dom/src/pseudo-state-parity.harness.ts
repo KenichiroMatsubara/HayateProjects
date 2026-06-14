@@ -1,4 +1,4 @@
-import type { StylePatch } from '@tsubame/renderer-protocol';
+import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
 import { PSEUDO_STYLE_KEYS_BY_PRIORITY } from '@tsubame/renderer-protocol';
 import type { PseudoStyleKey } from '@tsubame/renderer-protocol';
 import {
@@ -45,7 +45,7 @@ function interactionActive(key: PseudoStyleKey, interaction: ParityInteraction):
 
 /** Merge active pseudo patches in priority order, then run the declaration emitter. */
 export function resolvePseudoDeclarations(
-  el: HTMLElement,
+  kind: ElementKind,
   pseudo: Partial<Record<PseudoStyleKey, StylePatch>>,
   interaction: ParityInteraction,
 ): StylePatchDeclaration[] {
@@ -56,7 +56,7 @@ export function resolvePseudoDeclarations(
     const patch = pseudo[key];
     if (patch === undefined) continue;
 
-    for (const decl of declarationsFromStylePatch(el, patch, { onUnknownKey: 'skip' })) {
+    for (const decl of declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' })) {
       byProperty.set(decl.cssProperty, decl);
     }
   }
@@ -80,9 +80,4 @@ export function expectedPropertyMap(
     map.set(prop.property, prop.value);
   }
   return map;
-}
-
-export function createParityElement(document: Document, elementKind: 'view' | 'text'): HTMLElement {
-  const tag = elementKind === 'text' ? 'span' : 'div';
-  return document.createElement(tag);
 }

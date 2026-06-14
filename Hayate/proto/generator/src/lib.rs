@@ -72,6 +72,8 @@ struct Entry {
     name: String,
     value: u32,
     variable_length: bool,
+    /// Style Channel: `text-local` / `ambient` / `none` (style_tags only).
+    inherit: Option<String>,
     params: Vec<Param>,
     #[allow(dead_code)]
     encode_from: Option<String>,
@@ -110,6 +112,8 @@ struct Param {
 struct SimpleEntry {
     name: String,
     value: u32,
+    /// Text-Local Carrier: carries channel-1 styles as CSS (element_kinds only).
+    carries_text_local: bool,
 }
 
 #[derive(Default)]
@@ -137,6 +141,8 @@ struct ParamJson {
 struct EntryJson {
     name: String,
     value: u32,
+    #[serde(default)]
+    inherit: Option<String>,
     #[serde(default)]
     variable_length: bool,
     #[serde(default)]
@@ -201,6 +207,8 @@ struct EnumJson {
 struct SimpleJson {
     name: String,
     value: u32,
+    #[serde(default, rename = "carriesTextLocal")]
+    carries_text_local: bool,
 }
 
 #[derive(Deserialize)]
@@ -296,6 +304,7 @@ fn entries_from_json(entries: Vec<EntryJson>) -> Vec<Entry> {
             name: e.name,
             value: e.value,
             variable_length: e.variable_length,
+            inherit: e.inherit,
             params: e
                 .params
                 .into_iter()
@@ -335,6 +344,7 @@ fn simple_from_json(entries: Vec<SimpleJson>) -> Vec<SimpleEntry> {
         .map(|e| SimpleEntry {
             name: e.name,
             value: e.value,
+            carries_text_local: e.carries_text_local,
         })
         .collect()
 }
@@ -914,6 +924,46 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
     out.push_str("        style.set_property(&property, &value)?;\n");
     out.push_str("    }\n");
     out.push_str("    Ok(())\n");
+    out.push_str("}\n\n");
+
+    // ── Style Channel predicates (CONTEXT.md / ADR-0065 / ADR-0002) ──────────
+    out.push_str(
+        "// ── Style Channel predicates (generated) ───────────────────────────────\n\n",
+    );
+    let text_local: Vec<String> = proto
+        .style_tags
+        .iter()
+        .filter(|t| t.inherit.as_deref() == Some("text-local"))
+        .map(|t| format!("StyleProp::{}(..)", to_pascal(&t.name)))
+        .collect();
+    out.push_str("/// Whether `prop` is a channel-1 text-local style (Style Channel).\n");
+    out.push_str("pub fn is_text_local(prop: &StyleProp) -> bool {\n");
+    if text_local.is_empty() {
+        out.push_str("    let _ = prop;\n    false\n");
+    } else {
+        out.push_str("    matches!(\n        prop,\n        ");
+        out.push_str(&text_local.join("\n            | "));
+        out.push_str("\n    )\n");
+    }
+    out.push_str("}\n\n");
+
+    let carriers: Vec<String> = proto
+        .element_kinds
+        .iter()
+        .filter(|k| k.carries_text_local)
+        .map(|k| format!("hayate_core::ElementKind::{}", to_pascal(&k.name)))
+        .collect();
+    out.push_str(
+        "/// Whether `kind` carries channel-1 text-local styles as CSS (Text-Local Carrier).\n",
+    );
+    out.push_str("pub fn carries_text_local(kind: hayate_core::ElementKind) -> bool {\n");
+    if carriers.is_empty() {
+        out.push_str("    let _ = kind;\n    false\n");
+    } else {
+        out.push_str("    matches!(\n        kind,\n        ");
+        out.push_str(&carriers.join("\n            | "));
+        out.push_str("\n    )\n");
+    }
     out.push_str("}\n");
 
     out

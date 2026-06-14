@@ -1,11 +1,16 @@
 //! HTML Mode renderer (`HayateElementHtmlRenderer`) and the `HtmlNode`
-//! parallel tree (ADR-0029: browser CSS layout). See ADR-0077.
+//! DOM-materialization side-table (ADR-0029: browser CSS layout). See ADR-0077.
+//!
+//! The `ElementTree` owns the element structure (ADR-0057); the DOM is the
+//! structure of record for rendering. `HtmlNode` holds only what materialising
+//! an element into the DOM needs (its DOM handle and pending text/src), and
+//! re-parent / remove read structure from the DOM rather than a second tree.
 
 use std::collections::HashMap;
 
 use hayate_core::{DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp};
 use wasm_bindgen::prelude::*;
-use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, Node};
+use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, Node, NodeList};
 
 use crate::generated::encode_deliveries;
 use crate::pseudo_style_dom::{pseudo_patch_rule_body, pseudo_state_css_priority, pseudo_state_css_suffix};
@@ -95,14 +100,14 @@ enum Command {
     },
 }
 
+/// Per-element DOM-materialization record. Holds no structure: parent/child
+/// edges live in the `ElementTree` (events/scroll) and the DOM (rendering).
 struct HtmlNode {
     kind: ElementKind,
     /// `Some` once the deferred `HtmlCreate` has been flushed in `render()`.
     /// Operations queued before the first flush observe the slotmap entry but
     /// no DOM element yet (ADR-0030).
     dom: Option<Element>,
-    parent: Option<ElementId>,
-    children: Vec<ElementId>,
     text: Option<String>,
     src: Option<String>,
 }
@@ -110,9 +115,10 @@ struct HtmlNode {
 #[wasm_bindgen]
 pub struct HayateElementHtmlRenderer {
     container: HtmlElement,
-    /// Element tree for document runtime (listeners, bubble, scroll offset).
-    /// HTML Mode does not run Taffy layout; this tree mirrors structure only.
+    /// Sole owner of the element structure (parent/child, listeners, bubble,
+    /// scroll offset). HTML Mode does not run Taffy layout.
     tree: ElementTree,
+    /// DOM-materialization side-table keyed by element id (no structure).
     nodes: HashMap<ElementId, HtmlNode>,
     root: Option<ElementId>,
     /// Container CSS background colour. HTML Mode delegates rendering to the
@@ -177,8 +183,6 @@ impl HayateElementHtmlRenderer {
             HtmlNode {
                 kind: k,
                 dom: None,
-                parent: None,
-                children: Vec::new(),
                 text: None,
                 src: None,
             },
@@ -577,19 +581,6 @@ impl HayateElementHtmlRenderer {
 }
 
 impl HayateElementHtmlRenderer {
-    fn detach_from_current_parent(&mut self, child: ElementId) {
-        let parent = match self.nodes.get(&child).and_then(|c| c.parent) {
-            Some(p) => p,
-            None => return,
-        };
-        if let Some(p) = self.nodes.get_mut(&parent) {
-            p.children.retain(|&c| c != child);
-        }
-        if let Some(c) = self.nodes.get_mut(&child) {
-            c.parent = None;
-        }
-    }
-
     /// Drain the pending command queue and apply each mutation to the DOM and
     /// slotmap. Called from `render()` (the sole flush boundary per ADR-0030).
     fn flush_pending(&mut self) -> Result<(), JsValue> {
@@ -892,17 +883,11 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&pid) || !self.nodes.contains_key(&cid) {
             return;
         }
-        self.detach_from_current_parent(cid);
+        // `append_child` moves the node, detaching it from any current DOM parent.
         let parent_dom = self.nodes[&pid].dom.clone();
         let child_dom = self.nodes[&cid].dom.clone();
         if let (Some(p), Some(c)) = (parent_dom, child_dom) {
             let _ = p.append_child(c.as_ref());
-        }
-        if let Some(p) = self.nodes.get_mut(&pid) {
-            p.children.push(cid);
-        }
-        if let Some(c) = self.nodes.get_mut(&cid) {
-            c.parent = Some(pid);
         }
     }
 
@@ -913,27 +898,23 @@ impl HayateElementHtmlRenderer {
         {
             return;
         }
-        self.detach_from_current_parent(cid);
-        let index = match self.nodes[&pid].children.iter().position(|&c| c == bid) {
-            Some(i) => i,
-            None => {
-                self.flush_append_child(pid, cid);
-                return;
-            }
-        };
         let parent_dom = self.nodes[&pid].dom.clone();
         let child_dom = self.nodes[&cid].dom.clone();
         let before_dom = self.nodes[&bid].dom.clone();
-        if let (Some(p), Some(c), Some(b)) = (parent_dom, child_dom, before_dom) {
+        let (Some(p), Some(c), Some(b)) = (parent_dom, child_dom, before_dom) else {
+            return;
+        };
+        // `before` must be a child of `parent`; otherwise fall back to append
+        // (matches the prior structure-mirror guard).
+        let before_is_child = b
+            .parent_node()
+            .is_some_and(|pn| pn.is_same_node(Some(p.as_ref())));
+        if before_is_child {
             let _ = p
                 .unchecked_ref::<Node>()
                 .insert_before(c.as_ref(), Some(b.as_ref()));
-        }
-        if let Some(p) = self.nodes.get_mut(&pid) {
-            p.children.insert(index, cid);
-        }
-        if let Some(c) = self.nodes.get_mut(&cid) {
-            c.parent = Some(pid);
+        } else {
+            let _ = p.append_child(c.as_ref());
         }
     }
 
@@ -942,20 +923,17 @@ impl HayateElementHtmlRenderer {
             return;
         }
         let _ = self.remove_all_pseudo_rules_for(target);
-        self.detach_from_current_parent(target);
-        // DOM removeChild cascades to descendants; we only need to drop the
-        // top-level DOM node from its parent (or the container if it was root).
+        // The DOM subtree is the structure of record (ADR-0029): collect the
+        // element ids to drop before detaching, then `remove_child` cascades.
+        let mut subtree = vec![target];
         if let Some(top_dom) = self.nodes[&target].dom.clone() {
+            subtree.extend(descendant_element_ids(&top_dom));
             if let Some(parent_dom) = top_dom.parent_node() {
                 let _ = parent_dom.remove_child(top_dom.as_ref());
             }
         }
-        // Drop the slotmap entries for the subtree.
-        let mut stack = vec![target];
-        while let Some(node) = stack.pop() {
-            if let Some(n) = self.nodes.remove(&node) {
-                stack.extend(n.children.iter().copied());
-            }
+        for id in subtree {
+            self.nodes.remove(&id);
         }
         if self.root == Some(target) {
             self.root = None;
@@ -975,13 +953,34 @@ impl HayateElementHtmlRenderer {
                 }
             }
         }
-        // Lift the new root out of any prior parent and mount it on the container.
-        self.detach_from_current_parent(new_root);
+        // `append_child` lifts the new root out of any prior parent and mounts
+        // it on the container.
         if let Some(dom) = self.nodes[&new_root].dom.clone() {
             let _ = self.container.append_child(dom.as_ref());
         }
         self.root = Some(new_root);
     }
+}
+
+/// Element ids of `top`'s descendants carrying `data-element-id`. In HTML Mode
+/// the DOM subtree is the structure of record (ADR-0029), so removal reads the
+/// subtree from the DOM rather than a second tree.
+fn descendant_element_ids(top: &Element) -> Vec<ElementId> {
+    let mut ids = Vec::new();
+    let list: NodeList = match top.query_selector_all("[data-element-id]") {
+        Ok(list) => list,
+        Err(_) => return ids,
+    };
+    for i in 0..list.length() {
+        if let Some(el) = list.item(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+            if let Some(raw) = el.get_attribute("data-element-id") {
+                if let Ok(v) = raw.parse::<u64>() {
+                    ids.push(ElementId::from_u64(v));
+                }
+            }
+        }
+    }
+    ids
 }
 
 fn ensure_pseudo_stylesheet() -> Result<HtmlStyleElement, JsValue> {
