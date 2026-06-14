@@ -1,8 +1,18 @@
-import { createMemo, createSignal } from 'solid-js';
+import { createEffect, createMemo, createSignal } from 'solid-js';
 import type { HayateCssStyle } from '@tsubame/renderer-protocol';
 import { CssGallery } from './CssGallery';
 import type { DetectModeResult } from './detect-mode';
-import { COLORS, inputStyle } from './theme';
+import {
+  ACCENT_KEYS,
+  accentColor,
+  inputStyle,
+  loadTheme,
+  palette,
+  saveTheme,
+  type AccentKey,
+  type Palette,
+  type Theme,
+} from './theme';
 import {
   add,
   clearDone,
@@ -23,11 +33,11 @@ export interface TodoAppProps {
   detected: DetectModeResult;
 }
 
-const PRIORITY_TONE: Record<Priority, string> = {
-  3: COLORS.danger,
-  2: COLORS.accent2,
-  1: COLORS.blue,
-};
+function priorityTone(p: Palette, prio: Priority): string {
+  if (prio === 3) return p.danger;
+  if (prio === 2) return p.accent2;
+  return p.blue;
+}
 
 const PRIORITY_LABEL: Record<Priority, string> = {
   3: '高',
@@ -71,6 +81,15 @@ export function TodoApp(props: TodoAppProps) {
   const [draft, setDraft] = createSignal('');
   let nextId = 1000;
 
+  // テーマ・アクセントは localStorage で永続化（#247 の方針）。既定はライト。
+  const initialPrefs = loadTheme(window.localStorage);
+  const [theme, setTheme] = createSignal<Theme>(initialPrefs.theme);
+  const [accent, setAccent] = createSignal<AccentKey>(initialPrefs.accent);
+  const colors = createMemo(() => palette(theme(), accent()));
+  createEffect(() => saveTheme(window.localStorage, { theme: theme(), accent: accent() }));
+
+  const toggleTheme = () => setTheme((current) => (current === 'dark' ? 'light' : 'dark'));
+
   const visible = createMemo(() => visibleTodos(todos(), filter(), sort()));
   const summary = createMemo(() => completion(todos()));
 
@@ -91,15 +110,24 @@ export function TodoApp(props: TodoAppProps) {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: COLORS.bg,
-      defaultColor: COLORS.text,
+      backgroundColor: colors().bg,
+      defaultColor: colors().text,
       defaultFontSize: 14,
       defaultFontFamily: 'Inter, Segoe UI, system-ui, sans-serif',
     }}>
-      <AppBar page={page()} setPage={setPage} detected={props.detected} />
+      <AppBar
+        page={page()}
+        setPage={setPage}
+        detected={props.detected}
+        colors={colors()}
+        theme={theme()}
+        accent={accent()}
+        onToggleTheme={toggleTheme}
+        onAccent={setAccent}
+      />
 
       {page() === 'gallery'
-        ? <CssGallery />
+        ? <CssGallery colors={colors()} />
         : <scroll-view style={{
           flexGrow: 1,
           width: '100%',
@@ -109,7 +137,7 @@ export function TodoApp(props: TodoAppProps) {
           alignItems: 'center',
           paddingTop: 28,
           paddingBottom: 28,
-          backgroundColor: COLORS.bg,
+          backgroundColor: colors().bg,
         }}>
           <view style={{
             width: 620,
@@ -118,40 +146,51 @@ export function TodoApp(props: TodoAppProps) {
             flexDirection: 'column',
             gap: 16,
             padding: 22,
-            backgroundColor: COLORS.panel,
+            backgroundColor: colors().panel,
             borderRadius: 18,
             borderWidth: 1,
-            borderColor: COLORS.line,
+            borderColor: colors().line,
           }}>
-            <Header remaining={summary().remaining} total={summary().total} percent={summary().percent} />
+            <Header colors={colors()} remaining={summary().remaining} total={summary().total} percent={summary().percent} />
             <AddForm
+              colors={colors()}
               draft={draft()}
               prio={draftPrio()}
               onInput={setDraft}
               onPrio={setDraftPrio}
               onAdd={addTask}
             />
-            <Toolbar filter={filter()} sort={sort()} onFilter={setFilter} onSort={setSort} />
+            <Toolbar colors={colors()} filter={filter()} sort={sort()} onFilter={setFilter} onSort={setSort} />
             <view style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {visible().length === 0
-                ? <EmptyState />
+                ? <EmptyState colors={colors()} />
                 : visible().map((todo) => (
                   <TodoRow
+                    colors={colors()}
                     todo={todo}
                     onToggle={() => toggle(todo.id)}
                     onRemove={() => removeTask(todo.id)}
                   />
                 ))}
             </view>
-            <view style={{ height: 1, backgroundColor: COLORS.line }} />
-            <Footer percent={summary().percent} onClearDone={clearCompleted} />
+            <view style={{ height: 1, backgroundColor: colors().line }} />
+            <Footer colors={colors()} percent={summary().percent} onClearDone={clearCompleted} />
           </view>
         </scroll-view>}
     </view>
   );
 }
 
-function AppBar(props: { page: Page; setPage: (page: Page) => void; detected: DetectModeResult }) {
+function AppBar(props: {
+  page: Page;
+  setPage: (page: Page) => void;
+  detected: DetectModeResult;
+  colors: Palette;
+  theme: Theme;
+  accent: AccentKey;
+  onToggleTheme: () => void;
+  onAccent: (accent: AccentKey) => void;
+}) {
   const tab = (active: boolean): HayateCssStyle => ({
     height: 34,
     paddingLeft: 16,
@@ -159,17 +198,30 @@ function AppBar(props: { page: Page; setPage: (page: Page) => void; detected: De
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: active ? COLORS.accent : COLORS.panel,
-    defaultColor: active ? COLORS.black : COLORS.text,
+    backgroundColor: active ? props.colors.accent : props.colors.panel,
+    defaultColor: active ? props.colors.black : props.colors.text,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: active ? COLORS.accent : COLORS.line,
+    borderColor: active ? props.colors.accent : props.colors.line,
     defaultFontSize: 13,
     ':hover': {
-      backgroundColor: active ? COLORS.accent : COLORS.panel3,
-      borderColor: active ? COLORS.accent : COLORS.line,
+      backgroundColor: active ? props.colors.accent : props.colors.panel3,
+      borderColor: active ? props.colors.accent : props.colors.line,
     },
   });
+
+  const swatch = (key: AccentKey): HayateCssStyle => {
+    const selected = props.accent === key;
+    return {
+      width: 22,
+      height: 22,
+      backgroundColor: accentColor(props.theme, key),
+      borderRadius: 999,
+      borderWidth: selected ? 3 : 1,
+      borderColor: selected ? props.colors.ink : props.colors.line,
+      ':hover': { borderColor: props.colors.ink },
+    };
+  };
 
   return (
     <view style={{
@@ -178,9 +230,9 @@ function AppBar(props: { page: Page; setPage: (page: Page) => void; detected: De
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: COLORS.rail,
+      backgroundColor: props.colors.rail,
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: props.colors.line,
     }}>
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {SpX(24)}
@@ -190,37 +242,64 @@ function AppBar(props: { page: Page; setPage: (page: Page) => void; detected: De
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: COLORS.accent,
+          backgroundColor: props.colors.accent,
           borderRadius: 12,
         }}>
-          <text style={{ fontSize: 18, color: COLORS.black }}>TS</text>
+          <text style={{ fontSize: 18, color: props.colors.black }}>TS</text>
         </view>
         <view style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <text style={{ fontSize: 20, color: COLORS.ink }}>Tsubame Task Studio</text>
-          <text style={{ fontSize: 12, color: COLORS.muted }}>POP TODO + Hayate CSS gallery</text>
+          <text style={{ fontSize: 20, color: props.colors.ink }}>Tsubame Task Studio</text>
+          <text style={{ fontSize: 12, color: props.colors.muted }}>POP TODO + Hayate CSS gallery</text>
         </view>
       </view>
 
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <button style={tab(props.page === 'tasks')} onClick={() => props.setPage('tasks')}>Tasks</button>
         <button style={tab(props.page === 'gallery')} onClick={() => props.setPage('gallery')}>CSS Gallery</button>
-        <text style={{ color: COLORS.quiet, fontSize: 11 }}>renderer</text>
+
+        <view style={{ width: 1, height: 22, backgroundColor: props.colors.line }} />
+        <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {ACCENT_KEYS.map((key) => (
+            <button style={swatch(key)} onClick={() => props.onAccent(key)}>{' '}</button>
+          ))}
+        </view>
+        <button
+          style={{
+            width: 34,
+            height: 34,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: props.colors.panel,
+            defaultColor: props.colors.text,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: props.colors.line,
+            defaultFontSize: 15,
+            ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.line },
+          }}
+          onClick={props.onToggleTheme}
+        >
+          {props.theme === 'dark' ? '☀' : '🌙'}
+        </button>
+
+        <text style={{ color: props.colors.quiet, fontSize: 11 }}>renderer</text>
         <view style={{
           height: 28,
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: COLORS.panel,
+          backgroundColor: props.colors.panel,
           borderRadius: 10,
           borderWidth: 1,
-          borderColor: COLORS.line,
+          borderColor: props.colors.line,
         }}>
           {SpX(12)}
-          <text style={{ color: COLORS.accent, fontSize: 13 }}>{rendererBadge(props.detected)}</text>
+          <text style={{ color: props.colors.accent, fontSize: 13 }}>{rendererBadge(props.detected)}</text>
           {SpX(10)}
-          <view style={{ width: 1, height: 16, backgroundColor: COLORS.line }} />
+          <view style={{ width: 1, height: 16, backgroundColor: props.colors.line }} />
           {SpX(10)}
-          <text style={{ color: COLORS.muted, fontSize: 12 }}>
+          <text style={{ color: props.colors.muted, fontSize: 12 }}>
             {props.detected.source === 'query' ? props.detected.renderer : 'auto'}
           </text>
           {SpX(12)}
@@ -231,7 +310,7 @@ function AppBar(props: { page: Page; setPage: (page: Page) => void; detected: De
   );
 }
 
-function Header(props: { remaining: number; total: number; percent: number }) {
+function Header(props: { colors: Palette; remaining: number; total: number; percent: number }) {
   return (
     <view style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <view style={{
@@ -240,17 +319,17 @@ function Header(props: { remaining: number; total: number; percent: number }) {
         alignItems: 'center',
         justifyContent: 'space-between',
       }}>
-        <text style={{ color: COLORS.ink, fontSize: 24 }}>きょうのタスク</text>
-        <text style={{ color: COLORS.muted, fontSize: 13 }}>
+        <text style={{ color: props.colors.ink, fontSize: 24 }}>きょうのタスク</text>
+        <text style={{ color: props.colors.muted, fontSize: 13 }}>
           {`残り ${props.remaining} 件 / 全 ${props.total} 件`}
         </text>
       </view>
-      <ProgressBar percent={props.percent} />
+      <ProgressBar colors={props.colors} percent={props.percent} />
     </view>
   );
 }
 
-function ProgressBar(props: { percent: number }) {
+function ProgressBar(props: { colors: Palette; percent: number }) {
   return (
     <view style={{
       width: '100%',
@@ -258,16 +337,16 @@ function ProgressBar(props: { percent: number }) {
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: COLORS.black,
+      backgroundColor: props.colors.black,
       borderRadius: 8,
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: props.colors.line,
     }}>
       <view style={{
         width: `${props.percent}%`,
         height: 8,
         marginLeft: 2,
-        backgroundColor: COLORS.success,
+        backgroundColor: props.colors.success,
         borderRadius: 6,
       }} />
     </view>
@@ -275,6 +354,7 @@ function ProgressBar(props: { percent: number }) {
 }
 
 function AddForm(props: {
+  colors: Palette;
   draft: string;
   prio: Priority;
   onInput: (text: string) => void;
@@ -287,15 +367,15 @@ function AddForm(props: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: active ? tone : COLORS.panel2,
-    defaultColor: active ? COLORS.black : COLORS.muted,
+    backgroundColor: active ? tone : props.colors.panel2,
+    defaultColor: active ? props.colors.black : props.colors.muted,
     borderRadius: 9,
     borderWidth: 1,
-    borderColor: active ? tone : COLORS.line,
+    borderColor: active ? tone : props.colors.line,
     defaultFontSize: 13,
     ':hover': {
-      backgroundColor: active ? tone : COLORS.panel3,
-      borderColor: active ? tone : COLORS.line,
+      backgroundColor: active ? tone : props.colors.panel3,
+      borderColor: active ? tone : props.colors.line,
     },
   });
 
@@ -305,7 +385,7 @@ function AddForm(props: {
         <text-input
           value={props.draft}
           placeholder="新しいタスクを入力…"
-          style={inputStyle}
+          style={inputStyle(props.colors)}
           onInput={(event) => props.onInput(event.value ?? '')}
           onKeyDown={(event) => {
             if (event.key === 'Enter') props.onAdd();
@@ -315,7 +395,7 @@ function AddForm(props: {
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         {PRIORITIES.map((prio) => (
           <button
-            style={seg(props.prio === prio, PRIORITY_TONE[prio])}
+            style={seg(props.prio === prio, priorityTone(props.colors, prio))}
             onClick={() => props.onPrio(prio)}
           >
             {PRIORITY_LABEL[prio]}
@@ -330,13 +410,13 @@ function AddForm(props: {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: COLORS.accent,
-          defaultColor: COLORS.black,
+          backgroundColor: props.colors.accent,
+          defaultColor: props.colors.black,
           borderRadius: 9,
           borderWidth: 1,
-          borderColor: COLORS.accent,
+          borderColor: props.colors.accent,
           defaultFontSize: 13,
-          ':hover': { backgroundColor: COLORS.success, borderColor: COLORS.success },
+          ':hover': { backgroundColor: props.colors.success, borderColor: props.colors.success },
         }}
         onClick={props.onAdd}
       >
@@ -346,7 +426,7 @@ function AddForm(props: {
   );
 }
 
-function chipStyle(active: boolean): HayateCssStyle {
+function chipStyle(p: Palette, active: boolean): HayateCssStyle {
   return {
     height: 30,
     paddingLeft: 12,
@@ -354,20 +434,21 @@ function chipStyle(active: boolean): HayateCssStyle {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: active ? COLORS.accent : COLORS.panel2,
-    defaultColor: active ? COLORS.black : COLORS.text,
+    backgroundColor: active ? p.accent : p.panel2,
+    defaultColor: active ? p.black : p.text,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: active ? COLORS.accent : COLORS.line,
+    borderColor: active ? p.accent : p.line,
     defaultFontSize: 12,
     ':hover': {
-      backgroundColor: active ? COLORS.accent : COLORS.panel3,
-      borderColor: active ? COLORS.accent : COLORS.line,
+      backgroundColor: active ? p.accent : p.panel3,
+      borderColor: active ? p.accent : p.line,
     },
   };
 }
 
 function Toolbar(props: {
+  colors: Palette;
   filter: Filter;
   sort: SortMode;
   onFilter: (filter: Filter) => void;
@@ -382,16 +463,16 @@ function Toolbar(props: {
       paddingTop: 10,
       paddingBottom: 10,
     }}>
-      <text style={{ color: COLORS.quiet, fontSize: 12 }}>表示</text>
+      <text style={{ color: props.colors.quiet, fontSize: 12 }}>表示</text>
       {FILTERS.map((item) => (
-        <button style={chipStyle(props.filter === item.value)} onClick={() => props.onFilter(item.value)}>
+        <button style={chipStyle(props.colors, props.filter === item.value)} onClick={() => props.onFilter(item.value)}>
           {item.label}
         </button>
       ))}
-      <view style={{ width: 1, height: 18, marginLeft: 4, marginRight: 4, backgroundColor: COLORS.line }} />
-      <text style={{ color: COLORS.quiet, fontSize: 12 }}>並び</text>
+      <view style={{ width: 1, height: 18, marginLeft: 4, marginRight: 4, backgroundColor: props.colors.line }} />
+      <text style={{ color: props.colors.quiet, fontSize: 12 }}>並び</text>
       {SORTS.map((item) => (
-        <button style={chipStyle(props.sort === item.value)} onClick={() => props.onSort(item.value)}>
+        <button style={chipStyle(props.colors, props.sort === item.value)} onClick={() => props.onSort(item.value)}>
           {item.label}
         </button>
       ))}
@@ -399,8 +480,9 @@ function Toolbar(props: {
   );
 }
 
-function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void }) {
+function TodoRow(props: { colors: Palette; todo: Todo; onToggle: () => void; onRemove: () => void }) {
   const done = props.todo.done;
+  const p = props.colors;
   return (
     <view style={{
       display: 'flex',
@@ -408,12 +490,12 @@ function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void
       alignItems: 'center',
       gap: 12,
       padding: 12,
-      backgroundColor: COLORS.panel2,
+      backgroundColor: p.panel2,
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: p.line,
       opacity: done ? 0.62 : 1,
-      ':hover': { backgroundColor: COLORS.panel3, borderColor: COLORS.line },
+      ':hover': { backgroundColor: p.panel3, borderColor: p.line },
     }}>
       <button
         style={{
@@ -422,13 +504,13 @@ function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: done ? COLORS.success : COLORS.panel,
-          defaultColor: COLORS.black,
+          backgroundColor: done ? p.success : p.panel,
+          defaultColor: p.black,
           borderRadius: 7,
           borderWidth: 1,
-          borderColor: done ? COLORS.success : COLORS.line,
+          borderColor: done ? p.success : p.line,
           defaultFontSize: 14,
-          ':hover': { borderColor: COLORS.success },
+          ':hover': { borderColor: p.success },
         }}
         onClick={props.onToggle}
       >
@@ -437,13 +519,13 @@ function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void
       <view style={{
         width: 10,
         height: 10,
-        backgroundColor: PRIORITY_TONE[props.todo.prio],
+        backgroundColor: priorityTone(p, props.todo.prio),
         borderRadius: 999,
       }} />
       <view style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-        <text style={{ color: done ? COLORS.quiet : COLORS.ink, fontSize: 15 }}>{props.todo.text}</text>
+        <text style={{ color: done ? p.quiet : p.ink, fontSize: 15 }}>{props.todo.text}</text>
       </view>
-      <text style={{ color: COLORS.quiet, fontSize: 11 }}>{`優先度 ${PRIORITY_LABEL[props.todo.prio]}`}</text>
+      <text style={{ color: p.quiet, fontSize: 11 }}>{`優先度 ${PRIORITY_LABEL[props.todo.prio]}`}</text>
       <button
         style={{
           width: 30,
@@ -451,13 +533,13 @@ function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: COLORS.panel,
-          defaultColor: COLORS.muted,
+          backgroundColor: p.panel,
+          defaultColor: p.muted,
           borderRadius: 8,
           borderWidth: 1,
-          borderColor: COLORS.line,
+          borderColor: p.line,
           defaultFontSize: 14,
-          ':hover': { backgroundColor: COLORS.dangerBg, borderColor: COLORS.danger, defaultColor: COLORS.danger },
+          ':hover': { backgroundColor: p.dangerBg, borderColor: p.danger, defaultColor: p.danger },
         }}
         onClick={props.onRemove}
       >
@@ -467,24 +549,24 @@ function TodoRow(props: { todo: Todo; onToggle: () => void; onRemove: () => void
   );
 }
 
-function EmptyState() {
+function EmptyState(props: { colors: Palette }) {
   return (
     <view style={{
       height: 96,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: COLORS.panel2,
+      backgroundColor: props.colors.panel2,
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: props.colors.line,
     }}>
-      <text style={{ color: COLORS.muted, fontSize: 14 }}>表示するタスクがありません</text>
+      <text style={{ color: props.colors.muted, fontSize: 14 }}>表示するタスクがありません</text>
     </view>
   );
 }
 
-function Footer(props: { percent: number; onClearDone: () => void }) {
+function Footer(props: { colors: Palette; percent: number; onClearDone: () => void }) {
   return (
     <view style={{
       display: 'flex',
@@ -492,9 +574,9 @@ function Footer(props: { percent: number; onClearDone: () => void }) {
       alignItems: 'center',
       justifyContent: 'space-between',
     }}>
-      <text style={{ color: COLORS.muted, fontSize: 13 }}>{`${props.percent}% 完了`}</text>
+      <text style={{ color: props.colors.muted, fontSize: 13 }}>{`${props.percent}% 完了`}</text>
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <text style={{ color: COLORS.quiet, fontSize: 11 }}>クリックで完了 / ✕ で削除</text>
+        <text style={{ color: props.colors.quiet, fontSize: 11 }}>クリックで完了 / ✕ で削除</text>
         <button
           style={{
             height: 30,
@@ -503,13 +585,13 @@ function Footer(props: { percent: number; onClearDone: () => void }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: COLORS.panel2,
-            defaultColor: COLORS.text,
+            backgroundColor: props.colors.panel2,
+            defaultColor: props.colors.text,
             borderRadius: 8,
             borderWidth: 1,
-            borderColor: COLORS.line,
+            borderColor: props.colors.line,
             defaultFontSize: 12,
-            ':hover': { backgroundColor: COLORS.panel3, borderColor: COLORS.line },
+            ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.line },
           }}
           onClick={props.onClearDone}
         >
