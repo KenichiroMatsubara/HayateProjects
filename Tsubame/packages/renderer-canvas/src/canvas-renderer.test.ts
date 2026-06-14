@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { OP } from '@tsubame/protocol-generated/protocol';
+import { coerceElementProperty } from '@tsubame/renderer-protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
 
@@ -303,6 +304,36 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(hayate.textCalls).toHaveLength(0);
     expect(hayate.disabledCalls).toHaveLength(0);
     expect(hayate.srcCalls).toHaveLength(0);
+  });
+
+  it('applies the shared coerceElementProperty payload to the packet (issue #235)', () => {
+    // Drive the coercion-sensitive edge cases and confirm the packet carries
+    // exactly what the shared seam produced — no canvas-local re-coercion.
+    const cases: ReadonlyArray<[Parameters<typeof coerceElementProperty>[0], unknown, number]> = [
+      ['value', 42, OP.SET_TEXT_CONTENT], // numbers stringify
+      ['placeholder', 99, OP.SET_TEXT], // non-strings erase
+      ['src', null, OP.SET_SRC], // null erases
+      ['disabled', 'false', OP.SET_DISABLED], // Boolean('false') === true
+    ];
+
+    for (const [name, value, op] of cases) {
+      const hayate = new StubHayate();
+      const sched = manualScheduler();
+      const renderer = new CanvasRenderer(hayate, sched);
+      const el = renderer.createElement('text-input');
+      renderer.setProperty(el, name, value);
+      sched.tick();
+
+      const batch = hayate.mutations[0]!;
+      const at = batch.ops.indexOf(op);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const expected = coerceElementProperty(name, value);
+      if (expected.kind === 'disabled') {
+        expect(batch.ops[at + 2]).toBe(expected.disabled ? 1 : 0);
+      } else {
+        expect(batch.texts[batch.ops[at + 2]!]).toBe(expected.text);
+      }
+    }
   });
 
   it('unsubscribe stops delivery dispatch', () => {

@@ -24,6 +24,12 @@ const ENUM_TYPES = [
   { specName: 'justify_content', typeName: 'JustifyContent' },
   { specName: 'font_style', typeName: 'FontStyle' },
   { specName: 'text_decoration', typeName: 'TextDecoration' },
+  { specName: 'border_style', typeName: 'BorderStyle' },
+  { specName: 'cursor', typeName: 'Cursor' },
+  { specName: 'overflow', typeName: 'Overflow' },
+  { specName: 'text_overflow', typeName: 'TextOverflow' },
+  { specName: 'position', typeName: 'Position' },
+  { specName: 'transition_timing', typeName: 'TransitionTiming' },
 ];
 
 function generateEnumTypes(proto) {

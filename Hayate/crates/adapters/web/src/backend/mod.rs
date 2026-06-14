@@ -2,78 +2,13 @@ use hayate_core::SceneGraph;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
+use crate::renderer_selection::{
+    diagnostic_renderer_selection_policy, is_runtime_fallback_reason,
+    standard_renderer_selection_policy, RendererCapabilities, RendererSelectionPlan,
+    RendererSelectionPolicy, RendererSelectionReason, SceneRendererKind,
+};
+
 pub(crate) type ClearColor = [f32; 4];
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(dead_code)] // only one backend variant is live per feature set
-pub(crate) enum SceneRendererKind {
-    Vello,
-    TinySkia,
-    /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
-    Recording,
-    /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
-    Null,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RendererSelectionReason {
-    WebGpuUnavailable,
-    RendererInitFailed,
-    SurfaceLost,
-    CapabilityUnsupported,
-    DisabledByPolicy,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct RendererSelectionPolicy {
-    allowed_renderers: &'static [SceneRendererKind],
-    preferred_renderer_order: &'static [SceneRendererKind],
-}
-
-impl RendererSelectionPolicy {
-    pub(crate) const fn new(
-        allowed_renderers: &'static [SceneRendererKind],
-        preferred_renderer_order: &'static [SceneRendererKind],
-    ) -> Self {
-        Self {
-            allowed_renderers,
-            preferred_renderer_order,
-        }
-    }
-
-    pub(crate) fn allows(self, renderer: SceneRendererKind) -> bool {
-        self.allowed_renderers.contains(&renderer)
-    }
-
-    pub(crate) fn preferred_renderer_order(self) -> &'static [SceneRendererKind] {
-        self.preferred_renderer_order
-    }
-}
-
-#[cfg(any(feature = "backend-vello", feature = "backend-tiny-skia"))]
-const PRODUCTION_RENDERERS: &[SceneRendererKind] =
-    &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
-
-/// C3 codec integration tests build with `--features backend-null` only.
-#[cfg(all(
-    feature = "backend-null",
-    not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
-))]
-const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
-/// Reserved for diagnostic init (ADR-0050); not used in production `init`.
-#[allow(dead_code)]
-const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
-    &[SceneRendererKind::Recording, SceneRendererKind::Null];
-
-pub(crate) fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
-    RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
-}
-
-/// Reserved for diagnostic init (ADR-0050); not used in production `init`.
-#[allow(dead_code)]
-pub(crate) fn diagnostic_renderer_selection_policy() -> RendererSelectionPolicy {
-    RendererSelectionPolicy::new(DIAGNOSTIC_RENDERERS, DIAGNOSTIC_RENDERERS)
-}
 
 #[cfg(feature = "backend-vello")]
 mod vello;
@@ -121,17 +56,29 @@ pub(crate) trait SceneRenderer {
     fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {}
 }
 
-impl SceneRendererKind {
-    /// Stable renderer id for logs and error messages.
-    pub(crate) fn name(self) -> &'static str {
-        match self {
-            Self::Vello => "vello",
-            Self::TinySkia => "tiny-skia",
-            Self::Recording => "recording",
-            Self::Null => "null",
+impl RendererCapabilities {
+    /// Inspect the running environment for the facts the policy needs. GPU-free:
+    /// it only checks whether `navigator.gpu` is present, never requests an
+    /// adapter, so the policy can rule WebGPU-backed renderers in or out without
+    /// initializing one.
+    fn detect() -> Self {
+        Self {
+            webgpu_available: navigator_has_gpu(),
         }
     }
+}
 
+fn navigator_has_gpu() -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    match js_sys::Reflect::get(window.navigator().as_ref(), &JsValue::from_str("gpu")) {
+        Ok(gpu) => !gpu.is_undefined() && !gpu.is_null(),
+        Err(_) => false,
+    }
+}
+
+impl SceneRendererKind {
     pub(crate) async fn try_init(
         self,
         canvas: HtmlCanvasElement,
@@ -270,7 +217,9 @@ fn not_compiled_error(kind: SceneRendererKind) -> JsValue {
 pub(crate) struct RenderHost {
     canvas: HtmlCanvasElement,
     renderer: Option<Box<dyn SceneRenderer>>,
-    selection_policy: RendererSelectionPolicy,
+    /// The policy decision this host is enacting: which renderers to attempt and
+    /// why others were rejected. The host enacts it; it does not re-derive it.
+    selection_plan: RendererSelectionPlan,
 }
 
 impl RenderHost {
@@ -288,28 +237,25 @@ impl RenderHost {
         canvas: HtmlCanvasElement,
         selection_policy: RendererSelectionPolicy,
     ) -> Result<Self, JsValue> {
-        let mut attempts = Vec::new();
+        // The policy decides — purely, from detected capabilities — which
+        // renderers are worth attempting and in what order. `init` only enacts
+        // that decision: it tries each planned renderer and surfaces failures.
+        let plan = selection_policy.choose(RendererCapabilities::detect());
 
-        for &renderer_kind in selection_policy.preferred_renderer_order() {
-            if !selection_policy.allows(renderer_kind) {
-                attempts.push(format!(
-                    "{}: {:?}",
-                    renderer_kind.name(),
-                    RendererSelectionReason::DisabledByPolicy
-                ));
-                continue;
-            }
+        let mut attempts: Vec<String> = plan
+            .rejected()
+            .iter()
+            .map(|rejection| format!("{}: {:?}", rejection.renderer.name(), rejection.reason))
+            .collect();
 
+        for &renderer_kind in plan.attempt_order() {
             match renderer_kind.try_init(canvas.clone()).await {
                 Ok(renderer) => {
-                    log::info!(
-                        "selected scene renderer: {}",
-                        renderer.kind().name()
-                    );
+                    log::info!("selected scene renderer: {}", renderer.kind().name());
                     return Ok(Self {
                         canvas,
                         renderer: Some(renderer),
-                        selection_policy,
+                        selection_plan: plan,
                     });
                 }
                 Err(error) => {
@@ -346,7 +292,10 @@ impl RenderHost {
             return Err(error);
         }
 
-        let Some(next_kind) = self.next_fallback_renderer_after(failed_kind) else {
+        // Follow the policy decision: the next renderer is the one the plan
+        // already placed after the failed one. No re-selection, no re-running
+        // init for the renderers the policy passed over.
+        let Some(next_kind) = self.selection_plan.next_after(failed_kind) else {
             return Err(error);
         };
 
@@ -364,7 +313,7 @@ impl RenderHost {
 
         match next_kind.try_init_sync_for_fallback(self.canvas.clone()) {
             Ok(mut renderer) => {
-                debug_assert!(self.selection_policy.allows(renderer.kind()));
+                debug_assert!(self.selection_plan.includes(renderer.kind()));
                 renderer.resize(self.canvas.width(), self.canvas.height(), 1.0);
                 let retry_result = retry(renderer.as_mut());
                 self.renderer = Some(renderer);
@@ -379,24 +328,6 @@ impl RenderHost {
             ))),
         }
     }
-
-    fn next_fallback_renderer_after(
-        &self,
-        failed_kind: SceneRendererKind,
-    ) -> Option<SceneRendererKind> {
-        let mut seen_failed = false;
-        self.selection_policy
-            .preferred_renderer_order()
-            .iter()
-            .copied()
-            .find(|&candidate| {
-                if !seen_failed {
-                    seen_failed = candidate == failed_kind;
-                    return false;
-                }
-                self.selection_policy.allows(candidate)
-            })
-    }
 }
 
 impl SceneRenderer for RenderHost {
@@ -405,7 +336,7 @@ impl SceneRenderer for RenderHost {
             .renderer
             .as_ref()
             .expect("RenderHost has no active scene renderer");
-        debug_assert!(self.selection_policy.allows(renderer.kind()));
+        debug_assert!(self.selection_plan.includes(renderer.kind()));
         renderer.kind()
     }
 
@@ -413,7 +344,7 @@ impl SceneRenderer for RenderHost {
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(JsValue::from_str("RenderHost has no active scene renderer"));
         };
-        debug_assert!(self.selection_policy.allows(renderer.kind()));
+        debug_assert!(self.selection_plan.includes(renderer.kind()));
         match renderer.render_scene(scene, clear_color) {
             Ok(()) => Ok(()),
             Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
@@ -426,7 +357,7 @@ impl SceneRenderer for RenderHost {
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(JsValue::from_str("RenderHost has no active scene renderer"));
         };
-        debug_assert!(self.selection_policy.allows(renderer.kind()));
+        debug_assert!(self.selection_plan.includes(renderer.kind()));
         match renderer.clear(clear_color) {
             Ok(()) => Ok(()),
             Err(error) => {
@@ -440,15 +371,6 @@ impl SceneRenderer for RenderHost {
             renderer.resize(width, height, content_scale);
         }
     }
-}
-
-fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
-    matches!(
-        reason,
-        RendererSelectionReason::SurfaceLost
-            | RendererSelectionReason::CapabilityUnsupported
-            | RendererSelectionReason::RendererInitFailed
-    )
 }
 
 fn js_error_message(error: &JsValue) -> String {

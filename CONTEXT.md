@@ -45,6 +45,14 @@ _Avoid_: CSS 式の全要素 font 継承、ambient 既定なし設計
 `default-font-family` / `default-font-size` / `default-font-weight` / `default-color`。block を貫通して降りる既定値専用チャネルで、text 要素が明示値も text 継承値も持たないときの fallback。nested 上書き可。
 _Avoid_: 通常 `font-family` 等を block 貫通させる設計、global（nested 上書き可能な ambient であり真の global ではない）
 
+**Style Channel（スタイルチャネル）**:
+各 Hayate CSS プロパティが属する継承チャネルの分類。`text-local`（ch1）/ `ambient`（ch2）/ `none`（box-visual・layout）の三値。`proto/spec/style_tags.json` の `inherit` tag が正本で、レンダラー横断の text-channel 判定（どのプロパティを text 要素にのみ発行するか）はここから生成し、各レンダラーで再宣言しない。
+_Avoid_: reach（再 lowering 距離は直交する別軸）、text-local を boolean 一値とし ambient を none に潰す理解
+
+**Text-Local Carrier（text-local キャリア）**:
+channel-1（text-local）スタイルを CSS として実際に載せる element-kind。`text` / `text_input` の二つで、`proto/spec/element_kinds.json` の `carriesTextLocal` tag が正本。block box はキャリアではなく、block への text-local プロパティは no-op（ADR-0002）。
+_Avoid_: 全 element がテキストスタイルを受理する設計、DOM tag（span / input）で carrier を同定する理解
+
 **Hayate CSS**:
 要素ごとのインラインスタイル宣言。レイアウトプロパティは Taffy の CSS サブセット、ビジュアルプロパティは CSS 名の対応サブセット。要素ローカルの擬似状態（`:hover` / `:active` / `:focus`）を同一宣言内に nest できる。セレクタ・カスケード・スタイルシートは持たない。
 _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style
@@ -113,6 +121,10 @@ _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover 
 Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。複数状態が同時成立したときの正準優先順は `focus < hover < active`（後勝ち）で、これは wire コード（hover=0 / active=1 / focus=2）とは別物。優先順は spec（`proto/spec/pseudo_states.json`）が正本で、Hayate core の `resolve_visual` と Tsubame DOM Renderer のルールバンド順が共にそこから生成・参照する（Semantics Parity）。
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替、wire コード順を優先順と同一視する理解、DOM の挿入順（authoring 順）に優先順を委ねる設計
 
+**Transition（visual 変化の補間）**:
+要素の effective visual が変化したとき、変化前の**画面上の見た目**（補間中ならその時点の途中値）から新しい target へ連続値プロパティを補間するアニメーション。トリガは effective style 解決シーム（`resolve_effective`・ADR-0067）の差分であり、擬似状態切替・`setStyle`・継承変化を区別しない（ブラウザ/Blink の computed-style 差分と同型）。`transition-duration`（ms）/ `transition-timing`（`ease` / `linear` / `ease-in` / `ease-out` / `ease-in-out`）を Hayate CSS の visual プロパティとして持ち、Render Layer が `render(timestamp_ms)` のフレームループで進める（カーソル点滅と同じ時間駆動 `visual_dirty` を再利用）。補間対象は連続値（`background-color` / `border-color` / `text-color` / `opacity` / `border-radius` / `border-width`）のみで、enum・離散値は target を即時採用。state は要素×プロパティ単位。`transition-duration: 0`（未指定）は即時切替。
+_Avoid_: 擬似状態切替のみをトリガとする理解（旧スコープ・ADR-0089）、wire 入口の生 mutation を diff する設計、setStyle を恒久的に即時固定とする理解、Signal によるアニメーション、layout/text への補間
+
 **Canonical Tree（正本ツリー）**:
 描画・layout・hit-test の正本ツリー。Canvas/HTML 経路では Hayate の element ツリー、Tsubame DOM Renderer 経路ではブラウザ DOM が正本。`text` を含むすべての子を tree 上の element として表現する。経路ごとに実体は一つのみで、複製や mirror は持たない（`tsubame-solid` の Shadow Tree は構造専用の別索引であり、これ自体は正本ではない）。
 _Avoid_: 描画正本を JS 側に複製する設計、Virtual DOM、仮想 TextNode、renderer 側 parent map を正本とする設計、Document Tree（旧称）
@@ -165,6 +177,10 @@ _Avoid_: Virtual DOM, Component Tree
 `scroll-view` element のスクロール位置（x, y）。基本 offset は Element Document Runtime が保持し、慣性・スナップ・rubber-band 等の物理演算は Platform Adapter が担う。`scroll` イベントはアプリ通知専用。
 _Avoid_: Hayate が scroll 状態を一切持たない設計、物理演算を上位層が持つ設計、StyleProp::ScrollOffset
 
+**Scroll Chaining（スクロール連鎖）**:
+ネストした `scroll-view` のホイール挙動。最寄り祖先 ScrollView から軸ごとにデルタを消費し、clamp で消費しきれなかった残デルタを次の祖先 ScrollView へルートまで伝播する、ブラウザ準拠の意味論。Hayate の仕様であり、DOM 系レンダラーはブラウザ既定のまま一致する（意味論パリティ）。
+_Avoid_: 内側スクローラーで打ち止めにする設計、残デルタを捨てる設計、chaining をレンダラー方言とする理解（opt-out の `overscroll-behavior` 語彙は将来）
+
 **Z-Order**:
 React Native 方式の描画順序制御。同一 parent 内の兄弟間でのみ有効で、デフォルトは document order（後勝ち）、`z-index` で上書きする。CSS stacking context は持たない。
 _Avoid_: NodeKind::Layer、グローバル z-index 順序
@@ -195,6 +211,10 @@ _Avoid_: Group（transform 用語との混同）
 
 **Glyph Atlas**:
 レンダリング済みグリフを格納する GPU テクスチャ。
+
+**Font Synthesis（フォント合成）**:
+要求された `font-weight` / `font-style` が実フェイスや variable 軸で表現できないとき、ブラウザ準拠で見た目を合成する仕組み。faux italic はグリフランの skew（約14度）、faux bold は embolden で表す。意味論パリティのため既定 ON で、Canvas / DOM 双方が同一の合成挙動を示す。
+_Avoid_: 表現できない指定を no-op にする設計、italic 実フェイスのバンドル前提、レンダラーごとに合成有無が異なる設計、font-synthesis を常時オフ前提とする説明（opt-out 語彙は将来）
 
 **AccessKit**:
 プラットフォームの AT（Assistive Technology）へアクセシビリティツリーを報告するクロスプラットフォーム Rust ライブラリ。Hayate Core がツリーを生成し、Platform Adapter が AccessKit のプラットフォーム実装を呼んで AT に報告する。

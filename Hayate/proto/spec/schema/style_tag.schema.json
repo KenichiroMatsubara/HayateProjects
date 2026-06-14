@@ -3,10 +3,15 @@
   "$id": "https://hayate.dev/proto/spec/schema/style_tag.schema.json",
   "title": "Style tag entry with encodeFrom",
   "type": "object",
-  "required": ["name", "value", "encodeFrom", "domCss"],
+  "required": ["name", "value", "inherit", "encodeFrom", "domCss"],
   "properties": {
     "name": { "type": "string", "minLength": 1 },
     "value": { "type": "integer", "minimum": 0 },
+    "inherit": {
+      "description": "Style Channel: which inheritance channel this property belongs to (CONTEXT.md / ADR-0065).",
+      "type": "string",
+      "enum": ["text-local", "ambient", "none"]
+    },
     "variable_length": { "type": "boolean" },
     "encodeFrom": {
       "type": "string",
@@ -14,6 +19,7 @@
         "css-color",
         "dimension",
         "f32",
+        "u32",
         "enum:display",
         "enum:flex_direction",
         "enum:flex_wrap",
@@ -23,6 +29,12 @@
         "enum:justify_content",
         "enum:font_style",
         "enum:text_decoration",
+        "enum:border_style",
+        "enum:cursor",
+        "enum:overflow",
+        "enum:position",
+        "enum:text_overflow",
+        "enum:transition_timing",
         "font-family",
         "dimension-list",
         "z-index"
@@ -52,6 +64,7 @@
             "color",
             "dimension",
             "px",
+            "ms",
             "number",
             "integer",
             "string",
@@ -64,6 +77,12 @@
             "enum:justify_content",
             "enum:font_style",
             "enum:text_decoration",
+            "enum:border_style",
+            "enum:cursor",
+            "enum:overflow",
+            "enum:position",
+            "enum:text_overflow",
+            "enum:transition_timing",
             "dimension-list"
           ]
         },

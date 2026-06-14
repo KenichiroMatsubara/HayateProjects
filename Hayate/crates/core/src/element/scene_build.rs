@@ -2,13 +2,13 @@ use crate::color::Color;
 use crate::element::effective_visual::{
     self, child_inherited_context, InheritedVisualContext,
 };
+use crate::element::style::{BorderStyleValue, OverflowValue};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::scene_lowering::{
     clear_lowered_content, AnchorEntry, LoweringDirtySnapshot, SceneLowering,
 };
-use crate::element::visual_invalidation::VisualInvalidationReach;
+use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
@@ -33,11 +33,16 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
 }
 
 /// Incrementally update a scene graph using retained element anchors.
+///
+/// `now_ms` is the host clock driving in-flight transitions; the per-element
+/// `resolve_effective` seam diffs the resolved visual against the stored
+/// displayed value to start/advance interpolation (ADR-0093).
 pub(crate) fn update(
     tree: &ElementTree,
     scene_cache: &mut SceneGraph,
     lowering: &mut SceneLowering,
     dirty: LoweringDirtySnapshot,
+    now_ms: f64,
 ) {
     lowering.walk_count = 0;
     let interaction = tree.interaction_snapshot();
@@ -57,6 +62,7 @@ pub(crate) fn update(
                 InheritedVisualContext::root(),
                 &interaction,
                 VisualInvalidationReach::Subtree,
+                now_ms,
             );
         }
         lowering.built = true;
@@ -71,7 +77,7 @@ pub(crate) fn update(
         reorder_children_for_z_index(tree, scene_cache, lowering, parent_id);
     }
 
-    let patch_roots = minimal_patch_roots(dirty.elements.keys(), &tree.elements);
+    let patch_roots = minimal_patch_roots(tree, &dirty.elements);
     for patch_root in patch_roots {
         let reach = dirty
             .elements
@@ -101,6 +107,7 @@ pub(crate) fn update(
             inherited_for_patch_root(tree, patch_root),
             &interaction,
             reach,
+            now_ms,
         );
     }
 }
@@ -144,29 +151,64 @@ fn inherited_for_patch_root(tree: &ElementTree, id: ElementId) -> InheritedVisua
     }
 }
 
-fn minimal_patch_roots<'a>(
-    dirty: impl IntoIterator<Item = &'a ElementId>,
-    elements: &std::collections::HashMap<ElementId, crate::element::tree::Element>,
+fn minimal_patch_roots(
+    tree: &ElementTree,
+    dirty: &std::collections::HashMap<ElementId, VisualInvalidationReach>,
 ) -> Vec<ElementId> {
-    let dirty_set: std::collections::HashSet<ElementId> = dirty.into_iter().copied().collect();
-    dirty_set
-        .iter()
+    dirty
+        .keys()
         .copied()
-        .filter(|&id| !has_dirty_ancestor(id, &dirty_set, elements))
+        .filter(|&id| !covered_by_dirty_ancestor(tree, id, dirty))
         .collect()
 }
 
-fn has_dirty_ancestor(
+/// Whether re-walking some dirty ancestor will itself re-emit `id`, so `id` need
+/// not be its own patch root. True only when the ancestor's reach actually
+/// propagates down the ancestor→id path: a `SelfOnly` / `ZIndex` ancestor
+/// re-emits only itself, so a dirty descendant under it (e.g. an independent
+/// in-flight transition beneath a transitioning parent, issue #228) must remain
+/// its own patch root or its re-lowering would be skipped.
+fn covered_by_dirty_ancestor(
+    tree: &ElementTree,
     id: ElementId,
-    dirty: &std::collections::HashSet<ElementId>,
-    elements: &std::collections::HashMap<ElementId, crate::element::tree::Element>,
+    dirty: &std::collections::HashMap<ElementId, VisualInvalidationReach>,
 ) -> bool {
-    let mut current = elements.get(&id).and_then(|el| el.parent);
+    // Path id → root: chain[0] = id, chain[i+1] = parent(chain[i]).
+    let mut chain = vec![id];
+    let mut current = tree.elements.get(&id).and_then(|el| el.parent);
     while let Some(parent) = current {
-        if dirty.contains(&parent) {
+        chain.push(parent);
+        current = tree.elements.get(&parent).and_then(|el| el.parent);
+    }
+    // For each dirty ancestor, simulate the reach propagating down to `id` via
+    // the single-source `step_reach`, exactly as the retained walk would.
+    for (ancestor_idx, &ancestor) in chain.iter().enumerate().skip(1) {
+        let Some(&ancestor_reach) = dirty.get(&ancestor) else {
+            continue;
+        };
+        let mut reach = ancestor_reach;
+        let mut parent = ancestor;
+        let mut reached = true;
+        for child_idx in (0..ancestor_idx).rev() {
+            let child = chain[child_idx];
+            match visual_invalidation::step_reach(
+                reach,
+                tree.element_context(parent),
+                tree.element_context(child),
+            ) {
+                Some(next) => {
+                    reach = next;
+                    parent = child;
+                }
+                None => {
+                    reached = false;
+                    break;
+                }
+            }
+        }
+        if reached {
             return true;
         }
-        current = elements.get(&parent).and_then(|el| el.parent);
     }
     false
 }
@@ -254,9 +296,7 @@ fn ensure_anchor(
             children: Vec::new(),
         })
     };
-    lowering
-        .anchors
-        .insert(id, AnchorEntry { anchor_id });
+    lowering.anchors.insert(id, AnchorEntry::new(anchor_id));
     anchor_id
 }
 
@@ -309,6 +349,7 @@ fn walk_retained(
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
     reach: VisualInvalidationReach,
+    now_ms: f64,
 ) {
     lowering.walk_count += 1;
 
@@ -318,7 +359,7 @@ fn walk_retained(
             let anchor_id = ensure_anchor(tree, sg, lowering, id, parent_anchor);
             let children = tree.ordered_children(id);
             clear_lowered_content(sg, anchor_id, &children, lowering);
-            for child in children_for_reach(tree, id, reach) {
+            for (child, child_reach) in children_for_reach(tree, id, reach) {
                 walk_retained(
                     tree,
                     child,
@@ -329,7 +370,8 @@ fn walk_retained(
                     Some(anchor_id),
                     inherited.clone(),
                     interaction,
-                    VisualInvalidationReach::Subtree,
+                    child_reach,
+                    now_ms,
                 );
             }
             return;
@@ -354,49 +396,25 @@ fn walk_retained(
         inherited,
         interaction,
         reach,
+        now_ms,
     );
 }
 
+/// The children a retained walk descends into under `reach`, each paired with
+/// the reach it carries — derived entirely from the single-source `step_reach`.
 fn children_for_reach(
     tree: &ElementTree,
     id: ElementId,
     reach: VisualInvalidationReach,
-) -> Vec<ElementId> {
-    match reach {
-        VisualInvalidationReach::SelfOnly | VisualInvalidationReach::ZIndex => Vec::new(),
-        VisualInvalidationReach::Subtree => tree.ordered_children(id),
-        VisualInvalidationReach::TextLocal => {
-            if is_ifc_root(&tree.elements, id) {
-                tree.ordered_children(id)
-                    .into_iter()
-                    .filter(|&child| is_inline_text_element(&tree.elements, child))
-                    .collect()
-            } else {
-                Vec::new()
-            }
-        }
-    }
-}
-
-fn child_reach(
-    tree: &ElementTree,
-    parent_id: ElementId,
-    child_id: ElementId,
-    parent_reach: VisualInvalidationReach,
-) -> VisualInvalidationReach {
-    match parent_reach {
-        VisualInvalidationReach::Subtree => VisualInvalidationReach::Subtree,
-        VisualInvalidationReach::TextLocal
-            if is_ifc_root(&tree.elements, parent_id)
-                && is_inline_text_element(&tree.elements, child_id) =>
-        {
-            VisualInvalidationReach::TextLocal
-        }
-        VisualInvalidationReach::SelfOnly | VisualInvalidationReach::ZIndex => {
-            VisualInvalidationReach::SelfOnly
-        }
-        VisualInvalidationReach::TextLocal => VisualInvalidationReach::SelfOnly,
-    }
+) -> Vec<(ElementId, VisualInvalidationReach)> {
+    let parent_ctx = tree.element_context(id);
+    tree.ordered_children(id)
+        .into_iter()
+        .filter_map(|child| {
+            visual_invalidation::step_reach(reach, parent_ctx, tree.element_context(child))
+                .map(|child_reach| (child, child_reach))
+        })
+        .collect()
 }
 
 fn emit_element(
@@ -412,6 +430,7 @@ fn emit_element(
     inherited: InheritedVisualContext,
     interaction: &crate::element::pseudo_state::InteractionSnapshot,
     reach: VisualInvalidationReach,
+    now_ms: f64,
 ) {
     let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
     let child_inherited = child_inherited_context(
@@ -425,13 +444,21 @@ fn emit_element(
         &el.viewport_variants,
         tree.viewport(),
     );
-    let visual = effective_visual::resolve_effective(
+    let resolved = effective_visual::resolve_effective(
         &inherited,
         &own,
         &el.pseudo_styles,
         interaction,
         id,
     );
+    // Diff the after-change resolved visual against the previous frame's
+    // displayed value at the resolve seam, interpolating changed continuous
+    // properties (ADR-0093). The retained anchor holds the before-change value.
+    let visual = lowering
+        .anchors
+        .get_mut(&id)
+        .map(|entry| entry.resolve_displayed(&resolved, now_ms))
+        .unwrap_or(resolved);
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -467,6 +494,7 @@ fn emit_element(
                     y,
                     width: w,
                     height: h,
+                    corner_radii: [0.0; 4],
                 },
                 children: Vec::new(),
             },
@@ -487,6 +515,22 @@ fn emit_element(
         } else {
             Some(clip_id)
         }
+    } else if visual.overflow == OverflowValue::Hidden {
+        let clip_id = emit(
+            sg,
+            effective_parent,
+            Node {
+                kind: NodeKind::Clip {
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                    corner_radii: [visual.border_radius; 4],
+                },
+                children: Vec::new(),
+            },
+        );
+        Some(clip_id)
     } else {
         effective_parent
     };
@@ -502,6 +546,7 @@ fn emit_element(
         visual.border_width,
         visual.background_color,
         visual.border_color,
+        visual.border_style,
         visual.opacity,
     );
 
@@ -522,7 +567,7 @@ fn emit_element(
                 },
             );
         }
-        for child in children_for_reach(tree, id, reach) {
+        for (child, child_reach) in children_for_reach(tree, id, reach) {
             walk_retained(
                 tree,
                 child,
@@ -533,7 +578,8 @@ fn emit_element(
                 effective_parent,
                 child_inherited.clone(),
                 interaction,
-                child_reach(tree, id, child, reach),
+                child_reach,
+                now_ms,
             );
         }
         reparent_child_anchors_under(
@@ -643,7 +689,7 @@ fn emit_element(
         }
     }
 
-    for child in children_for_reach(tree, id, reach) {
+    for (child, child_reach) in children_for_reach(tree, id, reach) {
         walk_retained(
             tree,
             child,
@@ -654,7 +700,8 @@ fn emit_element(
             effective_parent,
             child_inherited.clone(),
             interaction,
-            child_reach(tree, id, child, reach),
+            child_reach,
+            now_ms,
         );
     }
     reparent_child_anchors_under(
@@ -707,6 +754,8 @@ fn walk_ephemeral(
         &el.viewport_variants,
         tree.viewport(),
     );
+    // Full ephemeral rebuild has no retained `last_displayed`, so it never
+    // interpolates — it paints the resolved target directly (ADR-0093).
     let visual = effective_visual::resolve_effective(
         &inherited,
         &own,
@@ -750,6 +799,7 @@ fn walk_ephemeral(
                     y,
                     width: w,
                     height: h,
+                    corner_radii: [0.0; 4],
                 },
                 children: Vec::new(),
             },
@@ -770,6 +820,22 @@ fn walk_ephemeral(
         } else {
             Some(clip_id)
         }
+    } else if visual.overflow == OverflowValue::Hidden {
+        let clip_id = emit(
+            sg,
+            effective_parent,
+            Node {
+                kind: NodeKind::Clip {
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                    corner_radii: [visual.border_radius; 4],
+                },
+                children: Vec::new(),
+            },
+        );
+        Some(clip_id)
     } else {
         effective_parent
     };
@@ -785,6 +851,7 @@ fn walk_ephemeral(
         visual.border_width,
         visual.background_color,
         visual.border_color,
+        visual.border_style,
         visual.opacity,
     );
 
@@ -949,6 +1016,7 @@ fn emit_visual_box(
     border_width: f32,
     background_color: Option<Color>,
     border_color: Option<Color>,
+    border_style: BorderStyleValue,
     opacity: f32,
 ) {
     let radius = border_radius.max(0.0);
@@ -956,13 +1024,41 @@ fn emit_visual_box(
     let background = background_color.map(|c| c.with_opacity(opacity).to_array_f32());
     let border = border_color.map(|c| c.with_opacity(opacity).to_array_f32());
 
-    if border_w > 0.0 {
+    // A border is drawn only when it has both a positive width and an explicit
+    // style (CSS-like: `border-style` defaults to `none`, issue #204).
+    let draw_border = border_w > 0.0 && border_style != BorderStyleValue::None;
+
+    if draw_border {
         let Some(border_rgba) = border else {
             if let Some(bg) = background {
                 emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
             }
             return;
         };
+
+        if border_style == BorderStyleValue::Dashed {
+            // Background fills the full box; dashes stroke the perimeter on top.
+            if let Some(bg) = background {
+                emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
+            }
+            emit(
+                sg,
+                parent_group,
+                Node {
+                    kind: NodeKind::DashedBorder {
+                        x,
+                        y,
+                        width,
+                        height,
+                        outer_radius: radius,
+                        border_width: border_w,
+                        color: border_rgba,
+                    },
+                    children: Vec::new(),
+                },
+            );
+            return;
+        }
 
         if let Some(bg) = background {
             emit_fill_rect(

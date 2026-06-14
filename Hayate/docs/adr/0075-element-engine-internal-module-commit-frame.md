@@ -37,3 +37,4 @@
 - `docs/architecture-decisions-pending.md` 項目1（候補 D2）を解決。
 - ADR-0066：interaction 状態機械の `ElementTree` 内配置は不変。
 - ADR-0064：`TaffyProjection` の dirty-scoped reconcile は `ElementEngine` の `structure_dirty`/`shape_dirty` 解決経路に統合される。
+- issue #238（refine, not contradict）：本決定の「`ElementEngine` は集合の保持と解決のみ／dirty marking policy は `tree.rs` に残す」を維持しつつ、reach の**意味論**（どこまで dirty にするか・reach 伝播）を `tree.rs` から純関数 `classify` / `step_reach`（`visual_invalidation.rs`）へ切り出した。`tree.rs` の `element_set_*` は位相を読んで `ElementContext` を組み「何が変わったか」を報告するだけになり、`ElementEngine` の store/merge 専念という責務分離がより明確化した。

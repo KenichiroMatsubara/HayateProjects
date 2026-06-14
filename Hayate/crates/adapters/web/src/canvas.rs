@@ -4,11 +4,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
 
 use hayate_core::{
-    Color, DocumentEventKind, ElementId, ElementTree, Event, FontStyleValue, RenderImage,
-    RenderImageAlphaType, RenderImageFormat, StylePropKind, TextDecorationValue,
+    BorderStyleValue, Color, CursorValue, DocumentEventKind, ElementId, ElementTree, Event,
+    FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp, StylePropKind,
+    TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -48,6 +50,13 @@ pub struct HayateElementRenderer {
     pending_resize: Rc<RefCell<Option<resize_observer::CanvasResizeMetrics>>>,
     last_viewport: Rc<RefCell<(f32, f32)>>,
     _resize_observer: ResizeObserverGuard,
+    /// Self-wired pointer listeners (ADR-0080) enqueue here; drained in arrival
+    /// order at the start of `render()`.
+    pending_pointer: Rc<RefCell<Vec<PointerInput>>>,
+    /// Last move position applied on a drain, used to seed 1px move-coalescing
+    /// across frame boundaries.
+    last_pointer_move: Option<(f32, f32)>,
+    _pointer_input: PointerInputGuard,
 }
 
 #[wasm_bindgen]
@@ -82,6 +91,10 @@ impl HayateElementRenderer {
             last_viewport.clone(),
         )?;
 
+        let pending_pointer = Rc::new(RefCell::new(Vec::new()));
+        let pointer_guard =
+            pointer_input::attach_pointer_input(&canvas, pending_pointer.clone())?;
+
         Ok(Self {
             canvas,
             backend,
@@ -92,6 +105,9 @@ impl HayateElementRenderer {
             pending_resize,
             last_viewport,
             _resize_observer: resize_guard,
+            pending_pointer,
+            last_pointer_move: None,
+            _pointer_input: pointer_guard,
         })
     }
 
@@ -224,6 +240,7 @@ impl HayateElementRenderer {
         set("borderRadius", JsValue::from_f64(visual.border_radius as f64));
         set("borderWidth", JsValue::from_f64(visual.border_width as f64));
         set("borderColor", color_to_js(visual.border_color));
+        set("borderStyle", border_style_to_js(visual.border_style));
         set("textColor", color_to_js(visual.text_color));
         set(
             "fontSize",
@@ -264,6 +281,7 @@ impl HayateElementRenderer {
         if let Some(metrics) = pending {
             self.apply_resize(metrics);
         }
+        self.drain_pointer_inputs();
         // フェッチ完了フォントを layout より前に登録することで、同フレーム内で
         // fonts_dirty → compute_layout → 正しいグリフ、が成立する。
         // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）
@@ -297,13 +315,52 @@ impl HayateElementRenderer {
     }
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
-        let _ = self.tree.on_pointer_move(x, y);
+        let result = self.tree.on_pointer_move(x, y);
+        apply_resolved_cursor(result.resolved_cursor);
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
         if let Some(target) = self.tree.hit_test(x, y) {
             self.tree.apply_wheel_delta(target, delta_x, delta_y);
             self.tree.on_wheel(target, delta_x, delta_y);
+        }
+    }
+
+    /// Drain the self-wired pointer buffer at the start of `render()`, applying
+    /// each input to the tree in arrival order with 1px move-coalescing (ADR-0080).
+    fn drain_pointer_inputs(&mut self) {
+        let buffered: Vec<PointerInput> = self.pending_pointer.borrow_mut().drain(..).collect();
+        if buffered.is_empty() {
+            return;
+        }
+        let inputs = pointer_input::coalesce_pointer_inputs(buffered, self.last_pointer_move);
+        self.last_pointer_move = pointer_input::final_anchor(&inputs, self.last_pointer_move);
+        for input in inputs {
+            self.apply_pointer_input(input);
+        }
+    }
+
+    fn apply_pointer_input(&mut self, input: PointerInput) {
+        match input {
+            PointerInput::Down { x, y } => self.tree.on_pointer_down(x, y),
+            PointerInput::Move { x, y } => {
+                let result = self.tree.on_pointer_move(x, y);
+                apply_resolved_cursor(result.resolved_cursor);
+            }
+            PointerInput::Up { x, y } => self.tree.on_pointer_up(x, y),
+            PointerInput::Leave => self.tree.on_pointer_leave(),
+            PointerInput::Cancel => self.tree.on_pointer_cancel(),
+            PointerInput::Wheel {
+                x,
+                y,
+                delta_x,
+                delta_y,
+            } => {
+                if let Some(target) = self.tree.hit_test(x, y) {
+                    self.tree.apply_wheel_delta(target, delta_x, delta_y);
+                    self.tree.on_wheel(target, delta_x, delta_y);
+                }
+            }
         }
     }
 
@@ -593,6 +650,14 @@ fn text_decoration_to_js(value: Option<TextDecorationValue>) -> JsValue {
     }
 }
 
+fn border_style_to_js(value: BorderStyleValue) -> JsValue {
+    match value {
+        BorderStyleValue::None => JsValue::from_str("none"),
+        BorderStyleValue::Solid => JsValue::from_str("solid"),
+        BorderStyleValue::Dashed => JsValue::from_str("dashed"),
+    }
+}
+
 /// Fetch a URL and decode it as RGBA8, supporting PNG / JPEG / WebP.
 async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
@@ -617,4 +682,22 @@ async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
         width,
         height,
     })
+}
+
+/// Drive the browser cursor from the cursor resolved under the pointer
+/// (ADR-0088). Reuses the generated Hayate-CSS → browser-CSS mapper so the
+/// `cursor` value list stays single-sourced, and applies it to
+/// `document.body.style.cursor`.
+fn apply_resolved_cursor(cursor: CursorValue) {
+    let mut entries: Vec<(String, String)> = Vec::new();
+    crate::generated::style_prop_css_entries(&StyleProp::Cursor(cursor), &mut entries);
+    let Some((_, value)) = entries.into_iter().next() else {
+        return;
+    };
+    if let Some(body) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.body())
+    {
+        let _ = body.style().set_property("cursor", &value);
+    }
 }

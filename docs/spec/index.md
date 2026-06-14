@@ -24,27 +24,28 @@
 |---|---|---|---|---|
 | §0 | [システム & ドキュメント運用](./00-system.md) | 3 | – | – |
 | §1 | [Hayate Core 原則](./01-core.md) | 5 | – | – |
-| §2 | [Element Layer](./02-element-layer.md) | 5 | – | – |
-| §3 | [Layout](./03-layout.md) | 4 | – | – |
-| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 12 | 1 | – |
-| §5 | [Text / Font / IME](./05-text-font-ime.md) | 7 | – | – |
-| §6 | [Event Model](./06-event-model.md) | 6 | – | – |
+| §2 | [Element Layer](./02-element-layer.md) | 6 | – | – |
+| §3 | [Layout](./03-layout.md) | 7 | – | – |
+| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 11 | 1 | – |
+| §5 | [Text / Font / IME](./05-text-font-ime.md) | 10 | – | – |
+| §6 | [Event Model](./06-event-model.md) | 9 | – | – |
 | §7 | [Scroll](./07-scroll.md) | 3 | – | – |
 | §8 | [Web Adapter & Modes](./08-web-adapter-modes.md) | 6 | 1 | 1 |
-| §9 | [Platform Adapter & Accessibility](./09-platform-accessibility.md) | 4 | 1 | 0 |
+| §9 | [Platform Adapter & Accessibility](./09-platform-accessibility.md) | 4 | 2 | 0 |
 | §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 19 | 1 | – |
-| §11 | [Tsubame](./11-tsubame.md) | 5 | 2 | – |
+| §11 | [Tsubame](./11-tsubame.md) | 6 | 2 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **79** | **6** | **6** |
+| | **合計** | **89** | **7** | **6** |
 
-全 **88 要件**。実装率（✅）90%。⬜ 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外。
+全 **102 要件**。実装率（✅）87%。⬜ 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
-### 🟡 部分実装（6件）
+### 🟡 部分実装（7件）
 | ID | 規範文要約 | 欠落 |
 |---|---|---|
 | REND-08 | Render Host 芯の共有層 hoist | `adapter-web` 内残留（ADR-0068） |
+| PLAT-06 | Android ネイティブ Platform Adapter | (A)描画/(B)タッチ着手、(C)フルパリティ（IME/AccessKit/clipboard）未着手 |
 | WEBA-01 | モード自動判定 | 統一 host entry 未整備（例: `hello-world` の `detectMode()` のみ） |
 | PLAT-04 ★ | AccessKit 展開順序 | Core TreeUpdate✅、ネイティブ/Web AT 報告未着手 |
 | PROTO-09 | wire codec 単一正本 | 手書き `hayate.ts` の `parseColor`/`parseDimension` 残存 |

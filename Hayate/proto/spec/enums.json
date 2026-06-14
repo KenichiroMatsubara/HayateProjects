@@ -230,6 +230,95 @@
     ]
   },
   {
+    "name": "border_style",
+    "values": [
+      {
+        "name": "none",
+        "value": 0
+      },
+      {
+        "name": "solid",
+        "value": 1
+      },
+      {
+        "name": "dashed",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "name": "overflow",
+    "values": [
+      {
+        "name": "visible",
+        "value": 0
+      },
+      {
+        "name": "hidden",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "name": "text_overflow",
+    "values": [
+      {
+        "name": "clip",
+        "value": 0
+      },
+      {
+        "name": "ellipsis",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "name": "cursor",
+    "values": [
+      {
+        "name": "default",
+        "value": 0
+      },
+      {
+        "name": "pointer",
+        "value": 1
+      },
+      {
+        "name": "text",
+        "value": 2
+      },
+      {
+        "name": "crosshair",
+        "value": 3
+      },
+      {
+        "name": "not_allowed",
+        "value": 4
+      },
+      {
+        "name": "grab",
+        "value": 5
+      },
+      {
+        "name": "grabbing",
+        "value": 6
+      }
+    ]
+  },
+  {
+    "name": "position",
+    "values": [
+      {
+        "name": "relative",
+        "value": 0
+      },
+      {
+        "name": "absolute",
+        "value": 1
+      }
+    ]
+  },
+  {
     "name": "font_family",
     "string_values": true,
     "values": [
@@ -336,6 +425,31 @@
       {
         "name": "SourceCodePro",
         "value": "Source Code Pro"
+      }
+    ]
+  },
+  {
+    "name": "transition_timing",
+    "values": [
+      {
+        "name": "ease",
+        "value": 0
+      },
+      {
+        "name": "linear",
+        "value": 1
+      },
+      {
+        "name": "ease_in",
+        "value": 2
+      },
+      {
+        "name": "ease_out",
+        "value": 3
+      },
+      {
+        "name": "ease_in_out",
+        "value": 4
       }
     ]
   }

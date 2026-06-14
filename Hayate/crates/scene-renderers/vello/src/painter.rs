@@ -127,6 +127,46 @@ impl ScenePainter for VelloPainter<'_> {
         scene.fill(Fill::EvenOdd, Affine::IDENTITY, brush, None, &path);
     }
 
+    fn stroke_dashed_border(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        let bw = border_width.max(0.0);
+        if bw <= 0.0 || width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        let half = (bw / 2.0) as f64;
+        let inset_w = (width - bw) as f64;
+        let inset_h = (height - bw) as f64;
+        // Border thicker than the box collapses to a solid fill.
+        if inset_w <= 0.0 || inset_h <= 0.0 {
+            self.fill_rect(x, y, width, height, color, outer_radius);
+            return;
+        }
+
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        let inner_r = (outer_radius - bw / 2.0).max(0.0) as f64;
+        let x0 = x as f64 + half;
+        let y0 = y as f64 + half;
+        let x1 = x0 + inset_w;
+        let y1 = y0 + inset_h;
+
+        use vello::kurbo::{BezPath, RoundedRect, Shape, Stroke};
+
+        let mut path = BezPath::new();
+        path.extend(RoundedRect::new(x0, y0, x1, y1, inner_r).path_elements(0.1));
+        let dash = bw as f64 * 2.0;
+        let style = Stroke::new(bw as f64).with_dashes(0.0, [dash, dash]);
+        scene.stroke(&style, Affine::IDENTITY, brush, None, &path);
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
@@ -208,15 +248,22 @@ impl ScenePainter for VelloPainter<'_> {
         }
     }
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         let scene = self.target();
-        let clip = Rect::new(
+        let rect = Rect::new(
             x as f64,
             y as f64,
             (x + width) as f64,
             (y + height) as f64,
         );
-        scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &clip);
+        // Uniform radii (the only shape Hayate currently emits); 0 → rect clip.
+        let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
+        if radius > 0.0 {
+            let clip = RoundedRect::from_rect(rect, radius as f64);
+            scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &clip);
+        } else {
+            scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &rect);
+        }
         self.clip_depth += 1;
     }
 

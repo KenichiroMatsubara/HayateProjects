@@ -1,4 +1,4 @@
-import type { StylePatch } from '@tsubame/renderer-protocol';
+import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
 import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
 import type { CatalogEntry } from '@tsubame/hayate-css-catalog';
 import { shouldApplyTextLocalPatch } from './text-style-semantics.js';
@@ -23,9 +23,9 @@ function extrasFromEntry(entry: CatalogEntry, value: unknown): StylePatchDeclara
   }));
 }
 
-/** Patch → ordered CSS declarations, including catalog DOM-extras and text-channel gating. */
+/** Patch → ordered CSS declarations, including catalog DOM-extras and Style Channel gating. */
 export function declarationsFromStylePatch(
-  el: HTMLElement,
+  kind: ElementKind,
   patch: StylePatch,
   options: { onUnknownKey: UnknownStyleKeyPolicy },
 ): StylePatchDeclaration[] {
@@ -35,7 +35,7 @@ export function declarationsFromStylePatch(
     const k = key as keyof StylePatch;
     const value = patch[k];
     if (value === undefined) continue;
-    if (!shouldApplyTextLocalPatch(el, k as string)) continue;
+    if (!shouldApplyTextLocalPatch(kind, k as string)) continue;
 
     const entry = CATALOG_BY_KEY[k as string];
     if (entry === undefined) {

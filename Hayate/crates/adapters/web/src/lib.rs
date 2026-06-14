@@ -1,6 +1,8 @@
 #[cfg(target_arch = "wasm32")]
 mod backend;
 #[cfg(any(target_arch = "wasm32", test))]
+mod renderer_selection;
+#[cfg(any(target_arch = "wasm32", test))]
 mod builtin_fonts;
 mod generated;
 pub mod pseudo_style_dom;
@@ -12,6 +14,8 @@ mod wire_codec_roundtrip;
 mod apply_mutations_dispatch;
 #[cfg(any(target_arch = "wasm32", test))]
 mod resize_observer;
+#[cfg(any(target_arch = "wasm32", test))]
+mod pointer_input;
 #[cfg(target_arch = "wasm32")]
 mod canvas;
 #[cfg(target_arch = "wasm32")]

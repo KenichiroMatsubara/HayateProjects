@@ -35,5 +35,10 @@
     "name": "z-index",
     "patch": { "zIndex": 10 },
     "wire": [28, 10]
+  },
+  {
+    "name": "border-style-dashed",
+    "patch": { "borderStyle": "dashed" },
+    "wire": [45, 2]
   }
 ]

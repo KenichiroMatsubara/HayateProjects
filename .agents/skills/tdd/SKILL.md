@@ -98,6 +98,22 @@ After all tests pass, look for [refactor candidates](refactoring.md):
 
 **Never refactor while RED.** Get to GREEN first.
 
+## Progress markers (issue tracker)
+
+When the work corresponds to an issue on the tracker, advance its progress
+marker as you go. Markers are GitHub `status:*` labels; "merged" is the issue's
+closed state. See [status-markers.md](../../../docs/agents/status-markers.md).
+
+- **On starting** (before the first RED) — set `status:implementing` (remove any
+  other `status:*` label, create the label if missing). If `/search-issue`
+  already marked it, leave it.
+- **On finishing** — once all tests are green, the refactor pass is done, and the
+  PR is pushed, move to `status:implemented` (remove `status:implementing`).
+- **Do not close the issue yourself.** `closed` means the PR merged; closing is
+  the merge step, not part of the TDD loop.
+
+Skip this section entirely when there's no tracker issue (ad-hoc work).
+
 ## Checklist Per Cycle
 
 ```

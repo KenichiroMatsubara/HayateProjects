@@ -47,6 +47,79 @@ pub enum TextDecorationValue {
     LineThrough,
 }
 
+/// Border line style (ADR-0083 module-complete border vocabulary, issue #204).
+///
+/// `None` is the default: a border is only drawn when an explicit style is set,
+/// mirroring CSS where `border-style` defaults to `none`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BorderStyleValue {
+    None,
+    Solid,
+    Dashed,
+}
+
+/// Box positioning scheme (ADR-0091, issue #205).
+///
+/// `Relative` is the default and matches Taffy's default (in contrast to CSS,
+/// where `static` is the default). `Absolute` takes the element out of normal
+/// flow; `top`/`left`/`right`/`bottom` insets then position it. `sticky` /
+/// `fixed` are out of scope (Taffy has no support).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PositionValue {
+    Relative,
+    Absolute,
+}
+
+/// Pointer cursor appearance (ADR-0088). Resolved from the element under the
+/// pointer and handed to the Platform Adapter via `on_pointer_move`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorValue {
+    Default,
+    Pointer,
+    Text,
+    Crosshair,
+    NotAllowed,
+    Grab,
+    Grabbing,
+}
+
+/// Child-overflow handling (ADR-0090/issue #206).
+///
+/// `Visible` is the default: children may paint outside the element's box,
+/// mirroring CSS where `overflow` defaults to `visible`. `Hidden` clips
+/// children to the element's (optionally rounded) border box.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OverflowValue {
+    Visible,
+    Hidden,
+}
+
+/// Easing function for pseudo-state transition interpolation (ADR-0089, issue #209).
+///
+/// `Ease` is the CSS default. Each variant maps to the matching CSS
+/// `transition-timing-function` keyword in HTML mode and drives the
+/// interpolation curve in the render layer for Canvas mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransitionTimingValue {
+    Ease,
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+}
+
+/// Text truncation behavior for the last visible line of a `max-lines` block
+/// (ADR-0090/issue #207).
+///
+/// `Clip` is the default: text beyond `max-lines` is silently cut. `Ellipsis`
+/// appends `…` to the last visible line. `text-overflow` has no effect unless
+/// `max-lines` is also set — `max-lines` is the sole truncation trigger.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextOverflowValue {
+    Clip,
+    Ellipsis,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DimensionUnit {
     Px,
@@ -160,6 +233,8 @@ pub enum StyleProp {
     BorderRadius(f32),
     BorderWidth(f32),
     BorderColor(Color),
+    BorderStyle(BorderStyleValue),
+    Overflow(OverflowValue),
     // sizing
     Width(Dimension),
     Height(Dimension),
@@ -184,6 +259,12 @@ pub enum StyleProp {
     MarginRight(Dimension),
     MarginBottom(Dimension),
     MarginLeft(Dimension),
+    // positioning
+    Position(PositionValue),
+    Top(Dimension),
+    Left(Dimension),
+    Right(Dimension),
+    Bottom(Dimension),
     // flex
     FlexGrow(f32),
     FlexShrink(f32),
@@ -197,6 +278,11 @@ pub enum StyleProp {
     Color(Color),
     FontStyle(FontStyleValue),
     TextDecoration(TextDecorationValue),
+    // text truncation (ADR-0090/issue #207)
+    MaxLines(u32),
+    TextOverflow(TextOverflowValue),
+    // pointer
+    Cursor(CursorValue),
     // ambient default text style (block-penetrating)
     DefaultColor(Color),
     DefaultFontFamily(String),
@@ -207,6 +293,9 @@ pub enum StyleProp {
     GridTemplateRows(Vec<Dimension>),
     // stacking
     ZIndex(i32),
+    // transition (ADR-0089, issue #209)
+    TransitionDuration(f32),
+    TransitionTiming(TransitionTimingValue),
 }
 
 impl StyleProp {
@@ -241,6 +330,11 @@ impl StyleProp {
                 | Self::MarginRight(_)
                 | Self::MarginBottom(_)
                 | Self::MarginLeft(_)
+                | Self::Position(_)
+                | Self::Top(_)
+                | Self::Left(_)
+                | Self::Right(_)
+                | Self::Bottom(_)
                 | Self::GridTemplateColumns(_)
                 | Self::GridTemplateRows(_)
         )

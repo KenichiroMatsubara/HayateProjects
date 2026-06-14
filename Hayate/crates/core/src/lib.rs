@@ -5,14 +5,18 @@ pub mod render;
 
 pub use color::Color;
 pub use element::{
-    AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
+    DimensionUnit,
+    DisplayValue,
     DocumentEventKind,
     ElementId, ElementKind,
     ElementTree, Event, EventDelivery, FlexDirectionValue, FlexWrapValue, JustifyValue, LayoutPass,
-    ListenerId,
+    ListenerId, OverflowValue, PositionValue,
     event_document_kind,
-    CharacterBounds, EditState, FontStyleValue, ImeBridge, PseudoState, ResolvedElement,
-    StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
+    CharacterBounds, EditState, FontStyleValue, ImeBridge, PointerMoveResult, PseudoState,
+    ResolvedElement,
+    StyleProp, StylePropKind, TextDecorationValue, TextOverflowValue, TransitionTimingValue,
+    ViewportCondition,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
 pub use render::{

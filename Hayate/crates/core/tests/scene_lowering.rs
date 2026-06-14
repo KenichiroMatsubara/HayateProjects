@@ -1,9 +1,19 @@
 //! Retained incremental scene lowering + Element Anchor (issue #182).
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, RecordingPainter,
+    Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, OverflowValue, RecordingPainter,
     StyleProp, render_scene_graph,
 };
+
+fn clip_nodes(tree: &ElementTree) -> Vec<[f32; 4]> {
+    let sg = tree.scene_graph();
+    sg.iter()
+        .filter_map(|(_, n)| match n.kind {
+            NodeKind::Clip { corner_radii, .. } => Some(corner_radii),
+            _ => None,
+        })
+        .collect()
+}
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
     let sg = tree.scene_graph();
@@ -128,6 +138,81 @@ fn child_visual_change_preserves_parent_anchor() {
 
     assert_eq!(tree.test_element_anchor_id(root), parent_anchor);
     assert!(tree.test_scene_lowering_walk_count() > 0);
+}
+
+#[test]
+fn overflow_hidden_view_emits_rounded_clip() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BorderRadius(12.0),
+            StyleProp::Overflow(OverflowValue::Hidden),
+        ],
+    );
+    tree.render(0.0);
+
+    let clips = clip_nodes(&tree);
+    assert_eq!(clips.len(), 1, "overflow:hidden View must emit one Clip node");
+    for r in clips[0] {
+        assert!(
+            (r - 12.0).abs() < 0.01,
+            "Clip corner_radii must carry border-radius, got {:?}",
+            clips[0]
+        );
+    }
+}
+
+#[test]
+fn overflow_visible_view_emits_no_clip() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BorderRadius(12.0),
+            StyleProp::Overflow(OverflowValue::Visible),
+        ],
+    );
+    tree.render(0.0);
+
+    assert!(
+        clip_nodes(&tree).is_empty(),
+        "overflow:visible (default) must not emit a Clip node"
+    );
+}
+
+#[test]
+fn scroll_view_clip_has_zero_corner_radii() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::ScrollView);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+            StyleProp::BorderRadius(12.0),
+        ],
+    );
+    tree.render(0.0);
+
+    let clips = clip_nodes(&tree);
+    assert_eq!(clips.len(), 1, "ScrollView must emit one Clip node");
+    assert_eq!(
+        clips[0], [0.0; 4],
+        "ScrollView clip stays rectangular regardless of border-radius (no regression)"
+    );
 }
 
 #[test]

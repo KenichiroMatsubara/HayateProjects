@@ -50,25 +50,11 @@ fn interaction_active(state: PseudoState, interaction: &ParityInteraction) -> bo
     }
 }
 
-fn accepts_text_local_styles(kind: ElementKind) -> bool {
-    matches!(kind, ElementKind::Text | ElementKind::TextInput)
-}
-
-fn is_text_local_prop(prop: &StyleProp) -> bool {
-    matches!(
-        prop,
-        StyleProp::Color(_)
-            | StyleProp::FontFamily(_)
-            | StyleProp::FontSize(_)
-            | StyleProp::FontWeight(_)
-            | StyleProp::FontStyle(_)
-            | StyleProp::TextDecoration(_)
-    )
-}
-
 fn should_apply_prop(element_kind: ElementKind, prop: &StyleProp) -> bool {
-    if is_text_local_prop(prop) {
-        return accepts_text_local_styles(element_kind);
+    // Style Channel gating, generated from proto/spec (ADR-0002 Semantics Parity):
+    // channel-1 text-local props only reach Text-Local Carrier kinds.
+    if generated::is_text_local(prop) {
+        return generated::carries_text_local(element_kind);
     }
     true
 }

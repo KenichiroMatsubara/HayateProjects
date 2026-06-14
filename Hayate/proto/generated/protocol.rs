@@ -87,6 +87,18 @@ pub const TAG_FLEX_BASIS: u32 = 41;
 pub const TAG_ALIGN_SELF: u32 = 42;
 pub const TAG_ALIGN_CONTENT: u32 = 43;
 pub const TAG_FLEX_WRAP: u32 = 44;
+pub const TAG_BORDER_STYLE: u32 = 45;
+pub const TAG_CURSOR: u32 = 46;
+pub const TAG_POSITION: u32 = 47;
+pub const TAG_TOP: u32 = 48;
+pub const TAG_LEFT: u32 = 49;
+pub const TAG_RIGHT: u32 = 50;
+pub const TAG_BOTTOM: u32 = 51;
+pub const TAG_OVERFLOW: u32 = 52;
+pub const TAG_MAX_LINES: u32 = 53;
+pub const TAG_TEXT_OVERFLOW: u32 = 54;
+pub const TAG_TRANSITION_DURATION: u32 = 55;
+pub const TAG_TRANSITION_TIMING: u32 = 56;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -532,6 +544,46 @@ pub enum StyleTag {
     FlexWrap {
         value: f32,
     },
+    BorderStyle {
+        value: f32,
+    },
+    Cursor {
+        value: f32,
+    },
+    Position {
+        value: f32,
+    },
+    Top {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Left {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Right {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Bottom {
+        dim_value: f32,
+        dim_unit: f32,
+    },
+    Overflow {
+        value: f32,
+    },
+    MaxLines {
+        value: f32,
+    },
+    TextOverflow {
+        value: f32,
+    },
+    TransitionDuration {
+        value: f32,
+    },
+    TransitionTiming {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -814,6 +866,70 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::FlexWrap { value }, i + 1))
         }
+        45 => {
+            if i + 1 > packed.len() { return Err("style tag BORDER_STYLE truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::BorderStyle { value }, i + 1))
+        }
+        46 => {
+            if i + 1 > packed.len() { return Err("style tag CURSOR truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::Cursor { value }, i + 1))
+        }
+        47 => {
+            if i + 1 > packed.len() { return Err("style tag POSITION truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::Position { value }, i + 1))
+        }
+        48 => {
+            if i + 2 > packed.len() { return Err("style tag TOP truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Top { dim_value, dim_unit }, i + 2))
+        }
+        49 => {
+            if i + 2 > packed.len() { return Err("style tag LEFT truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Left { dim_value, dim_unit }, i + 2))
+        }
+        50 => {
+            if i + 2 > packed.len() { return Err("style tag RIGHT truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Right { dim_value, dim_unit }, i + 2))
+        }
+        51 => {
+            if i + 2 > packed.len() { return Err("style tag BOTTOM truncated"); }
+            let dim_value = packed[i + 0];
+            let dim_unit = packed[i + 1];
+            Ok((StyleTag::Bottom { dim_value, dim_unit }, i + 2))
+        }
+        52 => {
+            if i + 1 > packed.len() { return Err("style tag OVERFLOW truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::Overflow { value }, i + 1))
+        }
+        53 => {
+            if i + 1 > packed.len() { return Err("style tag MAX_LINES truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::MaxLines { value }, i + 1))
+        }
+        54 => {
+            if i + 1 > packed.len() { return Err("style tag TEXT_OVERFLOW truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::TextOverflow { value }, i + 1))
+        }
+        55 => {
+            if i + 1 > packed.len() { return Err("style tag TRANSITION_DURATION truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::TransitionDuration { value }, i + 1))
+        }
+        56 => {
+            if i + 1 > packed.len() { return Err("style tag TRANSITION_TIMING truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::TransitionTiming { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -821,9 +937,10 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 // ── Style packet codec (generated) ─────────────────────────────────────
 
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DimensionUnit,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, StyleProp, TextDecorationValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue, TextOverflowValue,
+    TransitionTimingValue,
 };
 use wasm_bindgen::prelude::*;
 
@@ -937,6 +1054,63 @@ fn codec_text_decoration(raw: f32) -> TextDecorationValue {
     }
 }
 
+fn codec_border_style(raw: f32) -> BorderStyleValue {
+    match raw as u32 {
+        0 => BorderStyleValue::None,
+        1 => BorderStyleValue::Solid,
+        2 => BorderStyleValue::Dashed,
+        _ => BorderStyleValue::None,
+    }
+}
+
+fn codec_overflow(raw: f32) -> OverflowValue {
+    match raw as u32 {
+        0 => OverflowValue::Visible,
+        1 => OverflowValue::Hidden,
+        _ => OverflowValue::Visible,
+    }
+}
+
+fn codec_text_overflow(raw: f32) -> TextOverflowValue {
+    match raw as u32 {
+        0 => TextOverflowValue::Clip,
+        1 => TextOverflowValue::Ellipsis,
+        _ => TextOverflowValue::Clip,
+    }
+}
+
+fn codec_cursor(raw: f32) -> CursorValue {
+    match raw as u32 {
+        0 => CursorValue::Default,
+        1 => CursorValue::Pointer,
+        2 => CursorValue::Text,
+        3 => CursorValue::Crosshair,
+        4 => CursorValue::NotAllowed,
+        5 => CursorValue::Grab,
+        6 => CursorValue::Grabbing,
+        _ => CursorValue::Default,
+    }
+}
+
+fn codec_position(raw: f32) -> PositionValue {
+    match raw as u32 {
+        0 => PositionValue::Relative,
+        1 => PositionValue::Absolute,
+        _ => PositionValue::Relative,
+    }
+}
+
+fn codec_transition_timing(raw: f32) -> TransitionTimingValue {
+    match raw as u32 {
+        0 => TransitionTimingValue::Ease,
+        1 => TransitionTimingValue::Linear,
+        2 => TransitionTimingValue::EaseIn,
+        3 => TransitionTimingValue::EaseOut,
+        4 => TransitionTimingValue::EaseInOut,
+        _ => TransitionTimingValue::Ease,
+    }
+}
+
 fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
@@ -984,6 +1158,18 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::AlignSelf { value } => StyleProp::AlignSelf(codec_align_self(value)),
         StyleTag::AlignContent { value } => StyleProp::AlignContent(codec_align_content(value)),
         StyleTag::FlexWrap { value } => StyleProp::FlexWrap(codec_flex_wrap(value)),
+        StyleTag::BorderStyle { value } => StyleProp::BorderStyle(codec_border_style(value)),
+        StyleTag::Cursor { value } => StyleProp::Cursor(codec_cursor(value)),
+        StyleTag::Position { value } => StyleProp::Position(codec_position(value)),
+        StyleTag::Top { dim_value, dim_unit } => StyleProp::Top(codec_dim(dim_value, dim_unit)),
+        StyleTag::Left { dim_value, dim_unit } => StyleProp::Left(codec_dim(dim_value, dim_unit)),
+        StyleTag::Right { dim_value, dim_unit } => StyleProp::Right(codec_dim(dim_value, dim_unit)),
+        StyleTag::Bottom { dim_value, dim_unit } => StyleProp::Bottom(codec_dim(dim_value, dim_unit)),
+        StyleTag::Overflow { value } => StyleProp::Overflow(codec_overflow(value)),
+        StyleTag::MaxLines { value } => StyleProp::MaxLines(value as u32),
+        StyleTag::TextOverflow { value } => StyleProp::TextOverflow(codec_text_overflow(value)),
+        StyleTag::TransitionDuration { value } => StyleProp::TransitionDuration(value),
+        StyleTag::TransitionTiming { value } => StyleProp::TransitionTiming(codec_transition_timing(value)),
     })
 }
 

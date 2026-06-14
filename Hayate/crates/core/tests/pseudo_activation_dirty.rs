@@ -243,6 +243,58 @@ fn unset_pseudo_style_marks_visual_dirty() {
 }
 
 #[test]
+fn hover_transition_keeps_visual_dirty_until_complete() {
+    // Issue #209: a transition keeps the element visual-dirty across every
+    // frame of its window (so the host frame loop keeps running) and stops
+    // re-marking once it finishes.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(70, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::TransitionDuration(200.0),
+        ],
+    );
+    tree.element_set_pseudo_style(
+        root,
+        PseudoState::Hover,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
+    tree.render(0.0);
+
+    tree.update_pointer_hover(Some(root));
+
+    // The first post-hover render anchors the transition at the resolve seam.
+    tree.render(0.0);
+    assert!(tree.test_transition_active(root), "hover starts a transition");
+
+    // Each in-window frame keeps the element visual-dirty for the next frame so
+    // the host frame loop keeps running.
+    for t in [50.0, 100.0, 150.0] {
+        tree.render(t);
+        assert!(
+            tree.test_visual_dirty_contains(root),
+            "frame at {t}ms must keep the element visual-dirty"
+        );
+    }
+
+    // The frame that reaches the end paints the final target and drops the track.
+    tree.render(200.0);
+    assert!(!tree.test_transition_active(root), "transition is dropped when done");
+
+    // Once finished, the loop goes quiet: no further re-marking.
+    assert!(
+        !tree.test_visual_dirty_contains(root),
+        "completed transition must stop driving frames"
+    );
+}
+
+#[test]
 fn scroll_offset_marks_visual_dirty() {
     let mut tree = ElementTree::new();
     let scroll = tree.element_create(60, ElementKind::ScrollView);

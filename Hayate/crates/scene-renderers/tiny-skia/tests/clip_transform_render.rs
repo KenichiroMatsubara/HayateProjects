@@ -31,6 +31,7 @@ fn clip_rect_follows_active_transform() {
                 y: 20.0,
                 width: 30.0,
                 height: 30.0,
+                corner_radii: [0.0; 4],
             },
             children: Vec::new(),
         },

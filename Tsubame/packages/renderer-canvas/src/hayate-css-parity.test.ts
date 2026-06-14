@@ -1,43 +1,51 @@
-import { describe, it, expect } from 'vitest';
-import type { StylePatch } from '@tsubame/renderer-protocol';
+import { describe, it, expect } from "vitest";
+import type { StylePatch } from "@tsubame/renderer-protocol";
 import {
   HAYATE_CSS_CATALOG,
   CATALOG_BY_KEY,
   formatDomCSSValue,
   applyDomExtras,
-} from '@tsubame/hayate-css-catalog';
-import { encodeStylePatch } from '@tsubame/protocol-generated/codec';
-import { TAG } from '@tsubame/protocol-generated/protocol';
+} from "@tsubame/hayate-css-catalog";
+import { encodeStylePatch } from "@tsubame/protocol-generated/codec";
+import { TAG, TRANSITION_TIMING } from "@tsubame/protocol-generated/protocol";
 
 /** Representative sample values per wireKind for semantic parity checks. */
 const SAMPLES: Record<string, unknown> = {
-  color: '#ff6600',
-  dimension: '48px',
-  dimensionList: ['100px', '1fr', '50%'],
-  display: 'flex',
-  flexDirection: 'column',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  alignSelf: 'flex-end',
-  alignContent: 'space-between',
-  justifyContent: 'space-between',
-  fontStyle: 'italic',
-  textDecoration: 'underline',
+  color: "#ff6600",
+  dimension: "48px",
+  dimensionList: ["100px", "1fr", "50%"],
+  display: "flex",
+  flexDirection: "column",
+  flexWrap: "wrap",
+  alignItems: "center",
+  alignSelf: "flex-end",
+  alignContent: "space-between",
+  justifyContent: "space-between",
+  fontStyle: "italic",
+  textDecoration: "underline",
+  borderStyle: "dashed",
+  cursor: "pointer",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  position: "absolute",
+  transitionTiming: "ease",
   f32: 0.75,
+  u32: 2,
   zIndex: 10,
-  fontFamily: 'Inter, sans-serif',
+  fontFamily: "Inter, sans-serif",
 };
 
 function sampleFor(entry: (typeof HAYATE_CSS_CATALOG)[number]): unknown {
-  if (entry.patchKey === 'borderWidth') return 2;
-  if (entry.patchKey === 'borderRadius' || entry.patchKey === 'fontSize') return 16;
-  if (entry.patchKey === 'fontWeight') return 600;
-  if (entry.patchKey === 'flexGrow') return 1;
-  if (entry.patchKey === 'flexShrink') return 0.5;
-  if (entry.patchKey === 'flexBasis') return '80px';
-  if (entry.patchKey === 'opacity') return 0.5;
-  if (entry.patchKey === 'defaultFontSize') return 16;
-  if (entry.patchKey === 'defaultFontWeight') return 600;
+  if (entry.patchKey === "borderWidth") return 2;
+  if (entry.patchKey === "borderRadius" || entry.patchKey === "fontSize")
+    return 16;
+  if (entry.patchKey === "fontWeight") return 600;
+  if (entry.patchKey === "flexGrow") return 1;
+  if (entry.patchKey === "flexShrink") return 0.5;
+  if (entry.patchKey === "flexBasis") return "80px";
+  if (entry.patchKey === "opacity") return 0.5;
+  if (entry.patchKey === "defaultFontSize") return 16;
+  if (entry.patchKey === "defaultFontWeight") return 600;
   return SAMPLES[entry.wireKind];
 }
 
@@ -54,23 +62,23 @@ function domCssForPatch(patch: StylePatch): Record<string, string> {
   return style;
 }
 
-describe('hayate-css catalog parity', () => {
-  it('sampleFor provides a defined value for every catalog entry', () => {
+describe("hayate-css catalog parity", () => {
+  it("sampleFor provides a defined value for every catalog entry", () => {
     for (const entry of HAYATE_CSS_CATALOG) {
       expect(sampleFor(entry), entry.patchKey).toBeDefined();
     }
   });
 
-  it('covers every catalog entry with packet and css targets', () => {
+  it("covers every catalog entry with packet and css targets", () => {
     expect(HAYATE_CSS_CATALOG.length).toBeGreaterThan(0);
     for (const entry of HAYATE_CSS_CATALOG) {
-      expect(entry.targets).toContain('packet');
-      expect(entry.targets).toContain('css');
+      expect(entry.targets).toContain("packet");
+      expect(entry.targets).toContain("css");
       expect(CATALOG_BY_KEY[entry.patchKey]).toBe(entry);
     }
   });
 
-  it('encodeStylePatch tag matches catalog tag for each entry', () => {
+  it("encodeStylePatch tag matches catalog tag for each entry", () => {
     for (const entry of HAYATE_CSS_CATALOG) {
       const sample = sampleFor(entry);
       const patch = { [entry.patchKey]: sample } as StylePatch;
@@ -81,55 +89,120 @@ describe('hayate-css catalog parity', () => {
     }
   });
 
-  it('DOM css string is produced for each catalog entry sample', () => {
+  it("DOM css string is produced for each catalog entry sample", () => {
     for (const entry of HAYATE_CSS_CATALOG) {
       const sample = sampleFor(entry);
       const patch = { [entry.patchKey]: sample } as StylePatch;
       const css = domCssForPatch(patch);
       expect(css[entry.cssName]).toBeTruthy();
-      if (entry.patchKey === 'borderWidth') {
-        expect(css.borderStyle).toBe('solid');
-      }
     }
   });
 
-  it('borderWidth zero sets borderStyle none (dom_extras)', () => {
-    const css = domCssForPatch({ borderWidth: 0 });
-    expect(css.borderWidth).toBe('0px');
-    expect(css.borderStyle).toBe('none');
+  it("borderStyle maps directly to CSS border-style (no width coupling, #204)", () => {
+    expect(domCssForPatch({ borderStyle: "dashed" }).borderStyle).toBe(
+      "dashed",
+    );
+    expect(domCssForPatch({ borderStyle: "none" }).borderStyle).toBe("none");
+    // border-width no longer emits a border-style of its own.
+    expect(domCssForPatch({ borderWidth: 2 }).borderStyle).toBeUndefined();
   });
 
-  it('flexbox completion properties produce expected DOM CSS strings', () => {
-    expect(domCssForPatch({ flexShrink: 0.5 }).flexShrink).toBe('0.5');
-    expect(domCssForPatch({ flexBasis: '80px' }).flexBasis).toBe('80px');
-    expect(domCssForPatch({ alignSelf: 'flex-end' }).alignSelf).toBe('flex-end');
-    expect(domCssForPatch({ alignContent: 'space-between' }).alignContent).toBe('space-between');
-    expect(domCssForPatch({ flexWrap: 'wrap-reverse' }).flexWrap).toBe('wrap-reverse');
+  it("flexbox completion properties produce expected DOM CSS strings", () => {
+    expect(domCssForPatch({ flexShrink: 0.5 }).flexShrink).toBe("0.5");
+    expect(domCssForPatch({ flexBasis: "80px" }).flexBasis).toBe("80px");
+    expect(domCssForPatch({ alignSelf: "flex-end" }).alignSelf).toBe(
+      "flex-end",
+    );
+    expect(domCssForPatch({ alignContent: "space-between" }).alignContent).toBe(
+      "space-between",
+    );
+    expect(domCssForPatch({ flexWrap: "wrap-reverse" }).flexWrap).toBe(
+      "wrap-reverse",
+    );
   });
 
-  it('dimension encode and DOM css both use px for numeric values', () => {
+  it("dimension encode and DOM css both use px for numeric values", () => {
     const patch = { width: 100 } as StylePatch;
     const out: number[] = [];
     encodeStylePatch(patch, out);
     expect(out[0]).toBe(TAG.WIDTH);
     expect(out[1]).toBe(100);
     expect(out[2]).toBe(0);
-    expect(domCssForPatch(patch).width).toBe('100px');
+    expect(domCssForPatch(patch).width).toBe("100px");
   });
 
-  it('ambient default* tags map to inheritable CSS properties (ADR-0070)', () => {
+  it("ambient default* tags map to inheritable CSS properties (ADR-0070)", () => {
     const ambient = [
-      ['defaultColor', 'color', 'color'],
-      ['defaultFontFamily', 'fontFamily', 'font-family'],
-      ['defaultFontSize', 'fontSize', 'font-size'],
-      ['defaultFontWeight', 'fontWeight', 'font-weight'],
+      ["defaultColor", "color", "color"],
+      ["defaultFontFamily", "fontFamily", "font-family"],
+      ["defaultFontSize", "fontSize", "font-size"],
+      ["defaultFontWeight", "fontWeight", "font-weight"],
     ] as const;
     for (const [patchKey, cssName, cssProperty] of ambient) {
       const entry = CATALOG_BY_KEY[patchKey]!;
       expect(entry.cssProperty).toBe(cssProperty);
       expect(entry.cssName).toBe(cssName);
     }
-    expect(CATALOG_BY_KEY.defaultFontWeight!.domFormat).toBe('number');
-    expect(domCssForPatch({ defaultFontWeight: 600 }).fontWeight).toBe('600');
+    expect(CATALOG_BY_KEY.defaultFontWeight!.domFormat).toBe("number");
+    expect(domCssForPatch({ defaultFontWeight: 600 }).fontWeight).toBe("600");
+  });
+});
+
+/**
+ * Cross-renderer transition parity (#229, ADR-0093). Both paths interpolate from
+ * the same after-change resolved `transition-duration` / `transition-timing`: the
+ * Canvas Render Layer reads it off the decoded style packet, the DOM hands the
+ * equivalent CSS to the browser's own CSS transition. The per-frame interpolation
+ * parity itself is locked in Rust (`transition_cross_renderer_parity.rs`, where
+ * the painted mid-frame is observable); here we lock that the *inputs* the two
+ * renderers transition with come from one Hayate source and never diverge.
+ */
+describe("transition cross-renderer parity inputs (#229)", () => {
+  it("transition-duration feeds the packet and DOM CSS from one numeric source", () => {
+    const ms = 200;
+    const patch = { transitionDuration: ms } as StylePatch;
+
+    // Canvas path: the style packet carries the duration as a raw number.
+    const out: number[] = [];
+    encodeStylePatch(patch, out);
+    expect(out[0]).toBe(TAG.TRANSITION_DURATION);
+    expect(out[1]).toBe(ms);
+
+    // DOM path: the same number reaches the browser as `<ms>ms`.
+    expect(domCssForPatch(patch).transitionDuration).toBe(`${ms}ms`);
+  });
+
+  it("zero duration is carried identically on both paths (instant switch parity)", () => {
+    const patch = { transitionDuration: 0 } as StylePatch;
+    const out: number[] = [];
+    encodeStylePatch(patch, out);
+    expect(out[0]).toBe(TAG.TRANSITION_DURATION);
+    expect(out[1]).toBe(0);
+    expect(domCssForPatch(patch).transitionDuration).toBe("0ms");
+  });
+
+  it("every transition-timing keyword maps to the same curve on packet and DOM", () => {
+    const keywords = [
+      ["ease", TRANSITION_TIMING.ease],
+      ["linear", TRANSITION_TIMING.linear],
+      ["ease-in", TRANSITION_TIMING.easeIn],
+      ["ease-out", TRANSITION_TIMING.easeOut],
+      ["ease-in-out", TRANSITION_TIMING.easeInOut],
+    ] as const;
+
+    for (const [keyword, code] of keywords) {
+      const patch = { transitionTiming: keyword } as unknown as StylePatch;
+
+      // Canvas path: packet carries the timing discriminant.
+      const out: number[] = [];
+      encodeStylePatch(patch, out);
+      expect(out[0], keyword).toBe(TAG.TRANSITION_TIMING);
+      expect(out[1], keyword).toBe(code);
+
+      // DOM path: the browser receives the identical CSS keyword.
+      expect(domCssForPatch(patch).transitionTimingFunction, keyword).toBe(
+        keyword,
+      );
+    }
   });
 });

@@ -1,7 +1,7 @@
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, AlignValue, Color, Dimension, DisplayValue, ElementId,
-    ElementKind, ElementTree, FlexDirectionValue, FlexWrapValue, JustifyValue, StyleProp,
-    TextDecorationValue,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension, DisplayValue,
+    ElementId, ElementKind, ElementTree, FlexDirectionValue, FlexWrapValue, JustifyValue,
+    OverflowValue, StyleProp, TextDecorationValue,
 };
 
 use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
@@ -117,6 +117,7 @@ fn build_border_width() -> ElementTree {
             StyleProp::Width(Dimension::px(60.0)),
             StyleProp::Height(Dimension::px(60.0)),
             StyleProp::BorderWidth(6.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(Color::new(0.0, 0.0, 0.0, 1.0)),
             StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
         ],
@@ -140,6 +141,7 @@ fn build_border_color() -> ElementTree {
             StyleProp::Width(Dimension::px(60.0)),
             StyleProp::Height(Dimension::px(60.0)),
             StyleProp::BorderWidth(4.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(Color::new(0.0, 0.5, 0.0, 1.0)),
         ],
     );
@@ -150,6 +152,75 @@ fn check_border_color(data: &[u8]) {
     let edge = pixel(data, CANVAS_W, 30, 1);
     assert_channel_min(edge, 1, 100, "border-color green border");
     assert_channel_max(edge, 0, 30, "border-color green border");
+}
+
+fn build_border_style() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 6);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BorderWidth(6.0),
+            StyleProp::BorderStyle(BorderStyleValue::Dashed),
+            StyleProp::BorderColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_border_style(data: &[u8]) {
+    // A dashed top edge has both blue dashes and white gaps across its run,
+    // which distinguishes it from a solid border (no gaps) and none (no dashes).
+    let mut dashes = 0;
+    let mut gaps = 0;
+    for x in 2..58 {
+        let px = pixel(data, CANVAS_W, x, 2);
+        if px[2] > 150 && px[0] < 80 {
+            dashes += 1;
+        } else if px[0] > 200 && px[1] > 200 && px[2] > 200 {
+            gaps += 1;
+        }
+    }
+    assert!(dashes > 0, "border-style dashed paints blue dashes on the top edge");
+    assert!(gaps > 0, "border-style dashed leaves white gaps between dashes");
+}
+
+fn build_overflow_hidden() -> ElementTree {
+    // A solid child fully covers a rounded `overflow: hidden` parent. The
+    // rounded clip must carve the child's square corner away (issue #206).
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 7);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BorderRadius(20.0),
+            StyleProp::Overflow(OverflowValue::Hidden),
+        ],
+    );
+    let child = child_view(&mut tree, 70);
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_append_child(root, child);
+    tree
+}
+
+fn check_overflow_hidden(data: &[u8]) {
+    assert_clear(
+        pixel(data, CANVAS_W, 2, 2),
+        "overflow:hidden rounded corner clips the child",
+    );
+    let center = pixel(data, CANVAS_W, 30, 30);
+    assert_channel_min(center, 0, 200, "overflow:hidden center shows the red child");
 }
 
 // ── sizing ────────────────────────────────────────────────────────────────
@@ -1258,6 +1329,17 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         build: build_flex_wrap,
         check: check_flex_wrap,
     },
+    // Appended at the end so existing `css_pixels.rs` index-based tests keep their offsets.
+    CssPixelCase {
+        css_property: "border-style",
+        build: build_border_style,
+        check: check_border_style,
+    },
+    CssPixelCase {
+        css_property: "overflow",
+        build: build_overflow_hidden,
+        check: check_overflow_hidden,
+    },
 ];
 
 pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneGraph {
@@ -1275,6 +1357,8 @@ mod catalog_coverage {
         "border-radius",
         "border-width",
         "border-color",
+        "border-style",
+        "overflow",
         "width",
         "height",
         "min-width",

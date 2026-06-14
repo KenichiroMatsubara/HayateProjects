@@ -20,6 +20,15 @@ pub enum DrawOp {
         border_width: f32,
         color: [f32; 4],
     },
+    DashedBorder {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    },
     DrawTextRun {
         x: f32,
         y: f32,
@@ -42,6 +51,7 @@ pub enum DrawOp {
         y: f32,
         width: f32,
         height: f32,
+        corner_radii: [f32; 4],
     },
     PopClip,
 }
@@ -68,6 +78,18 @@ pub trait ScenePainter {
         color: [f32; 4],
     );
 
+    /// Stroke a dashed border along the box perimeter (`border-style: dashed`).
+    fn stroke_dashed_border(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    );
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
 
     fn draw_image(
@@ -83,7 +105,9 @@ pub trait ScenePainter {
 
     fn pop_transform(&mut self);
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32);
+    /// Push a clip region. `corner_radii` (TL, TR, BR, BL) rounds the corners;
+    /// all-zero is a plain rectangular clip.
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]);
 
     fn pop_clip(&mut self);
 }
@@ -148,6 +172,27 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
+    fn stroke_dashed_border(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        outer_radius: f32,
+        border_width: f32,
+        color: [f32; 4],
+    ) {
+        self.ops.push(DrawOp::DashedBorder {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
+        });
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         self.ops.push(DrawOp::DrawTextRun {
             x,
@@ -182,12 +227,13 @@ impl ScenePainter for RecordingPainter {
         self.ops.push(DrawOp::PopTransform);
     }
 
-    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         self.ops.push(DrawOp::PushClipRect {
             x,
             y,
             width,
             height,
+            corner_radii,
         });
     }
 
@@ -223,6 +269,18 @@ impl ScenePainter for NullPainter {
     ) {
     }
 
+    fn stroke_dashed_border(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _outer_radius: f32,
+        _border_width: f32,
+        _color: [f32; 4],
+    ) {
+    }
+
     fn draw_text_run(&mut self, _x: f32, _y: f32, _color: [f32; 4], _data: &TextRunData) {}
 
     fn draw_image(
@@ -239,7 +297,7 @@ impl ScenePainter for NullPainter {
 
     fn pop_transform(&mut self) {}
 
-    fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32) {}
+    fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _corner_radii: [f32; 4]) {}
 
     fn pop_clip(&mut self) {}
 }
@@ -316,6 +374,23 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             *border_width,
             *color,
         ),
+        NodeKind::DashedBorder {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
+        } => painter.stroke_dashed_border(
+            *x,
+            *y,
+            *width,
+            *height,
+            *outer_radius,
+            *border_width,
+            *color,
+        ),
         NodeKind::TextRun { x, y, color, data } => {
             painter.draw_text_run(*x, *y, *color, data.as_ref());
         }
@@ -339,9 +414,10 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             y,
             width,
             height,
+            corner_radii,
         } => {
             let children = node.children.clone();
-            painter.push_clip_rect(*x, *y, *width, *height);
+            painter.push_clip_rect(*x, *y, *width, *height, *corner_radii);
             for child_id in children {
                 walk_node(graph, child_id, painter);
             }

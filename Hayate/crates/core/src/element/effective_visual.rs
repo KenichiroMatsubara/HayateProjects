@@ -128,6 +128,10 @@ fn own_visual_differs(a: &Visual, b: &Visual) -> bool {
         || (a.border_radius - b.border_radius).abs() > f32::EPSILON
         || (a.border_width - b.border_width).abs() > f32::EPSILON
         || a.border_color != b.border_color
+        || a.border_style != b.border_style
+        || a.overflow != b.overflow
+        || a.max_lines != b.max_lines
+        || a.text_overflow != b.text_overflow
         || a.text_color != b.text_color
         || a.font_size != b.font_size
         || a.font_weight != b.font_weight

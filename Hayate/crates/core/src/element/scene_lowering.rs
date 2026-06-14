@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::element::id::ElementId;
-use crate::element::tree::ElementTree;
+use crate::element::transition::ElementTransitions;
+use crate::element::tree::{ElementTree, Visual};
 use crate::element::visual_invalidation::{
     self, VisualInvalidationReach,
 };
@@ -10,6 +11,34 @@ use crate::node::{NodeId, SceneGraph};
 #[derive(Debug, Clone)]
 pub(crate) struct AnchorEntry {
     pub anchor_id: NodeId,
+    /// Previous frame's displayed (post-blend) visual — the `from` source for a
+    /// newly triggered transition (ADR-0093). A derived cache keyed to element
+    /// lifetime, not a second source of truth (ADR-0057). `None` on first emit,
+    /// so initial styles never transition.
+    pub last_displayed: Option<Visual>,
+    /// Per-property in-flight transitions for this element.
+    pub transitions: ElementTransitions,
+}
+
+impl AnchorEntry {
+    pub fn new(anchor_id: NodeId) -> Self {
+        Self {
+            anchor_id,
+            last_displayed: None,
+            transitions: ElementTransitions::default(),
+        }
+    }
+
+    /// Interpolate `resolved` (after-change effective visual) against the stored
+    /// displayed value, advance to `now_ms`, and memo the result as the next
+    /// frame's `from`. Returns the visual to paint this frame.
+    pub fn resolve_displayed(&mut self, resolved: &Visual, now_ms: f64) -> Visual {
+        let displayed = self
+            .transitions
+            .blend(self.last_displayed.as_ref(), resolved, now_ms);
+        self.last_displayed = Some(displayed.clone());
+        displayed
+    }
 }
 
 /// Retained element→scene lowering state (issue #182).
@@ -25,6 +54,16 @@ impl SceneLowering {
         self.anchors.clear();
         self.built = false;
         self.walk_count = 0;
+    }
+
+    /// Elements with an in-flight transition — kept visual-dirty by `render` so
+    /// the frame loop keeps advancing them until they settle.
+    pub fn active_transition_ids(&self) -> Vec<ElementId> {
+        self.anchors
+            .iter()
+            .filter(|(_, entry)| entry.transitions.is_active())
+            .map(|(&id, _)| id)
+            .collect()
     }
 }
 

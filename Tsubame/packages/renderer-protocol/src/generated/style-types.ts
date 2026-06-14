@@ -12,6 +12,12 @@ export type AlignContent = 'flex-start' | 'flex-end' | 'center' | 'stretch' | 's
 export type JustifyContent = 'flex-start' | 'flex-end' | 'center' | 'space-between' | 'space-around' | 'space-evenly';
 export type FontStyle = 'normal' | 'italic' | 'oblique';
 export type TextDecoration = 'none' | 'underline' | 'line-through';
+export type BorderStyle = 'none' | 'solid' | 'dashed';
+export type Cursor = 'default' | 'pointer' | 'text' | 'crosshair' | 'not-allowed' | 'grab' | 'grabbing';
+export type Overflow = 'visible' | 'hidden';
+export type TextOverflow = 'clip' | 'ellipsis';
+export type Position = 'relative' | 'absolute';
+export type TransitionTiming = 'ease' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -59,6 +65,18 @@ export interface HayateStyle {
   alignSelf: AlignSelf;
   alignContent: AlignContent;
   flexWrap: FlexWrap;
+  borderStyle: BorderStyle;
+  cursor: Cursor;
+  position: Position;
+  top: HayateDimension;
+  left: HayateDimension;
+  right: HayateDimension;
+  bottom: HayateDimension;
+  overflow: Overflow;
+  maxLines: number;
+  textOverflow: TextOverflow;
+  transitionDuration: number;
+  transitionTiming: TransitionTiming;
 }
 
 /**

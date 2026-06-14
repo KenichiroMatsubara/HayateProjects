@@ -27,7 +27,7 @@ describe('StylePatch declaration emitter parity', () => {
     return inner.style.cssText;
   }
 
-  it('base setStyle applies border-style:solid when borderWidth is positive', () => {
+  it('borderWidth alone does not imply a border-style (declarative model, #204)', () => {
     const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
@@ -36,31 +36,57 @@ describe('StylePatch declaration emitter parity', () => {
 
     const el = container.querySelector('div')!;
     expect(el.style.borderWidth).toBe('2px');
-    expect(el.style.borderStyle).toBe('solid');
+    // border-style is its own property now; width no longer hardcodes 'solid'.
+    expect(el.style.borderStyle).not.toBe('solid');
   });
 
-  it(':hover { borderWidth } emits border-style:solid in pseudo rule body', () => {
+  it('base setStyle maps borderStyle:dashed to CSS border-style:dashed', () => {
     const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
-    renderer.setPseudoStyle(id, ':hover', { borderWidth: 2 });
+    renderer.setStyle(id, { borderWidth: 2, borderStyle: 'dashed' });
+
+    const el = container.querySelector('div')!;
+    expect(el.style.borderWidth).toBe('2px');
+    expect(el.style.borderStyle).toBe('dashed');
+  });
+
+  it(':hover { borderStyle } emits border-style in the pseudo rule body', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setPseudoStyle(id, ':hover', { borderStyle: 'dashed' });
 
     const body = pseudoRuleBody(renderer, id);
-    expect(body).toContain('border-width: 2px');
-    expect(body).toContain('border-style: solid');
+    expect(body).toContain('border-style: dashed');
   });
 
-  it('viewport variant { borderWidth } emits border-style:solid in rule body', () => {
+  it('viewport variant { borderStyle } emits border-style in the rule body', () => {
     const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');
     renderer.setRoot(id);
 
-    renderer.setStyleVariant(id, { minWidth: 768 }, { borderWidth: 2 });
+    renderer.setStyleVariant(id, { minWidth: 768 }, { borderStyle: 'solid' });
 
     const body = variantRuleBody(renderer, id);
-    expect(body).toContain('border-width: 2px');
     expect(body).toContain('border-style: solid');
+  });
+
+  it('maps position + insets to CSS for absolute positioning (#205)', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyle(id, { position: 'absolute', top: 10, left: 20, right: 30, bottom: 40 });
+
+    const el = container.querySelector('div')!;
+    expect(el.style.position).toBe('absolute');
+    expect(el.style.top).toBe('10px');
+    expect(el.style.left).toBe('20px');
+    expect(el.style.right).toBe('30px');
+    expect(el.style.bottom).toBe('40px');
   });
 
   it('skips channel-1 text-local keys on block boxes for all three paths', () => {

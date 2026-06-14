@@ -98,6 +98,57 @@ fn encode_text_decoration(value: TextDecorationValue) -> f32 {
     }
 }
 
+fn encode_border_style(value: BorderStyleValue) -> f32 {
+    match value {
+        BorderStyleValue::None => 0.0,
+        BorderStyleValue::Solid => 1.0,
+        BorderStyleValue::Dashed => 2.0,
+    }
+}
+
+fn encode_overflow(value: OverflowValue) -> f32 {
+    match value {
+        OverflowValue::Visible => 0.0,
+        OverflowValue::Hidden => 1.0,
+    }
+}
+
+fn encode_text_overflow(value: TextOverflowValue) -> f32 {
+    match value {
+        TextOverflowValue::Clip => 0.0,
+        TextOverflowValue::Ellipsis => 1.0,
+    }
+}
+
+fn encode_cursor(value: CursorValue) -> f32 {
+    match value {
+        CursorValue::Default => 0.0,
+        CursorValue::Pointer => 1.0,
+        CursorValue::Text => 2.0,
+        CursorValue::Crosshair => 3.0,
+        CursorValue::NotAllowed => 4.0,
+        CursorValue::Grab => 5.0,
+        CursorValue::Grabbing => 6.0,
+    }
+}
+
+fn encode_position(value: PositionValue) -> f32 {
+    match value {
+        PositionValue::Relative => 0.0,
+        PositionValue::Absolute => 1.0,
+    }
+}
+
+fn encode_transition_timing(value: TransitionTimingValue) -> f32 {
+    match value {
+        TransitionTimingValue::Ease => 0.0,
+        TransitionTimingValue::Linear => 1.0,
+        TransitionTimingValue::EaseIn => 2.0,
+        TransitionTimingValue::EaseOut => 3.0,
+        TransitionTimingValue::EaseInOut => 4.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -417,6 +468,58 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::FlexWrap(v) => {
                 buf.push(TAG_FLEX_WRAP as f32);
                 buf.push(encode_flex_wrap(*v));
+            }
+            StyleProp::BorderStyle(v) => {
+                buf.push(TAG_BORDER_STYLE as f32);
+                buf.push(encode_border_style(*v));
+            }
+            StyleProp::Cursor(v) => {
+                buf.push(TAG_CURSOR as f32);
+                buf.push(encode_cursor(*v));
+            }
+            StyleProp::Position(v) => {
+                buf.push(TAG_POSITION as f32);
+                buf.push(encode_position(*v));
+            }
+            StyleProp::Top(d) => {
+                buf.push(TAG_TOP as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Left(d) => {
+                buf.push(TAG_LEFT as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Right(d) => {
+                buf.push(TAG_RIGHT as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Bottom(d) => {
+                buf.push(TAG_BOTTOM as f32);
+                buf.push(d.value);
+buf.push(encode_dim_unit(d.unit));
+            }
+            StyleProp::Overflow(v) => {
+                buf.push(TAG_OVERFLOW as f32);
+                buf.push(encode_overflow(*v));
+            }
+            StyleProp::MaxLines(v) => {
+                buf.push(TAG_MAX_LINES as f32);
+                buf.push(*v as f32);
+            }
+            StyleProp::TextOverflow(v) => {
+                buf.push(TAG_TEXT_OVERFLOW as f32);
+                buf.push(encode_text_overflow(*v));
+            }
+            StyleProp::TransitionDuration(v) => {
+                buf.push(TAG_TRANSITION_DURATION as f32);
+                buf.push(*v);
+            }
+            StyleProp::TransitionTiming(v) => {
+                buf.push(TAG_TRANSITION_TIMING as f32);
+                buf.push(encode_transition_timing(*v));
             }
         }
     }

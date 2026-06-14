@@ -68,6 +68,18 @@ export const TAG = {
   ALIGN_SELF: 42,
   ALIGN_CONTENT: 43,
   FLEX_WRAP: 44,
+  BORDER_STYLE: 45,
+  CURSOR: 46,
+  POSITION: 47,
+  TOP: 48,
+  LEFT: 49,
+  RIGHT: 50,
+  BOTTOM: 51,
+  OVERFLOW: 52,
+  MAX_LINES: 53,
+  TEXT_OVERFLOW: 54,
+  TRANSITION_DURATION: 55,
+  TRANSITION_TIMING: 56,
 } as const;
 export type TAG = typeof TAG;
 
@@ -242,6 +254,42 @@ export const TEXT_DECORATION = {
 } as const;
 export type TEXT_DECORATION = typeof TEXT_DECORATION;
 
+export const BORDER_STYLE = {
+  none: 0,
+  solid: 1,
+  dashed: 2,
+} as const;
+export type BORDER_STYLE = typeof BORDER_STYLE;
+
+export const OVERFLOW = {
+  visible: 0,
+  hidden: 1,
+} as const;
+export type OVERFLOW = typeof OVERFLOW;
+
+export const TEXT_OVERFLOW = {
+  clip: 0,
+  ellipsis: 1,
+} as const;
+export type TEXT_OVERFLOW = typeof TEXT_OVERFLOW;
+
+export const CURSOR = {
+  default: 0,
+  pointer: 1,
+  text: 2,
+  crosshair: 3,
+  notAllowed: 4,
+  grab: 5,
+  grabbing: 6,
+} as const;
+export type CURSOR = typeof CURSOR;
+
+export const POSITION = {
+  relative: 0,
+  absolute: 1,
+} as const;
+export type POSITION = typeof POSITION;
+
 export const FONT_FAMILY = {
   NotoSansJP: 'Noto Sans JP',
   NotoSansKR: 'Noto Sans KR',
@@ -271,6 +319,15 @@ export const FONT_FAMILY = {
   SourceCodePro: 'Source Code Pro',
 } as const;
 export type FONT_FAMILY = typeof FONT_FAMILY;
+
+export const TRANSITION_TIMING = {
+  ease: 0,
+  linear: 1,
+  easeIn: 2,
+  easeOut: 3,
+  easeInOut: 4,
+} as const;
+export type TRANSITION_TIMING = typeof TRANSITION_TIMING;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

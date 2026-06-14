@@ -23,12 +23,13 @@ use crate::element::pseudo_state::{
 use crate::element::scene_build;
 use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
 use crate::element::style::{
-    FontStyleValue, StyleProp, StylePropKind, TextDecorationValue, ViewportCondition,
+    BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, StyleProp, StylePropKind,
+    TextDecorationValue, TextOverflowValue, TransitionTimingValue, ViewportCondition,
 };
 use crate::element::taffy_bridge;
 use crate::element::text;
 use crate::element::visual_invalidation::{
-    self, VisualInvalidationReach,
+    self, DirtyKind, ElementContext, VisualInvalidationReach,
 };
 use crate::node::SceneGraph;
 use crate::render::RenderImage;
@@ -40,11 +41,22 @@ pub struct Visual {
     pub border_radius: f32,
     pub border_width: f32,
     pub border_color: Option<Color>,
+    pub border_style: BorderStyleValue,
+    /// Child-overflow handling (issue #206). `Hidden` clips children to the
+    /// element's (optionally rounded) border box; `Visible` is the default.
+    pub overflow: OverflowValue,
+    /// Max number of text lines before truncation (issue #207). `None` = unbounded.
+    /// The sole trigger for text truncation; `text_overflow` is inert without it.
+    pub max_lines: Option<u32>,
+    /// How the last visible line is truncated when `max_lines` is exceeded.
+    pub text_overflow: TextOverflowValue,
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
     pub font_style: Option<FontStyleValue>,
     pub text_decoration: Option<TextDecorationValue>,
+    /// Pointer cursor appearance (ADR-0088). `None` resolves to `Default`.
+    pub cursor: Option<CursorValue>,
     pub z_index: i32,
     /// Custom font-family name registered via `register_font`.
     pub font_family: Option<String>,
@@ -53,6 +65,11 @@ pub struct Visual {
     pub default_font_size: Option<f32>,
     pub default_font_weight: Option<f32>,
     pub default_font_family: Option<String>,
+    /// Pseudo-state transition duration in milliseconds (ADR-0089, issue #209).
+    /// `0.0` (the default) means pseudo-state switches apply instantly.
+    pub transition_duration: f32,
+    /// Easing curve used while interpolating a pseudo-state transition.
+    pub transition_timing: TransitionTimingValue,
 }
 
 impl Default for Visual {
@@ -63,17 +80,24 @@ impl Default for Visual {
             border_radius: 0.0,
             border_width: 0.0,
             border_color: None,
+            border_style: BorderStyleValue::None,
+            overflow: OverflowValue::Visible,
+            max_lines: None,
+            text_overflow: TextOverflowValue::Clip,
             text_color: None,
             font_size: None,
             font_weight: None,
             font_style: None,
             text_decoration: None,
+            cursor: None,
             z_index: 0,
             font_family: None,
             default_color: None,
             default_font_size: None,
             default_font_weight: None,
             default_font_family: None,
+            transition_duration: 0.0,
+            transition_timing: TransitionTimingValue::Ease,
         }
     }
 }
@@ -160,6 +184,8 @@ pub struct ElementTree {
     pub(crate) active_element: Option<ElementId>,
     /// Last pointer position for sub-pixel move dedup (ADR-0066).
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
+    /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
+    pub(crate) last_cursor: CursorValue,
     pub(crate) runtime: DocumentRuntime,
 }
 
@@ -178,6 +204,7 @@ impl ElementTree {
             hovered_elements: HashSet::new(),
             active_element: None,
             last_pointer_pos: None,
+            last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
         }
     }
@@ -605,16 +632,38 @@ impl ElementTree {
         if layout_changed {
             let style = el.layout_style.clone();
             self.layout.projection.set_style(id, style);
-        } else if text_dirty {
-            self.mark_text_content_dirty(
-                id,
-                visual_invalidation::invalidation_reach_for_props(props),
-            );
-        } else {
-            self.engine.mark_visual_dirty(
-                id,
-                visual_invalidation::invalidation_reach_for_props(props),
-            );
+            return;
+        }
+        let change = self.classify_style_props(id, props);
+        self.apply_style_change(id, change);
+    }
+
+    /// Merge the invalidation of every non-layout prop in a style change against
+    /// the element's context (the *what*). Empty/all-layout lists fall back to a
+    /// scene-only self repaint.
+    fn classify_style_props(
+        &self,
+        id: ElementId,
+        props: &[StyleProp],
+    ) -> visual_invalidation::Change {
+        let ctx = self.element_context(id);
+        props
+            .iter()
+            .filter(|p| !p.is_layout())
+            .map(|p| visual_invalidation::classify(p, ctx))
+            .reduce(visual_invalidation::Change::merge)
+            .unwrap_or_else(visual_invalidation::Change::visual_self_only)
+    }
+
+    /// Route a classified style change to its dirty set. The *what* (dirty kind
+    /// + reach) is decided by `classify`; this only resolves the *which* element
+    /// (e.g. the enclosing IFC root for a shape change).
+    fn apply_style_change(&mut self, id: ElementId, change: visual_invalidation::Change) {
+        match change.dirty_kind {
+            DirtyKind::Shape => self.mark_text_content_dirty(id, change.reach),
+            DirtyKind::Visual | DirtyKind::Structure => {
+                self.engine.mark_visual_dirty(id, change.reach)
+            }
         }
     }
 
@@ -788,10 +837,8 @@ impl ElementTree {
             }
             pseudo_state::upsert_style_prop(slot, prop);
         }
-        self.engine.mark_visual_dirty(
-            id,
-            visual_invalidation::invalidation_reach_for_props(props),
-        );
+        let reach = self.classify_style_props(id, props).reach;
+        self.engine.mark_visual_dirty(id, reach);
     }
 
     pub fn element_unset_pseudo_style(
@@ -878,7 +925,15 @@ impl ElementTree {
         let _ = self.engine.drain_shape_lowering_reach();
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
-        scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty);
+        scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
+        // Transitions advance at the lowering seam; keep any still-interpolating
+        // element visual-dirty so the next frame re-lowers and advances it. When
+        // the last track settles this frame the element is not re-marked and the
+        // frame loop goes quiet (ADR-0086/0093).
+        for id in scene_lowering.active_transition_ids() {
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
         self.scene_cache = scene_cache;
         self.scene_lowering = scene_lowering;
         &self.scene_cache
@@ -1114,16 +1169,14 @@ impl ElementTree {
         if props.is_empty() {
             return;
         }
-        self.engine.mark_visual_dirty(
-            id,
-            visual_invalidation::invalidation_reach_for_props(props),
-        );
+        let reach = self.classify_style_props(id, props).reach;
+        self.engine.mark_visual_dirty(id, reach);
         if pseudo_state::pseudo_affects_text_shaping(props) {
-            self.mark_text_content_dirty(
-                id,
-                visual_invalidation::invalidation_reach_for_props(props),
-            );
+            self.mark_text_content_dirty(id, reach);
         }
+        // The transition trigger lives at the `resolve_effective` lowering seam
+        // (ADR-0093), not here: marking the element visual-dirty is enough to
+        // re-lower it, where the per-property diff starts any interpolation.
     }
 
     fn mark_text_content_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
@@ -1137,18 +1190,34 @@ impl ElementTree {
     }
 
     fn mark_child_attachment_dirty(&mut self, parent: ElementId, child: ElementId) {
-        if is_ifc_root(&self.elements, parent)
-            && self
-                .elements
-                .get(&child)
-                .is_some_and(|e| e.kind == ElementKind::Text)
-        {
-            self.engine
-                .mark_shape_dirty(parent, VisualInvalidationReach::Subtree);
-            self.layout.projection.mark_dirty(parent);
-        } else {
-            self.engine.mark_structure_dirty(parent);
-            self.engine.mark_structure_dirty(child);
+        let parent_ctx = self.element_context(parent);
+        let child_ctx = self.element_context(child);
+        match visual_invalidation::classify_attachment(parent_ctx, child_ctx).dirty_kind {
+            DirtyKind::Shape => {
+                self.engine
+                    .mark_shape_dirty(parent, VisualInvalidationReach::Subtree);
+                self.layout.projection.mark_dirty(parent);
+            }
+            DirtyKind::Visual | DirtyKind::Structure => {
+                self.engine.mark_structure_dirty(parent);
+                self.engine.mark_structure_dirty(child);
+            }
+        }
+    }
+
+    /// Build the topological context of an element for the invalidation
+    /// classifier. Reads the live tree; the classifier itself stays pure.
+    pub(crate) fn element_context(&self, id: ElementId) -> ElementContext {
+        let el = self.elements.get(&id);
+        let kind = el.map_or(ElementKind::View, |e| e.kind);
+        let has_text_parent = el
+            .and_then(|e| e.parent)
+            .and_then(|p| self.elements.get(&p))
+            .is_some_and(|p| p.kind == ElementKind::Text);
+        ElementContext {
+            kind,
+            is_ifc_root: is_ifc_root(&self.elements, id),
+            has_text_parent,
         }
     }
 
@@ -1317,6 +1386,16 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::BorderRadius(v) => visual.border_radius = v.max(0.0),
         StyleProp::BorderWidth(v) => visual.border_width = v.max(0.0),
         StyleProp::BorderColor(c) => visual.border_color = Some(*c),
+        StyleProp::BorderStyle(v) => visual.border_style = *v,
+        StyleProp::Overflow(v) => visual.overflow = *v,
+        StyleProp::MaxLines(v) => {
+            visual.max_lines = if *v == 0 { None } else { Some(*v) };
+            *text_dirty = true;
+        }
+        StyleProp::TextOverflow(v) => {
+            visual.text_overflow = *v;
+            *text_dirty = true;
+        }
         StyleProp::FontSize(v) => {
             visual.font_size = Some(v.max(0.0));
             *text_dirty = true;
@@ -1341,6 +1420,7 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
             visual.text_decoration = Some(*v);
             *text_dirty = true;
         }
+        StyleProp::Cursor(v) => visual.cursor = Some(*v),
         StyleProp::DefaultColor(c) => visual.default_color = Some(*c),
         StyleProp::DefaultFontSize(v) => visual.default_font_size = Some(v.max(0.0)),
         StyleProp::DefaultFontWeight(v) => {
@@ -1354,6 +1434,8 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
             };
         }
         StyleProp::ZIndex(z) => visual.z_index = *z,
+        StyleProp::TransitionDuration(v) => visual.transition_duration = v.max(0.0),
+        StyleProp::TransitionTiming(v) => visual.transition_timing = *v,
         _ => {}
     }
 }
@@ -1393,6 +1475,32 @@ impl ElementTree {
 
     pub fn test_shape_dirty_contains(&self, id: ElementId) -> bool {
         self.engine.shape_dirty.contains(&id)
+    }
+
+    /// Whether a continuous-property transition is currently in flight for `id`
+    /// (issue #227). State lives in the retained lowering, so this reflects the
+    /// last `render()` pass.
+    pub fn test_transition_active(&self, id: ElementId) -> bool {
+        self.scene_lowering
+            .anchors
+            .get(&id)
+            .is_some_and(|entry| entry.transitions.is_active())
+    }
+
+    /// Number of laid-out lines in an element's shaped text (issue #207 tests).
+    pub fn test_text_line_count(&self, id: ElementId) -> Option<usize> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.text_layout.as_ref())
+            .map(|tl| tl.layout.lines().count())
+    }
+
+    /// The shaped text of an element's IFC layout, after any truncation (issue #207 tests).
+    pub fn test_shaped_text(&self, id: ElementId) -> Option<String> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.text_layout.as_ref())
+            .map(|tl| tl.text.to_string())
     }
 
     /// Mirror of `render()` cursor-blink tick without draining dirty sets (issue #183).

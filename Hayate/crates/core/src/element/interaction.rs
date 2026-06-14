@@ -1,7 +1,18 @@
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::pseudo_state::PseudoState;
+use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
+
+/// Output of `on_pointer_move` (ADR-0088). `moved` is false when the move was
+/// coalesced by the 1px dedup or skipped because layout is not ready; `cursor`
+/// carries the cursor resolved from the element under the pointer so the
+/// Platform Adapter can drive the OS/browser cursor without touching styles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerMoveResult {
+    pub moved: bool,
+    pub resolved_cursor: CursorValue,
+}
 
 impl ElementTree {
     /// Pointer down at canvas coordinates (hit-test driven).
@@ -23,8 +34,11 @@ impl ElementTree {
                 y,
             });
             self.emit_interaction(Event::ActiveStart { target_id: t });
-            self.active_element = Some(t);
+            // Mark (and capture the transition's pre-switch visual) before the
+            // active state flips, so `:active` transitions start from the
+            // not-yet-active appearance (ADR-0089).
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+            self.active_element = Some(t);
             self.transition_focus(t);
         } else if let Some(prev) = self.focused_element {
             self.blur_with_events(prev);
@@ -43,28 +57,77 @@ impl ElementTree {
     }
 
     fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>) {
-        let target = self.active_element.take().or(explicit_target);
+        let target = self.active_element.or(explicit_target);
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
+            // Capture the still-active appearance as the transition start before
+            // clearing the active state (ADR-0089).
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+            self.active_element = None;
         }
     }
 
-    /// Pointer move with layout guard and 1 px dedup. Returns false when coalesced.
-    pub fn on_pointer_move(&mut self, x: f32, y: f32) -> bool {
+    /// Pointer cancel (touch interruption / pointer-capture loss). Coordinate-
+    /// independent: clears the whole hover set — emitting `HoverLeave` for each
+    /// left element and resetting the stored last-pointer position, identical to
+    /// the surface-leave hover-clear — and additionally ends the active press
+    /// (`active_element.take()` → `ActiveEnd` + pseudo-activation dirty, mirroring
+    /// the pointer-up path). Does not fabricate a `PointerMove`.
+    pub fn on_pointer_cancel(&mut self) {
+        self.apply_pointer_hover(None);
+        self.last_pointer_pos = None;
+        if let Some(t) = self.active_element {
+            self.emit_interaction(Event::ActiveEnd { target_id: t });
+            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
+            self.active_element = None;
+        }
+    }
+
+    /// Pointer move with layout guard and 1 px dedup. `moved` is false when
+    /// coalesced; `resolved_cursor` is the cursor resolved from the element under
+    /// the pointer (ADR-0088), carried forward unchanged on coalesced moves.
+    pub fn on_pointer_move(&mut self, x: f32, y: f32) -> PointerMoveResult {
         if !self.has_layout() {
-            return false;
+            return PointerMoveResult {
+                moved: false,
+                resolved_cursor: self.last_cursor,
+            };
         }
         if let Some((lx, ly)) = self.last_pointer_pos {
             if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
-                return false;
+                return PointerMoveResult {
+                    moved: false,
+                    resolved_cursor: self.last_cursor,
+                };
             }
         }
         self.last_pointer_pos = Some((x, y));
         self.push_event(Event::PointerMove { x, y });
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
-        true
+        let resolved_cursor = self.resolve_cursor(hit);
+        self.last_cursor = resolved_cursor;
+        PointerMoveResult {
+            moved: true,
+            resolved_cursor,
+        }
+    }
+
+    /// Resolve the effective cursor for the element under the pointer, walking
+    /// up the ancestor chain (CSS `cursor` inherits). `Default` when nothing in
+    /// the chain sets a cursor or the pointer hit nothing.
+    fn resolve_cursor(&self, hit: Option<ElementId>) -> CursorValue {
+        let mut current = hit;
+        while let Some(id) = current {
+            let Some(el) = self.elements.get(&id) else {
+                break;
+            };
+            if let Some(cursor) = el.visual.cursor {
+                return cursor;
+            }
+            current = el.parent;
+        }
+        CursorValue::Default
     }
 
     /// Target-less pointer move (HTML Mode coordinate stream without hit-test hover).
@@ -77,6 +140,16 @@ impl ElementTree {
         self.last_pointer_pos = Some((x, y));
         self.push_event(Event::PointerMove { x, y });
         true
+    }
+
+    /// Pointer left the surface (coordinate-independent). Clears the entire
+    /// hover set — emitting `HoverLeave` for each left element and marking
+    /// pseudo-activation dirty — and resets the stored last-pointer-position so
+    /// a subsequent re-entry is not coalesced away. Does NOT push a phantom
+    /// `PointerMove`. Symmetric with the HTML adapter's per-element leave seam.
+    pub fn on_pointer_leave(&mut self) {
+        self.apply_pointer_hover(None);
+        self.last_pointer_pos = None;
     }
 
     pub fn on_wheel(&mut self, target: ElementId, delta_x: f32, delta_y: f32) {

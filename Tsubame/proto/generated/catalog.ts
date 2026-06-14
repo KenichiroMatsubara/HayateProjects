@@ -3,8 +3,8 @@
 
 import type { HayateDimension } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'f32' | 'zIndex' | 'fontFamily';
-export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'number' | 'integer' | 'color' | 'enum' | 'string';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
+export type DomFormat = 'dimension' | 'dimension-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
   readonly cssName: string;
@@ -76,14 +76,6 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "targets": [
       "packet",
       "css"
-    ],
-    "domExtras": [
-      {
-        "cssName": "borderStyle",
-        "cssProperty": "border-style",
-        "whenPositive": "solid",
-        "whenZero": "none"
-      }
     ]
   },
   {
@@ -618,6 +610,182 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "borderStyle",
+    "tag": 45,
+    "unsetKind": null,
+    "wireKind": "borderStyle",
+    "domFormat": "enum",
+    "cssName": "borderStyle",
+    "cssProperty": "border-style",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "cursor",
+    "tag": 46,
+    "unsetKind": null,
+    "wireKind": "cursor",
+    "domFormat": "enum",
+    "cssName": "cursor",
+    "cssProperty": "cursor",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "position",
+    "tag": 47,
+    "unsetKind": null,
+    "wireKind": "position",
+    "domFormat": "enum",
+    "cssName": "position",
+    "cssProperty": "position",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "top",
+    "tag": 48,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "top",
+    "cssProperty": "top",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "left",
+    "tag": 49,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "left",
+    "cssProperty": "left",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "right",
+    "tag": 50,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "right",
+    "cssProperty": "right",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "bottom",
+    "tag": 51,
+    "unsetKind": null,
+    "wireKind": "dimension",
+    "domFormat": "dimension",
+    "cssName": "bottom",
+    "cssProperty": "bottom",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "overflow",
+    "tag": 52,
+    "unsetKind": null,
+    "wireKind": "overflow",
+    "domFormat": "enum",
+    "cssName": "overflow",
+    "cssProperty": "overflow",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "maxLines",
+    "tag": 53,
+    "unsetKind": null,
+    "wireKind": "u32",
+    "domFormat": "integer",
+    "cssName": "WebkitLineClamp",
+    "cssProperty": "-webkit-line-clamp",
+    "targets": [
+      "packet",
+      "css"
+    ],
+    "domExtras": [
+      {
+        "cssName": "display",
+        "cssProperty": "display",
+        "whenPositive": "-webkit-box",
+        "whenZero": "block"
+      },
+      {
+        "cssName": "WebkitBoxOrient",
+        "cssProperty": "-webkit-box-orient",
+        "whenPositive": "vertical",
+        "whenZero": "horizontal"
+      },
+      {
+        "cssName": "overflow",
+        "cssProperty": "overflow",
+        "whenPositive": "hidden",
+        "whenZero": "visible"
+      }
+    ]
+  },
+  {
+    "patchKey": "textOverflow",
+    "tag": 54,
+    "unsetKind": null,
+    "wireKind": "textOverflow",
+    "domFormat": "enum",
+    "cssName": "textOverflow",
+    "cssProperty": "text-overflow",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "transitionDuration",
+    "tag": 55,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "ms",
+    "cssName": "transitionDuration",
+    "cssProperty": "transition-duration",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "transitionTiming",
+    "tag": 56,
+    "unsetKind": null,
+    "wireKind": "transitionTiming",
+    "domFormat": "enum",
+    "cssName": "transitionTimingFunction",
+    "cssProperty": "transition-timing-function",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 
@@ -663,6 +831,8 @@ export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
       return formatDimensionList(value);
     case "px":
       return `${value}px`;
+    case "ms":
+      return `${value}ms`;
     case "integer":
     case "number":
     case "color":

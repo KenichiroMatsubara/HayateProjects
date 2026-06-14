@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -178,6 +178,45 @@ const TEXT_DECORATION_CODE: Record<string, number> = {
   'none': TEXT_DECORATION.none,
   'underline': TEXT_DECORATION.underline,
   'line-through': TEXT_DECORATION.lineThrough,
+};
+
+const BORDER_STYLE_CODE: Record<string, number> = {
+  'none': BORDER_STYLE.none,
+  'solid': BORDER_STYLE.solid,
+  'dashed': BORDER_STYLE.dashed,
+};
+
+const CURSOR_CODE: Record<string, number> = {
+  'default': CURSOR.default,
+  'pointer': CURSOR.pointer,
+  'text': CURSOR.text,
+  'crosshair': CURSOR.crosshair,
+  'not-allowed': CURSOR.notAllowed,
+  'grab': CURSOR.grab,
+  'grabbing': CURSOR.grabbing,
+};
+
+const OVERFLOW_CODE: Record<string, number> = {
+  'visible': OVERFLOW.visible,
+  'hidden': OVERFLOW.hidden,
+};
+
+const TEXT_OVERFLOW_CODE: Record<string, number> = {
+  'clip': TEXT_OVERFLOW.clip,
+  'ellipsis': TEXT_OVERFLOW.ellipsis,
+};
+
+const POSITION_CODE: Record<string, number> = {
+  'relative': POSITION.relative,
+  'absolute': POSITION.absolute,
+};
+
+const TRANSITION_TIMING_CODE: Record<string, number> = {
+  'ease': TRANSITION_TIMING.ease,
+  'linear': TRANSITION_TIMING.linear,
+  'ease-in': TRANSITION_TIMING.easeIn,
+  'ease-out': TRANSITION_TIMING.easeOut,
+  'ease-in-out': TRANSITION_TIMING.easeInOut,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -418,6 +457,70 @@ function encode_flexWrap(out: number[], value: string): void {
   out.push(TAG.FLEX_WRAP, code);
 }
 
+function encode_borderStyle(out: number[], value: string): void {
+  const code = BORDER_STYLE_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported borderStyle "${value}"`);
+  out.push(TAG.BORDER_STYLE, code);
+}
+
+function encode_cursor(out: number[], value: string): void {
+  const code = CURSOR_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported cursor "${value}"`);
+  out.push(TAG.CURSOR, code);
+}
+
+function encode_position(out: number[], value: string): void {
+  const code = POSITION_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported position "${value}"`);
+  out.push(TAG.POSITION, code);
+}
+
+function encode_top(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.TOP, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_left(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.LEFT, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_right(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.RIGHT, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_bottom(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+  const d = parseDimension(value);
+  out.push(TAG.BOTTOM, d.value, UNIT_CODE[d.unit]!);
+}
+
+function encode_overflow(out: number[], value: string): void {
+  const code = OVERFLOW_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported overflow "${value}"`);
+  out.push(TAG.OVERFLOW, code);
+}
+
+function encode_maxLines(out: number[], value: unknown): void {
+  out.push(TAG.MAX_LINES, finiteInteger('maxLines', value));
+}
+
+function encode_textOverflow(out: number[], value: string): void {
+  const code = TEXT_OVERFLOW_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported textOverflow "${value}"`);
+  out.push(TAG.TEXT_OVERFLOW, code);
+}
+
+function encode_transitionDuration(out: number[], value: unknown): void {
+  out.push(TAG.TRANSITION_DURATION, finiteNumber('transitionDuration', value));
+}
+
+function encode_transitionTiming(out: number[], value: string): void {
+  const code = TRANSITION_TIMING_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported transitionTiming "${value}"`);
+  out.push(TAG.TRANSITION_TIMING, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -464,6 +567,18 @@ const STYLE_ENCODERS = {
   alignSelf: encode_alignSelf,
   alignContent: encode_alignContent,
   flexWrap: encode_flexWrap,
+  borderStyle: encode_borderStyle,
+  cursor: encode_cursor,
+  position: encode_position,
+  top: encode_top,
+  left: encode_left,
+  right: encode_right,
+  bottom: encode_bottom,
+  overflow: encode_overflow,
+  maxLines: encode_maxLines,
+  textOverflow: encode_textOverflow,
+  transitionDuration: encode_transitionDuration,
+  transitionTiming: encode_transitionTiming,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

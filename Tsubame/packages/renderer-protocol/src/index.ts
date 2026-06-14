@@ -23,11 +23,12 @@ export type {
 
 export type { IRenderer } from './renderer.js';
 
-export type { ElementPropertyName } from './property.js';
+export type { ElementPropertyName, ElementPropertyOp } from './property.js';
 export {
   ELEMENT_PROPERTY_NAMES,
   assertKnownElementProperty,
   isKnownElementProperty,
+  coerceElementProperty,
 } from './property.js';
 
 export type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
@@ -41,3 +42,5 @@ export {
 } from './pseudo-style.js';
 
 export type { ViewportCondition } from './viewport-condition.js';
+
+export { isTextLocal, carriesTextLocal } from './generated/style-channel.js';

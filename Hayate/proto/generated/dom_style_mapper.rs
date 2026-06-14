@@ -36,9 +36,7 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             out.push(("border-radius".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::BorderWidth(v) => {
-            let w = v.max(0.0);
-            out.push(("border-width".into(), format!("{}px", w)));
-            out.push(("border-style".into(), if w > 0.0 { "solid".into() } else { "none".into() }));
+            out.push(("border-width".into(), format!("{}px", v.max(0.0))));
         }
         StyleProp::BorderColor(c) => {
             out.push(("border-color".into(), dom_css_hex(c)));
@@ -232,6 +230,79 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("flex-wrap".into(), s.into()));
         }
+        StyleProp::BorderStyle(v) => {
+            let s = match v {
+            BorderStyleValue::None => "none",
+            BorderStyleValue::Solid => "solid",
+            BorderStyleValue::Dashed => "dashed",
+            };
+            out.push(("border-style".into(), s.into()));
+        }
+        StyleProp::Cursor(v) => {
+            let s = match v {
+            CursorValue::Default => "default",
+            CursorValue::Pointer => "pointer",
+            CursorValue::Text => "text",
+            CursorValue::Crosshair => "crosshair",
+            CursorValue::NotAllowed => "not-allowed",
+            CursorValue::Grab => "grab",
+            CursorValue::Grabbing => "grabbing",
+            };
+            out.push(("cursor".into(), s.into()));
+        }
+        StyleProp::Position(v) => {
+            let s = match v {
+            PositionValue::Relative => "relative",
+            PositionValue::Absolute => "absolute",
+            };
+            out.push(("position".into(), s.into()));
+        }
+        StyleProp::Top(d) => {
+            out.push(("top".into(), dom_css_dim(d)));
+        }
+        StyleProp::Left(d) => {
+            out.push(("left".into(), dom_css_dim(d)));
+        }
+        StyleProp::Right(d) => {
+            out.push(("right".into(), dom_css_dim(d)));
+        }
+        StyleProp::Bottom(d) => {
+            out.push(("bottom".into(), dom_css_dim(d)));
+        }
+        StyleProp::Overflow(v) => {
+            let s = match v {
+            OverflowValue::Visible => "visible",
+            OverflowValue::Hidden => "hidden",
+            };
+            out.push(("overflow".into(), s.into()));
+        }
+        StyleProp::MaxLines(v) => {
+            let w = v as f32;
+            out.push(("-webkit-line-clamp".into(), format!("{}", v)));
+            out.push(("display".into(), if w > 0.0 { "-webkit-box".into() } else { "block".into() }));
+            out.push(("-webkit-box-orient".into(), if w > 0.0 { "vertical".into() } else { "horizontal".into() }));
+            out.push(("overflow".into(), if w > 0.0 { "hidden".into() } else { "visible".into() }));
+        }
+        StyleProp::TextOverflow(v) => {
+            let s = match v {
+            TextOverflowValue::Clip => "clip",
+            TextOverflowValue::Ellipsis => "ellipsis",
+            };
+            out.push(("text-overflow".into(), s.into()));
+        }
+        StyleProp::TransitionDuration(v) => {
+            out.push(("transition-duration".into(), format!("{}ms", v.max(0.0))));
+        }
+        StyleProp::TransitionTiming(v) => {
+            let s = match v {
+            TransitionTimingValue::Ease => "ease",
+            TransitionTimingValue::Linear => "linear",
+            TransitionTimingValue::EaseIn => "ease-in",
+            TransitionTimingValue::EaseOut => "ease-out",
+            TransitionTimingValue::EaseInOut => "ease-in-out",
+            };
+            out.push(("transition-timing-function".into(), s.into()));
+        }
     }
 }
 
@@ -242,4 +313,28 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
         style.set_property(&property, &value)?;
     }
     Ok(())
+}
+
+// ── Style Channel predicates (generated) ───────────────────────────────
+
+/// Whether `prop` is a channel-1 text-local style (Style Channel).
+pub fn is_text_local(prop: &StyleProp) -> bool {
+    matches!(
+        prop,
+        StyleProp::FontSize(..)
+            | StyleProp::Color(..)
+            | StyleProp::FontFamily(..)
+            | StyleProp::FontWeight(..)
+            | StyleProp::FontStyle(..)
+            | StyleProp::TextDecoration(..)
+    )
+}
+
+/// Whether `kind` carries channel-1 text-local styles as CSS (Text-Local Carrier).
+pub fn carries_text_local(kind: hayate_core::ElementKind) -> bool {
+    matches!(
+        kind,
+        hayate_core::ElementKind::Text
+            | hayate_core::ElementKind::TextInput
+    )
 }

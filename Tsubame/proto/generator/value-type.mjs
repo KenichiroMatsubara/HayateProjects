@@ -6,11 +6,12 @@ import { toCamelCase } from '@hayate/protocol-spec/load';
  * @typedef {{ type: 'color' }} ColorValueType
  * @typedef {{ type: 'dimension' }} DimensionValueType
  * @typedef {{ type: 'scalar' }} ScalarValueType
+ * @typedef {{ type: 'u32' }} U32ValueType
  * @typedef {{ type: 'enum', kind: string }} EnumValueType
  * @typedef {{ type: 'dimensionList' }} DimensionListValueType
  * @typedef {{ type: 'fontFamily' }} FontFamilyValueType
  * @typedef {{ type: 'zIndex' }} ZIndexValueType
- * @typedef {ColorValueType | DimensionValueType | ScalarValueType | EnumValueType | DimensionListValueType | FontFamilyValueType | ZIndexValueType} ValueType
+ * @typedef {ColorValueType | DimensionValueType | ScalarValueType | U32ValueType | EnumValueType | DimensionListValueType | FontFamilyValueType | ZIndexValueType} ValueType
  */
 
 const KNOWN_ENUM_KINDS = new Set([
@@ -23,6 +24,12 @@ const KNOWN_ENUM_KINDS = new Set([
   'justify_content',
   'font_style',
   'text_decoration',
+  'border_style',
+  'cursor',
+  'overflow',
+  'text_overflow',
+  'position',
+  'transition_timing',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -52,6 +59,8 @@ export function classify(tag) {
       return { type: 'dimension' };
     case 'f32':
       return { type: 'scalar' };
+    case 'u32':
+      return { type: 'u32' };
     case 'font-family': {
       if (!tag.variable_length) {
         throw new Error(`font-family tag ${tag.name} must set variable_length`);
@@ -98,6 +107,8 @@ export function wireKind(valueType) {
       return 'dimension';
     case 'scalar':
       return 'f32';
+    case 'u32':
+      return 'u32';
     case 'dimensionList':
       return 'dimensionList';
     case 'fontFamily':
@@ -122,6 +133,7 @@ export function tsType(valueType) {
     case 'dimension':
       return 'HayateDimension';
     case 'scalar':
+    case 'u32':
     case 'zIndex':
       return 'number';
     case 'dimensionList':
@@ -145,6 +157,12 @@ const ENUM_CONST_NAMES = {
   justify_content: 'JUSTIFY_CONTENT',
   font_style: 'FONT_STYLE',
   text_decoration: 'TEXT_DECORATION',
+  border_style: 'BORDER_STYLE',
+  cursor: 'CURSOR',
+  overflow: 'OVERFLOW',
+  text_overflow: 'TEXT_OVERFLOW',
+  position: 'POSITION',
+  transition_timing: 'TRANSITION_TIMING',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -157,6 +175,12 @@ const ENUM_PATCH_LABELS = {
   justify_content: 'justifyContent',
   font_style: 'fontStyle',
   text_decoration: 'textDecoration',
+  border_style: 'borderStyle',
+  cursor: 'cursor',
+  overflow: 'overflow',
+  text_overflow: 'textOverflow',
+  position: 'position',
+  transition_timing: 'transitionTiming',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */
@@ -181,6 +205,12 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       return [
         `function ${fnName}(out: number[], value: unknown): void {`,
         `  out.push(TAG.${tagName}, finiteNumber('${patchKey}', value));`,
+        '}',
+      ];
+    case 'u32':
+      return [
+        `function ${fnName}(out: number[], value: unknown): void {`,
+        `  out.push(TAG.${tagName}, finiteInteger('${patchKey}', value));`,
         '}',
       ];
     case 'zIndex':

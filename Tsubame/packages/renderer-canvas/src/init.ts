@@ -54,38 +54,11 @@ export async function initCanvasRenderer(
   const backend = resolveCanvasBackend(options, webgpuAvailable);
   const raw = await loadCanvasBackend(backend, canvas);
 
-  attachPointerInput(canvas, raw);
+  // Pointer + wheel input is now self-wired by hayate-adapter-web on
+  // `HayateElementRenderer::init` (ADR-0080). The host only retains the
+  // EditContext IME / keyboard glue below.
   attachTextInput(canvas, raw);
   return new CanvasRenderer(raw, { ...options, canvas });
-}
-
-function attachPointerInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
-  const toCanvas = (e: MouseEvent): readonly [number, number] => {
-    const rect = canvas.getBoundingClientRect();
-    const sx = rect.width === 0 ? 1 : canvas.width / rect.width;
-    const sy = rect.height === 0 ? 1 : canvas.height / rect.height;
-    return [(e.clientX - rect.left) * sx, (e.clientY - rect.top) * sy];
-  };
-  canvas.addEventListener('mousemove', (e) => {
-    const [x, y] = toCanvas(e);
-    raw.on_pointer_move(x, y);
-  });
-  canvas.addEventListener('mousedown', (e) => {
-    const [x, y] = toCanvas(e);
-    raw.on_pointer_down(x, y);
-  });
-  canvas.addEventListener('mouseup', (e) => {
-    const [x, y] = toCanvas(e);
-    raw.on_pointer_up(x, y);
-  });
-  canvas.addEventListener(
-    'wheel',
-    (e) => {
-      const [x, y] = toCanvas(e);
-      raw.on_wheel(x, y, e.deltaX, e.deltaY);
-    },
-    { passive: true },
-  );
 }
 
 /** EditContext IME / keyboard path (adapterTier: deferred). */

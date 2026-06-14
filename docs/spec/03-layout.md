@@ -30,11 +30,29 @@
 **状況:** ✅ — `taffy_projection.rs` が `TaffyTree` + ElementId↔NodeId マップを所有。構造 mutation（`element_create`/`append_child`/`insert_before`/`remove`）は `structure_dirty` 記録のみ。`LayoutPass::run` 冒頭で `projection.reconcile()`。inline text element は `taffy_node: None`、IFC root は measured leaf。
 **備考:** 2b（ADR-0063）が Taffy を 1:1 ミラーから非自明投影（inline text element 除外・IFC leaf・reparent クラス反転）に変えたことが本項目の引き金。
 
+### LAY-05 — スタイル語彙はレイアウトモジュール単位で完結させる（flexbox 完結）
+**規範文:** 語彙の拡張はレイアウトモジュール単位の完結を原則とする。あるモジュールのプロパティを語彙に含めるなら、そのモジュールを一通り使うのに必要なプロパティ群（Taffy が対応する範囲）を揃えて追加し、「語彙にあるモジュールは両レンダラーで一通り動く」をユーザーと LLM への保証とする。本原則に従い flexbox モジュールを完結させ、`flex-wrap` / `flex-shrink` / `flex-basis` / `align-self` / `align-content` を追加した。
+**出典:** ADR-0083（ADR-0071 閉じた語彙・ADR-0078 codegen 経由）
+**状況:** ✅ — `style_tags.json` に `FLEX_WRAP` / `FLEX_SHRINK` / `FLEX_BASIS` / `ALIGN_SELF` / `ALIGN_CONTENT`（既存 `FLEX_DIRECTION` / `FLEX_GROW` / `ALIGN_ITEMS` と合わせ flexbox 完結）。enum 新設 `flex_wrap` / `align_self` / `align_content`。追加プロパティは両レンダラーのパリティ検証（hayate-css-parity / golden frame）対象。
+**備考:** grid の item 配置（`grid-column` / `grid-row` 等）は語彙外＝grid モジュールは未完結。grid 本格対応時に同原則で一括追加する。
+
 ---
+
+### LAY-06 — box positioning（`position` ＋ insets）
+**規範文:** 要素の配置方式は `position: relative | absolute` と insets `top` / `right` / `bottom` / `left` で表す。既定は `relative`（Taffy 既定に一致。CSS の `static` 既定とは異なる）。`absolute` は通常フローから外し、insets で positioned ancestor 基準に配置する。フロー内の兄弟はその要素が居ないものとして再レイアウトされる。`sticky` / `fixed` は Taffy 非対応のためスコープ外。
+**出典:** ADR-0091（issue #205）、ADR-0004（Taffy）
+**状況:** ✅ — `style_tags.json` に `POSITION`（enum）/ `TOP` / `RIGHT` / `BOTTOM` / `LEFT`。`PositionValue::{Relative, Absolute}`。回帰テスト `tests/position_layout.rs`（absolute がフローを抜け inset 配置・in-flow 兄弟が再フロー）。
+**備考:** 既定 `relative` は CSS（`static` 既定）との明示的乖離。レイアウトエンジン（Taffy）の実挙動を正本とする方針の帰結。
+
+### LAY-07 — child overflow クリップ（`overflow: hidden`）
+**規範文:** `overflow: visible | hidden`。既定 `visible`（CSS 既定に一致、子は box 外に描画可）。`hidden` は子を要素の border box（角丸があれば丸めた形状）にクリップする。クリップは scene build で適用する。
+**出典:** ADR-0090（issue #206）
+**状況:** ✅ — `style_tags.json` に `OVERFLOW`（enum）、`OverflowValue::{Visible, Hidden}`。`border-radius` と整合する形状でクリップ。
+**備考:** `overflow-x` / `overflow-y` 個別・`scroll` 値は語彙外。スクロールは `scroll-view`（§7）が担う。
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 4 | LAY-01, LAY-02, LAY-03, LAY-04 |
+| ✅実装済み | 7 | LAY-01, LAY-02, LAY-03, LAY-04, LAY-05, LAY-06, LAY-07 |
 | 🟡部分 | 0 | — |
 | ⬜未実装 | 0 | — |

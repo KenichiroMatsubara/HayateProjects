@@ -1,4 +1,91 @@
-use hayate_core::{ElementKind, ElementTree, StyleProp};
+use hayate_core::{Dimension, ElementKind, ElementTree, StyleProp, TextOverflowValue};
+
+/// Long text that wraps to many lines inside a narrow (120px) IFC box.
+const LONG_TEXT: &str =
+    "The quick brown fox jumps over the lazy dog near the river bank early today";
+
+/// Build a single-text-element IFC of the given width and return (tree, ifc id).
+fn narrow_ifc(width: f32, extra: &[StyleProp]) -> (ElementTree, hayate_core::ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    let ifc = tree.element_create(2, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(width, 600.0);
+    let mut props = vec![StyleProp::Width(Dimension::px(width))];
+    props.extend_from_slice(extra);
+    tree.element_set_style(ifc, &props);
+    tree.element_append_child(root, ifc);
+    tree.element_set_text(ifc, LONG_TEXT);
+    tree.render(0.0);
+    (tree, ifc)
+}
+
+#[test]
+fn long_text_wraps_to_more_than_three_lines_without_max_lines() {
+    // Baseline: the fixture must actually wrap past our max-lines bounds, else the
+    // truncation tests below would pass vacuously.
+    let (tree, ifc) = narrow_ifc(120.0, &[]);
+    let lines = tree.test_text_line_count(ifc).expect("shaped IFC");
+    assert!(lines > 3, "expected >3 wrapped lines, got {lines}");
+}
+
+#[test]
+fn max_lines_two_silently_clips_to_two_lines() {
+    let (tree, ifc) = narrow_ifc(120.0, &[StyleProp::MaxLines(2)]);
+    assert_eq!(tree.test_text_line_count(ifc), Some(2));
+    let text = tree.test_shaped_text(ifc).expect("shaped IFC");
+    assert!(
+        !text.ends_with('…'),
+        "clip is the default — no ellipsis, got {text:?}"
+    );
+}
+
+#[test]
+fn max_lines_one_with_ellipsis_fits_one_line_and_appends_ellipsis() {
+    let (tree, ifc) = narrow_ifc(
+        120.0,
+        &[
+            StyleProp::MaxLines(1),
+            StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
+        ],
+    );
+    assert_eq!(tree.test_text_line_count(ifc), Some(1));
+    let text = tree.test_shaped_text(ifc).expect("shaped IFC");
+    assert!(text.ends_with('…'), "expected trailing ellipsis, got {text:?}");
+}
+
+#[test]
+fn max_lines_three_with_ellipsis_keeps_three_lines_and_appends_ellipsis() {
+    let (tree, ifc) = narrow_ifc(
+        120.0,
+        &[
+            StyleProp::MaxLines(3),
+            StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
+        ],
+    );
+    assert_eq!(tree.test_text_line_count(ifc), Some(3));
+    let text = tree.test_shaped_text(ifc).expect("shaped IFC");
+    assert!(text.ends_with('…'), "expected trailing ellipsis, got {text:?}");
+}
+
+#[test]
+fn ellipsis_without_max_lines_has_no_effect() {
+    let baseline = {
+        let (tree, ifc) = narrow_ifc(120.0, &[]);
+        tree.test_text_line_count(ifc).expect("shaped IFC")
+    };
+    let (tree, ifc) = narrow_ifc(
+        120.0,
+        &[StyleProp::TextOverflow(TextOverflowValue::Ellipsis)],
+    );
+    assert_eq!(
+        tree.test_text_line_count(ifc),
+        Some(baseline),
+        "text-overflow without max-lines must not truncate"
+    );
+    let text = tree.test_shaped_text(ifc).expect("shaped IFC");
+    assert!(!text.ends_with('…'), "no max-lines ⇒ no ellipsis, got {text:?}");
+}
 
 #[test]
 fn ifc_root_shapes_concatenated_inline_text() {
