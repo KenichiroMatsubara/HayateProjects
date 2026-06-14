@@ -10,6 +10,9 @@ pub(crate) enum ValueType {
     U32,
     Enum(&'static str),
     DimensionList,
+    /// CSS-parity box-shadow list (ADR-0095): variable-length list of shadows,
+    /// each `[offsetX, offsetY, blur, spread, r, g, b, a, inset]` (9 f32 slots).
+    ShadowList,
     FontFamily,
     ZIndex,
 }
@@ -50,6 +53,14 @@ impl ValueType {
                 );
                 ValueType::DimensionList
             }
+            "shadow-list" => {
+                assert!(
+                    tag.variable_length,
+                    "shadow-list tag {} must set variable_length",
+                    tag.name
+                );
+                ValueType::ShadowList
+            }
             "z-index" => {
                 assert_eq!(
                     primary_param,
@@ -71,12 +82,17 @@ impl ValueType {
         matches!(self, ValueType::DimensionList)
     }
 
+    pub(crate) fn is_shadow_list(self) -> bool {
+        matches!(self, ValueType::ShadowList)
+    }
+
     pub(crate) fn encode_binding(self) -> &'static str {
         match self {
             ValueType::Color => "(c)",
             ValueType::Dimension => "(d)",
             ValueType::Scalar | ValueType::U32 | ValueType::Enum(_) => "(v)",
             ValueType::DimensionList => "(tracks)",
+            ValueType::ShadowList => "(shadows)",
             ValueType::FontFamily => "(f)",
             ValueType::ZIndex => "(z)",
         }
@@ -98,6 +114,20 @@ impl ValueType {
                 "                for d in tracks.iter().copied() {",
                 "                    buf.push(d.value);",
                 "                    buf.push(encode_dim_unit(d.unit));",
+                "                }",
+                "",
+            ]
+            .join("\n"),
+            ValueType::ShadowList => [
+                "                buf.push(shadows.len() as f32);",
+                "                for s in shadows.iter() {",
+                "                    buf.push(s.offset_x);",
+                "                    buf.push(s.offset_y);",
+                "                    buf.push(s.blur);",
+                "                    buf.push(s.spread);",
+                "                    let arr = s.color.to_array_f32();",
+                "                    buf.extend_from_slice(&arr);",
+                "                    buf.push(if s.inset { 1.0 } else { 0.0 });",
                 "                }",
                 "",
             ]
@@ -129,6 +159,9 @@ impl ValueType {
                 "tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()"
                     .to_string()
             }
+            ValueType::ShadowList => {
+                "shadows.into_iter().map(codec_shadow).collect()".to_string()
+            }
             ValueType::FontFamily => "family".to_string(),
             ValueType::ZIndex => "value as i32".to_string(),
         }
@@ -140,6 +173,7 @@ impl ValueType {
             ValueType::Dimension => ("(d)".to_string(), "d"),
             ValueType::Scalar | ValueType::U32 | ValueType::Enum(_) => ("(v)".to_string(), "v"),
             ValueType::DimensionList => ("(ref tracks)".to_string(), "tracks"),
+            ValueType::ShadowList => ("(ref shadows)".to_string(), "shadows"),
             ValueType::FontFamily => ("(ref f)".to_string(), "f"),
             ValueType::ZIndex => ("(z)".to_string(), "z"),
         }
@@ -210,6 +244,20 @@ impl ValueType {
                 .map(|d| dom_css_dim(*d))\n\
                 .collect::<Vec<_>>()\n\
                 .join(\" \");"
+                ));
+                lines.push(format!("out.push((\"{css_prop}\".into(), s));"));
+            }
+            ValueType::ShadowList => {
+                lines.push(format!(
+                    "let s = if {value_var}.is_empty() {{\n\
+                \"none\".to_string()\n\
+                }} else {{\n\
+                {value_var}\n\
+                .iter()\n\
+                .map(|sh| dom_css_shadow(sh))\n\
+                .collect::<Vec<_>>()\n\
+                .join(\", \")\n\
+                }};"
                 ));
                 lines.push(format!("out.push((\"{css_prop}\".into(), s));"));
             }
@@ -434,9 +482,24 @@ mod tests {
     }
 
     #[test]
+    fn classify_derives_shadow_list_from_encode_from() {
+        let tag = sample_tag("shadow-list", vec![("shadows", "shadow")], true);
+        assert_eq!(ValueType::classify(&tag), ValueType::ShadowList);
+        assert!(ValueType::ShadowList.is_shadow_list());
+    }
+
+    #[test]
+    #[should_panic(expected = "variable_length")]
+    fn classify_shadow_list_requires_variable_length() {
+        let tag = sample_tag("shadow-list", vec![("shadows", "shadow")], false);
+        let _ = ValueType::classify(&tag);
+    }
+
+    #[test]
     fn encode_binding_matches_style_prop_variant_shape() {
         assert_eq!(ValueType::Color.encode_binding(), "(c)");
         assert_eq!(ValueType::ZIndex.encode_binding(), "(z)");
         assert_eq!(ValueType::DimensionList.encode_binding(), "(tracks)");
+        assert_eq!(ValueType::ShadowList.encode_binding(), "(shadows)");
     }
 }

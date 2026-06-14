@@ -44,5 +44,20 @@
         "type": "f32"
       }
     ]
+  },
+  {
+    "name": "shadow",
+    "raw_slots": 9,
+    "fields": [
+      { "name": "offset_x", "type": "f32" },
+      { "name": "offset_y", "type": "f32" },
+      { "name": "blur", "type": "f32" },
+      { "name": "spread", "type": "f32" },
+      { "name": "color_r", "type": "f32" },
+      { "name": "color_g", "type": "f32" },
+      { "name": "color_b", "type": "f32" },
+      { "name": "color_a", "type": "f32" },
+      { "name": "inset", "type": "f32" }
+    ]
   }
 ]

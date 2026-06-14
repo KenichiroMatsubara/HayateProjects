@@ -24,6 +24,25 @@ fn dom_css_hex(c: Color) -> String {
     )
 }
 
+fn dom_css_rgba(c: Color) -> String {
+    let arr = c.to_array_f32();
+    format!(
+        "rgba({}, {}, {}, {})",
+        (arr[0] * 255.0).round() as u8,
+        (arr[1] * 255.0).round() as u8,
+        (arr[2] * 255.0).round() as u8,
+        arr[3],
+    )
+}
+
+fn dom_css_shadow(s: &Shadow) -> String {
+    let inset = if s.inset { "inset " } else { "" };
+    format!(
+        "{}{}px {}px {}px {}px {}",
+        inset, s.offset_x, s.offset_y, s.blur, s.spread, dom_css_rgba(s.color),
+    )
+}
+
 pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>) {
     match *prop {
         StyleProp::BackgroundColor(c) => {
@@ -302,6 +321,18 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             TransitionTimingValue::EaseInOut => "ease-in-out",
             };
             out.push(("transition-timing-function".into(), s.into()));
+        }
+        StyleProp::BoxShadow(ref shadows) => {
+            let s = if shadows.is_empty() {
+            "none".to_string()
+            } else {
+            shadows
+            .iter()
+            .map(|sh| dom_css_shadow(sh))
+            .collect::<Vec<_>>()
+            .join(", ")
+            };
+            out.push(("box-shadow".into(), s));
         }
     }
 }

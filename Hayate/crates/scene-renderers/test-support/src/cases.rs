@@ -1,7 +1,7 @@
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension, DisplayValue,
     ElementId, ElementKind, ElementTree, FlexDirectionValue, FlexWrapValue, JustifyValue,
-    OverflowValue, StyleProp, TextDecorationValue,
+    OverflowValue, Shadow, StyleProp, TextDecorationValue,
 };
 
 use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
@@ -152,6 +152,73 @@ fn check_border_color(data: &[u8]) {
     let edge = pixel(data, CANVAS_W, 30, 1);
     assert_channel_min(edge, 1, 100, "border-color green border");
     assert_channel_max(edge, 0, 30, "border-color green border");
+}
+
+fn build_box_shadow() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 70);
+    // Opaque white box at (0,0)-(50,50) with a hard black drop shadow offset
+    // down-right by 10px — the visible shadow is the L outside the box.
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(50.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 10.0,
+                offset_y: 10.0,
+                blur: 0.0,
+                spread: 0.0,
+                color: Color::new(0.0, 0.0, 0.0, 1.0),
+                inset: false,
+            }]),
+        ],
+    );
+    tree
+}
+
+fn check_box_shadow(data: &[u8]) {
+    // Box interior stays white (shadow is painted behind the opaque box).
+    let center = pixel(data, CANVAS_W, 25, 25);
+    assert_channel_min(center, 0, 200, "box-shadow box center white");
+    // The offset shadow is visible just right of and below the box.
+    let shadow = pixel(data, CANVAS_W, 55, 30);
+    assert_channel_max(shadow, 0, 60, "box-shadow drop region dark");
+    // Far from box and shadow, the canvas is clear.
+    assert_clear(pixel(data, CANVAS_W, 90, 90), "box-shadow far corner clear");
+}
+
+fn build_box_shadow_inset() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 71);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur: 0.0,
+                spread: 12.0,
+                color: Color::new(0.0, 0.0, 0.0, 1.0),
+                inset: true,
+            }]),
+        ],
+    );
+    tree
+}
+
+fn check_box_shadow_inset(data: &[u8]) {
+    // Inner edge band is darkened over the white background…
+    let edge = pixel(data, CANVAS_W, 3, 30);
+    assert_channel_max(edge, 0, 180, "box-shadow inset edge darkened");
+    // …while the centre stays light, and the shadow never escapes the box.
+    let center = pixel(data, CANVAS_W, 30, 30);
+    assert_channel_min(center, 0, 200, "box-shadow inset center light");
+    assert_clear(pixel(data, CANVAS_W, 80, 30), "box-shadow inset stays inside box");
 }
 
 fn build_border_style() -> ElementTree {
@@ -1340,6 +1407,16 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         build: build_overflow_hidden,
         check: check_overflow_hidden,
     },
+    CssPixelCase {
+        css_property: "box-shadow",
+        build: build_box_shadow,
+        check: check_box_shadow,
+    },
+    CssPixelCase {
+        css_property: "box-shadow-inset",
+        build: build_box_shadow_inset,
+        check: check_box_shadow_inset,
+    },
 ];
 
 pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneGraph {
@@ -1358,6 +1435,7 @@ mod catalog_coverage {
         "border-width",
         "border-color",
         "border-style",
+        "box-shadow",
         "overflow",
         "width",
         "height",

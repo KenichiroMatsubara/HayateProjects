@@ -931,5 +931,22 @@
       "property": "transition-timing-function",
       "format": "enum:transition_timing"
     }
+  },
+  {
+    "name": "BOX_SHADOW",
+    "value": 57,
+    "inherit": "none",
+    "variable_length": true,
+    "encodeFrom": "shadow-list",
+    "params": [
+      {
+        "name": "shadows",
+        "type": "shadow"
+      }
+    ],
+    "domCss": {
+      "property": "box-shadow",
+      "format": "shadow-list"
+    }
   }
 ]

@@ -129,6 +129,7 @@ fn own_visual_differs(a: &Visual, b: &Visual) -> bool {
         || (a.border_width - b.border_width).abs() > f32::EPSILON
         || a.border_color != b.border_color
         || a.border_style != b.border_style
+        || a.box_shadow != b.box_shadow
         || a.overflow != b.overflow
         || a.max_lines != b.max_lines
         || a.text_overflow != b.text_overflow

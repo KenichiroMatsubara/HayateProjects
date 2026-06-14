@@ -15,7 +15,7 @@
 //! than introducing a separate timer.
 
 use crate::color::Color;
-use crate::element::style::TransitionTimingValue;
+use crate::element::style::{Shadow, TransitionTimingValue};
 use crate::element::tree::Visual;
 
 /// A continuous value that can be linearly interpolated during a transition.
@@ -29,23 +29,43 @@ impl Lerp for f32 {
     }
 }
 
+fn lerp_color(a: Color, b: Color, t: f32) -> Color {
+    let t = t as f64;
+    let lerp = |x: f64, y: f64| x + (y - x) * t;
+    Color::new(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b), lerp(a.a, b.a))
+}
+
 impl Lerp for Option<Color> {
     /// When only one side is set there is no continuous path between them, so
     /// snap straight to the target.
     fn lerp(&self, to: &Self, t: f32) -> Self {
         match (self, to) {
-            (Some(a), Some(b)) => {
-                let t = t as f64;
-                let lerp = |x: f64, y: f64| x + (y - x) * t;
-                Some(Color::new(
-                    lerp(a.r, b.r),
-                    lerp(a.g, b.g),
-                    lerp(a.b, b.b),
-                    lerp(a.a, b.a),
-                ))
-            }
+            (Some(a), Some(b)) => Some(lerp_color(*a, *b, t)),
             _ => *to,
         }
+    }
+}
+
+impl Lerp for Vec<Shadow> {
+    /// Box-shadow interpolation is CSS-conformant (ADR-0095): only when the
+    /// before/after lists have equal length and matching `inset` flags at every
+    /// position do we interpolate each layer's offset/blur/spread/color; any
+    /// mismatch is discrete (the target is adopted immediately).
+    fn lerp(&self, to: &Self, t: f32) -> Self {
+        if self.len() != to.len() || self.iter().zip(to).any(|(a, b)| a.inset != b.inset) {
+            return to.clone();
+        }
+        self.iter()
+            .zip(to)
+            .map(|(a, b)| Shadow {
+                offset_x: a.offset_x.lerp(&b.offset_x, t),
+                offset_y: a.offset_y.lerp(&b.offset_y, t),
+                blur: a.blur.lerp(&b.blur, t),
+                spread: a.spread.lerp(&b.spread, t),
+                color: lerp_color(a.color, b.color, t),
+                inset: a.inset,
+            })
+            .collect()
     }
 }
 
@@ -152,6 +172,7 @@ pub(crate) struct ElementTransitions {
     opacity: Option<Track<f32>>,
     border_radius: Option<Track<f32>>,
     border_width: Option<Track<f32>>,
+    box_shadow: Option<Track<Vec<Shadow>>>,
 }
 
 impl ElementTransitions {
@@ -163,6 +184,7 @@ impl ElementTransitions {
             || self.opacity.is_some()
             || self.border_radius.is_some()
             || self.border_width.is_some()
+            || self.box_shadow.is_some()
     }
 
     /// Diff the after-change resolved `target` against the previous frame's
@@ -223,6 +245,14 @@ impl ElementTransitions {
             &mut self.border_width,
             prev_displayed.map(|v| v.border_width),
             target.border_width,
+            dur,
+            timing,
+            now_ms,
+        );
+        out.box_shadow = step(
+            &mut self.box_shadow,
+            prev_displayed.map(|v| v.box_shadow.clone()),
+            target.box_shadow.clone(),
             dur,
             timing,
             now_ms,
@@ -302,6 +332,48 @@ mod tests {
     #[test]
     fn linear_is_identity() {
         assert_eq!(ease(TransitionTimingValue::Linear, 0.5), 0.5);
+    }
+
+    fn shadow(offset: f32, blur: f32, spread: f32, alpha: f64, inset: bool) -> Shadow {
+        Shadow {
+            offset_x: offset,
+            offset_y: offset,
+            blur,
+            spread,
+            color: Color::new(0.0, 0.0, 0.0, alpha),
+            inset,
+        }
+    }
+
+    #[test]
+    fn box_shadow_interpolates_per_layer_when_length_and_inset_match() {
+        let from = vec![shadow(0.0, 0.0, 0.0, 0.0, false)];
+        let to = vec![shadow(10.0, 20.0, 4.0, 1.0, false)];
+        let mid = from.lerp(&to, 0.5);
+        assert_eq!(mid.len(), 1);
+        assert!((mid[0].offset_x - 5.0).abs() < 1e-4);
+        assert!((mid[0].blur - 10.0).abs() < 1e-4);
+        assert!((mid[0].spread - 2.0).abs() < 1e-4);
+        assert!((mid[0].color.a - 0.5).abs() < 1e-4);
+        assert!(!mid[0].inset);
+    }
+
+    #[test]
+    fn box_shadow_is_discrete_on_length_mismatch() {
+        let from = vec![shadow(0.0, 0.0, 0.0, 1.0, false)];
+        let to = vec![
+            shadow(10.0, 4.0, 0.0, 1.0, false),
+            shadow(2.0, 1.0, 0.0, 1.0, false),
+        ];
+        // Mid-transition still snaps straight to the target list.
+        assert_eq!(from.lerp(&to, 0.5), to);
+    }
+
+    #[test]
+    fn box_shadow_is_discrete_on_inset_mismatch() {
+        let from = vec![shadow(0.0, 0.0, 0.0, 1.0, false)];
+        let to = vec![shadow(10.0, 4.0, 0.0, 1.0, true)];
+        assert_eq!(from.lerp(&to, 0.5), to);
     }
 
     #[test]

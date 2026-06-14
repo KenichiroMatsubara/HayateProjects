@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use hayate_core::{
-    Color, Dimension, ElementKind, ElementTree, FontStyleValue, StyleProp,
+    Color, Dimension, ElementKind, ElementTree, FontStyleValue, Shadow, StyleProp,
 };
 
 use crate::cases::render_tree_to_scene;
@@ -100,6 +100,42 @@ fn assert_has_ink(data: &[u8]) {
     assert!(has_ink, "expected rendered text ink");
 }
 
+fn box_shadow_drop_tree() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 30);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(50.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 8.0,
+                offset_y: 8.0,
+                blur: 6.0,
+                spread: 0.0,
+                color: Color::new(0.0, 0.0, 0.0, 0.5),
+                inset: false,
+            }]),
+        ],
+    );
+    tree
+}
+
+fn assert_box_shadow_drop_ink(data: &[u8]) {
+    use crate::pixel::pixel;
+    // The blurred drop shadow darkens pixels down-right of the box…
+    let shadow = pixel(data, CANVAS_W, 56, 56);
+    assert!(
+        shadow[0] < 240 && shadow[3] > 0,
+        "expected box-shadow ink below-right of box, got {shadow:?}"
+    );
+    // …while a far corner stays clear.
+    let far = pixel(data, CANVAS_W, 95, 95);
+    assert!(far[0] >= 240, "expected clear far corner, got {far:?}");
+}
+
 pub const PARITY_GOLDEN_CASES: &[ParityGoldenCase] = &[
     ParityGoldenCase {
         name: "parity_default_color_penetrates",
@@ -162,6 +198,11 @@ pub const PARITY_GOLDEN_CASES: &[ParityGoldenCase] = &[
         name: "parity_font_weight_700_bold",
         build: || view_text_tree(&[], &[StyleProp::FontWeight(700.0)], "bold"),
         check: assert_has_ink,
+    },
+    ParityGoldenCase {
+        name: "parity_box_shadow_drop",
+        build: box_shadow_drop_tree,
+        check: assert_box_shadow_drop_ink,
     },
 ];
 

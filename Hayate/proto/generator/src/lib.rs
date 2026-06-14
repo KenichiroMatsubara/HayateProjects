@@ -570,6 +570,10 @@ fn generate(proto: &Proto) -> String {
             out.push_str(&format!("    {} {{\n", variant));
             out.push_str("        tracks: Vec<(f32, f32)>,\n");
             out.push_str("    },\n");
+        } else if ValueType::classify(tag).is_shadow_list() {
+            out.push_str(&format!("    {} {{\n", variant));
+            out.push_str("        shadows: Vec<[f32; 9]>,\n");
+            out.push_str("    },\n");
         } else if tag.params.is_empty() {
             out.push_str(&format!("    {},\n", variant));
         } else {
@@ -611,6 +615,23 @@ fn generate(proto: &Proto) -> String {
             out.push_str("            }\n");
             out.push_str(&format!(
                 "            Ok((StyleTag::{} {{ tracks }}, j))\n",
+                variant
+            ));
+        } else if tag.variable_length && ValueType::classify(tag).is_shadow_list() {
+            out.push_str("            if i >= packed.len() { return Err(\"style tag shadow list truncated\"); }\n");
+            out.push_str("            let shadow_count = packed[i] as usize;\n");
+            out.push_str("            let mut shadows = Vec::with_capacity(shadow_count);\n");
+            out.push_str("            let mut j = i + 1;\n");
+            out.push_str("            for _ in 0..shadow_count {\n");
+            out.push_str("                if j + 9 > packed.len() { return Err(\"style tag shadow list data truncated\"); }\n");
+            out.push_str("                shadows.push([\n");
+            out.push_str("                    packed[j], packed[j + 1], packed[j + 2], packed[j + 3],\n");
+            out.push_str("                    packed[j + 4], packed[j + 5], packed[j + 6], packed[j + 7], packed[j + 8],\n");
+            out.push_str("                ]);\n");
+            out.push_str("                j += 9;\n");
+            out.push_str("            }\n");
+            out.push_str(&format!(
+                "            Ok((StyleTag::{} {{ shadows }}, j))\n",
                 variant
             ));
         } else if tag.variable_length {
@@ -666,7 +687,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("use hayate_core::{\n");
     out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
-    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue, TextOverflowValue,\n");
+    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
     out.push_str("    TransitionTimingValue,\n");
     out.push_str("};\n");
     out.push_str("use wasm_bindgen::prelude::*;\n\n");
@@ -684,6 +705,17 @@ fn generate_style_codec(proto: &Proto) -> String {
 
     out.push_str("fn codec_color(r: f32, g: f32, b: f32, a: f32) -> Color {\n");
     out.push_str("    Color::new(r as f64, g as f64, b as f64, a as f64)\n");
+    out.push_str("}\n\n");
+
+    out.push_str("fn codec_shadow(s: [f32; 9]) -> Shadow {\n");
+    out.push_str("    Shadow {\n");
+    out.push_str("        offset_x: s[0],\n");
+    out.push_str("        offset_y: s[1],\n");
+    out.push_str("        blur: s[2],\n");
+    out.push_str("        spread: s[3],\n");
+    out.push_str("        color: codec_color(s[4], s[5], s[6], s[7]),\n");
+    out.push_str("        inset: s[8] != 0.0,\n");
+    out.push_str("    }\n");
     out.push_str("}\n\n");
 
     for en in &proto.enums {
@@ -729,6 +761,8 @@ fn generate_style_codec(proto: &Proto) -> String {
         out.push_str(&format!("        StyleTag::{variant}"));
         if ValueType::classify(tag).is_dimension_list() {
             out.push_str(" { tracks } => ");
+        } else if ValueType::classify(tag).is_shadow_list() {
+            out.push_str(" { shadows } => ");
         } else {
             let fields = flatten_tag_params(&tag.params, proto);
             if fields.is_empty() {
@@ -887,6 +921,25 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
     out.push_str("        (arr[0] * 255.0).round() as u8,\n");
     out.push_str("        (arr[1] * 255.0).round() as u8,\n");
     out.push_str("        (arr[2] * 255.0).round() as u8,\n");
+    out.push_str("    )\n");
+    out.push_str("}\n\n");
+
+    out.push_str("fn dom_css_rgba(c: Color) -> String {\n");
+    out.push_str("    let arr = c.to_array_f32();\n");
+    out.push_str("    format!(\n");
+    out.push_str("        \"rgba({}, {}, {}, {})\",\n");
+    out.push_str("        (arr[0] * 255.0).round() as u8,\n");
+    out.push_str("        (arr[1] * 255.0).round() as u8,\n");
+    out.push_str("        (arr[2] * 255.0).round() as u8,\n");
+    out.push_str("        arr[3],\n");
+    out.push_str("    )\n");
+    out.push_str("}\n\n");
+
+    out.push_str("fn dom_css_shadow(s: &Shadow) -> String {\n");
+    out.push_str("    let inset = if s.inset { \"inset \" } else { \"\" };\n");
+    out.push_str("    format!(\n");
+    out.push_str("        \"{}{}px {}px {}px {}px {}\",\n");
+    out.push_str("        inset, s.offset_x, s.offset_y, s.blur, s.spread, dom_css_rgba(s.color),\n");
     out.push_str("    )\n");
     out.push_str("}\n\n");
 

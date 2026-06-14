@@ -140,6 +140,52 @@ describe('encodeStylePatch – dimension properties', () => {
   });
 });
 
+describe('encodeStylePatch – box-shadow (shadowList)', () => {
+  it('encodes a single drop shadow as [TAG, count, ox, oy, blur, spread, r, g, b, a, inset]', () => {
+    const out: number[] = [];
+    encodeStylePatch(
+      {
+        boxShadow: [
+          { offsetX: 2, offsetY: 4, blur: 8, spread: 1, color: '#000000', inset: false },
+        ],
+      },
+      out,
+    );
+    expect(out).toEqual([
+      TAG.BOX_SHADOW,
+      1,
+      2, 4, 8, 1,
+      0, 0, 0, 1,
+      0,
+    ]);
+  });
+
+  it('encodes multiple shadows and the inset flag with alpha colour', () => {
+    const out: number[] = [];
+    encodeStylePatch(
+      {
+        boxShadow: [
+          { offsetX: 0, offsetY: 0, blur: 0, spread: 3, color: '#ff0000', inset: false },
+          { offsetX: 1, offsetY: 1, blur: 2, spread: 0, color: 'rgba(0, 0, 0, 0.5)', inset: true },
+        ],
+      },
+      out,
+    );
+    expect(out).toEqual([
+      TAG.BOX_SHADOW,
+      2,
+      0, 0, 0, 3, 1, 0, 0, 1, 0,
+      1, 1, 2, 0, 0, 0, 0, 0.5, 1,
+    ]);
+  });
+
+  it('encodes an empty box-shadow list as just [TAG, 0]', () => {
+    const out: number[] = [];
+    encodeStylePatch({ boxShadow: [] }, out);
+    expect(out).toEqual([TAG.BOX_SHADOW, 0]);
+  });
+});
+
 describe('encodeStylePatch – enum properties', () => {
   it('encodes display: flex', () => {
     const out: number[] = [];

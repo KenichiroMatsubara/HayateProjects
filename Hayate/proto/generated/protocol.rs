@@ -99,6 +99,7 @@ pub const TAG_MAX_LINES: u32 = 53;
 pub const TAG_TEXT_OVERFLOW: u32 = 54;
 pub const TAG_TRANSITION_DURATION: u32 = 55;
 pub const TAG_TRANSITION_TIMING: u32 = 56;
+pub const TAG_BOX_SHADOW: u32 = 57;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -584,6 +585,9 @@ pub enum StyleTag {
     TransitionTiming {
         value: f32,
     },
+    BoxShadow {
+        shadows: Vec<[f32; 9]>,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -930,6 +934,21 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::TransitionTiming { value }, i + 1))
         }
+        57 => {
+            if i >= packed.len() { return Err("style tag shadow list truncated"); }
+            let shadow_count = packed[i] as usize;
+            let mut shadows = Vec::with_capacity(shadow_count);
+            let mut j = i + 1;
+            for _ in 0..shadow_count {
+                if j + 9 > packed.len() { return Err("style tag shadow list data truncated"); }
+                shadows.push([
+                    packed[j], packed[j + 1], packed[j + 2], packed[j + 3],
+                    packed[j + 4], packed[j + 5], packed[j + 6], packed[j + 7], packed[j + 8],
+                ]);
+                j += 9;
+            }
+            Ok((StyleTag::BoxShadow { shadows }, j))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -939,7 +958,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, StyleProp, TextDecorationValue, TextOverflowValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
 };
 use wasm_bindgen::prelude::*;
@@ -957,6 +976,17 @@ fn codec_dim(value: f32, unit_raw: f32) -> Dimension {
 
 fn codec_color(r: f32, g: f32, b: f32, a: f32) -> Color {
     Color::new(r as f64, g as f64, b as f64, a as f64)
+}
+
+fn codec_shadow(s: [f32; 9]) -> Shadow {
+    Shadow {
+        offset_x: s[0],
+        offset_y: s[1],
+        blur: s[2],
+        spread: s[3],
+        color: codec_color(s[4], s[5], s[6], s[7]),
+        inset: s[8] != 0.0,
+    }
 }
 
 fn codec_display(raw: f32) -> DisplayValue {
@@ -1170,6 +1200,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
         StyleTag::TextOverflow { value } => StyleProp::TextOverflow(codec_text_overflow(value)),
         StyleTag::TransitionDuration { value } => StyleProp::TransitionDuration(value),
         StyleTag::TransitionTiming { value } => StyleProp::TransitionTiming(codec_transition_timing(value)),
+        StyleTag::BoxShadow { shadows } => StyleProp::BoxShadow(shadows.into_iter().map(codec_shadow).collect()),
     })
 }
 

@@ -80,6 +80,7 @@ export const TAG = {
   TEXT_OVERFLOW: 54,
   TRANSITION_DURATION: 55,
   TRANSITION_TIMING: 56,
+  BOX_SHADOW: 57,
 } as const;
 export type TAG = typeof TAG;
 

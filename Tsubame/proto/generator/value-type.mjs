@@ -9,9 +9,10 @@ import { toCamelCase } from '@hayate/protocol-spec/load';
  * @typedef {{ type: 'u32' }} U32ValueType
  * @typedef {{ type: 'enum', kind: string }} EnumValueType
  * @typedef {{ type: 'dimensionList' }} DimensionListValueType
+ * @typedef {{ type: 'shadowList' }} ShadowListValueType
  * @typedef {{ type: 'fontFamily' }} FontFamilyValueType
  * @typedef {{ type: 'zIndex' }} ZIndexValueType
- * @typedef {ColorValueType | DimensionValueType | ScalarValueType | U32ValueType | EnumValueType | DimensionListValueType | FontFamilyValueType | ZIndexValueType} ValueType
+ * @typedef {ColorValueType | DimensionValueType | ScalarValueType | U32ValueType | EnumValueType | DimensionListValueType | ShadowListValueType | FontFamilyValueType | ZIndexValueType} ValueType
  */
 
 const KNOWN_ENUM_KINDS = new Set([
@@ -76,6 +77,12 @@ export function classify(tag) {
       }
       return { type: 'dimensionList' };
     }
+    case 'shadow-list': {
+      if (!tag.variable_length) {
+        throw new Error(`shadow-list tag ${tag.name} must set variable_length`);
+      }
+      return { type: 'shadowList' };
+    }
     case 'z-index': {
       if (primaryParam !== 'i32') {
         throw new Error(`z-index tag ${tag.name} requires i32 param`);
@@ -111,6 +118,8 @@ export function wireKind(valueType) {
       return 'u32';
     case 'dimensionList':
       return 'dimensionList';
+    case 'shadowList':
+      return 'shadowList';
     case 'fontFamily':
       return 'fontFamily';
     case 'zIndex':
@@ -138,6 +147,8 @@ export function tsType(valueType) {
       return 'number';
     case 'dimensionList':
       return 'HayateDimension[]';
+    case 'shadowList':
+      return 'HayateShadow[]';
     case 'enum':
       return enumKindToTsTypeName(valueType.kind);
     default: {
@@ -237,6 +248,26 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
         `  for (const item of value) {`,
         `    const d = parseDimension(item);`,
         `    out.push(d.value, UNIT_CODE[d.unit]!);`,
+        `  }`,
+        '}',
+      ];
+    case 'shadowList':
+      return [
+        `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateShadow[]): void {`,
+        `  if (!Array.isArray(value)) {`,
+        `    throw new Error(\`CanvasRenderer: "${patchKey}" must be an array of shadows\`);`,
+        `  }`,
+        `  out.push(TAG.${tagName}, value.length);`,
+        `  for (const item of value) {`,
+        `    const c = parseColor(item.color);`,
+        `    out.push(`,
+        `      finiteNumber('${patchKey}.offsetX', item.offsetX),`,
+        `      finiteNumber('${patchKey}.offsetY', item.offsetY),`,
+        `      finiteNumber('${patchKey}.blur', item.blur),`,
+        `      finiteNumber('${patchKey}.spread', item.spread),`,
+        `      c.r, c.g, c.b, c.a,`,
+        `      item.inset ? 1 : 0,`,
+        `    );`,
         `  }`,
         '}',
       ];

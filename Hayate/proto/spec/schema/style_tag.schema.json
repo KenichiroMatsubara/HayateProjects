@@ -37,6 +37,7 @@
         "enum:transition_timing",
         "font-family",
         "dimension-list",
+        "shadow-list",
         "z-index"
       ]
     },
@@ -83,7 +84,8 @@
             "enum:position",
             "enum:text_overflow",
             "enum:transition_timing",
-            "dimension-list"
+            "dimension-list",
+            "shadow-list"
           ]
         },
         "extras": {

@@ -521,6 +521,19 @@ buf.push(encode_dim_unit(d.unit));
                 buf.push(TAG_TRANSITION_TIMING as f32);
                 buf.push(encode_transition_timing(*v));
             }
+            StyleProp::BoxShadow(shadows) => {
+                buf.push(TAG_BOX_SHADOW as f32);
+                buf.push(shadows.len() as f32);
+                for s in shadows.iter() {
+                    buf.push(s.offset_x);
+                    buf.push(s.offset_y);
+                    buf.push(s.blur);
+                    buf.push(s.spread);
+                    let arr = s.color.to_array_f32();
+                    buf.extend_from_slice(&arr);
+                    buf.push(if s.inset { 1.0 } else { 0.0 });
+                }
+            }
         }
     }
 }
