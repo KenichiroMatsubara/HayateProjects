@@ -15,9 +15,13 @@ import {
 } from './theme';
 import {
   add,
+  canReorder,
   clearDone,
   completion,
+  editText,
   FILTER_VALUES,
+  moveDown,
+  moveUp,
   PRIORITY_VALUES,
   remove,
   SEED,
@@ -75,6 +79,16 @@ export const SORTS: { value: SortMode; label: string }[] = SORT_VALUES.map((valu
 /** 追加フォームの優先度セグメント。モデルの正本 `PRIORITY_VALUES` から導出する。 */
 export const PRIORITIES: Priority[] = [...PRIORITY_VALUES];
 
+/** インライン編集中の keydown が表す操作。`dblclick` は語彙に無いため keydown のみ。 */
+export type EditKeyAction = 'commit' | 'cancel' | 'none';
+
+/** インライン編集の確定/取消キーを判定する（Enter=確定 / Escape=取消 / それ以外=無視）。 */
+export function editKeyAction(key: string): EditKeyAction {
+  if (key === 'Enter') return 'commit';
+  if (key === 'Escape') return 'cancel';
+  return 'none';
+}
+
 const SpX = (w: number) => <view style={{ width: w, height: 1 }} />;
 
 function seedTodos(): Todo[] {
@@ -95,6 +109,9 @@ export function TodoApp(props: TodoAppProps) {
   const [sort, setSort] = createSignal<SortMode>('manual');
   const [draftPrio, setDraftPrio] = createSignal<Priority>(2);
   const [draft, setDraft] = createSignal('');
+  // インライン編集の対象行（null=非編集）と、その編集中テキスト。
+  const [editingId, setEditingId] = createSignal<number | null>(null);
+  const [editDraft, setEditDraft] = createSignal('');
   let nextId = 1000;
 
   // テーマ・アクセントは localStorage で永続化（#247 の方針）。既定はライト。
@@ -119,6 +136,21 @@ export function TodoApp(props: TodoAppProps) {
   const toggle = (id: number) => setTodos(toggleDone(todos(), id));
   const removeTask = (id: number) => setTodos(remove(todos(), id));
   const clearCompleted = () => setTodos(clearDone(todos()));
+  const moveTaskUp = (id: number) => setTodos(moveUp(todos(), id));
+  const moveTaskDown = (id: number) => setTodos(moveDown(todos(), id));
+
+  // インライン編集: クリックで開始、Enter/blur で確定、Escape で取消。
+  const beginEdit = (todo: Todo) => {
+    setEditingId(todo.id);
+    setEditDraft(todo.text);
+  };
+  const commitEdit = () => {
+    const id = editingId();
+    if (id === null) return; // Escape 後の blur など、二重確定を無視する。
+    setTodos(editText(todos(), id, editDraft())); // 空文字はモデル側で無視。
+    setEditingId(null);
+  };
+  const cancelEdit = () => setEditingId(null);
 
   return (
     <view style={{
@@ -184,8 +216,17 @@ export function TodoApp(props: TodoAppProps) {
                   <TodoRow
                     colors={colors()}
                     todo={todo}
+                    reorderable={canReorder(sort())}
+                    editing={editingId() === todo.id}
+                    editDraft={editDraft()}
                     onToggle={() => toggle(todo.id)}
                     onRemove={() => removeTask(todo.id)}
+                    onBeginEdit={() => beginEdit(todo)}
+                    onEditInput={setEditDraft}
+                    onCommitEdit={commitEdit}
+                    onCancelEdit={cancelEdit}
+                    onMoveUp={() => moveTaskUp(todo.id)}
+                    onMoveDown={() => moveTaskDown(todo.id)}
                   />
                 ))}
             </view>
@@ -496,7 +537,38 @@ function Toolbar(props: {
   );
 }
 
-function TodoRow(props: { colors: Palette; todo: Todo; onToggle: () => void; onRemove: () => void }) {
+function iconButton(p: Palette): HayateCssStyle {
+  return {
+    width: 30,
+    height: 30,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: p.panel,
+    defaultColor: p.muted,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: p.line,
+    defaultFontSize: 14,
+    ':hover': { backgroundColor: p.panel3, borderColor: p.line, defaultColor: p.text },
+  };
+}
+
+function TodoRow(props: {
+  colors: Palette;
+  todo: Todo;
+  reorderable: boolean;
+  editing: boolean;
+  editDraft: string;
+  onToggle: () => void;
+  onRemove: () => void;
+  onBeginEdit: () => void;
+  onEditInput: (text: string) => void;
+  onCommitEdit: () => void;
+  onCancelEdit: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
   const done = props.todo.done;
   const p = props.colors;
   return (
@@ -539,22 +611,43 @@ function TodoRow(props: { colors: Palette; todo: Todo; onToggle: () => void; onR
         borderRadius: 999,
       }} />
       <view style={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-        <text style={{ color: done ? p.quiet : p.ink, fontSize: 15 }}>{props.todo.text}</text>
+        {props.editing
+          ? <text-input
+            value={props.editDraft}
+            style={{ ...inputStyle(p), height: 30, fontSize: 15 }}
+            onInput={(event) => props.onEditInput(event.value ?? '')}
+            onKeyDown={(event) => {
+              const action = editKeyAction(event.key ?? '');
+              if (action === 'commit') props.onCommitEdit();
+              else if (action === 'cancel') props.onCancelEdit();
+            }}
+            onBlur={props.onCommitEdit}
+          />
+          : <button
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              backgroundColor: 'transparent',
+              defaultColor: done ? p.quiet : p.ink,
+              defaultFontSize: 15,
+              borderWidth: 0,
+              ':hover': { defaultColor: p.accent },
+            }}
+            onClick={props.onBeginEdit}
+          >
+            {props.todo.text}
+          </button>}
       </view>
       <text style={{ color: p.quiet, fontSize: 11 }}>{`優先度 ${PRIORITY_LABEL[props.todo.prio]}`}</text>
+      {props.reorderable
+        ? <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <button style={iconButton(p)} onClick={props.onMoveUp}>↑</button>
+          <button style={iconButton(p)} onClick={props.onMoveDown}>↓</button>
+        </view>
+        : null}
       <button
         style={{
-          width: 30,
-          height: 30,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: p.panel,
-          defaultColor: p.muted,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: p.line,
-          defaultFontSize: 14,
+          ...iconButton(p),
           ':hover': { backgroundColor: p.dangerBg, borderColor: p.danger, defaultColor: p.danger },
         }}
         onClick={props.onRemove}
