@@ -9,7 +9,7 @@ import type {
   Unsubscribe,
   ViewportCondition,
 } from '@tsubame/renderer-protocol';
-import { asElementId, assertKnownElementProperty } from '@tsubame/renderer-protocol';
+import { asElementId, assertKnownElementProperty, coerceElementProperty } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
@@ -159,27 +159,19 @@ export class CanvasRenderer implements IRenderer {
 
   setProperty(id: ElementId, name: string, value: unknown): void {
     assertKnownElementProperty(name);
-    switch (name) {
-      case 'value':
-        this.packet.enqueueSetTextContent(
-          id,
-          value == null ? '' : String(value),
-        );
+    const op = coerceElementProperty(name, value);
+    switch (op.kind) {
+      case 'text-content':
+        this.packet.enqueueSetTextContent(id, op.text);
         break;
       case 'placeholder':
-        this.packet.enqueueSetText(
-          id,
-          typeof value === 'string' ? value : '',
-        );
-        break;
-      case 'disabled':
-        this.packet.enqueueSetDisabled(id, Boolean(value));
+        this.packet.enqueueSetText(id, op.text);
         break;
       case 'src':
-        this.packet.enqueueSetSrc(
-          id,
-          typeof value === 'string' ? value : '',
-        );
+        this.packet.enqueueSetSrc(id, op.text);
+        break;
+      case 'disabled':
+        this.packet.enqueueSetDisabled(id, op.disabled);
         break;
     }
   }
