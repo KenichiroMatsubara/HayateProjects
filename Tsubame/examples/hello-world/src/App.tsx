@@ -17,8 +17,11 @@ import {
   add,
   clearDone,
   completion,
+  FILTER_VALUES,
+  PRIORITY_VALUES,
   remove,
   SEED,
+  SORT_VALUES,
   toggleDone,
   visibleTodos,
   type Filter,
@@ -39,25 +42,38 @@ function priorityTone(p: Palette, prio: Priority): string {
   return p.blue;
 }
 
-const PRIORITY_LABEL: Record<Priority, string> = {
+export const PRIORITY_LABEL: Record<Priority, string> = {
   3: '高',
   2: '中',
   1: '低',
 };
 
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: 'all', label: 'すべて' },
-  { value: 'active', label: '未完了' },
-  { value: 'done', label: '完了済み' },
-];
+const FILTER_LABEL: Record<Filter, string> = {
+  all: 'すべて',
+  active: '未完了',
+  done: '完了済み',
+};
 
-const SORTS: { value: SortMode; label: string }[] = [
-  { value: 'manual', label: '手動' },
-  { value: 'name', label: '名前' },
-  { value: 'prio', label: '優先度' },
-];
+/** ツールバーのフィルタ chip。モデルの正本 `FILTER_VALUES` から導出する。 */
+export const FILTERS: { value: Filter; label: string }[] = FILTER_VALUES.map((value) => ({
+  value,
+  label: FILTER_LABEL[value],
+}));
 
-const PRIORITIES: Priority[] = [3, 2, 1];
+const SORT_LABEL: Record<SortMode, string> = {
+  manual: '手動',
+  name: '名前',
+  prio: '優先度',
+};
+
+/** ツールバーのソート chip。モデルの正本 `SORT_VALUES` から導出する。 */
+export const SORTS: { value: SortMode; label: string }[] = SORT_VALUES.map((value) => ({
+  value,
+  label: SORT_LABEL[value],
+}));
+
+/** 追加フォームの優先度セグメント。モデルの正本 `PRIORITY_VALUES` から導出する。 */
+export const PRIORITIES: Priority[] = [...PRIORITY_VALUES];
 
 const SpX = (w: number) => <view style={{ width: w, height: 1 }} />;
 

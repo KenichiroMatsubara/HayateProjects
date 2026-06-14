@@ -2,6 +2,26 @@ export type Priority = 1 | 2 | 3; // 1=低, 2=中, 3=高
 export type Filter = 'all' | 'active' | 'done';
 export type SortMode = 'manual' | 'name' | 'prio';
 
+/** Compile-time guard: `List` must enumerate every member of `Union`. */
+type AssertExhaustive<Union, List extends readonly Union[]> = Exclude<
+  Union,
+  List[number]
+> extends never
+  ? true
+  : never;
+
+/** 表示フィルタの正本。UI のチップ順もこの順に従う。 */
+export const FILTER_VALUES = ['all', 'active', 'done'] as const;
+const _filterExhaustive: AssertExhaustive<Filter, typeof FILTER_VALUES> = true;
+
+/** 並び順の正本。UI のチップ順もこの順に従う。 */
+export const SORT_VALUES = ['manual', 'name', 'prio'] as const;
+const _sortExhaustive: AssertExhaustive<SortMode, typeof SORT_VALUES> = true;
+
+/** 優先度の正本。追加フォームのセグメント順（高→低）もこの順に従う。 */
+export const PRIORITY_VALUES = [3, 2, 1] as const;
+const _priorityExhaustive: AssertExhaustive<Priority, typeof PRIORITY_VALUES> = true;
+
 export interface Todo {
   id: number;
   text: string;
