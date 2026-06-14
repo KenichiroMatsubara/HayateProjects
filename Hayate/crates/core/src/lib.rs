@@ -15,6 +15,7 @@ pub use element::{
     event_document_kind,
     CharacterBounds, EditState, FontStyleValue, ImeBridge, PointerMoveResult, PseudoState,
     ResolvedElement,
+    Selection, SelectionPoint,
     Shadow,
     StyleProp, StylePropKind, TextDecorationValue, TextOverflowValue, TransitionTimingValue,
     ViewportCondition,

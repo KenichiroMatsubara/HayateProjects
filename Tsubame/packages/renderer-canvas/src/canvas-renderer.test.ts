@@ -314,6 +314,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
       ['placeholder', 99, OP.SET_TEXT], // non-strings erase
       ['src', null, OP.SET_SRC], // null erases
       ['disabled', 'false', OP.SET_DISABLED], // Boolean('false') === true
+      ['selectable', '', OP.SET_SELECTABLE], // Boolean('') === false
     ];
 
     for (const [name, value, op] of cases) {
@@ -330,6 +331,8 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
       const expected = coerceElementProperty(name, value);
       if (expected.kind === 'disabled') {
         expect(batch.ops[at + 2]).toBe(expected.disabled ? 1 : 0);
+      } else if (expected.kind === 'selectable') {
+        expect(batch.ops[at + 2]).toBe(expected.selectable ? 1 : 0);
       } else {
         expect(batch.texts[batch.ops[at + 2]!]).toBe(expected.text);
       }

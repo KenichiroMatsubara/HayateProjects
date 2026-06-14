@@ -4,6 +4,7 @@ export const ELEMENT_PROPERTY_NAMES = [
   'placeholder',
   'disabled',
   'src',
+  'selectable',
 ] as const;
 
 export type ElementPropertyName = (typeof ELEMENT_PROPERTY_NAMES)[number];
@@ -35,7 +36,8 @@ export type ElementPropertyOp =
   | { kind: 'text-content'; text: string }
   | { kind: 'placeholder'; text: string }
   | { kind: 'src'; text: string }
-  | { kind: 'disabled'; disabled: boolean };
+  | { kind: 'disabled'; disabled: boolean }
+  | { kind: 'selectable'; selectable: boolean };
 
 /** Coerce a known element property + raw value into its shared semantics. */
 export function coerceElementProperty(
@@ -52,5 +54,7 @@ export function coerceElementProperty(
       return { kind: 'src', text: typeof value === 'string' ? value : '' };
     case 'disabled':
       return { kind: 'disabled', disabled: Boolean(value) };
+    case 'selectable':
+      return { kind: 'selectable', selectable: Boolean(value) };
   }
 }

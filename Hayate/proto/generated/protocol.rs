@@ -19,6 +19,7 @@ pub const OP_SET_DISABLED: u32 = 13;
 pub const OP_SET_SRC: u32 = 14;
 pub const OP_SET_PSEUDO_STYLE: u32 = 15;
 pub const OP_SET_STYLE_VARIANT: u32 = 16;
+pub const OP_SET_SELECTABLE: u32 = 17;
 
 // Payload slot counts per opcode (op discriminant excluded)
 pub const OP_SLOTS: &[usize] = &[
@@ -39,6 +40,7 @@ pub const OP_SLOTS: &[usize] = &[
     2, // SET_SRC
     4, // SET_PSEUDO_STYLE
     7, // SET_STYLE_VARIANT
+    2, // SET_SELECTABLE
 ];
 
 // Style tag constants
@@ -251,6 +253,10 @@ pub enum Op {
         style_offset: usize,
         style_len: usize,
     },
+    SetSelectable {
+        id: u64,
+        selectable: bool,
+    },
 }
 
 pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str> {
@@ -372,6 +378,12 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             let style_offset = ops[i + 5] as usize;
             let style_len = ops[i + 6] as usize;
             Ok((Op::SetStyleVariant { id, min_width, max_width, min_height, max_height, style_offset, style_len }, i + 7))
+        }
+        17 => {
+            if i + 2 > ops.len() { return Err("op SET_SELECTABLE truncated"); }
+            let id = ops[i + 0] as u64;
+            let selectable = ops[i + 1] != 0.0;
+            Ok((Op::SetSelectable { id, selectable }, i + 2))
         }
         _ => Err("unknown opcode"),
     }

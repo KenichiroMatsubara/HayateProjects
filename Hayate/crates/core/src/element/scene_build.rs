@@ -751,6 +751,7 @@ fn emit_element(
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
+        emit_selection_highlight(tree, id, &tl.layout, x, y, sg, effective_parent);
         for run in &tl.runs {
             emit(
                 sg,
@@ -1076,6 +1077,7 @@ fn walk_ephemeral(
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
+        emit_selection_highlight(tree, id, &tl.layout, x, y, sg, effective_parent);
         for run in &tl.runs {
             emit(
                 sg,
@@ -1112,6 +1114,82 @@ fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId
         None => sg.insert(node),
         Some(p) => sg.insert_child(p, node),
     }
+}
+
+/// Material-flavored selection tint (ADR-0097: a single core-drawn chrome whose
+/// style is theme-switchable; the value lives here as the initial theme).
+const SELECTION_HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
+
+/// Lower the active selection's highlight for IFC root `id`, as one filled rect
+/// per covered line, positioned in the element's content space (offset by the
+/// text run origin `ox`, `oy`). No-op unless the document selection lies in `id`.
+fn emit_selection_highlight(
+    tree: &ElementTree,
+    id: ElementId,
+    layout: &parley::Layout<crate::element::text::TextBrush>,
+    ox: f32,
+    oy: f32,
+    sg: &mut SceneGraph,
+    parent: Option<NodeId>,
+) {
+    let Some((start, end)) = tree.selection().and_then(|s| s.range_within(id)) else {
+        return;
+    };
+    for (rx, ry, rw, rh) in selection_highlight_rects(layout, start, end) {
+        emit(
+            sg,
+            parent,
+            Node {
+                kind: NodeKind::Rect {
+                    x: ox + rx,
+                    y: oy + ry,
+                    width: rw,
+                    height: rh,
+                    color: SELECTION_HIGHLIGHT_COLOR,
+                    corner_radius: 0.0,
+                },
+                children: Vec::new(),
+            },
+        );
+    }
+}
+
+/// Per-line highlight rectangles (in layout-local coordinates) covering the byte
+/// range `start..end` of a Parley layout. Each line contributes the span from
+/// the caret at its clamped range start to the caret at its clamped range end.
+fn selection_highlight_rects(
+    layout: &parley::Layout<crate::element::text::TextBrush>,
+    start: usize,
+    end: usize,
+) -> Vec<(f32, f32, f32, f32)> {
+    use parley::{Affinity, Cursor};
+    let mut rects = Vec::new();
+    if start >= end {
+        return rects;
+    }
+    for line in layout.lines() {
+        let line_range = line.text_range();
+        let s = start.max(line_range.start);
+        let e = end.min(line_range.end);
+        if s >= e {
+            continue;
+        }
+        let m = line.metrics();
+        let y0 = m.block_min_coord;
+        let height = m.block_max_coord - m.block_min_coord;
+        let x_start = Cursor::from_byte_index(layout, s, Affinity::Downstream)
+            .geometry(layout, 0.0)
+            .x0 as f32;
+        let x_end = Cursor::from_byte_index(layout, e, Affinity::Upstream)
+            .geometry(layout, 0.0)
+            .x0 as f32;
+        let left = x_start.min(x_end);
+        let width = (x_end - x_start).abs();
+        if width > 0.0 && height > 0.0 {
+            rects.push((left, y0, width, height));
+        }
+    }
+    rects
 }
 
 fn emit_visual_box(

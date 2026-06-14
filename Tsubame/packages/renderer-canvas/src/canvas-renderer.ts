@@ -173,6 +173,9 @@ export class CanvasRenderer implements IRenderer {
       case 'disabled':
         this.packet.enqueueSetDisabled(id, op.disabled);
         break;
+      case 'selectable':
+        this.packet.enqueueSetSelectable(id, op.selectable);
+        break;
     }
   }
 

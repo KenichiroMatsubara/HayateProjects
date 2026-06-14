@@ -265,5 +265,19 @@
         "type": "usize"
       }
     ]
+  },
+  {
+    "name": "SET_SELECTABLE",
+    "value": 17,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "selectable",
+        "type": "bool"
+      }
+    ]
   }
 ]

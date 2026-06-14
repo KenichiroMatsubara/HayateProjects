@@ -201,6 +201,7 @@ export function TodoApp(props: TodoAppProps) {
             boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
           }}>
             <Header colors={colors()} remaining={summary().remaining} total={summary().total} percent={summary().percent} />
+            <SelectableNote colors={colors()} />
             <AddForm
               colors={colors()}
               draft={draft()}
@@ -383,6 +384,30 @@ function Header(props: { colors: Palette; remaining: number; total: number; perc
         </text>
       </view>
       <ProgressBar colors={props.colors} percent={props.percent} />
+    </view>
+  );
+}
+
+/**
+ * 読み取り専用テキストのドラッグ選択デモ（ADR-0097 / issue #266）。`selectable`
+ * な view が Selection Region を確立し、Canvas Mode では core が選択ハイライトを
+ * SceneGraph に描画する。DOM Mode ではブラウザネイティブ選択に委ねる。
+ */
+function SelectableNote(props: { colors: Palette }) {
+  return (
+    <view
+      selectable
+      style={{
+        padding: 12,
+        backgroundColor: props.colors.panel2,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: props.colors.line,
+      }}
+    >
+      <text style={{ color: props.colors.muted, fontSize: 13 }}>
+        この段落はドラッグで選択できます。Canvas Mode では core が選択ハイライトを描画し、DOM Mode ではブラウザのネイティブ選択に委ねます。
+      </text>
     </view>
   );
 }

@@ -227,6 +227,15 @@ export class DomRenderer implements IRenderer {
           else target.removeAttribute('src');
         }
         return;
+      case 'selectable':
+        // DOM Mode uses the browser's native selection; `selectable` only
+        // bounds the Selection Region via `user-select` (ADR-0097 decision 5).
+        if (target instanceof HTMLElement) {
+          const value = op.selectable ? 'text' : 'none';
+          target.style.userSelect = value;
+          target.style.webkitUserSelect = value;
+        }
+        return;
     }
   }
 

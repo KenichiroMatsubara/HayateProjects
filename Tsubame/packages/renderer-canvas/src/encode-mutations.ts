@@ -17,6 +17,7 @@ import {
   appendSetText,
   appendSetTextContent,
   appendSetDisabled,
+  appendSetSelectable,
   appendSetSrc,
   appendSetPseudoStyle,
   appendSetStyleVariant,
@@ -64,6 +65,11 @@ export type SemanticMutation =
       readonly kind: 'setDisabled';
       readonly id: ElementId;
       readonly disabled: boolean;
+    }
+  | {
+      readonly kind: 'setSelectable';
+      readonly id: ElementId;
+      readonly selectable: boolean;
     }
   | { readonly kind: 'setSrc'; readonly id: ElementId; readonly url: string }
   | {
@@ -173,6 +179,13 @@ export function encodeMutations(
           ops,
           mutation.id as number,
           mutation.disabled ? 1 : 0,
+        );
+        break;
+      case 'setSelectable':
+        appendSetSelectable(
+          ops,
+          mutation.id as number,
+          mutation.selectable ? 1 : 0,
         );
         break;
       case 'setSrc': {

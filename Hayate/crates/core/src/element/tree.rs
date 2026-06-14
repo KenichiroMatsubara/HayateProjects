@@ -135,6 +135,10 @@ pub(crate) struct Element {
     pub pseudo_styles: PseudoStyles,
     /// When true, suppresses hit-testing and interaction (ADR-0071).
     pub disabled: bool,
+    /// When true, this element establishes a Selection Region: text under it can
+    /// be selected by pointer drag, bounded by the nearest selectable ancestor
+    /// (ADR-0097 / ADR-0071 closed typed property, same shape as `disabled`).
+    pub selectable: bool,
     /// Viewport-conditional style overrides, one variant per property (ADR-0081).
     pub viewport_variants: Vec<(ViewportCondition, StyleProp)>,
 }
@@ -186,6 +190,12 @@ pub struct ElementTree {
     /// Elements matching CSS `:hover` (self or descendant under pointer).
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
+    /// The single document-wide text selection, if any (ADR-0097). At most one
+    /// is active across the whole document.
+    pub(crate) selection: Option<crate::element::selection::Selection>,
+    /// True while a pointer-down inside a Selection Region is driving a drag
+    /// selection (the active-session capture extended to selection, ADR-0097).
+    pub(crate) selection_drag: bool,
     /// Last pointer position for sub-pixel move dedup (ADR-0066).
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
     /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
@@ -207,6 +217,8 @@ impl ElementTree {
             focused_element: None,
             hovered_elements: HashSet::new(),
             active_element: None,
+            selection: None,
+            selection_drag: false,
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
@@ -276,6 +288,7 @@ impl ElementTree {
             role: None,
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
+            selectable: false,
             viewport_variants: Vec::new(),
         };
         self.elements.insert(id, element);
@@ -317,6 +330,13 @@ impl ElementTree {
     pub fn element_set_disabled(&mut self, id: ElementId, disabled: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.disabled = disabled;
+        }
+    }
+
+    /// Mark (or unmark) an element as a Selection Region boundary (ADR-0097).
+    pub fn element_set_selectable(&mut self, id: ElementId, selectable: bool) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.selectable = selectable;
         }
     }
 

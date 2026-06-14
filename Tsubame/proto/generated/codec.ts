@@ -744,3 +744,9 @@ export function appendSetStyleVariant(buf: number[], id: number, minWidth: numbe
   buf.push(styleOffset);
   buf.push(styleLen);
 }
+
+export function appendSetSelectable(buf: number[], id: number, selectable: number): void {
+  buf.push(OP.SET_SELECTABLE);
+  buf.push(id);
+  buf.push(selectable);
+}
