@@ -13,8 +13,16 @@ _Avoid_: layout/GPU のみの paint server としてのみ説明する、Hayabus
 _Avoid_: adapter 層ごとの document semantics、Tsubame 側 bubble、Tsubame 側 shadow tree、Hayate から host への import callback（ADR-0018 参照）
 
 **ElementEngine**:
-`ElementTree` 内部の private module（`element/engine.rs`）。`structure_dirty` / `shape_dirty` / `fonts_dirty` の dirty 集合を集約し、`ElementTree::commit_frame()`（dirty 解決＋layout settling、`LayoutPass::run()` 相当）から呼ばれる（ADR-0075）。dirty marking policy（何をマークするか）は `tree.rs` の `element_set_*` に残る。
-_Avoid_: ElementEngine が ElementTree を所有/置換する新 public 型として説明する、DocumentEngine という名称（Canonical Tree と語が衝突する）
+`ElementTree` 内部の private module（`element/engine.rs`）。`structure_dirty` / `shape_dirty` / `fonts_dirty` の dirty 集合を集約し、`ElementTree::commit_frame()`（dirty 解決＋layout settling、`LayoutPass::run()` 相当）から呼ばれる（ADR-0075）。無効化の **保管 (store/merge)** を担い、reach の **意味論 (classify / propagate)** は Invalidation concern が、**適用 (walk)** は `scene_build` が持つ（#238 で三分割）。
+_Avoid_: ElementEngine が ElementTree を所有/置換する新 public 型として説明する、DocumentEngine という名称（Canonical Tree と語が衝突する）、reach 分類 policy を `tree.rs` の `element_set_*` に残す設計（#238 で Invalidation へ移管）
+
+**Invalidation（無効化の意味論）**:
+`element/engine.rs` 内の private concern。reach の **分類** `classify(prop, ElementContext) -> Change { dirty_kind, reach }` と **伝播** `step_reach(reach, child_ctx) -> reach` を純関数として持つ（#238）。`tree.rs` の位相依存分岐（旧 `mark_text_content_dirty` の `ifc_root` 判定、`mark_child_attachment_dirty` の element-kind 判定）と `visual_invalidation.rs` の context-free 分類をここに集約する。`step_reach` は伝播の単一ソースで、`scene_build` の `minimal_patch_roots` と `walk_retained` が共用する。新 public 型は作らず engine の内部に留める。
+_Avoid_: ElementTree への参照を受けて分類する設計（テスト性が消える）、reach 伝播を walk ごとに再導出する設計、新 public 型化
+
+**ElementContext（要素文脈）**:
+reach 分類のために `tree.rs` がツリー位相から組む小さな値オブジェクト `{ kind, is_ifc_root, has_text_parent }`。`classify` / `step_reach` を `ElementTree` 非依存の純関数に保つための入力で、手組みの ctx を渡せば単体テストできる。`tree.rs` は ctx を組んで「何が変わったか (id, prop, ctx)」だけを報告し、reach の到達域は決めない。
+_Avoid_: ElementTree や TaffyTree をそのまま渡す設計、ctx に位相以外の描画状態を詰める設計
 
 **Tsubame**:
 JS/TS 向けのレンダラーターゲット基盤。`Renderer Protocol`・`DOM Renderer`・`Canvas Renderer` を提供し、各フレームワーク固有ランタイムをそのまま持ち込む。
