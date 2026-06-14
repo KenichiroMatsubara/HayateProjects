@@ -42,3 +42,5 @@ export {
 } from './pseudo-style.js';
 
 export type { ViewportCondition } from './viewport-condition.js';
+
+export { isTextLocal, carriesTextLocal } from './generated/style-channel.js';

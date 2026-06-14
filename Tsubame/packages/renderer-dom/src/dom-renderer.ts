@@ -73,6 +73,7 @@ export class DomRenderer implements IRenderer {
   private readonly doc: Document;
   private readonly container: HTMLElement;
   private readonly nodes = new Map<ElementId, HTMLElement>();
+  private readonly kinds = new Map<ElementId, ElementKind>();
   private readonly pseudoRuleKeys = new Map<string, number>();
   private readonly pseudoStyleEl: HTMLStyleElement;
   private readonly variantRuleKeys = new Map<string, number>();
@@ -96,6 +97,7 @@ export class DomRenderer implements IRenderer {
     const el = createDomElement(this.doc, kind);
     el.setAttribute('data-tsubame-id', String(id as number));
     this.nodes.set(id, el);
+    this.kinds.set(id, kind);
     return id;
   }
 
@@ -129,12 +131,12 @@ export class DomRenderer implements IRenderer {
         warnZOrderDivergence(id, key);
       }
     }
-    applyStylePatch(this.node(id), style);
+    applyStylePatch(this.node(id), this.kindOf(id), style);
   }
 
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
     const selector = `[data-tsubame-id="${id as number}"]${pseudo}`;
-    const body = pseudoStyleDeclarations(this.node(id), style);
+    const body = pseudoStyleDeclarations(this.kindOf(id), style);
     if (body.length === 0) return;
     const sheet = this.pseudoStyleEl.sheet;
     if (sheet === null) return;
@@ -162,7 +164,7 @@ export class DomRenderer implements IRenderer {
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
     const media = mediaQueryFor(condition);
     const selector = `[data-tsubame-id="${id as number}"]`;
-    const body = pseudoStyleDeclarations(this.node(id), style);
+    const body = pseudoStyleDeclarations(this.kindOf(id), style);
     if (body.length === 0) return;
     const sheet = this.variantStyleEl.sheet;
     if (sheet === null) return;
@@ -261,6 +263,14 @@ export class DomRenderer implements IRenderer {
     return el;
   }
 
+  private kindOf(id: ElementId): ElementKind {
+    const kind = this.kinds.get(id);
+    if (kind === undefined) {
+      throw new Error(`DomRenderer: unknown ElementId ${id as number}`);
+    }
+    return kind;
+  }
+
   /** Drop `nodes` entries and pseudo rules for `root` and DOM descendants. */
   private forgetDomSubtree(root: HTMLElement): void {
     const stack: Element[] = [root];
@@ -282,6 +292,7 @@ export class DomRenderer implements IRenderer {
           this.variantMediaByElement.delete(id);
         }
         this.nodes.delete(id);
+        this.kinds.delete(id);
       }
     }
   }
@@ -307,8 +318,8 @@ function insertionIndexForPseudoBand(sheet: CSSStyleSheet, priority: number): nu
   return sheet.cssRules.length;
 }
 
-function pseudoStyleDeclarations(el: HTMLElement, patch: StylePatch): string {
+function pseudoStyleDeclarations(kind: ElementKind, patch: StylePatch): string {
   return declarationsToRuleBody(
-    declarationsFromStylePatch(el, patch, { onUnknownKey: 'skip' }),
+    declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' }),
   );
 }

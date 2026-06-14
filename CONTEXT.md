@@ -45,6 +45,14 @@ _Avoid_: CSS 式の全要素 font 継承、ambient 既定なし設計
 `default-font-family` / `default-font-size` / `default-font-weight` / `default-color`。block を貫通して降りる既定値専用チャネルで、text 要素が明示値も text 継承値も持たないときの fallback。nested 上書き可。
 _Avoid_: 通常 `font-family` 等を block 貫通させる設計、global（nested 上書き可能な ambient であり真の global ではない）
 
+**Style Channel（スタイルチャネル）**:
+各 Hayate CSS プロパティが属する継承チャネルの分類。`text-local`（ch1）/ `ambient`（ch2）/ `none`（box-visual・layout）の三値。`proto/spec/style_tags.json` の `inherit` tag が正本で、レンダラー横断の text-channel 判定（どのプロパティを text 要素にのみ発行するか）はここから生成し、各レンダラーで再宣言しない。
+_Avoid_: reach（再 lowering 距離は直交する別軸）、text-local を boolean 一値とし ambient を none に潰す理解
+
+**Text-Local Carrier（text-local キャリア）**:
+channel-1（text-local）スタイルを CSS として実際に載せる element-kind。`text` / `text_input` の二つで、`proto/spec/element_kinds.json` の `carriesTextLocal` tag が正本。block box はキャリアではなく、block への text-local プロパティは no-op（ADR-0002）。
+_Avoid_: 全 element がテキストスタイルを受理する設計、DOM tag（span / input）で carrier を同定する理解
+
 **Hayate CSS**:
 要素ごとのインラインスタイル宣言。レイアウトプロパティは Taffy の CSS サブセット、ビジュアルプロパティは CSS 名の対応サブセット。要素ローカルの擬似状態（`:hover` / `:active` / `:focus`）を同一宣言内に nest できる。セレクタ・カスケード・スタイルシートは持たない。
 _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style

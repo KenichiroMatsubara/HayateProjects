@@ -1,10 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, beforeEach } from 'vitest';
-import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
+import { describe, expect, it } from 'vitest';
 import {
-  createParityElement,
   declarationsToPropertyMap,
   expectedPropertyMap,
   resolvePseudoDeclarations,
@@ -19,16 +17,13 @@ const fixturesPath = join(
 const fixtures = JSON.parse(readFileSync(fixturesPath, 'utf8')) as PseudoStateParityFixture[];
 
 describe('pseudo-state parity corpus (DOM declaration emitter)', () => {
-  let document: Document;
-
-  beforeEach(() => {
-    ({ document } = createHappyDomFixture());
-  });
-
   for (const fixture of fixtures) {
     it(fixture.name, () => {
-      const el = createParityElement(document, fixture.elementKind);
-      const declarations = resolvePseudoDeclarations(el, fixture.pseudo, fixture.interaction);
+      const declarations = resolvePseudoDeclarations(
+        fixture.elementKind,
+        fixture.pseudo,
+        fixture.interaction,
+      );
       const actual = declarationsToPropertyMap(declarations);
       const expected = expectedPropertyMap(fixture, 'ts');
 
@@ -41,8 +36,11 @@ describe('pseudo-state parity corpus (DOM declaration emitter)', () => {
 
   it('corpus catches dropped border-style', () => {
     const fixture = fixtures.find((f) => f.name === 'hover_border_style_dashed')!;
-    const el = createParityElement(document, fixture.elementKind);
-    const declarations = resolvePseudoDeclarations(el, fixture.pseudo, fixture.interaction);
+    const declarations = resolvePseudoDeclarations(
+      fixture.elementKind,
+      fixture.pseudo,
+      fixture.interaction,
+    );
     const withoutBorderStyle = declarations.filter((d) => d.cssProperty !== 'border-style');
     const actual = declarationsToPropertyMap(withoutBorderStyle);
     const expected = expectedPropertyMap(fixture, 'ts');
@@ -53,21 +51,23 @@ describe('pseudo-state parity corpus (DOM declaration emitter)', () => {
 
   it('corpus catches flipped pseudo priority', () => {
     const fixture = fixtures.find((f) => f.name === 'hover_active_priority_active_wins')!;
-    const el = createParityElement(document, fixture.elementKind);
     // Wrong order: hover after active (focus < active < hover)
-    const reversedInteraction = { hover: true, active: true };
     const byProperty = new Map<string, string>();
     for (const key of [':active', ':hover'] as const) {
       const patch = fixture.pseudo[key];
       if (patch === undefined) continue;
-      for (const decl of resolvePseudoDeclarations(el, { [key]: patch }, { [key.slice(1)]: true })) {
+      for (const decl of resolvePseudoDeclarations(fixture.elementKind, { [key]: patch }, {
+        [key.slice(1)]: true,
+      })) {
         byProperty.set(decl.cssProperty, decl.value);
       }
     }
     // Simulate hover winning by applying hover last in wrong band order
-    const hoverDecls = resolvePseudoDeclarations(el, { ':hover': fixture.pseudo[':hover']! }, {
-      hover: true,
-    });
+    const hoverDecls = resolvePseudoDeclarations(
+      fixture.elementKind,
+      { ':hover': fixture.pseudo[':hover']! },
+      { hover: true },
+    );
     for (const decl of hoverDecls) {
       byProperty.set(decl.cssProperty, decl.value);
     }

@@ -314,3 +314,27 @@ pub fn apply_style_prop_to_dom(style: &CssStyleDeclaration, prop: &StyleProp) ->
     }
     Ok(())
 }
+
+// ── Style Channel predicates (generated) ───────────────────────────────
+
+/// Whether `prop` is a channel-1 text-local style (Style Channel).
+pub fn is_text_local(prop: &StyleProp) -> bool {
+    matches!(
+        prop,
+        StyleProp::FontSize(..)
+            | StyleProp::Color(..)
+            | StyleProp::FontFamily(..)
+            | StyleProp::FontWeight(..)
+            | StyleProp::FontStyle(..)
+            | StyleProp::TextDecoration(..)
+    )
+}
+
+/// Whether `kind` carries channel-1 text-local styles as CSS (Text-Local Carrier).
+pub fn carries_text_local(kind: hayate_core::ElementKind) -> bool {
+    matches!(
+        kind,
+        hayate_core::ElementKind::Text
+            | hayate_core::ElementKind::TextInput
+    )
+}

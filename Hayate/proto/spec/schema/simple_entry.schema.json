@@ -6,7 +6,11 @@
   "required": ["name", "value"],
   "properties": {
     "name": { "type": "string", "minLength": 1 },
-    "value": { "type": "integer", "minimum": 0 }
+    "value": { "type": "integer", "minimum": 0 },
+    "carriesTextLocal": {
+      "description": "Text-Local Carrier: element-kind carries channel-1 (text-local) styles as CSS (ADR-0002).",
+      "type": "boolean"
+    }
   },
   "additionalProperties": false
 }

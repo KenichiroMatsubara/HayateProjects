@@ -21,7 +21,7 @@ describe('createDomElement – RN Web stacking base style', () => {
 
   it('allows user zIndex to override the base default', () => {
     const el = createDomElement(document, 'view');
-    applyStylePatch(el, { zIndex: 5 });
+    applyStylePatch(el, 'view', { zIndex: 5 });
     expect(el.style.zIndex).toBe('5');
     expect(el.style.position).toBe('relative');
   });

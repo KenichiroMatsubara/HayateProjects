@@ -5,7 +5,8 @@
   },
   {
     "name": "text",
-    "value": 1
+    "value": 1,
+    "carriesTextLocal": true
   },
   {
     "name": "image",
@@ -17,7 +18,8 @@
   },
   {
     "name": "text_input",
-    "value": 4
+    "value": 4,
+    "carriesTextLocal": true
   },
   {
     "name": "scroll_view",
