@@ -5,11 +5,10 @@ use crate::element::effective_visual::{
 use crate::element::style::{BorderStyleValue, OverflowValue};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::scene_lowering::{
     clear_lowered_content, AnchorEntry, LoweringDirtySnapshot, SceneLowering,
 };
-use crate::element::visual_invalidation::VisualInvalidationReach;
+use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::ElementTree;
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
@@ -181,8 +180,8 @@ fn covered_by_dirty_ancestor(
         chain.push(parent);
         current = tree.elements.get(&parent).and_then(|el| el.parent);
     }
-    // For each dirty ancestor, simulate the reach propagating down to `id`,
-    // mirroring `children_for_reach` / `child_reach` in the retained walk.
+    // For each dirty ancestor, simulate the reach propagating down to `id` via
+    // the single-source `step_reach`, exactly as the retained walk would.
     for (ancestor_idx, &ancestor) in chain.iter().enumerate().skip(1) {
         let Some(&ancestor_reach) = dirty.get(&ancestor) else {
             continue;
@@ -192,7 +191,11 @@ fn covered_by_dirty_ancestor(
         let mut reached = true;
         for child_idx in (0..ancestor_idx).rev() {
             let child = chain[child_idx];
-            match step_reach(tree, parent, child, reach) {
+            match visual_invalidation::step_reach(
+                reach,
+                tree.element_context(parent),
+                tree.element_context(child),
+            ) {
                 Some(next) => {
                     reach = next;
                     parent = child;
@@ -208,27 +211,6 @@ fn covered_by_dirty_ancestor(
         }
     }
     false
-}
-
-/// The reach a retained walk would carry into `child` when descending from
-/// `parent` under `reach`, or `None` when the walk does not visit `child` at all.
-/// Kept in lockstep with `children_for_reach` + `child_reach`.
-fn step_reach(
-    tree: &ElementTree,
-    parent: ElementId,
-    child: ElementId,
-    reach: VisualInvalidationReach,
-) -> Option<VisualInvalidationReach> {
-    match reach {
-        VisualInvalidationReach::Subtree => Some(VisualInvalidationReach::Subtree),
-        VisualInvalidationReach::TextLocal
-            if is_ifc_root(&tree.elements, parent)
-                && is_inline_text_element(&tree.elements, child) =>
-        {
-            Some(VisualInvalidationReach::TextLocal)
-        }
-        _ => None,
-    }
 }
 
 fn first_child_matching(
@@ -377,7 +359,7 @@ fn walk_retained(
             let anchor_id = ensure_anchor(tree, sg, lowering, id, parent_anchor);
             let children = tree.ordered_children(id);
             clear_lowered_content(sg, anchor_id, &children, lowering);
-            for child in children_for_reach(tree, id, reach) {
+            for (child, child_reach) in children_for_reach(tree, id, reach) {
                 walk_retained(
                     tree,
                     child,
@@ -388,7 +370,7 @@ fn walk_retained(
                     Some(anchor_id),
                     inherited.clone(),
                     interaction,
-                    VisualInvalidationReach::Subtree,
+                    child_reach,
                     now_ms,
                 );
             }
@@ -418,46 +400,21 @@ fn walk_retained(
     );
 }
 
+/// The children a retained walk descends into under `reach`, each paired with
+/// the reach it carries — derived entirely from the single-source `step_reach`.
 fn children_for_reach(
     tree: &ElementTree,
     id: ElementId,
     reach: VisualInvalidationReach,
-) -> Vec<ElementId> {
-    match reach {
-        VisualInvalidationReach::SelfOnly | VisualInvalidationReach::ZIndex => Vec::new(),
-        VisualInvalidationReach::Subtree => tree.ordered_children(id),
-        VisualInvalidationReach::TextLocal => {
-            if is_ifc_root(&tree.elements, id) {
-                tree.ordered_children(id)
-                    .into_iter()
-                    .filter(|&child| is_inline_text_element(&tree.elements, child))
-                    .collect()
-            } else {
-                Vec::new()
-            }
-        }
-    }
-}
-
-fn child_reach(
-    tree: &ElementTree,
-    parent_id: ElementId,
-    child_id: ElementId,
-    parent_reach: VisualInvalidationReach,
-) -> VisualInvalidationReach {
-    match parent_reach {
-        VisualInvalidationReach::Subtree => VisualInvalidationReach::Subtree,
-        VisualInvalidationReach::TextLocal
-            if is_ifc_root(&tree.elements, parent_id)
-                && is_inline_text_element(&tree.elements, child_id) =>
-        {
-            VisualInvalidationReach::TextLocal
-        }
-        VisualInvalidationReach::SelfOnly | VisualInvalidationReach::ZIndex => {
-            VisualInvalidationReach::SelfOnly
-        }
-        VisualInvalidationReach::TextLocal => VisualInvalidationReach::SelfOnly,
-    }
+) -> Vec<(ElementId, VisualInvalidationReach)> {
+    let parent_ctx = tree.element_context(id);
+    tree.ordered_children(id)
+        .into_iter()
+        .filter_map(|child| {
+            visual_invalidation::step_reach(reach, parent_ctx, tree.element_context(child))
+                .map(|child_reach| (child, child_reach))
+        })
+        .collect()
 }
 
 fn emit_element(
@@ -610,7 +567,7 @@ fn emit_element(
                 },
             );
         }
-        for child in children_for_reach(tree, id, reach) {
+        for (child, child_reach) in children_for_reach(tree, id, reach) {
             walk_retained(
                 tree,
                 child,
@@ -621,7 +578,7 @@ fn emit_element(
                 effective_parent,
                 child_inherited.clone(),
                 interaction,
-                child_reach(tree, id, child, reach),
+                child_reach,
                 now_ms,
             );
         }
@@ -732,7 +689,7 @@ fn emit_element(
         }
     }
 
-    for child in children_for_reach(tree, id, reach) {
+    for (child, child_reach) in children_for_reach(tree, id, reach) {
         walk_retained(
             tree,
             child,
@@ -743,7 +700,7 @@ fn emit_element(
             effective_parent,
             child_inherited.clone(),
             interaction,
-            child_reach(tree, id, child, reach),
+            child_reach,
             now_ms,
         );
     }

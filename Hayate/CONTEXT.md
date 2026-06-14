@@ -13,8 +13,12 @@ _Avoid_: layout/GPU のみの paint server としてのみ説明する、Hayabus
 _Avoid_: adapter 層ごとの document semantics、Tsubame 側 bubble、Tsubame 側 shadow tree、Hayate から host への import callback（ADR-0018 参照）
 
 **ElementEngine**:
-`ElementTree` 内部の private module（`element/engine.rs`）。`structure_dirty` / `shape_dirty` / `fonts_dirty` の dirty 集合を集約し、`ElementTree::commit_frame()`（dirty 解決＋layout settling、`LayoutPass::run()` 相当）から呼ばれる（ADR-0075）。dirty marking policy（何をマークするか）は `tree.rs` の `element_set_*` に残る。
-_Avoid_: ElementEngine が ElementTree を所有/置換する新 public 型として説明する、DocumentEngine という名称（Canonical Tree と語が衝突する）
+`ElementTree` 内部の private module（`element/engine.rs`）。`structure_dirty` / `shape_dirty` / `fonts_dirty` の dirty 集合を集約・保管し（store/merge）、`ElementTree::commit_frame()`（dirty 解決＋layout settling、`LayoutPass::run()` 相当）から呼ばれる（ADR-0075）。「どの要素を/どこまで dirty にするか」の reach 意味論は持たず、`Invalidation`（`visual_invalidation.rs`）が `classify` / `step_reach` で決める。`tree.rs` の `element_set_*` は位相を読んで `ElementContext` を組み「何が変わったか」を報告するだけ（issue #238）。`fonts_dirty` / `viewport_dirty` のような非 prop 駆動の無効化は従来どおり engine への直接 mark。
+_Avoid_: ElementEngine が ElementTree を所有/置換する新 public 型として説明する、DocumentEngine という名称（Canonical Tree と語が衝突する）、reach 分類を engine 内に持つ説明
+
+**ElementContext**:
+要素の位相（`kind` / `is_ifc_root` / `has_text_parent`）だけを写し取った値オブジェクト（`visual_invalidation.rs`、private）。`tree.rs` が live tree から組み、`classify(prop, ctx)` と `step_reach(reach, parent_ctx, child_ctx)` という純関数へ渡す。これにより無効化の意味論（dirty 種別＋reach の決定、reach 伝播）が `ElementTree` を起動せず単体テスト可能になる（reach テーブルがそのまま test surface）。`classify` が「何を/どこまで dirty にするか（WHAT）」、`step_reach` が「reach がどの子へどこまで届くか」を単一ソースで決め、scene lowering の retained walk と patch-root 探索の双方が `step_reach` を共用する（issue #238、ADR-0086 維持）。
+_Avoid_: `ElementContext` が要素本体や dirty 集合を所有するという説明、reach 伝播を walk 側に二重実装する設計
 
 **Tsubame**:
 JS/TS 向けのレンダラーターゲット基盤。`Renderer Protocol`・`DOM Renderer`・`Canvas Renderer` を提供し、各フレームワーク固有ランタイムをそのまま持ち込む。
