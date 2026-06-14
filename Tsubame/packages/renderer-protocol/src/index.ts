@@ -9,6 +9,7 @@ export type {
   FontStyle,
   TextDecoration,
   HayateDimension,
+  HayateShadow,
   HayateStyle,
   StylePatch,
   HayateCssStyle,

@@ -14,6 +14,10 @@ const SAMPLES: Record<string, unknown> = {
   color: "#ff6600",
   dimension: "48px",
   dimensionList: ["100px", "1fr", "50%"],
+  shadowList: [
+    { offsetX: 0, offsetY: 4, blur: 8, spread: 0, color: "#00000080", inset: false },
+    { offsetX: 0, offsetY: 0, blur: 0, spread: 3, color: "#1e90ff", inset: false },
+  ],
   display: "flex",
   flexDirection: "column",
   flexWrap: "wrap",

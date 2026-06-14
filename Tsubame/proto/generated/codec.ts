@@ -521,6 +521,24 @@ function encode_transitionTiming(out: number[], value: string): void {
   out.push(TAG.TRANSITION_TIMING, code);
 }
 
+function encode_boxShadow(out: number[], value: import('@tsubame/renderer-protocol').HayateShadow[]): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`CanvasRenderer: "boxShadow" must be an array of shadows`);
+  }
+  out.push(TAG.BOX_SHADOW, value.length);
+  for (const item of value) {
+    const c = parseColor(item.color);
+    out.push(
+      finiteNumber('boxShadow.offsetX', item.offsetX),
+      finiteNumber('boxShadow.offsetY', item.offsetY),
+      finiteNumber('boxShadow.blur', item.blur),
+      finiteNumber('boxShadow.spread', item.spread),
+      c.r, c.g, c.b, c.a,
+      item.inset ? 1 : 0,
+    );
+  }
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -579,6 +597,7 @@ const STYLE_ENCODERS = {
   textOverflow: encode_textOverflow,
   transitionDuration: encode_transitionDuration,
   transitionTiming: encode_transitionTiming,
+  boxShadow: encode_boxShadow,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

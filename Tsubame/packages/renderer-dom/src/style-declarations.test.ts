@@ -74,6 +74,35 @@ describe('StylePatch declaration emitter parity', () => {
     expect(body).toContain('border-style: solid');
   });
 
+  it('maps a box-shadow list to a CSS box-shadow string (#252)', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyle(id, {
+      boxShadow: [
+        { offsetX: 0, offsetY: 4, blur: 8, spread: 0, color: '#00000080', inset: false },
+        { offsetX: 0, offsetY: 0, blur: 0, spread: 3, color: '#1e90ff', inset: true },
+      ],
+    });
+
+    const el = container.querySelector('div')!;
+    expect(el.style.boxShadow).toBe(
+      '0px 4px 8px 0px #00000080, inset 0px 0px 0px 3px #1e90ff',
+    );
+  });
+
+  it('maps an empty box-shadow list to CSS none', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyle(id, { boxShadow: [] });
+
+    const el = container.querySelector('div')!;
+    expect(el.style.boxShadow).toBe('none');
+  });
+
   it('maps position + insets to CSS for absolute positioning (#205)', () => {
     const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');

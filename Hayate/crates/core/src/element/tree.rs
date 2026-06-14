@@ -23,7 +23,7 @@ use crate::element::pseudo_state::{
 use crate::element::scene_build;
 use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
 use crate::element::style::{
-    BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, StyleProp, StylePropKind,
+    BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, Shadow, StyleProp, StylePropKind,
     TextDecorationValue, TextOverflowValue, TransitionTimingValue, ViewportCondition,
 };
 use crate::element::taffy_bridge;
@@ -42,6 +42,9 @@ pub struct Visual {
     pub border_width: f32,
     pub border_color: Option<Color>,
     pub border_style: BorderStyleValue,
+    /// Ordered box-shadow layers (ADR-0095); empty means no shadow. Top layer
+    /// first, matching CSS paint order.
+    pub box_shadow: Vec<Shadow>,
     /// Child-overflow handling (issue #206). `Hidden` clips children to the
     /// element's (optionally rounded) border box; `Visible` is the default.
     pub overflow: OverflowValue,
@@ -81,6 +84,7 @@ impl Default for Visual {
             border_width: 0.0,
             border_color: None,
             border_style: BorderStyleValue::None,
+            box_shadow: Vec::new(),
             overflow: OverflowValue::Visible,
             max_lines: None,
             text_overflow: TextOverflowValue::Clip,
@@ -1403,6 +1407,7 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::BorderWidth(v) => visual.border_width = v.max(0.0),
         StyleProp::BorderColor(c) => visual.border_color = Some(*c),
         StyleProp::BorderStyle(v) => visual.border_style = *v,
+        StyleProp::BoxShadow(shadows) => visual.box_shadow = shadows.clone(),
         StyleProp::Overflow(v) => visual.overflow = *v,
         StyleProp::MaxLines(v) => {
             visual.max_lines = if *v == 0 { None } else { Some(*v) };

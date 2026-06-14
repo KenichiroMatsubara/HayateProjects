@@ -1,5 +1,18 @@
 use crate::color::Color;
 
+/// A single CSS box-shadow layer (ADR-0095). Offsets, blur and spread are in
+/// CSS px; `inset` selects an inner shadow. A `box-shadow` value is an ordered
+/// list of these (top layer first, matching CSS paint order).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub blur: f32,
+    pub spread: f32,
+    pub color: Color,
+    pub inset: bool,
+}
+
 /// Identifies which style property to unset via `element_unset_style`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StylePropKind {
@@ -234,6 +247,7 @@ pub enum StyleProp {
     BorderWidth(f32),
     BorderColor(Color),
     BorderStyle(BorderStyleValue),
+    BoxShadow(Vec<Shadow>),
     Overflow(OverflowValue),
     // sizing
     Width(Dimension),

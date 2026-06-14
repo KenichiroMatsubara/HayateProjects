@@ -759,5 +759,18 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "boxShadow",
+    "tag": 57,
+    "unsetKind": null,
+    "wireKind": "shadowList",
+    "domFormat": "shadow-list",
+    "cssName": "boxShadow",
+    "cssProperty": "box-shadow",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]
