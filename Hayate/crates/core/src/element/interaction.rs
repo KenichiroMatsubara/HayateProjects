@@ -306,12 +306,89 @@ impl ElementTree {
         self.selection.as_ref()
     }
 
+    /// The active selection's endpoints normalized to document order:
+    /// `(start, end)` where `start` precedes `end` in the tree's pre-order walk
+    /// (ADR-0097, #269). A same-block selection normalizes by byte offset; a
+    /// cross-block one by the blocks' document order. `None` with no selection.
+    pub fn selection_ordered(&self) -> Option<(SelectionPoint, SelectionPoint)> {
+        let sel = self.selection?;
+        if sel.anchor.element == sel.focus.element {
+            let lo = sel.anchor.offset.min(sel.focus.offset);
+            let hi = sel.anchor.offset.max(sel.focus.offset);
+            let el = sel.anchor.element;
+            return Some((SelectionPoint::new(el, lo), SelectionPoint::new(el, hi)));
+        }
+        match self.document_order(sel.anchor.element, sel.focus.element) {
+            std::cmp::Ordering::Greater => Some((sel.focus, sel.anchor)),
+            _ => Some((sel.anchor, sel.focus)),
+        }
+    }
+
+    /// The byte range of IFC block `block` covered by the active selection,
+    /// normalized to document order (ADR-0097, #269). For a same-block selection
+    /// this is the in-block range. For a cross-block one: the first block runs
+    /// from its start offset to end-of-text, the last block from 0 to its end
+    /// offset, and any block strictly between is covered whole. `None` when the
+    /// selection does not touch `block`, or `block` belongs to a different
+    /// Selection Region (the selection never leaks across a `selectable`
+    /// boundary).
+    pub(crate) fn selection_range_in_block(&self, block: ElementId) -> Option<(usize, usize)> {
+        let (start, end) = self.selection_ordered()?;
+        if start.element == end.element {
+            return (start.element == block).then_some((start.offset, end.offset));
+        }
+        if self.selection_region_of(block) != self.selection_region_of(start.element) {
+            return None;
+        }
+        let block_len = || self.ifc_text(block).map(|t| t.len()).unwrap_or(0);
+        if block == start.element {
+            Some((start.offset, block_len()))
+        } else if block == end.element {
+            Some((0, end.offset))
+        } else if self.document_order(start.element, block) == std::cmp::Ordering::Less
+            && self.document_order(block, end.element) == std::cmp::Ordering::Less
+        {
+            Some((0, block_len()))
+        } else {
+            None
+        }
+    }
+
+    /// Compare two elements by document order (their position in a pre-order DFS
+    /// of the tree). An ancestor precedes its descendants; earlier siblings
+    /// precede later ones. Implemented by comparing the elements' root-paths
+    /// (the sequence of child indices from the root) lexicographically.
+    fn document_order(&self, a: ElementId, b: ElementId) -> std::cmp::Ordering {
+        self.root_path(a).cmp(&self.root_path(b))
+    }
+
+    /// The path from the document root to `id` as a sequence of child indices
+    /// (root-relative). Comparing two such paths lexicographically yields
+    /// pre-order: a prefix (ancestor) sorts before a longer path (descendant).
+    fn root_path(&self, id: ElementId) -> Vec<usize> {
+        let mut path = Vec::new();
+        let mut cur = id;
+        while let Some(el) = self.elements.get(&cur) {
+            let Some(parent) = el.parent else { break };
+            let idx = self
+                .elements
+                .get(&parent)
+                .and_then(|p| p.children.iter().position(|&c| c == cur))
+                .unwrap_or(0);
+            path.push(idx);
+            cur = parent;
+        }
+        path.reverse();
+        path
+    }
+
     /// The text currently under the selection, as a single string (ADR-0097,
     /// #268). The selected byte range is sliced out of the focus IFC's shaped
     /// text, which already concatenates the IFC's inline children in document
     /// order — so a range that spans several styled runs comes back joined.
     /// `None` when there is no selection or it is collapsed to a caret (nothing
-    /// to copy). Cross-IFC selection is a growth point (single-IFC for now).
+    /// to copy). A cross-block selection (#269) highlights across blocks but
+    /// copies only its anchor block for now; joining blocks is a growth point.
     pub fn selected_text(&self) -> Option<String> {
         let sel = self.selection?;
         let ifc = sel.anchor.element;
@@ -503,17 +580,23 @@ impl ElementTree {
 
     /// Whether `id` lies within a `selectable` subtree (nearest ancestor wins).
     fn within_selectable(&self, id: ElementId) -> bool {
+        self.selection_region_of(id).is_some()
+    }
+
+    /// The nearest `selectable` ancestor of `id` (inclusive), identifying the
+    /// Selection Region `id` belongs to (ADR-0097). `None` when `id` is outside
+    /// any region. A nested `selectable` shadows its ancestors, so two points
+    /// belong to the same region only when their nearest selectable matches.
+    fn selection_region_of(&self, id: ElementId) -> Option<ElementId> {
         let mut current = Some(id);
         while let Some(eid) = current {
-            let Some(el) = self.elements.get(&eid) else {
-                break;
-            };
+            let el = self.elements.get(&eid)?;
             if el.selectable {
-                return true;
+                return Some(eid);
             }
             current = el.parent;
         }
-        false
+        None
     }
 
     fn set_selection(&mut self, next: Option<Selection>) {
@@ -529,24 +612,75 @@ impl ElementTree {
         }
     }
 
+    /// Move the drag focus to `point`, keeping the anchor (ADR-0097). The focus
+    /// is clamped to the anchor's Selection Region: a drag that wanders into a
+    /// different `selectable` region (a nested one, or none) leaves the focus
+    /// where it was, so the selection never leaks past a `selectable` boundary.
+    /// Routed through `set_selection` so every block the range gained or lost
+    /// re-lowers its highlight.
     fn update_selection_focus(&mut self, point: SelectionPoint) {
-        let Some(sel) = self.selection.as_mut() else {
+        let Some(sel) = self.selection else {
             return;
         };
         if sel.focus == point {
             return;
         }
-        sel.focus = point;
-        self.engine
-            .mark_visual_dirty(point.element, VisualInvalidationReach::SelfOnly);
+        if self.selection_region_of(point.element) != self.selection_region_of(sel.anchor.element) {
+            return;
+        }
+        self.set_selection(Some(Selection {
+            anchor: sel.anchor,
+            focus: point,
+        }));
     }
 
-    /// Re-lower the elements a selection touches so the highlight follows it.
+    /// Re-lower every block the selection covers so the highlight follows it —
+    /// the two endpoint blocks plus any block document-ordered between them
+    /// (#269), so a cross-block range repaints intermediate paragraphs too.
     fn mark_selection_dirty(&mut self, sel: Selection) {
-        self.engine
-            .mark_visual_dirty(sel.anchor.element, VisualInvalidationReach::SelfOnly);
-        self.engine
-            .mark_visual_dirty(sel.focus.element, VisualInvalidationReach::SelfOnly);
+        for block in self.blocks_spanned_by(sel) {
+            self.engine
+                .mark_visual_dirty(block, VisualInvalidationReach::SelfOnly);
+        }
+    }
+
+    /// The IFC blocks a selection covers, in document order: just the one block
+    /// for a same-block selection, otherwise every IFC root in the anchor's
+    /// Selection Region from the earlier endpoint's block through the later one.
+    fn blocks_spanned_by(&self, sel: Selection) -> Vec<ElementId> {
+        if sel.anchor.element == sel.focus.element {
+            return vec![sel.anchor.element];
+        }
+        let region = self.selection_region_of(sel.anchor.element);
+        let roots: Vec<ElementId> = self
+            .preorder_ifc_roots()
+            .filter(|&b| self.selection_region_of(b) == region)
+            .collect();
+        let ai = roots.iter().position(|&b| b == sel.anchor.element);
+        let fi = roots.iter().position(|&b| b == sel.focus.element);
+        match (ai, fi) {
+            (Some(a), Some(f)) => roots[a.min(f)..=a.max(f)].to_vec(),
+            _ => vec![sel.anchor.element, sel.focus.element],
+        }
+    }
+
+    /// IFC-root blocks in document order (pre-order DFS from the document root).
+    fn preorder_ifc_roots(&self) -> impl Iterator<Item = ElementId> + '_ {
+        let mut out = Vec::new();
+        if let Some(root) = self.root {
+            let mut stack = vec![root];
+            while let Some(id) = stack.pop() {
+                if crate::element::inline_text::is_ifc_root(&self.elements, id) {
+                    out.push(id);
+                }
+                if let Some(el) = self.elements.get(&id) {
+                    for &child in el.children.iter().rev() {
+                        stack.push(child);
+                    }
+                }
+            }
+        }
+        out.into_iter()
     }
 
     fn emit_interaction(&mut self, event: Event) {
