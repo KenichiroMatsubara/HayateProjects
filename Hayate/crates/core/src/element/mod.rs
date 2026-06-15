@@ -1,5 +1,6 @@
 pub mod accessibility;
 pub mod ambient_defaults;
+pub mod clipboard;
 pub mod document_runtime;
 mod engine;
 pub mod edit_state;
@@ -23,6 +24,7 @@ mod transition;
 pub mod tree;
 mod visual_invalidation;
 
+pub use clipboard::Clipboard;
 pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
 pub use edit_state::EditState;
 pub use ime_bridge::{CharacterBounds, ImeBridge};

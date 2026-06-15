@@ -201,6 +201,127 @@ fn shift_click_extends_focus_keeping_the_anchor_fixed() {
 }
 
 #[test]
+fn selected_text_returns_the_dragged_substring() {
+    let (mut tree, _view, _text) = selectable_paragraph(true);
+
+    // Drag from the start across the first word.
+    tree.on_pointer_down(2.0, 8.0);
+    tree.on_pointer_move(40.0, 8.0);
+
+    let copied = tree.selected_text().expect("text under the selection");
+    let sel = tree.selection().unwrap();
+    let (start, end) = sel.range_within(sel.anchor.element).unwrap();
+    assert_eq!(copied, &"Hello world"[start..end]);
+    assert!(!copied.is_empty(), "a non-empty drag yields some text");
+}
+
+/// `<view [selectable]><text "Hello "><text "world" (bigger)></view>`: one IFC
+/// made of two inline children with different styles. Returns (tree, ifc root).
+fn two_run_paragraph() -> (ElementTree, ElementId) {
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(1, ElementKind::View);
+    let lead = tree.element_create(2, ElementKind::Text);
+    let tail = tree.element_create(3, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_style(lead, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(view, lead);
+    tree.element_append_child(lead, tail);
+    tree.element_set_text(lead, "Hello ");
+    tree.element_set_text(tail, "world");
+    tree.element_set_style(tail, &[StyleProp::FontSize(24.0)]);
+    tree.element_set_selectable(view, true);
+    tree.render(0.0);
+    (tree, lead)
+}
+
+#[test]
+fn selected_text_joins_across_styled_inline_runs() {
+    let (mut tree, _ifc) = two_run_paragraph();
+
+    // Select the whole paragraph, which crosses the "Hello " / "world" run
+    // boundary (two different font sizes within one IFC).
+    tree.on_pointer_down(15.0, 8.0);
+    tree.on_pointer_up(15.0, 8.0);
+    tree.on_pointer_down(15.0, 8.0);
+    tree.on_pointer_up(15.0, 8.0);
+    tree.on_pointer_down(15.0, 8.0); // triple-click selects the paragraph
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("Hello world"),
+        "the copied text joins both styled runs in document order",
+    );
+}
+
+/// A `Clipboard` impl that records writes, so a test can assert what core
+/// pushed across the Platform Adapter boundary without a real OS clipboard.
+#[derive(Default, Clone)]
+struct RecordingClipboard {
+    writes: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+
+impl hayate_core::Clipboard for RecordingClipboard {
+    fn write_text(&self, text: &str) {
+        self.writes.borrow_mut().push(text.to_string());
+    }
+}
+
+#[test]
+fn primary_c_writes_the_selection_through_the_clipboard_adapter() {
+    let (mut tree, _view, _text) = selectable_paragraph(true);
+    let clipboard = RecordingClipboard::default();
+    tree.set_clipboard(Box::new(clipboard.clone()));
+
+    // Select a range, then Ctrl/Cmd+C.
+    tree.on_pointer_down(2.0, 8.0);
+    tree.on_pointer_move(40.0, 8.0);
+    let expected = tree.selected_text().expect("a non-empty selection");
+    tree.on_pointer_up(40.0, 8.0);
+    tree.on_key_down("c", CTRL);
+
+    assert_eq!(
+        clipboard.writes.borrow().as_slice(),
+        &[expected],
+        "the selected text is written once to the clipboard",
+    );
+}
+
+#[test]
+fn primary_c_without_a_selection_writes_nothing() {
+    let (mut tree, _view, _text) = selectable_paragraph(true);
+    let clipboard = RecordingClipboard::default();
+    tree.set_clipboard(Box::new(clipboard.clone()));
+
+    // A caret (collapsed) selects nothing, so copy is a no-op.
+    tree.on_pointer_down(40.0, 8.0);
+    tree.on_pointer_up(40.0, 8.0);
+    tree.on_key_down("c", CTRL);
+
+    assert!(
+        clipboard.writes.borrow().is_empty(),
+        "copying an empty/caret selection must not write to the clipboard",
+    );
+}
+
+#[test]
+fn selected_text_is_none_for_a_collapsed_caret() {
+    let (mut tree, _view, _text) = selectable_paragraph(true);
+
+    // A plain press drops a caret (collapsed selection) — nothing to copy.
+    tree.on_pointer_down(40.0, 8.0);
+    assert!(tree.selection().unwrap().is_caret());
+    assert_eq!(tree.selected_text(), None);
+}
+
+#[test]
 fn drag_outside_selectable_region_does_not_start_a_selection() {
     let (mut tree, _view, _text) = selectable_paragraph(false);
 

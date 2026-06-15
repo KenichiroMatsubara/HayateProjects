@@ -31,6 +31,21 @@ use crate::shared::{element_id_from_f64, element_id_to_f64, fetch_bytes, kind_fr
 /// next `poll_events()` call (single-threaded WASM — Rc<RefCell> is safe).
 type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
+/// Web implementation of the core `Clipboard` seam (ADR-0097, #268). Copy
+/// (Cmd/Ctrl+C) runs in core; core hands the selected text here, and the
+/// adapter writes it via the async Clipboard API. The write is fire-and-forget:
+/// it is initiated synchronously inside the user-gesture keydown that core just
+/// processed, which is what the browser requires to authorize the write.
+struct WebClipboard;
+
+impl hayate_core::Clipboard for WebClipboard {
+    fn write_text(&self, text: &str) {
+        if let Some(clipboard) = web_sys::window().map(|w| w.navigator().clipboard()) {
+            let _ = clipboard.write_text(text);
+        }
+    }
+}
+
 // ── Canvas Mode renderer ─────────────────────────────────────────────────
 
 #[wasm_bindgen]
@@ -79,6 +94,9 @@ impl HayateElementRenderer {
         );
         let mut tree = ElementTree::new();
         tree.set_viewport(metrics.viewport_width, metrics.viewport_height);
+        // Wire the Platform Adapter clipboard so core copy (Cmd/Ctrl+C) reaches
+        // the browser Clipboard API (ADR-0097, #268).
+        tree.set_clipboard(Box::new(WebClipboard));
 
         let pending_resize = Rc::new(RefCell::new(None));
         let last_viewport = Rc::new(RefCell::new((
