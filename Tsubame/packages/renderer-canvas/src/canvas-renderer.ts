@@ -208,6 +208,14 @@ export class CanvasRenderer implements IRenderer {
       if (entry === undefined) continue;
       const interaction = toInteractionEvent(event);
       if (interaction !== null) {
+        // The text_input wire payload carries only the freshly inserted
+        // fragment, but `InteractionEvent.value` is contractually the element's
+        // *current* value (the DOM renderer reads `target.value`). Read the
+        // authoritative content back from the tree so controlled inputs see the
+        // whole string, not just the last keystroke.
+        if (interaction.kind === 'input') {
+          interaction.value = this.raw.element_get_text_content(interaction.target);
+        }
         entry.handler(interaction);
       }
     }

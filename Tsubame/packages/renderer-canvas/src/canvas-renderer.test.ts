@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OP } from '@tsubame/protocol-generated/protocol';
+import { EVENT_KIND, OP } from '@tsubame/protocol-generated/protocol';
 import { coerceElementProperty } from '@tsubame/renderer-protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
@@ -70,8 +70,9 @@ class StubHayate implements RawHayate {
   ime_character_bounds(): number[] {
     return [0, 0, 0, 0];
   }
-  element_get_text_content(): string {
-    return '';
+  textContents = new Map<number, string>();
+  element_get_text_content(id: number): string {
+    return this.textContents.get(id) ?? '';
   }
   element_get_bounds(): number[] {
     return [0, 0, 0, 0];
@@ -138,6 +139,28 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     sched.tick();
 
     expect(received).toEqual([{ kind: 'click', target: 2 }]);
+  });
+
+  it('delivers the full current text content as the input event value, not the typed fragment', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+
+    const input = renderer.createElement('text-input');
+    renderer.setRoot(input);
+
+    const received: unknown[] = [];
+    renderer.addEventListener(input, 'input', (event) => received.push(event));
+
+    // Hayate core has accumulated "ab" in the edit buffer, but the textupdate
+    // wire delivery carries only the freshly inserted fragment "b". The host
+    // contract (InteractionEvent.value = current value, matching the DOM
+    // renderer's `target.value`) requires the *full* content to be delivered.
+    hayate.textContents.set(input as unknown as number, 'ab');
+    hayate.events = [[1, EVENT_KIND.TEXT_INPUT, input, 'b']];
+    sched.tick();
+
+    expect(received).toEqual([{ kind: 'input', target: input, value: 'ab' }]);
   });
 
   it('removeChild requires adapter unsubscribe before stale deliveries stop', () => {
