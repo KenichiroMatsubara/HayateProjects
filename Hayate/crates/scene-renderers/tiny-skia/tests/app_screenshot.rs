@@ -613,6 +613,48 @@ fn render_glyph_coverage() {
     eprintln!("wrote {}", out.display());
 }
 
+/// Sharp, deterministic signal for the "blank glyph" divergence: render each
+/// candidate glyph alone and count painted (ink) pixels. 0 ink == no glyph in
+/// any registered/fallback font (the bug); >0 == renders.
+#[test]
+fn diagnose_glyph_ink() {
+    if std::env::var_os("HAYATE_WRITE_SCREENSHOT").is_none() {
+        return;
+    }
+    const W: u32 = 64;
+    const H: u32 = 64;
+    let candidates: &[(&str, &str)] = &[
+        ("U+1F319 🌙 emoji moon", "🌙"),
+        ("U+2600 ☀ sun dingbat", "☀"),
+        ("U+263D ☽ first-quarter moon", "☽"),
+        ("U+263E ☾ last-quarter moon", "☾"),
+        ("U+1F311 🌑 emoji new moon", "🌑"),
+        ("U+2713 ✓ check", "✓"),
+        ("U+2715 ✕ multiply", "✕"),
+        ("kana ク", "ク"),
+        ("latin A", "A"),
+    ];
+    for (label, glyph) in candidates {
+        let mut b = B::new();
+        let root = b.view(&[
+            StyleProp::Width(Dimension::px(W as f32)),
+            StyleProp::Height(Dimension::px(H as f32)),
+            StyleProp::BackgroundColor(Color::WHITE),
+            StyleProp::DefaultFontFamily("Inter".to_string()),
+        ]);
+        b.tree.set_root(root);
+        b.tree.set_viewport(W as f32, H as f32);
+        let t = b.text(glyph, &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)]);
+        b.child(root, t);
+        let graph = b.tree.render(0.0).clone();
+        let mut pixmap = Pixmap::new(W, H).expect("pixmap");
+        TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
+        let data = pixmap.data();
+        let ink = data.chunks_exact(4).filter(|p| p[0] < 200 || p[1] < 200 || p[2] < 200).count();
+        eprintln!("[GLYPH-INK] {ink:>5} px  {label}");
+    }
+}
+
 fn write_png(path: &std::path::Path, rgba: &[u8], w: u32, h: u32) {
     let file = std::fs::File::create(path).unwrap();
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
