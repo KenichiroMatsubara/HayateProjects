@@ -97,7 +97,10 @@ function attachTextInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
 
   canvas.addEventListener('keydown', (e) => {
     const id = raw.focused_element_id();
-    if (id === 0) return;
+    // Selection keyboard gestures (Ctrl/Cmd+A, Shift+Arrow — #267) act on the
+    // document-wide selection, so dispatch them even with nothing focused (a
+    // read-only Selection Region). Core consumes selection keys internally.
+    if (id === 0 && !raw.has_selection()) return;
     if (composing && e.key !== 'Escape') {
       e.preventDefault();
       return;

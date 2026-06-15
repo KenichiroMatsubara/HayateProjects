@@ -196,6 +196,12 @@ pub struct ElementTree {
     /// True while a pointer-down inside a Selection Region is driving a drag
     /// selection (the active-session capture extended to selection, ADR-0097).
     pub(crate) selection_drag: bool,
+    /// Multi-click tracking for word/paragraph gestures (#267): the last
+    /// pointer-down position and how many presses have landed near it. The
+    /// adapter's OS-level double-click timing is re-derived here by proximity:
+    /// consecutive presses at the same spot cycle caret → word → paragraph.
+    pub(crate) last_click_pos: Option<(f32, f32)>,
+    pub(crate) click_count: u32,
     /// Last pointer position for sub-pixel move dedup (ADR-0066).
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
     /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
@@ -219,6 +225,8 @@ impl ElementTree {
             active_element: None,
             selection: None,
             selection_drag: false,
+            last_click_pos: None,
+            click_count: 0,
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
