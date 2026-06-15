@@ -389,18 +389,26 @@ function Header(props: { colors: Palette; remaining: number; total: number; perc
 }
 
 /**
- * 読み取り専用テキストの選択ジェスチャデモ（ADR-0097 / issue #266・#267・#268）。
+ * 読み取り専用テキストの選択ジェスチャデモ（ADR-0097 / issue #266・#267・#268・#269）。
  * `selectable` な view が Selection Region を確立し、Canvas Mode では core が選択
  * ハイライトを SceneGraph に描画する。DOM Mode ではブラウザネイティブ選択に委ねる。
  * ドラッグに加え、ダブルクリックで単語・トリプルクリックで段落、Shift+クリック /
  * Shift+矢印で範囲拡張、Cmd/Ctrl+A で全選択ができる。Cmd/Ctrl+C を押すと選択テキ
  * ストが Platform Adapter 経由でクリップボードへコピーされ、別アプリへ貼り付けられる。
+ *
+ * 複数の段落（別々の block）を一つの Selection Region に並べているので、ある段落
+ * から次の段落へドラッグすると block をまたいだ連続選択になる（issue #269）。選択は
+ * `selectable` の境界を越えて外側のテキストへは漏れない。
  */
 function SelectableNote(props: { colors: Palette }) {
+  const para = { color: props.colors.muted, fontSize: 13 } as const;
   return (
     <view
       selectable
       style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
         padding: 12,
         backgroundColor: props.colors.panel2,
         borderRadius: 12,
@@ -408,8 +416,14 @@ function SelectableNote(props: { colors: Palette }) {
         borderColor: props.colors.line,
       }}
     >
-      <text style={{ color: props.colors.muted, fontSize: 13 }}>
-        この段落は選択できます。ダブルクリックで単語、トリプルクリックで段落を選び、Shift+クリックや Shift+矢印で範囲を伸縮、Cmd/Ctrl+A で全選択できます。選択して Cmd/Ctrl+C を押すとクリップボードへコピーされ、別アプリへ貼り付けられます。Canvas Mode では core が選択ハイライトを描画し、DOM Mode ではブラウザのネイティブ選択に委ねます。
+      <text style={para}>
+        この段落は選択できます。ダブルクリックで単語、トリプルクリックで段落を選び、Shift+クリックや Shift+矢印で範囲を伸縮、Cmd/Ctrl+A で全選択できます。選択して Cmd/Ctrl+C を押すとクリップボードへコピーされ、別アプリへ貼り付けられます。
+      </text>
+      <text style={para}>
+        これは二つ目の段落です。一つ目の段落からここまでドラッグすると、block をまたいだ連続選択になります（issue #269）。先頭 block は anchor から行末まで、末尾 block は行頭から focus まで、間の block は丸ごとハイライトされます。
+      </text>
+      <text style={para}>
+        Canvas Mode では core が選択ハイライトを描画し、DOM Mode ではブラウザのネイティブ選択に委ねます。選択は `selectable` の境界内に閉じ、外側のテキストへは漏れません。
       </text>
     </view>
   );

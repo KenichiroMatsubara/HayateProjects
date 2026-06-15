@@ -1132,7 +1132,7 @@ fn emit_selection_highlight(
     sg: &mut SceneGraph,
     parent: Option<NodeId>,
 ) {
-    let Some((start, end)) = tree.selection().and_then(|s| s.range_within(id)) else {
+    let Some((start, end)) = tree.selection_range_in_block(id) else {
         return;
     };
     for (rx, ry, rw, rh) in selection_highlight_rects(layout, start, end) {

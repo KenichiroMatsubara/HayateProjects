@@ -1,8 +1,9 @@
-//! Drag selection within a single selectable IFC (ADR-0097, issue #266).
+//! Drag selection within a single selectable IFC (ADR-0097, issue #266) and
+//! across multiple blocks within one Selection Region (issue #269).
 
 use hayate_core::{
-    DrawOp, Dimension, ElementId, ElementKind, ElementTree, RecordingPainter, StyleProp,
-    render_scene_graph,
+    DrawOp, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue, RecordingPainter,
+    StyleProp, render_scene_graph,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -331,5 +332,223 @@ fn drag_outside_selectable_region_does_not_start_a_selection() {
     assert!(
         tree.selection().is_none(),
         "no Selection Region established, so no selection",
+    );
+}
+
+// --- Cross-block selection within one Selection Region (issue #269) ---
+
+/// Build a column `<view [selectable]>` stacking two paragraphs (separate IFC
+/// blocks). Returns (tree, view, first, second). Each paragraph is one line.
+fn two_block_region(selectable: bool) -> (ElementTree, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(1, ElementKind::View);
+    let first = tree.element_create(2, ElementKind::Text);
+    let second = tree.element_create(3, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(first, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(second, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(view, first);
+    tree.element_append_child(view, second);
+    tree.element_set_text(first, "First block");
+    tree.element_set_text(second, "Second block");
+    if selectable {
+        tree.element_set_selectable(view, true);
+    }
+    tree.render(0.0);
+    (tree, view, first, second)
+}
+
+/// The vertical center of a paragraph's line, for clicking into it.
+fn block_mid_y(tree: &ElementTree, block: ElementId) -> f32 {
+    let (_, y, _, h) = tree.element_layout_rect(block).expect("a laid-out block");
+    y + h / 2.0
+}
+
+#[test]
+fn dragging_backwards_across_blocks_normalizes_to_document_order() {
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Press inside the *second* block and drag up into the *first*: the anchor
+    // is in the later block, the focus in the earlier one.
+    tree.on_pointer_down(60.0, block_mid_y(&tree, second));
+    tree.on_pointer_move(20.0, block_mid_y(&tree, first));
+
+    let sel = tree.selection().expect("a cross-block selection");
+    assert_eq!(sel.anchor.element, second, "anchor stays where the drag began");
+    assert_eq!(sel.focus.element, first, "focus follows the drag into block one");
+
+    let (start, end) = tree
+        .selection_ordered()
+        .expect("ordered endpoints for an active selection");
+    assert_eq!(
+        start.element, first,
+        "document order puts the earlier block's point first",
+    );
+    assert_eq!(end.element, second, "the later block's point comes last");
+}
+
+/// Material selection tint (ADR-0097): identifies highlight rects among draw ops.
+const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
+
+/// The vertical bands (y_min..y_max) of every selection-highlight rect.
+fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
+    draw_ops(tree)
+        .iter()
+        .filter_map(|op| match op {
+            DrawOp::FillRect { y, height, color, .. } if *color == HIGHLIGHT_COLOR => {
+                Some((*y, *y + *height))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn dragging_across_blocks_highlights_every_covered_block() {
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Drag from the first paragraph down into the second: the selection spans
+    // both blocks, so each must show its own highlight run.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, first));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, second));
+    tree.render(0.0);
+
+    let bands = highlight_bands(&tree);
+    let (_, fy, _, fh) = tree.element_layout_rect(first).unwrap();
+    let (_, sy, _, sh) = tree.element_layout_rect(second).unwrap();
+    let covers = |y0: f32, y1: f32| {
+        bands
+            .iter()
+            .any(|&(by0, by1)| by1 > y0 && by0 < y1)
+    };
+    assert!(covers(fy, fy + fh), "the first block must be highlighted");
+    assert!(covers(sy, sy + sh), "the second block must be highlighted");
+}
+
+/// A non-selectable column root holding `inner` — a `selectable` view with one
+/// paragraph — above `outside`, a paragraph in no Selection Region. Returns
+/// (tree, inner-paragraph, outside-paragraph).
+fn region_with_outside_block() -> (ElementTree, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    let inner = tree.element_create(2, ElementKind::View);
+    let inside = tree.element_create(3, ElementKind::Text);
+    let outside = tree.element_create(4, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        inner,
+        &[StyleProp::Width(Dimension::px(400.0)), StyleProp::FlexDirection(FlexDirectionValue::Column)],
+    );
+    tree.element_set_style(inside, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(outside, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(root, inner);
+    tree.element_append_child(inner, inside);
+    tree.element_append_child(root, outside);
+    tree.element_set_text(inside, "Inside region");
+    tree.element_set_text(outside, "Outside region");
+    tree.element_set_selectable(inner, true);
+    tree.render(0.0);
+    (tree, inside, outside)
+}
+
+#[test]
+fn selection_does_not_leak_past_the_selectable_boundary() {
+    let (mut tree, inside, outside) = region_with_outside_block();
+
+    // Start inside the region, drag down into the block that lies outside it.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
+    tree.render(0.0);
+
+    let sel = tree.selection().expect("a selection started inside the region");
+    assert_eq!(
+        sel.focus.element, inside,
+        "focus must stay clamped inside the Selection Region",
+    );
+
+    // The outside block carries no highlight band.
+    let (_, oy, _, oh) = tree.element_layout_rect(outside).unwrap();
+    let leaked = highlight_bands(&tree)
+        .iter()
+        .any(|&(by0, by1)| by1 > oy && by0 < oy + oh);
+    assert!(!leaked, "no highlight may appear outside the Selection Region");
+}
+
+/// An `outer` selectable column holding `outer_block` above a *nested* selectable
+/// view that holds `inner_block`. Both blocks are selectable, but they belong to
+/// different Selection Regions (nearest ancestor wins). Returns
+/// (tree, outer_block, inner_block).
+fn nested_regions() -> (ElementTree, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let outer_block = tree.element_create(2, ElementKind::Text);
+    let inner = tree.element_create(3, ElementKind::View);
+    let inner_block = tree.element_create(4, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        inner,
+        &[StyleProp::Width(Dimension::px(400.0)), StyleProp::FlexDirection(FlexDirectionValue::Column)],
+    );
+    tree.element_set_style(outer_block, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(inner_block, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(outer, outer_block);
+    tree.element_append_child(outer, inner);
+    tree.element_append_child(inner, inner_block);
+    tree.element_set_text(outer_block, "Outer region");
+    tree.element_set_text(inner_block, "Nested region");
+    tree.element_set_selectable(outer, true);
+    tree.element_set_selectable(inner, true);
+    tree.render(0.0);
+    (tree, outer_block, inner_block)
+}
+
+#[test]
+fn nested_region_uses_the_nearest_selectable_ancestor() {
+    let (mut tree, outer_block, inner_block) = nested_regions();
+
+    // A drag begun in the outer region must not extend into the nested region:
+    // the nested `selectable` is the nearer ancestor of `inner_block`.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, outer_block));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, inner_block));
+
+    let sel = tree.selection().expect("a selection in the outer region");
+    assert_eq!(
+        sel.focus.element, outer_block,
+        "focus stays in the outer region; the nested region is its own boundary",
+    );
+
+    // Conversely, a fresh drag begun inside the nested region selects there.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inner_block));
+    let nested = tree.selection().expect("a caret in the nested region");
+    assert_eq!(
+        nested.anchor.element, inner_block,
+        "a press in the nested region anchors to the nested block",
     );
 }
