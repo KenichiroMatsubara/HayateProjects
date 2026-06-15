@@ -517,7 +517,7 @@ impl ElementTree {
     fn selection_caret_canvas(&self, point: SelectionPoint) -> Option<(f32, f32)> {
         use parley::{Affinity, Cursor};
         let tl = self.elements.get(&point.element)?.text_layout.as_ref()?;
-        let &(ex, ey, _, _) = self.layout.layout_cache.get(&point.element)?;
+        let (ex, ey, _, _) = self.layout.geometry(point.element)?;
         let g = Cursor::from_byte_index(&tl.layout, point.offset, Affinity::Downstream)
             .geometry(&tl.layout, 0.0);
         Some((ex + g.x0 as f32, ey + g.y1 as f32))
@@ -701,7 +701,7 @@ impl ElementTree {
             let Some(tl) = el.text_layout.as_ref() else {
                 continue;
             };
-            let Some(&(ex, ey, _, _)) = self.layout.layout_cache.get(&block) else {
+            let Some((ex, ey, _, _)) = self.layout.geometry(block) else {
                 continue;
             };
             for (rx, ry, rw, rh) in
@@ -721,7 +721,7 @@ impl ElementTree {
         let el = self.elements.get(&input)?;
         let (s, e) = el.edit.as_ref()?.selection_range()?;
         let cl = el.content_layout.as_ref()?;
-        let &(ex, ey, _, _) = self.layout.layout_cache.get(&input)?;
+        let (ex, ey, _, _) = self.layout.geometry(input)?;
         let taffy_node = self.layout.projection.node_id(input)?;
         let box_layout = self.layout.projection.taffy.layout(taffy_node).ok()?;
         let content_x = ex + box_layout.border.left + box_layout.padding.left;
@@ -870,7 +870,7 @@ impl ElementTree {
     fn edit_offset_at(&self, input: ElementId, x: f32, y: f32) -> Option<usize> {
         let el = self.elements.get(&input)?;
         let cl = el.content_layout.as_ref()?;
-        let &(ex, ey, _, _) = self.layout.layout_cache.get(&input)?;
+        let (ex, ey, _, _) = self.layout.geometry(input)?;
         let taffy_node = self.layout.projection.node_id(input)?;
         let box_layout = self.layout.projection.taffy.layout(taffy_node).ok()?;
         let content_x = ex + box_layout.border.left + box_layout.padding.left;
@@ -1020,7 +1020,7 @@ impl ElementTree {
         }
         let ifc = ifc_root(&self.elements, hit).unwrap_or(hit);
         let tl = self.elements.get(&ifc)?.text_layout.as_ref()?;
-        let &(ex, ey, _, _) = self.layout.layout_cache.get(&ifc)?;
+        let (ex, ey, _, _) = self.layout.geometry(ifc)?;
         let offset = byte_index_at_point(tl, x - ex, y - ey);
         Some(SelectionPoint::new(ifc, offset))
     }

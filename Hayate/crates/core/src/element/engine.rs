@@ -4,7 +4,7 @@ use crate::element::id::ElementId;
 use crate::element::visual_invalidation::{
     self, VisualInvalidationReach,
 };
-use crate::element::layout_pass::{cache_layout, LayoutPass};
+use crate::element::layout_pass::LayoutPass;
 use crate::element::tree::{apply_visual, Element, Event};
 
 /// Owns the dirty-tracking sets (`structure_dirty` / `shape_dirty` / `fonts_dirty`)
@@ -92,38 +92,21 @@ impl ElementEngine {
         event_queue: &mut Vec<Event>,
     ) {
         self.promote_viewport_dirty(layout, elements, viewport);
-        layout
-            .projection
-            .reconcile(&*elements, root, &mut self.structure_dirty);
-        layout.compute(
+        // The reduced layout interface (issue #308 / §5): one `settle` folds
+        // reconcile → compute → cache → geometry diff. The returned diff (boxes
+        // that moved/resized or appeared) is folded into `layout_geometry_dirty`
+        // so `render` can re-lower stale retained boxes — a flex reflow that
+        // ripples to ancestors / siblings lands every moved id here independently.
+        let geometry_dirty = layout.settle(
             elements,
             root,
             viewport,
             event_queue,
+            &mut self.structure_dirty,
             &mut self.shape_dirty,
             &mut self.fonts_dirty,
         );
-        // Snapshot the previous absolute geometry before rebuilding, then diff:
-        // any element whose box `(x, y, w, h)` moved/resized (or newly appeared)
-        // is flagged so `render` can re-lower its stale retained box. A flex
-        // reflow from an insert/select ripples up to ancestors and sideways to
-        // siblings that are never structure/visual-dirty on their own; absolute
-        // coords mean every moved descendant lands in the diff independently, so
-        // per-id `SelfOnly` re-lowering is sufficient (no subtree expansion).
-        let previous = std::mem::take(&mut layout.layout_cache);
-        cache_layout(
-            elements,
-            &layout.projection,
-            root,
-            0.0,
-            0.0,
-            &mut layout.layout_cache,
-        );
-        for (&id, geometry) in &layout.layout_cache {
-            if previous.get(&id) != Some(geometry) {
-                self.layout_geometry_dirty.insert(id);
-            }
-        }
+        self.layout_geometry_dirty.extend(geometry_dirty);
     }
 
     fn promote_viewport_dirty(

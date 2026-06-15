@@ -26,7 +26,6 @@ use crate::element::style::{
     BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, Shadow, StyleProp, StylePropKind,
     TextDecorationValue, TextOverflowValue, TransitionTimingValue, ViewportCondition,
 };
-use crate::element::taffy_bridge;
 use crate::element::text;
 use crate::element::visual_invalidation::{
     self, Change, DirtyKind, DirtySink, ElementContext, VisualInvalidationReach,
@@ -689,14 +688,15 @@ impl ElementTree {
     }
 
     /// Return the absolute layout rect (x, y, w, h) from the last render pass.
+    /// Geometry-query side of the reduced layout interface (issue #308 / §5).
     pub fn element_layout_rect(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
-        self.layout.layout_cache.get(&id).copied()
+        self.layout.geometry(id)
     }
 
     /// Return the bounding dimensions of all descendants (content size) for a ScrollView.
     /// Values are relative to the element's own top-left corner.
     pub fn element_content_size(&self, id: ElementId) -> (f32, f32) {
-        let &(ex, ey, _, _) = match self.layout.layout_cache.get(&id) {
+        let (ex, ey, _, _) = match self.layout.geometry(id) {
             Some(r) => r,
             None => return (0.0, 0.0),
         };
@@ -719,7 +719,7 @@ impl ElementTree {
             None => return,
         };
         for &child in &el.children {
-            if let Some(&(cx, cy, cw, ch)) = self.layout.layout_cache.get(&child) {
+            if let Some((cx, cy, cw, ch)) = self.layout.geometry(child) {
                 *max_x = max_x.max(cx - origin_x + cw);
                 *max_y = max_y.max(cy - origin_y + ch);
                 self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
@@ -735,8 +735,10 @@ impl ElementTree {
         let mut layout_changed = false;
         let mut text_dirty = false;
         for prop in props {
-            if prop.is_layout() {
-                taffy_bridge::apply_to_style(&mut el.layout_style, prop);
+            // Set half of the reduced layout interface (issue #308 / §5): the
+            // layout seam owns bridge conversion + Taffy set + mark. Non-layout
+            // props fall through to Visual.
+            if self.layout.set_layout_prop(id, &mut el.layout_style, prop) {
                 layout_changed = true;
             } else {
                 apply_visual(&mut el.visual, prop, &mut text_dirty);
@@ -746,8 +748,6 @@ impl ElementTree {
             el.text_layout = None;
         }
         if layout_changed {
-            let style = el.layout_style.clone();
-            self.layout.projection.set_style(id, style);
             return;
         }
         let change = self.classify_style_props(id, props);
@@ -1216,7 +1216,7 @@ impl ElementTree {
 
     /// Returns true if at least one layout pass has completed (layout_cache is populated).
     pub fn has_layout(&self) -> bool {
-        !self.layout.layout_cache.is_empty()
+        self.layout.has_geometry()
     }
 
     /// Z-Order の単一正本。`id` の子兄弟を **paint order**（z 昇順・同 z は
@@ -1244,7 +1244,7 @@ impl ElementTree {
         let el = self.elements.get(&id)?;
         let edit = el.edit.as_ref()?;
         let cl = el.content_layout.as_ref()?;
-        let &(ex, ey, _, _) = self.layout.layout_cache.get(&id)?;
+        let (ex, ey, _, _) = self.layout.geometry(id)?;
         let taffy_node = self.layout.projection.node_id(id)?;
         let box_layout = self.layout.projection.taffy.layout(taffy_node).ok()?;
         let content_x = ex + box_layout.border.left + box_layout.padding.left;
@@ -1549,7 +1549,7 @@ fn walk_resolved(
 }
 
 fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {
-    let &(ex, ey, ew, eh) = tree.layout.layout_cache.get(&id)?;
+    let (ex, ey, ew, eh) = tree.layout.geometry(id)?;
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
     }

@@ -195,8 +195,8 @@ pub(crate) fn update(
             .elements
             .get(&patch_root)
             .and_then(|el| el.parent)
-            .and_then(|parent| tree.layout.layout_cache.get(&parent))
-            .map(|(x, y, _, _)| (*x, *y))
+            .and_then(|parent| tree.layout.geometry(parent))
+            .map(|(x, y, _, _)| (x, y))
             .unwrap_or((0.0, 0.0));
         let inherited = inherited_for_patch_root(tree, patch_root);
         let mut ctx = RenderCtx {
