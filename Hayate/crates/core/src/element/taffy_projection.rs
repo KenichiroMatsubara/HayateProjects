@@ -6,6 +6,9 @@ use crate::element::id::ElementId;
 use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::taffy_bridge::MeasureCtx;
 use crate::element::tree::Element;
+use crate::element::visual_invalidation::{
+    self, ElementMapTopology, VisualInvalidationReach,
+};
 
 /// Result of [`TaffyProjection::traversal_step`].
 pub(crate) enum TraversalStep<'a> {
@@ -97,8 +100,17 @@ impl TaffyProjection {
             return;
         }
 
-        let dirty: Vec<ElementId> = structure_dirty.drain().collect();
-        let patch_roots = minimal_patch_roots(&dirty, elements);
+        // Structure changes always carry `Subtree` reach, so tagging every
+        // drained id `Subtree` and routing through the shared reach seam yields
+        // exactly the old presence-only patch-root search (`step_reach` returns
+        // `Some(Subtree)` for every ancestor→descendant step). The reach kernel
+        // now lives in one place; this is its `structure_dirty` specialization.
+        let dirty: HashMap<ElementId, VisualInvalidationReach> = structure_dirty
+            .drain()
+            .map(|id| (id, VisualInvalidationReach::Subtree))
+            .collect();
+        let topology = ElementMapTopology { elements };
+        let patch_roots = visual_invalidation::minimal_patch_roots(&topology, &dirty);
         for patch_root in patch_roots {
             patch_subtree(self, elements, patch_root);
         }
@@ -110,32 +122,6 @@ impl Default for TaffyProjection {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn minimal_patch_roots(
-    dirty: &[ElementId],
-    elements: &HashMap<ElementId, Element>,
-) -> Vec<ElementId> {
-    dirty
-        .iter()
-        .copied()
-        .filter(|&id| !has_dirty_ancestor(id, dirty, elements))
-        .collect()
-}
-
-fn has_dirty_ancestor(
-    id: ElementId,
-    dirty: &[ElementId],
-    elements: &HashMap<ElementId, Element>,
-) -> bool {
-    let mut cur = elements.get(&id).and_then(|e| e.parent);
-    while let Some(ancestor) = cur {
-        if dirty.contains(&ancestor) {
-            return true;
-        }
-        cur = elements.get(&ancestor).and_then(|e| e.parent);
-    }
-    false
 }
 
 fn patch_subtree(
