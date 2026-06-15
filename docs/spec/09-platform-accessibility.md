@@ -42,6 +42,12 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 **状況:** 🟡 — `crates/adapters/android`（`lib.rs` / `surface_lifecycle.rs` / `touch_input.rs` / `scene_demo.rs` / `app.rs`、`tests/apk_packaging.rs`）が存在。(A) 描画スモーク完了。(B) タッチ入力に加え、ループが `tree.render()` で `ElementTree`→`SceneGraph` を lowering して毎フレーム present するようになり（`viewport_for_surface` で viewport を surface px に追従、`scene_demo` の `:active` ボタンでタップが画面に反映）、タッチが描画されないツリーを駆動していた穴を解消。(C) フルパリティ（IME / AccessKit / clipboard）は着手段階: パッケージング基盤を GameActivity + Gradle へ移行（`android-app/` の Gradle プロジェクト + `MainActivity : GameActivity` + Manifest、`Cargo.toml` を `game-activity` feature へ、cargo-apk metadata 撤去、ADR-0094）し、IME ブリッジを開始（`ime_input` が GameTextInput の絶対状態＝全文+composing region を core の「committed text_content + 末尾 preedit」モデルへ差分変換、`app.rs` がフォーカス時にソフトキーボード表示し focused TextInput へ適用）。AccessKit / clipboard と、CompositionStart/Update/End イベント発火・selection 対応は未着手。NDK/SDK/Gradle 不在環境では host テスト可能な純粋 seam（`surface_lifecycle` / `touch_input` / `scene_demo` / `ime_input`）と packaging 契約テスト（`tests/apk_packaging.rs` が Gradle/Manifest/Kotlin を読む）のみ検証可能で、`app.rs` の NDK glue・Gradle ビルドは実機/エミュレータ検証（#195）が必要。
 **備考:** アダプタ間でウィンドウ/イベントループの共有コードは持たない（各アダプタが lifecycle/surface を再実装）。PLAT-04 のネイティブ AccessKit 報告は本アダプタを前提とする。
 
+### PLAT-07 — AccessKit inbound action は Core が意味論写像（ポインタ非合成）
+**規範文:** AT → Core の inbound アクションは Core が単独で既存 runtime intent へ写像する。`Click`/`Default` は既存 `Click` イベントを対象ノードへ直接 emit（合成ポインタ・`:active`・multi-click を経由しない、Flutter の semantic action と同型）。写像は Core の `on_accessibility_action` が所有し、Platform Adapter は OS の AT 配管として要求を橋渡しするだけ。アクション語彙は proto wire に載せず Core 内 `AccessibilityAction` enum（未対応は `Ignored`）。`SetTextSelection` は統一 Selection（ADR-0097）に `(ElementId, byte)` 一本で着地し、AccessKit `NodeId` は host `ElementId` から切り離した専用 dense `AccessIndex`（run は `(AccessIndex<<k)|local` でパック）で構成する。
+**出典:** ADR-0098, ADR-0097, ADR-0041
+**状況:** ⬜ — 設計確定（ADR-0098）。v1 アクション集合は {Focus, Click/Default, ScrollIntoView, SetValue}。`SetTextSelection` と outbound `set_text_selection` 反映は text-run a11y（Parley `LayoutAccessibility`）導入と同一作業単位で defer。実装はネイティブ Platform Adapter（PLAT-04/06）が前提で未着手。
+**備考:** Web Canvas Mode の inbound は Safari EditContext 対応後に別 wire 拡張として設計（ADR-0041）。
+
 ---
 
 ## 集計
@@ -49,4 +55,4 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 |---|---|---|
 | ✅実装済み | 4 | PLAT-01, PLAT-02, PLAT-03, PLAT-05 |
 | 🟡部分 | 2 | PLAT-04, PLAT-06 |
-| ⬜未実装 | 0 | — |
+| ⬜未実装 | 1 | PLAT-07 |

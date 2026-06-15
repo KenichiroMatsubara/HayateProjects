@@ -229,5 +229,9 @@ _Avoid_: Group（transform 用語との混同）
 _Avoid_: 表現できない指定を no-op にする設計、italic 実フェイスのバンドル前提、レンダラーごとに合成有無が異なる設計、font-synthesis を常時オフ前提とする説明（opt-out 語彙は将来）
 
 **AccessKit**:
-プラットフォームの AT（Assistive Technology）へアクセシビリティツリーを報告するクロスプラットフォーム Rust ライブラリ。Hayate Core がツリーを生成し、Platform Adapter が AccessKit のプラットフォーム実装を呼んで AT に報告する。
-_Avoid_: アクセシビリティ API、スクリーンリーダー
+プラットフォームの AT（Assistive Technology）と**双方向**にやり取りするクロスプラットフォーム Rust ライブラリ。outbound では Hayate Core がアクセシビリティツリーを生成し Platform Adapter が AT に報告する。inbound では AT の Accessibility Action を Core が受けて既存の runtime 操作へ写像する。
+_Avoid_: アクセシビリティ API、スクリーンリーダー、outbound 片方向（ツリー報告のみ）の理解
+
+**Accessibility Action（アクセシビリティアクション）**:
+AT が要素に対して要求する inbound の意味論操作（activate / focus / set value / set selection / scroll into view 等）。Core が単独で既存の runtime intent（`Click` イベント・focus 遷移・統一 Selection・Scroll Offset 等）へ写像し、ポインタやキーの**合成入力は経由しない**（Flutter の semantic action と同型：ジェスチャの replay ではなく intent の直接駆動）。Platform Adapter は OS の AT 配管として要求を Core へ橋渡しするだけ。
+_Avoid_: 合成ポインタ/キーイベントの replay、Platform Adapter ごとのアクション解釈、Interaction Event（pointer/keyboard 由来の outbound 通知）との混同
