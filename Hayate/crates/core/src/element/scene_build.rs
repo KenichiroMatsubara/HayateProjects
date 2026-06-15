@@ -198,7 +198,7 @@ pub(crate) fn update(
             .and_then(|parent| tree.layout.geometry(parent))
             .map(|(x, y, _, _)| (x, y))
             .unwrap_or((0.0, 0.0));
-        let inherited = inherited_for_patch_root(tree, patch_root);
+        let inherited = effective_visual::inherited_context_at(&tree.elements, patch_root);
         let mut ctx = RenderCtx {
             tree,
             interaction: &interaction,
@@ -372,25 +372,6 @@ fn reorder_children_for_z_index(
         .collect();
     if let Some(parent) = sg.get_mut(parent_anchor) {
         parent.children = child_anchors;
-    }
-}
-
-fn inherited_for_patch_root(tree: &ElementTree, id: ElementId) -> InheritedVisualContext {
-    let parent = tree.elements.get(&id).and_then(|el| el.parent);
-    match parent {
-        Some(parent_id) => {
-            let parent_el = &tree.elements[&parent_id];
-            let parent_ctx = inherited_for_patch_root(tree, parent_id);
-            let inherited_base =
-                effective_visual::apply_text_inheritance(&parent_ctx, &parent_el.visual);
-            child_inherited_context(
-                &parent_ctx,
-                parent_el.kind,
-                &inherited_base,
-                &parent_el.visual,
-            )
-        }
-        None => InheritedVisualContext::root(),
     }
 }
 
