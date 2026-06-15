@@ -691,7 +691,7 @@ impl ElementTree {
         }
     }
 
-    fn transition_focus(&mut self, id: ElementId) {
+    pub(crate) fn transition_focus(&mut self, id: ElementId) {
         if self.focused_element == Some(id) {
             return;
         }
