@@ -51,3 +51,6 @@ export type { ViewportCondition } from './viewport-condition.js';
 
 export { isTextLocal, carriesTextLocal } from './generated/style-channel.js';
 export { shouldApplyTextLocalPatch, gateTextLocalPatch } from './text-local-gate.js';
+export { withTextLocalGate } from './gating-renderer.js';
+export { RecordingRenderer } from './recording-renderer.js';
+export type { RecordedCall } from './recording-renderer.js';

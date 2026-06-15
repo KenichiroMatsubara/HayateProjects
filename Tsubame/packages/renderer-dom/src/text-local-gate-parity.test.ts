@@ -1,14 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
-import { gateTextLocalPatch } from '@tsubame/renderer-protocol';
-import { declarationsFromStylePatch } from './style-declarations.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import type { ElementKind } from '@tsubame/renderer-protocol';
+import { withTextLocalGate, carriesTextLocal } from '@tsubame/renderer-protocol';
+import { DomRenderer } from './dom-renderer.js';
+import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 
-// Semantics Parity harness (Tsubame ADR-0008, #305): the Style Channel gate must
-// produce the same result on both renderer paths for the same (kind, patch). The
-// DOM path emits CSS declarations (`declarationsFromStylePatch`); the Canvas path
-// filters the patch before encode (`gateTextLocalPatch`, the function the Canvas
-// renderer calls). For a given prop on a given kind, the DOM keeps it iff the
-// Canvas keeps it — anything else is the silent divergence this issue closes.
+// Structure-based Semantics Parity (Tsubame ADR-0008, #323). The Style Channel
+// gate no longer lives inside each renderer — it runs once in the seam
+// (`withTextLocalGate`) before any renderer. So instead of comparing two
+// emitters, this drives the real DOM renderer *through the production seam* and
+// checks that a channel-1 text-local prop reaches the element iff the kind
+// carries text-local. Parity with Canvas (and any future renderer) is then
+// structural: they all receive the identical gated patch.
 
 const ALL_KINDS: readonly ElementKind[] = [
   'view',
@@ -19,53 +21,30 @@ const ALL_KINDS: readonly ElementKind[] = [
   'scroll-view',
 ];
 
-// Channel-1 text-local props (gated) plus non-text-local controls (never gated),
-// each with a value the DOM catalog can format into a declaration.
-const PROPS: ReadonlyArray<readonly [keyof StylePatch, unknown]> = [
-  ['color', '#ff0000'],
-  ['fontSize', 16],
-  ['fontWeight', 600],
-  ['fontStyle', 'italic'],
-  ['textDecoration', 'underline'],
-  ['fontFamily', 'Arial'],
-  ['backgroundColor', '#00ff00'],
-  ['width', '10px'],
-];
+describe('text-local gate through the seam (DOM renderer, Tsubame ADR-0008, #323)', () => {
+  let document: Document;
+  let container: HTMLElement;
 
-/** DOM path: does this single-prop patch survive into a CSS declaration? */
-function domApplies(kind: ElementKind, key: keyof StylePatch, value: unknown): boolean {
-  const patch = { [key]: value } as StylePatch;
-  return declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' }).length > 0;
-}
-
-/** Canvas path: does this prop survive the pre-encode gate? */
-function canvasKeeps(kind: ElementKind, key: keyof StylePatch, value: unknown): boolean {
-  const patch = { [key]: value } as StylePatch;
-  return key in gateTextLocalPatch(kind, patch);
-}
-
-describe('text-local gate parity (DOM vs Canvas, Tsubame ADR-0008, #305)', () => {
-  for (const kind of ALL_KINDS) {
-    for (const [key, value] of PROPS) {
-      it(`${kind} / ${String(key)}: DOM and Canvas agree on the gate`, () => {
-        expect(canvasKeeps(kind, key, value)).toBe(domApplies(kind, key, value));
-      });
-    }
-  }
-
-  it('a mixed patch keeps the same prop set on both paths', () => {
-    const patch: StylePatch = {
-      color: '#ff0000',
-      fontSize: 16,
-      backgroundColor: '#00ff00',
-      width: '10px',
-    };
-    for (const kind of ALL_KINDS) {
-      const canvasKept = Object.keys(gateTextLocalPatch(kind, patch)).sort();
-      const domKept = (Object.keys(patch) as (keyof StylePatch)[])
-        .filter((key) => domApplies(kind, key, patch[key]))
-        .sort();
-      expect(canvasKept).toEqual(domKept);
-    }
+  beforeEach(() => {
+    ({ document, container } = createHappyDomFixture());
   });
+
+  for (const kind of ALL_KINDS) {
+    it(`${kind}: keeps text-local color iff the kind carries text-local`, () => {
+      const renderer = withTextLocalGate(new DomRenderer({ document, container }));
+      const id = renderer.createElement(kind);
+      renderer.setRoot(id);
+      renderer.setStyle(id, { color: '#ff0000', width: '100px' });
+
+      const el = container.querySelector(`[data-tsubame-id="${id as number}"]`) as HTMLElement;
+      // A non-text-local prop always applies.
+      expect(el.style.width).toBe('100px');
+      // A text-local prop applies only on a Text-Local Carrier kind.
+      if (carriesTextLocal(kind)) {
+        expect(el.style.color).toBe('#ff0000');
+      } else {
+        expect(el.style.color).toBe('');
+      }
+    });
+  }
 });

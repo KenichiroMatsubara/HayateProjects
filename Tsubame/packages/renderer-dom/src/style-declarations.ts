@@ -1,7 +1,6 @@
 import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
 import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
 import type { CatalogEntry } from '@tsubame/hayate-css-catalog';
-import { shouldApplyTextLocalPatch } from './text-style-semantics.js';
 
 export interface StylePatchDeclaration {
   /** camelCase key for CSSOM `style` object */
@@ -23,7 +22,14 @@ function extrasFromEntry(entry: CatalogEntry, value: unknown): StylePatchDeclara
   }));
 }
 
-/** Patch → ordered CSS declarations, including catalog DOM-extras and Style Channel gating. */
+/**
+ * Patch → ordered CSS declarations, including catalog DOM-extras.
+ *
+ * The Style Channel gate is *not* applied here — it runs once in the seam before
+ * any renderer (Tsubame ADR-0008, `withTextLocalGate`), so the patch reaching
+ * this emitter is already filtered. `kind` is kept on the signature for callers
+ * and potential kind-specific catalog behavior.
+ */
 export function declarationsFromStylePatch(
   kind: ElementKind,
   patch: StylePatch,
@@ -35,7 +41,6 @@ export function declarationsFromStylePatch(
     const k = key as keyof StylePatch;
     const value = patch[k];
     if (value === undefined) continue;
-    if (!shouldApplyTextLocalPatch(kind, k as string)) continue;
 
     const entry = CATALOG_BY_KEY[k as string];
     if (entry === undefined) {

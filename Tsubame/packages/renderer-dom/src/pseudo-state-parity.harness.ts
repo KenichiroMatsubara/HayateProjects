@@ -1,5 +1,5 @@
 import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
-import { PSEUDO_STYLE_KEYS_BY_PRIORITY } from '@tsubame/renderer-protocol';
+import { PSEUDO_STYLE_KEYS_BY_PRIORITY, gateTextLocalPatch } from '@tsubame/renderer-protocol';
 import type { PseudoStyleKey } from '@tsubame/renderer-protocol';
 import {
   declarationsFromStylePatch,
@@ -43,7 +43,12 @@ function interactionActive(key: PseudoStyleKey, interaction: ParityInteraction):
   }
 }
 
-/** Merge active pseudo patches in priority order, then run the declaration emitter. */
+/**
+ * Merge active pseudo patches in priority order, then run the declaration
+ * emitter. The Style Channel gate is applied first — in production it runs in
+ * the seam before the DOM renderer (Tsubame ADR-0008), so this harness gates
+ * here to model the same post-seam pipeline the corpus describes.
+ */
 export function resolvePseudoDeclarations(
   kind: ElementKind,
   pseudo: Partial<Record<PseudoStyleKey, StylePatch>>,
@@ -56,7 +61,8 @@ export function resolvePseudoDeclarations(
     const patch = pseudo[key];
     if (patch === undefined) continue;
 
-    for (const decl of declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' })) {
+    const gated = gateTextLocalPatch(kind, patch);
+    for (const decl of declarationsFromStylePatch(kind, gated, { onUnknownKey: 'skip' })) {
       byProperty.set(decl.cssProperty, decl);
     }
   }

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { withTextLocalGate } from '@tsubame/renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 
@@ -20,7 +21,8 @@ describe('DOM Renderer two-channel text inheritance (ADR-0002)', () => {
   }
 
   it('does not emit view color or fontSize to block or descendant inline styles', () => {
-    const renderer = new DomRenderer({ document, container });
+    // The gate now lives in the seam, so drive the DOM renderer through it.
+    const renderer = withTextLocalGate(new DomRenderer({ document, container }));
     const root = renderer.createElement('view');
     const text = renderer.createElement('text');
     renderer.appendChild(root, text);
