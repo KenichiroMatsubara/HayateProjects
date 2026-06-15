@@ -1,6 +1,8 @@
 //! AccessKit tree generation from ElementTree (ADR-0041).
 
-use accesskit::{Action, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
+use accesskit::{
+    Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate,
+};
 
 use super::taffy_projection::TraversalStep;
 use super::tree::Element;
@@ -17,7 +19,7 @@ fn node_id(id: ElementId) -> NodeId {
 /// inbound surface is total and the runtime never sees a native-only concept.
 /// The mapping lives entirely in Core (Rust API) and is never put on the proto
 /// wire (ADR-0098 Decision 3).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessibilityAction {
     /// Move focus to `target`, driving the existing focus state machine.
     Focus { target: ElementId },
@@ -26,6 +28,11 @@ pub enum AccessibilityAction {
     /// pointer replay. Skips hit-testing, `:active`, multi-click counting and
     /// the focus gesture.
     Click { target: ElementId },
+    /// Replace `target`'s text-input value with `value` (ADR-0098 Decision 4).
+    /// Any active preedit is finalized before the replacement so composition
+    /// never lingers across it (same integrity as `element_paste`). A no-op for
+    /// non-`text-input` targets.
+    SetValue { target: ElementId, value: String },
     /// Unsupported action — no-op, observable state unchanged.
     Ignored,
 }
@@ -40,6 +47,16 @@ pub fn map_action_request(req: &ActionRequest) -> AccessibilityAction {
         // AccessKit folds "default activation" into `Action::Click`; there is no
         // separate `Default` variant, so the ADR's "Click/Default" maps here.
         Action::Click => AccessibilityAction::Click { target },
+        // `SetValue` carries the new text in `data`. Only a string `Value`
+        // payload addresses a text-input; a missing or non-string payload (e.g.
+        // a numeric slider value) has nothing to set, so it folds to `Ignored`.
+        Action::SetValue => match &req.data {
+            Some(ActionData::Value(value)) => AccessibilityAction::SetValue {
+                target,
+                value: value.to_string(),
+            },
+            _ => AccessibilityAction::Ignored,
+        },
         _ => AccessibilityAction::Ignored,
     }
 }
@@ -169,6 +186,7 @@ impl ElementTree {
         match map_action_request(&req) {
             AccessibilityAction::Focus { target } => self.transition_focus(target),
             AccessibilityAction::Click { target } => self.emit_semantic_click(target),
+            AccessibilityAction::SetValue { target, value } => self.apply_set_value(target, &value),
             AccessibilityAction::Ignored => {}
         }
     }
@@ -192,6 +210,31 @@ impl ElementTree {
                 target_id: target,
                 x,
                 y,
+            },
+        );
+    }
+
+    /// Apply an AccessKit `SetValue` to `target` as a semantic value replacement
+    /// (ADR-0098 Decision 4): finalize any active preedit, replace the
+    /// text-input's content with `value`, then queue a `TextInput` event so app
+    /// listeners observe it like any other edit. A no-op for non-`text-input`
+    /// targets, and silent when the displayed value is unchanged.
+    fn apply_set_value(&mut self, target: ElementId, value: &str) {
+        let el = match self.elements.get_mut(&target) {
+            Some(e) if e.kind == ElementKind::TextInput => e,
+            _ => return,
+        };
+        let Some(edit) = el.edit.as_mut() else {
+            return;
+        };
+        if !edit.set_value(value) {
+            return;
+        }
+        self.dispatch_event(
+            DocumentEventKind::TextInput,
+            Event::TextInput {
+                target_id: target,
+                text: value.to_string(),
             },
         );
     }
@@ -226,7 +269,7 @@ impl ElementTree {
 mod tests {
     use super::*;
     use crate::element::{Dimension, DisplayValue, DocumentEventKind, Event, StyleProp};
-    use accesskit::{Action, ActionRequest};
+    use accesskit::{Action, ActionData, ActionRequest};
 
     fn action_request(action: Action, node: NodeId) -> ActionRequest {
         ActionRequest {
@@ -249,6 +292,40 @@ mod tests {
         let target = ElementId::from_u64(9);
         let mapped = map_action_request(&action_request(Action::Click, node_id(target)));
         assert_eq!(mapped, AccessibilityAction::Click { target });
+    }
+
+    #[test]
+    fn maps_set_value_action_with_value_payload() {
+        let target = ElementId::from_u64(11);
+        let req = ActionRequest {
+            action: Action::SetValue,
+            target_tree: TreeId::ROOT,
+            target_node: node_id(target),
+            data: Some(ActionData::Value("hello".into())),
+        };
+        assert_eq!(
+            map_action_request(&req),
+            AccessibilityAction::SetValue {
+                target,
+                value: "hello".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn maps_set_value_without_value_payload_to_ignored() {
+        let node = node_id(ElementId::from_u64(5));
+        let req = ActionRequest {
+            action: Action::SetValue,
+            target_tree: TreeId::ROOT,
+            target_node: node,
+            data: None,
+        };
+        assert_eq!(
+            map_action_request(&req),
+            AccessibilityAction::Ignored,
+            "SetValue with no string value has nothing to set",
+        );
     }
 
     #[test]
@@ -299,6 +376,85 @@ mod tests {
             .map(|d| d.listener_id)
             .collect();
         assert_eq!(second, vec![la_blur, lb_focus]);
+    }
+
+    fn set_value_request(node: NodeId, value: &str) -> ActionRequest {
+        ActionRequest {
+            action: Action::SetValue,
+            target_tree: TreeId::ROOT,
+            target_node: node,
+            data: Some(ActionData::Value(value.into())),
+        }
+    }
+
+    #[test]
+    fn on_accessibility_action_set_value_replaces_content_and_delivers_text_input() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        let input = tree.element_create(2, ElementKind::TextInput);
+        tree.element_append_child(root, input);
+        tree.element_set_text_content(input, "old");
+
+        let listener = tree.register_listener(input, DocumentEventKind::TextInput);
+        tree.on_accessibility_action(set_value_request(node_id(input), "new value"));
+
+        assert_eq!(
+            tree.element_get_text_content(input),
+            "new value",
+            "SetValue must replace the text-input's content",
+        );
+        let deliveries = tree.poll_deliveries();
+        let ids: Vec<_> = deliveries.iter().map(|d| d.listener_id).collect();
+        assert_eq!(
+            ids,
+            vec![listener],
+            "the replacement fires a TextInput delivery"
+        );
+        assert!(
+            matches!(
+                &deliveries[0].event,
+                Event::TextInput { text, target_id } if text == "new value" && *target_id == input
+            ),
+            "delivered event carries the new value and targets the input",
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_set_value_finalizes_active_preedit_then_replaces() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        let input = tree.element_create(2, ElementKind::TextInput);
+        tree.element_append_child(root, input);
+        tree.element_set_text_content(input, "abc");
+        tree.element_set_preedit(input, "DEF"); // in-progress IME composition
+
+        tree.on_accessibility_action(set_value_request(node_id(input), "xyz"));
+
+        // The preedit is finalized as part of the replacement — no broken
+        // intermediate state (prior art: `element_paste` preedit confirmation).
+        assert_eq!(tree.element_get_text_content(input), "xyz");
+        // Clearing the (already-finalized) preedit afterward changes nothing,
+        // proving composition did not linger across the replacement.
+        tree.element_set_preedit(input, "");
+        assert_eq!(tree.element_get_text_content(input), "xyz");
+    }
+
+    #[test]
+    fn on_accessibility_action_set_value_on_non_text_input_is_noop() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        let view = tree.element_create(2, ElementKind::View);
+        tree.element_append_child(root, view);
+        tree.register_listener(view, DocumentEventKind::TextInput);
+
+        tree.on_accessibility_action(set_value_request(node_id(view), "nope"));
+        assert!(
+            tree.poll_deliveries().is_empty(),
+            "SetValue on a non-text-input target must emit nothing",
+        );
     }
 
     #[test]
