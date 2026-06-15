@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { withTextLocalGate } from '@tsubame/renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 
@@ -119,7 +120,8 @@ describe('StylePatch declaration emitter parity', () => {
   });
 
   it('skips channel-1 text-local keys on block boxes for all three paths', () => {
-    const renderer = new DomRenderer({ document, container });
+    // Gating is the seam's job now; drive the DOM renderer through it.
+    const renderer = withTextLocalGate(new DomRenderer({ document, container }));
     const viewId = renderer.createElement('view');
     const textId = renderer.createElement('text');
     renderer.appendChild(viewId, textId);

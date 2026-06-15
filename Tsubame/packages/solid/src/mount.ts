@@ -1,4 +1,5 @@
 import type { IRenderer } from '@tsubame/renderer-protocol';
+import { withTextLocalGate } from '@tsubame/renderer-protocol';
 import { render } from './renderer.js';
 import { setActiveRenderer } from './active-renderer.js';
 import { createElementNode, type TsubameNode } from './node.js';
@@ -22,9 +23,13 @@ export interface RenderTsubameOptions {
  */
 export function renderTsubame(
   code: () => unknown,
-  renderer: IRenderer,
+  target: IRenderer,
   options?: RenderTsubameOptions,
 ): () => void {
+  // Apply the Style Channel gate once, in front of the chosen renderer
+  // (Tsubame ADR-0008): every renderer receives already-filtered patches, so
+  // Semantics Parity is structural and a new renderer needs no gate of its own.
+  const renderer = withTextLocalGate(target);
   setActiveRenderer(renderer);
   const rootId = renderer.createElement('view');
   renderer.setRoot(rootId);

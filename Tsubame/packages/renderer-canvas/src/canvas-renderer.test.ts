@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EVENT_KIND, OP, TAG } from '@tsubame/protocol-generated/protocol';
-import { coerceElementProperty } from '@tsubame/renderer-protocol';
+import { coerceElementProperty, withTextLocalGate } from '@tsubame/renderer-protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
 
@@ -365,14 +365,15 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     }
   });
 
-  it('does not encode a text-local prop on a non-carrier kind (Tsubame ADR-0008, #305)', () => {
+  it('does not encode a text-local prop on a non-carrier kind (Tsubame ADR-0008, #323)', () => {
     // Style Channel gate: channel-1 text-local props (here `color`) only reach
-    // Text-Local Carrier kinds. A `view` is not a carrier, so the Canvas encode
-    // must drop `color` *before* the wire — not lean on Hayate's lowering to
-    // reject it. The non-text-local `width` still goes through.
+    // Text-Local Carrier kinds. The gate runs once in the seam before the Canvas
+    // renderer (`withTextLocalGate`), so a `view`'s `color` is dropped *before*
+    // the wire — not left to Hayate's lowering. The non-text-local `width`
+    // still goes through.
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer(hayate, sched);
+    const renderer = withTextLocalGate(new CanvasRenderer(hayate, sched));
     const view = renderer.createElement('view');
 
     renderer.setStyle(view, { color: '#ff0000', width: '100px' });
@@ -383,12 +384,12 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(batch.styles).toEqual([TAG.WIDTH, 100, 0]);
   });
 
-  it('encodes text-local props on a carrier kind (Tsubame ADR-0008, #305)', () => {
-    // A `text` element carries channel-1 text-local props, so the gate keeps
+  it('encodes text-local props on a carrier kind (Tsubame ADR-0008, #323)', () => {
+    // A `text` element carries channel-1 text-local props, so the seam keeps
     // `color` and `fontSize` alongside the non-text-local `width`.
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer(hayate, sched);
+    const renderer = withTextLocalGate(new CanvasRenderer(hayate, sched));
     const text = renderer.createElement('text');
 
     renderer.setStyle(text, { color: '#ff0000', fontSize: 20, width: '100px' });
@@ -400,13 +401,13 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(batch.styles).toContain(TAG.WIDTH);
   });
 
-  it('gates text-local props out of a non-carrier pseudo-style before encode (#305)', () => {
-    // The gate is the same for every style-bearing op: a `view` :hover patch of
-    // pure text-local props collapses to empty, so no SET_PSEUDO_STYLE reaches
+  it('gates text-local props out of a non-carrier pseudo-style before encode (#323)', () => {
+    // The seam gate is the same for every style-bearing op: a `view` :hover patch
+    // of pure text-local props collapses to empty, so no SET_PSEUDO_STYLE reaches
     // the wire.
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer(hayate, sched);
+    const renderer = withTextLocalGate(new CanvasRenderer(hayate, sched));
     const view = renderer.createElement('view');
 
     renderer.setPseudoStyle(view, ':hover', { color: '#ff0000', fontSize: 18 });
