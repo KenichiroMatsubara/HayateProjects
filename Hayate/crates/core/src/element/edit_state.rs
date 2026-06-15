@@ -154,6 +154,17 @@ impl EditState {
         Some(removed)
     }
 
+    /// Replace the entire committed content with `value`, finalizing any active
+    /// preedit first so an in-progress IME composition never lingers across the
+    /// replacement (same preedit-confirmation integrity as `paste`). Returns
+    /// whether the displayed text actually changed.
+    pub fn set_value(&mut self, value: &str) -> bool {
+        let changed = self.display_text() != value;
+        self.commit_preedit();
+        self.set(value);
+        changed
+    }
+
     pub fn paste(&mut self, text: &str) -> bool {
         if text.is_empty() {
             return false;
@@ -241,5 +252,31 @@ mod tests {
         edit.finish_composition("愛");
         assert_eq!(edit.text_content, "abc愛");
         assert!(edit.preedit.is_none());
+    }
+
+    #[test]
+    fn set_value_replaces_content_and_finalizes_active_preedit() {
+        let mut edit = EditState::default();
+        edit.append("abc");
+        edit.set_preedit("DEF"); // in-progress IME composition
+        assert!(edit.set_value("xyz"), "replacing the value is a change");
+        assert_eq!(edit.text_content, "xyz", "value is fully replaced");
+        assert!(edit.preedit.is_none(), "composition must not linger");
+        assert_eq!(edit.display_text(), "xyz");
+        assert_eq!(
+            edit.cursor_byte_index, 3,
+            "caret sits at the end of the value"
+        );
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn set_value_to_identical_committed_content_is_not_a_change() {
+        let mut edit = EditState::default();
+        edit.set("abc");
+        assert!(
+            !edit.set_value("abc"),
+            "no-op replacement reports no change"
+        );
     }
 }
