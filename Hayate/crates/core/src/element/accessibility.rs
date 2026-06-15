@@ -12,6 +12,33 @@ fn node_id(id: ElementId) -> NodeId {
     NodeId(id.to_u64())
 }
 
+/// Minimal new scroll offset along one axis so the target span
+/// `[content_pos, content_pos + size]` becomes visible inside the viewport
+/// `[offset, offset + viewport]`, clamped to `[0, max]`.
+///
+/// Returns the current `offset` unchanged when the target is already fully
+/// visible (or already spans the whole viewport), so an already-visible target
+/// never moves the offset. Otherwise it aligns the nearest edge: the leading
+/// edge when the target sits before the viewport, the trailing edge when it
+/// extends past it. Pure offset arithmetic — no inertia (ADR-0098 Decision 4).
+fn scroll_axis_to_reveal(content_pos: f32, size: f32, viewport: f32, offset: f32, max: f32) -> f32 {
+    let lead = content_pos;
+    let trail = content_pos + size;
+    let view_lead = offset;
+    let view_trail = offset + viewport;
+    let new_offset = if lead >= view_lead && trail <= view_trail {
+        offset
+    } else if lead < view_lead && trail > view_trail {
+        // Target already covers the entire viewport — nearest is no move.
+        offset
+    } else if lead < view_lead {
+        lead
+    } else {
+        trail - viewport
+    };
+    new_offset.clamp(0.0, max)
+}
+
 /// Core-owned, supported subset of inbound AccessKit actions (ADR-0098).
 ///
 /// AccessKit's `Action` is a wide protocol vocabulary; Core maps it down to the
@@ -33,6 +60,12 @@ pub enum AccessibilityAction {
     /// never lingers across it (same integrity as `element_paste`). A no-op for
     /// non-`text-input` targets.
     SetValue { target: ElementId, value: String },
+    /// Bring `target` into view by adjusting the Scroll Offset of its nearest
+    /// ancestor `scroll-view` (ADR-0098 Decision 4). Core sets the basic offset
+    /// only — inertia/snap/rubber-band physics stay with the Platform Adapter
+    /// and an AT-driven scroll carries none. A no-op when `target` has no
+    /// scroll-view ancestor or is already fully visible.
+    ScrollIntoView { target: ElementId },
     /// Unsupported action — no-op, observable state unchanged.
     Ignored,
 }
@@ -57,6 +90,7 @@ pub fn map_action_request(req: &ActionRequest) -> AccessibilityAction {
             },
             _ => AccessibilityAction::Ignored,
         },
+        Action::ScrollIntoView => AccessibilityAction::ScrollIntoView { target },
         _ => AccessibilityAction::Ignored,
     }
 }
@@ -187,8 +221,53 @@ impl ElementTree {
             AccessibilityAction::Focus { target } => self.transition_focus(target),
             AccessibilityAction::Click { target } => self.emit_semantic_click(target),
             AccessibilityAction::SetValue { target, value } => self.apply_set_value(target, &value),
+            AccessibilityAction::ScrollIntoView { target } => self.scroll_into_view(target),
             AccessibilityAction::Ignored => {}
         }
+    }
+
+    /// Bring `target` into view by setting the Scroll Offset of its nearest
+    /// ancestor `scroll-view` (ADR-0098 Decision 4). Core computes the minimal
+    /// offset that makes the target's bounds visible — leading edge when the
+    /// target is before the viewport, trailing edge when it is past — and leaves
+    /// the offset untouched when the target is already fully visible. Emits a
+    /// `Scroll` delivery on the scroll-view when (and only when) the offset
+    /// actually moves. No inertia or snap physics: an AT-driven scroll sets the
+    /// basic offset only. A no-op when `target` has no scroll-view ancestor.
+    fn scroll_into_view(&mut self, target: ElementId) {
+        let Some(scroll_view) = super::tree::next_ancestor_scroll_view(self, target) else {
+            return;
+        };
+        let (Some((sx, sy, sw, sh)), Some((tx, ty, tw, th))) = (
+            self.element_layout_rect(scroll_view),
+            self.element_layout_rect(target),
+        ) else {
+            return;
+        };
+
+        let (ox, oy) = self.element_get_scroll_offset(scroll_view);
+        let (content_w, content_h) = self.element_content_size(scroll_view);
+        let max_x = (content_w - sw).max(0.0);
+        let max_y = (content_h - sh).max(0.0);
+
+        // layout_cache holds unscrolled content-space positions; the offset is
+        // applied as a downstream transform (ADR-0022), so the target's position
+        // within the content is `(tx - sx, ty - sy)`, independent of the offset.
+        let new_x = scroll_axis_to_reveal(tx - sx, tw, sw, ox, max_x);
+        let new_y = scroll_axis_to_reveal(ty - sy, th, sh, oy, max_y);
+
+        if (new_x - ox).abs() < 1e-3 && (new_y - oy).abs() < 1e-3 {
+            return;
+        }
+        self.element_set_scroll_offset(scroll_view, new_x, new_y);
+        self.dispatch_event(
+            DocumentEventKind::Scroll,
+            Event::Scroll {
+                target_id: scroll_view,
+                delta_x: new_x - ox,
+                delta_y: new_y - oy,
+            },
+        );
     }
 
     /// Emit a `Click` straight to `target` as a semantic activation (ADR-0098
@@ -268,8 +347,50 @@ impl ElementTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::element::{Dimension, DisplayValue, DocumentEventKind, Event, StyleProp};
+    use crate::element::{
+        Dimension, DisplayValue, DocumentEventKind, Event, PositionValue, StyleProp,
+    };
     use accesskit::{Action, ActionData, ActionRequest};
+
+    /// A vertical scroll-view (200×100 viewport) whose 500px-tall content holds a
+    /// 50px `target` pinned at content-y 300 — far below the viewport. Used to
+    /// exercise `ScrollIntoView`. Returns `(tree, scroll, target)`.
+    fn scroll_into_view_scene() -> (ElementTree, ElementId, ElementId) {
+        let mut tree = ElementTree::new();
+        let scroll = tree.element_create(1, ElementKind::ScrollView);
+        let content = tree.element_create(2, ElementKind::View);
+        let target = tree.element_create(3, ElementKind::View);
+        tree.set_root(scroll);
+        tree.set_viewport(400.0, 400.0);
+        tree.element_set_style(
+            scroll,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.element_set_style(
+            content,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(500.0)),
+            ],
+        );
+        tree.element_append_child(scroll, content);
+        tree.element_set_style(
+            target,
+            &[
+                StyleProp::Position(PositionValue::Absolute),
+                StyleProp::Top(Dimension::px(300.0)),
+                StyleProp::Left(Dimension::px(0.0)),
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(50.0)),
+            ],
+        );
+        tree.element_append_child(content, target);
+        tree.render(0.0);
+        (tree, scroll, target)
+    }
 
     fn action_request(action: Action, node: NodeId) -> ActionRequest {
         ActionRequest {
@@ -326,6 +447,13 @@ mod tests {
             AccessibilityAction::Ignored,
             "SetValue with no string value has nothing to set",
         );
+    }
+
+    #[test]
+    fn maps_scroll_into_view_action_to_core_scroll_into_view_resolving_element_id() {
+        let target = ElementId::from_u64(13);
+        let mapped = map_action_request(&action_request(Action::ScrollIntoView, node_id(target)));
+        assert_eq!(mapped, AccessibilityAction::ScrollIntoView { target });
     }
 
     #[test]
@@ -686,6 +814,121 @@ mod tests {
             word,
             "semantic click must not advance the multi-click counter",
         );
+    }
+
+    #[test]
+    fn on_accessibility_action_scroll_into_view_reveals_offscreen_target() {
+        let (mut tree, scroll, target) = scroll_into_view_scene();
+        assert_eq!(
+            tree.element_get_scroll_offset(scroll),
+            (0.0, 0.0),
+            "precondition: scroll-view starts unscrolled",
+        );
+
+        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+
+        // The target sits at content-y 300..350 in a 100px viewport, so the
+        // minimal scroll aligns its bottom to the viewport bottom: offset 250.
+        let (_, oy) = tree.element_get_scroll_offset(scroll);
+        assert!(
+            (oy - 250.0).abs() < 0.5,
+            "scroll offset must reveal the target, got {oy}",
+        );
+
+        // After scrolling, the target lies fully inside the viewport.
+        let (_, ty, _, th) = tree.element_layout_rect(target).expect("target layout");
+        let (_, sy, _, sh) = tree.element_layout_rect(scroll).expect("scroll layout");
+        let rel_top = (ty - sy) - oy;
+        assert!(
+            rel_top >= -0.5 && rel_top + th <= sh + 0.5,
+            "target must be fully visible: rel_top={rel_top}, th={th}, sh={sh}",
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_scroll_into_view_scrolls_up_to_reveal_target_above_viewport() {
+        let (mut tree, scroll, target) = scroll_into_view_scene();
+        // Scroll to the bottom (max offset 400): the viewport now shows content
+        // 400..500, leaving the target (300..350) above and out of view.
+        tree.element_set_scroll_offset(scroll, 0.0, 400.0);
+
+        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+
+        // Minimal scroll up aligns the target's leading (top) edge to the
+        // viewport top: offset 300.
+        let (_, oy) = tree.element_get_scroll_offset(scroll);
+        assert!(
+            (oy - 300.0).abs() < 0.5,
+            "scrolling up must align the target's top edge, got {oy}",
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_scroll_into_view_emits_scroll_delivery_on_scroll_view() {
+        let (mut tree, scroll, target) = scroll_into_view_scene();
+        let listener = tree.register_listener(scroll, DocumentEventKind::Scroll);
+
+        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+
+        let deliveries = tree.poll_deliveries();
+        let ids: Vec<_> = deliveries.iter().map(|d| d.listener_id).collect();
+        assert_eq!(
+            ids,
+            vec![listener],
+            "the offset change must fire a Scroll delivery on the scroll-view",
+        );
+        assert!(
+            matches!(
+                deliveries[0].event,
+                Event::Scroll { target_id, .. } if target_id == scroll
+            ),
+            "delivered event must be a Scroll targeting the scroll-view",
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_scroll_into_view_leaves_visible_target_untouched() {
+        let (mut tree, scroll, target) = scroll_into_view_scene();
+        // Pre-scroll so the target (content-y 300..350) already sits fully inside
+        // the 100px viewport at offset 260 (rel 40..90).
+        tree.element_set_scroll_offset(scroll, 0.0, 260.0);
+        let listener = tree.register_listener(scroll, DocumentEventKind::Scroll);
+
+        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+
+        assert_eq!(
+            tree.element_get_scroll_offset(scroll),
+            (0.0, 260.0),
+            "an already-visible target must not move the offset",
+        );
+        assert!(
+            tree.poll_deliveries().is_empty(),
+            "no offset change means no Scroll delivery",
+        );
+        let _ = listener;
+    }
+
+    #[test]
+    fn on_accessibility_action_scroll_into_view_without_scroll_view_ancestor_is_noop() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let target = tree.element_create(2, ElementKind::View);
+        tree.element_append_child(root, target);
+        tree.render(0.0);
+
+        let l_root = tree.register_listener(root, DocumentEventKind::Scroll);
+        let l_target = tree.register_listener(target, DocumentEventKind::Scroll);
+
+        tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
+
+        assert!(
+            tree.poll_deliveries().is_empty(),
+            "ScrollIntoView on a target with no scroll-view ancestor must do nothing",
+        );
+        let _ = (l_root, l_target);
     }
 
     #[test]
