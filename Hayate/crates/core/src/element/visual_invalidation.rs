@@ -85,6 +85,36 @@ pub(crate) fn prop_affects_text_shaping(prop: &StyleProp) -> bool {
     )
 }
 
+/// The dirty sets a routed `Change` can reach. The live `ElementEngine` +
+/// `TaffyProjection` pair implements this in `tree.rs`; a recording fake in the
+/// tests lets the `Change → marked sets` table be verified without booting an
+/// `ElementTree` (ADR-0099).
+pub(crate) trait DirtySink {
+    fn mark_visual(&mut self, id: ElementId, reach: VisualInvalidationReach);
+    fn mark_shape(&mut self, id: ElementId, reach: VisualInvalidationReach);
+    fn mark_structure(&mut self, id: ElementId);
+    fn mark_geometry(&mut self, id: ElementId);
+}
+
+/// The single visual-invalidation routing seam (ADR-0099): deliver a classified
+/// `Change` to every dirty set it must reach, atomically. The whole
+/// correspondence table lives here alone — callers no longer hand-wire which
+/// `engine.mark_*` / `projection.mark_dirty` calls go together, so a shape change
+/// can never reach the engine without also marking projection geometry.
+///
+/// The *which element* (e.g. resolving the enclosing IFC root for a shape change)
+/// is topology and stays caller-side (#238); this only maps `dirty_kind → sinks`.
+pub(crate) fn route_change<S: DirtySink>(sink: &mut S, id: ElementId, change: Change) {
+    match change.dirty_kind {
+        DirtyKind::Visual => sink.mark_visual(id, change.reach),
+        DirtyKind::Shape => {
+            sink.mark_shape(id, change.reach);
+            sink.mark_geometry(id);
+        }
+        DirtyKind::Structure => sink.mark_structure(id),
+    }
+}
+
 /// Classify a style property change against its element context (the *what*:
 /// dirty kind + reach). The *which* element to mark (e.g. resolving the
 /// enclosing IFC root for a shape change) stays in `tree.rs`.
@@ -244,6 +274,92 @@ mod tests {
             is_ifc_root,
             has_text_parent,
         }
+    }
+
+    /// Records every dirty-set hit so the `Change → marked sets` table can be
+    /// asserted without booting an `ElementTree` (ADR-0099).
+    #[derive(Default)]
+    struct RecordingSink {
+        calls: Vec<SinkCall>,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum SinkCall {
+        Visual(ElementId, VisualInvalidationReach),
+        Shape(ElementId, VisualInvalidationReach),
+        Structure(ElementId),
+        Geometry(ElementId),
+    }
+
+    impl DirtySink for RecordingSink {
+        fn mark_visual(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+            self.calls.push(SinkCall::Visual(id, reach));
+        }
+        fn mark_shape(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+            self.calls.push(SinkCall::Shape(id, reach));
+        }
+        fn mark_structure(&mut self, id: ElementId) {
+            self.calls.push(SinkCall::Structure(id));
+        }
+        fn mark_geometry(&mut self, id: ElementId) {
+            self.calls.push(SinkCall::Geometry(id));
+        }
+    }
+
+    #[test]
+    fn route_shape_atomically_marks_shape_and_geometry() {
+        let id = ElementId::from_u64(7);
+        let mut sink = RecordingSink::default();
+        route_change(
+            &mut sink,
+            id,
+            Change {
+                dirty_kind: DirtyKind::Shape,
+                reach: VisualInvalidationReach::TextLocal,
+            },
+        );
+        assert_eq!(
+            sink.calls,
+            vec![
+                SinkCall::Shape(id, VisualInvalidationReach::TextLocal),
+                SinkCall::Geometry(id),
+            ]
+        );
+    }
+
+    #[test]
+    fn route_visual_marks_visual_only() {
+        let id = ElementId::from_u64(3);
+        let mut sink = RecordingSink::default();
+        route_change(
+            &mut sink,
+            id,
+            Change {
+                dirty_kind: DirtyKind::Visual,
+                reach: VisualInvalidationReach::SelfOnly,
+            },
+        );
+        assert_eq!(
+            sink.calls,
+            vec![SinkCall::Visual(id, VisualInvalidationReach::SelfOnly)]
+        );
+    }
+
+    #[test]
+    fn route_structure_marks_structure_only() {
+        let id = ElementId::from_u64(5);
+        let mut sink = RecordingSink::default();
+        route_change(
+            &mut sink,
+            id,
+            Change {
+                dirty_kind: DirtyKind::Structure,
+                reach: VisualInvalidationReach::Subtree,
+            },
+        );
+        // Structure never touches the engine's visual/shape sets or projection
+        // geometry directly — reconcile expands the subtree from the seed.
+        assert_eq!(sink.calls, vec![SinkCall::Structure(id)]);
     }
 
     #[test]
