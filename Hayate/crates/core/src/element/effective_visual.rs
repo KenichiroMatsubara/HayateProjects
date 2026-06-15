@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::element::ambient_defaults::{self, AmbientDefaults};
+use crate::element::ambient_defaults::AmbientDefaults;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pseudo_state::{self, InteractionSnapshot, PseudoStyles};
@@ -228,36 +228,31 @@ mod tests {
     }
 }
 
-/// Build inherited context for query at `id` (ancestor walk).
+/// Build the inherited context *at* `id` by folding root→`id` through the single
+/// inheritance primitive ([`child_inherited_context`]). This is the backward
+/// (ancestor-walk) entry — used by the query path (`element_effective_visual`)
+/// and to seed a retained scene re-walk at an arbitrary patch root — but it
+/// threads the exact same fold the top-down scene walk applies step by step, so
+/// the two paths can never diverge on what an element inherits (#302 §1c).
 pub(crate) fn inherited_context_at(
     elements: &HashMap<ElementId, Element>,
     id: ElementId,
 ) -> InheritedVisualContext {
-    InheritedVisualContext {
-        ambient: ambient_defaults::ambient_at(elements, id),
-        text_local: text_local_inherited_at(elements, id),
-    }
-}
-
-fn text_local_inherited_at(
-    elements: &HashMap<ElementId, Element>,
-    id: ElementId,
-) -> Option<TextLocalInherited> {
-    let el = elements.get(&id)?;
-    if el.kind != ElementKind::Text {
-        return None;
-    }
-    let parent_id = el.parent?;
-    let parent = elements.get(&parent_id)?;
-    if parent.kind != ElementKind::Text {
-        return None;
-    }
+    let Some(parent_id) = elements.get(&id).and_then(|el| el.parent) else {
+        return InheritedVisualContext::root();
+    };
+    let Some(parent) = elements.get(&parent_id) else {
+        return InheritedVisualContext::root();
+    };
     let parent_ctx = inherited_context_at(elements, parent_id);
-    let parent_base = apply_text_inheritance(&parent_ctx, &parent.visual);
-    Some(TextLocalInherited::from_inherited_base(&parent_base))
+    let parent_inherited_base = apply_text_inheritance(&parent_ctx, &parent.visual);
+    child_inherited_context(&parent_ctx, parent.kind, &parent_inherited_base, &parent.visual)
 }
 
-/// Threaded child context for top-down walks (`scene_build`, `walk_resolved`).
+/// Fold one inheritance step: derive a child's inherited context from its
+/// parent's. This is the single inheritance primitive — both the top-down scene
+/// walk (`scene_build`, `inline_text`) and the backward ancestor walk
+/// ([`inherited_context_at`]) thread their context through it (#302 §1c).
 pub fn child_inherited_context(
     parent_ctx: &InheritedVisualContext,
     parent_kind: ElementKind,

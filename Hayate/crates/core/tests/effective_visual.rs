@@ -386,6 +386,57 @@ fn query_and_scene_paths_share_viewport_variant_resolution() {
     );
 }
 
+// AC (#302 §1c): inherited-context construction is a single fold shared by the
+// query path (`element_effective_visual`, ancestor walk) and the scene path
+// (`render`, top-down threading). When a Text element sets its OWN ambient
+// `default-color`, both paths must build the same inherited context and resolve
+// the same text color. `default-*` is the ambient channel for *descendants*
+// (ADR-0065 ch2), so an element's own `default-color` must not color its own
+// text through one path but not the other.
+#[test]
+fn query_and_scene_paths_share_inherited_context_for_own_ambient_default() {
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(1, ElementKind::View);
+    let text = tree.element_create(2, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(200.0, 100.0);
+    tree.element_append_child(view, text);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
+    );
+    // The text element sets its OWN ambient default-color (descendant channel).
+    tree.element_set_style(text, &[StyleProp::DefaultColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_text(text, "hi");
+
+    let queried = tree
+        .element_effective_visual(text)
+        .unwrap()
+        .text_color
+        .expect("query resolves a text color");
+
+    tree.render(0.0);
+    let scene_color = tree
+        .scene_graph()
+        .iter()
+        .find_map(|(_, n)| match &n.kind {
+            NodeKind::TextRun { color, .. } => Some(*color),
+            _ => None,
+        })
+        .expect("text run in scene");
+
+    assert!(
+        (scene_color[0] as f64 - queried.r).abs() < 1e-3
+            && (scene_color[1] as f64 - queried.g).abs() < 1e-3
+            && (scene_color[2] as f64 - queried.b).abs() < 1e-3,
+        "query and scene must build the inherited context through one shared fold: \
+         query={queried:?} scene={scene_color:?}"
+    );
+}
+
 #[test]
 fn element_effective_visual_resolves_ambient_default_on_text() {
     let mut tree = ElementTree::new();
