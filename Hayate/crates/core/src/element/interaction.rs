@@ -371,6 +371,31 @@ impl ElementTree {
         }
     }
 
+    /// Programmatically set the document-global selection to `anchor`..`focus`
+    /// (ADR-0097 growth point — selection without a pointer/keyboard gesture).
+    /// Applies only when both endpoints share one Selection Region (their
+    /// nearest `selectable` ancestor matches and exists), so a programmatic call
+    /// honors the same `selectable` boundary as a drag and never leaks across
+    /// one. Returns whether it was applied. Routed through the shared selection
+    /// path, so it re-lowers the highlight and emits a `selection-change`
+    /// notification exactly like a gesture would.
+    pub fn set_selection_range(&mut self, anchor: SelectionPoint, focus: SelectionPoint) -> bool {
+        let region = self.selection_region_of(anchor.element);
+        if region.is_none() || region != self.selection_region_of(focus.element) {
+            return false;
+        }
+        self.set_selection(Some(Selection { anchor, focus }));
+        true
+    }
+
+    /// Programmatically clear the document-global selection (ADR-0097 growth
+    /// point). A no-op when nothing is selected. Routed through the shared
+    /// selection path, so it re-lowers the dropped highlight and emits a
+    /// `selection-change` notification.
+    pub fn clear_selection(&mut self) {
+        self.set_selection(None);
+    }
+
     /// The byte range of IFC block `block` covered by the active selection,
     /// normalized to document order (ADR-0097, #269). For a same-block selection
     /// this is the in-block range. For a cross-block one: the first block runs
@@ -1032,6 +1057,12 @@ impl ElementTree {
         if let Some(now) = self.selection {
             self.mark_selection_dirty(now);
         }
+        // Every real change to the document-global Selection — set, moved, or
+        // cleared, whether from a gesture or the programmatic API — notifies the
+        // host once (ADR-0097 growth point). The equality guard above means a
+        // redundant set emits nothing. Payload-less by design: the host polls
+        // `selection()` for the new state, like the DOM `selectionchange` event.
+        self.emit_interaction(Event::SelectionChange);
     }
 
     /// Move the drag focus to `point`, keeping the anchor (ADR-0097). The focus

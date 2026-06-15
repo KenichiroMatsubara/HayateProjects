@@ -189,5 +189,16 @@
     "bubbles": false,
     "interactionKind": null,
     "description": "A font family with .notdef glyphs was detected during shaping. The adapter should fetch the font and call `load_font_from_url`."
+  },
+  {
+    "name": "selection_change",
+    "value": 16,
+    "params": [],
+    "wireRole": "interaction",
+    "adapterTier": "none",
+    "documentRuntime": false,
+    "bubbles": false,
+    "interactionKind": null,
+    "description": "The document-global unified Selection (ADR-0097) changed — set, moved, or cleared. Carries no payload (like the DOM `selectionchange` event); poll the runtime's `selection()` for the new state. Document-global rather than a per-element interaction, so it rides the raw event queue (`poll_events`)."
   }
 ]

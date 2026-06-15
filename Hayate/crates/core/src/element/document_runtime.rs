@@ -134,7 +134,10 @@ pub(crate) fn event_target(event: &Event) -> Option<ElementId> {
         | Event::ActiveStart { target_id }
         | Event::ActiveEnd { target_id }
         | Event::KeyDown { target_id, .. } => Some(*target_id),
-        Event::Resize { .. } | Event::PointerMove { .. } | Event::FetchFont { .. } => None,
+        Event::Resize { .. }
+        | Event::PointerMove { .. }
+        | Event::FetchFont { .. }
+        | Event::SelectionChange => None,
     }
 }
 
