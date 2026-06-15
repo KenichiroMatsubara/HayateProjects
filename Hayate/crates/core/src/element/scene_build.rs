@@ -688,14 +688,11 @@ fn emit_element(
         &inherited_base,
         &el.visual,
     );
-    let own = effective_visual::own_with_viewport_variants(
+    let resolved = effective_visual::resolve_effective(
+        &ctx.inherited,
         &el.visual,
         &el.viewport_variants,
         tree.viewport(),
-    );
-    let resolved = effective_visual::resolve_effective(
-        &ctx.inherited,
-        &own,
         &el.pseudo_styles,
         ctx.interaction,
         id,
@@ -1006,16 +1003,13 @@ fn walk_ephemeral(ctx: &mut EphemeralCtx, id: ElementId) {
         &inherited_base,
         &el.visual,
     );
-    let own = effective_visual::own_with_viewport_variants(
-        &el.visual,
-        &el.viewport_variants,
-        tree.viewport(),
-    );
     // Full ephemeral rebuild has no retained `last_displayed`, so it never
     // interpolates — it paints the resolved target directly (ADR-0093).
     let visual = effective_visual::resolve_effective(
         &ctx.inherited,
-        &own,
+        &el.visual,
+        &el.viewport_variants,
+        tree.viewport(),
         &el.pseudo_styles,
         ctx.interaction,
         id,
