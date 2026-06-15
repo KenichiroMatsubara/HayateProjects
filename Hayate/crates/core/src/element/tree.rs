@@ -1526,7 +1526,7 @@ fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementI
     }
 }
 
-fn next_ancestor_scroll_view(tree: &ElementTree, after: ElementId) -> Option<ElementId> {
+pub(super) fn next_ancestor_scroll_view(tree: &ElementTree, after: ElementId) -> Option<ElementId> {
     let mut id = tree.element_parent(after)?;
     loop {
         if tree.element_kind(id) == Some(ElementKind::ScrollView) {
