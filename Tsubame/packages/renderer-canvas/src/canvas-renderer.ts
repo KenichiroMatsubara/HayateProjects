@@ -9,7 +9,12 @@ import type {
   Unsubscribe,
   ViewportCondition,
 } from '@tsubame/renderer-protocol';
-import { asElementId, assertKnownElementProperty, coerceElementProperty } from '@tsubame/renderer-protocol';
+import {
+  asElementId,
+  assertKnownElementProperty,
+  coerceElementProperty,
+  gateTextLocalPatch,
+} from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
@@ -43,6 +48,8 @@ export class CanvasRenderer implements IRenderer {
   private readonly raw: RawHayate;
   /** Hayate-issued listener id → host handler (ADR-0053). */
   private readonly listeners = new Map<number, ListenerEntry>();
+  /** Element kind per id, so the Style Channel gate can run before encode (#305). */
+  private readonly kinds = new Map<ElementId, ElementKind>();
   private nextId = 1;
 
   private readonly packet = new HayateMutationPacket();
@@ -121,6 +128,7 @@ export class CanvasRenderer implements IRenderer {
 
   createElement(kind: ElementKind): ElementId {
     const id = asElementId(this.nextId++);
+    this.kinds.set(id, kind);
     this.packet.enqueueCreateElement(id, kind);
     return id;
   }
@@ -142,15 +150,26 @@ export class CanvasRenderer implements IRenderer {
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
-    this.packet.enqueueSetStyle(id, style);
+    this.packet.enqueueSetStyle(id, this.gate(id, style));
   }
 
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
-    this.packet.enqueueSetPseudoStyle(id, pseudo, style);
+    this.packet.enqueueSetPseudoStyle(id, pseudo, this.gate(id, style));
   }
 
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
-    this.packet.enqueueSetStyleVariant(id, condition, style);
+    this.packet.enqueueSetStyleVariant(id, condition, this.gate(id, style));
+  }
+
+  /**
+   * Apply the shared Style Channel gate before encode (Tsubame ADR-0008, #305):
+   * channel-1 text-local props are dropped for non-carrier kinds, the same rule
+   * the DOM renderer applies before writing CSS. An untracked id (no preceding
+   * createElement) passes through unchanged.
+   */
+  private gate(id: ElementId, style: StylePatch): StylePatch {
+    const kind = this.kinds.get(id);
+    return kind === undefined ? style : gateTextLocalPatch(kind, style);
   }
 
   setText(id: ElementId, text: string): void {
