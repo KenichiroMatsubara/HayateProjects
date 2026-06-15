@@ -39,6 +39,18 @@ impl AnchorEntry {
         self.last_displayed = Some(displayed.clone());
         displayed
     }
+
+    /// Read-only counterpart to `resolve_displayed` (issue #301): interpolate the
+    /// displayed visual at `now_ms` from the retained transition state without
+    /// advancing it. It runs the very same `blend` the render path runs, but on a
+    /// throwaway clone of the in-flight tracks, so the memoized `last_displayed`
+    /// and per-property clocks are left untouched — the query and the render
+    /// frame loop stay independent (ADR-0093).
+    pub fn sample_displayed(&self, resolved: &Visual, now_ms: f64) -> Visual {
+        self.transitions
+            .clone()
+            .blend(self.last_displayed.as_ref(), resolved, now_ms)
+    }
 }
 
 /// Retained element→scene lowering state (issue #182).

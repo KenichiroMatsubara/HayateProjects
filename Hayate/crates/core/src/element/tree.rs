@@ -1246,6 +1246,20 @@ impl ElementTree {
         ))
     }
 
+    /// Displayed visual for `id` at `now_ms`: the resolved effective target
+    /// (ADR-0067) with any retained in-flight transition (ADR-0093) interpolated
+    /// to `now_ms`. Read-only (`&self`) — it samples the same blend the render
+    /// path uses but never advances render's memoized transition state, so a
+    /// transition's mid-flight value can be observed by a single query instead of
+    /// a `render()` → SceneGraph walk (issue #301). `None` when `id` is unknown.
+    pub fn element_displayed_visual(&self, id: ElementId, now_ms: f64) -> Option<Visual> {
+        let resolved = self.element_effective_visual(id)?;
+        Some(match self.scene_lowering.anchors.get(&id) {
+            Some(entry) => entry.sample_displayed(&resolved, now_ms),
+            None => resolved,
+        })
+    }
+
     /// Returns the deepest element whose bounding rect contains (x, y),
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
