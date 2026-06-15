@@ -10,94 +10,197 @@ use crate::element::scene_lowering::{
 };
 use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
-use crate::element::tree::ElementTree;
+use crate::element::tree::{ElementTree, Visual};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 use std::collections::HashSet;
 
-/// Threaded context for the retained scene walk (issue #309).
-///
-/// Bundles everything `walk_retained` carried as separate recursion arguments —
-/// the document tree, the scene graph and lowering it builds into, the
-/// interaction snapshot and host clock that drive effective-visual resolution
-/// (ADR-0067/0093), plus the per-node cursor (absolute origin, parent anchor,
-/// inherited context, and re-lowering `reach`). Descending into a child is
-/// [`RenderCtx::child`], the single place a new threaded field is wired in.
-struct RenderCtx<'a> {
+/// Ambient context threaded through the one scene walk shared by both anchor
+/// strategies (issue #322). Carries what every emission needs regardless of
+/// strategy — the document tree, the scene graph it builds into, the interaction
+/// snapshot driving effective-visual resolution (ADR-0067), and the per-node
+/// cursor of absolute origin + inherited context. The strategy-specific state
+/// (anchors/clock for retained, nothing for ephemeral) lives in the
+/// [`AnchorSink`] threaded alongside, not here. Descending into a child is
+/// [`WalkCtx::child`].
+struct WalkCtx<'a> {
     tree: &'a ElementTree,
     interaction: &'a crate::element::pseudo_state::InteractionSnapshot,
-    now_ms: f64,
     sg: &'a mut SceneGraph,
-    lowering: &'a mut SceneLowering,
     /// Absolute origin (parent box top-left) the child is laid out against.
     ox: f32,
     oy: f32,
-    /// Scene node the child's anchor attaches under (a Group/Clip wrapper or the
-    /// parent anchor).
-    parent_anchor: Option<NodeId>,
     inherited: InheritedVisualContext,
+}
+
+impl WalkCtx<'_> {
+    /// Reborrow for descending into a child: the ambient fields (tree, scene
+    /// graph, interaction) carry over unchanged; the cursor (origin, inherited
+    /// context) is replaced.
+    fn child(&mut self, ox: f32, oy: f32, inherited: InheritedVisualContext) -> WalkCtx<'_> {
+        WalkCtx {
+            tree: self.tree,
+            interaction: self.interaction,
+            sg: &mut *self.sg,
+            ox,
+            oy,
+            inherited,
+        }
+    }
+}
+
+/// How the shared scene walk attaches an element's emitted content (issue #322).
+///
+/// The emission body — transform/clip wrappers, box shadows, the visual box, and
+/// image/text/text-input runs — is identical for the retained incremental
+/// lowering (ADR-0086) and the ephemeral full rebuild that backstops golden-frame
+/// parity (ADR-0079). They differ only in *anchoring*: retained re-attaches a
+/// persistent `ElementAnchor` and interpolates in-flight transitions against the
+/// value it remembers (ADR-0093); ephemeral emits fresh nodes under the parent
+/// group and paints the resolved target directly. Each is one adapter of this
+/// seam ([`RetainedSink`] / [`EphemeralSink`]), so an emission fix lands once.
+trait AnchorSink {
+    /// Per-node cursor this strategy threads down the walk: the retained attach
+    /// parent + re-lowering `reach`; just the parent group for ephemeral.
+    type Cursor: Copy;
+
+    /// Called once per visited node (including skipped/None ones) before any work
+    /// — the retained walk-count seam (ADR-0086 "clean frame ⇒ zero walks").
+    fn enter_node(&mut self);
+
+    /// Establish the scene node element `id`'s own content emits under (the
+    /// `effective_parent` seed). Retained ensures the persistent anchor and clears
+    /// its prior content; ephemeral forwards the parent group from the cursor.
+    fn begin(&mut self, ctx: &mut WalkCtx, cursor: Self::Cursor, id: ElementId) -> Option<NodeId>;
+
+    /// The visual actually painted. Retained interpolates `resolved` against the
+    /// anchor's remembered displayed value; ephemeral paints `resolved` directly.
+    fn displayed(&mut self, id: ElementId, resolved: Visual) -> Visual;
+
+    /// The children to recurse and their per-child cursors, attaching under
+    /// `effective_parent`. Retained narrows by `reach`; ephemeral takes all
+    /// ordered children.
+    fn children(
+        &self,
+        tree: &ElementTree,
+        cursor: Self::Cursor,
+        id: ElementId,
+        effective_parent: Option<NodeId>,
+    ) -> Vec<(ElementId, Self::Cursor)>;
+
+    /// Settle child placement after this element's content and children are
+    /// emitted. Retained re-stacks child anchors after the content; ephemeral is a
+    /// no-op (fresh nodes are already in paint order).
+    fn end_element(&mut self, ctx: &mut WalkCtx, effective_parent: Option<NodeId>, id: ElementId);
+}
+
+/// Per-node cursor for [`RetainedSink`]: where this element attaches and how far
+/// the re-lowering reach still propagates.
+#[derive(Clone, Copy)]
+struct RetainedCursor {
+    parent_anchor: Option<NodeId>,
     reach: VisualInvalidationReach,
 }
 
-impl<'a> RenderCtx<'a> {
-    /// Reborrow for descending into a child: the ambient fields (tree, scene
-    /// graph, lowering, interaction, clock) carry over unchanged; the cursor
-    /// (origin, parent anchor, inherited context, reach) is replaced.
-    fn child(
-        &mut self,
-        ox: f32,
-        oy: f32,
-        parent_anchor: Option<NodeId>,
-        inherited: InheritedVisualContext,
-        reach: VisualInvalidationReach,
-    ) -> RenderCtx<'_> {
-        RenderCtx {
-            tree: self.tree,
-            interaction: self.interaction,
-            now_ms: self.now_ms,
-            sg: &mut *self.sg,
-            lowering: &mut *self.lowering,
-            ox,
-            oy,
-            parent_anchor,
-            inherited,
-            reach,
-        }
+/// Retained incremental lowering adapter (ADR-0086): persistent `ElementAnchor`
+/// re-attachment + transition interpolation against the anchor's stored displayed
+/// value (ADR-0093).
+struct RetainedSink<'a> {
+    lowering: &'a mut SceneLowering,
+    now_ms: f64,
+}
+
+impl AnchorSink for RetainedSink<'_> {
+    type Cursor = RetainedCursor;
+
+    fn enter_node(&mut self) {
+        self.lowering.walk_count += 1;
+    }
+
+    fn begin(&mut self, ctx: &mut WalkCtx, cursor: RetainedCursor, id: ElementId) -> Option<NodeId> {
+        let tree = ctx.tree;
+        let anchor_id = ensure_anchor(tree, ctx.sg, self.lowering, id, cursor.parent_anchor);
+        let children = tree.ordered_children(id);
+        clear_lowered_content(ctx.sg, anchor_id, &children, self.lowering);
+        Some(anchor_id)
+    }
+
+    fn displayed(&mut self, id: ElementId, resolved: Visual) -> Visual {
+        // Diff the after-change resolved visual against the previous frame's
+        // displayed value at the resolve seam, interpolating changed continuous
+        // properties (ADR-0093). The retained anchor holds the before-change value.
+        self.lowering
+            .anchors
+            .get_mut(&id)
+            .map(|entry| entry.resolve_displayed(&resolved, self.now_ms))
+            .unwrap_or(resolved)
+    }
+
+    fn children(
+        &self,
+        tree: &ElementTree,
+        cursor: RetainedCursor,
+        id: ElementId,
+        effective_parent: Option<NodeId>,
+    ) -> Vec<(ElementId, RetainedCursor)> {
+        visual_invalidation::children_for_reach(tree, id, cursor.reach)
+            .into_iter()
+            .map(|(child, reach)| {
+                (
+                    child,
+                    RetainedCursor {
+                        parent_anchor: effective_parent,
+                        reach,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn end_element(&mut self, ctx: &mut WalkCtx, effective_parent: Option<NodeId>, id: ElementId) {
+        let tree = ctx.tree;
+        reparent_child_anchors_under(
+            ctx.sg,
+            effective_parent,
+            &tree.ordered_children(id),
+            self.lowering,
+        );
     }
 }
 
-/// Threaded context for the full ephemeral rebuild (parity reference / tests,
-/// issue #309). Mirrors [`RenderCtx`] without the retained-only fields (lowering,
-/// host clock, re-lowering reach), which an anchorless rebuild does not carry.
-struct EphemeralCtx<'a> {
-    tree: &'a ElementTree,
-    interaction: &'a crate::element::pseudo_state::InteractionSnapshot,
-    sg: &'a mut SceneGraph,
-    ox: f32,
-    oy: f32,
-    parent_group: Option<NodeId>,
-    inherited: InheritedVisualContext,
-}
+/// Full ephemeral rebuild adapter (ADR-0079 golden-frame parity): fresh nodes
+/// under the parent group, no anchors, no interpolation.
+struct EphemeralSink;
 
-impl<'a> EphemeralCtx<'a> {
-    /// Reborrow for descending into a child: tree, scene graph, and interaction
-    /// carry over; the cursor (origin, parent group, inherited context) is replaced.
-    fn child(
-        &mut self,
-        ox: f32,
-        oy: f32,
-        parent_group: Option<NodeId>,
-        inherited: InheritedVisualContext,
-    ) -> EphemeralCtx<'_> {
-        EphemeralCtx {
-            tree: self.tree,
-            interaction: self.interaction,
-            sg: &mut *self.sg,
-            ox,
-            oy,
-            parent_group,
-            inherited,
-        }
+impl AnchorSink for EphemeralSink {
+    /// The parent group child nodes attach under.
+    type Cursor = Option<NodeId>;
+
+    fn enter_node(&mut self) {}
+
+    fn begin(&mut self, _ctx: &mut WalkCtx, cursor: Option<NodeId>, _id: ElementId) -> Option<NodeId> {
+        cursor
     }
+
+    fn displayed(&mut self, _id: ElementId, resolved: Visual) -> Visual {
+        // A full rebuild has no retained `last_displayed`, so it never interpolates
+        // — it paints the resolved target directly (ADR-0093).
+        resolved
+    }
+
+    fn children(
+        &self,
+        tree: &ElementTree,
+        _cursor: Option<NodeId>,
+        id: ElementId,
+        effective_parent: Option<NodeId>,
+    ) -> Vec<(ElementId, Option<NodeId>)> {
+        tree.ordered_children(id)
+            .into_iter()
+            .map(|child| (child, effective_parent))
+            .collect()
+    }
+
+    fn end_element(&mut self, _ctx: &mut WalkCtx, _effective_parent: Option<NodeId>, _id: ElementId) {}
 }
 
 /// Full ephemeral rebuild without retained anchors (parity reference / tests).
@@ -105,16 +208,16 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
     let mut sg = SceneGraph::new();
     let interaction = tree.interaction_snapshot();
     if let Some(root) = tree.root() {
-        let mut ctx = EphemeralCtx {
+        let mut sink = EphemeralSink;
+        let mut ctx = WalkCtx {
             tree,
             interaction: &interaction,
             sg: &mut sg,
             ox: 0.0,
             oy: 0.0,
-            parent_group: None,
             inherited: InheritedVisualContext::root(),
         };
-        walk_ephemeral(&mut ctx, root);
+        walk(&mut ctx, &mut sink, None, root);
     }
     // Selection chrome floats on top as document-level overlays (ADR-0097): the
     // drag handles first, then the toolbar above them.
@@ -146,19 +249,27 @@ pub(crate) fn update(
         *scene_cache = SceneGraph::new();
         lowering.anchors.clear();
         if let Some(root) = tree.root() {
-            let mut ctx = RenderCtx {
+            let mut sink = RetainedSink {
+                lowering: &mut *lowering,
+                now_ms,
+            };
+            let mut ctx = WalkCtx {
                 tree,
                 interaction: &interaction,
-                now_ms,
                 sg: &mut *scene_cache,
-                lowering: &mut *lowering,
                 ox: 0.0,
                 oy: 0.0,
-                parent_anchor: None,
                 inherited: InheritedVisualContext::root(),
-                reach: VisualInvalidationReach::Subtree,
             };
-            walk_retained(&mut ctx, root);
+            walk(
+                &mut ctx,
+                &mut sink,
+                RetainedCursor {
+                    parent_anchor: None,
+                    reach: VisualInvalidationReach::Subtree,
+                },
+                root,
+            );
         }
         lowering.built = true;
         // The fresh graph dropped any prior overlay; re-emit from scratch.
@@ -180,38 +291,48 @@ pub(crate) fn update(
     }
 
     let patch_roots = visual_invalidation::minimal_patch_roots(tree, &dirty.elements);
-    for patch_root in patch_roots {
-        let reach = dirty
-            .elements
-            .get(&patch_root)
-            .copied()
-            .unwrap_or(VisualInvalidationReach::Subtree);
-        let parent_anchor = tree
-            .elements
-            .get(&patch_root)
-            .and_then(|el| el.parent)
-            .and_then(|parent| lowering.anchors.get(&parent).map(|entry| entry.anchor_id));
-        let (ox, oy) = tree
-            .elements
-            .get(&patch_root)
-            .and_then(|el| el.parent)
-            .and_then(|parent| tree.layout.geometry(parent))
-            .map(|(x, y, _, _)| (x, y))
-            .unwrap_or((0.0, 0.0));
-        let inherited = effective_visual::inherited_context_at(&tree.elements, patch_root);
-        let mut ctx = RenderCtx {
-            tree,
-            interaction: &interaction,
-            now_ms,
-            sg: &mut *scene_cache,
+    {
+        let mut sink = RetainedSink {
             lowering: &mut *lowering,
-            ox,
-            oy,
-            parent_anchor,
-            inherited,
-            reach,
+            now_ms,
         };
-        walk_retained(&mut ctx, patch_root);
+        for patch_root in patch_roots {
+            let reach = dirty
+                .elements
+                .get(&patch_root)
+                .copied()
+                .unwrap_or(VisualInvalidationReach::Subtree);
+            let parent_anchor = tree
+                .elements
+                .get(&patch_root)
+                .and_then(|el| el.parent)
+                .and_then(|parent| sink.lowering.anchors.get(&parent).map(|entry| entry.anchor_id));
+            let (ox, oy) = tree
+                .elements
+                .get(&patch_root)
+                .and_then(|el| el.parent)
+                .and_then(|parent| tree.layout.geometry(parent))
+                .map(|(x, y, _, _)| (x, y))
+                .unwrap_or((0.0, 0.0));
+            let inherited = effective_visual::inherited_context_at(&tree.elements, patch_root);
+            let mut ctx = WalkCtx {
+                tree,
+                interaction: &interaction,
+                sg: &mut *scene_cache,
+                ox,
+                oy,
+                inherited,
+            };
+            walk(
+                &mut ctx,
+                &mut sink,
+                RetainedCursor {
+                    parent_anchor,
+                    reach,
+                },
+                patch_root,
+            );
+        }
     }
     refresh_selection_chrome(tree, scene_cache, lowering);
 }
@@ -533,7 +654,6 @@ fn attach_under(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
 /// wrapper so clipping still applies.
 fn reparent_child_anchors_under(
     sg: &mut SceneGraph,
-    _anchor_id: NodeId,
     effective_parent: Option<NodeId>,
     children: &[ElementId],
     lowering: &SceneLowering,
@@ -549,39 +669,39 @@ fn reparent_child_anchors_under(
     }
 }
 
-fn walk_retained(ctx: &mut RenderCtx, id: ElementId) {
-    ctx.lowering.walk_count += 1;
+/// The one scene walk shared by both anchor strategies (issue #322). The
+/// strategy-specific anchoring is delegated to the [`AnchorSink`]; the emission
+/// body lives in [`emit_element`]. A skipped (non-visited) element still gets a
+/// `begin`/recurse pass so retained re-attaches its anchor.
+fn walk<S: AnchorSink>(ctx: &mut WalkCtx, sink: &mut S, cursor: S::Cursor, id: ElementId) {
+    sink.enter_node();
 
     let tree = ctx.tree;
     let (taffy_node, el) = match tree.layout.projection.traversal_step(&tree.elements, id) {
         Some(TraversalStep::Visit(taffy_node, el)) => (taffy_node, el),
         Some(TraversalStep::Skip(_)) => {
-            let anchor_id = ensure_anchor(tree, ctx.sg, ctx.lowering, id, ctx.parent_anchor);
-            let children = tree.ordered_children(id);
-            clear_lowered_content(ctx.sg, anchor_id, &children, ctx.lowering);
-            for (child, child_reach) in visual_invalidation::children_for_reach(tree, id, ctx.reach) {
-                let mut child_ctx =
-                    ctx.child(ctx.ox, ctx.oy, Some(anchor_id), ctx.inherited.clone(), child_reach);
-                walk_retained(&mut child_ctx, child);
+            let base = sink.begin(ctx, cursor, id);
+            for (child, child_cursor) in sink.children(tree, cursor, id, base) {
+                let mut child_ctx = ctx.child(ctx.ox, ctx.oy, ctx.inherited.clone());
+                walk(&mut child_ctx, sink, child_cursor, child);
             }
             return;
         }
         None => return,
     };
 
-    let anchor_id = ensure_anchor(tree, ctx.sg, ctx.lowering, id, ctx.parent_anchor);
-    let children = tree.ordered_children(id);
-    clear_lowered_content(ctx.sg, anchor_id, &children, ctx.lowering);
-
-    emit_element(ctx, id, el, taffy_node, anchor_id);
+    let base = sink.begin(ctx, cursor, id);
+    emit_element(ctx, sink, cursor, id, el, taffy_node, base);
 }
 
-fn emit_element(
-    ctx: &mut RenderCtx,
+fn emit_element<S: AnchorSink>(
+    ctx: &mut WalkCtx,
+    sink: &mut S,
+    cursor: S::Cursor,
     id: ElementId,
     el: &crate::element::tree::Element,
     taffy_node: taffy::NodeId,
-    anchor_id: NodeId,
+    base: Option<NodeId>,
 ) {
     let tree = ctx.tree;
     let inherited_base = effective_visual::apply_text_inheritance(&ctx.inherited, &el.visual);
@@ -600,15 +720,7 @@ fn emit_element(
         ctx.interaction,
         id,
     );
-    // Diff the after-change resolved visual against the previous frame's
-    // displayed value at the resolve seam, interpolating changed continuous
-    // properties (ADR-0093). The retained anchor holds the before-change value.
-    let visual = ctx
-        .lowering
-        .anchors
-        .get_mut(&id)
-        .map(|entry| entry.resolve_displayed(&resolved, ctx.now_ms))
-        .unwrap_or(resolved);
+    let visual = sink.displayed(id, resolved);
     let layout = match tree.layout.projection.taffy.layout(taffy_node) {
         Ok(l) => l,
         Err(_) => return,
@@ -621,7 +733,7 @@ fn emit_element(
     let confirmed_color = visual.text_color.unwrap_or(Color::BLACK);
     let confirmed_font_size = visual.font_size.unwrap_or(16.0);
 
-    let mut effective_parent = Some(anchor_id);
+    let mut effective_parent = base;
     if let Some(transform) = el.transform {
         let group_id = emit(
             ctx.sg,
@@ -747,22 +859,7 @@ fn emit_element(
                 },
             );
         }
-        for (child, child_reach) in visual_invalidation::children_for_reach(tree, id, ctx.reach) {
-            let mut child_ctx =
-                ctx.child(x, y, effective_parent, child_inherited.clone(), child_reach);
-            walk_retained(&mut child_ctx, child);
-        }
-        reparent_child_anchors_under(
-            ctx.sg,
-            anchor_id,
-            effective_parent,
-            &tree.ordered_children(id),
-            ctx.lowering,
-        );
-        return;
-    }
-
-    if el.kind == ElementKind::TextInput {
+    } else if el.kind == ElementKind::TextInput {
         let content_x = x + layout.border.left + layout.padding.left;
         let content_y = y + layout.border.top + layout.padding.top;
         let color = confirmed_color
@@ -871,312 +968,11 @@ fn emit_element(
         }
     }
 
-    for (child, child_reach) in visual_invalidation::children_for_reach(tree, id, ctx.reach) {
-        let mut child_ctx =
-            ctx.child(x, y, effective_parent, child_inherited.clone(), child_reach);
-        walk_retained(&mut child_ctx, child);
+    for (child, child_cursor) in sink.children(tree, cursor, id, effective_parent) {
+        let mut child_ctx = ctx.child(x, y, child_inherited.clone());
+        walk(&mut child_ctx, sink, child_cursor, child);
     }
-    reparent_child_anchors_under(
-        ctx.sg,
-        anchor_id,
-        effective_parent,
-        &tree.ordered_children(id),
-        ctx.lowering,
-    );
-}
-
-fn walk_ephemeral(ctx: &mut EphemeralCtx, id: ElementId) {
-    let tree = ctx.tree;
-    let (taffy_node, el) = match tree.layout.projection.traversal_step(&tree.elements, id) {
-        Some(TraversalStep::Visit(taffy_node, el)) => (taffy_node, el),
-        Some(TraversalStep::Skip(_)) => {
-            for child in tree.ordered_children(id) {
-                let mut child_ctx =
-                    ctx.child(ctx.ox, ctx.oy, ctx.parent_group, ctx.inherited.clone());
-                walk_ephemeral(&mut child_ctx, child);
-            }
-            return;
-        }
-        None => return,
-    };
-    let inherited_base = effective_visual::apply_text_inheritance(&ctx.inherited, &el.visual);
-    let child_inherited = child_inherited_context(
-        &ctx.inherited,
-        el.kind,
-        &inherited_base,
-        &el.visual,
-    );
-    // Full ephemeral rebuild has no retained `last_displayed`, so it never
-    // interpolates — it paints the resolved target directly (ADR-0093).
-    let visual = effective_visual::resolve_effective(
-        &ctx.inherited,
-        &el.visual,
-        &el.viewport_variants,
-        tree.viewport(),
-        &el.pseudo_styles,
-        ctx.interaction,
-        id,
-    );
-    let layout = match tree.layout.projection.taffy.layout(taffy_node) {
-        Ok(l) => l,
-        Err(_) => return,
-    };
-    let x = ctx.ox + layout.location.x;
-    let y = ctx.oy + layout.location.y;
-    let w = layout.size.width;
-    let h = layout.size.height;
-
-    let confirmed_color = visual.text_color.unwrap_or(Color::BLACK);
-    let confirmed_font_size = visual.font_size.unwrap_or(16.0);
-
-    let effective_parent = if let Some(transform) = el.transform {
-        let group_id = emit(
-            ctx.sg,
-            ctx.parent_group,
-            Node {
-                kind: NodeKind::Group { transform },
-                children: Vec::new(),
-            },
-        );
-        Some(group_id)
-    } else {
-        ctx.parent_group
-    };
-
-    let effective_parent = if el.kind == ElementKind::ScrollView {
-        let clip_id = emit(
-            ctx.sg,
-            effective_parent,
-            Node {
-                kind: NodeKind::Clip {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    corner_radii: [0.0; 4],
-                },
-                children: Vec::new(),
-            },
-        );
-        let (sx, sy) = el.scroll_offset;
-        if sx != 0.0 || sy != 0.0 {
-            let scroll_group = emit(
-                ctx.sg,
-                Some(clip_id),
-                Node {
-                    kind: NodeKind::Group {
-                        transform: [1.0, 0.0, 0.0, 1.0, -sx as f64, -sy as f64],
-                    },
-                    children: Vec::new(),
-                },
-            );
-            Some(scroll_group)
-        } else {
-            Some(clip_id)
-        }
-    } else if visual.overflow == OverflowValue::Hidden {
-        let clip_id = emit(
-            ctx.sg,
-            effective_parent,
-            Node {
-                kind: NodeKind::Clip {
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    corner_radii: [visual.border_radius; 4],
-                },
-                children: Vec::new(),
-            },
-        );
-        Some(clip_id)
-    } else {
-        effective_parent
-    };
-
-    if !visual.box_shadow.is_empty() {
-        emit_box_shadows(
-            ctx.sg,
-            effective_parent,
-            x,
-            y,
-            w,
-            h,
-            visual.border_radius,
-            &visual.box_shadow,
-            visual.opacity,
-            false,
-        );
-    }
-
-    emit_visual_box(
-        ctx.sg,
-        effective_parent,
-        x,
-        y,
-        w,
-        h,
-        visual.border_radius,
-        visual.border_width,
-        visual.background_color,
-        visual.border_color,
-        visual.border_style,
-        visual.opacity,
-    );
-
-    if !visual.box_shadow.is_empty() {
-        emit_box_shadows(
-            ctx.sg,
-            effective_parent,
-            x,
-            y,
-            w,
-            h,
-            visual.border_radius,
-            &visual.box_shadow,
-            visual.opacity,
-            true,
-        );
-    }
-
-    if el.kind == ElementKind::Image {
-        if let Some(img) = el.src_image.clone() {
-            emit(
-                ctx.sg,
-                effective_parent,
-                Node {
-                    kind: NodeKind::Image {
-                        x,
-                        y,
-                        width: w,
-                        height: h,
-                        data: img,
-                    },
-                    children: Vec::new(),
-                },
-            );
-        }
-        for child in tree.ordered_children(id) {
-            let mut child_ctx =
-                ctx.child(x, y, effective_parent, child_inherited.clone());
-            walk_ephemeral(&mut child_ctx, child);
-        }
-        return;
-    }
-
-    if el.kind == ElementKind::TextInput {
-        let content_x = x + layout.border.left + layout.padding.left;
-        let content_y = y + layout.border.top + layout.padding.top;
-        let color = confirmed_color
-            .with_opacity(visual.opacity)
-            .to_array_f32();
-        // Selection highlight paints behind the text (ADR-0097, #271).
-        if let Some(cl) = el.content_layout.as_ref() {
-            emit_edit_selection_highlight(
-                &cl.layout,
-                el.edit.as_ref().and_then(|e| e.selection_range()),
-                content_x,
-                content_y,
-                ctx.sg,
-                effective_parent,
-            );
-        }
-        let runs = if let Some(cl) = el.content_layout.as_ref() {
-            Some(cl.runs.as_slice())
-        } else {
-            el.text_layout.as_ref().map(|tl| tl.runs.as_slice())
-        };
-        if let Some(runs) = runs {
-            for run in runs {
-                emit(
-                    ctx.sg,
-                    effective_parent,
-                    Node {
-                        kind: NodeKind::TextRun {
-                            x: content_x,
-                            y: content_y,
-                            color,
-                            data: run.clone(),
-                        },
-                        children: Vec::new(),
-                    },
-                );
-            }
-        }
-        if el.cursor_visible {
-            if let Some(cl) = el.content_layout.as_ref() {
-                let cursor_index = el
-                    .edit
-                    .as_ref()
-                    .map(|edit| edit.cursor_byte_index)
-                    .unwrap_or(0);
-                let cursor = parley::Cursor::from_byte_index(
-                    &cl.layout,
-                    cursor_index,
-                    parley::Affinity::Upstream,
-                );
-                let bbox = cursor.geometry(&cl.layout, 1.5_f32);
-                emit(
-                    ctx.sg,
-                    effective_parent,
-                    Node {
-                        kind: NodeKind::Rect {
-                            x: content_x + bbox.x0 as f32,
-                            y: content_y + bbox.y0 as f32,
-                            width: ((bbox.x1 - bbox.x0) as f32).max(1.5),
-                            height: (bbox.y1 - bbox.y0) as f32,
-                            color,
-                            corner_radius: 0.0,
-                        },
-                        children: Vec::new(),
-                    },
-                );
-            } else {
-                emit(
-                    ctx.sg,
-                    effective_parent,
-                    Node {
-                        kind: NodeKind::Rect {
-                            x: content_x,
-                            y: content_y,
-                            width: 1.5,
-                            height: confirmed_font_size * 1.2,
-                            color: confirmed_color
-                                .with_opacity(visual.opacity)
-                                .to_array_f32(),
-                            corner_radius: 0.0,
-                        },
-                        children: Vec::new(),
-                    },
-                );
-            }
-        }
-    } else if let Some(tl) = el.text_layout.as_ref() {
-        let color = confirmed_color
-            .with_opacity(visual.opacity)
-            .to_array_f32();
-        emit_selection_highlight(tree, id, &tl.layout, x, y, ctx.sg, effective_parent);
-        for run in &tl.runs {
-            emit(
-                ctx.sg,
-                effective_parent,
-                Node {
-                    kind: NodeKind::TextRun {
-                        x,
-                        y,
-                        color,
-                        data: run.clone(),
-                    },
-                    children: Vec::new(),
-                },
-            );
-        }
-    }
-
-    for child in tree.ordered_children(id) {
-        let mut child_ctx = ctx.child(x, y, effective_parent, child_inherited.clone());
-        walk_ephemeral(&mut child_ctx, child);
-    }
+    sink.end_element(ctx, effective_parent, id);
 }
 
 fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId {
