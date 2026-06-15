@@ -167,6 +167,40 @@ fn toolbar_disappears_from_the_scene_when_the_selection_clears() {
 }
 
 #[test]
+fn chrome_style_switch_changes_the_toolbar_panel_and_is_additive() {
+    use hayate_core::SelectionChromeStyle;
+
+    let panel_color = |style: SelectionChromeStyle| -> [f32; 4] {
+        let (mut tree, _v, _t) = selectable_paragraph();
+        tree.set_selection_chrome_style(style);
+        select_a_range(&mut tree);
+        tree.render(0.0);
+        let bounds = tree.selection_toolbar().expect("a toolbar").bounds;
+        draw_ops(&tree)
+            .into_iter()
+            .find_map(|op| match op {
+                DrawOp::FillRect { x, y, color, .. }
+                    if (x - bounds.x).abs() < 0.5 && (y - bounds.y).abs() < 0.5 =>
+                {
+                    Some(color)
+                }
+                _ => None,
+            })
+            .expect("the toolbar panel rect")
+    };
+
+    // Material is the default; switching to Cupertino is additive (the enum
+    // selects a different theme without changing the toolbar model) and yields a
+    // distinct panel appearance.
+    assert_eq!(SelectionChromeStyle::default(), SelectionChromeStyle::Material);
+    assert_ne!(
+        panel_color(SelectionChromeStyle::Material),
+        panel_color(SelectionChromeStyle::Cupertino),
+        "the chrome style enum drives a visibly different toolbar",
+    );
+}
+
+#[test]
 fn no_toolbar_without_a_selection() {
     let (tree, _view, _text) = selectable_paragraph();
     assert!(
