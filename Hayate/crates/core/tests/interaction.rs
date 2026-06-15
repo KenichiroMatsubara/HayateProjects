@@ -1,6 +1,170 @@
 use hayate_core::{
-    CursorValue, Dimension, DocumentEventKind, ElementKind, ElementTree, Event, StyleProp,
+    Color, CursorValue, Dimension, DocumentEventKind, ElementKind, ElementTree, Event, PseudoState,
+    StyleProp,
 };
+
+/// A root View filling a 200×200 viewport carrying a pseudo style for `state`,
+/// rendered once so the dirty set is clean before the gesture under test runs.
+/// The returned element has a `:hover`/`:active`/`:focus` box visual, so any
+/// invalidation of that pseudo state shows up as the element going visual-dirty.
+fn pseudo_styled_root(state: PseudoState) -> (ElementTree, hayate_core::ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(100, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_pseudo_style(
+        root,
+        state,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
+    // Render drains every dirty set, so a clean slate precedes the gesture.
+    tree.render(0.0);
+    assert!(
+        !tree.test_visual_dirty_contains(root),
+        "render() must drain the dirty set so the gesture's mark is observable"
+    );
+    (tree, root)
+}
+
+/// Like `pseudo_styled_root` but the pseudo block carries a shape-affecting
+/// prop (`font-size`), so the invalidation lands in the *shape* set. Focus
+/// transitions mark the element visual-dirty unconditionally for cursor blink
+/// (ADR-0032); routing the assertion through the shape set isolates the
+/// `:active`/`:focus` invalidation from that visual mark.
+fn pseudo_shaping_root(state: PseudoState) -> (ElementTree, hayate_core::ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(100, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_pseudo_style(root, state, &[StyleProp::FontSize(20.0)]);
+    tree.render(0.0);
+    assert!(
+        !tree.test_shape_dirty_contains(root),
+        "render() must drain the shape set so the gesture's mark is observable"
+    );
+    (tree, root)
+}
+
+#[test]
+fn hover_enter_marks_hover_pseudo_dirty() {
+    // The HTML mouseenter path flips the hover set; ADR-0100 requires the
+    // matching `:hover` invalidation to ride the same operation, so the element
+    // re-lowers with its hover appearance instead of silently diverging.
+    let (mut tree, root) = pseudo_styled_root(PseudoState::Hover);
+
+    tree.on_hover_enter(root);
+
+    assert!(
+        tree.test_visual_dirty_contains(root),
+        "entering :hover must invalidate the element's :hover styling atomically"
+    );
+}
+
+#[test]
+fn hover_leave_marks_hover_pseudo_dirty() {
+    // Symmetric to enter: the HTML mouseleave path drops the element from the
+    // hover set and must invalidate `:hover` in the same operation (ADR-0100).
+    let (mut tree, root) = pseudo_styled_root(PseudoState::Hover);
+    tree.on_hover_enter(root);
+    tree.render(0.0); // drain the enter's mark so the leave's mark is isolated
+
+    tree.on_hover_leave(root);
+
+    assert!(
+        tree.test_visual_dirty_contains(root),
+        "leaving :hover must invalidate the element's :hover styling atomically"
+    );
+}
+
+#[test]
+fn pointer_move_hover_marks_hover_pseudo_dirty() {
+    // The pointer-move (canvas) hover path must invalidate `:hover` in the same
+    // step it updates the hover set — the same atomic guarantee as the HTML
+    // mouseenter path, exercised from the coordinate-driven input surface.
+    let (mut tree, root) = pseudo_styled_root(PseudoState::Hover);
+
+    assert!(tree.on_pointer_move(10.0, 10.0).moved);
+
+    assert!(
+        tree.test_visual_dirty_contains(root),
+        "moving the pointer onto an element must invalidate its :hover styling"
+    );
+}
+
+#[test]
+fn pointer_down_marks_active_pseudo_dirty() {
+    // Pressing flips `:active`; the matching invalidation must ride the same
+    // operation (ADR-0100). Asserted through the shape set so the focus path's
+    // unconditional visual mark doesn't mask the `:active` invalidation.
+    let (mut tree, root) = pseudo_shaping_root(PseudoState::Active);
+
+    tree.on_pointer_down_on(root, 5.0, 5.0);
+
+    assert!(
+        tree.test_shape_dirty_contains(root),
+        "a pointer-down must invalidate the pressed element's :active styling"
+    );
+}
+
+#[test]
+fn pointer_up_marks_active_pseudo_dirty() {
+    // Releasing clears `:active`; clearing the state and invalidating its style
+    // are one operation. A pointer-up changes no focus, so the element going
+    // visual-dirty here can only be the `:active` invalidation.
+    let (mut tree, root) = pseudo_styled_root(PseudoState::Active);
+    tree.on_pointer_down_on(root, 5.0, 5.0);
+    tree.render(0.0); // drain the press's marks so the release's mark is isolated
+
+    tree.on_pointer_up_on(Some(root));
+
+    assert!(
+        tree.test_visual_dirty_contains(root),
+        "a pointer-up must invalidate the released element's :active styling"
+    );
+}
+
+#[test]
+fn focus_marks_focus_pseudo_dirty() {
+    // Focusing flips `:focus`; the invalidation rides the same operation. Shape
+    // set isolates it from the cursor-blink visual mark element_focus emits.
+    let (mut tree, root) = pseudo_shaping_root(PseudoState::Focus);
+
+    tree.on_focus(root);
+
+    assert!(
+        tree.test_shape_dirty_contains(root),
+        "focusing must invalidate the focused element's :focus styling"
+    );
+}
+
+#[test]
+fn blur_marks_focus_pseudo_dirty() {
+    // Blurring clears `:focus` and invalidates its style in one operation.
+    let (mut tree, root) = pseudo_shaping_root(PseudoState::Focus);
+    tree.on_focus(root);
+    tree.render(0.0); // drain the focus marks so the blur's mark is isolated
+
+    tree.on_blur(root);
+
+    assert!(
+        tree.test_shape_dirty_contains(root),
+        "blurring must invalidate the blurred element's :focus styling"
+    );
+}
 
 /// A root View filling a 200×200 viewport, laid out so hit-testing has bounds.
 fn hoverable_root() -> (ElementTree, hayate_core::ElementId) {
