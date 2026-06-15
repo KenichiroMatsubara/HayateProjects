@@ -66,6 +66,10 @@ fn input_above_selectable_paragraph() -> (ElementTree, hayate_core::ElementId, h
     let input = tree.element_create(31, ElementKind::TextInput);
     let region = tree.element_create(32, ElementKind::View);
     let text = tree.element_create(33, ElementKind::Text);
+    // A spacer keeps the paragraph clear of the input selection's floating
+    // toolbar (ADR-0097, #272), which — with the input anchored at the top —
+    // flips below the input and would otherwise overlay the paragraph.
+    let spacer = tree.element_create(34, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(400.0, 200.0);
     tree.element_set_style(
@@ -84,9 +88,17 @@ fn input_above_selectable_paragraph() -> (ElementTree, hayate_core::ElementId, h
             StyleProp::FontSize(16.0),
         ],
     );
+    tree.element_set_style(
+        spacer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(80.0)),
+        ],
+    );
     tree.element_set_style(region, &[StyleProp::Width(Dimension::px(400.0))]);
     tree.element_set_style(text, &[StyleProp::Width(Dimension::px(400.0))]);
     tree.element_append_child(root, input);
+    tree.element_append_child(root, spacer);
     tree.element_append_child(root, region);
     tree.element_append_child(region, text);
     tree.element_append_text_content(input, "edit me");

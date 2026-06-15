@@ -14,4 +14,13 @@
 pub trait Clipboard {
     /// Write `text` to the system clipboard, replacing its contents.
     fn write_text(&self, text: &str);
+
+    /// Read the system clipboard's current text, for a Paste action (ADR-0097
+    /// decision 3: the Platform Adapter owns clipboard read *and* write). The
+    /// default returns `None` so a write-only adapter still compiles; a browser
+    /// adapter whose read is async resolves it out-of-band and feeds the result
+    /// back through `element_paste`, leaving this `None`.
+    fn read_text(&self) -> Option<String> {
+        None
+    }
 }

@@ -28,6 +28,12 @@ impl ElementTree {
     /// Pointer down carrying keyboard modifiers (ADR-0097, #267): Shift extends
     /// the current selection's focus instead of starting a fresh one.
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
+        // A press on a floating-toolbar button runs its action and consumes the
+        // gesture, so it neither moves the caret nor clears the selection
+        // (ADR-0097, #272).
+        if self.try_selection_toolbar_tap(x, y) {
+            return;
+        }
         let hit = self.hit_test(x, y);
         self.pointer_down_on_target(hit, x, y);
         // A press inside a text-input drives its edit selection (ADR-0097, #271)
@@ -415,6 +421,209 @@ impl ElementTree {
         Some(text[start..end].to_string())
     }
 
+    /// The floating selection toolbar for the active selection, or `None` when
+    /// no selection is active (ADR-0097, #272). The toolbar is core-drawn chrome:
+    /// a read-only SelectionArea selection offers Copy / Select All; an editable
+    /// text-input selection adds Cut / Paste. It floats over the selection's
+    /// canvas-space bounding box, themed by the current chrome style.
+    pub fn selection_toolbar(&self) -> Option<crate::element::selection_chrome::SelectionToolbar> {
+        let (actions, bounds) = self.active_selection_chrome()?;
+        crate::element::selection_chrome::layout(
+            self.selection_chrome_style,
+            &actions,
+            bounds,
+            self.viewport,
+        )
+    }
+
+    /// Run a floating-toolbar button under `(x, y)`, if the press lands on one.
+    /// Returns whether the gesture was consumed by the toolbar (ADR-0097, #272).
+    fn try_selection_toolbar_tap(&mut self, x: f32, y: f32) -> bool {
+        let Some(action) = self.selection_toolbar().and_then(|tb| tb.action_at(x, y)) else {
+            return false;
+        };
+        self.dispatch_toolbar_action(action);
+        true
+    }
+
+    /// Run a toolbar action against the active selection (ADR-0097, #272).
+    fn dispatch_toolbar_action(&mut self, action: crate::element::selection_chrome::ToolbarAction) {
+        use crate::element::selection_chrome::ToolbarAction;
+        match action {
+            ToolbarAction::Copy => self.copy_active_selection(),
+            ToolbarAction::Cut => self.cut_active_selection(),
+            ToolbarAction::Paste => self.paste_active_selection(),
+            ToolbarAction::SelectAll => self.select_all_active_selection(),
+        }
+    }
+
+    /// The text under whichever selection is active — the read-only SelectionArea
+    /// selection, else the editable text-input's edit selection (single active,
+    /// ADR-0097, #271). `None` when nothing non-empty is selected.
+    fn active_selection_text(&self) -> Option<String> {
+        if let Some(text) = self.selected_text() {
+            return Some(text);
+        }
+        let input = self.edit_selection_owner()?;
+        let edit = self.elements.get(&input)?.edit.as_ref()?;
+        let (start, end) = edit.selection_range()?;
+        Some(edit.text_content[start..end].to_string())
+    }
+
+    /// Copy the active selection through the Platform Adapter clipboard. A no-op
+    /// when nothing is selected or no clipboard is installed (ADR-0097, #268).
+    fn copy_active_selection(&mut self) {
+        if let Some(text) = self.active_selection_text() {
+            if let Some(clipboard) = self.clipboard.as_ref() {
+                clipboard.write_text(&text);
+            }
+        }
+    }
+
+    /// Cut the editable selection: copy it to the clipboard, then delete the
+    /// range from the text-input. Read-only SelectionArea selections cannot be
+    /// cut, so this is a no-op there (ADR-0097, #272).
+    fn cut_active_selection(&mut self) {
+        let Some(input) = self.edit_selection_owner() else {
+            return;
+        };
+        let Some(removed) = self
+            .elements
+            .get_mut(&input)
+            .and_then(|el| el.edit.as_mut())
+            .and_then(|edit| edit.cut())
+        else {
+            return;
+        };
+        if let Some(clipboard) = self.clipboard.as_ref() {
+            clipboard.write_text(&removed);
+        }
+        self.engine
+            .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
+    }
+
+    /// Paste clipboard text into the editable selection, replacing it. Pulls the
+    /// text through the Platform Adapter's synchronous clipboard read; an adapter
+    /// whose read is async feeds the result back via `element_paste` instead, so
+    /// this is a no-op there. Read-only selections cannot paste (ADR-0097, #272).
+    fn paste_active_selection(&mut self) {
+        let Some(input) = self.edit_selection_owner() else {
+            return;
+        };
+        let Some(text) = self.clipboard.as_ref().and_then(|c| c.read_text()) else {
+            return;
+        };
+        self.element_paste(input, &text);
+    }
+
+    /// Select All against the active selection: the whole focus IFC for a
+    /// read-only SelectionArea selection, or the text-input's whole content for
+    /// an editable one (ADR-0097, #272).
+    fn select_all_active_selection(&mut self) {
+        if let Some(sel) = self.selection {
+            self.select_all_in(sel.focus.element);
+            return;
+        }
+        let Some(input) = self.edit_selection_owner() else {
+            return;
+        };
+        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+            let len = edit.text_content.len();
+            edit.set_selection(0, len);
+        }
+        self.engine
+            .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
+    }
+
+    /// Resolve the active selection into its toolbar action set and canvas-space
+    /// bounding box. A non-collapsed read-only SelectionArea selection wins;
+    /// otherwise the editable text-input that holds a non-collapsed edit
+    /// selection (the two never coexist — single active, ADR-0097, #271).
+    fn active_selection_chrome(
+        &self,
+    ) -> Option<(
+        Vec<crate::element::selection_chrome::ToolbarAction>,
+        crate::element::selection_chrome::ToolbarRect,
+    )> {
+        use crate::element::selection_chrome::ToolbarAction;
+        if self.selection.is_some_and(|s| !s.is_caret()) {
+            let bounds = self.read_only_selection_bounds()?;
+            return Some((vec![ToolbarAction::Copy, ToolbarAction::SelectAll], bounds));
+        }
+        let input = self.edit_selection_owner()?;
+        let bounds = self.edit_selection_bounds(input)?;
+        Some((
+            vec![
+                ToolbarAction::Cut,
+                ToolbarAction::Copy,
+                ToolbarAction::Paste,
+                ToolbarAction::SelectAll,
+            ],
+            bounds,
+        ))
+    }
+
+    /// The text-input holding a non-collapsed edit selection, if any. The
+    /// single-active rule guarantees at most one across the document.
+    fn edit_selection_owner(&self) -> Option<ElementId> {
+        self.elements.iter().find_map(|(&id, el)| {
+            el.edit
+                .as_ref()
+                .filter(|e| e.selection_range().is_some())
+                .map(|_| id)
+        })
+    }
+
+    /// Canvas-space bounding box of the read-only selection's highlight, unioned
+    /// across the blocks it touches (anchor and focus IFCs). `None` when the
+    /// selection has no shaped geometry yet.
+    fn read_only_selection_bounds(&self) -> Option<crate::element::selection_chrome::ToolbarRect> {
+        let (start, end) = self.selection_ordered()?;
+        let mut acc: Option<(f32, f32, f32, f32)> = None;
+        for block in [start.element, end.element] {
+            let Some((s, e)) = self.selection_range_in_block(block) else {
+                continue;
+            };
+            let Some(el) = self.elements.get(&block) else {
+                continue;
+            };
+            let Some(tl) = el.text_layout.as_ref() else {
+                continue;
+            };
+            let Some(&(ex, ey, _, _)) = self.layout.layout_cache.get(&block) else {
+                continue;
+            };
+            for (rx, ry, rw, rh) in
+                crate::element::scene_build::selection_highlight_rects(&tl.layout, s, e)
+            {
+                accumulate_rect(&mut acc, ex + rx, ey + ry, rw, rh);
+            }
+        }
+        acc.map(rect_from_bounds)
+    }
+
+    /// Canvas-space bounding box of a text-input's edit-selection highlight.
+    fn edit_selection_bounds(
+        &self,
+        input: ElementId,
+    ) -> Option<crate::element::selection_chrome::ToolbarRect> {
+        let el = self.elements.get(&input)?;
+        let (s, e) = el.edit.as_ref()?.selection_range()?;
+        let cl = el.content_layout.as_ref()?;
+        let &(ex, ey, _, _) = self.layout.layout_cache.get(&input)?;
+        let taffy_node = self.layout.projection.node_id(input)?;
+        let box_layout = self.layout.projection.taffy.layout(taffy_node).ok()?;
+        let content_x = ex + box_layout.border.left + box_layout.padding.left;
+        let content_y = ey + box_layout.border.top + box_layout.padding.top;
+        let mut acc: Option<(f32, f32, f32, f32)> = None;
+        for (rx, ry, rw, rh) in
+            crate::element::scene_build::selection_highlight_rects(&cl.layout, s, e)
+        {
+            accumulate_rect(&mut acc, content_x + rx, content_y + ry, rw, rh);
+        }
+        acc.map(rect_from_bounds)
+    }
+
     /// Begin a selection from a pointer-down inside a Selection Region:
     ///
     /// - Shift+click keeps the existing anchor and moves the focus to the hit
@@ -617,7 +826,7 @@ impl ElementTree {
             return self.select_all_in(sel.focus.element);
         }
         if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("c") {
-            self.copy_selection_to_clipboard();
+            self.copy_active_selection();
             return true;
         }
         if modifiers & MOD_SHIFT == 0 {
@@ -666,18 +875,6 @@ impl ElementTree {
         self.engine
             .mark_visual_dirty(focused, VisualInvalidationReach::SelfOnly);
         true
-    }
-
-    /// Copy the selected text to the Platform Adapter's clipboard (Cmd/Ctrl+C,
-    /// ADR-0097). A no-op when nothing non-empty is selected or no clipboard is
-    /// installed; core never touches the concrete clipboard, only the trait.
-    fn copy_selection_to_clipboard(&mut self) {
-        let Some(text) = self.selected_text() else {
-            return;
-        };
-        if let Some(clipboard) = self.clipboard.as_ref() {
-            clipboard.write_text(&text);
-        }
     }
 
     /// Select the entire shaped text of `ifc` (Ctrl/Cmd+A). Returns whether a
@@ -863,5 +1060,26 @@ impl ElementTree {
         for id in entered {
             self.emit_interaction(Event::HoverEnter { target_id: id });
         }
+    }
+}
+
+/// Grow `acc` (min-x, min-y, max-x, max-y) to include the rect `(x, y, w, h)`.
+fn accumulate_rect(acc: &mut Option<(f32, f32, f32, f32)>, x: f32, y: f32, w: f32, h: f32) {
+    let (x1, y1) = (x + w, y + h);
+    *acc = Some(match *acc {
+        None => (x, y, x1, y1),
+        Some((ax0, ay0, ax1, ay1)) => (ax0.min(x), ay0.min(y), ax1.max(x1), ay1.max(y1)),
+    });
+}
+
+/// Convert accumulated (min-x, min-y, max-x, max-y) bounds into a positioned rect.
+fn rect_from_bounds(
+    (x0, y0, x1, y1): (f32, f32, f32, f32),
+) -> crate::element::selection_chrome::ToolbarRect {
+    crate::element::selection_chrome::ToolbarRect {
+        x: x0,
+        y: y0,
+        width: x1 - x0,
+        height: y1 - y0,
     }
 }

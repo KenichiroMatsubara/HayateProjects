@@ -144,6 +144,16 @@ impl EditState {
         self.commit_preedit();
     }
 
+    /// Cut: return the selected text and delete it (collapsing to a caret at the
+    /// start of the removed range), or `None` when the selection is collapsed —
+    /// the Cut toolbar action (ADR-0097, #272).
+    pub fn cut(&mut self) -> Option<String> {
+        let (start, end) = self.selection_range()?;
+        let removed = self.text_content[start..end].to_string();
+        self.delete_selection();
+        Some(removed)
+    }
+
     /// Replace the entire committed content with `value`, finalizing any active
     /// preedit first so an in-progress IME composition never lingers across the
     /// replacement (same preedit-confirmation integrity as `paste`). Returns

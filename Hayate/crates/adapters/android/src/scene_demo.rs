@@ -12,7 +12,7 @@
 
 use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, FlexDirectionValue,
-    JustifyValue, PseudoState, StyleProp,
+    JustifyValue, PositionValue, PseudoState, StyleProp,
 };
 
 /// Stable element ids for the demo tree (so on-device logs can refer to them,
@@ -20,6 +20,13 @@ use hayate_core::{
 pub const ROOT_ID: u64 = 1;
 pub const BUTTON_ID: u64 = 2;
 pub const TEXT_INPUT_ID: u64 = 3;
+/// A `selectable` paragraph (its Text child is the IFC) demonstrating the
+/// read-only SelectionArea floating toolbar (ADR-0097, #272).
+pub const PARAGRAPH_ID: u64 = 4;
+pub const PARAGRAPH_TEXT_ID: u64 = 5;
+
+/// The selectable demo paragraph's copy.
+pub const PARAGRAPH_TEXT: &str = "Drag to select this text";
 
 /// Idle (un-pressed) button background.
 pub const BUTTON_IDLE: Color = Color::new(0.16, 0.45, 0.92, 1.0);
@@ -80,6 +87,35 @@ pub fn build_demo_tree() -> ElementTree {
             StyleProp::Color(Color::BLACK),
         ],
     );
+
+    // A selectable paragraph pinned to the top of the viewport (absolute, so it
+    // does not disturb the centered button/input column). Dragging across it
+    // raises the core-drawn Material selection toolbar with Copy / Select All
+    // (ADR-0097, #272).
+    let paragraph = tree.element_create(PARAGRAPH_ID, ElementKind::View);
+    tree.element_append_child(root, paragraph);
+    tree.element_set_style(
+        paragraph,
+        &[
+            StyleProp::Position(PositionValue::Absolute),
+            StyleProp::Top(Dimension::px(24.0)),
+            StyleProp::Left(Dimension::px(24.0)),
+            StyleProp::Width(Dimension::px(320.0)),
+        ],
+    );
+    tree.element_set_selectable(paragraph, true);
+
+    let paragraph_text = tree.element_create(PARAGRAPH_TEXT_ID, ElementKind::Text);
+    tree.element_append_child(paragraph, paragraph_text);
+    tree.element_set_style(
+        paragraph_text,
+        &[
+            StyleProp::Width(Dimension::px(320.0)),
+            StyleProp::FontSize(20.0),
+            StyleProp::Color(Color::new(0.1, 0.1, 0.12, 1.0)),
+        ],
+    );
+    tree.element_set_text(paragraph_text, PARAGRAPH_TEXT);
 
     tree
 }
@@ -147,6 +183,30 @@ mod tests {
             tree.focused_element(),
             Some(ElementId::from_u64(TEXT_INPUT_ID)),
             "tapping the text-input should focus it"
+        );
+    }
+
+    // Dragging across the selectable paragraph raises the core-drawn floating
+    // toolbar offering Copy / Select All — the read-only SelectionArea chrome the
+    // on-device check makes visible (ADR-0097, #272).
+    #[test]
+    fn dragging_the_paragraph_shows_the_selection_toolbar() {
+        use hayate_core::ToolbarAction;
+        let mut tree = build_demo_tree();
+        tree.set_viewport(400.0, 800.0);
+        tree.render(0.0);
+
+        // The paragraph sits at absolute (24, 24); drag across its first glyphs.
+        tree.on_pointer_down(28.0, 32.0);
+        tree.on_pointer_move(120.0, 32.0);
+        tree.on_pointer_up(120.0, 32.0);
+
+        let toolbar = tree
+            .selection_toolbar()
+            .expect("the selection toolbar is shown after dragging the paragraph");
+        assert_eq!(
+            toolbar.actions(),
+            vec![ToolbarAction::Copy, ToolbarAction::SelectAll],
         );
     }
 }

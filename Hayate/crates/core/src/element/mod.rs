@@ -16,6 +16,7 @@ pub mod pseudo_state;
 pub mod scene_build;
 mod scene_lowering;
 pub mod selection;
+pub mod selection_chrome;
 pub mod style;
 pub mod taffy_bridge;
 pub mod taffy_projection;
@@ -36,6 +37,9 @@ pub use kind::ElementKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use selection::{Selection, SelectionPoint};
+pub use selection_chrome::{
+    SelectionChromeStyle, SelectionToolbar, ToolbarAction, ToolbarButton, ToolbarRect,
+};
 pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
     DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,
