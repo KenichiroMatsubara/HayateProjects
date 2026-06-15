@@ -29,7 +29,7 @@ use crate::element::style::{
 use crate::element::taffy_bridge;
 use crate::element::text;
 use crate::element::visual_invalidation::{
-    self, DirtyKind, ElementContext, VisualInvalidationReach,
+    self, Change, DirtyKind, DirtySink, ElementContext, VisualInvalidationReach,
 };
 use crate::node::SceneGraph;
 use crate::render::RenderImage;
@@ -751,7 +751,7 @@ impl ElementTree {
             return;
         }
         let change = self.classify_style_props(id, props);
-        self.apply_style_change(id, change);
+        self.apply_change_at(id, change);
     }
 
     /// Merge the invalidation of every non-layout prop in a style change against
@@ -761,25 +761,48 @@ impl ElementTree {
         &self,
         id: ElementId,
         props: &[StyleProp],
-    ) -> visual_invalidation::Change {
+    ) -> Change {
         let ctx = self.element_context(id);
         props
             .iter()
             .filter(|p| !p.is_layout())
             .map(|p| visual_invalidation::classify(p, ctx))
-            .reduce(visual_invalidation::Change::merge)
-            .unwrap_or_else(visual_invalidation::Change::visual_self_only)
+            .reduce(Change::merge)
+            .unwrap_or_else(Change::visual_self_only)
     }
 
-    /// Route a classified style change to its dirty set. The *what* (dirty kind
-    /// + reach) is decided by `classify`; this only resolves the *which* element
-    /// (e.g. the enclosing IFC root for a shape change).
-    fn apply_style_change(&mut self, id: ElementId, change: visual_invalidation::Change) {
-        match change.dirty_kind {
-            DirtyKind::Shape => self.mark_text_content_dirty(id, change.reach),
-            DirtyKind::Visual | DirtyKind::Structure => {
-                self.engine.mark_visual_dirty(id, change.reach)
-            }
+    /// Apply a classified `Change` to the live dirty sets through the single
+    /// routing seam (ADR-0099). This resolves the *which element* (topology:
+    /// shape changes retarget to the enclosing shaping unit) and hands the
+    /// `Change` to `route_change`, which alone knows the `dirty_kind → sinks`
+    /// table. Callers never hand-wire engine / projection marks.
+    fn apply_change_at(&mut self, id: ElementId, change: Change) {
+        let target = match change.dirty_kind {
+            // A shape change marks the shaping unit: the enclosing IFC root, or
+            // the element itself when it owns a Taffy box. An element with
+            // neither (a detached / boxless node) has nothing to re-shape.
+            DirtyKind::Shape => self.shape_target(id),
+            DirtyKind::Visual | DirtyKind::Structure => Some(id),
+        };
+        if let Some(target) = target {
+            let mut sink = EngineProjectionSink {
+                engine: &mut self.engine,
+                projection: &mut self.layout.projection,
+            };
+            visual_invalidation::route_change(&mut sink, target, change);
+        }
+    }
+
+    /// The element that carries a shape change's dirty mark: the enclosing IFC
+    /// root, or the element itself when it has a Taffy box. Pure topology — the
+    /// *what* (that this is a shape change) is already decided by `classify`.
+    fn shape_target(&self, id: ElementId) -> Option<ElementId> {
+        if let Some(root) = ifc_root(&self.elements, id) {
+            Some(root)
+        } else if self.layout.projection.has_node(id) {
+            Some(id)
+        } else {
+            None
         }
     }
 
@@ -954,7 +977,13 @@ impl ElementTree {
             pseudo_state::upsert_style_prop(slot, prop);
         }
         let reach = self.classify_style_props(id, props).reach;
-        self.engine.mark_visual_dirty(id, reach);
+        self.apply_change_at(
+            id,
+            Change {
+                dirty_kind: DirtyKind::Visual,
+                reach,
+            },
+        );
     }
 
     pub fn element_unset_pseudo_style(
@@ -970,8 +999,13 @@ impl ElementTree {
         for kind in kinds {
             pseudo_state::unset_pseudo_prop(&mut el.pseudo_styles, state, *kind);
         }
-        self.engine
-            .mark_visual_dirty(id, VisualInvalidationReach::Subtree);
+        self.apply_change_at(
+            id,
+            Change {
+                dirty_kind: DirtyKind::Visual,
+                reach: VisualInvalidationReach::Subtree,
+            },
+        );
     }
 
     pub fn element_get_text(&self, id: ElementId) -> String {
@@ -1304,9 +1338,25 @@ impl ElementTree {
             return;
         }
         let reach = self.classify_style_props(id, props).reach;
-        self.engine.mark_visual_dirty(id, reach);
-        if pseudo_state::pseudo_affects_text_shaping(props) {
-            self.mark_text_content_dirty(id, reach);
+        let affects_shaping = pseudo_state::pseudo_affects_text_shaping(props);
+        // A pseudo block can carry both box visuals and text styles, so the
+        // element is always visual-dirty and additionally shape-dirty when its
+        // text shaping is affected. Both go through the single routing seam.
+        self.apply_change_at(
+            id,
+            Change {
+                dirty_kind: DirtyKind::Visual,
+                reach,
+            },
+        );
+        if affects_shaping {
+            self.apply_change_at(
+                id,
+                Change {
+                    dirty_kind: DirtyKind::Shape,
+                    reach,
+                },
+            );
         }
         // The transition trigger lives at the `resolve_effective` lowering seam
         // (ADR-0093), not here: marking the element visual-dirty is enough to
@@ -1314,29 +1364,25 @@ impl ElementTree {
     }
 
     fn mark_text_content_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
-        if let Some(root) = ifc_root(&self.elements, id) {
-            self.engine.mark_shape_dirty(root, reach);
-            self.layout.projection.mark_dirty(root);
-        } else if self.layout.projection.has_node(id) {
-            self.engine.mark_shape_dirty(id, reach);
-            self.layout.projection.mark_dirty(id);
-        }
+        self.apply_change_at(
+            id,
+            Change {
+                dirty_kind: DirtyKind::Shape,
+                reach,
+            },
+        );
     }
 
     fn mark_child_attachment_dirty(&mut self, parent: ElementId, child: ElementId) {
         let parent_ctx = self.element_context(parent);
         let child_ctx = self.element_context(child);
-        match visual_invalidation::classify_attachment(parent_ctx, child_ctx).dirty_kind {
-            DirtyKind::Shape => {
-                self.engine
-                    .mark_shape_dirty(parent, VisualInvalidationReach::Subtree);
-                self.layout.projection.mark_dirty(parent);
-            }
-            DirtyKind::Visual | DirtyKind::Structure => {
-                self.engine.mark_structure_dirty(parent);
-                self.engine.mark_structure_dirty(child);
-            }
-        }
+        let change = visual_invalidation::classify_attachment(parent_ctx, child_ctx);
+        // Both endpoints of the attachment report the same `Change`. A shape
+        // attachment routes both to the parent IFC root (idempotent); a structure
+        // attachment seeds parent and child independently. Either way the
+        // dirty-set coupling lives in `route_change`, not here.
+        self.apply_change_at(parent, change);
+        self.apply_change_at(child, change);
     }
 
     /// Build the topological context of an element for the invalidation
@@ -1511,6 +1557,29 @@ fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<El
         return None;
     }
     Some(id)
+}
+
+/// The live dirty sets behind the routing seam: `ElementEngine`'s visual /
+/// shape / structure sets and the `TaffyProjection` geometry set (ADR-0099).
+/// `route_change` drives this so the engine and projection are marked together.
+struct EngineProjectionSink<'a> {
+    engine: &'a mut ElementEngine,
+    projection: &'a mut crate::element::taffy_projection::TaffyProjection,
+}
+
+impl DirtySink for EngineProjectionSink<'_> {
+    fn mark_visual(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+        self.engine.mark_visual_dirty(id, reach);
+    }
+    fn mark_shape(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+        self.engine.mark_shape_dirty(id, reach);
+    }
+    fn mark_structure(&mut self, id: ElementId) {
+        self.engine.mark_structure_dirty(id);
+    }
+    fn mark_geometry(&mut self, id: ElementId) {
+        self.projection.mark_dirty(id);
+    }
 }
 
 pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &mut bool) {
