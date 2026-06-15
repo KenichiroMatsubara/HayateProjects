@@ -55,6 +55,13 @@ For each approved slice, publish a new issue to the issue tracker. Use the issue
 
 Publish issues in dependency order (blockers first) so you can reference real issue identifiers in the "Blocked by" field.
 
+If the source was an existing issue, tag that parent issue with the `parent` label so it is identifiable as a parent at a glance, creating the label on first use if it does not exist yet:
+
+```sh
+gh label create "parent" --color 5319E7 --description "親イシュー — broken into child issues" 2>/dev/null || true
+gh issue edit <parent-number> --add-label "parent"
+```
+
 <issue-template>
 ## Parent
 
@@ -80,4 +87,4 @@ Or "None - can start immediately" if no blockers.
 
 </issue-template>
 
-Do NOT close or modify any parent issue.
+Do NOT close any parent issue or change its content. The only modification allowed on a parent issue is adding the `parent` label described above.
