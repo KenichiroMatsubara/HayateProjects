@@ -1,0 +1,56 @@
+[
+  {
+    "name": "view_default_none",
+    "elementKind": "view",
+    "selectable": null,
+    "expected": "none"
+  },
+  {
+    "name": "view_selectable_text",
+    "elementKind": "view",
+    "selectable": true,
+    "expected": "text"
+  },
+  {
+    "name": "view_unselectable_none",
+    "elementKind": "view",
+    "selectable": false,
+    "expected": "none"
+  },
+  {
+    "name": "text_default_none",
+    "elementKind": "text",
+    "selectable": null,
+    "expected": "none"
+  },
+  {
+    "name": "text_selectable_text",
+    "elementKind": "text",
+    "selectable": true,
+    "expected": "text"
+  },
+  {
+    "name": "button_default_none",
+    "elementKind": "button",
+    "selectable": null,
+    "expected": "none"
+  },
+  {
+    "name": "scroll_view_selectable_text",
+    "elementKind": "scroll-view",
+    "selectable": true,
+    "expected": "text"
+  },
+  {
+    "name": "text_input_default_text",
+    "elementKind": "text-input",
+    "selectable": null,
+    "expected": "text"
+  },
+  {
+    "name": "text_input_unselectable_still_text",
+    "elementKind": "text-input",
+    "selectable": false,
+    "expected": "text"
+  }
+]

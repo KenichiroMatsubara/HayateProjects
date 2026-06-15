@@ -6,6 +6,7 @@ mod renderer_selection;
 mod builtin_fonts;
 mod generated;
 pub mod pseudo_style_dom;
+pub mod user_select;
 #[cfg(test)]
 mod delivery_codec_fixtures;
 #[cfg(test)]

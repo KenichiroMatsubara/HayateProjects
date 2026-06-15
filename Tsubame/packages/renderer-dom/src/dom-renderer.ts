@@ -25,6 +25,7 @@ import {
 } from './style-declarations.js';
 import { DOM_EVENT_NAME } from './event-mapping.js';
 import { warnZOrderDivergence } from './z-order-divergence.js';
+import { resolveUserSelect } from './user-select.js';
 
 export interface DomRendererOptions {
   container?: HTMLElement;
@@ -96,6 +97,10 @@ export class DomRenderer implements IRenderer {
     const id = asElementId(this.nextId++);
     const el = createDomElement(this.doc, kind);
     el.setAttribute('data-tsubame-id', String(id as number));
+    // ADR-0097 decision 5: the Selection Region default is `user-select: none`;
+    // only a `selectable` subtree (and always text-input) opts into native
+    // selection. Baseline it here so every element starts bounded.
+    el.style.userSelect = resolveUserSelect(kind, undefined);
     this.nodes.set(id, el);
     this.kinds.set(id, kind);
     return id;
@@ -230,8 +235,9 @@ export class DomRenderer implements IRenderer {
       case 'selectable':
         // DOM Mode uses the browser's native selection; `selectable` only
         // bounds the Selection Region via `user-select` (ADR-0097 decision 5).
+        // text-input stays selectable regardless of the boundary.
         if (target instanceof HTMLElement) {
-          const value = op.selectable ? 'text' : 'none';
+          const value = resolveUserSelect(this.kindOf(id), op.selectable);
           target.style.userSelect = value;
           target.style.webkitUserSelect = value;
         }

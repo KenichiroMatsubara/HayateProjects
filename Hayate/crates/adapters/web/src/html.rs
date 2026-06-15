@@ -15,6 +15,7 @@ use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlI
 use crate::generated::encode_deliveries;
 use crate::pseudo_style_dom::{pseudo_patch_rule_body, pseudo_state_css_priority, pseudo_state_css_suffix};
 use crate::style_packet;
+use crate::user_select::resolve_user_select;
 
 use crate::shared::{document, element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
 
@@ -37,6 +38,10 @@ enum Command {
     SetSrc {
         id: ElementId,
         url: String,
+    },
+    SetSelectable {
+        id: ElementId,
+        selectable: bool,
     },
     SetStyle {
         id: ElementId,
@@ -202,6 +207,16 @@ impl HayateElementHtmlRenderer {
         self.pending.push(Command::SetSrc {
             id: element_id_from_f64(id),
             url: url.to_string(),
+        });
+    }
+
+    /// Bound the Selection Region by mapping `selectable` to `user-select`
+    /// (ADR-0097 decision 5). HTML Mode delegates the selection model to the
+    /// browser, so this only writes CSS — text-input stays selectable regardless.
+    pub fn element_set_selectable(&mut self, id: f64, selectable: bool) {
+        self.pending.push(Command::SetSelectable {
+            id: element_id_from_f64(id),
+            selectable,
         });
     }
 
@@ -596,6 +611,7 @@ impl HayateElementHtmlRenderer {
             Command::HtmlCreate { id, kind } => self.flush_create(id, kind)?,
             Command::SetText { id, text } => self.flush_set_text(id, &text),
             Command::SetSrc { id, url } => self.flush_set_src(id, &url),
+            Command::SetSelectable { id, selectable } => self.flush_set_selectable(id, selectable),
             Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
             Command::SetPseudoStyle { id, state, props } => {
                 self.tree.element_set_pseudo_style(id, state, &props);
@@ -677,6 +693,23 @@ impl HayateElementHtmlRenderer {
             if let Some(dom) = n.dom.as_ref() {
                 let _ = dom.set_attribute("src", url);
             }
+        }
+    }
+
+    fn flush_set_selectable(&mut self, id: ElementId, selectable: bool) {
+        let (kind, dom) = match self.nodes.get(&id) {
+            Some(n) => (n.kind, n.dom.clone()),
+            None => return,
+        };
+        let dom = match dom {
+            Some(d) => d,
+            None => return,
+        };
+        if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+            let value = resolve_user_select(kind, Some(selectable));
+            let style = html_el.style();
+            let _ = style.set_property("user-select", value);
+            let _ = style.set_property("-webkit-user-select", value);
         }
     }
 
@@ -1055,6 +1088,11 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
     style.set_property("border", "0 solid black")?;
     style.set_property("min-width", "0")?;
     style.set_property("min-height", "0")?;
+    // Selection Region default: only `selectable` subtrees (and always
+    // text-input) opt into native selection (ADR-0097 decision 5).
+    let user_select = resolve_user_select(kind, None);
+    style.set_property("user-select", user_select)?;
+    style.set_property("-webkit-user-select", user_select)?;
     match kind {
         ElementKind::ScrollView => {
             style.set_property("overflow", "auto")?;
