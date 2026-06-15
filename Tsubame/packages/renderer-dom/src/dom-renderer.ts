@@ -13,6 +13,7 @@ import {
   asElementId,
   assertKnownElementProperty,
   coerceElementProperty,
+  dispatchElementPropertyOp,
   PSEUDO_STATE_PRIORITY,
   PSEUDO_STYLE_KEYS,
   type PseudoStyleKey,
@@ -206,43 +207,45 @@ export class DomRenderer implements IRenderer {
     const target = this.node(id);
     const op = coerceElementProperty(name, value);
 
-    switch (op.kind) {
-      case 'text-content':
+    // Shared spec-generated dispatch (ADR-0008): the DOM adapter fills only the
+    // effect handlers — the op-kind match lives once in the protocol.
+    dispatchElementPropertyOp<void>(op, {
+      'text-content': ({ text }) => {
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-          target.value = op.text;
+          target.value = text;
         }
-        return;
-      case 'placeholder':
+      },
+      placeholder: ({ text }) => {
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-          target.placeholder = op.text;
+          target.placeholder = text;
         }
-        return;
-      case 'disabled':
+      },
+      disabled: ({ disabled }) => {
         if (
           target instanceof HTMLInputElement ||
           target instanceof HTMLButtonElement ||
           target instanceof HTMLTextAreaElement
         ) {
-          target.disabled = op.disabled;
+          target.disabled = disabled;
         }
-        return;
-      case 'src':
+      },
+      src: ({ text }) => {
         if (target instanceof HTMLImageElement) {
-          if (op.text.length > 0) target.src = op.text;
+          if (text.length > 0) target.src = text;
           else target.removeAttribute('src');
         }
-        return;
-      case 'selectable':
+      },
+      selectable: ({ selectable }) => {
         // DOM Mode uses the browser's native selection; `selectable` only
         // bounds the Selection Region via `user-select` (ADR-0097 decision 5).
         // text-input stays selectable regardless of the boundary.
         if (target instanceof HTMLElement) {
-          const value = resolveUserSelect(this.kindOf(id), op.selectable);
-          target.style.userSelect = value;
-          target.style.webkitUserSelect = value;
+          const userSelect = resolveUserSelect(this.kindOf(id), selectable);
+          target.style.userSelect = userSelect;
+          target.style.webkitUserSelect = userSelect;
         }
-        return;
-    }
+      },
+    });
   }
 
   addEventListener(

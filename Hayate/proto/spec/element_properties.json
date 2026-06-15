@@ -1,0 +1,27 @@
+[
+  {
+    "name": "value",
+    "opKind": "text-content",
+    "coerce": "stringify-nullable"
+  },
+  {
+    "name": "placeholder",
+    "opKind": "placeholder",
+    "coerce": "string-or-empty"
+  },
+  {
+    "name": "src",
+    "opKind": "src",
+    "coerce": "string-or-empty"
+  },
+  {
+    "name": "disabled",
+    "opKind": "disabled",
+    "coerce": "boolean"
+  },
+  {
+    "name": "selectable",
+    "opKind": "selectable",
+    "coerce": "boolean"
+  }
+]

@@ -13,6 +13,7 @@ import {
   asElementId,
   assertKnownElementProperty,
   coerceElementProperty,
+  dispatchElementPropertyOp,
   gateTextLocalPatch,
 } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
@@ -179,23 +180,15 @@ export class CanvasRenderer implements IRenderer {
   setProperty(id: ElementId, name: string, value: unknown): void {
     assertKnownElementProperty(name);
     const op = coerceElementProperty(name, value);
-    switch (op.kind) {
-      case 'text-content':
-        this.packet.enqueueSetTextContent(id, op.text);
-        break;
-      case 'placeholder':
-        this.packet.enqueueSetText(id, op.text);
-        break;
-      case 'src':
-        this.packet.enqueueSetSrc(id, op.text);
-        break;
-      case 'disabled':
-        this.packet.enqueueSetDisabled(id, op.disabled);
-        break;
-      case 'selectable':
-        this.packet.enqueueSetSelectable(id, op.selectable);
-        break;
-    }
+    // Shared spec-generated dispatch (ADR-0008): the Canvas adapter fills only the
+    // enqueue effect handlers — the op-kind match lives once in the protocol.
+    dispatchElementPropertyOp<void>(op, {
+      'text-content': ({ text }) => this.packet.enqueueSetTextContent(id, text),
+      placeholder: ({ text }) => this.packet.enqueueSetText(id, text),
+      src: ({ text }) => this.packet.enqueueSetSrc(id, text),
+      disabled: ({ disabled }) => this.packet.enqueueSetDisabled(id, disabled),
+      selectable: ({ selectable }) => this.packet.enqueueSetSelectable(id, selectable),
+    });
   }
 
   addEventListener(

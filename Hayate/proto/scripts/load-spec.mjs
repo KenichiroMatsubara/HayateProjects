@@ -16,6 +16,7 @@ export const SPEC_SECTIONS = [
   'style_tags',
   'event_kinds',
   'element_kinds',
+  'element_properties',
   'unset_kinds',
   'modifier_keys',
   'pseudo_states',

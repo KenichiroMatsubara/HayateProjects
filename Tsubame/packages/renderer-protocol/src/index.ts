@@ -24,12 +24,17 @@ export type {
 
 export type { IRenderer } from './renderer.js';
 
-export type { ElementPropertyName, ElementPropertyOp } from './property.js';
+export type {
+  ElementPropertyName,
+  ElementPropertyOp,
+  ElementPropertyEffects,
+} from './property.js';
 export {
   ELEMENT_PROPERTY_NAMES,
   assertKnownElementProperty,
   isKnownElementProperty,
   coerceElementProperty,
+  dispatchElementPropertyOp,
 } from './property.js';
 
 export type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
