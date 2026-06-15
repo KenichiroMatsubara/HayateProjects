@@ -102,6 +102,7 @@ export const EVENT_KIND = {
   ACTIVE_START: 13,
   POINTER_MOVE: 14,
   FETCH_FONT: 15,
+  SELECTION_CHANGE: 16,
 } as const;
 export type EVENT_KIND = typeof EVENT_KIND;
 
@@ -122,6 +123,7 @@ export const EVENT_WIRE_ROLE = {
   ACTIVE_START: 'interaction',
   POINTER_MOVE: 'interaction',
   FETCH_FONT: 'hayate-internal',
+  SELECTION_CHANGE: 'interaction',
 } as const;
 export type EVENT_WIRE_ROLE = typeof EVENT_WIRE_ROLE;
 
@@ -142,6 +144,7 @@ export const EVENT_ADAPTER_TIER = {
   ACTIVE_START: 'forward',
   POINTER_MOVE: 'deferred',
   FETCH_FONT: 'none',
+  SELECTION_CHANGE: 'none',
 } as const;
 export type EVENT_ADAPTER_TIER = typeof EVENT_ADAPTER_TIER;
 
@@ -355,6 +358,7 @@ export type EventPayload =
   | { kind: 'active_start'; value: 13; targetId: number }
   | { kind: 'pointer_move'; value: 14; x: number; y: number }
   | { kind: 'fetch_font'; value: 15; family: string }
+  | { kind: 'selection_change'; value: 16 }
 ;
 
 export function parseEvent(ev: unknown[]): EventPayload {
@@ -407,6 +411,9 @@ export function parseEvent(ev: unknown[]): EventPayload {
     }
     case 15: { // fetch_font
       return { kind: 'fetch_font' as const, value: 15, family: ev[1] as string };
+    }
+    case 16: { // selection_change
+      return { kind: 'selection_change' as const, value: 16 };
     }
     default:
       throw new Error(`parseEvent: unknown event kind ${kind}`);

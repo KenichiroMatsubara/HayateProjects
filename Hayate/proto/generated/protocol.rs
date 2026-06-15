@@ -120,6 +120,7 @@ pub const EVENT_KIND_KEY_DOWN: f64 = 12.0;
 pub const EVENT_KIND_ACTIVE_START: f64 = 13.0;
 pub const EVENT_KIND_POINTER_MOVE: f64 = 14.0;
 pub const EVENT_KIND_FETCH_FONT: f64 = 15.0;
+pub const EVENT_KIND_SELECTION_CHANGE: f64 = 16.0;
 
 // Event wire metadata (from event_kinds.json)
 pub const EVENT_WIRE_ROLE_CLICK: &str = "interaction";
@@ -154,6 +155,8 @@ pub const EVENT_WIRE_ROLE_POINTER_MOVE: &str = "interaction";
 pub const EVENT_ADAPTER_TIER_POINTER_MOVE: &str = "deferred";
 pub const EVENT_WIRE_ROLE_FETCH_FONT: &str = "hayate-internal";
 pub const EVENT_ADAPTER_TIER_FETCH_FONT: &str = "none";
+pub const EVENT_WIRE_ROLE_SELECTION_CHANGE: &str = "interaction";
+pub const EVENT_ADAPTER_TIER_SELECTION_CHANGE: &str = "none";
 
 // Element kind constants
 pub const ELEMENT_KIND_VIEW: u32 = 0;
@@ -1342,6 +1345,11 @@ pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {
             let mut out = Vec::new();
             out.push(EventWireValue::Number(15.0));
             out.push(EventWireValue::Text(family.clone()));
+            out
+        }
+        hayate_core::Event::SelectionChange => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(16.0));
             out
         }
     }

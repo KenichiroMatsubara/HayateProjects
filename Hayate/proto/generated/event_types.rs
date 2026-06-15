@@ -67,6 +67,8 @@ pub enum Event {
     FetchFont {
         family: String,
     },
+    /// The document-global unified Selection (ADR-0097) changed — set, moved, or cleared. Carries no payload (like the DOM `selectionchange` event); poll the runtime's `selection()` for the new state. Document-global rather than a per-element interaction, so it rides the raw event queue (`poll_events`).
+    SelectionChange,
 }
 
 /// Event kinds registerable via `register_listener`.
