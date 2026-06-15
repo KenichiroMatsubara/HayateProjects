@@ -179,7 +179,7 @@ pub(crate) fn update(
         reorder_children_for_z_index(tree, scene_cache, lowering, parent_id);
     }
 
-    let patch_roots = minimal_patch_roots(tree, &dirty.elements);
+    let patch_roots = visual_invalidation::minimal_patch_roots(tree, &dirty.elements);
     for patch_root in patch_roots {
         let reach = dirty
             .elements
@@ -375,67 +375,6 @@ fn reorder_children_for_z_index(
     }
 }
 
-fn minimal_patch_roots(
-    tree: &ElementTree,
-    dirty: &std::collections::HashMap<ElementId, VisualInvalidationReach>,
-) -> Vec<ElementId> {
-    dirty
-        .keys()
-        .copied()
-        .filter(|&id| !covered_by_dirty_ancestor(tree, id, dirty))
-        .collect()
-}
-
-/// Whether re-walking some dirty ancestor will itself re-emit `id`, so `id` need
-/// not be its own patch root. True only when the ancestor's reach actually
-/// propagates down the ancestor→id path: a `SelfOnly` / `ZIndex` ancestor
-/// re-emits only itself, so a dirty descendant under it (e.g. an independent
-/// in-flight transition beneath a transitioning parent, issue #228) must remain
-/// its own patch root or its re-lowering would be skipped.
-fn covered_by_dirty_ancestor(
-    tree: &ElementTree,
-    id: ElementId,
-    dirty: &std::collections::HashMap<ElementId, VisualInvalidationReach>,
-) -> bool {
-    // Path id → root: chain[0] = id, chain[i+1] = parent(chain[i]).
-    let mut chain = vec![id];
-    let mut current = tree.elements.get(&id).and_then(|el| el.parent);
-    while let Some(parent) = current {
-        chain.push(parent);
-        current = tree.elements.get(&parent).and_then(|el| el.parent);
-    }
-    // For each dirty ancestor, simulate the reach propagating down to `id` via
-    // the single-source `step_reach`, exactly as the retained walk would.
-    for (ancestor_idx, &ancestor) in chain.iter().enumerate().skip(1) {
-        let Some(&ancestor_reach) = dirty.get(&ancestor) else {
-            continue;
-        };
-        let mut reach = ancestor_reach;
-        let mut parent = ancestor;
-        let mut reached = true;
-        for child_idx in (0..ancestor_idx).rev() {
-            let child = chain[child_idx];
-            match visual_invalidation::step_reach(
-                reach,
-                tree.element_context(parent),
-                tree.element_context(child),
-            ) {
-                Some(next) => {
-                    reach = next;
-                    parent = child;
-                }
-                None => {
-                    reached = false;
-                    break;
-                }
-            }
-        }
-        if reached {
-            return true;
-        }
-    }
-    false
-}
 
 fn first_child_matching(
     sg: &SceneGraph,
@@ -620,7 +559,7 @@ fn walk_retained(ctx: &mut RenderCtx, id: ElementId) {
             let anchor_id = ensure_anchor(tree, ctx.sg, ctx.lowering, id, ctx.parent_anchor);
             let children = tree.ordered_children(id);
             clear_lowered_content(ctx.sg, anchor_id, &children, ctx.lowering);
-            for (child, child_reach) in children_for_reach(tree, id, ctx.reach) {
+            for (child, child_reach) in visual_invalidation::children_for_reach(tree, id, ctx.reach) {
                 let mut child_ctx =
                     ctx.child(ctx.ox, ctx.oy, Some(anchor_id), ctx.inherited.clone(), child_reach);
                 walk_retained(&mut child_ctx, child);
@@ -635,23 +574,6 @@ fn walk_retained(ctx: &mut RenderCtx, id: ElementId) {
     clear_lowered_content(ctx.sg, anchor_id, &children, ctx.lowering);
 
     emit_element(ctx, id, el, taffy_node, anchor_id);
-}
-
-/// The children a retained walk descends into under `reach`, each paired with
-/// the reach it carries — derived entirely from the single-source `step_reach`.
-fn children_for_reach(
-    tree: &ElementTree,
-    id: ElementId,
-    reach: VisualInvalidationReach,
-) -> Vec<(ElementId, VisualInvalidationReach)> {
-    let parent_ctx = tree.element_context(id);
-    tree.ordered_children(id)
-        .into_iter()
-        .filter_map(|child| {
-            visual_invalidation::step_reach(reach, parent_ctx, tree.element_context(child))
-                .map(|child_reach| (child, child_reach))
-        })
-        .collect()
 }
 
 fn emit_element(
@@ -825,7 +747,7 @@ fn emit_element(
                 },
             );
         }
-        for (child, child_reach) in children_for_reach(tree, id, ctx.reach) {
+        for (child, child_reach) in visual_invalidation::children_for_reach(tree, id, ctx.reach) {
             let mut child_ctx =
                 ctx.child(x, y, effective_parent, child_inherited.clone(), child_reach);
             walk_retained(&mut child_ctx, child);
@@ -949,7 +871,7 @@ fn emit_element(
         }
     }
 
-    for (child, child_reach) in children_for_reach(tree, id, ctx.reach) {
+    for (child, child_reach) in visual_invalidation::children_for_reach(tree, id, ctx.reach) {
         let mut child_ctx =
             ctx.child(x, y, effective_parent, child_inherited.clone(), child_reach);
         walk_retained(&mut child_ctx, child);

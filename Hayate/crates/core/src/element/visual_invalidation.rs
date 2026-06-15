@@ -4,7 +4,7 @@ use crate::element::id::ElementId;
 use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::kind::ElementKind;
 use crate::element::style::StyleProp;
-use crate::element::tree::ElementTree;
+use crate::element::tree::{Element, ElementTree};
 
 /// Topological context of one element — everything `classify` / `step_reach`
 /// need to know about an element's position without booting an `ElementTree`.
@@ -23,6 +23,27 @@ impl ElementContext {
     /// `text` element nested directly under another `text` — no Taffy box.
     pub(crate) fn is_inline_text(self) -> bool {
         self.kind == ElementKind::Text && self.has_text_parent
+    }
+}
+
+/// Build an [`ElementContext`] from a bare `elements` map — the same topology
+/// read `ElementTree::element_context` performs, but available to callers that
+/// hold only the element map (e.g. the Taffy projection reconcile, which has no
+/// live `ElementTree`). The reach kernel stays pure over the resulting context.
+pub(crate) fn element_context_in(
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+) -> ElementContext {
+    let el = elements.get(&id);
+    let kind = el.map_or(ElementKind::View, |e| e.kind);
+    let has_text_parent = el
+        .and_then(|e| e.parent)
+        .and_then(|p| elements.get(&p))
+        .is_some_and(|p| p.kind == ElementKind::Text);
+    ElementContext {
+        kind,
+        is_ifc_root: is_ifc_root(elements, id),
+        has_text_parent,
     }
 }
 
@@ -168,6 +189,140 @@ pub(crate) fn step_reach(
         }
         _ => None,
     }
+}
+
+/// Read-only topology a reach walk needs: the parent chain, each element's
+/// invalidation context, and its z-ordered children. `ElementTree` implements
+/// this over the live tree; [`ElementMapTopology`] implements it over a bare
+/// element map for callers without a live tree. Keeping it a trait lets the
+/// reach traversals below be unit-tested against a fake — the same way the
+/// `Change → sinks` routing is tested against a `RecordingSink`.
+pub(crate) trait ReachTopology {
+    fn parent(&self, id: ElementId) -> Option<ElementId>;
+    fn element_context(&self, id: ElementId) -> ElementContext;
+    fn ordered_children(&self, id: ElementId) -> Vec<ElementId>;
+}
+
+impl ReachTopology for ElementTree {
+    fn parent(&self, id: ElementId) -> Option<ElementId> {
+        self.elements.get(&id).and_then(|el| el.parent)
+    }
+    fn element_context(&self, id: ElementId) -> ElementContext {
+        ElementTree::element_context(self, id)
+    }
+    fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
+        ElementTree::ordered_children(self, id)
+    }
+}
+
+/// [`ReachTopology`] over a bare `elements` map. The Taffy projection reconcile
+/// has no live `ElementTree`, only its element map, so it walks reach through
+/// this. Children come back in document order (the projection routes only the
+/// patch-root search, which reads the parent chain, never children).
+pub(crate) struct ElementMapTopology<'a> {
+    pub elements: &'a HashMap<ElementId, Element>,
+}
+
+impl ReachTopology for ElementMapTopology<'_> {
+    fn parent(&self, id: ElementId) -> Option<ElementId> {
+        self.elements.get(&id).and_then(|el| el.parent)
+    }
+    fn element_context(&self, id: ElementId) -> ElementContext {
+        element_context_in(self.elements, id)
+    }
+    fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
+        self.elements
+            .get(&id)
+            .map(|el| el.children.clone())
+            .unwrap_or_default()
+    }
+}
+
+/// The children a reach walk descends into from `id` under `reach`, each paired
+/// with the reach it carries. Derived entirely from the single-source
+/// [`step_reach`]: a child is descended into iff `step_reach` returns `Some`.
+/// Both the retained scene walk's child descent route through here.
+pub(crate) fn children_for_reach<T: ReachTopology>(
+    topology: &T,
+    id: ElementId,
+    reach: VisualInvalidationReach,
+) -> Vec<(ElementId, VisualInvalidationReach)> {
+    let parent_ctx = topology.element_context(id);
+    topology
+        .ordered_children(id)
+        .into_iter()
+        .filter_map(|child| {
+            step_reach(reach, parent_ctx, topology.element_context(child))
+                .map(|child_reach| (child, child_reach))
+        })
+        .collect()
+}
+
+/// The minimal patch roots for a reach-tagged dirty set: every dirty element
+/// that no dirty ancestor's reach would itself re-emit. The single source for
+/// both the retained scene walk's partial re-lower and the Taffy projection's
+/// structure reconcile — [`step_reach`] is the kernel deciding whether an
+/// ancestor's reach actually propagates down to a given descendant.
+pub(crate) fn minimal_patch_roots<T: ReachTopology>(
+    topology: &T,
+    dirty: &HashMap<ElementId, VisualInvalidationReach>,
+) -> Vec<ElementId> {
+    dirty
+        .keys()
+        .copied()
+        .filter(|&id| !covered_by_dirty_ancestor(topology, id, dirty))
+        .collect()
+}
+
+/// Whether re-walking some dirty ancestor will itself re-emit `id`, so `id` need
+/// not be its own patch root. True only when the ancestor's reach actually
+/// propagates down the ancestor→id path: a `SelfOnly` / `ZIndex` ancestor
+/// re-emits only itself, so a dirty descendant under it (e.g. an independent
+/// in-flight transition beneath a transitioning parent, issue #228) must remain
+/// its own patch root or its re-lowering would be skipped.
+fn covered_by_dirty_ancestor<T: ReachTopology>(
+    topology: &T,
+    id: ElementId,
+    dirty: &HashMap<ElementId, VisualInvalidationReach>,
+) -> bool {
+    // Path id → root: chain[0] = id, chain[i+1] = parent(chain[i]).
+    let mut chain = vec![id];
+    let mut current = topology.parent(id);
+    while let Some(parent) = current {
+        chain.push(parent);
+        current = topology.parent(parent);
+    }
+    // For each dirty ancestor, simulate the reach propagating down to `id` via
+    // the single-source `step_reach`, exactly as the retained walk would.
+    for (ancestor_idx, &ancestor) in chain.iter().enumerate().skip(1) {
+        let Some(&ancestor_reach) = dirty.get(&ancestor) else {
+            continue;
+        };
+        let mut reach = ancestor_reach;
+        let mut parent = ancestor;
+        let mut reached = true;
+        for child_idx in (0..ancestor_idx).rev() {
+            let child = chain[child_idx];
+            match step_reach(
+                reach,
+                topology.element_context(parent),
+                topology.element_context(child),
+            ) {
+                Some(next) => {
+                    reach = next;
+                    parent = child;
+                }
+                None => {
+                    reached = false;
+                    break;
+                }
+            }
+        }
+        if reached {
+            return true;
+        }
+    }
+    false
 }
 
 /// How far scene re-lowering must reach for a visual-dirty element (issue #185).
@@ -492,6 +647,204 @@ mod tests {
             step_reach(VisualInvalidationReach::ZIndex, parent, child),
             None
         );
+    }
+
+    /// A `ReachTopology` built from plain maps, so the consolidated reach
+    /// traversals (`children_for_reach` / `minimal_patch_roots`) are exercised
+    /// through their public interface without booting an `ElementTree` — the
+    /// same testing posture the `RecordingSink` gives the routing seam.
+    #[derive(Default)]
+    struct FakeTopology {
+        parents: HashMap<ElementId, ElementId>,
+        contexts: HashMap<ElementId, ElementContext>,
+        children: HashMap<ElementId, Vec<ElementId>>,
+    }
+
+    impl FakeTopology {
+        fn add(&mut self, id: u64, parent: Option<u64>, context: ElementContext) {
+            let eid = ElementId::from_u64(id);
+            if let Some(p) = parent {
+                let pid = ElementId::from_u64(p);
+                self.parents.insert(eid, pid);
+                self.children.entry(pid).or_default().push(eid);
+            }
+            self.contexts.insert(eid, context);
+        }
+    }
+
+    impl ReachTopology for FakeTopology {
+        fn parent(&self, id: ElementId) -> Option<ElementId> {
+            self.parents.get(&id).copied()
+        }
+        fn element_context(&self, id: ElementId) -> ElementContext {
+            self.contexts
+                .get(&id)
+                .copied()
+                .unwrap_or_else(|| ctx(ElementKind::View, false, false))
+        }
+        fn ordered_children(&self, id: ElementId) -> Vec<ElementId> {
+            self.children.get(&id).cloned().unwrap_or_default()
+        }
+    }
+
+    fn dirty_map(
+        entries: &[(u64, VisualInvalidationReach)],
+    ) -> HashMap<ElementId, VisualInvalidationReach> {
+        entries
+            .iter()
+            .map(|&(id, reach)| (ElementId::from_u64(id), reach))
+            .collect()
+    }
+
+    fn id_set(ids: &[u64]) -> HashSet<ElementId> {
+        ids.iter().map(|&id| ElementId::from_u64(id)).collect()
+    }
+
+    #[test]
+    fn children_for_reach_subtree_descends_into_every_child() {
+        let mut topo = FakeTopology::default();
+        topo.add(1, None, ctx(ElementKind::View, false, false));
+        topo.add(2, Some(1), ctx(ElementKind::View, false, false));
+        topo.add(3, Some(1), ctx(ElementKind::View, false, false));
+
+        let descended = children_for_reach(
+            &topo,
+            ElementId::from_u64(1),
+            VisualInvalidationReach::Subtree,
+        );
+        assert_eq!(
+            descended,
+            vec![
+                (ElementId::from_u64(2), VisualInvalidationReach::Subtree),
+                (ElementId::from_u64(3), VisualInvalidationReach::Subtree),
+            ]
+        );
+    }
+
+    #[test]
+    fn children_for_reach_text_local_descends_only_inline_text_under_ifc_root() {
+        let mut topo = FakeTopology::default();
+        topo.add(1, None, ctx(ElementKind::Text, true, false));
+        topo.add(2, Some(1), ctx(ElementKind::Text, false, true)); // inline text
+        topo.add(3, Some(1), ctx(ElementKind::View, false, false)); // block child
+
+        let descended = children_for_reach(
+            &topo,
+            ElementId::from_u64(1),
+            VisualInvalidationReach::TextLocal,
+        );
+        assert_eq!(
+            descended,
+            vec![(ElementId::from_u64(2), VisualInvalidationReach::TextLocal)]
+        );
+    }
+
+    #[test]
+    fn children_for_reach_self_only_descends_into_nothing() {
+        let mut topo = FakeTopology::default();
+        topo.add(1, None, ctx(ElementKind::View, false, false));
+        topo.add(2, Some(1), ctx(ElementKind::View, false, false));
+
+        let descended = children_for_reach(
+            &topo,
+            ElementId::from_u64(1),
+            VisualInvalidationReach::SelfOnly,
+        );
+        assert!(descended.is_empty());
+    }
+
+    #[test]
+    fn minimal_patch_roots_subtree_ancestor_covers_descendant() {
+        // 1 → 2 → 3, both 1 and 3 dirty with Subtree reach: re-walking 1 will
+        // itself re-emit 3, so 3 is not its own patch root.
+        let mut topo = FakeTopology::default();
+        topo.add(1, None, ctx(ElementKind::View, false, false));
+        topo.add(2, Some(1), ctx(ElementKind::View, false, false));
+        topo.add(3, Some(2), ctx(ElementKind::View, false, false));
+
+        let dirty = dirty_map(&[
+            (1, VisualInvalidationReach::Subtree),
+            (3, VisualInvalidationReach::Subtree),
+        ]);
+        let roots: HashSet<ElementId> =
+            minimal_patch_roots(&topo, &dirty).into_iter().collect();
+        assert_eq!(roots, id_set(&[1]));
+    }
+
+    #[test]
+    fn minimal_patch_roots_self_only_ancestor_does_not_cover_descendant() {
+        // A `SelfOnly` ancestor re-emits only itself, so an independently dirty
+        // descendant (issue #228) must remain its own patch root.
+        let mut topo = FakeTopology::default();
+        topo.add(1, None, ctx(ElementKind::View, false, false));
+        topo.add(2, Some(1), ctx(ElementKind::View, false, false));
+        topo.add(3, Some(2), ctx(ElementKind::View, false, false));
+
+        let dirty = dirty_map(&[
+            (1, VisualInvalidationReach::SelfOnly),
+            (3, VisualInvalidationReach::Subtree),
+        ]);
+        let roots: HashSet<ElementId> =
+            minimal_patch_roots(&topo, &dirty).into_iter().collect();
+        assert_eq!(roots, id_set(&[1, 3]));
+    }
+
+    /// Presence-only ancestor check — the projection's old `has_dirty_ancestor`,
+    /// kept here as the reference the `Subtree` specialization must still match.
+    fn presence_only_roots(topo: &FakeTopology, dirty: &[u64]) -> HashSet<ElementId> {
+        let dirty_ids = id_set(dirty);
+        dirty_ids
+            .iter()
+            .copied()
+            .filter(|&id| {
+                let mut cur = topo.parent(id);
+                while let Some(ancestor) = cur {
+                    if dirty_ids.contains(&ancestor) {
+                        return false;
+                    }
+                    cur = topo.parent(ancestor);
+                }
+                true
+            })
+            .collect()
+    }
+
+    #[test]
+    fn minimal_patch_roots_all_subtree_equals_presence_only_specialization() {
+        // The Taffy projection feeds `structure_dirty` tagged entirely `Subtree`.
+        // `step_reach` always propagates `Subtree`, so routing through the shared
+        // reach kernel must reproduce the old presence-only patch-root search
+        // exactly — the projection's behavior is unchanged.
+        let mut topo = FakeTopology::default();
+        topo.add(1, None, ctx(ElementKind::View, false, false));
+        topo.add(2, Some(1), ctx(ElementKind::Text, true, false)); // IFC root
+        topo.add(3, Some(2), ctx(ElementKind::Text, false, true)); // inline text
+        topo.add(4, Some(1), ctx(ElementKind::View, false, false));
+        topo.add(5, Some(4), ctx(ElementKind::View, false, false));
+
+        // A spread of shapes: nested chains, IFC boundaries, independent branches.
+        for dirty in [
+            vec![1u64],
+            vec![2, 3],
+            vec![1, 3, 5],
+            vec![2, 4],
+            vec![3, 5],
+            vec![1, 2, 3, 4, 5],
+        ] {
+            let map = dirty_map(
+                &dirty
+                    .iter()
+                    .map(|&id| (id, VisualInvalidationReach::Subtree))
+                    .collect::<Vec<_>>(),
+            );
+            let reach_roots: HashSet<ElementId> =
+                minimal_patch_roots(&topo, &map).into_iter().collect();
+            assert_eq!(
+                reach_roots,
+                presence_only_roots(&topo, &dirty),
+                "all-Subtree reach must match presence-only roots for {dirty:?}"
+            );
+        }
     }
 }
 

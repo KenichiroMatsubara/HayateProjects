@@ -14,7 +14,7 @@ use crate::element::event_spec::DocumentEventKind;
 pub use crate::element::event_spec::Event;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::inline_text::{self, ifc_root, is_ifc_root};
+use crate::element::inline_text::{self, ifc_root};
 use crate::element::layout_pass::LayoutPass;
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::pseudo_state::{
@@ -1440,17 +1440,7 @@ impl ElementTree {
     /// Build the topological context of an element for the invalidation
     /// classifier. Reads the live tree; the classifier itself stays pure.
     pub(crate) fn element_context(&self, id: ElementId) -> ElementContext {
-        let el = self.elements.get(&id);
-        let kind = el.map_or(ElementKind::View, |e| e.kind);
-        let has_text_parent = el
-            .and_then(|e| e.parent)
-            .and_then(|p| self.elements.get(&p))
-            .is_some_and(|p| p.kind == ElementKind::Text);
-        ElementContext {
-            kind,
-            is_ifc_root: is_ifc_root(&self.elements, id),
-            has_text_parent,
-        }
+        visual_invalidation::element_context_in(&self.elements, id)
     }
 
     fn mark_child_detachment_dirty(&mut self, parent: ElementId, child: ElementId) {
