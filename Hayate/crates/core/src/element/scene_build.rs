@@ -30,6 +30,10 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
             &interaction,
         );
     }
+    // Selection toolbar floats on top as a document-level overlay (ADR-0097).
+    if let Some(toolbar) = tree.selection_toolbar() {
+        emit_selection_toolbar(&mut sg, tree, &toolbar);
+    }
     sg
 }
 
@@ -67,10 +71,16 @@ pub(crate) fn update(
             );
         }
         lowering.built = true;
+        // The fresh graph dropped any prior overlay; re-emit from scratch.
+        lowering.toolbar_root = None;
+        refresh_selection_toolbar(tree, scene_cache, lowering);
         return;
     }
 
     if dirty.elements.is_empty() {
+        // Even with no element repaints, the selection (hence the toolbar) may
+        // have moved or cleared, so the overlay is always refreshed.
+        refresh_selection_toolbar(tree, scene_cache, lowering);
         return;
     }
 
@@ -111,6 +121,83 @@ pub(crate) fn update(
             now_ms,
         );
     }
+    refresh_selection_toolbar(tree, scene_cache, lowering);
+}
+
+/// Re-emit the floating selection toolbar overlay (ADR-0097, #272). Removes the
+/// previous overlay subtree, then draws a fresh one on top when a selection is
+/// active. Idempotent: a no-op (beyond removal) when nothing is selected.
+fn refresh_selection_toolbar(
+    tree: &ElementTree,
+    sg: &mut SceneGraph,
+    lowering: &mut SceneLowering,
+) {
+    if let Some(prev) = lowering.toolbar_root.take() {
+        sg.remove_subtree(prev);
+    }
+    let Some(toolbar) = tree.selection_toolbar() else {
+        return;
+    };
+    lowering.toolbar_root = Some(emit_selection_toolbar(sg, tree, &toolbar));
+}
+
+/// Lower a [`SelectionToolbar`] into a top-level overlay subtree: a `Group`
+/// holding a rounded background panel with the per-button label text runs on
+/// top, inserted last so it paints above the document. Returns the group id.
+fn emit_selection_toolbar(
+    sg: &mut SceneGraph,
+    tree: &ElementTree,
+    toolbar: &crate::element::selection_chrome::SelectionToolbar,
+) -> NodeId {
+    use crate::element::selection_chrome::TOOLBAR_CORNER_RADIUS;
+    let style = toolbar.style;
+    // The overlay root is a Group; its children are inserted via `insert_child`
+    // so they are not also registered as top-level roots (which would double-
+    // paint them, once as a root and once via the group walk).
+    let group = sg.insert(Node {
+        kind: NodeKind::Group {
+            transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        },
+        children: Vec::new(),
+    });
+    sg.insert_child(
+        group,
+        Node {
+            kind: NodeKind::Rect {
+                x: toolbar.bounds.x,
+                y: toolbar.bounds.y,
+                width: toolbar.bounds.width,
+                height: toolbar.bounds.height,
+                color: style.toolbar_background(),
+                corner_radius: TOOLBAR_CORNER_RADIUS,
+            },
+            children: Vec::new(),
+        },
+    );
+    let label_color = style.toolbar_label();
+    for button in &toolbar.buttons {
+        let Some(label) = tree.toolbar_label_layout(button.action) else {
+            continue;
+        };
+        // Center the label within its button cell.
+        let lx = button.bounds.x + (button.bounds.width - label.layout.width()) / 2.0;
+        let ly = button.bounds.y + (button.bounds.height - label.layout.height()) / 2.0;
+        for run in &label.runs {
+            sg.insert_child(
+                group,
+                Node {
+                    kind: NodeKind::TextRun {
+                        x: lx,
+                        y: ly,
+                        color: label_color,
+                        data: run.clone(),
+                    },
+                    children: Vec::new(),
+                },
+            );
+        }
+    }
+    group
 }
 
 fn reorder_children_for_z_index(

@@ -23,7 +23,7 @@ pub enum SelectionChromeStyle {
 /// A button shown on the floating selection toolbar. The available set depends
 /// on the selection: a read-only SelectionArea offers read actions (Copy /
 /// Select All); an editable text-input adds the mutating ones (Cut / Paste).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolbarAction {
     Cut,
     Copy,
@@ -96,6 +96,26 @@ impl SelectionToolbar {
 pub(crate) const TOOLBAR_HEIGHT: f32 = 40.0;
 pub(crate) const TOOLBAR_LABEL_FONT_SIZE: f32 = 14.0;
 pub(crate) const TOOLBAR_CORNER_RADIUS: f32 = 4.0;
+
+impl SelectionChromeStyle {
+    /// The toolbar panel background color (premultiplied-free RGBA, 0..1).
+    pub(crate) fn toolbar_background(self) -> [f32; 4] {
+        match self {
+            // Material: a near-opaque dark surface.
+            SelectionChromeStyle::Material => [0.20, 0.20, 0.22, 0.98],
+            // Cupertino placeholder — refined with the iOS adapter (additive).
+            SelectionChromeStyle::Cupertino => [0.18, 0.18, 0.18, 0.96],
+        }
+    }
+
+    /// The toolbar label text color (RGBA, 0..1).
+    pub(crate) fn toolbar_label(self) -> [f32; 4] {
+        match self {
+            SelectionChromeStyle::Material => [0.98, 0.98, 0.98, 1.0],
+            SelectionChromeStyle::Cupertino => [1.0, 1.0, 1.0, 1.0],
+        }
+    }
+}
 /// Approximate horizontal advance per label character. Core draws the labels
 /// itself, so this estimate is self-consistent between layout and rendering.
 const LABEL_CHAR_ADVANCE: f32 = 8.0;

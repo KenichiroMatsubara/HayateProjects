@@ -6,8 +6,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use hayate_core::{
-    Clipboard, Dimension, ElementId, ElementKind, ElementTree, StyleProp, ToolbarAction,
+    Clipboard, Dimension, DrawOp, ElementId, ElementKind, ElementTree, RecordingPainter, StyleProp,
+    ToolbarAction, render_scene_graph,
 };
+
+fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(tree.scene_graph(), &mut painter);
+    painter.ops().to_vec()
+}
 
 /// A `Clipboard` double that records writes and serves a preset read value, so a
 /// test can assert what the toolbar pushed/pulled across the adapter boundary.
@@ -103,6 +110,59 @@ fn read_only_selection_offers_copy_and_select_all() {
         toolbar.actions(),
         vec![ToolbarAction::Copy, ToolbarAction::SelectAll],
         "a read-only SelectionArea offers Copy then Select All",
+    );
+}
+
+#[test]
+fn toolbar_is_drawn_by_core_during_selection() {
+    let (mut tree, _view, _text) = selectable_paragraph();
+    select_a_range(&mut tree);
+    tree.render(0.0);
+
+    let toolbar = tree.selection_toolbar().expect("a toolbar");
+    let ops = draw_ops(&tree);
+
+    // The toolbar's background panel is drawn as a filled rect at its bounds.
+    let panel = ops.iter().find(|op| {
+        matches!(
+            op,
+            DrawOp::FillRect { x, y, width, height, corner_radius, .. }
+                if (*x - toolbar.bounds.x).abs() < 0.5
+                    && (*y - toolbar.bounds.y).abs() < 0.5
+                    && (*width - toolbar.bounds.width).abs() < 0.5
+                    && (*height - toolbar.bounds.height).abs() < 0.5
+                    && *corner_radius > 0.0
+        )
+    });
+    assert!(panel.is_some(), "the toolbar panel is drawn at its bounds");
+}
+
+#[test]
+fn toolbar_disappears_from_the_scene_when_the_selection_clears() {
+    let (mut tree, _view, _text) = selectable_paragraph();
+    select_a_range(&mut tree);
+    tree.render(0.0);
+    let bounds = tree.selection_toolbar().expect("a toolbar").bounds;
+    let panel_count = |ops: &[DrawOp]| {
+        ops.iter()
+            .filter(|op| {
+                matches!(op, DrawOp::FillRect { x, y, .. }
+                    if (*x - bounds.x).abs() < 0.5 && (*y - bounds.y).abs() < 0.5)
+            })
+            .count()
+    };
+    assert_eq!(panel_count(&draw_ops(&tree)), 1, "toolbar present while selecting");
+
+    // Click in empty space to clear the selection, then re-render.
+    tree.on_pointer_down(2.0, 150.0);
+    tree.on_pointer_up(2.0, 150.0);
+    tree.render(0.0);
+
+    assert!(tree.selection_toolbar().is_none(), "selection cleared");
+    assert_eq!(
+        panel_count(&draw_ops(&tree)),
+        0,
+        "the overlay is removed from the scene once the selection clears",
     );
 }
 

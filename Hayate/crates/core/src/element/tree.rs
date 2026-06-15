@@ -219,6 +219,10 @@ pub struct ElementTree {
     /// Theme for the core-drawn selection chrome (highlight / toolbar). A single
     /// switchable enum so adding Cupertino is additive (ADR-0097, #272).
     pub(crate) selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle,
+    /// Shaped layouts of the static toolbar button labels, shaped once with the
+    /// layout pass's font context and reused across frames (ADR-0097, #272).
+    pub(crate) toolbar_label_cache:
+        HashMap<crate::element::selection_chrome::ToolbarAction, text::TextLayout>,
 }
 
 impl ElementTree {
@@ -245,7 +249,45 @@ impl ElementTree {
             runtime: DocumentRuntime::new(),
             clipboard: None,
             selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),
+            toolbar_label_cache: HashMap::new(),
         }
+    }
+
+    /// Shape any not-yet-cached toolbar button labels using the layout pass's
+    /// font context (ADR-0097, #272). Labels are static, so each is shaped once
+    /// and reused; called from `render` before the scene is lowered.
+    fn ensure_toolbar_labels(&mut self) {
+        use crate::element::selection_chrome::{ToolbarAction, TOOLBAR_LABEL_FONT_SIZE};
+        for action in [
+            ToolbarAction::Cut,
+            ToolbarAction::Copy,
+            ToolbarAction::Paste,
+            ToolbarAction::SelectAll,
+        ] {
+            if self.toolbar_label_cache.contains_key(&action) {
+                continue;
+            }
+            let layout = text::build_text_layout(
+                &mut self.layout.font_cx,
+                &mut self.layout.layout_cx,
+                action.label(),
+                TOOLBAR_LABEL_FONT_SIZE,
+                None,
+                None,
+                None,
+                None,
+            );
+            self.toolbar_label_cache.insert(action, layout);
+        }
+    }
+
+    /// The shaped layout for a toolbar button's label, if cached (ADR-0097,
+    /// #272). Scene lowering reads it to place the label's glyph runs.
+    pub(crate) fn toolbar_label_layout(
+        &self,
+        action: crate::element::selection_chrome::ToolbarAction,
+    ) -> Option<&text::TextLayout> {
+        self.toolbar_label_cache.get(&action)
     }
 
     /// Switch the selection chrome theme (ADR-0097, #272). Material is the
@@ -1013,6 +1055,8 @@ impl ElementTree {
                 &mut dirty.z_index_reorder_parents,
             );
         }
+        // Shape toolbar labels before lowering reads them (ADR-0097, #272).
+        self.ensure_toolbar_labels();
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
