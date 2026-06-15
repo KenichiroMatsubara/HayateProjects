@@ -1,6 +1,6 @@
 //! AccessKit tree generation from ElementTree (ADR-0041).
 
-use accesskit::{Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
+use accesskit::{Action, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate};
 
 use super::taffy_projection::TraversalStep;
 use super::tree::Element;
@@ -8,6 +8,32 @@ use super::{ElementId, ElementKind, ElementTree};
 
 fn node_id(id: ElementId) -> NodeId {
     NodeId(id.to_u64())
+}
+
+/// Core-owned, supported subset of inbound AccessKit actions (ADR-0098).
+///
+/// AccessKit's `Action` is a wide protocol vocabulary; Core maps it down to the
+/// operations it actually drives and folds everything else to `Ignored`, so the
+/// inbound surface is total and the runtime never sees a native-only concept.
+/// The mapping lives entirely in Core (Rust API) and is never put on the proto
+/// wire (ADR-0098 Decision 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccessibilityAction {
+    /// Move focus to `target`, driving the existing focus state machine.
+    Focus { target: ElementId },
+    /// Unsupported action — no-op, observable state unchanged.
+    Ignored,
+}
+
+/// Pure mapping from an AccessKit `ActionRequest` to the Core action subset
+/// (ADR-0098 Decision 3). Inbound `NodeId` is resolved element-only for v1 as
+/// the inverse of outbound `NodeId(ElementId.to_u64())`, i.e. `ElementId::from_u64`.
+pub fn map_action_request(req: &ActionRequest) -> AccessibilityAction {
+    let target = ElementId::from_u64(req.target_node.0);
+    match req.action {
+        Action::Focus => AccessibilityAction::Focus { target },
+        _ => AccessibilityAction::Ignored,
+    }
 }
 
 fn aria_role(role: &str) -> Option<Role> {
@@ -126,6 +152,18 @@ fn walk_accessibility(
 }
 
 impl ElementTree {
+    /// Inbound AccessKit action surface (ADR-0098): the mirror of outbound
+    /// `accessibility_update`. Platform Adapters bridge an AT request here and
+    /// Core maps it to an existing runtime intent — never a synthetic pointer or
+    /// key replay (Flutter-style semantic action). Unsupported actions fold to
+    /// `Ignored` and are no-ops.
+    pub fn on_accessibility_action(&mut self, req: ActionRequest) {
+        match map_action_request(&req) {
+            AccessibilityAction::Focus { target } => self.transition_focus(target),
+            AccessibilityAction::Ignored => {}
+        }
+    }
+
     /// Build an AccessKit `TreeUpdate` from the current element tree and layout cache.
     ///
     /// Returns `None` when layout has not run or the tree has no root.
@@ -155,7 +193,94 @@ impl ElementTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::element::{DisplayValue, StyleProp};
+    use crate::element::{DisplayValue, DocumentEventKind, StyleProp};
+    use accesskit::{Action, ActionRequest};
+
+    fn action_request(action: Action, node: NodeId) -> ActionRequest {
+        ActionRequest {
+            action,
+            target_tree: TreeId::ROOT,
+            target_node: node,
+            data: None,
+        }
+    }
+
+    #[test]
+    fn maps_focus_action_to_core_focus_resolving_element_id() {
+        let target = ElementId::from_u64(7);
+        let mapped = map_action_request(&action_request(Action::Focus, node_id(target)));
+        assert_eq!(mapped, AccessibilityAction::Focus { target });
+    }
+
+    #[test]
+    fn folds_unsupported_actions_to_ignored() {
+        let node = node_id(ElementId::from_u64(3));
+        for action in [
+            Action::Increment,
+            Action::ShowContextMenu,
+            Action::CustomAction,
+        ] {
+            assert_eq!(
+                map_action_request(&action_request(action, node)),
+                AccessibilityAction::Ignored,
+                "{action:?} should fold to Ignored"
+            );
+        }
+    }
+
+    #[test]
+    fn on_accessibility_action_focus_drives_focus_state_machine() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        let a = tree.element_create(2, ElementKind::TextInput);
+        let b = tree.element_create(3, ElementKind::TextInput);
+        tree.element_append_child(root, a);
+        tree.element_append_child(root, b);
+
+        let la_focus = tree.register_listener(a, DocumentEventKind::Focus);
+        let la_blur = tree.register_listener(a, DocumentEventKind::Blur);
+        let lb_focus = tree.register_listener(b, DocumentEventKind::Focus);
+
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(a)));
+        assert_eq!(tree.focused_element(), Some(a));
+        let first: Vec<_> = tree
+            .poll_deliveries()
+            .into_iter()
+            .map(|d| d.listener_id)
+            .collect();
+        assert_eq!(first, vec![la_focus]);
+
+        // Focusing b must blur the previously focused a, then focus b.
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(b)));
+        assert_eq!(tree.focused_element(), Some(b));
+        let second: Vec<_> = tree
+            .poll_deliveries()
+            .into_iter()
+            .map(|d| d.listener_id)
+            .collect();
+        assert_eq!(second, vec![la_blur, lb_focus]);
+    }
+
+    #[test]
+    fn on_accessibility_action_ignores_unsupported_action() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        let a = tree.element_create(2, ElementKind::TextInput);
+        let b = tree.element_create(3, ElementKind::Button);
+        tree.element_append_child(root, a);
+        tree.element_append_child(root, b);
+        tree.register_listener(b, DocumentEventKind::Focus);
+
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(a)));
+        let _ = tree.poll_deliveries();
+
+        // An unsupported action targeting b must not move focus or emit anything.
+        tree.on_accessibility_action(action_request(Action::Increment, node_id(b)));
+        assert_eq!(tree.focused_element(), Some(a));
+        assert!(tree.poll_deliveries().is_empty());
+    }
 
     #[test]
     fn accessibility_update_includes_bounds_and_roles() {

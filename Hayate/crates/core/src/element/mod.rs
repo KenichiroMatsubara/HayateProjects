@@ -24,6 +24,7 @@ mod transition;
 pub mod tree;
 mod visual_invalidation;
 
+pub use accessibility::{map_action_request, AccessibilityAction};
 pub use clipboard::Clipboard;
 pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
 pub use edit_state::EditState;
