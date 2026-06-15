@@ -826,7 +826,7 @@ impl ElementTree {
             return self.select_all_in(sel.focus.element);
         }
         if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("c") {
-            self.copy_selection_to_clipboard();
+            self.copy_active_selection();
             return true;
         }
         if modifiers & MOD_SHIFT == 0 {
@@ -875,18 +875,6 @@ impl ElementTree {
         self.engine
             .mark_visual_dirty(focused, VisualInvalidationReach::SelfOnly);
         true
-    }
-
-    /// Copy the selected text to the Platform Adapter's clipboard (Cmd/Ctrl+C,
-    /// ADR-0097). A no-op when nothing non-empty is selected or no clipboard is
-    /// installed; core never touches the concrete clipboard, only the trait.
-    fn copy_selection_to_clipboard(&mut self) {
-        let Some(text) = self.selected_text() else {
-            return;
-        };
-        if let Some(clipboard) = self.clipboard.as_ref() {
-            clipboard.write_text(&text);
-        }
     }
 
     /// Select the entire shaped text of `ifc` (Ctrl/Cmd+A). Returns whether a
