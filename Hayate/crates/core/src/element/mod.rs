@@ -23,6 +23,7 @@ pub mod taffy_projection;
 pub mod text;
 mod transition;
 pub mod tree;
+mod viewport_resize;
 mod visual_invalidation;
 
 pub use accessibility::{map_action_request, AccessibilityAction};

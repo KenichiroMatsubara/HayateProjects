@@ -90,7 +90,7 @@ pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Vis
 }
 
 /// Apply matching viewport variants onto a copy of `base` (ADR-0081).
-fn own_with_viewport_variants(
+pub(crate) fn own_with_viewport_variants(
     base: &Visual,
     variants: &[(ViewportCondition, StyleProp)],
     viewport: (f32, f32),
@@ -105,45 +105,6 @@ fn own_with_viewport_variants(
     }
     let _ = text_dirty;
     own
-}
-
-/// Whether viewport-conditioned own-style would change between two viewport sizes.
-pub fn viewport_variant_resolution_changed(
-    base: &Visual,
-    variants: &[(ViewportCondition, StyleProp)],
-    old_viewport: (f32, f32),
-    new_viewport: (f32, f32),
-) -> bool {
-    if variants.is_empty() || old_viewport == new_viewport {
-        return false;
-    }
-    let old = own_with_viewport_variants(base, variants, old_viewport);
-    let new = own_with_viewport_variants(base, variants, new_viewport);
-    own_visual_differs(&old, &new)
-}
-
-fn own_visual_differs(a: &Visual, b: &Visual) -> bool {
-    a.background_color != b.background_color
-        || (a.opacity - b.opacity).abs() > f32::EPSILON
-        || (a.border_radius - b.border_radius).abs() > f32::EPSILON
-        || (a.border_width - b.border_width).abs() > f32::EPSILON
-        || a.border_color != b.border_color
-        || a.border_style != b.border_style
-        || a.box_shadow != b.box_shadow
-        || a.overflow != b.overflow
-        || a.max_lines != b.max_lines
-        || a.text_overflow != b.text_overflow
-        || a.text_color != b.text_color
-        || a.font_size != b.font_size
-        || a.font_weight != b.font_weight
-        || a.font_style != b.font_style
-        || a.text_decoration != b.text_decoration
-        || a.z_index != b.z_index
-        || a.font_family != b.font_family
-        || a.default_color != b.default_color
-        || a.default_font_size != b.default_font_size
-        || a.default_font_weight != b.default_font_weight
-        || a.default_font_family != b.default_font_family
 }
 
 /// Shared effective visual resolver (ADR-0067, ADR-0081): inheritance (ch1+ch2)

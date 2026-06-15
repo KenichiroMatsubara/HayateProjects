@@ -104,7 +104,6 @@ pub(crate) fn collect_lowering_dirty(
     structure_dirty: &HashSet<ElementId>,
     shape_dirty: &HashSet<ElementId>,
     shape_lowering_reach: &HashMap<ElementId, VisualInvalidationReach>,
-    viewport_dirty: &HashSet<ElementId>,
     visual_dirty: &HashMap<ElementId, VisualInvalidationReach>,
     fonts_dirty: bool,
 ) -> LoweringDirtySnapshot {
@@ -122,9 +121,6 @@ pub(crate) fn collect_lowering_dirty(
             &mut snapshot.elements,
             &mut snapshot.z_index_reorder_parents,
         );
-    }
-    for &id in viewport_dirty {
-        visual_invalidation::expand_subtree(tree, id, &mut snapshot.elements);
     }
     for &id in structure_dirty {
         visual_invalidation::expand_subtree(tree, id, &mut snapshot.elements);
