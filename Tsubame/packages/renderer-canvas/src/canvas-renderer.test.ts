@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EVENT_KIND, OP } from '@tsubame/protocol-generated/protocol';
+import { EVENT_KIND, OP, TAG } from '@tsubame/protocol-generated/protocol';
 import { coerceElementProperty } from '@tsubame/renderer-protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
@@ -363,6 +363,57 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
         expect(batch.texts[batch.ops[at + 2]!]).toBe(expected.text);
       }
     }
+  });
+
+  it('does not encode a text-local prop on a non-carrier kind (Tsubame ADR-0008, #305)', () => {
+    // Style Channel gate: channel-1 text-local props (here `color`) only reach
+    // Text-Local Carrier kinds. A `view` is not a carrier, so the Canvas encode
+    // must drop `color` *before* the wire — not lean on Hayate's lowering to
+    // reject it. The non-text-local `width` still goes through.
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const view = renderer.createElement('view');
+
+    renderer.setStyle(view, { color: '#ff0000', width: '100px' });
+    sched.tick();
+
+    const batch = hayate.mutations[0]!;
+    expect(batch.styles).not.toContain(TAG.COLOR);
+    expect(batch.styles).toEqual([TAG.WIDTH, 100, 0]);
+  });
+
+  it('encodes text-local props on a carrier kind (Tsubame ADR-0008, #305)', () => {
+    // A `text` element carries channel-1 text-local props, so the gate keeps
+    // `color` and `fontSize` alongside the non-text-local `width`.
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const text = renderer.createElement('text');
+
+    renderer.setStyle(text, { color: '#ff0000', fontSize: 20, width: '100px' });
+    sched.tick();
+
+    const batch = hayate.mutations[0]!;
+    expect(batch.styles).toContain(TAG.COLOR);
+    expect(batch.styles).toContain(TAG.FONT_SIZE);
+    expect(batch.styles).toContain(TAG.WIDTH);
+  });
+
+  it('gates text-local props out of a non-carrier pseudo-style before encode (#305)', () => {
+    // The gate is the same for every style-bearing op: a `view` :hover patch of
+    // pure text-local props collapses to empty, so no SET_PSEUDO_STYLE reaches
+    // the wire.
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const view = renderer.createElement('view');
+
+    renderer.setPseudoStyle(view, ':hover', { color: '#ff0000', fontSize: 18 });
+    sched.tick();
+
+    const batch = hayate.mutations[0]!;
+    expect(batch.ops).not.toContain(OP.SET_PSEUDO_STYLE);
   });
 
   it('unsubscribe stops delivery dispatch', () => {

@@ -45,3 +45,4 @@ export {
 export type { ViewportCondition } from './viewport-condition.js';
 
 export { isTextLocal, carriesTextLocal } from './generated/style-channel.js';
+export { shouldApplyTextLocalPatch, gateTextLocalPatch } from './text-local-gate.js';
