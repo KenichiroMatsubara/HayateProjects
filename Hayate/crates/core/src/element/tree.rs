@@ -216,6 +216,9 @@ pub struct ElementTree {
     /// Core writes selected text through this trait and never touches the
     /// concrete clipboard API.
     pub(crate) clipboard: Option<Box<dyn crate::element::clipboard::Clipboard>>,
+    /// Theme for the core-drawn selection chrome (highlight / toolbar). A single
+    /// switchable enum so adding Cupertino is additive (ADR-0097, #272).
+    pub(crate) selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle,
 }
 
 impl ElementTree {
@@ -241,7 +244,18 @@ impl ElementTree {
             last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
             clipboard: None,
+            selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),
         }
+    }
+
+    /// Switch the selection chrome theme (ADR-0097, #272). Material is the
+    /// default; Cupertino arrives with the iOS Platform Adapter. Additive — the
+    /// toolbar model and drawing are shared, only style metrics differ.
+    pub fn set_selection_chrome_style(
+        &mut self,
+        style: crate::element::selection_chrome::SelectionChromeStyle,
+    ) {
+        self.selection_chrome_style = style;
     }
 
     /// Install the Platform Adapter's clipboard (ADR-0097, #268). Copy gestures

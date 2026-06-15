@@ -1213,7 +1213,7 @@ fn emit_edit_selection_highlight(
 /// Per-line highlight rectangles (in layout-local coordinates) covering the byte
 /// range `start..end` of a Parley layout. Each line contributes the span from
 /// the caret at its clamped range start to the caret at its clamped range end.
-fn selection_highlight_rects(
+pub(crate) fn selection_highlight_rects(
     layout: &parley::Layout<crate::element::text::TextBrush>,
     start: usize,
     end: usize,
