@@ -34,6 +34,12 @@ impl ElementTree {
         if self.try_selection_toolbar_tap(x, y) {
             return;
         }
+        // A press on a selection drag handle grabs that endpoint and rides the
+        // same active-session capture as a drag-select (ADR-0097, #273), so it
+        // adjusts the range without dropping a fresh caret.
+        if self.begin_handle_drag(x, y) {
+            return;
+        }
         let hit = self.hit_test(x, y);
         self.pointer_down_on_target(hit, x, y);
         // A press inside a text-input drives its edit selection (ADR-0097, #271)
@@ -45,6 +51,26 @@ impl ElementTree {
         // a press inside a Selection Region collapses the selection to a caret,
         // double/triple presses expand to word/paragraph, Shift extends focus.
         self.begin_selection_at(x, y, modifiers);
+    }
+
+    /// Long-press at canvas `(x, y)` — the mobile gesture that begins a read-only
+    /// word selection and brings up the drag handles + floating toolbar (ADR-0097,
+    /// #273). The Platform Adapter reports the raw long-press (its OS gesture
+    /// recognizer owns the timing, the same way double-tap timing originates from
+    /// the OS); core owns *what* it does. A press clear of any `selectable`
+    /// subtree selects nothing. Any text-input edit selection is cleared first
+    /// (single active across the document).
+    pub fn on_long_press(&mut self, x: f32, y: f32) {
+        let Some(point) = self.selection_point_at(x, y) else {
+            return;
+        };
+        self.collapse_edit_selections();
+        self.select_bounds_at(point, selection::word_bounds);
+        // A fresh gesture: a following tap should drop a caret, not resume the
+        // multi-click cycle from this long-press.
+        self.selection_drag = false;
+        self.last_click_pos = None;
+        self.click_count = 0;
     }
 
     /// Pointer down on an explicit target (HTML Mode).
@@ -434,6 +460,66 @@ impl ElementTree {
             bounds,
             self.viewport,
         )
+    }
+
+    /// The pair of Material drag handles flanking the active read-only selection,
+    /// or `None` when no non-collapsed SelectionArea selection is active
+    /// (ADR-0097, #273). The handles are core-drawn chrome: a teardrop knob hangs
+    /// just below each end of the range, themed by the current chrome style. They
+    /// are the mobile gesture surface — dragging one adjusts that endpoint.
+    /// Text-input edit-selection handles are a growth point (the toolbar already
+    /// covers both paths; handles ride the read-only SelectionArea for now).
+    pub fn selection_handles(
+        &self,
+    ) -> Option<crate::element::selection_chrome::SelectionHandles> {
+        let sel = self.selection?;
+        if sel.is_caret() {
+            return None;
+        }
+        let (start, end) = self.selection_ordered()?;
+        let start_caret = self.selection_caret_canvas(start)?;
+        let end_caret = self.selection_caret_canvas(end)?;
+        Some(crate::element::selection_chrome::layout_handles(
+            self.selection_chrome_style,
+            start_caret,
+            end_caret,
+        ))
+    }
+
+    /// Canvas-space caret edge `(x, baseline_bottom_y)` for a read-only selection
+    /// endpoint, from its IFC's Parley layout offset by the block's cached
+    /// origin. `None` when the endpoint's block has no shaped geometry yet.
+    fn selection_caret_canvas(&self, point: SelectionPoint) -> Option<(f32, f32)> {
+        use parley::{Affinity, Cursor};
+        let tl = self.elements.get(&point.element)?.text_layout.as_ref()?;
+        let &(ex, ey, _, _) = self.layout.layout_cache.get(&point.element)?;
+        let g = Cursor::from_byte_index(&tl.layout, point.offset, Affinity::Downstream)
+            .geometry(&tl.layout, 0.0);
+        Some((ex + g.x0 as f32, ey + g.y1 as f32))
+    }
+
+    /// Begin a handle drag when the press `(x, y)` grabs one of the selection's
+    /// drag handles (ADR-0097, #273). The grabbed end becomes the selection's
+    /// `focus` and the opposite end the fixed `anchor`, so the existing
+    /// drag-select move path (`selection_drag` → `update_selection_focus`)
+    /// adjusts exactly that endpoint and clamps it to the Selection Region.
+    /// Returns whether a handle was grabbed (and the gesture consumed).
+    fn begin_handle_drag(&mut self, x: f32, y: f32) -> bool {
+        use crate::element::selection_chrome::SelectionHandleEnd;
+        let Some(grabbed) = self.selection_handles().and_then(|h| h.handle_at(x, y)) else {
+            return false;
+        };
+        let Some((start, end)) = self.selection_ordered() else {
+            return false;
+        };
+        // Drag the grabbed end; pin the opposite one as the anchor.
+        let (anchor, focus) = match grabbed {
+            SelectionHandleEnd::Start => (end, start),
+            SelectionHandleEnd::End => (start, end),
+        };
+        self.set_selection(Some(Selection { anchor, focus }));
+        self.selection_drag = true;
+        true
     }
 
     /// Run a floating-toolbar button under `(x, y)`, if the press lands on one.

@@ -30,7 +30,11 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
             &interaction,
         );
     }
-    // Selection toolbar floats on top as a document-level overlay (ADR-0097).
+    // Selection chrome floats on top as document-level overlays (ADR-0097): the
+    // drag handles first, then the toolbar above them.
+    if let Some(handles) = tree.selection_handles() {
+        emit_selection_handles(&mut sg, &handles);
+    }
     if let Some(toolbar) = tree.selection_toolbar() {
         emit_selection_toolbar(&mut sg, tree, &toolbar);
     }
@@ -73,14 +77,15 @@ pub(crate) fn update(
         lowering.built = true;
         // The fresh graph dropped any prior overlay; re-emit from scratch.
         lowering.toolbar_root = None;
-        refresh_selection_toolbar(tree, scene_cache, lowering);
+        lowering.handles_root = None;
+        refresh_selection_chrome(tree, scene_cache, lowering);
         return;
     }
 
     if dirty.elements.is_empty() {
-        // Even with no element repaints, the selection (hence the toolbar) may
-        // have moved or cleared, so the overlay is always refreshed.
-        refresh_selection_toolbar(tree, scene_cache, lowering);
+        // Even with no element repaints, the selection (hence its chrome) may
+        // have moved or cleared, so the overlays are always refreshed.
+        refresh_selection_chrome(tree, scene_cache, lowering);
         return;
     }
 
@@ -121,7 +126,70 @@ pub(crate) fn update(
             now_ms,
         );
     }
-    refresh_selection_toolbar(tree, scene_cache, lowering);
+    refresh_selection_chrome(tree, scene_cache, lowering);
+}
+
+/// Re-emit the core-drawn selection overlays (ADR-0097): the drag handles first,
+/// then the floating toolbar on top, so the toolbar is inserted last and paints
+/// above the handles.
+fn refresh_selection_chrome(
+    tree: &ElementTree,
+    sg: &mut SceneGraph,
+    lowering: &mut SceneLowering,
+) {
+    refresh_selection_handles(tree, sg, lowering);
+    refresh_selection_toolbar(tree, sg, lowering);
+}
+
+/// Re-emit the selection drag-handles overlay (ADR-0097, #273). Removes the
+/// previous overlay subtree, then draws fresh knobs when a non-collapsed
+/// selection is active. Idempotent: a no-op (beyond removal) when no handles.
+fn refresh_selection_handles(
+    tree: &ElementTree,
+    sg: &mut SceneGraph,
+    lowering: &mut SceneLowering,
+) {
+    if let Some(prev) = lowering.handles_root.take() {
+        sg.remove_subtree(prev);
+    }
+    let Some(handles) = tree.selection_handles() else {
+        return;
+    };
+    lowering.handles_root = Some(emit_selection_handles(sg, &handles));
+}
+
+/// Lower the selection drag handles into a top-level overlay subtree: a `Group`
+/// holding one filled circular knob per end (a square rect with a corner radius
+/// of half its side), colored by the chrome style. Returns the group id.
+fn emit_selection_handles(
+    sg: &mut SceneGraph,
+    handles: &crate::element::selection_chrome::SelectionHandles,
+) -> NodeId {
+    let color = handles.style.handle_color();
+    let group = sg.insert(Node {
+        kind: NodeKind::Group {
+            transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        },
+        children: Vec::new(),
+    });
+    for handle in [&handles.start, &handles.end] {
+        let d = handle.radius * 2.0;
+        sg.insert_child(
+            group,
+            Node {
+                kind: NodeKind::Rect {
+                    x: handle.knob_x - handle.radius,
+                    y: handle.knob_y - handle.radius,
+                    width: d,
+                    height: d,
+                    color,
+                    corner_radius: handle.radius,
+                },
+                children: Vec::new(),
+            },
+        );
+    }
+    group
 }
 
 /// Re-emit the floating selection toolbar overlay (ADR-0097, #272). Removes the

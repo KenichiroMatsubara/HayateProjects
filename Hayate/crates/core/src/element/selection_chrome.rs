@@ -91,6 +91,97 @@ impl SelectionToolbar {
     }
 }
 
+/// Which end of the range a drag handle controls. The `Start` handle adjusts the
+/// document-earlier endpoint, `End` the later one (ADR-0097, #273).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SelectionHandleEnd {
+    Start,
+    End,
+}
+
+/// One Material teardrop drag handle: a circular knob hanging just below the
+/// selection's caret edge at one end, which the user drags to adjust that
+/// endpoint (ADR-0097, #273). Style-agnostic geometry; the theme only colors it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SelectionHandle {
+    pub end: SelectionHandleEnd,
+    /// Knob center in canvas coords — the circular grab target.
+    pub knob_x: f32,
+    pub knob_y: f32,
+    /// Visible knob radius.
+    pub radius: f32,
+}
+
+/// The pair of Material drag handles flanking the active selection (ADR-0097,
+/// #273): one at each end of the range. Built by [`layout_handles`] and consumed
+/// by both hit-testing (handle drag) and scene emission (drawing).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SelectionHandles {
+    pub style: SelectionChromeStyle,
+    pub start: SelectionHandle,
+    pub end: SelectionHandle,
+}
+
+impl SelectionHandles {
+    /// The handle end whose knob `(x, y)` grabs, or `None` for a point clear of
+    /// both. When both knobs are in reach (a very short selection) the nearer
+    /// one wins, so the user can still target either end.
+    pub fn handle_at(&self, x: f32, y: f32) -> Option<SelectionHandleEnd> {
+        let d2 = |h: &SelectionHandle| {
+            let dx = x - h.knob_x;
+            let dy = y - h.knob_y;
+            dx * dx + dy * dy
+        };
+        let reach = HANDLE_HIT_RADIUS * HANDLE_HIT_RADIUS;
+        let candidates = [(d2(&self.start), self.start.end), (d2(&self.end), self.end.end)];
+        candidates
+            .into_iter()
+            .filter(|&(dist, _)| dist <= reach)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, end)| end)
+    }
+}
+
+/// Visible radius of a Material selection handle's knob.
+pub(crate) const HANDLE_RADIUS: f32 = 8.0;
+/// Hit radius for grabbing a handle — larger than the knob so a finger can land
+/// it (a Material handle's touch target is far bigger than its visible dot).
+pub(crate) const HANDLE_HIT_RADIUS: f32 = 22.0;
+
+/// Lay out the two Material drag handles from the caret edges at each end of the
+/// selection (`(x, baseline_bottom_y)` in canvas coords). Each knob hangs one
+/// radius below the text edge so the teardrop kisses the baseline (ADR-0097,
+/// #273).
+pub(crate) fn layout_handles(
+    style: SelectionChromeStyle,
+    start_caret: (f32, f32),
+    end_caret: (f32, f32),
+) -> SelectionHandles {
+    let handle = |end: SelectionHandleEnd, (cx, cy): (f32, f32)| SelectionHandle {
+        end,
+        knob_x: cx,
+        knob_y: cy + HANDLE_RADIUS,
+        radius: HANDLE_RADIUS,
+    };
+    SelectionHandles {
+        style,
+        start: handle(SelectionHandleEnd::Start, start_caret),
+        end: handle(SelectionHandleEnd::End, end_caret),
+    }
+}
+
+impl SelectionChromeStyle {
+    /// The fill color of a selection drag handle (RGBA, 0..1).
+    pub(crate) fn handle_color(self) -> [f32; 4] {
+        match self {
+            // Material: the primary selection blue, matching the highlight.
+            SelectionChromeStyle::Material => [0.20, 0.45, 0.95, 1.0],
+            // Cupertino placeholder — refined with the iOS adapter (additive).
+            SelectionChromeStyle::Cupertino => [0.0, 0.48, 1.0, 1.0],
+        }
+    }
+}
+
 /// Material toolbar metrics. A single core-drawn chrome whose values are
 /// theme-switchable (ADR-0097); Material is the initial theme.
 pub(crate) const TOOLBAR_HEIGHT: f32 = 40.0;
@@ -269,6 +360,34 @@ mod tests {
     #[test]
     fn empty_actions_produce_no_toolbar() {
         assert!(layout(SelectionChromeStyle::Material, &[], sel(0.0, 0.0, 0.0, 0.0), (400.0, 200.0)).is_none());
+    }
+
+    #[test]
+    fn handles_hang_below_both_selection_ends() {
+        // Caret edges at the two ends of a one-line range share a baseline; the
+        // teardrop knobs hang just below it, anchored at each end's x.
+        let h = layout_handles(SelectionChromeStyle::Material, (10.0, 20.0), (80.0, 20.0));
+        assert_eq!(h.start.end, SelectionHandleEnd::Start);
+        assert_eq!(h.end.end, SelectionHandleEnd::End);
+        assert_eq!(h.start.knob_x, 10.0);
+        assert_eq!(h.end.knob_x, 80.0);
+        assert!(h.start.knob_y > 20.0, "knob hangs below the text edge");
+        assert_eq!(h.start.knob_y, h.end.knob_y);
+    }
+
+    #[test]
+    fn handle_at_picks_the_end_under_the_point() {
+        let h = layout_handles(SelectionChromeStyle::Material, (10.0, 20.0), (80.0, 20.0));
+        assert_eq!(
+            h.handle_at(h.start.knob_x, h.start.knob_y),
+            Some(SelectionHandleEnd::Start),
+        );
+        assert_eq!(
+            h.handle_at(h.end.knob_x, h.end.knob_y),
+            Some(SelectionHandleEnd::End),
+        );
+        // A point far from both knobs grabs neither.
+        assert_eq!(h.handle_at(45.0, 400.0), None);
     }
 }
 

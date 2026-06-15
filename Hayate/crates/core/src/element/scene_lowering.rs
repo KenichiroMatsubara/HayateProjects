@@ -52,6 +52,10 @@ pub(crate) struct SceneLowering {
     /// to any element, so it is re-emitted as a top-level overlay each frame and
     /// removed by this id before the next emit.
     pub toolbar_root: Option<NodeId>,
+    /// Root node of the selection drag-handles overlay, if one is currently drawn
+    /// (ADR-0097, #273). Like the toolbar, document-level chrome re-emitted as a
+    /// top-level overlay each frame and removed by this id before the next emit.
+    pub handles_root: Option<NodeId>,
 }
 
 impl SceneLowering {
@@ -60,6 +64,7 @@ impl SceneLowering {
         self.built = false;
         self.walk_count = 0;
         self.toolbar_root = None;
+        self.handles_root = None;
     }
 
     /// Elements with an in-flight transition — kept visual-dirty by `render` so

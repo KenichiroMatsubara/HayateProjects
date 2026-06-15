@@ -209,4 +209,37 @@ mod tests {
             vec![ToolbarAction::Copy, ToolbarAction::SelectAll],
         );
     }
+
+    // A long-press on the paragraph starts a Material word selection, raising the
+    // drag handles and the toolbar — the mobile-flavored selection the on-device
+    // check makes visible (ADR-0097, #273).
+    #[test]
+    fn long_pressing_the_paragraph_selects_a_word_with_handles() {
+        let mut tree = build_demo_tree();
+        tree.set_viewport(400.0, 800.0);
+        tree.render(0.0);
+
+        // The paragraph sits at absolute (24, 24); long-press its first word.
+        tree.on_long_press(30.0, 32.0);
+
+        let selected = tree
+            .selected_text()
+            .expect("long-press selects a word on the paragraph");
+        assert!(
+            PARAGRAPH_TEXT.starts_with(&selected),
+            "the long-pressed word ({selected:?}) is the paragraph's first word",
+        );
+
+        let handles = tree
+            .selection_handles()
+            .expect("word selection raises drag handles");
+        assert!(
+            handles.start.knob_x < handles.end.knob_x,
+            "a left-to-right word puts the start handle left of the end handle",
+        );
+        assert!(
+            tree.selection_toolbar().is_some(),
+            "word selection raises the floating toolbar too",
+        );
+    }
 }

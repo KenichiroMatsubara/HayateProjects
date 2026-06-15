@@ -38,7 +38,8 @@ pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use selection::{Selection, SelectionPoint};
 pub use selection_chrome::{
-    SelectionChromeStyle, SelectionToolbar, ToolbarAction, ToolbarButton, ToolbarRect,
+    SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles, SelectionToolbar,
+    ToolbarAction, ToolbarButton, ToolbarRect,
 };
 pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
