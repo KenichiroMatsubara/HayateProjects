@@ -169,6 +169,20 @@ pub fn prev_grapheme(text: &str, offset: usize) -> usize {
         .unwrap_or(0)
 }
 
+/// Resolve a horizontal caret step for a Left/Right arrow key: one grapheme, or
+/// one word when `by_word` (Alt on macOS / Ctrl on Win/Linux). `None` for keys
+/// that are not arrows, so callers can fall through to other handling. Shared by
+/// the read-only SelectionArea and text-input edit selection (ADR-0097).
+pub fn arrow_step(text: &str, key: &str, offset: usize, by_word: bool) -> Option<usize> {
+    Some(match (key, by_word) {
+        ("ArrowRight", false) => next_grapheme(text, offset),
+        ("ArrowLeft", false) => prev_grapheme(text, offset),
+        ("ArrowRight", true) => next_word(text, offset),
+        ("ArrowLeft", true) => prev_word(text, offset),
+        _ => return None,
+    })
+}
+
 /// Byte offset at the end of the next word after `offset`: skip any non-word run,
 /// then consume the following word run. Word-granularity Shift+Arrow (#267).
 pub fn next_word(text: &str, offset: usize) -> usize {

@@ -677,6 +677,17 @@ fn emit_element(
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
+        // Selection highlight paints behind the text (ADR-0097, #271).
+        if let Some(cl) = el.content_layout.as_ref() {
+            emit_edit_selection_highlight(
+                &cl.layout,
+                el.edit.as_ref().and_then(|e| e.selection_range()),
+                content_x,
+                content_y,
+                sg,
+                effective_parent,
+            );
+        }
         let runs = if let Some(cl) = el.content_layout.as_ref() {
             Some(cl.runs.as_slice())
         } else {
@@ -1003,6 +1014,17 @@ fn walk_ephemeral(
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
+        // Selection highlight paints behind the text (ADR-0097, #271).
+        if let Some(cl) = el.content_layout.as_ref() {
+            emit_edit_selection_highlight(
+                &cl.layout,
+                el.edit.as_ref().and_then(|e| e.selection_range()),
+                content_x,
+                content_y,
+                sg,
+                effective_parent,
+            );
+        }
         let runs = if let Some(cl) = el.content_layout.as_ref() {
             Some(cl.runs.as_slice())
         } else {
@@ -1143,6 +1165,40 @@ fn emit_selection_highlight(
                 kind: NodeKind::Rect {
                     x: ox + rx,
                     y: oy + ry,
+                    width: rw,
+                    height: rh,
+                    color: SELECTION_HIGHLIGHT_COLOR,
+                    corner_radius: 0.0,
+                },
+                children: Vec::new(),
+            },
+        );
+    }
+}
+
+/// Lower a text-input's edit-selection highlight (ADR-0097, #271) from its
+/// `EditState` byte `range` over the `content_layout`, in the element's content
+/// space (offset by `content_x`, `content_y`). Painted behind the text. No-op
+/// when the range is collapsed/absent.
+fn emit_edit_selection_highlight(
+    layout: &parley::Layout<crate::element::text::TextBrush>,
+    range: Option<(usize, usize)>,
+    content_x: f32,
+    content_y: f32,
+    sg: &mut SceneGraph,
+    parent: Option<NodeId>,
+) {
+    let Some((start, end)) = range else {
+        return;
+    };
+    for (rx, ry, rw, rh) in selection_highlight_rects(layout, start, end) {
+        emit(
+            sg,
+            parent,
+            Node {
+                kind: NodeKind::Rect {
+                    x: content_x + rx,
+                    y: content_y + ry,
                     width: rw,
                     height: rh,
                     color: SELECTION_HIGHLIGHT_COLOR,

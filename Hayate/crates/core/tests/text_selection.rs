@@ -216,6 +216,56 @@ fn selected_text_returns_the_dragged_substring() {
     assert!(!copied.is_empty(), "a non-empty drag yields some text");
 }
 
+#[test]
+fn text_input_range_selection_lowers_a_highlight_behind_the_text() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(1, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_append_text_content(input, "hello world");
+    tree.element_focus(input);
+    tree.render(0.0);
+
+    // A caret alone draws no highlight band.
+    assert!(
+        highlight_bands(&tree).is_empty(),
+        "a collapsed caret shows no selection highlight",
+    );
+
+    // Drag across several glyphs, then render: a highlight band appears.
+    tree.on_pointer_down(2.0, 20.0);
+    tree.on_pointer_move(70.0, 20.0);
+    tree.render(0.0);
+
+    let bands = highlight_bands(&tree);
+    assert!(
+        !bands.is_empty(),
+        "selecting a range inside the text-input lowers a highlight",
+    );
+
+    let ops = draw_ops(&tree);
+    let first_highlight = ops
+        .iter()
+        .position(|op| matches!(op, DrawOp::FillRect { color, .. } if *color == HIGHLIGHT_COLOR))
+        .expect("a highlight rect");
+    let first_text = ops
+        .iter()
+        .position(|op| matches!(op, DrawOp::DrawTextRun { .. }))
+        .expect("the field's text run");
+    assert!(
+        first_highlight < first_text,
+        "the highlight must paint behind the text run",
+    );
+}
+
 /// `<view [selectable]><text "Hello "><text "world" (bigger)></view>`: one IFC
 /// made of two inline children with different styles. Returns (tree, ifc root).
 fn two_run_paragraph() -> (ElementTree, ElementId) {

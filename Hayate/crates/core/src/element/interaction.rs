@@ -30,6 +30,11 @@ impl ElementTree {
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
         let hit = self.hit_test(x, y);
         self.pointer_down_on_target(hit, x, y);
+        // A press inside a text-input drives its edit selection (ADR-0097, #271)
+        // and takes precedence over the read-only SelectionArea path below.
+        if self.begin_edit_selection(hit, x, y, modifiers) {
+            return;
+        }
         // Selection drag rides on the same active-session capture (ADR-0097):
         // a press inside a Selection Region collapses the selection to a caret,
         // double/triple presses expand to word/paragraph, Shift extends focus.
@@ -65,6 +70,7 @@ impl ElementTree {
         let fallback = self.hit_test(x, y);
         self.pointer_up_with_fallback(fallback);
         self.selection_drag = false;
+        self.edit_drag = None;
     }
 
     /// Pointer up with an explicit fallback target (HTML Mode).
@@ -93,6 +99,7 @@ impl ElementTree {
         self.apply_pointer_hover(None);
         self.last_pointer_pos = None;
         self.selection_drag = false;
+        self.edit_drag = None;
         if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
             self.mark_pseudo_activation_dirty(t, PseudoState::Active);
@@ -125,7 +132,9 @@ impl ElementTree {
         let resolved_cursor = self.resolve_cursor(hit);
         self.last_cursor = resolved_cursor;
         // Extend the in-flight selection's focus to follow the drag (ADR-0097).
-        if self.selection_drag {
+        if let Some(input) = self.edit_drag {
+            self.extend_edit_drag(input, x, y);
+        } else if self.selection_drag {
             if let Some(point) = self.selection_point_at(x, y) {
                 self.update_selection_focus(point);
             }
@@ -198,6 +207,11 @@ impl ElementTree {
         let Some(focused) = self.focused_element else {
             return;
         };
+        // Shift+Arrow inside a focused text-input extends its edit selection
+        // (ADR-0097, #271), keeping the anchor fixed. Consumed when it applies.
+        if self.handle_edit_selection_key(focused, key, modifiers) {
+            return;
+        }
         if let Some(edit) = self
             .elements
             .get_mut(&focused)
@@ -225,7 +239,8 @@ impl ElementTree {
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
         {
-            edit.append(text);
+            // Inserts at the caret, replacing any selected range (ADR-0097, #271).
+            edit.insert(text);
         }
         self.emit_interaction(Event::TextInput {
             target_id: target,
@@ -420,6 +435,10 @@ impl ElementTree {
             return;
         };
 
+        // A SelectionArea selection and any text-input edit selection are
+        // mutually exclusive (single active, ADR-0097, #271).
+        self.collapse_edit_selections();
+
         if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
             // Shift+click adjusts focus; stay in drag so the user can keep
             // dragging, but do not advance the multi-click cycle.
@@ -443,6 +462,100 @@ impl ElementTree {
                 self.select_bounds_at(point, selection::line_bounds);
             }
         }
+    }
+
+    /// Begin (or extend) a text-input's edit selection from a pointer-down
+    /// inside it (ADR-0097, #271). A plain press drops a caret and arms a drag;
+    /// Shift+click extends the focus from the existing anchor. Either way the
+    /// read-only SelectionArea selection is cleared (single active). Returns
+    /// whether the press landed inside an editable text-input.
+    fn begin_edit_selection(
+        &mut self,
+        hit: Option<ElementId>,
+        x: f32,
+        y: f32,
+        modifiers: u32,
+    ) -> bool {
+        let Some(input) = hit else { return false };
+        let is_text_input = self
+            .elements
+            .get(&input)
+            .is_some_and(|el| {
+                el.kind == crate::element::kind::ElementKind::TextInput && el.edit.is_some()
+            });
+        if !is_text_input {
+            return false;
+        }
+        let Some(offset) = self.edit_offset_at(input, x, y) else {
+            return false;
+        };
+        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+            if modifiers & MOD_SHIFT != 0 {
+                edit.move_focus(offset);
+            } else {
+                edit.set_selection(offset, offset);
+            }
+        }
+        self.edit_drag = Some(input);
+        // A text-input selection and a SelectionArea selection never coexist.
+        self.set_selection(None);
+        self.engine
+            .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
+        true
+    }
+
+    /// Collapse every text-input's edit selection to a caret. Called when a
+    /// read-only SelectionArea selection starts, so at most one selection is
+    /// active across the document (ADR-0097, #271). Only fields that actually
+    /// held a range are repainted.
+    fn collapse_edit_selections(&mut self) {
+        let collapsed: Vec<ElementId> = self
+            .elements
+            .iter_mut()
+            .filter_map(|(&id, el)| {
+                let edit = el.edit.as_mut()?;
+                if edit.is_caret() {
+                    return None;
+                }
+                edit.collapse();
+                Some(id)
+            })
+            .collect();
+        for id in collapsed {
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
+    }
+
+    /// Extend the in-flight text-input drag: move the edit selection's focus to
+    /// the byte offset under the pointer, keeping the anchor (ADR-0097, #271).
+    fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32) {
+        let Some(offset) = self.edit_offset_at(input, x, y) else {
+            return;
+        };
+        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+            if edit.cursor_byte_index == offset {
+                return;
+            }
+            edit.move_focus(offset);
+        }
+        self.engine
+            .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
+    }
+
+    /// Resolve a canvas point to a byte offset within a text-input's content,
+    /// using its Parley `content_layout` in the element's content box (inset by
+    /// border + padding, matching `element_character_bounds`). `None` when the
+    /// field has not been laid out yet.
+    fn edit_offset_at(&self, input: ElementId, x: f32, y: f32) -> Option<usize> {
+        let el = self.elements.get(&input)?;
+        let cl = el.content_layout.as_ref()?;
+        let &(ex, ey, _, _) = self.layout.layout_cache.get(&input)?;
+        let taffy_node = self.layout.projection.node_id(input)?;
+        let box_layout = self.layout.projection.taffy.layout(taffy_node).ok()?;
+        let content_x = ex + box_layout.border.left + box_layout.padding.left;
+        let content_y = ey + box_layout.border.top + box_layout.padding.top;
+        Some(byte_index_at_point(cl, x - content_x, y - content_y))
     }
 
     /// Increment the consecutive-press counter when the pointer-down lands near
@@ -514,18 +627,44 @@ impl ElementTree {
             return false;
         };
         let by_word = modifiers & (MOD_ALT | MOD_CTRL) != 0;
-        let offset = sel.focus.offset;
-        let next = match (key, by_word) {
-            ("ArrowRight", false) => selection::next_grapheme(&text, offset),
-            ("ArrowLeft", false) => selection::prev_grapheme(&text, offset),
-            ("ArrowRight", true) => selection::next_word(&text, offset),
-            ("ArrowLeft", true) => selection::prev_word(&text, offset),
-            _ => return false,
+        let Some(next) = selection::arrow_step(&text, key, sel.focus.offset, by_word) else {
+            return false;
         };
         self.set_selection(Some(Selection {
             anchor: sel.anchor,
             focus: SelectionPoint::new(sel.focus.element, next),
         }));
+        true
+    }
+
+    /// Shift+Arrow keyboard range selection inside the focused text-input
+    /// (ADR-0097, #271): move the edit selection's focus one character (or one
+    /// word with Alt/Ctrl) while keeping the anchor fixed, so repeated presses
+    /// grow or shrink the range. Returns whether the key was consumed. Starting a
+    /// text-input selection clears any read-only SelectionArea selection (the
+    /// single-active rule).
+    fn handle_edit_selection_key(&mut self, focused: ElementId, key: &str, modifiers: u32) -> bool {
+        if modifiers & MOD_SHIFT == 0 {
+            return false;
+        }
+        let by_word = modifiers & (MOD_ALT | MOD_CTRL) != 0;
+        let Some(el) = self.elements.get_mut(&focused) else {
+            return false;
+        };
+        if el.kind != crate::element::kind::ElementKind::TextInput {
+            return false;
+        }
+        let Some(edit) = el.edit.as_mut() else {
+            return false;
+        };
+        let text = edit.text_content.clone();
+        let Some(next) = selection::arrow_step(&text, key, edit.cursor_byte_index, by_word) else {
+            return false;
+        };
+        edit.move_focus(next);
+        self.set_selection(None);
+        self.engine
+            .mark_visual_dirty(focused, VisualInvalidationReach::SelfOnly);
         true
     }
 
