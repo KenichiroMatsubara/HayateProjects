@@ -1,7 +1,7 @@
 //! ADR-0067: shared effective visual resolver + query API.
 
 use hayate_core::{
-    BorderStyleValue, Color, Dimension, ElementKind, ElementTree, PseudoState, StyleProp,
+    BorderStyleValue, Color, Dimension, ElementKind, ElementTree, NodeKind, PseudoState, StyleProp,
     ViewportCondition,
 };
 
@@ -330,6 +330,59 @@ fn element_effective_visual_hover_pseudo_overrides_active_viewport_variant() {
         hovered.background_color,
         Some(Color::new(0.0, 1.0, 0.0, 1.0)),
         ":hover pseudo must override the active viewport variant"
+    );
+}
+
+// AC: query path (`element_effective_visual`) and scene path (`render`) share a
+// single effective-visual resolution that includes viewport-variant application
+// (ADR-0067, ADR-0081). Both must agree on a viewport-conditioned element.
+#[test]
+fn query_and_scene_paths_share_viewport_variant_resolution() {
+    let mut tree = ElementTree::new();
+    let id = tree.element_create(1, ElementKind::View);
+    tree.set_root(id);
+    tree.set_viewport(1024.0, 800.0);
+    tree.element_set_style(
+        id,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style_variant(
+        id,
+        ViewportCondition {
+            min_width: Some(768.0),
+            ..Default::default()
+        },
+        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+    );
+
+    let queried = tree.element_effective_visual(id).unwrap().background_color;
+    assert_eq!(
+        queried,
+        Some(Color::new(0.0, 0.0, 1.0, 1.0)),
+        "query path must resolve the active viewport variant"
+    );
+
+    tree.render(0.0);
+    let scene_color = tree
+        .scene_graph()
+        .iter()
+        .find_map(|(_, n)| match &n.kind {
+            NodeKind::Rect { width, color, .. } if (*width - 200.0).abs() < 0.5 => Some(*color),
+            _ => None,
+        })
+        .expect("root rect in scene");
+
+    let q = queried.unwrap();
+    assert!(
+        (scene_color[0] as f64 - q.r).abs() < 1e-3
+            && (scene_color[1] as f64 - q.g).abs() < 1e-3
+            && (scene_color[2] as f64 - q.b).abs() < 1e-3,
+        "scene path must resolve the same viewport variant as the query path \
+         (single shared seam): query={q:?} scene={scene_color:?}"
     );
 }
 

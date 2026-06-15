@@ -90,7 +90,7 @@ pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Vis
 }
 
 /// Apply matching viewport variants onto a copy of `base` (ADR-0081).
-pub fn own_with_viewport_variants(
+fn own_with_viewport_variants(
     base: &Visual,
     variants: &[(ViewportCondition, StyleProp)],
     viewport: (f32, f32),
@@ -146,16 +146,86 @@ fn own_visual_differs(a: &Visual, b: &Visual) -> bool {
         || a.default_font_family != b.default_font_family
 }
 
-/// Shared effective visual resolver (ADR-0067): inheritance → own → pseudo.
+/// Shared effective visual resolver (ADR-0067, ADR-0081): inheritance (ch1+ch2)
+/// → own (base + matching viewport variants) → pseudo. Viewport-variant
+/// application lives inside this single seam, so every caller (query,
+/// `scene_build`, `InlineText`) shares one resolution entry instead of pre-baking
+/// own.
 pub fn resolve_effective(
     inherited: &InheritedVisualContext,
-    own: &Visual,
+    own_base: &Visual,
+    viewport_variants: &[(ViewportCondition, StyleProp)],
+    viewport: (f32, f32),
     pseudo: &PseudoStyles,
     interaction: &InteractionSnapshot,
     id: ElementId,
 ) -> Visual {
-    let inherited_base = apply_text_inheritance(inherited, own);
+    let own = own_with_viewport_variants(own_base, viewport_variants, viewport);
+    let inherited_base = apply_text_inheritance(inherited, &own);
     pseudo_state::resolve_visual(&inherited_base, pseudo, interaction, id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::element::pseudo_state::{InteractionSnapshot, PseudoStyles};
+    use crate::element::style::ViewportCondition;
+    use crate::element::tree::Visual;
+
+    fn base_red() -> Visual {
+        let mut v = Visual::default();
+        v.background_color = Some(Color::new(1.0, 0.0, 0.0, 1.0));
+        v
+    }
+
+    fn min_width_blue_variant() -> Vec<(ViewportCondition, StyleProp)> {
+        vec![(
+            ViewportCondition {
+                min_width: Some(768.0),
+                ..Default::default()
+            },
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        )]
+    }
+
+    // The shared resolver seam owns viewport-variant application (ADR-0081):
+    // callers pass base own + variants + viewport, not a pre-baked own.
+    #[test]
+    fn resolve_effective_applies_matching_viewport_variant() {
+        let ctx = InheritedVisualContext::root();
+        let pseudo = PseudoStyles::default();
+        let interaction = InteractionSnapshot::default();
+
+        let above = resolve_effective(
+            &ctx,
+            &base_red(),
+            &min_width_blue_variant(),
+            (1024.0, 800.0),
+            &pseudo,
+            &interaction,
+            ElementId::from_u64(1),
+        );
+        assert_eq!(
+            above.background_color,
+            Some(Color::new(0.0, 0.0, 1.0, 1.0)),
+            "viewport at/above min-width must resolve the variant inside the seam"
+        );
+
+        let below = resolve_effective(
+            &ctx,
+            &base_red(),
+            &min_width_blue_variant(),
+            (500.0, 800.0),
+            &pseudo,
+            &interaction,
+            ElementId::from_u64(1),
+        );
+        assert_eq!(
+            below.background_color,
+            Some(Color::new(1.0, 0.0, 0.0, 1.0)),
+            "viewport below min-width must keep the base style"
+        );
+    }
 }
 
 /// Build inherited context for query at `id` (ancestor walk).
