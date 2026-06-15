@@ -207,6 +207,11 @@ pub struct ElementTree {
     /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
     pub(crate) last_cursor: CursorValue,
     pub(crate) runtime: DocumentRuntime,
+    /// Platform clipboard for copy (ADR-0097, #268). Installed by the Platform
+    /// Adapter; `None` until then, so copy is a no-op in headless/test setups.
+    /// Core writes selected text through this trait and never touches the
+    /// concrete clipboard API.
+    pub(crate) clipboard: Option<Box<dyn crate::element::clipboard::Clipboard>>,
 }
 
 impl ElementTree {
@@ -230,7 +235,15 @@ impl ElementTree {
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
+            clipboard: None,
         }
+    }
+
+    /// Install the Platform Adapter's clipboard (ADR-0097, #268). Copy gestures
+    /// (Cmd/Ctrl+C) write the selected text through it; without one, copy is a
+    /// no-op.
+    pub fn set_clipboard(&mut self, clipboard: Box<dyn crate::element::clipboard::Clipboard>) {
+        self.clipboard = Some(clipboard);
     }
 
     pub fn interaction_snapshot(&self) -> InteractionSnapshot {

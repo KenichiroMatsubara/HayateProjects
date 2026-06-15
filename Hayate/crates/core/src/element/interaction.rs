@@ -306,6 +306,23 @@ impl ElementTree {
         self.selection.as_ref()
     }
 
+    /// The text currently under the selection, as a single string (ADR-0097,
+    /// #268). The selected byte range is sliced out of the focus IFC's shaped
+    /// text, which already concatenates the IFC's inline children in document
+    /// order — so a range that spans several styled runs comes back joined.
+    /// `None` when there is no selection or it is collapsed to a caret (nothing
+    /// to copy). Cross-IFC selection is a growth point (single-IFC for now).
+    pub fn selected_text(&self) -> Option<String> {
+        let sel = self.selection?;
+        let ifc = sel.anchor.element;
+        let (start, end) = sel.range_within(ifc)?;
+        if start == end {
+            return None;
+        }
+        let text = self.ifc_text(ifc)?;
+        Some(text[start..end].to_string())
+    }
+
     /// Begin a selection from a pointer-down inside a Selection Region:
     ///
     /// - Shift+click keeps the existing anchor and moves the focus to the hit
@@ -409,6 +426,10 @@ impl ElementTree {
         if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("a") {
             return self.select_all_in(sel.focus.element);
         }
+        if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("c") {
+            self.copy_selection_to_clipboard();
+            return true;
+        }
         if modifiers & MOD_SHIFT == 0 {
             return false;
         }
@@ -429,6 +450,18 @@ impl ElementTree {
             focus: SelectionPoint::new(sel.focus.element, next),
         }));
         true
+    }
+
+    /// Copy the selected text to the Platform Adapter's clipboard (Cmd/Ctrl+C,
+    /// ADR-0097). A no-op when nothing non-empty is selected or no clipboard is
+    /// installed; core never touches the concrete clipboard, only the trait.
+    fn copy_selection_to_clipboard(&mut self) {
+        let Some(text) = self.selected_text() else {
+            return;
+        };
+        if let Some(clipboard) = self.clipboard.as_ref() {
+            clipboard.write_text(&text);
+        }
     }
 
     /// Select the entire shaped text of `ifc` (Ctrl/Cmd+A). Returns whether a

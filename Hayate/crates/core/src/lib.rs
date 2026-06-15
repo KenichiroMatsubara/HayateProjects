@@ -13,7 +13,7 @@ pub use element::{
     ElementTree, Event, EventDelivery, FlexDirectionValue, FlexWrapValue, JustifyValue, LayoutPass,
     ListenerId, OverflowValue, PositionValue,
     event_document_kind,
-    CharacterBounds, EditState, FontStyleValue, ImeBridge, PointerMoveResult, PseudoState,
+    CharacterBounds, Clipboard, EditState, FontStyleValue, ImeBridge, PointerMoveResult, PseudoState,
     ResolvedElement,
     Selection, SelectionPoint,
     Shadow,
