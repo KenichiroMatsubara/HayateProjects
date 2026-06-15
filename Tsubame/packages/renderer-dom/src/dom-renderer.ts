@@ -75,7 +75,7 @@ export class DomRenderer implements IRenderer {
   private readonly container: HTMLElement;
   private readonly nodes = new Map<ElementId, HTMLElement>();
   private readonly kinds = new Map<ElementId, ElementKind>();
-  private readonly pseudoRuleKeys = new Map<string, number>();
+  private readonly pseudoRules = new Map<string, { index: number; priority: number }>();
   private readonly pseudoStyleEl: HTMLStyleElement;
   private readonly variantRuleKeys = new Map<string, number>();
   private readonly variantMediaByElement = new Map<ElementId, Set<string>>();
@@ -148,21 +148,21 @@ export class DomRenderer implements IRenderer {
     const key = `${id as number}${pseudo}`;
     const cssText = `${selector}{${body}}`;
     const priority = PSEUDO_STATE_PRIORITY[pseudo];
-    const existing = this.pseudoRuleKeys.get(key);
+    const existing = this.pseudoRules.get(key);
     if (existing !== undefined) {
-      const rule = sheet.cssRules.item(existing);
-      if (rule !== null && 'style' in rule) {
+      const rule = sheet.cssRules[existing.index];
+      if (rule !== undefined && 'style' in rule) {
         (rule as CSSStyleRule).style.cssText = body;
         return;
       }
-      sheet.deleteRule(existing);
-      this.bumpPseudoRuleIndices(existing, -1);
-      this.pseudoRuleKeys.delete(key);
+      sheet.deleteRule(existing.index);
+      this.bumpPseudoRuleIndices(existing.index, -1);
+      this.pseudoRules.delete(key);
     }
-    const index = insertionIndexForPseudoBand(sheet, priority);
+    const index = this.insertionIndexForPseudoBand(priority);
     sheet.insertRule(cssText, index);
     this.bumpPseudoRuleIndices(index, 1);
-    this.pseudoRuleKeys.set(key, index);
+    this.pseudoRules.set(key, { index, priority });
   }
 
   /** Viewport-conditional style override, output as `@media (...)` (ADR-0081). */
@@ -263,11 +263,26 @@ export class DomRenderer implements IRenderer {
 
   /** Shift tracked rule indices when the pseudo stylesheet gains or loses a rule. */
   private bumpPseudoRuleIndices(from: number, delta: number): void {
-    for (const [key, idx] of this.pseudoRuleKeys) {
-      if (idx >= from) {
-        this.pseudoRuleKeys.set(key, idx + delta);
+    for (const entry of this.pseudoRules.values()) {
+      if (entry.index >= from) {
+        entry.index += delta;
       }
     }
+  }
+
+  /**
+   * Index at which a rule of the given band priority keeps the pseudo
+   * stylesheet sorted ascending (focus < hover < active; last wins). Driven
+   * entirely by the spec-generated `PSEUDO_STATE_PRIORITY` recorded per rule —
+   * the sheet stays band-sorted, so the count of rules in lower-or-equal bands
+   * is the first slot in the next band. No selector string is inspected.
+   */
+  private insertionIndexForPseudoBand(priority: number): number {
+    let index = 0;
+    for (const entry of this.pseudoRules.values()) {
+      if (entry.priority <= priority) index += 1;
+    }
+    return index;
   }
 
   private node(id: ElementId): HTMLElement {
@@ -297,7 +312,7 @@ export class DomRenderer implements IRenderer {
       const id = elementIdFromDom(el);
       if (id !== undefined) {
         for (const pseudo of PSEUDO_STYLE_KEYS) {
-          this.pseudoRuleKeys.delete(`${id as number}${pseudo}`);
+          this.pseudoRules.delete(`${id as number}${pseudo}`);
         }
         const mediaSet = this.variantMediaByElement.get(id);
         if (mediaSet !== undefined) {
@@ -311,26 +326,6 @@ export class DomRenderer implements IRenderer {
       }
     }
   }
-}
-
-function pseudoPriorityFromSelector(selectorText: string): number {
-  for (const pseudo of PSEUDO_STYLE_KEYS) {
-    if (selectorText.endsWith(pseudo)) {
-      return PSEUDO_STATE_PRIORITY[pseudo];
-    }
-  }
-  return 0;
-}
-
-function insertionIndexForPseudoBand(sheet: CSSStyleSheet, priority: number): number {
-  for (let i = 0; i < sheet.cssRules.length; i++) {
-    const rule = sheet.cssRules[i] as CSSStyleRule;
-    const rulePriority = pseudoPriorityFromSelector(rule.selectorText);
-    if (rulePriority > priority) {
-      return i;
-    }
-  }
-  return sheet.cssRules.length;
 }
 
 function pseudoStyleDeclarations(kind: ElementKind, patch: StylePatch): string {

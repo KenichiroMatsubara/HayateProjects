@@ -50,4 +50,40 @@ describe('DomRenderer pseudo-state priority (focus < hover < active)', () => {
     const activeIdx = rules.findIndex((r) => r.selectorText.endsWith(':active'));
     expect(activeIdx).toBeGreaterThan(hoverIdx);
   });
+
+  it('keeps every rule in band order across interleaved multi-element authoring', () => {
+    const renderer = new DomRenderer({ document, container });
+    const a = renderer.createElement('view');
+    const b = renderer.createElement('view');
+    renderer.setRoot(a);
+    renderer.appendChild(a, b);
+
+    // Author in an order that has nothing to do with priority, mixing elements.
+    renderer.setPseudoStyle(a, ':active', { backgroundColor: '#0000ff' });
+    renderer.setPseudoStyle(b, ':focus', { backgroundColor: '#ff0000' });
+    renderer.setPseudoStyle(a, ':hover', { backgroundColor: '#00ff00' });
+    renderer.setPseudoStyle(b, ':active', { backgroundColor: '#0000aa' });
+    renderer.setPseudoStyle(a, ':focus', { backgroundColor: '#aa0000' });
+    renderer.setPseudoStyle(b, ':hover', { backgroundColor: '#00aa00' });
+
+    const bands = pseudoRules(document).map((rule) => pseudoBand(rule.selectorText));
+    // Whole sheet is sorted by band; only the spec priority decides ordering.
+    expect(bands).toEqual([...bands].sort((x, y) => x - y));
+    expect(bands).toEqual([0, 0, 1, 1, 2, 2]);
+  });
+
+  it('preserves band order when an existing rule is updated in place', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setPseudoStyle(id, ':focus', { backgroundColor: '#ff0000' });
+    renderer.setPseudoStyle(id, ':hover', { backgroundColor: '#00ff00' });
+    renderer.setPseudoStyle(id, ':active', { backgroundColor: '#0000ff' });
+    // Re-author the lowest band; it must stay in its band, not jump to the end.
+    renderer.setPseudoStyle(id, ':focus', { backgroundColor: '#aa0000' });
+
+    const bands = pseudoRules(document).map((rule) => pseudoBand(rule.selectorText));
+    expect(bands).toEqual([0, 1, 2]);
+  });
 });
