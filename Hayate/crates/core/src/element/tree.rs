@@ -517,6 +517,26 @@ impl ElementTree {
         self.focused_element
     }
 
+    /// Flip the active element to `next`, marking the `:active` invalidation for
+    /// every element whose active state changes — in the same operation
+    /// (ADR-0100). The dirty mark precedes the field write so an `:active`
+    /// transition starts from the pre-switch (not-yet-active when entering,
+    /// still-active when leaving) appearance (ADR-0089). This is the only path
+    /// that writes `active_element`, so the state can never flip without its
+    /// pseudo-state invalidation.
+    pub(crate) fn set_active_element(&mut self, next: Option<ElementId>) {
+        if self.active_element == next {
+            return;
+        }
+        if let Some(prev) = self.active_element {
+            self.mark_pseudo_activation_dirty(prev, PseudoState::Active);
+        }
+        if let Some(now) = next {
+            self.mark_pseudo_activation_dirty(now, PseudoState::Active);
+        }
+        self.active_element = next;
+    }
+
     /// Set the font family (by name) for an element. The family must first be registered via
     /// `register_font`, or be a system font available in the default FontContext.
     pub fn element_set_font_family(&mut self, id: ElementId, family: &str) {
@@ -922,6 +942,11 @@ impl ElementTree {
         for node in to_remove.into_iter().rev() {
             self.elements.remove(&node);
             self.runtime.remove_element_listeners(node);
+            // Teardown, not a state transition: the element is gone and the
+            // whole subtree is already structure-dirty (above), so there is no
+            // pseudo style left to invalidate. This is why these clear the
+            // interaction fields directly rather than through the atomic
+            // set/clear seams that guard live state flips (ADR-0100).
             if self.focused_element == Some(node) {
                 self.focused_element = None;
                 self.layout.last_cursor_toggle_ms = None;
@@ -954,14 +979,30 @@ impl ElementTree {
         (entered, left)
     }
 
-    /// HTML `mouseenter` path: mark a single element hovered (parent retains hover over children).
+    /// HTML `mouseenter` path: mark a single element hovered (parent retains
+    /// hover over children). The `:hover` invalidation rides the same operation
+    /// as the set flip (ADR-0100), so the HTML hover path can no longer change
+    /// the hover state without re-lowering the element's `:hover` appearance.
+    /// Returns whether the set changed.
     pub fn hover_enter_element(&mut self, id: ElementId) -> bool {
-        self.hovered_elements.insert(id)
+        if self.hovered_elements.insert(id) {
+            self.mark_pseudo_activation_dirty(id, PseudoState::Hover);
+            true
+        } else {
+            false
+        }
     }
 
-    /// HTML `mouseleave` path: clear hover on the element that was left.
+    /// HTML `mouseleave` path: clear hover on the element that was left, marking
+    /// the `:hover` invalidation in the same operation (ADR-0100). Returns
+    /// whether the set changed.
     pub fn hover_leave_element(&mut self, id: ElementId) -> bool {
-        self.hovered_elements.remove(&id)
+        if self.hovered_elements.remove(&id) {
+            self.mark_pseudo_activation_dirty(id, PseudoState::Hover);
+            true
+        } else {
+            false
+        }
     }
 
     pub fn element_set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: &[StyleProp]) {

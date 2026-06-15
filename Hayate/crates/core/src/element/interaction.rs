@@ -1,7 +1,6 @@
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
-use crate::element::pseudo_state::PseudoState;
 use crate::element::selection::{
     self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
 };
@@ -86,11 +85,11 @@ impl ElementTree {
                 y,
             });
             self.emit_interaction(Event::ActiveStart { target_id: t });
-            // Mark (and capture the transition's pre-switch visual) before the
-            // active state flips, so `:active` transitions start from the
-            // not-yet-active appearance (ADR-0089).
-            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
-            self.active_element = Some(t);
+            // Setting the active state captures the transition's pre-switch
+            // visual and marks `:active` invalidation in the same operation
+            // (ADR-0100), so the not-yet-active appearance seeds the transition
+            // (ADR-0089).
+            self.set_active_element(Some(t));
             self.transition_focus(t);
         } else if let Some(prev) = self.focused_element {
             self.blur_with_events(prev);
@@ -114,11 +113,11 @@ impl ElementTree {
         let target = self.active_element.or(explicit_target);
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
-            // Capture the still-active appearance as the transition start before
-            // clearing the active state (ADR-0089).
-            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
-            self.active_element = None;
         }
+        // Clearing the active state captures the still-active appearance as the
+        // transition start and marks `:active` invalidation in the same
+        // operation (ADR-0100, ADR-0089).
+        self.set_active_element(None);
     }
 
     /// Pointer cancel (touch interruption / pointer-capture loss). Coordinate-
@@ -134,9 +133,10 @@ impl ElementTree {
         self.edit_drag = None;
         if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
-            self.mark_pseudo_activation_dirty(t, PseudoState::Active);
-            self.active_element = None;
         }
+        // Ending the press clears the active state and marks its `:active`
+        // invalidation atomically (ADR-0100), mirroring the pointer-up path.
+        self.set_active_element(None);
     }
 
     /// Pointer move with layout guard and 1 px dedup. `moved` is false when
