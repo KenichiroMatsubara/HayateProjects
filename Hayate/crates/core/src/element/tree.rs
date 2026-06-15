@@ -1235,14 +1235,11 @@ impl ElementTree {
         let el = self.elements.get(&id)?;
         let ctx = effective_visual::inherited_context_at(&self.elements, id);
         let interaction = self.interaction_snapshot();
-        let own = effective_visual::own_with_viewport_variants(
+        Some(effective_visual::resolve_effective(
+            &ctx,
             &el.visual,
             &el.viewport_variants,
             self.viewport,
-        );
-        Some(effective_visual::resolve_effective(
-            &ctx,
-            &own,
             &el.pseudo_styles,
             &interaction,
             id,
@@ -1434,14 +1431,11 @@ fn walk_resolved(
     };
     let x = ox + layout.location.x;
     let y = oy + layout.location.y;
-    let own = effective_visual::own_with_viewport_variants(
+    let visual = effective_visual::resolve_effective(
+        &inherited,
         &el.visual,
         &el.viewport_variants,
         viewport,
-    );
-    let visual = effective_visual::resolve_effective(
-        &inherited,
-        &own,
         &el.pseudo_styles,
         interaction,
         id,

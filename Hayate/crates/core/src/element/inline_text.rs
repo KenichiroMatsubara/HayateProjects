@@ -123,14 +123,11 @@ impl CollectCtx<'_> {
             return;
         }
         let interaction = InteractionSnapshot::default();
-        let own = effective_visual::own_with_viewport_variants(
+        let effective = effective_visual::resolve_effective(
+            &inherited,
             &el.visual,
             &el.viewport_variants,
             self.viewport,
-        );
-        let effective = effective_visual::resolve_effective(
-            &inherited,
-            &own,
             &el.pseudo_styles,
             &interaction,
             id,
