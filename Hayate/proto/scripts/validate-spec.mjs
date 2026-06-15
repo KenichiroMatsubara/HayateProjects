@@ -35,6 +35,7 @@ const validators = {
   style_tags: validatorFor('style_tag.schema.json'),
   event_kinds: validatorFor('event_kind.schema.json'),
   element_kinds: validatorFor('simple_entry.schema.json'),
+  element_properties: validatorFor('element_property.schema.json'),
   unset_kinds: validatorFor('unset_kind.schema.json'),
   modifier_keys: validatorFor('modifier_key.schema.json'),
   pseudo_states: validatorFor('pseudo_state.schema.json'),

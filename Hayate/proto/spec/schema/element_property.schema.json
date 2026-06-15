@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hayate.dev/proto/spec/schema/element_property.schema.json",
+  "title": "Element property entry (prop-op dispatch source; ADR-0008)",
+  "type": "object",
+  "required": ["name", "opKind", "coerce"],
+  "properties": {
+    "name": {
+      "description": "setProperty name in the closed element-property vocabulary (ADR-0071).",
+      "type": "string",
+      "minLength": 1
+    },
+    "opKind": {
+      "description": "Discriminant of the renderer-agnostic ElementPropertyOp this property coerces to.",
+      "type": "string",
+      "minLength": 1
+    },
+    "coerce": {
+      "description": "Value-coercion strategy from raw value to op payload (single seam; issue #235).",
+      "type": "string",
+      "enum": ["stringify-nullable", "string-or-empty", "boolean"]
+    }
+  },
+  "additionalProperties": false
+}
