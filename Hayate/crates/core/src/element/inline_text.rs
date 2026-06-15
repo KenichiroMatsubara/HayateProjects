@@ -236,7 +236,7 @@ pub(crate) fn resolve_ifc_inline_hit(
     }
     let el = tree.elements.get(&box_hit)?;
     let tl = el.text_layout.as_ref()?;
-    let &(ex, ey, _, _) = tree.layout.layout_cache.get(&box_hit)?;
+    let (ex, ey, _, _) = tree.layout.geometry(box_hit)?;
     let byte = byte_index_at_point(tl, x - ex, y - ey);
     if let Some(map) = &tl.range_map {
         if let Some(inline_id) = map.lookup(byte) {
