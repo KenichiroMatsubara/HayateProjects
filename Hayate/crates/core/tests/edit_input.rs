@@ -2,6 +2,148 @@
 
 use hayate_core::{Dimension, ElementKind, ElementTree, StyleProp};
 
+const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
+
+#[test]
+fn shift_arrow_extends_text_input_selection_then_typing_replaces_it() {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(10, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_focus(input);
+    tree.element_append_text_content(input, "hello"); // caret at end
+
+    // Shift+ArrowLeft twice selects the last two characters ("lo").
+    tree.on_key_down("ArrowLeft", SHIFT);
+    tree.on_key_down("ArrowLeft", SHIFT);
+
+    // Typing over the range replaces it (replace-on-type).
+    tree.on_text_input(input, "X");
+    assert_eq!(tree.element_get_text_content(input), "helX");
+}
+
+/// A laid-out, focused text-input carrying `content`, ready for pointer/key
+/// gestures. Returns (tree, input).
+fn text_input_with(content: &str) -> (ElementTree, hayate_core::ElementId) {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(20, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(200.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_append_text_content(input, content);
+    tree.element_focus(input);
+    tree.render(0.0);
+    (tree, input)
+}
+
+#[test]
+fn drag_within_text_input_selects_a_range() {
+    let (mut tree, input) = text_input_with("hello world");
+
+    // Press near the start of the field and drag rightwards across glyphs.
+    tree.on_pointer_down(2.0, 20.0);
+    tree.on_pointer_move(60.0, 20.0);
+
+    let (start, end) = tree
+        .element_text_selection(input)
+        .expect("a non-empty edit selection after dragging");
+    assert!(start < end, "drag should select a non-empty range, got {start}..{end}");
+}
+
+/// A column holding a focused text-input above a `selectable` paragraph (its own
+/// Selection Region). Returns (tree, input, paragraph-text). Both are laid out.
+fn input_above_selectable_paragraph() -> (ElementTree, hayate_core::ElementId, hayate_core::ElementId)
+{
+    use hayate_core::FlexDirectionValue;
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(30, ElementKind::View);
+    let input = tree.element_create(31, ElementKind::TextInput);
+    let region = tree.element_create(32, ElementKind::View);
+    let text = tree.element_create(33, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_set_style(region, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(text, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(root, input);
+    tree.element_append_child(root, region);
+    tree.element_append_child(region, text);
+    tree.element_append_text_content(input, "edit me");
+    tree.element_set_text(text, "Hello world");
+    tree.element_set_selectable(region, true);
+    tree.element_focus(input);
+    tree.render(0.0);
+    (tree, input, text)
+}
+
+#[test]
+fn starting_a_text_input_selection_clears_the_selection_area_selection() {
+    let (mut tree, input, text) = input_above_selectable_paragraph();
+    let (_, ty, _, th) = tree.element_layout_rect(text).unwrap();
+
+    // First select read-only text in the paragraph region.
+    tree.on_pointer_down(2.0, ty + th / 2.0);
+    tree.on_pointer_move(70.0, ty + th / 2.0);
+    assert!(tree.selection().is_some(), "a SelectionArea selection exists");
+
+    // Now drag inside the text-input: the document selection must clear.
+    tree.on_pointer_down(2.0, 20.0);
+    tree.on_pointer_move(50.0, 20.0);
+    assert!(
+        tree.selection().is_none(),
+        "starting a text-input selection clears the SelectionArea selection",
+    );
+    assert!(
+        tree.element_text_selection(input).is_some(),
+        "the text-input now owns the active selection",
+    );
+}
+
+#[test]
+fn starting_a_selection_area_selection_clears_the_text_input_selection() {
+    let (mut tree, input, text) = input_above_selectable_paragraph();
+
+    // First select a range inside the text-input.
+    tree.on_pointer_down(2.0, 20.0);
+    tree.on_pointer_move(50.0, 20.0);
+    tree.on_pointer_up(50.0, 20.0);
+    assert!(
+        tree.element_text_selection(input).is_some(),
+        "the text-input has an active edit selection",
+    );
+
+    // Now select read-only text in the paragraph: the edit selection collapses.
+    let (_, ty, _, th) = tree.element_layout_rect(text).unwrap();
+    tree.on_pointer_down(2.0, ty + th / 2.0);
+    tree.on_pointer_move(70.0, ty + th / 2.0);
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "starting a SelectionArea selection collapses the text-input selection",
+    );
+    assert!(tree.selection().is_some(), "the SelectionArea now owns the selection");
+}
+
 #[test]
 fn on_key_down_backspace_edits_focused_text_input() {
     let mut tree = ElementTree::new();

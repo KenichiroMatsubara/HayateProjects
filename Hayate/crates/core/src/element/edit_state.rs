@@ -1,9 +1,18 @@
 /// Text-input edit model (ADR-0069). Owned by TextInput elements only.
+///
+/// The caret is the degenerate form of the unified Selection model (ADR-0097):
+/// `selection_anchor` and `cursor_byte_index` are the anchor/focus byte offsets
+/// of a range within `text_content`. When they coincide the selection is
+/// collapsed to a single caret, which is the common editing case.
 #[derive(Clone, Debug, Default)]
 pub struct EditState {
     pub text_content: String,
     pub preedit: Option<String>,
+    /// The selection's focus (the moving end / caret position).
     pub cursor_byte_index: usize,
+    /// The selection's anchor (the fixed end). Equal to `cursor_byte_index` for
+    /// a collapsed caret.
+    pub selection_anchor: usize,
 }
 
 impl EditState {
@@ -14,10 +23,66 @@ impl EditState {
         }
     }
 
+    /// True when the selection is collapsed to a caret (anchor == focus).
+    pub fn is_caret(&self) -> bool {
+        self.selection_anchor == self.cursor_byte_index
+    }
+
+    /// The selected byte range `(start, end)` normalized to text order, or `None`
+    /// when the selection is collapsed (nothing is selected).
+    pub fn selection_range(&self) -> Option<(usize, usize)> {
+        if self.is_caret() {
+            None
+        } else {
+            let a = self.selection_anchor;
+            let f = self.cursor_byte_index;
+            Some((a.min(f), a.max(f)))
+        }
+    }
+
+    /// Place a (possibly empty) selection with `anchor`/`focus` byte offsets,
+    /// each clamped into the current text.
+    pub fn set_selection(&mut self, anchor: usize, focus: usize) {
+        let len = self.text_content.len();
+        self.selection_anchor = anchor.min(len);
+        self.cursor_byte_index = focus.min(len);
+    }
+
+    /// Move the focus (caret) to `offset`, keeping the anchor fixed — the
+    /// Shift+Arrow / drag extension primitive.
+    pub fn move_focus(&mut self, offset: usize) {
+        self.cursor_byte_index = offset.min(self.text_content.len());
+    }
+
+    /// Collapse the selection to a caret at the current focus, discarding any
+    /// selected range (used to enforce the single-active rule, ADR-0097).
+    pub fn collapse(&mut self) {
+        self.selection_anchor = self.cursor_byte_index;
+    }
+
+    /// Collapse the selection to a caret at `offset`.
+    fn collapse_to(&mut self, offset: usize) {
+        let o = offset.min(self.text_content.len());
+        self.cursor_byte_index = o;
+        self.selection_anchor = o;
+    }
+
+    /// Delete the selected range when non-empty, collapsing the caret to its
+    /// start (replace-on-type primitive). Returns whether anything was removed.
+    fn delete_selection(&mut self) -> bool {
+        if let Some((start, end)) = self.selection_range() {
+            self.text_content.replace_range(start..end, "");
+            self.collapse_to(start);
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn set(&mut self, text: &str) {
         self.text_content = text.to_string();
         self.preedit = None;
-        self.cursor_byte_index = self.text_content.len();
+        self.collapse_to(self.text_content.len());
     }
 
     pub fn append(&mut self, text: &str) {
@@ -25,19 +90,25 @@ impl EditState {
             return;
         }
         self.text_content.push_str(text);
-        self.cursor_byte_index = self.text_content.len();
+        self.collapse_to(self.text_content.len());
     }
 
     pub fn insert(&mut self, text: &str) {
         if text.is_empty() {
             return;
         }
+        // Typing over a range replaces it (replace-on-type, ADR-0097).
+        self.delete_selection();
         let byte = self.cursor_byte_index.min(self.text_content.len());
         self.text_content.insert_str(byte, text);
-        self.cursor_byte_index = byte + text.len();
+        self.collapse_to(byte + text.len());
     }
 
     pub fn backspace(&mut self) -> bool {
+        // A non-empty selection is deleted whole, instead of one trailing char.
+        if self.delete_selection() {
+            return true;
+        }
         if self.text_content.is_empty() {
             return false;
         }
@@ -48,7 +119,7 @@ impl EditState {
             .map(|(i, _)| i)
             .unwrap_or(0);
         self.text_content.truncate(last_start);
-        self.cursor_byte_index = self.text_content.len();
+        self.collapse_to(self.text_content.len());
         true
     }
 
@@ -63,7 +134,7 @@ impl EditState {
     pub fn commit_preedit(&mut self) {
         if let Some(preedit) = self.preedit.take() {
             self.text_content.push_str(&preedit);
-            self.cursor_byte_index = self.text_content.len();
+            self.collapse_to(self.text_content.len());
         }
     }
 
@@ -78,7 +149,8 @@ impl EditState {
             return false;
         }
         self.commit_preedit();
-        self.append(text);
+        // Pasting over a range replaces it (replace-on-type, ADR-0097).
+        self.insert(text);
         true
     }
 
@@ -115,6 +187,40 @@ mod tests {
         assert!(edit.paste("xy"));
         assert_eq!(edit.text_content, "abCDxy");
         assert!(edit.preedit.is_none());
+    }
+
+    #[test]
+    fn typing_replaces_the_selected_range() {
+        let mut edit = EditState::default();
+        edit.set("hello"); // collapsed caret at end
+        edit.set_selection(1, 4); // select "ell"
+        assert!(!edit.is_caret());
+        edit.insert("X");
+        assert_eq!(edit.text_content, "hXo");
+        assert_eq!(edit.cursor_byte_index, 2, "caret sits after the inserted text");
+        assert!(edit.is_caret(), "the range collapses once it is replaced");
+    }
+
+    #[test]
+    fn backspace_deletes_the_selected_range_not_one_char() {
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(1, 4); // "ell"
+        assert!(edit.backspace());
+        assert_eq!(edit.text_content, "ho");
+        assert_eq!(edit.cursor_byte_index, 1, "caret collapses to the range start");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn paste_replaces_the_selected_range() {
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(0, 5); // whole word
+        assert!(edit.paste("bye"));
+        assert_eq!(edit.text_content, "bye");
+        assert_eq!(edit.cursor_byte_index, 3);
+        assert!(edit.is_caret());
     }
 
     #[test]

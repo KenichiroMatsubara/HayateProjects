@@ -196,6 +196,10 @@ pub struct ElementTree {
     /// True while a pointer-down inside a Selection Region is driving a drag
     /// selection (the active-session capture extended to selection, ADR-0097).
     pub(crate) selection_drag: bool,
+    /// The text-input whose edit selection a pointer drag is currently extending
+    /// (ADR-0097, #271). Distinct from `selection_drag`, which drives the
+    /// read-only SelectionArea selection; the two are mutually exclusive.
+    pub(crate) edit_drag: Option<ElementId>,
     /// Multi-click tracking for word/paragraph gestures (#267): the last
     /// pointer-down position and how many presses have landed near it. The
     /// adapter's OS-level double-click timing is re-derived here by proximity:
@@ -230,6 +234,7 @@ impl ElementTree {
             active_element: None,
             selection: None,
             selection_drag: false,
+            edit_drag: None,
             last_click_pos: None,
             click_count: 0,
             last_pointer_pos: None,
@@ -589,6 +594,16 @@ impl ElementTree {
             .and_then(|el| el.edit.as_ref())
             .map(|edit| edit.display_text())
             .unwrap_or_default()
+    }
+
+    /// The text-input's current edit selection as a normalized byte range
+    /// `(start, end)`, or `None` when the element is not an editable text-input
+    /// or its selection is collapsed to a caret (ADR-0097, #271).
+    pub fn element_text_selection(&self, id: ElementId) -> Option<(usize, usize)> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.edit.as_ref())
+            .and_then(|edit| edit.selection_range())
     }
 
     /// Set a 2D affine transform on the element (6 kurbo coefficients [a,b,c,d,e,f]).
