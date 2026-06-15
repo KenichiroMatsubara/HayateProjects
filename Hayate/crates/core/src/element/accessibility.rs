@@ -4,7 +4,7 @@ use accesskit::{Action, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, T
 
 use super::taffy_projection::TraversalStep;
 use super::tree::Element;
-use super::{ElementId, ElementKind, ElementTree};
+use super::{DocumentEventKind, ElementId, ElementKind, ElementTree, Event};
 
 fn node_id(id: ElementId) -> NodeId {
     NodeId(id.to_u64())
@@ -21,6 +21,11 @@ fn node_id(id: ElementId) -> NodeId {
 pub enum AccessibilityAction {
     /// Move focus to `target`, driving the existing focus state machine.
     Focus { target: ElementId },
+    /// Activate `target` by emitting a `Click` event directly to it — the
+    /// semantic equivalent of a tap (ADR-0098 Decision 1), not a synthetic
+    /// pointer replay. Skips hit-testing, `:active`, multi-click counting and
+    /// the focus gesture.
+    Click { target: ElementId },
     /// Unsupported action — no-op, observable state unchanged.
     Ignored,
 }
@@ -32,6 +37,9 @@ pub fn map_action_request(req: &ActionRequest) -> AccessibilityAction {
     let target = ElementId::from_u64(req.target_node.0);
     match req.action {
         Action::Focus => AccessibilityAction::Focus { target },
+        // AccessKit folds "default activation" into `Action::Click`; there is no
+        // separate `Default` variant, so the ADR's "Click/Default" maps here.
+        Action::Click => AccessibilityAction::Click { target },
         _ => AccessibilityAction::Ignored,
     }
 }
@@ -160,8 +168,32 @@ impl ElementTree {
     pub fn on_accessibility_action(&mut self, req: ActionRequest) {
         match map_action_request(&req) {
             AccessibilityAction::Focus { target } => self.transition_focus(target),
+            AccessibilityAction::Click { target } => self.emit_semantic_click(target),
             AccessibilityAction::Ignored => {}
         }
+    }
+
+    /// Emit a `Click` straight to `target` as a semantic activation (ADR-0098
+    /// Decision 1). The coordinate is the target's layout centre so existing
+    /// coordinate-reading listeners stay compatible without a wire change; the
+    /// event then bubbles and dispatches like any other `Click`. Bypasses the
+    /// pointer pipeline entirely — no hit-test, no `:active`, no multi-click
+    /// counter, no focus gesture.
+    fn emit_semantic_click(&mut self, target: ElementId) {
+        let (x, y) = self
+            .layout
+            .layout_cache
+            .get(&target)
+            .map(|&(x, y, w, h)| (x + w / 2.0, y + h / 2.0))
+            .unwrap_or((0.0, 0.0));
+        self.dispatch_event(
+            DocumentEventKind::Click,
+            Event::Click {
+                target_id: target,
+                x,
+                y,
+            },
+        );
     }
 
     /// Build an AccessKit `TreeUpdate` from the current element tree and layout cache.
@@ -193,7 +225,7 @@ impl ElementTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::element::{DisplayValue, DocumentEventKind, StyleProp};
+    use crate::element::{Dimension, DisplayValue, DocumentEventKind, Event, StyleProp};
     use accesskit::{Action, ActionRequest};
 
     fn action_request(action: Action, node: NodeId) -> ActionRequest {
@@ -210,6 +242,13 @@ mod tests {
         let target = ElementId::from_u64(7);
         let mapped = map_action_request(&action_request(Action::Focus, node_id(target)));
         assert_eq!(mapped, AccessibilityAction::Focus { target });
+    }
+
+    #[test]
+    fn maps_click_action_to_core_click_resolving_element_id() {
+        let target = ElementId::from_u64(9);
+        let mapped = map_action_request(&action_request(Action::Click, node_id(target)));
+        assert_eq!(mapped, AccessibilityAction::Click { target });
     }
 
     #[test]
@@ -280,6 +319,217 @@ mod tests {
         tree.on_accessibility_action(action_request(Action::Increment, node_id(b)));
         assert_eq!(tree.focused_element(), Some(a));
         assert!(tree.poll_deliveries().is_empty());
+    }
+
+    #[test]
+    fn on_accessibility_action_click_emits_bubbling_click_to_listeners() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let button = tree.element_create(2, ElementKind::Button);
+        tree.element_append_child(root, button);
+        tree.render(0.0);
+
+        let l_btn = tree.register_listener(button, DocumentEventKind::Click);
+        let l_root = tree.register_listener(root, DocumentEventKind::Click);
+
+        tree.on_accessibility_action(action_request(Action::Click, node_id(button)));
+
+        let deliveries = tree.poll_deliveries();
+        let ids: Vec<_> = deliveries.iter().map(|d| d.listener_id).collect();
+        assert_eq!(ids, vec![l_btn, l_root], "Click must bubble target → root");
+        assert!(
+            matches!(deliveries[0].event, Event::Click { target_id, .. } if target_id == button),
+            "delivered event must be a Click targeting the requested node"
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_click_uses_target_layout_center() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let button = tree.element_create(2, ElementKind::Button);
+        tree.element_append_child(root, button);
+        tree.element_set_style(
+            button,
+            &[
+                StyleProp::Width(Dimension::px(120.0)),
+                StyleProp::Height(Dimension::px(40.0)),
+            ],
+        );
+        tree.render(0.0);
+
+        let (rx, ry, rw, rh) = tree.element_layout_rect(button).expect("button layout");
+        let (cx, cy) = (rx + rw / 2.0, ry + rh / 2.0);
+
+        tree.register_listener(button, DocumentEventKind::Click);
+        tree.on_accessibility_action(action_request(Action::Click, node_id(button)));
+
+        let delivery = tree.poll_deliveries().pop().expect("a click delivery");
+        match delivery.event {
+            Event::Click { x, y, .. } => {
+                assert_eq!((x, y), (cx, cy), "click must land at the target's layout center");
+            }
+            other => panic!("expected a Click event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn on_accessibility_action_click_does_not_flush_active_state() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let button = tree.element_create(2, ElementKind::Button);
+        tree.element_append_child(root, button);
+        tree.render(0.0);
+
+        let l_active_start = tree.register_listener(button, DocumentEventKind::ActiveStart);
+        let l_active_end = tree.register_listener(button, DocumentEventKind::ActiveEnd);
+
+        tree.on_accessibility_action(action_request(Action::Click, node_id(button)));
+
+        let fired: Vec<_> = tree
+            .poll_deliveries()
+            .into_iter()
+            .map(|d| d.listener_id)
+            .collect();
+        assert!(
+            !fired.contains(&l_active_start) && !fired.contains(&l_active_end),
+            "semantic click must not fire :active (ActiveStart/ActiveEnd)"
+        );
+        assert_eq!(
+            tree.active_element(),
+            None,
+            "semantic click must leave no element in the :active state"
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_click_does_not_hit_test() {
+        use crate::element::PositionValue;
+
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+
+        // Target lays out at the top-left, 100x100 → centre (50, 50).
+        let target = tree.element_create(2, ElementKind::Button);
+        tree.element_append_child(root, target);
+        tree.element_set_style(
+            target,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+
+        // An absolutely-positioned overlay sits on top of the target's centre,
+        // so a coordinate hit-test at (50, 50) would resolve to the overlay.
+        let overlay = tree.element_create(3, ElementKind::View);
+        tree.element_append_child(root, overlay);
+        tree.element_set_style(
+            overlay,
+            &[
+                StyleProp::Position(PositionValue::Absolute),
+                StyleProp::Top(Dimension::px(0.0)),
+                StyleProp::Left(Dimension::px(0.0)),
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.render(0.0);
+
+        // Precondition: a hit-test at the target's centre would pick the overlay,
+        // so delivering to the target proves the AT path never hit-tested.
+        assert_eq!(
+            tree.hit_test(50.0, 50.0),
+            Some(overlay),
+            "test setup: overlay must cover the target's centre",
+        );
+
+        let l_target = tree.register_listener(target, DocumentEventKind::Click);
+        let l_overlay = tree.register_listener(overlay, DocumentEventKind::Click);
+
+        tree.on_accessibility_action(action_request(Action::Click, node_id(target)));
+
+        let ids: Vec<_> = tree
+            .poll_deliveries()
+            .into_iter()
+            .map(|d| d.listener_id)
+            .collect();
+        assert!(
+            ids.contains(&l_target),
+            "the AT-targeted element must receive the click"
+        );
+        assert!(
+            !ids.contains(&l_overlay),
+            "the overlay over the centre must not receive it — no hit-test runs"
+        );
+    }
+
+    #[test]
+    fn on_accessibility_action_click_does_not_advance_multi_click_counter() {
+        fn paragraph() -> (ElementTree, ElementId) {
+            let mut tree = ElementTree::new();
+            let view = tree.element_create(1, ElementKind::View);
+            let text = tree.element_create(2, ElementKind::Text);
+            tree.set_root(view);
+            tree.set_viewport(400.0, 200.0);
+            tree.element_set_style(
+                view,
+                &[
+                    StyleProp::Width(Dimension::px(400.0)),
+                    StyleProp::Height(Dimension::px(200.0)),
+                ],
+            );
+            tree.element_set_style(text, &[StyleProp::Width(Dimension::px(400.0))]);
+            tree.element_append_child(view, text);
+            tree.element_set_text(text, "Hello world");
+            tree.element_set_selectable(view, true);
+            tree.render(0.0);
+            (tree, text)
+        }
+        let (px, py) = (10.0, 8.0);
+        fn range(tree: &ElementTree, text: ElementId) -> Option<(usize, usize)> {
+            tree.selection().and_then(|s| s.range_within(text))
+        }
+
+        // The pointer multi-click counter cycles: two same-spot presses select a
+        // word, three select the whole line — establishing the phases differ.
+        let (mut t2, text2) = paragraph();
+        t2.on_pointer_down(px, py);
+        t2.on_pointer_down(px, py);
+        let word = range(&t2, text2);
+
+        let (mut t3, text3) = paragraph();
+        t3.on_pointer_down(px, py);
+        t3.on_pointer_down(px, py);
+        t3.on_pointer_down(px, py);
+        let line = range(&t3, text3);
+
+        assert!(word.is_some() && line.is_some(), "presses must select");
+        assert_ne!(word, line, "the counter must cycle word → line");
+
+        // A semantic click between two real presses must not advance the counter,
+        // so the second press still lands on the word phase, not the line phase.
+        let (mut t, text) = paragraph();
+        t.on_pointer_down(px, py);
+        t.on_accessibility_action(action_request(Action::Click, node_id(text)));
+        t.on_pointer_down(px, py);
+        assert_eq!(
+            range(&t, text),
+            word,
+            "semantic click must not advance the multi-click counter",
+        );
     }
 
     #[test]
