@@ -193,7 +193,7 @@ fn walk_accessibility(
         TraversalStep::Visit(_, el) => el,
     };
 
-    let Some(&(x, y, w, h)) = tree.layout.layout_cache.get(&id) else {
+    let Some((x, y, w, h)) = tree.layout.geometry(id) else {
         return Vec::new();
     };
 
@@ -279,9 +279,8 @@ impl ElementTree {
     fn emit_semantic_click(&mut self, target: ElementId) {
         let (x, y) = self
             .layout
-            .layout_cache
-            .get(&target)
-            .map(|&(x, y, w, h)| (x + w / 2.0, y + h / 2.0))
+            .geometry(target)
+            .map(|(x, y, w, h)| (x + w / 2.0, y + h / 2.0))
             .unwrap_or((0.0, 0.0));
         self.dispatch_event(
             DocumentEventKind::Click,
@@ -323,7 +322,7 @@ impl ElementTree {
     /// Returns `None` when layout has not run or the tree has no root.
     pub fn accessibility_update(&self) -> Option<TreeUpdate> {
         let root_id = self.root?;
-        if self.layout.layout_cache.is_empty() {
+        if !self.layout.has_geometry() {
             return None;
         }
 

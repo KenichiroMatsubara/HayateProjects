@@ -7,7 +7,8 @@ use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::taffy_bridge::MeasureCtx;
+use crate::element::style::StyleProp;
+use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::inline_text;
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::text::{self, TextBrush, TextLayout};
@@ -26,8 +27,9 @@ pub struct LayoutPass {
     pub(crate) pending_font_fetches: HashSet<String>,
     /// Wall-clock millis of the last cursor-visibility toggle (ADR-0032).
     pub(crate) last_cursor_toggle_ms: Option<f64>,
-    /// Absolute bounding rects (x, y, w, h) per element, refreshed after each `commit_frame`.
-    pub(crate) layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
+    /// Absolute bounding rects (x, y, w, h) per element, refreshed by each `settle`.
+    /// Read only through `geometry` / `has_geometry` (issue #308 / §5).
+    layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
 }
 
 impl LayoutPass {
@@ -42,6 +44,78 @@ impl LayoutPass {
             last_cursor_toggle_ms: None,
             layout_cache: HashMap::new(),
         }
+    }
+
+    /// Set half of the reduced layout interface (issue #308 / §5): bridge-convert
+    /// a layout `StyleProp` into `layout_style` (owned by the document tree) and
+    /// push the result onto the derived Taffy node, which marks it layout-dirty.
+    /// Returns `false` for non-layout props so the caller routes them to Visual.
+    ///
+    /// Folds the former `convert → set → mark` sequence behind one call; the
+    /// document tree stays the owner (it owns `layout_style`), the Taffy node is
+    /// re-derived from it.
+    pub(crate) fn set_layout_prop(
+        &mut self,
+        id: ElementId,
+        layout_style: &mut taffy::Style,
+        prop: &StyleProp,
+    ) -> bool {
+        if !taffy_bridge::apply_to_style(layout_style, prop) {
+            return false;
+        }
+        self.projection.set_style(id, layout_style.clone());
+        true
+    }
+
+    /// Settle half of the reduced layout interface (issue #308 / §5): reconcile
+    /// the derived Taffy projection against the (owner) element tree, run Taffy
+    /// layout + Parley shaping, refresh the absolute-geometry cache, and return
+    /// the set of elements whose box geometry changed (or appeared) this pass.
+    ///
+    /// Folds the former `reconcile → compute → cache → geometry diff` sequence
+    /// behind one call. The returned diff is the bridge the scene lowering
+    /// consumes so reflowed-but-otherwise-clean boxes re-lower instead of
+    /// painting stale geometry. `structure_dirty` / `shape_dirty` / `fonts_dirty`
+    /// are owned by `ElementEngine` (ADR-0075); this drains them.
+    pub(crate) fn settle(
+        &mut self,
+        elements: &mut HashMap<ElementId, Element>,
+        root: ElementId,
+        viewport: (f32, f32),
+        event_queue: &mut Vec<Event>,
+        structure_dirty: &mut HashSet<ElementId>,
+        shape_dirty: &mut HashSet<ElementId>,
+        fonts_dirty: &mut bool,
+    ) -> HashSet<ElementId> {
+        self.projection.reconcile(&*elements, root, structure_dirty);
+        self.compute(elements, root, viewport, event_queue, shape_dirty, fonts_dirty);
+        // Snapshot the previous absolute geometry before rebuilding, then diff:
+        // any element whose box `(x, y, w, h)` moved/resized (or newly appeared)
+        // lands in the returned set. A flex reflow from an insert/select ripples
+        // up to ancestors and sideways to siblings that are never structure/visual
+        // dirty on their own; absolute coords mean every moved descendant lands in
+        // the diff independently, so per-id re-lowering is sufficient.
+        let previous = std::mem::take(&mut self.layout_cache);
+        cache_layout(elements, &self.projection, root, 0.0, 0.0, &mut self.layout_cache);
+        let mut geometry_dirty = HashSet::new();
+        for (&id, geometry) in &self.layout_cache {
+            if previous.get(&id) != Some(geometry) {
+                geometry_dirty.insert(id);
+            }
+        }
+        geometry_dirty
+    }
+
+    /// Geometry-query side of the reduced layout interface (issue #308 / §5):
+    /// the absolute box rect `(x, y, w, h)` from the latest `settle`, or `None`
+    /// for elements without box geometry (e.g. inline text elements).
+    pub(crate) fn geometry(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
+        self.layout_cache.get(&id).copied()
+    }
+
+    /// True once at least one `settle` has produced box geometry.
+    pub(crate) fn has_geometry(&self) -> bool {
+        !self.layout_cache.is_empty()
     }
 
     /// Toggle the focused element's cursor every 500 ms (ADR-0032).
@@ -78,7 +152,7 @@ impl LayoutPass {
 
     /// Resolve `shape_dirty`/`fonts_dirty` and run Taffy layout + Parley shaping.
     /// `shape_dirty`/`fonts_dirty` are owned by `ElementEngine` (ADR-0075).
-    pub(crate) fn compute(
+    fn compute(
         &mut self,
         elements: &mut HashMap<ElementId, Element>,
         root: ElementId,
@@ -366,6 +440,162 @@ impl Default for LayoutPass {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::element::kind::ElementKind;
+    use crate::element::style::{Dimension, StyleProp};
+    use crate::element::tree::Visual;
+
+    fn view(parent: Option<ElementId>, children: Vec<ElementId>) -> Element {
+        Element {
+            kind: ElementKind::View,
+            parent,
+            children,
+            layout_style: taffy::Style::default(),
+            visual: Visual::default(),
+            text: None,
+            src: None,
+            text_layout: None,
+            transform: None,
+            scroll_offset: (0.0, 0.0),
+            src_image: None,
+            edit: None,
+            cursor_visible: false,
+            content_layout: None,
+            aria_label: None,
+            role: None,
+            pseudo_styles: Default::default(),
+            disabled: false,
+            selectable: false,
+            viewport_variants: Vec::new(),
+        }
+    }
+
+    /// The reduced layout interface: a caller sets layout props and settles,
+    /// then reads geometry — without touching bridge conversion, reconcile,
+    /// compute, or the layout cache directly (issue #308 / §5).
+    #[test]
+    fn set_layout_prop_then_settle_then_geometry_lays_out_child() {
+        let mut layout = LayoutPass::new();
+        let root_id = ElementId::from_u64(1);
+        let child_id = ElementId::from_u64(2);
+        let mut elements = HashMap::new();
+        elements.insert(root_id, view(None, vec![child_id]));
+        elements.insert(child_id, view(Some(root_id), Vec::new()));
+
+        {
+            let child = elements.get_mut(&child_id).unwrap();
+            assert!(layout.set_layout_prop(
+                child_id,
+                &mut child.layout_style,
+                &StyleProp::Width(Dimension::px(80.0)),
+            ));
+            assert!(layout.set_layout_prop(
+                child_id,
+                &mut child.layout_style,
+                &StyleProp::Height(Dimension::px(40.0)),
+            ));
+        }
+
+        let mut structure_dirty = HashSet::new();
+        let mut shape_dirty = HashSet::new();
+        let mut fonts_dirty = false;
+        let mut events = Vec::new();
+        layout.settle(
+            &mut elements,
+            root_id,
+            (300.0, 200.0),
+            &mut events,
+            &mut structure_dirty,
+            &mut shape_dirty,
+            &mut fonts_dirty,
+        );
+
+        let rect = layout.geometry(child_id).expect("child must have geometry");
+        assert!((rect.2 - 80.0).abs() < 0.5, "width was {}", rect.2);
+        assert!((rect.3 - 40.0).abs() < 0.5, "height was {}", rect.3);
+    }
+
+    /// `settle` returns the geometry diff (boxes that moved/resized/appeared)
+    /// so the caller need not snapshot and compare the layout cache itself.
+    #[test]
+    fn settle_reports_geometry_diff_only_for_changed_boxes() {
+        let mut layout = LayoutPass::new();
+        let root_id = ElementId::from_u64(1);
+        let child_id = ElementId::from_u64(2);
+        let mut elements = HashMap::new();
+        elements.insert(root_id, view(None, vec![child_id]));
+        elements.insert(child_id, view(Some(root_id), Vec::new()));
+        {
+            let child = elements.get_mut(&child_id).unwrap();
+            layout.set_layout_prop(
+                child_id,
+                &mut child.layout_style,
+                &StyleProp::Width(Dimension::px(80.0)),
+            );
+            layout.set_layout_prop(
+                child_id,
+                &mut child.layout_style,
+                &StyleProp::Height(Dimension::px(40.0)),
+            );
+        }
+
+        let mut structure_dirty = HashSet::new();
+        let mut shape_dirty = HashSet::new();
+        let mut fonts_dirty = false;
+        let mut events = Vec::new();
+        let viewport = (300.0, 200.0);
+
+        // First settle: every box newly appears in the diff.
+        let appeared = layout.settle(
+            &mut elements, root_id, viewport, &mut events,
+            &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
+        );
+        assert!(appeared.contains(&child_id));
+
+        // Re-settle with no change: a stable layout reports an empty diff.
+        let stable = layout.settle(
+            &mut elements, root_id, viewport, &mut events,
+            &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
+        );
+        assert!(stable.is_empty(), "stable layout must report no geometry diff");
+
+        // Resize through the reduced set interface, then settle.
+        {
+            let child = elements.get_mut(&child_id).unwrap();
+            layout.set_layout_prop(
+                child_id,
+                &mut child.layout_style,
+                &StyleProp::Height(Dimension::px(90.0)),
+            );
+        }
+        let resized = layout.settle(
+            &mut elements, root_id, viewport, &mut events,
+            &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
+        );
+        assert!(resized.contains(&child_id), "resized box must be in geometry diff");
+        let rect = layout.geometry(child_id).expect("child geometry");
+        assert!((rect.3 - 90.0).abs() < 0.5, "height was {}", rect.3);
+    }
+
+    /// The set interface bridge-converts only layout props; a visual prop is
+    /// rejected (returns false) and leaves `layout_style` untouched, so the
+    /// caller can route it to Visual instead.
+    #[test]
+    fn set_layout_prop_rejects_non_layout_prop() {
+        let mut layout = LayoutPass::new();
+        let id = ElementId::from_u64(1);
+        let mut style = taffy::Style::default();
+        let before = style.clone();
+
+        let applied = layout.set_layout_prop(id, &mut style, &StyleProp::Opacity(0.5));
+
+        assert!(!applied, "visual prop must not be accepted by the layout seam");
+        assert_eq!(style, before, "non-layout prop must not mutate layout_style");
+    }
+}
+
 fn init_bundled_fonts(font_cx: &mut FontContext) {
     use fontique::{FontInfoOverride, GenericFamily};
 
@@ -385,7 +615,7 @@ fn init_bundled_fonts(font_cx: &mut FontContext) {
     }
 }
 
-pub(crate) fn cache_layout(
+fn cache_layout(
     elements: &HashMap<ElementId, Element>,
     projection: &TaffyProjection,
     id: ElementId,
