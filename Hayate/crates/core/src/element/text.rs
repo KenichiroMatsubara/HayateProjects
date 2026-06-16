@@ -466,6 +466,75 @@ mod tests {
             .collect()
     }
 
+    /// Flatten every shaped glyph id across all runs of a layout.
+    fn glyph_ids(layout: &TextLayout) -> Vec<u32> {
+        layout
+            .layout
+            .lines()
+            .flat_map(|line| line.items())
+            .filter_map(|item| match item {
+                PositionedLayoutItem::GlyphRun(grun) => Some(grun),
+                _ => None,
+            })
+            .flat_map(|grun| grun.glyphs().map(|g| g.id).collect::<Vec<_>>())
+            .collect()
+    }
+
+    /// Japanese must shape to real glyphs (never .notdef/glyph 0) using only the
+    /// bundled font — otherwise the canvas renders tofu boxes (□□□).
+    ///
+    /// Every other shaping test here uses "Hello" (Latin), so a font that failed
+    /// to cover CJK would pass the whole suite while the UI is all tofu. This is
+    /// the seam where tofu originates: `.notdef` => glyph id 0 => the renderer
+    /// rasterises the font's box glyph. Guard it directly.
+    #[test]
+    fn japanese_shapes_to_real_glyphs_with_bundled_font() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let tl = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "あいう一二三",
+            16.0,
+            None,
+            None,
+            None,
+            None,
+        );
+        let ids = glyph_ids(&tl);
+        assert!(!ids.is_empty(), "no glyphs shaped for Japanese");
+        assert!(
+            ids.iter().all(|&id| id != 0),
+            "Japanese shaped to .notdef (tofu): {ids:?}"
+        );
+    }
+
+    /// The todo demo sets `defaultFontFamily: 'Inter, Segoe UI, system-ui,
+    /// sans-serif'` — none of which are registered in the WASM runtime before a
+    /// CDN fetch. Japanese must still fall through the stack to the bundled
+    /// default (`sans-serif` / "Noto Sans") rather than render tofu.
+    #[test]
+    fn japanese_falls_through_unregistered_family_stack_to_bundled() {
+        let mut font_cx = test_font_context();
+        let mut layout_cx = LayoutContext::new();
+        let tl = build_text_layout(
+            &mut font_cx,
+            &mut layout_cx,
+            "きょうのタスク",
+            16.0,
+            None,
+            Some("Inter, Segoe UI, system-ui, sans-serif"),
+            None,
+            None,
+        );
+        let ids = glyph_ids(&tl);
+        assert!(!ids.is_empty(), "no glyphs shaped for Japanese");
+        assert!(
+            ids.iter().all(|&id| id != 0),
+            "Japanese in browser font stack shaped to .notdef (tofu): {ids:?}"
+        );
+    }
+
     #[test]
     fn build_text_layout_pushes_font_style_to_parley() {
         let mut font_cx = test_font_context();
