@@ -46,7 +46,7 @@
 |---|---|---|
 | REND-08 | Render Host 芯の共有層 hoist | `adapter-web` 内残留（ADR-0068） |
 | PLAT-06 | Android ネイティブ Platform Adapter | (A)描画/(B)タッチ着手、(C)フルパリティ（IME/AccessKit/clipboard）未着手 |
-| WEBA-01 | モード自動判定 | 統一 host entry 未整備（例: `hello-world` の `detectMode()` のみ） |
+| WEBA-01 | モード自動判定 | 統一 host entry 未整備（例: `examples/todo` の `detectMode()` のみ） |
 | PLAT-04 ★ | AccessKit 展開順序 | Core TreeUpdate✅、ネイティブ/Web AT 報告未着手 |
 | PROTO-09 | wire codec 単一正本 | 手書き `hayate.ts` の `parseColor`/`parseDimension` 残存 |
 | TSUB-02 | property 閉じた語彙 | `value`/`placeholder`/`disabled`/`src` ✅。`aria-label`/`role` first-class 未接続 |

@@ -1,0 +1,86 @@
+name: Deploy demo to GitHub Pages
+
+on:
+  # main への push ごとに自動デプロイ
+  push:
+    branches: [main]
+  # Actions タブから手動実行も可能
+  workflow_dispatch:
+
+# Pages デプロイに必要な権限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時に走った場合は最新の push を優先（古いデプロイはキャンセル）
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Tsubame Todo demo (Rust WASM + Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Rust / wasm-pack（hayate-adapter-web の WASM をビルド）──────────────
+      - name: Set up Rust (wasm32 target)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      # ── Node / pnpm ────────────────────────────────────────────────────────
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Build ──────────────────────────────────────────────────────────────
+      - name: Build WASM (hayate-adapter-web)
+        # setup-rust-toolchain は既定で RUSTFLAGS=-Dwarnings を立てる。
+        # web パスには本筋と無関係の dead_code 警告があるため空にする
+        # （android-adapter.yml と同じ理由）。
+        env:
+          RUSTFLAGS: ""
+        run: pnpm run build:wasm
+
+      - name: Build Tsubame packages
+        run: pnpm run build:tsubame
+
+      - name: Build Tsubame Todo example
+        # GitHub Pages の project site 配下に置くため base を合わせる
+        # （リポジトリ名が変わったらここも変える）。vite.config が VITE_BASE を読む。
+        env:
+          VITE_BASE: /HayateProjects/
+        run: pnpm --filter @tsubame/example-todo run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: Tsubame/examples/todo/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

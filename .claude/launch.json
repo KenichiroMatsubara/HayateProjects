@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "tsubame-hello-world",
+      "name": "tsubame-todo",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tsubame/example-hello-world", "dev"],
+      "runtimeArgs": ["--filter", "@tsubame/example-todo", "dev"],
       "port": 5177
     }
   ]
