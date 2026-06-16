@@ -14,6 +14,16 @@ use crate::element::tree::{ElementTree, Visual};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 use std::collections::HashSet;
 
+/// Native focus-ring geometry and colour for `:focus-visible` (#335, ADR-0102).
+/// Chromium draws a solid ring just outside the border box, following its corner
+/// radius. The width/offset/colour approximate Chrome's default `outline: auto`
+/// ring and are calibrated against real Chromium rasterisation (tracking #335).
+pub const FOCUS_RING_WIDTH: f32 = 2.0;
+/// Gap between the element's border box and the ring's inner edge.
+pub const FOCUS_RING_OFFSET: f32 = 1.0;
+/// Chromium's default accent focus ring (Google Blue), opaque.
+pub const FOCUS_RING_COLOR: Color = Color::new(0.102, 0.451, 0.910, 1.0);
+
 /// Ambient context threaded through the one scene walk shared by both anchor
 /// strategies (issue #322). Carries what every emission needs regardless of
 /// strategy — the document tree, the scene graph it builds into, the interaction
@@ -746,6 +756,11 @@ fn emit_element<S: AnchorSink>(
         effective_parent = Some(group_id);
     }
 
+    // Parent for the native focus ring: above the element's own overflow clip so
+    // the ring isn't cropped to the box (Chromium paints outlines outside the
+    // element's clip), but still inside any transform group (#335).
+    let ring_parent = effective_parent;
+
     let effective_parent = if el.kind == ElementKind::ScrollView {
         let clip_id = emit(
             ctx.sg,
@@ -968,11 +983,51 @@ fn emit_element<S: AnchorSink>(
         }
     }
 
+    // Native focus ring (`:focus-visible`, #335). Painted on top of the box's own
+    // content and outside its border, following the box corner radius. The
+    // application's `:focus` background/border switch is resolved separately via
+    // pseudo styles above and is unaffected.
+    if tree.focus_visible_element() == Some(id) {
+        emit_focus_ring(ctx.sg, ring_parent, x, y, w, h, visual.border_radius);
+    }
+
     for (child, child_cursor) in sink.children(tree, cursor, id, effective_parent) {
         let mut child_ctx = ctx.child(x, y, child_inherited.clone());
         walk(&mut child_ctx, sink, child_cursor, child);
     }
     sink.end_element(ctx, effective_parent, id);
+}
+
+/// Emit a `RoundedRing` wrapping the box `(x, y, width, height)` from the outside
+/// — the native focus ring (#335). The outer rect is grown by the offset plus the
+/// ring width on every side; the ring's inner edge then lands `FOCUS_RING_OFFSET`
+/// outside the border box, matching Chromium's `outline-offset`.
+fn emit_focus_ring(
+    sg: &mut SceneGraph,
+    parent_group: Option<NodeId>,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    border_radius: f32,
+) {
+    let grow = FOCUS_RING_OFFSET + FOCUS_RING_WIDTH;
+    emit(
+        sg,
+        parent_group,
+        Node {
+            kind: NodeKind::RoundedRing {
+                x: x - grow,
+                y: y - grow,
+                width: width + 2.0 * grow,
+                height: height + 2.0 * grow,
+                outer_radius: border_radius.max(0.0) + grow,
+                border_width: FOCUS_RING_WIDTH,
+                color: FOCUS_RING_COLOR.to_array_f32(),
+            },
+            children: Vec::new(),
+        },
+    );
 }
 
 fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId {

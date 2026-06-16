@@ -18,6 +18,17 @@ pub struct PointerMoveResult {
     pub resolved_cursor: CursorValue,
 }
 
+/// Modality of the most recent input event (#335, ADR-0102). Chromium's
+/// `:focus-visible` heuristic keys off the last interaction: a keyboard
+/// interaction makes the next focus ring-worthy, while a pointer interaction
+/// suppresses the ring on widgets that don't need it (e.g. buttons). Tracked in
+/// core so both Canvas backends derive the ring identically.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputModality {
+    Pointer,
+    Keyboard,
+}
+
 impl ElementTree {
     /// Pointer down at canvas coordinates (hit-test driven).
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
@@ -78,6 +89,7 @@ impl ElementTree {
     }
 
     fn pointer_down_on_target(&mut self, target: Option<ElementId>, x: f32, y: f32) {
+        self.last_input_modality = InputModality::Pointer;
         if let Some(t) = target {
             self.emit_interaction(Event::Click {
                 target_id: t,
@@ -230,6 +242,10 @@ impl ElementTree {
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
+        // A keyboard interaction makes the next focus ring-worthy under Chromium's
+        // `:focus-visible` heuristic (#335). Recorded before the early returns so a
+        // key press that doesn't reach a focused element still flips the modality.
+        self.last_input_modality = InputModality::Keyboard;
         // Selection keyboard gestures (#267) act on the document-wide selection
         // and are independent of element focus, so they run first and consume the
         // key when they apply (e.g. Ctrl/Cmd+A, Shift+Arrow over a SelectionArea).

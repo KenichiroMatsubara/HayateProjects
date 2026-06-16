@@ -187,6 +187,9 @@ pub struct ElementTree {
     /// Element that owns the text-input cursor blink. Tracked here (not in the
     /// adapter) so `render(timestamp_ms)` can advance the blink itself per ADR-0032.
     pub(crate) focused_element: Option<ElementId>,
+    /// Modality of the most recent input event, driving the `:focus-visible`
+    /// heuristic for the native focus ring (#335, ADR-0102).
+    pub(crate) last_input_modality: crate::element::interaction::InputModality,
     /// Elements matching CSS `:hover` (self or descendant under pointer).
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
@@ -237,6 +240,9 @@ impl ElementTree {
             scene_lowering: SceneLowering::default(),
             event_queue: Vec::new(),
             focused_element: None,
+            // Pointer until the first keyboard event, so an unfocused / freshly
+            // pointer-driven UI shows no spurious ring on buttons (#335).
+            last_input_modality: crate::element::interaction::InputModality::Pointer,
             hovered_elements: HashSet::new(),
             active_element: None,
             selection: None,
@@ -532,6 +538,21 @@ impl ElementTree {
     /// Currently-focused element, if any.
     pub fn focused_element(&self) -> Option<ElementId> {
         self.focused_element
+    }
+
+    /// The focused element when it should display a native focus ring, matching
+    /// Chromium's `:focus-visible` (#335, ADR-0102): a keyboard-driven focus
+    /// rings any element, while a pointer-driven focus rings text inputs (which
+    /// always need a visible caret context) but not buttons or other widgets.
+    pub fn focus_visible_element(&self) -> Option<ElementId> {
+        use crate::element::interaction::InputModality;
+        let id = self.focused_element?;
+        let kind = self.elements.get(&id)?.kind;
+        let visible = match self.last_input_modality {
+            InputModality::Keyboard => true,
+            InputModality::Pointer => kind == ElementKind::TextInput,
+        };
+        visible.then_some(id)
     }
 
     /// Flip the active element to `next`, marking the `:active` invalidation for
