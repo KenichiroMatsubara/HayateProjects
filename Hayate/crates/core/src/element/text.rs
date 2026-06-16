@@ -2,7 +2,8 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use fontique::FontStyle;
+use fontique::{Collection, FontInfoOverride, FontStyle, GenericFamily};
+use linebender_resource_handle::Blob;
 use parley::{
     FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
 };
@@ -19,6 +20,35 @@ pub type TextBrush = [u8; 4];
 /// The bundled default font family. Always available in canvas (WASM) mode where
 /// system fonts are absent. Unknown font names fall back to this via CSS font stack.
 pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans";
+
+/// Register `data` into `collection` under `family_name`, and—unless it *is* the
+/// bundled default—wire it in as a per-cluster *fallback* by appending it to the
+/// `sans-serif` generic **after** the bundled default.
+///
+/// This backs on-demand font loading ([`crate::element::tree::ElementTree::register_font`]).
+/// A fetched font must be reachable two ways: by its own name (so a CSS stack
+/// like `"Inter, …"` can select it) and as a fallback for glyphs the bundled
+/// font lacks (emoji, foreign scripts).
+///
+/// Crucially it must NOT shadow the bundled default. The previous implementation
+/// aliased every fetched font *under* `DEFAULT_FONT_FAMILY`, which added a
+/// competing face to that family; fontique then selected the newly-fetched
+/// (e.g. Latin-only Inter) face for whole runs and every CJK glyph collapsed to
+/// `.notdef` the moment any fallback was fetched — the deployed-Pages tofu
+/// cascade (text rendered correctly, then turned to □ after the first fetch).
+/// Appending to the generic keeps the bundled face first, so it is always tried
+/// first per cluster and the fetched font only fills genuine gaps.
+pub fn register_collection_font(collection: &mut Collection, family_name: &str, data: Arc<Vec<u8>>) {
+    let override_info = FontInfoOverride {
+        family_name: Some(family_name),
+        ..Default::default()
+    };
+    let registered = collection.register_fonts(Blob::new(data), Some(override_info));
+    if family_name != DEFAULT_FONT_FAMILY {
+        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+        collection.append_generic_families(GenericFamily::SansSerif, ids.into_iter());
+    }
+}
 
 /// Byte range → owning inline text element (deepest wins on lookup).
 #[derive(Clone, Debug, Default)]

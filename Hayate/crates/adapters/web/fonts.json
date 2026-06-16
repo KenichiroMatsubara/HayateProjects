@@ -54,11 +54,11 @@
   },
   {
     "family": "Inter",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf"
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
   },
   {
     "family": "Roboto",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/apache/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
   },
   {
     "family": "Open Sans",
@@ -98,7 +98,7 @@
   },
   {
     "family": "Merriweather",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/merriweather/Merriweather-Regular.ttf"
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/merriweather/Merriweather%5Bopsz%2Cwdth%2Cwght%5D.ttf"
   },
   {
     "family": "Lora",
@@ -114,7 +114,7 @@
   },
   {
     "family": "Source Code Pro",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcecodepro/SourceCodePro%5Bital%2Cwght%5D.ttf"
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcecodepro/SourceCodePro%5Bwght%5D.ttf"
   },
   {
     "family": "M PLUS Rounded 1c",

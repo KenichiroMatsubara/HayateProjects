@@ -16,3 +16,6 @@ accesskit.workspace = true
 
 [dev-dependencies]
 serde_json = "1"
+parley.workspace = true
+fontique.workspace = true
+linebender_resource_handle = "0.1.1"
