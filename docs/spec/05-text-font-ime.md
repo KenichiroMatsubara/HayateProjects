@@ -49,9 +49,9 @@
 **備考:** モード選択は §8 WEBA-01。
 
 ### TEXT-07 — preedit は Element Layer が保持
-**規範文:** IME 組成中テキスト（preedit）は Element Layer が保持し（`Element::edit: Option<EditState>` の `EditState::preedit: Option<String>`）、表示時に `text_content + preedit` を合成する（ADR-0058 の text-as-element と整合）。
-**出典:** ADR-0017, ADR-0058, ADR-0069（preedit を `EditState` に集約）
-**状況:** ✅ — `edit_state.rs:5` `EditState::preedit`、`tree.rs:92` `Element::edit`、`edit_state.rs:10` `display_text()` の合成（`tree.rs:435` `element_set_preedit`）、`scene_build.rs` の content_layout 描画。Parley editor（vendored）の compose API を利用。
+**規範文:** IME 組成中テキスト（preedit）は Element Layer が保持し（`Element::edit: Option<EditState>` の `EditState::preedit: Option<Preedit>`）、表示時に `text_content + preedit.text` を合成する（ADR-0058 の text-as-element と整合）。`Preedit` は preedit テキストに加え、EditContext `textformatupdate` 由来の clause 分割下線範囲（`CompositionClause { start, end, underline: Thin|Thick }`）を保持する。clause が空のときは preedit 全体を 1 本の細下線（変換前の見た目）として扱う（ADR-0102）。
+**出典:** ADR-0017, ADR-0058, ADR-0069（preedit を `EditState` に集約）, ADR-0102（preedit を範囲付きへ拡張し clause 下線を描く）
+**状況:** ✅ — `edit_state.rs` `EditState::preedit: Option<Preedit>`／`composition_underlines()`、`tree.rs` `Element::edit`・`element_set_preedit_with_clauses` / `element_composition_underlines`、`display_text()` の合成、`scene_build.rs` の clause ごと下線 rect 描画（細=1px／太=2px、実値は実 Chromium で校正予定）。配管は EditContext `textformatupdate` → `compositionFormatsToWire`（UTF-16→UTF-8 byte）→ `on_composition_update_formatted` → `CompositionClause::from_wire` → core。Parley editor（vendored）の compose API を利用。
 **備考:** Raw Layer ユーザーは IME を自前実装（§4）。
 
 ### TEXT-08 — text element は inline formatting context（IFC）

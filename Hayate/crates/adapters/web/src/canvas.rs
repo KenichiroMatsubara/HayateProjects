@@ -554,6 +554,17 @@ impl HayateElementRenderer {
             .on_composition_update(element_id_from_f64(id), text);
     }
 
+    /// Called by JS when the IME preedit updates, carrying the EditContext
+    /// `textformatupdate` clause format ranges (ADR-0102, #336) so Canvas Mode
+    /// draws the per-clause conversion underlines. `formats` is the flat
+    /// `[start, end, weight, …]` triple stream (byte offsets into `text`;
+    /// `weight == 0` thin, non-zero thick).
+    pub fn on_composition_update_formatted(&mut self, id: f64, text: &str, formats: &[u32]) {
+        let clauses = hayate_core::CompositionClause::from_wire(formats);
+        self.tree
+            .on_composition_update_formatted(element_id_from_f64(id), text, clauses);
+    }
+
     /// Called by JS when IME composition is finalized.
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         self.tree.on_composition_end(element_id_from_f64(id), text);

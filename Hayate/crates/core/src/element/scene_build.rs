@@ -922,6 +922,22 @@ fn emit_element<S: AnchorSink>(
                 );
             }
         }
+        // IME composition underlines: one per clause, drawn under the preedit
+        // glyphs. Chromium underlines the active (being-converted) clause thick
+        // and the determined ones thin (ADR-0102, #336).
+        if let Some(cl) = el.content_layout.as_ref() {
+            if let Some(edit) = el.edit.as_ref() {
+                emit_composition_underlines(
+                    &cl.layout,
+                    &edit.composition_underlines(),
+                    content_x,
+                    content_y,
+                    color,
+                    ctx.sg,
+                    effective_parent,
+                );
+            }
+        }
         if el.cursor_visible {
             if let Some(cl) = el.content_layout.as_ref() {
                 let cursor_index = el
@@ -1131,6 +1147,53 @@ fn emit_edit_selection_highlight(
                 children: Vec::new(),
             },
         );
+    }
+}
+
+/// IME composition underline thickness (ADR-0102, #336). Chromium draws the
+/// determined clauses with a thin underline and the active (being-converted)
+/// clause with a thick one; the exact pixel weights are pending calibration
+/// against real Chromium rasterisation, like the other Canvas chrome values.
+const COMPOSITION_UNDERLINE_THIN: f32 = 1.0;
+const COMPOSITION_UNDERLINE_THICK: f32 = 2.0;
+
+/// Lower a text-input's IME composition underlines (ADR-0102, #336): one filled
+/// rect per clause, sat at the bottom of each covered line in the element's
+/// content space (offset by `content_x`, `content_y`), painted in the text
+/// `color`. `underlines` are display-text byte ranges with their weight; no-op
+/// when no composition is active.
+fn emit_composition_underlines(
+    layout: &parley::Layout<crate::element::text::TextBrush>,
+    underlines: &[(usize, usize, crate::element::edit_state::CompositionUnderline)],
+    content_x: f32,
+    content_y: f32,
+    color: [f32; 4],
+    sg: &mut SceneGraph,
+    parent: Option<NodeId>,
+) {
+    use crate::element::edit_state::CompositionUnderline;
+    for &(start, end, weight) in underlines {
+        let thickness = match weight {
+            CompositionUnderline::Thin => COMPOSITION_UNDERLINE_THIN,
+            CompositionUnderline::Thick => COMPOSITION_UNDERLINE_THICK,
+        };
+        for (rx, ry, rw, rh) in selection_highlight_rects(layout, start, end) {
+            emit(
+                sg,
+                parent,
+                Node {
+                    kind: NodeKind::Rect {
+                        x: content_x + rx,
+                        y: content_y + ry + rh - thickness,
+                        width: rw,
+                        height: thickness,
+                        color,
+                        corner_radius: 0.0,
+                    },
+                    children: Vec::new(),
+                },
+            );
+        }
     }
 }
 

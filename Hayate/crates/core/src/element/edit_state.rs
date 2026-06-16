@@ -1,3 +1,65 @@
+/// IME composition underline weight for one clause (ADR-0102). Chromium draws
+/// the clause being converted with a thick underline and the surrounding,
+/// already-determined clauses with a thin one; this mirrors EditContext
+/// `textformatupdate`'s underline thickness styles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompositionUnderline {
+    /// Pre-conversion text or a non-active clause — a thin underline.
+    Thin,
+    /// The clause currently being converted (the IME's active segment) — a thick
+    /// underline.
+    Thick,
+}
+
+/// One composition clause: a byte sub-range of the preedit text and its
+/// underline weight. Offsets are relative to the preedit string (0 = its first
+/// byte), matching how EditContext reports `textformatupdate` ranges once the
+/// committed-content prefix is subtracted by the adapter.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompositionClause {
+    pub start: usize,
+    pub end: usize,
+    pub underline: CompositionUnderline,
+}
+
+impl CompositionClause {
+    /// Decode the wire form carried across the EditContext `textformatupdate`
+    /// boundary (ADR-0102): a flat `[start, end, weight, …]` triple stream where
+    /// `weight == 0` is [`CompositionUnderline::Thin`] and any non-zero value is
+    /// [`CompositionUnderline::Thick`]. A trailing partial triple is ignored.
+    pub fn from_wire(formats: &[u32]) -> Vec<CompositionClause> {
+        formats
+            .chunks_exact(3)
+            .filter_map(|c| {
+                let (start, end) = (c[0] as usize, c[1] as usize);
+                if start >= end {
+                    return None;
+                }
+                let underline = if c[2] == 0 {
+                    CompositionUnderline::Thin
+                } else {
+                    CompositionUnderline::Thick
+                };
+                Some(CompositionClause {
+                    start,
+                    end,
+                    underline,
+                })
+            })
+            .collect()
+    }
+}
+
+/// In-progress IME composition (ADR-0102): the preedit text plus the clause
+/// format ranges fed from EditContext `textformatupdate`. With no clauses, the
+/// whole preedit renders as a single thin-underlined run — the pre-conversion
+/// look before the IME has split the reading into segments.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Preedit {
+    pub text: String,
+    pub clauses: Vec<CompositionClause>,
+}
+
 /// Text-input edit model (ADR-0069). Owned by TextInput elements only.
 ///
 /// The caret is the degenerate form of the unified Selection model (ADR-0097):
@@ -7,7 +69,7 @@
 #[derive(Clone, Debug, Default)]
 pub struct EditState {
     pub text_content: String,
-    pub preedit: Option<String>,
+    pub preedit: Option<Preedit>,
     /// The selection's focus (the moving end / caret position).
     pub cursor_byte_index: usize,
     /// The selection's anchor (the fixed end). Equal to `cursor_byte_index` for
@@ -18,9 +80,32 @@ pub struct EditState {
 impl EditState {
     pub fn display_text(&self) -> String {
         match &self.preedit {
-            Some(p) => format!("{}{}", self.text_content, p),
+            Some(p) => format!("{}{}", self.text_content, p.text),
             None => self.text_content.clone(),
         }
+    }
+
+    /// The active composition's underline ranges in **display-text byte offsets**
+    /// (i.e. already shifted past the committed `text_content` prefix), each with
+    /// its weight (ADR-0102). Empty when no composition is active. With no clause
+    /// formats the whole preedit is one thin-underlined range — the look before
+    /// the IME splits the reading into segments.
+    pub fn composition_underlines(&self) -> Vec<(usize, usize, CompositionUnderline)> {
+        let Some(preedit) = &self.preedit else {
+            return Vec::new();
+        };
+        let base = self.text_content.len();
+        if preedit.clauses.is_empty() {
+            if preedit.text.is_empty() {
+                return Vec::new();
+            }
+            return vec![(base, base + preedit.text.len(), CompositionUnderline::Thin)];
+        }
+        preedit
+            .clauses
+            .iter()
+            .map(|c| (base + c.start, base + c.end, c.underline))
+            .collect()
     }
 
     /// True when the selection is collapsed to a caret (anchor == focus).
@@ -124,16 +209,30 @@ impl EditState {
     }
 
     pub fn set_preedit(&mut self, preedit: &str) {
+        self.set_preedit_with_clauses(preedit, Vec::new());
+    }
+
+    /// Set the preedit text together with its composition clause format ranges
+    /// (ADR-0102). Clearing the text (empty `preedit`) drops the composition and
+    /// any clauses with it.
+    pub fn set_preedit_with_clauses(
+        &mut self,
+        preedit: &str,
+        clauses: Vec<CompositionClause>,
+    ) {
         self.preedit = if preedit.is_empty() {
             None
         } else {
-            Some(preedit.to_string())
+            Some(Preedit {
+                text: preedit.to_string(),
+                clauses,
+            })
         };
     }
 
     pub fn commit_preedit(&mut self) {
         if let Some(preedit) = self.preedit.take() {
-            self.text_content.push_str(&preedit);
+            self.text_content.push_str(&preedit.text);
             self.collapse_to(self.text_content.len());
         }
     }
@@ -268,6 +367,99 @@ mod tests {
             "caret sits at the end of the value"
         );
         assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn preedit_retains_clause_format_ranges() {
+        let mut edit = EditState::default();
+        edit.append("ab");
+        edit.set_preedit_with_clauses(
+            "ぎゅう",
+            vec![CompositionClause {
+                start: 0,
+                end: 9,
+                underline: CompositionUnderline::Thick,
+            }],
+        );
+        // The clause weight is preserved and the display text still concatenates.
+        let preedit = edit.preedit.as_ref().expect("composition active");
+        assert_eq!(preedit.text, "ぎゅう");
+        assert_eq!(preedit.clauses[0].underline, CompositionUnderline::Thick);
+        assert_eq!(edit.display_text(), "abぎゅう");
+    }
+
+    #[test]
+    fn unformatted_preedit_underlines_the_whole_run_thin() {
+        // Pre-conversion: no clause split yet ⇒ one thin underline over the
+        // preedit, shifted past the committed prefix ("ab" = 2 bytes).
+        let mut edit = EditState::default();
+        edit.append("ab");
+        edit.set_preedit("xyz");
+        assert_eq!(
+            edit.composition_underlines(),
+            vec![(2, 5, CompositionUnderline::Thin)],
+        );
+    }
+
+    #[test]
+    fn clause_split_underlines_each_segment_in_display_offsets() {
+        // During conversion the IME splits the reading into clauses; the active
+        // one is thick. Offsets returned are display-text relative (past "ab").
+        let mut edit = EditState::default();
+        edit.append("ab");
+        edit.set_preedit_with_clauses(
+            "ぎゅうにゅう",
+            vec![
+                CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick },
+                CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
+            ],
+        );
+        assert_eq!(
+            edit.composition_underlines(),
+            vec![
+                (2, 11, CompositionUnderline::Thick),
+                (11, 20, CompositionUnderline::Thin),
+            ],
+        );
+    }
+
+    #[test]
+    fn no_composition_has_no_underlines() {
+        let mut edit = EditState::default();
+        edit.set("hello");
+        assert!(edit.composition_underlines().is_empty());
+    }
+
+    #[test]
+    fn from_wire_decodes_format_triples() {
+        // [start, end, weight] triples; weight 0 = thin, non-zero = thick.
+        let clauses = CompositionClause::from_wire(&[0, 9, 1, 9, 18, 0]);
+        assert_eq!(
+            clauses,
+            vec![
+                CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick },
+                CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
+            ],
+        );
+        // Degenerate (empty/inverted) ranges and a trailing partial triple drop.
+        assert!(CompositionClause::from_wire(&[5, 5, 0, 7]).is_empty());
+    }
+
+    #[test]
+    fn commit_clears_composition_decoration() {
+        let mut edit = EditState::default();
+        edit.append("ab");
+        edit.set_preedit_with_clauses(
+            "ぎゅう",
+            vec![CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick }],
+        );
+        edit.commit_preedit();
+        assert_eq!(edit.text_content, "abぎゅう");
+        assert!(edit.preedit.is_none());
+        assert!(
+            edit.composition_underlines().is_empty(),
+            "committing the composition clears its underlines",
+        );
     }
 
     #[test]

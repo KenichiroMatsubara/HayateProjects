@@ -30,7 +30,7 @@ mod visual_invalidation;
 pub use accessibility::{map_action_request, AccessibilityAction};
 pub use clipboard::Clipboard;
 pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
-pub use edit_state::EditState;
+pub use edit_state::{CompositionClause, CompositionUnderline, EditState, Preedit};
 pub use ime_bridge::{CharacterBounds, ImeBridge};
 pub use event_spec::{event_document_kind, DocumentEventKind, Event};
 pub use id::ElementId;
