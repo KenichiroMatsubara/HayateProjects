@@ -7,8 +7,8 @@
 //! layout / text / styling divergences from the DOM renderer.
 
 use hayate_core::{
-    AlignValue, Color, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue,
-    JustifyValue, PseudoState, Shadow, StyleProp,
+    AlignValue, BorderStyleValue, Color, Dimension, ElementId, ElementKind, ElementTree,
+    FlexDirectionValue, JustifyValue, PseudoState, Shadow, StyleProp,
 };
 use hayate_scene_renderer_tiny_skia::{premultiplied_to_straight, TinySkiaSceneRenderer};
 use tiny_skia::Pixmap;
@@ -173,6 +173,7 @@ fn render_tasks_screen() {
         StyleProp::JustifyContent(JustifyValue::SpaceBetween),
         StyleProp::BackgroundColor(p.rail()),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::PaddingLeft(Dimension::px(24.0)),
         StyleProp::PaddingRight(Dimension::px(24.0)),
@@ -209,6 +210,7 @@ fn render_tasks_screen() {
         StyleProp::Color(p.black()),
         StyleProp::BorderRadius(10.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.accent()),
         StyleProp::FontSize(13.0),
     ]);
@@ -223,6 +225,7 @@ fn render_tasks_screen() {
         StyleProp::Color(p.text()),
         StyleProp::BorderRadius(10.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(13.0),
     ]);
@@ -236,6 +239,7 @@ fn render_tasks_screen() {
             StyleProp::BackgroundColor(hex(c)),
             StyleProp::BorderRadius(999.0),
             StyleProp::BorderWidth(if selected { 3.0 } else { 1.0 }),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(if selected { p.ink() } else { p.line() }),
         ]);
         b.child(swatches, sw);
@@ -250,6 +254,7 @@ fn render_tasks_screen() {
         StyleProp::Color(p.text()),
         StyleProp::BorderRadius(10.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(15.0),
     ]);
@@ -265,6 +270,7 @@ fn render_tasks_screen() {
         StyleProp::BackgroundColor(p.panel()),
         StyleProp::BorderRadius(10.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
     ]);
     let badge_t = b.text("tiny-skia", &[StyleProp::Color(p.accent()), StyleProp::FontSize(13.0)]);
@@ -292,6 +298,7 @@ fn render_tasks_screen() {
         StyleProp::BackgroundColor(p.panel()),
         StyleProp::BorderRadius(18.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::BoxShadow(vec![Shadow {
             offset_x: 0.0, offset_y: 18.0, blur: 40.0, spread: -8.0,
@@ -320,6 +327,7 @@ fn render_tasks_screen() {
         StyleProp::BackgroundColor(p.black()),
         StyleProp::BorderRadius(8.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
     ]);
     let pfill = b.view(&[
@@ -341,6 +349,7 @@ fn render_tasks_screen() {
         StyleProp::BackgroundColor(p.panel2()),
         StyleProp::BorderRadius(12.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
     ]);
     for s in [
@@ -363,6 +372,7 @@ fn render_tasks_screen() {
         StyleProp::Color(p.text()),
         StyleProp::BorderRadius(8.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(13.0),
     ]);
@@ -380,6 +390,7 @@ fn render_tasks_screen() {
             StyleProp::Color(if active { p.black() } else { p.muted() }),
             StyleProp::BorderRadius(9.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(if active { tone } else { p.line() }),
             StyleProp::FontSize(13.0),
         ]);
@@ -396,6 +407,7 @@ fn render_tasks_screen() {
         StyleProp::Color(p.black()),
         StyleProp::BorderRadius(9.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.accent()),
         StyleProp::FontSize(13.0),
     ]);
@@ -424,6 +436,7 @@ fn render_tasks_screen() {
             StyleProp::Color(if active { p.black() } else { p.text() }),
             StyleProp::BorderRadius(999.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(if active { p.accent() } else { p.line() }),
             StyleProp::FontSize(12.0),
         ]);
@@ -443,6 +456,7 @@ fn render_tasks_screen() {
             StyleProp::Color(if active { p.black() } else { p.text() }),
             StyleProp::BorderRadius(999.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(if active { p.accent() } else { p.line() }),
             StyleProp::FontSize(12.0),
         ]);
@@ -468,6 +482,7 @@ fn render_tasks_screen() {
             StyleProp::BackgroundColor(p.panel2()),
             StyleProp::BorderRadius(12.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(p.line()),
             StyleProp::Opacity(if done { 0.62 } else { 1.0 }),
             StyleProp::BoxShadow(vec![Shadow {
@@ -485,6 +500,7 @@ fn render_tasks_screen() {
             StyleProp::Color(p.black()),
             StyleProp::BorderRadius(7.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(if done { p.success() } else { p.line() }),
             StyleProp::FontSize(14.0),
         ]);
@@ -506,6 +522,7 @@ fn render_tasks_screen() {
             StyleProp::Color(if done { p.quiet() } else { p.ink() }),
             StyleProp::FontSize(15.0),
             StyleProp::BorderWidth(0.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
         ]);
         b.child(labelwrap, label);
         let prio_t = b.text(&format!("優先度 {}", PRIO_LABEL[prio as usize]),
@@ -520,6 +537,7 @@ fn render_tasks_screen() {
             StyleProp::Color(p.muted()),
             StyleProp::BorderRadius(8.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(p.line()),
             StyleProp::FontSize(14.0),
         ]);
@@ -552,6 +570,7 @@ fn render_tasks_screen() {
         StyleProp::Color(p.text()),
         StyleProp::BorderRadius(8.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(12.0),
     ]);
@@ -716,6 +735,7 @@ fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, 
         StyleProp::Color(p.text()),
         StyleProp::BorderRadius(8.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(13.0),
     ]);
@@ -740,6 +760,7 @@ fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, 
             StyleProp::Color(if active { p.black() } else { p.muted() }),
             StyleProp::BorderRadius(9.0),
             StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
             StyleProp::BorderColor(if active { tone } else { p.line() }),
             StyleProp::FontSize(13.0),
         ]);
@@ -757,6 +778,7 @@ fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, 
         StyleProp::Color(p.black()),
         StyleProp::BorderRadius(9.0),
         StyleProp::BorderWidth(1.0),
+        StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.accent()),
         StyleProp::FontSize(13.0),
     ]);
@@ -960,13 +982,12 @@ fn diagnose_interaction_signals() {
     // 2. Focus ring: input left-border colour, unfocused vs focused.
     let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
     let foc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
-    // The focus cue that actually reads in Canvas is the input *fill* shifting
-    // panel2→panel3 (the :focus background). The 1px border colour change
-    // (line→accent) is set in the model but renders faintly at 1× (the left
-    // edge sits on an integer x and the hairline all but vanishes). Sample the
-    // input fill at its centre, unfocused vs focused.
+    // The :focus background shifts panel2→panel3. The 1px line→accent border
+    // change now also reads (issue #337: `border-style: solid` is supplied and
+    // the native focus ring no longer clears the box) — asserted separately by
+    // `addform_input_1px_border_renders`. Sample the input fill at its centre.
     eprintln!(
-        "[FOCUS-FILL] unfocused={:?} focused={:?}  (panel2={:?} → panel3={:?}; the app :focus applies, but the 1px accent border is near-invisible and DOM additionally stacks a NATIVE focus outline Canvas never draws)",
+        "[FOCUS-FILL] unfocused={:?} focused={:?}  (panel2={:?} → panel3={:?}; :focus background applies; the 1px accent border + native focus ring are now both visible — see addform_input_1px_border_renders)",
         sample_rgb(&unfoc, 180, 50), sample_rgb(&foc, 180, 50),
         (p.panel2().to_array_f32()), (p.panel3().to_array_f32()),
     );
@@ -998,6 +1019,74 @@ fn diagnose_interaction_signals() {
         "[PREEDIT-INK] pre-conversion underlines={:?}; converting underlines={:?} (#336 fixed: Canvas underlines the composition — one thin line before conversion, a thick active clause + thin tail while converting, per Chromium/EditContext; exact px weights pending real-Chromium calibration)",
         pre, conv,
     );
+}
+
+/// Render an AddForm input and return (pixmap, input layout rect).
+fn render_input_state_with_rect(st: &InputState) -> (Pixmap, (f32, f32, f32, f32)) {
+    let p = P;
+    let mut b = B::new();
+    let root = b.view(&[
+        StyleProp::Width(Dimension::px(PANEL_W as f32)),
+        StyleProp::Height(Dimension::px(PANEL_H as f32)),
+        StyleProp::Display(hayate_core::DisplayValue::Flex),
+        StyleProp::FlexDirection(FlexDirectionValue::Column),
+        StyleProp::Gap(Dimension::px(6.0)),
+        StyleProp::PaddingLeft(Dimension::px(16.0)),
+        StyleProp::PaddingRight(Dimension::px(16.0)),
+        StyleProp::PaddingTop(Dimension::px(14.0)),
+        StyleProp::PaddingBottom(Dimension::px(14.0)),
+        StyleProp::BackgroundColor(p.bg()),
+        StyleProp::DefaultColor(p.text()),
+        StyleProp::DefaultFontSize(14.0),
+        StyleProp::DefaultFontFamily("Inter".to_string()),
+    ]);
+    b.tree.set_root(root);
+    b.tree.set_viewport(PANEL_W as f32, PANEL_H as f32);
+    let (input, _add) = build_addform(&mut b, &p, root, st.label);
+    if st.focused {
+        b.tree.element_focus(input);
+    }
+    let _ = b.tree.render(0.0);
+    let rect = b.tree.element_layout_rect(input).unwrap();
+    let graph = b.tree.render(0.0).clone();
+    let mut pixmap = Pixmap::new(PANEL_W, PANEL_H).expect("pixmap");
+    TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
+    (pixmap, rect)
+}
+
+/// Issue #337 acceptance probe (the README `[SCAN]` method, now an assertion):
+/// the AddForm input's left 1px border must land as an independent opaque
+/// column — the `line` colour unfocused, the `accent` colour focused — and the
+/// focused interior must stay opaque (the native focus ring must not erase it).
+#[test]
+fn addform_input_1px_border_renders() {
+    let p = P;
+    let (unfoc, rect) = render_input_state_with_rect(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
+    let (foc, _) = render_input_state_with_rect(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
+    let (rx, ry, rw, rh) = rect;
+    let bx = rx as u32; // integer left edge — the 1px border column
+    let my = (ry + rh / 2.0) as u32;
+
+    let near = |got: (u8, u8, u8), want: Color, tol: i32, label: &str| {
+        let [r, g, b, _] = want.to_array_f32();
+        let w = ((r * 255.0) as i32, (g * 255.0) as i32, (b * 255.0) as i32);
+        let d = (got.0 as i32 - w.0, got.1 as i32 - w.1, got.2 as i32 - w.2);
+        assert!(
+            d.0.abs() <= tol && d.1.abs() <= tol && d.2.abs() <= tol,
+            "{label}: got {got:?}, want ~{w:?} (±{tol})"
+        );
+    };
+
+    // Unfocused: the left border column is the `line` colour, not the panel fill.
+    near(sample_rgb(&unfoc, bx, my), p.line(), 8, "unfocused 1px border = line colour");
+    // Focused: the app's `:focus` border switches to the teal `accent`, and it
+    // is visible (the focus ring no longer clears the border/fill underneath).
+    near(sample_rgb(&foc, bx, my), p.accent(), 8, "focused 1px border = accent teal");
+
+    // The focused input interior stays opaque — no transparent hole (#335 ring).
+    let cx = (rx + rw / 2.0) as u32;
+    let i = ((my * foc.width() + cx) * 4) as usize;
+    assert_eq!(foc.data()[i + 3], 255, "focused input interior must stay opaque");
 }
 
 fn write_png(path: &std::path::Path, rgba: &[u8], w: u32, h: u32) {

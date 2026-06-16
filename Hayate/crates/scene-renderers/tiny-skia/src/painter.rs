@@ -9,7 +9,7 @@ use skrifa::{
     raw::{FontRef, TableProvider},
 };
 use tiny_skia::{
-    BlendMode, Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap,
+    Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap,
     PixmapPaint, PixmapRef, Stroke, Transform,
 };
 
@@ -94,17 +94,18 @@ impl ScenePainter for TinySkiaPainter<'_> {
             return;
         }
 
+        // Paint only the ring band with a single even-odd fill (outer minus
+        // inner). Hollowing the interior with `BlendMode::Clear` would erase any
+        // opaque content underneath — e.g. the native focus ring (#335) sits on
+        // top of a filled input and must not punch it transparent (issue #337).
+        // This mirrors the vello backend's even-odd band fill.
         let paint = color_to_paint(color);
-        if let Some(outer) = rounded_rect_path(x, y, width, height, outer_radius) {
-            pixmap.fill_path(&outer, &paint, FillRule::Winding, transform, mask);
-        }
         let inner_r = (outer_radius - bw).max(0.0);
-        if let Some(inner) = rounded_rect_path(x + bw, y + bw, inner_w, inner_h, inner_r) {
-            let mut clear = Paint::default();
-            clear.set_color(Color::TRANSPARENT);
-            clear.blend_mode = BlendMode::Clear;
-            clear.anti_alias = true;
-            pixmap.fill_path(&inner, &clear, FillRule::Winding, transform, mask);
+        let mut pb = PathBuilder::new();
+        push_rounded_rect(&mut pb, x, y, width, height, outer_radius);
+        push_rounded_rect(&mut pb, x + bw, y + bw, inner_w, inner_h, inner_r);
+        if let Some(path) = pb.finish() {
+            pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, mask);
         }
     }
 
@@ -245,12 +246,11 @@ fn color_to_paint(color: [f32; 4]) -> Paint<'static> {
     paint
 }
 
-fn rounded_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
+fn push_rounded_rect(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: f32) {
     let r = r.min(w / 2.0).min(h / 2.0);
     let kappa = 0.5522848;
     let k = r * kappa;
 
-    let mut pb = PathBuilder::new();
     pb.move_to(x + r, y);
     pb.line_to(x + w - r, y);
     pb.cubic_to(x + w - r + k, y, x + w, y + r - k, x + w, y + r);
@@ -261,6 +261,11 @@ fn rounded_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     pb.line_to(x, y + r);
     pb.cubic_to(x, y + r - k, x + r - k, y, x + r, y);
     pb.close();
+}
+
+fn rounded_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
+    let mut pb = PathBuilder::new();
+    push_rounded_rect(&mut pb, x, y, w, h, r);
     pb.finish()
 }
 

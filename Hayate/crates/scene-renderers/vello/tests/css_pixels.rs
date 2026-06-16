@@ -2,11 +2,20 @@
 //!
 //! Skips entirely when no wgpu adapter is available.
 
-use hayate_scene_test_support::{run_all_vello, run_vello, try_vello_harness, CSS_PIXEL_CASES};
+use hayate_scene_test_support::{
+    run_all_vello, run_vello, try_vello_harness, BORDER_RASTER_CASES, CSS_PIXEL_CASES,
+};
 
 #[test]
 fn all_catalog_css_properties_vello() {
     let _ran = run_all_vello(CSS_PIXEL_CASES);
+}
+
+/// Issue #337: 1px borders draw as opaque columns and the focus ring never
+/// erases the content it overlays — on vello.
+#[test]
+fn border_raster_regressions_vello() {
+    let _ran = run_all_vello(BORDER_RASTER_CASES);
 }
 
 macro_rules! vello_property_test {

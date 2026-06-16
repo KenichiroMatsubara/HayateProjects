@@ -197,6 +197,7 @@ export function TodoApp(props: TodoAppProps) {
             backgroundColor: colors().panel,
             borderRadius: 18,
             borderWidth: 1,
+            borderStyle: 'solid',
             borderColor: colors().line,
             boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
           }}>
@@ -261,6 +262,7 @@ function AppBar(props: {
     defaultColor: active ? props.colors.black : props.colors.text,
     borderRadius: 10,
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: active ? props.colors.accent : props.colors.line,
     defaultFontSize: 13,
     ':hover': {
@@ -277,6 +279,7 @@ function AppBar(props: {
       backgroundColor: accentColor(props.theme, key),
       borderRadius: 999,
       borderWidth: selected ? 3 : 1,
+      borderStyle: 'solid',
       borderColor: selected ? props.colors.ink : props.colors.line,
       ':hover': { borderColor: props.colors.ink },
     };
@@ -291,6 +294,7 @@ function AppBar(props: {
       justifyContent: 'space-between',
       backgroundColor: props.colors.rail,
       borderWidth: 1,
+      borderStyle: 'solid',
       borderColor: props.colors.line,
     }}>
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -333,6 +337,7 @@ function AppBar(props: {
             defaultColor: props.colors.text,
             borderRadius: 10,
             borderWidth: 1,
+            borderStyle: 'solid',
             borderColor: props.colors.line,
             defaultFontSize: 15,
             ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.line },
@@ -351,6 +356,7 @@ function AppBar(props: {
           backgroundColor: props.colors.panel,
           borderRadius: 10,
           borderWidth: 1,
+          borderStyle: 'solid',
           borderColor: props.colors.line,
         }}>
           {SpX(12)}
@@ -413,6 +419,7 @@ function SelectableNote(props: { colors: Palette }) {
         backgroundColor: props.colors.panel2,
         borderRadius: 12,
         borderWidth: 1,
+        borderStyle: 'solid',
         borderColor: props.colors.line,
       }}
     >
@@ -440,6 +447,7 @@ function ProgressBar(props: { colors: Palette; percent: number }) {
       backgroundColor: props.colors.black,
       borderRadius: 8,
       borderWidth: 1,
+      borderStyle: 'solid',
       borderColor: props.colors.line,
     }}>
       <view style={{
@@ -471,6 +479,7 @@ function AddForm(props: {
     defaultColor: active ? props.colors.black : props.colors.muted,
     borderRadius: 9,
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: active ? tone : props.colors.line,
     defaultFontSize: 13,
     ':hover': {
@@ -514,6 +523,7 @@ function AddForm(props: {
           defaultColor: props.colors.black,
           borderRadius: 9,
           borderWidth: 1,
+          borderStyle: 'solid',
           borderColor: props.colors.accent,
           defaultFontSize: 13,
           ':hover': { backgroundColor: props.colors.success, borderColor: props.colors.success },
@@ -538,6 +548,7 @@ function chipStyle(p: Palette, active: boolean): HayateCssStyle {
     defaultColor: active ? p.black : p.text,
     borderRadius: 999,
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: active ? p.accent : p.line,
     defaultFontSize: 12,
     ':hover': {
@@ -591,6 +602,7 @@ function iconButton(p: Palette): HayateCssStyle {
     defaultColor: p.muted,
     borderRadius: 8,
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: p.line,
     defaultFontSize: 14,
     ':hover': { backgroundColor: p.panel3, borderColor: p.line, defaultColor: p.text },
@@ -624,6 +636,7 @@ function TodoRow(props: {
       backgroundColor: p.panel2,
       borderRadius: 12,
       borderWidth: 1,
+      borderStyle: 'solid',
       borderColor: p.line,
       opacity: done ? 0.62 : 1,
       boxShadow: [{ offsetX: 0, offsetY: 2, blur: 6, spread: -1, color: p.shadow, inset: false }],
@@ -644,6 +657,7 @@ function TodoRow(props: {
           defaultColor: p.black,
           borderRadius: 7,
           borderWidth: 1,
+          borderStyle: 'solid',
           borderColor: done ? p.success : p.line,
           defaultFontSize: 14,
           ':hover': { borderColor: p.success },
@@ -679,6 +693,7 @@ function TodoRow(props: {
               defaultColor: done ? p.quiet : p.ink,
               defaultFontSize: 15,
               borderWidth: 0,
+              borderStyle: 'solid',
               ':hover': { defaultColor: p.accent },
             }}
             onClick={props.onBeginEdit}
@@ -716,6 +731,7 @@ function EmptyState(props: { colors: Palette }) {
       backgroundColor: props.colors.panel2,
       borderRadius: 12,
       borderWidth: 1,
+      borderStyle: 'solid',
       borderColor: props.colors.line,
     }}>
       <text style={{ color: props.colors.muted, fontSize: 14 }}>表示するタスクがありません</text>
@@ -746,6 +762,7 @@ function Footer(props: { colors: Palette; percent: number; onClearDone: () => vo
             defaultColor: props.colors.text,
             borderRadius: 8,
             borderWidth: 1,
+            borderStyle: 'solid',
             borderColor: props.colors.line,
             defaultFontSize: 12,
             ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.line },
