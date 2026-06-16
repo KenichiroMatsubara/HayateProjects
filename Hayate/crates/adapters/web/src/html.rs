@@ -1104,7 +1104,10 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
             style.set_property("object-fit", "fill")?;
         }
         ElementKind::TextInput => {
-            style.set_property("outline", "none")?;
+            // Keep the browser's native focus ring (`:focus-visible`): suppressing
+            // `outline` here violated "browser is the visual reference" (ADR-0102,
+            // #335) and diverged from the DOM Renderer. Other input normalisations
+            // (transparent background, inherited font/colour) stay.
             style.set_property("background", "transparent")?;
             style.set_property("font", "inherit")?;
             style.set_property("color", "inherit")?;
