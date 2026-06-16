@@ -876,10 +876,19 @@ fn emit_element<S: AnchorSink>(
                 effective_parent,
             );
         }
-        let runs = if let Some(cl) = el.content_layout.as_ref() {
-            Some(cl.runs.as_slice())
+        // An empty input shows its placeholder: layout_pass leaves
+        // `content_layout` empty and stacks the placeholder in `text_layout`
+        // (ADR-0058). Chromium paints `::placeholder` muted rather than in the
+        // body `color`; Canvas's visual reference is the Chromium DOM, so the
+        // placeholder run is painted muted, not `confirmed_color` (ADR-0102,
+        // #334).
+        let (runs, run_color) = if let Some(cl) = el.content_layout.as_ref() {
+            (Some(cl.runs.as_slice()), color)
         } else {
-            el.text_layout.as_ref().map(|tl| tl.runs.as_slice())
+            let muted = placeholder_muted_color(confirmed_color)
+                .with_opacity(visual.opacity)
+                .to_array_f32();
+            (el.text_layout.as_ref().map(|tl| tl.runs.as_slice()), muted)
         };
         if let Some(runs) = runs {
             for run in runs {
@@ -890,7 +899,7 @@ fn emit_element<S: AnchorSink>(
                         kind: NodeKind::TextRun {
                             x: content_x,
                             y: content_y,
-                            color,
+                            color: run_color,
                             data: run.clone(),
                         },
                         children: Vec::new(),
@@ -973,6 +982,22 @@ fn emit_element<S: AnchorSink>(
         walk(&mut child_ctx, sink, child_cursor, child);
     }
     sink.end_element(ctx, effective_parent, id);
+}
+
+/// Chromium UA `::placeholder` muted colour, used in place of the body `color`
+/// when a TextInput shows its placeholder (ADR-0102: Canvas's visual reference
+/// is the Chromium DOM; #334). Chromium paints the placeholder at ~54% of black
+/// (light colour-scheme) or white (dark), composited over the input background —
+/// it is not derived from, nor authorable alongside, the body `color`. The
+/// colour-scheme is inferred from the body colour's luminance: dark body text
+/// ⇒ light scheme ⇒ muted black; light body text ⇒ dark scheme ⇒ muted white.
+/// The 0.54 factor follows ADR-0102's principle (~54% black/white); its exact
+/// value is still pending calibration against real Chromium rendering.
+fn placeholder_muted_color(body: Color) -> Color {
+    const PLACEHOLDER_ALPHA: f64 = 0.54;
+    let luma = 0.299 * body.r + 0.587 * body.g + 0.114 * body.b;
+    let base = if luma < 0.5 { Color::BLACK } else { Color::WHITE };
+    Color::new(base.r, base.g, base.b, PLACEHOLDER_ALPHA)
 }
 
 fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId {

@@ -301,6 +301,70 @@ fn text_element_produces_text_run() {
     assert!(has_text_run, "no TextRun emitted for text element");
 }
 
+/// Colour of the first TextRun emitted for `tree`, or `None` if none was emitted.
+fn first_text_run_color(tree: &mut ElementTree) -> Option<[f32; 4]> {
+    tree.render(0.0).iter().find_map(|(_, n)| match &n.kind {
+        NodeKind::TextRun { color, .. } => Some(*color),
+        _ => None,
+    })
+}
+
+/// Build a 400×40 TextInput rooting its own tree, with body `color`, a
+/// placeholder string (ADR-0058: placeholder lives in `text`), and optionally
+/// some committed editable content.
+fn text_input_tree(body: Color, committed: &str) -> ElementTree {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(1, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(400.0, 60.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::Color(body),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_set_text(input, "新しいタスクを入力…");
+    if !committed.is_empty() {
+        tree.element_set_text_content(input, committed);
+    }
+    tree
+}
+
+#[test]
+fn placeholder_text_run_is_muted_not_body_color() {
+    // ADR-0102 / #334: Canvas's visual reference is the Chromium DOM, whose
+    // `::placeholder` is painted muted — not in the body `color`. An empty
+    // TextInput must paint its placeholder in a colour distinct from `color`.
+    let body = Color::new(50.0 / 255.0, 44.0 / 255.0, 63.0 / 255.0, 1.0);
+    let mut tree = text_input_tree(body, "");
+    let run = first_text_run_color(&mut tree).expect("placeholder should emit a TextRun");
+
+    assert_ne!(
+        [run[0], run[1], run[2]],
+        [body.r as f32, body.g as f32, body.b as f32],
+        "placeholder must not be painted in the body color (it should be muted)",
+    );
+}
+
+#[test]
+fn committed_text_run_keeps_body_color() {
+    // #334 acceptance: only the placeholder is muted. Once the input holds
+    // committed text, the run must still paint in the body `color` (no
+    // regression for real input).
+    let body = Color::new(50.0 / 255.0, 44.0 / 255.0, 63.0 / 255.0, 1.0);
+    let mut tree = text_input_tree(body, "牛乳を買う");
+    let run = first_text_run_color(&mut tree).expect("committed text should emit a TextRun");
+
+    assert_eq!(
+        [run[0], run[1], run[2], run[3]],
+        [body.r as f32, body.g as f32, body.b as f32, body.a as f32],
+        "committed text must keep the body color",
+    );
+}
+
 #[test]
 fn scene_build_walks_absolute_coordinates() {
     let mut tree = ElementTree::new();

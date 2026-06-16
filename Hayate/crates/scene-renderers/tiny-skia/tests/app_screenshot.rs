@@ -889,7 +889,7 @@ fn diagnose_interaction_signals() {
     let committed = render_input_state(&InputState { label: "", content: "新しいタスクを入力…", preedit: "", focused: false, select_all: false, hover_add: false });
     let ph = darkest_text_rgb(&placeholder, tx0, ty0, tx1, ty1);
     let cm = darkest_text_rgb(&committed, tx0, ty0, tx1, ty1);
-    eprintln!("[PLACEHOLDER-RGB] placeholder={:?} committed={:?}  (DOM ::placeholder is muted ~#9a93a3; Canvas paints both as text {:?})", ph, cm, (p.text().to_array_f32()));
+    eprintln!("[PLACEHOLDER-RGB] placeholder={:?} committed={:?}  (#334 fixed: Canvas now paints ::placeholder muted — Chromium UA ~54% black/white per ADR-0102 — distinct from committed body color {:?}; exact value pending real-Chromium calibration vs DOM ~#9a93a3)", ph, cm, (p.text().to_array_f32()));
 
     // 2. Focus ring: input left-border colour, unfocused vs focused.
     let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false });
