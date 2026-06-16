@@ -65,7 +65,7 @@ mod tests {
         );
         assert_eq!(
             builtin_font_url("Inter"),
-            Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bslnt%2Cwght%5D.ttf")
+            Some("https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf")
         );
         assert_eq!(
             builtin_font_url("Lato"),
