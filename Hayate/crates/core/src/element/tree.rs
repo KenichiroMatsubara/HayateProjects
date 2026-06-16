@@ -666,6 +666,24 @@ impl ElementTree {
         }
     }
 
+    /// Set the IME preedit together with its composition clause format ranges
+    /// (ADR-0102) — the EditContext `textformatupdate` path that lets Canvas Mode
+    /// draw per-clause conversion underlines.
+    pub fn element_set_preedit_with_clauses(
+        &mut self,
+        id: ElementId,
+        preedit: &str,
+        clauses: Vec<crate::element::edit_state::CompositionClause>,
+    ) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.set_preedit_with_clauses(preedit, clauses);
+        }
+    }
+
     /// Commit the current preedit text into text_content and clear the preedit.
     pub fn element_commit_preedit(&mut self, id: ElementId) {
         if let Some(edit) = self
@@ -717,6 +735,20 @@ impl ElementTree {
             .get(&id)
             .and_then(|el| el.edit.as_ref())
             .and_then(|edit| edit.selection_range())
+    }
+
+    /// The text-input's active IME composition underlines as display-text byte
+    /// ranges with their weight (ADR-0102), or empty when no composition is
+    /// active. The query side of `element_set_preedit_with_clauses`.
+    pub fn element_composition_underlines(
+        &self,
+        id: ElementId,
+    ) -> Vec<(usize, usize, crate::element::edit_state::CompositionUnderline)> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.edit.as_ref())
+            .map(|edit| edit.composition_underlines())
+            .unwrap_or_default()
     }
 
     /// Set a 2D affine transform on the element (6 kurbo coefficients [a,b,c,d,e,f]).

@@ -669,9 +669,32 @@ struct InputState {
     content: &'static str,
     /// Active IME composition tail appended after `content`.
     preedit: &'static str,
+    /// When true, the preedit is split into a converting (thick-underline) first
+    /// clause and a determined (thin-underline) tail — the mid-conversion look
+    /// (ADR-0102, #336). When false the whole preedit is one thin underline.
+    convert: bool,
     focused: bool,
     select_all: bool,
     hover_add: bool,
+}
+
+/// Split a preedit into a thick (converting) first clause and a thin tail at its
+/// character midpoint — the harness stand-in for an IME's `textformatupdate`.
+fn convert_clauses(preedit: &str) -> Vec<hayate_core::CompositionClause> {
+    use hayate_core::{CompositionClause, CompositionUnderline};
+    let mid = preedit
+        .char_indices()
+        .nth(preedit.chars().count() / 2)
+        .map(|(i, _)| i)
+        .unwrap_or(preedit.len());
+    let mut clauses = Vec::new();
+    if mid > 0 {
+        clauses.push(CompositionClause { start: 0, end: mid, underline: CompositionUnderline::Thick });
+    }
+    if mid < preedit.len() {
+        clauses.push(CompositionClause { start: mid, end: preedit.len(), underline: CompositionUnderline::Thin });
+    }
+    clauses
 }
 
 const PANEL_W: u32 = 560;
@@ -776,7 +799,12 @@ fn render_input_state(st: &InputState) -> Pixmap {
         b.tree.element_set_text_content(input, st.content);
     }
     if !st.preedit.is_empty() {
-        b.tree.element_set_preedit(input, st.preedit);
+        if st.convert {
+            b.tree
+                .element_set_preedit_with_clauses(input, st.preedit, convert_clauses(st.preedit));
+        } else {
+            b.tree.element_set_preedit(input, st.preedit);
+        }
     }
     if st.focused {
         b.tree.element_focus(input); // sets cursor_visible + :focus pseudo
@@ -803,15 +831,53 @@ fn render_input_state(st: &InputState) -> Pixmap {
     pixmap
 }
 
+/// Heights of the composition underline rects an addform input emits for a
+/// `preedit` (optionally `convert`-split), left-to-right. Reads the scene graph
+/// directly so the thin↔thick distinction is exact rather than glyph-swamped.
+fn preedit_underline_heights(preedit: &str, convert: bool) -> Vec<f32> {
+    let p = P;
+    let mut b = B::new();
+    let root = b.view(&col(0.0));
+    b.tree.set_root(root);
+    b.tree.set_viewport(PANEL_W as f32, PANEL_H as f32);
+    let (input, _add) = build_addform(&mut b, &p, root, "");
+    if convert {
+        b.tree
+            .element_set_preedit_with_clauses(input, preedit, convert_clauses(preedit));
+    } else {
+        b.tree.element_set_preedit(input, preedit);
+    }
+    b.tree.element_focus(input);
+    let _ = b.tree.render(0.0);
+
+    let mut painter = hayate_core::RecordingPainter::new();
+    hayate_core::render_scene_graph(b.tree.scene_graph(), &mut painter);
+    let mut heights: Vec<(f32, f32)> = painter
+        .ops()
+        .iter()
+        .filter_map(|op| match op {
+            hayate_core::DrawOp::FillRect { x, width, height, .. }
+                if *height <= 3.0 && *width >= 5.0 =>
+            {
+                Some((*x, *height))
+            }
+            _ => None,
+        })
+        .collect();
+    heights.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    heights.into_iter().map(|(_, h)| h).collect()
+}
+
 /// The ad-hoc interaction sequence rendered for comparison.
 fn interaction_states() -> Vec<InputState> {
     vec![
-        InputState { label: "1. rest — 未フォーカス（placeholder）", content: "", preedit: "", focused: false, select_all: false, hover_add: false },
-        InputState { label: "2. click → focus（空・caret + :focus リング）", content: "", preedit: "", focused: true, select_all: false, hover_add: false },
-        InputState { label: "3. type「牛乳を買う」（caret 末尾）", content: "牛乳を買う", preedit: "", focused: true, select_all: false, hover_add: false },
-        InputState { label: "4. drag select all（選択ハイライト）", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false },
-        InputState { label: "5. IME compose「ぎゅうにゅう」（preedit）", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false },
-        InputState { label: "6. hover 追加ボタン（:hover）", content: "牛乳を買う", preedit: "", focused: false, select_all: false, hover_add: true },
+        InputState { label: "1. rest — 未フォーカス（placeholder）", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false },
+        InputState { label: "2. click → focus（空・caret + :focus リング）", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false },
+        InputState { label: "3. type「牛乳を買う」（caret 末尾）", content: "牛乳を買う", preedit: "", focused: true, select_all: false, hover_add: false, convert: false },
+        InputState { label: "4. drag select all（選択ハイライト）", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false, convert: false },
+        InputState { label: "5. IME compose「ぎゅうにゅう」（preedit・変換前 単一下線）", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false, convert: false },
+        InputState { label: "5b. IME convert（clause 分割・太/細 下線）", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false, convert: true },
+        InputState { label: "6. hover 追加ボタン（:hover）", content: "牛乳を買う", preedit: "", focused: false, select_all: false, hover_add: true, convert: false },
     ]
 }
 
@@ -885,15 +951,15 @@ fn diagnose_interaction_signals() {
     let (tx0, tx1) = (30u32, 360u32);
 
     // 1. Placeholder colour: empty (placeholder) vs committed text, same glyphs.
-    let placeholder = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false });
-    let committed = render_input_state(&InputState { label: "", content: "新しいタスクを入力…", preedit: "", focused: false, select_all: false, hover_add: false });
+    let placeholder = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
+    let committed = render_input_state(&InputState { label: "", content: "新しいタスクを入力…", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
     let ph = darkest_text_rgb(&placeholder, tx0, ty0, tx1, ty1);
     let cm = darkest_text_rgb(&committed, tx0, ty0, tx1, ty1);
     eprintln!("[PLACEHOLDER-RGB] placeholder={:?} committed={:?}  (#334 fixed: Canvas now paints ::placeholder muted — Chromium UA ~54% black/white per ADR-0102 — distinct from committed body color {:?}; exact value pending real-Chromium calibration vs DOM ~#9a93a3)", ph, cm, (p.text().to_array_f32()));
 
     // 2. Focus ring: input left-border colour, unfocused vs focused.
-    let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false });
-    let foc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false });
+    let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
+    let foc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
     // The focus cue that actually reads in Canvas is the input *fill* shifting
     // panel2→panel3 (the :focus background). The 1px border colour change
     // (line→accent) is set in the model but renders faintly at 1× (the left
@@ -914,15 +980,24 @@ fn diagnose_interaction_signals() {
     eprintln!("[CARET-INK] focused-empty={} unfocused-empty={} (Δ≈caret px; Canvas core-draws the caret, DOM/EditContext uses the native caret)", ink(&foc), ink(&unfoc));
 
     // 4. Selection highlight: count Material-blue tint pixels + report the colour.
-    let sel = render_input_state(&InputState { label: "", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false });
+    let sel = render_input_state(&InputState { label: "", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false, convert: false });
     let mut sd = sel.data().to_vec();
     premultiplied_to_straight(&mut sd);
     let sel_px = sd.chunks_exact(4).filter(|c| c[2] > c[0] && c[2] > 110 && c[0] < 170 && c[1] < 200).count();
     eprintln!("[SELECTION-PX] material-blue-tint px={} (Canvas paints a fixed Material tint #3373F2~0.35; DOM uses the OS/::selection colour — colour & semantics differ)", sel_px);
 
-    // 5. IME preedit: display text combines content+preedit with no decoration.
-    let ime = render_input_state(&InputState { label: "", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false });
-    eprintln!("[PREEDIT-INK] preedit-ink={} (Canvas paints preedit as plain text — NO composition underline; DOM/EditContext underlines the active composition)", ink(&ime));
+    // 5. IME preedit: Canvas now underlines the composition (ADR-0102, #336) — a
+    // single thin underline before conversion, and a thick (active clause) + thin
+    // (determined tail) split while converting. The truthful signal is the
+    // emitted underline rects, so report their heights from the scene graph
+    // directly (the pixel total is glyph-dominated and insensitive to a 1px↔2px
+    // underline). Heights match COMPOSITION_UNDERLINE_THIN/THICK in scene_build.
+    let pre = preedit_underline_heights("ぎゅうにゅう", false);
+    let conv = preedit_underline_heights("ぎゅうにゅう", true);
+    eprintln!(
+        "[PREEDIT-INK] pre-conversion underlines={:?}; converting underlines={:?} (#336 fixed: Canvas underlines the composition — one thin line before conversion, a thick active clause + thin tail while converting, per Chromium/EditContext; exact px weights pending real-Chromium calibration)",
+        pre, conv,
+    );
 }
 
 fn write_png(path: &std::path::Path, rgba: &[u8], w: u32, h: u32) {
