@@ -7,6 +7,7 @@ use parley::{
     FontContext, FontFamily, FontWeight, Layout, LayoutContext, PositionedLayoutItem, StyleProperty,
 };
 
+use crate::element::font_coverage;
 use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowValue};
 
 use crate::node::{TextDecorationLine, TextRunData};
@@ -79,64 +80,6 @@ fn parley_font_style(value: FontStyleValue) -> FontStyle {
         FontStyleValue::Normal => FontStyle::Normal,
         FontStyleValue::Italic => FontStyle::Italic,
         FontStyleValue::Oblique => FontStyle::Oblique(None),
-    }
-}
-
-/// Map a Unicode codepoint to the font family name best suited to render it,
-/// for use when .notdef is detected. Returns `None` for codepoints the
-/// bundled default font is expected to cover.
-///
-/// Family names here are the keys each platform adapter uses in its own
-/// family-name → font-source table (ADR-0043).
-fn codepoint_font_family(cp: u32) -> Option<&'static str> {
-    match cp {
-        // ── CJK (Japanese, Chinese ideographs) ───────────────────────────
-        0x2E80..=0x2EFF   // CJK Radicals Supplement
-        | 0x2F00..=0x2FDF // Kangxi Radicals
-        | 0x3000..=0x303F // CJK Symbols and Punctuation
-        | 0x3040..=0x309F // Hiragana
-        | 0x30A0..=0x30FF // Katakana
-        | 0x31F0..=0x31FF // Katakana Phonetic Extensions
-        | 0x3400..=0x4DBF // CJK Unified Ideographs Extension A
-        | 0x4E00..=0x9FFF // CJK Unified Ideographs
-        | 0xF900..=0xFAFF // CJK Compatibility Ideographs
-        | 0x20000..=0x2A6DF // CJK Unified Ideographs Extension B
-        | 0x2A700..=0x2B73F // CJK Unified Ideographs Extension C
-        | 0x2B740..=0x2B81F // CJK Unified Ideographs Extension D
-        | 0x2B820..=0x2CEAF // CJK Unified Ideographs Extension E
-        | 0x2CEB0..=0x2EBEF // CJK Unified Ideographs Extension F
-        => Some("Noto Sans JP"),
-
-        // ── Korean ───────────────────────────────────────────────────────
-        0x1100..=0x11FF   // Hangul Jamo
-        | 0x3130..=0x318F // Hangul Compatibility Jamo
-        | 0xA960..=0xA97F // Hangul Jamo Extended-A
-        | 0xAC00..=0xD7AF // Hangul Syllables
-        | 0xD7B0..=0xD7FF // Hangul Jamo Extended-B
-        => Some("Noto Sans KR"),
-
-        // ── Arabic ───────────────────────────────────────────────────────
-        0x0600..=0x06FF   // Arabic
-        | 0x0750..=0x077F // Arabic Supplement
-        | 0x08A0..=0x08FF // Arabic Extended-A
-        | 0xFB50..=0xFDFF // Arabic Presentation Forms-A
-        | 0xFE70..=0xFEFF // Arabic Presentation Forms-B
-        => Some("Noto Sans Arabic"),
-
-        // ── Thai ─────────────────────────────────────────────────────────
-        0x0E00..=0x0E7F => Some("Noto Sans Thai"),
-
-        // ── Devanagari (Hindi, Marathi, Sanskrit …) ──────────────────────
-        0x0900..=0x097F   // Devanagari
-        | 0xA8E0..=0xA8FF // Devanagari Extended
-        => Some("Noto Sans Devanagari"),
-
-        // ── Hebrew ───────────────────────────────────────────────────────
-        0x0590..=0x05FF   // Hebrew
-        | 0xFB1D..=0xFB4F // Hebrew Presentation Forms
-        => Some("Noto Sans Hebrew"),
-
-        _ => None,
     }
 }
 
@@ -457,7 +400,7 @@ fn lower_glyph_runs(
                 let end = range.end.min(text.len());
                 if range.start < end {
                     for ch in text[range.start..end].chars() {
-                        if let Some(fam) = codepoint_font_family(ch as u32) {
+                        if let Some(fam) = font_coverage::family_for_codepoint(ch as u32) {
                             missing.insert(fam);
                         }
                     }

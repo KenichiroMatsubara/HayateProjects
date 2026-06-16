@@ -40,6 +40,11 @@
     "scripts": ["hebrew"]
   },
   {
+    "family": "Noto Emoji",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
+    "scripts": ["emoji"]
+  },
+  {
     "family": "Noto Serif",
     "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
   },

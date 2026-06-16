@@ -78,6 +78,37 @@ mod tests {
     }
 
     #[test]
+    fn every_coverage_family_is_procurable() {
+        // Cross-layer integrity (ADR-0101): every fallback family the core
+        // coverage table can route a .notdef codepoint to MUST have a source in
+        // this adapter's manifest, or the FetchFont would dead-end. This is what
+        // makes the coverage table safe to extend by data alone.
+        for family in hayate_core::element::font_coverage::coverage_families() {
+            assert!(
+                builtin_font_url(family).is_some(),
+                "coverage family {family:?} has no URL in fonts.json"
+            );
+        }
+    }
+
+    #[test]
+    fn emoji_fallback_resolves_to_monochrome_noto_emoji() {
+        // hayate-core maps emoji codepoints to the family "Noto Emoji"; the
+        // manifest must resolve it to the MONOCHROME build (tiny-skia cannot
+        // paint COLR/CBDT colour glyphs — issue #329).
+        let url = builtin_font_url("Noto Emoji").expect("Noto Emoji missing from fonts.json");
+        let lower = url.to_lowercase();
+        assert!(
+            lower.contains("notoemoji"),
+            "expected a Noto Emoji url, got {url}"
+        );
+        assert!(
+            !lower.contains("color"),
+            "fallback must be monochrome Noto Emoji, not a colour build: {url}"
+        );
+    }
+
+    #[test]
     fn unknown_family_returns_none() {
         assert_eq!(builtin_font_url("Comic Sans MS"), None);
         assert_eq!(builtin_font_url(""), None);

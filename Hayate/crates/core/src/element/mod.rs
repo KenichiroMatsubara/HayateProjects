@@ -7,6 +7,7 @@ pub mod edit_state;
 pub mod effective_visual;
 pub mod ime_bridge;
 pub mod event_spec;
+pub mod font_coverage;
 pub mod id;
 pub mod inline_text;
 pub mod interaction;
