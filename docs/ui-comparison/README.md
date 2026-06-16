@@ -147,24 +147,32 @@ ICU4X ログ `No segmentation model for language: ja` の発生源は
 `diagnose_interaction_signals` の出力（`HAYATE_WRITE_SCREENSHOT=1` 必須）:
 
 ```
-[PLACEHOLDER-RGB] placeholder=(50,44,63) committed=(50,44,63)   ← 同色（バグ）
+[PLACEHOLDER-RGB] placeholder=(108,106,99) committed=(50,44,63) ← #334 修正済み（muted ≠ 本文色）
 [FOCUS-FILL]      unfocused=(236,230,216) focused=(224,216,199) ← panel2→panel3 は効く
 [CARET-INK]       focused-empty=394 unfocused-empty=351         ← Δ≈43px の caret は描かれる
 [SELECTION-PX]    material-blue-tint px=2599                    ← Material tint で描く
 [PREEDIT-INK]     preedit-ink=311（下線ノードは無し）            ← preedit が素のテキスト
 ```
 
-### 4.【High】placeholder が本文と同色で描かれる（muted にならない）
+### 4.【High → 修正済み #334】placeholder が本文と同色で描かれていた（muted にならない）
 
-空の入力欄は placeholder「新しいタスクを入力…」を表示するが、Canvas では
-`color`（本文色 `#322c3f`）**そのまま**で描く（`[PLACEHOLDER-RGB]` が committed と
-完全一致）。DOM はブラウザ既定の `::placeholder`（概ね半透明グレー ~`#9a93a3`）で
-**淡く**描くため、入力前の見た目が大きく乖離し、placeholder と実入力の区別がつかない。
+空の入力欄は placeholder「新しいタスクを入力…」を表示する。**かつては** Canvas が
+`color`（本文色 `#322c3f`）**そのまま**で描き（`[PLACEHOLDER-RGB]` が committed と
+完全一致）、DOM の `::placeholder`（概ね半透明グレー ~`#9a93a3`）と乖離していた。
 
-- 根因: `layout_pass.rs` が `is_placeholder`（`display_text` が空）のとき `el.text`
-  を `text_layout` に積むだけで、`scene_build.rs` の TextInput 分岐は `confirmed_color`
-  （＝本文色）で塗る。placeholder 専用色のチャネルが無い。
-- 比較軸: Hayate CSS に `::placeholder` 相当も placeholder-color プロパティも無い。
+**修正（#334 / ADR-0102）**: `scene_build.rs` の TextInput 分岐は placeholder 描画時
+（`content_layout` 空・`text_layout` のみ）に `confirmed_color` ではなく Chromium UA
+`::placeholder` 相当の muted 色を使うようにした。muted は color-scheme に応じた
+**54% 黒/白**（本文色の輝度で判定）で、入力背景に合成される（非 authorable）。
+`[PLACEHOLDER-RGB]` は placeholder=(108,106,99) ≠ committed=(50,44,63) になった。
+
+- 根因（修正前）: `layout_pass.rs` が `is_placeholder`（`display_text` が空）のとき
+  `el.text` を `text_layout` に積むだけで、`scene_build.rs` の TextInput 分岐は
+  `confirmed_color`（＝本文色）で塗っていた。placeholder 専用色のチャネルが無かった。
+- 残作業: 実値（54% 黒/白）が Chromium 実描画 ~`#9a93a3` と概ね一致するかは
+  実 Chromium での校正待ち（ADR-0102 は方針のみ・実値校正は別途）。
+- 比較軸: Hayate CSS に `::placeholder` 相当も placeholder-color プロパティも無い
+  （非 authorable のまま）。
 
 ### 5.【Medium】focus リングが弱い（1px accent border が 1× でほぼ消える）＋ ネイティブ focus outline 非対応
 
