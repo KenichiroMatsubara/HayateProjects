@@ -1,6 +1,8 @@
 //! ADR-0069: EditState via ElementTree public input handlers.
 
-use hayate_core::{Dimension, ElementKind, ElementTree, StyleProp};
+use hayate_core::{
+    CompositionClause, CompositionUnderline, Dimension, ElementKind, ElementTree, StyleProp,
+};
 
 const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
 
@@ -195,6 +197,33 @@ fn on_composition_end_commits_via_edit_state() {
 }
 
 #[test]
+fn composition_format_ranges_reach_core_as_underlines() {
+    // EditContext `textformatupdate` → wire → core: the clause format ranges
+    // delivered with a preedit update surface as display-text underline ranges
+    // (ADR-0102, #336). "abc" committed (3 bytes) shifts the offsets.
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(7, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_append_text_content(input, "abc");
+    tree.on_composition_start(input, "ぎゅうにゅう");
+
+    let clauses = CompositionClause::from_wire(&[0, 9, 1, 9, 18, 0]);
+    tree.on_composition_update_formatted(input, "ぎゅうにゅう", clauses);
+
+    assert_eq!(
+        tree.element_composition_underlines(input),
+        vec![
+            (3, 12, CompositionUnderline::Thick),
+            (12, 21, CompositionUnderline::Thin),
+        ],
+    );
+
+    // Finalizing the composition clears the underlines.
+    tree.on_composition_end(input, "牛乳");
+    assert!(tree.element_composition_underlines(input).is_empty());
+}
+
+#[test]
 fn on_text_input_appends_via_edit_state() {
     let mut tree = ElementTree::new();
     let input = tree.element_create(4, ElementKind::TextInput);
@@ -203,6 +232,88 @@ fn on_text_input_appends_via_edit_state() {
     tree.on_text_input(input, "x");
 
     assert_eq!(tree.element_get_text_content(input), "x");
+}
+
+/// A focused, laid-out text-input with an active preedit. Returns its draw ops.
+fn render_with_preedit(
+    preedit: &str,
+    clauses: Vec<CompositionClause>,
+) -> Vec<hayate_core::DrawOp> {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(30, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(300.0, 40.0);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(300.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_focus(input);
+    tree.element_set_preedit_with_clauses(input, preedit, clauses);
+    tree.render(0.0);
+
+    let mut painter = hayate_core::RecordingPainter::new();
+    hayate_core::render_scene_graph(tree.scene_graph(), &mut painter);
+    painter.ops().to_vec()
+}
+
+/// Composition underline rects: short (≤3px tall) and wide (≥5px) — distinct from
+/// the tall, hairline caret. Returned as (x, width, height) sorted left-to-right.
+fn underline_rects(ops: &[hayate_core::DrawOp]) -> Vec<(f32, f32, f32)> {
+    let mut rects: Vec<(f32, f32, f32)> = ops
+        .iter()
+        .filter_map(|op| match op {
+            hayate_core::DrawOp::FillRect { x, width, height, .. }
+                if *height <= 3.0 && *width >= 5.0 =>
+            {
+                Some((*x, *width, *height))
+            }
+            _ => None,
+        })
+        .collect();
+    rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    rects
+}
+
+#[test]
+fn unformatted_preedit_draws_a_single_underline() {
+    // Pre-conversion: one thin underline spanning the whole composition.
+    let ops = render_with_preedit("ぎゅうにゅう", Vec::new());
+    let rects = underline_rects(&ops);
+    assert_eq!(rects.len(), 1, "one underline over the whole preedit");
+    assert!(rects[0].1 > 10.0, "it spans the composed text");
+}
+
+#[test]
+fn clause_split_draws_a_thick_and_thin_underline() {
+    // During conversion the active clause is thick, the rest thin (ADR-0102).
+    let ops = render_with_preedit(
+        "ぎゅうにゅう",
+        vec![
+            CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick },
+            CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
+        ],
+    );
+    let rects = underline_rects(&ops);
+    assert_eq!(rects.len(), 2, "one underline per clause");
+    let (thick, thin) = (rects[0], rects[1]);
+    assert!(
+        thick.2 > thin.2,
+        "active clause underline is thicker than the determined one ({thick:?} vs {thin:?})",
+    );
+}
+
+#[test]
+fn committing_the_composition_removes_the_underline() {
+    let ops = render_with_preedit("ぎゅう", Vec::new());
+    assert_eq!(underline_rects(&ops).len(), 1);
+
+    // After commit the preedit is empty: no composition underlines remain.
+    let ops_after = render_with_preedit("", Vec::new());
+    assert!(underline_rects(&ops_after).is_empty());
 }
 
 #[test]

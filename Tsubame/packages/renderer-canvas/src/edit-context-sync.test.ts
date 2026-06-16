@@ -2,7 +2,11 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { RawHayate } from './hayate.js';
-import { canvasPixelRectToDomRect, syncEditContextBounds } from './edit-context-sync.js';
+import {
+  canvasPixelRectToDomRect,
+  compositionFormatsToWire,
+  syncEditContextBounds,
+} from './edit-context-sync.js';
 
 function stubCanvas(
   width: number,
@@ -32,6 +36,27 @@ describe('canvasPixelRectToDomRect', () => {
     expect(dom.y).toBe(70);
     expect(dom.width).toBe(16);
     expect(dom.height).toBe(32);
+  });
+});
+
+describe('compositionFormatsToWire', () => {
+  it('converts UTF-16 clause ranges to UTF-8 byte triples relative to the base', () => {
+    // Preedit "ぎゅうにゅう": 6 UTF-16 units, 18 UTF-8 bytes (3 bytes each). The
+    // composing segment starts at EditContext offset 2 (two committed chars).
+    const wire = compositionFormatsToWire('ぎゅうにゅう', 2, [
+      { rangeStart: 2, rangeEnd: 5, underlineThickness: 'Thick' },
+      { rangeStart: 5, rangeEnd: 8, underlineThickness: 'Thin' },
+    ]);
+    expect(Array.from(wire)).toEqual([0, 9, 1, 9, 18, 0]);
+  });
+
+  it('drops non-underlined and collapsed ranges', () => {
+    const wire = compositionFormatsToWire('abc', 0, [
+      { rangeStart: 0, rangeEnd: 1, underlineStyle: 'None', underlineThickness: 'Thick' },
+      { rangeStart: 2, rangeEnd: 2, underlineThickness: 'Thin' },
+      { rangeStart: 1, rangeEnd: 3, underlineThickness: 'Thin' },
+    ]);
+    expect(Array.from(wire)).toEqual([1, 3, 0]);
   });
 });
 

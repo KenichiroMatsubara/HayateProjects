@@ -311,12 +311,24 @@ impl ElementTree {
     }
 
     pub fn on_composition_update(&mut self, target: ElementId, text: &str) {
+        self.on_composition_update_formatted(target, text, Vec::new());
+    }
+
+    /// IME preedit update carrying the EditContext `textformatupdate` clause
+    /// format ranges (ADR-0102), so Canvas Mode can draw the per-clause
+    /// conversion underlines. `clauses` offsets are relative to `text`.
+    pub fn on_composition_update_formatted(
+        &mut self,
+        target: ElementId,
+        text: &str,
+        clauses: Vec<crate::element::edit_state::CompositionClause>,
+    ) {
         if let Some(edit) = self
             .elements
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
         {
-            edit.set_preedit(text);
+            edit.set_preedit_with_clauses(text, clauses);
         }
         self.emit_interaction(Event::CompositionUpdate {
             target_id: target,

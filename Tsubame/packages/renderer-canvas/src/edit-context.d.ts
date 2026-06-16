@@ -21,6 +21,17 @@ interface CompositionEndEvent extends Event {
   readonly data: string;
 }
 
+interface TextFormat {
+  readonly rangeStart: number;
+  readonly rangeEnd: number;
+  readonly underlineStyle: string;
+  readonly underlineThickness: string;
+}
+
+interface TextFormatUpdateEvent extends Event {
+  getTextFormats(): TextFormat[];
+}
+
 declare class EditContext extends EventTarget {
   constructor(options?: EditContextInit);
   readonly text: string;
@@ -38,6 +49,11 @@ declare class EditContext extends EventTarget {
   addEventListener(
     type: 'compositionend',
     listener: (this: EditContext, ev: CompositionEndEvent) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  addEventListener(
+    type: 'textformatupdate',
+    listener: (this: EditContext, ev: TextFormatUpdateEvent) => void,
     options?: boolean | AddEventListenerOptions,
   ): void;
   addEventListener(

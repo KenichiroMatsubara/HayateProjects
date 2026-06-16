@@ -1,6 +1,10 @@
 import { MODIFIER } from '@tsubame/protocol-generated/protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { CanvasRendererOptions } from './canvas-renderer.js';
+import {
+  compositionFormatsToWire,
+  type EditTextFormat,
+} from './edit-context-sync.js';
 import type { RawHayate } from './hayate.js';
 import {
   resolveCanvasBackend,
@@ -69,11 +73,18 @@ function attachTextInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
   const editContext = new EditContext();
   canvas.editContext = editContext;
   let composing = false;
+  // The composing segment's start offset (UTF-16) and current preedit text,
+  // tracked so `textformatupdate` clause ranges can be made preedit-relative and
+  // converted to UTF-8 byte offsets before crossing the wire (ADR-0102, #336).
+  let composeBase = 0;
+  let composeText = '';
 
   editContext.addEventListener('compositionstart', () => {
     const id = raw.focused_element_id();
     if (id === 0) return;
     composing = true;
+    composeBase = editContext.selectionStart;
+    composeText = '';
     raw.on_composition_start(id, '');
   });
 
@@ -82,16 +93,30 @@ function attachTextInput(canvas: HTMLCanvasElement, raw: RawHayate): void {
     if (id === 0) return;
     const text = e.text ?? '';
     if (composing) {
+      composeBase = e.updateRangeStart;
+      composeText = text;
+      // Plain (unformatted) update first; the conversion underlines arrive in
+      // the `textformatupdate` that follows and re-sends with clause ranges.
       raw.on_composition_update(id, text);
     } else {
       raw.on_text_input(id, text);
     }
   });
 
+  editContext.addEventListener('textformatupdate', (e: TextFormatUpdateEvent) => {
+    if (!composing) return;
+    const id = raw.focused_element_id();
+    if (id === 0) return;
+    const formats = e.getTextFormats() as unknown as EditTextFormat[];
+    const wire = compositionFormatsToWire(composeText, composeBase, formats);
+    raw.on_composition_update_formatted(id, composeText, wire);
+  });
+
   editContext.addEventListener('compositionend', (e: CompositionEndEvent) => {
     const id = raw.focused_element_id();
     if (id === 0) return;
     composing = false;
+    composeText = '';
     raw.on_composition_end(id, e.data ?? '');
   });
 

@@ -60,6 +60,13 @@ export interface RawHayate {
   on_text_input(id: number, text: string): void;
   on_composition_start(id: number, text: string): void;
   on_composition_update(id: number, text: string): void;
+  /** Preedit update carrying EditContext `textformatupdate` clause ranges as a
+   * flat `[start, end, weight]` UTF-8 byte-offset triple stream (ADR-0102). */
+  on_composition_update_formatted(
+    id: number,
+    text: string,
+    formats: Uint32Array,
+  ): void;
   on_composition_end(id: number, text: string): void;
   focused_element_id(): number;
   /** Cursor rect synced during the last render (ADR-0069). */
