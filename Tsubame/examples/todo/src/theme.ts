@@ -122,6 +122,7 @@ export function inputStyle(p: Palette): HayateCssStyle {
     color: p.text,
     borderRadius: 8,
     borderWidth: 1,
+    borderStyle: 'solid',
     borderColor: p.line,
     fontSize: 13,
     ':focus': {

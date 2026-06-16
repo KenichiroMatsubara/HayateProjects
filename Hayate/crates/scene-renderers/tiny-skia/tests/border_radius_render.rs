@@ -38,7 +38,12 @@ fn rounded_rect_leaves_corner_pixels_clear() {
 }
 
 #[test]
-fn rounded_ring_draws_border_and_hollow_center() {
+fn rounded_ring_paints_band_without_erasing_center() {
+    // A RoundedRing paints only its band; it must NOT clear its interior. The
+    // native focus ring (#335) is a RoundedRing drawn on top of a filled box, so
+    // hollowing the centre with a Clear would punch the content transparent
+    // (issue #337). Here the ring sits over the opaque clear colour, which must
+    // survive intact at the centre.
     let mut scene = SceneGraph::new();
     scene.insert(Node {
         kind: NodeKind::RoundedRing {
@@ -57,9 +62,9 @@ fn rounded_ring_draws_border_and_hollow_center() {
     TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
 
     assert_eq!(
-        pixel(&pixmap, 32, 32)[3],
-        0,
-        "ring center should be punched out"
+        pixel(&pixmap, 32, 32),
+        [255, 255, 255, 255],
+        "ring centre retains the background — the band must not erase what it overlays"
     );
     assert!(
         pixel(&pixmap, 20, 8)[2] > 200,

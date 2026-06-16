@@ -1,10 +1,19 @@
 //! Pixel-level regression tests for every Hayate CSS catalog property (tiny-skia).
 
-use hayate_scene_test_support::{run_all_tiny_skia, run_tiny_skia, CSS_PIXEL_CASES};
+use hayate_scene_test_support::{
+    run_all_tiny_skia, run_tiny_skia, BORDER_RASTER_CASES, CSS_PIXEL_CASES,
+};
 
 #[test]
 fn all_catalog_css_properties_tiny_skia() {
     run_all_tiny_skia(CSS_PIXEL_CASES);
+}
+
+/// Issue #337: 1px borders draw as opaque columns and the focus ring never
+/// erases the content it overlays — on tiny-skia.
+#[test]
+fn border_raster_regressions_tiny_skia() {
+    run_all_tiny_skia(BORDER_RASTER_CASES);
 }
 
 macro_rules! tiny_skia_property_test {

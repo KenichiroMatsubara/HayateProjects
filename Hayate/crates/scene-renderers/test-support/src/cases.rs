@@ -254,6 +254,77 @@ fn check_border_style(data: &[u8]) {
     assert!(gaps > 0, "border-style dashed leaves white gaps between dashes");
 }
 
+// ── border / focus-ring rasterisation (issue #337) ──────────────────────────
+
+/// A keyboard-focused text input with an opaque fill. The native focus ring
+/// (`:focus-visible`, #335) is a `RoundedRing` painted *on top* of the box, so
+/// it must hollow only its band — never erase the content it overlays. tiny-skia
+/// previously cleared the ring's interior, punching the input to transparent.
+fn build_focus_ring_over_fill() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 600);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
+    );
+    let input = tree.element_create(601, ElementKind::TextInput);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(Color::new(0.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_append_child(root, input);
+    tree.element_focus(input); // keyboard/pointer focus → `:focus-visible` ring
+    tree
+}
+
+fn check_focus_ring_over_fill(data: &[u8]) {
+    // The focus ring must not erase the input it sits on: the interior stays the
+    // opaque red fill (not the transparent hole tiny-skia's Clear used to punch).
+    let center = pixel(data, CANVAS_W, 24, 20);
+    assert_channel_min(center, 0, 200, "focus ring preserves the input fill (red)");
+    assert_channel_max(center, 1, 60, "focus ring did not erase the input interior");
+}
+
+/// A 1px solid border on an opaque box at integer coordinates must land as an
+/// independent opaque column — the literal acceptance probe for issue #337 (the
+/// hairline must not be swallowed by the fill).
+fn build_border_hairline_1px() -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 610);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.6, 0.0, 1.0)),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(Color::new(0.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree
+}
+
+fn check_border_hairline_1px(data: &[u8]) {
+    // Top row (y=0) is the 1px border: an opaque black column, not the fill.
+    let edge = pixel(data, CANVAS_W, 30, 0);
+    assert_channel_max(edge, 1, 70, "1px border top edge is black (independent column)");
+    // One row inside is the green fill — the border did not bleed it away.
+    let inside = pixel(data, CANVAS_W, 30, 3);
+    assert_channel_min(inside, 1, 120, "fill just inside the 1px border is green");
+}
+
 fn build_overflow_hidden() -> ElementTree {
     // A solid child fully covers a rounded `overflow: hidden` parent. The
     // rounded clip must carve the child's square corner away (issue #206).
@@ -1180,6 +1251,22 @@ fn check_flex_wrap(data: &[u8]) {
 }
 
 /// Every entry in `style_tags.json` / `HAYATE_CSS_CATALOG`.
+/// Border / focus-ring rasterisation regressions (issue #337). Run on both
+/// backends so the contract — a 1px border draws as an opaque column, and a
+/// focus ring never erases the content under it — holds for tiny-skia and vello.
+pub static BORDER_RASTER_CASES: &[CssPixelCase] = &[
+    CssPixelCase {
+        css_property: "focus-ring-over-fill",
+        build: build_focus_ring_over_fill,
+        check: check_focus_ring_over_fill,
+    },
+    CssPixelCase {
+        css_property: "border-hairline-1px",
+        build: build_border_hairline_1px,
+        check: check_border_hairline_1px,
+    },
+];
+
 pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
     CssPixelCase {
         css_property: "background-color",
