@@ -35,7 +35,7 @@ importers:
 
   Tsubame: {}
 
-  Tsubame/examples/hello-world:
+  Tsubame/examples/todo:
     dependencies:
       '@tsubame/renderer-canvas':
         specifier: workspace:*

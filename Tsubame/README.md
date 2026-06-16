@@ -20,7 +20,7 @@ tsubame-solid         tsubame-vue              tsubame-react
 
 ## ステータス
 
-✅ **MVP（T1–T6）実装済み** — Renderer Protocol / DOM / Canvas / tsubame-solid / Hello World デモ
+✅ **MVP（T1–T6）実装済み** — Renderer Protocol / DOM / Canvas / tsubame-solid / Todo デモ（Tsubame Task Studio）
 
 | Phase | 内容 | パッケージ |
 |-------|------|------------|
@@ -29,7 +29,7 @@ tsubame-solid         tsubame-vue              tsubame-react
 | T3 | tsubame-solid | `@tsubame/solid` |
 | T4 | Canvas Renderer（`apply_mutations` バッチ） | `@tsubame/renderer-canvas` |
 | T5 | バインディング検証（node:test） | `packages/renderer-canvas/test/` |
-| T6 | DOM / Canvas ワンボタン切替デモ | `examples/hello-world` |
+| T6 | DOM / Canvas ワンボタン切替デモ（Todo） | `examples/todo` |
 
 T7（tsubame-vue）・T8（tsubame-react）は未着手。
 
@@ -64,12 +64,12 @@ Tsubame と Hayate は**完全に独立したリポジトリ**である。結合
 pnpm install
 pnpm run build
 pnpm run test          # T5: apply_mutations バインディング
-pnpm run dev:hello     # T6: http://localhost:5173
+pnpm run dev           # T6: Todo デモ（http://localhost:5173）
 ```
 
 `pnpm` が PATH に無い場合: `npx pnpm@11.5.0 install` などで代替できます。
 
-Hello World デモでは同一の `App` コンポーネントを **DOM Renderer** と **Canvas Renderer**（`MockHayate` による 2D Canvas スタブ）で切り替えられます。実 Hayate WASM は不要です。
+Todo デモ（Tsubame Task Studio）では同一の `App` コンポーネントを **DOM Renderer** と **Canvas Renderer**（`MockHayate` による 2D Canvas スタブ）で切り替えられます。実 Hayate WASM は不要です。
 
 ## ドキュメント
 
