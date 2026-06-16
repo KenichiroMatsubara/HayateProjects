@@ -78,6 +78,20 @@ mod tests {
     }
 
     #[test]
+    fn every_coverage_family_is_procurable() {
+        // Cross-layer integrity (ADR-0101): every fallback family the core
+        // coverage table can route a .notdef codepoint to MUST have a source in
+        // this adapter's manifest, or the FetchFont would dead-end. This is what
+        // makes the coverage table safe to extend by data alone.
+        for family in hayate_core::element::font_coverage::coverage_families() {
+            assert!(
+                builtin_font_url(family).is_some(),
+                "coverage family {family:?} has no URL in fonts.json"
+            );
+        }
+    }
+
+    #[test]
     fn emoji_fallback_resolves_to_monochrome_noto_emoji() {
         // hayate-core maps emoji codepoints to the family "Noto Emoji"; the
         // manifest must resolve it to the MONOCHROME build (tiny-skia cannot
