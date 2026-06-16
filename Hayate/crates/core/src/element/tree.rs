@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use fontique::FontInfoOverride;
 use linebender_resource_handle::Blob;
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
@@ -594,34 +593,17 @@ impl ElementTree {
     /// Register a custom font from raw bytes with a given family name.
     /// After registration, the name can be used in `element_set_font_family`.
     pub fn register_font(&mut self, family_name: &str, bytes: Vec<u8>) {
-        let data = Arc::new(bytes);
-
-        // 要求名で登録（element_set_font_family による明示的な指定に対応）
-        let blob = Blob::new(data.clone());
-        let override_info = FontInfoOverride {
-            family_name: Some(family_name),
-            ..Default::default()
-        };
-        self.layout
-            .font_cx
-            .collection
-            .register_fonts(blob, Some(override_info));
-
-        // デフォルトファミリ ("Noto Sans") にも登録する。
-        // build_text_layout のデフォルトスタックは常に DEFAULT_FONT_FAMILY を参照するため、
-        // 追加フォントを element_set_font_family なしで全要素から自動的に使えるようにする。
-        // 同名での二重登録は fontique が内部でマージするためグリフ競合は発生しない。
-        if family_name != text::DEFAULT_FONT_FAMILY {
-            let fallback_blob = Blob::new(data);
-            let fallback_override = FontInfoOverride {
-                family_name: Some(text::DEFAULT_FONT_FAMILY),
-                ..Default::default()
-            };
-            self.layout
-                .font_cx
-                .collection
-                .register_fonts(fallback_blob, Some(fallback_override));
-        }
+        // Register under the requested name (for an explicit `font-family`) and
+        // wire it in as a per-cluster fallback after the bundled default. It must
+        // NOT be aliased under the default family, which would shadow the bundled
+        // Japanese-covering face and turn all CJK into tofu once any Latin/emoji
+        // fallback is fetched (the deployed-Pages cascade). See
+        // `text::register_collection_font`.
+        text::register_collection_font(
+            &mut self.layout.font_cx.collection,
+            family_name,
+            Arc::new(bytes),
+        );
 
         self.layout.pending_font_fetches.remove(family_name);
         self.engine.mark_fonts_dirty();
