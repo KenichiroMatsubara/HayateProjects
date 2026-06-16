@@ -203,6 +203,27 @@ caret は core が描画し（`[CARET-INK]` Δ≈43px、末尾入力でも字間
 `:focus` の背景切替・`:hover`（`追加` が success へ）・全選択ドラッグの範囲計算は
 期待どおり動作する。問題は上記の**色・装飾チャネルの欠落**に集中する。
 
+## 設計判断（解決済み・ADR-0102）
+
+上記 #4–#7 の「どちらの見た目が正か」は **ADR-0102「Canvas Mode の視覚的お手本は
+DOM（Chromium ブラウザ）」** で確定した。原則は「ブラウザが描く chrome は Canvas も
+Chromium 既定に寄せる／ブラウザに無い概念だけ Android-native に寄せる」。各 finding の
+向き先:
+
+- **#4 placeholder**：Chromium UA `::placeholder`（muted）を Canvas で再現（非 authorable）。
+- **#5 focus**：HTML Mode の `outline: none`（`html.rs`）は本原則違反の**バグ→除去**。
+  Canvas は native focus ring を `:focus-visible` 忠実に再現（core に入力モダリティ追跡）。
+  ＝「`:focus` の背景は効くが native ring 相当が無い」が本質で、1px ボーダーが薄い件は
+  全細ボーダー共通の独立ラスタ課題。
+- **#6 selection**：highlight tint は browser `::selection` に寄せる。handle / ツールバー /
+  拡大鏡はブラウザに無い概念なので Android-native（Selection Chrome 改定）。
+- **#7 preedit**：EditContext `textformatupdate` を配管し、clause 分割下線を Chromium
+  同様に完全再現（`preedit` を範囲付きへ拡張）。
+
+各実値（placeholder 色・ring 色 / 太さ・`::selection` 色）は Chromium 実描画で校正する。
+追跡 issue: #334（placeholder）/ #335（focus ring + HTML Mode outline:none 除去）/
+#336（preedit clause 下線）/ #337（1px ボーダーのラスタ課題）。
+
 ## スクリーンショット
 
 ![Tasks 画面 (tiny-skia)](./tiny-skia-tasks.png)
