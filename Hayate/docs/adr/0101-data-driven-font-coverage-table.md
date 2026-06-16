@@ -97,6 +97,10 @@ emoji の補完先は **モノクロ `Noto Emoji`** とする。`Noto Color Emoj
   URL** で済み、整合は CI が保証する。
 - 関連: ADR-0042（検出点と層）、ADR-0043（URL はアダプタ）、ADR-0061（manifest と
   coverage check）、ADR-0073（バンドル既定フォント）。
-- スコープ外（別 issue）: tiny-skia でのカラー絵文字描画（COLR/CBDT）は painter 側の
-  作業であり本 ADR は扱わない。本 ADR は「正しいモノクロフォントを確実に取得する」層に
-  限る。
+- スコープ外（issue #332）: 本 ADR は「正しいモノクロフォントを確実に取得する」層に
+  限る。**カラー絵文字（COLR/CBDT）は Vello（WebGPU）なら描画可能**
+  （`crates/vendor/vello/src/scene.rs` の `draw_glyphs().draw()` が COLR/CPAL・bitmap を
+  検出し `try_draw_colr` へ分岐）だが、CPU フォールバックの tiny-skia は `outline_glyphs()`
+  のみで COLR/CBDT を描けない。共通 routing が単一ファミリを返す現設計では最小公倍数の
+  モノクロに縮退する。Vello 限定でカラー化する（レンダラ別フォント出し分け）作業は
+  adapter 層（ADR-0043）の責務として #332 に分離した。
