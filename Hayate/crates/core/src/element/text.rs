@@ -136,6 +136,19 @@ fn codepoint_font_family(cp: u32) -> Option<&'static str> {
         | 0xFB1D..=0xFB4F // Hebrew Presentation Forms
         => Some("Noto Sans Hebrew"),
 
+        // ── Emoji ────────────────────────────────────────────────────────
+        // Monochrome `Noto Emoji`, not `Noto Color Emoji`: the tiny-skia
+        // painter draws only glyf/CFF outlines and cannot render COLR/CBDT
+        // colour glyphs, so a colour build would stay blank (issue #329).
+        0x2600..=0x26FF   // Miscellaneous Symbols (☀ ☂ ⚡ …)
+        | 0x2700..=0x27BF // Dingbats
+        | 0x1F300..=0x1F5FF // Misc Symbols and Pictographs (🌙 🌑 …)
+        | 0x1F600..=0x1F64F // Emoticons
+        | 0x1F680..=0x1F6FF // Transport and Map Symbols
+        | 0x1F900..=0x1F9FF // Supplemental Symbols and Pictographs
+        | 0x1FA70..=0x1FAFF // Symbols and Pictographs Extended-A
+        => Some("Noto Emoji"),
+
         _ => None,
     }
 }
@@ -634,6 +647,46 @@ mod tests {
                 "expected wght variation for bold on variable font"
             );
         }
+    }
+
+    #[test]
+    fn missing_emoji_glyph_requests_emoji_fallback_family() {
+        // When the bundled base font lacks an emoji and it shapes to .notdef,
+        // the codepoint→family policy must request an on-demand emoji fallback.
+        // 🌙 U+1F319 is the theme-toggle glyph called out in issue #329.
+        assert_eq!(codepoint_font_family(0x1F319), Some("Noto Emoji"));
+    }
+
+    #[test]
+    fn emoji_fallback_is_monochrome_across_ranges() {
+        // tiny-skia draws only glyf/CFF outlines; the fallback must be the
+        // monochrome `Noto Emoji`, never a COLR/CBDT colour build, or the
+        // glyph stays blank (issue #329 constraint).
+        for cp in [
+            0x2600,  // ☀ Miscellaneous Symbols
+            0x2728,  // ✨ Dingbats
+            0x1F311, // 🌑 Misc Symbols and Pictographs
+            0x1F600, // 😀 Emoticons
+            0x1F680, // 🚀 Transport and Map Symbols
+            0x1F9E0, // 🧠 Supplemental Symbols and Pictographs
+            0x1FA79, // 🩹 Symbols and Pictographs Extended-A
+        ] {
+            assert_eq!(
+                codepoint_font_family(cp),
+                Some("Noto Emoji"),
+                "U+{cp:04X} should map to monochrome Noto Emoji"
+            );
+        }
+    }
+
+    #[test]
+    fn emoji_ranges_do_not_regress_other_scripts() {
+        // CJK still resolves to its own family, Latin stays bundled (None),
+        // and the dingbat lower boundary is exclusive.
+        assert_eq!(codepoint_font_family(0x4E00), Some("Noto Sans JP")); // 一
+        assert_eq!(codepoint_font_family(0xAC00), Some("Noto Sans KR")); // 가
+        assert_eq!(codepoint_font_family(0x0041), None); // 'A'
+        assert_eq!(codepoint_font_family(0x25FF), None); // just below U+2600
     }
 
     #[test]

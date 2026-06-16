@@ -78,6 +78,23 @@ mod tests {
     }
 
     #[test]
+    fn emoji_fallback_resolves_to_monochrome_noto_emoji() {
+        // hayate-core maps emoji codepoints to the family "Noto Emoji"; the
+        // manifest must resolve it to the MONOCHROME build (tiny-skia cannot
+        // paint COLR/CBDT colour glyphs — issue #329).
+        let url = builtin_font_url("Noto Emoji").expect("Noto Emoji missing from fonts.json");
+        let lower = url.to_lowercase();
+        assert!(
+            lower.contains("notoemoji"),
+            "expected a Noto Emoji url, got {url}"
+        );
+        assert!(
+            !lower.contains("color"),
+            "fallback must be monochrome Noto Emoji, not a colour build: {url}"
+        );
+    }
+
+    #[test]
     fn unknown_family_returns_none() {
         assert_eq!(builtin_font_url("Comic Sans MS"), None);
         assert_eq!(builtin_font_url(""), None);
