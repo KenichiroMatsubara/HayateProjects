@@ -8,7 +8,7 @@
 
 use hayate_core::{
     AlignValue, Color, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue,
-    JustifyValue, Shadow, StyleProp,
+    JustifyValue, PseudoState, Shadow, StyleProp,
 };
 use hayate_scene_renderer_tiny_skia::{premultiplied_to_straight, TinySkiaSceneRenderer};
 use tiny_skia::Pixmap;
@@ -653,6 +653,276 @@ fn diagnose_glyph_ink() {
         let ink = data.chunks_exact(4).filter(|p| p[0] < 200 || p[1] < 200 || p[2] < 200).count();
         eprintln!("[GLYPH-INK] {ink:>5} px  {label}");
     }
+}
+
+// ───────────────────────── interaction-state comparison ─────────────────────
+// Ad-hoc input interactions — click-to-focus, type, drag-select, IME compose,
+// button hover — rendered through Canvas mode (tiny-skia) so the result can be
+// eyeballed against DOM / EditContext rendering. Mirrors `App.tsx` AddForm:
+// `inputStyle()` with a `:focus` variant (border→accent, bg→panel3) and the
+// teal 追加 button with a `:hover` variant (bg→success).
+
+#[derive(Clone, Copy)]
+struct InputState {
+    label: &'static str,
+    /// Committed text. Empty string => the placeholder shows.
+    content: &'static str,
+    /// Active IME composition tail appended after `content`.
+    preedit: &'static str,
+    focused: bool,
+    select_all: bool,
+    hover_add: bool,
+}
+
+const PANEL_W: u32 = 560;
+const PANEL_H: u32 = 96;
+
+/// Build one AddForm row (text-input + three priority segments + 追加 button),
+/// faithful to `App.tsx` AddForm. Registers the input `:focus` and add-button
+/// `:hover` variants so interaction states resolve. Returns (input, add_btn).
+fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, ElementId) {
+    let lbl = b.text(label, &[StyleProp::Color(p.muted()), StyleProp::FontSize(11.0)]);
+
+    let form = b.view(&row(8.0));
+    let input = b.el(ElementKind::TextInput, &[
+        StyleProp::FlexGrow(1.0),
+        StyleProp::Height(Dimension::px(38.0)),
+        StyleProp::PaddingLeft(Dimension::px(12.0)),
+        StyleProp::PaddingRight(Dimension::px(12.0)),
+        StyleProp::BackgroundColor(p.panel2()),
+        StyleProp::Color(p.text()),
+        StyleProp::BorderRadius(8.0),
+        StyleProp::BorderWidth(1.0),
+        StyleProp::BorderColor(p.line()),
+        StyleProp::FontSize(13.0),
+    ]);
+    // The app's `:focus` variant from `inputStyle()`.
+    b.tree.element_set_pseudo_style(input, PseudoState::Focus, &[
+        StyleProp::BorderColor(p.accent()),
+        StyleProp::BackgroundColor(p.panel3()),
+    ]);
+    // Placeholder text lives in `el.text` for a TextInput (ADR-0058).
+    b.tree.element_set_text(input, "新しいタスクを入力…");
+
+    let segs = b.view(&row(4.0));
+    for (prio, active) in [(3u8, false), (2u8, true), (1u8, false)] {
+        let tone = prio_tone(p, prio);
+        let seg = b.button(PRIO_LABEL[prio as usize], &[
+            StyleProp::Height(Dimension::px(38.0)),
+            StyleProp::MinWidth(Dimension::px(40.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(if active { tone } else { p.panel2() }),
+            StyleProp::Color(if active { p.black() } else { p.muted() }),
+            StyleProp::BorderRadius(9.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderColor(if active { tone } else { p.line() }),
+            StyleProp::FontSize(13.0),
+        ]);
+        b.child(segs, seg);
+    }
+
+    let add = b.button("追加", &[
+        StyleProp::Height(Dimension::px(38.0)),
+        StyleProp::PaddingLeft(Dimension::px(18.0)),
+        StyleProp::PaddingRight(Dimension::px(18.0)),
+        StyleProp::Display(hayate_core::DisplayValue::Flex),
+        StyleProp::AlignItems(AlignValue::Center),
+        StyleProp::JustifyContent(JustifyValue::Center),
+        StyleProp::BackgroundColor(p.accent()),
+        StyleProp::Color(p.black()),
+        StyleProp::BorderRadius(9.0),
+        StyleProp::BorderWidth(1.0),
+        StyleProp::BorderColor(p.accent()),
+        StyleProp::FontSize(13.0),
+    ]);
+    // The app's 追加 `:hover` variant (bg/border → success).
+    b.tree.element_set_pseudo_style(add, PseudoState::Hover, &[
+        StyleProp::BackgroundColor(p.success()),
+        StyleProp::BorderColor(p.success()),
+    ]);
+
+    b.children(form, &[input, segs, add]);
+    b.children(root, &[lbl, form]);
+    (input, add)
+}
+
+/// Render one interaction state into its own panel pixmap.
+fn render_input_state(st: &InputState) -> Pixmap {
+    let p = P;
+    let mut b = B::new();
+    let root = b.view(&[
+        StyleProp::Width(Dimension::px(PANEL_W as f32)),
+        StyleProp::Height(Dimension::px(PANEL_H as f32)),
+        StyleProp::Display(hayate_core::DisplayValue::Flex),
+        StyleProp::FlexDirection(FlexDirectionValue::Column),
+        StyleProp::Gap(Dimension::px(6.0)),
+        StyleProp::PaddingLeft(Dimension::px(16.0)),
+        StyleProp::PaddingRight(Dimension::px(16.0)),
+        StyleProp::PaddingTop(Dimension::px(14.0)),
+        StyleProp::PaddingBottom(Dimension::px(14.0)),
+        StyleProp::BackgroundColor(p.bg()),
+        StyleProp::DefaultColor(p.text()),
+        StyleProp::DefaultFontSize(14.0),
+        StyleProp::DefaultFontFamily("Inter".to_string()),
+    ]);
+    b.tree.set_root(root);
+    b.tree.set_viewport(PANEL_W as f32, PANEL_H as f32);
+    let (input, add) = build_addform(&mut b, &p, root, st.label);
+
+    // ── apply the ad-hoc interaction ──
+    if !st.content.is_empty() {
+        b.tree.element_set_text_content(input, st.content);
+    }
+    if !st.preedit.is_empty() {
+        b.tree.element_set_preedit(input, st.preedit);
+    }
+    if st.focused {
+        b.tree.element_focus(input); // sets cursor_visible + :focus pseudo
+    }
+    if st.hover_add {
+        b.tree.hover_enter_element(add); // :hover pseudo
+    }
+
+    // First render establishes layout so we can drive a drag-select by geometry.
+    let _ = b.tree.render(0.0);
+    if st.select_all {
+        if let Some((rx, ry, rw, rh)) = b.tree.element_layout_rect(input) {
+            let my = ry + rh / 2.0;
+            // Drag from just inside the left padding to past the last glyph.
+            b.tree.on_pointer_down_on(input, rx + 13.0, my);
+            b.tree.on_pointer_move(rx + rw - 6.0, my);
+            b.tree.on_pointer_up(rx + rw - 6.0, my);
+        }
+    }
+
+    let graph = b.tree.render(0.0).clone();
+    let mut pixmap = Pixmap::new(PANEL_W, PANEL_H).expect("pixmap");
+    TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
+    pixmap
+}
+
+/// The ad-hoc interaction sequence rendered for comparison.
+fn interaction_states() -> Vec<InputState> {
+    vec![
+        InputState { label: "1. rest — 未フォーカス（placeholder）", content: "", preedit: "", focused: false, select_all: false, hover_add: false },
+        InputState { label: "2. click → focus（空・caret + :focus リング）", content: "", preedit: "", focused: true, select_all: false, hover_add: false },
+        InputState { label: "3. type「牛乳を買う」（caret 末尾）", content: "牛乳を買う", preedit: "", focused: true, select_all: false, hover_add: false },
+        InputState { label: "4. drag select all（選択ハイライト）", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false },
+        InputState { label: "5. IME compose「ぎゅうにゅう」（preedit）", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false },
+        InputState { label: "6. hover 追加ボタン（:hover）", content: "牛乳を買う", preedit: "", focused: false, select_all: false, hover_add: true },
+    ]
+}
+
+#[test]
+fn render_interaction_states() {
+    if std::env::var_os("HAYATE_WRITE_SCREENSHOT").is_none() {
+        return;
+    }
+    let panels: Vec<Pixmap> = interaction_states().iter().map(render_input_state).collect();
+    let sep = 2u32;
+    let total_h = panels.iter().map(|p| p.height()).sum::<u32>() + sep * (panels.len() as u32 - 1);
+    let mut out = vec![0xffu8; (PANEL_W * total_h * 4) as usize];
+    let mut y = 0u32;
+    for pm in &panels {
+        let mut d = pm.data().to_vec();
+        premultiplied_to_straight(&mut d);
+        for r in 0..pm.height() {
+            let src = (r * pm.width() * 4) as usize;
+            let dst = ((y + r) * PANEL_W * 4) as usize;
+            let n = (pm.width().min(PANEL_W) * 4) as usize;
+            out[dst..dst + n].copy_from_slice(&d[src..src + n]);
+        }
+        y += pm.height() + sep;
+    }
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../docs/ui-comparison/interaction-states.png");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    write_png(&path, &out, PANEL_W, total_h);
+    eprintln!("wrote {}", path.display());
+}
+
+/// Average straight-alpha RGB of the darkest text pixels inside a region —
+/// recovers the colour text was actually painted with.
+fn darkest_text_rgb(pm: &Pixmap, x0: u32, y0: u32, x1: u32, y1: u32) -> (u8, u8, u8) {
+    let mut d = pm.data().to_vec();
+    premultiplied_to_straight(&mut d);
+    let w = pm.width();
+    let mut best = (255u32, 0u8, 0u8, 0u8); // (luma, r, g, b)
+    for y in y0..y1.min(pm.height()) {
+        for x in x0..x1.min(w) {
+            let i = ((y * w + x) * 4) as usize;
+            let (r, g, b) = (d[i], d[i + 1], d[i + 2]);
+            let luma = (r as u32 * 299 + g as u32 * 587 + b as u32 * 114) / 1000;
+            if luma < best.0 {
+                best = (luma, r, g, b);
+            }
+        }
+    }
+    (best.1, best.2, best.3)
+}
+
+/// Sample one straight-alpha pixel.
+fn sample_rgb(pm: &Pixmap, x: u32, y: u32) -> (u8, u8, u8) {
+    let mut d = pm.data().to_vec();
+    premultiplied_to_straight(&mut d);
+    let i = ((y * pm.width() + x) * 4) as usize;
+    (d[i], d[i + 1], d[i + 2])
+}
+
+/// Deterministic signals for the interaction-state divergences, parallel to
+/// `diagnose_glyph_ink`. Each line is a sharp, reproducible probe.
+#[test]
+fn diagnose_interaction_signals() {
+    if std::env::var_os("HAYATE_WRITE_SCREENSHOT").is_none() {
+        return;
+    }
+    let p = P;
+
+    // The text region row inside a panel (label ~y14..28, input row ~y34..72).
+    let (ty0, ty1) = (34u32, 72u32);
+    let (tx0, tx1) = (30u32, 360u32);
+
+    // 1. Placeholder colour: empty (placeholder) vs committed text, same glyphs.
+    let placeholder = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false });
+    let committed = render_input_state(&InputState { label: "", content: "新しいタスクを入力…", preedit: "", focused: false, select_all: false, hover_add: false });
+    let ph = darkest_text_rgb(&placeholder, tx0, ty0, tx1, ty1);
+    let cm = darkest_text_rgb(&committed, tx0, ty0, tx1, ty1);
+    eprintln!("[PLACEHOLDER-RGB] placeholder={:?} committed={:?}  (DOM ::placeholder is muted ~#9a93a3; Canvas paints both as text {:?})", ph, cm, (p.text().to_array_f32()));
+
+    // 2. Focus ring: input left-border colour, unfocused vs focused.
+    let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false });
+    let foc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false });
+    // The focus cue that actually reads in Canvas is the input *fill* shifting
+    // panel2→panel3 (the :focus background). The 1px border colour change
+    // (line→accent) is set in the model but renders faintly at 1× (the left
+    // edge sits on an integer x and the hairline all but vanishes). Sample the
+    // input fill at its centre, unfocused vs focused.
+    eprintln!(
+        "[FOCUS-FILL] unfocused={:?} focused={:?}  (panel2={:?} → panel3={:?}; the app :focus applies, but the 1px accent border is near-invisible and DOM additionally stacks a NATIVE focus outline Canvas never draws)",
+        sample_rgb(&unfoc, 180, 50), sample_rgb(&foc, 180, 50),
+        (p.panel2().to_array_f32()), (p.panel3().to_array_f32()),
+    );
+
+    // 3. Caret: extra ink a focused-empty input draws over an unfocused-empty one.
+    let ink = |pm: &Pixmap| -> u32 {
+        let mut d = pm.data().to_vec();
+        premultiplied_to_straight(&mut d);
+        d.chunks_exact(4).filter(|c| c[0] < 120 && c[1] < 120 && c[2] < 120).count() as u32
+    };
+    eprintln!("[CARET-INK] focused-empty={} unfocused-empty={} (Δ≈caret px; Canvas core-draws the caret, DOM/EditContext uses the native caret)", ink(&foc), ink(&unfoc));
+
+    // 4. Selection highlight: count Material-blue tint pixels + report the colour.
+    let sel = render_input_state(&InputState { label: "", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false });
+    let mut sd = sel.data().to_vec();
+    premultiplied_to_straight(&mut sd);
+    let sel_px = sd.chunks_exact(4).filter(|c| c[2] > c[0] && c[2] > 110 && c[0] < 170 && c[1] < 200).count();
+    eprintln!("[SELECTION-PX] material-blue-tint px={} (Canvas paints a fixed Material tint #3373F2~0.35; DOM uses the OS/::selection colour — colour & semantics differ)", sel_px);
+
+    // 5. IME preedit: display text combines content+preedit with no decoration.
+    let ime = render_input_state(&InputState { label: "", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false });
+    eprintln!("[PREEDIT-INK] preedit-ink={} (Canvas paints preedit as plain text — NO composition underline; DOM/EditContext underlines the active composition)", ink(&ime));
 }
 
 fn write_png(path: &std::path::Path, rgba: &[u8], w: u32, h: u32) {
