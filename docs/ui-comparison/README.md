@@ -128,8 +128,85 @@ ICU4X ログ `No segmentation model for language: ja` の発生源は
 そのまま回帰確認に使える。問題 1 を修正したら `🌙` ではなく採用 dingbat の ink が
 0 でないこと、Tasks 画面でトグルにアイコンが出ることを確認する。
 
+## インタラクション比較（クリック / 入力 / 選択 / IME / hover）
+
+静的 1 枚では出ない**操作中の状態**を比較した。AddForm の `text-input`（`App.tsx`
+の `inputStyle()` ＝ `:focus` で border→accent / bg→panel3、`onKeyDown` Enter）と
+`追加` ボタン（`:hover` で bg→success）を忠実に組み、core の interaction API
+（`element_focus` / `on_pointer_down_on`＋`on_pointer_move`＋`on_pointer_up` の
+ドラッグ選択 / `element_set_text_content` / `element_set_preedit` /
+`hover_enter_element`）で操作を与えてから tiny-skia で焼いた。
+
+- ハーネス: 同 `app_screenshot.rs` の `render_interaction_states`（6 状態を縦に連結）
+  と `diagnose_interaction_signals`（決定的シグナル）。
+- 出力: `interaction-states.png`。
+- 状態: ①rest（placeholder）②click→focus（空・caret＋:focus）③入力「牛乳を買う」
+  （caret 末尾）④全選択ドラッグ（選択ハイライト）⑤IME 変換中「ぎゅうにゅう」（preedit）
+  ⑥`追加` ボタン hover。
+
+`diagnose_interaction_signals` の出力（`HAYATE_WRITE_SCREENSHOT=1` 必須）:
+
+```
+[PLACEHOLDER-RGB] placeholder=(50,44,63) committed=(50,44,63)   ← 同色（バグ）
+[FOCUS-FILL]      unfocused=(236,230,216) focused=(224,216,199) ← panel2→panel3 は効く
+[CARET-INK]       focused-empty=394 unfocused-empty=351         ← Δ≈43px の caret は描かれる
+[SELECTION-PX]    material-blue-tint px=2599                    ← Material tint で描く
+[PREEDIT-INK]     preedit-ink=311（下線ノードは無し）            ← preedit が素のテキスト
+```
+
+### 4.【High】placeholder が本文と同色で描かれる（muted にならない）
+
+空の入力欄は placeholder「新しいタスクを入力…」を表示するが、Canvas では
+`color`（本文色 `#322c3f`）**そのまま**で描く（`[PLACEHOLDER-RGB]` が committed と
+完全一致）。DOM はブラウザ既定の `::placeholder`（概ね半透明グレー ~`#9a93a3`）で
+**淡く**描くため、入力前の見た目が大きく乖離し、placeholder と実入力の区別がつかない。
+
+- 根因: `layout_pass.rs` が `is_placeholder`（`display_text` が空）のとき `el.text`
+  を `text_layout` に積むだけで、`scene_build.rs` の TextInput 分岐は `confirmed_color`
+  （＝本文色）で塗る。placeholder 専用色のチャネルが無い。
+- 比較軸: Hayate CSS に `::placeholder` 相当も placeholder-color プロパティも無い。
+
+### 5.【Medium】focus リングが弱い（1px accent border が 1× でほぼ消える）＋ ネイティブ focus outline 非対応
+
+`:focus` 自体は効く — 背景は panel2→panel3 に切り替わる（`[FOCUS-FILL]`）。ただし
+もう一方の手掛かりである **1px の accent ボーダーは 1× でほとんど描かれない**
+（左端が整数 x=16 に乗り、ヘアラインが塗りに飲まれてボーダー列を作らない。
+border 列を直接走査しても accent ピクセルは検出されない）。結果、focus の合図は
+ほぼ背景差のみで、DOM よりコントラストが低い。加えて DOM はアプリの `:focus` に
+**ブラウザのネイティブ focus outline** を重ねるが、Canvas はそれを描かない（設計上
+ネイティブ widget chrome は再現しない方針だが、キーボード focus の可視性は別途要検討）。
+
+- 観察: 1px ボーダーが整数座標の左端で消える件は placeholder/focus に限らず、細い
+  ボーダー全般の 1× ラスタライズ課題の可能性（深追いは本分析のスコープ外）。
+
+### 6.【Medium】テキスト選択ハイライトが固定 Material tint（DOM は OS / `::selection`）
+
+全選択ドラッグで Canvas は core 描画の**固定 Material tint**
+（`SELECTION_HIGHLIGHT_COLOR = rgba(0.20,0.45,0.95,0.35)`）を text の背後に敷く
+（`[SELECTION-PX]`）。これは CONTEXT の「Selection Chrome は core が一度だけ描画し、
+DOM 経路はブラウザのネイティブ選択に委ねる」設計どおりで、**意味論パリティの対象外**。
+ただし見た目は DOM（OS アクセント / `::selection`）と必ず異なり、panel3 のベージュ地に
+0.35α の青を重ねると彩度が落ちて視認性が低めになる点は実用上の注意点。
+
+### 7.【High】IME preedit が素のテキストで描かれる（変換中の下線が出ない）
+
+変換中（committed「」＋ preedit「ぎゅうにゅう」）を Canvas は `display_text` ＝
+`content + preedit` を**一続きの素のテキスト**として描き、preedit 区間に下線・
+背景などの装飾を一切付けない（`edit_state.rs::display_text` は連結のみ、
+`scene_build.rs` は単一 run、装飾ノードを emit しない）。DOM / EditContext は変換中の
+composition を**下線**で示すため、「どこが未確定か」が Canvas では分からない。
+Canvas Mode は EditContext API で IME を扱う前提のため、未確定区間の描画契約は別途必要。
+
+### Note: 動くと確認できた点（パリティ OK）
+
+caret は core が描画し（`[CARET-INK]` Δ≈43px、末尾入力でも字間に正しく出る）、
+`:focus` の背景切替・`:hover`（`追加` が success へ）・全選択ドラッグの範囲計算は
+期待どおり動作する。問題は上記の**色・装飾チャネルの欠落**に集中する。
+
 ## スクリーンショット
 
 ![Tasks 画面 (tiny-skia)](./tiny-skia-tasks.png)
 
 ![グリフ被覆 (tiny-skia)](./tiny-skia-glyphs.png)
+
+![インタラクション状態 (tiny-skia)](./interaction-states.png)
