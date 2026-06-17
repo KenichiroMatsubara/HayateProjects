@@ -117,10 +117,18 @@ pub struct HayateElementRenderer {
     /// scrolling, fed to `estimate_release_velocity` on release to launch
     /// momentum (ADR-0082 Amendment, #351). Cleared on every fresh press.
     scroll_samples: Vec<(f32, f32, f64)>,
-    /// In-flight inertia: the locked scroll-view and its offset-space velocity
-    /// (px/ms per axis), integrated under friction each frame until it rests or
-    /// clamp-stops at an edge (#351). `None` when no fling is coasting.
-    momentum: Option<(ElementId, (f32, f32))>,
+    /// Raw (un-resisted) accumulated finger offset of the active drag, used to
+    /// drive the rubber-band: the finger moves this 1:1, and the *displayed*
+    /// offset is `rubber_band_offset(raw, …)` so overscroll past an edge lags the
+    /// finger (#352). `None` when no drag is scrolling; seeded on the first
+    /// `Scroll` and cleared on press / release / cancel.
+    drag_raw: Option<(ElementId, (f32, f32))>,
+    /// In-flight released scroll: the locked scroll-view and its offset-space
+    /// velocity (px/ms per axis). Each frame `scroll_motion_step` integrates it —
+    /// friction while inside the range, a spring while in overscroll — so a fling
+    /// coasts (#351), bounces at an edge, and springs back home (#352). `None`
+    /// when nothing is animating.
+    scroll_motion: Option<(ElementId, (f32, f32))>,
     /// Timestamp of the previous `render()` frame, for the inter-frame `dt` the
     /// momentum integrator advances by. `None` before the first frame.
     last_frame_ms: Option<f64>,
@@ -182,7 +190,8 @@ impl HayateElementRenderer {
             last_pointer_move: None,
             scroll_gesture: None,
             scroll_samples: Vec::new(),
-            momentum: None,
+            drag_raw: None,
+            scroll_motion: None,
             last_frame_ms: None,
             _pointer_input: pointer_guard,
         })
@@ -364,10 +373,11 @@ impl HayateElementRenderer {
             self.apply_resize(metrics);
         }
         self.drain_pointer_inputs(timestamp_ms);
-        // After draining this frame's inputs (a fresh press interrupts inertia, a
-        // release launches it), advance any coasting fling by the inter-frame dt
-        // so momentum integrates on the same rAF loop as layout (#351).
-        self.step_momentum(timestamp_ms);
+        // After draining this frame's inputs (a fresh press interrupts the
+        // animation, a release launches it), advance any in-flight scroll motion
+        // by the inter-frame dt so inertia, bounce and spring-back integrate on
+        // the same rAF loop as layout (#351, #352).
+        self.step_scroll_motion(timestamp_ms);
         self.last_frame_ms = Some(timestamp_ms);
         // Report failed fetches to core first: each marks fonts dirty so the
         // commit_layout below re-shapes, re-detects the gap, and re-emits a
@@ -453,9 +463,10 @@ impl HayateElementRenderer {
                 // release resolves as a normal click.
                 self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
                 self.scroll_gesture = None;
-                // A fresh press interrupts any coasting fling so the content is
-                // immediately grabbable (#351) — start the new gesture from rest.
-                self.momentum = None;
+                // A fresh press interrupts any coasting fling or spring-back so the
+                // content is immediately grabbable (#351) — start from rest.
+                self.scroll_motion = None;
+                self.drag_raw = None;
                 self.scroll_samples.clear();
                 if scroll_drag::is_drag_scroll_pointer(kind) {
                     if let Some(sv) = self
@@ -479,10 +490,11 @@ impl HayateElementRenderer {
                             self.tree.on_pointer_cancel();
                             self.scroll_samples.push((x, y, now_ms));
                         }
-                        // Drag the locked scroll-view 1:1 with the finger, and
-                        // record the sample so a release can estimate the fling.
+                        // Drag the locked scroll-view with the finger (1:1 inside
+                        // the range, rubber-band resisted past an edge), and record
+                        // the sample so a release can estimate the fling.
                         MoveOutcome::Scroll { dx, dy } => {
-                            self.apply_scroll_delta(gesture.scroll_view, dx, dy);
+                            self.apply_drag_delta(gesture.scroll_view, dx, dy);
                             self.scroll_samples.push((x, y, now_ms));
                         }
                     }
@@ -495,16 +507,20 @@ impl HayateElementRenderer {
             PointerInput::Up { x, y, kind } => {
                 // A touch that never crossed the slop is a tap → resolve the
                 // click. One that became a scroll already had its press
-                // cancelled, so swallow the up and launch momentum from the
-                // sampled release velocity (#351).
+                // cancelled, so swallow the up and launch the released motion —
+                // momentum from the sampled fling, and/or spring-back if it was
+                // let go in overscroll (#351, #352).
                 match self.scroll_gesture.take() {
-                    Some(gesture) if !gesture.is_tap() => self.launch_momentum(gesture.scroll_view),
+                    Some(gesture) if !gesture.is_tap() => {
+                        self.launch_scroll_motion(gesture.scroll_view)
+                    }
                     _ => self.tree.on_pointer_up_with_kind(x, y, kind),
                 }
             }
             PointerInput::Leave => self.tree.on_pointer_leave(),
             PointerInput::Cancel => {
                 self.scroll_gesture = None;
+                self.drag_raw = None;
                 self.scroll_samples.clear();
                 self.tree.on_pointer_cancel();
             }
@@ -535,48 +551,82 @@ impl HayateElementRenderer {
         }
     }
 
-    /// Apply a finger-driven scroll delta to the locked scroll-view: offset via
-    /// `element_set_scroll_offset` (SCR-02, un-clamped) clamped to `[0, max]`
-    /// here so this slice stops at the edges, and a separate `Event::Scroll`
-    /// notification so parallax/lazy-load fire on touch too (ADR-0082). Offset
-    /// application and scroll-notify are deliberately distinct calls.
-    fn apply_scroll_delta(&mut self, sv: ElementId, dx: f32, dy: f32) -> (f32, f32) {
-        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
+    /// Per-axis scroll bounds of `sv`: `(max_x, max_y, dim_x, dim_y)` where `max`
+    /// is the scrollable range (`content − viewport`, floored at 0) and `dim` is
+    /// the viewport extent the rubber-band overscroll asymptotes to.
+    fn scroll_bounds(&self, sv: ElementId) -> (f32, f32, f32, f32) {
         let (content_w, content_h) = self.tree.element_content_size(sv);
         let (_, _, view_w, view_h) = self
             .tree
             .element_layout_rect(sv)
             .unwrap_or((0.0, 0.0, 0.0, 0.0));
-        let nx = scroll_drag::clamp_scroll_axis(ox + dx, content_w - view_w);
-        let ny = scroll_drag::clamp_scroll_axis(oy + dy, content_h - view_h);
-        let (consumed_x, consumed_y) = (nx - ox, ny - oy);
-        if consumed_x.abs() > 1e-6 || consumed_y.abs() > 1e-6 {
-            self.tree.element_set_scroll_offset(sv, nx, ny);
-            self.tree.on_wheel(sv, consumed_x, consumed_y);
-        }
-        // The clamped (actually-applied) delta lets momentum detect an edge it
-        // could not move past and stop there (clamp-stop, no bounce this slice).
-        (consumed_x, consumed_y)
+        (
+            (content_w - view_w).max(0.0),
+            (content_h - view_h).max(0.0),
+            view_w,
+            view_h,
+        )
     }
 
-    /// On release of a scroll gesture, estimate the fling from the recorded
-    /// finger samples and, if it is above the stop threshold, start a coasting
-    /// momentum on the locked scroll-view (#351). A slow release (or none)
-    /// leaves `momentum` empty so nothing coasts.
-    fn launch_momentum(&mut self, sv: ElementId) {
+    /// Set the locked scroll-view's offset un-clamped (SCR-02) and, when it
+    /// actually moved, fire `Event::Scroll` so parallax / lazy-load react to touch
+    /// scrolling too (ADR-0082). Offsets outside `[0, max]` are intentional — the
+    /// rubber-band drag and the spring-back / bounce animation both live in
+    /// overscroll. Offset application and scroll-notify are distinct calls.
+    fn commit_scroll_offset(&mut self, sv: ElementId, nx: f32, ny: f32) {
+        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
+        let (dx, dy) = (nx - ox, ny - oy);
+        if dx.abs() > 1e-6 || dy.abs() > 1e-6 {
+            self.tree.element_set_scroll_offset(sv, nx, ny);
+            self.tree.on_wheel(sv, dx, dy);
+        }
+    }
+
+    /// Apply a finger-driven drag delta to the locked scroll-view through the
+    /// rubber-band: the finger moves a *raw* offset 1:1, and the displayed offset
+    /// is `rubber_band_offset(raw, …)`, so inside the range it tracks the finger
+    /// exactly and past an edge it lags with growing resistance (#352). The raw
+    /// accumulator is seeded from the current offset on the first drag frame.
+    fn apply_drag_delta(&mut self, sv: ElementId, dx: f32, dy: f32) {
+        let (max_x, max_y, dim_x, dim_y) = self.scroll_bounds(sv);
+        let (rx, ry) = match self.drag_raw {
+            Some((s, raw)) if s == sv => raw,
+            _ => self.tree.element_get_scroll_offset(sv),
+        };
+        let (rx, ry) = (rx + dx, ry + dy);
+        self.drag_raw = Some((sv, (rx, ry)));
+        let nx = scroll_drag::rubber_band_offset(rx, max_x, dim_x);
+        let ny = scroll_drag::rubber_band_offset(ry, max_y, dim_y);
+        self.commit_scroll_offset(sv, nx, ny);
+    }
+
+    /// On release of a scroll gesture, hand the locked scroll-view its released
+    /// motion: the fling velocity estimated from the recorded finger samples.
+    /// It coasts if there is a real fling, and it also animates when the finger
+    /// let go in overscroll (velocity ≈ 0) so the edge always springs back home
+    /// (#351, #352). A slow release that ends inside the range leaves nothing
+    /// animating.
+    fn launch_scroll_motion(&mut self, sv: ElementId) {
         let (vx, vy) = scroll_drag::estimate_release_velocity(&self.scroll_samples);
         self.scroll_samples.clear();
-        let alive = vx.abs() >= scroll_drag::physics::MIN_VELOCITY
+        self.drag_raw = None;
+        let (max_x, max_y, _, _) = self.scroll_bounds(sv);
+        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
+        let out_of_bounds = ox < 0.0 || ox > max_x || oy < 0.0 || oy > max_y;
+        let has_fling = vx.abs() >= scroll_drag::physics::MIN_VELOCITY
             || vy.abs() >= scroll_drag::physics::MIN_VELOCITY;
-        self.momentum = alive.then_some((sv, (vx, vy)));
+        self.scroll_motion = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));
     }
 
-    /// Advance a coasting fling by one frame: integrate each axis under friction,
-    /// apply the clamped offset (firing `Event::Scroll` like a finger drag), and
-    /// carry the decayed velocity. An axis that hits its edge or decays below the
-    /// stop threshold zeroes out; when both rest the momentum ends (#351).
-    fn step_momentum(&mut self, now_ms: f64) {
-        let Some((sv, (vx, vy))) = self.momentum else {
+    /// Advance the released scroll by one frame: `scroll_motion_step` integrates
+    /// each axis (friction inside the range, spring in overscroll), the new offset
+    /// is committed un-clamped (firing `Event::Scroll` like a finger drag), and
+    /// the decayed velocity carries on. The animation ends once both axes rest
+    /// **and** are back within `[0, max]`, so an inertial bounce keeps running
+    /// through its overscroll excursion until the spring brings it home (#351,
+    /// #352).
+    fn step_scroll_motion(&mut self, now_ms: f64) {
+        let Some((sv, (vx, vy))) = self.scroll_motion else {
             return;
         };
         // Need a real inter-frame span to integrate; carry velocity until we do.
@@ -584,25 +634,16 @@ impl HayateElementRenderer {
             Some(prev) if now_ms > prev => (now_ms - prev) as f32,
             _ => return,
         };
-        let (dx, next_vx) = scroll_drag::momentum_step(vx, dt);
-        let (dy, next_vy) = scroll_drag::momentum_step(vy, dt);
-        let (consumed_x, consumed_y) = self.apply_scroll_delta(sv, dx, dy);
-        // An axis whose move was clamped short hit an edge → stop it there.
-        let vx2 = if (consumed_x - dx).abs() > 1e-3 {
-            0.0
-        } else {
-            next_vx
-        };
-        let vy2 = if (consumed_y - dy).abs() > 1e-3 {
-            0.0
-        } else {
-            next_vy
-        };
-        self.momentum = if vx2 == 0.0 && vy2 == 0.0 {
-            None
-        } else {
-            Some((sv, (vx2, vy2)))
-        };
+        let (max_x, max_y, _, _) = self.scroll_bounds(sv);
+        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
+        let (nx, vx2) = scroll_drag::scroll_motion_step(ox, vx, max_x, dt);
+        let (ny, vy2) = scroll_drag::scroll_motion_step(oy, vy, max_y, dt);
+        self.commit_scroll_offset(sv, nx, ny);
+        // An axis is still animating while it carries velocity or sits in
+        // overscroll (a bounce mid-excursion may momentarily read zero velocity).
+        let x_active = vx2 != 0.0 || nx < 0.0 || nx > max_x;
+        let y_active = vy2 != 0.0 || ny < 0.0 || ny > max_y;
+        self.scroll_motion = (x_active || y_active).then_some((sv, (vx2, vy2)));
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32, scale: f32) {
