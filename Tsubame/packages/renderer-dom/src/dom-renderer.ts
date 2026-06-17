@@ -76,6 +76,12 @@ export class DomRenderer implements IRenderer {
   private readonly container: HTMLElement;
   private readonly nodes = new Map<ElementId, HTMLElement>();
   private readonly kinds = new Map<ElementId, ElementKind>();
+  /// Listeners registered per element, kept so they can be re-bound when the
+  /// underlying DOM node is replaced (the `<input>`↔`<textarea>` swap, #362).
+  private readonly domListeners = new Map<
+    ElementId,
+    Set<{ domEvent: string; listener: (e: Event) => void }>
+  >();
   private readonly pseudoRules = new Map<string, { index: number; priority: number }>();
   private readonly pseudoStyleEl: HTMLStyleElement;
   private readonly variantRuleKeys = new Map<string, number>();
@@ -245,7 +251,46 @@ export class DomRenderer implements IRenderer {
           target.style.webkitUserSelect = userSelect;
         }
       },
+      multiline: ({ multiline }) => this.setMultiline(id, multiline),
     });
+  }
+
+  /**
+   * Swap a text-input's DOM node between `<input>` and `<textarea>` so the
+   * browser's native Enter behaviour matches the `multiline` property (#362):
+   * a textarea inserts a newline at the caret, an input submits. The live
+   * value, placeholder, disabled flag, resolved inline styles, and registered
+   * event listeners all carry across the swap.
+   */
+  private setMultiline(id: ElementId, multiline: boolean): void {
+    if (this.kindOf(id) !== 'text-input') return;
+    const oldEl = this.node(id);
+    const isTextarea = oldEl instanceof HTMLTextAreaElement;
+    if (isTextarea === multiline) return; // already the right element
+
+    const newEl = createDomElement(this.doc, 'text-input', multiline);
+    newEl.setAttribute('data-tsubame-id', String(id as unknown as number));
+    // Carry the resolved inline styles (baseline + user + variant + userSelect).
+    newEl.style.cssText = oldEl.style.cssText;
+    // Carry the editable state across the input/textarea boundary.
+    if (
+      (oldEl instanceof HTMLInputElement || oldEl instanceof HTMLTextAreaElement) &&
+      (newEl instanceof HTMLInputElement || newEl instanceof HTMLTextAreaElement)
+    ) {
+      newEl.value = oldEl.value;
+      newEl.placeholder = oldEl.placeholder;
+      newEl.disabled = oldEl.disabled;
+    }
+    // Re-bind every registered listener to the new node.
+    const listeners = this.domListeners.get(id);
+    if (listeners !== undefined) {
+      for (const { domEvent, listener } of listeners) {
+        oldEl.removeEventListener(domEvent, listener);
+        newEl.addEventListener(domEvent, listener);
+      }
+    }
+    oldEl.replaceWith(newEl);
+    this.nodes.set(id, newEl);
   }
 
   addEventListener(
@@ -259,7 +304,20 @@ export class DomRenderer implements IRenderer {
       handler(eventPayload(id, event, nativeEvent));
     };
     target.addEventListener(domEvent, listener);
-    return () => target.removeEventListener(domEvent, listener);
+    // Track the binding so it survives a node swap (`<input>`↔`<textarea>`, #362).
+    const entry = { domEvent, listener };
+    let set = this.domListeners.get(id);
+    if (set === undefined) {
+      set = new Set();
+      this.domListeners.set(id, set);
+    }
+    set.add(entry);
+    return () => {
+      // Detach from whichever node currently backs the element (it may have been
+      // swapped since registration).
+      this.nodes.get(id)?.removeEventListener(domEvent, listener);
+      this.domListeners.get(id)?.delete(entry);
+    };
   }
 
   resize(_width: number, _height: number): void {}
@@ -326,6 +384,7 @@ export class DomRenderer implements IRenderer {
         }
         this.nodes.delete(id);
         this.kinds.delete(id);
+        this.domListeners.delete(id);
       }
     }
   }

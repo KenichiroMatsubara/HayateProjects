@@ -18,6 +18,7 @@ import {
   appendSetTextContent,
   appendSetDisabled,
   appendSetSelectable,
+  appendSetMultiline,
   appendSetSrc,
   appendSetPseudoStyle,
   appendSetStyleVariant,
@@ -70,6 +71,11 @@ export type SemanticMutation =
       readonly kind: 'setSelectable';
       readonly id: ElementId;
       readonly selectable: boolean;
+    }
+  | {
+      readonly kind: 'setMultiline';
+      readonly id: ElementId;
+      readonly multiline: boolean;
     }
   | { readonly kind: 'setSrc'; readonly id: ElementId; readonly url: string }
   | {
@@ -186,6 +192,13 @@ export function encodeMutations(
           ops,
           mutation.id as number,
           mutation.selectable ? 1 : 0,
+        );
+        break;
+      case 'setMultiline':
+        appendSetMultiline(
+          ops,
+          mutation.id as number,
+          mutation.multiline ? 1 : 0,
         );
         break;
       case 'setSrc': {

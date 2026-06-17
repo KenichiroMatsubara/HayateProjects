@@ -138,6 +138,10 @@ pub(crate) struct Element {
     /// be selected by pointer drag, bounded by the nearest selectable ancestor
     /// (ADR-0097 / ADR-0071 closed typed property, same shape as `disabled`).
     pub selectable: bool,
+    /// When true, a TextInput accepts newlines: Enter inserts `\n` at the caret
+    /// rather than signalling submit (#362). Default false (single-line). A
+    /// closed typed property (ADR-0096/0097), same shape as `disabled`.
+    pub multiline: bool,
     /// Viewport-conditional style overrides, one variant per property (ADR-0081).
     pub viewport_variants: Vec<(ViewportCondition, StyleProp)>,
 }
@@ -399,6 +403,7 @@ impl ElementTree {
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
             selectable: false,
+            multiline: false,
             viewport_variants: Vec::new(),
         };
         self.elements.insert(id, element);
@@ -447,6 +452,14 @@ impl ElementTree {
     pub fn element_set_selectable(&mut self, id: ElementId, selectable: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.selectable = selectable;
+        }
+    }
+
+    /// Set whether a TextInput is multi-line (#362): when true, Enter inserts a
+    /// newline at the caret; when false (default), Enter signals submit instead.
+    pub fn element_set_multiline(&mut self, id: ElementId, multiline: bool) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.multiline = multiline;
         }
     }
 

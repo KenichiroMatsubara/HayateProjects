@@ -311,6 +311,7 @@ mod tests {
             pseudo_styles: Default::default(),
             disabled: false,
             selectable: false,
+            multiline: false,
             viewport_variants: Vec::new(),
         };
         (eid, el)
@@ -338,6 +339,7 @@ mod tests {
             pseudo_styles: Default::default(),
             disabled: false,
             selectable: false,
+            multiline: false,
             viewport_variants: Vec::new(),
         };
         (eid, el)

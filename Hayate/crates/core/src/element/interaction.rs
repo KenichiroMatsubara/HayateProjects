@@ -412,13 +412,21 @@ impl ElementTree {
                 return;
             }
         }
-        if let Some(edit) = self
+        // Enter inserts a newline at the caret only in a multi-line field (#362);
+        // a single-line field leaves the text alone so the trailing KeyDown below
+        // is the app's submit signal. `apply_key_down` handles Enter alone.
+        let multiline = self
             .elements
-            .get_mut(&focused)
-            .and_then(|el| el.edit.as_mut())
-        {
-            if edit.apply_key_down(key) {
-                if key == "Enter" {
+            .get(&focused)
+            .map(|el| el.multiline)
+            .unwrap_or(false);
+        if key == "Enter" && multiline {
+            if let Some(edit) = self
+                .elements
+                .get_mut(&focused)
+                .and_then(|el| el.edit.as_mut())
+            {
+                if edit.apply_key_down(key) {
                     self.emit_interaction(Event::TextInput {
                         target_id: focused,
                         text: "\n".to_string(),

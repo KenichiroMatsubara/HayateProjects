@@ -148,6 +148,74 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
 }
 
 #[wasm_bindgen_test]
+async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
+    // #362: a multi-line text-input treats Enter as a newline inserted at the
+    // caret, not appended to the end. Drive the caret to the start, then Enter.
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_set_style(
+            1.0,
+            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+        )
+        .unwrap();
+    renderer.set_root(1.0);
+    renderer.element_set_multiline(1.0, true);
+    renderer.element_set_text_content(1.0, "ab");
+
+    renderer.render(0.0).unwrap();
+    let rect = canvas.get_bounding_client_rect();
+    dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
+    renderer.render(16.0).unwrap();
+    assert_eq!(renderer.focused_element_id(), 1.0);
+
+    renderer.on_key_down("ArrowLeft", 0); // caret between 'a' and 'b'
+    renderer.on_key_down("Enter", 0);
+    assert_eq!(
+        renderer.element_get_text_content(1.0),
+        "a\nb",
+        "Enter inserts the newline at the caret, not at the end",
+    );
+}
+
+#[wasm_bindgen_test]
+async fn enter_in_a_single_line_field_does_not_insert_a_newline() {
+    // #362: the default (single-line) text-input leaves its text untouched on
+    // Enter — the key is the app's submit signal, not a newline.
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_set_style(
+            1.0,
+            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+        )
+        .unwrap();
+    renderer.set_root(1.0);
+    renderer.element_set_text_content(1.0, "ab");
+
+    renderer.render(0.0).unwrap();
+    let rect = canvas.get_bounding_client_rect();
+    dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
+    renderer.render(16.0).unwrap();
+    assert_eq!(renderer.focused_element_id(), 1.0);
+
+    renderer.on_key_down("Enter", 0);
+    assert_eq!(
+        renderer.element_get_text_content(1.0),
+        "ab",
+        "a single-line field inserts no newline on Enter",
+    );
+}
+
+#[wasm_bindgen_test]
 async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())

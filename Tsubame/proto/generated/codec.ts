@@ -750,3 +750,9 @@ export function appendSetSelectable(buf: number[], id: number, selectable: numbe
   buf.push(id);
   buf.push(selectable);
 }
+
+export function appendSetMultiline(buf: number[], id: number, multiline: number): void {
+  buf.push(OP.SET_MULTILINE);
+  buf.push(id);
+  buf.push(multiline);
+}

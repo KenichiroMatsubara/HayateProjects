@@ -250,6 +250,11 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*id as f64);
             buf.push(if *selectable { 1.0 } else { 0.0 });
         }
+        Op::SetMultiline { id, multiline } => {
+            buf.push(OP_SET_MULTILINE as f64);
+            buf.push(*id as f64);
+            buf.push(if *multiline { 1.0 } else { 0.0 });
+        }
     }
 }
 

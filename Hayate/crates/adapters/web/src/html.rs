@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use hayate_core::{DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp};
 use wasm_bindgen::prelude::*;
-use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, Node, NodeList};
+use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, HtmlTextAreaElement, Node, NodeList};
 
 use crate::generated::encode_deliveries;
 use crate::pseudo_style_dom::{pseudo_patch_rule_body, pseudo_state_css_priority, pseudo_state_css_suffix};
@@ -42,6 +42,10 @@ enum Command {
     SetSelectable {
         id: ElementId,
         selectable: bool,
+    },
+    SetMultiline {
+        id: ElementId,
+        multiline: bool,
     },
     SetStyle {
         id: ElementId,
@@ -217,6 +221,16 @@ impl HayateElementHtmlRenderer {
         self.pending.push(Command::SetSelectable {
             id: element_id_from_f64(id),
             selectable,
+        });
+    }
+
+    /// Mark a TextInput as multi-line (#362). HTML Mode is browser-driven, so
+    /// this swaps the materialised element between `<input>` and `<textarea>`:
+    /// a textarea inserts a newline on Enter at the caret, an input submits.
+    pub fn element_set_multiline(&mut self, id: f64, multiline: bool) {
+        self.pending.push(Command::SetMultiline {
+            id: element_id_from_f64(id),
+            multiline,
         });
     }
 
@@ -565,8 +579,8 @@ impl HayateElementHtmlRenderer {
             None => return String::new(),
         };
         if let Some(dom) = n.dom.as_ref() {
-            if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
-                return input.value();
+            if let Some(value) = text_field_value(dom) {
+                return value;
             }
         }
         n.text.clone().unwrap_or_default()
@@ -612,6 +626,7 @@ impl HayateElementHtmlRenderer {
             Command::SetText { id, text } => self.flush_set_text(id, &text),
             Command::SetSrc { id, url } => self.flush_set_src(id, &url),
             Command::SetSelectable { id, selectable } => self.flush_set_selectable(id, selectable),
+            Command::SetMultiline { id, multiline } => self.flush_set_multiline(id, multiline)?,
             Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
             Command::SetPseudoStyle { id, state, props } => {
                 self.tree.element_set_pseudo_style(id, state, &props);
@@ -671,9 +686,7 @@ impl HayateElementHtmlRenderer {
         };
         match n.kind {
             ElementKind::TextInput => {
-                if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
-                    input.set_value(text);
-                }
+                set_text_field_value(dom, text);
             }
             _ => {
                 if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
@@ -711,6 +724,56 @@ impl HayateElementHtmlRenderer {
             let _ = style.set_property("user-select", value);
             let _ = style.set_property("-webkit-user-select", value);
         }
+    }
+
+    /// Swap a TextInput's materialised element between `<input>` and `<textarea>`
+    /// so the browser's native Enter behaviour matches the `multiline` property
+    /// (#362): a textarea inserts a newline at the caret, an input submits. The
+    /// live value and resolved inline styles carry across the swap.
+    fn flush_set_multiline(&mut self, id: ElementId, multiline: bool) -> Result<(), JsValue> {
+        // Keep the core tree authoritative so reads agree across renderers.
+        self.tree.element_set_multiline(id, multiline);
+        let (kind, dom) = match self.nodes.get(&id) {
+            Some(n) => (n.kind, n.dom.clone()),
+            None => return Ok(()),
+        };
+        if kind != ElementKind::TextInput {
+            return Ok(());
+        }
+        let old = match dom {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+        let is_textarea = old.dyn_ref::<HtmlTextAreaElement>().is_some();
+        if is_textarea == multiline {
+            return Ok(()); // already the right element
+        }
+        let doc = document();
+        let new_el = doc.create_element(if multiline { "textarea" } else { "input" })?;
+        apply_kind_baseline(&new_el, ElementKind::TextInput)?;
+        if !multiline {
+            new_el.set_attribute("type", "text")?;
+        }
+        new_el.set_attribute("data-element-id", &format!("{}", id.to_u64()))?;
+        // Preserve the live value across the swap (DOM first, then the mirror).
+        let value = text_field_value(&old)
+            .or_else(|| self.nodes.get(&id).and_then(|n| n.text.clone()));
+        if let Some(v) = value.as_deref() {
+            set_text_field_value(&new_el, v);
+        }
+        // Carry over the resolved inline styles (baseline + user + selection).
+        if let (Some(old_h), Some(new_h)) =
+            (old.dyn_ref::<HtmlElement>(), new_el.dyn_ref::<HtmlElement>())
+        {
+            let _ = new_h.style().set_css_text(&old_h.style().css_text());
+        }
+        if let Some(parent) = old.parent_node() {
+            parent.replace_child(&new_el, &old)?;
+        }
+        if let Some(n) = self.nodes.get_mut(&id) {
+            n.dom = Some(new_el);
+        }
+        Ok(())
     }
 
     fn flush_set_style(&mut self, id: ElementId, props: &[StyleProp]) -> Result<(), JsValue> {
@@ -905,10 +968,10 @@ impl HayateElementHtmlRenderer {
             Some(d) => d,
             None => return,
         };
-        if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
-            input.set_value(text);
-        } else if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
-            html_el.set_inner_text(text);
+        if !set_text_field_value(dom, text) {
+            if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
+                html_el.set_inner_text(text);
+            }
         }
     }
 
@@ -1070,6 +1133,31 @@ fn create_dom_for_kind(doc: &Document, kind: ElementKind) -> Result<Element, JsV
         let _ = el.set_attribute("type", "text");
     }
     Ok(el)
+}
+
+/// Read the editable value of a text-input DOM node, whether the browser is
+/// materialising it as a single-line `<input>` or a multi-line `<textarea>`
+/// (#362). Returns `None` when the node is neither.
+fn text_field_value(dom: &Element) -> Option<String> {
+    if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
+        Some(input.value())
+    } else {
+        dom.dyn_ref::<HtmlTextAreaElement>().map(|area| area.value())
+    }
+}
+
+/// Write the editable value of a text-input DOM node (`<input>` or `<textarea>`).
+/// Returns whether the node was a text field (so callers can fall back).
+fn set_text_field_value(dom: &Element, text: &str) -> bool {
+    if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
+        input.set_value(text);
+        true
+    } else if let Some(area) = dom.dyn_ref::<HtmlTextAreaElement>() {
+        area.set_value(text);
+        true
+    } else {
+        false
+    }
 }
 
 /// Per-kind baseline CSS — keep it minimal so user-supplied styles via

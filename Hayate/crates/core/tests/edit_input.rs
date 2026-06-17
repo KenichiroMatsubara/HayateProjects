@@ -377,16 +377,72 @@ fn backspace_and_delete_over_a_selection_remove_the_whole_range() {
 }
 
 #[test]
-fn on_key_down_enter_inserts_newline_via_edit_state() {
+fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
+    // #362: a multi-line field treats Enter as a newline inserted at the caret,
+    // not appended to the end (fixing the old append bug).
     let mut tree = ElementTree::new();
     let input = tree.element_create(2, ElementKind::TextInput);
     tree.set_root(input);
     tree.element_focus(input);
-    tree.element_append_text_content(input, "a");
+    tree.element_set_multiline(input, true);
+    tree.element_append_text_content(input, "ab");
+    tree.on_key_down("ArrowLeft", 0); // caret between 'a' and 'b'
 
     tree.on_key_down("Enter", 0);
 
-    assert_eq!(tree.element_get_text_content(input), "a\n");
+    assert_eq!(tree.element_get_text_content(input), "a\nb", "newline at the caret");
+    assert_eq!(tree.element_caret_byte_index(input), Some(2), "caret after the newline");
+}
+
+#[test]
+fn enter_in_a_single_line_field_does_not_insert_a_newline_and_signals_submit() {
+    // #362: the default (single-line) field leaves the text untouched on Enter;
+    // the KeyDown event is the app's submit signal and no TextInput is emitted.
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(2, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_focus(input);
+    tree.element_append_text_content(input, "ab");
+
+    let key_listener =
+        tree.register_listener(input, hayate_core::DocumentEventKind::KeyDown);
+    let text_listener =
+        tree.register_listener(input, hayate_core::DocumentEventKind::TextInput);
+
+    tree.on_key_down("Enter", 0);
+
+    assert_eq!(tree.element_get_text_content(input), "ab", "no newline inserted");
+    let deliveries = tree.poll_deliveries();
+    assert!(
+        deliveries.iter().any(|d| d.listener_id == key_listener
+            && matches!(&d.event, hayate_core::Event::KeyDown { key, .. } if key == "Enter")),
+        "Enter still reaches the app as a KeyDown (the submit signal)",
+    );
+    assert!(
+        !deliveries.iter().any(|d| d.listener_id == text_listener),
+        "a single-line field never emits a TextInput on Enter",
+    );
+}
+
+#[test]
+fn enter_in_a_multiline_field_replaces_the_selection() {
+    // replace-on-type: Enter over a selection drops the range and inserts the
+    // newline in its place (#362).
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(2, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_focus(input);
+    tree.element_set_multiline(input, true);
+    tree.element_append_text_content(input, "hello"); // caret at end (5)
+    tree.on_key_down("ArrowLeft", SHIFT);
+    tree.on_key_down("ArrowLeft", SHIFT); // selects "lo" → (3,5)
+    assert_eq!(tree.element_text_selection(input), Some((3, 5)));
+
+    tree.on_key_down("Enter", 0);
+
+    assert_eq!(tree.element_get_text_content(input), "hel\n", "the range is replaced by the newline");
+    assert_eq!(tree.element_caret_byte_index(input), Some(4));
+    assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]

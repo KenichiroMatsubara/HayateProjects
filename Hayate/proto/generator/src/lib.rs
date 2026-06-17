@@ -1203,6 +1203,12 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
             Ok(())
 "#.to_string()
         }
+        "SET_MULTILINE" => {
+            r#"            host.tree_mut()
+                .element_set_multiline(ElementId::from_u64(id), multiline);
+            Ok(())
+"#.to_string()
+        }
         "SET_SRC" => {
             r#"            if text_index >= texts.length() as usize {
                 return Err(JsValue::from_str("text index out of bounds in OP_SET_SRC"));

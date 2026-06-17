@@ -20,6 +20,7 @@ export const OP = {
   SET_PSEUDO_STYLE: 15,
   SET_STYLE_VARIANT: 16,
   SET_SELECTABLE: 17,
+  SET_MULTILINE: 18,
 } as const;
 export type OP = typeof OP;
 
@@ -337,7 +338,7 @@ export type TRANSITION_TIMING = typeof TRANSITION_TIMING;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 
-export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2];
+export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2, 2];
 
 // ── Event payload types ─────────────────────────────────────────────────────
 

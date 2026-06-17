@@ -279,5 +279,19 @@
         "type": "bool"
       }
     ]
+  },
+  {
+    "name": "SET_MULTILINE",
+    "value": 18,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "multiline",
+        "type": "bool"
+      }
+    ]
   }
 ]
