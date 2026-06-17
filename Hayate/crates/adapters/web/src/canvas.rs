@@ -424,7 +424,7 @@ impl HayateElementRenderer {
 
     pub fn on_pointer_move(&mut self, x: f32, y: f32) {
         let result = self.tree.on_pointer_move(x, y);
-        apply_resolved_cursor(result.resolved_cursor);
+        apply_resolved_cursor(&self.canvas, result.resolved_cursor);
     }
 
     pub fn on_wheel(&mut self, x: f32, y: f32, delta_x: f32, delta_y: f32) {
@@ -501,7 +501,7 @@ impl HayateElementRenderer {
                     self.scroll_gesture = Some(gesture);
                 } else {
                     let result = self.tree.on_pointer_move_with_kind(x, y, kind);
-                    apply_resolved_cursor(result.resolved_cursor);
+                    apply_resolved_cursor(&self.canvas, result.resolved_cursor);
                 }
             }
             PointerInput::Up { x, y, kind } => {
@@ -1030,19 +1030,14 @@ async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
 }
 
 /// Drive the browser cursor from the cursor resolved under the pointer
-/// (ADR-0088). Reuses the generated Hayate-CSS → browser-CSS mapper so the
-/// `cursor` value list stays single-sourced, and applies it to
-/// `document.body.style.cursor`.
-fn apply_resolved_cursor(cursor: CursorValue) {
+/// (ADR-0088 / ADR-0105). Reuses the generated Hayate-CSS → browser-CSS mapper so
+/// the `cursor` value list stays single-sourced, and applies it to the canvas
+/// element itself — the surface the pointer is over — rather than the whole body.
+fn apply_resolved_cursor(canvas: &HtmlCanvasElement, cursor: CursorValue) {
     let mut entries: Vec<(String, String)> = Vec::new();
     crate::generated::style_prop_css_entries(&StyleProp::Cursor(cursor), &mut entries);
     let Some((_, value)) = entries.into_iter().next() else {
         return;
     };
-    if let Some(body) = web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.body())
-    {
-        let _ = body.style().set_property("cursor", &value);
-    }
+    let _ = canvas.style().set_property("cursor", &value);
 }

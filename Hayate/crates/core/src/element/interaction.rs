@@ -10,12 +10,29 @@ use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
 use crate::element::visual_invalidation::VisualInvalidationReach;
 
-/// Map a horizontal arrow keystroke to an [`EditIntent`] (ADR-0103): Shift
-/// extends the selection, otherwise the caret moves; Alt (macOS) or Ctrl
-/// (Win/Linux) widens the step from a grapheme to a word. Returns `None` for
-/// any non-arrow key so callers fall through to other handling. This is the
+/// Map an editing keystroke to an [`EditIntent`] (ADR-0103). Horizontal arrows
+/// move the caret (Shift extends; Alt/Ctrl widens a grapheme step to a word);
+/// Backspace / Delete remove one char backward / forward. Returns `None` for any
+/// other key so callers fall through to the raw `on_key_down` path. This is the
 /// OS-independent core bridge; the Platform Adapter owns the full OS keymap.
-fn arrow_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    // Forward/backward char delete. Word-granularity delete (Ctrl/Alt) is a
+    // later slice (ADR-0103 §5); this slice is char-only.
+    match key {
+        "Backspace" => {
+            return Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Backward,
+            })
+        }
+        "Delete" => {
+            return Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Forward,
+            })
+        }
+        _ => {}
+    }
     let direction = match key {
         "ArrowLeft" => Direction::Backward,
         "ArrowRight" => Direction::Forward,
@@ -262,10 +279,15 @@ impl ElementTree {
         }
     }
 
-    /// Resolve the effective cursor for the element under the pointer, walking
-    /// up the ancestor chain (CSS `cursor` inherits). `Default` when nothing in
-    /// the chain sets a cursor or the pointer hit nothing.
+    /// Resolve the effective cursor for the element under the pointer in the
+    /// order "explicit `cursor` → element-kind UA default → `Default`"
+    /// (ADR-0105), mirroring the browser's UA stylesheet. An explicit `cursor`
+    /// anywhere up the ancestor chain always wins (CSS `cursor` inherits); only
+    /// when none is set does the kind default apply — `text-input` and any
+    /// `selectable` text resolve to `text` (I-beam), `button` to `pointer`.
+    /// `Default` when nothing in the chain contributes or the pointer hit nothing.
     fn resolve_cursor(&self, hit: Option<ElementId>) -> CursorValue {
+        // Pass 1: an explicit `cursor` on the hit element or any ancestor wins.
         let mut current = hit;
         while let Some(id) = current {
             let Some(el) = self.elements.get(&id) else {
@@ -273,6 +295,23 @@ impl ElementTree {
             };
             if let Some(cursor) = el.visual.cursor {
                 return cursor;
+            }
+            current = el.parent;
+        }
+        // Pass 2: no explicit cursor — fall back to the element-kind UA default,
+        // walking up so a kind/selectable region default still reaches the text
+        // or child elements painted inside it.
+        let mut current = hit;
+        while let Some(id) = current {
+            let Some(el) = self.elements.get(&id) else {
+                break;
+            };
+            let kind_default = el.kind.default_cursor();
+            if kind_default != CursorValue::Default {
+                return kind_default;
+            }
+            if el.selectable {
+                return CursorValue::Text;
             }
             current = el.parent;
         }
@@ -332,12 +371,13 @@ impl ElementTree {
         let Some(focused) = self.focused_element else {
             return;
         };
-        // Caret movement inside a focused text-input is interpreted as an
+        // Editing keys inside a focused text-input are interpreted as an
         // EditIntent and applied through the single editing seam (ADR-0103):
         // a bare arrow moves the caret (collapsing any selection to its edge),
-        // Shift extends the selection, Alt/Ctrl widens the step to a word.
-        // Consumed when it applies (not while an IME composition is active).
-        if let Some(intent) = arrow_edit_intent(key, modifiers) {
+        // Shift extends the selection, Alt/Ctrl widens the step to a word, and
+        // Backspace/Delete remove one char. Consumed when it applies (never
+        // while an IME composition is active, so a delete key can't break it).
+        if let Some(intent) = key_edit_intent(key, modifiers) {
             if self.apply_edit_intent(focused, intent) {
                 return;
             }

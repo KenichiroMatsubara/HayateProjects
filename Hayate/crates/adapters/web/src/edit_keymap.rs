@@ -29,7 +29,26 @@ const MOD_META: u32 = 8;
 /// - `Home`/`End`: the line boundary, or the document (field) boundary with Ctrl
 ///   (Win/Linux Ctrl+Home/End).
 /// - `ArrowUp`/`ArrowDown` with Meta (macOS Cmd+↑/↓): the document boundary.
+/// - `Backspace`/`Delete`: remove one char backward / forward.
 pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    // Char delete keys (ADR-0103): Backspace backward, Delete forward. Word
+    // granularity (Ctrl/Alt) is a later slice — char only here.
+    match key {
+        "Backspace" => {
+            return Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Backward,
+            })
+        }
+        "Delete" => {
+            return Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Forward,
+            })
+        }
+        _ => {}
+    }
+
     let ctrl = modifiers & MOD_CTRL != 0;
     let alt = modifiers & MOD_ALT != 0;
     let meta = modifiers & MOD_META != 0;
@@ -135,6 +154,26 @@ mod tests {
     }
 
     #[test]
+    fn delete_keys_map_to_char_delete_intents() {
+        // Backspace removes the char before the caret, Delete the one after
+        // (ADR-0103). Word granularity is a later slice — char only here.
+        assert_eq!(
+            key_to_edit_intent("Backspace", 0),
+            Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Backward,
+            }),
+        );
+        assert_eq!(
+            key_to_edit_intent("Delete", 0),
+            Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Forward,
+            }),
+        );
+    }
+
+    #[test]
     fn home_and_end_map_to_line_boundary_moves() {
         // Win/Linux Home/End → line boundary (= field end in single-line).
         assert_eq!(
@@ -233,9 +272,8 @@ mod tests {
     }
 
     #[test]
-    fn non_arrow_keys_are_not_edit_intents() {
-        // Backspace / Enter / printable keys fall through to raw on_key_down.
-        assert_eq!(key_to_edit_intent("Backspace", 0), None);
+    fn non_editing_keys_are_not_edit_intents() {
+        // Enter / printable keys fall through to raw on_key_down.
         assert_eq!(key_to_edit_intent("Enter", 0), None);
         assert_eq!(key_to_edit_intent("a", 0), None);
     }

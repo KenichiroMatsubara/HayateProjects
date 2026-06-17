@@ -1,4 +1,5 @@
 import type { ElementKind } from '@tsubame/renderer-protocol';
+import { elementKindDefaultCursor } from '@tsubame/renderer-protocol';
 
 type StyleDefaults = Partial<Record<keyof CSSStyleDeclaration, string>>;
 
@@ -31,7 +32,6 @@ const ELEMENT_SPECS: Record<ElementKind, ElementDomSpec> = {
   button: {
     tagName: 'button',
     style: {
-      cursor: 'pointer',
       whiteSpace: 'nowrap',
     },
   },
@@ -65,6 +65,13 @@ export function createDomElement(
 
   applyDefaults(el, BASE_STYLE);
   if (spec.style !== undefined) applyDefaults(el, spec.style);
+  // UA default cursor per element-kind from the spec single source (ADR-0105),
+  // so DOM and Canvas (Hayate core `resolve_cursor`) show the same cursor and the
+  // mapping is not re-declared per renderer. An explicit `cursor` style still wins.
+  const defaultCursor = elementKindDefaultCursor(kind);
+  if (defaultCursor !== undefined) {
+    el.style.cursor = defaultCursor;
+  }
   for (const [name, value] of Object.entries(spec.attributes ?? {})) {
     el.setAttribute(name, value);
   }

@@ -157,3 +157,51 @@ async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
         "End jumped the caret to the field end"
     );
 }
+
+#[wasm_bindgen_test]
+async fn delete_keys_remove_chars_through_the_canvas_keymap() {
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_set_style(
+            1.0,
+            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+        )
+        .unwrap();
+    renderer.set_root(1.0);
+    renderer.element_set_text_content(1.0, "hello");
+
+    renderer.render(0.0).unwrap();
+    let rect = canvas.get_bounding_client_rect();
+    dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
+    renderer.render(16.0).unwrap();
+    assert_eq!(renderer.focused_element_id(), 1.0, "the pointerdown should focus the input");
+
+    // Drive the caret to the end, then Backspace removes the trailing 'o' — the
+    // key crosses the wasm boundary, maps to Delete/Backward, and edits content.
+    for _ in 0..10 {
+        renderer.on_key_down("ArrowRight", 0);
+    }
+    renderer.on_key_down("Backspace", 0);
+    assert_eq!(
+        renderer.element_get_text_content(1.0),
+        "hell",
+        "Backspace removed the char before the caret"
+    );
+
+    // Drive the caret to the start, then Delete removes the leading 'h' — proving
+    // forward delete also routes through the keymap.
+    for _ in 0..10 {
+        renderer.on_key_down("ArrowLeft", 0);
+    }
+    renderer.on_key_down("Delete", 0);
+    assert_eq!(
+        renderer.element_get_text_content(1.0),
+        "ell",
+        "Delete removed the char after the caret"
+    );
+}

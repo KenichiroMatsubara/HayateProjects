@@ -151,6 +151,28 @@ fn arrow_keys_do_not_disturb_an_active_ime_composition() {
 }
 
 #[test]
+fn delete_keys_do_not_disturb_an_active_ime_composition() {
+    // ADR-0103: a Backspace/Delete while an IME preedit is active must not edit
+    // the committed content or break the composition — the intent is refused at
+    // the seam while composing, so the preedit and content stay intact.
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(102, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_focus(input);
+    tree.element_append_text_content(input, "ab"); // caret at 2
+    tree.on_composition_start(input, "きゅ"); // active preedit
+
+    tree.on_key_down("Backspace", 0);
+    tree.on_key_down("Delete", 0);
+
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "abきゅ",
+        "neither key altered the committed text or the composition",
+    );
+}
+
+#[test]
 fn shift_arrow_extends_text_input_selection_then_typing_replaces_it() {
     let mut tree = ElementTree::new();
     let input = tree.element_create(10, ElementKind::TextInput);
@@ -313,6 +335,43 @@ fn on_key_down_backspace_edits_focused_text_input() {
     tree.on_key_down("Backspace", 0);
 
     assert_eq!(tree.element_get_text_content(input), "hell");
+}
+
+#[test]
+fn delete_key_removes_the_grapheme_after_the_caret() {
+    // ADR-0103: Delete (forward) was previously a complete no-op; now it routes
+    // through the EditIntent seam and removes the char to the caret's right.
+    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    tree.on_key_down("ArrowLeft", 0);
+    tree.on_key_down("ArrowLeft", 0); // caret at 3 (before "lo")
+
+    tree.on_key_down("Delete", 0);
+    assert_eq!(tree.element_get_text_content(input), "helo", "removes the 'l' to the right");
+    assert_eq!(tree.element_caret_byte_index(input), Some(3), "caret stays at the deletion point");
+    assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
+fn backspace_key_removes_the_grapheme_before_the_caret() {
+    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    tree.on_key_down("ArrowLeft", 0); // caret at 4 (before "o")
+
+    tree.on_key_down("Backspace", 0);
+    assert_eq!(tree.element_get_text_content(input), "helo", "removes the 'l' to the left");
+    assert_eq!(tree.element_caret_byte_index(input), Some(3), "caret retreats to where 'l' began");
+}
+
+#[test]
+fn backspace_and_delete_over_a_selection_remove_the_whole_range() {
+    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    tree.on_key_down("ArrowLeft", SHIFT);
+    tree.on_key_down("ArrowLeft", SHIFT); // selects "lo" → (3,5)
+    assert_eq!(tree.element_text_selection(input), Some((3, 5)));
+
+    tree.on_key_down("Delete", 0);
+    assert_eq!(tree.element_get_text_content(input), "hel", "the range goes, not one char");
+    assert_eq!(tree.element_caret_byte_index(input), Some(3));
+    assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]

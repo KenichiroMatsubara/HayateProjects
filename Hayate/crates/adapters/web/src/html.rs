@@ -1113,12 +1113,26 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
             style.set_property("color", "inherit")?;
         }
         ElementKind::Button => {
-            style.set_property("cursor", "pointer")?;
             style.set_property("background", "transparent")?;
             style.set_property("font", "inherit")?;
             style.set_property("color", "inherit")?;
         }
         _ => {}
+    }
+    // UA default cursor per element-kind from the spec single source (ADR-0105):
+    // button → pointer, text-input → text. Shared with Canvas (core
+    // `resolve_cursor`) so DOM and Canvas show the same cursor, and not
+    // re-declared here. An explicit `cursor` via `element_set_style` still wins.
+    let cursor = kind.default_cursor();
+    if cursor != hayate_core::CursorValue::Default {
+        let mut entries: Vec<(String, String)> = Vec::new();
+        crate::generated::style_prop_css_entries(
+            &hayate_core::StyleProp::Cursor(cursor),
+            &mut entries,
+        );
+        if let Some((_, value)) = entries.into_iter().next() {
+            style.set_property("cursor", &value)?;
+        }
     }
     Ok(())
 }

@@ -94,8 +94,9 @@ impl Granularity {
 /// The closed edit-command vocabulary applied through the single editing seam
 /// [`EditState::apply`] (ADR-0103, ADR-0071). `Move` repositions the caret;
 /// `Extend` grows or shrinks the selection by moving the focus while the anchor
-/// stays fixed. Later slices add `Delete` / `SelectAll` / clipboard intents
-/// without widening the seam.
+/// stays fixed; `Delete` removes one `granularity` step (or the selected range)
+/// in `direction`. Later slices add `SelectAll` / clipboard intents without
+/// widening the seam.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditIntent {
     Move {
@@ -103,6 +104,10 @@ pub enum EditIntent {
         direction: Direction,
     },
     Extend {
+        granularity: Granularity,
+        direction: Direction,
+    },
+    Delete {
         granularity: Granularity,
         direction: Direction,
     },
@@ -376,12 +381,33 @@ impl EditState {
                 self.move_focus(next);
                 true
             }
+            EditIntent::Delete {
+                granularity,
+                direction,
+            } => {
+                // A non-empty selection is removed whole (replace-on-type
+                // consistency), collapsing to its start; otherwise one
+                // granularity step in `direction` from the caret is removed.
+                if self.delete_selection() {
+                    return true;
+                }
+                let from = self.cursor_byte_index;
+                let to = self.step(granularity, direction, from);
+                if from == to {
+                    return false; // at the text boundary — nothing to delete
+                }
+                let (start, end) = (from.min(to), from.max(to));
+                self.text_content.replace_range(start..end, "");
+                self.collapse_to(start);
+                true
+            }
         }
     }
 
     pub fn apply_key_down(&mut self, key: &str) -> bool {
+        // Char editing (Backspace/Delete) and caret motion are interpreted as
+        // EditIntents upstream (ADR-0103); only Enter remains a raw key here.
         match key {
-            "Backspace" => self.backspace(),
             "Enter" => {
                 self.append("\n");
                 true
@@ -439,6 +465,66 @@ mod tests {
             granularity: Granularity::Grapheme,
             direction: d,
         }
+    }
+
+    fn delete_grapheme(d: Direction) -> EditIntent {
+        EditIntent::Delete {
+            granularity: Granularity::Grapheme,
+            direction: d,
+        }
+    }
+
+    #[test]
+    fn delete_over_a_selection_removes_the_range_and_collapses_to_its_start() {
+        // Both Backspace (Backward) and Delete (Forward) drop the whole selected
+        // range, never just one adjacent char, and collapse to the range start.
+        for direction in [Direction::Backward, Direction::Forward] {
+            let mut edit = EditState::default();
+            edit.set("hello");
+            edit.set_selection(1, 4); // "ell" selected
+            assert!(edit.apply(delete_grapheme(direction)));
+            assert_eq!(edit.text_content, "ho", "{direction:?}: the range is gone");
+            assert_eq!(edit.cursor_byte_index, 1, "{direction:?}: collapses to range start");
+            assert!(edit.is_caret(), "{direction:?}: collapsed");
+        }
+    }
+
+    #[test]
+    fn delete_forward_grapheme_removes_the_char_after_the_caret() {
+        let mut edit = EditState::default();
+        edit.set("aあb"); // caret at end (5)
+        edit.set_selection(0, 0); // caret at start
+        assert!(edit.apply(delete_grapheme(Direction::Forward)));
+        assert_eq!(edit.text_content, "あb", "removes the leading 'a'");
+        assert_eq!(edit.cursor_byte_index, 0, "caret stays at the deletion point");
+        assert!(edit.apply(delete_grapheme(Direction::Forward)));
+        assert_eq!(edit.text_content, "b", "removes the 3-byte 'あ' whole");
+        assert_eq!(edit.cursor_byte_index, 0);
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn delete_at_the_text_boundary_is_a_no_op() {
+        let mut edit = EditState::default();
+        edit.set("hi"); // caret at end (2)
+        assert!(!edit.apply(delete_grapheme(Direction::Forward)), "nothing past the end");
+        assert_eq!(edit.text_content, "hi");
+        edit.set_selection(0, 0); // caret at start
+        assert!(!edit.apply(delete_grapheme(Direction::Backward)), "nothing before the start");
+        assert_eq!(edit.text_content, "hi");
+    }
+
+    #[test]
+    fn delete_backward_grapheme_removes_the_char_before_the_caret() {
+        let mut edit = EditState::default();
+        edit.set("aあb"); // caret at end (5)
+        assert!(edit.apply(delete_grapheme(Direction::Backward)));
+        assert_eq!(edit.text_content, "aあ", "removes the trailing 'b'");
+        assert_eq!(edit.cursor_byte_index, 4, "caret lands where 'b' began");
+        assert!(edit.apply(delete_grapheme(Direction::Backward)));
+        assert_eq!(edit.text_content, "a", "removes the 3-byte 'あ' whole");
+        assert_eq!(edit.cursor_byte_index, 1);
+        assert!(edit.is_caret());
     }
 
     #[test]

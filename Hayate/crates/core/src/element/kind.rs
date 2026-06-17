@@ -1,3 +1,15 @@
+use crate::element::style::CursorValue;
+
+/// Element-kind tables generated from `proto/spec/element_kinds.json` — the
+/// single source for per-kind UA defaults (ADR-0105). Brings `ElementKind` and
+/// `CursorValue` into the generated module's `super::` scope.
+mod tables {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../proto/generated/element_kind_tables.rs"
+    ));
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ElementKind {
     View,
@@ -6,6 +18,16 @@ pub enum ElementKind {
     Button,
     TextInput,
     ScrollView,
+}
+
+impl ElementKind {
+    /// UA default cursor for this kind when no explicit `cursor` is set
+    /// (ADR-0105): `button` → pointer, `text-input` → text (I-beam), others →
+    /// default. Sourced from `proto/spec/element_kinds.json` so Canvas and DOM
+    /// share one table and neither renderer re-declares it.
+    pub fn default_cursor(self) -> CursorValue {
+        tables::default_cursor(self)
+    }
 }
 
 impl ElementKind {

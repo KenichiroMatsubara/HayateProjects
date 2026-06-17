@@ -353,6 +353,134 @@ fn pointer_move_inherits_cursor_from_ancestor() {
 }
 
 #[test]
+fn pointer_move_resolves_pointer_cursor_over_button_by_kind() {
+    // A button with no explicit `cursor` still shows the pointer cursor, from
+    // the element-kind UA default (ADR-0105), matching the browser's `<button>`.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(50, ElementKind::View);
+    let button = tree.element_create(51, ElementKind::Button);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_append_child(root, button);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_style(
+        button,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
+    );
+    tree.render(0.0);
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert_eq!(result.resolved_cursor, CursorValue::Pointer);
+}
+
+#[test]
+fn pointer_move_resolves_text_cursor_over_text_input_by_kind() {
+    // A text-input with no explicit `cursor` shows the I-beam (text) cursor from
+    // its element-kind UA default (ADR-0105), matching the browser's `<input>`.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(60, ElementKind::View);
+    let input = tree.element_create(61, ElementKind::TextInput);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_append_child(root, input);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
+    );
+    tree.render(0.0);
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert_eq!(result.resolved_cursor, CursorValue::Text);
+}
+
+#[test]
+fn pointer_move_resolves_text_cursor_over_selectable_text() {
+    // Selectable text shows the I-beam even without an explicit `cursor`
+    // (ADR-0105) — the same UA default a text-input gets, so a read-only
+    // Selection Region reads as text.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(70, ElementKind::View);
+    let text = tree.element_create(71, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_append_child(root, text);
+    tree.element_set_selectable(text, true);
+    tree.element_set_text(text, "hello");
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_style(
+        text,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+        ],
+    );
+    tree.render(0.0);
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert_eq!(result.resolved_cursor, CursorValue::Text);
+}
+
+#[test]
+fn explicit_cursor_overrides_element_kind_default() {
+    // An explicit `cursor` always wins over the element-kind default (ADR-0105):
+    // a button styled `not-allowed` reads not-allowed, not the pointer default.
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(80, ElementKind::View);
+    let button = tree.element_create(81, ElementKind::Button);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_append_child(root, button);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
+    );
+    tree.element_set_style(
+        button,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+            StyleProp::Cursor(CursorValue::NotAllowed),
+        ],
+    );
+    tree.render(0.0);
+
+    let result = tree.on_pointer_move(10.0, 10.0);
+
+    assert_eq!(result.resolved_cursor, CursorValue::NotAllowed);
+}
+
+#[test]
 fn pointer_down_on_miss_blurs_focused_element() {
     let mut tree = ElementTree::new();
     let root = tree.element_create(10, ElementKind::View);
