@@ -80,4 +80,5 @@ jobs:
           wasm-pack test --headless --firefox crates/adapters/web \
             -- --no-default-features --features backend-null \
             --test pointer_input_browser \
-            --test html_text_input_focus_ring_browser
+            --test html_text_input_focus_ring_browser \
+            --test edit_input_browser
