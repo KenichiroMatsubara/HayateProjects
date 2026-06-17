@@ -824,15 +824,19 @@ impl ElementTree {
         ))
     }
 
-    /// The text-input holding a non-collapsed edit selection, if any. The
-    /// single-active rule guarantees at most one across the document.
+    /// The text-input holding the active (= focused) non-collapsed edit
+    /// selection, if any. Selection chrome is focus-linked (ADR-0104): an
+    /// unfocused field that still remembers a Mouse/Pen range shows no chrome, so
+    /// at most one selection — the focused one — is ever active across the
+    /// document (single-active, ADR-0097).
     fn edit_selection_owner(&self) -> Option<ElementId> {
-        self.elements.iter().find_map(|(&id, el)| {
-            el.edit
-                .as_ref()
-                .filter(|e| e.selection_range().is_some())
-                .map(|_| id)
-        })
+        let id = self.focused_element?;
+        self.elements
+            .get(&id)?
+            .edit
+            .as_ref()
+            .filter(|e| e.selection_range().is_some())
+            .map(|_| id)
     }
 
     /// Canvas-space bounding box of the read-only selection's highlight, unioned
@@ -1311,10 +1315,40 @@ impl ElementTree {
             return;
         }
         self.element_blur(id);
+        // Modality-dependent blur lifecycle (ADR-0104, #364). Touch dismisses the
+        // selection — collapse the edit range to a caret (Android: tapping outside
+        // the field clears the selection and its chrome). Mouse/Pen keep the range
+        // in EditState, hidden by the focus-linked highlight, so a refocus restores
+        // it (Chromium form-control parity).
+        if self.last_pointer_kind == PointerKind::Touch {
+            self.collapse_edit_selection_of(id);
+        }
         self.dispatch_event(
             DocumentEventKind::Blur,
             Event::Blur { target_id: id },
         );
+    }
+
+    /// Collapse a single text-input's edit selection to a caret, repainting it
+    /// only when it actually held a range. The blur-time counterpart of the
+    /// document-wide [`collapse_edit_selections`](Self::collapse_edit_selections).
+    fn collapse_edit_selection_of(&mut self, id: ElementId) {
+        let collapsed = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+            .is_some_and(|edit| {
+                if edit.is_caret() {
+                    false
+                } else {
+                    edit.collapse();
+                    true
+                }
+            });
+        if collapsed {
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
     }
 
     fn apply_pointer_hover(&mut self, deepest_hit: Option<ElementId>) {
