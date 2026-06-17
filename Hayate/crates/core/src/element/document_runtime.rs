@@ -437,4 +437,59 @@ mod tests {
             "single scroll view should stay clamped at max, got {y}"
         );
     }
+
+    /// A nested ScrollView clips its own tall overflow, so that overflow is NOT
+    /// part of the *outer* scroll-view's scrollable content. The outer's content
+    /// height must be its direct child's box (the inner viewport), not the inner's
+    /// clipped-away descendants. Otherwise the outer becomes scrollable into empty
+    /// space below its real content — a phantom bottom margin you can't scroll
+    /// away, with the area under the content showing through (the touch
+    /// rubber-band just makes it more reachable). Regression for that bug.
+    #[test]
+    fn outer_content_size_excludes_a_nested_scroll_views_clipped_overflow() {
+        let mut tree = ElementTree::new();
+        let outer = tree.element_create(300, ElementKind::ScrollView);
+        let inner = tree.element_create(301, ElementKind::ScrollView);
+        let leaf = tree.element_create(302, ElementKind::View);
+        tree.set_root(outer);
+        tree.set_viewport(200.0, 200.0);
+        tree.element_append_child(outer, inner);
+        tree.element_append_child(inner, leaf);
+        // Outer is 200 tall; its only child (inner) is 100 tall and fits entirely,
+        // so the outer has nothing to scroll vertically.
+        tree.element_set_style(
+            outer,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(200.0)),
+            ],
+        );
+        tree.element_set_style(
+            inner,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        // Inner clips this 1000px-tall leaf to its own 100px viewport. The 900px of
+        // overflow lives only inside the inner scroll-view.
+        tree.element_set_style(
+            leaf,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(1000.0)),
+            ],
+        );
+        tree.render(0.0);
+
+        let (_, outer_ch) = tree.element_content_size(outer);
+        let outer_rect = tree.element_layout_rect(outer).unwrap();
+        let outer_max_y = (outer_ch - outer_rect.3).max(0.0);
+        assert!(
+            outer_max_y < 1e-3,
+            "outer must not be scrollable past its real content — the inner \
+             scroll-view's clipped overflow is not the outer's content \
+             (content_h={outer_ch}, max_y={outer_max_y})"
+        );
+    }
 }
