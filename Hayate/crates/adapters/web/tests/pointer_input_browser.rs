@@ -226,7 +226,7 @@ fn scroll_offset_y(renderer: &HayateElementRenderer) -> f32 {
 }
 
 #[wasm_bindgen_test]
-async fn flick_coasts_with_momentum_fires_scroll_then_clamp_stops_at_the_edge() {
+async fn flick_coasts_then_bounces_at_the_edge_and_springs_back() {
     // Drive a real flick: one move per rAF frame so the velocity tracker sees
     // distinct timestamps, then let the released fling coast on its own frames.
     let canvas = make_canvas(200);
@@ -262,18 +262,68 @@ async fn flick_coasts_with_momentum_fires_scroll_then_clamp_stops_at_the_edge() 
         "momentum scrolling must fire Event::Scroll like a finger drag"
     );
 
-    // Coast to rest: this strong fling overshoots the 400px range and clamp-stops
-    // at the bottom edge — no bounce this slice.
+    // Coast, bounce, settle: this strong fling overruns the 400px range, bounces
+    // past the bottom edge into overscroll, then spring-back returns it to rest at
+    // the edge. Track the peak offset across the whole animation.
+    let mut peak = offset_after_momentum;
     let mut t = 112.0;
+    for _ in 0..400 {
+        renderer.render(t).unwrap();
+        let _ = renderer.poll_events();
+        peak = peak.max(scroll_offset_y(&renderer));
+        t += 16.0;
+    }
+    assert!(
+        peak > 400.0,
+        "inertia reaching the edge must bounce past it into overscroll (peak {peak})"
+    );
+    let final_offset = scroll_offset_y(&renderer);
+    assert!(
+        (final_offset - 400.0).abs() < 1.0,
+        "after the bounce, spring-back settles at the bottom edge (max 400, got {final_offset})"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn dragging_past_an_edge_overscrolls_with_resistance_then_springs_back() {
+    // At the top edge, dragging the content further down pulls it into overscroll
+    // (negative offset) with rubber-band resistance; releasing springs it home.
+    let canvas = make_canvas(200);
+    let (mut renderer, ox, oy, _scroll_listener) = scrollable_renderer(&canvas).await;
+
+    // Press near the top, cross the slop (takeover, no delta), then drag the
+    // finger ~100px further DOWN — content follows below its top edge, i.e. the
+    // vertical offset goes negative (overscroll past the top).
+    dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 40.0);
+    renderer.render(16.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 60.0); // crosses slop
+    renderer.render(32.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 160.0); // 100px further down
+    renderer.render(48.0).unwrap();
+
+    let overscrolled = scroll_offset_y(&renderer);
+    assert!(
+        overscrolled < 0.0,
+        "dragging past the top edge must overscroll (offset.y = {overscrolled})"
+    );
+    assert!(
+        overscrolled > -100.0,
+        "overscroll must resist — the content lags the 100px finger pull \
+         (offset.y = {overscrolled})"
+    );
+
+    // Release in overscroll: spring-back must ease the offset home to the edge (0).
+    dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 160.0);
+    let mut t = 64.0;
     for _ in 0..200 {
         renderer.render(t).unwrap();
         let _ = renderer.poll_events();
         t += 16.0;
     }
-    let final_offset = scroll_offset_y(&renderer);
+    let settled = scroll_offset_y(&renderer);
     assert!(
-        (final_offset - 400.0).abs() < 1.0,
-        "momentum should clamp-stop at the bottom edge (max 400, got {final_offset})"
+        settled.abs() < 1.0,
+        "spring-back must return the overscrolled edge home to 0 (offset.y = {settled})"
     );
 }
 
