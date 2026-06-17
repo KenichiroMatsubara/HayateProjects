@@ -20,8 +20,26 @@ const MOD_ALT: u32 = 4;
 /// Map a key press to an [`EditIntent`], or `None` for keys this adapter does
 /// not interpret as editing (so the caller falls back to raw `on_key_down`).
 /// Shift extends the selection, otherwise the caret moves; Alt (macOS) or Ctrl
-/// (Win/Linux) widens a horizontal step from a grapheme to a word.
+/// (Win/Linux) widens a horizontal step from a grapheme to a word. Backspace and
+/// Delete remove one char backward / forward.
 pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    // Char delete keys (ADR-0103): Backspace backward, Delete forward. Word
+    // granularity (Ctrl/Alt) is a later slice — char only here.
+    match key {
+        "Backspace" => {
+            return Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Backward,
+            })
+        }
+        "Delete" => {
+            return Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Forward,
+            })
+        }
+        _ => {}
+    }
     let direction = match key {
         "ArrowLeft" => Direction::Backward,
         "ArrowRight" => Direction::Forward,
@@ -98,9 +116,28 @@ mod tests {
     }
 
     #[test]
-    fn non_arrow_keys_are_not_edit_intents() {
-        // Backspace / Enter / printable keys fall through to raw on_key_down.
-        assert_eq!(key_to_edit_intent("Backspace", 0), None);
+    fn delete_keys_map_to_char_delete_intents() {
+        // Backspace removes the char before the caret, Delete the one after
+        // (ADR-0103). Word granularity is a later slice — char only here.
+        assert_eq!(
+            key_to_edit_intent("Backspace", 0),
+            Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Backward,
+            }),
+        );
+        assert_eq!(
+            key_to_edit_intent("Delete", 0),
+            Some(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Forward,
+            }),
+        );
+    }
+
+    #[test]
+    fn non_editing_keys_are_not_edit_intents() {
+        // Enter / printable keys fall through to raw on_key_down.
         assert_eq!(key_to_edit_intent("Enter", 0), None);
         assert_eq!(key_to_edit_intent("a", 0), None);
     }
