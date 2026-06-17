@@ -28,11 +28,20 @@ use web_sys::{
 /// A raw canvas pointer input buffered between frames. Coordinates are already
 /// in canvas backing-store space (the `toCanvas` transform is applied when the
 /// DOM event is captured, mirroring the former TS `attachPointerInput`).
+use crate::scroll_drag::PointerType;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PointerInput {
     /// `pointerdown`, carrying the modifier-key bitfield (`MODIFIER_*` wire
-    /// contract) so Shift+click can extend a selection (ADR-0097, #267).
-    Down { x: f32, y: f32, modifiers: u32 },
+    /// contract) so Shift+click can extend a selection (ADR-0097, #267) and the
+    /// `pointerType` (ADR-0082, #350) so only touch/pen take the drag→scroll
+    /// path while mouse keeps selection/drag.
+    Down {
+        x: f32,
+        y: f32,
+        modifiers: u32,
+        pointer_type: PointerType,
+    },
     Move { x: f32, y: f32 },
     Up { x: f32, y: f32 },
     /// Pointer left the canvas surface (`pointerleave`). Coordinate-independent:
@@ -147,18 +156,39 @@ pub(crate) fn attach_pointer_input(
 ) -> Result<PointerInputGuard, JsValue> {
     let mut listeners: Vec<(&'static str, Closure<dyn FnMut(Event)>)> = Vec::new();
 
+    // Canvas Mode owns touch scrolling, so suppress the browser's native
+    // touch-action (pan/zoom) on the surface (ADR-0082 / ADR-0080: the Rust
+    // adapter self-configures this, no host glue).
+    let _ = canvas.style().set_property("touch-action", "none");
+
     {
         // `pointerdown` additionally captures modifier keys so Shift+click can
-        // extend the active selection (#267).
+        // extend the active selection (#267) and the `pointerType` so the drain
+        // can route touch/pen into the scroll gesture (#350). Only the primary
+        // pointer is tracked — second fingers and pinch are ignored (v1 scope).
+        // For touch/pen we also capture the pointer so the gesture keeps
+        // receiving moves if the finger leaves the canvas.
         let canvas_for_cb = canvas.clone();
         let pending = pending.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let Some(pe) = event.dyn_ref::<PointerEvent>() else {
                 return;
             };
+            if !pe.is_primary() {
+                return;
+            }
+            let pointer_type = PointerType::from_dom(&pe.pointer_type());
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, pe.as_ref());
             let modifiers = mouse_modifiers(pe.as_ref());
-            pending.borrow_mut().push(PointerInput::Down { x, y, modifiers });
+            if crate::scroll_drag::is_drag_scroll_pointer(pointer_type) {
+                let _ = canvas_for_cb.set_pointer_capture(pe.pointer_id());
+            }
+            pending.borrow_mut().push(PointerInput::Down {
+                x,
+                y,
+                modifiers,
+                pointer_type,
+            });
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback("pointerdown", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointerdown", closure));
@@ -174,6 +204,10 @@ pub(crate) fn attach_pointer_input(
             let Some(pe) = event.dyn_ref::<PointerEvent>() else {
                 return;
             };
+            // Track only the primary pointer (ignore extra fingers / pinch).
+            if !pe.is_primary() {
+                return;
+            }
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, pe.as_ref());
             pending.borrow_mut().push(make(x, y));
         }) as Box<dyn FnMut(Event)>);
@@ -285,7 +319,7 @@ mod tests {
     #[test]
     fn coalesce_preserves_arrival_order_of_distinct_inputs() {
         let inputs = vec![
-            PointerInput::Down { x: 10.0, y: 10.0, modifiers: 0 },
+            PointerInput::Down { x: 10.0, y: 10.0, modifiers: 0, pointer_type: PointerType::Mouse },
             PointerInput::Move { x: 20.0, y: 20.0 },
             PointerInput::Up { x: 20.0, y: 20.0 },
         ];
@@ -316,7 +350,7 @@ mod tests {
         // never move the coalescing anchor, but they must keep their order.
         let inputs = vec![
             PointerInput::Move { x: 50.0, y: 50.0 },
-            PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0 },
+            PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, pointer_type: PointerType::Mouse },
             PointerInput::Move { x: 50.2, y: 50.0 }, // still within 1px of anchor → dropped
         ];
         let out = coalesce_pointer_inputs(inputs, None);
@@ -324,7 +358,7 @@ mod tests {
             out,
             vec![
                 PointerInput::Move { x: 50.0, y: 50.0 },
-                PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0 },
+                PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, pointer_type: PointerType::Mouse },
             ]
         );
     }

@@ -20,8 +20,15 @@ wasm_bindgen_test_configure!(run_in_browser);
 const HOVER_ENTER_KIND: f64 = 10.0;
 /// Generated event-kind discriminant for `HoverLeave` (proto/spec/event_kinds.json).
 const HOVER_LEAVE_KIND: f64 = 11.0;
+/// Generated event-kind discriminant for `Scroll` (proto/spec/event_kinds.json).
+const SCROLL_KIND: f64 = 7.0;
 /// `ElementKind::View` discriminant (crates/core/src/element/kind.rs).
 const ELEMENT_KIND_VIEW: u32 = 0;
+/// `ElementKind::ScrollView` discriminant (crates/core/src/element/kind.rs).
+const ELEMENT_KIND_SCROLLVIEW: u32 = 5;
+/// style_packet tags: width=5, height=6; unit 0 = Px (crates/adapters/web/src/style_packet.rs).
+const TAG_WIDTH: f32 = 5.0;
+const TAG_HEIGHT: f32 = 6.0;
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {
     let document = web_sys::window().unwrap().document().unwrap();
@@ -50,6 +57,9 @@ fn dispatch_pointer_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64,
     js_sys::Reflect::set(&init, &"clientY".into(), &JsValue::from_f64(client_y)).unwrap();
     js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
     js_sys::Reflect::set(&init, &"pointerType".into(), &"mouse".into()).unwrap();
+    // Real mouse events are always primary; the adapter ignores non-primary
+    // pointers (#350), so the synthetic event must say so too.
+    js_sys::Reflect::set(&init, &"isPrimary".into(), &JsValue::TRUE).unwrap();
 
     let args = js_sys::Array::of2(&JsValue::from_str(kind), &init);
     let event: web_sys::Event = js_sys::Reflect::construct(&ctor, &args)
@@ -61,6 +71,30 @@ fn dispatch_pointer_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64,
 
 fn dispatch_pointer_move(canvas: &HtmlCanvasElement, client_x: f64, client_y: f64) {
     dispatch_pointer_event(canvas, "pointermove", client_x, client_y);
+}
+
+/// Dispatch a primary `touch` PointerEvent (the drag→scroll path, #350). Sets
+/// `pointerType: "touch"`, `isPrimary: true` and a `pointerId` so the adapter's
+/// primary-pointer filter and scroll gesture engage.
+fn dispatch_touch_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64, client_y: f64) {
+    let window = web_sys::window().unwrap();
+    let ctor = js_sys::Reflect::get(&window, &JsValue::from_str("PointerEvent")).unwrap();
+    let ctor: js_sys::Function = ctor.dyn_into().unwrap();
+
+    let init = js_sys::Object::new();
+    js_sys::Reflect::set(&init, &"clientX".into(), &JsValue::from_f64(client_x)).unwrap();
+    js_sys::Reflect::set(&init, &"clientY".into(), &JsValue::from_f64(client_y)).unwrap();
+    js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
+    js_sys::Reflect::set(&init, &"pointerType".into(), &"touch".into()).unwrap();
+    js_sys::Reflect::set(&init, &"isPrimary".into(), &JsValue::TRUE).unwrap();
+    js_sys::Reflect::set(&init, &"pointerId".into(), &JsValue::from_f64(1.0)).unwrap();
+
+    let args = js_sys::Array::of2(&JsValue::from_str(kind), &init);
+    let event: web_sys::Event = js_sys::Reflect::construct(&ctor, &args)
+        .unwrap()
+        .dyn_into()
+        .unwrap();
+    canvas.dispatch_event(&event).unwrap();
 }
 
 /// True if `rows` (delivery `[listener_id, kind, ...]` tuples from `poll_events`)
@@ -105,6 +139,55 @@ async fn dispatched_pointermove_delivers_hover_enter() {
     assert!(
         has_delivery(&rows, listener_id, HOVER_ENTER_KIND),
         "expected a HoverEnter delivery for the self-wired pointermove"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
+    // A ScrollView the size of the surface with a child taller than it, so
+    // there is room to scroll vertically (content 600 vs viewport 200).
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
+    renderer
+        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
+        .unwrap();
+    renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
+    renderer
+        .element_set_style(2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0])
+        .unwrap();
+    renderer.element_append_child(1.0, 2.0);
+    renderer.set_root(1.0);
+    let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
+
+    // Lay out so hit-testing and content-size have geometry.
+    renderer.render(0.0).unwrap();
+
+    let rect = canvas.get_bounding_client_rect();
+    let (ox, oy) = (rect.left(), rect.top());
+    // Press, drag upward past the slop, then keep dragging: content follows the
+    // finger so the vertical offset grows. Two moves are needed — the first
+    // consumes the slop dead-zone (takeover), the second applies the delta.
+    dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 150.0);
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 100.0); // crosses slop
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 30.0); // scroll by ~70
+    dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 30.0);
+
+    // One frame drains the whole gesture in arrival order.
+    renderer.render(16.0).unwrap();
+
+    let offset = renderer.element_get_scroll_offset(1.0);
+    assert!(
+        offset[1] > 0.0,
+        "touch drag should scroll the view down (offset.y = {})",
+        offset[1]
+    );
+    assert!(
+        has_delivery(&renderer.poll_events(), scroll_listener, SCROLL_KIND),
+        "touch-driven scroll must fire Event::Scroll"
     );
 }
 

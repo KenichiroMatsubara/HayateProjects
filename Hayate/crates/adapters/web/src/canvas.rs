@@ -6,11 +6,12 @@ use std::sync::Arc;
 
 use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
+use crate::scroll_drag::{self, MoveOutcome, ScrollGesture};
 
 use hayate_core::{
-    BorderStyleValue, Color, CursorValue, DocumentEventKind, ElementId, ElementTree, Event,
-    FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp, StylePropKind,
-    TextDecorationValue,
+    BorderStyleValue, Color, CursorValue, DocumentEventKind, ElementId, ElementKind, ElementTree,
+    Event, FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp,
+    StylePropKind, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -71,6 +72,10 @@ pub struct HayateElementRenderer {
     /// Last move position applied on a drain, used to seed 1px move-coalescing
     /// across frame boundaries.
     last_pointer_move: Option<(f32, f32)>,
+    /// Active touch/pen drag→scroll gesture, locked to one scroll-view between
+    /// frames (ADR-0082, #350). `None` when no touch press is in flight or the
+    /// press is on a non-scrollable area.
+    scroll_gesture: Option<ScrollGesture>,
     _pointer_input: PointerInputGuard,
 }
 
@@ -125,6 +130,7 @@ impl HayateElementRenderer {
             _resize_observer: resize_guard,
             pending_pointer,
             last_pointer_move: None,
+            scroll_gesture: None,
             _pointer_input: pointer_guard,
         })
     }
@@ -365,16 +371,61 @@ impl HayateElementRenderer {
 
     fn apply_pointer_input(&mut self, input: PointerInput) {
         match input {
-            PointerInput::Down { x, y, modifiers } => {
-                self.tree.on_pointer_down_with(x, y, modifiers)
+            PointerInput::Down {
+                x,
+                y,
+                modifiers,
+                pointer_type,
+            } => {
+                // Always send the press first so a tap still shows `:active`
+                // (#213). A touch/pen press over a scroll-view then locks a
+                // drag→scroll gesture; if the slop is never crossed the release
+                // resolves as a normal click.
+                self.tree.on_pointer_down_with(x, y, modifiers);
+                self.scroll_gesture = None;
+                if scroll_drag::is_drag_scroll_pointer(pointer_type) {
+                    if let Some(sv) = self
+                        .tree
+                        .hit_test(x, y)
+                        .and_then(|hit| self.nearest_scroll_view(hit))
+                    {
+                        self.scroll_gesture = Some(ScrollGesture::new(sv, (x, y)));
+                    }
+                }
             }
             PointerInput::Move { x, y } => {
-                let result = self.tree.on_pointer_move(x, y);
-                apply_resolved_cursor(result.resolved_cursor);
+                if let Some(mut gesture) = self.scroll_gesture.take() {
+                    match gesture.on_move((x, y), scroll_drag::SCROLL_SLOP_PX) {
+                        // Still a pending tap — leave the press alive.
+                        MoveOutcome::Pending => {}
+                        // Slop crossed: release the press (#213) so the touch
+                        // becomes a scroll and no click fires on release.
+                        MoveOutcome::StartScroll => self.tree.on_pointer_cancel(),
+                        // Drag the locked scroll-view 1:1 with the finger.
+                        MoveOutcome::Scroll { dx, dy } => {
+                            self.apply_scroll_delta(gesture.scroll_view, dx, dy)
+                        }
+                    }
+                    self.scroll_gesture = Some(gesture);
+                } else {
+                    let result = self.tree.on_pointer_move(x, y);
+                    apply_resolved_cursor(result.resolved_cursor);
+                }
             }
-            PointerInput::Up { x, y } => self.tree.on_pointer_up(x, y),
+            PointerInput::Up { x, y } => {
+                // A touch that never crossed the slop is a tap → resolve the
+                // click. One that became a scroll already had its press
+                // cancelled, so swallow the up.
+                match self.scroll_gesture.take() {
+                    Some(gesture) if !gesture.is_tap() => {}
+                    _ => self.tree.on_pointer_up(x, y),
+                }
+            }
             PointerInput::Leave => self.tree.on_pointer_leave(),
-            PointerInput::Cancel => self.tree.on_pointer_cancel(),
+            PointerInput::Cancel => {
+                self.scroll_gesture = None;
+                self.tree.on_pointer_cancel();
+            }
             PointerInput::Wheel {
                 x,
                 y,
@@ -386,6 +437,40 @@ impl HayateElementRenderer {
                     self.tree.on_wheel(target, delta_x, delta_y);
                 }
             }
+        }
+    }
+
+    /// Walk up from `id` to its nearest ScrollView ancestor (inclusive), the
+    /// element a touch gesture locks onto. Mirrors Core's wheel-path
+    /// `nearest_scroll_view` using the public kind/parent queries so the gesture
+    /// lock lives in the adapter (ADR-0082, #350).
+    fn nearest_scroll_view(&self, mut id: ElementId) -> Option<ElementId> {
+        loop {
+            if self.tree.element_kind(id) == Some(ElementKind::ScrollView) {
+                return Some(id);
+            }
+            id = self.tree.element_parent(id)?;
+        }
+    }
+
+    /// Apply a finger-driven scroll delta to the locked scroll-view: offset via
+    /// `element_set_scroll_offset` (SCR-02, un-clamped) clamped to `[0, max]`
+    /// here so this slice stops at the edges, and a separate `Event::Scroll`
+    /// notification so parallax/lazy-load fire on touch too (ADR-0082). Offset
+    /// application and scroll-notify are deliberately distinct calls.
+    fn apply_scroll_delta(&mut self, sv: ElementId, dx: f32, dy: f32) {
+        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
+        let (content_w, content_h) = self.tree.element_content_size(sv);
+        let (_, _, view_w, view_h) = self
+            .tree
+            .element_layout_rect(sv)
+            .unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let nx = scroll_drag::clamp_scroll_axis(ox + dx, content_w - view_w);
+        let ny = scroll_drag::clamp_scroll_axis(oy + dy, content_h - view_h);
+        let (consumed_x, consumed_y) = (nx - ox, ny - oy);
+        if consumed_x.abs() > 1e-6 || consumed_y.abs() > 1e-6 {
+            self.tree.element_set_scroll_offset(sv, nx, ny);
+            self.tree.on_wheel(sv, consumed_x, consumed_y);
         }
     }
 
@@ -430,6 +515,14 @@ impl HayateElementRenderer {
     pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
         self.tree
             .element_set_scroll_offset(element_id_from_f64(id), x, y);
+    }
+
+    /// Current scroll offset `[x, y]` of an element (0,0 when unknown). Symmetric
+    /// with `element_set_scroll_offset`; lets the host read touch-driven scroll
+    /// position back (ADR-0082, #350).
+    pub fn element_get_scroll_offset(&self, id: f64) -> Box<[f32]> {
+        let (x, y) = self.tree.element_get_scroll_offset(element_id_from_f64(id));
+        vec![x, y].into_boxed_slice()
     }
 
     pub fn element_set_font_family(&mut self, id: f64, family: &str) {
