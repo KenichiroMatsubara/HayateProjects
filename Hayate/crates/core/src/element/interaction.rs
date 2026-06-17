@@ -16,6 +16,16 @@ use crate::element::visual_invalidation::VisualInvalidationReach;
 /// other key so callers fall through to the raw `on_key_down` path. This is the
 /// OS-independent core bridge; the Platform Adapter owns the full OS keymap.
 fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    // Clipboard / select-all on the primary modifier (Ctrl on Win/Linux, Cmd on
+    // macOS). These reach a focused text-input through the same seam as the
+    // arrows (ADR-0103 §5③, #361); the document-selection path handles them only
+    // when a read-only Selection exists, so without this a focused field never
+    // saw Ctrl/Cmd+A/C/X/V.
+    if modifiers & MOD_PRIMARY != 0 {
+        if let Some(intent) = clipboard_edit_intent(key) {
+            return Some(intent);
+        }
+    }
     // Forward/backward char delete. Word-granularity delete (Ctrl/Alt) is a
     // later slice (ADR-0103 §5); this slice is char-only.
     match key {
@@ -54,6 +64,23 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
             direction,
         }
     })
+}
+
+/// Map a primary-modifier letter to its clipboard / select-all [`EditIntent`]
+/// (ADR-0103 §5③, #361). The caller has already checked the primary modifier is
+/// held, so this only inspects the letter. `None` for any other key.
+fn clipboard_edit_intent(key: &str) -> Option<EditIntent> {
+    if key.eq_ignore_ascii_case("a") {
+        Some(EditIntent::SelectAll)
+    } else if key.eq_ignore_ascii_case("c") {
+        Some(EditIntent::Copy)
+    } else if key.eq_ignore_ascii_case("x") {
+        Some(EditIntent::Cut)
+    } else if key.eq_ignore_ascii_case("v") {
+        Some(EditIntent::Paste)
+    } else {
+        None
+    }
 }
 
 /// Output of `on_pointer_move` (ADR-0088). `moved` is false when the move was
@@ -804,6 +831,19 @@ impl ElementTree {
         self.element_paste(input, &text);
     }
 
+    /// Paste clipboard text into a specific text-input (the keyboard Ctrl/Cmd+V
+    /// path, ADR-0103 §5③). Unlike `paste_active_selection`, this targets the
+    /// focused field directly, so it also pastes at a collapsed caret (an empty
+    /// field with no selection). The text is pulled through the Platform Adapter's
+    /// synchronous clipboard read; an adapter whose read is async (Canvas Mode)
+    /// returns `None` here and feeds the text back via `element_paste` instead.
+    fn paste_into_text_input(&mut self, target: ElementId) {
+        let Some(text) = self.clipboard.as_ref().and_then(|c| c.read_text()) else {
+            return;
+        };
+        self.element_paste(target, &text);
+    }
+
     /// Select All against the active selection: the whole focus IFC for a
     /// read-only SelectionArea selection, or the text-input's whole content for
     /// an editable one (ADR-0097, #272).
@@ -1148,22 +1188,41 @@ impl ElementTree {
     /// composition. Altering a text-input selection clears any read-only
     /// SelectionArea selection (single-active rule, ADR-0097).
     pub fn apply_edit_intent(&mut self, target: ElementId, intent: EditIntent) -> bool {
-        let Some(el) = self.elements.get_mut(&target) else {
+        let Some(el) = self.elements.get(&target) else {
             return false;
         };
         if el.kind != crate::element::kind::ElementKind::TextInput {
             return false;
         }
-        let Some(edit) = el.edit.as_mut() else {
+        let Some(edit) = el.edit.as_ref() else {
             return false;
         };
         if edit.preedit.is_some() {
             return false;
         }
-        edit.apply(intent);
+        // Clipboard members of the vocabulary cross the Platform Adapter boundary
+        // (ADR-0097): the system clipboard lives on this seam, not on EditState,
+        // so they are resolved here by reusing the toolbar clipboard actions
+        // (which already act on the focused text-input's edit selection). The
+        // pure-state members (Move / Extend / Delete / SelectAll) go straight to
+        // the EditState seam.
+        match intent {
+            EditIntent::Copy => self.copy_active_selection(),
+            EditIntent::Cut => self.cut_active_selection(),
+            EditIntent::Paste => self.paste_into_text_input(target),
+            _ => {
+                if let Some(edit) = self
+                    .elements
+                    .get_mut(&target)
+                    .and_then(|el| el.edit.as_mut())
+                {
+                    edit.apply(intent);
+                }
+                self.engine
+                    .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
+            }
+        }
         self.set_selection(None);
-        self.engine
-            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
         true
     }
 
