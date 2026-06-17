@@ -17,6 +17,8 @@ mod apply_mutations_dispatch;
 mod resize_observer;
 #[cfg(any(target_arch = "wasm32", test))]
 mod pointer_input;
+#[cfg(any(target_arch = "wasm32", test))]
+mod scroll_drag;
 #[cfg(target_arch = "wasm32")]
 mod canvas;
 #[cfg(target_arch = "wasm32")]
