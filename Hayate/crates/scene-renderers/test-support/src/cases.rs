@@ -12,8 +12,44 @@ const VH: f32 = 100.0;
 
 static NOTO_SANS_JP_BYTES: &[u8] = include_bytes!("../../../core/assets/fonts/NotoSansJP.ttf");
 
+/// A small COLRv1 + CPAL test font (provenance in `assets/PROVENANCE.md`). Used
+/// to prove the Vello backend paints colour glyphs (issue #332).
+static COLR_TEST_BYTES: &[u8] = include_bytes!("../assets/colr_test_glyphs.ttf");
+
+/// Family the COLR test font is registered under, and a PUA codepoint it maps
+/// to a gradient glyph painted from a rainbow palette (`U+F0100`).
+pub const COLOR_GLYPH_FAMILY: &str = "Colr Test";
+pub const COLOR_GLYPH_CODEPOINT: char = '\u{F0100}';
+
 fn register_bundled_font(tree: &mut ElementTree) {
     tree.register_font("Noto Sans", NOTO_SANS_JP_BYTES.to_vec());
+}
+
+/// A tree rendering a single COLRv1 glyph from [`COLR_TEST_BYTES`], large enough
+/// to fill the canvas. When a backend honours COLR (Vello), the painted pixels
+/// span several hues; a monochrome painter would yield a single ink colour.
+pub fn color_glyph_tree() -> ElementTree {
+    let mut tree = ElementTree::new();
+    tree.register_font(COLOR_GLYPH_FAMILY, COLR_TEST_BYTES.to_vec());
+    let root = root_view(&mut tree, 70);
+    let text = child_text(&mut tree, 71);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
+    );
+    tree.element_append_child(root, text);
+    tree.element_set_style(
+        text,
+        &[
+            StyleProp::FontFamily(COLOR_GLYPH_FAMILY.to_string()),
+            StyleProp::FontSize(80.0),
+        ],
+    );
+    tree.element_set_text(text, &COLOR_GLYPH_CODEPOINT.to_string());
+    tree
 }
 
 fn viewport(tree: &mut ElementTree) {

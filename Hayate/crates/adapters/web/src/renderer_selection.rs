@@ -30,6 +30,15 @@ impl SceneRendererKind {
         matches!(self, Self::Vello)
     }
 
+    /// Whether this renderer can paint colour glyphs (COLR/CPAL, bitmap
+    /// strikes). Only Vello can (`draw_glyphs().draw()` routes COLR/CPAL fonts
+    /// through `try_draw_colr`); the CPU painters draw outlines only, so colour
+    /// emoji degrade to monochrome there (#332, ADR-0101). The adapter consults
+    /// this to pick the colour vs. monochrome emoji build when procuring fonts.
+    pub(crate) fn paints_color_glyphs(self) -> bool {
+        matches!(self, Self::Vello)
+    }
+
     /// Stable renderer id for logs and error messages.
     pub(crate) fn name(self) -> &'static str {
         match self {
@@ -234,6 +243,17 @@ mod tests {
 
     fn policy() -> RendererSelectionPolicy {
         RendererSelectionPolicy::new(PREFERRED, PREFERRED)
+    }
+
+    #[test]
+    fn only_vello_paints_color_glyphs() {
+        // Drives the colour vs. monochrome emoji split (#332): the GPU painter
+        // routes COLR/CPAL through try_draw_colr; the CPU/diagnostic painters
+        // draw outlines only.
+        assert!(SceneRendererKind::Vello.paints_color_glyphs());
+        assert!(!SceneRendererKind::TinySkia.paints_color_glyphs());
+        assert!(!SceneRendererKind::Recording.paints_color_glyphs());
+        assert!(!SceneRendererKind::Null.paints_color_glyphs());
     }
 
     #[test]

@@ -22,7 +22,7 @@ use crate::apply_mutations_dispatch::{
     apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost,
 };
 use crate::backend::{CanvasBackend, SelectedBackend};
-use crate::builtin_fonts::builtin_font_url;
+use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
 use crate::ime_bridge::{sync_ime_character_bounds, WebImeBridge};
 use crate::style_packet;
@@ -854,7 +854,10 @@ impl HayateElementRenderer {
     pub fn poll_events(&mut self) -> js_sys::Array {
         for event in self.tree.poll_events() {
             if let Event::FetchFont { family } = event {
-                if let Some(url) = builtin_font_url(&family) {
+                // Renderer-aware procurement (ADR-0043, #332): on the GPU path
+                // the monochrome emoji family is upgraded to the COLR build; the
+                // bytes still register under `family`, so core routing is intact.
+                if let Some(url) = font_url_for_renderer(&family, self.backend.kind()) {
                     let queue = self.font_queue.clone();
                     let failures = self.font_failure_queue.clone();
                     let attempts = self.font_fetch_attempts.clone();

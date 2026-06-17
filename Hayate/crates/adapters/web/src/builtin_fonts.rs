@@ -4,9 +4,41 @@
 
 include!(concat!(env!("OUT_DIR"), "/builtin_fonts_gen.rs"));
 
+#[cfg(any(target_arch = "wasm32", test))]
+use crate::renderer_selection::SceneRendererKind;
+
+/// The monochrome emoji family core's coverage table routes `.notdef` emoji
+/// codepoints to (ADR-0101). Renderer-independent; the lowest common
+/// denominator both painters can draw.
+const MONOCHROME_EMOJI_FAMILY: &str = "Noto Emoji";
+
+/// The colour (COLR/CPAL) emoji build. Only renderers that can paint colour
+/// glyphs are routed here; the bytes are still registered under the family core
+/// asked for, so core's codepoint→family routing (ADR-0101) is untouched.
+const COLOR_EMOJI_FAMILY: &str = "Noto Color Emoji";
+
+/// Renderer-aware font procurement (ADR-0043, #332): given the family core
+/// routed a `.notdef` codepoint to and the active renderer, return the URL to
+/// fetch. Identical to [`builtin_font_url`] for every family except the emoji
+/// fallback: on a renderer that paints colour glyphs (Vello), the monochrome
+/// emoji family is upgraded to the colour build. The fetched bytes are
+/// registered under the family core requested, so this dispatch is invisible to
+/// core's codepoint→family table.
+#[cfg(any(target_arch = "wasm32", test))]
+pub(crate) fn font_url_for_renderer(
+    family: &str,
+    renderer: SceneRendererKind,
+) -> Option<&'static str> {
+    if family == MONOCHROME_EMOJI_FAMILY && renderer.paints_color_glyphs() {
+        return builtin_font_url(COLOR_EMOJI_FAMILY);
+    }
+    builtin_font_url(family)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::builtin_font_url;
+    use super::{builtin_font_url, font_url_for_renderer};
+    use crate::renderer_selection::SceneRendererKind;
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
@@ -106,6 +138,68 @@ mod tests {
             !lower.contains("color"),
             "fallback must be monochrome Noto Emoji, not a colour build: {url}"
         );
+    }
+
+    #[test]
+    fn vello_routes_emoji_family_to_color_build() {
+        // Vello (WebGPU) paints COLR/CPAL, so the emoji family core routes to
+        // ("Noto Emoji", ADR-0101) is upgraded to the colour build on the GPU
+        // path (#332). The dispatch stays in this adapter (ADR-0043); core's
+        // codepoint→family table is untouched.
+        let url = font_url_for_renderer("Noto Emoji", SceneRendererKind::Vello)
+            .expect("emoji family must resolve on Vello");
+        assert!(
+            url.to_lowercase().contains("notocoloremoji"),
+            "Vello must fetch the colour Noto Color Emoji build, got {url}"
+        );
+    }
+
+    #[test]
+    fn tiny_skia_keeps_monochrome_emoji() {
+        // CPU fallback cannot paint COLR/CBDT, so the emoji family must stay on
+        // the monochrome build — no colour-emoji regression (#332 AC, ADR-0101).
+        let url = font_url_for_renderer("Noto Emoji", SceneRendererKind::TinySkia)
+            .expect("emoji family must resolve on tiny-skia");
+        let lower = url.to_lowercase();
+        assert!(lower.contains("notoemoji"), "expected Noto Emoji, got {url}");
+        assert!(
+            !lower.contains("color"),
+            "tiny-skia must stay monochrome, not a colour build: {url}"
+        );
+        // Identical to the renderer-agnostic lookup: CPU renderers add nothing.
+        assert_eq!(
+            font_url_for_renderer("Noto Emoji", SceneRendererKind::TinySkia),
+            builtin_font_url("Noto Emoji"),
+        );
+    }
+
+    #[test]
+    fn non_emoji_families_are_renderer_independent() {
+        // The renderer-aware dispatch only touches the emoji fallback; every
+        // other family resolves identically on every renderer.
+        for family in ["Noto Sans JP", "Inter", "Noto Sans Arabic"] {
+            for renderer in [SceneRendererKind::Vello, SceneRendererKind::TinySkia] {
+                assert_eq!(
+                    font_url_for_renderer(family, renderer),
+                    builtin_font_url(family),
+                    "{family} must not change with renderer {renderer:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn color_emoji_build_is_procurable_and_distinct() {
+        // The colour build lives in the manifest alongside the monochrome one,
+        // resolves to the Noto Color Emoji (COLR) URL, and is a different file.
+        let color =
+            builtin_font_url("Noto Color Emoji").expect("color build missing from manifest");
+        let mono = builtin_font_url("Noto Emoji").expect("mono build missing from manifest");
+        assert!(
+            color.to_lowercase().contains("notocoloremoji"),
+            "expected a Noto Color Emoji url, got {color}"
+        );
+        assert_ne!(color, mono, "color and monochrome builds must be distinct urls");
     }
 
     #[test]
