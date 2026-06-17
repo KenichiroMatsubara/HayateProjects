@@ -262,10 +262,15 @@ impl ElementTree {
         }
     }
 
-    /// Resolve the effective cursor for the element under the pointer, walking
-    /// up the ancestor chain (CSS `cursor` inherits). `Default` when nothing in
-    /// the chain sets a cursor or the pointer hit nothing.
+    /// Resolve the effective cursor for the element under the pointer in the
+    /// order "explicit `cursor` → element-kind UA default → `Default`"
+    /// (ADR-0105), mirroring the browser's UA stylesheet. An explicit `cursor`
+    /// anywhere up the ancestor chain always wins (CSS `cursor` inherits); only
+    /// when none is set does the kind default apply — `text-input` and any
+    /// `selectable` text resolve to `text` (I-beam), `button` to `pointer`.
+    /// `Default` when nothing in the chain contributes or the pointer hit nothing.
     fn resolve_cursor(&self, hit: Option<ElementId>) -> CursorValue {
+        // Pass 1: an explicit `cursor` on the hit element or any ancestor wins.
         let mut current = hit;
         while let Some(id) = current {
             let Some(el) = self.elements.get(&id) else {
@@ -273,6 +278,23 @@ impl ElementTree {
             };
             if let Some(cursor) = el.visual.cursor {
                 return cursor;
+            }
+            current = el.parent;
+        }
+        // Pass 2: no explicit cursor — fall back to the element-kind UA default,
+        // walking up so a kind/selectable region default still reaches the text
+        // or child elements painted inside it.
+        let mut current = hit;
+        while let Some(id) = current {
+            let Some(el) = self.elements.get(&id) else {
+                break;
+            };
+            let kind_default = el.kind.default_cursor();
+            if kind_default != CursorValue::Default {
+                return kind_default;
+            }
+            if el.selectable {
+                return CursorValue::Text;
             }
             current = el.parent;
         }

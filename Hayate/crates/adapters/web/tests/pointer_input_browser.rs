@@ -27,6 +27,8 @@ const HOVER_LEAVE_KIND: f64 = 11.0;
 const SCROLL_KIND: f64 = 7.0;
 /// `ElementKind::View` discriminant (crates/core/src/element/kind.rs).
 const ELEMENT_KIND_VIEW: u32 = 0;
+/// `ElementKind::Button` discriminant (crates/core/src/element/kind.rs).
+const ELEMENT_KIND_BUTTON: u32 = 3;
 /// `ElementKind::ScrollView` discriminant (crates/core/src/element/kind.rs).
 const ELEMENT_KIND_SCROLLVIEW: u32 = 5;
 /// style_packet tags: width=5, height=6; unit 0 = Px (crates/adapters/web/src/style_packet.rs).
@@ -409,6 +411,36 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
         renderer.last_pointer_kind(),
         POINTER_KIND_MOUSE,
         "a mouse pointermove must update last_pointer_kind back to Mouse"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn pointer_move_over_button_applies_pointer_cursor_to_the_canvas() {
+    // The self-wired pointer path must drive the resolved cursor (ADR-0088,
+    // ADR-0105) onto the canvas element itself: hovering a button with no explicit
+    // `cursor` shows the element-kind UA default (pointer), so Canvas matches the
+    // DOM `<button>` without the app styling each one.
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    // A button filling the surface, no explicit cursor style.
+    renderer.element_create(1.0, ELEMENT_KIND_BUTTON).unwrap();
+    renderer
+        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
+        .unwrap();
+    renderer.set_root(1.0);
+    renderer.render(0.0).unwrap();
+
+    let rect = canvas.get_bounding_client_rect();
+    dispatch_pointer_move(&canvas, rect.left() + 10.0, rect.top() + 10.0);
+    renderer.render(16.0).unwrap();
+
+    assert_eq!(
+        canvas.style().get_property_value("cursor").unwrap(),
+        "pointer",
+        "hovering a button must apply the pointer cursor to the canvas element"
     );
 }
 
