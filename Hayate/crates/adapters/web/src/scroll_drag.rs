@@ -129,6 +129,87 @@ pub fn clamp_scroll_axis(offset: f32, max: f32) -> f32 {
     offset.clamp(0.0, max.max(0.0))
 }
 
+// ── Momentum / inertia (issue #351, ADR-0082 Amendment, tracer-bullet 2/3) ──
+//
+// Flicking and lifting hands a release velocity to a friction integrator that
+// keeps the locked scroll-view moving and decelerating until it rests (or hits
+// an edge and clamp-stops — no bounce this slice). Both halves are pure: the
+// `CanvasRenderer` records finger samples while dragging, estimates the release
+// velocity here on `pointerup`, then steps the decay once per rAF frame.
+
+/// iOS-style scroll physics, gathered in one block so every coefficient stays a
+/// single named, tunable knob instead of a magic number sprinkled through the
+/// integrator (issue #351). Values are starting points to be tuned, not
+/// load-bearing — adjust here and the whole feel changes.
+pub mod physics {
+    /// Per-millisecond velocity retention under friction. Matches UIScrollView's
+    /// "normal" deceleration rate: after `t` ms a fling keeps `0.998^t` of its
+    /// speed, so it bleeds off smoothly over roughly a second.
+    pub const DECELERATION_RATE: f32 = 0.998;
+    /// Release-fling speed cap (px/ms ≈ 4000 px/s) so a violent flick can't hurl
+    /// the content across the entire document in a single frame.
+    pub const MAX_RELEASE_VELOCITY: f32 = 4.0;
+    /// Speed (px/ms) below which momentum is treated as stopped and snaps to
+    /// rest — about a sub-pixel per 60fps frame — so the animation terminates
+    /// instead of crawling asymptotically toward zero.
+    pub const MIN_VELOCITY: f32 = 0.02;
+    /// Only finger samples within this window (ms) of the most recent one feed
+    /// the release-velocity estimate, so a press that pauses before lifting
+    /// releases at rest rather than replaying a stale early flick.
+    pub const SAMPLE_WINDOW_MS: f64 = 100.0;
+}
+
+/// Clamp a velocity (px/ms) to the symmetric release cap.
+fn cap_release_velocity(v: f32) -> f32 {
+    v.clamp(-physics::MAX_RELEASE_VELOCITY, physics::MAX_RELEASE_VELOCITY)
+}
+
+/// Estimate the release (fling) velocity in **offset space** (px/ms) from a
+/// sequence of finger samples `(x, y, timestamp_ms)` in arrival order. Offset
+/// space is the scroll-offset's sign convention — content follows the finger —
+/// so a finger sliding up returns a positive `vy`, the same direction the drag
+/// delta moves the offset.
+///
+/// Only samples within [`physics::SAMPLE_WINDOW_MS`] of the most recent one
+/// contribute, so a finger that paused before lifting releases at rest. The
+/// estimate is the average velocity across that window (first → last), capped per
+/// axis at [`physics::MAX_RELEASE_VELOCITY`]. Fewer than two in-window samples,
+/// or a zero-duration span, yield no fling `(0.0, 0.0)`.
+pub fn estimate_release_velocity(samples: &[(f32, f32, f64)]) -> (f32, f32) {
+    let Some(&(last_x, last_y, last_t)) = samples.last() else {
+        return (0.0, 0.0);
+    };
+    let window_start = last_t - physics::SAMPLE_WINDOW_MS;
+    let Some(&(first_x, first_y, first_t)) = samples.iter().find(|&&(_, _, t)| t >= window_start)
+    else {
+        return (0.0, 0.0);
+    };
+    let dt = (last_t - first_t) as f32;
+    if dt <= 0.0 {
+        return (0.0, 0.0);
+    }
+    // Offset moves opposite the finger: offset delta = old_pos − new_pos.
+    (
+        cap_release_velocity((first_x - last_x) / dt),
+        cap_release_velocity((first_y - last_y) / dt),
+    )
+}
+
+/// Advance one momentum axis by `dt_ms` under exponential friction. Returns the
+/// offset delta to apply this frame and the decayed velocity to carry into the
+/// next, both in offset space (px and px/ms). Once the decayed speed falls below
+/// [`physics::MIN_VELOCITY`] it snaps to `0.0`, so the caller can end the
+/// animation instead of integrating an asymptotic crawl.
+pub fn momentum_step(velocity: f32, dt_ms: f32) -> (f32, f32) {
+    let delta = velocity * dt_ms;
+    let next = velocity * physics::DECELERATION_RATE.powf(dt_ms);
+    if next.abs() < physics::MIN_VELOCITY {
+        (delta, 0.0)
+    } else {
+        (delta, next)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +244,81 @@ mod tests {
 
     fn sv() -> hayate_core::ElementId {
         hayate_core::ElementId::from_u64(1)
+    }
+
+    #[test]
+    fn release_velocity_is_the_offset_space_speed_over_the_recent_samples() {
+        // Finger slides up (y: 100 → 40) over 60ms. Content follows the finger,
+        // so the offset gains 60px in 60ms → +1 px/ms in offset space. X is still.
+        let samples = [(0.0, 100.0, 0.0), (0.0, 70.0, 30.0), (0.0, 40.0, 60.0)];
+        let (vx, vy) = estimate_release_velocity(&samples);
+        assert_eq!(vx, 0.0);
+        assert!((vy - 1.0).abs() < 1e-6, "vy = {vy}");
+    }
+
+    #[test]
+    fn release_velocity_needs_two_in_window_samples_with_a_real_time_span() {
+        // No samples, or a single one, give nothing to measure speed against.
+        assert_eq!(estimate_release_velocity(&[]), (0.0, 0.0));
+        assert_eq!(estimate_release_velocity(&[(0.0, 0.0, 5.0)]), (0.0, 0.0));
+        // Two samples stamped at the same instant: a position jump with no
+        // elapsed time is not a measurable velocity (avoids a divide-by-zero).
+        assert_eq!(
+            estimate_release_velocity(&[(0.0, 0.0, 5.0), (0.0, 50.0, 5.0)]),
+            (0.0, 0.0),
+        );
+    }
+
+    #[test]
+    fn samples_older_than_the_window_are_ignored_so_a_pause_releases_at_rest() {
+        // A fast slide long ago, then the finger came to rest at y=40 for the
+        // last 60ms before lifting — only the resting samples are in-window.
+        let samples = [
+            (0.0, 200.0, 0.0), // outside the 100ms window before the lift
+            (0.0, 40.0, 500.0),
+            (0.0, 40.0, 560.0),
+        ];
+        let (_, vy) = estimate_release_velocity(&samples);
+        assert_eq!(vy, 0.0, "a finger that paused before lifting releases at rest");
+    }
+
+    #[test]
+    fn release_velocity_is_capped_so_a_violent_flick_cannot_launch_too_far() {
+        // 1000px in 10ms = 100 px/ms, far above the cap.
+        let samples = [(0.0, 1000.0, 0.0), (0.0, 0.0, 10.0)];
+        let (_, vy) = estimate_release_velocity(&samples);
+        assert_eq!(vy, physics::MAX_RELEASE_VELOCITY);
+    }
+
+    #[test]
+    fn momentum_advances_in_its_direction_and_friction_bleeds_the_speed() {
+        // A 16ms frame: the offset advances along the velocity, and the carried
+        // velocity is smaller but keeps its sign (decelerating, not reversing).
+        let (delta, next) = momentum_step(2.0, 16.0);
+        assert!(delta > 0.0, "offset advances in the velocity direction");
+        assert!(next > 0.0 && next < 2.0, "friction bleeds speed, keeps sign (next = {next})");
+        // Symmetric for a downward fling.
+        let (delta_neg, next_neg) = momentum_step(-2.0, 16.0);
+        assert!(delta_neg < 0.0);
+        assert!(next_neg < 0.0 && next_neg > -2.0);
+    }
+
+    #[test]
+    fn momentum_snaps_to_rest_once_it_drops_below_the_stop_threshold() {
+        // Starting right at the threshold, one long frame decays it under
+        // MIN_VELOCITY, so it snaps to 0 instead of crawling forever.
+        let (_, next) = momentum_step(physics::MIN_VELOCITY, 1000.0);
+        assert_eq!(next, 0.0, "below the stop threshold momentum ends");
+    }
+
+    #[test]
+    fn physics_coefficients_are_named_constants_gathered_in_one_place() {
+        // Pinned so the iOS-ish knobs stay a single tunable block, not magic
+        // numbers scattered through the integrator.
+        assert_eq!(physics::DECELERATION_RATE, 0.998);
+        assert_eq!(physics::MAX_RELEASE_VELOCITY, 4.0);
+        assert_eq!(physics::MIN_VELOCITY, 0.02);
+        assert_eq!(physics::SAMPLE_WINDOW_MS, 100.0);
     }
 
     #[test]
