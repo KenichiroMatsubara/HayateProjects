@@ -29,9 +29,11 @@ Five **state** roles:
 
 - `needs-triage` — maintainer needs to evaluate
 - `needs-info` — waiting on reporter for more information
-- `ready-for-agent` — fully specified, ready for an AFK agent
-- `ready-for-human` — needs human implementation
+- `ready-for-agent` — fully specified, ready for an AFK agent (no human in the loop)
+- `ready-for-human` — 完全人力 (fully-manual): needs a human, with no AI in the loop (constant/parameter tuning, taste calls, design review, manual testing)
 - `wontfix` — will not be actioned
+
+There is no HITL state — an issue is either AFK (`ready-for-agent`) or 完全人力 (`ready-for-human`), never an AI-plus-human feedback loop. If an issue genuinely needs both, it should have been split during `/to-issues` into an AFK structure slice (magic numbers extracted into named constants) and a 完全人力 tuning slice that follows it; if it wasn't, flag that to the maintainer rather than triaging it as a single mixed-mode issue.
 
 Every triaged issue should carry exactly one category role and one state role. If state roles conflict, flag it and ask the maintainer before doing anything else.
 
@@ -70,7 +72,7 @@ Show counts and a one-line summary per issue. Let the maintainer pick.
 
 5. **Apply the outcome:**
    - `ready-for-agent` — post an agent brief comment ([AGENT-BRIEF.md](AGENT-BRIEF.md)).
-   - `ready-for-human` — same structure as an agent brief, but note why it can't be delegated (judgment calls, external access, design decisions, manual testing).
+   - `ready-for-human` — same structure as an agent brief, but note why it can't be delegated (constant/parameter tuning, judgment calls, external access, design decisions, manual testing). This is 完全人力 work — done by a human with no AI in the loop.
    - `needs-info` — post triage notes (template below).
    - `wontfix` (bug) — polite explanation, then close.
    - `wontfix` (enhancement) — write to `.out-of-scope/`, link to it from a comment, then close ([OUT-OF-SCOPE.md](OUT-OF-SCOPE.md)).
