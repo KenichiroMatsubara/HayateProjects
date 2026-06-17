@@ -10,6 +10,7 @@ import { generateEventKind } from './gen-event-kind.mjs';
 import { generatePseudoState } from './gen-pseudo-state.mjs';
 import { generateStyleChannel } from './gen-style-channel.mjs';
 import { generateElementProperty } from './gen-element-property.mjs';
+import { generateElementKind } from './gen-element-kind.mjs';
 
 generateWire();
 generateCatalog();
@@ -21,5 +22,6 @@ generateEventKind();
 generatePseudoState();
 generateStyleChannel();
 generateElementProperty();
+generateElementKind();
 console.log('Generated Tsubame/proto/generated/*');
 console.log('Generated Tsubame/packages/renderer-protocol/src/generated/*');

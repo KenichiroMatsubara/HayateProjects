@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ElementKind } from '@tsubame/renderer-protocol';
+import { elementKindDefaultCursor } from '@tsubame/renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 
@@ -18,6 +19,22 @@ describe('createDomElement – RN Web stacking base style', () => {
     expect(el.style.position).toBe('relative');
     expect(el.style.zIndex).toBe('0');
   });
+
+  it.each(ALL_KINDS)(
+    'applies the spec single-source UA default cursor to %s (ADR-0105)',
+    (kind) => {
+      const el = createDomElement(document, kind);
+      const expected = elementKindDefaultCursor(kind);
+      if (expected === undefined) {
+        // No kind default — keeps the RN Web base (`inherit`), not a re-declared value.
+        expect(el.style.cursor).toBe('inherit');
+      } else {
+        // button → pointer, text-input → text — from the same table Canvas uses,
+        // so DOM and Canvas show the same cursor (Semantics Parity).
+        expect(el.style.cursor).toBe(expected);
+      }
+    },
+  );
 
   it('allows user zIndex to override the base default', () => {
     const el = createDomElement(document, 'view');
