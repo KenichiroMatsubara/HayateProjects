@@ -5,6 +5,7 @@ use linebender_resource_handle::Blob;
 use parley::{FontContext, LayoutContext};
 use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 
+use crate::element::font_fetch::FontFetchTracker;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::style::StyleProp;
@@ -22,9 +23,10 @@ pub struct LayoutPass {
     pub(crate) projection: TaffyProjection,
     pub(crate) font_cx: FontContext,
     pub(crate) layout_cx: LayoutContext<TextBrush>,
-    /// Family names already requested via `FetchFont` but not yet loaded.
-    /// Prevents duplicate events for the same family across frames.
-    pub(crate) pending_font_fetches: HashSet<String>,
+    /// On-demand font-fetch state (issue #343): suppresses duplicate `FetchFont`
+    /// events, reopens families whose fetch failed, and gives up after a finite
+    /// retry budget.
+    pub(crate) font_fetches: FontFetchTracker,
     /// Wall-clock millis of the last cursor-visibility toggle (ADR-0032).
     pub(crate) last_cursor_toggle_ms: Option<f64>,
     /// Absolute bounding rects (x, y, w, h) per element, refreshed by each `settle`.
@@ -40,7 +42,7 @@ impl LayoutPass {
             projection: TaffyProjection::new(),
             font_cx,
             layout_cx: LayoutContext::new(),
-            pending_font_fetches: HashSet::new(),
+            font_fetches: FontFetchTracker::new(),
             last_cursor_toggle_ms: None,
             layout_cache: HashMap::new(),
         }
@@ -104,6 +106,32 @@ impl LayoutPass {
             }
         }
         geometry_dirty
+    }
+
+    /// Test seam (ADR-0042): rebuild the font collection to mirror the WASM
+    /// runtime — no system fonts, with `default_font` registered as the default
+    /// family + sans-serif generic. Lets font-fetch tests drive the real
+    /// `.notdef → FetchFont → register_font` path without depending on
+    /// host-installed fonts (`system_fonts: false`).
+    pub(crate) fn set_wasm_like_font_context(&mut self, default_font: Vec<u8>) {
+        use fontique::{Collection, CollectionOptions, FontInfoOverride, GenericFamily};
+        self.font_cx.collection = Collection::new(CollectionOptions {
+            system_fonts: false,
+            ..Default::default()
+        });
+        let blob = Blob::new(Arc::new(default_font));
+        let override_info = FontInfoOverride {
+            family_name: Some(text::DEFAULT_FONT_FAMILY),
+            ..Default::default()
+        };
+        let registered = self.font_cx.collection.register_fonts(blob, Some(override_info));
+        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
+        if !ids.is_empty() {
+            self.font_cx
+                .collection
+                .set_generic_families(GenericFamily::SansSerif, ids.into_iter());
+        }
+        self.font_fetches = FontFetchTracker::new();
     }
 
     /// Geometry-query side of the reduced layout interface (issue #308 / §5):
@@ -232,7 +260,7 @@ impl LayoutPass {
             projection,
             font_cx,
             layout_cx,
-            pending_font_fetches,
+            font_fetches,
             ..
         } = self;
 
@@ -291,8 +319,8 @@ impl LayoutPass {
                 }
             }
             for &fam in &layout.missing_families {
-                if !pending_font_fetches.contains(fam) {
-                    pending_font_fetches.insert(fam.to_string());
+                if font_fetches.should_request(fam) {
+                    font_fetches.mark_requested(fam);
                     event_queue.push(Event::FetchFont {
                         family: fam.to_string(),
                     });
@@ -306,12 +334,13 @@ impl LayoutPass {
                 if let Some(ref fam) = el.visual.font_family {
                     let resolved = text::resolve_generic_family(fam);
                     if resolved != text::DEFAULT_FONT_FAMILY
-                        && !pending_font_fetches.contains(resolved)
+                        && font_fetches.should_request(resolved)
                         && font_cx.collection.family_id(resolved).is_none()
                     {
-                        let owned = resolved.to_string();
-                        pending_font_fetches.insert(owned.clone());
-                        event_queue.push(Event::FetchFont { family: owned });
+                        font_fetches.mark_requested(resolved);
+                        event_queue.push(Event::FetchFont {
+                            family: resolved.to_string(),
+                        });
                     }
                 }
             }
@@ -396,8 +425,8 @@ impl LayoutPass {
                 );
 
                 for &fam in &layout.missing_families {
-                    if !pending_font_fetches.contains(fam) {
-                        pending_font_fetches.insert(fam.to_string());
+                    if font_fetches.should_request(fam) {
+                        font_fetches.mark_requested(fam);
                         event_queue.push(Event::FetchFont {
                             family: fam.to_string(),
                         });
@@ -406,12 +435,13 @@ impl LayoutPass {
                 if let Some(ref fam) = font_family {
                     let resolved = text::resolve_generic_family(fam);
                     if resolved != text::DEFAULT_FONT_FAMILY
-                        && !pending_font_fetches.contains(resolved)
+                        && font_fetches.should_request(resolved)
                         && font_cx.collection.family_id(resolved).is_none()
                     {
-                        let owned = resolved.to_string();
-                        pending_font_fetches.insert(owned.clone());
-                        event_queue.push(Event::FetchFont { family: owned });
+                        font_fetches.mark_requested(resolved);
+                        event_queue.push(Event::FetchFont {
+                            family: resolved.to_string(),
+                        });
                     }
                 }
                 if let Some(el) = elements.get_mut(&eid) {

@@ -35,6 +35,8 @@ App（JS/Dart/etc.）: フォント URL を一切知らない。透過的。
 4. 次の `poll_events()` 冒頭で `font_queue` をドレインして `tree.register_font()` に渡す
 5. `FetchFont` イベントはアプリに渡さない（visible イベントから除外）
 
+> **更新（ADR-0106 / issue #343）**：fetch *失敗*時は `console.warn` するだけだったため、ファミリが恒久的に欠落した。現在はバックオフ後に `font_failure_queue` へ積み、`render()` が `tree.font_fetch_failed()` へドレインして Core に失敗を伝える。Core が有限予算でリトライ／断念を判断する。
+
 ビルトイン URL テーブル（`builtin_font_url`）は web adapter の Rust コードに持ち、TTF/OTF のみ登録する（fontique/skrifa は WOFF2 を解釈しないため）。
 
 **`Rc<RefCell<...>>` を選んだ理由**：WASM は単一スレッドのため `Arc<Mutex<...>>` 不要。`spawn_local` のクロージャは `'static` を要求するが `Rc` は `clone()` で渡せる。wasm-bindgen の `#[wasm_bindgen]` struct も `Send` 不要なので問題ない。
