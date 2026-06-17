@@ -43,34 +43,24 @@ impl AnalysisDataSources {
 
     #[inline(always)]
     fn word_segmenter(&self) -> WordSegmenterBorrowed<'static> {
-        const { WordSegmenter::new_for_non_complex_scripts(WordBreakInvariantOptions::default()) }
+        // `new_auto` loads the CJK dictionary (`cjdict`) and Southeast-Asian LSTM data, so
+        // Japanese/Chinese runs are segmented into words instead of being treated as a single
+        // segment. Without it ICU logs "No segmentation model for language: ja". The borrowed
+        // data is baked & 'static, so this is a handful of static lookups, not an allocation.
+        WordSegmenter::new_auto(WordBreakInvariantOptions::default())
     }
 
     #[inline(always)]
     fn line_segmenter(&self, word_break_strength: WordBreak) -> LineSegmenterBorrowed<'static> {
-        match word_break_strength {
-            WordBreak::Normal => {
-                const {
-                    let mut opt = LineBreakOptions::default();
-                    opt.word_option = Some(LineBreakWordOption::Normal);
-                    LineSegmenter::new_for_non_complex_scripts(opt)
-                }
-            }
-            WordBreak::BreakAll => {
-                const {
-                    let mut opt = LineBreakOptions::default();
-                    opt.word_option = Some(LineBreakWordOption::BreakAll);
-                    LineSegmenter::new_for_non_complex_scripts(opt)
-                }
-            }
-            WordBreak::KeepAll => {
-                const {
-                    let mut opt = LineBreakOptions::default();
-                    opt.word_option = Some(LineBreakWordOption::KeepAll);
-                    LineSegmenter::new_for_non_complex_scripts(opt)
-                }
-            }
-        }
+        // `new_auto` loads complex-script (Khmer/Lao/Myanmar/Thai) data so line breaking is
+        // dictionary/LSTM aware for those scripts. CJK line breaks remain governed by UAX#14.
+        let mut opt = LineBreakOptions::default();
+        opt.word_option = Some(match word_break_strength {
+            WordBreak::Normal => LineBreakWordOption::Normal,
+            WordBreak::BreakAll => LineBreakWordOption::BreakAll,
+            WordBreak::KeepAll => LineBreakWordOption::KeepAll,
+        });
+        LineSegmenter::new_auto(opt)
     }
 
     #[inline(always)]

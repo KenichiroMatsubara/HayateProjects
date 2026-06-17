@@ -98,7 +98,7 @@ default-features = false
 
 [dependencies.icu_segmenter]
 version = "2.1.2"
-features = ["compiled_data"]
+features = ["compiled_data", "auto"]
 default-features = false
 
 [dependencies.linebender_resource_handle]
@@ -169,3 +169,4 @@ unused_import_braces = "warn"
 unused_lifetimes = "warn"
 unused_macro_rules = "warn"
 unused_qualifications = "warn"
+

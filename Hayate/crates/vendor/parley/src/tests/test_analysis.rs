@@ -1156,3 +1156,35 @@ fn test_whitespace_contiguous_interspersed_in_latin_mixed() {
         Script::Latin,
     ]);
 }
+
+#[test]
+fn test_japanese_word_boundaries_keep_all() {
+    // Japanese needs the ICU CJK dictionary (`cjdict`) to find word boundaries; without
+    // it the whole kana/ideograph run is treated as a single segment (and ICU logs
+    // "No segmentation model for language: ja").
+    //
+    // With `word-break: keep-all` there are no implicit *line* boundaries inside the CJK
+    // run, so the dictionary-derived *word* boundaries are observable here. "こんにちは世界"
+    // must segment into the words "こんにちは" / "世界" — i.e. a word boundary before 世.
+    verify_analysis("こんにちは世界", |builder| {
+        builder.push(StyleProperty::WordBreak(WordBreak::KeepAll), 0..21);
+    })
+    .expect_boundary_list(vec![
+        Boundary::Word, // こ — start of "こんにちは"
+        Boundary::None, // ん
+        Boundary::None, // に
+        Boundary::None, // ち
+        Boundary::None, // は
+        Boundary::Word, // 世 — start of "世界"
+        Boundary::None, // 界
+    ])
+    .expect_script_list(vec![
+        Script::Hiragana,
+        Script::Hiragana,
+        Script::Hiragana,
+        Script::Hiragana,
+        Script::Hiragana,
+        Script::Han,
+        Script::Han,
+    ]);
+}
