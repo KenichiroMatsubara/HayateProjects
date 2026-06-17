@@ -129,6 +129,14 @@ _Avoid_: 全 text を既定で選択可能とする設計、text ごとの selec
 有効な選択に対して core が SceneGraph に描く視覚要素 — highlight tint・ドラッグ handle・フローティングツールバー（拡大鏡は将来）。core が一度だけ描画する。**highlight tint は browser（Chromium `::selection`）をお手本に寄せ**、handle・ツールバー・拡大鏡は **browser に無い概念なので Android-native をお手本**にする（Canvas の視覚お手本は DOM＝ADR-0102）。DOM / HTML 経路ではブラウザネイティブの選択描画に委ねる（Selection Region の意味論はパリティ対象）。
 _Avoid_: OS ネイティブ選択 UI を Platform Adapter ごとに再実装する設計、レンダラーごとの chrome 方言、tint まで Material 固定とし browser 寄せを否定する理解、chrome の見た目を意味論パリティの対象とする理解
 
+**EditIntent（編集インテント）**:
+text-input の編集を表す閉じたコマンド語彙（move / extend / delete を境界・方向・粒度で、加えて select-all / copy / cut / paste）。Element Document Runtime が `EditState` に適用する唯一の編集シームで、キーレベルの編集挙動は Chromium `<input>` / `<textarea>` を正準とする。Platform Adapter が OS キーバインドをこの語彙へ翻訳し（core は OS を知らない）、Canvas 経路では proto 契約に載る。
+_Avoid_: キー文字列を直接解釈する設計、OS keymap を core に持たせる理解、EditState への個別メソッド増殖
+
+**Pointer Modality（ポインタ種別 / PointerKind）**:
+入力ポインタが Mouse / Touch / Pen のいずれかという軸。Element Document Runtime がインタラクション単位で保持し、選択 chrome（handle / toolbar）の表示と blur 時の選択ライフサイクル（Mouse/Pen=非表示＋範囲記憶＋再フォーカス復活 / Touch=caret へ collapse＋chrome dismiss）を分岐させる。`:focus-visible` 用の Pointer/Keyboard（Input Modality）とは並立する別軸。
+_Avoid_: 起動時の form-factor 固定、long-press から touch を推定する設計、Input Modality（Pointer/Keyboard）との混同
+
 **Pseudo-state Style**:
 Hayate CSS 内の `:hover` / `:active` / `:focus` ブロック。要素の base style に対する上書き。複数状態が同時成立したときの正準優先順は `focus < hover < active`（後勝ち）で、これは wire コード（hover=0 / active=1 / focus=2）とは別物。優先順は spec（`proto/spec/pseudo_states.json`）が正本で、Hayate core の `resolve_visual` と Tsubame DOM Renderer のルールバンド順が共にそこから生成・参照する（Semantics Parity）。
 _Avoid_: pseudoStyle（別 prop）、Signal による hover スタイル切替、wire コード順を優先順と同一視する理解、DOM の挿入順（authoring 順）に優先順を委ねる設計
