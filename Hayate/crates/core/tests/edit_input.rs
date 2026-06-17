@@ -1,10 +1,110 @@
 //! ADR-0069: EditState via ElementTree public input handlers.
 
 use hayate_core::{
-    CompositionClause, CompositionUnderline, Dimension, ElementKind, ElementTree, StyleProp,
+    CompositionClause, CompositionUnderline, Dimension, Direction, EditIntent, ElementKind,
+    ElementTree, Granularity, StyleProp,
 };
 
 const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
+
+/// A focused text-input carrying `content` with the caret at its end. No layout
+/// is needed for caret/selection-index assertions.
+fn focused_input(content: &str) -> (ElementTree, hayate_core::ElementId) {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(100, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_focus(input);
+    tree.element_append_text_content(input, content);
+    (tree, input)
+}
+
+#[test]
+fn bare_arrow_moves_the_caret_one_grapheme() {
+    // ADR-0103: the plain arrow keys move the caret (previously a no-op — only
+    // Shift+Arrow did anything). "aあb" exercises a multibyte grapheme step.
+    let (mut tree, input) = focused_input("aあb"); // caret at end (5)
+
+    tree.on_key_down("ArrowLeft", 0);
+    assert_eq!(tree.element_caret_byte_index(input), Some(4), "retreats past 'b'");
+    tree.on_key_down("ArrowLeft", 0);
+    assert_eq!(tree.element_caret_byte_index(input), Some(1), "retreats past 'あ'");
+
+    tree.on_key_down("ArrowRight", 0);
+    assert_eq!(tree.element_caret_byte_index(input), Some(4), "advances past 'あ'");
+
+    // A bare arrow leaves the selection collapsed (a caret, not a range).
+    assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
+fn bare_arrow_over_a_selection_collapses_to_its_edge() {
+    // With a range selected, the plain arrow collapses to the edge rather than
+    // stepping past it (Chromium <input> behavior).
+    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    tree.on_key_down("ArrowLeft", SHIFT);
+    tree.on_key_down("ArrowLeft", SHIFT); // selects "lo" → range (3,5)
+    assert_eq!(tree.element_text_selection(input), Some((3, 5)));
+
+    tree.on_key_down("ArrowLeft", 0);
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(3),
+        "collapses to the left edge of the former selection",
+    );
+    assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
+fn apply_edit_intent_is_the_os_independent_entry_point() {
+    // The Platform Adapter maps an OS keystroke to an intent and drives this
+    // seam directly; core never sees which key produced it (ADR-0103).
+    let (mut tree, input) = focused_input("hello"); // caret at 5
+
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Backward,
+        },
+    ));
+    assert_eq!(tree.element_caret_byte_index(input), Some(4));
+
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Extend {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Backward,
+        },
+    ));
+    assert_eq!(tree.element_text_selection(input), Some((3, 4)));
+}
+
+#[test]
+fn arrow_keys_do_not_disturb_an_active_ime_composition() {
+    // ADR-0103: a caret key while an IME preedit is active must not edit or break
+    // the composition. The intent is not consumed; the preedit and content stay.
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(101, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.element_focus(input);
+    tree.element_append_text_content(input, "ab"); // caret at 2
+    tree.on_composition_start(input, "きゅ"); // active preedit
+
+    let consumed = tree.apply_edit_intent(
+        input,
+        EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Backward,
+        },
+    );
+    assert!(!consumed, "intent is refused while composing");
+    assert_eq!(tree.element_caret_byte_index(input), Some(2), "caret unmoved");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "abきゅ",
+        "the composition is preserved intact",
+    );
+}
 
 #[test]
 fn shift_arrow_extends_text_input_selection_then_typing_replaces_it() {

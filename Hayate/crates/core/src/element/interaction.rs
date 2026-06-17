@@ -1,3 +1,4 @@
+use crate::element::edit_state::{Direction, EditIntent, Granularity};
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
@@ -7,6 +8,35 @@ use crate::element::selection::{
 use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
 use crate::element::visual_invalidation::VisualInvalidationReach;
+
+/// Map a horizontal arrow keystroke to an [`EditIntent`] (ADR-0103): Shift
+/// extends the selection, otherwise the caret moves; Alt (macOS) or Ctrl
+/// (Win/Linux) widens the step from a grapheme to a word. Returns `None` for
+/// any non-arrow key so callers fall through to other handling. This is the
+/// OS-independent core bridge; the Platform Adapter owns the full OS keymap.
+fn arrow_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    let direction = match key {
+        "ArrowLeft" => Direction::Backward,
+        "ArrowRight" => Direction::Forward,
+        _ => return None,
+    };
+    let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0 {
+        Granularity::Word
+    } else {
+        Granularity::Grapheme
+    };
+    Some(if modifiers & MOD_SHIFT != 0 {
+        EditIntent::Extend {
+            granularity,
+            direction,
+        }
+    } else {
+        EditIntent::Move {
+            granularity,
+            direction,
+        }
+    })
+}
 
 /// Output of `on_pointer_move` (ADR-0088). `moved` is false when the move was
 /// coalesced by the 1px dedup or skipped because layout is not ready; `cursor`
@@ -255,10 +285,15 @@ impl ElementTree {
         let Some(focused) = self.focused_element else {
             return;
         };
-        // Shift+Arrow inside a focused text-input extends its edit selection
-        // (ADR-0097, #271), keeping the anchor fixed. Consumed when it applies.
-        if self.handle_edit_selection_key(focused, key, modifiers) {
-            return;
+        // Caret movement inside a focused text-input is interpreted as an
+        // EditIntent and applied through the single editing seam (ADR-0103):
+        // a bare arrow moves the caret (collapsing any selection to its edge),
+        // Shift extends the selection, Alt/Ctrl widens the step to a word.
+        // Consumed when it applies (not while an IME composition is active).
+        if let Some(intent) = arrow_edit_intent(key, modifiers) {
+            if self.apply_edit_intent(focused, intent) {
+                return;
+            }
         }
         if let Some(edit) = self
             .elements
@@ -985,18 +1020,17 @@ impl ElementTree {
         true
     }
 
-    /// Shift+Arrow keyboard range selection inside the focused text-input
-    /// (ADR-0097, #271): move the edit selection's focus one character (or one
-    /// word with Alt/Ctrl) while keeping the anchor fixed, so repeated presses
-    /// grow or shrink the range. Returns whether the key was consumed. Starting a
-    /// text-input selection clears any read-only SelectionArea selection (the
-    /// single-active rule).
-    fn handle_edit_selection_key(&mut self, focused: ElementId, key: &str, modifiers: u32) -> bool {
-        if modifiers & MOD_SHIFT == 0 {
-            return false;
-        }
-        let by_word = modifiers & (MOD_ALT | MOD_CTRL) != 0;
-        let Some(el) = self.elements.get_mut(&focused) else {
+    /// Apply one [`EditIntent`] to `target` through the single editing seam
+    /// (ADR-0103) and report whether it was consumed. This is the OS-independent
+    /// entry point the Platform Adapter drives after mapping an OS keystroke to an
+    /// intent; `core` never inspects which key produced it.
+    ///
+    /// Consumed only for an editable text-input with no active IME composition —
+    /// an in-progress preedit is left untouched so caret keys never break a
+    /// composition. Altering a text-input selection clears any read-only
+    /// SelectionArea selection (single-active rule, ADR-0097).
+    pub fn apply_edit_intent(&mut self, target: ElementId, intent: EditIntent) -> bool {
+        let Some(el) = self.elements.get_mut(&target) else {
             return false;
         };
         if el.kind != crate::element::kind::ElementKind::TextInput {
@@ -1005,14 +1039,13 @@ impl ElementTree {
         let Some(edit) = el.edit.as_mut() else {
             return false;
         };
-        let text = edit.text_content.clone();
-        let Some(next) = selection::arrow_step(&text, key, edit.cursor_byte_index, by_word) else {
+        if edit.preedit.is_some() {
             return false;
-        };
-        edit.move_focus(next);
+        }
+        edit.apply(intent);
         self.set_selection(None);
         self.engine
-            .mark_visual_dirty(focused, VisualInvalidationReach::SelfOnly);
+            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
         true
     }
 

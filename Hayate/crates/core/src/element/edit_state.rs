@@ -60,6 +60,39 @@ pub struct Preedit {
     pub clauses: Vec<CompositionClause>,
 }
 
+/// Direction of a horizontal edit motion along the text run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Backward,
+    Forward,
+}
+
+/// Granularity of an edit motion (ADR-0103). The closed vocabulary grows as
+/// later slices add line/document boundaries and vertical motion; this tracer
+/// covers the horizontal grapheme and word steps reused from `selection.rs`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Granularity {
+    Grapheme,
+    Word,
+}
+
+/// The closed edit-command vocabulary applied through the single editing seam
+/// [`EditState::apply`] (ADR-0103, ADR-0071). `Move` repositions the caret;
+/// `Extend` grows or shrinks the selection by moving the focus while the anchor
+/// stays fixed. Later slices add `Delete` / `SelectAll` / clipboard intents
+/// without widening the seam.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditIntent {
+    Move {
+        granularity: Granularity,
+        direction: Direction,
+    },
+    Extend {
+        granularity: Granularity,
+        direction: Direction,
+    },
+}
+
 /// Text-input edit model (ADR-0069). Owned by TextInput elements only.
 ///
 /// The caret is the degenerate form of the unified Selection model (ADR-0097):
@@ -274,6 +307,52 @@ impl EditState {
         true
     }
 
+    /// The byte offset one `granularity` step from `offset` in `direction`,
+    /// reusing the shared grapheme/word steppers (`selection.rs`).
+    fn step(&self, granularity: Granularity, direction: Direction, offset: usize) -> usize {
+        use crate::element::selection::{next_grapheme, next_word, prev_grapheme, prev_word};
+        match (granularity, direction) {
+            (Granularity::Grapheme, Direction::Backward) => prev_grapheme(&self.text_content, offset),
+            (Granularity::Grapheme, Direction::Forward) => next_grapheme(&self.text_content, offset),
+            (Granularity::Word, Direction::Backward) => prev_word(&self.text_content, offset),
+            (Granularity::Word, Direction::Forward) => next_word(&self.text_content, offset),
+        }
+    }
+
+    /// The single editing seam (ADR-0103): apply one closed-vocabulary
+    /// [`EditIntent`] and report whether it was consumed.
+    pub fn apply(&mut self, intent: EditIntent) -> bool {
+        match intent {
+            EditIntent::Move {
+                granularity,
+                direction,
+            } => {
+                // Chromium: a plain arrow over a selection collapses to the
+                // directional edge without stepping; over a caret it steps one
+                // unit and stays collapsed.
+                if let Some((start, end)) = self.selection_range() {
+                    let edge = match direction {
+                        Direction::Backward => start,
+                        Direction::Forward => end,
+                    };
+                    self.collapse_to(edge);
+                } else {
+                    let next = self.step(granularity, direction, self.cursor_byte_index);
+                    self.collapse_to(next);
+                }
+                true
+            }
+            EditIntent::Extend {
+                granularity,
+                direction,
+            } => {
+                let next = self.step(granularity, direction, self.cursor_byte_index);
+                self.move_focus(next);
+                true
+            }
+        }
+    }
+
     pub fn apply_key_down(&mut self, key: &str) -> bool {
         match key {
             "Backspace" => self.backspace(),
@@ -297,6 +376,99 @@ mod tests {
         assert!(edit.backspace());
         assert_eq!(edit.text_content, "hell");
         assert_eq!(edit.cursor_byte_index, 4);
+    }
+
+    fn move_grapheme(d: Direction) -> EditIntent {
+        EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: d,
+        }
+    }
+
+    fn extend_grapheme(d: Direction) -> EditIntent {
+        EditIntent::Extend {
+            granularity: Granularity::Grapheme,
+            direction: d,
+        }
+    }
+
+    #[test]
+    fn move_forward_grapheme_steps_the_caret_one_char() {
+        let mut edit = EditState::default();
+        edit.set("aあb"); // caret at end (5)
+        edit.set_selection(0, 0); // caret at start
+        assert!(edit.apply(move_grapheme(Direction::Forward)));
+        assert_eq!(edit.cursor_byte_index, 1, "advances past 'a'");
+        assert!(edit.apply(move_grapheme(Direction::Forward)));
+        assert_eq!(edit.cursor_byte_index, 4, "advances past the 3-byte 'あ'");
+        assert!(edit.is_caret(), "a Move stays collapsed");
+    }
+
+    #[test]
+    fn move_backward_grapheme_steps_the_caret_left() {
+        let mut edit = EditState::default();
+        edit.set("aあb"); // caret at end (5)
+        assert!(edit.apply(move_grapheme(Direction::Backward)));
+        assert_eq!(edit.cursor_byte_index, 4, "retreats past 'b'");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn move_forward_over_a_selection_collapses_to_its_right_edge() {
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(1, 4); // "ell" selected, focus at 4
+        assert!(edit.apply(move_grapheme(Direction::Forward)));
+        assert_eq!(
+            edit.cursor_byte_index, 4,
+            "collapses to the right edge, does not step to 5",
+        );
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn move_backward_over_a_selection_collapses_to_its_left_edge() {
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(4, 1); // "ell" selected, focus at 1 (drag leftwards)
+        assert!(edit.apply(move_grapheme(Direction::Backward)));
+        assert_eq!(
+            edit.cursor_byte_index, 1,
+            "collapses to the left edge regardless of which end the focus was",
+        );
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn extend_grapheme_moves_the_focus_keeping_the_anchor() {
+        let mut edit = EditState::default();
+        edit.set("hello"); // caret at end (5)
+        assert!(edit.apply(extend_grapheme(Direction::Backward)));
+        assert!(edit.apply(extend_grapheme(Direction::Backward)));
+        assert_eq!(edit.selection_anchor, 5, "anchor stays fixed at the start point");
+        assert_eq!(edit.cursor_byte_index, 3, "focus retreats two chars");
+        assert_eq!(edit.selection_range(), Some((3, 5)), "selects 'lo'");
+        // Extending back forward contracts the range toward the anchor.
+        assert!(edit.apply(extend_grapheme(Direction::Forward)));
+        assert_eq!(edit.cursor_byte_index, 4, "focus advances, shrinking the range");
+    }
+
+    #[test]
+    fn move_and_extend_by_word_use_the_shared_word_steppers() {
+        let mut edit = EditState::default();
+        edit.set("hello world"); // caret at end (11)
+        edit.set_selection(0, 0); // caret at start
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::Word,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.cursor_byte_index, 5, "word move lands at end of 'hello'");
+        assert!(edit.apply(EditIntent::Extend {
+            granularity: Granularity::Word,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.cursor_byte_index, 11, "word extend reaches end of 'world'");
+        assert_eq!(edit.selection_range(), Some((5, 11)));
     }
 
     #[test]

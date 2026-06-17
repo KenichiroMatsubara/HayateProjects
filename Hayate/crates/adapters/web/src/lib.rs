@@ -4,6 +4,8 @@ mod backend;
 mod renderer_selection;
 #[cfg(any(target_arch = "wasm32", test))]
 mod builtin_fonts;
+#[cfg(any(target_arch = "wasm32", test))]
+mod edit_keymap;
 mod generated;
 pub mod pseudo_style_dom;
 pub mod user_select;
