@@ -543,7 +543,7 @@ function buildSections(p: Palette): readonly GallerySection[] {
         {
           title: 'cursor',
           properties: ['cursor'],
-          note: 'hover each tile to see the pointer',
+          note: 'hover each tile — the pointer changes and the tile lights up',
           render: () => (
             <view style={{ display: 'flex', flexWrap: 'wrap', gap: 6, width: 168 }}>
               {(['pointer', 'grab', 'text', 'not-allowed'] as const).map((kind) => (
@@ -555,11 +555,19 @@ function buildSections(p: Palette): readonly GallerySection[] {
                   justifyContent: 'center',
                   cursor: kind,
                   backgroundColor: p.panel2,
+                  defaultColor: p.text,
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: p.line,
+                  transitionDuration: 150,
+                  transitionTiming: 'ease-out',
+                  ':hover': {
+                    backgroundColor: p.accent,
+                    defaultColor: p.black,
+                    borderColor: p.accent,
+                  },
                 }}>
-                  <text style={{ color: p.text, fontSize: 11 }}>{kind}</text>
+                  <text style={{ fontSize: 11 }}>{kind}</text>
                 </view>
               ))}
             </view>
