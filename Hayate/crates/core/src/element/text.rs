@@ -132,6 +132,47 @@ pub(crate) fn resolve_generic_family(name: &str) -> &str {
     }
 }
 
+/// Split a CSS `font-family` value into its resolved entries, in order.
+///
+/// A `font-family` is a *stack*, e.g. `"Inter, Segoe UI, system-ui, sans-serif"`.
+/// Each comma-separated entry is trimmed (and unquoted), then passed through
+/// [`resolve_generic_family`] so generic keywords become concrete bundled/Noto
+/// names. Empty entries are dropped. Returned slices borrow from `value` or are
+/// `'static` (for resolved generics).
+///
+/// Callers use this both to build the Parley font stack and to decide which
+/// named families to proactively fetch — fetching each entry individually
+/// instead of the whole comma string, which no adapter can map to a URL.
+pub(crate) fn parse_font_family_list(value: &str) -> Vec<&str> {
+    value
+        .split(',')
+        .map(|entry| entry.trim().trim_matches(['"', '\'']).trim())
+        .filter(|entry| !entry.is_empty())
+        .map(resolve_generic_family)
+        .collect()
+}
+
+/// Build the Parley font stack for a CSS `font-family` value: every list entry
+/// resolved, with the bundled default appended as the terminal fallback so any
+/// unregistered name degrades to it. Returns the bare default when the value is
+/// empty or already resolves to the default alone.
+pub(crate) fn build_font_stack(font_family: Option<&str>) -> Cow<'static, str> {
+    match font_family {
+        Some(f) if !f.is_empty() => {
+            let mut stack = parse_font_family_list(f);
+            if stack.last() != Some(&DEFAULT_FONT_FAMILY) {
+                stack.push(DEFAULT_FONT_FAMILY);
+            }
+            if stack.as_slice() == [DEFAULT_FONT_FAMILY] {
+                Cow::Borrowed(DEFAULT_FONT_FAMILY)
+            } else {
+                Cow::Owned(stack.join(", "))
+            }
+        }
+        _ => Cow::Borrowed(DEFAULT_FONT_FAMILY),
+    }
+}
+
 /// Build a Parley layout, break lines, and lower its glyph runs into
 /// `TextRunData` instances ready for the Raw Layer.
 pub fn build_text_layout(
@@ -155,17 +196,7 @@ pub fn build_text_layout(
     // Resolve generic keywords, then build a CSS font stack so unknown names
     // fall back to the bundled default. Parley resolves left-to-right and
     // silently skips unregistered names, triggering FetchFont for missing ones.
-    let stack = match font_family {
-        Some(f) if !f.is_empty() => {
-            let resolved = resolve_generic_family(f);
-            if resolved == DEFAULT_FONT_FAMILY {
-                Cow::Borrowed(DEFAULT_FONT_FAMILY)
-            } else {
-                Cow::Owned(format!("{resolved}, {DEFAULT_FONT_FAMILY}"))
-            }
-        }
-        _ => Cow::Borrowed(DEFAULT_FONT_FAMILY),
-    };
+    let stack = build_font_stack(font_family);
     builder.push_default(StyleProperty::FontFamily(FontFamily::Source(stack)));
     let mut layout: Layout<TextBrush> = builder.build(text);
     layout.break_all_lines(max_advance);
@@ -208,12 +239,7 @@ fn build_broken_ranged_layout(
             );
         }
         if let Some(ref fam) = span.font_family {
-            let resolved = resolve_generic_family(fam);
-            let stack = if resolved == DEFAULT_FONT_FAMILY {
-                std::borrow::Cow::Borrowed(DEFAULT_FONT_FAMILY)
-            } else {
-                std::borrow::Cow::Owned(format!("{resolved}, {DEFAULT_FONT_FAMILY}"))
-            };
+            let stack = build_font_stack(Some(fam));
             builder.push(
                 StyleProperty::FontFamily(FontFamily::Source(stack)),
                 range.clone(),
@@ -638,5 +664,28 @@ mod tests {
             styles.iter().all(|s| *s == FontStyle::Italic),
             "expected italic font style on all runs, got {styles:?}"
         );
+    }
+
+    #[test]
+    fn parse_font_family_list_splits_resolves_and_unquotes_entries() {
+        // Whitespace, quotes, and a trailing generic are all handled per entry.
+        assert_eq!(
+            parse_font_family_list("Inter, \"Segoe UI\" , system-ui, sans-serif"),
+            vec!["Inter", "Segoe UI", DEFAULT_FONT_FAMILY, DEFAULT_FONT_FAMILY],
+        );
+        // Empty entries (e.g. a trailing comma) are dropped.
+        assert_eq!(parse_font_family_list("Inter,,"), vec!["Inter"]);
+        assert!(parse_font_family_list("  ").is_empty());
+    }
+
+    #[test]
+    fn build_font_stack_appends_default_as_terminal_fallback() {
+        // A named family gains the bundled default as its final fallback.
+        assert_eq!(build_font_stack(Some("Inter")), "Inter, Noto Sans");
+        // A list already ending in the default is not duplicated.
+        assert_eq!(build_font_stack(Some("Inter, sans-serif")), "Inter, Noto Sans");
+        // sans-serif alone collapses to the bare default.
+        assert_eq!(build_font_stack(Some("sans-serif")), DEFAULT_FONT_FAMILY);
+        assert_eq!(build_font_stack(None), DEFAULT_FONT_FAMILY);
     }
 }

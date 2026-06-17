@@ -332,15 +332,18 @@ impl LayoutPass {
             // register_font() → fonts_dirty cycle will re-shape with the real font.
             if let Some(el) = elements.get(&eid) {
                 if let Some(ref fam) = el.visual.font_family {
-                    let resolved = text::resolve_generic_family(fam);
-                    if resolved != text::DEFAULT_FONT_FAMILY
-                        && font_fetches.should_request(resolved)
-                        && font_cx.collection.family_id(resolved).is_none()
-                    {
-                        font_fetches.mark_requested(resolved);
-                        event_queue.push(Event::FetchFont {
-                            family: resolved.to_string(),
-                        });
+                    // A `font-family` is a stack: resolve and fetch each named
+                    // entry individually, not the whole comma string (issue #344).
+                    for resolved in text::parse_font_family_list(fam) {
+                        if resolved != text::DEFAULT_FONT_FAMILY
+                            && font_fetches.should_request(resolved)
+                            && font_cx.collection.family_id(resolved).is_none()
+                        {
+                            font_fetches.mark_requested(resolved);
+                            event_queue.push(Event::FetchFont {
+                                family: resolved.to_string(),
+                            });
+                        }
                     }
                 }
             }
@@ -433,15 +436,18 @@ impl LayoutPass {
                     }
                 }
                 if let Some(ref fam) = font_family {
-                    let resolved = text::resolve_generic_family(fam);
-                    if resolved != text::DEFAULT_FONT_FAMILY
-                        && font_fetches.should_request(resolved)
-                        && font_cx.collection.family_id(resolved).is_none()
-                    {
-                        font_fetches.mark_requested(resolved);
-                        event_queue.push(Event::FetchFont {
-                            family: resolved.to_string(),
-                        });
+                    // A `font-family` is a stack: resolve and fetch each named
+                    // entry individually, not the whole comma string (issue #344).
+                    for resolved in text::parse_font_family_list(fam) {
+                        if resolved != text::DEFAULT_FONT_FAMILY
+                            && font_fetches.should_request(resolved)
+                            && font_cx.collection.family_id(resolved).is_none()
+                        {
+                            font_fetches.mark_requested(resolved);
+                            event_queue.push(Event::FetchFont {
+                                family: resolved.to_string(),
+                            });
+                        }
                     }
                 }
                 if let Some(el) = elements.get_mut(&eid) {
