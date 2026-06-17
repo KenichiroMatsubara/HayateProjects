@@ -846,9 +846,28 @@ impl ElementTree {
             if let Some((cx, cy, cw, ch)) = self.layout.geometry(child) {
                 *max_x = max_x.max(cx - origin_x + cw);
                 *max_y = max_y.max(cy - origin_y + ch);
-                self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
+                // A child that clips its own overflow (a nested ScrollView, or an
+                // `overflow: hidden` box — the same elements `scene_build` wraps in
+                // a Clip) confines its descendants to its own box. That clipped
+                // overflow is the child's private content, not ours: recursing into
+                // it would inflate our content size and make us scrollable into
+                // empty space past our real content. Bound the contribution to the
+                // child's box by not descending past the clip.
+                if !self.clips_overflow(child) {
+                    self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
+                }
             }
         }
+    }
+
+    /// Whether `id` clips its overflow, so its descendants do not contribute to an
+    /// ancestor's scrollable content. Mirrors the Clip-wrapper condition in
+    /// `scene_build` (ScrollView always clips; otherwise `overflow: hidden`).
+    fn clips_overflow(&self, id: ElementId) -> bool {
+        self.elements.get(&id).is_some_and(|el| {
+            el.kind == ElementKind::ScrollView
+                || el.visual.overflow == crate::element::style::OverflowValue::Hidden
+        })
     }
 
     pub fn element_set_style(&mut self, id: ElementId, props: &[StyleProp]) {
