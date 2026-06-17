@@ -80,6 +80,50 @@ fn apply_edit_intent_is_the_os_independent_entry_point() {
 }
 
 #[test]
+fn boundary_intents_move_and_extend_the_caret_to_the_field_ends() {
+    // ADR-0103 / #360: Home/End and Ctrl+Home/End map (in the adapter) to
+    // Line/Doc boundary intents; core applies them through the OS-independent
+    // seam. In single-line semantics every boundary is the field end.
+    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+
+    // Home (Move/LineBoundary/Backward) collapses the caret to the start.
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Move {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Backward,
+        },
+    ));
+    assert_eq!(tree.element_caret_byte_index(input), Some(0), "Home → field start");
+    assert!(tree.element_text_selection(input).is_none(), "a Move stays collapsed");
+
+    // Shift+End (Extend/LineBoundary/Forward) selects from the caret to the end.
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Extend {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Forward,
+        },
+    ));
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((0, 11)),
+        "Shift+End extends the selection to the field end, anchor fixed at 0",
+    );
+
+    // Ctrl+Home (Move/DocBoundary/Backward) collapses back to the start.
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Move {
+            granularity: Granularity::DocBoundary,
+            direction: Direction::Backward,
+        },
+    ));
+    assert_eq!(tree.element_caret_byte_index(input), Some(0));
+    assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
 fn arrow_keys_do_not_disturb_an_active_ime_composition() {
     // ADR-0103: a caret key while an IME preedit is active must not edit or break
     // the composition. The intent is not consumed; the preedit and content stay.

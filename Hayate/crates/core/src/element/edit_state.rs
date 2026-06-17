@@ -74,6 +74,21 @@ pub enum Direction {
 pub enum Granularity {
     Grapheme,
     Word,
+    /// The boundary of the current display line — Home/End (or macOS Cmd+←/→).
+    /// In single-line (`<input>`) semantics the line *is* the whole field, so
+    /// this resolves to the field start/end; multi-line display-line ends are #7.
+    LineBoundary,
+    /// The boundary of the whole field — Ctrl+Home/End (or macOS Cmd+↑/↓).
+    DocBoundary,
+}
+
+impl Granularity {
+    /// Whether this granularity steps to an absolute field/line boundary rather
+    /// than one grapheme/word relative to the caret. Boundary motions (Home/End)
+    /// jump to the boundary even over a selection, unlike the arrow keys.
+    fn is_boundary(self) -> bool {
+        matches!(self, Granularity::LineBoundary | Granularity::DocBoundary)
+    }
 }
 
 /// The closed edit-command vocabulary applied through the single editing seam
@@ -316,6 +331,13 @@ impl EditState {
             (Granularity::Grapheme, Direction::Forward) => next_grapheme(&self.text_content, offset),
             (Granularity::Word, Direction::Backward) => prev_word(&self.text_content, offset),
             (Granularity::Word, Direction::Forward) => next_word(&self.text_content, offset),
+            // Single-line semantics (#360): the line and the document both span
+            // the whole field, so either boundary collapses to the field ends.
+            // Multi-line display-line boundaries are #7.
+            (Granularity::LineBoundary | Granularity::DocBoundary, Direction::Backward) => 0,
+            (Granularity::LineBoundary | Granularity::DocBoundary, Direction::Forward) => {
+                self.text_content.len()
+            }
         }
     }
 
@@ -329,16 +351,20 @@ impl EditState {
             } => {
                 // Chromium: a plain arrow over a selection collapses to the
                 // directional edge without stepping; over a caret it steps one
-                // unit and stays collapsed.
-                if let Some((start, end)) = self.selection_range() {
-                    let edge = match direction {
-                        Direction::Backward => start,
-                        Direction::Forward => end,
-                    };
-                    self.collapse_to(edge);
-                } else {
-                    let next = self.step(granularity, direction, self.cursor_byte_index);
-                    self.collapse_to(next);
+                // unit and stays collapsed. A boundary motion (Home/End) ignores
+                // the selection and jumps straight to the boundary.
+                match self.selection_range() {
+                    Some((start, end)) if !granularity.is_boundary() => {
+                        let edge = match direction {
+                            Direction::Backward => start,
+                            Direction::Forward => end,
+                        };
+                        self.collapse_to(edge);
+                    }
+                    _ => {
+                        let next = self.step(granularity, direction, self.cursor_byte_index);
+                        self.collapse_to(next);
+                    }
                 }
                 true
             }
@@ -385,6 +411,29 @@ mod tests {
         }
     }
 
+    #[test]
+    fn move_to_line_boundary_jumps_to_field_start_and_end() {
+        // Single-line semantics (#360): line end = field end. Home (Backward)
+        // collapses the caret to 0, End (Forward) to the content length.
+        let mut edit = EditState::default();
+        edit.set("hello"); // caret at end (5)
+        edit.set_selection(2, 2); // caret in the middle
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Backward,
+        }));
+        assert_eq!(edit.cursor_byte_index, 0, "Home lands at the field start");
+        assert!(edit.is_caret());
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.cursor_byte_index, 5, "End lands at the field end");
+        assert!(edit.is_caret());
+    }
+
     fn extend_grapheme(d: Direction) -> EditIntent {
         EditIntent::Extend {
             granularity: Granularity::Grapheme,
@@ -402,6 +451,47 @@ mod tests {
         assert!(edit.apply(move_grapheme(Direction::Forward)));
         assert_eq!(edit.cursor_byte_index, 4, "advances past the 3-byte 'あ'");
         assert!(edit.is_caret(), "a Move stays collapsed");
+    }
+
+    #[test]
+    fn move_to_doc_boundary_jumps_to_field_start_and_end() {
+        // Ctrl+Home/End. In single-line semantics the document boundary equals
+        // the line boundary, so both collapse to the field ends (#360).
+        let mut edit = EditState::default();
+        edit.set("hello world");
+        edit.set_selection(4, 4);
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::DocBoundary,
+            direction: Direction::Backward,
+        }));
+        assert_eq!(edit.cursor_byte_index, 0, "Ctrl+Home lands at the start");
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::DocBoundary,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.cursor_byte_index, 11, "Ctrl+End lands at the end");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn move_to_boundary_over_a_selection_jumps_to_the_boundary_not_the_edge() {
+        // Unlike a plain arrow (which collapses to the selection edge), Home/End
+        // over a selection jumps to the field boundary and collapses there.
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(1, 4); // "ell" selected, focus at 4
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(
+            edit.cursor_byte_index, 5,
+            "End jumps past the selection's right edge (4) to the field end (5)",
+        );
+        assert!(edit.is_caret());
     }
 
     #[test]
@@ -469,6 +559,31 @@ mod tests {
         }));
         assert_eq!(edit.cursor_byte_index, 11, "word extend reaches end of 'world'");
         assert_eq!(edit.selection_range(), Some((5, 11)));
+    }
+
+    #[test]
+    fn extend_to_boundary_selects_to_the_field_end_keeping_the_anchor() {
+        // Shift+End from a mid-field caret selects from the caret to the field
+        // end, anchor fixed; Shift+Home then selects back to the start.
+        let mut edit = EditState::default();
+        edit.set("hello world");
+        edit.set_selection(6, 6); // caret before "world"
+
+        assert!(edit.apply(EditIntent::Extend {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.selection_anchor, 6, "anchor stays put");
+        assert_eq!(edit.cursor_byte_index, 11, "focus reaches the field end");
+        assert_eq!(edit.selection_range(), Some((6, 11)), "selects 'world'");
+
+        assert!(edit.apply(EditIntent::Extend {
+            granularity: Granularity::DocBoundary,
+            direction: Direction::Backward,
+        }));
+        assert_eq!(edit.selection_anchor, 6, "anchor still fixed");
+        assert_eq!(edit.cursor_byte_index, 0, "focus crosses to the field start");
+        assert_eq!(edit.selection_range(), Some((0, 6)), "now selects 'hello '");
     }
 
     #[test]
