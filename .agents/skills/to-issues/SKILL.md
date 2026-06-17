@@ -25,10 +25,10 @@ Break the plan into **tracer bullet** issues. Each issue is a thin vertical slic
 
 Slices are either 'AFK' or '完全人力 (fully-manual)'. **HITL slices are banned** — never create a slice that mixes AI implementation with a human feedback loop (e.g. an agent tuning constants while a human reviews the values).
 
-- **AFK** slices are implemented and merged with no human in the loop. To keep them that way they MUST avoid magic numbers: extract every tunable value into a named constant so the structure ships complete and the constants stand ready as the knobs a human can later turn. An AFK slice that would otherwise need a human tuning round is not done — it has leftover magic numbers.
-- **完全人力 (fully-manual)** slices are done entirely by a human with no AI involvement: constant/parameter tuning, taste calls, design review, anything where AI in the loop is just noise.
+- **AFK** slices just get the implementation done end-to-end, with no human in the loop. The constant *values* may be arbitrary/placeholder — getting them right is NOT AFK's job. The one rule is that every tunable value MUST be a named constant, never an inline magic number, so a human can tune it afterward. An AFK slice is "done" when the implementation lands, even if the numbers are still guesses.
+- **完全人力 (fully-manual)** slices are done entirely by a human with no AI involvement: tuning those constant values, taste calls, design review — anything where AI in the loop is just noise.
 
-When work seems to need a feedback loop, split it instead of marking it HITL: an AFK slice that lands the structure with named constants, followed by a 完全人力 slice that tunes those constants. Prefer AFK, and sequence each 完全人力 slice after the AFK slices it builds on.
+When work seems to need a feedback loop, never mark it HITL — that half-measure is pure friction. Split it: an AFK slice that finishes the implementation with named constants at placeholder values, followed by a 完全人力 slice that tunes them. Prefer AFK, and sequence each 完全人力 slice after the AFK slices it builds on.
 
 <vertical-slice-rules>
 - Each slice delivers a narrow but COMPLETE path through every layer (schema, API, UI, tests)
@@ -51,7 +51,7 @@ Ask the user:
 - Are the dependency relationships correct?
 - Should any slices be merged or split further?
 - Are the correct slices marked as AFK and 完全人力 (fully-manual)? (No HITL slices — any feedback-loop work split into AFK + 完全人力.)
-- Do the AFK slices avoid magic numbers, with every tunable value pulled into a named constant?
+- Do the AFK slices avoid magic numbers, with every tunable value pulled into a named constant? (Placeholder values are fine — tuning is a 完全人力 follow-up.)
 
 Iterate until the user approves the breakdown.
 

@@ -33,7 +33,7 @@ Five **state** roles:
 - `ready-for-human` — 完全人力 (fully-manual): needs a human, with no AI in the loop (constant/parameter tuning, taste calls, design review, manual testing)
 - `wontfix` — will not be actioned
 
-There is no HITL state — an issue is either AFK (`ready-for-agent`) or 完全人力 (`ready-for-human`), never an AI-plus-human feedback loop. If an issue genuinely needs both, it should have been split during `/to-issues` into an AFK structure slice (magic numbers extracted into named constants) and a 完全人力 tuning slice that follows it; if it wasn't, flag that to the maintainer rather than triaging it as a single mixed-mode issue.
+There is no HITL state — an issue is either AFK (`ready-for-agent`) or 完全人力 (`ready-for-human`), never an AI-plus-human feedback loop. If an issue genuinely needs both, it should have been split during `/to-issues` into an AFK slice that finishes the implementation (magic numbers extracted into named constants, values can be placeholder) and a 完全人力 tuning slice that follows it; if it wasn't, flag that to the maintainer rather than triaging it as a single mixed-mode issue.
 
 Every triaged issue should carry exactly one category role and one state role. If state roles conflict, flag it and ask the maintainer before doing anything else.
 
