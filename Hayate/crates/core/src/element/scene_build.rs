@@ -880,11 +880,18 @@ fn emit_element<S: AnchorSink>(
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
-        // Selection highlight paints behind the text (ADR-0097, #271).
+        // Selection highlight paints behind the text (ADR-0097, #271), but only
+        // for the focused text-input (ADR-0104): an unfocused field hides its
+        // highlight even when the range is still remembered in EditState, so
+        // Mouse/Pen blur reads as "hidden + remembered" and at most one
+        // (= the focused) selection ever lights up across the document.
         if let Some(cl) = el.content_layout.as_ref() {
+            let active_range = (tree.focused_element() == Some(id))
+                .then(|| el.edit.as_ref().and_then(|e| e.selection_range()))
+                .flatten();
             emit_edit_selection_highlight(
                 &cl.layout,
-                el.edit.as_ref().and_then(|e| e.selection_range()),
+                active_range,
                 content_x,
                 content_y,
                 ctx.sg,
