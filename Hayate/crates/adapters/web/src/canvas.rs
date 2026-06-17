@@ -675,8 +675,18 @@ impl HayateElementRenderer {
         self.tree.selection().is_some()
     }
 
-    /// Handle a key press on the focused element (edit semantics in core — ADR-0069).
+    /// Handle a key press on the focused element. Editing keys are mapped to an
+    /// [`EditIntent`] by the adapter's OS keymap and applied through core's
+    /// editing seam (ADR-0103); everything else falls through to the raw
+    /// `on_key_down` path (non-editing keys and the app `KeyDown` notification).
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
+        if let Some(intent) = crate::edit_keymap::key_to_edit_intent(key, modifiers) {
+            if let Some(focused) = self.tree.focused_element() {
+                if self.tree.apply_edit_intent(focused, intent) {
+                    return;
+                }
+            }
+        }
         self.tree.on_key_down(key, modifiers);
     }
 

@@ -739,6 +739,17 @@ impl ElementTree {
             .and_then(|edit| edit.selection_range())
     }
 
+    /// The text-input's caret (the selection focus) as a byte offset into its
+    /// `text_content`, or `None` when the element is not an editable text-input.
+    /// The observable output for caret-movement intents (ADR-0103): a collapsed
+    /// caret reports its position even though `element_text_selection` is `None`.
+    pub fn element_caret_byte_index(&self, id: ElementId) -> Option<usize> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.edit.as_ref())
+            .map(|edit| edit.cursor_byte_index)
+    }
+
     /// The text-input's active IME composition underlines as display-text byte
     /// ranges with their weight (ADR-0102), or empty when no composition is
     /// active. The query side of `element_set_preedit_with_clauses`.
