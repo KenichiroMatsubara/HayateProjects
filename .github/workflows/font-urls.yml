@@ -1,0 +1,56 @@
+name: Font URLs
+
+# The web adapter pulls CDN fonts on demand from google/fonts via jsdelivr. That
+# upstream moves files around (license dir ofl/↔apache/, variable-font axis tags
+# like [slnt,wght]→[opsz,wght]), so a URL in fonts.json can silently start 404ing
+# long after it was added. This job catches that:
+#   - the unit tests pin the checker's own behaviour (deterministic, fake fetch);
+#   - the live check actually fetches every URL and fails on a 404/non-font.
+#
+# It runs whenever fonts.json or the checker changes, and weekly to catch upstream
+# drift on the moving `@main` ref even when nothing in this repo changed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Hayate/crates/adapters/web/fonts.json"
+      - "Hayate/scripts/check-font-urls.mjs"
+      - "Hayate/scripts/check-font-urls.lib.mjs"
+      - "Hayate/scripts/check-font-urls.test.mjs"
+      - ".github/workflows/font-urls.yml"
+  pull_request:
+    paths:
+      - "Hayate/crates/adapters/web/fonts.json"
+      - "Hayate/scripts/check-font-urls.mjs"
+      - "Hayate/scripts/check-font-urls.lib.mjs"
+      - "Hayate/scripts/check-font-urls.test.mjs"
+      - ".github/workflows/font-urls.yml"
+  schedule:
+    # Mondays 06:00 UTC — surface upstream drift before it bites a release.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: font-urls-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Validate fonts.json URLs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Deterministic: no network. Guards the checker logic itself.
+      - name: Unit-test the checker
+        run: node --test Hayate/scripts/*.test.mjs
+
+      # Live: actually fetches every URL. Retries/timeouts inside the script
+      # absorb transient blips; a real 404/non-font fails the job.
+      - name: Validate live font URLs
+        run: node Hayate/scripts/check-font-urls.mjs

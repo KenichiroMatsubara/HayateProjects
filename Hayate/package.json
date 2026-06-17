@@ -7,6 +7,8 @@
   "scripts": {
     "build": "bash scripts/build-wasm.sh",
     "check": "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
+    "check:fonts": "node scripts/check-font-urls.mjs",
+    "test:fonts": "node --test scripts/*.test.mjs",
     "validate:proto": "node proto/scripts/validate-spec.mjs",
     "generate:proto": "cargo run -p hayate-proto-generator",
     "check:proto": "npm run validate:proto && npm run generate:proto && git diff --exit-code proto/generated",
