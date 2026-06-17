@@ -196,8 +196,9 @@ mod tests {
         tree.set_viewport(400.0, 800.0);
         tree.render(0.0);
 
-        // The paragraph sits at absolute (24, 24); drag across its first glyphs.
-        tree.on_pointer_down(28.0, 32.0);
+        // The paragraph sits at absolute (24, 24); Touch-drag across its first
+        // glyphs — the floating toolbar is Touch-gated chrome (ADR-0104, #365).
+        tree.on_pointer_down_with_kind(28.0, 32.0, 0, hayate_core::PointerKind::Touch);
         tree.on_pointer_move(120.0, 32.0);
         tree.on_pointer_up(120.0, 32.0);
 

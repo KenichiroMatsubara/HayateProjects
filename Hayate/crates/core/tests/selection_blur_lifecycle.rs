@@ -74,9 +74,11 @@ fn input_with_outside(content: &str) -> (ElementTree, ElementId, ElementId) {
     (tree, input, pad)
 }
 
-/// Drag-select a range inside the top input (its content sits on the y≈20 row).
+/// Touch drag-select a range inside the top input (its content sits on the y≈20
+/// row). Touch modality so the selection's chrome is shown (ADR-0104, #365);
+/// chrome tests then assert how blur/refocus dismisses and restores it.
 fn drag_select(tree: &mut ElementTree) {
-    tree.on_pointer_down(2.0, 20.0);
+    tree.on_pointer_down_with_kind(2.0, 20.0, 0, PointerKind::Touch);
     tree.on_pointer_move(70.0, 20.0);
 }
 
@@ -173,9 +175,10 @@ fn unfocused_input_shows_no_chrome_even_when_it_remembers_a_range() {
     tree.render(0.0);
     assert!(tree.selection_toolbar().is_some(), "the focused selection shows chrome");
 
-    // A Mouse blur keeps the range but hides the chrome (active = focused,
+    // Losing focus without a fresh pointer interaction (e.g. focus moves
+    // elsewhere) keeps the Touch range but hides the chrome (active = focused,
     // ADR-0104): the toolbar must not linger over an unfocused field.
-    tree.on_pointer_down_with_kind(100.0, 100.0, 0, PointerKind::Mouse);
+    tree.element_blur(input);
     tree.render(0.0);
     assert!(
         tree.element_text_selection(input).is_some(),
@@ -186,7 +189,8 @@ fn unfocused_input_shows_no_chrome_even_when_it_remembers_a_range() {
         "an unfocused text-input shows no selection chrome",
     );
 
-    // Refocusing brings the chrome back with the remembered range.
+    // Refocusing the still-Touch field brings the chrome back with the
+    // remembered range — chrome is focus-linked, not consumed by the blur.
     tree.element_focus(input);
     tree.render(0.0);
     assert!(tree.selection_toolbar().is_some(), "refocus restores the chrome");
