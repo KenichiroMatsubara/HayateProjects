@@ -95,8 +95,12 @@ impl Granularity {
 /// [`EditState::apply`] (ADR-0103, ADR-0071). `Move` repositions the caret;
 /// `Extend` grows or shrinks the selection by moving the focus while the anchor
 /// stays fixed; `Delete` removes one `granularity` step (or the selected range)
-/// in `direction`. Later slices add `SelectAll` / clipboard intents without
-/// widening the seam.
+/// in `direction`. `SelectAll` selects the whole field. `Copy` / `Cut` / `Paste`
+/// are clipboard members of the vocabulary, but the system clipboard is a
+/// Platform Adapter responsibility (ADR-0097): `EditState` holds no clipboard, so
+/// [`EditState::apply`] consumes only the pure-state members (`Move` / `Extend` /
+/// `Delete` / `SelectAll`) and reports the clipboard members unconsumed, leaving
+/// their read/write to the `ElementTree` editing seam that owns the `Clipboard`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditIntent {
     Move {
@@ -111,6 +115,14 @@ pub enum EditIntent {
         granularity: Granularity,
         direction: Direction,
     },
+    /// Select the whole field content (Ctrl/Cmd+A).
+    SelectAll,
+    /// Copy the selection to the system clipboard (Ctrl/Cmd+C). No state change.
+    Copy,
+    /// Cut the selection: copy it to the clipboard, then delete it (Ctrl/Cmd+X).
+    Cut,
+    /// Replace the selection with the clipboard text (Ctrl/Cmd+V).
+    Paste,
 }
 
 /// Text-input edit model (ADR-0069). Owned by TextInput elements only.
@@ -401,6 +413,18 @@ impl EditState {
                 self.collapse_to(start);
                 true
             }
+            EditIntent::SelectAll => {
+                // Anchor at the start, focus at the end — the whole field becomes
+                // the selected range (collapsed at 0 when the field is empty).
+                self.set_selection(0, self.text_content.len());
+                true
+            }
+            // Clipboard members cross the Platform Adapter boundary (ADR-0097):
+            // EditState owns no clipboard, so it cannot read the selection out
+            // (Copy), capture-then-delete it (Cut), or pull text in (Paste). The
+            // `ElementTree` seam that holds the `Clipboard` resolves these; here
+            // they are reported unconsumed so this layer never half-applies them.
+            EditIntent::Copy | EditIntent::Cut | EditIntent::Paste => false,
         }
     }
 
@@ -435,6 +459,33 @@ mod tests {
             granularity: Granularity::Grapheme,
             direction: d,
         }
+    }
+
+    #[test]
+    fn select_all_spans_the_whole_content() {
+        // SelectAll (Ctrl/Cmd+A) is a pure-state member of the editing seam: it
+        // anchors at the field start and moves the focus to the end, so the whole
+        // content becomes the selected range regardless of the prior caret.
+        let mut edit = EditState::default();
+        edit.set("héllo"); // caret collapsed at end
+        edit.set_selection(2, 2);
+
+        assert!(edit.apply(EditIntent::SelectAll));
+
+        assert_eq!(
+            edit.selection_range(),
+            Some((0, "héllo".len())),
+            "the entire content is selected",
+        );
+    }
+
+    #[test]
+    fn select_all_on_empty_content_stays_collapsed() {
+        // Nothing to select: the range collapses at 0 (no spurious selection).
+        let mut edit = EditState::default();
+        assert!(edit.apply(EditIntent::SelectAll));
+        assert!(edit.is_caret());
+        assert_eq!(edit.cursor_byte_index, 0);
     }
 
     #[test]

@@ -31,6 +31,15 @@ const MOD_META: u32 = 8;
 /// - `ArrowUp`/`ArrowDown` with Meta (macOS Cmd+↑/↓): the document boundary.
 /// - `Backspace`/`Delete`: remove one char backward / forward.
 pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    // Clipboard / select-all on the primary modifier — Ctrl (Win/Linux) or
+    // Meta/Cmd (macOS), the OS abstraction core calls `MOD_PRIMARY` (ADR-0103
+    // §5③, #361). Checked first so Ctrl/Cmd+A/C/X/V never fall through to text
+    // input; bare a/c/x/v stay printable.
+    if modifiers & (MOD_CTRL | MOD_META) != 0 {
+        if let Some(intent) = clipboard_intent(key) {
+            return Some(intent);
+        }
+    }
     // Char delete keys (ADR-0103): Backspace backward, Delete forward. Word
     // granularity (Ctrl/Alt) is a later slice — char only here.
     match key {
@@ -89,6 +98,23 @@ pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
             direction,
         }
     })
+}
+
+/// Map a letter (with the primary modifier already established by the caller) to
+/// its clipboard / select-all [`EditIntent`] (ADR-0103 §5③). `None` for any other
+/// key, so the press falls through to the raw input path.
+fn clipboard_intent(key: &str) -> Option<EditIntent> {
+    if key.eq_ignore_ascii_case("a") {
+        Some(EditIntent::SelectAll)
+    } else if key.eq_ignore_ascii_case("c") {
+        Some(EditIntent::Copy)
+    } else if key.eq_ignore_ascii_case("x") {
+        Some(EditIntent::Cut)
+    } else if key.eq_ignore_ascii_case("v") {
+        Some(EditIntent::Paste)
+    } else {
+        None
+    }
 }
 
 /// The boundary granularity for a Home/End press: the whole field with Ctrl,
@@ -276,5 +302,28 @@ mod tests {
         // Enter / printable keys fall through to raw on_key_down.
         assert_eq!(key_to_edit_intent("Enter", 0), None);
         assert_eq!(key_to_edit_intent("a", 0), None);
+    }
+
+    #[test]
+    fn primary_modifier_letters_map_to_clipboard_and_select_all_intents() {
+        // Ctrl (Win/Linux) or Meta/Cmd (macOS) — the primary modifier — turns
+        // a/c/x/v into the clipboard / select-all members of the vocabulary
+        // (ADR-0103 §5③, #361). Both modifiers and either letter case map.
+        for primary in [MOD_CTRL, MOD_META] {
+            assert_eq!(key_to_edit_intent("a", primary), Some(EditIntent::SelectAll));
+            assert_eq!(key_to_edit_intent("A", primary), Some(EditIntent::SelectAll));
+            assert_eq!(key_to_edit_intent("c", primary), Some(EditIntent::Copy));
+            assert_eq!(key_to_edit_intent("x", primary), Some(EditIntent::Cut));
+            assert_eq!(key_to_edit_intent("v", primary), Some(EditIntent::Paste));
+        }
+    }
+
+    #[test]
+    fn bare_letters_are_not_clipboard_intents() {
+        // Without the primary modifier these are printable text, not commands —
+        // they must fall through so typing "c"/"v" inserts characters.
+        assert_eq!(key_to_edit_intent("c", 0), None);
+        assert_eq!(key_to_edit_intent("v", 0), None);
+        assert_eq!(key_to_edit_intent("a", MOD_ALT), None);
     }
 }

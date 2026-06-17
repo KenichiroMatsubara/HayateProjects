@@ -1,9 +1,11 @@
 //! ADR-0069: EditState via ElementTree public input handlers.
 
 use hayate_core::{
-    CompositionClause, CompositionUnderline, Dimension, Direction, EditIntent, ElementKind,
-    ElementTree, Granularity, StyleProp,
+    Clipboard, CompositionClause, CompositionUnderline, Dimension, Direction, EditIntent,
+    ElementKind, ElementTree, Granularity, StyleProp,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
 
@@ -602,4 +604,127 @@ fn element_character_bounds_respects_padding() {
         "IME bounds x should be inset by padding-left, got x={}",
         bounds.x
     );
+}
+
+// ── Clipboard key path (ADR-0103 §5③, #361) ──────────────────────────────────
+// Ctrl/Cmd+A/C/X/V reach a focused text-input through the same EditIntent seam
+// as the arrows. The primary modifier is Ctrl on Win/Linux (Cmd maps to it in
+// the adapter keymap); the core test drives the Ctrl bit directly.
+const CTRL: u32 = 2; // MODIFIER_CTRL (proto/spec wire contract).
+
+/// A `Clipboard` double recording writes and serving a preset read value, so a
+/// test can assert what crossed the Platform Adapter boundary (mirrors the
+/// harness in `selection_toolbar.rs`).
+#[derive(Default, Clone)]
+struct FakeClipboard {
+    writes: Rc<RefCell<Vec<String>>>,
+    read: Rc<RefCell<Option<String>>>,
+}
+
+impl Clipboard for FakeClipboard {
+    fn write_text(&self, text: &str) {
+        self.writes.borrow_mut().push(text.to_string());
+    }
+    fn read_text(&self) -> Option<String> {
+        self.read.borrow().clone()
+    }
+}
+
+#[test]
+fn ctrl_a_selects_all_in_the_focused_text_input() {
+    // ADR-0103: Ctrl/Cmd+A used to be swallowed by the document-selection path
+    // (which only fires when a read-only Selection exists); a focused text-input
+    // now receives it as a SelectAll EditIntent and selects its whole content.
+    let (mut tree, input) = focused_input("hello"); // caret collapsed at end (5)
+
+    tree.on_key_down("a", CTRL);
+
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((0, 5)),
+        "Ctrl+A selects the entire field content",
+    );
+}
+
+#[test]
+fn ctrl_c_copies_the_text_input_selection_to_the_clipboard() {
+    // Ctrl/Cmd+C on a focused text-input writes its selected text through the
+    // Platform Adapter clipboard, leaving the selection in place (Chromium).
+    let (mut tree, input) = focused_input("hello"); // caret at end
+    let clipboard = FakeClipboard::default();
+    tree.set_clipboard(Box::new(clipboard.clone()));
+    tree.on_key_down("a", CTRL); // select "hello"
+
+    tree.on_key_down("c", CTRL);
+
+    assert_eq!(clipboard.writes.borrow().as_slice(), &["hello".to_string()]);
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((0, 5)),
+        "Copy leaves the selection in place",
+    );
+}
+
+#[test]
+fn ctrl_x_cuts_the_text_input_selection() {
+    // Ctrl/Cmd+X writes the selection to the clipboard and removes it from the
+    // field, collapsing the caret to the cut point (ADR-0097, ADR-0103 §5③).
+    let (mut tree, input) = focused_input("hello world"); // caret at end
+    let clipboard = FakeClipboard::default();
+    tree.set_clipboard(Box::new(clipboard.clone()));
+    // Select the trailing "world": Shift+Left five times from the end.
+    for _ in 0..5 {
+        tree.on_key_down("ArrowLeft", SHIFT);
+    }
+    assert_eq!(tree.element_text_selection(input), Some((6, 11)));
+
+    tree.on_key_down("x", CTRL);
+
+    assert_eq!(clipboard.writes.borrow().as_slice(), &["world".to_string()]);
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "hello ",
+        "Cut removes exactly the selected range",
+    );
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "Cut collapses the caret",
+    );
+}
+
+#[test]
+fn ctrl_v_pastes_clipboard_text_replacing_the_selection() {
+    // Ctrl/Cmd+V pulls text through the (synchronous) clipboard read and inserts
+    // it, replacing any selected range (replace-on-type, ADR-0097).
+    let (mut tree, input) = focused_input("hello world"); // caret at end
+    let clipboard = FakeClipboard::default();
+    *clipboard.read.borrow_mut() = Some("X".to_string());
+    tree.set_clipboard(Box::new(clipboard.clone()));
+    // Select the trailing "world".
+    for _ in 0..5 {
+        tree.on_key_down("ArrowLeft", SHIFT);
+    }
+
+    tree.on_key_down("v", CTRL);
+
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "hello X",
+        "paste replaces the selected range with the clipboard text",
+    );
+}
+
+#[test]
+fn ctrl_v_pastes_at_a_collapsed_caret_in_an_empty_field() {
+    // The keyboard paste targets the focused field directly, so it works even
+    // with no selection (a collapsed caret in an empty field) — the toolbar's
+    // selection-gated paste could not reach this case.
+    let (mut tree, input) = focused_input(""); // empty, caret at 0
+    let clipboard = FakeClipboard::default();
+    *clipboard.read.borrow_mut() = Some("pasted".to_string());
+    tree.set_clipboard(Box::new(clipboard.clone()));
+
+    tree.on_key_down("v", CTRL);
+
+    assert_eq!(tree.element_get_text_content(input), "pasted");
 }

@@ -10,9 +10,9 @@ use crate::resize_observer::{self, ResizeObserverGuard};
 use crate::scroll_drag::{self, MoveOutcome, ScrollGesture};
 
 use hayate_core::{
-    BorderStyleValue, Color, CursorValue, DocumentEventKind, ElementId, ElementKind, ElementTree,
-    Event, FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat, StyleProp,
-    StylePropKind, TextDecorationValue,
+    BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId, ElementKind,
+    ElementTree, Event, FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat,
+    StyleProp, StylePropKind, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -41,6 +41,10 @@ type FontFailureQueue = Rc<RefCell<Vec<String>>>;
 /// Per-family failed-attempt count, used only to space retries with exponential
 /// backoff. Core owns the *budget* (when to give up); this owns the *timing*.
 type FontFetchAttempts = Rc<RefCell<HashMap<String, u32>>>;
+/// Async clipboard reads (Ctrl/Cmd+V) resolved out-of-band: each spawned
+/// `readText()` pushes its `(target, text)` here, drained into core via
+/// `element_paste` at the start of the next `render()` (ADR-0097, #361).
+type PendingPaste = Rc<RefCell<Vec<(ElementId, String)>>>;
 
 /// Backoff before reporting a failed fetch: `BASE << (attempt - 1)`, capped.
 /// A fresh GitHub Pages deploy can see jsdelivr return a transient 403/429, so
@@ -132,6 +136,10 @@ pub struct HayateElementRenderer {
     /// Timestamp of the previous `render()` frame, for the inter-frame `dt` the
     /// momentum integrator advances by. `None` before the first frame.
     last_frame_ms: Option<f64>,
+    /// Texts read from the async clipboard for a pending Ctrl/Cmd+V, applied on
+    /// the next `render()` (the browser clipboard read is async, so it cannot be
+    /// served through the synchronous `Clipboard::read_text` seam, ADR-0097).
+    pending_paste: PendingPaste,
     _pointer_input: PointerInputGuard,
 }
 
@@ -193,6 +201,7 @@ impl HayateElementRenderer {
             drag_raw: None,
             scroll_motion: None,
             last_frame_ms: None,
+            pending_paste: Rc::new(RefCell::new(Vec::new())),
             _pointer_input: pointer_guard,
         })
     }
@@ -396,6 +405,12 @@ impl HayateElementRenderer {
         for (family, bytes) in loaded {
             self.font_fetch_attempts.borrow_mut().remove(&family);
             self.tree.register_font(&family, bytes);
+        }
+        // Apply any clipboard text an async Ctrl/Cmd+V read resolved since the
+        // last frame, before layout, so the pasted text shapes this frame (#361).
+        let pasted: Vec<(ElementId, String)> = self.pending_paste.borrow_mut().drain(..).collect();
+        for (id, text) in pasted {
+            self.tree.element_paste(id, &text);
         }
         let sg = self.tree.render(timestamp_ms);
         let present = self.backend.render_scene(sg, self.background);
@@ -811,12 +826,42 @@ impl HayateElementRenderer {
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
         if let Some(intent) = crate::edit_keymap::key_to_edit_intent(key, modifiers) {
             if let Some(focused) = self.tree.focused_element() {
+                // Ctrl/Cmd+V: the browser clipboard read is async, so it cannot be
+                // served through core's synchronous `Clipboard::read_text` seam.
+                // Kick off `navigator.clipboard.readText()` here and feed the
+                // resolved text back through `element_paste` on the next frame
+                // (ADR-0097 decision 3, #361).
+                if intent == EditIntent::Paste {
+                    self.spawn_clipboard_paste(focused);
+                    return;
+                }
                 if self.tree.apply_edit_intent(focused, intent) {
                     return;
                 }
             }
         }
         self.tree.on_key_down(key, modifiers);
+    }
+
+    /// Start an async clipboard read for a Ctrl/Cmd+V on `target`, queuing the
+    /// resolved text for `element_paste` on the next `render()`. The read is
+    /// initiated inside the user-gesture keydown the browser requires to
+    /// authorize clipboard access (ADR-0097, #361).
+    fn spawn_clipboard_paste(&mut self, target: ElementId) {
+        let Some(clipboard) = web_sys::window().map(|w| w.navigator().clipboard()) else {
+            return;
+        };
+        let promise = clipboard.read_text();
+        let queue = self.pending_paste.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(value) = JsFuture::from(promise).await {
+                if let Some(text) = value.as_string() {
+                    if !text.is_empty() {
+                        queue.borrow_mut().push((target, text));
+                    }
+                }
+            }
+        });
     }
 
     /// Called by JS when the user types printable text into the focused TextInput.
