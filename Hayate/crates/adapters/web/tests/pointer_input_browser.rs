@@ -194,6 +194,130 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
     );
 }
 
+/// Build a 200×200 ScrollView with a 200×600 child so there is a 400px vertical
+/// scroll range, register a `Scroll` listener on it, lay out once, and return the
+/// renderer plus the canvas' client origin and the listener id. Shared by the
+/// momentum e2e tests (#351).
+async fn scrollable_renderer(canvas: &HtmlCanvasElement) -> (HayateElementRenderer, f64, f64, f64) {
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
+    renderer
+        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
+        .unwrap();
+    renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
+    renderer
+        .element_set_style(2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0])
+        .unwrap();
+    renderer.element_append_child(1.0, 2.0);
+    renderer.set_root(1.0);
+    let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
+
+    renderer.render(0.0).unwrap();
+
+    let rect = canvas.get_bounding_client_rect();
+    (renderer, rect.left(), rect.top(), scroll_listener)
+}
+
+fn scroll_offset_y(renderer: &HayateElementRenderer) -> f32 {
+    renderer.element_get_scroll_offset(1.0)[1]
+}
+
+#[wasm_bindgen_test]
+async fn flick_coasts_with_momentum_fires_scroll_then_clamp_stops_at_the_edge() {
+    // Drive a real flick: one move per rAF frame so the velocity tracker sees
+    // distinct timestamps, then let the released fling coast on its own frames.
+    let canvas = make_canvas(200);
+    let (mut renderer, ox, oy, scroll_listener) = scrollable_renderer(&canvas).await;
+
+    // Finger climbs 150 → 60 across consecutive frames (each move > slop apart).
+    dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 150.0);
+    renderer.render(16.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 120.0); // crosses slop
+    renderer.render(32.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 90.0);
+    renderer.render(48.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 60.0);
+    renderer.render(64.0).unwrap();
+    dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 60.0);
+    let _ = renderer.poll_events(); // discard drag-phase Scroll deliveries
+
+    // Release frame launches momentum from the sampled fling.
+    renderer.render(80.0).unwrap();
+    let offset_at_release = scroll_offset_y(&renderer);
+    let _ = renderer.poll_events();
+
+    // A pure momentum frame (no pointer input) must keep scrolling and still fire
+    // Event::Scroll, exactly like a finger drag does.
+    renderer.render(96.0).unwrap();
+    let offset_after_momentum = scroll_offset_y(&renderer);
+    assert!(
+        offset_after_momentum > offset_at_release,
+        "momentum should keep scrolling after the finger lifts ({offset_after_momentum} !> {offset_at_release})"
+    );
+    assert!(
+        has_delivery(&renderer.poll_events(), scroll_listener, SCROLL_KIND),
+        "momentum scrolling must fire Event::Scroll like a finger drag"
+    );
+
+    // Coast to rest: this strong fling overshoots the 400px range and clamp-stops
+    // at the bottom edge — no bounce this slice.
+    let mut t = 112.0;
+    for _ in 0..200 {
+        renderer.render(t).unwrap();
+        let _ = renderer.poll_events();
+        t += 16.0;
+    }
+    let final_offset = scroll_offset_y(&renderer);
+    assert!(
+        (final_offset - 400.0).abs() < 1.0,
+        "momentum should clamp-stop at the bottom edge (max 400, got {final_offset})"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn a_press_during_momentum_interrupts_it_so_the_content_is_grabbable() {
+    let canvas = make_canvas(200);
+    let (mut renderer, ox, oy, _scroll_listener) = scrollable_renderer(&canvas).await;
+
+    // Flick upward to get a fling coasting.
+    dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 150.0);
+    renderer.render(16.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 120.0);
+    renderer.render(32.0).unwrap();
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 90.0);
+    renderer.render(48.0).unwrap();
+    dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 90.0);
+    let _ = renderer.poll_events();
+
+    renderer.render(64.0).unwrap(); // launch
+    let offset_at_release = scroll_offset_y(&renderer);
+    renderer.render(80.0).unwrap(); // coast one frame
+    let offset_coasting = scroll_offset_y(&renderer);
+    assert!(
+        offset_coasting > offset_at_release,
+        "precondition: momentum must be coasting before the interrupting press",
+    );
+
+    // Press again mid-coast: the down must interrupt the fling. The drain
+    // processes the press (momentum → None) before the frame's momentum step, so
+    // the offset stops dead under the finger.
+    dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 100.0);
+    renderer.render(96.0).unwrap();
+    let frozen = scroll_offset_y(&renderer);
+
+    // Subsequent frames with no further input must not move — the fling is gone.
+    renderer.render(112.0).unwrap();
+    renderer.render(128.0).unwrap();
+    let after = scroll_offset_y(&renderer);
+    assert_eq!(
+        after, frozen,
+        "a press during momentum must interrupt it so the content stays grabbable",
+    );
+}
+
 #[wasm_bindgen_test]
 async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
     // The Platform Adapter must map `PointerEvent.pointerType` to a core
