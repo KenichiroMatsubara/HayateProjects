@@ -626,8 +626,28 @@ impl ElementTree {
             Arc::new(bytes),
         );
 
-        self.layout.pending_font_fetches.remove(family_name);
+        self.layout.font_fetches.mark_loaded(family_name);
         self.engine.mark_fonts_dirty();
+    }
+
+    /// Report that the platform adapter's fetch for `family` failed (issue #343).
+    /// Without this, a family requested via `FetchFont` stayed latched in the
+    /// pending set forever and was never re-requested, so a single transient CDN
+    /// error (403/429/blip on a fresh deploy) left the font permanently missing.
+    ///
+    /// Returns `true` if the family will be retried — core marks fonts dirty so
+    /// the next frame re-shapes, re-detects the gap, and re-emits `FetchFont`.
+    /// Returns `false` once the finite retry budget is spent: the family is given
+    /// up on and will not be re-requested (no runaway logging or hammering).
+    pub fn font_fetch_failed(&mut self, family: &str) -> bool {
+        use crate::element::font_fetch::FailureOutcome;
+        match self.layout.font_fetches.mark_failed(family) {
+            FailureOutcome::WillRetry => {
+                self.engine.mark_fonts_dirty();
+                true
+            }
+            FailureOutcome::GaveUp => false,
+        }
     }
 
     /// Register a font from raw bytes using the family name(s) embedded in the
@@ -1776,6 +1796,31 @@ impl ElementTree {
             .get(&id)
             .and_then(|el| el.text_layout.as_ref())
             .map(|tl| tl.text.to_string())
+    }
+
+    /// Test seam (ADR-0042): reconfigure the font collection to mirror the WASM
+    /// runtime — no system fonts, with `default_font` as the default family.
+    /// Drives the real `.notdef → FetchFont → register_font` retry path in core
+    /// tests without depending on host-installed fonts (issue #343).
+    pub fn test_set_wasm_like_fonts(&mut self, default_font: Vec<u8>) {
+        self.layout.set_wasm_like_font_context(default_font);
+        self.engine.mark_fonts_dirty();
+    }
+
+    /// Test helper: the shaped glyph ids of an element's text layout. `.notdef`
+    /// (tofu) is glyph id `0`, so a layout free of zeros proves real glyphs were
+    /// drawn for the text (issue #343).
+    pub fn test_element_glyph_ids(&self, id: ElementId) -> Vec<u32> {
+        self.elements
+            .get(&id)
+            .and_then(|el| el.text_layout.as_ref())
+            .map(|tl| {
+                tl.runs
+                    .iter()
+                    .flat_map(|run| run.glyphs.iter().map(|g| g.id))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Mirror of `render()` cursor-blink tick without draining dirty sets (issue #183).

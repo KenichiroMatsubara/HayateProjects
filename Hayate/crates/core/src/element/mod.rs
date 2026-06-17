@@ -5,6 +5,7 @@ pub mod document_runtime;
 mod engine;
 pub mod edit_state;
 pub mod effective_visual;
+mod font_fetch;
 pub mod ime_bridge;
 pub mod event_spec;
 pub mod font_coverage;

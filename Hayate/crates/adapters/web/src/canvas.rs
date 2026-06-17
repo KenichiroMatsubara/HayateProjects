@@ -1,6 +1,7 @@
 //! Canvas Mode renderer (`HayateElementRenderer`). See ADR-0077.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -31,6 +32,38 @@ use crate::shared::{element_id_from_f64, element_id_to_f64, fetch_bytes, kind_fr
 /// next `poll_events()` call (single-threaded WASM — Rc<RefCell> is safe).
 type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
+/// Families whose on-demand fetch failed; drained into `tree.font_fetch_failed`
+/// on the next `render()` so core can re-request (or give up) — without this the
+/// family stayed latched in `pending` forever (issue #343).
+type FontFailureQueue = Rc<RefCell<Vec<String>>>;
+
+/// Per-family failed-attempt count, used only to space retries with exponential
+/// backoff. Core owns the *budget* (when to give up); this owns the *timing*.
+type FontFetchAttempts = Rc<RefCell<HashMap<String, u32>>>;
+
+/// Backoff before reporting a failed fetch: `BASE << (attempt - 1)`, capped.
+/// A fresh GitHub Pages deploy can see jsdelivr return a transient 403/429, so
+/// the first retry is quick and later ones back off (issue #343).
+const FETCH_BACKOFF_BASE_MS: i32 = 400;
+const FETCH_BACKOFF_MAX_MS: i32 = 5_000;
+
+/// Resolve after `ms` via `setTimeout`, so a spawned fetch future can await a
+/// backoff delay before reporting failure.
+async fn backoff_sleep(ms: i32) {
+    let promise = js_sys::Promise::new(&mut |resolve, _reject| {
+        if let Some(win) = web_sys::window() {
+            let cb = Closure::once_into_js(move || {
+                let _ = resolve.call0(&JsValue::NULL);
+            });
+            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
+                cb.unchecked_ref(),
+                ms,
+            );
+        }
+    });
+    let _ = JsFuture::from(promise).await;
+}
+
 /// Web implementation of the core `Clipboard` seam (ADR-0097, #268). Copy
 /// (Cmd/Ctrl+C) runs in core; core hands the selected text here, and the
 /// adapter writes it via the async Clipboard API. The write is fire-and-forget:
@@ -59,6 +92,10 @@ pub struct HayateElementRenderer {
     background: [f32; 4],
     /// Fonts fetched by spawned futures; applied to the tree on next poll_events.
     font_queue: FontQueue,
+    /// Families whose fetch failed; reported to core on the next `render()`.
+    font_failure_queue: FontFailureQueue,
+    /// Per-family failed-attempt count, for exponential retry backoff.
+    font_fetch_attempts: FontFetchAttempts,
     /// IME candidate-window bounds synced each render (ADR-0069).
     ime: WebImeBridge,
     /// ResizeObserver callback queues viewport metrics for the next `render()`.
@@ -119,6 +156,8 @@ impl HayateElementRenderer {
             tree,
             background: [0.0, 0.0, 0.0, 1.0],
             font_queue: Rc::new(RefCell::new(Vec::new())),
+            font_failure_queue: Rc::new(RefCell::new(Vec::new())),
+            font_fetch_attempts: Rc::new(RefCell::new(HashMap::new())),
             ime: WebImeBridge::default(),
             pending_resize,
             last_viewport,
@@ -305,11 +344,22 @@ impl HayateElementRenderer {
             self.apply_resize(metrics);
         }
         self.drain_pointer_inputs();
+        // Report failed fetches to core first: each marks fonts dirty so the
+        // commit_layout below re-shapes, re-detects the gap, and re-emits a
+        // FetchFont on the next poll_events (issue #343). A family core has given
+        // up on stops re-requesting, so we drop its backoff counter too.
+        let failures: Vec<String> = self.font_failure_queue.borrow_mut().drain(..).collect();
+        for family in failures {
+            if !self.tree.font_fetch_failed(&family) {
+                self.font_fetch_attempts.borrow_mut().remove(&family);
+            }
+        }
         // フェッチ完了フォントを layout より前に登録することで、同フレーム内で
         // fonts_dirty → compute_layout → 正しいグリフ、が成立する。
         // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）
         let loaded: Vec<(String, Vec<u8>)> = self.font_queue.borrow_mut().drain(..).collect();
         for (family, bytes) in loaded {
+            self.font_fetch_attempts.borrow_mut().remove(&family);
             self.tree.register_font(&family, bytes);
         }
         let sg = self.tree.render(timestamp_ms);
@@ -615,11 +665,28 @@ impl HayateElementRenderer {
             if let Event::FetchFont { family } = event {
                 if let Some(url) = builtin_font_url(&family) {
                     let queue = self.font_queue.clone();
+                    let failures = self.font_failure_queue.clone();
+                    let attempts = self.font_fetch_attempts.clone();
                     let url = url.to_string();
                     wasm_bindgen_futures::spawn_local(async move {
                         match fetch_bytes(&url).await {
                             Ok(bytes) => queue.borrow_mut().push((family, bytes)),
-                            Err(e) => web_sys::console::warn_1(&e),
+                            Err(e) => {
+                                web_sys::console::warn_1(&e);
+                                // Back off, then report the failure so core can
+                                // re-request (until its retry budget is spent).
+                                let n = {
+                                    let mut a = attempts.borrow_mut();
+                                    let c = a.entry(family.clone()).or_insert(0);
+                                    *c += 1;
+                                    *c
+                                };
+                                let delay = FETCH_BACKOFF_BASE_MS
+                                    .saturating_mul(1 << (n - 1).min(8))
+                                    .min(FETCH_BACKOFF_MAX_MS);
+                                backoff_sleep(delay).await;
+                                failures.borrow_mut().push(family);
+                            }
                         }
                     });
                 } else {
