@@ -16,6 +16,9 @@ use web_sys::HtmlCanvasElement;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+/// `PointerKind` wire discriminants (crates/core/src/element/pointer.rs).
+const POINTER_KIND_MOUSE: u32 = 0;
+const POINTER_KIND_TOUCH: u32 = 1;
 /// Generated event-kind discriminant for `HoverEnter` (proto/spec/event_kinds.json).
 const HOVER_ENTER_KIND: f64 = 10.0;
 /// Generated event-kind discriminant for `HoverLeave` (proto/spec/event_kinds.json).
@@ -188,6 +191,50 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
     assert!(
         has_delivery(&renderer.poll_events(), scroll_listener, SCROLL_KIND),
         "touch-driven scroll must fire Event::Scroll"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
+    // The Platform Adapter must map `PointerEvent.pointerType` to a core
+    // `PointerKind` and forward it through the self-wired pointer path, so Core
+    // retains `last_pointer_kind` per interaction (#357). Observed end-to-end via
+    // the renderer accessor — no test-only export (ADR-0072).
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
+    renderer
+        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
+        .unwrap();
+    renderer.set_root(1.0);
+    renderer.render(0.0).unwrap();
+
+    // Before any pointer event the kind defaults to mouse.
+    assert_eq!(renderer.last_pointer_kind(), POINTER_KIND_MOUSE);
+
+    let rect = canvas.get_bounding_client_rect();
+    let (ox, oy) = (rect.left(), rect.top());
+
+    // A genuine touch press forwards PointerKind::Touch to Core.
+    dispatch_touch_event(&canvas, "pointerdown", ox + 50.0, oy + 50.0);
+    renderer.render(16.0).unwrap();
+    assert_eq!(
+        renderer.last_pointer_kind(),
+        POINTER_KIND_TOUCH,
+        "a touch pointerdown must set Core's last_pointer_kind to Touch"
+    );
+
+    // A mouse move then follows the live device (hybrid follow-through, not
+    // latched at the first interaction).
+    dispatch_pointer_move(&canvas, ox + 80.0, oy + 80.0);
+    renderer.render(32.0).unwrap();
+    assert_eq!(
+        renderer.last_pointer_kind(),
+        POINTER_KIND_MOUSE,
+        "a mouse pointermove must update last_pointer_kind back to Mouse"
     );
 }
 

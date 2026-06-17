@@ -425,15 +425,16 @@ impl HayateElementRenderer {
                 x,
                 y,
                 modifiers,
-                pointer_type,
+                kind,
             } => {
                 // Always send the press first so a tap still shows `:active`
-                // (#213). A touch/pen press over a scroll-view then locks a
-                // drag→scroll gesture; if the slop is never crossed the release
-                // resolves as a normal click.
-                self.tree.on_pointer_down_with(x, y, modifiers);
+                // (#213), forwarding the device so Core retains it per
+                // interaction (#357). A touch/pen press over a scroll-view then
+                // locks a drag→scroll gesture; if the slop is never crossed the
+                // release resolves as a normal click.
+                self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
                 self.scroll_gesture = None;
-                if scroll_drag::is_drag_scroll_pointer(pointer_type) {
+                if scroll_drag::is_drag_scroll_pointer(kind) {
                     if let Some(sv) = self
                         .tree
                         .hit_test(x, y)
@@ -443,7 +444,7 @@ impl HayateElementRenderer {
                     }
                 }
             }
-            PointerInput::Move { x, y } => {
+            PointerInput::Move { x, y, kind } => {
                 if let Some(mut gesture) = self.scroll_gesture.take() {
                     match gesture.on_move((x, y), scroll_drag::SCROLL_SLOP_PX) {
                         // Still a pending tap — leave the press alive.
@@ -458,17 +459,17 @@ impl HayateElementRenderer {
                     }
                     self.scroll_gesture = Some(gesture);
                 } else {
-                    let result = self.tree.on_pointer_move(x, y);
+                    let result = self.tree.on_pointer_move_with_kind(x, y, kind);
                     apply_resolved_cursor(result.resolved_cursor);
                 }
             }
-            PointerInput::Up { x, y } => {
+            PointerInput::Up { x, y, kind } => {
                 // A touch that never crossed the slop is a tap → resolve the
                 // click. One that became a scroll already had its press
                 // cancelled, so swallow the up.
                 match self.scroll_gesture.take() {
                     Some(gesture) if !gesture.is_tap() => {}
-                    _ => self.tree.on_pointer_up(x, y),
+                    _ => self.tree.on_pointer_up_with_kind(x, y, kind),
                 }
             }
             PointerInput::Leave => self.tree.on_pointer_leave(),
@@ -673,6 +674,13 @@ impl HayateElementRenderer {
     /// this is true even if no element is focused (read-only Selection Region).
     pub fn has_selection(&self) -> bool {
         self.tree.selection().is_some()
+    }
+
+    /// Physical device behind the most recent pointer interaction (#357), as the
+    /// `PointerKind` wire discriminant (`mouse=0`, `touch=1`, `pen=2`). Retained
+    /// per interaction so the host (and later slices) can branch on it.
+    pub fn last_pointer_kind(&self) -> u32 {
+        self.tree.last_pointer_kind().to_u32()
     }
 
     /// Handle a key press on the focused element. Editing keys are mapped to an

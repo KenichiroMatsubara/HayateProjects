@@ -28,22 +28,26 @@ use web_sys::{
 /// A raw canvas pointer input buffered between frames. Coordinates are already
 /// in canvas backing-store space (the `toCanvas` transform is applied when the
 /// DOM event is captured, mirroring the former TS `attachPointerInput`).
-use crate::scroll_drag::PointerType;
+use hayate_core::PointerKind;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PointerInput {
     /// `pointerdown`, carrying the modifier-key bitfield (`MODIFIER_*` wire
     /// contract) so Shift+click can extend a selection (ADR-0097, #267) and the
-    /// `pointerType` (ADR-0082, #350) so only touch/pen take the drag→scroll
-    /// path while mouse keeps selection/drag.
+    /// [`PointerKind`] (ADR-0082/ADR-0104, #350/#357) so Core retains the device
+    /// per interaction and only touch/pen take the drag→scroll path while mouse
+    /// keeps selection/drag.
     Down {
         x: f32,
         y: f32,
         modifiers: u32,
-        pointer_type: PointerType,
+        kind: PointerKind,
     },
-    Move { x: f32, y: f32 },
-    Up { x: f32, y: f32 },
+    /// `pointermove`, carrying the [`PointerKind`] so Core's `last_pointer_kind`
+    /// follows hybrid devices mid-session (#357).
+    Move { x: f32, y: f32, kind: PointerKind },
+    /// `pointerup`, carrying the [`PointerKind`] (#357).
+    Up { x: f32, y: f32, kind: PointerKind },
     /// Pointer left the canvas surface (`pointerleave`). Coordinate-independent:
     /// drains to `ElementTree::on_pointer_leave()`, clearing hover.
     Leave,
@@ -92,7 +96,7 @@ pub fn coalesce_pointer_inputs(
     let mut out = Vec::new();
     for input in inputs {
         match input {
-            PointerInput::Move { x, y } => {
+            PointerInput::Move { x, y, .. } => {
                 if let Some((ax, ay)) = anchor {
                     if (x - ax).abs() < 1.0 && (y - ay).abs() < 1.0 {
                         continue;
@@ -120,7 +124,7 @@ pub fn final_anchor(inputs: &[PointerInput], seed: Option<(f32, f32)>) -> Option
     let mut anchor = seed;
     for input in inputs {
         match input {
-            PointerInput::Move { x, y } => anchor = Some((*x, *y)),
+            PointerInput::Move { x, y, .. } => anchor = Some((*x, *y)),
             PointerInput::Leave | PointerInput::Cancel => anchor = None,
             _ => {}
         }
@@ -177,17 +181,17 @@ pub(crate) fn attach_pointer_input(
             if !pe.is_primary() {
                 return;
             }
-            let pointer_type = PointerType::from_dom(&pe.pointer_type());
+            let kind = PointerKind::from_dom(&pe.pointer_type());
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, pe.as_ref());
             let modifiers = mouse_modifiers(pe.as_ref());
-            if crate::scroll_drag::is_drag_scroll_pointer(pointer_type) {
+            if crate::scroll_drag::is_drag_scroll_pointer(kind) {
                 let _ = canvas_for_cb.set_pointer_capture(pe.pointer_id());
             }
             pending.borrow_mut().push(PointerInput::Down {
                 x,
                 y,
                 modifiers,
-                pointer_type,
+                kind,
             });
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback("pointerdown", closure.as_ref().unchecked_ref())?;
@@ -195,7 +199,7 @@ pub(crate) fn attach_pointer_input(
     }
 
     for (name, make) in [
-        ("pointermove", make_move as fn(f32, f32) -> PointerInput),
+        ("pointermove", make_move as fn(f32, f32, PointerKind) -> PointerInput),
         ("pointerup", make_up),
     ] {
         let canvas_for_cb = canvas.clone();
@@ -208,8 +212,11 @@ pub(crate) fn attach_pointer_input(
             if !pe.is_primary() {
                 return;
             }
+            // Carry the device so Core's `last_pointer_kind` follows the live
+            // pointer, not just the press that began the interaction (#357).
+            let kind = PointerKind::from_dom(&pe.pointer_type());
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, pe.as_ref());
-            pending.borrow_mut().push(make(x, y));
+            pending.borrow_mut().push(make(x, y, kind));
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback(name, closure.as_ref().unchecked_ref())?;
         listeners.push((name, closure));
@@ -291,12 +298,12 @@ fn mouse_modifiers(event: &MouseEvent) -> u32 {
     mods
 }
 #[cfg(target_arch = "wasm32")]
-fn make_move(x: f32, y: f32) -> PointerInput {
-    PointerInput::Move { x, y }
+fn make_move(x: f32, y: f32, kind: PointerKind) -> PointerInput {
+    PointerInput::Move { x, y, kind }
 }
 #[cfg(target_arch = "wasm32")]
-fn make_up(x: f32, y: f32) -> PointerInput {
-    PointerInput::Up { x, y }
+fn make_up(x: f32, y: f32, kind: PointerKind) -> PointerInput {
+    PointerInput::Up { x, y, kind }
 }
 
 /// Read `clientX/clientY` off a `MouseEvent` (or subclass) and convert to Hayate
@@ -319,9 +326,9 @@ mod tests {
     #[test]
     fn coalesce_preserves_arrival_order_of_distinct_inputs() {
         let inputs = vec![
-            PointerInput::Down { x: 10.0, y: 10.0, modifiers: 0, pointer_type: PointerType::Mouse },
-            PointerInput::Move { x: 20.0, y: 20.0 },
-            PointerInput::Up { x: 20.0, y: 20.0 },
+            PointerInput::Down { x: 10.0, y: 10.0, modifiers: 0, kind: PointerKind::Mouse },
+            PointerInput::Move { x: 20.0, y: 20.0, kind: PointerKind::Mouse },
+            PointerInput::Up { x: 20.0, y: 20.0, kind: PointerKind::Mouse },
         ];
         let out = coalesce_pointer_inputs(inputs.clone(), None);
         assert_eq!(out, inputs);
@@ -330,16 +337,16 @@ mod tests {
     #[test]
     fn coalesce_drops_consecutive_sub_pixel_moves() {
         let inputs = vec![
-            PointerInput::Move { x: 50.0, y: 50.0 },
-            PointerInput::Move { x: 50.4, y: 50.2 }, // within 1px of (50,50) → dropped
-            PointerInput::Move { x: 60.0, y: 50.0 }, // > 1px → kept
+            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
+            PointerInput::Move { x: 50.4, y: 50.2, kind: PointerKind::Mouse }, // within 1px of (50,50) → dropped
+            PointerInput::Move { x: 60.0, y: 50.0, kind: PointerKind::Mouse }, // > 1px → kept
         ];
         let out = coalesce_pointer_inputs(inputs, None);
         assert_eq!(
             out,
             vec![
-                PointerInput::Move { x: 50.0, y: 50.0 },
-                PointerInput::Move { x: 60.0, y: 50.0 },
+                PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
+                PointerInput::Move { x: 60.0, y: 50.0, kind: PointerKind::Mouse },
             ]
         );
     }
@@ -349,16 +356,16 @@ mod tests {
         // A press between two near-identical positions must survive: down/up
         // never move the coalescing anchor, but they must keep their order.
         let inputs = vec![
-            PointerInput::Move { x: 50.0, y: 50.0 },
-            PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, pointer_type: PointerType::Mouse },
-            PointerInput::Move { x: 50.2, y: 50.0 }, // still within 1px of anchor → dropped
+            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
+            PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, kind: PointerKind::Mouse },
+            PointerInput::Move { x: 50.2, y: 50.0, kind: PointerKind::Mouse }, // still within 1px of anchor → dropped
         ];
         let out = coalesce_pointer_inputs(inputs, None);
         assert_eq!(
             out,
             vec![
-                PointerInput::Move { x: 50.0, y: 50.0 },
-                PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, pointer_type: PointerType::Mouse },
+                PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
+                PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, kind: PointerKind::Mouse },
             ]
         );
     }
@@ -369,17 +376,17 @@ mod tests {
         // like leave), so it must also reset the coalescing anchor: a re-entry
         // move at the same coordinate has to pass through to reapply `:hover`.
         let inputs = vec![
-            PointerInput::Move { x: 10.0, y: 10.0 },
+            PointerInput::Move { x: 10.0, y: 10.0, kind: PointerKind::Mouse },
             PointerInput::Cancel,
-            PointerInput::Move { x: 10.2, y: 10.0 }, // within 1px of (10,10) but anchor reset → kept
+            PointerInput::Move { x: 10.2, y: 10.0, kind: PointerKind::Mouse }, // within 1px of (10,10) but anchor reset → kept
         ];
         let out = coalesce_pointer_inputs(inputs, None);
         assert_eq!(
             out,
             vec![
-                PointerInput::Move { x: 10.0, y: 10.0 },
+                PointerInput::Move { x: 10.0, y: 10.0, kind: PointerKind::Mouse },
                 PointerInput::Cancel,
-                PointerInput::Move { x: 10.2, y: 10.0 },
+                PointerInput::Move { x: 10.2, y: 10.0, kind: PointerKind::Mouse },
             ],
         );
     }
@@ -387,7 +394,7 @@ mod tests {
     #[test]
     fn coalesce_uses_seed_to_drop_first_move_across_frame_boundary() {
         // The first move repeats the position applied on the previous drain.
-        let inputs = vec![PointerInput::Move { x: 100.0, y: 100.0 }];
+        let inputs = vec![PointerInput::Move { x: 100.0, y: 100.0, kind: PointerKind::Mouse }];
         let out = coalesce_pointer_inputs(inputs, Some((100.0, 100.0)));
         assert!(out.is_empty());
     }
@@ -398,9 +405,9 @@ mod tests {
         // so re-entering at the same coordinate must NOT be dropped — otherwise
         // the re-hover would never reach Core and `:hover` would not reapply.
         let inputs = vec![
-            PointerInput::Move { x: 50.0, y: 50.0 },
+            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
             PointerInput::Leave,
-            PointerInput::Move { x: 50.0, y: 50.0 },
+            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
         ];
         let out = coalesce_pointer_inputs(inputs.clone(), None);
         assert_eq!(out, inputs);
@@ -410,15 +417,15 @@ mod tests {
     fn final_anchor_carries_last_move_and_clears_on_leave() {
         // Most recent move becomes the next-drain anchor; non-move inputs don't.
         let moved = vec![
-            PointerInput::Move { x: 10.0, y: 20.0 },
-            PointerInput::Up { x: 10.0, y: 20.0 },
+            PointerInput::Move { x: 10.0, y: 20.0, kind: PointerKind::Mouse },
+            PointerInput::Up { x: 10.0, y: 20.0, kind: PointerKind::Mouse },
         ];
         assert_eq!(final_anchor(&moved, None), Some((10.0, 20.0)));
 
         // A trailing leave clears the anchor so the next frame's re-entry move
         // (even at the same coordinate) is not coalesced across the boundary.
         let left = vec![
-            PointerInput::Move { x: 10.0, y: 20.0 },
+            PointerInput::Move { x: 10.0, y: 20.0, kind: PointerKind::Mouse },
             PointerInput::Leave,
         ];
         assert_eq!(final_anchor(&left, None), None);

@@ -1334,11 +1334,12 @@ pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {
             out.push(EventWireValue::Number(target_id.to_u64() as f64));
             out
         }
-        hayate_core::Event::PointerMove { x, y } => {
+        hayate_core::Event::PointerMove { x, y, kind } => {
             let mut out = Vec::new();
             out.push(EventWireValue::Number(14.0));
             out.push(EventWireValue::Number(*x as f64));
             out.push(EventWireValue::Number(*y as f64));
+            out.push(EventWireValue::Number(kind.to_u32() as f64));
             out
         }
         hayate_core::Event::FetchFont { family } => {

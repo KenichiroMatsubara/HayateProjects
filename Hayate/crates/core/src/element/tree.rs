@@ -189,6 +189,11 @@ pub struct ElementTree {
     /// Modality of the most recent input event, driving the `:focus-visible`
     /// heuristic for the native focus ring (#335, ADR-0102).
     pub(crate) last_input_modality: crate::element::interaction::InputModality,
+    /// Physical device behind the most recent pointer interaction (#357),
+    /// retained per interaction so later slices (touch gates, I-beam modality)
+    /// can branch on it. An independent axis from `last_input_modality` — a
+    /// touch press is `InputModality::Pointer` yet `PointerKind::Touch`.
+    pub(crate) last_pointer_kind: crate::element::pointer::PointerKind,
     /// Elements matching CSS `:hover` (self or descendant under pointer).
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
@@ -242,6 +247,8 @@ impl ElementTree {
             // Pointer until the first keyboard event, so an unfocused / freshly
             // pointer-driven UI shows no spurious ring on buttons (#335).
             last_input_modality: crate::element::interaction::InputModality::Pointer,
+            // Mouse until the first real pointer event reports its device.
+            last_pointer_kind: crate::element::pointer::PointerKind::Mouse,
             hovered_elements: HashSet::new(),
             active_element: None,
             selection: None,
@@ -537,6 +544,20 @@ impl ElementTree {
     /// Currently-focused element, if any.
     pub fn focused_element(&self) -> Option<ElementId> {
         self.focused_element
+    }
+
+    /// Modality of the most recent input event (#335, ADR-0102), the
+    /// Pointer/Keyboard axis driving `:focus-visible`. Independent of
+    /// [`last_pointer_kind`](Self::last_pointer_kind).
+    pub fn last_input_modality(&self) -> crate::element::interaction::InputModality {
+        self.last_input_modality
+    }
+
+    /// Physical device behind the most recent pointer interaction (#357),
+    /// retained per interaction. `Mouse` until the first pointer event reports
+    /// its device. Later slices branch on this (touch gates, I-beam modality).
+    pub fn last_pointer_kind(&self) -> crate::element::pointer::PointerKind {
+        self.last_pointer_kind
     }
 
     /// The focused element when it should display a native focus ring, matching
