@@ -15,7 +15,7 @@ pub use element::{
     event_document_kind,
     CharacterBounds, Clipboard, CompositionClause, CompositionUnderline, Direction, EditIntent,
     EditState, FontStyleValue, Granularity,
-    ImeBridge, PointerMoveResult, Preedit, PseudoState,
+    ImeBridge, InputModality, PointerKind, PointerMoveResult, Preedit, PseudoState,
     ResolvedElement,
     Selection, SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles,
     SelectionPoint, SelectionToolbar, ToolbarAction, ToolbarButton, ToolbarRect,

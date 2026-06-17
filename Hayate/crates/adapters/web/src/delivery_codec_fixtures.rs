@@ -77,6 +77,7 @@ mod tests {
             "pointer_move" => Event::PointerMove {
                 x: fields["x"].as_f64().unwrap() as f32,
                 y: fields["y"].as_f64().unwrap() as f32,
+                kind: hayate_core::PointerKind::from_dom(fields["kind"].as_str().unwrap()),
             },
             "fetch_font" => Event::FetchFont {
                 family: fields["family"].as_str().unwrap().to_string(),

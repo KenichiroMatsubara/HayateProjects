@@ -1,6 +1,6 @@
 use hayate_core::{
-    Color, CursorValue, Dimension, DocumentEventKind, ElementKind, ElementTree, Event, PseudoState,
-    StyleProp,
+    Color, CursorValue, Dimension, DocumentEventKind, ElementKind, ElementTree, Event,
+    InputModality, PointerKind, PseudoState, StyleProp,
 };
 
 /// A root View filling a 200×200 viewport carrying a pseudo style for `state`,
@@ -432,4 +432,56 @@ fn click_bubbles_to_ancestors() {
         .map(|d| d.listener_id)
         .collect();
     assert_eq!(ids, vec![l_leaf, l_root]);
+}
+
+#[test]
+fn last_pointer_kind_tracks_the_device_per_interaction() {
+    // PointerKind { Mouse, Touch, Pen } rides each pointer interaction (#357).
+    // Core retains the most recent kind so later slices (touch gates, I-beam
+    // modality) can branch on it. It defaults to Mouse before any pointer event.
+    let (mut tree, _root) = hoverable_root();
+    assert_eq!(tree.last_pointer_kind(), PointerKind::Mouse);
+
+    // A touch press records Touch.
+    tree.on_pointer_down_with_kind(10.0, 10.0, 0, PointerKind::Touch);
+    assert_eq!(tree.last_pointer_kind(), PointerKind::Touch);
+
+    // A pen move within the same surface updates the kind (hybrid devices switch
+    // mid-session — it is not latched at startup).
+    tree.on_pointer_move_with_kind(20.0, 20.0, PointerKind::Pen);
+    assert_eq!(tree.last_pointer_kind(), PointerKind::Pen);
+
+    // A mouse release records Mouse again.
+    tree.on_pointer_up_with_kind(20.0, 20.0, PointerKind::Mouse);
+    assert_eq!(tree.last_pointer_kind(), PointerKind::Mouse);
+}
+
+#[test]
+fn input_modality_is_a_separate_axis_from_pointer_kind() {
+    // The `:focus-visible` InputModality (Pointer/Keyboard) is orthogonal to
+    // PointerKind: a touch press is still InputModality::Pointer, and a key press
+    // flips modality without touching the retained pointer kind (#357, #335).
+    let (mut tree, root) = hoverable_root();
+    tree.on_pointer_down_with_kind(10.0, 10.0, 0, PointerKind::Touch);
+    assert_eq!(tree.last_input_modality(), InputModality::Pointer);
+    assert_eq!(tree.last_pointer_kind(), PointerKind::Touch);
+
+    tree.on_focus(root);
+    tree.on_key_down("ArrowLeft", 0);
+    assert_eq!(tree.last_input_modality(), InputModality::Keyboard);
+    // The keyboard interaction left the retained pointer kind untouched.
+    assert_eq!(tree.last_pointer_kind(), PointerKind::Touch);
+}
+
+#[test]
+fn pointer_move_event_carries_the_pointer_kind() {
+    // The emitted PointerMove wire event carries the device (#357) so the host
+    // and later slices see which pointer drove the move, not just its coords.
+    let (mut tree, _root) = hoverable_root();
+    assert!(tree.on_pointer_move_with_kind(10.0, 10.0, PointerKind::Pen).moved);
+    let saw_pen = tree
+        .poll_events()
+        .into_iter()
+        .any(|e| matches!(e, Event::PointerMove { kind, .. } if kind == PointerKind::Pen));
+    assert!(saw_pen, "PointerMove must carry PointerKind::Pen");
 }

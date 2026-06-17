@@ -9,33 +9,16 @@
 //! inertia, no rubber-band). Offsets are applied via `element_set_scroll_offset`
 //! (SCR-02, no clamp) so the adapter clamps to `[0, max]` here.
 
-/// Which physical pointer produced an input. Threaded from the DOM
+/// The physical pointer device axis is the core proto/wire concept
+/// [`PointerKind`](hayate_core::PointerKind) (#357). Threaded from the DOM
 /// `PointerEvent.pointerType` so only `touch`/`pen` enter the drag→scroll path;
 /// `mouse` keeps its selection/drag behaviour unchanged.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PointerType {
-    Mouse,
-    Touch,
-    Pen,
-}
+pub use hayate_core::PointerKind;
 
-impl PointerType {
-    /// Map a DOM `PointerEvent.pointerType` string. Unknown values (and the
-    /// empty string some engines report) fall back to `Mouse` so they keep the
-    /// existing selection/drag path rather than hijacking scroll.
-    pub fn from_dom(value: &str) -> Self {
-        match value {
-            "touch" => PointerType::Touch,
-            "pen" => PointerType::Pen,
-            _ => PointerType::Mouse,
-        }
-    }
-}
-
-/// Whether a pointer of this type drives the touch drag→scroll gesture. `touch`
-/// and `pen` do; `mouse` is left on the selection/drag path (ADR-0082).
-pub fn is_drag_scroll_pointer(pointer_type: PointerType) -> bool {
-    matches!(pointer_type, PointerType::Touch | PointerType::Pen)
+/// Whether a pointer of this kind drives the touch drag→scroll gesture. `Touch`
+/// and `Pen` do; `Mouse` is left on the selection/drag path (ADR-0082).
+pub fn is_drag_scroll_pointer(kind: PointerKind) -> bool {
+    matches!(kind, PointerKind::Touch | PointerKind::Pen)
 }
 
 /// Movement (px) a press must travel from its `pointerdown` before it is treated
@@ -216,9 +199,9 @@ mod tests {
 
     #[test]
     fn touch_and_pen_drive_scroll_but_mouse_does_not() {
-        assert!(is_drag_scroll_pointer(PointerType::Touch));
-        assert!(is_drag_scroll_pointer(PointerType::Pen));
-        assert!(!is_drag_scroll_pointer(PointerType::Mouse));
+        assert!(is_drag_scroll_pointer(PointerKind::Touch));
+        assert!(is_drag_scroll_pointer(PointerKind::Pen));
+        assert!(!is_drag_scroll_pointer(PointerKind::Mouse));
     }
 
     #[test]
@@ -361,11 +344,4 @@ mod tests {
         assert_eq!(clamp_scroll_axis(10.0, -5.0), 0.0); // no scrollable range
     }
 
-    #[test]
-    fn pointer_type_parses_dom_strings_and_defaults_to_mouse() {
-        assert_eq!(PointerType::from_dom("touch"), PointerType::Touch);
-        assert_eq!(PointerType::from_dom("pen"), PointerType::Pen);
-        assert_eq!(PointerType::from_dom("mouse"), PointerType::Mouse);
-        assert_eq!(PointerType::from_dom(""), PointerType::Mouse);
-    }
 }

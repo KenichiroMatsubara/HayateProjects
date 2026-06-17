@@ -2,6 +2,7 @@ use crate::element::edit_state::{Direction, EditIntent, Granularity};
 use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
+use crate::element::pointer::PointerKind;
 use crate::element::selection::{
     self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
 };
@@ -63,6 +64,22 @@ impl ElementTree {
     /// Pointer down at canvas coordinates (hit-test driven).
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
         self.on_pointer_down_with(x, y, 0);
+    }
+
+    /// Pointer down carrying both keyboard modifiers and the physical
+    /// [`PointerKind`] (#357). The Platform Adapter forwards the DOM
+    /// `PointerEvent.pointerType` here so Core retains it per interaction
+    /// (`last_pointer_kind`); selection/active behaviour is otherwise identical
+    /// to [`on_pointer_down_with`](Self::on_pointer_down_with).
+    pub fn on_pointer_down_with_kind(
+        &mut self,
+        x: f32,
+        y: f32,
+        modifiers: u32,
+        kind: PointerKind,
+    ) {
+        self.last_pointer_kind = kind;
+        self.on_pointer_down_with(x, y, modifiers);
     }
 
     /// Pointer down carrying keyboard modifiers (ADR-0097, #267): Shift extends
@@ -146,6 +163,14 @@ impl ElementTree {
         self.edit_drag = None;
     }
 
+    /// Pointer up carrying the physical [`PointerKind`] (#357), retained per
+    /// interaction. Release behaviour is identical to
+    /// [`on_pointer_up`](Self::on_pointer_up).
+    pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: PointerKind) {
+        self.last_pointer_kind = kind;
+        self.on_pointer_up(x, y);
+    }
+
     /// Pointer up with an explicit fallback target (HTML Mode).
     pub fn on_pointer_up_on(&mut self, explicit_target: Option<ElementId>) {
         self.pointer_up_with_fallback(explicit_target);
@@ -181,6 +206,20 @@ impl ElementTree {
         self.set_active_element(None);
     }
 
+    /// Pointer move carrying the physical [`PointerKind`] (#357), retained per
+    /// interaction so the emitted `PointerMove` wire event and `last_pointer_kind`
+    /// reflect the live device (hybrid devices switch mid-session). Hover/cursor
+    /// behaviour is identical to [`on_pointer_move`](Self::on_pointer_move).
+    pub fn on_pointer_move_with_kind(
+        &mut self,
+        x: f32,
+        y: f32,
+        kind: PointerKind,
+    ) -> PointerMoveResult {
+        self.last_pointer_kind = kind;
+        self.on_pointer_move(x, y)
+    }
+
     /// Pointer move with layout guard and 1 px dedup. `moved` is false when
     /// coalesced; `resolved_cursor` is the cursor resolved from the element under
     /// the pointer (ADR-0088), carried forward unchanged on coalesced moves.
@@ -200,7 +239,11 @@ impl ElementTree {
             }
         }
         self.last_pointer_pos = Some((x, y));
-        self.push_event(Event::PointerMove { x, y });
+        self.push_event(Event::PointerMove {
+            x,
+            y,
+            kind: self.last_pointer_kind,
+        });
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
@@ -244,7 +287,11 @@ impl ElementTree {
             }
         }
         self.last_pointer_pos = Some((x, y));
-        self.push_event(Event::PointerMove { x, y });
+        self.push_event(Event::PointerMove {
+            x,
+            y,
+            kind: self.last_pointer_kind,
+        });
         true
     }
 

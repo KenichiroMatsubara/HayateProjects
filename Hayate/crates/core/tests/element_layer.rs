@@ -1398,7 +1398,11 @@ fn semantic_event_variants_roundtrip_through_poll() {
     tree.push_event(Event::ActiveStart { target_id: target });
     tree.push_event(Event::ActiveEnd { target_id: target });
     tree.push_event(Event::HoverLeave { target_id: target });
-    tree.push_event(Event::PointerMove { x: 12.5, y: 34.0 });
+    tree.push_event(Event::PointerMove {
+        x: 12.5,
+        y: 34.0,
+        kind: hayate_core::PointerKind::Mouse,
+    });
 
     let events = tree.poll_events();
     assert_eq!(events.len(), 5);
@@ -1407,7 +1411,7 @@ fn semantic_event_variants_roundtrip_through_poll() {
     assert!(matches!(&events[2], Event::ActiveEnd { .. }));
     assert!(matches!(&events[3], Event::HoverLeave { .. }));
     assert!(
-        matches!(&events[4], Event::PointerMove { x, y } if (*x - 12.5).abs() < 1e-3 && (*y - 34.0).abs() < 1e-3)
+        matches!(&events[4], Event::PointerMove { x, y, .. } if (*x - 12.5).abs() < 1e-3 && (*y - 34.0).abs() < 1e-3)
     );
 }
 

@@ -1311,6 +1311,10 @@ fn encode_event_wire_param_push(param: &Param, field: &str) -> String {
         "f32" | "f64" | "u32" | "usize" | "bool" => {
             format!("            out.push(EventWireValue::Number(*{} as f64));\n", field)
         }
+        "pointer_kind" => format!(
+            "            out.push(EventWireValue::Number({}.to_u32() as f64));\n",
+            field
+        ),
         other => panic!("unsupported event param type: {other}"),
     }
 }
@@ -1392,6 +1396,7 @@ fn event_field_rust_type(typ: &str) -> String {
         "u32" => "u32".to_string(),
         "usize" => "usize".to_string(),
         "bool" => "bool".to_string(),
+        "pointer_kind" => "PointerKind".to_string(),
         other => panic!("unsupported event param type: {other}"),
     }
 }
@@ -1399,7 +1404,18 @@ fn event_field_rust_type(typ: &str) -> String {
 fn generate_event_types(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
-    out.push_str("use super::id::ElementId;\n\n");
+    out.push_str("use super::id::ElementId;\n");
+    // Pull in any enum types referenced by event params (e.g. PointerKind on
+    // pointer_move). Only emitted when an event actually uses the type so the
+    // generated `use` never dangles.
+    if proto
+        .event_kinds
+        .iter()
+        .any(|ev| ev.params.iter().any(|p| p.typ == "pointer_kind"))
+    {
+        out.push_str("use super::pointer::PointerKind;\n");
+    }
+    out.push('\n');
 
     out.push_str("/// Semantic interaction events (ADR-0031).\n");
     out.push_str("#[derive(Clone, Debug)]\n");
