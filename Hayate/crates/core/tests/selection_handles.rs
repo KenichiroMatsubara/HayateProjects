@@ -4,8 +4,8 @@
 //! `ElementTree` interface.
 
 use hayate_core::{
-    Dimension, DrawOp, ElementId, ElementKind, ElementTree, RecordingPainter, SelectionHandleEnd,
-    StyleProp, render_scene_graph,
+    Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind, RecordingPainter,
+    SelectionHandleEnd, StyleProp, render_scene_graph,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -37,9 +37,10 @@ fn selectable_paragraph() -> (ElementTree, ElementId, ElementId) {
     (tree, view, text)
 }
 
-/// Drag-select a leading range, then release. Leaves a non-empty selection.
+/// Touch drag-select a leading range, then release. Leaves a non-empty selection
+/// under Touch modality, so its drag handles are raised (ADR-0104, #365).
 fn select_a_range(tree: &mut ElementTree) {
-    tree.on_pointer_down(2.0, 8.0);
+    tree.on_pointer_down_with_kind(2.0, 8.0, 0, PointerKind::Touch);
     tree.on_pointer_move(70.0, 8.0);
     tree.on_pointer_up(70.0, 8.0);
 }
@@ -189,8 +190,8 @@ fn selectable_paragraph_with_headroom() -> (ElementTree, ElementId, ElementId) {
 #[test]
 fn dragging_the_end_handle_extends_the_range() {
     let (mut tree, _view, text) = selectable_paragraph_with_headroom();
-    // Select a short leading range near the text line (~y=88).
-    tree.on_pointer_down(2.0, 88.0);
+    // Touch-select a short leading range near the text line (~y=88).
+    tree.on_pointer_down_with_kind(2.0, 88.0, 0, PointerKind::Touch);
     tree.on_pointer_move(40.0, 88.0);
     tree.on_pointer_up(40.0, 88.0);
     let before = tree.selection().unwrap().range_within(text).unwrap();
@@ -209,8 +210,8 @@ fn dragging_the_end_handle_extends_the_range() {
 #[test]
 fn dragging_the_start_handle_moves_the_left_edge() {
     let (mut tree, _view, text) = selectable_paragraph_with_headroom();
-    // Select the whole first word range.
-    tree.on_pointer_down(2.0, 88.0);
+    // Touch-select the whole first word range.
+    tree.on_pointer_down_with_kind(2.0, 88.0, 0, PointerKind::Touch);
     tree.on_pointer_move(90.0, 88.0);
     tree.on_pointer_up(90.0, 88.0);
     let before = tree.selection().unwrap().range_within(text).unwrap();

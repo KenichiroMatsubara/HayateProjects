@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use hayate_core::{
-    Clipboard, Dimension, DrawOp, ElementId, ElementKind, ElementTree, RecordingPainter, StyleProp,
-    ToolbarAction, render_scene_graph,
+    Clipboard, Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind,
+    RecordingPainter, StyleProp, ToolbarAction, render_scene_graph,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -70,9 +70,10 @@ fn selectable_paragraph() -> (ElementTree, ElementId, ElementId) {
     (tree, view, text)
 }
 
-/// Drag-select a range, then release. Leaves a non-empty read-only selection.
+/// Touch drag-select a range, then release. Leaves a non-empty read-only
+/// selection under Touch modality, so its chrome is shown (ADR-0104, #365).
 fn select_a_range(tree: &mut ElementTree) {
-    tree.on_pointer_down(2.0, 8.0);
+    tree.on_pointer_down_with_kind(2.0, 8.0, 0, PointerKind::Touch);
     tree.on_pointer_move(70.0, 8.0);
     tree.on_pointer_up(70.0, 8.0);
 }
@@ -213,8 +214,8 @@ fn no_toolbar_without_a_selection() {
 fn editable_text_input_selection_offers_cut_copy_paste_select_all() {
     let (mut tree, input) = text_input_with("hello world");
 
-    // Drag-select a range inside the field.
-    tree.on_pointer_down(2.0, 20.0);
+    // Touch drag-select a range inside the field (chrome is Touch-gated, #365).
+    tree.on_pointer_down_with_kind(2.0, 20.0, 0, PointerKind::Touch);
     tree.on_pointer_move(60.0, 20.0);
     tree.on_pointer_up(60.0, 20.0);
     assert!(tree.element_text_selection(input).is_some());
@@ -268,8 +269,8 @@ fn tapping_cut_copies_then_removes_the_editable_range() {
     let clipboard = FakeClipboard::default();
     tree.set_clipboard(Box::new(clipboard.clone()));
 
-    // Drag-select a non-empty leading range, then Cut.
-    tree.on_pointer_down(2.0, 20.0);
+    // Touch drag-select a non-empty leading range, then Cut (chrome is Touch-gated).
+    tree.on_pointer_down_with_kind(2.0, 20.0, 0, PointerKind::Touch);
     tree.on_pointer_move(60.0, 20.0);
     tree.on_pointer_up(60.0, 20.0);
     let content = tree.element_get_text_content(input);
@@ -295,8 +296,8 @@ fn tapping_paste_replaces_the_editable_range_with_clipboard_text() {
     *clipboard.read.borrow_mut() = Some("X".to_string());
     tree.set_clipboard(Box::new(clipboard.clone()));
 
-    // Drag-select a non-empty leading range, then Paste over it.
-    tree.on_pointer_down(2.0, 20.0);
+    // Touch drag-select a non-empty leading range, then Paste over it.
+    tree.on_pointer_down_with_kind(2.0, 20.0, 0, PointerKind::Touch);
     tree.on_pointer_move(60.0, 20.0);
     tree.on_pointer_up(60.0, 20.0);
     let content = tree.element_get_text_content(input);

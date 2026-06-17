@@ -135,6 +135,9 @@ impl ElementTree {
     /// subtree selects nothing. Any text-input edit selection is cleared first
     /// (single active across the document).
     pub fn on_long_press(&mut self, x: f32, y: f32) {
+        // Long-press is a touch gesture: the selection it starts is a Touch-modality
+        // interaction, so its chrome (handles + toolbar) is raised (ADR-0104, #365).
+        self.last_pointer_kind = PointerKind::Touch;
         let Some(point) = self.selection_point_at(x, y) else {
             return;
         };
@@ -622,12 +625,31 @@ impl ElementTree {
         Some(text[start..end].to_string())
     }
 
+    /// Whether selection chrome (the drag handles and floating toolbar) should be
+    /// drawn for the current interaction — true only under Touch modality
+    /// (ADR-0104 decision 2, #365). Mouse/Pen get the thin caret and drag-select
+    /// alone, matching desktop-browser behaviour, while Touch raises the mobile
+    /// gesture surface. Read per interaction from [`last_pointer_kind`] so hybrid
+    /// devices (touch laptop, mouse-equipped tablet) follow the live device. The
+    /// highlight tint is deliberately *not* gated here — it paints under every
+    /// modality (ADR-0097, tint=Chromium).
+    ///
+    /// [`last_pointer_kind`]: Self::last_pointer_kind
+    fn touch_chrome_visible(&self) -> bool {
+        self.last_pointer_kind == PointerKind::Touch
+    }
+
     /// The floating selection toolbar for the active selection, or `None` when
     /// no selection is active (ADR-0097, #272). The toolbar is core-drawn chrome:
     /// a read-only SelectionArea selection offers Copy / Select All; an editable
     /// text-input selection adds Cut / Paste. It floats over the selection's
-    /// canvas-space bounding box, themed by the current chrome style.
+    /// canvas-space bounding box, themed by the current chrome style. Drawn only
+    /// under Touch modality; Mouse/Pen selections get the thin caret alone
+    /// (ADR-0104 decision 2, #365).
     pub fn selection_toolbar(&self) -> Option<crate::element::selection_chrome::SelectionToolbar> {
+        if !self.touch_chrome_visible() {
+            return None;
+        }
         let (actions, bounds) = self.active_selection_chrome()?;
         crate::element::selection_chrome::layout(
             self.selection_chrome_style,
@@ -641,12 +663,17 @@ impl ElementTree {
     /// or `None` when no non-collapsed SelectionArea selection is active
     /// (ADR-0097, #273). The handles are core-drawn chrome: a teardrop knob hangs
     /// just below each end of the range, themed by the current chrome style. They
-    /// are the mobile gesture surface — dragging one adjusts that endpoint.
+    /// are the mobile gesture surface — dragging one adjusts that endpoint — so
+    /// they are raised only under Touch modality; Mouse/Pen selections show none
+    /// (ADR-0104 decision 2, #365).
     /// Text-input edit-selection handles are a growth point (the toolbar already
     /// covers both paths; handles ride the read-only SelectionArea for now).
     pub fn selection_handles(
         &self,
     ) -> Option<crate::element::selection_chrome::SelectionHandles> {
+        if !self.touch_chrome_visible() {
+            return None;
+        }
         let sel = self.selection?;
         if sel.is_caret() {
             return None;
