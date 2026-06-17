@@ -36,3 +36,46 @@ Canvas モードでは、ポインタが canvas サーフェスを出ても hove
 - `pointerdown`/`up`/`move` の Core 側シグネチャは変更不要（座標ベースで pointerType 非依存のまま）。
 
 self-wired な end-to-end 経路（実 DOM `pointermove`→`pointerleave` を headless browser で駆動し `poll_events()` で `HoverLeave` を assert）の回帰テスト戦略は ADR-0092 を参照。
+
+## Amendment: Canvas Mode タッチドラッグ・スクロール物理の実装方針
+
+本ADR本文と ADR-0046 で "open" としていた「タッチドラッグ→スクロールオフセット変換＋スクロール物理（慣性・rubber-band）」を、Canvas Mode（`hayate-adapter-web` の `CanvasRenderer`）について以下の方針で確定する。**DOM Mode は scroll-view が `overflow:auto` の実 div でブラウザネイティブのタッチスクロールが効くため対象外**。
+
+### offset の適用経路
+
+スクロールオフセットは `ElementTree::element_set_scroll_offset`（SCR-02, clamp なし）で適用する。`apply_wheel_delta` は内部で `[0, max]` に clamp するため **overscroll を表現できず rubber-band に使えない**ので採用しない。overscroll は scroll group の transform `[1,0,0,1,-sx,-sy]` が scroll-view の Clip 内で成立し、端からコンテンツが離れるネイティブ同等の見た目になる（`scene_build`）。Core 側に新 API は追加しない。
+
+### アニメーション駆動
+
+Canvas Mode の host は連続 rAF ループで毎フレーム `render(timestamp_ms)` を呼ぶ（`@tsubame/renderer-canvas` `CanvasRenderer.frame` が自己再スケジュール）。慣性・spring-back は **この `render(timestamp_ms)` 内でフレーム間 dt を用いて積分**する。新規のフレーム駆動機構は追加しない。物理状態（active scroll-view・速度・overscroll 状態）は `CanvasRenderer`（Adapter）が所有する。
+
+### 入力分類とジェスチャモデル
+
+- **対象ポインタ**: `touch` と `pen` のみドラッグ→スクロール経路に乗せる。`mouse` は現状維持（選択・ドラッグ）。判別のため `PointerInput` に `pointerType` をスレッドする。`wheel` 経路は不変。
+- **タップ/スクロール判別**: `pointerdown` で一旦 `on_pointer_down` を Core に送り（タップで `:active` 表示）、移動量がスロップ閾値（≈8px）を超えたらスクロールと判定し `on_pointer_cancel()`（#213）で押下を解除、以降の move はスクロールに振り向ける。閾値未満で離せば通常の `pointerup`→click。
+- **主ポインタのみ**: `isPrimary` の 1 本のみ追跡し、2 本目以降と pinch は無視（マルチタッチ/ズームは v1 スコープ外）。
+- **ジェスチャロック**: `pointerdown` のヒット要素の最近接 scroll-view 祖先にジェスチャをロックし、ジェスチャ途中で祖先へスクロールチェーンしない。ロックした scroll-view が自身の端で rubber-band する。
+
+### scroll イベント通知
+
+タッチ駆動のスクロール中も `Event::Scroll` を発火する（ネイティブ同等。parallax/lazy-load がタッチでも機能）。offset 適用（`element_set_scroll_offset`）と通知（`ElementTree::on_wheel` 相当の scroll-notify シーム）は別経路として明確に分離する。ADR-0046 の「`scroll` イベントはアプリ通知専用、`element_set_scroll_offset` はオフセット機構」という分担と整合する。
+
+### `touch-action` / Pointer Capture
+
+`touch-action: none` と `setPointerCapture`（ジェスチャ中、指が canvas 外へ出ても move を受け続ける）は ADR-0080 の自己配線方針に従い **Rust adapter が canvas に対して設定**する。host/`index.html` 側の glue は追加しない。
+
+### テスト戦略
+
+スクロール物理は純関数（入力: 前 offset・速度・dt・bounds → 出力: 新 offset・新速度。慣性減衰・rubber-band 抵抗・spring-back）として切り出し、全ターゲットでユニットテストする（`coalesce_pointer_inputs` と同パターン）。wasm 配線は薄く保ち、self-wired な headless browser 回帰を 1 本（ADR-0092）追加する。物理係数（摩擦・ばね減衰）は iOS 風デフォルトで実装時に調整する。
+
+### Pending（本Amendment時点で未確定・スコープ外・将来課題）
+
+本Amendmentは**方針の確定**であり、以下は未着手・未決定として明記する。
+
+- **実装そのものが未着手**: 上記方針に基づく `pointer_input.rs`（`pointerType` スレッド・`touch-action:none`・`setPointerCapture` 配線）／`CanvasRenderer`（物理 state・`drain_pointer_inputs` の touch 分岐・`render()` 内積分）／物理純関数モジュール＋テスト／WASM 再ビルド／headless e2e は本Amendment時点で未実装。
+- **物理係数の具体値は未確定**: 摩擦係数・rubber-band 抵抗カーブ・spring-back 剛性/減衰の具体値は実装時に iOS 風デフォルトから調整して決める（本Amendmentでは固定しない）。
+- **マルチタッチ / pinch-zoom はスコープ外**: v1 は `isPrimary` 1 本のみ。2 本指ジェスチャ・ピンチズームは将来課題。
+- **ネストした scroll-view のスクロールチェーンは将来課題**: v1 は `pointerdown` 時の scroll-view にロックし、端到達時の祖先チェーンは行わない。タッチでのチェーン（rubber-band/慣性を含む受け渡し）の設計は別途。
+- **`scroll-snap-type` / `scroll-snap-align`（ADR-0046）は未実装**: スナップ・ページネーションは本Amendmentの対象外。
+- **scroll-notify シームの命名整理は保留**: タッチ通知に `ElementTree::on_wheel`（実体は `Event::Scroll` 発火）を再利用するか、`notify_scroll` 等へ抽出・改名するかは実装時の小リファクタ判断として保留。
+- **DOM Mode の Core `scroll_offset` 同期は対象外**: DOM Mode はネイティブスクロールで視覚上は動くが、ネイティブ `scroll` での Core `scroll_offset` 同期は本Amendmentでは扱わない（別課題）。
