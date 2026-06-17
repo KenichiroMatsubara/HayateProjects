@@ -23,7 +23,12 @@ If you have not already explored the codebase, do so to understand the current s
 
 Break the plan into **tracer bullet** issues. Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 
-Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an architectural decision or a design review. AFK slices can be implemented and merged without human interaction. Prefer AFK over HITL where possible.
+Slices are either 'AFK' or '完全人力 (fully-manual)'. **HITL slices are banned** — never create a slice that mixes AI implementation with a human feedback loop (e.g. an agent tuning constants while a human reviews the values).
+
+- **AFK** slices just get the implementation done end-to-end, with no human in the loop. The constant *values* may be arbitrary/placeholder — getting them right is NOT AFK's job. The one rule is that every tunable value MUST be a named constant, never an inline magic number, so a human can tune it afterward. An AFK slice is "done" when the implementation lands, even if the numbers are still guesses.
+- **完全人力 (fully-manual)** slices are done entirely by a human with no AI involvement: tuning those constant values, taste calls, design review — anything where AI in the loop is just noise.
+
+When work seems to need a feedback loop, never mark it HITL — that half-measure is pure friction. Split it: an AFK slice that finishes the implementation with named constants at placeholder values, followed by a 完全人力 slice that tunes them. Prefer AFK, and sequence each 完全人力 slice after the AFK slices it builds on.
 
 <vertical-slice-rules>
 - Each slice delivers a narrow but COMPLETE path through every layer (schema, API, UI, tests)
@@ -36,7 +41,7 @@ Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an
 Present the proposed breakdown as a numbered list. For each slice, show:
 
 - **Title**: short descriptive name
-- **Type**: HITL / AFK
+- **Type**: AFK / 完全人力 (fully-manual)
 - **Blocked by**: which other slices (if any) must complete first
 - **User stories covered**: which user stories this addresses (if the source material has them)
 
@@ -45,7 +50,8 @@ Ask the user:
 - Does the granularity feel right? (too coarse / too fine)
 - Are the dependency relationships correct?
 - Should any slices be merged or split further?
-- Are the correct slices marked as HITL and AFK?
+- Are the correct slices marked as AFK and 完全人力 (fully-manual)? (No HITL slices — any feedback-loop work split into AFK + 完全人力.)
+- Do the AFK slices avoid magic numbers, with every tunable value pulled into a named constant? (Placeholder values are fine — tuning is a 完全人力 follow-up.)
 
 Iterate until the user approves the breakdown.
 
