@@ -60,3 +60,31 @@ pub fn ink_extent_x(data: &[u8], width: u32, height: u32) -> Option<(u32, u32)> 
     }
     found.then_some((min_x, max_x))
 }
+
+/// How many distinct dominant-channel hues (red-, green-, blue-dominant) appear
+/// among strongly-saturated painted pixels. A multi-colour (COLR) glyph spans
+/// several; a monochrome glyph collapses to one. `sat_min` is the minimum
+/// max-minus-min channel spread for a pixel to count as saturated, so faint
+/// anti-aliased edges don't register as hues.
+pub fn distinct_saturated_hues(data: &[u8], width: u32, height: u32, sat_min: u8) -> usize {
+    let mut seen = [false; 3];
+    for y in 0..height {
+        for x in 0..width {
+            let px = pixel(data, width, x, y);
+            let max = px[0].max(px[1]).max(px[2]);
+            let min = px[0].min(px[1]).min(px[2]);
+            if max.saturating_sub(min) < sat_min {
+                continue;
+            }
+            let dominant = if px[0] == max {
+                0
+            } else if px[1] == max {
+                1
+            } else {
+                2
+            };
+            seen[dominant] = true;
+        }
+    }
+    seen.iter().filter(|&&s| s).count()
+}

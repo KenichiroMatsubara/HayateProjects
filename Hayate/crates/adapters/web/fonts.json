@@ -45,6 +45,11 @@
     "scripts": ["emoji"]
   },
   {
+    "family": "Noto Color Emoji",
+    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf",
+    "scripts": ["emoji"]
+  },
+  {
     "family": "Noto Serif",
     "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
   },
