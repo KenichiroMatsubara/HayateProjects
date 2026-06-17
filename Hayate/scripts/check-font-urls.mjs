@@ -9,32 +9,28 @@
 //   node Hayate/scripts/check-font-urls.mjs
 //
 // Exits non-zero if any URL is not a 200 with a TrueType/OpenType signature.
+// The validation logic lives in check-font-urls.lib.mjs so it can be unit-tested
+// with a fake fetch (transient failures are retried; 404s fail fast).
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { checkFonts } from './check-font-urls.lib.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const manifest = join(here, '../crates/adapters/web/fonts.json');
 const fonts = JSON.parse(readFileSync(manifest, 'utf8'));
 
-const SIGS = new Set(['00010000', '4f54544f' /* OTTO */, '74727565' /* true */, '74746366' /* ttcf */]);
+const { bad, total } = await checkFonts(fonts, {
+  onResult: (r) => {
+    const size = (r.ok ? `${r.bytes}B` : '-').padStart(10);
+    const status = String(r.status || 'ERR').padEnd(3);
+    const note = r.attempts > 1 ? ` (${r.attempts} attempts)` : '';
+    const tail = r.error ? ` -> ${r.error}` : '';
+    console.log(`${r.ok ? 'OK ' : 'BAD'} ${status} ${size} sig=${r.sig} :: ${r.family}${note}${tail}`);
+  },
+});
 
-let bad = 0;
-for (const f of fonts) {
-  try {
-    const r = await fetch(f.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    const ab = r.ok ? await r.arrayBuffer() : null;
-    const sig = ab
-      ? [...new Uint8Array(ab).slice(0, 4)].map((b) => b.toString(16).padStart(2, '0')).join('')
-      : '-';
-    const ok = r.ok && ab && ab.byteLength > 1000 && SIGS.has(sig);
-    if (!ok) bad++;
-    console.log(`${ok ? 'OK ' : 'BAD'} ${String(r.status).padEnd(3)} ${(ab ? ab.byteLength + 'B' : '-').padStart(10)} sig=${sig} :: ${f.family}`);
-  } catch (e) {
-    bad++;
-    console.log(`BAD ERR :: ${f.family} -> ${e.message}`);
-  }
-}
-console.log(`\n${bad} bad / ${fonts.length} total`);
+console.log(`\n${bad} bad / ${total} total`);
 process.exit(bad === 0 ? 0 : 1);
