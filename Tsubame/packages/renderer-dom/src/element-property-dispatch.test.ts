@@ -17,7 +17,8 @@ describe('dispatchElementPropertyOp (shared prop-op dispatch, ADR-0008)', () => 
       placeholder: () => 'no',
       src: () => 'no',
       disabled: () => 'no',
-      selectable: () => 'no',
+      'user-select': () => 'no',
+      multiline: () => 'no',
     };
     expect(dispatchElementPropertyOp(op, effects)).toBe('hi');
     expect(seen).toEqual(['text-content']);
@@ -30,7 +31,8 @@ describe('dispatchElementPropertyOp (shared prop-op dispatch, ADR-0008)', () => 
       placeholder: () => false,
       src: () => false,
       disabled: (o) => o.disabled,
-      selectable: (o) => o.selectable,
+      'user-select': () => false,
+      multiline: () => false,
     });
     // 'false' is truthy → Boolean('false') === true, reflected through the seam.
     expect(result).toBe(true);

@@ -2,7 +2,7 @@
 // Source: @hayate/protocol-spec (element_properties)
 
 /** Closed element property vocabulary (ADR-0071). `aria-*` uses first-class APIs only. */
-export const ELEMENT_PROPERTY_NAMES = ["value","placeholder","src","disabled","selectable","multiline"] as const;
+export const ELEMENT_PROPERTY_NAMES = ["value","placeholder","src","disabled","user-select","multiline"] as const;
 
 export type ElementPropertyName = (typeof ELEMENT_PROPERTY_NAMES)[number];
 
@@ -18,7 +18,7 @@ export type ElementPropertyOp =
   | { kind: 'placeholder'; text: string }
   | { kind: 'src'; text: string }
   | { kind: 'disabled'; disabled: boolean }
-  | { kind: 'selectable'; selectable: boolean }
+  | { kind: 'user-select'; value: 'text' | 'none' | 'contains' }
   | { kind: 'multiline'; multiline: boolean }
   ;
 
@@ -36,8 +36,8 @@ export function coerceElementProperty(
       return { kind: 'src', text: typeof value === 'string' ? value : '' };
     case 'disabled':
       return { kind: 'disabled', disabled: Boolean(value) };
-    case 'selectable':
-      return { kind: 'selectable', selectable: Boolean(value) };
+    case 'user-select':
+      return { kind: 'user-select', value: value === 'none' || value === 'contains' ? value : 'text' };
     case 'multiline':
       return { kind: 'multiline', multiline: Boolean(value) };
   }

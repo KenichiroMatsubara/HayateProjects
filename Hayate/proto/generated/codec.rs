@@ -245,10 +245,10 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*style_offset as f64);
             buf.push(*style_len as f64);
         }
-        Op::SetSelectable { id, selectable } => {
-            buf.push(OP_SET_SELECTABLE as f64);
+        Op::SetUserSelect { id, value } => {
+            buf.push(OP_SET_USER_SELECT as f64);
             buf.push(*id as f64);
-            buf.push(if *selectable { 1.0 } else { 0.0 });
+            buf.push(*value as f64);
         }
         Op::SetMultiline { id, multiline } => {
             buf.push(OP_SET_MULTILINE as f64);

@@ -3,10 +3,11 @@ import type {
   ElementKind,
   PseudoStyleKey,
   StylePatch,
+  UserSelect,
   ViewportCondition,
 } from '@tsubame/renderer-protocol';
 import { PSEUDO_STATE_CODE } from '@tsubame/renderer-protocol';
-import { ELEMENT_KIND } from '@tsubame/protocol-generated/protocol';
+import { ELEMENT_KIND, USER_SELECT } from '@tsubame/protocol-generated/protocol';
 import {
   appendCreate,
   appendSetRoot,
@@ -17,7 +18,7 @@ import {
   appendSetText,
   appendSetTextContent,
   appendSetDisabled,
-  appendSetSelectable,
+  appendSetUserSelect,
   appendSetMultiline,
   appendSetSrc,
   appendSetPseudoStyle,
@@ -68,9 +69,9 @@ export type SemanticMutation =
       readonly disabled: boolean;
     }
   | {
-      readonly kind: 'setSelectable';
+      readonly kind: 'setUserSelect';
       readonly id: ElementId;
-      readonly selectable: boolean;
+      readonly value: UserSelect;
     }
   | {
       readonly kind: 'setMultiline';
@@ -187,11 +188,11 @@ export function encodeMutations(
           mutation.disabled ? 1 : 0,
         );
         break;
-      case 'setSelectable':
-        appendSetSelectable(
+      case 'setUserSelect':
+        appendSetUserSelect(
           ops,
           mutation.id as number,
-          mutation.selectable ? 1 : 0,
+          USER_SELECT[mutation.value],
         );
         break;
       case 'setMultiline':

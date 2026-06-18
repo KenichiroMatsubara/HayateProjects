@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EVENT_KIND, OP, TAG } from '@tsubame/protocol-generated/protocol';
+import { EVENT_KIND, OP, TAG, USER_SELECT } from '@tsubame/protocol-generated/protocol';
 import { coerceElementProperty, withTextLocalGate } from '@tsubame/renderer-protocol';
 import { CanvasRenderer } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
@@ -353,7 +353,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
       ['placeholder', 99, OP.SET_TEXT], // non-strings erase
       ['src', null, OP.SET_SRC], // null erases
       ['disabled', 'false', OP.SET_DISABLED], // Boolean('false') === true
-      ['selectable', '', OP.SET_SELECTABLE], // Boolean('') === false
+      ['user-select', 'none', OP.SET_USER_SELECT], // closed vocab → wire enum
     ];
 
     for (const [name, value, op] of cases) {
@@ -370,8 +370,8 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
       const expected = coerceElementProperty(name, value);
       if (expected.kind === 'disabled') {
         expect(batch.ops[at + 2]).toBe(expected.disabled ? 1 : 0);
-      } else if (expected.kind === 'selectable') {
-        expect(batch.ops[at + 2]).toBe(expected.selectable ? 1 : 0);
+      } else if (expected.kind === 'user-select') {
+        expect(batch.ops[at + 2]).toBe(USER_SELECT[expected.value]);
       } else {
         expect(batch.texts[batch.ops[at + 2]!]).toBe(expected.text);
       }

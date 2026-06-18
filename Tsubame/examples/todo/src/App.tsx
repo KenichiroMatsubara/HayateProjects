@@ -395,22 +395,23 @@ function Header(props: { colors: Palette; remaining: number; total: number; perc
 }
 
 /**
- * 読み取り専用テキストの選択ジェスチャデモ（ADR-0097 / issue #266・#267・#268・#269）。
- * `selectable` な view が Selection Region を確立し、Canvas Mode では core が選択
- * ハイライトを SceneGraph に描画する。DOM Mode ではブラウザネイティブ選択に委ねる。
- * ドラッグに加え、ダブルクリックで単語・トリプルクリックで段落、Shift+クリック /
- * Shift+矢印で範囲拡張、Cmd/Ctrl+A で全選択ができる。Cmd/Ctrl+C を押すと選択テキ
- * ストが Platform Adapter 経由でクリップボードへコピーされ、別アプリへ貼り付けられる。
+ * 読み取り専用テキストの選択ジェスチャデモ（ADR-0108、ADR-0097 を supersede /
+ * issue #266・#267・#268・#269）。
  *
- * 複数の段落（別々の block）を一つの Selection Region に並べているので、ある段落
- * から次の段落へドラッグすると block をまたいだ連続選択になる（issue #269）。選択は
- * `selectable` の境界を越えて外側のテキストへは漏れない。
+ * CSS `user-select` と同型で、view / text は**宣言なしで既定選択可**（opt-out）。
+ * 明示 `user-select: none` を置いた subtree だけが選択から除外される。DOM Mode
+ * ではブラウザのネイティブ選択に委ね、ドラッグに加えダブルクリックで単語・
+ * トリプルクリックで段落、Shift+クリック / Shift+矢印で範囲拡張、Cmd/Ctrl+A で
+ * 全選択ができる。Cmd/Ctrl+C で選択テキストが Platform Adapter 経由でクリップ
+ * ボードへコピーされる。
+ *
+ * 末尾のキャプションは `user-select: none` を持つ view に包まれており、本文を
+ * 全選択しても選択対象に入らない（opt-out の確認）。
  */
 function SelectableNote(props: { colors: Palette }) {
   const para = { color: props.colors.muted, fontSize: 13 } as const;
   return (
     <view
-      selectable
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -424,14 +425,16 @@ function SelectableNote(props: { colors: Palette }) {
       }}
     >
       <text style={para}>
-        この段落は選択できます。ダブルクリックで単語、トリプルクリックで段落を選び、Shift+クリックや Shift+矢印で範囲を伸縮、Cmd/Ctrl+A で全選択できます。選択して Cmd/Ctrl+C を押すとクリップボードへコピーされ、別アプリへ貼り付けられます。
+        この段落は宣言なしで選択できます。ダブルクリックで単語、トリプルクリックで段落を選び、Shift+クリックや Shift+矢印で範囲を伸縮、Cmd/Ctrl+A で全選択できます。選択して Cmd/Ctrl+C を押すとクリップボードへコピーされ、別アプリへ貼り付けられます。
       </text>
       <text style={para}>
-        これは二つ目の段落です。一つ目の段落からここまでドラッグすると、block をまたいだ連続選択になります（issue #269）。先頭 block は anchor から行末まで、末尾 block は行頭から focus まで、間の block は丸ごとハイライトされます。
+        これは二つ目の段落です。view / text は CSS `user-select` と同型で既定選択可なので、`selectable` を宣言しなくても選択できます。
       </text>
-      <text style={para}>
-        Canvas Mode では core が選択ハイライトを描画し、DOM Mode ではブラウザのネイティブ選択に委ねます。選択は `selectable` の境界内に閉じ、外側のテキストへは漏れません。
-      </text>
+      <view user-select="none">
+        <text style={{ color: props.colors.muted, fontSize: 11 }}>
+          このキャプションは user-select: none の view に包まれているので、本文を全選択しても選択対象に入りません。
+        </text>
+      </view>
     </view>
   );
 }

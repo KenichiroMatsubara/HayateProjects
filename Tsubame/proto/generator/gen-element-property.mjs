@@ -31,6 +31,14 @@ const COERCE = {
     tsType: 'boolean',
     expr: () => `Boolean(value)`,
   },
+  // ADR-0108 closed `user-select` vocabulary. `text` / `contains` are
+  // selectable, `none` excludes the subtree; an unknown value falls back to the
+  // selectable default (`text`). The op carries the value under `value`.
+  'user-select': {
+    field: () => 'value',
+    tsType: "'text' | 'none' | 'contains'",
+    expr: () => `value === 'none' || value === 'contains' ? value : 'text'`,
+  },
 };
 
 /**

@@ -172,7 +172,7 @@ export class CanvasRenderer implements IRenderer {
       placeholder: ({ text }) => this.packet.enqueueSetText(id, text),
       src: ({ text }) => this.packet.enqueueSetSrc(id, text),
       disabled: ({ disabled }) => this.packet.enqueueSetDisabled(id, disabled),
-      selectable: ({ selectable }) => this.packet.enqueueSetSelectable(id, selectable),
+      'user-select': ({ value }) => this.packet.enqueueSetUserSelect(id, value),
       multiline: ({ multiline }) => this.packet.enqueueSetMultiline(id, multiline),
     });
   }

@@ -21,7 +21,7 @@ pub use element::{
     SelectionPoint, SelectionToolbar, ToolbarAction, ToolbarButton, ToolbarRect,
     Shadow,
     StyleProp, StylePropKind, TextDecorationValue, TextOverflowValue, TransitionTimingValue,
-    ViewportCondition,
+    UserSelectValue, ViewportCondition,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
 pub use render::{

@@ -20,9 +20,9 @@
     "coerce": "boolean"
   },
   {
-    "name": "selectable",
-    "opKind": "selectable",
-    "coerce": "boolean"
+    "name": "user-select",
+    "opKind": "user-select",
+    "coerce": "user-select"
   },
   {
     "name": "multiline",

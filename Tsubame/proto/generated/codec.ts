@@ -745,10 +745,10 @@ export function appendSetStyleVariant(buf: number[], id: number, minWidth: numbe
   buf.push(styleLen);
 }
 
-export function appendSetSelectable(buf: number[], id: number, selectable: number): void {
-  buf.push(OP.SET_SELECTABLE);
+export function appendSetUserSelect(buf: number[], id: number, value: number): void {
+  buf.push(OP.SET_USER_SELECT);
   buf.push(id);
-  buf.push(selectable);
+  buf.push(value);
 }
 
 export function appendSetMultiline(buf: number[], id: number, multiline: number): void {
