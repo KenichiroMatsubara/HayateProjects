@@ -6,6 +6,10 @@ status: accepted
 
 **Date: 2026-06-14**
 
+> **更新（2026-06-18）**: 決定2（`selectable` opt-in 領域）は **ADR-0108 が supersede**
+> した（CSS `user-select` パリティ：element-kind UA 既定で既定選択可・`user-select` property・
+> cross-element 選択・`contains` 境界）。決定5は ADR-0108 で精緻化。決定1/3/4 は有効。
+
 ## Context
 
 Canvas Mode はキャンバスに GPU 描画するため、ブラウザのネイティブ文字選択が一切効かない（Flutter が `SelectionArea` を自前で持つのと同じ事情）。一方で text-input の編集選択（`EditState`・ADR-0069）と、読み取り専用の表示テキスト選択（Flutter の `SelectionArea` 相当）は別物として求められる。両者を「Flutter のような文字選択」として一貫した UX で提供したい。
