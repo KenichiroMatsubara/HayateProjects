@@ -184,9 +184,9 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
                 .element_set_style_variant(ElementId::from_u64(id), condition, prop);
             Ok(())
         }
-        Op::SetSelectable { id, selectable } => {
+        Op::SetUserSelect { id, value } => {
             host.tree_mut()
-                .element_set_selectable(ElementId::from_u64(id), selectable);
+                .element_set_selectable(ElementId::from_u64(id), value != 1);
             Ok(())
         }
         Op::SetMultiline { id, multiline } => {

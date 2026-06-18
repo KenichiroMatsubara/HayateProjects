@@ -19,7 +19,7 @@ pub const OP_SET_DISABLED: u32 = 13;
 pub const OP_SET_SRC: u32 = 14;
 pub const OP_SET_PSEUDO_STYLE: u32 = 15;
 pub const OP_SET_STYLE_VARIANT: u32 = 16;
-pub const OP_SET_SELECTABLE: u32 = 17;
+pub const OP_SET_USER_SELECT: u32 = 17;
 pub const OP_SET_MULTILINE: u32 = 18;
 
 // Payload slot counts per opcode (op discriminant excluded)
@@ -41,7 +41,7 @@ pub const OP_SLOTS: &[usize] = &[
     2, // SET_SRC
     4, // SET_PSEUDO_STYLE
     7, // SET_STYLE_VARIANT
-    2, // SET_SELECTABLE
+    2, // SET_USER_SELECT
     2, // SET_MULTILINE
 ];
 
@@ -258,9 +258,9 @@ pub enum Op {
         style_offset: usize,
         style_len: usize,
     },
-    SetSelectable {
+    SetUserSelect {
         id: u64,
-        selectable: bool,
+        value: u32,
     },
     SetMultiline {
         id: u64,
@@ -389,10 +389,10 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             Ok((Op::SetStyleVariant { id, min_width, max_width, min_height, max_height, style_offset, style_len }, i + 7))
         }
         17 => {
-            if i + 2 > ops.len() { return Err("op SET_SELECTABLE truncated"); }
+            if i + 2 > ops.len() { return Err("op SET_USER_SELECT truncated"); }
             let id = ops[i + 0] as u64;
-            let selectable = ops[i + 1] != 0.0;
-            Ok((Op::SetSelectable { id, selectable }, i + 2))
+            let value = ops[i + 1] as u32;
+            Ok((Op::SetUserSelect { id, value }, i + 2))
         }
         18 => {
             if i + 2 > ops.len() { return Err("op SET_MULTILINE truncated"); }

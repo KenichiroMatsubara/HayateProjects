@@ -1,4 +1,4 @@
-import type { HayateCssStyle, EventHandler } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle, EventHandler, UserSelect } from '@tsubame/renderer-protocol';
 
 /**
  * Tsubame の Element 語彙に対する JSX 型定義。
@@ -29,17 +29,17 @@ declare global {
       children: Record<string, never>;
     }
     interface IntrinsicElements {
-      view: TsubameProps & { selectable?: boolean };
-      text: TsubameProps & { selectable?: boolean };
-      image: TsubameProps & { src?: string };
-      button: TsubameProps;
+      view: TsubameProps & { 'user-select'?: UserSelect };
+      text: TsubameProps & { 'user-select'?: UserSelect };
+      image: TsubameProps & { src?: string; 'user-select'?: UserSelect };
+      button: TsubameProps & { 'user-select'?: UserSelect };
       'text-input': TsubameProps & {
         value?: string;
         placeholder?: string;
         disabled?: boolean;
         multiline?: boolean;
       };
-      'scroll-view': TsubameProps & { selectable?: boolean };
+      'scroll-view': TsubameProps & { 'user-select'?: UserSelect };
     }
   }
 }

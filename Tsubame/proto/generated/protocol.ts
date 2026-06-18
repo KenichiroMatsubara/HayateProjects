@@ -19,7 +19,7 @@ export const OP = {
   SET_SRC: 14,
   SET_PSEUDO_STYLE: 15,
   SET_STYLE_VARIANT: 16,
-  SET_SELECTABLE: 17,
+  SET_USER_SELECT: 17,
   SET_MULTILINE: 18,
 } as const;
 export type OP = typeof OP;
@@ -335,6 +335,13 @@ export const TRANSITION_TIMING = {
   easeInOut: 4,
 } as const;
 export type TRANSITION_TIMING = typeof TRANSITION_TIMING;
+
+export const USER_SELECT = {
+  text: 0,
+  none: 1,
+  contains: 2,
+} as const;
+export type USER_SELECT = typeof USER_SELECT;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

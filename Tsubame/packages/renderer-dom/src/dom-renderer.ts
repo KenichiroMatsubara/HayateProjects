@@ -104,9 +104,10 @@ export class DomRenderer implements IRenderer {
     const id = asElementId(this.nextId++);
     const el = createDomElement(this.doc, kind);
     el.setAttribute('data-tsubame-id', String(id as number));
-    // ADR-0097 decision 5: the Selection Region default is `user-select: none`;
-    // only a `selectable` subtree (and always text-input) opts into native
-    // selection. Baseline it here so every element starts bounded.
+    // ADR-0108: selectability defaults to the element-kind UA default (view /
+    // text / scroll-view selectable, button / image not; text-input always).
+    // Baseline it here so every element starts at its kind default before any
+    // explicit `user-select` arrives.
     el.style.userSelect = resolveUserSelect(kind, undefined);
     this.nodes.set(id, el);
     this.kinds.set(id, kind);
@@ -241,12 +242,12 @@ export class DomRenderer implements IRenderer {
           else target.removeAttribute('src');
         }
       },
-      selectable: ({ selectable }) => {
-        // DOM Mode uses the browser's native selection; `selectable` only
-        // bounds the Selection Region via `user-select` (ADR-0097 decision 5).
-        // text-input stays selectable regardless of the boundary.
+      'user-select': ({ value }) => {
+        // DOM Mode uses the browser's native selection; `user-select` resolves
+        // through the element-kind default to a CSS `user-select` value
+        // (ADR-0108). text-input stays selectable regardless of the value.
         if (target instanceof HTMLElement) {
-          const userSelect = resolveUserSelect(this.kindOf(id), selectable);
+          const userSelect = resolveUserSelect(this.kindOf(id), value);
           target.style.userSelect = userSelect;
           target.style.webkitUserSelect = userSelect;
         }

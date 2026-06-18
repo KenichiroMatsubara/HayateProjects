@@ -121,6 +121,10 @@ struct SimpleEntry {
     /// (element_kinds only; ADR-0105). A `cursor` enum value name; `None` means
     /// the kind has no default (resolves to `Default`).
     default_cursor: Option<String>,
+    /// UA default `user-select` for this kind when no explicit `user-select` is
+    /// set (element_kinds only; ADR-0108). A `user_select` enum value name;
+    /// `None` means the kind has no default (resolves to `None`/unselectable).
+    default_user_select: Option<String>,
     /// Whether this kind accepts text entry and so surfaces the platform soft
     /// keyboard / IME when focused (element_kinds only; #392).
     accepts_text_input: bool,
@@ -221,6 +225,8 @@ struct SimpleJson {
     carries_text_local: bool,
     #[serde(default, rename = "defaultCursor")]
     default_cursor: Option<String>,
+    #[serde(default, rename = "defaultUserSelect")]
+    default_user_select: Option<String>,
     #[serde(default, rename = "acceptsTextInput")]
     accepts_text_input: bool,
 }
@@ -360,6 +366,7 @@ fn simple_from_json(entries: Vec<SimpleJson>) -> Vec<SimpleEntry> {
             value: e.value,
             carries_text_local: e.carries_text_local,
             default_cursor: e.default_cursor,
+            default_user_select: e.default_user_select,
             accepts_text_input: e.accepts_text_input,
         })
         .collect()
@@ -1203,9 +1210,14 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
             Ok(())
 "#.to_string()
         }
-        "SET_SELECTABLE" => {
+        "SET_USER_SELECT" => {
+            // ADR-0108 introduces the `user-select` vocabulary (text=0, none=1,
+            // contains=2). Canvas-side default-selectable + `contains` boundary
+            // land in a later slice; for now bridge to the existing Selection
+            // Region boolean — `none` is unselectable, `text` / `contains` are
+            // selectable.
             r#"            host.tree_mut()
-                .element_set_selectable(ElementId::from_u64(id), selectable);
+                .element_set_selectable(ElementId::from_u64(id), value != 1);
             Ok(())
 "#.to_string()
         }
@@ -1588,7 +1600,7 @@ fn generate_pseudo_state_tables(proto: &Proto) -> String {
 fn generate_element_kind_tables(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
-    out.push_str("use super::{CursorValue, ElementKind};\n\n");
+    out.push_str("use super::{CursorValue, ElementKind, UserSelectValue};\n\n");
 
     out.push_str(
         "/// UA default cursor for `kind` when no explicit `cursor` is set (ADR-0105).\n",
@@ -1605,6 +1617,25 @@ fn generate_element_kind_tables(proto: &Proto) -> String {
         }
     }
     out.push_str("        _ => CursorValue::Default,\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    out.push_str(
+        "/// UA default `user-select` for `kind` when no explicit `user-select` is set\n\
+         /// (ADR-0108). Single source for Canvas/DOM kind-default selectability.\n",
+    );
+    out.push_str("pub fn default_user_select(kind: ElementKind) -> UserSelectValue {\n");
+    out.push_str("    match kind {\n");
+    for ek in &proto.element_kinds {
+        if let Some(user_select) = &ek.default_user_select {
+            out.push_str(&format!(
+                "        ElementKind::{} => UserSelectValue::{},\n",
+                to_pascal(&ek.name),
+                to_pascal(user_select)
+            ));
+        }
+    }
+    out.push_str("        _ => UserSelectValue::None,\n");
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
