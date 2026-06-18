@@ -1211,13 +1211,23 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
 "#.to_string()
         }
         "SET_USER_SELECT" => {
-            // ADR-0108 introduces the `user-select` vocabulary (text=0, none=1,
-            // contains=2). Canvas-side default-selectable + `contains` boundary
-            // land in a later slice; for now bridge to the existing Selection
-            // Region boolean — `none` is unselectable, `text` / `contains` are
-            // selectable.
-            r#"            host.tree_mut()
-                .element_set_selectable(ElementId::from_u64(id), value != 1);
+            // ADR-0108 `user-select` vocabulary (text=0, none=1, contains=2). The
+            // per-element value drives the document selection: a `none` element
+            // (and its subtree) drops out of the covered range, the highlight, and
+            // the copied text. The Selection Region boolean is bridged alongside —
+            // `none` is unselectable, `text` / `contains` are selectable — until
+            // the Canvas-side default-selectable + `contains` boundary land in a
+            // later slice.
+            r#"            let id = ElementId::from_u64(id);
+            host.tree_mut().element_set_selectable(id, value != 1);
+            host.tree_mut().element_set_user_select(
+                id,
+                match value {
+                    1 => hayate_core::UserSelectValue::None,
+                    2 => hayate_core::UserSelectValue::Contains,
+                    _ => hayate_core::UserSelectValue::Text,
+                },
+            );
             Ok(())
 "#.to_string()
         }

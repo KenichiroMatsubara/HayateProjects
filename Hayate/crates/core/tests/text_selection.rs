@@ -3,7 +3,7 @@
 
 use hayate_core::{
     DrawOp, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue, RecordingPainter,
-    StyleProp, render_scene_graph,
+    SelectionPoint, StyleProp, UserSelectValue, render_scene_graph,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -446,6 +446,94 @@ fn dragging_backwards_across_blocks_normalizes_to_document_order() {
     assert_eq!(end.element, second, "the later block's point comes last");
 }
 
+#[test]
+fn selected_text_joins_cross_block_selection_with_a_newline() {
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Select from the start of the first block through the end of the second,
+    // so the range spans the block-box (IFC root) boundary between them.
+    let applied = tree.set_selection_range(
+        SelectionPoint::new(first, 0),
+        SelectionPoint::new(second, "Second block".len()),
+    );
+    assert!(applied, "both blocks share one Selection Region");
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("First block\nSecond block"),
+        "a cross-block copy joins blocks in document order with a single \\n at the block boundary",
+    );
+}
+
+#[test]
+fn cross_block_copy_follows_document_order_not_anchor_first() {
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Anchor in the *later* block, focus in the earlier one (a backward drag).
+    // The copied text must still read in document order, not anchor-first.
+    let applied = tree.set_selection_range(
+        SelectionPoint::new(second, "Second block".len()),
+        SelectionPoint::new(first, 0),
+    );
+    assert!(applied, "both blocks share one Selection Region");
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("First block\nSecond block"),
+        "copy joins blocks in document order regardless of drag direction",
+    );
+}
+
+/// Build a selectable column of three stacked paragraphs (three IFC blocks).
+/// Returns (tree, view, first, middle, last). Each paragraph is one line.
+fn three_block_region() -> (ElementTree, ElementId, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(1, ElementKind::View);
+    let first = tree.element_create(2, ElementKind::Text);
+    let middle = tree.element_create(3, ElementKind::Text);
+    let last = tree.element_create(4, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    for &block in &[first, middle, last] {
+        tree.element_set_style(block, &[StyleProp::Width(Dimension::px(400.0))]);
+        tree.element_append_child(view, block);
+    }
+    tree.element_set_text(first, "First block");
+    tree.element_set_text(middle, "Middle block");
+    tree.element_set_text(last, "Third block");
+    tree.element_set_selectable(view, true);
+    tree.render(0.0);
+    (tree, view, first, middle, last)
+}
+
+#[test]
+fn user_select_none_block_is_excluded_from_the_copied_text() {
+    let (mut tree, _view, first, middle, last) = three_block_region();
+    // The middle paragraph opts out of selection (CSS `user-select: none`).
+    tree.element_set_user_select(middle, UserSelectValue::None);
+    tree.render(0.0);
+
+    let applied = tree.set_selection_range(
+        SelectionPoint::new(first, 0),
+        SelectionPoint::new(last, "Third block".len()),
+    );
+    assert!(applied, "first and last share one Selection Region");
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("First block\nThird block"),
+        "a user-select:none block contributes no text and leaves no orphan newline",
+    );
+}
+
 /// Material selection tint (ADR-0097): identifies highlight rects among draw ops.
 const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
@@ -482,6 +570,68 @@ fn dragging_across_blocks_highlights_every_covered_block() {
     };
     assert!(covers(fy, fy + fh), "the first block must be highlighted");
     assert!(covers(sy, sy + sh), "the second block must be highlighted");
+}
+
+#[test]
+fn user_select_none_block_shows_no_highlight() {
+    let (mut tree, _view, first, middle, last) = three_block_region();
+    tree.element_set_user_select(middle, UserSelectValue::None);
+
+    // Select across all three blocks; the middle one opts out of selection.
+    tree.set_selection_range(
+        SelectionPoint::new(first, 0),
+        SelectionPoint::new(last, "Third block".len()),
+    );
+    tree.render(0.0);
+
+    let bands = highlight_bands(&tree);
+    // Test a band over each block's vertical *center*, so a neighbouring band
+    // grazing a box edge by a pixel (line metrics vs box geometry) is not
+    // mistaken for the middle block being highlighted.
+    let covered = |block: ElementId| {
+        let mid = block_mid_y(&tree, block);
+        bands.iter().any(|&(by0, by1)| by0 <= mid && mid <= by1)
+    };
+    assert!(covered(first), "the first block must be highlighted");
+    assert!(covered(last), "the last block must be highlighted");
+    assert!(
+        !covered(middle),
+        "a user-select:none block carries no highlight, just as it copies no text",
+    );
+}
+
+#[test]
+fn dragging_across_two_text_blocks_highlights_both_and_copies_them_joined() {
+    // The headline cross-element case (ADR-0108 decision 5): one drag spanning
+    // two text blocks must both paint a highlight over each block *and* copy the
+    // two joined in document order — highlight and copy land together.
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Drag from before the first paragraph to past the end of the second.
+    tree.on_pointer_down(2.0, block_mid_y(&tree, first));
+    tree.on_pointer_move(398.0, block_mid_y(&tree, second));
+    tree.render(0.0);
+
+    let bands = highlight_bands(&tree);
+    let covered = |block: ElementId| {
+        let mid = block_mid_y(&tree, block);
+        bands.iter().any(|&(by0, by1)| by0 <= mid && mid <= by1)
+    };
+    assert!(covered(first), "the first block is highlighted by the drag");
+    assert!(covered(second), "the second block is highlighted by the drag");
+
+    // The same drag copies both blocks, joined in document order by exactly one
+    // `\n` at the block boundary. The drag's far end is pixel-dependent, so the
+    // exact full join is pinned by the programmatic test above; here we assert
+    // the structural shape: first block whole, second block from its start.
+    let copied = tree.selected_text().expect("a cross-block drag copies text");
+    assert_eq!(copied.matches('\n').count(), 1, "one block-boundary newline: {copied:?}");
+    let (lead, tail) = copied.split_once('\n').unwrap();
+    assert_eq!(lead, "First block", "the first block is copied whole");
+    assert!(
+        !tail.is_empty() && "Second block".starts_with(tail),
+        "the second block is copied from its start, got {tail:?}",
+    );
 }
 
 /// A non-selectable column root holding `inner` — a `selectable` view with one

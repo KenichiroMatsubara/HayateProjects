@@ -626,6 +626,12 @@ impl ElementTree {
     /// Selection Region (the selection never leaks across a `selectable`
     /// boundary).
     pub(crate) fn selection_range_in_block(&self, block: ElementId) -> Option<(usize, usize)> {
+        // A `user-select: none` block (or one under a `none` subtree) carries no
+        // selection: it is skipped identically by the highlight and the copied
+        // text, which both read the covered range through this one seam (ADR-0108).
+        if self.user_select_excludes(block) {
+            return None;
+        }
         let (start, end) = self.selection_ordered()?;
         if start.element == end.element {
             return (start.element == block).then_some((start.offset, end.offset));
@@ -645,6 +651,25 @@ impl ElementTree {
         } else {
             None
         }
+    }
+
+    /// Whether `id` is excluded from the document selection by CSS
+    /// `user-select: none` on itself or any ancestor (ADR-0108: `none` excludes
+    /// the whole subtree). The single gate the covered-range, highlight, and
+    /// copied-text paths share — all routed through `selection_range_in_block` —
+    /// so a `none` element drops out of every one of them at once.
+    fn user_select_excludes(&self, id: ElementId) -> bool {
+        let mut current = Some(id);
+        while let Some(eid) = current {
+            let Some(el) = self.elements.get(&eid) else {
+                break;
+            };
+            if el.user_select == crate::element::style::UserSelectValue::None {
+                return true;
+            }
+            current = el.parent;
+        }
+        false
     }
 
     /// Compare two elements by document order (their position in a pre-order DFS
@@ -676,21 +701,34 @@ impl ElementTree {
     }
 
     /// The text currently under the selection, as a single string (ADR-0097,
-    /// #268). The selected byte range is sliced out of the focus IFC's shaped
-    /// text, which already concatenates the IFC's inline children in document
-    /// order — so a range that spans several styled runs comes back joined.
-    /// `None` when there is no selection or it is collapsed to a caret (nothing
-    /// to copy). A cross-block selection (#269) highlights across blocks but
-    /// copies only its anchor block for now; joining blocks is a growth point.
+    /// #268 / ADR-0108 decision 5). Walks every IFC-root block the selection
+    /// covers in document order — the same `selection_range_in_block` seam the
+    /// highlight lowers through, so copy and paint agree (no duplicate ordering
+    /// logic) — slices each block's covered byte range out of its shaped text
+    /// (which already joins inline children in document order, so styled runs
+    /// come back joined), and inserts a single `\n` at each block-box boundary
+    /// (ADR-0108: same shape as a browser copy; per-block-kind newline counts
+    /// are a growth point). `None` when there is no selection or nothing
+    /// non-empty is covered (a collapsed caret has nothing to copy).
     pub fn selected_text(&self) -> Option<String> {
         let sel = self.selection?;
-        let ifc = sel.anchor.element;
-        let (start, end) = sel.range_within(ifc)?;
-        if start == end {
+        let mut parts: Vec<String> = Vec::new();
+        for block in self.blocks_spanned_by(sel) {
+            let Some((start, end)) = self.selection_range_in_block(block) else {
+                continue;
+            };
+            if start == end {
+                continue;
+            }
+            let Some(text) = self.ifc_text(block) else {
+                continue;
+            };
+            parts.push(text[start..end].to_string());
+        }
+        if parts.is_empty() {
             return None;
         }
-        let text = self.ifc_text(ifc)?;
-        Some(text[start..end].to_string())
+        Some(parts.join("\n"))
     }
 
     /// Whether selection chrome (the drag handles and floating toolbar) should be

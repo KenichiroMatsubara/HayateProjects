@@ -138,6 +138,13 @@ pub(crate) struct Element {
     /// be selected by pointer drag, bounded by the nearest selectable ancestor
     /// (ADR-0097 / ADR-0071 closed typed property, same shape as `disabled`).
     pub selectable: bool,
+    /// Per-element selectability modelled on CSS `user-select` (ADR-0108). `None`
+    /// excludes this element (and its subtree) from the document selection's
+    /// covered range and copied text, even when it sits inside a Selection
+    /// Region; `Text` (the default) and `Contains` participate. Distinct from
+    /// `selectable`, which marks a Selection Region *root* (ADR-0097): an element
+    /// can be inside a region yet opt out of selection via `user-select: none`.
+    pub user_select: crate::element::style::UserSelectValue,
     /// When true, a TextInput accepts newlines: Enter inserts `\n` at the caret
     /// rather than signalling submit (#362). Default false (single-line). A
     /// closed typed property (ADR-0096/0097), same shape as `disabled`.
@@ -406,6 +413,7 @@ impl ElementTree {
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
             selectable: false,
+            user_select: crate::element::style::UserSelectValue::Text,
             multiline: false,
             viewport_variants: Vec::new(),
         };
@@ -455,6 +463,21 @@ impl ElementTree {
     pub fn element_set_selectable(&mut self, id: ElementId, selectable: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.selectable = selectable;
+        }
+    }
+
+    /// Set an element's CSS `user-select` value (ADR-0108). `None` excludes the
+    /// element and its subtree from the document selection's covered range and
+    /// copied text; `Text` / `Contains` participate. Orthogonal to
+    /// [`element_set_selectable`](Self::element_set_selectable), which marks a
+    /// Selection Region root.
+    pub fn element_set_user_select(
+        &mut self,
+        id: ElementId,
+        value: crate::element::style::UserSelectValue,
+    ) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.user_select = value;
         }
     }
 
