@@ -9,11 +9,11 @@
 //! Findings (env-gated; run with `HAYATE_DIAGNOSE=1 … -- --nocapture`):
 //!   * The divergence is entirely in core layout (Taffy projection), upstream
 //!     of scene rendering — so vello and tiny-skia reproduce it identically.
-//!   * Root cause A (symptoms 1 & 3): `text-input` is a Taffy leaf with no
-//!     measure fn → 0 intrinsic content width. With width:auto + no flex-grow +
-//!     a non-stretch cross-axis it collapses to padding-only width; the browser
-//!     `<input>` carries a UA default intrinsic width that the DOM renderer gets
-//!     for free.
+//!   * Root cause A (symptoms 1 & 3) — FIXED in issue #403: `text-input` was a
+//!     Taffy leaf with no measure fn → 0 intrinsic content width, collapsing to
+//!     padding-only width under width:auto + no flex-grow + a non-stretch
+//!     cross-axis. It now carries the browser `<input>` UA default width (N=20
+//!     chars in the resolved font); the assertion below guards the fix.
 //!   * Root cause B (symptom 2): `button` projects to a plain Taffy flex box; it
 //!     does not bake the browser `<button>` UA default of centering its content,
 //!     so the label is stretched (align-items:stretch) and its glyphs paint at
@@ -125,9 +125,9 @@ fn diagnose_390() {
         (by + bh) - (ly + lh)
     );
     eprintln!(
-        "[D390] symptom1/3 (root cause A): input content width = {} → placeholder max_advance ~0 → 1 char/line; border is a {}px-wide sliver at the field's left edge",
+        "[D390] root cause A FIXED (issue #403): input content width = {} → placeholder fits 1 line; border wraps the whole field (no left-edge sliver)",
         (iw - 26.0).max(0.0),
-        iw,
+        // iw retained in the assertion below.
     );
     eprintln!(
         "[D390] symptom2 (root cause B): button label top gap {} vs bottom gap {} — equal when centered",
@@ -137,10 +137,21 @@ fn diagnose_390() {
 
     // Renderer independence is structural: layout is resolved here in core,
     // before any SceneGraph walk, so both Scene Renderers observe these rects.
-    assert!(iw < 30.0, "repro guard: input collapsed (got w={iw})");
-    // Root cause B is FIXED by #402 (ADR-0109): the button now supplies the UA
-    // default `align-items: center`, so the label is vertically centered rather
-    // than clipped to the top. Promoted from a repro guard to a real assertion.
+    //
+    // Both root causes are now fixed and asserted here as real regression guards.
+    //
+    // Root cause A (#403): the width-unspecified text-input now carries the
+    // font-relative UA default width, so its content width is well above 0 (no
+    // 1-char/line wrap, no left-edge border sliver). The dedicated regression
+    // test lives in `tests/text_input_default_width.rs`.
+    assert!(
+        iw - 26.0 > 50.0,
+        "regression guard (#403): input must carry the UA default width (content width = {})",
+        iw - 26.0,
+    );
+    // Root cause B (#402, ADR-0109): the button now supplies the UA default
+    // `align-items: center`, so the label is vertically centered rather than
+    // clipped to the top. Promoted from a repro guard to a real assertion.
     let top_gap = ly - by;
     let bottom_gap = (by + bh) - (ly + lh);
     assert!(

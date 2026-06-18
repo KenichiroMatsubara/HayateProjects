@@ -273,6 +273,39 @@ impl LayoutPass {
                 root_taffy,
                 available,
                 |known_dims, available_space, _node_id, ctx, _style| {
+                    // `text-input` UA default width (ADR-0109 root cause A): a
+                    // font-relative intrinsic content width, independent of the
+                    // field's own text. Taffy's intrinsic resolution keeps
+                    // explicit `width` / `flex-grow` / stretch ahead of this.
+                    if let Some(MeasureCtx::TextInput(eid)) = ctx {
+                        let eid = *eid;
+                        let (font_size, font_weight, font_style, font_family) = {
+                            let el = match elements.get(&eid) {
+                                Some(e) => e,
+                                None => return TaffySize::ZERO,
+                            };
+                            let ambient =
+                                crate::element::ambient_defaults::ambient_at(elements, eid);
+                            (
+                                el.visual.font_size.unwrap_or(ambient.font_size),
+                                el.visual.font_weight.or(ambient.font_weight),
+                                el.visual.font_style,
+                                el.visual.font_family.clone().or(ambient.font_family.clone()),
+                            )
+                        };
+                        let width = text::text_input_default_width(
+                            font_cx,
+                            layout_cx,
+                            font_size,
+                            font_family.as_deref(),
+                            font_weight,
+                            font_style,
+                        );
+                        return TaffySize {
+                            width,
+                            height: 0.0,
+                        };
+                    }
                     let eid = match ctx {
                         Some(MeasureCtx::Text(eid)) => *eid,
                         _ => return TaffySize::ZERO,
