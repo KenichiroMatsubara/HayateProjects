@@ -28,8 +28,10 @@ const MOD_META: u32 = 8;
 ///   (macOS Cmd).
 /// - `Home`/`End`: the line boundary, or the document (field) boundary with Ctrl
 ///   (Win/Linux Ctrl+Home/End).
-/// - `ArrowUp`/`ArrowDown` with Meta (macOS Cmd+↑/↓): the document boundary.
-/// - `Backspace`/`Delete`: remove one char backward / forward.
+/// - `ArrowUp`/`ArrowDown`: vertical motion between display lines (#368); with
+///   Meta (macOS Cmd+↑/↓) they jump to the document boundary instead.
+/// - `Backspace`/`Delete`: remove one char backward / forward, widened to a word
+///   by Alt (macOS Option) or Ctrl (Win/Linux).
 pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     // Clipboard / select-all on the primary modifier — Ctrl (Win/Linux) or
     // Meta/Cmd (macOS), the OS abstraction core calls `MOD_PRIMARY` (ADR-0103
@@ -40,22 +42,23 @@ pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
             return Some(intent);
         }
     }
-    // Char delete keys (ADR-0103): Backspace backward, Delete forward. Word
-    // granularity (Ctrl/Alt) is a later slice — char only here.
-    match key {
-        "Backspace" => {
-            return Some(EditIntent::Delete {
-                granularity: Granularity::Grapheme,
-                direction: Direction::Backward,
-            })
-        }
-        "Delete" => {
-            return Some(EditIntent::Delete {
-                granularity: Granularity::Grapheme,
-                direction: Direction::Forward,
-            })
-        }
-        _ => {}
+    // Delete keys (ADR-0103): Backspace backward, Delete forward — widened from a
+    // grapheme to a whole word by Alt (macOS Option) or Ctrl (Win/Linux), the
+    // same "by word" modifiers as the arrows (#363).
+    if let Some(direction) = match key {
+        "Backspace" => Some(Direction::Backward),
+        "Delete" => Some(Direction::Forward),
+        _ => None,
+    } {
+        let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0 {
+            Granularity::Word
+        } else {
+            Granularity::Grapheme
+        };
+        return Some(EditIntent::Delete {
+            granularity,
+            direction,
+        });
     }
 
     let ctrl = modifiers & MOD_CTRL != 0;
@@ -84,6 +87,11 @@ pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
         // macOS Cmd+↑/↓ jump to the field ends.
         "ArrowUp" if meta => (Granularity::DocBoundary, Direction::Backward),
         "ArrowDown" if meta => (Granularity::DocBoundary, Direction::Forward),
+        // Bare ↑/↓ are vertical motion (#368): multi-line fields move between
+        // display lines, single-line fields jump to the field ends. Granularity
+        // is irrelevant to a vertical step.
+        "ArrowUp" => (Granularity::Grapheme, Direction::Up),
+        "ArrowDown" => (Granularity::Grapheme, Direction::Down),
         _ => return None,
     };
 
@@ -181,8 +189,8 @@ mod tests {
 
     #[test]
     fn delete_keys_map_to_char_delete_intents() {
-        // Backspace removes the char before the caret, Delete the one after
-        // (ADR-0103). Word granularity is a later slice — char only here.
+        // Bare Backspace removes the char before the caret, bare Delete the one
+        // after (ADR-0103); the word-widening modifiers are covered separately.
         assert_eq!(
             key_to_edit_intent("Backspace", 0),
             Some(EditIntent::Delete {
@@ -197,6 +205,28 @@ mod tests {
                 direction: Direction::Forward,
             }),
         );
+    }
+
+    #[test]
+    fn alt_or_ctrl_widens_delete_to_a_word() {
+        // #363: Option+Backspace (macOS) and Ctrl+Backspace (Win/Linux) delete
+        // the previous word; the same modifiers on Delete remove the next word.
+        for word_mod in [MOD_ALT, MOD_CTRL] {
+            assert_eq!(
+                key_to_edit_intent("Backspace", word_mod),
+                Some(EditIntent::Delete {
+                    granularity: Granularity::Word,
+                    direction: Direction::Backward,
+                }),
+            );
+            assert_eq!(
+                key_to_edit_intent("Delete", word_mod),
+                Some(EditIntent::Delete {
+                    granularity: Granularity::Word,
+                    direction: Direction::Forward,
+                }),
+            );
+        }
     }
 
     #[test]
@@ -290,11 +320,30 @@ mod tests {
     }
 
     #[test]
-    fn bare_vertical_arrows_are_not_edit_intents_yet() {
-        // Single-line ↑/↓ without Cmd is vertical motion, deferred to #7; the
-        // adapter leaves it to the raw key path.
-        assert_eq!(key_to_edit_intent("ArrowUp", 0), None);
-        assert_eq!(key_to_edit_intent("ArrowDown", 0), None);
+    fn bare_vertical_arrows_map_to_vertical_motion() {
+        // #368: bare ↑/↓ move between display lines (multi-line) or to the field
+        // ends (single-line); Shift extends. Distinct from Cmd+↑/↓ (doc boundary).
+        assert_eq!(
+            key_to_edit_intent("ArrowUp", 0),
+            Some(EditIntent::Move {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Up,
+            }),
+        );
+        assert_eq!(
+            key_to_edit_intent("ArrowDown", 0),
+            Some(EditIntent::Move {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Down,
+            }),
+        );
+        assert_eq!(
+            key_to_edit_intent("ArrowDown", MOD_SHIFT),
+            Some(EditIntent::Extend {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Down,
+            }),
+        );
     }
 
     #[test]

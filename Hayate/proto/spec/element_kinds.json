@@ -21,7 +21,8 @@
     "name": "text_input",
     "value": 4,
     "carriesTextLocal": true,
-    "defaultCursor": "text"
+    "defaultCursor": "text",
+    "acceptsTextInput": true
   },
   {
     "name": "scroll_view",

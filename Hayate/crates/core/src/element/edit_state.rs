@@ -60,11 +60,27 @@ pub struct Preedit {
     pub clauses: Vec<CompositionClause>,
 }
 
-/// Direction of a horizontal edit motion along the text run.
+/// Direction of an edit motion. `Backward`/`Forward` step horizontally along the
+/// text run; `Up`/`Down` move vertically between display lines (ADR-0103). A
+/// vertical motion needs Parley line geometry, so the `ElementTree` editing seam
+/// resolves it for multi-line fields; a single-line field has no rows, so the
+/// pure `EditState` seam treats `Up`/`Down` as jumps to the field start/end
+/// (Chromium `<input>`: ↑ = 先頭, ↓ = 末尾).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
     Backward,
     Forward,
+    Up,
+    Down,
+}
+
+impl Direction {
+    /// Whether this is a vertical (line-to-line) motion rather than a horizontal
+    /// step. Vertical motions keep the sticky goal column; horizontal ones reset
+    /// it.
+    fn is_vertical(self) -> bool {
+        matches!(self, Direction::Up | Direction::Down)
+    }
 }
 
 /// Granularity of an edit motion (ADR-0103). The closed vocabulary grows as
@@ -140,6 +156,12 @@ pub struct EditState {
     /// The selection's anchor (the fixed end). Equal to `cursor_byte_index` for
     /// a collapsed caret.
     pub selection_anchor: usize,
+    /// Sticky goal column for vertical (↑/↓) motion: the content-local x the
+    /// caret aims for as it crosses display lines, so passing through a short
+    /// line does not lose the original column (ADR-0103). `None` until a vertical
+    /// motion establishes it; any horizontal motion clears it. Set in
+    /// content-local pixels by the `ElementTree` seam, which owns Parley geometry.
+    pub desired_x: Option<f32>,
 }
 
 impl EditState {
@@ -210,11 +232,15 @@ impl EditState {
         self.selection_anchor = self.cursor_byte_index;
     }
 
-    /// Collapse the selection to a caret at `offset`.
+    /// Collapse the selection to a caret at `offset`. This is the caret-reposition
+    /// choke point for edits (insert / delete / set / commit) and horizontal
+    /// moves, so it also drops the sticky vertical goal column — only a vertical
+    /// motion (which repositions via `move_focus` / `set_selection`) keeps it.
     fn collapse_to(&mut self, offset: usize) {
         let o = offset.min(self.text_content.len());
         self.cursor_byte_index = o;
         self.selection_anchor = o;
+        self.desired_x = None;
     }
 
     /// Delete the selected range when non-empty, collapsing the caret to its
@@ -343,6 +369,15 @@ impl EditState {
     /// reusing the shared grapheme/word steppers (`selection.rs`).
     fn step(&self, granularity: Granularity, direction: Direction, offset: usize) -> usize {
         use crate::element::selection::{next_grapheme, next_word, prev_grapheme, prev_word};
+        // Single-line vertical semantics (#368): a field with no rows treats ↑ as
+        // a jump to the field start and ↓ to the field end (Chromium `<input>`).
+        // Multi-line vertical motion needs Parley geometry and is resolved one
+        // layer up, on the `ElementTree` editing seam.
+        match direction {
+            Direction::Up => return 0,
+            Direction::Down => return self.text_content.len(),
+            Direction::Backward | Direction::Forward => {}
+        }
         match (granularity, direction) {
             (Granularity::Grapheme, Direction::Backward) => prev_grapheme(&self.text_content, offset),
             (Granularity::Grapheme, Direction::Forward) => next_grapheme(&self.text_content, offset),
@@ -350,11 +385,13 @@ impl EditState {
             (Granularity::Word, Direction::Forward) => next_word(&self.text_content, offset),
             // Single-line semantics (#360): the line and the document both span
             // the whole field, so either boundary collapses to the field ends.
-            // Multi-line display-line boundaries are #7.
+            // Multi-line display-line boundaries are resolved on the tree seam.
             (Granularity::LineBoundary | Granularity::DocBoundary, Direction::Backward) => 0,
             (Granularity::LineBoundary | Granularity::DocBoundary, Direction::Forward) => {
                 self.text_content.len()
             }
+            // Vertical directions returned above.
+            (_, Direction::Up | Direction::Down) => unreachable!("vertical handled above"),
         }
     }
 
@@ -366,15 +403,19 @@ impl EditState {
                 granularity,
                 direction,
             } => {
+                // Both branches collapse via `collapse_to`, which drops the sticky
+                // goal column — a single-line ↑/↓ has no rows to keep it for.
                 // Chromium: a plain arrow over a selection collapses to the
                 // directional edge without stepping; over a caret it steps one
-                // unit and stays collapsed. A boundary motion (Home/End) ignores
-                // the selection and jumps straight to the boundary.
+                // unit and stays collapsed. A boundary motion (Home/End) or a
+                // vertical jump ignores the selection and goes straight to the
+                // target (single-line ↑ = field start, ↓ = field end).
                 match self.selection_range() {
-                    Some((start, end)) if !granularity.is_boundary() => {
+                    Some((start, end)) if !granularity.is_boundary() && !direction.is_vertical() => {
                         let edge = match direction {
                             Direction::Backward => start,
                             Direction::Forward => end,
+                            Direction::Up | Direction::Down => unreachable!("vertical excluded"),
                         };
                         self.collapse_to(edge);
                     }
@@ -389,6 +430,9 @@ impl EditState {
                 granularity,
                 direction,
             } => {
+                if !direction.is_vertical() {
+                    self.desired_x = None;
+                }
                 let next = self.step(granularity, direction, self.cursor_byte_index);
                 self.move_focus(next);
                 true
@@ -621,6 +665,87 @@ mod tests {
     }
 
     #[test]
+    fn single_line_vertical_moves_to_field_start_and_end() {
+        // Chromium `<input>` (#368): with no rows, ↑ jumps to the field start and
+        // ↓ to the field end. EditState owns this pure single-line semantics; the
+        // geometry-driven multi-line case is resolved on the ElementTree seam.
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(2, 2); // caret in the middle
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Up,
+        }));
+        assert_eq!(edit.cursor_byte_index, 0, "↑ → field start");
+        assert!(edit.is_caret());
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Down,
+        }));
+        assert_eq!(edit.cursor_byte_index, 5, "↓ → field end");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn single_line_vertical_jumps_over_a_selection_to_the_field_end() {
+        // Unlike a horizontal arrow (which collapses to the selection edge), ↑/↓
+        // ignore the selection and jump straight to the field boundary.
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(1, 4); // "ell" selected, focus at 4
+
+        assert!(edit.apply(EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Down,
+        }));
+        assert_eq!(edit.cursor_byte_index, 5, "↓ jumps past the selection to the end");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn shift_vertical_extends_to_the_field_ends_in_a_single_line() {
+        // Shift+↑/↓ in a single-line field extends the selection to the field
+        // start/end, anchor fixed (the Extend counterpart of the Move jumps).
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(2, 2);
+
+        assert!(edit.apply(EditIntent::Extend {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Up,
+        }));
+        assert_eq!(edit.selection_anchor, 2, "anchor stays put");
+        assert_eq!(edit.cursor_byte_index, 0, "Shift+↑ extends to the field start");
+        assert_eq!(edit.selection_range(), Some((0, 2)));
+    }
+
+    #[test]
+    fn a_horizontal_move_clears_the_sticky_goal_column() {
+        // The goal column is kept across vertical motion but reset the moment the
+        // caret moves horizontally (ADR-0103) — otherwise a later ↑/↓ would snap
+        // back to a stale column.
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.desired_x = Some(42.0);
+        assert!(edit.apply(move_grapheme(Direction::Backward)));
+        assert_eq!(edit.desired_x, None, "a horizontal step resets the goal column");
+    }
+
+    #[test]
+    fn editing_clears_the_sticky_goal_column() {
+        // Typing repositions the caret, so the next ↑/↓ must aim from the new
+        // column, not a stale one — inserting clears the goal column.
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(2, 2);
+        edit.desired_x = Some(42.0);
+        edit.insert("X");
+        assert_eq!(edit.desired_x, None, "an edit resets the goal column");
+    }
+
+    #[test]
     fn move_to_doc_boundary_jumps_to_field_start_and_end() {
         // Ctrl+Home/End. In single-line semantics the document boundary equals
         // the line boundary, so both collapse to the field ends (#360).
@@ -726,6 +851,29 @@ mod tests {
         }));
         assert_eq!(edit.cursor_byte_index, 11, "word extend reaches end of 'world'");
         assert_eq!(edit.selection_range(), Some((5, 11)));
+    }
+
+    #[test]
+    fn delete_by_word_removes_a_whole_word_in_each_direction() {
+        // #363: Delete with Word granularity removes from the caret to the word
+        // boundary (`prev_word` / `next_word`), the model behind Ctrl/Alt+
+        // Backspace/Delete.
+        let mut edit = EditState::default();
+        edit.set("hello world"); // caret at end (11)
+        assert!(edit.apply(EditIntent::Delete {
+            granularity: Granularity::Word,
+            direction: Direction::Backward,
+        }));
+        assert_eq!(edit.text_content, "hello ", "the word before the caret goes");
+        assert_eq!(edit.cursor_byte_index, 6, "caret collapses to the word start");
+
+        edit.set_selection(0, 0); // caret to the field start
+        assert!(edit.apply(EditIntent::Delete {
+            granularity: Granularity::Word,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.text_content, " ", "the word after the caret goes");
+        assert_eq!(edit.cursor_byte_index, 0, "caret stays at the deletion point");
     }
 
     #[test]

@@ -99,6 +99,10 @@ _Avoid_: shared component runtime, unified signal runtime
 スタイルプロパティの値が、ルートサーフェスの幅・高さに対する `min-width`/`max-width`/`min-height`/`max-height`（px固定、1エントリ内はAND評価）の組み合わせに応じて切り替わるバリアント。`effective_visual` resolver が継承（ch1+ch2）→ 自身 → pseudo (`focus<hover<active`) に続く解決軸として扱う。同一プロパティに複数の Viewport Condition が同時マッチする場合は宣言順で後勝ち（CSSの `@media` カスケードに準拠）。
 _Avoid_: 要素自身の `min-width`/`max-width` style tag（box constraint としての CSS `min-width`/`max-width` プロパティ）と同一視する説明、Container Query（要素自身の確定サイズに基づく条件。現時点ではスコープ外）
 
+**Element-Kind UA Default（要素種別 UA 既定）**:
+要素種別がブラウザ UA スタイルシート相当として持つ既定値で、core が単一正本から供給し全レンダラーが一致する。cursor（`<input>`→I-beam / `<button>`→pointer・ADR-0105）と layout（`button`=内容を縦中央 / `text-input`=フォント感応の既定幅・ADR-0109）が該当。解決順は常に **明示スタイル > element-kind UA 既定 > 全体既定**。値はブラウザ UA を写すが Canvas が正準（core がセマンティクスを定義）で、「DOM だけ動いていた偶然」（ADR-0002）とは区別される正当な種別セマンティクス。
+_Avoid_: レンダラーごとに再宣言する既定、ブラウザ既定挙動への無条件委譲、authoring 必須として既定を持たない設計
+
 ## Historical Terms
 
 **WIT**:

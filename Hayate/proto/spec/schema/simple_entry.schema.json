@@ -15,6 +15,10 @@
       "description": "UA default cursor for this element-kind when no explicit `cursor` is set (ADR-0105). Single source for Canvas/DOM kind-default cursor; a `cursor` enum value name.",
       "type": "string",
       "enum": ["default", "pointer", "text", "crosshair", "not_allowed", "grab", "grabbing"]
+    },
+    "acceptsTextInput": {
+      "description": "Whether this element-kind accepts text entry and so surfaces the platform soft keyboard / IME when focused (#392). True for text_input only; plain text carries styles but is not editable.",
+      "type": "boolean"
     }
   },
   "additionalProperties": false

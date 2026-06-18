@@ -128,9 +128,11 @@ pub fn android_main(app: AndroidApp) {
 
 /// Sync GameTextInput into the focused TextInput (stage C IME, ADR-0094).
 ///
-/// Shows/hides the soft keyboard as focus enters/leaves an element (focus is set
-/// by tap; core no-ops text edits on non-TextInput targets) and diffs
-/// GameTextInput's absolute buffer into core edit calls. The diff/apply logic
+/// Shows/hides the soft keyboard as focus enters/leaves a *text input* and diffs
+/// GameTextInput's absolute buffer into core edit calls. A tap focuses whatever
+/// it hits (buttons, plain text, views), so the keyboard is gated on
+/// [`ElementTree::focused_text_input`] — keying it on raw focus raised the soft
+/// keyboard for every tap, not just editable fields (#392). The diff/apply logic
 /// lives in the host-testable [`crate::ime_input`]; this wrapper is thin glue
 /// over `android-activity`'s text-input API and is verified on-device (#195).
 fn sync_ime(
@@ -139,19 +141,19 @@ fn sync_ime(
     prev: &mut TextInputState,
     keyboard_shown_for: &mut Option<ElementId>,
 ) {
-    let focused = tree.focused_element();
+    let target = tree.focused_text_input();
 
-    if *keyboard_shown_for != focused {
-        match focused {
+    if *keyboard_shown_for != target {
+        match target {
             Some(_) => app.show_soft_input(true),
             None => app.hide_soft_input(true),
         }
-        *keyboard_shown_for = focused;
+        *keyboard_shown_for = target;
         // A fresh focus starts from an empty baseline buffer.
         *prev = TextInputState::default();
     }
 
-    let Some(target) = focused else {
+    let Some(target) = target else {
         return;
     };
 

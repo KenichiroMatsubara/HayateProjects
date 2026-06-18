@@ -121,9 +121,9 @@ _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover 
 アプリ全体で同時に一つだけ存在する有効な文字選択。anchor と focus を `(ElementId, byte offset)` で表し、document 順に正規化した連続範囲。Element Document Runtime が単独所有し、Selection Region の選択と text-input の選択は排他（新規選択で旧選択は解除）。単一キャレット（EditState の `cursor_byte_index`）は anchor=focus の縮退形。
 _Avoid_: 領域ごとに独立した複数の同時選択、cursor を selection と別概念とする理解
 
-**Selection Region（選択領域）**:
-block box の `selectable` プロパティが確立する、連続選択が広がれる subtree 境界。Flutter の SelectionArea に相当し、選択はこの境界を越えない。nested は最寄り祖先の Selection Region が有効。text-input は境界に依らず常に選択可能。
-_Avoid_: 全 text を既定で選択可能とする設計、text ごとの selectable で領域境界を持たない設計、専用 element-kind（`selectable` は typed property・ADR-0096 の `draggable` と同型）
+**Selection Region（選択領域＝`user-select: contains` 境界）**:
+選択がその外へ広がるのを止める、opt-in の封じ込め境界。`user-select: contains` を持つ block box が確立し（Flutter の SelectionArea 相当）、選択はこの境界を越えない。nested は最寄り祖先が有効。**既定では境界は無く**、選択は document 順に要素をまたいで自由に広がる（ブラウザ `user-select` パリティ・ADR-0108）。何が選択可能かは element-kind の UA 既定（text / view / scroll-view = 選択可、button / image = 不可）と明示 `user-select`（`text | none | contains`）で決まり、text-input は境界に依らず常に編集選択可能。
+_Avoid_: 既定で領域内にのみ選択可とする opt-in 設計（廃止された `selectable` boolean）、選択は単一要素に閉じるという理解、`contains` 境界を既定とみなす理解、専用 element-kind
 
 **Selection Chrome（選択 chrome）**:
 有効な選択に対して core が SceneGraph に描く視覚要素 — highlight tint・ドラッグ handle・フローティングツールバー（拡大鏡は将来）。core が一度だけ描画する。**highlight tint は browser（Chromium `::selection`）をお手本に寄せ**、handle・ツールバー・拡大鏡は **browser に無い概念なので Android-native をお手本**にする（Canvas の視覚お手本は DOM＝ADR-0102）。DOM / HTML 経路ではブラウザネイティブの選択描画に委ねる（Selection Region の意味論はパリティ対象）。
