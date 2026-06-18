@@ -593,6 +593,187 @@ fn enter_in_a_multiline_field_replaces_the_selection() {
     assert!(tree.element_text_selection(input).is_none());
 }
 
+// ── Multi-line vertical motion + display-line Home/End (#368) ─────────────────
+// ↑/↓ move between display lines keeping a sticky goal column; Home/End snap to
+// the display-line ends. These need Parley line geometry, so the field is laid
+// out first. Width is generous so hard-newline cases do not also soft-wrap.
+
+/// A laid-out, focused multi-line text-input carrying `content`. `width` lets a
+/// caller force soft-wrapping; `content` may contain `\n` for hard lines.
+fn multiline_input(content: &str, width: f32) -> (ElementTree, hayate_core::ElementId) {
+    let mut tree = ElementTree::new();
+    let input = tree.element_create(40, ElementKind::TextInput);
+    tree.set_root(input);
+    tree.set_viewport(width.max(200.0), 200.0);
+    tree.element_set_multiline(input, true);
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(width)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_append_text_content(input, content);
+    tree.element_focus(input);
+    tree.render(0.0);
+    (tree, input)
+}
+
+fn move_vertical(d: Direction) -> EditIntent {
+    EditIntent::Move {
+        granularity: Granularity::Grapheme,
+        direction: d,
+    }
+}
+
+#[test]
+fn arrow_up_down_moves_between_display_lines_at_the_same_column() {
+    // #368: two identical hard lines. From the end of line 2, ↑ lands at the same
+    // column on line 1 (its end); ↓ returns to the end of line 2.
+    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // caret at 13
+    assert_eq!(tree.element_caret_byte_index(input), Some(13));
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(6),
+        "↑ lands at the end of the line above (same column)",
+    );
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Down)));
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(13),
+        "↓ returns to the end of the line below",
+    );
+}
+
+#[test]
+fn vertical_motion_keeps_the_goal_column_across_a_short_line() {
+    // #368 sticky goal column: caret at the end of a long line, then ↑ through a
+    // short line ("hi") and ↑ again to another long line. The column is preserved
+    // across the short line, so the final caret is at the long line's end (5),
+    // not where the short line clamped it (which would land near column 2).
+    let (mut tree, input) = multiline_input("world\nhi\nworld", 400.0); // caret at 14
+    assert_eq!(tree.element_caret_byte_index(input), Some(14));
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(8),
+        "↑ onto the short line clamps to its end",
+    );
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(5),
+        "↑ again returns to the original column on the long line (goal kept)",
+    );
+}
+
+#[test]
+fn single_line_arrow_up_down_jumps_to_the_field_ends() {
+    // #368: a single-line field has no rows, so ↑ jumps to the field start and ↓
+    // to the field end (Chromium `<input>`), resolved by the pure EditState seam.
+    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
+    assert_eq!(tree.element_caret_byte_index(input), Some(0), "↑ → field start");
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Down)));
+    assert_eq!(tree.element_caret_byte_index(input), Some(5), "↓ → field end");
+}
+
+#[test]
+fn multiline_home_end_snap_to_the_display_line_ends() {
+    // #368: in a multi-line field Home/End move to the *display line* ends, not
+    // the whole-field ends. Caret on the third line → Home lands at that line's
+    // start (9), not the field start (0); End at its end (14).
+    let (mut tree, input) = multiline_input("world\nhi\nworld", 400.0); // caret at 14
+
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Move {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Backward,
+        },
+    ));
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(9),
+        "Home → start of the current display line, not the field start",
+    );
+
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Move {
+            granularity: Granularity::LineBoundary,
+            direction: Direction::Forward,
+        },
+    ));
+    assert_eq!(tree.element_caret_byte_index(input), Some(14), "End → display-line end");
+}
+
+#[test]
+fn shift_arrow_down_extends_the_selection_across_lines() {
+    // #368: Shift+↑/↓ extends the selection by a row, keeping the anchor.
+    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // caret at 13
+
+    // Caret up to the end of line 1 (anchor point for the extension).
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
+    assert_eq!(tree.element_caret_byte_index(input), Some(6));
+
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Extend {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Down,
+        },
+    ));
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((6, 13)),
+        "Shift+↓ selects from line 1's end down to line 2's end (row-spanning)",
+    );
+}
+
+#[test]
+fn on_key_down_arrow_up_moves_the_caret_up_a_line() {
+    // #368: the raw key path maps a bare ↑ to vertical motion, so a multi-line
+    // field moves the caret to the line above without going through the adapter.
+    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // caret at 13
+
+    tree.on_key_down("ArrowUp", 0);
+
+    assert_eq!(tree.element_caret_byte_index(input), Some(6), "↑ key moved up a line");
+}
+
+#[test]
+fn vertical_motion_follows_soft_wrapped_lines() {
+    // #368 acceptance: with no hard breaks, a narrow field soft-wraps into several
+    // display lines. ↑ from the end moves the caret onto a higher visual row — its
+    // y drops by roughly a line height — proving wrap geometry drives the motion.
+    let (mut tree, input) = multiline_input("aaaa bbbb cccc dddd eeee", 70.0);
+
+    let before = tree
+        .element_character_bounds(input)
+        .expect("caret bounds before moving");
+
+    assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
+
+    let after = tree
+        .element_character_bounds(input)
+        .expect("caret bounds after moving");
+    assert!(
+        after.y < before.y - 1.0,
+        "↑ moved the caret to a higher wrapped line (y {} → {})",
+        before.y,
+        after.y,
+    );
+}
+
 #[test]
 fn on_composition_end_commits_via_edit_state() {
     let mut tree = ElementTree::new();
