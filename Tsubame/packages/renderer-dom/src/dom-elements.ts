@@ -59,9 +59,14 @@ function applyDefaults(el: HTMLElement, defaults: StyleDefaults): void {
 export function createDomElement(
   doc: Document,
   kind: ElementKind,
+  multiline = false,
 ): HTMLElement {
   const spec = ELEMENT_SPECS[kind];
-  const el = doc.createElement(spec.tagName);
+  // A multi-line text-input materialises as a `<textarea>` so the browser's
+  // native Enter inserts a newline at the caret; single-line uses `<input>`
+  // which submits (#362). The text-input baseline styles apply to both.
+  const useTextarea = kind === 'text-input' && multiline;
+  const el = doc.createElement(useTextarea ? 'textarea' : spec.tagName);
 
   applyDefaults(el, BASE_STYLE);
   if (spec.style !== undefined) applyDefaults(el, spec.style);
@@ -73,6 +78,8 @@ export function createDomElement(
     el.style.cursor = defaultCursor;
   }
   for (const [name, value] of Object.entries(spec.attributes ?? {})) {
+    // `<textarea>` has no `type` attribute — skip it for the multiline variant.
+    if (useTextarea && name === 'type') continue;
     el.setAttribute(name, value);
   }
 

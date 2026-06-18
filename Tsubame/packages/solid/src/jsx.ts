@@ -37,6 +37,7 @@ declare global {
         value?: string;
         placeholder?: string;
         disabled?: boolean;
+        multiline?: boolean;
       };
       'scroll-view': TsubameProps & { selectable?: boolean };
     }

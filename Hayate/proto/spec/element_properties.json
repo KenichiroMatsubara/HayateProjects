@@ -23,5 +23,10 @@
     "name": "selectable",
     "opKind": "selectable",
     "coerce": "boolean"
+  },
+  {
+    "name": "multiline",
+    "opKind": "multiline",
+    "coerce": "boolean"
   }
 ]

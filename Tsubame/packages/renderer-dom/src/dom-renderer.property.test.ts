@@ -50,6 +50,51 @@ describe('DomRenderer setProperty (ADR-0071)', () => {
     );
   });
 
+  it('swaps a text-input to a <textarea> when multiline is set, preserving the value (#362)', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('text-input');
+    renderer.setRoot(id);
+    renderer.setProperty(id, 'value', 'line one');
+    expect(container.querySelector('input')).not.toBeNull();
+
+    renderer.setProperty(id, 'multiline', true);
+
+    expect(container.querySelector('input')).toBeNull();
+    const textarea = container.querySelector('textarea');
+    expect(textarea).not.toBeNull();
+    expect(textarea!.value).toBe('line one', 'the live value carries across the swap');
+    expect(textarea!.getAttribute('data-tsubame-id')).toBe(String(id as unknown as number));
+  });
+
+  it('swaps a multiline text-input back to an <input> when multiline is cleared (#362)', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('text-input');
+    renderer.setRoot(id);
+    renderer.setProperty(id, 'multiline', true);
+    expect(container.querySelector('textarea')).not.toBeNull();
+
+    renderer.setProperty(id, 'multiline', false);
+
+    expect(container.querySelector('textarea')).toBeNull();
+    expect(container.querySelector('input')).not.toBeNull();
+  });
+
+  it('keeps event listeners working across a multiline swap (#362)', () => {
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('text-input');
+    renderer.setRoot(id);
+    let fired = 0;
+    renderer.addEventListener(id, 'input', () => {
+      fired += 1;
+    });
+
+    renderer.setProperty(id, 'multiline', true);
+    const textarea = container.querySelector('textarea')!;
+    textarea.dispatchEvent(new (textarea.ownerDocument.defaultView as Window).Event('input'));
+
+    expect(fired).toBe(1, 'the listener re-binds to the swapped-in textarea');
+  });
+
   it('reflects the shared coerceElementProperty payload to the DOM (issue #235)', () => {
     // The DOM side must read the *same* coerced edge cases as the Canvas side —
     // both renderers route through coerceElementProperty, so the reflection here

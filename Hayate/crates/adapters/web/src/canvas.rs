@@ -244,6 +244,11 @@ impl HayateElementRenderer {
             .element_set_selectable(element_id_from_f64(id), selectable);
     }
 
+    pub fn element_set_multiline(&mut self, id: f64, multiline: bool) {
+        self.tree
+            .element_set_multiline(element_id_from_f64(id), multiline);
+    }
+
     pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
         let props = style_packet::decode(packed)?;
         self.tree.element_set_style(element_id_from_f64(id), &props);

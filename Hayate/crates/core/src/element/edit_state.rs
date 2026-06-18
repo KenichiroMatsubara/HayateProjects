@@ -433,7 +433,11 @@ impl EditState {
         // EditIntents upstream (ADR-0103); only Enter remains a raw key here.
         match key {
             "Enter" => {
-                self.append("\n");
+                // Insert at the caret (replacing any selection), not append — a
+                // newline behaves like any other typed character (#362). Whether
+                // Enter reaches here at all is gated upstream by the element's
+                // `multiline` property; a single-line field treats it as submit.
+                self.insert("\n");
                 true
             }
             _ => false,
@@ -444,6 +448,32 @@ impl EditState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enter_inserts_a_newline_at_the_caret_not_at_the_end() {
+        // The Enter key inserts `\n` at the caret position, like any other typed
+        // character — not appended to the end (#362, fixing the old append bug).
+        let mut edit = EditState::default();
+        edit.set("ab"); // caret collapsed at end (2)
+        edit.set_selection(1, 1); // caret between 'a' and 'b'
+        assert!(edit.apply_key_down("Enter"));
+        assert_eq!(edit.text_content, "a\nb", "newline lands at the caret");
+        assert_eq!(edit.cursor_byte_index, 2, "caret sits after the inserted newline");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn enter_replaces_the_selected_range() {
+        // replace-on-type: pressing Enter over a selection drops the range and
+        // inserts the newline in its place (#362).
+        let mut edit = EditState::default();
+        edit.set("hello");
+        edit.set_selection(1, 4); // "ell" selected
+        assert!(edit.apply_key_down("Enter"));
+        assert_eq!(edit.text_content, "h\no");
+        assert_eq!(edit.cursor_byte_index, 2, "caret after the newline");
+        assert!(edit.is_caret());
+    }
 
     #[test]
     fn backspace_removes_last_scalar() {

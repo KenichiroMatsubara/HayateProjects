@@ -65,6 +65,10 @@ export class HayateMutationPacket {
     this.mutations.push({ kind: 'setSelectable', id, selectable });
   }
 
+  enqueueSetMultiline(id: ElementId, multiline: boolean): void {
+    this.mutations.push({ kind: 'setMultiline', id, multiline });
+  }
+
   enqueueSetSrc(id: ElementId, url: string): void {
     this.mutations.push({ kind: 'setSrc', id, url });
   }

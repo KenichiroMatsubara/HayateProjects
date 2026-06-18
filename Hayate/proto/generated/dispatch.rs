@@ -189,5 +189,10 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
                 .element_set_selectable(ElementId::from_u64(id), selectable);
             Ok(())
         }
+        Op::SetMultiline { id, multiline } => {
+            host.tree_mut()
+                .element_set_multiline(ElementId::from_u64(id), multiline);
+            Ok(())
+        }
     }
 }

@@ -332,6 +332,19 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(hayate.srcCalls).toHaveLength(0);
   });
 
+  it('routes the multiline property to a SET_MULTILINE op (#362)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new CanvasRenderer(hayate, sched);
+    const input = renderer.createElement('text-input');
+
+    renderer.setProperty(input, 'multiline', true);
+    sched.tick();
+
+    const batch = hayate.mutations[0]!;
+    expect(batch.ops).toContain(OP.SET_MULTILINE);
+  });
+
   it('applies the shared coerceElementProperty payload to the packet (issue #235)', () => {
     // Drive the coercion-sensitive edge cases and confirm the packet carries
     // exactly what the shared seam produced — no canvas-local re-coercion.
