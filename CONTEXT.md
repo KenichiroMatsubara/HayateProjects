@@ -130,7 +130,7 @@ _Avoid_: 全 text を既定で選択可能とする設計、text ごとの selec
 _Avoid_: OS ネイティブ選択 UI を Platform Adapter ごとに再実装する設計、レンダラーごとの chrome 方言、tint まで Material 固定とし browser 寄せを否定する理解、chrome の見た目を意味論パリティの対象とする理解
 
 **Scrollbar Chrome（スクロールバー chrome）**:
-`scroll-view` のスクロール位置を表す視覚要素で、core が overlay（レイアウト非予約）で描く。Selection Chrome の姉妹概念で Pointer Modality で形態が分岐する — Mouse/Pen は Chromium をお手本にした操作可能なスクロールバー（thumb ドラッグ・track クリックで Scroll Offset を動かす）、Touch は Android-native をお手本にしたスクロール中のみ出る非操作の transient indicator。視覚お手本は DOM（ADR-0102）で、操作は Scroll Offset レベルでパリティする（ADR-0108）。
+`scroll-view` のスクロール位置を表す視覚要素で、core が overlay（レイアウト非予約）で描く。Selection Chrome の姉妹概念で Pointer Modality で形態が分岐する — Mouse/Pen は Chromium をお手本にした操作可能なスクロールバー（thumb ドラッグ・track クリックで Scroll Offset を動かす）、Touch は Android-native をお手本にしたスクロール中のみ出る非操作の transient indicator。視覚お手本は DOM（ADR-0102）で、操作は Scroll Offset レベルでパリティする（ADR-0110）。
 _Avoid_: classic（gutter 予約）スクロールバー設計、modality 非依存の単一形態、Canvas で非描画＝by-design とする理解、見た目を意味論パリティの対象とする理解
 
 **EditIntent（編集インテント）**:
