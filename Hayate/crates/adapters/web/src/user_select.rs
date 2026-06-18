@@ -17,16 +17,21 @@ use hayate_core::{ElementKind, UserSelectValue};
 /// - Otherwise the effective value is the explicit `user-select` if present,
 ///   else the kind default (`view` / `text` / `scroll-view` = `text`,
 ///   `image` / `button` = `none`).
-/// - `text` and `contains` are selectable and map to CSS `text` (`contains`
-///   only adds a containment boundary, resolved core-side); `none` maps to CSS
-///   `none` and excludes the subtree.
+/// - `text` maps to CSS `text`; `none` maps to CSS `none` and excludes the
+///   subtree.
+/// - `contains` is selectable but establishes a containment boundary, so it maps
+///   to CSS `contain` (ADR-0108 decision 3, #400). Browsers supporting
+///   `user-select: contain` confine native selection to the element; those that
+///   do not ignore it and the core-side boundary clamp supplies the same
+///   semantics (semantics-only parity).
 pub fn resolve_user_select(kind: ElementKind, explicit: Option<UserSelectValue>) -> &'static str {
     if matches!(kind, ElementKind::TextInput) {
         return "text";
     }
     let effective = explicit.unwrap_or_else(|| kind.default_user_select());
     match effective {
-        UserSelectValue::Text | UserSelectValue::Contains => "text",
+        UserSelectValue::Text => "text",
+        UserSelectValue::Contains => "contain",
         UserSelectValue::None => "none",
     }
 }

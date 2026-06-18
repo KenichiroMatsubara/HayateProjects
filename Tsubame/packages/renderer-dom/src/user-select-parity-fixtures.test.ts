@@ -9,7 +9,7 @@ interface UserSelectParityFixture {
   name: string;
   elementKind: ElementKind;
   userSelect: UserSelect | null;
-  expected: 'text' | 'none';
+  expected: 'text' | 'none' | 'contain';
 }
 
 const fixturesPath = join(

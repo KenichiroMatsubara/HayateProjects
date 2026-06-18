@@ -20,8 +20,8 @@ describe('resolveUserSelect (ADR-0108 kind default + explicit user-select)', () 
     expect(resolveUserSelect('button', 'text')).toBe('text');
   });
 
-  it('treats contains as selectable (CSS text; boundary resolved core-side)', () => {
-    expect(resolveUserSelect('view', 'contains')).toBe('text');
+  it('maps contains to CSS contain (containment boundary; clamped core-side too)', () => {
+    expect(resolveUserSelect('view', 'contains')).toBe('contain');
   });
 
   it('keeps text-input selectable regardless of explicit value', () => {
@@ -76,5 +76,15 @@ describe('DomRenderer user-select (ADR-0108)', () => {
     expect(container.querySelector('input')!.style.userSelect).toBe('text');
     renderer.setProperty(input, 'user-select', 'none');
     expect(container.querySelector('input')!.style.userSelect).toBe('text');
+  });
+
+  it('maps a view with user-select: contains to CSS contain', () => {
+    const renderer = new DomRenderer({ document, container });
+    const view = renderer.createElement('view');
+    renderer.setRoot(view);
+    renderer.setProperty(view, 'user-select', 'contains');
+    // The containment boundary is enforced core-side; the DOM gets the matching
+    // CSS `contain` so a supporting browser confines native selection too.
+    expect(container.querySelector('div')!.style.userSelect).toBe('contain');
   });
 });
