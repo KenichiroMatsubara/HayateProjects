@@ -187,20 +187,26 @@ export function TodoApp(props: TodoAppProps) {
           paddingBottom: 28,
           backgroundColor: colors().bg,
         }}>
-          <view style={{
-            width: 620,
-            maxWidth: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            padding: 22,
-            backgroundColor: colors().panel,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderStyle: 'solid',
-            borderColor: colors().line,
-            boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
-          }}>
+          <view
+            style={{
+              width: 620,
+              maxWidth: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              padding: 22,
+              backgroundColor: colors().panel,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderStyle: 'solid',
+              borderColor: colors().line,
+              boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
+            }}
+            // 狭幅では余白と角丸を詰める（本物の @media・ADR-0081）。
+            styleVariants={[
+              { condition: { maxWidth: 719 }, style: { padding: 14, gap: 12, borderRadius: 12 } },
+            ]}
+          >
             <Header colors={colors()} remaining={summary().remaining} total={summary().total} percent={summary().percent} />
             <SelectableNote colors={colors()} />
             <AddForm
@@ -286,17 +292,27 @@ function AppBar(props: {
   };
 
   return (
-    <view style={{
-      height: 64,
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: props.colors.rail,
-      borderWidth: 1,
-      borderStyle: 'solid',
-      borderColor: props.colors.line,
-    }}>
+    <view
+      style={{
+        minHeight: 64,
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+        paddingTop: 8,
+        paddingBottom: 8,
+        backgroundColor: props.colors.rail,
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: props.colors.line,
+      }}
+      // 狭幅では左右のクラスタを縦積みにして溢れを防ぐ（本物の @media・ADR-0081）。
+      styleVariants={[
+        { condition: { maxWidth: 719 }, style: { flexDirection: 'column', alignItems: 'flex-start' } },
+      ]}
+    >
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {SpX(24)}
         <view style={{
@@ -316,7 +332,7 @@ function AppBar(props: {
         </view>
       </view>
 
-      <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <button style={tab(props.page === 'tasks')} onClick={() => props.setPage('tasks')}>Tasks</button>
         <button style={tab(props.page === 'gallery')} onClick={() => props.setPage('gallery')}>CSS Gallery</button>
 
@@ -492,8 +508,8 @@ function AddForm(props: {
   });
 
   return (
-    <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <view style={{ flexGrow: 1 }}>
+    <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      <view style={{ flexGrow: 1, minWidth: 180 }}>
         <text-input
           value={props.draft}
           placeholder="新しいタスクを入力…"
@@ -573,6 +589,7 @@ function Toolbar(props: {
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: 8,
       paddingTop: 10,
       paddingBottom: 10,

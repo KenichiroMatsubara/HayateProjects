@@ -3,6 +3,7 @@ import type {
   ElementKind,
   EventHandler,
   StylePatch,
+  ViewportCondition,
 } from '@tsubame/renderer-protocol';
 import { assertKnownElementProperty } from '@tsubame/renderer-protocol';
 import { splitHayateStyle } from '@tsubame/renderer-protocol';
@@ -82,6 +83,22 @@ const {
             block,
           );
         }
+      }
+      return;
+    }
+
+    // ビューポート条件付きスタイル（ADR-0081）。各変種を setStyleVariant へ流す。
+    // DOM Renderer では本物の `@media` ルールに、Canvas では viewport 評価になる。
+    // 変種は要素ごとに不変な宣言を前提とし（条件は静的）、再評価時は同一
+    // `id|media` キーを in-place 更新する（dom-renderer の variantRuleKeys）。
+    if (name === 'styleVariants') {
+      const variants = (value ?? []) as ReadonlyArray<{
+        condition: ViewportCondition;
+        style: Record<string, unknown>;
+      }>;
+      for (const variant of variants) {
+        const { base } = splitHayateStyle((variant.style ?? {}) as Record<string, unknown>);
+        r.setStyleVariant(node.id, variant.condition, base);
       }
       return;
     }

@@ -1,4 +1,4 @@
-import type { HayateCssStyle } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle, ViewportCondition } from '@tsubame/renderer-protocol';
 import { DEFAULT_ACCENT, DEFAULT_THEME, inputStyle, palette, type Palette } from './theme';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,6 +30,57 @@ interface GallerySection {
   /** Playful per-section accent used on the rail, chip dot, and title. */
   accent: string;
   cards: readonly GalleryCard[];
+}
+
+/**
+ * `@media` ブレークポイントのライブ実証（ADR-0081）。Hayate CSS には
+ * スタイルシートが無いため、media は raw CSS ではなく `styleVariants` という
+ * 型付き宣言で要素ごとに載せる。DOM Renderer ではこれが本物の
+ * `@media (min-width: …)` ルールにコンパイルされ（DevTools の
+ * `<style data-tsubame-variant>` で確認できる）、Canvas Renderer では viewport で
+ * 評価される。ウィンドウ幅を変えると、現在マッチする帯のタイルだけが点灯する。
+ *
+ * 帯は元デモ（gomi/todo-demo-v2.css の `.mq-tile`）と同じ S(<720) / M(720–1099) /
+ * L(≥1100) の 3 段。各タイルは base が `muted`、自帯の variant でだけ `accent` に
+ * なる。`defaultColor` は ambient チャネルなので子 `text` まで継承する。
+ */
+const MQ_TILES: readonly { label: string; condition: ViewportCondition }[] = [
+  { label: 'S  < 720', condition: { maxWidth: 719 } },
+  { label: 'M  720–1099', condition: { minWidth: 720, maxWidth: 1099 } },
+  { label: 'L  ≥ 1100', condition: { minWidth: 1100 } },
+];
+
+function MediaTiles(props: { colors: Palette }) {
+  const p = props.colors;
+  return (
+    <view style={{ display: 'flex', flexDirection: 'column', gap: 6, width: 200 }}>
+      {MQ_TILES.map((tile) => (
+        <view
+          style={{
+            height: 34,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: p.panel2,
+            defaultColor: p.muted,
+            defaultFontSize: 12,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderStyle: 'solid',
+            borderColor: p.line,
+          }}
+          styleVariants={[
+            {
+              condition: tile.condition,
+              style: { backgroundColor: p.accent, defaultColor: p.black, borderColor: p.accent },
+            },
+          ]}
+        >
+          <text>{tile.label}</text>
+        </view>
+      ))}
+    </view>
+  );
 }
 
 function SampleBox(props: { colors: Palette; label: string; style: HayateCssStyle }) {
@@ -736,6 +787,20 @@ function buildSections(p: Palette): readonly GallerySection[] {
               </view>
             </view>
           ),
+        },
+      ],
+    },
+    {
+      title: 'Responsive',
+      accent: p.success,
+      cards: [
+        {
+          // ADR-0081: viewport variants compile to real `@media (min-width: …)`
+          // rules in the DOM Renderer. Renderer-feature card (no catalog patchKey).
+          title: '@media / styleVariants',
+          properties: [],
+          note: 'ウィンドウ幅を変えると一致する帯だけ点灯。DOM では本物の @media ルール（DevTools の <style data-tsubame-variant>）。',
+          render: () => <MediaTiles colors={p} />,
         },
       ],
     },
