@@ -24,6 +24,29 @@ pub const FOCUS_RING_OFFSET: f32 = 1.0;
 /// Chromium's default accent focus ring (Google Blue), opaque.
 pub const FOCUS_RING_COLOR: Color = Color::new(0.102, 0.451, 0.910, 1.0);
 
+/// Scrollbar overlay chrome (ADR-0110, #407). A Mouse/Pen-style always-on thumb
+/// painted over the content on each *overflowing* axis of a `ScrollView`; the
+/// thumb geometry is derived from the Scroll Offset and content size. Drawn as an
+/// overlay — no layout space is reserved (no scrollbar gutter), so it never
+/// shrinks the content box. The Touch transient indicator and the drag/track
+/// interaction are later slices (ADR-0110).
+///
+/// Every tunable here is a named placeholder pending Chromium calibration, in the
+/// same bucket as the focus ring and selection-chrome values (ADR-0102): the
+/// scene-build path must carry no inline scrollbar magic numbers.
+///
+/// Thickness (cross-axis extent) of the scrollbar bar.
+pub const SCROLLBAR_THICKNESS: f32 = 6.0;
+/// Inset of the track (hence the thumb) from the scroll-view box edges.
+pub const SCROLLBAR_TRACK_MARGIN: f32 = 2.0;
+/// Floor on the thumb's length along the scroll axis, so very tall/wide content
+/// still leaves a grabbable thumb instead of collapsing to a sliver.
+pub const SCROLLBAR_MIN_THUMB_LENGTH: f32 = 24.0;
+/// Thumb fill colour (RGB); composited over the content at [`SCROLLBAR_THUMB_OPACITY`].
+pub const SCROLLBAR_THUMB_COLOR: Color = Color::new(0.0, 0.0, 0.0, 1.0);
+/// Thumb opacity — its translucency as an overlay sitting on top of the content.
+pub const SCROLLBAR_THUMB_OPACITY: f32 = 0.4;
+
 /// Ambient context threaded through the one scene walk shared by both anchor
 /// strategies (issue #322). Carries what every emission needs regardless of
 /// strategy — the document tree, the scene graph it builds into, the interaction
@@ -1023,6 +1046,17 @@ fn emit_element<S: AnchorSink>(
         emit_focus_ring(ctx.sg, ring_parent, x, y, w, h, visual.border_radius);
     }
 
+    // Scrollbar overlay (ADR-0110, #407): drawn over the content on each
+    // overflowing axis, under `ring_parent` so it sits above the content Clip and
+    // scroll Group (like the focus ring) and is *not* itself scroll-translated —
+    // the thumb is fixed to the box edge while its position along the track tracks
+    // the Scroll Offset. For a nested scroll-view, `ring_parent` already lives
+    // under the outer Clip/scroll Group, so the inner thumb follows the outer box
+    // and cannot leak outside it (issue #199/#200 coordinate system).
+    if el.kind == ElementKind::ScrollView {
+        emit_scrollbar_overlay(tree, id, ctx.sg, ring_parent, x, y, w, h);
+    }
+
     for (child, child_cursor) in sink.children(tree, cursor, id, effective_parent) {
         let mut child_ctx = ctx.child(x, y, child_inherited.clone());
         walk(&mut child_ctx, sink, child_cursor, child);
@@ -1060,6 +1094,80 @@ fn emit_focus_ring(
             children: Vec::new(),
         },
     );
+}
+
+/// Thumb extent `(start, length)` along one scroll axis, in the box-local track
+/// space whose origin is the box edge. `viewport` is the box length on the axis,
+/// `content` the scrollable content length, `offset` the current Scroll Offset and
+/// `max` its maximum. The length scales with the viewport/content ratio, floored
+/// at [`SCROLLBAR_MIN_THUMB_LENGTH`]; the start slides the thumb down the track by
+/// the offset as a fraction of the scrollable range.
+fn scrollbar_thumb_extent(viewport: f32, content: f32, offset: f32, max: f32) -> (f32, f32) {
+    let track_len = (viewport - 2.0 * SCROLLBAR_TRACK_MARGIN).max(0.0);
+    let thumb_len = (track_len * viewport / content)
+        .max(SCROLLBAR_MIN_THUMB_LENGTH)
+        .min(track_len);
+    let progress = if max > 0.0 {
+        (offset / max).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let start = SCROLLBAR_TRACK_MARGIN + (track_len - thumb_len) * progress;
+    (start, thumb_len)
+}
+
+/// Lower a `ScrollView`'s scrollbar overlay (ADR-0110, #407): one rounded thumb
+/// per overflowing axis, drawn under `parent` (above the content clip). The
+/// vertical bar sits at the right edge, the horizontal bar at the bottom edge; an
+/// axis whose content fits draws nothing.
+#[allow(clippy::too_many_arguments)]
+fn emit_scrollbar_overlay(
+    tree: &ElementTree,
+    id: ElementId,
+    sg: &mut SceneGraph,
+    parent: Option<NodeId>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let (content_w, content_h) = tree.element_content_size(id);
+    let (max_x, max_y) = tree.element_scroll_max_offset(id);
+    let (offset_x, offset_y) = tree.element_get_scroll_offset(id);
+    let thumb_rgba = SCROLLBAR_THUMB_COLOR
+        .with_opacity(SCROLLBAR_THUMB_OPACITY)
+        .to_array_f32();
+    let radius = SCROLLBAR_THICKNESS / 2.0;
+
+    // Vertical bar at the right edge — only when content overflows the box height.
+    if content_h > h {
+        let (start, thumb_len) = scrollbar_thumb_extent(h, content_h, offset_y, max_y);
+        emit_fill_rect(
+            sg,
+            parent,
+            x + w - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS,
+            y + start,
+            SCROLLBAR_THICKNESS,
+            thumb_len,
+            thumb_rgba,
+            radius,
+        );
+    }
+
+    // Horizontal bar at the bottom edge — only when content overflows the width.
+    if content_w > w {
+        let (start, thumb_len) = scrollbar_thumb_extent(w, content_w, offset_x, max_x);
+        emit_fill_rect(
+            sg,
+            parent,
+            x + start,
+            y + h - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS,
+            thumb_len,
+            SCROLLBAR_THICKNESS,
+            thumb_rgba,
+            radius,
+        );
+    }
 }
 
 /// Chromium UA `::placeholder` muted colour, used in place of the body `color`
