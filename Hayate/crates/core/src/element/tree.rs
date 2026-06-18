@@ -559,6 +559,20 @@ impl ElementTree {
         self.focused_element
     }
 
+    /// The focused element when it accepts text entry, i.e. when an adapter
+    /// should surface the platform soft keyboard / IME (#392). A tap focuses
+    /// whatever it hits (buttons, plain text, views — Chromium parity, ADR-0102),
+    /// but only a `text-input` is editable, so gating the keyboard on raw focus
+    /// raised it for every tap. Adapters key the soft keyboard on this instead.
+    pub fn focused_text_input(&self) -> Option<ElementId> {
+        let id = self.focused_element?;
+        self.elements
+            .get(&id)?
+            .kind
+            .accepts_text_input()
+            .then_some(id)
+    }
+
     /// Modality of the most recent input event (#335, ADR-0102), the
     /// Pointer/Keyboard axis driving `:focus-visible`. Independent of
     /// [`last_pointer_kind`](Self::last_pointer_kind).

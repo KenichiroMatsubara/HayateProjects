@@ -1,10 +1,15 @@
-//! Diagnose #392 — Canvas Mode で非入力テキストのタップが文字入力判定になる。
+//! #392 — Canvas Mode で非入力テキストのタップが文字入力判定になる。
 //!
-//! This is a *diagnostic* harness (the issue's Phase 1/2 feedback loop). It does
-//! not yet assert the fixed behaviour; it pins the *current* core behaviour so
-//! the root-cause claim is empirical: a plain `text` tap drives `transition_focus`
-//! exactly like a `text-input` tap, because `pointer_down_on_target` focuses any
-//! hit element with no focusability model.
+//! Root cause: a tap focuses whatever it hits (`pointer_down_on_target` →
+//! `transition_focus`), which is correct — Chromium focuses buttons and other
+//! widgets on pointer-down too (ADR-0102). The bug was that the soft keyboard /
+//! IME was keyed on *raw focus*, so tapping a plain `text` (or a button) raised
+//! the keyboard even though only a `text-input` is editable.
+//!
+//! Fix: focus semantics are unchanged; editability is a separate, data-driven
+//! axis ([`ElementKind::accepts_text_input`], sourced from
+//! `proto/spec/element_kinds.json`), and adapters gate the keyboard on
+//! [`ElementTree::focused_text_input`] instead of `focused_element`.
 
 use hayate_core::{Dimension, ElementId, ElementKind, ElementTree, PointerKind, StyleProp};
 
@@ -57,43 +62,63 @@ fn text_input_doc() -> (ElementTree, ElementId) {
     (tree, input)
 }
 
-/// REGRESSION TARGET for the fix (red today, `#[ignore]`d until #392 is fixed).
-///
-/// DESIRED (DOM-parity) behaviour: a Touch tap on a plain non-input `text` must
-/// NOT focus anything. Today it focuses the text element, because
-/// `pointer_down_on_target` → `transition_focus` focuses any hit element with no
-/// focusability model. The Canvas adapter then keys its always-attached
-/// EditContext / soft-keyboard off `focused_element_id() != 0`, so this stray
-/// focus is what raises the IME on a tap that should be inert. DOM Renderer is
-/// immune only because `text` materialises as a non-focusable `<span>`.
-///
-/// Un-`#[ignore]` this when the focusability fix lands; it asserts the fixed
-/// state directly.
+/// `accepts_text_input` is true for `text-input` only — the data-driven
+/// editability axis behind the keyboard gate. Plain `text` carries styles
+/// (Text-Local Carrier) but is not editable.
 #[test]
-#[ignore = "diagnose #392: red regression target — plain text must not be focusable (fix pending)"]
-fn plain_text_tap_must_not_focus() {
-    let (mut tree, _view, _text) = plain_text_doc();
-    assert_eq!(tree.focused_element(), None, "nothing focused before the tap");
+fn only_text_input_accepts_text_input() {
+    assert!(ElementKind::TextInput.accepts_text_input());
+    for kind in [
+        ElementKind::View,
+        ElementKind::Text,
+        ElementKind::Image,
+        ElementKind::Button,
+        ElementKind::ScrollView,
+    ] {
+        assert!(
+            !kind.accepts_text_input(),
+            "{kind:?} must not accept text input",
+        );
+    }
+}
+
+/// The fix: a Touch tap on a plain non-input `text` still focuses it (Chromium
+/// pointer-focus parity, ADR-0102), but it is NOT a text input, so
+/// `focused_text_input()` is `None` and the adapter leaves the soft keyboard
+/// down. This is exactly the #392 regression.
+#[test]
+fn plain_text_tap_does_not_arm_the_keyboard() {
+    let (mut tree, _view, text) = plain_text_doc();
+    assert_eq!(tree.focused_text_input(), None, "no field armed before the tap");
 
     tree.on_pointer_down_with_kind(20.0, 8.0, 0, PointerKind::Touch);
 
     assert_eq!(
         tree.focused_element(),
+        Some(text),
+        "the tap still focuses the text element (focus semantics unchanged)",
+    );
+    assert_eq!(
+        tree.focused_text_input(),
         None,
-        "a plain `text` tap must leave focus untouched (DOM parity: text is not \
-         focusable), so the Canvas EditContext / soft-keyboard never activates",
+        "a plain `text` is not editable, so the soft keyboard must stay down (#392)",
     );
 }
 
-/// Control: a `text-input` tap legitimately focuses the field. This must keep
-/// working after any focusability fix.
+/// Control: a `text-input` tap focuses the field AND arms the keyboard. This is
+/// the legitimate IME path and must keep working.
 #[test]
-fn text_input_tap_focuses_the_field() {
+fn text_input_tap_arms_the_keyboard() {
     let (mut tree, input) = text_input_doc();
     tree.on_pointer_down_with_kind(20.0, 20.0, 0, PointerKind::Touch);
     assert_eq!(
         tree.focused_element(),
         Some(input),
         "a text-input tap must focus the field",
+    );
+    assert_eq!(
+        tree.focused_text_input(),
+        Some(input),
+        "a text-input tap arms the soft keyboard / IME",
     );
 }
