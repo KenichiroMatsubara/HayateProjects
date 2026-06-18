@@ -267,7 +267,7 @@
     ]
   },
   {
-    "name": "SET_SELECTABLE",
+    "name": "SET_USER_SELECT",
     "value": 17,
     "params": [
       {
@@ -275,8 +275,8 @@
         "type": "element_id"
       },
       {
-        "name": "selectable",
-        "type": "bool"
+        "name": "value",
+        "type": "u32"
       }
     ]
   },

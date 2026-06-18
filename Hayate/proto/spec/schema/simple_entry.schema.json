@@ -16,6 +16,11 @@
       "type": "string",
       "enum": ["default", "pointer", "text", "crosshair", "not_allowed", "grab", "grabbing"]
     },
+    "defaultUserSelect": {
+      "description": "UA default `user-select` for this element-kind when no explicit `user-select` is set (ADR-0108). Single source for Canvas/DOM kind-default selectability; a `user_select` enum value name.",
+      "type": "string",
+      "enum": ["text", "none", "contains"]
+    },
     "acceptsTextInput": {
       "description": "Whether this element-kind accepts text entry and so surfaces the platform soft keyboard / IME when focused (#392). True for text_input only; plain text carries styles but is not editable.",
       "type": "boolean"

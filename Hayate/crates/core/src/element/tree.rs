@@ -377,7 +377,10 @@ impl ElementTree {
 
     pub fn element_create(&mut self, id: u64, kind: ElementKind) -> ElementId {
         let id = ElementId::from_u64(id);
-        let layout_style = taffy::Style::default();
+        // Start from the element-kind UA default layout (ADR-0109): explicit
+        // props set via `element_set_style` layer on top, so the resolution order
+        // is explicit > element-kind default > Taffy default.
+        let layout_style = kind.base_layout_style();
 
         let element = Element {
             kind,

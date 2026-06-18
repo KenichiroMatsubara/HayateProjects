@@ -8,7 +8,9 @@
 
 use std::collections::HashMap;
 
-use hayate_core::{DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp};
+use hayate_core::{
+    DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp, UserSelectValue,
+};
 use wasm_bindgen::prelude::*;
 use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, HtmlTextAreaElement, Node, NodeList};
 
@@ -719,7 +721,15 @@ impl HayateElementHtmlRenderer {
             None => return,
         };
         if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
-            let value = resolve_user_select(kind, Some(selectable));
+            // HTML Mode's imperative setter still speaks the boolean Selection
+            // Region; bridge it to the ADR-0108 `user-select` vocabulary that the
+            // resolver now expects (`true` → text, `false` → none).
+            let explicit = if selectable {
+                UserSelectValue::Text
+            } else {
+                UserSelectValue::None
+            };
+            let value = resolve_user_select(kind, Some(explicit));
             let style = html_el.style();
             let _ = style.set_property("user-select", value);
             let _ = style.set_property("-webkit-user-select", value);

@@ -1,31 +1,37 @@
 [
   {
     "name": "view",
-    "value": 0
+    "value": 0,
+    "defaultUserSelect": "text"
   },
   {
     "name": "text",
     "value": 1,
-    "carriesTextLocal": true
+    "carriesTextLocal": true,
+    "defaultUserSelect": "text"
   },
   {
     "name": "image",
-    "value": 2
+    "value": 2,
+    "defaultUserSelect": "none"
   },
   {
     "name": "button",
     "value": 3,
-    "defaultCursor": "pointer"
+    "defaultCursor": "pointer",
+    "defaultUserSelect": "none"
   },
   {
     "name": "text_input",
     "value": 4,
     "carriesTextLocal": true,
     "defaultCursor": "text",
-    "acceptsTextInput": true
+    "acceptsTextInput": true,
+    "defaultUserSelect": "text"
   },
   {
     "name": "scroll_view",
-    "value": 5
+    "value": 5,
+    "defaultUserSelect": "text"
   }
 ]

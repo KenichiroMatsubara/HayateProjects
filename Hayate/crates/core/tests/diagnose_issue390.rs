@@ -130,8 +130,7 @@ fn diagnose_390() {
         // iw retained in the assertion below.
     );
     eprintln!(
-        "[D390] symptom2 (root cause B): label box stretched to button height ({}), glyphs top-aligned — top gap {} == bottom gap {} only when centered",
-        lh,
+        "[D390] symptom2 (root cause B): button label top gap {} vs bottom gap {} — equal when centered",
         ly - by,
         (by + bh) - (ly + lh),
     );
@@ -139,15 +138,24 @@ fn diagnose_390() {
     // Renderer independence is structural: layout is resolved here in core,
     // before any SceneGraph walk, so both Scene Renderers observe these rects.
     //
-    // Root cause A (issue #403) is fixed: the width-unspecified text-input now
-    // carries the font-relative UA default width, so its content width is well
-    // above 0 (no 1-char/line wrap, no left-edge border sliver). The dedicated
-    // regression test lives in `tests/text_input_default_width.rs`.
+    // Both root causes are now fixed and asserted here as real regression guards.
+    //
+    // Root cause A (#403): the width-unspecified text-input now carries the
+    // font-relative UA default width, so its content width is well above 0 (no
+    // 1-char/line wrap, no left-edge border sliver). The dedicated regression
+    // test lives in `tests/text_input_default_width.rs`.
     assert!(
         iw - 26.0 > 50.0,
         "regression guard (#403): input must carry the UA default width (content width = {})",
         iw - 26.0,
     );
-    // Root cause B (button vertical centering, #402) still reproduces here.
-    assert!((ly - by) < 2.0, "repro guard: label is top-aligned (top gap={})", ly - by);
+    // Root cause B (#402, ADR-0109): the button now supplies the UA default
+    // `align-items: center`, so the label is vertically centered rather than
+    // clipped to the top. Promoted from a repro guard to a real assertion.
+    let top_gap = ly - by;
+    let bottom_gap = (by + bh) - (ly + lh);
+    assert!(
+        top_gap > 2.0 && (top_gap - bottom_gap).abs() < 2.0,
+        "button label must be vertically centered (top gap={top_gap}, bottom gap={bottom_gap})"
+    );
 }
