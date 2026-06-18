@@ -185,8 +185,16 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
             Ok(())
         }
         Op::SetUserSelect { id, value } => {
-            host.tree_mut()
-                .element_set_selectable(ElementId::from_u64(id), value != 1);
+            let id = ElementId::from_u64(id);
+            host.tree_mut().element_set_selectable(id, value != 1);
+            host.tree_mut().element_set_user_select(
+                id,
+                match value {
+                    1 => hayate_core::UserSelectValue::None,
+                    2 => hayate_core::UserSelectValue::Contains,
+                    _ => hayate_core::UserSelectValue::Text,
+                },
+            );
             Ok(())
         }
         Op::SetMultiline { id, multiline } => {

@@ -272,6 +272,7 @@ mod tests {
             pseudo_styles: Default::default(),
             disabled: false,
             selectable: false,
+            user_select: crate::element::style::UserSelectValue::Text,
             multiline: false,
             viewport_variants: Vec::new(),
         };
