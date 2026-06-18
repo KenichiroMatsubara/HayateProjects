@@ -11,3 +11,12 @@ pub fn default_cursor(kind: ElementKind) -> CursorValue {
         _ => CursorValue::Default,
     }
 }
+
+/// Whether `kind` accepts text entry and so surfaces the platform soft
+/// keyboard / IME when focused (#392).
+pub fn accepts_text_input(kind: ElementKind) -> bool {
+    matches!(
+        kind,
+        ElementKind::TextInput
+    )
+}

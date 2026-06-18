@@ -121,6 +121,9 @@ struct SimpleEntry {
     /// (element_kinds only; ADR-0105). A `cursor` enum value name; `None` means
     /// the kind has no default (resolves to `Default`).
     default_cursor: Option<String>,
+    /// Whether this kind accepts text entry and so surfaces the platform soft
+    /// keyboard / IME when focused (element_kinds only; #392).
+    accepts_text_input: bool,
 }
 
 #[derive(Default)]
@@ -218,6 +221,8 @@ struct SimpleJson {
     carries_text_local: bool,
     #[serde(default, rename = "defaultCursor")]
     default_cursor: Option<String>,
+    #[serde(default, rename = "acceptsTextInput")]
+    accepts_text_input: bool,
 }
 
 #[derive(Deserialize)]
@@ -355,6 +360,7 @@ fn simple_from_json(entries: Vec<SimpleJson>) -> Vec<SimpleEntry> {
             value: e.value,
             carries_text_local: e.carries_text_local,
             default_cursor: e.default_cursor,
+            accepts_text_input: e.accepts_text_input,
         })
         .collect()
 }
@@ -1600,6 +1606,26 @@ fn generate_element_kind_tables(proto: &Proto) -> String {
     }
     out.push_str("        _ => CursorValue::Default,\n");
     out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    let editable: Vec<String> = proto
+        .element_kinds
+        .iter()
+        .filter(|k| k.accepts_text_input)
+        .map(|k| format!("ElementKind::{}", to_pascal(&k.name)))
+        .collect();
+    out.push_str(
+        "/// Whether `kind` accepts text entry and so surfaces the platform soft\n\
+         /// keyboard / IME when focused (#392).\n",
+    );
+    out.push_str("pub fn accepts_text_input(kind: ElementKind) -> bool {\n");
+    if editable.is_empty() {
+        out.push_str("    let _ = kind;\n    false\n");
+    } else {
+        out.push_str("    matches!(\n        kind,\n        ");
+        out.push_str(&editable.join("\n            | "));
+        out.push_str("\n    )\n");
+    }
     out.push_str("}\n");
 
     out

@@ -28,6 +28,15 @@ impl ElementKind {
     pub fn default_cursor(self) -> CursorValue {
         tables::default_cursor(self)
     }
+
+    /// Whether this kind accepts text entry and so should surface the platform
+    /// soft keyboard / IME when focused (#392). `true` for `text-input` only;
+    /// plain `text` carries styles (Text-Local Carrier) but is not editable.
+    /// Sourced from `proto/spec/element_kinds.json` so every adapter shares one
+    /// table rather than re-deriving "is this a text field" per platform.
+    pub fn accepts_text_input(self) -> bool {
+        tables::accepts_text_input(self)
+    }
 }
 
 impl ElementKind {
