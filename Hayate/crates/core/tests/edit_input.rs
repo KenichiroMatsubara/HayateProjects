@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
+const ALT: u32 = 4; // MODIFIER_ALT — the macOS Option "by word" modifier.
 
 /// A focused text-input carrying `content` with the caret at its end. No layout
 /// is needed for caret/selection-index assertions.
@@ -446,6 +447,81 @@ fn backspace_and_delete_over_a_selection_remove_the_whole_range() {
     assert_eq!(tree.element_get_text_content(input), "hel", "the range goes, not one char");
     assert_eq!(tree.element_caret_byte_index(input), Some(3));
     assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
+fn ctrl_backspace_deletes_the_word_before_the_caret() {
+    // #363: Ctrl+Backspace (Win/Linux) removes the whole word to the caret's
+    // left, not a single grapheme — reusing `selection.rs`'s `prev_word`.
+    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+
+    tree.on_key_down("Backspace", CTRL);
+    assert_eq!(tree.element_get_text_content(input), "hello ", "the trailing word goes");
+    assert_eq!(tree.element_caret_byte_index(input), Some(6), "caret lands at the word start");
+    assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
+fn ctrl_delete_deletes_the_word_after_the_caret() {
+    // #363: Ctrl+Delete removes the whole word to the caret's right via
+    // `next_word`, leaving the caret in place.
+    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+    tree.on_key_down("ArrowLeft", CTRL); // word back to 6
+    tree.on_key_down("ArrowLeft", CTRL); // word back to the field start (0)
+    assert_eq!(tree.element_caret_byte_index(input), Some(0));
+
+    tree.on_key_down("Delete", CTRL);
+    assert_eq!(tree.element_get_text_content(input), " world", "the leading word goes");
+    assert_eq!(tree.element_caret_byte_index(input), Some(0), "caret stays at the deletion point");
+    assert!(tree.element_text_selection(input).is_none());
+}
+
+#[test]
+fn alt_backspace_and_delete_delete_by_word_on_macos() {
+    // #363: macOS uses Option (Alt) as the "by word" modifier; it removes whole
+    // words exactly as Ctrl does on Win/Linux.
+    let (mut tree, input) = focused_input("alpha beta"); // caret at end (10)
+
+    tree.on_key_down("Backspace", ALT);
+    assert_eq!(tree.element_get_text_content(input), "alpha ", "Option+Backspace drops 'beta'");
+
+    tree.on_key_down("ArrowLeft", ALT); // word back to the field start (0)
+    tree.on_key_down("Delete", ALT);
+    assert_eq!(tree.element_get_text_content(input), " ", "Option+Delete drops 'alpha'");
+}
+
+#[test]
+fn ctrl_backspace_word_boundary_matches_the_shared_word_logic_in_mixed_text() {
+    // #363 acceptance: word deletion honours `selection.rs`'s word boundaries,
+    // where the boundary between a CJK run and an English run is the separating
+    // space (CJK and ASCII letters both classify as word chars). "こんにちは world"
+    // is two words; one Ctrl+Backspace removes only the trailing English word.
+    let (mut tree, input) = focused_input("こんにちは world"); // 15 + 1 + 5 = 21 bytes
+
+    tree.on_key_down("Backspace", CTRL);
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "こんにちは ",
+        "only the English word goes, the CJK word is left intact",
+    );
+
+    // A second Ctrl+Backspace crosses the space and removes the CJK word.
+    tree.on_key_down("Backspace", CTRL);
+    assert_eq!(tree.element_get_text_content(input), "", "the CJK word goes next");
+}
+
+#[test]
+fn ctrl_arrow_moves_and_extends_the_caret_by_word() {
+    // #363 acceptance: word-granularity caret movement and selection extension
+    // reach a focused field through the same `on_key_down` seam (ElementTree
+    // integration, complementing the EditState unit coverage).
+    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+
+    tree.on_key_down("ArrowLeft", CTRL); // back over "world"
+    assert_eq!(tree.element_caret_byte_index(input), Some(6), "lands at the start of 'world'");
+
+    tree.on_key_down("ArrowLeft", CTRL | SHIFT); // extend back over "hello "
+    assert_eq!(tree.element_text_selection(input), Some((0, 6)), "selection grows by a word");
 }
 
 #[test]

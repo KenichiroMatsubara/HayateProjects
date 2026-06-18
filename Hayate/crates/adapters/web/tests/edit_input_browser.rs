@@ -307,6 +307,54 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
 }
 
 #[wasm_bindgen_test]
+async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
+    // #363: Ctrl+Backspace / Ctrl+Delete cross the wasm boundary, map to a
+    // Delete/Word intent in the adapter keymap, and remove a whole word.
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_set_style(
+            1.0,
+            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+        )
+        .unwrap();
+    renderer.set_root(1.0);
+    renderer.element_set_text_content(1.0, "hello world");
+
+    renderer.render(0.0).unwrap();
+    let rect = canvas.get_bounding_client_rect();
+    dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
+    renderer.render(16.0).unwrap();
+    assert_eq!(renderer.focused_element_id(), 1.0, "the pointerdown should focus the input");
+
+    // Drive the caret to the end, then Ctrl+Backspace removes the trailing word.
+    for _ in 0..20 {
+        renderer.on_key_down("ArrowRight", 0);
+    }
+    renderer.on_key_down("Backspace", MOD_CTRL);
+    assert_eq!(
+        renderer.element_get_text_content(1.0),
+        "hello ",
+        "Ctrl+Backspace removed the word before the caret"
+    );
+
+    // Drive the caret to the start, then Ctrl+Delete removes the leading word.
+    for _ in 0..20 {
+        renderer.on_key_down("ArrowLeft", 0);
+    }
+    renderer.on_key_down("Delete", MOD_CTRL);
+    assert_eq!(
+        renderer.element_get_text_content(1.0),
+        " ",
+        "Ctrl+Delete removed the word after the caret"
+    );
+}
+
+#[wasm_bindgen_test]
 async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
     // ADR-0097 / #361: the browser clipboard read is async, so Canvas Mode cannot
     // serve it through core's synchronous `Clipboard::read_text`. Ctrl/Cmd+V must
