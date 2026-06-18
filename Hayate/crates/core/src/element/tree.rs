@@ -857,6 +857,50 @@ impl ElementTree {
         (max_x, max_y)
     }
 
+    /// CSS-accurate maximum scroll offset `(max_x, max_y)` of a ScrollView,
+    /// floored at 0 per axis — the browser `scroll{Width,Height} −
+    /// client{Width,Height}` range. Scrolling to the end must reveal the
+    /// scroll-view's own end padding under the last child, exactly as DOM mode
+    /// (native `scrollTop`) does (Semantics Parity).
+    ///
+    /// `element_content_size` measures descendants from the *border-box* top, so
+    /// it omits the scroll-view's own bottom/right padding; `element_layout_rect`
+    /// is the *border box*, so as a viewport it over-counts the borders. Both
+    /// gaps are the scroll-view's own end insets (padding + border), so adding
+    /// them back yields `child_extent − content_box` measured in the content box,
+    /// where padding and border cancel — the correct range. Subtracting the bare
+    /// border box (the old `(content − view).max(0)`) under-scrolled by exactly
+    /// `padding_end + border_end`, leaving that fixed length unreachable.
+    ///
+    /// Single source of truth for the wheel clamp, the touch rubber-band
+    /// (`canvas.rs`), and scroll-into-view (`accessibility.rs`).
+    pub fn element_scroll_max_offset(&self, id: ElementId) -> (f32, f32) {
+        let (content_w, content_h) = self.element_content_size(id);
+        let (_, _, view_w, view_h) = self.layout.geometry(id).unwrap_or((0.0, 0.0, 0.0, 0.0));
+        let (end_x, end_y) = self.scroll_view_end_insets(id);
+        (
+            (content_w - view_w + end_x).max(0.0),
+            (content_h - view_h + end_y).max(0.0),
+        )
+    }
+
+    /// Right/bottom (padding + border) insets of `id` from the last layout pass.
+    /// Recovers the scrollable extent that `element_content_size` (border-box-top
+    /// relative) and `element_layout_rect` (border box) leave out of the scroll
+    /// range. Zero when `id` was not laid out.
+    fn scroll_view_end_insets(&self, id: ElementId) -> (f32, f32) {
+        let Some(node) = self.layout.projection.node_id(id) else {
+            return (0.0, 0.0);
+        };
+        let Ok(box_layout) = self.layout.projection.taffy.layout(node) else {
+            return (0.0, 0.0);
+        };
+        (
+            box_layout.padding.right + box_layout.border.right,
+            box_layout.padding.bottom + box_layout.border.bottom,
+        )
+    }
+
     fn accumulate_content_bounds(
         &self,
         id: ElementId,
@@ -1367,12 +1411,7 @@ impl ElementTree {
             }
 
             let (ox, oy) = self.element_get_scroll_offset(current_sv);
-            let (content_w, content_h) = self.element_content_size(current_sv);
-            let sv_rect = self
-                .element_layout_rect(current_sv)
-                .unwrap_or((0.0, 0.0, 0.0, 0.0));
-            let max_x = (content_w - sv_rect.2).max(0.0);
-            let max_y = (content_h - sv_rect.3).max(0.0);
+            let (max_x, max_y) = self.element_scroll_max_offset(current_sv);
             let new_x = (ox + remaining_x).clamp(0.0, max_x);
             let new_y = (oy + remaining_y).clamp(0.0, max_y);
             let consumed_x = new_x - ox;

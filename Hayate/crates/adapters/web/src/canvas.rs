@@ -575,17 +575,12 @@ impl HayateElementRenderer {
     /// is the scrollable range (`content − viewport`, floored at 0) and `dim` is
     /// the viewport extent the rubber-band overscroll asymptotes to.
     fn scroll_bounds(&self, sv: ElementId) -> (f32, f32, f32, f32) {
-        let (content_w, content_h) = self.tree.element_content_size(sv);
+        let (max_x, max_y) = self.tree.element_scroll_max_offset(sv);
         let (_, _, view_w, view_h) = self
             .tree
             .element_layout_rect(sv)
             .unwrap_or((0.0, 0.0, 0.0, 0.0));
-        (
-            (content_w - view_w).max(0.0),
-            (content_h - view_h).max(0.0),
-            view_w,
-            view_h,
-        )
+        (max_x, max_y, view_w, view_h)
     }
 
     /// Set the locked scroll-view's offset un-clamped (SCR-02) and, when it
