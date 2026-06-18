@@ -130,8 +130,7 @@ fn diagnose_390() {
         iw,
     );
     eprintln!(
-        "[D390] symptom2 (root cause B): label box stretched to button height ({}), glyphs top-aligned — top gap {} == bottom gap {} only when centered",
-        lh,
+        "[D390] symptom2 (root cause B): button label top gap {} vs bottom gap {} — equal when centered",
         ly - by,
         (by + bh) - (ly + lh),
     );
@@ -139,5 +138,13 @@ fn diagnose_390() {
     // Renderer independence is structural: layout is resolved here in core,
     // before any SceneGraph walk, so both Scene Renderers observe these rects.
     assert!(iw < 30.0, "repro guard: input collapsed (got w={iw})");
-    assert!((ly - by) < 2.0, "repro guard: label is top-aligned (top gap={})", ly - by);
+    // Root cause B is FIXED by #402 (ADR-0109): the button now supplies the UA
+    // default `align-items: center`, so the label is vertically centered rather
+    // than clipped to the top. Promoted from a repro guard to a real assertion.
+    let top_gap = ly - by;
+    let bottom_gap = (by + bh) - (ly + lh);
+    assert!(
+        top_gap > 2.0 && (top_gap - bottom_gap).abs() < 2.0,
+        "button label must be vertically centered (top gap={top_gap}, bottom gap={bottom_gap})"
+    );
 }
