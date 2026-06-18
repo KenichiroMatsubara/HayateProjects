@@ -492,4 +492,46 @@ mod tests {
              (content_h={outer_ch}, max_y={outer_max_y})"
         );
     }
+
+    /// A scroll-view's own bottom padding is part of its scrollable content: the
+    /// browser's `scrollHeight` includes it, so scrolling to the end reveals the
+    /// padding under the last child. The painted path must agree (Semantics
+    /// Parity). With a 100px scroll-view, 20px bottom padding and a 300px child,
+    /// the content area visible at once is 80px (clientHeight = 100 − 0 borders,
+    /// padding-box = 0 top + 80 inner + 20 bottom), scrollHeight = 300 + 20 = 320,
+    /// so the max scroll is 320 − 100 = 220 — NOT 200. A short max_y leaves the
+    /// bottom padding (a fixed length) permanently unreachable in vello/tiny-skia
+    /// while DOM mode (native scrollTop range) reaches it. Regression for that bug.
+    #[test]
+    fn scroll_view_own_bottom_padding_is_reachable() {
+        let mut tree = ElementTree::new();
+        let sv = tree.element_create(400, ElementKind::ScrollView);
+        let child = tree.element_create(401, ElementKind::View);
+        tree.set_root(sv);
+        tree.set_viewport(200.0, 100.0);
+        tree.element_append_child(sv, child);
+        tree.element_set_style(
+            sv,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+                StyleProp::PaddingBottom(Dimension::px(20.0)),
+            ],
+        );
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(300.0)),
+            ],
+        );
+        tree.render(0.0);
+
+        let (_, max_y) = tree.element_scroll_max_offset(sv);
+        assert!(
+            (max_y - 220.0).abs() < 1e-3,
+            "bottom padding must be scrollable-to: expected max_y=220 \
+             (scrollHeight 320 − clientHeight 100), got {max_y}"
+        );
+    }
 }

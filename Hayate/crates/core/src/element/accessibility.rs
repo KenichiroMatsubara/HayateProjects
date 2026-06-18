@@ -246,9 +246,7 @@ impl ElementTree {
         };
 
         let (ox, oy) = self.element_get_scroll_offset(scroll_view);
-        let (content_w, content_h) = self.element_content_size(scroll_view);
-        let max_x = (content_w - sw).max(0.0);
-        let max_y = (content_h - sh).max(0.0);
+        let (max_x, max_y) = self.element_scroll_max_offset(scroll_view);
 
         // layout_cache holds unscrolled content-space positions; the offset is
         // applied as a downstream transform (ADR-0022), so the target's position
