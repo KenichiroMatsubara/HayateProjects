@@ -1007,8 +1007,12 @@ impl ElementTree {
 
     /// Begin (or extend) a text-input's edit selection from a pointer-down
     /// inside it (ADR-0097, #271). A plain press drops a caret and arms a drag;
-    /// Shift+click extends the focus from the existing anchor. Either way the
-    /// read-only SelectionArea selection is cleared (single active). Returns
+    /// Shift+click extends the focus from the existing anchor. Consecutive presses
+    /// near the same spot cycle the gesture like the read-only SelectionArea path
+    /// (`begin_selection_at`): 1 = caret, 2 = word, 3 = line (#366). Word/line
+    /// expansion is a Mouse/Pen gesture — under Touch a press stays a caret, so it
+    /// never competes with the long-press word selection (ADR-0104). Either way
+    /// the read-only SelectionArea selection is cleared (single active). Returns
     /// whether the press landed inside an editable text-input.
     fn begin_edit_selection(
         &mut self,
@@ -1030,19 +1034,53 @@ impl ElementTree {
         let Some(offset) = self.edit_offset_at(input, x, y) else {
             return false;
         };
-        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
-            if modifiers & MOD_SHIFT != 0 {
+
+        // Shift+click extends the focus from the existing anchor (range
+        // extension), not a fresh caret, and does not advance the multi-click
+        // cycle — mirroring the read-only `begin_selection_at` Shift path.
+        if modifiers & MOD_SHIFT != 0 {
+            if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
                 edit.move_focus(offset);
-            } else {
-                edit.set_selection(offset, offset);
+            }
+            self.edit_drag = Some(input);
+            self.last_click_pos = Some((x, y));
+            self.click_count = 1;
+            self.finish_edit_selection(input);
+            return true;
+        }
+
+        // The press count near the same spot cycles caret → word → line. Word and
+        // line are Mouse/Pen expansions; under Touch every press stays a caret.
+        let phase = self.advance_click_phase(x, y);
+        let bounds: Option<fn(&str, usize) -> (usize, usize)> =
+            match (phase, self.last_pointer_kind == PointerKind::Touch) {
+                (2, false) => Some(selection::word_bounds),
+                (3, false) => Some(selection::line_bounds),
+                _ => None,
+            };
+        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+            match bounds {
+                Some(bounds) => {
+                    let (start, end) = bounds(&edit.text_content, offset);
+                    edit.set_selection(start, end);
+                }
+                None => edit.set_selection(offset, offset),
             }
         }
-        self.edit_drag = Some(input);
-        // A text-input selection and a SelectionArea selection never coexist.
+        // A word/line selection is not drag-extendable (parity with the read-only
+        // path); a caret arms a drag so the user can extend it.
+        self.edit_drag = bounds.is_none().then_some(input);
+        self.finish_edit_selection(input);
+        true
+    }
+
+    /// Shared tail of [`begin_edit_selection`](Self::begin_edit_selection): a
+    /// text-input selection and a SelectionArea selection never coexist (single
+    /// active, ADR-0097), so clear the document selection and repaint the field.
+    fn finish_edit_selection(&mut self, input: ElementId) {
         self.set_selection(None);
         self.engine
             .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
-        true
     }
 
     /// Collapse every text-input's edit selection to a caret. Called when a

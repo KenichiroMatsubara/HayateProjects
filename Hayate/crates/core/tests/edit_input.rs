@@ -2,7 +2,7 @@
 
 use hayate_core::{
     Clipboard, CompositionClause, CompositionUnderline, Dimension, Direction, EditIntent,
-    ElementKind, ElementTree, Granularity, StyleProp,
+    ElementKind, ElementTree, Granularity, PointerKind, StyleProp,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -224,6 +224,78 @@ fn drag_within_text_input_selects_a_range() {
         .element_text_selection(input)
         .expect("a non-empty edit selection after dragging");
     assert!(start < end, "drag should select a non-empty range, got {start}..{end}");
+}
+
+#[test]
+fn double_click_in_text_input_selects_the_word_under_the_pointer() {
+    // #366: a desktop double-click expands the edit selection to the whole word,
+    // mirroring the read-only SelectionArea multi-click (begin_selection_at).
+    let (mut tree, input) = text_input_with("hello world");
+
+    // Two presses at the same spot inside "hello" expand to the word, 0..5.
+    tree.on_pointer_down(15.0, 20.0);
+    tree.on_pointer_up(15.0, 20.0);
+    tree.on_pointer_down(15.0, 20.0);
+
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((0, 5)),
+        "double-click selects 'hello'",
+    );
+}
+
+#[test]
+fn triple_click_in_text_input_selects_the_line() {
+    // #366: a third press at the same spot expands from word to the whole line
+    // (paragraph). With no newline the line is the entire single-line content.
+    let (mut tree, input) = text_input_with("hello world");
+
+    tree.on_pointer_down(15.0, 20.0);
+    tree.on_pointer_up(15.0, 20.0);
+    tree.on_pointer_down(15.0, 20.0);
+    tree.on_pointer_up(15.0, 20.0);
+    tree.on_pointer_down(15.0, 20.0);
+
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((0, 11)),
+        "triple-click selects the whole line",
+    );
+}
+
+#[test]
+fn single_click_in_text_input_places_a_caret_not_a_word() {
+    // #366 regression guard: a lone press still drops a collapsed caret; the
+    // multi-click word/line expansion must not fire on the first press.
+    let (mut tree, input) = text_input_with("hello world");
+
+    tree.on_pointer_down(15.0, 20.0);
+
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "single click leaves the selection collapsed (a caret)",
+    );
+    assert!(
+        tree.element_caret_byte_index(input).is_some(),
+        "the caret is placed in the field",
+    );
+}
+
+#[test]
+fn double_click_under_touch_modality_stays_a_caret() {
+    // #366: word/line expansion is a Mouse/Pen gesture (ADR-0104). Under Touch
+    // the double press stays a caret, so it never competes with the long-press
+    // word selection. Mouse double-click (other tests) still expands.
+    let (mut tree, input) = text_input_with("hello world");
+
+    tree.on_pointer_down_with_kind(15.0, 20.0, 0, PointerKind::Touch);
+    tree.on_pointer_up_with_kind(15.0, 20.0, PointerKind::Touch);
+    tree.on_pointer_down_with_kind(15.0, 20.0, 0, PointerKind::Touch);
+
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "a Touch double press does not expand to a word",
+    );
 }
 
 /// A column holding a focused text-input above a `selectable` paragraph (its own
