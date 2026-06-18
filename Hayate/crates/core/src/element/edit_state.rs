@@ -854,6 +854,29 @@ mod tests {
     }
 
     #[test]
+    fn delete_by_word_removes_a_whole_word_in_each_direction() {
+        // #363: Delete with Word granularity removes from the caret to the word
+        // boundary (`prev_word` / `next_word`), the model behind Ctrl/Alt+
+        // Backspace/Delete.
+        let mut edit = EditState::default();
+        edit.set("hello world"); // caret at end (11)
+        assert!(edit.apply(EditIntent::Delete {
+            granularity: Granularity::Word,
+            direction: Direction::Backward,
+        }));
+        assert_eq!(edit.text_content, "hello ", "the word before the caret goes");
+        assert_eq!(edit.cursor_byte_index, 6, "caret collapses to the word start");
+
+        edit.set_selection(0, 0); // caret to the field start
+        assert!(edit.apply(EditIntent::Delete {
+            granularity: Granularity::Word,
+            direction: Direction::Forward,
+        }));
+        assert_eq!(edit.text_content, " ", "the word after the caret goes");
+        assert_eq!(edit.cursor_byte_index, 0, "caret stays at the deletion point");
+    }
+
+    #[test]
     fn extend_to_boundary_selects_to_the_field_end_keeping_the_anchor() {
         // Shift+End from a mid-field caret selects from the caret to the field
         // end, anchor fixed; Shift+Home then selects back to the start.

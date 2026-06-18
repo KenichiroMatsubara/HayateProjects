@@ -26,22 +26,23 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
             return Some(intent);
         }
     }
-    // Forward/backward char delete. Word-granularity delete (Ctrl/Alt) is a
-    // later slice (ADR-0103 §5); this slice is char-only.
-    match key {
-        "Backspace" => {
-            return Some(EditIntent::Delete {
-                granularity: Granularity::Grapheme,
-                direction: Direction::Backward,
-            })
-        }
-        "Delete" => {
-            return Some(EditIntent::Delete {
-                granularity: Granularity::Grapheme,
-                direction: Direction::Forward,
-            })
-        }
-        _ => {}
+    // Forward/backward delete, widened from a grapheme to a whole word by Alt
+    // (macOS Option) or Ctrl (Win/Linux) — the same "by word" modifiers as the
+    // arrows (ADR-0103 §5, #363).
+    if let Some(direction) = match key {
+        "Backspace" => Some(Direction::Backward),
+        "Delete" => Some(Direction::Forward),
+        _ => None,
+    } {
+        let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0 {
+            Granularity::Word
+        } else {
+            Granularity::Grapheme
+        };
+        return Some(EditIntent::Delete {
+            granularity,
+            direction,
+        });
     }
     let direction = match key {
         "ArrowLeft" => Direction::Backward,
