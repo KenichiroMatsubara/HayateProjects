@@ -46,6 +46,51 @@ pub const SCROLLBAR_MIN_THUMB_LENGTH: f32 = 24.0;
 pub const SCROLLBAR_THUMB_COLOR: Color = Color::new(0.0, 0.0, 0.0, 1.0);
 /// Thumb opacity — its translucency as an overlay sitting on top of the content.
 pub const SCROLLBAR_THUMB_OPACITY: f32 = 0.4;
+/// Scroll Offset distance one track-margin click advances ("page" step, #409).
+/// A placeholder value pending Chromium calibration (ADR-0110); a true page step
+/// keys off the viewport length, which is a follow-up — like the other
+/// `SCROLLBAR_*` values this carries no inline magic number.
+pub const SCROLLBAR_PAGE_STEP: f32 = 240.0;
+
+/// Axis a scrollbar thumb slides along (#409).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScrollAxis {
+    Vertical,
+    Horizontal,
+}
+
+/// Canvas-space geometry of one overflowing axis's Mouse/Pen scrollbar, derived
+/// from the box rect, Scroll Offset and content size (ADR-0110, #409). The
+/// single source the overlay paint (`emit_scrollbar_overlay`) and the pointer
+/// hit-test (`interaction.rs`) share, so a press lands exactly on the thumb the
+/// user sees and operation maps back to the same offset the paint reads.
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollbarAxisGeometry {
+    pub axis: ScrollAxis,
+    /// Thumb rect `(x, y, w, h)` in canvas coordinates.
+    pub thumb: (f32, f32, f32, f32),
+    /// Track rect `(x, y, w, h)` in canvas coordinates — the full slidable span.
+    pub track: (f32, f32, f32, f32),
+    /// Maximum Scroll Offset on this axis.
+    pub max_offset: f32,
+    /// Slidable thumb travel in track px (`track_len − thumb_len`); zero when the
+    /// thumb fills the track. Maps a drag's track-pixel delta to an offset delta.
+    pub thumb_travel: f32,
+}
+
+/// Scrollbar geometry for each overflowing axis of `id`, in canvas coords. The
+/// public seam the pointer hit-test reads (`interaction.rs`); empty for a
+/// non-`ScrollView`, an unlaid-out element, or one whose content fits. Computed
+/// from the element's own layout rect so it agrees with the overlay paint.
+pub fn scrollbar_axes(tree: &ElementTree, id: ElementId) -> Vec<ScrollbarAxisGeometry> {
+    if tree.element_kind(id) != Some(ElementKind::ScrollView) {
+        return Vec::new();
+    }
+    let Some((x, y, w, h)) = tree.element_layout_rect(id) else {
+        return Vec::new();
+    };
+    scrollbar_axes_in_box(tree, id, x, y, w, h)
+}
 
 /// Ambient context threaded through the one scene walk shared by both anchor
 /// strategies (issue #322). Carries what every emission needs regardless of
@@ -1116,6 +1161,64 @@ fn scrollbar_thumb_extent(viewport: f32, content: f32, offset: f32, max: f32) ->
     (start, thumb_len)
 }
 
+/// Scrollbar geometry per overflowing axis for the box `(x, y, w, h)` already
+/// resolved by the caller. The shared core of [`scrollbar_axes`] (which supplies
+/// the box from layout) and [`emit_scrollbar_overlay`] (which supplies the box
+/// from its scene walk), so paint and hit-test compute one identical geometry.
+fn scrollbar_axes_in_box(
+    tree: &ElementTree,
+    id: ElementId,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) -> Vec<ScrollbarAxisGeometry> {
+    let (content_w, content_h) = tree.element_content_size(id);
+    let (max_x, max_y) = tree.element_scroll_max_offset(id);
+    let (offset_x, offset_y) = tree.element_get_scroll_offset(id);
+    let mut axes = Vec::new();
+
+    // Vertical bar at the right edge — only when content overflows the box height.
+    if content_h > h {
+        let (start, thumb_len) = scrollbar_thumb_extent(h, content_h, offset_y, max_y);
+        let track_len = (h - 2.0 * SCROLLBAR_TRACK_MARGIN).max(0.0);
+        let bar_x = x + w - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS;
+        axes.push(ScrollbarAxisGeometry {
+            axis: ScrollAxis::Vertical,
+            thumb: (bar_x, y + start, SCROLLBAR_THICKNESS, thumb_len),
+            track: (
+                bar_x,
+                y + SCROLLBAR_TRACK_MARGIN,
+                SCROLLBAR_THICKNESS,
+                track_len,
+            ),
+            max_offset: max_y,
+            thumb_travel: (track_len - thumb_len).max(0.0),
+        });
+    }
+
+    // Horizontal bar at the bottom edge — only when content overflows the width.
+    if content_w > w {
+        let (start, thumb_len) = scrollbar_thumb_extent(w, content_w, offset_x, max_x);
+        let track_len = (w - 2.0 * SCROLLBAR_TRACK_MARGIN).max(0.0);
+        let bar_y = y + h - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS;
+        axes.push(ScrollbarAxisGeometry {
+            axis: ScrollAxis::Horizontal,
+            thumb: (x + start, bar_y, thumb_len, SCROLLBAR_THICKNESS),
+            track: (
+                x + SCROLLBAR_TRACK_MARGIN,
+                bar_y,
+                track_len,
+                SCROLLBAR_THICKNESS,
+            ),
+            max_offset: max_x,
+            thumb_travel: (track_len - thumb_len).max(0.0),
+        });
+    }
+
+    axes
+}
+
 /// Lower a `ScrollView`'s scrollbar overlay (ADR-0110, #407): one rounded thumb
 /// per overflowing axis, drawn under `parent` (above the content clip). The
 /// vertical bar sits at the right edge, the horizontal bar at the bottom edge; an
@@ -1131,42 +1234,13 @@ fn emit_scrollbar_overlay(
     w: f32,
     h: f32,
 ) {
-    let (content_w, content_h) = tree.element_content_size(id);
-    let (max_x, max_y) = tree.element_scroll_max_offset(id);
-    let (offset_x, offset_y) = tree.element_get_scroll_offset(id);
     let thumb_rgba = SCROLLBAR_THUMB_COLOR
         .with_opacity(SCROLLBAR_THUMB_OPACITY)
         .to_array_f32();
     let radius = SCROLLBAR_THICKNESS / 2.0;
-
-    // Vertical bar at the right edge — only when content overflows the box height.
-    if content_h > h {
-        let (start, thumb_len) = scrollbar_thumb_extent(h, content_h, offset_y, max_y);
-        emit_fill_rect(
-            sg,
-            parent,
-            x + w - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS,
-            y + start,
-            SCROLLBAR_THICKNESS,
-            thumb_len,
-            thumb_rgba,
-            radius,
-        );
-    }
-
-    // Horizontal bar at the bottom edge — only when content overflows the width.
-    if content_w > w {
-        let (start, thumb_len) = scrollbar_thumb_extent(w, content_w, offset_x, max_x);
-        emit_fill_rect(
-            sg,
-            parent,
-            x + start,
-            y + h - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS,
-            thumb_len,
-            SCROLLBAR_THICKNESS,
-            thumb_rgba,
-            radius,
-        );
+    for axis in scrollbar_axes_in_box(tree, id, x, y, w, h) {
+        let (tx, ty, tw, th) = axis.thumb;
+        emit_fill_rect(sg, parent, tx, ty, tw, th, thumb_rgba, radius);
     }
 }
 
