@@ -1,4 +1,4 @@
-export type { ElementId, ElementKind } from './element.js';
+export type { ElementId, ElementKind, UserSelect } from './element.js';
 export { asElementId } from './element.js';
 
 export type {
@@ -50,7 +50,7 @@ export {
 export type { ViewportCondition } from './viewport-condition.js';
 
 export { isTextLocal, carriesTextLocal } from './generated/style-channel.js';
-export { elementKindDefaultCursor } from './generated/element-kind.js';
+export { elementKindDefaultCursor, elementKindDefaultUserSelect } from './generated/element-kind.js';
 export { shouldApplyTextLocalPatch, gateTextLocalPatch } from './text-local-gate.js';
 export { withTextLocalGate } from './gating-renderer.js';
 export { RecordingRenderer } from './recording-renderer.js';

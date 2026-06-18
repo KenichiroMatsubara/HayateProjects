@@ -1,56 +1,74 @@
 [
   {
-    "name": "view_default_none",
+    "name": "view_default_text",
     "elementKind": "view",
-    "selectable": null,
-    "expected": "none"
-  },
-  {
-    "name": "view_selectable_text",
-    "elementKind": "view",
-    "selectable": true,
+    "userSelect": null,
     "expected": "text"
   },
   {
-    "name": "view_unselectable_none",
+    "name": "view_explicit_none",
     "elementKind": "view",
-    "selectable": false,
+    "userSelect": "none",
     "expected": "none"
   },
   {
-    "name": "text_default_none",
-    "elementKind": "text",
-    "selectable": null,
-    "expected": "none"
-  },
-  {
-    "name": "text_selectable_text",
-    "elementKind": "text",
-    "selectable": true,
+    "name": "view_explicit_text",
+    "elementKind": "view",
+    "userSelect": "text",
     "expected": "text"
+  },
+  {
+    "name": "view_explicit_contains_is_selectable",
+    "elementKind": "view",
+    "userSelect": "contains",
+    "expected": "text"
+  },
+  {
+    "name": "text_default_text",
+    "elementKind": "text",
+    "userSelect": null,
+    "expected": "text"
+  },
+  {
+    "name": "text_explicit_none",
+    "elementKind": "text",
+    "userSelect": "none",
+    "expected": "none"
+  },
+  {
+    "name": "image_default_none",
+    "elementKind": "image",
+    "userSelect": null,
+    "expected": "none"
   },
   {
     "name": "button_default_none",
     "elementKind": "button",
-    "selectable": null,
+    "userSelect": null,
     "expected": "none"
   },
   {
-    "name": "scroll_view_selectable_text",
+    "name": "button_explicit_text_overrides_default",
+    "elementKind": "button",
+    "userSelect": "text",
+    "expected": "text"
+  },
+  {
+    "name": "scroll_view_default_text",
     "elementKind": "scroll-view",
-    "selectable": true,
+    "userSelect": null,
     "expected": "text"
   },
   {
     "name": "text_input_default_text",
     "elementKind": "text-input",
-    "selectable": null,
+    "userSelect": null,
     "expected": "text"
   },
   {
-    "name": "text_input_unselectable_still_text",
+    "name": "text_input_explicit_none_still_text",
     "elementKind": "text-input",
-    "selectable": false,
+    "userSelect": "none",
     "expected": "text"
   }
 ]

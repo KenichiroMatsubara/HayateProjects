@@ -96,6 +96,20 @@ pub enum CursorValue {
     Grabbing,
 }
 
+/// Selectability of an element's text, modelled on CSS `user-select` (ADR-0108).
+///
+/// `Text` means the element's text participates in document selection; `None`
+/// excludes it (and its subtree); `Contains` is selectable but establishes a
+/// containment boundary the selection cannot cross. Resolved from the explicit
+/// `user-select` value, falling back to the element-kind UA default
+/// (`default_user_select`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserSelectValue {
+    Text,
+    None,
+    Contains,
+}
+
 /// Child-overflow handling (ADR-0090/issue #206).
 ///
 /// `Visible` is the default: children may paint outside the element's box,

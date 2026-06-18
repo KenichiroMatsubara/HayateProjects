@@ -25,6 +25,16 @@ export type ElementKind =
   | 'scroll-view';
 
 /**
+ * CSS `user-select` 同型の選択可能性語彙（ADR-0108, closed vocabulary ADR-0071）。
+ *
+ * `text` はテキストが document 選択に参加することを表し、`none` は要素（とその
+ * subtree）を選択不可にする。`contains` は選択可能だが選択が越えられない封じ込め
+ * 境界を確立する。明示値が無いときは element-kind の UA 既定
+ * （{@link elementKindDefaultUserSelect}）にフォールバックする。
+ */
+export type UserSelect = 'text' | 'none' | 'contains';
+
+/**
  * 素の number を {@link ElementId} としてブランド付けするヘルパー。
  * Renderer 実装内で採番した number を Protocol 型に持ち上げる用途。
  */

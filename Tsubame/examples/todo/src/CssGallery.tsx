@@ -707,6 +707,36 @@ function buildSections(p: Palette): readonly GallerySection[] {
             </button>
           ),
         },
+        {
+          // ADR-0108: selectability mirrors CSS `user-select` — view / text are
+          // selectable by the element-kind default (no declaration needed);
+          // `user-select: none` opts a subtree out.
+          title: 'user-select',
+          properties: [],
+          note: 'view/text 既定選択可・user-select:none で除外',
+          render: () => (
+            <view style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <view style={{
+                padding: 8,
+                backgroundColor: p.panel2,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: p.line,
+              }}>
+                <text style={{ color: p.text, fontSize: 12 }}>既定で選択できる（宣言なし）</text>
+              </view>
+              <view user-select="none" style={{
+                padding: 8,
+                backgroundColor: p.panel2,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: p.line,
+              }}>
+                <text style={{ color: p.muted, fontSize: 12 }}>user-select: none で選択不可</text>
+              </view>
+            </view>
+          ),
+        },
       ],
     },
   ];

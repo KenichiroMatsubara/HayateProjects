@@ -18,7 +18,7 @@
     "coerce": {
       "description": "Value-coercion strategy from raw value to op payload (single seam; issue #235).",
       "type": "string",
-      "enum": ["stringify-nullable", "string-or-empty", "boolean"]
+      "enum": ["stringify-nullable", "string-or-empty", "boolean", "user-select"]
     }
   },
   "additionalProperties": false

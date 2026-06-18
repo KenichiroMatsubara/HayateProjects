@@ -456,5 +456,22 @@
         "value": 4
       }
     ]
+  },
+  {
+    "name": "user_select",
+    "values": [
+      {
+        "name": "text",
+        "value": 0
+      },
+      {
+        "name": "none",
+        "value": 1
+      },
+      {
+        "name": "contains",
+        "value": 2
+      }
+    ]
   }
 ]

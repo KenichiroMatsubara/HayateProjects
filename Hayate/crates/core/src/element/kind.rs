@@ -1,8 +1,9 @@
-use crate::element::style::CursorValue;
+use crate::element::style::{CursorValue, UserSelectValue};
 
 /// Element-kind tables generated from `proto/spec/element_kinds.json` — the
-/// single source for per-kind UA defaults (ADR-0105). Brings `ElementKind` and
-/// `CursorValue` into the generated module's `super::` scope.
+/// single source for per-kind UA defaults (ADR-0105/ADR-0108). Brings
+/// `ElementKind`, `CursorValue` and `UserSelectValue` into the generated
+/// module's `super::` scope.
 mod tables {
     include!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -56,6 +57,15 @@ impl ElementKind {
             },
             _ => taffy::Style::default(),
         }
+    }
+
+    /// UA default `user-select` for this kind when no explicit `user-select` is
+    /// set (ADR-0108): `view` / `text` / `scroll-view` / `text-input` are
+    /// selectable (`Text`), `image` / `button` are not (`None`). Sourced from
+    /// `proto/spec/element_kinds.json` so Canvas and DOM share one table and
+    /// neither renderer re-declares the kind-default selectability.
+    pub fn default_user_select(self) -> UserSelectValue {
+        tables::default_user_select(self)
     }
 
     /// Whether this kind accepts text entry and so should surface the platform

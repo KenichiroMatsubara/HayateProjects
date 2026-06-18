@@ -3,6 +3,7 @@ import type {
   ElementKind,
   PseudoStyleKey,
   StylePatch,
+  UserSelect,
   ViewportCondition,
 } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
@@ -61,8 +62,8 @@ export class HayateMutationPacket {
     this.mutations.push({ kind: 'setDisabled', id, disabled });
   }
 
-  enqueueSetSelectable(id: ElementId, selectable: boolean): void {
-    this.mutations.push({ kind: 'setSelectable', id, selectable });
+  enqueueSetUserSelect(id: ElementId, value: UserSelect): void {
+    this.mutations.push({ kind: 'setUserSelect', id, value });
   }
 
   enqueueSetMultiline(id: ElementId, multiline: boolean): void {
