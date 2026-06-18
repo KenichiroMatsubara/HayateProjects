@@ -213,6 +213,31 @@ pub fn build_text_layout(
     }
 }
 
+/// Browser `<input>` default `size` (chars). The UA default content width of a
+/// `text-input` with no explicit `width` is this many characters wide, measured
+/// in the resolved font (ADR-0109, issue #403). Not an inline magic number.
+pub const TEXT_INPUT_DEFAULT_SIZE_CHARS: usize = 20;
+
+/// Measure the UA default content width of an unsized `text-input`: the advance
+/// of [`TEXT_INPUT_DEFAULT_SIZE_CHARS`] `"0"` glyphs in the resolved font. This
+/// follows the font (font-size sensitive) and is independent of the input's own
+/// text/placeholder — mirroring the browser `<input size>` default, which fixes
+/// the field width and scrolls its value rather than growing to fit it.
+pub(crate) fn text_input_default_width(
+    font_cx: &mut FontContext,
+    layout_cx: &mut LayoutContext<TextBrush>,
+    font_size: f32,
+    font_family: Option<&str>,
+    font_weight: Option<f32>,
+    font_style: Option<FontStyleValue>,
+) -> f32 {
+    let sample: String = "0".repeat(TEXT_INPUT_DEFAULT_SIZE_CHARS);
+    let layout = build_text_layout(
+        font_cx, layout_cx, &sample, font_size, None, font_family, font_weight, font_style,
+    );
+    layout.layout.width()
+}
+
 /// Build a Parley layout with per-byte-range styles and break it into lines.
 /// Shared by the public IFC entry point and the `max-lines` re-shape passes.
 fn build_broken_ranged_layout(

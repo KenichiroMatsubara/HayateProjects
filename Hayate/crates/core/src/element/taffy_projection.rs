@@ -4,6 +4,7 @@ use taffy::{NodeId, TaffyTree};
 
 use crate::element::id::ElementId;
 use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
+use crate::element::kind::ElementKind;
 use crate::element::taffy_bridge::MeasureCtx;
 use crate::element::tree::Element;
 use crate::element::visual_invalidation::{
@@ -223,15 +224,24 @@ fn sync_node_from_element(
         Some(e) => e,
         None => return,
     };
-    let measure_ctx = if is_ifc_root(elements, id) {
-        MeasureCtx::Text(id)
-    } else {
-        MeasureCtx::None
-    };
+    let measure_ctx = measure_ctx_for(elements, id);
     let _ = projection.taffy.set_style(node, el.layout_style.clone());
     let _ = projection
         .taffy
         .set_node_context(node, Some(measure_ctx));
+}
+
+/// The measure dispatch context for `id`'s Taffy leaf: IFC roots shape their
+/// text, `text-input` supplies a font-relative UA default width (ADR-0109), and
+/// every other box measures to nothing.
+fn measure_ctx_for(elements: &HashMap<ElementId, Element>, id: ElementId) -> MeasureCtx {
+    if is_ifc_root(elements, id) {
+        MeasureCtx::Text(id)
+    } else if elements.get(&id).map(|el| el.kind) == Some(ElementKind::TextInput) {
+        MeasureCtx::TextInput(id)
+    } else {
+        MeasureCtx::None
+    }
 }
 
 fn create_projected_node(
@@ -240,11 +250,7 @@ fn create_projected_node(
     id: ElementId,
 ) -> NodeId {
     let el = elements.get(&id).expect("create_projected_node: missing element");
-    let measure_ctx = if is_ifc_root(elements, id) {
-        MeasureCtx::Text(id)
-    } else {
-        MeasureCtx::None
-    };
+    let measure_ctx = measure_ctx_for(elements, id);
     projection
         .taffy
         .new_leaf_with_context(el.layout_style.clone(), measure_ctx)

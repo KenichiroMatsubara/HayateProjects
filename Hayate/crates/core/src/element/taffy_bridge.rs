@@ -15,6 +15,9 @@ use crate::element::style::{
 #[derive(Clone, Copy, Debug)]
 pub enum MeasureCtx {
     Text(ElementId),
+    /// `text-input` leaf: supplies the font-relative UA default content width
+    /// when no explicit `width` is set (ADR-0109 root cause A, issue #403).
+    TextInput(ElementId),
     None,
 }
 
