@@ -48,6 +48,11 @@ const ELEMENT_SPECS: Record<ElementKind, ElementDomSpec> = {
     tagName: 'div',
     style: {
       overflow: 'auto',
+      // Overlay scrollbars: the gutter is never reserved, so a scrollable
+      // scroll-view keeps its full content box width and matches Canvas, which
+      // has no scrollbar gutter concept (issue #408). Visual canonical stays DOM
+      // (ADR-0102); this only drops the classic gutter, not scrollability.
+      scrollbarWidth: 'none',
     },
   },
 };
