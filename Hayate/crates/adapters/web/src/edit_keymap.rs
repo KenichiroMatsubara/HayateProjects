@@ -28,7 +28,8 @@ const MOD_META: u32 = 8;
 ///   (macOS Cmd).
 /// - `Home`/`End`: the line boundary, or the document (field) boundary with Ctrl
 ///   (Win/Linux Ctrl+Home/End).
-/// - `ArrowUp`/`ArrowDown` with Meta (macOS Cmd+↑/↓): the document boundary.
+/// - `ArrowUp`/`ArrowDown`: vertical motion between display lines (#368); with
+///   Meta (macOS Cmd+↑/↓) they jump to the document boundary instead.
 /// - `Backspace`/`Delete`: remove one char backward / forward.
 pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     // Clipboard / select-all on the primary modifier — Ctrl (Win/Linux) or
@@ -84,6 +85,11 @@ pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
         // macOS Cmd+↑/↓ jump to the field ends.
         "ArrowUp" if meta => (Granularity::DocBoundary, Direction::Backward),
         "ArrowDown" if meta => (Granularity::DocBoundary, Direction::Forward),
+        // Bare ↑/↓ are vertical motion (#368): multi-line fields move between
+        // display lines, single-line fields jump to the field ends. Granularity
+        // is irrelevant to a vertical step.
+        "ArrowUp" => (Granularity::Grapheme, Direction::Up),
+        "ArrowDown" => (Granularity::Grapheme, Direction::Down),
         _ => return None,
     };
 
@@ -290,11 +296,30 @@ mod tests {
     }
 
     #[test]
-    fn bare_vertical_arrows_are_not_edit_intents_yet() {
-        // Single-line ↑/↓ without Cmd is vertical motion, deferred to #7; the
-        // adapter leaves it to the raw key path.
-        assert_eq!(key_to_edit_intent("ArrowUp", 0), None);
-        assert_eq!(key_to_edit_intent("ArrowDown", 0), None);
+    fn bare_vertical_arrows_map_to_vertical_motion() {
+        // #368: bare ↑/↓ move between display lines (multi-line) or to the field
+        // ends (single-line); Shift extends. Distinct from Cmd+↑/↓ (doc boundary).
+        assert_eq!(
+            key_to_edit_intent("ArrowUp", 0),
+            Some(EditIntent::Move {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Up,
+            }),
+        );
+        assert_eq!(
+            key_to_edit_intent("ArrowDown", 0),
+            Some(EditIntent::Move {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Down,
+            }),
+        );
+        assert_eq!(
+            key_to_edit_intent("ArrowDown", MOD_SHIFT),
+            Some(EditIntent::Extend {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Down,
+            }),
+        );
     }
 
     #[test]

@@ -46,9 +46,17 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     let direction = match key {
         "ArrowLeft" => Direction::Backward,
         "ArrowRight" => Direction::Forward,
+        // Vertical motion (#368): bare ↑/↓. Multi-line fields move between display
+        // lines; single-line fields jump to the field ends (resolved downstream).
+        "ArrowUp" => Direction::Up,
+        "ArrowDown" => Direction::Down,
         _ => return None,
     };
-    let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0 {
+    // Alt/Ctrl widen a *horizontal* step to a word; they have no effect on a
+    // vertical motion, which always steps one display line.
+    let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0
+        && matches!(direction, Direction::Backward | Direction::Forward)
+    {
         Granularity::Word
     } else {
         Granularity::Grapheme
@@ -64,6 +72,30 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
             direction,
         }
     })
+}
+
+/// The display line the caret at `offset` sits on, plus its content-local x
+/// (#368). The line is the one whose block band contains the caret's vertical
+/// centre; past the last line it is the last line. Shared by vertical motion
+/// (↑/↓) and display-line Home/End, which both key off the caret's current row.
+fn caret_display_line(
+    layout: &parley::Layout<crate::element::text::TextBrush>,
+    offset: usize,
+) -> (usize, f32) {
+    use parley::{Affinity, Cursor};
+    let g = Cursor::from_byte_index(layout, offset, Affinity::Downstream).geometry(layout, 0.0);
+    let caret_x = g.x0 as f32;
+    let caret_mid_y = ((g.y0 + g.y1) / 2.0) as f32;
+    let line_count = layout.len();
+    let line = (0..line_count)
+        .find(|&i| {
+            layout.get(i).is_some_and(|line| {
+                let m = line.metrics();
+                caret_mid_y >= m.block_min_coord && caret_mid_y < m.block_max_coord
+            })
+        })
+        .unwrap_or_else(|| line_count.saturating_sub(1));
+    (line, caret_x)
 }
 
 /// Map a primary-modifier letter to its clipboard / select-all [`EditIntent`]
@@ -1252,6 +1284,37 @@ impl ElementTree {
         // (which already act on the focused text-input's edit selection). The
         // pure-state members (Move / Extend / Delete / SelectAll) go straight to
         // the EditState seam.
+        // Vertical motion (↑/↓) and display-line Home/End in a *multi-line* field
+        // need Parley line geometry, which lives here on the tree seam, not on the
+        // pure `EditState` (ADR-0103, #368). Resolve those first; a single-line
+        // field (or one not yet laid out) falls through to `EditState::apply`,
+        // where ↑/↓ jump to the field ends and Home/End to the field boundary
+        // (Chromium `<input>`).
+        if self.element_is_multiline(target) {
+            let geometric = match intent {
+                EditIntent::Move { direction, .. } | EditIntent::Extend { direction, .. }
+                    if matches!(direction, Direction::Up | Direction::Down) =>
+                {
+                    self.apply_vertical_motion(
+                        target,
+                        direction,
+                        matches!(intent, EditIntent::Extend { .. }),
+                    )
+                }
+                EditIntent::Move { granularity: Granularity::LineBoundary, direction }
+                | EditIntent::Extend { granularity: Granularity::LineBoundary, direction } => self
+                    .apply_display_line_boundary(
+                        target,
+                        direction,
+                        matches!(intent, EditIntent::Extend { .. }),
+                    ),
+                _ => false,
+            };
+            if geometric {
+                self.set_selection(None);
+                return true;
+            }
+        }
         match intent {
             EditIntent::Copy => self.copy_active_selection(),
             EditIntent::Cut => self.cut_active_selection(),
@@ -1270,6 +1333,143 @@ impl ElementTree {
         }
         self.set_selection(None);
         true
+    }
+
+    /// Whether `id` is a multi-line text-input (`<textarea>` semantics), so ↑/↓
+    /// move between display lines and Home/End snap to display-line ends.
+    fn element_is_multiline(&self, id: ElementId) -> bool {
+        self.elements.get(&id).map(|el| el.multiline).unwrap_or(false)
+    }
+
+    /// Move the caret up or down one display line in a multi-line field, keeping
+    /// the sticky goal column (ADR-0103, #368). `extend` keeps the anchor (Shift).
+    /// Returns whether it applied — `false` when the field has no shaped layout
+    /// yet, so the caller falls back to the pure single-line semantics.
+    fn apply_vertical_motion(
+        &mut self,
+        target: ElementId,
+        direction: Direction,
+        extend: bool,
+    ) -> bool {
+        let delta = match direction {
+            Direction::Up => -1,
+            Direction::Down => 1,
+            _ => return false,
+        };
+        let Some((offset, goal_x)) = self.vertical_caret_target(target, delta) else {
+            return false;
+        };
+        if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
+            if extend {
+                edit.move_focus(offset);
+            } else {
+                edit.set_selection(offset, offset);
+            }
+            // The goal column survives the move so a run of ↑/↓ through short
+            // lines returns to the original column.
+            edit.desired_x = Some(goal_x);
+        }
+        self.engine
+            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
+        true
+    }
+
+    /// Byte offset the caret lands on after moving `delta` display lines, paired
+    /// with the goal column it aimed for (content-local x). Resolved from the
+    /// field's Parley `content_layout`. `None` when there is no shaped layout.
+    fn vertical_caret_target(&self, target: ElementId, delta: isize) -> Option<(usize, f32)> {
+        use parley::Cursor;
+        let el = self.elements.get(&target)?;
+        let edit = el.edit.as_ref()?;
+        let cl = el.content_layout.as_ref()?;
+        let layout = &cl.layout;
+        let line_count = layout.len();
+        if line_count == 0 {
+            return None;
+        }
+        let (current_line, caret_x) = caret_display_line(layout, edit.cursor_byte_index);
+        // Aim for the stored goal column, or the caret's current x on first move.
+        let goal_x = edit.desired_x.unwrap_or(caret_x);
+        let target_line = current_line as isize + delta;
+        if target_line < 0 {
+            // Above the first line → the field start (Chromium).
+            return Some((0, goal_x));
+        }
+        if target_line as usize >= line_count {
+            // Below the last line → the field end.
+            return Some((edit.text_content.len(), goal_x));
+        }
+        let line = layout.get(target_line as usize)?;
+        let m = line.metrics();
+        // A y inside the target line, near its baseline (mirrors Parley's own
+        // line stepping), hit-tested at the goal column.
+        let y = m.block_max_coord - m.ascent * 0.5;
+        let dest = Cursor::from_point(layout, goal_x, y);
+        Some((dest.index(), goal_x))
+    }
+
+    /// Move the caret to the start/end of its current *display* line in a
+    /// multi-line field (Home/End over soft-wrapped rows, ADR-0103, #368).
+    /// `extend` keeps the anchor (Shift+Home/End). Returns whether it applied.
+    fn apply_display_line_boundary(
+        &mut self,
+        target: ElementId,
+        direction: Direction,
+        extend: bool,
+    ) -> bool {
+        let Some(offset) = self.display_line_boundary_target(target, direction) else {
+            return false;
+        };
+        if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
+            // Home/End is a horizontal motion: it drops the sticky goal column.
+            edit.desired_x = None;
+            if extend {
+                edit.move_focus(offset);
+            } else {
+                edit.set_selection(offset, offset);
+            }
+        }
+        self.engine
+            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
+        true
+    }
+
+    /// Byte offset of the start (Backward) or end (Forward) of the caret's
+    /// current display line, from the field's Parley `content_layout`. `None`
+    /// when there is no shaped layout.
+    fn display_line_boundary_target(
+        &self,
+        target: ElementId,
+        direction: Direction,
+    ) -> Option<usize> {
+        let el = self.elements.get(&target)?;
+        let edit = el.edit.as_ref()?;
+        let cl = el.content_layout.as_ref()?;
+        let layout = &cl.layout;
+        if layout.len() == 0 {
+            return None;
+        }
+        let (current_line, _) = caret_display_line(layout, edit.cursor_byte_index);
+        let line = layout.get(current_line)?;
+        let range = line.text_range();
+        match direction {
+            Direction::Backward => Some(range.start),
+            // Exclude a soft-wrap's boundary whitespace/newline so End lands at the
+            // last visible glyph of the row, matching Parley's `line_end`.
+            Direction::Forward => {
+                let mut end = range.end;
+                let text = &edit.text_content;
+                while end > range.start {
+                    match text[..end].chars().next_back() {
+                        Some(c) if c == '\n' || c == '\r' => end -= c.len_utf8(),
+                        _ => break,
+                    }
+                }
+                Some(end)
+            }
+            // Home/End only carry a horizontal direction.
+            Direction::Up | Direction::Down => None,
+        }
     }
 
     /// Select the entire shaped text of `ifc` (Ctrl/Cmd+A). Returns whether a
