@@ -3,7 +3,7 @@
 
 use hayate_core::{
     DrawOp, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue, RecordingPainter,
-    StyleProp, render_scene_graph,
+    SelectionPoint, StyleProp, UserSelectValue, render_scene_graph,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -446,6 +446,312 @@ fn dragging_backwards_across_blocks_normalizes_to_document_order() {
     assert_eq!(end.element, second, "the later block's point comes last");
 }
 
+#[test]
+fn selected_text_joins_cross_block_selection_with_a_newline() {
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Select from the start of the first block through the end of the second,
+    // so the range spans the block-box (IFC root) boundary between them.
+    let applied = tree.set_selection_range(
+        SelectionPoint::new(first, 0),
+        SelectionPoint::new(second, "Second block".len()),
+    );
+    assert!(applied, "both blocks share one Selection Region");
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("First block\nSecond block"),
+        "a cross-block copy joins blocks in document order with a single \\n at the block boundary",
+    );
+}
+
+#[test]
+fn cross_block_copy_follows_document_order_not_anchor_first() {
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Anchor in the *later* block, focus in the earlier one (a backward drag).
+    // The copied text must still read in document order, not anchor-first.
+    let applied = tree.set_selection_range(
+        SelectionPoint::new(second, "Second block".len()),
+        SelectionPoint::new(first, 0),
+    );
+    assert!(applied, "both blocks share one Selection Region");
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("First block\nSecond block"),
+        "copy joins blocks in document order regardless of drag direction",
+    );
+}
+
+/// Build a selectable column of three stacked paragraphs (three IFC blocks).
+/// Returns (tree, view, first, middle, last). Each paragraph is one line.
+fn three_block_region() -> (ElementTree, ElementId, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(1, ElementKind::View);
+    let first = tree.element_create(2, ElementKind::Text);
+    let middle = tree.element_create(3, ElementKind::Text);
+    let last = tree.element_create(4, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    for &block in &[first, middle, last] {
+        tree.element_set_style(block, &[StyleProp::Width(Dimension::px(400.0))]);
+        tree.element_append_child(view, block);
+    }
+    tree.element_set_text(first, "First block");
+    tree.element_set_text(middle, "Middle block");
+    tree.element_set_text(last, "Third block");
+    tree.element_set_selectable(view, true);
+    tree.render(0.0);
+    (tree, view, first, middle, last)
+}
+
+#[test]
+fn user_select_none_block_is_excluded_from_the_copied_text() {
+    let (mut tree, _view, first, middle, last) = three_block_region();
+    // The middle paragraph opts out of selection (CSS `user-select: none`).
+    tree.element_set_user_select(middle, UserSelectValue::None);
+    tree.render(0.0);
+
+    let applied = tree.set_selection_range(
+        SelectionPoint::new(first, 0),
+        SelectionPoint::new(last, "Third block".len()),
+    );
+    assert!(applied, "first and last share one Selection Region");
+
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("First block\nThird block"),
+        "a user-select:none block contributes no text and leaves no orphan newline",
+    );
+}
+
+// --- `user-select: contains` containment boundary (ADR-0108 decision 3, #400) ---
+
+/// A `selectable` outer column holding `inside` — a paragraph wrapped in a
+/// `user-select: contains` box — above `outside`, a bare paragraph that shares
+/// the outer Selection Region. With `contains` the inner box is its own tighter
+/// boundary; without it both paragraphs span freely. Returns
+/// (tree, contains-box, inside-paragraph, outside-paragraph).
+fn contains_inside_region(boundary: bool) -> (ElementTree, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let boundary_box = tree.element_create(2, ElementKind::View);
+    let inside = tree.element_create(3, ElementKind::Text);
+    let outside = tree.element_create(4, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        boundary_box,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(inside, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(outside, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(outer, boundary_box);
+    tree.element_append_child(boundary_box, inside);
+    tree.element_append_child(outer, outside);
+    tree.element_set_text(inside, "Inside box");
+    tree.element_set_text(outside, "Outside box");
+    tree.element_set_selectable(outer, true);
+    if boundary {
+        tree.element_set_user_select(boundary_box, UserSelectValue::Contains);
+    }
+    tree.render(0.0);
+    (tree, boundary_box, inside, outside)
+}
+
+#[test]
+fn contains_box_clamps_a_drag_inside_its_boundary() {
+    let (mut tree, _box, inside, outside) = contains_inside_region(true);
+
+    // Begin the drag in the `contains` box and pull down into the sibling that
+    // lies outside it (but still inside the outer selectable region).
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
+
+    let sel = tree
+        .selection()
+        .expect("a selection started inside the contains box");
+    assert_eq!(
+        sel.focus.element, inside,
+        "focus must stay clamped inside the `user-select: contains` boundary",
+    );
+}
+
+/// A `selectable` outer column whose middle child is a `user-select: contains`
+/// box holding two stacked paragraphs (`in_a`, `in_b`); an `outside` paragraph
+/// follows the box in the same outer region. Returns
+/// (tree, in_a, in_b, outside).
+fn contains_box_with_two_blocks() -> (ElementTree, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let boundary_box = tree.element_create(2, ElementKind::View);
+    let in_a = tree.element_create(3, ElementKind::Text);
+    let in_b = tree.element_create(4, ElementKind::Text);
+    let outside = tree.element_create(5, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        boundary_box,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    for &block in &[in_a, in_b, outside] {
+        tree.element_set_style(block, &[StyleProp::Width(Dimension::px(400.0))]);
+    }
+    tree.element_append_child(outer, boundary_box);
+    tree.element_append_child(boundary_box, in_a);
+    tree.element_append_child(boundary_box, in_b);
+    tree.element_append_child(outer, outside);
+    tree.element_set_text(in_a, "Alpha box");
+    tree.element_set_text(in_b, "Beta box");
+    tree.element_set_text(outside, "Gamma out");
+    tree.element_set_selectable(outer, true);
+    tree.element_set_user_select(boundary_box, UserSelectValue::Contains);
+    tree.render(0.0);
+    (tree, in_a, in_b, outside)
+}
+
+#[test]
+fn contains_boundary_excludes_outside_blocks_from_copied_text() {
+    let (mut tree, in_a, in_b, outside) = contains_box_with_two_blocks();
+
+    // A selection spanning the two paragraphs inside the box is honoured: the
+    // copied text joins them in document order with a single block-boundary `\n`.
+    let inside = tree.set_selection_range(
+        SelectionPoint::new(in_a, 0),
+        SelectionPoint::new(in_b, "Beta box".len()),
+    );
+    assert!(inside, "both paragraphs lie inside the same `contains` boundary");
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("Alpha box\nBeta box"),
+        "the two in-box paragraphs join; copy stays within the boundary",
+    );
+
+    // A range that would cross the boundary into the outside paragraph is
+    // refused outright, so the outside text is never concatenated.
+    let leaked = tree.set_selection_range(
+        SelectionPoint::new(in_a, 0),
+        SelectionPoint::new(outside, "Gamma out".len()),
+    );
+    assert!(
+        !leaked,
+        "a range crossing the `contains` boundary is refused, never copied",
+    );
+}
+
+#[test]
+fn without_contains_a_drag_spans_freely_across_the_box() {
+    // The regression contrast to `contains_box_clamps_a_drag_inside_its_boundary`:
+    // the identical layout with the box left as a plain view (no `contains`) lets
+    // a drag begun inside it run on into the sibling paragraph — the default is a
+    // free cross-element span, and `contains` is the only thing that clamps it.
+    let (mut tree, _box, inside, outside) = contains_inside_region(false);
+
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
+
+    let sel = tree.selection().expect("a selection started inside the box");
+    assert_eq!(
+        sel.focus.element, outside,
+        "with no `contains` boundary the focus follows the drag into the sibling",
+    );
+}
+
+/// Two nested `user-select: contains` boxes: an outer boundary holding
+/// `outer_block` above an inner boundary holding `inner_block`. Both are
+/// containment boundaries, but they are distinct regions (nearest wins).
+/// Returns (tree, outer_block, inner_block).
+fn nested_contains() -> (ElementTree, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let outer_block = tree.element_create(2, ElementKind::Text);
+    let inner = tree.element_create(3, ElementKind::View);
+    let inner_block = tree.element_create(4, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        inner,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(outer_block, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(inner_block, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(outer, outer_block);
+    tree.element_append_child(outer, inner);
+    tree.element_append_child(inner, inner_block);
+    tree.element_set_text(outer_block, "Outer box");
+    tree.element_set_text(inner_block, "Inner box");
+    tree.element_set_user_select(outer, UserSelectValue::Contains);
+    tree.element_set_user_select(inner, UserSelectValue::Contains);
+    tree.render(0.0);
+    (tree, outer_block, inner_block)
+}
+
+#[test]
+fn nested_contains_uses_the_innermost_boundary() {
+    let (mut tree, outer_block, inner_block) = nested_contains();
+
+    // A drag begun in the outer box must not extend into the nested box: the
+    // inner `contains` is the nearer boundary of `inner_block`.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, outer_block));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, inner_block));
+
+    let sel = tree.selection().expect("a selection in the outer box");
+    assert_eq!(
+        sel.focus.element, outer_block,
+        "focus stays in the outer box; the nested `contains` is its own boundary",
+    );
+
+    // Conversely, a fresh drag begun inside the nested box anchors there.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inner_block));
+    let nested = tree.selection().expect("a caret in the nested box");
+    assert_eq!(
+        nested.anchor.element, inner_block,
+        "a press in the nested box anchors to the innermost boundary",
+    );
+}
+
 /// Material selection tint (ADR-0097): identifies highlight rects among draw ops.
 const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
@@ -482,6 +788,68 @@ fn dragging_across_blocks_highlights_every_covered_block() {
     };
     assert!(covers(fy, fy + fh), "the first block must be highlighted");
     assert!(covers(sy, sy + sh), "the second block must be highlighted");
+}
+
+#[test]
+fn user_select_none_block_shows_no_highlight() {
+    let (mut tree, _view, first, middle, last) = three_block_region();
+    tree.element_set_user_select(middle, UserSelectValue::None);
+
+    // Select across all three blocks; the middle one opts out of selection.
+    tree.set_selection_range(
+        SelectionPoint::new(first, 0),
+        SelectionPoint::new(last, "Third block".len()),
+    );
+    tree.render(0.0);
+
+    let bands = highlight_bands(&tree);
+    // Test a band over each block's vertical *center*, so a neighbouring band
+    // grazing a box edge by a pixel (line metrics vs box geometry) is not
+    // mistaken for the middle block being highlighted.
+    let covered = |block: ElementId| {
+        let mid = block_mid_y(&tree, block);
+        bands.iter().any(|&(by0, by1)| by0 <= mid && mid <= by1)
+    };
+    assert!(covered(first), "the first block must be highlighted");
+    assert!(covered(last), "the last block must be highlighted");
+    assert!(
+        !covered(middle),
+        "a user-select:none block carries no highlight, just as it copies no text",
+    );
+}
+
+#[test]
+fn dragging_across_two_text_blocks_highlights_both_and_copies_them_joined() {
+    // The headline cross-element case (ADR-0108 decision 5): one drag spanning
+    // two text blocks must both paint a highlight over each block *and* copy the
+    // two joined in document order — highlight and copy land together.
+    let (mut tree, _view, first, second) = two_block_region(true);
+
+    // Drag from before the first paragraph to past the end of the second.
+    tree.on_pointer_down(2.0, block_mid_y(&tree, first));
+    tree.on_pointer_move(398.0, block_mid_y(&tree, second));
+    tree.render(0.0);
+
+    let bands = highlight_bands(&tree);
+    let covered = |block: ElementId| {
+        let mid = block_mid_y(&tree, block);
+        bands.iter().any(|&(by0, by1)| by0 <= mid && mid <= by1)
+    };
+    assert!(covered(first), "the first block is highlighted by the drag");
+    assert!(covered(second), "the second block is highlighted by the drag");
+
+    // The same drag copies both blocks, joined in document order by exactly one
+    // `\n` at the block boundary. The drag's far end is pixel-dependent, so the
+    // exact full join is pinned by the programmatic test above; here we assert
+    // the structural shape: first block whole, second block from its start.
+    let copied = tree.selected_text().expect("a cross-block drag copies text");
+    assert_eq!(copied.matches('\n').count(), 1, "one block-boundary newline: {copied:?}");
+    let (lead, tail) = copied.split_once('\n').unwrap();
+    assert_eq!(lead, "First block", "the first block is copied whole");
+    assert!(
+        !tail.is_empty() && "Second block".starts_with(tail),
+        "the second block is copied from its start, got {tail:?}",
+    );
 }
 
 /// A non-selectable column root holding `inner` — a `selectable` view with one

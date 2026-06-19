@@ -91,6 +91,18 @@ export function editKeyAction(key: string): EditKeyAction {
 
 const SpX = (w: number) => <view style={{ width: w, height: 1 }} />;
 
+/**
+ * 共通イージング（ADR-0067 / Transition）。全インタラクティブ要素に同じ
+ * 補間を載せ、hover / active / focus の状態切替を一瞬ではなく滑らかにする。
+ * 補間対象は連続値（color / border / box-shadow / opacity / radius）のみ。
+ */
+const EASE = { transitionDuration: 160, transitionTiming: 'ease-out' } as const;
+
+/** アクセント色のグロー影。主要 CTA を POP に浮かせる（ADR-0095）。 */
+const glow = (color: string, strong = false): HayateCssStyle['boxShadow'] => [
+  { offsetX: 0, offsetY: strong ? 8 : 5, blur: strong ? 22 : 16, spread: -4, color, inset: false },
+];
+
 function seedTodos(): Todo[] {
   return SEED.map((todo) => ({ ...todo }));
 }
@@ -187,20 +199,26 @@ export function TodoApp(props: TodoAppProps) {
           paddingBottom: 28,
           backgroundColor: colors().bg,
         }}>
-          <view style={{
-            width: 620,
-            maxWidth: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            padding: 22,
-            backgroundColor: colors().panel,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderStyle: 'solid',
-            borderColor: colors().line,
-            boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
-          }}>
+          <view
+            style={{
+              width: 620,
+              maxWidth: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              padding: 22,
+              backgroundColor: colors().panel,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderStyle: 'solid',
+              borderColor: colors().line,
+              boxShadow: [{ offsetX: 0, offsetY: 18, blur: 40, spread: -8, color: colors().shadow, inset: false }],
+            }}
+            // 狭幅では余白と角丸を詰める（本物の @media・ADR-0081）。
+            styleVariants={[
+              { condition: { maxWidth: 719 }, style: { padding: 14, gap: 12, borderRadius: 12 } },
+            ]}
+          >
             <Header colors={colors()} remaining={summary().remaining} total={summary().total} percent={summary().percent} />
             <SelectableNote colors={colors()} />
             <AddForm
@@ -265,6 +283,8 @@ function AppBar(props: {
     borderStyle: 'solid',
     borderColor: active ? props.colors.accent : props.colors.line,
     defaultFontSize: 13,
+    boxShadow: active ? glow(`${props.colors.accent}44`) : [],
+    ...EASE,
     ':hover': {
       backgroundColor: active ? props.colors.accent : props.colors.panel3,
       borderColor: active ? props.colors.accent : props.colors.line,
@@ -281,22 +301,34 @@ function AppBar(props: {
       borderWidth: selected ? 3 : 1,
       borderStyle: 'solid',
       borderColor: selected ? props.colors.ink : props.colors.line,
+      boxShadow: selected ? glow(`${accentColor(props.theme, key)}66`) : [],
+      ...EASE,
       ':hover': { borderColor: props.colors.ink },
     };
   };
 
   return (
-    <view style={{
-      height: 64,
-      display: 'flex',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: props.colors.rail,
-      borderWidth: 1,
-      borderStyle: 'solid',
-      borderColor: props.colors.line,
-    }}>
+    <view
+      style={{
+        minHeight: 64,
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 12,
+        paddingTop: 8,
+        paddingBottom: 8,
+        backgroundColor: props.colors.rail,
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: props.colors.line,
+      }}
+      // 狭幅では左右のクラスタを縦積みにして溢れを防ぐ（本物の @media・ADR-0081）。
+      styleVariants={[
+        { condition: { maxWidth: 719 }, style: { flexDirection: 'column', alignItems: 'flex-start' } },
+      ]}
+    >
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         {SpX(24)}
         <view style={{
@@ -316,7 +348,7 @@ function AppBar(props: {
         </view>
       </view>
 
-      <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
         <button style={tab(props.page === 'tasks')} onClick={() => props.setPage('tasks')}>Tasks</button>
         <button style={tab(props.page === 'gallery')} onClick={() => props.setPage('gallery')}>CSS Gallery</button>
 
@@ -340,6 +372,7 @@ function AppBar(props: {
             borderStyle: 'solid',
             borderColor: props.colors.line,
             defaultFontSize: 15,
+            ...EASE,
             ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.line },
           }}
           onClick={props.onToggleTheme}
@@ -485,6 +518,8 @@ function AddForm(props: {
     borderStyle: 'solid',
     borderColor: active ? tone : props.colors.line,
     defaultFontSize: 13,
+    boxShadow: active ? glow(`${tone}55`) : [],
+    ...EASE,
     ':hover': {
       backgroundColor: active ? tone : props.colors.panel3,
       borderColor: active ? tone : props.colors.line,
@@ -492,8 +527,8 @@ function AddForm(props: {
   });
 
   return (
-    <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-      <view style={{ flexGrow: 1 }}>
+    <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      <view style={{ flexGrow: 1, minWidth: 180 }}>
         <text-input
           value={props.draft}
           placeholder="新しいタスクを入力…"
@@ -529,7 +564,13 @@ function AddForm(props: {
           borderStyle: 'solid',
           borderColor: props.colors.accent,
           defaultFontSize: 13,
-          ':hover': { backgroundColor: props.colors.success, borderColor: props.colors.success },
+          boxShadow: glow(`${props.colors.accent}55`),
+          ...EASE,
+          ':hover': {
+            backgroundColor: props.colors.success,
+            borderColor: props.colors.success,
+            boxShadow: glow(`${props.colors.success}77`, true),
+          },
         }}
         onClick={props.onAdd}
       >
@@ -554,6 +595,8 @@ function chipStyle(p: Palette, active: boolean): HayateCssStyle {
     borderStyle: 'solid',
     borderColor: active ? p.accent : p.line,
     defaultFontSize: 12,
+    boxShadow: active ? glow(`${p.accent}44`) : [],
+    ...EASE,
     ':hover': {
       backgroundColor: active ? p.accent : p.panel3,
       borderColor: active ? p.accent : p.line,
@@ -573,6 +616,7 @@ function Toolbar(props: {
       display: 'flex',
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: 8,
       paddingTop: 10,
       paddingBottom: 10,
@@ -608,6 +652,7 @@ function iconButton(p: Palette): HayateCssStyle {
     borderStyle: 'solid',
     borderColor: p.line,
     defaultFontSize: 14,
+    ...EASE,
     ':hover': { backgroundColor: p.panel3, borderColor: p.line, defaultColor: p.text },
   };
 }
@@ -643,10 +688,11 @@ function TodoRow(props: {
       borderColor: p.line,
       opacity: done ? 0.62 : 1,
       boxShadow: [{ offsetX: 0, offsetY: 2, blur: 6, spread: -1, color: p.shadow, inset: false }],
+      ...EASE,
       ':hover': {
         backgroundColor: p.panel3,
         borderColor: p.line,
-        boxShadow: [{ offsetX: 0, offsetY: 6, blur: 16, spread: -2, color: p.shadow, inset: false }],
+        boxShadow: [{ offsetX: 0, offsetY: 10, blur: 24, spread: -4, color: p.shadow, inset: false }],
       },
     }}>
       <button
@@ -663,6 +709,8 @@ function TodoRow(props: {
           borderStyle: 'solid',
           borderColor: done ? p.success : p.line,
           defaultFontSize: 14,
+          boxShadow: done ? glow(`${p.success}66`) : [],
+          ...EASE,
           ':hover': { borderColor: p.success },
         }}
         onClick={props.onToggle}
@@ -697,6 +745,7 @@ function TodoRow(props: {
               defaultFontSize: 15,
               borderWidth: 0,
               borderStyle: 'solid',
+              ...EASE,
               ':hover': { defaultColor: p.accent },
             }}
             onClick={props.onBeginEdit}
@@ -768,7 +817,8 @@ function Footer(props: { colors: Palette; percent: number; onClearDone: () => vo
             borderStyle: 'solid',
             borderColor: props.colors.line,
             defaultFontSize: 12,
-            ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.line },
+            ...EASE,
+            ':hover': { backgroundColor: props.colors.panel3, borderColor: props.colors.danger, defaultColor: props.colors.danger },
           }}
           onClick={props.onClearDone}
         >

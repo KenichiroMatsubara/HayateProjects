@@ -138,12 +138,30 @@ pub(crate) struct Element {
     /// be selected by pointer drag, bounded by the nearest selectable ancestor
     /// (ADR-0097 / ADR-0071 closed typed property, same shape as `disabled`).
     pub selectable: bool,
+    /// Per-element selectability modelled on CSS `user-select` (ADR-0108). `None`
+    /// excludes this element (and its subtree) from the document selection's
+    /// covered range and copied text, even when it sits inside a Selection
+    /// Region; `Text` (the default) and `Contains` participate. Distinct from
+    /// `selectable`, which marks a Selection Region *root* (ADR-0097): an element
+    /// can be inside a region yet opt out of selection via `user-select: none`.
+    pub user_select: crate::element::style::UserSelectValue,
     /// When true, a TextInput accepts newlines: Enter inserts `\n` at the caret
     /// rather than signalling submit (#362). Default false (single-line). A
     /// closed typed property (ADR-0096/0097), same shape as `disabled`.
     pub multiline: bool,
     /// Viewport-conditional style overrides, one variant per property (ADR-0081).
     pub viewport_variants: Vec<(ViewportCondition, StyleProp)>,
+}
+
+/// One ScrollView's live Touch transient-indicator state (ADR-0110, SCR-04,
+/// #410). The indicator shows while the content scrolls under Touch modality and
+/// fades after it stops; `shown_at_ms` is the host clock of the last scroll
+/// (refreshed on each touch scroll), `fade` the visibility factor `[0, 1]`
+/// recomputed each render from the elapsed time.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TouchScrollIndicator {
+    pub shown_at_ms: f64,
+    pub fade: f32,
 }
 
 /// Events emitted by input wiring and drained by `poll_events`.
@@ -211,6 +229,20 @@ pub struct ElementTree {
     /// (ADR-0097, #271). Distinct from `selection_drag`, which drives the
     /// read-only SelectionArea selection; the two are mutually exclusive.
     pub(crate) edit_drag: Option<ElementId>,
+    /// An in-flight Mouse/Pen scrollbar-thumb drag (ADR-0110, #409). Set while a
+    /// pointer-down grabbed a thumb; each move converts pointer travel to a
+    /// Scroll Offset delta. Mutually exclusive with the selection drags above —
+    /// grabbing the thumb consumes the gesture before any selection begins.
+    pub(crate) scrollbar_drag: Option<crate::element::interaction::ScrollbarDrag>,
+    /// ScrollViews that scrolled under Touch modality since the last render and
+    /// must (re)raise their transient indicator (ADR-0110, SCR-04, #410). Stamped
+    /// at render time with the host clock, since the scroll seam carries no
+    /// timestamp — the same flag-then-stamp shape as the cursor blink (ADR-0032).
+    pub(crate) touch_scroll_pending: HashSet<ElementId>,
+    /// Live Touch transient indicators, keyed by ScrollView. An entry exists only
+    /// while the indicator is within its show→fade window; it is dropped once it
+    /// has fully faded, so a resting Touch surface holds none (no always-on bar).
+    pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
     /// Multi-click tracking for word/paragraph gestures (#267): the last
     /// pointer-down position and how many presses have landed near it. The
     /// adapter's OS-level double-click timing is re-derived here by proximity:
@@ -258,6 +290,9 @@ impl ElementTree {
             selection: None,
             selection_drag: false,
             edit_drag: None,
+            scrollbar_drag: None,
+            touch_scroll_pending: HashSet::new(),
+            touch_scroll_indicators: HashMap::new(),
             last_click_pos: None,
             click_count: 0,
             last_pointer_pos: None,
@@ -406,6 +441,7 @@ impl ElementTree {
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
             selectable: false,
+            user_select: crate::element::style::UserSelectValue::Text,
             multiline: false,
             viewport_variants: Vec::new(),
         };
@@ -455,6 +491,21 @@ impl ElementTree {
     pub fn element_set_selectable(&mut self, id: ElementId, selectable: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.selectable = selectable;
+        }
+    }
+
+    /// Set an element's CSS `user-select` value (ADR-0108). `None` excludes the
+    /// element and its subtree from the document selection's covered range and
+    /// copied text; `Text` / `Contains` participate. Orthogonal to
+    /// [`element_set_selectable`](Self::element_set_selectable), which marks a
+    /// Selection Region root.
+    pub fn element_set_user_select(
+        &mut self,
+        id: ElementId,
+        value: crate::element::style::UserSelectValue,
+    ) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.user_select = value;
         }
     }
 
@@ -827,11 +878,32 @@ impl ElementTree {
 
     /// Programmatically set the scroll offset of a ScrollView element.
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
+        let mut scrolled_scroll_view = false;
         if let Some(el) = self.elements.get_mut(&id) {
+            scrolled_scroll_view = el.scroll_offset != (x, y) && el.kind == ElementKind::ScrollView;
             el.scroll_offset = (x, y);
             self.engine
                 .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
+        // A scroll under Touch modality (re)raises the transient indicator — the
+        // Touch counterpart of the Mouse/Pen operable thumb (ADR-0110, SCR-04,
+        // #410). The stamp is deferred to render, which owns the host clock.
+        if scrolled_scroll_view
+            && self.last_pointer_kind == crate::element::pointer::PointerKind::Touch
+        {
+            self.touch_scroll_pending.insert(id);
+        }
+    }
+
+    /// The Touch transient indicator's current visibility factor `[0, 1]` for
+    /// `id`, or `0.0` when no indicator is live (ADR-0110, SCR-04, #410). Read by
+    /// the scrollbar overlay lowering to scale the indicator opacity; the value is
+    /// computed each render (`advance_touch_scroll_indicators`) so the lowering
+    /// needs no clock of its own.
+    pub(crate) fn touch_scroll_indicator_opacity(&self, id: ElementId) -> f32 {
+        self.touch_scroll_indicators
+            .get(&id)
+            .map_or(0.0, |i| i.fade)
     }
 
     /// Read the current scroll offset of an element.
@@ -1314,6 +1386,7 @@ impl ElementTree {
                     .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
             }
         }
+        self.advance_touch_scroll_indicators(timestamp_ms);
         let mut dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
@@ -1357,6 +1430,40 @@ impl ElementTree {
         self.scene_cache = scene_cache;
         self.scene_lowering = scene_lowering;
         &self.scene_cache
+    }
+
+    /// Advance the Touch transient scrollbar indicators for this frame (ADR-0110,
+    /// SCR-04, #410). A ScrollView that scrolled under Touch since the last render
+    /// (re)raises its indicator at full visibility and stamps `now_ms` as the fade
+    /// clock. Every live indicator then recomputes its visibility from the elapsed
+    /// time — full through the hold window, ramping to zero across the fade window
+    /// — and is dropped once it reaches zero. Each still-animating ScrollView is
+    /// kept visual-dirty so the next frame re-lowers it and the fade keeps moving;
+    /// when the last one settles the frame loop goes quiet (mirrors the in-flight
+    /// transition / cursor-blink ticking, ADR-0086/0093/0032).
+    fn advance_touch_scroll_indicators(&mut self, now_ms: f64) {
+        for id in std::mem::take(&mut self.touch_scroll_pending) {
+            self.touch_scroll_indicators.insert(
+                id,
+                TouchScrollIndicator {
+                    shown_at_ms: now_ms,
+                    fade: 1.0,
+                },
+            );
+        }
+        let mut dirty = Vec::new();
+        self.touch_scroll_indicators.retain(|&id, ind| {
+            let elapsed = now_ms - ind.shown_at_ms;
+            ind.fade = scene_build::touch_scroll_indicator_fade(elapsed);
+            // Keep re-lowering the box while the indicator is live so the fade
+            // advances frame to frame, and once more on the frame it vanishes.
+            dirty.push(id);
+            ind.fade > 0.0
+        });
+        for id in dirty {
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
     }
 
     /// Resolve dirty state and settle layout (`LayoutPass::run()` equivalent, ADR-0075
@@ -1545,8 +1652,11 @@ impl ElementTree {
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        let box_hit = hit_test_walk(self, root, x, y)?;
-        inline_text::resolve_ifc_inline_hit(self, box_hit, x, y)
+        // `hit_test_walk` threads the query point down into each scrolled view's
+        // content space, so `(hx, hy)` is the point in `box_hit`'s own layout
+        // coordinates — the space its geometry and text layout live in.
+        let (box_hit, hx, hy) = hit_test_walk(self, root, x, y)?;
+        inline_text::resolve_ifc_inline_hit(self, box_hit, hx, hy)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -1766,23 +1876,36 @@ fn walk_resolved(
     }
 }
 
-fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {
+/// Returns the deepest hit element together with the query point expressed in
+/// *that element's* layout coordinate space — i.e. the screen point shifted by the
+/// accumulated `scroll_offset` of every ScrollView descended through. Callers that
+/// need the local point (inline text resolution) read it from the tuple.
+fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<(ElementId, f32, f32)> {
     let (ex, ey, ew, eh) = tree.layout.geometry(id)?;
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
     }
     tree.elements.get(&id)?;
+    // A scrolled view paints its content translated by −scroll_offset (the Group
+    // under the Clip in `scene_build`), so shift the query point by +scroll_offset
+    // before testing descendants to match where they were actually painted.
+    // Non-scrollers carry a (0,0) offset, and nested scrollers compose as the
+    // recursion threads the shifted point down. Without this, hit-test reads the
+    // un-scrolled layout and a scrolled-in child (e.g. a nested scroll box) is
+    // missed — the wheel then chains to the wrong ScrollView (#double-scroll).
+    let (sx, sy) = tree.element_get_scroll_offset(id);
+    let (cx, cy) = (x + sx, y + sy);
     // Visit children in reverse paint order (`.rev()`) so the topmost element wins.
     // Sharing `ordered_children` keeps hit-test as the exact reverse of paint order.
     for child in tree.ordered_children(id).into_iter().rev() {
-        if let Some(hit) = hit_test_walk(tree, child, x, y) {
+        if let Some(hit) = hit_test_walk(tree, child, cx, cy) {
             return Some(hit);
         }
     }
     if tree.elements.get(&id).is_some_and(|e| e.disabled) {
         return None;
     }
-    Some(id)
+    Some((id, x, y))
 }
 
 /// The live dirty sets behind the routing seam: `ElementEngine`'s visual /

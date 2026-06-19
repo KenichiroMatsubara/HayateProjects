@@ -94,6 +94,38 @@ describe('renderer integration (stub IRenderer)', () => {
     expect(() => setProp(text, 'value', 'x')).not.toThrow();
   });
 
+  it('forwards styleVariants to setStyleVariant (ADR-0081 @media)', async () => {
+    const { setProp, createElement } = await import('./renderer.js');
+    const { setActiveRenderer } = await import('./active-renderer.js');
+
+    const variants: Array<[number, unknown, unknown]> = [];
+    setActiveRenderer({
+      createElement: () => 1 as never,
+      setRoot: () => {},
+      appendChild: () => {},
+      insertBefore: () => {},
+      removeChild: () => {},
+      setStyle: () => {},
+      setStyleVariant: (id: number, condition: unknown, style: unknown) =>
+        variants.push([id, condition, style]),
+      setText: () => {},
+      setProperty: () => {},
+      addEventListener: () => () => {},
+      resize: () => {},
+    } as never);
+
+    const view = createElement('view');
+    setProp(view, 'styleVariants', [
+      { condition: { maxWidth: 720 }, style: { flexDirection: 'column' } },
+      { condition: { minWidth: 1100 }, style: { gap: 24 } },
+    ]);
+
+    expect(variants).toEqual([
+      [1, { maxWidth: 720 }, { flexDirection: 'column' }],
+      [1, { minWidth: 1100 }, { gap: 24 }],
+    ]);
+  });
+
   it('rejects unknown element properties (ADR-0071)', async () => {
     const { setProp, createElement } = await import('./renderer.js');
     const { setActiveRenderer } = await import('./active-renderer.js');

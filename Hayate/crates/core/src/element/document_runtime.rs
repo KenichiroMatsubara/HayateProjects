@@ -145,7 +145,7 @@ pub(crate) fn event_target(event: &Event) -> Option<ElementId> {
 mod tests {
     use super::*;
     use crate::element::kind::ElementKind;
-    use crate::element::style::{Dimension, StyleProp};
+    use crate::element::style::{Dimension, DisplayValue, FlexDirectionValue, StyleProp};
     use crate::element::tree::ElementTree;
 
     fn scroll_tree(content_h: f32) -> (ElementTree, ElementId, ElementId) {
@@ -435,6 +435,106 @@ mod tests {
         assert!(
             (y - 200.0).abs() < 1e-3,
             "single scroll view should stay clamped at max, got {y}"
+        );
+    }
+
+    /// Hit-testing must follow the scroll offset of every ScrollView it descends
+    /// through, exactly as paint translates a scrolled view's content. The wheel
+    /// path resolves its target with `hit_test`, so when the cursor sits over an
+    /// inner ScrollView that an outer ScrollView has *scrolled into view*, the hit
+    /// must land on the inner view — otherwise the wheel chains to the wrong
+    /// ScrollView and the inner (nested / "double") scroll never moves. Mirrors
+    /// the CssGallery: a tall outer scroller whose nested scroll box only appears
+    /// after you scroll the outer down. Regression for "canvas nested scroll dead
+    /// to the wheel".
+    #[test]
+    fn hit_test_follows_scroll_offset_into_a_scrolled_inner_view() {
+        let mut tree = ElementTree::new();
+        let outer = tree.element_create(400, ElementKind::ScrollView);
+        let col = tree.element_create(401, ElementKind::View);
+        let spacer = tree.element_create(402, ElementKind::View);
+        let inner = tree.element_create(403, ElementKind::ScrollView);
+        let inner_child = tree.element_create(404, ElementKind::View);
+        tree.set_root(outer);
+        tree.set_viewport(200.0, 100.0);
+        // outer SV → column wrapper → [spacer, inner SV → inner_child], mirroring
+        // the CssGallery (content lives in a flex-column view inside the scroller).
+        tree.element_append_child(outer, col);
+        tree.element_append_child(col, spacer);
+        tree.element_append_child(col, inner);
+        tree.element_append_child(inner, inner_child);
+        // Outer viewport is 100 tall.
+        tree.element_set_style(
+            outer,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        // Column is taller than the outer viewport, so the outer scrolls and the
+        // children keep their natural heights (no flex shrink).
+        tree.element_set_style(
+            col,
+            &[
+                StyleProp::Display(DisplayValue::Flex),
+                StyleProp::FlexDirection(FlexDirectionValue::Column),
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(400.0)),
+            ],
+        );
+        // A 100-tall spacer fills the first screen and pushes the inner scroll box
+        // to layout-y = 100 — off-screen until the outer is scrolled.
+        tree.element_set_style(
+            spacer,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        tree.element_set_style(
+            inner,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(100.0)),
+            ],
+        );
+        // Inner content overflows the inner viewport, so the inner is scrollable.
+        tree.element_set_style(
+            inner_child,
+            &[
+                StyleProp::Width(Dimension::px(200.0)),
+                StyleProp::Height(Dimension::px(300.0)),
+            ],
+        );
+        tree.render(0.0);
+        assert_eq!(
+            tree.element_layout_rect(inner).map(|r| r.1),
+            Some(100.0),
+            "inner must lay out below the spacer (off-screen until scrolled)"
+        );
+
+        // Scroll the outer down by a full screen: the inner box is now painted at
+        // the top of the viewport (screen-y 0..100).
+        tree.element_set_scroll_offset(outer, 0.0, 100.0);
+
+        // A point in the middle of the viewport is now over the inner scroll box.
+        let hit = tree.hit_test(100.0, 50.0).expect("something must be hit");
+        assert!(
+            hit == inner || hit == inner_child,
+            "hit at the scrolled-in inner box should land on the inner view, got {hit:?}"
+        );
+
+        // …and the wheel must therefore drive the inner scroll, not the outer.
+        tree.apply_wheel_delta(hit, 0.0, 30.0);
+        let (_, inner_y) = tree.element_get_scroll_offset(inner);
+        let (_, outer_y) = tree.element_get_scroll_offset(outer);
+        assert!(
+            (inner_y - 30.0).abs() < 1e-3,
+            "inner (nested) scroll should consume the wheel delta, got {inner_y}"
+        );
+        assert!(
+            (outer_y - 100.0).abs() < 1e-3,
+            "outer should stay put while the inner absorbs the wheel, got {outer_y}"
         );
     }
 
