@@ -32,8 +32,12 @@
 - **収斂** — ドラッグ／クリックいずれも wheel と同じ Scroll Offset シーム（`element_set_scroll_offset`・ADR-0046）に収斂し、レンダラー方言を作らない。
 - **modality 分岐** — 操作は Mouse/Pen のみ。Touch press は thumb を掴まずスルーする（transient indicator は非操作）。
 
+**modality 分岐（最終ポインタ種別, #410）:** Scrollbar Chrome の形態は **selection chrome と同じ最終ポインタ種別**（`last_pointer_kind`・ADR-0104）で分岐し、scrollbar 用に追跡状態を増やさない。
+- **Mouse/Pen** — 上記の操作可能スクロールバー（thumb＋track）を常時描く。
+- **Touch transient indicator** — スクロール中だけ出てフェードする**非操作**の indicator。Touch modality で Scroll Offset が動くと当該 ScrollView の indicator を全可視で（再）点灯し、`SCROLLBAR_INDICATOR_HOLD_MS` の保持後 `SCROLLBAR_INDICATOR_FADE_MS` かけて線形にフェードアウトして消える。表示・フェードは時間駆動の `visual_dirty`（カーソル点滅・Transition と同じループ）に乗る（`ElementTree::advance_touch_scroll_indicators` が `render(now_ms)` で各 indicator の可視率を再計算し、生存中は box を visual-dirty に保ち、ゼロで破棄）。形は thumb 幾何を流用しつつ `SCROLLBAR_INDICATOR_THICKNESS`（thumb より細い）で箱の端に固定。**サム／トラックの hit-test 領域を持たない** — `begin_scrollbar_gesture` が Touch で早期 return し、indicator は内容フリックで動かす対象であって掴めるバーではない。静止 Touch 面はスクロールバーを一切描かない（モバイルに常駐バーは無い）。
+
 **出典:** ADR-0110（ADR-0102 視覚お手本＝DOM／ADR-0104 modality 分岐 chrome を継承）
-**状況:** 🟡 — 描画（#407）・Mouse/Pen 操作（#409）実装済み。残るは Touch transient indicator 分岐と DOM overlay 固定。Canvas は overflow のある軸ごとに scrollbar overlay の thumb Node を ScrollView anchor 配下へ lowering する（`scene_build.rs` `emit_scrollbar_overlay`、`SCROLLBAR_*` 名前付き定数）。thumb 幾何は Scroll Offset と content size（`element_content_size`）に追従し、内容が収まる軸は描かない。ネスト時は内側 thumb が内側の箱に追従し外へ漏れない（#199/#200 と同座標系）。操作は paint と同一の幾何 seam（`scene_build::scrollbar_axes`）で hit-test し、`begin_scrollbar_gesture` / `drag_scrollbar`（`interaction.rs`）が `apply_wheel_delta` に載せる。回帰: core `scrollbar_overlay_scene.rs`（描画・DrawOp 列＋NodeKind walk）、core `scrollbar_drag.rs`（操作・thumb ドラッグ連続移動／track ページ送り／端での chaining／Touch スルー）、tiny-skia `scrollbar_overlay_render.rs`（Pixmap）。**未実装（follow-up）:** Touch transient indicator 分岐、DOM Renderer の overlay 固定（現状 `overflow: auto` の classic 予約 `dom-elements.ts:50`）。実値（thumb 寸法・色・`SCROLLBAR_PAGE_STEP` 等）は Chromium/Android 校正待ちの placeholder。
+**状況:** 🟡 — 描画（#407）・Mouse/Pen 操作（#409）・Touch transient indicator 分岐（#410）実装済み。残るは DOM overlay 固定のみ。Canvas は overflow のある軸ごとに scrollbar overlay を ScrollView anchor 配下へ lowering する（`scene_build.rs` `emit_scrollbar_overlay`、`SCROLLBAR_*` 名前付き定数）。Mouse/Pen は操作可能 thumb、Touch は transient indicator（`emit_touch_scroll_indicator`・`SCROLLBAR_INDICATOR_*` 名前付き定数）。thumb／indicator 幾何は Scroll Offset と content size（`element_content_size`）に追従し、内容が収まる軸は描かない。ネスト時は内側 thumb が内側の箱に追従し外へ漏れない（#199/#200 と同座標系）。操作は paint と同一の幾何 seam（`scene_build::scrollbar_axes`）で hit-test し、`begin_scrollbar_gesture` / `drag_scrollbar`（`interaction.rs`）が `apply_wheel_delta` に載せる。回帰: core `scrollbar_overlay_scene.rs`（描画・DrawOp 列＋NodeKind walk）、core `scrollbar_drag.rs`（操作・thumb ドラッグ連続移動／track ページ送り／端での chaining／Touch スルー）、core `scrollbar_chrome_modality.rs`（modality 分岐・PointerKind パラメタ化＋Touch indicator の表示→フェード→消滅ライフサイクル）、tiny-skia `scrollbar_overlay_render.rs`（Pixmap）。**未実装（follow-up）:** DOM Renderer の overlay 固定（現状 `overflow: auto` の classic 予約 `dom-elements.ts:50`）。実値（thumb／indicator 寸法・色・フェード時間・`SCROLLBAR_PAGE_STEP` 等）は Chromium/Android 校正待ちの placeholder。
 **備考:** [#391] 当初 by-design と整理しかけたが ADR-0102 が及ぶ既知ギャップと確定。chaining 意味論（SCR-01・ADR-0084）とは直交だが、thumb ドラッグの端処理は同じ `apply_wheel_delta` を再利用して意味論を一致させる。描画は #407、Mouse/Pen 操作は #409。
 
 ---
@@ -42,4 +46,4 @@
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 3 | SCR-01〜03 |
-| 🟡部分 | 1 | SCR-04（描画＋Mouse/Pen 操作済み・Touch indicator と DOM overlay 固定は open・ADR-0110） |
+| 🟡部分 | 1 | SCR-04（描画＋Mouse/Pen 操作＋Touch transient indicator 済み・DOM overlay 固定のみ open・ADR-0110） |
