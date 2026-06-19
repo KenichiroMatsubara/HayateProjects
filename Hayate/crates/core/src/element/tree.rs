@@ -218,6 +218,11 @@ pub struct ElementTree {
     /// (ADR-0097, #271). Distinct from `selection_drag`, which drives the
     /// read-only SelectionArea selection; the two are mutually exclusive.
     pub(crate) edit_drag: Option<ElementId>,
+    /// An in-flight Mouse/Pen scrollbar-thumb drag (ADR-0110, #409). Set while a
+    /// pointer-down grabbed a thumb; each move converts pointer travel to a
+    /// Scroll Offset delta. Mutually exclusive with the selection drags above —
+    /// grabbing the thumb consumes the gesture before any selection begins.
+    pub(crate) scrollbar_drag: Option<crate::element::interaction::ScrollbarDrag>,
     /// Multi-click tracking for word/paragraph gestures (#267): the last
     /// pointer-down position and how many presses have landed near it. The
     /// adapter's OS-level double-click timing is re-derived here by proximity:
@@ -265,6 +270,7 @@ impl ElementTree {
             selection: None,
             selection_drag: false,
             edit_drag: None,
+            scrollbar_drag: None,
             last_click_pos: None,
             click_count: 0,
             last_pointer_pos: None,

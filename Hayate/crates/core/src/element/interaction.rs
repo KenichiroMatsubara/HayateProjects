@@ -137,6 +137,24 @@ pub enum InputModality {
     Keyboard,
 }
 
+/// An in-flight Mouse/Pen scrollbar-thumb drag (ADR-0110, #409). Captured on a
+/// pointer-down on the thumb and driven by `on_pointer_move`: each move converts
+/// the pointer's travel along the axis into a Scroll Offset delta and commits it
+/// through the same `apply_wheel_delta` seam the wheel uses (so reaching the axis
+/// end chains the remainder to the ancestor ScrollView).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScrollbarDrag {
+    /// The ScrollView whose thumb is being dragged.
+    pub scroll_view: ElementId,
+    /// Axis the thumb slides along.
+    pub axis: crate::element::scene_build::ScrollAxis,
+    /// Last pointer coordinate along the drag axis (canvas space).
+    pub last_pos: f32,
+    /// Offset px per track px — `max_offset / thumb_travel`, captured at grab so
+    /// the thumb tracks the pointer 1:1 in track space.
+    pub offset_per_px: f32,
+}
+
 impl ElementTree {
     /// Pointer down at canvas coordinates (hit-test driven).
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
@@ -162,6 +180,12 @@ impl ElementTree {
     /// Pointer down carrying keyboard modifiers (ADR-0097, #267): Shift extends
     /// the current selection's focus instead of starting a fresh one.
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
+        // A press on the Mouse/Pen scrollbar (thumb or track) operates it and
+        // consumes the gesture — the overlay chrome sits above the content, so a
+        // press on it never reaches the content's selection/focus (ADR-0110, #409).
+        if self.begin_scrollbar_gesture(x, y) {
+            return;
+        }
         // A press on a floating-toolbar button runs its action and consumes the
         // gesture, so it neither moves the caret nor clears the selection
         // (ADR-0097, #272).
@@ -241,6 +265,7 @@ impl ElementTree {
         self.pointer_up_with_fallback(fallback);
         self.selection_drag = false;
         self.edit_drag = None;
+        self.scrollbar_drag = None;
     }
 
     /// Pointer up carrying the physical [`PointerKind`] (#357), retained per
@@ -278,6 +303,7 @@ impl ElementTree {
         self.last_pointer_pos = None;
         self.selection_drag = false;
         self.edit_drag = None;
+        self.scrollbar_drag = None;
         if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
         }
@@ -328,8 +354,12 @@ impl ElementTree {
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
         self.last_cursor = resolved_cursor;
-        // Extend the in-flight selection's focus to follow the drag (ADR-0097).
-        if let Some(input) = self.edit_drag {
+        // Drive the in-flight drag. A scrollbar-thumb drag (ADR-0110, #409) wins:
+        // it was grabbed before any selection could begin, so the two never
+        // coexist. Otherwise extend the in-flight selection's focus (ADR-0097).
+        if let Some(drag) = self.scrollbar_drag {
+            self.drag_scrollbar(drag, x, y);
+        } else if let Some(input) = self.edit_drag {
             self.extend_edit_drag(input, x, y);
         } else if self.selection_drag {
             if let Some(point) = self.selection_point_at(x, y) {
@@ -828,6 +858,144 @@ impl ElementTree {
         self.set_selection(Some(Selection { anchor, focus }));
         self.selection_drag = true;
         true
+    }
+
+    /// Begin a Mouse/Pen scrollbar operation from a pointer-down at `(x, y)`
+    /// (ADR-0110, SCR-04, #409). A press on a thumb starts a drag; a press on the
+    /// track margin pages the Scroll Offset one [`SCROLLBAR_PAGE_STEP`] toward the
+    /// click. Both commit through the wheel's `apply_wheel_delta` seam, so they
+    /// converge on the same Scroll Offset (ADR-0046) and chain to ancestors
+    /// identically (ADR-0084). Touch shows a non-interactive transient indicator
+    /// (a later slice), so this is a no-op under Touch modality. Returns whether
+    /// the press hit the scrollbar (and the gesture was consumed).
+    ///
+    /// [`SCROLLBAR_PAGE_STEP`]: crate::element::scene_build::SCROLLBAR_PAGE_STEP
+    fn begin_scrollbar_gesture(&mut self, x: f32, y: f32) -> bool {
+        use crate::element::scene_build::{ScrollAxis, SCROLLBAR_PAGE_STEP};
+        if self.last_pointer_kind == PointerKind::Touch {
+            return false;
+        }
+        let Some((sv, axis, on_thumb)) = self.scrollbar_hit_at(x, y) else {
+            return false;
+        };
+        if on_thumb {
+            // Map a future track-pixel drag to an offset delta so the thumb
+            // tracks the pointer 1:1 in track space.
+            let offset_per_px = if axis.thumb_travel > 0.0 {
+                axis.max_offset / axis.thumb_travel
+            } else {
+                0.0
+            };
+            let last_pos = match axis.axis {
+                ScrollAxis::Vertical => y,
+                ScrollAxis::Horizontal => x,
+            };
+            self.scrollbar_drag = Some(ScrollbarDrag {
+                scroll_view: sv,
+                axis: axis.axis,
+                last_pos,
+                offset_per_px,
+            });
+        } else {
+            // Track margin: page toward the click — past the thumb's far end pages
+            // forward, before its near end pages back, one named step either way.
+            let (tx, ty, tw, th) = axis.thumb;
+            let step = match axis.axis {
+                ScrollAxis::Vertical => {
+                    let forward = y > ty + th;
+                    (
+                        0.0,
+                        if forward {
+                            SCROLLBAR_PAGE_STEP
+                        } else {
+                            -SCROLLBAR_PAGE_STEP
+                        },
+                    )
+                }
+                ScrollAxis::Horizontal => {
+                    let forward = x > tx + tw;
+                    (
+                        if forward {
+                            SCROLLBAR_PAGE_STEP
+                        } else {
+                            -SCROLLBAR_PAGE_STEP
+                        },
+                        0.0,
+                    )
+                }
+            };
+            self.apply_wheel_delta(sv, step.0, step.1);
+        }
+        true
+    }
+
+    /// The scrollbar axis under `(x, y)`, if any — `(scroll_view, geometry,
+    /// on_thumb)` where `on_thumb` is true for a thumb hit and false for a track
+    /// hit (ADR-0110, #409). Reads the shared `scrollbar_axes` geometry so the hit
+    /// region is exactly what the overlay paints. The deepest (most nested)
+    /// matching ScrollView wins, since its thumb is painted last (on top); a thumb
+    /// hit beats a track hit at equal depth.
+    fn scrollbar_hit_at(
+        &self,
+        x: f32,
+        y: f32,
+    ) -> Option<(
+        ElementId,
+        crate::element::scene_build::ScrollbarAxisGeometry,
+        bool,
+    )> {
+        let in_rect = |(rx, ry, rw, rh): (f32, f32, f32, f32)| {
+            x >= rx && x <= rx + rw && y >= ry && y <= ry + rh
+        };
+        let mut best: Option<(usize, ElementId, _, bool)> = None;
+        for (&id, el) in &self.elements {
+            if el.kind != crate::element::kind::ElementKind::ScrollView {
+                continue;
+            }
+            for axis in crate::element::scene_build::scrollbar_axes(self, id) {
+                let on_thumb = in_rect(axis.thumb);
+                if !on_thumb && !in_rect(axis.track) {
+                    continue;
+                }
+                let depth = self.root_path(id).len();
+                let better = match &best {
+                    None => true,
+                    Some((bd, _, _, bt)) => depth > *bd || (depth == *bd && on_thumb && !*bt),
+                };
+                if better {
+                    best = Some((depth, id, axis, on_thumb));
+                }
+            }
+        }
+        best.map(|(_, id, axis, on_thumb)| (id, axis, on_thumb))
+    }
+
+    /// Advance an in-flight thumb drag to pointer `(x, y)` (ADR-0110, #409). The
+    /// pointer's travel along the drag axis since the last move becomes a Scroll
+    /// Offset delta and is committed through `apply_wheel_delta` — the wheel's
+    /// seam — so the offset moves continuously and, once this ScrollView hits its
+    /// axis end, the unconsumed remainder chains to the ancestor ScrollView.
+    fn drag_scrollbar(&mut self, mut drag: ScrollbarDrag, x: f32, y: f32) {
+        use crate::element::scene_build::ScrollAxis;
+        let pos = match drag.axis {
+            ScrollAxis::Vertical => y,
+            ScrollAxis::Horizontal => x,
+        };
+        let pointer_delta = pos - drag.last_pos;
+        if pointer_delta.abs() < 1e-6 {
+            return;
+        }
+        let offset_delta = pointer_delta * drag.offset_per_px;
+        match drag.axis {
+            ScrollAxis::Vertical => {
+                self.apply_wheel_delta(drag.scroll_view, 0.0, offset_delta);
+            }
+            ScrollAxis::Horizontal => {
+                self.apply_wheel_delta(drag.scroll_view, offset_delta, 0.0);
+            }
+        }
+        drag.last_pos = pos;
+        self.scrollbar_drag = Some(drag);
     }
 
     /// Run a floating-toolbar button under `(x, y)`, if the press lands on one.
