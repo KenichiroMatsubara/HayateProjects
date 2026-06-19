@@ -8,7 +8,7 @@ use taffy::{
 use crate::element::id::ElementId;
 use crate::element::style::{
     AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
-    FlexDirectionValue, FlexWrapValue, JustifyValue, PositionValue, StyleProp,
+    FlexDirectionValue, FlexWrapValue, JustifyValue, OverflowValue, PositionValue, StyleProp,
 };
 
 /// Context attached to each Taffy leaf so the measure closure can dispatch.
@@ -58,6 +58,30 @@ fn to_taffy_lp_auto(d: Dimension) -> LengthPercentageAuto {
         DimensionUnit::Auto => LengthPercentageAuto::Auto,
         DimensionUnit::Fr => LengthPercentageAuto::Auto,
     }
+}
+
+/// Map a Hayate `overflow` to Taffy. Both `Hidden` and (a kind-default)
+/// `Scroll` are scroll containers — Taffy gives them a flex automatic minimum
+/// size of 0, so they shrink to the space siblings leave instead of overflowing
+/// by their content/basis. `Visible` keeps the content-based minimum (CSS
+/// default). `OverflowValue` has no `Scroll`; the scroll-view kind default is
+/// set directly in `ElementKind::base_layout_style`.
+fn to_taffy_overflow(v: OverflowValue) -> taffy::Overflow {
+    match v {
+        OverflowValue::Visible => taffy::Overflow::Visible,
+        OverflowValue::Hidden => taffy::Overflow::Hidden,
+    }
+}
+
+/// Write `overflow` onto a `taffy::Style` (both axes), the layout side of the
+/// dual-natured `overflow` prop. The visual side (child clipping) is applied
+/// separately to `Visual`; this only governs the flex scroll-container minimum
+/// size. Kept out of `apply_to_style` so the generic layout-vs-visual routing
+/// still classifies `overflow` as visual, while the layout effect is driven
+/// through the dedicated layout seam (`LayoutPass::set_overflow`).
+pub fn apply_overflow_to_style(style: &mut Style, v: OverflowValue) {
+    let o = to_taffy_overflow(v);
+    style.overflow = taffy::Point { x: o, y: o };
 }
 
 /// Apply a single Hayate style prop into a mutable taffy::Style. Returns true

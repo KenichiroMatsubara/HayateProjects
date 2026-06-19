@@ -55,6 +55,28 @@ impl ElementKind {
                 justify_content: Some(taffy::JustifyContent::FlexStart),
                 ..taffy::Style::default()
             },
+            // UA default for the scroll-view kind: it is a CSS scroll container,
+            // the Canvas-side counterpart of the DOM renderer giving scroll-view
+            // an `overflow: auto` tag default. A scroll container's flex
+            // `min-{width,height}: auto` automatic minimum size resolves to 0
+            // instead of its content size, so a scroll-view sized `height: 100%`
+            // (or `flex-grow: 1`) shrinks to the space its siblings leave rather
+            // than overflowing the parent by their extent — which would leave
+            // that fixed band of content unreachable, since the inflated box
+            // height is also the scroll viewport (`element_scroll_max_offset`).
+            // The explicit `overflow` prop on any other kind takes the same
+            // layout path via `apply_overflow_to_style`; this is just the kind
+            // default (no `overflow` prop is set on scroll-views). `Scroll` with
+            // the default `scrollbar_width: 0` reserves no space and lays out
+            // like `Hidden`; the clip/scroll machinery lives in scene_build /
+            // canvas.rs.
+            Self::ScrollView => taffy::Style {
+                overflow: taffy::Point {
+                    x: taffy::Overflow::Scroll,
+                    y: taffy::Overflow::Scroll,
+                },
+                ..taffy::Style::default()
+            },
             _ => taffy::Style::default(),
         }
     }

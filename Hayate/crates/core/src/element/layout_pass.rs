@@ -69,6 +69,23 @@ impl LayoutPass {
         true
     }
 
+    /// Layout side of the dual-natured `overflow` prop (issue #308 / §5): write
+    /// `overflow` onto `layout_style` and re-derive the Taffy node, marking it
+    /// layout-dirty. The visual side (child clipping) is applied to `Visual` by
+    /// the caller. Separate from `set_layout_prop` because `overflow` is routed
+    /// as a visual prop for invalidation yet still has this layout effect — the
+    /// flex scroll-container minimum size that lets `overflow: hidden` / a
+    /// scroll-view shrink to its siblings instead of overflowing them.
+    pub(crate) fn set_overflow(
+        &mut self,
+        id: ElementId,
+        layout_style: &mut taffy::Style,
+        v: crate::element::style::OverflowValue,
+    ) {
+        taffy_bridge::apply_overflow_to_style(layout_style, v);
+        self.projection.set_style(id, layout_style.clone());
+    }
+
     /// Settle half of the reduced layout interface (issue #308 / §5): reconcile
     /// the derived Taffy projection against the (owner) element tree, run Taffy
     /// layout + Parley shaping, refresh the absolute-geometry cache, and return

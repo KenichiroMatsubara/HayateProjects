@@ -952,6 +952,21 @@ impl ElementTree {
         let mut layout_changed = false;
         let mut text_dirty = false;
         for prop in props {
+            // `overflow` is dual-natured: it clips children (Visual) AND makes
+            // the box a scroll container, which sets the flex automatic minimum
+            // size to 0 so it shrinks to its siblings instead of overflowing
+            // them (Layout). Apply both sides. It stays on the visual
+            // invalidation path (we don't set `layout_changed`), so an
+            // overflow-only change still re-clips the scene through
+            // `classify_style_props`; the layout effect is marked directly via
+            // `set_overflow`. (A batch that also carries a real layout prop
+            // re-runs layout, which rebuilds the scene and re-reads
+            // `visual.overflow` for the clip anyway.)
+            if let StyleProp::Overflow(v) = prop {
+                apply_visual(&mut el.visual, prop, &mut text_dirty);
+                self.layout.set_overflow(id, &mut el.layout_style, *v);
+                continue;
+            }
             // Set half of the reduced layout interface (issue #308 / §5): the
             // layout seam owns bridge conversion + Taffy set + mark. Non-layout
             // props fall through to Visual.
