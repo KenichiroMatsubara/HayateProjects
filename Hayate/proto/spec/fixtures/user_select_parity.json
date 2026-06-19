@@ -18,10 +18,10 @@
     "expected": "text"
   },
   {
-    "name": "view_explicit_contains_is_selectable",
+    "name": "view_explicit_contains_maps_to_css_contain",
     "elementKind": "view",
     "userSelect": "contains",
-    "expected": "text"
+    "expected": "contain"
   },
   {
     "name": "text_default_text",

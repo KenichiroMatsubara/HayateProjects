@@ -534,6 +534,224 @@ fn user_select_none_block_is_excluded_from_the_copied_text() {
     );
 }
 
+// --- `user-select: contains` containment boundary (ADR-0108 decision 3, #400) ---
+
+/// A `selectable` outer column holding `inside` — a paragraph wrapped in a
+/// `user-select: contains` box — above `outside`, a bare paragraph that shares
+/// the outer Selection Region. With `contains` the inner box is its own tighter
+/// boundary; without it both paragraphs span freely. Returns
+/// (tree, contains-box, inside-paragraph, outside-paragraph).
+fn contains_inside_region(boundary: bool) -> (ElementTree, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let boundary_box = tree.element_create(2, ElementKind::View);
+    let inside = tree.element_create(3, ElementKind::Text);
+    let outside = tree.element_create(4, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        boundary_box,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(inside, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(outside, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(outer, boundary_box);
+    tree.element_append_child(boundary_box, inside);
+    tree.element_append_child(outer, outside);
+    tree.element_set_text(inside, "Inside box");
+    tree.element_set_text(outside, "Outside box");
+    tree.element_set_selectable(outer, true);
+    if boundary {
+        tree.element_set_user_select(boundary_box, UserSelectValue::Contains);
+    }
+    tree.render(0.0);
+    (tree, boundary_box, inside, outside)
+}
+
+#[test]
+fn contains_box_clamps_a_drag_inside_its_boundary() {
+    let (mut tree, _box, inside, outside) = contains_inside_region(true);
+
+    // Begin the drag in the `contains` box and pull down into the sibling that
+    // lies outside it (but still inside the outer selectable region).
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
+
+    let sel = tree
+        .selection()
+        .expect("a selection started inside the contains box");
+    assert_eq!(
+        sel.focus.element, inside,
+        "focus must stay clamped inside the `user-select: contains` boundary",
+    );
+}
+
+/// A `selectable` outer column whose middle child is a `user-select: contains`
+/// box holding two stacked paragraphs (`in_a`, `in_b`); an `outside` paragraph
+/// follows the box in the same outer region. Returns
+/// (tree, in_a, in_b, outside).
+fn contains_box_with_two_blocks() -> (ElementTree, ElementId, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let boundary_box = tree.element_create(2, ElementKind::View);
+    let in_a = tree.element_create(3, ElementKind::Text);
+    let in_b = tree.element_create(4, ElementKind::Text);
+    let outside = tree.element_create(5, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        boundary_box,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    for &block in &[in_a, in_b, outside] {
+        tree.element_set_style(block, &[StyleProp::Width(Dimension::px(400.0))]);
+    }
+    tree.element_append_child(outer, boundary_box);
+    tree.element_append_child(boundary_box, in_a);
+    tree.element_append_child(boundary_box, in_b);
+    tree.element_append_child(outer, outside);
+    tree.element_set_text(in_a, "Alpha box");
+    tree.element_set_text(in_b, "Beta box");
+    tree.element_set_text(outside, "Gamma out");
+    tree.element_set_selectable(outer, true);
+    tree.element_set_user_select(boundary_box, UserSelectValue::Contains);
+    tree.render(0.0);
+    (tree, in_a, in_b, outside)
+}
+
+#[test]
+fn contains_boundary_excludes_outside_blocks_from_copied_text() {
+    let (mut tree, in_a, in_b, outside) = contains_box_with_two_blocks();
+
+    // A selection spanning the two paragraphs inside the box is honoured: the
+    // copied text joins them in document order with a single block-boundary `\n`.
+    let inside = tree.set_selection_range(
+        SelectionPoint::new(in_a, 0),
+        SelectionPoint::new(in_b, "Beta box".len()),
+    );
+    assert!(inside, "both paragraphs lie inside the same `contains` boundary");
+    assert_eq!(
+        tree.selected_text().as_deref(),
+        Some("Alpha box\nBeta box"),
+        "the two in-box paragraphs join; copy stays within the boundary",
+    );
+
+    // A range that would cross the boundary into the outside paragraph is
+    // refused outright, so the outside text is never concatenated.
+    let leaked = tree.set_selection_range(
+        SelectionPoint::new(in_a, 0),
+        SelectionPoint::new(outside, "Gamma out".len()),
+    );
+    assert!(
+        !leaked,
+        "a range crossing the `contains` boundary is refused, never copied",
+    );
+}
+
+#[test]
+fn without_contains_a_drag_spans_freely_across_the_box() {
+    // The regression contrast to `contains_box_clamps_a_drag_inside_its_boundary`:
+    // the identical layout with the box left as a plain view (no `contains`) lets
+    // a drag begun inside it run on into the sibling paragraph — the default is a
+    // free cross-element span, and `contains` is the only thing that clamps it.
+    let (mut tree, _box, inside, outside) = contains_inside_region(false);
+
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
+
+    let sel = tree.selection().expect("a selection started inside the box");
+    assert_eq!(
+        sel.focus.element, outside,
+        "with no `contains` boundary the focus follows the drag into the sibling",
+    );
+}
+
+/// Two nested `user-select: contains` boxes: an outer boundary holding
+/// `outer_block` above an inner boundary holding `inner_block`. Both are
+/// containment boundaries, but they are distinct regions (nearest wins).
+/// Returns (tree, outer_block, inner_block).
+fn nested_contains() -> (ElementTree, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let outer = tree.element_create(1, ElementKind::View);
+    let outer_block = tree.element_create(2, ElementKind::Text);
+    let inner = tree.element_create(3, ElementKind::View);
+    let inner_block = tree.element_create(4, ElementKind::Text);
+    tree.set_root(outer);
+    tree.set_viewport(400.0, 200.0);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        inner,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(outer_block, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_set_style(inner_block, &[StyleProp::Width(Dimension::px(400.0))]);
+    tree.element_append_child(outer, outer_block);
+    tree.element_append_child(outer, inner);
+    tree.element_append_child(inner, inner_block);
+    tree.element_set_text(outer_block, "Outer box");
+    tree.element_set_text(inner_block, "Inner box");
+    tree.element_set_user_select(outer, UserSelectValue::Contains);
+    tree.element_set_user_select(inner, UserSelectValue::Contains);
+    tree.render(0.0);
+    (tree, outer_block, inner_block)
+}
+
+#[test]
+fn nested_contains_uses_the_innermost_boundary() {
+    let (mut tree, outer_block, inner_block) = nested_contains();
+
+    // A drag begun in the outer box must not extend into the nested box: the
+    // inner `contains` is the nearer boundary of `inner_block`.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, outer_block));
+    tree.on_pointer_move(80.0, block_mid_y(&tree, inner_block));
+
+    let sel = tree.selection().expect("a selection in the outer box");
+    assert_eq!(
+        sel.focus.element, outer_block,
+        "focus stays in the outer box; the nested `contains` is its own boundary",
+    );
+
+    // Conversely, a fresh drag begun inside the nested box anchors there.
+    tree.on_pointer_down(20.0, block_mid_y(&tree, inner_block));
+    let nested = tree.selection().expect("a caret in the nested box");
+    assert_eq!(
+        nested.anchor.element, inner_block,
+        "a press in the nested box anchors to the innermost boundary",
+    );
+}
+
 /// Material selection tint (ADR-0097): identifies highlight rects among draw ops.
 const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 

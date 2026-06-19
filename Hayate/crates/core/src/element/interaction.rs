@@ -1553,15 +1553,19 @@ impl ElementTree {
         self.selection_region_of(id).is_some()
     }
 
-    /// The nearest `selectable` ancestor of `id` (inclusive), identifying the
-    /// Selection Region `id` belongs to (ADR-0097). `None` when `id` is outside
-    /// any region. A nested `selectable` shadows its ancestors, so two points
-    /// belong to the same region only when their nearest selectable matches.
+    /// The nearest Selection Region root ancestor of `id` (inclusive): an element
+    /// that confines selection to its subtree. Two markers establish one — the
+    /// legacy `selectable` flag (ADR-0097) and `user-select: contains`, the
+    /// CSS-authored containment boundary (ADR-0108 decision 3). `None` when `id`
+    /// is under neither. The nearest such ancestor wins, so a nested boundary (a
+    /// `contains` box inside an outer region, or `contains` within `contains`)
+    /// shadows its ancestors: two points share a region only when their nearest
+    /// root matches, which is what keeps a selection from leaking across it.
     fn selection_region_of(&self, id: ElementId) -> Option<ElementId> {
         let mut current = Some(id);
         while let Some(eid) = current {
             let el = self.elements.get(&eid)?;
-            if el.selectable {
+            if el.selectable || el.user_select == crate::element::style::UserSelectValue::Contains {
                 return Some(eid);
             }
             current = el.parent;
