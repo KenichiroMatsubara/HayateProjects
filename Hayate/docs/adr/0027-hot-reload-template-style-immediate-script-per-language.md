@@ -1,5 +1,7 @@
 # Hot Reload は <template>/<style> を即時反映し、<script> は言語ごとに扱いを分ける
 
+status: refined by Hayabusa ADR-0006（「template/style 即時」を reconcile の特殊ケースとして具体化。状態は Scope identity で保存）
+
 `<template>` と `<style>` の変更はすべての言語で即時反映する。
 `<script>` の変更は TypeScript・Python では即時反映するが、
 Rust ではフルリビルド＋ブラウザリロードとなる。
