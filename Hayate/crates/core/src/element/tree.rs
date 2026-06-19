@@ -153,6 +153,17 @@ pub(crate) struct Element {
     pub viewport_variants: Vec<(ViewportCondition, StyleProp)>,
 }
 
+/// One ScrollView's live Touch transient-indicator state (ADR-0110, SCR-04,
+/// #410). The indicator shows while the content scrolls under Touch modality and
+/// fades after it stops; `shown_at_ms` is the host clock of the last scroll
+/// (refreshed on each touch scroll), `fade` the visibility factor `[0, 1]`
+/// recomputed each render from the elapsed time.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct TouchScrollIndicator {
+    pub shown_at_ms: f64,
+    pub fade: f32,
+}
+
 /// Events emitted by input wiring and drained by `poll_events`.
 /// Fully-resolved per-element state after layout, keyed by stable ElementId.
 /// Used by HTML Mode to update DOM elements without going through SceneGraph.
@@ -223,6 +234,15 @@ pub struct ElementTree {
     /// Scroll Offset delta. Mutually exclusive with the selection drags above —
     /// grabbing the thumb consumes the gesture before any selection begins.
     pub(crate) scrollbar_drag: Option<crate::element::interaction::ScrollbarDrag>,
+    /// ScrollViews that scrolled under Touch modality since the last render and
+    /// must (re)raise their transient indicator (ADR-0110, SCR-04, #410). Stamped
+    /// at render time with the host clock, since the scroll seam carries no
+    /// timestamp — the same flag-then-stamp shape as the cursor blink (ADR-0032).
+    pub(crate) touch_scroll_pending: HashSet<ElementId>,
+    /// Live Touch transient indicators, keyed by ScrollView. An entry exists only
+    /// while the indicator is within its show→fade window; it is dropped once it
+    /// has fully faded, so a resting Touch surface holds none (no always-on bar).
+    pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
     /// Multi-click tracking for word/paragraph gestures (#267): the last
     /// pointer-down position and how many presses have landed near it. The
     /// adapter's OS-level double-click timing is re-derived here by proximity:
@@ -271,6 +291,8 @@ impl ElementTree {
             selection_drag: false,
             edit_drag: None,
             scrollbar_drag: None,
+            touch_scroll_pending: HashSet::new(),
+            touch_scroll_indicators: HashMap::new(),
             last_click_pos: None,
             click_count: 0,
             last_pointer_pos: None,
@@ -856,11 +878,32 @@ impl ElementTree {
 
     /// Programmatically set the scroll offset of a ScrollView element.
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
+        let mut scrolled_scroll_view = false;
         if let Some(el) = self.elements.get_mut(&id) {
+            scrolled_scroll_view = el.scroll_offset != (x, y) && el.kind == ElementKind::ScrollView;
             el.scroll_offset = (x, y);
             self.engine
                 .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
+        // A scroll under Touch modality (re)raises the transient indicator — the
+        // Touch counterpart of the Mouse/Pen operable thumb (ADR-0110, SCR-04,
+        // #410). The stamp is deferred to render, which owns the host clock.
+        if scrolled_scroll_view
+            && self.last_pointer_kind == crate::element::pointer::PointerKind::Touch
+        {
+            self.touch_scroll_pending.insert(id);
+        }
+    }
+
+    /// The Touch transient indicator's current visibility factor `[0, 1]` for
+    /// `id`, or `0.0` when no indicator is live (ADR-0110, SCR-04, #410). Read by
+    /// the scrollbar overlay lowering to scale the indicator opacity; the value is
+    /// computed each render (`advance_touch_scroll_indicators`) so the lowering
+    /// needs no clock of its own.
+    pub(crate) fn touch_scroll_indicator_opacity(&self, id: ElementId) -> f32 {
+        self.touch_scroll_indicators
+            .get(&id)
+            .map_or(0.0, |i| i.fade)
     }
 
     /// Read the current scroll offset of an element.
@@ -1328,6 +1371,7 @@ impl ElementTree {
                     .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
             }
         }
+        self.advance_touch_scroll_indicators(timestamp_ms);
         let mut dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
@@ -1371,6 +1415,40 @@ impl ElementTree {
         self.scene_cache = scene_cache;
         self.scene_lowering = scene_lowering;
         &self.scene_cache
+    }
+
+    /// Advance the Touch transient scrollbar indicators for this frame (ADR-0110,
+    /// SCR-04, #410). A ScrollView that scrolled under Touch since the last render
+    /// (re)raises its indicator at full visibility and stamps `now_ms` as the fade
+    /// clock. Every live indicator then recomputes its visibility from the elapsed
+    /// time — full through the hold window, ramping to zero across the fade window
+    /// — and is dropped once it reaches zero. Each still-animating ScrollView is
+    /// kept visual-dirty so the next frame re-lowers it and the fade keeps moving;
+    /// when the last one settles the frame loop goes quiet (mirrors the in-flight
+    /// transition / cursor-blink ticking, ADR-0086/0093/0032).
+    fn advance_touch_scroll_indicators(&mut self, now_ms: f64) {
+        for id in std::mem::take(&mut self.touch_scroll_pending) {
+            self.touch_scroll_indicators.insert(
+                id,
+                TouchScrollIndicator {
+                    shown_at_ms: now_ms,
+                    fade: 1.0,
+                },
+            );
+        }
+        let mut dirty = Vec::new();
+        self.touch_scroll_indicators.retain(|&id, ind| {
+            let elapsed = now_ms - ind.shown_at_ms;
+            ind.fade = scene_build::touch_scroll_indicator_fade(elapsed);
+            // Keep re-lowering the box while the indicator is live so the fade
+            // advances frame to frame, and once more on the frame it vanishes.
+            dirty.push(id);
+            ind.fade > 0.0
+        });
+        for id in dirty {
+            self.engine
+                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
     }
 
     /// Resolve dirty state and settle layout (`LayoutPass::run()` equivalent, ADR-0075

@@ -5,6 +5,7 @@ use crate::element::effective_visual::{
 use crate::element::style::{BorderStyleValue, OverflowValue, Shadow};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
+use crate::element::pointer::PointerKind;
 use crate::element::scene_lowering::{
     clear_lowered_content, AnchorEntry, LoweringDirtySnapshot, SceneLowering,
 };
@@ -51,6 +52,28 @@ pub const SCROLLBAR_THUMB_OPACITY: f32 = 0.4;
 /// keys off the viewport length, which is a follow-up — like the other
 /// `SCROLLBAR_*` values this carries no inline magic number.
 pub const SCROLLBAR_PAGE_STEP: f32 = 240.0;
+
+/// Touch transient-indicator dimensions and fade timing (ADR-0110, SCR-04, #410).
+/// The Touch form is a non-operable indicator that shows while the content
+/// scrolls and fades after it stops (Android-native, ADR-0087); it is thinner
+/// than the Mouse/Pen operable thumb and carries no hit region. Every value here
+/// is a named placeholder pending Android calibration, in the same bucket as the
+/// other `SCROLLBAR_*` constants — the scene-build path holds no inline magic
+/// number.
+///
+/// Cross-axis extent of the indicator bar (thinner than [`SCROLLBAR_THICKNESS`]).
+pub const SCROLLBAR_INDICATOR_THICKNESS: f32 = 4.0;
+/// Indicator fill colour (RGB); composited at [`SCROLLBAR_INDICATOR_OPACITY`]
+/// scaled by the current fade factor.
+pub const SCROLLBAR_INDICATOR_COLOR: Color = Color::BLACK;
+/// Indicator opacity at full visibility (before any fade).
+pub const SCROLLBAR_INDICATOR_OPACITY: f32 = 0.4;
+/// How long the indicator stays fully visible after the last scroll before it
+/// begins to fade (the "hold" window).
+pub const SCROLLBAR_INDICATOR_HOLD_MS: f64 = 600.0;
+/// How long the indicator takes to fade from full to invisible once the hold
+/// window elapses (the "fade" length).
+pub const SCROLLBAR_INDICATOR_FADE_MS: f64 = 400.0;
 
 /// Axis a scrollbar thumb slides along (#409).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1234,13 +1257,83 @@ fn emit_scrollbar_overlay(
     w: f32,
     h: f32,
 ) {
-    let thumb_rgba = SCROLLBAR_THUMB_COLOR
-        .with_opacity(SCROLLBAR_THUMB_OPACITY)
+    // Pointer-Modality branch (ADR-0110, SCR-04, #410), reusing the same last
+    // pointer kind that gates selection chrome (ADR-0104) — Mouse/Pen get the
+    // operable thumb, Touch gets the transient indicator.
+    match tree.last_pointer_kind() {
+        PointerKind::Touch => emit_touch_scroll_indicator(tree, id, sg, parent, x, y, w, h),
+        PointerKind::Mouse | PointerKind::Pen => {
+            let thumb_rgba = SCROLLBAR_THUMB_COLOR
+                .with_opacity(SCROLLBAR_THUMB_OPACITY)
+                .to_array_f32();
+            let radius = SCROLLBAR_THICKNESS / 2.0;
+            for axis in scrollbar_axes_in_box(tree, id, x, y, w, h) {
+                let (tx, ty, tw, th) = axis.thumb;
+                emit_fill_rect(sg, parent, tx, ty, tw, th, thumb_rgba, radius);
+            }
+        }
+    }
+}
+
+/// The Touch indicator's visibility factor `[0, 1]` for an indicator last
+/// refreshed `elapsed` ms ago (ADR-0110, SCR-04, #410): full through the hold
+/// window, then a linear ramp to zero across the fade window, and zero beyond it.
+/// The single source the render-time advance uses to recompute each live
+/// indicator's `fade`.
+pub fn touch_scroll_indicator_fade(elapsed: f64) -> f32 {
+    if elapsed <= SCROLLBAR_INDICATOR_HOLD_MS {
+        1.0
+    } else if elapsed >= SCROLLBAR_INDICATOR_HOLD_MS + SCROLLBAR_INDICATOR_FADE_MS {
+        0.0
+    } else {
+        (1.0 - (elapsed - SCROLLBAR_INDICATOR_HOLD_MS) / SCROLLBAR_INDICATOR_FADE_MS) as f32
+    }
+}
+
+/// Lower a `ScrollView`'s Touch transient indicator (ADR-0110, SCR-04, #410): a
+/// non-operable bar that appears while the content scrolls and fades after it
+/// stops, with no thumb/track hit region (content flick scrolls, not a drag).
+/// Drawn only inside the show→fade window — a resting Touch surface paints no
+/// scrollbar at all (mobile has no always-on bar).
+#[allow(clippy::too_many_arguments)]
+fn emit_touch_scroll_indicator(
+    tree: &ElementTree,
+    id: ElementId,
+    sg: &mut SceneGraph,
+    parent: Option<NodeId>,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+) {
+    let fade = tree.touch_scroll_indicator_opacity(id);
+    if fade <= 0.0 {
+        return;
+    }
+    let rgba = SCROLLBAR_INDICATOR_COLOR
+        .with_opacity(SCROLLBAR_INDICATOR_OPACITY * fade)
         .to_array_f32();
-    let radius = SCROLLBAR_THICKNESS / 2.0;
+    let radius = SCROLLBAR_INDICATOR_THICKNESS / 2.0;
     for axis in scrollbar_axes_in_box(tree, id, x, y, w, h) {
+        // The indicator rides the same thumb geometry (its position still tracks
+        // the Scroll Offset) but is thinner and pinned to the box edge — right
+        // edge for the vertical bar, bottom edge for the horizontal one.
         let (tx, ty, tw, th) = axis.thumb;
-        emit_fill_rect(sg, parent, tx, ty, tw, th, thumb_rgba, radius);
+        let (ix, iy, iw, ih) = match axis.axis {
+            ScrollAxis::Vertical => (
+                tx + tw - SCROLLBAR_INDICATOR_THICKNESS,
+                ty,
+                SCROLLBAR_INDICATOR_THICKNESS,
+                th,
+            ),
+            ScrollAxis::Horizontal => (
+                tx,
+                ty + th - SCROLLBAR_INDICATOR_THICKNESS,
+                tw,
+                SCROLLBAR_INDICATOR_THICKNESS,
+            ),
+        };
+        emit_fill_rect(sg, parent, ix, iy, iw, ih, rgba, radius);
     }
 }
 
