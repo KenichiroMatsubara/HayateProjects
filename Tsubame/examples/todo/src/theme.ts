@@ -125,9 +125,12 @@ export function inputStyle(p: Palette): HayateCssStyle {
     borderStyle: 'solid',
     borderColor: p.line,
     fontSize: 13,
+    transitionDuration: 160,
+    transitionTiming: 'ease-out',
     ':focus': {
       borderColor: p.accent,
       backgroundColor: p.panel3,
+      boxShadow: [{ offsetX: 0, offsetY: 0, blur: 0, spread: 3, color: `${p.accent}33`, inset: false }],
     },
   };
 }

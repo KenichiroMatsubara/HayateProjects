@@ -1,4 +1,20 @@
-import type { HayateCssStyle, EventHandler, UserSelect } from '@tsubame/renderer-protocol';
+import type {
+  HayateCssStyle,
+  EventHandler,
+  UserSelect,
+  ViewportCondition,
+} from '@tsubame/renderer-protocol';
+
+/**
+ * ビューポート条件付きスタイル変種（ADR-0081）。DOM Renderer では本物の
+ * `@media (min-width: …)` ルールへ、Canvas Renderer では viewport 評価へ落ちる。
+ * Hayate CSS にはセレクタ・スタイルシートが無いため、`@media` は raw CSS では
+ * なくこの型付き宣言として要素ごとに載せる（CONTEXT.md / 意味論パリティ）。
+ */
+export interface StyleVariant {
+  condition: ViewportCondition;
+  style: HayateCssStyle;
+}
 
 /**
  * Tsubame の Element 語彙に対する JSX 型定義。
@@ -9,6 +25,8 @@ import type { HayateCssStyle, EventHandler, UserSelect } from '@tsubame/renderer
  */
 export interface TsubameProps {
   style?: HayateCssStyle;
+  /** ビューポート条件付きスタイル（ADR-0081）。宣言順に適用される。 */
+  styleVariants?: readonly StyleVariant[];
   onClick?: EventHandler;
   onInput?: EventHandler;
   onKeyDown?: EventHandler;
