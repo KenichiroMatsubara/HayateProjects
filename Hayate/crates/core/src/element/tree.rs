@@ -1637,8 +1637,11 @@ impl ElementTree {
     /// or None if no element is hit. Uses the layout from the last render pass.
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        let box_hit = hit_test_walk(self, root, x, y)?;
-        inline_text::resolve_ifc_inline_hit(self, box_hit, x, y)
+        // `hit_test_walk` threads the query point down into each scrolled view's
+        // content space, so `(hx, hy)` is the point in `box_hit`'s own layout
+        // coordinates — the space its geometry and text layout live in.
+        let (box_hit, hx, hy) = hit_test_walk(self, root, x, y)?;
+        inline_text::resolve_ifc_inline_hit(self, box_hit, hx, hy)
     }
 
     /// Run layout and return every element with its absolute position and visual state.
@@ -1858,23 +1861,36 @@ fn walk_resolved(
     }
 }
 
-fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<ElementId> {
+/// Returns the deepest hit element together with the query point expressed in
+/// *that element's* layout coordinate space — i.e. the screen point shifted by the
+/// accumulated `scroll_offset` of every ScrollView descended through. Callers that
+/// need the local point (inline text resolution) read it from the tuple.
+fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<(ElementId, f32, f32)> {
     let (ex, ey, ew, eh) = tree.layout.geometry(id)?;
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
     }
     tree.elements.get(&id)?;
+    // A scrolled view paints its content translated by −scroll_offset (the Group
+    // under the Clip in `scene_build`), so shift the query point by +scroll_offset
+    // before testing descendants to match where they were actually painted.
+    // Non-scrollers carry a (0,0) offset, and nested scrollers compose as the
+    // recursion threads the shifted point down. Without this, hit-test reads the
+    // un-scrolled layout and a scrolled-in child (e.g. a nested scroll box) is
+    // missed — the wheel then chains to the wrong ScrollView (#double-scroll).
+    let (sx, sy) = tree.element_get_scroll_offset(id);
+    let (cx, cy) = (x + sx, y + sy);
     // Visit children in reverse paint order (`.rev()`) so the topmost element wins.
     // Sharing `ordered_children` keeps hit-test as the exact reverse of paint order.
     for child in tree.ordered_children(id).into_iter().rev() {
-        if let Some(hit) = hit_test_walk(tree, child, x, y) {
+        if let Some(hit) = hit_test_walk(tree, child, cx, cy) {
             return Some(hit);
         }
     }
     if tree.elements.get(&id).is_some_and(|e| e.disabled) {
         return None;
     }
-    Some(id)
+    Some((id, x, y))
 }
 
 /// The live dirty sets behind the routing seam: `ElementEngine`'s visual /
