@@ -61,6 +61,12 @@ fn prio_tone(p: &P, prio: u8) -> Color {
 
 const PRIO_LABEL: [&str; 4] = ["", "低", "中", "高"];
 
+/// Glyph for the todo example's delete control (per-row button + footer hint).
+/// Must have an outline in the bundled Canvas font (NotoSansJP.ttf): U+2715 ✕
+/// does not, so Canvas falls back to `.notdef` (0 ink); U+00D7 × does. Mirrors
+/// `Tsubame/examples/todo` so the Canvas reproduction tracks the example (#426).
+const DELETE_GLYPH: &str = "×";
+
 struct B {
     tree: ElementTree,
     next: u64,
@@ -527,7 +533,7 @@ fn render_tasks_screen() {
         b.child(labelwrap, label);
         let prio_t = b.text(&format!("優先度 {}", PRIO_LABEL[prio as usize]),
             &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)]);
-        let del = b.button("✕", &[
+        let del = b.button(DELETE_GLYPH, &[
             StyleProp::Width(Dimension::px(30.0)),
             StyleProp::Height(Dimension::px(30.0)),
             StyleProp::Display(hayate_core::DisplayValue::Flex),
@@ -558,7 +564,7 @@ fn render_tasks_screen() {
     ]);
     let f1 = b.text("40% 完了", &[StyleProp::Color(p.muted()), StyleProp::FontSize(13.0)]);
     let fright = b.view(&row(12.0));
-    let f2 = b.text("クリックで完了 / ✕ で削除", &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)]);
+    let f2 = b.text(&format!("クリックで完了 / {DELETE_GLYPH} で削除"), &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)]);
     let clearbtn = b.button("完了を消す", &[
         StyleProp::Height(Dimension::px(30.0)),
         StyleProp::PaddingLeft(Dimension::px(12.0)),
@@ -672,6 +678,37 @@ fn diagnose_glyph_ink() {
         let ink = data.chunks_exact(4).filter(|p| p[0] < 200 || p[1] < 200 || p[2] < 200).count();
         eprintln!("[GLYPH-INK] {ink:>5} px  {label}");
     }
+}
+
+/// Whether the bundled Canvas font (NotoSansJP.ttf) has a real glyph for `ch`.
+/// `false` means a cmap miss → the renderer draws `.notdef` (a tofu box) instead
+/// of the intended glyph. Uses skrifa's charmap, the same cmap the renderer maps
+/// codepoints through.
+fn font_has_glyph(ch: char) -> bool {
+    use skrifa::{FontRef, MetadataProvider};
+    let font = FontRef::new(NOTO_SANS_JP_BYTES).expect("parse NotoSansJP.ttf");
+    font.charmap().map(ch).is_some()
+}
+
+/// Regression for #426: the todo example's delete control (per-row button +
+/// footer hint) must use a glyph the bundled Canvas font can actually draw, so
+/// vello/tiny-skia render a real "×" instead of a `.notdef` tofu box. Guards the
+/// glyph the reproduction shares with `Tsubame/examples/todo` via `DELETE_GLYPH`.
+#[test]
+fn delete_glyph_renders_in_canvas() {
+    // U+2715 ✕ documents the bug: it has no glyph in the bundled font, so Canvas
+    // falls back to a tofu box (DOM hides this via browser font fallback).
+    assert!(
+        !font_has_glyph('\u{2715}'),
+        "U+2715 ✕ is expected to be absent from NotoSansJP.ttf (the bug's cause)",
+    );
+    // The glyph the example actually uses must be present, so Canvas draws it.
+    let delete_char = DELETE_GLYPH.chars().next().expect("DELETE_GLYPH is non-empty");
+    assert!(
+        font_has_glyph(delete_char),
+        "delete glyph {DELETE_GLYPH:?} must exist in NotoSansJP.ttf, \
+         else Canvas renders a .notdef tofu box instead of '×'",
+    );
 }
 
 // ───────────────────────── interaction-state comparison ─────────────────────

@@ -123,7 +123,7 @@ export function Footer(props: { colors: Palette; percent: number; onClearDone: (
     }}>
       <text style={{ color: props.colors.muted, fontSize: 13 }}>{`${props.percent}% 完了`}</text>
       <view style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <text style={{ color: props.colors.quiet, fontSize: 11 }}>クリックで完了 / ✕ で削除</text>
+        <text style={{ color: props.colors.quiet, fontSize: 11 }}>クリックで完了 / × で削除</text>
         <button
           style={{
             height: 30,

@@ -139,7 +139,7 @@ export function TodoRow(props: {
         }}
         onClick={props.onRemove}
       >
-        ✕
+        ×
       </button>
     </view>
   );
