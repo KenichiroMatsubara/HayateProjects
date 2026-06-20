@@ -283,6 +283,64 @@ fn single_click_in_text_input_places_a_caret_not_a_word() {
 }
 
 #[test]
+fn a_relayout_after_a_click_does_not_move_the_caret_or_forge_a_selection() {
+    // Canvas-mode root cause: the layout pass rebuilds a text-input's shaped
+    // content on every relayout (style change, resize, a selection-driven
+    // repaint) and used to force `cursor_byte_index` to the text end while
+    // leaving `selection_anchor` where a click had just placed it. The next
+    // frame then read a phantom `(click..end)` selection with the caret snapped
+    // to the end — "a plain click selects from the click point to the last
+    // character", and Shift+click collapsed to nothing. A relayout must preserve
+    // the caret the click placed (only clamping it if the text shrank).
+    let (mut tree, input) = text_input_with("hello world"); // caret at end
+
+    tree.on_pointer_down(15.0, 20.0); // caret lands mid-word
+    let caret = tree.element_caret_byte_index(input);
+    assert!(tree.element_text_selection(input).is_none(), "click is a caret");
+
+    // Force the input to re-lay-out, as a steady-state rAF frame does.
+    tree.element_set_style(input, &[StyleProp::FontSize(16.0)]);
+    tree.render(16.0);
+
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "a relayout after a click must not manufacture a selection",
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        caret,
+        "a relayout must not snap the caret back to the text end",
+    );
+}
+
+#[test]
+fn click_lands_the_caret_at_the_clicked_point_not_a_glyph_left_edge() {
+    // A click resolves to a byte offset via Parley `Cursor::from_point`, which
+    // honours which half of the glyph was hit. The earlier `byte_index_at_point`
+    // returned the hit cluster's *start* unconditionally, so a press on the
+    // trailing half snapped the caret back to the glyph's leading edge and a
+    // press past the last glyph never reached the text end — the caret could not
+    // follow the click. Guard the two extremes: a far-left press sits before the
+    // first glyph (0) and a far-right press reaches the end (len).
+    let (mut tree, input) = text_input_with("hello");
+
+    tree.on_pointer_down(2.0, 20.0);
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(0),
+        "a press at the left edge sits before the first glyph",
+    );
+
+    tree.on_pointer_up(2.0, 20.0);
+    tree.on_pointer_down(190.0, 20.0);
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(5),
+        "a press past the last glyph reaches the text end, not its left edge",
+    );
+}
+
+#[test]
 fn double_click_under_touch_modality_stays_a_caret() {
     // #366: word/line expansion is a Mouse/Pen gesture (ADR-0104). Under Touch
     // the double press stays a caret, so it never competes with the long-press

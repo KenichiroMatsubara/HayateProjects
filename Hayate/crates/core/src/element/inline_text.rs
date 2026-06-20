@@ -209,13 +209,16 @@ pub(crate) fn shape(
 }
 
 /// Parley point hit → byte index within an IFC layout.
+///
+/// Delegates to Parley's [`Cursor::from_point`], which honours the hit
+/// [`ClusterSide`](parley::layout::ClusterSide): a click on the trailing half of
+/// a glyph lands the caret *after* it (and the RTL / explicit-line-break edge
+/// cases), where the bare `Cluster::from_point().text_range().start` snapped
+/// every in-glyph hit back to the glyph's leading edge — so the caret could
+/// never reach the click point (it stuck one cluster to the left).
 pub(crate) fn byte_index_at_point(layout: &text::TextLayout, local_x: f32, local_y: f32) -> usize {
-    use parley::layout::Cluster;
-    if let Some((cluster, _)) = Cluster::from_point(&layout.layout, local_x, local_y) {
-        cluster.text_range().start
-    } else {
-        layout.text.len()
-    }
+    use parley::layout::Cursor;
+    Cursor::from_point(&layout.layout, local_x, local_y).index()
 }
 
 /// Refine a box-level hit (`box_hit`) into the inline text element under the

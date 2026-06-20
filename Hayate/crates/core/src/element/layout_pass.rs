@@ -508,7 +508,22 @@ impl LayoutPass {
                         el.content_layout = Some(layout);
                         el.text_layout = None;
                         if let Some(edit) = el.edit.as_mut() {
-                            edit.cursor_byte_index = edit.text_content.len();
+                            // Keep the caret/selection valid against the freshly
+                            // shaped content, but do NOT force it to the end:
+                            // this runs on every relayout (style change, resize,
+                            // a selection-driven repaint), so forcing the cursor
+                            // to `len` clobbered the caret a click had just
+                            // placed — the anchor stayed put while the cursor
+                            // snapped to the end, manufacturing a phantom
+                            // selection from the click point to the last
+                            // character (Canvas-mode "click selects to the end";
+                            // Shift+click then collapsed to nothing). Clamping
+                            // only repairs a now-out-of-range offset after the
+                            // text shrank; the caret position itself is owned by
+                            // the edit/pointer operations, not the layout pass.
+                            let len = edit.text_content.len();
+                            edit.cursor_byte_index = edit.cursor_byte_index.min(len);
+                            edit.selection_anchor = edit.selection_anchor.min(len);
                         }
                     }
                 }
