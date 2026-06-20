@@ -91,6 +91,38 @@ element-kind ごとの UA 既定を core が供給すれば（ADR-0105 のカー
 - ADR-0097 が defer した cross-element / cross-IFC 選択の成長点を本 ADR が埋める。a11y inbound
   `SetTextSelection`（ADR-0098 defer）や `selection-change` イベントは引き続き範囲外。
 
+## 実装ノート（2026-06-21・Canvas 経路の選択開始 / カーソル結線）
+
+決定 1/3 を Canvas 経路で完遂した。それまで core は `user-select` typed property・`contains`
+境界・`none` subtree 除外までは実装していたが、**「選択可能性 = effective `user-select`」を
+カーソルと選択開始が消費していなかった**ため、明示 `selectable` / `contains` 領域を持たない
+素のテキスト段落で2つの不具合が残っていた:
+
+1. **ホバーで I-beam にならない。** `resolve_cursor`（`interaction.rs`）が「選択可能テキスト」の
+   proxy に旧 `selectable` Selection Region ルートを使っていた。effective `user-select == text`
+   かつ text-bearing（`is_text_like`）な要素で `text`（I-beam）を返すよう変更（ADR-0105 の
+   「選択可能テキスト = text」を user-select で正しく判定）。空 `view`（kind 既定 `text` だが
+   非 text-bearing）は矢印のまま、`user-select: none` テキストは I-beam を出さない。
+
+2. **ドラッグで選択が始まらない。** 選択開始（`begin_selection_at` → `within_selectable`）が
+   Selection Region ルートの存在を要求していた。決定3「既定は境界なしで自由に広がる」に従い、
+   `within_selectable` を「effective `user-select` が `none` でない（= `!user_select_excludes`）」
+   へ緩和。`image` / `button`（kind 既定 `none`）と `user-select: none` subtree は引き続き選択
+   不可。`set_selection_range`（プログラム API）も同極性へ更新。
+
+設計の単一アクセサ化: `el.user_select` フィールドを要素生成時に `kind.default_user_select()`
+で初期化し、フィールドが effective 値そのものを保持するようにした（`drive_ime` の単一述語化
+（#392）と同型）。`selection_region_of`（`contains` / legacy `selectable`）は**封じ込め境界**
+専用に役割を限定し、`None` 境界は「無境界の document 領域」として扱う（`None == None` が同一
+領域 → 自由に cross-element 選択）。`selectable` boolean API は移行までの境界マーカーとして存続
+（決定2 の typed property 置換は別タスク）。DOM 経路はブラウザネイティブ選択 + UA `user-select`
+で元から既定選択可・I-beam なので変更不要（Canvas を DOM/ブラウザ既存挙動に揃えた = parity）。
+
+回帰固定: `crates/core/tests/plain_text_selection.rs`（新規）が plain text の I-beam / 選択 /
+コピー / 非 text-bearing view の矢印 / `user-select: none` 除外を、`text_selection.rs` と
+`selection_api.rs` が旧 ADR-0097 前提（領域無し=非選択）から新挙動へ更新済み。実ブラウザは
+`Tsubame/examples/todo/e2e/canvas-text-cursor.spec.ts` が Canvas のカーソル結線を確認。
+
 ## 関係
 
 - ADR-0097（統一テキスト選択）: 決定2 を supersede、決定5 を精緻化、決定1/3/4 は存続。

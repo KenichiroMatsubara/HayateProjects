@@ -373,15 +373,22 @@ fn selected_text_is_none_for_a_collapsed_caret() {
 }
 
 #[test]
-fn drag_outside_selectable_region_does_not_start_a_selection() {
-    let (mut tree, _view, _text) = selectable_paragraph(false);
+fn drag_over_user_select_none_does_not_start_a_selection() {
+    // Selection is boundary-free by default (ADR-0108 decision 3), so the absence
+    // of a `selectable` region no longer blocks it — opting out is now explicit,
+    // via `user-select: none`, which excludes the subtree (decision 2). A drag
+    // over such a paragraph starts nothing. (The boundary-free *positive* case —
+    // plain text selects on drag — lives in `plain_text_selection.rs`.)
+    let (mut tree, _view, text) = selectable_paragraph(false);
+    tree.element_set_user_select(text, UserSelectValue::None);
+    tree.render(0.0);
 
     tree.on_pointer_down(2.0, 8.0);
     tree.on_pointer_move(70.0, 8.0);
 
     assert!(
         tree.selection().is_none(),
-        "no Selection Region established, so no selection",
+        "user-select: none text must not start a selection",
     );
 }
 

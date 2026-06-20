@@ -45,14 +45,31 @@ fn set_selection_range_makes_the_range_the_active_selection() {
 }
 
 #[test]
-fn set_selection_range_outside_a_selectable_region_is_rejected() {
-    // Same paragraph, but the view is *not* selectable: there is no Selection
-    // Region, so a programmatic range must not establish one.
+fn set_selection_range_in_boundary_free_text_applies() {
+    // No explicit `selectable` region: under the boundary-free default (ADR-0108
+    // decision 3) a programmatic range over plain text still applies — the
+    // endpoints share the unbounded document region.
     let (mut tree, _view, text) = selectable_paragraph(false);
 
     let applied = tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
 
-    assert!(!applied, "no selectable region: the range should be rejected");
+    assert!(applied, "boundary-free plain text: the range should apply");
+    let sel = tree.selection().expect("an active selection after set_selection_range");
+    assert_eq!(sel.anchor, SelectionPoint::new(text, 0));
+    assert_eq!(sel.focus, SelectionPoint::new(text, 5));
+}
+
+#[test]
+fn set_selection_range_over_user_select_none_is_rejected() {
+    // `user-select: none` excludes the text (ADR-0108 decision 2), so a
+    // programmatic range targeting it is refused and leaves the selection intact.
+    let (mut tree, _view, text) = selectable_paragraph(false);
+    tree.element_set_user_select(text, hayate_core::UserSelectValue::None);
+    tree.render(0.0);
+
+    let applied = tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
+
+    assert!(!applied, "user-select: none: the range should be rejected");
     assert!(
         tree.selection().is_none(),
         "a rejected range must leave the selection untouched",

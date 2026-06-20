@@ -403,7 +403,17 @@ impl ElementTree {
             if kind_default != CursorValue::Default {
                 return kind_default;
             }
-            if el.selectable {
+            // A selectable, text-bearing element reads as text (the I-beam) — the
+            // UA default for "選択可能テキスト" (ADR-0105). Keyed on the element's
+            // effective `user-select` (ADR-0108) rather than a `selectable`
+            // Selection Region root, so a plain paragraph carrying the kind-default
+            // `user-select: text` shows the I-beam without any explicit region.
+            // Gated on text-bearing kinds so an empty `view` (also kind-default
+            // `text`) stays the arrow, matching the browser's text-only I-beam.
+            if el.kind.is_text_like()
+                && el.user_select == crate::element::style::UserSelectValue::Text
+                && !self.user_select_excludes(id)
+            {
                 return CursorValue::Text;
             }
             current = el.parent;
@@ -631,8 +641,16 @@ impl ElementTree {
     /// path, so it re-lowers the highlight and emits a `selection-change`
     /// notification exactly like a gesture would.
     pub fn set_selection_range(&mut self, anchor: SelectionPoint, focus: SelectionPoint) -> bool {
-        let region = self.selection_region_of(anchor.element);
-        if region.is_none() || region != self.selection_region_of(focus.element) {
+        // Both endpoints must be selectable (not `user-select: none`) and share a
+        // Selection Region boundary. A `None` boundary is the unbounded document
+        // region (ADR-0108 decision 3), so two boundary-free points share it and a
+        // cross-element programmatic range is honoured; a `contains` (or legacy
+        // `selectable`) boundary still confines, so endpoints on opposite sides of
+        // one do not match and the range is refused.
+        if self.user_select_excludes(anchor.element) || self.user_select_excludes(focus.element) {
+            return false;
+        }
+        if self.selection_region_of(anchor.element) != self.selection_region_of(focus.element) {
             return false;
         }
         self.set_selection(Some(Selection { anchor, focus }));
@@ -1716,9 +1734,17 @@ impl ElementTree {
         Some(SelectionPoint::new(ifc, offset))
     }
 
-    /// Whether `id` lies within a `selectable` subtree (nearest ancestor wins).
+    /// Whether a selection may begin at `id`: its effective `user-select` is not
+    /// `none` (ADR-0108 decisions 1+3). Selection is boundary-free by default, so
+    /// no explicit Selection Region root is required — a plain paragraph with the
+    /// kind-default `user-select: text` selects on drag. `image` / `button` carry
+    /// the kind-default `none`, and a `user-select: none` subtree opts out, so
+    /// neither starts a selection. Text presence at the point is enforced
+    /// downstream by `selection_point_at` (a non-text hit resolves to no IFC text
+    /// and yields no caret), so an empty `view` (kind-default `text`) starts
+    /// nothing even though it is not `none`.
     fn within_selectable(&self, id: ElementId) -> bool {
-        self.selection_region_of(id).is_some()
+        !self.user_select_excludes(id)
     }
 
     /// The nearest Selection Region root ancestor of `id` (inclusive): an element

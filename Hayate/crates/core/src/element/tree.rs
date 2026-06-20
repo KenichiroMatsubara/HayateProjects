@@ -441,7 +441,14 @@ impl ElementTree {
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
             selectable: false,
-            user_select: crate::element::style::UserSelectValue::Text,
+            // Seed `user-select` with the element-kind UA default (ADR-0108
+            // decision 1, same single-source table as `default_cursor`), so the
+            // field already holds the *effective* per-element value: `text` /
+            // `view` / `scroll-view` / `text-input` are selectable, `image` /
+            // `button` are not. An explicit `element_set_user_select` overrides
+            // it. This is what lets one core accessor key both the I-beam cursor
+            // and selection-start off effective selectability.
+            user_select: kind.default_user_select(),
             multiline: false,
             viewport_variants: Vec::new(),
         };
