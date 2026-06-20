@@ -4,3 +4,9 @@ Tsubame/.git-merged/
 # Dependencies
 node_modules/
 .claude/worktrees/
+
+# Playwright (E2E artifacts)
+test-results/
+playwright-report/
+blob-report/
+.playwright/
