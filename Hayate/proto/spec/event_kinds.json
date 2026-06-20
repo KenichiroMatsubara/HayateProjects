@@ -172,7 +172,7 @@
     "params": [
       { "name": "x", "type": "f32" },
       { "name": "y", "type": "f32" },
-      { "name": "kind", "type": "pointer_kind" }
+      { "name": "pointer_kind", "type": "pointer_kind" }
     ],
     "wireRole": "interaction",
     "adapterTier": "deferred",

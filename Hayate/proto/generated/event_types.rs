@@ -63,7 +63,7 @@ pub enum Event {
     PointerMove {
         x: f32,
         y: f32,
-        kind: PointerKind,
+        pointer_kind: PointerKind,
     },
     /// A font family with .notdef glyphs was detected during shaping. The adapter should fetch the font and call `load_font_from_url`.
     FetchFont {

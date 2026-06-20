@@ -348,7 +348,7 @@ impl ElementTree {
         self.push_event(Event::PointerMove {
             x,
             y,
-            kind: self.last_pointer_kind,
+            pointer_kind: self.last_pointer_kind,
         });
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
@@ -422,7 +422,7 @@ impl ElementTree {
         self.push_event(Event::PointerMove {
             x,
             y,
-            kind: self.last_pointer_kind,
+            pointer_kind: self.last_pointer_kind,
         });
         true
     }

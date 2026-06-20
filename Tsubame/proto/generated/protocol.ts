@@ -364,7 +364,7 @@ export type EventPayload =
   | { kind: 'hover_leave'; value: 11; targetId: number }
   | { kind: 'key_down'; value: 12; targetId: number; key: string; modifiers: number }
   | { kind: 'active_start'; value: 13; targetId: number }
-  | { kind: 'pointer_move'; value: 14; x: number; y: number }
+  | { kind: 'pointer_move'; value: 14; x: number; y: number; pointerKind: number }
   | { kind: 'fetch_font'; value: 15; family: string }
   | { kind: 'selection_change'; value: 16 }
 ;
@@ -415,7 +415,7 @@ export function parseEvent(ev: unknown[]): EventPayload {
       return { kind: 'active_start' as const, value: 13, targetId: ev[1] as number };
     }
     case 14: { // pointer_move
-      return { kind: 'pointer_move' as const, value: 14, x: ev[1] as number, y: ev[2] as number };
+      return { kind: 'pointer_move' as const, value: 14, x: ev[1] as number, y: ev[2] as number, pointerKind: ev[3] as number };
     }
     case 15: { // fetch_font
       return { kind: 'fetch_font' as const, value: 15, family: ev[1] as string };

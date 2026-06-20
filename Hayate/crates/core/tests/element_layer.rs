@@ -1401,7 +1401,7 @@ fn semantic_event_variants_roundtrip_through_poll() {
     tree.push_event(Event::PointerMove {
         x: 12.5,
         y: 34.0,
-        kind: hayate_core::PointerKind::Mouse,
+        pointer_kind: hayate_core::PointerKind::Mouse,
     });
 
     let events = tree.poll_events();

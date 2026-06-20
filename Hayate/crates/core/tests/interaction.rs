@@ -610,6 +610,6 @@ fn pointer_move_event_carries_the_pointer_kind() {
     let saw_pen = tree
         .poll_events()
         .into_iter()
-        .any(|e| matches!(e, Event::PointerMove { kind, .. } if kind == PointerKind::Pen));
+        .any(|e| matches!(e, Event::PointerMove { pointer_kind, .. } if pointer_kind == PointerKind::Pen));
     assert!(saw_pen, "PointerMove must carry PointerKind::Pen");
 }
