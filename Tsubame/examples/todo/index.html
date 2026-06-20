@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Tsubame Task Studio</title>
     <style>
       html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
@@ -19,21 +19,57 @@
       }
       #dom-host[hidden], #canvas-stage[hidden] { display: none; }
       #canvas-stage { display: block; cursor: default; }
+
+      /*
+       * Renderer 切替UI（Hayate アプリの外側に置く素の HTML オーバーレイ）。
+       * 色は App.tsx が解決済みパレットから document.documentElement へ流し込む
+       * CSS 変数（--rsw-*）に追従する。fallback はライト teal（既定テーマ）。
+       * 既定は格納（ハンドルのみ）で、タップすると候補が展開する。
+       */
       #renderer-switch {
         position: fixed;
-        top: 12px;
-        left: 50%;
-        transform: translateX(-50%);
+        top: max(10px, env(safe-area-inset-top));
+        right: max(10px, env(safe-area-inset-right));
         z-index: 1000;
         display: flex;
-        gap: 4px;
-        padding: 3px;
+        flex-direction: row-reverse;
+        align-items: center;
+        gap: 6px;
+        padding: 4px;
         border-radius: 999px;
-        border: 1px solid #31425b;
-        background: #111827ee;
+        border: 1px solid var(--rsw-line, #d9d3c6);
+        background: color-mix(in srgb, var(--rsw-bg, #fbf8f1) 90%, transparent);
         backdrop-filter: blur(6px);
+        font-family: inherit;
       }
-      #renderer-switch button {
+      #renderer-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--rsw-ink, #262130);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      #renderer-toggle:hover { background: var(--rsw-hover, #e0d8c7); }
+      .rsw-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--rsw-accent, #14b8a6);
+      }
+      .rsw-options {
+        display: none;
+        gap: 4px;
+      }
+      #renderer-switch[data-open='true'] .rsw-options { display: flex; }
+      .rsw-options button {
         padding: 4px 12px;
         font-size: 11px;
         font-weight: 700;
@@ -41,26 +77,61 @@
         border-radius: 999px;
         border: none;
         background: transparent;
-        color: #8ea1bb;
+        color: var(--rsw-text, #6f6878);
         cursor: pointer;
         font-family: inherit;
       }
-      #renderer-switch button.active {
-        background: #4fd1c5;
-        color: #070b14;
+      .rsw-options button.active {
+        background: var(--rsw-accent, #14b8a6);
+        color: var(--rsw-on-accent, #14101c);
       }
-      #renderer-switch button:hover:not(.active) {
-        color: #d8e2f2;
-        background: #21344e;
+      .rsw-options button:hover:not(.active) {
+        color: var(--rsw-ink, #262130);
+        background: var(--rsw-hover, #e0d8c7);
       }
     </style>
+    <script>
+      // 起動前にテーマ別の初期色を流し込み、ブート完了までのチラつきを防ぐ。
+      // 正本は App.tsx の createEffect（解決済みパレット）。ここは boot 時の近似。
+      (function seedRendererSwitchTheme() {
+        let prefs = {};
+        try {
+          prefs = JSON.parse(window.localStorage.getItem('pop-theme-v1') || '{}') || {};
+        } catch {
+          prefs = {};
+        }
+        const dark = prefs.theme === 'dark';
+        const accents = {
+          teal: ['#14b8a6', '#4fd1c5'],
+          pink: ['#e84d8a', '#f472b6'],
+          orange: ['#ef8f3c', '#fb923c'],
+          lime: ['#5ca80f', '#a3e635'],
+          violet: ['#7c5cf0', '#a78bfa'],
+        };
+        const acc = accents[prefs.accent] || accents.teal;
+        const root = document.documentElement.style;
+        root.setProperty('--rsw-bg', dark ? '#111827' : '#fbf8f1');
+        root.setProperty('--rsw-line', dark ? '#31425b' : '#d9d3c6');
+        root.setProperty('--rsw-text', dark ? '#8ea1bb' : '#6f6878');
+        root.setProperty('--rsw-ink', dark ? '#eef4ff' : '#262130');
+        root.setProperty('--rsw-hover', dark ? '#21344e' : '#e0d8c7');
+        root.setProperty('--rsw-on-accent', dark ? '#070b14' : '#14101c');
+        root.setProperty('--rsw-accent', dark ? acc[1] : acc[0]);
+      })();
+    </script>
   </head>
   <body>
-    <div id="renderer-switch" aria-label="Renderer switch">
-      <button type="button" data-renderer="auto">auto</button>
-      <button type="button" data-renderer="vello">vello</button>
-      <button type="button" data-renderer="tiny-skia">tiny-skia</button>
-      <button type="button" data-renderer="dom">dom</button>
+    <div id="renderer-switch" data-open="false" aria-label="Renderer switch">
+      <button type="button" id="renderer-toggle" aria-expanded="false" aria-controls="renderer-options" title="レンダラを切り替え">
+        <span class="rsw-dot" aria-hidden="true"></span>
+        <span id="renderer-current">auto</span>
+      </button>
+      <div class="rsw-options" id="renderer-options" role="group">
+        <button type="button" data-renderer="auto">auto</button>
+        <button type="button" data-renderer="vello">vello</button>
+        <button type="button" data-renderer="tiny-skia">tiny-skia</button>
+        <button type="button" data-renderer="dom">dom</button>
+      </div>
     </div>
     <div id="dom-host" hidden></div>
     <canvas id="canvas-stage" hidden></canvas>
@@ -68,8 +139,21 @@
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
         const current = params.get('renderer') ?? 'auto';
-        const switcher = document.getElementById('renderer-switch');
-        for (const button of switcher.querySelectorAll('button[data-renderer]')) {
+        const root = document.getElementById('renderer-switch');
+        const toggle = document.getElementById('renderer-toggle');
+        const currentLabel = document.getElementById('renderer-current');
+        currentLabel.textContent = current;
+
+        // 開閉状態は localStorage に保存し、再読込でも維持する。
+        const setOpen = (open) => {
+          root.dataset.open = String(open);
+          toggle.setAttribute('aria-expanded', String(open));
+          window.localStorage.setItem('rsw-open', String(open));
+        };
+        setOpen(window.localStorage.getItem('rsw-open') === 'true');
+        toggle.addEventListener('click', () => setOpen(root.dataset.open !== 'true'));
+
+        for (const button of root.querySelectorAll('button[data-renderer]')) {
           const value = button.getAttribute('data-renderer');
           if (value === current) button.classList.add('active');
           button.addEventListener('click', () => {

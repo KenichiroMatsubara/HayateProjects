@@ -177,7 +177,7 @@ export class DomRenderer implements IRenderer {
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
     const media = mediaQueryFor(condition);
     const selector = `[data-tsubame-id="${id as number}"]`;
-    const body = pseudoStyleDeclarations(this.kindOf(id), style);
+    const body = variantStyleDeclarations(this.kindOf(id), style);
     if (body.length === 0) return;
     const sheet = this.variantStyleEl.sheet;
     if (sheet === null) return;
@@ -394,5 +394,18 @@ export class DomRenderer implements IRenderer {
 function pseudoStyleDeclarations(kind: ElementKind, patch: StylePatch): string {
   return declarationsToRuleBody(
     declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' }),
+  );
+}
+
+/**
+ * Viewport variant（@media）ルール本体。ベーススタイルはインライン（`el.style`）
+ * に載るため、`!important` を付けないと variant がベースを上書きできない。これが
+ * 無いと padding / flexDirection / display 等の狭幅オーバーライドが一切効かず、
+ * DOM Mode でレスポンシブ（ADR-0081）が成立しない。
+ */
+function variantStyleDeclarations(kind: ElementKind, patch: StylePatch): string {
+  return declarationsToRuleBody(
+    declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' }),
+    { important: true },
   );
 }

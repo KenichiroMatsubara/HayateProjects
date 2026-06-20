@@ -27,6 +27,25 @@ describe('DomRenderer setStyleVariant (ADR-0081)', () => {
     expect(inner.style.backgroundColor).toBeTruthy();
   });
 
+  it('marks variant declarations !important so they override the inline base style', () => {
+    // ベーススタイルは el.style（インライン）に載るため、@media variant が
+    // ベースを上書きするには !important が必須（インラインは通常規則より優先）。
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    // ベースで display:flex を敷き、狭幅 variant で none に上書きする。
+    renderer.setStyle(id, { display: 'flex' });
+    renderer.setStyleVariant(id, { maxWidth: 719 }, { display: 'none' });
+
+    const styleEl = document.querySelector('style[data-tsubame-variant]')! as unknown as {
+      sheet: CSSStyleSheet;
+    };
+    const mediaRule = styleEl.sheet.cssRules[0] as unknown as CSSMediaRule;
+    const inner = mediaRule.cssRules[0] as unknown as CSSStyleRule;
+    expect(inner.style.getPropertyPriority('display')).toBe('important');
+  });
+
   it('combines multiple condition axes with "and"', () => {
     const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');

@@ -70,10 +70,20 @@ export function declarationsFromStylePatch(
   return declarations;
 }
 
-/** Join declarations into a CSS rule body (`property:value;...`). */
-export function declarationsToRuleBody(declarations: readonly StylePatchDeclaration[]): string {
+/**
+ * Join declarations into a CSS rule body (`property:value;...`).
+ *
+ * `important` を立てると各宣言へ `!important` を付与する。ベーススタイルは
+ * インライン（`el.style`）に載るため、@media variant がベースを上書きするには
+ * `!important` が必須（インライン宣言は通常のセレクタ規則より優先される）。
+ */
+export function declarationsToRuleBody(
+  declarations: readonly StylePatchDeclaration[],
+  options: { important?: boolean } = {},
+): string {
+  const suffix = options.important === true ? ' !important' : '';
   return declarations
     .filter((decl) => decl.value !== '')
-    .map((decl) => `${decl.cssProperty}:${decl.value}`)
+    .map((decl) => `${decl.cssProperty}:${decl.value}${suffix}`)
     .join(';');
 }

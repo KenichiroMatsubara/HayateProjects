@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editKeyAction, FILTERS, PRIORITIES, PRIORITY_LABEL, SORTS } from './App';
+import { editKeyAction, FILTERS, PRIORITIES, PRIORITY_LABEL, SORTS } from './ui/labels';
 import { canReorder, FILTER_VALUES, PRIORITY_VALUES, SORT_VALUES } from './todo-model.js';
 
 // Issue #250 wires the model's derived filter/sort/priority options into the
