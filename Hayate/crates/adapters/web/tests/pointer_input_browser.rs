@@ -102,6 +102,40 @@ fn dispatch_touch_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64, c
     canvas.dispatch_event(&event).unwrap();
 }
 
+/// Dispatch a genuine, cancelable `WheelEvent` at viewport `(client_x, client_y)`
+/// with the given scroll deltas, returning the dispatched event so the caller can
+/// inspect `defaultPrevented`. `dispatch_event` itself returns `false` when a
+/// listener cancelled the (cancelable) event, which is the signal that the
+/// adapter suppressed the browser's native scroll.
+fn dispatch_wheel_event(
+    canvas: &HtmlCanvasElement,
+    client_x: f64,
+    client_y: f64,
+    delta_x: f64,
+    delta_y: f64,
+) -> web_sys::Event {
+    let window = web_sys::window().unwrap();
+    let ctor = js_sys::Reflect::get(&window, &JsValue::from_str("WheelEvent")).unwrap();
+    let ctor: js_sys::Function = ctor.dyn_into().unwrap();
+
+    let init = js_sys::Object::new();
+    js_sys::Reflect::set(&init, &"clientX".into(), &JsValue::from_f64(client_x)).unwrap();
+    js_sys::Reflect::set(&init, &"clientY".into(), &JsValue::from_f64(client_y)).unwrap();
+    js_sys::Reflect::set(&init, &"deltaX".into(), &JsValue::from_f64(delta_x)).unwrap();
+    js_sys::Reflect::set(&init, &"deltaY".into(), &JsValue::from_f64(delta_y)).unwrap();
+    js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
+    // Cancelable so a non-passive listener's `preventDefault` actually registers.
+    js_sys::Reflect::set(&init, &"cancelable".into(), &JsValue::TRUE).unwrap();
+
+    let args = js_sys::Array::of2(&JsValue::from_str("wheel"), &init);
+    let event: web_sys::Event = js_sys::Reflect::construct(&ctor, &args)
+        .unwrap()
+        .dyn_into()
+        .unwrap();
+    canvas.dispatch_event(&event).unwrap();
+    event
+}
+
 /// True if `rows` (delivery `[listener_id, kind, ...]` tuples from `poll_events`)
 /// contains a delivery to `listener_id` of the given event `kind`.
 fn has_delivery(rows: &js_sys::Array, listener_id: f64, kind: f64) -> bool {
@@ -193,6 +227,51 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
     assert!(
         has_delivery(&renderer.poll_events(), scroll_listener, SCROLL_KIND),
         "touch-driven scroll must fire Event::Scroll"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn wheel_over_canvas_suppresses_the_native_scroll() {
+    // A wheel inside the canvas is owned end-to-end by Canvas Mode
+    // (`apply_wheel_delta` + chaining, ADR-0084). The self-wired `wheel` listener
+    // must be non-passive and `preventDefault` the event, so the browser does not
+    // *also* scroll the page / a native scrollable ancestor on top of the
+    // in-canvas scroll — the "二重スクロール" double-scroll. A passive listener
+    // (the pre-fix wiring) silently drops `preventDefault`, leaving the native
+    // scroll live and `defaultPrevented` false.
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    // A scrollable view so the wheel has somewhere to go in-canvas.
+    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
+    renderer
+        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
+        .unwrap();
+    renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
+    renderer
+        .element_set_style(2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0])
+        .unwrap();
+    renderer.element_append_child(1.0, 2.0);
+    renderer.set_root(1.0);
+    renderer.render(0.0).unwrap();
+
+    let rect = canvas.get_bounding_client_rect();
+    let event = dispatch_wheel_event(&canvas, rect.left() + 100.0, rect.top() + 100.0, 0.0, 40.0);
+
+    assert!(
+        event.default_prevented(),
+        "a wheel over the canvas must preventDefault so the page does not \
+         double-scroll alongside the in-canvas scroll"
+    );
+
+    // And the wheel still drives the in-canvas scroll (the suppression is of the
+    // browser's native scroll, not of Canvas Mode's own handling).
+    renderer.render(16.0).unwrap();
+    assert!(
+        renderer.element_get_scroll_offset(1.0)[1] > 0.0,
+        "the wheel must still scroll the in-canvas scroll-view"
     );
 }
 

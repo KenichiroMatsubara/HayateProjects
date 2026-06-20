@@ -254,6 +254,14 @@ pub(crate) fn attach_pointer_input(
             let Some(we) = event.dyn_ref::<WheelEvent>() else {
                 return;
             };
+            // Canvas Mode owns wheel scrolling end-to-end — `apply_wheel_delta`
+            // moves the hit `scroll-view` and chains the unconsumed remainder up
+            // to the root (ADR-0084). Suppress the browser's native default scroll
+            // so a wheel inside the canvas does not *also* scroll the page (or any
+            // native scrollable ancestor) on top of the in-canvas scroll — the
+            // wheel sibling of `touch-action: none` for touch. Without this, a
+            // child scroll-view and the surrounding page scroll together (二重スクロール).
+            we.prevent_default();
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, we.as_ref());
             pending.borrow_mut().push(PointerInput::Wheel {
                 x,
@@ -262,8 +270,10 @@ pub(crate) fn attach_pointer_input(
                 delta_y: we.delta_y() as f32,
             });
         }) as Box<dyn FnMut(Event)>);
+        // Non-passive so `prevent_default` above actually suppresses the native
+        // scroll; a passive listener silently ignores it and the page scrolls too.
         let opts = AddEventListenerOptions::new();
-        opts.set_passive(true);
+        opts.set_passive(false);
         canvas.add_event_listener_with_callback_and_add_event_listener_options(
             "wheel",
             closure.as_ref().unchecked_ref(),
