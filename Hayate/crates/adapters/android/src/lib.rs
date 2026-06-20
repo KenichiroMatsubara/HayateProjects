@@ -21,6 +21,8 @@ mod touch_input;
 
 #[cfg(target_os = "android")]
 mod app;
+#[cfg(target_os = "android")]
+mod ime_bridge;
 
 /// RGBA clear color for the stage A on-device smoke test (issue #195).
 pub const STAGE_A_CLEAR_COLOR: [f32; 4] = [0.1, 0.1, 0.12, 1.0];

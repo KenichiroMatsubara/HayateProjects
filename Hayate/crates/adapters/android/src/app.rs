@@ -17,6 +17,7 @@ use wgpu::util::TextureBlitter;
 
 use hayate_core::ElementId;
 
+use crate::ime_bridge::AndroidImeBridge;
 use crate::ime_input::{apply_ime_action, translate_text_input, TextInputState, TextSpan};
 use crate::scene_demo::build_demo_tree;
 use crate::surface_lifecycle::{
@@ -49,10 +50,13 @@ pub fn android_main(app: AndroidApp) {
     let mut lifecycle = SurfaceLifecycleState::new();
     let mut tree = build_demo_tree();
     let start = Instant::now();
-    // Last GameTextInput buffer we synced, and which element the soft keyboard is
-    // currently shown for (stage C IME, ADR-0094).
+    // Last GameTextInput buffer we synced, the text input it belongs to, and
+    // whether the soft keyboard is currently up (stage C IME, ADR-0094). The
+    // keyboard flag is owned by `AndroidImeBridge`; the target drives buffer
+    // baseline resets on focus change.
     let mut ime_state = TextInputState::default();
-    let mut keyboard_shown_for: Option<ElementId> = None;
+    let mut ime_target: Option<ElementId> = None;
+    let mut ime_keyboard_shown = false;
     let mut quit = false;
 
     while !quit {
@@ -112,7 +116,13 @@ pub fn android_main(app: AndroidApp) {
         });
 
         process_touch_input(&app, &mut tree);
-        sync_ime(&app, &mut tree, &mut ime_state, &mut keyboard_shown_for);
+        sync_ime(
+            &app,
+            &mut tree,
+            &mut ime_state,
+            &mut ime_target,
+            &mut ime_keyboard_shown,
+        );
 
         if let Some(surface) = gpu.as_mut() {
             // Drive layout + cursor blink off a monotonic clock, then present the
@@ -128,27 +138,32 @@ pub fn android_main(app: AndroidApp) {
 
 /// Sync GameTextInput into the focused TextInput (stage C IME, ADR-0094).
 ///
-/// Shows/hides the soft keyboard as focus enters/leaves a *text input* and diffs
-/// GameTextInput's absolute buffer into core edit calls. A tap focuses whatever
-/// it hits (buttons, plain text, views), so the keyboard is gated on
-/// [`ElementTree::focused_text_input`] — keying it on raw focus raised the soft
-/// keyboard for every tap, not just editable fields (#392). The diff/apply logic
-/// lives in the host-testable [`crate::ime_input`]; this wrapper is thin glue
-/// over `android-activity`'s text-input API and is verified on-device (#195).
+/// Soft-keyboard visibility is decided once by core
+/// ([`ElementTree::drive_ime`]) from editability and *reflected* by
+/// [`AndroidImeBridge`]; this wrapper never calls `show_soft_input` /
+/// `hide_soft_input` itself. A tap focuses whatever it hits (buttons, plain
+/// text, views), but only a text input arms the keyboard — keying it on raw
+/// focus raised it for every tap (#392), and pushing the decision into core is
+/// what keeps that fix shared with the web adapter. The remaining work here is
+/// raw GameTextInput buffer translation against the focused input: the
+/// diff/apply logic lives in the host-testable [`crate::ime_input`]; this
+/// wrapper is thin glue over `android-activity`'s text-input API, verified
+/// on-device (#195).
 fn sync_ime(
     app: &AndroidApp,
     tree: &mut ElementTree,
     prev: &mut TextInputState,
-    keyboard_shown_for: &mut Option<ElementId>,
+    prev_target: &mut Option<ElementId>,
+    keyboard_shown: &mut bool,
 ) {
-    let target = tree.focused_text_input();
+    // Visibility through the abstraction: core gates on editability, the bridge
+    // raises/dismisses the keyboard.
+    let mut bridge = AndroidImeBridge::new(app, keyboard_shown);
+    tree.drive_ime(&mut bridge);
 
-    if *keyboard_shown_for != target {
-        match target {
-            Some(_) => app.show_soft_input(true),
-            None => app.hide_soft_input(true),
-        }
-        *keyboard_shown_for = target;
+    let target = tree.focused_text_input();
+    if *prev_target != target {
+        *prev_target = target;
         // A fresh focus starts from an empty baseline buffer.
         *prev = TextInputState::default();
     }

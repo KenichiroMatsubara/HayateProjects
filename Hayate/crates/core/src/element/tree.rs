@@ -8,7 +8,7 @@ use crate::element::edit_state::EditState;
 use crate::element::engine::ElementEngine;
 use crate::element::effective_visual::{self, child_inherited_context};
 use crate::element::viewport_resize;
-use crate::element::ime_bridge::CharacterBounds;
+use crate::element::ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
 use crate::element::event_spec::DocumentEventKind;
 
 pub use crate::element::event_spec::Event;
@@ -625,6 +625,29 @@ impl ElementTree {
             .kind
             .accepts_text_input()
             .then_some(id)
+    }
+
+    /// Drive the platform IME for the current frame (ADR-0069, #392). Computes
+    /// the soft-keyboard presentation once — shown only when a `text-input` is
+    /// focused ([`focused_text_input`](Self::focused_text_input)), with the
+    /// candidate window aimed at the caret's character bounds — and hands it to
+    /// the adapter's [`ImeBridge`]. Adapters reflect this and never re-derive
+    /// keyboard visibility, so the editability gate lives in exactly one place
+    /// instead of being hand-rolled per platform.
+    pub fn drive_ime(&self, ime: &mut impl ImeBridge) {
+        let presentation = match self.focused_text_input() {
+            Some(id) => {
+                let bounds = self.element_character_bounds(id).unwrap_or(CharacterBounds {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                });
+                ImePresentation::Shown { bounds }
+            }
+            None => ImePresentation::Hidden,
+        };
+        ime.present(presentation);
     }
 
     /// Modality of the most recent input event (#335, ADR-0102), the

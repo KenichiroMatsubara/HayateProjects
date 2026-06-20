@@ -18,7 +18,7 @@ import {
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
-import { syncEditContextBounds } from './edit-context-sync.js';
+import { syncEditContext } from './edit-context-sync.js';
 
 export type ResizeObserverFactory = new (
   callback: ResizeObserverCallback,
@@ -223,7 +223,7 @@ export class CanvasRenderer implements IRenderer {
     this.flush();
     this.raw.render(timestampMs);
     if (this.canvas !== null) {
-      syncEditContextBounds(this.canvas, this.raw);
+      syncEditContext(this.canvas, this.raw);
     }
     this.dispatchDeliveries(this.raw.poll_events());
     this.frameHandle = this.requestFrame(this.frame);

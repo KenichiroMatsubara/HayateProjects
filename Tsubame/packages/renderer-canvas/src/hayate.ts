@@ -71,6 +71,10 @@ export interface RawHayate {
   focused_element_id(): number;
   /** Cursor rect synced during the last render (ADR-0069). */
   ime_character_bounds(): number[];
+  /** Whether the soft keyboard should be up — true only while a `text-input` is
+   * focused (ADR-0069, #392). The host attaches `EditContext` (which raises the
+   * keyboard) only when this is true, so a plain tap never summons it. */
+  ime_wants_keyboard(): boolean;
   /** JSON-encoded AccessKit `TreeUpdate` (ADR-0041), or `null` before layout. */
   poll_accessibility(): string | null;
   render(timestampMs: number): void;

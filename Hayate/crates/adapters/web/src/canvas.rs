@@ -24,7 +24,7 @@ use crate::apply_mutations_dispatch::{
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
-use crate::ime_bridge::{sync_ime_character_bounds, WebImeBridge};
+use crate::ime_bridge::WebImeBridge;
 use crate::style_packet;
 
 use crate::shared::{element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
@@ -419,9 +419,9 @@ impl HayateElementRenderer {
         }
         let sg = self.tree.render(timestamp_ms);
         let present = self.backend.render_scene(sg, self.background);
-        if let Some(focused) = self.tree.focused_element() {
-            sync_ime_character_bounds(&self.tree, focused, &mut self.ime);
-        }
+        // Core decides soft-keyboard visibility + candidate-window bounds once
+        // (ADR-0069, #392); the bridge just records it for the JS host to apply.
+        self.tree.drive_ime(&mut self.ime);
         present
     }
 
@@ -910,6 +910,14 @@ impl HayateElementRenderer {
     pub fn ime_character_bounds(&self) -> Box<[f32]> {
         let b = self.ime.last_bounds();
         vec![b.x, b.y, b.width, b.height].into_boxed_slice()
+    }
+
+    /// Whether the soft keyboard should be up this frame — true only while a
+    /// `text-input` is focused (ADR-0069, #392). The JS host attaches the
+    /// `EditContext` (which raises the keyboard) only when this is true, so a
+    /// plain tap on non-editable content never summons it.
+    pub fn ime_wants_keyboard(&self) -> bool {
+        self.ime.visible()
     }
 
     pub fn element_set_text_content(&mut self, id: f64, text: &str) {

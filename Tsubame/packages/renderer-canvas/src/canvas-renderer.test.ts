@@ -73,6 +73,9 @@ class StubHayate implements RawHayate {
   ime_character_bounds(): number[] {
     return [0, 0, 0, 0];
   }
+  ime_wants_keyboard(): boolean {
+    return false;
+  }
   textContents = new Map<number, string>();
   element_get_text_content(id: number): string {
     return this.textContents.get(id) ?? '';

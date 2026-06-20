@@ -3,9 +3,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { RawHayate } from './hayate.js';
 import {
+  attachTextInput,
   canvasPixelRectToDomRect,
   compositionFormatsToWire,
-  syncEditContextBounds,
+  syncEditContext,
 } from './edit-context-sync.js';
 
 function stubCanvas(
@@ -18,8 +19,20 @@ function stubCanvas(
     width,
     height,
     editContext,
+    tabIndex: -1,
+    addEventListener: vi.fn(),
     getBoundingClientRect: () => rect as DOMRect,
   } as unknown as HTMLCanvasElement;
+}
+
+/** A minimal EditContext mock that records bounds calls. */
+function stubEditContext(): EditContext {
+  return {
+    addEventListener: vi.fn(),
+    updateControlBounds: vi.fn(),
+    updateSelectionBounds: vi.fn(),
+    selectionStart: 0,
+  } as unknown as EditContext;
 }
 
 describe('canvasPixelRectToDomRect', () => {
@@ -60,33 +73,76 @@ describe('compositionFormatsToWire', () => {
   });
 });
 
-describe('syncEditContextBounds', () => {
-  it('updates EditContext when focused element has IME bounds', () => {
-    const updateControlBounds = vi.fn();
-    const updateSelectionBounds = vi.fn();
+describe('syncEditContext bounds', () => {
+  it('places the candidate window on a host-managed EditContext while editing', () => {
+    const editContext = stubEditContext();
     const canvas = stubCanvas(
       100,
       50,
       { left: 0, top: 0, width: 100, height: 50 },
-      {
-        updateControlBounds,
-        updateSelectionBounds,
-      } as unknown as EditContext,
+      editContext,
     );
 
     const raw = {
-      focused_element_id: () => 42,
+      ime_wants_keyboard: () => true,
       ime_character_bounds: () => [10, 5, 4, 12],
-    } as RawHayate;
+    } as unknown as RawHayate;
 
-    syncEditContextBounds(canvas, raw);
+    syncEditContext(canvas, raw);
 
-    expect(updateControlBounds).toHaveBeenCalledOnce();
-    expect(updateSelectionBounds).toHaveBeenCalledOnce();
-    const rect = updateControlBounds.mock.calls[0]![0] as DOMRect;
+    expect(editContext.updateControlBounds).toHaveBeenCalledOnce();
+    expect(editContext.updateSelectionBounds).toHaveBeenCalledOnce();
+    const rect = (editContext.updateControlBounds as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as DOMRect;
     expect(rect.x).toBe(10);
     expect(rect.y).toBe(5);
     expect(rect.width).toBe(4);
     expect(rect.height).toBe(12);
+  });
+});
+
+// The mobile bug (#392): tapping any non-editable content raised the soft
+// keyboard. The keyboard is raised by attaching our EditContext, so it must
+// attach only while core reports a focused text-input (`ime_wants_keyboard`).
+describe('syncEditContext keyboard gating (#392)', () => {
+  function setup() {
+    const editContext = stubEditContext();
+    const canvas = stubCanvas(100, 50, { left: 0, top: 0, width: 100, height: 50 });
+    let wants = false;
+    const raw = {
+      focused_element_id: () => 0,
+      has_selection: () => false,
+      ime_wants_keyboard: () => wants,
+      ime_character_bounds: () => [0, 0, 4, 12],
+    } as unknown as RawHayate;
+    attachTextInput(canvas, raw, () => editContext);
+    return { canvas, raw, editContext, setWants: (v: boolean) => (wants = v) };
+  }
+
+  it('does not attach the EditContext when no text-input is focused', () => {
+    const { canvas, raw, setWants } = setup();
+    setWants(false);
+    syncEditContext(canvas, raw);
+    // Not attached → no soft keyboard on a plain tap.
+    expect(canvas.editContext == null).toBe(true);
+  });
+
+  it('attaches the EditContext when a text-input is focused', () => {
+    const { canvas, raw, editContext, setWants } = setup();
+    setWants(true);
+    syncEditContext(canvas, raw);
+    expect(canvas.editContext).toBe(editContext);
+  });
+
+  it('detaches the EditContext when focus leaves the text-input', () => {
+    const { canvas, raw, editContext, setWants } = setup();
+    setWants(true);
+    syncEditContext(canvas, raw);
+    expect(canvas.editContext).toBe(editContext);
+
+    setWants(false);
+    syncEditContext(canvas, raw);
+    // Detached → soft keyboard dismisses.
+    expect(canvas.editContext).toBeNull();
   });
 });

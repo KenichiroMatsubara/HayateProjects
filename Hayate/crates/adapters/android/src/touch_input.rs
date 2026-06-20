@@ -6,10 +6,10 @@
 //! `on_pointer_move` / `on_pointer_up`, already pointer-type-independent per
 //! ADR-0082). It is kept free of `android_activity`/`ndk` types so the
 //! translation is unit-testable on the host without the NDK — mirroring
-//! `canvas_resize_metrics` (`hayate-adapter-web/src/resize_observer.rs`) and
-//! `sync_ime_character_bounds` (`hayate-adapter-web/src/ime_bridge.rs`), which
-//! push logic into host-testable pure functions and keep the dirty platform
-//! glue thin.
+//! `canvas_resize_metrics` (`hayate-adapter-web/src/resize_observer.rs`) and the
+//! `ImeBridge` seam (`ElementTree::drive_ime` decides, the adapter reflects),
+//! which push logic into host-testable pure functions and keep the dirty
+//! platform glue thin.
 
 /// A single pointer's touch action, mirroring Android `MotionAction` without
 /// depending on `android_activity`/`ndk` types.

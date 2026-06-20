@@ -35,7 +35,7 @@ pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
 pub use edit_state::{
     CompositionClause, CompositionUnderline, Direction, EditIntent, EditState, Granularity, Preedit,
 };
-pub use ime_bridge::{CharacterBounds, ImeBridge};
+pub use ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
 pub use event_spec::{event_document_kind, DocumentEventKind, Event};
 pub use id::ElementId;
 pub use interaction::{InputModality, PointerMoveResult};
