@@ -66,6 +66,7 @@ class StubHayate implements RawHayate {
   on_text_input(): void {}
   on_composition_start(): void {}
   on_composition_update(): void {}
+  on_composition_update_formatted(): void {}
   on_composition_end(): void {}
   focused_element_id(): number {
     return 0;
@@ -594,5 +595,39 @@ describe('CanvasRenderer viewport sizing (ADR-0007)', () => {
     expect(canvas.height).toBe(1440);
 
     renderer.stop();
+  });
+
+  it('resizes with the live devicePixelRatio, not the value cached at construction', () => {
+    // Mobile Chrome bumps `devicePixelRatio` *after* the renderer is built — the
+    // soft keyboard / zoom-on-focus that fires while typing changes the effective
+    // ratio. A ratio cached at construction then rebuilds the backing store too
+    // small, so the scene is upscaled to fit the canvas and glyphs go rough. The
+    // observer must read the live ratio on every resize.
+    const previous = globalThis.devicePixelRatio;
+    try {
+      (globalThis as { devicePixelRatio: number }).devicePixelRatio = 2;
+      const hayate = new StubHayate();
+      const sched = manualScheduler();
+      const canvas = createCanvas(400, 300);
+      // No explicit devicePixelRatio override → must track the global each resize.
+      MockResizeObserver.instances = [];
+      const renderer = new CanvasRenderer(hayate, {
+        ...sched,
+        canvas,
+        createResizeObserver: MockResizeObserver as unknown as typeof ResizeObserver,
+      });
+
+      (globalThis as { devicePixelRatio: number }).devicePixelRatio = 3;
+      MockResizeObserver.instances[0]!.emit(400, 300);
+
+      const last = hayate.resizes.at(-1)!;
+      expect(last).toEqual({ width: 400, height: 300, scale: 3 });
+      expect(canvas.width).toBe(1200);
+      expect(canvas.height).toBe(900);
+
+      renderer.stop();
+    } finally {
+      (globalThis as { devicePixelRatio: number }).devicePixelRatio = previous;
+    }
   });
 });
