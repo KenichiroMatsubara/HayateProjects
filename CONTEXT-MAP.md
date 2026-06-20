@@ -14,4 +14,5 @@ This monorepo has multiple domain contexts. Read the `CONTEXT.md` relevant to th
 | ----- | -------- |
 | Monorepo / system-wide | [`docs/adr/`](./docs/adr/) |
 | Hayate-specific | [`Hayate/docs/adr/`](./Hayate/docs/adr/) |
+| Hayabusa-specific | [`Hayabusa/docs/adr/`](./Hayabusa/docs/adr/) |
 | Tsubame-specific | [`Tsubame/docs/adr/`](./Tsubame/docs/adr/) |

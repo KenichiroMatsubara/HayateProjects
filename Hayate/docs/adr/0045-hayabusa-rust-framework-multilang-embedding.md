@@ -1,7 +1,8 @@
 # Hayabusa は Rust フレームワークとして hayate-core に直接リンクし、多言語は言語ランタイム埋め込みで実現する
 
 status: accepted  
-supersedes: ADR-0024
+supersedes: ADR-0024  
+refined by: Hayabusa ADR-0001（多言語の実現手段を「言語ランタイム埋め込み」から「全 wasm ゲスト」へ。核の Rust 直リンク・WIT なし・Signal ランタイム所有は不変）
 
 Hayabusa は Rust クレートとして hayate-core に直接依存する。WIT 境界を経由しない。
 多言語サポート（TypeScript / Python 等）はフレームワーク内部に言語ランタイムを埋め込む形で実現し

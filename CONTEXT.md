@@ -14,8 +14,8 @@ Hayate は UI フレームワーク・状態管理・Reconciler・Component tree
 _Avoid_: フレームワーク、ライブラリ、レンダラー単体
 
 **Hayabusa（隼）**:
-Hayate の Element Layer 上に構築された Signal ベースの SFC（Single-File Component）フレームワーク。`.hybs` 形式で、テンプレートとスタイルは言語非依存の DSL、スクリプトはプロジェクト単位で選んだ単一言語で書く。
-_Avoid_: Hayate の別名、エンジン、Rust 専用フレームワーク
+Hayate の Element Layer 上に構築された Signal ベースの SFC（Single-File Component）フレームワーク。リアクティブランタイム（Signal グラフ・伝播・reconcile・スケジューリング）を Rust で**単独所有**する点が、各言語の既存ランタイムを再利用する Tsubame と対をなす（意図的な逆張り）。`.hybs` 形式で、テンプレートとスタイルは言語非依存の DSL、スクリプトは WASM にコンパイル可能な任意の単一言語で書く。JS/TS は Tsubame の領分であり Hayabusa の対象言語ではない。
+_Avoid_: Hayate の別名、エンジン、Rust 専用フレームワーク、JS/TS 向けフレームワーク、Tsubame と同じく言語側ランタイムを再利用する設計
 
 **Element Layer（要素層）**:
 Hayate の外部公開サーフェス。element tree の作成・Hayate CSS の設定・ツリー組み立てを受け付ける上位の概念層。Hayabusa および他言語 SDK はこの層を使う。
@@ -162,8 +162,8 @@ _Avoid_: クラス、関数コンポーネント
 _Avoid_: HTML、JSX、テンプレートエンジン（Handlebars 等）
 
 **Script Adapter**:
-特定言語向けの Hayabusa SDK 実装。Signal・Computed・Effect・on_mount・on_destroy・prop・emit を当該言語のイディオムで提供する。一プロジェクトで使えるのは一つだけ。
-_Avoid_: プラグイン、バインディング
+特定言語向けの Hayabusa SDK 実装。Signal・Computed・Effect・on_mount・on_destroy・prop・emit を当該言語のイディオムで*表面*として提供するが、リアクティビティの実体は Rust ランタイムが所有し、Adapter はランタイムへの薄いエンコーダ＋ハンドラ本体の登録に徹する。言語ごとに Signal 意味論を実装し直さない。一プロジェクトで使えるのは一つだけ。
+_Avoid_: プラグイン、バインディング、言語ごとにリアクティビティを再実装する設計
 
 **Prop**:
 コンポーネントが外部から受け取る入力値。`<script>` 内で `prop("name")` の呼び出しにより宣言する。
@@ -186,7 +186,7 @@ Hayabusa が提供する URL ベースのナビゲーション管理。現在の
 _Avoid_: ページ遷移ライブラリ
 
 **Store**:
-コンポーネントをまたいで共有されるリアクティブ状態。単一コンポーネント内の Signal と異なり、アプリ全体またはサブツリーで参照できる状態の器。
+コンポーネントをまたいで共有されるリアクティブ状態。単一コンポーネント内の Signal と異なり、アプリ全体、または特定コンポーネントとその子孫コンポーネントで参照できる状態の器。
 _Avoid_: Signal（単一コンポーネントスコープ）、Redux Store
 
 **Resource**:

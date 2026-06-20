@@ -1,5 +1,7 @@
 # Hayabusa は独立リポジトリを持ち、hayabusa:runtime WIT をそこで定義する
 
+status: superseded by Hayabusa ADR-0006（モノレポ内 `Hayabusa/` クレートへ。WIT 境界は Hayate ADR-0045 で既に撤廃済み）
+
 Hayabusa のコード・WIT・Script Adapter・コンパイラはすべて
 Hayate リポジトリとは独立したリポジトリで管理する。
 Hayabusa リポジトリが `hayabusa:runtime` WIT（Signal / Computed / Effect 等）を定義し、
