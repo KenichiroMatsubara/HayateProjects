@@ -42,7 +42,7 @@ function eventFields(ev: EventPayload): Record<string, string | number> {
     case 'key_down':
       return { target_id: ev.targetId, key: ev.key, modifiers: ev.modifiers };
     case 'pointer_move':
-      return { x: ev.x, y: ev.y };
+      return { x: ev.x, y: ev.y, pointer_kind: ev.pointerKind };
     case 'fetch_font':
       return { family: ev.family };
     default: {

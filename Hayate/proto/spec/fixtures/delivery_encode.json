@@ -86,7 +86,7 @@
   {
     "name": "pointer_move",
     "kind": "pointer_move",
-    "fields": { "x": 50, "y": 60, "kind": "touch" },
+    "fields": { "x": 50, "y": 60, "pointer_kind": 1 },
     "wire": [14, 50, 60, 1]
   },
   {
