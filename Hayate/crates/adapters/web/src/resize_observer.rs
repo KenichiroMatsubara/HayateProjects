@@ -16,40 +16,22 @@ use wasm_bindgen::closure::Closure;
 use web_sys::{HtmlCanvasElement, ResizeObserver, ResizeObserverEntry};
 
 /// レイアウトビューポート（CSS px）、バッキングストアサイズ（物理 px）、コンテンツスケール（dpr）。
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CanvasResizeMetrics {
-    pub viewport_width: f32,
-    pub viewport_height: f32,
-    pub buffer_width: u32,
-    pub buffer_height: u32,
-    pub content_scale: f32,
-}
+///
+/// Web/Android で共有する `hayate_core::ViewportMetrics` の別名。寸法導出の正本は core 側。
+pub use hayate_core::ViewportMetrics as CanvasResizeMetrics;
+/// リサイズ通知を出すべきか（サブピクセルの揺れは無視する）。core の正本へ委譲する。
+pub use hayate_core::viewport_size_changed;
 
 /// CSS コンテンツボックスと DPR からビューポートとバッファの寸法を導出する。
+///
+/// 計算自体は `ViewportMetrics::from_logical_size`（Web 経路）に集約されており、本関数は
+/// `ResizeObserver` の CSS px 入力をその論理寸法経路へ橋渡しする薄いラッパー。
 pub fn canvas_resize_metrics(
     css_width: f32,
     css_height: f32,
     device_pixel_ratio: f64,
 ) -> CanvasResizeMetrics {
-    let viewport_width = css_width.max(0.0);
-    let viewport_height = css_height.max(0.0);
-    let dpr = device_pixel_ratio.max(1.0);
-    let content_scale = dpr as f32;
-    let buffer_width = (f64::from(viewport_width) * dpr).round().max(1.0) as u32;
-    let buffer_height = (f64::from(viewport_height) * dpr).round().max(1.0) as u32;
-    CanvasResizeMetrics {
-        viewport_width,
-        viewport_height,
-        buffer_width,
-        buffer_height,
-        content_scale,
-    }
-}
-
-/// リサイズ通知を出すべきか（サブピクセルの揺れは無視する）。
-pub fn viewport_size_changed(previous: (f32, f32), next: (f32, f32)) -> bool {
-    const EPSILON: f32 = 0.5;
-    (previous.0 - next.0).abs() > EPSILON || (previous.1 - next.1).abs() > EPSILON
+    CanvasResizeMetrics::from_logical_size(css_width, css_height, device_pixel_ratio)
 }
 
 #[cfg(target_arch = "wasm32")]
