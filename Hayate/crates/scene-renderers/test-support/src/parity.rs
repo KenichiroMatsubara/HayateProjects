@@ -1,4 +1,4 @@
-//! Semantic parity pixel fixtures for tiny-skia golden baselines (#151).
+//! tiny-skia ゴールデンベースライン用の意味的パリティ・ピクセルフィクスチャ。
 
 use std::path::{Path, PathBuf};
 
@@ -125,13 +125,13 @@ fn box_shadow_drop_tree() -> ElementTree {
 
 fn assert_box_shadow_drop_ink(data: &[u8]) {
     use crate::pixel::pixel;
-    // The blurred drop shadow darkens pixels down-right of the box…
+    // ぼかしたドロップシャドウは、ボックスの右下のピクセルを暗くする。
     let shadow = pixel(data, CANVAS_W, 56, 56);
     assert!(
         shadow[0] < 240 && shadow[3] > 0,
         "expected box-shadow ink below-right of box, got {shadow:?}"
     );
-    // …while a far corner stays clear.
+    // 一方、遠い隅はクリアのまま。
     let far = pixel(data, CANVAS_W, 95, 95);
     assert!(far[0] >= 240, "expected clear far corner, got {far:?}");
 }

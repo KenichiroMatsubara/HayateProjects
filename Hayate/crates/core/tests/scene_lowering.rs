@@ -1,4 +1,4 @@
-//! Retained incremental scene lowering + Element Anchor (issue #182).
+//! Retained な差分シーン lowering と Element Anchor。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, OverflowValue, RecordingPainter,

@@ -1,4 +1,4 @@
-//! Issue #185: prop-class precision for visual invalidation reach.
+//! ビジュアル無効化の到達範囲における prop-class 精度。
 
 use hayate_core::{
     Color, Dimension, ElementKind, ElementTree, PseudoState, StyleProp,

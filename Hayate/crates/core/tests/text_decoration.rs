@@ -1,4 +1,4 @@
-//! text-decoration underline / line-through placement in run-local coordinates.
+//! text-decoration の underline / line-through を run ローカル座標で配置する。
 
 use hayate_core::{
     Color, Dimension, ElementKind, ElementTree, NodeKind, StyleProp, TextDecorationValue,

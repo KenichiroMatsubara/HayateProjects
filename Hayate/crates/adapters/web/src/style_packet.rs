@@ -33,7 +33,7 @@ mod tests {
         decode(packed).expect("decode should not fail")
     }
 
-    // ── Color properties ──────────────────────────────────────────────────────
+    // ── 色プロパティ ──────────────────────────────────────────────────────
 
     #[test]
     fn background_color_rgba() {
@@ -82,7 +82,7 @@ mod tests {
         }
     }
 
-    // ── Dimension properties ──────────────────────────────────────────────────
+    // ── 寸法プロパティ ──────────────────────────────────────────────────
 
     #[test]
     fn width_px() {
@@ -139,7 +139,7 @@ mod tests {
         }
     }
 
-    // ── Display enum ──────────────────────────────────────────────────────────
+    // ── Display enum ──────────────────────────────────────────────────
 
     #[test]
     fn display_flex() {
@@ -170,7 +170,7 @@ mod tests {
         }
     }
 
-    // ── FlexDirection enum ────────────────────────────────────────────────────
+    // ── FlexDirection enum ────────────────────────────────────────────
 
     #[test]
     fn flex_direction_row() {
@@ -200,7 +200,7 @@ mod tests {
         }
     }
 
-    // ── AlignItems enum ───────────────────────────────────────────────────────
+    // ── AlignItems enum ───────────────────────────────────────────────
 
     #[test]
     fn align_items_flex_start() {
@@ -221,7 +221,7 @@ mod tests {
         }
     }
 
-    // ── JustifyContent enum ───────────────────────────────────────────────────
+    // ── JustifyContent enum ───────────────────────────────────────────
 
     #[test]
     fn justify_content_flex_start() {
@@ -242,7 +242,7 @@ mod tests {
         }
     }
 
-    // ── Overflow enum ─────────────────────────────────────────────────────────
+    // ── Overflow enum ─────────────────────────────────────────────────
 
     #[test]
     fn overflow_hidden() {
@@ -300,7 +300,7 @@ mod tests {
         }
     }
 
-    // ── FontFamily ────────────────────────────────────────────────────────────
+    // ── FontFamily ────────────────────────────────────────────────────
 
     #[test]
     fn font_family_inter() {
@@ -330,7 +330,7 @@ mod tests {
         }
     }
 
-    // ── Scalar properties ─────────────────────────────────────────────────────
+    // ── スカラープロパティ ─────────────────────────────────────────────────────
 
     #[test]
     fn opacity() {
@@ -382,11 +382,11 @@ mod tests {
         }
     }
 
-    // ── Multi-prop packet ─────────────────────────────────────────────────────
+    // ── 複数プロパティのパケット ─────────────────────────────────────────────────────
 
     #[test]
     fn multiple_props_in_sequence() {
-        // background_color + width + display
+        // background_color + width + display の組み合わせ
         let packet = [
             0.0_f32, 1.0, 0.0, 0.0, 1.0,  // TAG_BACKGROUND_COLOR=0 + rgba
             5.0, 100.0, 0.0,               // TAG_WIDTH=5 + px

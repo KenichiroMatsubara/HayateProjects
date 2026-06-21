@@ -15,7 +15,7 @@ pub fn run_vello(case: &CssPixelCase, harness: &mut VelloHarness) {
     (case.check)(&pixels);
 }
 
-/// Run every case, re-panicking with the property name for CI readability.
+/// 全ケースを実行する。CI で読みやすいよう、プロパティ名を付けて再パニックする。
 pub fn run_all_tiny_skia(cases: &[CssPixelCase]) {
     for case in cases {
         let prop = case.css_property;

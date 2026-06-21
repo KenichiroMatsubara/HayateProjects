@@ -6,7 +6,7 @@ export interface HappyDomFixture {
   container: HTMLElement;
 }
 
-/** happy-dom DOM types are not structurally compatible with lib.dom; cast at this boundary. */
+/** happy-dom の DOM 型は lib.dom と構造的に互換でないため、この境界でキャストする。 */
 export function createHappyDomFixture(): HappyDomFixture {
   const window = new Window();
   const container = window.document.createElement('div');

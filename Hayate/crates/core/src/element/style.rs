@@ -324,7 +324,7 @@ pub enum StyleProp {
 }
 
 impl StyleProp {
-    /// Layout-affecting props go to Taffy; visual/text props go to Visual.
+    /// レイアウトに影響するプロパティは Taffy へ、visual/text プロパティは Visual へ。
     pub fn is_layout(&self) -> bool {
         matches!(
             self,

@@ -5,11 +5,10 @@ import type { ViewportCondition } from './viewport-condition.js';
 import type { EventHandler, EventKind, Unsubscribe } from './event.js';
 
 /**
- * Tsubame renderer/adaptor boundary.
+ * Tsubame の renderer/adaptor 境界。
  *
- * Adapters build an element tree, apply style patches, and register interaction
- * handlers through this interface without depending on a concrete DOM/Canvas
- * implementation.
+ * adapter はこのインターフェース越しに、具体的な DOM/Canvas 実装に依存せず、
+ * 要素ツリーの構築・スタイルパッチの適用・インタラクションハンドラの登録を行う。
  */
 export interface IRenderer {
   createElement(kind: ElementKind): ElementId;
@@ -18,15 +17,15 @@ export interface IRenderer {
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void;
   removeChild(parent: ElementId, child: ElementId): void;
   setStyle(id: ElementId, style: StylePatch): void;
-  /** Hayate CSS pseudo-class block (`:hover` / `:active` / `:focus`). */
+  /** Hayate CSS の擬似クラスブロック（`:hover` / `:active` / `:focus`）。 */
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void;
-  /** Viewport-conditional style override, one variant per property (ADR-0081). */
+  /** ビューポート条件付きのスタイル上書き。プロパティごとに 1 バリアント（ADR-0081）。 */
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void;
   setText(id: ElementId, text: string): void;
 
   /**
-   * Applies closed semantic props (`value` / `placeholder` / `disabled` / `src`).
-   * Unknown names must throw (ADR-0071). `aria-*` uses first-class APIs only.
+   * 閉じたセマンティックプロップ（`value` / `placeholder` / `disabled` / `src`）を適用する。
+   * 未知の名前は throw すること（ADR-0071）。`aria-*` は first-class API のみを使う。
    */
   setProperty(id: ElementId, name: string, value: unknown): void;
 

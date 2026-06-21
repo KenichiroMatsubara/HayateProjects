@@ -9,7 +9,7 @@ fn ink_width(data: &[u8]) -> u32 {
     max_x - min_x
 }
 
-/// Semibold variable-font weight should paint wider than regular.
+/// 可変フォントの semibold ウェイトは、regular より太く描かれるべき。
 pub fn assert_semibold_wider_than_regular() {
     let regular = tiny_skia::render_scene_to_pixels(&render_tree_to_scene(text_tree(&[
         StyleProp::FontWeight(400.0),
@@ -25,7 +25,7 @@ pub fn assert_semibold_wider_than_regular() {
     );
 }
 
-/// Faux italic must change the raster compared to upright text.
+/// 擬似イタリックは、直立テキストとはラスタが変わらなければならない。
 pub fn assert_italic_pixels_skew_right(data: &[u8]) {
     let normal = tiny_skia::render_scene_to_pixels(&render_tree_to_scene(text_tree(&[])));
     assert_ne!(

@@ -1,4 +1,4 @@
-//! Seam for applying parsed `apply_mutations` ops to the Canvas Mode ElementTree.
+//! パース済みの `apply_mutations` ops を Canvas Mode の ElementTree へ適用するシーム。
 use hayate_core::ElementTree;
 
 pub(crate) trait ApplyMutationsHost {

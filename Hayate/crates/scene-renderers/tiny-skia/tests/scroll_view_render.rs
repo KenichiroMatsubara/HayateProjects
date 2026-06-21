@@ -1,4 +1,4 @@
-//! Pixel regression: ScrollView content must be clipped to its box (issue #199).
+//! ピクセル回帰: ScrollView の内容は自分のボックスにクリップされねばならない。
 
 use hayate_core::{Color, Dimension, ElementKind, ElementTree, StyleProp};
 use hayate_scene_renderer_tiny_skia::TinySkiaSceneRenderer;
@@ -55,7 +55,7 @@ fn scroll_view_clips_overflowing_content() {
     );
 }
 
-/// Mirrors the single `scroll-view` CSS Gallery sample (height: 72, content taller).
+/// CSS Gallery の単一 `scroll-view` サンプル（height: 72、内容はそれより高い）を再現する。
 #[test]
 fn css_gallery_scroll_view_height_clips_overflow() {
     let tree = scroll_view_with_tall_content(72.0);

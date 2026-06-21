@@ -1,4 +1,4 @@
-//! ADR-0071: disabled suppresses hit-testing and interaction.
+//! ADR-0071: disabled はヒットテストとインタラクションを抑止する。
 
 use hayate_core::{
     Dimension, ElementKind, ElementTree, StyleProp,

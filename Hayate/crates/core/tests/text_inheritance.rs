@@ -1,4 +1,4 @@
-//! ADR-0065: two-channel text inheritance (text-local + ambient default).
+//! ADR-0065: 2チャネルのテキスト継承（text-local + ambient default）。
 
 use hayate_core::{
     Color, Dimension, ElementId, ElementKind, ElementTree, NodeKind, StyleProp,

@@ -1,4 +1,4 @@
-//! Font synthesis propagation through the Element Document pipeline (ADR-0085).
+//! Element Document パイプラインを通したフォント合成の伝播（ADR-0085）。
 
 use hayate_core::{
     Dimension, ElementKind, ElementTree, FontStyleValue, NodeKind, StyleProp,

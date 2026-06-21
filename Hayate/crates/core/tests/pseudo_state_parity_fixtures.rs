@@ -1,4 +1,4 @@
-//! Cross-language pseudo-state parity corpus (#176): `resolve_visual` vs DOM emitter.
+//! 言語間の擬似状態パリティコーパス: `resolve_visual` と DOM emitter の一致を検証する。
 
 use std::collections::HashMap;
 use std::fs;
@@ -124,7 +124,7 @@ fn color_to_hex(c: Color) -> String {
     format!("#{:02x}{:02x}{:02x}", r, g, b)
 }
 
-/// Mirror DOM text-channel gating: text-local keys only observable on text elements.
+/// DOM のテキストチャネルのゲーティングを再現する: text 固有のキーは text 要素でのみ観測できる。
 fn visual_to_parity_map(visual: &Visual, element_kind: ElementKind) -> HashMap<String, String> {
     let mut map = HashMap::new();
     if let Some(c) = visual.background_color {
@@ -205,7 +205,7 @@ fn corpus_catches_flipped_pseudo_priority() {
     let pseudo = pseudo_styles_from_fixture(&fixture["pseudo"]);
     let mut out = Visual::default();
     let mut text_dirty = false;
-    // Wrong band order: hover applied after active.
+    // 誤った band 順序: hover を active の後に適用する。
     apply_visual_props(&mut out, pseudo.props(PseudoState::Active), &mut text_dirty);
     apply_visual_props(&mut out, pseudo.props(PseudoState::Hover), &mut text_dirty);
 

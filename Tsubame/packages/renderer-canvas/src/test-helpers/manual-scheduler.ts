@@ -1,4 +1,4 @@
-/** Deterministic frame scheduler for tests: `tick()` runs the pending frame. */
+/** テスト用の決定的フレームスケジューラ。`tick()` で保留中フレームを実行する。 */
 export interface ManualScheduler {
   requestFrame: (cb: FrameRequestCallback) => number;
   cancelFrame: (handle: number) => void;
