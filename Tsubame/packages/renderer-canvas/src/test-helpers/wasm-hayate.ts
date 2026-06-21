@@ -36,6 +36,15 @@ export async function createNullHayate(
     canvas,
   )) as unknown as RawHayate;
 
+  // `init` derives the viewport from `canvas.getBoundingClientRect()`, but the
+  // test DOM (jsdom/happy-dom) does no layout and reports a 0×0 box — leaving
+  // the viewport at 0, so `width:100%/height:100%` collapses to zero geometry
+  // and hit-testing/hover never fire. Set it explicitly from the known size.
+  (raw as unknown as { set_viewport(w: number, h: number): void }).set_viewport(
+    width,
+    height,
+  );
+
   return {
     raw,
     canvas,

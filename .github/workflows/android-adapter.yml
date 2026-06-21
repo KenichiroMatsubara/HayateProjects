@@ -61,6 +61,10 @@ jobs:
         run: |
           NDK_BIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           echo "CC_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+          # android-activity の game-activity feature は C++ を含むため cc-rs が C++
+          # コンパイラを要求する。CC だけだと既定名 aarch64-linux-android-clang++
+          # (API 番号なし) を探して失敗するので、API21 付きの実体を明示する。
+          echo "CXX_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android21-clang++" >> "$GITHUB_ENV"
           echo "AR_aarch64_linux_android=${NDK_BIN}/llvm-ar" >> "$GITHUB_ENV"
           echo "RANLIB_aarch64_linux_android=${NDK_BIN}/llvm-ranlib" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
@@ -104,6 +108,10 @@ jobs:
         run: |
           NDK_BIN="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           echo "CC_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"
+          # android-activity の game-activity feature は C++ を含むため cc-rs が C++
+          # コンパイラを要求する。CC だけだと既定名 aarch64-linux-android-clang++
+          # (API 番号なし) を探して失敗するので、API21 付きの実体を明示する。
+          echo "CXX_aarch64_linux_android=${NDK_BIN}/aarch64-linux-android21-clang++" >> "$GITHUB_ENV"
           echo "AR_aarch64_linux_android=${NDK_BIN}/llvm-ar" >> "$GITHUB_ENV"
           echo "RANLIB_aarch64_linux_android=${NDK_BIN}/llvm-ranlib" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_BIN}/aarch64-linux-android21-clang" >> "$GITHUB_ENV"

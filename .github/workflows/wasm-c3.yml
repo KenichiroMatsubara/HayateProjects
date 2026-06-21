@@ -57,6 +57,9 @@ jobs:
         run: |
           pnpm --filter @tsubame/protocol-generated run generate
           pnpm --filter @tsubame/renderer-protocol build
+          # golden-frame テストは @tsubame/solid を import する。dist/ が無いと
+          # Vite が "Failed to resolve entry" でスイート読込ごと失敗するためビルド。
+          pnpm --filter @tsubame/solid build
 
       - name: Run renderer-canvas C3 tests
         working-directory: Tsubame/packages/renderer-canvas
@@ -83,8 +86,11 @@ jobs:
       - name: Run pointer-input wasm-bindgen tests (backend-null)
         working-directory: Hayate
         run: |
+          # wasm-pack 0.15 の CLI 変更（PR #851）: クレートパスと cargo test への
+          # 追加オプションは位置引数で直接渡す。旧来の `--` を置くと後続フラグが
+          # テストバイナリ(harness)側に流れて "unexpected argument" で落ちる。
           wasm-pack test --headless --firefox crates/adapters/web \
-            -- --no-default-features --features backend-null \
+            --no-default-features --features backend-null \
             --test pointer_input_browser \
             --test html_text_input_focus_ring_browser \
             --test edit_input_browser
