@@ -3,6 +3,11 @@
 //! `android-activity` は `MainEvent` をバックグラウンドスレッドで配送する。本
 //! モジュールはそれらのイベントをアダプタが取るべき GPU サーフェス操作へ写像する。
 //! NDK なしで挙動を検証できるよう全ターゲットでコンパイルする。
+//!
+//! 物理サーフェス寸法から論理ビューポート/バッファを導く計算は、Web 経路と共有する
+//! `hayate_core::ViewportMetrics` に委譲する（width/height 取得の抽象化）。
+
+use hayate_core::ViewportMetrics;
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,10 +82,24 @@ impl Default for SurfaceLifecycleState {
     }
 }
 
+/// content scale 1.0 で描画する現行 Android 経路の content scale。
+///
+/// DPI 対応を入れる際は、ここを実機の density から取得した値へ差し替え、`translate_touch`
+/// が渡すタッチ座標も同じ scale で再スケールしてヒットテストと描画を揃える。
+const ANDROID_CONTENT_SCALE: f32 = 1.0;
+
+/// ネイティブウィンドウ寸法と content scale から論理ビューポート/バッファを導く。
+///
+/// 計算は Web 経路と共有する `ViewportMetrics::from_physical_size` に集約されている。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn surface_metrics(width: i32, height: i32) -> ViewportMetrics {
+    ViewportMetrics::from_physical_size(width, height, ANDROID_CONTENT_SCALE)
+}
+
 /// wgpu サーフェス設定のため、ネイティブウィンドウ寸法を最低 1×1 にクランプする。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
-    (width.max(1) as u32, height.max(1) as u32)
+    surface_metrics(width, height).buffer_size()
 }
 
 /// クランプ済みサーフェス寸法(物理 px)を `ElementTree` のビューポートへ写す。
@@ -91,7 +110,7 @@ pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
 /// この整合を保つためタッチ座標を同調して再スケールする必要がある。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn viewport_for_surface(width: u32, height: u32) -> (f32, f32) {
-    (width as f32, height as f32)
+    surface_metrics(width as i32, height as i32).viewport_size()
 }
 
 #[cfg(test)]

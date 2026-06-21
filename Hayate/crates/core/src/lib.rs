@@ -2,6 +2,7 @@ pub mod color;
 pub mod element;
 pub mod node;
 pub mod render;
+pub mod viewport_metrics;
 
 pub use color::Color;
 pub use element::chrome_tuning::ChromeTuning;
@@ -25,6 +26,7 @@ pub use element::{
     UserSelectValue, ViewportCondition,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
+pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};
 pub use render::{
     DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,
     RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage, RenderImageAlphaType,
