@@ -27,7 +27,7 @@ use crate::touch_input::{translate_touch, PointerInput, TouchAction};
 /// スモークテスト用の RGBA クリアカラー。
 pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
 
-struct GpuSurface {
+pub(crate) struct GpuSurface {
     device: wgpu::Device,
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
@@ -39,6 +39,19 @@ struct GpuSurface {
     scene_renderer: VelloSceneRenderer,
 }
 
+/// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
+/// ネイティブ Hayate を `__hayateHost` として注入して描画する。既存のデモ経路
+/// （下の `#[cfg(not(...))]` 版）は非破壊で温存し、feature でこちらに分岐する。
+#[cfg(feature = "tsubame-js")]
+#[no_mangle]
+pub fn android_main(app: AndroidApp) {
+    android_logger::init_once(
+        android_logger::Config::default().with_max_level(log::LevelFilter::Info),
+    );
+    crate::app_tsubame::run(app);
+}
+
+#[cfg(not(feature = "tsubame-js"))]
 #[no_mangle]
 pub fn android_main(app: AndroidApp) {
     android_logger::init_once(
@@ -146,7 +159,7 @@ pub fn android_main(app: AndroidApp) {
 /// ここに残るのはフォーカス中入力に対する生 GameTextInput バッファの変換のみで、
 /// diff/apply ロジックはホストでテスト可能な [`crate::ime_input`] にある。
 /// このラッパーは `android-activity` のテキスト入力 API への薄いグルー。
-fn sync_ime(
+pub(crate) fn sync_ime(
     app: &AndroidApp,
     tree: &mut ElementTree,
     prev: &mut TextInputState,
@@ -195,7 +208,7 @@ fn sync_ime(
 /// 単一ポインタのタップ/ドラッグのみ（ADR-0082）。マルチタッチジェスチャや
 /// スクロール慣性（ADR-0046）は対象外。イベントごとの計算はホストでテスト可能な
 /// [`translate_touch`] にあり、このラッパーは薄い NDK グルー。
-fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
+pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
     let mut iter = match app.input_events_iter() {
         Ok(iter) => iter,
         Err(err) => {
@@ -238,7 +251,9 @@ fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
     }
 }
 
-async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<GpuSurface, String> {
+pub(crate) async fn init_gpu_surface(
+    window: &ndk::native_window::NativeWindow,
+) -> Result<GpuSurface, String> {
     let (width, height) = window_dimensions(window.width(), window.height());
 
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -308,7 +323,7 @@ async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<G
 }
 
 impl GpuSurface {
-    fn render_frame(&mut self, scene: &SceneGraph) -> Result<(), String> {
+    pub(crate) fn render_frame(&mut self, scene: &SceneGraph) -> Result<(), String> {
         let target = VelloRenderTarget {
             device: &self.device,
             queue: &self.queue,
@@ -341,7 +356,7 @@ impl GpuSurface {
         Ok(())
     }
 
-    fn resize(&mut self, width: u32, height: u32) {
+    pub(crate) fn resize(&mut self, width: u32, height: u32) {
         if width == 0 || height == 0 || (width == self.width && height == self.height) {
             return;
         }

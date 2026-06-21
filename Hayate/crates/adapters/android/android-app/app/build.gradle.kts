@@ -7,9 +7,12 @@ plugins {
 android {
     namespace = "com.hayateprojects.hayate.adapter_android_demo"
     compileSdk = 34
-    // ローカルにインストール済みの NDK を明示（未指定だと AGP 既定の 26 系を探して
-    // "NDK is not installed" になる）。CI/他開発者の環境に合わせて調整すること。
-    ndkVersion = "30.0.14904198"
+    // NDK バージョンはマシン固有なのでハードコードしない（ADR-0112）。
+    // `local.properties` か Gradle プロパティ `hayate.ndkVersion`、もしくは
+    // 環境変数 `HAYATE_NDK_VERSION` で各環境が解決する。未指定なら AGP 既定に委ねる
+    // （その場合 SDK Manager で対応 NDK を入れておくこと）。
+    (project.findProperty("hayate.ndkVersion") as String?
+        ?: System.getenv("HAYATE_NDK_VERSION"))?.let { ndkVersion = it }
 
     defaultConfig {
         applicationId = "com.hayateprojects.hayate.adapter_android_demo"
@@ -46,6 +49,11 @@ dependencies {
     // games-activity does not bring these transitively, so declare them explicitly.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core:1.13.1")
+    // 埋め込み Hermes（ADR-0112）。libhermes.so を APK の jniLibs に取り込み、
+    // cdylib（hayate_adapter_android）が JSI でリンクする。ヘッダ（<jsi/jsi.h> /
+    // <hermes/hermes.h>）は cargo の build.rs に HERMES_INCLUDE で渡す（下記）。
+    // ※ standalone 埋め込みは device 未検証 — バージョン/座標は環境で要調整。
+    implementation("com.facebook.react:hermes-android:0.76.0")
 }
 
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.
@@ -54,8 +62,35 @@ cargo {
     libname = "hayate_adapter_android"
     targets = listOf("arm64")
     profile = "release"
+    // Tsubame JS 駆動経路（ADR-0112）を有効化。OFF だと既存のデモツリー経路。
+    featureSpec.defaultAnd(arrayOf("tsubame-js"))
+    // build.rs に Hermes/JSI ヘッダ探索パスを渡す（device 環境で設定）。
+    System.getenv("HERMES_INCLUDE")?.let { hermesInc ->
+        exec = { spec, _ -> spec.environment("HERMES_INCLUDE", hermesInc) }
+    }
+}
+
+// Tsubame バンドル（tsubame.js）を pnpm でビルドし、APK assets へ同梱する（ADR-0112）。
+// パスは Gradle プロパティ `tsubame.dir` で上書き可能（既定はリポジトリ相対）。
+val tsubameDir = (project.findProperty("tsubame.dir") as String?)
+    ?.let { file(it) }
+    ?: rootProject.file("../../../../../Tsubame")
+
+val bundleTsubameJs by tasks.registering(Exec::class) {
+    workingDir = tsubameDir
+    // pnpm が無い環境向けに npx フォールバック可。
+    commandLine("pnpm", "--filter", "@tsubame/example-todo", "run", "build:android")
+}
+
+val copyTsubameBundle by tasks.registering(Copy::class) {
+    dependsOn(bundleTsubameJs)
+    from(tsubameDir.resolve("examples/todo/dist-android/tsubame.js"))
+    into(layout.projectDirectory.dir("src/main/assets"))
 }
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     dependsOn("cargoBuild")
+}
+tasks.matching { it.name.matches(Regex("merge.*Assets")) }.configureEach {
+    dependsOn(copyTsubameBundle)
 }

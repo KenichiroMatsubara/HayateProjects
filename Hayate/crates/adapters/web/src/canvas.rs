@@ -751,7 +751,7 @@ impl HayateElementRenderer {
     pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) -> Result<(), JsValue> {
         let parsed: Result<Vec<StylePropKind>, JsValue> = kinds
             .iter()
-            .map(|&kind| unset_kind_from_u32(kind))
+            .map(|&kind| unset_kind_from_u32(kind).map_err(|e| JsValue::from_str(&e)))
             .collect();
         self.tree
             .element_unset_style(element_id_from_f64(id), &parsed?);
@@ -956,7 +956,14 @@ impl HayateElementRenderer {
         styles: &[f32],
         texts: js_sys::Array,
     ) -> Result<(), JsValue> {
-        apply_mutations_batch(self, ops, styles, &texts)
+        // 中立化した apply_mutations_batch（ADR-0112）は文字列テーブルを `&[String]` で
+        // 受け取り、エラーを `String` で返す。Web 境界で js_sys::Array を変換し、
+        // `String` エラーを `JsValue` へ写す。
+        let texts: Vec<String> = texts
+            .iter()
+            .map(|v| v.as_string().unwrap_or_default())
+            .collect();
+        apply_mutations_batch(self, ops, styles, &texts).map_err(|e| JsValue::from_str(&e))
     }
 
     /// ライブツリーから編集可能なテキスト内容を返す。

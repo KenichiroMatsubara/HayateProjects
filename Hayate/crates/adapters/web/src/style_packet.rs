@@ -5,7 +5,9 @@ use web_sys::CssStyleDeclaration;
 
 /// スタイルパケットのスライスを `StyleProp` 値へデコードする（proto/spec から生成）。
 pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
-    crate::generated::decode_style_packet(packed)
+    // 中立化した decode_style_packet（ADR-0112）は `String` エラーを返すため、
+    // Web 境界で `JsValue` へ写す。
+    crate::generated::decode_style_packet(packed).map_err(|e| JsValue::from_str(&e))
 }
 
 // ── Hayate CSS → ブラウザ CSS マッピング（HTML モード、ADR-0029） ───────────────

@@ -12,6 +12,12 @@ repository.workspace = true
 # `cargo test` on the dev machine.
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Tsubame JS 駆動経路（ADR-0112）。埋め込み Hermes が呼ぶ apply_mutations を
+# 共有の中立 dispatch 経由で ElementTree に適用する Rust 半分を有効化する。
+# 既定 OFF — 既存のネイティブ build_demo_tree 経路を壊さない（非破壊）。
+tsubame-js = []
+
 [dependencies]
 hayate-core = { path = "../../core" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
@@ -26,3 +32,13 @@ pollster.workspace = true
 android-activity = { version = "0.6", features = ["game-activity"] }
 android_logger = "0.14"
 ndk = "0.9"
+# Tsubame JS 駆動経路（ADR-0112）の C++/JSI ブリッジ。Hermes は JSI(C++)なので
+# cxx で flat-C ABI を張る。device ビルド（Gradle + NDK + libhermes）専用で、
+# ホスト `cargo check` には載らない（build.rs が target_os=android のときだけ
+# C++ をコンパイルする）。
+cxx = "1"
+
+[build-dependencies]
+# cxx ブリッジの C++ 側コンパイル（ADR-0112）。Android ターゲットかつ
+# `tsubame-js` feature 有効時のみ呼ぶ（build.rs 参照）。
+cxx-build = "1"

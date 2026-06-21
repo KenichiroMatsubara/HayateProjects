@@ -2,18 +2,17 @@
 // Source: proto/spec/*.json
 
 use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, ViewportCondition};
-use wasm_bindgen::prelude::*;
 
 use super::ApplyMutationsHost;
 use crate::generated::{Op, decode_style_packet, parse_next_op};
 
-pub(crate) fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, JsValue> {
+pub(crate) fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {
     match v {
         0 => Ok(StylePropKind::Color),
         1 => Ok(StylePropKind::FontSize),
         2 => Ok(StylePropKind::FontFamily),
         3 => Ok(StylePropKind::FontWeight),
-        _ => Err(JsValue::from_str(&format!("unknown unset style kind {v}"))),
+        _ => Err(format!("unknown unset style kind {v}")),
     }
 }
 
@@ -26,11 +25,11 @@ pub(crate) fn apply_mutations_batch<H: ApplyMutationsHost>(
     host: &mut H,
     ops: &[f64],
     styles: &[f32],
-    texts: &js_sys::Array,
-) -> Result<(), JsValue> {
+    texts: &[String],
+) -> Result<(), String> {
     let mut i = 0usize;
     while i < ops.len() {
-        let (op, next) = parse_next_op(ops, i).map_err(|e| JsValue::from_str(e))?;
+        let (op, next) = parse_next_op(ops, i).map_err(|e| e.to_string())?;
         i = next;
         apply_parsed_op(host, op, styles, texts)?;
     }
@@ -41,8 +40,8 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
     host: &mut H,
     op: Op,
     styles: &[f32],
-    texts: &js_sys::Array,
-) -> Result<(), JsValue> {
+    texts: &[String],
+) -> Result<(), String> {
     match op {
         Op::AppendChild { parent_id, child_id } => {
             host.tree_mut().element_append_child(
@@ -70,7 +69,7 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
         Op::SetStyle { id, style_offset, style_len } => {
             let slice = styles
                 .get(style_offset..style_offset + style_len)
-                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE"))?;
+                .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
             host.tree_mut().element_set_style(ElementId::from_u64(id), &props);
             Ok(())
@@ -102,18 +101,18 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
         }
         Op::Create { id, kind } => {
             let k = ElementKind::from_u32(kind)
-                .ok_or_else(|| JsValue::from_str(&format!("unknown element kind {kind}")))?;
+                .ok_or_else(|| format!("unknown element kind {kind}"))?;
             host.tree_mut().element_create(id, k);
             Ok(())
         }
         Op::SetText { id, text_index } => {
-            if text_index >= texts.length() as usize {
-                return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT"));
+            if text_index >= texts.len() {
+                return Err("text index out of bounds in OP_SET_TEXT".to_string());
             }
             let text = texts
-                .get(text_index as u32)
-                .as_string()
-                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_TEXT"))?;
+                .get(text_index)
+                .cloned()
+                .ok_or_else(|| "text table entry is not a string in OP_SET_TEXT".to_string())?;
             host.tree_mut()
                 .element_set_text(ElementId::from_u64(id), &text);
             Ok(())
@@ -125,13 +124,13 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
             Ok(())
         }
         Op::SetTextContent { id, text_index } => {
-            if text_index >= texts.length() as usize {
-                return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT_CONTENT"));
+            if text_index >= texts.len() {
+                return Err("text index out of bounds in OP_SET_TEXT_CONTENT".to_string());
             }
             let text = texts
-                .get(text_index as u32)
-                .as_string()
-                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_TEXT_CONTENT"))?;
+                .get(text_index)
+                .cloned()
+                .ok_or_else(|| "text table entry is not a string in OP_SET_TEXT_CONTENT".to_string())?;
             host.tree_mut()
                 .element_set_text_content(ElementId::from_u64(id), &text);
             Ok(())
@@ -142,24 +141,23 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
             Ok(())
         }
         Op::SetSrc { id, text_index } => {
-            if text_index >= texts.length() as usize {
-                return Err(JsValue::from_str("text index out of bounds in OP_SET_SRC"));
+            if text_index >= texts.len() {
+                return Err("text index out of bounds in OP_SET_SRC".to_string());
             }
             let url = texts
-                .get(text_index as u32)
-                .as_string()
-                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_SRC"))?;
+                .get(text_index)
+                .cloned()
+                .ok_or_else(|| "text table entry is not a string in OP_SET_SRC".to_string())?;
             host.tree_mut()
                 .element_set_src(ElementId::from_u64(id), &url);
             Ok(())
         }
         Op::SetPseudoStyle { id, state, style_offset, style_len } => {
-            let pseudo = PseudoState::from_u32(state).ok_or_else(|| {
-                JsValue::from_str(&format!("unknown pseudo-state {state}"))
-            })?;
+            let pseudo = PseudoState::from_u32(state)
+                .ok_or_else(|| format!("unknown pseudo-state {state}"))?;
             let slice = styles
                 .get(style_offset..style_offset + style_len)
-                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_PSEUDO_STYLE"))?;
+                .ok_or_else(|| "styles slice out of bounds in OP_SET_PSEUDO_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
             host.tree_mut()
                 .element_set_pseudo_style(ElementId::from_u64(id), pseudo, &props);
@@ -168,10 +166,10 @@ pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(
         Op::SetStyleVariant { id, min_width, max_width, min_height, max_height, style_offset, style_len } => {
             let slice = styles
                 .get(style_offset..style_offset + style_len)
-                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE_VARIANT"))?;
+                .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE_VARIANT".to_string())?;
             let mut props = decode_style_packet(slice)?;
             if props.len() != 1 {
-                return Err(JsValue::from_str("OP_SET_STYLE_VARIANT requires exactly one style property"));
+                return Err("OP_SET_STYLE_VARIANT requires exactly one style property".to_string());
             }
             let prop = props.remove(0);
             let condition = ViewportCondition {

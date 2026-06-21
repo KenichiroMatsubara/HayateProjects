@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./android": {
+      "types": "./dist/android.d.ts",
+      "import": "./dist/android.js"
     }
   },
   "files": [

@@ -988,7 +988,6 @@ use hayate_core::{
     FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
 };
-use wasm_bindgen::prelude::*;
 
 fn codec_dim(value: f32, unit_raw: f32) -> Dimension {
     let unit = match unit_raw as u32 {
@@ -1168,7 +1167,7 @@ fn codec_transition_timing(raw: f32) -> TransitionTimingValue {
     }
 }
 
-fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
+fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
         StyleTag::Opacity { value } => StyleProp::Opacity(value),
@@ -1231,12 +1230,12 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {
     })
 }
 
-pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
+pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, String> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while i < packed.len() {
         let (tag, next) = parse_next_style_tag(packed, i)
-            .map_err(|e| JsValue::from_str(e))?;
+            .map_err(|e| e.to_string())?;
         i = next;
         out.push(style_tag_to_prop(tag)?);
     }
@@ -1368,36 +1367,3 @@ pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {
     }
 }
 
-pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {
-    use wasm_bindgen::JsValue;
-    let sub = js_sys::Array::new();
-    for atom in encode_event_wire(ev) {
-        match atom {
-            EventWireValue::Number(n) => { sub.push(&JsValue::from_f64(n)); }
-            EventWireValue::Text(s) => { sub.push(&JsValue::from_str(&s)); }
-        }
-    }
-    sub
-}
-
-pub fn encode_events(events: &[hayate_core::Event]) -> js_sys::Array {
-    let result = js_sys::Array::new();
-    for ev in events {
-        result.push(&encode_event(ev));
-    }
-    result
-}
-
-pub fn encode_deliveries(deliveries: &[hayate_core::EventDelivery]) -> js_sys::Array {
-    let result = js_sys::Array::new();
-    for delivery in deliveries {
-        let sub = encode_event(&delivery.event);
-        let row = js_sys::Array::new();
-        row.push(&JsValue::from_f64(delivery.listener_id.to_u64() as f64));
-        for i in 0..sub.length() {
-            row.push(&sub.get(i));
-        }
-        result.push(&row);
-    }
-    result
-}

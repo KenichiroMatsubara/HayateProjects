@@ -17,6 +17,7 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
     let code = generate(&proto);
     let codec = generate_codec(&proto);
     let dispatch = generate_dispatch(&proto);
+    let event_encode_web = generate_encode_event_js(&proto);
     let dom_mapper = generate_dom_style_mapper(&proto);
     let event_types = generate_event_types(&proto);
     let pseudo_state_tables = generate_pseudo_state_tables(&proto);
@@ -25,6 +26,9 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
     fs::write(out_dir.join("protocol.rs"), code).unwrap();
     fs::write(out_dir.join("codec.rs"), codec).unwrap();
     fs::write(out_dir.join("dispatch.rs"), dispatch).unwrap();
+    // Web 専用の js_sys イベントエンコーダ（ADR-0112）。中立な protocol.rs から
+    // 分離し、Android の generated include には含めない。
+    fs::write(out_dir.join("event_encode_web.rs"), event_encode_web).unwrap();
     fs::write(out_dir.join("dom_style_mapper.rs"), dom_mapper).unwrap();
     fs::write(out_dir.join("event_types.rs"), event_types).unwrap();
     fs::write(out_dir.join("pseudo_state_tables.rs"), pseudo_state_tables).unwrap();
@@ -698,7 +702,7 @@ fn generate(proto: &Proto) -> String {
     out.push_str("}\n\n");
 
     out.push_str(&generate_style_codec(proto));
-    out.push_str(&generate_encode_event(proto));
+    out.push_str(&generate_encode_event_wire(proto));
 
     out
 }
@@ -712,8 +716,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("    DisplayValue,\n");
     out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
     out.push_str("    TransitionTimingValue,\n");
-    out.push_str("};\n");
-    out.push_str("use wasm_bindgen::prelude::*;\n\n");
+    out.push_str("};\n\n");
 
     out.push_str("fn codec_dim(value: f32, unit_raw: f32) -> Dimension {\n");
     out.push_str("    let unit = match unit_raw as u32 {\n");
@@ -776,7 +779,7 @@ fn generate_style_codec(proto: &Proto) -> String {
         out.push_str("}\n\n");
     }
 
-    out.push_str("fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, JsValue> {\n");
+    out.push_str("fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {\n");
     out.push_str("    Ok(match tag {\n");
     for tag in &proto.style_tags {
         let variant = to_pascal(&tag.name);
@@ -803,13 +806,13 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("}\n\n");
 
     out.push_str(
-        "pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {\n",
+        "pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, String> {\n",
     );
     out.push_str("    let mut out = Vec::new();\n");
     out.push_str("    let mut i = 0usize;\n");
     out.push_str("    while i < packed.len() {\n");
     out.push_str("        let (tag, next) = parse_next_style_tag(packed, i)\n");
-    out.push_str("            .map_err(|e| JsValue::from_str(e))?;\n");
+    out.push_str("            .map_err(|e| e.to_string())?;\n");
     out.push_str("        i = next;\n");
     out.push_str("        out.push(style_tag_to_prop(tag)?);\n");
     out.push_str("    }\n");
@@ -1049,13 +1052,12 @@ fn generate_dispatch(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
     out.push_str(
-        "use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, ViewportCondition};\n",
+        "use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, ViewportCondition};\n\n",
     );
-    out.push_str("use wasm_bindgen::prelude::*;\n\n");
     out.push_str("use super::ApplyMutationsHost;\n");
     out.push_str("use crate::generated::{Op, decode_style_packet, parse_next_op};\n\n");
 
-    out.push_str("pub(crate) fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, JsValue> {\n");
+    out.push_str("pub(crate) fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {\n");
     out.push_str("    match v {\n");
     for uk in &proto.unset_kinds {
         out.push_str(&format!(
@@ -1065,7 +1067,7 @@ fn generate_dispatch(proto: &Proto) -> String {
         ));
     }
     out.push_str(
-        "        _ => Err(JsValue::from_str(&format!(\"unknown unset style kind {v}\"))),\n",
+        "        _ => Err(format!(\"unknown unset style kind {v}\")),\n",
     );
     out.push_str("    }\n");
     out.push_str("}\n\n");
@@ -1081,11 +1083,11 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    host: &mut H,\n");
     out.push_str("    ops: &[f64],\n");
     out.push_str("    styles: &[f32],\n");
-    out.push_str("    texts: &js_sys::Array,\n");
-    out.push_str(") -> Result<(), JsValue> {\n");
+    out.push_str("    texts: &[String],\n");
+    out.push_str(") -> Result<(), String> {\n");
     out.push_str("    let mut i = 0usize;\n");
     out.push_str("    while i < ops.len() {\n");
-    out.push_str("        let (op, next) = parse_next_op(ops, i).map_err(|e| JsValue::from_str(e))?;\n");
+    out.push_str("        let (op, next) = parse_next_op(ops, i).map_err(|e| e.to_string())?;\n");
     out.push_str("        i = next;\n");
     out.push_str("        apply_parsed_op(host, op, styles, texts)?;\n");
     out.push_str("    }\n");
@@ -1096,8 +1098,8 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    host: &mut H,\n");
     out.push_str("    op: Op,\n");
     out.push_str("    styles: &[f32],\n");
-    out.push_str("    texts: &js_sys::Array,\n");
-    out.push_str(") -> Result<(), JsValue> {\n");
+    out.push_str("    texts: &[String],\n");
+    out.push_str(") -> Result<(), String> {\n");
     out.push_str("    match op {\n");
 
     for op in &proto.opcodes {
@@ -1136,7 +1138,7 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
         "SET_STYLE" => {
             r#"            let slice = styles
                 .get(style_offset..style_offset + style_len)
-                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE"))?;
+                .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
             host.tree_mut().element_set_style(ElementId::from_u64(id), &props);
             Ok(())
@@ -1173,32 +1175,32 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
         }
         "CREATE" => {
             r#"            let k = ElementKind::from_u32(kind)
-                .ok_or_else(|| JsValue::from_str(&format!("unknown element kind {kind}")))?;
+                .ok_or_else(|| format!("unknown element kind {kind}"))?;
             host.tree_mut().element_create(id, k);
             Ok(())
 "#.to_string()
         }
         "SET_TEXT" => {
-            r#"            if text_index >= texts.length() as usize {
-                return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT"));
+            r#"            if text_index >= texts.len() {
+                return Err("text index out of bounds in OP_SET_TEXT".to_string());
             }
             let text = texts
-                .get(text_index as u32)
-                .as_string()
-                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_TEXT"))?;
+                .get(text_index)
+                .cloned()
+                .ok_or_else(|| "text table entry is not a string in OP_SET_TEXT".to_string())?;
             host.tree_mut()
                 .element_set_text(ElementId::from_u64(id), &text);
             Ok(())
 "#.to_string()
         }
         "SET_TEXT_CONTENT" => {
-            r#"            if text_index >= texts.length() as usize {
-                return Err(JsValue::from_str("text index out of bounds in OP_SET_TEXT_CONTENT"));
+            r#"            if text_index >= texts.len() {
+                return Err("text index out of bounds in OP_SET_TEXT_CONTENT".to_string());
             }
             let text = texts
-                .get(text_index as u32)
-                .as_string()
-                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_TEXT_CONTENT"))?;
+                .get(text_index)
+                .cloned()
+                .ok_or_else(|| "text table entry is not a string in OP_SET_TEXT_CONTENT".to_string())?;
             host.tree_mut()
                 .element_set_text_content(ElementId::from_u64(id), &text);
             Ok(())
@@ -1238,13 +1240,13 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
 "#.to_string()
         }
         "SET_SRC" => {
-            r#"            if text_index >= texts.length() as usize {
-                return Err(JsValue::from_str("text index out of bounds in OP_SET_SRC"));
+            r#"            if text_index >= texts.len() {
+                return Err("text index out of bounds in OP_SET_SRC".to_string());
             }
             let url = texts
-                .get(text_index as u32)
-                .as_string()
-                .ok_or_else(|| JsValue::from_str("text table entry is not a string in OP_SET_SRC"))?;
+                .get(text_index)
+                .cloned()
+                .ok_or_else(|| "text table entry is not a string in OP_SET_SRC".to_string())?;
             host.tree_mut()
                 .element_set_src(ElementId::from_u64(id), &url);
             Ok(())
@@ -1258,12 +1260,11 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
 "#.to_string()
         }
         "SET_PSEUDO_STYLE" => {
-            r#"            let pseudo = PseudoState::from_u32(state).ok_or_else(|| {
-                JsValue::from_str(&format!("unknown pseudo-state {state}"))
-            })?;
+            r#"            let pseudo = PseudoState::from_u32(state)
+                .ok_or_else(|| format!("unknown pseudo-state {state}"))?;
             let slice = styles
                 .get(style_offset..style_offset + style_len)
-                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_PSEUDO_STYLE"))?;
+                .ok_or_else(|| "styles slice out of bounds in OP_SET_PSEUDO_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
             host.tree_mut()
                 .element_set_pseudo_style(ElementId::from_u64(id), pseudo, &props);
@@ -1273,10 +1274,10 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
         "SET_STYLE_VARIANT" => {
             r#"            let slice = styles
                 .get(style_offset..style_offset + style_len)
-                .ok_or_else(|| JsValue::from_str("styles slice out of bounds in OP_SET_STYLE_VARIANT"))?;
+                .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE_VARIANT".to_string())?;
             let mut props = decode_style_packet(slice)?;
             if props.len() != 1 {
-                return Err(JsValue::from_str("OP_SET_STYLE_VARIANT requires exactly one style property"));
+                return Err("OP_SET_STYLE_VARIANT requires exactly one style property".to_string());
             }
             let prop = props.remove(0);
             let condition = ViewportCondition {
@@ -1291,7 +1292,7 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
 "#.to_string()
         }
         other => format!(
-            "            Err(JsValue::from_str(\"unknown op {other}\"))\n",
+            "            Err(\"unknown op {other}\".to_string())\n",
         ),
     }
 }
@@ -1363,7 +1364,7 @@ fn encode_event_wire_param_push(param: &Param, field: &str) -> String {
     }
 }
 
-fn generate_encode_event(proto: &Proto) -> String {
+fn generate_encode_event_wire(proto: &Proto) -> String {
     let mut out = String::new();
 
     out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
@@ -1391,6 +1392,17 @@ fn generate_encode_event(proto: &Proto) -> String {
 
     out.push_str("    }\n");
     out.push_str("}\n\n");
+
+    out
+}
+
+/// 生成: `js_sys::Array` ベースのイベントエンコーダ（Web 専用 / ADR-0112）。中立な
+/// `encode_event_wire` を JS 配列行へ持ち上げる。wasm-bindgen / js_sys に依存するため
+/// 専用ファイル `event_encode_web.rs` へ書き出し、Android からは include しない。
+fn generate_encode_event_js(_proto: &Proto) -> String {
+    let mut out = String::new();
+    out.push_str(GENERATED_HEADER);
+    out.push_str("// ── Event encode (js_sys, Web 専用) ─────────────────────────────────────\n\n");
 
     out.push_str("pub fn encode_event(ev: &hayate_core::Event) -> js_sys::Array {\n");
     out.push_str("    use wasm_bindgen::JsValue;\n");

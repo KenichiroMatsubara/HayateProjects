@@ -17,10 +17,29 @@ mod scene_demo;
 mod surface_lifecycle;
 mod touch_input;
 
+// Tsubame JS 駆動経路の Rust 半分（ADR-0112）。埋め込み Hermes が呼ぶ
+// apply_mutations を、Web と共有の中立 dispatch 経由で ElementTree に適用する。
+// 既定 OFF（非破壊）。プラットフォーム非依存なのでホストでもコンパイル・テストできる。
+#[cfg(feature = "tsubame-js")]
+mod apply_mutations_dispatch;
+#[cfg(feature = "tsubame-js")]
+mod generated;
+#[cfg(feature = "tsubame-js")]
+mod js_apply;
+#[cfg(feature = "tsubame-js")]
+mod js_host;
+
 #[cfg(target_os = "android")]
 mod app;
 #[cfg(target_os = "android")]
 mod ime_bridge;
+
+// JS 駆動ループと Hermes(JSI) ブリッジ（ADR-0112）。device 専用（C++/libhermes が
+// 要る）なので android かつ feature のときだけコンパイルする。ホスト検証には載らない。
+#[cfg(all(target_os = "android", feature = "tsubame-js"))]
+mod app_tsubame;
+#[cfg(all(target_os = "android", feature = "tsubame-js"))]
+mod hermes_bridge;
 
 /// 実機スモークテスト用の RGBA クリアカラー。
 pub const STAGE_A_CLEAR_COLOR: [f32; 4] = [0.1, 0.1, 0.12, 1.0];
