@@ -7,12 +7,12 @@ plugins {
 android {
     namespace = "com.hayateprojects.hayate.adapter_android_demo"
     compileSdk = 34
-    // NDK バージョンはマシン固有なのでハードコードしない（ADR-0112）。
-    // `local.properties` か Gradle プロパティ `hayate.ndkVersion`、もしくは
-    // 環境変数 `HAYATE_NDK_VERSION` で各環境が解決する。未指定なら AGP 既定に委ねる
-    // （その場合 SDK Manager で対応 NDK を入れておくこと）。
-    (project.findProperty("hayate.ndkVersion") as String?
-        ?: System.getenv("HAYATE_NDK_VERSION"))?.let { ndkVersion = it }
+    // 既定はこれまで動作実績のあるバージョン。マシンによって異なる場合は
+    // Gradle プロパティ `hayate.ndkVersion` か環境変数 `HAYATE_NDK_VERSION` で
+    // 上書きできる（ADR-0112）。未指定でもこの既定で従来どおりビルドできる。
+    ndkVersion = (project.findProperty("hayate.ndkVersion") as String?
+        ?: System.getenv("HAYATE_NDK_VERSION")
+        ?: "30.0.14904198")
 
     defaultConfig {
         applicationId = "com.hayateprojects.hayate.adapter_android_demo"
