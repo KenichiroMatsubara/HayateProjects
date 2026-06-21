@@ -16,10 +16,14 @@ PKG_GITIGNORE=$'*\n!package.json'
 LOCK_FILE="${TMPDIR:-/tmp}/hayate-wasm-build.lock"
 
 # pnpm -r can invoke this script concurrently; serialize wasm-pack on one crate dir.
-exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
-  echo "Waiting for another hayate WASM build to finish..."
-  flock 9
+# flock は Linux/WSL では使えるが Git Bash(Git for Windows)には無いので、
+# 無い環境では排他をスキップする(直列実行されるケースでは元々ロック不要)。
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK_FILE"
+  if ! flock -n 9; then
+    echo "Waiting for another hayate WASM build to finish..."
+    flock 9
+  fi
 fi
 
 BOLD='\033[1m'
