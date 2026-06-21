@@ -117,16 +117,18 @@ impl ScrollGesture {
 
 /// iOS-style scroll physics, gathered in one block so every coefficient stays a
 /// single named, tunable knob instead of a magic number sprinkled through the
-/// integrator (issue #351). Values are starting points to be tuned, not
-/// load-bearing — adjust here and the whole feel changes.
+/// integrator (issue #351). The fling cap and the spring-back values were
+/// calibrated on-device (#353) via the `tuning.json` overlay and baked back
+/// here; adjust here and the whole feel changes.
 pub mod physics {
     /// Per-millisecond velocity retention under friction. Matches UIScrollView's
     /// "normal" deceleration rate: after `t` ms a fling keeps `0.998^t` of its
     /// speed, so it bleeds off smoothly over roughly a second.
     pub const DECELERATION_RATE: f32 = 0.998;
-    /// Release-fling speed cap (px/ms ≈ 4000 px/s) so a violent flick can't hurl
-    /// the content across the entire document in a single frame.
-    pub const MAX_RELEASE_VELOCITY: f32 = 4.0;
+    /// Release-fling speed cap (px/ms ≈ 16000 px/s) so a violent flick can't hurl
+    /// the content across the entire document in a single frame. Calibrated
+    /// on-device (#353) — a much snappier ceiling than the initial 4.0.
+    pub const MAX_RELEASE_VELOCITY: f32 = 16.0;
     /// Speed (px/ms) below which momentum is treated as stopped and snaps to
     /// rest — about a sub-pixel per 60fps frame — so the animation terminates
     /// instead of crawling asymptotically toward zero.
@@ -144,18 +146,21 @@ pub mod physics {
     /// roughly half a pixel, growing "heavier" the further you pull.
     pub const RUBBER_BAND_C: f32 = 0.55;
     /// Spring stiffness (px/ms² per px) pulling an overscrolled edge back to
-    /// rest. With [`SPRING_DAMPING`] it is (near) critically damped, so the edge
-    /// returns without oscillating past it.
-    pub const SPRING_STIFFNESS: f32 = 0.00015;
-    /// Spring damping (px/ms per px/ms). ≈ `2 * sqrt(SPRING_STIFFNESS)` for
-    /// critical damping — high enough that a fling bounce eases back to the edge
-    /// without ringing.
-    pub const SPRING_DAMPING: f32 = 0.0245;
+    /// rest. With [`SPRING_DAMPING`] the edge returns without oscillating past
+    /// it. Calibrated on-device (#353) — a stiffer, snappier return than the
+    /// initial 0.00015.
+    pub const SPRING_STIFFNESS: f32 = 0.0003;
+    /// Spring damping (px/ms per px/ms). At/above critical damping
+    /// (`2 * sqrt(SPRING_STIFFNESS)` ≈ 0.035), so a fling bounce eases back to
+    /// the edge without ringing. Calibrated on-device (#353) — held slightly
+    /// over-damped (0.06) for a clean, ring-free settle.
+    pub const SPRING_DAMPING: f32 = 0.06;
     /// Displacement (px) from the edge below which spring-back is considered home.
     pub const SPRING_REST_OFFSET: f32 = 0.5;
     /// Velocity (px/ms) below which — once within [`SPRING_REST_OFFSET`] — the
-    /// spring snaps to the edge and the animation ends.
-    pub const SPRING_REST_VELOCITY: f32 = 0.05;
+    /// spring snaps to the edge and the animation ends. Calibrated on-device
+    /// (#353) — ends the settle a touch earlier than the initial 0.05.
+    pub const SPRING_REST_VELOCITY: f32 = 0.10;
 }
 
 /// A live, overridable copy of the scroll-physics knobs. The [`physics`] consts
@@ -452,15 +457,15 @@ mod tests {
         // Pinned so the iOS-ish knobs stay a single tunable block, not magic
         // numbers scattered through the integrator.
         assert_eq!(physics::DECELERATION_RATE, 0.998);
-        assert_eq!(physics::MAX_RELEASE_VELOCITY, 4.0);
+        assert_eq!(physics::MAX_RELEASE_VELOCITY, 16.0);
         assert_eq!(physics::MIN_VELOCITY, 0.02);
         assert_eq!(physics::SAMPLE_WINDOW_MS, 100.0);
         // Overscroll / spring-back knobs (#352) live in the same block.
         assert_eq!(physics::RUBBER_BAND_C, 0.55);
-        assert_eq!(physics::SPRING_STIFFNESS, 0.00015);
-        assert_eq!(physics::SPRING_DAMPING, 0.0245);
+        assert_eq!(physics::SPRING_STIFFNESS, 0.0003);
+        assert_eq!(physics::SPRING_DAMPING, 0.06);
         assert_eq!(physics::SPRING_REST_OFFSET, 0.5);
-        assert_eq!(physics::SPRING_REST_VELOCITY, 0.05);
+        assert_eq!(physics::SPRING_REST_VELOCITY, 0.10);
     }
 
     #[test]

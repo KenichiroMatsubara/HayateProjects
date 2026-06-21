@@ -23,9 +23,9 @@
     //   ※必ず 1.0 未満。1.0 以上だと永久に止まらない。
     "deceleration_rate": 0.998,
 
-    // フリック速度の上限（px/ms ≒ 4000px/s）。強い弾きでも飛びすぎないための頭打ち。
+    // フリック速度の上限（px/ms ≒ 16000px/s）。強い弾きでも飛びすぎないための頭打ち。
     //   大きく → 強フリックで遠くまで一気に／小さく → 最速でも穏やか。
-    "max_release_velocity": 4.0,
+    "max_release_velocity": 16.0,
 
     // 慣性の停止しきい値（px/ms）。これ未満になったら 0 にスナップしてアニメ終了。
     //   大きく → 早めにピタッと停止／小さく → 止まり際が長く這う。
@@ -41,18 +41,18 @@
 
     // 端からの戻りバネ剛性（px/ms² / px）。
     //   大きく → 勢いよく速く戻る（固いバネ。強すぎると行き過ぎて揺れる）／小さく → ゆっくり戻る。
-    "spring_stiffness": 0.00015,
+    "spring_stiffness": 0.0003,
 
     // 戻りバネ減衰（px/ms / (px/ms)）。揺れ止め。臨界減衰の目安は ≒ 2*sqrt(spring_stiffness)。
     //   大きく → 一発でピタッと戻る／小さく → 端でボヨンボヨン揺れる。
     //   ※ stiffness を変えたらこの目安に合わせると揺れずに戻る。
-    "spring_damping": 0.0245,
+    "spring_damping": 0.06,
 
     // 「戻り完了」とみなす端からの距離（px）。微調整用。
     "spring_rest_offset": 0.5,
 
     // 「戻り完了」とみなす速度しきい値（px/ms）。rest_offset 内かつこの速度未満で終了。微調整用。
-    "spring_rest_velocity": 0.05
+    "spring_rest_velocity": 0.10
   },
 
   // ═══ chrome 定数（scrollbar / 選択ハイライト / IME 下線 / placeholder）═══
