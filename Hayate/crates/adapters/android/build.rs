@@ -5,10 +5,11 @@
 //! libhermes / NDK が無くてもビルドが通り、純 Rust の検証が回り続ける。
 //!
 //! Hermes/JSI のヘッダと .so はリポジトリに vendor 済み（ADR-0007 の vendored
-//! dependencies 方針）。react-android には依存せず、必要な 4 つの .so
-//! （libhermesvm / libjsi / libfbjni / libc++_shared）だけを jniLibs に置き、JSI/Hermes
-//! ヘッダを third_party/include に置く。`HERMES_INCLUDE` / `HERMES_LIB` を env で
-//! 与えればそちらを優先する（別バージョン検証用）。
+//! dependencies 方針）。react-android には依存せず、リンクに要る libhermesvm / libjsi
+//! だけを jniLibs に置き、JSI/Hermes ヘッダを third_party/include に置く。libfbjni /
+//! libc++_shared と fbjni の Java クラスは Gradle 依存 com.facebook.fbjni:fbjni が
+//! 供給する（リンク時は cdylib の未定義シンボルとして実行時解決に回るので不要）。
+//! `HERMES_INCLUDE` / `HERMES_LIB` を env で与えればそちらを優先する（別バージョン検証用）。
 use std::env;
 use std::path::PathBuf;
 

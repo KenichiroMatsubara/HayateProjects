@@ -49,11 +49,18 @@ dependencies {
     // games-activity does not bring these transitively, so declare them explicitly.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core:1.13.1")
-    // embedded Hermes（ADR-0112）は libhermesvm/libjsi/libfbjni/libc++_shared を要するが、
-    // libjsi/libfbjni は react-android AAR にしか無く、依存すると不要な libreactnative.so で
-    // APK が肥大化する。そのため react-android には依存せず、必要な 4 つの .so だけを
-    // src/main/jniLibs/arm64-v8a に vendor 済み（ADR-0007）。AGP がそれらを APK に同梱し、
-    // cdylib は build.rs 経由で同じ .so にリンクする。RN 系の maven 依存は持たない。
+    // embedded Hermes（ADR-0112）は実行時に libhermesvm/libjsi/libfbjni/libc++_shared を
+    // 要する。libjsi は react-android AAR にしか無く、依存すると不要な libreactnative.so で
+    // APK が肥大化するため react-android には依存せず、libhermesvm/libjsi だけを
+    // src/main/jniLibs/arm64-v8a に vendor 済み（ADR-0007）。
+    //
+    // libfbjni は JNI_OnLoad で Java クラス com.facebook.jni.*（HybridData$Destructor 等）を
+    // 要求するので .so だけでは ClassNotFoundException で落ちる。これらは fbjni AAR が
+    // .so + Java クラス + libc++_shared をまとめて供給する。fbjni は React 本体ではない
+    // 汎用 JNI ヘルパ（バージョンは react-android 0.82.1 が使う 0.7.0 に一致）。
+    if (!project.hasProperty("nativedemo")) {
+        implementation("com.facebook.fbjni:fbjni:0.7.0")
+    }
 }
 
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.

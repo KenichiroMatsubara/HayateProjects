@@ -18,10 +18,15 @@ React Native 0.82.1（Maven Central）:
     `android-app/app/src/main/jniLibs/arm64-v8a/`
 - `com.facebook.react:react-android:0.82.1-release`
   - ヘッダ: `prefab/modules/jsi/include/jsi/**` → `third_party/include/jsi/`
-  - ライブラリ: `jni/arm64-v8a/{libjsi.so,libfbjni.so,libc++_shared.so}` →
+  - ライブラリ: `jni/arm64-v8a/libjsi.so` →
     `android-app/app/src/main/jniLibs/arm64-v8a/`
 
 `libreactnative.so` 等、上記以外は取り込まない。
+
+`libfbjni.so` / `libc++_shared.so`、および libfbjni の JNI_OnLoad が要求する Java
+クラス `com.facebook.jni.*` は vendor せず、Gradle 依存 `com.facebook.fbjni:fbjni:0.7.0`
+（react-android 0.82.1 が使う版）が供給する。fbjni は React 本体ではない汎用 JNI
+ヘルパ。
 
 ## ライセンス
 
