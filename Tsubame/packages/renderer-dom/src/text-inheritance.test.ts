@@ -21,7 +21,7 @@ describe('DOM Renderer two-channel text inheritance (ADR-0002)', () => {
   }
 
   it('does not emit view color or fontSize to block or descendant inline styles', () => {
-    // The gate now lives in the seam, so drive the DOM renderer through it.
+    // ゲートは seam に移ったので、DOM Renderer をそれ経由で駆動する。
     const renderer = withTextLocalGate(new DomRenderer({ document, container }));
     const root = renderer.createElement('view');
     const text = renderer.createElement('text');

@@ -1,7 +1,6 @@
-//! Differential harness for the user-reported symptom: hover color doesn't
-//! revert, and interacting with one element corrupts a *different* element.
-//! Ground truth = a full ephemeral rebuild. After every pointer change the
-//! retained scene's fill rects (color + position, in paint order) MUST match.
+//! ユーザー報告の症状に対する差分ハーネス: hover の色が戻らず、ある要素を操作すると
+//! 別の要素が壊れる。正は full な ephemeral rebuild。各ポインタ変更後、retained シーンの
+//! fill rect（色＋位置、描画順）が一致しなければならない。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue, PseudoState,
@@ -47,7 +46,7 @@ fn assert_parity(tree: &ElementTree, label: &str) {
 const BLUE: Color = Color::new(0.0, 0.0, 1.0, 1.0);
 const GREEN: Color = Color::new(0.0, 1.0, 0.0, 1.0);
 
-/// root(col) > [cardA, cardB, cardC], each blue, :hover green.
+/// root(col) > [cardA, cardB, cardC]、各 card は blue、:hover で green。
 fn three_cards() -> (ElementTree, Vec<ElementId>) {
     let mut next = 1u64;
     let mut tree = ElementTree::new();
@@ -106,8 +105,8 @@ fn hovering_one_card_does_not_reorder_or_recolor_siblings() {
     let (mut tree, cards) = three_cards();
     tree.render(0.0);
 
-    // Hover each card in turn; the scene must always match ground truth exactly,
-    // including paint order (a reordered anchor is the "wrong element changed" bug).
+    // 各 card を順に hover する。シーンは描画順を含め常に正と完全一致しなければならない
+    // （anchor の並び替えは「誤った要素が変わった」バグ）。
     for (i, &c) in cards.iter().enumerate() {
         tree.update_pointer_hover(Some(c));
         tree.render((i as f64 + 1.0) * 16.0);

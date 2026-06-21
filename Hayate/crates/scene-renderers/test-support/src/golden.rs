@@ -33,9 +33,9 @@ fn decode_png(bytes: &[u8]) -> (Vec<u8>, u32, u32) {
     (buf, width, height)
 }
 
-/// Compare rendered pixels against a committed PNG golden file.
+/// レンダリング結果を、コミット済みの PNG ゴールデンと比較する。
 ///
-/// Set `HAYATE_UPDATE_GOLDEN=1` to regenerate baselines after human review (#151 HITL).
+/// `HAYATE_UPDATE_GOLDEN=1` を設定すると、人手レビュー後にベースラインを再生成する。
 pub fn assert_pixels_match_golden(golden_path: &Path, pixels: &[u8], width: u32, height: u32) {
     if std::env::var_os("HAYATE_UPDATE_GOLDEN").is_some() {
         encode_png(golden_path, pixels, width, height);

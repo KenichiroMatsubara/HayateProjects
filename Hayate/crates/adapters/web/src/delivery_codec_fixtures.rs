@@ -1,4 +1,4 @@
-//! C5: delivery wire fixtures — event → encode_event → wire (ADR-0055).
+//! C5: 配信ワイヤのフィクスチャ — event → encode_event → wire（ADR-0055）。
 
 #[cfg(test)]
 mod tests {

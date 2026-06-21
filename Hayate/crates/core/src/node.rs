@@ -120,7 +120,7 @@ impl SceneGraph {
         id
     }
 
-    /// Insert a node as a child of an existing node.
+    /// 既存ノードの子としてノードを挿入する。
     pub fn insert_child(&mut self, parent: NodeId, node: Node) -> NodeId {
         let id = self.nodes.insert(node);
         if let Some(p) = self.nodes.get_mut(parent) {
@@ -152,7 +152,7 @@ impl SceneGraph {
         Some(node)
     }
 
-    /// Parent of `id` when nested under a Group, Clip, or ElementAnchor.
+    /// Group / Clip / ElementAnchor 配下にネストしているときの `id` の親。
     pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
         for (parent_id, parent) in self.nodes.iter() {
             if parent.children.contains(&id) {
@@ -162,7 +162,7 @@ impl SceneGraph {
         None
     }
 
-    /// Remove `id` and every descendant from the graph.
+    /// `id` とその全子孫をグラフから削除する。
     pub fn remove_subtree(&mut self, id: NodeId) {
         let children = self
             .nodes
@@ -175,12 +175,12 @@ impl SceneGraph {
         let _ = self.remove(id);
     }
 
-    /// First root node (backward compat).
+    /// 最初の root ノード（後方互換）。
     pub fn root(&self) -> Option<NodeId> {
         self.roots.first().copied()
     }
 
-    /// All top-level nodes in paint order.
+    /// 描画順の全トップレベルノード。
     pub fn roots(&self) -> &[NodeId] {
         &self.roots
     }

@@ -1,4 +1,4 @@
-//! Content scale maps CSS layout coordinates to physical pixels (ADR-0007, #146).
+//! コンテンツスケールは CSS レイアウト座標を物理ピクセルに対応付ける（ADR-0007）。
 
 use hayate_core::{Node, NodeKind, SceneGraph};
 use hayate_scene_renderer_tiny_skia::TinySkiaSceneRenderer;

@@ -12,7 +12,7 @@ export interface GoldenFrameParityHarness {
   dispose(): void;
 }
 
-/** Mount a parity sample through tsubame-solid → CanvasRenderer → WASM (ADR-0079). */
+/** パリティサンプルを tsubame-solid → CanvasRenderer → WASM 経由でマウントする（ADR-0079）。 */
 export async function mountGoldenFrameParity(
   build: (tools: {
     createElement: typeof createElement;
@@ -52,7 +52,7 @@ export async function mountGoldenFrameParity(
   };
 }
 
-/** Find the first element whose local or composed text contains `snippet`. */
+/** ローカルまたは合成テキストが `snippet` を含む最初の要素を探す。 */
 export function findElementByText(frame: GoldenFrame, snippet: string) {
   return frame.elements.find(
     (el) => el.text.includes(snippet) || el.textContent.includes(snippet),

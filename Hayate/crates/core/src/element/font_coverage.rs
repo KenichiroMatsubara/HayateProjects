@@ -141,7 +141,7 @@ mod tests {
             0x1F004,   // 🀄 Mahjong
             0x1F0CF,   // 🃏 Playing Cards
             0x1F1EF,   // 🇯 Regional Indicator (flags)
-            0x1F319,   // 🌙 Misc Pictographs (the theme-toggle glyph)
+            0x1F319,   // 🌙 Misc Pictographs（テーマ切替グリフ）
             0x1F600,   // 😀 Emoticons
             0x1F680,   // 🚀 Transport and Map
             0x1F9E0,   // 🧠 Supplemental Pictographs
@@ -159,8 +159,8 @@ mod tests {
     fn latin_and_gaps_resolve_to_none() {
         assert_eq!(family_for_codepoint(0x0041), None); // 'A'
         assert_eq!(family_for_codepoint(0x00E9), None); // 'é'
-        assert_eq!(family_for_codepoint(0x25FF), None); // just below U+2600
-        assert_eq!(family_for_codepoint(0x0000), None); // below the whole table
+        assert_eq!(family_for_codepoint(0x25FF), None); // U+2600 の直下
+        assert_eq!(family_for_codepoint(0x0000), None); // テーブル全体より下
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! C1: fixture wire → decode → encode roundtrip (ADR-0055).
+//! C1: フィクスチャの wire → decode → encode ラウンドトリップ（ADR-0055）。
 
 #[cfg(test)]
 mod tests {

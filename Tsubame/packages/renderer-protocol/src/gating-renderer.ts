@@ -7,13 +7,12 @@ import type { IRenderer } from './renderer.js';
 import { gateTextLocalPatch } from './text-local-gate.js';
 
 /**
- * Renderer decorator that applies the Style Channel gate **once, in front of**
- * the wrapped renderer (Tsubame ADR-0008). It learns each element's kind from
- * `createElement`, filters channel-1 text-local props out of every style-bearing
- * op, and forwards the already-gated patch downstream. Every renderer behind the
- * seam therefore receives the identical filtered patch — Semantics Parity holds
- * by construction, not by a per-renderer test, and a newly added renderer needs
- * no gate of its own.
+ * ラップした renderer の**手前で一度だけ** Style Channel ゲートを適用する
+ * renderer デコレータ（Tsubame ADR-0008）。各要素の kind を `createElement` から
+ * 学習し、スタイルを伴う全 op から channel-1 の text-local プロップを除去して、
+ * ゲート済みパッチを下流へ渡す。継ぎ目より後ろの全 renderer は同一のフィルタ済み
+ * パッチを受け取るため、Semantics Parity は renderer ごとのテストではなく構成上
+ * 成立し、新たに追加した renderer は独自のゲートを持つ必要がない。
  */
 class GatingRenderer implements IRenderer {
   private readonly kinds = new Map<ElementId, ElementKind>();
@@ -72,8 +71,8 @@ class GatingRenderer implements IRenderer {
   }
 
   /**
-   * Filter text-local props the element's kind does not carry. An id with no
-   * preceding `createElement` (kind unknown) passes through unchanged.
+   * 要素の kind が持たない text-local プロップを除去する。先行する
+   * `createElement` がない id（kind 不明）はそのまま通す。
    */
   private gate(id: ElementId, style: StylePatch): StylePatch {
     const kind = this.kinds.get(id);
@@ -81,7 +80,7 @@ class GatingRenderer implements IRenderer {
   }
 }
 
-/** Wrap a renderer so the Style Channel gate is applied once before it (ADR-0008). */
+/** renderer をラップし、その手前で Style Channel ゲートを一度だけ適用する（ADR-0008）。 */
 export function withTextLocalGate(inner: IRenderer): IRenderer {
   return new GatingRenderer(inner);
 }

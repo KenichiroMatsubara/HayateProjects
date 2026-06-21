@@ -1,4 +1,4 @@
-//! Pixel-level regression tests for every Hayate CSS catalog property (tiny-skia).
+//! Hayate の CSS カタログ全プロパティに対するピクセル単位の回帰テスト（tiny-skia）。
 
 use hayate_scene_test_support::{
     run_all_tiny_skia, run_tiny_skia, BORDER_RASTER_CASES, CSS_PIXEL_CASES,
@@ -9,8 +9,8 @@ fn all_catalog_css_properties_tiny_skia() {
     run_all_tiny_skia(CSS_PIXEL_CASES);
 }
 
-/// Issue #337: 1px borders draw as opaque columns and the focus ring never
-/// erases the content it overlays — on tiny-skia.
+/// 1px ボーダーは不透明な列として描かれ、フォーカスリングは重ねた
+/// コンテンツを決して消さない（tiny-skia）。
 #[test]
 fn border_raster_regressions_tiny_skia() {
     run_all_tiny_skia(BORDER_RASTER_CASES);

@@ -1,4 +1,4 @@
-//! ScrollView scene-graph lowering: child anchors must live under Clip/scroll wrappers (issue #199).
+//! ScrollView のシーングラフ lowering: 子アンカーは Clip/scroll ラッパー配下に置かれねばならない。
 
 use hayate_core::{Color, Dimension, ElementKind, ElementTree, NodeKind, StyleProp};
 

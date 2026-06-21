@@ -142,7 +142,7 @@ pub fn upsert_style_prop(slot: &mut Vec<StyleProp>, prop: &StyleProp) {
     slot.push(prop.clone());
 }
 
-/// Apply `props` onto `visual` (visual/text fields only; layout props are ignored here).
+/// `props` を `visual` に適用する（visual/text フィールドのみ。レイアウトプロパティはここでは無視）。
 pub fn apply_visual_props(visual: &mut Visual, props: &[StyleProp], text_dirty: &mut bool) {
     for prop in props {
         if prop.is_layout() {
@@ -152,7 +152,7 @@ pub fn apply_visual_props(visual: &mut Visual, props: &[StyleProp], text_dirty: 
     }
 }
 
-/// Merge base `visual` with pseudo overrides in spec priority order (last wins).
+/// ベース `visual` に擬似状態の上書きを仕様の優先順位で重ねる（後勝ち）。
 pub fn resolve_visual(
     base: &Visual,
     pseudo: &PseudoStyles,
@@ -175,7 +175,7 @@ pub fn resolve_visual(
     out
 }
 
-/// Compute the ancestor chain from `id` up to (and including) the root.
+/// `id` から root まで（root を含む）の祖先チェーンを求める。
 pub(crate) fn ancestor_chain(
     elements: &std::collections::HashMap<ElementId, Element>,
     id: ElementId,
@@ -192,7 +192,7 @@ pub(crate) fn ancestor_chain(
     chain
 }
 
-/// CSS `:hover` set: `id` and every ancestor of `deepest_hit`.
+/// CSS `:hover` 集合: `deepest_hit` 自身とその全祖先。
 pub(crate) fn hover_set_for_hit(
     elements: &std::collections::HashMap<ElementId, Element>,
     deepest_hit: ElementId,
@@ -202,7 +202,7 @@ pub(crate) fn hover_set_for_hit(
         .collect()
 }
 
-/// Diff two hover sets into (entered, left) element ids.
+/// 2 つの hover 集合の差分を (entered, left) の要素 id に分ける。
 pub fn diff_hover_sets(
     prev: &HashSet<ElementId>,
     next: &HashSet<ElementId>,
@@ -212,7 +212,7 @@ pub fn diff_hover_sets(
     (entered, left)
 }
 
-/// Whether a pseudo block contains properties that re-shape inline text (issue #183).
+/// 擬似ブロックがインラインテキストを再シェイプするプロパティを含むかどうか。
 pub fn pseudo_affects_text_shaping(props: &[StyleProp]) -> bool {
     props.iter().any(|p| {
         matches!(
@@ -227,7 +227,7 @@ pub fn pseudo_affects_text_shaping(props: &[StyleProp]) -> bool {
     })
 }
 
-/// Style property kinds unsettable on a pseudo block (mirrors base unset).
+/// 擬似ブロック上で unset 可能なスタイルプロパティ種別（ベースの unset と同形）。
 pub fn unset_pseudo_prop(pseudo: &mut PseudoStyles, state: PseudoState, kind: StylePropKind) {
     let props = pseudo.props_mut(state);
     props.retain(|p| match (state, kind, p) {

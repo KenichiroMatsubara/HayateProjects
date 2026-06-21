@@ -1,4 +1,4 @@
-//! ADR-0081: resize-driven viewport condition re-resolution (#132).
+//! ADR-0081: リサイズ起点のビューポート条件の再解決。
 
 use hayate_core::{
     Color, Dimension, ElementKind, ElementTree, NodeKind, StyleProp, ViewportCondition,

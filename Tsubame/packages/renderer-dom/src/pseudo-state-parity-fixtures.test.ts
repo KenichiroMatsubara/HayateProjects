@@ -51,7 +51,7 @@ describe('pseudo-state parity corpus (DOM declaration emitter)', () => {
 
   it('corpus catches flipped pseudo priority', () => {
     const fixture = fixtures.find((f) => f.name === 'hover_active_priority_active_wins')!;
-    // Wrong order: hover after active (focus < active < hover)
+    // 誤った順序: active の後に hover（本来は focus < active < hover）
     const byProperty = new Map<string, string>();
     for (const key of [':active', ':hover'] as const) {
       const patch = fixture.pseudo[key];
@@ -62,7 +62,7 @@ describe('pseudo-state parity corpus (DOM declaration emitter)', () => {
         byProperty.set(decl.cssProperty, decl.value);
       }
     }
-    // Simulate hover winning by applying hover last in wrong band order
+    // 誤ったバンド順で hover を最後に適用し、hover が勝つ状況を再現する
     const hoverDecls = resolvePseudoDeclarations(
       fixture.elementKind,
       { ':hover': fixture.pseudo[':hover']! },

@@ -166,13 +166,13 @@ describe("transition cross-renderer parity inputs (#229)", () => {
     const ms = 200;
     const patch = { transitionDuration: ms } as StylePatch;
 
-    // Canvas path: the style packet carries the duration as a raw number.
+    // Canvas 経路: スタイルパケットは duration を生の数値として運ぶ。
     const out: number[] = [];
     encodeStylePatch(patch, out);
     expect(out[0]).toBe(TAG.TRANSITION_DURATION);
     expect(out[1]).toBe(ms);
 
-    // DOM path: the same number reaches the browser as `<ms>ms`.
+    // DOM 経路: 同じ数値が `<ms>ms` としてブラウザに届く。
     expect(domCssForPatch(patch).transitionDuration).toBe(`${ms}ms`);
   });
 
@@ -197,13 +197,13 @@ describe("transition cross-renderer parity inputs (#229)", () => {
     for (const [keyword, code] of keywords) {
       const patch = { transitionTiming: keyword } as unknown as StylePatch;
 
-      // Canvas path: packet carries the timing discriminant.
+      // Canvas 経路: パケットは timing の判別子を運ぶ。
       const out: number[] = [];
       encodeStylePatch(patch, out);
       expect(out[0], keyword).toBe(TAG.TRANSITION_TIMING);
       expect(out[1], keyword).toBe(code);
 
-      // DOM path: the browser receives the identical CSS keyword.
+      // DOM 経路: ブラウザは同一の CSS キーワードを受け取る。
       expect(domCssForPatch(patch).transitionTimingFunction, keyword).toBe(
         keyword,
       );

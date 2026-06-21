@@ -1,4 +1,4 @@
-//! Cross-language pseudo-state parity corpus (#176 / #177): HTML Mode DOM emitter.
+//! 言語横断の擬似状態パリティコーパス: HTML Mode の DOM エミッタ。
 
 use std::collections::HashMap;
 use std::fs;
@@ -160,7 +160,7 @@ fn corpus_catches_flipped_pseudo_priority() {
     let element_kind = element_kind_from_str(fixture["elementKind"].as_str().unwrap());
     let pseudo = pseudo_styles_from_fixture(&fixture["pseudo"]);
 
-    // Wrong band order: hover applied after active.
+    // 誤った帯順: active の後に hover を適用する。
     let mut actual = HashMap::new();
     for props in [&pseudo.active, &pseudo.hover] {
         for prop in props {
