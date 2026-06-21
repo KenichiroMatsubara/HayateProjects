@@ -2,7 +2,7 @@ import type { HayateCssStyle } from '@tsubame/renderer-protocol';
 import { inputStyle, type Palette } from '../theme';
 import { type Todo } from '../todo-model';
 import { editKeyAction, PRIORITY_LABEL } from '../ui/labels';
-import { EASE, glow, priorityTone } from '../ui/styles';
+import { EASE, glow, priorityTone, titleStyle } from '../ui/styles';
 
 function iconButton(p: Palette): HayateCssStyle {
   return {
@@ -103,17 +103,7 @@ export function TodoRow(props: {
             onBlur={props.onCommitEdit}
           />
           : <button
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              backgroundColor: 'transparent',
-              defaultColor: done ? p.quiet : p.ink,
-              defaultFontSize: 15,
-              borderWidth: 0,
-              borderStyle: 'solid',
-              ...EASE,
-              ':hover': { defaultColor: p.accent },
-            }}
+            style={titleStyle(p, done)}
             onClick={props.onBeginEdit}
           >
             {props.todo.text}
