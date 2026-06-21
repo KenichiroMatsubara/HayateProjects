@@ -1,0 +1,85 @@
+name: Auto-close parent issue
+
+# When every child (native sub-issue) of a parent issue is closed, close the
+# parent automatically. When a child is reopened, reopen a closed parent.
+# Parent/child is the GitHub-native sub-issue relationship (see ADR-0003).
+on:
+  issues:
+    types: [closed, reopened]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: auto-close-parent-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync-parent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Propagate child state to parent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          CHILD: ${{ github.event.issue.number }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+
+          # 1. Find the native parent of the issue that triggered this event.
+          parent_info=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $num:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issue(number:$num) { parent { number state } }
+              }
+            }' -F owner="$OWNER" -F repo="$REPO" -F num="$CHILD" \
+            --jq '.data.repository.issue.parent | if . == null then "" else "\(.number) \(.state)" end')
+
+          if [ -z "$parent_info" ]; then
+            echo "Issue #$CHILD has no native parent — nothing to do."
+            exit 0
+          fi
+          parent=${parent_info% *}
+          parent_state=${parent_info#* }
+          echo "Issue #$CHILD (event: $ACTION) → parent #$parent (state: $parent_state)."
+
+          # 2. Reopened child → reopen the parent if it is closed.
+          if [ "$ACTION" = "reopened" ]; then
+            if [ "$parent_state" = "CLOSED" ]; then
+              gh issue reopen "$parent" -R "$OWNER/$REPO"
+              echo "Reopened parent #$parent (child #$CHILD was reopened)."
+            else
+              echo "Parent #$parent already open — nothing to do."
+            fi
+            exit 0
+          fi
+
+          # 3. Closed child → close the parent iff it is open, has >=1 sub-issue,
+          #    and every sub-issue is closed. Reason for closing does not matter
+          #    (a child closed as wontfix still counts as closed; see ADR-0003).
+          counts=$(gh api graphql -f query='
+            query($owner:String!, $repo:String!, $num:Int!) {
+              repository(owner:$owner, name:$repo) {
+                issue(number:$num) {
+                  subIssues(first:100) { totalCount nodes { state } }
+                }
+              }
+            }' -F owner="$OWNER" -F repo="$REPO" -F num="$parent" \
+            --jq '"\(.data.repository.issue.subIssues.totalCount) \([.data.repository.issue.subIssues.nodes[] | select(.state=="OPEN")] | length)"')
+          total=${counts% *}
+          open_children=${counts#* }
+          echo "Parent #$parent: $total sub-issue(s), $open_children still open."
+
+          if [ "$parent_state" = "CLOSED" ]; then
+            echo "Parent #$parent already closed — nothing to do."
+            exit 0
+          fi
+          if [ "$total" -gt 0 ] && [ "$open_children" -eq 0 ]; then
+            gh issue close "$parent" -R "$OWNER/$REPO" \
+              -c "全ての子Issue（$total件）がcloseされたため自動close。(ADR-0003)"
+            echo "Closed parent #$parent — all $total sub-issues are closed."
+          else
+            echo "Parent #$parent stays open ($open_children/$total sub-issues still open)."
+          fi
