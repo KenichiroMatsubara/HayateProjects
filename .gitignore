@@ -5,6 +5,10 @@ Tsubame/.git-merged/
 node_modules/
 .claude/worktrees/
 
+# JetBrains IDE (Android Studio / IntelliJ) — 開発者ごとのプロジェクト設定。
+# 開くたびに再生成・更新されるため追跡しない。
+.idea/
+
 # Playwright (E2E artifacts)
 test-results/
 playwright-report/

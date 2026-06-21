@@ -32,9 +32,11 @@ jobs:
           target: wasm32-unknown-unknown
 
       - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
-        with:
-          version: latest
+        # jetli/wasm-pack-action の version: latest は GitHub API で最新版を解決するが、
+        # API レート制限に当たると古い v0.9.1 へフォールバックする。0.9.1 はワークスペース
+        # 継承マニフェスト（license.workspace = true 等）を解釈できず、manifest の parse に
+        # 失敗してビルドが落ちていた。wasm-c3.yml と同じく crates.io から固定的に入れる。
+        run: cargo install wasm-pack --locked
 
       # ── Node / pnpm ────────────────────────────────────────────────────────
       - name: Set up pnpm

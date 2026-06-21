@@ -7,6 +7,9 @@ plugins {
 android {
     namespace = "com.hayateprojects.hayate.adapter_android_demo"
     compileSdk = 34
+    // ローカルにインストール済みの NDK を明示（未指定だと AGP 既定の 26 系を探して
+    // "NDK is not installed" になる）。CI/他開発者の環境に合わせて調整すること。
+    ndkVersion = "30.0.14904198"
 
     defaultConfig {
         applicationId = "com.hayateprojects.hayate.adapter_android_demo"
@@ -39,6 +42,10 @@ dependencies {
     // GameActivity + GameTextInput: the soft-keyboard InputConnection path that
     // android-activity's game-activity backend reads for the stage C IME bridge.
     implementation("androidx.games:games-activity:3.0.5")
+    // GameActivity extends AppCompatActivity and implements OnApplyWindowInsetsListener;
+    // games-activity does not bring these transitively, so declare them explicitly.
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.core:core:1.13.1")
 }
 
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.

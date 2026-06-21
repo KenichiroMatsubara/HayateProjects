@@ -9,6 +9,7 @@
 
     <application
         android:label="Hayate Stage B"
+        android:theme="@style/Theme.AppCompat.NoActionBar"
         android:hasCode="true">
 
         <!-- GameActivity host; loads the Rust cdylib that android-activity's

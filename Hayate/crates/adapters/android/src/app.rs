@@ -241,16 +241,29 @@ fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
 async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<GpuSurface, String> {
     let (width, height) = window_dimensions(window.width(), window.height());
 
-    let instance = wgpu::Instance::default();
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::VULKAN,
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
+    });
+
+    // `SurfaceTargetUnsafe::from_window` は `raw_display_handle` を常に `None` に
+    // するため、`new_without_display_handle()` の Instance と組み合わせると wgpu が
+    // `MissingDisplayHandle` で失敗する（黒画面の原因）。Android の display handle を
+    // 明示して `RawHandle` を直接構築する。
+    use wgpu::rwh::{AndroidDisplayHandle, HasWindowHandle, RawDisplayHandle};
+    let raw_window_handle = window
+        .window_handle()
+        .map_err(|e| format!("window_handle: {e}"))?
+        .as_raw();
 
     // SAFETY: `window` はこのアダプタの生存期間中サーフェスより長く生きる
     // （`InitWindow` で再生成、`TerminateWindow` で破棄）。
     let surface = unsafe {
         instance
-            .create_surface_unsafe(
-                wgpu::SurfaceTargetUnsafe::from_window(window)
-                    .map_err(|e| format!("SurfaceTargetUnsafe::from_window: {e}"))?,
-            )
+            .create_surface_unsafe(wgpu::SurfaceTargetUnsafe::RawHandle {
+                raw_display_handle: Some(RawDisplayHandle::Android(AndroidDisplayHandle::new())),
+                raw_window_handle,
+            })
             .map_err(|e| format!("create_surface_unsafe: {e}"))?
     };
 
