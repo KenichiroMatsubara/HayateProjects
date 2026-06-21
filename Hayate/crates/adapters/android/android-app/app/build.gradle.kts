@@ -62,23 +62,24 @@ cargo {
     libname = "hayate_adapter_android"
     targets = listOf("arm64")
     profile = "release"
-    // `-Ptsubame.enabled=true` のときだけ Tsubame JS 駆動経路（ADR-0112）を有効化する。
-    // 既定（未指定）は OFF: feature が立たないので build.rs も C++/Hermes を
-    // コンパイルせず、従来どおりネイティブデモがビルドできる。
-    if (project.hasProperty("tsubame.enabled")) {
-        featureSpec.defaultAnd(arrayOf("tsubame-js"))
-        // Hermes/JSI のヘッダ・.so は vendor 済みで、build.rs が CARGO_MANIFEST_DIR 相対で
-        // 自動解決する（third_party/include と src/main/jniLibs/arm64-v8a）。別バージョンを
-        // 検証したいときだけ `-Phermes.include` / `-Phermes.lib` で上書きを env に渡す。
-        val hermesInclude = (project.findProperty("hermes.include") as String?)
-            ?: System.getenv("HERMES_INCLUDE")
-        val hermesLib = (project.findProperty("hermes.lib") as String?)
-            ?: System.getenv("HERMES_LIB")
-        if (hermesInclude != null || hermesLib != null) {
-            exec = { spec, _ ->
-                hermesInclude?.let { spec.environment("HERMES_INCLUDE", it) }
-                hermesLib?.let { spec.environment("HERMES_LIB", it) }
-            }
+    // 既定は Tsubame Todo（tsubame-js は Cargo.toml の default feature, ADR-0112）。
+    // Hayate 単体のネイティブデモ（build_demo_tree）を見たいときだけ `-Pnativedemo` で
+    // default features を外す。
+    if (project.hasProperty("nativedemo")) {
+        // default features を外す（= cargo の --no-default-features）。空配列で追加なし。
+        featureSpec.noDefaultBut(arrayOf<String>())
+    }
+    // Hermes/JSI のヘッダ・.so は vendor 済みで、build.rs が CARGO_MANIFEST_DIR 相対で
+    // 自動解決する（third_party/include と src/main/jniLibs/arm64-v8a）。別バージョンを
+    // 検証したいときだけ `-Phermes.include` / `-Phermes.lib`（または同名 env）で上書く。
+    val hermesInclude = (project.findProperty("hermes.include") as String?)
+        ?: System.getenv("HERMES_INCLUDE")
+    val hermesLib = (project.findProperty("hermes.lib") as String?)
+        ?: System.getenv("HERMES_LIB")
+    if (hermesInclude != null || hermesLib != null) {
+        exec = { spec, _ ->
+            hermesInclude?.let { spec.environment("HERMES_INCLUDE", it) }
+            hermesLib?.let { spec.environment("HERMES_LIB", it) }
         }
     }
 }
@@ -87,9 +88,9 @@ tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach 
     dependsOn("cargoBuild")
 }
 
-// Tsubame バンドル（tsubame.js）の生成＋assets 同梱は opt-in（-Ptsubame.enabled=true）。
-// 既定では登録しないので、pnpm 不在の環境でも従来どおりビルドできる（ADR-0112）。
-if (project.hasProperty("tsubame.enabled")) {
+// Tsubame バンドル（tsubame.js）を pnpm で生成し APK assets へ同梱する（既定, ADR-0112）。
+// `-Pnativedemo`（Hayate 単体デモ）のときは Tsubame を載せないので登録しない。
+if (!project.hasProperty("nativedemo")) {
     // パスは Gradle プロパティ `tsubame.dir` で上書き可能（既定はリポジトリ相対）。
     val tsubameDir = (project.findProperty("tsubame.dir") as String?)
         ?.let { file(it) }

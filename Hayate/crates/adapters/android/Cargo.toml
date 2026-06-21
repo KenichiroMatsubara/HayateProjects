@@ -13,9 +13,11 @@ repository.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# Tsubame JS 駆動経路（ADR-0112）。埋め込み Hermes が呼ぶ apply_mutations を
-# 共有の中立 dispatch 経由で ElementTree に適用する Rust 半分を有効化する。
-# 既定 OFF — 既存のネイティブ build_demo_tree 経路を壊さない（非破壊）。
+# Tsubame Todo デモが本命なので既定 ON（ADR-0112）。埋め込み Hermes が呼ぶ
+# apply_mutations を、共有の中立 dispatch 経由で ElementTree に適用する。
+# Hayate 単体のネイティブデモ（build_demo_tree）を見たいときだけ
+# `--no-default-features`（Gradle では `-Pnativedemo`）で外す。
+default = ["tsubame-js"]
 tsubame-js = []
 
 [dependencies]
