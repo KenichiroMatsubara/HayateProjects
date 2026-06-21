@@ -1,7 +1,7 @@
-// Tsubame/proto/generator による自動生成 — 編集禁止
-// Source: @hayate/protocol-spec
+// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
+// 生成元: @hayate/protocol-spec
 
-/** 要素レベルのインタラクションイベント種別（event_kinds.json の `interactionKind` を参照）。 */
+/** 要素レベルの Interaction Event 種別（event_kinds.json の `interactionKind` を参照）。 */
 export type EventKind =
   | 'click'
   | 'focus'
