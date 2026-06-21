@@ -632,8 +632,21 @@ impl HayateElementRenderer {
         };
         let (rx, ry) = (rx + dx, ry + dy);
         self.drag_raw = Some((sv, (rx, ry)));
-        let nx = scroll_drag::rubber_band_offset(rx, max_x, dim_x, &self.scroll_tuning);
-        let ny = scroll_drag::rubber_band_offset(ry, max_y, dim_y, &self.scroll_tuning);
+        // Rubber-band only the axes that can actually scroll. A non-scrollable
+        // axis (`max == 0`) is pinned at its origin: real mobile browsers never
+        // rubber-band an axis with nothing to scroll — a vertical-only page does
+        // not bounce sideways — while a genuinely horizontally-scrollable
+        // container (its `max > 0`) still does. Per-axis overscroll, like iOS.
+        let nx = if max_x > 0.0 {
+            scroll_drag::rubber_band_offset(rx, max_x, dim_x, &self.scroll_tuning)
+        } else {
+            0.0
+        };
+        let ny = if max_y > 0.0 {
+            scroll_drag::rubber_band_offset(ry, max_y, dim_y, &self.scroll_tuning)
+        } else {
+            0.0
+        };
         self.commit_scroll_offset(sv, nx, ny);
     }
 
@@ -648,8 +661,15 @@ impl HayateElementRenderer {
         self.scroll_samples.clear();
         self.drag_raw = None;
         let (max_x, max_y, _, _) = self.scroll_bounds(sv);
+        // A non-scrollable axis (`max == 0`) neither flings nor overscrolls: drop
+        // its release velocity and ignore it for the out-of-bounds check, so the
+        // released motion can't bounce an axis the user can't scroll (matches the
+        // drag-time per-axis gate above).
+        let vx = if max_x > 0.0 { vx } else { 0.0 };
+        let vy = if max_y > 0.0 { vy } else { 0.0 };
         let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-        let out_of_bounds = ox < 0.0 || ox > max_x || oy < 0.0 || oy > max_y;
+        let out_of_bounds = (max_x > 0.0 && (ox < 0.0 || ox > max_x))
+            || (max_y > 0.0 && (oy < 0.0 || oy > max_y));
         let has_fling = vx.abs() >= self.scroll_tuning.min_velocity
             || vy.abs() >= self.scroll_tuning.min_velocity;
         self.scroll_motion = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));

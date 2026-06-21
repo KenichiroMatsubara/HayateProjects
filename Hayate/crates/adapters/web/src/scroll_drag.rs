@@ -146,15 +146,16 @@ pub mod physics {
     /// roughly half a pixel, growing "heavier" the further you pull.
     pub const RUBBER_BAND_C: f32 = 0.55;
     /// Spring stiffness (px/ms² per px) pulling an overscrolled edge back to
-    /// rest. With [`SPRING_DAMPING`] the edge returns without oscillating past
-    /// it. Calibrated on-device (#353) — a stiffer, snappier return than the
-    /// initial 0.00015.
-    pub const SPRING_STIFFNESS: f32 = 0.0003;
-    /// Spring damping (px/ms per px/ms). At/above critical damping
-    /// (`2 * sqrt(SPRING_STIFFNESS)` ≈ 0.035), so a fling bounce eases back to
-    /// the edge without ringing. Calibrated on-device (#353) — held slightly
-    /// over-damped (0.06) for a clean, ring-free settle.
-    pub const SPRING_DAMPING: f32 = 0.06;
+    /// rest. Calibrated on-device (#353) via the `tuning.jsonc` overlay and
+    /// baked back here — softer than the initial 0.0003 for a gentler return.
+    pub const SPRING_STIFFNESS: f32 = 0.0001;
+    /// Spring damping (px/ms per px/ms), held a touch *under* critical
+    /// (`2 * sqrt(SPRING_STIFFNESS)` ≈ 0.02) for a livelier bounce. The lighter
+    /// damping would normally let the bounce ring past the boundary, but
+    /// [`scroll_motion_step`] snaps a bounce to rest exactly **at** the edge, so
+    /// that overshoot is clamped away and only the snappier feel remains.
+    /// Calibrated on-device (#353) via the `tuning.jsonc` overlay.
+    pub const SPRING_DAMPING: f32 = 0.015;
     /// Displacement (px) from the edge below which spring-back is considered home.
     pub const SPRING_REST_OFFSET: f32 = 0.5;
     /// Velocity (px/ms) below which — once within [`SPRING_REST_OFFSET`] — the
@@ -314,14 +315,33 @@ pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32, t: &ScrollPhysi
 /// `(offset, velocity)`; the offset is un-clamped (SCR-02) because overscroll is
 /// the whole point. The caller stops the animation once velocity rests **and**
 /// the offset is back within `[0, max]`.
+///
+/// A bounce settles **at** the edge it hit: when the spring would carry the
+/// content back across the edge into the range, the offset snaps to the edge at
+/// zero velocity rather than handing its residual inward speed to
+/// [`momentum_step`]. So a fling overshoots the boundary exactly once and comes
+/// to rest there — it can never re-cross the boundary and ping-pong between the
+/// two edges, however the spring is tuned (#352 follow-up).
 pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     let max = max.max(0.0);
     if offset < 0.0 {
-        let (disp, v) = spring_step(offset, velocity, dt_ms, t); // edge = 0
-        (disp, v)
+        // Past the top edge (edge = 0): spring toward it. A non-negative result
+        // means the spring reached / crossed the edge — settle exactly there.
+        let (disp, v) = spring_step(offset, velocity, dt_ms, t);
+        if disp >= 0.0 {
+            (0.0, 0.0)
+        } else {
+            (disp, v)
+        }
     } else if offset > max {
+        // Past the bottom edge (edge = max): symmetric — a non-positive
+        // displacement means it returned to / past the edge, so rest at `max`.
         let (disp, v) = spring_step(offset - max, velocity, dt_ms, t);
-        (max + disp, v)
+        if disp <= 0.0 {
+            (max, 0.0)
+        } else {
+            (max + disp, v)
+        }
     } else {
         let (delta, v) = momentum_step(velocity, dt_ms, t);
         (offset + delta, v)
@@ -462,8 +482,8 @@ mod tests {
         assert_eq!(physics::SAMPLE_WINDOW_MS, 100.0);
         // Overscroll / spring-back knobs (#352) live in the same block.
         assert_eq!(physics::RUBBER_BAND_C, 0.55);
-        assert_eq!(physics::SPRING_STIFFNESS, 0.0003);
-        assert_eq!(physics::SPRING_DAMPING, 0.06);
+        assert_eq!(physics::SPRING_STIFFNESS, 0.0001);
+        assert_eq!(physics::SPRING_DAMPING, 0.015);
         assert_eq!(physics::SPRING_REST_OFFSET, 0.5);
         assert_eq!(physics::SPRING_REST_VELOCITY, 0.10);
     }
@@ -625,6 +645,37 @@ mod tests {
         assert!(max_seen > max, "the fling bounced into overscroll (peak {max_seen})");
         assert!(settled.is_some(), "and the bounce settled");
         assert!((offset - max).abs() < 1.0, "resting at the edge (got {offset})");
+    }
+
+    #[test]
+    fn a_bounce_settles_at_the_edge_and_never_re_crosses_the_boundary() {
+        // Structural guarantee (#352 follow-up): once a fling has bounced into
+        // overscroll, the spring brings it to rest AT the edge it hit — its
+        // residual inward velocity is never handed back to momentum, so the
+        // content can't shoot back across the range and ping-pong between the two
+        // edges. Drive a violent flick well past the bottom edge and watch the
+        // frame it returns to the range: it must arrive exactly at the edge, at
+        // rest, never re-entering with speed to spare.
+        let max = 400.0;
+        let mut offset = 380.0;
+        let mut v = 8.0; // far overruns the 20px left to the edge
+        let mut re_entered_with_speed = false;
+        let mut rest_offset = None;
+        for _ in 0..4000 {
+            let (no, nv) = scroll_motion_step(offset, v, max, 16.0, &t());
+            // The transition from overscroll (offset > max) back into the range.
+            if offset > max && no <= max {
+                re_entered_with_speed = nv != 0.0 || (no - max).abs() > 1e-3;
+            }
+            offset = no;
+            v = nv;
+            if v == 0.0 && (0.0..=max).contains(&offset) {
+                rest_offset = Some(offset);
+                break;
+            }
+        }
+        assert!(!re_entered_with_speed, "the bounce re-crossed the boundary carrying speed");
+        assert_eq!(rest_offset, Some(max), "the fling settled exactly at the edge it hit");
     }
 
     #[test]
