@@ -90,7 +90,7 @@ class HayateHostObject : public jsi::HostObject {
       return jsi::Function::createFromHostFunction(
           rt, name, 3,
           [&b](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
-               size_t count) -> jsi::Value {
+               size_t /*count*/) -> jsi::Value {
             auto ops = typed_array_to_vec<double>(rt, args[0]);
             auto styles = typed_array_to_vec<float>(rt, args[1]);
             auto texts = string_array_to_vec(rt, args[2]);

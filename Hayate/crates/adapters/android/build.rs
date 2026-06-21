@@ -1,11 +1,16 @@
 //! Android（device）かつ `tsubame-js` feature 有効時のみ、cxx の C++ ブリッジ
-//! （JSI/Hermes ホスト）をコンパイルする（ADR-0112）。
+//! （JSI/Hermes ホスト）をコンパイル & リンクする（ADR-0112）。
 //!
 //! ホスト（x86_64/wasm 以外）の `cargo check` ではこの分岐に入らないため、
 //! libhermes / NDK が無くてもビルドが通り、純 Rust の検証が回り続ける。
-//! device ビルド（Gradle + rust-android-gradle + NDK）では libhermes を
-//! リンクする必要がある（Gradle 側で jniLibs / linker 設定を行う）。
+//!
+//! Hermes/JSI のヘッダと .so はリポジトリに vendor 済み（ADR-0007 の vendored
+//! dependencies 方針）。react-android には依存せず、必要な 4 つの .so
+//! （libhermesvm / libjsi / libfbjni / libc++_shared）だけを jniLibs に置き、JSI/Hermes
+//! ヘッダを third_party/include に置く。`HERMES_INCLUDE` / `HERMES_LIB` を env で
+//! 与えればそちらを優先する（別バージョン検証用）。
 use std::env;
+use std::path::PathBuf;
 
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -15,31 +20,42 @@ fn main() {
         return;
     }
 
+    let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    // vendor 既定パス（env 未指定時）。
+    let vendored_include = manifest.join("third_party/include");
+    let vendored_lib = manifest.join("android-app/app/src/main/jniLibs/arm64-v8a");
+
     // cxx ブリッジ（src/hermes_bridge.rs）と C++ 実装（cpp/hermes_app.cpp）を
-    // 一緒にコンパイルする。ヘッダ探索パスは Hermes/JSI を含む必要があり、
-    // Gradle/NDK 側から HERMES_INCLUDE 等で渡す想定（device 未検証）。
+    // 一緒にコンパイルする。JSI/Hermes ヘッダ探索パスを include に足す。
     let mut build = cxx_build::bridge("src/hermes_bridge.rs");
     build.file("cpp/hermes_app.cpp");
     build.std("c++17");
 
-    if let Ok(hermes_include) = env::var("HERMES_INCLUDE") {
-        for path in env::split_paths(&hermes_include) {
-            build.include(path);
+    match env::var("HERMES_INCLUDE") {
+        Ok(inc) => {
+            for path in env::split_paths(&inc) {
+                build.include(path);
+            }
+        }
+        Err(_) => {
+            build.include(&vendored_include);
         }
     }
 
     build.compile("hayate_hermes_bridge");
 
-    // libjsi.so / libhermesvm.so を cdylib にリンクする。探索パスは AAR（prefab/jni）
-    // 由来で、`HERMES_LIB`（複数可, OS のパス区切り）で渡す。Gradle 側がこの env を
-    // 設定する（hermes-android / react-android の prefab/jni ディレクトリ）。
-    if let Ok(hermes_lib) = env::var("HERMES_LIB") {
-        for path in env::split_paths(&hermes_lib) {
-            println!("cargo:rustc-link-search=native={}", path.display());
-        }
-        println!("cargo:rustc-link-lib=dylib=jsi");
-        println!("cargo:rustc-link-lib=dylib=hermesvm");
+    // libjsi.so / libhermesvm.so を cdylib にリンクする。探索パスは vendor 済み
+    // jniLibs（env HERMES_LIB で上書き可）。libfbjni / libc++_shared は libhermesvm の
+    // NEEDED として実行時に解決されるが、リンカが探索できるよう同じ jniLibs に置く。
+    let lib_paths: Vec<PathBuf> = match env::var("HERMES_LIB") {
+        Ok(libs) => env::split_paths(&libs).collect(),
+        Err(_) => vec![vendored_lib],
+    };
+    for path in &lib_paths {
+        println!("cargo:rustc-link-search=native={}", path.display());
     }
+    println!("cargo:rustc-link-lib=dylib=jsi");
+    println!("cargo:rustc-link-lib=dylib=hermesvm");
 
     println!("cargo:rerun-if-changed=src/hermes_bridge.rs");
     println!("cargo:rerun-if-changed=cpp/hermes_app.cpp");

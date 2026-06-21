@@ -49,15 +49,11 @@ dependencies {
     // games-activity does not bring these transitively, so declare them explicitly.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core:1.13.1")
-    // Tsubame JS 駆動（ADR-0112）を `-Ptsubame.enabled=true` で有効化したときだけ
-    // 埋め込み Hermes を取り込む。libhermes.so を APK の jniLibs に入れ、cdylib が
-    // JSI でリンクする。ヘッダ（<jsi/jsi.h> / <hermes/hermes.h>）は build.rs に
-    // HERMES_INCLUDE で渡す（cargo ブロック参照）。standalone 埋め込みは device
-    // 未検証 — バージョン/座標は環境で要調整。既定（未指定）は従来のネイティブ
-    // デモ経路でビルドし、この依存も C++ コンパイルも発生しない。
-    if (project.hasProperty("tsubame.enabled")) {
-        implementation("com.facebook.react:hermes-android:0.76.0")
-    }
+    // embedded Hermes（ADR-0112）は libhermesvm/libjsi/libfbjni/libc++_shared を要するが、
+    // libjsi/libfbjni は react-android AAR にしか無く、依存すると不要な libreactnative.so で
+    // APK が肥大化する。そのため react-android には依存せず、必要な 4 つの .so だけを
+    // src/main/jniLibs/arm64-v8a に vendor 済み（ADR-0007）。AGP がそれらを APK に同梱し、
+    // cdylib は build.rs 経由で同じ .so にリンクする。RN 系の maven 依存は持たない。
 }
 
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.
@@ -71,9 +67,18 @@ cargo {
     // コンパイルせず、従来どおりネイティブデモがビルドできる。
     if (project.hasProperty("tsubame.enabled")) {
         featureSpec.defaultAnd(arrayOf("tsubame-js"))
-        // build.rs に Hermes/JSI ヘッダ探索パスを渡す（device 環境で設定）。
-        System.getenv("HERMES_INCLUDE")?.let { hermesInc ->
-            exec = { spec, _ -> spec.environment("HERMES_INCLUDE", hermesInc) }
+        // Hermes/JSI のヘッダ・.so は vendor 済みで、build.rs が CARGO_MANIFEST_DIR 相対で
+        // 自動解決する（third_party/include と src/main/jniLibs/arm64-v8a）。別バージョンを
+        // 検証したいときだけ `-Phermes.include` / `-Phermes.lib` で上書きを env に渡す。
+        val hermesInclude = (project.findProperty("hermes.include") as String?)
+            ?: System.getenv("HERMES_INCLUDE")
+        val hermesLib = (project.findProperty("hermes.lib") as String?)
+            ?: System.getenv("HERMES_LIB")
+        if (hermesInclude != null || hermesLib != null) {
+            exec = { spec, _ ->
+                hermesInclude?.let { spec.environment("HERMES_INCLUDE", it) }
+                hermesLib?.let { spec.environment("HERMES_LIB", it) }
+            }
         }
     }
 }
