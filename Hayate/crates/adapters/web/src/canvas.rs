@@ -691,6 +691,15 @@ impl HayateElementRenderer {
     }
 
     fn apply_resize(&mut self, metrics: resize_observer::CanvasResizeMetrics) {
+        // Ignore a degenerate 0×0 report: a canvas that is detached, `display:none`,
+        // or not yet laid out (the ResizeObserver's first tick, and every headless
+        // test DOM where `getBoundingClientRect()` is 0) momentarily reports no box.
+        // Collapsing the viewport to 0 zeroes every `%`-sized box — the root then
+        // covers nothing, so hit-test/focus/IME silently stop — and we'd only have
+        // to rebuild the layout on the next real tick. Keep the prior viewport.
+        if metrics.viewport_width <= 0.0 || metrics.viewport_height <= 0.0 {
+            return;
+        }
         self.tree
             .set_viewport(metrics.viewport_width, metrics.viewport_height);
         self.backend.resize(

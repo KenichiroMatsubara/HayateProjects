@@ -32,7 +32,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > block box color and fon
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 37,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -52,9 +52,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > block box color and fon
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -76,8 +76,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > block box color and fon
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -107,7 +107,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > block box color and fon
       "bounds": [
         0,
         0,
-        37,
+        200,
         100,
       ],
       "id": 2,
@@ -202,7 +202,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultColor on a block
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 63,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -222,9 +222,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultColor on a block
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -246,8 +246,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultColor on a block
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -277,7 +277,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultColor on a block
       "bounds": [
         0,
         0,
-        63,
+        200,
         100,
       ],
       "id": 2,
@@ -372,7 +372,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontFamily on a 
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 46,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -392,9 +392,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontFamily on a 
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -416,8 +416,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontFamily on a 
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -447,7 +447,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontFamily on a 
       "bounds": [
         0,
         0,
-        46,
+        200,
         100,
       ],
       "id": 2,
@@ -542,7 +542,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontSize on a bl
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 52,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -562,9 +562,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontSize on a bl
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -586,8 +586,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontSize on a bl
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -617,7 +617,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontSize on a bl
       "bounds": [
         0,
         0,
-        52,
+        200,
         100,
       ],
       "id": 2,
@@ -712,7 +712,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontWeight on a 
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 72,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -732,9 +732,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontWeight on a 
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -756,8 +756,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontWeight on a 
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -787,7 +787,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontWeight on a 
       "bounds": [
         0,
         0,
-        72,
+        200,
         100,
       ],
       "id": 2,
@@ -882,8 +882,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
             "bounds": {
               "x0": 0,
               "x1": 40,
-              "y0": 15,
-              "y1": 30,
+              "y0": 33,
+              "y1": 48,
             },
           },
           "role": "genericContainer",
@@ -899,8 +899,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
             "bounds": {
               "x0": 0,
               "x1": 40,
-              "y0": 30,
-              "y1": 45,
+              "y0": 67,
+              "y1": 82,
             },
           },
           "role": "genericContainer",
@@ -915,9 +915,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 40,
+              "x1": 70,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               3,
@@ -937,9 +937,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -961,8 +961,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -992,8 +992,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
       "bounds": [
         0,
         0,
-        40,
-        0,
+        70,
+        100,
       ],
       "id": 2,
       "text": "",
@@ -1022,7 +1022,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
     {
       "bounds": [
         0,
-        30,
+        67,
         40,
         15,
       ],
@@ -1053,7 +1053,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > flexWrap wrap places ov
     {
       "bounds": [
         0,
-        15,
+        33,
         40,
         15,
       ],
@@ -1149,7 +1149,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontStyle italic resolv
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 54,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -1169,9 +1169,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontStyle italic resolv
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -1193,8 +1193,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontStyle italic resolv
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -1224,7 +1224,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontStyle italic resolv
       "bounds": [
         0,
         0,
-        54,
+        200,
         100,
       ],
       "id": 2,
@@ -1319,7 +1319,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 600 resolves
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 62,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -1339,9 +1339,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 600 resolves
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -1363,8 +1363,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 600 resolves
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -1394,7 +1394,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 600 resolves
       "bounds": [
         0,
         0,
-        62,
+        200,
         100,
       ],
       "id": 2,
@@ -1489,7 +1489,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 700 resolves
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 53,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -1509,9 +1509,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 700 resolves
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -1533,8 +1533,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 700 resolves
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -1564,7 +1564,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > fontWeight 700 resolves
       "bounds": [
         0,
         0,
-        53,
+        200,
         100,
       ],
       "id": 2,
@@ -1641,7 +1641,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 44,
+              "x1": 66,
               "y0": 0,
               "y1": 100,
             },
@@ -1659,7 +1659,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 44,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -1679,9 +1679,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -1703,8 +1703,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -1734,7 +1734,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
       "bounds": [
         0,
         0,
-        44,
+        200,
         100,
       ],
       "id": 2,
@@ -1765,7 +1765,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
       "bounds": [
         0,
         0,
-        44,
+        66,
         100,
       ],
       "id": 3,
@@ -1860,7 +1860,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > text-local color and fo
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 56,
+              "x1": 200,
               "y0": 0,
               "y1": 100,
             },
@@ -1880,9 +1880,9 @@ exports[`golden frame semantic parity (ADR-0079, #151) > text-local color and fo
           "properties": {
             "bounds": {
               "x0": 0,
-              "x1": 0,
+              "x1": 200,
               "y0": 0,
-              "y1": 0,
+              "y1": 100,
             },
             "children": [
               2,
@@ -1904,8 +1904,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > text-local color and fo
       "bounds": [
         0,
         0,
-        0,
-        0,
+        200,
+        100,
       ],
       "id": 1,
       "text": "",
@@ -1935,7 +1935,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > text-local color and fo
       "bounds": [
         0,
         0,
-        56,
+        200,
         100,
       ],
       "id": 2,
