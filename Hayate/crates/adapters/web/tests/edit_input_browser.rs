@@ -177,6 +177,11 @@ async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
     renderer.render(16.0).unwrap();
     assert_eq!(renderer.focused_element_id(), 1.0);
 
+    // The press dropped the caret at the click point (ADR-0097, #271), so it is
+    // not necessarily at the end. Clamp it to the end first (ArrowRight past the
+    // last grapheme is a no-op), then step one left to sit between 'a' and 'b'.
+    renderer.on_key_down("ArrowRight", 0);
+    renderer.on_key_down("ArrowRight", 0);
     renderer.on_key_down("ArrowLeft", 0); // caret between 'a' and 'b'
     renderer.on_key_down("Enter", 0);
     assert_eq!(
