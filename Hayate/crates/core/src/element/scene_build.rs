@@ -526,8 +526,7 @@ fn emit_selection_toolbar(
     tree: &ElementTree,
     toolbar: &crate::element::selection_chrome::SelectionToolbar,
 ) -> NodeId {
-    use crate::element::selection_chrome::TOOLBAR_CORNER_RADIUS;
-    let style = toolbar.style;
+    let ct = tree.chrome_tuning();
     // The overlay root is a Group; its children are inserted via `insert_child`
     // so they are not also registered as top-level roots (which would double-
     // paint them, once as a root and once via the group walk).
@@ -545,13 +544,17 @@ fn emit_selection_toolbar(
                 y: toolbar.bounds.y,
                 width: toolbar.bounds.width,
                 height: toolbar.bounds.height,
-                color: style.toolbar_background(),
-                corner_radius: TOOLBAR_CORNER_RADIUS,
+                // The panel/label *colours* are theme-owned (Material vs
+                // Cupertino, ADR-0097) and switch with `toolbar.style`, so they
+                // stay style-derived — only the non-themed `corner_radius` is a
+                // tuning knob.
+                color: toolbar.style.toolbar_background(),
+                corner_radius: ct.toolbar_corner_radius,
             },
             children: Vec::new(),
         },
     );
-    let label_color = style.toolbar_label();
+    let label_color = toolbar.style.toolbar_label();
     for button in &toolbar.buttons {
         let Some(label) = tree.toolbar_label_layout(button.action) else {
             continue;
@@ -985,6 +988,7 @@ fn emit_element<S: AnchorSink>(
                 active_range,
                 content_x,
                 content_y,
+                tree.chrome_tuning().selection_highlight_color,
                 ctx.sg,
                 effective_parent,
             );
@@ -998,7 +1002,7 @@ fn emit_element<S: AnchorSink>(
         let (runs, run_color) = if let Some(cl) = el.content_layout.as_ref() {
             (Some(cl.runs.as_slice()), color)
         } else {
-            let muted = placeholder_muted_color(confirmed_color)
+            let muted = placeholder_muted_color(confirmed_color, tree.chrome_tuning().placeholder_alpha)
                 .with_opacity(visual.opacity)
                 .to_array_f32();
             (el.text_layout.as_ref().map(|tl| tl.runs.as_slice()), muted)
@@ -1031,6 +1035,8 @@ fn emit_element<S: AnchorSink>(
                     content_x,
                     content_y,
                     color,
+                    tree.chrome_tuning().composition_underline_thin,
+                    tree.chrome_tuning().composition_underline_thick,
                     ctx.sg,
                     effective_parent,
                 );
@@ -1170,17 +1176,24 @@ fn emit_focus_ring(
 /// `max` its maximum. The length scales with the viewport/content ratio, floored
 /// at [`SCROLLBAR_MIN_THUMB_LENGTH`]; the start slides the thumb down the track by
 /// the offset as a fraction of the scrollable range.
-fn scrollbar_thumb_extent(viewport: f32, content: f32, offset: f32, max: f32) -> (f32, f32) {
-    let track_len = (viewport - 2.0 * SCROLLBAR_TRACK_MARGIN).max(0.0);
+fn scrollbar_thumb_extent(
+    viewport: f32,
+    content: f32,
+    offset: f32,
+    max: f32,
+    track_margin: f32,
+    min_thumb_length: f32,
+) -> (f32, f32) {
+    let track_len = (viewport - 2.0 * track_margin).max(0.0);
     let thumb_len = (track_len * viewport / content)
-        .max(SCROLLBAR_MIN_THUMB_LENGTH)
+        .max(min_thumb_length)
         .min(track_len);
     let progress = if max > 0.0 {
         (offset / max).clamp(0.0, 1.0)
     } else {
         0.0
     };
-    let start = SCROLLBAR_TRACK_MARGIN + (track_len - thumb_len) * progress;
+    let start = track_margin + (track_len - thumb_len) * progress;
     (start, thumb_len)
 }
 
@@ -1196,6 +1209,7 @@ fn scrollbar_axes_in_box(
     w: f32,
     h: f32,
 ) -> Vec<ScrollbarAxisGeometry> {
+    let ct = tree.chrome_tuning();
     let (content_w, content_h) = tree.element_content_size(id);
     let (max_x, max_y) = tree.element_scroll_max_offset(id);
     let (offset_x, offset_y) = tree.element_get_scroll_offset(id);
@@ -1203,16 +1217,23 @@ fn scrollbar_axes_in_box(
 
     // Vertical bar at the right edge — only when content overflows the box height.
     if content_h > h {
-        let (start, thumb_len) = scrollbar_thumb_extent(h, content_h, offset_y, max_y);
-        let track_len = (h - 2.0 * SCROLLBAR_TRACK_MARGIN).max(0.0);
-        let bar_x = x + w - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS;
+        let (start, thumb_len) = scrollbar_thumb_extent(
+            h,
+            content_h,
+            offset_y,
+            max_y,
+            ct.scrollbar_track_margin,
+            ct.scrollbar_min_thumb_length,
+        );
+        let track_len = (h - 2.0 * ct.scrollbar_track_margin).max(0.0);
+        let bar_x = x + w - ct.scrollbar_track_margin - ct.scrollbar_thickness;
         axes.push(ScrollbarAxisGeometry {
             axis: ScrollAxis::Vertical,
-            thumb: (bar_x, y + start, SCROLLBAR_THICKNESS, thumb_len),
+            thumb: (bar_x, y + start, ct.scrollbar_thickness, thumb_len),
             track: (
                 bar_x,
-                y + SCROLLBAR_TRACK_MARGIN,
-                SCROLLBAR_THICKNESS,
+                y + ct.scrollbar_track_margin,
+                ct.scrollbar_thickness,
                 track_len,
             ),
             max_offset: max_y,
@@ -1222,17 +1243,24 @@ fn scrollbar_axes_in_box(
 
     // Horizontal bar at the bottom edge — only when content overflows the width.
     if content_w > w {
-        let (start, thumb_len) = scrollbar_thumb_extent(w, content_w, offset_x, max_x);
-        let track_len = (w - 2.0 * SCROLLBAR_TRACK_MARGIN).max(0.0);
-        let bar_y = y + h - SCROLLBAR_TRACK_MARGIN - SCROLLBAR_THICKNESS;
+        let (start, thumb_len) = scrollbar_thumb_extent(
+            w,
+            content_w,
+            offset_x,
+            max_x,
+            ct.scrollbar_track_margin,
+            ct.scrollbar_min_thumb_length,
+        );
+        let track_len = (w - 2.0 * ct.scrollbar_track_margin).max(0.0);
+        let bar_y = y + h - ct.scrollbar_track_margin - ct.scrollbar_thickness;
         axes.push(ScrollbarAxisGeometry {
             axis: ScrollAxis::Horizontal,
-            thumb: (x + start, bar_y, thumb_len, SCROLLBAR_THICKNESS),
+            thumb: (x + start, bar_y, thumb_len, ct.scrollbar_thickness),
             track: (
-                x + SCROLLBAR_TRACK_MARGIN,
+                x + ct.scrollbar_track_margin,
                 bar_y,
                 track_len,
-                SCROLLBAR_THICKNESS,
+                ct.scrollbar_thickness,
             ),
             max_offset: max_x,
             thumb_travel: (track_len - thumb_len).max(0.0),
@@ -1263,10 +1291,12 @@ fn emit_scrollbar_overlay(
     match tree.last_pointer_kind() {
         PointerKind::Touch => emit_touch_scroll_indicator(tree, id, sg, parent, x, y, w, h),
         PointerKind::Mouse | PointerKind::Pen => {
-            let thumb_rgba = SCROLLBAR_THUMB_COLOR
-                .with_opacity(SCROLLBAR_THUMB_OPACITY)
+            let ct = tree.chrome_tuning();
+            let thumb_rgba = ct
+                .scrollbar_thumb_color
+                .with_opacity(ct.scrollbar_thumb_opacity)
                 .to_array_f32();
-            let radius = SCROLLBAR_THICKNESS / 2.0;
+            let radius = ct.scrollbar_thickness / 2.0;
             for axis in scrollbar_axes_in_box(tree, id, x, y, w, h) {
                 let (tx, ty, tw, th) = axis.thumb;
                 emit_fill_rect(sg, parent, tx, ty, tw, th, thumb_rgba, radius);
@@ -1310,10 +1340,12 @@ fn emit_touch_scroll_indicator(
     if fade <= 0.0 {
         return;
     }
-    let rgba = SCROLLBAR_INDICATOR_COLOR
-        .with_opacity(SCROLLBAR_INDICATOR_OPACITY * fade)
+    let ct = tree.chrome_tuning();
+    let rgba = ct
+        .scrollbar_indicator_color
+        .with_opacity(ct.scrollbar_indicator_opacity * fade)
         .to_array_f32();
-    let radius = SCROLLBAR_INDICATOR_THICKNESS / 2.0;
+    let radius = ct.scrollbar_indicator_thickness / 2.0;
     for axis in scrollbar_axes_in_box(tree, id, x, y, w, h) {
         // The indicator rides the same thumb geometry (its position still tracks
         // the Scroll Offset) but is thinner and pinned to the box edge — right
@@ -1321,16 +1353,16 @@ fn emit_touch_scroll_indicator(
         let (tx, ty, tw, th) = axis.thumb;
         let (ix, iy, iw, ih) = match axis.axis {
             ScrollAxis::Vertical => (
-                tx + tw - SCROLLBAR_INDICATOR_THICKNESS,
+                tx + tw - ct.scrollbar_indicator_thickness,
                 ty,
-                SCROLLBAR_INDICATOR_THICKNESS,
+                ct.scrollbar_indicator_thickness,
                 th,
             ),
             ScrollAxis::Horizontal => (
                 tx,
-                ty + th - SCROLLBAR_INDICATOR_THICKNESS,
+                ty + th - ct.scrollbar_indicator_thickness,
                 tw,
-                SCROLLBAR_INDICATOR_THICKNESS,
+                ct.scrollbar_indicator_thickness,
             ),
         };
         emit_fill_rect(sg, parent, ix, iy, iw, ih, rgba, radius);
@@ -1346,11 +1378,14 @@ fn emit_touch_scroll_indicator(
 /// ⇒ light scheme ⇒ muted black; light body text ⇒ dark scheme ⇒ muted white.
 /// The 0.54 factor follows ADR-0102's principle (~54% black/white); its exact
 /// value is still pending calibration against real Chromium rendering.
-fn placeholder_muted_color(body: Color) -> Color {
-    const PLACEHOLDER_ALPHA: f64 = 0.54;
+///
+/// The ~54% muting factor (its exact value pending Chromium calibration).
+pub(crate) const PLACEHOLDER_ALPHA: f64 = 0.54;
+
+fn placeholder_muted_color(body: Color, alpha: f64) -> Color {
     let luma = 0.299 * body.r + 0.587 * body.g + 0.114 * body.b;
     let base = if luma < 0.5 { Color::BLACK } else { Color::WHITE };
-    Color::new(base.r, base.g, base.b, PLACEHOLDER_ALPHA)
+    Color::new(base.r, base.g, base.b, alpha)
 }
 
 fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId {
@@ -1362,7 +1397,7 @@ fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId
 
 /// Material-flavored selection tint (ADR-0097: a single core-drawn chrome whose
 /// style is theme-switchable; the value lives here as the initial theme).
-const SELECTION_HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
+pub(crate) const SELECTION_HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
 /// Lower the active selection's highlight for IFC root `id`, as one filled rect
 /// per covered line, positioned in the element's content space (offset by the
@@ -1379,6 +1414,7 @@ fn emit_selection_highlight(
     let Some((start, end)) = tree.selection_range_in_block(id) else {
         return;
     };
+    let highlight_color = tree.chrome_tuning().selection_highlight_color;
     for (rx, ry, rw, rh) in selection_highlight_rects(layout, start, end) {
         emit(
             sg,
@@ -1389,7 +1425,7 @@ fn emit_selection_highlight(
                     y: oy + ry,
                     width: rw,
                     height: rh,
-                    color: SELECTION_HIGHLIGHT_COLOR,
+                    color: highlight_color,
                     corner_radius: 0.0,
                 },
                 children: Vec::new(),
@@ -1407,6 +1443,7 @@ fn emit_edit_selection_highlight(
     range: Option<(usize, usize)>,
     content_x: f32,
     content_y: f32,
+    highlight_color: [f32; 4],
     sg: &mut SceneGraph,
     parent: Option<NodeId>,
 ) {
@@ -1423,7 +1460,7 @@ fn emit_edit_selection_highlight(
                     y: content_y + ry,
                     width: rw,
                     height: rh,
-                    color: SELECTION_HIGHLIGHT_COLOR,
+                    color: highlight_color,
                     corner_radius: 0.0,
                 },
                 children: Vec::new(),
@@ -1436,28 +1473,31 @@ fn emit_edit_selection_highlight(
 /// determined clauses with a thin underline and the active (being-converted)
 /// clause with a thick one; the exact pixel weights are pending calibration
 /// against real Chromium rasterisation, like the other Canvas chrome values.
-const COMPOSITION_UNDERLINE_THIN: f32 = 1.0;
-const COMPOSITION_UNDERLINE_THICK: f32 = 2.0;
+pub(crate) const COMPOSITION_UNDERLINE_THIN: f32 = 1.0;
+pub(crate) const COMPOSITION_UNDERLINE_THICK: f32 = 2.0;
 
 /// Lower a text-input's IME composition underlines (ADR-0102, #336): one filled
 /// rect per clause, sat at the bottom of each covered line in the element's
 /// content space (offset by `content_x`, `content_y`), painted in the text
 /// `color`. `underlines` are display-text byte ranges with their weight; no-op
 /// when no composition is active.
+#[allow(clippy::too_many_arguments)]
 fn emit_composition_underlines(
     layout: &parley::Layout<crate::element::text::TextBrush>,
     underlines: &[(usize, usize, crate::element::edit_state::CompositionUnderline)],
     content_x: f32,
     content_y: f32,
     color: [f32; 4],
+    thin: f32,
+    thick: f32,
     sg: &mut SceneGraph,
     parent: Option<NodeId>,
 ) {
     use crate::element::edit_state::CompositionUnderline;
     for &(start, end, weight) in underlines {
         let thickness = match weight {
-            CompositionUnderline::Thin => COMPOSITION_UNDERLINE_THIN,
-            CompositionUnderline::Thick => COMPOSITION_UNDERLINE_THICK,
+            CompositionUnderline::Thin => thin,
+            CompositionUnderline::Thick => thick,
         };
         for (rx, ry, rw, rh) in selection_highlight_rects(layout, start, end) {
             emit(

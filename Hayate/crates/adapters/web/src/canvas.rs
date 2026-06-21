@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
-use crate::scroll_drag::{self, MoveOutcome, ScrollGesture};
+use crate::scroll_drag::{self, MoveOutcome, ScrollGesture, ScrollPhysicsTuning};
 
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId, ElementKind,
@@ -136,6 +136,10 @@ pub struct HayateElementRenderer {
     /// Timestamp of the previous `render()` frame, for the inter-frame `dt` the
     /// momentum integrator advances by. `None` before the first frame.
     last_frame_ms: Option<f64>,
+    /// Live scroll-physics knobs. Defaults to the authoritative consts; a dev
+    /// build may overlay a `tuning.json` via [`set_tuning`](Self::set_tuning) to
+    /// feel-tune on a real device without recompiling (#353).
+    scroll_tuning: ScrollPhysicsTuning,
     /// Texts read from the async clipboard for a pending Ctrl/Cmd+V, applied on
     /// the next `render()` (the browser clipboard read is async, so it cannot be
     /// served through the synchronous `Clipboard::read_text` seam, ADR-0097).
@@ -201,6 +205,7 @@ impl HayateElementRenderer {
             drag_raw: None,
             scroll_motion: None,
             last_frame_ms: None,
+            scroll_tuning: ScrollPhysicsTuning::default(),
             pending_paste: Rc::new(RefCell::new(Vec::new())),
             _pointer_input: pointer_guard,
         })
@@ -212,6 +217,23 @@ impl HayateElementRenderer {
     /// re-issuing the colour each frame.
     pub fn set_background_color(&mut self, r: f64, g: f64, b: f64) {
         self.background = [r as f32, g as f32, b as f32, 1.0];
+    }
+
+    /// Overlay the dev-only `tuning.json` taste-constant overrides (#353 family).
+    /// `json` is the raw file text; the host fetches `tuning.json` and calls this
+    /// once after `init`, before the first frame. Absent file → the host never
+    /// calls this (defaults stand). Malformed JSON / unknown keys → `Err`, which
+    /// the host swallows, leaving the compiled defaults intact. Editing the file
+    /// and reloading (F5) re-applies with no recompile.
+    pub fn set_tuning(&mut self, json: JsValue) -> Result<(), JsValue> {
+        let text = json
+            .as_string()
+            .ok_or_else(|| JsValue::from_str("set_tuning: expected a JSON string"))?;
+        let parsed = crate::tuning::TuningJson::parse(&text)
+            .map_err(|e| JsValue::from_str(&format!("set_tuning: {e}")))?;
+        self.scroll_tuning = parsed.scroll_tuning();
+        self.tree.set_chrome_tuning(parsed.chrome_tuning());
+        Ok(())
     }
 
     pub fn set_viewport(&mut self, width: f32, height: f32) {
@@ -500,7 +522,7 @@ impl HayateElementRenderer {
             }
             PointerInput::Move { x, y, kind } => {
                 if let Some(mut gesture) = self.scroll_gesture.take() {
-                    match gesture.on_move((x, y), scroll_drag::SCROLL_SLOP_PX) {
+                    match gesture.on_move((x, y), self.scroll_tuning.slop_px) {
                         // Still a pending tap — leave the press alive.
                         MoveOutcome::Pending => {}
                         // Slop crossed: release the press (#213) so the touch
@@ -610,8 +632,8 @@ impl HayateElementRenderer {
         };
         let (rx, ry) = (rx + dx, ry + dy);
         self.drag_raw = Some((sv, (rx, ry)));
-        let nx = scroll_drag::rubber_band_offset(rx, max_x, dim_x);
-        let ny = scroll_drag::rubber_band_offset(ry, max_y, dim_y);
+        let nx = scroll_drag::rubber_band_offset(rx, max_x, dim_x, &self.scroll_tuning);
+        let ny = scroll_drag::rubber_band_offset(ry, max_y, dim_y, &self.scroll_tuning);
         self.commit_scroll_offset(sv, nx, ny);
     }
 
@@ -622,14 +644,14 @@ impl HayateElementRenderer {
     /// (#351, #352). A slow release that ends inside the range leaves nothing
     /// animating.
     fn launch_scroll_motion(&mut self, sv: ElementId) {
-        let (vx, vy) = scroll_drag::estimate_release_velocity(&self.scroll_samples);
+        let (vx, vy) = scroll_drag::estimate_release_velocity(&self.scroll_samples, &self.scroll_tuning);
         self.scroll_samples.clear();
         self.drag_raw = None;
         let (max_x, max_y, _, _) = self.scroll_bounds(sv);
         let (ox, oy) = self.tree.element_get_scroll_offset(sv);
         let out_of_bounds = ox < 0.0 || ox > max_x || oy < 0.0 || oy > max_y;
-        let has_fling = vx.abs() >= scroll_drag::physics::MIN_VELOCITY
-            || vy.abs() >= scroll_drag::physics::MIN_VELOCITY;
+        let has_fling = vx.abs() >= self.scroll_tuning.min_velocity
+            || vy.abs() >= self.scroll_tuning.min_velocity;
         self.scroll_motion = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));
     }
 
@@ -651,8 +673,8 @@ impl HayateElementRenderer {
         };
         let (max_x, max_y, _, _) = self.scroll_bounds(sv);
         let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-        let (nx, vx2) = scroll_drag::scroll_motion_step(ox, vx, max_x, dt);
-        let (ny, vy2) = scroll_drag::scroll_motion_step(oy, vy, max_y, dt);
+        let (nx, vx2) = scroll_drag::scroll_motion_step(ox, vx, max_x, dt, &self.scroll_tuning);
+        let (ny, vy2) = scroll_drag::scroll_motion_step(oy, vy, max_y, dt, &self.scroll_tuning);
         self.commit_scroll_offset(sv, nx, ny);
         // An axis is still animating while it carries velocity or sits in
         // overscroll (a bounce mid-excursion may momentarily read zero velocity).

@@ -24,7 +24,14 @@ if (detected.mode === 'DOM') {
 } else {
   const { initCanvasRenderer } = await import('@tsubame/renderer-canvas');
   canvas.hidden = false;
-  renderer = await initCanvasRenderer(canvas, { backend: detected.backend });
+  // Dev-only: pick up a hand-edited `tuning.json` from the served root so
+  // taste constants (scroll physics, scrollbar chrome, …) can be calibrated by
+  // editing the file and pressing F5 — no WASM rebuild (#353 family). Missing
+  // file (404) or parse failure simply leaves the compiled defaults in place.
+  const tuning = await fetch(new URL('tuning.json', document.baseURI).href)
+    .then((r) => (r.ok ? r.text() : undefined))
+    .catch(() => undefined);
+  renderer = await initCanvasRenderer(canvas, { backend: detected.backend, tuning });
   // hayate-adapter-web owns viewport sizing — its self-wired ResizeObserver reads
   // the live devicePixelRatio each fire (ADR-0080, superseding ADR-0007's
   // host-owned observer). No element option needed.

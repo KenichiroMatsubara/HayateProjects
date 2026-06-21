@@ -104,6 +104,7 @@ class StubHayate implements RawHayate {
     return listenerId;
   }
   set_background_color(): void {}
+  set_tuning(): void {}
 }
 
 function manualScheduler() {

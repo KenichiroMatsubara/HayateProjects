@@ -10,6 +10,10 @@ import {
 export interface InitCanvasRendererOptions extends CanvasRendererOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
+  /** Dev-only `tuning.json` text (#353 family). When provided it is handed to
+   * the WASM renderer to overlay the taste-constant defaults; malformed JSON is
+   * ignored so the compiled defaults stand. Absent → no override. */
+  tuning?: string;
 }
 
 export async function probeWebGPU(): Promise<boolean> {
@@ -53,6 +57,18 @@ export async function initCanvasRenderer(
   const webgpuAvailable = await probeWebGPU();
   const backend = resolveCanvasBackend(options, webgpuAvailable);
   const raw = await loadCanvasBackend(backend, canvas);
+
+  // Dev-only taste-constant override (#353 family): applied once before the
+  // first frame. Malformed JSON throws inside the WASM setter; swallow it so a
+  // bad `tuning.json` falls back to the compiled defaults rather than breaking
+  // the app.
+  if (options?.tuning != null) {
+    try {
+      raw.set_tuning(options.tuning);
+    } catch (err) {
+      console.warn('initCanvasRenderer: ignoring invalid tuning.json', err);
+    }
+  }
 
   // Pointer + wheel input *and* resize detection are self-wired by
   // hayate-adapter-web on `HayateElementRenderer::init` (ADR-0080). Its

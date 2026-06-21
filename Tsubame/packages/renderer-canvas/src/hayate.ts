@@ -81,6 +81,10 @@ export interface RawHayate {
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;
+  /** Dev-only: overlay `tuning.json` taste-constant overrides (#353 family).
+   * Throws on malformed JSON / unknown keys; the host swallows it so the
+   * compiled defaults stand. Editing the file + F5 re-applies with no rebuild. */
+  set_tuning(json: string): void;
   /** Resolved style after inheritance + pseudo-state (ADR-0067), or `null` if `id` is unknown. */
   element_effective_visual(id: number): HayateEffectiveVisual | null;
 }

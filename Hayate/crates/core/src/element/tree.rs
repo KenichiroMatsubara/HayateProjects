@@ -262,6 +262,12 @@ pub struct ElementTree {
     /// Theme for the core-drawn selection chrome (highlight / toolbar). A single
     /// switchable enum so adding Cupertino is additive (ADR-0097, #272).
     pub(crate) selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle,
+    /// Live, overridable chrome taste constants (scrollbar / selection / etc).
+    /// Defaults to the authoritative consts; a dev build may overlay a
+    /// `tuning.json` via [`set_chrome_tuning`](Self::set_chrome_tuning) to
+    /// calibrate against Chromium/Android by editing JSON and pressing F5,
+    /// with no recompile (#353 family).
+    pub(crate) chrome_tuning: crate::element::chrome_tuning::ChromeTuning,
     /// Shaped layouts of the static toolbar button labels, shaped once with the
     /// layout pass's font context and reused across frames (ADR-0097, #272).
     pub(crate) toolbar_label_cache:
@@ -300,6 +306,7 @@ impl ElementTree {
             runtime: DocumentRuntime::new(),
             clipboard: None,
             selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),
+            chrome_tuning: crate::element::chrome_tuning::ChromeTuning::default(),
             toolbar_label_cache: HashMap::new(),
         }
     }
@@ -349,6 +356,20 @@ impl ElementTree {
         style: crate::element::selection_chrome::SelectionChromeStyle,
     ) {
         self.selection_chrome_style = style;
+    }
+
+    /// Overlay the chrome taste constants at runtime (dev-only tuning, #353
+    /// family). The Platform Adapter parses `tuning.json` (it owns serde) and
+    /// hands core a fully-merged [`ChromeTuning`]; absent/malformed JSON never
+    /// reaches here, so the field always holds either the defaults or a complete
+    /// override.
+    pub fn set_chrome_tuning(&mut self, tuning: crate::element::chrome_tuning::ChromeTuning) {
+        self.chrome_tuning = tuning;
+    }
+
+    /// The live chrome taste constants read by the scene-build emit path.
+    pub(crate) fn chrome_tuning(&self) -> &crate::element::chrome_tuning::ChromeTuning {
+        &self.chrome_tuning
     }
 
     /// Install the Platform Adapter's clipboard (ADR-0097, #268). Copy gestures

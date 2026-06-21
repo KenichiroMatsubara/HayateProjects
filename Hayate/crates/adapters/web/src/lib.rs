@@ -21,6 +21,8 @@ mod resize_observer;
 mod pointer_input;
 #[cfg(any(target_arch = "wasm32", test))]
 mod scroll_drag;
+#[cfg(any(target_arch = "wasm32", test))]
+mod tuning;
 #[cfg(target_arch = "wasm32")]
 mod canvas;
 #[cfg(target_arch = "wasm32")]

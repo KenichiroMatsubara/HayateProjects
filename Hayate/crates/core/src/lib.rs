@@ -4,6 +4,7 @@ pub mod node;
 pub mod render;
 
 pub use color::Color;
+pub use element::chrome_tuning::ChromeTuning;
 pub use element::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
     DimensionUnit,

@@ -158,6 +158,46 @@ pub mod physics {
     pub const SPRING_REST_VELOCITY: f32 = 0.05;
 }
 
+/// A live, overridable copy of the scroll-physics knobs. The [`physics`] consts
+/// (and [`SCROLL_SLOP_PX`]) remain the authoritative defaults — [`Default`]
+/// reads them, so the numbers are never restated — but a dev build can overlay
+/// values at runtime (a `tuning.json` loaded on init) to feel-tune on a real
+/// device without recompiling. Production ships with no override, so every field
+/// equals its const and the read is a plain struct load (no perf cost over the
+/// old `const` reference).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScrollPhysicsTuning {
+    pub slop_px: f32,
+    pub deceleration_rate: f32,
+    pub max_release_velocity: f32,
+    pub min_velocity: f32,
+    pub sample_window_ms: f64,
+    pub rubber_band_c: f32,
+    pub spring_stiffness: f32,
+    pub spring_damping: f32,
+    pub spring_rest_offset: f32,
+    pub spring_rest_velocity: f32,
+}
+
+impl Default for ScrollPhysicsTuning {
+    fn default() -> Self {
+        // Mirror the authoritative consts — do not restate the literals here, so
+        // the `physics` block stays the single source of the default numbers.
+        Self {
+            slop_px: SCROLL_SLOP_PX,
+            deceleration_rate: physics::DECELERATION_RATE,
+            max_release_velocity: physics::MAX_RELEASE_VELOCITY,
+            min_velocity: physics::MIN_VELOCITY,
+            sample_window_ms: physics::SAMPLE_WINDOW_MS,
+            rubber_band_c: physics::RUBBER_BAND_C,
+            spring_stiffness: physics::SPRING_STIFFNESS,
+            spring_damping: physics::SPRING_DAMPING,
+            spring_rest_offset: physics::SPRING_REST_OFFSET,
+            spring_rest_velocity: physics::SPRING_REST_VELOCITY,
+        }
+    }
+}
+
 /// iOS-style rubber-band resistance for a single axis. `raw` is the offset a 1:1
 /// finger drag would reach; the return is the *displayed* offset. Inside
 /// `[0, max]` the drag passes through untouched; pulled past an edge the content
@@ -166,30 +206,30 @@ pub mod physics {
 /// of overscroll so the edge feels "heavy" but never tears off the screen.
 /// Symmetric at both edges. A non-positive `dimension` disables overscroll
 /// (the raw offset is returned as-is past the edge — nothing to rubber-band).
-pub fn rubber_band_offset(raw: f32, max: f32, dimension: f32) -> f32 {
+pub fn rubber_band_offset(raw: f32, max: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
     let max = max.max(0.0);
     if raw >= 0.0 && raw <= max {
         raw
     } else if raw < 0.0 {
-        -overscroll_curve(-raw, dimension)
+        -overscroll_curve(-raw, dimension, t)
     } else {
-        max + overscroll_curve(raw - max, dimension)
+        max + overscroll_curve(raw - max, dimension, t)
     }
 }
 
 /// The resisted overscroll distance for `x` px of raw pull past an edge:
 /// `(1 − 1/(x·c/d + 1))·d`. Zero at the edge, slope `c` ([`physics::RUBBER_BAND_C`])
 /// there, concave, and bounded by `dimension` as `x → ∞`.
-fn overscroll_curve(x: f32, dimension: f32) -> f32 {
+fn overscroll_curve(x: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
     if dimension <= 0.0 || x <= 0.0 {
         return x.max(0.0);
     }
-    (1.0 - 1.0 / (x * physics::RUBBER_BAND_C / dimension + 1.0)) * dimension
+    (1.0 - 1.0 / (x * t.rubber_band_c / dimension + 1.0)) * dimension
 }
 
 /// Clamp a velocity (px/ms) to the symmetric release cap.
-fn cap_release_velocity(v: f32) -> f32 {
-    v.clamp(-physics::MAX_RELEASE_VELOCITY, physics::MAX_RELEASE_VELOCITY)
+fn cap_release_velocity(v: f32, t: &ScrollPhysicsTuning) -> f32 {
+    v.clamp(-t.max_release_velocity, t.max_release_velocity)
 }
 
 /// Estimate the release (fling) velocity in **offset space** (px/ms) from a
@@ -203,12 +243,12 @@ fn cap_release_velocity(v: f32) -> f32 {
 /// estimate is the average velocity across that window (first → last), capped per
 /// axis at [`physics::MAX_RELEASE_VELOCITY`]. Fewer than two in-window samples,
 /// or a zero-duration span, yield no fling `(0.0, 0.0)`.
-pub fn estimate_release_velocity(samples: &[(f32, f32, f64)]) -> (f32, f32) {
+pub fn estimate_release_velocity(samples: &[(f32, f32, f64)], t: &ScrollPhysicsTuning) -> (f32, f32) {
     let Some(&(last_x, last_y, last_t)) = samples.last() else {
         return (0.0, 0.0);
     };
-    let window_start = last_t - physics::SAMPLE_WINDOW_MS;
-    let Some(&(first_x, first_y, first_t)) = samples.iter().find(|&&(_, _, t)| t >= window_start)
+    let window_start = last_t - t.sample_window_ms;
+    let Some(&(first_x, first_y, first_t)) = samples.iter().find(|&&(_, _, ts)| ts >= window_start)
     else {
         return (0.0, 0.0);
     };
@@ -218,8 +258,8 @@ pub fn estimate_release_velocity(samples: &[(f32, f32, f64)]) -> (f32, f32) {
     }
     // Offset moves opposite the finger: offset delta = old_pos − new_pos.
     (
-        cap_release_velocity((first_x - last_x) / dt),
-        cap_release_velocity((first_y - last_y) / dt),
+        cap_release_velocity((first_x - last_x) / dt, t),
+        cap_release_velocity((first_y - last_y) / dt, t),
     )
 }
 
@@ -228,10 +268,10 @@ pub fn estimate_release_velocity(samples: &[(f32, f32, f64)]) -> (f32, f32) {
 /// next, both in offset space (px and px/ms). Once the decayed speed falls below
 /// [`physics::MIN_VELOCITY`] it snaps to `0.0`, so the caller can end the
 /// animation instead of integrating an asymptotic crawl.
-pub fn momentum_step(velocity: f32, dt_ms: f32) -> (f32, f32) {
+pub fn momentum_step(velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     let delta = velocity * dt_ms;
-    let next = velocity * physics::DECELERATION_RATE.powf(dt_ms);
-    if next.abs() < physics::MIN_VELOCITY {
+    let next = velocity * t.deceleration_rate.powf(dt_ms);
+    if next.abs() < t.min_velocity {
         (delta, 0.0)
     } else {
         (delta, next)
@@ -247,13 +287,13 @@ pub fn momentum_step(velocity: f32, dt_ms: f32) -> (f32, f32) {
 /// (entering with outward velocity) overshoots then returns without ringing.
 /// Returns the next `(displacement, velocity)`, snapping to `(0.0, 0.0)` — home,
 /// animation over — once both fall within their rest thresholds.
-pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32) -> (f32, f32) {
+pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     // Semi-implicit (symplectic) Euler: integrate velocity first, then position,
     // so the spring stays stable at frame-sized dt.
-    let accel = -physics::SPRING_STIFFNESS * displacement - physics::SPRING_DAMPING * velocity;
+    let accel = -t.spring_stiffness * displacement - t.spring_damping * velocity;
     let next_v = velocity + accel * dt_ms;
     let next_x = displacement + next_v * dt_ms;
-    if next_x.abs() < physics::SPRING_REST_OFFSET && next_v.abs() < physics::SPRING_REST_VELOCITY {
+    if next_x.abs() < t.spring_rest_offset && next_v.abs() < t.spring_rest_velocity {
         (0.0, 0.0)
     } else {
         (next_x, next_v)
@@ -269,16 +309,16 @@ pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32) -> (f32, f32) {
 /// `(offset, velocity)`; the offset is un-clamped (SCR-02) because overscroll is
 /// the whole point. The caller stops the animation once velocity rests **and**
 /// the offset is back within `[0, max]`.
-pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32) -> (f32, f32) {
+pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     let max = max.max(0.0);
     if offset < 0.0 {
-        let (disp, v) = spring_step(offset, velocity, dt_ms); // edge = 0
+        let (disp, v) = spring_step(offset, velocity, dt_ms, t); // edge = 0
         (disp, v)
     } else if offset > max {
-        let (disp, v) = spring_step(offset - max, velocity, dt_ms);
+        let (disp, v) = spring_step(offset - max, velocity, dt_ms, t);
         (max + disp, v)
     } else {
-        let (delta, v) = momentum_step(velocity, dt_ms);
+        let (delta, v) = momentum_step(velocity, dt_ms, t);
         (offset + delta, v)
     }
 }
@@ -286,6 +326,29 @@ pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32) -> (
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Default tuning for the physics functions — equals the authoritative consts,
+    /// so the behavioural assertions below are unchanged by the added parameter.
+    fn t() -> ScrollPhysicsTuning {
+        ScrollPhysicsTuning::default()
+    }
+
+    #[test]
+    fn default_tuning_mirrors_the_authoritative_consts() {
+        // Locks the invariant that `ScrollPhysicsTuning::default()` reflects the
+        // `physics` block: a future const edit that forgets the struct is caught.
+        let d = ScrollPhysicsTuning::default();
+        assert_eq!(d.slop_px, SCROLL_SLOP_PX);
+        assert_eq!(d.deceleration_rate, physics::DECELERATION_RATE);
+        assert_eq!(d.max_release_velocity, physics::MAX_RELEASE_VELOCITY);
+        assert_eq!(d.min_velocity, physics::MIN_VELOCITY);
+        assert_eq!(d.sample_window_ms, physics::SAMPLE_WINDOW_MS);
+        assert_eq!(d.rubber_band_c, physics::RUBBER_BAND_C);
+        assert_eq!(d.spring_stiffness, physics::SPRING_STIFFNESS);
+        assert_eq!(d.spring_damping, physics::SPRING_DAMPING);
+        assert_eq!(d.spring_rest_offset, physics::SPRING_REST_OFFSET);
+        assert_eq!(d.spring_rest_velocity, physics::SPRING_REST_VELOCITY);
+    }
 
     #[test]
     fn touch_and_pen_drive_scroll_but_mouse_does_not() {
@@ -324,7 +387,7 @@ mod tests {
         // Finger slides up (y: 100 → 40) over 60ms. Content follows the finger,
         // so the offset gains 60px in 60ms → +1 px/ms in offset space. X is still.
         let samples = [(0.0, 100.0, 0.0), (0.0, 70.0, 30.0), (0.0, 40.0, 60.0)];
-        let (vx, vy) = estimate_release_velocity(&samples);
+        let (vx, vy) = estimate_release_velocity(&samples, &t());
         assert_eq!(vx, 0.0);
         assert!((vy - 1.0).abs() < 1e-6, "vy = {vy}");
     }
@@ -332,12 +395,12 @@ mod tests {
     #[test]
     fn release_velocity_needs_two_in_window_samples_with_a_real_time_span() {
         // No samples, or a single one, give nothing to measure speed against.
-        assert_eq!(estimate_release_velocity(&[]), (0.0, 0.0));
-        assert_eq!(estimate_release_velocity(&[(0.0, 0.0, 5.0)]), (0.0, 0.0));
+        assert_eq!(estimate_release_velocity(&[], &t()), (0.0, 0.0));
+        assert_eq!(estimate_release_velocity(&[(0.0, 0.0, 5.0)], &t()), (0.0, 0.0));
         // Two samples stamped at the same instant: a position jump with no
         // elapsed time is not a measurable velocity (avoids a divide-by-zero).
         assert_eq!(
-            estimate_release_velocity(&[(0.0, 0.0, 5.0), (0.0, 50.0, 5.0)]),
+            estimate_release_velocity(&[(0.0, 0.0, 5.0), (0.0, 50.0, 5.0)], &t()),
             (0.0, 0.0),
         );
     }
@@ -351,7 +414,7 @@ mod tests {
             (0.0, 40.0, 500.0),
             (0.0, 40.0, 560.0),
         ];
-        let (_, vy) = estimate_release_velocity(&samples);
+        let (_, vy) = estimate_release_velocity(&samples, &t());
         assert_eq!(vy, 0.0, "a finger that paused before lifting releases at rest");
     }
 
@@ -359,7 +422,7 @@ mod tests {
     fn release_velocity_is_capped_so_a_violent_flick_cannot_launch_too_far() {
         // 1000px in 10ms = 100 px/ms, far above the cap.
         let samples = [(0.0, 1000.0, 0.0), (0.0, 0.0, 10.0)];
-        let (_, vy) = estimate_release_velocity(&samples);
+        let (_, vy) = estimate_release_velocity(&samples, &t());
         assert_eq!(vy, physics::MAX_RELEASE_VELOCITY);
     }
 
@@ -367,11 +430,11 @@ mod tests {
     fn momentum_advances_in_its_direction_and_friction_bleeds_the_speed() {
         // A 16ms frame: the offset advances along the velocity, and the carried
         // velocity is smaller but keeps its sign (decelerating, not reversing).
-        let (delta, next) = momentum_step(2.0, 16.0);
+        let (delta, next) = momentum_step(2.0, 16.0, &t());
         assert!(delta > 0.0, "offset advances in the velocity direction");
         assert!(next > 0.0 && next < 2.0, "friction bleeds speed, keeps sign (next = {next})");
         // Symmetric for a downward fling.
-        let (delta_neg, next_neg) = momentum_step(-2.0, 16.0);
+        let (delta_neg, next_neg) = momentum_step(-2.0, 16.0, &t());
         assert!(delta_neg < 0.0);
         assert!(next_neg < 0.0 && next_neg > -2.0);
     }
@@ -380,7 +443,7 @@ mod tests {
     fn momentum_snaps_to_rest_once_it_drops_below_the_stop_threshold() {
         // Starting right at the threshold, one long frame decays it under
         // MIN_VELOCITY, so it snaps to 0 instead of crawling forever.
-        let (_, next) = momentum_step(physics::MIN_VELOCITY, 1000.0);
+        let (_, next) = momentum_step(physics::MIN_VELOCITY, 1000.0, &t());
         assert_eq!(next, 0.0, "below the stop threshold momentum ends");
     }
 
@@ -404,20 +467,20 @@ mod tests {
     fn within_range_the_drag_follows_the_finger_one_to_one() {
         // No rubber-band inside the scrollable range: the displayed offset is the
         // raw finger offset, at both ends and the middle.
-        assert_eq!(rubber_band_offset(0.0, 400.0, 200.0), 0.0);
-        assert_eq!(rubber_band_offset(150.0, 400.0, 200.0), 150.0);
-        assert_eq!(rubber_band_offset(400.0, 400.0, 200.0), 400.0);
+        assert_eq!(rubber_band_offset(0.0, 400.0, 200.0, &t()), 0.0);
+        assert_eq!(rubber_band_offset(150.0, 400.0, 200.0, &t()), 150.0);
+        assert_eq!(rubber_band_offset(400.0, 400.0, 200.0, &t()), 400.0);
     }
 
     #[test]
     fn pulling_past_an_edge_resists_so_the_content_lags_the_finger() {
         // 100px of raw pull past the top edge shows less than 100px of overscroll
         // (resisted), and stays on the overscroll side of the edge.
-        let shown = rubber_band_offset(-100.0, 400.0, 200.0);
+        let shown = rubber_band_offset(-100.0, 400.0, 200.0, &t());
         assert!(shown < 0.0, "overscroll is past the top edge (got {shown})");
         assert!(shown > -100.0, "resisted: content lags the finger (got {shown})");
         // Symmetric past the bottom edge (max = 400).
-        let shown_bottom = rubber_band_offset(500.0, 400.0, 200.0);
+        let shown_bottom = rubber_band_offset(500.0, 400.0, 200.0, &t());
         assert!(shown_bottom > 400.0 && shown_bottom < 500.0, "got {shown_bottom}");
         assert!(
             (shown_bottom - 400.0 + shown).abs() < 1e-3,
@@ -429,9 +492,9 @@ mod tests {
     fn the_further_past_the_edge_the_heavier_each_extra_pixel_moves() {
         // Equal raw increments yield ever-smaller displayed increments: the
         // diminishing-returns "heavy" feel of a rubber band.
-        let near = rubber_band_offset(-50.0, 400.0, 200.0).abs();
-        let mid = rubber_band_offset(-100.0, 400.0, 200.0).abs();
-        let far = rubber_band_offset(-150.0, 400.0, 200.0).abs();
+        let near = rubber_band_offset(-50.0, 400.0, 200.0, &t()).abs();
+        let mid = rubber_band_offset(-100.0, 400.0, 200.0, &t()).abs();
+        let far = rubber_band_offset(-150.0, 400.0, 200.0, &t()).abs();
         let first_step = mid - near;
         let second_step = far - mid;
         assert!(mid > near && far > mid, "still monotonic outward");
@@ -444,7 +507,7 @@ mod tests {
     #[test]
     fn overscroll_is_bounded_so_the_content_never_tears_off_screen() {
         // Even an enormous pull cannot reveal more than `dimension` of overscroll.
-        let extreme = rubber_band_offset(-100_000.0, 400.0, 200.0);
+        let extreme = rubber_band_offset(-100_000.0, 400.0, 200.0, &t());
         assert!(extreme > -200.0, "overscroll asymptotes to the dimension (got {extreme})");
     }
 
@@ -452,7 +515,7 @@ mod tests {
     fn spring_back_eases_an_overscrolled_edge_toward_home() {
         // Released 60px past the top edge at rest: the spring pulls the
         // displacement back toward zero (smaller magnitude, moving inward).
-        let (x, v) = spring_step(-60.0, 0.0, 16.0);
+        let (x, v) = spring_step(-60.0, 0.0, 16.0, &t());
         assert!(x > -60.0 && x < 0.0, "displacement shrinks toward the edge (got {x})");
         assert!(v > 0.0, "velocity points back toward the edge (got {v})");
     }
@@ -465,7 +528,7 @@ mod tests {
         let mut v = 0.0;
         let mut frames = 0;
         while (x, v) != (0.0, 0.0) {
-            let (nx, nv) = spring_step(x, v, 16.0);
+            let (nx, nv) = spring_step(x, v, 16.0, &t());
             x = nx;
             v = nv;
             frames += 1;
@@ -484,7 +547,7 @@ mod tests {
         let mut v = -2.0_f32;
         let mut min_x = 0.0_f32;
         for _ in 0..1000 {
-            let (nx, nv) = spring_step(x, v, 16.0);
+            let (nx, nv) = spring_step(x, v, 16.0, &t());
             x = nx;
             v = nv;
             min_x = min_x.min(x);
@@ -500,14 +563,14 @@ mod tests {
     fn spring_back_snaps_home_once_within_the_rest_thresholds() {
         // A sub-pixel displacement at near-zero velocity is home — snap to the
         // edge so the animation stops instead of asymptoting.
-        assert_eq!(spring_step(0.2, 0.0, 16.0), (0.0, 0.0));
+        assert_eq!(spring_step(0.2, 0.0, 16.0, &t()), (0.0, 0.0));
     }
 
     #[test]
     fn motion_inside_the_range_coasts_under_friction() {
         // Well within [0, 400], a released fling decelerates like plain momentum:
         // the offset advances along the velocity, the speed bleeds off.
-        let (offset, v) = scroll_motion_step(100.0, 2.0, 400.0, 16.0);
+        let (offset, v) = scroll_motion_step(100.0, 2.0, 400.0, 16.0, &t());
         assert!(offset > 100.0, "coasts forward (got {offset})");
         assert!(v > 0.0 && v < 2.0, "friction bleeds the speed (got {v})");
     }
@@ -516,7 +579,7 @@ mod tests {
     fn inertia_reaching_an_edge_carries_past_it_into_overscroll() {
         // A fling that overruns the bottom edge crosses into overscroll (offset >
         // max) still moving outward, so the next frame can bounce it back.
-        let (offset, v) = scroll_motion_step(395.0, 2.0, 400.0, 16.0);
+        let (offset, v) = scroll_motion_step(395.0, 2.0, 400.0, 16.0, &t());
         assert!(offset > 400.0, "inertia carries past the edge (got {offset})");
         assert!(v > 0.0, "still moving outward, to be sprung back next frame (got {v})");
     }
@@ -525,11 +588,11 @@ mod tests {
     fn motion_in_overscroll_springs_back_toward_the_edge() {
         // Past the bottom edge at rest: spring-back pulls the offset toward max
         // and the velocity points inward.
-        let (offset, v) = scroll_motion_step(440.0, 0.0, 400.0, 16.0);
+        let (offset, v) = scroll_motion_step(440.0, 0.0, 400.0, 16.0, &t());
         assert!(offset < 440.0 && offset > 400.0, "eases back toward the edge (got {offset})");
         assert!(v < 0.0, "velocity points back inward (got {v})");
         // Symmetric past the top edge.
-        let (top_offset, top_v) = scroll_motion_step(-40.0, 0.0, 400.0, 16.0);
+        let (top_offset, top_v) = scroll_motion_step(-40.0, 0.0, 400.0, 16.0, &t());
         assert!(top_offset < 0.0 && top_offset > -40.0, "got {top_offset}");
         assert!(top_v > 0.0, "got {top_v}");
     }
@@ -545,7 +608,7 @@ mod tests {
         let mut max_seen = offset;
         let mut settled = None;
         for frame in 0..2000 {
-            let (no, nv) = scroll_motion_step(offset, v, max, 16.0);
+            let (no, nv) = scroll_motion_step(offset, v, max, 16.0, &t());
             offset = no;
             v = nv;
             max_seen = max_seen.max(offset);

@@ -1,5 +1,6 @@
 pub mod accessibility;
 pub mod ambient_defaults;
+pub mod chrome_tuning;
 pub mod clipboard;
 pub mod document_runtime;
 mod engine;
