@@ -20,9 +20,11 @@ A candidate is **actionable** when ALL hold:
 1. **Open** (not closed).
 2. **Triage-ready** — carries `ready-for-agent` (delegatable) or, if the user
    is working themselves, `help wanted`. Skip `needs-triage` / `question`.
-3. **Unblocked** — every issue named in its `## Blocked by` section is closed.
-   Parse the body for `Blocked by` references (e.g. `#211`,
-   `KenichiroMatsubara/HayateProjects#211`) and check each one's state.
+3. **Unblocked** — every issue named in its **Blocked by** line is closed.
+   This line is a blockquote at the top of the body. Parse the body for
+   `Blocked by` references (e.g. `#211`, `KenichiroMatsubara/HayateProjects#211`)
+   anywhere they appear and check each one's state — do not assume a fixed
+   heading or position.
 4. **Marker is `none`** — no `status:implementing` / `status:implemented` label
    (those are already in flight; see [status-markers.md](../../../docs/agents/status-markers.md)).
 
@@ -31,7 +33,7 @@ A candidate is **actionable** when ALL hold:
 ### 1. Gather
 
 List open issues with their labels and bodies. Resolve the closed/open state of
-every issue referenced in a `Blocked by` section (a blocker may itself be open).
+every issue referenced in a `Blocked by` line (a blocker may itself be open).
 
 ### 2. Bucket
 

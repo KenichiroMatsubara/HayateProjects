@@ -17,12 +17,14 @@ Check with the user that these seams match their expectations.
 
 3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
 
-   A PRD is a parent issue: `/to-issues` will break it down into child issues that reference it. So also tag the published PRD with the `parent` label, creating it on first use if it does not exist yet:
+   A PRD is a parent issue: `/to-issues` will break it down into child issues and register them as **native GitHub sub-issues** of this PRD (see [ADR-0003](../../../docs/adr/0003-issue-parent-child-via-native-subissues-autoclose.md)). So also tag the published PRD with the `parent` label, creating it on first use if it does not exist yet:
 
    ```sh
    gh label create "parent" --color 5319E7 --description "親イシュー — broken into child issues" 2>/dev/null || true
    gh issue edit <prd-number> --add-label "parent"
    ```
+
+   Once children exist, GitHub shows a "達成された子Issue / 全子Issue" (N of M done) progress bar on this PRD in the issue list, and the auto-close workflow closes the PRD automatically when every child closes. Do NOT close the PRD by hand.
 
 <prd-template>
 
