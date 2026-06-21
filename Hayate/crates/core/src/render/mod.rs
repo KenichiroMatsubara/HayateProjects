@@ -1,3 +1,4 @@
+mod missing_glyph;
 mod painter;
 pub mod text_synthesis;
 
@@ -5,6 +6,10 @@ use std::sync::Arc;
 
 use linebender_resource_handle::{Blob, FontData};
 
+pub use missing_glyph::{
+    FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, is_notdef,
+    missing_glyph_placeholder,
+};
 pub use painter::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,
     render_scene_graph,
