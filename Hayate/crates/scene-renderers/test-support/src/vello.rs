@@ -8,7 +8,7 @@ pub struct VelloHarness {
     pub renderer: VelloSceneRenderer,
 }
 
-/// Returns `None` when no wgpu adapter/device is available (caller should skip).
+/// wgpu アダプタ/デバイスが無ければ `None`（呼び出し側はスキップ）。
 pub fn try_vello_harness() -> Option<VelloHarness> {
     pollster::block_on(async {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -148,6 +148,6 @@ fn readback_texture_rgba8(
     drop(mapped);
     buffer.unmap();
 
-    // Vello writes premultiplied RGBA; tests use channel thresholds tolerant of both.
+    // Vello は premultiplied RGBA を書き込む（テストは両対応のしきい値で比較）。
     Some(out)
 }

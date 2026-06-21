@@ -1,8 +1,8 @@
-//! HTML Mode delivery path — native integration tests without DOM.
+//! HTML Mode の配信経路 — DOM を使わないネイティブ統合テスト。
 //!
-//! `HayateElementHtmlRenderer` routes input through `ElementTree::on_*` and
-//! drains `tree.poll_deliveries()` from `poll_events()`. This harness mirrors
-//! that event routing for unit tests.
+//! `HayateElementHtmlRenderer` は入力を `ElementTree::on_*` へ流し、
+//! `poll_events()` から `tree.poll_deliveries()` を排出する。本ハーネスは
+//! ユニットテスト用にそのイベントルーティングを再現する。
 
 #[cfg(test)]
 mod tests {
@@ -13,7 +13,7 @@ mod tests {
         StyleProp,
     };
 
-    /// Mirrors `HayateElementHtmlRenderer`'s `tree` + node membership gate.
+    /// `HayateElementHtmlRenderer` の `tree` とノード所属ゲートを再現する。
     struct HtmlDeliveryHarness {
         tree: ElementTree,
         nodes: HashSet<ElementId>,

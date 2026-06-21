@@ -1,6 +1,5 @@
-//! Border-style lowering: `none` suppresses the border, `dashed` lowers to a
-//! dedicated dashed-border draw op, `solid` keeps the existing edge rendering.
-//! (issue #204)
+//! border-style の lowering: `none` は枠線を抑制、`dashed` は専用の dashed-border
+//! draw op へ、`solid` は従来のエッジ描画を維持する。
 
 use hayate_core::{
     BorderStyleValue, Color, Dimension, DrawOp, ElementKind, ElementTree, RecordingPainter,

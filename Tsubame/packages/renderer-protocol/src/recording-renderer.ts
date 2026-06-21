@@ -6,9 +6,9 @@ import type { EventHandler, EventKind, Unsubscribe } from './event.js';
 import type { IRenderer } from './renderer.js';
 
 /**
- * Every {@link IRenderer} call captured as an ordered, discriminated record.
- * Tests read these instead of reaching into a concrete renderer's private DOM
- * or wire state — the seam is verified through the interface (Tsubame ADR-0008).
+ * 各 {@link IRenderer} 呼び出しを、順序付きの判別可能レコードとして記録したもの。
+ * テストは具象レンダラの private な DOM や wire 状態に踏み込まず、これを読む —
+ * 継ぎ目はインターフェース越しに検証する（Tsubame ADR-0008）。
  */
 export type RecordedCall =
   | { method: 'createElement'; id: ElementId; kind: ElementKind }
@@ -25,9 +25,9 @@ export type RecordedCall =
   | { method: 'resize'; width: number; height: number };
 
 /**
- * In-memory {@link IRenderer} that records each call. A second adapter behind
- * the Renderer Protocol so the gate seam (and any other cross-renderer
- * contract) can be exercised without a DOM or a Hayate WASM boundary.
+ * 各呼び出しを記録するインメモリの {@link IRenderer}。Renderer Protocol の背後にある
+ * 第2のアダプタで、ゲートの継ぎ目（や他のレンダラ間契約）を DOM や Hayate WASM 境界なしで
+ * 検証できる。
  */
 export class RecordingRenderer implements IRenderer {
   readonly calls: RecordedCall[] = [];
@@ -84,7 +84,7 @@ export class RecordingRenderer implements IRenderer {
     this.calls.push({ method: 'resize', width, height });
   }
 
-  /** The last `setStyle` patch recorded for `id`, or `undefined` if none. */
+  /** `id` に対して記録された最後の `setStyle` パッチ。なければ `undefined`。 */
   styleOf(id: ElementId): StylePatch | undefined {
     for (let i = this.calls.length - 1; i >= 0; i--) {
       const call = this.calls[i]!;

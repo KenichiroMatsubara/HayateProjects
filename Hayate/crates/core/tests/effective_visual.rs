@@ -1,4 +1,4 @@
-//! ADR-0067: shared effective visual resolver + query API.
+//! 共有 effective visual リゾルバとクエリ API（ADR-0067）。
 
 use hayate_core::{
     BorderStyleValue, Color, Dimension, ElementKind, ElementTree, NodeKind, PseudoState, StyleProp,
@@ -333,9 +333,9 @@ fn element_effective_visual_hover_pseudo_overrides_active_viewport_variant() {
     );
 }
 
-// AC: query path (`element_effective_visual`) and scene path (`render`) share a
-// single effective-visual resolution that includes viewport-variant application
-// (ADR-0067, ADR-0081). Both must agree on a viewport-conditioned element.
+// クエリ経路（`element_effective_visual`）とシーン経路（`render`）は、ビューポート
+// バリアント適用を含む単一の effective-visual 解決を共有する（ADR-0067, ADR-0081）。
+// ビューポート条件付き要素について両者は一致しなければならない。
 #[test]
 fn query_and_scene_paths_share_viewport_variant_resolution() {
     let mut tree = ElementTree::new();
@@ -386,13 +386,12 @@ fn query_and_scene_paths_share_viewport_variant_resolution() {
     );
 }
 
-// AC (#302 §1c): inherited-context construction is a single fold shared by the
-// query path (`element_effective_visual`, ancestor walk) and the scene path
-// (`render`, top-down threading). When a Text element sets its OWN ambient
-// `default-color`, both paths must build the same inherited context and resolve
-// the same text color. `default-*` is the ambient channel for *descendants*
-// (ADR-0065 ch2), so an element's own `default-color` must not color its own
-// text through one path but not the other.
+// 継承コンテキストの構築は、クエリ経路（`element_effective_visual` の祖先たどり）と
+// シーン経路（`render` のトップダウン伝播）が共有する単一の fold。Text 要素が自身の
+// ambient `default-color` を設定したとき、両経路は同じ継承コンテキストを構築し同じ
+// テキスト色を解決しなければならない。`default-*` は子孫向けの ambient チャネル
+// （ADR-0065）なので、要素自身の `default-color` が一方の経路でだけ自テキストを
+// 着色するようなことがあってはならない。
 #[test]
 fn query_and_scene_paths_share_inherited_context_for_own_ambient_default() {
     let mut tree = ElementTree::new();
@@ -408,7 +407,7 @@ fn query_and_scene_paths_share_inherited_context_for_own_ambient_default() {
             StyleProp::Height(Dimension::px(100.0)),
         ],
     );
-    // The text element sets its OWN ambient default-color (descendant channel).
+    // text 要素が自身の ambient default-color（子孫向けチャネル）を設定する。
     tree.element_set_style(text, &[StyleProp::DefaultColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
     tree.element_set_text(text, "hi");
 

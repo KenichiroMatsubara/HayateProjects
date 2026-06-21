@@ -1,15 +1,14 @@
-//! `ElementTree::drive_ime` is the single place soft-keyboard visibility is
-//! decided (ADR-0069, #392). Every adapter reflects the [`ImePresentation`] it
-//! emits, so these tests lock the editability gate for *all* platforms at once:
-//! a plain tap (which focuses whatever it hits — Chromium parity, ADR-0102) must
-//! not raise the keyboard, only a focused `text-input` does. Before this, the
-//! gate was hand-rolled per adapter and the fix landed for Android only (#392).
+//! ソフトキーボードの表示可否は `ElementTree::drive_ime` が一元的に決める
+//! （ADR-0069）。各アダプタはそれが出す [`ImePresentation`] を反映するだけなので、
+//! 本テストは全プラットフォームの編集可否ゲートをまとめて固定する。素のタップは
+//! 当たった要素にフォーカスする（Chromium 互換、ADR-0102）が、キーボードを上げて
+//! よいのはフォーカス中の `text-input` のときだけ。
 
 use hayate_core::{
     Dimension, ElementKind, ElementTree, ImeBridge, ImePresentation, StyleProp,
 };
 
-/// Records the last presentation core asked for.
+/// core が最後に要求した presentation を記録する。
 #[derive(Default)]
 struct FakeIme {
     last: Option<ImePresentation>,
@@ -49,8 +48,8 @@ fn nothing_focused_keeps_the_keyboard_hidden() {
 
 #[test]
 fn tapping_plain_text_does_not_raise_the_keyboard() {
-    // A plain tap focuses whatever it hits, but a non-editable element must keep
-    // the keyboard down — the mobile bug was every tap raising it (#392).
+    // 素のタップは当たった要素にフォーカスするが、非編集要素ではキーボードを
+    // 下げたままにする（全タップで上がってしまう不具合への対処）。
     let mut tree = ElementTree::new();
     let root = styled(&mut tree, 1, ElementKind::View);
     let text = styled(&mut tree, 2, ElementKind::Text);

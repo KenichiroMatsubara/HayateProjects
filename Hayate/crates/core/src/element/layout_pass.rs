@@ -15,22 +15,19 @@ use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::element::tree::{Element, Event};
 
-/// Groups the layout-computation and text-shaping state that was formerly
-/// embedded directly in `ElementTree`. Callers get depth: a single `run()`
-/// call drives Taffy layout, Parley text shaping, font-dirty propagation,
-/// FetchFont event emission, and layout-cache population.
+/// レイアウト計算とテキスト整形の状態をまとめる。`settle` 1 回で Taffy レイアウト、
+/// Parley 整形、フォント dirty 伝播、FetchFont イベント発行、レイアウトキャッシュ更新を駆動する。
 pub struct LayoutPass {
     pub(crate) projection: TaffyProjection,
     pub(crate) font_cx: FontContext,
     pub(crate) layout_cx: LayoutContext<TextBrush>,
-    /// On-demand font-fetch state (issue #343): suppresses duplicate `FetchFont`
-    /// events, reopens families whose fetch failed, and gives up after a finite
-    /// retry budget.
+    /// オンデマンドのフォント取得状態。`FetchFont` の重複発行を抑制し、
+    /// 失敗した family は再試行、有限のリトライ予算を超えたら断念する。
     pub(crate) font_fetches: FontFetchTracker,
-    /// Wall-clock millis of the last cursor-visibility toggle (ADR-0032).
+    /// 直近のカーソル可視トグルの実時刻ミリ秒（ADR-0032）。
     pub(crate) last_cursor_toggle_ms: Option<f64>,
-    /// Absolute bounding rects (x, y, w, h) per element, refreshed by each `settle`.
-    /// Read only through `geometry` / `has_geometry` (issue #308 / §5).
+    /// 要素ごとの絶対バウンディング矩形 (x, y, w, h)。`settle` ごとに更新し、
+    /// 参照は `geometry` / `has_geometry` 経由のみ。
     layout_cache: HashMap<ElementId, (f32, f32, f32, f32)>,
 }
 
@@ -48,14 +45,9 @@ impl LayoutPass {
         }
     }
 
-    /// Set half of the reduced layout interface (issue #308 / §5): bridge-convert
-    /// a layout `StyleProp` into `layout_style` (owned by the document tree) and
-    /// push the result onto the derived Taffy node, which marks it layout-dirty.
-    /// Returns `false` for non-layout props so the caller routes them to Visual.
-    ///
-    /// Folds the former `convert → set → mark` sequence behind one call; the
-    /// document tree stays the owner (it owns `layout_style`), the Taffy node is
-    /// re-derived from it.
+    /// レイアウト用 `StyleProp` を `layout_style`（ドキュメントツリーが所有）へ変換し、
+    /// 派生 Taffy ノードへ反映して layout-dirty を立てる。レイアウト以外の prop には
+    /// `false` を返し、呼び出し側が Visual へ振り分ける。
     pub(crate) fn set_layout_prop(
         &mut self,
         id: ElementId,
@@ -69,13 +61,11 @@ impl LayoutPass {
         true
     }
 
-    /// Layout side of the dual-natured `overflow` prop (issue #308 / §5): write
-    /// `overflow` onto `layout_style` and re-derive the Taffy node, marking it
-    /// layout-dirty. The visual side (child clipping) is applied to `Visual` by
-    /// the caller. Separate from `set_layout_prop` because `overflow` is routed
-    /// as a visual prop for invalidation yet still has this layout effect — the
-    /// flex scroll-container minimum size that lets `overflow: hidden` / a
-    /// scroll-view shrink to its siblings instead of overflowing them.
+    /// 二面性を持つ `overflow` prop のレイアウト側。`overflow` を `layout_style` へ書き、
+    /// Taffy ノードを再導出して layout-dirty を立てる。視覚側（子クリップ）は呼び出し側が
+    /// Visual へ適用する。`overflow` は無効化のため visual prop として振り分けられるが、
+    /// `overflow: hidden` / scroll-view が兄弟をはみ出さず縮むための flex スクロールコンテナ
+    /// 最小サイズというレイアウト効果も持つため `set_layout_prop` とは別にする。
     pub(crate) fn set_overflow(
         &mut self,
         id: ElementId,
@@ -86,16 +76,13 @@ impl LayoutPass {
         self.projection.set_style(id, layout_style.clone());
     }
 
-    /// Settle half of the reduced layout interface (issue #308 / §5): reconcile
-    /// the derived Taffy projection against the (owner) element tree, run Taffy
-    /// layout + Parley shaping, refresh the absolute-geometry cache, and return
-    /// the set of elements whose box geometry changed (or appeared) this pass.
+    /// 派生 Taffy プロジェクションを所有元の要素ツリーへ突き合わせ、Taffy レイアウト＋
+    /// Parley 整形を実行し、絶対ジオメトリキャッシュを更新して、このパスでボックスの
+    /// ジオメトリが変化（または新規出現）した要素集合を返す。
     ///
-    /// Folds the former `reconcile → compute → cache → geometry diff` sequence
-    /// behind one call. The returned diff is the bridge the scene lowering
-    /// consumes so reflowed-but-otherwise-clean boxes re-lower instead of
-    /// painting stale geometry. `structure_dirty` / `shape_dirty` / `fonts_dirty`
-    /// are owned by `ElementEngine` (ADR-0075); this drains them.
+    /// 返すジオメトリ差分により、再フローしただけで他は clean なボックスも、古いジオメトリを
+    /// 描かず再 lowering される。`structure_dirty` / `shape_dirty` / `fonts_dirty` は
+    /// `ElementEngine` が所有し（ADR-0075）、本メソッドが消化する。
     pub(crate) fn settle(
         &mut self,
         elements: &mut HashMap<ElementId, Element>,
@@ -108,12 +95,10 @@ impl LayoutPass {
     ) -> HashSet<ElementId> {
         self.projection.reconcile(&*elements, root, structure_dirty);
         self.compute(elements, root, viewport, event_queue, shape_dirty, fonts_dirty);
-        // Snapshot the previous absolute geometry before rebuilding, then diff:
-        // any element whose box `(x, y, w, h)` moved/resized (or newly appeared)
-        // lands in the returned set. A flex reflow from an insert/select ripples
-        // up to ancestors and sideways to siblings that are never structure/visual
-        // dirty on their own; absolute coords mean every moved descendant lands in
-        // the diff independently, so per-id re-lowering is sufficient.
+        // 再構築前に旧ジオメトリをスナップショットして差分を取る。ボックス `(x, y, w, h)` が
+        // 移動・リサイズ（または新規出現）した要素が返す集合に入る。挿入や選択による flex 再フローは
+        // 自身は structure/visual dirty にならない祖先・兄弟へ波及するが、絶対座標なので移動した子孫が
+        // それぞれ独立に差分へ入る。よって id 単位の再 lowering で十分。
         let previous = std::mem::take(&mut self.layout_cache);
         cache_layout(elements, &self.projection, root, 0.0, 0.0, &mut self.layout_cache);
         let mut geometry_dirty = HashSet::new();
@@ -125,11 +110,9 @@ impl LayoutPass {
         geometry_dirty
     }
 
-    /// Test seam (ADR-0042): rebuild the font collection to mirror the WASM
-    /// runtime — no system fonts, with `default_font` registered as the default
-    /// family + sans-serif generic. Lets font-fetch tests drive the real
-    /// `.notdef → FetchFont → register_font` path without depending on
-    /// host-installed fonts (`system_fonts: false`).
+    /// テスト用シーム（ADR-0042）。WASM ランタイムを模してフォントコレクションを再構築する。
+    /// system_fonts なし、`default_font` をデフォルト family ＋ sans-serif generic として登録する。
+    /// ホスト導入フォントに依存せず `.notdef → FetchFont → register_font` の実経路をテストできる。
     pub(crate) fn set_wasm_like_font_context(&mut self, default_font: Vec<u8>) {
         use fontique::{Collection, CollectionOptions, FontInfoOverride, GenericFamily};
         self.font_cx.collection = Collection::new(CollectionOptions {
@@ -151,20 +134,19 @@ impl LayoutPass {
         self.font_fetches = FontFetchTracker::new();
     }
 
-    /// Geometry-query side of the reduced layout interface (issue #308 / §5):
-    /// the absolute box rect `(x, y, w, h)` from the latest `settle`, or `None`
-    /// for elements without box geometry (e.g. inline text elements).
+    /// 直近の `settle` で得た絶対ボックス矩形 `(x, y, w, h)` を返す。ボックスジオメトリを
+    /// 持たない要素（インラインテキスト等）は `None`。
     pub(crate) fn geometry(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
         self.layout_cache.get(&id).copied()
     }
 
-    /// True once at least one `settle` has produced box geometry.
+    /// `settle` が少なくとも 1 回ボックスジオメトリを生成済みなら true。
     pub(crate) fn has_geometry(&self) -> bool {
         !self.layout_cache.is_empty()
     }
 
-    /// Toggle the focused element's cursor every 500 ms (ADR-0032).
-    /// No-op when nothing is focused or the interval hasn't elapsed.
+    /// フォーカス要素のカーソルを 500ms ごとにトグルする（ADR-0032）。
+    /// フォーカスが無い、または間隔未経過なら no-op。
     pub(crate) fn advance_cursor_blink(
         &mut self,
         elements: &mut HashMap<ElementId, Element>,
@@ -177,7 +159,7 @@ impl LayoutPass {
         };
         match self.last_cursor_toggle_ms {
             None => {
-                // First frame after focus: show cursor and start the clock.
+                // フォーカス直後の最初のフレーム。カーソルを表示しクロックを開始する。
                 self.last_cursor_toggle_ms = Some(timestamp_ms);
                 if let Some(el) = elements.get_mut(&focused) {
                     el.cursor_visible = true;
@@ -195,8 +177,8 @@ impl LayoutPass {
         }
     }
 
-    /// Resolve `shape_dirty`/`fonts_dirty` and run Taffy layout + Parley shaping.
-    /// `shape_dirty`/`fonts_dirty` are owned by `ElementEngine` (ADR-0075).
+    /// `shape_dirty`/`fonts_dirty` を解決し、Taffy レイアウト＋Parley 整形を実行する。
+    /// `shape_dirty`/`fonts_dirty` は `ElementEngine` が所有する（ADR-0075）。
     fn compute(
         &mut self,
         elements: &mut HashMap<ElementId, Element>,
@@ -206,8 +188,7 @@ impl LayoutPass {
         shape_dirty: &mut HashSet<ElementId>,
         fonts_dirty: &mut bool,
     ) {
-        // When a new font was registered, invalidate all text layouts so they
-        // are re-shaped with the new font data on this pass.
+        // 新フォント登録時は全テキストレイアウトを無効化し、このパスで新フォントデータで再整形する。
         for &id in shape_dirty.iter() {
             if let Some(el) = elements.get_mut(&id) {
                 el.text_layout = None;
@@ -241,12 +222,11 @@ impl LayoutPass {
         };
         let root_source_size = elements[&root].layout_style.size;
 
-        // Pin root dimensions to viewport when the app asked for Auto/Percent.
-        // The root has no containing block, so Percent would collapse to min-content
-        // without this. Use layout_style (author intent), not the current Taffy style:
-        // after the first pin the Taffy node holds a definite Length that must still
-        // track viewport changes on resize.
-        // Explicit px Length values set on the root are left untouched.
+        // ルートが Auto/Percent を指定した場合、寸法をビューポートにピン留めする。
+        // ルートには包含ブロックが無く、これが無いと Percent は min-content に潰れる。
+        // 現在の Taffy style ではなく layout_style（作者の意図）を使う。最初のピン留め後は
+        // Taffy ノードが definite な Length を持つが、リサイズ時もビューポート変化に追従する必要がある。
+        // ルートに明示された px Length 値はそのまま残す。
         if let Ok(mut style) = self.projection.taffy.style(root_taffy).cloned() {
             let mut changed = false;
             if !matches!(root_source_size.width, TaffyDim::Length(_)) {
@@ -281,8 +261,8 @@ impl LayoutPass {
             ..
         } = self;
 
-        // Two-pass: stash text layouts produced inside the measure closure,
-        // then drain them back onto the elements once compute_layout returns.
+        // 2 パス構成。measure クロージャ内で生成したテキストレイアウトを退避し、
+        // compute_layout から戻った後に各要素へ書き戻す。
         let mut pending: HashMap<ElementId, TextLayout> = HashMap::new();
         {
             let taffy = &mut projection.taffy;
@@ -290,10 +270,9 @@ impl LayoutPass {
                 root_taffy,
                 available,
                 |known_dims, available_space, _node_id, ctx, _style| {
-                    // `text-input` UA default width (ADR-0109 root cause A): a
-                    // font-relative intrinsic content width, independent of the
-                    // field's own text. Taffy's intrinsic resolution keeps
-                    // explicit `width` / `flex-grow` / stretch ahead of this.
+                    // `text-input` の UA デフォルト幅（ADR-0109）。フィールド自身のテキストに
+                    // 依存しない、フォント相対の固有コンテンツ幅。明示 `width` / `flex-grow` /
+                    // stretch は Taffy の固有解決でこれより優先される。
                     if let Some(MeasureCtx::TextInput(eid)) = ctx {
                         let eid = *eid;
                         let (font_size, font_weight, font_style, font_family) = {
@@ -360,8 +339,7 @@ impl LayoutPass {
         }
 
         for (eid, mut layout) in pending {
-            // Re-stamp the source text onto each lowered run so HTML mode can
-            // place it back into a DOM text node.
+            // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
             let src: Arc<str> = layout.text.clone();
             for run in &mut layout.runs {
                 if let Some(rd) = Arc::get_mut(run) {
@@ -376,14 +354,13 @@ impl LayoutPass {
                     });
                 }
             }
-            // Proactively fetch named fonts: Latin fonts produce no .notdef glyphs
-            // so script-based detection never fires for them. If the resolved family
-            // is not yet in the fontique collection, request it now so the next
-            // register_font() → fonts_dirty cycle will re-shape with the real font.
+            // 名前付きフォントを先回り取得する。Latin フォントは .notdef グリフを生まず、
+            // script ベースの検出が発火しない。解決した family が fontique コレクションに
+            // 未登録なら今要求し、次の register_font() → fonts_dirty サイクルで実フォントで再整形させる。
             if let Some(el) = elements.get(&eid) {
                 if let Some(ref fam) = el.visual.font_family {
-                    // A `font-family` is a stack: resolve and fetch each named
-                    // entry individually, not the whole comma string (issue #344).
+                    // `font-family` はスタック。カンマ区切り全体ではなく、名前付きエントリを
+                    // 個別に解決・取得する。
                     for resolved in text::parse_font_family_list(fam) {
                         if resolved != text::DEFAULT_FONT_FAMILY
                             && font_fetches.should_request(resolved)
@@ -403,7 +380,7 @@ impl LayoutPass {
             shape_dirty.remove(&eid);
         }
 
-        // Build content layouts for TextInput elements (used for Canvas-mode rendering + cursor).
+        // TextInput 要素のコンテンツレイアウトを構築する（Canvas モードの描画＋カーソル用）。
         let textinput_ids: Vec<ElementId> = elements
             .iter()
             .filter_map(|(id, el)| {
@@ -486,8 +463,8 @@ impl LayoutPass {
                     }
                 }
                 if let Some(ref fam) = font_family {
-                    // A `font-family` is a stack: resolve and fetch each named
-                    // entry individually, not the whole comma string (issue #344).
+                    // `font-family` はスタック。カンマ区切り全体ではなく、名前付きエントリを
+                    // 個別に解決・取得する。
                     for resolved in text::parse_font_family_list(fam) {
                         if resolved != text::DEFAULT_FONT_FAMILY
                             && font_fetches.should_request(resolved)
@@ -508,19 +485,14 @@ impl LayoutPass {
                         el.content_layout = Some(layout);
                         el.text_layout = None;
                         if let Some(edit) = el.edit.as_mut() {
-                            // Keep the caret/selection valid against the freshly
-                            // shaped content, but do NOT force it to the end:
-                            // this runs on every relayout (style change, resize,
-                            // a selection-driven repaint), so forcing the cursor
-                            // to `len` clobbered the caret a click had just
-                            // placed — the anchor stayed put while the cursor
-                            // snapped to the end, manufacturing a phantom
-                            // selection from the click point to the last
-                            // character (Canvas-mode "click selects to the end";
-                            // Shift+click then collapsed to nothing). Clamping
-                            // only repairs a now-out-of-range offset after the
-                            // text shrank; the caret position itself is owned by
-                            // the edit/pointer operations, not the layout pass.
+                            // 新しく整形したコンテンツに対しキャレット/選択を有効に保つが、
+                            // 末尾へ強制してはならない。これは毎回のリレイアウト（style 変更・
+                            // リサイズ・選択起因の再描画）で走るため、カーソルを `len` へ
+                            // 強制するとクリックで置いたばかりのキャレットを壊す（アンカーは
+                            // 据え置きでカーソルだけ末尾へ飛び、クリック点から末尾文字までの
+                            // 幻の選択を生む）。クランプはテキスト縮小後に範囲外となった
+                            // オフセットの修復のみ行う。キャレット位置自体は edit/pointer 操作が
+                            // 所有し、レイアウトパスは触らない。
                             let len = edit.text_content.len();
                             edit.cursor_byte_index = edit.cursor_byte_index.min(len);
                             edit.selection_anchor = edit.selection_anchor.min(len);
@@ -575,9 +547,8 @@ mod tests {
         }
     }
 
-    /// The reduced layout interface: a caller sets layout props and settles,
-    /// then reads geometry — without touching bridge conversion, reconcile,
-    /// compute, or the layout cache directly (issue #308 / §5).
+    /// 縮約レイアウトインターフェース。呼び出し側は layout prop を設定して settle し、
+    /// ジオメトリを読む。bridge 変換・reconcile・compute・レイアウトキャッシュに直接触れない。
     #[test]
     fn set_layout_prop_then_settle_then_geometry_lays_out_child() {
         let mut layout = LayoutPass::new();
@@ -620,8 +591,8 @@ mod tests {
         assert!((rect.3 - 40.0).abs() < 0.5, "height was {}", rect.3);
     }
 
-    /// `settle` returns the geometry diff (boxes that moved/resized/appeared)
-    /// so the caller need not snapshot and compare the layout cache itself.
+    /// `settle` がジオメトリ差分（移動/リサイズ/出現したボックス）を返すので、
+    /// 呼び出し側はレイアウトキャッシュ自体をスナップショット・比較する必要がない。
     #[test]
     fn settle_reports_geometry_diff_only_for_changed_boxes() {
         let mut layout = LayoutPass::new();
@@ -650,21 +621,21 @@ mod tests {
         let mut events = Vec::new();
         let viewport = (300.0, 200.0);
 
-        // First settle: every box newly appears in the diff.
+        // 最初の settle ではすべてのボックスが新規として差分に現れる。
         let appeared = layout.settle(
             &mut elements, root_id, viewport, &mut events,
             &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
         );
         assert!(appeared.contains(&child_id));
 
-        // Re-settle with no change: a stable layout reports an empty diff.
+        // 変更なしで再 settle。安定レイアウトは空の差分を返す。
         let stable = layout.settle(
             &mut elements, root_id, viewport, &mut events,
             &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
         );
         assert!(stable.is_empty(), "stable layout must report no geometry diff");
 
-        // Resize through the reduced set interface, then settle.
+        // 縮約 set インターフェース経由でリサイズしてから settle する。
         {
             let child = elements.get_mut(&child_id).unwrap();
             layout.set_layout_prop(
@@ -682,9 +653,8 @@ mod tests {
         assert!((rect.3 - 90.0).abs() < 0.5, "height was {}", rect.3);
     }
 
-    /// The set interface bridge-converts only layout props; a visual prop is
-    /// rejected (returns false) and leaves `layout_style` untouched, so the
-    /// caller can route it to Visual instead.
+    /// set インターフェースはレイアウト prop のみ変換する。visual prop は拒否され（false を返し）
+    /// `layout_style` を変えないので、呼び出し側は Visual へ振り分けられる。
     #[test]
     fn set_layout_prop_rejects_non_layout_prop() {
         let mut layout = LayoutPass::new();
@@ -727,7 +697,7 @@ fn cache_layout(
     cache: &mut HashMap<ElementId, (f32, f32, f32, f32)>,
 ) {
     match projection.traversal_step(elements, id) {
-        // Inline text elements have no box geometry; still walk descendants.
+        // インラインテキスト要素はボックスジオメトリを持たないが、子孫はたどる。
         Some(TraversalStep::Skip(el)) => {
             for &child in &el.children {
                 cache_layout(elements, projection, child, ox, oy, cache);

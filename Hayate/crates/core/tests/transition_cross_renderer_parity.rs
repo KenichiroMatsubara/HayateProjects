@@ -1,30 +1,27 @@
-//! Issue #229: cross-renderer parity (Semantics Parity, ADR-0002) for the
-//! up-levelled transition trigger (#227 / ADR-0093). The Canvas Render Layer now
-//! interpolates `setStyle`- and inheritance-driven changes, so its on-screen
-//! frames must match what a browser CSS transition (the DOM path) shows at the
-//! same instant. This regression fixes that parity.
+//! transition トリガーのクロスレンダラー間 Semantics Parity（ADR-0002 / ADR-0093）。
+//! Canvas Render Layer は `setStyle` および継承由来の変化を補間するため、
+//! その画面フレームは同一時刻のブラウザ CSS transition（DOM パス）と一致しなければならない。
 //!
-//! The Canvas side is the real `ElementTree`: `render(timestamp_ms)` advances the
-//! retained interpolation and `draw_ops` reads the painted (post-blend) colour.
-//! The DOM side is an *independent* reference simulator of a browser CSS
-//! transition — linear interpolation from the on-screen value toward the resolved
-//! target over the **after-change** `transition-duration`. Both are driven by the
-//! same Hayate CSS input and sampled at identical timestamps; only the external
-//! draw result is compared (ADR-0079), never either renderer's internals.
+//! Canvas 側は実際の `ElementTree`: `render(timestamp_ms)` が retained 補間を進め、
+//! `draw_ops` が描画後（ブレンド後）の色を読む。DOM 側はブラウザ CSS transition の
+//! 独立した参照シミュレータ — 画面値から解決済みターゲットへ、変化後の
+//! `transition-duration` にわたる線形補間。両者は同一の Hayate CSS 入力で駆動し
+//! 同一タイムスタンプでサンプルする。比較するのは外部描画結果のみで（ADR-0079）、
+//! どちらのレンダラーの内部にも触れない。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter, StyleProp,
     TransitionTimingValue, render_scene_graph,
 };
 
-/// Tolerance for matching two independently-computed colour channels.
+/// 独立に計算された2つの色チャンネルを一致とみなす許容誤差。
 const PARITY_EPS: f32 = 1e-3;
 
 // ---------------------------------------------------------------------------
-// Canvas side: the real retained Render Layer, read through its draw output.
+// Canvas 側: 実際の retained Render Layer を描画出力越しに読む。
 // ---------------------------------------------------------------------------
 
-/// Background colour painted by the first filled rect in the current scene.
+/// 現在のシーンで最初に塗られた rect の背景色。
 fn canvas_background(tree: &ElementTree) -> [f32; 4] {
     let sg = tree.scene_graph();
     let mut painter = RecordingPainter::new();
@@ -38,15 +35,13 @@ fn canvas_background(tree: &ElementTree) -> [f32; 4] {
 }
 
 // ---------------------------------------------------------------------------
-// DOM side: an independent reference model of a browser CSS transition.
+// DOM 側: ブラウザ CSS transition の独立した参照モデル。
 //
-// A browser starts a transition when the computed value of an animatable
-// property changes: it interpolates linearly from the value shown on screen
-// (`from`) toward the new computed value (`target`) over the property's
-// *after-change* `transition-duration`, eased by the timing function. The clock
-// is anchored at the first frame after the change. duration 0 ⇒ no transition,
-// the new value shows immediately. This mirrors Blink without sharing any code
-// with the Canvas Render Layer, so a drift in the Canvas implementation diverges.
+// ブラウザは animatable プロパティの計算値が変わると transition を開始し、画面値
+// （`from`）から新しい計算値（`target`）へ、変化後の `transition-duration` にわたり
+// timing 関数で補間する。クロックは変化後の最初のフレームに固定する。duration 0 は
+// transition なしで即座に新値を表示。Blink を Canvas Render Layer とコードを共有せず
+// 再現するため、Canvas 実装がずれれば結果が乖離する。
 // ---------------------------------------------------------------------------
 
 struct DomTransition {
@@ -56,7 +51,7 @@ struct DomTransition {
     start_ms: Option<f64>,
 }
 
-/// A single animatable property as a browser would transition it.
+/// ブラウザが transition するように扱う単一の animatable プロパティ。
 struct DomProperty {
     displayed: Color,
     active: Option<DomTransition>,
@@ -70,16 +65,15 @@ impl DomProperty {
         }
     }
 
-    /// Apply a computed-style change. `duration_ms` is the after-change resolved
-    /// `transition-duration` (a browser reads the value that is in effect *after*
-    /// the state/style change, e.g. the base value when leaving a `:hover` that
-    /// set `transition-duration: 0`).
+    /// 計算スタイルの変化を適用する。`duration_ms` は変化後に解決された
+    /// `transition-duration`（ブラウザは状態/スタイル変化の後に有効な値を読む。
+    /// 例えば `transition-duration: 0` を設定した `:hover` を抜ける際はベース値）。
     fn set_target(&mut self, target: Color, duration_ms: f32) {
         if colors_eq(target, self.displayed) {
             return;
         }
         if duration_ms <= 0.0 {
-            // No transition: the new computed value is shown immediately.
+            // transition なし: 新しい計算値を即座に表示する。
             self.displayed = target;
             self.active = None;
             return;
@@ -92,7 +86,7 @@ impl DomProperty {
         });
     }
 
-    /// Advance to `now_ms`, anchoring the clock on the first frame after a change.
+    /// `now_ms` まで進める。クロックは変化後の最初のフレームに固定する。
     fn render(&mut self, now_ms: f64) -> Color {
         if let Some(tr) = self.active.as_mut() {
             let start = *tr.start_ms.get_or_insert(now_ms);
@@ -132,7 +126,7 @@ fn assert_parity(label: &str, canvas: [f32; 4], dom: Color) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared scene builder.
+// 共有シーンビルダー。
 // ---------------------------------------------------------------------------
 
 const RED: Color = Color {
@@ -154,8 +148,8 @@ const BLUE: Color = Color {
     a: 1.0,
 };
 
-/// A red box whose `transition-duration` is `duration_ms` with **linear** timing
-/// (so the browser-reference interpolation is unambiguous and code-independent).
+/// `transition-duration` が `duration_ms`、timing が linear な赤いボックス
+/// （ブラウザ参照の補間が一意でコード非依存になるよう linear にする）。
 fn linear_box(duration_ms: f32) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -174,9 +168,9 @@ fn linear_box(duration_ms: f32) -> (ElementTree, hayate_core::ElementId) {
     (tree, root)
 }
 
-/// A linear box that turns green on `:hover`. When `hover_duration_ms` is set it
-/// also overrides `transition-duration` while hovered (the `:hover { … 0 }`
-/// asymmetry case): hover-in reads the override, hover-out reads the base.
+/// `:hover` で緑になる linear ボックス。`hover_duration_ms` を指定すると hover 中の
+/// `transition-duration` も上書きする（`:hover { … 0 }` の非対称ケース）:
+/// hover-in は上書き値、hover-out はベース値を読む。
 fn linear_hover_box(
     base_duration_ms: f32,
     hover_duration_ms: Option<f32>,
@@ -191,8 +185,8 @@ fn linear_hover_box(
 }
 
 // ---------------------------------------------------------------------------
-// AC1: a `setStyle` continuous-property change interpolates identically on
-// Canvas and DOM at every sampled instant.
+// AC1: `setStyle` による連続プロパティの変化が、全サンプル時刻で Canvas と DOM で
+// 同一に補間される。
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -203,17 +197,17 @@ fn set_style_change_has_canvas_dom_parity() {
     tree.render(0.0);
     assert_parity("initial", canvas_background(&tree), dom.render(0.0));
 
-    // Same input on both sides: change background to blue via setStyle.
+    // 両側に同一入力: setStyle で背景を青に変える。
     tree.element_set_style(root, &[StyleProp::BackgroundColor(BLUE)]);
     dom.set_target(BLUE, 200.0);
 
-    // Anchor frame (clock starts here): still red on both.
+    // アンカーフレーム（ここでクロック開始）: 両側ともまだ赤。
     let anchor = canvas_background(&tree);
     tree.render(100.0);
     assert_parity("anchor", canvas_background(&tree), dom.render(100.0));
     assert_eq!(anchor[0], 1.0, "anchor frame still red before advancing");
 
-    // Quarter, half and three-quarter points all agree.
+    // 1/4・1/2・3/4 の各点で一致する。
     tree.render(150.0);
     assert_parity("t=150", canvas_background(&tree), dom.render(150.0));
     tree.render(200.0);
@@ -221,7 +215,7 @@ fn set_style_change_has_canvas_dom_parity() {
     tree.render(250.0);
     assert_parity("t=250", canvas_background(&tree), dom.render(250.0));
 
-    // Past the window: both settle exactly on blue.
+    // ウィンドウ経過後: 両側とも正確に青で落ち着く。
     tree.render(300.0);
     let end = canvas_background(&tree);
     assert_parity("settled", end, dom.render(300.0));
@@ -229,8 +223,8 @@ fn set_style_change_has_canvas_dom_parity() {
 }
 
 // ---------------------------------------------------------------------------
-// AC2: a reverse interrupt (un-hover mid-flight) continues from the on-screen
-// value on both renderers — neither jumps to the resolved target.
+// AC2: 逆方向の割り込み（進行中の un-hover）は、両レンダラーとも画面値から継続する
+// — どちらも解決済みターゲットへジャンプしない。
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -241,18 +235,18 @@ fn reverse_interrupt_has_canvas_dom_parity() {
     tree.render(0.0);
     assert_parity("initial", canvas_background(&tree), dom.render(0.0));
 
-    // Hover-in: animate red → green.
+    // hover-in: 赤 → 緑をアニメーション。
     tree.update_pointer_hover(Some(root));
     dom.set_target(GREEN, 200.0);
-    tree.render(100.0); // anchor
+    tree.render(100.0); // アンカー
     assert_parity("anchor", canvas_background(&tree), dom.render(100.0));
-    tree.render(200.0); // halfway
+    tree.render(200.0); // 中間
     let mid = canvas_background(&tree);
     assert_parity("midway", mid, dom.render(200.0));
     assert!(mid[0] > 0.0 && mid[1] > 0.0, "captured a mid value: {mid:?}");
 
-    // Reverse at the same instant: target flips back to red. Both must hold the
-    // displayed mid value (continuous reversal), not jump to red or green.
+    // 同一時刻で逆転: ターゲットが赤に戻る。両側とも表示中の中間値を保つ
+    // （連続的な反転）べきで、赤や緑へジャンプしてはならない。
     tree.update_pointer_hover(None);
     dom.set_target(RED, 200.0);
     tree.render(200.0);
@@ -263,7 +257,7 @@ fn reverse_interrupt_has_canvas_dom_parity() {
         "reversal is continuous, not a jump: {mid:?} -> {reversed:?}"
     );
 
-    // Continuing the reverse heads back toward red, in lockstep.
+    // 逆転を継続すると、両側そろって赤へ戻る。
     tree.render(300.0);
     let back = canvas_background(&tree);
     assert_parity("reverse-midway", back, dom.render(300.0));
@@ -276,9 +270,9 @@ fn reverse_interrupt_has_canvas_dom_parity() {
 }
 
 // ---------------------------------------------------------------------------
-// AC3: `:hover { transition-duration: 0 }` over a base duration makes hover-in
-// instant and hover-out animated. Because both renderers read duration from the
-// *after-change* resolved value, that in/out asymmetry is identical.
+// AC3: ベース duration の上に `:hover { transition-duration: 0 }` を重ねると、
+// hover-in は即時、hover-out はアニメーションになる。両レンダラーとも変化後の解決値から
+// duration を読むため、この in/out 非対称が一致する。
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -289,7 +283,7 @@ fn hover_duration_zero_asymmetry_has_canvas_dom_parity() {
     tree.render(0.0);
     assert_parity("initial", canvas_background(&tree), dom.render(0.0));
 
-    // Hover-in: after-change duration is 0 → instant green on both, no animation.
+    // hover-in: 変化後 duration が 0 → 両側とも即時に緑、アニメーションなし。
     tree.update_pointer_hover(Some(root));
     dom.set_target(GREEN, 0.0);
     tree.render(100.0);
@@ -300,12 +294,12 @@ fn hover_duration_zero_asymmetry_has_canvas_dom_parity() {
         "hover-in is instant green: {hovered:?}"
     );
 
-    // Hover-out: after-change duration is the base 500ms → both animate green→red.
+    // hover-out: 変化後 duration はベースの 500ms → 両側とも緑→赤をアニメーション。
     tree.update_pointer_hover(None);
     dom.set_target(RED, 500.0);
-    tree.render(200.0); // anchor
+    tree.render(200.0); // アンカー
     assert_parity("hover-out-anchor", canvas_background(&tree), dom.render(200.0));
-    tree.render(450.0); // 250ms into the 500ms window
+    tree.render(450.0); // 500ms ウィンドウの 250ms 地点
     let mid = canvas_background(&tree);
     assert_parity("hover-out-midway", mid, dom.render(450.0));
     assert!(

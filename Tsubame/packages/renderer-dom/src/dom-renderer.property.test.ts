@@ -96,9 +96,9 @@ describe('DomRenderer setProperty (ADR-0071)', () => {
   });
 
   it('reflects the shared coerceElementProperty payload to the DOM (issue #235)', () => {
-    // The DOM side must read the *same* coerced edge cases as the Canvas side —
-    // both renderers route through coerceElementProperty, so the reflection here
-    // matches the shared seam exactly.
+    // DOM 側は Canvas 側と同じ coerce 後のエッジケースを読まねばならない。
+    // 両レンダラーは coerceElementProperty を経由するので、ここの反映は
+    // 共有シームと完全に一致する。
     const renderer = new DomRenderer({ document, container });
     const root = renderer.createElement('view');
     const input = renderer.createElement('text-input');

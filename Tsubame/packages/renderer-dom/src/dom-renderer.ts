@@ -58,7 +58,7 @@ function elementIdFromDom(el: Element): ElementId | undefined {
   return Number.isFinite(n) ? asElementId(n) : undefined;
 }
 
-/** ADR-0081: build a `@media` query string from a property-level viewport condition. */
+/** プロパティ単位のビューポート条件から `@media` クエリ文字列を組み立てる（ADR-0081）。 */
 function mediaQueryFor(condition: ViewportCondition): string {
   const parts: string[] = [];
   if (condition.minWidth !== undefined) parts.push(`(min-width: ${condition.minWidth}px)`);
@@ -76,8 +76,8 @@ export class DomRenderer implements IRenderer {
   private readonly container: HTMLElement;
   private readonly nodes = new Map<ElementId, HTMLElement>();
   private readonly kinds = new Map<ElementId, ElementKind>();
-  /// Listeners registered per element, kept so they can be re-bound when the
-  /// underlying DOM node is replaced (the `<input>`↔`<textarea>` swap, #362).
+  /// 要素ごとに登録したリスナ。下層 DOM ノードの差し替え
+  /// （`<input>`↔`<textarea>` 入れ替え）時に再バインドできるよう保持する。
   private readonly domListeners = new Map<
     ElementId,
     Set<{ domEvent: string; listener: (e: Event) => void }>
@@ -104,10 +104,9 @@ export class DomRenderer implements IRenderer {
     const id = asElementId(this.nextId++);
     const el = createDomElement(this.doc, kind);
     el.setAttribute('data-tsubame-id', String(id as number));
-    // ADR-0108: selectability defaults to the element-kind UA default (view /
-    // text / scroll-view selectable, button / image not; text-input always).
-    // Baseline it here so every element starts at its kind default before any
-    // explicit `user-select` arrives.
+    // 選択可否は要素種別の UA デフォルトに従う（view / text / scroll-view は
+    // 選択可、button / image は不可、text-input は常に可）（ADR-0108）。明示的な
+    // `user-select` が来る前に種別デフォルトで初期化しておく。
     el.style.userSelect = resolveUserSelect(kind, undefined);
     this.nodes.set(id, el);
     this.kinds.set(id, kind);
@@ -173,7 +172,7 @@ export class DomRenderer implements IRenderer {
     this.pseudoRules.set(key, { index, priority });
   }
 
-  /** Viewport-conditional style override, output as `@media (...)` (ADR-0081). */
+  /** ビューポート条件付きスタイル上書き。`@media (...)` として出力する（ADR-0081）。 */
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
     const media = mediaQueryFor(condition);
     const selector = `[data-tsubame-id="${id as number}"]`;
@@ -214,8 +213,8 @@ export class DomRenderer implements IRenderer {
     const target = this.node(id);
     const op = coerceElementProperty(name, value);
 
-    // Shared spec-generated dispatch (ADR-0008): the DOM adapter fills only the
-    // effect handlers — the op-kind match lives once in the protocol.
+    // spec 生成の共有ディスパッチ（ADR-0008）。DOM アダプタは効果ハンドラのみを
+    // 埋め、op 種別の分岐はプロトコル側に一度だけ存在する。
     dispatchElementPropertyOp<void>(op, {
       'text-content': ({ text }) => {
         if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
@@ -243,9 +242,9 @@ export class DomRenderer implements IRenderer {
         }
       },
       'user-select': ({ value }) => {
-        // DOM Mode uses the browser's native selection; `user-select` resolves
-        // through the element-kind default to a CSS `user-select` value
-        // (ADR-0108). text-input stays selectable regardless of the value.
+        // DOM Mode はブラウザのネイティブ選択を使う。`user-select` は要素種別
+        // デフォルトを介して CSS の `user-select` 値に解決される（ADR-0108）。
+        // text-input は値に関わらず選択可能のまま。
         if (target instanceof HTMLElement) {
           const userSelect = resolveUserSelect(this.kindOf(id), value);
           target.style.userSelect = userSelect;
@@ -257,23 +256,22 @@ export class DomRenderer implements IRenderer {
   }
 
   /**
-   * Swap a text-input's DOM node between `<input>` and `<textarea>` so the
-   * browser's native Enter behaviour matches the `multiline` property (#362):
-   * a textarea inserts a newline at the caret, an input submits. The live
-   * value, placeholder, disabled flag, resolved inline styles, and registered
-   * event listeners all carry across the swap.
+   * text-input の DOM ノードを `<input>` と `<textarea>` の間で入れ替え、
+   * ブラウザのネイティブ Enter 挙動を `multiline` プロパティに合わせる。
+   * textarea はキャレット位置に改行を挿入し、input は送信する。値・placeholder・
+   * disabled・解決済みインラインスタイル・登録済みリスナはすべて入れ替えを跨いで引き継ぐ。
    */
   private setMultiline(id: ElementId, multiline: boolean): void {
     if (this.kindOf(id) !== 'text-input') return;
     const oldEl = this.node(id);
     const isTextarea = oldEl instanceof HTMLTextAreaElement;
-    if (isTextarea === multiline) return; // already the right element
+    if (isTextarea === multiline) return; // 既に正しい要素
 
     const newEl = createDomElement(this.doc, 'text-input', multiline);
     newEl.setAttribute('data-tsubame-id', String(id as unknown as number));
-    // Carry the resolved inline styles (baseline + user + variant + userSelect).
+    // 解決済みインラインスタイル（baseline + user + variant + userSelect）を引き継ぐ。
     newEl.style.cssText = oldEl.style.cssText;
-    // Carry the editable state across the input/textarea boundary.
+    // 編集状態を input/textarea の境界を跨いで引き継ぐ。
     if (
       (oldEl instanceof HTMLInputElement || oldEl instanceof HTMLTextAreaElement) &&
       (newEl instanceof HTMLInputElement || newEl instanceof HTMLTextAreaElement)
@@ -282,7 +280,7 @@ export class DomRenderer implements IRenderer {
       newEl.placeholder = oldEl.placeholder;
       newEl.disabled = oldEl.disabled;
     }
-    // Re-bind every registered listener to the new node.
+    // 登録済みリスナをすべて新ノードへ再バインドする。
     const listeners = this.domListeners.get(id);
     if (listeners !== undefined) {
       for (const { domEvent, listener } of listeners) {
@@ -305,7 +303,7 @@ export class DomRenderer implements IRenderer {
       handler(eventPayload(id, event, nativeEvent));
     };
     target.addEventListener(domEvent, listener);
-    // Track the binding so it survives a node swap (`<input>`↔`<textarea>`, #362).
+    // ノード入れ替え（`<input>`↔`<textarea>`）を跨いで残るようバインドを記録する。
     const entry = { domEvent, listener };
     let set = this.domListeners.get(id);
     if (set === undefined) {
@@ -314,8 +312,7 @@ export class DomRenderer implements IRenderer {
     }
     set.add(entry);
     return () => {
-      // Detach from whichever node currently backs the element (it may have been
-      // swapped since registration).
+      // 現在その要素を支えているノードから解除する（登録後に入れ替わっている可能性がある）。
       this.nodes.get(id)?.removeEventListener(domEvent, listener);
       this.domListeners.get(id)?.delete(entry);
     };
@@ -323,7 +320,7 @@ export class DomRenderer implements IRenderer {
 
   resize(_width: number, _height: number): void {}
 
-  /** Shift tracked rule indices when the pseudo stylesheet gains or loses a rule. */
+  /** 擬似スタイルシートのルール増減に合わせて、追跡中のルールインデックスをずらす。 */
   private bumpPseudoRuleIndices(from: number, delta: number): void {
     for (const entry of this.pseudoRules.values()) {
       if (entry.index >= from) {
@@ -333,11 +330,11 @@ export class DomRenderer implements IRenderer {
   }
 
   /**
-   * Index at which a rule of the given band priority keeps the pseudo
-   * stylesheet sorted ascending (focus < hover < active; last wins). Driven
-   * entirely by the spec-generated `PSEUDO_STATE_PRIORITY` recorded per rule —
-   * the sheet stays band-sorted, so the count of rules in lower-or-equal bands
-   * is the first slot in the next band. No selector string is inspected.
+   * 指定バンド優先度のルールを挿入しても擬似スタイルシートが昇順
+   * （focus < hover < active、後勝ち）を保つインデックス。ルール毎に記録した
+   * spec 生成の `PSEUDO_STATE_PRIORITY` のみで決まる。シートは常にバンド整列
+   * されているため、優先度が同等以下のルール数が次バンドの先頭スロットになる。
+   * セレクタ文字列は一切参照しない。
    */
   private insertionIndexForPseudoBand(priority: number): number {
     let index = 0;
@@ -363,7 +360,7 @@ export class DomRenderer implements IRenderer {
     return kind;
   }
 
-  /** Drop `nodes` entries and pseudo rules for `root` and DOM descendants. */
+  /** `root` と DOM 子孫の `nodes` エントリと擬似ルールを破棄する。 */
   private forgetDomSubtree(root: HTMLElement): void {
     const stack: Element[] = [root];
     while (stack.length > 0) {

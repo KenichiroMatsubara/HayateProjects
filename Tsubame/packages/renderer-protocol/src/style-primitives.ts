@@ -1,13 +1,12 @@
 /**
- * Primitive value types referenced by the generated `HayateStyle`/`StylePatch`
- * (`./generated/style-types.ts`). Not mechanically derivable from
- * `style_tags.json`/`enums.json`, so kept hand-written.
+ * 生成された `HayateStyle`/`StylePatch`（`./generated/style-types.ts`）から参照される
+ * プリミティブ値型。`style_tags.json`/`enums.json` から機械的に導出できないため手書きで保持する。
  */
 export type HayateDimension = number | `${number}px` | `${number}%` | `${number}fr` | 'auto';
 
 /**
- * A single CSS box-shadow layer (ADR-0095). Offsets/blur/spread are CSS px;
- * `color` is any CSS color string; `inset` selects an inner shadow.
+ * 単一の CSS box-shadow レイヤー（ADR-0095）。offset/blur/spread は CSS px、
+ * `color` は任意の CSS カラー文字列、`inset` は内側シャドウを選択する。
  */
 export interface HayateShadow {
   offsetX: number;

@@ -37,7 +37,7 @@ describe('StylePatch declaration emitter parity', () => {
 
     const el = container.querySelector('div')!;
     expect(el.style.borderWidth).toBe('2px');
-    // border-style is its own property now; width no longer hardcodes 'solid'.
+    // border-style は独立したプロパティ。width が 'solid' を暗黙に決めることはない。
     expect(el.style.borderStyle).not.toBe('solid');
   });
 
@@ -120,7 +120,7 @@ describe('StylePatch declaration emitter parity', () => {
   });
 
   it('skips channel-1 text-local keys on block boxes for all three paths', () => {
-    // Gating is the seam's job now; drive the DOM renderer through it.
+    // ゲーティングは seam の責務。DOM レンダラはその経由で駆動する。
     const renderer = withTextLocalGate(new DomRenderer({ document, container }));
     const viewId = renderer.createElement('view');
     const textId = renderer.createElement('text');

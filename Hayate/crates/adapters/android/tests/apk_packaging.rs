@@ -1,8 +1,8 @@
-//! Host-side checks for the Android packaging contract (ADR-0094, issue #195).
+//! Android パッケージング契約のホスト側検証（ADR-0094）。
 //!
-//! The Rust sandbox cannot run Gradle/AGP, so these tests lock the GameActivity
-//! + Gradle packaging contract by reading the source files; on-device build and
-//! render verification still happen on a local emulator/device.
+//! Rust サンドボックスでは Gradle/AGP を実行できないため、ソースファイルを読んで
+//! GameActivity + Gradle のパッケージング契約を固定する。実機ビルドと描画確認は
+//! ローカルのエミュレータ/実機で行う。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ fn android_cargo_toml() -> String {
 }
 
 const PACKAGE_ID: &str = "com.hayateprojects.hayate.adapter_android_demo";
-/// cdylib name GameActivity loads via `android.app.lib_name` (no `lib`/`.so`).
+/// GameActivity が `android.app.lib_name` で読み込む cdylib 名（`lib`/`.so` なし）。
 const LIB_NAME: &str = "hayate_adapter_android";
 
 #[test]
@@ -83,13 +83,13 @@ fn main_activity_is_a_thin_game_activity_host() {
         kotlin.contains("class MainActivity : GameActivity()"),
         "the Kotlin host must subclass GameActivity"
     );
-    // Path also asserts the Kotlin package directory matches the package id.
+    // パスの存在確認は Kotlin パッケージディレクトリがパッケージ ID と一致することも保証する。
     assert!(Path::new(env!("CARGO_MANIFEST_DIR")).join(&rel).exists());
 }
 
 #[test]
 fn stage_a_clear_color_is_dark_gray_blue() {
-    // Visible on-device check: roughly RGB(26, 26, 31) on an 8-bit display.
+    // 実機での目視確認用: 8bit 表示でおよそ RGB(26, 26, 31)。
     assert_eq!(
         hayate_adapter_android::STAGE_A_CLEAR_COLOR,
         [0.1, 0.1, 0.12, 1.0]

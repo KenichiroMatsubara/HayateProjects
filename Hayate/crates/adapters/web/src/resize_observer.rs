@@ -1,7 +1,7 @@
-//! Canvas resize auto-detection (ADR-0080, #133).
+//! Canvas のリサイズ自動検出（ADR-0080）。
 //!
-//! `ResizeObserver` wiring lives behind `attach_resize_observer` (wasm32 only).
-//! Dimension math is pure and unit-tested on all targets.
+//! `ResizeObserver` の配線は `attach_resize_observer`（wasm32 のみ）にある。
+//! 寸法計算は純粋関数で、全ターゲットで単体テストされる。
 
 #[cfg(target_arch = "wasm32")]
 use std::cell::RefCell;
@@ -15,7 +15,7 @@ use wasm_bindgen::closure::Closure;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{HtmlCanvasElement, ResizeObserver, ResizeObserverEntry};
 
-/// Layout viewport (CSS px), backing-store size (physical px), and content scale (dpr).
+/// レイアウトビューポート（CSS px）、バッキングストアサイズ（物理 px）、コンテンツスケール（dpr）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CanvasResizeMetrics {
     pub viewport_width: f32,
@@ -25,7 +25,7 @@ pub struct CanvasResizeMetrics {
     pub content_scale: f32,
 }
 
-/// Derive viewport + buffer dimensions from a CSS content box and DPR.
+/// CSS コンテンツボックスと DPR からビューポートとバッファの寸法を導出する。
 pub fn canvas_resize_metrics(
     css_width: f32,
     css_height: f32,
@@ -46,7 +46,7 @@ pub fn canvas_resize_metrics(
     }
 }
 
-/// Whether a resize notification should be emitted (sub-pixel tolerant).
+/// リサイズ通知を出すべきか（サブピクセルの揺れは無視する）。
 pub fn viewport_size_changed(previous: (f32, f32), next: (f32, f32)) -> bool {
     const EPSILON: f32 = 0.5;
     (previous.0 - next.0).abs() > EPSILON || (previous.1 - next.1).abs() > EPSILON

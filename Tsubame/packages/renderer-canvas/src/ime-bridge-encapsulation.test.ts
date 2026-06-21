@@ -1,13 +1,12 @@
-// Enforcement guard (ADR-0069, #392): the platform `EditContext` — creating it
-// (`new EditContext`) and attaching/detaching it (`.editContext`) — may be
-// touched only by the web IME bridge module (`edit-context-sync.ts`). Attaching
-// an EditContext is what raises the mobile soft keyboard, so confining it to one
-// module keyed off `raw.ime_wants_keyboard()` is what stops a plain tap from
-// summoning the keyboard (#392) from regressing. Production code elsewhere must
-// route through `attachTextInput` / `syncEditContext` instead.
+// 強制ガード(ADR-0069): プラットフォームの `EditContext` — 生成
+// (`new EditContext`) と着脱(`.editContext`) — は web IME ブリッジモジュール
+// (`edit-context-sync.ts`) だけが触れてよい。EditContext のアタッチがモバイルの
+// ソフトキーボードを上げるため、`raw.ime_wants_keyboard()` を起点に 1 モジュールへ
+// 閉じ込めることで、単なるタップでキーボードが出る退行を防ぐ。他のプロダクション
+// コードは `attachTextInput` / `syncEditContext` 経由にすること。
 //
-// Test files are exempt: they legitimately stub a host-managed EditContext to
-// exercise the candidate-window path.
+// テストファイルは対象外: 候補ウィンドウ経路を試すため host 管理の EditContext を
+// 正当にスタブする。
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -16,11 +15,11 @@ import { describe, it, expect } from 'vitest';
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 
-/** The one module allowed to touch the platform EditContext. */
+/** プラットフォームの EditContext に触れてよい唯一のモジュール。 */
 const BRIDGE_FILE = 'edit-context-sync.ts';
 
-/** Substrings that mean "directly touching the platform EditContext API".
- * Chosen so identifiers like `syncEditContext` / `editContexts` don't trip it. */
+/** プラットフォーム EditContext API への直接アクセスを意味する部分文字列。
+ * `syncEditContext` / `editContexts` 等の識別子で誤検知しないよう選んでいる。 */
 const FORBIDDEN = ['new EditContext', '.editContext'];
 
 function tsFiles(dir: string): string[] {

@@ -1,19 +1,19 @@
-//! #392 — Canvas Mode で非入力テキストのタップが文字入力判定になる。
+//! Canvas Mode で非入力テキストのタップが文字入力判定になる問題。
 //!
-//! Root cause: a tap focuses whatever it hits (`pointer_down_on_target` →
-//! `transition_focus`), which is correct — Chromium focuses buttons and other
-//! widgets on pointer-down too (ADR-0102). The bug was that the soft keyboard /
-//! IME was keyed on *raw focus*, so tapping a plain `text` (or a button) raised
-//! the keyboard even though only a `text-input` is editable.
+//! 根本原因: タップは当たった要素を focus する（`pointer_down_on_target` →
+//! `transition_focus`）。これは正しく、Chromium もボタン等を pointer-down で
+//! focus する（ADR-0102）。バグはソフトキーボード／IME を*生の focus*に紐づけて
+//! いた点で、編集可能なのは `text-input` だけなのにプレーンな `text`（やボタン）の
+//! タップでキーボードが立ち上がっていた。
 //!
-//! Fix: focus semantics are unchanged; editability is a separate, data-driven
-//! axis ([`ElementKind::accepts_text_input`], sourced from
-//! `proto/spec/element_kinds.json`), and adapters gate the keyboard on
-//! [`ElementTree::focused_text_input`] instead of `focused_element`.
+//! 修正: focus セマンティクスは不変のまま、編集可能性を別のデータ駆動な軸
+//! （[`ElementKind::accepts_text_input`]、出所は `proto/spec/element_kinds.json`）
+//! とし、アダプタは `focused_element` でなく [`ElementTree::focused_text_input`]
+//! でキーボードをゲートする。
 
 use hayate_core::{Dimension, ElementId, ElementKind, ElementTree, PointerKind, StyleProp};
 
-/// `<view><text "Hello world"></view>` filling a line; returns (tree, view, text).
+/// 1 行を占める `<view><text "Hello world"></view>`。(tree, view, text) を返す。
 fn plain_text_doc() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -34,7 +34,7 @@ fn plain_text_doc() -> (ElementTree, ElementId, ElementId) {
     (tree, view, text)
 }
 
-/// `<view><text-input "hi"></view>`; returns (tree, input).
+/// `<view><text-input "hi"></view>`。(tree, input) を返す。
 fn text_input_doc() -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -62,9 +62,9 @@ fn text_input_doc() -> (ElementTree, ElementId) {
     (tree, input)
 }
 
-/// `accepts_text_input` is true for `text-input` only — the data-driven
-/// editability axis behind the keyboard gate. Plain `text` carries styles
-/// (Text-Local Carrier) but is not editable.
+/// `accepts_text_input` が真なのは `text-input` のみ。キーボードゲートの背後に
+/// あるデータ駆動な編集可能性の軸。プレーンな `text` はスタイルを担う
+/// （Text-Local Carrier）が編集はできない。
 #[test]
 fn only_text_input_accepts_text_input() {
     assert!(ElementKind::TextInput.accepts_text_input());
@@ -82,31 +82,31 @@ fn only_text_input_accepts_text_input() {
     }
 }
 
-/// The fix: a Touch tap on a plain non-input `text` still focuses it (Chromium
-/// pointer-focus parity, ADR-0102), but it is NOT a text input, so
-/// `focused_text_input()` is `None` and the adapter leaves the soft keyboard
-/// down. This is exactly the #392 regression.
+/// 修正点: 非入力のプレーン `text` への Touch タップは依然それを focus する
+/// （Chromium の pointer-focus パリティ、ADR-0102）が、text input ではないので
+/// `focused_text_input()` は `None` となり、アダプタはソフトキーボードを上げない。
+/// これがまさに本件のリグレッション。
 #[test]
 fn plain_text_tap_does_not_arm_the_keyboard() {
     let (mut tree, _view, text) = plain_text_doc();
-    assert_eq!(tree.focused_text_input(), None, "no field armed before the tap");
+    assert_eq!(tree.focused_text_input(), None, "タップ前はどのフィールドも武装していない");
 
     tree.on_pointer_down_with_kind(20.0, 8.0, 0, PointerKind::Touch);
 
     assert_eq!(
         tree.focused_element(),
         Some(text),
-        "the tap still focuses the text element (focus semantics unchanged)",
+        "タップは依然 text 要素を focus する（focus セマンティクスは不変）",
     );
     assert_eq!(
         tree.focused_text_input(),
         None,
-        "a plain `text` is not editable, so the soft keyboard must stay down (#392)",
+        "プレーンな `text` は編集不可なので、ソフトキーボードは上げないこと",
     );
 }
 
-/// Control: a `text-input` tap focuses the field AND arms the keyboard. This is
-/// the legitimate IME path and must keep working.
+/// 対照: `text-input` のタップはフィールドを focus し、かつキーボードを武装する。
+/// これは正規の IME 経路で、動作し続けねばならない。
 #[test]
 fn text_input_tap_arms_the_keyboard() {
     let (mut tree, input) = text_input_doc();
@@ -114,11 +114,11 @@ fn text_input_tap_arms_the_keyboard() {
     assert_eq!(
         tree.focused_element(),
         Some(input),
-        "a text-input tap must focus the field",
+        "text-input のタップはフィールドを focus すること",
     );
     assert_eq!(
         tree.focused_text_input(),
         Some(input),
-        "a text-input tap arms the soft keyboard / IME",
+        "text-input のタップはソフトキーボード／IME を武装する",
     );
 }

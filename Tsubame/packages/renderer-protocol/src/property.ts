@@ -19,8 +19,8 @@ export function assertKnownElementProperty(
   }
 }
 
-// The prop-op vocabulary, coercion seam, and shared dispatch are generated from
-// proto/spec (element_properties) so DOM and Canvas share one source (ADR-0008).
+// prop-op の語彙・coercion・共有 dispatch は proto/spec (element_properties) から生成し、
+// DOM と Canvas が単一のソースを共有する（ADR-0008）。
 export {
   ELEMENT_PROPERTY_NAMES,
   coerceElementProperty,

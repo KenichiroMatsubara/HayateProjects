@@ -69,7 +69,7 @@ const {
     const r = activeRenderer();
 
     // text も Hayate element なので style は適用する（ADR-0058）。
-    // style 以外のプロパティは text には存在しないため従来通り無視する。
+    // style 以外のプロパティは text には存在しないため無視する。
     if (name === 'style') {
       const { base, pseudo } = splitHayateStyle(
         (value ?? {}) as Record<string, unknown>,

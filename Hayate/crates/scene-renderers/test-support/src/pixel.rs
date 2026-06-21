@@ -1,4 +1,4 @@
-/// Canvas dimensions shared by every CSS pixel fixture.
+/// 全 CSS ピクセルフィクスチャで共有するキャンバス寸法。
 pub const CANVAS_W: u32 = 100;
 pub const CANVAS_H: u32 = 100;
 pub const CLEAR_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
@@ -43,7 +43,7 @@ pub fn assert_not_clear(px: [u8; 4], label: &str) {
     );
 }
 
-/// Horizontal ink extent `(min_x, max_x)` for dark pixels on the canvas.
+/// キャンバス上の暗いピクセルの水平方向のインク範囲 `(min_x, max_x)`。
 pub fn ink_extent_x(data: &[u8], width: u32, height: u32) -> Option<(u32, u32)> {
     let mut min_x = width;
     let mut max_x = 0;
@@ -61,11 +61,10 @@ pub fn ink_extent_x(data: &[u8], width: u32, height: u32) -> Option<(u32, u32)> 
     found.then_some((min_x, max_x))
 }
 
-/// How many distinct dominant-channel hues (red-, green-, blue-dominant) appear
-/// among strongly-saturated painted pixels. A multi-colour (COLR) glyph spans
-/// several; a monochrome glyph collapses to one. `sat_min` is the minimum
-/// max-minus-min channel spread for a pixel to count as saturated, so faint
-/// anti-aliased edges don't register as hues.
+/// 強く彩度のある描画ピクセルのうち、支配的チャネル（赤・緑・青）の色相が何種類
+/// 現れるか。多色（COLR）グリフは複数にまたがり、モノクログリフは 1 つに収束する。
+/// `sat_min` は彩度ありと見なす最小のチャネル幅（max−min）で、薄いアンチエイリアス
+/// 縁を色相としてカウントしないためのしきい値。
 pub fn distinct_saturated_hues(data: &[u8], width: u32, height: u32, sat_min: u8) -> usize {
     let mut seen = [false; 3];
     for y in 0..height {

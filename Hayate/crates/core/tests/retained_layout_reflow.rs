@@ -1,21 +1,19 @@
-//! Retained incremental lowering must not paint stale box geometry after a
-//! layout reflow. Adding/removing/selecting an element ripples a flex reflow up
-//! to ancestors (panels that grow) and sideways to siblings (pushed down). Those
-//! reflowed-but-otherwise-clean boxes are never structure/visual-dirty on their
-//! own, so before the layout->lowering geometry bridge the retained scene kept
-//! their old positions/sizes while a full ephemeral rebuild used the new ones.
+//! Retained 差分 lowering は、レイアウト reflow 後に古い box ジオメトリを描いて
+//! はならない。要素の追加・削除・選択は flex reflow を祖先（伸びる panel）や
+//! 兄弟（押し下げられる）へ波及させるが、それらの box は自身が
+//! structure/visual-dirty にはならない。
 //!
-//! The differential harness here is the ground truth: after every mutation the
-//! retained `scene_graph()` fill rects MUST equal the ephemeral full-rebuild fill
-//! rects. Any divergence is stale retained geometry. (The test scenes are solid
-//! `View` boxes, so fill rects capture every painted element.)
+//! 差分ハーネスを正とする: 各変更後、retained な `scene_graph()` の fill rect は
+//! ephemeral な full-rebuild の fill rect と一致しなければならない。乖離があれば
+//! retained 側のジオメトリが古い。（テストシーンは塗りつぶしの `View` box のみで、
+//! fill rect が全描画要素を捉える。）
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue,
     RecordingPainter, StyleProp, render_scene_graph,
 };
 
-/// (color, x, y, w, h) for every FillRect, in paint order.
+/// 各 FillRect の (color, x, y, w, h) を描画順で返す。
 type Rects = Vec<([f32; 4], f32, f32, f32, f32)>;
 
 fn project(ops: Vec<DrawOp>) -> Rects {
@@ -44,7 +42,7 @@ fn ephemeral_rects(tree: &ElementTree) -> Rects {
     project(tree.test_scene_full_rebuild_draw_ops())
 }
 
-/// Assert the retained scene matches a full ephemeral rebuild, fill-for-fill.
+/// retained シーンが full ephemeral rebuild と fill 単位で一致することを検証する。
 fn assert_parity(tree: &ElementTree, label: &str) {
     assert_eq!(
         retained_rects(tree),
@@ -77,8 +75,8 @@ fn card(tree: &mut ElementTree, next_id: &mut u64, color: Color) -> ElementId {
 }
 
 /// root(col) > [ board(col){ card } , footer ]
-/// Adding a card grows `board` and pushes `footer` down. `footer` is never
-/// marked dirty by the insert, so its retained box is the staleness canary.
+/// card 追加で `board` が伸び `footer` が押し下がる。`footer` は insert で dirty
+/// 化されないため、その retained box が staleness のカナリアになる。
 fn studio() -> (ElementTree, u64, ElementId, ElementId, ElementId) {
     let mut next_id = 1u64;
     let mut tree = ElementTree::new();
@@ -130,7 +128,7 @@ fn footer_follows_board_growth_on_incremental_insert() {
     let y0 = footer_y(&tree);
     assert!((y0 - 20.0).abs() < 0.01, "footer starts below one card, got {y0}");
 
-    // Incremental insert: board grows by one card height, footer must shift down.
+    // 差分 insert: board が card 1 つ分伸び、footer は下へずれなければならない。
     let c2 = card(&mut tree, &mut next_id, Color::new(0.0, 0.0, 1.0, 1.0));
     tree.element_append_child(board, c2);
     tree.render(16.0);
@@ -171,8 +169,8 @@ fn insert_before_shifts_following_sibling() {
     tree.render(0.0);
     let first_child = tree.ordered_children(board)[0];
 
-    // Insert a card BEFORE the existing first card: the existing card slides down
-    // and the footer follows. Neither is touched by the insert's own dirty mark.
+    // 既存の先頭 card の前に card を挿入: 既存 card が下へずれ footer も追従する。
+    // どちらも insert 自体の dirty マークでは触れられない。
     let inserted = card(&mut tree, &mut next_id, Color::new(0.0, 1.0, 0.0, 1.0));
     tree.element_insert_before(board, inserted, first_child);
     tree.render(16.0);

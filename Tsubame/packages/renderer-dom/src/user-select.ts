@@ -2,29 +2,24 @@ import type { ElementKind, UserSelect } from '@tsubame/renderer-protocol';
 import { elementKindDefaultUserSelect } from '@tsubame/renderer-protocol';
 
 /**
- * Resolve the CSS `user-select` value for an element (ADR-0108, supersedes
- * ADR-0097 decision 2; refines decision 5). DOM Mode uses the browser's native
- * selection, bounded by `user-select`.
+ * 要素の CSS `user-select` 値を解決する（ADR-0108）。DOM Mode はブラウザの
+ * ネイティブ選択を使い、`user-select` で範囲を制限する。
  *
- * The semantic is the single source of parity between the DOM Renderer and
- * Hayate HTML Mode (`resolve_user_select` in Rust). The shared corpus in
- * `proto/spec/fixtures/user_select_parity.json` pins both sides against drift.
+ * この意味論は DOM Renderer と Hayate HTML Mode（Rust の `resolve_user_select`）の
+ * 唯一の整合基準。共有コーパス `proto/spec/fixtures/user_select_parity.json` が
+ * 両者のずれを防ぐ。
  *
- * Resolution order: explicit `user-select` → element-kind UA default →
- * (none/unselectable). Selectability is opt-out, mirroring CSS:
+ * 解決順序: 明示的 `user-select` → 要素種別の UA 既定 → (none/選択不可)。
+ * 選択可能性は CSS と同じくオプトアウト:
  *
- * - `text-input` always owns its editing selection, so it is `text` regardless
- *   of any explicit value or kind default.
- * - Otherwise the effective value is the explicit `user-select` if present,
- *   else the kind default (`view` / `text` / `scroll-view` = `text`,
- *   `image` / `button` = `none`).
- * - `text` maps to CSS `text`; `none` maps to CSS `none` and excludes the
- *   subtree.
- * - `contains` is selectable but establishes a containment boundary, so it maps
- *   to CSS `contain` (ADR-0108 decision 3, #400). Browsers that support
- *   `user-select: contain` confine native selection to the element; those that
- *   do not ignore the value and the core-side boundary clamp supplies the same
- *   semantics (semantics-only parity).
+ * - `text-input` は常に自身の編集選択を持つので、明示値や種別既定に関わらず `text`。
+ * - それ以外は、明示的 `user-select` があればそれ、無ければ種別既定
+ *   （`view` / `text` / `scroll-view` = `text`、`image` / `button` = `none`）。
+ * - `text` は CSS `text`、`none` は CSS `none`（サブツリーを除外）に対応。
+ * - `contains` は選択可能だが包含境界を確立するため CSS `contain` に対応する
+ *   （ADR-0108）。`user-select: contain` 対応ブラウザはネイティブ選択を要素内に
+ *   閉じ込め、非対応ブラウザは値を無視するがコア側の境界クランプが同じ意味論を
+ *   与える（意味論のみの整合）。
  */
 export function resolveUserSelect(
   kind: ElementKind,

@@ -1,18 +1,14 @@
-//! Android touch-input translation (ADR-0087, stage B).
+//! Android タッチ入力の変換（ADR-0087）。
 //!
-//! `android-activity` delivers `MotionEvent`s on the event loop; this module
-//! maps a single pointer's action + surface-pixel coordinates to the
-//! coordinate-based `hayate-core` pointer API (`on_pointer_down` /
-//! `on_pointer_move` / `on_pointer_up`, already pointer-type-independent per
-//! ADR-0082). It is kept free of `android_activity`/`ndk` types so the
-//! translation is unit-testable on the host without the NDK — mirroring
-//! `canvas_resize_metrics` (`hayate-adapter-web/src/resize_observer.rs`) and the
-//! `ImeBridge` seam (`ElementTree::drive_ime` decides, the adapter reflects),
-//! which push logic into host-testable pure functions and keep the dirty
-//! platform glue thin.
+//! `android-activity` はイベントループ上で `MotionEvent` を届ける。本モジュールは
+//! 単一ポインタのアクション + サーフェスピクセル座標を、座標ベースの `hayate-core`
+//! ポインタ API（`on_pointer_down` / `on_pointer_move` / `on_pointer_up`、ADR-0082
+//! によりポインタ種別非依存）へ写す。`android_activity`/`ndk` 型に依存させず、NDK
+//! なしでホスト単体テストできる純粋関数にロジックを寄せ、汚いプラットフォーム
+//! グルーを薄く保つ（`canvas_resize_metrics` や `ImeBridge` シームと同様）。
 
-/// A single pointer's touch action, mirroring Android `MotionAction` without
-/// depending on `android_activity`/`ndk` types.
+/// 単一ポインタのタッチアクション。`android_activity`/`ndk` 型に依存せず
+/// Android の `MotionAction` を写す。
 #[cfg(any(target_os = "android", test))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TouchAction {
@@ -22,7 +18,7 @@ pub enum TouchAction {
     Cancel,
 }
 
-/// The `hayate-core` pointer call a touch action maps to, at surface pixels.
+/// タッチアクションが写るサーフェスピクセル座標の `hayate-core` ポインタ呼び出し。
 #[cfg(any(target_os = "android", test))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PointerInput {
@@ -31,14 +27,14 @@ pub enum PointerInput {
     Up { x: f32, y: f32 },
 }
 
-/// Translate one Android touch action + surface-pixel coordinates into the
-/// corresponding `hayate-core` pointer call.
+/// Android のタッチアクション1つ + サーフェスピクセル座標を、対応する
+/// `hayate-core` ポインタ呼び出しへ変換する。
 #[cfg(any(target_os = "android", test))]
 pub fn translate_touch(action: TouchAction, x: f32, y: f32) -> PointerInput {
     match action {
         TouchAction::Down => PointerInput::Down { x, y },
         TouchAction::Move => PointerInput::Move { x, y },
-        // Cancel releases the active press (no `on_pointer_cancel` until #213).
+        // Cancel はアクティブな押下を解除する（`on_pointer_cancel` はまだない）。
         TouchAction::Up | TouchAction::Cancel => PointerInput::Up { x, y },
     }
 }
@@ -71,10 +67,9 @@ mod tests {
         );
     }
 
-    // Cancel (e.g. scroll takeover / pointer capture loss) releases the active
-    // press at the cancel coordinates. Core has no `on_pointer_cancel` yet
-    // (that arrives with #213), so the closest existing behavior is a pointer
-    // up, which prevents a stuck `:active` state.
+    // Cancel（スクロール奪取やポインタキャプチャ喪失など）はキャンセル座標で
+    // アクティブな押下を解除する。core にはまだ `on_pointer_cancel` がないため、
+    // 最も近い既存挙動であるポインタ up にして `:active` の固着を防ぐ。
     #[test]
     fn cancel_maps_to_pointer_up() {
         assert_eq!(

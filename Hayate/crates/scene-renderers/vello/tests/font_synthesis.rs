@@ -1,4 +1,4 @@
-//! Font synthesis behavior (ADR-0085) for the vello backend.
+//! vello バックエンドのフォント合成挙動（ADR-0085）。
 
 use hayate_core::StyleProp;
 use hayate_scene_test_support::cases::{render_tree_to_scene, text_tree};

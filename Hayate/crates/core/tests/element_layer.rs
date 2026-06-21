@@ -3,7 +3,7 @@ use hayate_core::{
     ElementKind, ElementTree, Event, FlexDirectionValue, NodeKind, StyleProp,
 };
 
-// ── Layout/rendering helpers ─────────────────────────────────────────────
+// ── レイアウト/描画ヘルパ ─────────────────────────────────────────────
 
 #[test]
 fn element_create_and_append_builds_tree() {
@@ -32,7 +32,7 @@ fn set_style_routes_layout_and_visual() {
         ],
     );
     let sg = tree.render(0.0);
-    // Expect a single Rect node with the layout-computed size.
+    // レイアウト計算済みサイズの Rect ノードが 1 つ出る想定。
     let mut found = false;
     for (_, n) in sg.iter() {
         if let NodeKind::Rect {
@@ -301,7 +301,7 @@ fn text_element_produces_text_run() {
     assert!(has_text_run, "no TextRun emitted for text element");
 }
 
-/// Colour of the first TextRun emitted for `tree`, or `None` if none was emitted.
+/// `tree` が最初に出力した TextRun の色。なければ `None`。
 fn first_text_run_color(tree: &mut ElementTree) -> Option<[f32; 4]> {
     tree.render(0.0).iter().find_map(|(_, n)| match &n.kind {
         NodeKind::TextRun { color, .. } => Some(*color),
@@ -309,9 +309,9 @@ fn first_text_run_color(tree: &mut ElementTree) -> Option<[f32; 4]> {
     })
 }
 
-/// Build a 400×40 TextInput rooting its own tree, with body `color`, a
-/// placeholder string (ADR-0058: placeholder lives in `text`), and optionally
-/// some committed editable content.
+/// 自前のツリーを root とする 400×40 の TextInput を組む。本文 `color`、
+/// placeholder 文字列（ADR-0058: placeholder は `text` に宿る）、および任意で
+/// 確定済みの編集内容を持たせる。
 fn text_input_tree(body: Color, committed: &str) -> ElementTree {
     let mut tree = ElementTree::new();
     let input = tree.element_create(1, ElementKind::TextInput);
@@ -335,9 +335,9 @@ fn text_input_tree(body: Color, committed: &str) -> ElementTree {
 
 #[test]
 fn placeholder_text_run_is_muted_not_body_color() {
-    // ADR-0102 / #334: Canvas's visual reference is the Chromium DOM, whose
-    // `::placeholder` is painted muted — not in the body `color`. An empty
-    // TextInput must paint its placeholder in a colour distinct from `color`.
+    // Canvas の視覚基準は Chromium DOM であり、その `::placeholder` は本文 `color`
+    // ではなく淡色で描かれる（ADR-0102）。空の TextInput は placeholder を `color`
+    // とは別の色で描かねばならない。
     let body = Color::new(50.0 / 255.0, 44.0 / 255.0, 63.0 / 255.0, 1.0);
     let mut tree = text_input_tree(body, "");
     let run = first_text_run_color(&mut tree).expect("placeholder should emit a TextRun");
@@ -351,9 +351,8 @@ fn placeholder_text_run_is_muted_not_body_color() {
 
 #[test]
 fn committed_text_run_keeps_body_color() {
-    // #334 acceptance: only the placeholder is muted. Once the input holds
-    // committed text, the run must still paint in the body `color` (no
-    // regression for real input).
+    // 淡色になるのは placeholder だけ。確定テキストを持つ入力では、run は
+    // 本文 `color` で描かれ続けねばならない（実入力の退行防止）。
     let body = Color::new(50.0 / 255.0, 44.0 / 255.0, 63.0 / 255.0, 1.0);
     let mut tree = text_input_tree(body, "牛乳を買う");
     let run = first_text_run_color(&mut tree).expect("committed text should emit a TextRun");
@@ -416,7 +415,7 @@ fn scene_build_walks_absolute_coordinates() {
     assert!((y - 20.0).abs() < 0.5, "child y = {y}");
 }
 
-// ── ScrollView tests ─────────────────────────────────────────────────────
+// ── ScrollView テスト ─────────────────────────────────────────────────────
 
 #[test]
 fn scroll_view_emits_clip_node() {
@@ -477,7 +476,7 @@ fn scroll_view_clip_contains_content_as_child() {
     );
     tree.element_append_child(root, content);
 
-    // Apply a scroll offset and verify it produces a Group inside the Clip.
+    // スクロールオフセットを与え、Clip 内に Group が生じることを確認する。
     tree.element_set_scroll_offset(root, 0.0, 50.0);
     let sg = tree.render(0.0);
 
@@ -487,7 +486,7 @@ fn scroll_view_clip_contains_content_as_child() {
         .map(|(id, _)| id)
         .expect("ScrollView should emit a Clip node");
     let clip_node = sg.get(clip_id).unwrap();
-    // Clip's first child should be a Group (scroll translate).
+    // Clip の最初の子は Group（スクロール平行移動）のはず。
     assert!(!clip_node.children.is_empty(), "Clip should have children");
     let first_child = sg.get(clip_node.children[0]).unwrap();
     assert!(
@@ -496,7 +495,7 @@ fn scroll_view_clip_contains_content_as_child() {
     );
 }
 
-// ── Transform / Group tests ──────────────────────────────────────────────
+// ── Transform / Group テスト ──────────────────────────────────────────────
 
 #[test]
 fn transform_emits_group_node() {
@@ -513,7 +512,7 @@ fn transform_emits_group_node() {
             StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
         ],
     );
-    // Identity transform — Group node should appear, Rect should be its child.
+    // 恒等変換 — Group ノードが現れ、Rect はその子になるはず。
     let identity = [1.0_f64, 0.0, 0.0, 1.0, 0.0, 0.0];
     tree.element_set_transform(root, Some(identity));
     let sg = tree.render(0.0);
@@ -543,7 +542,7 @@ fn transform_emits_group_node() {
     );
 }
 
-// ── ZIndex tests ─────────────────────────────────────────────────────────
+// ── ZIndex テスト ─────────────────────────────────────────────────────────
 
 #[test]
 fn z_index_controls_paint_order() {
@@ -560,8 +559,8 @@ fn z_index_controls_paint_order() {
             StyleProp::Height(Dimension::px(200.0)),
         ],
     );
-    // back is appended first but gets z_index 1; front appended second but z_index 0.
-    // After sort, front (z=0) should be painted before back (z=1).
+    // back を先に append し z_index 1、front を後に append し z_index 0 とする。
+    // ソート後は front（z=0）が back（z=1）より先に描かれるはず。
     tree.element_append_child(root, back);
     tree.element_append_child(root, front);
     tree.element_set_style(
@@ -583,7 +582,7 @@ fn z_index_controls_paint_order() {
         ],
     );
     let sg = tree.render(0.0);
-    // Collect paint order: look at first-component of color for each 50×50 rect.
+    // 描画順を収集: 各 50×50 rect の color 第 1 成分を見る。
     let order: Vec<f32> = sg
         .iter()
         .filter_map(|(_, n)| match &n.kind {
@@ -591,17 +590,17 @@ fn z_index_controls_paint_order() {
             _ => None,
         })
         .collect();
-    // front (blue, r=0) should come before back (red, r=1).
+    // front（青, r=0）が back（赤, r=1）より先に来るはず。
     assert_eq!(order.len(), 2, "expected 2 child rects");
     assert!((order[0] - 0.0).abs() < 1e-3, "front (blue) first");
     assert!((order[1] - 1.0).abs() < 1e-3, "back (red) second");
 }
 
-// ── ADR-0060: Z-Order single ordering seam (ordered_children) ─────────────
+// ── ADR-0060: Z-Order 単一順序付けシーム（ordered_children） ─────────────
 
 #[test]
 fn ordered_children_is_stable_paint_order() {
-    // document order a,b,c,d ; z: a=0, b=2, c=0, d=1
+    // document 順 a,b,c,d ; z: a=0, b=2, c=0, d=1
     let mut tree = ElementTree::new();
     let root = tree.element_create(700, ElementKind::View);
     let a = tree.element_create(701, ElementKind::View);
@@ -660,7 +659,7 @@ fn element_set_text_is_ignored_on_non_text_elements() {
     );
 }
 
-// ── Event system tests ───────────────────────────────────────────────────
+// ── イベントシステムのテスト ───────────────────────────────────────────────────
 
 #[test]
 fn hit_test_returns_deepest_element() {
@@ -686,19 +685,19 @@ fn hit_test_returns_deepest_element() {
     tree.element_append_child(root, child);
     tree.render(0.0);
 
-    // Point inside child → child wins (deepest)
+    // child 内の点 → child が最深で勝つ
     assert_eq!(tree.hit_test(50.0, 50.0), Some(child));
-    // Point outside child but inside root → root
+    // child の外だが root 内の点 → root
     assert_eq!(tree.hit_test(200.0, 200.0), Some(root));
-    // Point outside everything → None
+    // すべての外側の点 → None
     assert_eq!(tree.hit_test(500.0, 500.0), None);
 }
 
 #[test]
 fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
-    // Regression: hit_test walked children in reverse document order, ignoring
-    // z-index. scene_build sorts by z-index for paint order, so the visually
-    // topmost element was unhittable when document order and z-index disagreed.
+    // 退行防止: かつて hit_test は z-index を無視して document 逆順で子を辿った。
+    // scene_build は描画順を z-index でソートするため、document 順と z-index が食い違うと
+    // 視覚上の最前面要素が hit できなかった。
     let mut tree = ElementTree::new();
     let root = tree.element_create(22, ElementKind::View);
     let back = tree.element_create(23, ElementKind::View);
@@ -712,7 +711,7 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
             StyleProp::Height(Dimension::px(200.0)),
         ],
     );
-    // Flex column with a negative margin so the two 100×100 siblings overlap.
+    // 負マージンの flex column で 2 つの 100×100 兄弟を重ねる。
     tree.element_set_style(
         root,
         &[
@@ -722,9 +721,9 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
             StyleProp::Height(Dimension::px(200.0)),
         ],
     );
-    // `back` is appended FIRST but has z_index=1 (intended on top).
-    // `front` is appended SECOND with z_index=0 (intended behind), but a
-    // -100px margin-top makes it overlap `back` exactly.
+    // `back` は先に append するが z_index=1（前面の意図）。
+    // `front` は後に append し z_index=0（背面の意図）だが、margin-top -100px で
+    // `back` にぴったり重なる。
     tree.element_append_child(root, back);
     tree.element_append_child(root, front);
     tree.element_set_style(
@@ -746,7 +745,7 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
     );
     tree.render(0.0);
 
-    // Confirm the two children actually overlap at (50, 50).
+    // 2 つの子が実際に (50, 50) で重なることを確認する。
     let back_rect = tree.element_layout_rect(back).unwrap();
     let front_rect = tree.element_layout_rect(front).unwrap();
     assert!(
@@ -754,7 +753,7 @@ fn hit_test_respects_z_index_when_paint_and_doc_order_diverge() {
         "test setup failed: children must overlap (back={back_rect:?}, front={front_rect:?})"
     );
 
-    // Visually `back` is on top (z=1 > z=0), so hit_test must return `back`.
+    // 視覚上は `back` が前面（z=1 > z=0）なので、hit_test は `back` を返さねばならない。
     assert_eq!(tree.hit_test(50.0, 50.0), Some(back));
 }
 
@@ -788,7 +787,7 @@ fn push_and_poll_events() {
     assert!(matches!(&events[0], Event::Click { x, .. } if (*x - 10.0).abs() < 1e-3));
     assert!(matches!(&events[1], Event::Resize { width, .. } if (*width - 300.0).abs() < 1e-3));
 
-    // Queue is drained after poll.
+    // poll 後はキューが空になる。
     assert!(tree.poll_events().is_empty());
 }
 
@@ -829,7 +828,7 @@ fn remove_subtree_drops_children() {
     tree.element_append_child(root, a);
     tree.element_append_child(a, b);
     tree.element_remove(a);
-    // After removing `a`, both `a` and `b` should be gone, but root remains.
+    // `a` を削除すると `a` と `b` の両方が消え、root は残るはず。
     assert_eq!(tree.element_kind(root), Some(ElementKind::View));
     assert_eq!(tree.element_kind(a), None);
     assert_eq!(tree.element_kind(b), None);
@@ -856,7 +855,7 @@ fn subtree_element_ids_returns_root_and_descendants() {
     assert!(tree.subtree_element_ids(ElementId::from_u64(999)).is_empty());
 }
 
-// ── Phase 5: TextInput + IME tests ──────────────────────────────────────
+// ── TextInput + IME テスト ──────────────────────────────────────
 
 #[test]
 fn text_input_text_run_respects_padding() {
@@ -984,7 +983,7 @@ fn preedit_shown_inline_not_committed() {
     tree.element_append_text_content(input, "abc");
     tree.element_set_preedit(input, "DEF");
 
-    // Display text includes preedit suffix.
+    // 表示テキストには preedit が末尾に含まれる。
     assert_eq!(tree.element_get_text_content(input), "abcDEF");
 }
 
@@ -1023,9 +1022,9 @@ fn preedit_text_run_respects_padding() {
 
 #[test]
 fn placeholder_renders_when_text_content_is_empty() {
-    // Regression: Canvas-mode TextInput must render placeholder text when value is empty.
-    // layout_pass previously skipped text_layout construction for TextInput, leaving
-    // scene_build's content_layout → text_layout fallback as dead code.
+    // 退行防止: Canvas モードの TextInput は value が空のとき placeholder を描かねばならない。
+    // かつて layout_pass は TextInput の text_layout 構築をスキップし、scene_build の
+    // content_layout → text_layout フォールバックを dead code にしていた。
     let mut tree = ElementTree::new();
     let input = tree.element_create(36, ElementKind::TextInput);
     tree.set_root(input);
@@ -1080,7 +1079,7 @@ fn placeholder_hidden_when_text_content_is_present() {
         "committed text must render as a TextRun when value is present"
     );
 
-    // Clearing value restores placeholder rendering.
+    // value をクリアすると placeholder 描画が復活する。
     tree.element_set_text_content(input, "");
     let sg = tree.render(0.0);
     let text_run_count = sg
@@ -1095,9 +1094,9 @@ fn placeholder_hidden_when_text_content_is_present() {
 
 #[test]
 fn preedit_renders_when_text_content_is_empty() {
-    // Regression: typing IME composition into an empty TextInput must surface
-    // the preedit as a TextRun. scene_build previously gated content rendering
-    // on text_content alone, hiding the preedit until the user committed.
+    // 退行防止: 空の TextInput への IME 変換入力は preedit を TextRun として出さねばならない。
+    // かつて scene_build はコンテンツ描画を text_content だけで判定し、確定まで preedit を
+    // 隠していた。
     let mut tree = ElementTree::new();
     let input = tree.element_create(33, ElementKind::TextInput);
     tree.set_root(input);
@@ -1111,7 +1110,7 @@ fn preedit_renders_when_text_content_is_empty() {
         ],
     );
 
-    // No committed text yet — only an in-progress IME composition.
+    // 確定テキストはまだなく、進行中の IME 変換のみ。
     tree.element_set_preedit(input, "あ");
 
     let sg = tree.render(0.0);
@@ -1135,9 +1134,9 @@ fn commit_preedit_appends_and_clears() {
     tree.element_set_preedit(input, "DEF");
     tree.element_commit_preedit(input);
 
-    // After commit, preedit is part of committed text.
+    // 確定後、preedit は確定テキストの一部になる。
     assert_eq!(tree.element_get_text_content(input), "abcDEF");
-    // Setting preedit to empty effectively clears it.
+    // preedit を空に設定すると実質的にクリアされる。
     tree.element_set_preedit(input, "");
     assert_eq!(tree.element_get_text_content(input), "abcDEF");
 }
@@ -1185,7 +1184,7 @@ fn composition_lifecycle_events_queued() {
     assert!(matches!(&events[2], Event::CompositionEnd { text, .. } if text == "愛"));
 }
 
-// ── Keyboard event tests (Enter key, modifiers) ──────────────────────────
+// ── キーボードイベントのテスト（Enter キー, modifiers） ──────────────────────────
 
 #[test]
 fn backspace_removes_last_char() {
@@ -1229,7 +1228,7 @@ fn key_down_event_carries_modifiers() {
     let input = tree.element_create(40, ElementKind::TextInput);
     tree.set_root(input);
 
-    // Shift+A with modifier bitmask
+    // modifier ビットマスク付きの Shift+A
     tree.push_event(Event::KeyDown {
         target_id: input,
         key: "A".to_string(),
@@ -1242,7 +1241,7 @@ fn key_down_event_carries_modifiers() {
     );
 }
 
-// ── Cursor visibility tests ───────────────────────────────────────────────
+// ── カーソル可視性のテスト ───────────────────────────────────────────────
 
 #[test]
 fn cursor_visible_on_focus_hidden_on_blur() {
@@ -1261,7 +1260,7 @@ fn cursor_visible_on_focus_hidden_on_blur() {
     );
 
     let sg = tree.render(0.0);
-    // When cursor is visible and text_content is empty, a fallback Rect cursor is emitted.
+    // カーソル可視かつ text_content が空のとき、フォールバックの Rect カーソルが出る。
     let cursor_rects: Vec<_> = sg
         .iter()
         .filter_map(|(_, n)| match &n.kind {
@@ -1289,7 +1288,7 @@ fn cursor_visible_on_focus_hidden_on_blur() {
     );
 }
 
-// ── ADR-0032: render(timestamp_ms) drives cursor blink internally ────────
+// ── ADR-0032: render(timestamp_ms) が内部でカーソル点滅を駆動する ────────
 
 fn count_cursor_rects(sg: &hayate_core::SceneGraph) -> usize {
     sg.iter()
@@ -1314,25 +1313,25 @@ fn render_timestamp_toggles_focused_cursor_every_500ms() {
     );
 
     tree.element_focus(input);
-    // First frame: cursor visible, blink clock starts.
+    // 最初のフレーム: カーソル可視、点滅クロック開始。
     assert_eq!(
         count_cursor_rects(tree.render(1000.0)),
         1,
         "frame 0: visible"
     );
-    // Same frame budget — no toggle yet.
+    // 同じ時間枠内 — まだトグルしない。
     assert_eq!(
         count_cursor_rects(tree.render(1499.0)),
         1,
         "<500ms: still visible"
     );
-    // Crossed 500ms threshold — toggle to hidden.
+    // 500ms 閾値を越えた — 非表示にトグル。
     assert_eq!(
         count_cursor_rects(tree.render(1500.0)),
         0,
         ">=500ms: hidden"
     );
-    // Another 500ms — back to visible.
+    // さらに 500ms — 再び表示に戻る。
     assert_eq!(
         count_cursor_rects(tree.render(2000.0)),
         1,
@@ -1353,7 +1352,7 @@ fn render_does_not_blink_when_nothing_is_focused() {
             StyleProp::Height(Dimension::px(40.0)),
         ],
     );
-    // No focus → cursor stays hidden no matter how much time passes.
+    // フォーカスなし → 時間が経ってもカーソルは非表示のまま。
     assert_eq!(count_cursor_rects(tree.render(0.0)), 0);
     assert_eq!(count_cursor_rects(tree.render(10_000.0)), 0);
 }
@@ -1386,7 +1385,7 @@ fn blur_stops_blink_and_hides_cursor() {
     );
 }
 
-// ── ADR-0031: semantic event variant smoke tests ─────────────────────────
+// ── ADR-0031: セマンティックイベント variant のスモークテスト ─────────────────────────
 
 #[test]
 fn semantic_event_variants_roundtrip_through_poll() {
@@ -1415,7 +1414,7 @@ fn semantic_event_variants_roundtrip_through_poll() {
     );
 }
 
-// ── T4: has_layout guard ─────────────────────────────────────────────────
+// ── has_layout ガード ─────────────────────────────────────────────────
 
 #[test]
 fn has_layout_false_before_render_true_after() {
@@ -1438,7 +1437,7 @@ fn has_layout_false_before_render_true_after() {
     assert!(tree.has_layout(), "has_layout must be true after render");
 }
 
-// ── Clipboard paste tests ─────────────────────────────────────────────────
+// ── クリップボード貼り付けのテスト ─────────────────────────────────────────────────
 
 #[test]
 fn paste_into_empty_text_input_sets_content() {
@@ -1468,12 +1467,12 @@ fn paste_commits_active_preedit_then_appends() {
     tree.set_root(input);
 
     tree.element_append_text_content(input, "abc");
-    tree.element_set_preedit(input, "DEF"); // in-progress IME composition
+    tree.element_set_preedit(input, "DEF"); // 進行中の IME 変換
     tree.element_paste(input, "xyz");
 
-    // Preedit should be committed and pasted text appended after it.
+    // preedit が確定され、その後に貼り付けテキストが追加されるはず。
     assert_eq!(tree.element_get_text_content(input), "abcDEFxyz");
-    // Setting preedit to empty after paste should not change anything.
+    // 貼り付け後に preedit を空に設定しても何も変わらないはず。
     tree.element_set_preedit(input, "");
     assert_eq!(tree.element_get_text_content(input), "abcDEFxyz");
 }
@@ -1501,7 +1500,7 @@ fn paste_on_non_text_input_is_noop() {
     tree.set_root(view);
 
     tree.element_paste(view, "ignored");
-    // No events, no panic.
+    // イベントもパニックも起きない。
     assert!(tree.poll_events().is_empty());
 }
 
@@ -1536,7 +1535,7 @@ fn insert_before_reorders_children_in_flex_row() {
             ],
         );
     }
-    // Insert c (red) before b — expected paint order: a, c, b.
+    // c（赤）を b の前に挿入 — 期待する描画順: a, c, b。
     tree.element_set_style(
         c,
         &[
@@ -1548,14 +1547,14 @@ fn insert_before_reorders_children_in_flex_row() {
     tree.element_insert_before(root, c, b);
 
     tree.render(0.0);
-    // c is now at index 1, so its rect should sit at x=50.
+    // c は index 1 になったので、その rect は x=50 に来るはず。
     let c_rect = tree.element_layout_rect(c).expect("c has no layout rect");
     assert!(
         (c_rect.0 - 50.0).abs() < 0.5,
         "c x = {} (expected 50)",
         c_rect.0
     );
-    // b is pushed to index 2, so its rect should sit at x=100.
+    // b は index 2 へ押し出されたので、その rect は x=100 に来るはず。
     let b_rect = tree.element_layout_rect(b).expect("b has no layout rect");
     assert!(
         (b_rect.0 - 100.0).abs() < 0.5,
@@ -1564,7 +1563,7 @@ fn insert_before_reorders_children_in_flex_row() {
     );
 }
 
-// ── element_content_size (scroll clamping) ───────────────────────────────
+// ── element_content_size（スクロールクランプ） ───────────────────────────────
 
 #[test]
 fn element_content_size_returns_children_bounds() {
@@ -1596,7 +1595,7 @@ fn element_content_size_returns_children_bounds() {
     assert!((ch - 400.0).abs() < 0.5, "content height = {ch}");
 }
 
-// ── ADR-0013: WIT Dual Layer — resolved_elements for HTML Mode ───────────
+// ── ADR-0013: WIT デュアルレイヤ — HTML Mode 向け resolved_elements ───────────
 
 #[test]
 fn resolved_elements_returns_absolute_positions() {
@@ -1636,14 +1635,14 @@ fn resolved_elements_returns_absolute_positions() {
     assert!((re.height - 50.0).abs() < 0.5);
 }
 
-// ── ADR-0073: Canvas bundled fonts ───────────────────────────────────────
+// ── ADR-0073: Canvas 同梱フォント ───────────────────────────────────────
 
 #[test]
 fn default_font_family_constant_is_noto_sans() {
     assert_eq!(hayate_core::element::text::DEFAULT_FONT_FAMILY, "Noto Sans");
 }
 
-// ── ADR-0022: scroll offset managed by upper layer ───────────────────────
+// ── ADR-0022: スクロールオフセットは上位レイヤが管理する ───────────────────────
 
 #[test]
 fn scroll_offset_readback_matches_set_value() {
@@ -1686,7 +1685,7 @@ fn unknown_font_family_falls_back_to_default() {
     );
 }
 
-// ── T3: focused_element cleared on remove ────────────────────────────────
+// ── 削除時に focused_element がクリアされる ────────────────────────────────
 
 #[test]
 fn remove_clears_focused_element() {
@@ -1745,7 +1744,7 @@ fn pseudo_hover_applies_to_ancestor_when_pointer_over_child() {
     assert!(left.is_empty());
 
     let sg = tree.scene_graph();
-    // Scene graph should reflect hovered blue on root background.
+    // シーングラフは root 背景に hover 時の青を反映するはず。
     assert!(!sg.roots().is_empty());
 }
 
@@ -1843,7 +1842,7 @@ fn viewport_resize_does_not_override_explicit_root_px_size() {
     );
 }
 
-// ── ElementEngine / commit_frame (ADR-0075) ──────────────────────────────
+// ── ElementEngine / commit_frame（ADR-0075） ──────────────────────────────
 
 #[test]
 fn commit_frame_resolves_layout_without_render() {

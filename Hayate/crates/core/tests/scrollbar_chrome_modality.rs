@@ -1,14 +1,13 @@
-//! Pointer-Modality branch for scrollbar chrome (ADR-0110, SCR-04, #410). The
-//! same modality axis that gates selection chrome (ADR-0104,
-//! `selection_chrome_modality.rs`) splits the scrollbar overlay in two: Mouse/Pen
-//! get the operable thumb (#407 + #409), Touch gets a non-operable transient
-//! indicator that appears while scrolling and fades after it stops. The indicator
-//! carries no thumb/track hit region — content flick scrolls, not a drag.
+//! スクロールバー chrome のポインタモダリティ分岐（ADR-0110）。選択 chrome を
+//! ゲートするのと同じモダリティ軸（ADR-0104, `selection_chrome_modality.rs`）が
+//! スクロールバーオーバーレイを二分する。Mouse/Pen は操作可能なつまみを得て、
+//! Touch はスクロール中に現れ停止後にフェードする操作不能な一時インジケータを得る。
+//! インジケータはつまみ/トラックのヒット領域を持たない — コンテンツのフリックで
+//! スクロールするのであり、ドラッグではない。
 //!
-//! Driven through the public `ElementTree` interface — the pointer wire
-//! (`on_pointer_*_with_kind`), the Scroll Offset seam, and the rendered
-//! SceneGraph — never the lowering internals (prior art:
-//! `selection_chrome_modality.rs`, `scrollbar_overlay_scene.rs`).
+//! 公開 `ElementTree` インターフェース（ポインタ配線 `on_pointer_*_with_kind`、
+//! Scroll Offset シーム、描画済み SceneGraph）経由で駆動し、lowering 内部には
+//! 触れない。
 
 use hayate_core::element::pointer::PointerKind;
 use hayate_core::element::scene_build::{
@@ -18,15 +17,15 @@ use hayate_core::element::scene_build::{
 };
 use hayate_core::{Color, Dimension, ElementId, ElementKind, ElementTree, NodeKind, StyleProp};
 
-/// Final composited operable-thumb fill colour (RGB at the overlay opacity).
+/// 合成後の操作可能つまみの塗り色（オーバーレイ不透明度での RGB）。
 fn thumb_rgba() -> [f32; 4] {
     SCROLLBAR_THUMB_COLOR
         .with_opacity(SCROLLBAR_THUMB_OPACITY)
         .to_array_f32()
 }
 
-/// Operable Mouse/Pen thumb rects `(x, y, w, h)`: the thumb fill colour at the
-/// cross-axis THICKNESS that the #409 interactive bar paints.
+/// 操作可能な Mouse/Pen つまみ矩形 `(x, y, w, h)`。インタラクティブバーが描く、
+/// 交差軸 THICKNESS のつまみ塗り色。
 fn operable_thumbs(tree: &ElementTree) -> Vec<(f32, f32, f32, f32)> {
     let rgba = thumb_rgba();
     tree.scene_graph()
@@ -50,8 +49,8 @@ fn operable_thumbs(tree: &ElementTree) -> Vec<(f32, f32, f32, f32)> {
         .collect()
 }
 
-/// Touch transient-indicator rects `(x, y, w, h)`: the indicator colour at the
-/// cross-axis INDICATOR_THICKNESS, regardless of its (fading) opacity.
+/// Touch 一時インジケータの矩形 `(x, y, w, h)`。（フェード中の）不透明度に関わらず、
+/// 交差軸 INDICATOR_THICKNESS のインジケータ色。
 fn vertical_indicators(tree: &ElementTree) -> Vec<(f32, f32, f32, f32)> {
     let rgb = SCROLLBAR_INDICATOR_COLOR.to_array_f32();
     tree.scene_graph()
@@ -75,7 +74,7 @@ fn vertical_indicators(tree: &ElementTree) -> Vec<(f32, f32, f32, f32)> {
         .collect()
 }
 
-/// The alpha of the (single) vertical indicator rect, or `None` if none is drawn.
+/// （単一の）垂直インジケータ矩形のアルファ。描画がなければ `None`。
 fn indicator_alpha(tree: &ElementTree) -> Option<f32> {
     let rgb = SCROLLBAR_INDICATOR_COLOR.to_array_f32();
     tree.scene_graph().iter().find_map(|(_, n)| match &n.kind {
@@ -90,8 +89,8 @@ fn indicator_alpha(tree: &ElementTree) -> Option<f32> {
     })
 }
 
-/// A `scroll-view` whose content overflows only the vertical axis: a 100×100 box
-/// holding 100×300 content. Returns `(tree, scroll_id)`.
+/// 垂直軸のみコンテンツがあふれる `scroll-view`。100×100 のボックスに 100×300 の
+/// コンテンツを入れる。`(tree, scroll_id)` を返す。
 fn vertical_overflow_scroll_view() -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let scroll = tree.element_create(1, ElementKind::ScrollView);
@@ -118,8 +117,8 @@ fn vertical_overflow_scroll_view() -> (ElementTree, ElementId) {
     (tree, scroll)
 }
 
-/// Make the active pointer modality Touch (a content flick is a Touch gesture)
-/// and scroll the content through the Scroll Offset seam, then render at `now_ms`.
+/// アクティブなポインタモダリティを Touch にし（コンテンツのフリックは Touch
+/// ジェスチャ）、Scroll Offset シーム経由でコンテンツをスクロールし、`now_ms` で描画。
 fn touch_scroll_at(tree: &mut ElementTree, scroll: ElementId, now_ms: f64) {
     tree.on_pointer_down_with_kind(10.0, 10.0, 0, PointerKind::Touch);
     tree.on_pointer_up_with_kind(10.0, 10.0, PointerKind::Touch);
@@ -130,15 +129,15 @@ fn touch_scroll_at(tree: &mut ElementTree, scroll: ElementId, now_ms: f64) {
 #[test]
 fn touch_scroll_draws_no_operable_thumb() {
     let (mut tree, scroll) = vertical_overflow_scroll_view();
-    // The default modality is Mouse: the operable thumb is painted.
+    // デフォルトモダリティは Mouse: 操作可能なつまみが描かれる。
     assert_eq!(
         operable_thumbs(&tree).len(),
         1,
         "Mouse modality paints the operable thumb",
     );
 
-    // Under Touch the operable Mouse/Pen bar must not be drawn — Touch gets the
-    // transient indicator instead, which has no grabbable thumb (ADR-0110).
+    // Touch では操作可能な Mouse/Pen バーを描いてはならない — 代わりに Touch は
+    // つかめるつまみのない一時インジケータを得る（ADR-0110）。
     touch_scroll_at(&mut tree, scroll, 0.0);
     assert!(
         operable_thumbs(&tree).is_empty(),
@@ -149,8 +148,8 @@ fn touch_scroll_draws_no_operable_thumb() {
 #[test]
 fn touch_scroll_shows_transient_indicator() {
     let (mut tree, scroll) = vertical_overflow_scroll_view();
-    // A resting Touch surface paints no scrollbar — mobile has no always-on bar.
-    // (The default modality is Mouse, so flip to Touch with a press first.)
+    // 静止した Touch サーフェスはスクロールバーを描かない — モバイルに常時表示の
+    // バーはない。（デフォルトは Mouse なので、まず押下で Touch に切り替える。）
     tree.on_pointer_down_with_kind(10.0, 10.0, 0, PointerKind::Touch);
     tree.on_pointer_up_with_kind(10.0, 10.0, PointerKind::Touch);
     tree.render(0.0);
@@ -159,8 +158,8 @@ fn touch_scroll_shows_transient_indicator() {
         "a Touch surface that is not scrolling shows no indicator",
     );
 
-    // Scrolling the content raises the transient indicator: one vertical bar on
-    // the overflowing axis, thinner than the operable thumb.
+    // コンテンツのスクロールで一時インジケータが立つ: あふれる軸に縦バー1本、
+    // 操作可能なつまみより細い。
     touch_scroll_at(&mut tree, scroll, 0.0);
     let indicators = vertical_indicators(&tree);
     assert_eq!(
@@ -184,7 +183,7 @@ fn touch_indicator_fades_out_after_scrolling_stops() {
         "the indicator is fully visible while scrolling",
     );
 
-    // Inside the hold window the indicator stays fully visible.
+    // ホールド窓の間、インジケータは完全に見えたまま。
     tree.render(SCROLLBAR_INDICATOR_HOLD_MS / 2.0);
     assert_eq!(
         indicator_alpha(&tree),
@@ -192,7 +191,7 @@ fn touch_indicator_fades_out_after_scrolling_stops() {
         "the indicator holds at full visibility before the fade begins",
     );
 
-    // Partway through the fade window it is dimmer but still drawn.
+    // フェード窓の途中では暗くなるが、まだ描かれている。
     tree.render(SCROLLBAR_INDICATOR_HOLD_MS + SCROLLBAR_INDICATOR_FADE_MS / 2.0);
     let mid = indicator_alpha(&tree).expect("the indicator is still drawn mid-fade");
     assert!(
@@ -200,7 +199,7 @@ fn touch_indicator_fades_out_after_scrolling_stops() {
         "the indicator is fading (0 < {mid} < {SCROLLBAR_INDICATOR_OPACITY})",
     );
 
-    // Past hold + fade it has faded out completely and is gone.
+    // ホールド + フェードを過ぎると完全に消えてなくなる。
     tree.render(SCROLLBAR_INDICATOR_HOLD_MS + SCROLLBAR_INDICATOR_FADE_MS + 100.0);
     assert!(
         vertical_indicators(&tree).is_empty(),
@@ -208,10 +207,9 @@ fn touch_indicator_fades_out_after_scrolling_stops() {
     );
 }
 
-/// Under a precise pointer (Mouse/Pen) the overlay is the operable thumb (#409):
-/// it is painted, carries no transient indicator, and a press + drag on it moves
-/// the Scroll Offset. The S2 regression's precise-pointer arm (parametrized over
-/// `PointerKind`, prior art: `selection_chrome_modality.rs`).
+/// 精密ポインタ（Mouse/Pen）ではオーバーレイは操作可能なつまみになる。描画され、
+/// 一時インジケータを持たず、押下 + ドラッグで Scroll Offset を動かす。`PointerKind`
+/// でパラメタライズした精密ポインタ側の検証。
 fn assert_precise_pointer_is_operable(kind: PointerKind) {
     let (mut tree, scroll) = vertical_overflow_scroll_view();
     tree.on_pointer_down_with_kind(10.0, 10.0, 0, kind);
@@ -246,7 +244,7 @@ fn touch_gets_a_non_operable_indicator() {
     let (mut tree, scroll) = vertical_overflow_scroll_view();
     touch_scroll_at(&mut tree, scroll, 0.0);
 
-    // Touch draws the transient indicator only — no operable Mouse/Pen thumb.
+    // Touch は一時インジケータのみ描く — 操作可能な Mouse/Pen つまみは描かない。
     let indicators = vertical_indicators(&tree);
     assert_eq!(indicators.len(), 1, "Touch draws the transient indicator");
     assert!(
@@ -254,8 +252,9 @@ fn touch_gets_a_non_operable_indicator() {
         "Touch draws no operable thumb",
     );
 
-    // The indicator has no thumb/track hit region: a press + drag on its pixels
-    // does not operate a scrollbar (a real flick scrolls the content, not a bar).
+    // インジケータはつまみ/トラックのヒット領域を持たない: そのピクセル上での
+    // 押下 + ドラッグはスクロールバーを操作しない（実フリックはバーでなくコンテンツを
+    // スクロールする）。
     let (ix, iy, iw, ih) = indicators[0];
     let (cx, cy) = (ix + iw / 2.0, iy + ih / 2.0);
     let before = tree.element_get_scroll_offset(scroll).1;

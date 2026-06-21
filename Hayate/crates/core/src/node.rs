@@ -11,7 +11,7 @@ pub type NodeId = DefaultKey;
 pub struct TextDecorationLine {
     pub x0: f32,
     pub x1: f32,
-    /// Center y in run-local coordinates (same space as [`RenderGlyph::y`]).
+    /// run ローカル座標での中心 y（[`RenderGlyph::y`] と同じ空間）。
     pub y: f32,
     pub thickness: f32,
 }
@@ -23,9 +23,9 @@ pub struct TextRunData {
     pub glyphs: Vec<RenderGlyph>,
     pub decorations: Vec<TextDecorationLine>,
     pub text: Arc<str>,
-    /// Font synthesis from fontique (faux bold / italic skew / variation axes).
+    /// fontique による font synthesis（faux bold / italic skew / variation axes）。
     pub synthesis: Synthesis,
-    /// Normalized variation coordinates from Parley shaping.
+    /// Parley シェーピング由来の正規化 variation 座標。
     pub normalized_coords: Vec<i16>,
 }
 
@@ -39,7 +39,7 @@ pub enum NodeKind {
         color: [f32; 4],
         corner_radius: f32,
     },
-    /// Filled ring between an outer rounded rect and an inset inner rounded rect.
+    /// 外側の角丸 rect と内側にインセットした角丸 rect の間を塗りつぶすリング。
     RoundedRing {
         x: f32,
         y: f32,
@@ -49,8 +49,8 @@ pub enum NodeKind {
         border_width: f32,
         color: [f32; 4],
     },
-    /// Dashed border stroked along the box perimeter (`border-style: dashed`).
-    /// The stroke is inset by `border_width / 2` so it stays inside the box.
+    /// box の外周に沿って描く破線ボーダー（`border-style: dashed`）。
+    /// stroke は box 内に収まるよう `border_width / 2` だけインセットする。
     DashedBorder {
         x: f32,
         y: f32,
@@ -66,11 +66,10 @@ pub enum NodeKind {
         color: [f32; 4],
         data: Arc<TextRunData>,
     },
-    /// Applies an affine transform (kurbo coefficients [a,b,c,d,e,f]) to its children.
+    /// 子にアフィン変換（kurbo 係数 [a,b,c,d,e,f]）を適用する。
     Group { transform: [f64; 6] },
-    /// Clips its children to the given axis-aligned rectangle. `corner_radii`
-    /// (top-left, top-right, bottom-right, bottom-left) rounds the clip; all
-    /// zero means a plain rectangular clip (issue #206).
+    /// 子を指定の軸並行矩形にクリップする。`corner_radii`（top-left, top-right,
+    /// bottom-right, bottom-left）でクリップを角丸化し、全て 0 なら矩形クリップ。
     Clip {
         x: f32,
         y: f32,
@@ -78,7 +77,7 @@ pub enum NodeKind {
         height: f32,
         corner_radii: [f32; 4],
     },
-    /// Draws a raster image scaled to fit the given rect.
+    /// 指定 rect に収まるようスケールしてラスター画像を描く。
     Image {
         x: f32,
         y: f32,
@@ -86,8 +85,8 @@ pub enum NodeKind {
         height: f32,
         data: Arc<RenderImage>,
     },
-    /// Structural-only node giving an element retained scene identity (issue #182).
-    /// Carries no transform; painters walk its children transparently.
+    /// 要素に retained シーン上の同一性を与える構造専用ノード。transform は持たず、
+    /// painter は子を透過的にたどる。
     ElementAnchor {
         element_id: crate::element::id::ElementId,
     },
@@ -102,7 +101,7 @@ pub struct Node {
 #[derive(Debug, Clone)]
 pub struct SceneGraph {
     nodes: SlotMap<NodeId, Node>,
-    /// Top-level nodes in paint order (no parent). Children of Group/Clip are not listed here.
+    /// 描画順のトップレベルノード（親なし）。Group/Clip の子はここに載らない。
     roots: Vec<NodeId>,
 }
 
@@ -114,7 +113,7 @@ impl SceneGraph {
         }
     }
 
-    /// Insert a top-level (root) node.
+    /// トップレベル（root）ノードを挿入する。
     pub fn insert(&mut self, node: Node) -> NodeId {
         let id = self.nodes.insert(node);
         self.roots.push(id);

@@ -4,8 +4,8 @@ use crate::color::Color;
 use crate::element::id::ElementId;
 use crate::element::tree::{Element, Visual};
 
-/// Ambient Default Text Style channel (ADR-0065 ch2). Block-penetrating defaults
-/// supplied by `default-*` style props on any ancestor.
+/// Ambient Default Text Style チャンネル（ADR-0065）。祖先の `default-*` style prop が
+/// 供給する、ブロックを貫通するデフォルト値。
 #[derive(Clone, Debug)]
 pub struct AmbientDefaults {
     pub color: Color,
@@ -43,7 +43,7 @@ impl AmbientDefaults {
     }
 }
 
-/// Resolve ambient defaults at `id` by walking root→id and merging `default-*` props.
+/// root→id を辿り `default-*` prop をマージして `id` でのアンビエントデフォルトを解決する。
 pub(crate) fn ambient_at(elements: &HashMap<ElementId, Element>, id: ElementId) -> AmbientDefaults {
     let mut chain = Vec::new();
     let mut cur = Some(id);

@@ -1,4 +1,4 @@
-//! Canvas Mode renderer (`HayateElementRenderer`). See ADR-0077.
+//! Canvas Mode レンダラ（`HayateElementRenderer`）。ADR-0077 参照。
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -29,31 +29,31 @@ use crate::style_packet;
 
 use crate::shared::{element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
 
-/// Fonts fetched asynchronously by the adapter; drained into the tree on the
-/// next `poll_events()` call (single-threaded WASM — Rc<RefCell> is safe).
+/// アダプタが非同期取得したフォント。次の `poll_events()` でツリーへ流し込む
+/// （単一スレッド WASM なので Rc<RefCell> で安全）。
 type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
 
-/// Families whose on-demand fetch failed; drained into `tree.font_fetch_failed`
-/// on the next `render()` so core can re-request (or give up) — without this the
-/// family stayed latched in `pending` forever (issue #343).
+/// 取得に失敗したファミリ。次の `render()` で `tree.font_fetch_failed` へ流し込み、
+/// core が再要求（または断念）できるようにする。これがないとファミリが `pending`
+/// に固定されたまま残る。
 type FontFailureQueue = Rc<RefCell<Vec<String>>>;
 
-/// Per-family failed-attempt count, used only to space retries with exponential
-/// backoff. Core owns the *budget* (when to give up); this owns the *timing*.
+/// ファミリ別の失敗回数。指数バックオフでリトライ間隔を空けるためだけに使う。
+/// 断念の判断（予算）は core が持ち、ここはタイミングだけを持つ。
 type FontFetchAttempts = Rc<RefCell<HashMap<String, u32>>>;
-/// Async clipboard reads (Ctrl/Cmd+V) resolved out-of-band: each spawned
-/// `readText()` pushes its `(target, text)` here, drained into core via
-/// `element_paste` at the start of the next `render()` (ADR-0097, #361).
+/// 帯域外で解決される非同期クリップボード読み取り（Ctrl/Cmd+V）。各 `readText()` が
+/// `(target, text)` をここへ積み、次の `render()` 冒頭で `element_paste` 経由で
+/// core へ流し込む（ADR-0097）。
 type PendingPaste = Rc<RefCell<Vec<(ElementId, String)>>>;
 
-/// Backoff before reporting a failed fetch: `BASE << (attempt - 1)`, capped.
-/// A fresh GitHub Pages deploy can see jsdelivr return a transient 403/429, so
-/// the first retry is quick and later ones back off (issue #343).
+/// 失敗報告前のバックオフ: `BASE << (attempt - 1)`（上限あり）。
+/// デプロイ直後は jsdelivr が一時的な 403/429 を返すことがあるため、最初のリトライは
+/// 早く、以降は徐々に間隔を空ける。
 const FETCH_BACKOFF_BASE_MS: i32 = 400;
 const FETCH_BACKOFF_MAX_MS: i32 = 5_000;
 
-/// Resolve after `ms` via `setTimeout`, so a spawned fetch future can await a
-/// backoff delay before reporting failure.
+/// `setTimeout` で `ms` 後に解決する。fetch future が失敗報告前にバックオフ遅延を
+/// await できるようにする。
 async fn backoff_sleep(ms: i32) {
     let promise = js_sys::Promise::new(&mut |resolve, _reject| {
         if let Some(win) = web_sys::window() {
@@ -69,11 +69,10 @@ async fn backoff_sleep(ms: i32) {
     let _ = JsFuture::from(promise).await;
 }
 
-/// Web implementation of the core `Clipboard` seam (ADR-0097, #268). Copy
-/// (Cmd/Ctrl+C) runs in core; core hands the selected text here, and the
-/// adapter writes it via the async Clipboard API. The write is fire-and-forget:
-/// it is initiated synchronously inside the user-gesture keydown that core just
-/// processed, which is what the browser requires to authorize the write.
+/// core の `Clipboard` シームの Web 実装（ADR-0097）。コピー（Cmd/Ctrl+C）は core で
+/// 走り、選択テキストがここへ渡され、アダプタが非同期 Clipboard API で書き込む。書き込みは
+/// fire-and-forget で、core が処理したユーザージェスチャの keydown 内で同期的に開始する。
+/// これがブラウザの書き込み許可要件を満たす。
 struct WebClipboard;
 
 impl hayate_core::Clipboard for WebClipboard {
@@ -84,65 +83,61 @@ impl hayate_core::Clipboard for WebClipboard {
     }
 }
 
-// ── Canvas Mode renderer ─────────────────────────────────────────────────
+// ── Canvas Mode レンダラ ─────────────────────────────────────────────────
 
 #[wasm_bindgen]
 pub struct HayateElementRenderer {
     canvas: HtmlCanvasElement,
     backend: SelectedBackend,
     tree: ElementTree,
-    /// wgpu surface clear colour. Decoupled from `render(timestamp_ms)` because
-    /// the WIT `render` signature no longer carries it (ADR-0032 keeps render
-    /// timestamp-only); call `set_background_color` separately.
+    /// wgpu サーフェスのクリア色。WIT の `render` 署名がこれを持たなくなったため
+    /// `render(timestamp_ms)` から分離されている（ADR-0032 で render は timestamp のみ）。
+    /// `set_background_color` で別途設定する。
     background: [f32; 4],
-    /// Fonts fetched by spawned futures; applied to the tree on next poll_events.
+    /// future が取得したフォント。次の poll_events でツリーへ適用する。
     font_queue: FontQueue,
-    /// Families whose fetch failed; reported to core on the next `render()`.
+    /// 取得に失敗したファミリ。次の `render()` で core へ報告する。
     font_failure_queue: FontFailureQueue,
-    /// Per-family failed-attempt count, for exponential retry backoff.
+    /// ファミリ別の失敗回数。指数リトライバックオフ用。
     font_fetch_attempts: FontFetchAttempts,
-    /// IME candidate-window bounds synced each render (ADR-0069).
+    /// 毎 render で同期する IME 候補ウィンドウの境界（ADR-0069）。
     ime: WebImeBridge,
-    /// ResizeObserver callback queues viewport metrics for the next `render()`.
+    /// ResizeObserver コールバックが次の `render()` 用にビューポート計測値をキューする。
     pending_resize: Rc<RefCell<Option<resize_observer::CanvasResizeMetrics>>>,
     last_viewport: Rc<RefCell<(f32, f32)>>,
     _resize_observer: ResizeObserverGuard,
-    /// Self-wired pointer listeners (ADR-0080) enqueue here; drained in arrival
-    /// order at the start of `render()`.
+    /// 自前配線のポインタリスナ（ADR-0080）がここへ積む。`render()` 冒頭で到着順に排出。
     pending_pointer: Rc<RefCell<Vec<PointerInput>>>,
-    /// Last move position applied on a drain, used to seed 1px move-coalescing
-    /// across frame boundaries.
+    /// 排出時に適用した直近の move 位置。フレーム境界をまたぐ 1px move コアレッシングの
+    /// シードに使う。
     last_pointer_move: Option<(f32, f32)>,
-    /// Active touch/pen drag→scroll gesture, locked to one scroll-view between
-    /// frames (ADR-0082, #350). `None` when no touch press is in flight or the
-    /// press is on a non-scrollable area.
+    /// アクティブな touch/pen のドラッグ→スクロールジェスチャ。フレーム間で 1 つの
+    /// scroll-view にロックされる（ADR-0082）。タッチ押下がない、または非スクロール領域
+    /// への押下のときは `None`。
     scroll_gesture: Option<ScrollGesture>,
-    /// Finger samples `(x, y, frame_ms)` recorded while the active gesture is
-    /// scrolling, fed to `estimate_release_velocity` on release to launch
-    /// momentum (ADR-0082 Amendment, #351). Cleared on every fresh press.
+    /// スクロール中に記録する指のサンプル `(x, y, frame_ms)`。リリース時に
+    /// `estimate_release_velocity` へ渡し慣性を起動する（ADR-0082 Amendment）。新規押下ごとにクリア。
     scroll_samples: Vec<(f32, f32, f64)>,
-    /// Raw (un-resisted) accumulated finger offset of the active drag, used to
-    /// drive the rubber-band: the finger moves this 1:1, and the *displayed*
-    /// offset is `rubber_band_offset(raw, …)` so overscroll past an edge lags the
-    /// finger (#352). `None` when no drag is scrolling; seeded on the first
-    /// `Scroll` and cleared on press / release / cancel.
+    /// アクティブドラッグの生（抵抗なし）の累積指オフセット。ラバーバンドの駆動に使う。
+    /// 指はこれを 1:1 で動かし、表示オフセットは `rubber_band_offset(raw, …)` なので、
+    /// 端を越えたオーバースクロールでは指に遅れる。スクロール中でないときは `None`。
+    /// 最初の `Scroll` でシードし、押下/リリース/キャンセルでクリア。
     drag_raw: Option<(ElementId, (f32, f32))>,
-    /// In-flight released scroll: the locked scroll-view and its offset-space
-    /// velocity (px/ms per axis). Each frame `scroll_motion_step` integrates it —
-    /// friction while inside the range, a spring while in overscroll — so a fling
-    /// coasts (#351), bounces at an edge, and springs back home (#352). `None`
-    /// when nothing is animating.
+    /// 進行中のリリース済みスクロール: ロックした scroll-view と、その軸別オフセット速度
+    /// （px/ms）。毎フレーム `scroll_motion_step` が積分する（範囲内は摩擦、オーバースクロール中は
+    /// バネ）。これによりフリックが惰性で滑り、端でバウンスし、定位置へ戻る。アニメーションが
+    /// なければ `None`。
     scroll_motion: Option<(ElementId, (f32, f32))>,
-    /// Timestamp of the previous `render()` frame, for the inter-frame `dt` the
-    /// momentum integrator advances by. `None` before the first frame.
+    /// 直前の `render()` フレームのタイムスタンプ。慣性積分器が進めるフレーム間 `dt` 用。
+    /// 最初のフレーム前は `None`。
     last_frame_ms: Option<f64>,
-    /// Live scroll-physics knobs. Defaults to the authoritative consts; a dev
-    /// build may overlay a `tuning.json` via [`set_tuning`](Self::set_tuning) to
-    /// feel-tune on a real device without recompiling (#353).
+    /// スクロール物理の調整値。既定は正準の const。dev ビルドでは
+    /// [`set_tuning`](Self::set_tuning) で `tuning.json` を上書きし、再ビルドなしに実機で
+    /// 感触を調整できる。
     scroll_tuning: ScrollPhysicsTuning,
-    /// Texts read from the async clipboard for a pending Ctrl/Cmd+V, applied on
-    /// the next `render()` (the browser clipboard read is async, so it cannot be
-    /// served through the synchronous `Clipboard::read_text` seam, ADR-0097).
+    /// 保留中の Ctrl/Cmd+V のため非同期クリップボードから読んだテキスト。次の `render()` で
+    /// 適用する（ブラウザのクリップボード読み取りは非同期で、同期の
+    /// `Clipboard::read_text` シームでは扱えない。ADR-0097）。
     pending_paste: PendingPaste,
     _pointer_input: PointerInputGuard,
 }
@@ -167,8 +162,8 @@ impl HayateElementRenderer {
         );
         let mut tree = ElementTree::new();
         tree.set_viewport(metrics.viewport_width, metrics.viewport_height);
-        // Wire the Platform Adapter clipboard so core copy (Cmd/Ctrl+C) reaches
-        // the browser Clipboard API (ADR-0097, #268).
+        // core のコピー（Cmd/Ctrl+C）がブラウザ Clipboard API に届くよう、Platform Adapter
+        // のクリップボードを配線する（ADR-0097）。
         tree.set_clipboard(Box::new(WebClipboard));
 
         let pending_resize = Rc::new(RefCell::new(None));
@@ -211,20 +206,18 @@ impl HayateElementRenderer {
         })
     }
 
-    /// Set the wgpu surface clear colour used by every subsequent `render()`.
-    /// Not part of the WIT — it complements the timestamp-only `render` from
-    /// ADR-0032 so demos can still drive their colour pickers without
-    /// re-issuing the colour each frame.
+    /// 以降の各 `render()` で使う wgpu サーフェスのクリア色を設定する。WIT には含まれず、
+    /// timestamp のみの `render`（ADR-0032）を補完する。デモが毎フレーム色を再発行せずに
+    /// カラーピッカーを駆動できる。
     pub fn set_background_color(&mut self, r: f64, g: f64, b: f64) {
         self.background = [r as f32, g as f32, b as f32, 1.0];
     }
 
-    /// Overlay the dev-only `tuning.json` taste-constant overrides (#353 family).
-    /// `json` is the raw file text; the host fetches `tuning.json` and calls this
-    /// once after `init`, before the first frame. Absent file → the host never
-    /// calls this (defaults stand). Malformed JSON / unknown keys → `Err`, which
-    /// the host swallows, leaving the compiled defaults intact. Editing the file
-    /// and reloading (F5) re-applies with no recompile.
+    /// dev 専用の `tuning.json` による味付け定数の上書きを適用する。`json` は生のファイル
+    /// テキスト。ホストは `tuning.json` を取得し、`init` 後・最初のフレーム前に一度だけ呼ぶ。
+    /// ファイルが無ければホストは呼ばない（既定値のまま）。不正な JSON や未知のキーは `Err` を
+    /// 返し、ホストが握り潰してコンパイル時の既定値を維持する。ファイルを編集して F5 リロード
+    /// すれば再ビルドなしで再適用される。
     pub fn set_tuning(&mut self, json: JsValue) -> Result<(), JsValue> {
         let text = json
             .as_string()
@@ -240,8 +233,8 @@ impl HayateElementRenderer {
         self.tree.set_viewport(width, height);
     }
 
-    /// Registers an element with a caller-supplied ID. JS generates the ID
-    /// via a monotonic counter, eliminating the WASM round-trip for ID allocation.
+    /// 呼び出し側が指定した ID で要素を登録する。JS が単調増加カウンタで ID を生成するため、
+    /// ID 割り当てのための WASM 往復が不要になる。
     pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
         self.tree.element_create(id as u64, k);
@@ -277,7 +270,7 @@ impl HayateElementRenderer {
         Ok(())
     }
 
-    /// Hayate CSS pseudo-class block (`:hover` / `:active` / `:focus`).
+    /// Hayate CSS の擬似クラスブロック（`:hover` / `:active` / `:focus`）。
     pub fn element_set_pseudo_style(
         &mut self,
         id: f64,
@@ -292,9 +285,9 @@ impl HayateElementRenderer {
         Ok(())
     }
 
-    /// Apply a 2D affine transform on top of layout. Arguments map to the WIT
-    /// `affine` record fields (column-major: xx,yx,xy,yy,dx,dy). Pass identity
-    /// (1,0,0,1,0,0) to neutralise an earlier transform.
+    /// レイアウトの上に 2D アフィン変換を適用する。引数は WIT の `affine` レコードフィールド
+    /// に対応する（列優先: xx,yx,xy,yy,dx,dy）。恒等変換 (1,0,0,1,0,0) を渡すと以前の変換を
+    /// 打ち消す。
     pub fn element_set_transform(
         &mut self,
         id: f64,
@@ -331,15 +324,14 @@ impl HayateElementRenderer {
         self.tree.element_remove(id);
     }
 
-    /// Returns the element's current text. Canvas Mode applies `element_set_text`
-    /// eagerly (ADR-0037), so this reflects the latest setter call immediately.
+    /// 要素の現在のテキストを返す。Canvas Mode は `element_set_text` を即時適用するため
+    /// （ADR-0037）、直近のセッタ呼び出しがそのまま反映される。
     pub fn element_get_text(&self, id: f64) -> String {
         self.tree.element_get_text(element_id_from_f64(id))
     }
 
-    /// Return the element's absolute bounds [x, y, width, height] from the
-    /// most recent layout pass. Zeroed when the id is unknown or the element
-    /// has not been laid out yet. WIT-aligned (`element-get-bounds`).
+    /// 直近のレイアウトパスでの要素の絶対境界 [x, y, width, height] を返す。id が未知、または
+    /// まだレイアウトされていない場合はゼロ。WIT 準拠（`element-get-bounds`）。
     pub fn element_get_bounds(&self, id: f64) -> Box<[f32]> {
         let eid = element_id_from_f64(id);
         let (x, y, w, h) = self
@@ -349,9 +341,9 @@ impl HayateElementRenderer {
         vec![x, y, w, h].into_boxed_slice()
     }
 
-    /// Resolved style of `id` after inheritance + pseudo-state (ADR-0067).
-    /// Returns `null` if `id` is unknown, otherwise a JS object with the
-    /// effective `Visual` fields (camelCase keys, colors as `{r,g,b,a}`).
+    /// 継承＋擬似状態を解決した後の `id` のスタイル（ADR-0067）。`id` が未知なら `null`、
+    /// それ以外は実効 `Visual` フィールドを持つ JS オブジェクト（camelCase キー、色は
+    /// `{r,g,b,a}`）。
     pub fn element_effective_visual(&self, id: f64) -> JsValue {
         let eid = element_id_from_f64(id);
         let Some(visual) = self.tree.element_effective_visual(eid) else {
@@ -400,55 +392,54 @@ impl HayateElementRenderer {
         self.tree.set_root(element_id_from_f64(id));
     }
 
-    /// Advance cursor blink, run layout, and present. `timestamp_ms` should be a
-    /// monotonic clock (e.g. `performance.now()`). Mutations are applied eagerly
-    /// by the `element_*` setters (ADR-0037), so `render` only drives layout.
+    /// カーソル点滅を進め、レイアウトを実行し、提示する。`timestamp_ms` は単調増加クロック
+    /// （例: `performance.now()`）であること。ミューテーションは `element_*` セッタが即時適用
+    /// するため（ADR-0037）、`render` はレイアウトのみを駆動する。
     pub fn render(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
         let pending = self.pending_resize.borrow_mut().take();
         if let Some(metrics) = pending {
             self.apply_resize(metrics);
         }
         self.drain_pointer_inputs(timestamp_ms);
-        // After draining this frame's inputs (a fresh press interrupts the
-        // animation, a release launches it), advance any in-flight scroll motion
-        // by the inter-frame dt so inertia, bounce and spring-back integrate on
-        // the same rAF loop as layout (#351, #352).
+        // このフレームの入力を排出した後（新規押下はアニメーションを中断し、リリースは起動する）、
+        // 進行中のスクロール運動をフレーム間 dt だけ進める。慣性・バウンス・スプリングバックが
+        // レイアウトと同じ rAF ループで積分される。
         self.step_scroll_motion(timestamp_ms);
         self.last_frame_ms = Some(timestamp_ms);
-        // Report failed fetches to core first: each marks fonts dirty so the
-        // commit_layout below re-shapes, re-detects the gap, and re-emits a
-        // FetchFont on the next poll_events (issue #343). A family core has given
-        // up on stops re-requesting, so we drop its backoff counter too.
+        // 失敗した取得をまず core へ報告する。各報告がフォントを dirty にするので、下の
+        // commit_layout が再シェイプし、欠落を再検出し、次の poll_events で FetchFont を
+        // 再発行する。core が断念したファミリは再要求しなくなるので、そのバックオフ
+        // カウンタも破棄する。
         let failures: Vec<String> = self.font_failure_queue.borrow_mut().drain(..).collect();
         for family in failures {
             if !self.tree.font_fetch_failed(&family) {
                 self.font_fetch_attempts.borrow_mut().remove(&family);
             }
         }
-        // フェッチ完了フォントを layout より前に登録することで、同フレーム内で
-        // fonts_dirty → compute_layout → 正しいグリフ、が成立する。
-        // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）
+        // 取得完了フォントを layout より前に登録することで、同フレーム内で
+        // fonts_dirty → compute_layout → 正しいグリフ、が成立する
+        // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）。
         let loaded: Vec<(String, Vec<u8>)> = self.font_queue.borrow_mut().drain(..).collect();
         for (family, bytes) in loaded {
             self.font_fetch_attempts.borrow_mut().remove(&family);
             self.tree.register_font(&family, bytes);
         }
-        // Apply any clipboard text an async Ctrl/Cmd+V read resolved since the
-        // last frame, before layout, so the pasted text shapes this frame (#361).
+        // 前フレーム以降に非同期 Ctrl/Cmd+V の読み取りが解決したクリップボードテキストを、
+        // レイアウト前に適用する。貼り付けテキストがこのフレームでシェイプされる。
         let pasted: Vec<(ElementId, String)> = self.pending_paste.borrow_mut().drain(..).collect();
         for (id, text) in pasted {
             self.tree.element_paste(id, &text);
         }
         let sg = self.tree.render(timestamp_ms);
         let present = self.backend.render_scene(sg, self.background);
-        // Core decides soft-keyboard visibility + candidate-window bounds once
-        // (ADR-0069, #392); the bridge just records it for the JS host to apply.
+        // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
+        // ブリッジは JS ホストが適用するために記録するだけ。
         self.tree.drive_ime(&mut self.ime);
         present
     }
 
-    /// Fetch an image (PNG / JPEG / WebP) from `url` and attach it to the Image element.
-    /// Call this after element_set_src; the element renders blank until this resolves.
+    /// `url` から画像（PNG / JPEG / WebP）を取得し Image 要素に紐付ける。element_set_src の
+    /// 後に呼ぶこと。解決するまで要素は空白で描画される。
     pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
         let eid = element_id_from_f64(id);
         let image_data = fetch_image(&url).await?;
@@ -476,8 +467,8 @@ impl HayateElementRenderer {
         }
     }
 
-    /// Drain the self-wired pointer buffer at the start of `render()`, applying
-    /// each input to the tree in arrival order with 1px move-coalescing (ADR-0080).
+    /// `render()` 冒頭で自前配線のポインタバッファを排出し、各入力を到着順に 1px move
+    /// コアレッシングしながらツリーへ適用する（ADR-0080）。
     fn drain_pointer_inputs(&mut self, now_ms: f64) {
         let buffered: Vec<PointerInput> = self.pending_pointer.borrow_mut().drain(..).collect();
         if buffered.is_empty() {
@@ -498,15 +489,14 @@ impl HayateElementRenderer {
                 modifiers,
                 kind,
             } => {
-                // Always send the press first so a tap still shows `:active`
-                // (#213), forwarding the device so Core retains it per
-                // interaction (#357). A touch/pen press over a scroll-view then
-                // locks a drag→scroll gesture; if the slop is never crossed the
-                // release resolves as a normal click.
+                // タップでも `:active` が出るよう、まず常に押下を送る。デバイスも転送し
+                // Core がインタラクション単位で保持する。scroll-view 上の touch/pen 押下は
+                // ドラッグ→スクロールジェスチャをロックする。slop を越えなければリリースは
+                // 通常のクリックとして解決される。
                 self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
                 self.scroll_gesture = None;
-                // A fresh press interrupts any coasting fling or spring-back so the
-                // content is immediately grabbable (#351) — start from rest.
+                // 新規押下は惰性中のフリックやスプリングバックを中断し、コンテンツを即座に
+                // 掴めるようにする。静止状態から始める。
                 self.scroll_motion = None;
                 self.drag_raw = None;
                 self.scroll_samples.clear();
@@ -523,18 +513,16 @@ impl HayateElementRenderer {
             PointerInput::Move { x, y, kind } => {
                 if let Some(mut gesture) = self.scroll_gesture.take() {
                     match gesture.on_move((x, y), self.scroll_tuning.slop_px) {
-                        // Still a pending tap — leave the press alive.
+                        // まだ保留中のタップ — 押下を生かしたままにする。
                         MoveOutcome::Pending => {}
-                        // Slop crossed: release the press (#213) so the touch
-                        // becomes a scroll and no click fires on release. Seed the
-                        // velocity tracker from the takeover position.
+                        // slop を越えた: 押下を解除してタッチをスクロールにし、リリースで
+                        // クリックを発火させない。引き継ぎ位置から速度トラッカーをシードする。
                         MoveOutcome::StartScroll => {
                             self.tree.on_pointer_cancel();
                             self.scroll_samples.push((x, y, now_ms));
                         }
-                        // Drag the locked scroll-view with the finger (1:1 inside
-                        // the range, rubber-band resisted past an edge), and record
-                        // the sample so a release can estimate the fling.
+                        // ロックした scroll-view を指でドラッグし（範囲内は 1:1、端を越えると
+                        // ラバーバンドで抵抗）、リリース時にフリックを推定できるようサンプルを記録する。
                         MoveOutcome::Scroll { dx, dy } => {
                             self.apply_drag_delta(gesture.scroll_view, dx, dy);
                             self.scroll_samples.push((x, y, now_ms));
@@ -547,11 +535,10 @@ impl HayateElementRenderer {
                 }
             }
             PointerInput::Up { x, y, kind } => {
-                // A touch that never crossed the slop is a tap → resolve the
-                // click. One that became a scroll already had its press
-                // cancelled, so swallow the up and launch the released motion —
-                // momentum from the sampled fling, and/or spring-back if it was
-                // let go in overscroll (#351, #352).
+                // slop を越えなかったタッチはタップ → クリックを解決する。スクロールに
+                // なったものは既に押下がキャンセル済みなので、up を握り潰してリリース運動を
+                // 起動する（サンプルしたフリックの慣性、および/またはオーバースクロールで
+                // 離した場合のスプリングバック）。
                 match self.scroll_gesture.take() {
                     Some(gesture) if !gesture.is_tap() => {
                         self.launch_scroll_motion(gesture.scroll_view)
@@ -580,10 +567,9 @@ impl HayateElementRenderer {
         }
     }
 
-    /// Walk up from `id` to its nearest ScrollView ancestor (inclusive), the
-    /// element a touch gesture locks onto. Mirrors Core's wheel-path
-    /// `nearest_scroll_view` using the public kind/parent queries so the gesture
-    /// lock lives in the adapter (ADR-0082, #350).
+    /// `id` から最も近い ScrollView 祖先（自身を含む）まで遡る。タッチジェスチャがロック
+    /// する要素。公開の kind/parent クエリで Core のホイール経路 `nearest_scroll_view` を
+    /// 再現し、ジェスチャロックをアダプタ側に置く（ADR-0082）。
     fn nearest_scroll_view(&self, mut id: ElementId) -> Option<ElementId> {
         loop {
             if self.tree.element_kind(id) == Some(ElementKind::ScrollView) {
@@ -593,9 +579,9 @@ impl HayateElementRenderer {
         }
     }
 
-    /// Per-axis scroll bounds of `sv`: `(max_x, max_y, dim_x, dim_y)` where `max`
-    /// is the scrollable range (`content − viewport`, floored at 0) and `dim` is
-    /// the viewport extent the rubber-band overscroll asymptotes to.
+    /// `sv` の軸別スクロール境界 `(max_x, max_y, dim_x, dim_y)`。`max` はスクロール可能範囲
+    /// （`content − viewport`、0 で下限）、`dim` はラバーバンドのオーバースクロールが漸近する
+    /// ビューポート幅。
     fn scroll_bounds(&self, sv: ElementId) -> (f32, f32, f32, f32) {
         let (max_x, max_y) = self.tree.element_scroll_max_offset(sv);
         let (_, _, view_w, view_h) = self
@@ -605,11 +591,11 @@ impl HayateElementRenderer {
         (max_x, max_y, view_w, view_h)
     }
 
-    /// Set the locked scroll-view's offset un-clamped (SCR-02) and, when it
-    /// actually moved, fire `Event::Scroll` so parallax / lazy-load react to touch
-    /// scrolling too (ADR-0082). Offsets outside `[0, max]` are intentional — the
-    /// rubber-band drag and the spring-back / bounce animation both live in
-    /// overscroll. Offset application and scroll-notify are distinct calls.
+    /// ロックした scroll-view のオフセットをクランプせず設定し（SCR-02）、実際に動いたときは
+    /// `Event::Scroll` を発火してパララックスや遅延読み込みがタッチスクロールにも反応する
+    /// ようにする（ADR-0082）。`[0, max]` 外のオフセットは意図的で、ラバーバンドのドラッグも
+    /// スプリングバック/バウンスのアニメーションもオーバースクロール領域にある。オフセット適用と
+    /// スクロール通知は別の呼び出し。
     fn commit_scroll_offset(&mut self, sv: ElementId, nx: f32, ny: f32) {
         let (ox, oy) = self.tree.element_get_scroll_offset(sv);
         let (dx, dy) = (nx - ox, ny - oy);
@@ -619,11 +605,10 @@ impl HayateElementRenderer {
         }
     }
 
-    /// Apply a finger-driven drag delta to the locked scroll-view through the
-    /// rubber-band: the finger moves a *raw* offset 1:1, and the displayed offset
-    /// is `rubber_band_offset(raw, …)`, so inside the range it tracks the finger
-    /// exactly and past an edge it lags with growing resistance (#352). The raw
-    /// accumulator is seeded from the current offset on the first drag frame.
+    /// 指のドラッグ差分をラバーバンド経由でロックした scroll-view に適用する。指は生の
+    /// オフセットを 1:1 で動かし、表示オフセットは `rubber_band_offset(raw, …)`。範囲内では
+    /// 指に正確に追従し、端を越えると抵抗を増しながら遅れる。生のアキュムレータは最初の
+    /// ドラッグフレームで現在のオフセットからシードする。
     fn apply_drag_delta(&mut self, sv: ElementId, dx: f32, dy: f32) {
         let (max_x, max_y, dim_x, dim_y) = self.scroll_bounds(sv);
         let (rx, ry) = match self.drag_raw {
@@ -632,11 +617,10 @@ impl HayateElementRenderer {
         };
         let (rx, ry) = (rx + dx, ry + dy);
         self.drag_raw = Some((sv, (rx, ry)));
-        // Rubber-band only the axes that can actually scroll. A non-scrollable
-        // axis (`max == 0`) is pinned at its origin: real mobile browsers never
-        // rubber-band an axis with nothing to scroll — a vertical-only page does
-        // not bounce sideways — while a genuinely horizontally-scrollable
-        // container (its `max > 0`) still does. Per-axis overscroll, like iOS.
+        // 実際にスクロールできる軸だけラバーバンドする。スクロール不可な軸（`max == 0`）は
+        // 原点に固定する。実機のモバイルブラウザは、スクロールするものがない軸をラバーバンド
+        // しない（縦のみのページは横にバウンスしない）一方、本当に横スクロール可能な
+        // コンテナ（`max > 0`）はバウンスする。iOS と同じ軸別オーバースクロール。
         let nx = if max_x > 0.0 {
             scroll_drag::rubber_band_offset(rx, max_x, dim_x, &self.scroll_tuning)
         } else {
@@ -650,21 +634,18 @@ impl HayateElementRenderer {
         self.commit_scroll_offset(sv, nx, ny);
     }
 
-    /// On release of a scroll gesture, hand the locked scroll-view its released
-    /// motion: the fling velocity estimated from the recorded finger samples.
-    /// It coasts if there is a real fling, and it also animates when the finger
-    /// let go in overscroll (velocity ≈ 0) so the edge always springs back home
-    /// (#351, #352). A slow release that ends inside the range leaves nothing
-    /// animating.
+    /// スクロールジェスチャのリリース時、ロックした scroll-view にリリース運動を渡す。
+    /// 記録した指サンプルから推定したフリック速度。本当のフリックがあれば惰性で滑り、
+    /// オーバースクロールで指を離した（速度 ≈ 0）場合も、端が必ず定位置へ戻るよう
+    /// アニメーションする。範囲内で終わる遅いリリースは何もアニメーションしない。
     fn launch_scroll_motion(&mut self, sv: ElementId) {
         let (vx, vy) = scroll_drag::estimate_release_velocity(&self.scroll_samples, &self.scroll_tuning);
         self.scroll_samples.clear();
         self.drag_raw = None;
         let (max_x, max_y, _, _) = self.scroll_bounds(sv);
-        // A non-scrollable axis (`max == 0`) neither flings nor overscrolls: drop
-        // its release velocity and ignore it for the out-of-bounds check, so the
-        // released motion can't bounce an axis the user can't scroll (matches the
-        // drag-time per-axis gate above).
+        // スクロール不可な軸（`max == 0`）はフリックもオーバースクロールもしない。リリース
+        // 速度を捨て、範囲外チェックでも無視することで、ユーザがスクロールできない軸を
+        // リリース運動がバウンスさせないようにする（上のドラッグ時の軸別ゲートと一致）。
         let vx = if max_x > 0.0 { vx } else { 0.0 };
         let vy = if max_y > 0.0 { vy } else { 0.0 };
         let (ox, oy) = self.tree.element_get_scroll_offset(sv);
@@ -675,18 +656,16 @@ impl HayateElementRenderer {
         self.scroll_motion = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));
     }
 
-    /// Advance the released scroll by one frame: `scroll_motion_step` integrates
-    /// each axis (friction inside the range, spring in overscroll), the new offset
-    /// is committed un-clamped (firing `Event::Scroll` like a finger drag), and
-    /// the decayed velocity carries on. The animation ends once both axes rest
-    /// **and** are back within `[0, max]`, so an inertial bounce keeps running
-    /// through its overscroll excursion until the spring brings it home (#351,
-    /// #352).
+    /// リリース済みスクロールを 1 フレーム進める。`scroll_motion_step` が各軸を積分し
+    /// （範囲内は摩擦、オーバースクロール中はバネ）、新しいオフセットをクランプせず
+    /// コミットし（指ドラッグ同様 `Event::Scroll` を発火）、減衰した速度を引き継ぐ。
+    /// アニメーションは両軸が静止し**かつ** `[0, max]` 内に戻ったときに終わる。慣性バウンスは
+    /// バネが定位置へ戻すまでオーバースクロール域を走り続ける。
     fn step_scroll_motion(&mut self, now_ms: f64) {
         let Some((sv, (vx, vy))) = self.scroll_motion else {
             return;
         };
-        // Need a real inter-frame span to integrate; carry velocity until we do.
+        // 積分には実際のフレーム間スパンが必要。確保できるまで速度を持ち越す。
         let dt = match self.last_frame_ms {
             Some(prev) if now_ms > prev => (now_ms - prev) as f32,
             _ => return,
@@ -696,8 +675,8 @@ impl HayateElementRenderer {
         let (nx, vx2) = scroll_drag::scroll_motion_step(ox, vx, max_x, dt, &self.scroll_tuning);
         let (ny, vy2) = scroll_drag::scroll_motion_step(oy, vy, max_y, dt, &self.scroll_tuning);
         self.commit_scroll_offset(sv, nx, ny);
-        // An axis is still animating while it carries velocity or sits in
-        // overscroll (a bounce mid-excursion may momentarily read zero velocity).
+        // 軸は速度を持つかオーバースクロール中である限りアニメーション継続中
+        // （バウンスの途中では一瞬速度ゼロを読むことがある）。
         let x_active = vx2 != 0.0 || nx < 0.0 || nx > max_x;
         let y_active = vy2 != 0.0 || ny < 0.0 || ny > max_y;
         self.scroll_motion = (x_active || y_active).then_some((sv, (vx2, vy2)));
@@ -711,12 +690,11 @@ impl HayateElementRenderer {
     }
 
     fn apply_resize(&mut self, metrics: resize_observer::CanvasResizeMetrics) {
-        // Ignore a degenerate 0×0 report: a canvas that is detached, `display:none`,
-        // or not yet laid out (the ResizeObserver's first tick, and every headless
-        // test DOM where `getBoundingClientRect()` is 0) momentarily reports no box.
-        // Collapsing the viewport to 0 zeroes every `%`-sized box — the root then
-        // covers nothing, so hit-test/focus/IME silently stop — and we'd only have
-        // to rebuild the layout on the next real tick. Keep the prior viewport.
+        // 退化した 0×0 の報告は無視する。デタッチ済み・`display:none`・未レイアウトの
+        // canvas（ResizeObserver の最初の tick や、`getBoundingClientRect()` が 0 になる
+        // ヘッドレステスト DOM）は一時的にボックスなしを報告する。ビューポートを 0 に潰すと
+        // すべての `%` サイズボックスがゼロになり、ルートが何も覆わなくなって hit-test/focus/IME
+        // が静かに止まる。しかも次の実 tick でレイアウトを作り直すだけ。直前のビューポートを維持する。
         if metrics.viewport_width <= 0.0 || metrics.viewport_height <= 0.0 {
             return;
         }
@@ -741,7 +719,7 @@ impl HayateElementRenderer {
         Ok(id.to_u64() as f64)
     }
 
-    /// Returns element ids in `id` and its descendants. Query Hayate before remove.
+    /// `id` とその子孫の要素 id を返す。remove の前に Hayate へ問い合わせるために使う。
     pub fn element_subtree_ids(&self, id: f64) -> Vec<f64> {
         self.tree
             .subtree_element_ids(element_id_from_f64(id))
@@ -755,9 +733,9 @@ impl HayateElementRenderer {
             .element_set_scroll_offset(element_id_from_f64(id), x, y);
     }
 
-    /// Current scroll offset `[x, y]` of an element (0,0 when unknown). Symmetric
-    /// with `element_set_scroll_offset`; lets the host read touch-driven scroll
-    /// position back (ADR-0082, #350).
+    /// 要素の現在のスクロールオフセット `[x, y]`（未知のときは 0,0）。
+    /// `element_set_scroll_offset` と対称で、ホストがタッチ駆動のスクロール位置を読み戻せる
+    /// （ADR-0082）。
     pub fn element_get_scroll_offset(&self, id: f64) -> Box<[f32]> {
         let (x, y) = self.tree.element_get_scroll_offset(element_id_from_f64(id));
         vec![x, y].into_boxed_slice()
@@ -768,9 +746,8 @@ impl HayateElementRenderer {
             .element_set_font_family(element_id_from_f64(id), family);
     }
 
-    /// Unset one or more inheritable text-style properties on `id`, reverting
-    /// them to inherit from the parent (ADR-0047).
-    /// `kinds` is a packed u32 array: 0 = Color, 1 = FontSize, 2 = FontFamily.
+    /// `id` の継承可能なテキストスタイルプロパティを 1 つ以上 unset し、親からの継承に戻す
+    /// （ADR-0047）。`kinds` はパックされた u32 配列: 0 = Color, 1 = FontSize, 2 = FontFamily。
     pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) -> Result<(), JsValue> {
         let parsed: Result<Vec<StylePropKind>, JsValue> = kinds
             .iter()
@@ -790,13 +767,13 @@ impl HayateElementRenderer {
         self.tree.element_set_role(element_id_from_f64(id), role);
     }
 
-    /// Register a custom font from raw bytes. After this, the family_name can be used
-    /// with `element_set_font_family`.
+    /// 生バイトからカスタムフォントを登録する。これ以降 family_name を
+    /// `element_set_font_family` で使える。
     pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
         self.tree.register_font(family_name, data.to_vec());
     }
 
-    /// Fetch a font file from a URL and register it under `family_name`.
+    /// URL からフォントファイルを取得し `family_name` で登録する。
     pub async fn load_font_from_url(
         &mut self,
         family_name: String,
@@ -807,11 +784,11 @@ impl HayateElementRenderer {
         Ok(())
     }
 
-    /// Preload fonts declared in the app's `hayate.config.json`.
+    /// アプリの `hayate.config.json` で宣言されたフォントをプリロードする。
     ///
-    /// Accepts a JS array of `{ family: string, url: string }` objects.
-    /// Fetches each font sequentially and blocks until all are registered,
-    /// so the first `render()` frame uses the correct fonts (no FOUT).
+    /// `{ family: string, url: string }` オブジェクトの JS 配列を受け取る。各フォントを
+    /// 順次取得し、すべて登録されるまでブロックするので、最初の `render()` フレームが正しい
+    /// フォントを使う（FOUT なし）。
     ///
     /// # Example (JS)
     /// ```js
@@ -835,20 +812,20 @@ impl HayateElementRenderer {
         Ok(())
     }
 
-    /// Load a font using the family name embedded in the font file. Backs the
-    /// WIT `element-load-font` export.
+    /// フォントファイルに埋め込まれたファミリ名でフォントを読み込む。WIT の
+    /// `element-load-font` エクスポートを支える。
     pub fn element_load_font(&mut self, data: &[u8]) {
         self.tree.register_font_bytes(data.to_vec());
     }
 
-    /// Deliver pasted text to a specific TextInput element. WIT-aligned
-    /// (`element-paste`); replaces the implicit-focus `on_clipboard_paste`.
+    /// 貼り付けテキストを特定の TextInput 要素に届ける。WIT 準拠（`element-paste`）。
+    /// 暗黙フォーカスの `on_clipboard_paste` を置き換える。
     pub fn element_paste(&mut self, id: f64, text: &str) {
         self.tree.element_paste(element_id_from_f64(id), text);
     }
 
-    /// Return the focused element's id (as f64), or 0.0 if nothing is focused.
-    /// JS can use this with `element_get_text_content` to implement copy/cut.
+    /// フォーカス中の要素 id（f64）を返す。何もフォーカスされていなければ 0.0。
+    /// JS は `element_get_text_content` と組み合わせてコピー/カットを実装できる。
     pub fn focused_element_id(&self) -> f64 {
         self.tree
             .focused_element()
@@ -856,32 +833,29 @@ impl HayateElementRenderer {
             .unwrap_or(0.0)
     }
 
-    /// Whether a document-wide text selection is active (ADR-0097, #267). The
-    /// host dispatches keyboard selection gestures (Ctrl/Cmd+A, Shift+Arrow) when
-    /// this is true even if no element is focused (read-only Selection Region).
+    /// 文書全体のテキスト選択がアクティブかどうか（ADR-0097）。これが true なら、要素が
+    /// フォーカスされていなくてもホストはキーボードの選択操作（Ctrl/Cmd+A, Shift+矢印）を
+    /// ディスパッチする（読み取り専用の Selection Region）。
     pub fn has_selection(&self) -> bool {
         self.tree.selection().is_some()
     }
 
-    /// Physical device behind the most recent pointer interaction (#357), as the
-    /// `PointerKind` wire discriminant (`mouse=0`, `touch=1`, `pen=2`). Retained
-    /// per interaction so the host (and later slices) can branch on it.
+    /// 直近のポインタ操作の物理デバイス。`PointerKind` のワイヤ値（`mouse=0`, `touch=1`,
+    /// `pen=2`）。ホストが分岐できるようインタラクション単位で保持する。
     pub fn last_pointer_kind(&self) -> u32 {
         self.tree.last_pointer_kind().to_u32()
     }
 
-    /// Handle a key press on the focused element. Editing keys are mapped to an
-    /// [`EditIntent`] by the adapter's OS keymap and applied through core's
-    /// editing seam (ADR-0103); everything else falls through to the raw
-    /// `on_key_down` path (non-editing keys and the app `KeyDown` notification).
+    /// フォーカス中の要素へのキー押下を処理する。編集キーはアダプタの OS キーマップで
+    /// [`EditIntent`] にマップされ、core の編集シーム（ADR-0103）経由で適用される。それ以外は
+    /// 生の `on_key_down` 経路（非編集キーとアプリ向け `KeyDown` 通知）へ落ちる。
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
         if let Some(intent) = crate::edit_keymap::key_to_edit_intent(key, modifiers) {
             if let Some(focused) = self.tree.focused_element() {
-                // Ctrl/Cmd+V: the browser clipboard read is async, so it cannot be
-                // served through core's synchronous `Clipboard::read_text` seam.
-                // Kick off `navigator.clipboard.readText()` here and feed the
-                // resolved text back through `element_paste` on the next frame
-                // (ADR-0097 decision 3, #361).
+                // Ctrl/Cmd+V: ブラウザのクリップボード読み取りは非同期で、core の同期
+                // `Clipboard::read_text` シームでは扱えない。ここで
+                // `navigator.clipboard.readText()` を開始し、解決したテキストを次フレームの
+                // `element_paste` へ戻す（ADR-0097）。
                 if intent == EditIntent::Paste {
                     self.spawn_clipboard_paste(focused);
                     return;
@@ -894,10 +868,9 @@ impl HayateElementRenderer {
         self.tree.on_key_down(key, modifiers);
     }
 
-    /// Start an async clipboard read for a Ctrl/Cmd+V on `target`, queuing the
-    /// resolved text for `element_paste` on the next `render()`. The read is
-    /// initiated inside the user-gesture keydown the browser requires to
-    /// authorize clipboard access (ADR-0097, #361).
+    /// `target` への Ctrl/Cmd+V のため非同期クリップボード読み取りを開始し、解決したテキストを
+    /// 次の `render()` の `element_paste` 用にキューする。読み取りは、ブラウザがクリップボード
+    /// アクセス許可に要求するユーザージェスチャの keydown 内で開始する（ADR-0097）。
     fn spawn_clipboard_paste(&mut self, target: ElementId) {
         let Some(clipboard) = web_sys::window().map(|w| w.navigator().clipboard()) else {
             return;
@@ -915,40 +888,39 @@ impl HayateElementRenderer {
         });
     }
 
-    /// Called by JS when the user types printable text into the focused TextInput.
+    /// フォーカス中の TextInput に印字可能なテキストが入力されたとき JS から呼ばれる。
     pub fn on_text_input(&mut self, id: f64, text: &str) {
         self.tree.on_text_input(element_id_from_f64(id), text);
     }
 
-    /// Called by JS when an IME composition begins.
+    /// IME 変換が開始したとき JS から呼ばれる。
     pub fn on_composition_start(&mut self, id: f64, text: &str) {
         self.tree
             .on_composition_start(element_id_from_f64(id), text);
     }
 
-    /// Called by JS when the IME preedit updates.
+    /// IME のプリエディットが更新されたとき JS から呼ばれる。
     pub fn on_composition_update(&mut self, id: f64, text: &str) {
         self.tree
             .on_composition_update(element_id_from_f64(id), text);
     }
 
-    /// Called by JS when the IME preedit updates, carrying the EditContext
-    /// `textformatupdate` clause format ranges (ADR-0102, #336) so Canvas Mode
-    /// draws the per-clause conversion underlines. `formats` is the flat
-    /// `[start, end, weight, …]` triple stream (byte offsets into `text`;
-    /// `weight == 0` thin, non-zero thick).
+    /// IME のプリエディット更新時、EditContext `textformatupdate` の文節フォーマット範囲
+    /// （ADR-0102）を伴って JS から呼ばれ、Canvas Mode が文節ごとの変換下線を描く。`formats` は
+    /// フラットな `[start, end, weight, …]` の三つ組ストリーム（`text` へのバイトオフセット、
+    /// `weight == 0` は細線、非ゼロは太線）。
     pub fn on_composition_update_formatted(&mut self, id: f64, text: &str, formats: &[u32]) {
         let clauses = hayate_core::CompositionClause::from_wire(formats);
         self.tree
             .on_composition_update_formatted(element_id_from_f64(id), text, clauses);
     }
 
-    /// Called by JS when IME composition is finalized.
+    /// IME 変換が確定したとき JS から呼ばれる。
     pub fn on_composition_end(&mut self, id: f64, text: &str) {
         self.tree.on_composition_end(element_id_from_f64(id), text);
     }
 
-    /// Cursor character bounds for IME (ADR-0069). `[x, y, width, height]` in layout space.
+    /// IME 用のカーソル文字境界（ADR-0069）。レイアウト空間の `[x, y, width, height]`。
     pub fn element_character_bounds(&self, id: f64) -> Box<[f32]> {
         let eid = element_id_from_f64(id);
         match self.tree.element_character_bounds(eid) {
@@ -957,16 +929,15 @@ impl HayateElementRenderer {
         }
     }
 
-    /// Last IME character bounds synced during the most recent `render()`.
+    /// 直近の `render()` で同期した最後の IME 文字境界。
     pub fn ime_character_bounds(&self) -> Box<[f32]> {
         let b = self.ime.last_bounds();
         vec![b.x, b.y, b.width, b.height].into_boxed_slice()
     }
 
-    /// Whether the soft keyboard should be up this frame — true only while a
-    /// `text-input` is focused (ADR-0069, #392). The JS host attaches the
-    /// `EditContext` (which raises the keyboard) only when this is true, so a
-    /// plain tap on non-editable content never summons it.
+    /// このフレームでソフトキーボードを上げるべきか。`text-input` がフォーカス中のときだけ
+    /// true（ADR-0069）。JS ホストは true のときだけ `EditContext`（キーボードを上げる）を
+    /// アタッチするので、非編集コンテンツへの普通のタップでは呼び出されない。
     pub fn ime_wants_keyboard(&self) -> bool {
         self.ime.visible()
     }
@@ -976,10 +947,9 @@ impl HayateElementRenderer {
             .element_set_text_content(element_id_from_f64(id), text);
     }
 
-    /// Batch apply: invoked once per frame by Tsubame Canvas Mode (ADR-0052).
-    /// `ops` is a flat Float64Array of fixed-length records; `styles` is the
-    /// style_packet Float32Array referenced by OP_SET_STYLE records; `texts` is
-    /// the string table referenced by OP_SET_TEXT records.
+    /// バッチ適用。Tsubame Canvas Mode がフレームごとに一度呼ぶ（ADR-0052）。`ops` は固定長
+    /// レコードのフラットな Float64Array、`styles` は OP_SET_STYLE レコードが参照する
+    /// style_packet の Float32Array、`texts` は OP_SET_TEXT レコードが参照する文字列テーブル。
     pub fn apply_mutations(
         &mut self,
         ops: &[f64],
@@ -989,19 +959,19 @@ impl HayateElementRenderer {
         apply_mutations_batch(self, ops, styles, &texts)
     }
 
-    /// Returns the editable text content from the live tree.
+    /// ライブツリーから編集可能なテキスト内容を返す。
     pub fn element_get_text_content(&self, id: f64) -> String {
         self.tree.element_get_text_content(element_id_from_f64(id))
     }
 
-    /// ADR-0053: delivery rows `[listener_id, kind, ...fields]`.
-    /// `fetch_font` is consumed here and never delivered to the host.
+    /// ADR-0053: 配信行 `[listener_id, kind, ...fields]`。`fetch_font` はここで消費され、
+    /// ホストへは配信されない。
     pub fn poll_events(&mut self) -> js_sys::Array {
         for event in self.tree.poll_events() {
             if let Event::FetchFont { family } = event {
-                // Renderer-aware procurement (ADR-0043, #332): on the GPU path
-                // the monochrome emoji family is upgraded to the COLR build; the
-                // bytes still register under `family`, so core routing is intact.
+                // レンダラを意識した調達（ADR-0043）。GPU 経路ではモノクロ絵文字ファミリを
+                // COLR ビルドに格上げする。バイトは `family` 名で登録するので core のルーティングは
+                // そのまま。
                 if let Some(url) = font_url_for_renderer(&family, self.backend.kind()) {
                     let queue = self.font_queue.clone();
                     let failures = self.font_failure_queue.clone();
@@ -1012,8 +982,8 @@ impl HayateElementRenderer {
                             Ok(bytes) => queue.borrow_mut().push((family, bytes)),
                             Err(e) => {
                                 web_sys::console::warn_1(&e);
-                                // Back off, then report the failure so core can
-                                // re-request (until its retry budget is spent).
+                                // バックオフした後で失敗を報告し、core が再要求できるように
+                                // する（リトライ予算を使い切るまで）。
                                 let n = {
                                     let mut a = attempts.borrow_mut();
                                     let c = a.entry(family.clone()).or_insert(0);
@@ -1038,7 +1008,7 @@ impl HayateElementRenderer {
         encode_deliveries(&self.tree.poll_deliveries())
     }
 
-    /// JSON-encoded AccessKit `TreeUpdate` (ADR-0041). Returns null before layout.
+    /// JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は null を返す。
     pub fn poll_accessibility(&self) -> JsValue {
         match self.tree.accessibility_update() {
             Some(update) => match serde_json::to_string(&update) {
@@ -1068,7 +1038,7 @@ impl ApplyMutationsHost for HayateElementRenderer {
     }
 }
 
-/// `Some(Color)` -> `{r,g,b,a}`, `None` -> `null`.
+/// `Some(Color)` を `{r,g,b,a}` に、`None` を `null` に変換する。
 fn color_to_js(color: Option<Color>) -> JsValue {
     let Some(c) = color else {
         return JsValue::NULL;
@@ -1107,7 +1077,7 @@ fn border_style_to_js(value: BorderStyleValue) -> JsValue {
     }
 }
 
-/// Fetch a URL and decode it as RGBA8, supporting PNG / JPEG / WebP.
+/// URL を取得し RGBA8 としてデコードする（PNG / JPEG / WebP 対応）。
 async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
 
@@ -1133,10 +1103,9 @@ async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     })
 }
 
-/// Drive the browser cursor from the cursor resolved under the pointer
-/// (ADR-0088 / ADR-0105). Reuses the generated Hayate-CSS → browser-CSS mapper so
-/// the `cursor` value list stays single-sourced, and applies it to the canvas
-/// element itself — the surface the pointer is over — rather than the whole body.
+/// ポインタ下で解決したカーソルからブラウザのカーソルを駆動する（ADR-0088 / ADR-0105）。
+/// 生成済みの Hayate-CSS → browser-CSS マッパを再利用して `cursor` 値リストを単一ソースに
+/// 保ち、body 全体ではなくポインタが乗っている canvas 要素自体に適用する。
 fn apply_resolved_cursor(canvas: &HtmlCanvasElement, cursor: CursorValue) {
     let mut entries: Vec<(String, String)> = Vec::new();
     crate::generated::style_prop_css_entries(&StyleProp::Cursor(cursor), &mut entries);

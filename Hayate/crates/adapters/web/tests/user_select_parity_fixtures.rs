@@ -1,7 +1,7 @@
-//! Cross-language `user-select` parity corpus (ADR-0108): the HTML Mode resolver
-//! must agree with the Tsubame DOM Renderer (`resolveUserSelect`) on what each
-//! element-kind default + explicit `user-select` maps to. Both sides read the
-//! single source `proto/spec/fixtures/user_select_parity.json` (ADR-0070).
+//! 言語間の `user-select` パリティコーパス（ADR-0108）。HTML Mode のリゾルバは、各
+//! element-kind のデフォルト + 明示的な `user-select` のマッピングについて、Tsubame
+//! DOM Renderer（`resolveUserSelect`）と一致しなければならない。両者は単一ソース
+//! `proto/spec/fixtures/user_select_parity.json` を参照する（ADR-0070）。
 
 use std::fs;
 use std::path::PathBuf;

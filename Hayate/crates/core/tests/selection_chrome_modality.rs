@@ -1,18 +1,18 @@
-//! Touch-modality gate for selection chrome (ADR-0104 decision 2, #365). The
-//! drag handles and floating toolbar are a Touch affordance: they are drawn only
-//! when the last pointer interaction came from Touch. Mouse/Pen get the thin
-//! caret and drag-select only (desktop-browser behaviour). The highlight tint is
-//! *not* gated — it paints under every modality (ADR-0097, tint=Chromium).
+//! 選択クロムの Touch モダリティゲート（ADR-0104）。ドラッグハンドルと
+//! フローティングツールバーは Touch のアフォーダンスで、最後のポインタ操作が
+//! Touch のときだけ描かれる。Mouse/Pen は細いキャレットとドラッグ選択のみ
+//! （デスクトップブラウザの挙動）。ハイライトの色味はゲートされず、どの
+//! モダリティでも描かれる（ADR-0097、tint=Chromium）。
 //!
-//! Exercised through the public `ElementTree` interface: the chrome queries
-//! (`selection_toolbar` / `selection_handles`) and the rendered SceneGraph.
+//! 公開 `ElementTree` インターフェース経由で検証する（クロムのクエリ
+//! `selection_toolbar` / `selection_handles` とレンダリング済み SceneGraph）。
 
 use hayate_core::{
     Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind, RecordingPainter,
     StyleProp, render_scene_graph,
 };
 
-/// Material selection tint (ADR-0097): the colour of a selection highlight rect.
+/// Material 選択の色味（ADR-0097）。選択ハイライト矩形の色。
 const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -27,8 +27,8 @@ fn has_highlight(tree: &ElementTree) -> bool {
         .any(|op| matches!(op, DrawOp::FillRect { color, .. } if *color == HIGHLIGHT_COLOR))
 }
 
-/// Build `<view [selectable]><text "Hello world"></view>` on one line and
-/// return (tree, view, text). Mirrors the harness in `selection_toolbar.rs`.
+/// 1行の `<view [selectable]><text "Hello world"></view>` を組み立て、
+/// (tree, view, text) を返す。`selection_toolbar.rs` のハーネスと同型。
 fn selectable_paragraph() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -50,7 +50,7 @@ fn selectable_paragraph() -> (ElementTree, ElementId, ElementId) {
     (tree, view, text)
 }
 
-/// Drag-select a leading range with the given pointer modality, then release.
+/// 指定したポインタモダリティで先頭範囲をドラッグ選択し、離す。
 fn drag_select_with(tree: &mut ElementTree, kind: PointerKind) {
     tree.on_pointer_down_with_kind(2.0, 8.0, 0, kind);
     tree.on_pointer_move_with_kind(70.0, 8.0, kind);
@@ -116,8 +116,8 @@ fn touch_drag_select_shows_handles_and_toolbar() {
 
 #[test]
 fn mouse_selection_still_paints_the_highlight_tint() {
-    // The highlight tint is not modality-gated (ADR-0097, tint=Chromium): a Mouse
-    // selection draws no chrome but still paints its highlight band.
+    // ハイライトの色味はモダリティでゲートされない（ADR-0097、tint=Chromium）。
+    // Mouse 選択はクロムを描かないが、ハイライト帯は描く。
     let (mut tree, _view, _text) = selectable_paragraph();
     drag_select_with(&mut tree, PointerKind::Mouse);
     tree.render(0.0);
@@ -134,8 +134,8 @@ fn mouse_selection_still_paints_the_highlight_tint() {
 
 #[test]
 fn long_press_is_treated_as_touch_and_shows_chrome() {
-    // A long-press is a mobile gesture: the word selection it starts is Touch
-    // modality, so its chrome appears even with no prior pointer kind set (#365).
+    // 長押しはモバイルのジェスチャ。それが始める単語選択は Touch モダリティなので、
+    // 直前のポインタ種別が未設定でもクロムが現れる。
     let (mut tree, _view, _text) = selectable_paragraph();
     tree.on_long_press(10.0, 8.0);
 

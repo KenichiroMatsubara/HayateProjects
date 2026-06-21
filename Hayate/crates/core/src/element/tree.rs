@@ -41,36 +41,36 @@ pub struct Visual {
     pub border_width: f32,
     pub border_color: Option<Color>,
     pub border_style: BorderStyleValue,
-    /// Ordered box-shadow layers (ADR-0095); empty means no shadow. Top layer
-    /// first, matching CSS paint order.
+    /// box-shadow レイヤーを描画順に保持（ADR-0095）。空なら影なし。CSS の
+    /// paint order に合わせ最前面レイヤーが先頭。
     pub box_shadow: Vec<Shadow>,
-    /// Child-overflow handling (issue #206). `Hidden` clips children to the
-    /// element's (optionally rounded) border box; `Visible` is the default.
+    /// 子要素のオーバーフロー処理。`Hidden` は子を（角丸込みの）border box に
+    /// クリップする。既定は `Visible`。
     pub overflow: OverflowValue,
-    /// Max number of text lines before truncation (issue #207). `None` = unbounded.
-    /// The sole trigger for text truncation; `text_overflow` is inert without it.
+    /// 切り詰めまでの最大テキスト行数。`None` は無制限。テキスト切り詰めの唯一の
+    /// トリガで、これがなければ `text_overflow` は効かない。
     pub max_lines: Option<u32>,
-    /// How the last visible line is truncated when `max_lines` is exceeded.
+    /// `max_lines` を超えたとき最後の可視行をどう切り詰めるか。
     pub text_overflow: TextOverflowValue,
     pub text_color: Option<Color>,
     pub font_size: Option<f32>,
     pub font_weight: Option<f32>,
     pub font_style: Option<FontStyleValue>,
     pub text_decoration: Option<TextDecorationValue>,
-    /// Pointer cursor appearance (ADR-0088). `None` resolves to `Default`.
+    /// ポインタカーソルの見た目（ADR-0088）。`None` は `Default` に解決。
     pub cursor: Option<CursorValue>,
     pub z_index: i32,
-    /// Custom font-family name registered via `register_font`.
+    /// `register_font` で登録したカスタム font-family 名。
     pub font_family: Option<String>,
-    /// Ambient default text style (block-penetrating, ADR-0065 ch2).
+    /// ブロックを貫通する周囲の既定テキストスタイル（ADR-0065）。
     pub default_color: Option<Color>,
     pub default_font_size: Option<f32>,
     pub default_font_weight: Option<f32>,
     pub default_font_family: Option<String>,
-    /// Pseudo-state transition duration in milliseconds (ADR-0089, issue #209).
-    /// `0.0` (the default) means pseudo-state switches apply instantly.
+    /// 擬似状態トランジションの所要時間（ミリ秒、ADR-0089）。既定の `0.0` は
+    /// 擬似状態の切り替えを即時適用する。
     pub transition_duration: f32,
-    /// Easing curve used while interpolating a pseudo-state transition.
+    /// 擬似状態トランジション補間中のイージング曲線。
     pub transition_timing: TransitionTimingValue,
 }
 
@@ -114,59 +114,55 @@ pub(crate) struct Element {
     pub text: Option<String>,
     pub src: Option<String>,
     pub text_layout: Option<crate::element::text::TextLayout>,
-    /// Optional affine transform applied on top of layout (kurbo coefficients [a,b,c,d,e,f]).
+    /// レイアウトに上乗せする任意のアフィン変換（kurbo 係数 [a,b,c,d,e,f]）。
     pub transform: Option<[f64; 6]>,
-    /// Scroll offset for ScrollView elements (x, y in pixels).
+    /// ScrollView 要素のスクロールオフセット（x, y、ピクセル）。
     pub scroll_offset: (f32, f32),
-    /// Loaded image data for Image elements (populated by the adapter after async fetch).
+    /// Image 要素のロード済み画像データ（非同期フェッチ後にアダプタが設定）。
     pub src_image: Option<Arc<RenderImage>>,
-    /// Text-input edit model (TextInput only). ADR-0069.
+    /// テキスト入力の編集モデル（TextInput のみ。ADR-0069）。
     pub edit: Option<EditState>,
-    /// Whether the cursor should be drawn (true when the element is focused).
+    /// カーソルを描画すべきか（要素がフォーカスされていれば true）。
     pub cursor_visible: bool,
-    /// Pre-built Parley layout of text_content + preedit, rebuilt each render pass.
+    /// text_content + preedit の Parley レイアウト。各 render パスで再構築する。
     pub content_layout: Option<crate::element::text::TextLayout>,
-    /// ARIA label for screen readers.
+    /// スクリーンリーダー向け ARIA ラベル。
     pub aria_label: Option<String>,
-    /// ARIA role (e.g. "button", "listitem"). None uses the implicit role.
+    /// ARIA ロール（例 "button" / "listitem"）。None なら暗黙ロールを使う。
     pub role: Option<String>,
-    /// Hayate CSS pseudo-class overrides (`:hover` / `:active` / `:focus`).
+    /// Hayate CSS 擬似クラスの上書き（`:hover` / `:active` / `:focus`）。
     pub pseudo_styles: PseudoStyles,
-    /// When true, suppresses hit-testing and interaction (ADR-0071).
+    /// true ならヒットテストとインタラクションを抑止する（ADR-0071）。
     pub disabled: bool,
-    /// When true, this element establishes a Selection Region: text under it can
-    /// be selected by pointer drag, bounded by the nearest selectable ancestor
-    /// (ADR-0097 / ADR-0071 closed typed property, same shape as `disabled`).
+    /// true なら Selection Region を確立する。配下のテキストをポインタドラッグで
+    /// 選択でき、最も近い selectable な祖先で範囲が区切られる（ADR-0097。`disabled`
+    /// と同形の閉じた型付きプロパティ）。
     pub selectable: bool,
-    /// Per-element selectability modelled on CSS `user-select` (ADR-0108). `None`
-    /// excludes this element (and its subtree) from the document selection's
-    /// covered range and copied text, even when it sits inside a Selection
-    /// Region; `Text` (the default) and `Contains` participate. Distinct from
-    /// `selectable`, which marks a Selection Region *root* (ADR-0097): an element
-    /// can be inside a region yet opt out of selection via `user-select: none`.
+    /// CSS `user-select` を模した要素ごとの選択可否（ADR-0108）。`None` は Selection
+    /// Region 内にあってもこの要素（とサブツリー）を文書選択の範囲とコピーテキスト
+    /// から除外する。`Text`（既定）/ `Contains` は選択に参加する。`selectable` とは
+    /// 別物で、要素は Region 内にいつつ `user-select: none` で選択を抜けられる。
     pub user_select: crate::element::style::UserSelectValue,
-    /// When true, a TextInput accepts newlines: Enter inserts `\n` at the caret
-    /// rather than signalling submit (#362). Default false (single-line). A
-    /// closed typed property (ADR-0096/0097), same shape as `disabled`.
+    /// true なら TextInput が改行を受け付ける。Enter はキャレット位置に `\n` を
+    /// 挿入し、submit を発火しない。既定 false（単一行）。`disabled` と同形の閉じた
+    /// 型付きプロパティ（ADR-0096/0097）。
     pub multiline: bool,
-    /// Viewport-conditional style overrides, one variant per property (ADR-0081).
+    /// ビューポート条件付きのスタイル上書き。プロパティごとに 1 variant（ADR-0081）。
     pub viewport_variants: Vec<(ViewportCondition, StyleProp)>,
 }
 
-/// One ScrollView's live Touch transient-indicator state (ADR-0110, SCR-04,
-/// #410). The indicator shows while the content scrolls under Touch modality and
-/// fades after it stops; `shown_at_ms` is the host clock of the last scroll
-/// (refreshed on each touch scroll), `fade` the visibility factor `[0, 1]`
-/// recomputed each render from the elapsed time.
+/// ScrollView 1 個の Touch 一時インジケータの状態（ADR-0110）。Touch モダリティで
+/// コンテンツがスクロール中は表示され、止まるとフェードする。`shown_at_ms` は直近
+/// スクロール時のホストクロック（タッチスクロールごとに更新）、`fade` は経過時間から
+/// render ごとに再計算する可視率 `[0, 1]`。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TouchScrollIndicator {
     pub shown_at_ms: f64,
     pub fade: f32,
 }
 
-/// Events emitted by input wiring and drained by `poll_events`.
-/// Fully-resolved per-element state after layout, keyed by stable ElementId.
-/// Used by HTML Mode to update DOM elements without going through SceneGraph.
+/// レイアウト後の要素ごとの完全解決状態。安定 ElementId をキーにする。
+/// HTML Mode が SceneGraph を経由せず DOM 要素を更新するのに使う。
 #[derive(Clone, Debug)]
 pub struct ResolvedElement {
     pub kind: ElementKind,
@@ -185,7 +181,7 @@ pub struct ResolvedElement {
     pub z_index: i32,
     pub text: Option<String>,
     pub src: Option<String>,
-    /// Current value for TextInput elements (text_content + active preedit, combined for display).
+    /// TextInput 要素の現在値（表示用に text_content + 有効な preedit を結合）。
     pub text_content: Option<String>,
     pub font_family: Option<String>,
     pub aria_label: Option<String>,
@@ -195,81 +191,75 @@ pub struct ResolvedElement {
 pub struct ElementTree {
     pub(crate) elements: HashMap<ElementId, Element>,
     pub(crate) root: Option<ElementId>,
-    /// Layout-computation and text-shaping state. Grouped here so callers
-    /// cross one seam (`commit_frame()`) instead of touching Taffy, Parley,
-    /// font dirty state, and cursor timing directly.
+    /// レイアウト計算とテキストシェイピングの状態。Taffy / Parley / フォント dirty /
+    /// カーソルタイミングを直接触らず、呼び出し側が `commit_frame()` の 1 seam を
+    /// 通れるようまとめてある。
     pub(crate) layout: LayoutPass,
-    /// Dirty-tracking sets and frame-resolution logic (ADR-0075).
+    /// dirty 追跡集合とフレーム解決ロジック（ADR-0075）。
     pub(crate) engine: ElementEngine,
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
     pub(crate) scene_lowering: SceneLowering,
     pub(crate) event_queue: Vec<Event>,
-    /// Element that owns the text-input cursor blink. Tracked here (not in the
-    /// adapter) so `render(timestamp_ms)` can advance the blink itself per ADR-0032.
+    /// テキスト入力カーソルの点滅を担う要素。`render(timestamp_ms)` 自身が点滅を
+    /// 進められるよう、アダプタではなくここで追跡する（ADR-0032）。
     pub(crate) focused_element: Option<ElementId>,
-    /// Modality of the most recent input event, driving the `:focus-visible`
-    /// heuristic for the native focus ring (#335, ADR-0102).
+    /// 直近入力イベントのモダリティ。ネイティブフォーカスリングの `:focus-visible`
+    /// 判定を駆動する（ADR-0102）。
     pub(crate) last_input_modality: crate::element::interaction::InputModality,
-    /// Physical device behind the most recent pointer interaction (#357),
-    /// retained per interaction so later slices (touch gates, I-beam modality)
-    /// can branch on it. An independent axis from `last_input_modality` — a
-    /// touch press is `InputModality::Pointer` yet `PointerKind::Touch`.
+    /// 直近ポインタ操作の物理デバイス。インタラクションごとに保持する。
+    /// `last_input_modality` とは独立した軸で、タッチ押下は `InputModality::Pointer`
+    /// かつ `PointerKind::Touch` になる。
     pub(crate) last_pointer_kind: crate::element::pointer::PointerKind,
-    /// Elements matching CSS `:hover` (self or descendant under pointer).
+    /// CSS `:hover` に一致する要素（ポインタ下の自身または子孫）。
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
-    /// The single document-wide text selection, if any (ADR-0097). At most one
-    /// is active across the whole document.
+    /// 文書全体で唯一のテキスト選択（ADR-0097）。文書全体で同時に高々 1 つ。
     pub(crate) selection: Option<crate::element::selection::Selection>,
-    /// True while a pointer-down inside a Selection Region is driving a drag
-    /// selection (the active-session capture extended to selection, ADR-0097).
+    /// Selection Region 内の pointer-down がドラッグ選択を駆動中なら true
+    /// （active-session キャプチャを選択へ拡張したもの、ADR-0097）。
     pub(crate) selection_drag: bool,
-    /// The text-input whose edit selection a pointer drag is currently extending
-    /// (ADR-0097, #271). Distinct from `selection_drag`, which drives the
-    /// read-only SelectionArea selection; the two are mutually exclusive.
+    /// ポインタドラッグが現在編集選択を拡張中のテキスト入力（ADR-0097）。読み取り
+    /// 専用 SelectionArea を駆動する `selection_drag` とは別物で、両者は排他。
     pub(crate) edit_drag: Option<ElementId>,
-    /// An in-flight Mouse/Pen scrollbar-thumb drag (ADR-0110, #409). Set while a
-    /// pointer-down grabbed a thumb; each move converts pointer travel to a
-    /// Scroll Offset delta. Mutually exclusive with the selection drags above —
-    /// grabbing the thumb consumes the gesture before any selection begins.
+    /// 進行中の Mouse/Pen スクロールバーつまみドラッグ（ADR-0110）。pointer-down が
+    /// つまみを掴んだ間セットされ、各 move でポインタ移動を Scroll Offset 差分へ
+    /// 変換する。上の選択ドラッグと排他で、つまみ掴みは選択開始前にジェスチャを
+    /// 消費する。
     pub(crate) scrollbar_drag: Option<crate::element::interaction::ScrollbarDrag>,
-    /// ScrollViews that scrolled under Touch modality since the last render and
-    /// must (re)raise their transient indicator (ADR-0110, SCR-04, #410). Stamped
-    /// at render time with the host clock, since the scroll seam carries no
-    /// timestamp — the same flag-then-stamp shape as the cursor blink (ADR-0032).
+    /// 前回 render 以降に Touch モダリティでスクロールし、一時インジケータを
+    /// 再表示すべき ScrollView（ADR-0110）。スクロール seam がタイムスタンプを
+    /// 持たないため render 時にホストクロックで刻む（カーソル点滅と同じ
+    /// flag-then-stamp 形、ADR-0032）。
     pub(crate) touch_scroll_pending: HashSet<ElementId>,
-    /// Live Touch transient indicators, keyed by ScrollView. An entry exists only
-    /// while the indicator is within its show→fade window; it is dropped once it
-    /// has fully faded, so a resting Touch surface holds none (no always-on bar).
+    /// ScrollView をキーにした稼働中の Touch 一時インジケータ。エントリは show→fade
+    /// 窓内にある間だけ存在し、完全にフェードすると破棄される。静止した Touch 面は
+    /// 何も保持しない（常時表示バーなし）。
     pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
-    /// Multi-click tracking for word/paragraph gestures (#267): the last
-    /// pointer-down position and how many presses have landed near it. The
-    /// adapter's OS-level double-click timing is re-derived here by proximity:
-    /// consecutive presses at the same spot cycle caret → word → paragraph.
+    /// 単語/段落ジェスチャ用のマルチクリック追跡（#267）。直近 pointer-down 位置と
+    /// その近傍に着地した押下回数。アダプタの OS レベル double-click タイミングを
+    /// 近接で再導出し、同じ箇所への連続押下が caret → word → paragraph と巡回する。
     pub(crate) last_click_pos: Option<(f32, f32)>,
     pub(crate) click_count: u32,
-    /// Last pointer position for sub-pixel move dedup (ADR-0066).
+    /// サブピクセル move の重複排除用の直近ポインタ位置（ADR-0066）。
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
-    /// Cursor last resolved under the pointer, reported on coalesced moves (ADR-0088).
+    /// ポインタ下で直近に解決したカーソル。合成 move で報告する（ADR-0088）。
     pub(crate) last_cursor: CursorValue,
     pub(crate) runtime: DocumentRuntime,
-    /// Platform clipboard for copy (ADR-0097, #268). Installed by the Platform
-    /// Adapter; `None` until then, so copy is a no-op in headless/test setups.
-    /// Core writes selected text through this trait and never touches the
-    /// concrete clipboard API.
+    /// コピー用のプラットフォームクリップボード（ADR-0097）。Platform Adapter が
+    /// インストールするまで `None` で、その間コピーは no-op。core は選択テキストを
+    /// このトレイト経由で書き込み、具体的なクリップボード API には触れない。
     pub(crate) clipboard: Option<Box<dyn crate::element::clipboard::Clipboard>>,
-    /// Theme for the core-drawn selection chrome (highlight / toolbar). A single
-    /// switchable enum so adding Cupertino is additive (ADR-0097, #272).
+    /// core が描く選択 chrome（ハイライト / ツールバー）のテーマ。Cupertino 追加が
+    /// 加算的になるよう単一の切り替え可能な enum（ADR-0097）。
     pub(crate) selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle,
-    /// Live, overridable chrome taste constants (scrollbar / selection / etc).
-    /// Defaults to the authoritative consts; a dev build may overlay a
-    /// `tuning.json` via [`set_chrome_tuning`](Self::set_chrome_tuning) to
-    /// calibrate against Chromium/Android by editing JSON and pressing F5,
-    /// with no recompile (#353 family).
+    /// 上書き可能な chrome 味付け定数（スクロールバー / 選択など）。既定は正本の
+    /// const。dev ビルドでは [`set_chrome_tuning`](Self::set_chrome_tuning) 経由で
+    /// `tuning.json` を重ね、JSON 編集と F5 だけで（再ビルドなしに）Chromium/Android
+    /// に合わせ込める。
     pub(crate) chrome_tuning: crate::element::chrome_tuning::ChromeTuning,
-    /// Shaped layouts of the static toolbar button labels, shaped once with the
-    /// layout pass's font context and reused across frames (ADR-0097, #272).
+    /// 静的なツールバーボタンラベルのシェイプ済みレイアウト。layout pass の
+    /// フォントコンテキストで一度シェイプしフレーム間で再利用する（ADR-0097）。
     pub(crate) toolbar_label_cache:
         HashMap<crate::element::selection_chrome::ToolbarAction, text::TextLayout>,
 }
@@ -286,10 +276,10 @@ impl ElementTree {
             scene_lowering: SceneLowering::default(),
             event_queue: Vec::new(),
             focused_element: None,
-            // Pointer until the first keyboard event, so an unfocused / freshly
-            // pointer-driven UI shows no spurious ring on buttons (#335).
+            // 最初のキーボードイベントまで Pointer。未フォーカス/ポインタ駆動直後の
+            // UI がボタンに余計なリングを出さないように。
             last_input_modality: crate::element::interaction::InputModality::Pointer,
-            // Mouse until the first real pointer event reports its device.
+            // 最初の実ポインタイベントがデバイスを報告するまで Mouse。
             last_pointer_kind: crate::element::pointer::PointerKind::Mouse,
             hovered_elements: HashSet::new(),
             active_element: None,
@@ -311,9 +301,9 @@ impl ElementTree {
         }
     }
 
-    /// Shape any not-yet-cached toolbar button labels using the layout pass's
-    /// font context (ADR-0097, #272). Labels are static, so each is shaped once
-    /// and reused; called from `render` before the scene is lowered.
+    /// 未キャッシュのツールバーボタンラベルを layout pass のフォントコンテキストで
+    /// シェイプする（ADR-0097）。ラベルは静的なので一度シェイプして再利用する。
+    /// scene の lowering 前に `render` から呼ぶ。
     fn ensure_toolbar_labels(&mut self) {
         use crate::element::selection_chrome::{ToolbarAction, TOOLBAR_LABEL_FONT_SIZE};
         for action in [
@@ -339,8 +329,8 @@ impl ElementTree {
         }
     }
 
-    /// The shaped layout for a toolbar button's label, if cached (ADR-0097,
-    /// #272). Scene lowering reads it to place the label's glyph runs.
+    /// キャッシュ済みなら、ツールバーボタンラベルのシェイプ済みレイアウト
+    /// （ADR-0097）。scene lowering がラベルのグリフ run 配置に読む。
     pub(crate) fn toolbar_label_layout(
         &self,
         action: crate::element::selection_chrome::ToolbarAction,
@@ -348,9 +338,9 @@ impl ElementTree {
         self.toolbar_label_cache.get(&action)
     }
 
-    /// Switch the selection chrome theme (ADR-0097, #272). Material is the
-    /// default; Cupertino arrives with the iOS Platform Adapter. Additive — the
-    /// toolbar model and drawing are shared, only style metrics differ.
+    /// 選択 chrome のテーマを切り替える（ADR-0097）。既定は Material。Cupertino は
+    /// iOS Platform Adapter とともに来る。加算的で、ツールバーのモデルと描画は共有し
+    /// スタイルメトリクスのみ異なる。
     pub fn set_selection_chrome_style(
         &mut self,
         style: crate::element::selection_chrome::SelectionChromeStyle,
@@ -358,23 +348,22 @@ impl ElementTree {
         self.selection_chrome_style = style;
     }
 
-    /// Overlay the chrome taste constants at runtime (dev-only tuning, #353
-    /// family). The Platform Adapter parses `tuning.json` (it owns serde) and
-    /// hands core a fully-merged [`ChromeTuning`]; absent/malformed JSON never
-    /// reaches here, so the field always holds either the defaults or a complete
-    /// override.
+    /// chrome 味付け定数を実行時に上書きする（dev 専用 tuning）。Platform Adapter が
+    /// `tuning.json` を解析（serde を所有）し、完全マージ済みの [`ChromeTuning`] を
+    /// core へ渡す。欠落/不正な JSON はここに届かないので、フィールドは常に既定値か
+    /// 完全な上書きのいずれかを保持する。
     pub fn set_chrome_tuning(&mut self, tuning: crate::element::chrome_tuning::ChromeTuning) {
         self.chrome_tuning = tuning;
     }
 
-    /// The live chrome taste constants read by the scene-build emit path.
+    /// scene-build の emit パスが読む、稼働中の chrome 味付け定数。
     pub(crate) fn chrome_tuning(&self) -> &crate::element::chrome_tuning::ChromeTuning {
         &self.chrome_tuning
     }
 
-    /// Install the Platform Adapter's clipboard (ADR-0097, #268). Copy gestures
-    /// (Cmd/Ctrl+C) write the selected text through it; without one, copy is a
-    /// no-op.
+    /// Platform Adapter のクリップボードをインストールする（ADR-0097）。コピー
+    /// ジェスチャ（Cmd/Ctrl+C）は選択テキストをこれ経由で書き込む。なければコピーは
+    /// no-op。
     pub fn set_clipboard(&mut self, clipboard: Box<dyn crate::element::clipboard::Clipboard>) {
         self.clipboard = Some(clipboard);
     }
@@ -395,9 +384,9 @@ impl ElementTree {
         let old_viewport = self.viewport;
         self.viewport = new_viewport;
 
-        // Resize → (shape, visual) change sets resolve in one module (ADR-0081,
-        // #324); here we only raise dirty from the returned sets. Shape changes
-        // additionally seed the Taffy projection so `commit_frame` re-shapes them.
+        // Resize → (shape, visual) の変更集合は 1 モジュールで解決する（ADR-0081）。
+        // ここでは返ってきた集合から dirty を立てるだけ。shape 変更は加えて Taffy
+        // projection を仕込み、`commit_frame` が再シェイプするようにする。
         let dirty = viewport_resize::resolve_resize(
             self.elements.iter().map(|(id, el)| viewport_resize::ElementResizeInput {
                 id: *id,
@@ -433,9 +422,8 @@ impl ElementTree {
 
     pub fn element_create(&mut self, id: u64, kind: ElementKind) -> ElementId {
         let id = ElementId::from_u64(id);
-        // Start from the element-kind UA default layout (ADR-0109): explicit
-        // props set via `element_set_style` layer on top, so the resolution order
-        // is explicit > element-kind default > Taffy default.
+        // 要素種別の UA 既定レイアウトから始める（ADR-0109）。`element_set_style` の
+        // 明示プロパティが上に重なり、解決順は 明示 > 要素種別既定 > Taffy 既定。
         let layout_style = kind.base_layout_style();
 
         let element = Element {
@@ -462,13 +450,12 @@ impl ElementTree {
             pseudo_styles: PseudoStyles::default(),
             disabled: false,
             selectable: false,
-            // Seed `user-select` with the element-kind UA default (ADR-0108
-            // decision 1, same single-source table as `default_cursor`), so the
-            // field already holds the *effective* per-element value: `text` /
-            // `view` / `scroll-view` / `text-input` are selectable, `image` /
-            // `button` are not. An explicit `element_set_user_select` overrides
-            // it. This is what lets one core accessor key both the I-beam cursor
-            // and selection-start off effective selectability.
+            // `user-select` を要素種別の UA 既定で初期化する（ADR-0108。`default_cursor`
+            // と同じ単一正本テーブル）。フィールドは既に要素ごとの実効値を持つ:
+            // `text` / `view` / `scroll-view` / `text-input` は選択可、`image` /
+            // `button` は不可。明示の `element_set_user_select` が上書きする。これにより
+            // 1 つの core アクセサが I-beam カーソルと選択開始の両方を実効選択可否から
+            // 引ける。
             user_select: kind.default_user_select(),
             multiline: false,
             viewport_variants: Vec::new(),
@@ -486,7 +473,7 @@ impl ElementTree {
             Some(e) => e,
             None => return,
         };
-        // ADR-0058: text は text-like 要素にのみ宿る — `Text`（内容）/ `TextInput`
+        // text は text-like 要素にのみ宿る（ADR-0058）: `Text`（内容）/ `TextInput`
         // （placeholder）。`view` / `button` / `image` / `scroll-view` はテキストを
         // 子 `text` 要素で持ち、親へ集約しない。非 text 要素への set は無視する
         // （wire 駆動の外部入力なので panic せず防御的に no-op）。
@@ -515,18 +502,17 @@ impl ElementTree {
         }
     }
 
-    /// Mark (or unmark) an element as a Selection Region boundary (ADR-0097).
+    /// 要素を Selection Region の境界としてマーク（または解除）する（ADR-0097）。
     pub fn element_set_selectable(&mut self, id: ElementId, selectable: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.selectable = selectable;
         }
     }
 
-    /// Set an element's CSS `user-select` value (ADR-0108). `None` excludes the
-    /// element and its subtree from the document selection's covered range and
-    /// copied text; `Text` / `Contains` participate. Orthogonal to
-    /// [`element_set_selectable`](Self::element_set_selectable), which marks a
-    /// Selection Region root.
+    /// 要素の CSS `user-select` 値を設定する（ADR-0108）。`None` は要素とサブツリーを
+    /// 文書選択の範囲とコピーテキストから除外する。`Text` / `Contains` は参加する。
+    /// Selection Region ルートをマークする
+    /// [`element_set_selectable`](Self::element_set_selectable) とは直交。
     pub fn element_set_user_select(
         &mut self,
         id: ElementId,
@@ -537,15 +523,15 @@ impl ElementTree {
         }
     }
 
-    /// Set whether a TextInput is multi-line (#362): when true, Enter inserts a
-    /// newline at the caret; when false (default), Enter signals submit instead.
+    /// TextInput が複数行かどうかを設定する。true なら Enter はキャレット位置に改行を
+    /// 挿入し、false（既定）なら Enter が submit を発火する。
     pub fn element_set_multiline(&mut self, id: ElementId, multiline: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.multiline = multiline;
         }
     }
 
-    /// Store decoded image data for an Image element (called by the adapter after async load).
+    /// Image 要素のデコード済み画像データを格納する（非同期ロード後にアダプタが呼ぶ）。
     pub fn element_set_image(&mut self, id: ElementId, image: Arc<RenderImage>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.src_image = Some(image);
@@ -554,7 +540,7 @@ impl ElementTree {
         }
     }
 
-    /// Replace the editable text content of a TextInput element.
+    /// TextInput 要素の編集可能テキスト内容を置き換える。
     pub fn element_set_text_content(&mut self, id: ElementId, text: &str) {
         if let Some(edit) = self
             .elements
@@ -565,7 +551,7 @@ impl ElementTree {
         }
     }
 
-    /// Append text to a TextInput's committed content.
+    /// TextInput の確定済み内容にテキストを追加する。
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
         if let Some(edit) = self
             .elements
@@ -576,7 +562,7 @@ impl ElementTree {
         }
     }
 
-    /// Remove the last Unicode scalar value from a TextInput's committed content.
+    /// TextInput の確定済み内容から末尾の Unicode スカラー値を 1 つ削除する。
     pub fn element_backspace(&mut self, id: ElementId) {
         if let Some(edit) = self
             .elements
@@ -587,7 +573,7 @@ impl ElementTree {
         }
     }
 
-    /// Show or hide the insertion cursor for a TextInput element.
+    /// TextInput 要素の挿入カーソルを表示/非表示にする。
     pub fn element_set_cursor_visible(&mut self, id: ElementId, visible: bool) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.cursor_visible = visible;
@@ -596,9 +582,9 @@ impl ElementTree {
         }
     }
 
-    /// Mark `id` as the focused element. Used by `render(timestamp_ms)` to
-    /// drive cursor blink internally (ADR-0032). Also shows the cursor for
-    /// TextInput targets so the first frame after focus draws it solid.
+    /// `id` をフォーカス要素にマークする。`render(timestamp_ms)` が内部でカーソル
+    /// 点滅を駆動するのに使う（ADR-0032）。TextInput ターゲットではカーソルも表示し、
+    /// フォーカス後の最初のフレームで実線を描く。
     pub fn element_focus(&mut self, id: ElementId) {
         if self.focused_element == Some(id) {
             return;
@@ -621,7 +607,7 @@ impl ElementTree {
         self.layout.last_cursor_toggle_ms = None;
     }
 
-    /// Clear focus from `id` (no-op if `id` is not currently focused).
+    /// `id` のフォーカスを外す（`id` が現在フォーカスされていなければ no-op）。
     pub fn element_blur(&mut self, id: ElementId) {
         if self.focused_element != Some(id) {
             return;
@@ -636,16 +622,16 @@ impl ElementTree {
         self.layout.last_cursor_toggle_ms = None;
     }
 
-    /// Currently-focused element, if any.
+    /// 現在フォーカスされている要素（あれば）。
     pub fn focused_element(&self) -> Option<ElementId> {
         self.focused_element
     }
 
-    /// The focused element when it accepts text entry, i.e. when an adapter
-    /// should surface the platform soft keyboard / IME (#392). A tap focuses
-    /// whatever it hits (buttons, plain text, views — Chromium parity, ADR-0102),
-    /// but only a `text-input` is editable, so gating the keyboard on raw focus
-    /// raised it for every tap. Adapters key the soft keyboard on this instead.
+    /// テキスト入力を受け付けるときのフォーカス要素。すなわちアダプタがソフト
+    /// キーボード / IME を出すべきとき（ADR-0102）。タップは当たったもの（ボタン /
+    /// 素のテキスト / view、Chromium 互換）をフォーカスするが、編集可能なのは
+    /// `text-input` だけ。素のフォーカスでキーボードを出すと全タップで開いてしまう
+    /// ため、アダプタはソフトキーボードをこれに紐付ける。
     pub fn focused_text_input(&self) -> Option<ElementId> {
         let id = self.focused_element?;
         self.elements
@@ -655,13 +641,12 @@ impl ElementTree {
             .then_some(id)
     }
 
-    /// Drive the platform IME for the current frame (ADR-0069, #392). Computes
-    /// the soft-keyboard presentation once — shown only when a `text-input` is
-    /// focused ([`focused_text_input`](Self::focused_text_input)), with the
-    /// candidate window aimed at the caret's character bounds — and hands it to
-    /// the adapter's [`ImeBridge`]. Adapters reflect this and never re-derive
-    /// keyboard visibility, so the editability gate lives in exactly one place
-    /// instead of being hand-rolled per platform.
+    /// 現フレームのプラットフォーム IME を駆動する（ADR-0069）。ソフトキーボードの
+    /// 表示を一度計算し（`text-input` がフォーカスされているとき
+    /// （[`focused_text_input`](Self::focused_text_input)）のみ表示、変換候補窓は
+    /// キャレットの character bounds に向ける）、アダプタの [`ImeBridge`] へ渡す。
+    /// アダプタはこれを反映するだけでキーボード可視性を再導出しないので、編集可否の
+    /// ゲートはプラットフォームごとに作らず 1 箇所に集約される。
     pub fn drive_ime(&self, ime: &mut impl ImeBridge) {
         let presentation = match self.focused_text_input() {
             Some(id) => {
@@ -678,24 +663,22 @@ impl ElementTree {
         ime.present(presentation);
     }
 
-    /// Modality of the most recent input event (#335, ADR-0102), the
-    /// Pointer/Keyboard axis driving `:focus-visible`. Independent of
-    /// [`last_pointer_kind`](Self::last_pointer_kind).
+    /// 直近入力イベントのモダリティ（ADR-0102）。`:focus-visible` を駆動する
+    /// Pointer/Keyboard の軸。[`last_pointer_kind`](Self::last_pointer_kind) とは独立。
     pub fn last_input_modality(&self) -> crate::element::interaction::InputModality {
         self.last_input_modality
     }
 
-    /// Physical device behind the most recent pointer interaction (#357),
-    /// retained per interaction. `Mouse` until the first pointer event reports
-    /// its device. Later slices branch on this (touch gates, I-beam modality).
+    /// 直近ポインタ操作の物理デバイス。インタラクションごとに保持する。最初の
+    /// ポインタイベントがデバイスを報告するまで `Mouse`。
     pub fn last_pointer_kind(&self) -> crate::element::pointer::PointerKind {
         self.last_pointer_kind
     }
 
-    /// The focused element when it should display a native focus ring, matching
-    /// Chromium's `:focus-visible` (#335, ADR-0102): a keyboard-driven focus
-    /// rings any element, while a pointer-driven focus rings text inputs (which
-    /// always need a visible caret context) but not buttons or other widgets.
+    /// ネイティブフォーカスリングを表示すべきときのフォーカス要素。Chromium の
+    /// `:focus-visible` に倣う（ADR-0102）: キーボード駆動のフォーカスは任意の要素を
+    /// リングするが、ポインタ駆動のフォーカスはテキスト入力（常に可視キャレットの
+    /// コンテキストが要る）はリングし、ボタン等のウィジェットはしない。
     pub fn focus_visible_element(&self) -> Option<ElementId> {
         use crate::element::interaction::InputModality;
         let id = self.focused_element?;
@@ -707,13 +690,11 @@ impl ElementTree {
         visible.then_some(id)
     }
 
-    /// Flip the active element to `next`, marking the `:active` invalidation for
-    /// every element whose active state changes — in the same operation
-    /// (ADR-0100). The dirty mark precedes the field write so an `:active`
-    /// transition starts from the pre-switch (not-yet-active when entering,
-    /// still-active when leaving) appearance (ADR-0089). This is the only path
-    /// that writes `active_element`, so the state can never flip without its
-    /// pseudo-state invalidation.
+    /// アクティブ要素を `next` に切り替え、active 状態が変わる全要素の `:active`
+    /// 無効化を同一操作内でマークする（ADR-0100）。dirty マークはフィールド書き込みに
+    /// 先行するので、`:active` トランジションは切り替え前の見た目（入るとき未 active、
+    /// 抜けるとき まだ active）から始まる（ADR-0089）。`active_element` を書くのは
+    /// この経路のみで、擬似状態の無効化なしに状態が切り替わることはない。
     pub(crate) fn set_active_element(&mut self, next: Option<ElementId>) {
         if self.active_element == next {
             return;
@@ -727,8 +708,8 @@ impl ElementTree {
         self.active_element = next;
     }
 
-    /// Set the font family (by name) for an element. The family must first be registered via
-    /// `register_font`, or be a system font available in the default FontContext.
+    /// 要素の font-family を（名前で）設定する。family は事前に `register_font` で
+    /// 登録するか、既定 FontContext で使えるシステムフォントである必要がある。
     pub fn element_set_font_family(&mut self, id: ElementId, family: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.visual.font_family = if family.is_empty() {
@@ -742,7 +723,7 @@ impl ElementTree {
         }
     }
 
-    /// Set the ARIA label for screen-reader accessibility.
+    /// スクリーンリーダー向けの ARIA ラベルを設定する。
     pub fn element_set_aria_label(&mut self, id: ElementId, label: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.aria_label = if label.is_empty() {
@@ -753,7 +734,7 @@ impl ElementTree {
         }
     }
 
-    /// Set the ARIA role (e.g. "button", "listitem", "img"). Pass an empty string to clear.
+    /// ARIA ロール（例 "button" / "listitem" / "img"）を設定する。空文字列でクリア。
     pub fn element_set_role(&mut self, id: ElementId, role: &str) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.role = if role.is_empty() {
@@ -764,15 +745,14 @@ impl ElementTree {
         }
     }
 
-    /// Register a custom font from raw bytes with a given family name.
-    /// After registration, the name can be used in `element_set_font_family`.
+    /// 生バイトからカスタムフォントを family 名付きで登録する。登録後はその名前を
+    /// `element_set_font_family` で使える。
     pub fn register_font(&mut self, family_name: &str, bytes: Vec<u8>) {
-        // Register under the requested name (for an explicit `font-family`) and
-        // wire it in as a per-cluster fallback after the bundled default. It must
-        // NOT be aliased under the default family, which would shadow the bundled
-        // Japanese-covering face and turn all CJK into tofu once any Latin/emoji
-        // fallback is fetched (the deployed-Pages cascade). See
-        // `text::register_collection_font`.
+        // 要求された名前で登録し（明示の `font-family` 用）、バンドル既定の後ろに
+        // クラスタごとのフォールバックとして組み込む。既定 family のエイリアスには
+        // してはならない。そうするとバンドルの日本語カバー face を覆い隠し、Latin/emoji
+        // フォールバックが取得された瞬間に全 CJK が tofu になる（デプロイ Pages の
+        // カスケード）。`text::register_collection_font` 参照。
         text::register_collection_font(
             &mut self.layout.font_cx.collection,
             family_name,
@@ -783,15 +763,14 @@ impl ElementTree {
         self.engine.mark_fonts_dirty();
     }
 
-    /// Report that the platform adapter's fetch for `family` failed (issue #343).
-    /// Without this, a family requested via `FetchFont` stayed latched in the
-    /// pending set forever and was never re-requested, so a single transient CDN
-    /// error (403/429/blip on a fresh deploy) left the font permanently missing.
+    /// プラットフォームアダプタによる `family` のフェッチが失敗したことを報告する。
+    /// これがないと、`FetchFont` で要求された family が pending 集合に永久に残って
+    /// 再要求されず、一度の一時的 CDN エラー（新規デプロイ時の 403/429 など）で
+    /// フォントが恒久的に欠落してしまう。
     ///
-    /// Returns `true` if the family will be retried — core marks fonts dirty so
-    /// the next frame re-shapes, re-detects the gap, and re-emits `FetchFont`.
-    /// Returns `false` once the finite retry budget is spent: the family is given
-    /// up on and will not be re-requested (no runaway logging or hammering).
+    /// family を再試行するなら `true` を返す。core はフォントを dirty にし、次フレームで
+    /// 再シェイプ・欠落再検出・`FetchFont` 再発行する。有限のリトライ予算を使い切ると
+    /// `false` を返す。family は諦められ再要求されない（暴走ログや連打なし）。
     pub fn font_fetch_failed(&mut self, family: &str) -> bool {
         use crate::element::font_fetch::FailureOutcome;
         match self.layout.font_fetches.mark_failed(family) {
@@ -803,14 +782,14 @@ impl ElementTree {
         }
     }
 
-    /// Register a font from raw bytes using the family name(s) embedded in the
-    /// font file itself. Backs the WIT `element-load-font` export.
+    /// フォントファイル自身に埋め込まれた family 名を使って生バイトから登録する。
+    /// WIT の `element-load-font` エクスポートを支える。
     pub fn register_font_bytes(&mut self, bytes: Vec<u8>) {
         let blob = Blob::new(Arc::new(bytes));
         self.layout.font_cx.collection.register_fonts(blob, None);
     }
 
-    /// Set the IME preedit for a TextInput (in-progress, not yet committed).
+    /// TextInput の IME preedit（変換中・未確定）を設定する。
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
         if let Some(edit) = self
             .elements
@@ -821,9 +800,9 @@ impl ElementTree {
         }
     }
 
-    /// Set the IME preedit together with its composition clause format ranges
-    /// (ADR-0102) — the EditContext `textformatupdate` path that lets Canvas Mode
-    /// draw per-clause conversion underlines.
+    /// IME preedit を変換クラスのフォーマット範囲（ADR-0102）とともに設定する。
+    /// Canvas Mode がクラスごとの変換下線を描けるようにする EditContext
+    /// `textformatupdate` 経路。
     pub fn element_set_preedit_with_clauses(
         &mut self,
         id: ElementId,
@@ -839,7 +818,7 @@ impl ElementTree {
         }
     }
 
-    /// Commit the current preedit text into text_content and clear the preedit.
+    /// 現在の preedit テキストを text_content へ確定し、preedit をクリアする。
     pub fn element_commit_preedit(&mut self, id: ElementId) {
         if let Some(edit) = self
             .elements
@@ -850,8 +829,8 @@ impl ElementTree {
         }
     }
 
-    /// Deliver pasted text to a TextInput: commits any active preedit, appends the
-    /// pasted text, then queues a TextInput event. No-op for non-TextInput elements.
+    /// 貼り付けテキストを TextInput へ届ける。有効な preedit を確定し、貼り付け
+    /// テキストを追加し、TextInput イベントをキューする。非 TextInput 要素では no-op。
     pub fn element_paste(&mut self, id: ElementId, text: &str) {
         let pasted = text.to_string();
         let el = match self.elements.get_mut(&id) {
@@ -873,7 +852,7 @@ impl ElementTree {
         );
     }
 
-    /// Return the combined display text (text_content + any active preedit) for a TextInput.
+    /// TextInput の結合表示テキスト（text_content + 有効な preedit）を返す。
     pub fn element_get_text_content(&self, id: ElementId) -> String {
         self.elements
             .get(&id)
@@ -882,9 +861,9 @@ impl ElementTree {
             .unwrap_or_default()
     }
 
-    /// The text-input's current edit selection as a normalized byte range
-    /// `(start, end)`, or `None` when the element is not an editable text-input
-    /// or its selection is collapsed to a caret (ADR-0097, #271).
+    /// テキスト入力の現在の編集選択を正規化バイト範囲 `(start, end)` で返す。
+    /// 要素が編集可能なテキスト入力でない、または選択がキャレットに collapse して
+    /// いるときは `None`（ADR-0097）。
     pub fn element_text_selection(&self, id: ElementId) -> Option<(usize, usize)> {
         self.elements
             .get(&id)
@@ -892,10 +871,10 @@ impl ElementTree {
             .and_then(|edit| edit.selection_range())
     }
 
-    /// The text-input's caret (the selection focus) as a byte offset into its
-    /// `text_content`, or `None` when the element is not an editable text-input.
-    /// The observable output for caret-movement intents (ADR-0103): a collapsed
-    /// caret reports its position even though `element_text_selection` is `None`.
+    /// テキスト入力のキャレット（選択の focus）を `text_content` 内へのバイト
+    /// オフセットで返す。要素が編集可能なテキスト入力でなければ `None`。キャレット
+    /// 移動 intent の観測可能な出力（ADR-0103）: collapse したキャレットは
+    /// `element_text_selection` が `None` でも位置を報告する。
     pub fn element_caret_byte_index(&self, id: ElementId) -> Option<usize> {
         self.elements
             .get(&id)
@@ -903,9 +882,9 @@ impl ElementTree {
             .map(|edit| edit.cursor_byte_index)
     }
 
-    /// The text-input's active IME composition underlines as display-text byte
-    /// ranges with their weight (ADR-0102), or empty when no composition is
-    /// active. The query side of `element_set_preedit_with_clauses`.
+    /// テキスト入力の有効な IME 変換下線を、表示テキストのバイト範囲とその weight で
+    /// 返す（ADR-0102）。変換中でなければ空。`element_set_preedit_with_clauses` の
+    /// クエリ側。
     pub fn element_composition_underlines(
         &self,
         id: ElementId,
@@ -917,8 +896,8 @@ impl ElementTree {
             .unwrap_or_default()
     }
 
-    /// Set a 2D affine transform on the element (6 kurbo coefficients [a,b,c,d,e,f]).
-    /// Pass an empty/None to clear. The transform is applied on top of layout coordinates.
+    /// 要素に 2D アフィン変換を設定する（kurbo 係数 6 つ [a,b,c,d,e,f]）。None で
+    /// クリア。変換はレイアウト座標の上に適用される。
     pub fn element_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
         if let Some(el) = self.elements.get_mut(&id) {
             el.transform = matrix;
@@ -927,7 +906,7 @@ impl ElementTree {
         }
     }
 
-    /// Programmatically set the scroll offset of a ScrollView element.
+    /// ScrollView 要素のスクロールオフセットをプログラムから設定する。
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
         let mut scrolled_scroll_view = false;
         if let Some(el) = self.elements.get_mut(&id) {
@@ -936,9 +915,9 @@ impl ElementTree {
             self.engine
                 .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
         }
-        // A scroll under Touch modality (re)raises the transient indicator — the
-        // Touch counterpart of the Mouse/Pen operable thumb (ADR-0110, SCR-04,
-        // #410). The stamp is deferred to render, which owns the host clock.
+        // Touch モダリティでのスクロールは一時インジケータを再表示する。Mouse/Pen の
+        // 操作可能つまみに対する Touch 側の相当物（ADR-0110）。刻みはホストクロックを
+        // 所有する render に委ねる。
         if scrolled_scroll_view
             && self.last_pointer_kind == crate::element::pointer::PointerKind::Touch
         {
@@ -946,32 +925,32 @@ impl ElementTree {
         }
     }
 
-    /// The Touch transient indicator's current visibility factor `[0, 1]` for
-    /// `id`, or `0.0` when no indicator is live (ADR-0110, SCR-04, #410). Read by
-    /// the scrollbar overlay lowering to scale the indicator opacity; the value is
-    /// computed each render (`advance_touch_scroll_indicators`) so the lowering
-    /// needs no clock of its own.
+    /// `id` の Touch 一時インジケータの現在の可視率 `[0, 1]`。稼働中のインジケータが
+    /// なければ `0.0`（ADR-0110）。スクロールバーオーバーレイの lowering が
+    /// インジケータ不透明度のスケールに読む。値は render ごとに
+    /// （`advance_touch_scroll_indicators`）計算されるので lowering は独自クロックを
+    /// 持たない。
     pub(crate) fn touch_scroll_indicator_opacity(&self, id: ElementId) -> f32 {
         self.touch_scroll_indicators
             .get(&id)
             .map_or(0.0, |i| i.fade)
     }
 
-    /// Read the current scroll offset of an element.
+    /// 要素の現在のスクロールオフセットを読む。
     pub fn element_get_scroll_offset(&self, id: ElementId) -> (f32, f32) {
         self.elements
             .get(&id)
             .map_or((0.0, 0.0), |e| e.scroll_offset)
     }
 
-    /// Return the absolute layout rect (x, y, w, h) from the last render pass.
-    /// Geometry-query side of the reduced layout interface (issue #308 / §5).
+    /// 直近 render パスの絶対レイアウト矩形 (x, y, w, h) を返す。縮約レイアウト
+    /// インターフェースのジオメトリ照会側。
     pub fn element_layout_rect(&self, id: ElementId) -> Option<(f32, f32, f32, f32)> {
         self.layout.geometry(id)
     }
 
-    /// Return the bounding dimensions of all descendants (content size) for a ScrollView.
-    /// Values are relative to the element's own top-left corner.
+    /// ScrollView の全子孫を囲む寸法（コンテンツサイズ）を返す。値は要素自身の
+    /// 左上隅を基準とする。
     pub fn element_content_size(&self, id: ElementId) -> (f32, f32) {
         let (ex, ey, _, _) = match self.layout.geometry(id) {
             Some(r) => r,
@@ -983,23 +962,23 @@ impl ElementTree {
         (max_x, max_y)
     }
 
-    /// CSS-accurate maximum scroll offset `(max_x, max_y)` of a ScrollView,
-    /// floored at 0 per axis — the browser `scroll{Width,Height} −
-    /// client{Width,Height}` range. Scrolling to the end must reveal the
-    /// scroll-view's own end padding under the last child, exactly as DOM mode
-    /// (native `scrollTop`) does (Semantics Parity).
+    /// ScrollView の CSS 準拠の最大スクロールオフセット `(max_x, max_y)`。軸ごとに 0 で
+    /// 下限を取る — ブラウザの `scroll{Width,Height} − client{Width,Height}` 範囲。
+    /// 末尾までスクロールすると、DOM モード（ネイティブ `scrollTop`）と同様に最後の
+    /// 子の下にスクロールビュー自身の末尾 padding を露出させねばならない（Semantics
+    /// Parity）。
     ///
-    /// `element_content_size` measures descendants from the *border-box* top, so
-    /// it omits the scroll-view's own bottom/right padding; `element_layout_rect`
-    /// is the *border box*, so as a viewport it over-counts the borders. Both
-    /// gaps are the scroll-view's own end insets (padding + border), so adding
-    /// them back yields `child_extent − content_box` measured in the content box,
-    /// where padding and border cancel — the correct range. Subtracting the bare
-    /// border box (the old `(content − view).max(0)`) under-scrolled by exactly
-    /// `padding_end + border_end`, leaving that fixed length unreachable.
+    /// `element_content_size` は子孫を border-box 上端から測るのでスクロールビュー
+    /// 自身の下/右 padding を含まず、`element_layout_rect` は border box なので
+    /// ビューポートとしては border を過剰計上する。どちらのギャップもスクロール
+    /// ビュー自身の末尾インセット（padding + border）なので、足し戻すと content box
+    /// で測った `child_extent − content_box` になり padding と border が相殺する
+    /// （正しい範囲）。素の border box を引く（旧 `(content − view).max(0)`）と
+    /// ちょうど `padding_end + border_end` だけ過少スクロールになり、その固定長が
+    /// 到達不能になっていた。
     ///
-    /// Single source of truth for the wheel clamp, the touch rubber-band
-    /// (`canvas.rs`), and scroll-into-view (`accessibility.rs`).
+    /// ホイールクランプ、タッチのラバーバンド（`canvas.rs`）、scroll-into-view
+    /// （`accessibility.rs`）の単一正本。
     pub fn element_scroll_max_offset(&self, id: ElementId) -> (f32, f32) {
         let (content_w, content_h) = self.element_content_size(id);
         let (_, _, view_w, view_h) = self.layout.geometry(id).unwrap_or((0.0, 0.0, 0.0, 0.0));
@@ -1010,10 +989,10 @@ impl ElementTree {
         )
     }
 
-    /// Right/bottom (padding + border) insets of `id` from the last layout pass.
-    /// Recovers the scrollable extent that `element_content_size` (border-box-top
-    /// relative) and `element_layout_rect` (border box) leave out of the scroll
-    /// range. Zero when `id` was not laid out.
+    /// 直近レイアウトパスにおける `id` の右/下（padding + border）インセット。
+    /// `element_content_size`（border-box 上端基準）と `element_layout_rect`
+    /// （border box）がスクロール範囲から落とす可動量を回復する。`id` が未レイアウト
+    /// なら 0。
     fn scroll_view_end_insets(&self, id: ElementId) -> (f32, f32) {
         let Some(node) = self.layout.projection.node_id(id) else {
             return (0.0, 0.0);
@@ -1043,13 +1022,12 @@ impl ElementTree {
             if let Some((cx, cy, cw, ch)) = self.layout.geometry(child) {
                 *max_x = max_x.max(cx - origin_x + cw);
                 *max_y = max_y.max(cy - origin_y + ch);
-                // A child that clips its own overflow (a nested ScrollView, or an
-                // `overflow: hidden` box — the same elements `scene_build` wraps in
-                // a Clip) confines its descendants to its own box. That clipped
-                // overflow is the child's private content, not ours: recursing into
-                // it would inflate our content size and make us scrollable into
-                // empty space past our real content. Bound the contribution to the
-                // child's box by not descending past the clip.
+                // 自身のオーバーフローをクリップする子（ネストした ScrollView や
+                // `overflow: hidden` の箱 — `scene_build` が Clip で包むのと同じ要素）は
+                // 子孫を自分の箱に閉じ込める。そのクリップされた overflow は子の私的
+                // コンテンツであり我々のものではない。再帰すると我々のコンテンツサイズが
+                // 膨らみ、実コンテンツの先の空白までスクロール可能になってしまう。
+                // クリップを越えて降りないことで寄与を子の箱に収める。
                 if !self.clips_overflow(child) {
                     self.accumulate_content_bounds(child, origin_x, origin_y, max_x, max_y);
                 }
@@ -1057,9 +1035,9 @@ impl ElementTree {
         }
     }
 
-    /// Whether `id` clips its overflow, so its descendants do not contribute to an
-    /// ancestor's scrollable content. Mirrors the Clip-wrapper condition in
-    /// `scene_build` (ScrollView always clips; otherwise `overflow: hidden`).
+    /// `id` がオーバーフローをクリップし、子孫が祖先のスクロール可能コンテンツに
+    /// 寄与しないかどうか。`scene_build` の Clip ラッパー条件を反映する（ScrollView は
+    /// 常にクリップ、それ以外は `overflow: hidden`）。
     fn clips_overflow(&self, id: ElementId) -> bool {
         self.elements.get(&id).is_some_and(|el| {
             el.kind == ElementKind::ScrollView
@@ -1075,24 +1053,21 @@ impl ElementTree {
         let mut layout_changed = false;
         let mut text_dirty = false;
         for prop in props {
-            // `overflow` is dual-natured: it clips children (Visual) AND makes
-            // the box a scroll container, which sets the flex automatic minimum
-            // size to 0 so it shrinks to its siblings instead of overflowing
-            // them (Layout). Apply both sides. It stays on the visual
-            // invalidation path (we don't set `layout_changed`), so an
-            // overflow-only change still re-clips the scene through
-            // `classify_style_props`; the layout effect is marked directly via
-            // `set_overflow`. (A batch that also carries a real layout prop
-            // re-runs layout, which rebuilds the scene and re-reads
-            // `visual.overflow` for the clip anyway.)
+            // `overflow` は二面性を持つ: 子をクリップし（Visual）、かつ箱を
+            // スクロールコンテナにする。後者は flex の自動最小サイズを 0 にし、兄弟を
+            // あふれさせる代わりに縮小させる（Layout）。両面を適用する。視覚無効化の
+            // 経路に留める（`layout_changed` は立てない）ので、overflow 単独の変更でも
+            // `classify_style_props` 経由で scene を再クリップする。レイアウト効果は
+            // `set_overflow` で直接マークする。（実レイアウトプロパティも含むバッチは
+            // レイアウトを再実行し、どのみち scene を再構築してクリップ用に
+            // `visual.overflow` を読み直す。）
             if let StyleProp::Overflow(v) = prop {
                 apply_visual(&mut el.visual, prop, &mut text_dirty);
                 self.layout.set_overflow(id, &mut el.layout_style, *v);
                 continue;
             }
-            // Set half of the reduced layout interface (issue #308 / §5): the
-            // layout seam owns bridge conversion + Taffy set + mark. Non-layout
-            // props fall through to Visual.
+            // 縮約レイアウトインターフェースの片側: レイアウト seam が変換 +
+            // Taffy set + マークを担う。非レイアウトプロパティは Visual へ落ちる。
             if self.layout.set_layout_prop(id, &mut el.layout_style, prop) {
                 layout_changed = true;
             } else {
@@ -1109,9 +1084,9 @@ impl ElementTree {
         self.apply_change_at(id, change);
     }
 
-    /// Merge the invalidation of every non-layout prop in a style change against
-    /// the element's context (the *what*). Empty/all-layout lists fall back to a
-    /// scene-only self repaint.
+    /// スタイル変更中の全非レイアウトプロパティの無効化を、要素のコンテキストに
+    /// 照らしてマージする（*何を*）。空/全レイアウトのリストは scene のみの自己
+    /// 再描画にフォールバックする。
     fn classify_style_props(
         &self,
         id: ElementId,
@@ -1126,16 +1101,15 @@ impl ElementTree {
             .unwrap_or_else(Change::visual_self_only)
     }
 
-    /// Apply a classified `Change` to the live dirty sets through the single
-    /// routing seam (ADR-0099). This resolves the *which element* (topology:
-    /// shape changes retarget to the enclosing shaping unit) and hands the
-    /// `Change` to `route_change`, which alone knows the `dirty_kind → sinks`
-    /// table. Callers never hand-wire engine / projection marks.
+    /// 分類済みの `Change` を、単一のルーティング seam を通して稼働中の dirty 集合へ
+    /// 適用する（ADR-0099）。*どの要素か*（トポロジ: shape 変更は囲む shaping unit へ
+    /// 再ターゲット）を解決し、`dirty_kind → sinks` テーブルを唯一知る `route_change` へ
+    /// `Change` を渡す。呼び出し側が engine / projection のマークを手配線することはない。
     fn apply_change_at(&mut self, id: ElementId, change: Change) {
         let target = match change.dirty_kind {
-            // A shape change marks the shaping unit: the enclosing IFC root, or
-            // the element itself when it owns a Taffy box. An element with
-            // neither (a detached / boxless node) has nothing to re-shape.
+            // shape 変更は shaping unit をマークする: 囲む IFC root、または Taffy box を
+            // 持つときは要素自身。どちらも持たない（切り離された/箱なしの）ノードは
+            // 再シェイプ対象を持たない。
             DirtyKind::Shape => self.shape_target(id),
             DirtyKind::Visual | DirtyKind::Structure => Some(id),
         };
@@ -1148,9 +1122,9 @@ impl ElementTree {
         }
     }
 
-    /// The element that carries a shape change's dirty mark: the enclosing IFC
-    /// root, or the element itself when it has a Taffy box. Pure topology — the
-    /// *what* (that this is a shape change) is already decided by `classify`.
+    /// shape 変更の dirty マークを担う要素: 囲む IFC root、または Taffy box を持つ
+    /// ときは要素自身。純粋なトポロジで、*何か*（これが shape 変更であること）は
+    /// すでに `classify` が決めている。
     fn shape_target(&self, id: ElementId) -> Option<ElementId> {
         if let Some(root) = ifc_root(&self.elements, id) {
             Some(root)
@@ -1161,11 +1135,11 @@ impl ElementTree {
         }
     }
 
-    /// Append a viewport-conditional style override (ADR-0081).
+    /// ビューポート条件付きのスタイル上書きを追加する（ADR-0081）。
     ///
-    /// Multiple variants for the same property are kept in declaration order;
-    /// `element_effective_visual` applies every matching variant and later
-    /// entries win (CSS `@media` cascade).
+    /// 同一プロパティの複数 variant は宣言順に保持される。
+    /// `element_effective_visual` は一致する全 variant を適用し、後のエントリが勝つ
+    /// （CSS `@media` カスケード）。
     pub fn element_set_style_variant(
         &mut self,
         id: ElementId,
@@ -1179,7 +1153,7 @@ impl ElementTree {
         el.viewport_variants.push((condition, prop));
     }
 
-    /// Unset one or more inheritable style properties, reverting them to "inherit from parent".
+    /// 継承可能なスタイルプロパティを 1 つ以上 unset し、「親から継承」に戻す。
     pub fn element_unset_style(&mut self, id: ElementId, kinds: &[StylePropKind]) {
         let el = match self.elements.get_mut(&id) {
             Some(e) => e,
@@ -1243,7 +1217,7 @@ impl ElementTree {
         {
             Some(i) => i,
             None => {
-                // `before` is not a child of `parent`; append as a fallback.
+                // `before` が `parent` の子でない場合はフォールバックで末尾追加する。
                 self.element_append_child(parent, child);
                 return;
             }
@@ -1262,7 +1236,7 @@ impl ElementTree {
             return;
         }
         self.detach_from_current_parent(id);
-        // Recursively remove the subtree.
+        // サブツリーを再帰的に削除する。
         let mut stack = vec![id];
         let mut to_remove = Vec::new();
         while let Some(node) = stack.pop() {
@@ -1277,11 +1251,10 @@ impl ElementTree {
         for node in to_remove.into_iter().rev() {
             self.elements.remove(&node);
             self.runtime.remove_element_listeners(node);
-            // Teardown, not a state transition: the element is gone and the
-            // whole subtree is already structure-dirty (above), so there is no
-            // pseudo style left to invalidate. This is why these clear the
-            // interaction fields directly rather than through the atomic
-            // set/clear seams that guard live state flips (ADR-0100).
+            // 状態遷移ではなく解体: 要素は消え、サブツリー全体は既に
+            // structure-dirty（上）なので、無効化すべき擬似スタイルは残っていない。
+            // だからこれらは、稼働中の状態切り替えを守る atomic な set/clear seam
+            // （ADR-0100）を通さず、インタラクションフィールドを直接クリアする。
             if self.focused_element == Some(node) {
                 self.focused_element = None;
                 self.layout.last_cursor_toggle_ms = None;
@@ -1296,8 +1269,8 @@ impl ElementTree {
         }
     }
 
-    /// Update CSS `:hover` set from the deepest hit under the pointer.
-    /// Returns `(entered, left)` for event dispatch.
+    /// ポインタ下の最深ヒットから CSS `:hover` 集合を更新する。イベントディスパッチ
+    /// 用に `(entered, left)` を返す。
     pub fn update_pointer_hover(&mut self, deepest_hit: Option<ElementId>) -> (Vec<ElementId>, Vec<ElementId>) {
         let next = match deepest_hit {
             Some(hit) => hover_set_for_hit(&self.elements, hit),
@@ -1314,11 +1287,10 @@ impl ElementTree {
         (entered, left)
     }
 
-    /// HTML `mouseenter` path: mark a single element hovered (parent retains
-    /// hover over children). The `:hover` invalidation rides the same operation
-    /// as the set flip (ADR-0100), so the HTML hover path can no longer change
-    /// the hover state without re-lowering the element's `:hover` appearance.
-    /// Returns whether the set changed.
+    /// HTML `mouseenter` 経路: 単一要素を hover にマークする（親は子の上でも hover を
+    /// 保つ）。`:hover` 無効化は集合の切り替えと同一操作に乗る（ADR-0100）ので、
+    /// HTML hover 経路は要素の `:hover` 見た目を再 lowering せずに hover 状態を変えら
+    /// れない。集合が変わったかどうかを返す。
     pub fn hover_enter_element(&mut self, id: ElementId) -> bool {
         if self.hovered_elements.insert(id) {
             self.mark_pseudo_activation_dirty(id, PseudoState::Hover);
@@ -1328,9 +1300,8 @@ impl ElementTree {
         }
     }
 
-    /// HTML `mouseleave` path: clear hover on the element that was left, marking
-    /// the `:hover` invalidation in the same operation (ADR-0100). Returns
-    /// whether the set changed.
+    /// HTML `mouseleave` 経路: 離れた要素の hover をクリアし、`:hover` 無効化を同一
+    /// 操作内でマークする（ADR-0100）。集合が変わったかどうかを返す。
     pub fn hover_leave_element(&mut self, id: ElementId) -> bool {
         if self.hovered_elements.remove(&id) {
             self.mark_pseudo_activation_dirty(id, PseudoState::Hover);
@@ -1399,13 +1370,13 @@ impl ElementTree {
         self.elements.get(&id).and_then(|e| e.parent)
     }
 
-    /// Whether `id` was projected to a Taffy node on the last layout pass.
+    /// 直近レイアウトパスで `id` が Taffy ノードへ投影されたかどうか。
     #[doc(hidden)]
     pub fn element_has_taffy_node(&self, id: ElementId) -> bool {
         self.layout.projection.has_node(id)
     }
 
-    /// Element ids in `root` and its descendants (pre-order). Empty when unknown.
+    /// `root` とその子孫の要素 id（pre-order）。未知のときは空。
     pub fn subtree_element_ids(&self, root: ElementId) -> Vec<ElementId> {
         if !self.elements.contains_key(&root) {
             return Vec::new();
@@ -1421,11 +1392,11 @@ impl ElementTree {
         out
     }
 
-    /// Run layout, lower the element tree into the scene graph, and return it.
+    /// レイアウトを実行し、要素ツリーを scene graph へ lowering して返す。
     ///
-    /// `timestamp_ms` is a monotonic host clock (e.g. `performance.now()`); it
-    /// drives the focused TextInput's cursor blink without exposing a cursor-tick
-    /// function to the host (ADR-0032).
+    /// `timestamp_ms` は単調増加のホストクロック（例 `performance.now()`）。cursor-tick
+    /// 関数をホストへ露出せずにフォーカス中 TextInput のカーソル点滅を駆動する
+    /// （ADR-0032）。
     pub fn render(&mut self, timestamp_ms: f64) -> &SceneGraph {
         if self.root.is_some() {
             if let Some(id) = self.layout.advance_cursor_blink(
@@ -1447,12 +1418,11 @@ impl ElementTree {
             self.engine.fonts_dirty,
         );
         self.commit_frame();
-        // `commit_frame` re-ran layout; fold any element whose box geometry
-        // changed into this frame's lowering set so reflowed-but-otherwise-clean
-        // boxes (grown ancestors, pushed siblings) re-lower instead of painting
-        // stale geometry. Done after commit because the diff is only known once
-        // the new layout cache exists, and before `scene_build::update` consumes
-        // `dirty`.
+        // `commit_frame` がレイアウトを再実行した。box ジオメトリが変わった要素を
+        // 本フレームの lowering 集合へ畳み込み、リフローしただけで他は綺麗な箱
+        // （成長した祖先・押された兄弟）が古いジオメトリを描かず再 lowering される
+        // ようにする。差分は新しいレイアウトキャッシュができて初めて分かるので
+        // commit 後に、かつ `scene_build::update` が `dirty` を消費する前に行う。
         let geometry_dirty = self.engine.drain_layout_geometry_dirty();
         let _ = self.engine.drain_visual_dirty();
         let _ = self.engine.drain_shape_lowering_reach();
@@ -1465,15 +1435,14 @@ impl ElementTree {
                 &mut dirty.z_index_reorder_parents,
             );
         }
-        // Shape toolbar labels before lowering reads them (ADR-0097, #272).
+        // lowering が読む前にツールバーラベルをシェイプする（ADR-0097）。
         self.ensure_toolbar_labels();
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
-        // Transitions advance at the lowering seam; keep any still-interpolating
-        // element visual-dirty so the next frame re-lowers and advances it. When
-        // the last track settles this frame the element is not re-marked and the
-        // frame loop goes quiet (ADR-0086/0093).
+        // トランジションは lowering seam で進む。まだ補間中の要素は visual-dirty の
+        // まま保ち、次フレームで再 lowering して進める。最後のトラックが本フレームで
+        // 落ち着くと要素は再マークされず、フレームループは静止する（ADR-0086/0093）。
         for id in scene_lowering.active_transition_ids() {
             self.engine
                 .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
@@ -1483,15 +1452,13 @@ impl ElementTree {
         &self.scene_cache
     }
 
-    /// Advance the Touch transient scrollbar indicators for this frame (ADR-0110,
-    /// SCR-04, #410). A ScrollView that scrolled under Touch since the last render
-    /// (re)raises its indicator at full visibility and stamps `now_ms` as the fade
-    /// clock. Every live indicator then recomputes its visibility from the elapsed
-    /// time — full through the hold window, ramping to zero across the fade window
-    /// — and is dropped once it reaches zero. Each still-animating ScrollView is
-    /// kept visual-dirty so the next frame re-lowers it and the fade keeps moving;
-    /// when the last one settles the frame loop goes quiet (mirrors the in-flight
-    /// transition / cursor-blink ticking, ADR-0086/0093/0032).
+    /// 本フレームの Touch 一時スクロールバーインジケータを進める（ADR-0110）。前回
+    /// render 以降 Touch でスクロールした ScrollView はインジケータを全可視で再表示し、
+    /// `now_ms` を fade クロックとして刻む。稼働中の各インジケータは経過時間から可視率を
+    /// 再計算し（hold 窓の間は full、fade 窓で 0 へ低下）、0 に達すると破棄される。まだ
+    /// アニメ中の各 ScrollView は visual-dirty に保ち、次フレームで再 lowering して fade を
+    /// 進める。最後の 1 つが落ち着くとフレームループは静止する（進行中トランジション /
+    /// カーソル点滅の刻みと同形、ADR-0086/0093/0032）。
     fn advance_touch_scroll_indicators(&mut self, now_ms: f64) {
         for id in std::mem::take(&mut self.touch_scroll_pending) {
             self.touch_scroll_indicators.insert(
@@ -1506,8 +1473,8 @@ impl ElementTree {
         self.touch_scroll_indicators.retain(|&id, ind| {
             let elapsed = now_ms - ind.shown_at_ms;
             ind.fade = scene_build::touch_scroll_indicator_fade(elapsed);
-            // Keep re-lowering the box while the indicator is live so the fade
-            // advances frame to frame, and once more on the frame it vanishes.
+            // インジケータが稼働中は箱を再 lowering し続け、fade をフレームごとに
+            // 進める。消えるフレームでももう一度行う。
             dirty.push(id);
             ind.fade > 0.0
         });
@@ -1517,9 +1484,9 @@ impl ElementTree {
         }
     }
 
-    /// Resolve dirty state and settle layout (`LayoutPass::run()` equivalent, ADR-0075
-    /// scope A): Taffy projection reconcile, Parley text shaping, and layout-cache refresh.
-    /// Does not lower the scene graph or advance the cursor blink.
+    /// dirty 状態を解決しレイアウトを確定する（`LayoutPass::run()` 相当、ADR-0075）:
+    /// Taffy projection の reconcile、Parley テキストシェイピング、レイアウトキャッシュ
+    /// の更新。scene graph の lowering やカーソル点滅の前進は行わない。
     pub fn commit_frame(&mut self) {
         if let Some(root) = self.root {
             self.engine.resolve(
@@ -1565,10 +1532,10 @@ impl ElementTree {
         self.runtime.poll_deliveries()
     }
 
-    /// Apply wheel delta to ancestor ScrollViews of `hit` with browser-style scroll chaining.
+    /// `hit` の祖先 ScrollView にブラウザ風のスクロールチェーンでホイール差分を適用する。
     ///
-    /// Starting at the nearest ScrollView, each axis consumes delta up to content bounds;
-    /// unconsumed remainder propagates to the next ancestor ScrollView until the root.
+    /// 最も近い ScrollView から始め、各軸はコンテンツ境界まで差分を消費する。未消費の
+    /// 残りは root まで次の祖先 ScrollView へ伝播する。
     pub fn apply_wheel_delta(
         &mut self,
         hit: ElementId,
@@ -1614,12 +1581,12 @@ impl ElementTree {
         }
     }
 
-    /// Append an event to the outgoing queue.
+    /// 送出キューにイベントを追加する。
     pub fn push_event(&mut self, event: Event) {
         self.event_queue.push(event);
     }
 
-    /// Returns true if at least one layout pass has completed (layout_cache is populated).
+    /// レイアウトパスが少なくとも 1 回完了していれば（layout_cache に値がある）true。
     pub fn has_layout(&self) -> bool {
         self.layout.has_geometry()
     }
@@ -1642,9 +1609,7 @@ impl ElementTree {
         children
     }
 
-    /// Returns the deepest element whose bounding rect contains (x, y),
-    /// or None if no element is hit. Uses the layout from the last render pass.
-    /// Character bounds for IME candidate window (ADR-0069). Requires prior layout.
+    /// IME 変換候補窓のための character bounds（ADR-0069）。事前のレイアウトが必要。
     pub fn element_character_bounds(&self, id: ElementId) -> Option<CharacterBounds> {
         let el = self.elements.get(&id)?;
         let edit = el.edit.as_ref()?;
@@ -1669,7 +1634,7 @@ impl ElementTree {
         })
     }
 
-    /// Resolved effective visual for `id` (inheritance + viewport variant + pseudo). ADR-0067, ADR-0081.
+    /// `id` の解決済み実効 visual（継承 + ビューポート variant + 擬似）。ADR-0067, ADR-0081。
     pub fn element_effective_visual(&self, id: ElementId) -> Option<Visual> {
         let el = self.elements.get(&id)?;
         let ctx = effective_visual::inherited_context_at(&self.elements, id);
@@ -1685,12 +1650,11 @@ impl ElementTree {
         ))
     }
 
-    /// Displayed visual for `id` at `now_ms`: the resolved effective target
-    /// (ADR-0067) with any retained in-flight transition (ADR-0093) interpolated
-    /// to `now_ms`. Read-only (`&self`) — it samples the same blend the render
-    /// path uses but never advances render's memoized transition state, so a
-    /// transition's mid-flight value can be observed by a single query instead of
-    /// a `render()` → SceneGraph walk (issue #301). `None` when `id` is unknown.
+    /// `now_ms` における `id` の表示 visual: 解決済みの実効ターゲット（ADR-0067）に、
+    /// 保持された進行中トランジション（ADR-0093）を `now_ms` まで補間したもの。
+    /// 読み取り専用（`&self`）で、render 経路と同じブレンドをサンプルするが render の
+    /// メモ化トランジション状態は進めない。これによりトランジション途中の値を
+    /// `render()` → SceneGraph 走査なしに 1 クエリで観測できる。`id` が未知なら `None`。
     pub fn element_displayed_visual(&self, id: ElementId, now_ms: f64) -> Option<Visual> {
         let resolved = self.element_effective_visual(id)?;
         Some(match self.scene_lowering.anchors.get(&id) {
@@ -1699,19 +1663,19 @@ impl ElementTree {
         })
     }
 
-    /// Returns the deepest element whose bounding rect contains (x, y),
-    /// or None if no element is hit. Uses the layout from the last render pass.
+    /// (x, y) を境界矩形に含む最深の要素を返す。どれにも当たらなければ None。
+    /// 直近 render パスのレイアウトを使う。
     pub fn hit_test(&self, x: f32, y: f32) -> Option<ElementId> {
         let root = self.root?;
-        // `hit_test_walk` threads the query point down into each scrolled view's
-        // content space, so `(hx, hy)` is the point in `box_hit`'s own layout
-        // coordinates — the space its geometry and text layout live in.
+        // `hit_test_walk` は照会点を各スクロールビューのコンテンツ空間へ降ろすので、
+        // `(hx, hy)` は `box_hit` 自身のレイアウト座標 — そのジオメトリとテキスト
+        // レイアウトが存在する空間 — における点になる。
         let (box_hit, hx, hy) = hit_test_walk(self, root, x, y)?;
         inline_text::resolve_ifc_inline_hit(self, box_hit, hx, hy)
     }
 
-    /// Run layout and return every element with its absolute position and visual state.
-    /// Keyed by stable ElementId — safe to use as a DOM node mapping key across frames.
+    /// レイアウトを実行し、全要素を絶対位置と visual 状態とともに返す。安定 ElementId
+    /// をキーにするので、フレームをまたいだ DOM ノードのマッピングキーに使える。
     pub fn resolved_elements(&mut self) -> Vec<(ElementId, ResolvedElement)> {
         self.commit_frame();
         let interaction = self.interaction_snapshot();
@@ -1758,9 +1722,9 @@ impl ElementTree {
         }
         let reach = self.classify_style_props(id, props).reach;
         let affects_shaping = pseudo_state::pseudo_affects_text_shaping(props);
-        // A pseudo block can carry both box visuals and text styles, so the
-        // element is always visual-dirty and additionally shape-dirty when its
-        // text shaping is affected. Both go through the single routing seam.
+        // 擬似ブロックは box の visual とテキストスタイルの両方を持ちうるので、要素は
+        // 常に visual-dirty、加えてテキストシェイピングが影響を受けるときは shape-dirty。
+        // どちらも単一のルーティング seam を通す。
         self.apply_change_at(
             id,
             Change {
@@ -1777,9 +1741,9 @@ impl ElementTree {
                 },
             );
         }
-        // The transition trigger lives at the `resolve_effective` lowering seam
-        // (ADR-0093), not here: marking the element visual-dirty is enough to
-        // re-lower it, where the per-property diff starts any interpolation.
+        // トランジションのトリガはここではなく `resolve_effective` の lowering seam に
+        // ある（ADR-0093）。要素を visual-dirty にすれば再 lowering され、そこで
+        // プロパティごとの差分が補間を開始する。
     }
 
     fn mark_text_content_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
@@ -1796,16 +1760,15 @@ impl ElementTree {
         let parent_ctx = self.element_context(parent);
         let child_ctx = self.element_context(child);
         let change = visual_invalidation::classify_attachment(parent_ctx, child_ctx);
-        // Both endpoints of the attachment report the same `Change`. A shape
-        // attachment routes both to the parent IFC root (idempotent); a structure
-        // attachment seeds parent and child independently. Either way the
-        // dirty-set coupling lives in `route_change`, not here.
+        // 接続の両端点は同じ `Change` を報告する。shape 接続は両者を親 IFC root へ
+        // ルートする（冪等）。structure 接続は親と子を独立に仕込む。いずれにせよ
+        // dirty 集合の結合はここではなく `route_change` にある。
         self.apply_change_at(parent, change);
         self.apply_change_at(child, change);
     }
 
-    /// Build the topological context of an element for the invalidation
-    /// classifier. Reads the live tree; the classifier itself stays pure.
+    /// 無効化分類器のために要素のトポロジカルなコンテキストを構築する。稼働中の
+    /// ツリーを読む。分類器自体は純粋なまま。
     pub(crate) fn element_context(&self, id: ElementId) -> ElementContext {
         visual_invalidation::element_context_in(&self.elements, id)
     }
@@ -1927,27 +1890,26 @@ fn walk_resolved(
     }
 }
 
-/// Returns the deepest hit element together with the query point expressed in
-/// *that element's* layout coordinate space — i.e. the screen point shifted by the
-/// accumulated `scroll_offset` of every ScrollView descended through. Callers that
-/// need the local point (inline text resolution) read it from the tuple.
+/// 最深ヒット要素を、照会点を*その要素の*レイアウト座標空間で表したものとともに
+/// 返す。すなわち、降りてきた各 ScrollView の `scroll_offset` を累積してずらした
+/// 画面上の点。ローカル点が要る呼び出し側（インラインテキスト解決）はタプルから読む。
 fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<(ElementId, f32, f32)> {
     let (ex, ey, ew, eh) = tree.layout.geometry(id)?;
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
     }
     tree.elements.get(&id)?;
-    // A scrolled view paints its content translated by −scroll_offset (the Group
-    // under the Clip in `scene_build`), so shift the query point by +scroll_offset
-    // before testing descendants to match where they were actually painted.
-    // Non-scrollers carry a (0,0) offset, and nested scrollers compose as the
-    // recursion threads the shifted point down. Without this, hit-test reads the
-    // un-scrolled layout and a scrolled-in child (e.g. a nested scroll box) is
-    // missed — the wheel then chains to the wrong ScrollView (#double-scroll).
+    // スクロールビューはコンテンツを −scroll_offset だけ平行移動して描く
+    // （`scene_build` の Clip 下の Group）ので、子孫を判定する前に照会点を
+    // +scroll_offset ずらし、実際に描かれた位置に合わせる。非スクローラはオフセット
+    // (0,0) を持ち、ネストしたスクローラは再帰がずらした点を降ろすことで合成される。
+    // これがないとヒットテストは未スクロールのレイアウトを読み、スクロールで入った子
+    // （例: ネストしたスクロール箱）を取り逃し、ホイールが誤った ScrollView へチェーン
+    // してしまう（二重スクロール）。
     let (sx, sy) = tree.element_get_scroll_offset(id);
     let (cx, cy) = (x + sx, y + sy);
-    // Visit children in reverse paint order (`.rev()`) so the topmost element wins.
-    // Sharing `ordered_children` keeps hit-test as the exact reverse of paint order.
+    // 子は paint の逆順（`.rev()`）で訪れ、最前面の要素が勝つようにする。
+    // `ordered_children` を共有することでヒットテストを paint の正確な逆順に保つ。
     for child in tree.ordered_children(id).into_iter().rev() {
         if let Some(hit) = hit_test_walk(tree, child, cx, cy) {
             return Some(hit);
@@ -1959,9 +1921,9 @@ fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<(E
     Some((id, x, y))
 }
 
-/// The live dirty sets behind the routing seam: `ElementEngine`'s visual /
-/// shape / structure sets and the `TaffyProjection` geometry set (ADR-0099).
-/// `route_change` drives this so the engine and projection are marked together.
+/// ルーティング seam の背後の稼働中 dirty 集合: `ElementEngine` の visual / shape /
+/// structure 集合と `TaffyProjection` のジオメトリ集合（ADR-0099）。`route_change` が
+/// これを駆動し、engine と projection を一緒にマークする。
 struct EngineProjectionSink<'a> {
     engine: &'a mut ElementEngine,
     projection: &'a mut crate::element::taffy_projection::TaffyProjection,
@@ -2081,9 +2043,8 @@ impl ElementTree {
         self.engine.shape_dirty.contains(&id)
     }
 
-    /// Whether a continuous-property transition is currently in flight for `id`
-    /// (issue #227). State lives in the retained lowering, so this reflects the
-    /// last `render()` pass.
+    /// `id` で連続プロパティのトランジションが現在進行中かどうか。状態は保持された
+    /// lowering にあるので、直近の `render()` パスを反映する。
     pub fn test_transition_active(&self, id: ElementId) -> bool {
         self.scene_lowering
             .anchors
@@ -2091,7 +2052,7 @@ impl ElementTree {
             .is_some_and(|entry| entry.transitions.is_active())
     }
 
-    /// Number of laid-out lines in an element's shaped text (issue #207 tests).
+    /// 要素のシェイプ済みテキストでレイアウトされた行数。
     pub fn test_text_line_count(&self, id: ElementId) -> Option<usize> {
         self.elements
             .get(&id)
@@ -2099,7 +2060,7 @@ impl ElementTree {
             .map(|tl| tl.layout.lines().count())
     }
 
-    /// The shaped text of an element's IFC layout, after any truncation (issue #207 tests).
+    /// 要素の IFC レイアウトの、切り詰め後のシェイプ済みテキスト。
     pub fn test_shaped_text(&self, id: ElementId) -> Option<String> {
         self.elements
             .get(&id)
@@ -2107,18 +2068,18 @@ impl ElementTree {
             .map(|tl| tl.text.to_string())
     }
 
-    /// Test seam (ADR-0042): reconfigure the font collection to mirror the WASM
-    /// runtime — no system fonts, with `default_font` as the default family.
-    /// Drives the real `.notdef → FetchFont → register_font` retry path in core
-    /// tests without depending on host-installed fonts (issue #343).
+    /// テストシーム（ADR-0042）: フォントコレクションを WASM ランタイムに合わせて
+    /// 再構成する — システムフォントなし、`default_font` を既定 family にする。
+    /// ホストにインストールされたフォントに依存せず、core テストで実際の
+    /// `.notdef → FetchFont → register_font` リトライ経路を駆動する。
     pub fn test_set_wasm_like_fonts(&mut self, default_font: Vec<u8>) {
         self.layout.set_wasm_like_font_context(default_font);
         self.engine.mark_fonts_dirty();
     }
 
-    /// Test helper: the shaped glyph ids of an element's text layout. `.notdef`
-    /// (tofu) is glyph id `0`, so a layout free of zeros proves real glyphs were
-    /// drawn for the text (issue #343).
+    /// テストヘルパー: 要素のテキストレイアウトのシェイプ済みグリフ id。`.notdef`
+    /// （tofu）はグリフ id `0` なので、0 を含まないレイアウトはテキストに実グリフが
+    /// 描かれた証拠になる。
     pub fn test_element_glyph_ids(&self, id: ElementId) -> Vec<u32> {
         self.elements
             .get(&id)
@@ -2132,7 +2093,7 @@ impl ElementTree {
             .unwrap_or_default()
     }
 
-    /// Mirror of `render()` cursor-blink tick without draining dirty sets (issue #183).
+    /// dirty 集合を drain せずに `render()` のカーソル点滅刻みをミラーする。
     pub fn test_tick_cursor_blink(&mut self, timestamp_ms: f64) -> bool {
         let Some(id) = self.layout.advance_cursor_blink(
             &mut self.elements,

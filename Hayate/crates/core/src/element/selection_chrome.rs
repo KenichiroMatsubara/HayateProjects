@@ -1,28 +1,26 @@
-//! Floating selection toolbar — core-drawn selection chrome (ADR-0097, #272).
+//! フローティング選択ツールバー — core が描画する選択 chrome（ADR-0097）。
 //!
-//! Decision 3 of ADR-0097: the selection chrome (highlight, handles, floating
-//! toolbar) is drawn **once by core** into the SceneGraph and only its *style*
-//! is theme-switchable; OS-native toolbar widgets are not re-implemented per
-//! Platform Adapter. This module holds the style-agnostic toolbar **model** —
-//! which actions appear, how the buttons are laid out, and which button a tap
-//! lands on — plus the [`SelectionChromeStyle`] switch whose first member is the
-//! Material flavor (Cupertino arrives with the iOS adapter, additively).
+//! 選択 chrome（ハイライト・ハンドル・フローティングツールバー）は core が
+//! SceneGraph へ一度だけ描画し、テーマ切替できるのは *style* のみ。OS ネイティブ
+//! のツールバーウィジェットを Platform Adapter ごとに再実装しない。本モジュールは
+//! スタイル非依存のツールバー **モデル**（どのアクションを出すか、ボタン配置、
+//! タップがどのボタンに当たるか）と [`SelectionChromeStyle`] スイッチを持つ。
 
-/// The chrome theme for selection highlight, handles and the floating toolbar.
-/// Switchable so adding Cupertino (with the iOS Platform Adapter) is additive,
-/// never a rewrite (ADR-0097, decision 3). Material is implemented first.
+/// 選択ハイライト・ハンドル・フローティングツールバーの chrome テーマ。
+/// Cupertino（iOS Platform Adapter 用）の追加が書き直しでなく加算で済むよう
+/// 切替式にしてある（ADR-0097）。Material を最初に実装する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum SelectionChromeStyle {
-    /// Material Design flavored chrome (the initial, default theme).
+    /// Material Design 風 chrome（初期・デフォルトテーマ）。
     #[default]
     Material,
-    /// Cupertino (iOS) flavored chrome — added with the iOS Platform Adapter.
+    /// Cupertino（iOS）風 chrome — iOS Platform Adapter とともに追加。
     Cupertino,
 }
 
-/// A button shown on the floating selection toolbar. The available set depends
-/// on the selection: a read-only SelectionArea offers read actions (Copy /
-/// Select All); an editable text-input adds the mutating ones (Cut / Paste).
+/// フローティング選択ツールバーのボタン。集合は選択内容で決まる。読み取り専用の
+/// SelectionArea は読み取りアクション（Copy / Select All）のみ、編集可能なテキスト
+/// 入力は変更アクション（Cut / Paste）も加える。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolbarAction {
     Cut,
@@ -32,7 +30,7 @@ pub enum ToolbarAction {
 }
 
 impl ToolbarAction {
-    /// The button label drawn on the toolbar.
+    /// ツールバーに描画するボタンラベル。
     pub fn label(self) -> &'static str {
         match self {
             ToolbarAction::Cut => "Cut",
@@ -43,7 +41,7 @@ impl ToolbarAction {
     }
 }
 
-/// An axis-aligned rectangle in canvas coordinates.
+/// canvas 座標系の軸並行矩形。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ToolbarRect {
     pub x: f32,
@@ -58,16 +56,16 @@ impl ToolbarRect {
     }
 }
 
-/// One tappable button on the floating toolbar, with its canvas-space rect.
+/// フローティングツールバー上のタップ可能なボタン1個（canvas 座標の矩形付き）。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ToolbarButton {
     pub action: ToolbarAction,
     pub bounds: ToolbarRect,
 }
 
-/// The laid-out floating selection toolbar: the ordered buttons and the overall
-/// bar rect, positioned over the selection. Built by [`layout`] and consumed by
-/// both hit-testing (input) and scene emission (drawing).
+/// レイアウト済みのフローティング選択ツールバー。選択上に配置された、順序付き
+/// ボタン列とバー全体の矩形。[`layout`] が生成し、ヒットテスト（入力）とシーン
+/// 出力（描画）の双方が利用する。
 #[derive(Clone, Debug, PartialEq)]
 pub struct SelectionToolbar {
     pub style: SelectionChromeStyle,
@@ -76,13 +74,13 @@ pub struct SelectionToolbar {
 }
 
 impl SelectionToolbar {
-    /// The toolbar's actions in display order.
+    /// ツールバーのアクションを表示順で返す。
     pub fn actions(&self) -> Vec<ToolbarAction> {
         self.buttons.iter().map(|b| b.action).collect()
     }
 
-    /// The action whose button contains `(x, y)`, or `None` for a tap that
-    /// misses every button (the runtime then treats the press normally).
+    /// `(x, y)` を含むボタンのアクション。どのボタンにも当たらなければ `None`
+    /// （ランタイムは押下を通常どおり扱う）。
     pub fn action_at(&self, x: f32, y: f32) -> Option<ToolbarAction> {
         self.buttons
             .iter()
@@ -91,30 +89,30 @@ impl SelectionToolbar {
     }
 }
 
-/// Which end of the range a drag handle controls. The `Start` handle adjusts the
-/// document-earlier endpoint, `End` the later one (ADR-0097, #273).
+/// ドラッグハンドルが操作する範囲の端。`Start` はドキュメント上で前方の端点、
+/// `End` は後方の端点を調整する（ADR-0097）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SelectionHandleEnd {
     Start,
     End,
 }
 
-/// One Material teardrop drag handle: a circular knob hanging just below the
-/// selection's caret edge at one end, which the user drags to adjust that
-/// endpoint (ADR-0097, #273). Style-agnostic geometry; the theme only colors it.
+/// Material のしずく型ドラッグハンドル1個。選択のキャレット端の直下に下がる円形の
+/// つまみで、ドラッグでその端点を調整する（ADR-0097）。形状はスタイル非依存で、
+/// テーマは色付けのみ行う。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SelectionHandle {
     pub end: SelectionHandleEnd,
-    /// Knob center in canvas coords — the circular grab target.
+    /// つまみ中心（canvas 座標）— 円形のグラブ対象。
     pub knob_x: f32,
     pub knob_y: f32,
-    /// Visible knob radius.
+    /// 見えるつまみの半径。
     pub radius: f32,
 }
 
-/// The pair of Material drag handles flanking the active selection (ADR-0097,
-/// #273): one at each end of the range. Built by [`layout_handles`] and consumed
-/// by both hit-testing (handle drag) and scene emission (drawing).
+/// アクティブな選択を挟む Material ドラッグハンドルの対（ADR-0097）。範囲の各端に
+/// 1個ずつ。[`layout_handles`] が生成し、ヒットテスト（ハンドルドラッグ）とシーン
+/// 出力（描画）の双方が利用する。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SelectionHandles {
     pub style: SelectionChromeStyle,
@@ -123,9 +121,8 @@ pub struct SelectionHandles {
 }
 
 impl SelectionHandles {
-    /// The handle end whose knob `(x, y)` grabs, or `None` for a point clear of
-    /// both. When both knobs are in reach (a very short selection) the nearer
-    /// one wins, so the user can still target either end.
+    /// `(x, y)` がつかむハンドルの端。どちらにも届かなければ `None`。両方のつまみが
+    /// 届く範囲（極めて短い選択）では近い方が勝つので、どちらの端も狙える。
     pub fn handle_at(&self, x: f32, y: f32) -> Option<SelectionHandleEnd> {
         let d2 = |h: &SelectionHandle| {
             let dx = x - h.knob_x;
@@ -142,16 +139,15 @@ impl SelectionHandles {
     }
 }
 
-/// Visible radius of a Material selection handle's knob.
+/// Material 選択ハンドルのつまみの見える半径。
 pub(crate) const HANDLE_RADIUS: f32 = 8.0;
-/// Hit radius for grabbing a handle — larger than the knob so a finger can land
-/// it (a Material handle's touch target is far bigger than its visible dot).
+/// ハンドルをつかむヒット半径 — 指で当てられるよう、つまみより大きい
+/// （Material ハンドルのタッチ対象は見える点よりはるかに大きい）。
 pub(crate) const HANDLE_HIT_RADIUS: f32 = 22.0;
 
-/// Lay out the two Material drag handles from the caret edges at each end of the
-/// selection (`(x, baseline_bottom_y)` in canvas coords). Each knob hangs one
-/// radius below the text edge so the teardrop kisses the baseline (ADR-0097,
-/// #273).
+/// 選択の両端のキャレット端（canvas 座標の `(x, baseline_bottom_y)`）から Material
+/// ドラッグハンドル2個を配置する。各つまみはテキスト端の半径1つ下に下げ、しずくが
+/// ベースラインに接するようにする（ADR-0097）。
 pub(crate) fn layout_handles(
     style: SelectionChromeStyle,
     start_caret: (f32, f32),
@@ -171,35 +167,33 @@ pub(crate) fn layout_handles(
 }
 
 impl SelectionChromeStyle {
-    /// The fill color of a selection drag handle (RGBA, 0..1).
+    /// 選択ドラッグハンドルの塗り色（RGBA, 0..1）。
     pub(crate) fn handle_color(self) -> [f32; 4] {
         match self {
-            // Material: the primary selection blue, matching the highlight.
+            // Material: ハイライトに合わせたプライマリ選択ブルー。
             SelectionChromeStyle::Material => [0.20, 0.45, 0.95, 1.0],
-            // Cupertino placeholder — refined with the iOS adapter (additive).
             SelectionChromeStyle::Cupertino => [0.0, 0.48, 1.0, 1.0],
         }
     }
 }
 
-/// Material toolbar metrics. A single core-drawn chrome whose values are
-/// theme-switchable (ADR-0097); Material is the initial theme.
+/// Material ツールバーの寸法。core が描く単一 chrome で値はテーマ切替可能
+/// （ADR-0097）。Material が初期テーマ。
 pub(crate) const TOOLBAR_HEIGHT: f32 = 40.0;
 pub(crate) const TOOLBAR_LABEL_FONT_SIZE: f32 = 14.0;
 pub(crate) const TOOLBAR_CORNER_RADIUS: f32 = 4.0;
 
 impl SelectionChromeStyle {
-    /// The toolbar panel background color (premultiplied-free RGBA, 0..1).
+    /// ツールバーパネルの背景色（非プリマルチプライ RGBA, 0..1）。
     pub(crate) fn toolbar_background(self) -> [f32; 4] {
         match self {
-            // Material: a near-opaque dark surface.
+            // Material: ほぼ不透明な暗いサーフェス。
             SelectionChromeStyle::Material => [0.20, 0.20, 0.22, 0.98],
-            // Cupertino placeholder — refined with the iOS adapter (additive).
             SelectionChromeStyle::Cupertino => [0.18, 0.18, 0.18, 0.96],
         }
     }
 
-    /// The toolbar label text color (RGBA, 0..1).
+    /// ツールバーラベルのテキスト色（RGBA, 0..1）。
     pub(crate) fn toolbar_label(self) -> [f32; 4] {
         match self {
             SelectionChromeStyle::Material => [0.98, 0.98, 0.98, 1.0],
@@ -207,22 +201,21 @@ impl SelectionChromeStyle {
         }
     }
 }
-/// Approximate horizontal advance per label character. Core draws the labels
-/// itself, so this estimate is self-consistent between layout and rendering.
+/// ラベル1文字あたりの概算水平送り。core が自前でラベルを描くので、この見積もりは
+/// レイアウトと描画の間で自己整合する。
 const LABEL_CHAR_ADVANCE: f32 = 8.0;
-/// Horizontal padding on each side of a button's label.
+/// ボタンラベル左右のパディング。
 const BUTTON_PAD_X: f32 = 12.0;
-/// Vertical gap between the toolbar and the selection it floats over.
+/// ツールバーと、その上に浮かぶ選択との間の縦ギャップ。
 const TOOLBAR_GAP: f32 = 8.0;
 
 fn button_width(action: ToolbarAction) -> f32 {
     action.label().chars().count() as f32 * LABEL_CHAR_ADVANCE + 2.0 * BUTTON_PAD_X
 }
 
-/// Lay the toolbar out over a selection bounding box `sel` (canvas coords),
-/// centered horizontally and floating just above the selection — flipping below
-/// when there is no room above the top viewport edge. The bar is clamped to stay
-/// within the `viewport` horizontally. Returns `None` when `actions` is empty.
+/// 選択のバウンディングボックス `sel`（canvas 座標）の上にツールバーを配置する。
+/// 水平中央寄せで選択の真上に浮かべ、上端に余地がなければ下へ反転する。バーは
+/// `viewport` 内に水平方向でクランプする。`actions` が空なら `None`。
 pub(crate) fn layout(
     style: SelectionChromeStyle,
     actions: &[ToolbarAction],
@@ -234,12 +227,12 @@ pub(crate) fn layout(
     }
     let total_width: f32 = actions.iter().map(|&a| button_width(a)).sum();
 
-    // Centered over the selection, then clamped into the viewport horizontally.
+    // 選択上に中央寄せし、viewport 内に水平クランプ。
     let center_x = sel.x + sel.width / 2.0;
     let max_x = (viewport.0 - total_width).max(0.0);
     let x = (center_x - total_width / 2.0).clamp(0.0, max_x);
 
-    // Prefer floating above the selection; flip below when it would clip the top.
+    // 選択の上に浮かべるのを優先し、上端をはみ出すなら下へ反転。
     let above_y = sel.y - TOOLBAR_GAP - TOOLBAR_HEIGHT;
     let y = if above_y >= 0.0 {
         above_y
@@ -294,7 +287,7 @@ mod tests {
         let tb = layout(SelectionChromeStyle::Material, &actions, sel(100.0, 80.0, 60.0, 20.0), (400.0, 200.0))
             .expect("non-empty actions produce a toolbar");
         assert_eq!(tb.actions(), actions.to_vec());
-        // Each button sits immediately right of the previous one, no overlap.
+        // 各ボタンは前のボタンのすぐ右に並び、重ならない。
         let a = tb.buttons[0].bounds;
         let b = tb.buttons[1].bounds;
         assert_eq!(b.x, a.x + a.width);
@@ -314,7 +307,7 @@ mod tests {
 
     #[test]
     fn toolbar_flips_below_when_there_is_no_room_above() {
-        // Selection hugging the top edge: above would be negative, so flip below.
+        // 上端に張り付いた選択: 上だと負になるので下へ反転。
         let tb = layout(
             SelectionChromeStyle::Material,
             &[ToolbarAction::Copy],
@@ -327,7 +320,7 @@ mod tests {
 
     #[test]
     fn toolbar_is_clamped_within_the_viewport_horizontally() {
-        // Selection near the right edge: the bar must not overflow the viewport.
+        // 右端付近の選択: バーは viewport をはみ出してはならない。
         let tb = layout(
             SelectionChromeStyle::Material,
             &[ToolbarAction::Cut, ToolbarAction::Copy, ToolbarAction::Paste, ToolbarAction::SelectAll],
@@ -353,7 +346,7 @@ mod tests {
             tb.action_at(copy.x + 1.0, copy.y + 1.0),
             Some(ToolbarAction::Copy),
         );
-        // A point above the bar hits nothing.
+        // バーの上の点は何にも当たらない。
         assert_eq!(tb.action_at(copy.x + 1.0, copy.y - 5.0), None);
     }
 
@@ -364,8 +357,8 @@ mod tests {
 
     #[test]
     fn handles_hang_below_both_selection_ends() {
-        // Caret edges at the two ends of a one-line range share a baseline; the
-        // teardrop knobs hang just below it, anchored at each end's x.
+        // 一行範囲の両端のキャレット端は同じベースラインを共有し、しずくのつまみは
+        // その直下に、各端の x に固定されて下がる。
         let h = layout_handles(SelectionChromeStyle::Material, (10.0, 20.0), (80.0, 20.0));
         assert_eq!(h.start.end, SelectionHandleEnd::Start);
         assert_eq!(h.end.end, SelectionHandleEnd::End);
@@ -386,7 +379,7 @@ mod tests {
             h.handle_at(h.end.knob_x, h.end.knob_y),
             Some(SelectionHandleEnd::End),
         );
-        // A point far from both knobs grabs neither.
+        // 両つまみから遠い点はどちらもつかまない。
         assert_eq!(h.handle_at(45.0, 400.0), None);
     }
 }

@@ -1,12 +1,12 @@
 import type { ElementId, ElementKind, Unsubscribe } from '@tsubame/renderer-protocol';
 
 /**
- * Solid host handle bound to a Hayate / DOM element (`ElementId`).
+ * Hayate / DOM 要素（`ElementId`）に紐づく Solid のホストハンドル。
  *
- * Canonical Tree structure lives in Hayate (Canvas) or the browser DOM (DOM
- * Renderer). This object satisfies `solid-js/universal` tree walks and holds
- * listener unsubscribes only. Text content lives on the backend element, not
- * here (ADR-0063).
+ * 正準のツリー構造は Hayate（Canvas）またはブラウザ DOM（DOM Renderer）側に存在する。
+ * このオブジェクトは `solid-js/universal` のツリー走査を満たし、リスナの
+ * unsubscribe のみを保持する。テキスト内容はここではなくバックエンド要素側に置く
+ * （ADR-0063）。
  */
 export interface TsubameNode {
   readonly id: ElementId;

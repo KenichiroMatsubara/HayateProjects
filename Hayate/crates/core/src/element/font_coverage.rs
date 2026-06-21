@@ -1,21 +1,17 @@
-//! Data-driven codepoint → fallback-family coverage table.
+//! コードポイント → フォールバックファミリの coverage テーブル（データ駆動）。
 //!
-//! Single source of truth for on-demand font routing. ADR-0042 fixes the
-//! layering: *codepoint → family* is core-owned, platform-independent domain
-//! knowledge; *family → source* (CDN URL on web, OS lookup on native) is each
-//! adapter's job (ADR-0043). This table used to be a hand-written `match` with
-//! one arm per script; it is now a single sorted coverage table so that adding
-//! a font is a data change, and a cross-layer integrity test (in each adapter)
-//! guarantees every routed family is actually procurable (ADR-0101).
+//! オンデマンドフォント解決の単一の真実。レイヤ分割は、*コードポイント → ファミリ*
+//! が core 所有でプラットフォーム非依存のドメイン知識、*ファミリ → ソース*（web は
+//! CDN URL、native は OS 検索）が各アダプタの責務（ADR-0043）。フォント追加が
+//! データ変更だけで済むよう、ソート済み coverage テーブルに集約してある。各アダプタの
+//! 横断整合テストが、解決されうる全ファミリが実際に取得可能であることを保証する（ADR-0101）。
 //!
-//! Resolution is gated on `.notdef` at the call site (`text::lower_glyph_runs`):
-//! we only ask "which font covers this codepoint?" for glyphs the bundled
-//! default font failed to render. That gate is what lets the emoji ranges below
-//! be deliberately generous — covering whole symbol planes — without ever
-//! mis-routing a glyph the base font already has.
+//! 解決は呼び出し側（`text::lower_glyph_runs`）で `.notdef` にゲートされる。同梱の
+//! デフォルトフォントが描画できなかったグリフについてのみ「どのフォントがこのコードポイントを
+//! カバーするか」を問う。このゲートがあるからこそ、下記の emoji レンジを記号面全体を覆うほど
+//! 意図的に広く取っても、ベースフォントが既に持つグリフを誤ルーティングすることがない。
 
-/// A contiguous, inclusive Unicode range mapped to the fallback family expected
-/// to cover it.
+/// 連続した両端含む Unicode レンジと、それをカバーすると見込まれるフォールバックファミリの対応。
 #[derive(Clone, Copy, Debug)]
 pub struct Coverage {
     pub start: u32,
@@ -27,12 +23,12 @@ const fn cov(start: u32, end: u32, family: &'static str) -> Coverage {
     Coverage { start, end, family }
 }
 
-/// The coverage table, **sorted by `start` and non-overlapping** (enforced by
-/// `table_is_sorted_and_non_overlapping`). Keep it sorted when editing.
+/// coverage テーブル。**`start` でソート済みかつ非重複**（`table_is_sorted_and_non_overlapping`
+/// が保証）。編集時もソートを保つこと。
 ///
-/// Emoji ranges cover whole symbol planes on purpose (see module docs): a few
-/// non-emoji codepoints fall inside them, but routing is `.notdef`-gated so they
-/// are only ever consulted for glyphs that did not render anyway.
+/// emoji レンジは意図的に記号面全体を覆う（モジュールドキュメント参照）。内側に少数の
+/// 非 emoji コードポイントが含まれるが、解決は `.notdef` ゲート済みなので、そもそも描画できなかった
+/// グリフに対してしか参照されない。
 pub const FONT_COVERAGE: &[Coverage] = &[
     // ── Hebrew ───────────────────────────────────────────────────────────
     cov(0x0590, 0x05FF, "Noto Sans Hebrew"), // Hebrew
@@ -47,8 +43,8 @@ pub const FONT_COVERAGE: &[Coverage] = &[
     // ── Korean ───────────────────────────────────────────────────────────
     cov(0x1100, 0x11FF, "Noto Sans KR"), // Hangul Jamo
     // ── Emoji / symbols (BMP) ────────────────────────────────────────────
-    cov(0x2600, 0x27BF, "Noto Emoji"), // Misc Symbols + Dingbats (☀ ✨ ➡ …)
-    cov(0x2B00, 0x2BFF, "Noto Emoji"), // Misc Symbols and Arrows (⭐ ⬛ …)
+    cov(0x2600, 0x27BF, "Noto Emoji"), // Misc Symbols + Dingbats（☀ ✨ ➡ …）
+    cov(0x2B00, 0x2BFF, "Noto Emoji"), // Misc Symbols and Arrows（⭐ ⬛ …）
     // ── CJK (BMP) ────────────────────────────────────────────────────────
     cov(0x2E80, 0x2EFF, "Noto Sans JP"), // CJK Radicals Supplement
     cov(0x2F00, 0x2FDF, "Noto Sans JP"), // Kangxi Radicals
@@ -70,9 +66,9 @@ pub const FONT_COVERAGE: &[Coverage] = &[
     cov(0xFB50, 0xFDFF, "Noto Sans Arabic"), // Arabic Presentation Forms-A
     cov(0xFE70, 0xFEFF, "Noto Sans Arabic"), // Arabic Presentation Forms-B
     // ── Emoji / symbols (SMP) ────────────────────────────────────────────
-    // Mahjong, Dominoes, Playing Cards, Enclosed Alphanumerics (incl. the
-    // regional-indicator flags 🇦–🇿 at 1F1E6..1F1FF), Misc Pictographs,
-    // Emoticons, Transport, Supplemental Pictographs, and Symbols Extended-A.
+    // Mahjong / Dominoes / Playing Cards / Enclosed Alphanumerics（1F1E6..1F1FF の
+    // 地域インジケータ旗 🇦–🇿 を含む）/ Misc Pictographs / Emoticons / Transport /
+    // Supplemental Pictographs / Symbols Extended-A。
     cov(0x1F000, 0x1FAFF, "Noto Emoji"),
     // ── CJK Unified Ideographs Extensions (SIP) ──────────────────────────
     cov(0x20000, 0x2A6DF, "Noto Sans JP"), // Ext B
@@ -82,22 +78,21 @@ pub const FONT_COVERAGE: &[Coverage] = &[
     cov(0x2CEB0, 0x2EBEF, "Noto Sans JP"), // Ext F
 ];
 
-/// Resolve a codepoint to the fallback family expected to cover it when the
-/// bundled default font renders it as `.notdef`. Returns `None` when the
-/// default font is expected to cover the codepoint itself.
+/// 同梱のデフォルトフォントが `.notdef` で描画するコードポイントを、それをカバーすると
+/// 見込まれるフォールバックファミリへ解決する。デフォルトフォント自身がカバーする見込みなら
+/// `None` を返す。
 ///
-/// Family names are the keys each platform adapter uses in its own
-/// family-name → font-source table (ADR-0043).
+/// ファミリ名は、各プラットフォームアダプタが自身の ファミリ名 → フォントソース テーブルで
+/// 使うキー（ADR-0043）。
 pub fn family_for_codepoint(cp: u32) -> Option<&'static str> {
-    // Largest range whose `start <= cp`; then check it actually contains `cp`.
+    // `start <= cp` を満たす最大のレンジを取り、実際に `cp` を含むか確認する。
     let idx = FONT_COVERAGE.partition_point(|c| c.start <= cp);
     let c = FONT_COVERAGE.get(idx.checked_sub(1)?)?;
     (cp <= c.end).then_some(c.family)
 }
 
-/// Every distinct fallback family this table can route to, sorted. Adapters use
-/// it to assert each routed family is procurable in their own manifest
-/// (cross-layer integrity, ADR-0101).
+/// このテーブルが解決しうる相異なるフォールバックファミリをソートして返す。アダプタは
+/// 各ファミリが自身のマニフェストで取得可能であることの表明に使う（横断整合、ADR-0101）。
 pub fn coverage_families() -> Vec<&'static str> {
     let mut families: Vec<&'static str> = FONT_COVERAGE.iter().map(|c| c.family).collect();
     families.sort_unstable();
@@ -119,7 +114,7 @@ mod tests {
                 "ranges out of order or overlapping: {a:?} then {b:?}"
             );
         }
-        // partition_point binary search relies on the above invariant.
+        // partition_point の二分探索は上記の不変条件に依存する。
     }
 
     #[test]
@@ -136,10 +131,9 @@ mod tests {
 
     #[test]
     fn emoji_across_the_repertoire_resolve_to_monochrome_noto_emoji() {
-        // The whole emoji repertoire — not a hand-picked subset — must route to
-        // the monochrome Noto Emoji (tiny-skia cannot paint COLR/CBDT colour
-        // glyphs; ADR-0101 / issue #329). These span every emoji-bearing block,
-        // including the ones the original narrow fix missed.
+        // 一部の抜粋ではなく emoji レパートリ全体がモノクロ Noto Emoji へ解決される必要がある
+        // （tiny-skia は COLR/CBDT のカラーグリフを描画できない。ADR-0101）。以下は emoji を含む
+        // 全ブロックにまたがる。
         for cp in [
             0x2600u32, // ☀ Misc Symbols
             0x2728,    // ✨ Dingbats

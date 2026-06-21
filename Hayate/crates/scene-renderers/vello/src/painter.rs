@@ -144,7 +144,7 @@ impl ScenePainter for VelloPainter<'_> {
         let half = (bw / 2.0) as f64;
         let inset_w = (width - bw) as f64;
         let inset_h = (height - bw) as f64;
-        // Border thicker than the box collapses to a solid fill.
+        // ボーダーが箱より太い場合は塗りつぶしに退化する。
         if inset_w <= 0.0 || inset_h <= 0.0 {
             self.fill_rect(x, y, width, height, color, outer_radius);
             return;
@@ -171,9 +171,8 @@ impl ScenePainter for VelloPainter<'_> {
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
         let font = FontData::new(data.font.data.clone(), data.font.index);
-        // Skip `.notdef` glyphs in the real-glyph pass; they are drawn as
-        // deliberate placeholder boxes below instead of the font's silent box
-        // (issue #427).
+        // 実グリフ描画では `.notdef` をスキップする。フォントの無言の箱ではなく、
+        // 意図的なプレースホルダ箱として後で描くため。
         let glyphs = data
             .glyphs
             .iter()
@@ -208,8 +207,8 @@ impl ScenePainter for VelloPainter<'_> {
         builder.draw(Fill::NonZero, glyphs);
 
         use vello::kurbo::{Shape, Stroke};
-        // Deliberate placeholder boxes for codepoints the font can't supply,
-        // matching the tiny-skia backend via `missing_glyph_placeholder` (#427).
+        // フォントが供給できないコードポイント用の意図的なプレースホルダ箱。
+        // `missing_glyph_placeholder` 経由で tiny-skia バックエンドと一致させる。
         for glyph in data.glyphs.iter().filter(|glyph| is_notdef(glyph)) {
             let ph = missing_glyph_placeholder(glyph, data.font_size);
             if ph.width <= 0.0 || ph.height <= 0.0 {
@@ -279,7 +278,7 @@ impl ScenePainter for VelloPainter<'_> {
             (x + width) as f64,
             (y + height) as f64,
         );
-        // Uniform radii (the only shape Hayate currently emits); 0 → rect clip.
+        // 均一な角丸半径（Hayate が現在発行する唯一の形状）。0 なら矩形クリップ。
         let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
         if radius > 0.0 {
             let clip = RoundedRect::from_rect(rect, radius as f64);

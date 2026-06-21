@@ -9,7 +9,7 @@ import {
 import { encodeStylePatch } from "@tsubame/protocol-generated/codec";
 import { TAG, TRANSITION_TIMING } from "@tsubame/protocol-generated/protocol";
 
-/** Representative sample values per wireKind for semantic parity checks. */
+/** セマンティック等価チェック用に、wireKind ごとの代表サンプル値。 */
 const SAMPLES: Record<string, unknown> = {
   color: "#ff6600",
   dimension: "48px",
@@ -107,7 +107,7 @@ describe("hayate-css catalog parity", () => {
       "dashed",
     );
     expect(domCssForPatch({ borderStyle: "none" }).borderStyle).toBe("none");
-    // border-width no longer emits a border-style of its own.
+    // border-width は独自の border-style を発行しない。
     expect(domCssForPatch({ borderWidth: 2 }).borderStyle).toBeUndefined();
   });
 
@@ -153,13 +153,13 @@ describe("hayate-css catalog parity", () => {
 });
 
 /**
- * Cross-renderer transition parity (#229, ADR-0093). Both paths interpolate from
- * the same after-change resolved `transition-duration` / `transition-timing`: the
- * Canvas Render Layer reads it off the decoded style packet, the DOM hands the
- * equivalent CSS to the browser's own CSS transition. The per-frame interpolation
- * parity itself is locked in Rust (`transition_cross_renderer_parity.rs`, where
- * the painted mid-frame is observable); here we lock that the *inputs* the two
- * renderers transition with come from one Hayate source and never diverge.
+ * レンダラ横断のトランジション等価（ADR-0093）。両経路は変更後に解決した同一の
+ * `transition-duration` / `transition-timing` から補間する。Canvas レンダリング層は
+ * デコード済みスタイルパケットから読み、DOM は同等の CSS をブラウザ自身の CSS
+ * トランジションに渡す。フレーム単位の補間等価自体は Rust
+ * （`transition_cross_renderer_parity.rs`、塗られた中間フレームが観測可能）で固定する。
+ * ここでは、両レンダラがトランジションに使う*入力*が単一の Hayate ソースから来て
+ * 乖離しないことを固定する。
  */
 describe("transition cross-renderer parity inputs (#229)", () => {
   it("transition-duration feeds the packet and DOM CSS from one numeric source", () => {

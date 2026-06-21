@@ -1,5 +1,5 @@
-//! Code shared between Canvas Mode (`canvas.rs`) and HTML Mode (`html.rs`).
-//! See ADR-0077 for the split rationale.
+//! Canvas Mode（`canvas.rs`）と HTML Mode（`html.rs`）で共有するコード。
+//! 分割の根拠は ADR-0077 を参照。
 
 use hayate_core::{ElementId, ElementKind};
 use wasm_bindgen::prelude::*;
@@ -22,7 +22,7 @@ pub(crate) fn kind_from_u32(v: u32) -> Result<ElementKind, JsValue> {
     ElementKind::from_u32(v).ok_or_else(|| JsValue::from_str(&format!("unknown element kind {v}")))
 }
 
-// ── Style tag constants (exposed to JS) ──────────────────────────────────
+// ── スタイルタグ定数（JS へ公開） ──────────────────────────────────
 
 #[wasm_bindgen]
 pub fn style_tag_z_index() -> u32 {
@@ -33,7 +33,7 @@ pub fn style_tag_font_family() -> u32 {
     crate::generated::TAG_FONT_FAMILY
 }
 
-/// Fetch raw bytes from a URL.
+/// URL から生バイト列を取得する。
 pub(crate) async fn fetch_bytes(url: &str) -> Result<Vec<u8>, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
     let window = web_sys::window().ok_or("no window")?;

@@ -1,18 +1,17 @@
-//! Issue #402 — `button` element-kind UA default layout (ADR-0109, root cause B).
+//! `button` element-kind の UA デフォルトレイアウト（ADR-0109）。
 //!
-//! A `button` with no explicit `align-items` / `justify-content` must lay its
-//! content out the way a browser `<button>` does: vertically centered on the
-//! cross axis, left-aligned (flex-start) on the main axis. This is a core-only
-//! element-kind default baked into the button's base layout style, beneath any
-//! explicit style the app sets.
+//! 明示的な `align-items` / `justify-content` を持たない `button` は、ブラウザの
+//! `<button>` と同じレイアウトをする: cross 軸で垂直中央、main 軸で左寄せ
+//! （flex-start）。これは button の base レイアウトスタイルに焼き込まれた core
+//! 内のみの element-kind デフォルトで、アプリが指定する明示スタイルの下に位置する。
 
 use hayate_core::{AlignValue, Dimension, ElementId, ElementKind, ElementTree, JustifyValue, StyleProp};
 
 static FONT: &[u8] = include_bytes!("../assets/fonts/NotoSansJP.ttf");
 
-/// Build a button (height 36, horizontal padding) holding a single text label,
-/// applying `extra` styles to the button after creation. Returns the tree plus
-/// the button and label ids so tests can read their resolved rects.
+/// テキストラベル 1 つを持つ button（高さ 36、水平 padding）を構築し、生成後に
+/// `extra` スタイルを適用する。解決後の rect を読めるよう tree と button・label の
+/// id を返す。
 fn button_with_label(extra: &[StyleProp]) -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     tree.register_font("Inter", FONT.to_vec());
@@ -84,8 +83,8 @@ fn button_left_aligns_label_on_main_axis_by_default() {
     let (bx, _by, _bw, _bh) = rect(&tree, button);
     let (lx, _ly, _lw, _lh) = rect(&tree, label);
 
-    // flex-start on the main axis: the label hugs the button's left content
-    // edge (left padding = 14), not centred or pushed right.
+    // main 軸の flex-start: label は button の左コンテンツ端（左 padding = 14）に
+    // 接し、中央寄せや右寄せにはならない。
     let left_gap = lx - bx;
     assert!(
         (left_gap - 14.0).abs() < 1.0,
@@ -95,8 +94,8 @@ fn button_left_aligns_label_on_main_axis_by_default() {
 
 #[test]
 fn explicit_align_items_overrides_button_default() {
-    // App-set `align-items: flex-start` must win over the kind default
-    // (`center`), pinning the label back to the top — explicit > kind default.
+    // アプリ指定の `align-items: flex-start` は kind デフォルト（`center`）に勝ち、
+    // label を上端へ戻す（明示スタイル > kind デフォルト）。
     let (tree, button, label) =
         button_with_label(&[StyleProp::AlignItems(AlignValue::FlexStart)]);
     let (_bx, by, _bw, _bh) = rect(&tree, button);
@@ -111,9 +110,8 @@ fn explicit_align_items_overrides_button_default() {
 
 #[test]
 fn explicit_justify_content_center_overrides_button_default() {
-    // A button that *wants* horizontal centering opts in with
-    // `justify-content: center`; it must win over the flex-start default and
-    // balance the label's left/right gaps inside the content box.
+    // 水平中央を望む button は `justify-content: center` で明示的に opt-in する。
+    // これは flex-start デフォルトに勝ち、content box 内で label の左右 gap を均す。
     let (tree, button, label) = button_with_label(&[
         StyleProp::Width(Dimension::px(200.0)),
         StyleProp::JustifyContent(JustifyValue::Center),
@@ -136,9 +134,9 @@ fn explicit_justify_content_center_overrides_button_default() {
 
 #[test]
 fn non_button_kinds_keep_plain_taffy_default() {
-    // The UA centering is button-scoped: a plain `view` with the same shape must
-    // keep Taffy's default (align-items: stretch), so its child stretches to the
-    // full height and clips to the top — no centering leaks to other kinds.
+    // UA の中央寄せは button 限定: 同形状の plain な `view` は Taffy デフォルト
+    // （align-items: stretch）を保ち、子は全高に伸び上端に接する。中央寄せが他の
+    // kind に漏れてはならない。
     let mut tree = ElementTree::new();
     tree.register_font("Inter", FONT.to_vec());
     let mut next = 1u64;

@@ -1,16 +1,12 @@
-//! Colour glyph (COLR/CPAL) rendering on the Vello backend (issue #332).
+//! Vello バックエンドでのカラーグリフ（COLR/CPAL）描画。
 //!
-//! The web adapter routes emoji to the colour `Noto Color Emoji` build only on
-//! the Vello (WebGPU) path (`hayate-adapter-web`'s `font_url_for_renderer`).
-//! This test proves the other half: that Vello actually *paints* a COLR glyph
-//! in colour — `draw_glyphs().draw()` detects COLR/CPAL and routes through
-//! `try_draw_colr`. A monochrome painter (tiny-skia) would collapse the same
-//! glyph to a single ink colour; that path is covered by the tiny-skia tests.
+//! Vello が COLR グリフを実際にカラーで描くことを検証する。
+//! `draw_glyphs().draw()` が COLR/CPAL を検出して `try_draw_colr` へ振り分ける。
+//! モノクロ描画（tiny-skia）は同じグリフを単色に潰すため、別途 tiny-skia 側で検証する。
 //!
-//! Uses a tiny bundled COLRv1 test font (provenance in
-//! `test-support/assets/PROVENANCE.md`), not the 24 MB production emoji font,
-//! so it needs no network. Skips when no wgpu adapter is available, like the
-//! other Vello visual tests.
+//! 24MB の本番絵文字フォントではなく、バンドルされた小さな COLRv1 テストフォントを使うため
+//! ネットワーク不要（出自は `test-support/assets/PROVENANCE.md`）。他の Vello 視覚テストと
+//! 同様、wgpu アダプタが無ければスキップする。
 
 use hayate_scene_test_support::cases::{color_glyph_tree, render_tree_to_scene};
 use hayate_scene_test_support::pixel::{distinct_saturated_hues, CANVAS_H, CANVAS_W};

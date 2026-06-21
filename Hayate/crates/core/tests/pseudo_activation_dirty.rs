@@ -1,4 +1,4 @@
-//! Issue #183: pseudo-state activation wired into the dirty pipeline.
+//! 擬似状態の発火が dirty パイプラインへ反映されることを検証する。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter,
@@ -244,9 +244,8 @@ fn unset_pseudo_style_marks_visual_dirty() {
 
 #[test]
 fn hover_transition_keeps_visual_dirty_until_complete() {
-    // Issue #209: a transition keeps the element visual-dirty across every
-    // frame of its window (so the host frame loop keeps running) and stops
-    // re-marking once it finishes.
+    // transition はウィンドウ内の全フレームで要素を visual-dirty に保ち
+    // （ホストのフレームループを回し続けるため）、完了後は再マークを止める。
     let mut tree = ElementTree::new();
     let root = tree.element_create(70, ElementKind::View);
     tree.set_root(root);
@@ -269,12 +268,12 @@ fn hover_transition_keeps_visual_dirty_until_complete() {
 
     tree.update_pointer_hover(Some(root));
 
-    // The first post-hover render anchors the transition at the resolve seam.
+    // hover 後の最初の render が resolve 境界で transition を起点に固定する。
     tree.render(0.0);
     assert!(tree.test_transition_active(root), "hover starts a transition");
 
-    // Each in-window frame keeps the element visual-dirty for the next frame so
-    // the host frame loop keeps running.
+    // ウィンドウ内の各フレームは次フレーム分の visual-dirty を維持し、
+    // ホストのフレームループを回し続ける。
     for t in [50.0, 100.0, 150.0] {
         tree.render(t);
         assert!(
@@ -283,11 +282,11 @@ fn hover_transition_keeps_visual_dirty_until_complete() {
         );
     }
 
-    // The frame that reaches the end paints the final target and drops the track.
+    // 終端に達したフレームは最終値を描画し、トラックを破棄する。
     tree.render(200.0);
     assert!(!tree.test_transition_active(root), "transition is dropped when done");
 
-    // Once finished, the loop goes quiet: no further re-marking.
+    // 完了後はループが静止し、再マークは起きない。
     assert!(
         !tree.test_visual_dirty_contains(root),
         "completed transition must stop driving frames"

@@ -16,7 +16,7 @@ use crate::element::text::{
 };
 use crate::element::tree::{Element, Visual};
 
-/// `text` element whose parent is also `text` — no Taffy box (ADR-0063).
+/// 親も `text` である `text` 要素 — Taffy ボックスを持たない（ADR-0063）。
 pub(crate) fn is_inline_text_element(elements: &HashMap<ElementId, Element>, id: ElementId) -> bool {
     let el = match elements.get(&id) {
         Some(e) => e,
@@ -30,14 +30,14 @@ pub(crate) fn is_inline_text_element(elements: &HashMap<ElementId, Element>, id:
         .is_some_and(|p| p.kind == ElementKind::Text)
 }
 
-/// IFC root = `text` element that is not inline.
+/// IFC ルート = インラインでない `text` 要素。
 pub(crate) fn is_ifc_root(elements: &HashMap<ElementId, Element>, id: ElementId) -> bool {
     elements
         .get(&id)
         .is_some_and(|el| el.kind == ElementKind::Text && !is_inline_text_element(elements, id))
 }
 
-/// Walk up to the enclosing IFC root for any text in the subtree.
+/// サブツリー内の任意のテキストから、それを含む IFC ルートまで遡る。
 pub(crate) fn ifc_root(elements: &HashMap<ElementId, Element>, id: ElementId) -> Option<ElementId> {
     let mut cur = id;
     loop {
@@ -155,7 +155,7 @@ impl CollectCtx<'_> {
     }
 }
 
-/// Shape an IFC root subtree into a single Parley layout + byte→element map.
+/// IFC ルートのサブツリーを単一の Parley レイアウト＋バイト→要素マップに整形する。
 pub(crate) fn shape(
     elements: &HashMap<ElementId, Element>,
     ifc_root_id: ElementId,
@@ -208,23 +208,21 @@ pub(crate) fn shape(
     layout
 }
 
-/// Parley point hit → byte index within an IFC layout.
+/// Parley の点ヒット → IFC レイアウト内のバイトインデックス。
 ///
-/// Delegates to Parley's [`Cursor::from_point`], which honours the hit
-/// [`ClusterSide`](parley::layout::ClusterSide): a click on the trailing half of
-/// a glyph lands the caret *after* it (and the RTL / explicit-line-break edge
-/// cases), where the bare `Cluster::from_point().text_range().start` snapped
-/// every in-glyph hit back to the glyph's leading edge — so the caret could
-/// never reach the click point (it stuck one cluster to the left).
+/// Parley の [`Cursor::from_point`] に委譲する。これは
+/// [`ClusterSide`](parley::layout::ClusterSide) を尊重し、グリフ後半へのクリックは
+/// キャレットをその*後ろ*に置く（RTL や明示的改行のエッジケースも）。素の
+/// `Cluster::from_point().text_range().start` はグリフ内のヒットをすべて先頭端へ
+/// 吸着させてしまい、キャレットがクリック点に届かない（1クラスタ左にずれる）。
 pub(crate) fn byte_index_at_point(layout: &text::TextLayout, local_x: f32, local_y: f32) -> usize {
     use parley::layout::Cursor;
     Cursor::from_point(&layout.layout, local_x, local_y).index()
 }
 
-/// Refine a box-level hit (`box_hit`) into the inline text element under the
-/// point, when `box_hit` is an IFC root. Falls back to `box_hit` itself when
-/// it's not an IFC root, has no shaped layout, or the point doesn't map to a
-/// specific inline element.
+/// `box_hit` が IFC ルートのとき、ボックスレベルのヒット（`box_hit`）を点直下の
+/// インラインテキスト要素まで絞り込む。IFC ルートでない・整形済みレイアウトが
+/// ない・点が特定のインライン要素に対応しない場合は `box_hit` 自身に戻る。
 pub(crate) fn resolve_ifc_inline_hit(
     tree: &crate::element::tree::ElementTree,
     box_hit: ElementId,

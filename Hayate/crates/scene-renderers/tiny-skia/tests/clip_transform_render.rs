@@ -8,10 +8,9 @@ fn pixel(pixmap: &Pixmap, x: u32, y: u32) -> [u8; 4] {
     [data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]
 }
 
-/// A clip rect emitted while a translation is active (as happens for a
-/// scrolled scroll-view containing a nested scroll-view) must be clipped in
-/// the *transformed* coordinate space, matching where its content actually
-/// paints — not in raw local coordinates.
+/// 平行移動が有効な状態で発行されたクリップ矩形（ネストした scroll-view を含む
+/// スクロール済み scroll-view で発生）は、生のローカル座標ではなく変換後の座標空間で
+/// クリップしなければならない。実際に内容が描画される位置と一致させるため。
 #[test]
 fn clip_rect_follows_active_transform() {
     let mut scene = SceneGraph::new();
@@ -55,9 +54,8 @@ fn clip_rect_follows_active_transform() {
     let mut pixmap = Pixmap::new(64, 64).unwrap();
     TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
 
-    // Local clip rect [20,50]x[20,50] translated by (-10,-10) lands at
-    // [10,40]x[10,40] in pixmap space — that's where the red fill should
-    // actually be visible.
+    // ローカルのクリップ矩形 [20,50]x[20,50] を (-10,-10) 平行移動すると
+    // pixmap 空間で [10,40]x[10,40] に来る。そこに赤い塗りが見えるはず。
     assert_eq!(
         pixel(&pixmap, 15, 15),
         [255, 0, 0, 255],

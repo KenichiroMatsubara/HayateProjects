@@ -25,7 +25,7 @@ function stubCanvas(
   } as unknown as HTMLCanvasElement;
 }
 
-/** A minimal EditContext mock that records bounds calls. */
+/** bounds 呼び出しを記録する最小の EditContext モック。 */
 function stubEditContext(): EditContext {
   return {
     addEventListener: vi.fn(),
@@ -54,8 +54,8 @@ describe('canvasPixelRectToDomRect', () => {
 
 describe('compositionFormatsToWire', () => {
   it('converts UTF-16 clause ranges to UTF-8 byte triples relative to the base', () => {
-    // Preedit "ぎゅうにゅう": 6 UTF-16 units, 18 UTF-8 bytes (3 bytes each). The
-    // composing segment starts at EditContext offset 2 (two committed chars).
+    // 未確定文字列 "ぎゅうにゅう": UTF-16 で 6 単位、UTF-8 で 18 バイト（各3バイト）。
+    // 変換中セグメントは EditContext オフセット2（確定済み2文字分）から始まる。
     const wire = compositionFormatsToWire('ぎゅうにゅう', 2, [
       { rangeStart: 2, rangeEnd: 5, underlineThickness: 'Thick' },
       { rangeStart: 5, rangeEnd: 8, underlineThickness: 'Thin' },
@@ -101,9 +101,9 @@ describe('syncEditContext bounds', () => {
   });
 });
 
-// The mobile bug (#392): tapping any non-editable content raised the soft
-// keyboard. The keyboard is raised by attaching our EditContext, so it must
-// attach only while core reports a focused text-input (`ime_wants_keyboard`).
+// モバイルのバグ: 編集不可の領域をタップしてもソフトキーボードが出ていた。
+// キーボードは EditContext のアタッチで出るため、core がフォーカス中の
+// text-input を報告している間（`ime_wants_keyboard`）だけアタッチする。
 describe('syncEditContext keyboard gating (#392)', () => {
   function setup() {
     const editContext = stubEditContext();
@@ -123,7 +123,7 @@ describe('syncEditContext keyboard gating (#392)', () => {
     const { canvas, raw, setWants } = setup();
     setWants(false);
     syncEditContext(canvas, raw);
-    // Not attached → no soft keyboard on a plain tap.
+    // 未アタッチ → 単なるタップではソフトキーボードが出ない。
     expect(canvas.editContext == null).toBe(true);
   });
 
@@ -142,7 +142,7 @@ describe('syncEditContext keyboard gating (#392)', () => {
 
     setWants(false);
     syncEditContext(canvas, raw);
-    // Detached → soft keyboard dismisses.
+    // デタッチ → ソフトキーボードが閉じる。
     expect(canvas.editContext).toBeNull();
   });
 });

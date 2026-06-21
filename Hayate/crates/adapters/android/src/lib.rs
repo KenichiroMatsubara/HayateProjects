@@ -1,18 +1,16 @@
-//! Android Platform Adapter (ADR-0087).
+//! Android プラットフォームアダプタ（ADR-0087）。
 //!
-//! Stage A confirmed `hayate-core` + `hayate-scene-renderer-vello` build and
-//! present a frame on Android. Stage B drives an interactive element tree: a
-//! demo button (`scene_demo`) is lowered to a `SceneGraph` and rendered each
-//! frame, and touch `MotionEvent`s flow through `translate_touch` into the
-//! coordinate-based pointer API so a tap flips the button's `:active` color
-//! on screen. Stage C (ADR-0094) begins the IME bridge: tapping the demo
-//! text-input shows the soft keyboard, and GameTextInput's absolute buffer is
-//! diffed by `ime_input` into core edit calls. AccessKit/clipboard are next.
+//! `hayate-core` + `hayate-scene-renderer-vello` を Android 上で動かし、デモ
+//! ボタン（`scene_demo`）を `SceneGraph` に降ろして毎フレーム描画する。タッチ
+//! `MotionEvent` は `translate_touch` 経由で座標ベースのポインタ API に流れ、
+//! タップでボタンの `:active` 色が切り替わる。IME ブリッジ（ADR-0094）では
+//! GameTextInput の絶対バッファを `ime_input` で差分して core の編集呼び出しに
+//! 変換する。
 //!
-//! This crate is a no-op on non-Android targets so it can stay in the
-//! workspace without affecting `cargo build`/`cargo check` on the host; the
-//! platform-independent seams (`surface_lifecycle`, `touch_input`,
-//! `scene_demo`, `ime_input`) still compile and are unit-tested there.
+//! 非 Android ターゲットでは no-op となり、ホストの `cargo build`/`cargo check`
+//! に影響せずワークスペースに置ける。プラットフォーム非依存のシーム
+//! （`surface_lifecycle`・`touch_input`・`scene_demo`・`ime_input`）はホスト上でも
+//! コンパイルされ単体テストされる。
 
 mod ime_input;
 mod scene_demo;
@@ -24,7 +22,7 @@ mod app;
 #[cfg(target_os = "android")]
 mod ime_bridge;
 
-/// RGBA clear color for the stage A on-device smoke test (issue #195).
+/// 実機スモークテスト用の RGBA クリアカラー。
 pub const STAGE_A_CLEAR_COLOR: [f32; 4] = [0.1, 0.1, 0.12, 1.0];
 
 #[cfg(target_os = "android")]

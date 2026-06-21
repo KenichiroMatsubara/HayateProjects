@@ -1,20 +1,16 @@
-/// IME composition underline weight for one clause (ADR-0102). Chromium draws
-/// the clause being converted with a thick underline and the surrounding,
-/// already-determined clauses with a thin one; this mirrors EditContext
-/// `textformatupdate`'s underline thickness styles.
+/// IME 変換中の文節1つ分の下線の太さ（ADR-0102）。Chromium は変換中の文節を太線、
+/// 確定済みの周辺文節を細線で描く。EditContext `textformatupdate` の下線太さスタイルに対応する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CompositionUnderline {
-    /// Pre-conversion text or a non-active clause — a thin underline.
+    /// 変換前テキストまたは非アクティブ文節 — 細い下線。
     Thin,
-    /// The clause currently being converted (the IME's active segment) — a thick
-    /// underline.
+    /// 変換中の文節（IME のアクティブセグメント）— 太い下線。
     Thick,
 }
 
-/// One composition clause: a byte sub-range of the preedit text and its
-/// underline weight. Offsets are relative to the preedit string (0 = its first
-/// byte), matching how EditContext reports `textformatupdate` ranges once the
-/// committed-content prefix is subtracted by the adapter.
+/// 変換文節1つ: preedit テキスト内のバイト範囲と下線の太さ。オフセットは preedit
+/// 文字列基準（0 = 先頭バイト）で、アダプタが確定済み接頭辞を差し引いた後の
+/// EditContext `textformatupdate` の範囲表現に一致する。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CompositionClause {
     pub start: usize,
@@ -23,10 +19,10 @@ pub struct CompositionClause {
 }
 
 impl CompositionClause {
-    /// Decode the wire form carried across the EditContext `textformatupdate`
-    /// boundary (ADR-0102): a flat `[start, end, weight, …]` triple stream where
-    /// `weight == 0` is [`CompositionUnderline::Thin`] and any non-zero value is
-    /// [`CompositionUnderline::Thick`]. A trailing partial triple is ignored.
+    /// EditContext `textformatupdate` 境界を渡るワイヤ形式をデコードする（ADR-0102）。
+    /// `[start, end, weight, …]` の3つ組フラットストリームで、`weight == 0` が
+    /// [`CompositionUnderline::Thin`]、非0が [`CompositionUnderline::Thick`]。
+    /// 末尾の不完全な3つ組は無視する。
     pub fn from_wire(formats: &[u32]) -> Vec<CompositionClause> {
         formats
             .chunks_exact(3)
@@ -50,22 +46,20 @@ impl CompositionClause {
     }
 }
 
-/// In-progress IME composition (ADR-0102): the preedit text plus the clause
-/// format ranges fed from EditContext `textformatupdate`. With no clauses, the
-/// whole preedit renders as a single thin-underlined run — the pre-conversion
-/// look before the IME has split the reading into segments.
+/// 変換中の IME 入力（ADR-0102）。preedit テキストと、EditContext `textformatupdate`
+/// から渡される文節フォーマット範囲を持つ。文節がない場合、preedit 全体が単一の
+/// 細線下線として描画される（IME が読みをセグメント分割する前の変換前の見た目）。
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Preedit {
     pub text: String,
     pub clauses: Vec<CompositionClause>,
 }
 
-/// Direction of an edit motion. `Backward`/`Forward` step horizontally along the
-/// text run; `Up`/`Down` move vertically between display lines (ADR-0103). A
-/// vertical motion needs Parley line geometry, so the `ElementTree` editing seam
-/// resolves it for multi-line fields; a single-line field has no rows, so the
-/// pure `EditState` seam treats `Up`/`Down` as jumps to the field start/end
-/// (Chromium `<input>`: ↑ = 先頭, ↓ = 末尾).
+/// 編集モーションの方向。`Backward`/`Forward` はテキスト上を水平に進み、`Up`/`Down`
+/// は表示行間を垂直に移動する（ADR-0103）。垂直モーションは Parley の行ジオメトリを
+/// 必要とするため複数行フィールドでは `ElementTree` 編集シームが解決する。単一行
+/// フィールドには行がないので、純粋な `EditState` シームは `Up`/`Down` をフィールド
+/// 先頭/末尾へのジャンプとして扱う（Chromium `<input>`: ↑ = 先頭, ↓ = 末尾）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
     Backward,
@@ -75,48 +69,43 @@ pub enum Direction {
 }
 
 impl Direction {
-    /// Whether this is a vertical (line-to-line) motion rather than a horizontal
-    /// step. Vertical motions keep the sticky goal column; horizontal ones reset
-    /// it.
+    /// 水平ステップではなく垂直（行間）モーションかどうか。垂直モーションは
+    /// sticky な目標カラムを保持し、水平モーションはリセットする。
     fn is_vertical(self) -> bool {
         matches!(self, Direction::Up | Direction::Down)
     }
 }
 
-/// Granularity of an edit motion (ADR-0103). The closed vocabulary grows as
-/// later slices add line/document boundaries and vertical motion; this tracer
-/// covers the horizontal grapheme and word steps reused from `selection.rs`.
+/// 編集モーションの粒度（ADR-0103）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Granularity {
     Grapheme,
     Word,
-    /// The boundary of the current display line — Home/End (or macOS Cmd+←/→).
-    /// In single-line (`<input>`) semantics the line *is* the whole field, so
-    /// this resolves to the field start/end; multi-line display-line ends are #7.
+    /// 現在の表示行の境界 — Home/End（macOS では Cmd+←/→）。単一行（`<input>`）
+    /// セマンティクスでは行 = フィールド全体なので、フィールド先頭/末尾に解決される。
     LineBoundary,
-    /// The boundary of the whole field — Ctrl+Home/End (or macOS Cmd+↑/↓).
+    /// フィールド全体の境界 — Ctrl+Home/End（macOS では Cmd+↑/↓）。
     DocBoundary,
 }
 
 impl Granularity {
-    /// Whether this granularity steps to an absolute field/line boundary rather
-    /// than one grapheme/word relative to the caret. Boundary motions (Home/End)
-    /// jump to the boundary even over a selection, unlike the arrow keys.
+    /// この粒度がキャレット相対の1グラフェム/単語ではなく、絶対的なフィールド/行
+    /// 境界へステップするかどうか。境界モーション（Home/End）は矢印キーと違い、選択が
+    /// あっても境界へジャンプする。
     fn is_boundary(self) -> bool {
         matches!(self, Granularity::LineBoundary | Granularity::DocBoundary)
     }
 }
 
-/// The closed edit-command vocabulary applied through the single editing seam
-/// [`EditState::apply`] (ADR-0103, ADR-0071). `Move` repositions the caret;
-/// `Extend` grows or shrinks the selection by moving the focus while the anchor
-/// stays fixed; `Delete` removes one `granularity` step (or the selected range)
-/// in `direction`. `SelectAll` selects the whole field. `Copy` / `Cut` / `Paste`
-/// are clipboard members of the vocabulary, but the system clipboard is a
-/// Platform Adapter responsibility (ADR-0097): `EditState` holds no clipboard, so
-/// [`EditState::apply`] consumes only the pure-state members (`Move` / `Extend` /
-/// `Delete` / `SelectAll`) and reports the clipboard members unconsumed, leaving
-/// their read/write to the `ElementTree` editing seam that owns the `Clipboard`.
+/// 単一の編集シーム [`EditState::apply`] を通して適用される編集コマンドの語彙
+/// （ADR-0103, ADR-0071）。`Move` はキャレットを移動。`Extend` はアンカーを固定した
+/// まま focus を動かして選択を伸縮。`Delete` は `direction` 方向に `granularity` 1ステップ
+/// 分（または選択範囲）を削除。`SelectAll` はフィールド全体を選択。`Copy` / `Cut` /
+/// `Paste` はクリップボードメンバーだが、システムクリップボードは Platform Adapter の
+/// 責務（ADR-0097）。`EditState` はクリップボードを持たないため、[`EditState::apply`] は
+/// 純粋状態メンバー（`Move` / `Extend` / `Delete` / `SelectAll`）のみ消費し、クリップ
+/// ボードメンバーは未消費として報告し、その読み書きを `Clipboard` を所有する
+/// `ElementTree` 編集シームに委ねる。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditIntent {
     Move {
@@ -131,36 +120,33 @@ pub enum EditIntent {
         granularity: Granularity,
         direction: Direction,
     },
-    /// Select the whole field content (Ctrl/Cmd+A).
+    /// フィールド内容全体を選択（Ctrl/Cmd+A）。
     SelectAll,
-    /// Copy the selection to the system clipboard (Ctrl/Cmd+C). No state change.
+    /// 選択をシステムクリップボードへコピー（Ctrl/Cmd+C）。状態変化なし。
     Copy,
-    /// Cut the selection: copy it to the clipboard, then delete it (Ctrl/Cmd+X).
+    /// 選択を切り取り: クリップボードへコピーしてから削除（Ctrl/Cmd+X）。
     Cut,
-    /// Replace the selection with the clipboard text (Ctrl/Cmd+V).
+    /// 選択をクリップボードのテキストで置換（Ctrl/Cmd+V）。
     Paste,
 }
 
-/// Text-input edit model (ADR-0069). Owned by TextInput elements only.
+/// テキスト入力の編集モデル（ADR-0069）。TextInput 要素のみが所有する。
 ///
-/// The caret is the degenerate form of the unified Selection model (ADR-0097):
-/// `selection_anchor` and `cursor_byte_index` are the anchor/focus byte offsets
-/// of a range within `text_content`. When they coincide the selection is
-/// collapsed to a single caret, which is the common editing case.
+/// キャレットは統一 Selection モデル（ADR-0097）の縮退形。`selection_anchor` と
+/// `cursor_byte_index` は `text_content` 内範囲のアンカー/focus バイトオフセットで、
+/// 両者が一致すると選択は単一キャレットに縮退する（編集の一般的なケース）。
 #[derive(Clone, Debug, Default)]
 pub struct EditState {
     pub text_content: String,
     pub preedit: Option<Preedit>,
-    /// The selection's focus (the moving end / caret position).
+    /// 選択の focus（動く端 / キャレット位置）。
     pub cursor_byte_index: usize,
-    /// The selection's anchor (the fixed end). Equal to `cursor_byte_index` for
-    /// a collapsed caret.
+    /// 選択のアンカー（固定端）。縮退キャレットでは `cursor_byte_index` と等しい。
     pub selection_anchor: usize,
-    /// Sticky goal column for vertical (↑/↓) motion: the content-local x the
-    /// caret aims for as it crosses display lines, so passing through a short
-    /// line does not lose the original column (ADR-0103). `None` until a vertical
-    /// motion establishes it; any horizontal motion clears it. Set in
-    /// content-local pixels by the `ElementTree` seam, which owns Parley geometry.
+    /// 垂直（↑/↓）モーション用の sticky な目標カラム。表示行を跨ぐ際にキャレットが
+    /// 狙うコンテンツローカル x で、短い行を通っても元のカラムを失わない（ADR-0103）。
+    /// 垂直モーションが確立するまで `None`、水平モーションがクリアする。Parley
+    /// ジオメトリを所有する `ElementTree` シームがコンテンツローカルピクセルで設定する。
     pub desired_x: Option<f32>,
 }
 
@@ -172,11 +158,10 @@ impl EditState {
         }
     }
 
-    /// The active composition's underline ranges in **display-text byte offsets**
-    /// (i.e. already shifted past the committed `text_content` prefix), each with
-    /// its weight (ADR-0102). Empty when no composition is active. With no clause
-    /// formats the whole preedit is one thin-underlined range — the look before
-    /// the IME splits the reading into segments.
+    /// アクティブな変換の下線範囲を**表示テキストのバイトオフセット**（確定済み
+    /// `text_content` 接頭辞分シフト済み）で、それぞれの太さ付きで返す（ADR-0102）。
+    /// 変換が非アクティブなら空。文節フォーマットがない場合は preedit 全体が単一の
+    /// 細線範囲（IME が読みをセグメント分割する前の見た目）。
     pub fn composition_underlines(&self) -> Vec<(usize, usize, CompositionUnderline)> {
         let Some(preedit) = &self.preedit else {
             return Vec::new();
@@ -195,13 +180,13 @@ impl EditState {
             .collect()
     }
 
-    /// True when the selection is collapsed to a caret (anchor == focus).
+    /// 選択がキャレットに縮退している（anchor == focus）とき true。
     pub fn is_caret(&self) -> bool {
         self.selection_anchor == self.cursor_byte_index
     }
 
-    /// The selected byte range `(start, end)` normalized to text order, or `None`
-    /// when the selection is collapsed (nothing is selected).
+    /// 選択バイト範囲 `(start, end)` をテキスト順に正規化して返す。選択が縮退
+    /// （何も選択されていない）なら `None`。
     pub fn selection_range(&self) -> Option<(usize, usize)> {
         if self.is_caret() {
             None
@@ -212,30 +197,29 @@ impl EditState {
         }
     }
 
-    /// Place a (possibly empty) selection with `anchor`/`focus` byte offsets,
-    /// each clamped into the current text.
+    /// `anchor`/`focus` バイトオフセット（各々現在のテキストにクランプ）で
+    /// （空でもよい）選択を設定する。
     pub fn set_selection(&mut self, anchor: usize, focus: usize) {
         let len = self.text_content.len();
         self.selection_anchor = anchor.min(len);
         self.cursor_byte_index = focus.min(len);
     }
 
-    /// Move the focus (caret) to `offset`, keeping the anchor fixed — the
-    /// Shift+Arrow / drag extension primitive.
+    /// アンカーを固定したまま focus（キャレット）を `offset` へ移動する
+    /// — Shift+矢印 / ドラッグ拡張のプリミティブ。
     pub fn move_focus(&mut self, offset: usize) {
         self.cursor_byte_index = offset.min(self.text_content.len());
     }
 
-    /// Collapse the selection to a caret at the current focus, discarding any
-    /// selected range (used to enforce the single-active rule, ADR-0097).
+    /// 選択範囲を破棄し、現在の focus でキャレットに縮退する
+    /// （single-active ルールの強制に使う、ADR-0097）。
     pub fn collapse(&mut self) {
         self.selection_anchor = self.cursor_byte_index;
     }
 
-    /// Collapse the selection to a caret at `offset`. This is the caret-reposition
-    /// choke point for edits (insert / delete / set / commit) and horizontal
-    /// moves, so it also drops the sticky vertical goal column — only a vertical
-    /// motion (which repositions via `move_focus` / `set_selection`) keeps it.
+    /// 選択を `offset` のキャレットに縮退する。編集（insert / delete / set / commit）と
+    /// 水平移動でのキャレット再配置の要所なので、sticky な垂直目標カラムも破棄する
+    /// — `move_focus` / `set_selection` で再配置する垂直モーションのみが保持する。
     fn collapse_to(&mut self, offset: usize) {
         let o = offset.min(self.text_content.len());
         self.cursor_byte_index = o;
@@ -243,8 +227,8 @@ impl EditState {
         self.desired_x = None;
     }
 
-    /// Delete the selected range when non-empty, collapsing the caret to its
-    /// start (replace-on-type primitive). Returns whether anything was removed.
+    /// 選択が非空なら削除し、キャレットをその先頭に縮退する（replace-on-type
+    /// プリミティブ）。何か削除されたかを返す。
     fn delete_selection(&mut self) -> bool {
         if let Some((start, end)) = self.selection_range() {
             self.text_content.replace_range(start..end, "");
@@ -273,7 +257,7 @@ impl EditState {
         if text.is_empty() {
             return;
         }
-        // Typing over a range replaces it (replace-on-type, ADR-0097).
+        // 範囲上での入力は置換になる（replace-on-type, ADR-0097）。
         self.delete_selection();
         let byte = self.cursor_byte_index.min(self.text_content.len());
         self.text_content.insert_str(byte, text);
@@ -281,7 +265,7 @@ impl EditState {
     }
 
     pub fn backspace(&mut self) -> bool {
-        // A non-empty selection is deleted whole, instead of one trailing char.
+        // 非空の選択は末尾1文字ではなく範囲ごと削除する。
         if self.delete_selection() {
             return true;
         }
@@ -303,9 +287,8 @@ impl EditState {
         self.set_preedit_with_clauses(preedit, Vec::new());
     }
 
-    /// Set the preedit text together with its composition clause format ranges
-    /// (ADR-0102). Clearing the text (empty `preedit`) drops the composition and
-    /// any clauses with it.
+    /// preedit テキストを変換文節のフォーマット範囲と共に設定する（ADR-0102）。
+    /// テキストを空にすると変換と文節ごと破棄される。
     pub fn set_preedit_with_clauses(
         &mut self,
         preedit: &str,
@@ -328,15 +311,14 @@ impl EditState {
         }
     }
 
-    /// IME composition finalized: commit via the single preedit→content path.
+    /// IME 変換確定: 単一の preedit→content 経路でコミットする。
     pub fn finish_composition(&mut self, committed: &str) {
         self.set_preedit(committed);
         self.commit_preedit();
     }
 
-    /// Cut: return the selected text and delete it (collapsing to a caret at the
-    /// start of the removed range), or `None` when the selection is collapsed —
-    /// the Cut toolbar action (ADR-0097, #272).
+    /// 切り取り: 選択テキストを返して削除し（削除範囲の先頭でキャレットに縮退）、
+    /// 選択が縮退しているなら `None` を返す（ADR-0097）。
     pub fn cut(&mut self) -> Option<String> {
         let (start, end) = self.selection_range()?;
         let removed = self.text_content[start..end].to_string();
@@ -344,10 +326,9 @@ impl EditState {
         Some(removed)
     }
 
-    /// Replace the entire committed content with `value`, finalizing any active
-    /// preedit first so an in-progress IME composition never lingers across the
-    /// replacement (same preedit-confirmation integrity as `paste`). Returns
-    /// whether the displayed text actually changed.
+    /// 確定済み内容全体を `value` で置換する。先にアクティブな preedit を確定し、
+    /// 変換中の IME 入力が置換を跨いで残らないようにする（`paste` と同じ
+    /// preedit 確定の整合性）。表示テキストが実際に変化したかを返す。
     pub fn set_value(&mut self, value: &str) -> bool {
         let changed = self.display_text() != value;
         self.commit_preedit();
@@ -360,19 +341,18 @@ impl EditState {
             return false;
         }
         self.commit_preedit();
-        // Pasting over a range replaces it (replace-on-type, ADR-0097).
+        // 範囲上への貼り付けは置換になる（replace-on-type, ADR-0097）。
         self.insert(text);
         true
     }
 
-    /// The byte offset one `granularity` step from `offset` in `direction`,
-    /// reusing the shared grapheme/word steppers (`selection.rs`).
+    /// 共有のグラフェム/単語ステッパ（`selection.rs`）を再利用し、`offset` から
+    /// `direction` 方向へ `granularity` 1ステップ分のバイトオフセットを返す。
     fn step(&self, granularity: Granularity, direction: Direction, offset: usize) -> usize {
         use crate::element::selection::{next_grapheme, next_word, prev_grapheme, prev_word};
-        // Single-line vertical semantics (#368): a field with no rows treats ↑ as
-        // a jump to the field start and ↓ to the field end (Chromium `<input>`).
-        // Multi-line vertical motion needs Parley geometry and is resolved one
-        // layer up, on the `ElementTree` editing seam.
+        // 単一行の垂直セマンティクス: 行のないフィールドは ↑ をフィールド先頭、
+        // ↓ を末尾へのジャンプとして扱う（Chromium `<input>`）。複数行の垂直モーション
+        // は Parley ジオメトリを必要とし、`ElementTree` 編集シームで解決される。
         match direction {
             Direction::Up => return 0,
             Direction::Down => return self.text_content.len(),
@@ -383,33 +363,29 @@ impl EditState {
             (Granularity::Grapheme, Direction::Forward) => next_grapheme(&self.text_content, offset),
             (Granularity::Word, Direction::Backward) => prev_word(&self.text_content, offset),
             (Granularity::Word, Direction::Forward) => next_word(&self.text_content, offset),
-            // Single-line semantics (#360): the line and the document both span
-            // the whole field, so either boundary collapses to the field ends.
-            // Multi-line display-line boundaries are resolved on the tree seam.
+            // 単一行セマンティクス: 行も文書もフィールド全体を覆うので、どちらの
+            // 境界もフィールド端に縮退する。複数行の表示行境界はツリーシームで解決する。
             (Granularity::LineBoundary | Granularity::DocBoundary, Direction::Backward) => 0,
             (Granularity::LineBoundary | Granularity::DocBoundary, Direction::Forward) => {
                 self.text_content.len()
             }
-            // Vertical directions returned above.
+            // 垂直方向は上で返済み。
             (_, Direction::Up | Direction::Down) => unreachable!("vertical handled above"),
         }
     }
 
-    /// The single editing seam (ADR-0103): apply one closed-vocabulary
-    /// [`EditIntent`] and report whether it was consumed.
+    /// 単一の編集シーム（ADR-0103）。1つの [`EditIntent`] を適用し、消費されたかを返す。
     pub fn apply(&mut self, intent: EditIntent) -> bool {
         match intent {
             EditIntent::Move {
                 granularity,
                 direction,
             } => {
-                // Both branches collapse via `collapse_to`, which drops the sticky
-                // goal column — a single-line ↑/↓ has no rows to keep it for.
-                // Chromium: a plain arrow over a selection collapses to the
-                // directional edge without stepping; over a caret it steps one
-                // unit and stays collapsed. A boundary motion (Home/End) or a
-                // vertical jump ignores the selection and goes straight to the
-                // target (single-line ↑ = field start, ↓ = field end).
+                // どちらの分岐も `collapse_to` で縮退し、sticky な目標カラムを破棄する
+                // （単一行 ↑/↓ には保持すべき行がない）。Chromium: 選択上の素の矢印は
+                // ステップせず方向側の端へ縮退、キャレット上では1単位ステップして縮退を
+                // 保つ。境界モーション（Home/End）や垂直ジャンプは選択を無視してターゲットへ
+                // 直行する（単一行 ↑ = フィールド先頭、↓ = 末尾）。
                 match self.selection_range() {
                     Some((start, end)) if !granularity.is_boundary() && !direction.is_vertical() => {
                         let edge = match direction {
@@ -441,16 +417,15 @@ impl EditState {
                 granularity,
                 direction,
             } => {
-                // A non-empty selection is removed whole (replace-on-type
-                // consistency), collapsing to its start; otherwise one
-                // granularity step in `direction` from the caret is removed.
+                // 非空の選択は範囲ごと削除し（replace-on-type の一貫性）先頭に縮退する。
+                // それ以外はキャレットから `direction` 方向へ granularity 1ステップ分削除する。
                 if self.delete_selection() {
                     return true;
                 }
                 let from = self.cursor_byte_index;
                 let to = self.step(granularity, direction, from);
                 if from == to {
-                    return false; // at the text boundary — nothing to delete
+                    return false; // テキスト境界 — 削除対象なし
                 }
                 let (start, end) = (from.min(to), from.max(to));
                 self.text_content.replace_range(start..end, "");
@@ -458,29 +433,28 @@ impl EditState {
                 true
             }
             EditIntent::SelectAll => {
-                // Anchor at the start, focus at the end — the whole field becomes
-                // the selected range (collapsed at 0 when the field is empty).
+                // アンカーを先頭、focus を末尾に — フィールド全体が選択範囲になる
+                // （空フィールドでは 0 で縮退）。
                 self.set_selection(0, self.text_content.len());
                 true
             }
-            // Clipboard members cross the Platform Adapter boundary (ADR-0097):
-            // EditState owns no clipboard, so it cannot read the selection out
-            // (Copy), capture-then-delete it (Cut), or pull text in (Paste). The
-            // `ElementTree` seam that holds the `Clipboard` resolves these; here
-            // they are reported unconsumed so this layer never half-applies them.
+            // クリップボードメンバーは Platform Adapter 境界を跨ぐ（ADR-0097）。
+            // EditState はクリップボードを持たないので、選択の読み出し（Copy）、
+            // 取得後削除（Cut）、テキストの取り込み（Paste）はできない。`Clipboard` を
+            // 持つ `ElementTree` シームが解決する。ここではこの層が中途半端に適用しない
+            // よう未消費として報告する。
             EditIntent::Copy | EditIntent::Cut | EditIntent::Paste => false,
         }
     }
 
     pub fn apply_key_down(&mut self, key: &str) -> bool {
-        // Char editing (Backspace/Delete) and caret motion are interpreted as
-        // EditIntents upstream (ADR-0103); only Enter remains a raw key here.
+        // 文字編集（Backspace/Delete）やキャレット移動は上流で EditIntent に解釈される
+        // （ADR-0103）。ここに生のキーとして残るのは Enter のみ。
         match key {
             "Enter" => {
-                // Insert at the caret (replacing any selection), not append — a
-                // newline behaves like any other typed character (#362). Whether
-                // Enter reaches here at all is gated upstream by the element's
-                // `multiline` property; a single-line field treats it as submit.
+                // 末尾追加ではなくキャレット位置に挿入（選択があれば置換）。改行は
+                // 他の入力文字と同様に振る舞う。そもそも Enter がここに届くかは要素の
+                // `multiline` プロパティで上流ゲートされ、単一行フィールドでは submit 扱い。
                 self.insert("\n");
                 true
             }
@@ -495,11 +469,11 @@ mod tests {
 
     #[test]
     fn enter_inserts_a_newline_at_the_caret_not_at_the_end() {
-        // The Enter key inserts `\n` at the caret position, like any other typed
-        // character — not appended to the end (#362, fixing the old append bug).
+        // Enter は他の入力文字と同様にキャレット位置へ `\n` を挿入する
+        // — 末尾に追加しない。
         let mut edit = EditState::default();
-        edit.set("ab"); // caret collapsed at end (2)
-        edit.set_selection(1, 1); // caret between 'a' and 'b'
+        edit.set("ab"); // キャレットは末尾(2)で縮退
+        edit.set_selection(1, 1); // 'a' と 'b' の間にキャレット
         assert!(edit.apply_key_down("Enter"));
         assert_eq!(edit.text_content, "a\nb", "newline lands at the caret");
         assert_eq!(edit.cursor_byte_index, 2, "caret sits after the inserted newline");
@@ -508,11 +482,10 @@ mod tests {
 
     #[test]
     fn enter_replaces_the_selected_range() {
-        // replace-on-type: pressing Enter over a selection drops the range and
-        // inserts the newline in its place (#362).
+        // replace-on-type: 選択上で Enter を押すと範囲を破棄し、その位置に改行を挿入する。
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(1, 4); // "ell" selected
+        edit.set_selection(1, 4); // "ell" を選択
         assert!(edit.apply_key_down("Enter"));
         assert_eq!(edit.text_content, "h\no");
         assert_eq!(edit.cursor_byte_index, 2, "caret after the newline");
@@ -537,11 +510,11 @@ mod tests {
 
     #[test]
     fn select_all_spans_the_whole_content() {
-        // SelectAll (Ctrl/Cmd+A) is a pure-state member of the editing seam: it
-        // anchors at the field start and moves the focus to the end, so the whole
-        // content becomes the selected range regardless of the prior caret.
+        // SelectAll（Ctrl/Cmd+A）は編集シームの純粋状態メンバー。フィールド先頭に
+        // アンカーし focus を末尾へ動かすので、直前のキャレットに関係なく内容全体が
+        // 選択範囲になる。
         let mut edit = EditState::default();
-        edit.set("héllo"); // caret collapsed at end
+        edit.set("héllo"); // キャレットは末尾で縮退
         edit.set_selection(2, 2);
 
         assert!(edit.apply(EditIntent::SelectAll));
@@ -555,7 +528,7 @@ mod tests {
 
     #[test]
     fn select_all_on_empty_content_stays_collapsed() {
-        // Nothing to select: the range collapses at 0 (no spurious selection).
+        // 選択対象なし: 範囲は 0 で縮退する（誤った選択を作らない）。
         let mut edit = EditState::default();
         assert!(edit.apply(EditIntent::SelectAll));
         assert!(edit.is_caret());
@@ -564,11 +537,11 @@ mod tests {
 
     #[test]
     fn move_to_line_boundary_jumps_to_field_start_and_end() {
-        // Single-line semantics (#360): line end = field end. Home (Backward)
-        // collapses the caret to 0, End (Forward) to the content length.
+        // 単一行セマンティクス: 行末 = フィールド末尾。Home（Backward）はキャレットを
+        // 0 へ、End（Forward）は内容長へ縮退する。
         let mut edit = EditState::default();
-        edit.set("hello"); // caret at end (5)
-        edit.set_selection(2, 2); // caret in the middle
+        edit.set("hello"); // キャレットは末尾(5)
+        edit.set_selection(2, 2); // キャレットは中央
 
         assert!(edit.apply(EditIntent::Move {
             granularity: Granularity::LineBoundary,
@@ -601,12 +574,12 @@ mod tests {
 
     #[test]
     fn delete_over_a_selection_removes_the_range_and_collapses_to_its_start() {
-        // Both Backspace (Backward) and Delete (Forward) drop the whole selected
-        // range, never just one adjacent char, and collapse to the range start.
+        // Backspace（Backward）も Delete（Forward）も、隣接1文字ではなく選択範囲全体を
+        // 削除し、範囲先頭に縮退する。
         for direction in [Direction::Backward, Direction::Forward] {
             let mut edit = EditState::default();
             edit.set("hello");
-            edit.set_selection(1, 4); // "ell" selected
+            edit.set_selection(1, 4); // "ell" を選択
             assert!(edit.apply(delete_grapheme(direction)));
             assert_eq!(edit.text_content, "ho", "{direction:?}: the range is gone");
             assert_eq!(edit.cursor_byte_index, 1, "{direction:?}: collapses to range start");
@@ -617,8 +590,8 @@ mod tests {
     #[test]
     fn delete_forward_grapheme_removes_the_char_after_the_caret() {
         let mut edit = EditState::default();
-        edit.set("aあb"); // caret at end (5)
-        edit.set_selection(0, 0); // caret at start
+        edit.set("aあb"); // キャレットは末尾(5)
+        edit.set_selection(0, 0); // キャレットは先頭
         assert!(edit.apply(delete_grapheme(Direction::Forward)));
         assert_eq!(edit.text_content, "あb", "removes the leading 'a'");
         assert_eq!(edit.cursor_byte_index, 0, "caret stays at the deletion point");
@@ -631,10 +604,10 @@ mod tests {
     #[test]
     fn delete_at_the_text_boundary_is_a_no_op() {
         let mut edit = EditState::default();
-        edit.set("hi"); // caret at end (2)
+        edit.set("hi"); // キャレットは末尾(2)
         assert!(!edit.apply(delete_grapheme(Direction::Forward)), "nothing past the end");
         assert_eq!(edit.text_content, "hi");
-        edit.set_selection(0, 0); // caret at start
+        edit.set_selection(0, 0); // キャレットは先頭
         assert!(!edit.apply(delete_grapheme(Direction::Backward)), "nothing before the start");
         assert_eq!(edit.text_content, "hi");
     }
@@ -642,7 +615,7 @@ mod tests {
     #[test]
     fn delete_backward_grapheme_removes_the_char_before_the_caret() {
         let mut edit = EditState::default();
-        edit.set("aあb"); // caret at end (5)
+        edit.set("aあb"); // キャレットは末尾(5)
         assert!(edit.apply(delete_grapheme(Direction::Backward)));
         assert_eq!(edit.text_content, "aあ", "removes the trailing 'b'");
         assert_eq!(edit.cursor_byte_index, 4, "caret lands where 'b' began");
@@ -655,8 +628,8 @@ mod tests {
     #[test]
     fn move_forward_grapheme_steps_the_caret_one_char() {
         let mut edit = EditState::default();
-        edit.set("aあb"); // caret at end (5)
-        edit.set_selection(0, 0); // caret at start
+        edit.set("aあb"); // キャレットは末尾(5)
+        edit.set_selection(0, 0); // キャレットは先頭
         assert!(edit.apply(move_grapheme(Direction::Forward)));
         assert_eq!(edit.cursor_byte_index, 1, "advances past 'a'");
         assert!(edit.apply(move_grapheme(Direction::Forward)));
@@ -666,12 +639,12 @@ mod tests {
 
     #[test]
     fn single_line_vertical_moves_to_field_start_and_end() {
-        // Chromium `<input>` (#368): with no rows, ↑ jumps to the field start and
-        // ↓ to the field end. EditState owns this pure single-line semantics; the
-        // geometry-driven multi-line case is resolved on the ElementTree seam.
+        // Chromium `<input>`: 行がないと ↑ はフィールド先頭、↓ は末尾へジャンプする。
+        // EditState がこの純粋な単一行セマンティクスを持ち、ジオメトリ駆動の複数行
+        // ケースは ElementTree シームで解決する。
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(2, 2); // caret in the middle
+        edit.set_selection(2, 2); // キャレットは中央
 
         assert!(edit.apply(EditIntent::Move {
             granularity: Granularity::Grapheme,
@@ -690,11 +663,11 @@ mod tests {
 
     #[test]
     fn single_line_vertical_jumps_over_a_selection_to_the_field_end() {
-        // Unlike a horizontal arrow (which collapses to the selection edge), ↑/↓
-        // ignore the selection and jump straight to the field boundary.
+        // 水平矢印（選択端へ縮退する）と違い、↑/↓ は選択を無視してフィールド境界へ
+        // 直行する。
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(1, 4); // "ell" selected, focus at 4
+        edit.set_selection(1, 4); // "ell" を選択、focus は 4
 
         assert!(edit.apply(EditIntent::Move {
             granularity: Granularity::Grapheme,
@@ -706,8 +679,8 @@ mod tests {
 
     #[test]
     fn shift_vertical_extends_to_the_field_ends_in_a_single_line() {
-        // Shift+↑/↓ in a single-line field extends the selection to the field
-        // start/end, anchor fixed (the Extend counterpart of the Move jumps).
+        // 単一行フィールドでの Shift+↑/↓ は、アンカーを固定したまま選択をフィールド
+        // 先頭/末尾へ拡張する（Move ジャンプの Extend 版）。
         let mut edit = EditState::default();
         edit.set("hello");
         edit.set_selection(2, 2);
@@ -723,9 +696,8 @@ mod tests {
 
     #[test]
     fn a_horizontal_move_clears_the_sticky_goal_column() {
-        // The goal column is kept across vertical motion but reset the moment the
-        // caret moves horizontally (ADR-0103) — otherwise a later ↑/↓ would snap
-        // back to a stale column.
+        // 目標カラムは垂直モーション間は保持されるが、キャレットが水平移動した瞬間に
+        // リセットされる（ADR-0103）。さもないと後の ↑/↓ が古いカラムに戻ってしまう。
         let mut edit = EditState::default();
         edit.set("hello");
         edit.desired_x = Some(42.0);
@@ -735,8 +707,8 @@ mod tests {
 
     #[test]
     fn editing_clears_the_sticky_goal_column() {
-        // Typing repositions the caret, so the next ↑/↓ must aim from the new
-        // column, not a stale one — inserting clears the goal column.
+        // 入力はキャレットを再配置するので、次の ↑/↓ は古いカラムではなく新しい
+        // カラムから狙う必要がある。挿入は目標カラムをクリアする。
         let mut edit = EditState::default();
         edit.set("hello");
         edit.set_selection(2, 2);
@@ -747,8 +719,8 @@ mod tests {
 
     #[test]
     fn move_to_doc_boundary_jumps_to_field_start_and_end() {
-        // Ctrl+Home/End. In single-line semantics the document boundary equals
-        // the line boundary, so both collapse to the field ends (#360).
+        // Ctrl+Home/End。単一行セマンティクスでは文書境界 = 行境界なので、どちらも
+        // フィールド端に縮退する。
         let mut edit = EditState::default();
         edit.set("hello world");
         edit.set_selection(4, 4);
@@ -769,11 +741,11 @@ mod tests {
 
     #[test]
     fn move_to_boundary_over_a_selection_jumps_to_the_boundary_not_the_edge() {
-        // Unlike a plain arrow (which collapses to the selection edge), Home/End
-        // over a selection jumps to the field boundary and collapses there.
+        // 素の矢印（選択端へ縮退する）と違い、選択上の Home/End はフィールド境界へ
+        // ジャンプしてそこで縮退する。
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(1, 4); // "ell" selected, focus at 4
+        edit.set_selection(1, 4); // "ell" を選択、focus は 4
 
         assert!(edit.apply(EditIntent::Move {
             granularity: Granularity::LineBoundary,
@@ -789,7 +761,7 @@ mod tests {
     #[test]
     fn move_backward_grapheme_steps_the_caret_left() {
         let mut edit = EditState::default();
-        edit.set("aあb"); // caret at end (5)
+        edit.set("aあb"); // キャレットは末尾(5)
         assert!(edit.apply(move_grapheme(Direction::Backward)));
         assert_eq!(edit.cursor_byte_index, 4, "retreats past 'b'");
         assert!(edit.is_caret());
@@ -799,7 +771,7 @@ mod tests {
     fn move_forward_over_a_selection_collapses_to_its_right_edge() {
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(1, 4); // "ell" selected, focus at 4
+        edit.set_selection(1, 4); // "ell" を選択、focus は 4
         assert!(edit.apply(move_grapheme(Direction::Forward)));
         assert_eq!(
             edit.cursor_byte_index, 4,
@@ -812,7 +784,7 @@ mod tests {
     fn move_backward_over_a_selection_collapses_to_its_left_edge() {
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(4, 1); // "ell" selected, focus at 1 (drag leftwards)
+        edit.set_selection(4, 1); // "ell" を選択、focus は 1（左方向ドラッグ）
         assert!(edit.apply(move_grapheme(Direction::Backward)));
         assert_eq!(
             edit.cursor_byte_index, 1,
@@ -824,13 +796,13 @@ mod tests {
     #[test]
     fn extend_grapheme_moves_the_focus_keeping_the_anchor() {
         let mut edit = EditState::default();
-        edit.set("hello"); // caret at end (5)
+        edit.set("hello"); // キャレットは末尾(5)
         assert!(edit.apply(extend_grapheme(Direction::Backward)));
         assert!(edit.apply(extend_grapheme(Direction::Backward)));
         assert_eq!(edit.selection_anchor, 5, "anchor stays fixed at the start point");
         assert_eq!(edit.cursor_byte_index, 3, "focus retreats two chars");
         assert_eq!(edit.selection_range(), Some((3, 5)), "selects 'lo'");
-        // Extending back forward contracts the range toward the anchor.
+        // 逆向きに前方へ拡張すると、範囲はアンカーへ向かって縮む。
         assert!(edit.apply(extend_grapheme(Direction::Forward)));
         assert_eq!(edit.cursor_byte_index, 4, "focus advances, shrinking the range");
     }
@@ -838,8 +810,8 @@ mod tests {
     #[test]
     fn move_and_extend_by_word_use_the_shared_word_steppers() {
         let mut edit = EditState::default();
-        edit.set("hello world"); // caret at end (11)
-        edit.set_selection(0, 0); // caret at start
+        edit.set("hello world"); // キャレットは末尾(11)
+        edit.set_selection(0, 0); // キャレットは先頭
         assert!(edit.apply(EditIntent::Move {
             granularity: Granularity::Word,
             direction: Direction::Forward,
@@ -855,11 +827,10 @@ mod tests {
 
     #[test]
     fn delete_by_word_removes_a_whole_word_in_each_direction() {
-        // #363: Delete with Word granularity removes from the caret to the word
-        // boundary (`prev_word` / `next_word`), the model behind Ctrl/Alt+
-        // Backspace/Delete.
+        // Word 粒度の Delete はキャレットから単語境界（`prev_word` / `next_word`）まで
+        // 削除する。Ctrl/Alt+Backspace/Delete の背後のモデル。
         let mut edit = EditState::default();
-        edit.set("hello world"); // caret at end (11)
+        edit.set("hello world"); // キャレットは末尾(11)
         assert!(edit.apply(EditIntent::Delete {
             granularity: Granularity::Word,
             direction: Direction::Backward,
@@ -867,7 +838,7 @@ mod tests {
         assert_eq!(edit.text_content, "hello ", "the word before the caret goes");
         assert_eq!(edit.cursor_byte_index, 6, "caret collapses to the word start");
 
-        edit.set_selection(0, 0); // caret to the field start
+        edit.set_selection(0, 0); // キャレットをフィールド先頭へ
         assert!(edit.apply(EditIntent::Delete {
             granularity: Granularity::Word,
             direction: Direction::Forward,
@@ -878,11 +849,11 @@ mod tests {
 
     #[test]
     fn extend_to_boundary_selects_to_the_field_end_keeping_the_anchor() {
-        // Shift+End from a mid-field caret selects from the caret to the field
-        // end, anchor fixed; Shift+Home then selects back to the start.
+        // フィールド途中のキャレットからの Shift+End は、アンカーを固定したまま
+        // キャレットからフィールド末尾まで選択する。続く Shift+Home は先頭まで選択し直す。
         let mut edit = EditState::default();
         edit.set("hello world");
-        edit.set_selection(6, 6); // caret before "world"
+        edit.set_selection(6, 6); // "world" の手前にキャレット
 
         assert!(edit.apply(EditIntent::Extend {
             granularity: Granularity::LineBoundary,
@@ -914,8 +885,8 @@ mod tests {
     #[test]
     fn typing_replaces_the_selected_range() {
         let mut edit = EditState::default();
-        edit.set("hello"); // collapsed caret at end
-        edit.set_selection(1, 4); // select "ell"
+        edit.set("hello"); // キャレットは末尾で縮退
+        edit.set_selection(1, 4); // "ell" を選択
         assert!(!edit.is_caret());
         edit.insert("X");
         assert_eq!(edit.text_content, "hXo");
@@ -927,7 +898,7 @@ mod tests {
     fn backspace_deletes_the_selected_range_not_one_char() {
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(1, 4); // "ell"
+        edit.set_selection(1, 4); // "ell" を選択
         assert!(edit.backspace());
         assert_eq!(edit.text_content, "ho");
         assert_eq!(edit.cursor_byte_index, 1, "caret collapses to the range start");
@@ -938,7 +909,7 @@ mod tests {
     fn paste_replaces_the_selected_range() {
         let mut edit = EditState::default();
         edit.set("hello");
-        edit.set_selection(0, 5); // whole word
+        edit.set_selection(0, 5); // 単語全体
         assert!(edit.paste("bye"));
         assert_eq!(edit.text_content, "bye");
         assert_eq!(edit.cursor_byte_index, 3);
@@ -959,7 +930,7 @@ mod tests {
     fn set_value_replaces_content_and_finalizes_active_preedit() {
         let mut edit = EditState::default();
         edit.append("abc");
-        edit.set_preedit("DEF"); // in-progress IME composition
+        edit.set_preedit("DEF"); // 変換中の IME 入力
         assert!(edit.set_value("xyz"), "replacing the value is a change");
         assert_eq!(edit.text_content, "xyz", "value is fully replaced");
         assert!(edit.preedit.is_none(), "composition must not linger");
@@ -983,7 +954,7 @@ mod tests {
                 underline: CompositionUnderline::Thick,
             }],
         );
-        // The clause weight is preserved and the display text still concatenates.
+        // 文節の太さが保持され、表示テキストは依然として連結される。
         let preedit = edit.preedit.as_ref().expect("composition active");
         assert_eq!(preedit.text, "ぎゅう");
         assert_eq!(preedit.clauses[0].underline, CompositionUnderline::Thick);
@@ -992,8 +963,8 @@ mod tests {
 
     #[test]
     fn unformatted_preedit_underlines_the_whole_run_thin() {
-        // Pre-conversion: no clause split yet ⇒ one thin underline over the
-        // preedit, shifted past the committed prefix ("ab" = 2 bytes).
+        // 変換前: まだ文節分割なし ⇒ preedit 全体に細線下線1本。確定済み接頭辞
+        // （"ab" = 2バイト）分シフト済み。
         let mut edit = EditState::default();
         edit.append("ab");
         edit.set_preedit("xyz");
@@ -1005,8 +976,8 @@ mod tests {
 
     #[test]
     fn clause_split_underlines_each_segment_in_display_offsets() {
-        // During conversion the IME splits the reading into clauses; the active
-        // one is thick. Offsets returned are display-text relative (past "ab").
+        // 変換中、IME は読みを文節に分割し、アクティブな文節が太線になる。返される
+        // オフセットは表示テキスト基準（"ab" の後ろ）。
         let mut edit = EditState::default();
         edit.append("ab");
         edit.set_preedit_with_clauses(
@@ -1034,7 +1005,7 @@ mod tests {
 
     #[test]
     fn from_wire_decodes_format_triples() {
-        // [start, end, weight] triples; weight 0 = thin, non-zero = thick.
+        // [start, end, weight] の3つ組。weight 0 = 細線、非0 = 太線。
         let clauses = CompositionClause::from_wire(&[0, 9, 1, 9, 18, 0]);
         assert_eq!(
             clauses,
@@ -1043,7 +1014,7 @@ mod tests {
                 CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
             ],
         );
-        // Degenerate (empty/inverted) ranges and a trailing partial triple drop.
+        // 退化した（空/反転）範囲と末尾の不完全な3つ組は破棄される。
         assert!(CompositionClause::from_wire(&[5, 5, 0, 7]).is_empty());
     }
 

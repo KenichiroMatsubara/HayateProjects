@@ -1,5 +1,5 @@
 /**
- * Experimental EditContext API — not yet in TypeScript's DOM lib.
+ * 実験的な EditContext API。TypeScript の DOM lib にはまだ含まれない。
  * @see https://developer.mozilla.org/en-US/docs/Web/API/EditContext_API
  */
 

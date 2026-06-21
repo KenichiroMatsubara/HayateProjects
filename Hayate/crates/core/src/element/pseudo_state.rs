@@ -11,7 +11,7 @@ mod tables {
     ));
 }
 
-/// Element-local pseudo-class matching Hayate CSS (`:hover`, `:active`, `:focus`).
+/// Hayate CSS の要素ローカルな擬似クラス（`:hover`、`:active`、`:focus`）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PseudoState {
     Hover,
@@ -25,7 +25,7 @@ impl PseudoState {
     }
 }
 
-/// Per-pseudo style overrides declared via Hayate CSS.
+/// Hayate CSS で宣言された擬似クラスごとのスタイル上書き。
 #[derive(Clone, Debug, Default)]
 pub struct PseudoStyles {
     pub hover: Vec<StyleProp>,
@@ -51,7 +51,7 @@ impl PseudoStyles {
     }
 }
 
-/// Pointer-derived interaction flags used during effective-style resolution.
+/// 実効スタイル解決時に使う、ポインタ由来のインタラクションフラグ。
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InteractionSnapshot {
     pub hovered: HashSet<ElementId>,

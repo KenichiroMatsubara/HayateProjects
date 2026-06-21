@@ -1,7 +1,6 @@
-//! Material drag handles + long-press selection — mobile-flavored selection
-//! chrome (ADR-0097, issue #273). Handles, their geometry, handle-drag endpoint
-//! adjustment and long-press word selection are exercised through the public
-//! `ElementTree` interface.
+//! Material ドラッグハンドル + 長押し選択というモバイル流の選択 chrome（ADR-0097）。
+//! ハンドルとそのジオメトリ、ハンドルドラッグによる端点調整、長押し単語選択を
+//! 公開 `ElementTree` 経由で検証する。
 
 use hayate_core::{
     Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind, RecordingPainter,
@@ -14,8 +13,8 @@ fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
     painter.ops().to_vec()
 }
 
-/// Build `<view [selectable]><text "Hello world"></view>` on one line and
-/// return (tree, view, text). Mirrors the harness in `selection_toolbar.rs`.
+/// `<view [selectable]><text "Hello world"></view>` を 1 行で組み、
+/// (tree, view, text) を返す。`selection_toolbar.rs` のハーネスと同型。
 fn selectable_paragraph() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -37,8 +36,8 @@ fn selectable_paragraph() -> (ElementTree, ElementId, ElementId) {
     (tree, view, text)
 }
 
-/// Touch drag-select a leading range, then release. Leaves a non-empty selection
-/// under Touch modality, so its drag handles are raised (ADR-0104, #365).
+/// Touch で先頭範囲をドラッグ選択して離す。Touch モダリティで非空の選択が残るため、
+/// ドラッグハンドルが立ち上がる（ADR-0104）。
 fn select_a_range(tree: &mut ElementTree) {
     tree.on_pointer_down_with_kind(2.0, 8.0, 0, PointerKind::Touch);
     tree.on_pointer_move(70.0, 8.0);
@@ -55,12 +54,12 @@ fn selection_raises_a_handle_at_each_end() {
         .expect("a non-empty selection raises drag handles");
     assert_eq!(handles.start.end, SelectionHandleEnd::Start);
     assert_eq!(handles.end.end, SelectionHandleEnd::End);
-    // The start handle sits left of the end handle for a left-to-right range.
+    // 左→右の範囲では start ハンドルが end ハンドルより左に来る。
     assert!(
         handles.start.knob_x < handles.end.knob_x,
         "start handle is left of the end handle",
     );
-    // Both knobs hang below the single text line.
+    // どちらのノブも 1 行のテキストの下にぶら下がる。
     assert!(handles.start.knob_y > 0.0);
 }
 
@@ -98,8 +97,8 @@ fn chrome_style_switch_recolors_the_handles_and_is_additive() {
             .expect("the start handle knob rect")
     };
 
-    // Material is the default; switching to Cupertino is additive (the same
-    // handle model, a different theme) and recolors the knob.
+    // Material が既定。Cupertino への切り替えは加法的（同じハンドルモデルで
+    // テーマだけ違う）で、ノブの色が変わる。
     assert_eq!(SelectionChromeStyle::default(), SelectionChromeStyle::Material);
     assert_ne!(
         knob_color(SelectionChromeStyle::Material),
@@ -108,8 +107,8 @@ fn chrome_style_switch_recolors_the_handles_and_is_additive() {
     );
 }
 
-/// A filled circular knob (a square FillRect with a corner radius equal to half
-/// its side) centered at `(kx, ky)`, regardless of color.
+/// `(kx, ky)` を中心とする塗りつぶし円形ノブ（辺の半分を corner radius に持つ
+/// 正方形 FillRect）が描かれているか。色は問わない。
 fn knob_drawn_at(ops: &[DrawOp], kx: f32, ky: f32) -> bool {
     ops.iter().any(|op| {
         matches!(op,
@@ -149,7 +148,7 @@ fn handles_disappear_from_the_scene_when_the_selection_clears() {
     let (sx, sy) = (handles.start.knob_x, handles.start.knob_y);
     assert!(knob_drawn_at(&draw_ops(&tree), sx, sy), "knob present while selecting");
 
-    // Tap empty space to clear the selection, then re-render.
+    // 空白部分をタップして選択を解除し、再描画する。
     tree.on_pointer_down(2.0, 150.0);
     tree.on_pointer_up(2.0, 150.0);
     tree.render(0.0);
@@ -161,10 +160,10 @@ fn handles_disappear_from_the_scene_when_the_selection_clears() {
     );
 }
 
-/// Like `selectable_paragraph` but with headroom above the text so the floating
-/// toolbar settles *above* the selection, leaving the drag handles below it
-/// unobstructed — the common mobile layout, and the one a handle-drag test needs
-/// so the press lands on a handle and not a toolbar button. Text sits near y=88.
+/// `selectable_paragraph` と同様だが、テキストの上に余白を取り、フローティング
+/// ツールバーが選択の*上*に収まるようにする。これで下のドラッグハンドルが隠れず、
+/// ハンドルドラッグのテストで押下がツールバーボタンでなくハンドルに当たる。
+/// テキストは y=88 付近。
 fn selectable_paragraph_with_headroom() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -190,13 +189,13 @@ fn selectable_paragraph_with_headroom() -> (ElementTree, ElementId, ElementId) {
 #[test]
 fn dragging_the_end_handle_extends_the_range() {
     let (mut tree, _view, text) = selectable_paragraph_with_headroom();
-    // Touch-select a short leading range near the text line (~y=88).
+    // テキスト行付近（~y=88）で短い先頭範囲を Touch 選択する。
     tree.on_pointer_down_with_kind(2.0, 88.0, 0, PointerKind::Touch);
     tree.on_pointer_move(40.0, 88.0);
     tree.on_pointer_up(40.0, 88.0);
     let before = tree.selection().unwrap().range_within(text).unwrap();
 
-    // Grab the end handle and drag it to the far right edge of the text.
+    // end ハンドルを掴んでテキストの右端まで引っ張る。
     let handles = tree.selection_handles().expect("handles after selecting");
     tree.on_pointer_down(handles.end.knob_x, handles.end.knob_y);
     tree.on_pointer_move(398.0, 88.0);
@@ -210,13 +209,13 @@ fn dragging_the_end_handle_extends_the_range() {
 #[test]
 fn dragging_the_start_handle_moves_the_left_edge() {
     let (mut tree, _view, text) = selectable_paragraph_with_headroom();
-    // Touch-select the whole first word range.
+    // 最初の単語全体の範囲を Touch 選択する。
     tree.on_pointer_down_with_kind(2.0, 88.0, 0, PointerKind::Touch);
     tree.on_pointer_move(90.0, 88.0);
     tree.on_pointer_up(90.0, 88.0);
     let before = tree.selection().unwrap().range_within(text).unwrap();
 
-    // Grab the start handle and drag it rightward, shrinking from the left.
+    // start ハンドルを掴んで右へ引き、左側から範囲を縮める。
     let handles = tree.selection_handles().expect("handles after selecting");
     tree.on_pointer_down(handles.start.knob_x, handles.start.knob_y);
     tree.on_pointer_move(40.0, 88.0);
@@ -231,7 +230,7 @@ fn dragging_the_start_handle_moves_the_left_edge() {
 fn long_press_starts_a_word_selection_with_handles_and_toolbar() {
     let (mut tree, _view, text) = selectable_paragraph();
 
-    // Long-press inside the first word "Hello" (bytes 0..5).
+    // 最初の単語 "Hello"（バイト 0..5）の内側を長押しする。
     tree.on_long_press(10.0, 8.0);
 
     let sel = tree.selection().expect("long-press selects a word");
@@ -254,15 +253,15 @@ fn long_press_starts_a_word_selection_with_handles_and_toolbar() {
 #[test]
 fn long_press_outside_a_selectable_region_selects_nothing() {
     let (mut tree, _view, _text) = selectable_paragraph();
-    // Far below the single text line but still over the (selectable) view edge,
-    // and past the right of the viewport — no glyph to anchor a word on.
+    // 1 行のテキストよりはるか下、かつ（selectable な）view 端より外、
+    // ビューポート右端も越えた地点 — 単語を固定するグリフが存在しない。
     tree.on_long_press(2000.0, 8.0);
     assert!(tree.selection().is_none(), "no word, no selection");
 }
 
 #[test]
 fn a_collapsed_caret_raises_no_handles() {
-    // A single tap drops a caret (collapsed selection) but no two-ended handles.
+    // 単一タップはキャレット（折りたたまれた選択）を落とすが、両端ハンドルは出さない。
     let (mut tree, _view, _text) = selectable_paragraph();
     tree.on_pointer_down(2.0, 8.0);
     tree.on_pointer_up(2.0, 8.0);

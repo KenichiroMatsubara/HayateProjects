@@ -1,43 +1,38 @@
-//! On-demand font-fetch bookkeeping (issue #343).
+//! オンデマンドのフォント取得の管理。
 //!
-//! `.notdef` detection (ADR-0042) emits a `FetchFont { family }` event; the
-//! platform adapter fetches the face and calls `register_font` on success or
-//! reports a failure on error. This tracker decides, per family, whether a
-//! `FetchFont` should be emitted right now, so that:
+//! `.notdef` 検出（ADR-0042）が `FetchFont { family }` イベントを発行し、プラットフォーム
+//! アダプタが face を取得して成功時に `register_font` を、失敗時に失敗を報告する。この
+//! トラッカーは family ごとに今 `FetchFont` を発行すべきかを判断する。狙いは次の通り:
 //!
-//! - duplicate events are suppressed while a fetch is in flight,
-//! - a *failed* fetch does not latch the family forever — it becomes eligible
-//!   to be requested again on a later frame (the bug this fixes), and
-//! - a family that keeps failing is given up on after a finite budget, so logs
-//!   and re-requests never run away.
+//! - 取得が処理中の間は重複イベントを抑止する、
+//! - 失敗した取得が family を永久にラッチしない。後続フレームで再要求できるようになる、
+//! - 失敗し続ける family は有限の予算で見切り、ログや再要求が暴走しないようにする。
 
 use std::collections::{HashMap, HashSet};
 
-/// Maximum number of fetch attempts for one family before core gives up. The
-/// adapter spaces the attempts out (backoff); core caps their count so a
-/// permanently-unreachable family cannot be re-requested forever (issue #343).
+/// core が見切るまでの 1 family あたりの最大取得試行回数。アダプタが試行を
+/// 間引く（バックオフ）一方、core は回数を上限で抑え、到達不能な family が
+/// 永久に再要求されないようにする。
 pub(crate) const MAX_FETCH_ATTEMPTS: u32 = 3;
 
-/// What core decided after a reported fetch failure.
+/// 取得失敗の報告を受けて core が下した判断。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum FailureOutcome {
-    /// Budget remains — the family will be requested again on a later frame.
+    /// 予算が残っている。family は後続フレームで再要求される。
     WillRetry,
-    /// Budget exhausted — the family is given up on and will not be re-requested.
+    /// 予算を使い切った。family は見切られ、再要求されない。
     GaveUp,
 }
 
-/// Per-family fetch state for on-demand font loading.
+/// オンデマンドフォント読み込みの family ごとの取得状態。
 #[derive(Default)]
 pub(crate) struct FontFetchTracker {
-    /// Families requested via `FetchFont` and awaiting a result. Suppresses
-    /// duplicate events across frames while a fetch is outstanding.
+    /// `FetchFont` で要求済みで結果待ちの family。取得が未完の間、フレームをまたいだ
+    /// 重複イベントを抑止する。
     in_flight: HashSet<String>,
-    /// Failed-attempt count per family, kept until the family loads or is given
-    /// up on.
+    /// family ごとの失敗試行回数。読み込み成功または見切りまで保持する。
     attempts: HashMap<String, u32>,
-    /// Families that exhausted the retry budget. Never requested again; logged
-    /// at most once by the caller.
+    /// リトライ予算を使い切った family。二度と要求せず、呼び出し側が高々一度ログする。
     exhausted: HashSet<String>,
 }
 
@@ -46,27 +41,26 @@ impl FontFetchTracker {
         Self::default()
     }
 
-    /// Whether a `FetchFont` should be emitted for `family` now: only when it is
-    /// neither already in flight nor given up on.
+    /// 今 `family` に対して `FetchFont` を発行すべきか。処理中でも見切り済みでもない場合のみ。
     pub(crate) fn should_request(&self, family: &str) -> bool {
         !self.in_flight.contains(family) && !self.exhausted.contains(family)
     }
 
-    /// Record that a `FetchFont` was just emitted for `family`.
+    /// `family` に対し `FetchFont` を発行したことを記録する。
     pub(crate) fn mark_requested(&mut self, family: &str) {
         self.in_flight.insert(family.to_string());
     }
 
-    /// Record that `family` loaded successfully. Clears all state so a future
-    /// `.notdef` for the same family can request it afresh.
+    /// `family` の読み込み成功を記録する。全状態をクリアし、同じ family に対する
+    /// 後続の `.notdef` で改めて要求できるようにする。
     pub(crate) fn mark_loaded(&mut self, family: &str) {
         self.in_flight.remove(family);
         self.attempts.remove(family);
         self.exhausted.remove(family);
     }
 
-    /// Record that a fetch for `family` failed. Returns whether the family will
-    /// be retried (`WillRetry`) or has been given up on (`GaveUp`).
+    /// `family` の取得失敗を記録する。リトライされるか（`WillRetry`）見切られたか
+    /// （`GaveUp`）を返す。
     pub(crate) fn mark_failed(&mut self, family: &str) -> FailureOutcome {
         self.in_flight.remove(family);
         let count = self.attempts.entry(family.to_string()).or_insert(0);

@@ -1,8 +1,8 @@
 use crate::color::Color;
 
-/// A single CSS box-shadow layer (ADR-0095). Offsets, blur and spread are in
-/// CSS px; `inset` selects an inner shadow. A `box-shadow` value is an ordered
-/// list of these (top layer first, matching CSS paint order).
+/// CSS box-shadow の1レイヤー（ADR-0095）。オフセット・blur・spread は CSS px、
+/// `inset` は内側シャドウを選ぶ。`box-shadow` 値はこれの順序付きリスト
+/// （CSS の描画順に合わせて先頭が最前面）。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Shadow {
     pub offset_x: f32,
@@ -13,7 +13,7 @@ pub struct Shadow {
     pub inset: bool,
 }
 
-/// Identifies which style property to unset via `element_unset_style`.
+/// `element_unset_style` で解除するスタイルプロパティの指定。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StylePropKind {
     Color,
@@ -22,11 +22,11 @@ pub enum StylePropKind {
     FontWeight,
 }
 
-/// Viewport-based condition for a style variant (ADR-0081).
+/// スタイルバリアントのビューポート条件（ADR-0081）。
 ///
-/// All axes are in px and AND-combined; `min_*` match inclusively
-/// (`actual >= min_*`) and `max_*` match inclusively (`actual <= max_*`),
-/// mirroring CSS `@media (min-width: ...)` / `(max-width: ...)` etc.
+/// 各軸は px で AND 結合。`min_*` は `actual >= min_*`、`max_*` は
+/// `actual <= max_*` の包含判定で、CSS `@media (min-width: ...)` /
+/// `(max-width: ...)` 等に対応する。
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ViewportCondition {
     pub min_width: Option<f32>,
@@ -36,7 +36,7 @@ pub struct ViewportCondition {
 }
 
 impl ViewportCondition {
-    /// Whether this condition matches the given viewport size.
+    /// この条件が指定ビューポートサイズに一致するか。
     pub fn matches(&self, viewport_width: f32, viewport_height: f32) -> bool {
         let min_width_ok = self.min_width.is_none_or(|v| viewport_width >= v);
         let max_width_ok = self.max_width.is_none_or(|v| viewport_width <= v);
@@ -60,10 +60,10 @@ pub enum TextDecorationValue {
     LineThrough,
 }
 
-/// Border line style (ADR-0083 module-complete border vocabulary, issue #204).
+/// ボーダーの線種（ADR-0083）。
 ///
-/// `None` is the default: a border is only drawn when an explicit style is set,
-/// mirroring CSS where `border-style` defaults to `none`.
+/// `None` が既定で、明示的に style を設定したときだけボーダーを描く。
+/// CSS の `border-style` が `none` 既定なのに対応する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BorderStyleValue {
     None,
@@ -71,20 +71,19 @@ pub enum BorderStyleValue {
     Dashed,
 }
 
-/// Box positioning scheme (ADR-0091, issue #205).
+/// ボックスの位置指定方式（ADR-0091）。
 ///
-/// `Relative` is the default and matches Taffy's default (in contrast to CSS,
-/// where `static` is the default). `Absolute` takes the element out of normal
-/// flow; `top`/`left`/`right`/`bottom` insets then position it. `sticky` /
-/// `fixed` are out of scope (Taffy has no support).
+/// `Relative` が既定で Taffy の既定に一致する（既定が `static` の CSS とは異なる）。
+/// `Absolute` は要素を通常フローから外し、`top`/`left`/`right`/`bottom` の
+/// inset で位置決めする。`sticky` / `fixed` は対象外（Taffy 未対応）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PositionValue {
     Relative,
     Absolute,
 }
 
-/// Pointer cursor appearance (ADR-0088). Resolved from the element under the
-/// pointer and handed to the Platform Adapter via `on_pointer_move`.
+/// ポインタカーソルの見た目（ADR-0088）。ポインタ下の要素から解決し、
+/// `on_pointer_move` 経由で Platform Adapter に渡す。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CursorValue {
     Default,
@@ -96,13 +95,12 @@ pub enum CursorValue {
     Grabbing,
 }
 
-/// Selectability of an element's text, modelled on CSS `user-select` (ADR-0108).
+/// 要素テキストの選択可否。CSS `user-select` をモデル化（ADR-0108）。
 ///
-/// `Text` means the element's text participates in document selection; `None`
-/// excludes it (and its subtree); `Contains` is selectable but establishes a
-/// containment boundary the selection cannot cross. Resolved from the explicit
-/// `user-select` value, falling back to the element-kind UA default
-/// (`default_user_select`).
+/// `Text` はテキストが文書選択に参加する。`None` は自身（と部分木）を除外する。
+/// `Contains` は選択可能だが、選択が越えられない包含境界を作る。明示的な
+/// `user-select` 値から解決し、無ければ要素種別の UA 既定
+/// （`default_user_select`）にフォールバックする。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserSelectValue {
     Text,
@@ -110,22 +108,22 @@ pub enum UserSelectValue {
     Contains,
 }
 
-/// Child-overflow handling (ADR-0090/issue #206).
+/// 子要素のオーバーフロー処理（ADR-0090）。
 ///
-/// `Visible` is the default: children may paint outside the element's box,
-/// mirroring CSS where `overflow` defaults to `visible`. `Hidden` clips
-/// children to the element's (optionally rounded) border box.
+/// `Visible` が既定で、子は要素ボックスの外側にも描画されうる
+/// （CSS の `overflow` が `visible` 既定なのに対応）。`Hidden` は子を要素の
+/// （角丸も含む）ボーダーボックスでクリップする。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OverflowValue {
     Visible,
     Hidden,
 }
 
-/// Easing function for pseudo-state transition interpolation (ADR-0089, issue #209).
+/// 疑似状態トランジション補間のイージング関数（ADR-0089）。
 ///
-/// `Ease` is the CSS default. Each variant maps to the matching CSS
-/// `transition-timing-function` keyword in HTML mode and drives the
-/// interpolation curve in the render layer for Canvas mode.
+/// `Ease` が CSS 既定。各バリアントは HTML モードでは対応する CSS
+/// `transition-timing-function` キーワードに対応し、Canvas モードでは
+/// 描画層の補間カーブを駆動する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TransitionTimingValue {
     Ease,
@@ -135,12 +133,11 @@ pub enum TransitionTimingValue {
     EaseInOut,
 }
 
-/// Text truncation behavior for the last visible line of a `max-lines` block
-/// (ADR-0090/issue #207).
+/// `max-lines` ブロックの最終可視行のテキスト切り詰め挙動（ADR-0090）。
 ///
-/// `Clip` is the default: text beyond `max-lines` is silently cut. `Ellipsis`
-/// appends `…` to the last visible line. `text-overflow` has no effect unless
-/// `max-lines` is also set — `max-lines` is the sole truncation trigger.
+/// `Clip` が既定で、`max-lines` を超えるテキストは無言で切られる。`Ellipsis`
+/// は最終可視行に `…` を付ける。`text-overflow` は `max-lines` が設定されない
+/// 限り効果がない。切り詰めの唯一のトリガーは `max-lines`。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextOverflowValue {
     Clip,
@@ -254,7 +251,7 @@ pub enum AlignContentValue {
 
 #[derive(Clone, Debug)]
 pub enum StyleProp {
-    // visual
+    // 視覚
     BackgroundColor(Color),
     Opacity(f32),
     BorderRadius(f32),
@@ -263,14 +260,14 @@ pub enum StyleProp {
     BorderStyle(BorderStyleValue),
     BoxShadow(Vec<Shadow>),
     Overflow(OverflowValue),
-    // sizing
+    // サイズ
     Width(Dimension),
     Height(Dimension),
     MinWidth(Dimension),
     MinHeight(Dimension),
     MaxWidth(Dimension),
     MaxHeight(Dimension),
-    // layout
+    // レイアウト
     Display(DisplayValue),
     FlexDirection(FlexDirectionValue),
     FlexWrap(FlexWrapValue),
@@ -287,7 +284,7 @@ pub enum StyleProp {
     MarginRight(Dimension),
     MarginBottom(Dimension),
     MarginLeft(Dimension),
-    // positioning
+    // 位置指定
     Position(PositionValue),
     Top(Dimension),
     Left(Dimension),
@@ -299,19 +296,19 @@ pub enum StyleProp {
     FlexBasis(Dimension),
     AlignSelf(AlignSelfValue),
     AlignContent(AlignContentValue),
-    // text
+    // テキスト
     FontSize(f32),
     FontFamily(String),
     FontWeight(f32),
     Color(Color),
     FontStyle(FontStyleValue),
     TextDecoration(TextDecorationValue),
-    // text truncation (ADR-0090/issue #207)
+    // テキスト切り詰め（ADR-0090）
     MaxLines(u32),
     TextOverflow(TextOverflowValue),
-    // pointer
+    // ポインタ
     Cursor(CursorValue),
-    // ambient default text style (block-penetrating)
+    // 既定テキストスタイル（ブロックを貫通する環境値）
     DefaultColor(Color),
     DefaultFontFamily(String),
     DefaultFontSize(f32),
@@ -319,9 +316,9 @@ pub enum StyleProp {
     // grid
     GridTemplateColumns(Vec<Dimension>),
     GridTemplateRows(Vec<Dimension>),
-    // stacking
+    // 重なり順
     ZIndex(i32),
-    // transition (ADR-0089, issue #209)
+    // トランジション（ADR-0089）
     TransitionDuration(f32),
     TransitionTiming(TransitionTimingValue),
 }

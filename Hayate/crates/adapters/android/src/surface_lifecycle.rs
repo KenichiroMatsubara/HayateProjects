@@ -1,8 +1,8 @@
-//! Platform-agnostic surface lifecycle state machine for the stage A smoke test.
+//! プラットフォーム非依存のサーフェスライフサイクル状態機械。
 //!
-//! `android-activity` delivers `MainEvent`s on a background thread; this module
-//! maps those events to the GPU surface actions the adapter must take. It is
-//! compiled on all targets so behavior can be verified without the NDK.
+//! `android-activity` は `MainEvent` をバックグラウンドスレッドで配送する。本
+//! モジュールはそれらのイベントをアダプタが取るべき GPU サーフェス操作へ写像する。
+//! NDK なしで挙動を検証できるよう全ターゲットでコンパイルする。
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,7 +23,7 @@ pub enum SurfaceLifecycleAction {
     NoOp,
 }
 
-/// Tracks whether a GPU surface is currently bound to the native window.
+/// GPU サーフェスが現在ネイティブウィンドウに束縛されているかを追跡する。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SurfaceLifecycleState {
@@ -77,19 +77,18 @@ impl Default for SurfaceLifecycleState {
     }
 }
 
-/// Clamp native window dimensions to at least 1×1 for wgpu surface configuration.
+/// wgpu サーフェス設定のため、ネイティブウィンドウ寸法を最低 1×1 にクランプする。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
     (width.max(1) as u32, height.max(1) as u32)
 }
 
-/// Map clamped surface dimensions (physical px) to the `ElementTree` viewport.
+/// クランプ済みサーフェス寸法(物理 px)を `ElementTree` のビューポートへ写す。
 ///
-/// Stage B renders at content scale 1.0, so the layout/viewport space *is* the
-/// physical surface pixels — the same space `translate_touch` feeds the pointer
-/// API, which keeps hit-testing aligned with what's drawn on screen. DPI-aware
-/// content scaling is a later refinement and must rescale touch coordinates in
-/// lockstep to preserve that alignment.
+/// content scale 1.0 で描画するため、レイアウト/ビューポート空間は物理サーフェス
+/// ピクセルそのもの。これは `translate_touch` がポインタ API に渡す空間と同じで、
+/// ヒットテストが画面描画と揃う。DPI 対応のコンテンツスケーリングを入れる際は、
+/// この整合を保つためタッチ座標を同調して再スケールする必要がある。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn viewport_for_surface(width: u32, height: u32) -> (f32, f32) {
     (width as f32, height as f32)

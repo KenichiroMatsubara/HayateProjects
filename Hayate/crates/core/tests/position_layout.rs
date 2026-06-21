@@ -3,9 +3,8 @@ use hayate_core::{
     StyleProp,
 };
 
-// `position: absolute` takes the element out of normal flow and positions it by
-// its insets relative to the positioned ancestor (ADR-0091, issue #205). The
-// in-flow sibling reflows as if the absolute element were absent.
+// `position: absolute` は要素を通常フローから外し、位置決め先の祖先を基準に inset で
+// 配置する（ADR-0091）。in-flow の兄弟は絶対配置要素が無いものとして再レイアウトされる。
 #[test]
 fn absolute_element_leaves_flow_and_positions_at_inset() {
     let mut tree = ElementTree::new();
@@ -54,8 +53,8 @@ fn absolute_element_leaves_flow_and_positions_at_inset() {
     assert!((abs_rect.2 - 30.0).abs() < 1.0, "absolute w={}", abs_rect.2);
     assert!((abs_rect.3 - 40.0).abs() < 1.0, "absolute h={}", abs_rect.3);
 
-    // The in-flow sibling sits at the top of the column: the absolute element
-    // created no space, so `flow` is not pushed down by `abs`'s 40px height.
+    // in-flow の兄弟は列の先頭に来る。絶対配置要素はスペースを生まないので、`flow` は
+    // `abs` の 40px 分だけ押し下げられない。
     let flow_rect = tree.element_layout_rect(flow).expect("in-flow layout");
     assert!(
         flow_rect.1.abs() < 1.0,

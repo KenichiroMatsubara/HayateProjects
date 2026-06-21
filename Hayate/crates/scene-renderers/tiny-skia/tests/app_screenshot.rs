@@ -1,10 +1,9 @@
-//! Renders the Tsubame hello-world "Tasks" screen through tiny-skia so the
-//! Canvas-mode output can be eyeballed against DOM-mode (browser) rendering.
+//! Tsubame hello-world の "Tasks" 画面を tiny-skia で描画し、Canvas Mode の出力を
+//! DOM Mode（ブラウザ）描画と目視比較するためのテスト。
 //!
-//! Run with `HAYATE_WRITE_SCREENSHOT=1` to emit the PNG; otherwise the test is
-//! a no-op so it never gates CI. The fixture mirrors `Tsubame/examples/
-//! hello-world/src/App.tsx` (light theme, teal accent) closely enough to surface
-//! layout / text / styling divergences from the DOM renderer.
+//! `HAYATE_WRITE_SCREENSHOT=1` を付けたときだけ PNG を出力し、それ以外は no-op なので
+//! CI をブロックしない。フィクスチャは `Tsubame/examples/hello-world/src/App.tsx`
+//! （ライトテーマ、teal アクセント）を、レイアウト/テキスト/スタイルの差異が出る程度に再現する。
 
 use hayate_core::{
     AlignValue, BorderStyleValue, Color, Dimension, ElementId, ElementKind, ElementTree,
@@ -19,7 +18,7 @@ static NOTO_SANS_JP_BYTES: &[u8] =
 const VW: f32 = 980.0;
 const VH: f32 = 1060.0;
 
-/// Parse `#rgb`, `#rrggbb`, or `#rrggbbaa` into a core `Color`.
+/// `#rgb`, `#rrggbb`, `#rrggbbaa` を core の `Color` にパースする。
 fn hex(s: &str) -> Color {
     let h = s.trim_start_matches('#');
     let n = |a: usize, b: usize| u8::from_str_radix(&h[a..b], 16).unwrap() as f64 / 255.0;
@@ -30,7 +29,7 @@ fn hex(s: &str) -> Color {
     }
 }
 
-/// Light-theme + teal-accent palette, copied from `theme.ts`.
+/// `theme.ts` から写したライトテーマ + teal アクセントのパレット。
 struct P;
 impl P {
     fn bg(&self) -> Color { hex("#f1ede3") }
@@ -61,10 +60,10 @@ fn prio_tone(p: &P, prio: u8) -> Color {
 
 const PRIO_LABEL: [&str; 4] = ["", "低", "中", "高"];
 
-/// Glyph for the todo example's delete control (per-row button + footer hint).
-/// Must have an outline in the bundled Canvas font (NotoSansJP.ttf): U+2715 ✕
-/// does not, so Canvas falls back to `.notdef` (0 ink); U+00D7 × does. Mirrors
-/// `Tsubame/examples/todo` so the Canvas reproduction tracks the example (#426).
+/// todo example の削除コントロール（各行ボタン + フッターヒント）用グリフ。
+/// 同梱 Canvas フォント（NotoSansJP.ttf）にアウトラインが存在する必要がある。
+/// U+2715 ✕ は欠落していて Canvas が `.notdef`（0 ink）にフォールバックするが、U+00D7 × は描ける。
+/// `Tsubame/examples/todo` と揃える。
 const DELETE_GLYPH: &str = "×";
 
 struct B {
@@ -76,8 +75,8 @@ impl B {
     fn new() -> Self {
         let mut tree = ElementTree::new();
         tree.register_font("Noto Sans", NOTO_SANS_JP_BYTES.to_vec());
-        // The app asks for Inter/Segoe/system-ui; register the bundled face under
-        // those names too so missing-font fallback doesn't mask real findings.
+        // アプリは Inter/Segoe/system-ui を要求する。同梱フェースをそれらの名前でも
+        // 登録し、フォント欠落フォールバックが本物の不具合を隠さないようにする。
         tree.register_font("Inter", NOTO_SANS_JP_BYTES.to_vec());
         Self { tree, next: 1 }
     }
@@ -100,10 +99,9 @@ impl B {
         e
     }
 
-    /// Mirrors how tsubame-solid builds a button: a Button container with a
-    /// child Text node (ADR-0058). The label colour / size are passed as the
-    /// button's ambient `DefaultColor` / `DefaultFontSize` so the child text
-    /// inherits them, matching the app's `defaultColor` usage.
+    /// tsubame-solid のボタン構築を再現する。Button コンテナに子の Text ノードを持つ（ADR-0058）。
+    /// ラベルの色/サイズは Button の `DefaultColor` / `DefaultFontSize` として渡し、
+    /// 子テキストが継承する（アプリの `defaultColor` 用法に一致）。
     fn button(&mut self, s: &str, styles: &[StyleProp]) -> ElementId {
         let mut container = Vec::new();
         for st in styles {
@@ -156,7 +154,7 @@ fn render_tasks_screen() {
     let p = P;
     let mut b = B::new();
 
-    // root column
+    // ルート列
     let root = b.view(&[
         StyleProp::Width(Dimension::px(VW)),
         StyleProp::Height(Dimension::px(VH)),
@@ -184,7 +182,7 @@ fn render_tasks_screen() {
         StyleProp::PaddingLeft(Dimension::px(24.0)),
         StyleProp::PaddingRight(Dimension::px(24.0)),
     ]);
-    // brand
+    // ブランド
     let brand = b.view(&row(12.0));
     let logo = b.view(&[
         StyleProp::Width(Dimension::px(38.0)),
@@ -203,7 +201,7 @@ fn render_tasks_screen() {
     b.children(titles, &[t1, t2]);
     b.children(brand, &[logo, titles]);
 
-    // right cluster
+    // 右クラスタ
     let right = b.view(&row(10.0));
     let tab_tasks = b.button("Tasks", &[
         StyleProp::Height(Dimension::px(34.0)),
@@ -235,7 +233,7 @@ fn render_tasks_screen() {
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(13.0),
     ]);
-    // accent swatches
+    // アクセント色スウォッチ
     let swatches = b.view(&row(6.0));
     for (i, c) in ["#14b8a6", "#e84d8a", "#ef8f3c", "#5ca80f", "#7c5cf0"].iter().enumerate() {
         let selected = i == 0;
@@ -285,7 +283,7 @@ fn render_tasks_screen() {
     b.children(right, &[tab_tasks, tab_gallery, swatches, theme_btn, rlabel, badge]);
     b.children(appbar, &[brand, right]);
 
-    // ── content panel ─────────────────────────────────────────────────────
+    // ── コンテンツパネル ─────────────────────────────────────────────────────
     let stage = b.view(&[
         StyleProp::FlexGrow(1.0),
         StyleProp::Display(hayate_core::DisplayValue::Flex),
@@ -312,7 +310,7 @@ fn render_tasks_screen() {
         }]),
     ]);
 
-    // Header
+    // ヘッダー
     let header = b.view(&col(12.0));
     let hrow = b.view(&[
         StyleProp::Display(hayate_core::DisplayValue::Flex),
@@ -323,7 +321,7 @@ fn render_tasks_screen() {
     let htitle = b.text("きょうのタスク", &[StyleProp::Color(p.ink()), StyleProp::FontSize(24.0)]);
     let hsub = b.text("残り 3 件 / 全 5 件", &[StyleProp::Color(p.muted()), StyleProp::FontSize(13.0)]);
     b.children(hrow, &[htitle, hsub]);
-    // progress bar (40%)
+    // 進捗バー（40%）
     let pbar = b.view(&[
         StyleProp::Width(Dimension::percent(100.0)),
         StyleProp::Height(Dimension::px(12.0)),
@@ -469,7 +467,7 @@ fn render_tasks_screen() {
         b.child(toolbar, chip);
     }
 
-    // Todo rows
+    // Todo 行
     let list = b.view(&col(8.0));
     let seed: [(&str, u8, bool); 5] = [
         ("レイアウトエンジンに flex-wrap を実装", 3, false),
@@ -551,7 +549,7 @@ fn render_tasks_screen() {
         b.child(list, r);
     }
 
-    // divider + footer
+    // 区切り線 + フッター
     let divider = b.view(&[
         StyleProp::Height(Dimension::px(1.0)),
         StyleProp::BackgroundColor(p.line()),
@@ -587,7 +585,7 @@ fn render_tasks_screen() {
     b.child(stage, panel);
     b.children(root, &[appbar, stage]);
 
-    // ── render ──────────────────────────────────────────────────────────────
+    // ── 描画 ──────────────────────────────────────────────────────────────
     let graph = b.tree.render(0.0).clone();
     let mut pixmap = Pixmap::new(VW as u32, VH as u32).expect("pixmap");
     TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
@@ -638,9 +636,9 @@ fn render_glyph_coverage() {
     eprintln!("wrote {}", out.display());
 }
 
-/// Sharp, deterministic signal for the "blank glyph" divergence: render each
-/// candidate glyph alone and count painted (ink) pixels. 0 ink == no glyph in
-/// any registered/fallback font (the bug); >0 == renders.
+/// 「空グリフ」差異を捉える決定的なシグナル。候補グリフを単体で描画し、塗られた
+/// （ink）ピクセル数を数える。0 ink は登録/フォールバックフォントにグリフが無い（バグ）、
+/// >0 は描画できている。
 #[test]
 fn diagnose_glyph_ink() {
     if std::env::var_os("HAYATE_WRITE_SCREENSHOT").is_none() {
@@ -680,29 +678,27 @@ fn diagnose_glyph_ink() {
     }
 }
 
-/// Whether the bundled Canvas font (NotoSansJP.ttf) has a real glyph for `ch`.
-/// `false` means a cmap miss → the renderer draws `.notdef` (a tofu box) instead
-/// of the intended glyph. Uses skrifa's charmap, the same cmap the renderer maps
-/// codepoints through.
+/// 同梱 Canvas フォント（NotoSansJP.ttf）が `ch` の実グリフを持つか。
+/// `false` は cmap ミスを意味し、レンダラは意図したグリフの代わりに `.notdef`（豆腐□）を描く。
+/// レンダラと同じ cmap である skrifa の charmap を使う。
 fn font_has_glyph(ch: char) -> bool {
     use skrifa::{FontRef, MetadataProvider};
     let font = FontRef::new(NOTO_SANS_JP_BYTES).expect("parse NotoSansJP.ttf");
     font.charmap().map(ch).is_some()
 }
 
-/// Regression for #426: the todo example's delete control (per-row button +
-/// footer hint) must use a glyph the bundled Canvas font can actually draw, so
-/// vello/tiny-skia render a real "×" instead of a `.notdef` tofu box. Guards the
-/// glyph the reproduction shares with `Tsubame/examples/todo` via `DELETE_GLYPH`.
+/// 回帰テスト。todo example の削除コントロール（各行ボタン + フッターヒント）は、
+/// 同梱 Canvas フォントが実際に描けるグリフを使う必要がある。これにより vello/tiny-skia は
+/// `.notdef` 豆腐□ではなく本物の "×" を描く。`DELETE_GLYPH` を介して example と共有するグリフを守る。
 #[test]
 fn delete_glyph_renders_in_canvas() {
-    // U+2715 ✕ documents the bug: it has no glyph in the bundled font, so Canvas
-    // falls back to a tofu box (DOM hides this via browser font fallback).
+    // U+2715 ✕ はバグの証拠。同梱フォントにグリフが無く、Canvas は豆腐□に
+    // フォールバックする（DOM はブラウザのフォントフォールバックで隠してしまう）。
     assert!(
         !font_has_glyph('\u{2715}'),
         "U+2715 ✕ is expected to be absent from NotoSansJP.ttf (the bug's cause)",
     );
-    // The glyph the example actually uses must be present, so Canvas draws it.
+    // example が実際に使うグリフは存在し、Canvas が描けなければならない。
     let delete_char = DELETE_GLYPH.chars().next().expect("DELETE_GLYPH is non-empty");
     assert!(
         font_has_glyph(delete_char),
@@ -711,8 +707,8 @@ fn delete_glyph_renders_in_canvas() {
     );
 }
 
-/// Count painted (non-near-white) pixels after rendering `s` alone at 40px, the
-/// same ink probe `diagnose_glyph_ink` uses. 0 == nothing drawn (a silent box).
+/// `s` を単体で 40px 描画した後、塗られた（ほぼ白でない）ピクセル数を数える。
+/// `diagnose_glyph_ink` と同じ ink プローブ。0 は何も描かれない（無言の□）。
 fn glyph_ink(s: &str) -> usize {
     const W: u32 = 64;
     const H: u32 = 64;
@@ -737,21 +733,21 @@ fn glyph_ink(s: &str) -> usize {
         .count()
 }
 
-/// Regression for #427: a codepoint absent from the bundled Canvas font must not
-/// vanish into a silent `.notdef` box. The painter now draws a deliberate
-/// placeholder, so U+2715 ✕ (which NotoSansJP lacks, and whose `.notdef` outline
-/// is empty → 0 ink before this change) renders visible ink instead of nothing.
+/// 回帰テスト。同梱 Canvas フォントに無いコードポイントが、無言の `.notdef` □に
+/// 消えてはならない。ペインタは意図的なプレースホルダを描くので、U+2715 ✕
+/// （NotoSansJP に無く、`.notdef` アウトラインも空で 0 ink だった）が、何も描かないのではなく
+/// 見えるインクを描く。
 #[test]
 fn missing_glyph_draws_visible_placeholder() {
-    // Precondition: the codepoint really is missing (the bug's root cause).
+    // 前提条件: このコードポイントは本当に欠落している（バグの根本原因）。
     assert!(
         !font_has_glyph('\u{2715}'),
         "U+2715 ✕ must be absent from NotoSansJP.ttf for this regression to be meaningful",
     );
-    // A present glyph is the control — it must still render ink.
+    // 存在するグリフが対照。引き続きインクを描く必要がある。
     let present = glyph_ink("A");
     assert!(present > 0, "control glyph 'A' must render ink, got {present}");
-    // The missing codepoint must now produce a visible placeholder, not a blank.
+    // 欠落コードポイントは空白ではなく見えるプレースホルダを生成しなければならない。
     let missing = glyph_ink("\u{2715}");
     assert!(
         missing > 0,
@@ -759,31 +755,29 @@ fn missing_glyph_draws_visible_placeholder() {
     );
 }
 
-// ───────────────────────── interaction-state comparison ─────────────────────
-// Ad-hoc input interactions — click-to-focus, type, drag-select, IME compose,
-// button hover — rendered through Canvas mode (tiny-skia) so the result can be
-// eyeballed against DOM / EditContext rendering. Mirrors `App.tsx` AddForm:
-// `inputStyle()` with a `:focus` variant (border→accent, bg→panel3) and the
-// teal 追加 button with a `:hover` variant (bg→success).
+// ───────────────────────── 入力状態の比較 ─────────────────────
+// 入力インタラクション（クリックでフォーカス、入力、ドラッグ選択、IME 変換、ボタン hover）を
+// Canvas mode（tiny-skia）で描画し、DOM / EditContext 描画と目視比較する。
+// `App.tsx` の AddForm を再現する: `:focus` バリアント付き `inputStyle()`
+// （border→accent, bg→panel3）と、`:hover` バリアント（bg→success）付きの teal 追加ボタン。
 
 #[derive(Clone, Copy)]
 struct InputState {
     label: &'static str,
-    /// Committed text. Empty string => the placeholder shows.
+    /// 確定済みテキスト。空文字列ならプレースホルダが表示される。
     content: &'static str,
-    /// Active IME composition tail appended after `content`.
+    /// `content` の後ろに付く、変換中の IME 合成テール。
     preedit: &'static str,
-    /// When true, the preedit is split into a converting (thick-underline) first
-    /// clause and a determined (thin-underline) tail — the mid-conversion look
-    /// (ADR-0102, #336). When false the whole preedit is one thin underline.
+    /// true のとき preedit を変換中（太い下線）の先頭文節と確定（細い下線）のテールに
+    /// 分割し、変換中の見た目を表す（ADR-0102）。false なら preedit 全体が単一の細い下線。
     convert: bool,
     focused: bool,
     select_all: bool,
     hover_add: bool,
 }
 
-/// Split a preedit into a thick (converting) first clause and a thin tail at its
-/// character midpoint — the harness stand-in for an IME's `textformatupdate`.
+/// preedit を文字数の中点で、太い（変換中）先頭文節と細いテールに分割する。
+/// IME の `textformatupdate` のテスト用代替。
 fn convert_clauses(preedit: &str) -> Vec<hayate_core::CompositionClause> {
     use hayate_core::{CompositionClause, CompositionUnderline};
     let mid = preedit
@@ -804,9 +798,9 @@ fn convert_clauses(preedit: &str) -> Vec<hayate_core::CompositionClause> {
 const PANEL_W: u32 = 560;
 const PANEL_H: u32 = 96;
 
-/// Build one AddForm row (text-input + three priority segments + 追加 button),
-/// faithful to `App.tsx` AddForm. Registers the input `:focus` and add-button
-/// `:hover` variants so interaction states resolve. Returns (input, add_btn).
+/// AddForm の 1 行（テキスト入力 + 優先度セグメント 3 つ + 追加ボタン）を、`App.tsx` の
+/// AddForm に忠実に構築する。入力の `:focus` と追加ボタンの `:hover` バリアントを
+/// 登録し、インタラクション状態が解決されるようにする。(input, add_btn) を返す。
 fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, ElementId) {
     let lbl = b.text(label, &[StyleProp::Color(p.muted()), StyleProp::FontSize(11.0)]);
 
@@ -824,12 +818,12 @@ fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, 
         StyleProp::BorderColor(p.line()),
         StyleProp::FontSize(13.0),
     ]);
-    // The app's `:focus` variant from `inputStyle()`.
+    // アプリの `inputStyle()` 由来の `:focus` バリアント。
     b.tree.element_set_pseudo_style(input, PseudoState::Focus, &[
         StyleProp::BorderColor(p.accent()),
         StyleProp::BackgroundColor(p.panel3()),
     ]);
-    // Placeholder text lives in `el.text` for a TextInput (ADR-0058).
+    // TextInput のプレースホルダテキストは `el.text` に置く（ADR-0058）。
     b.tree.element_set_text(input, "新しいタスクを入力…");
 
     let segs = b.view(&row(4.0));
@@ -867,7 +861,7 @@ fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, 
         StyleProp::BorderColor(p.accent()),
         StyleProp::FontSize(13.0),
     ]);
-    // The app's 追加 `:hover` variant (bg/border → success).
+    // アプリの追加ボタンの `:hover` バリアント（bg/border → success）。
     b.tree.element_set_pseudo_style(add, PseudoState::Hover, &[
         StyleProp::BackgroundColor(p.success()),
         StyleProp::BorderColor(p.success()),
@@ -878,7 +872,7 @@ fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, 
     (input, add)
 }
 
-/// Render one interaction state into its own panel pixmap.
+/// 1 つのインタラクション状態を専用のパネル pixmap に描画する。
 fn render_input_state(st: &InputState) -> Pixmap {
     let p = P;
     let mut b = B::new();
@@ -901,7 +895,7 @@ fn render_input_state(st: &InputState) -> Pixmap {
     b.tree.set_viewport(PANEL_W as f32, PANEL_H as f32);
     let (input, add) = build_addform(&mut b, &p, root, st.label);
 
-    // ── apply the ad-hoc interaction ──
+    // ── インタラクションを適用 ──
     if !st.content.is_empty() {
         b.tree.element_set_text_content(input, st.content);
     }
@@ -914,18 +908,18 @@ fn render_input_state(st: &InputState) -> Pixmap {
         }
     }
     if st.focused {
-        b.tree.element_focus(input); // sets cursor_visible + :focus pseudo
+        b.tree.element_focus(input); // cursor_visible + :focus 疑似クラスを設定
     }
     if st.hover_add {
-        b.tree.hover_enter_element(add); // :hover pseudo
+        b.tree.hover_enter_element(add); // :hover 疑似クラス
     }
 
-    // First render establishes layout so we can drive a drag-select by geometry.
+    // 最初の描画でレイアウトを確定させ、座標からドラッグ選択を駆動できるようにする。
     let _ = b.tree.render(0.0);
     if st.select_all {
         if let Some((rx, ry, rw, rh)) = b.tree.element_layout_rect(input) {
             let my = ry + rh / 2.0;
-            // Drag from just inside the left padding to past the last glyph.
+            // 左パディングのすぐ内側から最後のグリフを越えるまでドラッグする。
             b.tree.on_pointer_down_on(input, rx + 13.0, my);
             b.tree.on_pointer_move(rx + rw - 6.0, my);
             b.tree.on_pointer_up(rx + rw - 6.0, my);
@@ -938,9 +932,9 @@ fn render_input_state(st: &InputState) -> Pixmap {
     pixmap
 }
 
-/// Heights of the composition underline rects an addform input emits for a
-/// `preedit` (optionally `convert`-split), left-to-right. Reads the scene graph
-/// directly so the thin↔thick distinction is exact rather than glyph-swamped.
+/// addform 入力が `preedit`（任意で `convert` 分割）に対して出力する合成下線矩形の
+/// 高さを左から右へ返す。グリフに埋もれず thin↔thick を正確に区別するため、
+/// シーングラフを直接読む。
 fn preedit_underline_heights(preedit: &str, convert: bool) -> Vec<f32> {
     let p = P;
     let mut b = B::new();
@@ -975,7 +969,7 @@ fn preedit_underline_heights(preedit: &str, convert: bool) -> Vec<f32> {
     heights.into_iter().map(|(_, h)| h).collect()
 }
 
-/// The ad-hoc interaction sequence rendered for comparison.
+/// 比較のために描画するインタラクションの並び。
 fn interaction_states() -> Vec<InputState> {
     vec![
         InputState { label: "1. rest — 未フォーカス（placeholder）", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false },
@@ -1016,8 +1010,8 @@ fn render_interaction_states() {
     eprintln!("wrote {}", path.display());
 }
 
-/// Average straight-alpha RGB of the darkest text pixels inside a region —
-/// recovers the colour text was actually painted with.
+/// 領域内で最も暗いテキストピクセルの straight-alpha RGB を取り、テキストが実際に
+/// 塗られた色を復元する。
 fn darkest_text_rgb(pm: &Pixmap, x0: u32, y0: u32, x1: u32, y1: u32) -> (u8, u8, u8) {
     let mut d = pm.data().to_vec();
     premultiplied_to_straight(&mut d);
@@ -1036,7 +1030,7 @@ fn darkest_text_rgb(pm: &Pixmap, x0: u32, y0: u32, x1: u32, y1: u32) -> (u8, u8,
     (best.1, best.2, best.3)
 }
 
-/// Sample one straight-alpha pixel.
+/// straight-alpha のピクセルを 1 つサンプリングする。
 fn sample_rgb(pm: &Pixmap, x: u32, y: u32) -> (u8, u8, u8) {
     let mut d = pm.data().to_vec();
     premultiplied_to_straight(&mut d);
@@ -1044,8 +1038,8 @@ fn sample_rgb(pm: &Pixmap, x: u32, y: u32) -> (u8, u8, u8) {
     (d[i], d[i + 1], d[i + 2])
 }
 
-/// Deterministic signals for the interaction-state divergences, parallel to
-/// `diagnose_glyph_ink`. Each line is a sharp, reproducible probe.
+/// インタラクション状態の差異を捉える決定的なシグナル。`diagnose_glyph_ink` と同様に、
+/// 各行が鋭く再現可能なプローブ。
 #[test]
 fn diagnose_interaction_signals() {
     if std::env::var_os("HAYATE_WRITE_SCREENSHOT").is_none() {
@@ -1053,31 +1047,31 @@ fn diagnose_interaction_signals() {
     }
     let p = P;
 
-    // The text region row inside a panel (label ~y14..28, input row ~y34..72).
+    // パネル内のテキスト領域の行（ラベル ~y14..28、入力行 ~y34..72）。
     let (ty0, ty1) = (34u32, 72u32);
     let (tx0, tx1) = (30u32, 360u32);
 
-    // 1. Placeholder colour: empty (placeholder) vs committed text, same glyphs.
+    // 1. プレースホルダ色: 空（プレースホルダ）と確定テキスト、同じグリフで比較。
     let placeholder = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
     let committed = render_input_state(&InputState { label: "", content: "新しいタスクを入力…", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
     let ph = darkest_text_rgb(&placeholder, tx0, ty0, tx1, ty1);
     let cm = darkest_text_rgb(&committed, tx0, ty0, tx1, ty1);
     eprintln!("[PLACEHOLDER-RGB] placeholder={:?} committed={:?}  (#334 fixed: Canvas now paints ::placeholder muted — Chromium UA ~54% black/white per ADR-0102 — distinct from committed body color {:?}; exact value pending real-Chromium calibration vs DOM ~#9a93a3)", ph, cm, (p.text().to_array_f32()));
 
-    // 2. Focus ring: input left-border colour, unfocused vs focused.
+    // 2. フォーカスリング: 入力の左ボーダー色、非フォーカス vs フォーカス。
     let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
     let foc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
-    // The :focus background shifts panel2→panel3. The 1px line→accent border
-    // change now also reads (issue #337: `border-style: solid` is supplied and
-    // the native focus ring no longer clears the box) — asserted separately by
-    // `addform_input_1px_border_renders`. Sample the input fill at its centre.
+    // :focus 背景は panel2→panel3 に変わる。1px の line→accent ボーダー変化も
+    // 読み取れる（`border-style: solid` を与え、ネイティブのフォーカスリングが
+    // ボックスを消さなくなった）。ボーダー側は `addform_input_1px_border_renders`
+    // で別途検証する。入力の塗りを中央でサンプリングする。
     eprintln!(
         "[FOCUS-FILL] unfocused={:?} focused={:?}  (panel2={:?} → panel3={:?}; :focus background applies; the 1px accent border + native focus ring are now both visible — see addform_input_1px_border_renders)",
         sample_rgb(&unfoc, 180, 50), sample_rgb(&foc, 180, 50),
         (p.panel2().to_array_f32()), (p.panel3().to_array_f32()),
     );
 
-    // 3. Caret: extra ink a focused-empty input draws over an unfocused-empty one.
+    // 3. キャレット: フォーカス済み空入力が非フォーカス空入力より多く描くインク。
     let ink = |pm: &Pixmap| -> u32 {
         let mut d = pm.data().to_vec();
         premultiplied_to_straight(&mut d);
@@ -1085,19 +1079,18 @@ fn diagnose_interaction_signals() {
     };
     eprintln!("[CARET-INK] focused-empty={} unfocused-empty={} (Δ≈caret px; Canvas core-draws the caret, DOM/EditContext uses the native caret)", ink(&foc), ink(&unfoc));
 
-    // 4. Selection highlight: count Material-blue tint pixels + report the colour.
+    // 4. 選択ハイライト: Material ブルーの色味のピクセル数を数え、色を報告する。
     let sel = render_input_state(&InputState { label: "", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false, convert: false });
     let mut sd = sel.data().to_vec();
     premultiplied_to_straight(&mut sd);
     let sel_px = sd.chunks_exact(4).filter(|c| c[2] > c[0] && c[2] > 110 && c[0] < 170 && c[1] < 200).count();
     eprintln!("[SELECTION-PX] material-blue-tint px={} (Canvas paints a fixed Material tint #3373F2~0.35; DOM uses the OS/::selection colour — colour & semantics differ)", sel_px);
 
-    // 5. IME preedit: Canvas now underlines the composition (ADR-0102, #336) — a
-    // single thin underline before conversion, and a thick (active clause) + thin
-    // (determined tail) split while converting. The truthful signal is the
-    // emitted underline rects, so report their heights from the scene graph
-    // directly (the pixel total is glyph-dominated and insensitive to a 1px↔2px
-    // underline). Heights match COMPOSITION_UNDERLINE_THIN/THICK in scene_build.
+    // 5. IME preedit: Canvas は合成に下線を引く（ADR-0102）。変換前は単一の細い下線、
+    // 変換中は太い（アクティブ文節）+ 細い（確定テール）の分割。正確なシグナルは
+    // 出力された下線矩形なので、シーングラフから直接その高さを報告する（ピクセル総数は
+    // グリフ支配で 1px↔2px の下線差に鈍感）。高さは scene_build の
+    // COMPOSITION_UNDERLINE_THIN/THICK に一致する。
     let pre = preedit_underline_heights("ぎゅうにゅう", false);
     let conv = preedit_underline_heights("ぎゅうにゅう", true);
     eprintln!(
@@ -1106,7 +1099,7 @@ fn diagnose_interaction_signals() {
     );
 }
 
-/// Render an AddForm input and return (pixmap, input layout rect).
+/// AddForm 入力を描画し、(pixmap, 入力のレイアウト矩形) を返す。
 fn render_input_state_with_rect(st: &InputState) -> (Pixmap, (f32, f32, f32, f32)) {
     let p = P;
     let mut b = B::new();
@@ -1139,17 +1132,17 @@ fn render_input_state_with_rect(st: &InputState) -> (Pixmap, (f32, f32, f32, f32
     (pixmap, rect)
 }
 
-/// Issue #337 acceptance probe (the README `[SCAN]` method, now an assertion):
-/// the AddForm input's left 1px border must land as an independent opaque
-/// column — the `line` colour unfocused, the `accent` colour focused — and the
-/// focused interior must stay opaque (the native focus ring must not erase it).
+/// 受け入れプローブ（README の `[SCAN]` 手法を assertion 化）。AddForm 入力の左 1px
+/// ボーダーは独立した不透明な列として現れること（非フォーカスは `line` 色、フォーカスは
+/// `accent` 色）。さらにフォーカス時の内側は不透明のままであること（ネイティブの
+/// フォーカスリングが消してはならない）。
 #[test]
 fn addform_input_1px_border_renders() {
     let p = P;
     let (unfoc, rect) = render_input_state_with_rect(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
     let (foc, _) = render_input_state_with_rect(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
     let (rx, ry, rw, rh) = rect;
-    let bx = rx as u32; // integer left edge — the 1px border column
+    let bx = rx as u32; // 整数化した左端 — 1px ボーダーの列
     let my = (ry + rh / 2.0) as u32;
 
     let near = |got: (u8, u8, u8), want: Color, tol: i32, label: &str| {
@@ -1162,13 +1155,13 @@ fn addform_input_1px_border_renders() {
         );
     };
 
-    // Unfocused: the left border column is the `line` colour, not the panel fill.
+    // 非フォーカス: 左ボーダー列はパネルの塗りではなく `line` 色。
     near(sample_rgb(&unfoc, bx, my), p.line(), 8, "unfocused 1px border = line colour");
-    // Focused: the app's `:focus` border switches to the teal `accent`, and it
-    // is visible (the focus ring no longer clears the border/fill underneath).
+    // フォーカス: アプリの `:focus` ボーダーは teal の `accent` に切り替わり、
+    // 表示される（フォーカスリングが下のボーダー/塗りを消さなくなった）。
     near(sample_rgb(&foc, bx, my), p.accent(), 8, "focused 1px border = accent teal");
 
-    // The focused input interior stays opaque — no transparent hole (#335 ring).
+    // フォーカス時の入力内側は不透明のまま — 透明な穴は空かない。
     let cx = (rx + rw / 2.0) as u32;
     let i = ((my * foc.width() + cx) * 4) as usize;
     assert_eq!(foc.data()[i + 3], 255, "focused input interior must stay opaque");

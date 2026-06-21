@@ -8,9 +8,9 @@ import {
   type SemanticMutation,
 } from './encode-mutations.js';
 
-// `encodeMutations` is the single pure wire-format producer for the
-// CanvasRenderer → Hayate WASM boundary (issue #237). These tests drive the
-// encode directly — no `RawHayate` stub, no WASM crossing.
+// `encodeMutations` は CanvasRenderer → Hayate WASM 境界で唯一の純粋な
+// ワイヤーフォーマット生成器。これらのテストはエンコードを直接駆動し、
+// `RawHayate` スタブも WASM 越えも使わない。
 
 describe('encodeMutations', () => {
   it('encodes createElement as [OP.CREATE, id, kind] with empty style/text buffers', () => {
@@ -33,12 +33,12 @@ describe('encodeMutations – setStyleVariant per-property split (ADR-0081)', ()
         style: { width: '100px', height: '200px' },
       },
     ]);
-    // Two SET_STYLE_VARIANT ops, each carrying exactly one property's style.
+    // SET_STYLE_VARIANT op が2つ、各々ちょうど1プロパティ分の style を運ぶ。
     expect(Array.from(ops)).toEqual([
       OP.SET_STYLE_VARIANT, 3, -1, 600, -1, -1, /* offset */ 0, /* len */ 3,
       OP.SET_STYLE_VARIANT, 3, -1, 600, -1, -1, /* offset */ 3, /* len */ 3,
     ]);
-    // Styles are packed contiguously: width slice then height slice.
+    // style は連続して詰められる: width スライス、続いて height スライス。
     expect(Array.from(styles)).toEqual([
       TAG.WIDTH, 100, 0,
       TAG.HEIGHT, 200, 0,

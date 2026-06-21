@@ -1,12 +1,11 @@
 use hayate_core::{CharacterBounds, ImeBridge, ImePresentation};
 
-/// Web EditContext bridge (ADR-0069, #392). It only *reflects* the
-/// [`ImePresentation`] core computes each frame: whether a `text-input` is
-/// focused (`visible`) and where its caret sits (`last_bounds`). The JS host
-/// reads `visible` to attach/detach `EditContext` — which is what shows or
-/// dismisses the mobile soft keyboard — and `last_bounds` to place the candidate
-/// window via `updateControlBounds` / `updateSelectionBounds`. The adapter makes
-/// no editability decision of its own; that lives in `ElementTree::drive_ime`.
+/// Web EditContext ブリッジ（ADR-0069）。core が毎フレーム計算する
+/// [`ImePresentation`] を反映するだけ。`text-input` がフォーカス中か（`visible`）と
+/// キャレット位置（`last_bounds`）を保持する。JS ホストは `visible` を見て
+/// `EditContext` を着脱し（これがモバイルのソフトキーボードを表示/解除する）、
+/// `last_bounds` を `updateControlBounds` / `updateSelectionBounds` で候補ウィンドウ
+/// 配置に使う。編集可否の判断はアダプタ側では行わず、`ElementTree::drive_ime` が持つ。
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WebImeBridge {
     last_bounds: CharacterBounds,
@@ -18,8 +17,8 @@ impl WebImeBridge {
         self.last_bounds
     }
 
-    /// Whether core wants the soft keyboard up this frame (a `text-input` is
-    /// focused). The JS host attaches `EditContext` only while this is true.
+    /// 今フレームで core がソフトキーボードを上げたいか（`text-input` がフォーカス中か）。
+    /// JS ホストはこれが true の間だけ `EditContext` を着ける。
     pub fn visible(&self) -> bool {
         self.visible
     }

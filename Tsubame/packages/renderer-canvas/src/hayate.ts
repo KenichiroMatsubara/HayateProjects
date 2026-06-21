@@ -1,8 +1,7 @@
 import type { HayateColorRecord } from '@tsubame/protocol-generated/codec';
 
-// Parsing/coercion lives in exactly one place — the generated codec (issue #235).
-// Re-export so existing `./hayate.js` importers (and the package index) keep
-// working without re-implementing parseColor/parseDimension here.
+// パース/型強制は生成 codec の一箇所だけに置く。既存の `./hayate.js`
+// インポータが parseColor/parseDimension を再実装せず動き続けるよう re-export する。
 export {
   parseColor,
   parseDimension,
@@ -36,11 +35,11 @@ export interface RawHayate {
   element_set_src(id: number, url: string): void;
   element_set_disabled(id: number, disabled: boolean): void;
   element_get_text(id: number): string;
-  /** Returns the editable text content from the live tree. */
+  /** ライブツリーから編集可能なテキスト内容を返す。 */
   element_get_text_content(id: number): string;
-  /** Absolute layout bounds `[x, y, width, height]` from `layout_cache`. */
+  /** `layout_cache` 由来の絶対レイアウト境界 `[x, y, width, height]`。 */
   element_get_bounds(id: number): Float32Array | number[];
-  /** Element ids in `id` and its descendants (Hayate ElementTree is authoritative). */
+  /** `id` とその子孫の要素 id（Hayate ElementTree が正）。 */
   element_subtree_ids(id: number): Float64Array;
   element_set_style(id: number, packed: Float32Array): void;
   element_set_pseudo_style(id: number, state: number, packed: Float32Array): void;
@@ -55,13 +54,14 @@ export interface RawHayate {
   on_pointer_up(x: number, y: number): void;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   on_key_down(key: string, modifiers: number): void;
-  /** Whether a document-wide text selection is active (ADR-0097, #267). */
+  /** document 全体のテキスト選択が有効かどうか（ADR-0097）。 */
   has_selection(): boolean;
   on_text_input(id: number, text: string): void;
   on_composition_start(id: number, text: string): void;
   on_composition_update(id: number, text: string): void;
-  /** Preedit update carrying EditContext `textformatupdate` clause ranges as a
-   * flat `[start, end, weight]` UTF-8 byte-offset triple stream (ADR-0102). */
+  /** EditContext `textformatupdate` の節範囲を、フラットな
+   * `[start, end, weight]` の UTF-8 バイトオフセット三つ組ストリームとして
+   * 運ぶ preedit 更新（ADR-0102）。 */
   on_composition_update_formatted(
     id: number,
     text: string,
@@ -69,27 +69,27 @@ export interface RawHayate {
   ): void;
   on_composition_end(id: number, text: string): void;
   focused_element_id(): number;
-  /** Cursor rect synced during the last render (ADR-0069). */
+  /** 直近の render で同期されたカーソル矩形（ADR-0069）。 */
   ime_character_bounds(): number[];
-  /** Whether the soft keyboard should be up — true only while a `text-input` is
-   * focused (ADR-0069, #392). The host attaches `EditContext` (which raises the
-   * keyboard) only when this is true, so a plain tap never summons it. */
+  /** ソフトキーボードを出すべきか。`text-input` がフォーカス中のときのみ true
+   * （ADR-0069）。ホストはこれが true のときだけ `EditContext`（キーボードを
+   * 出す）を装着するため、ただのタップではキーボードが出ない。 */
   ime_wants_keyboard(): boolean;
-  /** JSON-encoded AccessKit `TreeUpdate` (ADR-0041), or `null` before layout. */
+  /** JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は `null`。 */
   poll_accessibility(): string | null;
   render(timestampMs: number): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;
-  /** Dev-only: overlay `tuning.json` taste-constant overrides (#353 family).
-   * Throws on malformed JSON / unknown keys; the host swallows it so the
-   * compiled defaults stand. Editing the file + F5 re-applies with no rebuild. */
+  /** 開発専用: `tuning.json` の味付け定数オーバーライドを重ねる。不正な JSON や
+   * 未知のキーで throw するが、ホストは握りつぶしコンパイル済み既定を残す。
+   * ファイル編集 + F5 で再ビルドなしに再適用される。 */
   set_tuning(json: string): void;
-  /** Resolved style after inheritance + pseudo-state (ADR-0067), or `null` if `id` is unknown. */
+  /** 継承 + 擬似状態の解決後のスタイル（ADR-0067）。`id` が未知なら `null`。 */
   element_effective_visual(id: number): HayateEffectiveVisual | null;
 }
 
-/** JS-friendly mirror of `hayate_core::Visual` after effective-style resolution (ADR-0067). */
+/** 実効スタイル解決後の `hayate_core::Visual` を JS 向けに写したもの（ADR-0067）。 */
 export interface HayateEffectiveVisual {
   backgroundColor: HayateColorRecord | null;
   opacity: number;

@@ -1,4 +1,4 @@
-//! Font synthesis behavior (ADR-0085) for the tiny-skia backend.
+//! tiny-skia バックエンドのフォント合成挙動（ADR-0085）。
 
 use hayate_scene_test_support::synthesis;
 

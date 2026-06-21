@@ -1,10 +1,10 @@
 use hayate_core::{Dimension, ElementKind, ElementTree, StyleProp, TextOverflowValue};
 
-/// Long text that wraps to many lines inside a narrow (120px) IFC box.
+/// 狭い（120px）IFC ボックス内で複数行に折り返す長文。
 const LONG_TEXT: &str =
     "The quick brown fox jumps over the lazy dog near the river bank early today";
 
-/// Build a single-text-element IFC of the given width and return (tree, ifc id).
+/// 指定幅の単一テキスト要素 IFC を構築し、(tree, ifc id) を返す。
 fn narrow_ifc(width: f32, extra: &[StyleProp]) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -22,8 +22,8 @@ fn narrow_ifc(width: f32, extra: &[StyleProp]) -> (ElementTree, hayate_core::Ele
 
 #[test]
 fn long_text_wraps_to_more_than_three_lines_without_max_lines() {
-    // Baseline: the fixture must actually wrap past our max-lines bounds, else the
-    // truncation tests below would pass vacuously.
+    // ベースライン: フィクスチャが実際に max-lines の上限を超えて折り返さないと、
+    // 以降の切り詰めテストが空虚に成立してしまう。
     let (tree, ifc) = narrow_ifc(120.0, &[]);
     let lines = tree.test_text_line_count(ifc).expect("shaped IFC");
     assert!(lines > 3, "expected >3 wrapped lines, got {lines}");

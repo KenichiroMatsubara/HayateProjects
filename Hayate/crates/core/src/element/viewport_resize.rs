@@ -1,12 +1,9 @@
-//! Resize → `(shape, visual)` dirty resolution in one place (ADR-0081, #324).
+//! リサイズ → `(shape, visual)` dirty の解決を一箇所にまとめる（ADR-0081）。
 //!
-//! "Did an element's viewport-conditioned style change on resize, and if so how
-//! must it be marked?" used to be spread across three seams: the element scan in
-//! `tree.rs`, the old/new comparison in `effective_visual.rs`, and the
-//! shape-vs-visual classification in `engine.rs`'s viewport promotion. This
-//! module folds all three into a single pure function so the caller only raises
-//! dirty from the returned sets — no intermediate `viewport_dirty` set, no
-//! implicit scan → promote → compare ordering.
+//! 「リサイズで要素のビューポート条件付きスタイルが変わったか、変わったならどう
+//! マークすべきか」をこの 1 つの純粋関数に集約する。呼び出し側は返された集合から
+//! dirty を立てるだけでよく、中間の `viewport_dirty` 集合も scan → promote → compare の
+//! 暗黙の順序も不要になる。
 
 use std::collections::HashSet;
 
@@ -15,30 +12,28 @@ use crate::element::id::ElementId;
 use crate::element::style::{StyleProp, ViewportCondition};
 use crate::element::tree::{apply_visual, Visual};
 
-/// One element's resize-relevant state: its base visual and viewport variants.
+/// 1 要素のリサイズ関連状態。ベース visual とビューポートバリアント。
 pub(crate) struct ElementResizeInput<'a> {
     pub id: ElementId,
     pub base: &'a Visual,
     pub variants: &'a [(ViewportCondition, StyleProp)],
 }
 
-/// Which elements changed under a resize, split by how they must be marked.
+/// リサイズで変化した要素を、マーク方法ごとに分けたもの。
 #[derive(Default, Debug)]
 pub(crate) struct ViewportResizeDirty {
-    /// Variant touches a text field → re-shape (Parley) + projection dirty.
+    /// バリアントがテキストフィールドに触れる → 再シェイプ（Parley）＋ projection dirty。
     pub shape: HashSet<ElementId>,
-    /// Variant is box-visual only → scene re-lower, no re-shape.
+    /// バリアントがボックス visual のみ → シーン再 lower（再シェイプ不要）。
     pub visual: HashSet<ElementId>,
 }
 
-/// Resolve which elements need marking after a viewport resize.
+/// ビューポートリサイズ後にマークが必要な要素を解決する。
 ///
-/// For each element carrying viewport variants, compares the variant-resolved
-/// own-style at the old vs new viewport (responsibility: *which* elements
-/// changed), then classifies the change as shape or visual by whether the
-/// variants active at the new viewport touch a text field (responsibility:
-/// *how* to mark). Elements without variants, or whose resolution is unchanged,
-/// are skipped.
+/// ビューポートバリアントを持つ各要素について、旧/新ビューポートでバリアント解決済みの
+/// own-style を比較し（*どの*要素が変化したか）、新ビューポートで有効なバリアントが
+/// テキストフィールドに触れるかで shape か visual かを分類する（*どう*マークするか）。
+/// バリアントを持たない、または解決結果が不変の要素はスキップする。
 pub(crate) fn resolve_resize<'a>(
     elements: impl IntoIterator<Item = ElementResizeInput<'a>>,
     old_viewport: (f32, f32),
@@ -64,7 +59,7 @@ pub(crate) fn resolve_resize<'a>(
     dirty
 }
 
-/// Whether the viewport-conditioned own-style differs between two viewports.
+/// ビューポート条件付き own-style が 2 つのビューポート間で異なるか。
 fn resolution_changed(
     base: &Visual,
     variants: &[(ViewportCondition, StyleProp)],
@@ -76,8 +71,8 @@ fn resolution_changed(
     own_visual_differs(&old, &new)
 }
 
-/// Whether any variant active at `viewport` sets a text field (font/color/etc.),
-/// which forces a Parley re-shape rather than a paint-only re-lower.
+/// `viewport` で有効なバリアントのいずれかがテキストフィールド（font/color など）を
+/// 設定するか。設定する場合は paint のみの再 lower ではなく Parley 再シェイプが必要。
 fn variants_touch_text_at(
     variants: &[(ViewportCondition, StyleProp)],
     viewport: (f32, f32),
@@ -202,7 +197,7 @@ mod tests {
         )];
         let id = ElementId::from_u64(4);
 
-        // Both viewports are above the 768px breakpoint: resolution is unchanged.
+        // 両ビューポートとも 768px ブレークポイント以上で、解決結果は不変。
         let dirty = resolve_resize(
             [ElementResizeInput {
                 id,

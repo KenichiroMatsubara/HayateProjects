@@ -15,96 +15,77 @@ use crate::element::tree::{ElementTree, Visual};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 use std::collections::HashSet;
 
-/// Native focus-ring geometry and colour for `:focus-visible` (#335, ADR-0102).
-/// Chromium draws a solid ring just outside the border box, following its corner
-/// radius. The width/offset/colour approximate Chrome's default `outline: auto`
-/// ring and are calibrated against real Chromium rasterisation (tracking #335).
+/// `:focus-visible` のフォーカスリング幅（ADR-0102）。Chromium はボーダーボックスの
+/// すぐ外側に角丸に沿った実線リングを描く。Chrome の既定 `outline: auto` 相当。
 pub const FOCUS_RING_WIDTH: f32 = 2.0;
-/// Gap between the element's border box and the ring's inner edge.
+/// ボーダーボックスとリング内縁の隙間。
 pub const FOCUS_RING_OFFSET: f32 = 1.0;
-/// Chromium's default accent focus ring (Google Blue), opaque.
+/// Chromium 既定のアクセントフォーカスリング色（Google Blue、不透明）。
 pub const FOCUS_RING_COLOR: Color = Color::new(0.102, 0.451, 0.910, 1.0);
 
-/// Scrollbar overlay chrome (ADR-0110, #407). A Mouse/Pen-style always-on thumb
-/// painted over the content on each *overflowing* axis of a `ScrollView`; the
-/// thumb geometry is derived from the Scroll Offset and content size. Drawn as an
-/// overlay — no layout space is reserved (no scrollbar gutter), so it never
-/// shrinks the content box. The Touch transient indicator and the drag/track
-/// interaction are later slices (ADR-0110).
+/// スクロールバーオーバーレイ（ADR-0110）。`ScrollView` のオーバーフロー軸ごとに、
+/// Scroll Offset とコンテンツサイズから導いた常時表示の Mouse/Pen 用サムをコンテンツ上に描く。
+/// オーバーレイ描画でレイアウト領域を占有しない（ガター無し）ためコンテンツボックスを縮めない。
 ///
-/// Every tunable here is a named placeholder pending Chromium calibration, in the
-/// same bucket as the focus ring and selection-chrome values (ADR-0102): the
-/// scene-build path must carry no inline scrollbar magic numbers.
+/// 以降のチューニング値はフォーカスリングや選択クロームと同様、scene-build パスに
+/// インラインのマジックナンバーを置かないための名前付き定数（ADR-0102）。
 ///
-/// Thickness (cross-axis extent) of the scrollbar bar.
+/// スクロールバー本体の太さ（横断方向の長さ）。
 pub const SCROLLBAR_THICKNESS: f32 = 6.0;
-/// Inset of the track (hence the thumb) from the scroll-view box edges.
+/// トラック（およびサム）のスクロールビューボックス端からのインセット。
 pub const SCROLLBAR_TRACK_MARGIN: f32 = 2.0;
-/// Floor on the thumb's length along the scroll axis, so very tall/wide content
-/// still leaves a grabbable thumb instead of collapsing to a sliver.
+/// スクロール軸方向のサム長の下限。背の高い／幅広いコンテンツでも掴める長さを残す。
 pub const SCROLLBAR_MIN_THUMB_LENGTH: f32 = 24.0;
-/// Thumb fill colour (RGB); composited over the content at [`SCROLLBAR_THUMB_OPACITY`].
+/// サムの塗り色（RGB）。[`SCROLLBAR_THUMB_OPACITY`] でコンテンツ上に合成する。
 pub const SCROLLBAR_THUMB_COLOR: Color = Color::new(0.0, 0.0, 0.0, 1.0);
-/// Thumb opacity — its translucency as an overlay sitting on top of the content.
+/// サムの不透明度（オーバーレイとしての透け具合）。
 pub const SCROLLBAR_THUMB_OPACITY: f32 = 0.4;
-/// Scroll Offset distance one track-margin click advances ("page" step, #409).
-/// A placeholder value pending Chromium calibration (ADR-0110); a true page step
-/// keys off the viewport length, which is a follow-up — like the other
-/// `SCROLLBAR_*` values this carries no inline magic number.
+/// トラックマージンの1クリックで進む Scroll Offset 距離（ページ送り、ADR-0110）。
 pub const SCROLLBAR_PAGE_STEP: f32 = 240.0;
 
-/// Touch transient-indicator dimensions and fade timing (ADR-0110, SCR-04, #410).
-/// The Touch form is a non-operable indicator that shows while the content
-/// scrolls and fades after it stops (Android-native, ADR-0087); it is thinner
-/// than the Mouse/Pen operable thumb and carries no hit region. Every value here
-/// is a named placeholder pending Android calibration, in the same bucket as the
-/// other `SCROLLBAR_*` constants — the scene-build path holds no inline magic
-/// number.
+/// Touch の一時インジケータの寸法とフェードタイミング（ADR-0110）。
+/// Touch 形態はスクロール中に現れ停止後にフェードする非操作インジケータ（Android ネイティブ、
+/// ADR-0087）。Mouse/Pen の操作可能サムより細く、ヒット領域を持たない。
 ///
-/// Cross-axis extent of the indicator bar (thinner than [`SCROLLBAR_THICKNESS`]).
+/// インジケータバーの横断方向の長さ（[`SCROLLBAR_THICKNESS`] より細い）。
 pub const SCROLLBAR_INDICATOR_THICKNESS: f32 = 4.0;
-/// Indicator fill colour (RGB); composited at [`SCROLLBAR_INDICATOR_OPACITY`]
-/// scaled by the current fade factor.
+/// インジケータの塗り色（RGB）。[`SCROLLBAR_INDICATOR_OPACITY`] に現在のフェード係数を掛けて合成。
 pub const SCROLLBAR_INDICATOR_COLOR: Color = Color::BLACK;
-/// Indicator opacity at full visibility (before any fade).
+/// フェード前の完全表示時の不透明度。
 pub const SCROLLBAR_INDICATOR_OPACITY: f32 = 0.4;
-/// How long the indicator stays fully visible after the last scroll before it
-/// begins to fade (the "hold" window).
+/// 最後のスクロール後、フェード開始までフル表示を保つ時間（ホールド窓）。
 pub const SCROLLBAR_INDICATOR_HOLD_MS: f64 = 600.0;
-/// How long the indicator takes to fade from full to invisible once the hold
-/// window elapses (the "fade" length).
+/// ホールド窓経過後、フルから不可視までフェードに要する時間。
 pub const SCROLLBAR_INDICATOR_FADE_MS: f64 = 400.0;
 
-/// Axis a scrollbar thumb slides along (#409).
+/// スクロールバーのサムが滑る軸。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ScrollAxis {
     Vertical,
     Horizontal,
 }
 
-/// Canvas-space geometry of one overflowing axis's Mouse/Pen scrollbar, derived
-/// from the box rect, Scroll Offset and content size (ADR-0110, #409). The
-/// single source the overlay paint (`emit_scrollbar_overlay`) and the pointer
-/// hit-test (`interaction.rs`) share, so a press lands exactly on the thumb the
-/// user sees and operation maps back to the same offset the paint reads.
+/// オーバーフロー軸1本の Mouse/Pen スクロールバーのキャンバス座標ジオメトリ。ボックス矩形・
+/// Scroll Offset・コンテンツサイズから導く（ADR-0110）。オーバーレイ描画
+/// (`emit_scrollbar_overlay`) とポインタヒットテスト (`interaction.rs`) が共有する単一の源で、
+/// 押下が見えているサムに正確に当たり、操作が描画と同じ offset へ戻る。
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollbarAxisGeometry {
     pub axis: ScrollAxis,
-    /// Thumb rect `(x, y, w, h)` in canvas coordinates.
+    /// サム矩形 `(x, y, w, h)`（キャンバス座標）。
     pub thumb: (f32, f32, f32, f32),
-    /// Track rect `(x, y, w, h)` in canvas coordinates — the full slidable span.
+    /// トラック矩形 `(x, y, w, h)`（キャンバス座標、スライド可能な全幅）。
     pub track: (f32, f32, f32, f32),
-    /// Maximum Scroll Offset on this axis.
+    /// この軸の最大 Scroll Offset。
     pub max_offset: f32,
-    /// Slidable thumb travel in track px (`track_len − thumb_len`); zero when the
-    /// thumb fills the track. Maps a drag's track-pixel delta to an offset delta.
+    /// サムのスライド可能量（トラックpx、`track_len − thumb_len`）。サムがトラックを満たすと0。
+    /// ドラッグのトラックpx差分を offset 差分へ写す。
     pub thumb_travel: f32,
 }
 
-/// Scrollbar geometry for each overflowing axis of `id`, in canvas coords. The
-/// public seam the pointer hit-test reads (`interaction.rs`); empty for a
-/// non-`ScrollView`, an unlaid-out element, or one whose content fits. Computed
-/// from the element's own layout rect so it agrees with the overlay paint.
+/// `id` のオーバーフロー軸ごとのスクロールバージオメトリ（キャンバス座標）。ポインタヒットテスト
+/// (`interaction.rs`) が読む公開シーム。`ScrollView` でない・未レイアウト・コンテンツが収まる場合は空。
+/// 要素自身のレイアウト矩形から計算し、オーバーレイ描画と一致させる。
 pub fn scrollbar_axes(tree: &ElementTree, id: ElementId) -> Vec<ScrollbarAxisGeometry> {
     if tree.element_kind(id) != Some(ElementKind::ScrollView) {
         return Vec::new();
@@ -115,28 +96,24 @@ pub fn scrollbar_axes(tree: &ElementTree, id: ElementId) -> Vec<ScrollbarAxisGeo
     scrollbar_axes_in_box(tree, id, x, y, w, h)
 }
 
-/// Ambient context threaded through the one scene walk shared by both anchor
-/// strategies (issue #322). Carries what every emission needs regardless of
-/// strategy — the document tree, the scene graph it builds into, the interaction
-/// snapshot driving effective-visual resolution (ADR-0067), and the per-node
-/// cursor of absolute origin + inherited context. The strategy-specific state
-/// (anchors/clock for retained, nothing for ephemeral) lives in the
-/// [`AnchorSink`] threaded alongside, not here. Descending into a child is
-/// [`WalkCtx::child`].
+/// 両アンカー戦略が共有する単一のシーンウォークを通して回す環境コンテキスト。戦略に依らず
+/// 全エミッションが必要とするもの——ドキュメントツリー、構築先のシーングラフ、effective-visual
+/// 解決を駆動する interaction スナップショット（ADR-0067）、ノードごとの絶対原点＋継承コンテキスト
+/// ——を保持する。戦略固有の状態（retained のアンカー/時計、ephemeral は無し）は隣を回す
+/// [`AnchorSink`] 側にあり、ここには無い。子への下降は [`WalkCtx::child`]。
 struct WalkCtx<'a> {
     tree: &'a ElementTree,
     interaction: &'a crate::element::pseudo_state::InteractionSnapshot,
     sg: &'a mut SceneGraph,
-    /// Absolute origin (parent box top-left) the child is laid out against.
+    /// 子がレイアウトされる絶対原点（親ボックスの左上）。
     ox: f32,
     oy: f32,
     inherited: InheritedVisualContext,
 }
 
 impl WalkCtx<'_> {
-    /// Reborrow for descending into a child: the ambient fields (tree, scene
-    /// graph, interaction) carry over unchanged; the cursor (origin, inherited
-    /// context) is replaced.
+    /// 子へ下降するための再借用。環境フィールド（tree, sg, interaction）はそのまま引き継ぎ、
+    /// カーソル（原点・継承コンテキスト）を差し替える。
     fn child(&mut self, ox: f32, oy: f32, inherited: InheritedVisualContext) -> WalkCtx<'_> {
         WalkCtx {
             tree: self.tree,
@@ -149,37 +126,33 @@ impl WalkCtx<'_> {
     }
 }
 
-/// How the shared scene walk attaches an element's emitted content (issue #322).
+/// 共有シーンウォークが要素のエミッション内容をどう接続するか。
 ///
-/// The emission body — transform/clip wrappers, box shadows, the visual box, and
-/// image/text/text-input runs — is identical for the retained incremental
-/// lowering (ADR-0086) and the ephemeral full rebuild that backstops golden-frame
-/// parity (ADR-0079). They differ only in *anchoring*: retained re-attaches a
-/// persistent `ElementAnchor` and interpolates in-flight transitions against the
-/// value it remembers (ADR-0093); ephemeral emits fresh nodes under the parent
-/// group and paints the resolved target directly. Each is one adapter of this
-/// seam ([`RetainedSink`] / [`EphemeralSink`]), so an emission fix lands once.
+/// エミッション本体——transform/clip ラッパ、box shadow、ビジュアルボックス、image/text/text-input
+/// ラン——は retained のインクリメンタル lowering（ADR-0086）と golden-frame パリティを支える
+/// ephemeral の全再構築（ADR-0079）で同一。違いは接続方法だけ：retained は永続 `ElementAnchor`
+/// を付け直し、記憶した値に対して進行中のトランジションを補間する（ADR-0093）。ephemeral は
+/// 親グループ下に新規ノードを出して解決済みターゲットを直接描く。各々がこのシームの一アダプタ
+/// ([`RetainedSink`] / [`EphemeralSink`]) なので、エミッション修正は一箇所で済む。
 trait AnchorSink {
-    /// Per-node cursor this strategy threads down the walk: the retained attach
-    /// parent + re-lowering `reach`; just the parent group for ephemeral.
+    /// 戦略がウォークに沿って回すノードごとのカーソル。retained は接続先の親＋再lowering の `reach`、
+    /// ephemeral は親グループのみ。
     type Cursor: Copy;
 
-    /// Called once per visited node (including skipped/None ones) before any work
-    /// — the retained walk-count seam (ADR-0086 "clean frame ⇒ zero walks").
+    /// 各訪問ノード（スキップ/None 含む）で作業前に1回呼ばれる。retained のウォーク数計上シーム
+    /// （ADR-0086「クリーンフレーム ⇒ ウォーク0」）。
     fn enter_node(&mut self);
 
-    /// Establish the scene node element `id`'s own content emits under (the
-    /// `effective_parent` seed). Retained ensures the persistent anchor and clears
-    /// its prior content; ephemeral forwards the parent group from the cursor.
+    /// 要素 `id` 自身の内容を出すシーンノード（`effective_parent` の種）を確立する。retained は
+    /// 永続アンカーを確保し旧内容をクリア、ephemeral はカーソルの親グループを転送する。
     fn begin(&mut self, ctx: &mut WalkCtx, cursor: Self::Cursor, id: ElementId) -> Option<NodeId>;
 
-    /// The visual actually painted. Retained interpolates `resolved` against the
-    /// anchor's remembered displayed value; ephemeral paints `resolved` directly.
+    /// 実際に描かれるビジュアル。retained は `resolved` をアンカーの記憶表示値に対し補間、
+    /// ephemeral は `resolved` をそのまま描く。
     fn displayed(&mut self, id: ElementId, resolved: Visual) -> Visual;
 
-    /// The children to recurse and their per-child cursors, attaching under
-    /// `effective_parent`. Retained narrows by `reach`; ephemeral takes all
-    /// ordered children.
+    /// 再帰する子と各子のカーソル。`effective_parent` 下に接続する。retained は `reach` で絞り、
+    /// ephemeral は順序付き全子を取る。
     fn children(
         &self,
         tree: &ElementTree,
@@ -188,23 +161,20 @@ trait AnchorSink {
         effective_parent: Option<NodeId>,
     ) -> Vec<(ElementId, Self::Cursor)>;
 
-    /// Settle child placement after this element's content and children are
-    /// emitted. Retained re-stacks child anchors after the content; ephemeral is a
-    /// no-op (fresh nodes are already in paint order).
+    /// この要素の内容と子を出し終えた後の子配置の確定。retained は内容の後ろに子アンカーを
+    /// 積み直す、ephemeral は no-op（新規ノードは既に描画順）。
     fn end_element(&mut self, ctx: &mut WalkCtx, effective_parent: Option<NodeId>, id: ElementId);
 }
 
-/// Per-node cursor for [`RetainedSink`]: where this element attaches and how far
-/// the re-lowering reach still propagates.
+/// [`RetainedSink`] のノードごとカーソル。この要素の接続先と再lowering reach の残り伝播範囲。
 #[derive(Clone, Copy)]
 struct RetainedCursor {
     parent_anchor: Option<NodeId>,
     reach: VisualInvalidationReach,
 }
 
-/// Retained incremental lowering adapter (ADR-0086): persistent `ElementAnchor`
-/// re-attachment + transition interpolation against the anchor's stored displayed
-/// value (ADR-0093).
+/// retained インクリメンタル lowering アダプタ（ADR-0086）。永続 `ElementAnchor` の付け直しと、
+/// アンカーが保持する表示値に対するトランジション補間（ADR-0093）。
 struct RetainedSink<'a> {
     lowering: &'a mut SceneLowering,
     now_ms: f64,
@@ -226,9 +196,8 @@ impl AnchorSink for RetainedSink<'_> {
     }
 
     fn displayed(&mut self, id: ElementId, resolved: Visual) -> Visual {
-        // Diff the after-change resolved visual against the previous frame's
-        // displayed value at the resolve seam, interpolating changed continuous
-        // properties (ADR-0093). The retained anchor holds the before-change value.
+        // 変更後の解決ビジュアルを前フレームの表示値と resolve シームで差分し、変化した連続
+        // プロパティを補間する（ADR-0093）。retained アンカーは変更前の値を保持する。
         self.lowering
             .anchors
             .get_mut(&id)
@@ -268,12 +237,12 @@ impl AnchorSink for RetainedSink<'_> {
     }
 }
 
-/// Full ephemeral rebuild adapter (ADR-0079 golden-frame parity): fresh nodes
-/// under the parent group, no anchors, no interpolation.
+/// ephemeral 全再構築アダプタ（ADR-0079 golden-frame パリティ）。親グループ下に新規ノードを出し、
+/// アンカーも補間も持たない。
 struct EphemeralSink;
 
 impl AnchorSink for EphemeralSink {
-    /// The parent group child nodes attach under.
+    /// 子ノードを接続する親グループ。
     type Cursor = Option<NodeId>;
 
     fn enter_node(&mut self) {}
@@ -283,8 +252,8 @@ impl AnchorSink for EphemeralSink {
     }
 
     fn displayed(&mut self, _id: ElementId, resolved: Visual) -> Visual {
-        // A full rebuild has no retained `last_displayed`, so it never interpolates
-        // — it paints the resolved target directly (ADR-0093).
+        // 全再構築には retained の `last_displayed` が無いので補間せず、解決済みターゲットを
+        // 直接描く（ADR-0093）。
         resolved
     }
 
@@ -304,7 +273,7 @@ impl AnchorSink for EphemeralSink {
     fn end_element(&mut self, _ctx: &mut WalkCtx, _effective_parent: Option<NodeId>, _id: ElementId) {}
 }
 
-/// Full ephemeral rebuild without retained anchors (parity reference / tests).
+/// retained アンカー無しの ephemeral 全再構築（パリティ参照／テスト用）。
 pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
     let mut sg = SceneGraph::new();
     let interaction = tree.interaction_snapshot();
@@ -320,8 +289,8 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
         };
         walk(&mut ctx, &mut sink, None, root);
     }
-    // Selection chrome floats on top as document-level overlays (ADR-0097): the
-    // drag handles first, then the toolbar above them.
+    // 選択クロームはドキュメントレベルのオーバーレイとして最前面に浮く（ADR-0097）。
+    // 先にドラッグハンドル、その上にツールバー。
     if let Some(handles) = tree.selection_handles() {
         emit_selection_handles(&mut sg, &handles);
     }
@@ -331,11 +300,10 @@ pub fn build_ephemeral(tree: &ElementTree) -> SceneGraph {
     sg
 }
 
-/// Incrementally update a scene graph using retained element anchors.
+/// retained 要素アンカーを使ってシーングラフをインクリメンタルに更新する。
 ///
-/// `now_ms` is the host clock driving in-flight transitions; the per-element
-/// `resolve_effective` seam diffs the resolved visual against the stored
-/// displayed value to start/advance interpolation (ADR-0093).
+/// `now_ms` は進行中トランジションを駆動するホスト時計。要素ごとの `resolve_effective` シームが
+/// 解決ビジュアルを保持表示値と差分し、補間を開始/進行させる（ADR-0093）。
 pub(crate) fn update(
     tree: &ElementTree,
     scene_cache: &mut SceneGraph,
@@ -373,7 +341,7 @@ pub(crate) fn update(
             );
         }
         lowering.built = true;
-        // The fresh graph dropped any prior overlay; re-emit from scratch.
+        // 新しいグラフでは旧オーバーレイが落ちているので一から再エミットする。
         lowering.toolbar_root = None;
         lowering.handles_root = None;
         refresh_selection_chrome(tree, scene_cache, lowering);
@@ -381,8 +349,8 @@ pub(crate) fn update(
     }
 
     if dirty.elements.is_empty() {
-        // Even with no element repaints, the selection (hence its chrome) may
-        // have moved or cleared, so the overlays are always refreshed.
+        // 要素の再描画が無くても選択（つまりそのクローム）は移動/クリアし得るので、
+        // オーバーレイは常に更新する。
         refresh_selection_chrome(tree, scene_cache, lowering);
         return;
     }
@@ -438,9 +406,8 @@ pub(crate) fn update(
     refresh_selection_chrome(tree, scene_cache, lowering);
 }
 
-/// Re-emit the core-drawn selection overlays (ADR-0097): the drag handles first,
-/// then the floating toolbar on top, so the toolbar is inserted last and paints
-/// above the handles.
+/// コア描画の選択オーバーレイを再エミットする（ADR-0097）。先にドラッグハンドル、次に浮動
+/// ツールバー。ツールバーを最後に挿入することでハンドルの上に描かれる。
 fn refresh_selection_chrome(
     tree: &ElementTree,
     sg: &mut SceneGraph,
@@ -450,9 +417,8 @@ fn refresh_selection_chrome(
     refresh_selection_toolbar(tree, sg, lowering);
 }
 
-/// Re-emit the selection drag-handles overlay (ADR-0097, #273). Removes the
-/// previous overlay subtree, then draws fresh knobs when a non-collapsed
-/// selection is active. Idempotent: a no-op (beyond removal) when no handles.
+/// 選択ドラッグハンドルのオーバーレイを再エミットする（ADR-0097）。前回のオーバーレイ部分木を
+/// 除去し、非崩壊の選択がアクティブなら新しいノブを描く。冪等：ハンドルが無ければ（除去以外は）no-op。
 fn refresh_selection_handles(
     tree: &ElementTree,
     sg: &mut SceneGraph,
@@ -467,9 +433,9 @@ fn refresh_selection_handles(
     lowering.handles_root = Some(emit_selection_handles(sg, &handles));
 }
 
-/// Lower the selection drag handles into a top-level overlay subtree: a `Group`
-/// holding one filled circular knob per end (a square rect with a corner radius
-/// of half its side), colored by the chrome style. Returns the group id.
+/// 選択ドラッグハンドルをトップレベルのオーバーレイ部分木へ lowering する。両端ごとに塗りつぶし
+/// 円形ノブ（一辺の半分を角丸半径にした正方形）を1個持つ `Group`。クロームスタイルで色付け。
+/// グループ id を返す。
 fn emit_selection_handles(
     sg: &mut SceneGraph,
     handles: &crate::element::selection_chrome::SelectionHandles,
@@ -501,9 +467,8 @@ fn emit_selection_handles(
     group
 }
 
-/// Re-emit the floating selection toolbar overlay (ADR-0097, #272). Removes the
-/// previous overlay subtree, then draws a fresh one on top when a selection is
-/// active. Idempotent: a no-op (beyond removal) when nothing is selected.
+/// 浮動選択ツールバーのオーバーレイを再エミットする（ADR-0097）。前回のオーバーレイ部分木を
+/// 除去し、選択がアクティブなら新しいものを最前面に描く。冪等：何も選択されていなければ（除去以外は）no-op。
 fn refresh_selection_toolbar(
     tree: &ElementTree,
     sg: &mut SceneGraph,
@@ -518,18 +483,17 @@ fn refresh_selection_toolbar(
     lowering.toolbar_root = Some(emit_selection_toolbar(sg, tree, &toolbar));
 }
 
-/// Lower a [`SelectionToolbar`] into a top-level overlay subtree: a `Group`
-/// holding a rounded background panel with the per-button label text runs on
-/// top, inserted last so it paints above the document. Returns the group id.
+/// [`SelectionToolbar`] をトップレベルのオーバーレイ部分木へ lowering する。角丸背景パネルと
+/// その上のボタンごとのラベルテキストランを持つ `Group`。最後に挿入してドキュメントの上に描く。
+/// グループ id を返す。
 fn emit_selection_toolbar(
     sg: &mut SceneGraph,
     tree: &ElementTree,
     toolbar: &crate::element::selection_chrome::SelectionToolbar,
 ) -> NodeId {
     let ct = tree.chrome_tuning();
-    // The overlay root is a Group; its children are inserted via `insert_child`
-    // so they are not also registered as top-level roots (which would double-
-    // paint them, once as a root and once via the group walk).
+    // オーバーレイのルートは Group。子は `insert_child` で挿入し、トップレベルのルートとしても
+    // 登録されないようにする（さもないとルートとグループウォークで二重描画される）。
     let group = sg.insert(Node {
         kind: NodeKind::Group {
             transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
@@ -544,10 +508,9 @@ fn emit_selection_toolbar(
                 y: toolbar.bounds.y,
                 width: toolbar.bounds.width,
                 height: toolbar.bounds.height,
-                // The panel/label *colours* are theme-owned (Material vs
-                // Cupertino, ADR-0097) and switch with `toolbar.style`, so they
-                // stay style-derived — only the non-themed `corner_radius` is a
-                // tuning knob.
+                // パネル/ラベルの色はテーマ所有（Material か Cupertino、ADR-0097）で
+                // `toolbar.style` に応じて切り替わるためスタイル由来のまま。テーマ非依存の
+                // `corner_radius` だけがチューニング値。
                 color: toolbar.style.toolbar_background(),
                 corner_radius: ct.toolbar_corner_radius,
             },
@@ -559,7 +522,7 @@ fn emit_selection_toolbar(
         let Some(label) = tree.toolbar_label_layout(button.action) else {
             continue;
         };
-        // Center the label within its button cell.
+        // ラベルをボタンセル内で中央寄せする。
         let lx = button.bounds.x + (button.bounds.width - label.layout.width()) / 2.0;
         let ly = button.bounds.y + (button.bounds.height - label.layout.height()) / 2.0;
         for run in &label.runs {
@@ -612,8 +575,7 @@ fn first_child_matching(
     })
 }
 
-/// Node under which child element anchors should attach — follows Clip/scroll Group
-/// wrappers when the parent is a ScrollView (issue #199).
+/// 子要素アンカーを接続すべきノード。親が ScrollView のときは Clip/scroll Group ラッパを辿る。
 fn find_content_attachment_point(
     sg: &SceneGraph,
     anchor_id: NodeId,
@@ -681,17 +643,13 @@ fn ensure_anchor(
     anchor_id
 }
 
-/// Attach `child` (the anchor for element `id`) under `parent` at the scene-child
-/// index that matches `id`'s position among its element siblings.
+/// `child`（要素 `id` のアンカー）を `parent` 下に、`id` の兄弟内位置に合うシーン子インデックスへ接続する。
 ///
-/// A partial patch re-walks only some of a parent's children (e.g. a hovered card,
-/// or the grown/pushed siblings of an insert). Blindly appending a re-walked anchor
-/// to the end of `parent.children` scrambles paint order, so the interacted element
-/// paints over the wrong sibling — the "hover/click corrupts a *different* element"
-/// symptom. Positioning relative to the preceding sibling *anchors actually present
-/// under `parent`* keeps the retained child order in lockstep with element order and
-/// is robust to Clip/Group content-attachment wrappers (all siblings share one
-/// attachment point).
+/// 部分パッチは親の子の一部だけを再ウォークする（例：ホバーされたカード、挿入で伸長/押された兄弟）。
+/// 再ウォークしたアンカーを無条件に `parent.children` 末尾へ追加すると描画順が崩れ、操作した要素が
+/// 別の兄弟の上に描かれる（「ホバー/クリックが別の要素を壊す」症状）。`parent` 下に実際に存在する
+/// 先行兄弟アンカーを基準に配置することで、retained 子順を要素順と同期させ、Clip/Group の
+/// 内容接続ラッパにも頑健（全兄弟が1つの接続点を共有）。
 fn insert_anchor_ordered(
     tree: &ElementTree,
     sg: &mut SceneGraph,
@@ -706,11 +664,10 @@ fn insert_anchor_ordered(
             p.children.retain(|&c| c != child);
         }
     }
-    // Anchors of siblings that follow `id` in element order. Insert `child` just
-    // before the first one present under `parent`; if none are present yet, append.
-    // Inserting *before following siblings* (rather than *after preceding ones*)
-    // keeps the parent's own content nodes — fill/border emitted before any child
-    // anchor — ahead of every child, so the box still paints under its children.
+    // 要素順で `id` より後ろの兄弟アンカー。`child` を `parent` 下に存在する最初の後続兄弟の
+    // 直前に挿入。まだ存在しなければ末尾に追加。後続兄弟の前に挿入する（先行兄弟の後ろではなく）
+    // ことで、親自身の内容ノード（どの子アンカーより前に出る fill/border）を全子の前に保ち、
+    // ボックスが子の下に描かれる。
     let following: HashSet<NodeId> = tree
         .elements
         .get(&id)
@@ -746,16 +703,13 @@ fn attach_under(sg: &mut SceneGraph, parent: NodeId, child: NodeId) {
     }
 }
 
-/// Re-stack a re-walked element's child anchors after its own content, in element
-/// order. `emit_element` emits the box's own content (fill/border/text) by
-/// appending, but `clear_lowered_content` preserves child anchors at the front of
-/// the list — so without this pass the box's own fill paints *over* its children
-/// (and stale sibling order survives). Re-attaching every child in element order
-/// after content emission restores `[content..., child0, child1, ...]`.
+/// 再ウォークした要素の子アンカーを、自身の内容の後ろへ要素順で積み直す。`emit_element` は
+/// ボックス自身の内容（fill/border/text）を追加で出すが、`clear_lowered_content` は子アンカーを
+/// リスト先頭に保つ——このパスが無いとボックス自身の fill が子の上に描かれ、古い兄弟順も残る。
+/// 内容エミット後に全子を要素順で付け直すことで `[content..., child0, child1, ...]` を復元する。
 ///
-/// Also handles the Clip/scroll-Group wrapper case it was written for: when
-/// `effective_parent` is a wrapper inside the anchor, children slide under the
-/// wrapper so clipping still applies.
+/// Clip/scroll-Group ラッパのケースも扱う：`effective_parent` がアンカー内のラッパなら、子は
+/// ラッパ下に入りクリッピングが効く。
 fn reparent_child_anchors_under(
     sg: &mut SceneGraph,
     effective_parent: Option<NodeId>,
@@ -773,10 +727,9 @@ fn reparent_child_anchors_under(
     }
 }
 
-/// The one scene walk shared by both anchor strategies (issue #322). The
-/// strategy-specific anchoring is delegated to the [`AnchorSink`]; the emission
-/// body lives in [`emit_element`]. A skipped (non-visited) element still gets a
-/// `begin`/recurse pass so retained re-attaches its anchor.
+/// 両アンカー戦略が共有する単一のシーンウォーク。戦略固有の接続は [`AnchorSink`] に委譲し、
+/// エミッション本体は [`emit_element`] にある。スキップ（未訪問）要素も `begin`/再帰パスを
+/// 受けるので、retained はそのアンカーを付け直す。
 fn walk<S: AnchorSink>(ctx: &mut WalkCtx, sink: &mut S, cursor: S::Cursor, id: ElementId) {
     sink.enter_node();
 
@@ -850,9 +803,9 @@ fn emit_element<S: AnchorSink>(
         effective_parent = Some(group_id);
     }
 
-    // Parent for the native focus ring: above the element's own overflow clip so
-    // the ring isn't cropped to the box (Chromium paints outlines outside the
-    // element's clip), but still inside any transform group (#335).
+    // ネイティブフォーカスリングの親。要素自身のオーバーフロークリップより上に置き、リングが
+    // ボックスに切り取られないようにする（Chromium は outline を要素のクリップ外に描く）。
+    // ただし transform グループの内側には保つ。
     let ring_parent = effective_parent;
 
     let effective_parent = if el.kind == ElementKind::ScrollView {
@@ -974,11 +927,10 @@ fn emit_element<S: AnchorSink>(
         let color = confirmed_color
             .with_opacity(visual.opacity)
             .to_array_f32();
-        // Selection highlight paints behind the text (ADR-0097, #271), but only
-        // for the focused text-input (ADR-0104): an unfocused field hides its
-        // highlight even when the range is still remembered in EditState, so
-        // Mouse/Pen blur reads as "hidden + remembered" and at most one
-        // (= the focused) selection ever lights up across the document.
+        // 選択ハイライトはテキストの背後に描くが（ADR-0097）、フォーカス中の text-input に
+        // 限る（ADR-0104）。非フォーカスのフィールドは範囲を EditState に覚えていてもハイライトを
+        // 隠すので、Mouse/Pen のフォーカス喪失は「隠す＋記憶」となり、ドキュメント全体で点灯する
+        // 選択は高々1つ（＝フォーカス中）になる。
         if let Some(cl) = el.content_layout.as_ref() {
             let active_range = (tree.focused_element() == Some(id))
                 .then(|| el.edit.as_ref().and_then(|e| e.selection_range()))
@@ -993,12 +945,10 @@ fn emit_element<S: AnchorSink>(
                 effective_parent,
             );
         }
-        // An empty input shows its placeholder: layout_pass leaves
-        // `content_layout` empty and stacks the placeholder in `text_layout`
-        // (ADR-0058). Chromium paints `::placeholder` muted rather than in the
-        // body `color`; Canvas's visual reference is the Chromium DOM, so the
-        // placeholder run is painted muted, not `confirmed_color` (ADR-0102,
-        // #334).
+        // 空の入力はプレースホルダを表示する：layout_pass は `content_layout` を空にし、
+        // プレースホルダを `text_layout` に積む（ADR-0058）。Chromium は `::placeholder` を本文
+        // `color` ではなく淡色で描く。Canvas のビジュアル基準は Chromium DOM なので、
+        // プレースホルダランは `confirmed_color` ではなく淡色で描く（ADR-0102）。
         let (runs, run_color) = if let Some(cl) = el.content_layout.as_ref() {
             (Some(cl.runs.as_slice()), color)
         } else {
@@ -1024,9 +974,8 @@ fn emit_element<S: AnchorSink>(
                 );
             }
         }
-        // IME composition underlines: one per clause, drawn under the preedit
-        // glyphs. Chromium underlines the active (being-converted) clause thick
-        // and the determined ones thin (ADR-0102, #336).
+        // IME 変換中の下線：文節ごとに1本、プリエディットグリフの下に描く。Chromium は
+        // 変換中の文節を太く、確定済みを細く下線する（ADR-0102）。
         if let Some(cl) = el.content_layout.as_ref() {
             if let Some(edit) = el.edit.as_ref() {
                 emit_composition_underlines(
@@ -1112,21 +1061,18 @@ fn emit_element<S: AnchorSink>(
         }
     }
 
-    // Native focus ring (`:focus-visible`, #335). Painted on top of the box's own
-    // content and outside its border, following the box corner radius. The
-    // application's `:focus` background/border switch is resolved separately via
-    // pseudo styles above and is unaffected.
+    // ネイティブフォーカスリング（`:focus-visible`）。ボックス自身の内容の上、ボーダーの外側に、
+    // 角丸に沿って描く。アプリの `:focus` 背景/ボーダー切り替えは上の擬似スタイルで別途解決され
+    // 影響しない。
     if tree.focus_visible_element() == Some(id) {
         emit_focus_ring(ctx.sg, ring_parent, x, y, w, h, visual.border_radius);
     }
 
-    // Scrollbar overlay (ADR-0110, #407): drawn over the content on each
-    // overflowing axis, under `ring_parent` so it sits above the content Clip and
-    // scroll Group (like the focus ring) and is *not* itself scroll-translated —
-    // the thumb is fixed to the box edge while its position along the track tracks
-    // the Scroll Offset. For a nested scroll-view, `ring_parent` already lives
-    // under the outer Clip/scroll Group, so the inner thumb follows the outer box
-    // and cannot leak outside it (issue #199/#200 coordinate system).
+    // スクロールバーオーバーレイ（ADR-0110）。オーバーフロー軸ごとにコンテンツの上、`ring_parent`
+    // 下に描く。フォーカスリング同様コンテンツ Clip と scroll Group の上に乗り、自身はスクロール
+    // 変換されない——サムはボックス端に固定され、トラック上の位置だけが Scroll Offset を追う。
+    // ネストしたスクロールビューでは `ring_parent` が既に外側 Clip/scroll Group の下にあるので、
+    // 内側サムは外側ボックスに従い外へ漏れない。
     if el.kind == ElementKind::ScrollView {
         emit_scrollbar_overlay(tree, id, ctx.sg, ring_parent, x, y, w, h);
     }
@@ -1138,10 +1084,9 @@ fn emit_element<S: AnchorSink>(
     sink.end_element(ctx, effective_parent, id);
 }
 
-/// Emit a `RoundedRing` wrapping the box `(x, y, width, height)` from the outside
-/// — the native focus ring (#335). The outer rect is grown by the offset plus the
-/// ring width on every side; the ring's inner edge then lands `FOCUS_RING_OFFSET`
-/// outside the border box, matching Chromium's `outline-offset`.
+/// ボックス `(x, y, width, height)` を外側から包む `RoundedRing`——ネイティブフォーカスリング——を
+/// 出す。外矩形は各辺でオフセット＋リング幅だけ拡大し、リング内縁がボーダーボックスの
+/// `FOCUS_RING_OFFSET` 外側に来る（Chromium の `outline-offset` 相当）。
 fn emit_focus_ring(
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
@@ -1170,12 +1115,11 @@ fn emit_focus_ring(
     );
 }
 
-/// Thumb extent `(start, length)` along one scroll axis, in the box-local track
-/// space whose origin is the box edge. `viewport` is the box length on the axis,
-/// `content` the scrollable content length, `offset` the current Scroll Offset and
-/// `max` its maximum. The length scales with the viewport/content ratio, floored
-/// at [`SCROLLBAR_MIN_THUMB_LENGTH`]; the start slides the thumb down the track by
-/// the offset as a fraction of the scrollable range.
+/// スクロール軸1本のサム範囲 `(start, length)`。ボックス端を原点とするボックスローカルなトラック
+/// 空間で表す。`viewport` は軸上のボックス長、`content` はスクロール可能なコンテンツ長、`offset` は
+/// 現在の Scroll Offset、`max` はその最大値。長さは viewport/content 比でスケールし
+/// [`SCROLLBAR_MIN_THUMB_LENGTH`] を下限とする。start は offset のスクロール範囲に対する割合で
+/// サムをトラック上を進める。
 fn scrollbar_thumb_extent(
     viewport: f32,
     content: f32,
@@ -1197,10 +1141,9 @@ fn scrollbar_thumb_extent(
     (start, thumb_len)
 }
 
-/// Scrollbar geometry per overflowing axis for the box `(x, y, w, h)` already
-/// resolved by the caller. The shared core of [`scrollbar_axes`] (which supplies
-/// the box from layout) and [`emit_scrollbar_overlay`] (which supplies the box
-/// from its scene walk), so paint and hit-test compute one identical geometry.
+/// 呼び出し側が解決済みのボックス `(x, y, w, h)` について、オーバーフロー軸ごとのスクロールバー
+/// ジオメトリを計算する。レイアウトからボックスを与える [`scrollbar_axes`] とシーンウォークから
+/// ボックスを与える [`emit_scrollbar_overlay`] の共有コアで、描画とヒットテストが同一ジオメトリを得る。
 fn scrollbar_axes_in_box(
     tree: &ElementTree,
     id: ElementId,
@@ -1215,7 +1158,7 @@ fn scrollbar_axes_in_box(
     let (offset_x, offset_y) = tree.element_get_scroll_offset(id);
     let mut axes = Vec::new();
 
-    // Vertical bar at the right edge — only when content overflows the box height.
+    // 右端の縦バー。コンテンツがボックス高さを超えるときだけ。
     if content_h > h {
         let (start, thumb_len) = scrollbar_thumb_extent(
             h,
@@ -1241,7 +1184,7 @@ fn scrollbar_axes_in_box(
         });
     }
 
-    // Horizontal bar at the bottom edge — only when content overflows the width.
+    // 下端の横バー。コンテンツが幅を超えるときだけ。
     if content_w > w {
         let (start, thumb_len) = scrollbar_thumb_extent(
             w,
@@ -1270,10 +1213,9 @@ fn scrollbar_axes_in_box(
     axes
 }
 
-/// Lower a `ScrollView`'s scrollbar overlay (ADR-0110, #407): one rounded thumb
-/// per overflowing axis, drawn under `parent` (above the content clip). The
-/// vertical bar sits at the right edge, the horizontal bar at the bottom edge; an
-/// axis whose content fits draws nothing.
+/// `ScrollView` のスクロールバーオーバーレイを lowering する（ADR-0110）。オーバーフロー軸ごとに
+/// 角丸サムを1つ、`parent` 下（コンテンツクリップの上）に描く。縦バーは右端、横バーは下端。
+/// コンテンツが収まる軸は何も描かない。
 #[allow(clippy::too_many_arguments)]
 fn emit_scrollbar_overlay(
     tree: &ElementTree,
@@ -1285,9 +1227,8 @@ fn emit_scrollbar_overlay(
     w: f32,
     h: f32,
 ) {
-    // Pointer-Modality branch (ADR-0110, SCR-04, #410), reusing the same last
-    // pointer kind that gates selection chrome (ADR-0104) — Mouse/Pen get the
-    // operable thumb, Touch gets the transient indicator.
+    // ポインタモダリティ分岐（ADR-0110）。選択クロームを制御するのと同じ最後のポインタ種別
+    // （ADR-0104）を再利用する——Mouse/Pen には操作可能サム、Touch には一時インジケータ。
     match tree.last_pointer_kind() {
         PointerKind::Touch => emit_touch_scroll_indicator(tree, id, sg, parent, x, y, w, h),
         PointerKind::Mouse | PointerKind::Pen => {
@@ -1305,11 +1246,9 @@ fn emit_scrollbar_overlay(
     }
 }
 
-/// The Touch indicator's visibility factor `[0, 1]` for an indicator last
-/// refreshed `elapsed` ms ago (ADR-0110, SCR-04, #410): full through the hold
-/// window, then a linear ramp to zero across the fade window, and zero beyond it.
-/// The single source the render-time advance uses to recompute each live
-/// indicator's `fade`.
+/// 最後に更新されてから `elapsed` ms 経った Touch インジケータの可視係数 `[0, 1]`（ADR-0110）。
+/// ホールド窓の間はフル、フェード窓でゼロへ線形に下降、それ以降はゼロ。レンダー時の前進処理が
+/// 各ライブインジケータの `fade` を再計算するのに使う単一の源。
 pub fn touch_scroll_indicator_fade(elapsed: f64) -> f32 {
     if elapsed <= SCROLLBAR_INDICATOR_HOLD_MS {
         1.0
@@ -1320,11 +1259,10 @@ pub fn touch_scroll_indicator_fade(elapsed: f64) -> f32 {
     }
 }
 
-/// Lower a `ScrollView`'s Touch transient indicator (ADR-0110, SCR-04, #410): a
-/// non-operable bar that appears while the content scrolls and fades after it
-/// stops, with no thumb/track hit region (content flick scrolls, not a drag).
-/// Drawn only inside the show→fade window — a resting Touch surface paints no
-/// scrollbar at all (mobile has no always-on bar).
+/// `ScrollView` の Touch 一時インジケータを lowering する（ADR-0110）。スクロール中に現れ停止後に
+/// フェードする非操作バーで、サム/トラックのヒット領域を持たない（フリックでスクロールし、ドラッグ
+/// ではない）。表示→フェード窓の間だけ描き、静止した Touch 面ではスクロールバーを一切描かない
+/// （モバイルに常時表示バーは無い）。
 #[allow(clippy::too_many_arguments)]
 fn emit_touch_scroll_indicator(
     tree: &ElementTree,
@@ -1347,9 +1285,8 @@ fn emit_touch_scroll_indicator(
         .to_array_f32();
     let radius = ct.scrollbar_indicator_thickness / 2.0;
     for axis in scrollbar_axes_in_box(tree, id, x, y, w, h) {
-        // The indicator rides the same thumb geometry (its position still tracks
-        // the Scroll Offset) but is thinner and pinned to the box edge — right
-        // edge for the vertical bar, bottom edge for the horizontal one.
+        // インジケータは同じサムジオメトリに乗る（位置は Scroll Offset を追う）が、より細く
+        // ボックス端に固定される——縦バーは右端、横バーは下端。
         let (tx, ty, tw, th) = axis.thumb;
         let (ix, iy, iw, ih) = match axis.axis {
             ScrollAxis::Vertical => (
@@ -1369,17 +1306,11 @@ fn emit_touch_scroll_indicator(
     }
 }
 
-/// Chromium UA `::placeholder` muted colour, used in place of the body `color`
-/// when a TextInput shows its placeholder (ADR-0102: Canvas's visual reference
-/// is the Chromium DOM; #334). Chromium paints the placeholder at ~54% of black
-/// (light colour-scheme) or white (dark), composited over the input background —
-/// it is not derived from, nor authorable alongside, the body `color`. The
-/// colour-scheme is inferred from the body colour's luminance: dark body text
-/// ⇒ light scheme ⇒ muted black; light body text ⇒ dark scheme ⇒ muted white.
-/// The 0.54 factor follows ADR-0102's principle (~54% black/white); its exact
-/// value is still pending calibration against real Chromium rendering.
-///
-/// The ~54% muting factor (its exact value pending Chromium calibration).
+/// TextInput がプレースホルダを表示するとき本文 `color` の代わりに使う Chromium UA `::placeholder`
+/// の淡色（ADR-0102：Canvas のビジュアル基準は Chromium DOM）。Chromium は黒（ライト配色）または
+/// 白（ダーク）の約54%でプレースホルダを描き、入力背景に合成する——本文 `color` から導かれず、
+/// 並べて指定もできない。配色は本文色の輝度から推定する：暗い本文 ⇒ ライト配色 ⇒ 淡い黒、
+/// 明るい本文 ⇒ ダーク配色 ⇒ 淡い白。0.54 は ADR-0102 の原則（黒/白の約54%）に従う。
 pub(crate) const PLACEHOLDER_ALPHA: f64 = 0.54;
 
 fn placeholder_muted_color(body: Color, alpha: f64) -> Color {
@@ -1395,13 +1326,13 @@ fn emit(sg: &mut SceneGraph, parent_group: Option<NodeId>, node: Node) -> NodeId
     }
 }
 
-/// Material-flavored selection tint (ADR-0097: a single core-drawn chrome whose
-/// style is theme-switchable; the value lives here as the initial theme).
+/// Material 風の選択ティント（ADR-0097：スタイルがテーマ切替可能な単一のコア描画クローム。
+/// この値は初期テーマとしてここに置く）。
 pub(crate) const SELECTION_HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
-/// Lower the active selection's highlight for IFC root `id`, as one filled rect
-/// per covered line, positioned in the element's content space (offset by the
-/// text run origin `ox`, `oy`). No-op unless the document selection lies in `id`.
+/// IFC ルート `id` のアクティブ選択ハイライトを、覆う行ごとに塗り矩形1つとして lowering する。
+/// 要素の内容空間（テキストラン原点 `ox`, `oy` でオフセット）に配置する。ドキュメント選択が
+/// `id` 内に無ければ no-op。
 fn emit_selection_highlight(
     tree: &ElementTree,
     id: ElementId,
@@ -1434,10 +1365,9 @@ fn emit_selection_highlight(
     }
 }
 
-/// Lower a text-input's edit-selection highlight (ADR-0097, #271) from its
-/// `EditState` byte `range` over the `content_layout`, in the element's content
-/// space (offset by `content_x`, `content_y`). Painted behind the text. No-op
-/// when the range is collapsed/absent.
+/// text-input の編集選択ハイライトを lowering する（ADR-0097）。`EditState` のバイト `range` を
+/// `content_layout` 上で、要素の内容空間（`content_x`, `content_y` でオフセット）に描く。テキストの
+/// 背後に描く。範囲が崩壊/不在なら no-op。
 fn emit_edit_selection_highlight(
     layout: &parley::Layout<crate::element::text::TextBrush>,
     range: Option<(usize, usize)>,
@@ -1469,18 +1399,14 @@ fn emit_edit_selection_highlight(
     }
 }
 
-/// IME composition underline thickness (ADR-0102, #336). Chromium draws the
-/// determined clauses with a thin underline and the active (being-converted)
-/// clause with a thick one; the exact pixel weights are pending calibration
-/// against real Chromium rasterisation, like the other Canvas chrome values.
+/// IME 変換中の下線の太さ（ADR-0102）。Chromium は確定済み文節を細い下線で、変換中の文節を
+/// 太い下線で描く。
 pub(crate) const COMPOSITION_UNDERLINE_THIN: f32 = 1.0;
 pub(crate) const COMPOSITION_UNDERLINE_THICK: f32 = 2.0;
 
-/// Lower a text-input's IME composition underlines (ADR-0102, #336): one filled
-/// rect per clause, sat at the bottom of each covered line in the element's
-/// content space (offset by `content_x`, `content_y`), painted in the text
-/// `color`. `underlines` are display-text byte ranges with their weight; no-op
-/// when no composition is active.
+/// text-input の IME 変換下線を lowering する（ADR-0102）。文節ごとに塗り矩形1つを、要素の内容
+/// 空間（`content_x`, `content_y` でオフセット）の各覆う行の下端に、テキスト `color` で描く。
+/// `underlines` は表示テキストのバイト範囲とその太さ。変換中でなければ no-op。
 #[allow(clippy::too_many_arguments)]
 fn emit_composition_underlines(
     layout: &parley::Layout<crate::element::text::TextBrush>,
@@ -1519,9 +1445,8 @@ fn emit_composition_underlines(
     }
 }
 
-/// Per-line highlight rectangles (in layout-local coordinates) covering the byte
-/// range `start..end` of a Parley layout. Each line contributes the span from
-/// the caret at its clamped range start to the caret at its clamped range end.
+/// Parley レイアウトのバイト範囲 `start..end` を覆う行ごとのハイライト矩形（レイアウトローカル
+/// 座標）。各行は、クランプした範囲開始のキャレットから範囲終端のキャレットまでの幅を寄与する。
 pub(crate) fn selection_highlight_rects(
     layout: &parley::Layout<crate::element::text::TextBrush>,
     start: usize,
@@ -1576,8 +1501,8 @@ fn emit_visual_box(
     let background = background_color.map(|c| c.with_opacity(opacity).to_array_f32());
     let border = border_color.map(|c| c.with_opacity(opacity).to_array_f32());
 
-    // A border is drawn only when it has both a positive width and an explicit
-    // style (CSS-like: `border-style` defaults to `none`, issue #204).
+    // ボーダーは正の幅と明示的なスタイルの両方があるときだけ描く（CSS 同様 `border-style` の
+    // 既定は `none`）。
     let draw_border = border_w > 0.0 && border_style != BorderStyleValue::None;
 
     if draw_border {
@@ -1589,7 +1514,7 @@ fn emit_visual_box(
         };
 
         if border_style == BorderStyleValue::Dashed {
-            // Background fills the full box; dashes stroke the perimeter on top.
+            // 背景はボックス全体を塗り、破線が周囲をその上にストロークする。
             if let Some(bg) = background {
                 emit_fill_rect(sg, parent_group, x, y, width, height, bg, radius);
             }
@@ -1709,17 +1634,15 @@ fn emit_fill_rect(
     );
 }
 
-/// Number of translucent layers used to approximate a shadow's gaussian blur
-/// (ADR-0095: "blur は許容範囲のガウス近似でよい"). Box-shadow is lowered to plain
-/// rounded-rect fills so the Vello and tiny-skia painters render it identically
-/// (semantic DOM/Canvas parity); blur ≈ overlapping translucent rounded rects.
+/// 影のガウスぼかしを近似する半透明レイヤー数（ADR-0095：「blur は許容範囲のガウス近似でよい」）。
+/// box-shadow は素の角丸矩形塗りへ lowering され、Vello と tiny-skia の描画が一致する（意味論的な
+/// DOM/Canvas パリティ）。blur ≈ 重なる半透明角丸矩形。
 const SHADOW_BLUR_LAYERS: usize = 6;
 
-/// Emit the `inset == want_inset` subset of an element's box-shadow layers.
+/// 要素の box-shadow レイヤーのうち `inset == want_inset` の部分集合を出す。
 ///
-/// CSS paints the first-listed shadow on top, so we emit in reverse order (the
-/// last-listed shadow first / bottom-most). Outset shadows are emitted behind
-/// the box; inset shadows on top of the background, clipped to the border box.
+/// CSS は最初に挙げた影を最前面に描くので、逆順で出す（最後の影が先＝最背面）。outset 影は
+/// ボックスの背後に、inset 影は背景の上にボーダーボックスでクリップして出す。
 #[allow(clippy::too_many_arguments)]
 fn emit_box_shadows(
     sg: &mut SceneGraph,
@@ -1750,8 +1673,8 @@ fn emit_box_shadows(
     }
 }
 
-/// Outset (drop) shadow: a rounded rect grown by `spread`, shifted by the
-/// offset, and blurred by overlapping translucent rounded rects.
+/// outset（ドロップ）影：`spread` で拡大しオフセットでずらした角丸矩形を、重なる半透明角丸矩形で
+/// ぼかす。
 #[allow(clippy::too_many_arguments)]
 fn emit_drop_shadow(
     sg: &mut SceneGraph,
@@ -1779,8 +1702,8 @@ fn emit_drop_shadow(
         return;
     }
 
-    // Distribute the colour alpha across overlapping layers so the dense centre
-    // sums to ≈ the shadow's alpha while the outer edge fades to a soft halo.
+    // 色のアルファを重なるレイヤーに配分し、密な中心は合計が影のアルファに近づき、外縁は
+    // 柔らかなハロへフェードする。
     let n = SHADOW_BLUR_LAYERS;
     let layer = Color {
         a: color.a / (n as f64 + 1.0),
@@ -1802,8 +1725,8 @@ fn emit_drop_shadow(
     }
 }
 
-/// Inset shadow: a darkened inner-edge band, layered from the border-box edge
-/// inward (spread + blur thick) and clipped to the border box.
+/// inset 影：暗い内縁の帯。ボーダーボックス端から内側へ（spread + blur の厚みで）レイヤー化し、
+/// ボーダーボックスでクリップする。
 #[allow(clippy::too_many_arguments)]
 fn emit_inset_shadow(
     sg: &mut SceneGraph,
@@ -1842,10 +1765,9 @@ fn emit_inset_shadow(
         ..color
     };
     let layer_rgba = layer.to_array_f32();
-    // Additive translucent edge bands, clipped to the (rounded) border box.
-    // Overlapping layers darken the inner perimeter and fade toward the centre,
-    // approximating an inset shadow without clearing the background (unlike a
-    // ring fill). The offset only nudges the band rectangle.
+    // 加算的な半透明の縁帯を（角丸）ボーダーボックスでクリップする。重なるレイヤーが内周を
+    // 暗くし中心へフェードし、（リング塗りと違い）背景を消さずに inset 影を近似する。
+    // オフセットは帯矩形をずらすだけ。
     let bx = x + shadow.offset_x;
     let by = y + shadow.offset_y;
     for i in 1..=n {
@@ -1853,7 +1775,7 @@ fn emit_inset_shadow(
         if bw <= 0.0 {
             continue;
         }
-        // top, bottom, left, right bands
+        // 上・下・左・右の帯
         for (rx, ry, rw, rh) in [
             (bx, by, width, bw),
             (bx, by + height - bw, width, bw),

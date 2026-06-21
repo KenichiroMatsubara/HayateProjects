@@ -1,24 +1,20 @@
-//! Effective-visual transition interpolation (ADR-0089 / ADR-0093, issue #227).
+//! 実効ビジュアルのトランジション補間（ADR-0089 / ADR-0093）。
 //!
-//! When an element's resolved effective visual (ADR-0067) changes a continuous
-//! property and the after-change `transition-duration` is positive, the render
-//! layer interpolates that property from its on-screen value (`from`) toward the
-//! freshly-resolved target over the duration, eased by `transition-timing`. The
-//! trigger is the per-property diff at the `resolve_effective` seam, so pseudo
-//! switches, `setStyle`, and inherited changes are treated alike (Blink's
-//! computed-style diff). Enum-valued and discrete properties are not
-//! interpolated — they take the target value immediately. State is kept per
-//! element × property so several properties interpolate from independent `from`
-//! values and anchor their own start time. Interpolation is advanced by
-//! `render(timestamp_ms)` and keeps the element visual-dirty until it completes,
-//! reusing the existing dirty/frame-loop infrastructure (ADR-0086/0032) rather
-//! than introducing a separate timer.
+//! 解決済みの実効ビジュアル（ADR-0067）が連続プロパティを変更し、変更後の
+//! `transition-duration` が正なら、レンダリング層はそのプロパティを画面上の値
+//! （`from`）から新たに解決した目標値へ、`transition-timing` のイージングで補間する。
+//! トリガは `resolve_effective` 接合部でのプロパティ単位の差分なので、擬似クラスの
+//! 切り替え・`setStyle`・継承の変化を区別なく扱う（Blink の computed-style 差分と同じ）。
+//! enum 値や離散プロパティは補間せず、即座に目標値を取る。状態は要素×プロパティ単位で
+//! 保持し、各プロパティが独立した `from` と開始時刻から補間する。補間は
+//! `render(timestamp_ms)` で進み、完了するまで要素を visual-dirty に保つことで、
+//! 既存の dirty/フレームループ基盤（ADR-0086/0032）を再利用し、別タイマーを導入しない。
 
 use crate::color::Color;
 use crate::element::style::{Shadow, TransitionTimingValue};
 use crate::element::tree::Visual;
 
-/// A continuous value that can be linearly interpolated during a transition.
+/// トランジション中に線形補間できる連続値。
 pub(crate) trait Lerp: Clone + PartialEq {
     fn lerp(&self, to: &Self, t: f32) -> Self;
 }
@@ -36,8 +32,7 @@ fn lerp_color(a: Color, b: Color, t: f32) -> Color {
 }
 
 impl Lerp for Option<Color> {
-    /// When only one side is set there is no continuous path between them, so
-    /// snap straight to the target.
+    /// 片側しか設定されていなければ連続的な経路がないので、目標値へ即座にスナップする。
     fn lerp(&self, to: &Self, t: f32) -> Self {
         match (self, to) {
             (Some(a), Some(b)) => Some(lerp_color(*a, *b, t)),
@@ -47,10 +42,9 @@ impl Lerp for Option<Color> {
 }
 
 impl Lerp for Vec<Shadow> {
-    /// Box-shadow interpolation is CSS-conformant (ADR-0095): only when the
-    /// before/after lists have equal length and matching `inset` flags at every
-    /// position do we interpolate each layer's offset/blur/spread/color; any
-    /// mismatch is discrete (the target is adopted immediately).
+    /// box-shadow の補間は CSS 準拠（ADR-0095）。変更前後のリストが同じ長さで全位置の
+    /// `inset` フラグが一致する場合のみ各レイヤの offset/blur/spread/color を補間し、
+    /// 不一致なら離散扱い（目標値を即座に採用）。
     fn lerp(&self, to: &Self, t: f32) -> Self {
         if self.len() != to.len() || self.iter().zip(to).any(|(a, b)| a.inset != b.inset) {
             return to.clone();
@@ -69,20 +63,19 @@ impl Lerp for Vec<Shadow> {
     }
 }
 
-/// One in-flight transition for a single continuous property.
+/// 連続プロパティ1つの進行中トランジション。
 #[derive(Clone, Debug)]
 struct Track<T> {
-    /// Value displayed when this curve began (its start).
+    /// このカーブ開始時に表示していた値（始点）。
     from: T,
-    /// Resolved value the curve runs toward.
+    /// カーブが向かう解決済みの値。
     target: T,
     duration_ms: f32,
     timing: TransitionTimingValue,
-    /// Host clock at which interpolation started. `None` until the first
-    /// `advance` after the trigger anchors the clock (CSS starts a transition on
-    /// first observation, not at the triggering mutation).
+    /// 補間を開始したホストクロック。トリガ後の最初の `advance` が時刻を確定するまで
+    /// `None`（CSS はトリガ変異時ではなく最初の観測時にトランジションを開始する）。
     start_ms: Option<f64>,
-    /// Eased progress in `[0, 1]` from the most recent `advance`.
+    /// 直近の `advance` によるイージング後の進捗 `[0, 1]`。
     progress: f32,
 }
 
@@ -98,9 +91,8 @@ impl<T: Lerp> Track<T> {
         }
     }
 
-    /// Advance the clock to `now_ms`, returning `true` once the curve has
-    /// reached its end (the caller drops finished tracks after the final frame
-    /// that paints the target).
+    /// クロックを `now_ms` まで進める。カーブが終端に達したら `true` を返す（呼び出し側は
+    /// 目標値を描画した最終フレーム後に完了トラックを破棄する）。
     fn advance(&mut self, now_ms: f64) -> bool {
         let start = *self.start_ms.get_or_insert(now_ms);
         let raw = if self.duration_ms > 0.0 {
@@ -112,19 +104,18 @@ impl<T: Lerp> Track<T> {
         raw >= 1.0
     }
 
-    /// The currently displayed value (`from` blended toward `target`).
+    /// 現在表示中の値（`from` を `target` 方向にブレンドした値）。
     fn current(&self) -> T {
         self.from.lerp(&self.target, self.progress)
     }
 }
 
-/// Step one property's `track` toward `target`, returning the value to display.
+/// 1プロパティの `track` を `target` へ進め、表示する値を返す。
 ///
-/// `prev_displayed` is last frame's on-screen value for this property (`None` on
-/// the element's first emit — initial styles never transition). A change of
-/// `target` redirects continuously from the current displayed value, so a
-/// reverse interrupt never jumps. `duration_ms` / `timing` are read from the
-/// after-change resolved visual.
+/// `prev_displayed` はこのプロパティの前フレームの画面上の値（要素の初回 emit では `None`、
+/// 初期スタイルはトランジションしない）。`target` の変化は現在の表示値から連続的に方向転換
+/// するため、逆方向への割り込みでも飛ばない。`duration_ms` / `timing` は変更後の解決済み
+/// ビジュアルから読む。
 fn step<T: Lerp>(
     track: &mut Option<Track<T>>,
     prev_displayed: Option<T>,
@@ -145,7 +136,7 @@ fn step<T: Lerp>(
             };
             *track = Some(Track::new(from, target.clone(), duration_ms, timing));
         } else {
-            // After-change duration is zero: snap immediately (CSS/DOM parity).
+            // 変更後の duration が 0 なら即座にスナップ（CSS/DOM と同等）。
             *track = None;
         }
     }
@@ -162,8 +153,8 @@ fn step<T: Lerp>(
     }
 }
 
-/// Per-property transition state for one element (ADR-0093). Each continuous
-/// property interpolates independently from its own `from` and start time.
+/// 1要素のプロパティ単位トランジション状態（ADR-0093）。各連続プロパティは
+/// 独自の `from` と開始時刻から独立して補間する。
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ElementTransitions {
     background_color: Option<Track<Option<Color>>>,
@@ -176,7 +167,7 @@ pub(crate) struct ElementTransitions {
 }
 
 impl ElementTransitions {
-    /// Whether any property is still interpolating.
+    /// いずれかのプロパティがまだ補間中か。
     pub(crate) fn is_active(&self) -> bool {
         self.background_color.is_some()
             || self.border_color.is_some()
@@ -187,11 +178,10 @@ impl ElementTransitions {
             || self.box_shadow.is_some()
     }
 
-    /// Diff the after-change resolved `target` against the previous frame's
-    /// displayed visual, (re)starting per-property transitions where it differs,
-    /// and return the visual to display this frame. Discrete / enum properties
-    /// take the target immediately. duration / timing come from `target` (the
-    /// after-change resolved effective visual).
+    /// 変更後の解決済み `target` を前フレームの表示ビジュアルと差分し、差がある
+    /// プロパティのトランジションを（再）開始して、今フレームに表示するビジュアルを返す。
+    /// 離散 / enum プロパティは即座に目標値を取る。duration / timing は `target`（変更後の
+    /// 解決済み実効ビジュアル）から取る。
     pub(crate) fn blend(
         &mut self,
         prev_displayed: Option<&Visual>,
@@ -261,12 +251,12 @@ impl ElementTransitions {
     }
 }
 
-/// Map a linear time fraction `t` through the easing curve.
+/// 線形の時間比 `t` をイージング曲線で写像する。
 pub(crate) fn ease(timing: TransitionTimingValue, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     match timing {
         TransitionTimingValue::Linear => t,
-        // Control points match the CSS keyword cubic-bezier definitions.
+        // 制御点は CSS キーワードの cubic-bezier 定義に一致する。
         TransitionTimingValue::Ease => cubic_bezier_ease(0.25, 0.1, 0.25, 1.0, t),
         TransitionTimingValue::EaseIn => cubic_bezier_ease(0.42, 0.0, 1.0, 1.0, t),
         TransitionTimingValue::EaseOut => cubic_bezier_ease(0.0, 0.0, 0.58, 1.0, t),
@@ -274,9 +264,9 @@ pub(crate) fn ease(timing: TransitionTimingValue, t: f32) -> f32 {
     }
 }
 
-/// Evaluate a CSS timing cubic-bezier `(0,0) (p1x,p1y) (p2x,p2y) (1,1)` at time
-/// fraction `x`: solve `Bx(s) = x` for the curve parameter `s`, then return
-/// `By(s)`. Newton–Raphson with a bisection fallback (the standard approach).
+/// CSS タイミングの cubic-bezier `(0,0) (p1x,p1y) (p2x,p2y) (1,1)` を時間比 `x` で評価する。
+/// 曲線パラメータ `s` について `Bx(s) = x` を解き、`By(s)` を返す。ニュートン・ラフソン法に
+/// 二分法のフォールバックを併用する（標準的な手法）。
 fn cubic_bezier_ease(p1x: f32, p1y: f32, p2x: f32, p2y: f32, x: f32) -> f32 {
     if x <= 0.0 {
         return 0.0;
@@ -294,7 +284,7 @@ fn cubic_bezier_ease(p1x: f32, p1y: f32, p2x: f32, p2y: f32, x: f32) -> f32 {
         3.0 * u * u * a + 6.0 * u * s * (b - a) + 3.0 * s * s * (1.0 - b)
     };
 
-    let mut s = x; // initial guess
+    let mut s = x; // 初期推定値
     for _ in 0..8 {
         let x_est = bezier(p1x, p2x, s) - x;
         if x_est.abs() < 1e-5 {
@@ -307,7 +297,7 @@ fn cubic_bezier_ease(p1x: f32, p1y: f32, p2x: f32, p2y: f32, x: f32) -> f32 {
         s -= x_est / dx;
     }
 
-    // Bisection fallback for ill-conditioned derivatives.
+    // 導関数が悪条件の場合の二分法フォールバック。
     let (mut lo, mut hi) = (0.0f32, 1.0f32);
     s = x;
     for _ in 0..20 {
@@ -365,7 +355,7 @@ mod tests {
             shadow(10.0, 4.0, 0.0, 1.0, false),
             shadow(2.0, 1.0, 0.0, 1.0, false),
         ];
-        // Mid-transition still snaps straight to the target list.
+        // トランジション途中でも目標リストへ即座にスナップする。
         assert_eq!(from.lerp(&to, 0.5), to);
     }
 

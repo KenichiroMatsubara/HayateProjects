@@ -3,20 +3,20 @@
 
 import type { ElementKind, UserSelect } from '../element.js';
 
-/** UA default cursor (CSS keyword) per element-kind (ADR-0105). Single source
- *  shared with Canvas (Hayate core `resolve_cursor`); absent = no default. */
+/** element-kind ごとの UA デフォルトカーソル（CSS キーワード、ADR-0105）。Canvas
+ *  （Hayate core `resolve_cursor`）と共有する単一の出所。未定義＝デフォルトなし。 */
 const DEFAULT_CURSOR: Partial<Record<ElementKind, string>> = {"button":"pointer","text-input":"text"};
 
-/** UA default cursor for `kind` when no explicit `cursor` is set, else undefined. */
+/** `cursor` 未指定時の `kind` の UA デフォルトカーソル。なければ undefined。 */
 export function elementKindDefaultCursor(kind: ElementKind): string | undefined {
   return DEFAULT_CURSOR[kind];
 }
 
-/** UA default `user-select` per element-kind (ADR-0108). Single source shared
- *  with Canvas (Hayate core `default_user_select`); absent = `none`. */
+/** element-kind ごとの UA デフォルト `user-select`（ADR-0108）。Canvas
+ *  （Hayate core `default_user_select`）と共有する単一の出所。未定義＝`none`。 */
 const DEFAULT_USER_SELECT: Partial<Record<ElementKind, UserSelect>> = {"view":"text","text":"text","image":"none","button":"none","text-input":"text","scroll-view":"text"};
 
-/** UA default `user-select` for `kind` when no explicit value is set (ADR-0108). */
+/** 明示値が未設定のときの `kind` の UA デフォルト `user-select`（ADR-0108）。 */
 export function elementKindDefaultUserSelect(kind: ElementKind): UserSelect {
   return DEFAULT_USER_SELECT[kind] ?? 'none';
 }

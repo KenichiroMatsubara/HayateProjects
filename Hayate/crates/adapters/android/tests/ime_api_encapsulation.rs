@@ -1,20 +1,19 @@
-//! Enforcement guard (ADR-0069, #392): the platform soft-keyboard calls
-//! `show_soft_input` / `hide_soft_input` may appear **only** in the IME bridge
-//! module. Soft-keyboard visibility is decided once by core
-//! (`ElementTree::drive_ime`) and reflected by `AndroidImeBridge`; any other
-//! site calling the platform API directly would re-introduce the per-adapter
-//! gating that let #392 (keyboard on every tap) land for Android only.
+//! 強制ガード（ADR-0069）: プラットフォームのソフトキーボード呼び出し
+//! `show_soft_input` / `hide_soft_input` は IME ブリッジモジュール内にのみ現れてよい。
+//! ソフトキーボードの表示可否は core（`ElementTree::drive_ime`）が一度だけ決定し
+//! `AndroidImeBridge` が反映する。他の箇所がプラットフォーム API を直接呼ぶと、
+//! アダプタごとのゲーティングが復活し「タップのたびにキーボード」が再発する。
 //!
-//! This is a source-text scan, so it holds even for the `#[cfg(target_os =
-//! "android")]` code that can't be compiled off-device.
+//! ソーステキスト走査なので、実機外でビルドできない `#[cfg(target_os = "android")]`
+//! コードに対しても成立する。
 
 use std::fs;
 use std::path::Path;
 
-/// The single module permitted to call the platform soft-input API.
+/// プラットフォームのソフトインプット API を呼んでよい唯一のモジュール。
 const BRIDGE_FILE: &str = "ime_bridge.rs";
 
-/// Platform IME calls that must stay behind the [`ImeBridge`] seam.
+/// [`ImeBridge`] のシーム内に留めるべきプラットフォーム IME 呼び出し。
 const FORBIDDEN: [&str; 2] = ["show_soft_input", "hide_soft_input"];
 
 fn rs_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
@@ -43,7 +42,7 @@ fn soft_input_calls_are_confined_to_the_ime_bridge() {
         }
         let text = fs::read_to_string(file).expect("read source");
         for (lineno, line) in text.lines().enumerate() {
-            // Skip comments so doc-references to the API don't trip the guard.
+            // コメントはスキップし、API へのドキュメント参照でガードが誤発火しないようにする。
             let trimmed = line.trim_start();
             if trimmed.starts_with("//") {
                 continue;

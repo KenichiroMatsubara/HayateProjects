@@ -1,14 +1,13 @@
-//! Programmatic selection API and the `selection-change` notification
-//! (ADR-0097 growth points). The unified `Selection` is document-global and
-//! core-owned; these exercise it through the public runtime interface rather
-//! than through pointer/keyboard gestures.
+//! プログラム的な選択 API と `selection-change` 通知（ADR-0097）。
+//! 統一 `Selection` はドキュメント全体で core 所有。ポインタ/キーボード操作ではなく
+//! 公開ランタイム API 経由で動作を検証する。
 
 use hayate_core::{
     Dimension, ElementId, ElementKind, ElementTree, Event, SelectionPoint, StyleProp,
 };
 
-/// Build `<view [selectable]><text "Hello world"></view>` on one line and
-/// return (tree, view, text). The text element is the IFC root.
+/// `<view [selectable]><text "Hello world"></view>` を組み立て (tree, view, text) を返す。
+/// text 要素が IFC ルート。
 fn selectable_paragraph(selectable: bool) -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -46,9 +45,9 @@ fn set_selection_range_makes_the_range_the_active_selection() {
 
 #[test]
 fn set_selection_range_in_boundary_free_text_applies() {
-    // No explicit `selectable` region: under the boundary-free default (ADR-0108
-    // decision 3) a programmatic range over plain text still applies — the
-    // endpoints share the unbounded document region.
+    // 明示的な `selectable` 領域が無くても、境界フリーの既定（ADR-0108）では
+    // 素のテキストへのプログラム的レンジが適用される。両端点が境界なしの
+    // ドキュメント領域を共有するため。
     let (mut tree, _view, text) = selectable_paragraph(false);
 
     let applied = tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
@@ -61,8 +60,8 @@ fn set_selection_range_in_boundary_free_text_applies() {
 
 #[test]
 fn set_selection_range_over_user_select_none_is_rejected() {
-    // `user-select: none` excludes the text (ADR-0108 decision 2), so a
-    // programmatic range targeting it is refused and leaves the selection intact.
+    // `user-select: none` はテキストを選択対象から除外する（ADR-0108）ため、
+    // それを狙ったプログラム的レンジは拒否され、既存の選択はそのまま残る。
     let (mut tree, _view, text) = selectable_paragraph(false);
     tree.element_set_user_select(text, hayate_core::UserSelectValue::None);
     tree.render(0.0);
@@ -107,9 +106,9 @@ fn changing_the_selection_emits_a_selection_change_event() {
 fn redundant_set_selection_range_emits_no_new_event() {
     let (mut tree, _view, text) = selectable_paragraph(true);
     tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
-    let _ = tree.poll_events(); // drain the notification from the first change
+    let _ = tree.poll_events(); // 最初の変更通知を取り除く
 
-    // Set the byte-for-byte identical range again: nothing actually changed.
+    // 完全に同一のレンジを再設定: 実際には何も変わっていない。
     tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
 
     let events = tree.poll_events();

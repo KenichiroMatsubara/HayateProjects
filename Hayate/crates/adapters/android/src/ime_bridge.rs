@@ -1,22 +1,22 @@
-//! Android soft-keyboard side of the [`ImeBridge`] seam (ADR-0069, #392).
+//! [`ImeBridge`] シームの Android ソフトキーボード側（ADR-0069）。
 //!
-//! This module only *reflects* the [`ImePresentation`] core computes in
-//! [`ElementTree::drive_ime`](hayate_core::ElementTree::drive_ime): `Shown`
-//! raises the GameTextInput soft keyboard, `Hidden` dismisses it. It is the
-//! single place the platform `show_soft_input` / `hide_soft_input` calls live,
-//! so the editability gate can never drift back into the frame loop the way it
-//! did before #392 (when each adapter hand-rolled the decision and the fix
-//! landed for Android only). The guard test `tests/ime_api_encapsulation.rs`
-//! enforces that nothing else in the crate calls those platform APIs.
+//! このモジュールは core が
+//! [`ElementTree::drive_ime`](hayate_core::ElementTree::drive_ime) で算出する
+//! [`ImePresentation`] を*反映するだけ*。`Shown` は GameTextInput のソフト
+//! キーボードを上げ、`Hidden` は閉じる。プラットフォームの `show_soft_input` /
+//! `hide_soft_input` 呼び出しはここ一箇所に集約し、編集可能性ゲートがフレーム
+//! ループへ漏れ戻らないようにする。ガードテスト
+//! `tests/ime_api_encapsulation.rs` が、クレート内の他所からこれらのプラット
+//! フォーム API を呼ばないことを保証する。
 
 use android_activity::AndroidApp;
 use hayate_core::{ImeBridge, ImePresentation};
 
-/// Reflects core's IME presentation onto the GameTextInput soft keyboard.
+/// core の IME 提示を GameTextInput のソフトキーボードに反映する。
 ///
-/// Holds a borrow of the persistent `shown` flag so repeated `Shown` /`Hidden`
-/// frames don't re-issue the platform call — the keyboard is toggled only on a
-/// visibility transition.
+/// 永続的な `shown` フラグへの借用を保持し、`Shown` / `Hidden` が連続しても
+/// プラットフォーム呼び出しを再発行しない。キーボードの切り替えは表示状態が
+/// 遷移したときだけ行う。
 pub struct AndroidImeBridge<'a> {
     app: &'a AndroidApp,
     shown: &'a mut bool,

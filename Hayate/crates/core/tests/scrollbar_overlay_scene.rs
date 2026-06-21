@@ -1,12 +1,10 @@
-//! Scrollbar overlay chrome lowering (ADR-0110, #407). The first tracer bullet:
-//! a scrollable `scroll-view` draws a Mouse/Pen-style thumb overlay under its
-//! ScrollView anchor, on each overflowing axis, with the thumb geometry derived
-//! from the Scroll Offset and content size. No Pointer Modality branch yet (the
-//! Touch transient indicator is a later slice) and no layout space reserved.
+//! スクロールバーオーバーレイ chrome の lowering（ADR-0110）。スクロール可能な
+//! `scroll-view` は、オーバーフローする各軸について ScrollView アンカー下に
+//! Mouse/Pen 様のサムオーバーレイを描く。サム形状は Scroll Offset とコンテンツ
+//! サイズから導出する。Pointer Modality 分岐やレイアウト領域の予約はまだない。
 //!
-//! Exercised through the public `ElementTree` interface via both the
-//! `RecordingPainter` DrawOp stream and a SceneGraph `NodeKind` walk (prior art:
-//! `scroll_view_scene.rs`, `selection_chrome_modality.rs`).
+//! 公開 `ElementTree` インタフェース経由で、`RecordingPainter` の DrawOp 列と
+//! SceneGraph の `NodeKind` 走査の両方を通して検証する。
 
 use hayate_core::element::scene_build::{
     SCROLLBAR_THICKNESS, SCROLLBAR_THUMB_COLOR, SCROLLBAR_THUMB_OPACITY,
@@ -16,15 +14,15 @@ use hayate_core::{
     RecordingPainter, StyleProp, render_scene_graph,
 };
 
-/// Final composited thumb fill colour (RGB at the overlay opacity).
+/// 合成後のサム塗り色（オーバーレイ不透明度を乗せた RGB）。
 fn thumb_rgba() -> [f32; 4] {
     SCROLLBAR_THUMB_COLOR
         .with_opacity(SCROLLBAR_THUMB_OPACITY)
         .to_array_f32()
 }
 
-/// All scrollbar-thumb `Rect` nodes in the scene graph as `(id, x, y, w, h)`,
-/// identified by the thumb fill colour.
+/// シーングラフ中の全スクロールバーサム `Rect` ノードを `(id, x, y, w, h)` で
+/// 返す。サム塗り色で識別する。
 fn thumb_nodes(tree: &ElementTree) -> Vec<(NodeId, f32, f32, f32, f32)> {
     let sg = tree.scene_graph();
     let rgba = thumb_rgba();
@@ -43,7 +41,7 @@ fn thumb_nodes(tree: &ElementTree) -> Vec<(NodeId, f32, f32, f32, f32)> {
         .collect()
 }
 
-/// Thumb fill ops in the recorded DrawOp stream (public painter path).
+/// 記録された DrawOp 列中のサム塗り op（公開ペインタ経路）。
 fn thumb_ops(tree: &ElementTree) -> Vec<DrawOp> {
     let mut painter = RecordingPainter::new();
     render_scene_graph(tree.scene_graph(), &mut painter);
@@ -56,7 +54,7 @@ fn thumb_ops(tree: &ElementTree) -> Vec<DrawOp> {
         .collect()
 }
 
-/// Walk anchors upward: is `node` a descendant of the `ElementAnchor` for `scroll`?
+/// アンカーを上方向に辿る: `node` は `scroll` の `ElementAnchor` の子孫か。
 fn is_under_scroll_anchor(tree: &ElementTree, node: NodeId, scroll: ElementId) -> bool {
     let sg = tree.scene_graph();
     let mut current = Some(node);
@@ -71,8 +69,8 @@ fn is_under_scroll_anchor(tree: &ElementTree, node: NodeId, scroll: ElementId) -
     false
 }
 
-/// A `scroll-view` whose content overflows only the vertical axis: a 100×100 box
-/// holding 100×300 content. Returns `(tree, scroll_id)`.
+/// 縦軸のみオーバーフローする `scroll-view`: 100×100 のボックスに 100×300 の
+/// コンテンツ。`(tree, scroll_id)` を返す。
 fn vertical_overflow_scroll_view() -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let scroll = tree.element_create(1, ElementKind::ScrollView);
@@ -125,7 +123,7 @@ fn scrollable_view_lowers_a_thumb_under_its_anchor() {
     );
 }
 
-/// A `scroll-view` whose `content` is `cw × ch` inside a `bw × bh` box.
+/// `bw × bh` のボックス内に `cw × ch` の `content` を持つ `scroll-view`。
 fn scroll_view_with_content(bw: f32, bh: f32, cw: f32, ch: f32) -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let scroll = tree.element_create(1, ElementKind::ScrollView);
@@ -144,8 +142,8 @@ fn scroll_view_with_content(bw: f32, bh: f32, cw: f32, ch: f32) -> (ElementTree,
         &[
             StyleProp::Width(Dimension::px(cw)),
             StyleProp::Height(Dimension::px(ch)),
-            // Keep the explicit size: a flex item would otherwise shrink along the
-            // main axis to fit the box, hiding the horizontal overflow under test.
+            // 明示サイズを保つ: flex アイテムは主軸方向にボックスへ収まるよう縮み、
+            // テスト対象の横オーバーフローを隠してしまう。
             StyleProp::FlexShrink(0.0),
             StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
         ],
@@ -157,7 +155,7 @@ fn scroll_view_with_content(bw: f32, bh: f32, cw: f32, ch: f32) -> (ElementTree,
 
 #[test]
 fn content_that_fits_draws_no_scrollbar() {
-    // Content smaller than the box on both axes: nothing to scroll, no thumb.
+    // 両軸でボックスより小さいコンテンツ: スクロール不要、サムなし。
     let (tree, _scroll) = scroll_view_with_content(200.0, 200.0, 100.0, 100.0);
     assert!(
         thumb_nodes(&tree).is_empty(),
@@ -171,8 +169,8 @@ fn content_that_fits_draws_no_scrollbar() {
 
 #[test]
 fn only_the_overflowing_axis_is_drawn() {
-    // Content overflows the width but fits the height: a single horizontal thumb
-    // (height == thickness, sitting at the bottom edge), no vertical thumb.
+    // 幅はオーバーフローし高さは収まる: 横サム 1 本（高さ == thickness、下端）、
+    // 縦サムなし。
     let (tree, scroll) = scroll_view_with_content(100.0, 100.0, 300.0, 100.0);
     let thumbs = thumb_nodes(&tree);
     assert_eq!(thumbs.len(), 1, "only the overflowing (horizontal) axis is drawn");
@@ -189,8 +187,7 @@ fn only_the_overflowing_axis_is_drawn() {
 
 #[test]
 fn both_axes_overflow_draws_two_thumbs() {
-    // Content overflows both axes: a vertical thumb (THICKNESS wide) at the right
-    // and a horizontal thumb (THICKNESS tall) at the bottom.
+    // 両軸オーバーフロー: 右に縦サム（幅 THICKNESS）、下に横サム（高さ THICKNESS）。
     let (tree, _scroll) = scroll_view_with_content(100.0, 100.0, 300.0, 300.0);
     let thumbs = thumb_nodes(&tree);
     assert_eq!(thumbs.len(), 2, "both overflowing axes are drawn");
@@ -217,11 +214,11 @@ fn has_ancestor(tree: &ElementTree, node: NodeId, pred: impl Fn(&NodeKind) -> bo
 
 #[test]
 fn nested_inner_thumb_is_anchored_and_clipped_inside_the_outer_box() {
-    // Outer 200×100 (fits) holding an inner 180×80 scroll-view whose 180×300
-    // content overflows vertically. Only the inner draws a thumb, and that thumb
-    // hangs under the inner ScrollView anchor — which itself nests under the outer
-    // ScrollView's Clip — so the inner thumb tracks the inner box and is bounded
-    // by the outer box (it cannot leak outside it; #199/#200 coordinate system).
+    // 外側 200×100（収まる）が内側 180×80 の scroll-view を持ち、その 180×300
+    // コンテンツが縦にオーバーフローする。サムを描くのは内側のみで、そのサムは
+    // 内側 ScrollView アンカー下に吊られる。アンカー自体が外側 ScrollView の Clip
+    // 下にネストするため、内側サムは内側ボックスを追従しつつ外側ボックスに制約され、
+    // 外へはみ出せない。
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::ScrollView);
     let inner = tree.element_create(2, ElementKind::ScrollView);
@@ -269,7 +266,7 @@ fn nested_inner_thumb_is_anchored_and_clipped_inside_the_outer_box() {
     );
     assert!(
         has_ancestor(&tree, inner_thumb, |k| matches!(k, NodeKind::Clip { .. })),
-        "the inner thumb is clipped by the outer box and cannot leak outside it",
+        "内側サムは外側ボックスでクリップされ外へはみ出せない",
     );
 }
 
@@ -284,15 +281,15 @@ fn thumb_tracks_the_scroll_offset() {
 
     assert!(
         scrolled > at_top,
-        "scrolling down moves the thumb down the track (top {at_top} -> {scrolled})",
+        "下スクロールでサムがトラックを下る (top {at_top} -> {scrolled})",
     );
 
-    // Scrolled fully to the end, the thumb's bottom must reach the track's end —
-    // its geometry follows the offset as a fraction of the scrollable range.
+    // 最後までスクロールするとサム下端はトラック末尾に達する。形状はスクロール可能
+    // 範囲に対するオフセット比に追従する。
     let (_, _, ty, _, th) = thumb_nodes(&tree)[0];
     let (_, sy, _, sh) = tree.element_layout_rect(scroll).unwrap();
     assert!(
         (ty + th) <= sy + sh + 0.01 && (ty + th) >= sy + sh - 4.0,
-        "at max offset the thumb sits at the bottom of the track",
+        "最大オフセットでサムはトラック下端に位置する",
     );
 }

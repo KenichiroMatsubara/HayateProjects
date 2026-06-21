@@ -11,19 +11,18 @@ use crate::element::visual_invalidation::{
     self, ElementMapTopology, VisualInvalidationReach,
 };
 
-/// Result of [`TaffyProjection::traversal_step`].
+/// [`TaffyProjection::traversal_step`] の結果。
 pub(crate) enum TraversalStep<'a> {
-    /// `id` has no Taffy node; recurse into this element's children without
-    /// yielding `id` itself.
+    /// `id` に Taffy ノードが無い。`id` 自身を yield せず子へ再帰する。
     Skip(&'a Element),
-    /// `id` has a Taffy node; yield it along with the element.
+    /// `id` に Taffy ノードがある。要素とともに yield する。
     Visit(NodeId, &'a Element),
 }
 
-/// Derived Taffy layout tree for the block-box subset of an `ElementTree`.
+/// `ElementTree` のブロックボックス部分集合から導いた Taffy レイアウトツリー。
 ///
-/// Inline text elements (text whose parent is also text) are excluded per ADR-0063/0064.
-/// IFC roots (`text` under non-text parent) are measured leaves.
+/// インラインテキスト要素（親もテキストのテキスト）は除外する（ADR-0063/0064）。
+/// IFC ルート（非テキスト親の下の `text`）は measure 対象の葉になる。
 pub(crate) struct TaffyProjection {
     pub(crate) taffy: TaffyTree<MeasureCtx>,
     element_to_node: HashMap<ElementId, NodeId>,
@@ -59,14 +58,13 @@ impl TaffyProjection {
         self.element_to_node.get(&id).copied()
     }
 
-    /// Shared skeleton for the three Canonical Tree traversals (`scene_build`,
-    /// `walk_resolved`, `walk_accessibility`): look up `id`'s Taffy node.
+    /// 3 つの Canonical Tree 走査（`scene_build`, `walk_resolved`,
+    /// `walk_accessibility`）の共通骨格。`id` の Taffy ノードを引く。
     ///
-    /// If `id` has no element, returns `None` — callers should stop. If `id`
-    /// has no Taffy node (e.g. an inline text element inside an IFC), returns
-    /// `Skip` so callers recurse into `id`'s children without yielding `id`
-    /// itself, mirroring `layout_pass::cache_layout`. Otherwise returns
-    /// `Visit` with the Taffy node and the element to yield.
+    /// `id` に要素が無ければ `None`（呼び出し側は停止）。`id` に Taffy ノードが
+    /// 無ければ（例: IFC 内のインラインテキスト要素）`Skip` を返し、`id` 自身を
+    /// yield せず子へ再帰させる（`layout_pass::cache_layout` と同じ）。それ以外は
+    /// Taffy ノードと yield する要素を持つ `Visit` を返す。
     pub fn traversal_step<'a>(
         &self,
         elements: &'a HashMap<ElementId, Element>,
@@ -79,9 +77,9 @@ impl TaffyProjection {
         }
     }
 
-    /// Reconcile the Taffy projection when structure has changed.
+    /// 構造が変わったとき Taffy 投影を再調整する。
     ///
-    /// `structure_dirty` is owned by `ElementEngine` (ADR-0075); this drains it.
+    /// `structure_dirty` は `ElementEngine` が持つ（ADR-0075）。本関数がドレインする。
     pub fn reconcile(
         &mut self,
         elements: &HashMap<ElementId, Element>,
@@ -101,11 +99,11 @@ impl TaffyProjection {
             return;
         }
 
-        // Structure changes always carry `Subtree` reach, so tagging every
-        // drained id `Subtree` and routing through the shared reach seam yields
-        // exactly the old presence-only patch-root search (`step_reach` returns
-        // `Some(Subtree)` for every ancestor→descendant step). The reach kernel
-        // now lives in one place; this is its `structure_dirty` specialization.
+        // 構造変更は常に `Subtree` reach を伴うため、ドレインした各 id を
+        // `Subtree` とタグ付けして共通 reach 経路へ通すと、旧来の存在ベース
+        // パッチルート探索と完全に一致する（`step_reach` は祖先→子孫の各ステップで
+        // `Some(Subtree)` を返す）。reach カーネルは一箇所に集約され、これはその
+        // `structure_dirty` 向け特殊化。
         let dirty: HashMap<ElementId, VisualInvalidationReach> = structure_dirty
             .drain()
             .map(|id| (id, VisualInvalidationReach::Subtree))
@@ -172,15 +170,15 @@ fn patch_subtree(
     }
 }
 
-/// Drop stale `element_to_node` mapping for a removed element.
+/// 削除された要素の古い `element_to_node` マッピングを落とす。
 ///
-/// Taffy nodes for removed subtrees are detached during the ancestor's
-/// `clear_taffy_children` in `patch_subtree` (ADR-0064 lazy reconcile).
+/// 削除されたサブツリーの Taffy ノードは、`patch_subtree` 内で祖先の
+/// `clear_taffy_children` 時にデタッチされる（ADR-0064 の遅延 reconcile）。
 fn purge_element_projection(projection: &mut TaffyProjection, id: ElementId) {
     projection.element_to_node.remove(&id);
 }
 
-/// Remove `element_to_node` entries whose elements were deleted before reconcile.
+/// reconcile 前に要素が削除された `element_to_node` エントリを除去する。
 fn prune_orphan_projections(
     projection: &mut TaffyProjection,
     elements: &HashMap<ElementId, Element>,
@@ -231,9 +229,9 @@ fn sync_node_from_element(
         .set_node_context(node, Some(measure_ctx));
 }
 
-/// The measure dispatch context for `id`'s Taffy leaf: IFC roots shape their
-/// text, `text-input` supplies a font-relative UA default width (ADR-0109), and
-/// every other box measures to nothing.
+/// `id` の Taffy 葉の measure ディスパッチコンテキスト。IFC ルートはテキストを
+/// シェイプし、`text-input` はフォント相対の UA デフォルト幅を供給する（ADR-0109）。
+/// それ以外のボックスは何も measure しない。
 fn measure_ctx_for(elements: &HashMap<ElementId, Element>, id: ElementId) -> MeasureCtx {
     if is_ifc_root(elements, id) {
         MeasureCtx::Text(id)
@@ -396,7 +394,7 @@ mod tests {
         assert!(projection.has_node(branch_id));
         assert!(projection.has_node(leaf_id));
 
-        // Simulate `element_remove(branch)` after detach: parent stays, subtree gone.
+        // デタッチ後の `element_remove(branch)` を模す。親は残り、サブツリーは消える。
         elements.get_mut(&root_id).unwrap().children.clear();
         elements.remove(&branch_id);
         elements.remove(&leaf_id);
@@ -416,7 +414,7 @@ mod tests {
             "removed descendant projection must be cleared"
         );
 
-        // Second reconcile must not panic on stale SlotMap keys.
+        // 2 回目の reconcile が古い SlotMap キーで panic しないこと。
         projection.reconcile(&elements, root_id, &mut HashSet::new());
     }
 

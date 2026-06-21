@@ -3,14 +3,14 @@ import type { HayateStyle, StylePatch } from '@tsubame/renderer-protocol';
 type DomStylePatchBase = Omit<StylePatch, 'opacity'>;
 
 /**
- * DOM Renderer style patch with IDE warnings for properties that may diverge
- * from Canvas/Hayate Z-Order semantics.
+ * DOM Renderer 用のスタイルパッチ。Canvas/Hayate の Z-Order セマンティクスと
+ * 食い違いうるプロパティに IDE 警告を付ける。
  */
 export type DomStylePatch = DomStylePatchBase & {
   /**
-   * @deprecated DOM Renderer may diverge from Canvas/Hayate Z-Order semantics
-   * because browser CSS creates an implicit stacking context for opacity.
-   * See Tsubame/docs/adr/0006-dom-z-order-rn-web-emulation.md.
+   * @deprecated ブラウザ CSS は opacity に対し暗黙の重ね合わせコンテキストを
+   * 生成するため、DOM Renderer は Canvas/Hayate の Z-Order セマンティクスと
+   * 食い違いうる。Tsubame/docs/adr/0006-dom-z-order-rn-web-emulation.md を参照。
    */
   opacity?: HayateStyle['opacity'] | null;
 };

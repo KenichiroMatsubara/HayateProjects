@@ -1,5 +1,5 @@
-//! Drag selection within a single selectable IFC (ADR-0097, issue #266) and
-//! across multiple blocks within one Selection Region (issue #269).
+//! 単一の selectable IFC 内（ADR-0097）と、1つの Selection Region 内の複数ブロックに
+//! またがるドラッグ選択。
 
 use hayate_core::{
     DrawOp, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue, RecordingPainter,
@@ -12,8 +12,8 @@ fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
     painter.ops().to_vec()
 }
 
-/// Build `<view [selectable]><text "Hello world"></view>` on one line and
-/// return (tree, view, text). The text element is the IFC root.
+/// `<view [selectable]><text "Hello world"></view>` を1行で構築し
+/// (tree, view, text) を返す。text 要素が IFC ルート。
 fn selectable_paragraph(selectable: bool) -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -41,7 +41,7 @@ fn selectable_paragraph(selectable: bool) -> (ElementTree, ElementId, ElementId)
 fn drag_within_selectable_selects_anchor_to_focus_range() {
     let (mut tree, _view, text) = selectable_paragraph(true);
 
-    // Press near the start of the line, drag rightwards across several glyphs.
+    // 行頭付近で押下し、複数グリフをまたいで右へドラッグ。
     tree.on_pointer_down(2.0, 8.0);
     tree.on_pointer_move(70.0, 8.0);
 
@@ -72,7 +72,7 @@ fn pointer_down_in_selectable_collapses_to_a_caret() {
 fn selected_range_lowers_a_highlight_rect_behind_the_text_run() {
     let (mut tree, _view, _text) = selectable_paragraph(true);
 
-    // No selection yet: no highlight rect under the (background-less) paragraph.
+    // まだ選択なし: 背景のない段落の下にハイライト矩形は出ない。
     let before = draw_ops(&tree);
     let rects_before = before
         .iter()
@@ -109,7 +109,7 @@ fn selected_range_lowers_a_highlight_rect_behind_the_text_run() {
     }
 }
 
-/// The substring currently selected within `text`, for asserting gesture ranges.
+/// `text` 内で現在選択中の部分文字列。ジェスチャ範囲のアサート用。
 fn selected_text<'a>(tree: &ElementTree, text: ElementId, content: &'a str) -> &'a str {
     let sel = tree.selection().expect("a selection");
     let (start, end) = sel.range_within(text).expect("both endpoints in text");
@@ -120,7 +120,7 @@ fn selected_text<'a>(tree: &ElementTree, text: ElementId, content: &'a str) -> &
 fn double_click_selects_the_word_under_the_pointer() {
     let (mut tree, _view, text) = selectable_paragraph(true);
 
-    // Two presses at the same spot inside "Hello" expand to the whole word.
+    // "Hello" 内の同じ位置を2回押すと単語全体に広がる。
     tree.on_pointer_down(15.0, 8.0);
     tree.on_pointer_up(15.0, 8.0);
     tree.on_pointer_down(15.0, 8.0);
@@ -141,14 +141,14 @@ fn triple_click_selects_the_whole_paragraph() {
     assert_eq!(selected_text(&tree, text, "Hello world"), "Hello world");
 }
 
-const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
-const CTRL: u32 = 2; // MODIFIER_CTRL.
+const SHIFT: u32 = 1; // MODIFIER_SHIFT（proto/spec のワイヤ契約）。
+const CTRL: u32 = 2; // MODIFIER_CTRL。
 
 #[test]
 fn select_all_covers_the_whole_region() {
     let (mut tree, _view, text) = selectable_paragraph(true);
 
-    // A caret must exist in the region first (click to place it), then Ctrl+A.
+    // 先にリージョン内へキャレットを置き（クリック）、その後 Ctrl+A。
     tree.on_pointer_down(15.0, 8.0);
     tree.on_pointer_up(15.0, 8.0);
     tree.on_key_down("a", CTRL);
@@ -172,7 +172,7 @@ fn shift_arrow_extends_the_focus_by_one_character() {
     assert_eq!(sel.anchor, anchor, "anchor stays fixed");
     assert!(sel.focus.offset > caret, "focus advances one character right");
 
-    // Shift+ArrowLeft contracts back toward (and onto) the anchor.
+    // Shift+ArrowLeft はアンカーへ向けて（アンカー上まで）縮む。
     let extended = sel.focus.offset;
     tree.on_key_down("ArrowLeft", SHIFT);
     let sel = tree.selection().unwrap();
@@ -184,7 +184,7 @@ fn shift_arrow_extends_the_focus_by_one_character() {
 fn shift_click_extends_focus_keeping_the_anchor_fixed() {
     let (mut tree, _view, text) = selectable_paragraph(true);
 
-    // Drop a caret near the start, then Shift+click further along the line.
+    // 行頭付近にキャレットを置き、行の先で Shift+クリック。
     tree.on_pointer_down(8.0, 8.0);
     let anchor = tree.selection().unwrap().anchor;
     tree.on_pointer_up(8.0, 8.0);
@@ -205,7 +205,7 @@ fn shift_click_extends_focus_keeping_the_anchor_fixed() {
 fn selected_text_returns_the_dragged_substring() {
     let (mut tree, _view, _text) = selectable_paragraph(true);
 
-    // Drag from the start across the first word.
+    // 行頭から最初の単語をまたいでドラッグ。
     tree.on_pointer_down(2.0, 8.0);
     tree.on_pointer_move(40.0, 8.0);
 
@@ -234,13 +234,13 @@ fn text_input_range_selection_lowers_a_highlight_behind_the_text() {
     tree.element_focus(input);
     tree.render(0.0);
 
-    // A caret alone draws no highlight band.
+    // キャレットだけではハイライト帯は描かれない。
     assert!(
         highlight_bands(&tree).is_empty(),
         "a collapsed caret shows no selection highlight",
     );
 
-    // Drag across several glyphs, then render: a highlight band appears.
+    // 複数グリフをまたいでドラッグして描画すると、ハイライト帯が現れる。
     tree.on_pointer_down(2.0, 20.0);
     tree.on_pointer_move(70.0, 20.0);
     tree.render(0.0);
@@ -266,8 +266,8 @@ fn text_input_range_selection_lowers_a_highlight_behind_the_text() {
     );
 }
 
-/// `<view [selectable]><text "Hello "><text "world" (bigger)></view>`: one IFC
-/// made of two inline children with different styles. Returns (tree, ifc root).
+/// `<view [selectable]><text "Hello "><text "world" (bigger)></view>`: 異なるスタイルの
+/// インライン子2つからなる1つの IFC。(tree, ifc root) を返す。
 fn two_run_paragraph() -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -297,13 +297,13 @@ fn two_run_paragraph() -> (ElementTree, ElementId) {
 fn selected_text_joins_across_styled_inline_runs() {
     let (mut tree, _ifc) = two_run_paragraph();
 
-    // Select the whole paragraph, which crosses the "Hello " / "world" run
-    // boundary (two different font sizes within one IFC).
+    // 段落全体を選択。"Hello " / "world" のラン境界（1 IFC 内の異なるフォントサイズ2つ）を
+    // またぐ。
     tree.on_pointer_down(15.0, 8.0);
     tree.on_pointer_up(15.0, 8.0);
     tree.on_pointer_down(15.0, 8.0);
     tree.on_pointer_up(15.0, 8.0);
-    tree.on_pointer_down(15.0, 8.0); // triple-click selects the paragraph
+    tree.on_pointer_down(15.0, 8.0); // トリプルクリックで段落を選択
 
     assert_eq!(
         tree.selected_text().as_deref(),
@@ -312,8 +312,8 @@ fn selected_text_joins_across_styled_inline_runs() {
     );
 }
 
-/// A `Clipboard` impl that records writes, so a test can assert what core
-/// pushed across the Platform Adapter boundary without a real OS clipboard.
+/// 書き込みを記録する `Clipboard` 実装。実 OS クリップボードなしで、core が
+/// Platform Adapter 境界へ押し出した内容をテストで検証できる。
 #[derive(Default, Clone)]
 struct RecordingClipboard {
     writes: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
@@ -331,7 +331,7 @@ fn primary_c_writes_the_selection_through_the_clipboard_adapter() {
     let clipboard = RecordingClipboard::default();
     tree.set_clipboard(Box::new(clipboard.clone()));
 
-    // Select a range, then Ctrl/Cmd+C.
+    // 範囲を選択して Ctrl/Cmd+C。
     tree.on_pointer_down(2.0, 8.0);
     tree.on_pointer_move(40.0, 8.0);
     let expected = tree.selected_text().expect("a non-empty selection");
@@ -351,7 +351,7 @@ fn primary_c_without_a_selection_writes_nothing() {
     let clipboard = RecordingClipboard::default();
     tree.set_clipboard(Box::new(clipboard.clone()));
 
-    // A caret (collapsed) selects nothing, so copy is a no-op.
+    // キャレット（折りたたみ）は何も選択しないので、コピーは no-op。
     tree.on_pointer_down(40.0, 8.0);
     tree.on_pointer_up(40.0, 8.0);
     tree.on_key_down("c", CTRL);
@@ -366,7 +366,7 @@ fn primary_c_without_a_selection_writes_nothing() {
 fn selected_text_is_none_for_a_collapsed_caret() {
     let (mut tree, _view, _text) = selectable_paragraph(true);
 
-    // A plain press drops a caret (collapsed selection) — nothing to copy.
+    // 単なる押下はキャレット（折りたたみ選択）を置くだけで、コピー対象はない。
     tree.on_pointer_down(40.0, 8.0);
     assert!(tree.selection().unwrap().is_caret());
     assert_eq!(tree.selected_text(), None);
@@ -374,11 +374,10 @@ fn selected_text_is_none_for_a_collapsed_caret() {
 
 #[test]
 fn drag_over_user_select_none_does_not_start_a_selection() {
-    // Selection is boundary-free by default (ADR-0108 decision 3), so the absence
-    // of a `selectable` region no longer blocks it — opting out is now explicit,
-    // via `user-select: none`, which excludes the subtree (decision 2). A drag
-    // over such a paragraph starts nothing. (The boundary-free *positive* case —
-    // plain text selects on drag — lives in `plain_text_selection.rs`.)
+    // 選択は既定で境界フリー（ADR-0108）。`selectable` リージョンの不在はもはや
+    // 選択を妨げず、オプトアウトは `user-select: none` による明示で、そのサブツリーを
+    // 除外する。よってこの段落上のドラッグは何も開始しない。
+    // （境界フリーの肯定ケース＝プレーンテキストのドラッグ選択は plain_text_selection.rs。）
     let (mut tree, _view, text) = selectable_paragraph(false);
     tree.element_set_user_select(text, UserSelectValue::None);
     tree.render(0.0);
@@ -392,10 +391,10 @@ fn drag_over_user_select_none_does_not_start_a_selection() {
     );
 }
 
-// --- Cross-block selection within one Selection Region (issue #269) ---
+// --- 1つの Selection Region 内でのブロック横断選択 ---
 
-/// Build a column `<view [selectable]>` stacking two paragraphs (separate IFC
-/// blocks). Returns (tree, view, first, second). Each paragraph is one line.
+/// 段落2つ（別々の IFC ブロック）を縦に積む `<view [selectable]>` を構築。
+/// (tree, view, first, second) を返す。各段落は1行。
 fn two_block_region(selectable: bool) -> (ElementTree, ElementId, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -424,7 +423,7 @@ fn two_block_region(selectable: bool) -> (ElementTree, ElementId, ElementId, Ele
     (tree, view, first, second)
 }
 
-/// The vertical center of a paragraph's line, for clicking into it.
+/// 段落の行の垂直中心。クリック位置の算出用。
 fn block_mid_y(tree: &ElementTree, block: ElementId) -> f32 {
     let (_, y, _, h) = tree.element_layout_rect(block).expect("a laid-out block");
     y + h / 2.0
@@ -434,8 +433,8 @@ fn block_mid_y(tree: &ElementTree, block: ElementId) -> f32 {
 fn dragging_backwards_across_blocks_normalizes_to_document_order() {
     let (mut tree, _view, first, second) = two_block_region(true);
 
-    // Press inside the *second* block and drag up into the *first*: the anchor
-    // is in the later block, the focus in the earlier one.
+    // 2番目のブロック内で押下し、1番目へ向けて上へドラッグ: アンカーは後方ブロック、
+    // フォーカスは前方ブロックにある。
     tree.on_pointer_down(60.0, block_mid_y(&tree, second));
     tree.on_pointer_move(20.0, block_mid_y(&tree, first));
 
@@ -457,8 +456,8 @@ fn dragging_backwards_across_blocks_normalizes_to_document_order() {
 fn selected_text_joins_cross_block_selection_with_a_newline() {
     let (mut tree, _view, first, second) = two_block_region(true);
 
-    // Select from the start of the first block through the end of the second,
-    // so the range spans the block-box (IFC root) boundary between them.
+    // 1番目の先頭から2番目の末尾まで選択し、範囲が両者間のブロックボックス（IFC ルート）
+    // 境界をまたぐようにする。
     let applied = tree.set_selection_range(
         SelectionPoint::new(first, 0),
         SelectionPoint::new(second, "Second block".len()),
@@ -476,8 +475,8 @@ fn selected_text_joins_cross_block_selection_with_a_newline() {
 fn cross_block_copy_follows_document_order_not_anchor_first() {
     let (mut tree, _view, first, second) = two_block_region(true);
 
-    // Anchor in the *later* block, focus in the earlier one (a backward drag).
-    // The copied text must still read in document order, not anchor-first.
+    // アンカーは後方ブロック、フォーカスは前方ブロック（後方へのドラッグ）。
+    // コピー結果はアンカー優先ではなく、依然ドキュメント順で読めなければならない。
     let applied = tree.set_selection_range(
         SelectionPoint::new(second, "Second block".len()),
         SelectionPoint::new(first, 0),
@@ -491,8 +490,8 @@ fn cross_block_copy_follows_document_order_not_anchor_first() {
     );
 }
 
-/// Build a selectable column of three stacked paragraphs (three IFC blocks).
-/// Returns (tree, view, first, middle, last). Each paragraph is one line.
+/// 段落3つ（3つの IFC ブロック）を縦に積む selectable な列を構築。
+/// (tree, view, first, middle, last) を返す。各段落は1行。
 fn three_block_region() -> (ElementTree, ElementId, ElementId, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let view = tree.element_create(1, ElementKind::View);
@@ -524,7 +523,7 @@ fn three_block_region() -> (ElementTree, ElementId, ElementId, ElementId, Elemen
 #[test]
 fn user_select_none_block_is_excluded_from_the_copied_text() {
     let (mut tree, _view, first, middle, last) = three_block_region();
-    // The middle paragraph opts out of selection (CSS `user-select: none`).
+    // 中央の段落は選択をオプトアウト（CSS `user-select: none`）。
     tree.element_set_user_select(middle, UserSelectValue::None);
     tree.render(0.0);
 
@@ -541,13 +540,12 @@ fn user_select_none_block_is_excluded_from_the_copied_text() {
     );
 }
 
-// --- `user-select: contains` containment boundary (ADR-0108 decision 3, #400) ---
+// --- `user-select: contains` の包含境界（ADR-0108） ---
 
-/// A `selectable` outer column holding `inside` — a paragraph wrapped in a
-/// `user-select: contains` box — above `outside`, a bare paragraph that shares
-/// the outer Selection Region. With `contains` the inner box is its own tighter
-/// boundary; without it both paragraphs span freely. Returns
-/// (tree, contains-box, inside-paragraph, outside-paragraph).
+/// `selectable` な外側の列。`user-select: contains` ボックスで包まれた段落 `inside` の下に、
+/// 外側 Selection Region を共有する素の段落 `outside` を置く。`contains` があると内側ボックスが
+/// より狭い独自境界となり、なければ両段落は自由にまたがる。
+/// (tree, contains-box, inside-paragraph, outside-paragraph) を返す。
 fn contains_inside_region(boundary: bool) -> (ElementTree, ElementId, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::View);
@@ -590,8 +588,8 @@ fn contains_inside_region(boundary: bool) -> (ElementTree, ElementId, ElementId,
 fn contains_box_clamps_a_drag_inside_its_boundary() {
     let (mut tree, _box, inside, outside) = contains_inside_region(true);
 
-    // Begin the drag in the `contains` box and pull down into the sibling that
-    // lies outside it (but still inside the outer selectable region).
+    // `contains` ボックス内でドラッグを開始し、その外（ただし外側 selectable リージョン内）に
+    // ある兄弟へ下へ引く。
     tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
     tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
 
@@ -604,10 +602,9 @@ fn contains_box_clamps_a_drag_inside_its_boundary() {
     );
 }
 
-/// A `selectable` outer column whose middle child is a `user-select: contains`
-/// box holding two stacked paragraphs (`in_a`, `in_b`); an `outside` paragraph
-/// follows the box in the same outer region. Returns
-/// (tree, in_a, in_b, outside).
+/// `selectable` な外側の列。中央の子が段落2つ（`in_a`, `in_b`）を積む
+/// `user-select: contains` ボックスで、同じ外側リージョン内でその後に段落 `outside` が続く。
+/// (tree, in_a, in_b, outside) を返す。
 fn contains_box_with_two_blocks() -> (ElementTree, ElementId, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::View);
@@ -652,8 +649,8 @@ fn contains_box_with_two_blocks() -> (ElementTree, ElementId, ElementId, Element
 fn contains_boundary_excludes_outside_blocks_from_copied_text() {
     let (mut tree, in_a, in_b, outside) = contains_box_with_two_blocks();
 
-    // A selection spanning the two paragraphs inside the box is honoured: the
-    // copied text joins them in document order with a single block-boundary `\n`.
+    // ボックス内の2段落にまたがる選択は許可される: コピー結果はドキュメント順で、
+    // ブロック境界に `\n` を1つ入れて結合する。
     let inside = tree.set_selection_range(
         SelectionPoint::new(in_a, 0),
         SelectionPoint::new(in_b, "Beta box".len()),
@@ -665,8 +662,7 @@ fn contains_boundary_excludes_outside_blocks_from_copied_text() {
         "the two in-box paragraphs join; copy stays within the boundary",
     );
 
-    // A range that would cross the boundary into the outside paragraph is
-    // refused outright, so the outside text is never concatenated.
+    // 境界を越えて外側の段落へまたがる範囲は即座に拒否され、外側テキストは決して連結されない。
     let leaked = tree.set_selection_range(
         SelectionPoint::new(in_a, 0),
         SelectionPoint::new(outside, "Gamma out".len()),
@@ -679,10 +675,9 @@ fn contains_boundary_excludes_outside_blocks_from_copied_text() {
 
 #[test]
 fn without_contains_a_drag_spans_freely_across_the_box() {
-    // The regression contrast to `contains_box_clamps_a_drag_inside_its_boundary`:
-    // the identical layout with the box left as a plain view (no `contains`) lets
-    // a drag begun inside it run on into the sibling paragraph — the default is a
-    // free cross-element span, and `contains` is the only thing that clamps it.
+    // contains_box_clamps_a_drag_inside_its_boundary との対比。ボックスを素の view のまま
+    // （`contains` なし）にすると、内部で開始したドラッグは兄弟段落へ流れ込む。既定は
+    // 要素横断の自由なまたがりで、`contains` だけがそれをクランプする。
     let (mut tree, _box, inside, outside) = contains_inside_region(false);
 
     tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
@@ -695,10 +690,9 @@ fn without_contains_a_drag_spans_freely_across_the_box() {
     );
 }
 
-/// Two nested `user-select: contains` boxes: an outer boundary holding
-/// `outer_block` above an inner boundary holding `inner_block`. Both are
-/// containment boundaries, but they are distinct regions (nearest wins).
-/// Returns (tree, outer_block, inner_block).
+/// ネストした `user-select: contains` ボックス2つ。`outer_block` を持つ外側境界の下に、
+/// `inner_block` を持つ内側境界がある。どちらも包含境界だが別個のリージョン（最も近いものが勝つ）。
+/// (tree, outer_block, inner_block) を返す。
 fn nested_contains() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::View);
@@ -739,8 +733,8 @@ fn nested_contains() -> (ElementTree, ElementId, ElementId) {
 fn nested_contains_uses_the_innermost_boundary() {
     let (mut tree, outer_block, inner_block) = nested_contains();
 
-    // A drag begun in the outer box must not extend into the nested box: the
-    // inner `contains` is the nearer boundary of `inner_block`.
+    // 外側ボックスで開始したドラッグはネストボックスへ広がってはならない:
+    // 内側 `contains` が `inner_block` のより近い境界。
     tree.on_pointer_down(20.0, block_mid_y(&tree, outer_block));
     tree.on_pointer_move(80.0, block_mid_y(&tree, inner_block));
 
@@ -750,7 +744,7 @@ fn nested_contains_uses_the_innermost_boundary() {
         "focus stays in the outer box; the nested `contains` is its own boundary",
     );
 
-    // Conversely, a fresh drag begun inside the nested box anchors there.
+    // 逆に、ネストボックス内で開始した新規ドラッグはそこにアンカーする。
     tree.on_pointer_down(20.0, block_mid_y(&tree, inner_block));
     let nested = tree.selection().expect("a caret in the nested box");
     assert_eq!(
@@ -759,10 +753,10 @@ fn nested_contains_uses_the_innermost_boundary() {
     );
 }
 
-/// Material selection tint (ADR-0097): identifies highlight rects among draw ops.
+/// Material の選択ティント（ADR-0097）。draw op の中からハイライト矩形を識別する。
 const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
-/// The vertical bands (y_min..y_max) of every selection-highlight rect.
+/// 各選択ハイライト矩形の垂直帯（y_min..y_max）。
 fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
     draw_ops(tree)
         .iter()
@@ -779,8 +773,8 @@ fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
 fn dragging_across_blocks_highlights_every_covered_block() {
     let (mut tree, _view, first, second) = two_block_region(true);
 
-    // Drag from the first paragraph down into the second: the selection spans
-    // both blocks, so each must show its own highlight run.
+    // 1番目の段落から2番目へ下へドラッグ: 選択は両ブロックにまたがるので、
+    // 各ブロックが独自のハイライトを示さねばならない。
     tree.on_pointer_down(20.0, block_mid_y(&tree, first));
     tree.on_pointer_move(80.0, block_mid_y(&tree, second));
     tree.render(0.0);
@@ -802,7 +796,7 @@ fn user_select_none_block_shows_no_highlight() {
     let (mut tree, _view, first, middle, last) = three_block_region();
     tree.element_set_user_select(middle, UserSelectValue::None);
 
-    // Select across all three blocks; the middle one opts out of selection.
+    // 3ブロック全体を選択。中央は選択をオプトアウト。
     tree.set_selection_range(
         SelectionPoint::new(first, 0),
         SelectionPoint::new(last, "Third block".len()),
@@ -810,9 +804,8 @@ fn user_select_none_block_shows_no_highlight() {
     tree.render(0.0);
 
     let bands = highlight_bands(&tree);
-    // Test a band over each block's vertical *center*, so a neighbouring band
-    // grazing a box edge by a pixel (line metrics vs box geometry) is not
-    // mistaken for the middle block being highlighted.
+    // 各ブロックの垂直中心で帯を判定する。隣の帯がボックス端を1px かすめても
+    // （行メトリクス vs ボックス幾何）、中央ブロックがハイライトされたと誤認しないため。
     let covered = |block: ElementId| {
         let mid = block_mid_y(&tree, block);
         bands.iter().any(|&(by0, by1)| by0 <= mid && mid <= by1)
@@ -827,12 +820,12 @@ fn user_select_none_block_shows_no_highlight() {
 
 #[test]
 fn dragging_across_two_text_blocks_highlights_both_and_copies_them_joined() {
-    // The headline cross-element case (ADR-0108 decision 5): one drag spanning
-    // two text blocks must both paint a highlight over each block *and* copy the
-    // two joined in document order — highlight and copy land together.
+    // 要素横断の中核ケース（ADR-0108）。2つのテキストブロックにまたがる1ドラッグは、
+    // 各ブロックにハイライトを描き、かつ両者をドキュメント順で結合してコピーする。
+    // ハイライトとコピーは一致する。
     let (mut tree, _view, first, second) = two_block_region(true);
 
-    // Drag from before the first paragraph to past the end of the second.
+    // 1番目の段落の手前から2番目の末尾の先までドラッグ。
     tree.on_pointer_down(2.0, block_mid_y(&tree, first));
     tree.on_pointer_move(398.0, block_mid_y(&tree, second));
     tree.render(0.0);
@@ -845,10 +838,9 @@ fn dragging_across_two_text_blocks_highlights_both_and_copies_them_joined() {
     assert!(covered(first), "the first block is highlighted by the drag");
     assert!(covered(second), "the second block is highlighted by the drag");
 
-    // The same drag copies both blocks, joined in document order by exactly one
-    // `\n` at the block boundary. The drag's far end is pixel-dependent, so the
-    // exact full join is pinned by the programmatic test above; here we assert
-    // the structural shape: first block whole, second block from its start.
+    // 同じドラッグは両ブロックをコピーし、ブロック境界に `\n` を1つだけ入れてドキュメント順で
+    // 結合する。ドラッグ終端はピクセル依存のため、完全一致は上の API テストで固定し、ここでは
+    // 構造だけを検証する: 1番目はブロック全体、2番目は先頭から。
     let copied = tree.selected_text().expect("a cross-block drag copies text");
     assert_eq!(copied.matches('\n').count(), 1, "one block-boundary newline: {copied:?}");
     let (lead, tail) = copied.split_once('\n').unwrap();
@@ -859,9 +851,9 @@ fn dragging_across_two_text_blocks_highlights_both_and_copies_them_joined() {
     );
 }
 
-/// A non-selectable column root holding `inner` — a `selectable` view with one
-/// paragraph — above `outside`, a paragraph in no Selection Region. Returns
-/// (tree, inner-paragraph, outside-paragraph).
+/// 非 selectable な列ルート。段落1つを持つ `selectable` view の `inner` の下に、
+/// どの Selection Region にも属さない段落 `outside` を置く。
+/// (tree, inner-paragraph, outside-paragraph) を返す。
 fn region_with_outside_block() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -898,7 +890,7 @@ fn region_with_outside_block() -> (ElementTree, ElementId, ElementId) {
 fn selection_does_not_leak_past_the_selectable_boundary() {
     let (mut tree, inside, outside) = region_with_outside_block();
 
-    // Start inside the region, drag down into the block that lies outside it.
+    // リージョン内で開始し、その外にあるブロックへ下へドラッグ。
     tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
     tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
     tree.render(0.0);
@@ -909,7 +901,7 @@ fn selection_does_not_leak_past_the_selectable_boundary() {
         "focus must stay clamped inside the Selection Region",
     );
 
-    // The outside block carries no highlight band.
+    // 外側ブロックにハイライト帯は付かない。
     let (_, oy, _, oh) = tree.element_layout_rect(outside).unwrap();
     let leaked = highlight_bands(&tree)
         .iter()
@@ -917,10 +909,9 @@ fn selection_does_not_leak_past_the_selectable_boundary() {
     assert!(!leaked, "no highlight may appear outside the Selection Region");
 }
 
-/// An `outer` selectable column holding `outer_block` above a *nested* selectable
-/// view that holds `inner_block`. Both blocks are selectable, but they belong to
-/// different Selection Regions (nearest ancestor wins). Returns
-/// (tree, outer_block, inner_block).
+/// `outer_block` を持つ selectable な `outer` 列の下に、`inner_block` を持つネストした
+/// selectable view を置く。両ブロックとも selectable だが、別々の Selection Region に属する
+/// （最も近い祖先が勝つ）。(tree, outer_block, inner_block) を返す。
 fn nested_regions() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::View);
@@ -958,8 +949,8 @@ fn nested_regions() -> (ElementTree, ElementId, ElementId) {
 fn nested_region_uses_the_nearest_selectable_ancestor() {
     let (mut tree, outer_block, inner_block) = nested_regions();
 
-    // A drag begun in the outer region must not extend into the nested region:
-    // the nested `selectable` is the nearer ancestor of `inner_block`.
+    // 外側リージョンで開始したドラッグはネストリージョンへ広がってはならない:
+    // ネストした `selectable` が `inner_block` のより近い祖先。
     tree.on_pointer_down(20.0, block_mid_y(&tree, outer_block));
     tree.on_pointer_move(80.0, block_mid_y(&tree, inner_block));
 
@@ -969,7 +960,7 @@ fn nested_region_uses_the_nearest_selectable_ancestor() {
         "focus stays in the outer region; the nested region is its own boundary",
     );
 
-    // Conversely, a fresh drag begun inside the nested region selects there.
+    // 逆に、ネストリージョン内で開始した新規ドラッグはそこで選択する。
     tree.on_pointer_down(20.0, block_mid_y(&tree, inner_block));
     let nested = tree.selection().expect("a caret in the nested region");
     assert_eq!(

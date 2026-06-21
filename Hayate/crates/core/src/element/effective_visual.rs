@@ -8,7 +8,7 @@ use crate::element::style::{FontStyleValue, StyleProp, TextDecorationValue, View
 use crate::element::tree::{apply_visual, Element, Visual};
 use crate::color::Color;
 
-/// ch1 text→text inherited text-style fields (ADR-0065).
+/// ch1 の text→text 継承テキストスタイルフィールド（ADR-0065）。
 #[derive(Clone, Debug)]
 pub struct TextLocalInherited {
     pub color: Color,
@@ -32,7 +32,7 @@ impl TextLocalInherited {
     }
 }
 
-/// Inherited context for effective visual resolution (ADR-0067).
+/// 実効ビジュアル解決のための継承コンテキスト（ADR-0067）。
 #[derive(Clone, Debug)]
 pub struct InheritedVisualContext {
     pub ambient: AmbientDefaults,
@@ -48,7 +48,7 @@ impl InheritedVisualContext {
     }
 }
 
-/// Apply ch1 + ch2 inheritance onto unset text/visual fields of `own`.
+/// `own` の未設定 text/visual フィールドに ch1 + ch2 の継承を適用する。
 pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Visual {
     let mut v = own.clone();
     if v.text_color.is_none() {
@@ -89,7 +89,7 @@ pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Vis
     v
 }
 
-/// Apply matching viewport variants onto a copy of `base` (ADR-0081).
+/// 一致するビューポートバリアントを `base` のコピーに適用する（ADR-0081）。
 pub(crate) fn own_with_viewport_variants(
     base: &Visual,
     variants: &[(ViewportCondition, StyleProp)],
@@ -107,11 +107,10 @@ pub(crate) fn own_with_viewport_variants(
     own
 }
 
-/// Shared effective visual resolver (ADR-0067, ADR-0081): inheritance (ch1+ch2)
-/// → own (base + matching viewport variants) → pseudo. Viewport-variant
-/// application lives inside this single seam, so every caller (query,
-/// `scene_build`, `InlineText`) shares one resolution entry instead of pre-baking
-/// own.
+/// 共有の実効ビジュアル解決器（ADR-0067, ADR-0081）。継承（ch1+ch2）→ own（base +
+/// 一致するビューポートバリアント）→ pseudo の順。ビューポートバリアントの適用はこの
+/// 単一の継ぎ目の内側で行うため、全呼び出し元（query, `scene_build`, `InlineText`）は
+/// own を事前焼き込みせず単一の解決入口を共有する。
 pub fn resolve_effective(
     inherited: &InheritedVisualContext,
     own_base: &Visual,
@@ -149,8 +148,8 @@ mod tests {
         )]
     }
 
-    // The shared resolver seam owns viewport-variant application (ADR-0081):
-    // callers pass base own + variants + viewport, not a pre-baked own.
+    // 共有解決器の継ぎ目がビューポートバリアント適用を担う（ADR-0081）。呼び出し元は
+    // 事前焼き込み済みの own ではなく base own + variants + viewport を渡す。
     #[test]
     fn resolve_effective_applies_matching_viewport_variant() {
         let ctx = InheritedVisualContext::root();
@@ -189,12 +188,11 @@ mod tests {
     }
 }
 
-/// Build the inherited context *at* `id` by folding root→`id` through the single
-/// inheritance primitive ([`child_inherited_context`]). This is the backward
-/// (ancestor-walk) entry — used by the query path (`element_effective_visual`)
-/// and to seed a retained scene re-walk at an arbitrary patch root — but it
-/// threads the exact same fold the top-down scene walk applies step by step, so
-/// the two paths can never diverge on what an element inherits (#302 §1c).
+/// 単一の継承プリミティブ（[`child_inherited_context`]）で root→`id` を畳み込み、
+/// `id` における継承コンテキストを構築する。これは後方（祖先 walk）の入口で、query 経路
+/// （`element_effective_visual`）や任意のパッチ根での保持シーン再 walk の初期化に使う。
+/// トップダウンのシーン walk が段階的に適用するのと全く同じ畳み込みを通すため、ある要素が
+/// 何を継承するかで両経路が食い違うことはない。
 pub(crate) fn inherited_context_at(
     elements: &HashMap<ElementId, Element>,
     id: ElementId,
@@ -210,10 +208,9 @@ pub(crate) fn inherited_context_at(
     child_inherited_context(&parent_ctx, parent.kind, &parent_inherited_base, &parent.visual)
 }
 
-/// Fold one inheritance step: derive a child's inherited context from its
-/// parent's. This is the single inheritance primitive — both the top-down scene
-/// walk (`scene_build`, `inline_text`) and the backward ancestor walk
-/// ([`inherited_context_at`]) thread their context through it (#302 §1c).
+/// 継承を 1 段畳み込む。親の継承コンテキストから子のものを導く。これが単一の継承
+/// プリミティブで、トップダウンのシーン walk（`scene_build`, `inline_text`）も後方の
+/// 祖先 walk（[`inherited_context_at`]）も、ここを通してコンテキストを伝播する。
 pub fn child_inherited_context(
     parent_ctx: &InheritedVisualContext,
     parent_kind: ElementKind,

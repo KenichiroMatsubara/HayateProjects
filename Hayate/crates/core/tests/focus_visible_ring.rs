@@ -1,14 +1,14 @@
-//! `:focus-visible` parity (#335, ADR-0102): Canvas Mode reproduces Chromium's
-//! native focus ring faithfully. A keyboard-driven focus rings any element; a
-//! pointer-driven focus rings text inputs but not buttons. The ring is drawn by
-//! core into the scene so the Canvas backends paint it without per-renderer work.
+//! `:focus-visible` パリティ(ADR-0102): Canvas Mode は Chromium のネイティブ
+//! フォーカスリングを忠実に再現する。キーボード起点のフォーカスは任意要素にリングを
+//! 出し、ポインタ起点はテキスト入力には出すがボタンには出さない。リングは core が
+//! シーンに描くため、Canvas バックエンドはレンダラ個別の作業なしで描画できる。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, NodeKind, PseudoState,
     RecordingPainter, StyleProp, render_scene_graph,
 };
 
-/// All fill colours in the scene, in paint order.
+/// シーン内の全フィル色を描画順で返す。
 fn fill_colors(tree: &ElementTree) -> Vec<[f32; 4]> {
     let mut painter = RecordingPainter::new();
     render_scene_graph(tree.scene_graph(), &mut painter);
@@ -22,7 +22,7 @@ fn fill_colors(tree: &ElementTree) -> Vec<[f32; 4]> {
         .collect()
 }
 
-/// All `RoundedRing` nodes (x, y, width, height, border_width) in the scene.
+/// シーン内の全 `RoundedRing` ノード(x, y, width, height, border_width)。
 fn rounded_rings(tree: &ElementTree) -> Vec<(f32, f32, f32, f32, f32)> {
     tree.scene_graph()
         .iter()
@@ -40,7 +40,7 @@ fn rounded_rings(tree: &ElementTree) -> Vec<(f32, f32, f32, f32, f32)> {
         .collect()
 }
 
-/// A single element of `kind` sized 100×40 at the origin, laid out and rendered.
+/// 原点に置いた 100×40 の `kind` 単一要素を、レイアウト・レンダリング済みで返す。
 fn one_element(kind: ElementKind) -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -73,8 +73,8 @@ fn pointer_focused_button_is_not_focus_visible() {
 
 #[test]
 fn focus_visible_emits_a_ring_outside_the_box() {
-    // The element box sits at (0,0,100,40); a native focus ring must wrap it from
-    // the outside (top-left strictly negative, wider than the box).
+    // 要素ボックスは (0,0,100,40)。ネイティブフォーカスリングは外側から包む
+    // (左上は厳密に負、ボックスより広い)。
     let (mut tree, input) = one_element(ElementKind::TextInput);
     tree.on_pointer_down_on(input, 10.0, 10.0);
     tree.render(16.0);
@@ -91,9 +91,9 @@ fn focus_visible_emits_a_ring_outside_the_box() {
 
 #[test]
 fn focus_ring_is_not_clipped_by_the_elements_own_overflow() {
-    // Chromium paints the focus outline outside the element's own clip. With
-    // `overflow: hidden` the ring must therefore attach above the element's clip
-    // node, not inside it (where it would be cropped to the box).
+    // Chromium はフォーカスアウトラインを要素自身のクリップの外に描く。よって
+    // `overflow: hidden` ではリングを要素のクリップノードの内側(ボックスに切り
+    // 取られる)ではなく上位に付ける必要がある。
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
     tree.set_root(root);
@@ -168,7 +168,7 @@ fn app_focus_background_switch_still_works_alongside_the_ring() {
 
 #[test]
 fn pointer_focused_button_emits_no_ring() {
-    // The button has no border of its own, so the scene must hold no ring at all.
+    // ボタンは自前のボーダーを持たないため、シーンにリングが一切ないこと。
     let (mut tree, button) = one_element(ElementKind::Button);
     tree.on_pointer_down_on(button, 10.0, 10.0);
     tree.render(16.0);
@@ -183,7 +183,7 @@ fn pointer_focused_button_emits_no_ring() {
 #[test]
 fn keyboard_focused_button_is_focus_visible() {
     let (mut tree, button) = one_element(ElementKind::Button);
-    // A keyboard interaction (e.g. Tab) precedes the focus move.
+    // フォーカス移動の前にキーボード操作(例: Tab)がある。
     tree.on_key_down("Tab", 0);
     tree.on_focus(button);
 

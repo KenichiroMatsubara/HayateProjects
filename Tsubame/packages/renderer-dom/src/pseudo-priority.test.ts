@@ -58,7 +58,7 @@ describe('DomRenderer pseudo-state priority (focus < hover < active)', () => {
     renderer.setRoot(a);
     renderer.appendChild(a, b);
 
-    // Author in an order that has nothing to do with priority, mixing elements.
+    // 優先度と無関係な順で、要素を混ぜながら記述する。
     renderer.setPseudoStyle(a, ':active', { backgroundColor: '#0000ff' });
     renderer.setPseudoStyle(b, ':focus', { backgroundColor: '#ff0000' });
     renderer.setPseudoStyle(a, ':hover', { backgroundColor: '#00ff00' });
@@ -67,7 +67,7 @@ describe('DomRenderer pseudo-state priority (focus < hover < active)', () => {
     renderer.setPseudoStyle(b, ':hover', { backgroundColor: '#00aa00' });
 
     const bands = pseudoRules(document).map((rule) => pseudoBand(rule.selectorText));
-    // Whole sheet is sorted by band; only the spec priority decides ordering.
+    // シート全体が band 順に並ぶ。順序を決めるのは spec の優先度のみ。
     expect(bands).toEqual([...bands].sort((x, y) => x - y));
     expect(bands).toEqual([0, 0, 1, 1, 2, 2]);
   });
@@ -80,7 +80,7 @@ describe('DomRenderer pseudo-state priority (focus < hover < active)', () => {
     renderer.setPseudoStyle(id, ':focus', { backgroundColor: '#ff0000' });
     renderer.setPseudoStyle(id, ':hover', { backgroundColor: '#00ff00' });
     renderer.setPseudoStyle(id, ':active', { backgroundColor: '#0000ff' });
-    // Re-author the lowest band; it must stay in its band, not jump to the end.
+    // 最下位 band を再記述しても末尾へ移らず band 内に留まること。
     renderer.setPseudoStyle(id, ':focus', { backgroundColor: '#aa0000' });
 
     const bands = pseudoRules(document).map((rule) => pseudoBand(rule.selectorText));

@@ -10,25 +10,23 @@ use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
 use crate::element::visual_invalidation::VisualInvalidationReach;
 
-/// Map an editing keystroke to an [`EditIntent`] (ADR-0103). Horizontal arrows
-/// move the caret (Shift extends; Alt/Ctrl widens a grapheme step to a word);
-/// Backspace / Delete remove one char backward / forward. Returns `None` for any
-/// other key so callers fall through to the raw `on_key_down` path. This is the
-/// OS-independent core bridge; the Platform Adapter owns the full OS keymap.
+/// 編集キーストロークを [`EditIntent`] に対応付ける（ADR-0103）。水平矢印は
+/// キャレットを移動（Shift で拡張、Alt/Ctrl で1書記素から単語単位へ拡幅）し、
+/// Backspace / Delete は前後1文字を削除する。それ以外のキーは `None` を返し、
+/// 呼び出し側は生の `on_key_down` 経路へ落ちる。OS 非依存のコア橋渡しで、
+/// 完全な OS キーマップは Platform Adapter が持つ。
 fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
-    // Clipboard / select-all on the primary modifier (Ctrl on Win/Linux, Cmd on
-    // macOS). These reach a focused text-input through the same seam as the
-    // arrows (ADR-0103 §5③, #361); the document-selection path handles them only
-    // when a read-only Selection exists, so without this a focused field never
-    // saw Ctrl/Cmd+A/C/X/V.
+    // プライマリ修飾（Win/Linux は Ctrl、macOS は Cmd）でのクリップボード／全選択。
+    // これらは矢印と同じ継ぎ目で focus 中の text-input に届く。文書選択経路は
+    // 読み取り専用 Selection があるときしか処理しないため、これが無いと focus 中の
+    // フィールドは Ctrl/Cmd+A/C/X/V を受け取れない。
     if modifiers & MOD_PRIMARY != 0 {
         if let Some(intent) = clipboard_edit_intent(key) {
             return Some(intent);
         }
     }
-    // Forward/backward delete, widened from a grapheme to a whole word by Alt
-    // (macOS Option) or Ctrl (Win/Linux) — the same "by word" modifiers as the
-    // arrows (ADR-0103 §5, #363).
+    // 前後方向の削除。Alt（macOS Option）または Ctrl（Win/Linux）で書記素から
+    // 単語単位へ拡幅する（矢印と同じ「単語単位」修飾）。
     if let Some(direction) = match key {
         "Backspace" => Some(Direction::Backward),
         "Delete" => Some(Direction::Forward),
@@ -47,14 +45,14 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     let direction = match key {
         "ArrowLeft" => Direction::Backward,
         "ArrowRight" => Direction::Forward,
-        // Vertical motion (#368): bare ↑/↓. Multi-line fields move between display
-        // lines; single-line fields jump to the field ends (resolved downstream).
+        // 垂直移動（素の ↑/↓）。複数行フィールドは表示行間を移動し、単一行は
+        // フィールド端へ飛ぶ（下流で解決）。
         "ArrowUp" => Direction::Up,
         "ArrowDown" => Direction::Down,
         _ => return None,
     };
-    // Alt/Ctrl widen a *horizontal* step to a word; they have no effect on a
-    // vertical motion, which always steps one display line.
+    // Alt/Ctrl は*水平*ステップを単語へ拡幅する。垂直移動には効かず、常に表示行
+    // 1行ぶん動く。
     let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0
         && matches!(direction, Direction::Backward | Direction::Forward)
     {
@@ -75,10 +73,9 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     })
 }
 
-/// The display line the caret at `offset` sits on, plus its content-local x
-/// (#368). The line is the one whose block band contains the caret's vertical
-/// centre; past the last line it is the last line. Shared by vertical motion
-/// (↑/↓) and display-line Home/End, which both key off the caret's current row.
+/// `offset` のキャレットが乗る表示行と、その content-local x。行はキャレットの
+/// 垂直中心を含むブロック帯の行で、最終行を越えたら最終行。垂直移動（↑/↓）と
+/// 表示行 Home/End が共有する（どちらもキャレットの現在行を基準にする）。
 fn caret_display_line(
     layout: &parley::Layout<crate::element::text::TextBrush>,
     offset: usize,
@@ -99,9 +96,9 @@ fn caret_display_line(
     (line, caret_x)
 }
 
-/// Map a primary-modifier letter to its clipboard / select-all [`EditIntent`]
-/// (ADR-0103 §5③, #361). The caller has already checked the primary modifier is
-/// held, so this only inspects the letter. `None` for any other key.
+/// プライマリ修飾＋文字をクリップボード／全選択の [`EditIntent`] に対応付ける
+/// （ADR-0103）。プライマリ修飾の保持は呼び出し側で確認済みなので、ここは文字
+/// だけを見る。それ以外のキーは `None`。
 fn clipboard_edit_intent(key: &str) -> Option<EditIntent> {
     if key.eq_ignore_ascii_case("a") {
         Some(EditIntent::SelectAll)
@@ -116,56 +113,53 @@ fn clipboard_edit_intent(key: &str) -> Option<EditIntent> {
     }
 }
 
-/// Output of `on_pointer_move` (ADR-0088). `moved` is false when the move was
-/// coalesced by the 1px dedup or skipped because layout is not ready; `cursor`
-/// carries the cursor resolved from the element under the pointer so the
-/// Platform Adapter can drive the OS/browser cursor without touching styles.
+/// `on_pointer_move` の出力（ADR-0088）。`moved` は 1px dedup で合流されたか
+/// レイアウト未準備でスキップされたとき false。`resolved_cursor` はポインタ下の
+/// 要素から解決したカーソルで、Platform Adapter がスタイルに触れず OS／ブラウザ
+/// カーソルを駆動できる。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PointerMoveResult {
     pub moved: bool,
     pub resolved_cursor: CursorValue,
 }
 
-/// Modality of the most recent input event (#335, ADR-0102). Chromium's
-/// `:focus-visible` heuristic keys off the last interaction: a keyboard
-/// interaction makes the next focus ring-worthy, while a pointer interaction
-/// suppresses the ring on widgets that don't need it (e.g. buttons). Tracked in
-/// core so both Canvas backends derive the ring identically.
+/// 直近の入力イベントのモダリティ（ADR-0102）。Chromium の `:focus-visible`
+/// ヒューリスティクは最後の操作を基準にする。キーボード操作は次の focus を
+/// リング対象にし、ポインタ操作は不要なウィジェット（例: ボタン）でリングを
+/// 抑制する。両 Canvas バックエンドが同一にリングを導けるよう core で追跡する。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputModality {
     Pointer,
     Keyboard,
 }
 
-/// An in-flight Mouse/Pen scrollbar-thumb drag (ADR-0110, #409). Captured on a
-/// pointer-down on the thumb and driven by `on_pointer_move`: each move converts
-/// the pointer's travel along the axis into a Scroll Offset delta and commits it
-/// through the same `apply_wheel_delta` seam the wheel uses (so reaching the axis
-/// end chains the remainder to the ancestor ScrollView).
+/// 進行中の Mouse/Pen スクロールバー・サムドラッグ（ADR-0110）。サム上の
+/// pointer-down で捕捉し `on_pointer_move` が駆動する。各移動で軸方向の移動量を
+/// Scroll Offset デルタに変換し、ホイールと同じ `apply_wheel_delta` 継ぎ目で
+/// コミットする（軸端に達した余りは祖先 ScrollView へ連鎖する）。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollbarDrag {
-    /// The ScrollView whose thumb is being dragged.
+    /// サムをドラッグしている ScrollView。
     pub scroll_view: ElementId,
-    /// Axis the thumb slides along.
+    /// サムが滑る軸。
     pub axis: crate::element::scene_build::ScrollAxis,
-    /// Last pointer coordinate along the drag axis (canvas space).
+    /// ドラッグ軸上の直近ポインタ座標（canvas 空間）。
     pub last_pos: f32,
-    /// Offset px per track px — `max_offset / thumb_travel`, captured at grab so
-    /// the thumb tracks the pointer 1:1 in track space.
+    /// トラック px あたりの offset px。`max_offset / thumb_travel` を grab 時に
+    /// 取得し、サムがトラック空間でポインタを 1:1 で追従する。
     pub offset_per_px: f32,
 }
 
 impl ElementTree {
-    /// Pointer down at canvas coordinates (hit-test driven).
+    /// canvas 座標でのポインタダウン（ヒットテスト駆動）。
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
         self.on_pointer_down_with(x, y, 0);
     }
 
-    /// Pointer down carrying both keyboard modifiers and the physical
-    /// [`PointerKind`] (#357). The Platform Adapter forwards the DOM
-    /// `PointerEvent.pointerType` here so Core retains it per interaction
-    /// (`last_pointer_kind`); selection/active behaviour is otherwise identical
-    /// to [`on_pointer_down_with`](Self::on_pointer_down_with).
+    /// キーボード修飾と物理 [`PointerKind`] を伴うポインタダウン。Platform Adapter
+    /// が DOM `PointerEvent.pointerType` を転送し、Core は操作ごとに保持する
+    /// (`last_pointer_kind`)。選択／active 挙動は
+    /// [`on_pointer_down_with`](Self::on_pointer_down_with) と同一。
     pub fn on_pointer_down_with_kind(
         &mut self,
         x: f32,
@@ -177,64 +171,62 @@ impl ElementTree {
         self.on_pointer_down_with(x, y, modifiers);
     }
 
-    /// Pointer down carrying keyboard modifiers (ADR-0097, #267): Shift extends
-    /// the current selection's focus instead of starting a fresh one.
+    /// キーボード修飾を伴うポインタダウン（ADR-0097）。Shift は新規選択を始めず
+    /// 現在の選択の focus を拡張する。
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
-        // A press on the Mouse/Pen scrollbar (thumb or track) operates it and
-        // consumes the gesture — the overlay chrome sits above the content, so a
-        // press on it never reaches the content's selection/focus (ADR-0110, #409).
+        // Mouse/Pen スクロールバー（サム／トラック）上の押下はそれを操作して
+        // ジェスチャを消費する。オーバーレイ chrome はコンテンツの上にあるため、
+        // その押下がコンテンツの選択／focus に届くことはない（ADR-0110）。
         if self.begin_scrollbar_gesture(x, y) {
             return;
         }
-        // A press on a floating-toolbar button runs its action and consumes the
-        // gesture, so it neither moves the caret nor clears the selection
-        // (ADR-0097, #272).
+        // フローティングツールバーのボタン押下はそのアクションを実行してジェスチャ
+        // を消費するので、キャレットを動かさず選択も消さない（ADR-0097）。
         if self.try_selection_toolbar_tap(x, y) {
             return;
         }
-        // A press on a selection drag handle grabs that endpoint and rides the
-        // same active-session capture as a drag-select (ADR-0097, #273), so it
-        // adjusts the range without dropping a fresh caret.
+        // 選択ドラッグハンドル上の押下はその端点を掴み、ドラッグ選択と同じ
+        // active-session キャプチャに乗る（ADR-0097）ので、新規キャレットを落とさず
+        // 範囲を調整する。
         if self.begin_handle_drag(x, y) {
             return;
         }
         let hit = self.hit_test(x, y);
         self.pointer_down_on_target(hit, x, y);
-        // A press inside a text-input drives its edit selection (ADR-0097, #271)
-        // and takes precedence over the read-only SelectionArea path below.
+        // text-input 内の押下はその編集選択を駆動し（ADR-0097）、下記の読み取り専用
+        // SelectionArea 経路に優先する。
         if self.begin_edit_selection(hit, x, y, modifiers) {
             return;
         }
-        // Selection drag rides on the same active-session capture (ADR-0097):
-        // a press inside a Selection Region collapses the selection to a caret,
-        // double/triple presses expand to word/paragraph, Shift extends focus.
+        // 選択ドラッグは同じ active-session キャプチャに乗る（ADR-0097）。
+        // Selection Region 内の押下は選択をキャレットへ畳み、ダブル／トリプル押下で
+        // 単語／段落へ拡張、Shift で focus を拡張する。
         self.begin_selection_at(x, y, modifiers);
     }
 
-    /// Long-press at canvas `(x, y)` — the mobile gesture that begins a read-only
-    /// word selection and brings up the drag handles + floating toolbar (ADR-0097,
-    /// #273). The Platform Adapter reports the raw long-press (its OS gesture
-    /// recognizer owns the timing, the same way double-tap timing originates from
-    /// the OS); core owns *what* it does. A press clear of any `selectable`
-    /// subtree selects nothing. Any text-input edit selection is cleared first
-    /// (single active across the document).
+    /// canvas `(x, y)` での長押し。読み取り専用の単語選択を始め、ドラッグハンドル
+    /// ＋フローティングツールバーを出すモバイルジェスチャ（ADR-0097）。Platform
+    /// Adapter は生の長押しを報告し（タイミングは OS のジェスチャ認識器が持つ。
+    /// ダブルタップのタイミングが OS 由来なのと同じ）、core は*何をするか*を持つ。
+    /// `selectable` サブツリー外の押下は何も選択しない。text-input の編集選択は
+    /// 先に消す（文書全体で単一 active）。
     pub fn on_long_press(&mut self, x: f32, y: f32) {
-        // Long-press is a touch gesture: the selection it starts is a Touch-modality
-        // interaction, so its chrome (handles + toolbar) is raised (ADR-0104, #365).
+        // 長押しはタッチジェスチャで、始まる選択は Touch モダリティの操作なので、
+        // その chrome（ハンドル＋ツールバー）が出る（ADR-0104）。
         self.last_pointer_kind = PointerKind::Touch;
         let Some(point) = self.selection_point_at(x, y) else {
             return;
         };
         self.collapse_edit_selections();
         self.select_bounds_at(point, selection::word_bounds);
-        // A fresh gesture: a following tap should drop a caret, not resume the
-        // multi-click cycle from this long-press.
+        // 新規ジェスチャ。続くタップはこの長押しからのマルチクリック周期を再開せず、
+        // キャレットを落とすべき。
         self.selection_drag = false;
         self.last_click_pos = None;
         self.click_count = 0;
     }
 
-    /// Pointer down on an explicit target (HTML Mode).
+    /// 明示ターゲットへのポインタダウン（HTML Mode）。
     pub fn on_pointer_down_on(&mut self, target: ElementId, x: f32, y: f32) {
         self.pointer_down_on_target(Some(target), x, y);
     }
@@ -248,10 +240,9 @@ impl ElementTree {
                 y,
             });
             self.emit_interaction(Event::ActiveStart { target_id: t });
-            // Setting the active state captures the transition's pre-switch
-            // visual and marks `:active` invalidation in the same operation
-            // (ADR-0100), so the not-yet-active appearance seeds the transition
-            // (ADR-0089).
+            // active 状態の設定は同一操作で遷移の切替前ビジュアルを捕捉し `:active`
+            // 無効化を記録する（ADR-0100）ので、未 active の見た目が遷移の起点に
+            // なる（ADR-0089）。
             self.set_active_element(Some(t));
             self.transition_focus(t);
         } else if let Some(prev) = self.focused_element {
@@ -259,7 +250,7 @@ impl ElementTree {
         }
     }
 
-    /// Pointer up. `explicit_target` is used only when no active session exists.
+    /// ポインタアップ。`explicit_target` は active セッションが無いときだけ使う。
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
         let fallback = self.hit_test(x, y);
         self.pointer_up_with_fallback(fallback);
@@ -268,15 +259,14 @@ impl ElementTree {
         self.scrollbar_drag = None;
     }
 
-    /// Pointer up carrying the physical [`PointerKind`] (#357), retained per
-    /// interaction. Release behaviour is identical to
-    /// [`on_pointer_up`](Self::on_pointer_up).
+    /// 物理 [`PointerKind`] を伴うポインタアップ。操作ごとに保持する。リリース挙動
+    /// は [`on_pointer_up`](Self::on_pointer_up) と同一。
     pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: PointerKind) {
         self.last_pointer_kind = kind;
         self.on_pointer_up(x, y);
     }
 
-    /// Pointer up with an explicit fallback target (HTML Mode).
+    /// 明示フォールバックターゲットを伴うポインタアップ（HTML Mode）。
     pub fn on_pointer_up_on(&mut self, explicit_target: Option<ElementId>) {
         self.pointer_up_with_fallback(explicit_target);
     }
@@ -286,18 +276,16 @@ impl ElementTree {
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
         }
-        // Clearing the active state captures the still-active appearance as the
-        // transition start and marks `:active` invalidation in the same
-        // operation (ADR-0100, ADR-0089).
+        // active 状態の解除は同一操作で、まだ active の見た目を遷移開始として捕捉し
+        // `:active` 無効化を記録する（ADR-0100, ADR-0089）。
         self.set_active_element(None);
     }
 
-    /// Pointer cancel (touch interruption / pointer-capture loss). Coordinate-
-    /// independent: clears the whole hover set — emitting `HoverLeave` for each
-    /// left element and resetting the stored last-pointer position, identical to
-    /// the surface-leave hover-clear — and additionally ends the active press
-    /// (`active_element.take()` → `ActiveEnd` + pseudo-activation dirty, mirroring
-    /// the pointer-up path). Does not fabricate a `PointerMove`.
+    /// ポインタキャンセル（タッチ中断／ポインタキャプチャ喪失）。座標非依存で、
+    /// hover 集合全体をクリアし（離脱した各要素に `HoverLeave` を発行、保存した
+    /// 最終ポインタ位置をリセット。surface-leave の hover クリアと同一）、加えて
+    /// active な押下を終える（`active_element.take()` → `ActiveEnd` ＋擬似活性
+    /// dirty。pointer-up 経路を写す）。`PointerMove` は捏造しない。
     pub fn on_pointer_cancel(&mut self) {
         self.apply_pointer_hover(None);
         self.last_pointer_pos = None;
@@ -307,15 +295,15 @@ impl ElementTree {
         if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
         }
-        // Ending the press clears the active state and marks its `:active`
-        // invalidation atomically (ADR-0100), mirroring the pointer-up path.
+        // 押下の終了は active 状態を解除し `:active` 無効化を原子的に記録する
+        // （ADR-0100）。pointer-up 経路を写す。
         self.set_active_element(None);
     }
 
-    /// Pointer move carrying the physical [`PointerKind`] (#357), retained per
-    /// interaction so the emitted `PointerMove` wire event and `last_pointer_kind`
-    /// reflect the live device (hybrid devices switch mid-session). Hover/cursor
-    /// behaviour is identical to [`on_pointer_move`](Self::on_pointer_move).
+    /// 物理 [`PointerKind`] を伴うポインタムーブ。操作ごとに保持し、発行される
+    /// `PointerMove` ワイヤイベントと `last_pointer_kind` が現デバイスを反映する
+    /// （ハイブリッド機はセッション途中で切り替わる）。hover／cursor 挙動は
+    /// [`on_pointer_move`](Self::on_pointer_move) と同一。
     pub fn on_pointer_move_with_kind(
         &mut self,
         x: f32,
@@ -326,9 +314,9 @@ impl ElementTree {
         self.on_pointer_move(x, y)
     }
 
-    /// Pointer move with layout guard and 1 px dedup. `moved` is false when
-    /// coalesced; `resolved_cursor` is the cursor resolved from the element under
-    /// the pointer (ADR-0088), carried forward unchanged on coalesced moves.
+    /// レイアウトガードと 1px dedup 付きのポインタムーブ。合流時 `moved` は false。
+    /// `resolved_cursor` はポインタ下の要素から解決したカーソル（ADR-0088）で、
+    /// 合流した移動では不変のまま持ち越す。
     pub fn on_pointer_move(&mut self, x: f32, y: f32) -> PointerMoveResult {
         if !self.has_layout() {
             return PointerMoveResult {
@@ -354,9 +342,9 @@ impl ElementTree {
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
         self.last_cursor = resolved_cursor;
-        // Drive the in-flight drag. A scrollbar-thumb drag (ADR-0110, #409) wins:
-        // it was grabbed before any selection could begin, so the two never
-        // coexist. Otherwise extend the in-flight selection's focus (ADR-0097).
+        // 進行中のドラッグを駆動する。スクロールバー・サムドラッグ（ADR-0110）が
+        // 優先。選択が始まる前に掴まれるので両者は共存しない。それ以外は進行中の
+        // 選択の focus を拡張する（ADR-0097）。
         if let Some(drag) = self.scrollbar_drag {
             self.drag_scrollbar(drag, x, y);
         } else if let Some(input) = self.edit_drag {
@@ -372,15 +360,14 @@ impl ElementTree {
         }
     }
 
-    /// Resolve the effective cursor for the element under the pointer in the
-    /// order "explicit `cursor` → element-kind UA default → `Default`"
-    /// (ADR-0105), mirroring the browser's UA stylesheet. An explicit `cursor`
-    /// anywhere up the ancestor chain always wins (CSS `cursor` inherits); only
-    /// when none is set does the kind default apply — `text-input` and any
-    /// `selectable` text resolve to `text` (I-beam), `button` to `pointer`.
-    /// `Default` when nothing in the chain contributes or the pointer hit nothing.
+    /// ポインタ下の要素の実効カーソルを「明示 `cursor` → 要素種別の UA 既定 →
+    /// `Default`」の順で解決する（ADR-0105）。ブラウザの UA スタイルシートを写す。
+    /// 祖先チェーン上のどこかの明示 `cursor` が常に勝つ（CSS `cursor` は継承）。
+    /// 未設定のときだけ種別既定が効く。`text-input` と `selectable` テキストは
+    /// `text`（I-beam）、`button` は `pointer` に解決する。チェーンに何も寄与が
+    /// 無いかポインタが何にも当たらないとき `Default`。
     fn resolve_cursor(&self, hit: Option<ElementId>) -> CursorValue {
-        // Pass 1: an explicit `cursor` on the hit element or any ancestor wins.
+        // パス1: ヒット要素か祖先の明示 `cursor` が勝つ。
         let mut current = hit;
         while let Some(id) = current {
             let Some(el) = self.elements.get(&id) else {
@@ -391,9 +378,9 @@ impl ElementTree {
             }
             current = el.parent;
         }
-        // Pass 2: no explicit cursor — fall back to the element-kind UA default,
-        // walking up so a kind/selectable region default still reaches the text
-        // or child elements painted inside it.
+        // パス2: 明示カーソルが無ければ要素種別の UA 既定へフォールバック。上へ
+        // たどることで、種別／selectable 領域の既定が内部に描かれるテキストや子
+        // 要素にも届く。
         let mut current = hit;
         while let Some(id) = current {
             let Some(el) = self.elements.get(&id) else {
@@ -403,13 +390,12 @@ impl ElementTree {
             if kind_default != CursorValue::Default {
                 return kind_default;
             }
-            // A selectable, text-bearing element reads as text (the I-beam) — the
-            // UA default for "選択可能テキスト" (ADR-0105). Keyed on the element's
-            // effective `user-select` (ADR-0108) rather than a `selectable`
-            // Selection Region root, so a plain paragraph carrying the kind-default
-            // `user-select: text` shows the I-beam without any explicit region.
-            // Gated on text-bearing kinds so an empty `view` (also kind-default
-            // `text`) stays the arrow, matching the browser's text-only I-beam.
+            // selectable でテキストを持つ要素は text（I-beam）に解決する。選択可能
+            // テキストの UA 既定（ADR-0105）。`selectable` な Selection Region 根では
+            // なく実効 `user-select`（ADR-0108）を基準にするので、種別既定の
+            // `user-select: text` を持つ素の段落は明示領域なしで I-beam を出す。
+            // テキストを持つ種別に限定するので、空の `view`（同じく種別既定 `text`）
+            // は矢印のまま。ブラウザのテキスト限定 I-beam に合わせる。
             if el.kind.is_text_like()
                 && el.user_select == crate::element::style::UserSelectValue::Text
                 && !self.user_select_excludes(id)
@@ -421,7 +407,8 @@ impl ElementTree {
         CursorValue::Default
     }
 
-    /// Target-less pointer move (HTML Mode coordinate stream without hit-test hover).
+    /// ターゲットなしのポインタムーブ（ヒットテスト hover を伴わない HTML Mode
+    /// 座標ストリーム）。
     pub fn on_pointer_move_coords(&mut self, x: f32, y: f32) -> bool {
         if let Some((lx, ly)) = self.last_pointer_pos {
             if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
@@ -437,11 +424,10 @@ impl ElementTree {
         true
     }
 
-    /// Pointer left the surface (coordinate-independent). Clears the entire
-    /// hover set — emitting `HoverLeave` for each left element and marking
-    /// pseudo-activation dirty — and resets the stored last-pointer-position so
-    /// a subsequent re-entry is not coalesced away. Does NOT push a phantom
-    /// `PointerMove`. Symmetric with the HTML adapter's per-element leave seam.
+    /// ポインタが surface を離れた（座標非依存）。hover 集合全体をクリアし
+    /// （離脱した各要素に `HoverLeave` を発行、擬似活性 dirty を記録）、再入が
+    /// 合流で消されないよう保存した最終ポインタ位置をリセットする。幻の
+    /// `PointerMove` は push しない。HTML adapter の要素別 leave 継ぎ目と対称。
     pub fn on_pointer_leave(&mut self) {
         self.apply_pointer_hover(None);
         self.last_pointer_pos = None;
@@ -461,33 +447,32 @@ impl ElementTree {
     }
 
     pub fn on_key_down(&mut self, key: &str, modifiers: u32) {
-        // A keyboard interaction makes the next focus ring-worthy under Chromium's
-        // `:focus-visible` heuristic (#335). Recorded before the early returns so a
-        // key press that doesn't reach a focused element still flips the modality.
+        // キーボード操作は Chromium の `:focus-visible` ヒューリスティクで次の
+        // focus をリング対象にする。早期 return より前に記録するので、focus 中の
+        // 要素に届かないキー押下でもモダリティは切り替わる。
         self.last_input_modality = InputModality::Keyboard;
-        // Selection keyboard gestures (#267) act on the document-wide selection
-        // and are independent of element focus, so they run first and consume the
-        // key when they apply (e.g. Ctrl/Cmd+A, Shift+Arrow over a SelectionArea).
+        // 選択キーボードジェスチャは文書全体の選択に作用し要素 focus に依存しない
+        // ので、先に走り、適用時にキーを消費する（例: Ctrl/Cmd+A、SelectionArea 上の
+        // Shift+Arrow）。
         if self.handle_selection_key(key, modifiers) {
             return;
         }
         let Some(focused) = self.focused_element else {
             return;
         };
-        // Editing keys inside a focused text-input are interpreted as an
-        // EditIntent and applied through the single editing seam (ADR-0103):
-        // a bare arrow moves the caret (collapsing any selection to its edge),
-        // Shift extends the selection, Alt/Ctrl widens the step to a word, and
-        // Backspace/Delete remove one char. Consumed when it applies (never
-        // while an IME composition is active, so a delete key can't break it).
+        // focus 中の text-input 内の編集キーは EditIntent に解釈され、単一の編集
+        // 継ぎ目で適用される（ADR-0103）。素の矢印はキャレットを移動し（選択は端へ
+        // 畳む）、Shift は選択を拡張、Alt/Ctrl は単語単位へ拡幅、Backspace/Delete は
+        // 1文字削除する。適用時に消費する（IME 変換中は決して消費せず、削除キーが
+        // 変換を壊さない）。
         if let Some(intent) = key_edit_intent(key, modifiers) {
             if self.apply_edit_intent(focused, intent) {
                 return;
             }
         }
-        // Enter inserts a newline at the caret only in a multi-line field (#362);
-        // a single-line field leaves the text alone so the trailing KeyDown below
-        // is the app's submit signal. `apply_key_down` handles Enter alone.
+        // Enter は複数行フィールドでのみキャレット位置に改行を挿入する。単一行は
+        // テキストに触れず、下記の末尾 KeyDown がアプリの submit シグナルになる。
+        // Enter 単体は `apply_key_down` が処理する。
         let multiline = self
             .elements
             .get(&focused)
@@ -520,7 +505,7 @@ impl ElementTree {
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
         {
-            // Inserts at the caret, replacing any selected range (ADR-0097, #271).
+            // キャレット位置に挿入し、選択範囲があれば置換する（ADR-0097）。
             edit.insert(text);
         }
         self.emit_interaction(Event::TextInput {
@@ -547,9 +532,9 @@ impl ElementTree {
         self.on_composition_update_formatted(target, text, Vec::new());
     }
 
-    /// IME preedit update carrying the EditContext `textformatupdate` clause
-    /// format ranges (ADR-0102), so Canvas Mode can draw the per-clause
-    /// conversion underlines. `clauses` offsets are relative to `text`.
+    /// EditContext `textformatupdate` の文節フォーマット範囲を伴う IME プリエディット
+    /// 更新（ADR-0102）。Canvas Mode が文節ごとの変換下線を描ける。`clauses` の
+    /// オフセットは `text` 相対。
     pub fn on_composition_update_formatted(
         &mut self,
         target: ElementId,
@@ -595,12 +580,12 @@ impl ElementTree {
         }
     }
 
-    /// Programmatic focus (mutation batch / accessibility).
+    /// プログラム的 focus（mutation バッチ／アクセシビリティ）。
     pub fn on_focus(&mut self, id: ElementId) {
         self.transition_focus(id);
     }
 
-    /// Programmatic blur (mutation batch).
+    /// プログラム的 blur（mutation バッチ）。
     pub fn on_blur(&mut self, id: ElementId) {
         self.blur_with_events(id);
     }
@@ -609,15 +594,15 @@ impl ElementTree {
         self.active_element
     }
 
-    /// The single document-wide text selection, if any (ADR-0097).
+    /// 文書全体で唯一のテキスト選択（あれば）（ADR-0097）。
     pub fn selection(&self) -> Option<&Selection> {
         self.selection.as_ref()
     }
 
-    /// The active selection's endpoints normalized to document order:
-    /// `(start, end)` where `start` precedes `end` in the tree's pre-order walk
-    /// (ADR-0097, #269). A same-block selection normalizes by byte offset; a
-    /// cross-block one by the blocks' document order. `None` with no selection.
+    /// active な選択の端点を文書順に正規化した `(start, end)`。`start` はツリーの
+    /// pre-order 走査で `end` に先行する（ADR-0097）。同一ブロックの選択はバイト
+    /// オフセットで、ブロック跨ぎはブロックの文書順で正規化する。選択が無ければ
+    /// `None`。
     pub fn selection_ordered(&self) -> Option<(SelectionPoint, SelectionPoint)> {
         let sel = self.selection?;
         if sel.anchor.element == sel.focus.element {
@@ -632,21 +617,18 @@ impl ElementTree {
         }
     }
 
-    /// Programmatically set the document-global selection to `anchor`..`focus`
-    /// (ADR-0097 growth point — selection without a pointer/keyboard gesture).
-    /// Applies only when both endpoints share one Selection Region (their
-    /// nearest `selectable` ancestor matches and exists), so a programmatic call
-    /// honors the same `selectable` boundary as a drag and never leaks across
-    /// one. Returns whether it was applied. Routed through the shared selection
-    /// path, so it re-lowers the highlight and emits a `selection-change`
-    /// notification exactly like a gesture would.
+    /// 文書グローバル選択を `anchor`..`focus` にプログラム設定する（ADR-0097。
+    /// ポインタ／キーボードジェスチャによらない選択）。両端点が1つの Selection
+    /// Region を共有するとき（最近接の `selectable` 祖先が一致し存在する）だけ
+    /// 適用するので、ドラッグと同じ `selectable` 境界を尊重し越境しない。適用したか
+    /// を返す。共有の選択経路を通すので、ジェスチャと全く同様にハイライトを再生成
+    /// し `selection-change` 通知を発行する。
     pub fn set_selection_range(&mut self, anchor: SelectionPoint, focus: SelectionPoint) -> bool {
-        // Both endpoints must be selectable (not `user-select: none`) and share a
-        // Selection Region boundary. A `None` boundary is the unbounded document
-        // region (ADR-0108 decision 3), so two boundary-free points share it and a
-        // cross-element programmatic range is honoured; a `contains` (or legacy
-        // `selectable`) boundary still confines, so endpoints on opposite sides of
-        // one do not match and the range is refused.
+        // 両端点が selectable（`user-select: none` でない）で、かつ Selection Region
+        // 境界を共有する必要がある。`None` 境界は無制限の文書領域（ADR-0108）なので、
+        // 境界を持たない2点はそれを共有し要素跨ぎのプログラム範囲が通る。`contains`
+        // （または旧来の `selectable`）境界は依然として閉じ込めるので、境界の両側に
+        // ある端点は一致せず範囲は拒否される。
         if self.user_select_excludes(anchor.element) || self.user_select_excludes(focus.element) {
             return false;
         }
@@ -657,26 +639,23 @@ impl ElementTree {
         true
     }
 
-    /// Programmatically clear the document-global selection (ADR-0097 growth
-    /// point). A no-op when nothing is selected. Routed through the shared
-    /// selection path, so it re-lowers the dropped highlight and emits a
-    /// `selection-change` notification.
+    /// 文書グローバル選択をプログラム的にクリアする（ADR-0097）。何も選択されて
+    /// いなければ no-op。共有の選択経路を通すので、落とすハイライトを再生成し
+    /// `selection-change` 通知を発行する。
     pub fn clear_selection(&mut self) {
         self.set_selection(None);
     }
 
-    /// The byte range of IFC block `block` covered by the active selection,
-    /// normalized to document order (ADR-0097, #269). For a same-block selection
-    /// this is the in-block range. For a cross-block one: the first block runs
-    /// from its start offset to end-of-text, the last block from 0 to its end
-    /// offset, and any block strictly between is covered whole. `None` when the
-    /// selection does not touch `block`, or `block` belongs to a different
-    /// Selection Region (the selection never leaks across a `selectable`
-    /// boundary).
+    /// active な選択が覆う IFC ブロック `block` のバイト範囲を文書順に正規化した
+    /// もの（ADR-0097）。同一ブロックの選択ではブロック内範囲。ブロック跨ぎでは、
+    /// 先頭ブロックは開始オフセットから末尾まで、末尾ブロックは 0 から終了オフ
+    /// セットまで、間のブロックは丸ごと覆われる。選択が `block` に触れない、または
+    /// `block` が別の Selection Region に属するとき `None`（選択は `selectable`
+    /// 境界を越えない）。
     pub(crate) fn selection_range_in_block(&self, block: ElementId) -> Option<(usize, usize)> {
-        // A `user-select: none` block (or one under a `none` subtree) carries no
-        // selection: it is skipped identically by the highlight and the copied
-        // text, which both read the covered range through this one seam (ADR-0108).
+        // `user-select: none` のブロック（または `none` サブツリー下）は選択を持た
+        // ない。ハイライトとコピーテキストは同じこの継ぎ目で覆う範囲を読むので、
+        // どちらも同様にスキップされる（ADR-0108）。
         if self.user_select_excludes(block) {
             return None;
         }
@@ -701,11 +680,10 @@ impl ElementTree {
         }
     }
 
-    /// Whether `id` is excluded from the document selection by CSS
-    /// `user-select: none` on itself or any ancestor (ADR-0108: `none` excludes
-    /// the whole subtree). The single gate the covered-range, highlight, and
-    /// copied-text paths share — all routed through `selection_range_in_block` —
-    /// so a `none` element drops out of every one of them at once.
+    /// `id` が自身または祖先の `user-select: none` で文書選択から除外されるか
+    /// （ADR-0108: `none` はサブツリー全体を除外）。覆う範囲・ハイライト・コピー
+    /// テキストの各経路が共有する単一ゲート（すべて `selection_range_in_block`
+    /// 経由）なので、`none` 要素は一度に全経路から外れる。
     fn user_select_excludes(&self, id: ElementId) -> bool {
         let mut current = Some(id);
         while let Some(eid) = current {
@@ -720,17 +698,16 @@ impl ElementTree {
         false
     }
 
-    /// Compare two elements by document order (their position in a pre-order DFS
-    /// of the tree). An ancestor precedes its descendants; earlier siblings
-    /// precede later ones. Implemented by comparing the elements' root-paths
-    /// (the sequence of child indices from the root) lexicographically.
+    /// 2要素を文書順（ツリーの pre-order DFS での位置）で比較する。祖先は子孫に、
+    /// 前の兄弟は後の兄弟に先行する。各要素の root-path（根からの子インデックス
+    /// 列）を辞書順に比較して実装する。
     fn document_order(&self, a: ElementId, b: ElementId) -> std::cmp::Ordering {
         self.root_path(a).cmp(&self.root_path(b))
     }
 
-    /// The path from the document root to `id` as a sequence of child indices
-    /// (root-relative). Comparing two such paths lexicographically yields
-    /// pre-order: a prefix (ancestor) sorts before a longer path (descendant).
+    /// 文書根から `id` までの経路を子インデックス列（根相対）で返す。2つの経路を
+    /// 辞書順比較すると pre-order になる。接頭辞（祖先）は長い経路（子孫）より前に
+    /// 並ぶ。
     fn root_path(&self, id: ElementId) -> Vec<usize> {
         let mut path = Vec::new();
         let mut cur = id;
@@ -748,16 +725,14 @@ impl ElementTree {
         path
     }
 
-    /// The text currently under the selection, as a single string (ADR-0097,
-    /// #268 / ADR-0108 decision 5). Walks every IFC-root block the selection
-    /// covers in document order — the same `selection_range_in_block` seam the
-    /// highlight lowers through, so copy and paint agree (no duplicate ordering
-    /// logic) — slices each block's covered byte range out of its shaped text
-    /// (which already joins inline children in document order, so styled runs
-    /// come back joined), and inserts a single `\n` at each block-box boundary
-    /// (ADR-0108: same shape as a browser copy; per-block-kind newline counts
-    /// are a growth point). `None` when there is no selection or nothing
-    /// non-empty is covered (a collapsed caret has nothing to copy).
+    /// 選択下のテキストを単一文字列で返す（ADR-0097 / ADR-0108）。選択が覆う
+    /// IFC 根ブロックを文書順にたどり（ハイライトが降ろすのと同じ
+    /// `selection_range_in_block` 継ぎ目なので、コピーと描画が一致し順序ロジックの
+    /// 重複が無い）、各ブロックの覆うバイト範囲を整形済みテキストから切り出し
+    /// （インライン子は既に文書順で連結済みなのでスタイル付きランも連結されて
+    /// 戻る）、ブロックボックス境界ごとに `\n` を1つ挿入する（ADR-0108: ブラウザ
+    /// コピーと同じ形）。選択が無い、または非空の範囲を何も覆わない（畳まれた
+    /// キャレットはコピー対象なし）とき `None`。
     pub fn selected_text(&self) -> Option<String> {
         let sel = self.selection?;
         let mut parts: Vec<String> = Vec::new();
@@ -779,27 +754,25 @@ impl ElementTree {
         Some(parts.join("\n"))
     }
 
-    /// Whether selection chrome (the drag handles and floating toolbar) should be
-    /// drawn for the current interaction — true only under Touch modality
-    /// (ADR-0104 decision 2, #365). Mouse/Pen get the thin caret and drag-select
-    /// alone, matching desktop-browser behaviour, while Touch raises the mobile
-    /// gesture surface. Read per interaction from [`last_pointer_kind`] so hybrid
-    /// devices (touch laptop, mouse-equipped tablet) follow the live device. The
-    /// highlight tint is deliberately *not* gated here — it paints under every
-    /// modality (ADR-0097, tint=Chromium).
+    /// 現在の操作で選択 chrome（ドラッグハンドルとフローティングツールバー）を
+    /// 描くべきか。Touch モダリティのときだけ true（ADR-0104）。Mouse/Pen は細い
+    /// キャレットとドラッグ選択のみでデスクトップブラウザに合わせ、Touch はモバイル
+    /// ジェスチャ面を出す。[`last_pointer_kind`] から操作ごとに読むので、ハイブリッド
+    /// 機（タッチノート、マウス付きタブレット）は現デバイスに追従する。ハイライト
+    /// の色付けは意図的にここでゲートしない。全モダリティで描かれる（ADR-0097、
+    /// tint=Chromium）。
     ///
     /// [`last_pointer_kind`]: Self::last_pointer_kind
     fn touch_chrome_visible(&self) -> bool {
         self.last_pointer_kind == PointerKind::Touch
     }
 
-    /// The floating selection toolbar for the active selection, or `None` when
-    /// no selection is active (ADR-0097, #272). The toolbar is core-drawn chrome:
-    /// a read-only SelectionArea selection offers Copy / Select All; an editable
-    /// text-input selection adds Cut / Paste. It floats over the selection's
-    /// canvas-space bounding box, themed by the current chrome style. Drawn only
-    /// under Touch modality; Mouse/Pen selections get the thin caret alone
-    /// (ADR-0104 decision 2, #365).
+    /// active な選択のためのフローティング選択ツールバー。選択が active でなければ
+    /// `None`（ADR-0097）。ツールバーは core 描画の chrome で、読み取り専用
+    /// SelectionArea 選択は Copy / Select All を、編集可能 text-input 選択は加えて
+    /// Cut / Paste を出す。選択の canvas 空間バウンディングボックス上に浮かび、現在の
+    /// chrome スタイルでテーマ付けされる。Touch モダリティでのみ描かれ、Mouse/Pen
+    /// 選択は細いキャレットのみ（ADR-0104）。
     pub fn selection_toolbar(&self) -> Option<crate::element::selection_chrome::SelectionToolbar> {
         if !self.touch_chrome_visible() {
             return None;
@@ -813,15 +786,12 @@ impl ElementTree {
         )
     }
 
-    /// The pair of Material drag handles flanking the active read-only selection,
-    /// or `None` when no non-collapsed SelectionArea selection is active
-    /// (ADR-0097, #273). The handles are core-drawn chrome: a teardrop knob hangs
-    /// just below each end of the range, themed by the current chrome style. They
-    /// are the mobile gesture surface — dragging one adjusts that endpoint — so
-    /// they are raised only under Touch modality; Mouse/Pen selections show none
-    /// (ADR-0104 decision 2, #365).
-    /// Text-input edit-selection handles are a growth point (the toolbar already
-    /// covers both paths; handles ride the read-only SelectionArea for now).
+    /// active な読み取り専用選択の両側に並ぶ Material ドラッグハンドルのペア。
+    /// 非畳みの SelectionArea 選択が active でなければ `None`（ADR-0097）。ハンドルは
+    /// core 描画の chrome で、範囲の各端の直下に涙滴のつまみが下がり、現在の chrome
+    /// スタイルでテーマ付けされる。これらはモバイルジェスチャ面（ドラッグでその端点
+    /// を調整）なので Touch モダリティでのみ出る。Mouse/Pen 選択は出さない
+    /// （ADR-0104）。
     pub fn selection_handles(
         &self,
     ) -> Option<crate::element::selection_chrome::SelectionHandles> {
@@ -842,9 +812,9 @@ impl ElementTree {
         ))
     }
 
-    /// Canvas-space caret edge `(x, baseline_bottom_y)` for a read-only selection
-    /// endpoint, from its IFC's Parley layout offset by the block's cached
-    /// origin. `None` when the endpoint's block has no shaped geometry yet.
+    /// 読み取り専用選択端点の canvas 空間キャレット端 `(x, baseline_bottom_y)`。
+    /// IFC の Parley レイアウトをブロックのキャッシュ原点でオフセットして得る。
+    /// 端点のブロックにまだ整形ジオメトリが無いとき `None`。
     fn selection_caret_canvas(&self, point: SelectionPoint) -> Option<(f32, f32)> {
         use parley::{Affinity, Cursor};
         let tl = self.elements.get(&point.element)?.text_layout.as_ref()?;
@@ -854,12 +824,11 @@ impl ElementTree {
         Some((ex + g.x0 as f32, ey + g.y1 as f32))
     }
 
-    /// Begin a handle drag when the press `(x, y)` grabs one of the selection's
-    /// drag handles (ADR-0097, #273). The grabbed end becomes the selection's
-    /// `focus` and the opposite end the fixed `anchor`, so the existing
-    /// drag-select move path (`selection_drag` → `update_selection_focus`)
-    /// adjusts exactly that endpoint and clamps it to the Selection Region.
-    /// Returns whether a handle was grabbed (and the gesture consumed).
+    /// 押下 `(x, y)` が選択のドラッグハンドルの一方を掴んだらハンドルドラッグを
+    /// 始める（ADR-0097）。掴んだ端が選択の `focus`、反対端が固定 `anchor` になる
+    /// ので、既存のドラッグ選択移動経路（`selection_drag` →
+    /// `update_selection_focus`）がまさにその端点を調整し Selection Region に
+    /// クランプする。ハンドルを掴んだ（＝ジェスチャを消費した）かを返す。
     fn begin_handle_drag(&mut self, x: f32, y: f32) -> bool {
         use crate::element::selection_chrome::SelectionHandleEnd;
         let Some(grabbed) = self.selection_handles().and_then(|h| h.handle_at(x, y)) else {
@@ -868,7 +837,7 @@ impl ElementTree {
         let Some((start, end)) = self.selection_ordered() else {
             return false;
         };
-        // Drag the grabbed end; pin the opposite one as the anchor.
+        // 掴んだ端をドラッグし、反対端を anchor として固定する。
         let (anchor, focus) = match grabbed {
             SelectionHandleEnd::Start => (end, start),
             SelectionHandleEnd::End => (start, end),
@@ -878,14 +847,13 @@ impl ElementTree {
         true
     }
 
-    /// Begin a Mouse/Pen scrollbar operation from a pointer-down at `(x, y)`
-    /// (ADR-0110, SCR-04, #409). A press on a thumb starts a drag; a press on the
-    /// track margin pages the Scroll Offset one [`SCROLLBAR_PAGE_STEP`] toward the
-    /// click. Both commit through the wheel's `apply_wheel_delta` seam, so they
-    /// converge on the same Scroll Offset (ADR-0046) and chain to ancestors
-    /// identically (ADR-0084). Touch shows a non-interactive transient indicator
-    /// (a later slice), so this is a no-op under Touch modality. Returns whether
-    /// the press hit the scrollbar (and the gesture was consumed).
+    /// `(x, y)` の pointer-down から Mouse/Pen スクロールバー操作を始める
+    /// （ADR-0110）。サム上の押下はドラッグを開始し、トラック余白の押下は Scroll
+    /// Offset をクリック方向へ [`SCROLLBAR_PAGE_STEP`] 1つぶんページする。どちらも
+    /// ホイールの `apply_wheel_delta` 継ぎ目でコミットするので、同じ Scroll Offset
+    /// に収束し（ADR-0046）祖先へ同様に連鎖する（ADR-0084）。Touch は非対話の一時
+    /// インジケータを出すため Touch モダリティでは no-op。押下がスクロールバーに
+    /// 当たった（＝ジェスチャを消費した）かを返す。
     ///
     /// [`SCROLLBAR_PAGE_STEP`]: crate::element::scene_build::SCROLLBAR_PAGE_STEP
     fn begin_scrollbar_gesture(&mut self, x: f32, y: f32) -> bool {
@@ -897,8 +865,8 @@ impl ElementTree {
             return false;
         };
         if on_thumb {
-            // Map a future track-pixel drag to an offset delta so the thumb
-            // tracks the pointer 1:1 in track space.
+            // 以降のトラック px ドラッグを offset デルタに対応付け、サムがトラック
+            // 空間でポインタを 1:1 で追従するようにする。
             let offset_per_px = if axis.thumb_travel > 0.0 {
                 axis.max_offset / axis.thumb_travel
             } else {
@@ -915,8 +883,8 @@ impl ElementTree {
                 offset_per_px,
             });
         } else {
-            // Track margin: page toward the click — past the thumb's far end pages
-            // forward, before its near end pages back, one named step either way.
+            // トラック余白: クリック方向へページする。サムの遠端を越えれば前方、
+            // 近端より手前なら後方へ、どちらも名前付きステップ1つぶん。
             let (tx, ty, tw, th) = axis.thumb;
             let step = match axis.axis {
                 ScrollAxis::Vertical => {
@@ -947,12 +915,12 @@ impl ElementTree {
         true
     }
 
-    /// The scrollbar axis under `(x, y)`, if any — `(scroll_view, geometry,
-    /// on_thumb)` where `on_thumb` is true for a thumb hit and false for a track
-    /// hit (ADR-0110, #409). Reads the shared `scrollbar_axes` geometry so the hit
-    /// region is exactly what the overlay paints. The deepest (most nested)
-    /// matching ScrollView wins, since its thumb is painted last (on top); a thumb
-    /// hit beats a track hit at equal depth.
+    /// `(x, y)` の下のスクロールバー軸（あれば）を `(scroll_view, geometry,
+    /// on_thumb)` で返す。`on_thumb` はサムヒットで true、トラックヒットで false
+    /// （ADR-0110）。共有の `scrollbar_axes` ジオメトリを読むのでヒット領域は
+    /// オーバーレイが描くものと完全一致する。最も深い（最もネストした）一致
+    /// ScrollView が勝つ（そのサムが最後＝最前面に描かれる）。同深度ではサムヒットが
+    /// トラックヒットに勝つ。
     fn scrollbar_hit_at(
         &self,
         x: f32,
@@ -988,11 +956,10 @@ impl ElementTree {
         best.map(|(_, id, axis, on_thumb)| (id, axis, on_thumb))
     }
 
-    /// Advance an in-flight thumb drag to pointer `(x, y)` (ADR-0110, #409). The
-    /// pointer's travel along the drag axis since the last move becomes a Scroll
-    /// Offset delta and is committed through `apply_wheel_delta` — the wheel's
-    /// seam — so the offset moves continuously and, once this ScrollView hits its
-    /// axis end, the unconsumed remainder chains to the ancestor ScrollView.
+    /// 進行中のサムドラッグをポインタ `(x, y)` へ進める（ADR-0110）。前回移動から
+    /// のドラッグ軸方向の移動量が Scroll Offset デルタになり、ホイールの継ぎ目
+    /// `apply_wheel_delta` でコミットされるので、offset は連続的に動き、この
+    /// ScrollView が軸端に達すると未消費の余りが祖先 ScrollView へ連鎖する。
     fn drag_scrollbar(&mut self, mut drag: ScrollbarDrag, x: f32, y: f32) {
         use crate::element::scene_build::ScrollAxis;
         let pos = match drag.axis {
@@ -1016,8 +983,8 @@ impl ElementTree {
         self.scrollbar_drag = Some(drag);
     }
 
-    /// Run a floating-toolbar button under `(x, y)`, if the press lands on one.
-    /// Returns whether the gesture was consumed by the toolbar (ADR-0097, #272).
+    /// 押下がフローティングツールバーのボタンに当たればそれを実行する。ツールバーが
+    /// ジェスチャを消費したかを返す（ADR-0097）。
     fn try_selection_toolbar_tap(&mut self, x: f32, y: f32) -> bool {
         let Some(action) = self.selection_toolbar().and_then(|tb| tb.action_at(x, y)) else {
             return false;
@@ -1026,7 +993,7 @@ impl ElementTree {
         true
     }
 
-    /// Run a toolbar action against the active selection (ADR-0097, #272).
+    /// active な選択に対しツールバーアクションを実行する（ADR-0097）。
     fn dispatch_toolbar_action(&mut self, action: crate::element::selection_chrome::ToolbarAction) {
         use crate::element::selection_chrome::ToolbarAction;
         match action {
@@ -1037,9 +1004,9 @@ impl ElementTree {
         }
     }
 
-    /// The text under whichever selection is active — the read-only SelectionArea
-    /// selection, else the editable text-input's edit selection (single active,
-    /// ADR-0097, #271). `None` when nothing non-empty is selected.
+    /// active な選択（読み取り専用 SelectionArea 選択、無ければ編集可能 text-input
+    /// の編集選択。単一 active、ADR-0097）下のテキスト。非空が何も選択されて
+    /// いなければ `None`。
     fn active_selection_text(&self) -> Option<String> {
         if let Some(text) = self.selected_text() {
             return Some(text);
@@ -1050,8 +1017,8 @@ impl ElementTree {
         Some(edit.text_content[start..end].to_string())
     }
 
-    /// Copy the active selection through the Platform Adapter clipboard. A no-op
-    /// when nothing is selected or no clipboard is installed (ADR-0097, #268).
+    /// active な選択を Platform Adapter のクリップボード経由でコピーする。何も選択
+    /// されていないかクリップボード未装着のとき no-op（ADR-0097）。
     fn copy_active_selection(&mut self) {
         if let Some(text) = self.active_selection_text() {
             if let Some(clipboard) = self.clipboard.as_ref() {
@@ -1060,9 +1027,9 @@ impl ElementTree {
         }
     }
 
-    /// Cut the editable selection: copy it to the clipboard, then delete the
-    /// range from the text-input. Read-only SelectionArea selections cannot be
-    /// cut, so this is a no-op there (ADR-0097, #272).
+    /// 編集可能な選択を切り取る。クリップボードへコピーしてから text-input から
+    /// 範囲を削除する。読み取り専用 SelectionArea 選択は切り取れないのでそこでは
+    /// no-op（ADR-0097）。
     fn cut_active_selection(&mut self) {
         let Some(input) = self.edit_selection_owner() else {
             return;
@@ -1082,10 +1049,10 @@ impl ElementTree {
             .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
     }
 
-    /// Paste clipboard text into the editable selection, replacing it. Pulls the
-    /// text through the Platform Adapter's synchronous clipboard read; an adapter
-    /// whose read is async feeds the result back via `element_paste` instead, so
-    /// this is a no-op there. Read-only selections cannot paste (ADR-0097, #272).
+    /// 編集可能な選択へクリップボードのテキストを貼り付け、選択を置換する。
+    /// Platform Adapter の同期クリップボード読みでテキストを取る。読みが非同期な
+    /// アダプタは代わりに結果を `element_paste` で返すのでそこでは no-op。読み取り
+    /// 専用選択は貼り付けできない（ADR-0097）。
     fn paste_active_selection(&mut self) {
         let Some(input) = self.edit_selection_owner() else {
             return;
@@ -1096,12 +1063,12 @@ impl ElementTree {
         self.element_paste(input, &text);
     }
 
-    /// Paste clipboard text into a specific text-input (the keyboard Ctrl/Cmd+V
-    /// path, ADR-0103 §5③). Unlike `paste_active_selection`, this targets the
-    /// focused field directly, so it also pastes at a collapsed caret (an empty
-    /// field with no selection). The text is pulled through the Platform Adapter's
-    /// synchronous clipboard read; an adapter whose read is async (Canvas Mode)
-    /// returns `None` here and feeds the text back via `element_paste` instead.
+    /// 特定の text-input へクリップボードのテキストを貼り付ける（キーボードの
+    /// Ctrl/Cmd+V 経路、ADR-0103）。`paste_active_selection` と違い focus 中の
+    /// フィールドを直接対象にするので、畳まれたキャレット（選択無しの空フィールド）
+    /// にも貼り付ける。テキストは Platform Adapter の同期クリップボード読みで取る。
+    /// 読みが非同期なアダプタ（Canvas Mode）はここで `None` を返し代わりに
+    /// `element_paste` でテキストを返す。
     fn paste_into_text_input(&mut self, target: ElementId) {
         let Some(text) = self.clipboard.as_ref().and_then(|c| c.read_text()) else {
             return;
@@ -1109,9 +1076,8 @@ impl ElementTree {
         self.element_paste(target, &text);
     }
 
-    /// Select All against the active selection: the whole focus IFC for a
-    /// read-only SelectionArea selection, or the text-input's whole content for
-    /// an editable one (ADR-0097, #272).
+    /// active な選択に対し全選択する。読み取り専用 SelectionArea 選択なら focus
+    /// IFC 全体、編集可能なら text-input の内容全体（ADR-0097）。
     fn select_all_active_selection(&mut self) {
         if let Some(sel) = self.selection {
             self.select_all_in(sel.focus.element);
@@ -1128,10 +1094,10 @@ impl ElementTree {
             .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
     }
 
-    /// Resolve the active selection into its toolbar action set and canvas-space
-    /// bounding box. A non-collapsed read-only SelectionArea selection wins;
-    /// otherwise the editable text-input that holds a non-collapsed edit
-    /// selection (the two never coexist — single active, ADR-0097, #271).
+    /// active な選択をそのツールバーアクション集合と canvas 空間バウンディング
+    /// ボックスに解決する。非畳みの読み取り専用 SelectionArea 選択が優先。さもなくば
+    /// 非畳みの編集選択を持つ編集可能 text-input（両者は共存しない。単一 active、
+    /// ADR-0097）。
     fn active_selection_chrome(
         &self,
     ) -> Option<(
@@ -1156,11 +1122,10 @@ impl ElementTree {
         ))
     }
 
-    /// The text-input holding the active (= focused) non-collapsed edit
-    /// selection, if any. Selection chrome is focus-linked (ADR-0104): an
-    /// unfocused field that still remembers a Mouse/Pen range shows no chrome, so
-    /// at most one selection — the focused one — is ever active across the
-    /// document (single-active, ADR-0097).
+    /// active（＝focus 中）の非畳み編集選択を持つ text-input（あれば）。選択 chrome
+    /// は focus 連動（ADR-0104）。Mouse/Pen 範囲をまだ覚えている非 focus フィールドは
+    /// chrome を出さないので、文書全体で active な選択は高々1つ＝focus 中のもの
+    /// （単一 active、ADR-0097）。
     fn edit_selection_owner(&self) -> Option<ElementId> {
         let id = self.focused_element?;
         self.elements
@@ -1171,9 +1136,9 @@ impl ElementTree {
             .map(|_| id)
     }
 
-    /// Canvas-space bounding box of the read-only selection's highlight, unioned
-    /// across the blocks it touches (anchor and focus IFCs). `None` when the
-    /// selection has no shaped geometry yet.
+    /// 読み取り専用選択のハイライトの canvas 空間バウンディングボックス。触れる
+    /// ブロック（anchor と focus の IFC）にわたって和を取る。選択にまだ整形
+    /// ジオメトリが無いとき `None`。
     fn read_only_selection_bounds(&self) -> Option<crate::element::selection_chrome::ToolbarRect> {
         let (start, end) = self.selection_ordered()?;
         let mut acc: Option<(f32, f32, f32, f32)> = None;
@@ -1199,7 +1164,7 @@ impl ElementTree {
         acc.map(rect_from_bounds)
     }
 
-    /// Canvas-space bounding box of a text-input's edit-selection highlight.
+    /// text-input の編集選択ハイライトの canvas 空間バウンディングボックス。
     fn edit_selection_bounds(
         &self,
         input: ElementId,
@@ -1221,15 +1186,14 @@ impl ElementTree {
         acc.map(rect_from_bounds)
     }
 
-    /// Begin a selection from a pointer-down inside a Selection Region:
+    /// Selection Region 内の pointer-down から選択を始める。
     ///
-    /// - Shift+click keeps the existing anchor and moves the focus to the hit
-    ///   point (range extension), when an anchor lives in the same IFC.
-    /// - Otherwise the press count near the same spot cycles the gesture:
-    ///   1 = caret (drag-extendable), 2 = word, 3 = paragraph.
+    /// - Shift+クリックは（anchor が同じ IFC にあるとき）既存 anchor を保ち focus を
+    ///   ヒット点へ移す（範囲拡張）。
+    /// - それ以外は同じ箇所付近の押下回数でジェスチャを巡回する。
+    ///   1 = キャレット（ドラッグ拡張可）、2 = 単語、3 = 段落。
     ///
-    /// A press outside any `selectable` subtree clears the selection and does not
-    /// start a drag.
+    /// `selectable` サブツリー外の押下は選択をクリアし、ドラッグを始めない。
     fn begin_selection_at(&mut self, x: f32, y: f32, modifiers: u32) {
         let Some(point) = self.selection_point_at(x, y) else {
             self.selection_drag = false;
@@ -1241,13 +1205,12 @@ impl ElementTree {
             return;
         };
 
-        // A SelectionArea selection and any text-input edit selection are
-        // mutually exclusive (single active, ADR-0097, #271).
+        // SelectionArea 選択と text-input 編集選択は排他（単一 active、ADR-0097）。
         self.collapse_edit_selections();
 
         if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
-            // Shift+click adjusts focus; stay in drag so the user can keep
-            // dragging, but do not advance the multi-click cycle.
+            // Shift+クリックは focus を調整。ドラッグを続けられるよう drag に留まる
+            // が、マルチクリック周期は進めない。
             self.selection_drag = true;
             self.last_click_pos = Some((x, y));
             self.click_count = 1;
@@ -1270,15 +1233,14 @@ impl ElementTree {
         }
     }
 
-    /// Begin (or extend) a text-input's edit selection from a pointer-down
-    /// inside it (ADR-0097, #271). A plain press drops a caret and arms a drag;
-    /// Shift+click extends the focus from the existing anchor. Consecutive presses
-    /// near the same spot cycle the gesture like the read-only SelectionArea path
-    /// (`begin_selection_at`): 1 = caret, 2 = word, 3 = line (#366). Word/line
-    /// expansion is a Mouse/Pen gesture — under Touch a press stays a caret, so it
-    /// never competes with the long-press word selection (ADR-0104). Either way
-    /// the read-only SelectionArea selection is cleared (single active). Returns
-    /// whether the press landed inside an editable text-input.
+    /// text-input 内の pointer-down からその編集選択を始める（または拡張する）
+    /// （ADR-0097）。素の押下はキャレットを落としてドラッグを構え、Shift+クリックは
+    /// 既存 anchor から focus を拡張する。同じ箇所付近の連続押下は読み取り専用
+    /// SelectionArea 経路（`begin_selection_at`）同様にジェスチャを巡回する。
+    /// 1 = キャレット、2 = 単語、3 = 行。単語／行への拡張は Mouse/Pen ジェスチャで、
+    /// Touch では押下はキャレットのまま留まるので、長押しの単語選択と競合しない
+    /// （ADR-0104）。いずれにせよ読み取り専用 SelectionArea 選択はクリアされる
+    /// （単一 active）。押下が編集可能 text-input 内に着地したかを返す。
     fn begin_edit_selection(
         &mut self,
         hit: Option<ElementId>,
@@ -1300,9 +1262,9 @@ impl ElementTree {
             return false;
         };
 
-        // Shift+click extends the focus from the existing anchor (range
-        // extension), not a fresh caret, and does not advance the multi-click
-        // cycle — mirroring the read-only `begin_selection_at` Shift path.
+        // Shift+クリックは新規キャレットでなく既存 anchor から focus を拡張し
+        // （範囲拡張）、マルチクリック周期を進めない。読み取り専用
+        // `begin_selection_at` の Shift 経路を写す。
         if modifiers & MOD_SHIFT != 0 {
             if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
                 edit.move_focus(offset);
@@ -1314,8 +1276,8 @@ impl ElementTree {
             return true;
         }
 
-        // The press count near the same spot cycles caret → word → line. Word and
-        // line are Mouse/Pen expansions; under Touch every press stays a caret.
+        // 同じ箇所付近の押下回数でキャレット → 単語 → 行を巡回する。単語と行は
+        // Mouse/Pen の拡張で、Touch ではどの押下もキャレットのまま留まる。
         let phase = self.advance_click_phase(x, y);
         let bounds: Option<fn(&str, usize) -> (usize, usize)> =
             match (phase, self.last_pointer_kind == PointerKind::Touch) {
@@ -1332,26 +1294,25 @@ impl ElementTree {
                 None => edit.set_selection(offset, offset),
             }
         }
-        // A word/line selection is not drag-extendable (parity with the read-only
-        // path); a caret arms a drag so the user can extend it.
+        // 単語／行選択はドラッグ拡張不可（読み取り専用経路と同等）。キャレットは
+        // ユーザが拡張できるようドラッグを構える。
         self.edit_drag = bounds.is_none().then_some(input);
         self.finish_edit_selection(input);
         true
     }
 
-    /// Shared tail of [`begin_edit_selection`](Self::begin_edit_selection): a
-    /// text-input selection and a SelectionArea selection never coexist (single
-    /// active, ADR-0097), so clear the document selection and repaint the field.
+    /// [`begin_edit_selection`](Self::begin_edit_selection) の共通末尾。text-input
+    /// 選択と SelectionArea 選択は共存しない（単一 active、ADR-0097）ので、文書選択を
+    /// クリアしフィールドを再描画する。
     fn finish_edit_selection(&mut self, input: ElementId) {
         self.set_selection(None);
         self.engine
             .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
     }
 
-    /// Collapse every text-input's edit selection to a caret. Called when a
-    /// read-only SelectionArea selection starts, so at most one selection is
-    /// active across the document (ADR-0097, #271). Only fields that actually
-    /// held a range are repainted.
+    /// 全 text-input の編集選択をキャレットへ畳む。読み取り専用 SelectionArea
+    /// 選択が始まるときに呼ばれ、文書全体で active な選択を高々1つに保つ
+    /// （ADR-0097）。実際に範囲を持っていたフィールドだけ再描画する。
     fn collapse_edit_selections(&mut self) {
         let collapsed: Vec<ElementId> = self
             .elements
@@ -1371,8 +1332,8 @@ impl ElementTree {
         }
     }
 
-    /// Extend the in-flight text-input drag: move the edit selection's focus to
-    /// the byte offset under the pointer, keeping the anchor (ADR-0097, #271).
+    /// 進行中の text-input ドラッグを拡張する。編集選択の focus をポインタ下の
+    /// バイトオフセットへ移し、anchor を保つ（ADR-0097）。
     fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32) {
         let Some(offset) = self.edit_offset_at(input, x, y) else {
             return;
@@ -1387,10 +1348,9 @@ impl ElementTree {
             .mark_visual_dirty(input, VisualInvalidationReach::SelfOnly);
     }
 
-    /// Resolve a canvas point to a byte offset within a text-input's content,
-    /// using its Parley `content_layout` in the element's content box (inset by
-    /// border + padding, matching `element_character_bounds`). `None` when the
-    /// field has not been laid out yet.
+    /// canvas 点を text-input 内容のバイトオフセットに解決する。要素のコンテンツ
+    /// ボックス内（border + padding でインセット。`element_character_bounds` に
+    /// 一致）の Parley `content_layout` を使う。フィールド未レイアウトのとき `None`。
     fn edit_offset_at(&self, input: ElementId, x: f32, y: f32) -> Option<usize> {
         let el = self.elements.get(&input)?;
         let cl = el.content_layout.as_ref()?;
@@ -1402,9 +1362,9 @@ impl ElementTree {
         Some(byte_index_at_point(cl, x - content_x, y - content_y))
     }
 
-    /// Increment the consecutive-press counter when the pointer-down lands near
-    /// the previous one, else restart it, and return the 1-based gesture phase
-    /// cycling caret → word → paragraph (1, 2, 3, 1, …).
+    /// pointer-down が直前の付近なら連続押下カウンタを増やし、さもなくば再開し、
+    /// キャレット → 単語 → 段落を巡回する 1 始まりのジェスチャ位相（1, 2, 3, 1, …）
+    /// を返す。
     fn advance_click_phase(&mut self, x: f32, y: f32) -> u32 {
         const MULTI_CLICK_TOLERANCE: f32 = 4.0;
         let near = self.last_click_pos.is_some_and(|(lx, ly)| {
@@ -1415,9 +1375,8 @@ impl ElementTree {
         (self.click_count - 1) % 3 + 1
     }
 
-    /// Replace the selection with the byte range that `bounds` computes around
-    /// `point` within its IFC's shaped text. Falls back to a caret when the IFC
-    /// has no shaped text.
+    /// 選択を、IFC の整形済みテキスト内で `bounds` が `point` 周りに計算したバイト
+    /// 範囲で置き換える。IFC に整形テキストが無ければキャレットへフォールバックする。
     fn select_bounds_at(&mut self, point: SelectionPoint, bounds: fn(&str, usize) -> (usize, usize)) {
         let Some(text) = self.ifc_text(point.element) else {
             self.set_selection(Some(Selection::caret(point)));
@@ -1430,8 +1389,8 @@ impl ElementTree {
         }));
     }
 
-    /// Move the current selection's focus to `point`, keeping the anchor, when an
-    /// active selection's anchor is in the same IFC. Returns whether it applied.
+    /// active な選択の anchor が同じ IFC にあるとき、現在の選択の focus を `point`
+    /// へ移し anchor を保つ。適用したかを返す。
     fn extend_focus_to(&mut self, point: SelectionPoint) -> bool {
         let Some(sel) = self.selection else {
             return false;
@@ -1446,13 +1405,11 @@ impl ElementTree {
         true
     }
 
-    /// Apply a keyboard selection gesture to the active selection (#267) and
-    /// report whether the key was consumed:
+    /// active な選択へキーボード選択ジェスチャを適用し、キーを消費したかを返す。
     ///
-    /// - Ctrl/Cmd+A selects the whole Selection Region (the focus IFC).
-    /// - Shift+Arrow moves the focus by one character, or by a word when Alt
-    ///   (macOS) or Ctrl (Win/Linux) is also held; the anchor stays fixed, so
-    ///   repeated presses extend or contract the range.
+    /// - Ctrl/Cmd+A は Selection Region 全体（focus IFC）を選択する。
+    /// - Shift+Arrow は focus を1文字、Alt（macOS）または Ctrl（Win/Linux）併用で
+    ///   単語単位、移動する。anchor は固定なので、反復押下で範囲が伸縮する。
     fn handle_selection_key(&mut self, key: &str, modifiers: u32) -> bool {
         let Some(sel) = self.selection else {
             return false;
@@ -1481,15 +1438,13 @@ impl ElementTree {
         true
     }
 
-    /// Apply one [`EditIntent`] to `target` through the single editing seam
-    /// (ADR-0103) and report whether it was consumed. This is the OS-independent
-    /// entry point the Platform Adapter drives after mapping an OS keystroke to an
-    /// intent; `core` never inspects which key produced it.
+    /// 単一の編集継ぎ目（ADR-0103）で `target` に [`EditIntent`] を1つ適用し、
+    /// 消費したかを返す。Platform Adapter が OS キーストロークを intent に対応付けた
+    /// 後に駆動する OS 非依存の入口で、`core` はどのキー由来かを一切調べない。
     ///
-    /// Consumed only for an editable text-input with no active IME composition —
-    /// an in-progress preedit is left untouched so caret keys never break a
-    /// composition. Altering a text-input selection clears any read-only
-    /// SelectionArea selection (single-active rule, ADR-0097).
+    /// 編集可能 text-input で IME 変換が無いときだけ消費する。進行中のプリエディット
+    /// は触らず、キャレットキーが変換を壊さない。text-input 選択の変更は読み取り
+    /// 専用 SelectionArea 選択をクリアする（単一 active 規則、ADR-0097）。
     pub fn apply_edit_intent(&mut self, target: ElementId, intent: EditIntent) -> bool {
         let Some(el) = self.elements.get(&target) else {
             return false;
@@ -1503,18 +1458,16 @@ impl ElementTree {
         if edit.preedit.is_some() {
             return false;
         }
-        // Clipboard members of the vocabulary cross the Platform Adapter boundary
-        // (ADR-0097): the system clipboard lives on this seam, not on EditState,
-        // so they are resolved here by reusing the toolbar clipboard actions
-        // (which already act on the focused text-input's edit selection). The
-        // pure-state members (Move / Extend / Delete / SelectAll) go straight to
-        // the EditState seam.
-        // Vertical motion (↑/↓) and display-line Home/End in a *multi-line* field
-        // need Parley line geometry, which lives here on the tree seam, not on the
-        // pure `EditState` (ADR-0103, #368). Resolve those first; a single-line
-        // field (or one not yet laid out) falls through to `EditState::apply`,
-        // where ↑/↓ jump to the field ends and Home/End to the field boundary
-        // (Chromium `<input>`).
+        // 語彙のうちクリップボード系は Platform Adapter 境界を跨ぐ（ADR-0097）。
+        // システムクリップボードは EditState でなくこの継ぎ目にあるので、ここで
+        // ツールバーのクリップボードアクション（既に focus 中 text-input の編集選択に
+        // 作用する）を再利用して解決する。純粋状態系（Move / Extend / Delete /
+        // SelectAll）は EditState 継ぎ目へ直行する。
+        // *複数行*フィールドの垂直移動（↑/↓）と表示行 Home/End は Parley の行
+        // ジオメトリを要し、それは純粋 `EditState` でなくここのツリー継ぎ目にある
+        // （ADR-0103）。それらを先に解決する。単一行（または未レイアウト）は
+        // `EditState::apply` へ落ち、↑/↓ はフィールド端、Home/End はフィールド境界へ
+        // 飛ぶ（Chromium `<input>`）。
         if self.element_is_multiline(target) {
             let geometric = match intent {
                 EditIntent::Move { direction, .. } | EditIntent::Extend { direction, .. }
@@ -1560,16 +1513,16 @@ impl ElementTree {
         true
     }
 
-    /// Whether `id` is a multi-line text-input (`<textarea>` semantics), so ↑/↓
-    /// move between display lines and Home/End snap to display-line ends.
+    /// `id` が複数行 text-input（`<textarea>` 相当）か。そうなら ↑/↓ は表示行間を
+    /// 移動し Home/End は表示行端にスナップする。
     fn element_is_multiline(&self, id: ElementId) -> bool {
         self.elements.get(&id).map(|el| el.multiline).unwrap_or(false)
     }
 
-    /// Move the caret up or down one display line in a multi-line field, keeping
-    /// the sticky goal column (ADR-0103, #368). `extend` keeps the anchor (Shift).
-    /// Returns whether it applied — `false` when the field has no shaped layout
-    /// yet, so the caller falls back to the pure single-line semantics.
+    /// 複数行フィールドでキャレットを表示行1行ぶん上下させ、粘着するゴール列を
+    /// 保つ（ADR-0103）。`extend` は anchor を保つ（Shift）。適用したかを返す。
+    /// フィールドにまだ整形レイアウトが無いと `false` で、呼び出し側は純粋な単一行
+    /// 意味論へフォールバックする。
     fn apply_vertical_motion(
         &mut self,
         target: ElementId,
@@ -1590,8 +1543,7 @@ impl ElementTree {
             } else {
                 edit.set_selection(offset, offset);
             }
-            // The goal column survives the move so a run of ↑/↓ through short
-            // lines returns to the original column.
+            // ゴール列は移動後も残るので、短い行を抜ける ↑/↓ の連続は元の列へ戻る。
             edit.desired_x = Some(goal_x);
         }
         self.engine
@@ -1599,9 +1551,9 @@ impl ElementTree {
         true
     }
 
-    /// Byte offset the caret lands on after moving `delta` display lines, paired
-    /// with the goal column it aimed for (content-local x). Resolved from the
-    /// field's Parley `content_layout`. `None` when there is no shaped layout.
+    /// 表示行を `delta` 行移動した後にキャレットが着地するバイトオフセットと、
+    /// 狙ったゴール列（content-local x）のペア。フィールドの Parley `content_layout`
+    /// から解決する。整形レイアウトが無いとき `None`。
     fn vertical_caret_target(&self, target: ElementId, delta: isize) -> Option<(usize, f32)> {
         use parley::Cursor;
         let el = self.elements.get(&target)?;
@@ -1613,29 +1565,29 @@ impl ElementTree {
             return None;
         }
         let (current_line, caret_x) = caret_display_line(layout, edit.cursor_byte_index);
-        // Aim for the stored goal column, or the caret's current x on first move.
+        // 保存したゴール列を狙う。初回移動ではキャレットの現在 x。
         let goal_x = edit.desired_x.unwrap_or(caret_x);
         let target_line = current_line as isize + delta;
         if target_line < 0 {
-            // Above the first line → the field start (Chromium).
+            // 先頭行より上 → フィールド先頭（Chromium）。
             return Some((0, goal_x));
         }
         if target_line as usize >= line_count {
-            // Below the last line → the field end.
+            // 最終行より下 → フィールド末尾。
             return Some((edit.text_content.len(), goal_x));
         }
         let line = layout.get(target_line as usize)?;
         let m = line.metrics();
-        // A y inside the target line, near its baseline (mirrors Parley's own
-        // line stepping), hit-tested at the goal column.
+        // 対象行内のベースライン付近の y（Parley 自身の行ステップを写す）を、
+        // ゴール列でヒットテストする。
         let y = m.block_max_coord - m.ascent * 0.5;
         let dest = Cursor::from_point(layout, goal_x, y);
         Some((dest.index(), goal_x))
     }
 
-    /// Move the caret to the start/end of its current *display* line in a
-    /// multi-line field (Home/End over soft-wrapped rows, ADR-0103, #368).
-    /// `extend` keeps the anchor (Shift+Home/End). Returns whether it applied.
+    /// 複数行フィールドで現在の*表示*行の先頭／末尾へキャレットを移す（ソフト
+    /// ラップ行に対する Home/End、ADR-0103）。`extend` は anchor を保つ
+    /// （Shift+Home/End）。適用したかを返す。
     fn apply_display_line_boundary(
         &mut self,
         target: ElementId,
@@ -1646,7 +1598,7 @@ impl ElementTree {
             return false;
         };
         if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
-            // Home/End is a horizontal motion: it drops the sticky goal column.
+            // Home/End は水平移動なので、粘着するゴール列を捨てる。
             edit.desired_x = None;
             if extend {
                 edit.move_focus(offset);
@@ -1659,9 +1611,9 @@ impl ElementTree {
         true
     }
 
-    /// Byte offset of the start (Backward) or end (Forward) of the caret's
-    /// current display line, from the field's Parley `content_layout`. `None`
-    /// when there is no shaped layout.
+    /// キャレットの現在表示行の先頭（Backward）または末尾（Forward）のバイト
+    /// オフセット。フィールドの Parley `content_layout` から得る。整形レイアウトが
+    /// 無いとき `None`。
     fn display_line_boundary_target(
         &self,
         target: ElementId,
@@ -1679,8 +1631,8 @@ impl ElementTree {
         let range = line.text_range();
         match direction {
             Direction::Backward => Some(range.start),
-            // Exclude a soft-wrap's boundary whitespace/newline so End lands at the
-            // last visible glyph of the row, matching Parley's `line_end`.
+            // ソフトラップ境界の空白／改行を除外し、End が行の最後の可視グリフに
+            // 着地するようにする。Parley の `line_end` に一致。
             Direction::Forward => {
                 let mut end = range.end;
                 let text = &edit.text_content;
@@ -1692,13 +1644,13 @@ impl ElementTree {
                 }
                 Some(end)
             }
-            // Home/End only carry a horizontal direction.
+            // Home/End は水平方向しか持たない。
             Direction::Up | Direction::Down => None,
         }
     }
 
-    /// Select the entire shaped text of `ifc` (Ctrl/Cmd+A). Returns whether a
-    /// range was set (false when the element carries no shaped text).
+    /// `ifc` の整形済みテキスト全体を選択する（Ctrl/Cmd+A）。範囲を設定したかを
+    /// 返す（要素が整形テキストを持たなければ false）。
     fn select_all_in(&mut self, ifc: ElementId) -> bool {
         let Some(text) = self.ifc_text(ifc) else {
             return false;
@@ -1710,7 +1662,7 @@ impl ElementTree {
         true
     }
 
-    /// The concatenated shaped text of an IFC root, for byte-boundary gestures.
+    /// IFC 根の整形済みテキストの連結。バイト境界ジェスチャ向け。
     fn ifc_text(&self, ifc: ElementId) -> Option<std::sync::Arc<str>> {
         self.elements
             .get(&ifc)?
@@ -1719,9 +1671,9 @@ impl ElementTree {
             .map(|tl| tl.text.clone())
     }
 
-    /// Resolve a canvas point to a selection endpoint `(IFC root, byte offset)`,
-    /// using the IFC's Parley content layout (ADR-0097). `None` when the point is
-    /// outside any `selectable` subtree or hits no shaped text.
+    /// canvas 点を選択端点 `(IFC root, byte offset)` に解決する。IFC の Parley
+    /// コンテンツレイアウトを使う（ADR-0097）。点が `selectable` サブツリー外か
+    /// 整形テキストに当たらないとき `None`。
     fn selection_point_at(&self, x: f32, y: f32) -> Option<SelectionPoint> {
         let hit = self.hit_test(x, y)?;
         if !self.within_selectable(hit) {
@@ -1734,27 +1686,25 @@ impl ElementTree {
         Some(SelectionPoint::new(ifc, offset))
     }
 
-    /// Whether a selection may begin at `id`: its effective `user-select` is not
-    /// `none` (ADR-0108 decisions 1+3). Selection is boundary-free by default, so
-    /// no explicit Selection Region root is required — a plain paragraph with the
-    /// kind-default `user-select: text` selects on drag. `image` / `button` carry
-    /// the kind-default `none`, and a `user-select: none` subtree opts out, so
-    /// neither starts a selection. Text presence at the point is enforced
-    /// downstream by `selection_point_at` (a non-text hit resolves to no IFC text
-    /// and yields no caret), so an empty `view` (kind-default `text`) starts
-    /// nothing even though it is not `none`.
+    /// `id` で選択を始められるか。実効 `user-select` が `none` でないこと
+    /// （ADR-0108）。選択は既定で境界なしなので明示の Selection Region 根は不要。
+    /// 種別既定 `user-select: text` の素の段落はドラッグで選択できる。`image` /
+    /// `button` は種別既定 `none`、`user-select: none` サブツリーはオプトアウトする
+    /// ので、どちらも選択を始めない。点にテキストがあるかは下流の
+    /// `selection_point_at` が強制する（非テキストヒットは IFC テキスト無しに解決し
+    /// キャレットを生まない）ので、空の `view`（種別既定 `text`）は `none` でなくても
+    /// 何も始めない。
     fn within_selectable(&self, id: ElementId) -> bool {
         !self.user_select_excludes(id)
     }
 
-    /// The nearest Selection Region root ancestor of `id` (inclusive): an element
-    /// that confines selection to its subtree. Two markers establish one — the
-    /// legacy `selectable` flag (ADR-0097) and `user-select: contains`, the
-    /// CSS-authored containment boundary (ADR-0108 decision 3). `None` when `id`
-    /// is under neither. The nearest such ancestor wins, so a nested boundary (a
-    /// `contains` box inside an outer region, or `contains` within `contains`)
-    /// shadows its ancestors: two points share a region only when their nearest
-    /// root matches, which is what keeps a selection from leaking across it.
+    /// `id` の最近接 Selection Region 根祖先（自身を含む）。選択をそのサブツリーに
+    /// 閉じ込める要素。2つのマーカが境界を成す。旧来の `selectable` フラグ
+    /// （ADR-0097）と、CSS で記述する封じ込め境界 `user-select: contains`
+    /// （ADR-0108）。`id` がどちらの下でもなければ `None`。最近接の祖先が勝つので、
+    /// ネストした境界（外側領域内の `contains` ボックス、または `contains` 内の
+    /// `contains`）は祖先を隠す。2点が領域を共有するのは最近接根が一致するときだけで、
+    /// これが選択の越境を防ぐ。
     fn selection_region_of(&self, id: ElementId) -> Option<ElementId> {
         let mut current = Some(id);
         while let Some(eid) = current {
@@ -1778,20 +1728,18 @@ impl ElementTree {
         if let Some(now) = self.selection {
             self.mark_selection_dirty(now);
         }
-        // Every real change to the document-global Selection — set, moved, or
-        // cleared, whether from a gesture or the programmatic API — notifies the
-        // host once (ADR-0097 growth point). The equality guard above means a
-        // redundant set emits nothing. Payload-less by design: the host polls
-        // `selection()` for the new state, like the DOM `selectionchange` event.
+        // 文書グローバル Selection の実質的変更（設定・移動・クリア。ジェスチャでも
+        // プログラム API でも）はホストに一度通知する（ADR-0097）。上の等値ガードに
+        // より冗長な設定は何も発しない。意図的にペイロードなし。ホストは DOM の
+        // `selectionchange` 同様に `selection()` で新状態をポーリングする。
         self.emit_interaction(Event::SelectionChange);
     }
 
-    /// Move the drag focus to `point`, keeping the anchor (ADR-0097). The focus
-    /// is clamped to the anchor's Selection Region: a drag that wanders into a
-    /// different `selectable` region (a nested one, or none) leaves the focus
-    /// where it was, so the selection never leaks past a `selectable` boundary.
-    /// Routed through `set_selection` so every block the range gained or lost
-    /// re-lowers its highlight.
+    /// ドラッグ focus を `point` へ移し anchor を保つ（ADR-0097）。focus は anchor の
+    /// Selection Region にクランプされる。別の `selectable` 領域（ネストしたもの、
+    /// または領域なし）へ迷い込んだドラッグは focus を元の位置に留めるので、選択は
+    /// `selectable` 境界を越えて漏れない。`set_selection` を通すので、範囲が得た／
+    /// 失った各ブロックがハイライトを再生成する。
     fn update_selection_focus(&mut self, point: SelectionPoint) {
         let Some(sel) = self.selection else {
             return;
@@ -1808,9 +1756,9 @@ impl ElementTree {
         }));
     }
 
-    /// Re-lower every block the selection covers so the highlight follows it —
-    /// the two endpoint blocks plus any block document-ordered between them
-    /// (#269), so a cross-block range repaints intermediate paragraphs too.
+    /// 選択が覆う各ブロックを再生成し、ハイライトを追従させる。両端点ブロックと、
+    /// その間に文書順で並ぶブロックを含むので、ブロック跨ぎ範囲は中間の段落も
+    /// 再描画する。
     fn mark_selection_dirty(&mut self, sel: Selection) {
         for block in self.blocks_spanned_by(sel) {
             self.engine
@@ -1818,9 +1766,9 @@ impl ElementTree {
         }
     }
 
-    /// The IFC blocks a selection covers, in document order: just the one block
-    /// for a same-block selection, otherwise every IFC root in the anchor's
-    /// Selection Region from the earlier endpoint's block through the later one.
+    /// 選択が覆う IFC ブロックを文書順で返す。同一ブロックの選択ならその1ブロック
+    /// だけ。さもなくば anchor の Selection Region 内で、先の端点のブロックから後の
+    /// ものまでの各 IFC 根。
     fn blocks_spanned_by(&self, sel: Selection) -> Vec<ElementId> {
         if sel.anchor.element == sel.focus.element {
             return vec![sel.anchor.element];
@@ -1838,7 +1786,7 @@ impl ElementTree {
         }
     }
 
-    /// IFC-root blocks in document order (pre-order DFS from the document root).
+    /// 文書順（文書根からの pre-order DFS）の IFC 根ブロック。
     fn preorder_ifc_roots(&self) -> impl Iterator<Item = ElementId> + '_ {
         let mut out = Vec::new();
         if let Some(root) = self.root {
@@ -1884,11 +1832,10 @@ impl ElementTree {
             return;
         }
         self.element_blur(id);
-        // Modality-dependent blur lifecycle (ADR-0104, #364). Touch dismisses the
-        // selection — collapse the edit range to a caret (Android: tapping outside
-        // the field clears the selection and its chrome). Mouse/Pen keep the range
-        // in EditState, hidden by the focus-linked highlight, so a refocus restores
-        // it (Chromium form-control parity).
+        // モダリティ依存の blur ライフサイクル（ADR-0104）。Touch は選択を解除し、
+        // 編集範囲をキャレットへ畳む（Android: フィールド外タップで選択と chrome が
+        // 消える）。Mouse/Pen は範囲を EditState に保ち focus 連動ハイライトで隠すので、
+        // 再 focus で復元される（Chromium フォームコントロール同等）。
         if self.last_pointer_kind == PointerKind::Touch {
             self.collapse_edit_selection_of(id);
         }
@@ -1898,9 +1845,9 @@ impl ElementTree {
         );
     }
 
-    /// Collapse a single text-input's edit selection to a caret, repainting it
-    /// only when it actually held a range. The blur-time counterpart of the
-    /// document-wide [`collapse_edit_selections`](Self::collapse_edit_selections).
+    /// 単一 text-input の編集選択をキャレットへ畳み、実際に範囲を持っていたときだけ
+    /// 再描画する。文書全体版
+    /// [`collapse_edit_selections`](Self::collapse_edit_selections) の blur 時版。
     fn collapse_edit_selection_of(&mut self, id: ElementId) {
         let collapsed = self
             .elements
@@ -1931,7 +1878,7 @@ impl ElementTree {
     }
 }
 
-/// Grow `acc` (min-x, min-y, max-x, max-y) to include the rect `(x, y, w, h)`.
+/// `acc`（min-x, min-y, max-x, max-y）を矩形 `(x, y, w, h)` を含むよう広げる。
 fn accumulate_rect(acc: &mut Option<(f32, f32, f32, f32)>, x: f32, y: f32, w: f32, h: f32) {
     let (x1, y1) = (x + w, y + h);
     *acc = Some(match *acc {
@@ -1940,7 +1887,7 @@ fn accumulate_rect(acc: &mut Option<(f32, f32, f32, f32)>, x: f32, y: f32, w: f3
     });
 }
 
-/// Convert accumulated (min-x, min-y, max-x, max-y) bounds into a positioned rect.
+/// 累積した (min-x, min-y, max-x, max-y) 境界を位置付き矩形に変換する。
 fn rect_from_bounds(
     (x0, y0, x1, y1): (f32, f32, f32, f32),
 ) -> crate::element::selection_chrome::ToolbarRect {

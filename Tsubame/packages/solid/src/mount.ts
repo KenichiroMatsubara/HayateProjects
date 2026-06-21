@@ -26,9 +26,9 @@ export function renderTsubame(
   target: IRenderer,
   options?: RenderTsubameOptions,
 ): () => void {
-  // Apply the Style Channel gate once, in front of the chosen renderer
-  // (Tsubame ADR-0008): every renderer receives already-filtered patches, so
-  // Semantics Parity is structural and a new renderer needs no gate of its own.
+  // Style Channel ゲートを選択したレンダラーの手前で一度だけ適用する
+  // （ADR-0008）。各レンダラーはフィルタ済みのパッチを受け取るので、
+  // Semantics Parity は構造的に成立し、新レンダラーは独自ゲート不要。
   const renderer = withTextLocalGate(target);
   setActiveRenderer(renderer);
   const rootId = renderer.createElement('view');

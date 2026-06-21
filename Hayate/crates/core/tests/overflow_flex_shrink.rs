@@ -1,10 +1,7 @@
-//! The `overflow` prop reaches Taffy, not just the visual clip. A non-`visible`
-//! overflow makes a box a CSS scroll container, whose flex automatic minimum
-//! size is 0, so it shrinks to the space its siblings leave instead of
-//! overflowing them. This is the general-prop counterpart of the scroll-view
-//! kind default (see `scroll_view_flex_shrink.rs`): before the fix the bridge
-//! dropped `overflow` entirely, so even `overflow: hidden` boxes refused to
-//! shrink, diverging from the browser (DOM mode).
+//! `overflow` プロップは視覚的クリップだけでなく Taffy にも届く。`visible` 以外の
+//! overflow はボックスを CSS スクロールコンテナにし、その flex 自動最小サイズは 0 に
+//! なるため、兄弟をはみ出さず残りスペースに縮む。`scroll_view_flex_shrink.rs` の
+//! kind デフォルトに対する一般プロップ版で、ブラウザ(DOM モード)挙動と一致させる。
 
 use hayate_core::{
     Dimension, ElementKind, ElementTree, FlexDirectionValue, OverflowValue, StyleProp,
@@ -13,11 +10,11 @@ use hayate_core::{
 const WINDOW_H: f32 = 800.0;
 const BAR_H: f32 = 64.0;
 const CONTENT_H: f32 = 2000.0;
-const LEFTOVER: f32 = WINDOW_H - BAR_H; // 736: the space the box should shrink to
+const LEFTOVER: f32 = WINDOW_H - BAR_H; // 736: ボックスが縮むべき残りスペース
 
-/// A flex column: a fixed-height bar (can't shrink) above a `view` sized
-/// `height: 100%` whose own child is taller than the window. Returns the tree
-/// and the middle box so a test can toggle its `overflow` and re-measure.
+/// flex 縦列: 縮まない固定高バーの下に、子がウィンドウより高い `height: 100%` の
+/// `view` を置く。ツリーと中段ボックスを返し、テストが `overflow` を切り替えて
+/// 再計測できるようにする。
 fn build(overflow: Option<OverflowValue>) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -88,12 +85,12 @@ fn overflow_hidden_view_shrinks_as_flex_item() {
 
 #[test]
 fn toggling_overflow_at_runtime_re_runs_layout() {
-    // Start visible: the box keeps its full basis and overflows the window.
+    // visible 開始: ボックスは full basis を保ちウィンドウをはみ出す。
     let (mut tree, box_) = build(Some(OverflowValue::Visible));
     assert!((box_height(&tree, box_) - WINDOW_H).abs() < 0.5);
 
-    // Flip to hidden: the dual-routing must mark the Taffy node layout-dirty,
-    // so the next render shrinks it to the leftover space.
+    // hidden へ切替: dual-routing が Taffy ノードを layout-dirty にし、次の
+    // render で残りスペースに縮むこと。
     tree.element_set_style(box_, &[StyleProp::Overflow(OverflowValue::Hidden)]);
     tree.render(0.0);
     assert!(
@@ -102,7 +99,7 @@ fn toggling_overflow_at_runtime_re_runs_layout() {
         box_height(&tree, box_)
     );
 
-    // Flip back to visible: it grows back to the full basis.
+    // visible へ戻す: full basis まで再び広がる。
     tree.element_set_style(box_, &[StyleProp::Overflow(OverflowValue::Visible)]);
     tree.render(0.0);
     assert!(

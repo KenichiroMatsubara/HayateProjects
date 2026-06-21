@@ -1,29 +1,24 @@
-//! Element-kind UA default + explicit `user-select` → browser `user-select`
-//! mapping (ADR-0108, supersedes ADR-0097 decision 2; refines decision 5). HTML
-//! Mode uses the browser's native selection, bounded by `user-select`. This is
-//! the Rust half of the parity contract with the Tsubame DOM Renderer
-//! (`resolveUserSelect`); the single source
-//! `proto/spec/fixtures/user_select_parity.json` pins both sides (ADR-0070).
+//! 要素種別の UA デフォルト + 明示 `user-select` → ブラウザ `user-select` への
+//! マッピング（ADR-0108、ADR-0097 を置換）。HTML Mode は `user-select` で
+//! 境界づけられたブラウザネイティブ選択を使う。Tsubame DOM Renderer
+//! （`resolveUserSelect`）とのパリティ契約の Rust 側で、単一ソース
+//! `proto/spec/fixtures/user_select_parity.json` が両側を固定する（ADR-0070）。
 
 use hayate_core::{ElementKind, UserSelectValue};
 
-/// Resolve the CSS `user-select` value for an element.
+/// 要素の CSS `user-select` 値を解決する。
 ///
-/// Resolution order (ADR-0108): explicit `user-select` → element-kind UA
-/// default → (none/unselectable). Selectability is opt-out, mirroring CSS:
+/// 解決順序（ADR-0108）: 明示 `user-select` → 要素種別の UA デフォルト →
+/// （none/選択不可）。選択可能性は CSS と同様にオプトアウト。
 ///
-/// - text-input always owns its editing selection, so it is `text` regardless
-///   of any explicit value or kind default.
-/// - Otherwise the effective value is the explicit `user-select` if present,
-///   else the kind default (`view` / `text` / `scroll-view` = `text`,
-///   `image` / `button` = `none`).
-/// - `text` maps to CSS `text`; `none` maps to CSS `none` and excludes the
-///   subtree.
-/// - `contains` is selectable but establishes a containment boundary, so it maps
-///   to CSS `contain` (ADR-0108 decision 3, #400). Browsers supporting
-///   `user-select: contain` confine native selection to the element; those that
-///   do not ignore it and the core-side boundary clamp supplies the same
-///   semantics (semantics-only parity).
+/// - text-input は常に編集選択を持つため、明示値や種別デフォルトに関わらず `text`。
+/// - それ以外の実効値は、明示 `user-select` があればそれ、無ければ種別デフォルト
+///   （`view` / `text` / `scroll-view` = `text`、`image` / `button` = `none`）。
+/// - `text` は CSS `text`、`none` は CSS `none` へ。後者はサブツリーを除外する。
+/// - `contains` は選択可能だが包含境界を確立するため CSS `contain` へ写す
+///   （ADR-0108）。`user-select: contain` をサポートするブラウザはネイティブ選択を
+///   要素内に閉じ込め、非サポートのブラウザはそれを無視するが、core 側の境界
+///   クランプが同じセマンティクスを供給する（セマンティクスのみのパリティ）。
 pub fn resolve_user_select(kind: ElementKind, explicit: Option<UserSelectValue>) -> &'static str {
     if matches!(kind, ElementKind::TextInput) {
         return "text";

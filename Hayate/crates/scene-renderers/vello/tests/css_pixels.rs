@@ -1,6 +1,6 @@
-//! Pixel-level regression tests for every Hayate CSS catalog property (Vello).
+//! Hayate CSS カタログの全プロパティに対するピクセル単位の回帰テスト（Vello）。
 //!
-//! Skips entirely when no wgpu adapter is available.
+//! wgpu アダプタが無い環境では丸ごとスキップする。
 
 use hayate_scene_test_support::{
     run_all_vello, run_vello, try_vello_harness, BORDER_RASTER_CASES, CSS_PIXEL_CASES,
@@ -11,8 +11,8 @@ fn all_catalog_css_properties_vello() {
     let _ran = run_all_vello(CSS_PIXEL_CASES);
 }
 
-/// Issue #337: 1px borders draw as opaque columns and the focus ring never
-/// erases the content it overlays — on vello.
+/// vello 上で、1px ボーダーが不透明な縦線として描画され、フォーカスリングが
+/// 重なる内容を消さないことを検証する。
 #[test]
 fn border_raster_regressions_vello() {
     let _ran = run_all_vello(BORDER_RASTER_CASES);

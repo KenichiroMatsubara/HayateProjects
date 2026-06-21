@@ -1,24 +1,22 @@
-//! Pixel regression for the "nested scroll (chaining)" CSS Gallery sample
-//! (issue #200). An inner `scroll-view` nested inside an outer `scroll-view`
-//! must clip its overflowing content to its own box — both at rest and after
-//! the outer scroll-view is scrolled, so the inner `Clip` correctly tracks the
-//! outer scroll-offset `Group` transform.
+//! CSS Gallery サンプル「nested scroll (chaining)」のピクセル回帰テスト。
+//! 外側 `scroll-view` に入れ子の内側 `scroll-view` は、はみ出す内容を自分のボックスに
+//! クリップしなければならない。これは静止時も外側スクロール後も同様で、内側 `Clip` が
+//! 外側のスクロールオフセット `Group` 変換を正しく追従することを保証する。
 //!
-//! Layout (viewport space, scale 1.0), outer scroll-view at the origin:
+//! レイアウト（ビューポート空間、scale 1.0）、外側 scroll-view は原点：
 //!
 //! ```text
 //!   outer scroll-view  (180 x 120)
 //!   └─ column          (flex-direction: column)
 //!      ├─ inner scroll-view (160 x 60)   ── screen y 0..60
-//!      │  └─ green content  (160 x 200)  ── clipped to the inner box
-//!      ├─ spacer            (160 x 20)   ── screen y 60..80  (transparent gap)
-//!      └─ blue tail         (160 x 100)  ── screen y 80..180 (clipped by outer)
+//!      │  └─ green content  (160 x 200)  ── 内側ボックスにクリップ
+//!      ├─ spacer            (160 x 20)   ── screen y 60..80  （透明な隙間）
+//!      └─ blue tail         (160 x 100)  ── screen y 80..180 （外側でクリップ）
 //! ```
 //!
-//! The inner green content is 200px tall but lives in a 60px inner box, so the
-//! pre-#199 bug painted "Inner D"/"Inner E" past the inner box, on top of the
-//! "Outer tail" rows. The transparent spacer gives a region where bleed is
-//! detectable independent of sibling paint order.
+//! 内側の緑は高さ 200px だが 60px の内側ボックスに収まる。修正前のバグでは
+//! 「Inner D」「Inner E」が内側ボックスを越えて「Outer tail」の行の上に描かれていた。
+//! 透明な spacer は、兄弟の描画順に依存せず漏れを検出できる領域を与える。
 
 use hayate_core::{
     Color, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue, StyleProp,
@@ -44,7 +42,7 @@ fn is_blue(p: [u8; 4]) -> bool {
     p[2] > 200 && p[0] < 60 && p[1] < 60
 }
 
-/// Build the nested-scroll-chaining tree and return `(tree, outer_scroll_id)`.
+/// nested-scroll-chaining のツリーを組み立て、`(tree, outer_scroll_id)` を返す。
 fn nested_scroll_chaining_tree() -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::ScrollView);
@@ -113,28 +111,28 @@ fn nested_scroll_chaining_tree() -> (ElementTree, ElementId) {
     (tree, outer)
 }
 
-/// At rest, the inner scroll-view's overflowing content is clipped to its own
-/// 60px box and does not bleed onto the transparent gap or the outer tail.
+/// 静止時、内側 scroll-view のはみ出す内容は自分の 60px ボックスにクリップされ、
+/// 透明な隙間や外側の tail に漏れない。
 #[test]
 fn inner_content_clipped_to_its_box_at_rest() {
     let (tree, _outer) = nested_scroll_chaining_tree();
     let mut pixmap = Pixmap::new(200, 200).unwrap();
     TinySkiaSceneRenderer::new().render_scene(tree.scene_graph(), &mut pixmap, CLEAR, 1.0);
 
-    // Inner content visible inside the 60px inner box.
+    // 60px の内側ボックス内で内容が見える。
     assert!(
         is_green(pixel(&pixmap, 80, 30)),
         "inner content should be visible inside its box, got {:?}",
         pixel(&pixmap, 80, 30)
     );
-    // Transparent gap below the inner box (y 60..80): inner content must not
-    // bleed here. This is the "Inner D/Inner E" overlap region.
+    // 内側ボックスの下の透明な隙間（y 60..80）。ここに内容が漏れてはならない。
+    // 「Inner D/Inner E」の重なり領域。
     assert_eq!(
         pixel(&pixmap, 80, 70),
         [255, 255, 255, 255],
         "inner content must be clipped to its box, not bleed onto the gap"
     );
-    // Outer tail below the gap (y 80..120) is the blue tail, undisturbed.
+    // 隙間の下の外側 tail（y 80..120）は青い tail で、乱されていない。
     assert!(
         is_blue(pixel(&pixmap, 80, 100)),
         "outer tail should be visible and un-overlapped, got {:?}",
@@ -142,20 +140,18 @@ fn inner_content_clipped_to_its_box_at_rest() {
     );
 }
 
-/// After scrolling the outer scroll-view up by 30px, the inner `Clip` must
-/// track the inner scroll-view's new painted position (shifted up by the outer
-/// scroll-offset `Group` transform) instead of staying at its un-transformed
-/// local coordinates. With the outer offset applied:
+/// 外側 scroll-view を 30px 上にスクロールしたとき、内側 `Clip` は未変換のローカル
+/// 座標に留まらず、内側 scroll-view の新しい描画位置（外側スクロールオフセットの
+/// `Group` 変換で上にずれる）を追従しなければならない。外側オフセット適用後：
 ///
 /// ```text
-///   inner box  ── screen y -30..30   (green clipped to its bottom at y=30)
-///   gap        ── screen y  30..50   (transparent)
-///   blue tail  ── screen y  50..150  (clipped by outer to 50..120)
+///   inner box  ── screen y -30..30   （緑は下端 y=30 でクリップ）
+///   gap        ── screen y  30..50   （透明）
+///   blue tail  ── screen y  50..150  （外側で 50..120 にクリップ）
 /// ```
 ///
-/// If the inner clip drifted (clipped at un-transformed local y 0..60 while the
-/// content paints shifted up), green would bleed down to ~y=30..60 and paint
-/// over the gap.
+/// 内側クリップがずれた場合（内容は上にずれて描かれるのにクリップは未変換のローカル
+/// y 0..60 のまま）、緑が y=30..60 付近まで漏れて隙間を塗りつぶす。
 #[test]
 fn inner_clip_tracks_outer_scroll_offset_without_drift() {
     let (mut tree, outer) = nested_scroll_chaining_tree();
@@ -165,20 +161,20 @@ fn inner_clip_tracks_outer_scroll_offset_without_drift() {
     let mut pixmap = Pixmap::new(200, 200).unwrap();
     TinySkiaSceneRenderer::new().render_scene(tree.scene_graph(), &mut pixmap, CLEAR, 1.0);
 
-    // Inner content still visible near the (now shifted) top of the inner box.
+    // （ずれた）内側ボックス上端付近で内容がまだ見える。
     assert!(
         is_green(pixel(&pixmap, 80, 15)),
         "inner content should remain visible after outer scroll, got {:?}",
         pixel(&pixmap, 80, 15)
     );
-    // Gap region (screen y 30..50): the inner clip moved up with the content,
-    // so green must stop at ~y=30 — no drift bleeding into the gap.
+    // 隙間領域（screen y 30..50）。内側クリップは内容と一緒に上へ動くので、緑は
+    // y=30 付近で止まらねばならない（隙間への漏れ＝ドリフトなし）。
     assert_eq!(
         pixel(&pixmap, 80, 45),
         [255, 255, 255, 255],
         "inner clip must track the outer scroll transform (no drift past y=30)"
     );
-    // Outer tail, now shifted up to screen y 50..120, is still blue.
+    // 外側 tail は screen y 50..120 に上へずれたが、まだ青い。
     assert!(
         is_blue(pixel(&pixmap, 80, 70)),
         "outer tail should be visible after outer scroll, got {:?}",

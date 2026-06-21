@@ -1,13 +1,11 @@
-//! End-to-end verification of the Canvas keymap → EditIntent path (ADR-0103).
+//! Canvas キーマップ → EditIntent 経路の E2E 検証（ADR-0103）。
 //!
-//! Runs in a headless browser via `wasm-pack test --headless --firefox`, built
-//! with `--no-default-features --features backend-null`. A real `pointerdown`
-//! focuses a laid-out text-input, then `on_key_down` arrow presses cross the
-//! wasm boundary, are mapped to an `EditIntent` by the adapter keymap, and drive
-//! core's `apply_edit_intent` — observable because a following `on_text_input`
-//! inserts at the moved caret. No test-only export (ADR-0072): only the real
-//! host API (`element_set_text_content`, `on_key_down`, `on_text_input`,
-//! `element_get_text_content`, `focused_element_id`) is used.
+//! ヘッドレスブラウザ上で実行する。実際の `pointerdown` でレイアウト済みの
+//! text-input をフォーカスし、`on_key_down` の矢印キーが wasm 境界を越えて
+//! アダプタのキーマップで `EditIntent` に変換され、core の `apply_edit_intent`
+//! を駆動する。後続の `on_text_input` が移動後のキャレット位置に挿入するため
+//! 観測できる。テスト専用エクスポートは使わず、実ホスト API のみで検証する
+//! （ADR-0072）。
 #![cfg(target_arch = "wasm32")]
 
 use hayate_adapter_web::HayateElementRenderer;
@@ -20,12 +18,12 @@ use web_sys::HtmlCanvasElement;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-/// `ElementKind::TextInput` discriminant (crates/core/src/element/kind.rs).
+/// `ElementKind::TextInput` の判別値。
 const ELEMENT_KIND_TEXT_INPUT: u32 = 4;
-/// `MODIFIER_CTRL` (proto/spec wire contract) — the primary modifier on
-/// Win/Linux, which the adapter keymap maps to clipboard / select-all intents.
+/// `MODIFIER_CTRL`。Win/Linux の主修飾キーで、アダプタのキーマップでは
+/// クリップボードや全選択の intent に対応する。
 const MOD_CTRL: u32 = 2;
-/// Style-packet tags (proto/spec/style_tags.json): WIDTH=5, HEIGHT=6, unit Px=0.
+/// スタイルパケットのタグ: WIDTH=5, HEIGHT=6, 単位 Px=0。
 const TAG_WIDTH: f32 = 5.0;
 const TAG_HEIGHT: f32 = 6.0;
 const UNIT_PX: f32 = 0.0;
@@ -56,9 +54,9 @@ fn dispatch_pointer_down(canvas: &HtmlCanvasElement, client_x: f64, client_y: f6
     js_sys::Reflect::set(&init, &"clientY".into(), &JsValue::from_f64(client_y)).unwrap();
     js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
     js_sys::Reflect::set(&init, &"pointerType".into(), &"mouse".into()).unwrap();
-    // The adapter's pointerdown listener ignores non-primary pointers
-    // (`pe.is_primary()`), and `PointerEventInit.isPrimary` defaults to false —
-    // without this the synthetic press is dropped and never focuses the input.
+    // アダプタの pointerdown リスナーは非プライマリポインタを無視し
+    // （`pe.is_primary()`）、`PointerEventInit.isPrimary` の既定は false。
+    // これがないと合成押下が捨てられ input がフォーカスされない。
     js_sys::Reflect::set(&init, &"isPrimary".into(), &JsValue::TRUE).unwrap();
 
     let args = js_sys::Array::of2(&JsValue::from_str("pointerdown"), &init);
@@ -69,10 +67,10 @@ fn dispatch_pointer_down(canvas: &HtmlCanvasElement, client_x: f64, client_y: f6
     canvas.dispatch_event(&event).unwrap();
 }
 
-/// Shadow `navigator.clipboard.readText` with a stub that resolves to `text`, so
-/// the async Ctrl/Cmd+V read is deterministic in headless automation (where the
-/// real clipboard-read permission is denied). This patches the live `Clipboard`
-/// object the adapter reads through — no test-only export in the adapter itself.
+/// `navigator.clipboard.readText` を `text` に解決するスタブで置き換える。
+/// ヘッドレス環境では実クリップボード読み取り権限が拒否されるため、
+/// 非同期の Ctrl/Cmd+V 読み取りを決定的にする。アダプタが参照する生の
+/// `Clipboard` オブジェクトを差し替えるので、アダプタ側にテスト専用エクスポートは要らない。
 fn stub_clipboard_read_text(text: &'static str) {
     let clipboard = web_sys::window().unwrap().navigator().clipboard();
     let stub = Closure::wrap(Box::new(move || -> js_sys::Promise {
@@ -84,12 +82,12 @@ fn stub_clipboard_read_text(text: &'static str) {
         stub.as_ref().unchecked_ref(),
     )
     .unwrap();
-    // Keep the closure alive for the page's lifetime — the adapter calls it later.
+    // アダプタが後で呼ぶので、クロージャをページ寿命まで生かす。
     stub.forget();
 }
 
-/// Yield to the microtask queue so a `spawn_local`'d future (the clipboard read)
-/// gets a chance to run to completion before the test inspects the result.
+/// マイクロタスクキューに譲り、`spawn_local` した future（クリップボード読み取り）が
+/// 結果検査の前に完了できるようにする。
 async fn flush_microtasks() {
     for _ in 0..3 {
         let _ = JsFuture::from(js_sys::Promise::resolve(&JsValue::UNDEFINED)).await;
@@ -103,7 +101,7 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
         .await
         .expect("renderer init");
 
-    // A single text-input filling the surface, carrying "hello" (caret at end).
+    // 画面いっぱいの text-input に "hello"（キャレットは末尾）。
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
     renderer
         .element_set_style(
@@ -114,7 +112,7 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
     renderer.set_root(1.0);
     renderer.element_set_text_content(1.0, "hello");
 
-    // Lay out, then focus the input with a genuine pointerdown drained on render.
+    // レイアウト後、実 pointerdown を render で処理して input をフォーカスする。
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
@@ -125,9 +123,9 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
         "the pointerdown should focus the text-input"
     );
 
-    // Drive the caret to the very start: each bare ArrowLeft must cross the wasm
-    // boundary, map to a Move/Grapheme/Backward intent, and step the caret left
-    // (clamping at 0). Then typing inserts at the caret.
+    // キャレットを先頭まで動かす。各 ArrowLeft は wasm 境界を越えて
+    // Move/Grapheme/Backward intent に変換され、キャレットを左へ1歩
+    // （0でクランプ）。その後の入力はキャレット位置に挿入される。
     for _ in 0..10 {
         renderer.on_key_down("ArrowLeft", 0);
     }
@@ -138,8 +136,7 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
         "ArrowLeft moved the caret to the start, so typing inserts there"
     );
 
-    // Driving back to the end and typing inserts at the tail, proving ArrowRight
-    // also routes through the keymap.
+    // 末尾まで戻して入力すると末尾に挿入され、ArrowRight もキーマップを経由することを示す。
     for _ in 0..10 {
         renderer.on_key_down("ArrowRight", 0);
     }
@@ -153,8 +150,8 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
 
 #[wasm_bindgen_test]
 async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
-    // #362: a multi-line text-input treats Enter as a newline inserted at the
-    // caret, not appended to the end. Drive the caret to the start, then Enter.
+    // 複数行 text-input では Enter を末尾追加ではなくキャレット位置への
+    // 改行挿入として扱う。キャレットを先頭へ動かしてから Enter。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -177,12 +174,12 @@ async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
     renderer.render(16.0).unwrap();
     assert_eq!(renderer.focused_element_id(), 1.0);
 
-    // The press dropped the caret at the click point (ADR-0097, #271), so it is
-    // not necessarily at the end. Clamp it to the end first (ArrowRight past the
-    // last grapheme is a no-op), then step one left to sit between 'a' and 'b'.
+    // 押下はクリック位置にキャレットを置く（ADR-0097）ので末尾とは限らない。
+    // まず末尾へクランプし（末尾より先の ArrowRight は no-op）、1歩左へ動かして
+    // 'a' と 'b' の間に置く。
     renderer.on_key_down("ArrowRight", 0);
     renderer.on_key_down("ArrowRight", 0);
-    renderer.on_key_down("ArrowLeft", 0); // caret between 'a' and 'b'
+    renderer.on_key_down("ArrowLeft", 0); // キャレットを 'a' と 'b' の間へ
     renderer.on_key_down("Enter", 0);
     assert_eq!(
         renderer.element_get_text_content(1.0),
@@ -193,8 +190,8 @@ async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
 
 #[wasm_bindgen_test]
 async fn enter_in_a_single_line_field_does_not_insert_a_newline() {
-    // #362: the default (single-line) text-input leaves its text untouched on
-    // Enter — the key is the app's submit signal, not a newline.
+    // 既定（単一行）の text-input は Enter でテキストを変えない。
+    // このキーはアプリの送信シグナルであり改行ではない。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -247,8 +244,8 @@ async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
     renderer.render(16.0).unwrap();
     assert_eq!(renderer.focused_element_id(), 1.0);
 
-    // Home maps to a Move/LineBoundary/Backward intent and jumps to the field
-    // start; typing then inserts there.
+    // Home は Move/LineBoundary/Backward intent に変換され、フィールド先頭へ
+    // ジャンプする。入力はそこに挿入される。
     renderer.on_key_down("Home", 0);
     renderer.on_text_input(1.0, "X");
     assert_eq!(
@@ -257,7 +254,7 @@ async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
         "Home jumped the caret to the field start"
     );
 
-    // End maps to Move/LineBoundary/Forward and jumps back to the field end.
+    // End は Move/LineBoundary/Forward に変換され、フィールド末尾へ戻る。
     renderer.on_key_down("End", 0);
     renderer.on_text_input(1.0, "Z");
     assert_eq!(
@@ -290,8 +287,8 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
     renderer.render(16.0).unwrap();
     assert_eq!(renderer.focused_element_id(), 1.0, "the pointerdown should focus the input");
 
-    // Drive the caret to the end, then Backspace removes the trailing 'o' — the
-    // key crosses the wasm boundary, maps to Delete/Backward, and edits content.
+    // キャレットを末尾へ動かし、Backspace で末尾の 'o' を削除する。
+    // キーは wasm 境界を越えて Delete/Backward に変換され内容を編集する。
     for _ in 0..10 {
         renderer.on_key_down("ArrowRight", 0);
     }
@@ -302,8 +299,8 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
         "Backspace removed the char before the caret"
     );
 
-    // Drive the caret to the start, then Delete removes the leading 'h' — proving
-    // forward delete also routes through the keymap.
+    // キャレットを先頭へ動かし、Delete で先頭の 'h' を削除する。
+    // 前方削除もキーマップを経由することを示す。
     for _ in 0..10 {
         renderer.on_key_down("ArrowLeft", 0);
     }
@@ -317,8 +314,8 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
 
 #[wasm_bindgen_test]
 async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
-    // #363: Ctrl+Backspace / Ctrl+Delete cross the wasm boundary, map to a
-    // Delete/Word intent in the adapter keymap, and remove a whole word.
+    // Ctrl+Backspace / Ctrl+Delete は wasm 境界を越え、アダプタのキーマップで
+    // Delete/Word intent に変換され、単語まるごとを削除する。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -340,7 +337,7 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
     renderer.render(16.0).unwrap();
     assert_eq!(renderer.focused_element_id(), 1.0, "the pointerdown should focus the input");
 
-    // Drive the caret to the end, then Ctrl+Backspace removes the trailing word.
+    // キャレットを末尾へ動かし、Ctrl+Backspace で末尾の単語を削除する。
     for _ in 0..20 {
         renderer.on_key_down("ArrowRight", 0);
     }
@@ -351,7 +348,7 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
         "Ctrl+Backspace removed the word before the caret"
     );
 
-    // Drive the caret to the start, then Ctrl+Delete removes the leading word.
+    // キャレットを先頭へ動かし、Ctrl+Delete で先頭の単語を削除する。
     for _ in 0..20 {
         renderer.on_key_down("ArrowLeft", 0);
     }
@@ -365,12 +362,11 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
 
 #[wasm_bindgen_test]
 async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
-    // ADR-0097 / #361: the browser clipboard read is async, so Canvas Mode cannot
-    // serve it through core's synchronous `Clipboard::read_text`. Ctrl/Cmd+V must
-    // instead kick off `navigator.clipboard.readText()` and feed the resolved
-    // text back through `element_paste` on the next render. With a stubbed read
-    // this whole path is observable: an empty focused field ends up holding the
-    // clipboard text.
+    // ブラウザのクリップボード読み取りは非同期なので、Canvas Mode は core の
+    // 同期 `Clipboard::read_text` では処理できない（ADR-0097）。Ctrl/Cmd+V は
+    // `navigator.clipboard.readText()` を起動し、解決したテキストを次の render で
+    // `element_paste` に戻す。読み取りをスタブすればこの経路全体が観測でき、
+    // 空のフォーカス中フィールドにクリップボードのテキストが入る。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -385,7 +381,7 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
         .unwrap();
     renderer.set_root(1.0);
 
-    // Lay out, then focus the (empty) input with a genuine pointerdown.
+    // レイアウト後、実 pointerdown で（空の）input をフォーカスする。
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
@@ -394,10 +390,10 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
 
     stub_clipboard_read_text("PASTED");
 
-    // Ctrl+V maps (in the adapter keymap) to a Paste intent; the adapter starts
-    // the async read instead of going through the synchronous seam.
+    // Ctrl+V はアダプタのキーマップで Paste intent に対応し、同期シームを通さず
+    // 非同期読み取りを開始する。
     renderer.on_key_down("v", MOD_CTRL);
-    // Let the spawned read resolve, then render drains it into the field.
+    // 起動した読み取りを解決させ、render がそれをフィールドへ流し込む。
     flush_microtasks().await;
     renderer.render(32.0).unwrap();
 

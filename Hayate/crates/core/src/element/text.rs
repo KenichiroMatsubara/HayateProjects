@@ -14,30 +14,28 @@ use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowVal
 use crate::node::{TextDecorationLine, TextRunData};
 use crate::render::{RenderFont, RenderGlyph};
 
-/// Brush type stored in Parley styles; color is applied at draw time.
+/// Parley スタイルに保持するブラシ型。色は描画時に適用する。
 pub type TextBrush = [u8; 4];
 
-/// The bundled default font family. Always available in canvas (WASM) mode where
-/// system fonts are absent. Unknown font names fall back to this via CSS font stack.
+/// バンドルされたデフォルトフォントファミリ。システムフォントのない canvas(WASM)
+/// モードでも常に利用可能。未知のフォント名は CSS フォントスタックでこれにフォールバックする。
 pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans";
 
-/// Register `data` into `collection` under `family_name`, and—unless it *is* the
-/// bundled default—wire it in as a per-cluster *fallback* by appending it to the
-/// `sans-serif` generic **after** the bundled default.
+/// `data` を `family_name` として `collection` に登録し、バンドルデフォルト自身でない
+/// 限り、`sans-serif` ジェネリックへバンドルデフォルトの後ろに追加してクラスタ単位の
+/// フォールバックとして組み込む。
 ///
-/// This backs on-demand font loading ([`crate::element::tree::ElementTree::register_font`]).
-/// A fetched font must be reachable two ways: by its own name (so a CSS stack
-/// like `"Inter, …"` can select it) and as a fallback for glyphs the bundled
-/// font lacks (emoji, foreign scripts).
+/// オンデマンドのフォント読み込み([`crate::element::tree::ElementTree::register_font`])を支える。
+/// 取得したフォントは2通りで到達可能でなければならない: 自身の名前で(CSS スタック
+/// `"Inter, …"` が選べるように)、およびバンドルフォントに無いグリフ(絵文字・他言語)の
+/// フォールバックとして。
 ///
-/// Crucially it must NOT shadow the bundled default. The previous implementation
-/// aliased every fetched font *under* `DEFAULT_FONT_FAMILY`, which added a
-/// competing face to that family; fontique then selected the newly-fetched
-/// (e.g. Latin-only Inter) face for whole runs and every CJK glyph collapsed to
-/// `.notdef` the moment any fallback was fetched — the deployed-Pages tofu
-/// cascade (text rendered correctly, then turned to □ after the first fetch).
-/// Appending to the generic keeps the bundled face first, so it is always tried
-/// first per cluster and the fetched font only fills genuine gaps.
+/// 重要なのはバンドルデフォルトを隠してはならない点。以前は取得フォントをすべて
+/// `DEFAULT_FONT_FAMILY` の別名にしており、そのファミリに競合フェイスを追加していた。
+/// すると fontique が新たに取得した(例: Latin のみの Inter)フェイスを丸ごとのランに選び、
+/// フォールバックを取得した途端に全 CJK グリフが `.notdef` に落ちた(テキストが正しく描画され
+/// た後、最初の取得で □ になる豆腐化現象)。ジェネリックへ追加すればバンドルフェイスが先頭に
+/// 残り、クラスタ単位で常に先に試され、取得フォントは本当の欠落だけを埋める。
 pub fn register_collection_font(collection: &mut Collection, family_name: &str, data: Arc<Vec<u8>>) {
     let override_info = FontInfoOverride {
         family_name: Some(family_name),
@@ -50,7 +48,7 @@ pub fn register_collection_font(collection: &mut Collection, family_name: &str, 
     }
 }
 
-/// Byte range → owning inline text element (deepest wins on lookup).
+/// バイト範囲 → それを所有するインラインテキスト要素(検索時は最深がち勝つ)。
 #[derive(Clone, Debug, Default)]
 pub struct RangeMap {
     pub(crate) entries: Vec<(usize, usize, crate::element::id::ElementId)>,
@@ -77,7 +75,7 @@ impl RangeMap {
     }
 }
 
-/// A styled byte range for ranged Parley shaping (ADR-0063).
+/// 範囲指定 Parley シェーピング用のスタイル付きバイト範囲(ADR-0063)。
 #[derive(Clone)]
 pub struct RangedTextSpan {
     pub byte_start: usize,
@@ -90,18 +88,18 @@ pub struct RangedTextSpan {
     pub brush: TextBrush,
 }
 
-/// A Parley layout cached on an Element, plus the lowered Vello glyph runs.
+/// Element にキャッシュした Parley レイアウトと、ローワリング済みの Vello グリフラン。
 pub struct TextLayout {
     pub layout: Layout<TextBrush>,
     pub runs: Vec<Arc<TextRunData>>,
     pub font_size: f32,
     pub text: Arc<str>,
-    /// Width constraint last used; if None, single-line.
+    /// 直近に使った幅制約。None なら単一行。
     pub width_constraint: Option<f32>,
-    /// Font family names with .notdef glyphs detected during shaping.
-    /// Each entry indicates a font that should be dynamically loaded.
+    /// シェーピング中に .notdef グリフが検出されたフォントファミリ名。
+    /// 各エントリは動的に読み込むべきフォントを示す。
     pub missing_families: Vec<&'static str>,
-    /// IFC byte ranges → inline text element owners (ADR-0063).
+    /// IFC のバイト範囲 → インラインテキスト要素の所有者(ADR-0063)。
     pub range_map: Option<RangeMap>,
 }
 
@@ -113,36 +111,34 @@ fn parley_font_style(value: FontStyleValue) -> FontStyle {
     }
 }
 
-/// Resolve CSS generic family keywords to concrete font names for Canvas Mode.
+/// CSS のジェネリックファミリキーワードを Canvas Mode 用の具体的なフォント名へ解決する。
 ///
-/// HTML Mode passes the value straight to the browser, which resolves generics
-/// natively. Canvas Mode (Parley/Vello) has no system-font access in WASM, so
-/// generic keywords are mapped to bundled or on-demand-fetched Noto fonts.
+/// HTML Mode は値をそのままブラウザに渡し、ブラウザがジェネリックをネイティブに解決する。
+/// Canvas Mode(Parley/Vello)は WASM でシステムフォントにアクセスできないため、ジェネリック
+/// キーワードをバンドルまたはオンデマンド取得の Noto フォントへ対応付ける。
 pub(crate) fn resolve_generic_family(name: &str) -> &str {
     match name {
-        // sans-serif generics → default (Noto Sans, already bundled)
+        // sans-serif 系ジェネリック → デフォルト(バンドル済みの Noto Sans)
         "sans-serif" | "system-ui" | "ui-sans-serif" | "-apple-system" | "BlinkMacSystemFont"
         | "cursive" | "fantasy" | "ui-rounded" => DEFAULT_FONT_FAMILY,
-        // serif → Noto Serif (fetched on demand via builtin_font_url)
+        // serif → Noto Serif(builtin_font_url 経由でオンデマンド取得)
         "serif" | "ui-serif" => "Noto Serif",
-        // monospace → Noto Sans Mono (fetched on demand)
+        // monospace → Noto Sans Mono(オンデマンド取得)
         "monospace" | "ui-monospace" => "Noto Sans Mono",
-        // named or already-resolved family — pass through unchanged
+        // 名前付き、または解決済みのファミリはそのまま通す
         other => other,
     }
 }
 
-/// Split a CSS `font-family` value into its resolved entries, in order.
+/// CSS の `font-family` 値を、順序を保った解決済みエントリへ分割する。
 ///
-/// A `font-family` is a *stack*, e.g. `"Inter, Segoe UI, system-ui, sans-serif"`.
-/// Each comma-separated entry is trimmed (and unquoted), then passed through
-/// [`resolve_generic_family`] so generic keywords become concrete bundled/Noto
-/// names. Empty entries are dropped. Returned slices borrow from `value` or are
-/// `'static` (for resolved generics).
+/// `font-family` はスタック(例: `"Inter, Segoe UI, system-ui, sans-serif"`)。
+/// カンマ区切りの各エントリをトリム(引用符除去)し、[`resolve_generic_family`] を通して
+/// ジェネリックキーワードを具体的なバンドル/Noto 名にする。空エントリは捨てる。返すスライスは
+/// `value` を借用するか、解決済みジェネリックでは `'static`。
 ///
-/// Callers use this both to build the Parley font stack and to decide which
-/// named families to proactively fetch — fetching each entry individually
-/// instead of the whole comma string, which no adapter can map to a URL.
+/// 呼び出し側は Parley フォントスタックの構築と、先読み取得すべき名前付きファミリの判定の
+/// 両方に使う。URL に対応付けられないカンマ文字列全体ではなく、各エントリを個別に取得する。
 pub(crate) fn parse_font_family_list(value: &str) -> Vec<&str> {
     value
         .split(',')
@@ -152,10 +148,9 @@ pub(crate) fn parse_font_family_list(value: &str) -> Vec<&str> {
         .collect()
 }
 
-/// Build the Parley font stack for a CSS `font-family` value: every list entry
-/// resolved, with the bundled default appended as the terminal fallback so any
-/// unregistered name degrades to it. Returns the bare default when the value is
-/// empty or already resolves to the default alone.
+/// CSS の `font-family` 値から Parley フォントスタックを構築する。各エントリを解決し、
+/// 末尾にバンドルデフォルトを終端フォールバックとして追加するため、未登録の名前はこれに
+/// 退化する。値が空、またはデフォルト単体に解決される場合は素のデフォルトを返す。
 pub(crate) fn build_font_stack(font_family: Option<&str>) -> Cow<'static, str> {
     match font_family {
         Some(f) if !f.is_empty() => {
@@ -173,8 +168,8 @@ pub(crate) fn build_font_stack(font_family: Option<&str>) -> Cow<'static, str> {
     }
 }
 
-/// Build a Parley layout, break lines, and lower its glyph runs into
-/// `TextRunData` instances ready for the Raw Layer.
+/// Parley レイアウトを構築し、行分割して、グリフランを Raw Layer 用の `TextRunData` へ
+/// ローワリングする。
 pub fn build_text_layout(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
@@ -193,9 +188,9 @@ pub fn build_text_layout(
     if let Some(style) = font_style {
         builder.push_default(StyleProperty::FontStyle(parley_font_style(style)));
     }
-    // Resolve generic keywords, then build a CSS font stack so unknown names
-    // fall back to the bundled default. Parley resolves left-to-right and
-    // silently skips unregistered names, triggering FetchFont for missing ones.
+    // ジェネリックキーワードを解決し、未知の名前がバンドルデフォルトにフォールバックする
+    // よう CSS フォントスタックを構築する。Parley は左から順に解決して未登録名を黙って
+    // スキップし、欠落分には FetchFont を発火する。
     let stack = build_font_stack(font_family);
     builder.push_default(StyleProperty::FontFamily(FontFamily::Source(stack)));
     let mut layout: Layout<TextBrush> = builder.build(text);
@@ -213,16 +208,15 @@ pub fn build_text_layout(
     }
 }
 
-/// Browser `<input>` default `size` (chars). The UA default content width of a
-/// `text-input` with no explicit `width` is this many characters wide, measured
-/// in the resolved font (ADR-0109, issue #403). Not an inline magic number.
+/// ブラウザ `<input>` のデフォルト `size`(文字数)。明示的な `width` を持たない
+/// `text-input` の UA デフォルトコンテンツ幅は、解決済みフォントで計ったこの文字数分の
+/// 幅になる(ADR-0109)。インラインのマジックナンバーではない。
 pub const TEXT_INPUT_DEFAULT_SIZE_CHARS: usize = 20;
 
-/// Measure the UA default content width of an unsized `text-input`: the advance
-/// of [`TEXT_INPUT_DEFAULT_SIZE_CHARS`] `"0"` glyphs in the resolved font. This
-/// follows the font (font-size sensitive) and is independent of the input's own
-/// text/placeholder — mirroring the browser `<input size>` default, which fixes
-/// the field width and scrolls its value rather than growing to fit it.
+/// 幅未指定の `text-input` の UA デフォルトコンテンツ幅を測る。解決済みフォントでの
+/// [`TEXT_INPUT_DEFAULT_SIZE_CHARS`] 個の `"0"` グリフのアドバンス。フォントに追従し
+/// (font-size に依存)、入力自身のテキスト/プレースホルダには依存しない。フィールド幅を
+/// 固定し、内容に合わせて伸びずスクロールするブラウザ `<input size>` デフォルトを反映する。
 pub(crate) fn text_input_default_width(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
@@ -238,8 +232,8 @@ pub(crate) fn text_input_default_width(
     layout.layout.width()
 }
 
-/// Build a Parley layout with per-byte-range styles and break it into lines.
-/// Shared by the public IFC entry point and the `max-lines` re-shape passes.
+/// バイト範囲ごとのスタイルを持つ Parley レイアウトを構築し、行分割する。
+/// 公開 IFC エントリポイントと `max-lines` の再シェーピングパスで共有する。
 fn build_broken_ranged_layout(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
@@ -295,12 +289,11 @@ fn build_broken_ranged_layout(
     layout
 }
 
-/// Build a Parley layout with per-byte-range styles (IFC / inline text),
-/// optionally truncated to `max_lines` with `text-overflow` handling (issue #207).
+/// バイト範囲ごとのスタイルを持つ Parley レイアウト(IFC / インラインテキスト)を構築し、
+/// 必要なら `text-overflow` 処理付きで `max_lines` に切り詰める。
 ///
-/// `max_lines` is the sole truncation trigger; `text_overflow` is inert without
-/// it. `Ellipsis` appends `…` to the last visible line (trimming to fit the
-/// width constraint); `Clip` cuts silently.
+/// 切り詰めの唯一のトリガーは `max_lines`。これが無ければ `text_overflow` は無効。
+/// `Ellipsis` は最終可視行に `…` を付ける(幅制約に収まるようトリム)、`Clip` は黙って切る。
 pub fn build_ranged_text_layout(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
@@ -347,7 +340,7 @@ pub fn build_ranged_text_layout(
     }
 }
 
-/// Clip styled spans to the first `len` bytes, dropping any that fall entirely past it.
+/// スタイル付きスパンを先頭 `len` バイトに切り詰める。完全に範囲外のものは捨てる。
 fn clip_spans(spans: &[RangedTextSpan], len: usize) -> Vec<RangedTextSpan> {
     spans
         .iter()
@@ -361,8 +354,8 @@ fn clip_spans(spans: &[RangedTextSpan], len: usize) -> Vec<RangedTextSpan> {
         .collect()
 }
 
-/// Append an ellipsis (`…`) span at byte offset `at`, inheriting the trailing
-/// span's text style (but never its decoration).
+/// バイトオフセット `at` に省略記号(`…`)スパンを追加する。末尾スパンのテキストスタイルを
+/// 継承するが、装飾は継承しない。
 fn push_ellipsis_span(spans: &mut Vec<RangedTextSpan>, at: usize) {
     let ellipsis_len = '…'.len_utf8();
     let mut span = spans.last().cloned().unwrap_or(RangedTextSpan {
@@ -392,8 +385,8 @@ fn prev_char_boundary(s: &str, mut idx: usize) -> usize {
     idx
 }
 
-/// Build the `text-overflow: ellipsis` truncation: the longest prefix of `text`
-/// (up to `cut`) such that `prefix + …` still fits within `max` lines.
+/// `text-overflow: ellipsis` の切り詰めを構築する。`prefix + …` が `max` 行に収まる、
+/// `text` の(`cut` までの)最長プレフィックスを求める。
 fn fit_ellipsis(
     font_cx: &mut FontContext,
     layout_cx: &mut LayoutContext<TextBrush>,
@@ -458,7 +451,7 @@ fn lower_glyph_runs(
                     decorations.push(TextDecorationLine {
                         x0: grun.offset(),
                         x1: grun.offset() + grun.advance(),
-                        // Font metrics offsets are baseline-relative in y-up coords; flip for y-down.
+                        // フォントメトリクスのオフセットは y-up 座標でベースライン相対。y-down へ反転する。
                         y: grun.baseline() - deco_offset + size * 0.5,
                         thickness: size.max(1.0),
                     });
@@ -693,23 +686,23 @@ mod tests {
 
     #[test]
     fn parse_font_family_list_splits_resolves_and_unquotes_entries() {
-        // Whitespace, quotes, and a trailing generic are all handled per entry.
+        // 空白・引用符・末尾のジェネリックはすべてエントリ単位で処理される。
         assert_eq!(
             parse_font_family_list("Inter, \"Segoe UI\" , system-ui, sans-serif"),
             vec!["Inter", "Segoe UI", DEFAULT_FONT_FAMILY, DEFAULT_FONT_FAMILY],
         );
-        // Empty entries (e.g. a trailing comma) are dropped.
+        // 空エントリ(例: 末尾のカンマ)は捨てる。
         assert_eq!(parse_font_family_list("Inter,,"), vec!["Inter"]);
         assert!(parse_font_family_list("  ").is_empty());
     }
 
     #[test]
     fn build_font_stack_appends_default_as_terminal_fallback() {
-        // A named family gains the bundled default as its final fallback.
+        // 名前付きファミリは最終フォールバックとしてバンドルデフォルトを得る。
         assert_eq!(build_font_stack(Some("Inter")), "Inter, Noto Sans");
-        // A list already ending in the default is not duplicated.
+        // すでにデフォルトで終わるリストは重複しない。
         assert_eq!(build_font_stack(Some("Inter, sans-serif")), "Inter, Noto Sans");
-        // sans-serif alone collapses to the bare default.
+        // sans-serif 単体は素のデフォルトに収束する。
         assert_eq!(build_font_stack(Some("sans-serif")), DEFAULT_FONT_FAMILY);
         assert_eq!(build_font_stack(None), DEFAULT_FONT_FAMILY);
     }

@@ -1,69 +1,57 @@
-//! Pure touch/pen drag→scroll gesture logic for Canvas Mode (ADR-0082
-//! Amendment, #350). The `CanvasRenderer` owns a `ScrollGesture` and drives it
-//! from the drained pointer buffer; every decision (which pointers scroll, when
-//! a press becomes a scroll, how a finger delta maps to a scroll offset) lives
-//! here as a pure function unit-tested on all targets — the wasm wiring stays
-//! thin (mirrors `coalesce_pointer_inputs`).
+//! Canvas Mode 用、touch/pen のドラッグ→スクロールジェスチャの純粋ロジック（ADR-0082）。
+//! `CanvasRenderer` が `ScrollGesture` を保持し、drain したポインタバッファから駆動する。
+//! 判定（どのポインタがスクロールするか、押下がいつスクロールに変わるか、指の差分が
+//! スクロールオフセットへどう写るか）はすべて全ターゲットでユニットテスト可能な純粋関数として
+//! ここに置き、wasm 配線は薄く保つ。
 //!
-//! Scope (tracer-bullets 1–3/3): 1:1 finger-following inside the range, flick
-//! inertia (#351), and rubber-band overscroll with spring-back / bounce (#352).
-//! Offsets are applied via `element_set_scroll_offset` (SCR-02, un-clamped); the
-//! edge behaviour — resistance while dragging past it, a spring pulling it back
-//! on release or after an inertial bounce — lives in the pure functions here.
+//! 範囲内の 1:1 追従、フリックの慣性、ばね戻し／バウンス付きのラバーバンドオーバースクロールを扱う。
+//! オフセットは `element_set_scroll_offset`（SCR-02、未クランプ）で適用し、エッジ挙動
+//! ——越えてドラッグ中の抵抗、解放後や慣性バウンス後にばねで引き戻す——はここの純粋関数が担う。
 
-/// The physical pointer device axis is the core proto/wire concept
-/// [`PointerKind`](hayate_core::PointerKind) (#357). Threaded from the DOM
-/// `PointerEvent.pointerType` so only `touch`/`pen` enter the drag→scroll path;
-/// `mouse` keeps its selection/drag behaviour unchanged.
+/// 物理ポインタデバイスの種別はコアの proto/wire 概念
+/// [`PointerKind`](hayate_core::PointerKind)。DOM の `PointerEvent.pointerType` から渡され、
+/// `touch`/`pen` のみがドラッグ→スクロール経路に入る。`mouse` は選択/ドラッグ挙動のまま。
 pub use hayate_core::PointerKind;
 
-/// Whether a pointer of this kind drives the touch drag→scroll gesture. `Touch`
-/// and `Pen` do; `Mouse` is left on the selection/drag path (ADR-0082).
+/// この種別のポインタがドラッグ→スクロールジェスチャを駆動するか。`Touch` と `Pen` は駆動し、
+/// `Mouse` は選択/ドラッグ経路に残る（ADR-0082）。
 pub fn is_drag_scroll_pointer(kind: PointerKind) -> bool {
     matches!(kind, PointerKind::Touch | PointerKind::Pen)
 }
 
-/// Movement (px) a press must travel from its `pointerdown` before it is treated
-/// as a scroll rather than a tap. Below it, releasing fires a normal click;
-/// crossing it cancels the press and takes over scrolling. Named and defined
-/// once (not a magic number) so it can be tuned later — iOS-ish default.
+/// 押下がタップでなくスクロールと見なされるために `pointerdown` から動くべき距離(px)。
+/// これ未満なら解放で通常クリックが発火し、超えると押下をキャンセルしてスクロールへ移行する。
+/// マジックナンバーにせず一度だけ名前付き定義してチューニング可能にする。iOS 風の既定値。
 pub const SCROLL_SLOP_PX: f32 = 8.0;
 
-/// Whether `current` has travelled more than `slop` px (Euclidean) from `start`.
-/// The dead-zone is a radius so diagonal drags cross at the same distance on
-/// every axis.
+/// `current` が `start` から `slop` px 超（ユークリッド距離）動いたか。
+/// デッドゾーンを半径にすることで、斜めのドラッグも全軸で同じ距離で閾値を越える。
 pub fn exceeds_slop(start: (f32, f32), current: (f32, f32), slop: f32) -> bool {
     let dx = current.0 - start.0;
     let dy = current.1 - start.1;
     dx * dx + dy * dy > slop * slop
 }
 
-/// What a single `pointermove` does to a live gesture, decided purely so the
-/// wasm layer only has to act on the verdict.
+/// 1 回の `pointermove` が進行中ジェスチャに与える結果。純粋に判定し、wasm 層はこの結論に従うだけ。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MoveOutcome {
-    /// Still inside the slop dead-zone — the press is an unresolved tap, nothing
-    /// to apply (and the press stays alive so a release can still click).
+    /// まだ slop デッドゾーン内——押下は未確定のタップで適用すべきものはない
+    /// （押下は生きたままなので解放でまだクリックできる）。
     Pending,
-    /// This move crossed the slop: the press must be cancelled now
-    /// (`on_pointer_cancel`, #213) and scrolling takes over. No offset is
-    /// applied on the takeover frame — the dead-zone is consumed so scrolling
-    /// starts from here without a jump.
+    /// この move が slop を越えた。押下を今キャンセル（`on_pointer_cancel`）し、スクロールへ移行する。
+    /// 移行フレームではオフセットを適用しない——デッドゾーンを消費するので跳ねずにここからスクロールが始まる。
     StartScroll,
-    /// Already scrolling: shift the locked scroll-view's offset by this finger
-    /// delta (content follows the finger 1:1 inside the range; past an edge the
-    /// rubber-band resists it).
+    /// すでにスクロール中。ロックしたスクロールビューのオフセットをこの指の差分だけ動かす
+    /// （範囲内では指に 1:1 で追従し、エッジを越えるとラバーバンドが抵抗する）。
     Scroll { dx: f32, dy: f32 },
 }
 
-/// A live touch/pen drag locked to one scroll-view (ADR-0082). Tracks the
-/// `pointerdown` origin (for slop), the last position (for per-move deltas) and
-/// whether the slop has been crossed. The renderer creates one on a touch/pen
-/// `pointerdown` over a scroll-view and drives it from drained moves.
+/// 1 つのスクロールビューにロックされた進行中の touch/pen ドラッグ（ADR-0082）。
+/// `pointerdown` の起点（slop 用）、直前位置（move ごとの差分用）、slop を越えたかを追跡する。
+/// レンダラはスクロールビュー上の touch/pen `pointerdown` で生成し、drain した move で駆動する。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollGesture {
-    /// The scroll-view the gesture is locked to — it never chains to an ancestor
-    /// mid-gesture (v1 scope).
+    /// ジェスチャがロックされたスクロールビュー。ジェスチャ中に祖先へ連鎖することはない。
     pub scroll_view: hayate_core::ElementId,
     start: (f32, f32),
     last: (f32, f32),
@@ -71,8 +59,8 @@ pub struct ScrollGesture {
 }
 
 impl ScrollGesture {
-    /// Begin a gesture pending at `start` (the `pointerdown` position), locked to
-    /// `scroll_view`. Not scrolling until the slop is crossed.
+    /// `scroll_view` にロックし、`start`（`pointerdown` 位置）で pending 状態のジェスチャを開始する。
+    /// slop を越えるまではスクロールしない。
     pub fn new(scroll_view: hayate_core::ElementId, start: (f32, f32)) -> Self {
         Self {
             scroll_view,
@@ -82,9 +70,8 @@ impl ScrollGesture {
         }
     }
 
-    /// Classify a move to `pos`, advancing slop/scroll state. Returns the action
-    /// the renderer must take. The finger delta for `Scroll` is `last - pos`
-    /// (content follows the finger: dragging up scrolls content up).
+    /// `pos` への move を分類し、slop/scroll 状態を進める。レンダラが取るべきアクションを返す。
+    /// `Scroll` の指の差分は `last - pos`（コンテンツが指に追従。上にドラッグするとコンテンツも上へ）。
     pub fn on_move(&mut self, pos: (f32, f32), slop: f32) -> MoveOutcome {
         if self.scrolling {
             let dx = self.last.0 - pos.0;
@@ -100,77 +87,63 @@ impl ScrollGesture {
         }
     }
 
-    /// Whether releasing now should fire a click: true while the gesture never
-    /// crossed the slop (a tap), false once it became a scroll.
+    /// 今解放したらクリックを発火すべきか。slop を越えていなければ（タップ）true、
+    /// スクロールになっていれば false。
     pub fn is_tap(&self) -> bool {
         !self.scrolling
     }
 }
 
-// ── Momentum / inertia (issue #351, ADR-0082 Amendment, tracer-bullet 2/3) ──
+// ── 慣性スクロール（ADR-0082） ──
 //
-// Flicking and lifting hands a release velocity to a friction integrator that
-// keeps the locked scroll-view moving and decelerating until it rests (or hits
-// an edge and clamp-stops — no bounce this slice). Both halves are pure: the
-// `CanvasRenderer` records finger samples while dragging, estimates the release
-// velocity here on `pointerup`, then steps the decay once per rAF frame.
+// フリックして指を離すと解放速度が摩擦積分器へ渡り、ロックしたスクロールビューを
+// 止まるまで（またはエッジに当たってクランプ停止するまで）動かし減速させる。両者とも純粋：
+// `CanvasRenderer` はドラッグ中に指のサンプルを記録し、`pointerup` でここの解放速度を推定し、
+// rAF フレームごとに減衰を 1 ステップ進める。
 
-/// iOS-style scroll physics, gathered in one block so every coefficient stays a
-/// single named, tunable knob instead of a magic number sprinkled through the
-/// integrator (issue #351). The fling cap and the spring-back values were
-/// calibrated on-device (#353) via the `tuning.json` overlay and baked back
-/// here; adjust here and the whole feel changes.
+/// iOS 風スクロール物理の係数を 1 ブロックに集約し、積分器に散らばるマジックナンバーでなく
+/// 各係数を名前付きでチューニング可能なノブとして保つ。fling 上限とばね戻し値は実機で
+/// `tuning.json` オーバーレイ経由でキャリブレーションしここに焼き込んだ。ここを調整すれば全体の感触が変わる。
 pub mod physics {
-    /// Per-millisecond velocity retention under friction. Matches UIScrollView's
-    /// "normal" deceleration rate: after `t` ms a fling keeps `0.998^t` of its
-    /// speed, so it bleeds off smoothly over roughly a second.
+    /// 摩擦下でのミリ秒あたりの速度保持率。UIScrollView の「normal」減速率に一致：
+    /// `t` ms 後に fling は速度の `0.998^t` を保ち、おおよそ 1 秒かけて滑らかに減衰する。
     pub const DECELERATION_RATE: f32 = 0.998;
-    /// Release-fling speed cap (px/ms ≈ 16000 px/s) so a violent flick can't hurl
-    /// the content across the entire document in a single frame. Calibrated
-    /// on-device (#353) — a much snappier ceiling than the initial 4.0.
+    /// 解放 fling 速度の上限（px/ms ≈ 16000 px/s）。激しいフリックでも 1 フレームで
+    /// ドキュメント全体を横切らせないため。実機キャリブレーション済み。
     pub const MAX_RELEASE_VELOCITY: f32 = 16.0;
-    /// Speed (px/ms) below which momentum is treated as stopped and snaps to
-    /// rest — about a sub-pixel per 60fps frame — so the animation terminates
-    /// instead of crawling asymptotically toward zero.
+    /// この速度(px/ms)未満では慣性を停止扱いにして静止へスナップする——60fps フレームで
+    /// 約サブピクセル——アニメーションが 0 へ漸近して這い続けず終了するように。
     pub const MIN_VELOCITY: f32 = 0.02;
-    /// Only finger samples within this window (ms) of the most recent one feed
-    /// the release-velocity estimate, so a press that pauses before lifting
-    /// releases at rest rather than replaying a stale early flick.
+    /// 最新サンプルからこのウィンドウ(ms)内の指サンプルのみが解放速度の推定に寄与する。
+    /// 指を離す前に止めた押下は、古い初期フリックを再生せず静止状態で解放される。
     pub const SAMPLE_WINDOW_MS: f64 = 100.0;
 
-    // ── Overscroll / spring-back (issue #352, tracer-bullet 3/3) ──
+    // ── オーバースクロール／ばね戻し ──
 
-    /// Rubber-band resistance constant — the fraction of raw finger travel that
-    /// reaches the content at the very edge (the initial slope of the curve).
-    /// Matches iOS's `0.55`: drag one pixel past the edge and the content moves
-    /// roughly half a pixel, growing "heavier" the further you pull.
+    /// ラバーバンド抵抗定数——エッジ直上で素の指移動量のうちコンテンツに届く割合（曲線の初期傾き）。
+    /// iOS の `0.55` に一致：エッジを 1px 越えてドラッグしてもコンテンツは約半ピクセルしか動かず、
+    /// 引くほど「重く」なる。
     pub const RUBBER_BAND_C: f32 = 0.55;
-    /// Spring stiffness (px/ms² per px) pulling an overscrolled edge back to
-    /// rest. Calibrated on-device (#353) via the `tuning.jsonc` overlay and
-    /// baked back here — softer than the initial 0.0003 for a gentler return.
+    /// オーバースクロールしたエッジを静止へ引き戻すばね剛性（px/ms² per px）。
+    /// 実機キャリブレーション済み。穏やかな戻りのためやや柔らかめ。
     pub const SPRING_STIFFNESS: f32 = 0.0001;
-    /// Spring damping (px/ms per px/ms), held a touch *under* critical
-    /// (`2 * sqrt(SPRING_STIFFNESS)` ≈ 0.02) for a livelier bounce. The lighter
-    /// damping would normally let the bounce ring past the boundary, but
-    /// [`scroll_motion_step`] snaps a bounce to rest exactly **at** the edge, so
-    /// that overshoot is clamped away and only the snappier feel remains.
-    /// Calibrated on-device (#353) via the `tuning.jsonc` overlay.
+    /// ばね減衰（px/ms per px/ms）。活きたバウンスのため臨界（`2 * sqrt(SPRING_STIFFNESS)` ≈ 0.02）
+    /// よりわずかに下に保つ。減衰が軽いと通常はバウンスが境界を越えて振動するが、
+    /// [`scroll_motion_step`] がバウンスをエッジちょうどで静止へスナップするので
+    /// その行き過ぎはクランプされ、軽快な感触だけが残る。実機キャリブレーション済み。
     pub const SPRING_DAMPING: f32 = 0.015;
-    /// Displacement (px) from the edge below which spring-back is considered home.
+    /// エッジからの変位(px)がこれ未満ならばね戻しを home と見なす。
     pub const SPRING_REST_OFFSET: f32 = 0.5;
-    /// Velocity (px/ms) below which — once within [`SPRING_REST_OFFSET`] — the
-    /// spring snaps to the edge and the animation ends. Calibrated on-device
-    /// (#353) — ends the settle a touch earlier than the initial 0.05.
+    /// [`SPRING_REST_OFFSET`] 内に入った時、この速度(px/ms)未満でばねがエッジへスナップし
+    /// アニメーションを終える。実機キャリブレーション済み。
     pub const SPRING_REST_VELOCITY: f32 = 0.10;
 }
 
-/// A live, overridable copy of the scroll-physics knobs. The [`physics`] consts
-/// (and [`SCROLL_SLOP_PX`]) remain the authoritative defaults — [`Default`]
-/// reads them, so the numbers are never restated — but a dev build can overlay
-/// values at runtime (a `tuning.json` loaded on init) to feel-tune on a real
-/// device without recompiling. Production ships with no override, so every field
-/// equals its const and the read is a plain struct load (no perf cost over the
-/// old `const` reference).
+/// スクロール物理ノブの、実行時に上書き可能なコピー。[`physics`] 定数（と [`SCROLL_SLOP_PX`]）が
+/// 正となる既定値のまま——[`Default`] がそれを読むので数値を再記述しない——だが、開発ビルドは
+/// 実行時に値をオーバーレイ（初期化時に読み込む `tuning.json`）し、再コンパイルなしに実機で
+/// 感触を調整できる。本番はオーバーライドなしで出荷するので全フィールドが定数に等しく、
+/// 読み出しは単なる struct ロード（旧来の `const` 参照に対する性能コストはない）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollPhysicsTuning {
     pub slop_px: f32,
@@ -187,8 +160,7 @@ pub struct ScrollPhysicsTuning {
 
 impl Default for ScrollPhysicsTuning {
     fn default() -> Self {
-        // Mirror the authoritative consts — do not restate the literals here, so
-        // the `physics` block stays the single source of the default numbers.
+        // 正の定数をミラーする。ここにリテラルを再記述せず、`physics` ブロックを既定値の唯一の出所に保つ。
         Self {
             slop_px: SCROLL_SLOP_PX,
             deceleration_rate: physics::DECELERATION_RATE,
@@ -204,14 +176,12 @@ impl Default for ScrollPhysicsTuning {
     }
 }
 
-/// iOS-style rubber-band resistance for a single axis. `raw` is the offset a 1:1
-/// finger drag would reach; the return is the *displayed* offset. Inside
-/// `[0, max]` the drag passes through untouched; pulled past an edge the content
-/// lags behind with a resistance that grows the further out it goes (each extra
-/// pixel of drag moves the content less), asymptotically approaching `dimension`
-/// of overscroll so the edge feels "heavy" but never tears off the screen.
-/// Symmetric at both edges. A non-positive `dimension` disables overscroll
-/// (the raw offset is returned as-is past the edge — nothing to rubber-band).
+/// 1 軸の iOS 風ラバーバンド抵抗。`raw` は 1:1 の指ドラッグが到達するオフセットで、戻り値は
+/// *表示される* オフセット。`[0, max]` 内ではドラッグはそのまま通り、エッジを越えて引くと
+/// コンテンツは遅れ、外へ行くほど強まる抵抗（追加 1px ごとにコンテンツの動きが減る）で
+/// `dimension` のオーバースクロールへ漸近する——エッジは「重い」が画面から剥がれない。
+/// 両エッジで対称。`dimension` が非正だとオーバースクロールを無効化する
+/// （エッジを越えても raw をそのまま返す——ラバーバンドするものがない）。
 pub fn rubber_band_offset(raw: f32, max: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
     let max = max.max(0.0);
     if raw >= 0.0 && raw <= max {
@@ -223,9 +193,9 @@ pub fn rubber_band_offset(raw: f32, max: f32, dimension: f32, t: &ScrollPhysicsT
     }
 }
 
-/// The resisted overscroll distance for `x` px of raw pull past an edge:
-/// `(1 − 1/(x·c/d + 1))·d`. Zero at the edge, slope `c` ([`physics::RUBBER_BAND_C`])
-/// there, concave, and bounded by `dimension` as `x → ∞`.
+/// エッジを越えた raw な引き `x` px に対する、抵抗込みのオーバースクロール距離：
+/// `(1 − 1/(x·c/d + 1))·d`。エッジで 0、そこでの傾きは `c`（[`physics::RUBBER_BAND_C`]）、
+/// 上に凸で、`x → ∞` で `dimension` に有界。
 fn overscroll_curve(x: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
     if dimension <= 0.0 || x <= 0.0 {
         return x.max(0.0);
@@ -233,22 +203,19 @@ fn overscroll_curve(x: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
     (1.0 - 1.0 / (x * t.rubber_band_c / dimension + 1.0)) * dimension
 }
 
-/// Clamp a velocity (px/ms) to the symmetric release cap.
+/// 速度(px/ms)を対称な解放上限にクランプする。
 fn cap_release_velocity(v: f32, t: &ScrollPhysicsTuning) -> f32 {
     v.clamp(-t.max_release_velocity, t.max_release_velocity)
 }
 
-/// Estimate the release (fling) velocity in **offset space** (px/ms) from a
-/// sequence of finger samples `(x, y, timestamp_ms)` in arrival order. Offset
-/// space is the scroll-offset's sign convention — content follows the finger —
-/// so a finger sliding up returns a positive `vy`, the same direction the drag
-/// delta moves the offset.
+/// 到着順の指サンプル列 `(x, y, timestamp_ms)` から、解放(fling)速度を **オフセット空間**
+/// (px/ms) で推定する。オフセット空間はスクロールオフセットの符号規約——コンテンツが指に追従——
+/// なので、指が上へ滑ると正の `vy` を返す（ドラッグ差分がオフセットを動かす向きと同じ）。
 ///
-/// Only samples within [`physics::SAMPLE_WINDOW_MS`] of the most recent one
-/// contribute, so a finger that paused before lifting releases at rest. The
-/// estimate is the average velocity across that window (first → last), capped per
-/// axis at [`physics::MAX_RELEASE_VELOCITY`]. Fewer than two in-window samples,
-/// or a zero-duration span, yield no fling `(0.0, 0.0)`.
+/// 最新サンプルから [`physics::SAMPLE_WINDOW_MS`] 内のサンプルのみが寄与するので、
+/// 離す前に止めた指は静止状態で解放される。推定値はそのウィンドウ全体（最初→最後）の平均速度で、
+/// 軸ごとに [`physics::MAX_RELEASE_VELOCITY`] で上限を切る。ウィンドウ内サンプルが 2 未満、
+/// または所要時間が 0 の場合は fling なし `(0.0, 0.0)`。
 pub fn estimate_release_velocity(samples: &[(f32, f32, f64)], t: &ScrollPhysicsTuning) -> (f32, f32) {
     let Some(&(last_x, last_y, last_t)) = samples.last() else {
         return (0.0, 0.0);
@@ -262,18 +229,17 @@ pub fn estimate_release_velocity(samples: &[(f32, f32, f64)], t: &ScrollPhysicsT
     if dt <= 0.0 {
         return (0.0, 0.0);
     }
-    // Offset moves opposite the finger: offset delta = old_pos − new_pos.
+    // オフセットは指と逆向きに動く：オフセット差分 = old_pos − new_pos。
     (
         cap_release_velocity((first_x - last_x) / dt, t),
         cap_release_velocity((first_y - last_y) / dt, t),
     )
 }
 
-/// Advance one momentum axis by `dt_ms` under exponential friction. Returns the
-/// offset delta to apply this frame and the decayed velocity to carry into the
-/// next, both in offset space (px and px/ms). Once the decayed speed falls below
-/// [`physics::MIN_VELOCITY`] it snaps to `0.0`, so the caller can end the
-/// animation instead of integrating an asymptotic crawl.
+/// 慣性の 1 軸を指数摩擦下で `dt_ms` 進める。今フレーム適用するオフセット差分と、
+/// 次へ持ち越す減衰後の速度を返す（ともにオフセット空間、px と px/ms）。減衰後の速度が
+/// [`physics::MIN_VELOCITY`] を下回ると `0.0` へスナップするので、呼び出し側は漸近的な
+/// 這いを積分し続けずアニメーションを終えられる。
 pub fn momentum_step(velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     let delta = velocity * dt_ms;
     let next = velocity * t.deceleration_rate.powf(dt_ms);
@@ -284,18 +250,15 @@ pub fn momentum_step(velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32
     }
 }
 
-/// Advance one spring-back axis by `dt_ms` toward its edge (issue #352).
-/// `displacement` is the signed overscroll distance from the edge (negative past
-/// the top, positive past the bottom) and `velocity` is its rate (px/ms, offset
-/// space). A (near) critically-damped spring — [`physics::SPRING_STIFFNESS`] /
-/// [`physics::SPRING_DAMPING`] — pulls the displacement to zero: a finger
-/// released in overscroll eases back, and a fling that bounced past the edge
-/// (entering with outward velocity) overshoots then returns without ringing.
-/// Returns the next `(displacement, velocity)`, snapping to `(0.0, 0.0)` — home,
-/// animation over — once both fall within their rest thresholds.
+/// ばね戻しの 1 軸をエッジへ向けて `dt_ms` 進める。`displacement` はエッジからの符号付き
+/// オーバースクロール距離（上を越えると負、下を越えると正）、`velocity` はその変化率
+/// （px/ms、オフセット空間）。ほぼ臨界減衰のばね——[`physics::SPRING_STIFFNESS`] /
+/// [`physics::SPRING_DAMPING`]——が変位を 0 へ引く：オーバースクロール中に解放された指は
+/// 緩やかに戻り、エッジを越えてバウンスした fling（外向き速度で進入）は行き過ぎてから振動せず戻る。
+/// 次の `(displacement, velocity)` を返し、両者が rest 閾値に入ると `(0.0, 0.0)`（home、アニメ終了）へスナップする。
 pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
-    // Semi-implicit (symplectic) Euler: integrate velocity first, then position,
-    // so the spring stays stable at frame-sized dt.
+    // 半陰的（シンプレクティック）オイラー：先に速度、次に位置を積分し、
+    // フレームサイズの dt でばねを安定に保つ。
     let accel = -t.spring_stiffness * displacement - t.spring_damping * velocity;
     let next_v = velocity + accel * dt_ms;
     let next_x = displacement + next_v * dt_ms;
@@ -306,27 +269,22 @@ pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32, t: &ScrollPhysi
     }
 }
 
-/// Advance one axis of a released scroll by `dt_ms`, picking the right physics
-/// from where the offset sits (issue #352). Inside `[0, max]` it coasts under
-/// friction ([`momentum_step`]); a fling that runs off the edge keeps its
-/// velocity and crosses into overscroll, where the next frame [`spring_step`]
-/// pulls it back — so inertia reaching an edge bounces and returns. A release
-/// already in overscroll springs straight home. Returns the next
-/// `(offset, velocity)`; the offset is un-clamped (SCR-02) because overscroll is
-/// the whole point. The caller stops the animation once velocity rests **and**
-/// the offset is back within `[0, max]`.
+/// 解放されたスクロールの 1 軸を `dt_ms` 進め、オフセットの位置に応じて適切な物理を選ぶ。
+/// `[0, max]` 内では摩擦で惰走する（[`momentum_step`]）。エッジを越えて走る fling は速度を保って
+/// オーバースクロールへ渡り、そこで次フレームの [`spring_step`] が引き戻す——エッジに達した慣性は
+/// バウンスして戻る。すでにオーバースクロール中の解放はまっすぐ home へばねで戻る。次の
+/// `(offset, velocity)` を返す。オフセットは未クランプ（SCR-02）——オーバースクロールこそが目的だから。
+/// 呼び出し側は速度が静止し **かつ** オフセットが `[0, max]` 内に戻った時点でアニメーションを止める。
 ///
-/// A bounce settles **at** the edge it hit: when the spring would carry the
-/// content back across the edge into the range, the offset snaps to the edge at
-/// zero velocity rather than handing its residual inward speed to
-/// [`momentum_step`]. So a fling overshoots the boundary exactly once and comes
-/// to rest there — it can never re-cross the boundary and ping-pong between the
-/// two edges, however the spring is tuned (#352 follow-up).
+/// バウンスは当たったエッジ **ちょうど** で静止する：ばねがコンテンツをエッジを越えて範囲内へ
+/// 戻そうとする時、残った内向き速度を [`momentum_step`] に渡さず、オフセットを速度 0 でエッジへ
+/// スナップする。よって fling は境界をちょうど 1 回だけ行き過ぎてそこで静止する——ばねをどう
+/// チューニングしても、境界を再度越えて両エッジ間でピンポンすることはない。
 pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
     let max = max.max(0.0);
     if offset < 0.0 {
-        // Past the top edge (edge = 0): spring toward it. A non-negative result
-        // means the spring reached / crossed the edge — settle exactly there.
+        // 上のエッジ（edge = 0）を越えた：そこへばねで戻す。非負の結果は
+        // ばねがエッジに到達／越えたことを意味する——ちょうどそこで静止させる。
         let (disp, v) = spring_step(offset, velocity, dt_ms, t);
         if disp >= 0.0 {
             (0.0, 0.0)
@@ -334,8 +292,8 @@ pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &
             (disp, v)
         }
     } else if offset > max {
-        // Past the bottom edge (edge = max): symmetric — a non-positive
-        // displacement means it returned to / past the edge, so rest at `max`.
+        // 下のエッジ（edge = max）を越えた：対称——非正の変位はエッジへ戻った／越えたことを
+        // 意味するので `max` で静止させる。
         let (disp, v) = spring_step(offset - max, velocity, dt_ms, t);
         if disp <= 0.0 {
             (max, 0.0)
@@ -352,16 +310,16 @@ pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &
 mod tests {
     use super::*;
 
-    /// Default tuning for the physics functions — equals the authoritative consts,
-    /// so the behavioural assertions below are unchanged by the added parameter.
+    /// 物理関数用の既定チューニング——正の定数に等しいので、追加パラメータによって
+    /// 以下の挙動アサーションは変わらない。
     fn t() -> ScrollPhysicsTuning {
         ScrollPhysicsTuning::default()
     }
 
     #[test]
     fn default_tuning_mirrors_the_authoritative_consts() {
-        // Locks the invariant that `ScrollPhysicsTuning::default()` reflects the
-        // `physics` block: a future const edit that forgets the struct is caught.
+        // `ScrollPhysicsTuning::default()` が `physics` ブロックを反映する不変条件を固定する：
+        // struct の更新を忘れた将来の const 編集を検出する。
         let d = ScrollPhysicsTuning::default();
         assert_eq!(d.slop_px, SCROLL_SLOP_PX);
         assert_eq!(d.deceleration_rate, physics::DECELERATION_RATE);
@@ -384,14 +342,14 @@ mod tests {
 
     #[test]
     fn slop_is_a_named_tunable_constant_not_a_magic_number() {
-        // Pinned so the dead-zone stays a single named knob; value is iOS-ish.
+        // デッドゾーンを単一の名前付きノブに保つため固定。値は iOS 風。
         assert_eq!(SCROLL_SLOP_PX, 8.0);
     }
 
     #[test]
     fn movement_within_the_slop_radius_is_not_yet_a_scroll() {
         let start = (100.0, 100.0);
-        // 5px straight, and ~7.07px diagonal — both inside the 8px radius.
+        // 直進 5px と斜め約 7.07px——どちらも 8px 半径の内側。
         assert!(!exceeds_slop(start, (105.0, 100.0), SCROLL_SLOP_PX));
         assert!(!exceeds_slop(start, (105.0, 105.0), SCROLL_SLOP_PX));
     }
@@ -409,8 +367,8 @@ mod tests {
 
     #[test]
     fn release_velocity_is_the_offset_space_speed_over_the_recent_samples() {
-        // Finger slides up (y: 100 → 40) over 60ms. Content follows the finger,
-        // so the offset gains 60px in 60ms → +1 px/ms in offset space. X is still.
+        // 指が 60ms かけて上へ滑る（y: 100 → 40）。コンテンツが指に追従するので
+        // オフセットは 60ms で 60px 増え → オフセット空間で +1 px/ms。X は静止。
         let samples = [(0.0, 100.0, 0.0), (0.0, 70.0, 30.0), (0.0, 40.0, 60.0)];
         let (vx, vy) = estimate_release_velocity(&samples, &t());
         assert_eq!(vx, 0.0);
@@ -419,11 +377,11 @@ mod tests {
 
     #[test]
     fn release_velocity_needs_two_in_window_samples_with_a_real_time_span() {
-        // No samples, or a single one, give nothing to measure speed against.
+        // サンプルなし、または 1 個だけでは速度を測る基準がない。
         assert_eq!(estimate_release_velocity(&[], &t()), (0.0, 0.0));
         assert_eq!(estimate_release_velocity(&[(0.0, 0.0, 5.0)], &t()), (0.0, 0.0));
-        // Two samples stamped at the same instant: a position jump with no
-        // elapsed time is not a measurable velocity (avoids a divide-by-zero).
+        // 同一時刻のサンプル 2 個：経過時間ゼロでの位置ジャンプは測定可能な速度ではない
+        // （ゼロ除算を回避）。
         assert_eq!(
             estimate_release_velocity(&[(0.0, 0.0, 5.0), (0.0, 50.0, 5.0)], &t()),
             (0.0, 0.0),
@@ -432,10 +390,10 @@ mod tests {
 
     #[test]
     fn samples_older_than_the_window_are_ignored_so_a_pause_releases_at_rest() {
-        // A fast slide long ago, then the finger came to rest at y=40 for the
-        // last 60ms before lifting — only the resting samples are in-window.
+        // ずっと前の速い滑り、その後指は離す直前の 60ms を y=40 で静止——
+        // ウィンドウ内なのは静止サンプルだけ。
         let samples = [
-            (0.0, 200.0, 0.0), // outside the 100ms window before the lift
+            (0.0, 200.0, 0.0), // 離す前の 100ms ウィンドウの外
             (0.0, 40.0, 500.0),
             (0.0, 40.0, 560.0),
         ];
@@ -445,7 +403,7 @@ mod tests {
 
     #[test]
     fn release_velocity_is_capped_so_a_violent_flick_cannot_launch_too_far() {
-        // 1000px in 10ms = 100 px/ms, far above the cap.
+        // 10ms で 1000px = 100 px/ms、上限をはるかに超える。
         let samples = [(0.0, 1000.0, 0.0), (0.0, 0.0, 10.0)];
         let (_, vy) = estimate_release_velocity(&samples, &t());
         assert_eq!(vy, physics::MAX_RELEASE_VELOCITY);
@@ -453,12 +411,12 @@ mod tests {
 
     #[test]
     fn momentum_advances_in_its_direction_and_friction_bleeds_the_speed() {
-        // A 16ms frame: the offset advances along the velocity, and the carried
-        // velocity is smaller but keeps its sign (decelerating, not reversing).
+        // 16ms フレーム：オフセットは速度方向へ進み、持ち越す速度は小さくなるが符号は保つ
+        // （反転せず減速）。
         let (delta, next) = momentum_step(2.0, 16.0, &t());
         assert!(delta > 0.0, "offset advances in the velocity direction");
         assert!(next > 0.0 && next < 2.0, "friction bleeds speed, keeps sign (next = {next})");
-        // Symmetric for a downward fling.
+        // 下向きの fling でも対称。
         let (delta_neg, next_neg) = momentum_step(-2.0, 16.0, &t());
         assert!(delta_neg < 0.0);
         assert!(next_neg < 0.0 && next_neg > -2.0);
@@ -466,21 +424,21 @@ mod tests {
 
     #[test]
     fn momentum_snaps_to_rest_once_it_drops_below_the_stop_threshold() {
-        // Starting right at the threshold, one long frame decays it under
-        // MIN_VELOCITY, so it snaps to 0 instead of crawling forever.
+        // 閾値ちょうどから始め、1 つの長いフレームで MIN_VELOCITY 未満まで減衰させ、
+        // 永遠に這わず 0 へスナップする。
         let (_, next) = momentum_step(physics::MIN_VELOCITY, 1000.0, &t());
         assert_eq!(next, 0.0, "below the stop threshold momentum ends");
     }
 
     #[test]
     fn physics_coefficients_are_named_constants_gathered_in_one_place() {
-        // Pinned so the iOS-ish knobs stay a single tunable block, not magic
-        // numbers scattered through the integrator.
+        // iOS 風ノブを、積分器に散らばるマジックナンバーでなく単一のチューニング可能ブロックに
+        // 保つため固定。
         assert_eq!(physics::DECELERATION_RATE, 0.998);
         assert_eq!(physics::MAX_RELEASE_VELOCITY, 16.0);
         assert_eq!(physics::MIN_VELOCITY, 0.02);
         assert_eq!(physics::SAMPLE_WINDOW_MS, 100.0);
-        // Overscroll / spring-back knobs (#352) live in the same block.
+        // オーバースクロール／ばね戻しのノブも同じブロックにある。
         assert_eq!(physics::RUBBER_BAND_C, 0.55);
         assert_eq!(physics::SPRING_STIFFNESS, 0.0001);
         assert_eq!(physics::SPRING_DAMPING, 0.015);
@@ -490,8 +448,7 @@ mod tests {
 
     #[test]
     fn within_range_the_drag_follows_the_finger_one_to_one() {
-        // No rubber-band inside the scrollable range: the displayed offset is the
-        // raw finger offset, at both ends and the middle.
+        // スクロール可能範囲内ではラバーバンドなし：両端と中間で表示オフセットは素の指オフセットに等しい。
         assert_eq!(rubber_band_offset(0.0, 400.0, 200.0, &t()), 0.0);
         assert_eq!(rubber_band_offset(150.0, 400.0, 200.0, &t()), 150.0);
         assert_eq!(rubber_band_offset(400.0, 400.0, 200.0, &t()), 400.0);
@@ -499,12 +456,12 @@ mod tests {
 
     #[test]
     fn pulling_past_an_edge_resists_so_the_content_lags_the_finger() {
-        // 100px of raw pull past the top edge shows less than 100px of overscroll
-        // (resisted), and stays on the overscroll side of the edge.
+        // 上のエッジを越えた素の引き 100px は 100px 未満のオーバースクロール（抵抗込み）を示し、
+        // エッジのオーバースクロール側に留まる。
         let shown = rubber_band_offset(-100.0, 400.0, 200.0, &t());
         assert!(shown < 0.0, "overscroll is past the top edge (got {shown})");
         assert!(shown > -100.0, "resisted: content lags the finger (got {shown})");
-        // Symmetric past the bottom edge (max = 400).
+        // 下のエッジ（max = 400）を越えても対称。
         let shown_bottom = rubber_band_offset(500.0, 400.0, 200.0, &t());
         assert!(shown_bottom > 400.0 && shown_bottom < 500.0, "got {shown_bottom}");
         assert!(
@@ -515,8 +472,7 @@ mod tests {
 
     #[test]
     fn the_further_past_the_edge_the_heavier_each_extra_pixel_moves() {
-        // Equal raw increments yield ever-smaller displayed increments: the
-        // diminishing-returns "heavy" feel of a rubber band.
+        // 等しい素の増分がますます小さい表示増分を生む：ラバーバンドの逓減する「重い」感触。
         let near = rubber_band_offset(-50.0, 400.0, 200.0, &t()).abs();
         let mid = rubber_band_offset(-100.0, 400.0, 200.0, &t()).abs();
         let far = rubber_band_offset(-150.0, 400.0, 200.0, &t()).abs();
@@ -531,15 +487,15 @@ mod tests {
 
     #[test]
     fn overscroll_is_bounded_so_the_content_never_tears_off_screen() {
-        // Even an enormous pull cannot reveal more than `dimension` of overscroll.
+        // 巨大な引きでも `dimension` を超えるオーバースクロールは現れない。
         let extreme = rubber_band_offset(-100_000.0, 400.0, 200.0, &t());
         assert!(extreme > -200.0, "overscroll asymptotes to the dimension (got {extreme})");
     }
 
     #[test]
     fn spring_back_eases_an_overscrolled_edge_toward_home() {
-        // Released 60px past the top edge at rest: the spring pulls the
-        // displacement back toward zero (smaller magnitude, moving inward).
+        // 上のエッジを 60px 越えた位置で静止のまま解放：ばねが変位を 0 へ引き戻す
+        // （絶対値が小さくなり、内向きに動く）。
         let (x, v) = spring_step(-60.0, 0.0, 16.0, &t());
         assert!(x > -60.0 && x < 0.0, "displacement shrinks toward the edge (got {x})");
         assert!(v > 0.0, "velocity points back toward the edge (got {v})");
@@ -547,8 +503,8 @@ mod tests {
 
     #[test]
     fn spring_back_converges_to_the_edge_and_ends() {
-        // From a deep overscroll at rest, repeated steps must reach home (0,0) in
-        // a bounded number of frames — the animation terminates, it doesn't crawl.
+        // 静止した深いオーバースクロールから、繰り返しのステップは有限フレームで home (0,0) に
+        // 到達しなければならない——アニメーションは終了し、這い続けない。
         let mut x = -120.0;
         let mut v = 0.0;
         let mut frames = 0;
@@ -564,10 +520,8 @@ mod tests {
 
     #[test]
     fn a_fling_bounce_overshoots_past_the_edge_then_returns() {
-        // Inertia reaches the edge (displacement 0) still moving outward: the
-        // spring lets it bounce past, then brings it home without crossing to the
-        // opposite side (critically damped, no ringing). Follow one trajectory
-        // launched at the edge with outward velocity.
+        // 慣性が外向きに動いたままエッジ（変位 0）に達する：ばねはそれを越えてバウンスさせ、
+        // 反対側に渡らず home へ戻す（臨界減衰、振動なし）。エッジで外向き速度で打ち出した軌跡を 1 本追う。
         let mut x = 0.0_f32;
         let mut v = -2.0_f32;
         let mut min_x = 0.0_f32;
@@ -586,15 +540,14 @@ mod tests {
 
     #[test]
     fn spring_back_snaps_home_once_within_the_rest_thresholds() {
-        // A sub-pixel displacement at near-zero velocity is home — snap to the
-        // edge so the animation stops instead of asymptoting.
+        // ほぼゼロ速度のサブピクセル変位は home——漸近させずエッジへスナップしてアニメーションを止める。
         assert_eq!(spring_step(0.2, 0.0, 16.0, &t()), (0.0, 0.0));
     }
 
     #[test]
     fn motion_inside_the_range_coasts_under_friction() {
-        // Well within [0, 400], a released fling decelerates like plain momentum:
-        // the offset advances along the velocity, the speed bleeds off.
+        // [0, 400] の十分内側では、解放された fling は素の慣性のように減速する：
+        // オフセットは速度方向へ進み、速度は減衰する。
         let (offset, v) = scroll_motion_step(100.0, 2.0, 400.0, 16.0, &t());
         assert!(offset > 100.0, "coasts forward (got {offset})");
         assert!(v > 0.0 && v < 2.0, "friction bleeds the speed (got {v})");
@@ -602,8 +555,8 @@ mod tests {
 
     #[test]
     fn inertia_reaching_an_edge_carries_past_it_into_overscroll() {
-        // A fling that overruns the bottom edge crosses into overscroll (offset >
-        // max) still moving outward, so the next frame can bounce it back.
+        // 下のエッジを行き過ぎる fling は外向きに動いたままオーバースクロール（offset > max）へ
+        // 渡るので、次フレームでバウンスして戻せる。
         let (offset, v) = scroll_motion_step(395.0, 2.0, 400.0, 16.0, &t());
         assert!(offset > 400.0, "inertia carries past the edge (got {offset})");
         assert!(v > 0.0, "still moving outward, to be sprung back next frame (got {v})");
@@ -611,12 +564,11 @@ mod tests {
 
     #[test]
     fn motion_in_overscroll_springs_back_toward_the_edge() {
-        // Past the bottom edge at rest: spring-back pulls the offset toward max
-        // and the velocity points inward.
+        // 下のエッジを越えた静止状態：ばね戻しがオフセットを max へ引き、速度は内向きを指す。
         let (offset, v) = scroll_motion_step(440.0, 0.0, 400.0, 16.0, &t());
         assert!(offset < 440.0 && offset > 400.0, "eases back toward the edge (got {offset})");
         assert!(v < 0.0, "velocity points back inward (got {v})");
-        // Symmetric past the top edge.
+        // 上のエッジを越えても対称。
         let (top_offset, top_v) = scroll_motion_step(-40.0, 0.0, 400.0, 16.0, &t());
         assert!(top_offset < 0.0 && top_offset > -40.0, "got {top_offset}");
         assert!(top_v > 0.0, "got {top_v}");
@@ -624,12 +576,11 @@ mod tests {
 
     #[test]
     fn a_flick_that_overruns_the_edge_bounces_and_settles_back_at_it() {
-        // End to end on the pure layer: a strong fling overshoots the bottom edge,
-        // is seen in overscroll at some frame, then spring-back returns it to rest
-        // exactly at the edge.
+        // 純粋層でのエンドツーエンド：強い fling が下のエッジを行き過ぎ、あるフレームで
+        // オーバースクロール中に観測され、その後ばね戻しがエッジちょうどで静止へ戻す。
         let max = 400.0;
         let mut offset = 380.0;
-        let mut v = 3.0; // strong enough to overrun the 20px left to the edge
+        let mut v = 3.0; // エッジまで残り 20px を行き過ぎるのに十分な強さ
         let mut max_seen = offset;
         let mut settled = None;
         for frame in 0..2000 {
@@ -649,21 +600,19 @@ mod tests {
 
     #[test]
     fn a_bounce_settles_at_the_edge_and_never_re_crosses_the_boundary() {
-        // Structural guarantee (#352 follow-up): once a fling has bounced into
-        // overscroll, the spring brings it to rest AT the edge it hit — its
-        // residual inward velocity is never handed back to momentum, so the
-        // content can't shoot back across the range and ping-pong between the two
-        // edges. Drive a violent flick well past the bottom edge and watch the
-        // frame it returns to the range: it must arrive exactly at the edge, at
-        // rest, never re-entering with speed to spare.
+        // 構造的保証：fling が一度オーバースクロールへバウンスすると、ばねは当たったエッジ
+        // ちょうどで静止させる——残った内向き速度は決して慣性へ戻されないので、コンテンツが
+        // 範囲を横切って撃ち返され両エッジ間でピンポンすることはない。下のエッジをはるかに
+        // 越える激しいフリックを駆動し、範囲へ戻るフレームを見る：エッジちょうどで静止して
+        // 到着し、余った速度を持って再進入してはならない。
         let max = 400.0;
         let mut offset = 380.0;
-        let mut v = 8.0; // far overruns the 20px left to the edge
+        let mut v = 8.0; // エッジまで残り 20px をはるかに行き過ぎる
         let mut re_entered_with_speed = false;
         let mut rest_offset = None;
         for _ in 0..4000 {
             let (no, nv) = scroll_motion_step(offset, v, max, 16.0, &t());
-            // The transition from overscroll (offset > max) back into the range.
+            // オーバースクロール（offset > max）から範囲内への遷移。
             if offset > max && no <= max {
                 re_entered_with_speed = nv != 0.0 || (no - max).abs() > 1e-3;
             }
@@ -688,7 +637,7 @@ mod tests {
     #[test]
     fn crossing_slop_takes_over_scrolling_without_applying_a_delta() {
         let mut g = ScrollGesture::new(sv(), (100.0, 100.0));
-        // 20px up crosses the 8px dead-zone.
+        // 上へ 20px は 8px デッドゾーンを越える。
         assert_eq!(g.on_move((100.0, 80.0), SCROLL_SLOP_PX), MoveOutcome::StartScroll);
         assert!(!g.is_tap(), "after takeover a release must not click");
     }
@@ -696,14 +645,13 @@ mod tests {
     #[test]
     fn while_scrolling_content_follows_the_finger_one_to_one() {
         let mut g = ScrollGesture::new(sv(), (100.0, 100.0));
-        g.on_move((100.0, 80.0), SCROLL_SLOP_PX); // takeover, last = (100,80)
-        // Finger continues up to y=60: content follows → offset increases by 20.
+        g.on_move((100.0, 80.0), SCROLL_SLOP_PX); // 移行、last = (100,80)
+        // 指が y=60 まで上昇し続ける：コンテンツが追従 → オフセットが 20 増える。
         assert_eq!(
             g.on_move((100.0, 60.0), SCROLL_SLOP_PX),
             MoveOutcome::Scroll { dx: 0.0, dy: 20.0 },
         );
-        // Finger back down to y=70: offset decreases by 10. Delta is measured
-        // from the previous move, not the origin.
+        // 指が y=70 まで下がる：オフセットが 10 減る。差分は起点でなく直前の move から測る。
         assert_eq!(
             g.on_move((100.0, 70.0), SCROLL_SLOP_PX),
             MoveOutcome::Scroll { dx: 0.0, dy: -10.0 },

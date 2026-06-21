@@ -7,8 +7,6 @@ import type { ElementId } from './element.js';
  * DOM Renderer 使用時はネイティブ DOM イベントから橋渡しする。
  * `:hover` / `:active` / `:focus` スタイルは Hayate Render Layer（ADR-0056）が
  * 解決する。Tsubame Adapter は hover イベント購読を拒否する（ADR-0059）。
- *
- * MVP 後に追加予定: keyup / scroll / active-start / active-end。
  */
 export type { EventKind } from './generated/event-kind.js';
 import type { EventKind } from './generated/event-kind.js';

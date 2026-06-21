@@ -20,7 +20,7 @@ export function isPseudoStyleKey(key: string): key is PseudoStyleKey {
   return (PSEUDO_STYLE_KEYS as readonly string[]).includes(key);
 }
 
-/** Split a Hayate CSS `style` object into base props and pseudo-class blocks. */
+/** Hayate CSS の `style` を base プロパティと擬似クラスブロックに分割する。 */
 export function splitHayateStyle(
   style: Record<string, unknown>,
 ): { base: StylePatch; pseudo: PseudoStylePatch } {

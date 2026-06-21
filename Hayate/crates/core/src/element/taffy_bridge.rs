@@ -11,12 +11,12 @@ use crate::element::style::{
     FlexDirectionValue, FlexWrapValue, JustifyValue, OverflowValue, PositionValue, StyleProp,
 };
 
-/// Context attached to each Taffy leaf so the measure closure can dispatch.
+/// 各 Taffy リーフに付ける文脈。measure クロージャがこれで分岐する。
 #[derive(Clone, Copy, Debug)]
 pub enum MeasureCtx {
     Text(ElementId),
-    /// `text-input` leaf: supplies the font-relative UA default content width
-    /// when no explicit `width` is set (ADR-0109 root cause A, issue #403).
+    /// `text-input` リーフ。明示的な `width` がないとき、フォント相対の UA 既定
+    /// コンテンツ幅を供給する（ADR-0109 根本原因 A）。
     TextInput(ElementId),
     None,
 }
@@ -24,11 +24,11 @@ pub enum MeasureCtx {
 fn to_taffy_dim(d: Dimension) -> TaffyDim {
     match d.unit {
         DimensionUnit::Px => TaffyDim::Length(d.value),
-        // Hayate accepts percent as 0..100; Taffy expects 0..1.
+        // Hayate は percent を 0..100 で受けるが Taffy は 0..1 を期待する。
         DimensionUnit::Percent => TaffyDim::Percent(d.value / 100.0),
         DimensionUnit::Auto => TaffyDim::Auto,
-        // Taffy `Dimension` has no `Fr` representation outside grid track sizing;
-        // gracefully fall back to Auto here.
+        // Taffy `Dimension` はグリッドトラック以外で `Fr` 表現を持たないため
+        // ここでは Auto にフォールバックする。
         DimensionUnit::Fr => TaffyDim::Auto,
     }
 }
@@ -37,7 +37,7 @@ fn to_taffy_lp(d: Dimension) -> LengthPercentage {
     match d.unit {
         DimensionUnit::Px => LengthPercentage::Length(d.value),
         DimensionUnit::Percent => LengthPercentage::Percent(d.value / 100.0),
-        // Padding/gap don't accept Auto — clamp to 0.
+        // Padding/gap は Auto を受け付けないため 0 にクランプする。
         DimensionUnit::Auto | DimensionUnit::Fr => LengthPercentage::Length(0.0),
     }
 }
@@ -60,12 +60,11 @@ fn to_taffy_lp_auto(d: Dimension) -> LengthPercentageAuto {
     }
 }
 
-/// Map a Hayate `overflow` to Taffy. Both `Hidden` and (a kind-default)
-/// `Scroll` are scroll containers — Taffy gives them a flex automatic minimum
-/// size of 0, so they shrink to the space siblings leave instead of overflowing
-/// by their content/basis. `Visible` keeps the content-based minimum (CSS
-/// default). `OverflowValue` has no `Scroll`; the scroll-view kind default is
-/// set directly in `ElementKind::base_layout_style`.
+/// Hayate の `overflow` を Taffy へ写す。`Hidden` と（kind 既定の）`Scroll` は
+/// どちらもスクロールコンテナで、Taffy は flex 自動最小サイズを 0 にするため、
+/// コンテンツ/basis で溢れずに兄弟が残した空間まで縮む。`Visible` はコンテンツ
+/// ベースの最小サイズ（CSS 既定）を保つ。`OverflowValue` に `Scroll` はなく、
+/// scroll-view の kind 既定は `ElementKind::base_layout_style` で直接設定する。
 fn to_taffy_overflow(v: OverflowValue) -> taffy::Overflow {
     match v {
         OverflowValue::Visible => taffy::Overflow::Visible,
@@ -73,20 +72,18 @@ fn to_taffy_overflow(v: OverflowValue) -> taffy::Overflow {
     }
 }
 
-/// Write `overflow` onto a `taffy::Style` (both axes), the layout side of the
-/// dual-natured `overflow` prop. The visual side (child clipping) is applied
-/// separately to `Visual`; this only governs the flex scroll-container minimum
-/// size. Kept out of `apply_to_style` so the generic layout-vs-visual routing
-/// still classifies `overflow` as visual, while the layout effect is driven
-/// through the dedicated layout seam (`LayoutPass::set_overflow`).
+/// `overflow` を `taffy::Style` の両軸へ書く。二面性を持つ `overflow` プロップの
+/// レイアウト側。視覚側（子のクリップ）は別途 `Visual` に適用され、ここは flex
+/// スクロールコンテナの最小サイズだけを司る。汎用のレイアウト/視覚振り分けが
+/// `overflow` を視覚として分類し続けられるよう `apply_to_style` から外し、
+/// レイアウト効果は専用シーム（`LayoutPass::set_overflow`）経由で駆動する。
 pub fn apply_overflow_to_style(style: &mut Style, v: OverflowValue) {
     let o = to_taffy_overflow(v);
     style.overflow = taffy::Point { x: o, y: o };
 }
 
-/// Apply a single Hayate style prop into a mutable taffy::Style. Returns true
-/// if the prop was a layout prop and was applied; false otherwise (caller
-/// should route to Visual instead).
+/// Hayate のスタイルプロップ1つを可変 taffy::Style に適用する。レイアウト
+/// プロップで適用できたら true、そうでなければ false（呼び出し側は Visual へ回す）。
 pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
     match prop {
         StyleProp::Width(d) => style.size.width = to_taffy_dim(*d),

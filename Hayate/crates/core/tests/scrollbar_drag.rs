@@ -1,16 +1,12 @@
-//! Mouse/Pen scrollbar operation (#409, ADR-0110, SCR-04): the thumb drawn by
-//! #407 is now operable. A pointer-down on the thumb + drag moves the Scroll
-//! Offset continuously; a click on the track margin pages by one named step; a
-//! thumb drag that reaches the axis end chains the remainder to the ancestor
-//! ScrollView through the same `apply_wheel_delta` seam as the wheel (scroll
-//! chaining parity, ADR-0084). Operation-derived offset changes converge on the
-//! same Scroll Offset seam (`element_set_scroll_offset`, ADR-0046) the wheel
-//! path commits to.
+//! Mouse/Pen のスクロールバー操作（ADR-0110）。サムの pointer-down + ドラッグで
+//! Scroll Offset を連続移動、トラック余白のクリックで 1 ステップ分ページ送り、
+//! サムドラッグが軸端に達したら残りを `apply_wheel_delta` 経由で祖先 ScrollView へ
+//! チェーンする（ホイールとのスクロールチェーン整合、ADR-0084）。操作由来の
+//! Offset 変更はホイールと同じ Scroll Offset シーム（`element_set_scroll_offset`,
+//! ADR-0046）へ収束する。
 //!
-//! Driven through the public pointer interface (`on_pointer_down_with_kind` +
-//! `on_pointer_move`), reading the thumb's drawn geometry back out of the scene
-//! graph — prior art: `selection_handles.rs`, `scroll_view_scene.rs`,
-//! `scrollbar_overlay_scene.rs`.
+//! 公開ポインタ API（`on_pointer_down_with_kind` + `on_pointer_move`）経由で駆動し、
+//! サムの描画ジオメトリをシーングラフから読み戻して検証する。
 
 use hayate_core::element::pointer::PointerKind;
 use hayate_core::element::scene_build::{
@@ -18,15 +14,15 @@ use hayate_core::element::scene_build::{
 };
 use hayate_core::{Color, Dimension, ElementId, ElementKind, ElementTree, NodeKind, StyleProp};
 
-/// Final composited thumb fill colour (RGB at the overlay opacity).
+/// 合成後のサム塗り色（オーバーレイ不透明度を掛けた RGB）。
 fn thumb_rgba() -> [f32; 4] {
     SCROLLBAR_THUMB_COLOR
         .with_opacity(SCROLLBAR_THUMB_OPACITY)
         .to_array_f32()
 }
 
-/// Every vertical scrollbar thumb rect `(x, y, w, h)` in canvas coords, found by
-/// the thumb fill colour and its THICKNESS cross-axis width.
+/// 縦スクロールバーのサム矩形 `(x, y, w, h)`（canvas 座標）を、塗り色と
+/// THICKNESS の交差軸幅で同定して全件返す。
 fn vertical_thumbs(tree: &ElementTree) -> Vec<(f32, f32, f32, f32)> {
     let rgba = thumb_rgba();
     tree.scene_graph()
@@ -47,15 +43,15 @@ fn vertical_thumbs(tree: &ElementTree) -> Vec<(f32, f32, f32, f32)> {
         .collect()
 }
 
-/// The single vertical thumb, asserting there is exactly one.
+/// 縦サムが厳密に 1 個であることを保証して返す。
 fn vertical_thumb(tree: &ElementTree) -> (f32, f32, f32, f32) {
     let thumbs = vertical_thumbs(tree);
     assert_eq!(thumbs.len(), 1, "expected exactly one vertical thumb");
     thumbs[0]
 }
 
-/// A `scroll-view` whose content overflows only the vertical axis: a 100×100 box
-/// holding 100×300 content. Returns `(tree, scroll_id)`.
+/// 縦軸のみオーバーフローする `scroll-view`（100×100 のボックスに 100×300 の
+/// コンテンツ）。`(tree, scroll_id)` を返す。
 fn vertical_overflow_scroll_view() -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     let scroll = tree.element_create(1, ElementKind::ScrollView);
@@ -88,7 +84,7 @@ fn dragging_the_thumb_scrolls_continuously() {
     let (tx, ty, tw, th) = vertical_thumb(&tree);
     let (cx, cy) = (tx + tw / 2.0, ty + th / 2.0);
 
-    // Grab the thumb under Mouse modality. The press alone does not scroll.
+    // Mouse でサムを掴む。押下だけではスクロールしない。
     tree.on_pointer_down_with_kind(cx, cy, 0, PointerKind::Mouse);
     assert_eq!(
         tree.element_get_scroll_offset(scroll).1,
@@ -96,7 +92,7 @@ fn dragging_the_thumb_scrolls_continuously() {
         "pressing the thumb does not by itself move the offset",
     );
 
-    // Dragging the thumb down increases the vertical Scroll Offset.
+    // サムを下へドラッグすると縦 Scroll Offset が増える。
     tree.on_pointer_move(cx, cy + 10.0);
     let after_first = tree.element_get_scroll_offset(scroll).1;
     assert!(
@@ -104,7 +100,7 @@ fn dragging_the_thumb_scrolls_continuously() {
         "dragging the thumb down moves the scroll offset (got {after_first})",
     );
 
-    // Continued drag keeps moving it — the offset tracks the pointer continuously.
+    // ドラッグ継続でさらに移動。offset はポインタを連続追従する。
     tree.on_pointer_move(cx, cy + 20.0);
     let after_second = tree.element_get_scroll_offset(scroll).1;
     assert!(
@@ -112,7 +108,7 @@ fn dragging_the_thumb_scrolls_continuously() {
         "a continued drag keeps moving the offset ({after_first} -> {after_second})",
     );
 
-    // Releasing ends the drag: a later move no longer tracks the thumb.
+    // リリースでドラッグ終了。以降の move はサムを追従しない。
     tree.on_pointer_up(cx, cy + 20.0);
     tree.on_pointer_move(cx, cy + 40.0);
     assert_eq!(
@@ -127,8 +123,8 @@ fn clicking_the_track_pages_the_offset() {
     let (mut tree, scroll) = vertical_overflow_scroll_view();
     let (tx, ty, tw, th) = vertical_thumb(&tree);
 
-    // A press on the track *below* the thumb pages the offset forward (toward the
-    // end), without grabbing a thumb.
+    // サムより*下*のトラック押下は、サムを掴まずに offset を前方（終端側）へ
+    // ページ送りする。
     let track_x = tx + tw / 2.0;
     tree.on_pointer_down_with_kind(track_x, ty + th + 20.0, 0, PointerKind::Mouse);
     let after_forward = tree.element_get_scroll_offset(scroll).1;
@@ -138,8 +134,7 @@ fn clicking_the_track_pages_the_offset() {
     );
     tree.on_pointer_up(track_x, ty + th + 20.0);
 
-    // Re-render so the thumb sits at its new position, then press *above* it to
-    // page back toward the start.
+    // 再描画でサムを新位置に置いてから、*上*を押して始端側へページ戻し。
     tree.render(0.0);
     let (_, aty, _, _) = vertical_thumb(&tree);
     tree.on_pointer_down_with_kind(track_x, aty / 2.0, 0, PointerKind::Mouse);
@@ -150,10 +145,9 @@ fn clicking_the_track_pages_the_offset() {
     );
 }
 
-/// Nested scroll-views (prior art: `document_runtime::nested_scroll_tree`): an
-/// outer 200×200 holding a scrollable inner 200×100 (its 200×300 leaf overflows)
-/// plus a 200×250 tail, so the outer overflows vertically too. Returns
-/// `(tree, outer, inner)`.
+/// ネストした scroll-view。外側 200×200 が、スクロール可能な内側 200×100
+/// （200×300 の leaf がオーバーフロー）と 200×250 の tail を持つため、外側も
+/// 縦にオーバーフローする。`(tree, outer, inner)` を返す。
 fn nested_scroll_tree() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::ScrollView);
@@ -203,8 +197,8 @@ fn nested_scroll_tree() -> (ElementTree, ElementId, ElementId) {
 fn thumb_drag_chains_to_the_ancestor_at_the_inner_end() {
     let (mut tree, outer, inner) = nested_scroll_tree();
 
-    // The inner thumb is the shorter of the two vertical thumbs (its content
-    // overflows more, so its thumb is smaller); grab its centre.
+    // 内側サムは 2 つの縦サムのうち短い方（コンテンツのオーバーフローが大きく
+    // サムが小さい）。その中心を掴む。
     let mut thumbs = vertical_thumbs(&tree);
     assert_eq!(
         thumbs.len(),
@@ -220,7 +214,7 @@ fn thumb_drag_chains_to_the_ancestor_at_the_inner_end() {
     let cy = ty + th / 2.0;
     tree.on_pointer_down_with_kind(cx, cy, 0, PointerKind::Mouse);
 
-    // Drag far enough past the inner thumb's travel to overrun the inner's range.
+    // 内側サムの可動域を超えるまで十分にドラッグし、内側の範囲を使い切る。
     tree.on_pointer_move(cx, cy + th + 200.0);
 
     let inner_y = tree.element_get_scroll_offset(inner).1;
@@ -237,9 +231,9 @@ fn thumb_drag_chains_to_the_ancestor_at_the_inner_end() {
 
 #[test]
 fn touch_press_does_not_operate_the_scrollbar() {
-    // The Mouse/Pen scrollbar is interactive; Touch gets a non-interactive
-    // transient indicator instead (ADR-0110). A touch press on the thumb's pixels
-    // therefore neither grabs nor scrolls — it falls through to the content.
+    // Mouse/Pen のスクロールバーは操作可能だが、Touch は非操作の一時インジケータ
+    // になる（ADR-0110）。サムのピクセルへの Touch 押下は掴みもスクロールもせず、
+    // コンテンツへ素通りする。
     let (mut tree, scroll) = vertical_overflow_scroll_view();
     let (tx, ty, tw, th) = vertical_thumb(&tree);
     let (cx, cy) = (tx + tw / 2.0, ty + th / 2.0);

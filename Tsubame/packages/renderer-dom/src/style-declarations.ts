@@ -3,9 +3,9 @@ import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
 import type { CatalogEntry } from '@tsubame/hayate-css-catalog';
 
 export interface StylePatchDeclaration {
-  /** camelCase key for CSSOM `style` object */
+  /** CSSOM `style` オブジェクト用の camelCase キー */
   readonly cssName: string;
-  /** kebab-case property for CSS rule text */
+  /** CSS ルールテキスト用の kebab-case プロパティ */
   readonly cssProperty: string;
   readonly value: string;
 }
@@ -23,12 +23,12 @@ function extrasFromEntry(entry: CatalogEntry, value: unknown): StylePatchDeclara
 }
 
 /**
- * Patch → ordered CSS declarations, including catalog DOM-extras.
+ * パッチ → 順序付き CSS 宣言列（カタログの DOM-extras を含む）。
  *
- * The Style Channel gate is *not* applied here — it runs once in the seam before
- * any renderer (Tsubame ADR-0008, `withTextLocalGate`), so the patch reaching
- * this emitter is already filtered. `kind` is kept on the signature for callers
- * and potential kind-specific catalog behavior.
+ * Style Channel ゲートはここでは適用しない。各レンダラーの手前の境界で一度
+ * 実行される（ADR-0008、`withTextLocalGate`）ため、ここに届くパッチは
+ * フィルタ済み。`kind` は呼び出し側と kind 別カタログ挙動のためシグネチャに
+ * 残している。
  */
 export function declarationsFromStylePatch(
   kind: ElementKind,
@@ -71,7 +71,7 @@ export function declarationsFromStylePatch(
 }
 
 /**
- * Join declarations into a CSS rule body (`property:value;...`).
+ * 宣言列を CSS ルール本体（`property:value;...`）へ連結する。
  *
  * `important` を立てると各宣言へ `!important` を付与する。ベーススタイルは
  * インライン（`el.style`）に載るため、@media variant がベースを上書きするには

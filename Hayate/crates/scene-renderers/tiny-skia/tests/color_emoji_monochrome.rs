@@ -1,8 +1,6 @@
-//! tiny-skia is the CPU fallback and cannot paint COLR/CBDT colour glyphs — it
-//! draws outlines only (issue #332, ADR-0101). Rendering the same COLR test
-//! glyph the Vello test renders in colour must collapse to a single hue here.
-//! This is the regression guard for "tiny-skia stays monochrome", and it also
-//! shows the hue metric the Vello test relies on actually discriminates.
+//! tiny-skia は CPU フォールバックで COLR/CBDT のカラーグリフを描けず、アウトライン
+//! のみを描く（ADR-0101）。Vello がカラー描画する同じ COLR グリフは、ここでは単一の
+//! 色相に収束しなければならない（モノクロ維持の回帰ガード）。
 
 use hayate_scene_test_support::cases::{color_glyph_tree, render_tree_to_scene};
 use hayate_scene_test_support::pixel::{distinct_saturated_hues, CANVAS_H, CANVAS_W};

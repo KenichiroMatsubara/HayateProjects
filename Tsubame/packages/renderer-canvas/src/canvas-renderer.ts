@@ -29,13 +29,13 @@ export interface CanvasRendererOptions {
   cancelFrame?: (handle: number) => void;
   canvas?: HTMLCanvasElement;
   /**
-   * When `false`, skip attaching a ResizeObserver (embedded hosts resize manually).
-   * Defaults to `true` when `canvas` is set.
+   * `false` で ResizeObserver を付けない（埋め込みホストは手動でリサイズする）。
+   * `canvas` 指定時は既定で `true`。
    */
   autoResize?: boolean;
-  /** Injectable ResizeObserver constructor for tests. */
+  /** テスト用に注入する ResizeObserver コンストラクタ。 */
   createResizeObserver?: ResizeObserverFactory;
-  /** Override `devicePixelRatio` (tests). Defaults to `globalThis.devicePixelRatio ?? 1`. */
+  /** テスト用の `devicePixelRatio` 上書き。既定は `globalThis.devicePixelRatio ?? 1`。 */
   devicePixelRatio?: number;
 }
 
@@ -46,7 +46,7 @@ interface ListenerEntry {
 
 export class CanvasRenderer implements IRenderer {
   private readonly raw: RawHayate;
-  /** Hayate-issued listener id → host handler (ADR-0053). */
+  /** Hayate が発行したリスナ id → ホストのハンドラ（ADR-0053）。 */
   private readonly listeners = new Map<number, ListenerEntry>();
   private nextId = 1;
 
@@ -55,11 +55,10 @@ export class CanvasRenderer implements IRenderer {
   private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
-  /** Explicit DPR override (tests/embedded hosts). When unset the observer reads
-   * the live `globalThis.devicePixelRatio` on every resize — mobile Chrome bumps
-   * it after construction (soft-keyboard / zoom-on-focus while typing), and a
-   * value cached at construction would rebuild the backing store too small and
-   * upscale the scene, roughening glyphs. */
+  /** DPR の明示上書き（テスト/埋め込みホスト）。未設定なら毎リサイズで実時の
+   * `globalThis.devicePixelRatio` を読む。モバイル Chrome は構築後に DPR を変える
+   * （入力中のソフトキーボード/フォーカスズーム）ため、構築時にキャッシュすると
+   * バッキングストアが小さすぎて生成され、シーンが拡大されてグリフが粗くなる。 */
   private readonly devicePixelRatioOverride: number | undefined;
   private resizeObserver: ResizeObserver | null = null;
   private frameHandle: number | null = null;
@@ -120,8 +119,8 @@ export class CanvasRenderer implements IRenderer {
     this.resizeObserver = observer;
   }
 
-  /** Resolve the device pixel ratio for the next resize: the explicit override
-   * when given, otherwise the *live* global (re-read each call, never cached). */
+  /** 次のリサイズに使う DPR を決める。明示上書きがあればそれを、なければ実時の
+   * グローバル値（毎回読み直し、キャッシュしない）。 */
   private currentDevicePixelRatio(): number {
     return this.devicePixelRatioOverride ?? globalThis.devicePixelRatio ?? 1;
   }
@@ -176,8 +175,8 @@ export class CanvasRenderer implements IRenderer {
   setProperty(id: ElementId, name: string, value: unknown): void {
     assertKnownElementProperty(name);
     const op = coerceElementProperty(name, value);
-    // Shared spec-generated dispatch (ADR-0008): the Canvas adapter fills only the
-    // enqueue effect handlers — the op-kind match lives once in the protocol.
+    // 共有のスペック生成ディスパッチ（ADR-0008）。Canvas アダプタは enqueue 効果
+    // ハンドラだけを埋め、op 種別の分岐はプロトコル側に一度だけ存在する。
     dispatchElementPropertyOp<void>(op, {
       'text-content': ({ text }) => this.packet.enqueueSetTextContent(id, text),
       placeholder: ({ text }) => this.packet.enqueueSetText(id, text),
@@ -205,7 +204,7 @@ export class CanvasRenderer implements IRenderer {
     };
   }
 
-  /** Drain the ordered mutation packet into the Hayate WASM boundary. */
+  /** 順序付きミューテーションパケットを Hayate WASM 境界へ流し込む。 */
   private flush(): void {
     this.packet.flush(this.raw);
   }
@@ -217,11 +216,10 @@ export class CanvasRenderer implements IRenderer {
       if (entry === undefined) continue;
       const interaction = toInteractionEvent(event);
       if (interaction !== null) {
-        // The text_input wire payload carries only the freshly inserted
-        // fragment, but `InteractionEvent.value` is contractually the element's
-        // *current* value (the DOM renderer reads `target.value`). Read the
-        // authoritative content back from the tree so controlled inputs see the
-        // whole string, not just the last keystroke.
+        // text_input のワイヤペイロードは挿入された断片だけを運ぶが、
+        // `InteractionEvent.value` は契約上その要素の現在値（DOM レンダラは
+        // `target.value` を読む）。制御コンポーネントが最後のキー入力でなく
+        // 全文字列を見られるよう、正となる内容をツリーから読み戻す。
         if (interaction.kind === 'input') {
           interaction.value = this.raw.element_get_text_content(interaction.target);
         }

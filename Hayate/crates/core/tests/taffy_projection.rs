@@ -1,7 +1,7 @@
 use hayate_core::{ElementKind, ElementTree, StyleProp};
 
-/// ADR-0064 / LAY-04: inline text elements (text whose parent is text) must not
-/// receive a Taffy node; only the IFC root is projected as a measured leaf.
+/// インラインテキスト要素（親がテキストのテキスト）には Taffy ノードを与えず、
+/// IFC ルートのみを計測対象のリーフとして射影する（ADR-0064）。
 #[test]
 fn inline_text_element_has_no_taffy_node_after_layout() {
     let mut tree = ElementTree::new();
@@ -34,7 +34,7 @@ fn inline_text_element_has_no_taffy_node_after_layout() {
     );
 }
 
-/// Structure mutations must not eagerly touch Taffy; layout after append still works.
+/// 構造変更は Taffy を即座に触らない。append 後のレイアウトも正しく動く。
 #[test]
 fn append_before_layout_still_produces_valid_geometry() {
     let mut tree = ElementTree::new();
@@ -59,7 +59,7 @@ fn append_before_layout_still_produces_valid_geometry() {
     assert!((rect.3 - 40.0).abs() < 0.5);
 }
 
-/// Subtree removed before the first layout pass must reconcile without panic (#134).
+/// 最初のレイアウト前に削除した部分木は panic せず reconcile できなければならない。
 #[test]
 fn remove_lazy_subtree_before_first_layout_does_not_panic() {
     let mut tree = ElementTree::new();
@@ -72,7 +72,7 @@ fn remove_lazy_subtree_before_first_layout_does_not_panic() {
     tree.commit_frame();
 }
 
-/// Removing one branch must not panic when a sibling branch stays projected (#134).
+/// 兄弟の枝が射影されたまま片方の枝を削除しても panic してはならない。
 #[test]
 fn remove_subtree_with_sibling_branch_does_not_panic_on_reconcile() {
     let mut tree = ElementTree::new();
@@ -98,7 +98,7 @@ fn remove_subtree_with_sibling_branch_does_not_panic_on_reconcile() {
     assert!(!tree.element_has_taffy_node(leaf_a));
 }
 
-/// Removing a projected subtree after layout must not panic on reconcile (#134).
+/// レイアウト後に射影済みの部分木を削除しても reconcile で panic してはならない。
 #[test]
 fn remove_projected_subtree_does_not_panic_on_reconcile() {
     let mut tree = ElementTree::new();
@@ -115,7 +115,7 @@ fn remove_projected_subtree_does_not_panic_on_reconcile() {
     tree.commit_frame();
 }
 
-/// Removing a subtree with inline text after layout must not double-delete Taffy nodes (#134).
+/// レイアウト後にインラインテキストを含む部分木を削除しても Taffy ノードを二重削除してはならない。
 #[test]
 fn remove_subtree_with_inline_text_does_not_panic_on_reconcile() {
     let mut tree = ElementTree::new();
@@ -134,7 +134,7 @@ fn remove_subtree_with_inline_text_does_not_panic_on_reconcile() {
     tree.commit_frame();
 }
 
-/// Reparenting text under text flips projection class (block IFC root → inline).
+/// テキストをテキストの下に付け替えると射影クラスが切り替わる（ブロック IFC ルート → インライン）。
 #[test]
 fn reparent_text_under_text_clears_taffy_node() {
     let mut tree = ElementTree::new();

@@ -90,7 +90,7 @@ describe('renderer integration (stub IRenderer)', () => {
     setProp(text, 'style', { fontSize: 22, color: '#4fd1c5' });
 
     expect(styles).toEqual([[1, { fontSize: 22, color: '#4fd1c5' }]]);
-    // style 以外のプロパティは text では従来通り無視される
+    // text では style 以外のプロパティは従来どおり無視される
     expect(() => setProp(text, 'value', 'x')).not.toThrow();
   });
 

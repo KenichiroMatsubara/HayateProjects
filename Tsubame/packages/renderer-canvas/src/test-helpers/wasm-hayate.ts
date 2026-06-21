@@ -16,7 +16,7 @@ const wasmPath = join(
 
 let wasmReady = false;
 
-/** Load the null-backend WASM build for C3 integration tests (ADR-0055). */
+/** C3 結合テスト用に null バックエンドの WASM ビルドを読み込む（ADR-0055）。 */
 export async function createNullHayate(
   width = 320,
   height = 240,
@@ -36,10 +36,10 @@ export async function createNullHayate(
     canvas,
   )) as unknown as RawHayate;
 
-  // `init` derives the viewport from `canvas.getBoundingClientRect()`, but the
-  // test DOM (jsdom/happy-dom) does no layout and reports a 0×0 box — leaving
-  // the viewport at 0, so `width:100%/height:100%` collapses to zero geometry
-  // and hit-testing/hover never fire. Set it explicitly from the known size.
+  // init はビューポートを canvas.getBoundingClientRect() から導くが、テスト DOM
+  // (jsdom/happy-dom) はレイアウトを行わず 0×0 を返す。ビューポートが 0 のままだと
+  // width:100%/height:100% がゼロ幾何に潰れ、ヒットテストや hover が発火しない。
+  // 既知のサイズから明示的に設定する。
   (raw as unknown as { set_viewport(w: number, h: number): void }).set_viewport(
     width,
     height,

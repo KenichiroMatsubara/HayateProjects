@@ -1,4 +1,4 @@
-//! Content scale maps CSS layout coordinates to physical pixels (ADR-0007, #146).
+//! content scale は CSS レイアウト座標を物理ピクセルへ写像する（ADR-0007）。
 
 use hayate_core::{Node, NodeKind, SceneGraph};
 use hayate_scene_test_support::vello::{render_scene_to_pixels_scaled, try_vello_harness};

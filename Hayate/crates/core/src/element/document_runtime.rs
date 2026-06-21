@@ -5,7 +5,7 @@ use slotmap::{DefaultKey, KeyData, SlotMap};
 use crate::element::event_spec::{DocumentEventKind, Event};
 use crate::element::id::ElementId;
 
-/// Opaque listener handle issued by `register_listener`.
+/// `register_listener` が発行する不透明なリスナーハンドル。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ListenerId(DefaultKey);
 
@@ -19,7 +19,7 @@ impl ListenerId {
     }
 }
 
-/// A single delivery queued for host `poll_events` drain (ADR-0053).
+/// ホストの `poll_events` ドレイン用にキューされる1件の配送（ADR-0053）。
 #[derive(Clone, Debug)]
 pub struct EventDelivery {
     pub listener_id: ListenerId,
@@ -31,7 +31,7 @@ struct ListenerEntry {
     kind: DocumentEventKind,
 }
 
-/// Element Document Runtime: listener registry, bubble dispatch, delivery queue.
+/// Element Document Runtime: リスナー登録簿、バブルディスパッチ、配送キュー。
 pub struct DocumentRuntime {
     listeners: SlotMap<DefaultKey, ListenerEntry>,
     by_element: HashMap<ElementId, HashMap<DocumentEventKind, Vec<DefaultKey>>>,
@@ -85,7 +85,7 @@ impl DocumentRuntime {
         }
     }
 
-    /// Dispatch `event` to listeners on `path` (target-first ancestor chain).
+    /// `path`（ターゲット起点の祖先チェーン）上のリスナーへ `event` を配送する。
     pub fn dispatch_to_path(
         &mut self,
         path: &[ElementId],
@@ -438,15 +438,13 @@ mod tests {
         );
     }
 
-    /// Hit-testing must follow the scroll offset of every ScrollView it descends
-    /// through, exactly as paint translates a scrolled view's content. The wheel
-    /// path resolves its target with `hit_test`, so when the cursor sits over an
-    /// inner ScrollView that an outer ScrollView has *scrolled into view*, the hit
-    /// must land on the inner view — otherwise the wheel chains to the wrong
-    /// ScrollView and the inner (nested / "double") scroll never moves. Mirrors
-    /// the CssGallery: a tall outer scroller whose nested scroll box only appears
-    /// after you scroll the outer down. Regression for "canvas nested scroll dead
-    /// to the wheel".
+    /// ヒットテストは、ペイントがスクロール済みビューの内容を平行移動するのと
+    /// 同じように、通過する各 ScrollView のスクロールオフセットを反映しなければ
+    /// ならない。ホイール経路は `hit_test` でターゲットを決めるため、外側
+    /// ScrollView がスクロールして表示させた内側 ScrollView 上にカーソルがある
+    /// とき、ヒットは内側に当たる必要がある。さもないとホイールが誤った
+    /// ScrollView に連鎖し、内側（ネスト/二重）スクロールが動かない。
+    /// 「canvas のネストスクロールがホイールに反応しない」のリグレッション。
     #[test]
     fn hit_test_follows_scroll_offset_into_a_scrolled_inner_view() {
         let mut tree = ElementTree::new();
@@ -457,13 +455,13 @@ mod tests {
         let inner_child = tree.element_create(404, ElementKind::View);
         tree.set_root(outer);
         tree.set_viewport(200.0, 100.0);
-        // outer SV → column wrapper → [spacer, inner SV → inner_child], mirroring
-        // the CssGallery (content lives in a flex-column view inside the scroller).
+        // outer SV → column ラッパ → [spacer, inner SV → inner_child] の構成
+        // （内容はスクローラ内の flex-column ビューに置く）。
         tree.element_append_child(outer, col);
         tree.element_append_child(col, spacer);
         tree.element_append_child(col, inner);
         tree.element_append_child(inner, inner_child);
-        // Outer viewport is 100 tall.
+        // 外側ビューポートの高さは 100。
         tree.element_set_style(
             outer,
             &[
@@ -471,8 +469,8 @@ mod tests {
                 StyleProp::Height(Dimension::px(100.0)),
             ],
         );
-        // Column is taller than the outer viewport, so the outer scrolls and the
-        // children keep their natural heights (no flex shrink).
+        // column は外側ビューポートより高いので外側がスクロールし、
+        // 子は自然な高さを保つ（flex shrink なし）。
         tree.element_set_style(
             col,
             &[
@@ -482,8 +480,8 @@ mod tests {
                 StyleProp::Height(Dimension::px(400.0)),
             ],
         );
-        // A 100-tall spacer fills the first screen and pushes the inner scroll box
-        // to layout-y = 100 — off-screen until the outer is scrolled.
+        // 高さ100の spacer が最初の画面を埋め、内側スクロールボックスを
+        // layout-y = 100 へ押し下げる。外側をスクロールするまで画面外。
         tree.element_set_style(
             spacer,
             &[
@@ -498,7 +496,7 @@ mod tests {
                 StyleProp::Height(Dimension::px(100.0)),
             ],
         );
-        // Inner content overflows the inner viewport, so the inner is scrollable.
+        // 内側コンテンツが内側ビューポートをはみ出すので内側はスクロール可能。
         tree.element_set_style(
             inner_child,
             &[
@@ -513,18 +511,18 @@ mod tests {
             "inner must lay out below the spacer (off-screen until scrolled)"
         );
 
-        // Scroll the outer down by a full screen: the inner box is now painted at
-        // the top of the viewport (screen-y 0..100).
+        // 外側を1画面分スクロールすると、内側ボックスがビューポート上部
+        // （screen-y 0..100）に描かれる。
         tree.element_set_scroll_offset(outer, 0.0, 100.0);
 
-        // A point in the middle of the viewport is now over the inner scroll box.
+        // ビューポート中央の点は今や内側スクロールボックスの上にある。
         let hit = tree.hit_test(100.0, 50.0).expect("something must be hit");
         assert!(
             hit == inner || hit == inner_child,
             "hit at the scrolled-in inner box should land on the inner view, got {hit:?}"
         );
 
-        // …and the wheel must therefore drive the inner scroll, not the outer.
+        // …したがってホイールは外側ではなく内側スクロールを駆動するべき。
         tree.apply_wheel_delta(hit, 0.0, 30.0);
         let (_, inner_y) = tree.element_get_scroll_offset(inner);
         let (_, outer_y) = tree.element_get_scroll_offset(outer);
@@ -538,13 +536,12 @@ mod tests {
         );
     }
 
-    /// A nested ScrollView clips its own tall overflow, so that overflow is NOT
-    /// part of the *outer* scroll-view's scrollable content. The outer's content
-    /// height must be its direct child's box (the inner viewport), not the inner's
-    /// clipped-away descendants. Otherwise the outer becomes scrollable into empty
-    /// space below its real content — a phantom bottom margin you can't scroll
-    /// away, with the area under the content showing through (the touch
-    /// rubber-band just makes it more reachable). Regression for that bug.
+    /// ネストした ScrollView は自身の高いオーバーフローをクリップするので、
+    /// そのオーバーフローは外側スクロールビューのスクロール可能コンテンツには
+    /// 含まれない。外側のコンテンツ高は直接の子のボックス（内側ビューポート）で
+    /// あるべきで、内側のクリップ済み子孫ではない。さもないと外側が実コンテンツ
+    /// の下の空白までスクロール可能になり、スクロールで消せない幻のボトム
+    /// マージンとなる。そのバグのリグレッション。
     #[test]
     fn outer_content_size_excludes_a_nested_scroll_views_clipped_overflow() {
         let mut tree = ElementTree::new();
@@ -555,8 +552,8 @@ mod tests {
         tree.set_viewport(200.0, 200.0);
         tree.element_append_child(outer, inner);
         tree.element_append_child(inner, leaf);
-        // Outer is 200 tall; its only child (inner) is 100 tall and fits entirely,
-        // so the outer has nothing to scroll vertically.
+        // 外側は高さ200。唯一の子（内側）は高さ100で完全に収まるので、
+        // 外側に縦スクロールする余地はない。
         tree.element_set_style(
             outer,
             &[
@@ -571,8 +568,8 @@ mod tests {
                 StyleProp::Height(Dimension::px(100.0)),
             ],
         );
-        // Inner clips this 1000px-tall leaf to its own 100px viewport. The 900px of
-        // overflow lives only inside the inner scroll-view.
+        // 内側はこの高さ1000pxの leaf を自身の100pxビューポートにクリップする。
+        // 900pxのオーバーフローは内側スクロールビュー内にのみ存在する。
         tree.element_set_style(
             leaf,
             &[
@@ -593,15 +590,14 @@ mod tests {
         );
     }
 
-    /// A scroll-view's own bottom padding is part of its scrollable content: the
-    /// browser's `scrollHeight` includes it, so scrolling to the end reveals the
-    /// padding under the last child. The painted path must agree (Semantics
-    /// Parity). With a 100px scroll-view, 20px bottom padding and a 300px child,
-    /// the content area visible at once is 80px (clientHeight = 100 − 0 borders,
-    /// padding-box = 0 top + 80 inner + 20 bottom), scrollHeight = 300 + 20 = 320,
-    /// so the max scroll is 320 − 100 = 220 — NOT 200. A short max_y leaves the
-    /// bottom padding (a fixed length) permanently unreachable in vello/tiny-skia
-    /// while DOM mode (native scrollTop range) reaches it. Regression for that bug.
+    /// スクロールビュー自身のボトムパディングはスクロール可能コンテンツの一部。
+    /// ブラウザの `scrollHeight` はこれを含むので、末尾までスクロールすると最後の
+    /// 子の下にパディングが現れる。描画経路もこれに一致しなければならない
+    /// （Semantics Parity）。100pxのスクロールビュー・20pxボトムパディング・
+    /// 300pxの子では scrollHeight = 300 + 20 = 320 なので最大スクロールは
+    /// 320 − 100 = 220 であり 200 ではない。max_y が短いとボトムパディングが
+    /// vello/tiny-skia で永久に到達不能になる一方、DOM モードでは到達できる。
+    /// そのバグのリグレッション。
     #[test]
     fn scroll_view_own_bottom_padding_is_reachable() {
         let mut tree = ElementTree::new();

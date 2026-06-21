@@ -1,11 +1,11 @@
-//! End-to-end verification of the self-wired canvas pointer path (ADR-0092, #211).
+//! 自前配線した canvas ポインタ経路のエンドツーエンド検証（ADR-0092）。
 //!
-//! Runs in a headless browser via `wasm-pack test --headless --firefox`, built
-//! with `--no-default-features --features backend-null` (no WebGPU / EditContext).
-//! A real `pointermove` is dispatched on the canvas; the adapter's self-attached
-//! listener must transform + buffer it, `render()` drains it into Core, and
-//! `poll_events()` must surface a `HoverEnter` delivery — exercising the whole
-//! DOM-event → adapter → Core → poll chain without any test-only export (ADR-0072).
+//! `wasm-pack test --headless --firefox` でヘッドレスブラウザ上を走り、
+//! `--no-default-features --features backend-null`（WebGPU / EditContext なし）でビルドする。
+//! 実際の `pointermove` を canvas に dispatch し、アダプタが自前で張ったリスナが
+//! 変換 + バッファし、`render()` が Core に drain し、`poll_events()` が `HoverEnter`
+//! 配信を表面化する。テスト専用エクスポートなしで DOM イベント → アダプタ → Core →
+//! poll の全鎖を通す（ADR-0072）。
 #![cfg(target_arch = "wasm32")]
 
 use hayate_adapter_web::HayateElementRenderer;
@@ -16,22 +16,22 @@ use web_sys::HtmlCanvasElement;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-/// `PointerKind` wire discriminants (crates/core/src/element/pointer.rs).
+/// `PointerKind` のワイヤ判別子（crates/core/src/element/pointer.rs）。
 const POINTER_KIND_MOUSE: u32 = 0;
 const POINTER_KIND_TOUCH: u32 = 1;
-/// Generated event-kind discriminant for `HoverEnter` (proto/spec/event_kinds.json).
+/// `HoverEnter` の生成済みイベント種別判別子（proto/spec/event_kinds.json）。
 const HOVER_ENTER_KIND: f64 = 10.0;
-/// Generated event-kind discriminant for `HoverLeave` (proto/spec/event_kinds.json).
+/// `HoverLeave` の生成済みイベント種別判別子（proto/spec/event_kinds.json）。
 const HOVER_LEAVE_KIND: f64 = 11.0;
-/// Generated event-kind discriminant for `Scroll` (proto/spec/event_kinds.json).
+/// `Scroll` の生成済みイベント種別判別子（proto/spec/event_kinds.json）。
 const SCROLL_KIND: f64 = 7.0;
-/// `ElementKind::View` discriminant (crates/core/src/element/kind.rs).
+/// `ElementKind::View` の判別子（crates/core/src/element/kind.rs）。
 const ELEMENT_KIND_VIEW: u32 = 0;
-/// `ElementKind::Button` discriminant (crates/core/src/element/kind.rs).
+/// `ElementKind::Button` の判別子（crates/core/src/element/kind.rs）。
 const ELEMENT_KIND_BUTTON: u32 = 3;
-/// `ElementKind::ScrollView` discriminant (crates/core/src/element/kind.rs).
+/// `ElementKind::ScrollView` の判別子（crates/core/src/element/kind.rs）。
 const ELEMENT_KIND_SCROLLVIEW: u32 = 5;
-/// style_packet tags: width=5, height=6; unit 0 = Px (crates/adapters/web/src/style_packet.rs).
+/// style_packet タグ: width=5, height=6; unit 0 = Px（crates/adapters/web/src/style_packet.rs）。
 const TAG_WIDTH: f32 = 5.0;
 const TAG_HEIGHT: f32 = 6.0;
 
@@ -51,7 +51,7 @@ fn make_canvas(size: u32) -> HtmlCanvasElement {
     canvas
 }
 
-/// Dispatch a genuine `PointerEvent` of `kind` at viewport `(client_x, client_y)`.
+/// 本物の `PointerEvent`（種別 `kind`）をビューポート `(client_x, client_y)` に dispatch する。
 fn dispatch_pointer_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64, client_y: f64) {
     let window = web_sys::window().unwrap();
     let ctor = js_sys::Reflect::get(&window, &JsValue::from_str("PointerEvent")).unwrap();
@@ -62,8 +62,8 @@ fn dispatch_pointer_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64,
     js_sys::Reflect::set(&init, &"clientY".into(), &JsValue::from_f64(client_y)).unwrap();
     js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
     js_sys::Reflect::set(&init, &"pointerType".into(), &"mouse".into()).unwrap();
-    // Real mouse events are always primary; the adapter ignores non-primary
-    // pointers (#350), so the synthetic event must say so too.
+    // 実マウスイベントは常に primary。アダプタは非 primary ポインタを無視するため、
+    // 合成イベントも primary を名乗る必要がある。
     js_sys::Reflect::set(&init, &"isPrimary".into(), &JsValue::TRUE).unwrap();
 
     let args = js_sys::Array::of2(&JsValue::from_str(kind), &init);
@@ -78,9 +78,9 @@ fn dispatch_pointer_move(canvas: &HtmlCanvasElement, client_x: f64, client_y: f6
     dispatch_pointer_event(canvas, "pointermove", client_x, client_y);
 }
 
-/// Dispatch a primary `touch` PointerEvent (the drag→scroll path, #350). Sets
-/// `pointerType: "touch"`, `isPrimary: true` and a `pointerId` so the adapter's
-/// primary-pointer filter and scroll gesture engage.
+/// primary な `touch` PointerEvent（ドラッグ→スクロール経路）を dispatch する。
+/// `pointerType: "touch"`、`isPrimary: true`、`pointerId` を設定し、アダプタの
+/// primary ポインタフィルタとスクロールジェスチャを起動させる。
 fn dispatch_touch_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64, client_y: f64) {
     let window = web_sys::window().unwrap();
     let ctor = js_sys::Reflect::get(&window, &JsValue::from_str("PointerEvent")).unwrap();
@@ -102,11 +102,11 @@ fn dispatch_touch_event(canvas: &HtmlCanvasElement, kind: &str, client_x: f64, c
     canvas.dispatch_event(&event).unwrap();
 }
 
-/// Dispatch a genuine, cancelable `WheelEvent` at viewport `(client_x, client_y)`
-/// with the given scroll deltas, returning the dispatched event so the caller can
-/// inspect `defaultPrevented`. `dispatch_event` itself returns `false` when a
-/// listener cancelled the (cancelable) event, which is the signal that the
-/// adapter suppressed the browser's native scroll.
+/// 本物の cancelable な `WheelEvent` を、指定スクロール量でビューポート
+/// `(client_x, client_y)` に dispatch し、呼び出し側が `defaultPrevented` を
+/// 検査できるよう dispatch したイベントを返す。`dispatch_event` 自体は、リスナが
+/// cancelable イベントをキャンセルすると `false` を返し、これがアダプタが
+/// ブラウザのネイティブスクロールを抑止した合図になる。
 fn dispatch_wheel_event(
     canvas: &HtmlCanvasElement,
     client_x: f64,
@@ -124,7 +124,7 @@ fn dispatch_wheel_event(
     js_sys::Reflect::set(&init, &"deltaX".into(), &JsValue::from_f64(delta_x)).unwrap();
     js_sys::Reflect::set(&init, &"deltaY".into(), &JsValue::from_f64(delta_y)).unwrap();
     js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
-    // Cancelable so a non-passive listener's `preventDefault` actually registers.
+    // cancelable にすることで、非 passive リスナの `preventDefault` が実際に効く。
     js_sys::Reflect::set(&init, &"cancelable".into(), &JsValue::TRUE).unwrap();
 
     let args = js_sys::Array::of2(&JsValue::from_str("wheel"), &init);
@@ -136,8 +136,8 @@ fn dispatch_wheel_event(
     event
 }
 
-/// True if `rows` (delivery `[listener_id, kind, ...]` tuples from `poll_events`)
-/// contains a delivery to `listener_id` of the given event `kind`.
+/// `rows`（`poll_events` の配信タプル `[listener_id, kind, ...]`）に、`listener_id`
+/// 宛て・イベント `kind` の配信が含まれていれば true。
 fn has_delivery(rows: &js_sys::Array, listener_id: f64, kind: f64) -> bool {
     (0..rows.length()).any(|i| {
         let row = js_sys::Array::from(&rows.get(i));
@@ -152,9 +152,9 @@ async fn dispatched_pointermove_delivers_hover_enter() {
         .await
         .expect("renderer init");
 
-    // A single root View filling the surface, with a HoverEnter listener.
+    // サーフェスを埋める単一ルート View に HoverEnter リスナを付ける。
     renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
-    // TAG_WIDTH=5 / TAG_HEIGHT=6, value 200, unit 0 (Px).
+    // TAG_WIDTH=5 / TAG_HEIGHT=6、値 200、unit 0（Px）。
     renderer
         .element_set_style(1.0, &[5.0, 200.0, 0.0, 6.0, 200.0, 0.0])
         .unwrap();
@@ -163,15 +163,15 @@ async fn dispatched_pointermove_delivers_hover_enter() {
         .register_listener(1.0, HOVER_ENTER_KIND as u32)
         .unwrap();
 
-    // First frame lays out the tree so hit-testing has bounds.
+    // 最初のフレームでツリーをレイアウトし、ヒットテストに境界を与える。
     renderer.render(0.0).unwrap();
 
-    // Move the pointer a few CSS px into the surface — well inside the 200px
-    // root for any device-pixel-ratio the headless browser reports.
+    // ポインタをサーフェス内へ数 CSS px 動かす。ヘッドレスブラウザが報告する
+    // どの device-pixel-ratio でも 200px ルートの十分内側に入る。
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_move(&canvas, rect.left() + 10.0, rect.top() + 10.0);
 
-    // Next frame drains the buffered move into Core, producing HoverEnter.
+    // 次フレームでバッファした move を Core に drain し、HoverEnter を生む。
     renderer.render(16.0).unwrap();
 
     let rows = renderer.poll_events();
@@ -183,8 +183,8 @@ async fn dispatched_pointermove_delivers_hover_enter() {
 
 #[wasm_bindgen_test]
 async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
-    // A ScrollView the size of the surface with a child taller than it, so
-    // there is room to scroll vertically (content 600 vs viewport 200).
+    // サーフェスサイズの ScrollView に、それより高い子を持たせ、縦スクロール
+    // 余地を作る（コンテンツ 600 対ビューポート 200）。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -202,20 +202,20 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
     renderer.set_root(1.0);
     let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
 
-    // Lay out so hit-testing and content-size have geometry.
+    // ヒットテストとコンテンツサイズに形状を与えるためレイアウトする。
     renderer.render(0.0).unwrap();
 
     let rect = canvas.get_bounding_client_rect();
     let (ox, oy) = (rect.left(), rect.top());
-    // Press, drag upward past the slop, then keep dragging: content follows the
-    // finger so the vertical offset grows. Two moves are needed — the first
-    // consumes the slop dead-zone (takeover), the second applies the delta.
+    // 押下し、slop を越えて上方へドラッグし、さらにドラッグ続行する。コンテンツが
+    // 指に追従して縦オフセットが伸びる。move は 2 回必要で、1 回目が slop の
+    // デッドゾーンを消費（テイクオーバー）し、2 回目が delta を適用する。
     dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 150.0);
-    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 100.0); // crosses slop
-    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 30.0); // scroll by ~70
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 100.0); // slop を越える
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 30.0); // 約 70 スクロール
     dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 30.0);
 
-    // One frame drains the whole gesture in arrival order.
+    // 1 フレームでジェスチャ全体を到着順に drain する。
     renderer.render(16.0).unwrap();
 
     let offset = renderer.element_get_scroll_offset(1.0);
@@ -232,19 +232,18 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
 
 #[wasm_bindgen_test]
 async fn wheel_over_canvas_suppresses_the_native_scroll() {
-    // A wheel inside the canvas is owned end-to-end by Canvas Mode
-    // (`apply_wheel_delta` + chaining, ADR-0084). The self-wired `wheel` listener
-    // must be non-passive and `preventDefault` the event, so the browser does not
-    // *also* scroll the page / a native scrollable ancestor on top of the
-    // in-canvas scroll — the "二重スクロール" double-scroll. A passive listener
-    // (the pre-fix wiring) silently drops `preventDefault`, leaving the native
-    // scroll live and `defaultPrevented` false.
+    // canvas 内の wheel は Canvas Mode が端から端まで所有する
+    // （`apply_wheel_delta` + chaining、ADR-0084）。自前配線した `wheel` リスナは
+    // 非 passive で `preventDefault` する必要があり、そうしないとブラウザが
+    // canvas 内スクロールに重ねてページ / ネイティブのスクロール可能な祖先も
+    // スクロールしてしまう（二重スクロール）。passive リスナは `preventDefault` を
+    // 黙って捨て、ネイティブスクロールが生き、`defaultPrevented` も false になる。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
         .expect("renderer init");
 
-    // A scrollable view so the wheel has somewhere to go in-canvas.
+    // wheel が canvas 内で行き先を持てるよう、スクロール可能な view を置く。
     renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
     renderer
         .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
@@ -266,8 +265,8 @@ async fn wheel_over_canvas_suppresses_the_native_scroll() {
          double-scroll alongside the in-canvas scroll"
     );
 
-    // And the wheel still drives the in-canvas scroll (the suppression is of the
-    // browser's native scroll, not of Canvas Mode's own handling).
+    // wheel は canvas 内スクロールも依然として駆動する（抑止対象はブラウザの
+    // ネイティブスクロールであって、Canvas Mode 自身の処理ではない）。
     renderer.render(16.0).unwrap();
     assert!(
         renderer.element_get_scroll_offset(1.0)[1] > 0.0,
@@ -275,10 +274,9 @@ async fn wheel_over_canvas_suppresses_the_native_scroll() {
     );
 }
 
-/// Build a 200×200 ScrollView with a 200×600 child so there is a 400px vertical
-/// scroll range, register a `Scroll` listener on it, lay out once, and return the
-/// renderer plus the canvas' client origin and the listener id. Shared by the
-/// momentum e2e tests (#351).
+/// 200×200 の ScrollView に 200×600 の子を持たせて 400px の縦スクロール域を作り、
+/// `Scroll` リスナを登録し、一度レイアウトして、renderer と canvas のクライアント
+/// 原点・リスナ id を返す。momentum の e2e テスト群で共有する。
 async fn scrollable_renderer(canvas: &HtmlCanvasElement) -> (HayateElementRenderer, f64, f64, f64) {
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -308,30 +306,30 @@ fn scroll_offset_y(renderer: &HayateElementRenderer) -> f32 {
 
 #[wasm_bindgen_test]
 async fn flick_coasts_then_bounces_at_the_edge_and_springs_back() {
-    // Drive a real flick: one move per rAF frame so the velocity tracker sees
-    // distinct timestamps, then let the released fling coast on its own frames.
+    // 実フリックを駆動する。rAF フレームごとに 1 move として速度トラッカに
+    // 別個のタイムスタンプを見せ、リリース後の fling を自前フレームで惰走させる。
     let canvas = make_canvas(200);
     let (mut renderer, ox, oy, scroll_listener) = scrollable_renderer(&canvas).await;
 
-    // Finger climbs 150 → 60 across consecutive frames (each move > slop apart).
+    // 指が連続フレームで 150 → 60 へ上がる（各 move は slop 超の間隔）。
     dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 150.0);
     renderer.render(16.0).unwrap();
-    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 120.0); // crosses slop
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 120.0); // slop を越える
     renderer.render(32.0).unwrap();
     dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 90.0);
     renderer.render(48.0).unwrap();
     dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 60.0);
     renderer.render(64.0).unwrap();
     dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 60.0);
-    let _ = renderer.poll_events(); // discard drag-phase Scroll deliveries
+    let _ = renderer.poll_events(); // ドラッグ相の Scroll 配信を捨てる
 
-    // Release frame launches momentum from the sampled fling.
+    // リリースフレームでサンプルした fling から momentum を起動する。
     renderer.render(80.0).unwrap();
     let offset_at_release = scroll_offset_y(&renderer);
     let _ = renderer.poll_events();
 
-    // A pure momentum frame (no pointer input) must keep scrolling and still fire
-    // Event::Scroll, exactly like a finger drag does.
+    // 純粋な momentum フレーム（ポインタ入力なし）も、指ドラッグと全く同様に
+    // スクロールを続け、Event::Scroll を発火しなければならない。
     renderer.render(96.0).unwrap();
     let offset_after_momentum = scroll_offset_y(&renderer);
     assert!(
@@ -343,9 +341,9 @@ async fn flick_coasts_then_bounces_at_the_edge_and_springs_back() {
         "momentum scrolling must fire Event::Scroll like a finger drag"
     );
 
-    // Coast, bounce, settle: this strong fling overruns the 400px range, bounces
-    // past the bottom edge into overscroll, then spring-back returns it to rest at
-    // the edge. Track the peak offset across the whole animation.
+    // 惰走・バウンス・収束: この強い fling は 400px 域を超過し、下端を越えて
+    // overscroll へバウンスし、spring-back が端へ戻して静止させる。
+    // アニメ全体を通じてピークオフセットを追う。
     let mut peak = offset_after_momentum;
     let mut t = 112.0;
     for _ in 0..400 {
@@ -367,19 +365,19 @@ async fn flick_coasts_then_bounces_at_the_edge_and_springs_back() {
 
 #[wasm_bindgen_test]
 async fn dragging_past_an_edge_overscrolls_with_resistance_then_springs_back() {
-    // At the top edge, dragging the content further down pulls it into overscroll
-    // (negative offset) with rubber-band resistance; releasing springs it home.
+    // 上端でコンテンツをさらに下へドラッグすると、ラバーバンド抵抗を伴って
+    // overscroll（負オフセット）へ引き込まれ、リリースで元へ戻る。
     let canvas = make_canvas(200);
     let (mut renderer, ox, oy, _scroll_listener) = scrollable_renderer(&canvas).await;
 
-    // Press near the top, cross the slop (takeover, no delta), then drag the
-    // finger ~100px further DOWN — content follows below its top edge, i.e. the
-    // vertical offset goes negative (overscroll past the top).
+    // 上端付近で押下し、slop を越え（テイクオーバー、delta なし）、指をさらに
+    // 約 100px 下へドラッグする。コンテンツが上端より下へ追従し、縦オフセットが
+    // 負（上端を越えた overscroll）になる。
     dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 40.0);
     renderer.render(16.0).unwrap();
-    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 60.0); // crosses slop
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 60.0); // slop を越える
     renderer.render(32.0).unwrap();
-    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 160.0); // 100px further down
+    dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 160.0); // さらに 100px 下
     renderer.render(48.0).unwrap();
 
     let overscrolled = scroll_offset_y(&renderer);
@@ -393,7 +391,7 @@ async fn dragging_past_an_edge_overscrolls_with_resistance_then_springs_back() {
          (offset.y = {overscrolled})"
     );
 
-    // Release in overscroll: spring-back must ease the offset home to the edge (0).
+    // overscroll 中にリリース: spring-back がオフセットを端（0）へ戻す。
     dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 160.0);
     let mut t = 64.0;
     for _ in 0..200 {
@@ -413,7 +411,7 @@ async fn a_press_during_momentum_interrupts_it_so_the_content_is_grabbable() {
     let canvas = make_canvas(200);
     let (mut renderer, ox, oy, _scroll_listener) = scrollable_renderer(&canvas).await;
 
-    // Flick upward to get a fling coasting.
+    // 上方へフリックして fling を惰走させる。
     dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 150.0);
     renderer.render(16.0).unwrap();
     dispatch_touch_event(&canvas, "pointermove", ox + 100.0, oy + 120.0);
@@ -423,23 +421,23 @@ async fn a_press_during_momentum_interrupts_it_so_the_content_is_grabbable() {
     dispatch_touch_event(&canvas, "pointerup", ox + 100.0, oy + 90.0);
     let _ = renderer.poll_events();
 
-    renderer.render(64.0).unwrap(); // launch
+    renderer.render(64.0).unwrap(); // 起動
     let offset_at_release = scroll_offset_y(&renderer);
-    renderer.render(80.0).unwrap(); // coast one frame
+    renderer.render(80.0).unwrap(); // 1 フレーム惰走
     let offset_coasting = scroll_offset_y(&renderer);
     assert!(
         offset_coasting > offset_at_release,
         "precondition: momentum must be coasting before the interrupting press",
     );
 
-    // Press again mid-coast: the down must interrupt the fling. The drain
-    // processes the press (momentum → None) before the frame's momentum step, so
-    // the offset stops dead under the finger.
+    // 惰走中に再び押下: down が fling を中断する。drain はフレームの momentum
+    // ステップより前に押下を処理する（momentum → None）ため、オフセットは指の下で
+    // 即座に止まる。
     dispatch_touch_event(&canvas, "pointerdown", ox + 100.0, oy + 100.0);
     renderer.render(96.0).unwrap();
     let frozen = scroll_offset_y(&renderer);
 
-    // Subsequent frames with no further input must not move — the fling is gone.
+    // 以降の入力なしフレームは動いてはならない。fling は消えている。
     renderer.render(112.0).unwrap();
     renderer.render(128.0).unwrap();
     let after = scroll_offset_y(&renderer);
@@ -451,10 +449,10 @@ async fn a_press_during_momentum_interrupts_it_so_the_content_is_grabbable() {
 
 #[wasm_bindgen_test]
 async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
-    // The Platform Adapter must map `PointerEvent.pointerType` to a core
-    // `PointerKind` and forward it through the self-wired pointer path, so Core
-    // retains `last_pointer_kind` per interaction (#357). Observed end-to-end via
-    // the renderer accessor — no test-only export (ADR-0072).
+    // Platform Adapter は `PointerEvent.pointerType` をコアの `PointerKind` に
+    // マップし、自前配線のポインタ経路で転送する。これにより Core はインタラク
+    // ションごとに `last_pointer_kind` を保持する。renderer のアクセサ経由で
+    // エンドツーエンドに観測する（テスト専用エクスポートなし、ADR-0072）。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
@@ -467,13 +465,13 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
 
-    // Before any pointer event the kind defaults to mouse.
+    // どのポインタイベントの前でも、種別の既定は mouse。
     assert_eq!(renderer.last_pointer_kind(), POINTER_KIND_MOUSE);
 
     let rect = canvas.get_bounding_client_rect();
     let (ox, oy) = (rect.left(), rect.top());
 
-    // A genuine touch press forwards PointerKind::Touch to Core.
+    // 本物の touch 押下は PointerKind::Touch を Core へ転送する。
     dispatch_touch_event(&canvas, "pointerdown", ox + 50.0, oy + 50.0);
     renderer.render(16.0).unwrap();
     assert_eq!(
@@ -482,8 +480,8 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
         "a touch pointerdown must set Core's last_pointer_kind to Touch"
     );
 
-    // A mouse move then follows the live device (hybrid follow-through, not
-    // latched at the first interaction).
+    // 続くマウス move は実デバイスに追従する（最初のインタラクションで固定せず、
+    // ハイブリッドに追従する）。
     dispatch_pointer_move(&canvas, ox + 80.0, oy + 80.0);
     renderer.render(32.0).unwrap();
     assert_eq!(
@@ -495,16 +493,16 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
 
 #[wasm_bindgen_test]
 async fn pointer_move_over_button_applies_pointer_cursor_to_the_canvas() {
-    // The self-wired pointer path must drive the resolved cursor (ADR-0088,
-    // ADR-0105) onto the canvas element itself: hovering a button with no explicit
-    // `cursor` shows the element-kind UA default (pointer), so Canvas matches the
-    // DOM `<button>` without the app styling each one.
+    // 自前配線のポインタ経路は、解決済みカーソル（ADR-0088, ADR-0105）を
+    // canvas 要素自体に適用する。明示的な `cursor` のないボタンをホバーすると
+    // 要素種別の UA 既定（pointer）が出るため、アプリが個別に styling せずとも
+    // Canvas が DOM の `<button>` に一致する。
     let canvas = make_canvas(200);
     let mut renderer = HayateElementRenderer::init(canvas.clone())
         .await
         .expect("renderer init");
 
-    // A button filling the surface, no explicit cursor style.
+    // サーフェスを埋めるボタン、明示的な cursor スタイルなし。
     renderer.element_create(1.0, ELEMENT_KIND_BUTTON).unwrap();
     renderer
         .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
@@ -544,7 +542,7 @@ async fn dispatched_pointerleave_delivers_hover_leave() {
 
     renderer.render(0.0).unwrap();
 
-    // Move into the surface: the self-wired `pointermove` produces HoverEnter.
+    // サーフェス内へ移動: 自前配線の `pointermove` が HoverEnter を生む。
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_move(&canvas, rect.left() + 10.0, rect.top() + 10.0);
     renderer.render(16.0).unwrap();
@@ -553,8 +551,8 @@ async fn dispatched_pointerleave_delivers_hover_leave() {
         "precondition: pointermove should HoverEnter the root"
     );
 
-    // Leave the surface: the self-wired `pointerleave` must clear hover and
-    // deliver HoverLeave for the previously-hovered root.
+    // サーフェスから離脱: 自前配線の `pointerleave` がホバーをクリアし、
+    // 直前にホバーしていたルートへ HoverLeave を配信する。
     dispatch_pointer_event(&canvas, "pointerleave", rect.left() + 10.0, rect.top() + 10.0);
     renderer.render(32.0).unwrap();
     assert!(

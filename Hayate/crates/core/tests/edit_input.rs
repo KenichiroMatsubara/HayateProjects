@@ -1,4 +1,4 @@
-//! ADR-0069: EditState via ElementTree public input handlers.
+//! ElementTree の公開入力ハンドラ経由で EditState を検証する（ADR-0069）。
 
 use hayate_core::{
     Clipboard, CompositionClause, CompositionUnderline, Dimension, Direction, EditIntent,
@@ -7,11 +7,11 @@ use hayate_core::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const SHIFT: u32 = 1; // MODIFIER_SHIFT (proto/spec wire contract).
-const ALT: u32 = 4; // MODIFIER_ALT — the macOS Option "by word" modifier.
+const SHIFT: u32 = 1; // MODIFIER_SHIFT（proto/spec のワイヤ契約）。
+const ALT: u32 = 4; // MODIFIER_ALT — macOS の Option（単語単位）修飾キー。
 
-/// A focused text-input carrying `content` with the caret at its end. No layout
-/// is needed for caret/selection-index assertions.
+/// `content` を保持しキャレットが末尾にあるフォーカス済みテキスト入力。
+/// キャレット/選択インデックスのアサーションにはレイアウト不要。
 fn focused_input(content: &str) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let input = tree.element_create(100, ElementKind::TextInput);
@@ -23,9 +23,9 @@ fn focused_input(content: &str) -> (ElementTree, hayate_core::ElementId) {
 
 #[test]
 fn bare_arrow_moves_the_caret_one_grapheme() {
-    // ADR-0103: the plain arrow keys move the caret (previously a no-op — only
-    // Shift+Arrow did anything). "aあb" exercises a multibyte grapheme step.
-    let (mut tree, input) = focused_input("aあb"); // caret at end (5)
+    // 素の矢印キーでキャレットを移動する（ADR-0103）。"aあb" でマルチバイト
+    // grapheme 単位の移動を確認する。
+    let (mut tree, input) = focused_input("aあb"); // キャレットは末尾 (5)
 
     tree.on_key_down("ArrowLeft", 0);
     assert_eq!(tree.element_caret_byte_index(input), Some(4), "retreats past 'b'");
@@ -35,17 +35,17 @@ fn bare_arrow_moves_the_caret_one_grapheme() {
     tree.on_key_down("ArrowRight", 0);
     assert_eq!(tree.element_caret_byte_index(input), Some(4), "advances past 'あ'");
 
-    // A bare arrow leaves the selection collapsed (a caret, not a range).
+    // 素の矢印は選択を折りたたんだまま（範囲ではなくキャレット）にする。
     assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]
 fn bare_arrow_over_a_selection_collapses_to_its_edge() {
-    // With a range selected, the plain arrow collapses to the edge rather than
-    // stepping past it (Chromium <input> behavior).
-    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    // 範囲選択中の素の矢印は、端を越えて移動せず端へ折りたたむ
+    // （Chromium <input> の挙動）。
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
     tree.on_key_down("ArrowLeft", SHIFT);
-    tree.on_key_down("ArrowLeft", SHIFT); // selects "lo" → range (3,5)
+    tree.on_key_down("ArrowLeft", SHIFT); // "lo" を選択 → 範囲 (3,5)
     assert_eq!(tree.element_text_selection(input), Some((3, 5)));
 
     tree.on_key_down("ArrowLeft", 0);
@@ -59,9 +59,9 @@ fn bare_arrow_over_a_selection_collapses_to_its_edge() {
 
 #[test]
 fn apply_edit_intent_is_the_os_independent_entry_point() {
-    // The Platform Adapter maps an OS keystroke to an intent and drives this
-    // seam directly; core never sees which key produced it (ADR-0103).
-    let (mut tree, input) = focused_input("hello"); // caret at 5
+    // Platform Adapter は OS のキー入力を intent に変換しこの seam を直接駆動する。
+    // core はどのキーが起点かを知らない（ADR-0103）。
+    let (mut tree, input) = focused_input("hello"); // キャレットは 5
 
     assert!(tree.apply_edit_intent(
         input,
@@ -84,12 +84,12 @@ fn apply_edit_intent_is_the_os_independent_entry_point() {
 
 #[test]
 fn boundary_intents_move_and_extend_the_caret_to_the_field_ends() {
-    // ADR-0103 / #360: Home/End and Ctrl+Home/End map (in the adapter) to
-    // Line/Doc boundary intents; core applies them through the OS-independent
-    // seam. In single-line semantics every boundary is the field end.
-    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+    // Home/End と Ctrl+Home/End はアダプタで Line/Doc 境界 intent に変換され、
+    // core は OS 非依存の seam を通して適用する（ADR-0103）。単一行では
+    // すべての境界がフィールド端となる。
+    let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
 
-    // Home (Move/LineBoundary/Backward) collapses the caret to the start.
+    // Home (Move/LineBoundary/Backward) はキャレットを先頭へ折りたたむ。
     assert!(tree.apply_edit_intent(
         input,
         EditIntent::Move {
@@ -100,7 +100,7 @@ fn boundary_intents_move_and_extend_the_caret_to_the_field_ends() {
     assert_eq!(tree.element_caret_byte_index(input), Some(0), "Home → field start");
     assert!(tree.element_text_selection(input).is_none(), "a Move stays collapsed");
 
-    // Shift+End (Extend/LineBoundary/Forward) selects from the caret to the end.
+    // Shift+End (Extend/LineBoundary/Forward) はキャレットから末尾まで選択する。
     assert!(tree.apply_edit_intent(
         input,
         EditIntent::Extend {
@@ -114,7 +114,7 @@ fn boundary_intents_move_and_extend_the_caret_to_the_field_ends() {
         "Shift+End extends the selection to the field end, anchor fixed at 0",
     );
 
-    // Ctrl+Home (Move/DocBoundary/Backward) collapses back to the start.
+    // Ctrl+Home (Move/DocBoundary/Backward) は先頭へ折りたたむ。
     assert!(tree.apply_edit_intent(
         input,
         EditIntent::Move {
@@ -128,14 +128,14 @@ fn boundary_intents_move_and_extend_the_caret_to_the_field_ends() {
 
 #[test]
 fn arrow_keys_do_not_disturb_an_active_ime_composition() {
-    // ADR-0103: a caret key while an IME preedit is active must not edit or break
-    // the composition. The intent is not consumed; the preedit and content stay.
+    // IME preedit がアクティブな間のキャレットキーは、編集も composition の破壊も
+    // してはならない（ADR-0103）。intent は消費されず、preedit と内容は保持される。
     let mut tree = ElementTree::new();
     let input = tree.element_create(101, ElementKind::TextInput);
     tree.set_root(input);
     tree.element_focus(input);
-    tree.element_append_text_content(input, "ab"); // caret at 2
-    tree.on_composition_start(input, "きゅ"); // active preedit
+    tree.element_append_text_content(input, "ab"); // キャレットは 2
+    tree.on_composition_start(input, "きゅ"); // アクティブな preedit
 
     let consumed = tree.apply_edit_intent(
         input,
@@ -144,26 +144,26 @@ fn arrow_keys_do_not_disturb_an_active_ime_composition() {
             direction: Direction::Backward,
         },
     );
-    assert!(!consumed, "intent is refused while composing");
-    assert_eq!(tree.element_caret_byte_index(input), Some(2), "caret unmoved");
+    assert!(!consumed, "composition 中は intent を拒否する");
+    assert_eq!(tree.element_caret_byte_index(input), Some(2), "キャレットは不動");
     assert_eq!(
         tree.element_get_text_content(input),
         "abきゅ",
-        "the composition is preserved intact",
+        "composition はそのまま保持される",
     );
 }
 
 #[test]
 fn delete_keys_do_not_disturb_an_active_ime_composition() {
-    // ADR-0103: a Backspace/Delete while an IME preedit is active must not edit
-    // the committed content or break the composition — the intent is refused at
-    // the seam while composing, so the preedit and content stay intact.
+    // IME preedit がアクティブな間の Backspace/Delete は、確定済み内容の編集も
+    // composition の破壊もしてはならない（ADR-0103）。composition 中は seam で
+    // intent を拒否するため、preedit と内容は保持される。
     let mut tree = ElementTree::new();
     let input = tree.element_create(102, ElementKind::TextInput);
     tree.set_root(input);
     tree.element_focus(input);
-    tree.element_append_text_content(input, "ab"); // caret at 2
-    tree.on_composition_start(input, "きゅ"); // active preedit
+    tree.element_append_text_content(input, "ab"); // キャレットは 2
+    tree.on_composition_start(input, "きゅ"); // アクティブな preedit
 
     tree.on_key_down("Backspace", 0);
     tree.on_key_down("Delete", 0);
@@ -171,7 +171,7 @@ fn delete_keys_do_not_disturb_an_active_ime_composition() {
     assert_eq!(
         tree.element_get_text_content(input),
         "abきゅ",
-        "neither key altered the committed text or the composition",
+        "どちらのキーも確定テキストや composition を変えない",
     );
 }
 
@@ -181,19 +181,19 @@ fn shift_arrow_extends_text_input_selection_then_typing_replaces_it() {
     let input = tree.element_create(10, ElementKind::TextInput);
     tree.set_root(input);
     tree.element_focus(input);
-    tree.element_append_text_content(input, "hello"); // caret at end
+    tree.element_append_text_content(input, "hello"); // キャレットは末尾
 
-    // Shift+ArrowLeft twice selects the last two characters ("lo").
+    // Shift+ArrowLeft 2回で末尾2文字 ("lo") を選択する。
     tree.on_key_down("ArrowLeft", SHIFT);
     tree.on_key_down("ArrowLeft", SHIFT);
 
-    // Typing over the range replaces it (replace-on-type).
+    // 範囲に上書き入力すると置換される（replace-on-type）。
     tree.on_text_input(input, "X");
     assert_eq!(tree.element_get_text_content(input), "helX");
 }
 
-/// A laid-out, focused text-input carrying `content`, ready for pointer/key
-/// gestures. Returns (tree, input).
+/// `content` を保持しレイアウト済みのフォーカス済みテキスト入力。ポインタ/キー
+/// ジェスチャを受けられる。(tree, input) を返す。
 fn text_input_with(content: &str) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let input = tree.element_create(20, ElementKind::TextInput);
@@ -217,7 +217,7 @@ fn text_input_with(content: &str) -> (ElementTree, hayate_core::ElementId) {
 fn drag_within_text_input_selects_a_range() {
     let (mut tree, input) = text_input_with("hello world");
 
-    // Press near the start of the field and drag rightwards across glyphs.
+    // フィールド先頭付近を押下し、グリフを横切って右へドラッグする。
     tree.on_pointer_down(2.0, 20.0);
     tree.on_pointer_move(60.0, 20.0);
 
@@ -229,11 +229,11 @@ fn drag_within_text_input_selects_a_range() {
 
 #[test]
 fn double_click_in_text_input_selects_the_word_under_the_pointer() {
-    // #366: a desktop double-click expands the edit selection to the whole word,
-    // mirroring the read-only SelectionArea multi-click (begin_selection_at).
+    // デスクトップのダブルクリックは編集選択を単語全体へ拡張する。読み取り専用
+    // SelectionArea のマルチクリック（begin_selection_at）と同じ挙動。
     let (mut tree, input) = text_input_with("hello world");
 
-    // Two presses at the same spot inside "hello" expand to the word, 0..5.
+    // "hello" 内の同一地点での2回の押下で単語 0..5 へ拡張する。
     tree.on_pointer_down(15.0, 20.0);
     tree.on_pointer_up(15.0, 20.0);
     tree.on_pointer_down(15.0, 20.0);
@@ -241,14 +241,14 @@ fn double_click_in_text_input_selects_the_word_under_the_pointer() {
     assert_eq!(
         tree.element_text_selection(input),
         Some((0, 5)),
-        "double-click selects 'hello'",
+        "ダブルクリックは 'hello' を選択する",
     );
 }
 
 #[test]
 fn triple_click_in_text_input_selects_the_line() {
-    // #366: a third press at the same spot expands from word to the whole line
-    // (paragraph). With no newline the line is the entire single-line content.
+    // 同一地点での3回目の押下は単語から行全体（段落）へ拡張する。改行がなければ
+    // 行は単一行の内容全体となる。
     let (mut tree, input) = text_input_with("hello world");
 
     tree.on_pointer_down(15.0, 20.0);
@@ -260,75 +260,72 @@ fn triple_click_in_text_input_selects_the_line() {
     assert_eq!(
         tree.element_text_selection(input),
         Some((0, 11)),
-        "triple-click selects the whole line",
+        "トリプルクリックは行全体を選択する",
     );
 }
 
 #[test]
 fn single_click_in_text_input_places_a_caret_not_a_word() {
-    // #366 regression guard: a lone press still drops a collapsed caret; the
-    // multi-click word/line expansion must not fire on the first press.
+    // リグレッションガード: 単発の押下は折りたたんだキャレットを置くだけ。
+    // マルチクリックの単語/行拡張が最初の押下で発火してはならない。
     let (mut tree, input) = text_input_with("hello world");
 
     tree.on_pointer_down(15.0, 20.0);
 
     assert!(
         tree.element_text_selection(input).is_none(),
-        "single click leaves the selection collapsed (a caret)",
+        "シングルクリックは選択を折りたたんだまま（キャレット）にする",
     );
     assert!(
         tree.element_caret_byte_index(input).is_some(),
-        "the caret is placed in the field",
+        "キャレットがフィールド内に置かれる",
     );
 }
 
 #[test]
 fn a_relayout_after_a_click_does_not_move_the_caret_or_forge_a_selection() {
-    // Canvas-mode root cause: the layout pass rebuilds a text-input's shaped
-    // content on every relayout (style change, resize, a selection-driven
-    // repaint) and used to force `cursor_byte_index` to the text end while
-    // leaving `selection_anchor` where a click had just placed it. The next
-    // frame then read a phantom `(click..end)` selection with the caret snapped
-    // to the end — "a plain click selects from the click point to the last
-    // character", and Shift+click collapsed to nothing. A relayout must preserve
-    // the caret the click placed (only clamping it if the text shrank).
-    let (mut tree, input) = text_input_with("hello world"); // caret at end
+    // Canvas モードの根本原因: レイアウトパスは relayout のたび（スタイル変更・
+    // リサイズ・選択駆動の再描画）にテキスト入力の整形内容を再構築し、その際
+    // `cursor_byte_index` をテキスト末尾へ強制しつつ `selection_anchor` をクリック
+    // 直後の位置に残していた。次フレームでキャレットが末尾にスナップした幻の
+    // `(click..end)` 選択が読まれ、Shift+クリックは空に折りたたまれていた。
+    // relayout はクリックが置いたキャレットを保持しなければならない（テキストが
+    // 縮んだ場合のみクランプ）。
+    let (mut tree, input) = text_input_with("hello world"); // キャレットは末尾
 
-    tree.on_pointer_down(15.0, 20.0); // caret lands mid-word
+    tree.on_pointer_down(15.0, 20.0); // キャレットは単語の途中に着地
     let caret = tree.element_caret_byte_index(input);
-    assert!(tree.element_text_selection(input).is_none(), "click is a caret");
+    assert!(tree.element_text_selection(input).is_none(), "クリックはキャレット");
 
-    // Force the input to re-lay-out, as a steady-state rAF frame does.
+    // 定常状態の rAF フレーム同様にレイアウトをやり直させる。
     tree.element_set_style(input, &[StyleProp::FontSize(16.0)]);
     tree.render(16.0);
 
     assert!(
         tree.element_text_selection(input).is_none(),
-        "a relayout after a click must not manufacture a selection",
+        "クリック後の relayout は選択を捏造してはならない",
     );
     assert_eq!(
         tree.element_caret_byte_index(input),
         caret,
-        "a relayout must not snap the caret back to the text end",
+        "relayout はキャレットをテキスト末尾へ戻してはならない",
     );
 }
 
 #[test]
 fn click_lands_the_caret_at_the_clicked_point_not_a_glyph_left_edge() {
-    // A click resolves to a byte offset via Parley `Cursor::from_point`, which
-    // honours which half of the glyph was hit. The earlier `byte_index_at_point`
-    // returned the hit cluster's *start* unconditionally, so a press on the
-    // trailing half snapped the caret back to the glyph's leading edge and a
-    // press past the last glyph never reached the text end — the caret could not
-    // follow the click. Guard the two extremes: a far-left press sits before the
-    // first glyph (0) and a far-right press reaches the end (len).
+    // クリックは Parley の `Cursor::from_point` でバイトオフセットへ解決され、
+    // グリフのどちら側に当たったかを尊重する。以前の `byte_index_at_point` は
+    // 命中クラスタの先頭を無条件に返したため、後半への押下がキャレットをグリフ
+    // 先頭へスナップさせ、最後のグリフを越えた押下は末尾に届かなかった。両端を
+    // 検証する: 左端の押下は最初のグリフの前 (0)、右端の押下は末尾 (len)。
     let (mut tree, input) = text_input_with("hello");
 
     tree.on_pointer_down(2.0, 20.0);
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(0),
-        "a press at the left edge sits before the first glyph",
+        "左端の押下は最初のグリフの前に来る",
     );
 
     tree.on_pointer_up(2.0, 20.0);
@@ -336,15 +333,15 @@ fn click_lands_the_caret_at_the_clicked_point_not_a_glyph_left_edge() {
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(5),
-        "a press past the last glyph reaches the text end, not its left edge",
+        "最後のグリフを越えた押下は左端ではなく末尾に届く",
     );
 }
 
 #[test]
 fn double_click_under_touch_modality_stays_a_caret() {
-    // #366: word/line expansion is a Mouse/Pen gesture (ADR-0104). Under Touch
-    // the double press stays a caret, so it never competes with the long-press
-    // word selection. Mouse double-click (other tests) still expands.
+    // 単語/行拡張は Mouse/Pen のジェスチャ（ADR-0104）。Touch ではダブル押下は
+    // キャレットのままで、長押しの単語選択と競合しない。Mouse のダブルクリック
+    // （他のテスト）は引き続き拡張する。
     let (mut tree, input) = text_input_with("hello world");
 
     tree.on_pointer_down_with_kind(15.0, 20.0, 0, PointerKind::Touch);
@@ -353,12 +350,12 @@ fn double_click_under_touch_modality_stays_a_caret() {
 
     assert!(
         tree.element_text_selection(input).is_none(),
-        "a Touch double press does not expand to a word",
+        "Touch のダブル押下は単語へ拡張しない",
     );
 }
 
-/// A column holding a focused text-input above a `selectable` paragraph (its own
-/// Selection Region). Returns (tree, input, paragraph-text). Both are laid out.
+/// フォーカス済みテキスト入力を `selectable` 段落（独立した Selection Region）の
+/// 上に配置した列。(tree, input, 段落テキスト) を返す。両者ともレイアウト済み。
 fn input_above_selectable_paragraph() -> (ElementTree, hayate_core::ElementId, hayate_core::ElementId)
 {
     use hayate_core::FlexDirectionValue;
@@ -367,9 +364,9 @@ fn input_above_selectable_paragraph() -> (ElementTree, hayate_core::ElementId, h
     let input = tree.element_create(31, ElementKind::TextInput);
     let region = tree.element_create(32, ElementKind::View);
     let text = tree.element_create(33, ElementKind::Text);
-    // A spacer keeps the paragraph clear of the input selection's floating
-    // toolbar (ADR-0097, #272), which — with the input anchored at the top —
-    // flips below the input and would otherwise overlay the paragraph.
+    // スペーサーは入力選択のフローティングツールバー（ADR-0097）から段落を
+    // 離す。入力が上端固定だとツールバーは入力の下へ反転し、さもなくば段落に
+    // 重なるため。
     let spacer = tree.element_create(34, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(400.0, 200.0);
@@ -415,21 +412,21 @@ fn starting_a_text_input_selection_clears_the_selection_area_selection() {
     let (mut tree, input, text) = input_above_selectable_paragraph();
     let (_, ty, _, th) = tree.element_layout_rect(text).unwrap();
 
-    // First select read-only text in the paragraph region.
+    // まず段落 region 内の読み取り専用テキストを選択する。
     tree.on_pointer_down(2.0, ty + th / 2.0);
     tree.on_pointer_move(70.0, ty + th / 2.0);
-    assert!(tree.selection().is_some(), "a SelectionArea selection exists");
+    assert!(tree.selection().is_some(), "SelectionArea の選択が存在する");
 
-    // Now drag inside the text-input: the document selection must clear.
+    // 次にテキスト入力内をドラッグする: ドキュメント選択はクリアされねばならない。
     tree.on_pointer_down(2.0, 20.0);
     tree.on_pointer_move(50.0, 20.0);
     assert!(
         tree.selection().is_none(),
-        "starting a text-input selection clears the SelectionArea selection",
+        "テキスト入力の選択開始は SelectionArea の選択をクリアする",
     );
     assert!(
         tree.element_text_selection(input).is_some(),
-        "the text-input now owns the active selection",
+        "アクティブな選択はテキスト入力が持つ",
     );
 }
 
@@ -437,24 +434,24 @@ fn starting_a_text_input_selection_clears_the_selection_area_selection() {
 fn starting_a_selection_area_selection_clears_the_text_input_selection() {
     let (mut tree, input, text) = input_above_selectable_paragraph();
 
-    // First select a range inside the text-input.
+    // まずテキスト入力内の範囲を選択する。
     tree.on_pointer_down(2.0, 20.0);
     tree.on_pointer_move(50.0, 20.0);
     tree.on_pointer_up(50.0, 20.0);
     assert!(
         tree.element_text_selection(input).is_some(),
-        "the text-input has an active edit selection",
+        "テキスト入力にアクティブな編集選択がある",
     );
 
-    // Now select read-only text in the paragraph: the edit selection collapses.
+    // 次に段落の読み取り専用テキストを選択する: 編集選択は折りたたまれる。
     let (_, ty, _, th) = tree.element_layout_rect(text).unwrap();
     tree.on_pointer_down(2.0, ty + th / 2.0);
     tree.on_pointer_move(70.0, ty + th / 2.0);
     assert!(
         tree.element_text_selection(input).is_none(),
-        "starting a SelectionArea selection collapses the text-input selection",
+        "SelectionArea の選択開始はテキスト入力の選択を折りたたむ",
     );
-    assert!(tree.selection().is_some(), "the SelectionArea now owns the selection");
+    assert!(tree.selection().is_some(), "選択は SelectionArea が持つ");
 }
 
 #[test]
@@ -472,138 +469,136 @@ fn on_key_down_backspace_edits_focused_text_input() {
 
 #[test]
 fn delete_key_removes_the_grapheme_after_the_caret() {
-    // ADR-0103: Delete (forward) was previously a complete no-op; now it routes
-    // through the EditIntent seam and removes the char to the caret's right.
-    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    // Delete（前方）は EditIntent seam を通してキャレット右側の文字を削除する
+    // （ADR-0103）。
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
     tree.on_key_down("ArrowLeft", 0);
-    tree.on_key_down("ArrowLeft", 0); // caret at 3 (before "lo")
+    tree.on_key_down("ArrowLeft", 0); // キャレットは 3（"lo" の前）
 
     tree.on_key_down("Delete", 0);
-    assert_eq!(tree.element_get_text_content(input), "helo", "removes the 'l' to the right");
-    assert_eq!(tree.element_caret_byte_index(input), Some(3), "caret stays at the deletion point");
+    assert_eq!(tree.element_get_text_content(input), "helo", "右側の 'l' を削除する");
+    assert_eq!(tree.element_caret_byte_index(input), Some(3), "キャレットは削除位置に留まる");
     assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]
 fn backspace_key_removes_the_grapheme_before_the_caret() {
-    let (mut tree, input) = focused_input("hello"); // caret at end (5)
-    tree.on_key_down("ArrowLeft", 0); // caret at 4 (before "o")
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
+    tree.on_key_down("ArrowLeft", 0); // キャレットは 4（"o" の前）
 
     tree.on_key_down("Backspace", 0);
-    assert_eq!(tree.element_get_text_content(input), "helo", "removes the 'l' to the left");
-    assert_eq!(tree.element_caret_byte_index(input), Some(3), "caret retreats to where 'l' began");
+    assert_eq!(tree.element_get_text_content(input), "helo", "左側の 'l' を削除する");
+    assert_eq!(tree.element_caret_byte_index(input), Some(3), "キャレットは 'l' の開始位置へ戻る");
 }
 
 #[test]
 fn backspace_and_delete_over_a_selection_remove_the_whole_range() {
-    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
     tree.on_key_down("ArrowLeft", SHIFT);
-    tree.on_key_down("ArrowLeft", SHIFT); // selects "lo" → (3,5)
+    tree.on_key_down("ArrowLeft", SHIFT); // "lo" を選択 → (3,5)
     assert_eq!(tree.element_text_selection(input), Some((3, 5)));
 
     tree.on_key_down("Delete", 0);
-    assert_eq!(tree.element_get_text_content(input), "hel", "the range goes, not one char");
+    assert_eq!(tree.element_get_text_content(input), "hel", "1文字ではなく範囲が消える");
     assert_eq!(tree.element_caret_byte_index(input), Some(3));
     assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]
 fn ctrl_backspace_deletes_the_word_before_the_caret() {
-    // #363: Ctrl+Backspace (Win/Linux) removes the whole word to the caret's
-    // left, not a single grapheme — reusing `selection.rs`'s `prev_word`.
-    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+    // Ctrl+Backspace（Win/Linux）はキャレット左側の単語全体を削除する
+    // （1 grapheme ではない）。`selection.rs` の `prev_word` を再利用。
+    let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
 
     tree.on_key_down("Backspace", CTRL);
-    assert_eq!(tree.element_get_text_content(input), "hello ", "the trailing word goes");
-    assert_eq!(tree.element_caret_byte_index(input), Some(6), "caret lands at the word start");
+    assert_eq!(tree.element_get_text_content(input), "hello ", "末尾の単語が消える");
+    assert_eq!(tree.element_caret_byte_index(input), Some(6), "キャレットは単語先頭に着く");
     assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]
 fn ctrl_delete_deletes_the_word_after_the_caret() {
-    // #363: Ctrl+Delete removes the whole word to the caret's right via
-    // `next_word`, leaving the caret in place.
-    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
-    tree.on_key_down("ArrowLeft", CTRL); // word back to 6
-    tree.on_key_down("ArrowLeft", CTRL); // word back to the field start (0)
+    // Ctrl+Delete は `next_word` でキャレット右側の単語全体を削除し、キャレットは
+    // その場に留まる。
+    let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
+    tree.on_key_down("ArrowLeft", CTRL); // 単語単位で 6 へ
+    tree.on_key_down("ArrowLeft", CTRL); // 単語単位でフィールド先頭 (0) へ
     assert_eq!(tree.element_caret_byte_index(input), Some(0));
 
     tree.on_key_down("Delete", CTRL);
-    assert_eq!(tree.element_get_text_content(input), " world", "the leading word goes");
-    assert_eq!(tree.element_caret_byte_index(input), Some(0), "caret stays at the deletion point");
+    assert_eq!(tree.element_get_text_content(input), " world", "先頭の単語が消える");
+    assert_eq!(tree.element_caret_byte_index(input), Some(0), "キャレットは削除位置に留まる");
     assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]
 fn alt_backspace_and_delete_delete_by_word_on_macos() {
-    // #363: macOS uses Option (Alt) as the "by word" modifier; it removes whole
-    // words exactly as Ctrl does on Win/Linux.
-    let (mut tree, input) = focused_input("alpha beta"); // caret at end (10)
+    // macOS は Option (Alt) を単語単位の修飾キーとして使い、Win/Linux の Ctrl と
+    // 同様に単語全体を削除する。
+    let (mut tree, input) = focused_input("alpha beta"); // キャレットは末尾 (10)
 
     tree.on_key_down("Backspace", ALT);
-    assert_eq!(tree.element_get_text_content(input), "alpha ", "Option+Backspace drops 'beta'");
+    assert_eq!(tree.element_get_text_content(input), "alpha ", "Option+Backspace で 'beta' が消える");
 
-    tree.on_key_down("ArrowLeft", ALT); // word back to the field start (0)
+    tree.on_key_down("ArrowLeft", ALT); // 単語単位でフィールド先頭 (0) へ
     tree.on_key_down("Delete", ALT);
-    assert_eq!(tree.element_get_text_content(input), " ", "Option+Delete drops 'alpha'");
+    assert_eq!(tree.element_get_text_content(input), " ", "Option+Delete で 'alpha' が消える");
 }
 
 #[test]
 fn ctrl_backspace_word_boundary_matches_the_shared_word_logic_in_mixed_text() {
-    // #363 acceptance: word deletion honours `selection.rs`'s word boundaries,
-    // where the boundary between a CJK run and an English run is the separating
-    // space (CJK and ASCII letters both classify as word chars). "こんにちは world"
-    // is two words; one Ctrl+Backspace removes only the trailing English word.
-    let (mut tree, input) = focused_input("こんにちは world"); // 15 + 1 + 5 = 21 bytes
+    // 単語削除は `selection.rs` の単語境界に従う。CJK 連続と英語連続の境界は
+    // 区切りの空白（CJK も ASCII 文字も word 文字に分類される）。"こんにちは world"
+    // は2単語で、1回の Ctrl+Backspace は末尾の英単語のみ削除する。
+    let (mut tree, input) = focused_input("こんにちは world"); // 15 + 1 + 5 = 21 バイト
 
     tree.on_key_down("Backspace", CTRL);
     assert_eq!(
         tree.element_get_text_content(input),
         "こんにちは ",
-        "only the English word goes, the CJK word is left intact",
+        "英単語のみ消え、CJK 単語はそのまま残る",
     );
 
-    // A second Ctrl+Backspace crosses the space and removes the CJK word.
+    // 2回目の Ctrl+Backspace は空白を越えて CJK 単語を削除する。
     tree.on_key_down("Backspace", CTRL);
-    assert_eq!(tree.element_get_text_content(input), "", "the CJK word goes next");
+    assert_eq!(tree.element_get_text_content(input), "", "次に CJK 単語が消える");
 }
 
 #[test]
 fn ctrl_arrow_moves_and_extends_the_caret_by_word() {
-    // #363 acceptance: word-granularity caret movement and selection extension
-    // reach a focused field through the same `on_key_down` seam (ElementTree
-    // integration, complementing the EditState unit coverage).
-    let (mut tree, input) = focused_input("hello world"); // caret at end (11)
+    // 単語粒度のキャレット移動と選択拡張が、同じ `on_key_down` seam を通して
+    // フォーカス済みフィールドに届く（EditState の単体テストを補完する統合テスト）。
+    let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
 
-    tree.on_key_down("ArrowLeft", CTRL); // back over "world"
-    assert_eq!(tree.element_caret_byte_index(input), Some(6), "lands at the start of 'world'");
+    tree.on_key_down("ArrowLeft", CTRL); // "world" を越えて戻る
+    assert_eq!(tree.element_caret_byte_index(input), Some(6), "'world' の先頭に着く");
 
-    tree.on_key_down("ArrowLeft", CTRL | SHIFT); // extend back over "hello "
-    assert_eq!(tree.element_text_selection(input), Some((0, 6)), "selection grows by a word");
+    tree.on_key_down("ArrowLeft", CTRL | SHIFT); // "hello " を越えて拡張
+    assert_eq!(tree.element_text_selection(input), Some((0, 6)), "選択が1単語分広がる");
 }
 
 #[test]
 fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
-    // #362: a multi-line field treats Enter as a newline inserted at the caret,
-    // not appended to the end (fixing the old append bug).
+    // 複数行フィールドでは Enter を末尾追加ではなくキャレット位置への改行挿入と
+    // して扱う。
     let mut tree = ElementTree::new();
     let input = tree.element_create(2, ElementKind::TextInput);
     tree.set_root(input);
     tree.element_focus(input);
     tree.element_set_multiline(input, true);
     tree.element_append_text_content(input, "ab");
-    tree.on_key_down("ArrowLeft", 0); // caret between 'a' and 'b'
+    tree.on_key_down("ArrowLeft", 0); // キャレットは 'a' と 'b' の間
 
     tree.on_key_down("Enter", 0);
 
-    assert_eq!(tree.element_get_text_content(input), "a\nb", "newline at the caret");
-    assert_eq!(tree.element_caret_byte_index(input), Some(2), "caret after the newline");
+    assert_eq!(tree.element_get_text_content(input), "a\nb", "キャレット位置に改行");
+    assert_eq!(tree.element_caret_byte_index(input), Some(2), "キャレットは改行の後");
 }
 
 #[test]
 fn enter_in_a_single_line_field_does_not_insert_a_newline_and_signals_submit() {
-    // #362: the default (single-line) field leaves the text untouched on Enter;
-    // the KeyDown event is the app's submit signal and no TextInput is emitted.
+    // 既定の単一行フィールドでは Enter でテキストを変えない。KeyDown イベントが
+    // アプリの submit シグナルで、TextInput は発行されない。
     let mut tree = ElementTree::new();
     let input = tree.element_create(2, ElementKind::TextInput);
     tree.set_root(input);
@@ -617,47 +612,46 @@ fn enter_in_a_single_line_field_does_not_insert_a_newline_and_signals_submit() {
 
     tree.on_key_down("Enter", 0);
 
-    assert_eq!(tree.element_get_text_content(input), "ab", "no newline inserted");
+    assert_eq!(tree.element_get_text_content(input), "ab", "改行は挿入されない");
     let deliveries = tree.poll_deliveries();
     assert!(
         deliveries.iter().any(|d| d.listener_id == key_listener
             && matches!(&d.event, hayate_core::Event::KeyDown { key, .. } if key == "Enter")),
-        "Enter still reaches the app as a KeyDown (the submit signal)",
+        "Enter は KeyDown（submit シグナル）としてアプリに届く",
     );
     assert!(
         !deliveries.iter().any(|d| d.listener_id == text_listener),
-        "a single-line field never emits a TextInput on Enter",
+        "単一行フィールドは Enter で TextInput を発行しない",
     );
 }
 
 #[test]
 fn enter_in_a_multiline_field_replaces_the_selection() {
-    // replace-on-type: Enter over a selection drops the range and inserts the
-    // newline in its place (#362).
+    // replace-on-type: 範囲選択上の Enter は範囲を消しその位置に改行を挿入する。
     let mut tree = ElementTree::new();
     let input = tree.element_create(2, ElementKind::TextInput);
     tree.set_root(input);
     tree.element_focus(input);
     tree.element_set_multiline(input, true);
-    tree.element_append_text_content(input, "hello"); // caret at end (5)
+    tree.element_append_text_content(input, "hello"); // キャレットは末尾 (5)
     tree.on_key_down("ArrowLeft", SHIFT);
-    tree.on_key_down("ArrowLeft", SHIFT); // selects "lo" → (3,5)
+    tree.on_key_down("ArrowLeft", SHIFT); // "lo" を選択 → (3,5)
     assert_eq!(tree.element_text_selection(input), Some((3, 5)));
 
     tree.on_key_down("Enter", 0);
 
-    assert_eq!(tree.element_get_text_content(input), "hel\n", "the range is replaced by the newline");
+    assert_eq!(tree.element_get_text_content(input), "hel\n", "範囲が改行に置換される");
     assert_eq!(tree.element_caret_byte_index(input), Some(4));
     assert!(tree.element_text_selection(input).is_none());
 }
 
-// ── Multi-line vertical motion + display-line Home/End (#368) ─────────────────
-// ↑/↓ move between display lines keeping a sticky goal column; Home/End snap to
-// the display-line ends. These need Parley line geometry, so the field is laid
-// out first. Width is generous so hard-newline cases do not also soft-wrap.
+// ── 複数行の垂直移動 + 表示行単位の Home/End ─────────────────
+// ↑/↓ は sticky な goal column を保ちつつ表示行間を移動し、Home/End は表示行の
+// 端へスナップする。Parley の行ジオメトリが必要なため先にレイアウトする。幅は
+// 広めにし、ハード改行のケースがソフトラップしないようにする。
 
-/// A laid-out, focused multi-line text-input carrying `content`. `width` lets a
-/// caller force soft-wrapping; `content` may contain `\n` for hard lines.
+/// `content` を保持しレイアウト済みのフォーカス済み複数行テキスト入力。`width`
+/// でソフトラップを強制でき、`content` はハード行用に `\n` を含められる。
 fn multiline_input(content: &str, width: f32) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let input = tree.element_create(40, ElementKind::TextInput);
@@ -687,69 +681,68 @@ fn move_vertical(d: Direction) -> EditIntent {
 
 #[test]
 fn arrow_up_down_moves_between_display_lines_at_the_same_column() {
-    // #368: two identical hard lines. From the end of line 2, ↑ lands at the same
-    // column on line 1 (its end); ↓ returns to the end of line 2.
-    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // caret at 13
+    // 同一のハード行が2つ。2行目の末尾から ↑ は1行目の同じ列（その末尾）に着き、
+    // ↓ は2行目の末尾へ戻る。
+    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // キャレットは 13
     assert_eq!(tree.element_caret_byte_index(input), Some(13));
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(6),
-        "↑ lands at the end of the line above (same column)",
+        "↑ は上の行の末尾（同じ列）に着く",
     );
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Down)));
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(13),
-        "↓ returns to the end of the line below",
+        "↓ は下の行の末尾へ戻る",
     );
 }
 
 #[test]
 fn vertical_motion_keeps_the_goal_column_across_a_short_line() {
-    // #368 sticky goal column: caret at the end of a long line, then ↑ through a
-    // short line ("hi") and ↑ again to another long line. The column is preserved
-    // across the short line, so the final caret is at the long line's end (5),
-    // not where the short line clamped it (which would land near column 2).
-    let (mut tree, input) = multiline_input("world\nhi\nworld", 400.0); // caret at 14
+    // sticky goal column: 長い行の末尾から ↑ で短い行 ("hi") を通り、さらに ↑ で
+    // 別の長い行へ。短い行を越えても列が保たれるため、最終キャレットは短い行が
+    // クランプした位置（列2付近）ではなく長い行の末尾 (5) になる。
+    let (mut tree, input) = multiline_input("world\nhi\nworld", 400.0); // キャレットは 14
     assert_eq!(tree.element_caret_byte_index(input), Some(14));
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(8),
-        "↑ onto the short line clamps to its end",
+        "↑ で短い行に乗るとその末尾にクランプされる",
     );
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(5),
-        "↑ again returns to the original column on the long line (goal kept)",
+        "再度 ↑ で長い行の元の列へ戻る（goal が保たれている）",
     );
 }
 
 #[test]
 fn single_line_arrow_up_down_jumps_to_the_field_ends() {
-    // #368: a single-line field has no rows, so ↑ jumps to the field start and ↓
-    // to the field end (Chromium `<input>`), resolved by the pure EditState seam.
-    let (mut tree, input) = focused_input("hello"); // caret at end (5)
+    // 単一行フィールドには行がないため、↑ はフィールド先頭、↓ はフィールド末尾へ
+    // 飛ぶ（Chromium `<input>`）。純粋な EditState seam で解決される。
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
-    assert_eq!(tree.element_caret_byte_index(input), Some(0), "↑ → field start");
+    assert_eq!(tree.element_caret_byte_index(input), Some(0), "↑ → フィールド先頭");
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Down)));
-    assert_eq!(tree.element_caret_byte_index(input), Some(5), "↓ → field end");
+    assert_eq!(tree.element_caret_byte_index(input), Some(5), "↓ → フィールド末尾");
 }
 
 #[test]
 fn multiline_home_end_snap_to_the_display_line_ends() {
-    // #368: in a multi-line field Home/End move to the *display line* ends, not
-    // the whole-field ends. Caret on the third line → Home lands at that line's
-    // start (9), not the field start (0); End at its end (14).
-    let (mut tree, input) = multiline_input("world\nhi\nworld", 400.0); // caret at 14
+    // 複数行フィールドの Home/End はフィールド端ではなく表示行の端へ移動する。
+    // 3行目のキャレット → Home はその行の先頭 (9)（フィールド先頭 0 ではない）、
+    // End はその末尾 (14) に着く。
+    let (mut tree, input) = multiline_input("world\nhi\nworld", 400.0); // キャレットは 14
 
     assert!(tree.apply_edit_intent(
         input,
@@ -761,7 +754,7 @@ fn multiline_home_end_snap_to_the_display_line_ends() {
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(9),
-        "Home → start of the current display line, not the field start",
+        "Home → フィールド先頭ではなく現在の表示行の先頭",
     );
 
     assert!(tree.apply_edit_intent(
@@ -771,15 +764,15 @@ fn multiline_home_end_snap_to_the_display_line_ends() {
             direction: Direction::Forward,
         },
     ));
-    assert_eq!(tree.element_caret_byte_index(input), Some(14), "End → display-line end");
+    assert_eq!(tree.element_caret_byte_index(input), Some(14), "End → 表示行の末尾");
 }
 
 #[test]
 fn shift_arrow_down_extends_the_selection_across_lines() {
-    // #368: Shift+↑/↓ extends the selection by a row, keeping the anchor.
-    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // caret at 13
+    // Shift+↑/↓ は anchor を保ったまま選択を1行分拡張する。
+    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // キャレットは 13
 
-    // Caret up to the end of line 1 (anchor point for the extension).
+    // キャレットを1行目の末尾へ（拡張の anchor 点）。
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
     assert_eq!(tree.element_caret_byte_index(input), Some(6));
 
@@ -793,26 +786,26 @@ fn shift_arrow_down_extends_the_selection_across_lines() {
     assert_eq!(
         tree.element_text_selection(input),
         Some((6, 13)),
-        "Shift+↓ selects from line 1's end down to line 2's end (row-spanning)",
+        "Shift+↓ は1行目の末尾から2行目の末尾まで選択する（行をまたぐ）",
     );
 }
 
 #[test]
 fn on_key_down_arrow_up_moves_the_caret_up_a_line() {
-    // #368: the raw key path maps a bare ↑ to vertical motion, so a multi-line
-    // field moves the caret to the line above without going through the adapter.
-    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // caret at 13
+    // 生のキー経路は素の ↑ を垂直移動にマップするため、複数行フィールドはアダプタ
+    // を通さずキャレットを上の行へ移動する。
+    let (mut tree, input) = multiline_input("abcdef\nabcdef", 400.0); // キャレットは 13
 
     tree.on_key_down("ArrowUp", 0);
 
-    assert_eq!(tree.element_caret_byte_index(input), Some(6), "↑ key moved up a line");
+    assert_eq!(tree.element_caret_byte_index(input), Some(6), "↑ キーで1行上へ移動した");
 }
 
 #[test]
 fn vertical_motion_follows_soft_wrapped_lines() {
-    // #368 acceptance: with no hard breaks, a narrow field soft-wraps into several
-    // display lines. ↑ from the end moves the caret onto a higher visual row — its
-    // y drops by roughly a line height — proving wrap geometry drives the motion.
+    // ハード改行のない狭いフィールドは複数の表示行へソフトラップする。末尾からの
+    // ↑ はキャレットを上の視覚行へ移し、y がおよそ1行分下がる。ラップのジオメトリ
+    // が移動を駆動していることを示す。
     let (mut tree, input) = multiline_input("aaaa bbbb cccc dddd eeee", 70.0);
 
     let before = tree
@@ -826,7 +819,7 @@ fn vertical_motion_follows_soft_wrapped_lines() {
         .expect("caret bounds after moving");
     assert!(
         after.y < before.y - 1.0,
-        "↑ moved the caret to a higher wrapped line (y {} → {})",
+        "↑ がキャレットを上のラップ行へ移した (y {} → {})",
         before.y,
         after.y,
     );
@@ -846,9 +839,9 @@ fn on_composition_end_commits_via_edit_state() {
 
 #[test]
 fn composition_format_ranges_reach_core_as_underlines() {
-    // EditContext `textformatupdate` → wire → core: the clause format ranges
-    // delivered with a preedit update surface as display-text underline ranges
-    // (ADR-0102, #336). "abc" committed (3 bytes) shifts the offsets.
+    // EditContext `textformatupdate` → wire → core: preedit 更新と共に届く節の
+    // フォーマット範囲が、表示テキストの下線範囲として現れる（ADR-0102）。確定済み
+    // の "abc"（3バイト）がオフセットをずらす。
     let mut tree = ElementTree::new();
     let input = tree.element_create(7, ElementKind::TextInput);
     tree.set_root(input);
@@ -866,7 +859,7 @@ fn composition_format_ranges_reach_core_as_underlines() {
         ],
     );
 
-    // Finalizing the composition clears the underlines.
+    // composition を確定すると下線がクリアされる。
     tree.on_composition_end(input, "牛乳");
     assert!(tree.element_composition_underlines(input).is_empty());
 }
@@ -882,7 +875,8 @@ fn on_text_input_appends_via_edit_state() {
     assert_eq!(tree.element_get_text_content(input), "x");
 }
 
-/// A focused, laid-out text-input with an active preedit. Returns its draw ops.
+/// アクティブな preedit を持つフォーカス済み・レイアウト済みテキスト入力。
+/// その draw ops を返す。
 fn render_with_preedit(
     preedit: &str,
     clauses: Vec<CompositionClause>,
@@ -908,8 +902,8 @@ fn render_with_preedit(
     painter.ops().to_vec()
 }
 
-/// Composition underline rects: short (≤3px tall) and wide (≥5px) — distinct from
-/// the tall, hairline caret. Returned as (x, width, height) sorted left-to-right.
+/// composition の下線矩形: 高さ ≤3px・幅 ≥5px で、背の高い細線キャレットと区別
+/// できる。(x, width, height) を左から右へソートして返す。
 fn underline_rects(ops: &[hayate_core::DrawOp]) -> Vec<(f32, f32, f32)> {
     let mut rects: Vec<(f32, f32, f32)> = ops
         .iter()
@@ -928,16 +922,16 @@ fn underline_rects(ops: &[hayate_core::DrawOp]) -> Vec<(f32, f32, f32)> {
 
 #[test]
 fn unformatted_preedit_draws_a_single_underline() {
-    // Pre-conversion: one thin underline spanning the whole composition.
+    // 変換前: composition 全体にまたがる細線下線が1本。
     let ops = render_with_preedit("ぎゅうにゅう", Vec::new());
     let rects = underline_rects(&ops);
-    assert_eq!(rects.len(), 1, "one underline over the whole preedit");
-    assert!(rects[0].1 > 10.0, "it spans the composed text");
+    assert_eq!(rects.len(), 1, "preedit 全体に下線が1本");
+    assert!(rects[0].1 > 10.0, "合成テキスト全体にまたがる");
 }
 
 #[test]
 fn clause_split_draws_a_thick_and_thin_underline() {
-    // During conversion the active clause is thick, the rest thin (ADR-0102).
+    // 変換中はアクティブな節が太線、残りが細線（ADR-0102）。
     let ops = render_with_preedit(
         "ぎゅうにゅう",
         vec![
@@ -946,11 +940,11 @@ fn clause_split_draws_a_thick_and_thin_underline() {
         ],
     );
     let rects = underline_rects(&ops);
-    assert_eq!(rects.len(), 2, "one underline per clause");
+    assert_eq!(rects.len(), 2, "節ごとに下線が1本");
     let (thick, thin) = (rects[0], rects[1]);
     assert!(
         thick.2 > thin.2,
-        "active clause underline is thicker than the determined one ({thick:?} vs {thin:?})",
+        "アクティブな節の下線は確定済みより太い ({thick:?} vs {thin:?})",
     );
 }
 
@@ -959,7 +953,7 @@ fn committing_the_composition_removes_the_underline() {
     let ops = render_with_preedit("ぎゅう", Vec::new());
     assert_eq!(underline_rects(&ops).len(), 1);
 
-    // After commit the preedit is empty: no composition underlines remain.
+    // 確定後 preedit は空: composition の下線は残らない。
     let ops_after = render_with_preedit("", Vec::new());
     assert!(underline_rects(&ops_after).is_empty());
 }
@@ -1049,15 +1043,15 @@ fn element_character_bounds_respects_padding() {
     );
 }
 
-// ── Clipboard key path (ADR-0103 §5③, #361) ──────────────────────────────────
-// Ctrl/Cmd+A/C/X/V reach a focused text-input through the same EditIntent seam
-// as the arrows. The primary modifier is Ctrl on Win/Linux (Cmd maps to it in
-// the adapter keymap); the core test drives the Ctrl bit directly.
-const CTRL: u32 = 2; // MODIFIER_CTRL (proto/spec wire contract).
+// ── クリップボードのキー経路（ADR-0103） ──────────────────────────────────
+// Ctrl/Cmd+A/C/X/V は矢印と同じ EditIntent seam を通してフォーカス済みテキスト
+// 入力に届く。主修飾キーは Win/Linux では Ctrl（アダプタのキーマップで Cmd が
+// これにマップされる）。core テストは Ctrl ビットを直接駆動する。
+const CTRL: u32 = 2; // MODIFIER_CTRL（proto/spec のワイヤ契約）。
 
-/// A `Clipboard` double recording writes and serving a preset read value, so a
-/// test can assert what crossed the Platform Adapter boundary (mirrors the
-/// harness in `selection_toolbar.rs`).
+/// 書き込みを記録し事前設定の読み取り値を返す `Clipboard` のダブル。Platform
+/// Adapter 境界を越えた内容をテストで検証できる（`selection_toolbar.rs` の
+/// ハーネスと同様）。
 #[derive(Default, Clone)]
 struct FakeClipboard {
     writes: Rc<RefCell<Vec<String>>>,
@@ -1075,28 +1069,27 @@ impl Clipboard for FakeClipboard {
 
 #[test]
 fn ctrl_a_selects_all_in_the_focused_text_input() {
-    // ADR-0103: Ctrl/Cmd+A used to be swallowed by the document-selection path
-    // (which only fires when a read-only Selection exists); a focused text-input
-    // now receives it as a SelectAll EditIntent and selects its whole content.
-    let (mut tree, input) = focused_input("hello"); // caret collapsed at end (5)
+    // フォーカス済みテキスト入力は Ctrl/Cmd+A を SelectAll EditIntent として受け、
+    // 内容全体を選択する（ADR-0103）。
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5) で折りたたみ
 
     tree.on_key_down("a", CTRL);
 
     assert_eq!(
         tree.element_text_selection(input),
         Some((0, 5)),
-        "Ctrl+A selects the entire field content",
+        "Ctrl+A はフィールド内容全体を選択する",
     );
 }
 
 #[test]
 fn ctrl_c_copies_the_text_input_selection_to_the_clipboard() {
-    // Ctrl/Cmd+C on a focused text-input writes its selected text through the
-    // Platform Adapter clipboard, leaving the selection in place (Chromium).
-    let (mut tree, input) = focused_input("hello"); // caret at end
+    // フォーカス済みテキスト入力上の Ctrl/Cmd+C は選択テキストを Platform Adapter
+    // のクリップボードへ書き込み、選択はそのまま残す（Chromium）。
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾
     let clipboard = FakeClipboard::default();
     tree.set_clipboard(Box::new(clipboard.clone()));
-    tree.on_key_down("a", CTRL); // select "hello"
+    tree.on_key_down("a", CTRL); // "hello" を選択
 
     tree.on_key_down("c", CTRL);
 
@@ -1104,18 +1097,18 @@ fn ctrl_c_copies_the_text_input_selection_to_the_clipboard() {
     assert_eq!(
         tree.element_text_selection(input),
         Some((0, 5)),
-        "Copy leaves the selection in place",
+        "Copy は選択をそのまま残す",
     );
 }
 
 #[test]
 fn ctrl_x_cuts_the_text_input_selection() {
-    // Ctrl/Cmd+X writes the selection to the clipboard and removes it from the
-    // field, collapsing the caret to the cut point (ADR-0097, ADR-0103 §5③).
-    let (mut tree, input) = focused_input("hello world"); // caret at end
+    // Ctrl/Cmd+X は選択をクリップボードへ書き込みフィールドから削除し、キャレット
+    // を切り取り位置へ折りたたむ（ADR-0097, ADR-0103）。
+    let (mut tree, input) = focused_input("hello world"); // キャレットは末尾
     let clipboard = FakeClipboard::default();
     tree.set_clipboard(Box::new(clipboard.clone()));
-    // Select the trailing "world": Shift+Left five times from the end.
+    // 末尾の "world" を選択: 末尾から Shift+Left を5回。
     for _ in 0..5 {
         tree.on_key_down("ArrowLeft", SHIFT);
     }
@@ -1127,23 +1120,23 @@ fn ctrl_x_cuts_the_text_input_selection() {
     assert_eq!(
         tree.element_get_text_content(input),
         "hello ",
-        "Cut removes exactly the selected range",
+        "Cut は選択範囲だけを正確に削除する",
     );
     assert!(
         tree.element_text_selection(input).is_none(),
-        "Cut collapses the caret",
+        "Cut はキャレットを折りたたむ",
     );
 }
 
 #[test]
 fn ctrl_v_pastes_clipboard_text_replacing_the_selection() {
-    // Ctrl/Cmd+V pulls text through the (synchronous) clipboard read and inserts
-    // it, replacing any selected range (replace-on-type, ADR-0097).
-    let (mut tree, input) = focused_input("hello world"); // caret at end
+    // Ctrl/Cmd+V は（同期の）クリップボード読み取りでテキストを取得して挿入し、
+    // 選択範囲があれば置換する（replace-on-type, ADR-0097）。
+    let (mut tree, input) = focused_input("hello world"); // キャレットは末尾
     let clipboard = FakeClipboard::default();
     *clipboard.read.borrow_mut() = Some("X".to_string());
     tree.set_clipboard(Box::new(clipboard.clone()));
-    // Select the trailing "world".
+    // 末尾の "world" を選択する。
     for _ in 0..5 {
         tree.on_key_down("ArrowLeft", SHIFT);
     }
@@ -1153,16 +1146,16 @@ fn ctrl_v_pastes_clipboard_text_replacing_the_selection() {
     assert_eq!(
         tree.element_get_text_content(input),
         "hello X",
-        "paste replaces the selected range with the clipboard text",
+        "paste は選択範囲をクリップボードのテキストで置換する",
     );
 }
 
 #[test]
 fn ctrl_v_pastes_at_a_collapsed_caret_in_an_empty_field() {
-    // The keyboard paste targets the focused field directly, so it works even
-    // with no selection (a collapsed caret in an empty field) — the toolbar's
-    // selection-gated paste could not reach this case.
-    let (mut tree, input) = focused_input(""); // empty, caret at 0
+    // キーボードの paste はフォーカス済みフィールドを直接対象とするため、選択が
+    // なくても（空フィールドの折りたたみキャレット）動作する。ツールバーの選択前提
+    // の paste では届かなかったケース。
+    let (mut tree, input) = focused_input(""); // 空、キャレットは 0
     let clipboard = FakeClipboard::default();
     *clipboard.read.borrow_mut() = Some("pasted".to_string());
     tree.set_clipboard(Box::new(clipboard.clone()));

@@ -1,7 +1,6 @@
-//! Pixel regression: the scrollbar overlay thumb (ADR-0110, #407) is rasterised
-//! at the box edge over the content, tracks the Scroll Offset, and — for a nested
-//! scroll-view — stays clipped inside the outer box. Mirrors the S4 prior art
-//! `scroll_view_render.rs` / `nested_scroll_chaining_render.rs`.
+//! ピクセル回帰: scrollbar overlay の thumb（ADR-0110）は content の上、box 端に
+//! ラスタライズされ、Scroll Offset を追従し、ネストした scroll-view では外側 box
+//! 内にクリップされ続ける。
 
 use hayate_core::{Color, Dimension, ElementId, ElementKind, ElementTree, StyleProp};
 use hayate_scene_renderer_tiny_skia::TinySkiaSceneRenderer;
@@ -22,13 +21,13 @@ fn render(tree: &ElementTree, w: u32, h: u32) -> Pixmap {
     pixmap
 }
 
-/// Pure green content, untouched by any overlay: g high, r/b ~0.
+/// overlay の影響を受けない純緑の content: g が高く r/b はほぼ 0。
 fn is_plain_green(p: [u8; 4]) -> bool {
     p[1] > 230 && p[0] < 40 && p[2] < 40
 }
 
-/// Green darkened by the translucent dark thumb composited over it: still green-
-/// dominant but visibly dimmer than plain content.
+/// 半透明の暗い thumb が重なって暗くなった緑: 緑優勢のままだが plain な content
+/// より明らかに暗い。
 fn is_thumb_over_green(p: [u8; 4]) -> bool {
     p[1] > 100 && p[1] < 210 && p[0] < 40 && p[2] < 40
 }
@@ -64,13 +63,13 @@ fn thumb_is_painted_at_the_right_edge_over_content() {
     let (tree, _scroll) = vertical_scroll_view();
     let pixmap = render(&tree, 120, 120);
 
-    // Right edge near the top: the thumb darkens the green content here.
+    // 上端近くの右端: ここで thumb が緑の content を暗くする。
     assert!(
         is_thumb_over_green(pixel(&pixmap, 95, 12)),
         "thumb should darken the content at the right edge, got {:?}",
         pixel(&pixmap, 95, 12)
     );
-    // Left of the thumb is plain, full-brightness green content.
+    // thumb の左は plain で全輝度の緑 content。
     assert!(
         is_plain_green(pixel(&pixmap, 40, 12)),
         "content away from the thumb stays plain green, got {:?}",
@@ -82,7 +81,7 @@ fn thumb_is_painted_at_the_right_edge_over_content() {
 fn thumb_tracks_the_offset_in_pixels() {
     let (mut tree, scroll) = vertical_scroll_view();
 
-    // At rest the thumb is near the top; the bottom of the track is plain green.
+    // 静止時 thumb は上端近く、track の下端は plain な緑。
     let at_rest = render(&tree, 120, 120);
     assert!(
         is_thumb_over_green(pixel(&at_rest, 95, 12)),
@@ -95,7 +94,7 @@ fn thumb_tracks_the_offset_in_pixels() {
         pixel(&at_rest, 95, 90)
     );
 
-    // Scrolled to the end the thumb slides to the bottom; the top clears.
+    // 末尾までスクロールすると thumb は下端へ移動し、上端は晴れる。
     tree.element_set_scroll_offset(scroll, 0.0, 200.0);
     tree.render(0.0);
     let scrolled = render(&tree, 120, 120);
@@ -117,10 +116,9 @@ fn is_white(p: [u8; 4]) -> bool {
 
 #[test]
 fn nested_inner_thumb_stays_inside_the_inner_box() {
-    // Outer 140×120 holding an inner 100×80 scroll-view (green 100×300 content)
-    // at the top-left. The inner thumb must darken the content at the inner box's
-    // right edge but never paint into the empty outer space below or beside the
-    // inner box — it is clipped to (and tracks) the inner box.
+    // 外側 140×120 が左上に inner 100×80 scroll-view（緑 100×300 content）を持つ。
+    // inner thumb は inner box の右端で content を暗くするが、inner box の下や横の
+    // 空いた外側空間には描いてはならない（inner box にクリップ・追従する）。
     let mut tree = ElementTree::new();
     let outer = tree.element_create(1, ElementKind::ScrollView);
     let inner = tree.element_create(2, ElementKind::ScrollView);
@@ -155,19 +153,19 @@ fn nested_inner_thumb_stays_inside_the_inner_box() {
     tree.render(0.0);
     let pixmap = render(&tree, 160, 140);
 
-    // Inner thumb darkens the content at the inner box's right edge (x≈92..98).
+    // inner thumb は inner box の右端（x≈92..98）で content を暗くする。
     assert!(
         is_thumb_over_green(pixel(&pixmap, 94, 12)),
         "inner thumb paints at the inner box right edge, got {:?}",
         pixel(&pixmap, 94, 12)
     );
-    // Below the inner box (y 80..120) is empty outer space: no thumb leak.
+    // inner box の下（y 80..120）は空の外側空間: thumb の漏れがあってはならない。
     assert!(
         is_white(pixel(&pixmap, 94, 100)),
         "inner thumb must not leak below the inner box, got {:?}",
         pixel(&pixmap, 94, 100)
     );
-    // Right of the inner box (x 100..140) is empty outer space: no thumb leak.
+    // inner box の右（x 100..140）は空の外側空間: thumb の漏れがあってはならない。
     assert!(
         is_white(pixel(&pixmap, 120, 40)),
         "inner thumb must not leak beside the inner box, got {:?}",
@@ -201,7 +199,7 @@ fn fitting_content_paints_no_thumb() {
     tree.render(0.0);
     let pixmap = render(&tree, 120, 120);
 
-    // Every column, including the right edge, is plain green — no thumb overlay.
+    // 右端を含む全列が plain な緑 — thumb overlay は出ない。
     assert!(
         is_plain_green(pixel(&pixmap, 95, 50)),
         "a fitting scroll-view paints no thumb at the edge, got {:?}",

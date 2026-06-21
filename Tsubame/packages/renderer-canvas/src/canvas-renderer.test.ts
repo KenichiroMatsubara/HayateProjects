@@ -125,7 +125,7 @@ function manualScheduler() {
   };
 }
 
-// Delivery poll only — apply_mutations wire integration (C3) lives in wasm-integration.test.ts.
+// 配信ポーリングのみ。apply_mutations のワイヤ統合は wasm-integration.test.ts にある。
 describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('registers Hayate listeners and dispatches poll deliveries', () => {
     const hayate = new StubHayate();
@@ -160,10 +160,9 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     const received: unknown[] = [];
     renderer.addEventListener(input, 'input', (event) => received.push(event));
 
-    // Hayate core has accumulated "ab" in the edit buffer, but the textupdate
-    // wire delivery carries only the freshly inserted fragment "b". The host
-    // contract (InteractionEvent.value = current value, matching the DOM
-    // renderer's `target.value`) requires the *full* content to be delivered.
+    // Hayate コアは編集バッファに "ab" を蓄積済みだが、textupdate のワイヤ配信は
+    // 新規挿入された断片 "b" しか運ばない。ホスト契約（InteractionEvent.value は
+    // 現在値で、DOM レンダラの `target.value` と一致）は全文の配信を要求する。
     hayate.textContents.set(input as unknown as number, 'ab');
     hayate.events = [[1, EVENT_KIND.TEXT_INPUT, input, 'b']];
     sched.tick();
@@ -208,7 +207,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(opIndex).toBeGreaterThanOrEqual(0);
     expect(batch.ops[opIndex + 1]).toBe(view as unknown as number);
     expect(batch.ops[opIndex + 2]).toBe(768); // minWidth
-    expect(batch.ops[opIndex + 3]).toBe(-1); // maxWidth (unset, ADR-0081 sentinel)
+    expect(batch.ops[opIndex + 3]).toBe(-1); // maxWidth（未設定、ADR-0081 のセンチネル）
     expect(batch.ops[opIndex + 4]).toBe(-1); // minHeight
     expect(batch.ops[opIndex + 5]).toBe(-1); // maxHeight
     expect(batch.styles.length).toBeGreaterThan(0);
@@ -351,14 +350,14 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   });
 
   it('applies the shared coerceElementProperty payload to the packet (issue #235)', () => {
-    // Drive the coercion-sensitive edge cases and confirm the packet carries
-    // exactly what the shared seam produced — no canvas-local re-coercion.
+    // 型強制の境界ケースを通し、パケットが共有シームの生成物どおりであることを確認する
+    // （Canvas 側での再強制はない）。
     const cases: ReadonlyArray<[Parameters<typeof coerceElementProperty>[0], unknown, number]> = [
-      ['value', 42, OP.SET_TEXT_CONTENT], // numbers stringify
-      ['placeholder', 99, OP.SET_TEXT], // non-strings erase
-      ['src', null, OP.SET_SRC], // null erases
+      ['value', 42, OP.SET_TEXT_CONTENT], // 数値は文字列化
+      ['placeholder', 99, OP.SET_TEXT], // 非文字列は消去
+      ['src', null, OP.SET_SRC], // null は消去
       ['disabled', 'false', OP.SET_DISABLED], // Boolean('false') === true
-      ['user-select', 'none', OP.SET_USER_SELECT], // closed vocab → wire enum
+      ['user-select', 'none', OP.SET_USER_SELECT], // 閉じた語彙 → ワイヤ enum
     ];
 
     for (const [name, value, op] of cases) {
@@ -384,11 +383,10 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   });
 
   it('does not encode a text-local prop on a non-carrier kind (Tsubame ADR-0008, #323)', () => {
-    // Style Channel gate: channel-1 text-local props (here `color`) only reach
-    // Text-Local Carrier kinds. The gate runs once in the seam before the Canvas
-    // renderer (`withTextLocalGate`), so a `view`'s `color` is dropped *before*
-    // the wire — not left to Hayate's lowering. The non-text-local `width`
-    // still goes through.
+    // Style Channel ゲート: channel-1 の text-local プロパティ（ここでは `color`）は
+    // Text-Local Carrier の種別にしか届かない。ゲートは Canvas レンダラの手前のシーム
+    // （`withTextLocalGate`）で一度走るので、`view` の `color` はワイヤ手前で落とされ、
+    // Hayate の lowering には委ねない。text-local でない `width` は通る。
     const hayate = new StubHayate();
     const sched = manualScheduler();
     const renderer = withTextLocalGate(new CanvasRenderer(hayate, sched));
@@ -403,8 +401,8 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   });
 
   it('encodes text-local props on a carrier kind (Tsubame ADR-0008, #323)', () => {
-    // A `text` element carries channel-1 text-local props, so the seam keeps
-    // `color` and `fontSize` alongside the non-text-local `width`.
+    // `text` 要素は channel-1 の text-local プロパティを運ぶので、シームは
+    // text-local でない `width` とともに `color` と `fontSize` を残す。
     const hayate = new StubHayate();
     const sched = manualScheduler();
     const renderer = withTextLocalGate(new CanvasRenderer(hayate, sched));
@@ -420,9 +418,8 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   });
 
   it('gates text-local props out of a non-carrier pseudo-style before encode (#323)', () => {
-    // The seam gate is the same for every style-bearing op: a `view` :hover patch
-    // of pure text-local props collapses to empty, so no SET_PSEUDO_STYLE reaches
-    // the wire.
+    // シームのゲートはスタイルを伴う全 op で同一: 純粋に text-local なプロパティだけの
+    // `view` の :hover パッチは空に潰れ、SET_PSEUDO_STYLE はワイヤに届かない。
     const hayate = new StubHayate();
     const sched = manualScheduler();
     const renderer = withTextLocalGate(new CanvasRenderer(hayate, sched));
@@ -599,18 +596,17 @@ describe('CanvasRenderer viewport sizing (ADR-0007)', () => {
   });
 
   it('resizes with the live devicePixelRatio, not the value cached at construction', () => {
-    // Mobile Chrome bumps `devicePixelRatio` *after* the renderer is built — the
-    // soft keyboard / zoom-on-focus that fires while typing changes the effective
-    // ratio. A ratio cached at construction then rebuilds the backing store too
-    // small, so the scene is upscaled to fit the canvas and glyphs go rough. The
-    // observer must read the live ratio on every resize.
+    // モバイル Chrome はレンダラ構築後に `devicePixelRatio` を変える。入力中に出る
+    // ソフトキーボードやフォーカス時ズームが実効比率を変えるためだ。構築時にキャッシュ
+    // した比率では backing store が小さく作られ、シーンが canvas に合わせて拡大されて
+    // グリフが粗くなる。observer はリサイズごとに現在の比率を読む必要がある。
     const previous = globalThis.devicePixelRatio;
     try {
       (globalThis as { devicePixelRatio: number }).devicePixelRatio = 2;
       const hayate = new StubHayate();
       const sched = manualScheduler();
       const canvas = createCanvas(400, 300);
-      // No explicit devicePixelRatio override → must track the global each resize.
+      // devicePixelRatio の明示指定なし → リサイズごとにグローバル値を追う必要がある。
       MockResizeObserver.instances = [];
       const renderer = new CanvasRenderer(hayate, {
         ...sched,

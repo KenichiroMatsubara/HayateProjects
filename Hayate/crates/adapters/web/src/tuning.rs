@@ -1,20 +1,19 @@
-//! Dev-only `tuning.json` parsing for the web Platform Adapter.
+//! web Platform Adapter 向け開発用 `tuning.json` パーサ。
 //!
-//! The authoritative defaults are the Rust `const`s (in `scroll_drag::physics`
-//! and `hayate_core`'s scene-build / selection-chrome blocks). This module lets
-//! a developer overlay them at runtime: the host fetches `tuning.json` and hands
-//! the text to [`HayateElementRenderer::set_tuning`](crate::canvas), which parses
-//! it here. Every field is optional — only the keys present in the JSON override
-//! their default, and a malformed file is rejected wholesale (the caller keeps
-//! the defaults). Parsing lives in the adapter because `hayate-core` deliberately
-//! carries no runtime serde dependency.
+//! 正準のデフォルト値は Rust の `const`（`scroll_drag::physics` と `hayate_core`
+//! の scene-build / selection-chrome）。本モジュールは実行時にそれらを上書きする。
+//! ホストが `tuning.json` を fetch し、その文字列を
+//! [`HayateElementRenderer::set_tuning`](crate::canvas) に渡してここで解釈する。
+//! 全フィールドは任意で、JSON に存在するキーのみがデフォルトを上書きする。不正な
+//! ファイルは全体を拒否し、呼び出し側はデフォルトを保つ。`hayate-core` は実行時
+//! serde 依存を持たない方針のため、パースはアダプタ側に置く。
 
 use hayate_core::{ChromeTuning, Color};
 use serde::Deserialize;
 
 use crate::scroll_drag::ScrollPhysicsTuning;
 
-/// Top-level shape of `tuning.json`: two optional sections.
+/// `tuning.json` のトップレベル形状。任意の 2 セクション。
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TuningJson {
@@ -23,44 +22,43 @@ pub struct TuningJson {
 }
 
 impl TuningJson {
-    /// Parse the tuning file. The hand-edited file is JSON5-lite: it may carry
-    /// `//` and `/* */` comments and trailing commas (so a human can annotate
-    /// each knob in 日本語 and comment lines in/out freely). We strip those to
-    /// plain JSON and feed `serde_json` — no heavy JSON5 parser is pulled into
-    /// the production wasm, which never reads this file. `Err` on malformed JSON
-    /// or unknown keys so the caller can fall back to the compiled defaults.
+    /// チューニングファイルをパースする。手書きのファイルは JSON5-lite で、`//`
+    /// `/* */` コメントと末尾カンマを許容する（各値を日本語で注釈したり行を
+    /// コメントアウトできる）。これらを除去して素の JSON にし `serde_json` に
+    /// 渡す。本番 wasm はこのファイルを読まないため重い JSON5 パーサは含めない。
+    /// 不正な JSON や未知キーは `Err` とし、呼び出し側はコンパイル時デフォルトへ
+    /// フォールバックできる。
     pub fn parse(text: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(&to_plain_json(text))
     }
 
-    /// The merged scroll-physics knobs (defaults overlaid by any present keys).
+    /// マージ済みスクロール物理値（存在キーでデフォルトを上書き）。
     pub fn scroll_tuning(&self) -> ScrollPhysicsTuning {
         self.scroll.as_ref().map(ScrollJson::merged).unwrap_or_default()
     }
 
-    /// The merged chrome knobs (defaults overlaid by any present keys).
+    /// マージ済み chrome 値（存在キーでデフォルトを上書き）。
     pub fn chrome_tuning(&self) -> ChromeTuning {
         self.chrome.as_ref().map(ChromeJson::merged).unwrap_or_default()
     }
 }
 
-/// Overlay one `Option` onto a mutable default field.
+/// `Option` をデフォルトフィールドに上書きする。
 fn overlay<T>(slot: &mut T, value: Option<T>) {
     if let Some(v) = value {
         *slot = v;
     }
 }
 
-/// A `[r, g, b, a]` (0..1) JSON array converted to a core [`Color`].
+/// `[r, g, b, a]`（0..1）の JSON 配列を core の [`Color`] に変換する。
 fn color_from(rgba: [f64; 4]) -> Color {
     Color::new(rgba[0], rgba[1], rgba[2], rgba[3])
 }
 
-/// Reduce the JSON5-lite tuning file to plain JSON: drop `//` line comments and
-/// `/* … */` block comments, then drop trailing commas before `}`/`]`. String
-/// literals are respected, so a `//` or `,` inside a quoted value is never
-/// touched. Multibyte (日本語) comment text is simply discarded, so it can never
-/// corrupt the output.
+/// JSON5-lite を素の JSON へ。`//` 行コメントと `/* … */` ブロックコメントを
+/// 除去し、`}`/`]` 前の末尾カンマを落とす。文字列リテラルは保護され、引用値内の
+/// `//` や `,` は触らない。マルチバイト（日本語）コメントは破棄されるだけで出力を
+/// 壊さない。
 fn to_plain_json(src: &str) -> String {
     strip_trailing_commas(&strip_comments(src))
 }
@@ -88,7 +86,7 @@ fn strip_comments(src: &str) -> String {
                 out.push(c);
             }
             '/' if chars.peek() == Some(&'/') => {
-                // Line comment: skip until (but keep) the newline.
+                // 行コメント: 改行まで読み飛ばす（改行は残す）。
                 chars.next();
                 while let Some(&n) = chars.peek() {
                     if n == '\n' {
@@ -98,7 +96,7 @@ fn strip_comments(src: &str) -> String {
                 }
             }
             '/' if chars.peek() == Some(&'*') => {
-                // Block comment: skip until the closing `*/`.
+                // ブロックコメント: 閉じ `*/` まで読み飛ばす。
                 chars.next();
                 let mut prev = '\0';
                 for n in chars.by_ref() {
@@ -141,8 +139,8 @@ fn strip_trailing_commas(src: &str) -> String {
             continue;
         }
         if c == ',' {
-            // A comma whose next non-whitespace char closes an object/array is a
-            // trailing comma — drop it so serde_json (strict) still accepts it.
+            // 次の非空白文字がオブジェクト/配列を閉じるカンマは末尾カンマ。厳格な
+            // serde_json でも通るよう落とす。
             let mut j = i + 1;
             while j < chars.len() && chars[j].is_whitespace() {
                 j += 1;
@@ -243,9 +241,9 @@ mod tests {
     fn only_present_keys_override_the_defaults() {
         let t = TuningJson::parse(r#"{ "scroll": { "deceleration_rate": 0.99 } }"#).unwrap();
         let s = t.scroll_tuning();
-        // The one present key changed…
+        // 存在する 1 キーは変わり…
         assert_eq!(s.deceleration_rate, 0.99);
-        // …and everything else stayed at its default const.
+        // …他はデフォルト const のまま。
         assert_eq!(s.slop_px, ScrollPhysicsTuning::default().slop_px);
         assert_eq!(s.spring_damping, ScrollPhysicsTuning::default().spring_damping);
     }
@@ -259,7 +257,7 @@ mod tests {
     #[test]
     fn malformed_json_is_rejected_so_the_caller_keeps_defaults() {
         assert!(TuningJson::parse("{ not json").is_err());
-        // Unknown keys are rejected too, surfacing typos instead of silently no-op'ing.
+        // 未知キーも拒否し、黙って無視せずタイポを表面化させる。
         assert!(TuningJson::parse(r#"{ "scroll": { "typoed_key": 1 } }"#).is_err());
     }
 
@@ -276,14 +274,14 @@ mod tests {
         let s = t.scroll_tuning();
         assert_eq!(s.deceleration_rate, 0.99);
         assert_eq!(s.min_velocity, 0.03);
-        // Untouched key keeps its default.
+        // 触れていないキーはデフォルトを保つ。
         assert_eq!(s.slop_px, ScrollPhysicsTuning::default().slop_px);
     }
 
     #[test]
     fn a_slash_or_comma_inside_a_string_is_not_treated_as_a_comment() {
-        // Defensive: string values must survive the preprocessor intact. (No
-        // string-valued keys exist today, but the stripper must still be safe.)
+        // 防御的: 文字列値はプリプロセッサを無傷で通る必要がある（現状文字列値
+        // のキーは無いが、ストリッパは安全でなければならない）。
         assert_eq!(to_plain_json(r#"{"a":"http://x , y"}"#), r#"{"a":"http://x , y"}"#);
     }
 }

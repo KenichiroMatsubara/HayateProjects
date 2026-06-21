@@ -1,25 +1,24 @@
-//! Issue #343: an on-demand font fetch that fails must not latch the family in
-//! `pending_font_fetches` forever. The family has to stay eligible for a later
-//! re-request, with a finite retry budget so a permanently-failing family never
-//! runs away.
+//! オンデマンドのフォント取得が失敗しても、ファミリを `pending_font_fetches` に
+//! 永久にラッチしてはならない。再リクエスト可能な状態を保ちつつ、有限のリトライ
+//! 予算で恒久失敗のファミリが暴走しないようにする。
 //!
-//! These tests pin the WASM environment (`system_fonts: false`, ADR-0042) with a
-//! Latin-only default font so Japanese text shapes to `.notdef` and drives the
-//! real `FetchFont → register_font` path through the public `ElementTree` API.
+//! これらのテストは WASM 環境（`system_fonts: false`, ADR-0042）を Latin のみの
+//! デフォルトフォントで固定し、日本語テキストを `.notdef` にシェイプさせて、
+//! 公開 `ElementTree` API 経由で実際の `FetchFont → register_font` 経路を駆動する。
 
 use hayate_core::{Dimension, ElementId, ElementKind, ElementTree, Event, StyleProp};
 
 static NOTO_SANS_JP: &[u8] = include_bytes!("../assets/fonts/NotoSansJP.ttf");
 
-/// A Latin-only face standing in for a WASM bundle that does not cover CJK.
-/// DejaVu Sans is present on the CI image and covers Latin but not Japanese.
+/// CJK を含まない WASM バンドルの代役となる Latin のみのフェイス。DejaVu Sans は
+/// CI イメージに存在し、Latin はカバーするが日本語はカバーしない。
 fn latin_only_default() -> Vec<u8> {
     std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
         .expect("DejaVuSans.ttf present for the test")
 }
 
-/// A WASM-like tree (no system fonts, Latin-only default) with one Text element
-/// holding `text`. Returns the tree and the text element id.
+/// WASM 相当のツリー（システムフォントなし、Latin のみのデフォルト）に、`text`
+/// を持つ Text 要素を 1 つ置く。ツリーとその text 要素 id を返す。
 fn wasm_like_tree_with_text(text: &str) -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     tree.test_set_wasm_like_fonts(latin_only_default());
@@ -36,8 +35,8 @@ fn wasm_like_tree_with_text(text: &str) -> (ElementTree, ElementId) {
         ],
     );
     tree.element_set_text(label, text);
-    // Name the CJK family explicitly: it is absent from the WASM-like collection,
-    // so it is requested on demand and, once registered, shapes the text directly.
+    // CJK ファミリを明示指定する。WASM 相当のコレクションには無いためオンデマンドで
+    // リクエストされ、登録されればテキストを直接シェイプする。
     tree.element_set_font_family(label, "Noto Sans JP");
     (tree, label)
 }
@@ -52,8 +51,8 @@ fn fetch_font_families(events: &[Event]) -> Vec<String> {
         .collect()
 }
 
-/// Tracer: Japanese text on a Latin-only bundle shapes to `.notdef`, so the
-/// missing family is requested once — and not re-requested while in flight.
+/// Latin のみのバンドル上の日本語テキストは `.notdef` にシェイプされ、欠落
+/// ファミリは一度だけリクエストされ、取得中は再リクエストされない。
 #[test]
 fn missing_family_is_requested_once_then_quiet_while_in_flight() {
     let (mut tree, _label) = wasm_like_tree_with_text("あ");
@@ -66,8 +65,7 @@ fn missing_family_is_requested_once_then_quiet_while_in_flight() {
         "first frame must request the absent CJK family exactly once"
     );
 
-    // Still in flight (no success, no failure reported): a re-render must not
-    // re-request the same family.
+    // 取得中（成功も失敗も未報告）は、再描画で同じファミリを再リクエストしない。
     tree.render(16.0);
     let second = fetch_font_families(&tree.poll_events());
     assert!(
@@ -76,9 +74,9 @@ fn missing_family_is_requested_once_then_quiet_while_in_flight() {
     );
 }
 
-/// The core fix: a reported fetch failure must NOT leave the family latched in
-/// `pending`. A later frame re-requests it (the adapter's transient-failure
-/// path: 403/429/blip on a fresh deploy must be retried).
+/// 取得失敗の報告でファミリを `pending` にラッチしたままにしてはならない。後続
+/// フレームで再リクエストする（一時失敗経路。デプロイ直後の 403/429/瞬断は
+/// リトライ対象）。
 #[test]
 fn failed_fetch_is_requested_again_on_a_later_frame() {
     let (mut tree, _label) = wasm_like_tree_with_text("あ");
@@ -87,8 +85,8 @@ fn failed_fetch_is_requested_again_on_a_later_frame() {
     let first = fetch_font_families(&tree.poll_events());
     assert_eq!(first, vec!["Noto Sans JP".to_string()]);
 
-    // The adapter's fetch failed (transient CDN error). It reports the failure
-    // back to core; core returns `true` because the retry budget is not spent.
+    // 取得が失敗（CDN の一時エラー）。core へ失敗を報告すると、リトライ予算が
+    // 残っているため core は `true` を返す。
     assert!(
         tree.font_fetch_failed("Noto Sans JP"),
         "a first failure must be retryable, not terminal"
@@ -103,19 +101,19 @@ fn failed_fetch_is_requested_again_on_a_later_frame() {
     );
 }
 
-/// A family that keeps failing must be given up on after a finite budget, so
-/// neither re-requests nor logs run away during a sustained CDN outage.
+/// 失敗し続けるファミリは有限の予算で諦める。CDN 障害が続いても再リクエストや
+/// ログが暴走しない。
 #[test]
 fn permanently_failing_family_is_given_up_and_not_re_requested() {
     let (mut tree, label) = wasm_like_tree_with_text("あ");
 
-    // Drive request → fail cycles until core reports it has given up.
+    // core が諦めを報告するまで「リクエスト → 失敗」を繰り返す。
     let mut gave_up = false;
     for frame in 0..10 {
         tree.render(frame as f64 * 16.0);
         let requested = fetch_font_families(&tree.poll_events());
         if requested.is_empty() {
-            // Nothing requested this frame: core has stopped asking.
+            // このフレームでリクエストなし。core が要求を止めた。
             break;
         }
         assert_eq!(requested, vec!["Noto Sans JP".to_string()]);
@@ -126,7 +124,7 @@ fn permanently_failing_family_is_given_up_and_not_re_requested() {
     }
     assert!(gave_up, "a family that always fails must eventually be given up on");
 
-    // After give-up, even forcing a re-shape must not re-request the family.
+    // 諦めた後は、再シェイプを強制してもファミリを再リクエストしない。
     tree.element_set_text(label, "あい");
     tree.render(1_000.0);
     let after = fetch_font_families(&tree.poll_events());
@@ -136,14 +134,14 @@ fn permanently_failing_family_is_given_up_and_not_re_requested() {
     );
 }
 
-/// Acceptance (issue #343): first fetch fails, the family is re-requested on a
-/// later frame, the retry "succeeds" (the font is registered), and the CJK text
-/// then shapes to real glyphs instead of `.notdef` tofu.
+/// 受け入れ: 初回取得が失敗 → 後続フレームで再リクエスト → リトライが「成功」
+/// （フォント登録）し、CJK テキストが `.notdef` 豆腐ではなく実グリフにシェイプ
+/// される。
 #[test]
 fn first_fetch_fails_then_retry_succeeds_and_glyphs_render() {
     let (mut tree, label) = wasm_like_tree_with_text("あ");
 
-    // Frame 1: the absent family is requested; the fetch fails (transient).
+    // フレーム 1: 欠落ファミリをリクエストし、取得が失敗（一時的）。
     tree.render(0.0);
     assert_eq!(
         fetch_font_families(&tree.poll_events()),
@@ -155,8 +153,7 @@ fn first_fetch_fails_then_retry_succeeds_and_glyphs_render() {
     );
     assert!(tree.font_fetch_failed("Noto Sans JP"));
 
-    // Frame 2: re-requested after the failure; this time the fetch succeeds and
-    // the adapter registers the face.
+    // フレーム 2: 失敗後に再リクエスト。今回は取得成功でフェイスを登録する。
     tree.render(16.0);
     assert_eq!(
         fetch_font_families(&tree.poll_events()),
@@ -165,8 +162,8 @@ fn first_fetch_fails_then_retry_succeeds_and_glyphs_render() {
     );
     tree.register_font("Noto Sans JP", NOTO_SANS_JP.to_vec());
 
-    // Frame 3: re-shaped with the real font — every glyph is a real id, no tofu,
-    // and nothing is requested anymore.
+    // フレーム 3: 実フォントで再シェイプ。全グリフが実 id で豆腐なし、以降の
+    // リクエストもない。
     tree.render(32.0);
     assert!(
         fetch_font_families(&tree.poll_events()).is_empty(),

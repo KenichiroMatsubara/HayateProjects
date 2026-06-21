@@ -30,8 +30,8 @@ describe('golden frame cross-seam harness (ADR-0079)', () => {
       updateControlBounds,
       updateSelectionBounds,
     } as unknown as EditContext;
-    // happy-dom canvases report a zero-size bounding rect; give it a 1:1
-    // mapping to canvas pixels so the IME DOM rect below is non-trivial.
+    // happy-dom の canvas はゼロサイズの bounding rect を返すため、canvas
+    // ピクセルと 1:1 対応させ、下の IME DOM rect を非自明な値にする。
     fixture.canvas.getBoundingClientRect = () =>
       ({
         left: 0,
@@ -53,15 +53,15 @@ describe('golden frame cross-seam harness (ADR-0079)', () => {
       return input;
     }, renderer);
 
-    // Shadow Tree reconcile -> Mutation Packet -> real WASM ElementTree.
+    // Shadow Tree 再構成 -> Mutation Packet -> 実 WASM ElementTree。
     sched.tick(16);
 
-    // Focus the text-input via a real pointer-down hit-test, then type.
+    // 実際の pointer-down ヒットテストで text-input にフォーカスし、入力する。
     const [x, y, w, h] = Array.from(fixture.raw.element_get_bounds(inputId));
     fixture.raw.on_pointer_down(x! + w! / 2, y! + h! / 2);
     fixture.raw.on_text_input(inputId, '!');
 
-    // Re-render -> ElementTree -> IME bounds sync via the EditContext stub.
+    // 再レンダリング -> ElementTree -> EditContext スタブ経由で IME bounds 同期。
     sched.tick(32);
 
     let imeBounds: GoldenFrameImeBounds | null = null;

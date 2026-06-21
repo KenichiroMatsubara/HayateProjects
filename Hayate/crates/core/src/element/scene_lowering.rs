@@ -11,12 +11,11 @@ use crate::node::{NodeId, SceneGraph};
 #[derive(Debug, Clone)]
 pub(crate) struct AnchorEntry {
     pub anchor_id: NodeId,
-    /// Previous frame's displayed (post-blend) visual — the `from` source for a
-    /// newly triggered transition (ADR-0093). A derived cache keyed to element
-    /// lifetime, not a second source of truth (ADR-0057). `None` on first emit,
-    /// so initial styles never transition.
+    /// 前フレームの表示済み（ブレンド後）visual。新規トランジションの `from` 元となる（ADR-0093）。
+    /// 真実の源ではなく要素ライフタイムに紐づく派生キャッシュ（ADR-0057）。初回 emit では `None` で、
+    /// 初期スタイルはトランジションしない。
     pub last_displayed: Option<Visual>,
-    /// Per-property in-flight transitions for this element.
+    /// この要素の進行中トランジション（プロパティ単位）。
     pub transitions: ElementTransitions,
 }
 
@@ -29,9 +28,8 @@ impl AnchorEntry {
         }
     }
 
-    /// Interpolate `resolved` (after-change effective visual) against the stored
-    /// displayed value, advance to `now_ms`, and memo the result as the next
-    /// frame's `from`. Returns the visual to paint this frame.
+    /// `resolved`（変更後の実効 visual）を表示済み値と補間し、`now_ms` まで進めて、
+    /// 結果を次フレームの `from` としてメモ化する。今フレームに描画する visual を返す。
     pub fn resolve_displayed(&mut self, resolved: &Visual, now_ms: f64) -> Visual {
         let displayed = self
             .transitions
@@ -40,12 +38,10 @@ impl AnchorEntry {
         displayed
     }
 
-    /// Read-only counterpart to `resolve_displayed` (issue #301): interpolate the
-    /// displayed visual at `now_ms` from the retained transition state without
-    /// advancing it. It runs the very same `blend` the render path runs, but on a
-    /// throwaway clone of the in-flight tracks, so the memoized `last_displayed`
-    /// and per-property clocks are left untouched — the query and the render
-    /// frame loop stay independent (ADR-0093).
+    /// `resolve_displayed` の読み取り専用版。保持中のトランジション状態を進めずに、
+    /// `now_ms` 時点の表示済み visual を補間する。描画パスと同じ `blend` を進行中トラックの
+    /// 使い捨てクローンに対して実行するため、メモ化済みの `last_displayed` とプロパティ単位の
+    /// クロックには触れない。クエリと描画フレームループは独立に保たれる（ADR-0093）。
     pub fn sample_displayed(&self, resolved: &Visual, now_ms: f64) -> Visual {
         self.transitions
             .clone()
@@ -53,20 +49,18 @@ impl AnchorEntry {
     }
 }
 
-/// Retained element→scene lowering state (issue #182).
+/// 要素→シーンの lowering 状態（保持）。
 #[derive(Debug, Default)]
 pub(crate) struct SceneLowering {
     pub anchors: std::collections::HashMap<ElementId, AnchorEntry>,
     pub built: bool,
     pub walk_count: usize,
-    /// Root node of the floating selection toolbar overlay, if one is currently
-    /// drawn (ADR-0097, #272). The toolbar is document-level chrome, not anchored
-    /// to any element, so it is re-emitted as a top-level overlay each frame and
-    /// removed by this id before the next emit.
+    /// 現在描画中なら、フローティング選択ツールバーオーバーレイのルートノード（ADR-0097）。
+    /// ツールバーはどの要素にもアンカーされないドキュメントレベルの chrome なので、
+    /// 毎フレーム最上位オーバーレイとして再 emit し、次の emit 前にこの id で除去する。
     pub toolbar_root: Option<NodeId>,
-    /// Root node of the selection drag-handles overlay, if one is currently drawn
-    /// (ADR-0097, #273). Like the toolbar, document-level chrome re-emitted as a
-    /// top-level overlay each frame and removed by this id before the next emit.
+    /// 現在描画中なら、選択ドラッグハンドルオーバーレイのルートノード（ADR-0097）。
+    /// ツールバーと同様、毎フレーム最上位オーバーレイとして再 emit され、次の emit 前にこの id で除去される。
     pub handles_root: Option<NodeId>,
 }
 
@@ -79,8 +73,8 @@ impl SceneLowering {
         self.handles_root = None;
     }
 
-    /// Elements with an in-flight transition — kept visual-dirty by `render` so
-    /// the frame loop keeps advancing them until they settle.
+    /// 進行中トランジションを持つ要素。`render` が visual-dirty に保ち続けることで、
+    /// 収束するまでフレームループが進め続ける。
     pub fn active_transition_ids(&self) -> Vec<ElementId> {
         self.anchors
             .iter()
@@ -90,7 +84,7 @@ impl SceneLowering {
     }
 }
 
-/// Dirty elements scheduled for scene re-lowering this frame.
+/// 今フレームのシーン再 lowering 対象としてスケジュールされた dirty 要素。
 #[derive(Debug, Default)]
 pub(crate) struct LoweringDirtySnapshot {
     pub elements: HashMap<ElementId, VisualInvalidationReach>,
@@ -152,8 +146,8 @@ pub(crate) fn clear_lowered_content(
         .filter_map(|child| lowering.anchors.get(child).map(|e| e.anchor_id))
         .collect();
 
-    // Child anchors may live under ephemeral Clip/Group wrappers from a prior pass.
-    // Hoist them back under `anchor_id` so wrapper teardown does not remove_subtree them.
+    // 子アンカーは前パスの一時的な Clip/Group ラッパーの下にいることがある。
+    // ラッパー破棄で remove_subtree されないよう `anchor_id` 直下へ引き上げる。
     for &child_anchor in &preserve {
         if let Some(parent) = sg.parent_of(child_anchor) {
             if parent != anchor_id {

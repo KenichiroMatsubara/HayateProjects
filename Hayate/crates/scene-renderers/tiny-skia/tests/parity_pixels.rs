@@ -1,4 +1,4 @@
-//! Semantic parity pixel golden baselines for tiny-skia (#151).
+//! tiny-skia のセマンティックパリティ用ピクセルゴールデン基準。
 
 use hayate_scene_test_support::{run_all_parity_golden, run_parity_golden, PARITY_GOLDEN_CASES};
 

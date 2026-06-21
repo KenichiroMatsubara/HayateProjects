@@ -1,17 +1,16 @@
-//! A scroll-view is a CSS scroll container, so as a flex item its automatic
-//! minimum size is 0 and it shrinks to the space its siblings leave — it does
-//! not overflow the parent by a fixed-height sibling's extent.
+//! scroll-view は CSS スクロールコンテナなので、flex item としての自動最小
+//! サイズは 0 になり、兄弟が残した空間まで縮む。固定高の兄弟の分だけ親から
+//! はみ出すことはない。
 //!
-//! Regression: in Tsubame Task Studio (both the Tasks and CSS Gallery pages) a
-//! `height: 100%` scroll-view sits below a fixed-height AppBar in a flex column.
-//! Before the fix, Canvas mode laid the scroll-view out at the full window
-//! height, overflowing the window bottom by the AppBar height. That inflated box
-//! height is also the scroll viewport (`element_scroll_max_offset`), so the last
-//! AppBar-height band of content was unreachable — scrolling stopped short of
-//! the bottom while DOM mode (native scroll) reached it. Marking ScrollView as a
-//! Taffy scroll container restores the browser's shrink-to-fit (Semantics
-//! Parity). Covers both the Tasks variant (`flex-grow: 1`) and the Gallery
-//! variant (`height: 100%` only).
+//! リグレッション: flex column 内で固定高 AppBar の下に `height: 100%` の
+//! scroll-view が並ぶ構成（Tasks / CSS Gallery 両ページ）で、修正前の Canvas
+//! モードは scroll-view をウィンドウ全高でレイアウトし、AppBar の高さ分だけ
+//! 下にはみ出していた。その膨らんだボックス高はスクロールビューポート
+//! （`element_scroll_max_offset`）でもあるため、末尾の AppBar 高さ分の内容に
+//! 到達できなかった（DOM モードのネイティブスクロールでは到達できた）。
+//! ScrollView を Taffy のスクロールコンテナとして印付けることでブラウザの
+//! shrink-to-fit を回復する。Tasks 版（`flex-grow: 1`）と Gallery 版
+//! （`height: 100%` のみ）の両方をカバーする。
 
 use hayate_core::{Dimension, ElementKind, ElementTree, FlexDirectionValue, StyleProp};
 
@@ -30,7 +29,7 @@ fn build(tasks_variant: bool) -> (ElementTree, hayate_core::ElementId) {
     tree.set_root(root);
     tree.set_viewport(1200.0, WINDOW_H);
 
-    // root: full-window flex column
+    // root: ウィンドウ全体の flex column
     tree.element_set_style(
         root,
         &[
@@ -39,8 +38,8 @@ fn build(tasks_variant: bool) -> (ElementTree, hayate_core::ElementId) {
             StyleProp::FlexDirection(FlexDirectionValue::Column),
         ],
     );
-    // appbar: fixed 64px tall. In the real app it holds 64px via its content
-    // (logo, buttons) — model that with flex-shrink:0 so it can't collapse.
+    // appbar: 固定 64px 高。実アプリでは内容（ロゴ・ボタン）で 64px を保つので、
+    // 潰れないよう flex-shrink:0 でモデル化する。
     tree.element_set_style(
         appbar,
         &[
@@ -48,7 +47,7 @@ fn build(tasks_variant: bool) -> (ElementTree, hayate_core::ElementId) {
             StyleProp::FlexShrink(0.0),
         ],
     );
-    // scroll-view: the App.tsx / CssGallery.tsx pattern.
+    // scroll-view: App.tsx / CssGallery.tsx のパターン。
     let mut sv_style = vec![
         StyleProp::Width(Dimension::percent(100.0)),
         StyleProp::Height(Dimension::percent(100.0)),
@@ -59,9 +58,9 @@ fn build(tasks_variant: bool) -> (ElementTree, hayate_core::ElementId) {
         sv_style.push(StyleProp::FlexGrow(1.0));
     }
     tree.element_set_style(scroll, &sv_style);
-    // tall content child. In the real app this column's height comes from its
-    // many children, so min-content (min-height:auto) keeps it from shrinking
-    // below content. Model that with flex-shrink:0.
+    // 背の高い content 子。実アプリではこの列の高さは多数の子から決まり、
+    // min-content（min-height:auto）が内容より縮むのを防ぐ。flex-shrink:0 で
+    // モデル化する。
     tree.element_set_style(
         content,
         &[
@@ -85,9 +84,9 @@ fn check(tasks_variant: bool) {
     let (_, sv_top, _, view_h) = tree.element_layout_rect(scroll).unwrap();
     let (_max_x, max_y) = tree.element_scroll_max_offset(scroll);
 
-    // The scroll-view starts under the AppBar and fills only the leftover height.
+    // scroll-view は AppBar の下から始まり、残りの高さだけを満たす。
     let expected_viewport = WINDOW_H - APPBAR_H;
-    // Scrollable content = the content child plus the scroll-view's bottom padding.
+    // スクロール可能な内容 = content 子 + scroll-view の下パディング。
     let expected_max = (CONTENT_H + PAD_BOTTOM) - expected_viewport;
 
     assert!(

@@ -1,17 +1,15 @@
-//! Anchor-seam parity (issue #322): the retained incremental scene walk and the
-//! ephemeral full rebuild (ADR-0079 golden-frame backstop) share one emission
-//! body and differ only in their anchor strategy. So for any document their draw
-//! op streams must be identical — in particular for the emission features the
-//! unification calls out, box-shadow and text-input, which previously lived as
-//! duplicated code in each walk.
+//! アンカーシームの一致検証。保持型の差分走査と一時的な完全再構築（ADR-0079 の
+//! golden-frame バックストップ）は同一の発行本体を共有し、アンカー戦略だけが
+//! 異なる。よって任意の文書で両者の draw op 列は完全一致しなければならない。
+//! 特に統合対象の box-shadow と text-input は、以前は各走査で重複していた。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementKind, ElementTree, FlexDirectionValue, Shadow, StyleProp,
     RecordingPainter, render_scene_graph,
 };
 
-/// Debug-projected draw ops (DrawOp is not `PartialEq`); covers every op kind —
-/// shadow fills, the box, text runs, clips — not just `FillRect`.
+/// draw op を Debug 文字列へ射影する（DrawOp は `PartialEq` でない）。`FillRect`
+/// だけでなく shadow fill・box・text run・clip など全 op 種別を対象にする。
 fn ops_debug(ops: Vec<DrawOp>) -> Vec<String> {
     ops.into_iter().map(|op| format!("{op:?}")).collect()
 }

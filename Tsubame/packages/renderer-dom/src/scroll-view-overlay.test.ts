@@ -11,41 +11,34 @@ const ALL_KINDS: ElementKind[] = [
   'scroll-view',
 ];
 
-// Issue #408: the DOM Renderer's `scroll-view` must use *overlay* scrollbars so
-// the scrollbar never eats into the content box (no reserved gutter). Canvas has
-// no scrollbar gutter concept at all (the wire `overflow` is `visible | hidden`
-// only — there is no classic scrollbar to reserve space for), so its scroll-view
-// content box is the full padding box. Pinning the DOM scroll-view to overlay is
-// what makes the Canvas and DOM `scroll-view` content box widths agree
-// (意味論パリティ). Visual canonical stays DOM (ADR-0102), but the gutter must
-// not be reserved.
+// DOM Renderer の scroll-view はオーバーレイ式スクロールバーを使い、ガターを予約
+// しない。Canvas にはスクロールバーガターの概念がなく（overflow は visible | hidden
+// のみ）、scroll-view のコンテンツボックスはパディングボックス全体。オーバーレイに
+// 固定することで Canvas/DOM のコンテンツボックス幅が一致する（意味論パリティ）。
+// ビジュアル正典は DOM（ADR-0102）だが、ガターは予約しない。
 describe('scroll-view overlay scrollbars (issue #408)', () => {
   it('reserves no scrollbar gutter — overlay, not classic UA chrome', () => {
     const el = createDomElement(document, 'scroll-view');
-    // `scrollbar-width: none` removes the classic gutter so a scrollable
-    // scroll-view keeps the full content box width.
+    // scrollbar-width: none で従来のガターを除き、スクロール可能でもコンテンツボックス幅を維持する。
     expect(el.style.scrollbarWidth).toBe('none');
   });
 
   it('stays scrollable as overlay — overflow still scrolls, gutter not reserved', () => {
     const el = createDomElement(document, 'scroll-view');
-    // Overlay must not be bought by killing scrollability (e.g. overflow:hidden):
-    // overflow stays a scrolling value so content still scrolls...
+    // オーバーレイ化のためにスクロール可能性を犠牲にしてはならない（overflow:hidden 等）。
+    // overflow はスクロール値のまま。
     expect(el.style.overflow).toBe('auto');
-    // ...and the gutter is never reserved. `scrollbar-gutter: stable` would
-    // reserve space and shrink the content box on scroll — the very divergence
-    // this issue removes — so it must NOT be set.
+    // ガターは予約しない。scrollbar-gutter: stable はスペースを確保してスクロール時に
+    // コンテンツボックスを縮める（解消したい乖離そのもの）ので設定しない。
     expect(el.style.getPropertyValue('scrollbar-gutter')).not.toBe('stable');
     expect(el.style.scrollbarWidth).toBe('none');
   });
 
   it('matches Canvas content box width — scroll-view is the only scrollable kind, and it scrolls as overlay', () => {
-    // The wire `overflow` vocabulary is `visible | hidden` only — Canvas has no
-    // classic scrollbar and so never reserves a gutter; its scroll-view content
-    // box is the full padding box. The DOM scroll-view reaches the same content
-    // box by scrolling as overlay (no reserved gutter). Other kinds don't scroll,
-    // so the gutter question is theirs to begin with: only scroll-view carries
-    // the overlay treatment.
+    // overflow の語彙は visible | hidden のみ。Canvas は従来型スクロールバーを持たず
+    // ガターを予約しないので、scroll-view のコンテンツボックスはパディングボックス全体。
+    // DOM はオーバーレイでスクロールすることで同じコンテンツボックスに到達する。他の種別は
+    // スクロールしないため、オーバーレイ扱いを受けるのは scroll-view だけ。
     for (const kind of ALL_KINDS) {
       const el = createDomElement(document, kind);
       if (kind === 'scroll-view') {

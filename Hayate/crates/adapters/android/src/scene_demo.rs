@@ -1,41 +1,39 @@
-//! Minimal interactive element tree for the stage B on-device check (ADR-0087).
+//! 実機確認用の最小の操作可能な要素ツリー（ADR-0087）。
 //!
-//! Stage A rendered an empty `SceneGraph` — only the clear color reached the
-//! screen, so the `ElementTree -> SceneGraph -> Vello` pipe and the touch
-//! wiring (`translate_touch`) had nothing observable to confirm. Stage B builds
-//! a single button centered in the viewport whose `:active` background flips
-//! while pressed, so a tap visibly changes pixels end-to-end.
+//! ビューポート中央のボタンは押下中に `:active` 背景が反転し、タップで
+//! `ElementTree -> SceneGraph -> Vello` パイプとタッチ配線がエンドツーエンドで
+//! ピクセルを変えることを目に見える形で確認できる。
 //!
-//! The builder uses only `hayate-core` element APIs (no NDK), so it is the
-//! host-testable seam for "the demo tree is interactive"; `app.rs` is the thin
-//! glue that sizes the viewport and renders it each frame.
+//! ビルダーは `hayate-core` の要素 API のみを使う（NDK 非依存）ため、ツリーの
+//! 操作可能性をホスト上でテストできる継ぎ目になる。`app.rs` はビューポートを
+//! サイズ設定して毎フレーム描画する薄いグルー。
 
 use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, FlexDirectionValue,
     JustifyValue, PositionValue, PseudoState, StyleProp,
 };
 
-/// Stable element ids for the demo tree (so on-device logs can refer to them,
-/// mirroring how `hayate-adapter-web` assigns ids from the JS side).
+/// デモツリーの安定した要素 id（実機ログから参照できるよう、`hayate-adapter-web`
+/// が JS 側で id を割り当てるのを踏襲）。
 pub const ROOT_ID: u64 = 1;
 pub const BUTTON_ID: u64 = 2;
 pub const TEXT_INPUT_ID: u64 = 3;
-/// A `selectable` paragraph (its Text child is the IFC) demonstrating the
-/// read-only SelectionArea floating toolbar (ADR-0097, #272).
+/// 読み取り専用 SelectionArea のフローティングツールバーを示す `selectable`
+/// 段落（Text 子が IFC）（ADR-0097）。
 pub const PARAGRAPH_ID: u64 = 4;
 pub const PARAGRAPH_TEXT_ID: u64 = 5;
 
-/// The selectable demo paragraph's copy.
+/// selectable デモ段落の文言。
 pub const PARAGRAPH_TEXT: &str = "Drag to select this text";
 
-/// Idle (un-pressed) button background.
+/// 非押下時のボタン背景。
 pub const BUTTON_IDLE: Color = Color::new(0.16, 0.45, 0.92, 1.0);
-/// `:active` (pressed) button background — flips visibly under a finger.
+/// `:active`（押下時）のボタン背景。指の下で目に見えて反転する。
 pub const BUTTON_ACTIVE: Color = Color::new(0.92, 0.35, 0.16, 1.0);
 
-/// Build the demo tree: a full-viewport flex column centering a button that
-/// flips color while pressed (stage B) above a text-input that receives the
-/// soft keyboard for the stage C IME bridge (ADR-0094).
+/// デモツリーを構築する。ビューポート全体の flex column で、押下中に色が反転する
+/// ボタンと、ソフトキーボードを受ける IME ブリッジ用の text-input を中央に配置する
+/// （ADR-0094）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn build_demo_tree() -> ElementTree {
     let mut tree = ElementTree::new();
@@ -88,10 +86,9 @@ pub fn build_demo_tree() -> ElementTree {
         ],
     );
 
-    // A selectable paragraph pinned to the top of the viewport (absolute, so it
-    // does not disturb the centered button/input column). Dragging across it
-    // raises the core-drawn Material selection toolbar with Copy / Select All
-    // (ADR-0097, #272).
+    // ビューポート上部に固定した selectable 段落（absolute なので中央の
+    // ボタン/入力カラムを乱さない）。ドラッグするとコア描画の Material 選択
+    // ツールバー（Copy / Select All）が出る（ADR-0097）。
     let paragraph = tree.element_create(PARAGRAPH_ID, ElementKind::View);
     tree.element_append_child(root, paragraph);
     tree.element_set_style(
@@ -135,9 +132,8 @@ mod tests {
         assert_eq!(visual.background_color, Some(BUTTON_IDLE));
     }
 
-    // Pressing the button must flip its effective background to the `:active`
-    // color and release must restore it — the end-to-end behavior the on-device
-    // tap is meant to make visible.
+    // 押下で実効背景が `:active` 色に反転し、離すと戻る。実機タップで可視化したい
+    // エンドツーエンドの挙動。
     #[test]
     fn pressing_the_button_flips_its_background() {
         let mut tree = build_demo_tree();
@@ -146,8 +142,7 @@ mod tests {
 
         let button = ElementId::from_u64(BUTTON_ID);
 
-        // Column-centered in 400×800: button spans x 90..310, y 312..408; its
-        // center is (200, 360).
+        // 400×800 で column 中央: ボタンは x 90..310, y 312..408、中心は (200, 360)。
         tree.on_pointer_down(200.0, 360.0);
         assert_eq!(
             tree.element_effective_visual(button)
@@ -167,15 +162,15 @@ mod tests {
         );
     }
 
-    // Tapping the text-input focuses it, which is the precondition for the glue
-    // to show the soft keyboard and route GameTextInput into it (stage C).
+    // text-input のタップでフォーカスされる。グルーがソフトキーボードを表示し
+    // GameTextInput をそこへ流す前提条件。
     #[test]
     fn tapping_the_text_input_focuses_it() {
         let mut tree = build_demo_tree();
         tree.set_viewport(400.0, 800.0);
         tree.render(0.0);
 
-        // The text-input sits below the button at y 432..488; center (200, 460).
+        // text-input はボタン下の y 432..488、中心 (200, 460)。
         tree.on_pointer_down(200.0, 460.0);
         tree.on_pointer_up(200.0, 460.0);
 
@@ -186,9 +181,8 @@ mod tests {
         );
     }
 
-    // Dragging across the selectable paragraph raises the core-drawn floating
-    // toolbar offering Copy / Select All — the read-only SelectionArea chrome the
-    // on-device check makes visible (ADR-0097, #272).
+    // selectable 段落をドラッグするとコア描画のフローティングツールバー
+    // （Copy / Select All）が出る。読み取り専用 SelectionArea の UI（ADR-0097）。
     #[test]
     fn dragging_the_paragraph_shows_the_selection_toolbar() {
         use hayate_core::ToolbarAction;
@@ -196,8 +190,8 @@ mod tests {
         tree.set_viewport(400.0, 800.0);
         tree.render(0.0);
 
-        // The paragraph sits at absolute (24, 24); Touch-drag across its first
-        // glyphs — the floating toolbar is Touch-gated chrome (ADR-0104, #365).
+        // 段落は absolute (24, 24)。先頭グリフを Touch でドラッグする。
+        // フローティングツールバーは Touch 限定の UI（ADR-0104）。
         tree.on_pointer_down_with_kind(28.0, 32.0, 0, hayate_core::PointerKind::Touch);
         tree.on_pointer_move(120.0, 32.0);
         tree.on_pointer_up(120.0, 32.0);
@@ -211,16 +205,15 @@ mod tests {
         );
     }
 
-    // A long-press on the paragraph starts a Material word selection, raising the
-    // drag handles and the toolbar — the mobile-flavored selection the on-device
-    // check makes visible (ADR-0097, #273).
+    // 段落の長押しは Material の単語選択を開始し、ドラッグハンドルとツールバーを
+    // 出す。モバイル風の選択（ADR-0097）。
     #[test]
     fn long_pressing_the_paragraph_selects_a_word_with_handles() {
         let mut tree = build_demo_tree();
         tree.set_viewport(400.0, 800.0);
         tree.render(0.0);
 
-        // The paragraph sits at absolute (24, 24); long-press its first word.
+        // 段落は absolute (24, 24)。先頭の単語を長押しする。
         tree.on_long_press(30.0, 32.0);
 
         let selected = tree

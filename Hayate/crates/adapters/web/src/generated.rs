@@ -1,7 +1,7 @@
-//! Protocol constants and codecs generated from `proto/spec/*.json`.
+//! `proto/spec/*.json` から生成したプロトコル定数とコーデック。
 //!
-//! `OP_*` / `TAG_*` / `EVENT_KIND_*` constants are mirrored for TypeScript;
-//! Rust uses `Op`, `StyleTag`, and generated parsers instead.
+//! `OP_*` / `TAG_*` / `EVENT_KIND_*` 定数は TypeScript 向けのミラー。
+//! Rust 側は代わりに `Op`・`StyleTag`・生成パーサを使う。
 #![allow(dead_code)]
 
 include!(concat!(

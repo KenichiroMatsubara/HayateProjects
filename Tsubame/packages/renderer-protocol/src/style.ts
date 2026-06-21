@@ -17,5 +17,5 @@ export type {
   StylePatch,
 } from './generated/style-types.js';
 
-/** Hayate CSS declaration: base patch plus optional pseudo-class blocks. */
+/** Hayate の CSS 宣言。ベースパッチ + 任意の擬似クラスブロック。 */
 export type HayateCssStyle = StylePatch & PseudoStylePatch;

@@ -7,28 +7,26 @@ use crate::element::visual_invalidation::{
 use crate::element::layout_pass::LayoutPass;
 use crate::element::tree::{Element, Event};
 
-/// Owns the dirty-tracking sets (`structure_dirty` / `shape_dirty` / `fonts_dirty`)
-/// that drive `ElementTree::commit_frame()` (ADR-0075).
+/// `ElementTree::commit_frame()` を駆動する dirty 追跡集合
+/// （`structure_dirty` / `shape_dirty` / `fonts_dirty`）を保持する（ADR-0075）。
 ///
-/// Dirty-marking *policy* (which mutations mark what dirty) stays in
-/// `tree.rs`'s `element_set_*` methods; `ElementEngine` only owns the dirty
-/// sets and resolves them.
+/// dirty マーキングの*ポリシー*（どの変更が何を dirty にするか）は `tree.rs` の
+/// `element_set_*` 側に残す。`ElementEngine` は dirty 集合の保持と解決のみを担う。
 pub(crate) struct ElementEngine {
     pub(crate) structure_dirty: HashSet<ElementId>,
-    /// IFC roots needing Parley re-compose before layout (ADR-0063).
+    /// レイアウト前に Parley 再コンポーズが必要な IFC ルート（ADR-0063）。
     pub(crate) shape_dirty: HashSet<ElementId>,
-    /// Scene re-lowering reach for `shape_dirty` seeds (issue #185).
+    /// `shape_dirty` シードに対するシーン再 lowering の到達範囲。
     pub(crate) shape_lowering_reach: HashMap<ElementId, VisualInvalidationReach>,
-    /// Scene-only visual changes (issue #182). Drained after each `render()`.
+    /// シーンのみの視覚変更。各 `render()` 後に drain される。
     pub(crate) visual_dirty: HashMap<ElementId, VisualInvalidationReach>,
-    /// Elements whose absolute box geometry `(x, y, w, h)` changed (or appeared)
-    /// in the latest `resolve()` layout pass. Bridges the layout→lowering gap so a
-    /// flex reflow that ripples up to ancestors / sideways to siblings re-lowers
-    /// their (now stale) retained boxes. Filled in `resolve`, drained in `render`
-    /// after `commit_frame()`.
+    /// 直近の `resolve()` レイアウトパスで絶対ボックス幾何 `(x, y, w, h)` が変化
+    /// （または出現）した要素。layout→lowering のギャップを橋渡しし、祖先や兄弟へ
+    /// 波及した flex リフローが（古くなった）retained ボックスを再 lowering できる
+    /// ようにする。`resolve` で埋め、`commit_frame()` 後の `render` で drain する。
     pub(crate) layout_geometry_dirty: HashSet<ElementId>,
-    /// Set by `register_font`; cleared at the start of the next `resolve`.
-    /// Causes all text elements to be re-shaped with the newly registered font.
+    /// `register_font` でセットし、次の `resolve` 冒頭でクリアする。
+    /// 新規登録フォントで全テキスト要素を再シェイプさせる。
     pub(crate) fonts_dirty: bool,
 }
 
@@ -73,9 +71,8 @@ impl ElementEngine {
         std::mem::take(&mut self.shape_lowering_reach)
     }
 
-    /// Resolve dirty state and settle layout: Taffy projection reconcile +
-    /// Parley shaping + layout-cache refresh (`LayoutPass::run()` equivalent,
-    /// ADR-0075 scope A).
+    /// dirty 状態を解決しレイアウトを確定する。Taffy 投影の reconcile + Parley
+    /// シェイピング + レイアウトキャッシュ更新（`LayoutPass::run()` 相当、ADR-0075）。
     pub fn resolve(
         &mut self,
         layout: &mut LayoutPass,
@@ -84,11 +81,11 @@ impl ElementEngine {
         viewport: (f32, f32),
         event_queue: &mut Vec<Event>,
     ) {
-        // The reduced layout interface (issue #308 / §5): one `settle` folds
-        // reconcile → compute → cache → geometry diff. The returned diff (boxes
-        // that moved/resized or appeared) is folded into `layout_geometry_dirty`
-        // so `render` can re-lower stale retained boxes — a flex reflow that
-        // ripples to ancestors / siblings lands every moved id here independently.
+        // 集約レイアウトインターフェース。単一の `settle` が
+        // reconcile → compute → cache → geometry diff を畳み込む。返る diff
+        // （移動・リサイズ・出現したボックス）を `layout_geometry_dirty` に畳み込み、
+        // `render` が古い retained ボックスを再 lowering できるようにする。祖先や
+        // 兄弟へ波及する flex リフローでは、移動した各 id が独立してここに入る。
         let geometry_dirty = layout.settle(
             elements,
             root,

@@ -1,13 +1,13 @@
-//! ADR-0104 / #364: the edit-selection highlight is focus-linked, and the blur
-//! lifecycle is PointerKind-dependent — Mouse/Pen remember the range (Chromium
-//! form-control parity), Touch collapses it to a caret (Android behaviour).
+//! 編集選択ハイライトはフォーカス連動で、blur のライフサイクルは PointerKind 依存
+//! （ADR-0104）。Mouse/Pen は範囲を覚え（Chromium のフォームコントロール準拠）、
+//! Touch はキャレットに潰す（Android の挙動）。
 
 use hayate_core::{
     Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue, PointerKind,
     RecordingPainter, StyleProp, render_scene_graph,
 };
 
-/// Material selection tint (ADR-0097): the colour of an edit-selection highlight.
+/// 編集選択ハイライトの色（Material の選択色、ADR-0097）。
 const HIGHLIGHT_COLOR: [f32; 4] = [0.20, 0.45, 0.95, 0.35];
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -16,12 +16,12 @@ fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
     painter.ops().to_vec()
 }
 
-/// Whether the rendered scene contains a selection-highlight rect.
+/// 描画シーンに選択ハイライト矩形が含まれるか。
 fn has_highlight(tree: &ElementTree) -> bool {
     !highlight_bands(tree).is_empty()
 }
 
-/// The vertical bands (y_min, y_max) of every selection-highlight rect.
+/// 各選択ハイライト矩形の縦帯 (y_min, y_max)。
 fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
     draw_ops(tree)
         .iter()
@@ -34,8 +34,8 @@ fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
         .collect()
 }
 
-/// A column root holding a focused text-input on top and an empty `pad` view
-/// below it to tap for blurring. Returns (tree, input, pad). Both laid out.
+/// 上にフォーカス済み text-input、下に blur 用にタップする空の `pad` view を持つ
+/// 縦並びルート。(tree, input, pad) を返す。いずれもレイアウト済み。
 fn input_with_outside(content: &str) -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -74,9 +74,8 @@ fn input_with_outside(content: &str) -> (ElementTree, ElementId, ElementId) {
     (tree, input, pad)
 }
 
-/// Touch drag-select a range inside the top input (its content sits on the y≈20
-/// row). Touch modality so the selection's chrome is shown (ADR-0104, #365);
-/// chrome tests then assert how blur/refocus dismisses and restores it.
+/// 上の入力内（内容は y≈20 の行）を Touch でドラッグ選択する。Touch なので選択の
+/// chrome が表示される（ADR-0104）。chrome 系テストは blur/refocus による消去と復元を検証する。
 fn drag_select(tree: &mut ElementTree) {
     tree.on_pointer_down_with_kind(2.0, 20.0, 0, PointerKind::Touch);
     tree.on_pointer_move(70.0, 20.0);
@@ -94,9 +93,9 @@ fn highlight_is_drawn_only_while_the_input_is_focused() {
         "the focused input paints its selection highlight",
     );
 
-    // Blur the field without collapsing the range: an unfocused text-input must
-    // not paint an active selection highlight, even though the range is still
-    // held in its EditState (ADR-0104, focus-linked highlight).
+    // 範囲を潰さずにフィールドを blur する。範囲が EditState に保持されていても、
+    // 非フォーカスの text-input はアクティブな選択ハイライトを描いてはならない
+    // （ADR-0104、フォーカス連動ハイライト）。
     tree.element_blur(input);
     tree.render(0.0);
     assert!(
@@ -118,8 +117,8 @@ fn touch_blur_collapses_the_selection_and_dismisses_chrome() {
     assert!(tree.element_text_selection(input).is_some(), "a range is selected");
     assert!(tree.selection_toolbar().is_some(), "the selection shows chrome");
 
-    // Tapping outside the field with a Touch pointer (Android behaviour, #364):
-    // the edit selection collapses to a caret and the selection chrome is gone.
+    // Touch ポインタでフィールド外をタップ（Android の挙動）: 編集選択はキャレットに
+    // 潰れ、選択 chrome は消える。
     tree.on_pointer_down_with_kind(100.0, 100.0, 0, PointerKind::Touch);
     tree.render(0.0);
     assert!(
@@ -144,8 +143,8 @@ fn mouse_blur_remembers_the_range_and_refocus_restores_the_highlight() {
     tree.render(0.0);
     let range = tree.element_text_selection(input).expect("a range is selected");
 
-    // Tapping outside with a Mouse pointer blurs the field but keeps the range
-    // (Chromium form-control parity, #364): the highlight hides while unfocused.
+    // Mouse ポインタで外をタップするとフィールドは blur するが範囲は保持される
+    // （Chromium のフォームコントロール準拠）。非フォーカス中はハイライトが隠れる。
     tree.on_pointer_down_with_kind(100.0, 100.0, 0, PointerKind::Mouse);
     tree.render(0.0);
     assert_eq!(
@@ -155,8 +154,8 @@ fn mouse_blur_remembers_the_range_and_refocus_restores_the_highlight() {
     );
     assert!(!has_highlight(&tree), "the highlight hides while unfocused");
 
-    // Returning focus to the field (e.g. Tab back) re-lights the remembered
-    // range — the focus-linked highlight reappears unchanged.
+    // フィールドへフォーカスを戻す（例: Tab で戻る）と、覚えていた範囲が再点灯する。
+    // フォーカス連動ハイライトが変わらず再表示される。
     tree.element_focus(input);
     tree.render(0.0);
     assert_eq!(
@@ -175,9 +174,9 @@ fn unfocused_input_shows_no_chrome_even_when_it_remembers_a_range() {
     tree.render(0.0);
     assert!(tree.selection_toolbar().is_some(), "the focused selection shows chrome");
 
-    // Losing focus without a fresh pointer interaction (e.g. focus moves
-    // elsewhere) keeps the Touch range but hides the chrome (active = focused,
-    // ADR-0104): the toolbar must not linger over an unfocused field.
+    // 新たなポインタ操作なしにフォーカスを失う（例: フォーカスが他へ移る）と、Touch の
+    // 範囲は残るが chrome は隠れる（active = focused、ADR-0104）。toolbar は非フォーカスの
+    // フィールド上に残ってはならない。
     tree.element_blur(input);
     tree.render(0.0);
     assert!(
@@ -189,17 +188,16 @@ fn unfocused_input_shows_no_chrome_even_when_it_remembers_a_range() {
         "an unfocused text-input shows no selection chrome",
     );
 
-    // Refocusing the still-Touch field brings the chrome back with the
-    // remembered range — chrome is focus-linked, not consumed by the blur.
+    // Touch のままのフィールドを再フォーカスすると、覚えていた範囲とともに chrome が戻る。
+    // chrome はフォーカス連動で、blur で消費されない。
     tree.element_focus(input);
     tree.render(0.0);
     assert!(tree.selection_toolbar().is_some(), "refocus restores the chrome");
 }
 
-/// A column of two text-inputs (each 40px tall) separated by an 80px spacer on a
-/// 200×240 viewport — top row y≈[0,40], bottom row y≈[120,160]. The spacer keeps
-/// the top selection's floating toolbar clear of the bottom input's hit area
-/// (ADR-0097, #272). Returns (tree, top, bottom), both laid out, top focused.
+/// 200×240 ビューポート上、80px スペーサで隔てた高さ 40px の text-input 2 つの縦並び。
+/// 上の行 y≈[0,40]、下の行 y≈[120,160]。スペーサは上の選択のフローティング toolbar を
+/// 下の入力のヒット領域から離す（ADR-0097）。(tree, top, bottom) を返す。両者レイアウト済み、top がフォーカス。
 fn two_inputs() -> (ElementTree, ElementId, ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(1, ElementKind::View);
@@ -247,7 +245,7 @@ fn two_inputs() -> (ElementTree, ElementId, ElementId) {
 fn switching_text_inputs_never_lights_two_at_once() {
     let (mut tree, top, bottom) = two_inputs();
 
-    // Select a range in the top input (its row is y≈[0,40]).
+    // 上の入力（行は y≈[0,40]）で範囲を選択する。
     tree.on_pointer_down(2.0, 20.0);
     tree.on_pointer_move(70.0, 20.0);
     tree.render(0.0);
@@ -259,9 +257,8 @@ fn switching_text_inputs_never_lights_two_at_once() {
         "only the top row lights up, got {bands:?}",
     );
 
-    // Drag-select in the bottom input (row y≈[120,160]). Focus moves to it; the
-    // top input's highlight must not linger alongside the bottom's (single
-    // active = focused, ADR-0104).
+    // 下の入力（行 y≈[120,160]）でドラッグ選択する。フォーカスがそちらへ移り、上の入力の
+    // ハイライトが下のものと並んで残ってはならない（単一 active = focused、ADR-0104）。
     tree.on_pointer_down(2.0, 140.0);
     tree.on_pointer_move(70.0, 140.0);
     tree.render(0.0);

@@ -3,10 +3,10 @@ use hayate_core::{
     InputModality, PointerKind, PseudoState, StyleProp,
 };
 
-/// A root View filling a 200×200 viewport carrying a pseudo style for `state`,
-/// rendered once so the dirty set is clean before the gesture under test runs.
-/// The returned element has a `:hover`/`:active`/`:focus` box visual, so any
-/// invalidation of that pseudo state shows up as the element going visual-dirty.
+/// 200×200 ビューポートを埋める root View に `state` の擬似スタイルを与え、
+/// ジェスチャ実行前に dirty が空になるよう一度レンダリングする。返す要素は
+/// `:hover`/`:active`/`:focus` のボックス見た目を持つので、その擬似状態の
+/// 無効化は visual-dirty として現れる。
 fn pseudo_styled_root(state: PseudoState) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(100, ElementKind::View);
@@ -24,7 +24,7 @@ fn pseudo_styled_root(state: PseudoState) -> (ElementTree, hayate_core::ElementI
         state,
         &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
     );
-    // Render drains every dirty set, so a clean slate precedes the gesture.
+    // render は全 dirty を排出するので、ジェスチャ前は空の状態になる。
     tree.render(0.0);
     assert!(
         !tree.test_visual_dirty_contains(root),
@@ -33,11 +33,10 @@ fn pseudo_styled_root(state: PseudoState) -> (ElementTree, hayate_core::ElementI
     (tree, root)
 }
 
-/// Like `pseudo_styled_root` but the pseudo block carries a shape-affecting
-/// prop (`font-size`), so the invalidation lands in the *shape* set. Focus
-/// transitions mark the element visual-dirty unconditionally for cursor blink
-/// (ADR-0032); routing the assertion through the shape set isolates the
-/// `:active`/`:focus` invalidation from that visual mark.
+/// `pseudo_styled_root` と同様だが、擬似ブロックに shape に影響するプロパティ
+/// (`font-size`) を持たせ、無効化が *shape* set に入るようにする。focus 遷移は
+/// カーソル点滅のため無条件に visual-dirty を立てる（ADR-0032）ので、shape set
+/// 経由で検証することで `:active`/`:focus` の無効化をその visual マークから分離する。
 fn pseudo_shaping_root(state: PseudoState) -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(100, ElementKind::View);
@@ -61,9 +60,9 @@ fn pseudo_shaping_root(state: PseudoState) -> (ElementTree, hayate_core::Element
 
 #[test]
 fn hover_enter_marks_hover_pseudo_dirty() {
-    // The HTML mouseenter path flips the hover set; ADR-0100 requires the
-    // matching `:hover` invalidation to ride the same operation, so the element
-    // re-lowers with its hover appearance instead of silently diverging.
+    // HTML の mouseenter 経路は hover set を切り替える。ADR-0100 は対応する
+    // `:hover` 無効化を同じ操作で行うことを要求し、要素が黙って乖離せず
+    // hover の見た目で再 lower されるようにする。
     let (mut tree, root) = pseudo_styled_root(PseudoState::Hover);
 
     tree.on_hover_enter(root);
@@ -76,11 +75,11 @@ fn hover_enter_marks_hover_pseudo_dirty() {
 
 #[test]
 fn hover_leave_marks_hover_pseudo_dirty() {
-    // Symmetric to enter: the HTML mouseleave path drops the element from the
-    // hover set and must invalidate `:hover` in the same operation (ADR-0100).
+    // enter と対称: HTML の mouseleave 経路は要素を hover set から外し、
+    // 同じ操作で `:hover` を無効化しなければならない（ADR-0100）。
     let (mut tree, root) = pseudo_styled_root(PseudoState::Hover);
     tree.on_hover_enter(root);
-    tree.render(0.0); // drain the enter's mark so the leave's mark is isolated
+    tree.render(0.0); // enter のマークを排出し leave のマークを分離する
 
     tree.on_hover_leave(root);
 
@@ -92,9 +91,9 @@ fn hover_leave_marks_hover_pseudo_dirty() {
 
 #[test]
 fn pointer_move_hover_marks_hover_pseudo_dirty() {
-    // The pointer-move (canvas) hover path must invalidate `:hover` in the same
-    // step it updates the hover set — the same atomic guarantee as the HTML
-    // mouseenter path, exercised from the coordinate-driven input surface.
+    // pointer-move(canvas) の hover 経路は hover set 更新と同じステップで `:hover`
+    // を無効化しなければならない。HTML mouseenter 経路と同じ原子性保証を、
+    // 座標駆動の入力面から確認する。
     let (mut tree, root) = pseudo_styled_root(PseudoState::Hover);
 
     assert!(tree.on_pointer_move(10.0, 10.0).moved);
@@ -107,9 +106,9 @@ fn pointer_move_hover_marks_hover_pseudo_dirty() {
 
 #[test]
 fn pointer_down_marks_active_pseudo_dirty() {
-    // Pressing flips `:active`; the matching invalidation must ride the same
-    // operation (ADR-0100). Asserted through the shape set so the focus path's
-    // unconditional visual mark doesn't mask the `:active` invalidation.
+    // 押下は `:active` を切り替える。対応する無効化は同じ操作に乗らねばならない
+    // （ADR-0100）。focus 経路の無条件 visual マークが `:active` 無効化を覆い隠さない
+    // よう、shape set 経由で検証する。
     let (mut tree, root) = pseudo_shaping_root(PseudoState::Active);
 
     tree.on_pointer_down_on(root, 5.0, 5.0);
@@ -122,12 +121,12 @@ fn pointer_down_marks_active_pseudo_dirty() {
 
 #[test]
 fn pointer_up_marks_active_pseudo_dirty() {
-    // Releasing clears `:active`; clearing the state and invalidating its style
-    // are one operation. A pointer-up changes no focus, so the element going
-    // visual-dirty here can only be the `:active` invalidation.
+    // 解放は `:active` をクリアする。状態クリアとスタイル無効化は一操作。
+    // pointer-up は focus を変えないので、ここで visual-dirty になるのは
+    // `:active` の無効化以外あり得ない。
     let (mut tree, root) = pseudo_styled_root(PseudoState::Active);
     tree.on_pointer_down_on(root, 5.0, 5.0);
-    tree.render(0.0); // drain the press's marks so the release's mark is isolated
+    tree.render(0.0); // 押下のマークを排出し解放のマークを分離する
 
     tree.on_pointer_up_on(Some(root));
 
@@ -139,8 +138,8 @@ fn pointer_up_marks_active_pseudo_dirty() {
 
 #[test]
 fn focus_marks_focus_pseudo_dirty() {
-    // Focusing flips `:focus`; the invalidation rides the same operation. Shape
-    // set isolates it from the cursor-blink visual mark element_focus emits.
+    // フォーカスは `:focus` を切り替え、無効化は同じ操作に乗る。shape set で
+    // element_focus が出すカーソル点滅の visual マークから分離する。
     let (mut tree, root) = pseudo_shaping_root(PseudoState::Focus);
 
     tree.on_focus(root);
@@ -153,10 +152,10 @@ fn focus_marks_focus_pseudo_dirty() {
 
 #[test]
 fn blur_marks_focus_pseudo_dirty() {
-    // Blurring clears `:focus` and invalidates its style in one operation.
+    // blur は `:focus` をクリアし、一操作でそのスタイルを無効化する。
     let (mut tree, root) = pseudo_shaping_root(PseudoState::Focus);
     tree.on_focus(root);
-    tree.render(0.0); // drain the focus marks so the blur's mark is isolated
+    tree.render(0.0); // focus のマークを排出し blur のマークを分離する
 
     tree.on_blur(root);
 
@@ -166,7 +165,7 @@ fn blur_marks_focus_pseudo_dirty() {
     );
 }
 
-/// A root View filling a 200×200 viewport, laid out so hit-testing has bounds.
+/// 200×200 ビューポートを埋める root View。ヒットテスト用に境界を持つ。
 fn hoverable_root() -> (ElementTree, hayate_core::ElementId) {
     let mut tree = ElementTree::new();
     let root = tree.element_create(100, ElementKind::View);
@@ -189,7 +188,7 @@ fn pointer_leave_delivers_hover_leave_and_re_hover_re_enters() {
     let enter = tree.register_listener(root, DocumentEventKind::HoverEnter);
     let leave = tree.register_listener(root, DocumentEventKind::HoverLeave);
 
-    // Hover into the surface — HoverEnter for the root.
+    // 面にホバーで入る — root に HoverEnter。
     assert!(tree.on_pointer_move(10.0, 10.0).moved);
     let entered: Vec<_> = tree
         .poll_deliveries()
@@ -199,7 +198,7 @@ fn pointer_leave_delivers_hover_leave_and_re_hover_re_enters() {
         .collect();
     assert_eq!(entered, vec![enter]);
 
-    // Pointer leaves the surface — HoverLeave for the previously-hovered root.
+    // ポインタが面を出る — 直前にホバーしていた root に HoverLeave。
     tree.on_pointer_leave();
     let left: Vec<_> = tree
         .poll_deliveries()
@@ -209,7 +208,7 @@ fn pointer_leave_delivers_hover_leave_and_re_hover_re_enters() {
         .collect();
     assert_eq!(left, vec![leave]);
 
-    // Re-hovering reapplies `:hover` — HoverEnter fires again.
+    // 再ホバーで `:hover` が再適用され、HoverEnter が再発火する。
     assert!(tree.on_pointer_move(20.0, 20.0).moved);
     let re_entered: Vec<_> = tree
         .poll_deliveries()
@@ -224,12 +223,12 @@ fn pointer_leave_delivers_hover_leave_and_re_hover_re_enters() {
 fn pointer_leave_resets_last_pointer_pos_so_repeat_coord_is_not_deduped() {
     let (mut tree, _root) = hoverable_root();
 
-    // First move establishes last-pointer-position; an identical move coalesces.
+    // 最初の move が last-pointer-position を確立し、同一座標の move は合体される。
     assert!(tree.on_pointer_move(30.0, 30.0).moved);
     assert!(!tree.on_pointer_move(30.0, 30.0).moved);
 
-    // Leaving the surface clears the stored position, so re-entering at the
-    // exact same coordinate is delivered rather than swallowed by the 1px dedup.
+    // 面を出ると保存位置がクリアされ、全く同じ座標で再入場しても 1px dedup に
+    // 飲まれず配送される。
     tree.on_pointer_leave();
     assert!(tree.on_pointer_move(30.0, 30.0).moved);
 }
@@ -238,7 +237,7 @@ fn pointer_leave_resets_last_pointer_pos_so_repeat_coord_is_not_deduped() {
 fn pointer_leave_does_not_push_phantom_pointer_move() {
     let (mut tree, _root) = hoverable_root();
     assert!(tree.on_pointer_move(40.0, 40.0).moved);
-    let _ = tree.poll_events(); // drain the move from the enter
+    let _ = tree.poll_events(); // enter による move を排出する
 
     tree.on_pointer_leave();
     assert!(
@@ -321,9 +320,8 @@ fn pointer_move_resolves_default_cursor_when_unset() {
 
 #[test]
 fn pointer_move_inherits_cursor_from_ancestor() {
-    // A child with no cursor of its own inherits its ancestor's `cursor`,
-    // mirroring CSS inheritance, so hovering a button's text still shows the
-    // pointer cursor set on the button.
+    // 自前の cursor を持たない子は祖先の `cursor` を継承する（CSS の継承と同じ）。
+    // ボタンのテキストをホバーしてもボタンに設定した pointer カーソルが出る。
     let mut tree = ElementTree::new();
     let root = tree.element_create(40, ElementKind::View);
     let child = tree.element_create(41, ElementKind::View);
@@ -354,8 +352,8 @@ fn pointer_move_inherits_cursor_from_ancestor() {
 
 #[test]
 fn pointer_move_resolves_pointer_cursor_over_button_by_kind() {
-    // A button with no explicit `cursor` still shows the pointer cursor, from
-    // the element-kind UA default (ADR-0105), matching the browser's `<button>`.
+    // 明示的な `cursor` のないボタンも、要素種別の UA デフォルト（ADR-0105）で
+    // pointer カーソルを出す。ブラウザの `<button>` と一致する。
     let mut tree = ElementTree::new();
     let root = tree.element_create(50, ElementKind::View);
     let button = tree.element_create(51, ElementKind::Button);
@@ -385,8 +383,8 @@ fn pointer_move_resolves_pointer_cursor_over_button_by_kind() {
 
 #[test]
 fn pointer_move_resolves_text_cursor_over_text_input_by_kind() {
-    // A text-input with no explicit `cursor` shows the I-beam (text) cursor from
-    // its element-kind UA default (ADR-0105), matching the browser's `<input>`.
+    // 明示的な `cursor` のない text-input は、要素種別の UA デフォルト（ADR-0105）で
+    // I ビーム（text）カーソルを出す。ブラウザの `<input>` と一致する。
     let mut tree = ElementTree::new();
     let root = tree.element_create(60, ElementKind::View);
     let input = tree.element_create(61, ElementKind::TextInput);
@@ -416,9 +414,8 @@ fn pointer_move_resolves_text_cursor_over_text_input_by_kind() {
 
 #[test]
 fn pointer_move_resolves_text_cursor_over_selectable_text() {
-    // Selectable text shows the I-beam even without an explicit `cursor`
-    // (ADR-0105) — the same UA default a text-input gets, so a read-only
-    // Selection Region reads as text.
+    // 選択可能テキストは明示的な `cursor` がなくても I ビームを出す（ADR-0105）。
+    // text-input と同じ UA デフォルトで、読み取り専用の選択領域も text として扱う。
     let mut tree = ElementTree::new();
     let root = tree.element_create(70, ElementKind::View);
     let text = tree.element_create(71, ElementKind::Text);
@@ -450,8 +447,8 @@ fn pointer_move_resolves_text_cursor_over_selectable_text() {
 
 #[test]
 fn explicit_cursor_overrides_element_kind_default() {
-    // An explicit `cursor` always wins over the element-kind default (ADR-0105):
-    // a button styled `not-allowed` reads not-allowed, not the pointer default.
+    // 明示的な `cursor` は要素種別デフォルトに常に優先する（ADR-0105）。
+    // `not-allowed` を付けたボタンは pointer デフォルトでなく not-allowed になる。
     let mut tree = ElementTree::new();
     let root = tree.element_create(80, ElementKind::View);
     let button = tree.element_create(81, ElementKind::Button);
@@ -500,11 +497,11 @@ fn pointer_cancel_ends_active_press_and_clears_hover() {
     let l_hover_leave = tree.register_listener(root, DocumentEventKind::HoverLeave);
     let l_active_end = tree.register_listener(root, DocumentEventKind::ActiveEnd);
 
-    // Establish hover (pointer over the element) and an active press.
+    // ホバー（要素上のポインタ）と active な押下を確立する。
     tree.on_pointer_move(10.0, 10.0);
     tree.on_pointer_down(10.0, 10.0);
     assert_eq!(tree.active_element(), Some(root));
-    let _ = tree.poll_deliveries(); // drain the enter/start deliveries
+    let _ = tree.poll_deliveries(); // enter/start の配送を排出する
 
     tree.on_pointer_cancel();
 
@@ -527,7 +524,7 @@ fn pointer_cancel_does_not_fabricate_pointer_move() {
     let (mut tree, _root) = hoverable_root();
 
     tree.on_pointer_move(40.0, 40.0);
-    let _ = tree.poll_events(); // drain the real PointerMove from the move above
+    let _ = tree.poll_events(); // 上の move による実 PointerMove を排出する
 
     tree.on_pointer_cancel();
 
@@ -564,31 +561,31 @@ fn click_bubbles_to_ancestors() {
 
 #[test]
 fn last_pointer_kind_tracks_the_device_per_interaction() {
-    // PointerKind { Mouse, Touch, Pen } rides each pointer interaction (#357).
-    // Core retains the most recent kind so later slices (touch gates, I-beam
-    // modality) can branch on it. It defaults to Mouse before any pointer event.
+    // PointerKind { Mouse, Touch, Pen } は各ポインタ操作に乗る。Core は最新の
+    // 種別を保持し、利用側がそれで分岐できるようにする。ポインタイベント前は
+    // Mouse がデフォルト。
     let (mut tree, _root) = hoverable_root();
     assert_eq!(tree.last_pointer_kind(), PointerKind::Mouse);
 
-    // A touch press records Touch.
+    // touch 押下は Touch を記録する。
     tree.on_pointer_down_with_kind(10.0, 10.0, 0, PointerKind::Touch);
     assert_eq!(tree.last_pointer_kind(), PointerKind::Touch);
 
-    // A pen move within the same surface updates the kind (hybrid devices switch
-    // mid-session — it is not latched at startup).
+    // 同じ面での pen move は種別を更新する（ハイブリッド端末はセッション途中で
+    // 切り替わる。起動時にラッチされない）。
     tree.on_pointer_move_with_kind(20.0, 20.0, PointerKind::Pen);
     assert_eq!(tree.last_pointer_kind(), PointerKind::Pen);
 
-    // A mouse release records Mouse again.
+    // mouse 解放は再び Mouse を記録する。
     tree.on_pointer_up_with_kind(20.0, 20.0, PointerKind::Mouse);
     assert_eq!(tree.last_pointer_kind(), PointerKind::Mouse);
 }
 
 #[test]
 fn input_modality_is_a_separate_axis_from_pointer_kind() {
-    // The `:focus-visible` InputModality (Pointer/Keyboard) is orthogonal to
-    // PointerKind: a touch press is still InputModality::Pointer, and a key press
-    // flips modality without touching the retained pointer kind (#357, #335).
+    // `:focus-visible` の InputModality (Pointer/Keyboard) は PointerKind と直交する。
+    // touch 押下も InputModality::Pointer のままで、キー押下は保持中の pointer kind を
+    // 変えずに modality だけを切り替える。
     let (mut tree, root) = hoverable_root();
     tree.on_pointer_down_with_kind(10.0, 10.0, 0, PointerKind::Touch);
     assert_eq!(tree.last_input_modality(), InputModality::Pointer);
@@ -597,14 +594,14 @@ fn input_modality_is_a_separate_axis_from_pointer_kind() {
     tree.on_focus(root);
     tree.on_key_down("ArrowLeft", 0);
     assert_eq!(tree.last_input_modality(), InputModality::Keyboard);
-    // The keyboard interaction left the retained pointer kind untouched.
+    // キーボード操作は保持中の pointer kind を変えていない。
     assert_eq!(tree.last_pointer_kind(), PointerKind::Touch);
 }
 
 #[test]
 fn pointer_move_event_carries_the_pointer_kind() {
-    // The emitted PointerMove wire event carries the device (#357) so the host
-    // and later slices see which pointer drove the move, not just its coords.
+    // 発行される PointerMove wire イベントはデバイスを運ぶので、ホストは座標だけでなく
+    // どのポインタが move を駆動したかを知れる。
     let (mut tree, _root) = hoverable_root();
     assert!(tree.on_pointer_move_with_kind(10.0, 10.0, PointerKind::Pen).moved);
     let saw_pen = tree

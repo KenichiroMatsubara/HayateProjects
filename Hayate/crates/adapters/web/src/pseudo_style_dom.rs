@@ -1,7 +1,7 @@
-//! HTML Mode pseudo-state → browser CSS emitter (#177).
+//! HTML Mode の擬似状態 → ブラウザ CSS エミッタ。
 //!
-//! Merges active pseudo patches in spec-generated priority order, applies
-//! text-channel gating, and maps props through the spec-generated DOM mapper.
+//! 有効な擬似パッチをspec生成の優先順でマージし、テキストチャネルのゲートを
+//! 適用して、spec生成の DOM マッパー経由でプロパティを変換する。
 
 use std::collections::HashMap;
 
@@ -17,7 +17,7 @@ mod tables {
     ));
 }
 
-/// Per-pseudo style patches for parity fixtures and tests.
+/// パリティ用フィクスチャ・テスト向けの擬似状態ごとのスタイルパッチ。
 #[derive(Clone, Debug, Default)]
 pub struct PseudoStylesFixture {
     pub hover: Vec<StyleProp>,
@@ -51,15 +51,15 @@ fn interaction_active(state: PseudoState, interaction: &ParityInteraction) -> bo
 }
 
 fn should_apply_prop(element_kind: ElementKind, prop: &StyleProp) -> bool {
-    // Style Channel gating, generated from proto/spec (ADR-0002 Semantics Parity):
-    // channel-1 text-local props only reach Text-Local Carrier kinds.
+    // Style Channel ゲート（proto/spec から生成、ADR-0002）:
+    // channel-1 の text-local プロパティは Text-Local Carrier の種別にのみ届く。
     if generated::is_text_local(prop) {
         return generated::carries_text_local(element_kind);
     }
     true
 }
 
-/// Map one Hayate CSS prop to browser CSS declarations (spec-generated extras included).
+/// Hayate の CSS プロパティ1つをブラウザ CSS 宣言へ変換する（spec生成の追加分を含む）。
 pub fn collect_style_prop_css(
     element_kind: ElementKind,
     prop: &StyleProp,
@@ -75,7 +75,7 @@ pub fn collect_style_prop_css(
     }
 }
 
-/// Merge active pseudo patches in priority order, then emit browser CSS properties.
+/// 有効な擬似パッチを優先順でマージし、ブラウザ CSS プロパティを出力する。
 pub fn resolve_pseudo_css_map(
     element_kind: ElementKind,
     pseudo: &PseudoStylesFixture,
@@ -93,7 +93,7 @@ pub fn resolve_pseudo_css_map(
     map
 }
 
-/// CSS rule body for one pseudo-state patch (`property:value;...`).
+/// 擬似状態パッチ1つ分の CSS ルール本体（`property:value;...`）。
 pub fn pseudo_patch_rule_body(element_kind: ElementKind, props: &[StyleProp]) -> String {
     let mut map = HashMap::new();
     for prop in props {

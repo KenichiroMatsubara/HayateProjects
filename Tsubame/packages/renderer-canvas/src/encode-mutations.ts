@@ -29,9 +29,9 @@ import {
 } from '@tsubame/protocol-generated/codec';
 
 /**
- * One ordered semantic operation queued for the CanvasRenderer → Hayate WASM
- * boundary. The packet buffers these; {@link encodeMutations} turns them into
- * the low-level op/style/text wire buffers (ADR-0052).
+ * CanvasRenderer → Hayate WASM 境界へ向けて順序付きでキューされる意味操作1件。
+ * パケットがこれらをバッファし、{@link encodeMutations} が低レベルの
+ * op/style/text ワイヤバッファへ変換する（ADR-0052）。
  */
 export type SemanticMutation =
   | {
@@ -92,22 +92,22 @@ export type SemanticMutation =
       readonly style: StylePatch;
     };
 
-/** The wire buffers `apply_mutations` consumes (ADR-0052). */
+/** `apply_mutations` が消費するワイヤバッファ（ADR-0052）。 */
 export interface EncodedMutations {
   readonly ops: Float64Array;
   readonly styles: Float32Array;
   readonly texts: string[];
 }
 
-/** ADR-0081: an unset viewport-condition axis is encoded as -1 on the wire. */
+/** ADR-0081: 未設定のビューポート条件軸はワイヤ上で -1 として符号化する。 */
 export function viewportAxis(value: number | undefined): number {
   return value === undefined ? -1 : value;
 }
 
 /**
- * ADR-0081: OP_SET_STYLE_VARIANT carries exactly one style property, so a
- * multi-property patch is split into one single-property patch per defined key.
- * Undefined entries are dropped; declaration order is preserved.
+ * ADR-0081: OP_SET_STYLE_VARIANT はスタイルプロパティを1つだけ運ぶので、
+ * 複数プロパティのパッチは定義済みキーごとに単一プロパティのパッチへ分割する。
+ * undefined のエントリは捨て、宣言順は保持する。
  */
 export function splitStyleVariant(style: StylePatch): StylePatch[] {
   const split: StylePatch[] = [];
@@ -120,9 +120,9 @@ export function splitStyleVariant(style: StylePatch): StylePatch[] {
 }
 
 /**
- * Pure wire-format producer: a semantic mutation list in, three typed arrays
- * out. This is the single place the op/style/text encoding lives, so it can be
- * exercised directly without crossing the WASM boundary (issue #237).
+ * 純粋なワイヤ形式の生成器。意味的ミューテーション列を入力し、3 本の
+ * typed array を出力する。op/style/text 符号化が存在する唯一の場所なので、
+ * WASM 境界を越えずに直接テストできる。
  */
 export function encodeMutations(
   mutations: readonly SemanticMutation[],

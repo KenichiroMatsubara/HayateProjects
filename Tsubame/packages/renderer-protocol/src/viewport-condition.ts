@@ -1,10 +1,10 @@
 /**
- * Viewport-based condition for a property-level style variant (ADR-0081).
+ * プロパティ単位のスタイルバリアントに対するビューポート条件（ADR-0081）。
  *
- * All axes are in px and AND-combined; `minWidth`/`minHeight` match
- * inclusively (`actual >= min*`) and `maxWidth`/`maxHeight` match
- * inclusively (`actual <= max*`), mirroring CSS `@media (min-width: ...)` /
- * `(max-width: ...)` etc.
+ * 各軸は px で AND 結合する。`minWidth`/`minHeight` は閉区間で一致し
+ * （`actual >= min*`）、`maxWidth`/`maxHeight` も閉区間で一致する
+ * （`actual <= max*`）。CSS の `@media (min-width: ...)` /
+ * `(max-width: ...)` 等に倣う。
  */
 export interface ViewportCondition {
   readonly minWidth?: number;

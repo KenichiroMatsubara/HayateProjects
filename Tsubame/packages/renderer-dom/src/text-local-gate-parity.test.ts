@@ -4,13 +4,12 @@ import { withTextLocalGate, carriesTextLocal } from '@tsubame/renderer-protocol'
 import { DomRenderer } from './dom-renderer.js';
 import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 
-// Structure-based Semantics Parity (Tsubame ADR-0008, #323). The Style Channel
-// gate no longer lives inside each renderer — it runs once in the seam
-// (`withTextLocalGate`) before any renderer. So instead of comparing two
-// emitters, this drives the real DOM renderer *through the production seam* and
-// checks that a channel-1 text-local prop reaches the element iff the kind
-// carries text-local. Parity with Canvas (and any future renderer) is then
-// structural: they all receive the identical gated patch.
+// 構造ベースの Semantics Parity（Tsubame ADR-0008）。Style Channel ゲートは
+// 各 renderer の内部ではなく、すべての renderer の手前のシーム
+// （`withTextLocalGate`）で一度だけ走る。本テストは実際の DOM renderer を
+// 本番のシーム経由で駆動し、channel-1 の text-local プロパティが
+// text-local を担う種別のときに限り要素へ届くことを検証する。各 renderer は
+// 同一のゲート済みパッチを受け取るため、Canvas とのパリティは構造的に保たれる。
 
 const ALL_KINDS: readonly ElementKind[] = [
   'view',
@@ -37,9 +36,9 @@ describe('text-local gate through the seam (DOM renderer, Tsubame ADR-0008, #323
       renderer.setStyle(id, { color: '#ff0000', width: '100px' });
 
       const el = container.querySelector(`[data-tsubame-id="${id as number}"]`) as HTMLElement;
-      // A non-text-local prop always applies.
+      // text-local でないプロパティは常に適用される。
       expect(el.style.width).toBe('100px');
-      // A text-local prop applies only on a Text-Local Carrier kind.
+      // text-local プロパティは Text-Local Carrier の種別でのみ適用される。
       if (carriesTextLocal(kind)) {
         expect(el.style.color).toBe('#ff0000');
       } else {

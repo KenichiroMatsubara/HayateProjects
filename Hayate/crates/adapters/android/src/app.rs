@@ -1,9 +1,8 @@
-//! Stage B render + touch loop (ADR-0087): lower an interactive `ElementTree`
-//! (`scene_demo`) to a `SceneGraph` and present it each frame to the GPU
-//! surface backed by the `ANativeWindow` that `android-activity` hands us.
-//! `MotionEvent`s are translated into `hayate-core`'s coordinate-based pointer
-//! API, so a tap flips the demo button's `:active` color on screen. IME /
-//! AccessKit / clipboard (stage C) are not implemented yet.
+//! 描画 + タッチループ（ADR-0087）。対話的な `ElementTree`（`scene_demo`）を
+//! `SceneGraph` に lower し、`android-activity` が渡す `ANativeWindow` に
+//! 紐づく GPU サーフェスへ毎フレーム提示する。`MotionEvent` は `hayate-core` の
+//! 座標ベースのポインタ API に変換され、タップでデモボタンの `:active` 色が
+//! 画面上で切り替わる。IME / AccessKit / クリップボードは未実装。
 
 use std::time::{Duration, Instant};
 
@@ -25,7 +24,7 @@ use crate::surface_lifecycle::{
 };
 use crate::touch_input::{translate_touch, PointerInput, TouchAction};
 
-/// RGBA clear color for the stage A smoke test.
+/// スモークテスト用の RGBA クリアカラー。
 pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
 
 struct GpuSurface {
@@ -50,10 +49,10 @@ pub fn android_main(app: AndroidApp) {
     let mut lifecycle = SurfaceLifecycleState::new();
     let mut tree = build_demo_tree();
     let start = Instant::now();
-    // Last GameTextInput buffer we synced, the text input it belongs to, and
-    // whether the soft keyboard is currently up (stage C IME, ADR-0094). The
-    // keyboard flag is owned by `AndroidImeBridge`; the target drives buffer
-    // baseline resets on focus change.
+    // 最後に同期した GameTextInput バッファ、それが属するテキスト入力、および
+    // ソフトキーボードが現在表示中かどうか（IME, ADR-0094）。キーボードフラグは
+    // `AndroidImeBridge` が所有し、target はフォーカス変更時のバッファ
+    // ベースラインリセットを駆動する。
     let mut ime_state = TextInputState::default();
     let mut ime_target: Option<ElementId> = None;
     let mut ime_keyboard_shown = false;
@@ -125,8 +124,8 @@ pub fn android_main(app: AndroidApp) {
         );
 
         if let Some(surface) = gpu.as_mut() {
-            // Drive layout + cursor blink off a monotonic clock, then present the
-            // lowered scene (mirrors `hayate-adapter-web`'s `render`).
+            // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
+            // シーンを提示する（`hayate-adapter-web` の `render` に対応）。
             let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
             let scene = tree.render(timestamp_ms);
             if let Err(err) = surface.render_frame(scene) {
@@ -136,19 +135,17 @@ pub fn android_main(app: AndroidApp) {
     }
 }
 
-/// Sync GameTextInput into the focused TextInput (stage C IME, ADR-0094).
+/// GameTextInput をフォーカス中の TextInput に同期する（IME, ADR-0094）。
 ///
-/// Soft-keyboard visibility is decided once by core
-/// ([`ElementTree::drive_ime`]) from editability and *reflected* by
-/// [`AndroidImeBridge`]; this wrapper never calls `show_soft_input` /
-/// `hide_soft_input` itself. A tap focuses whatever it hits (buttons, plain
-/// text, views), but only a text input arms the keyboard — keying it on raw
-/// focus raised it for every tap (#392), and pushing the decision into core is
-/// what keeps that fix shared with the web adapter. The remaining work here is
-/// raw GameTextInput buffer translation against the focused input: the
-/// diff/apply logic lives in the host-testable [`crate::ime_input`]; this
-/// wrapper is thin glue over `android-activity`'s text-input API, verified
-/// on-device (#195).
+/// ソフトキーボードの表示可否は core（[`ElementTree::drive_ime`]）が編集可否から
+/// 一度だけ決定し、[`AndroidImeBridge`] が反映する。このラッパー自身は
+/// `show_soft_input` / `hide_soft_input` を呼ばない。タップは当たったもの
+/// （ボタン・素のテキスト・ビュー）をフォーカスするが、キーボードを起こすのは
+/// テキスト入力だけ。生のフォーカスでキーボードを起こすと全タップで上がって
+/// しまうため、判定を core に押し込むことで web アダプタと修正を共有する。
+/// ここに残るのはフォーカス中入力に対する生 GameTextInput バッファの変換のみで、
+/// diff/apply ロジックはホストでテスト可能な [`crate::ime_input`] にある。
+/// このラッパーは `android-activity` のテキスト入力 API への薄いグルー。
 fn sync_ime(
     app: &AndroidApp,
     tree: &mut ElementTree,
@@ -156,15 +153,15 @@ fn sync_ime(
     prev_target: &mut Option<ElementId>,
     keyboard_shown: &mut bool,
 ) {
-    // Visibility through the abstraction: core gates on editability, the bridge
-    // raises/dismisses the keyboard.
+    // 抽象を通した表示制御。core が編集可否でゲートし、bridge が
+    // キーボードを上げ下げする。
     let mut bridge = AndroidImeBridge::new(app, keyboard_shown);
     tree.drive_ime(&mut bridge);
 
     let target = tree.focused_text_input();
     if *prev_target != target {
         *prev_target = target;
-        // A fresh focus starts from an empty baseline buffer.
+        // 新規フォーカスは空のベースラインバッファから始める。
         *prev = TextInputState::default();
     }
 
@@ -172,10 +169,10 @@ fn sync_ime(
         return;
     };
 
-    // GameTextInput reports the full buffer plus an optional composing span
-    // (byte offsets into `text`); mirror it into the NDK-free type and diff.
-    // android-activity 0.6: `text_input_state()` returns the state directly
-    // (no closure form); build the NDK-free mirror from it.
+    // GameTextInput は全バッファと任意の composing span（`text` へのバイト
+    // オフセット）を報告する。これを NDK 非依存の型にミラーして diff を取る。
+    // android-activity 0.6 では `text_input_state()` が状態を直接返す
+    // （クロージャ形式なし）ので、そこから NDK 非依存のミラーを構築する。
     let state = app.text_input_state();
     let next = TextInputState {
         text: state.text.clone(),
@@ -193,11 +190,11 @@ fn sync_ime(
     }
 }
 
-/// Drain pending `MotionEvent`s and drive `tree`'s coordinate-based pointer API.
+/// 保留中の `MotionEvent` を捌き、`tree` の座標ベースのポインタ API を駆動する。
 ///
-/// Single-pointer tap/drag only (ADR-0082 stage B); multi-touch gestures and
-/// scroll inertia (ADR-0046) are out of scope. The per-event math lives in the
-/// host-testable [`translate_touch`]; this wrapper is thin NDK glue.
+/// 単一ポインタのタップ/ドラッグのみ（ADR-0082）。マルチタッチジェスチャや
+/// スクロール慣性（ADR-0046）は対象外。イベントごとの計算はホストでテスト可能な
+/// [`translate_touch`] にあり、このラッパーは薄い NDK グルー。
 fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
     let mut iter = match app.input_events_iter() {
         Ok(iter) => iter,
@@ -229,8 +226,8 @@ fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
     }
 }
 
-/// Map an Android `MotionAction` to a single-pointer [`TouchAction`], or `None`
-/// for actions outside the basic tap/drag set (hover, scroll, buttons, …).
+/// Android の `MotionAction` を単一ポインタの [`TouchAction`] に対応付ける。
+/// 基本のタップ/ドラッグ集合外（ホバー・スクロール・ボタン等）は `None`。
 fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
     match action {
         MotionAction::Down | MotionAction::PointerDown => Some(TouchAction::Down),
@@ -246,8 +243,8 @@ async fn init_gpu_surface(window: &ndk::native_window::NativeWindow) -> Result<G
 
     let instance = wgpu::Instance::default();
 
-    // SAFETY: `window` outlives the surface for the lifetime of this adapter
-    // (recreated on `InitWindow`, dropped on `TerminateWindow`).
+    // SAFETY: `window` はこのアダプタの生存期間中サーフェスより長く生きる
+    // （`InitWindow` で再生成、`TerminateWindow` で破棄）。
     let surface = unsafe {
         instance
             .create_surface_unsafe(

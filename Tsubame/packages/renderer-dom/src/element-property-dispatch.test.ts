@@ -34,7 +34,7 @@ describe('dispatchElementPropertyOp (shared prop-op dispatch, ADR-0008)', () => 
       'user-select': () => false,
       multiline: () => false,
     });
-    // 'false' is truthy → Boolean('false') === true, reflected through the seam.
+    // 文字列 'false' は truthy のため Boolean('false') === true となる。
     expect(result).toBe(true);
   });
 });

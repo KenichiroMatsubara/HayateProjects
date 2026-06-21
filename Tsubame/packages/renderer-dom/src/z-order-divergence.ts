@@ -1,13 +1,12 @@
 import type { ElementId, HayateStyle } from '@tsubame/renderer-protocol';
 
 /**
- * Styles that may create implicit browser stacking contexts and diverge from
- * Canvas/Hayate Z-Order semantics. Extend when new Element style properties
- * are added (e.g. `transform`).
+ * ブラウザの暗黙的なスタッキングコンテキストを生み、Canvas/Hayate の Z-Order セマンティクスと
+ * 乖離しうるスタイル。新しい Element スタイルプロパティ（例: `transform`）の追加時に拡張する。
  */
 export const Z_ORDER_DIVERGENCE_PROPERTIES: ReadonlySet<keyof HayateStyle> = new Set([
   'opacity',
-  // 'transform' — add when Element style gains transform
+  // 'transform' — Element スタイルが transform を持ったら追加する
 ]);
 
 const warned = new Set<string>();
@@ -17,8 +16,8 @@ function warningKey(elementId: ElementId, property: string): string {
 }
 
 /**
- * Warn once per session when a divergent style property is applied in dev.
- * No-op in production; does not throw.
+ * dev で乖離するスタイルプロパティが適用されたとき、セッションにつき一度だけ警告する。
+ * production では no-op。例外は投げない。
  */
 export function warnZOrderDivergence(elementId: ElementId, property: string): void {
   if (process.env.NODE_ENV === 'production') return;
@@ -33,7 +32,7 @@ export function warnZOrderDivergence(elementId: ElementId, property: string): vo
   );
 }
 
-/** @internal Reset dedupe state — for tests only */
+/** @internal 重複排除状態をリセットする。テスト専用 */
 export function resetZOrderDivergenceWarnings(): void {
   warned.clear();
 }

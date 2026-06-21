@@ -1,23 +1,22 @@
-//! Diagnose harness for issue #390 — Canvas text layout divergence vs DOM:
-//! (1) short text in a text-input wraps to 1 char/line, (2) button text clips
-//! at the top instead of centering, (3) the input border is a left-edge sliver.
+//! Canvas のテキストレイアウトが DOM と乖離する問題の診断ハーネス:
+//! (1) text-input 内の短いテキストが 1 文字/行に折り返す、(2) ボタンのテキストが
+//! 中央寄せされず上で見切れる、(3) input のボーダーが左端の細片になる。
 //!
-//! This reproduces the CSS-gallery `PopCard` demo container (a column flex with
-//! `align-items: flex-start`) holding the actual gallery elements, then prints
-//! the layout geometry so the root cause is a sharp, deterministic signal.
+//! CSS ギャラリーの `PopCard` デモコンテナ（`align-items: flex-start` の列方向 flex）に
+//! 実際のギャラリー要素を入れて再現し、レイアウト幾何を出力して根本原因を
+//! 鋭く決定的なシグナルにする。
 //!
-//! Findings (env-gated; run with `HAYATE_DIAGNOSE=1 … -- --nocapture`):
-//!   * The divergence is entirely in core layout (Taffy projection), upstream
-//!     of scene rendering — so vello and tiny-skia reproduce it identically.
-//!   * Root cause A (symptoms 1 & 3) — FIXED in issue #403: `text-input` was a
-//!     Taffy leaf with no measure fn → 0 intrinsic content width, collapsing to
-//!     padding-only width under width:auto + no flex-grow + a non-stretch
-//!     cross-axis. It now carries the browser `<input>` UA default width (N=20
-//!     chars in the resolved font); the assertion below guards the fix.
-//!   * Root cause B (symptom 2): `button` projects to a plain Taffy flex box; it
-//!     does not bake the browser `<button>` UA default of centering its content,
-//!     so the label is stretched (align-items:stretch) and its glyphs paint at
-//!     the box top. Independent of content width.
+//! 知見（env ゲート付き。`HAYATE_DIAGNOSE=1 … -- --nocapture` で実行）:
+//!   * 乖離は完全に core レイアウト（Taffy projection）内、シーン描画の上流にある
+//!     ため vello と tiny-skia は同一に再現する。
+//!   * 根本原因 A（症状 1・3）: `text-input` は measure fn を持たない Taffy リーフで
+//!     intrinsic content width が 0 となり、width:auto + flex-grow なし + 非 stretch の
+//!     交差軸の下で padding 幅に潰れていた。現在はブラウザ `<input>` の UA デフォルト幅
+//!     （解決済みフォントで N=20 文字分）を持つ。下のアサーションが修正を保証する。
+//!   * 根本原因 B（症状 2）: `button` はプレーンな Taffy flex box に projection され、
+//!     ブラウザ `<button>` の UA デフォルト（内容を中央寄せ）を焼き込まないため、
+//!     ラベルが stretch（align-items:stretch）され glyph がボックス上端に描かれる。
+//!     content width とは独立。
 
 use hayate_core::{
     AlignValue, BorderStyleValue, Color, Dimension, DisplayValue, ElementId, ElementKind,
@@ -27,7 +26,7 @@ use hayate_core::{
 static FONT: &[u8] = include_bytes!("../assets/fonts/NotoSansJP.ttf");
 
 fn input_style() -> Vec<StyleProp> {
-    // Mirrors theme.ts `inputStyle()` — note: NO width, NO flex-grow.
+    // theme.ts の `inputStyle()` に合わせる — width も flex-grow も持たないことに注意。
     vec![
         StyleProp::Height(Dimension::px(38.0)),
         StyleProp::PaddingLeft(Dimension::px(12.0)),
@@ -55,7 +54,7 @@ fn diagnose_390() {
         id
     };
 
-    // Root surface
+    // ルートサーフェス
     let root = mk(
         &mut tree,
         ElementKind::View,
@@ -71,7 +70,7 @@ fn diagnose_390() {
     tree.set_root(root);
     tree.set_viewport(300.0, 400.0);
 
-    // PopCard demo container: column flex, align-items: flex-start, padding 14.
+    // PopCard デモコンテナ: 列方向 flex、align-items: flex-start、padding 14。
     let demo = mk(
         &mut tree,
         ElementKind::View,
@@ -85,13 +84,13 @@ fn diagnose_390() {
     );
     tree.element_append_child(root, demo);
 
-    // (A) text-input with placeholder, inputStyle (no width).
+    // (A) placeholder 付き text-input、inputStyle（width なし）。
     let input = mk(&mut tree, ElementKind::TextInput, &input_style());
     tree.element_set_text(input, "Type here");
     tree.element_append_child(demo, input);
 
-    // (B) button "Click" — height 36, padding, but NO display/align (relies on
-    // browser default centering).
+    // (B) button "Click" — height 36 と padding を持つが display/align は持たない
+    // （ブラウザデフォルトの中央寄せに依存）。
     let button = mk(
         &mut tree,
         ElementKind::Button,
@@ -127,7 +126,7 @@ fn diagnose_390() {
     eprintln!(
         "[D390] root cause A FIXED (issue #403): input content width = {} → placeholder fits 1 line; border wraps the whole field (no left-edge sliver)",
         (iw - 26.0).max(0.0),
-        // iw retained in the assertion below.
+        // iw は下のアサーションで使う。
     );
     eprintln!(
         "[D390] symptom2 (root cause B): button label top gap {} vs bottom gap {} — equal when centered",
@@ -135,23 +134,21 @@ fn diagnose_390() {
         (by + bh) - (ly + lh),
     );
 
-    // Renderer independence is structural: layout is resolved here in core,
-    // before any SceneGraph walk, so both Scene Renderers observe these rects.
+    // レンダラー独立性は構造的: レイアウトは SceneGraph 走査の前に core で解決される
+    // ため、両 Scene Renderer はこれらの rect を等しく観測する。
     //
-    // Both root causes are now fixed and asserted here as real regression guards.
+    // 両根本原因とも修正済みで、ここで実際のリグレッションガードとしてアサートする。
     //
-    // Root cause A (#403): the width-unspecified text-input now carries the
-    // font-relative UA default width, so its content width is well above 0 (no
-    // 1-char/line wrap, no left-edge border sliver). The dedicated regression
-    // test lives in `tests/text_input_default_width.rs`.
+    // 根本原因 A: width 未指定の text-input がフォント相対の UA デフォルト幅を持つように
+    // なり、content width が 0 を十分上回る（1 文字/行の折り返しや左端ボーダーの細片なし）。
+    // 専用のリグレッションテストは `tests/text_input_default_width.rs` にある。
     assert!(
         iw - 26.0 > 50.0,
         "regression guard (#403): input must carry the UA default width (content width = {})",
         iw - 26.0,
     );
-    // Root cause B (#402, ADR-0109): the button now supplies the UA default
-    // `align-items: center`, so the label is vertically centered rather than
-    // clipped to the top. Promoted from a repro guard to a real assertion.
+    // 根本原因 B（ADR-0109）: button が UA デフォルトの `align-items: center` を
+    // 与えるようになり、ラベルが上端で見切れず垂直中央寄せされる。
     let top_gap = ly - by;
     let bottom_gap = (by + bh) - (ly + lh);
     assert!(

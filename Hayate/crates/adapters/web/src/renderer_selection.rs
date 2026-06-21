@@ -1,45 +1,43 @@
-//! Renderer Selection Policy — the rule for which `Scene Renderer` to prefer
-//! and on what grounds to adopt or reject one (Hayate `CONTEXT.md`).
+//! Renderer Selection Policy — どの `Scene Renderer` を優先し、どんな根拠で
+//! 採否を決めるかのルール（Hayate `CONTEXT.md`）。
 //!
-//! This module is the pure seam lifted out of the `Render Host`: it holds no
-//! `wasm-bindgen` / `web-sys` types and never touches the GPU. The policy
-//! decision is a pure function of [`RendererCapabilities`], so it can be
-//! verified with capability inputs alone — no real GPU, no browser. The host
-//! gathers capabilities and consumes the resulting [`RendererSelectionPlan`];
-//! it does not embed the selection rules itself.
+//! `Render Host` から切り出した純粋な継ぎ目。`wasm-bindgen` / `web-sys` 型を
+//! 一切持たず GPU にも触れない。判定は [`RendererCapabilities`] の純粋関数なので、
+//! 実 GPU もブラウザもなく capability 入力だけで検証できる。ホストは capability を
+//! 集めて結果の [`RendererSelectionPlan`] を消費するだけで、選択ルール自体は持たない。
 
-// On native (non-wasm) builds only the test path exercises this module; the
-// host code that consumes the rest lives behind `cfg(target_arch = "wasm32")`.
+// ネイティブ（非 wasm）ビルドではテスト経路のみがこのモジュールを使う。残りを
+// 消費するホストコードは `cfg(target_arch = "wasm32")` の背後にある。
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[allow(dead_code)] // only one backend variant is live per feature set
+#[allow(dead_code)] // feature セットごとに有効なバックエンドは 1 つだけ
 pub(crate) enum SceneRendererKind {
     Vello,
     TinySkia,
-    /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
+    /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
     Recording,
-    /// Non-production renderer (ADR-0050); used via `init_diagnostic`.
+    /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
     Null,
 }
 
 impl SceneRendererKind {
-    /// Whether this renderer needs `navigator.gpu` to initialize. Only the
-    /// WebGPU-backed Vello renderer does; the others draw on the CPU.
+    /// 初期化に `navigator.gpu` が要るか。必要なのは WebGPU ベースの Vello だけで、
+    /// 他は CPU で描画する。
     pub(crate) fn requires_webgpu(self) -> bool {
         matches!(self, Self::Vello)
     }
 
-    /// Whether this renderer can paint colour glyphs (COLR/CPAL, bitmap
-    /// strikes). Only Vello can (`draw_glyphs().draw()` routes COLR/CPAL fonts
-    /// through `try_draw_colr`); the CPU painters draw outlines only, so colour
-    /// emoji degrade to monochrome there (#332, ADR-0101). The adapter consults
-    /// this to pick the colour vs. monochrome emoji build when procuring fonts.
+    /// カラーグリフ（COLR/CPAL、ビットマップストライク）を描けるか。描けるのは
+    /// Vello だけ（`draw_glyphs().draw()` が COLR/CPAL フォントを `try_draw_colr` に
+    /// 流す）。CPU ペインタはアウトラインのみなので、そこではカラー絵文字がモノクロに
+    /// 退化する（ADR-0101）。アダプタはフォント調達時にカラー版/モノクロ版を選ぶため
+    /// これを参照する。
     pub(crate) fn paints_color_glyphs(self) -> bool {
         matches!(self, Self::Vello)
     }
 
-    /// Stable renderer id for logs and error messages.
+    /// ログ・エラーメッセージ用の安定したレンダラ ID。
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Vello => "vello",
@@ -50,8 +48,8 @@ impl SceneRendererKind {
     }
 }
 
-/// Why the `Render Host` did not adopt — or switched away from — a renderer.
-/// A shared vocabulary so reasons are observable, not ad-hoc error strings.
+/// `Render Host` がレンダラを採用しなかった、あるいは切り替えた理由。
+/// 場当たりのエラー文字列でなく観測可能にするための共通語彙。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RendererSelectionReason {
     WebGpuUnavailable,
@@ -61,9 +59,9 @@ pub(crate) enum RendererSelectionReason {
     DisabledByPolicy,
 }
 
-/// Whether a runtime failure carrying this reason should trigger a one-way
-/// fallback to the next renderer (ADR-0050). `WebGpuUnavailable` and
-/// `DisabledByPolicy` are settled at selection time, never mid-frame.
+/// この理由を伴う実行時失敗が、次のレンダラへの一方向フォールバックを引き起こすか
+/// （ADR-0050）。`WebGpuUnavailable` と `DisabledByPolicy` は選択時に確定し、
+/// フレーム途中で起きることはない。
 pub(crate) fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
     matches!(
         reason,
@@ -73,28 +71,27 @@ pub(crate) fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> boo
     )
 }
 
-/// Statically-knowable facts about the host environment that the
-/// [`RendererSelectionPolicy`] consults. Gathered without initializing any
-/// `Scene Renderer` so the policy decision stays GPU-free and testable.
+/// [`RendererSelectionPolicy`] が参照する、ホスト環境について静的に分かる事実。
+/// どの `Scene Renderer` も初期化せずに集めるので、判定は GPU 非依存かつテスト可能に
+/// 保たれる。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RendererCapabilities {
-    /// Whether `navigator.gpu` is present. WebGPU-backed renderers (Vello)
-    /// cannot run without it; CPU renderers (tiny-skia) are unaffected.
+    /// `navigator.gpu` が存在するか。WebGPU ベースのレンダラ（Vello）はこれなしでは
+    /// 動かず、CPU レンダラ（tiny-skia）は影響を受けない。
     pub(crate) webgpu_available: bool,
 }
 
-/// A `Scene Renderer` passed over by the policy, paired with the
-/// `Renderer Selection Reason` that explains why.
+/// ポリシーが見送った `Scene Renderer` と、その理由を表す
+/// `Renderer Selection Reason` の組。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RendererRejection {
     pub(crate) renderer: SceneRendererKind,
     pub(crate) reason: RendererSelectionReason,
 }
 
-/// The policy's decision for a given set of capabilities: the renderers to
-/// attempt (in preference order, capability-feasible ones only) and the
-/// renderers rejected up front, each with its reason. Observable so callers
-/// can report why a renderer was — or was not — selected.
+/// 与えた capability に対するポリシーの決定。試行するレンダラ（優先順、capability 上
+/// 実現可能なものだけ）と、事前に却下したレンダラ（各々理由付き）。呼び出し側がなぜ
+/// 選ばれた／選ばれなかったかを報告できるよう観測可能にしてある。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RendererSelectionPlan {
     attempt_order: Vec<SceneRendererKind>,
@@ -102,31 +99,31 @@ pub(crate) struct RendererSelectionPlan {
 }
 
 impl RendererSelectionPlan {
-    /// The renderer the host should attempt first, if any is feasible.
-    /// Observability accessor; not every backend configuration consumes it.
+    /// 実現可能なものがあれば、ホストが最初に試すべきレンダラ。
+    /// 観測用アクセサ。すべてのバックエンド構成が使うわけではない。
     #[allow(dead_code)]
     pub(crate) fn primary(&self) -> Option<SceneRendererKind> {
         self.attempt_order.first().copied()
     }
 
-    /// Feasible renderers in the order the host should attempt them.
+    /// 実現可能なレンダラを、ホストが試すべき順に並べたもの。
     pub(crate) fn attempt_order(&self) -> &[SceneRendererKind] {
         &self.attempt_order
     }
 
-    /// Renderers the policy rejected before init, each with its reason.
+    /// ポリシーが init 前に却下したレンダラ（各々理由付き）。
     pub(crate) fn rejected(&self) -> &[RendererRejection] {
         &self.rejected
     }
 
-    /// Whether `renderer` is part of the planned attempt sequence — the
-    /// invariant the host upholds for whichever renderer is currently active.
+    /// `renderer` が試行シーケンスに含まれるか。ホストは現在アクティブなレンダラに
+    /// ついてこの不変条件を維持する。
     pub(crate) fn includes(&self, renderer: SceneRendererKind) -> bool {
         self.attempt_order.contains(&renderer)
     }
 
-    /// The reason the policy gave for passing over `renderer`, if it did.
-    /// Observability accessor; not every backend configuration consumes it.
+    /// ポリシーが `renderer` を見送った場合の理由。
+    /// 観測用アクセサ。すべてのバックエンド構成が使うわけではない。
     #[allow(dead_code)]
     pub(crate) fn rejection_reason(
         &self,
@@ -138,9 +135,8 @@ impl RendererSelectionPlan {
             .map(|rejection| rejection.reason)
     }
 
-    /// The next renderer to attempt after `failed` per this plan, used by the
-    /// runtime fallback path so it follows the policy decision instead of
-    /// re-deriving selection.
+    /// このプランで `failed` の次に試すレンダラ。実行時フォールバック経路が、選択を
+    /// 再導出せずポリシーの決定に従うために使う。
     pub(crate) fn next_after(&self, failed: SceneRendererKind) -> Option<SceneRendererKind> {
         let failed_index = self.attempt_order.iter().position(|&kind| kind == failed)?;
         self.attempt_order.get(failed_index + 1).copied()
@@ -168,12 +164,10 @@ impl RendererSelectionPolicy {
         self.allowed_renderers.contains(&renderer)
     }
 
-    /// Decide which renderers to attempt for the given capabilities. Pure: it
-    /// consumes only the policy's renderer lists and the capability inputs, so
-    /// the selection is fully testable without a real GPU. Renderers that are
-    /// disallowed or whose capabilities are unmet are filtered out up front and
-    /// recorded in [`RendererSelectionPlan::rejected`] with their reason; the
-    /// rest stay in preference order as the attempt sequence.
+    /// 与えた capability に対し、どのレンダラを試すかを決める。純粋関数で、ポリシーの
+    /// レンダラリストと capability 入力だけを使うので、実 GPU なしで完全にテストできる。
+    /// 許可されない、または capability を満たさないレンダラは事前に除外して理由付きで
+    /// [`RendererSelectionPlan::rejected`] に記録し、残りは優先順のまま試行シーケンスにする。
     pub(crate) fn choose(self, capabilities: RendererCapabilities) -> RendererSelectionPlan {
         let mut attempt_order = Vec::new();
         let mut rejected = Vec::new();
@@ -209,14 +203,14 @@ impl RendererSelectionPolicy {
 const PRODUCTION_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
 
-/// C3 codec integration tests build with `--features backend-null` only.
+/// C3 コーデック統合テストは `--features backend-null` のみでビルドする。
 #[cfg(all(
     feature = "backend-null",
     not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
 ))]
 const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
 
-/// Reserved for diagnostic init (ADR-0050); not used in production `init`.
+/// 診断 init 用の予約（ADR-0050）。本番 `init` では使わない。
 const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Recording, SceneRendererKind::Null];
 
@@ -229,7 +223,7 @@ pub(crate) fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
 }
 
-/// Reserved for diagnostic init (ADR-0050); not used in production `init`.
+/// 診断 init 用の予約（ADR-0050）。本番 `init` では使わない。
 pub(crate) fn diagnostic_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(DIAGNOSTIC_RENDERERS, DIAGNOSTIC_RENDERERS)
 }
@@ -247,9 +241,8 @@ mod tests {
 
     #[test]
     fn only_vello_paints_color_glyphs() {
-        // Drives the colour vs. monochrome emoji split (#332): the GPU painter
-        // routes COLR/CPAL through try_draw_colr; the CPU/diagnostic painters
-        // draw outlines only.
+        // カラー/モノクロ絵文字の分岐を駆動する。GPU ペインタは COLR/CPAL を
+        // try_draw_colr に流し、CPU/診断ペインタはアウトラインのみ描く。
         assert!(SceneRendererKind::Vello.paints_color_glyphs());
         assert!(!SceneRendererKind::TinySkia.paints_color_glyphs());
         assert!(!SceneRendererKind::Recording.paints_color_glyphs());
@@ -279,7 +272,7 @@ mod tests {
 
     #[test]
     fn cpu_renderer_is_unaffected_by_missing_webgpu() {
-        // tiny-skia draws on the CPU, so losing WebGPU must not reject it.
+        // tiny-skia は CPU 描画なので、WebGPU 喪失で却下してはならない。
         assert_eq!(
             plan_for(&[SceneRendererKind::TinySkia], false).primary(),
             Some(SceneRendererKind::TinySkia),
@@ -301,8 +294,8 @@ mod tests {
 
     #[test]
     fn no_feasible_renderer_yields_empty_attempt_order() {
-        // Only Vello is allowed, but WebGPU is absent: nothing is attemptable,
-        // and the reason is observable rather than a bare failure.
+        // Vello のみ許可だが WebGPU が無い。試行可能なものはなく、理由は
+        // むき出しの失敗ではなく観測可能。
         let plan = plan_for(&[SceneRendererKind::Vello], false);
         assert_eq!(plan.primary(), None);
         assert!(plan.attempt_order().is_empty());

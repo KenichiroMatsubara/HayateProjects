@@ -1,60 +1,58 @@
-//! Runtime-overridable copy of the Canvas-Mode "chrome" taste constants
-//! (scrollbar overlay, touch indicator, selection highlight/handle/toolbar,
-//! composition underlines, placeholder alpha).
+//! Canvas Mode の「chrome」味付け定数（スクロールバーオーバーレイ、タッチ
+//! インジケータ、選択ハイライト/ハンドル/ツールバー、IME 下線、プレースホルダ
+//! アルファ）の実行時上書き可能なコピー。
 //!
-//! The named `const`s in [`scene_build`](crate::element::scene_build) and
-//! [`selection_chrome`](crate::element::selection_chrome) remain the
-//! authoritative defaults — [`Default`] reads them, so the numbers are never
-//! restated here. A dev build may overlay values at runtime (a `tuning.json`
-//! parsed by the Platform Adapter, which owns serde) so a human can calibrate
-//! against Chromium/Android by editing JSON and pressing F5, with no recompile.
-//! Production ships with no override, so every field equals its const and each
-//! read is a plain struct-field load off the live [`ElementTree`](crate::element::tree::ElementTree)
-//! (no perf cost over the old `const` reference).
+//! [`scene_build`](crate::element::scene_build) と
+//! [`selection_chrome`](crate::element::selection_chrome) の名前付き `const` が
+//! 唯一の正となるデフォルト値で、[`Default`] がそれを読むため数値はここに再掲しない。
+//! 開発ビルドでは実行時に値を上書きでき（Platform Adapter が serde を持ち `tuning.json`
+//! を解析）、JSON を編集して F5 を押すだけで再ビルドなしに Chromium/Android に合わせて
+//! 較正できる。本番は上書きを持たないため各フィールドは const と等しく、読み出しは
+//! [`ElementTree`](crate::element::tree::ElementTree) からの単純なフィールドロード
+//! （旧来の `const` 参照に対し性能コストなし）。
 //!
-//! Scope note (v1): only paint-time *visual* values are overridable. Layout /
-//! hit-test geometry (handle hit radius, toolbar gap, label advance) and the
-//! indicator fade *timing* stay on their consts — they are read by functions
-//! that do not receive the tree — and still require a recompile to change.
+//! スコープ（v1）: 上書き可能なのは描画時の視覚値のみ。レイアウト/ヒットテスト
+//! ジオメトリ（ハンドルのヒット半径、ツールバー間隔、ラベル advance）と
+//! インジケータのフェードタイミングは const のまま（ツリーを受け取らない関数が読む）で、
+//! 変更には再ビルドが要る。
 
 use crate::element::scene_build;
 use crate::element::selection_chrome;
 use crate::Color;
 
-/// Live, overridable chrome constants. See the module docs.
+/// 実行時に上書き可能な chrome 定数。モジュールドキュメント参照。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChromeTuning {
-    // ── Scrollbar overlay (Mouse/Pen), ADR-0110 ──
+    // ── スクロールバーオーバーレイ（Mouse/Pen）、ADR-0110 ──
     pub scrollbar_thickness: f32,
     pub scrollbar_track_margin: f32,
     pub scrollbar_min_thumb_length: f32,
     pub scrollbar_thumb_color: Color,
     pub scrollbar_thumb_opacity: f32,
-    // ── Touch transient indicator ──
+    // ── タッチの一時インジケータ ──
     pub scrollbar_indicator_thickness: f32,
     pub scrollbar_indicator_color: Color,
     pub scrollbar_indicator_opacity: f32,
-    // ── Selection highlight tint (Chromium `::selection`), ADR-0097 ──
+    // ── 選択ハイライトの色味（Chromium `::selection`）、ADR-0097 ──
     pub selection_highlight_color: [f32; 4],
-    // ── Composition (IME) underlines, ADR-0102 ──
+    // ── IME 変換の下線、ADR-0102 ──
     pub composition_underline_thin: f32,
     pub composition_underline_thick: f32,
-    // ── Placeholder text muting, ADR-0102 ──
+    // ── プレースホルダ文字のミュート、ADR-0102 ──
     pub placeholder_alpha: f64,
-    // ── Floating selection toolbar (Android-native), ADR-0097 ──
+    // ── フローティング選択ツールバー（Android ネイティブ）、ADR-0097 ──
     //
-    // Only the non-themed panel corner radius is a tuning knob. The toolbar /
-    // handle *colours* and the toolbar height / label font size are owned by the
-    // switchable `SelectionChromeStyle` theme (Material vs Cupertino) or by the
-    // selection layout pass, neither of which this override touches — they stay
-    // on their consts (recompile to change). See the module-level scope note.
+    // 調整ノブはテーマ非依存のパネル角丸のみ。ツールバー/ハンドルの色や
+    // ツールバー高さ・ラベルフォントサイズは切替可能な `SelectionChromeStyle`
+    // テーマ（Material/Cupertino）か選択レイアウトパスが持ち、この上書きは触れない
+    // （const のまま、変更には再ビルド）。
     pub toolbar_corner_radius: f32,
 }
 
 impl Default for ChromeTuning {
     fn default() -> Self {
-        // Mirror the authoritative consts — do not restate the literals, so the
-        // const blocks stay the single source of the default values.
+        // 正の const を写すだけでリテラルは再掲しない。const ブロックを
+        // デフォルト値の唯一の出所に保つ。
         Self {
             scrollbar_thickness: scene_build::SCROLLBAR_THICKNESS,
             scrollbar_track_margin: scene_build::SCROLLBAR_TRACK_MARGIN,
@@ -79,8 +77,8 @@ mod tests {
 
     #[test]
     fn default_mirrors_the_authoritative_consts() {
-        // Locks the "Default reflects the consts" invariant so a future const
-        // edit that forgets this struct is caught at test time.
+        // 「Default は const を反映する」不変条件を固定し、この構造体を
+        // 忘れた将来の const 編集をテスト時に検出する。
         let d = ChromeTuning::default();
         assert_eq!(d.scrollbar_thickness, scene_build::SCROLLBAR_THICKNESS);
         assert_eq!(d.scrollbar_thumb_color, scene_build::SCROLLBAR_THUMB_COLOR);

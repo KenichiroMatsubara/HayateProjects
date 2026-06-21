@@ -4,10 +4,9 @@ import type { StylePatch } from './style.js';
 import { withTextLocalGate } from './gating-renderer.js';
 import { RecordingRenderer } from './recording-renderer.js';
 
-// Structure-based Semantics Parity (Tsubame ADR-0008, #323): the Style Channel
-// gate is applied once, in the seam, before any renderer. These tests drive the
-// seam over an in-memory RecordingRenderer (a second IRenderer adapter) and read
-// the recorded calls through the interface — never a renderer's private state.
+// Style Channel ゲートは seam で一度だけ、どの renderer よりも前に適用される
+// （ADR-0008）。テストは in-memory の RecordingRenderer 越しに seam を駆動し、
+// 記録された呼び出しを IRenderer インターフェース経由でのみ読む（private 状態は見ない）。
 
 describe('text-local gate seam (Tsubame ADR-0008, #323)', () => {
   it('drops a text-local prop for a non-carrier kind before the inner renderer sees it', () => {
@@ -42,7 +41,7 @@ describe('text-local gate seam (Tsubame ADR-0008, #323)', () => {
     const variant = inner.calls.find((c) => c.method === 'setStyleVariant');
     expect(pseudo).toMatchObject({ style: { backgroundColor: '#00ff00' } });
     expect(variant).toMatchObject({ style: { width: '50px' } });
-    // text-local props were filtered out of both
+    // text-local プロパティは両方から除外されている
     expect(pseudo && 'style' in pseudo && pseudo.style).not.toHaveProperty('color');
     expect(variant && 'style' in variant && variant.style).not.toHaveProperty('fontSize');
   });
@@ -74,7 +73,7 @@ describe('text-local gate seam (Tsubame ADR-0008, #323)', () => {
     const inner = new RecordingRenderer();
     const gate = withTextLocalGate(inner);
 
-    // id 999 was never created through the seam, so its kind is unknown
+    // id 999 は seam 経由で生成されていないため kind が不明
     const untracked = 999 as ReturnType<RecordingRenderer['createElement']>;
     gate.setStyle(untracked, { color: '#ff0000', width: '100px' });
 

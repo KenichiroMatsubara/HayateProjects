@@ -83,8 +83,8 @@ describe('DomRenderer user-select (ADR-0108)', () => {
     const view = renderer.createElement('view');
     renderer.setRoot(view);
     renderer.setProperty(view, 'user-select', 'contains');
-    // The containment boundary is enforced core-side; the DOM gets the matching
-    // CSS `contain` so a supporting browser confines native selection too.
+    // 包含境界の強制は core 側。DOM には対応する CSS `contain` を渡し、
+    // 対応ブラウザではネイティブ選択も境界内に閉じ込める。
     expect(container.querySelector('div')!.style.userSelect).toBe('contain');
   });
 });

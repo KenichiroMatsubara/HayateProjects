@@ -10,14 +10,14 @@ import type { RawHayate } from './hayate.js';
 import { encodeMutations, type SemanticMutation } from './encode-mutations.js';
 
 /**
- * Ordered Hayate Mutation Packet queue for the CanvasRenderer → Hayate WASM boundary.
+ * CanvasRenderer → Hayate WASM 境界向けの順序付き Hayate Mutation Packet キュー。
  *
- * This is the B-lite form of the packet: it preserves semantic operation order and
- * emits the low-level op/style/text buffers only at boundary flush time. It deliberately
- * does not merge, prune, coalesce, or otherwise optimise queued semantic mutations.
+ * パケットの B-lite 形式: セマンティックな操作順序を保ち、低レベルの op/style/text
+ * バッファは境界フラッシュ時にのみ出力する。キュー済みのセマンティック変更を
+ * マージ・刈り込み・結合・最適化することは意図的に行わない。
  *
- * The wire-format encoding lives entirely in the pure {@link encodeMutations}
- * (issue #237); this class is just the ordered buffer plus the single boundary call.
+ * ワイヤフォーマットのエンコードは純粋な {@link encodeMutations} に閉じている。
+ * 本クラスは順序付きバッファと境界呼び出し一回ぶんに過ぎない。
  */
 export class HayateMutationPacket {
   private readonly mutations: SemanticMutation[] = [];

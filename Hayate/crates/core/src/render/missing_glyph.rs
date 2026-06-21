@@ -1,26 +1,22 @@
-//! Shared missing-glyph handling for the Canvas scene painters (issue #427).
+//! Canvas シーンペインタ共通の欠落グリフ処理。
 //!
-//! Glyph id 0 is `.notdef` in every OpenType/TrueType font: the value shaping
-//! emits when a codepoint is absent from the chosen font. NotoSansJP's `.notdef`
-//! has no outline, so a missing codepoint (e.g. `✕` U+2715) used to vanish into
-//! a *silent* blank box on Canvas while the DOM renderer fell back to system
-//! fonts. Both the vello and tiny-skia painters now intercept `.notdef` and draw
-//! a deliberate, visible placeholder via [`missing_glyph_placeholder`] instead of
-//! emitting the font's silent box — so a glyph the font can't supply degrades
-//! into something the user can see rather than nothing.
+//! グリフ id 0 はどの OpenType/TrueType フォントでも `.notdef`（フォントに存在
+//! しないコードポイントに対してシェイピングが返す値）。NotoSansJP の `.notdef`
+//! はアウトラインを持たないため、欠落コードポイント（例: `✕` U+2715）は Canvas
+//! 上で無音の空白箱に消えてしまう。vello/tiny-skia の両ペインタは `.notdef` を
+//! 検出し、フォントの無音箱の代わりに [`missing_glyph_placeholder`] で可視の
+//! プレースホルダを描く。フォントが供給できないグリフを「見える形」に縮退させる。
 
 use crate::render::RenderGlyph;
 
-/// Glyph id 0 — `.notdef` — in every OpenType/TrueType font.
+/// グリフ id 0（どの OpenType/TrueType フォントでも `.notdef`）。
 pub const NOTDEF_GLYPH_ID: u32 = 0;
 
-/// Fallback font chain consulted when the primary font lacks a glyph.
+/// 主フォントにグリフが無いとき参照するフォールバックフォント連鎖。
 ///
-/// This is a **placeholder** set of family names kept as a single named constant
-/// so the painters and shaping never hard-code family literals inline; finalizing
-/// the list (and wiring real font assets through it) is a follow-up to issue #427.
-/// Until those faces are bundled, [`missing_glyph_placeholder`] is the visible
-/// degradation path.
+/// ペインタやシェイピングがファミリ名リテラルをインラインで埋め込まないよう、
+/// 単一の名前付き定数にまとめている。これらのフェイスが同梱されるまでは
+/// [`missing_glyph_placeholder`] が可視の縮退経路となる。
 pub const FALLBACK_FONT_CHAIN: &[&str] = &[
     "Noto Sans Symbols 2",
     "Noto Sans Symbols",
@@ -29,40 +25,39 @@ pub const FALLBACK_FONT_CHAIN: &[&str] = &[
     "Noto Sans",
 ];
 
-/// Whether `glyph` is the `.notdef` glyph (a codepoint the font cannot supply).
+/// `glyph` が `.notdef`（フォントが供給できないコードポイント）かどうか。
 #[inline]
 pub fn is_notdef(glyph: &RenderGlyph) -> bool {
     glyph.id == NOTDEF_GLYPH_ID
 }
 
-/// Geometry of the deliberate placeholder box drawn in place of a `.notdef`
-/// glyph, in run-local coordinates (the same space as [`RenderGlyph::x`] /
-/// [`RenderGlyph::y`]): painters add the run origin and stroke the rectangle.
+/// `.notdef` グリフの代わりに描くプレースホルダ箱のジオメトリ。座標は run ローカル
+/// （[`RenderGlyph::x`] / [`RenderGlyph::y`] と同じ空間）で、ペインタが run 原点を
+/// 加えて矩形をストロークする。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct MissingGlyphPlaceholder {
-    /// Left edge, run-local.
+    /// 左端（run ローカル）。
     pub x: f32,
-    /// Top edge, run-local (above the baseline at [`RenderGlyph::y`]).
+    /// 上端（run ローカル、[`RenderGlyph::y`] のベースラインより上）。
     pub y: f32,
     pub width: f32,
     pub height: f32,
-    /// Stroke width for the hollow box outline.
+    /// 中空の箱の輪郭のストローク幅。
     pub stroke_width: f32,
 }
 
-/// Compute the placeholder box for a `.notdef` `glyph` at `font_size`.
+/// `font_size` の `.notdef` `glyph` に対するプレースホルダ箱を計算する。
 ///
-/// [`RenderGlyph::y`] is the baseline; the box sits in the cap-height band above
-/// it, inset from the pen origin so adjacent placeholders read as separate cells.
-/// The advance width is not carried on [`RenderGlyph`], so the box is sized from
-/// the em (`font_size`) — wide enough to be unmistakable, narrow enough to fit a
-/// typical symbol/CJK advance.
+/// [`RenderGlyph::y`] がベースライン。箱はその上のキャップハイト帯に置き、ペン原点
+/// からインセットして隣接プレースホルダが別セルと読めるようにする。advance 幅は
+/// [`RenderGlyph`] に載らないため、箱は em（`font_size`）から寸法を取る。一般的な
+/// シンボル/CJK の advance に収まりつつ、見間違えない大きさにしている。
 pub fn missing_glyph_placeholder(glyph: &RenderGlyph, font_size: f32) -> MissingGlyphPlaceholder {
     let em = font_size.max(0.0);
     let inset = em * 0.08;
     let width = (em * 0.55 - inset).max(0.0);
     let height = (em * 0.62).max(0.0);
-    // Bottom edge just above the baseline, box rising into the cap-height band.
+    // 下端をベースラインの直上に置き、箱はキャップハイト帯へ立ち上げる。
     let top = glyph.y - height - em * 0.02;
     MissingGlyphPlaceholder {
         x: glyph.x + inset,
@@ -100,8 +95,7 @@ mod tests {
         let ph = missing_glyph_placeholder(&g, 40.0);
         assert!(ph.width > 0.0 && ph.height > 0.0, "placeholder must have area");
         assert!(ph.stroke_width >= 1.0, "stroke must be at least 1px");
-        // The box sits above the baseline (smaller screen y) and to the right of
-        // the pen origin.
+        // 箱はベースラインより上（画面 y が小さい）かつペン原点より右にある。
         assert!(ph.y < g.y, "box top must be above the baseline");
         assert!(ph.y + ph.height <= g.y, "box must not dip below the baseline");
         assert!(ph.x >= g.x, "box must be inset from the pen origin");

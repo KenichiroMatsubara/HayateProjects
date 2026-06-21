@@ -44,10 +44,9 @@ function interactionActive(key: PseudoStyleKey, interaction: ParityInteraction):
 }
 
 /**
- * Merge active pseudo patches in priority order, then run the declaration
- * emitter. The Style Channel gate is applied first — in production it runs in
- * the seam before the DOM renderer (Tsubame ADR-0008), so this harness gates
- * here to model the same post-seam pipeline the corpus describes.
+ * 有効な pseudo パッチを優先順にマージしてから宣言エミッタを実行する。
+ * 本番では Style Channel ゲートが DOM renderer の前の seam で適用される（ADR-0008）。
+ * このハーネスはそれと同じ post-seam パイプラインを再現するためここでゲートする。
  */
 export function resolvePseudoDeclarations(
   kind: ElementKind,

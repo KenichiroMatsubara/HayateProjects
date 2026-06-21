@@ -10,9 +10,9 @@ import {
 export interface InitCanvasRendererOptions extends CanvasRendererOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
-  /** Dev-only `tuning.json` text (#353 family). When provided it is handed to
-   * the WASM renderer to overlay the taste-constant defaults; malformed JSON is
-   * ignored so the compiled defaults stand. Absent → no override. */
+  /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して
+   * 味付け定数のデフォルトを上書きする。不正な JSON は無視され、ビルド時の
+   * デフォルトが維持される。未指定なら上書きしない。 */
   tuning?: string;
 }
 
@@ -58,10 +58,9 @@ export async function initCanvasRenderer(
   const backend = resolveCanvasBackend(options, webgpuAvailable);
   const raw = await loadCanvasBackend(backend, canvas);
 
-  // Dev-only taste-constant override (#353 family): applied once before the
-  // first frame. Malformed JSON throws inside the WASM setter; swallow it so a
-  // bad `tuning.json` falls back to the compiled defaults rather than breaking
-  // the app.
+  // 開発時専用の味付け定数の上書き。最初のフレーム前に一度だけ適用する。
+  // 不正な JSON は WASM のセッタ内で throw するが、握りつぶしてビルド時の
+  // デフォルトにフォールバックさせ、アプリを壊さない。
   if (options?.tuning != null) {
     try {
       raw.set_tuning(options.tuning);
@@ -70,13 +69,13 @@ export async function initCanvasRenderer(
     }
   }
 
-  // Pointer + wheel input *and* resize detection are self-wired by
-  // hayate-adapter-web on `HayateElementRenderer::init` (ADR-0080). Its
-  // ResizeObserver reads the live `devicePixelRatio` each fire, so the host must
-  // not attach a second observer: a duplicate that cached its DPR at construction
-  // would clobber the backing-store size on mobile Chrome (zoom-on-focus while
-  // typing changes the ratio) and roughen glyphs. Resize ownership stays with the
-  // adapter; the host only retains the EditContext IME / keyboard glue below.
+  // ポインタ + ホイール入力とリサイズ検知は hayate-adapter-web が
+  // `HayateElementRenderer::init` で自前で結線する（ADR-0080）。その ResizeObserver は
+  // 発火ごとに最新の `devicePixelRatio` を読むため、ホストは 2 つ目の observer を
+  // 付けてはならない。構築時に DPR をキャッシュした重複 observer は、モバイル Chrome
+  // （入力中のフォーカスズームで比率が変わる）でバッキングストアサイズを壊し、
+  // グリフを荒くする。リサイズの所有権はアダプタに残り、ホストは下の EditContext
+  // IME / キーボード連携だけを保持する。
   attachTextInput(canvas, raw);
   return new CanvasRenderer(raw, { ...options, canvas, autoResize: false });
 }

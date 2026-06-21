@@ -1,9 +1,8 @@
-//! Issue #227: transitions trigger off the `resolve_effective` per-property diff
-//! (ADR-0093), so pseudo switches, `setStyle`, and inherited changes all
-//! interpolate continuous visual props over `transition-duration` ms, driven by
-//! `render(timestamp_ms)`. `from` is the on-screen (post-blend) value so reverse
-//! interrupts reverse continuously, and duration/timing come from the
-//! after-change resolved visual.
+//! transition は `resolve_effective` のプロパティ単位 diff で起動する（ADR-0093）。
+//! 擬似切り替え・`setStyle`・継承変化はいずれも連続な visual プロパティを
+//! `transition-duration` ms かけて補間し、`render(timestamp_ms)` が駆動する。
+//! `from` は画面上（ブレンド後）の値なので逆方向の割り込みが連続的に反転し、
+//! duration/timing は変更後の解決済み visual から取る。
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter, StyleProp,
@@ -17,7 +16,7 @@ fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
     painter.into_ops()
 }
 
-/// The first filled rect in the current (retained) scene.
+/// 現在の（保持された）シーンで最初の塗り rect。
 fn first_fill(tree: &ElementTree) -> ([f32; 4], f32) {
     for op in draw_ops(tree) {
         if let DrawOp::FillRect {
@@ -32,12 +31,12 @@ fn first_fill(tree: &ElementTree) -> ([f32; 4], f32) {
     panic!("no FillRect in scene");
 }
 
-/// Background colour of the first filled rect in the current scene.
+/// 現在のシーンで最初の塗り rect の背景色。
 fn background(tree: &ElementTree) -> [f32; 4] {
     first_fill(tree).0
 }
 
-/// Background colour painted by a full ephemeral rebuild (parity reference path).
+/// 完全な ephemeral 再構築（一致検証の基準経路）が塗る背景色。
 fn ephemeral_background(tree: &ElementTree) -> [f32; 4] {
     for op in tree.test_scene_full_rebuild_draw_ops() {
         if let DrawOp::FillRect { color, .. } = op {
@@ -77,7 +76,7 @@ fn hover_transition_interpolates_background_color_over_duration() {
 
     tree.update_pointer_hover(Some(root));
 
-    // First post-hover frame anchors the transition clock; still red.
+    // ホバー後の最初のフレームが transition クロックを固定する。まだ赤。
     tree.render(100.0);
     let start = background(&tree);
     assert!(
@@ -85,13 +84,13 @@ fn hover_transition_interpolates_background_color_over_duration() {
         "frame 0 still red"
     );
 
-    // Halfway through the 200ms window: between red and green.
+    // 200ms ウィンドウの中間: 赤と緑の間。
     tree.render(200.0);
     let mid = background(&tree);
     assert!(mid[0] < 1.0 && mid[0] > 0.0, "red channel mid-transition: {}", mid[0]);
     assert!(mid[1] > 0.0 && mid[1] < 1.0, "green channel mid-transition: {}", mid[1]);
 
-    // Past the window: fully green.
+    // ウィンドウ通過後: 完全に緑。
     tree.render(300.0);
     let end = background(&tree);
     assert!((end[0]).abs() < 1e-3, "red channel done: {}", end[0]);
@@ -114,16 +113,15 @@ fn zero_duration_switches_immediately() {
 
 #[test]
 fn set_style_interpolates_continuous_property_over_duration() {
-    // AC1: a direct `setStyle` (no pseudo-state switch) is just another
-    // effective-visual change, so it interpolates when duration > 0 (ADR-0093,
-    // restoring Canvas/DOM semantics parity).
+    // 直接の `setStyle`（擬似状態切り替えなし）も実効 visual 変化の一種なので、
+    // duration > 0 のとき補間する（ADR-0093。Canvas/DOM の意味論一致を回復）。
     let (mut tree, root) = hover_box(200.0);
     tree.render(0.0);
     assert_eq!(background(&tree)[0], 1.0, "starts fully red");
 
     tree.element_set_style(root, &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))]);
 
-    // First post-change frame anchors the clock; still red.
+    // 変更後の最初のフレームがクロックを固定する。まだ赤。
     tree.render(100.0);
     let start = background(&tree);
     assert!(
@@ -132,13 +130,13 @@ fn set_style_interpolates_continuous_property_over_duration() {
     );
     assert!(tree.test_transition_active(root), "setStyle starts a transition");
 
-    // Mid-window: between red and blue.
+    // ウィンドウ中間: 赤と青の間。
     tree.render(200.0);
     let mid = background(&tree);
     assert!(mid[0] < 1.0 && mid[0] > 0.0, "red mid: {}", mid[0]);
     assert!(mid[2] > 0.0 && mid[2] < 1.0, "blue mid: {}", mid[2]);
 
-    // Past the window: fully blue.
+    // ウィンドウ通過後: 完全に青。
     tree.render(300.0);
     let end = background(&tree);
     assert!(
@@ -149,17 +147,17 @@ fn set_style_interpolates_continuous_property_over_duration() {
 
 #[test]
 fn reverse_interrupt_continues_from_displayed_value() {
-    // AC3: reversing mid-transition restarts from the current on-screen value,
-    // never jumping to the resolved value.
+    // transition の途中で反転すると現在の画面上の値から再開し、解決済みの値へ
+    // 飛ばない。
     let (mut tree, root) = hover_box(200.0);
     tree.render(0.0);
     tree.update_pointer_hover(Some(root));
-    tree.render(100.0); // anchor
-    tree.render(200.0); // halfway red -> green
+    tree.render(100.0); // 固定
+    tree.render(200.0); // 赤 -> 緑 の中間
     let mid = background(&tree);
     assert!(mid[0] > 0.0 && mid[1] > 0.0, "captured a mid value: {mid:?}");
 
-    // Reverse at the same instant: the displayed value must not jump.
+    // 同じ瞬間に反転: 表示値が飛んではならない。
     tree.update_pointer_hover(None);
     tree.render(200.0);
     let reversed = background(&tree);
@@ -168,7 +166,7 @@ fn reverse_interrupt_continues_from_displayed_value() {
         "reversal is continuous, not a jump: {mid:?} -> {reversed:?}"
     );
 
-    // Continuing the reverse heads back toward red (red channel climbs).
+    // 反転を続けると赤へ戻る（赤チャンネルが上昇する）。
     tree.render(300.0);
     let back = background(&tree);
     assert!(back[0] > reversed[0], "red channel climbs back: {} -> {}", reversed[0], back[0]);
@@ -176,9 +174,9 @@ fn reverse_interrupt_continues_from_displayed_value() {
 
 #[test]
 fn duration_is_read_from_after_change_resolved_visual() {
-    // AC4: `:hover { transition-duration: 0 }` over a base 500ms duration makes
-    // hover-in instant and hover-out animated — duration is the after-change
-    // resolved value, not a base-direct read.
+    // base 500ms に対する `:hover { transition-duration: 0 }` は hover-in を即時、
+    // hover-out をアニメーションにする。duration は変更後の解決済み値であり、
+    // base の直接読みではない。
     let mut tree = ElementTree::new();
     let root = tree.element_create(2, ElementKind::View);
     tree.set_root(root);
@@ -202,7 +200,7 @@ fn duration_is_read_from_after_change_resolved_visual() {
     );
     tree.render(0.0);
 
-    // Hover-in: after-change duration is 0 → instant green, no transition.
+    // hover-in: 変更後 duration が 0 → 即座に緑、transition なし。
     tree.update_pointer_hover(Some(root));
     tree.render(100.0);
     let hovered = background(&tree);
@@ -212,10 +210,10 @@ fn duration_is_read_from_after_change_resolved_visual() {
     );
     assert!(!tree.test_transition_active(root), "instant hover-in starts no transition");
 
-    // Hover-out: after-change duration is base 500ms → animated back to red.
+    // hover-out: 変更後 duration が base 500ms → 赤へアニメーションで戻る。
     tree.update_pointer_hover(None);
-    tree.render(200.0); // anchor
-    tree.render(450.0); // 250ms into the 500ms window
+    tree.render(200.0); // 固定
+    tree.render(450.0); // 500ms ウィンドウの 250ms 地点
     let mid = background(&tree);
     assert!(
         mid[0] > 0.0 && mid[0] < 1.0 && mid[1] > 0.0 && mid[1] < 1.0,
@@ -226,10 +224,10 @@ fn duration_is_read_from_after_change_resolved_visual() {
 
 #[test]
 fn first_emit_shows_target_without_transition() {
-    // AC5: an element's very first render takes the target immediately — there
-    // is no before-change value to interpolate from.
+    // 要素の最初のレンダリングは即座にターゲットを取る。補間元となる
+    // 変更前の値が存在しないため。
     let (mut tree, root) = hover_box(200.0);
-    // Hover is already active before the first ever render.
+    // 初回レンダリング前から既にホバーが有効。
     tree.update_pointer_hover(Some(root));
     tree.render(0.0);
     let first = background(&tree);
@@ -242,8 +240,8 @@ fn first_emit_shows_target_without_transition() {
 
 #[test]
 fn properties_interpolate_from_independent_from_values() {
-    // AC8: per element × property state — a later-changing property starts from
-    // its own value and start time while an earlier one keeps running.
+    // 要素 × プロパティ単位の状態: 後から変わるプロパティは自身の値と開始時刻から
+    // 始まり、先行するプロパティは走り続ける。
     let mut tree = ElementTree::new();
     let root = tree.element_create(3, ElementKind::View);
     tree.set_root(root);
@@ -260,16 +258,16 @@ fn properties_interpolate_from_independent_from_values() {
     );
     tree.render(0.0);
 
-    // Background starts changing at t=100.
+    // 背景は t=100 で変化を開始する。
     tree.element_set_style(root, &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
     tree.render(100.0);
 
-    // Border-radius starts changing one frame later, at t=200.
+    // border-radius は 1 フレーム遅れて t=200 で変化を開始する。
     tree.element_set_style(root, &[StyleProp::BorderRadius(20.0)]);
     tree.render(200.0);
 
-    // By t=300 the background (started at 100) has completed its 200ms window
-    // while the radius (started at 200) is only halfway — independent clocks.
+    // t=300 では背景（100 開始）は 200ms ウィンドウを完了し、radius（200 開始）は
+    // まだ半分。クロックは独立している。
     tree.render(300.0);
     let (color, radius) = first_fill(&tree);
     assert!(
@@ -284,13 +282,13 @@ fn properties_interpolate_from_independent_from_values() {
 
 #[test]
 fn full_ephemeral_rebuild_paints_target_without_interpolation() {
-    // AC7: the ephemeral (parity reference) path has no retained `last_displayed`
-    // so it never interpolates — it paints the resolved target.
+    // ephemeral（一致検証の基準）経路は保持された `last_displayed` を持たないので
+    // 補間せず、解決済みのターゲットを塗る。
     let (mut tree, root) = hover_box(200.0);
     tree.render(0.0);
     tree.update_pointer_hover(Some(root));
-    tree.render(100.0); // anchor
-    tree.render(200.0); // retained path is mid-transition
+    tree.render(100.0); // 固定
+    tree.render(200.0); // 保持経路は transition の途中
 
     let retained = background(&tree);
     assert!(

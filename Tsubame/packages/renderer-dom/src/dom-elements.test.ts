@@ -26,11 +26,11 @@ describe('createDomElement – RN Web stacking base style', () => {
       const el = createDomElement(document, kind);
       const expected = elementKindDefaultCursor(kind);
       if (expected === undefined) {
-        // No kind default — keeps the RN Web base (`inherit`), not a re-declared value.
+        // kind 既定が無ければ RN Web の基底（`inherit`）を維持し、再宣言しない。
         expect(el.style.cursor).toBe('inherit');
       } else {
-        // button → pointer, text-input → text — from the same table Canvas uses,
-        // so DOM and Canvas show the same cursor (Semantics Parity).
+        // button → pointer、text-input → text。Canvas と同じテーブル由来なので
+        // DOM と Canvas は同一カーソルになる（Semantics Parity）。
         expect(el.style.cursor).toBe(expected);
       }
     },

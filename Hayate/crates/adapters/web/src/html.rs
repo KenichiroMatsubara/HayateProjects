@@ -1,10 +1,9 @@
-//! HTML Mode renderer (`HayateElementHtmlRenderer`) and the `HtmlNode`
-//! DOM-materialization side-table (ADR-0029: browser CSS layout). See ADR-0077.
+//! HTML Mode レンダラ（`HayateElementHtmlRenderer`）と DOM 実体化用の
+//! サイドテーブル `HtmlNode`。レイアウトはブラウザ CSS が担う（ADR-0029）。
 //!
-//! The `ElementTree` owns the element structure (ADR-0057); the DOM is the
-//! structure of record for rendering. `HtmlNode` holds only what materialising
-//! an element into the DOM needs (its DOM handle and pending text/src), and
-//! re-parent / remove read structure from the DOM rather than a second tree.
+//! 要素構造は `ElementTree` が保持し（ADR-0057）、描画上の正本は DOM。
+//! `HtmlNode` は DOM 実体化に必要なもの（DOM ハンドルと保留中の text/src）
+//! だけを持ち、再親付け／削除は第2のツリーではなく DOM から構造を読む。
 
 use std::collections::HashMap;
 
@@ -21,16 +20,15 @@ use crate::user_select::resolve_user_select;
 
 use crate::shared::{document, element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
 
-// ── Deferred command queue (ADR-0030, HTML Mode only per ADR-0037) ────────
+// ── 遅延コマンドキュー（ADR-0030、HTML Mode 専用 ADR-0037）────────
 //
-// In HTML Mode every JS-facing `element_*` mutator pushes a `Command` onto a
-// per-renderer queue and returns immediately. `render()` is the sole flush
-// boundary that drains the queue and applies the commands, batching DOM
-// mutations so the browser reflows once per frame.
+// HTML Mode では JS 向けの各 `element_*` ミューテータが `Command` をキューへ
+// 積んで即座に戻る。キューを drain して適用する唯一のフラッシュ境界は
+// `render()` で、DOM 変更をまとめてフレームあたり1回の reflow に抑える。
 //
-// Canvas Mode no longer queues (ADR-0037): Tsubame batches a frame's mutations
-// on the JS side and hands them over in one `apply_mutations` call, so the
-// `HayateElementRenderer` setters apply to the `ElementTree` eagerly.
+// Canvas Mode はキューを使わない（ADR-0037）。Tsubame が JS 側でフレームの
+// 変更をまとめ `apply_mutations` 1回で渡すため、`HayateElementRenderer` の
+// セッターは `ElementTree` へ即時適用する。
 
 enum Command {
     SetText {
@@ -102,22 +100,21 @@ enum Command {
     SetRoot {
         id: ElementId,
     },
-    /// HTML Mode only: materialise the DOM element for an already-allocated
-    /// slot. Canvas Mode allocates the tree entry eagerly inside
-    /// `element_create` and does not emit this command.
+    /// HTML Mode 専用。確保済みスロットの DOM 要素を実体化する。Canvas Mode は
+    /// `element_create` 内でツリーエントリを即時確保するためこのコマンドを出さない。
     HtmlCreate {
         id: ElementId,
         kind: ElementKind,
     },
 }
 
-/// Per-element DOM-materialization record. Holds no structure: parent/child
-/// edges live in the `ElementTree` (events/scroll) and the DOM (rendering).
+/// 要素ごとの DOM 実体化レコード。構造は持たない。親子エッジは
+/// `ElementTree`（イベント/スクロール）と DOM（描画）に存在する。
 struct HtmlNode {
     kind: ElementKind,
-    /// `Some` once the deferred `HtmlCreate` has been flushed in `render()`.
-    /// Operations queued before the first flush observe the slotmap entry but
-    /// no DOM element yet (ADR-0030).
+    /// 遅延 `HtmlCreate` が `render()` でフラッシュされると `Some` になる。
+    /// 初回フラッシュ前にキューされた操作は slotmap エントリは見えるが
+    /// DOM 要素はまだ無い（ADR-0030）。
     dom: Option<Element>,
     text: Option<String>,
     src: Option<String>,
@@ -126,21 +123,21 @@ struct HtmlNode {
 #[wasm_bindgen]
 pub struct HayateElementHtmlRenderer {
     container: HtmlElement,
-    /// Sole owner of the element structure (parent/child, listeners, bubble,
-    /// scroll offset). HTML Mode does not run Taffy layout.
+    /// 要素構造（親子・リスナ・バブル・スクロールオフセット）の唯一の所有者。
+    /// HTML Mode では Taffy レイアウトを走らせない。
     tree: ElementTree,
-    /// DOM-materialization side-table keyed by element id (no structure).
+    /// 要素 id をキーとする DOM 実体化サイドテーブル（構造は持たない）。
     nodes: HashMap<ElementId, HtmlNode>,
     root: Option<ElementId>,
-    /// Container CSS background colour. HTML Mode delegates rendering to the
-    /// browser; `set_background_color` stores it and `render(timestamp_ms)`
-    /// applies it once at flush time.
+    /// コンテナの CSS 背景色。HTML Mode は描画をブラウザへ委譲し、
+    /// `set_background_color` で保存して `render(timestamp_ms)` のフラッシュ時に
+    /// 1回だけ適用する。
     background_css: String,
-    /// Deferred mutations applied at the start of every `render()` (ADR-0030).
+    /// 各 `render()` の冒頭で適用される遅延変更（ADR-0030）。
     pending: Vec<Command>,
-    /// Spec-ordered pseudo-state stylesheet (`<style data-hayate-pseudo>`).
+    /// 仕様順に並んだ擬似状態スタイルシート（`<style data-hayate-pseudo>`）。
     pseudo_style_el: HtmlStyleElement,
-    /// Rule index in `pseudo_style_el` per `(element_id, pseudo_state)`.
+    /// `(element_id, pseudo_state)` ごとの `pseudo_style_el` 内ルールインデックス。
     pseudo_rule_keys: HashMap<(ElementId, PseudoState), u32>,
 }
 
@@ -164,9 +161,9 @@ impl HayateElementHtmlRenderer {
         })
     }
 
-    /// Store the container's CSS background colour for the next `render()`.
-    /// Pairs with `HayateElementRenderer::set_background_color` so demos can
-    /// drive either mode with the same setter.
+    /// コンテナの CSS 背景色を次の `render()` のために保存する。
+    /// `HayateElementRenderer::set_background_color` と対になり、同じセッターで
+    /// どちらのモードも駆動できる。
     pub fn set_background_color(&mut self, r: f64, g: f64, b: f64) {
         self.background_css = format!(
             "rgb({},{},{})",
@@ -176,15 +173,15 @@ impl HayateElementHtmlRenderer {
         );
     }
 
-    /// Viewport is browser-managed in HTML Mode; this is kept for API parity
-    /// with the Canvas renderer and only emits a Resize event.
+    /// HTML Mode のビューポートはブラウザ管理。Canvas レンダラとの API 互換の
+    /// ために残してあり、Resize イベントを出すだけ。
     pub fn set_viewport(&mut self, width: f32, height: f32) {
         self.tree.set_viewport(width, height);
         self.tree.on_resize(width, height);
     }
 
-    /// Registers an element with a caller-supplied ID and queues the DOM creation.
-    /// The actual DOM element is materialised on the next `render()` (ADR-0030).
+    /// 呼び出し側指定の ID で要素を登録し、DOM 生成をキューする。
+    /// 実際の DOM 要素は次の `render()` で実体化される（ADR-0030）。
     pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
         let eid = element_id_from_f64(id);
@@ -216,9 +213,9 @@ impl HayateElementHtmlRenderer {
         });
     }
 
-    /// Bound the Selection Region by mapping `selectable` to `user-select`
-    /// (ADR-0097 decision 5). HTML Mode delegates the selection model to the
-    /// browser, so this only writes CSS — text-input stays selectable regardless.
+    /// `selectable` を `user-select` に対応付けて選択領域を制限する（ADR-0097）。
+    /// HTML Mode は選択モデルをブラウザへ委譲するため CSS を書くだけ。
+    /// text-input は常に選択可能のまま。
     pub fn element_set_selectable(&mut self, id: f64, selectable: bool) {
         self.pending.push(Command::SetSelectable {
             id: element_id_from_f64(id),
@@ -226,9 +223,9 @@ impl HayateElementHtmlRenderer {
         });
     }
 
-    /// Mark a TextInput as multi-line (#362). HTML Mode is browser-driven, so
-    /// this swaps the materialised element between `<input>` and `<textarea>`:
-    /// a textarea inserts a newline on Enter at the caret, an input submits.
+    /// TextInput を複数行扱いにする。HTML Mode はブラウザ駆動なので、実体化要素を
+    /// `<input>` と `<textarea>` で入れ替える。textarea は Enter でキャレット位置に
+    /// 改行を入れ、input は送信する。
     pub fn element_set_multiline(&mut self, id: f64, multiline: bool) {
         self.pending.push(Command::SetMultiline {
             id: element_id_from_f64(id),
@@ -262,9 +259,9 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
-    /// Queue a 2D affine transform update applied as CSS
-    /// `transform: matrix(xx,yx,xy,yy,dx,dy)`. Matches the WIT `affine` record
-    /// — identity is (1,0,0,1,0,0); there is no clear path.
+    /// 2D アフィン変換の更新を CSS `transform: matrix(xx,yx,xy,yy,dx,dy)` として
+    /// キューする。WIT の `affine` レコードに対応し、単位行列は (1,0,0,1,0,0)。
+    /// クリア経路は無い。
     pub fn element_set_transform(
         &mut self,
         id: f64,
@@ -309,8 +306,8 @@ impl HayateElementHtmlRenderer {
         self.pending.push(Command::Remove { id: eid });
     }
 
-    /// Returns the text committed by the most recent `render()`. Queued
-    /// `element_set_text` calls are not visible until the next flush (ADR-0030).
+    /// 直近の `render()` で確定したテキストを返す。キュー済みの
+    /// `element_set_text` は次のフラッシュまで見えない（ADR-0030）。
     pub fn element_get_text(&self, id: f64) -> String {
         self.nodes
             .get(&element_id_from_f64(id))
@@ -324,11 +321,10 @@ impl HayateElementHtmlRenderer {
         self.pending.push(Command::SetRoot { id: eid });
     }
 
-    /// Drains the queued element mutations, then refreshes the container's
-    /// background colour. The browser handles reflow for the freshly-applied
-    /// styles in a single batch. `timestamp_ms` is accepted for API parity with
-    /// the Canvas renderer (HTML Mode has no cursor blink to advance — the
-    /// native `<input>` element handles it).
+    /// キュー済みの要素変更を drain し、コンテナ背景色を更新する。新たに適用された
+    /// スタイルの reflow はブラウザが1バッチで処理する。`timestamp_ms` は Canvas
+    /// レンダラとの API 互換のために受け取るだけ（HTML Mode のカーソル点滅は
+    /// ネイティブ `<input>` が担うので進めるものは無い）。
     pub fn render(&mut self, _timestamp_ms: f64) -> Result<(), JsValue> {
         self.flush_pending()?;
         self.container
@@ -337,11 +333,11 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
-    // ── Input wiring ─────────────────────────────────────────────────────
-    // HTML Mode does not run Taffy, so hit-tests cannot use a layout cache.
-    // JS reads `data-element-id` from `event.target` and dispatches via the
-    // explicit-target methods below. The legacy positional methods are
-    // retained as no-ops so callers shared with Canvas Mode keep compiling.
+    // ── 入力配線 ─────────────────────────────────────────────────────
+    // HTML Mode は Taffy を走らせないため、ヒットテストにレイアウトキャッシュを
+    // 使えない。JS が `event.target` から `data-element-id` を読み、以下の
+    // 明示ターゲット方式でディスパッチする。座標ベースの旧メソッドは Canvas Mode と
+    // 共有する呼び出し側がコンパイルし続けられるよう no-op として残す。
 
     pub fn on_pointer_down(&mut self, target_id: f64, x: f32, y: f32) {
         let target = element_id_from_f64(target_id);
@@ -414,9 +410,8 @@ impl HayateElementHtmlRenderer {
         });
     }
 
-    /// Unset one or more inheritable text-style properties, delegating them to
-    /// browser CSS inheritance (ADR-0047).
-    /// `kinds` is a packed u32 array: 0 = Color, 1 = FontSize, 2 = FontFamily.
+    /// 継承可能なテキストスタイルを解除し、ブラウザの CSS 継承へ委譲する（ADR-0047）。
+    /// `kinds` はパックされた u32 配列: 0 = Color, 1 = FontSize, 2 = FontFamily。
     pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) {
         self.pending.push(Command::UnsetStyle {
             id: element_id_from_f64(id),
@@ -438,8 +433,8 @@ impl HayateElementHtmlRenderer {
         });
     }
 
-    /// Register a Web Font via CSS `@font-face`. Browser renders text in HTML
-    /// Mode, so font registration is delegated to the document's CSS engine.
+    /// Web フォントを CSS `@font-face` で登録する。HTML Mode はブラウザがテキストを
+    /// 描画するため、フォント登録はドキュメントの CSS エンジンへ委譲する。
     pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
         let _ = inject_font_face(family_name, data);
     }
@@ -454,8 +449,8 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
-    /// Preload fonts declared in `hayate.config.json` before the first render.
-    /// HTML Mode injects each as a CSS `@font-face` rule so the browser uses them.
+    /// `hayate.config.json` で宣言されたフォントを初回描画前にプリロードする。
+    /// HTML Mode は各フォントを CSS `@font-face` ルールとして注入する。
     pub async fn configure_fonts(&mut self, fonts: JsValue) -> Result<(), JsValue> {
         use js_sys::{Array, Reflect};
         let arr = Array::from(&fonts);
@@ -473,13 +468,12 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
-    /// WIT `element-load-font`: HTML Mode cannot read the family name out of
-    /// the font bytes (no Parley FontContext on the JS side). Surface as an
-    /// `@font-face` with a synthetic family name so the data URL is at least
-    /// resident in the document; consumers needing a specific family name
-    /// should keep using `register_font_bytes`.
+    /// WIT `element-load-font`: HTML Mode はフォントバイト列から family 名を
+    /// 読めない（JS 側に Parley FontContext が無い）。合成 family 名で `@font-face`
+    /// として登録し、少なくともデータ URL をドキュメントに常駐させる。特定の
+    /// family 名が必要なら `register_font_bytes` を使い続けること。
     pub fn element_load_font(&mut self, data: &[u8]) {
-        // Generate a stable-but-unique family name from a content hash.
+        // 内容ハッシュから安定かつ一意な family 名を生成する。
         let mut h: u64 = 0xcbf29ce484222325;
         for b in data {
             h ^= *b as u64;
@@ -489,9 +483,9 @@ impl HayateElementHtmlRenderer {
         let _ = inject_font_face(&family, data);
     }
 
-    /// WIT `element-paste`: deliver pasted text to a specific TextInput,
-    /// emitting a TextInput event. The browser commits the text into its
-    /// native `<input>` value separately on the DOM `paste` event.
+    /// WIT `element-paste`: 貼り付けテキストを特定の TextInput へ届け、TextInput
+    /// イベントを発火する。ネイティブ `<input>` の value への反映は DOM の `paste`
+    /// イベントで別途行われる。
     pub fn element_paste(&mut self, id: f64, text: &str) {
         let eid = element_id_from_f64(id);
         if self.nodes.contains_key(&eid) {
@@ -499,9 +493,9 @@ impl HayateElementHtmlRenderer {
         }
     }
 
-    /// WIT `element-get-bounds`: return the element's CSS bounding box
-    /// [x, y, width, height] in container-relative pixels. Returns zeroes when
-    /// the element has not been laid out yet.
+    /// WIT `element-get-bounds`: 要素の CSS バウンディングボックス
+    /// [x, y, width, height] をコンテナ相対ピクセルで返す。未レイアウトの場合は
+    /// すべて 0 を返す。
     pub fn element_get_bounds(&self, id: f64) -> Box<[f32]> {
         let eid = element_id_from_f64(id);
         let dom = match self.nodes.get(&eid).and_then(|n| n.dom.as_ref()) {
@@ -512,8 +506,8 @@ impl HayateElementHtmlRenderer {
             Some(e) => e,
             None => return vec![0.0, 0.0, 0.0, 0.0].into_boxed_slice(),
         };
-        // offsetLeft/Top are relative to the offsetParent — for our container-
-        // rooted tree this matches the WIT "canvas coordinates" expectation.
+        // offsetLeft/Top は offsetParent 相対。コンテナを根とするツリーでは
+        // これが WIT の「canvas 座標」の期待に一致する。
         vec![
             html_el.offset_left() as f32,
             html_el.offset_top() as f32,
@@ -569,11 +563,10 @@ impl HayateElementHtmlRenderer {
         });
     }
 
-    /// Returns the editable text content committed by the most recent `render()`.
-    /// For TextInput elements this falls through to the live DOM value, which
-    /// already reflects user typing (browser-driven, not queue-driven). Queued
-    /// `element_set_text_content` calls are not visible until the next flush
-    /// (ADR-0030).
+    /// 直近の `render()` で確定した編集可能テキスト内容を返す。TextInput では
+    /// ユーザー入力を既に反映しているライブ DOM 値へフォールスルーする
+    /// （キュー駆動ではなくブラウザ駆動）。キュー済みの
+    /// `element_set_text_content` は次のフラッシュまで見えない（ADR-0030）。
     pub fn element_get_text_content(&self, id: f64) -> String {
         let eid = element_id_from_f64(id);
         let n = match self.nodes.get(&eid) {
@@ -588,10 +581,9 @@ impl HayateElementHtmlRenderer {
         n.text.clone().unwrap_or_default()
     }
 
-    /// Set the image's `src` to the URL. The browser fetches and decodes it.
-    /// `src` is applied to the DOM eagerly here so the browser fetch can start
-    /// before the next `render()`; the slotmap mirror is updated too so reads
-    /// observe the new URL immediately.
+    /// 画像の `src` を URL に設定する。取得とデコードはブラウザが行う。
+    /// 次の `render()` を待たずブラウザの fetch を始められるよう `src` は DOM へ
+    /// 即時適用し、読み取りが新 URL を即座に観測できるよう slotmap ミラーも更新する。
     pub async fn load_image(&mut self, id: f64, url: String) -> Result<(), JsValue> {
         let eid = element_id_from_f64(id);
         if let Some(n) = self.nodes.get_mut(&eid) {
@@ -605,15 +597,15 @@ impl HayateElementHtmlRenderer {
         Ok(())
     }
 
-    /// ADR-0053: delivery rows `[listener_id, kind, ...fields]`.
+    /// 配信行 `[listener_id, kind, ...fields]`（ADR-0053）。
     pub fn poll_events(&mut self) -> js_sys::Array {
         encode_deliveries(&self.tree.poll_deliveries())
     }
 }
 
 impl HayateElementHtmlRenderer {
-    /// Drain the pending command queue and apply each mutation to the DOM and
-    /// slotmap. Called from `render()` (the sole flush boundary per ADR-0030).
+    /// 保留コマンドキューを drain し、各変更を DOM と slotmap に適用する。
+    /// `render()`（唯一のフラッシュ境界、ADR-0030）から呼ばれる。
     fn flush_pending(&mut self) -> Result<(), JsValue> {
         let commands = std::mem::take(&mut self.pending);
         for cmd in commands {
@@ -656,8 +648,8 @@ impl HayateElementHtmlRenderer {
     }
 
     fn flush_create(&mut self, id: ElementId, kind: ElementKind) -> Result<(), JsValue> {
-        // The slot was inserted eagerly in `element_create`; if it's missing it
-        // was removed by a subsequent queued `Remove` — skip silently.
+        // スロットは `element_create` で即時挿入済み。無ければ後続のキュー済み
+        // `Remove` で削除されたということなので静かにスキップする。
         if !self.nodes.contains_key(&id) {
             return Ok(());
         }
@@ -667,8 +659,8 @@ impl HayateElementHtmlRenderer {
         if let Some(n) = self.nodes.get_mut(&id) {
             n.dom = Some(dom.clone());
         }
-        // Preserve the legacy auto-root behaviour: the first element created
-        // when no root exists becomes the root and is mounted on the container.
+        // 自動ルートの挙動を維持する。ルートが無いときに最初に生成された要素が
+        // ルートとなり、コンテナにマウントされる。
         if self.root.is_none() {
             self.root = Some(id);
             self.container.append_child(&dom)?;
@@ -721,9 +713,9 @@ impl HayateElementHtmlRenderer {
             None => return,
         };
         if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
-            // HTML Mode's imperative setter still speaks the boolean Selection
-            // Region; bridge it to the ADR-0108 `user-select` vocabulary that the
-            // resolver now expects (`true` → text, `false` → none).
+            // HTML Mode の命令的セッターはまだ真偽値の選択領域を扱うため、
+            // リゾルバが期待する `user-select` 語彙へ橋渡しする
+            // （`true` → text, `false` → none、ADR-0108）。
             let explicit = if selectable {
                 UserSelectValue::Text
             } else {
@@ -736,12 +728,12 @@ impl HayateElementHtmlRenderer {
         }
     }
 
-    /// Swap a TextInput's materialised element between `<input>` and `<textarea>`
-    /// so the browser's native Enter behaviour matches the `multiline` property
-    /// (#362): a textarea inserts a newline at the caret, an input submits. The
-    /// live value and resolved inline styles carry across the swap.
+    /// TextInput の実体化要素を `<input>` と `<textarea>` で入れ替え、ブラウザ
+    /// ネイティブの Enter 挙動を `multiline` プロパティに合わせる。textarea は
+    /// キャレットに改行を入れ、input は送信する。入れ替えを跨いでライブ値と
+    /// 解決済みインラインスタイルを引き継ぐ。
     fn flush_set_multiline(&mut self, id: ElementId, multiline: bool) -> Result<(), JsValue> {
-        // Keep the core tree authoritative so reads agree across renderers.
+        // 読み取りがレンダラ間で一致するようコアツリーを正本に保つ。
         self.tree.element_set_multiline(id, multiline);
         let (kind, dom) = match self.nodes.get(&id) {
             Some(n) => (n.kind, n.dom.clone()),
@@ -756,7 +748,7 @@ impl HayateElementHtmlRenderer {
         };
         let is_textarea = old.dyn_ref::<HtmlTextAreaElement>().is_some();
         if is_textarea == multiline {
-            return Ok(()); // already the right element
+            return Ok(()); // 既に正しい要素
         }
         let doc = document();
         let new_el = doc.create_element(if multiline { "textarea" } else { "input" })?;
@@ -765,13 +757,13 @@ impl HayateElementHtmlRenderer {
             new_el.set_attribute("type", "text")?;
         }
         new_el.set_attribute("data-element-id", &format!("{}", id.to_u64()))?;
-        // Preserve the live value across the swap (DOM first, then the mirror).
+        // 入れ替えを跨いでライブ値を保つ（まず DOM、次にミラー）。
         let value = text_field_value(&old)
             .or_else(|| self.nodes.get(&id).and_then(|n| n.text.clone()));
         if let Some(v) = value.as_deref() {
             set_text_field_value(&new_el, v);
         }
-        // Carry over the resolved inline styles (baseline + user + selection).
+        // 解決済みインラインスタイル（baseline + user + selection）を引き継ぐ。
         if let (Some(old_h), Some(new_h)) =
             (old.dyn_ref::<HtmlElement>(), new_el.dyn_ref::<HtmlElement>())
         {
@@ -989,7 +981,7 @@ impl HayateElementHtmlRenderer {
         if !self.nodes.contains_key(&pid) || !self.nodes.contains_key(&cid) {
             return;
         }
-        // `append_child` moves the node, detaching it from any current DOM parent.
+        // `append_child` はノードを移動し、既存の DOM 親から切り離す。
         let parent_dom = self.nodes[&pid].dom.clone();
         let child_dom = self.nodes[&cid].dom.clone();
         if let (Some(p), Some(c)) = (parent_dom, child_dom) {
@@ -1010,8 +1002,8 @@ impl HayateElementHtmlRenderer {
         let (Some(p), Some(c), Some(b)) = (parent_dom, child_dom, before_dom) else {
             return;
         };
-        // `before` must be a child of `parent`; otherwise fall back to append
-        // (matches the prior structure-mirror guard).
+        // `before` は `parent` の子でなければならない。そうでなければ append に
+        // フォールバックする（従来の構造ミラーのガードと同じ）。
         let before_is_child = b
             .parent_node()
             .is_some_and(|pn| pn.is_same_node(Some(p.as_ref())));
@@ -1029,8 +1021,8 @@ impl HayateElementHtmlRenderer {
             return;
         }
         let _ = self.remove_all_pseudo_rules_for(target);
-        // The DOM subtree is the structure of record (ADR-0029): collect the
-        // element ids to drop before detaching, then `remove_child` cascades.
+        // DOM サブツリーが構造の正本（ADR-0029）。切り離す前に破棄する要素 id を
+        // 集め、`remove_child` でカスケード削除する。
         let mut subtree = vec![target];
         if let Some(top_dom) = self.nodes[&target].dom.clone() {
             subtree.extend(descendant_element_ids(&top_dom));
@@ -1044,14 +1036,14 @@ impl HayateElementHtmlRenderer {
         if self.root == Some(target) {
             self.root = None;
         }
-        // Pointer state for removed nodes was cleared eagerly in `element_remove`.
+        // 削除ノードのポインタ状態は `element_remove` で即時クリア済み。
     }
 
     fn flush_set_root(&mut self, new_root: ElementId) {
         if !self.nodes.contains_key(&new_root) {
             return;
         }
-        // Detach the previous root from the container (if any).
+        // 直前のルートがあればコンテナから切り離す。
         if let Some(prev) = self.root {
             if prev != new_root {
                 if let Some(prev_dom) = self.nodes[&prev].dom.clone() {
@@ -1059,8 +1051,7 @@ impl HayateElementHtmlRenderer {
                 }
             }
         }
-        // `append_child` lifts the new root out of any prior parent and mounts
-        // it on the container.
+        // `append_child` は新ルートを以前の親から外し、コンテナにマウントする。
         if let Some(dom) = self.nodes[&new_root].dom.clone() {
             let _ = self.container.append_child(dom.as_ref());
         }
@@ -1068,9 +1059,8 @@ impl HayateElementHtmlRenderer {
     }
 }
 
-/// Element ids of `top`'s descendants carrying `data-element-id`. In HTML Mode
-/// the DOM subtree is the structure of record (ADR-0029), so removal reads the
-/// subtree from the DOM rather than a second tree.
+/// `data-element-id` を持つ `top` の子孫の要素 id。HTML Mode では DOM サブツリーが
+/// 構造の正本（ADR-0029）なので、削除は第2のツリーではなく DOM から読む。
 fn descendant_element_ids(top: &Element) -> Vec<ElementId> {
     let mut ids = Vec::new();
     let list: NodeList = match top.query_selector_all("[data-element-id]") {
@@ -1145,9 +1135,8 @@ fn create_dom_for_kind(doc: &Document, kind: ElementKind) -> Result<Element, JsV
     Ok(el)
 }
 
-/// Read the editable value of a text-input DOM node, whether the browser is
-/// materialising it as a single-line `<input>` or a multi-line `<textarea>`
-/// (#362). Returns `None` when the node is neither.
+/// テキスト入力 DOM ノードの編集可能な値を読む。単一行 `<input>` でも複数行
+/// `<textarea>` でも対応する。どちらでもない場合は `None` を返す。
 fn text_field_value(dom: &Element) -> Option<String> {
     if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
         Some(input.value())
@@ -1156,8 +1145,8 @@ fn text_field_value(dom: &Element) -> Option<String> {
     }
 }
 
-/// Write the editable value of a text-input DOM node (`<input>` or `<textarea>`).
-/// Returns whether the node was a text field (so callers can fall back).
+/// テキスト入力 DOM ノード（`<input>` か `<textarea>`）の編集可能な値を書く。
+/// テキストフィールドだったかを返す（呼び出し側がフォールバックできるよう）。
 fn set_text_field_value(dom: &Element, text: &str) -> bool {
     if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
         input.set_value(text);
@@ -1170,9 +1159,9 @@ fn set_text_field_value(dom: &Element, text: &str) -> bool {
     }
 }
 
-/// Per-kind baseline CSS — keep it minimal so user-supplied styles via
-/// `element_set_style` cleanly override. Mirrors React Native Web's
-/// resetStyle approach: predictable box model, no inherited surprises.
+/// 要素種別ごとのベースライン CSS。`element_set_style` 経由のユーザースタイルが
+/// きれいに上書きできるよう最小限に保つ。React Native Web の resetStyle に倣い、
+/// 予測可能なボックスモデルで継承による意外を避ける。
 fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
     let html_el = match el.dyn_ref::<HtmlElement>() {
         Some(e) => e,
@@ -1186,8 +1175,8 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
     style.set_property("border", "0 solid black")?;
     style.set_property("min-width", "0")?;
     style.set_property("min-height", "0")?;
-    // Selection Region default: only `selectable` subtrees (and always
-    // text-input) opt into native selection (ADR-0097 decision 5).
+    // 選択領域の既定: `selectable` なサブツリー（および常に text-input）だけが
+    // ネイティブ選択に参加する（ADR-0097）。
     let user_select = resolve_user_select(kind, None);
     style.set_property("user-select", user_select)?;
     style.set_property("-webkit-user-select", user_select)?;
@@ -1202,10 +1191,10 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
             style.set_property("object-fit", "fill")?;
         }
         ElementKind::TextInput => {
-            // Keep the browser's native focus ring (`:focus-visible`): suppressing
-            // `outline` here violated "browser is the visual reference" (ADR-0102,
-            // #335) and diverged from the DOM Renderer. Other input normalisations
-            // (transparent background, inherited font/colour) stay.
+            // ブラウザのネイティブフォーカスリング（`:focus-visible`）を残す。
+            // ここで `outline` を抑制すると「ブラウザが視覚基準」（ADR-0102）に反し、
+            // DOM Renderer と乖離した。他の input 正規化（透明背景、font/color の
+            // 継承）はそのまま。
             style.set_property("background", "transparent")?;
             style.set_property("font", "inherit")?;
             style.set_property("color", "inherit")?;
@@ -1217,10 +1206,10 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
         }
         _ => {}
     }
-    // UA default cursor per element-kind from the spec single source (ADR-0105):
-    // button → pointer, text-input → text. Shared with Canvas (core
-    // `resolve_cursor`) so DOM and Canvas show the same cursor, and not
-    // re-declared here. An explicit `cursor` via `element_set_style` still wins.
+    // 仕様の単一ソース由来の要素種別ごとの UA 既定カーソル（ADR-0105）:
+    // button → pointer、text-input → text。Canvas（コアの `resolve_cursor`）と
+    // 共有するため DOM と Canvas で同じカーソルになり、ここで再宣言しない。
+    // `element_set_style` による明示 `cursor` は依然として優先される。
     let cursor = kind.default_cursor();
     if cursor != hayate_core::CursorValue::Default {
         let mut entries: Vec<(String, String)> = Vec::new();
@@ -1235,11 +1224,11 @@ fn apply_kind_baseline(el: &Element, kind: ElementKind) -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Document-level CSS baseline injected once per page load.
+/// ページ読み込みごとに1回注入するドキュメントレベルの CSS ベースライン。
 ///
-/// Uses a `<style id="hayate-reset">` sentinel to be idempotent.
-/// A global rule covers all elements in the document — including hidden
-/// DOM trees created by Canvas-mode mocks — with no per-element overhead.
+/// 冪等にするため `<style id="hayate-reset">` をセンチネルに使う。
+/// グローバルルールが要素ごとのオーバーヘッドなしにドキュメント内の全要素
+/// （Canvas モードのモックが作る隠し DOM ツリーも含む）を網羅する。
 fn inject_baseline_stylesheet() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or("no window")?;
     let doc = window.document().ok_or("no document")?;
@@ -1261,13 +1250,12 @@ fn inject_baseline_stylesheet() -> Result<(), JsValue> {
     Ok(())
 }
 
-/// Inject a CSS `@font-face` rule into the document so the browser can
-/// render text in `font-family: <family_name>`. The font bytes are passed
-/// as a data URL — adequate for the demo + development use cases that the
-/// HTML Mode targets.
+/// CSS `@font-face` ルールをドキュメントへ注入し、ブラウザが
+/// `font-family: <family_name>` でテキストを描画できるようにする。フォント
+/// バイト列はデータ URL として渡す（HTML Mode が対象とするデモ・開発用途には十分）。
 fn inject_font_face(family: &str, data: &[u8]) -> Result<(), JsValue> {
     use js_sys::Uint8Array;
-    // Base64-encode the bytes via btoa over a binary string built from raw bytes.
+    // 生バイトから組み立てたバイナリ文字列を btoa で base64 エンコードする。
     let bin: String = data.iter().map(|&b| b as char).collect();
     let window = web_sys::window().ok_or("no window")?;
     let b64 = window.btoa(&bin)?;
@@ -1278,8 +1266,8 @@ fn inject_font_face(family: &str, data: &[u8]) -> Result<(), JsValue> {
     let style_el = doc.create_element("style")?;
     style_el.set_text_content(Some(&css));
     head.append_child(style_el.as_ref())?;
-    // `_` to acknowledge that Uint8Array isn't used; keeps the import optional
-    // when we later switch to FontFace API.
+    // Uint8Array が未使用であることを `_` で明示する。FontFace API への
+    // 切り替え時に import を残せるようにしておく。
     let _ = Uint8Array::new_with_length(0);
     Ok(())
 }

@@ -48,19 +48,18 @@ pub(crate) trait SceneRenderer {
     #[allow(dead_code)]
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
 
-    /// Resize the render surface to match the canvas's new pixel dimensions.
-    /// `content_scale` maps CSS layout coordinates to physical pixels (dpr).
-    /// Backends that draw to an off-screen target (GPU texture / CPU pixmap)
-    /// must reallocate it here, otherwise content stays clipped to the init
-    /// size while the canvas grows. Default is a no-op for sizeless backends.
+    /// 描画サーフェスを canvas の新しいピクセル寸法に合わせてリサイズする。
+    /// `content_scale` は CSS レイアウト座標を物理ピクセルに変換する（dpr）。
+    /// オフスクリーン対象（GPU テクスチャ / CPU ピクスマップ）に描画する
+    /// バックエンドはここで再確保しないと、canvas が広がっても内容が初期
+    /// サイズにクリップされたままになる。サイズを持たないバックエンドは no-op。
     fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {}
 }
 
 impl RendererCapabilities {
-    /// Inspect the running environment for the facts the policy needs. GPU-free:
-    /// it only checks whether `navigator.gpu` is present, never requests an
-    /// adapter, so the policy can rule WebGPU-backed renderers in or out without
-    /// initializing one.
+    /// ポリシーが必要とする実行環境の事実を調べる。GPU を初期化せず、
+    /// `navigator.gpu` の有無だけを確認する（アダプタは要求しない）ので、
+    /// ポリシーは WebGPU 系レンダラーの採否を初期化なしで判断できる。
     fn detect() -> Self {
         Self {
             webgpu_available: navigator_has_gpu(),
@@ -131,7 +130,7 @@ impl SceneRendererKind {
         }
     }
 
-    /// Synchronous init for one-way runtime fallback (ADR-0050).
+    /// 一方向のランタイムフォールバック用の同期初期化（ADR-0050）。
     pub(crate) fn try_init_sync_for_fallback(
         self,
         canvas: HtmlCanvasElement,
@@ -217,8 +216,8 @@ fn not_compiled_error(kind: SceneRendererKind) -> JsValue {
 pub(crate) struct RenderHost {
     canvas: HtmlCanvasElement,
     renderer: Option<Box<dyn SceneRenderer>>,
-    /// The policy decision this host is enacting: which renderers to attempt and
-    /// why others were rejected. The host enacts it; it does not re-derive it.
+    /// このホストが実行するポリシー決定。どのレンダラーを試すか、なぜ他が
+    /// 棄却されたか。ホストは実行するだけで再導出はしない。
     selection_plan: RendererSelectionPlan,
 }
 
@@ -227,7 +226,7 @@ impl RenderHost {
         Self::init_with_policy(canvas, standard_renderer_selection_policy()).await
     }
 
-    /// Reserved for tests and diagnostics (ADR-0050); production uses `init`.
+    /// テスト・診断用（ADR-0050）。本番は `init` を使う。
     #[allow(dead_code)]
     pub(crate) async fn init_diagnostic(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         Self::init_with_policy(canvas, diagnostic_renderer_selection_policy()).await
@@ -237,9 +236,9 @@ impl RenderHost {
         canvas: HtmlCanvasElement,
         selection_policy: RendererSelectionPolicy,
     ) -> Result<Self, JsValue> {
-        // The policy decides — purely, from detected capabilities — which
-        // renderers are worth attempting and in what order. `init` only enacts
-        // that decision: it tries each planned renderer and surfaces failures.
+        // ポリシーは検出した能力だけから、どのレンダラーをどの順で試すかを
+        // 純粋に決める。`init` はその決定を実行するだけ（計画順に各レンダラー
+        // を試し、失敗を表面化する）。
         let plan = selection_policy.choose(RendererCapabilities::detect());
 
         let mut attempts: Vec<String> = plan
@@ -292,9 +291,9 @@ impl RenderHost {
             return Err(error);
         }
 
-        // Follow the policy decision: the next renderer is the one the plan
-        // already placed after the failed one. No re-selection, no re-running
-        // init for the renderers the policy passed over.
+        // ポリシー決定に従う。次のレンダラーは計画が失敗したものの後ろに
+        // すでに置いたもの。再選択もしないし、ポリシーが見送ったレンダラーの
+        // init を再実行もしない。
         let Some(next_kind) = self.selection_plan.next_after(failed_kind) else {
             return Err(error);
         };

@@ -1,24 +1,22 @@
-//! Issue #344: a comma-separated CSS `font-family` value is a *stack*, not a
-//! single family name. Canvas Mode must split it, resolve each entry's generic
-//! keyword, and proactively `FetchFont` the known named families in the list —
-//! not emit one `FetchFont` for the whole `"Inter, Segoe UI, sans-serif"`
-//! string (which no adapter can resolve to a URL).
+//! カンマ区切りの CSS font-family は単一の名前ではなく*スタック*。Canvas Mode は
+//! これを分割し、各エントリの generic キーワードを解決し、リスト中の既知の名前付き
+//! ファミリを先回りで FetchFont する。"Inter, Segoe UI, sans-serif" 文字列全体に対し
+//! 単一の FetchFont を出してはならない（どのアダプタも URL に解決できない）。
 //!
-//! These tests drive the real proactive-fetch path through the public
-//! `ElementTree` API in a WASM-like font context (`system_fonts: false`,
-//! Latin-only default) so the named entry is absent and gets requested.
+//! WASM 相当のフォント文脈（system_fonts: false, Latin のみのデフォルト）で公開
+//! ElementTree API を通し、名前付きエントリが不在で要求される実経路を駆動する。
 
 use hayate_core::{Dimension, ElementId, ElementKind, ElementTree, Event, StyleProp};
 
-/// A Latin-only face standing in for a WASM bundle: covers Latin so the Latin
-/// text shapes without `.notdef`, isolating the *proactive* named-font fetch.
+/// WASM バンドルの代役となる Latin のみのフェイス。Latin をカバーし .notdef なしで
+/// シェイプさせ、先回りの名前付きフォント取得を分離する。
 fn latin_only_default() -> Vec<u8> {
     std::fs::read("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
         .expect("DejaVuSans.ttf present for the test")
 }
 
-/// A WASM-like tree (no system fonts, Latin-only default) with one Text element
-/// holding Latin `text` styled with the CSS `font_family` stack.
+/// WASM 相当のツリー（システムフォントなし、Latin のみのデフォルト）。font_family
+/// スタックでスタイルした Latin text を持つ Text 要素を 1 つ含む。
 fn wasm_like_tree(text: &str, font_family: &str) -> (ElementTree, ElementId) {
     let mut tree = ElementTree::new();
     tree.test_set_wasm_like_fonts(latin_only_default());
@@ -49,9 +47,9 @@ fn fetch_font_families(events: &[Event]) -> Vec<String> {
         .collect()
 }
 
-/// Tracer: `"Inter, sans-serif"` must request the named builtin `"Inter"`
-/// alone. The generic `sans-serif` resolves to the bundled default (already
-/// registered, so not requested), and the full stack string is never emitted.
+/// "Inter, sans-serif" は名前付きビルトイン "Inter" のみを要求する。generic の
+/// sans-serif はバンドル済みデフォルトに解決され（登録済みなので要求されない）、
+/// スタック文字列全体は決して出さない。
 #[test]
 fn multi_name_stack_requests_named_family_not_full_string() {
     let (mut tree, _label) = wasm_like_tree("Hello", "Inter, sans-serif");
@@ -66,8 +64,8 @@ fn multi_name_stack_requests_named_family_not_full_string() {
     );
 }
 
-/// The issue's own example: the full comma string must never be requested as a
-/// single family, and the named builtin in it (`Inter`) must be requested.
+/// カンマ文字列全体を単一ファミリとして要求してはならず、その中の名前付き
+/// ビルトイン（Inter）は要求しなければならない。
 #[test]
 fn full_stack_string_is_never_requested_as_one_family() {
     let stack = "Inter, Segoe UI, system-ui, sans-serif";
@@ -86,9 +84,9 @@ fn full_stack_string_is_never_requested_as_one_family() {
     );
 }
 
-/// Generic keywords resolve per entry: `serif` → `Noto Serif`, while the
-/// `sans-serif` entry resolves to the already-bundled default and is not
-/// requested. Proves resolution happens entry-by-entry, not on the whole value.
+/// generic キーワードはエントリ単位で解決する。serif → Noto Serif、sans-serif は
+/// バンドル済みデフォルトに解決され要求されない。値全体ではなくエントリごとに解決
+/// されることを示す。
 #[test]
 fn generic_keywords_resolve_per_entry() {
     let (mut tree, _label) = wasm_like_tree("Hello", "serif, sans-serif");

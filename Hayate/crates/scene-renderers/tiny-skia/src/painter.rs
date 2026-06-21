@@ -15,7 +15,7 @@ use tiny_skia::{
 };
 
 fn normalized_coords_ref(coords: &[i16]) -> &[NormalizedCoord] {
-    // Parley stores harfrust/skrifa normalized coords as i16 (F2Dot14).
+    // Parley は harfrust/skrifa の正規化座標を i16(F2Dot14)で保持する。
     unsafe { std::slice::from_raw_parts(coords.as_ptr().cast(), coords.len()) }
 }
 
@@ -95,11 +95,10 @@ impl ScenePainter for TinySkiaPainter<'_> {
             return;
         }
 
-        // Paint only the ring band with a single even-odd fill (outer minus
-        // inner). Hollowing the interior with `BlendMode::Clear` would erase any
-        // opaque content underneath — e.g. the native focus ring (#335) sits on
-        // top of a filled input and must not punch it transparent (issue #337).
-        // This mirrors the vello backend's even-odd band fill.
+        // リング帯だけを 1 回の even-odd フィル(外側マイナス内側)で塗る。内側を
+        // `BlendMode::Clear` でくり抜くと下の不透明コンテンツを消してしまう — 例えば
+        // ネイティブフォーカスリングは塗り済み input の上に乗るため、透明化しては
+        // ならない。vello バックエンドの even-odd 帯フィルと同じ。
         let paint = color_to_paint(color);
         let inner_r = (outer_radius - bw).max(0.0);
         let mut pb = PathBuilder::new();
@@ -127,7 +126,7 @@ impl ScenePainter for TinySkiaPainter<'_> {
         let half = bw / 2.0;
         let inset_w = width - bw;
         let inset_h = height - bw;
-        // Border thicker than the box collapses to a solid fill.
+        // ボックスより太いボーダーはソリッドフィルに退化する。
         if inset_w <= 0.0 || inset_h <= 0.0 {
             self.fill_rect(x, y, width, height, color, outer_radius);
             return;
@@ -196,7 +195,7 @@ impl ScenePainter for TinySkiaPainter<'_> {
 
     fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         let transform = self.state.transform;
-        // Uniform radii (the only shape Hayate currently emits); 0 → rect clip.
+        // 一様な半径(現状 Hayate が出す唯一の形状)。0 なら矩形クリップ。
         let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
         let path = if radius > 0.0 {
             rounded_rect_path(x, y, width, height, radius)
@@ -302,9 +301,9 @@ fn draw_text_run(
     });
 
     for glyph in &data.glyphs {
-        // A `.notdef` glyph means the font lacks this codepoint. Draw a
-        // deliberate placeholder box instead of the font's silent box so the
-        // miss is visible rather than vanishing (issue #427).
+        // `.notdef` グリフはフォントがこのコードポイントを持たないことを意味する。
+        // フォント任せの無音ボックスではなく意図的なプレースホルダ箱を描き、欠落が
+        // 消えずに見えるようにする。
         if is_notdef(glyph) {
             draw_missing_glyph(pixmap, run_x, run_y, &paint, glyph, font_size, transform, mask);
             continue;
@@ -362,9 +361,9 @@ fn draw_text_run(
     }
 }
 
-/// Draw the deliberate placeholder box for a `.notdef` glyph (issue #427) as a
-/// hollow stroked rectangle in the text colour, in the cap-height band above the
-/// baseline. Shared geometry with the vello backend via `missing_glyph_placeholder`.
+/// `.notdef` グリフ用の意図的なプレースホルダ箱を、テキスト色の中空ストローク矩形
+/// として、ベースライン上の cap-height 帯に描く。ジオメトリは
+/// `missing_glyph_placeholder` 経由で vello バックエンドと共有する。
 fn draw_missing_glyph(
     pixmap: &mut Pixmap,
     run_x: f32,

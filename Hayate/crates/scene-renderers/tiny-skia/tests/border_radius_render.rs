@@ -39,11 +39,10 @@ fn rounded_rect_leaves_corner_pixels_clear() {
 
 #[test]
 fn rounded_ring_paints_band_without_erasing_center() {
-    // A RoundedRing paints only its band; it must NOT clear its interior. The
-    // native focus ring (#335) is a RoundedRing drawn on top of a filled box, so
-    // hollowing the centre with a Clear would punch the content transparent
-    // (issue #337). Here the ring sits over the opaque clear colour, which must
-    // survive intact at the centre.
+    // RoundedRing は帯だけを描き、内部はクリアしてはいけない。標準フォーカス
+    // リングは塗りつぶし済みボックスの上に重ねる RoundedRing なので、中央を
+    // Clear で抜くとコンテンツが透明になってしまう。ここではリングが不透明な
+    // クリア色の上に乗っており、中央はそのまま残らねばならない。
     let mut scene = SceneGraph::new();
     scene.insert(Node {
         kind: NodeKind::RoundedRing {
@@ -91,15 +90,15 @@ fn dashed_border_leaves_gaps_along_the_edge() {
     let mut pixmap = Pixmap::new(64, 64).unwrap();
     TinySkiaSceneRenderer::new().render_scene(&scene, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
 
-    // The center is empty (the border is only a stroked perimeter), so it keeps
-    // the white clear color rather than the blue border color.
+    // 中央は空（ボーダーは周囲をストロークするだけ）なので、青のボーダー色ではなく
+    // 白のクリア色が残る。
     assert!(
         pixel(&pixmap, 32, 32)[0] > 200,
         "dashed border must not fill the box interior"
     );
 
-    // Scan the top border band (y ≈ 10): a dashed edge has BOTH blue dashes and
-    // white gaps, unlike a solid border which would be painted continuously.
+    // 上辺の帯（y ≈ 10）を走査: 破線は連続塗りの実線と違い、青のダッシュと
+    // 白の隙間の両方を持つ。
     let mut dashes = 0;
     let mut gaps = 0;
     for x in 9..55 {

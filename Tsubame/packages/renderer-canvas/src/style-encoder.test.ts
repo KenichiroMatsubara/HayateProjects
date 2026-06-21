@@ -459,7 +459,7 @@ describe('encodeStylePatch – gap', () => {
 describe('encodeStylePatch – null/undefined skipping', () => {
   it('skips null values', () => {
     const out: number[] = [];
-    // color: null is inheritable, fontSize: null is inheritable — both skipped in encode
+    // color: null も fontSize: null も継承プロパティなので encode ではスキップされる
     encodeStylePatch({ color: null, fontSize: null } as any, out);
     expect(out).toHaveLength(0);
   });

@@ -3,16 +3,16 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::CssStyleDeclaration;
 
-/// Decode a style-packet slice into `StyleProp` values (generated from proto/spec).
+/// スタイルパケットのスライスを `StyleProp` 値へデコードする（proto/spec から生成）。
 pub(crate) fn decode(packed: &[f32]) -> Result<Vec<StyleProp>, JsValue> {
     crate::generated::decode_style_packet(packed)
 }
 
-// ── Hayate CSS → browser CSS mapping (HTML Mode, ADR-0029) ───────────────
+// ── Hayate CSS → ブラウザ CSS マッピング（HTML モード、ADR-0029） ───────────────
 
-/// Apply a list of Hayate CSS props directly to a DOM element's style declaration.
-/// Layout properties (`display`, `gap`, `flex-direction`, …) map 1:1 to browser CSS
-/// so the browser engine performs the layout — no Taffy involved (ADR-0029).
+/// Hayate CSS プロパティ群を DOM 要素の style 宣言へ直接適用する。
+/// レイアウトプロパティ（`display`、`gap`、`flex-direction` …）はブラウザ CSS と 1:1 対応し、
+/// レイアウトはブラウザエンジンが行う — Taffy は介在しない（ADR-0029）。
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn apply_props_to_dom(
     style: &CssStyleDeclaration,
@@ -265,7 +265,7 @@ mod tests {
         }
     }
 
-    // ── MAX_LINES (u32) + TEXT_OVERFLOW enum (issue #207) ─────────────────────
+    // ── MAX_LINES (u32) + TEXT_OVERFLOW enum ─────────────────────
 
     #[test]
     fn max_lines_u32() {
@@ -405,8 +405,8 @@ mod tests {
         assert!(props.is_empty());
     }
 
-    // NOTE: Error-path tests (truncated / unknown tag) are not run in native
-    // mode because JsValue::from_str() is a stub that calls process::abort()
-    // outside of wasm32. These code paths are covered by wasm-pack tests.
+    // エラー経路のテスト（切り詰め／未知タグ）はネイティブモードでは実行しない。
+    // wasm32 外では JsValue::from_str() が process::abort() を呼ぶスタブのため。
+    // これらの経路は wasm-pack テストでカバーする。
 }
 

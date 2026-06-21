@@ -14,12 +14,12 @@ export const PSEUDO_STATE_CODE: Record<PseudoStyleKey, number> = {
   ':active': 1,
 };
 
-/** Cascade band order (ascending; last wins). Distinct from wire codes. */
+/** カスケードのバンド順（昇順、後勝ち）。ワイヤコードとは別物。 */
 export const PSEUDO_STATE_PRIORITY: Record<PseudoStyleKey, number> = {
   ':focus': 0,
   ':hover': 1,
   ':active': 2,
 };
 
-/** Pseudo keys sorted by priority band (focus < hover < active). */
+/** 優先バンド順（focus < hover < active）にソートした擬似キー。 */
 export const PSEUDO_STYLE_KEYS_BY_PRIORITY = [":focus",":hover",":active"] as const satisfies readonly PseudoStyleKey[];

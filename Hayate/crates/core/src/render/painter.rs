@@ -78,7 +78,7 @@ pub trait ScenePainter {
         color: [f32; 4],
     );
 
-    /// Stroke a dashed border along the box perimeter (`border-style: dashed`).
+    /// ボックス外周に沿って破線ボーダーを描く（`border-style: dashed`）。
     fn stroke_dashed_border(
         &mut self,
         x: f32,
@@ -105,8 +105,8 @@ pub trait ScenePainter {
 
     fn pop_transform(&mut self);
 
-    /// Push a clip region. `corner_radii` (TL, TR, BR, BL) rounds the corners;
-    /// all-zero is a plain rectangular clip.
+    /// クリップ領域を push する。`corner_radii`（TL, TR, BR, BL）で角を丸める。
+    /// 全て 0 なら矩形クリップ。
     fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]);
 
     fn pop_clip(&mut self);

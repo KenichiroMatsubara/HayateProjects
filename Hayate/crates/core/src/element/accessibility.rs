@@ -1,4 +1,4 @@
-//! AccessKit tree generation from ElementTree (ADR-0041).
+//! ElementTree から AccessKit ツリーを生成する（ADR-0041）。
 
 use accesskit::{
     Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate,
@@ -12,15 +12,14 @@ fn node_id(id: ElementId) -> NodeId {
     NodeId(id.to_u64())
 }
 
-/// Minimal new scroll offset along one axis so the target span
-/// `[content_pos, content_pos + size]` becomes visible inside the viewport
-/// `[offset, offset + viewport]`, clamped to `[0, max]`.
+/// 1 軸について、対象スパン `[content_pos, content_pos + size]` がビューポート
+/// `[offset, offset + viewport]` 内に収まる最小の新オフセットを `[0, max]` に
+/// クランプして返す。
 ///
-/// Returns the current `offset` unchanged when the target is already fully
-/// visible (or already spans the whole viewport), so an already-visible target
-/// never moves the offset. Otherwise it aligns the nearest edge: the leading
-/// edge when the target sits before the viewport, the trailing edge when it
-/// extends past it. Pure offset arithmetic — no inertia (ADR-0098 Decision 4).
+/// 対象が既に完全表示（またはビューポート全体を覆う）なら現在の `offset` を
+/// そのまま返し、表示済みの対象は動かさない。それ以外は近い側の端に揃える：
+/// ビューポートより手前なら先頭端、はみ出すなら末尾端。オフセット計算のみで
+/// 慣性は持たない（ADR-0098）。
 fn scroll_axis_to_reveal(content_pos: f32, size: f32, viewport: f32, offset: f32, max: f32) -> f32 {
     let lead = content_pos;
     let trail = content_pos + size;
@@ -29,7 +28,7 @@ fn scroll_axis_to_reveal(content_pos: f32, size: f32, viewport: f32, offset: f32
     let new_offset = if lead >= view_lead && trail <= view_trail {
         offset
     } else if lead < view_lead && trail > view_trail {
-        // Target already covers the entire viewport — nearest is no move.
+        // 対象がビューポート全体を覆う場合、最も近い解は「動かさない」。
         offset
     } else if lead < view_lead {
         lead
@@ -39,50 +38,46 @@ fn scroll_axis_to_reveal(content_pos: f32, size: f32, viewport: f32, offset: f32
     new_offset.clamp(0.0, max)
 }
 
-/// Core-owned, supported subset of inbound AccessKit actions (ADR-0098).
+/// Core が扱う、受信 AccessKit アクションのサポート済みサブセット（ADR-0098）。
 ///
-/// AccessKit's `Action` is a wide protocol vocabulary; Core maps it down to the
-/// operations it actually drives and folds everything else to `Ignored`, so the
-/// inbound surface is total and the runtime never sees a native-only concept.
-/// The mapping lives entirely in Core (Rust API) and is never put on the proto
-/// wire (ADR-0098 Decision 3).
+/// AccessKit の `Action` は広いプロトコル語彙だが、Core は実際に駆動する操作だけに
+/// 写像し、それ以外は `Ignored` に畳む。これで受信面は全域となり、ランタイムが
+/// ネイティブ固有の概念を見ることはない。写像は Core（Rust API）に閉じ、proto の
+/// ワイヤには載せない（ADR-0098）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccessibilityAction {
-    /// Move focus to `target`, driving the existing focus state machine.
+    /// 既存のフォーカス状態機械を駆動して `target` にフォーカスを移す。
     Focus { target: ElementId },
-    /// Activate `target` by emitting a `Click` event directly to it — the
-    /// semantic equivalent of a tap (ADR-0098 Decision 1), not a synthetic
-    /// pointer replay. Skips hit-testing, `:active`, multi-click counting and
-    /// the focus gesture.
+    /// `target` に直接 `Click` イベントを発行して起動する。タップと意味的に等価で
+    /// （ADR-0098）、合成ポインタの再生ではない。ヒットテスト・`:active`・
+    /// マルチクリック計数・フォーカスジェスチャを飛ばす。
     Click { target: ElementId },
-    /// Replace `target`'s text-input value with `value` (ADR-0098 Decision 4).
-    /// Any active preedit is finalized before the replacement so composition
-    /// never lingers across it (same integrity as `element_paste`). A no-op for
-    /// non-`text-input` targets.
+    /// `target` のテキスト入力値を `value` で置換する（ADR-0098）。置換前に進行中の
+    /// preedit を確定し、変換が置換をまたいで残らないようにする（`element_paste` と
+    /// 同じ整合性）。`text-input` 以外の対象では何もしない。
     SetValue { target: ElementId, value: String },
-    /// Bring `target` into view by adjusting the Scroll Offset of its nearest
-    /// ancestor `scroll-view` (ADR-0098 Decision 4). Core sets the basic offset
-    /// only — inertia/snap/rubber-band physics stay with the Platform Adapter
-    /// and an AT-driven scroll carries none. A no-op when `target` has no
-    /// scroll-view ancestor or is already fully visible.
+    /// 最寄りの祖先 `scroll-view` の Scroll Offset を調整して `target` を表示に入れる
+    /// （ADR-0098）。Core は基本オフセットのみ設定し、慣性・スナップ・ラバーバンドの
+    /// 物理は Platform Adapter に委ねる（AT 駆動のスクロールはそれらを伴わない）。
+    /// `target` に scroll-view 祖先がない、または既に完全表示なら何もしない。
     ScrollIntoView { target: ElementId },
-    /// Unsupported action — no-op, observable state unchanged.
+    /// 非サポートのアクション。何もせず、観測可能な状態は変えない。
     Ignored,
 }
 
-/// Pure mapping from an AccessKit `ActionRequest` to the Core action subset
-/// (ADR-0098 Decision 3). Inbound `NodeId` is resolved element-only for v1 as
-/// the inverse of outbound `NodeId(ElementId.to_u64())`, i.e. `ElementId::from_u64`.
+/// AccessKit `ActionRequest` から Core アクションサブセットへの純粋な写像
+/// （ADR-0098）。受信 `NodeId` は v1 では要素のみ解決し、送信側
+/// `NodeId(ElementId.to_u64())` の逆、すなわち `ElementId::from_u64` を用いる。
 pub fn map_action_request(req: &ActionRequest) -> AccessibilityAction {
     let target = ElementId::from_u64(req.target_node.0);
     match req.action {
         Action::Focus => AccessibilityAction::Focus { target },
-        // AccessKit folds "default activation" into `Action::Click`; there is no
-        // separate `Default` variant, so the ADR's "Click/Default" maps here.
+        // AccessKit は「デフォルト起動」を `Action::Click` に畳み、独立した
+        // `Default` バリアントを持たないため、ADR の「Click/Default」はここに対応する。
         Action::Click => AccessibilityAction::Click { target },
-        // `SetValue` carries the new text in `data`. Only a string `Value`
-        // payload addresses a text-input; a missing or non-string payload (e.g.
-        // a numeric slider value) has nothing to set, so it folds to `Ignored`.
+        // `SetValue` は新テキストを `data` に持つ。文字列 `Value` ペイロードのみが
+        // text-input を指し、欠落や非文字列（例: 数値スライダ値）は設定対象がないため
+        // `Ignored` に畳む。
         Action::SetValue => match &req.data {
             Some(ActionData::Value(value)) => AccessibilityAction::SetValue {
                 target,
@@ -163,14 +158,12 @@ fn build_node(el: &Element, bounds: (f32, f32, f32, f32), is_root: bool) -> Node
     node
 }
 
-/// Walk the Canonical Tree building AccessKit nodes, returning the ids of the
-/// top-level nodes produced for `id`'s subtree (so the caller can attach them
-/// as children).
+/// Canonical Tree を辿って AccessKit ノードを構築し、`id` のサブツリーから生成した
+/// トップレベルノードの id を返す（呼び出し側が子として接続できるように）。
 ///
-/// Elements with no Taffy node (e.g. inline text elements inside an IFC) are
-/// skipped but their children are still recursed into and their top-level
-/// nodes bubble up to the nearest ancestor with a Taffy node — this is what
-/// fixes the IFC subtree drop.
+/// Taffy ノードを持たない要素（例: IFC 内のインラインテキスト）はスキップするが、
+/// その子へは再帰し、トップレベルノードは最寄りの Taffy ノードを持つ祖先まで
+/// 浮上させる。これが IFC サブツリーの脱落を防ぐ。
 fn walk_accessibility(
     tree: &ElementTree,
     id: ElementId,
@@ -211,11 +204,10 @@ fn walk_accessibility(
 }
 
 impl ElementTree {
-    /// Inbound AccessKit action surface (ADR-0098): the mirror of outbound
-    /// `accessibility_update`. Platform Adapters bridge an AT request here and
-    /// Core maps it to an existing runtime intent — never a synthetic pointer or
-    /// key replay (Flutter-style semantic action). Unsupported actions fold to
-    /// `Ignored` and are no-ops.
+    /// 受信 AccessKit アクション面（ADR-0098）。送信側 `accessibility_update` の鏡像。
+    /// Platform Adapter は AT リクエストをここへ橋渡しし、Core は既存のランタイム意図に
+    /// 写像する（Flutter 流の意味的アクション。合成ポインタやキー再生は使わない）。
+    /// 非サポートのアクションは `Ignored` に畳まれ何もしない。
     pub fn on_accessibility_action(&mut self, req: ActionRequest) {
         match map_action_request(&req) {
             AccessibilityAction::Focus { target } => self.transition_focus(target),
@@ -226,14 +218,11 @@ impl ElementTree {
         }
     }
 
-    /// Bring `target` into view by setting the Scroll Offset of its nearest
-    /// ancestor `scroll-view` (ADR-0098 Decision 4). Core computes the minimal
-    /// offset that makes the target's bounds visible — leading edge when the
-    /// target is before the viewport, trailing edge when it is past — and leaves
-    /// the offset untouched when the target is already fully visible. Emits a
-    /// `Scroll` delivery on the scroll-view when (and only when) the offset
-    /// actually moves. No inertia or snap physics: an AT-driven scroll sets the
-    /// basic offset only. A no-op when `target` has no scroll-view ancestor.
+    /// 最寄りの祖先 `scroll-view` の Scroll Offset を設定して `target` を表示に入れる
+    /// （ADR-0098）。対象の境界が見えるようになる最小オフセットを計算し（ビューポート
+    /// より手前なら先頭端、過ぎていれば末尾端）、既に完全表示なら触れない。オフセットが
+    /// 実際に動いたときに限り scroll-view へ `Scroll` を配送する。慣性やスナップは持たず、
+    /// AT 駆動のスクロールは基本オフセットのみ設定する。scroll-view 祖先がなければ何もしない。
     fn scroll_into_view(&mut self, target: ElementId) {
         let Some(scroll_view) = super::tree::next_ancestor_scroll_view(self, target) else {
             return;
@@ -248,9 +237,9 @@ impl ElementTree {
         let (ox, oy) = self.element_get_scroll_offset(scroll_view);
         let (max_x, max_y) = self.element_scroll_max_offset(scroll_view);
 
-        // layout_cache holds unscrolled content-space positions; the offset is
-        // applied as a downstream transform (ADR-0022), so the target's position
-        // within the content is `(tx - sx, ty - sy)`, independent of the offset.
+        // layout_cache は未スクロールのコンテンツ空間座標を保持し、オフセットは下流の
+        // 変換として適用される（ADR-0022）。よってコンテンツ内の対象位置は
+        // `(tx - sx, ty - sy)` でオフセットに依存しない。
         let new_x = scroll_axis_to_reveal(tx - sx, tw, sw, ox, max_x);
         let new_y = scroll_axis_to_reveal(ty - sy, th, sh, oy, max_y);
 
@@ -268,12 +257,10 @@ impl ElementTree {
         );
     }
 
-    /// Emit a `Click` straight to `target` as a semantic activation (ADR-0098
-    /// Decision 1). The coordinate is the target's layout centre so existing
-    /// coordinate-reading listeners stay compatible without a wire change; the
-    /// event then bubbles and dispatches like any other `Click`. Bypasses the
-    /// pointer pipeline entirely — no hit-test, no `:active`, no multi-click
-    /// counter, no focus gesture.
+    /// 意味的起動として `target` に直接 `Click` を発行する（ADR-0098）。座標は対象の
+    /// レイアウト中心とし、座標を読む既存リスナーをワイヤ変更なしに互換に保つ。イベントは
+    /// 通常の `Click` と同様にバブルしディスパッチされる。ポインタパイプラインを完全に
+    /// 迂回し、ヒットテスト・`:active`・マルチクリック計数・フォーカスジェスチャを行わない。
     fn emit_semantic_click(&mut self, target: ElementId) {
         let (x, y) = self
             .layout
@@ -290,11 +277,10 @@ impl ElementTree {
         );
     }
 
-    /// Apply an AccessKit `SetValue` to `target` as a semantic value replacement
-    /// (ADR-0098 Decision 4): finalize any active preedit, replace the
-    /// text-input's content with `value`, then queue a `TextInput` event so app
-    /// listeners observe it like any other edit. A no-op for non-`text-input`
-    /// targets, and silent when the displayed value is unchanged.
+    /// AccessKit `SetValue` を意味的な値置換として `target` に適用する（ADR-0098）。
+    /// 進行中の preedit を確定し、text-input の内容を `value` で置換し、`TextInput`
+    /// イベントをキューしてアプリのリスナーが通常の編集と同様に観測できるようにする。
+    /// `text-input` 以外の対象では何もせず、表示値が変わらない場合も無音。
     fn apply_set_value(&mut self, target: ElementId, value: &str) {
         let el = match self.elements.get_mut(&target) {
             Some(e) if e.kind == ElementKind::TextInput => e,
@@ -315,9 +301,9 @@ impl ElementTree {
         );
     }
 
-    /// Build an AccessKit `TreeUpdate` from the current element tree and layout cache.
+    /// 現在の要素ツリーとレイアウトキャッシュから AccessKit `TreeUpdate` を構築する。
     ///
-    /// Returns `None` when layout has not run or the tree has no root.
+    /// レイアウト未実行、またはツリーにルートがなければ `None` を返す。
     pub fn accessibility_update(&self) -> Option<TreeUpdate> {
         let root_id = self.root?;
         if !self.layout.has_geometry() {
@@ -349,9 +335,9 @@ mod tests {
     };
     use accesskit::{Action, ActionData, ActionRequest};
 
-    /// A vertical scroll-view (200×100 viewport) whose 500px-tall content holds a
-    /// 50px `target` pinned at content-y 300 — far below the viewport. Used to
-    /// exercise `ScrollIntoView`. Returns `(tree, scroll, target)`.
+    /// 縦スクロールビュー（200×100 のビューポート）。500px の高さのコンテンツ内に、
+    /// ビューポートのはるか下、content-y 300 に固定した 50px の `target` を持つ。
+    /// `ScrollIntoView` の検証用。`(tree, scroll, target)` を返す。
     fn scroll_into_view_scene() -> (ElementTree, ElementId, ElementId) {
         let mut tree = ElementTree::new();
         let scroll = tree.element_create(1, ElementKind::ScrollView);
@@ -492,7 +478,7 @@ mod tests {
             .collect();
         assert_eq!(first, vec![la_focus]);
 
-        // Focusing b must blur the previously focused a, then focus b.
+        // b へのフォーカスは、先にフォーカス中だった a を blur してから b を focus する。
         tree.on_accessibility_action(action_request(Action::Focus, node_id(b)));
         assert_eq!(tree.focused_element(), Some(b));
         let second: Vec<_> = tree
@@ -553,15 +539,15 @@ mod tests {
         let input = tree.element_create(2, ElementKind::TextInput);
         tree.element_append_child(root, input);
         tree.element_set_text_content(input, "abc");
-        tree.element_set_preedit(input, "DEF"); // in-progress IME composition
+        tree.element_set_preedit(input, "DEF"); // 進行中の IME 変換
 
         tree.on_accessibility_action(set_value_request(node_id(input), "xyz"));
 
-        // The preedit is finalized as part of the replacement — no broken
-        // intermediate state (prior art: `element_paste` preedit confirmation).
+        // preedit は置換の一部として確定され、壊れた中間状態を残さない
+        // （先行事例: `element_paste` の preedit 確定）。
         assert_eq!(tree.element_get_text_content(input), "xyz");
-        // Clearing the (already-finalized) preedit afterward changes nothing,
-        // proving composition did not linger across the replacement.
+        // 確定済みの preedit を後からクリアしても何も変わらず、変換が置換をまたいで
+        // 残らなかったことを示す。
         tree.element_set_preedit(input, "");
         assert_eq!(tree.element_get_text_content(input), "xyz");
     }
@@ -596,7 +582,7 @@ mod tests {
         tree.on_accessibility_action(action_request(Action::Focus, node_id(a)));
         let _ = tree.poll_deliveries();
 
-        // An unsupported action targeting b must not move focus or emit anything.
+        // b を狙う非サポートアクションは、フォーカスを動かさず何も発行しない。
         tree.on_accessibility_action(action_request(Action::Increment, node_id(b)));
         assert_eq!(tree.focused_element(), Some(a));
         assert!(tree.poll_deliveries().is_empty());
@@ -702,7 +688,7 @@ mod tests {
         tree.set_viewport(400.0, 300.0);
         tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
 
-        // Target lays out at the top-left, 100x100 → centre (50, 50).
+        // 対象は左上に 100x100 でレイアウトされ、中心は (50, 50)。
         let target = tree.element_create(2, ElementKind::Button);
         tree.element_append_child(root, target);
         tree.element_set_style(
@@ -713,8 +699,8 @@ mod tests {
             ],
         );
 
-        // An absolutely-positioned overlay sits on top of the target's centre,
-        // so a coordinate hit-test at (50, 50) would resolve to the overlay.
+        // 絶対配置のオーバーレイが対象の中心を覆うため、(50, 50) の座標ヒットテストは
+        // オーバーレイに解決される。
         let overlay = tree.element_create(3, ElementKind::View);
         tree.element_append_child(root, overlay);
         tree.element_set_style(
@@ -729,8 +715,8 @@ mod tests {
         );
         tree.render(0.0);
 
-        // Precondition: a hit-test at the target's centre would pick the overlay,
-        // so delivering to the target proves the AT path never hit-tested.
+        // 前提：対象中心のヒットテストはオーバーレイを選ぶため、対象へ配送されれば
+        // AT 経路がヒットテストしていない証拠になる。
         assert_eq!(
             tree.hit_test(50.0, 50.0),
             Some(overlay),
@@ -784,8 +770,8 @@ mod tests {
             tree.selection().and_then(|s| s.range_within(text))
         }
 
-        // The pointer multi-click counter cycles: two same-spot presses select a
-        // word, three select the whole line — establishing the phases differ.
+        // ポインタのマルチクリック計数は循環する：同一地点 2 連打で単語選択、
+        // 3 連打で行全体選択。フェーズが異なることを確かめる。
         let (mut t2, text2) = paragraph();
         t2.on_pointer_down(px, py);
         t2.on_pointer_down(px, py);
@@ -800,8 +786,8 @@ mod tests {
         assert!(word.is_some() && line.is_some(), "presses must select");
         assert_ne!(word, line, "the counter must cycle word → line");
 
-        // A semantic click between two real presses must not advance the counter,
-        // so the second press still lands on the word phase, not the line phase.
+        // 実プレス 2 回の間に挟んだ意味的クリックは計数を進めてはならず、2 回目の
+        // プレスは行フェーズではなく単語フェーズに留まる。
         let (mut t, text) = paragraph();
         t.on_pointer_down(px, py);
         t.on_accessibility_action(action_request(Action::Click, node_id(text)));
@@ -824,15 +810,15 @@ mod tests {
 
         tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
 
-        // The target sits at content-y 300..350 in a 100px viewport, so the
-        // minimal scroll aligns its bottom to the viewport bottom: offset 250.
+        // 対象は 100px ビューポート内の content-y 300..350 にあり、最小スクロールは
+        // その下端をビューポート下端に揃える：オフセット 250。
         let (_, oy) = tree.element_get_scroll_offset(scroll);
         assert!(
             (oy - 250.0).abs() < 0.5,
             "scroll offset must reveal the target, got {oy}",
         );
 
-        // After scrolling, the target lies fully inside the viewport.
+        // スクロール後、対象はビューポート内に完全に収まる。
         let (_, ty, _, th) = tree.element_layout_rect(target).expect("target layout");
         let (_, sy, _, sh) = tree.element_layout_rect(scroll).expect("scroll layout");
         let rel_top = (ty - sy) - oy;
@@ -845,14 +831,13 @@ mod tests {
     #[test]
     fn on_accessibility_action_scroll_into_view_scrolls_up_to_reveal_target_above_viewport() {
         let (mut tree, scroll, target) = scroll_into_view_scene();
-        // Scroll to the bottom (max offset 400): the viewport now shows content
-        // 400..500, leaving the target (300..350) above and out of view.
+        // 最下部（最大オフセット 400）までスクロール：ビューポートは content 400..500 を
+        // 表示し、対象（300..350）は上方の画面外になる。
         tree.element_set_scroll_offset(scroll, 0.0, 400.0);
 
         tree.on_accessibility_action(action_request(Action::ScrollIntoView, node_id(target)));
 
-        // Minimal scroll up aligns the target's leading (top) edge to the
-        // viewport top: offset 300.
+        // 最小の上スクロールは対象の先頭（上）端をビューポート上端に揃える：オフセット 300。
         let (_, oy) = tree.element_get_scroll_offset(scroll);
         assert!(
             (oy - 300.0).abs() < 0.5,
@@ -886,8 +871,8 @@ mod tests {
     #[test]
     fn on_accessibility_action_scroll_into_view_leaves_visible_target_untouched() {
         let (mut tree, scroll, target) = scroll_into_view_scene();
-        // Pre-scroll so the target (content-y 300..350) already sits fully inside
-        // the 100px viewport at offset 260 (rel 40..90).
+        // 事前にスクロールし、対象（content-y 300..350）がオフセット 260 で 100px
+        // ビューポート内に完全に収まる状態にする（相対 40..90）。
         tree.element_set_scroll_offset(scroll, 0.0, 260.0);
         let listener = tree.register_listener(scroll, DocumentEventKind::Scroll);
 
@@ -978,13 +963,13 @@ mod tests {
         tree.set_viewport(400.0, 300.0);
         tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
 
-        // IFC root: a `text` element under a non-text parent.
+        // IFC ルート：非テキスト親の下の `text` 要素。
         let ifc_root = tree.element_create(2, ElementKind::Text);
         tree.element_append_child(root, ifc_root);
         tree.element_set_text(ifc_root, "Hello ");
 
-        // Inline text element: a `text` element under a `text` parent — has no
-        // Taffy node (ADR-0063/0064).
+        // インラインテキスト要素：`text` 親の下の `text` 要素で、Taffy ノードを
+        // 持たない（ADR-0063/0064）。
         let inline = tree.element_create(3, ElementKind::Text);
         tree.element_append_child(ifc_root, inline);
         tree.element_set_text(inline, "world");
@@ -993,14 +978,14 @@ mod tests {
 
         let update = tree.accessibility_update().expect("tree update");
 
-        // The IFC root itself must still be present in the AccessKit tree.
+        // IFC ルート自体は AccessKit ツリーに残っていなければならない。
         assert!(
             update.nodes.iter().any(|(id, _)| *id == node_id(ifc_root)),
             "IFC root subtree was dropped from the AccessKit tree"
         );
 
-        // No node may reference a child id that has no corresponding node —
-        // that would indicate a dropped subtree.
+        // どのノードも、対応ノードのない子 id を参照してはならない。参照があれば
+        // サブツリーの脱落を意味する。
         let node_ids: HashSet<NodeId> = update.nodes.iter().map(|(id, _)| *id).collect();
         for (_, node) in &update.nodes {
             for child in node.children() {

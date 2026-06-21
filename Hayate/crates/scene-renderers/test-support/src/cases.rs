@@ -12,12 +12,12 @@ const VH: f32 = 100.0;
 
 static NOTO_SANS_JP_BYTES: &[u8] = include_bytes!("../../../core/assets/fonts/NotoSansJP.ttf");
 
-/// A small COLRv1 + CPAL test font (provenance in `assets/PROVENANCE.md`). Used
-/// to prove the Vello backend paints colour glyphs (issue #332).
+/// 小さな COLRv1 + CPAL テストフォント（出所は `assets/PROVENANCE.md`）。Vello
+/// バックエンドがカラーグリフを描画することを示すために使う。
 static COLR_TEST_BYTES: &[u8] = include_bytes!("../assets/colr_test_glyphs.ttf");
 
-/// Family the COLR test font is registered under, and a PUA codepoint it maps
-/// to a gradient glyph painted from a rainbow palette (`U+F0100`).
+/// COLR テストフォントを登録するファミリ名と、虹色パレットで描かれるグラデーション
+/// グリフへ対応する PUA コードポイント（`U+F0100`）。
 pub const COLOR_GLYPH_FAMILY: &str = "Colr Test";
 pub const COLOR_GLYPH_CODEPOINT: char = '\u{F0100}';
 
@@ -25,9 +25,9 @@ fn register_bundled_font(tree: &mut ElementTree) {
     tree.register_font("Noto Sans", NOTO_SANS_JP_BYTES.to_vec());
 }
 
-/// A tree rendering a single COLRv1 glyph from [`COLR_TEST_BYTES`], large enough
-/// to fill the canvas. When a backend honours COLR (Vello), the painted pixels
-/// span several hues; a monochrome painter would yield a single ink colour.
+/// [`COLR_TEST_BYTES`] の単一 COLRv1 グリフをキャンバスを埋めるサイズで描画するツリー。
+/// バックエンドが COLR を尊重すれば（Vello）描画ピクセルは複数の色相にまたがる。
+/// モノクロ描画では単一のインク色になる。
 pub fn color_glyph_tree() -> ElementTree {
     let mut tree = ElementTree::new();
     tree.register_font(COLOR_GLYPH_FAMILY, COLR_TEST_BYTES.to_vec());
@@ -72,13 +72,13 @@ fn child_text(tree: &mut ElementTree, id: u64) -> ElementId {
 }
 
 pub struct CssPixelCase {
-    /// `style_tags.json` / catalog `cssProperty` name.
+    /// `style_tags.json` / カタログの `cssProperty` 名。
     pub css_property: &'static str,
     pub build: fn() -> ElementTree,
     pub check: fn(&[u8]),
 }
 
-// ── visual ────────────────────────────────────────────────────────────────
+// ── ビジュアル ──────────────────────────────────────────────────────────────
 
 fn build_background_color() -> ElementTree {
     let mut tree = ElementTree::new();
@@ -117,7 +117,7 @@ fn build_opacity() -> ElementTree {
 
 fn check_opacity(data: &[u8]) {
     let px = pixel(data, CANVAS_W, 30, 30);
-    // Opacity multiplies color alpha then composites on white clear → pink-ish fill.
+    // opacity は色のアルファを乗じ、白背景に合成されてピンクがかった塗りになる。
     assert_channel_min(px, 0, 240, "opacity center red channel");
     assert_channel_min(px, 1, 120, "opacity center green from white blend");
     assert_channel_max(px, 1, 180, "opacity center green from white blend");
@@ -193,8 +193,8 @@ fn check_border_color(data: &[u8]) {
 fn build_box_shadow() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 70);
-    // Opaque white box at (0,0)-(50,50) with a hard black drop shadow offset
-    // down-right by 10px — the visible shadow is the L outside the box.
+    // (0,0)-(50,50) の不透明な白ボックスに、右下 10px へずらした硬い黒のドロップシャドウ。
+    // 見えるシャドウはボックス外側の L 字部分。
     tree.element_set_style(
         root,
         &[
@@ -215,13 +215,13 @@ fn build_box_shadow() -> ElementTree {
 }
 
 fn check_box_shadow(data: &[u8]) {
-    // Box interior stays white (shadow is painted behind the opaque box).
+    // ボックス内部は白のまま（シャドウは不透明ボックスの後ろに描かれる）。
     let center = pixel(data, CANVAS_W, 25, 25);
     assert_channel_min(center, 0, 200, "box-shadow box center white");
-    // The offset shadow is visible just right of and below the box.
+    // ずれたシャドウはボックスの右と下に見える。
     let shadow = pixel(data, CANVAS_W, 55, 30);
     assert_channel_max(shadow, 0, 60, "box-shadow drop region dark");
-    // Far from box and shadow, the canvas is clear.
+    // ボックスからもシャドウからも遠い位置はクリア。
     assert_clear(pixel(data, CANVAS_W, 90, 90), "box-shadow far corner clear");
 }
 
@@ -248,10 +248,10 @@ fn build_box_shadow_inset() -> ElementTree {
 }
 
 fn check_box_shadow_inset(data: &[u8]) {
-    // Inner edge band is darkened over the white background…
+    // 内縁の帯は白背景の上で暗くなる…
     let edge = pixel(data, CANVAS_W, 3, 30);
     assert_channel_max(edge, 0, 180, "box-shadow inset edge darkened");
-    // …while the centre stays light, and the shadow never escapes the box.
+    // …一方で中央は明るいまま、シャドウはボックスから出ない。
     let center = pixel(data, CANVAS_W, 30, 30);
     assert_channel_min(center, 0, 200, "box-shadow inset center light");
     assert_clear(pixel(data, CANVAS_W, 80, 30), "box-shadow inset stays inside box");
@@ -274,8 +274,8 @@ fn build_border_style() -> ElementTree {
 }
 
 fn check_border_style(data: &[u8]) {
-    // A dashed top edge has both blue dashes and white gaps across its run,
-    // which distinguishes it from a solid border (no gaps) and none (no dashes).
+    // dashed の上辺は青のダッシュと白の隙間が交互に並ぶ。これで solid（隙間なし）や
+    // none（ダッシュなし）と区別できる。
     let mut dashes = 0;
     let mut gaps = 0;
     for x in 2..58 {
@@ -290,12 +290,12 @@ fn check_border_style(data: &[u8]) {
     assert!(gaps > 0, "border-style dashed leaves white gaps between dashes");
 }
 
-// ── border / focus-ring rasterisation (issue #337) ──────────────────────────
+// ── ボーダー / フォーカスリングのラスタライズ ──────────────────────────────
 
-/// A keyboard-focused text input with an opaque fill. The native focus ring
-/// (`:focus-visible`, #335) is a `RoundedRing` painted *on top* of the box, so
-/// it must hollow only its band — never erase the content it overlays. tiny-skia
-/// previously cleared the ring's interior, punching the input to transparent.
+/// 不透明な塗りを持つキーボードフォーカス中のテキスト入力。ネイティブのフォーカスリング
+/// （`:focus-visible`）はボックスの上に描かれる `RoundedRing` なので、自分の帯だけを
+/// くり抜き、重なる内容は決して消してはならない。tiny-skia はかつてリング内部をクリアし、
+/// 入力を透明に打ち抜いていた。
 fn build_focus_ring_over_fill() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 600);
@@ -320,21 +320,20 @@ fn build_focus_ring_over_fill() -> ElementTree {
         ],
     );
     tree.element_append_child(root, input);
-    tree.element_focus(input); // keyboard/pointer focus → `:focus-visible` ring
+    tree.element_focus(input); // キーボード/ポインタフォーカス → `:focus-visible` リング
     tree
 }
 
 fn check_focus_ring_over_fill(data: &[u8]) {
-    // The focus ring must not erase the input it sits on: the interior stays the
-    // opaque red fill (not the transparent hole tiny-skia's Clear used to punch).
+    // フォーカスリングは乗っている入力を消してはならない。内部は不透明な赤の塗りのまま
+    // （tiny-skia の Clear がかつて打ち抜いていた透明な穴ではなく）。
     let center = pixel(data, CANVAS_W, 24, 20);
     assert_channel_min(center, 0, 200, "focus ring preserves the input fill (red)");
     assert_channel_max(center, 1, 60, "focus ring did not erase the input interior");
 }
 
-/// A 1px solid border on an opaque box at integer coordinates must land as an
-/// independent opaque column — the literal acceptance probe for issue #337 (the
-/// hairline must not be swallowed by the fill).
+/// 整数座標の不透明ボックスに引いた 1px の solid ボーダーは、独立した不透明な列として
+/// 描かれなければならない（ヘアラインが塗りに飲み込まれてはならない）。
 fn build_border_hairline_1px() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 610);
@@ -353,17 +352,17 @@ fn build_border_hairline_1px() -> ElementTree {
 }
 
 fn check_border_hairline_1px(data: &[u8]) {
-    // Top row (y=0) is the 1px border: an opaque black column, not the fill.
+    // 最上行（y=0）は 1px ボーダー。塗りではなく不透明な黒の列。
     let edge = pixel(data, CANVAS_W, 30, 0);
     assert_channel_max(edge, 1, 70, "1px border top edge is black (independent column)");
-    // One row inside is the green fill — the border did not bleed it away.
+    // 1行内側は緑の塗り。ボーダーがにじんで消していない。
     let inside = pixel(data, CANVAS_W, 30, 3);
     assert_channel_min(inside, 1, 120, "fill just inside the 1px border is green");
 }
 
 fn build_overflow_hidden() -> ElementTree {
-    // A solid child fully covers a rounded `overflow: hidden` parent. The
-    // rounded clip must carve the child's square corner away (issue #206).
+    // 不透明な子が角丸の `overflow: hidden` 親を完全に覆う。角丸クリップが子の
+    // 四角い角を削り取らなければならない。
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 7);
     tree.element_set_style(
@@ -397,7 +396,7 @@ fn check_overflow_hidden(data: &[u8]) {
     assert_channel_min(center, 0, 200, "overflow:hidden center shows the red child");
 }
 
-// ── sizing ────────────────────────────────────────────────────────────────
+// ── サイズ ────────────────────────────────────────────────────────────────
 
 fn build_width() -> ElementTree {
     let mut tree = ElementTree::new();
@@ -517,7 +516,7 @@ fn check_max_height(data: &[u8]) {
     assert_clear(pixel(data, CANVAS_W, 15, 50), "max-height beyond cap");
 }
 
-// ── layout ────────────────────────────────────────────────────────────────
+// ── レイアウト ──────────────────────────────────────────────────────────────
 
 fn flex_row_root(tree: &mut ElementTree, id: u64) -> ElementId {
     let root = root_view(tree, id);
@@ -970,7 +969,7 @@ fn check_margin_left(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 30, 5), "margin-left child right");
 }
 
-// ── text ──────────────────────────────────────────────────────────────────
+// ── テキスト ──────────────────────────────────────────────────────────────
 
 pub fn text_tree(extra: &[StyleProp]) -> ElementTree {
     let mut tree = ElementTree::new();
@@ -1035,7 +1034,7 @@ fn build_text_decoration_underline() -> ElementTree {
 
 fn check_text_decoration_underline(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 4, 20), "underline glyph body");
-    // Underline sits below the alphabetic baseline (~y=27 for 24px "A"); not at strikethrough height.
+    // 下線はアルファベットのベースライン下（24px "A" で約 y=27）に来る。取り消し線の高さではない。
     assert_clear(pixel(data, CANVAS_W, 4, 24), "underline not at strikethrough height");
     assert_not_clear(pixel(data, CANVAS_W, 4, 30), "underline decoration below baseline");
 }
@@ -1069,7 +1068,7 @@ fn check_text_decoration_line_through(data: &[u8]) {
     assert_clear(pixel(data, CANVAS_W, 8, 35), "line-through not at glyph bottom");
 }
 
-// ── stacking / flex ─────────────────────────────────────────────────────
+// ── 重なり / flex ─────────────────────────────────────────────────────────
 
 fn build_z_index() -> ElementTree {
     let mut tree = ElementTree::new();
@@ -1286,10 +1285,9 @@ fn check_flex_wrap(data: &[u8]) {
     assert_channel_min(wrapped, 1, 150, "flex-wrap second row green");
 }
 
-/// Every entry in `style_tags.json` / `HAYATE_CSS_CATALOG`.
-/// Border / focus-ring rasterisation regressions (issue #337). Run on both
-/// backends so the contract — a 1px border draws as an opaque column, and a
-/// focus ring never erases the content under it — holds for tiny-skia and vello.
+/// ボーダー / フォーカスリングのラスタライズ回帰ケース。両バックエンドで実行し、
+/// 「1px ボーダーは不透明な列として描かれる」「フォーカスリングは下の内容を消さない」
+/// という契約が tiny-skia と vello の双方で成り立つことを保証する。
 pub static BORDER_RASTER_CASES: &[CssPixelCase] = &[
     CssPixelCase {
         css_property: "focus-ring-over-fill",
@@ -1519,7 +1517,7 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         build: build_flex_wrap,
         check: check_flex_wrap,
     },
-    // Appended at the end so existing `css_pixels.rs` index-based tests keep their offsets.
+    // 末尾に追加。既存の `css_pixels.rs` のインデックス基準テストのオフセットを保つため。
     CssPixelCase {
         css_property: "border-style",
         build: build_border_style,
@@ -1550,7 +1548,7 @@ pub fn render_tree_to_scene(mut tree: ElementTree) -> hayate_core::SceneGraph {
 mod catalog_coverage {
     use super::CSS_PIXEL_CASES;
 
-    /// `display` has flex/none/grid variants — 34 cases for 32 catalog props.
+    /// `display` は flex/none/grid のバリアントを持つ（カタログ 32 プロパティに対し 34 ケース）。
     const CATALOG_PROPERTIES: &[&str] = &[
         "background-color",
         "opacity",
