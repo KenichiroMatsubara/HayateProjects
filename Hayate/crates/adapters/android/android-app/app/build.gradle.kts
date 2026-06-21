@@ -49,11 +49,15 @@ dependencies {
     // games-activity does not bring these transitively, so declare them explicitly.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.core:core:1.13.1")
-    // 埋め込み Hermes（ADR-0112）。libhermes.so を APK の jniLibs に取り込み、
-    // cdylib（hayate_adapter_android）が JSI でリンクする。ヘッダ（<jsi/jsi.h> /
-    // <hermes/hermes.h>）は cargo の build.rs に HERMES_INCLUDE で渡す（下記）。
-    // ※ standalone 埋め込みは device 未検証 — バージョン/座標は環境で要調整。
-    implementation("com.facebook.react:hermes-android:0.76.0")
+    // Tsubame JS 駆動（ADR-0112）を `-Ptsubame.enabled=true` で有効化したときだけ
+    // 埋め込み Hermes を取り込む。libhermes.so を APK の jniLibs に入れ、cdylib が
+    // JSI でリンクする。ヘッダ（<jsi/jsi.h> / <hermes/hermes.h>）は build.rs に
+    // HERMES_INCLUDE で渡す（cargo ブロック参照）。standalone 埋め込みは device
+    // 未検証 — バージョン/座標は環境で要調整。既定（未指定）は従来のネイティブ
+    // デモ経路でビルドし、この依存も C++ コンパイルも発生しない。
+    if (project.hasProperty("tsubame.enabled")) {
+        implementation("com.facebook.react:hermes-android:0.76.0")
+    }
 }
 
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.
@@ -62,35 +66,42 @@ cargo {
     libname = "hayate_adapter_android"
     targets = listOf("arm64")
     profile = "release"
-    // Tsubame JS 駆動経路（ADR-0112）を有効化。OFF だと既存のデモツリー経路。
-    featureSpec.defaultAnd(arrayOf("tsubame-js"))
-    // build.rs に Hermes/JSI ヘッダ探索パスを渡す（device 環境で設定）。
-    System.getenv("HERMES_INCLUDE")?.let { hermesInc ->
-        exec = { spec, _ -> spec.environment("HERMES_INCLUDE", hermesInc) }
+    // `-Ptsubame.enabled=true` のときだけ Tsubame JS 駆動経路（ADR-0112）を有効化する。
+    // 既定（未指定）は OFF: feature が立たないので build.rs も C++/Hermes を
+    // コンパイルせず、従来どおりネイティブデモがビルドできる。
+    if (project.hasProperty("tsubame.enabled")) {
+        featureSpec.defaultAnd(arrayOf("tsubame-js"))
+        // build.rs に Hermes/JSI ヘッダ探索パスを渡す（device 環境で設定）。
+        System.getenv("HERMES_INCLUDE")?.let { hermesInc ->
+            exec = { spec, _ -> spec.environment("HERMES_INCLUDE", hermesInc) }
+        }
     }
-}
-
-// Tsubame バンドル（tsubame.js）を pnpm でビルドし、APK assets へ同梱する（ADR-0112）。
-// パスは Gradle プロパティ `tsubame.dir` で上書き可能（既定はリポジトリ相対）。
-val tsubameDir = (project.findProperty("tsubame.dir") as String?)
-    ?.let { file(it) }
-    ?: rootProject.file("../../../../../Tsubame")
-
-val bundleTsubameJs by tasks.registering(Exec::class) {
-    workingDir = tsubameDir
-    // pnpm が無い環境向けに npx フォールバック可。
-    commandLine("pnpm", "--filter", "@tsubame/example-todo", "run", "build:android")
-}
-
-val copyTsubameBundle by tasks.registering(Copy::class) {
-    dependsOn(bundleTsubameJs)
-    from(tsubameDir.resolve("examples/todo/dist-android/tsubame.js"))
-    into(layout.projectDirectory.dir("src/main/assets"))
 }
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     dependsOn("cargoBuild")
 }
-tasks.matching { it.name.matches(Regex("merge.*Assets")) }.configureEach {
-    dependsOn(copyTsubameBundle)
+
+// Tsubame バンドル（tsubame.js）の生成＋assets 同梱は opt-in（-Ptsubame.enabled=true）。
+// 既定では登録しないので、pnpm 不在の環境でも従来どおりビルドできる（ADR-0112）。
+if (project.hasProperty("tsubame.enabled")) {
+    // パスは Gradle プロパティ `tsubame.dir` で上書き可能（既定はリポジトリ相対）。
+    val tsubameDir = (project.findProperty("tsubame.dir") as String?)
+        ?.let { file(it) }
+        ?: rootProject.file("../../../../../Tsubame")
+
+    val bundleTsubameJs by tasks.registering(Exec::class) {
+        workingDir = tsubameDir
+        commandLine("pnpm", "--filter", "@tsubame/example-todo", "run", "build:android")
+    }
+
+    val copyTsubameBundle by tasks.registering(Copy::class) {
+        dependsOn(bundleTsubameJs)
+        from(tsubameDir.resolve("examples/todo/dist-android/tsubame.js"))
+        into(layout.projectDirectory.dir("src/main/assets"))
+    }
+
+    tasks.matching { it.name.matches(Regex("merge.*Assets")) }.configureEach {
+        dependsOn(copyTsubameBundle)
+    }
 }
