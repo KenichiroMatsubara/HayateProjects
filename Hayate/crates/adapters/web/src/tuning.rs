@@ -23,10 +23,14 @@ pub struct TuningJson {
 }
 
 impl TuningJson {
-    /// Parse `tuning.json` text. `Err` on malformed JSON or unknown keys so the
-    /// caller can fall back to the compiled defaults intact.
+    /// Parse the tuning file. The hand-edited file is JSON5-lite: it may carry
+    /// `//` and `/* */` comments and trailing commas (so a human can annotate
+    /// each knob in 日本語 and comment lines in/out freely). We strip those to
+    /// plain JSON and feed `serde_json` — no heavy JSON5 parser is pulled into
+    /// the production wasm, which never reads this file. `Err` on malformed JSON
+    /// or unknown keys so the caller can fall back to the compiled defaults.
     pub fn parse(text: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(text)
+        serde_json::from_str(&to_plain_json(text))
     }
 
     /// The merged scroll-physics knobs (defaults overlaid by any present keys).
@@ -50,6 +54,108 @@ fn overlay<T>(slot: &mut T, value: Option<T>) {
 /// A `[r, g, b, a]` (0..1) JSON array converted to a core [`Color`].
 fn color_from(rgba: [f64; 4]) -> Color {
     Color::new(rgba[0], rgba[1], rgba[2], rgba[3])
+}
+
+/// Reduce the JSON5-lite tuning file to plain JSON: drop `//` line comments and
+/// `/* … */` block comments, then drop trailing commas before `}`/`]`. String
+/// literals are respected, so a `//` or `,` inside a quoted value is never
+/// touched. Multibyte (日本語) comment text is simply discarded, so it can never
+/// corrupt the output.
+fn to_plain_json(src: &str) -> String {
+    strip_trailing_commas(&strip_comments(src))
+}
+
+fn strip_comments(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut chars = src.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+    while let Some(c) = chars.next() {
+        if in_string {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => {
+                in_string = true;
+                out.push(c);
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                // Line comment: skip until (but keep) the newline.
+                chars.next();
+                while let Some(&n) = chars.peek() {
+                    if n == '\n' {
+                        break;
+                    }
+                    chars.next();
+                }
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                // Block comment: skip until the closing `*/`.
+                chars.next();
+                let mut prev = '\0';
+                for n in chars.by_ref() {
+                    if prev == '*' && n == '/' {
+                        break;
+                    }
+                    prev = n;
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn strip_trailing_commas(src: &str) -> String {
+    let chars: Vec<char> = src.chars().collect();
+    let mut out = String::with_capacity(src.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if in_string {
+            out.push(c);
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        if c == '"' {
+            in_string = true;
+            out.push(c);
+            i += 1;
+            continue;
+        }
+        if c == ',' {
+            // A comma whose next non-whitespace char closes an object/array is a
+            // trailing comma — drop it so serde_json (strict) still accepts it.
+            let mut j = i + 1;
+            while j < chars.len() && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < chars.len() && (chars[j] == '}' || chars[j] == ']') {
+                i += 1;
+                continue;
+            }
+        }
+        out.push(c);
+        i += 1;
+    }
+    out
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -155,5 +261,29 @@ mod tests {
         assert!(TuningJson::parse("{ not json").is_err());
         // Unknown keys are rejected too, surfacing typos instead of silently no-op'ing.
         assert!(TuningJson::parse(r#"{ "scroll": { "typoed_key": 1 } }"#).is_err());
+    }
+
+    #[test]
+    fn json5_lite_comments_and_trailing_commas_are_accepted() {
+        let src = r#"{
+            // 慣性の摩擦（行コメント）
+            "scroll": {
+                "deceleration_rate": 0.99, /* ブロックコメント */
+                "min_velocity": 0.03,      // 末尾カンマも許容 ↓
+            },
+        }"#;
+        let t = TuningJson::parse(src).expect("JSON5-lite must parse");
+        let s = t.scroll_tuning();
+        assert_eq!(s.deceleration_rate, 0.99);
+        assert_eq!(s.min_velocity, 0.03);
+        // Untouched key keeps its default.
+        assert_eq!(s.slop_px, ScrollPhysicsTuning::default().slop_px);
+    }
+
+    #[test]
+    fn a_slash_or_comma_inside_a_string_is_not_treated_as_a_comment() {
+        // Defensive: string values must survive the preprocessor intact. (No
+        // string-valued keys exist today, but the stripper must still be safe.)
+        assert_eq!(to_plain_json(r#"{"a":"http://x , y"}"#), r#"{"a":"http://x , y"}"#);
     }
 }

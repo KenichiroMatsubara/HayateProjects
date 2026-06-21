@@ -28,7 +28,7 @@ if (detected.mode === 'DOM') {
   // taste constants (scroll physics, scrollbar chrome, …) can be calibrated by
   // editing the file and pressing F5 — no WASM rebuild (#353 family). Missing
   // file (404) or parse failure simply leaves the compiled defaults in place.
-  const tuning = await fetch(new URL('tuning.json', document.baseURI).href)
+  const tuning = await fetch(new URL('tuning.jsonc', document.baseURI).href)
     .then((r) => (r.ok ? r.text() : undefined))
     .catch(() => undefined);
   renderer = await initCanvasRenderer(canvas, { backend: detected.backend, tuning });
