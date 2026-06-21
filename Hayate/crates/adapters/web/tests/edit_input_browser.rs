@@ -56,6 +56,10 @@ fn dispatch_pointer_down(canvas: &HtmlCanvasElement, client_x: f64, client_y: f6
     js_sys::Reflect::set(&init, &"clientY".into(), &JsValue::from_f64(client_y)).unwrap();
     js_sys::Reflect::set(&init, &"bubbles".into(), &JsValue::TRUE).unwrap();
     js_sys::Reflect::set(&init, &"pointerType".into(), &"mouse".into()).unwrap();
+    // The adapter's pointerdown listener ignores non-primary pointers
+    // (`pe.is_primary()`), and `PointerEventInit.isPrimary` defaults to false —
+    // without this the synthetic press is dropped and never focuses the input.
+    js_sys::Reflect::set(&init, &"isPrimary".into(), &JsValue::TRUE).unwrap();
 
     let args = js_sys::Array::of2(&JsValue::from_str("pointerdown"), &init);
     let event: web_sys::Event = js_sys::Reflect::construct(&ctor, &args)
