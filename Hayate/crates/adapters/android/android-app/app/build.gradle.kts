@@ -95,36 +95,10 @@ tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach 
     dependsOn("cargoBuild")
 }
 
-// Tsubame バンドル（tsubame.js）を pnpm で生成し APK assets へ同梱する（既定, ADR-0112）。
-// `-Pnativedemo`（Hayate 単体デモ）のときは Tsubame を載せないので登録しない。
-if (!project.hasProperty("nativedemo")) {
-    // パスは Gradle プロパティ `tsubame.dir` で上書き可能（既定はリポジトリ相対）。
-    val tsubameDir = (project.findProperty("tsubame.dir") as String?)
-        ?.let { file(it) }
-        ?: rootProject.file("../../../../../Tsubame")
-
-    // pnpm 実行ファイル。Windows では `pnpm` は pnpm.cmd で、Java の ProcessBuilder は
-    // PATH 上の .cmd を直接起動できない（CreateProcess error=2）。`cmd /c` 経由で起動する。
-    // パスが通っていない/別名の場合は `-Ppnpm.path=...`（例: フルパスの pnpm.cmd）で上書き。
-    val pnpmExe = (project.findProperty("pnpm.path") as String?) ?: "pnpm"
-    val isWindows = System.getProperty("os.name").lowercase().contains("win")
-    val pnpmArgs = listOf("--filter", "@tsubame/example-todo", "run", "build:android")
-
-    val bundleTsubameJs by tasks.registering(Exec::class) {
-        workingDir = tsubameDir
-        commandLine(
-            if (isWindows) listOf("cmd", "/c", pnpmExe) + pnpmArgs
-            else listOf(pnpmExe) + pnpmArgs,
-        )
-    }
-
-    val copyTsubameBundle by tasks.registering(Copy::class) {
-        dependsOn(bundleTsubameJs)
-        from(tsubameDir.resolve("examples/todo/dist-android/tsubame.js"))
-        into(layout.projectDirectory.dir("src/main/assets"))
-    }
-
-    tasks.matching { it.name.matches(Regex("merge.*Assets")) }.configureEach {
-        dependsOn(copyTsubameBundle)
-    }
-}
+// Tsubame バンドル（tsubame.js）は src/main/assets/ にコミット済み（ADR-0112）。AGP が
+// そのまま APK に同梱する。以前は Gradle から pnpm で毎回生成していたが、Gradle
+// デーモンの環境に pnpm/node が無いと失敗する（CreateProcess error=2 や exit 1）ため、
+// ビルド時の Node 依存を排除した。JS を変更したら手動で再生成して差し替える:
+//   cd Tsubame && pnpm --filter @tsubame/example-todo run build:android
+//   cp examples/todo/dist-android/tsubame.js \
+//      ../Hayate/crates/adapters/android/android-app/app/src/main/assets/tsubame.js
