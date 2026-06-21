@@ -11,7 +11,11 @@
 //  - バンドル（main.android.tsx 由来）は `globalThis.__tsubame` を公開するので、
 //    pump_frame / resize はそれを呼ぶだけ。
 //  - スレッドは android_main 単一（ADR-0003）。
-#include "hermes_app.h"
+// 生成ブリッジヘッダ（JsHostBridge の完全定義 + 共有構造体 FfiEventRow/FfiWireAtom
+// + crate コピーの hermes_app.h 経由で HermesApp 宣言）を取り込む。hermes_app.h を
+// 直接 include しないのは、相対パスと crate コピーパスで二重に取り込まれて
+// #pragma once が効かず多重定義になるのを避けるため（ADR-0112）。
+#include "hayate-adapter-android/src/hermes_bridge.rs.h"
 
 #include <jsi/jsi.h>
 #include <hermes/hermes.h>

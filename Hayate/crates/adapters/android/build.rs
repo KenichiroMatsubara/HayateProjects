@@ -30,9 +30,20 @@ fn main() {
 
     build.compile("hayate_hermes_bridge");
 
+    // libjsi.so / libhermesvm.so を cdylib にリンクする。探索パスは AAR（prefab/jni）
+    // 由来で、`HERMES_LIB`（複数可, OS のパス区切り）で渡す。Gradle 側がこの env を
+    // 設定する（hermes-android / react-android の prefab/jni ディレクトリ）。
+    if let Ok(hermes_lib) = env::var("HERMES_LIB") {
+        for path in env::split_paths(&hermes_lib) {
+            println!("cargo:rustc-link-search=native={}", path.display());
+        }
+        println!("cargo:rustc-link-lib=dylib=jsi");
+        println!("cargo:rustc-link-lib=dylib=hermesvm");
+    }
+
     println!("cargo:rerun-if-changed=src/hermes_bridge.rs");
     println!("cargo:rerun-if-changed=cpp/hermes_app.cpp");
     println!("cargo:rerun-if-changed=cpp/hermes_app.h");
     println!("cargo:rerun-if-env-changed=HERMES_INCLUDE");
-    // libhermes 本体は Gradle（jniLibs）が供給する。ここではブリッジ TU のみ。
+    println!("cargo:rerun-if-env-changed=HERMES_LIB");
 }
