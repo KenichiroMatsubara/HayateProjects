@@ -25,6 +25,8 @@ if (detected.mode === 'DOM') {
   const { initCanvasRenderer } = await import('@tsubame/renderer-canvas');
   canvas.hidden = false;
   renderer = await initCanvasRenderer(canvas, { backend: detected.backend });
-  // CanvasRenderer owns viewport sizing (ADR-0007); no element option needed.
+  // hayate-adapter-web owns viewport sizing — its self-wired ResizeObserver reads
+  // the live devicePixelRatio each fire (ADR-0080, superseding ADR-0007's
+  // host-owned observer). No element option needed.
   renderTsubame(() => <TodoApp detected={detected} />, renderer);
 }

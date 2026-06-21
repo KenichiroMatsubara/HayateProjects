@@ -54,9 +54,13 @@ export async function initCanvasRenderer(
   const backend = resolveCanvasBackend(options, webgpuAvailable);
   const raw = await loadCanvasBackend(backend, canvas);
 
-  // Pointer + wheel input is now self-wired by hayate-adapter-web on
-  // `HayateElementRenderer::init` (ADR-0080). The host only retains the
-  // EditContext IME / keyboard glue below.
+  // Pointer + wheel input *and* resize detection are self-wired by
+  // hayate-adapter-web on `HayateElementRenderer::init` (ADR-0080). Its
+  // ResizeObserver reads the live `devicePixelRatio` each fire, so the host must
+  // not attach a second observer: a duplicate that cached its DPR at construction
+  // would clobber the backing-store size on mobile Chrome (zoom-on-focus while
+  // typing changes the ratio) and roughen glyphs. Resize ownership stays with the
+  // adapter; the host only retains the EditContext IME / keyboard glue below.
   attachTextInput(canvas, raw);
-  return new CanvasRenderer(raw, { ...options, canvas });
+  return new CanvasRenderer(raw, { ...options, canvas, autoResize: false });
 }

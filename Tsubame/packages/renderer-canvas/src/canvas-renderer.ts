@@ -55,7 +55,12 @@ export class CanvasRenderer implements IRenderer {
   private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
-  private readonly devicePixelRatio: number;
+  /** Explicit DPR override (tests/embedded hosts). When unset the observer reads
+   * the live `globalThis.devicePixelRatio` on every resize — mobile Chrome bumps
+   * it after construction (soft-keyboard / zoom-on-focus while typing), and a
+   * value cached at construction would rebuild the backing store too small and
+   * upscale the scene, roughening glyphs. */
+  private readonly devicePixelRatioOverride: number | undefined;
   private resizeObserver: ResizeObserver | null = null;
   private frameHandle: number | null = null;
 
@@ -66,7 +71,7 @@ export class CanvasRenderer implements IRenderer {
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
     this.cancelFrame =
       options.cancelFrame ?? globalThis.cancelAnimationFrame.bind(globalThis);
-    this.devicePixelRatio = options.devicePixelRatio ?? globalThis.devicePixelRatio ?? 1;
+    this.devicePixelRatioOverride = options.devicePixelRatio;
 
     const autoResize = options.autoResize ?? this.canvas !== null;
     if (this.canvas !== null && autoResize) {
@@ -99,7 +104,7 @@ export class CanvasRenderer implements IRenderer {
     }
 
     const syncFromContentBox = (width: number, height: number): void => {
-      this.resize(Math.round(width), Math.round(height), this.devicePixelRatio);
+      this.resize(Math.round(width), Math.round(height), this.currentDevicePixelRatio());
     };
 
     const rect = canvas.getBoundingClientRect();
@@ -113,6 +118,12 @@ export class CanvasRenderer implements IRenderer {
     });
     observer.observe(canvas);
     this.resizeObserver = observer;
+  }
+
+  /** Resolve the device pixel ratio for the next resize: the explicit override
+   * when given, otherwise the *live* global (re-read each call, never cached). */
+  private currentDevicePixelRatio(): number {
+    return this.devicePixelRatioOverride ?? globalThis.devicePixelRatio ?? 1;
   }
 
   resize(width: number, height: number, scale = 1): void {
