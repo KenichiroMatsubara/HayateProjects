@@ -1,5 +1,5 @@
 use hayate_core::{
-    RenderImage, ScenePainter, TextRunData,
+    RenderImage, ScenePainter, TextRunData, is_notdef, missing_glyph_placeholder,
     text_synthesis::{embolden_amount_font_units, italic_skew_tangent},
 };
 use skrifa::raw::{FontRef, TableProvider};
@@ -171,11 +171,18 @@ impl ScenePainter for VelloPainter<'_> {
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
         let font = FontData::new(data.font.data.clone(), data.font.index);
-        let glyphs = data.glyphs.iter().map(|glyph| vello::Glyph {
-            id: glyph.id,
-            x: glyph.x,
-            y: glyph.y,
-        });
+        // Skip `.notdef` glyphs in the real-glyph pass; they are drawn as
+        // deliberate placeholder boxes below instead of the font's silent box
+        // (issue #427).
+        let glyphs = data
+            .glyphs
+            .iter()
+            .filter(|glyph| !is_notdef(glyph))
+            .map(|glyph| vello::Glyph {
+                id: glyph.id,
+                x: glyph.x,
+                y: glyph.y,
+            });
         let transform = Affine::translate((x as f64, y as f64));
         let mut builder = scene
             .draw_glyphs(&font)
@@ -200,7 +207,23 @@ impl ScenePainter for VelloPainter<'_> {
         }
         builder.draw(Fill::NonZero, glyphs);
 
-        use vello::kurbo::Shape;
+        use vello::kurbo::{Shape, Stroke};
+        // Deliberate placeholder boxes for codepoints the font can't supply,
+        // matching the tiny-skia backend via `missing_glyph_placeholder` (#427).
+        for glyph in data.glyphs.iter().filter(|glyph| is_notdef(glyph)) {
+            let ph = missing_glyph_placeholder(glyph, data.font_size);
+            if ph.width <= 0.0 || ph.height <= 0.0 {
+                continue;
+            }
+            let rect = Rect::new(
+                ph.x as f64,
+                ph.y as f64,
+                (ph.x + ph.width) as f64,
+                (ph.y + ph.height) as f64,
+            );
+            let style = Stroke::new(ph.stroke_width as f64);
+            scene.stroke(&style, transform, brush, None, &rect.to_path(0.1));
+        }
         for deco in &data.decorations {
             let rect = Rect::new(
                 deco.x0 as f64,

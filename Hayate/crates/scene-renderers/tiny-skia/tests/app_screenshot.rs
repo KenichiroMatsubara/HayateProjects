@@ -711,6 +711,54 @@ fn delete_glyph_renders_in_canvas() {
     );
 }
 
+/// Count painted (non-near-white) pixels after rendering `s` alone at 40px, the
+/// same ink probe `diagnose_glyph_ink` uses. 0 == nothing drawn (a silent box).
+fn glyph_ink(s: &str) -> usize {
+    const W: u32 = 64;
+    const H: u32 = 64;
+    let mut b = B::new();
+    let root = b.view(&[
+        StyleProp::Width(Dimension::px(W as f32)),
+        StyleProp::Height(Dimension::px(H as f32)),
+        StyleProp::BackgroundColor(Color::WHITE),
+        StyleProp::DefaultFontFamily("Inter".to_string()),
+    ]);
+    b.tree.set_root(root);
+    b.tree.set_viewport(W as f32, H as f32);
+    let t = b.text(s, &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)]);
+    b.child(root, t);
+    let graph = b.tree.render(0.0).clone();
+    let mut pixmap = Pixmap::new(W, H).expect("pixmap");
+    TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
+    pixmap
+        .data()
+        .chunks_exact(4)
+        .filter(|p| p[0] < 200 || p[1] < 200 || p[2] < 200)
+        .count()
+}
+
+/// Regression for #427: a codepoint absent from the bundled Canvas font must not
+/// vanish into a silent `.notdef` box. The painter now draws a deliberate
+/// placeholder, so U+2715 ✕ (which NotoSansJP lacks, and whose `.notdef` outline
+/// is empty → 0 ink before this change) renders visible ink instead of nothing.
+#[test]
+fn missing_glyph_draws_visible_placeholder() {
+    // Precondition: the codepoint really is missing (the bug's root cause).
+    assert!(
+        !font_has_glyph('\u{2715}'),
+        "U+2715 ✕ must be absent from NotoSansJP.ttf for this regression to be meaningful",
+    );
+    // A present glyph is the control — it must still render ink.
+    let present = glyph_ink("A");
+    assert!(present > 0, "control glyph 'A' must render ink, got {present}");
+    // The missing codepoint must now produce a visible placeholder, not a blank.
+    let missing = glyph_ink("\u{2715}");
+    assert!(
+        missing > 0,
+        "missing glyph U+2715 ✕ must draw a visible placeholder box, got {missing} ink px",
+    );
+}
+
 // ───────────────────────── interaction-state comparison ─────────────────────
 // Ad-hoc input interactions — click-to-focus, type, drag-select, IME compose,
 // button hover — rendered through Canvas mode (tiny-skia) so the result can be

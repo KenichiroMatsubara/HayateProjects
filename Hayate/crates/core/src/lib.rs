@@ -25,7 +25,8 @@ pub use element::{
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
 pub use render::{
-    DrawOp, NullPainter, RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage,
-    RenderImageAlphaType, RenderImageFormat, ScenePainter, SceneRecorder, render_scene_graph,
-    text_synthesis,
+    DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,
+    RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage, RenderImageAlphaType,
+    RenderImageFormat, ScenePainter, SceneRecorder, is_notdef, missing_glyph_placeholder,
+    render_scene_graph, text_synthesis,
 };
