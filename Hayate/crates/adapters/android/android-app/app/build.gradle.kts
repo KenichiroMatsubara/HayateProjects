@@ -96,9 +96,19 @@ if (!project.hasProperty("nativedemo")) {
         ?.let { file(it) }
         ?: rootProject.file("../../../../../Tsubame")
 
+    // pnpm 実行ファイル。Windows では `pnpm` は pnpm.cmd で、Java の ProcessBuilder は
+    // PATH 上の .cmd を直接起動できない（CreateProcess error=2）。`cmd /c` 経由で起動する。
+    // パスが通っていない/別名の場合は `-Ppnpm.path=...`（例: フルパスの pnpm.cmd）で上書き。
+    val pnpmExe = (project.findProperty("pnpm.path") as String?) ?: "pnpm"
+    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    val pnpmArgs = listOf("--filter", "@tsubame/example-todo", "run", "build:android")
+
     val bundleTsubameJs by tasks.registering(Exec::class) {
         workingDir = tsubameDir
-        commandLine("pnpm", "--filter", "@tsubame/example-todo", "run", "build:android")
+        commandLine(
+            if (isWindows) listOf("cmd", "/c", pnpmExe) + pnpmArgs
+            else listOf(pnpmExe) + pnpmArgs,
+        )
     }
 
     val copyTsubameBundle by tasks.registering(Copy::class) {
