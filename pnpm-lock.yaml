@@ -109,6 +109,9 @@ importers:
         specifier: file:../../../Hayate/wasm-pkgs/pkg-null
         version: link:../../../Hayate/wasm-pkgs/pkg-null
     devDependencies:
+      '@tsubame/renderer-dom':
+        specifier: workspace:*
+        version: link:../renderer-dom
       '@tsubame/solid':
         specifier: workspace:*
         version: link:../solid

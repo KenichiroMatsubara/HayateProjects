@@ -21,6 +21,7 @@ export default defineConfig({
               inline: [
                 '@tsubame/protocol-generated',
                 '@tsubame/hayate-css-catalog',
+                '@tsubame/renderer-dom',
               ],
             },
           },
