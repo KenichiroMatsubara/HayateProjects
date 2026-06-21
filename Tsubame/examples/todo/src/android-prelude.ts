@@ -81,6 +81,39 @@ function createMemoryStorage(): Storage {
   } as Storage;
 }
 
+// `URLSearchParams`: Todo デモは `new URLSearchParams(window.location.search).get('page')`
+// でページ判定する。Hermes には無いので最小実装を置く（query 文字列のパースと get/has）。
+if (typeof g['URLSearchParams'] !== 'function') {
+  class MinimalURLSearchParams {
+    private readonly map = new Map<string, string>();
+    constructor(init?: string) {
+      if (typeof init === 'string') {
+        for (const pair of init.replace(/^\?/, '').split('&')) {
+          if (pair === '') continue;
+          const eq = pair.indexOf('=');
+          const k = eq < 0 ? pair : pair.slice(0, eq);
+          const v = eq < 0 ? '' : pair.slice(eq + 1);
+          try {
+            this.map.set(decodeURIComponent(k), decodeURIComponent(v));
+          } catch {
+            this.map.set(k, v);
+          }
+        }
+      }
+    }
+    get(key: string): string | null {
+      return this.map.has(key) ? (this.map.get(key) as string) : null;
+    }
+    has(key: string): boolean {
+      return this.map.has(key);
+    }
+    getAll(key: string): string[] {
+      return this.map.has(key) ? [this.map.get(key) as string] : [];
+    }
+  }
+  g['URLSearchParams'] = MinimalURLSearchParams;
+}
+
 // `window`: renderTsubame は `element` 省略時に window.addEventListener('resize')
 // と window.innerWidth/innerHeight を参照し、Todo デモは window.location.search /
 // window.localStorage を参照する。リサイズはネイティブが `__tsubame.resize` で
