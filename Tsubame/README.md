@@ -67,7 +67,7 @@ pnpm run test          # T5: apply_mutations バインディング
 pnpm run dev           # T6: Todo デモ（http://localhost:5173）
 ```
 
-`pnpm` が PATH に無い場合: `npx pnpm@11.5.0 install` などで代替できます。
+`pnpm` が PATH に無い場合: `npx pnpm@11.8.0 install` などで代替できます。
 
 Todo デモ（Tsubame Task Studio）では同一の `App` コンポーネントを **DOM Renderer** と **Canvas Renderer**（`MockHayate` による 2D Canvas スタブ）で切り替えられます。実 Hayate WASM は不要です。
 
