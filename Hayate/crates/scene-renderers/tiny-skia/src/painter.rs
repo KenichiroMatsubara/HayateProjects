@@ -1,5 +1,6 @@
 use hayate_core::{
-    RenderImage, RenderImageAlphaType, ScenePainter, TextRunData,
+    RenderImage, RenderImageAlphaType, ScenePainter, TextRunData, is_notdef,
+    missing_glyph_placeholder,
     text_synthesis::{embolden_amount_font_units, italic_skew_tangent},
 };
 use skrifa::{
@@ -301,6 +302,13 @@ fn draw_text_run(
     });
 
     for glyph in &data.glyphs {
+        // A `.notdef` glyph means the font lacks this codepoint. Draw a
+        // deliberate placeholder box instead of the font's silent box so the
+        // miss is visible rather than vanishing (issue #427).
+        if is_notdef(glyph) {
+            draw_missing_glyph(pixmap, run_x, run_y, &paint, glyph, font_size, transform, mask);
+            continue;
+        }
         let outline = match outlines.get(GlyphId::new(glyph.id)) {
             Some(o) => o,
             None => continue,
@@ -352,6 +360,41 @@ fn draw_text_run(
             }
         }
     }
+}
+
+/// Draw the deliberate placeholder box for a `.notdef` glyph (issue #427) as a
+/// hollow stroked rectangle in the text colour, in the cap-height band above the
+/// baseline. Shared geometry with the vello backend via `missing_glyph_placeholder`.
+fn draw_missing_glyph(
+    pixmap: &mut Pixmap,
+    run_x: f32,
+    run_y: f32,
+    paint: &Paint<'static>,
+    glyph: &hayate_core::RenderGlyph,
+    font_size: f32,
+    transform: Transform,
+    mask: Option<&Mask>,
+) {
+    let ph = missing_glyph_placeholder(glyph, font_size);
+    if ph.width <= 0.0 || ph.height <= 0.0 {
+        return;
+    }
+    let Some(rect) = tiny_skia::Rect::from_xywh(run_x + ph.x, run_y + ph.y, ph.width, ph.height)
+    else {
+        return;
+    };
+    let mut pb = PathBuilder::new();
+    pb.push_rect(rect);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    let stroke = Stroke {
+        width: ph.stroke_width,
+        line_join: LineJoin::Miter,
+        line_cap: LineCap::Butt,
+        ..Stroke::default()
+    };
+    pixmap.stroke_path(&path, paint, &stroke, transform, mask);
 }
 
 fn draw_image(
