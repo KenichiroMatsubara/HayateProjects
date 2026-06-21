@@ -174,15 +174,16 @@ fn sync_ime(
 
     // GameTextInput reports the full buffer plus an optional composing span
     // (byte offsets into `text`); mirror it into the NDK-free type and diff.
-    let next = app.text_input_state(|state| TextInputState {
+    // android-activity 0.6: `text_input_state()` returns the state directly
+    // (no closure form); build the NDK-free mirror from it.
+    let state = app.text_input_state();
+    let next = TextInputState {
         text: state.text.clone(),
-        compose_region: state
-            .compose_region
-            .map(|span| TextSpan {
-                start: span.start,
-                end: span.end,
-            }),
-    });
+        compose_region: state.compose_region.map(|span| TextSpan {
+            start: span.start,
+            end: span.end,
+        }),
+    };
 
     if next != *prev {
         for action in translate_text_input(prev, &next) {
@@ -220,7 +221,7 @@ fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
                     }
                 }
             }
-            android_activity::input::InputStatus::Unhandled
+            android_activity::InputStatus::Unhandled
         });
         if !read {
             break;
