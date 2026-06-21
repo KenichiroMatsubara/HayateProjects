@@ -57,6 +57,7 @@ fn main() {
     }
     println!("cargo:rustc-link-lib=dylib=jsi");
     println!("cargo:rustc-link-lib=dylib=hermesvm");
+    println!("cargo:rustc-link-lib=dylib=log");
 
     println!("cargo:rerun-if-changed=src/hermes_bridge.rs");
     println!("cargo:rerun-if-changed=cpp/hermes_app.cpp");

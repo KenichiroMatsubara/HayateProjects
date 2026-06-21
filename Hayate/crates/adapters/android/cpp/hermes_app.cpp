@@ -20,8 +20,15 @@
 #include <jsi/jsi.h>
 #include <hermes/hermes.h>
 
+#include <android/log.h>
+
+#include <exception>
 #include <string>
 #include <vector>
+
+#define HAYATE_LOG_TAG "hayate-tsubame"
+#define HAYATE_LOGE(...) \
+  __android_log_print(ANDROID_LOG_ERROR, HAYATE_LOG_TAG, __VA_ARGS__)
 
 namespace hayate {
 
@@ -203,6 +210,9 @@ class HayateHostObject : public jsi::HostObject {
 
 struct HermesApp::Impl {
   std::unique_ptr<jsi::Runtime> runtime;
+  // バンドルの eval に成功し __tsubame が公開されたか。false の間は frame/resize を
+  // 呼ばない（JS エラーで __tsubame 未定義のときに毎フレーム例外を投げないため）。
+  bool ready = false;
 };
 
 HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
@@ -215,33 +225,60 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   rt.global().setProperty(rt, "__hayateHost",
                           jsi::Object::createFromHostObject(rt, host_obj));
 
-  // バンドルを eval（main.android.tsx 由来。__tsubame を公開する）。
-  std::string src(bundle);
-  rt.evaluateJavaScript(
-      std::make_unique<jsi::StringBuffer>(std::move(src)), "tsubame.js");
+  // バンドルを eval（main.android.tsx 由来。__tsubame を公開する）。JS の例外
+  // （jsi::JSError）はここで捕捉してメッセージと JS スタックをログに出す。捕まえない
+  // と C++ 例外として android_main を抜け std::terminate でプロセスが落ちる。
+  try {
+    std::string src(bundle);
+    rt.evaluateJavaScript(
+        std::make_unique<jsi::StringBuffer>(std::move(src)), "tsubame.js");
+    impl_->ready = true;
+  } catch (const jsi::JSError& e) {
+    HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
+                e.getMessage().c_str(), e.getStack().c_str());
+  } catch (const std::exception& e) {
+    HAYATE_LOGE("Tsubame バンドルの eval で例外: %s", e.what());
+  }
 }
 
 HermesApp::~HermesApp() = default;
 
 void HermesApp::pump_frame(double timestamp_ms) {
+  if (!impl_->ready) return;
   jsi::Runtime& rt = *impl_->runtime;
-  jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
-  jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
-  pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
-  // Hermes のマイクロタスク（Solid のスケジューラ）を排出する。
-  if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
-    hermesRt->drainMicrotasks();
+  try {
+    jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
+    jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
+    pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
+    // Hermes のマイクロタスク（Solid のスケジューラ）を排出する。
+    if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
+      hermesRt->drainMicrotasks();
+    }
+  } catch (const jsi::JSError& e) {
+    HAYATE_LOGE("pumpFrame で JS 例外: %s\nJS stack:\n%s", e.getMessage().c_str(),
+                e.getStack().c_str());
+    impl_->ready = false;  // 毎フレームのスパムを避けて止める。
+  } catch (const std::exception& e) {
+    HAYATE_LOGE("pumpFrame で例外: %s", e.what());
+    impl_->ready = false;
   }
 }
 
 void HermesApp::resize(float width, float height, float scale) {
+  if (!impl_->ready) return;
   jsi::Runtime& rt = *impl_->runtime;
-  jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
-  jsi::Function fn = tsubame.getPropertyAsFunction(rt, "resize");
-  fn.callWithThis(rt, tsubame,
-                  {jsi::Value(static_cast<double>(width)),
-                   jsi::Value(static_cast<double>(height)),
-                   jsi::Value(static_cast<double>(scale))});
+  try {
+    jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
+    jsi::Function fn = tsubame.getPropertyAsFunction(rt, "resize");
+    fn.callWithThis(rt, tsubame,
+                    {jsi::Value(static_cast<double>(width)),
+                     jsi::Value(static_cast<double>(height)),
+                     jsi::Value(static_cast<double>(scale))});
+  } catch (const jsi::JSError& e) {
+    HAYATE_LOGE("resize で JS 例外: %s", e.getMessage().c_str());
+  } catch (const std::exception& e) {
+    HAYATE_LOGE("resize で例外: %s", e.what());
+  }
 }
 
 std::unique_ptr<HermesApp> new_hermes_app(rust::Box<JsHostBridge> host,
