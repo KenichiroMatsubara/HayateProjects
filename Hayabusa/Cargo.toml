@@ -1,0 +1,14 @@
+[package]
+name = "hayabusa"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Hayabusa — Signal-based SFC framework runtime on top of Hayate"
+repository = "https://github.com/KenichiroMatsubara/HayateProjects"
+
+# Tracer bullet (Hayabusa ADR-0006): self-contained, no external dependencies.
+# The runtime owns the fine-grained reactive core (ADR-0003), the pure-expression
+# evaluator and Template IR (ADR-0004). It drives an `ElementSink` seam whose
+# surface mirrors `hayate_core::ElementTree` 1:1 (ADR-0002), so wiring the real
+# core is a mechanical follow-up.
+[dependencies]
