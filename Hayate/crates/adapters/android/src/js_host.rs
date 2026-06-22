@@ -15,7 +15,7 @@ use std::rc::Rc;
 
 use hayate_core::{DocumentEventKind, ElementId, ElementTree};
 
-use crate::generated::{encode_event_wire, EventWireValue};
+use hayate_core::wire::{encode_event_wire, EventWireValue};
 use crate::js_apply;
 
 /// `poll_events` の配信行 1 要素（数値またはテキスト）。ADR-0053 の

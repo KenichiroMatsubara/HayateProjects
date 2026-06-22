@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
-use crate::scroll_drag::{self, MoveOutcome, ScrollGesture, ScrollPhysicsTuning};
+use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning};
 
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId, ElementKind,
@@ -18,9 +18,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
 
-use crate::apply_mutations_dispatch::{
-    apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost,
-};
+use hayate_core::wire::unset_kind_from_u32;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
@@ -200,7 +198,9 @@ impl HayateElementRenderer {
             drag_raw: None,
             scroll_motion: None,
             last_frame_ms: None,
-            scroll_tuning: ScrollPhysicsTuning::default(),
+            // Scroll Physics Profile（ADR-0113）。現状 web は `Auto` のみで、iOS 風
+            // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
+            scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
             pending_paste: Rc::new(RefCell::new(Vec::new())),
             _pointer_input: pointer_guard,
         })
@@ -500,7 +500,7 @@ impl HayateElementRenderer {
                 self.scroll_motion = None;
                 self.drag_raw = None;
                 self.scroll_samples.clear();
-                if scroll_drag::is_drag_scroll_pointer(kind) {
+                if scroll::is_drag_scroll_pointer(kind) {
                     if let Some(sv) = self
                         .tree
                         .hit_test(x, y)
@@ -622,12 +622,12 @@ impl HayateElementRenderer {
         // しない（縦のみのページは横にバウンスしない）一方、本当に横スクロール可能な
         // コンテナ（`max > 0`）はバウンスする。iOS と同じ軸別オーバースクロール。
         let nx = if max_x > 0.0 {
-            scroll_drag::rubber_band_offset(rx, max_x, dim_x, &self.scroll_tuning)
+            scroll::rubber_band_offset(rx, max_x, dim_x, &self.scroll_tuning)
         } else {
             0.0
         };
         let ny = if max_y > 0.0 {
-            scroll_drag::rubber_band_offset(ry, max_y, dim_y, &self.scroll_tuning)
+            scroll::rubber_band_offset(ry, max_y, dim_y, &self.scroll_tuning)
         } else {
             0.0
         };
@@ -639,7 +639,7 @@ impl HayateElementRenderer {
     /// オーバースクロールで指を離した（速度 ≈ 0）場合も、端が必ず定位置へ戻るよう
     /// アニメーションする。範囲内で終わる遅いリリースは何もアニメーションしない。
     fn launch_scroll_motion(&mut self, sv: ElementId) {
-        let (vx, vy) = scroll_drag::estimate_release_velocity(&self.scroll_samples, &self.scroll_tuning);
+        let (vx, vy) = scroll::estimate_release_velocity(&self.scroll_samples, &self.scroll_tuning);
         self.scroll_samples.clear();
         self.drag_raw = None;
         let (max_x, max_y, _, _) = self.scroll_bounds(sv);
@@ -672,8 +672,8 @@ impl HayateElementRenderer {
         };
         let (max_x, max_y, _, _) = self.scroll_bounds(sv);
         let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-        let (nx, vx2) = scroll_drag::scroll_motion_step(ox, vx, max_x, dt, &self.scroll_tuning);
-        let (ny, vy2) = scroll_drag::scroll_motion_step(oy, vy, max_y, dt, &self.scroll_tuning);
+        let (nx, vx2) = scroll::scroll_motion_step(ox, vx, max_x, dt, &self.scroll_tuning);
+        let (ny, vy2) = scroll::scroll_motion_step(oy, vy, max_y, dt, &self.scroll_tuning);
         self.commit_scroll_offset(sv, nx, ny);
         // 軸は速度を持つかオーバースクロール中である限りアニメーション継続中
         // （バウンスの途中では一瞬速度ゼロを読むことがある）。
@@ -956,14 +956,15 @@ impl HayateElementRenderer {
         styles: &[f32],
         texts: js_sys::Array,
     ) -> Result<(), JsValue> {
-        // 中立化した apply_mutations_batch（ADR-0112）は文字列テーブルを `&[String]` で
-        // 受け取り、エラーを `String` で返す。Web 境界で js_sys::Array を変換し、
-        // `String` エラーを `JsValue` へ写す。
+        // 中立 apply_mutations（ADR-0112）は core が単一所有し（hayate_core::wire）、
+        // 文字列テーブルを `&[String]` で受け取りエラーを `String` で返す。Web 境界で
+        // js_sys::Array を変換し、`String` エラーを `JsValue` へ写す。
         let texts: Vec<String> = texts
             .iter()
             .map(|v| v.as_string().unwrap_or_default())
             .collect();
-        apply_mutations_batch(self, ops, styles, &texts).map_err(|e| JsValue::from_str(&e))
+        hayate_core::wire::apply_mutations(&mut self.tree, ops, styles, &texts)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     /// ライブツリーから編集可能なテキスト内容を返す。
@@ -1027,23 +1028,6 @@ impl HayateElementRenderer {
     }
 }
 
-impl ApplyMutationsHost for HayateElementRenderer {
-    fn tree_mut(&mut self) -> &mut ElementTree {
-        &mut self.tree
-    }
-
-    fn remove_subtree(&mut self, id: ElementId) {
-        self.tree.element_remove(id);
-    }
-
-    fn apply_focus(&mut self, id: ElementId) {
-        self.tree.on_focus(id);
-    }
-
-    fn apply_blur(&mut self, id: ElementId) {
-        self.tree.on_blur(id);
-    }
-}
 
 /// `Some(Color)` を `{r,g,b,a}` に、`None` を `null` に変換する。
 fn color_to_js(color: Option<Color>) -> JsValue {

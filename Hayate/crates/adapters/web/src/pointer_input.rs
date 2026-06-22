@@ -175,7 +175,7 @@ pub(crate) fn attach_pointer_input(
             let kind = PointerKind::from_dom(&pe.pointer_type());
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, pe.as_ref());
             let modifiers = mouse_modifiers(pe.as_ref());
-            if crate::scroll_drag::is_drag_scroll_pointer(kind) {
+            if hayate_core::scroll::is_drag_scroll_pointer(kind) {
                 let _ = canvas_for_cb.set_pointer_capture(pe.pointer_id());
             }
             pending.borrow_mut().push(PointerInput::Down {

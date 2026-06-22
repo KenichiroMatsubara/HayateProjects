@@ -23,6 +23,12 @@ const fn cov(start: u32, end: u32, family: &'static str) -> Coverage {
     Coverage { start, end, family }
 }
 
+/// `.notdef` の emoji コードポイントが解決されるモノクロ emoji フォールバック
+/// ファミリ（ADR-0101）。coverage テーブルの emoji 行が指すファミリの単一の真実で、
+/// アダプタ側のレンダラ別 emoji ディスパッチ（[`upgrades_to_color_emoji`]）もこの
+/// 同一識別子を参照する。ファミリ → ソースの対応はアダプタの責務（ADR-0043）。
+pub const EMOJI_FALLBACK_FAMILY: &str = "Noto Emoji";
+
 /// coverage テーブル。**`start` でソート済みかつ非重複**（`table_is_sorted_and_non_overlapping`
 /// が保証）。編集時もソートを保つこと。
 ///
@@ -43,8 +49,8 @@ pub const FONT_COVERAGE: &[Coverage] = &[
     // ── Korean ───────────────────────────────────────────────────────────
     cov(0x1100, 0x11FF, "Noto Sans KR"), // Hangul Jamo
     // ── Emoji / symbols (BMP) ────────────────────────────────────────────
-    cov(0x2600, 0x27BF, "Noto Emoji"), // Misc Symbols + Dingbats（☀ ✨ ➡ …）
-    cov(0x2B00, 0x2BFF, "Noto Emoji"), // Misc Symbols and Arrows（⭐ ⬛ …）
+    cov(0x2600, 0x27BF, EMOJI_FALLBACK_FAMILY), // Misc Symbols + Dingbats（☀ ✨ ➡ …）
+    cov(0x2B00, 0x2BFF, EMOJI_FALLBACK_FAMILY), // Misc Symbols and Arrows（⭐ ⬛ …）
     // ── CJK (BMP) ────────────────────────────────────────────────────────
     cov(0x2E80, 0x2EFF, "Noto Sans JP"), // CJK Radicals Supplement
     cov(0x2F00, 0x2FDF, "Noto Sans JP"), // Kangxi Radicals
@@ -69,7 +75,7 @@ pub const FONT_COVERAGE: &[Coverage] = &[
     // Mahjong / Dominoes / Playing Cards / Enclosed Alphanumerics（1F1E6..1F1FF の
     // 地域インジケータ旗 🇦–🇿 を含む）/ Misc Pictographs / Emoticons / Transport /
     // Supplemental Pictographs / Symbols Extended-A。
-    cov(0x1F000, 0x1FAFF, "Noto Emoji"),
+    cov(0x1F000, 0x1FAFF, EMOJI_FALLBACK_FAMILY),
     // ── CJK Unified Ideographs Extensions (SIP) ──────────────────────────
     cov(0x20000, 0x2A6DF, "Noto Sans JP"), // Ext B
     cov(0x2A700, 0x2B73F, "Noto Sans JP"), // Ext C
@@ -98,6 +104,21 @@ pub fn coverage_families() -> Vec<&'static str> {
     families.sort_unstable();
     families.dedup();
     families
+}
+
+/// `family` が emoji フォールバックファミリ（[`EMOJI_FALLBACK_FAMILY`]）か。
+pub fn is_emoji_fallback_family(family: &str) -> bool {
+    family == EMOJI_FALLBACK_FAMILY
+}
+
+/// レンダラがカラーグリフを描けるとき、emoji フォールバックファミリはカラー
+/// ビルドへ格上げしてよいか（ADR-0101）。`paints_color_glyphs` は呼び出し側
+/// アダプタが持つレンダラ能力。判定は「どの要求ファミリが emoji フォールバックか」
+/// という core 所有のドメイン知識だけに依存し、モノクロ/カラービルドの実体名や
+/// 取得先（URL・OS 検索）はアダプタの調達責務（ADR-0043）に委ねる。Web のカラー
+/// 経路（Vello）も将来の Android 等のカラー対応ペインタも同一規則を共有する。
+pub fn upgrades_to_color_emoji(requested_family: &str, paints_color_glyphs: bool) -> bool {
+    paints_color_glyphs && is_emoji_fallback_family(requested_family)
 }
 
 #[cfg(test)]
