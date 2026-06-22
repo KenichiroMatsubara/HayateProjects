@@ -1,6 +1,6 @@
 # スクロール物理演算は Platform Adapter が担い、scroll イベントはアプリ通知専用とする
 
-status: accepted  
+status: superseded by ADR-0113
 supersedes: ADR-0022
 
 ## Context

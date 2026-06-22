@@ -7,27 +7,29 @@ include!(concat!(env!("OUT_DIR"), "/builtin_fonts_gen.rs"));
 #[cfg(any(target_arch = "wasm32", test))]
 use crate::renderer_selection::SceneRendererKind;
 
-/// core のカバレッジ表が `.notdef` の emoji コードポイントを振り分けるモノクロ
-/// emoji ファミリ（ADR-0101）。レンダラ非依存で、両ペインタが描ける最大公約数。
-const MONOCHROME_EMOJI_FAMILY: &str = "Noto Emoji";
-
 /// カラー（COLR/CPAL）emoji ビルド。カラーグリフを描けるレンダラのみここへ
 /// 振り分ける。バイト列は core が要求したファミリ名で登録されるため、core の
-/// コードポイント→ファミリ振り分け（ADR-0101）には影響しない。
+/// コードポイント→ファミリ振り分け（ADR-0101）には影響しない。モノクロ側の
+/// ファミリ識別子と「格上げするか」の規則は core 所有（[`hayate_core::element::font_coverage`]）で、
+/// ここでは複製しない。
+#[cfg(any(target_arch = "wasm32", test))]
 const COLOR_EMOJI_FAMILY: &str = "Noto Color Emoji";
 
 /// レンダラを考慮したフォント調達（ADR-0043）。core が `.notdef` コードポイントを
 /// 振り分けたファミリと有効なレンダラを受け取り、fetch する URL を返す。emoji
 /// フォールバック以外は [`builtin_font_url`] と同一。カラーグリフを描けるレンダラ
-/// （Vello）では、モノクロ emoji ファミリをカラービルドへ格上げする。fetch した
-/// バイト列は core が要求したファミリ名で登録されるため、このディスパッチは core
-/// のコードポイント→ファミリ表からは見えない。
+/// （Vello）では、モノクロ emoji ファミリをカラービルドへ格上げする（格上げ規則は
+/// core の `upgrades_to_color_emoji`）。fetch したバイト列は core が要求したファミリ名で
+/// 登録されるため、このディスパッチは core のコードポイント→ファミリ表からは見えない。
 #[cfg(any(target_arch = "wasm32", test))]
 pub(crate) fn font_url_for_renderer(
     family: &str,
     renderer: SceneRendererKind,
 ) -> Option<&'static str> {
-    if family == MONOCHROME_EMOJI_FAMILY && renderer.paints_color_glyphs() {
+    if hayate_core::element::font_coverage::upgrades_to_color_emoji(
+        family,
+        renderer.paints_color_glyphs(),
+    ) {
         return builtin_font_url(COLOR_EMOJI_FAMILY);
     }
     builtin_font_url(family)

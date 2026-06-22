@@ -10,10 +10,14 @@
 // したため（ADR-0112）、この include モジュール側で明示する。
 use wasm_bindgen::prelude::*;
 
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../proto/generated/protocol.rs"
-));
+// 中立 wire decode/encode（protocol.rs）は core が単一所有する（hayate_core::wire /
+// Hayate Protocol Contract）。ここでは再 include せず core から取り込む。glob により
+// 後続の include（codec / dom_style_mapper / event_encode_web）が `Op`・`TAG_*`・
+// `decode_style_packet` 等の protocol シンボルと core スタイル型を同一スコープで
+// 参照でき、外部の `crate::generated::*` 参照も従来どおり解決する。
+use hayate_core::*;
+pub use hayate_core::wire::*;
+
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../proto/generated/codec.rs"

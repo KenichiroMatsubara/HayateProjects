@@ -4,15 +4,15 @@
 //! ボタン（`scene_demo`）を `SceneGraph` に降ろして毎フレーム描画する。タッチ
 //! `MotionEvent` は `translate_touch` 経由で座標ベースのポインタ API に流れ、
 //! タップでボタンの `:active` 色が切り替わる。IME ブリッジ（ADR-0094）では
-//! GameTextInput の絶対バッファを `ime_input` で差分して core の編集呼び出しに
-//! 変換する。
+//! GameTextInput の絶対バッファを core の `ime_reconcile` で差分して core の編集
+//! 呼び出しに変換する（差分ロジックは core 所有。アダプタは android-activity の
+//! テキスト入力状態を core 型へマップする薄いグルーのみ）。
 //!
 //! 非 Android ターゲットでは no-op となり、ホストの `cargo build`/`cargo check`
 //! に影響せずワークスペースに置ける。プラットフォーム非依存のシーム
-//! （`surface_lifecycle`・`touch_input`・`scene_demo`・`ime_input`）はホスト上でも
+//! （`surface_lifecycle`・`touch_input`・`scene_demo`）はホスト上でも
 //! コンパイルされ単体テストされる。
 
-mod ime_input;
 mod scene_demo;
 mod surface_lifecycle;
 mod touch_input;
@@ -20,10 +20,6 @@ mod touch_input;
 // Tsubame JS 駆動経路の Rust 半分（ADR-0112）。埋め込み Hermes が呼ぶ
 // apply_mutations を、Web と共有の中立 dispatch 経由で ElementTree に適用する。
 // 既定 OFF（非破壊）。プラットフォーム非依存なのでホストでもコンパイル・テストできる。
-#[cfg(feature = "tsubame-js")]
-mod apply_mutations_dispatch;
-#[cfg(feature = "tsubame-js")]
-mod generated;
 #[cfg(feature = "tsubame-js")]
 mod js_apply;
 #[cfg(feature = "tsubame-js")]

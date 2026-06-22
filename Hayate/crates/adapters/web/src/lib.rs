@@ -13,14 +13,10 @@ pub mod user_select;
 mod delivery_codec_fixtures;
 #[cfg(test)]
 mod wire_codec_roundtrip;
-#[cfg(target_arch = "wasm32")]
-mod apply_mutations_dispatch;
 #[cfg(any(target_arch = "wasm32", test))]
 mod resize_observer;
 #[cfg(any(target_arch = "wasm32", test))]
 mod pointer_input;
-#[cfg(any(target_arch = "wasm32", test))]
-mod scroll_drag;
 #[cfg(any(target_arch = "wasm32", test))]
 mod tuning;
 #[cfg(target_arch = "wasm32")]
