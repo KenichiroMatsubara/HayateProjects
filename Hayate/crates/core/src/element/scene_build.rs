@@ -747,8 +747,44 @@ fn walk<S: AnchorSink>(ctx: &mut WalkCtx, sink: &mut S, cursor: S::Cursor, id: E
         None => return,
     };
 
+    // `display: none`（base もしくはレイアウト系 variant 由来）の要素はサブツリーごと
+    // 描画しない。Taffy はレイアウトから除外するが、scene_build は要素ツリーを歩くため
+    // 明示的に枝刈りしないと子（特に text 要素のグリフ）が漏れて描かれてしまう。
+    if is_display_none(tree, taffy_node) {
+        clear_hidden_subtree(ctx, sink, cursor, id);
+        return;
+    }
+
     let base = sink.begin(ctx, cursor, id);
     emit_element(ctx, sink, cursor, id, el, taffy_node, base);
+}
+
+/// 要素の実効 Taffy display が `none` か。
+fn is_display_none(tree: &crate::element::tree::ElementTree, taffy_node: taffy::NodeId) -> bool {
+    tree.layout
+        .projection
+        .taffy
+        .style(taffy_node)
+        .map(|style| style.display == taffy::Display::None)
+        .unwrap_or(false)
+}
+
+/// `display: none` のサブツリーを「内容ゼロ」で処理する。各ノードで `begin`（retained では
+/// 旧内容のクリア）と `end_element`（子アンカーの再配置）は行うが、ボックス・テキスト・
+/// 子の visual は一切 emit しない。これで隠れた要素の旧描画が次フレームに残らない。
+fn clear_hidden_subtree<S: AnchorSink>(
+    ctx: &mut WalkCtx,
+    sink: &mut S,
+    cursor: S::Cursor,
+    id: ElementId,
+) {
+    let base = sink.begin(ctx, cursor, id);
+    let tree = ctx.tree;
+    for (child, child_cursor) in sink.children(tree, cursor, id, base) {
+        let mut child_ctx = ctx.child(ctx.ox, ctx.oy, ctx.inherited.clone());
+        clear_hidden_subtree(&mut child_ctx, sink, child_cursor, child);
+    }
+    sink.end_element(ctx, base, id);
 }
 
 fn emit_element<S: AnchorSink>(

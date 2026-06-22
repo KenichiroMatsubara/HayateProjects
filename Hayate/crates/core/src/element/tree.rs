@@ -383,6 +383,9 @@ impl ElementTree {
         }
         let old_viewport = self.viewport;
         self.viewport = new_viewport;
+        // projection も同じ論理ビューポートを知り、reconcile-sync が実効レイアウト
+        // スタイル（base ＋ レイアウト系 variant）を正しく算出できるようにする。
+        self.layout.projection.set_layout_viewport(new_viewport);
 
         // Resize → (shape, visual) の変更集合は 1 モジュールで解決する（ADR-0081）。
         // ここでは返ってきた集合から dirty を立てるだけ。shape 変更は加えて Taffy
@@ -404,6 +407,35 @@ impl ElementTree {
         for id in dirty.visual {
             self.engine
                 .mark_visual_dirty(id, VisualInvalidationReach::Subtree);
+        }
+
+        // レイアウト系 variant（`display` / `flex-direction` / `width` 等）は visual 差分の
+        // `resolve_resize` では拾えない（`apply_visual` がレイアウト prop を捨てるため）。
+        // 旧/新ビューポートで実効レイアウトスタイルが変わる要素を別途検出し、projection に
+        // 反映して Taffy を再実行させる（ADR-0081）。
+        let layout_updates: Vec<(ElementId, taffy::Style)> = self
+            .elements
+            .iter()
+            .filter(|(_, el)| el.viewport_variants.iter().any(|(_, p)| p.is_layout()))
+            .filter_map(|(id, el)| {
+                let old_style = crate::element::layout_pass::effective_layout_style(
+                    &el.layout_style,
+                    &el.viewport_variants,
+                    old_viewport,
+                );
+                let new_style = crate::element::layout_pass::effective_layout_style(
+                    &el.layout_style,
+                    &el.viewport_variants,
+                    new_viewport,
+                );
+                (old_style != new_style).then_some((*id, new_style))
+            })
+            .collect();
+        for (id, style) in layout_updates {
+            self.layout.projection.set_style(id, style);
+            self.engine
+                .mark_shape_dirty(id, VisualInvalidationReach::Subtree);
+            self.layout.projection.mark_dirty(id);
         }
     }
 
@@ -1078,6 +1110,18 @@ impl ElementTree {
             el.text_layout = None;
         }
         if layout_changed {
+            // `set_layout_prop` は base を直接 projection へ流す。レイアウト系 variant を
+            // 持つ要素では、その上に一致 variant を重ねた実効スタイルへ差し替える
+            // （reconcile-sync が走らない純粋スタイル変更でも variant を保つ・ADR-0081）。
+            if el.viewport_variants.iter().any(|(_, p)| p.is_layout()) {
+                let style = crate::element::layout_pass::effective_layout_style(
+                    &el.layout_style,
+                    &el.viewport_variants,
+                    self.viewport,
+                );
+                self.layout.projection.set_style(id, style);
+                self.layout.projection.mark_dirty(id);
+            }
             return;
         }
         let change = self.classify_style_props(id, props);
@@ -1150,7 +1194,22 @@ impl ElementTree {
             Some(e) => e,
             None => return,
         };
+        let is_layout = prop.is_layout();
         el.viewport_variants.push((condition, prop));
+        // レイアウト系 variant は実効レイアウトスタイルを今すぐ projection へ反映する。
+        // 現ビューポートで条件が成立していれば Taffy に効き、成立していなくても base が
+        // 再確定するだけ（後の set_viewport で flip を拾う）。ビジュアル系は従来経路。
+        if is_layout {
+            let style = crate::element::layout_pass::effective_layout_style(
+                &el.layout_style,
+                &el.viewport_variants,
+                self.viewport,
+            );
+            self.layout.projection.set_style(id, style);
+            self.engine
+                .mark_shape_dirty(id, VisualInvalidationReach::Subtree);
+            self.layout.projection.mark_dirty(id);
+        }
     }
 
     /// 継承可能なスタイルプロパティを 1 つ以上 unset し、「親から継承」に戻す。

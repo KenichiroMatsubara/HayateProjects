@@ -27,6 +27,10 @@ pub(crate) struct TaffyProjection {
     pub(crate) taffy: TaffyTree<MeasureCtx>,
     element_to_node: HashMap<ElementId, NodeId>,
     built: bool,
+    /// 現在の論理ビューポート。Taffy ノードへ流す実効レイアウトスタイルの算出に使う
+    /// （base `layout_style` ＋ 一致するレイアウト系ビューポートバリアント、ADR-0081）。
+    /// `ElementTree::set_viewport` が更新する。既定は `ElementTree` の初期値に合わせる。
+    viewport: (f32, f32),
 }
 
 impl TaffyProjection {
@@ -35,7 +39,13 @@ impl TaffyProjection {
             taffy: TaffyTree::new(),
             element_to_node: HashMap::new(),
             built: false,
+            viewport: (800.0, 600.0),
         }
+    }
+
+    /// レイアウト系ビューポートバリアント解決に使う現在の論理ビューポートを更新する。
+    pub fn set_layout_viewport(&mut self, viewport: (f32, f32)) {
+        self.viewport = viewport;
     }
 
     pub fn mark_dirty(&mut self, id: ElementId) {
@@ -223,7 +233,12 @@ fn sync_node_from_element(
         None => return,
     };
     let measure_ctx = measure_ctx_for(elements, id);
-    let _ = projection.taffy.set_style(node, el.layout_style.clone());
+    let style = crate::element::layout_pass::effective_layout_style(
+        &el.layout_style,
+        &el.viewport_variants,
+        projection.viewport,
+    );
+    let _ = projection.taffy.set_style(node, style);
     let _ = projection
         .taffy
         .set_node_context(node, Some(measure_ctx));
@@ -249,9 +264,14 @@ fn create_projected_node(
 ) -> NodeId {
     let el = elements.get(&id).expect("create_projected_node: missing element");
     let measure_ctx = measure_ctx_for(elements, id);
+    let style = crate::element::layout_pass::effective_layout_style(
+        &el.layout_style,
+        &el.viewport_variants,
+        projection.viewport,
+    );
     projection
         .taffy
-        .new_leaf_with_context(el.layout_style.clone(), measure_ctx)
+        .new_leaf_with_context(style, measure_ctx)
         .expect("taffy new_leaf_with_context")
 }
 
