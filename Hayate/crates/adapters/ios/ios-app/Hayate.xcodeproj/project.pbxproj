@@ -1,0 +1,247 @@
+// !$*UTF8*$!
+//
+// Xcode project for the hayate-adapter-ios demo app (ADR-0114).
+//
+// Packaging contract (pinned by `tests/ios_packaging.rs`):
+//   * links the cargo staticlib `libhayate_adapter_ios.a` into the app binary
+//   * a "Cargo Build" Run-Script phase compiles the Rust staticlib before linking
+//   * bundle id / Metal capability / scene manifest live in Hayate/Info.plist
+//
+// This is a hand-authored skeleton so the contract is reviewable without a Mac. Open and
+// re-save in Xcode to normalise; the SDK/linker are required only for a real build/run
+// (the verification gap recorded in ADR-0113, mirroring Android's ADR-0094/#195).
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA0000000000000000000101 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000201 /* AppDelegate.swift */; };
+		AA0000000000000000000102 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000202 /* SceneDelegate.swift */; };
+		AA0000000000000000000103 /* HayateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000203 /* HayateView.swift */; };
+		AA0000000000000000000104 /* libhayate_adapter_ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000204 /* libhayate_adapter_ios.a */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA0000000000000000000201 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AA0000000000000000000202 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		AA0000000000000000000203 /* HayateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HayateView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000204 /* libhayate_adapter_ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libhayate_adapter_ios.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000205 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA0000000000000000000206 /* Hayate-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Hayate-Bridging-Header.h"; sourceTree = "<group>"; };
+		AA0000000000000000000301 /* Hayate.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hayate.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA0000000000000000000401 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000104 /* libhayate_adapter_ios.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA0000000000000000000501 = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000502 /* Hayate */,
+				AA0000000000000000000503 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000502 /* Hayate */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000201 /* AppDelegate.swift */,
+				AA0000000000000000000202 /* SceneDelegate.swift */,
+				AA0000000000000000000203 /* HayateView.swift */,
+				AA0000000000000000000206 /* Hayate-Bridging-Header.h */,
+				AA0000000000000000000205 /* Info.plist */,
+				AA0000000000000000000204 /* libhayate_adapter_ios.a */,
+			);
+			path = Hayate;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000503 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000301 /* Hayate.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA0000000000000000000601 /* Hayate */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000701 /* Build configuration list for PBXNativeTarget "Hayate" */;
+			buildPhases = (
+				AA0000000000000000000801 /* Cargo Build */,
+				AA0000000000000000000402 /* Sources */,
+				AA0000000000000000000401 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Hayate;
+			productName = Hayate;
+			productReference = AA0000000000000000000301 /* Hayate.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA0000000000000000000901 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+			};
+			buildConfigurationList = AA0000000000000000000702 /* Build configuration list for PBXProject "Hayate" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA0000000000000000000501;
+			productRefGroup = AA0000000000000000000503 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA0000000000000000000601 /* Hayate */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		AA0000000000000000000801 /* Cargo Build */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Cargo Build";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/libhayate_adapter_ios.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			# Build the hayate-adapter-ios staticlib for the active arch/sdk and copy it where
+			# the Frameworks phase links it. Device builds use aarch64-apple-ios; the simulator
+			# uses aarch64-apple-ios-sim / x86_64-apple-ios.
+			shellScript = "set -euo pipefail\nMANIFEST=\"$SRCROOT/../Cargo.toml\"\nif [ \"${PLATFORM_NAME}\" = \"iphonesimulator\" ]; then\n  if [ \"${ARCHS}\" = \"x86_64\" ]; then RUST_TARGET=x86_64-apple-ios; else RUST_TARGET=aarch64-apple-ios-sim; fi\nelse\n  RUST_TARGET=aarch64-apple-ios\nfi\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then PROFILE=release; CARGO_FLAGS=--release; else PROFILE=debug; CARGO_FLAGS=; fi\ncargo build --manifest-path \"$MANIFEST\" --target \"$RUST_TARGET\" $CARGO_FLAGS\ncp \"$SRCROOT/../../../../target/$RUST_TARGET/$PROFILE/libhayate_adapter_ios.a\" \"$BUILT_PRODUCTS_DIR/libhayate_adapter_ios.a\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA0000000000000000000402 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000101 /* AppDelegate.swift in Sources */,
+				AA0000000000000000000102 /* SceneDelegate.swift in Sources */,
+				AA0000000000000000000103 /* HayateView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000711 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		AA0000000000000000000712 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000000000000000000713 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Hayate/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hayateprojects.hayate.adapter_ios_demo";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "Hayate/Hayate-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000714 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = Hayate/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(BUILT_PRODUCTS_DIR)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.hayateprojects.hayate.adapter_ios_demo";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "Hayate/Hayate-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA0000000000000000000701 /* Build configuration list for PBXNativeTarget "Hayate" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000713 /* Debug */,
+				AA0000000000000000000714 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000702 /* Build configuration list for PBXProject "Hayate" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000711 /* Debug */,
+				AA0000000000000000000712 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AA0000000000000000000901 /* Project object */;
+}

@@ -1,0 +1,62 @@
+name: iOS adapter cross-compile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Hayate/crates/adapters/ios/**'
+      - '.github/workflows/ios-adapter.yml'
+  pull_request:
+    paths:
+      - 'Hayate/crates/adapters/ios/**'
+      - '.github/workflows/ios-adapter.yml'
+
+concurrency:
+  group: ios-adapter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    name: hayate-adapter-ios (host tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Hayate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Run adapter seam and packaging tests
+        # Host CI uses -Dwarnings from setup-rust-toolchain; hayate-core has
+        # unrelated dead_code on the host path. Match the android adapter seam.
+        env:
+          RUSTFLAGS: ""
+        run: cargo test -p hayate-adapter-ios
+
+  cross-compile:
+    name: hayate-adapter-ios (aarch64-apple-ios[-sim])
+    # macOS runners ship the iOS SDK, so this compile-checks the
+    # #[cfg(target_os="ios")] Metal/FFI glue (src/app.rs, ime_bridge.rs) that the
+    # Linux sandbox cannot build (ADR-0113 verification gap). A full app build +
+    # device run is still done locally in Xcode.
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: Hayate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - name: Compile-check the iOS glue (simulator target)
+        env:
+          RUSTFLAGS: ""
+        run: cargo build -p hayate-adapter-ios --target aarch64-apple-ios-sim
+
+      - name: Compile-check the iOS glue (device target)
+        env:
+          RUSTFLAGS: ""
+        run: cargo build -p hayate-adapter-ios --target aarch64-apple-ios

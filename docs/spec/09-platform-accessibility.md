@@ -27,8 +27,8 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 ### PLAT-04 — AccessKit 展開順序：ネイティブ優先
 **規範文:** AccessKit 対応はネイティブ（UIA / NSAccessibility / AT-SPI）を優先し、Web Canvas Mode は Safari が EditContext API を正式サポートした時点で `accesskit-web`（不可視 ARIA DOM）を最優先で対応する。Web HTML Mode は実 DOM に ARIA 属性付与で対応する。
 **出典:** ADR-0041
-**状況:** 🟡 — 設計確定。Core `TreeUpdate` 生成は完了（PLAT-03）。ネイティブ AT 報告（UIA/NSAccessibility/AT-SPI）と Web Canvas `accesskit-web` は未着手。
-**備考:** ネイティブ Platform Adapter crate が前提。
+**状況:** 🟡 — 設計確定。Core `TreeUpdate` 生成は完了（PLAT-03）。ネイティブ AT 報告（UIA/NSAccessibility/AT-SPI）と Web Canvas `accesskit-web` は未着手。ネイティブ Platform Adapter は Android（PLAT-06）に加え iOS グラウンドワーク（PLAT-08）が存在するが、いずれも AccessKit 報告は未着手。
+**備考:** ネイティブ Platform Adapter crate が前提。iOS は `UIAccessibility`、macOS は `NSAccessibility`。
 
 ### PLAT-05 — surface / frame timing / a11y はアダプタ責務外（設計境界）
 **規範文:** サーフェス生成・フレームタイミングは wgpu、アクセシビリティ報告は AccessKit が担い、Platform Adapter の責務に含めない。
@@ -37,7 +37,7 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 **備考:** —
 
 ### PLAT-06 — Android を最初のネイティブ Platform Adapter とする（winit 不採用）
-**規範文:** Android を最初のネイティブ Platform Adapter ターゲットとする（iOS は後続・本ラウンド範囲外）。段階スコープは (A) 描画スモークテスト（`hayate-adapter-android` crate + example、wgpu/Vulkan surface、入力/IME/AccessKit なし）→ (B) タッチ入力を Element Document Runtime に接続 → (C) `hayate-adapter-web` 同等のフルパリティ（IME ブリッジ・AccessKit・クリップボード）。Platform Adapter は `winit` 等の汎用ウィンドウ抽象を使わず、各プラットフォームのネイティブ API（Android は `android-activity`）に直接バインドする。stage C のビルド基盤は GameActivity（`android-activity` の `game-activity` バックエンド）+ Gradle とし、IME はソフトキーボードの `InputConnection` を GameTextInput 経由で native に上げる（ADR-0094、cargo-apk/native-activity から移行）。`hayate-core` はどのプラットフォーム依存も持たない。ADR-0051（Tsubame 優先）と並行トラックであり supersede ではない。
+**規範文:** Android を最初のネイティブ Platform Adapter ターゲットとする（iOS は後続。グラウンドワークは PLAT-08）。段階スコープは (A) 描画スモークテスト（`hayate-adapter-android` crate + example、wgpu/Vulkan surface、入力/IME/AccessKit なし）→ (B) タッチ入力を Element Document Runtime に接続 → (C) `hayate-adapter-web` 同等のフルパリティ（IME ブリッジ・AccessKit・クリップボード）。Platform Adapter は `winit` 等の汎用ウィンドウ抽象を使わず、各プラットフォームのネイティブ API（Android は `android-activity`）に直接バインドする。stage C のビルド基盤は GameActivity（`android-activity` の `game-activity` バックエンド）+ Gradle とし、IME はソフトキーボードの `InputConnection` を GameTextInput 経由で native に上げる（ADR-0094、cargo-apk/native-activity から移行）。`hayate-core` はどのプラットフォーム依存も持たない。ADR-0051（Tsubame 優先）と並行トラックであり supersede ではない。
 **出典:** ADR-0087, ADR-0094
 **状況:** 🟡 — `crates/adapters/android`（`lib.rs` / `surface_lifecycle.rs` / `touch_input.rs` / `scene_demo.rs` / `app.rs`、`tests/apk_packaging.rs`）が存在。(A) 描画スモーク完了。(B) タッチ入力に加え、ループが `tree.render()` で `ElementTree`→`SceneGraph` を lowering して毎フレーム present するようになり（`viewport_for_surface` で viewport を surface px に追従、`scene_demo` の `:active` ボタンでタップが画面に反映）、タッチが描画されないツリーを駆動していた穴を解消。(C) フルパリティ（IME / AccessKit / clipboard）は着手段階: パッケージング基盤を GameActivity + Gradle へ移行（`android-app/` の Gradle プロジェクト + `MainActivity : GameActivity` + Manifest、`Cargo.toml` を `game-activity` feature へ、cargo-apk metadata 撤去、ADR-0094）し、IME ブリッジを開始（`ime_input` が GameTextInput の絶対状態＝全文+composing region を core の「committed text_content + 末尾 preedit」モデルへ差分変換、`app.rs` がフォーカス時にソフトキーボード表示し focused TextInput へ適用）。AccessKit / clipboard と、CompositionStart/Update/End イベント発火・selection 対応は未着手。NDK/SDK/Gradle 不在環境では host テスト可能な純粋 seam（`surface_lifecycle` / `touch_input` / `scene_demo` / `ime_input`）と packaging 契約テスト（`tests/apk_packaging.rs` が Gradle/Manifest/Kotlin を読む）のみ検証可能で、`app.rs` の NDK glue・Gradle ビルドは実機/エミュレータ検証（#195）が必要。
 **備考:** アダプタ間でウィンドウ/イベントループの共有コードは持たない（各アダプタが lifecycle/surface を再実装）。PLAT-04 のネイティブ AccessKit 報告は本アダプタを前提とする。
@@ -48,11 +48,17 @@ Platform Adapter の責務範囲と、アクセシビリティ（AccessKit）の
 **状況:** ⬜ — 設計確定（ADR-0098）。v1 アクション集合は {Focus, Click/Default, ScrollIntoView, SetValue}。`SetTextSelection` と outbound `set_text_selection` 反映は text-run a11y（Parley `LayoutAccessibility`）導入と同一作業単位で defer。実装はネイティブ Platform Adapter（PLAT-04/06）が前提で未着手。
 **備考:** Web Canvas Mode の inbound は Safari EditContext 対応後に別 wire 拡張として設計（ADR-0041）。
 
+### PLAT-08 — iOS を 2 つ目のネイティブ Platform Adapter とする（UIKit/Metal、薄い Swift ホスト、winit 不採用）
+**規範文:** iOS を 2 つ目のネイティブ Platform Adapter ターゲットとし、Android（PLAT-06）の段階スコープ（A 描画スモーク → B タッチ → C IME/AccessKit/clipboard フルパリティ）と de-risk パターン（ホストでテスト可能な純粋シーム + `#[cfg(target_os="ios")]` ネイティブグルー + パッケージング契約テスト）を踏襲する。`winit` 等の汎用ウィンドウ抽象は使わない。UIKit / `UITextInput` / `CAMetalLayer` / `CADisplayLink` は薄い Swift ホスト（`AppDelegate`/`SceneDelegate`/`HayateView`）が所有し、`hayate_ios_*` C FFI 経由で Rust staticlib にライフサイクル・タッチ・IME を渡す（Android の「薄い Kotlin ホスト + Rust」の iOS 版、shape 1）。Rust は ObjC-free で、Swift が渡す `CAMetalLayer` ポインタから `wgpu::SurfaceTargetUnsafe::CoreAnimationLayer` で Metal サーフェスを張る。IME は Android（GameTextInput の絶対状態を差分）と異なり UITextInput の増分コールバック（`insertText`/`setMarkedText`/`unmarkText`/`deleteBackward`）をコマンド駆動でコアの「確定 text_content + 末尾 preedit」へ畳む（出力半分は Android と共有）。content scale は Android の 1.0 固定と異なり実 `UIScreen.scale`（Retina）を `ViewportMetrics::from_physical_size` に通す。`hayate-core` はどのプラットフォーム依存も持たない。ADR-0051（Tsubame 優先）と並行トラック。
+**出典:** ADR-0113, ADR-0114, ADR-0115（Tsubame JS は方針のみ）
+**状況:** 🟡 — グラウンドワーク。`crates/adapters/ios`（純粋シーム `surface_lifecycle` / `touch_input` / `ime_input` / `scene_demo` をホストで全テスト、`#[cfg(target_os="ios")]` グルー `app.rs` / `ime_bridge.rs`、契約テスト `tests/ios_packaging.rs` / `tests/ime_api_encapsulation.rs`、Xcode 雛形 `ios-app/`）。ホスト検証可能なのは純粋シーム（状態機械・タッチ・IME コマンド→ImeAction の日本語変換込み・`apply_ime_action` を実 `ElementTree` に適用・`ViewportMetrics` 再利用）と両契約テストのみ。`app.rs` の Metal/FFI グルー・Swift ホスト・Xcode ビルド・実機 IME は Mac/シミュレータ/実機検証に残る（ADR-0087/0094 と同じ検証ギャップ、`aarch64-apple-ios` は本サンドボックス未インストールで Apple SDK も無いためターゲット compile-check も Mac 必須）。Tsubame JS 経路は ADR-0115 で Hermes パリティ方針のみ確定（コードなし）。
+**備考:** AccessKit（`UIAccessibility`）報告は PLAT-04 同様未着手。スクロール物理（ADR-0046）・clipboard は defer。
+
 ---
 
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 4 | PLAT-01, PLAT-02, PLAT-03, PLAT-05 |
-| 🟡部分 | 2 | PLAT-04, PLAT-06 |
+| 🟡部分 | 3 | PLAT-04, PLAT-06, PLAT-08 |
 | ⬜未実装 | 1 | PLAT-07 |

@@ -6,6 +6,7 @@ members = [
     "crates/scene-renderers/test-support",
     "crates/adapters/web",
     "crates/adapters/android",
+    "crates/adapters/ios",
     "proto/generator",
 ]
 resolver = "2"
