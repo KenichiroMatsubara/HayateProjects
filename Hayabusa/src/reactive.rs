@@ -22,6 +22,12 @@ use std::rc::Rc;
 
 type NodeId = usize;
 
+/// 所有スコープのハンドル（ADR-0003）。computed / effect / signal / 子コンポーネント
+/// の生存と破棄を束ねる、ランタイム内部の所有階層のノード。Canonical Tree でも
+/// 依存グラフ（DAG）でもない独立した階層で、`:if` / `:each` のブランチや
+/// コンポーネントインスタンスの teardown 単位になる。
+pub type ScopeId = usize;
+
 /// グラフノードの鮮度。`Clean < Check < Dirty` の半順序で伝播する。
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum NodeState {
@@ -53,12 +59,30 @@ struct ReNode {
     observers: Vec<NodeId>,
     computation: Computation,
     is_effect: bool,
+    /// dispose 済みなら false。dead ノードは flush / 伝播から除外される。
+    alive: bool,
+}
+
+/// 所有階層の 1 ノード（ADR-0003）。配下の reactive ノード・子スコープ・cleanup を
+/// 束ねて一括 teardown する。
+struct OwnerScope {
+    /// このスコープが所有する reactive ノード（dispose 時にまとめて破棄）。
+    nodes: Vec<NodeId>,
+    /// 子スコープ（dispose 時に再帰的に破棄）。
+    children: Vec<ScopeId>,
+    /// cleanup コールバック（on_destroy・要素除去等）。LIFO で実行する。
+    cleanups: Vec<Box<dyn FnOnce()>>,
+    parent: Option<ScopeId>,
+    alive: bool,
 }
 
 struct Inner {
     nodes: Vec<ReNode>,
+    scopes: Vec<OwnerScope>,
     /// 現在実行中の計算ノード。read はこのノードに依存を記録する。
     observer: Option<NodeId>,
+    /// 現在の所有スコープ。新規ノード／cleanup はここに登録される。
+    current_scope: Option<ScopeId>,
     /// flush 待ちの Effect。
     pending: Vec<NodeId>,
     batch_depth: u32,
@@ -86,7 +110,9 @@ impl Runtime {
         Runtime {
             inner: Rc::new(RefCell::new(Inner {
                 nodes: Vec::new(),
+                scopes: Vec::new(),
                 observer: None,
+                current_scope: None,
                 pending: Vec::new(),
                 batch_depth: 0,
             })),
@@ -102,6 +128,7 @@ impl Runtime {
             observers: Vec::new(),
             computation: Computation::None,
             is_effect: false,
+            alive: true,
         });
         Signal {
             id,
@@ -118,6 +145,7 @@ impl Runtime {
             observers: Vec::new(),
             computation: Computation::Memo(Box::new(f)),
             is_effect: false,
+            alive: true,
         });
         Memo {
             id,
@@ -136,6 +164,7 @@ impl Runtime {
             observers: Vec::new(),
             computation: Computation::Effect(Box::new(f)),
             is_effect: true,
+            alive: true,
         });
         // 初回実行（依存追跡と初期適用）。
         self.update_if_necessary(id);
@@ -162,7 +191,108 @@ impl Runtime {
     fn push_node(&self, node: ReNode) -> NodeId {
         let mut inner = self.inner.borrow_mut();
         inner.nodes.push(node);
-        inner.nodes.len() - 1
+        let id = inner.nodes.len() - 1;
+        // 現在の所有スコープに登録する（dispose 時に一括破棄される）。
+        if let Some(scope) = inner.current_scope {
+            inner.scopes[scope].nodes.push(id);
+        }
+        id
+    }
+
+    /// 所有スコープを作る（ADR-0003）。`parent` を指定すると、その子として張られ、
+    /// 親の dispose で再帰的に破棄される。
+    pub fn create_scope(&self, parent: Option<ScopeId>) -> ScopeId {
+        let mut inner = self.inner.borrow_mut();
+        inner.scopes.push(OwnerScope {
+            nodes: Vec::new(),
+            children: Vec::new(),
+            cleanups: Vec::new(),
+            parent,
+            alive: true,
+        });
+        let id = inner.scopes.len() - 1;
+        if let Some(p) = parent {
+            inner.scopes[p].children.push(id);
+        }
+        id
+    }
+
+    /// `scope` を現在の所有スコープにして `f` を走らせる。`f` の中で作られた
+    /// signal / memo / effect・登録された cleanup は `scope` の所有になる。
+    pub fn run_in_scope<R>(&self, scope: ScopeId, f: impl FnOnce() -> R) -> R {
+        let prev = {
+            let mut inner = self.inner.borrow_mut();
+            let prev = inner.current_scope;
+            inner.current_scope = Some(scope);
+            prev
+        };
+        let result = f();
+        self.inner.borrow_mut().current_scope = prev;
+        result
+    }
+
+    /// 現在の所有スコープ（build 中なら `Some`）。
+    pub fn current_scope(&self) -> Option<ScopeId> {
+        self.inner.borrow().current_scope
+    }
+
+    /// 現在の所有スコープに cleanup を登録する（要素除去・on_destroy 等）。スコープ
+    /// dispose 時に LIFO で実行される。スコープ外では即時に無視される（防御的）。
+    pub fn on_cleanup(&self, f: impl FnOnce() + 'static) {
+        let mut inner = self.inner.borrow_mut();
+        if let Some(scope) = inner.current_scope {
+            inner.scopes[scope].cleanups.push(Box::new(f));
+        }
+    }
+
+    /// スコープを破棄する。子スコープを再帰的に破棄し、cleanup を LIFO で実行し、
+    /// 所有する reactive ノードを dispose する。`:if` / `:each` のブランチ teardown と
+    /// コンポーネント unmount がこれを使う。
+    pub fn dispose_scope(&self, scope: ScopeId) {
+        if !self.inner.borrow().scopes[scope].alive {
+            return;
+        }
+        // 子スコープを先に破棄する。
+        let children = mem::take(&mut self.inner.borrow_mut().scopes[scope].children);
+        for child in children {
+            self.dispose_scope(child);
+        }
+        // cleanup を LIFO で実行（要素除去など。reactive ノード破棄より前）。
+        let mut cleanups = mem::take(&mut self.inner.borrow_mut().scopes[scope].cleanups);
+        while let Some(cb) = cleanups.pop() {
+            cb();
+        }
+        // 所有 reactive ノードを破棄する。
+        let nodes = mem::take(&mut self.inner.borrow_mut().scopes[scope].nodes);
+        for n in nodes {
+            self.dispose_node(n);
+        }
+        // 親から切り離してスコープを dead にする。
+        let mut inner = self.inner.borrow_mut();
+        inner.scopes[scope].alive = false;
+        if let Some(p) = inner.scopes[scope].parent {
+            inner.scopes[p].children.retain(|&c| c != scope);
+        }
+    }
+
+    /// 1 つの reactive ノードを破棄する。依存リンクを両方向で外し、dead 化する。
+    fn dispose_node(&self, id: NodeId) {
+        let mut inner = self.inner.borrow_mut();
+        if !inner.nodes[id].alive {
+            return;
+        }
+        inner.nodes[id].alive = false;
+        inner.nodes[id].state = NodeState::Clean;
+        inner.nodes[id].computation = Computation::None;
+        inner.nodes[id].value = None;
+        let sources = mem::take(&mut inner.nodes[id].sources);
+        let observers = mem::take(&mut inner.nodes[id].observers);
+        for s in sources {
+            inner.nodes[s].observers.retain(|&o| o != id);
+        }
+        for o in observers {
+            inner.nodes[o].sources.retain(|&s| s != id);
+        }
     }
 
     /// ノードの値を読む。実行中の observer があれば依存を記録し、必要なら
@@ -322,7 +452,16 @@ impl Runtime {
                 mem::take(&mut inner.pending)
             };
             for id in batch {
-                if self.inner.borrow().nodes[id].state != NodeState::Clean {
+                // dispose 済みの Effect は flush しない（ブランチ teardown 後の
+                // 取りこぼし対策）。
+                let (alive, dirty) = {
+                    let inner = self.inner.borrow();
+                    (
+                        inner.nodes[id].alive,
+                        inner.nodes[id].state != NodeState::Clean,
+                    )
+                };
+                if alive && dirty {
                     self.update_if_necessary(id);
                 }
             }
@@ -386,6 +525,76 @@ mod tests {
         assert_eq!(s.get(), Value::number(1));
         s.set(Value::number(2));
         assert_eq!(s.get(), Value::number(2));
+    }
+
+    #[test]
+    fn disposing_a_scope_stops_its_effects() {
+        let rt = Runtime::new();
+        let s = rt.signal(Value::number(0));
+        let runs = Rc::new(Cell::new(0));
+
+        let scope = rt.create_scope(None);
+        let s2 = s.clone();
+        let runs2 = runs.clone();
+        rt.run_in_scope(scope, || {
+            rt.effect(move || {
+                runs2.set(runs2.get() + 1);
+                let _ = s2.get();
+            });
+        });
+        assert_eq!(runs.get(), 1);
+
+        s.set(Value::number(1));
+        assert_eq!(runs.get(), 2);
+
+        rt.dispose_scope(scope);
+        s.set(Value::number(2));
+        assert_eq!(runs.get(), 2, "effect in a disposed scope no longer runs");
+    }
+
+    #[test]
+    fn disposing_a_scope_runs_cleanups_lifo() {
+        let rt = Runtime::new();
+        let order = Rc::new(RefCell::new(Vec::new()));
+
+        let scope = rt.create_scope(None);
+        let o1 = order.clone();
+        let o2 = order.clone();
+        rt.run_in_scope(scope, || {
+            rt.on_cleanup(move || o1.borrow_mut().push(1));
+            rt.on_cleanup(move || o2.borrow_mut().push(2));
+        });
+        assert!(order.borrow().is_empty());
+
+        rt.dispose_scope(scope);
+        assert_eq!(
+            *order.borrow(),
+            vec![2, 1],
+            "cleanups run last-in-first-out"
+        );
+    }
+
+    #[test]
+    fn disposing_a_parent_scope_disposes_children() {
+        let rt = Runtime::new();
+        let s = rt.signal(Value::number(0));
+        let runs = Rc::new(Cell::new(0));
+
+        let parent = rt.create_scope(None);
+        let child = rt.create_scope(Some(parent));
+        let s2 = s.clone();
+        let runs2 = runs.clone();
+        rt.run_in_scope(child, || {
+            rt.effect(move || {
+                runs2.set(runs2.get() + 1);
+                let _ = s2.get();
+            });
+        });
+        assert_eq!(runs.get(), 1);
+
+        rt.dispose_scope(parent);
+        s.set(Value::number(1));
+        assert_eq!(runs.get(), 1, "child scope is disposed with its parent");
     }
 
     #[test]

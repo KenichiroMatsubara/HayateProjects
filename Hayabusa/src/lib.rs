@@ -71,6 +71,6 @@ pub mod prelude {
     pub use crate::instantiate::{instantiate, Handler, Instance};
     pub use crate::reactive::{Memo, Runtime, Signal};
     pub use crate::sink::{ElId, ElementKind, ElementSink, Mutation, RecordingSink};
-    pub use crate::template::{HandlerId, TemplateNode};
+    pub use crate::template::{EachBlock, HandlerId, IfBlock, Template, TemplateNode};
     pub use crate::value::Value;
 }

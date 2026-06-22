@@ -34,6 +34,11 @@ pub trait ElementSink {
     fn set_text(&mut self, id: ElId, text: &str);
     /// 子を親の末尾に追加する。
     fn append_child(&mut self, parent: ElId, child: ElId);
+    /// 子を `before` の直前に挿入する。既に親に付いている子なら **move**（再生成
+    /// せず位置だけ変える）。`:each` の並べ替えで各行の Scope / 状態を保つ。
+    fn insert_before(&mut self, parent: ElId, child: ElId, before: ElId);
+    /// 要素とそのサブツリーを除去する（`:if` の unmount・`:each` の行削除）。
+    fn remove(&mut self, id: ElId);
     /// ルート要素を設定する。
     fn set_root(&mut self, id: ElId);
 }
@@ -48,10 +53,29 @@ pub struct RecordingSink {
 /// 記録された 1 件の mutation。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mutation {
-    Create { id: ElId, kind: ElementKind },
-    SetText { id: ElId, text: String },
-    AppendChild { parent: ElId, child: ElId },
-    SetRoot { id: ElId },
+    Create {
+        id: ElId,
+        kind: ElementKind,
+    },
+    SetText {
+        id: ElId,
+        text: String,
+    },
+    AppendChild {
+        parent: ElId,
+        child: ElId,
+    },
+    InsertBefore {
+        parent: ElId,
+        child: ElId,
+        before: ElId,
+    },
+    Remove {
+        id: ElId,
+    },
+    SetRoot {
+        id: ElId,
+    },
 }
 
 impl RecordingSink {
@@ -98,6 +122,18 @@ impl ElementSink for RecordingSink {
 
     fn append_child(&mut self, parent: ElId, child: ElId) {
         self.log.push(Mutation::AppendChild { parent, child });
+    }
+
+    fn insert_before(&mut self, parent: ElId, child: ElId, before: ElId) {
+        self.log.push(Mutation::InsertBefore {
+            parent,
+            child,
+            before,
+        });
+    }
+
+    fn remove(&mut self, id: ElId) {
+        self.log.push(Mutation::Remove { id });
     }
 
     fn set_root(&mut self, id: ElId) {

@@ -16,21 +16,31 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
                   （Signal / Computed / Effect）
 ```
 
-## ステータス：tracer bullet（[ADR-0006](docs/adr/0006-monorepo-crate-placement-and-hot-reload-as-reconcile.md)）
-
-最初の vertical slice として、カウンタ例を自作部品だけで通している。
-**`count` の increment 時にテキストノードだけが patch される**ことを `tests/counter.rs` で実証する。
+## ステータス
 
 | モジュール | 役割 | ADR |
 |-----------|------|-----|
-| [`reactive`](src/reactive.rs) | 自作 fine-grained コア（Signal / Memo / Effect、glitch-free、flush 合体） | 0003 |
+| [`reactive`](src/reactive.rs) | 自作 fine-grained コア（Signal / Memo / Effect、glitch-free、flush 合体）＋所有 Scope（teardown / cleanup） | 0003 |
 | [`value`](src/value.rs) | 閉じた値モデル（number / string / bool / list / record） | 0003 |
 | [`expr`](src/expr.rs) | 最小の純粋式評価器（binding は純粋式） | 0004 |
-| [`template`](src/template.rs) | 手組み Template IR | 0004 / 0006 |
+| [`template`](src/template.rs) | 手組み Template IR（要素・`:if`・`:each`） | 0004 / 0006 |
 | [`sink`](src/sink.rs) | `ElementSink` mutation サーフェス（`ElementTree` に 1:1 で写る host-ABI 線） | 0002 |
-| [`instantiate`](src/instantiate.rs) | Template IR の instantiate / bind / fine-grained patch | 0004 / 0006 |
+| [`instantiate`](src/instantiate.rs) | Template IR の instantiate / bind / 構造 reconcile | 0004 / 0006 |
 
-含めない（後続）：`.hybs` パーサ / コンパイラ、他言語 wasm ゲスト、router、Store、Resource。
+### 通っているスライス
+
+- **Slice 1（tracer bullet・ADR-0006）**：カウンタ例。**`count` increment 時にテキスト
+  ノードだけが patch される** fine-grained patch を `tests/counter.rs` で実証。
+- **Slice 2（構造 reconcile・ADR-0004）**：所有 Scope による teardown と、
+  - `:if`：条件 signal で body を mount / unmount（兄弟混在でも anchor で正しく挿入、
+    teardown で要素除去＋ブランチ Effect 破棄）
+  - `:each`（keyed-only）：同一キーの値更新は **in-place patch**、追加/削除は行 Scope の
+    生成/破棄、並べ替えは **move（再生成しない）**
+
+  を `tests/control_flow.rs` で実証。
+
+含めない（後続）：`.hybs` パーサ / コンパイラ、他言語 wasm ゲスト、コンポーネント合成
+（prop / emit）、router、Store、Resource。
 
 ### 実際の hayate-core 駆動について
 
