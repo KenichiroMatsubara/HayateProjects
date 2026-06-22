@@ -8,12 +8,32 @@ use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 use crate::element::font_fetch::FontFetchTracker;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
-use crate::element::style::StyleProp;
+use crate::element::style::{StyleProp, ViewportCondition};
 use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::inline_text;
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::element::tree::{Element, Event};
+
+/// base の `layout_style`（作者の意図）に、現ビューポートで一致する **レイアウト系**
+/// ビューポートバリアントを宣言順（後勝ち）で重ねた実効 Taffy スタイルを返す（ADR-0081）。
+///
+/// `apply_to_style` はレイアウト系プロップだけを適用しビジュアル系では何もしない（`false`
+/// を返す）ので、`display:none` / `flex-direction` / `width` などの variant がレイアウトへ
+/// 効くようになる。ビジュアル系 variant は従来どおり `resolve_effective` 側で解決する。
+pub(crate) fn effective_layout_style(
+    base: &taffy::Style,
+    variants: &[(ViewportCondition, StyleProp)],
+    viewport: (f32, f32),
+) -> taffy::Style {
+    let mut style = base.clone();
+    for (condition, prop) in variants {
+        if condition.matches(viewport.0, viewport.1) {
+            taffy_bridge::apply_to_style(&mut style, prop);
+        }
+    }
+    style
+}
 
 /// レイアウト計算とテキスト整形の状態をまとめる。`settle` 1 回で Taffy レイアウト、
 /// Parley 整形、フォント dirty 伝播、FetchFont イベント発行、レイアウトキャッシュ更新を駆動する。
