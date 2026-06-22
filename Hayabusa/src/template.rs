@@ -11,13 +11,15 @@
 //! - [`IfBlock`]：`:if`。条件式が truthy のときだけ body を mount する。
 //! - [`EachBlock`]：`:each ... by <式>`。keyed-only のリスト描画（ADR-0004）。
 
+use crate::component::ComponentSlot;
 use crate::expr::Expr;
 use crate::sink::ElementKind;
 
 /// 副作用ハンドラ（`on_click` 等）への参照。instantiate 時に渡すハンドラ列の添字。
 pub type HandlerId = usize;
 
-/// 要素の子に並べられるテンプレート断片：要素そのものか、制御フローブロック。
+/// 要素の子に並べられるテンプレート断片：要素そのものか、制御フローブロック、
+/// または子コンポーネント。
 #[derive(Clone)]
 pub enum Template {
     /// 1 つの要素ノード。
@@ -26,6 +28,8 @@ pub enum Template {
     If(IfBlock),
     /// `:each` リストブロック（keyed-only）。
     Each(EachBlock),
+    /// 子コンポーネントの出現。
+    Component(ComponentSlot),
 }
 
 impl From<TemplateNode> for Template {
@@ -43,6 +47,12 @@ impl From<IfBlock> for Template {
 impl From<EachBlock> for Template {
     fn from(block: EachBlock) -> Self {
         Template::Each(block)
+    }
+}
+
+impl From<ComponentSlot> for Template {
+    fn from(slot: ComponentSlot) -> Self {
+        Template::Component(slot)
     }
 }
 

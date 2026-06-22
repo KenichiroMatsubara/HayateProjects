@@ -35,7 +35,7 @@ fn build_counter() -> (
     let scope = Scope::new().with("count", Binding::Signal(count.clone()));
 
     let inc = count.clone();
-    let handlers: Vec<Handler> = vec![Box::new(move || {
+    let handlers: Vec<Handler> = vec![Box::new(move |_| {
         inc.update(|v| Value::number(v.as_number().unwrap() + 1.0));
     })];
 

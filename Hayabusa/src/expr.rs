@@ -30,6 +30,12 @@ impl Binding {
             Binding::Const(v) => v.clone(),
         }
     }
+
+    /// 現在値を 1 回読む（setup 時に prop 値を取り出す等に使う）。effect の外で呼ぶ
+    /// 前提で、依存追跡には依存しない。
+    pub fn current(&self) -> Value {
+        self.read()
+    }
 }
 
 /// 名前 → 束縛の評価スコープ。コンポーネントの prop・signal・`:each` の item を持つ。

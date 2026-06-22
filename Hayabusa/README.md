@@ -23,9 +23,10 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
 | [`reactive`](src/reactive.rs) | 自作 fine-grained コア（Signal / Memo / Effect、glitch-free、flush 合体）＋所有 Scope（teardown / cleanup） | 0003 |
 | [`value`](src/value.rs) | 閉じた値モデル（number / string / bool / list / record） | 0003 |
 | [`expr`](src/expr.rs) | 最小の純粋式評価器（binding は純粋式） | 0004 |
-| [`template`](src/template.rs) | 手組み Template IR（要素・`:if`・`:each`） | 0004 / 0006 |
+| [`template`](src/template.rs) | 手組み Template IR（要素・`:if`・`:each`・コンポーネント） | 0004 / 0006 |
+| [`component`](src/component.rs) | コンポーネント定義・prop / emit / lifecycle（script 代役の setup） | 0004 |
 | [`sink`](src/sink.rs) | `ElementSink` mutation サーフェス（`ElementTree` に 1:1 で写る host-ABI 線） | 0002 |
-| [`instantiate`](src/instantiate.rs) | Template IR の instantiate / bind / 構造 reconcile | 0004 / 0006 |
+| [`instantiate`](src/instantiate.rs) | Template IR の instantiate / bind / 構造 reconcile / コンポーネント mount | 0004 / 0006 |
 
 ### 通っているスライス
 
@@ -38,9 +39,16 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
     生成/破棄、並べ替えは **move（再生成しない）**
 
   を `tests/control_flow.rs` で実証。
+- **Slice 3（コンポーネント合成・ADR-0004）**：ランタイム上のコンポーネントインスタンス。
+  - prop：親スコープの式 → 子の入力（Memo）への配線。親 signal 変化が子を fine-grained patch
+  - emit：子イベント → 親ハンドラへのルーティング（payload 付き）
+  - インスタンス隔離：各インスタンスが独立した signal Scope を持つ
+  - lifecycle：`on_mount` / `on_destroy`（`:if` / `:each` の teardown に乗る）
 
-含めない（後続）：`.hybs` パーサ / コンパイラ、他言語 wasm ゲスト、コンポーネント合成
-（prop / emit）、router、Store、Resource。
+  を `tests/component.rs` で実証。
+
+含めない（後続）：`.hybs` パーサ / コンパイラ、他言語 wasm ゲスト、router、Store、Resource、
+`HayateSink`（実 ElementTree 駆動）。
 
 ### 実際の hayate-core 駆動について
 

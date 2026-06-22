@@ -40,9 +40,10 @@
 //! let scope = Scope::new().with("count", Binding::Signal(count.clone()));
 //!
 //! // increment ハンドラ（副作用の本体・script の代役）。signal を触るだけ。
+//! // ハンドラは payload（click では未使用）を 1 つ受け取る。
 //! let inc = count.clone();
 //! let handlers: Vec<Handler> =
-//!     vec![Box::new(move || inc.update(|v| Value::number(v.as_number().unwrap() + 1.0)))];
+//!     vec![Box::new(move |_| inc.update(|v| Value::number(v.as_number().unwrap() + 1.0)))];
 //!
 //! let sink = Rc::new(RefCell::new(RecordingSink::new()));
 //! let app = instantiate(&rt, &template, &scope, handlers, sink.clone());
@@ -58,6 +59,7 @@
 //! assert_eq!(sink.borrow().text_mutations(), vec![(ElId(1), "1".to_string())]);
 //! ```
 
+pub mod component;
 pub mod expr;
 pub mod instantiate;
 pub mod reactive;
@@ -67,9 +69,10 @@ pub mod value;
 
 /// よく使う型をまとめて取り込むための prelude。
 pub mod prelude {
+    pub use crate::component::{Component, ComponentSlot, ComponentView, Emit, Handler, SetupCx};
     pub use crate::expr::{BinOp, Binding, Expr, Scope};
-    pub use crate::instantiate::{instantiate, Handler, Instance};
-    pub use crate::reactive::{Memo, Runtime, Signal};
+    pub use crate::instantiate::{instantiate, Instance};
+    pub use crate::reactive::{Memo, Runtime, ScopeId, Signal};
     pub use crate::sink::{ElId, ElementKind, ElementSink, Mutation, RecordingSink};
     pub use crate::template::{EachBlock, HandlerId, IfBlock, Template, TemplateNode};
     pub use crate::value::Value;
