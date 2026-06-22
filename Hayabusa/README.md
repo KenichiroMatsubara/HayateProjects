@@ -55,6 +55,9 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
 含めない（後続）：`<template>` マークアップのパーサ＋`.hybs` 全体のコンパイラ、他言語
 wasm ゲスト、router、Store、Resource、`HayateSink`（実 ElementTree 駆動）。
 
+> デモアプリ到達のために決める必要がある未決 ADR 論点は
+> [`docs/pending-decisions.md`](docs/pending-decisions.md) に記録している。
+
 ### 実際の hayate-core 駆動について
 
 `ElementSink` は `hayate_core::ElementTree` の対応 API（`element_create` /
