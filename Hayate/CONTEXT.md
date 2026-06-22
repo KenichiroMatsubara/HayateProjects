@@ -86,8 +86,16 @@ _Avoid_: 場当たり的な文字列エラー
 ## Runtime Boundaries
 
 **Platform Adapter**:
-IME、入力、surface、クリップボード、アクセシビリティなどのプラットフォーム依存処理を担う層。Hayate Core はその実装詳細を知らない。ネイティブプラットフォームが自動で提供するイベント（Web の DOM pointer/wheel/resize/touch 等）は host 側 glue を介さず Platform Adapter 自身が購読・変換まで完結させる（ADR-0080）。host/app からのプログラマティック操作はオプトインの追加経路として共存する。
-_Avoid_: Renderer, Host, host 側 glue コードでの DOM イベント購読を前提とした説明
+単一プラットフォーム（web / android / ios / 将来の macos 等）の **leaf** 層。surface 生成 glue・raw event 配線・`ImeBridge` 実装・`Capability` の platform 実装といった**完全に platform 固有な glue だけ**を持つ。platform-free な共通ロジック（後述）は Core 所有、family 統一 capability は Family Adapter 所有。ネイティブが自動供給するイベント（Web の DOM pointer/wheel/resize/touch 等）は host 側 glue を介さず Platform Adapter 自身が購読・変換する（ADR-0080）。アダプタ間で windowing/event-loop glue は共有しない（ADR-0087/0114）。
+_Avoid_: Renderer, Host, host 側 glue コードでの DOM イベント購読を前提とした説明、platform-free ロジックや family capability を leaf に持たせる説明、web/mobile/desktop を leaf と同列に並べる説明
+
+**Family Adapter**:
+複数の leaf を束ねる中間層（`mobile` = android + ios / `desktop` = macos + windows + linux）。存在理由は **family 内で統一できる platform-bound capability（audio 等）を単一 facade で上位へ供給する**こと。ビルド時 `cfg(target_os)` で片方の leaf 実装をリンクする facade であり、ランタイム dispatch ではない。capability の**契約（trait）は Core 定義**で、Family Adapter は実装の束ねと family facade のみ持つ。`web` は単一 platform（family of 1）なので Family Adapter を持たず leaf が直接置かれる。
+_Avoid_: Flutter platform channel / RN bridge 的なランタイム機構、family adapter が capability 契約の正本を持つ説明、family adapter に windowing/surface を持たせる説明、web に親 family を作る説明
+
+**Capability**:
+各 OS のネイティブ API 呼び出しが**必須**な機能（audio / clipboard / notification / haptics 等）。共通度で三段階に分類する — 全 platform 共通（`platform/common/`）・family 共通（`platform/mobile/`・`platform/desktop/`）・leaf 固有。**契約（trait）は常に Core が所有**（`ImeBridge`/`Surface`/`FontFetcher` と同型・ADR-0068/0069）、実装は leaf。共通 API への昇格は原則 2 実装が揃ってから（ADR-0068 の投機 seam 戒め）だが、Flutter/RN の prior art で variation が確定済みかつ ADR-0012 で確定ターゲットの desktop 枠は前払い可。
+_Avoid_: platform-free な共通ロジック（touch gesture / surface 状態機械 / IME 増分 = Core 所有）と混同する説明、capability 契約を adapter 側に置く説明
 
 **Tsubame Adapter**:
 `tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持したまま、レンダリング先だけを `Renderer Protocol` に向け替える。
