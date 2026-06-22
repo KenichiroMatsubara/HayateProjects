@@ -1,28 +1,30 @@
-//! Android GameTextInput → `hayate-core` の IME 変換（ADR-0094）。
+//! ソフトキーボード/IME の *絶対状態* → `EditState` 編集呼び出しの差分変換（ADR-0094）。
 //!
-//! GameActivity の GameTextInput はテキスト入力を *絶対状態*（全バッファ＋任意の
-//! composing(preedit) 領域）として報告する。`hayate-core` が公開する離散的な
-//! 構成デルタ（`on_composition_*`）ではない。本モジュールは連続する状態を差分し、
-//! コアの「確定 `text_content` ＋末尾 `preedit`」モデル（`EditState`、ADR-0069）に
-//! 合わせて最小のコア編集呼び出しに変換する。`touch_input` と同様に
-//! `android-activity`/`ndk` 型に依存しないため、変換とツリーへの適用を NDK 無しで
-//! ホストテストできる。`app.rs` がプラットフォーム状態を読む薄いグルー。
+//! 一部のプラットフォーム IME（Android GameActivity の GameTextInput 等）はテキスト
+//! 入力を *絶対状態*（全バッファ＋任意の composing(preedit) 領域）として報告し、
+//! `hayate-core` が公開する離散的な構成デルタ（`on_composition_*`）ではない。本モジュール
+//! は連続する絶対状態を差分し、コアの「確定 `text_content` ＋末尾 `preedit`」モデル
+//! （[`super::edit_state::EditState`]、ADR-0069）に合わせて最小のコア編集呼び出し
+//! （[`ImeAction`]）へ変換する。
+//!
+//! 変換はプラットフォーム非依存の純粋関数で、各アダプタはこのモジュールの型へ自身の
+//! プラットフォーム IME 状態をマップするだけでよい（Android は android-activity の
+//! `TextInputState`/`TextSpan`、将来の Web/iOS は各々の composition イベント）。
+//! これにより差分・適用ロジックを一度だけ実装・テストし、全アダプタで共有する。
 
-#[cfg(any(target_os = "android", test))]
-use hayate_core::{ElementId, ElementTree};
+use super::tree::ElementTree;
+use super::id::ElementId;
 
-/// 報告テキストへのバイトオフセット範囲。android-activity の `TextSpan` に対応し、
-/// オフセットは [`TextInputState::text`] への UTF-8 バイトインデックス。
-#[cfg(any(target_os = "android", test))]
+/// 報告テキストへのバイトオフセット範囲。オフセットは [`TextInputState::text`] への
+/// UTF-8 バイトインデックス（android-activity の `TextSpan` 等に対応）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextSpan {
     pub start: usize,
     pub end: usize,
 }
 
-/// ソフトキーボードの絶対テキスト状態。android-activity の `TextInputState` に
-/// 対応（selection は省略。コアは末尾キャレットのみ追跡する）。
-#[cfg(any(target_os = "android", test))]
+/// ソフトキーボード/IME の絶対テキスト状態。selection は省略（コアは末尾キャレットのみ
+/// 追跡する）。android-activity の `TextInputState` 等に対応。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TextInputState {
     pub text: String,
@@ -31,7 +33,6 @@ pub struct TextInputState {
 }
 
 /// フォーカス中の TextInput に適用するコア編集呼び出し。
-#[cfg(any(target_os = "android", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImeAction {
     /// 確定内容（composing 領域外のテキスト）を置換する。preedit も消す
@@ -45,7 +46,6 @@ pub enum ImeAction {
 /// 絶対状態を (確定テキスト, preedit) に分割する。確定テキストは composing 領域外
 /// すべて、preedit は composing 部分文字列。compose 領域が無い、または不正
 /// （範囲外 / 非 char 境界）なら「構成なし」として扱う。
-#[cfg(any(target_os = "android", test))]
 fn decompose(state: &TextInputState) -> (String, String) {
     if let Some(span) = state.compose_region {
         let len = state.text.len();
@@ -64,8 +64,7 @@ fn decompose(state: &TextInputState) -> (String, String) {
     (state.text.clone(), String::new())
 }
 
-/// 2 つの GameTextInput 状態を差分し、最小のコア編集呼び出しにする。
-#[cfg(any(target_os = "android", test))]
+/// 2 つの絶対 IME 状態を差分し、最小のコア編集呼び出しにする。
 pub fn translate_text_input(prev: &TextInputState, next: &TextInputState) -> Vec<ImeAction> {
     let (prev_committed, prev_preedit) = decompose(prev);
     let (committed, preedit) = decompose(next);
@@ -85,7 +84,6 @@ pub fn translate_text_input(prev: &TextInputState, next: &TextInputState) -> Vec
 
 /// 変換済みアクション 1 つをフォーカス中の TextInput に適用する。TextInput 以外の
 /// ターゲットでは no-op（コアのセッターが要素の編集状態でガードする）。
-#[cfg(any(target_os = "android", test))]
 pub fn apply_ime_action(tree: &mut ElementTree, target: ElementId, action: &ImeAction) {
     match action {
         ImeAction::SetText(text) => tree.element_set_text_content(target, text),
@@ -96,7 +94,7 @@ pub fn apply_ime_action(tree: &mut ElementTree, target: ElementId, action: &ImeA
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::ElementKind;
+    use crate::element::kind::ElementKind;
 
     fn composing(text: &str, start: usize, end: usize) -> TextInputState {
         TextInputState {
@@ -171,7 +169,7 @@ mod tests {
     }
 
     // コアに対するエンドツーエンド: 日本語の構成＋確定で、TextInput の display_text が
-    // GameTextInput の報告バッファと一致すること。
+    // 報告バッファと一致すること。
     #[test]
     fn translation_drives_core_display_text_through_a_composition() {
         let mut tree = ElementTree::new();

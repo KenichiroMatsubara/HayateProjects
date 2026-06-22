@@ -24,7 +24,7 @@ use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{init_gpu_surface, process_touch_input, sync_ime, GpuSurface};
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
-use crate::ime_input::TextInputState;
+use hayate_core::element::ime_reconcile::TextInputState;
 use crate::surface_lifecycle::{
     viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
 };

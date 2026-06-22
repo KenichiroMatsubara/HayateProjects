@@ -17,7 +17,9 @@ use wgpu::util::TextureBlitter;
 use hayate_core::ElementId;
 
 use crate::ime_bridge::AndroidImeBridge;
-use crate::ime_input::{apply_ime_action, translate_text_input, TextInputState, TextSpan};
+use hayate_core::element::ime_reconcile::{
+    apply_ime_action, translate_text_input, TextInputState, TextSpan,
+};
 use crate::scene_demo::build_demo_tree;
 use crate::surface_lifecycle::{
     viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
@@ -157,7 +159,7 @@ pub fn android_main(app: AndroidApp) {
 /// テキスト入力だけ。生のフォーカスでキーボードを起こすと全タップで上がって
 /// しまうため、判定を core に押し込むことで web アダプタと修正を共有する。
 /// ここに残るのはフォーカス中入力に対する生 GameTextInput バッファの変換のみで、
-/// diff/apply ロジックはホストでテスト可能な [`crate::ime_input`] にある。
+/// diff/apply ロジックは core 所有の [`hayate_core::element::ime_reconcile`] にある。
 /// このラッパーは `android-activity` のテキスト入力 API への薄いグルー。
 pub(crate) fn sync_ime(
     app: &AndroidApp,
