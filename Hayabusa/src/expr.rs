@@ -115,6 +115,12 @@ impl Expr {
         Expr::Binary(op, Box::new(lhs), Box::new(rhs))
     }
 
+    /// 式テキストを解析して [`Expr`] にする（ADR-0004 の DSL フロントエンド）。
+    /// 例：`Expr::parse("count + 1")`、`Expr::parse("item.label")`。
+    pub fn parse(input: &str) -> Result<Expr, crate::parse::ParseError> {
+        crate::parse::parse_expr(input)
+    }
+
     /// スコープ上で式を評価する。`Signal` / `Memo` を読むと依存が追跡される。
     pub fn eval(&self, scope: &Scope) -> Value {
         match self {

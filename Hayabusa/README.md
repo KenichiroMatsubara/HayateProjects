@@ -22,7 +22,8 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
 |-----------|------|-----|
 | [`reactive`](src/reactive.rs) | 自作 fine-grained コア（Signal / Memo / Effect、glitch-free、flush 合体）＋所有 Scope（teardown / cleanup） | 0003 |
 | [`value`](src/value.rs) | 閉じた値モデル（number / string / bool / list / record） | 0003 |
-| [`expr`](src/expr.rs) | 最小の純粋式評価器（binding は純粋式） | 0004 |
+| [`expr`](src/expr.rs) | 純粋式の AST と評価器（binding は純粋式） | 0004 |
+| [`parse`](src/parse.rs) | 純粋式 DSL のパーサ（テキスト → `Expr`） | 0004 |
 | [`template`](src/template.rs) | 手組み Template IR（要素・`:if`・`:each`・コンポーネント） | 0004 / 0006 |
 | [`component`](src/component.rs) | コンポーネント定義・prop / emit / lifecycle（script 代役の setup） | 0004 |
 | [`sink`](src/sink.rs) | `ElementSink` mutation サーフェス（`ElementTree` に 1:1 で写る host-ABI 線） | 0002 |
@@ -46,9 +47,13 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
   - lifecycle：`on_mount` / `on_destroy`（`:if` / `:each` の teardown に乗る）
 
   を `tests/component.rs` で実証。
+- **Slice 4（式 DSL パーサ・ADR-0004）**：`.hybs` の束縛・`:if` 条件・`:each` key 式の
+  フロントエンド。`Expr::parse("count + 1")` / `"item.label"` / `"n > 3 && !done"` を
+  字句解析＋優先順位付きで `Expr` に落とす。`tests/parse_integration.rs` でパース済み式が
+  binding / `:if` / `:each` を駆動することを実証。
 
-含めない（後続）：`.hybs` パーサ / コンパイラ、他言語 wasm ゲスト、router、Store、Resource、
-`HayateSink`（実 ElementTree 駆動）。
+含めない（後続）：`<template>` マークアップのパーサ＋`.hybs` 全体のコンパイラ、他言語
+wasm ゲスト、router、Store、Resource、`HayateSink`（実 ElementTree 駆動）。
 
 ### 実際の hayate-core 駆動について
 

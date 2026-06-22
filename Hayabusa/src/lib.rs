@@ -62,6 +62,7 @@
 pub mod component;
 pub mod expr;
 pub mod instantiate;
+pub mod parse;
 pub mod reactive;
 pub mod sink;
 pub mod template;
@@ -72,6 +73,7 @@ pub mod prelude {
     pub use crate::component::{Component, ComponentSlot, ComponentView, Emit, Handler, SetupCx};
     pub use crate::expr::{BinOp, Binding, Expr, Scope};
     pub use crate::instantiate::{instantiate, Instance};
+    pub use crate::parse::{parse_expr, ParseError};
     pub use crate::reactive::{Memo, Runtime, ScopeId, Signal};
     pub use crate::sink::{ElId, ElementKind, ElementSink, Mutation, RecordingSink};
     pub use crate::template::{EachBlock, HandlerId, IfBlock, Template, TemplateNode};
