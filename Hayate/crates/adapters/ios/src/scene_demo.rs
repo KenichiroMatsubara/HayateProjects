@@ -1,4 +1,4 @@
-//! 実機確認用の最小の操作可能な要素ツリー（ADR-0113）。
+//! 実機確認用の最小の操作可能な要素ツリー（ADR-0114）。
 //!
 //! ビューポート中央のボタンは押下中に `:active` 背景が反転し、タップで
 //! `ElementTree -> SceneGraph -> Vello(Metal)` パイプとタッチ配線がエンドツーエンドで
@@ -33,7 +33,7 @@ pub const BUTTON_ACTIVE: Color = Color::new(0.92, 0.35, 0.16, 1.0);
 
 /// デモツリーを構築する。ビューポート全体の flex column で、押下中に色が反転する
 /// ボタンと、ソフトキーボードを受ける IME ブリッジ用の text-input を中央に配置する
-/// （ADR-0113）。
+/// （ADR-0114）。
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 pub fn build_demo_tree() -> ElementTree {
     let mut tree = ElementTree::new();

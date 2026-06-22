@@ -1,6 +1,6 @@
 import UIKit
 
-/// Thin UIWindowSceneDelegate host (ADR-0113 / ADR-0114).
+/// Thin UIWindowSceneDelegate host (ADR-0114 / ADR-0115).
 ///
 /// Folds the UIScene lifecycle into the four logical surface-lifecycle events the Rust
 /// `surface_lifecycle` state machine consumes (InitWindow / TerminateWindow /

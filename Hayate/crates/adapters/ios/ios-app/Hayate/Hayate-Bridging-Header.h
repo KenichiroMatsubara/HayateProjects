@@ -1,4 +1,4 @@
-// Rust → Swift FFI for the hayate-adapter-ios staticlib (ADR-0113).
+// Rust → Swift FFI for the hayate-adapter-ios staticlib (ADR-0114).
 //
 // These symbols are implemented in Rust (`src/app.rs`, `#[no_mangle] extern "C"`) and
 // linked into the app from `libhayate_adapter_ios.a`. The reverse direction (Swift →

@@ -1,4 +1,4 @@
-//! iOS パッケージング契約のホスト側検証（ADR-0114）。
+//! iOS パッケージング契約のホスト側検証（ADR-0115）。
 //!
 //! Rust サンドボックス（および非 Mac CI）では Xcode/xcodebuild を実行できないため、
 //! ソースファイルを読んで Xcode + cargo staticlib のパッケージング契約を固定する。
@@ -32,7 +32,7 @@ fn cargo_toml_declares_staticlib_for_the_app() {
 
 #[test]
 fn swift_host_owns_uikit_and_the_metal_layer() {
-    // ADR-0113 shape 1: UIKit / UITextInput は薄い Swift ホストが束ね、Rust は ObjC-free。
+    // ADR-0114 shape 1: UIKit / UITextInput は薄い Swift ホストが束ね、Rust は ObjC-free。
     // よって CAMetalLayer の所有とテキスト入力は HayateView.swift 側にある。
     let view = read_relative("ios-app/Hayate/HayateView.swift");
     assert!(
@@ -64,7 +64,7 @@ fn info_plist_pins_bundle_id() {
     let plist = read_relative("ios-app/Hayate/Info.plist");
     assert!(
         plist.contains(BUNDLE_ID),
-        "Info.plist must declare the bundle id (single source of truth, ADR-0114)"
+        "Info.plist must declare the bundle id (single source of truth, ADR-0115)"
     );
 }
 

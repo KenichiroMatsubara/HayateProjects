@@ -1,4 +1,4 @@
-//! iOS プラットフォームアダプタ（ADR-0113）。
+//! iOS プラットフォームアダプタ（ADR-0114）。
 //!
 //! `hayate-core` + `hayate-scene-renderer-vello` を iOS 上で動かし、デモボタン
 //! （`scene_demo`）を `SceneGraph` に降ろして CADisplayLink ごとに Metal へ描画する。

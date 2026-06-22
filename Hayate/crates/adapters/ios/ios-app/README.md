@@ -1,9 +1,9 @@
 # hayate-adapter-ios — Xcode app skeleton
 
 Thin Swift host that links the `hayate_adapter_ios` staticlib and drives Hayate on iOS
-(ADR-0113 / ADR-0114). This is **groundwork**: the host-testable Rust seams are verified by
+(ADR-0114 / ADR-0115). This is **groundwork**: the host-testable Rust seams are verified by
 `cargo test -p hayate-adapter-ios` on any machine, but building/running this app needs a
-**Mac with Xcode** (the verification gap recorded in ADR-0113, mirroring Android's #195).
+**Mac with Xcode** (the verification gap recorded in ADR-0114, mirroring Android's #195).
 
 ## Layout
 

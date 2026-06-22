@@ -1,4 +1,4 @@
-//! iOS タッチ入力の変換（ADR-0113）。
+//! iOS タッチ入力の変換（ADR-0114）。
 //!
 //! UIKit は `touchesBegan/Moved/Ended/Cancelled` で `UITouch` を届ける。本モジュールは
 //! 単一ポインタの `UITouch.phase` + ビュー座標（points）を、座標ベースの `hayate-core`

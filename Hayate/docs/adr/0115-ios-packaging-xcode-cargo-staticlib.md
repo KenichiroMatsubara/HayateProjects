@@ -6,7 +6,7 @@
 
 ## Context
 
-ADR-0113 made iOS the second native Platform Adapter with a thin Swift host that links a
+ADR-0114 made iOS the second native Platform Adapter with a thin Swift host that links a
 Rust staticlib. ADR-0094 settled Android's packaging as a Gradle project that builds the
 Rust cdylib into the APK, with the Gradle/Manifest files as the single source of truth and
 host-readable contract tests (`tests/apk_packaging.rs`) standing in for the SDK-less
@@ -40,7 +40,7 @@ Options considered:
   (`UIRequiredDeviceCapabilities` → `metal`) — the iOS analogue of Android's
   `android.hardware.vulkan.level`.
 - **Hand-written Swift is kept thin**: `AppDelegate`/`SceneDelegate`/`HayateView` only host
-  the view and relay lifecycle/touch/IME to Rust (ADR-0113); a bridging header declares the
+  the view and relay lifecycle/touch/IME to Rust (ADR-0114); a bridging header declares the
   `hayate_ios_*` FFI.
 - **The packaging contract is pinned by `tests/ios_packaging.rs`** (reads the source files,
   no Mac needed): staticlib crate-type, the Swift host owning the `CAMetalLayer`/UITextInput,
@@ -63,5 +63,5 @@ Options considered:
   Xcode. It is committed so the contract is reviewable, but the real build needs a Mac.
 - The Rust sandbox has no Xcode/SDK/linker, so the Xcode build, the Swift host, and a device
   run are validated on a local Mac/simulator/device — the verification gap noted in
-  ADR-0113/0087/0094 (issue analogous to #195).
+  ADR-0114/0087/0094 (issue analogous to #195).
 - `IPHONEOS_DEPLOYMENT_TARGET` (currently 13.0) is a packaging choice to confirm on device.

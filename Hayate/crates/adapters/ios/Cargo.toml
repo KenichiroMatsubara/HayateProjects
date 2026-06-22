@@ -3,7 +3,7 @@ name = "hayate-adapter-ios"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "iOS Platform Adapter for Hayate (ADR-0113 / ADR-0114, objc2/UIKit/Metal + Xcode)"
+description = "iOS Platform Adapter for Hayate (ADR-0114 / ADR-0115, objc2/UIKit/Metal + Xcode)"
 repository.workspace = true
 
 [lib]
@@ -13,7 +13,7 @@ repository.workspace = true
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-# UIKit/UITextInput is bound from the thin Swift host (ADR-0113, shape 1), not from
+# UIKit/UITextInput is bound from the thin Swift host (ADR-0114, shape 1), not from
 # Rust, so this crate needs no objc2/raw-window-metal: Swift owns the CAMetalLayer and
 # hands its pointer to Rust, which builds the wgpu Metal surface via
 # `SurfaceTargetUnsafe::CoreAnimationLayer`. That keeps the Rust adapter free of any

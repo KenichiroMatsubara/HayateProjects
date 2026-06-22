@@ -1,6 +1,6 @@
 // !$*UTF8*$!
 //
-// Xcode project for the hayate-adapter-ios demo app (ADR-0114).
+// Xcode project for the hayate-adapter-ios demo app (ADR-0115).
 //
 // Packaging contract (pinned by `tests/ios_packaging.rs`):
 //   * links the cargo staticlib `libhayate_adapter_ios.a` into the app binary
@@ -9,7 +9,7 @@
 //
 // This is a hand-authored skeleton so the contract is reviewable without a Mac. Open and
 // re-save in Xcode to normalise; the SDK/linker are required only for a real build/run
-// (the verification gap recorded in ADR-0113, mirroring Android's ADR-0094/#195).
+// (the verification gap recorded in ADR-0114, mirroring Android's ADR-0094/#195).
 {
 	archiveVersion = 1;
 	classes = {

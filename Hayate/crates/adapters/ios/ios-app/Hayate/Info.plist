@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- iOS パッケージング契約の単一ソース（ADR-0114）。bundle id / Metal 要求 /
+<!-- iOS パッケージング契約の単一ソース（ADR-0115）。bundle id / Metal 要求 /
      UIScene マニフェストはここが正本で、`tests/ios_packaging.rs` が固定する。 -->
 <plist version="1.0">
 <dict>
@@ -25,7 +25,7 @@
     <key>LSRequiresIPhoneOS</key>
     <true/>
 
-    <!-- wgpu renders via Metal on iOS (ADR-0002 / ADR-0114). Require the metal
+    <!-- wgpu renders via Metal on iOS (ADR-0002 / ADR-0115). Require the metal
          capability — the iOS analogue of Android's android.hardware.vulkan.level. -->
     <key>UIRequiredDeviceCapabilities</key>
     <array>

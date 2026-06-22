@@ -1,7 +1,7 @@
 import UIKit
 import QuartzCore
 
-/// The native host view for `hayate-adapter-ios` (ADR-0113).
+/// The native host view for `hayate-adapter-ios` (ADR-0114).
 ///
 /// Owns the `CAMetalLayer` (wgpu's Metal surface), a `CADisplayLink` (the vsync frame
 /// loop), and forwards UIScene lifecycle, `UITouch`, and keyboard input to the Rust

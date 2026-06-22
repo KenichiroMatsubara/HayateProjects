@@ -1,4 +1,4 @@
-//! 描画 + タッチ + IME ループの iOS グルー（ADR-0113）。
+//! 描画 + タッチ + IME ループの iOS グルー（ADR-0114）。
 //!
 //! Android の `app.rs` に対応する薄いプラットフォーム配線。ただし iOS ではイベントループ
 //! を Rust が回さず、Swift ホスト（`HayateView`）が UIScene ライフサイクル・`UITouch`・

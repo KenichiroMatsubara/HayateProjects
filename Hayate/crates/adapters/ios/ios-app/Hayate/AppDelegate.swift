@@ -1,6 +1,6 @@
 import UIKit
 
-/// Thin UIApplicationDelegate host for the `hayate-adapter-ios` demo (ADR-0114).
+/// Thin UIApplicationDelegate host for the `hayate-adapter-ios` demo (ADR-0115).
 ///
 /// All application logic lives in Rust: the `hayate_adapter_ios` staticlib is linked
 /// into this app binary, and the `HayateView` drives the frame loop / touch / IME via

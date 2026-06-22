@@ -1,4 +1,4 @@
-//! 強制ガード（ADR-0069 / ADR-0113）: プラットフォームのソフトキーボード制御 FFI
+//! 強制ガード（ADR-0069 / ADR-0114）: プラットフォームのソフトキーボード制御 FFI
 //! `hayate_ios_set_keyboard_visible`（Swift ホストが `becomeFirstResponder` /
 //! `resignFirstResponder` に写す）は IME ブリッジモジュール内にのみ現れてよい。
 //! ソフトキーボードの表示可否は core（`ElementTree::drive_ime`）が一度だけ決定し

@@ -64,7 +64,7 @@ is created, without a Mac/iOS SDK available here.
   support it). Layout/hit-test run in logical points and `UITouch` reports points, so the
   pointer/viewport spaces stay aligned; only the GPU surface works in pixels.
 - This is a parallel track alongside ADR-0051 (Tsubame-first); the Tsubame JS path on iOS
-  is policy-only this round (ADR-0115).
+  is policy-only this round (ADR-0116).
 
 ## Consequences
 

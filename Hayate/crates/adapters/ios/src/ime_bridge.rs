@@ -1,4 +1,4 @@
-//! [`ImeBridge`] シームの iOS ソフトキーボード側（ADR-0069 / ADR-0113）。
+//! [`ImeBridge`] シームの iOS ソフトキーボード側（ADR-0069 / ADR-0114）。
 //!
 //! このモジュールは core が
 //! [`ElementTree::drive_ime`](hayate_core::ElementTree::drive_ime) で算出する

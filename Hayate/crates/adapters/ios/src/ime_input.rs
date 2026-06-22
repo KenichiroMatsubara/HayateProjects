@@ -1,4 +1,4 @@
-//! iOS UITextInput → `hayate-core` の IME 変換（ADR-0113）。
+//! iOS UITextInput → `hayate-core` の IME 変換（ADR-0114）。
 //!
 //! ここが Android アダプタとの唯一の本質的な相違点。**Android GameTextInput** は入力を
 //! *絶対状態*（全バッファ + 任意の composing 領域）として報告し、アダプタが連続状態を
@@ -8,26 +8,21 @@
 //! なく、アダプタ側がバッファの真実を保持する。
 //!
 //! そこで、出力側（`ImeAction` / `apply_ime_action`、コアの「確定 text_content + 末尾
-//! preedit」モデル ADR-0069 への 1:1 写像）は `hayate-adapter-android` から逐語再利用しつつ、
-//! 入力側は増分コマンドを小さなローカルバッファ（[`ImeBuffer`]）に畳んで最小のコア編集
-//! 呼び出しに変換する新実装にする。`touch_input` / `surface_lifecycle` と同様 objc2/UIKit
-//! 型に依存しない純粋関数なので、変換とツリーへの適用を Mac/SDK 無しでホストテストできる。
-//! グルー（`app.rs`）が UITextInput コールバックを [`ImeCommand`] に写す薄い層を担う。
+//! preedit」モデル ADR-0069 への 1:1 写像）は **Core 所有の `ime_reconcile` を再利用**する
+//! （main の C4 で IME 変換は Core 所有になった）。入力側は増分コマンドを小さなローカル
+//! バッファ（[`ImeBuffer`]）に畳んで最小のコア編集呼び出しに変換する iOS 固有の実装にする。
+//! Core の `ime_reconcile` は絶対状態（Android GameTextInput）モデルのみで、UITextInput の
+//! 増分経路を持たないため、この入力半分はこのアダプタに残す（将来 `apply_command` 自体も
+//! Core へ寄せるのは「Core 所有」方針の続きで、別ブランチの再構築で扱う）。`touch_input` /
+//! `surface_lifecycle` と同様 objc2/UIKit 型に依存しない純粋関数なので、変換とツリーへの
+//! 適用を Mac/SDK 無しでホストテストできる。グルー（`app.rs`）が UITextInput コールバックを
+//! [`ImeCommand`] に写す薄い層を担う。
 
+// 出力半分は Core 所有の ime_reconcile を再利用する（`hayate-adapter-android` の app.rs と
+// 同じ import 元）。iOS 固有の増分入力モデル（ImeCommand / ImeBuffer / apply_command）だけが
+// このアダプタに残る。
 #[cfg(any(target_os = "ios", test))]
-use hayate_core::{ElementId, ElementTree};
-
-/// フォーカス中の TextInput に適用するコア編集呼び出し（Android アダプタと同一定義）。
-#[cfg(any(target_os = "ios", test))]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ImeAction {
-    /// 確定内容（marked/composing 領域外のテキスト）を置換する。preedit も消す
-    /// `ElementTree::element_set_text_content` に対応。
-    SetText(String),
-    /// アクティブな preedit（marked text）を置換する。空なら消す。
-    /// `ElementTree::element_set_preedit` に対応。
-    SetPreedit(String),
-}
+pub use hayate_core::element::ime_reconcile::{apply_ime_action, ImeAction};
 
 /// UITextInput が push する増分コマンド。`objc2`/UIKit 型に依存せず UIKit の
 /// テキスト入力コールバックを写す。`selectedRange` は省略（コアは末尾キャレットのみ
@@ -117,20 +112,10 @@ fn pop_last_char(s: &mut String) {
     }
 }
 
-/// 変換済みアクション 1 つをフォーカス中の TextInput に適用する（Android アダプタと同一）。
-/// TextInput 以外のターゲットでは no-op（コアのセッターが要素の編集状態でガードする）。
-#[cfg(any(target_os = "ios", test))]
-pub fn apply_ime_action(tree: &mut ElementTree, target: ElementId, action: &ImeAction) {
-    match action {
-        ImeAction::SetText(text) => tree.element_set_text_content(target, text),
-        ImeAction::SetPreedit(preedit) => tree.element_set_preedit(target, preedit),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::ElementKind;
+    use hayate_core::{ElementId, ElementKind, ElementTree};
 
     fn run(buf: &mut ImeBuffer, cmds: impl IntoIterator<Item = ImeCommand>) -> Vec<ImeAction> {
         cmds.into_iter()

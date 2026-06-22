@@ -8,7 +8,7 @@
 
 ADR-0112 (Draft) embeds Hermes in the Android adapter and drives Tsubame JS over JSI, with
 the apply path (`apply_mutations_batch`) shared with Web once the proto codegen is
-neutralised (ADR-0055). ADR-0113/0114 brought up the iOS adapter's native render/touch/IME
+neutralised (ADR-0055). ADR-0114/0114 brought up the iOS adapter's native render/touch/IME
 groundwork but explicitly left the Tsubame JS path to policy only — no code this round.
 
 When iOS runs Tsubame JS (`tsubame-solid` + `@tsubame/renderer-canvas` + the Todo example)
@@ -55,7 +55,7 @@ Engine options for iOS:
 
 - One JS engine / JSI host / apply path across both native platforms; iOS reuses Android's
   bridge instead of inventing a second integration.
-- Decision is captured now so the iOS groundwork (ADR-0113/0114) has a known JS direction,
+- Decision is captured now so the iOS groundwork (ADR-0114/0114) has a known JS direction,
   without committing code while Android's path is still Draft.
 
 ### Negative
