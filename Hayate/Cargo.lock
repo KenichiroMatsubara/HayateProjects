@@ -734,6 +734,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-adapter-ios"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+ "hayate-scene-renderer-vello",
+ "log",
+ "pollster",
+ "wgpu",
+]
+
+[[package]]
 name = "hayate-adapter-web"
 version = "0.1.0"
 dependencies = [

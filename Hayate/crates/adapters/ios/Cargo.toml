@@ -1,0 +1,27 @@
+[package]
+name = "hayate-adapter-ios"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "iOS Platform Adapter for Hayate (ADR-0114 / ADR-0115, objc2/UIKit/Metal + Xcode)"
+repository.workspace = true
+
+[lib]
+# staticlib is linked into the iOS app binary by Xcode (no dlopen, unlike Android's
+# cdylib); rlib lets the host-testable seams (surface_lifecycle / touch_input /
+# ime_input / scene_demo) run under `cargo test` on the dev machine.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# UIKit/UITextInput is bound from the thin Swift host (ADR-0114, shape 1), not from
+# Rust, so this crate needs no objc2/raw-window-metal: Swift owns the CAMetalLayer and
+# hands its pointer to Rust, which builds the wgpu Metal surface via
+# `SurfaceTargetUnsafe::CoreAnimationLayer`. That keeps the Rust adapter free of any
+# Apple-only crates (mirroring how `hayate-core` stays platform-agnostic) and avoids the
+# objc2/raw-window-metal ⇄ wgpu version-alignment risk. wgpu provides the Metal backend
+# on the iOS target out of the box.
+hayate-core = { path = "../../core" }
+hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
+wgpu = { workspace = true }
+log.workspace = true
+pollster.workspace = true
