@@ -21,10 +21,6 @@ mod touch_input;
 // apply_mutations を、Web と共有の中立 dispatch 経由で ElementTree に適用する。
 // 既定 OFF（非破壊）。プラットフォーム非依存なのでホストでもコンパイル・テストできる。
 #[cfg(feature = "tsubame-js")]
-mod apply_mutations_dispatch;
-#[cfg(feature = "tsubame-js")]
-mod generated;
-#[cfg(feature = "tsubame-js")]
 mod js_apply;
 #[cfg(feature = "tsubame-js")]
 mod js_host;

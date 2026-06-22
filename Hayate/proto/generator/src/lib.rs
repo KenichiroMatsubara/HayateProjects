@@ -1052,12 +1052,11 @@ fn generate_dispatch(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
     out.push_str(
-        "use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, ViewportCondition};\n\n",
+        "use hayate_core::{ElementId, ElementKind, ElementTree, PseudoState, StylePropKind, ViewportCondition};\n\n",
     );
-    out.push_str("use super::ApplyMutationsHost;\n");
-    out.push_str("use crate::generated::{Op, decode_style_packet, parse_next_op};\n\n");
+    out.push_str("use super::protocol::{Op, decode_style_packet, parse_next_op};\n\n");
 
-    out.push_str("pub(crate) fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {\n");
+    out.push_str("pub fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {\n");
     out.push_str("    match v {\n");
     for uk in &proto.unset_kinds {
         out.push_str(&format!(
@@ -1079,8 +1078,8 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    if raw < 0.0 { None } else { Some(raw) }\n");
     out.push_str("}\n\n");
 
-    out.push_str("pub(crate) fn apply_mutations_batch<H: ApplyMutationsHost>(\n");
-    out.push_str("    host: &mut H,\n");
+    out.push_str("pub fn apply_mutations_batch(\n");
+    out.push_str("    tree: &mut ElementTree,\n");
     out.push_str("    ops: &[f64],\n");
     out.push_str("    styles: &[f32],\n");
     out.push_str("    texts: &[String],\n");
@@ -1089,13 +1088,13 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    while i < ops.len() {\n");
     out.push_str("        let (op, next) = parse_next_op(ops, i).map_err(|e| e.to_string())?;\n");
     out.push_str("        i = next;\n");
-    out.push_str("        apply_parsed_op(host, op, styles, texts)?;\n");
+    out.push_str("        apply_parsed_op(tree, op, styles, texts)?;\n");
     out.push_str("    }\n");
     out.push_str("    Ok(())\n");
     out.push_str("}\n\n");
 
-    out.push_str("pub(crate) fn apply_parsed_op<H: ApplyMutationsHost>(\n");
-    out.push_str("    host: &mut H,\n");
+    out.push_str("fn apply_parsed_op(\n");
+    out.push_str("    tree: &mut ElementTree,\n");
     out.push_str("    op: Op,\n");
     out.push_str("    styles: &[f32],\n");
     out.push_str("    texts: &[String],\n");
@@ -1112,7 +1111,15 @@ fn generate_dispatch(proto: &Proto) -> String {
             "        Op::{variant} {{ {} }} => {{\n",
             fields.join(", ")
         ));
-        out.push_str(&dispatch_op_body(&op.name, &op.params));
+        // 適用先は `&mut ElementTree` 直結（ADR-0113 系の中立化。trait 廃止）。
+        // op body テンプレートは可読性のため host 形で書き、ここで木への直接呼び出しへ
+        // 一意に写像する。`tree_mut()` は木そのもの、focus/blur/remove は木のメソッド名へ。
+        let body = dispatch_op_body(&op.name, &op.params)
+            .replace("host.tree_mut()", "tree")
+            .replace("host.remove_subtree(", "tree.element_remove(")
+            .replace("host.apply_focus(", "tree.on_focus(")
+            .replace("host.apply_blur(", "tree.on_blur(");
+        out.push_str(&body);
         out.push_str("        }\n");
     }
 

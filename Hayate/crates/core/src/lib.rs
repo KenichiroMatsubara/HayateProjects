@@ -1,8 +1,14 @@
+// wire モジュールに include する生成物（protocol.rs / dispatch.rs）は絶対パス
+// `hayate_core::` で core 型を参照する（アダプタと同一ソースを共有するため）。
+// 自クレートをその名前で参照できるよう self を別名にする。
+extern crate self as hayate_core;
+
 pub mod color;
 pub mod element;
 pub mod node;
 pub mod render;
 pub mod viewport_metrics;
+pub mod wire;
 
 pub use color::Color;
 pub use element::chrome_tuning::ChromeTuning;

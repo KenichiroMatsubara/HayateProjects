@@ -18,9 +18,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
 
-use crate::apply_mutations_dispatch::{
-    apply_mutations_batch, unset_kind_from_u32, ApplyMutationsHost,
-};
+use hayate_core::wire::unset_kind_from_u32;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
@@ -956,14 +954,15 @@ impl HayateElementRenderer {
         styles: &[f32],
         texts: js_sys::Array,
     ) -> Result<(), JsValue> {
-        // 中立化した apply_mutations_batch（ADR-0112）は文字列テーブルを `&[String]` で
-        // 受け取り、エラーを `String` で返す。Web 境界で js_sys::Array を変換し、
-        // `String` エラーを `JsValue` へ写す。
+        // 中立 apply_mutations（ADR-0112）は core が単一所有し（hayate_core::wire）、
+        // 文字列テーブルを `&[String]` で受け取りエラーを `String` で返す。Web 境界で
+        // js_sys::Array を変換し、`String` エラーを `JsValue` へ写す。
         let texts: Vec<String> = texts
             .iter()
             .map(|v| v.as_string().unwrap_or_default())
             .collect();
-        apply_mutations_batch(self, ops, styles, &texts).map_err(|e| JsValue::from_str(&e))
+        hayate_core::wire::apply_mutations(&mut self.tree, ops, styles, &texts)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     /// ライブツリーから編集可能なテキスト内容を返す。
@@ -1027,23 +1026,6 @@ impl HayateElementRenderer {
     }
 }
 
-impl ApplyMutationsHost for HayateElementRenderer {
-    fn tree_mut(&mut self) -> &mut ElementTree {
-        &mut self.tree
-    }
-
-    fn remove_subtree(&mut self, id: ElementId) {
-        self.tree.element_remove(id);
-    }
-
-    fn apply_focus(&mut self, id: ElementId) {
-        self.tree.on_focus(id);
-    }
-
-    fn apply_blur(&mut self, id: ElementId) {
-        self.tree.on_blur(id);
-    }
-}
 
 /// `Some(Color)` を `{r,g,b,a}` に、`None` を `null` に変換する。
 fn color_to_js(color: Option<Color>) -> JsValue {
