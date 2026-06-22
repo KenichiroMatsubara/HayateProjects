@@ -1,6 +1,6 @@
 //! web Platform Adapter 向け開発用 `tuning.json` パーサ。
 //!
-//! 正準のデフォルト値は Rust の `const`（`scroll_drag::physics` と `hayate_core`
+//! 正準のデフォルト値は Rust の `const`（`hayate_core::scroll::physics` と `hayate_core`
 //! の scene-build / selection-chrome）。本モジュールは実行時にそれらを上書きする。
 //! ホストが `tuning.json` を fetch し、その文字列を
 //! [`HayateElementRenderer::set_tuning`](crate::canvas) に渡してここで解釈する。
@@ -11,7 +11,7 @@
 use hayate_core::{ChromeTuning, Color};
 use serde::Deserialize;
 
-use crate::scroll_drag::ScrollPhysicsTuning;
+use hayate_core::scroll::ScrollPhysicsTuning;
 
 /// `tuning.json` のトップレベル形状。任意の 2 セクション。
 #[derive(Debug, Default, Deserialize)]

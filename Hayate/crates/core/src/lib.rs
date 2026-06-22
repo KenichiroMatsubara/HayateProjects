@@ -7,6 +7,7 @@ pub mod color;
 pub mod element;
 pub mod node;
 pub mod render;
+pub mod scroll;
 pub mod viewport_metrics;
 pub mod wire;
 
@@ -32,6 +33,9 @@ pub use element::{
     UserSelectValue, ViewportCondition,
 };
 pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
+pub use scroll::{
+    MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
+};
 pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};
 pub use render::{
     DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,

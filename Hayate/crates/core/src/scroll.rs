@@ -1,17 +1,21 @@
-//! Canvas Mode 用、touch/pen のドラッグ→スクロールジェスチャの純粋ロジック（ADR-0082）。
-//! `CanvasRenderer` が `ScrollGesture` を保持し、drain したポインタバッファから駆動する。
-//! 判定（どのポインタがスクロールするか、押下がいつスクロールに変わるか、指の差分が
-//! スクロールオフセットへどう写るか）はすべて全ターゲットでユニットテスト可能な純粋関数として
-//! ここに置き、wasm 配線は薄く保つ。
+//! スクロールの **Scroll Gesture**（意図分類）と **Scroll Physics Profile**（感触）の
+//! 純粋ロジック（ADR-0082 / ADR-0113）。Hayate Core が所有し、各 Platform Adapter は
+//! `ScrollGesture` を保持して drain したポインタバッファから駆動し、毎フレーム物理 step を
+//! 進め、結果の `Scroll Offset` を適用する薄い配線に徹する。判定（どのポインタがスクロール
+//! するか、押下がいつスクロールに変わるか、指の差分がスクロールオフセットへどう写るか）も
+//! 物理（慣性・ばね戻し・rubber-band）も全ターゲットでユニットテスト可能な純粋関数として
+//! ここに置く。
 //!
-//! 範囲内の 1:1 追従、フリックの慣性、ばね戻し／バウンス付きのラバーバンドオーバースクロールを扱う。
-//! オフセットは `element_set_scroll_offset`（SCR-02、未クランプ）で適用し、エッジ挙動
-//! ——越えてドラッグ中の抵抗、解放後や慣性バウンス後にばねで引き戻す——はここの純粋関数が担う。
+//! 物理は **iOS 風プロファイル**（[`ScrollPhysicsProfile`]）: 範囲内の 1:1 追従、フリックの
+//! 指数減衰慣性、ばね戻し／バウンス付きの sigmoid ラバーバンドオーバースクロール。オフセットは
+//! `element_set_scroll_offset`（SCR-02、未クランプ）で適用し、エッジ挙動——越えてドラッグ中の
+//! 抵抗、解放後や慣性バウンス後にばねで引き戻す——はここの純粋関数が担う。Android 風
+//! （OverScroller spline + Material stretch）プロファイルは将来追加する（ADR-0113）。
 
 /// 物理ポインタデバイスの種別はコアの proto/wire 概念
-/// [`PointerKind`](hayate_core::PointerKind)。DOM の `PointerEvent.pointerType` から渡され、
+/// [`PointerKind`](crate::PointerKind)。DOM の `PointerEvent.pointerType` 等から渡され、
 /// `touch`/`pen` のみがドラッグ→スクロール経路に入る。`mouse` は選択/ドラッグ挙動のまま。
-pub use hayate_core::PointerKind;
+pub use crate::PointerKind;
 
 /// この種別のポインタがドラッグ→スクロールジェスチャを駆動するか。`Touch` と `Pen` は駆動し、
 /// `Mouse` は選択/ドラッグ経路に残る（ADR-0082）。
@@ -52,7 +56,7 @@ pub enum MoveOutcome {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollGesture {
     /// ジェスチャがロックされたスクロールビュー。ジェスチャ中に祖先へ連鎖することはない。
-    pub scroll_view: hayate_core::ElementId,
+    pub scroll_view: crate::ElementId,
     start: (f32, f32),
     last: (f32, f32),
     scrolling: bool,
@@ -61,7 +65,7 @@ pub struct ScrollGesture {
 impl ScrollGesture {
     /// `scroll_view` にロックし、`start`（`pointerdown` 位置）で pending 状態のジェスチャを開始する。
     /// slop を越えるまではスクロールしない。
-    pub fn new(scroll_view: hayate_core::ElementId, start: (f32, f32)) -> Self {
+    pub fn new(scroll_view: crate::ElementId, start: (f32, f32)) -> Self {
         Self {
             scroll_view,
             start,
@@ -306,6 +310,31 @@ pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &
     }
 }
 
+/// スクロール物理の「感触」を選ぶ閉じた語彙（ADR-0113）。`Auto` は実行プラットフォームに
+/// 応じて各 OS 相当の感触へ解決する設計（完成形）。iOS 風（指数減衰＋sigmoid rubber-band。
+/// 本モジュールの物理）と Android 風（OverScroller spline＋Material stretch）は別アルゴリズムで、
+/// いずれも Hayate Core が所有する。
+///
+/// **現状は `Auto` のみを公開・実装する。** `Auto` は唯一実装済みの iOS 風プロファイルへ解決する。
+/// 明示 `Ios` / `Android` 選択と Android プロファイルの実体は、Android タッチスクロール実装時に
+/// 本 enum へ variant として追加する（ADR-0113）。Scroll Gesture（意図分類）とは別軸。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScrollPhysicsProfile {
+    /// 実行プラットフォームに合わせて解決する（現状は iOS 風プロファイル）。
+    #[default]
+    Auto,
+}
+
+impl ScrollPhysicsProfile {
+    /// この感触の既定物理チューニング。`Auto` は iOS 風プロファイルへ解決する。Platform Adapter は
+    /// 必要なら開発時にこの上へ値をオーバーレイする（例: web の `tuning.json`）。本番は素の既定値。
+    pub fn default_tuning(self) -> ScrollPhysicsTuning {
+        match self {
+            ScrollPhysicsProfile::Auto => ScrollPhysicsTuning::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,8 +390,8 @@ mod tests {
         assert!(exceeds_slop(start, (108.1, 100.0), SCROLL_SLOP_PX));
     }
 
-    fn sv() -> hayate_core::ElementId {
-        hayate_core::ElementId::from_u64(1)
+    fn sv() -> crate::ElementId {
+        crate::ElementId::from_u64(1)
     }
 
     #[test]
