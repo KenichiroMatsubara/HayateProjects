@@ -32,7 +32,7 @@ ADR-0043 は「名前→CDN URL は web adapter 所有（platform 固有。nativ
 ### 2. プリセット名の正本は spec、URL は web adapter（α）
 
 - **spec `proto/spec/enums.json` の `font_family`** = プリセット「名前」の正本（platform 非依存。cross-adapter で同一名＝同一 fallback、ADR-0012 等階級）。
-- **web adapter の font マニフェスト `Hayate/crates/adapters/web/fonts.json`** = `[{ family, url, scripts? }]`（web 固有の調達情報）。これから **`builtin_font_url` を codegen**（手書き match を廃止）。
+- **web adapter の font マニフェスト `Hayate/crates/platform/web/fonts.json`** = `[{ family, url, scripts? }]`（web 固有の調達情報）。これから **`builtin_font_url` を codegen**（手書き match を廃止）。
 - **URL は web adapter 層に留める**（ADR-0043 維持）。native adapter は将来 自身の manifest（OS フォント名）を持つ。
 - **coverage check**: `fonts.json` は `enums.json` の全プリセット名に URL を与える。欠けは check エラー。プリセットは cross-adapter 契約なので、まず spec に名前を足してから各 adapter が調達手段を与える。
 
@@ -60,7 +60,7 @@ ADR-0043 は「名前→CDN URL は web adapter 所有（platform 固有。nativ
 
 ## Implementation Tasks（完了）
 
-1. ✅ `Hayate/crates/adapters/web/fonts.json` 新設 — 全プリセット family→url を移植。
+1. ✅ `Hayate/crates/platform/web/fonts.json` 新設 — 全プリセット family→url を移植。
 2. ✅ `build.rs` codegen — `OUT_DIR/builtin_fonts_gen.rs` を生成、`builtin_fonts.rs` が include。
 3. ✅ coverage check — `builtin_fonts.rs` テストで `enums.json` 全 preset を検証。
 4. ⬜ （任意）TS `PresetFontFamily` autocomplete。

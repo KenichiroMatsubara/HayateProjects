@@ -14,14 +14,14 @@ on:
   push:
     branches: [main]
     paths:
-      - "Hayate/crates/adapters/web/fonts.json"
+      - "Hayate/crates/platform/web/fonts.json"
       - "Hayate/scripts/check-font-urls.mjs"
       - "Hayate/scripts/check-font-urls.lib.mjs"
       - "Hayate/scripts/check-font-urls.test.mjs"
       - ".github/workflows/font-urls.yml"
   pull_request:
     paths:
-      - "Hayate/crates/adapters/web/fonts.json"
+      - "Hayate/crates/platform/web/fonts.json"
       - "Hayate/scripts/check-font-urls.mjs"
       - "Hayate/scripts/check-font-urls.lib.mjs"
       - "Hayate/scripts/check-font-urls.test.mjs"

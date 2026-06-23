@@ -33,7 +33,7 @@ Hayate Core（Element Layer・Scene Graph・Layout・Render Command 生成）の
 ### CORE-05 — プラットフォーム等階級（Web は最初の実装）
 **規範文:** Hayate は全プラットフォームを等階級とし、Web は「最初の実装」と位置づける。Core は platform-agnostic で Platform Adapter を知らない。
 **出典:** ADR-0012
-**状況:** ✅ — `crates/core` に Web 固有型・Platform Adapter 型なし。`adapters/web` が Core に片方向依存。
+**状況:** ✅ — `crates/core` に Web 固有型・Platform Adapter 型なし。`platform/web` が Core に片方向依存。
 **備考:** 等階級の実証（IME/clipboard/a11y の Web vs native 同質性）は native adapter 実装時（§9）に持ち越し。
 
 ---

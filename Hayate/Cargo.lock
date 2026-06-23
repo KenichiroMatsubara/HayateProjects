@@ -769,6 +769,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-app-host"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+]
+
+[[package]]
 name = "hayate-core"
 version = "0.1.0"
 dependencies = [

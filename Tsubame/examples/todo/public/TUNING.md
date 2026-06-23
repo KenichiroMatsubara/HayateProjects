@@ -33,7 +33,7 @@ The Rust `const`s are authoritative and ship to production; `tuning.jsonc` is a
 value feels right, **bake it back into the Rust const** and commit — that is the
 acceptance criterion for #353 ("最終値を名前付き定数に反映").
 
-- Scroll physics consts: `Hayate/crates/adapters/web/src/scroll_drag.rs`
+- Scroll physics consts: `Hayate/crates/platform/web/src/scroll_drag.rs`
 - Chrome consts: `Hayate/crates/core/src/element/scene_build.rs`
 
 ## Keys

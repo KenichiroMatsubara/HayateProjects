@@ -2,7 +2,7 @@
 //!
 //! C++/JSI ホスト（[`crate::hermes_bridge`]）は flat-C ABI 越しにここへ降りる。
 //! 本モジュールは wasm に一切依存せず、Web の `HayateElementRenderer`
-//! （`crates/adapters/web/src/canvas.rs`）が `self.tree` に対して行う操作を、
+//! （`crates/platform/web/src/canvas.rs`）が `self.tree` に対して行う操作を、
 //! `Rc<RefCell<ElementTree>>` を介してネイティブ向けに写したもの。これにより
 //! Tsubame Canvas Renderer がフレームごとに呼ぶ最小メソッド集合
 //! （apply_mutations / render / poll_events / register_listener / on_resize /

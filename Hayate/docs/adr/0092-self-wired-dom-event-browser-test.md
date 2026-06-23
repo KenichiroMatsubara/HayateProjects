@@ -18,8 +18,8 @@ ADR-0080 / ADR-0082 により、canvas の raw 入力イベント（`pointerdown
 
 **自己配線した DOM 入力経路の回帰テストは、最も忠実度の高い地点（実 DOM イベント発火）で `#[wasm_bindgen_test]` を headless browser で実行して行う。**
 
-- テストファイル: `crates/adapters/web/tests/pointer_input_browser.rs`（`#![cfg(target_arch = "wasm32")]`）。
-- 実行: `wasm-pack test --headless --firefox crates/adapters/web -- --no-default-features --features backend-null --test pointer_input_browser`。
+- テストファイル: `crates/platform/web/tests/pointer_input_browser.rs`（`#![cfg(target_arch = "wasm32")]`）。
+- 実行: `wasm-pack test --headless --firefox crates/platform/web -- --no-default-features --features backend-null --test pointer_input_browser`。
 - **`backend-null` でビルドする**: WebGPU / EditContext を要求しないため、Firefox headless で WebGPU 無しに実行できる（Chrome/Chromium 依存を持ち込まない）。
 - アサーション対象は **外部から観測可能な振る舞い**: 実 `PointerEvent` を canvas に dispatch し、`render()` で drain したのち `poll_events()` の delivery 行に `HoverEnter` / `HoverLeave` が現れることを assert する。hover 集合のメンバシップ等の内部状態は見ない。
 - **test-only な wasm export は追加しない**（ADR-0072）。テストは既存の public bindings（`element_create` / `element_set_style` / `set_root` / `register_listener` / `render` / `poll_events`）だけで経路を駆動する。

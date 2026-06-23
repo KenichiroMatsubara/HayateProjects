@@ -1,33 +1,23 @@
-//! iOS UITextInput → `hayate-core` の IME 変換（ADR-0114）。
+//! IME の *増分 command* 入力モデル → `EditState` 編集呼び出しの畳み込み（ADR-0117 フェーズ1）。
 //!
-//! ここが Android アダプタとの唯一の本質的な相違点。**Android GameTextInput** は入力を
-//! *絶対状態*（全バッファ + 任意の composing 領域）として報告し、アダプタが連続状態を
-//! 差分する。これに対し **iOS UITextInput** はアダプタが*実装するプロトコル*で、UIKit が
-//! *増分コールバック*を push してくる（`insertText:` / `deleteBackward` /
-//! `setMarkedText:selectedRange:` / `unmarkText`）。フレームごとに全文を読み出すモデルでは
-//! なく、アダプタ側がバッファの真実を保持する。
+//! `hayate-core` は二つの platform IME 入力モデルを所有する。一方は *絶対状態* モデル
+//! （Android GameTextInput が全バッファ＋任意の composing 領域を報告 → 差分、ADR-0094）で
+//! 隣の [`super::ime_reconcile`] が持つ。本モジュールはもう一方の *増分 command* モデルを持つ:
+//! iOS UITextInput はアダプタが*実装するプロトコル*で、UIKit が増分コールバック
+//! （`insertText:` / `deleteBackward` / `setMarkedText:selectedRange:` / `unmarkText`）を
+//! push してくる。フレームごとに全文を読むのではなく、増分コマンド（[`ImeCommand`]）を
+//! 小さなローカルバッファ（[`ImeBuffer`]）に畳んで最小のコア編集へ変換する。
 //!
-//! そこで、出力側（`ImeAction` / `apply_ime_action`、コアの「確定 text_content + 末尾
-//! preedit」モデル ADR-0069 への 1:1 写像）は **Core 所有の `ime_reconcile` を再利用**する
-//! （main の C4 で IME 変換は Core 所有になった）。入力側は増分コマンドを小さなローカル
-//! バッファ（[`ImeBuffer`]）に畳んで最小のコア編集呼び出しに変換する iOS 固有の実装にする。
-//! Core の `ime_reconcile` は絶対状態（Android GameTextInput）モデルのみで、UITextInput の
-//! 増分経路を持たないため、この入力半分はこのアダプタに残す（将来 `apply_command` 自体も
-//! Core へ寄せるのは「Core 所有」方針の続きで、別ブランチの再構築で扱う）。`touch_input` /
-//! `surface_lifecycle` と同様 objc2/UIKit 型に依存しない純粋関数なので、変換とツリーへの
-//! 適用を Mac/SDK 無しでホストテストできる。グルー（`app.rs`）が UITextInput コールバックを
-//! [`ImeCommand`] に写す薄い層を担う。
+//! 両入力モデルは共通の出力（[`ImeAction`]、コアの「確定 `text_content` ＋末尾 `preedit`」
+//! モデル ADR-0069 への 1:1 写像）へ合流する。各 leaf には native callback → [`ImeCommand`]
+//! （iOS）/ native buffer → 絶対状態（Android）の glue だけが残り、編集セマンティクスは
+//! 持たない。実機 SDK や DOM/wasm を要さず全ターゲットでコンパイル/テストできる純粋関数。
 
-// 出力半分は Core 所有の ime_reconcile を再利用する（`hayate-adapter-android` の app.rs と
-// 同じ import 元）。iOS 固有の増分入力モデル（ImeCommand / ImeBuffer / apply_command）だけが
-// このアダプタに残る。
-#[cfg(any(target_os = "ios", test))]
-pub use hayate_core::element::ime_reconcile::{apply_ime_action, ImeAction};
+use super::ime_reconcile::ImeAction;
 
 /// UITextInput が push する増分コマンド。`objc2`/UIKit 型に依存せず UIKit の
 /// テキスト入力コールバックを写す。`selectedRange` は省略（コアは末尾キャレットのみ
 /// 追跡する。Android が GameTextInput の selection を落とすのと同じ簡略化）。
-#[cfg(any(target_os = "ios", test))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImeCommand {
     /// `insertText:` — marked text があればそれを置換して確定する（IME の候補確定は
@@ -43,16 +33,14 @@ pub enum ImeCommand {
     Unmark,
 }
 
-/// アダプタが保持する UITextInput のローカルバッファ。確定テキストと、アクティブな
+/// 増分入力モデルが保持する UITextInput のローカルバッファ。確定テキストと、アクティブな
 /// marked text（preedit）に分かれる。コアの `EditState`（ADR-0069）と同じ二分割。
-#[cfg(any(target_os = "ios", test))]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ImeBuffer {
     pub committed: String,
     pub preedit: String,
 }
 
-#[cfg(any(target_os = "ios", test))]
 impl ImeBuffer {
     pub fn new() -> Self {
         Self::default()
@@ -62,9 +50,8 @@ impl ImeBuffer {
 /// 増分コマンド 1 つをローカルバッファに適用し、必要な最小のコア編集呼び出しを返す。
 ///
 /// `SetText` はコア側で preedit を消すため、確定テキストを設定しつつ marked が継続して
-/// いる、または marked 自体が変わった場合は preedit を再設定する（Android の
+/// いる、または marked 自体が変わった場合は preedit を再設定する（絶対状態モデルの
 /// `translate_text_input` が持つ「SetText は preedit を消すので再表明」不変条件と同型）。
-#[cfg(any(target_os = "ios", test))]
 pub fn apply_command(buf: &mut ImeBuffer, command: ImeCommand) -> Vec<ImeAction> {
     let prev_committed = buf.committed.clone();
     let prev_preedit = buf.preedit.clone();
@@ -104,7 +91,6 @@ pub fn apply_command(buf: &mut ImeBuffer, command: ImeCommand) -> Vec<ImeAction>
 
 /// 文字列の末尾 1 文字（UTF-8 char 単位）を取り除く。マルチバイト（日本語等）でも
 /// char 境界を割らない。
-#[cfg(any(target_os = "ios", test))]
 fn pop_last_char(s: &mut String) {
     if let Some(ch) = s.chars().next_back() {
         let new_len = s.len() - ch.len_utf8();
@@ -115,7 +101,8 @@ fn pop_last_char(s: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{ElementId, ElementKind, ElementTree};
+    use crate::element::ime_reconcile::apply_ime_action;
+    use crate::{ElementId, ElementKind, ElementTree};
 
     fn run(buf: &mut ImeBuffer, cmds: impl IntoIterator<Item = ImeCommand>) -> Vec<ImeAction> {
         cmds.into_iter()
@@ -231,7 +218,7 @@ mod tests {
     }
 
     // コアに対するエンドツーエンド: 日本語の変換（marked → 確定）で、TextInput の
-    // text_content が UITextInput のローカルバッファと一致すること。Android アダプタの
+    // text_content が UITextInput のローカルバッファと一致すること。絶対状態モデルの
     // `translation_drives_core_display_text_through_a_composition` と同じ契約を、異なる
     // フロントエンドモデル（増分コマンド）で検証する。
     #[test]

@@ -101,4 +101,4 @@ tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach 
 // ビルド時の Node 依存を排除した。JS を変更したら手動で再生成して差し替える:
 //   cd Tsubame && pnpm --filter @tsubame/example-todo run build:android
 //   cp examples/todo/dist-android/tsubame.js \
-//      ../Hayate/crates/adapters/android/android-app/app/src/main/assets/tsubame.js
+//      ../Hayate/crates/platform/mobile/android/android-app/app/src/main/assets/tsubame.js

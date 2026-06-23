@@ -8,6 +8,8 @@ pub mod element;
 pub mod node;
 pub mod render;
 pub mod scroll;
+pub mod surface_lifecycle;
+pub mod touch_input;
 pub mod viewport_metrics;
 pub mod wire;
 
@@ -36,6 +38,10 @@ pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunDa
 pub use scroll::{
     MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
+pub use surface_lifecycle::{
+    SurfaceLifecycleAction, SurfaceLifecycleEvent, SurfaceLifecycleState,
+};
+pub use touch_input::{translate_touch, PointerInput, TouchAction};
 pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};
 pub use render::{
     DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,

@@ -1,15 +1,23 @@
-//! プラットフォーム非依存のサーフェスライフサイクル状態機械。
+//! プラットフォーム非依存のサーフェスライフサイクル状態機械（ADR-0117 フェーズ1）。
 //!
-//! `android-activity` は `MainEvent` をバックグラウンドスレッドで配送する。本
-//! モジュールはそれらのイベントをアダプタが取るべき GPU サーフェス操作へ写像する。
-//! NDK なしで挙動を検証できるよう全ターゲットでコンパイルする。
+//! GPU サーフェスのライフサイクルは、ネイティブのウィンドウ/シーンイベントを四つの論理
+//! イベント（`InitWindow` / `TerminateWindow` / `WindowResized` / `Destroy`）へ畳んだうえで、
+//! アダプタが取るべき GPU サーフェス操作（`SurfaceLifecycleAction`）へ写像する純粋な状態
+//! 機械で表せる。芯はプラットフォーム非依存で、かつては `hayate-adapter-android` と
+//! `hayate-adapter-ios` の双方に同型のまま複製されていた。本モジュールがその単一の正本を
+//! 持ち、各 leaf には native（UIScene / android-activity）→ 四論理イベントへの glue だけを
+//! 残す。
 //!
-//! 物理サーフェス寸法から論理ビューポート/バッファを導く計算は、Web 経路と共有する
-//! `hayate_core::ViewportMetrics` に委譲する（width/height 取得の抽象化）。
+//! 物理ドローアブル寸法から論理ビューポート/バッファを導く計算は状態機械の責務ではなく、
+//! Web/Android/iOS 経路が共有する [`crate::ViewportMetrics`] に委譲する（content scale を
+//! どの値で渡すか — Android は 1.0、iOS は Retina の実 scale — は leaf glue 側の差）。
+//!
+//! 実機 SDK や wgpu サーフェスを要さず全ターゲットでコンパイル/テストできる。
 
-use hayate_core::ViewportMetrics;
-
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+/// ネイティブのウィンドウ/シーンイベントを畳んだ四つの論理遷移。
+///
+/// leaf glue が広いネイティブイベント集合（android-activity の `MainEvent`、UIKit の
+/// UIScene ライフサイクル等）をこの四イベントへ落とす。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceLifecycleEvent {
     InitWindow,
@@ -18,7 +26,7 @@ pub enum SurfaceLifecycleEvent {
     Destroy,
 }
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+/// 論理イベントから導かれる、アダプタが取るべき GPU サーフェス操作。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceLifecycleAction {
     CreateSurface,
@@ -28,14 +36,13 @@ pub enum SurfaceLifecycleAction {
     NoOp,
 }
 
-/// GPU サーフェスが現在ネイティブウィンドウに束縛されているかを追跡する。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+/// GPU サーフェスが現在ネイティブのドローアブル（android-activity のウィンドウ /
+/// `CAMetalLayer`）に束縛されているかを追跡する。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SurfaceLifecycleState {
     surface_active: bool,
 }
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 impl SurfaceLifecycleState {
     pub fn new() -> Self {
         Self {
@@ -82,37 +89,6 @@ impl Default for SurfaceLifecycleState {
     }
 }
 
-/// content scale 1.0 で描画する現行 Android 経路の content scale。
-///
-/// DPI 対応を入れる際は、ここを実機の density から取得した値へ差し替え、`translate_touch`
-/// が渡すタッチ座標も同じ scale で再スケールしてヒットテストと描画を揃える。
-const ANDROID_CONTENT_SCALE: f32 = 1.0;
-
-/// ネイティブウィンドウ寸法と content scale から論理ビューポート/バッファを導く。
-///
-/// 計算は Web 経路と共有する `ViewportMetrics::from_physical_size` に集約されている。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn surface_metrics(width: i32, height: i32) -> ViewportMetrics {
-    ViewportMetrics::from_physical_size(width, height, ANDROID_CONTENT_SCALE)
-}
-
-/// wgpu サーフェス設定のため、ネイティブウィンドウ寸法を最低 1×1 にクランプする。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
-    surface_metrics(width, height).buffer_size()
-}
-
-/// クランプ済みサーフェス寸法(物理 px)を `ElementTree` のビューポートへ写す。
-///
-/// content scale 1.0 で描画するため、レイアウト/ビューポート空間は物理サーフェス
-/// ピクセルそのもの。これは `translate_touch` がポインタ API に渡す空間と同じで、
-/// ヒットテストが画面描画と揃う。DPI 対応のコンテンツスケーリングを入れる際は、
-/// この整合を保つためタッチ座標を同調して再スケールする必要がある。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn viewport_for_surface(width: u32, height: u32) -> (f32, f32) {
-    surface_metrics(width as i32, height as i32).viewport_size()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,12 +120,12 @@ mod tests {
         state.handle(SurfaceLifecycleEvent::InitWindow);
         assert_eq!(
             state.handle(SurfaceLifecycleEvent::WindowResized {
-                width: 1080,
-                height: 1920,
+                width: 1170,
+                height: 2532,
             }),
             SurfaceLifecycleAction::ResizeSurface {
-                width: 1080,
-                height: 1920,
+                width: 1170,
+                height: 2532,
             }
         );
         assert!(state.surface_active());
@@ -189,6 +165,9 @@ mod tests {
         assert!(!state.surface_active());
     }
 
+    // 背景化（TerminateWindow）→ 前景復帰（InitWindow）のサイクルでサーフェスが破棄され
+    // 再生成される。iOS では Metal ドローアブルが背景で無効になるため、この再生成が必須。
+    // Android も同じ状態機械でホームボタン → 復帰の再生成を表す。
     #[test]
     fn background_foreground_cycle_recreates_surface() {
         let mut state = SurfaceLifecycleState::new();
@@ -200,17 +179,5 @@ mod tests {
             SurfaceLifecycleAction::CreateSurface
         );
         assert!(state.surface_active());
-    }
-
-    #[test]
-    fn window_dimensions_clamp_to_at_least_one_pixel() {
-        assert_eq!(window_dimensions(0, -3), (1, 1));
-        assert_eq!(window_dimensions(640, 480), (640, 480));
-    }
-
-    #[test]
-    fn viewport_tracks_surface_pixels_at_unit_scale() {
-        assert_eq!(viewport_for_surface(1080, 1920), (1080.0, 1920.0));
-        assert_eq!(viewport_for_surface(1, 1), (1.0, 1.0));
     }
 }

@@ -31,7 +31,7 @@ const ELEMENT_KIND_VIEW: u32 = 0;
 const ELEMENT_KIND_BUTTON: u32 = 3;
 /// `ElementKind::ScrollView` の判別子（crates/core/src/element/kind.rs）。
 const ELEMENT_KIND_SCROLLVIEW: u32 = 5;
-/// style_packet タグ: width=5, height=6; unit 0 = Px（crates/adapters/web/src/style_packet.rs）。
+/// style_packet タグ: width=5, height=6; unit 0 = Px（crates/platform/web/src/style_packet.rs）。
 const TAG_WIDTH: f32 = 5.0;
 const TAG_HEIGHT: f32 = 6.0;
 /// `OP_SET_STYLE` の判別子（proto/spec/opcodes.json）。命令的セッターは撤去済み（#439）
