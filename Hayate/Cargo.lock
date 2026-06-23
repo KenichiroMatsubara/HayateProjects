@@ -745,6 +745,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-adapter-mobile"
+version = "0.1.0"
+dependencies = [
+ "hayate-adapter-android",
+ "hayate-adapter-ios",
+ "hayate-core",
+]
+
+[[package]]
 name = "hayate-adapter-web"
 version = "0.1.0"
 dependencies = [

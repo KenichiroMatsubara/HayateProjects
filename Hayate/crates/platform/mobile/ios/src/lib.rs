@@ -14,6 +14,10 @@
 //! コンパイルされる（Mac/実機検証はローカル）。非 iOS ターゲットではシームのみ
 //! ビルドされ、ホストの `cargo build`/`cargo check` に影響しない。
 
+// 音声出力 capability の iOS leaf（ADR-0117）。Family Adapter（`hayate-adapter-mobile`）が
+// cfg(target_os) でリンクし統一 facade として露出するため pub。純粋部分はホストでコンパイル/
+// テストされ、AVAudioEngine FFI glue は target_os="ios" のみ。
+pub mod audio_output;
 mod ime_input;
 mod scene_demo;
 mod surface_lifecycle;
