@@ -119,22 +119,32 @@ ADR 無し（初回デモには通常不要）。
 
 **ADR にすべきこと**：「Store の provide/inject と Scope への載せ方」（第二段階で起こす）。
 
-## P6 🟡 `.hybs` ファイル＋`<script>` コンパイル
+## P6 🟢 `.hybs` ファイル＋`<script>` コンパイル — **第一段階で必須・ADR-0008 で決着**
 
 **問題**：`<template>` / `<style>` マークアップのパーサは ADR-0004＋CONTEXT から導出可
 （低リスク）。難所は **Rust-native `<script>` のコンパイル/登録経路**（ADR-0001 は「境界ゼロ」
-と言うが具体 ADR 無し）。
+と言うが具体 ADR が無かった）。
 
-**注**：デモに `.hybs` は必須でない。テスト同様に Template IR ＋ Rust ハンドラを手組みすれば
-書ける。`.hybs` オーサリングまで欲しくなった段階で必要になる論点。
+> **決定（2026-06-23）：初回デモは `.hybs` をコンパイルした出力として動かす（手組みにしない）。**
+> `.hybs` であること自体に意味があり、第一段階からオーサリング面を見せる。コンパイル機構は
+> **build 時 codegen**（build.rs / 専用 codegen バイナリが `.hybs` をパースし生成 Rust を出力）。
+> `<template>`→Template IR 構築コード、`<style>`→static style セット、Rust `<script>`→setup 関数
+> としてそのまま差し込み（cargo が型検査）。proc-macro インラインや手組みは却下。
+> [ADR-0008](adr/0008-hybs-compiles-to-generated-rust-via-build-codegen.md)。
+>
+> 他言語 script（wasm ゲスト・ADR-0001/0002）は射程外で後続。
 
 ---
 
 ## デモ到達への最短経路（メモ）
 
+初回デモは **Todo 系を `.hybs` コンパイル出力として**動かす（単一コンポーネント＝第一段階・P5）。
+
 1. **P1 の spike**（クロスワークスペース・ビルド可否の検証）。通れば P1 は実装タスク化。
 2. **`HayateSink` ＋ DeliverySink 実装**（P1・P2 とも設計は ADR-0117 で済み。App Host へ
    `mount(root, DeliverySink)` する経路を実装）。
-3. **P3 スタイル ADR** → sink/IR 拡張。
-4. （Todo 系なら）**P4 入力束縛**。
-5. ここまでで **`.hybs` 無しのプログラマティックなデモ**が可能。`.hybs` オーサリングは P6。
+3. **P3 static style** → sink/IR の `set_style` 拡張。
+4. **P4 入力束縛**（ADR-0007・EditState 単一正本）→ sink/IR の programmatic value set オペ。
+5. **P6 `.hybs` codegen**（ADR-0008・build 時 codegen）→ `<template>`/`<style>` パーサ＋
+   Rust `<script>` 差し込み。これで Todo の `.hybs` がコンパイルされ画面に出る。
+6. 第二段階：複数コンポーネント分割＋ **P5 Store**（要 ADR）。
