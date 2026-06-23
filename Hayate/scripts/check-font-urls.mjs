@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { checkFonts } from './check-font-urls.lib.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const manifest = join(here, '../crates/adapters/web/fonts.json');
+const manifest = join(here, '../crates/platform/web/fonts.json');
 const fonts = JSON.parse(readFileSync(manifest, 'utf8'));
 
 const { bad, total } = await checkFonts(fonts, {

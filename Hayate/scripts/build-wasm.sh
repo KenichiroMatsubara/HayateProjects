@@ -8,7 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CRATE_DIR="$ROOT_DIR/crates/adapters/web"
+CRATE_DIR="$ROOT_DIR/crates/platform/web"
 OUT_DIR="$ROOT_DIR/wasm-pkgs/pkg"
 OUT_DIR_CPU="$ROOT_DIR/wasm-pkgs/pkg-tiny-skia"
 OUT_DIR_NULL="$ROOT_DIR/wasm-pkgs/pkg-null"

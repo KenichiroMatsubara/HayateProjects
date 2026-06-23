@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/build-android.sh — android-app(Gradle) を叩く薄いラッパー（ADR-0094 / ADR-0112）
 #
-# Android の正規ビルドは crates/adapters/android/android-app の Gradle プロジェクト
+# Android の正規ビルドは crates/platform/mobile/android/android-app の Gradle プロジェクト
 # （GameActivity + rust-android-gradle）。cargo-apk 経路（verify-android-stage-a.sh）は
 # 旧 NativeActivity 用で、現行の Tsubame/Hermes 同梱ビルドは Gradle 側に集約されている。
 #
@@ -26,7 +26,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ANDROID_DIR="$ROOT_DIR/crates/adapters/android/android-app"
+ANDROID_DIR="$ROOT_DIR/crates/platform/mobile/android/android-app"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -78,4 +78,4 @@ echo -e "${CYAN}▶ ${GRADLE[*]} ${TASKS[*]}${RESET}"
 
 echo
 echo -e "${GREEN}${BOLD}✓ Done!${RESET}"
-echo    "  APK 出力 → crates/adapters/android/android-app/app/build/outputs/apk/"
+echo    "  APK 出力 → crates/platform/mobile/android/android-app/app/build/outputs/apk/"

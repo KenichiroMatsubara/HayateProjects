@@ -13,4 +13,4 @@
   single ink colour.
 
 This is a **test-only** asset; it is not shipped and not referenced by the
-production font manifest (`crates/adapters/web/fonts.json`).
+production font manifest (`crates/platform/web/fonts.json`).

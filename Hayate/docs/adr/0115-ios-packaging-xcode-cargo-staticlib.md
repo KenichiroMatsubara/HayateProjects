@@ -27,7 +27,7 @@ Options considered:
 
 ## Decision
 
-- Adopt **option 1**: a committed Xcode project (`crates/adapters/ios/ios-app/Hayate.xcodeproj`)
+- Adopt **option 1**: a committed Xcode project (`crates/platform/mobile/ios/ios-app/Hayate.xcodeproj`)
   with a "Cargo Build" Run-Script phase that compiles the Rust staticlib for the active
   SDK/arch and links it. This is the iOS analogue of ADR-0094's Gradle project +
   `rust-android-gradle`.

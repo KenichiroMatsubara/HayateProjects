@@ -5,9 +5,9 @@ members = [
     "crates/scene-renderers/vello",
     "crates/scene-renderers/tiny-skia",
     "crates/scene-renderers/test-support",
-    "crates/adapters/web",
-    "crates/adapters/android",
-    "crates/adapters/ios",
+    "crates/platform/web",
+    "crates/platform/mobile/android",
+    "crates/platform/mobile/ios",
     "proto/generator",
 ]
 resolver = "2"

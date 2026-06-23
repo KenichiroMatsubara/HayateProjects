@@ -20,8 +20,8 @@ crate-type = ["staticlib", "rlib"]
 # Apple-only crates (mirroring how `hayate-core` stays platform-agnostic) and avoids the
 # objc2/raw-window-metal ⇄ wgpu version-alignment risk. wgpu provides the Metal backend
 # on the iOS target out of the box.
-hayate-core = { path = "../../core" }
-hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
+hayate-core = { path = "../../../core" }
+hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true

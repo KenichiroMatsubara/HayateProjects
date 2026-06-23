@@ -140,7 +140,7 @@
 			# Build the hayate-adapter-ios staticlib for the active arch/sdk and copy it where
 			# the Frameworks phase links it. Device builds use aarch64-apple-ios; the simulator
 			# uses aarch64-apple-ios-sim / x86_64-apple-ios.
-			shellScript = "set -euo pipefail\nMANIFEST=\"$SRCROOT/../Cargo.toml\"\nif [ \"${PLATFORM_NAME}\" = \"iphonesimulator\" ]; then\n  if [ \"${ARCHS}\" = \"x86_64\" ]; then RUST_TARGET=x86_64-apple-ios; else RUST_TARGET=aarch64-apple-ios-sim; fi\nelse\n  RUST_TARGET=aarch64-apple-ios\nfi\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then PROFILE=release; CARGO_FLAGS=--release; else PROFILE=debug; CARGO_FLAGS=; fi\ncargo build --manifest-path \"$MANIFEST\" --target \"$RUST_TARGET\" $CARGO_FLAGS\ncp \"$SRCROOT/../../../../target/$RUST_TARGET/$PROFILE/libhayate_adapter_ios.a\" \"$BUILT_PRODUCTS_DIR/libhayate_adapter_ios.a\"\n";
+			shellScript = "set -euo pipefail\nMANIFEST=\"$SRCROOT/../Cargo.toml\"\nif [ \"${PLATFORM_NAME}\" = \"iphonesimulator\" ]; then\n  if [ \"${ARCHS}\" = \"x86_64\" ]; then RUST_TARGET=x86_64-apple-ios; else RUST_TARGET=aarch64-apple-ios-sim; fi\nelse\n  RUST_TARGET=aarch64-apple-ios\nfi\nif [ \"${CONFIGURATION}\" = \"Release\" ]; then PROFILE=release; CARGO_FLAGS=--release; else PROFILE=debug; CARGO_FLAGS=; fi\ncargo build --manifest-path \"$MANIFEST\" --target \"$RUST_TARGET\" $CARGO_FLAGS\ncp \"$SRCROOT/../../../../../target/$RUST_TARGET/$PROFILE/libhayate_adapter_ios.a\" \"$BUILT_PRODUCTS_DIR/libhayate_adapter_ios.a\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
