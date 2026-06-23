@@ -21,48 +21,50 @@
 | 式 DSL パーサ | 0004 | ✅ 実装済 |
 | async/Resource/Suspense/ErrorBoundary | 0005 | ✅ モデル決定済（実装は未） |
 | host-ABI・モノレポ配置・hot-reload | 0001/0002/0006 | ✅ 方針決定済 |
+| レンダリング統合・boot・フレームループ・イベント配送 | 0117 | ✅ 方針決定済（実装は未） |
 
 ---
 
 ## P1 🔴 レンダリング統合とアプリ起動
 
-**問題**：ADR-0006 は「Hayabusa は hayate-core に path 依存し ElementTree を駆動する」までしか
-決めていない。デモを画面に出すには、以下が未決。
+> **更新（2026-06-23）**：本項の設計面は **ADR-0117（App Host boot シーム）で決着**した。
+> 残る critical は **ビルド spike 一点**（下記）。設計の決着内容：
+>
+> - **ElementTree の所有位置** → App Host が `ElementTree` 実体を所有。Hayabusa は in-process
+>   projection で `&mut ElementTree` に直接 mutation を発行（wire 非経由・ADR-0045 / CONTEXT.md）。
+> - **アダプタ方針** → Hayabusa 専用アダプタは持たない。共有 App Host へ `mount(root, DeliverySink)`
+>   するだけで、Platform Front（web `requestAnimationFrame` / Android `Choreographer`）と
+>   Platform Adapter（GPU/DOM 描画・入力・IME・ADR-0080）を再利用する。Hayabusa は Platform Front /
+>   Adapter を直接触らない。
+> - **boot / フレームループ** → App Host が `tick(timestamp_ms)` と構築時注入の `request_redraw`
+>   クロージャで所有。OS ループは Platform Front 所有。継続フレーム要求（transition・カーソル点滅・
+>   スクロール物理）は App Host が `visual_dirty` を見て出す。consumer 向けフレーム trait は無し。
 
-- **アダプタ方針**：既存の `hayate-adapter-web`（GPU/DOM 描画＋ポインタ/キー入力＋IME。
-  現状は proto/wire の `apply_mutations` バッチ経由で Tsubame が駆動する）を **再利用するのか**、
-  Hayabusa 専用アダプタを持つのか。
-- **ElementTree の所有位置**：~~Hayabusa（Rust）が直接駆動か wire 越しか~~ → **決着済み**。
-  CONTEXT.md / ADR-0045 が「Hayabusa は in-process projection で wire を介さず ElementTree を
-  直接駆動し、ElId＝ElementId の同一 identity を共有する」と確定済み。wire 経由は projection の
-  二重定義になり CONTEXT.md `_Avoid_`（「Hayabusa も wire/proto 経由とする理解」）に反するため
-  フォールバック先にしない。ビルド検証が失敗しても解決方向は「wire に逃げる」ではなく
-  「クレート配置（モノレポ patch 解決）を直す」（ADR-0006 の intent と整合）。
-- **boot / フレームループ**：mount API（例：`mount(component, root, adapter)`）と、
-  `render(timestamp_ms)` フレームループ（transition・カーソル点滅）の所有者。
-- **ビルド現実（実装ブロッカー）**：hayate-core は vendored crate を `[patch.crates-io]`
-  （Hayate ワークスペース）で差し替えており、別ワークスペースの Hayabusa から path 依存で
-  リンクすると patch が効かない可能性。wasm 同梱・パッケージングも未検証。
+**残る未決（実装ブロッカー・spike 対象）**：hayate-core は vendored crate を `[patch.crates-io]`
+（Hayate ワークスペース）で差し替えており、別ワークスペースの Hayabusa から path 依存でリンクすると
+patch が効かない可能性。wasm 同梱・パッケージングも未検証。**ADR-0117 はこのビルド現実に触れていない。**
 
 **現在の代替**：`ElementSink`（`src/sink.rs`）が ElementTree の API に 1:1 で写るシームに
-なっており、テストは `RecordingSink` で fine-grained patch を観測している。実 ElementTree を
-駆動する `HayateSink` はこの ADR の決定待ち。
+なっており、テストは `RecordingSink` で fine-grained patch を観測している。App Host が渡す
+`&mut ElementTree` を駆動する `HayateSink`（DeliverySink 実装込み）は薄い後続実装。
 
-**ADR にすべきこと**：「Hayabusa レンダリング統合とアプリ起動」（アダプタ再利用 vs 専用・
-ElementTree 所有位置・boot/フレームループ・ビルド/パッケージング）。
+**ADR にすべきこと**：設計は ADR-0117 で済み。spike の結果クロスワークスペース構成に固有の決定
+（クレート配置・patch 解決・wasm パッケージング）が必要なら、それを ADR 化する。
 
-**推奨**：ADR 確定の前に **spike**（hayate-core を path 依存で Hayabusa から実際にビルドできるか
-＝クロスワークスペース問題の検証）を先に行う。
+**推奨**：**spike を先に行う**（hayate-core を path 依存で Hayabusa から実際にビルドできるか
+＝クロスワークスペース問題の検証）。spike が通れば残りは実装タスクで、追加 ADR は不要な見込み。
 
-## P2 🔴 イベント入力の経路
+## P2 🟢 イベント入力の経路 — **ADR-0117 で決着**
 
-**問題**：現在の `Instance::click(ElId)`（`src/instantiate.rs`）はテスト用シーム。実機では
-Hayate の Interaction Event／hit-test／`poll_deliveries`（Hayate ADR-0053）／`register_listener`
-を経由する。テンプレの `on:click` / `on:input` 等のハンドラを **Hayate のイベント配送へ
-どう束ね、要素単位に dispatch し、flush 合体（ADR-0003）へ載せるか**の決定が無い。
+**決着**：App Host が `tick` フェーズ1で `poll_deliveries()` を drain し、フェーズ2で mount 時登録の
+`DeliverySink` へ drain 済み `{listener_id, event}` バッチを同期 push する。Hayabusa の DeliverySink は
+自身が所有する `ListenerId → handler` map を引いて handler を実行し、reactive graph を flush して
+（handler 由来・非同期由来とも flush 点はこの 1 箇所）、in-process で `&mut ElementTree` に mutation を
+出し切ってから return する。App Host は `ListenerId` の意味も handler の存在も知らない（consumer 非依存）。
+テンプレの `on:click` / `on:input` は handler を ListenerId に紐付けて map に登録するだけ。
 
-**ADR にすべきこと**：「テンプレートのイベントハンドラ ↔ Hayate イベント配送」。P1 と一本に
-まとめても良い。
+**残るのは実装のみ**：テスト用シーム `Instance::click(ElId)`（`src/instantiate.rs`）を、実機では
+DeliverySink 経由の `{listener_id, event}` dispatch に置き換える。新しい ADR は不要。
 
 ## P3 🟠 スタイル（`<style>` DSL → Hayate CSS）
 
@@ -107,8 +109,9 @@ ADR 無し（初回デモには通常不要）。
 
 ## デモ到達への最短経路（メモ）
 
-1. **P1 の spike**（クロスワークスペース・ビルド可否の検証）
-2. **P1＋P2 を一本の ADR に**（レンダリング統合・イベント入力）→ `HayateSink` 実装
-3. **P3 スタイル ADR** → sink/IR 拡張
-4. （Todo 系なら）**P4 入力束縛**
+1. **P1 の spike**（クロスワークスペース・ビルド可否の検証）。通れば P1 は実装タスク化。
+2. **`HayateSink` ＋ DeliverySink 実装**（P1・P2 とも設計は ADR-0117 で済み。App Host へ
+   `mount(root, DeliverySink)` する経路を実装）。
+3. **P3 スタイル ADR** → sink/IR 拡張。
+4. （Todo 系なら）**P4 入力束縛**。
 5. ここまでで **`.hybs` 無しのプログラマティックなデモ**が可能。`.hybs` オーサリングは P6。
