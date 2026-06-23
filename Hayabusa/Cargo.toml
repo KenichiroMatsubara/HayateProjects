@@ -24,6 +24,11 @@ app-host = ["hayate-core", "dep:hayate-app-host"]
 hayate-core = { path = "../Hayate/crates/core", optional = true }
 hayate-app-host = { path = "../Hayate/crates/app-host", optional = true }
 
+# `.hybs` → 生成 Rust の build 時 codegen（ADR-0008）。build.rs から使う。クレートは自身の
+# ライブラリを build.rs から使えないため、パース／生成は別クレートに置く。
+[build-dependencies]
+hayabusa-codegen = { path = "codegen" }
+
 # Hayate vendors several crates and rewires them via `[patch.crates-io]` in its own
 # workspace (Hayate/Cargo.toml, ADR-0007). Cargo does NOT inherit a dependency's
 # workspace patches across workspaces, so a bare path dep on `hayate-core` pulls the

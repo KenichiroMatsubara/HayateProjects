@@ -1,0 +1,21 @@
+<template>
+  <view>
+    <text>{count}</text>
+    <button on:click={increment}>+1</button>
+  </view>
+</template>
+
+<script>
+// Rust-native <script>（ADR-0001 境界ゼロ）。build 時 codegen が build 関数本体へそのまま
+// 差し込み、cargo が型検査する（ADR-0008）。`rt: &Runtime` が見える。
+//
+// 配線規約（ADR-0008）：<template> の {count} は scope へ Binding::Signal で配線され、
+// on:click={increment} は Vec<Handler> へ詰められる。handler が捕捉する signal は内部で
+// clone し、束縛参照する `count` は move し切らないこと（scope 配線が count.clone() を読む）。
+let count = rt.signal(Value::number(0));
+
+let increment = {
+    let count = count.clone();
+    move |_: Value| count.update(|v| Value::number(v.as_number().unwrap() + 1.0))
+};
+</script>

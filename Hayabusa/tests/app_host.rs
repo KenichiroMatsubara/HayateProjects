@@ -126,6 +126,34 @@ fn repeated_clicks_across_frames_keep_patching_the_text_node() {
     assert_eq!(count.get(), Value::number(3));
 }
 
+/// `.hybs` を build 時 codegen でコンパイルした `generated::counter` を、実 App Host へ
+/// mount して click → text patch まで通す。`.hybs`（ADR-0008）→ App Host（ADR-0117）→
+/// 実 `ElementTree` の全経路がデモとして繋がることの実証。
+#[test]
+fn generated_hybs_component_runs_through_the_app_host() {
+    use hayabusa::generated::counter;
+
+    let rt = Runtime::new();
+    let sink = Rc::new(RefCell::new(RecordingSink::new()));
+    let instance = counter::build(&rt, sink);
+    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    host.mount(Box::new(HayabusaApp::new(instance)));
+
+    host.tick(0.0);
+    assert_eq!(host.tree().element_get_text(text_eid()), "0");
+
+    host.tree_mut().dispatch_event(
+        DocumentEventKind::Click,
+        Event::Click {
+            target_id: button_eid(),
+            x: 0.0,
+            y: 0.0,
+        },
+    );
+    host.tick(16.0);
+    assert_eq!(host.tree().element_get_text(text_eid()), "1");
+}
+
 /// listener が登録されていない要素への click は何もしない（no-op）。
 #[test]
 fn click_on_unregistered_element_is_a_no_op() {

@@ -23,6 +23,7 @@
 | host-ABI・モノレポ配置・hot-reload | 0001/0002/0006 | ✅ 方針決定済 |
 | クロスワークスペース・リンク（実 hayate-core 駆動の `HayateSink`） | 0009 | ✅ spike 実証・実装済 |
 | App Host 配線（`DeliverySink`・borrowed-tree・Click ルーティング） | 0117 / 0009 | ✅ 実装済（`tests/app_host.rs`） |
+| `.hybs` build 時 codegen（`<template>`＋`<script>`） | 0008 | ✅ 実装済（`components/counter.hybs`） |
 | レンダリング統合・boot・フレームループ（描画 present） | 0117 | ✅ 方針決定済（Platform 統合は未） |
 
 ---
@@ -143,6 +144,21 @@ ADR 無し（初回デモには通常不要）。
 >
 > 他言語 script（wasm ゲスト・ADR-0001/0002）は射程外で後続。
 
+**実装済み（2026-06-23・ADR-0008）**：build 時 codegen の tracer bullet を実装した。
+- **`hayabusa-codegen` クレート**（`codegen/`・`[build-dependencies]`）：`.hybs` を section 分割
+  （`<template>`/`<style>`/`<script>`）し、`<template>` markup（要素・静的テキスト・`{expr}` 束縛・
+  `on:click={handler}`）をパースして生成 Rust を出す。クレートは自身のライブラリを build.rs から
+  使えないため別クレートに置いた。
+- **`build.rs`**：`components/*.hybs` を codegen し `$OUT_DIR` へ。`src/lib.rs` の `pub mod generated`
+  が `include!`。`components/counter.hybs` がデモ。
+- **配線**：`{expr}` の自由変数 → `Binding::Signal`、`on:click` → `Vec<Handler>`。`<script>` の Rust は
+  build 関数本体へ verbatim 差し込み（cargo が型検査）。
+- 生成 `generated::counter::build` が手組み counter と同一に振る舞うことを `tests/hybs_codegen.rs`
+  （既定ビルド）で、`.hybs` → App Host → 実 `ElementTree` を `tests/app_host.rs` で実証。
+
+**残る実装タスク（ブロッカーではない）**：`.hybs` の `:if`/`:each`/子コンポーネント・mixed text・
+複数 `{expr}`、`<style>` の static style 生成（P3 の sink `set_style` 待ち）、他言語 script。
+
 ---
 
 ## デモ到達への最短経路（メモ）
@@ -154,8 +170,12 @@ ADR 無し（初回デモには通常不要）。
 2. ~~**App Host への配線**（P1・P2 とも設計は ADR-0117 で済み）~~ ✅ **完了（ADR-0117）**：
    `HayabusaApp` を `DeliverySink` として App Host へ `mount` し、buffering で借用ツリーモデルへ
    載せ、Click を ListenerId → ElId → handler でルーティング（`tests/app_host.rs`）。
-3. **P3 static style** → sink/IR の `set_style` 拡張。
+3. ~~**P6 `.hybs` codegen**（ADR-0008・build 時 codegen）~~ ✅ **完了（ADR-0008）**：
+   `<template>` パーサ＋Rust `<script>` 差し込みの tracer bullet。`components/counter.hybs` が
+   コンパイルされ `generated::counter::build` として動く（`tests/hybs_codegen.rs`）。残りは
+   `:if`/`:each`・`<style>`（P3 待ち）。
 4. **P4 入力束縛**（ADR-0007・EditState 単一正本）→ sink/IR の programmatic value set オペ。
-5. **P6 `.hybs` codegen**（ADR-0008・build 時 codegen）→ `<template>`/`<style>` パーサ＋
-   Rust `<script>` 差し込み。これで Todo の `.hybs` がコンパイルされ画面に出る。
-6. 第二段階：複数コンポーネント分割＋ **P5 Store**（要 ADR）。
+   `on:input` の DeliverySink ルーティングも要追加（現状 Click のみ）。
+5. **P3 static style** → sink/IR の `set_style` 拡張。これで色・レイアウトが出て「見せられる」。
+6. **Todo `.hybs`**：上記が揃えば Todo を `.hybs` で書いて画面に出す（第一段階の終着）。
+7. 第二段階：複数コンポーネント分割＋ **P5 Store**（要 ADR）。

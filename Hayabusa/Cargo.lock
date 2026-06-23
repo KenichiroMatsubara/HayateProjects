@@ -164,9 +164,14 @@ dependencies = [
 name = "hayabusa"
 version = "0.1.0"
 dependencies = [
+ "hayabusa-codegen",
  "hayate-app-host",
  "hayate-core",
 ]
+
+[[package]]
+name = "hayabusa-codegen"
+version = "0.1.0"
 
 [[package]]
 name = "hayate-app-host"

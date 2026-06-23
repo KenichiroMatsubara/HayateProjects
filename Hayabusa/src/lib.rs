@@ -73,6 +73,13 @@ pub mod sink;
 pub mod template;
 pub mod value;
 
+/// `.hybs` を build 時 codegen でコンパイルした生成コンポーネント（ADR-0008）。
+/// `build.rs` が `components/*.hybs` を生成 Rust にし、ここで `include!` する。各
+/// コンポーネントは `generated::<name>::build(rt, sink)` で instantiate できる。
+pub mod generated {
+    include!(concat!(env!("OUT_DIR"), "/components_generated.rs"));
+}
+
 /// よく使う型をまとめて取り込むための prelude。
 pub mod prelude {
     #[cfg(feature = "app-host")]
