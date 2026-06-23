@@ -22,7 +22,8 @@
 | async/Resource/Suspense/ErrorBoundary | 0005 | ✅ モデル決定済（実装は未） |
 | host-ABI・モノレポ配置・hot-reload | 0001/0002/0006 | ✅ 方針決定済 |
 | クロスワークスペース・リンク（実 hayate-core 駆動の `HayateSink`） | 0009 | ✅ spike 実証・実装済 |
-| レンダリング統合・boot・フレームループ・イベント配送 | 0117 | ✅ 方針決定済（App Host 配線は未） |
+| App Host 配線（`DeliverySink`・borrowed-tree・Click ルーティング） | 0117 / 0009 | ✅ 実装済（`tests/app_host.rs`） |
+| レンダリング統合・boot・フレームループ（描画 present） | 0117 | ✅ 方針決定済（Platform 統合は未） |
 
 ---
 
@@ -48,10 +49,16 @@ patch 複製で成功。`HayateSink`（`src/hayate_sink.rs`）を `feature = "ha
 counter tracer bullet を実 `ElementTree` 上で駆動する統合テスト（`tests/hayate_sink.rs`）が緑。
 詳細は [ADR-0009](adr/0009-cross-workspace-link-to-hayate-core-via-patch-replication.md)。
 
-**残る実装タスク（ブロッカーではない）**：`HayateSink` は現状 `ElementTree` を所有する
-（`Instance<S: 'static>` の sink モデルに合わせた）。ADR-0117 の App Host は tree を自分で所有し
-毎フレーム `&mut ElementTree` を借す `DeliverySink` モデルのため、両者を繋ぐ event-loop 配線
-（borrowed-tree モデル＋ListenerId → handler ルーティング）が次段。wasm 同梱・パッケージングも未検証。
+**App Host 配線も実装済み（2026-06-23・ADR-0117）**：`HayabusaApp`（`src/app_host.rs`）を
+共有 `hayate_app_host::AppHost` へ `DeliverySink` として mount する経路を実装した。App Host が
+tree を所有する borrowed-tree モデルの生存期間ギャップは **buffering（effect が `RecordingSink`
+へ `Mutation` を積み、`handle` がフレーム内で借用ツリーへ drain）** で解き、unsafe を使わない。
+click は mount 時に登録した `ListenerId → ElId → handler` でルーティングする。`tick →
+poll_deliveries → handle → flush → 借用ツリーへ patch` の 1 フレーム完全ループを
+`tests/app_host.rs` で実証（`feature = "app-host"`）。
+
+**残る実装タスク（ブロッカーではない）**：Click 以外のイベント（`on:input` 等は P4・ADR-0007 の
+経路）、描画 present を伴う Platform Front / Adapter 統合、wasm 同梱・パッケージングは未検証。
 
 ## P2 🟢 イベント入力の経路 — **ADR-0117 で決着**
 
@@ -62,8 +69,11 @@ counter tracer bullet を実 `ElementTree` 上で駆動する統合テスト（`
 出し切ってから return する。App Host は `ListenerId` の意味も handler の存在も知らない（consumer 非依存）。
 テンプレの `on:click` / `on:input` は handler を ListenerId に紐付けて map に登録するだけ。
 
-**残るのは実装のみ**：テスト用シーム `Instance::click(ElId)`（`src/instantiate.rs`）を、実機では
-DeliverySink 経由の `{listener_id, event}` dispatch に置き換える。新しい ADR は不要。
+**実装済み（2026-06-23・ADR-0117）**：`HayabusaApp`（`src/app_host.rs`）の `DeliverySink::handle`
+が `poll_deliveries` 済みの `{listener_id, event}` を `ListenerId → ElId → Instance::click` で
+ルーティングし、handler 実行＋flush 後に借用ツリーへ mutation を drain する。`Instance::click` は
+テスト用シームとして残しつつ、実機経路は delivery 駆動になった。新しい ADR は不要だった。
+（Click のみ。`on:input` 等は P4・ADR-0007 の経路で後続）。
 
 ## P3 🟠 スタイル（`<style>` DSL → Hayate CSS）
 
@@ -141,8 +151,9 @@ ADR 無し（初回デモには通常不要）。
 
 1. ~~**P1 の spike**（クロスワークスペース・ビルド可否の検証）~~ ✅ **完了（ADR-0009）**：
    patch 複製でリンク可。`HayateSink` で実 `ElementTree` を駆動できることを実証済み。
-2. **App Host への配線**（P1・P2 とも設計は ADR-0117 で済み）：`HayateSink` を `DeliverySink` として
-   App Host へ `mount` し、`&mut ElementTree` 借用モデルへ載せる＋ListenerId → handler ルーティング。
+2. ~~**App Host への配線**（P1・P2 とも設計は ADR-0117 で済み）~~ ✅ **完了（ADR-0117）**：
+   `HayabusaApp` を `DeliverySink` として App Host へ `mount` し、buffering で借用ツリーモデルへ
+   載せ、Click を ListenerId → ElId → handler でルーティング（`tests/app_host.rs`）。
 3. **P3 static style** → sink/IR の `set_style` 拡張。
 4. **P4 入力束縛**（ADR-0007・EditState 単一正本）→ sink/IR の programmatic value set オペ。
 5. **P6 `.hybs` codegen**（ADR-0008・build 時 codegen）→ `<template>`/`<style>` パーサ＋

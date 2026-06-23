@@ -63,14 +63,19 @@ Hayabusa の `ElementSink`（`src/sink.rs`）は設計上 `hayate_core::ElementT
 - patch テーブルは Hayate 側（ADR-0007）と二重管理になる。vendored 構成が変わったら両方を更新する。
 - feature off の既定ビルドで未使用 patch 警告が出るのは許容する（cargo の制約で `[patch]` は feature
   条件付きにできない）。`-D warnings`（rustc lint 対象）は通る。
-- これで pending-decisions P1 の spike が解消。残りは実装タスク（App Host の `&mut ElementTree` を
-  借りる `DeliverySink` 経路＝ADR-0117 の borrowed-tree モデルと、ListenerId → handler ルーティング）。
+- これで pending-decisions P1 の spike が解消。続けて ADR-0117 の App Host 配線
+  （`src/app_host.rs` の `HayabusaApp`）を実装した：App Host が tree を所有する borrowed-tree
+  モデルの生存期間ギャップを buffering（effect が `RecordingSink` へ mutation を積み、`handle` が
+  フレーム内で借用ツリーへ drain）で解き、Click を `ListenerId → ElId → handler` でルーティングする
+  （`tests/app_host.rs`）。`apply_mutation`（src/hayate_sink.rs）が `HayateSink` のライブ転送と
+  同じ 1:1 写像を記録済み mutation 列に適用する。
 
 ## 関係
 
 - ADR-0002：host-ABI 線。`ElementSink` の 1:1 写像を実コアで成立させたのが本 ADR の `HayateSink`。
 - ADR-0006：self-contained tracer bullet。実コア統合を optional feature にして既定の外部依存ゼロを維持。
 - ADR-0007（Hayate）：vendored crate と `[patch.crates-io]`。本 ADR はその patch を Hayabusa 側へ複製する。
-- ADR-0117（Hayate）：App Host boot シーム。`HayateSink` を App Host の `DeliverySink` として
-  `&mut ElementTree` 借用モデルへ載せる event-loop 配線は本 ADR の次段（実装タスク）。
+- ADR-0117（Hayate）：App Host boot シーム。本 ADR の patch 複製の上で、`HayabusaApp`
+  （`src/app_host.rs`）を App Host の `DeliverySink` として `&mut ElementTree` 借用モデルへ載せる
+  event-loop 配線を実装した（buffering ＋ ListenerId ルーティング・`tests/app_host.rs`）。
 - pending-decisions P1：本 ADR が同項の「残る未決（ビルド spike）」を解消する。

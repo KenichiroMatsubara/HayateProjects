@@ -93,6 +93,12 @@ impl RecordingSink {
         self.log.clear();
     }
 
+    /// 記録された mutation 列を所有で取り出し、内部ログを空にする。
+    /// buffering sink としての drain 経路（App Host への適用・src/app_host.rs）に使う。
+    pub fn take_log(&mut self) -> Vec<Mutation> {
+        std::mem::take(&mut self.log)
+    }
+
     /// `set_text` mutation だけを `(id, text)` で抽出する。
     pub fn text_mutations(&self) -> Vec<(ElId, String)> {
         self.log

@@ -17,7 +17,7 @@
 //! handler ルーティング）は次段の実装で、本モジュールは「ElementSink → 実 ElementTree」の
 //! 転送が実機コア上で成立することを先に確定させる。
 
-use crate::sink::{ElId, ElementKind, ElementSink};
+use crate::sink::{ElId, ElementKind, ElementSink, Mutation};
 use hayate_core::{ElementId, ElementKind as CoreKind, ElementTree};
 
 /// `ElementSink` を所有する `hayate_core::ElementTree` へ転送する sink。
@@ -62,7 +62,7 @@ impl Default for HayateSink {
 
 /// Hayabusa の element-kind 語彙を core の語彙へ写す。両者は同じ並びだが、判別子の
 /// 値表現に依存せず明示で写して将来のドリフトに備える。
-fn to_core_kind(kind: ElementKind) -> CoreKind {
+pub(crate) fn to_core_kind(kind: ElementKind) -> CoreKind {
     match kind {
         ElementKind::View => CoreKind::View,
         ElementKind::Text => CoreKind::Text,
@@ -74,8 +74,31 @@ fn to_core_kind(kind: ElementKind) -> CoreKind {
 }
 
 /// `ElId` を core の `ElementId` へ写す（同一 u64 を共有する全単射）。
-fn to_core_id(id: ElId) -> ElementId {
+pub(crate) fn to_core_id(id: ElId) -> ElementId {
     ElementId::from_u64(id.0)
+}
+
+/// 記録済みの 1 件の [`Mutation`] を実 `ElementTree` へ適用する。`RecordingSink` を
+/// buffering sink として使う経路（App Host への drain・src/app_host.rs）が、effect が
+/// 積んだ mutation 列をフレーム内でこの関数で借用ツリーへ出し切る。`HayateSink` の
+/// ライブ転送と同じ 1:1 写像で、id は記録時に払い出し済みのものをそのまま使う。
+pub(crate) fn apply_mutation(tree: &mut ElementTree, m: &Mutation) {
+    match m {
+        Mutation::Create { id, kind } => {
+            tree.element_create(id.0, to_core_kind(*kind));
+        }
+        Mutation::SetText { id, text } => tree.element_set_text(to_core_id(*id), text),
+        Mutation::AppendChild { parent, child } => {
+            tree.element_append_child(to_core_id(*parent), to_core_id(*child))
+        }
+        Mutation::InsertBefore {
+            parent,
+            child,
+            before,
+        } => tree.element_insert_before(to_core_id(*parent), to_core_id(*child), to_core_id(*before)),
+        Mutation::Remove { id } => tree.element_remove(to_core_id(*id)),
+        Mutation::SetRoot { id } => tree.set_root(to_core_id(*id)),
+    }
 }
 
 impl ElementSink for HayateSink {

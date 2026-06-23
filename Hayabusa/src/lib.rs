@@ -60,6 +60,8 @@
 //! assert_eq!(sink.borrow().text_mutations(), vec![(ElId(1), "1".to_string())]);
 //! ```
 
+#[cfg(feature = "app-host")]
+pub mod app_host;
 pub mod component;
 pub mod expr;
 #[cfg(feature = "hayate-core")]
@@ -73,6 +75,8 @@ pub mod value;
 
 /// よく使う型をまとめて取り込むための prelude。
 pub mod prelude {
+    #[cfg(feature = "app-host")]
+    pub use crate::app_host::HayabusaApp;
     pub use crate::component::{Component, ComponentSlot, ComponentView, Emit, Handler, SetupCx};
     pub use crate::expr::{BinOp, Binding, Expr, Scope};
     #[cfg(feature = "hayate-core")]

@@ -29,6 +29,7 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
 | [`sink`](src/sink.rs) | `ElementSink` mutation サーフェス（`ElementTree` に 1:1 で写る host-ABI 線） | 0002 |
 | [`instantiate`](src/instantiate.rs) | Template IR の instantiate / bind / 構造 reconcile / コンポーネント mount | 0004 / 0006 |
 | [`hayate_sink`](src/hayate_sink.rs) | `ElementSink` を実 `hayate_core::ElementTree` へ転送する `HayateSink`（`feature = "hayate-core"`） | 0002 / 0009 |
+| [`app_host`](src/app_host.rs) | 共有 App Host へ `DeliverySink` として mount する `HayabusaApp`（borrowed-tree ＋ ListenerId ルーティング・`feature = "app-host"`） | 0117 / 0009 |
 
 ### 通っているスライス
 
@@ -57,10 +58,16 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
   `[patch.crates-io]` の複製で通る（spike 実証）。counter tracer bullet を実 `ElementTree` 上で
   通し、increment 時に text ノードが実 Element Layer で patch されることを `tests/hayate_sink.rs`
   で実証（`feature = "hayate-core"`）。
+- **Slice 6（App Host 配線・ADR-0117）**：`HayabusaApp` を共有 `hayate_app_host::AppHost` へ
+  `DeliverySink` として mount。**App Host が tree を所有する borrowed-tree モデル**で、
+  reactive effect が積む mutation を buffering sink に溜め、`handle` がフレーム内で借用ツリーへ
+  drain する（unsafe 不使用）。click は mount 時登録の `ListenerId → ElId → handler` で
+  ルーティング。`tick → poll_deliveries → handle → flush → 借用ツリーへ patch` の 1 フレーム
+  完全ループを `tests/app_host.rs` で実証（`feature = "app-host"`）。
 
 含めない（後続）：`<template>` マークアップのパーサ＋`.hybs` 全体のコンパイラ、他言語
-wasm ゲスト、router、Store、Resource、App Host の `&mut ElementTree` 借用モデル
-（ADR-0117）への event-loop 配線＋ListenerId → handler ルーティング。
+wasm ゲスト、router、Store、Resource、Click 以外のイベント（`on:input` 等は P4・ADR-0007）、
+描画 present を伴う Platform Adapter 統合。
 
 > デモアプリ到達のために決める必要がある未決 ADR 論点は
 > [`docs/pending-decisions.md`](docs/pending-decisions.md) に記録している。
@@ -86,4 +93,7 @@ cargo clippy --all-targets -- -D warnings
 
 # 実機コア統合（HayateSink で実 ElementTree を駆動）
 cargo test --features hayate-core    # ＋ hayate_sink の unit/integration テスト
+
+# App Host 配線（borrowed-tree モデルで 1 フレームの完全ループ）
+cargo test --features app-host       # ＋ app_host の integration テスト
 ```

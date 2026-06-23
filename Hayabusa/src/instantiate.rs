@@ -84,6 +84,12 @@ impl<S: ElementSink + 'static> Instance<S> {
         self.sink.clone()
     }
 
+    /// click ハンドラが登録されている要素の ElId 一覧。App Host への mount 時に、
+    /// これらへ listener を登録して `ListenerId → ElId` を組む（src/app_host.rs）。
+    pub fn click_target_ids(&self) -> Vec<ElId> {
+        self.click_targets.borrow().keys().copied().collect()
+    }
+
     /// 要素のクリックをディスパッチする。ハンドラ本体を batch で走らせ、その中の
     /// signal write を 1 回の flush（fine-grained patch）にまとめて sink へ落とす。
     /// 対象に click ハンドラが無ければ `false`。

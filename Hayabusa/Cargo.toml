@@ -16,9 +16,13 @@ repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 default = []
 # Drive the real `hayate_core::ElementTree` through `HayateSink` (src/hayate_sink.rs).
 hayate-core = ["dep:hayate-core"]
+# Mount Hayabusa onto the ADR-0117 App Host as a `DeliverySink` (src/app_host.rs):
+# the App Host owns the `ElementTree` and lends `&mut ElementTree` per frame.
+app-host = ["hayate-core", "dep:hayate-app-host"]
 
 [dependencies]
 hayate-core = { path = "../Hayate/crates/core", optional = true }
+hayate-app-host = { path = "../Hayate/crates/app-host", optional = true }
 
 # Hayate vendors several crates and rewires them via `[patch.crates-io]` in its own
 # workspace (Hayate/Cargo.toml, ADR-0007). Cargo does NOT inherit a dependency's
