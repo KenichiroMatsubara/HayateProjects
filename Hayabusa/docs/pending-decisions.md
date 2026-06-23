@@ -32,8 +32,12 @@
 - **アダプタ方針**：既存の `hayate-adapter-web`（GPU/DOM 描画＋ポインタ/キー入力＋IME。
   現状は proto/wire の `apply_mutations` バッチ経由で Tsubame が駆動する）を **再利用するのか**、
   Hayabusa 専用アダプタを持つのか。
-- **ElementTree の所有位置**：Hayabusa（Rust）が ElementTree を直接所有して駆動するのか、
-  それとも wire 境界（`apply_mutations`）越しに既存アダプタの ElementTree を駆動するのか。
+- **ElementTree の所有位置**：~~Hayabusa（Rust）が直接駆動か wire 越しか~~ → **決着済み**。
+  CONTEXT.md / ADR-0045 が「Hayabusa は in-process projection で wire を介さず ElementTree を
+  直接駆動し、ElId＝ElementId の同一 identity を共有する」と確定済み。wire 経由は projection の
+  二重定義になり CONTEXT.md `_Avoid_`（「Hayabusa も wire/proto 経由とする理解」）に反するため
+  フォールバック先にしない。ビルド検証が失敗しても解決方向は「wire に逃げる」ではなく
+  「クレート配置（モノレポ patch 解決）を直す」（ADR-0006 の intent と整合）。
 - **boot / フレームループ**：mount API（例：`mount(component, root, adapter)`）と、
   `render(timestamp_ms)` フレームループ（transition・カーソル点滅）の所有者。
 - **ビルド現実（実装ブロッカー）**：hayate-core は vendored crate を `[patch.crates-io]`
