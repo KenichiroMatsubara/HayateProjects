@@ -1588,6 +1588,18 @@ impl ElementTree {
         self.runtime.poll_deliveries()
     }
 
+    /// `id` から最も近い ScrollView 祖先（自身を含む）。なければ None。ホイール経路の連鎖開始点と
+    /// タッチジェスチャのロック（ADR-0082）が共有する単一の真実で、各 Platform Adapter が祖先走査を
+    /// 再実装せずにこの公開シームへ委譲できる。
+    pub fn nearest_scroll_view(&self, mut id: ElementId) -> Option<ElementId> {
+        loop {
+            if self.element_kind(id) == Some(ElementKind::ScrollView) {
+                return Some(id);
+            }
+            id = self.element_parent(id)?;
+        }
+    }
+
     /// `hit` の祖先 ScrollView にブラウザ風のスクロールチェーンでホイール差分を適用する。
     ///
     /// 最も近い ScrollView から始め、各軸はコンテンツ境界まで差分を消費する。未消費の
@@ -1598,7 +1610,7 @@ impl ElementTree {
         delta_x: f32,
         delta_y: f32,
     ) -> Option<ElementId> {
-        let first_sv = nearest_scroll_view(self, hit)?;
+        let first_sv = self.nearest_scroll_view(hit)?;
         let mut current_sv = first_sv;
         let mut remaining_x = delta_x;
         let mut remaining_y = delta_y;
@@ -2059,15 +2071,6 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::TransitionDuration(v) => visual.transition_duration = v.max(0.0),
         StyleProp::TransitionTiming(v) => visual.transition_timing = *v,
         _ => {}
-    }
-}
-
-fn nearest_scroll_view(tree: &ElementTree, mut id: ElementId) -> Option<ElementId> {
-    loop {
-        if tree.element_kind(id) == Some(ElementKind::ScrollView) {
-            return Some(id);
-        }
-        id = tree.element_parent(id)?;
     }
 }
 

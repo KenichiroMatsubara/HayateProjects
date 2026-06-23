@@ -10,7 +10,7 @@ use crate::resize_observer::{self, ResizeObserverGuard};
 use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning};
 
 use hayate_core::{
-    BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId, ElementKind,
+    BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
     ElementTree, Event, FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat,
     StyleProp, TextDecorationValue,
 };
@@ -446,7 +446,7 @@ impl HayateElementRenderer {
                     if let Some(sv) = self
                         .tree
                         .hit_test(x, y)
-                        .and_then(|hit| self.nearest_scroll_view(hit))
+                        .and_then(|hit| self.tree.nearest_scroll_view(hit))
                     {
                         self.scroll_gesture = Some(ScrollGesture::new(sv, (x, y)));
                     }
@@ -506,18 +506,6 @@ impl HayateElementRenderer {
                     self.tree.on_wheel(target, delta_x, delta_y);
                 }
             }
-        }
-    }
-
-    /// `id` から最も近い ScrollView 祖先（自身を含む）まで遡る。タッチジェスチャがロック
-    /// する要素。公開の kind/parent クエリで Core のホイール経路 `nearest_scroll_view` を
-    /// 再現し、ジェスチャロックをアダプタ側に置く（ADR-0082）。
-    fn nearest_scroll_view(&self, mut id: ElementId) -> Option<ElementId> {
-        loop {
-            if self.tree.element_kind(id) == Some(ElementKind::ScrollView) {
-                return Some(id);
-            }
-            id = self.tree.element_parent(id)?;
         }
     }
 

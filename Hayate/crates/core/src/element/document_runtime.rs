@@ -273,6 +273,35 @@ mod tests {
         assert!((y - 10.0).abs() < 1e-3);
     }
 
+    /// 公開シーム `nearest_scroll_view` はホイール経路とタッチジェスチャのロック（ADR-0082）が
+    /// 共有する単一の真実。自身が ScrollView ならそれを、そうでなければ最も近い ScrollView 祖先を返す。
+    #[test]
+    fn nearest_scroll_view_returns_self_or_nearest_ancestor() {
+        let (tree, sv, child) = scroll_tree(300.0);
+        assert_eq!(tree.nearest_scroll_view(sv), Some(sv));
+        assert_eq!(tree.nearest_scroll_view(child), Some(sv));
+    }
+
+    /// ネストでは最も近い（内側の）ScrollView にロックし、ホイールの連鎖開始点と一致する。
+    #[test]
+    fn nearest_scroll_view_locks_to_innermost() {
+        let (tree, outer, inner, leaf) = nested_scroll_tree();
+        assert_eq!(tree.nearest_scroll_view(leaf), Some(inner));
+        assert_eq!(tree.nearest_scroll_view(inner), Some(inner));
+        assert_eq!(tree.nearest_scroll_view(outer), Some(outer));
+    }
+
+    /// ScrollView 祖先が無ければ None（ホイールが落とすのと同じ条件）。
+    #[test]
+    fn nearest_scroll_view_is_none_without_scroll_view_ancestor() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        let child = tree.element_create(2, ElementKind::View);
+        tree.set_root(root);
+        tree.element_append_child(root, child);
+        assert_eq!(tree.nearest_scroll_view(child), None);
+    }
+
     fn nested_scroll_tree() -> (ElementTree, ElementId, ElementId, ElementId) {
         let mut tree = ElementTree::new();
         let outer = tree.element_create(100, ElementKind::ScrollView);
