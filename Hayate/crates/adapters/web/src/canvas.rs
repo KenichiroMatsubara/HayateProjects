@@ -12,18 +12,16 @@ use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId, ElementKind,
     ElementTree, Event, FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat,
-    StyleProp, StylePropKind, TextDecorationValue,
+    StyleProp, TextDecorationValue,
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
 
-use hayate_core::wire::unset_kind_from_u32;
 use crate::backend::{CanvasBackend, SelectedBackend};
 use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
 use crate::ime_bridge::WebImeBridge;
-use crate::style_packet;
 
 use crate::shared::{element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
 
@@ -241,66 +239,10 @@ impl HayateElementRenderer {
         Ok(())
     }
 
-    pub fn element_set_text(&mut self, id: f64, text: &str) {
-        self.tree.element_set_text(element_id_from_f64(id), text);
-    }
-
-    pub fn element_set_src(&mut self, id: f64, url: &str) {
-        self.tree.element_set_src(element_id_from_f64(id), url);
-    }
-
-    pub fn element_set_disabled(&mut self, id: f64, disabled: bool) {
-        self.tree
-            .element_set_disabled(element_id_from_f64(id), disabled);
-    }
-
-    pub fn element_set_selectable(&mut self, id: f64, selectable: bool) {
-        self.tree
-            .element_set_selectable(element_id_from_f64(id), selectable);
-    }
-
-    pub fn element_set_multiline(&mut self, id: f64, multiline: bool) {
-        self.tree
-            .element_set_multiline(element_id_from_f64(id), multiline);
-    }
-
-    pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
-        let props = style_packet::decode(packed)?;
-        self.tree.element_set_style(element_id_from_f64(id), &props);
-        Ok(())
-    }
-
-    /// Hayate CSS の擬似クラスブロック（`:hover` / `:active` / `:focus`）。
-    pub fn element_set_pseudo_style(
-        &mut self,
-        id: f64,
-        state: u32,
-        packed: &[f32],
-    ) -> Result<(), JsValue> {
-        let pseudo = hayate_core::PseudoState::from_u32(state)
-            .ok_or_else(|| JsValue::from_str(&format!("unknown pseudo-state {state}")))?;
-        let props = style_packet::decode(packed)?;
-        self.tree
-            .element_set_pseudo_style(element_id_from_f64(id), pseudo, &props);
-        Ok(())
-    }
-
-    /// レイアウトの上に 2D アフィン変換を適用する。引数は WIT の `affine` レコードフィールド
-    /// に対応する（列優先: xx,yx,xy,yy,dx,dy）。恒等変換 (1,0,0,1,0,0) を渡すと以前の変換を
-    /// 打ち消す。
-    pub fn element_set_transform(
-        &mut self,
-        id: f64,
-        xx: f64,
-        yx: f64,
-        xy: f64,
-        yy: f64,
-        dx: f64,
-        dy: f64,
-    ) {
-        self.tree
-            .element_set_transform(element_id_from_f64(id), Some([xx, yx, xy, yy, dx, dy]));
-    }
+    // 命令的ミューテータ（`element_set_*`）は撤去した（#439）。Canvas Mode の変更は
+    // すべて `apply_mutations`（中立 decode → `TreeSink`）を1本通る。構造系
+    // （create/append_child/insert_before/remove/set_root）・クエリ（`element_get_*`）・
+    // 入力（`on_*`）・`render` / `poll_events` は命令的なまま。
 
     pub fn element_append_child(&mut self, parent: f64, child: f64) {
         self.tree
@@ -728,11 +670,6 @@ impl HayateElementRenderer {
             .collect()
     }
 
-    pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
-        self.tree
-            .element_set_scroll_offset(element_id_from_f64(id), x, y);
-    }
-
     /// 要素の現在のスクロールオフセット `[x, y]`（未知のときは 0,0）。
     /// `element_set_scroll_offset` と対称で、ホストがタッチ駆動のスクロール位置を読み戻せる
     /// （ADR-0082）。
@@ -741,34 +678,8 @@ impl HayateElementRenderer {
         vec![x, y].into_boxed_slice()
     }
 
-    pub fn element_set_font_family(&mut self, id: f64, family: &str) {
-        self.tree
-            .element_set_font_family(element_id_from_f64(id), family);
-    }
-
-    /// `id` の継承可能なテキストスタイルプロパティを 1 つ以上 unset し、親からの継承に戻す
-    /// （ADR-0047）。`kinds` はパックされた u32 配列: 0 = Color, 1 = FontSize, 2 = FontFamily。
-    pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) -> Result<(), JsValue> {
-        let parsed: Result<Vec<StylePropKind>, JsValue> = kinds
-            .iter()
-            .map(|&kind| unset_kind_from_u32(kind).map_err(|e| JsValue::from_str(&e)))
-            .collect();
-        self.tree
-            .element_unset_style(element_id_from_f64(id), &parsed?);
-        Ok(())
-    }
-
-    pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
-        self.tree
-            .element_set_aria_label(element_id_from_f64(id), label);
-    }
-
-    pub fn element_set_role(&mut self, id: f64, role: &str) {
-        self.tree.element_set_role(element_id_from_f64(id), role);
-    }
-
     /// 生バイトからカスタムフォントを登録する。これ以降 family_name を
-    /// `element_set_font_family` で使える。
+    /// `font-family` スタイル（`OP_SET_FONT_FAMILY`）で使える。
     pub fn register_font_bytes(&mut self, family_name: &str, data: &[u8]) {
         self.tree.register_font(family_name, data.to_vec());
     }
@@ -940,11 +851,6 @@ impl HayateElementRenderer {
     /// アタッチするので、非編集コンテンツへの普通のタップでは呼び出されない。
     pub fn ime_wants_keyboard(&self) -> bool {
         self.ime.visible()
-    }
-
-    pub fn element_set_text_content(&mut self, id: f64, text: &str) {
-        self.tree
-            .element_set_text_content(element_id_from_f64(id), text);
     }
 
     /// バッチ適用。Tsubame Canvas Mode がフレームごとに一度呼ぶ（ADR-0052）。`ops` は固定長

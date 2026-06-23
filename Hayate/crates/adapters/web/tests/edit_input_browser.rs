@@ -27,6 +27,32 @@ const MOD_CTRL: u32 = 2;
 const TAG_WIDTH: f32 = 5.0;
 const TAG_HEIGHT: f32 = 6.0;
 const UNIT_PX: f32 = 0.0;
+/// 撤去した命令的セッター（#439）の代わりに使う wire opcode の判別子
+/// （proto/spec/opcodes.json）。テストは実ホスト API `apply_mutations`（ADR-0052）の
+/// バッチ経路だけでミューテーションを駆動する（ADR-0072: テスト専用エクスポート無し）。
+const OP_SET_STYLE: f64 = 4.0;
+const OP_SET_TEXT_CONTENT: f64 = 12.0;
+const OP_SET_MULTILINE: f64 = 18.0;
+
+/// 1 要素のスタイルを `apply_mutations` で適用する（`OP_SET_STYLE` 1 件）。
+fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
+    let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
+    r.apply_mutations(&ops, packed, js_sys::Array::new()).unwrap();
+}
+
+/// 編集可能テキスト内容を `apply_mutations` で設定する（`OP_SET_TEXT_CONTENT` 1 件）。
+fn apply_text_content(r: &mut HayateElementRenderer, id: f64, text: &str) {
+    let texts = js_sys::Array::new();
+    texts.push(&JsValue::from_str(text));
+    let ops = [OP_SET_TEXT_CONTENT, id, 0.0];
+    r.apply_mutations(&ops, &[], texts).unwrap();
+}
+
+/// 複数行フラグを `apply_mutations` で設定する（`OP_SET_MULTILINE` 1 件）。
+fn apply_multiline(r: &mut HayateElementRenderer, id: f64, multiline: bool) {
+    let ops = [OP_SET_MULTILINE, id, if multiline { 1.0 } else { 0.0 }];
+    r.apply_mutations(&ops, &[], js_sys::Array::new()).unwrap();
+}
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {
     let document = web_sys::window().unwrap().document().unwrap();
@@ -103,14 +129,13 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
 
     // 画面いっぱいの text-input に "hello"（キャレットは末尾）。
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
-    renderer.element_set_text_content(1.0, "hello");
+    apply_text_content(&mut renderer, 1.0, "hello");
 
     // レイアウト後、実 pointerdown を render で処理して input をフォーカスする。
     renderer.render(0.0).unwrap();
@@ -158,15 +183,14 @@ async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
-    renderer.element_set_multiline(1.0, true);
-    renderer.element_set_text_content(1.0, "ab");
+    apply_multiline(&mut renderer, 1.0, true);
+    apply_text_content(&mut renderer, 1.0, "ab");
 
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
@@ -198,14 +222,13 @@ async fn enter_in_a_single_line_field_does_not_insert_a_newline() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
-    renderer.element_set_text_content(1.0, "ab");
+    apply_text_content(&mut renderer, 1.0, "ab");
 
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
@@ -229,14 +252,13 @@ async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
-    renderer.element_set_text_content(1.0, "hello");
+    apply_text_content(&mut renderer, 1.0, "hello");
 
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
@@ -272,14 +294,13 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
-    renderer.element_set_text_content(1.0, "hello");
+    apply_text_content(&mut renderer, 1.0, "hello");
 
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
@@ -322,14 +343,13 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
-    renderer.element_set_text_content(1.0, "hello world");
+    apply_text_content(&mut renderer, 1.0, "hello world");
 
     renderer.render(0.0).unwrap();
     let rect = canvas.get_bounding_client_rect();
@@ -373,12 +393,11 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
-    renderer
-        .element_set_style(
-            1.0,
-            &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
-        )
-        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, UNIT_PX, TAG_HEIGHT, 200.0, UNIT_PX],
+    );
     renderer.set_root(1.0);
 
     // レイアウト後、実 pointerdown で（空の）input をフォーカスする。

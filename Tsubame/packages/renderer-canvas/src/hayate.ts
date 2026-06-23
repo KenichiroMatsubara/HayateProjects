@@ -30,10 +30,9 @@ export interface RawHayate {
   element_append_child(parent: number, child: number): void;
   element_insert_before(parent: number, child: number, before: number): void;
   element_remove(id: number): void;
-  element_set_text(id: number, text: string): void;
-  element_set_text_content(id: number, text: string): void;
-  element_set_src(id: number, url: string): void;
-  element_set_disabled(id: number, disabled: boolean): void;
+  // 命令的 `element_set_*` セッターは撤去した（#439）。全ミューテーションは
+  // `apply_mutations`（ADR-0052 のバッチ経路）1 本を通る。構造系・クエリ・入力・
+  // ライフサイクルだけが命令的なまま残る。
   element_get_text(id: number): string;
   /** ライブツリーから編集可能なテキスト内容を返す。 */
   element_get_text_content(id: number): string;
@@ -41,8 +40,6 @@ export interface RawHayate {
   element_get_bounds(id: number): Float32Array | number[];
   /** `id` とその子孫の要素 id（Hayate ElementTree が正）。 */
   element_subtree_ids(id: number): Float64Array;
-  element_set_style(id: number, packed: Float32Array): void;
-  element_set_pseudo_style(id: number, state: number, packed: Float32Array): void;
   apply_mutations(
     ops: Float64Array,
     styles: Float32Array,

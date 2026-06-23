@@ -34,6 +34,15 @@ const ELEMENT_KIND_SCROLLVIEW: u32 = 5;
 /// style_packet タグ: width=5, height=6; unit 0 = Px（crates/adapters/web/src/style_packet.rs）。
 const TAG_WIDTH: f32 = 5.0;
 const TAG_HEIGHT: f32 = 6.0;
+/// `OP_SET_STYLE` の判別子（proto/spec/opcodes.json）。命令的セッターは撤去済み（#439）
+/// なので、テストは実ホスト API `apply_mutations`（ADR-0052）だけでスタイルを適用する。
+const OP_SET_STYLE: f64 = 4.0;
+
+/// 1 要素のスタイルを `apply_mutations` で適用するテストヘルパ（`OP_SET_STYLE` 1 件）。
+fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
+    let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
+    r.apply_mutations(&ops, packed, js_sys::Array::new()).unwrap();
+}
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {
     let document = web_sys::window().unwrap().document().unwrap();
@@ -155,9 +164,7 @@ async fn dispatched_pointermove_delivers_hover_enter() {
     // サーフェスを埋める単一ルート View に HoverEnter リスナを付ける。
     renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
     // TAG_WIDTH=5 / TAG_HEIGHT=6、値 200、unit 0（Px）。
-    renderer
-        .element_set_style(1.0, &[5.0, 200.0, 0.0, 6.0, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[5.0, 200.0, 0.0, 6.0, 200.0, 0.0]);
     renderer.set_root(1.0);
     let listener_id = renderer
         .register_listener(1.0, HOVER_ENTER_KIND as u32)
@@ -191,13 +198,9 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    renderer
-        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
     renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
-    renderer
-        .element_set_style(2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
@@ -245,13 +248,9 @@ async fn wheel_over_canvas_suppresses_the_native_scroll() {
 
     // wheel が canvas 内で行き先を持てるよう、スクロール可能な view を置く。
     renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    renderer
-        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
     renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
-    renderer
-        .element_set_style(2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
@@ -283,13 +282,9 @@ async fn scrollable_renderer(canvas: &HtmlCanvasElement) -> (HayateElementRender
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    renderer
-        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
     renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
-    renderer
-        .element_set_style(2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
@@ -459,9 +454,7 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
-    renderer
-        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
 
@@ -504,9 +497,7 @@ async fn pointer_move_over_button_applies_pointer_cursor_to_the_canvas() {
 
     // サーフェスを埋めるボタン、明示的な cursor スタイルなし。
     renderer.element_create(1.0, ELEMENT_KIND_BUTTON).unwrap();
-    renderer
-        .element_set_style(1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
 
@@ -529,9 +520,7 @@ async fn dispatched_pointerleave_delivers_hover_leave() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
-    renderer
-        .element_set_style(1.0, &[5.0, 200.0, 0.0, 6.0, 200.0, 0.0])
-        .unwrap();
+    apply_style(&mut renderer, 1.0, &[5.0, 200.0, 0.0, 6.0, 200.0, 0.0]);
     renderer.set_root(1.0);
     let enter_listener = renderer
         .register_listener(1.0, HOVER_ENTER_KIND as u32)
