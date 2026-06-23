@@ -87,6 +87,42 @@ fn ellipsis_without_max_lines_has_no_effect() {
     assert!(!text.ends_with('…'), "no max-lines ⇒ no ellipsis, got {text:?}");
 }
 
+/// 回帰: `max_lines` を**テキストを内包するボックス**（todo カードのタイトルは
+/// `<button>` に `maxLines:1` を置き、テキストはその子）へ宣言したとき、Canvas でも
+/// 子テキストがクランプされる。DOM Mode はカタログ `domExtras` でボタンへ
+/// `-webkit-line-clamp` を載せてクランプするため、宣言場所が IFC ルート自身でなくても
+/// 両レンダラーが一致しなければならない（Canvas だけ折り返してカードが伸びる乖離）。
+#[test]
+fn max_lines_on_containing_box_clamps_child_text() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    // タイトルボタン相当: クランプ系プロップはここ（ブロックボックス）に載る。
+    let box_id = tree.element_create(2, ElementKind::Button);
+    let text = tree.element_create(3, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(120.0, 600.0);
+    tree.element_set_style(
+        box_id,
+        &[
+            StyleProp::Width(Dimension::px(120.0)),
+            StyleProp::MaxLines(1),
+            StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
+        ],
+    );
+    tree.element_append_child(root, box_id);
+    tree.element_append_child(box_id, text);
+    tree.element_set_text(text, LONG_TEXT);
+    tree.render(0.0);
+
+    assert_eq!(
+        tree.test_text_line_count(text),
+        Some(1),
+        "max-lines declared on the containing box must clamp the child text"
+    );
+    let shaped = tree.test_shaped_text(text).expect("shaped IFC");
+    assert!(shaped.ends_with('…'), "expected trailing ellipsis, got {shaped:?}");
+}
+
 #[test]
 fn ifc_root_shapes_concatenated_inline_text() {
     let mut tree = ElementTree::new();
