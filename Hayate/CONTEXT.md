@@ -106,7 +106,7 @@ _Avoid_: Renderer, Host, host 側 glue コードでの DOM イベント購読を
 _Avoid_: Flutter platform channel / RN bridge 的なランタイム機構、family adapter が capability 契約の正本を持つ説明、family adapter に windowing/surface を持たせる説明、web に親 family を作る説明
 
 **Capability**:
-各 OS のネイティブ API 呼び出しが**必須**な機能（audio / clipboard / notification / haptics 等）。共通度で三段階に分類する — 全 platform 共通（`platform/common/`）・family 共通（`platform/mobile/`・`platform/desktop/`）・leaf 固有。**契約（trait）は常に Core が所有**（`ImeBridge`/`Surface`/`FontFetcher` と同型・ADR-0068/0069）、実装は leaf。共通 API への昇格は原則 2 実装が揃ってから（ADR-0068 の投機 seam 戒め）だが、Flutter/RN の prior art で variation が確定済みかつ ADR-0012 で確定ターゲットの desktop 枠は前払い可。
+各 OS のネイティブ API 呼び出しが**必須**な機能（audio / clipboard / notification / haptics / file picker 等）。共通度で三段階に分類する — 全 platform 共通（`platform/common/`）・family 共通（`platform/mobile/`・`platform/desktop/`）・leaf 固有。**契約（trait）は常に Core が所有**（`ImeBridge`/`Surface`/`FontFetcher` と同型・ADR-0068/0069）、実装は leaf。共通 API への昇格は原則 2 実装が揃ってから（ADR-0068 の投機 seam 戒め）だが、Flutter/RN の prior art で variation が確定済みかつ ADR-0012 で確定ターゲットの desktop 枠は前払い可。三段階の振り分け規則・Flutter/RN taxonomy からの分類例・「契約は Core / 昇格は 2 実装から / 借りるのは taxonomy のみで機構（channel/bridge）は借りない」の規律の正本は [`crates/platform/README.md`](crates/platform/README.md)（grouping doctrine）。
 _Avoid_: platform-free な共通ロジック（touch gesture / surface 状態機械 / IME 増分 = Core 所有）と混同する説明、capability 契約を adapter 側に置く説明
 
 **Tsubame Adapter**:
