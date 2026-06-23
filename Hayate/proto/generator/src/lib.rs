@@ -16,6 +16,7 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
     let proto = load_spec(spec_dir);
     let code = generate(&proto);
     let codec = generate_codec(&proto);
+    let mutation_sink = generate_mutation_sink(&proto);
     let dispatch = generate_dispatch(&proto);
     let event_encode_web = generate_encode_event_js(&proto);
     let dom_mapper = generate_dom_style_mapper(&proto);
@@ -25,6 +26,7 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
 
     fs::write(out_dir.join("protocol.rs"), code).unwrap();
     fs::write(out_dir.join("codec.rs"), codec).unwrap();
+    fs::write(out_dir.join("mutation_sink.rs"), mutation_sink).unwrap();
     fs::write(out_dir.join("dispatch.rs"), dispatch).unwrap();
     // Web 専用の js_sys イベントエンコーダ（ADR-0112）。中立な protocol.rs から
     // 分離し、Android の generated include には含めない。
@@ -1048,13 +1050,79 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
     out
 }
 
+/// Per-op `MutationSink` method signature: `(method_name, params_after_self)`.
+/// Single source of truth shared by the trait emission and the dispatch bodies.
+/// `FOCUS` / `BLUR` map to the hand-authored `apply_focus` / `apply_blur`
+/// host-callback exceptions (ADR-0078); everything else is a mechanical data op.
+fn sink_method_sig(op_name: &str) -> (&'static str, &'static str) {
+    match op_name {
+        "APPEND_CHILD" => ("append_child", ", parent: ElementId, child: ElementId"),
+        "INSERT_BEFORE" => (
+            "insert_before",
+            ", parent: ElementId, child: ElementId, before: ElementId",
+        ),
+        "REMOVE" => ("remove", ", id: ElementId"),
+        "SET_ROOT" => ("set_root", ", id: ElementId"),
+        "SET_STYLE" => ("set_style", ", id: ElementId, props: Vec<StyleProp>"),
+        "SET_TRANSFORM" => ("set_transform", ", id: ElementId, matrix: Option<[f64; 6]>"),
+        "SET_SCROLL_OFFSET" => ("set_scroll_offset", ", id: ElementId, x: f32, y: f32"),
+        "FOCUS" => ("apply_focus", ", id: ElementId"),
+        "BLUR" => ("apply_blur", ", id: ElementId"),
+        "CREATE" => ("create", ", id: ElementId, kind: ElementKind"),
+        "SET_TEXT" => ("set_text", ", id: ElementId, text: &str"),
+        "UNSET_STYLE" => ("unset_style", ", id: ElementId, kind: StylePropKind"),
+        "SET_TEXT_CONTENT" => ("set_text_content", ", id: ElementId, text: &str"),
+        "SET_DISABLED" => ("set_disabled", ", id: ElementId, disabled: bool"),
+        "SET_SRC" => ("set_src", ", id: ElementId, url: &str"),
+        "SET_PSEUDO_STYLE" => (
+            "set_pseudo_style",
+            ", id: ElementId, state: PseudoState, props: Vec<StyleProp>",
+        ),
+        "SET_STYLE_VARIANT" => (
+            "set_style_variant",
+            ", id: ElementId, condition: ViewportCondition, prop: StyleProp",
+        ),
+        "SET_USER_SELECT" => ("set_user_select", ", id: ElementId, value: UserSelectValue"),
+        "SET_MULTILINE" => ("set_multiline", ", id: ElementId, multiline: bool"),
+        "SET_ARIA_LABEL" => ("set_aria_label", ", id: ElementId, label: &str"),
+        "SET_ROLE" => ("set_role", ", id: ElementId, role: &str"),
+        "SET_FONT_FAMILY" => ("set_font_family", ", id: ElementId, family: &str"),
+        other => panic!("sink_method_sig: unmapped opcode {other} (add a MutationSink mapping)"),
+    }
+}
+
+/// Emit the mode-agnostic `MutationSink` trait — one method per wire op — from
+/// `opcodes.json`. The decode (`dispatch.rs`) calls these with fully-decoded
+/// semantic arguments; adapters supply only the irreducible difference between
+/// an immediate tree-apply sink and a deferred command-enqueue sink (ADR-0052 /
+/// ADR-0112 single neutral decode, now parameterised over the apply target).
+fn generate_mutation_sink(proto: &Proto) -> String {
+    let mut out = String::new();
+    out.push_str(GENERATED_HEADER);
+    out.push_str(
+        "use hayate_core::{ElementId, ElementKind, PseudoState, StyleProp, StylePropKind, UserSelectValue, ViewportCondition};\n\n",
+    );
+    out.push_str("/// Mode-agnostic batched-mutation sink generated from `proto/spec/opcodes.json`.\n");
+    out.push_str("/// One method per wire op, receiving fully-decoded semantic arguments from the\n");
+    out.push_str("/// generated decode (`dispatch.rs`). `apply_focus` / `apply_blur` are host\n");
+    out.push_str("/// callbacks, not data ops, and stay hand-authored exceptions (ADR-0078).\n");
+    out.push_str("pub trait MutationSink {\n");
+    for op in &proto.opcodes {
+        let (method, params) = sink_method_sig(&op.name);
+        out.push_str(&format!("    fn {method}(&mut self{params});\n"));
+    }
+    out.push_str("}\n");
+    out
+}
+
 fn generate_dispatch(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
     out.push_str(
-        "use hayate_core::{ElementId, ElementKind, ElementTree, PseudoState, StylePropKind, ViewportCondition};\n\n",
+        "use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, UserSelectValue, ViewportCondition};\n\n",
     );
-    out.push_str("use super::protocol::{Op, decode_style_packet, parse_next_op};\n\n");
+    out.push_str("use super::protocol::{Op, decode_style_packet, parse_next_op};\n");
+    out.push_str("use super::mutation_sink::MutationSink;\n\n");
 
     out.push_str("pub fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {\n");
     out.push_str("    match v {\n");
@@ -1078,8 +1146,9 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    if raw < 0.0 { None } else { Some(raw) }\n");
     out.push_str("}\n\n");
 
-    out.push_str("pub fn apply_mutations_batch(\n");
-    out.push_str("    tree: &mut ElementTree,\n");
+    out.push_str("/// Decode a batched-mutation wire stream and drive a [`MutationSink`].\n");
+    out.push_str("pub fn apply_mutations_to_sink<S: MutationSink + ?Sized>(\n");
+    out.push_str("    sink: &mut S,\n");
     out.push_str("    ops: &[f64],\n");
     out.push_str("    styles: &[f32],\n");
     out.push_str("    texts: &[String],\n");
@@ -1088,13 +1157,13 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    while i < ops.len() {\n");
     out.push_str("        let (op, next) = parse_next_op(ops, i).map_err(|e| e.to_string())?;\n");
     out.push_str("        i = next;\n");
-    out.push_str("        apply_parsed_op(tree, op, styles, texts)?;\n");
+    out.push_str("        apply_parsed_op(sink, op, styles, texts)?;\n");
     out.push_str("    }\n");
     out.push_str("    Ok(())\n");
     out.push_str("}\n\n");
 
-    out.push_str("fn apply_parsed_op(\n");
-    out.push_str("    tree: &mut ElementTree,\n");
+    out.push_str("fn apply_parsed_op<S: MutationSink + ?Sized>(\n");
+    out.push_str("    sink: &mut S,\n");
     out.push_str("    op: Op,\n");
     out.push_str("    styles: &[f32],\n");
     out.push_str("    texts: &[String],\n");
@@ -1111,15 +1180,7 @@ fn generate_dispatch(proto: &Proto) -> String {
             "        Op::{variant} {{ {} }} => {{\n",
             fields.join(", ")
         ));
-        // 適用先は `&mut ElementTree` 直結（ADR-0113 系の中立化。trait 廃止）。
-        // op body テンプレートは可読性のため host 形で書き、ここで木への直接呼び出しへ
-        // 一意に写像する。`tree_mut()` は木そのもの、focus/blur/remove は木のメソッド名へ。
-        let body = dispatch_op_body(&op.name, &op.params)
-            .replace("host.tree_mut()", "tree")
-            .replace("host.remove_subtree(", "tree.element_remove(")
-            .replace("host.apply_focus(", "tree.on_focus(")
-            .replace("host.apply_blur(", "tree.on_blur(");
-        out.push_str(&body);
+        out.push_str(&dispatch_op_body(&op.name, &op.params));
         out.push_str("        }\n");
     }
 
@@ -1128,26 +1189,30 @@ fn generate_dispatch(proto: &Proto) -> String {
     out
 }
 
+/// The decode body for one opcode: wire fields → decoded semantic args → one
+/// `sink.<method>(...)` call. The op-record fields are already bound by the
+/// match arm; style packets / text-table / enum coercion are resolved here so
+/// the sink only sees semantic Rust types.
 fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
     match op_name {
         "APPEND_CHILD" => {
-            "            host.tree_mut().element_append_child(\n                ElementId::from_u64(parent_id),\n                ElementId::from_u64(child_id),\n            );\n            Ok(())\n".to_string()
+            "            sink.append_child(\n                ElementId::from_u64(parent_id),\n                ElementId::from_u64(child_id),\n            );\n            Ok(())\n".to_string()
         }
         "INSERT_BEFORE" => {
-            "            host.tree_mut().element_insert_before(\n                ElementId::from_u64(parent_id),\n                ElementId::from_u64(child_id),\n                ElementId::from_u64(before_id),\n            );\n            Ok(())\n".to_string()
+            "            sink.insert_before(\n                ElementId::from_u64(parent_id),\n                ElementId::from_u64(child_id),\n                ElementId::from_u64(before_id),\n            );\n            Ok(())\n".to_string()
         }
         "REMOVE" => {
-            "            host.remove_subtree(ElementId::from_u64(id));\n            Ok(())\n".to_string()
+            "            sink.remove(ElementId::from_u64(id));\n            Ok(())\n".to_string()
         }
         "SET_ROOT" => {
-            "            host.tree_mut().set_root(ElementId::from_u64(id));\n            Ok(())\n".to_string()
+            "            sink.set_root(ElementId::from_u64(id));\n            Ok(())\n".to_string()
         }
         "SET_STYLE" => {
             r#"            let slice = styles
                 .get(style_offset..style_offset + style_len)
                 .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
-            host.tree_mut().element_set_style(ElementId::from_u64(id), &props);
+            sink.set_style(ElementId::from_u64(id), props);
             Ok(())
 "#.to_string()
         }
@@ -1157,112 +1222,78 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
             } else {
                 None
             };
-            host.tree_mut().element_set_transform(ElementId::from_u64(id), matrix);
+            sink.set_transform(ElementId::from_u64(id), matrix);
             Ok(())
 "#.to_string()
         }
         "SET_SCROLL_OFFSET" => {
-            r#"            host.tree_mut().element_set_scroll_offset(
-                ElementId::from_u64(id),
-                x as f32,
-                y as f32,
-            );
+            r#"            sink.set_scroll_offset(ElementId::from_u64(id), x as f32, y as f32);
             Ok(())
 "#.to_string()
         }
         "FOCUS" => {
-            r#"            host.apply_focus(ElementId::from_u64(id));
-            Ok(())
-"#.to_string()
+            "            sink.apply_focus(ElementId::from_u64(id));\n            Ok(())\n".to_string()
         }
         "BLUR" => {
-            r#"            host.apply_blur(ElementId::from_u64(id));
-            Ok(())
-"#.to_string()
+            "            sink.apply_blur(ElementId::from_u64(id));\n            Ok(())\n".to_string()
         }
         "CREATE" => {
             r#"            let k = ElementKind::from_u32(kind)
                 .ok_or_else(|| format!("unknown element kind {kind}"))?;
-            host.tree_mut().element_create(id, k);
+            sink.create(ElementId::from_u64(id), k);
             Ok(())
 "#.to_string()
         }
         "SET_TEXT" => {
-            r#"            if text_index >= texts.len() {
-                return Err("text index out of bounds in OP_SET_TEXT".to_string());
-            }
-            let text = texts
+            r#"            let text = texts
                 .get(text_index)
-                .cloned()
-                .ok_or_else(|| "text table entry is not a string in OP_SET_TEXT".to_string())?;
-            host.tree_mut()
-                .element_set_text(ElementId::from_u64(id), &text);
+                .ok_or_else(|| "text index out of bounds in OP_SET_TEXT".to_string())?;
+            sink.set_text(ElementId::from_u64(id), text);
             Ok(())
 "#.to_string()
         }
         "SET_TEXT_CONTENT" => {
-            r#"            if text_index >= texts.len() {
-                return Err("text index out of bounds in OP_SET_TEXT_CONTENT".to_string());
-            }
-            let text = texts
+            r#"            let text = texts
                 .get(text_index)
-                .cloned()
-                .ok_or_else(|| "text table entry is not a string in OP_SET_TEXT_CONTENT".to_string())?;
-            host.tree_mut()
-                .element_set_text_content(ElementId::from_u64(id), &text);
+                .ok_or_else(|| "text index out of bounds in OP_SET_TEXT_CONTENT".to_string())?;
+            sink.set_text_content(ElementId::from_u64(id), text);
             Ok(())
 "#.to_string()
         }
         "SET_DISABLED" => {
-            r#"            host.tree_mut()
-                .element_set_disabled(ElementId::from_u64(id), disabled);
+            r#"            sink.set_disabled(ElementId::from_u64(id), disabled);
             Ok(())
 "#.to_string()
         }
         "SET_USER_SELECT" => {
             // ADR-0108 `user-select` vocabulary (text=0, none=1, contains=2). The
-            // per-element value drives the document selection: a `none` element
-            // (and its subtree) drops out of the covered range, the highlight, and
-            // the copied text. The Selection Region boolean is bridged alongside —
-            // `none` is unselectable, `text` / `contains` are selectable — until
-            // the Canvas-side default-selectable + `contains` boundary land in a
-            // later slice.
-            r#"            let id = ElementId::from_u64(id);
-            host.tree_mut().element_set_selectable(id, value != 1);
-            host.tree_mut().element_set_user_select(
-                id,
-                match value {
-                    1 => hayate_core::UserSelectValue::None,
-                    2 => hayate_core::UserSelectValue::Contains,
-                    _ => hayate_core::UserSelectValue::Text,
-                },
-            );
+            // u32 wire value is decoded to the semantic enum here; the per-mode
+            // bridge (e.g. the Canvas Selection Region boolean) lives in the sink.
+            r#"            let value = match value {
+                1 => UserSelectValue::None,
+                2 => UserSelectValue::Contains,
+                _ => UserSelectValue::Text,
+            };
+            sink.set_user_select(ElementId::from_u64(id), value);
             Ok(())
 "#.to_string()
         }
         "SET_MULTILINE" => {
-            r#"            host.tree_mut()
-                .element_set_multiline(ElementId::from_u64(id), multiline);
+            r#"            sink.set_multiline(ElementId::from_u64(id), multiline);
             Ok(())
 "#.to_string()
         }
         "SET_SRC" => {
-            r#"            if text_index >= texts.len() {
-                return Err("text index out of bounds in OP_SET_SRC".to_string());
-            }
-            let url = texts
+            r#"            let url = texts
                 .get(text_index)
-                .cloned()
-                .ok_or_else(|| "text table entry is not a string in OP_SET_SRC".to_string())?;
-            host.tree_mut()
-                .element_set_src(ElementId::from_u64(id), &url);
+                .ok_or_else(|| "text index out of bounds in OP_SET_SRC".to_string())?;
+            sink.set_src(ElementId::from_u64(id), url);
             Ok(())
 "#.to_string()
         }
         "UNSET_STYLE" => {
             r#"            let kind = unset_kind_from_u32(kind)?;
-            host.tree_mut()
-                .element_unset_style(ElementId::from_u64(id), &[kind]);
+            sink.unset_style(ElementId::from_u64(id), kind);
             Ok(())
 "#.to_string()
         }
@@ -1273,8 +1304,7 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
                 .get(style_offset..style_offset + style_len)
                 .ok_or_else(|| "styles slice out of bounds in OP_SET_PSEUDO_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
-            host.tree_mut()
-                .element_set_pseudo_style(ElementId::from_u64(id), pseudo, &props);
+            sink.set_pseudo_style(ElementId::from_u64(id), pseudo, props);
             Ok(())
 "#.to_string()
         }
@@ -1293,8 +1323,31 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
                 min_height: viewport_axis(min_height),
                 max_height: viewport_axis(max_height),
             };
-            host.tree_mut()
-                .element_set_style_variant(ElementId::from_u64(id), condition, prop);
+            sink.set_style_variant(ElementId::from_u64(id), condition, prop);
+            Ok(())
+"#.to_string()
+        }
+        "SET_ARIA_LABEL" => {
+            r#"            let label = texts
+                .get(text_index)
+                .ok_or_else(|| "text index out of bounds in OP_SET_ARIA_LABEL".to_string())?;
+            sink.set_aria_label(ElementId::from_u64(id), label);
+            Ok(())
+"#.to_string()
+        }
+        "SET_ROLE" => {
+            r#"            let role = texts
+                .get(text_index)
+                .ok_or_else(|| "text index out of bounds in OP_SET_ROLE".to_string())?;
+            sink.set_role(ElementId::from_u64(id), role);
+            Ok(())
+"#.to_string()
+        }
+        "SET_FONT_FAMILY" => {
+            r#"            let family = texts
+                .get(text_index)
+                .ok_or_else(|| "text index out of bounds in OP_SET_FONT_FAMILY".to_string())?;
+            sink.set_font_family(ElementId::from_u64(id), family);
             Ok(())
 "#.to_string()
         }

@@ -21,6 +21,9 @@ pub const OP_SET_PSEUDO_STYLE: u32 = 15;
 pub const OP_SET_STYLE_VARIANT: u32 = 16;
 pub const OP_SET_USER_SELECT: u32 = 17;
 pub const OP_SET_MULTILINE: u32 = 18;
+pub const OP_SET_ARIA_LABEL: u32 = 19;
+pub const OP_SET_ROLE: u32 = 20;
+pub const OP_SET_FONT_FAMILY: u32 = 21;
 
 // Payload slot counts per opcode (op discriminant excluded)
 pub const OP_SLOTS: &[usize] = &[
@@ -43,6 +46,9 @@ pub const OP_SLOTS: &[usize] = &[
     7, // SET_STYLE_VARIANT
     2, // SET_USER_SELECT
     2, // SET_MULTILINE
+    2, // SET_ARIA_LABEL
+    2, // SET_ROLE
+    2, // SET_FONT_FAMILY
 ];
 
 // Style tag constants
@@ -266,6 +272,18 @@ pub enum Op {
         id: u64,
         multiline: bool,
     },
+    SetAriaLabel {
+        id: u64,
+        text_index: usize,
+    },
+    SetRole {
+        id: u64,
+        text_index: usize,
+    },
+    SetFontFamily {
+        id: u64,
+        text_index: usize,
+    },
 }
 
 pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str> {
@@ -399,6 +417,24 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             let id = ops[i + 0] as u64;
             let multiline = ops[i + 1] != 0.0;
             Ok((Op::SetMultiline { id, multiline }, i + 2))
+        }
+        19 => {
+            if i + 2 > ops.len() { return Err("op SET_ARIA_LABEL truncated"); }
+            let id = ops[i + 0] as u64;
+            let text_index = ops[i + 1] as usize;
+            Ok((Op::SetAriaLabel { id, text_index }, i + 2))
+        }
+        20 => {
+            if i + 2 > ops.len() { return Err("op SET_ROLE truncated"); }
+            let id = ops[i + 0] as u64;
+            let text_index = ops[i + 1] as usize;
+            Ok((Op::SetRole { id, text_index }, i + 2))
+        }
+        21 => {
+            if i + 2 > ops.len() { return Err("op SET_FONT_FAMILY truncated"); }
+            let id = ops[i + 0] as u64;
+            let text_index = ops[i + 1] as usize;
+            Ok((Op::SetFontFamily { id, text_index }, i + 2))
         }
         _ => Err("unknown opcode"),
     }
