@@ -2098,6 +2098,19 @@ impl ElementTree {
         self.engine.visual_dirty.contains_key(&id)
     }
 
+    /// 直近の `render()` 後に、まだ再描画を要するフレームが残っているか。`render()` は
+    /// `visual_dirty` を drain した後、**まだ補間中の transition を持つ要素だけ**を
+    /// 再マークする（line 1505 付近・ADR-0086/0093）。したがって render 後にここが
+    /// `true` なのは「進行中 transition がある」ときで、App Host はこの間 `request_redraw`
+    /// を出し続け、空になればフレームループを idle に落とす（ADR-0117）。
+    ///
+    /// 注意：カーソル点滅は render 冒頭でマークされ同フレームで drain されるため、
+    /// またリリース済みスクロール物理は現状 web adapter 側にあるため、どちらも render 後の
+    /// `visual_dirty` には現れない。これらの継続要求を畳み込むのは後続作業。
+    pub fn has_pending_visual_work(&self) -> bool {
+        !self.engine.visual_dirty.is_empty()
+    }
+
     pub fn test_shape_dirty_contains(&self, id: ElementId) -> bool {
         self.engine.shape_dirty.contains(&id)
     }

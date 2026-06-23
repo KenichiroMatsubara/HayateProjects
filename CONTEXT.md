@@ -10,16 +10,16 @@ Hayate は UI フレームワーク・状態管理・Reconciler・Component tree
 ## Language
 
 **Hayate（疾風）**:
-命令型・保持型・GPU ネイティブな UI 基盤。上位層が組み立てた element を受け取って描画する。外部公開サーフェスは Element Layer ベースの proto 契約の一つだけ。
-_Avoid_: フレームワーク、ライブラリ、レンダラー単体
+命令型・保持型・GPU ネイティブな UI 基盤。上位層が組み立てた element を受け取って描画する。外部公開サーフェスは Element Layer ただ一つで、wire（proto 契約・JS/Tsubame 経路）と in-process Rust（ADR-0045・Hayabusa 経路）の二 projection を持つ。
+_Avoid_: フレームワーク、ライブラリ、レンダラー単体、proto 契約を唯一の公開サーフェスとする理解
 
 **Hayabusa（隼）**:
 Hayate の Element Layer 上に構築された Signal ベースの SFC（Single-File Component）フレームワーク。リアクティブランタイム（Signal グラフ・伝播・reconcile・スケジューリング）を Rust で**単独所有**する点が、各言語の既存ランタイムを再利用する Tsubame と対をなす（意図的な逆張り）。`.hybs` 形式で、テンプレートとスタイルは言語非依存の DSL、スクリプトは WASM にコンパイル可能な任意の単一言語で書く。JS/TS は Tsubame の領分であり Hayabusa の対象言語ではない。
 _Avoid_: Hayate の別名、エンジン、Rust 専用フレームワーク、JS/TS 向けフレームワーク、Tsubame と同じく言語側ランタイムを再利用する設計
 
 **Element Layer（要素層）**:
-Hayate の外部公開サーフェス。element tree の作成・Hayate CSS の設定・ツリー組み立てを受け付ける上位の概念層。Hayabusa および他言語 SDK はこの層を使う。
-_Avoid_: 上位 API、UI 層、Scene Layer
+Hayate の唯一の外部公開サーフェス。element tree の作成・Hayate CSS の設定・ツリー組み立てを受け付ける上位の概念層。消費経路は二つの projection を持つ — JS/Tsubame Canvas Renderer は wire（proto 契約）projection で apply_mutations に符号化し、Hayabusa は Rust crate 依存（ADR-0045）の in-process projection で wire を介さず直接駆動する。後者は ElId＝ElementId の同一 identity を共有する。どちらの経路も同一の Element Layer 意味論を見る。
+_Avoid_: 上位 API、UI 層、Scene Layer、Hayabusa も wire/proto 経由とする理解、経路ごとに別 API とする理解
 
 **Element（要素）**:
 Element Layer が扱う UI の構成単位。`view` / `text` / `image` / `button` / `text-input` / `scroll-view` を基本型とする React Native 由来の語彙。HTML タグ名（div / span / input 等）は使わない。
