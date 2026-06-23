@@ -8,6 +8,7 @@ pub mod edit_state;
 pub mod effective_visual;
 mod font_fetch;
 pub mod ime_bridge;
+pub mod ime_command;
 pub mod ime_reconcile;
 pub mod event_spec;
 pub mod font_coverage;
@@ -38,6 +39,7 @@ pub use edit_state::{
     CompositionClause, CompositionUnderline, Direction, EditIntent, EditState, Granularity, Preedit,
 };
 pub use ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
+pub use ime_command::{apply_command, ImeBuffer, ImeCommand};
 pub use ime_reconcile::{apply_ime_action, translate_text_input, ImeAction, TextInputState, TextSpan};
 pub use event_spec::{event_document_kind, DocumentEventKind, Event};
 pub use id::ElementId;
