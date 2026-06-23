@@ -13,6 +13,10 @@
 //! （`surface_lifecycle`・`touch_input`・`scene_demo`）はホスト上でも
 //! コンパイルされ単体テストされる。
 
+// 音声出力 capability の Android leaf（ADR-0117）。Family Adapter（`hayate-adapter-mobile`）が
+// cfg(target_os) でリンクし統一 facade として露出するため pub。純粋部分はホストでコンパイル/
+// テストされ、AudioTrack FFI glue は target_os="android" のみ。
+pub mod audio_output;
 mod scene_demo;
 mod surface_lifecycle;
 mod touch_input;

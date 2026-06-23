@@ -3,6 +3,7 @@
 // 自クレートをその名前で参照できるよう self を別名にする。
 extern crate self as hayate_core;
 
+pub mod audio_output;
 pub mod color;
 pub mod element;
 pub mod node;
@@ -13,6 +14,9 @@ pub mod touch_input;
 pub mod viewport_metrics;
 pub mod wire;
 
+pub use audio_output::{
+    AudioFormat, AudioOutput, DEFAULT_BUFFER_FRAMES, DEFAULT_CHANNEL_COUNT, DEFAULT_SAMPLE_RATE_HZ,
+};
 pub use color::Color;
 pub use element::chrome_tuning::ChromeTuning;
 pub use element::{

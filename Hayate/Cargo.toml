@@ -6,6 +6,7 @@ members = [
     "crates/scene-renderers/tiny-skia",
     "crates/scene-renderers/test-support",
     "crates/platform/web",
+    "crates/platform/mobile",
     "crates/platform/mobile/android",
     "crates/platform/mobile/ios",
     "proto/generator",

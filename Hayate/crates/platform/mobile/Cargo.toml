@@ -1,0 +1,25 @@
+[package]
+name = "hayate-adapter-mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Mobile Family Adapter for Hayate (ADR-0117): cfg(target_os) facade linking the android/ios leaf and exposing a unified audio capability"
+repository.workspace = true
+
+[lib]
+# Pure rlib facade. There is no cdylib/staticlib here: the Family Adapter is a
+# build-time cfg(target_os) selector over the leaf crates, not a packaged app
+# artifact. Each leaf owns its own packaging (apk / xcode).
+
+[dependencies]
+# The capability contract is canonical in Core (ADR-0117); the facade re-exports it.
+hayate-core = { path = "../../core" }
+
+# Build-time leaf selection (NOT runtime dispatch): cargo links exactly one leaf
+# per target. On the host neither is present, so the facade compiles down to the
+# re-exported Core contract only — keeping `cargo build`/`cargo check` host-clean.
+[target.'cfg(target_os = "android")'.dependencies]
+hayate-adapter-android = { path = "android" }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+hayate-adapter-ios = { path = "ios" }
