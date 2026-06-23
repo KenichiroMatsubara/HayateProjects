@@ -33,6 +33,9 @@ pub enum PointerInput {
     Down { x: f32, y: f32 },
     Move { x: f32, y: f32 },
     Up { x: f32, y: f32 },
+    /// システムジェスチャ奪取・割り込み等によるキャンセル。座標非依存で
+    /// `ElementTree::on_pointer_cancel` へ写す。
+    Cancel,
 }
 
 /// 単一の [`TouchAction`] + 座標を、対応する `hayate-core` ポインタ呼び出しへ畳む。
@@ -40,9 +43,11 @@ pub fn translate_touch(action: TouchAction, x: f32, y: f32) -> PointerInput {
     match action {
         TouchAction::Down => PointerInput::Down { x, y },
         TouchAction::Move => PointerInput::Move { x, y },
-        // Cancel はアクティブな押下を解除する（`on_pointer_cancel` はまだない）。
-        // 最も近い既存挙動であるポインタ up にして `:active` の固着を防ぐ。
-        TouchAction::Up | TouchAction::Cancel => PointerInput::Up { x, y },
+        TouchAction::Up => PointerInput::Up { x, y },
+        // Cancel は座標非依存で押下を解除する（`ElementTree::on_pointer_cancel`）。
+        // pointer up へは畳まない —— クリックはリリースで確定する（ADR-0082）ため、
+        // up に写すとシステム奪取で消えた押下が誤ってクリックになってしまう。
+        TouchAction::Cancel => PointerInput::Cancel,
     }
 }
 
@@ -75,13 +80,14 @@ mod tests {
     }
 
     // Cancel（システムジェスチャによる奪取・通話割り込み・スクロール奪取など）は
-    // キャンセル座標でアクティブな押下を解除する。core にはまだ `on_pointer_cancel` が
-    // ないため、最も近い既存挙動であるポインタ up にして `:active` の固着を防ぐ。
+    // 座標非依存で押下を解除する（`ElementTree::on_pointer_cancel`）。クリックは
+    // リリースで確定する（ADR-0082）ので、pointer up へは畳まない —— up に写すと
+    // 奪取で消えた押下が誤ってクリックになる。
     #[test]
-    fn cancel_maps_to_pointer_up() {
+    fn cancel_maps_to_pointer_cancel() {
         assert_eq!(
             translate_touch(TouchAction::Cancel, 7.0, 8.0),
-            PointerInput::Up { x: 7.0, y: 8.0 }
+            PointerInput::Cancel
         );
     }
 }

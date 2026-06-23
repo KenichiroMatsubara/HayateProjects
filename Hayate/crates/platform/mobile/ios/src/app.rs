@@ -190,6 +190,7 @@ pub unsafe extern "C" fn hayate_ios_touch(app: *mut c_void, phase: i32, x: f32, 
             let _ = app.tree.on_pointer_move(x, y);
         }
         PointerInput::Up { x, y } => app.tree.on_pointer_up(x, y),
+        PointerInput::Cancel => app.tree.on_pointer_cancel(),
     }
 }
 

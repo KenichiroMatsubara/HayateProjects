@@ -52,6 +52,12 @@ mod tests {
             }
         }
 
+        fn on_pointer_up(&mut self, target_id: u64) {
+            let target = ElementId::from_u64(target_id);
+            let fallback = self.nodes.contains(&target).then_some(target);
+            self.tree.on_pointer_up_on(fallback);
+        }
+
         fn on_wheel(&mut self, target_id: u64, delta_x: f32, delta_y: f32) {
             let target = ElementId::from_u64(target_id);
             if !self.nodes.contains(&target) {
@@ -133,11 +139,15 @@ mod tests {
         let l_root = h.register_listener(root, DocumentEventKind::Click);
         let l_leaf = h.register_listener(leaf, DocumentEventKind::Click);
 
+        // クリックはリリースで確定する（ADR-0082）。押して離すと leaf でタップが
+        // 解決し祖先 root まで bubble する。
         h.on_pointer_down(11, 4.0, 5.0);
+        h.on_pointer_up(11);
 
         let ids: Vec<_> = h
             .poll_deliveries()
             .into_iter()
+            .filter(|d| matches!(d.event, Event::Click { .. }))
             .map(|d| d.listener_id)
             .collect();
         assert_eq!(ids, vec![l_leaf, l_root]);
@@ -175,7 +185,9 @@ mod tests {
         h.set_root(btn);
         h.register_listener(btn, DocumentEventKind::Click);
 
+        // クリックはリリースで確定する（ADR-0082）ので、押して離して 1 件を配信する。
         h.on_pointer_down(1, 0.0, 0.0);
+        h.on_pointer_up(1);
         assert_eq!(h.poll_deliveries().len(), 1);
         assert!(h.poll_deliveries().is_empty());
     }
