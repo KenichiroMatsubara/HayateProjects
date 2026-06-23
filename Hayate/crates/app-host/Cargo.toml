@@ -1,0 +1,10 @@
+[package]
+name = "hayate-app-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hayate App Host — platform-independent mount point and frame loop (ADR-0117)"
+repository.workspace = true
+
+[dependencies]
+hayate-core = { path = "../core" }
