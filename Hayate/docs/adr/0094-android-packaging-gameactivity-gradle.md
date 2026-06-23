@@ -40,7 +40,7 @@ Options considered:
 - `android-activity` switches from the `native-activity` feature to `game-activity`. The Rust
   entry point (`android_main(app: AndroidApp)`) is unchanged — `android-activity` abstracts both
   backends behind the same API.
-- Packaging moves from `cargo-apk` to a Gradle project (`crates/adapters/android/android-app/`)
+- Packaging moves from `cargo-apk` to a Gradle project (`crates/platform/mobile/android/android-app/`)
   using the `rust-android-gradle` plugin to build the Rust cdylib into the APK. The Gradle/Manifest
   files become the single source of truth for the package id, target ABI, SDK levels, and the
   `android.hardware.vulkan.level` feature; the `[package.metadata.android]` `cargo-apk` block in

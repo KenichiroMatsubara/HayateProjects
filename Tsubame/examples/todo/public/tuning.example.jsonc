@@ -8,7 +8,7 @@
 //          全キー任意 — 触る項目だけ残せばよい。タイポは弾かれる（黙って無視しない）。
 //
 // 真実は Rust の const 側。これは開発時の上書きだけ。確定したら const に焼き戻す。
-//   スクロール物理: Hayate/crates/adapters/web/src/scroll_drag.rs
+//   スクロール物理: Hayate/crates/platform/web/src/scroll_drag.rs
 //   chrome 定数   : Hayate/crates/core/src/element/scene_build.rs
 // ───────────────────────────────────────────────────────────────────────────
 {

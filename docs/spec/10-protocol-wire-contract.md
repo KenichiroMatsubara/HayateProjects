@@ -75,7 +75,7 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ### PROTO-10 — codec 検証（apply_mutations 方向, C1/C2）
 **規範文:** `proto/spec/fixtures/{ops,style}_encode.json` を期待 wire の正本とし、Rust が roundtrip（C1: wire→decode→encode）、TS が encode 出力照合（C2）で両側を fixture に固定する。
 **出典:** ADR-0055（C1/C2/C4）
-**状況:** ✅ — C1 `Hayate/crates/adapters/web/src/wire_codec_roundtrip.rs`、C2 `Tsubame/packages/renderer-canvas/src/codec-fixtures.test.ts`（同一 `style_encode.json` を参照）、C4 fixtures commit 済み。
+**状況:** ✅ — C1 `Hayate/crates/platform/web/src/wire_codec_roundtrip.rs`、C2 `Tsubame/packages/renderer-canvas/src/codec-fixtures.test.ts`（同一 `style_encode.json` を参照）、C4 fixtures commit 済み。
 **備考:** apply_mutations 方向は両言語が同一 fixture に固定されており drift しない。
 
 ### PROTO-11 — codec 検証（C3 結合）

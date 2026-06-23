@@ -4,11 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Hayate/crates/adapters/ios/**'
+      - 'Hayate/crates/platform/mobile/ios/**'
       - '.github/workflows/ios-adapter.yml'
   pull_request:
     paths:
-      - 'Hayate/crates/adapters/ios/**'
+      - 'Hayate/crates/platform/mobile/ios/**'
       - '.github/workflows/ios-adapter.yml'
 
 concurrency:

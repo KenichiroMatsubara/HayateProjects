@@ -60,13 +60,13 @@ COLRv1 ビルドで、fontique/skrifa が解釈でき Vello の `try_draw_colr` 
 
 ## 影響
 
-- `adapters/web/fonts.json`：`Noto Color Emoji` エントリを追加（build.rs が
+- `platform/web/fonts.json`：`Noto Color Emoji` エントリを追加（build.rs が
   `builtin_font_url` に取り込む）。
-- `adapters/web/renderer_selection.rs`：`SceneRendererKind::paints_color_glyphs()` を追加。
-- `adapters/web/builtin_fonts.rs`：`font_url_for_renderer(family, renderer)` を追加。
+- `platform/web/renderer_selection.rs`：`SceneRendererKind::paints_color_glyphs()` を追加。
+- `platform/web/builtin_fonts.rs`：`font_url_for_renderer(family, renderer)` を追加。
   既存 `every_coverage_family_is_procurable` 等は不変（カラー family は coverage 表には
   載せない）。
-- `adapters/web/canvas.rs`：`poll_events` の `FetchFont` 処理が `font_url_for_renderer`
+- `platform/web/canvas.rs`：`poll_events` の `FetchFont` 処理が `font_url_for_renderer`
   に `self.backend.kind()` を渡す。
 - 視覚 e2e：小さな COLRv1 テストフォント（`test-support/assets/colr_test_glyphs.ttf`、
   Apache-2.0、provenance 記載）で Vello がカラー描画する（`vello/tests/color_emoji.rs`、

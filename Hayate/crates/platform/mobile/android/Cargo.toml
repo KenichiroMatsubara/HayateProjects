@@ -21,8 +21,8 @@ default = ["tsubame-js"]
 tsubame-js = []
 
 [dependencies]
-hayate-core = { path = "../../core" }
-hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
+hayate-core = { path = "../../../core" }
+hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true

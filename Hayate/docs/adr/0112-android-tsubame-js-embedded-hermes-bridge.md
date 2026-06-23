@@ -7,7 +7,7 @@
 ## Context
 
 ADR-0087/0094 made Android the first native Platform Adapter and settled its packaging.
-`crates/adapters/android/src/app.rs` already renders, takes touch, and runs the GameTextInput
+`crates/platform/mobile/android/src/app.rs` already renders, takes touch, and runs the GameTextInput
 IME bridge on a device, owning the vsync loop, a wgpu/Vulkan surface, and an `ElementTree`. But
 it lowers a Rust-side demo tree (`scene_demo::build_demo_tree`) directly; the `apply_mutations`
 path that Tsubame drives is not exercised.
@@ -21,7 +21,7 @@ against the native `ElementTree`.
 The Tsubame↔Hayate seam is deliberately coarse (ADR-0052): per frame the JS crosses the boundary
 only a few times with batched arrays — `apply_mutations(ops: Float64Array, styles: Float32Array,
 texts: string[])`, `render`, `poll_events`. The apply logic (`apply_mutations_batch`,
-`crates/adapters/web/src/apply_mutations_dispatch.rs`) is platform-independent and reused. So the
+`crates/platform/web/src/apply_mutations_dispatch.rs`) is platform-independent and reused. So the
 host bridge is a fixed, one-time surface (~15 methods), not a per-frame cost — which is what makes
 the engine choice turn on tooling/longevity rather than per-call marshalling ergonomics.
 

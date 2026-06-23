@@ -84,7 +84,7 @@ element-kind ごとの UA 既定を core が供給すれば（ADR-0105 のカー
   `element_kinds.json`（`defaultUserSelect`）・`opcodes.json`・生成コード（Rust / TS）を更新。
 - `crates/core/src/element/selection.rs` に document-order comparator と cross-element レンジを
   新設し、ハイライト lowering・テキスト取得・a11y・`contains` クランプを接続。
-- `adapters/web/src/user_select.rs` と `renderer-dom/src/user-select.ts` を新解決順に。
+- `platform/web/src/user_select.rs` と `renderer-dom/src/user-select.ts` を新解決順に。
   `fixtures/user_select_parity.json` の期待値を反転（view/text 既定 `none`→`text`、button は
   `none` 維持）。
 - 既存の `selectable` 利用（`examples/todo`・CSS gallery・各テスト）を `user-select` に移行。
