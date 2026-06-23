@@ -214,6 +214,11 @@ pub struct ElementTree {
     /// CSS `:hover` に一致する要素（ポインタ下の自身または子孫）。
     pub(crate) hovered_elements: HashSet<ElementId>,
     pub(crate) active_element: Option<ElementId>,
+    /// 現在の押下（`active_element`）が始まった canvas 位置。クリックはリリースで
+    /// 確定する（ADR-0082）ので、押下時の座標を覚えておき pointer-up の `Click` に
+    /// 載せる。押下が（スクロール乗っ取り等で）キャンセルされると `active_element`
+    /// とともにクリアされ、以降のリリースはクリックを発火しない。
+    pub(crate) active_press_pos: Option<(f32, f32)>,
     /// 文書全体で唯一のテキスト選択（ADR-0097）。文書全体で同時に高々 1 つ。
     pub(crate) selection: Option<crate::element::selection::Selection>,
     /// Selection Region 内の pointer-down がドラッグ選択を駆動中なら true
@@ -283,6 +288,7 @@ impl ElementTree {
             last_pointer_kind: crate::element::pointer::PointerKind::Mouse,
             hovered_elements: HashSet::new(),
             active_element: None,
+            active_press_pos: None,
             selection: None,
             selection_drag: false,
             edit_drag: None,
@@ -738,6 +744,12 @@ impl ElementTree {
             self.mark_pseudo_activation_dirty(now, PseudoState::Active);
         }
         self.active_element = next;
+        // 押下が終わる/切り替わると保留中タップの起点は無効になる。リリースで
+        // クリックを発火する pointer-up 経路が起点を読むので、ここで一括クリアして
+        // キャンセルされた押下が古い座標でクリックするのを防ぐ。
+        if next.is_none() {
+            self.active_press_pos = None;
+        }
     }
 
     /// 要素の font-family を（名前で）設定する。family は事前に `register_font` で

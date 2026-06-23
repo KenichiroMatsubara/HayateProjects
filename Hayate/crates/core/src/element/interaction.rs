@@ -234,16 +234,20 @@ impl ElementTree {
     fn pointer_down_on_target(&mut self, target: Option<ElementId>, x: f32, y: f32) {
         self.last_input_modality = InputModality::Pointer;
         if let Some(t) = target {
-            self.emit_interaction(Event::Click {
-                target_id: t,
-                x,
-                y,
-            });
+            // クリックはリリースで確定する（ADR-0082）。押下では `:active` を点け、
+            // タップ起点を覚えるだけにする。押下→slop 超過でスクロールに化けた場合は
+            // アダプタが `on_pointer_cancel` で押下を解除し、リリースでクリックを
+            // 発火させない。ここで Click を出すと、押下した瞬間にクリックが配信され、
+            // スクロール中のボタン接触が押下扱いになってしまう。
             self.emit_interaction(Event::ActiveStart { target_id: t });
             // active 状態の設定は同一操作で遷移の切替前ビジュアルを捕捉し `:active`
             // 無効化を記録する（ADR-0100）ので、未 active の見た目が遷移の起点に
             // なる（ADR-0089）。
             self.set_active_element(Some(t));
+            // リリースの Click が押下座標を載せられるよう起点を覚える（active を
+            // セットした後に書く。`set_active_element(None)` 等の途中クリアに
+            // 上書きされないため）。
+            self.active_press_pos = Some((x, y));
             self.transition_focus(t);
         } else if let Some(prev) = self.focused_element {
             self.blur_with_events(prev);
@@ -272,6 +276,19 @@ impl ElementTree {
     }
 
     fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>) {
+        // クリックはリリースで確定する（ADR-0082）。生きた押下（`active_element`）が
+        // ある＝この押下が slop を越えずタップに収まった場合のみ Click を発火する。
+        // スクロールに化けた押下は `on_pointer_cancel` で active が既にクリアされて
+        // いるので、ここでクリックは出ない。座標は押下時の起点を載せる（押下→離す
+        // が同一タップなら down≈up で、従来の Click 座標と一致する）。
+        if let Some(t) = self.active_element {
+            let (x, y) = self.active_press_pos.unwrap_or((0.0, 0.0));
+            self.emit_interaction(Event::Click {
+                target_id: t,
+                x,
+                y,
+            });
+        }
         let target = self.active_element.or(explicit_target);
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });

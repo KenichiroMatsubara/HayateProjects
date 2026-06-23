@@ -250,22 +250,91 @@ fn pointer_leave_does_not_push_phantom_pointer_move() {
 }
 
 #[test]
-fn pointer_down_dispatches_click_to_listener() {
+fn pointer_release_dispatches_click_to_listener() {
+    // クリックはリリースで確定する（ADR-0082）。Click は押下座標を載せる（タップなら
+    // down≈up）。press だけでは配信されない（`tap_delivers_click_on_release_not_on_press`）。
     let mut tree = ElementTree::new();
     let btn = tree.element_create(1, ElementKind::Button);
     tree.set_root(btn);
     let listener = tree.register_listener(btn, DocumentEventKind::Click);
 
     tree.on_pointer_down_on(btn, 10.0, 20.0);
+    tree.on_pointer_up_on(Some(btn));
 
-    let deliveries = tree.poll_deliveries();
-    assert_eq!(deliveries.len(), 1);
-    assert_eq!(deliveries[0].listener_id, listener);
+    let clicks: Vec<_> = tree
+        .poll_deliveries()
+        .into_iter()
+        .filter(|d| matches!(d.event, Event::Click { .. }))
+        .collect();
+    assert_eq!(clicks.len(), 1);
+    assert_eq!(clicks[0].listener_id, listener);
     assert!(matches!(
-        &deliveries[0].event,
+        &clicks[0].event,
         Event::Click { target_id, x, y }
             if *target_id == btn && (*x - 10.0).abs() < f32::EPSILON && (*y - 20.0).abs() < f32::EPSILON
     ));
+}
+
+#[test]
+fn tap_delivers_click_on_release_not_on_press() {
+    // タップは「押して離す」で確定する。クリックはリリース（pointer-up）で配信され、
+    // 押下だけ（pointer-down）では配信されない。これにより slop を越えてスクロールに
+    // 化けた押下を、リリース前にキャンセルしてクリックを抑止できる（ADR-0082）。
+    let mut tree = ElementTree::new();
+    let btn = tree.element_create(1, ElementKind::Button);
+    tree.set_root(btn);
+    let listener = tree.register_listener(btn, DocumentEventKind::Click);
+
+    tree.on_pointer_down_on(btn, 10.0, 20.0);
+    let after_down: Vec<_> = tree
+        .poll_deliveries()
+        .into_iter()
+        .filter(|d| matches!(d.event, Event::Click { .. }))
+        .collect();
+    assert!(
+        after_down.is_empty(),
+        "press alone must not deliver a click (got {after_down:?})"
+    );
+
+    tree.on_pointer_up(10.0, 20.0);
+    let after_up: Vec<_> = tree
+        .poll_deliveries()
+        .into_iter()
+        .filter(|d| matches!(d.event, Event::Click { .. }))
+        .collect();
+    assert_eq!(after_up.len(), 1, "release resolves the tap into one click");
+    assert_eq!(after_up[0].listener_id, listener);
+    assert!(matches!(
+        &after_up[0].event,
+        Event::Click { target_id, .. } if *target_id == btn
+    ));
+}
+
+#[test]
+fn scroll_takeover_before_release_delivers_no_click() {
+    // スクロールとクリックの区別: scroll-view 上のボタンを押してから指がスロップを
+    // 越えると、アダプタは押下をキャンセルして以降をスクロールに振り向ける（ADR-0082）。
+    // 押下がキャンセルされていれば、その後のリリースはクリックを発火してはならない。
+    let mut tree = ElementTree::new();
+    let btn = tree.element_create(1, ElementKind::Button);
+    tree.set_root(btn);
+    let _listener = tree.register_listener(btn, DocumentEventKind::Click);
+
+    tree.on_pointer_down_on(btn, 10.0, 20.0);
+    // slop 超過でアダプタが押下をキャンセル（スクロール乗っ取り）。
+    tree.on_pointer_cancel();
+    // スクロール後の指上げ。
+    tree.on_pointer_up(10.0, 80.0);
+
+    let clicks: Vec<_> = tree
+        .poll_deliveries()
+        .into_iter()
+        .filter(|d| matches!(d.event, Event::Click { .. }))
+        .collect();
+    assert!(
+        clicks.is_empty(),
+        "a press that became a scroll must not click (got {clicks:?})"
+    );
 }
 
 #[test]
@@ -548,7 +617,10 @@ fn click_bubbles_to_ancestors() {
     let l_root = tree.register_listener(root, DocumentEventKind::Click);
     let l_leaf = tree.register_listener(leaf, DocumentEventKind::Click);
 
+    // クリックはリリースで確定する（ADR-0082）。押して離すとタップが leaf で
+    // 解決し、祖先 root まで bubble する。
     tree.on_pointer_down_on(leaf, 4.0, 5.0);
+    tree.on_pointer_up_on(Some(leaf));
 
     let ids: Vec<_> = tree
         .poll_deliveries()

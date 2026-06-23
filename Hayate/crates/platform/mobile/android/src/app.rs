@@ -230,6 +230,7 @@ pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
                             let _ = tree.on_pointer_move(x, y);
                         }
                         PointerInput::Up { x, y } => tree.on_pointer_up(x, y),
+                        PointerInput::Cancel => tree.on_pointer_cancel(),
                     }
                 }
             }
