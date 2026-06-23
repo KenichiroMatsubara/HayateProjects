@@ -8,6 +8,7 @@ license.workspace = true
 taffy.workspace = true
 parley.workspace = true
 fontique.workspace = true
+skrifa.workspace = true
 slotmap.workspace = true
 anyhow.workspace = true
 log.workspace = true

@@ -1,11 +1,21 @@
 use std::sync::Arc;
 
-use fontique::Synthesis;
 use slotmap::{DefaultKey, SlotMap};
 
 use crate::render::{RenderFont, RenderGlyph, RenderImage};
 
 pub type NodeId = DefaultKey;
+
+/// painter がそのまま適用できるよう core scene lowering で解決済みのフォント合成値
+/// （ADR-0054 / ADR-0085）。生の合成角・フォント単位の太らせ計算は core 内部の
+/// `render::text_synthesis` が担い、painter は本構造体の値を leaf op として適用する。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct TextSynthesis {
+    /// 適用準備済みの faux italic スキュー tangent。`None` は直立。
+    pub skew_tangent: Option<f32>,
+    /// 適用準備済みの faux bold の太らせ量（フォントデザイン単位）。`None` は太らせ無し。
+    pub embolden: Option<f32>,
+}
 
 #[derive(Debug, Clone)]
 pub struct TextDecorationLine {
@@ -23,8 +33,8 @@ pub struct TextRunData {
     pub glyphs: Vec<RenderGlyph>,
     pub decorations: Vec<TextDecorationLine>,
     pub text: Arc<str>,
-    /// fontique による font synthesis（faux bold / italic skew / variation axes）。
-    pub synthesis: Synthesis,
+    /// core scene lowering で解決済みの font synthesis（faux bold / italic skew）。
+    pub synthesis: TextSynthesis,
     /// Parley シェーピング由来の正規化 variation 座標。
     pub normalized_coords: Vec<i16>,
 }

@@ -1,6 +1,6 @@
 mod missing_glyph;
 mod painter;
-pub mod text_synthesis;
+pub(crate) mod text_synthesis;
 
 use std::sync::Arc;
 

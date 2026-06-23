@@ -34,7 +34,7 @@ pub use element::{
     StyleProp, StylePropKind, TextDecorationValue, TextOverflowValue, TransitionTimingValue,
     UserSelectValue, ViewportCondition,
 };
-pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData};
+pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData, TextSynthesis};
 pub use scroll::{
     MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
@@ -47,5 +47,5 @@ pub use render::{
     DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,
     RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage, RenderImageAlphaType,
     RenderImageFormat, ScenePainter, SceneRecorder, is_notdef, missing_glyph_placeholder,
-    render_scene_graph, text_synthesis,
+    render_scene_graph,
 };
