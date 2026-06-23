@@ -1,13 +1,12 @@
 use hayate_core::{
     RenderImage, RenderImageAlphaType, ScenePainter, TextRunData, is_notdef,
     missing_glyph_placeholder,
-    text_synthesis::{embolden_amount_font_units, italic_skew_tangent},
 };
 use skrifa::{
     GlyphId, MetadataProvider,
     instance::{LocationRef, NormalizedCoord, Size},
     outline::{DrawSettings, OutlinePen},
-    raw::{FontRef, TableProvider},
+    raw::FontRef,
 };
 use tiny_skia::{
     Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap,
@@ -292,13 +291,8 @@ fn draw_text_run(
     } else {
         LocationRef::new(normalized_coords_ref(&data.normalized_coords))
     };
-    let skew = data.synthesis.skew().map(italic_skew_tangent);
-    let embolden_width = data.synthesis.embolden().then(|| {
-        font.head()
-            .ok()
-            .map(|head| embolden_amount_font_units(head.units_per_em()) as f32)
-            .unwrap_or(32.0)
-    });
+    let skew = data.synthesis.skew_tangent;
+    let embolden_width = data.synthesis.embolden;
 
     for glyph in &data.glyphs {
         // `.notdef` グリフはフォントがこのコードポイントを持たないことを意味する。

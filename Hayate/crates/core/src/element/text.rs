@@ -11,8 +11,20 @@ use parley::{
 use crate::element::font_coverage;
 use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowValue};
 
+use skrifa::raw::{FontRef, TableProvider};
+
 use crate::node::{TextDecorationLine, TextRunData};
-use crate::render::{RenderFont, RenderGlyph};
+use crate::render::{text_synthesis, RenderFont, RenderGlyph};
+
+/// 合成ボールド量の算出に使うフォントの `units_per_em`。head テーブルが読めない場合の
+/// フォールバックは典型的なアウトラインフォントの 1000。
+fn font_units_per_em(font: &RenderFont) -> u16 {
+    FontRef::from_index(font.data.as_ref(), font.index)
+        .ok()
+        .and_then(|f| f.head().ok())
+        .map(|head| head.units_per_em())
+        .unwrap_or(1000)
+}
 
 /// Parley スタイルに保持するブラシ型。色は描画時に適用する。
 pub type TextBrush = [u8; 4];
@@ -480,13 +492,15 @@ fn lower_glyph_runs(
                     }
                 }
             }
+            let synthesis =
+                text_synthesis::resolve_synthesis(&run.synthesis(), font_units_per_em(&font));
             out.push(Arc::new(TextRunData {
                 font,
                 font_size: run.font_size().max(font_size),
                 glyphs: positioned,
                 decorations,
                 text: Arc::<str>::from(""),
-                synthesis: run.synthesis(),
+                synthesis,
                 normalized_coords: run.normalized_coords().to_vec(),
             }));
         }
@@ -523,7 +537,18 @@ mod tests {
     }
 
     fn text_run_syntheses(layout: &TextLayout) -> Vec<fontique::Synthesis> {
-        layout.runs.iter().map(|run| run.synthesis).collect()
+        // 生の fontique synthesis（variation_settings / embolden / skew）はシェーピング層に
+        // ある。lowered TextRunData は解決済みの TextSynthesis を運ぶため、ここでは parley
+        // layout から raw synthesis を読む。
+        layout
+            .layout
+            .lines()
+            .flat_map(|line| line.items())
+            .filter_map(|item| match item {
+                PositionedLayoutItem::GlyphRun(grun) => Some(grun.run().synthesis()),
+                _ => None,
+            })
+            .collect()
     }
 
     fn glyph_run_font_styles(layout: &TextLayout) -> Vec<FontStyle> {

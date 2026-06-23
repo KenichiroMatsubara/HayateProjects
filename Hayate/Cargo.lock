@@ -786,6 +786,7 @@ dependencies = [
  "log",
  "parley",
  "serde_json",
+ "skrifa",
  "slotmap",
  "taffy",
 ]
