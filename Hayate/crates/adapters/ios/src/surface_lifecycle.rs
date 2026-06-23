@@ -1,11 +1,11 @@
-//! プラットフォーム非依存のサーフェスライフサイクル状態機械（ADR-0114）。
+//! iOS leaf の surface glue。
 //!
-//! UIKit は UIScene / UIApplication のライフサイクルと CADisplayLink を通じてサーフェス
-//! 関連イベントを配送する。本モジュールはそれらを Android アダプタと同一の四つの論理
-//! 遷移へ畳んだうえで、アダプタが取るべき GPU サーフェス操作へ写像する。状態機械自体は
-//! `hayate-adapter-android` の `surface_lifecycle` と同型で、Mac/SDK なしでホスト検証できる
-//! よう全ターゲットでコンパイルする。グルー（`app.rs`）が UIScene の広いイベント集合を
-//! この四イベントへ落とす:
+//! プラットフォーム非依存のサーフェスライフサイクル状態機械（四論理イベント → GPU
+//! サーフェス操作）は `hayate_core::surface_lifecycle` が単一の正本として所有する（ADR-0117）。
+//! 本モジュールはその型を re-export し、iOS 固有の glue — UIScene / UIApplication の
+//! ライフサイクル（`app.rs`）→ 四論理イベントの写像と、`CAMetalLayer` のドローアブル寸法
+//! → 論理ビューポート/バッファの導出 — だけを残す。グルーが落とす UIKit → 論理イベントの
+//! 対応は次のとおり:
 //!
 //! | UIKit                                              | 論理イベント        |
 //! |---------------------------------------------------|--------------------|
@@ -19,80 +19,10 @@
 //! 固定するのに対し、iOS は Retina の実 scale（`UIScreen.scale` = 2.0 / 3.0）を渡すため、
 //! iOS が初めて content scale > 1.0 の経路を実走させる（レンダラーは対応済み）。
 
+#[cfg_attr(not(target_os = "ios"), allow(unused_imports))]
+pub use hayate_core::{SurfaceLifecycleAction, SurfaceLifecycleEvent, SurfaceLifecycleState};
+
 use hayate_core::ViewportMetrics;
-
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SurfaceLifecycleEvent {
-    InitWindow,
-    TerminateWindow,
-    WindowResized { width: u32, height: u32 },
-    Destroy,
-}
-
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SurfaceLifecycleAction {
-    CreateSurface,
-    DestroySurface,
-    ResizeSurface { width: u32, height: u32 },
-    Quit,
-    NoOp,
-}
-
-/// GPU サーフェスが現在 `CAMetalLayer` に束縛されているかを追跡する。
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SurfaceLifecycleState {
-    surface_active: bool,
-}
-
-#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-impl SurfaceLifecycleState {
-    pub fn new() -> Self {
-        Self {
-            surface_active: false,
-        }
-    }
-
-    pub fn surface_active(&self) -> bool {
-        self.surface_active
-    }
-
-    pub fn handle(&mut self, event: SurfaceLifecycleEvent) -> SurfaceLifecycleAction {
-        match event {
-            SurfaceLifecycleEvent::InitWindow => {
-                self.surface_active = true;
-                SurfaceLifecycleAction::CreateSurface
-            }
-            SurfaceLifecycleEvent::TerminateWindow => {
-                if self.surface_active {
-                    self.surface_active = false;
-                    SurfaceLifecycleAction::DestroySurface
-                } else {
-                    SurfaceLifecycleAction::NoOp
-                }
-            }
-            SurfaceLifecycleEvent::WindowResized { width, height } => {
-                if self.surface_active {
-                    SurfaceLifecycleAction::ResizeSurface { width, height }
-                } else {
-                    SurfaceLifecycleAction::NoOp
-                }
-            }
-            SurfaceLifecycleEvent::Destroy => {
-                self.surface_active = false;
-                SurfaceLifecycleAction::Quit
-            }
-        }
-    }
-}
-
-impl Default for SurfaceLifecycleState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// content scale 未取得時のフォールバック（scale=1.0 = 非 Retina 相当）。実機では
 /// グルーが `UIScreen.scale` / `UIView.contentScaleFactor` を渡すため通常使われない。
@@ -127,94 +57,6 @@ pub fn viewport_for_surface(width: u32, height: u32, content_scale: f32) -> (f32
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn init_window_requests_surface_creation() {
-        let mut state = SurfaceLifecycleState::new();
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::InitWindow),
-            SurfaceLifecycleAction::CreateSurface
-        );
-        assert!(state.surface_active());
-    }
-
-    #[test]
-    fn terminate_window_drops_active_surface() {
-        let mut state = SurfaceLifecycleState::new();
-        state.handle(SurfaceLifecycleEvent::InitWindow);
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::TerminateWindow),
-            SurfaceLifecycleAction::DestroySurface
-        );
-        assert!(!state.surface_active());
-    }
-
-    #[test]
-    fn window_resized_updates_active_surface() {
-        let mut state = SurfaceLifecycleState::new();
-        state.handle(SurfaceLifecycleEvent::InitWindow);
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::WindowResized {
-                width: 1170,
-                height: 2532,
-            }),
-            SurfaceLifecycleAction::ResizeSurface {
-                width: 1170,
-                height: 2532,
-            }
-        );
-        assert!(state.surface_active());
-    }
-
-    #[test]
-    fn window_resized_before_init_is_ignored() {
-        let mut state = SurfaceLifecycleState::new();
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::WindowResized {
-                width: 800,
-                height: 600,
-            }),
-            SurfaceLifecycleAction::NoOp
-        );
-        assert!(!state.surface_active());
-    }
-
-    #[test]
-    fn destroy_quits_and_clears_surface_state() {
-        let mut state = SurfaceLifecycleState::new();
-        state.handle(SurfaceLifecycleEvent::InitWindow);
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::Destroy),
-            SurfaceLifecycleAction::Quit
-        );
-        assert!(!state.surface_active());
-    }
-
-    #[test]
-    fn terminate_window_without_active_surface_is_noop() {
-        let mut state = SurfaceLifecycleState::new();
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::TerminateWindow),
-            SurfaceLifecycleAction::NoOp
-        );
-        assert!(!state.surface_active());
-    }
-
-    // sceneWillResignActive（背景化）→ sceneWillConnect / become-active（前景復帰）の
-    // サイクルでサーフェスが破棄され再生成される。iOS では Metal ドローアブルが背景で
-    // 無効になるため、この再生成が必須。
-    #[test]
-    fn background_foreground_cycle_recreates_surface() {
-        let mut state = SurfaceLifecycleState::new();
-        state.handle(SurfaceLifecycleEvent::InitWindow);
-        state.handle(SurfaceLifecycleEvent::TerminateWindow);
-        assert!(!state.surface_active());
-        assert_eq!(
-            state.handle(SurfaceLifecycleEvent::InitWindow),
-            SurfaceLifecycleAction::CreateSurface
-        );
-        assert!(state.surface_active());
-    }
 
     #[test]
     fn window_dimensions_clamp_to_at_least_one_pixel() {
