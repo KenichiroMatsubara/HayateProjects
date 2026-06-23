@@ -255,6 +255,21 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*id as f64);
             buf.push(if *multiline { 1.0 } else { 0.0 });
         }
+        Op::SetAriaLabel { id, text_index } => {
+            buf.push(OP_SET_ARIA_LABEL as f64);
+            buf.push(*id as f64);
+            buf.push(*text_index as f64);
+        }
+        Op::SetRole { id, text_index } => {
+            buf.push(OP_SET_ROLE as f64);
+            buf.push(*id as f64);
+            buf.push(*text_index as f64);
+        }
+        Op::SetFontFamily { id, text_index } => {
+            buf.push(OP_SET_FONT_FAMILY as f64);
+            buf.push(*id as f64);
+            buf.push(*text_index as f64);
+        }
     }
 }
 

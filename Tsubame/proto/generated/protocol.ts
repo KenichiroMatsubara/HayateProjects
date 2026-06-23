@@ -21,6 +21,9 @@ export const OP = {
   SET_STYLE_VARIANT: 16,
   SET_USER_SELECT: 17,
   SET_MULTILINE: 18,
+  SET_ARIA_LABEL: 19,
+  SET_ROLE: 20,
+  SET_FONT_FAMILY: 21,
 } as const;
 export type OP = typeof OP;
 
@@ -345,7 +348,7 @@ export type USER_SELECT = typeof USER_SELECT;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 
-export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2, 2];
+export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2, 2, 2, 2, 2];
 
 // ── イベントペイロード型 ─────────────────────────────────────────────────
 

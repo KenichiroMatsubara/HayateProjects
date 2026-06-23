@@ -293,5 +293,47 @@
         "type": "bool"
       }
     ]
+  },
+  {
+    "name": "SET_ARIA_LABEL",
+    "value": 19,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "text_index",
+        "type": "usize"
+      }
+    ]
+  },
+  {
+    "name": "SET_ROLE",
+    "value": 20,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "text_index",
+        "type": "usize"
+      }
+    ]
+  },
+  {
+    "name": "SET_FONT_FAMILY",
+    "value": 21,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "text_index",
+        "type": "usize"
+      }
+    ]
   }
 ]

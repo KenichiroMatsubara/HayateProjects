@@ -756,3 +756,21 @@ export function appendSetMultiline(buf: number[], id: number, multiline: number)
   buf.push(id);
   buf.push(multiline);
 }
+
+export function appendSetAriaLabel(buf: number[], id: number, textIndex: number): void {
+  buf.push(OP.SET_ARIA_LABEL);
+  buf.push(id);
+  buf.push(textIndex);
+}
+
+export function appendSetRole(buf: number[], id: number, textIndex: number): void {
+  buf.push(OP.SET_ROLE);
+  buf.push(id);
+  buf.push(textIndex);
+}
+
+export function appendSetFontFamily(buf: number[], id: number, textIndex: number): void {
+  buf.push(OP.SET_FONT_FAMILY);
+  buf.push(id);
+  buf.push(textIndex);
+}

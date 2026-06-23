@@ -7,8 +7,10 @@
 
 use std::collections::HashMap;
 
+use hayate_core::wire::MutationSink;
 use hayate_core::{
-    DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp, UserSelectValue,
+    DocumentEventKind, ElementId, ElementKind, ElementTree, PseudoState, StyleProp, StylePropKind,
+    UserSelectValue, ViewportCondition,
 };
 use wasm_bindgen::prelude::*;
 use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, HtmlTextAreaElement, Node, NodeList};
@@ -39,9 +41,20 @@ enum Command {
         id: ElementId,
         url: String,
     },
-    SetSelectable {
+    SetDisabled {
         id: ElementId,
-        selectable: bool,
+        disabled: bool,
+    },
+    /// ADR-0108 `user-select` 語彙（旧 `SetSelectable` boolean を置換）。
+    SetUserSelect {
+        id: ElementId,
+        value: UserSelectValue,
+    },
+    Focus {
+        id: ElementId,
+    },
+    Blur {
+        id: ElementId,
     },
     SetMultiline {
         id: ElementId,
@@ -58,7 +71,7 @@ enum Command {
     },
     UnsetStyle {
         id: ElementId,
-        kinds: Vec<u32>,
+        kind: StylePropKind,
     },
     SetTransform {
         id: ElementId,
@@ -184,126 +197,35 @@ impl HayateElementHtmlRenderer {
     /// 実際の DOM 要素は次の `render()` で実体化される（ADR-0030）。
     pub fn element_create(&mut self, id: f64, kind: u32) -> Result<(), JsValue> {
         let k = kind_from_u32(kind)?;
-        let eid = element_id_from_f64(id);
-        self.tree.element_create(id as u64, k);
-        self.nodes.insert(
-            eid,
-            HtmlNode {
-                kind: k,
-                dom: None,
-                text: None,
-                src: None,
-            },
-        );
-        self.pending.push(Command::HtmlCreate { id: eid, kind: k });
+        MutationSink::create(self, element_id_from_f64(id), k);
         Ok(())
     }
 
-    pub fn element_set_text(&mut self, id: f64, text: &str) {
-        self.pending.push(Command::SetText {
-            id: element_id_from_f64(id),
-            text: text.to_string(),
-        });
-    }
-
-    pub fn element_set_src(&mut self, id: f64, url: &str) {
-        self.pending.push(Command::SetSrc {
-            id: element_id_from_f64(id),
-            url: url.to_string(),
-        });
-    }
-
-    /// `selectable` を `user-select` に対応付けて選択領域を制限する（ADR-0097）。
-    /// HTML Mode は選択モデルをブラウザへ委譲するため CSS を書くだけ。
-    /// text-input は常に選択可能のまま。
-    pub fn element_set_selectable(&mut self, id: f64, selectable: bool) {
-        self.pending.push(Command::SetSelectable {
-            id: element_id_from_f64(id),
-            selectable,
-        });
-    }
-
-    /// TextInput を複数行扱いにする。HTML Mode はブラウザ駆動なので、実体化要素を
-    /// `<input>` と `<textarea>` で入れ替える。textarea は Enter でキャレット位置に
-    /// 改行を入れ、input は送信する。
-    pub fn element_set_multiline(&mut self, id: f64, multiline: bool) {
-        self.pending.push(Command::SetMultiline {
-            id: element_id_from_f64(id),
-            multiline,
-        });
-    }
-
-    pub fn element_set_style(&mut self, id: f64, packed: &[f32]) -> Result<(), JsValue> {
-        let props = style_packet::decode(packed)?;
-        self.pending.push(Command::SetStyle {
-            id: element_id_from_f64(id),
-            props,
-        });
-        Ok(())
-    }
-
-    pub fn element_set_pseudo_style(
-        &mut self,
-        id: f64,
-        state: u32,
-        packed: &[f32],
-    ) -> Result<(), JsValue> {
-        let pseudo = hayate_core::PseudoState::from_u32(state)
-            .ok_or_else(|| JsValue::from_str(&format!("unknown pseudo-state {state}")))?;
-        let props = style_packet::decode(packed)?;
-        self.pending.push(Command::SetPseudoStyle {
-            id: element_id_from_f64(id),
-            state: pseudo,
-            props,
-        });
-        Ok(())
-    }
-
-    /// 2D アフィン変換の更新を CSS `transform: matrix(xx,yx,xy,yy,dx,dy)` として
-    /// キューする。WIT の `affine` レコードに対応し、単位行列は (1,0,0,1,0,0)。
-    /// クリア経路は無い。
-    pub fn element_set_transform(
-        &mut self,
-        id: f64,
-        xx: f64,
-        yx: f64,
-        xy: f64,
-        yy: f64,
-        dx: f64,
-        dy: f64,
-    ) {
-        self.pending.push(Command::SetTransform {
-            id: element_id_from_f64(id),
-            matrix: Some([xx, yx, xy, yy, dx, dy]),
-        });
-    }
+    // 命令的ミューテータ（`element_set_*` / `element_unset_style`）は撤去した（#439）。
+    // HTML Mode の変更はすべて `apply_mutations`（中立 decode → 自身の `MutationSink`
+    // 実装＝HtmlDeferred）を1本通る。構造系（create/append_child/insert_before/remove/
+    // set_root）は API 互換のため命令的エントリを残すが、本体は `MutationSink` へ委譲し
+    // 二重管理を避ける。
 
     pub fn element_append_child(&mut self, parent: f64, child: f64) {
-        let p = element_id_from_f64(parent);
-        let c = element_id_from_f64(child);
-        self.tree.element_append_child(p, c);
-        self.pending.push(Command::AppendChild {
-            parent: p,
-            child: c,
-        });
+        MutationSink::append_child(
+            self,
+            element_id_from_f64(parent),
+            element_id_from_f64(child),
+        );
     }
 
     pub fn element_insert_before(&mut self, parent: f64, child: f64, before: f64) {
-        let p = element_id_from_f64(parent);
-        let c = element_id_from_f64(child);
-        let b = element_id_from_f64(before);
-        self.tree.element_insert_before(p, c, b);
-        self.pending.push(Command::InsertBefore {
-            parent: p,
-            child: c,
-            before: b,
-        });
+        MutationSink::insert_before(
+            self,
+            element_id_from_f64(parent),
+            element_id_from_f64(child),
+            element_id_from_f64(before),
+        );
     }
 
     pub fn element_remove(&mut self, id: f64) {
-        let eid = element_id_from_f64(id);
-        self.tree.element_remove(eid);
-        self.pending.push(Command::Remove { id: eid });
+        MutationSink::remove(self, element_id_from_f64(id));
     }
 
     /// 直近の `render()` で確定したテキストを返す。キュー済みの
@@ -316,9 +238,7 @@ impl HayateElementHtmlRenderer {
     }
 
     pub fn set_root(&mut self, id: f64) {
-        let eid = element_id_from_f64(id);
-        self.tree.set_root(eid);
-        self.pending.push(Command::SetRoot { id: eid });
+        MutationSink::set_root(self, element_id_from_f64(id));
     }
 
     /// キュー済みの要素変更を drain し、コンテナ背景色を更新する。新たに適用された
@@ -396,41 +316,22 @@ impl HayateElementHtmlRenderer {
         Ok(id.to_u64() as f64)
     }
 
-    pub fn element_set_scroll_offset(&mut self, id: f64, x: f32, y: f32) {
-        let eid = element_id_from_f64(id);
-        self.tree.element_set_scroll_offset(eid, x, y);
-        self.pending
-            .push(Command::SetScrollOffset { id: eid, x, y });
-    }
-
-    pub fn element_set_font_family(&mut self, id: f64, family: &str) {
-        self.pending.push(Command::SetFontFamily {
-            id: element_id_from_f64(id),
-            family: family.to_string(),
-        });
-    }
-
-    /// 継承可能なテキストスタイルを解除し、ブラウザの CSS 継承へ委譲する（ADR-0047）。
-    /// `kinds` はパックされた u32 配列: 0 = Color, 1 = FontSize, 2 = FontFamily。
-    pub fn element_unset_style(&mut self, id: f64, kinds: &[u32]) {
-        self.pending.push(Command::UnsetStyle {
-            id: element_id_from_f64(id),
-            kinds: kinds.to_vec(),
-        });
-    }
-
-    pub fn element_set_aria_label(&mut self, id: f64, label: &str) {
-        self.pending.push(Command::SetAriaLabel {
-            id: element_id_from_f64(id),
-            label: label.to_string(),
-        });
-    }
-
-    pub fn element_set_role(&mut self, id: f64, role: &str) {
-        self.pending.push(Command::SetRole {
-            id: element_id_from_f64(id),
-            role: role.to_string(),
-        });
+    /// バッチ適用。Tsubame と Canvas Mode を揃える唯一のミューテーション入口（ADR-0052）。
+    /// 中立 decode（`hayate_core::wire`）を自身の `MutationSink` 実装（HtmlDeferred）で
+    /// 駆動し、各 op を遅延コマンドへ積む。実 DOM への反映は `render()` の1バッチ
+    /// flush（ADR-0030）。`texts` は `OP_SET_TEXT` 等が参照する文字列テーブル。
+    pub fn apply_mutations(
+        &mut self,
+        ops: &[f64],
+        styles: &[f32],
+        texts: js_sys::Array,
+    ) -> Result<(), JsValue> {
+        let texts: Vec<String> = texts
+            .iter()
+            .map(|v| v.as_string().unwrap_or_default())
+            .collect();
+        hayate_core::wire::apply_mutations_to_sink(self, ops, styles, &texts)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     /// Web フォントを CSS `@font-face` で登録する。HTML Mode はブラウザがテキストを
@@ -556,13 +457,6 @@ impl HayateElementHtmlRenderer {
         }
     }
 
-    pub fn element_set_text_content(&mut self, id: f64, text: &str) {
-        self.pending.push(Command::SetTextContent {
-            id: element_id_from_f64(id),
-            text: text.to_string(),
-        });
-    }
-
     /// 直近の `render()` で確定した編集可能テキスト内容を返す。TextInput では
     /// ユーザー入力を既に反映しているライブ DOM 値へフォールスルーする
     /// （キュー駆動ではなくブラウザ駆動）。キュー済みの
@@ -603,6 +497,144 @@ impl HayateElementHtmlRenderer {
     }
 }
 
+/// HtmlDeferred sink（ADR-0030 / #439）。中立 decode が呼ぶ意味的ミューテーションを
+/// 遅延コマンドキューへ積む（構造・スクロール・フォーカス・disabled はコアツリーへ即時
+/// 反映してイベント/読み戻しの正本を保つ）。実 DOM への反映は `render()` の1バッチ
+/// flush で行う。Canvas の即時 `TreeSink` と同じ op ストリームを消費し、差分は
+/// 「即時木適用 vs 遅延 DOM enqueue」だけ。
+impl MutationSink for HayateElementHtmlRenderer {
+    fn create(&mut self, id: ElementId, kind: ElementKind) {
+        self.tree.element_create(id.to_u64(), kind);
+        self.nodes.insert(
+            id,
+            HtmlNode {
+                kind,
+                dom: None,
+                text: None,
+                src: None,
+            },
+        );
+        self.pending.push(Command::HtmlCreate { id, kind });
+    }
+
+    fn set_root(&mut self, id: ElementId) {
+        self.tree.set_root(id);
+        self.pending.push(Command::SetRoot { id });
+    }
+
+    fn append_child(&mut self, parent: ElementId, child: ElementId) {
+        self.tree.element_append_child(parent, child);
+        self.pending.push(Command::AppendChild { parent, child });
+    }
+
+    fn insert_before(&mut self, parent: ElementId, child: ElementId, before: ElementId) {
+        self.tree.element_insert_before(parent, child, before);
+        self.pending.push(Command::InsertBefore {
+            parent,
+            child,
+            before,
+        });
+    }
+
+    fn remove(&mut self, id: ElementId) {
+        self.tree.element_remove(id);
+        self.pending.push(Command::Remove { id });
+    }
+
+    fn set_text(&mut self, id: ElementId, text: &str) {
+        self.pending.push(Command::SetText {
+            id,
+            text: text.to_string(),
+        });
+    }
+
+    fn set_text_content(&mut self, id: ElementId, text: &str) {
+        self.pending.push(Command::SetTextContent {
+            id,
+            text: text.to_string(),
+        });
+    }
+
+    fn set_src(&mut self, id: ElementId, url: &str) {
+        self.pending.push(Command::SetSrc {
+            id,
+            url: url.to_string(),
+        });
+    }
+
+    fn set_disabled(&mut self, id: ElementId, disabled: bool) {
+        self.tree.element_set_disabled(id, disabled);
+        self.pending.push(Command::SetDisabled { id, disabled });
+    }
+
+    fn set_multiline(&mut self, id: ElementId, multiline: bool) {
+        self.pending.push(Command::SetMultiline { id, multiline });
+    }
+
+    fn set_style(&mut self, id: ElementId, props: Vec<StyleProp>) {
+        self.pending.push(Command::SetStyle { id, props });
+    }
+
+    fn set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: Vec<StyleProp>) {
+        self.pending
+            .push(Command::SetPseudoStyle { id, state, props });
+    }
+
+    fn unset_style(&mut self, id: ElementId, kind: StylePropKind) {
+        self.pending.push(Command::UnsetStyle { id, kind });
+    }
+
+    fn set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
+        self.pending.push(Command::SetTransform { id, matrix });
+    }
+
+    fn set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
+        self.tree.element_set_scroll_offset(id, x, y);
+        self.pending.push(Command::SetScrollOffset { id, x, y });
+    }
+
+    fn set_user_select(&mut self, id: ElementId, value: UserSelectValue) {
+        self.pending.push(Command::SetUserSelect { id, value });
+    }
+
+    fn apply_focus(&mut self, id: ElementId) {
+        self.tree.on_focus(id);
+        self.pending.push(Command::Focus { id });
+    }
+
+    fn apply_blur(&mut self, id: ElementId) {
+        self.tree.on_blur(id);
+        self.pending.push(Command::Blur { id });
+    }
+
+    fn set_font_family(&mut self, id: ElementId, family: &str) {
+        self.pending.push(Command::SetFontFamily {
+            id,
+            family: family.to_string(),
+        });
+    }
+
+    fn set_aria_label(&mut self, id: ElementId, label: &str) {
+        self.pending.push(Command::SetAriaLabel {
+            id,
+            label: label.to_string(),
+        });
+    }
+
+    fn set_role(&mut self, id: ElementId, role: &str) {
+        self.pending.push(Command::SetRole {
+            id,
+            role: role.to_string(),
+        });
+    }
+
+    fn set_style_variant(&mut self, id: ElementId, condition: ViewportCondition, prop: StyleProp) {
+        // HTML Mode はレイアウトをブラウザへ委譲し viewport variant の DOM 反映を持たない。
+        // 読み戻し/イベントの正本としてコアツリーにだけ適用する。
+        self.tree.element_set_style_variant(id, condition, prop);
+    }
+}
+
 impl HayateElementHtmlRenderer {
     /// 保留コマンドキューを drain し、各変更を DOM と slotmap に適用する。
     /// `render()`（唯一のフラッシュ境界、ADR-0030）から呼ばれる。
@@ -619,14 +651,17 @@ impl HayateElementHtmlRenderer {
             Command::HtmlCreate { id, kind } => self.flush_create(id, kind)?,
             Command::SetText { id, text } => self.flush_set_text(id, &text),
             Command::SetSrc { id, url } => self.flush_set_src(id, &url),
-            Command::SetSelectable { id, selectable } => self.flush_set_selectable(id, selectable),
+            Command::SetDisabled { id, disabled } => self.flush_set_disabled(id, disabled),
+            Command::SetUserSelect { id, value } => self.flush_set_user_select(id, value),
+            Command::Focus { id } => self.flush_focus(id),
+            Command::Blur { id } => self.flush_blur(id),
             Command::SetMultiline { id, multiline } => self.flush_set_multiline(id, multiline)?,
             Command::SetStyle { id, props } => self.flush_set_style(id, &props)?,
             Command::SetPseudoStyle { id, state, props } => {
                 self.tree.element_set_pseudo_style(id, state, &props);
                 self.flush_set_pseudo_style(id, state, &props)?;
             }
-            Command::UnsetStyle { id, kinds } => self.flush_unset_style(id, &kinds),
+            Command::UnsetStyle { id, kind } => self.flush_unset_style(id, kind),
             Command::SetTransform { id, matrix } => self.flush_set_transform(id, matrix),
             Command::SetScrollOffset { id, x, y } => self.flush_set_scroll_offset(id, x, y),
             Command::SetFontFamily { id, family } => self.flush_set_font_family(id, &family),
@@ -703,7 +738,9 @@ impl HayateElementHtmlRenderer {
         }
     }
 
-    fn flush_set_selectable(&mut self, id: ElementId, selectable: bool) {
+    /// ADR-0108 `user-select` を CSS へ反映する。明示値を要素種別の UA 既定で解決して
+    /// 書き出す（旧 boolean `selectable` 橋渡しを撤去し、wire 語彙を直接消費する）。
+    fn flush_set_user_select(&mut self, id: ElementId, value: UserSelectValue) {
         let (kind, dom) = match self.nodes.get(&id) {
             Some(n) => (n.kind, n.dom.clone()),
             None => return,
@@ -713,18 +750,48 @@ impl HayateElementHtmlRenderer {
             None => return,
         };
         if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
-            // HTML Mode の命令的セッターはまだ真偽値の選択領域を扱うため、
-            // リゾルバが期待する `user-select` 語彙へ橋渡しする
-            // （`true` → text, `false` → none、ADR-0108）。
-            let explicit = if selectable {
-                UserSelectValue::Text
-            } else {
-                UserSelectValue::None
-            };
-            let value = resolve_user_select(kind, Some(explicit));
+            let css = resolve_user_select(kind, Some(value));
             let style = html_el.style();
-            let _ = style.set_property("user-select", value);
-            let _ = style.set_property("-webkit-user-select", value);
+            let _ = style.set_property("user-select", css);
+            let _ = style.set_property("-webkit-user-select", css);
+        }
+    }
+
+    /// `disabled` を DOM 属性へ反映する（input / button 等）。コアツリーは sink 側で
+    /// 既に更新済み。
+    fn flush_set_disabled(&mut self, id: ElementId, disabled: bool) {
+        let dom = match self.nodes.get(&id).and_then(|n| n.dom.clone()) {
+            Some(d) => d,
+            None => return,
+        };
+        if disabled {
+            let _ = dom.set_attribute("disabled", "");
+        } else {
+            let _ = dom.remove_attribute("disabled");
+        }
+    }
+
+    /// フォーカス op をブラウザ DOM へ反映する。コアツリーのフォーカス状態は sink 側で
+    /// 更新済み。
+    fn flush_focus(&mut self, id: ElementId) {
+        if let Some(html_el) = self
+            .nodes
+            .get(&id)
+            .and_then(|n| n.dom.as_ref())
+            .and_then(|d| d.dyn_ref::<HtmlElement>())
+        {
+            let _ = html_el.focus();
+        }
+    }
+
+    fn flush_blur(&mut self, id: ElementId) {
+        if let Some(html_el) = self
+            .nodes
+            .get(&id)
+            .and_then(|n| n.dom.as_ref())
+            .and_then(|d| d.dyn_ref::<HtmlElement>())
+        {
+            let _ = html_el.blur();
         }
     }
 
@@ -880,30 +947,21 @@ impl HayateElementHtmlRenderer {
         }
     }
 
-    fn flush_unset_style(&mut self, id: ElementId, kinds: &[u32]) {
+    fn flush_unset_style(&mut self, id: ElementId, kind: StylePropKind) {
         let dom = match self.nodes.get(&id).and_then(|n| n.dom.clone()) {
             Some(d) => d,
             None => return,
         };
         if let Some(html_el) = dom.dyn_ref::<HtmlElement>() {
             let style = html_el.style();
-            for &kind in kinds {
-                match kind {
-                    0 => {
-                        let _ = style.remove_property("color");
-                    }
-                    1 => {
-                        let _ = style.remove_property("font-size");
-                    }
-                    2 => {
-                        let _ = style.remove_property("font-family");
-                    }
-                    3 => {
-                        let _ = style.remove_property("font-weight");
-                    }
-                    _ => {}
-                }
-            }
+            let property = match kind {
+                StylePropKind::Color => "color",
+                StylePropKind::FontSize => "font-size",
+                StylePropKind::FontFamily => "font-family",
+                StylePropKind::FontWeight => "font-weight",
+                _ => return,
+            };
+            let _ = style.remove_property(property);
         }
     }
 
