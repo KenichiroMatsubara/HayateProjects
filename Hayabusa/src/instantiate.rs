@@ -34,9 +34,9 @@ use std::rc::Rc;
 /// build 時に引き回す、現在の handler 集合（最上位 or コンポーネントインスタンスごと）。
 type Handlers = Rc<Vec<Rc<RefCell<Handler>>>>;
 
-/// click ハンドラの登録簿（要素 → 解決済みハンドラ）。動的に mount される行/ブランチ/
-/// コンポーネントの要素も登録できるよう共有する。
-type ClickTargets = Rc<RefCell<HashMap<ElId, Rc<RefCell<Handler>>>>>;
+/// イベントハンドラの登録簿（要素 → 解決済みハンドラ）。動的に mount される行/ブランチ/
+/// コンポーネントの要素も登録できるよう共有する。`on:click` / `on:input` で別インスタンスを使う。
+type HandlerMap = Rc<RefCell<HashMap<ElId, Rc<RefCell<Handler>>>>>;
 
 /// 親要素の子スロット管理。各スロットは 1 つの子位置が現在寄与している top-level ElId
 /// 列を順に保持する。動的ブロックはここから anchor を引いて `insert_before` する。
@@ -69,7 +69,8 @@ impl ChildList {
 pub struct Instance<S: ElementSink> {
     rt: Runtime,
     sink: Rc<RefCell<S>>,
-    click_targets: ClickTargets,
+    click_targets: HandlerMap,
+    input_targets: HandlerMap,
     root: ElId,
 }
 
@@ -90,6 +91,11 @@ impl<S: ElementSink + 'static> Instance<S> {
         self.click_targets.borrow().keys().copied().collect()
     }
 
+    /// `on:input` ハンドラが登録されている要素の ElId 一覧（App Host の listener 登録用）。
+    pub fn input_target_ids(&self) -> Vec<ElId> {
+        self.input_targets.borrow().keys().copied().collect()
+    }
+
     /// 要素のクリックをディスパッチする。ハンドラ本体を batch で走らせ、その中の
     /// signal write を 1 回の flush（fine-grained patch）にまとめて sink へ落とす。
     /// 対象に click ハンドラが無ければ `false`。
@@ -103,13 +109,29 @@ impl<S: ElementSink + 'static> Instance<S> {
         });
         true
     }
+
+    /// 入力確定（`on:input`）をディスパッチする。commit 済みテキストを payload
+    /// （`Value::string`）として handler に渡す（ADR-0007 の「読み・主」）。signal write は
+    /// 1 回の flush にまとまる。対象に input ハンドラが無ければ `false`。
+    pub fn input(&self, target: ElId, text: &str) -> bool {
+        let handler = match self.input_targets.borrow().get(&target) {
+            Some(h) => h.clone(),
+            None => return false,
+        };
+        let payload = Value::string(text);
+        self.rt.batch(|| {
+            (handler.borrow_mut())(payload.clone());
+        });
+        true
+    }
 }
 
 /// instantiate 中に各所へ引き回す共有コンテキスト。
 struct Ctx<S: ElementSink> {
     rt: Runtime,
     sink: Rc<RefCell<S>>,
-    click_targets: ClickTargets,
+    click_targets: HandlerMap,
+    input_targets: HandlerMap,
 }
 
 impl<S: ElementSink> Clone for Ctx<S> {
@@ -118,6 +140,7 @@ impl<S: ElementSink> Clone for Ctx<S> {
             rt: self.rt.clone(),
             sink: self.sink.clone(),
             click_targets: self.click_targets.clone(),
+            input_targets: self.input_targets.clone(),
         }
     }
 }
@@ -140,6 +163,7 @@ pub fn instantiate<S: ElementSink + 'static>(
         rt: rt.clone(),
         sink: sink.clone(),
         click_targets: Rc::new(RefCell::new(HashMap::new())),
+        input_targets: Rc::new(RefCell::new(HashMap::new())),
     };
 
     // コンポーネントのルート Scope。全 build をこの中で行い、動的ブロックの Scope は
@@ -154,6 +178,7 @@ pub fn instantiate<S: ElementSink + 'static>(
         rt: rt.clone(),
         sink,
         click_targets: ctx.click_targets,
+        input_targets: ctx.input_targets,
         root,
     }
 }
@@ -183,9 +208,30 @@ fn build_element<S: ElementSink + 'static>(
         });
     }
 
+    // text-input の programmatic value 束縛（ADR-0007 の「書き・従」）。signal 変化で
+    // `set_value` を発行するが、host 側の差分・非組成中ガードにより、`on:input` 由来で
+    // signal が確定値と一致しているフレーム（キーストローク echo）は no-op に倒れる。実際に
+    // 書くのは submit 後のクリア等、確定値と異なる programmatic set のときだけ。
+    if let Some(expr) = &node.value_binding {
+        let expr = expr.clone();
+        let scope = scope.clone();
+        let sink = ctx.sink.clone();
+        ctx.rt.effect(move || {
+            let value = expr.eval(&scope);
+            sink.borrow_mut().set_value(id, &value.to_display_string());
+        });
+    }
+
     // click ハンドラを現在の handler 集合から解決して登録する。
     if let Some(handler_id) = node.on_click {
         ctx.click_targets
+            .borrow_mut()
+            .insert(id, handlers[handler_id].clone());
+    }
+
+    // `on:input` ハンドラ（ADR-0007 の「読み・主」）を登録する。
+    if let Some(handler_id) = node.on_input {
+        ctx.input_targets
             .borrow_mut()
             .insert(id, handlers[handler_id].clone());
     }

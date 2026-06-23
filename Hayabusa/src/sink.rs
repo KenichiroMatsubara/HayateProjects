@@ -41,6 +41,11 @@ pub trait ElementSink {
     fn remove(&mut self, id: ElId);
     /// ルート要素を設定する。
     fn set_root(&mut self, id: ElId);
+    /// text-input の value を programmatic に設定する（ADR-0007 の「書き・従」経路）。
+    /// 編集の単一正本は host の `EditState` なので、これは **差分があり、かつ IME 組成中で
+    /// ないときだけ**適用される（ガードは host 側）。signal ミラーからの書き戻し用で、毎
+    /// キーストロークの echo はガードで no-op に倒れる。`set_text` とは別 op（ADR-0007）。
+    fn set_value(&mut self, id: ElId, text: &str);
 }
 
 /// テスト用の sink。全 mutation を順序付きで記録する。
@@ -76,6 +81,10 @@ pub enum Mutation {
     SetRoot {
         id: ElId,
     },
+    SetValue {
+        id: ElId,
+        text: String,
+    },
 }
 
 impl RecordingSink {
@@ -105,6 +114,17 @@ impl RecordingSink {
             .iter()
             .filter_map(|m| match m {
                 Mutation::SetText { id, text } => Some((*id, text.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `set_value` mutation だけを `(id, text)` で抽出する。
+    pub fn value_mutations(&self) -> Vec<(ElId, String)> {
+        self.log
+            .iter()
+            .filter_map(|m| match m {
+                Mutation::SetValue { id, text } => Some((*id, text.clone())),
                 _ => None,
             })
             .collect()
@@ -144,6 +164,13 @@ impl ElementSink for RecordingSink {
 
     fn set_root(&mut self, id: ElId) {
         self.log.push(Mutation::SetRoot { id });
+    }
+
+    fn set_value(&mut self, id: ElId, text: &str) {
+        self.log.push(Mutation::SetValue {
+            id,
+            text: text.to_string(),
+        });
     }
 }
 

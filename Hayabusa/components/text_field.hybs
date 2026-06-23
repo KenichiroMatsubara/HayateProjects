@@ -1,0 +1,25 @@
+<template>
+  <view>
+    <text-input value={draft} on:input={edit}/>
+    <button on:click={clear}>clear</button>
+  </view>
+</template>
+
+<script>
+// text-input の value 束縛 ＋ on:input（ADR-0007）。編集の単一正本は host の EditState で、
+// `draft` signal はそのミラー兼 programmatic リセット口。
+//   - 読み（主）：on:input が commit 済みテキストを payload で運び、draft を更新する。
+//   - 書き（従）：value={draft} は draft 変化時に programmatic set を発行する（host が差分・
+//     非組成中ガードで適用。毎キーストロークの echo は no-op に倒れる）。clear で空にできる。
+let draft = rt.signal(Value::string(""));
+
+let edit = {
+    let draft = draft.clone();
+    move |payload: Value| draft.set(payload)
+};
+
+let clear = {
+    let draft = draft.clone();
+    move |_: Value| draft.set(Value::string(""))
+};
+</script>

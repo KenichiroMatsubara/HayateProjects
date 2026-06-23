@@ -73,10 +73,18 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
   配線する。生成 `generated::counter::build` が手組み counter と同一に振る舞うことを
   `tests/hybs_codegen.rs`（既定ビルド）で、`.hybs` → App Host → 実 `ElementTree` の全経路を
   `tests/app_host.rs`（`feature = "app-host"`）で実証。
+- **Slice 8（`text-input` value 束縛 ＋ `on:input`・ADR-0007）**：編集の単一正本は host の
+  `EditState`、`value` signal はミラーという非対称。**読み（主）**＝`on:input` が commit 済み
+  テキストを payload で運び signal を更新、**書き（従）**＝`value={signal}` は programmatic set
+  に限り、host 側の **差分・非組成中ガード**（core `element_set_text_content_if_idle`）で毎
+  キーストロークの echo を no-op に倒す。sink に `set_value` op を追加。`components/text_field.hybs`
+  をデモに、`tests/input_binding.rs`（配線）/ core `value_guard_tests`（ガード）/ `tests/app_host.rs`
+  （実 `EditState` 越しの読み・書き）で実証。
 
 含めない（後続）：`.hybs` の `:if` / `:each` / 子コンポーネント・mixed text・複数 `{expr}`、
 `<style>` の static style 生成（P3 の sink `set_style` 待ち）、他言語 wasm ゲスト、router、
-Store、Click 以外のイベント（`on:input` 等は P4・ADR-0007）、描画 present を伴う Platform 統合。
+Store、`on:submit` 等の form レベルイベント、IME composition イベントの Hayabusa 側配送、
+描画 present を伴う Platform 統合。
 
 > デモアプリ到達のために決める必要がある未決 ADR 論点は
 > [`docs/pending-decisions.md`](docs/pending-decisions.md) に記録している。

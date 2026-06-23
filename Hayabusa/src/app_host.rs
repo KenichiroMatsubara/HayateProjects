@@ -64,9 +64,17 @@ impl HayabusaApp {
         }
         // 1. instantiate が積んだ初期構築 mutation をツリーへ出し切る。
         self.drain_into(tree);
-        // 2. click ターゲットへ listener を登録し、delivery を引き戻すための逆引きを作る。
+        // 2. click / input ターゲットへ listener を登録し、delivery を引き戻すための逆引きを作る。
+        //    delivery は Event のバリアントで種別が分かるので、逆引きは ListenerId → ElId の
+        //    一本で足りる（同一要素が click と input の両方を持てば 2 つの ListenerId が同じ
+        //    ElId を指し、handle 側が Event で振り分ける）。
         for elid in self.instance.click_target_ids() {
             let lid = tree.register_listener(ElementId::from_u64(elid.0), DocumentEventKind::Click);
+            self.listener_to_target.insert(lid, elid);
+        }
+        for elid in self.instance.input_target_ids() {
+            let lid =
+                tree.register_listener(ElementId::from_u64(elid.0), DocumentEventKind::TextInput);
             self.listener_to_target.insert(lid, elid);
         }
         self.mounted = true;
@@ -85,13 +93,20 @@ impl DeliverySink for HayabusaApp {
         self.ensure_mounted(tree);
 
         for d in deliveries {
-            // 現状ルーティングするのは Click のみ（Instance は click ハンドラを持つ）。
-            // 他イベント種は後続（on:input 等は P4・ADR-0007 の経路で足す）。
-            if matches!(d.event, Event::Click { .. }) {
-                if let Some(&elid) = self.listener_to_target.get(&d.listener_id) {
-                    // handler 実行 → batch flush。effect は buffering sink へ mutation を積む。
+            let Some(&elid) = self.listener_to_target.get(&d.listener_id) else {
+                continue;
+            };
+            // Event のバリアントで handler 経路を振り分ける。handler 実行 → batch flush。
+            // effect は buffering sink へ mutation を積む。
+            match &d.event {
+                Event::Click { .. } => {
                     self.instance.click(elid);
                 }
+                // `on:input`（ADR-0007 の「読み・主」）：commit 済みテキストを payload で渡す。
+                Event::TextInput { text, .. } => {
+                    self.instance.input(elid, text);
+                }
+                _ => {}
             }
         }
 

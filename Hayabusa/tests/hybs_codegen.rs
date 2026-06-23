@@ -5,7 +5,7 @@
 //! これで「初回デモは `.hybs` をコンパイルした出力として動く」（ADR-0008）の経路が、
 //! 既定の self-contained ビルド（外部依存ゼロ・ADR-0006）の上で通る。`feature` 不要。
 
-use hayabusa::generated::counter;
+use hayabusa::generated::{counter, text_field};
 use hayabusa::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -67,4 +67,37 @@ fn repeated_clicks_keep_patching_only_the_text_node() {
         ]
     );
     assert_eq!(sink.borrow().log().len(), 3, "no structural mutations after build");
+}
+
+// ───────────────────────── text_field.hybs（value 束縛 ＋ on:input・ADR-0007） ─────────────────────────
+
+// text_field の作成順：view(0), text-input(1), button(2)。
+const FIELD_INPUT: ElId = ElId(1);
+
+#[test]
+fn generated_text_field_compiles_and_wires_value_binding() {
+    let rt = Runtime::new();
+    let sink = Rc::new(RefCell::new(RecordingSink::new()));
+    let _app = text_field::build(&rt, sink.clone());
+
+    // value 束縛 Effect の初回実行で、空の programmatic set が text-input に出る。
+    assert_eq!(
+        sink.borrow().value_mutations(),
+        vec![(FIELD_INPUT, "".to_string())]
+    );
+}
+
+#[test]
+fn generated_text_field_on_input_drives_value_set() {
+    let rt = Runtime::new();
+    let sink = Rc::new(RefCell::new(RecordingSink::new()));
+    let app = text_field::build(&rt, sink.clone());
+    sink.borrow_mut().clear_log();
+
+    // 生成された on:input ハンドラ（draft = payload）→ value 束縛が set_value を再発行。
+    assert!(app.input(FIELD_INPUT, "hi"));
+    assert_eq!(
+        sink.borrow().value_mutations(),
+        vec![(FIELD_INPUT, "hi".to_string())]
+    );
 }

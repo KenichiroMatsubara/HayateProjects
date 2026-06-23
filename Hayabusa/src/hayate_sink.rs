@@ -98,6 +98,9 @@ pub(crate) fn apply_mutation(tree: &mut ElementTree, m: &Mutation) {
         } => tree.element_insert_before(to_core_id(*parent), to_core_id(*child), to_core_id(*before)),
         Mutation::Remove { id } => tree.element_remove(to_core_id(*id)),
         Mutation::SetRoot { id } => tree.set_root(to_core_id(*id)),
+        Mutation::SetValue { id, text } => {
+            tree.element_set_text_content_if_idle(to_core_id(*id), text);
+        }
     }
 }
 
@@ -129,6 +132,11 @@ impl ElementSink for HayateSink {
 
     fn set_root(&mut self, id: ElId) {
         self.tree.set_root(to_core_id(id));
+    }
+
+    fn set_value(&mut self, id: ElId, text: &str) {
+        // 差分・非組成中ガードは core 側（ADR-0007）。戻り値（適用されたか）は捨てる。
+        self.tree.element_set_text_content_if_idle(to_core_id(id), text);
     }
 }
 

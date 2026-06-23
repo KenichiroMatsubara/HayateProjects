@@ -129,6 +129,10 @@ struct Element {
     /// 生成コードに出す `ElementKind` のバリアント名（例 `"View"`）。
     kind: String,
     on_click: Option<String>,
+    /// `on:input={h}` の handler 識別子（ADR-0007 の「読み・主」）。
+    on_input: Option<String>,
+    /// `value={expr}` の束縛式テキスト（ADR-0007 の「書き・従」）。
+    value: Option<String>,
     content: Content,
     children: Vec<Element>,
 }
@@ -211,8 +215,10 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
     let tag = read_name(c)?;
     let kind = tag_to_kind(&tag)?.to_string();
 
-    // 属性（現状 `on:click={ident}` のみ意味を持つ）。
+    // 属性：`on:click={ident}` / `on:input={ident}` / `value={expr}`。
     let mut on_click = None;
+    let mut on_input = None;
+    let mut value = None;
     loop {
         c.skip_ws();
         match c.peek() {
@@ -227,18 +233,24 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
                 return Ok(Element {
                     kind,
                     on_click,
+                    on_input,
+                    value,
                     content: Content::None,
                     children: Vec::new(),
                 });
             }
             Some(_) => {
-                let (name, value) = read_attribute(c)?;
-                if name == "on:click" {
-                    on_click = Some(value);
-                } else {
-                    return Err(CompileError::new(format!(
-                        "unsupported attribute `{name}` on <{tag}> (this slice supports on:click only)"
-                    )));
+                let (name, val) = read_attribute(c)?;
+                match name.as_str() {
+                    "on:click" => on_click = Some(val),
+                    "on:input" => on_input = Some(val),
+                    "value" => value = Some(val),
+                    _ => {
+                        return Err(CompileError::new(format!(
+                            "unsupported attribute `{name}` on <{tag}> \
+                             (this slice supports on:click / on:input / value)"
+                        )))
+                    }
                 }
             }
             None => return Err(CompileError::new(format!("<{tag}> is not closed"))),
@@ -260,6 +272,8 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
     Ok(Element {
         kind,
         on_click,
+        on_input,
+        value,
         content,
         children,
     })
@@ -398,7 +412,8 @@ fn read_attribute(c: &mut Cursor) -> Result<(String, String), CompileError> {
 // ───────────────────────── 収集（handler / 自由変数） ─────────────────────────
 
 fn collect_handlers(el: &Element, out: &mut Vec<String>) {
-    if let Some(h) = &el.on_click {
+    // 同一要素では on:click → on:input の順（文書順・重複除去）。
+    for h in [&el.on_click, &el.on_input].into_iter().flatten() {
         if !out.contains(h) {
             out.push(h.clone());
         }
@@ -409,7 +424,11 @@ fn collect_handlers(el: &Element, out: &mut Vec<String>) {
 }
 
 fn collect_binding_vars(el: &Element, out: &mut Vec<String>) {
-    if let Content::Bind(expr) = &el.content {
+    // text 束縛と value 束縛の両方の自由変数を signal として配線する。
+    for expr in [as_bind_expr(&el.content), el.value.as_deref()]
+        .into_iter()
+        .flatten()
+    {
         for v in free_root_idents(expr) {
             if !out.contains(&v) {
                 out.push(v);
@@ -418,6 +437,14 @@ fn collect_binding_vars(el: &Element, out: &mut Vec<String>) {
     }
     for child in &el.children {
         collect_binding_vars(child, out);
+    }
+}
+
+/// `Content::Bind` の式テキスト（それ以外は `None`）。
+fn as_bind_expr(content: &Content) -> Option<&str> {
+    match content {
+        Content::Bind(e) => Some(e),
+        _ => None,
     }
 }
 
@@ -465,9 +492,16 @@ fn emit_element(el: &Element, handlers: &[String]) -> String {
         }
         Content::None => {}
     }
+    if let Some(expr) = &el.value {
+        s.push_str(&format!(".bind_value(Expr::parse({}).unwrap())", rust_str(expr)));
+    }
     if let Some(h) = &el.on_click {
         let idx = handlers.iter().position(|x| x == h).unwrap();
         s.push_str(&format!(".on_click({idx}usize)"));
+    }
+    if let Some(h) = &el.on_input {
+        let idx = handlers.iter().position(|x| x == h).unwrap();
+        s.push_str(&format!(".on_input({idx}usize)"));
     }
     for child in &el.children {
         s.push_str(&format!(".child({})", emit_element(child, handlers)));
@@ -642,6 +676,46 @@ let increment = {
         assert!(code.contains(".with(\"count\", Binding::Signal(count.clone()))"));
         assert!(code.contains("vec![Box::new(increment)]"));
         assert!(code.contains("rt.signal(Value::number(0))"));
+    }
+
+    const FIELD: &str = r#"
+<template>
+  <view>
+    <text-input value={draft} on:input={edit}/>
+    <button on:click={add}>add</button>
+  </view>
+</template>
+<script>
+let draft = rt.signal(Value::string(""));
+</script>
+"#;
+
+    #[test]
+    fn parses_input_value_and_handlers() {
+        let root = parse_template(&extract_block(FIELD, "template").unwrap().unwrap()).unwrap();
+        let field = &root.children[0];
+        assert_eq!(field.kind, "TextInput");
+        assert_eq!(field.value.as_deref(), Some("draft"));
+        assert_eq!(field.on_input.as_deref(), Some("edit"));
+
+        // handler 列は文書順（input の `edit`、次に click の `add`）。
+        let mut h = Vec::new();
+        collect_handlers(&root, &mut h);
+        assert_eq!(h, vec!["edit".to_string(), "add".to_string()]);
+
+        // value 束縛の自由変数も signal として配線される。
+        let mut v = Vec::new();
+        collect_binding_vars(&root, &mut v);
+        assert_eq!(v, vec!["draft".to_string()]);
+    }
+
+    #[test]
+    fn emits_input_value_wiring() {
+        let code = compile_hybs(FIELD, "field").unwrap();
+        assert!(code.contains(".bind_value(Expr::parse(\"draft\").unwrap())"));
+        assert!(code.contains(".on_input(0usize)")); // edit = index 0
+        assert!(code.contains(".on_click(1usize)")); // add  = index 1
+        assert!(code.contains(".with(\"draft\", Binding::Signal(draft.clone()))"));
     }
 
     #[test]
