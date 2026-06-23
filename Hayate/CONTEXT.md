@@ -86,16 +86,16 @@ _Avoid_: 場当たり的な文字列エラー
 ## Runtime Boundaries
 
 **App Host（アプリホスト）**:
-プラットフォーム非依存の最上位協調層であり、mount 先。`ElementTree` 実体の所有・フレームループ・`Event Delivery` の drain・Font ロードを担い、内部で **Render Host**（描画オーケストレーション・ADR-0068）を駆動する。OS フレームループは所有せず、`tick(timestamp_ms)` を公開して Platform Front から毎フレーム呼ばれ、構築時に受け取った `request_redraw` クロージャでアニメ／`visual_dirty` の残るフレームだけ次を要求する（trait なしの薄い loop seam・ADR-0117）。Hayabusa（in-process Rust）と Tsubame Canvas Renderer（wire 経路）は共にこの App Host へ mount し、tree/loop/drain/描画/font を自前で再実装しない。Platform Adapter は App Host の裏に薄い trait（`Surface` / `FontFetcher` ＋ IME・入力）として収まり、Hayabusa は Platform Adapter も Platform Front も直接触らない。ADR-0068 の共有層を実体化・拡張したもの。
-_Avoid_: Render Host（描画専用の下位層）との同一視、Platform Adapter / Platform Front との同一視、OS フレームループを App Host が所有する設計、consumer ごとのフレーム trait を受ける設計、フレームワーク/Reconciler/Component tree、consumer ごとに別ホストを持つ設計
+プラットフォーム非依存の最上位協調層であり、mount 先。`ElementTree` 実体の所有・フレームループ・`Event Delivery` の drain・Font ロードを担い、内部で **Render Host**（描画オーケストレーション・ADR-0068）を駆動する。OS フレームループは所有せず、`tick(timestamp_ms)` を公開して Platform Front から毎フレーム呼ばれる（trait なしの薄い loop seam・ADR-0117）。フレームを起こす入口は構築時に受け取った単一の `request_redraw`（= wake）クロージャ一つで、三つの源が叩く — 継続（進行中アニメ／`visual_dirty`）は App Host 自身、入力到着は Platform Adapter、非同期 signal 変化（Resource/Store/timer）は consumer。pending が無ければ idle に落ちる。`tick` は毎フレーム delivery を drain しつつ DeliverySink を無条件に呼び（空 batch でも）、flush 点を 1 箇所に集約する。Hayabusa（in-process Rust）と Tsubame Canvas Renderer（wire 経路）は共にこの App Host へ mount し、tree/loop/drain/描画/font を自前で再実装しない。Platform Adapter は App Host の裏に薄い trait（`Surface` / `FontFetcher` ＋ IME・入力）として収まり、Hayabusa は Platform Adapter も Platform Front も直接触らない。ADR-0068 の共有層を実体化・拡張したもの。
+_Avoid_: Render Host（描画専用の下位層）との同一視、Platform Adapter / Platform Front との同一視、OS フレームループを App Host が所有する設計、consumer ごとのフレーム trait を受ける設計、wake 入口を源ごとに分ける設計、tick 外で mutation を出す flush 経路、フレームワーク/Reconciler/Component tree、consumer ごとに別ホストを持つ設計
 
 **Platform Front（プラットフォームフロント）**:
 OS のフレームループ（web `requestAnimationFrame` / Android `Choreographer`）を所有する per-platform な駆動・入口層。App Host を構築して `request_redraw` クロージャを渡し、毎フレーム `App Host::tick(timestamp_ms)` を呼ぶ。web binding / native binding が体現する。App Host の裏の trait として収まる Platform Adapter（`Surface`/`FontFetcher`/IME/入力）とは別軸で並立する（ADR-0117）。
 _Avoid_: Platform Adapter との同一視、App Host がこれを兼ねる理解、継続フレーム判定をここが持つ理解（判定は App Host、スケジューリングのみ Platform Front）
 
 **DeliverySink**:
-consumer が mount 時に App Host へ渡す push 型コールバック。App Host は drain を所有し続け、`tick` で `poll_events()` を drain した `{listener_id, event}` バッチをこの sink へ同期 push する。Hayabusa の sink は自身が持つ `Map<ListenerId, handler>` を引いて handler 実行→reactive flush→in-process Element Layer mutation 発行まで return 前に完了させ、その後 App Host が commit_frame→render へ進む。Tsubame Canvas Renderer では wire を跨いで JS 側 map へ届く projection（ADR-0117）。
-_Avoid_: consumer が `poll_events()` を自前 pull する設計（drain 所有が App Host から漏れる）、App Host が `ListenerId`/handler を解釈する理解、raw event を運ぶ理解
+consumer が mount 時に App Host へ渡す push 型コールバック。App Host は drain を所有し続け、`tick` で `poll_events()` を drain した `{listener_id, event}` バッチ（空のこともある）をこの sink へ同期 push する。**delivery が空でも毎フレーム呼ばれ**、consumer はここを唯一の flush 点として handler 由来・非同期由来（Resource/Store/timer）を問わず reactive graph を flush する。Hayabusa の sink は自身が持つ `Map<ListenerId, handler>` を引いて handler 実行→reactive flush→in-process Element Layer mutation 発行まで return 前に完了させ、その後 App Host が commit_frame→render へ進む。Tsubame Canvas Renderer では wire を跨いで JS 側 map へ届く projection（ADR-0117）。
+_Avoid_: consumer が `poll_events()` を自前 pull する設計（drain 所有が App Host から漏れる）、delivery 非空のフレームだけ呼ばれる理解、App Host が `ListenerId`/handler を解釈する理解、tick 外で flush・mutation する経路、raw event を運ぶ理解
 
 **Platform Adapter**:
 IME、入力、surface、クリップボード、アクセシビリティなどのプラットフォーム依存処理を担う層。Hayate Core はその実装詳細を知らない。ネイティブプラットフォームが自動で提供するイベント（Web の DOM pointer/wheel/resize/touch 等）は host 側 glue を介さず Platform Adapter 自身が購読・変換まで完結させる（ADR-0080）。host/app からのプログラマティック操作はオプトインの追加経路として共存する。
