@@ -20,7 +20,8 @@
 //!   **テキストノードだけが patch される**ことを成立させる。
 //!
 //! `.hybs` / コンパイラ / 他言語ゲスト / router は含めない（後続）。`ElementSink` を
-//! 実際の `hayate_core::ElementTree` に転送する `HayateSink` も後続の薄い実装になる。
+//! 実際の `hayate_core::ElementTree` に転送する [`hayate_sink::HayateSink`] は
+//! `feature = "hayate-core"` で有効化する（既定の self-contained ビルドでは無効・ADR-0009）。
 //!
 //! ## カウンタ例
 //!
@@ -61,6 +62,8 @@
 
 pub mod component;
 pub mod expr;
+#[cfg(feature = "hayate-core")]
+pub mod hayate_sink;
 pub mod instantiate;
 pub mod parse;
 pub mod reactive;
@@ -72,6 +75,8 @@ pub mod value;
 pub mod prelude {
     pub use crate::component::{Component, ComponentSlot, ComponentView, Emit, Handler, SetupCx};
     pub use crate::expr::{BinOp, Binding, Expr, Scope};
+    #[cfg(feature = "hayate-core")]
+    pub use crate::hayate_sink::HayateSink;
     pub use crate::instantiate::{instantiate, Instance};
     pub use crate::parse::{parse_expr, ParseError};
     pub use crate::reactive::{Memo, Runtime, ScopeId, Signal};

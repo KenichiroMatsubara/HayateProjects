@@ -21,7 +21,8 @@
 | 式 DSL パーサ | 0004 | ✅ 実装済 |
 | async/Resource/Suspense/ErrorBoundary | 0005 | ✅ モデル決定済（実装は未） |
 | host-ABI・モノレポ配置・hot-reload | 0001/0002/0006 | ✅ 方針決定済 |
-| レンダリング統合・boot・フレームループ・イベント配送 | 0117 | ✅ 方針決定済（実装は未） |
+| クロスワークスペース・リンク（実 hayate-core 駆動の `HayateSink`） | 0009 | ✅ spike 実証・実装済 |
+| レンダリング統合・boot・フレームループ・イベント配送 | 0117 | ✅ 方針決定済（App Host 配線は未） |
 
 ---
 
@@ -40,19 +41,17 @@
 >   クロージャで所有。OS ループは Platform Front 所有。継続フレーム要求（transition・カーソル点滅・
 >   スクロール物理）は App Host が `visual_dirty` を見て出す。consumer 向けフレーム trait は無し。
 
-**残る未決（実装ブロッカー・spike 対象）**：hayate-core は vendored crate を `[patch.crates-io]`
-（Hayate ワークスペース）で差し替えており、別ワークスペースの Hayabusa から path 依存でリンクすると
-patch が効かない可能性。wasm 同梱・パッケージングも未検証。**ADR-0117 はこのビルド現実に触れていない。**
+**spike 解消（2026-06-23・ADR-0009）**：クロスワークスペースのビルド spike を実施し、
+**`[patch.crates-io]` を Hayabusa 側に複製すれば hayate-core を path 依存でリンクできる**ことを
+実証した。bare path 依存（patch なし）は crates.io の vendored でない `fontique` を解決して失敗、
+patch 複製で成功。`HayateSink`（`src/hayate_sink.rs`）を `feature = "hayate-core"` で実装し、
+counter tracer bullet を実 `ElementTree` 上で駆動する統合テスト（`tests/hayate_sink.rs`）が緑。
+詳細は [ADR-0009](adr/0009-cross-workspace-link-to-hayate-core-via-patch-replication.md)。
 
-**現在の代替**：`ElementSink`（`src/sink.rs`）が ElementTree の API に 1:1 で写るシームに
-なっており、テストは `RecordingSink` で fine-grained patch を観測している。App Host が渡す
-`&mut ElementTree` を駆動する `HayateSink`（DeliverySink 実装込み）は薄い後続実装。
-
-**ADR にすべきこと**：設計は ADR-0117 で済み。spike の結果クロスワークスペース構成に固有の決定
-（クレート配置・patch 解決・wasm パッケージング）が必要なら、それを ADR 化する。
-
-**推奨**：**spike を先に行う**（hayate-core を path 依存で Hayabusa から実際にビルドできるか
-＝クロスワークスペース問題の検証）。spike が通れば残りは実装タスクで、追加 ADR は不要な見込み。
+**残る実装タスク（ブロッカーではない）**：`HayateSink` は現状 `ElementTree` を所有する
+（`Instance<S: 'static>` の sink モデルに合わせた）。ADR-0117 の App Host は tree を自分で所有し
+毎フレーム `&mut ElementTree` を借す `DeliverySink` モデルのため、両者を繋ぐ event-loop 配線
+（borrowed-tree モデル＋ListenerId → handler ルーティング）が次段。wasm 同梱・パッケージングも未検証。
 
 ## P2 🟢 イベント入力の経路 — **ADR-0117 で決着**
 
@@ -140,9 +139,10 @@ ADR 無し（初回デモには通常不要）。
 
 初回デモは **Todo 系を `.hybs` コンパイル出力として**動かす（単一コンポーネント＝第一段階・P5）。
 
-1. **P1 の spike**（クロスワークスペース・ビルド可否の検証）。通れば P1 は実装タスク化。
-2. **`HayateSink` ＋ DeliverySink 実装**（P1・P2 とも設計は ADR-0117 で済み。App Host へ
-   `mount(root, DeliverySink)` する経路を実装）。
+1. ~~**P1 の spike**（クロスワークスペース・ビルド可否の検証）~~ ✅ **完了（ADR-0009）**：
+   patch 複製でリンク可。`HayateSink` で実 `ElementTree` を駆動できることを実証済み。
+2. **App Host への配線**（P1・P2 とも設計は ADR-0117 で済み）：`HayateSink` を `DeliverySink` として
+   App Host へ `mount` し、`&mut ElementTree` 借用モデルへ載せる＋ListenerId → handler ルーティング。
 3. **P3 static style** → sink/IR の `set_style` 拡張。
 4. **P4 入力束縛**（ADR-0007・EditState 単一正本）→ sink/IR の programmatic value set オペ。
 5. **P6 `.hybs` codegen**（ADR-0008・build 時 codegen）→ `<template>`/`<style>` パーサ＋

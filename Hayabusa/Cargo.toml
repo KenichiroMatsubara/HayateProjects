@@ -6,9 +6,33 @@ license = "Apache-2.0"
 description = "Hayabusa — Signal-based SFC framework runtime on top of Hayate"
 repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 
-# Tracer bullet (Hayabusa ADR-0006): self-contained, no external dependencies.
-# The runtime owns the fine-grained reactive core (ADR-0003), the pure-expression
-# evaluator and Template IR (ADR-0004). It drives an `ElementSink` seam whose
-# surface mirrors `hayate_core::ElementTree` 1:1 (ADR-0002), so wiring the real
-# core is a mechanical follow-up.
+# The default build stays self-contained (Hayabusa ADR-0006): the runtime owns the
+# fine-grained reactive core (ADR-0003), the pure-expression evaluator and Template
+# IR (ADR-0004), driving an `ElementSink` seam whose surface mirrors
+# `hayate_core::ElementTree` 1:1 (ADR-0002). The optional `hayate-core` feature wires
+# that seam to the real core via `HayateSink` (cross-workspace path dep; the spike in
+# Hayabusa ADR-0009 confirmed this links once `[patch.crates-io]` is replicated below).
+[features]
+default = []
+# Drive the real `hayate_core::ElementTree` through `HayateSink` (src/hayate_sink.rs).
+hayate-core = ["dep:hayate-core"]
+
 [dependencies]
+hayate-core = { path = "../Hayate/crates/core", optional = true }
+
+# Hayate vendors several crates and rewires them via `[patch.crates-io]` in its own
+# workspace (Hayate/Cargo.toml, ADR-0007). Cargo does NOT inherit a dependency's
+# workspace patches across workspaces, so a bare path dep on `hayate-core` pulls the
+# real crates.io versions of these and fails to build (the Hayabusa ADR-0009 spike).
+# Replicating the patch table here, pointing at the same vendored crates, makes the
+# cross-workspace link resolve. These entries are inert unless the `hayate-core`
+# feature pulls the patched crates into the graph.
+[patch.crates-io]
+vello           = { path = "../Hayate/crates/vendor/vello" }
+vello_encoding  = { path = "../Hayate/crates/vendor/vello_encoding" }
+vello_shaders   = { path = "../Hayate/crates/vendor/vello_shaders" }
+taffy           = { path = "../Hayate/crates/vendor/taffy" }
+parley          = { path = "../Hayate/crates/vendor/parley" }
+parley_data     = { path = "../Hayate/crates/vendor/parley_data" }
+fontique        = { path = "../Hayate/crates/vendor/fontique" }
+skrifa          = { path = "../Hayate/crates/vendor/skrifa" }
