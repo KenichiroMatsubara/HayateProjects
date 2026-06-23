@@ -18,6 +18,7 @@ pub mod interaction;
 pub mod kind;
 pub mod layout_pass;
 pub mod pointer;
+pub mod pointer_gesture;
 pub mod pseudo_state;
 pub mod scene_build;
 mod scene_lowering;

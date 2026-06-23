@@ -221,17 +221,11 @@ pub struct ElementTree {
     pub(crate) active_press_pos: Option<(f32, f32)>,
     /// 文書全体で唯一のテキスト選択（ADR-0097）。文書全体で同時に高々 1 つ。
     pub(crate) selection: Option<crate::element::selection::Selection>,
-    /// Selection Region 内の pointer-down がドラッグ選択を駆動中なら true
-    /// （active-session キャプチャを選択へ拡張したもの、ADR-0097）。
-    pub(crate) selection_drag: bool,
-    /// ポインタドラッグが現在編集選択を拡張中のテキスト入力（ADR-0097）。読み取り
-    /// 専用 SelectionArea を駆動する `selection_drag` とは別物で、両者は排他。
-    pub(crate) edit_drag: Option<ElementId>,
-    /// 進行中の Mouse/Pen スクロールバーつまみドラッグ（ADR-0110）。pointer-down が
-    /// つまみを掴んだ間セットされ、各 move でポインタ移動を Scroll Offset 差分へ
-    /// 変換する。上の選択ドラッグと排他で、つまみ掴みは選択開始前にジェスチャを
-    /// 消費する。
-    pub(crate) scrollbar_drag: Option<crate::element::interaction::ScrollbarDrag>,
+    /// ポインタジェスチャ分類器（ADR-0066）。進行中のドラッグ種別（読み取り専用
+    /// 選択／編集選択／スクロールバーつまみは排他）と、単語／段落ジェスチャ用の
+    /// マルチクリック追跡を単独所有する。散らばった `*_drag` ブール値と生の
+    /// マルチクリックフィールドを一つの名前付き状態に集約する。
+    pub(crate) pointer_gesture: crate::element::pointer_gesture::PointerGesture,
     /// 前回 render 以降に Touch モダリティでスクロールし、一時インジケータを
     /// 再表示すべき ScrollView（ADR-0110）。スクロール seam がタイムスタンプを
     /// 持たないため render 時にホストクロックで刻む（カーソル点滅と同じ
@@ -241,11 +235,6 @@ pub struct ElementTree {
     /// 窓内にある間だけ存在し、完全にフェードすると破棄される。静止した Touch 面は
     /// 何も保持しない（常時表示バーなし）。
     pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
-    /// 単語/段落ジェスチャ用のマルチクリック追跡（#267）。直近 pointer-down 位置と
-    /// その近傍に着地した押下回数。アダプタの OS レベル double-click タイミングを
-    /// 近接で再導出し、同じ箇所への連続押下が caret → word → paragraph と巡回する。
-    pub(crate) last_click_pos: Option<(f32, f32)>,
-    pub(crate) click_count: u32,
     /// サブピクセル move の重複排除用の直近ポインタ位置（ADR-0066）。
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
     /// ポインタ下で直近に解決したカーソル。合成 move で報告する（ADR-0088）。
@@ -290,13 +279,9 @@ impl ElementTree {
             active_element: None,
             active_press_pos: None,
             selection: None,
-            selection_drag: false,
-            edit_drag: None,
-            scrollbar_drag: None,
+            pointer_gesture: crate::element::pointer_gesture::PointerGesture::default(),
             touch_scroll_pending: HashSet::new(),
             touch_scroll_indicators: HashMap::new(),
-            last_click_pos: None,
-            click_count: 0,
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),

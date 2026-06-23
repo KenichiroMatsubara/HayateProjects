@@ -3,12 +3,23 @@ use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pointer::PointerKind;
+use crate::element::pointer_gesture::{DragMode, TapPhase};
 use crate::element::selection::{
     self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
 };
 use crate::element::style::CursorValue;
 use crate::element::tree::ElementTree;
 use crate::element::visual_invalidation::VisualInvalidationReach;
+
+/// サブピクセルの pointer-move 重複排除しきい値（px、ADR-0066/0088）。直近の
+/// 報告位置からどちらの軸でもこの値未満の移動は合流させ、`PointerMove` の発行を
+/// 抑える。移動の coalescing をプラットフォーム横断で統一する。
+const POINTER_MOVE_DEDUP_PX: f32 = 1.0;
+
+/// スクロールバーつまみドラッグの最小移動量（px、ADR-0110）。ドラッグ軸でこの値
+/// 未満の移動は no-op として無視し、サブピクセルのジッタが Scroll Offset を
+/// 揺らさないようにする。
+const SCROLLBAR_DRAG_MIN_DELTA_PX: f32 = 1e-6;
 
 /// 編集キーストロークを [`EditIntent`] に対応付ける（ADR-0103）。水平矢印は
 /// キャレットを移動（Shift で拡張、Alt/Ctrl で1書記素から単語単位へ拡幅）し、
@@ -221,9 +232,8 @@ impl ElementTree {
         self.select_bounds_at(point, selection::word_bounds);
         // 新規ジェスチャ。続くタップはこの長押しからのマルチクリック周期を再開せず、
         // キャレットを落とすべき。
-        self.selection_drag = false;
-        self.last_click_pos = None;
-        self.click_count = 0;
+        self.pointer_gesture.clear_selection_drag();
+        self.pointer_gesture.reset_taps();
     }
 
     /// 明示ターゲットへのポインタダウン（HTML Mode）。
@@ -258,9 +268,7 @@ impl ElementTree {
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
         let fallback = self.hit_test(x, y);
         self.pointer_up_with_fallback(fallback);
-        self.selection_drag = false;
-        self.edit_drag = None;
-        self.scrollbar_drag = None;
+        self.pointer_gesture.end_drag();
     }
 
     /// 物理 [`PointerKind`] を伴うポインタアップ。操作ごとに保持する。リリース挙動
@@ -306,9 +314,7 @@ impl ElementTree {
     pub fn on_pointer_cancel(&mut self) {
         self.apply_pointer_hover(None);
         self.last_pointer_pos = None;
-        self.selection_drag = false;
-        self.edit_drag = None;
-        self.scrollbar_drag = None;
+        self.pointer_gesture.end_drag();
         if let Some(t) = self.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
         }
@@ -342,7 +348,7 @@ impl ElementTree {
             };
         }
         if let Some((lx, ly)) = self.last_pointer_pos {
-            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
+            if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
                 return PointerMoveResult {
                     moved: false,
                     resolved_cursor: self.last_cursor,
@@ -359,17 +365,20 @@ impl ElementTree {
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
         self.last_cursor = resolved_cursor;
-        // 進行中のドラッグを駆動する。スクロールバー・サムドラッグ（ADR-0110）が
-        // 優先。選択が始まる前に掴まれるので両者は共存しない。それ以外は進行中の
-        // 選択の focus を拡張する（ADR-0097）。
-        if let Some(drag) = self.scrollbar_drag {
-            self.drag_scrollbar(drag, x, y);
-        } else if let Some(input) = self.edit_drag {
-            self.extend_edit_drag(input, x, y);
-        } else if self.selection_drag {
-            if let Some(point) = self.selection_point_at(x, y) {
-                self.update_selection_focus(point);
+        // 進行中のドラッグを駆動する。種別はジェスチャ分類器が単独所有し、三者
+        // （スクロールバー・サム／編集選択／読み取り専用選択）は排他なので単一の
+        // match で分岐する（ADR-0066）。スクロールバー・サムドラッグ（ADR-0110）は
+        // 選択が始まる前に掴まれる。読み取り専用は進行中の選択の focus を拡張する
+        // （ADR-0097）。
+        match self.pointer_gesture.drag() {
+            DragMode::Scrollbar(drag) => self.drag_scrollbar(drag, x, y),
+            DragMode::Edit(input) => self.extend_edit_drag(input, x, y),
+            DragMode::Selection => {
+                if let Some(point) = self.selection_point_at(x, y) {
+                    self.update_selection_focus(point);
+                }
             }
+            DragMode::None => {}
         }
         PointerMoveResult {
             moved: true,
@@ -428,7 +437,7 @@ impl ElementTree {
     /// 座標ストリーム）。
     pub fn on_pointer_move_coords(&mut self, x: f32, y: f32) -> bool {
         if let Some((lx, ly)) = self.last_pointer_pos {
-            if (x - lx).abs() < 1.0 && (y - ly).abs() < 1.0 {
+            if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
                 return false;
             }
         }
@@ -843,7 +852,7 @@ impl ElementTree {
 
     /// 押下 `(x, y)` が選択のドラッグハンドルの一方を掴んだらハンドルドラッグを
     /// 始める（ADR-0097）。掴んだ端が選択の `focus`、反対端が固定 `anchor` になる
-    /// ので、既存のドラッグ選択移動経路（`selection_drag` →
+    /// ので、既存のドラッグ選択移動経路（[`DragMode::Selection`] →
     /// `update_selection_focus`）がまさにその端点を調整し Selection Region に
     /// クランプする。ハンドルを掴んだ（＝ジェスチャを消費した）かを返す。
     fn begin_handle_drag(&mut self, x: f32, y: f32) -> bool {
@@ -860,7 +869,7 @@ impl ElementTree {
             SelectionHandleEnd::End => (start, end),
         };
         self.set_selection(Some(Selection { anchor, focus }));
-        self.selection_drag = true;
+        self.pointer_gesture.begin_drag(DragMode::Selection);
         true
     }
 
@@ -893,12 +902,12 @@ impl ElementTree {
                 ScrollAxis::Vertical => y,
                 ScrollAxis::Horizontal => x,
             };
-            self.scrollbar_drag = Some(ScrollbarDrag {
+            self.pointer_gesture.begin_drag(DragMode::Scrollbar(ScrollbarDrag {
                 scroll_view: sv,
                 axis: axis.axis,
                 last_pos,
                 offset_per_px,
-            });
+            }));
         } else {
             // トラック余白: クリック方向へページする。サムの遠端を越えれば前方、
             // 近端より手前なら後方へ、どちらも名前付きステップ1つぶん。
@@ -984,7 +993,7 @@ impl ElementTree {
             ScrollAxis::Horizontal => x,
         };
         let pointer_delta = pos - drag.last_pos;
-        if pointer_delta.abs() < 1e-6 {
+        if pointer_delta.abs() < SCROLLBAR_DRAG_MIN_DELTA_PX {
             return;
         }
         let offset_delta = pointer_delta * drag.offset_per_px;
@@ -997,7 +1006,7 @@ impl ElementTree {
             }
         }
         drag.last_pos = pos;
-        self.scrollbar_drag = Some(drag);
+        self.pointer_gesture.begin_drag(DragMode::Scrollbar(drag));
     }
 
     /// 押下がフローティングツールバーのボタンに当たればそれを実行する。ツールバーが
@@ -1213,9 +1222,8 @@ impl ElementTree {
     /// `selectable` サブツリー外の押下は選択をクリアし、ドラッグを始めない。
     fn begin_selection_at(&mut self, x: f32, y: f32, modifiers: u32) {
         let Some(point) = self.selection_point_at(x, y) else {
-            self.selection_drag = false;
-            self.click_count = 0;
-            self.last_click_pos = None;
+            self.pointer_gesture.end_drag();
+            self.pointer_gesture.reset_taps();
             if self.selection.is_some() {
                 self.set_selection(None);
             }
@@ -1228,23 +1236,22 @@ impl ElementTree {
         if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
             // Shift+クリックは focus を調整。ドラッグを続けられるよう drag に留まる
             // が、マルチクリック周期は進めない。
-            self.selection_drag = true;
-            self.last_click_pos = Some((x, y));
-            self.click_count = 1;
+            self.pointer_gesture.begin_drag(DragMode::Selection);
+            self.pointer_gesture.note_single_tap(x, y);
             return;
         }
 
-        match self.advance_click_phase(x, y) {
-            1 => {
-                self.selection_drag = true;
+        match self.pointer_gesture.classify_tap(x, y) {
+            TapPhase::Caret => {
+                self.pointer_gesture.begin_drag(DragMode::Selection);
                 self.set_selection(Some(Selection::caret(point)));
             }
-            2 => {
-                self.selection_drag = false;
+            TapPhase::Word => {
+                self.pointer_gesture.end_drag();
                 self.select_bounds_at(point, selection::word_bounds);
             }
-            _ => {
-                self.selection_drag = false;
+            TapPhase::Paragraph => {
+                self.pointer_gesture.end_drag();
                 self.select_bounds_at(point, selection::line_bounds);
             }
         }
@@ -1286,20 +1293,19 @@ impl ElementTree {
             if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
                 edit.move_focus(offset);
             }
-            self.edit_drag = Some(input);
-            self.last_click_pos = Some((x, y));
-            self.click_count = 1;
+            self.pointer_gesture.begin_drag(DragMode::Edit(input));
+            self.pointer_gesture.note_single_tap(x, y);
             self.finish_edit_selection(input);
             return true;
         }
 
         // 同じ箇所付近の押下回数でキャレット → 単語 → 行を巡回する。単語と行は
         // Mouse/Pen の拡張で、Touch ではどの押下もキャレットのまま留まる。
-        let phase = self.advance_click_phase(x, y);
+        let phase = self.pointer_gesture.classify_tap(x, y);
         let bounds: Option<fn(&str, usize) -> (usize, usize)> =
             match (phase, self.last_pointer_kind == PointerKind::Touch) {
-                (2, false) => Some(selection::word_bounds),
-                (3, false) => Some(selection::line_bounds),
+                (TapPhase::Word, false) => Some(selection::word_bounds),
+                (TapPhase::Paragraph, false) => Some(selection::line_bounds),
                 _ => None,
             };
         if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
@@ -1313,7 +1319,11 @@ impl ElementTree {
         }
         // 単語／行選択はドラッグ拡張不可（読み取り専用経路と同等）。キャレットは
         // ユーザが拡張できるようドラッグを構える。
-        self.edit_drag = bounds.is_none().then_some(input);
+        self.pointer_gesture.begin_drag(if bounds.is_none() {
+            DragMode::Edit(input)
+        } else {
+            DragMode::None
+        });
         self.finish_edit_selection(input);
         true
     }
@@ -1377,19 +1387,6 @@ impl ElementTree {
         let content_x = ex + box_layout.border.left + box_layout.padding.left;
         let content_y = ey + box_layout.border.top + box_layout.padding.top;
         Some(byte_index_at_point(cl, x - content_x, y - content_y))
-    }
-
-    /// pointer-down が直前の付近なら連続押下カウンタを増やし、さもなくば再開し、
-    /// キャレット → 単語 → 段落を巡回する 1 始まりのジェスチャ位相（1, 2, 3, 1, …）
-    /// を返す。
-    fn advance_click_phase(&mut self, x: f32, y: f32) -> u32 {
-        const MULTI_CLICK_TOLERANCE: f32 = 4.0;
-        let near = self.last_click_pos.is_some_and(|(lx, ly)| {
-            (x - lx).abs() <= MULTI_CLICK_TOLERANCE && (y - ly).abs() <= MULTI_CLICK_TOLERANCE
-        });
-        self.click_count = if near { self.click_count + 1 } else { 1 };
-        self.last_click_pos = Some((x, y));
-        (self.click_count - 1) % 3 + 1
     }
 
     /// 選択を、IFC の整形済みテキスト内で `bounds` が `point` 周りに計算したバイト
