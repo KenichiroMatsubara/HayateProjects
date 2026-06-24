@@ -18,6 +18,10 @@ renderer に platform への結合点を与える側。Tsubame は host を *掴
 - **DOM 経路**: host == 描画先（DOM）。`container` / `doc` を注入で受け取る。可搬性を主張しない公言された browser 結合経路なので DOM 結合でよい。弱形「受け取る、掴みに行かない」。
 _Avoid_: renderer が canvas / global / DOM を掴みに行く設計、`canvas: null` で host 知識を無効化して native を成立させる構造（知識が型に残るため原則破り）
 
+**Host bootstrap**:
+surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。App は host から `RawHayate`（+ clock）を受け、`new CanvasRenderer({ raw, clock })` して mount する。browser/native はこの形で対称（docs/adr/0004）。
+_Avoid_: `@tsubame/renderer-canvas` 内に `init.ts` / `init-android.ts` 等の host bootstrap を置く設計、Tsubame が `hayate-adapter-web` に依存する設計、WASM 巻き込み回避のための `/android` サブパス分離
+
 **Canvas Renderer**:
 Hayate 向け renderer 実装。JS 側でフレーム分の変更を積み、`apply_mutations(ops: Float64Array, styles: Float32Array)` を 1回/frame 呼ぶ。host を知らない：受け取るのは frame-clock の tick だけで、canvas・resize・pointer・IME は host 側 adapter が所有する（Host 結合原則の強形）。名の "Canvas" は HTML `<canvas>` 要素ではなく、**Hayate が描く即時描画サーフェス**（"Hayate canvas" / h-canvas; Android `Canvas`・Skia・Flutter `Canvas` と同義の総称）を指す。HTML `<canvas>` は browser host が持つ surface ハンドルにすぎず、Android では native Surface に置き換わる。
 _Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明、`CanvasRenderer` が `HTMLCanvasElement` を型に持つ設計、`resize()` を renderer に置く設計
@@ -54,7 +58,7 @@ _Avoid_: 仮想 TextNode、親への `setText` 集約、Hayate 未登録の負 I
 ## Related Products
 
 **Hayate**:
-Tsubame が Canvas Renderer 経由で利用する描画基盤。Tsubame は Hayate の内部実装には依存せず、`@hayate/protocol-spec`（`proto/spec/*.json`）と `apply_mutations` / `poll_events` 契約だけを見る。
+Tsubame が Canvas Renderer 経由で利用する描画基盤。Tsubame は Hayate の内部実装にも**ランタイム/WASM adapter パッケージ（`hayate-adapter-web` 等）にも依存せず**、`@hayate/protocol-spec`（`proto/spec/*.json`）と自前定義の `RawHayate` ポート、`apply_mutations` / `poll_events` 契約だけを見る。具体 adapter は App が注入する（docs/adr/0004）。
 
 **Hayabusa**:
 Rust 側の長期構想。Tsubame は Hayabusa の JS 版ではない。
