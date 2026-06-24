@@ -375,6 +375,11 @@ impl GridItem {
         tree.measure_child_size(
             self.node,
             known_dimensions,
+            // Hayate local fix (vs upstream 0.7.x, which passes `inner_node_size`): a grid
+            // item's containing block is its GRID AREA, not the grid container's content box,
+            // so percentages must resolve against the area (the track's available space).
+            // Matches the direction upstream `main` later took (grid_area_size). Regression:
+            // hayate-core `grid_template.rs::grid_item_width_percent_resolves_against_grid_area_not_container`.
             available_space,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
@@ -414,6 +419,9 @@ impl GridItem {
         tree.measure_child_size(
             self.node,
             known_dimensions,
+            // Hayate local fix (vs upstream 0.7.x `inner_node_size`): grid-area is the item's
+            // containing block, so percentages resolve against the area, not the container.
+            // See min_content_contribution above for rationale and the regression test.
             available_space,
             available_space.map(|opt| match opt {
                 Some(size) => AvailableSpace::Definite(size),
@@ -457,6 +465,11 @@ impl GridItem {
         known_dimensions: Size<Option<f32>>,
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
+        // Hayate local fix (vs upstream 0.7.x, which resolves these against `inner_node_size`):
+        // a grid item's percentages (padding/border/size/min-size) resolve against its GRID
+        // AREA — here represented by `known_dimensions` (the item's already-resolved area size)
+        // — not the grid container's content box. Same rationale as min_content_contribution;
+        // regression test: grid_item_width_percent_resolves_against_grid_area_not_container.
         let padding = self.padding.resolve_or_zero(known_dimensions);
         let border = self.border.resolve_or_zero(known_dimensions);
         let padding_border_size = (padding + border).sum_axes();
