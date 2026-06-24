@@ -154,8 +154,12 @@ export function TodoApp(props: TodoAppProps) {
         >
           <view
             style={{
-              width: 620,
-              maxWidth: '100%',
+              // 「最大 620、狭ければ親に追従」。width:620 + maxWidth:'100%' と数学的に同値
+              // （min(親, 620)）だが、パーセント maxWidth が flex コンテナの本軸（高さ）
+              // 固有サイズ計算を狂わせ、折り返しテキストを含む列の高さを過小評価して
+              // フッター/末尾行がカード下端からはみ出す不具合を避ける（idiomatic な順序）。
+              width: '100%',
+              maxWidth: 620,
               display: 'flex',
               flexDirection: 'column',
               gap: 16,
