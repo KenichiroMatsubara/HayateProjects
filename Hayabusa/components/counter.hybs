@@ -1,6 +1,6 @@
 <template>
-  <view>
-    <text>{count}</text>
+  <view style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background-color: #ffffff">
+    <text style="font-size: 24px; color: #222222">{count}</text>
     <button on:click={increment}>+1</button>
   </view>
 </template>

@@ -133,6 +133,8 @@ struct Element {
     on_input: Option<String>,
     /// `value={expr}` の束縛式テキスト（ADR-0007 の「書き・従」）。
     value: Option<String>,
+    /// `style="..."` を解決した `StyleProp::...` コンストラクタ式の列（ADR-0010）。
+    style: Vec<String>,
     content: Content,
     children: Vec<Element>,
 }
@@ -215,10 +217,11 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
     let tag = read_name(c)?;
     let kind = tag_to_kind(&tag)?.to_string();
 
-    // 属性：`on:click={ident}` / `on:input={ident}` / `value={expr}`。
+    // 属性：`on:click` / `on:input` / `value={expr}` / `style="..."`。
     let mut on_click = None;
     let mut on_input = None;
     let mut value = None;
+    let mut style = Vec::new();
     loop {
         c.skip_ws();
         match c.peek() {
@@ -235,6 +238,7 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
                     on_click,
                     on_input,
                     value,
+                    style,
                     content: Content::None,
                     children: Vec::new(),
                 });
@@ -245,10 +249,11 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
                     "on:click" => on_click = Some(val),
                     "on:input" => on_input = Some(val),
                     "value" => value = Some(val),
+                    "style" => style = parse_inline_style(&val)?,
                     _ => {
                         return Err(CompileError::new(format!(
                             "unsupported attribute `{name}` on <{tag}> \
-                             (this slice supports on:click / on:input / value)"
+                             (this slice supports on:click / on:input / value / style)"
                         )))
                     }
                 }
@@ -274,6 +279,7 @@ fn parse_element(c: &mut Cursor) -> Result<Element, CompileError> {
         on_click,
         on_input,
         value,
+        style,
         content,
         children,
     })
@@ -409,6 +415,161 @@ fn read_attribute(c: &mut Cursor) -> Result<(String, String), CompileError> {
     Ok((name, value))
 }
 
+// ───────────────────────── inline style（`style="..."`・ADR-0010） ─────────────────────────
+
+/// `style="k: v; k: v"` を `StyleProp::...` コンストラクタ式の列へコンパイルする。
+/// 生成コードは prelude の `StyleProp` / `Length` / `Rgba` / `Display` / `FlexDirection` /
+/// `Align` / `Justify` を参照する（cargo が型検査）。
+fn parse_inline_style(s: &str) -> Result<Vec<String>, CompileError> {
+    let mut out = Vec::new();
+    for decl in s.split(';') {
+        let decl = decl.trim();
+        if decl.is_empty() {
+            continue;
+        }
+        let (key, val) = decl
+            .split_once(':')
+            .ok_or_else(|| CompileError::new(format!("style declaration `{decl}` is missing `:`")))?;
+        let key = key.trim();
+        let val = val.trim();
+        let emit = match key {
+            "width" => format!("StyleProp::Width({})", style_length(val)?),
+            "height" => format!("StyleProp::Height({})", style_length(val)?),
+            "padding" => format!("StyleProp::Padding({})", style_length(val)?),
+            "margin" => format!("StyleProp::Margin({})", style_length(val)?),
+            "gap" => format!("StyleProp::Gap({})", style_length(val)?),
+            "font-size" => format!("StyleProp::FontSize({})", style_f32_px(val)?),
+            "background-color" | "background" => {
+                format!("StyleProp::BackgroundColor({})", style_color(val)?)
+            }
+            "color" => format!("StyleProp::TextColor({})", style_color(val)?),
+            "display" => format!("StyleProp::Display(Display::{})", style_enum(val, key)?),
+            "flex-direction" => {
+                format!("StyleProp::FlexDirection(FlexDirection::{})", style_enum(val, key)?)
+            }
+            "align-items" => format!("StyleProp::AlignItems(Align::{})", style_enum(val, key)?),
+            "justify-content" => {
+                format!("StyleProp::JustifyContent(Justify::{})", style_enum(val, key)?)
+            }
+            other => {
+                return Err(CompileError::new(format!(
+                    "unsupported style property `{other}`"
+                )))
+            }
+        };
+        out.push(emit);
+    }
+    Ok(out)
+}
+
+/// `px` / `%` / `auto` → `Length::...`。
+fn style_length(val: &str) -> Result<String, CompileError> {
+    if val == "auto" {
+        return Ok("Length::Auto".to_string());
+    }
+    if let Some(p) = val.strip_suffix('%') {
+        return Ok(format!("Length::Percent({})", parse_f32_lit(p.trim())?));
+    }
+    if let Some(p) = val.strip_suffix("px") {
+        return Ok(format!("Length::Px({})", parse_f32_lit(p.trim())?));
+    }
+    Err(CompileError::new(format!(
+        "length `{val}` needs a unit (`px` / `%`) or `auto`"
+    )))
+}
+
+/// `font-size` 値（`px` 任意）→ f32 リテラル。
+fn style_f32_px(val: &str) -> Result<String, CompileError> {
+    let num = val.strip_suffix("px").unwrap_or(val).trim();
+    parse_f32_lit(num)
+}
+
+/// 数値テキスト → `<n>f32` リテラル。
+fn parse_f32_lit(s: &str) -> Result<String, CompileError> {
+    s.parse::<f64>()
+        .map(|v| format!("{v}f32"))
+        .map_err(|_| CompileError::new(format!("invalid number `{s}`")))
+}
+
+/// 色（`#rgb` / `#rrggbb` / `#rrggbbaa` / 名前付き）→ `Rgba::new(r, g, b, a)`。
+fn style_color(val: &str) -> Result<String, CompileError> {
+    if let Some(hex) = val.strip_prefix('#') {
+        return hex_color(hex);
+    }
+    let (r, g, b, a) = match val {
+        "white" => (255, 255, 255, 255),
+        "black" => (0, 0, 0, 255),
+        "red" => (255, 0, 0, 255),
+        "green" => (0, 128, 0, 255),
+        "blue" => (0, 0, 255, 255),
+        "gray" | "grey" => (128, 128, 128, 255),
+        "lightgray" | "lightgrey" => (211, 211, 211, 255),
+        "transparent" => (0, 0, 0, 0),
+        other => {
+            return Err(CompileError::new(format!(
+                "unsupported color `{other}` (use #hex or a known name)"
+            )))
+        }
+    };
+    Ok(rgba_lit(r, g, b, a))
+}
+
+/// `#rgb` / `#rrggbb` / `#rrggbbaa` をパースして `Rgba::new(...)`。
+fn hex_color(hex: &str) -> Result<String, CompileError> {
+    let bytes: Vec<u8> = match hex.len() {
+        3 => hex
+            .chars()
+            .map(|c| u8::from_str_radix(&format!("{c}{c}"), 16))
+            .collect::<Result<_, _>>()
+            .map_err(|_| CompileError::new(format!("invalid hex color `#{hex}`")))?,
+        6 | 8 => (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16))
+            .collect::<Result<_, _>>()
+            .map_err(|_| CompileError::new(format!("invalid hex color `#{hex}`")))?,
+        _ => {
+            return Err(CompileError::new(format!(
+                "hex color `#{hex}` must be 3, 6, or 8 digits"
+            )))
+        }
+    };
+    let a = if bytes.len() == 4 { bytes[3] } else { 255 };
+    Ok(rgba_lit(bytes[0], bytes[1], bytes[2], a))
+}
+
+/// 0..255 のチャンネルを 0..1 の `Rgba::new(...)` リテラルへ。
+fn rgba_lit(r: u8, g: u8, b: u8, a: u8) -> String {
+    let f = |x: u8| format!("{}f32", x as f64 / 255.0);
+    format!("Rgba::new({}, {}, {}, {})", f(r), f(g), f(b), f(a))
+}
+
+/// 列挙値のキーワード → Rust バリアント名。
+fn style_enum(val: &str, prop: &str) -> Result<String, CompileError> {
+    let variant = match (prop, val) {
+        ("display", "flex") => "Flex",
+        ("display", "block") => "Block",
+        ("display", "none") => "None",
+        ("flex-direction", "row") => "Row",
+        ("flex-direction", "column") => "Column",
+        ("align-items", "start" | "flex-start") => "Start",
+        ("align-items", "center") => "Center",
+        ("align-items", "end" | "flex-end") => "End",
+        ("align-items", "stretch") => "Stretch",
+        ("justify-content", "start" | "flex-start") => "Start",
+        ("justify-content", "center") => "Center",
+        ("justify-content", "end" | "flex-end") => "End",
+        ("justify-content", "space-between") => "SpaceBetween",
+        ("justify-content", "space-around") => "SpaceAround",
+        ("justify-content", "space-evenly") => "SpaceEvenly",
+        _ => {
+            return Err(CompileError::new(format!(
+                "unsupported value `{val}` for `{prop}`"
+            )))
+        }
+    };
+    Ok(variant.to_string())
+}
+
 // ───────────────────────── 収集（handler / 自由変数） ─────────────────────────
 
 fn collect_handlers(el: &Element, out: &mut Vec<String>) {
@@ -485,6 +646,9 @@ fn free_root_idents(expr: &str) -> Vec<String> {
 /// 1 要素を `TemplateNode::new(...)....` ビルダ式へ出す（子は再帰）。
 fn emit_element(el: &Element, handlers: &[String]) -> String {
     let mut s = format!("TemplateNode::new(ElementKind::{})", el.kind);
+    if !el.style.is_empty() {
+        s.push_str(&format!(".style(vec![{}])", el.style.join(", ")));
+    }
     match &el.content {
         Content::Static(t) => s.push_str(&format!(".text({})", rust_str(t))),
         Content::Bind(expr) => {
@@ -716,6 +880,45 @@ let draft = rt.signal(Value::string(""));
         assert!(code.contains(".on_input(0usize)")); // edit = index 0
         assert!(code.contains(".on_click(1usize)")); // add  = index 1
         assert!(code.contains(".with(\"draft\", Binding::Signal(draft.clone()))"));
+    }
+
+    #[test]
+    fn parses_inline_style_lengths_layout_and_colors() {
+        let props = parse_inline_style(
+            "width: 120px; padding: 8px; gap: 50%; height: auto; \
+             display: flex; flex-direction: column; align-items: center; \
+             justify-content: space-between; font-size: 16px; \
+             background-color: #ffffff; color: #000",
+        )
+        .unwrap();
+        assert!(props.contains(&"StyleProp::Width(Length::Px(120f32))".to_string()));
+        assert!(props.contains(&"StyleProp::Padding(Length::Px(8f32))".to_string()));
+        assert!(props.contains(&"StyleProp::Gap(Length::Percent(50f32))".to_string()));
+        assert!(props.contains(&"StyleProp::Height(Length::Auto)".to_string()));
+        assert!(props.contains(&"StyleProp::Display(Display::Flex)".to_string()));
+        assert!(props.contains(&"StyleProp::FlexDirection(FlexDirection::Column)".to_string()));
+        assert!(props.contains(&"StyleProp::AlignItems(Align::Center)".to_string()));
+        assert!(props.contains(&"StyleProp::JustifyContent(Justify::SpaceBetween)".to_string()));
+        assert!(props.contains(&"StyleProp::FontSize(16f32)".to_string()));
+        assert!(props.contains(&"StyleProp::BackgroundColor(Rgba::new(1f32, 1f32, 1f32, 1f32))".to_string()));
+        assert!(props.contains(&"StyleProp::TextColor(Rgba::new(0f32, 0f32, 0f32, 1f32))".to_string()));
+    }
+
+    #[test]
+    fn emits_style_call_on_element() {
+        let src = r#"<template><view style="width: 10px; background-color: #ff0000"><text>{x}</text></view></template>
+<script>let x = rt.signal(Value::number(0));</script>"#;
+        let code = compile_hybs(src, "styled").unwrap();
+        assert!(code.contains(".style(vec!["));
+        assert!(code.contains("StyleProp::Width(Length::Px(10f32))"));
+        assert!(code.contains("StyleProp::BackgroundColor(Rgba::new(1f32, 0f32, 0f32, 1f32))"));
+    }
+
+    #[test]
+    fn errors_on_unknown_style_property() {
+        assert!(parse_inline_style("wibble: 3px").is_err());
+        assert!(parse_inline_style("width: 3").is_err()); // 単位なし
+        assert!(parse_inline_style("color: chartreuse").is_err()); // 未知の名前
     }
 
     #[test]

@@ -14,6 +14,7 @@
 use crate::component::ComponentSlot;
 use crate::expr::Expr;
 use crate::sink::ElementKind;
+use crate::style::StyleProp;
 
 /// 副作用ハンドラ（`on_click` 等）への参照。instantiate 時に渡すハンドラ列の添字。
 pub type HandlerId = usize;
@@ -72,6 +73,8 @@ pub struct TemplateNode {
     /// 入力確定（`on:input`）で起動する副作用ハンドラ。commit 済みテキストを payload で受ける
     /// （ADR-0007 の「読み・主」）。`on_click` と同じ handler 列を共有する。
     pub on_input: Option<HandlerId>,
+    /// static スタイル（ADR-0010）。reactive 束縛ではなく instantiate 時に一度だけ適用される。
+    pub style: Vec<StyleProp>,
     /// 子（要素・制御フロー）。
     pub children: Vec<Template>,
 }
@@ -85,6 +88,7 @@ impl TemplateNode {
             value_binding: None,
             on_click: None,
             on_input: None,
+            style: Vec::new(),
             children: Vec::new(),
         }
     }
@@ -113,6 +117,12 @@ impl TemplateNode {
     /// 入力確定ハンドラ（`on:input`）。commit 済みテキストを payload で受ける（ADR-0007）。
     pub fn on_input(mut self, handler: HandlerId) -> Self {
         self.on_input = Some(handler);
+        self
+    }
+
+    /// static スタイルを設定する（ADR-0010）。instantiate 時に一度だけ適用される。
+    pub fn style(mut self, props: impl Into<Vec<StyleProp>>) -> Self {
+        self.style = props.into();
         self
     }
 

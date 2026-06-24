@@ -70,6 +70,7 @@ pub mod instantiate;
 pub mod parse;
 pub mod reactive;
 pub mod sink;
+pub mod style;
 pub mod template;
 pub mod value;
 
@@ -92,6 +93,9 @@ pub mod prelude {
     pub use crate::parse::{parse_expr, ParseError};
     pub use crate::reactive::{Memo, Runtime, ScopeId, Signal};
     pub use crate::sink::{ElId, ElementKind, ElementSink, Mutation, RecordingSink};
+    pub use crate::style::{
+        Align, Display, FlexDirection, Justify, Length, Rgba, StyleProp,
+    };
     pub use crate::template::{EachBlock, HandlerId, IfBlock, Template, TemplateNode};
     pub use crate::value::Value;
 }

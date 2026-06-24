@@ -32,6 +32,7 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
 | [`app_host`](src/app_host.rs) | 共有 App Host へ `DeliverySink` として mount する `HayabusaApp`（borrowed-tree ＋ ListenerId ルーティング・`feature = "app-host"`） | 0117 / 0009 |
 | [`codegen`](codegen/src/lib.rs) | `.hybs` → 生成 Rust の build 時コンパイラ（別クレート・`[build-dependencies]`） | 0008 |
 | [`generated`](src/lib.rs) | `components/*.hybs` を build.rs がコンパイルした生成コンポーネント（`generated::<name>::build`） | 0008 |
+| [`style`](src/style.rs) | static style の閉じた語彙（`StyleProp` 等）。`set_style` で要素へ一度だけ適用 | 0010 |
 
 ### 通っているスライス
 
@@ -80,11 +81,18 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
   キーストロークの echo を no-op に倒す。sink に `set_value` op を追加。`components/text_field.hybs`
   をデモに、`tests/input_binding.rs`（配線）/ core `value_guard_tests`（ガード）/ `tests/app_host.rs`
   （実 `EditState` 越しの読み・書き）で実証。
+- **Slice 9（static style・ADR-0010）**：reactive style は禁止し、要素インラインの
+  `style="k: v; ..."` を **static** に適用する。sink に `set_style` op（`Mutation::SetStyle`）を
+  追加し、`hayate_core::element_set_style`（要素ローカルインラインスタイル）へ写す。語彙は
+  レイアウト（flex・サイズ・余白・gap）＋視覚（背景色・文字色・font-size）の閉じた部分集合。
+  codegen が `.hybs` の `style="..."` を型検査される `StyleProp::...` へコンパイル。
+  `tests/style.rs`（一度だけ適用・signal 非反応）/ core layout 読み戻し（`tests/app_host.rs`）/
+  codegen unit で実証。`components/counter.hybs` を styled に。
 
 含めない（後続）：`.hybs` の `:if` / `:each` / 子コンポーネント・mixed text・複数 `{expr}`、
-`<style>` の static style 生成（P3 の sink `set_style` 待ち）、他言語 wasm ゲスト、router、
-Store、`on:submit` 等の form レベルイベント、IME composition イベントの Hayabusa 側配送、
-描画 present を伴う Platform 統合。
+`<style>` ブロック＋セレクタ・scoped style・`:hover` 等・reactive style（ADR-0010 後続）、
+他言語 wasm ゲスト、router、Store、`on:submit` 等の form レベルイベント、IME composition
+イベントの Hayabusa 側配送、描画 present を伴う Platform 統合。
 
 > デモアプリ到達のために決める必要がある未決 ADR 論点は
 > [`docs/pending-decisions.md`](docs/pending-decisions.md) に記録している。
@@ -126,8 +134,8 @@ cargo test --manifest-path codegen/Cargo.toml
 
 ```html
 <template>
-  <view>
-    <text>{count}</text>
+  <view style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background-color: #ffffff">
+    <text style="font-size: 24px; color: #222222">{count}</text>
     <button on:click={increment}>+1</button>
   </view>
 </template>
@@ -140,3 +148,5 @@ let increment = {
 };
 </script>
 ```
+
+`style="..."` は build 時に型検査される `StyleProp` へコンパイルされる（static のみ・ADR-0010）。

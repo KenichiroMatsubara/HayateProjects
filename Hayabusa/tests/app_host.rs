@@ -231,6 +231,34 @@ fn text_input_value_binding_and_on_input_through_app_host() {
     assert_eq!(host.tree().element_get_text_content(input_eid), "");
 }
 
+/// static style（ADR-0010）が実 `ElementTree` の layout へ写ることを、App Host 経由で
+/// instantiate → render（`tick` 内）→ `element_layout_rect` の読み戻しで実証する。
+/// px の width/height が core の `element_set_style` 越しにレイアウトへ効く。
+#[test]
+fn static_style_drives_real_core_layout() {
+    let root_eid = ElementId::from_u64(0);
+
+    let rt = Runtime::new();
+    let template = TemplateNode::new(ElementKind::View).style(vec![
+        StyleProp::Width(Length::Px(120.0)),
+        StyleProp::Height(Length::Px(40.0)),
+        StyleProp::Padding(Length::Px(8.0)),
+    ]);
+    let sink = Rc::new(RefCell::new(RecordingSink::new()));
+    let instance = instantiate(&rt, &template, &Scope::new(), Vec::new(), sink);
+
+    let mut host = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    host.mount(Box::new(HayabusaApp::new(instance)));
+    host.tick(0.0); // mount: build + apply style、tick 内で render→layout。
+
+    let (_, _, w, h) = host
+        .tree()
+        .element_layout_rect(root_eid)
+        .expect("root must have a layout rect after render");
+    assert!((w - 120.0).abs() < 1e-3, "width px style should drive layout, got {w}");
+    assert!((h - 40.0).abs() < 1e-3, "height px style should drive layout, got {h}");
+}
+
 /// listener が登録されていない要素への click は何もしない（no-op）。
 #[test]
 fn click_on_unregistered_element_is_a_no_op() {

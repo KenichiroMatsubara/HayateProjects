@@ -192,6 +192,11 @@ fn build_element<S: ElementSink + 'static>(
 ) -> ElId {
     let id = ctx.sink.borrow_mut().create_element(node.kind);
 
+    // static スタイル（ADR-0010）：reactive 束縛ではなく 1 回だけ適用する。
+    if !node.style.is_empty() {
+        ctx.sink.borrow_mut().set_style(id, &node.style);
+    }
+
     // 静的テキスト（束縛なし）は 1 回だけ書く。
     if let Some(text) = &node.static_text {
         ctx.sink.borrow_mut().set_text(id, text);

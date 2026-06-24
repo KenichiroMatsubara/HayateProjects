@@ -18,7 +18,11 @@
 //! 転送が実機コア上で成立することを先に確定させる。
 
 use crate::sink::{ElId, ElementKind, ElementSink, Mutation};
-use hayate_core::{ElementId, ElementKind as CoreKind, ElementTree};
+use crate::style::{self, StyleProp};
+use hayate_core::{
+    AlignValue, Color, Dimension, DisplayValue, ElementId, ElementKind as CoreKind, ElementTree,
+    FlexDirectionValue, JustifyValue, StyleProp as CoreStyleProp,
+};
 
 /// `ElementSink` を所有する `hayate_core::ElementTree` へ転送する sink。
 ///
@@ -78,6 +82,62 @@ pub(crate) fn to_core_id(id: ElId) -> ElementId {
     ElementId::from_u64(id.0)
 }
 
+/// Hayabusa の `Length` を core の `Dimension` へ写す。
+fn to_core_dim(len: style::Length) -> Dimension {
+    match len {
+        style::Length::Px(v) => Dimension::px(v),
+        style::Length::Percent(v) => Dimension::percent(v),
+        style::Length::Auto => Dimension::AUTO,
+    }
+}
+
+/// Hayabusa の `Rgba`（0..1）を core の `Color` へ写す。
+fn to_core_color(c: style::Rgba) -> Color {
+    Color::new(c.r as f64, c.g as f64, c.b as f64, c.a as f64)
+}
+
+/// Hayabusa の static `StyleProp` を core の `StyleProp` へ写す（ADR-0010）。
+pub(crate) fn to_core_style(prop: StyleProp) -> CoreStyleProp {
+    match prop {
+        StyleProp::Width(l) => CoreStyleProp::Width(to_core_dim(l)),
+        StyleProp::Height(l) => CoreStyleProp::Height(to_core_dim(l)),
+        StyleProp::Padding(l) => CoreStyleProp::Padding(to_core_dim(l)),
+        StyleProp::Margin(l) => CoreStyleProp::Margin(to_core_dim(l)),
+        StyleProp::Gap(l) => CoreStyleProp::Gap(to_core_dim(l)),
+        StyleProp::Display(d) => CoreStyleProp::Display(match d {
+            style::Display::Flex => DisplayValue::Flex,
+            style::Display::Block => DisplayValue::Block,
+            style::Display::None => DisplayValue::None,
+        }),
+        StyleProp::FlexDirection(f) => CoreStyleProp::FlexDirection(match f {
+            style::FlexDirection::Row => FlexDirectionValue::Row,
+            style::FlexDirection::Column => FlexDirectionValue::Column,
+        }),
+        StyleProp::AlignItems(a) => CoreStyleProp::AlignItems(match a {
+            style::Align::Start => AlignValue::FlexStart,
+            style::Align::Center => AlignValue::Center,
+            style::Align::End => AlignValue::FlexEnd,
+            style::Align::Stretch => AlignValue::Stretch,
+        }),
+        StyleProp::JustifyContent(j) => CoreStyleProp::JustifyContent(match j {
+            style::Justify::Start => JustifyValue::FlexStart,
+            style::Justify::Center => JustifyValue::Center,
+            style::Justify::End => JustifyValue::FlexEnd,
+            style::Justify::SpaceBetween => JustifyValue::SpaceBetween,
+            style::Justify::SpaceAround => JustifyValue::SpaceAround,
+            style::Justify::SpaceEvenly => JustifyValue::SpaceEvenly,
+        }),
+        StyleProp::BackgroundColor(c) => CoreStyleProp::BackgroundColor(to_core_color(c)),
+        StyleProp::TextColor(c) => CoreStyleProp::Color(to_core_color(c)),
+        StyleProp::FontSize(v) => CoreStyleProp::FontSize(v),
+    }
+}
+
+/// Hayabusa の static スタイル列を core の列へ写す。
+fn to_core_styles(props: &[StyleProp]) -> Vec<CoreStyleProp> {
+    props.iter().copied().map(to_core_style).collect()
+}
+
 /// 記録済みの 1 件の [`Mutation`] を実 `ElementTree` へ適用する。`RecordingSink` を
 /// buffering sink として使う経路（App Host への drain・src/app_host.rs）が、effect が
 /// 積んだ mutation 列をフレーム内でこの関数で借用ツリーへ出し切る。`HayateSink` の
@@ -100,6 +160,9 @@ pub(crate) fn apply_mutation(tree: &mut ElementTree, m: &Mutation) {
         Mutation::SetRoot { id } => tree.set_root(to_core_id(*id)),
         Mutation::SetValue { id, text } => {
             tree.element_set_text_content_if_idle(to_core_id(*id), text);
+        }
+        Mutation::SetStyle { id, props } => {
+            tree.element_set_style(to_core_id(*id), &to_core_styles(props));
         }
     }
 }
@@ -137,6 +200,11 @@ impl ElementSink for HayateSink {
     fn set_value(&mut self, id: ElId, text: &str) {
         // 差分・非組成中ガードは core 側（ADR-0007）。戻り値（適用されたか）は捨てる。
         self.tree.element_set_text_content_if_idle(to_core_id(id), text);
+    }
+
+    fn set_style(&mut self, id: ElId, props: &[StyleProp]) {
+        self.tree
+            .element_set_style(to_core_id(id), &to_core_styles(props));
     }
 }
 

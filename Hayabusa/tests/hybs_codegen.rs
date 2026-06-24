@@ -69,6 +69,18 @@ fn repeated_clicks_keep_patching_only_the_text_node() {
     assert_eq!(sink.borrow().log().len(), 3, "no structural mutations after build");
 }
 
+#[test]
+fn generated_counter_applies_inline_style() {
+    let rt = Runtime::new();
+    let sink = Rc::new(RefCell::new(RecordingSink::new()));
+    let _app = counter::build(&rt, sink.clone());
+
+    // `<view style="...">` と `<text style="...">` が set_style として出る（ADR-0010）。
+    let styled: Vec<ElId> = sink.borrow().style_mutations().into_iter().map(|(id, _)| id).collect();
+    assert!(styled.contains(&ElId(0)), "view should be styled");
+    assert!(styled.contains(&TEXT), "text should be styled");
+}
+
 // ───────────────────────── text_field.hybs（value 束縛 ＋ on:input・ADR-0007） ─────────────────────────
 
 // text_field の作成順：view(0), text-input(1), button(2)。
