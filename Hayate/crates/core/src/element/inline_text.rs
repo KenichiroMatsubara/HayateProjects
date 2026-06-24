@@ -155,6 +155,34 @@ impl CollectCtx<'_> {
     }
 }
 
+/// IFC ルートテキストへ効かせる行クランプ（`max_lines` / `text_overflow`）を解決する。
+///
+/// CSS の `-webkit-line-clamp` はインラインテキスト自身ではなく、それを内包する
+/// **ブロックボックス**に宣言される（例: `titleStyle` は `<button>` に `maxLines:1` を
+/// 置き、その子テキストをクランプする）。DOM Mode はカタログの `domExtras` 経由で
+/// ボタンへ `-webkit-line-clamp` を載せて成立させるため、Canvas でも同じく
+/// **IFC ルート自身に無ければ、それを内包する親ボックスから読む**（issue: todo カード
+/// タイトルが Canvas でだけクランプされず折り返す乖離）。`max_lines` がクランプの
+/// 唯一のトリガーなので、それを持つ要素の `text_overflow` を一緒に採用する。
+fn resolve_line_clamp(
+    elements: &HashMap<ElementId, Element>,
+    ifc_root_id: ElementId,
+) -> (Option<u32>, TextOverflowValue) {
+    let Some(el) = elements.get(&ifc_root_id) else {
+        return (None, TextOverflowValue::Clip);
+    };
+    if el.visual.max_lines.is_some() {
+        return (el.visual.max_lines, el.visual.text_overflow);
+    }
+    // IFC ルートを内包するブロックボックス（親）が宣言したクランプを継ぐ。
+    if let Some(parent) = el.parent.and_then(|p| elements.get(&p)) {
+        if parent.visual.max_lines.is_some() {
+            return (parent.visual.max_lines, parent.visual.text_overflow);
+        }
+    }
+    (None, el.visual.text_overflow)
+}
+
 /// IFC ルートのサブツリーを単一の Parley レイアウト＋バイト→要素マップに整形する。
 pub(crate) fn shape(
     elements: &HashMap<ElementId, Element>,
@@ -191,10 +219,7 @@ pub(crate) fn shape(
         };
     }
 
-    let (max_lines, text_overflow) = elements
-        .get(&ifc_root_id)
-        .map(|el| (el.visual.max_lines, el.visual.text_overflow))
-        .unwrap_or((None, TextOverflowValue::Clip));
+    let (max_lines, text_overflow) = resolve_line_clamp(elements, ifc_root_id);
     let mut layout = build_ranged_text_layout(
         font_cx,
         layout_cx,
