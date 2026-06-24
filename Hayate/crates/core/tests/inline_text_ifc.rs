@@ -123,6 +123,72 @@ fn max_lines_on_containing_box_clamps_child_text() {
     assert!(shaped.ends_with('…'), "expected trailing ellipsis, got {shaped:?}");
 }
 
+/// 一般化①: クランプはテキストを**直接内包するブロック**（包含ブロック）に置けば、
+/// 階層が深くても効く。`view > view(maxLines) > text`。
+#[test]
+fn max_lines_on_inner_containing_block_clamps() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    let outer = tree.element_create(2, ElementKind::View);
+    let inner = tree.element_create(3, ElementKind::View);
+    let text = tree.element_create(4, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(120.0, 600.0);
+    tree.element_set_style(outer, &[StyleProp::Width(Dimension::px(120.0))]);
+    tree.element_set_style(inner, &[
+        StyleProp::Width(Dimension::px(120.0)),
+        StyleProp::MaxLines(1),
+        StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
+    ]);
+    tree.element_append_child(root, outer);
+    tree.element_append_child(outer, inner);
+    tree.element_append_child(inner, text);
+    tree.element_set_text(text, LONG_TEXT);
+    tree.render(0.0);
+    assert_eq!(tree.test_text_line_count(text), Some(1));
+}
+
+/// 一般化②（DOM パリティ）: クランプは間に挟まったブロックを**貫通しない**。
+/// `view(maxLines) > view > text` では子テキストはクランプされない。
+/// CSS `-webkit-line-clamp` も中間ブロックの行は畳まないので両者一致。
+#[test]
+fn max_lines_does_not_pierce_intermediate_block() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    let outer = tree.element_create(2, ElementKind::View);
+    let inner = tree.element_create(3, ElementKind::View);
+    let text = tree.element_create(4, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(120.0, 600.0);
+    tree.element_set_style(outer, &[StyleProp::Width(Dimension::px(120.0)), StyleProp::MaxLines(1)]);
+    tree.element_set_style(inner, &[StyleProp::Width(Dimension::px(120.0))]);
+    tree.element_append_child(root, outer);
+    tree.element_append_child(outer, inner);
+    tree.element_append_child(inner, text);
+    tree.element_set_text(text, LONG_TEXT);
+    tree.render(0.0);
+    let lines = tree.test_text_line_count(text).expect("shaped IFC");
+    assert!(lines > 1, "must not clamp through an intermediate block, got {lines}");
+}
+
+/// 一般化③: IFC ルートテキスト自身の `max_lines` は内包ボックスの宣言に勝つ。
+#[test]
+fn text_own_max_lines_overrides_containing_box() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    let box_id = tree.element_create(2, ElementKind::Button);
+    let text = tree.element_create(3, ElementKind::Text);
+    tree.set_root(root);
+    tree.set_viewport(120.0, 600.0);
+    tree.element_set_style(box_id, &[StyleProp::Width(Dimension::px(120.0)), StyleProp::MaxLines(1)]);
+    tree.element_set_style(text, &[StyleProp::MaxLines(3)]);
+    tree.element_append_child(root, box_id);
+    tree.element_append_child(box_id, text);
+    tree.element_set_text(text, LONG_TEXT);
+    tree.render(0.0);
+    assert_eq!(tree.test_text_line_count(text), Some(3), "text's own max-lines wins");
+}
+
 #[test]
 fn ifc_root_shapes_concatenated_inline_text() {
     let mut tree = ElementTree::new();
