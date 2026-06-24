@@ -659,6 +659,14 @@ fn determine_flex_base_size(
         // Known dimensions for child sizing
         let child_known_dimensions = {
             let mut ckd = child.size.with_main(dir, None);
+            // A definite cross size coming from `size` is still subject to the item's own
+            // min/max cross size. Without this clamp, an item like `width:620; max-width:100%`
+            // is laid out at its unclamped style width when its flex base (main) size is
+            // computed, so width-dependent content (e.g. wrapping text) is measured at the
+            // wrong width and the container under-sizes in the main axis.
+            if let Some(cross) = ckd.cross(dir) {
+                ckd.set_cross(dir, Some(cross.maybe_clamp(child.min_size.cross(dir), child.max_size.cross(dir))));
+            }
             if child.align_self == AlignSelf::Stretch && ckd.cross(dir).is_none() {
                 ckd.set_cross(
                     dir,
