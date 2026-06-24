@@ -19,7 +19,7 @@ renderer に platform への結合点を与える側。Tsubame は host を *掴
 _Avoid_: renderer が canvas / global / DOM を掴みに行く設計、`canvas: null` で host 知識を無効化して native を成立させる構造（知識が型に残るため原則破り）
 
 **Canvas Renderer**:
-Hayate 向け renderer 実装。JS 側でフレーム分の変更を積み、`apply_mutations(ops: Float64Array, styles: Float32Array)` を 1回/frame 呼ぶ。host を知らない：受け取るのは frame-clock の tick だけで、canvas・resize・pointer・IME は host 側 adapter が所有する（Host 結合原則の強形）。
+Hayate 向け renderer 実装。JS 側でフレーム分の変更を積み、`apply_mutations(ops: Float64Array, styles: Float32Array)` を 1回/frame 呼ぶ。host を知らない：受け取るのは frame-clock の tick だけで、canvas・resize・pointer・IME は host 側 adapter が所有する（Host 結合原則の強形）。名の "Canvas" は HTML `<canvas>` 要素ではなく、**Hayate が描く即時描画サーフェス**（"Hayate canvas" / h-canvas; Android `Canvas`・Skia・Flutter `Canvas` と同義の総称）を指す。HTML `<canvas>` は browser host が持つ surface ハンドルにすぎず、Android では native Surface に置き換わる。
 _Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明、`CanvasRenderer` が `HTMLCanvasElement` を型に持つ設計、`resize()` を renderer に置く設計
 
 **DOM Renderer**:
