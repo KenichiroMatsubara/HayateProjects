@@ -9,12 +9,18 @@ JS/TS 向けのレンダラーターゲット基盤。`Renderer Protocol`・`DOM
 _Avoid_: unified signal runtime
 
 **Renderer Protocol**:
-Tsubame と各 adapter の境界インターフェース。TypeScript では `IRenderer` として表現する。
+Tsubame と各 adapter の境界インターフェース（app↔renderer）。TypeScript では `IRenderer` として表現する。host↔renderer の境界ではない点に注意（→ `Host`）。
 _Avoid_: Host Interface
 
+**Host**:
+renderer に platform への結合点を与える側。Tsubame は host を *掴みに行かず*、注入されたハンドルとして *受け取る*（**Host 結合原則**）。
+- **Canvas 経路**: host は描画先と分離する（Hayate が surface を描く）。renderer は frame-clock の tick だけを受け取り、surface・resize・pointer・IME は host が構築した adapter（`hayate-adapter-web` / native）が所有する（ADR-0080 を native まで延長）。renderer は **platform 識別子をゼロ保持**（`HTMLCanvasElement` 型も canvas 参照も持たない）。「Tsubame は host を知らない」の強形はここに全適用。
+- **DOM 経路**: host == 描画先（DOM）。`container` / `doc` を注入で受け取る。可搬性を主張しない公言された browser 結合経路なので DOM 結合でよい。弱形「受け取る、掴みに行かない」。
+_Avoid_: renderer が canvas / global / DOM を掴みに行く設計、`canvas: null` で host 知識を無効化して native を成立させる構造（知識が型に残るため原則破り）
+
 **Canvas Renderer**:
-Hayate 向け renderer 実装。JS 側でフレーム分の変更を積み、`apply_mutations(ops: Float64Array, styles: Float32Array)` を 1回/frame 呼ぶ。
-_Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明
+Hayate 向け renderer 実装。JS 側でフレーム分の変更を積み、`apply_mutations(ops: Float64Array, styles: Float32Array)` を 1回/frame 呼ぶ。host を知らない：受け取るのは frame-clock の tick だけで、canvas・resize・pointer・IME は host 側 adapter が所有する（Host 結合原則の強形）。
+_Avoid_: 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明、`CanvasRenderer` が `HTMLCanvasElement` を型に持つ設計、`resize()` を renderer に置く設計
 
 **DOM Renderer**:
 ブラウザ DOM へ直接反映する renderer 実装。Renderer Protocol のもう一つの実装。Z-Order は Hayate と同じ RN 方式（兄弟内のみ・後勝ち・root 配置で親をまたぐ）を、RN Web 現行方式（全 Element kind に `position: relative` + デフォルト `zIndex: 0`）で DOM 上にエミュレートする。ブラウザ CSS との完全一致は目標にしない。Canvas / Hayate と Z-Order が乖離しうるスタイルを設定した場合は開発時に警告する（拒否はしない）。警告対象は拡張可能な registry で管理し、現行は `opacity`、Element スタイルに追加された `transform` を含む。静的コードへの警告は `DomStylePatch` の TypeScript `@deprecated` で IDE ファイル診断とする（ビルド失敗なし、`tsubame lint` CLI は設けない）。動的値は dev のみ runtime `console.warn`（同一 element + property につきセッション 1 回）。将来 ESLint によるファイル警告は理想だが初期スコープ外。
@@ -23,8 +29,8 @@ _Avoid_: SSR, hydration, Hayate HTML Mode（Hayate 不使用のため）
 ## Integration Terms
 
 **Hayate Protocol Contract**:
-Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API・`resize` は Renderer Protocol 独自 surface として Contract 外。
-_Avoid_: wire only 生成、adapter 向け型の手書き維持、Contract から Renderer 実装まで生成する設計
+Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API は Renderer Protocol 独自 surface として Contract 外（codegen 対象外）。`resize` も spec codegen 対象外である点は同じだが、**もはや Renderer Protocol surface ではない** — host→adapter→core が所有し Tsubame は resize 経路から外れる（ADR-0080）。Tsubame が将来 viewport を要する場合のみ spec Contract の API として供給する（当面は入れない）。
+_Avoid_: wire only 生成、adapter 向け型の手書き維持、Contract から Renderer 実装まで生成する設計、`resize` を Renderer Protocol surface と呼ぶ説明、Tsubame が `raw.on_resize` を直接叩く設計
 
 **apply_mutations**:
 Canvas Renderer のフレームバッチ入口。Tsubame と Hayate の結合点の中心。
