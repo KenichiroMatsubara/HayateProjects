@@ -1,0 +1,48 @@
+<template>
+  <view style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background-color: #ffffff">
+    <text-input value={draft} on:input={edit}/>
+    <button on:click={add}>add</button>
+    <text :if={!todos} style="color: #888888">no todos yet</text>
+    <view :each={todo in todos} :key={todo.id}>
+      <text>{todo.label}</text>
+    </view>
+  </view>
+</template>
+
+<script>
+// 第一段階の Todo（単一コンポーネント・Store 不要・pending-decisions P5）。
+//   - 入力束縛（ADR-0007）：on:input が draft を更新、value={draft} が submit 後にクリアする。
+//   - 制御フロー（ADR-0004）：:if で空状態、:each（keyed）で行を描く。
+//   - static style（ADR-0010）。
+let draft = rt.signal(Value::string(""));
+let todos = rt.signal(Value::list([]));
+let next_id = rt.signal(Value::number(0));
+
+let edit = {
+    let draft = draft.clone();
+    move |payload: Value| draft.set(payload)
+};
+
+let add = {
+    let draft = draft.clone();
+    let todos = todos.clone();
+    let next_id = next_id.clone();
+    move |_: Value| {
+        let label = draft.get();
+        if !label.truthy() {
+            return; // 空入力は無視する。
+        }
+        let id = next_id.get();
+        next_id.set(Value::number(id.as_number().unwrap() + 1.0));
+        todos.update(|cur| {
+            let mut items = cur.as_slice().to_vec();
+            items.push(Value::record([
+                ("id".to_string(), id),
+                ("label".to_string(), label),
+            ]));
+            Value::list(items)
+        });
+        draft.set(Value::string("")); // value={draft} がフォームをクリアする。
+    }
+};
+</script>

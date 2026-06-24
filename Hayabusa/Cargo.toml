@@ -6,9 +6,42 @@ license = "Apache-2.0"
 description = "Hayabusa — Signal-based SFC framework runtime on top of Hayate"
 repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 
-# Tracer bullet (Hayabusa ADR-0006): self-contained, no external dependencies.
-# The runtime owns the fine-grained reactive core (ADR-0003), the pure-expression
-# evaluator and Template IR (ADR-0004). It drives an `ElementSink` seam whose
-# surface mirrors `hayate_core::ElementTree` 1:1 (ADR-0002), so wiring the real
-# core is a mechanical follow-up.
+# The default build stays self-contained (Hayabusa ADR-0006): the runtime owns the
+# fine-grained reactive core (ADR-0003), the pure-expression evaluator and Template
+# IR (ADR-0004), driving an `ElementSink` seam whose surface mirrors
+# `hayate_core::ElementTree` 1:1 (ADR-0002). The optional `hayate-core` feature wires
+# that seam to the real core via `HayateSink` (cross-workspace path dep; the spike in
+# Hayabusa ADR-0009 confirmed this links once `[patch.crates-io]` is replicated below).
+[features]
+default = []
+# Drive the real `hayate_core::ElementTree` through `HayateSink` (src/hayate_sink.rs).
+hayate-core = ["dep:hayate-core"]
+# Mount Hayabusa onto the ADR-0117 App Host as a `DeliverySink` (src/app_host.rs):
+# the App Host owns the `ElementTree` and lends `&mut ElementTree` per frame.
+app-host = ["hayate-core", "dep:hayate-app-host"]
+
 [dependencies]
+hayate-core = { path = "../Hayate/crates/core", optional = true }
+hayate-app-host = { path = "../Hayate/crates/app-host", optional = true }
+
+# `.hybs` → 生成 Rust の build 時 codegen（ADR-0008）。build.rs から使う。クレートは自身の
+# ライブラリを build.rs から使えないため、パース／生成は別クレートに置く。
+[build-dependencies]
+hayabusa-codegen = { path = "codegen" }
+
+# Hayate vendors several crates and rewires them via `[patch.crates-io]` in its own
+# workspace (Hayate/Cargo.toml, ADR-0007). Cargo does NOT inherit a dependency's
+# workspace patches across workspaces, so a bare path dep on `hayate-core` pulls the
+# real crates.io versions of these and fails to build (the Hayabusa ADR-0009 spike).
+# Replicating the patch table here, pointing at the same vendored crates, makes the
+# cross-workspace link resolve. These entries are inert unless the `hayate-core`
+# feature pulls the patched crates into the graph.
+[patch.crates-io]
+vello           = { path = "../Hayate/crates/vendor/vello" }
+vello_encoding  = { path = "../Hayate/crates/vendor/vello_encoding" }
+vello_shaders   = { path = "../Hayate/crates/vendor/vello_shaders" }
+taffy           = { path = "../Hayate/crates/vendor/taffy" }
+parley          = { path = "../Hayate/crates/vendor/parley" }
+parley_data     = { path = "../Hayate/crates/vendor/parley_data" }
+fontique        = { path = "../Hayate/crates/vendor/fontique" }
+skrifa          = { path = "../Hayate/crates/vendor/skrifa" }

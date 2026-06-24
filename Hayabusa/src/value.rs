@@ -50,6 +50,15 @@ impl Value {
         }
     }
 
+    /// `list` の要素スライス（list でなければ空）。`:each` のリストを読み出して更新する
+    /// スクリプト（行の追加・削除）が、Rc の中身を直接触らずに済むようにする。
+    pub fn as_slice(&self) -> &[Value] {
+        match self {
+            Value::List(items) => items,
+            _ => &[],
+        }
+    }
+
     /// 真偽値としての解釈（`:if` 等の条件評価で使う）。
     pub fn truthy(&self) -> bool {
         match self {

@@ -1,2 +1,5 @@
 # Rust build artifacts
 target/
+
+# codegen is a zero-dep library build-dependency; libraries don't commit their lockfile.
+codegen/Cargo.lock

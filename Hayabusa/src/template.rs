@@ -14,6 +14,7 @@
 use crate::component::ComponentSlot;
 use crate::expr::Expr;
 use crate::sink::ElementKind;
+use crate::style::StyleProp;
 
 /// 副作用ハンドラ（`on_click` 等）への参照。instantiate 時に渡すハンドラ列の添字。
 pub type HandlerId = usize;
@@ -64,8 +65,16 @@ pub struct TemplateNode {
     pub static_text: Option<String>,
     /// reactive な text 束縛。`Some` なら signal 変化で再評価される。
     pub text_binding: Option<Expr>,
+    /// text-input の programmatic value 束縛（ADR-0007 の「書き・従」）。`Some` なら signal
+    /// 変化で `set_value`（差分・非組成中ガード付き）を発行する。`text_binding` とは別経路。
+    pub value_binding: Option<Expr>,
     /// クリックで起動する副作用ハンドラ。
     pub on_click: Option<HandlerId>,
+    /// 入力確定（`on:input`）で起動する副作用ハンドラ。commit 済みテキストを payload で受ける
+    /// （ADR-0007 の「読み・主」）。`on_click` と同じ handler 列を共有する。
+    pub on_input: Option<HandlerId>,
+    /// static スタイル（ADR-0010）。reactive 束縛ではなく instantiate 時に一度だけ適用される。
+    pub style: Vec<StyleProp>,
     /// 子（要素・制御フロー）。
     pub children: Vec<Template>,
 }
@@ -76,7 +85,10 @@ impl TemplateNode {
             kind,
             static_text: None,
             text_binding: None,
+            value_binding: None,
             on_click: None,
+            on_input: None,
+            style: Vec::new(),
             children: Vec::new(),
         }
     }
@@ -91,8 +103,26 @@ impl TemplateNode {
         self
     }
 
+    /// text-input の programmatic value 束縛（ADR-0007）。
+    pub fn bind_value(mut self, expr: Expr) -> Self {
+        self.value_binding = Some(expr);
+        self
+    }
+
     pub fn on_click(mut self, handler: HandlerId) -> Self {
         self.on_click = Some(handler);
+        self
+    }
+
+    /// 入力確定ハンドラ（`on:input`）。commit 済みテキストを payload で受ける（ADR-0007）。
+    pub fn on_input(mut self, handler: HandlerId) -> Self {
+        self.on_input = Some(handler);
+        self
+    }
+
+    /// static スタイルを設定する（ADR-0010）。instantiate 時に一度だけ適用される。
+    pub fn style(mut self, props: impl Into<Vec<StyleProp>>) -> Self {
+        self.style = props.into();
         self
     }
 

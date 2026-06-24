@@ -10,6 +10,8 @@
 //! テスト用の [`RecordingSink`] は全 mutation を記録し、fine-grained patch が
 //! 「テキストノードだけを patch する」ことを検証可能にする（ADR-0006 tracer bullet）。
 
+use crate::style::StyleProp;
+
 /// Hayate の element-kind 語彙（CONTEXT.md）。判別子は `hayate_core::ElementKind`
 /// に一致させてあり、後続の `HayateSink` でそのまま写せる。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,6 +43,14 @@ pub trait ElementSink {
     fn remove(&mut self, id: ElId);
     /// ルート要素を設定する。
     fn set_root(&mut self, id: ElId);
+    /// text-input の value を programmatic に設定する（ADR-0007 の「書き・従」経路）。
+    /// 編集の単一正本は host の `EditState` なので、これは **差分があり、かつ IME 組成中で
+    /// ないときだけ**適用される（ガードは host 側）。signal ミラーからの書き戻し用で、毎
+    /// キーストロークの echo はガードで no-op に倒れる。`set_text` とは別 op（ADR-0007）。
+    fn set_value(&mut self, id: ElId, text: &str);
+    /// static なスタイルを要素へ一度だけ適用する（ADR-0010）。reactive 束縛ではなく
+    /// instantiate 時に 1 回呼ばれ、`hayate_core` の要素ローカルインラインスタイルへ写る。
+    fn set_style(&mut self, id: ElId, props: &[StyleProp]);
 }
 
 /// テスト用の sink。全 mutation を順序付きで記録する。
@@ -50,8 +60,8 @@ pub struct RecordingSink {
     log: Vec<Mutation>,
 }
 
-/// 記録された 1 件の mutation。
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// 記録された 1 件の mutation。`SetStyle` が f32 を含むため `Eq` は持たない（`PartialEq` のみ）。
+#[derive(Clone, Debug, PartialEq)]
 pub enum Mutation {
     Create {
         id: ElId,
@@ -76,6 +86,14 @@ pub enum Mutation {
     SetRoot {
         id: ElId,
     },
+    SetValue {
+        id: ElId,
+        text: String,
+    },
+    SetStyle {
+        id: ElId,
+        props: Vec<StyleProp>,
+    },
 }
 
 impl RecordingSink {
@@ -93,12 +111,40 @@ impl RecordingSink {
         self.log.clear();
     }
 
+    /// 記録された mutation 列を所有で取り出し、内部ログを空にする。
+    /// buffering sink としての drain 経路（App Host への適用・src/app_host.rs）に使う。
+    pub fn take_log(&mut self) -> Vec<Mutation> {
+        std::mem::take(&mut self.log)
+    }
+
     /// `set_text` mutation だけを `(id, text)` で抽出する。
     pub fn text_mutations(&self) -> Vec<(ElId, String)> {
         self.log
             .iter()
             .filter_map(|m| match m {
                 Mutation::SetText { id, text } => Some((*id, text.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `set_value` mutation だけを `(id, text)` で抽出する。
+    pub fn value_mutations(&self) -> Vec<(ElId, String)> {
+        self.log
+            .iter()
+            .filter_map(|m| match m {
+                Mutation::SetValue { id, text } => Some((*id, text.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// `set_style` mutation だけを `(id, props)` で抽出する。
+    pub fn style_mutations(&self) -> Vec<(ElId, Vec<StyleProp>)> {
+        self.log
+            .iter()
+            .filter_map(|m| match m {
+                Mutation::SetStyle { id, props } => Some((*id, props.clone())),
                 _ => None,
             })
             .collect()
@@ -138,6 +184,20 @@ impl ElementSink for RecordingSink {
 
     fn set_root(&mut self, id: ElId) {
         self.log.push(Mutation::SetRoot { id });
+    }
+
+    fn set_value(&mut self, id: ElId, text: &str) {
+        self.log.push(Mutation::SetValue {
+            id,
+            text: text.to_string(),
+        });
+    }
+
+    fn set_style(&mut self, id: ElId, props: &[StyleProp]) {
+        self.log.push(Mutation::SetStyle {
+            id,
+            props: props.to_vec(),
+        });
     }
 }
 

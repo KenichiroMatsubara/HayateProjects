@@ -574,6 +574,30 @@ impl ElementTree {
         }
     }
 
+    /// programmatic な value set（Hayabusa ADR-0007 の「書き・従」経路）。controlled input の
+    /// 単一正本は `EditState` なので、signal ミラーからの書き戻しは **現在の確定値と差分があり、
+    /// かつ IME 組成中（preedit あり）でないときだけ**適用する。毎キーストロークの echo は
+    /// この差分・組成中ガードで no-op に倒れ、preedit / cursor を壊さない。適用したら `true`。
+    pub fn element_set_text_content_if_idle(&mut self, id: ElementId, text: &str) -> bool {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            // IME 組成中は書き戻さない（preedit / cursor を保護する）。
+            if edit.preedit.is_some() {
+                return false;
+            }
+            // 差分が無ければ何もしない（キーストローク echo の抑止）。
+            if edit.text_content == text {
+                return false;
+            }
+            edit.set(text);
+            return true;
+        }
+        false
+    }
+
     /// TextInput の確定済み内容にテキストを追加する。
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
         if let Some(edit) = self
@@ -2193,6 +2217,43 @@ impl ElementTree {
         let mut painter = RecordingPainter::new();
         render_scene_graph(&sg, &mut painter);
         painter.into_ops()
+    }
+}
+
+#[cfg(test)]
+mod value_guard_tests {
+    use super::ElementTree;
+    use crate::element::kind::ElementKind;
+
+    /// programmatic value set（ADR-0007）は、組成中でなく差分があるときだけ適用する。
+    #[test]
+    fn set_text_content_if_idle_applies_diff_when_not_composing() {
+        let mut tree = ElementTree::new();
+        let input = tree.element_create(1, ElementKind::TextInput);
+        assert!(tree.element_set_text_content_if_idle(input, "abc"));
+        assert_eq!(tree.element_get_text_content(input), "abc");
+        // 差分なし → no-op（キーストローク echo の抑止）。
+        assert!(!tree.element_set_text_content_if_idle(input, "abc"));
+    }
+
+    /// IME 組成中（preedit あり）は書き戻さない（preedit / cursor を壊さない）。
+    #[test]
+    fn set_text_content_if_idle_is_noop_while_composing() {
+        let mut tree = ElementTree::new();
+        let input = tree.element_create(1, ElementKind::TextInput);
+        tree.element_set_text_content_if_idle(input, "ab");
+        tree.element_set_preedit(input, "へん");
+        assert!(!tree.element_set_text_content_if_idle(input, "xyz"));
+        // 確定済み text_content は不変（display は content + preedit）。
+        assert_eq!(tree.element_get_text_content(input), "abへん");
+    }
+
+    /// edit を持たない非 input 要素には適用されない。
+    #[test]
+    fn set_text_content_if_idle_ignores_non_input_elements() {
+        let mut tree = ElementTree::new();
+        let view = tree.element_create(1, ElementKind::View);
+        assert!(!tree.element_set_text_content_if_idle(view, "x"));
     }
 }
 
