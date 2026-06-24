@@ -88,8 +88,14 @@ DSL 式評価）を **Rust で単独所有**する。各言語の既存ランタ
   codegen が `.hybs` の `style="..."` を型検査される `StyleProp::...` へコンパイル。
   `tests/style.rs`（一度だけ適用・signal 非反応）/ core layout 読み戻し（`tests/app_host.rs`）/
   codegen unit で実証。`components/counter.hybs` を styled に。
+- **Slice 10（`.hybs` の `:if` / `:each` codegen ＋ Todo・ADR-0004）**：制御フローのディレクティブ
+  `:if="<cond>"` と `:each="<item> in <items>" :key="<expr>"`（keyed-only）を codegen が
+  `IfBlock` / `EachBlock` へコンパイルする。`:each` の item 変数は scope signal から除外する（runtime
+  が束縛）。これで**第一段階デモ**が揃う：`components/todo.hybs`（入力束縛＋`:if` 空状態＋keyed
+  `:each` 行＋static style の単一コンポーネント Todo）が `.hybs` → codegen → App Host → 実
+  `ElementTree` で動くことを `tests/todo.rs`（入力 → add → 行追加・空状態消失）で実証。
 
-含めない（後続）：`.hybs` の `:if` / `:each` / 子コンポーネント・mixed text・複数 `{expr}`、
+含めない（後続）：`.hybs` の 子コンポーネント・mixed text・複数 `{expr}`・per-row への item payload、
 `<style>` ブロック＋セレクタ・scoped style・`:hover` 等・reactive style（ADR-0010 後続）、
 他言語 wasm ゲスト、router、Store、`on:submit` 等の form レベルイベント、IME composition
 イベントの Hayabusa 側配送、描画 present を伴う Platform 統合。

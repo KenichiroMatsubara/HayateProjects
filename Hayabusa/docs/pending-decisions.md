@@ -26,6 +26,7 @@
 | `.hybs` build 時 codegen（`<template>`＋`<script>`） | 0008 | ✅ 実装済（`components/counter.hybs`） |
 | `text-input` value 束縛 ＋ `on:input`（EditState 単一正本） | 0007 | ✅ 実装済（`components/text_field.hybs`） |
 | static style（インライン `style` ＋ `set_style` op） | 0010 | ✅ 実装済（reactive style は後続） |
+| `.hybs` の `:if` / `:each` codegen ＋ 第一段階 Todo | 0004 / 0008 | ✅ 実装済（`components/todo.hybs`） |
 | レンダリング統合・boot・フレームループ（描画 present） | 0117 | ✅ 方針決定済（Platform 統合は未） |
 
 ---
@@ -185,8 +186,14 @@ ADR 無し（初回デモには通常不要）。
 - 生成 `generated::counter::build` が手組み counter と同一に振る舞うことを `tests/hybs_codegen.rs`
   （既定ビルド）で、`.hybs` → App Host → 実 `ElementTree` を `tests/app_host.rs` で実証。
 
-**残る実装タスク（ブロッカーではない）**：`.hybs` の `:if`/`:each`/子コンポーネント・mixed text・
-複数 `{expr}`、`<style>` の static style 生成（P3 の sink `set_style` 待ち）、他言語 script。
+**拡張済み（2026-06-24）**：`on:input` / `value`（ADR-0007）・インライン `style`（ADR-0010）・
+制御フロー `:if="<cond>"` / `:each="<item> in <items>" :key="<expr>"`（ADR-0004 keyed-only）を
+codegen が解釈する。`:each` の item 変数は scope signal から除外（runtime が束縛）。これで
+**第一段階デモ**（`components/todo.hybs`：入力束縛＋空状態 `:if`＋keyed `:each`＋static style の
+単一コンポーネント Todo）が `.hybs` → codegen → App Host → 実 `ElementTree` で動く（`tests/todo.rs`）。
+
+**残る実装タスク（ブロッカーではない）**：子コンポーネント・mixed text・複数 `{expr}`・per-row への
+item payload 配線、`<style>` ブロック＋セレクタ、他言語 script。
 
 ---
 
@@ -208,8 +215,10 @@ ADR 無し（初回デモには通常不要）。
    codegen。`components/text_field.hybs`（`tests/input_binding.rs` / `tests/app_host.rs`）。
 5. ~~**P3 static style**~~ ✅ **完了（ADR-0010）**：インライン `style="..."` ＋ `set_style` op。
    レイアウト・色が core 越しに出ることを `tests/app_host.rs`（layout 読み戻し）で実証。
-6. **`.hybs` の `:if` / `:each`**：Template IR には既にあるので codegen を広げるだけ。Todo の
-   リスト描画に必要な最後のピース。
-7. **Todo `.hybs`**：入力束縛・static style・codegen・App Host 配線は揃った。残るのは `:if`/`:each`
-   の codegen。これが入れば Todo を `.hybs` で画面に出せる（第一段階の終着）。
-8. 第二段階：複数コンポーネント分割＋ **P5 Store**（要 ADR）。
+6. ~~**`.hybs` の `:if` / `:each`**~~ ✅ **完了（ADR-0004 codegen）**：`:if`/`:each`（keyed）の
+   ディレクティブを `IfBlock`/`EachBlock` へ。item 変数は scope から除外。
+7. ~~**Todo `.hybs`**（第一段階の終着）~~ ✅ **完了**：`components/todo.hybs` が `.hybs` → codegen →
+   App Host → 実 `ElementTree` で動く（`tests/todo.rs`：入力 → add → 行追加・空状態消失）。
+   **第一段階（単一コンポーネント Todo を画面に）は通った。**
+8. 第二段階：複数コンポーネント分割＋ **P5 Store**（要 ADR）。残るデモ拡張は per-row の操作
+   （削除・トグル）に要る item payload 配線、描画 present を伴う Platform 統合。
