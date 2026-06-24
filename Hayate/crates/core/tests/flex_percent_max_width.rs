@@ -103,3 +103,68 @@ fn fixed_width_contains_all_children() {
         layout_panel(StyleProp::Width(Dimension::px(360.0)), None);
     assert!(footer_bottom + 14.0 <= panel_bottom + 0.5);
 }
+
+/// 一般化: `min-width` が `width` より広い場合（逆方向のクランプ）も、クランプ後の幅で
+/// 高さが計算され、コンテナが全子を内包する。
+#[test]
+fn min_width_wider_than_width_uses_clamped_width() {
+    // width:120 を min-width:320 が押し広げる → 320 幅で段落を測る。
+    let (panel_bottom, footer_bottom, panel_w) = layout_panel(
+        StyleProp::Width(Dimension::px(120.0)),
+        Some(StyleProp::MinWidth(Dimension::px(320.0))),
+    );
+    assert!((panel_w - 320.0).abs() < 0.5, "min-width forces 320, got {panel_w}");
+    assert!(footer_bottom + 14.0 <= panel_bottom + 0.5);
+}
+
+/// 一般化（単調性）: `max-width` を狭めるほど段落は高くなり、どの幅でもコンテナは
+/// 必ずフッターを内包する。クランプ後の幅で高さが計算されている証拠。
+#[test]
+fn height_tracks_clamped_width_and_always_contains_footer() {
+    let mut prev_bottom = 0.0;
+    for maxw in [340.0_f32, 260.0, 180.0, 120.0] {
+        let (panel_bottom, footer_bottom, panel_w) = layout_panel(
+            StyleProp::Width(Dimension::px(620.0)),
+            Some(StyleProp::MaxWidth(Dimension::px(maxw))),
+        );
+        assert!((panel_w - maxw).abs() < 0.5, "panel clamps to {maxw}, got {panel_w}");
+        assert!(
+            footer_bottom + 14.0 <= panel_bottom + 0.5,
+            "maxw={maxw}: footer overflows (footer={footer_bottom}, panel={panel_bottom})",
+        );
+        // 幅を狭めるほどコンテナ高さは単調に増える（折り返し増）。
+        assert!(panel_bottom >= prev_bottom - 0.5, "narrower width must not shrink the panel");
+        prev_bottom = panel_bottom;
+    }
+}
+
+/// 一般化（対称性）: ROW コンテナでは cross = 高さ。`max-height` のクロスクランプも
+/// 同じ経路で効く（方向非依存の修正であること）。
+#[test]
+fn row_container_clamps_cross_height_by_max_height() {
+    let mut tree = ElementTree::new();
+    let mut next = 1u64;
+    let mut mk = |tree: &mut ElementTree, kind, styles: &[StyleProp]| {
+        let id = tree.element_create(next, kind);
+        next += 1;
+        tree.element_set_style(id, styles);
+        id
+    };
+    let root = mk(&mut tree, ElementKind::View, &[
+        StyleProp::Width(Dimension::px(800.0)),
+        StyleProp::Height(Dimension::px(400.0)),
+        StyleProp::Display(DisplayValue::Flex),
+        StyleProp::FlexDirection(FlexDirectionValue::Row),
+    ]);
+    tree.set_root(root);
+    tree.set_viewport(800.0, 400.0);
+    let item = mk(&mut tree, ElementKind::View, &[
+        StyleProp::Height(Dimension::px(300.0)),
+        StyleProp::MaxHeight(Dimension::px(120.0)),
+    ]);
+    tree.element_append_child(root, item);
+    tree.render(0.0);
+    let h = tree.element_layout_rect(item).unwrap().3;
+    assert!((h - 120.0).abs() < 0.5, "row item height must clamp to max-height 120, got {h}");
+}
+
