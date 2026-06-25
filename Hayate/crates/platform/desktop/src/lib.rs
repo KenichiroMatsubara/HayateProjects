@@ -2,8 +2,12 @@
 //!
 //! winit single crate で macos / windows / linux を windowing / event-loop / GPU surface の
 //! 層に畳み、winit window + vello/wgpu の [`Surface`] 実装 + `App Host::tick` 駆動を最小配線して、
-//! 共有 demo fixture（`hayate_demo_fixtures::tasks_tree`）を **静的 1 枚**として native window に
-//! present する。これが「desktop の風景を見る」tracer bullet（issue #505）。入力は未配線。
+//! 共有 demo fixture（`hayate_demo_fixtures::tasks_tree`）を native window に present する。
+//! 静的 1 枚を見せる tracer bullet（issue #505）に、winit pointer 入力（`CursorMoved` /
+//! `MouseInput`）を Core の座標 pointer dispatch（`PointerKind = Mouse`）へ配線して
+//! hover / active / focus を効かせる（issue #506）。keyboard / IME は未配線。
+
+pub mod pointer_input;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -194,6 +198,9 @@ pub struct DesktopApp {
     window: Option<Arc<Window>>,
     app_host: Option<AppHost<WindowSurface>>,
     start: Option<Instant>,
+    /// 直近の `CursorMoved` 由来の論理（レイアウト）ポインタ座標。winit の `MouseInput` は
+    /// 座標を運ばないので、press/release dispatch にこれを載せる。
+    last_pointer_pos: (f32, f32),
 }
 
 impl DesktopApp {
@@ -271,7 +278,45 @@ impl ApplicationHandler for DesktopApp {
                     app_host.tick(ts);
                 }
             }
-            // 入力（pointer / keyboard / IME）は別スライス（ADR-0118 / issue #505）。
+            // ポインタ入力（winit → Core の座標 pointer dispatch、`PointerKind = Mouse`・
+            // issue #506）。純粋写像 seam（`pointer_input`）で dispatch 引数へ変換し、tree へ
+            // 適用したうえで `request_redraw` でフレームを起こす（入力到着が唯一の wake 入口・
+            // ADR-0117）。keyboard / IME は別スライス。
+            WindowEvent::CursorMoved { position, .. } => {
+                if let (Some(window), Some(app_host)) =
+                    (self.window.as_ref(), self.app_host.as_mut())
+                {
+                    let dispatch =
+                        pointer_input::cursor_moved_to_dispatch(position, window.scale_factor());
+                    if let pointer_input::PointerDispatch::Move { x, y } = dispatch {
+                        self.last_pointer_pos = (x, y);
+                    }
+                    pointer_input::apply_pointer_dispatch(app_host.tree_mut(), dispatch);
+                    window.request_redraw();
+                }
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                if let (Some(window), Some(app_host)) =
+                    (self.window.as_ref(), self.app_host.as_mut())
+                {
+                    if let Some(dispatch) =
+                        pointer_input::mouse_input_to_dispatch(state, button, self.last_pointer_pos)
+                    {
+                        pointer_input::apply_pointer_dispatch(app_host.tree_mut(), dispatch);
+                        window.request_redraw();
+                    }
+                }
+            }
+            WindowEvent::CursorLeft { .. } => {
+                // ポインタが窓面を離れたら hover をクリアする（座標非依存）。さもないと
+                // 最後に hover した要素が `:hover` のまま固まる。
+                if let (Some(window), Some(app_host)) =
+                    (self.window.as_ref(), self.app_host.as_mut())
+                {
+                    app_host.tree_mut().on_pointer_leave();
+                    window.request_redraw();
+                }
+            }
             _ => {}
         }
     }
