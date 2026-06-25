@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@tsubame/react",
+    "baseUrl": ".",
+    "paths": {
+      "@tsubame/react/jsx-runtime": ["./src/jsx-runtime.ts"],
+      "@tsubame/react/jsx-dev-runtime": ["./src/jsx-dev-runtime.ts"]
+    }
+  },
+  "include": ["src"]
+}
