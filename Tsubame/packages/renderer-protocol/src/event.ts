@@ -31,3 +31,25 @@ export type EventHandler = (event: InteractionEvent) => void;
  * `addEventListener` の戻り値。呼び出すと当該ハンドラの購読を解除する。
  */
 export type Unsubscribe = () => void;
+
+/**
+ * Authoring 用 JSX prop 名から Tsubame の {@link EventKind} へのマッピング。
+ * `on` + PascalCase 規約に従う。Tsubame Adapter（solid / react / 将来 vue）が
+ * 共有するイベント語彙の正本（ADR-0010）。
+ */
+export const EVENT_PROP: Record<string, EventKind> = {
+  onClick: 'click',
+  onInput: 'input',
+  onKeyDown: 'keydown',
+  onFocus: 'focus',
+  onBlur: 'blur',
+};
+
+/**
+ * Tsubame Adapter が拒否する JSX イベント prop（ADR-0059）。
+ * 視覚ホバーは `style` 内の `:hover` を使う。
+ */
+export const REJECTED_EVENT_PROPS: ReadonlySet<string> = new Set([
+  'onHoverEnter',
+  'onHoverLeave',
+]);
