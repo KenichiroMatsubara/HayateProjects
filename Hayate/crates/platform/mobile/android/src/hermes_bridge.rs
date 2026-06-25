@@ -6,7 +6,9 @@
 //! 降りて、ネイティブ Hayate（[`crate::js_host::JsHost`]）を駆動する。
 //!
 //! 逆方向（Rust→C++）では、app.rs が [`ffi::new_hermes_app`] でランタイムを作り、
-//! 毎 vsync で `pump_frame` / `resize` を呼ぶ。cxx のシグネチャ詳細（特に
+//! 毎 vsync で `pump_frame` を呼ぶ。resize は native→tree 直結（app.rs が
+//! `set_viewport` を直接駆動）で JS を経路から外したため、ここには無い（ADR-0080
+//! を native へ延長, issue #475）。cxx のシグネチャ詳細（特に
 //! `&[String]` の受け渡しや `Result` 変換）は device ビルドで微調整が要る可能性が
 //! ある（この環境ではコンパイル検証できない）。
 use std::cell::RefCell;
@@ -41,7 +43,6 @@ mod ffi {
             texts: &CxxVector<CxxString>,
         ) -> Result<()>;
         fn render(self: &JsHostBridge, timestamp_ms: f64);
-        fn on_resize(self: &JsHostBridge, width: f32, height: f32, scale: f32);
         fn register_listener(
             self: &JsHostBridge,
             element_id: f64,
@@ -67,9 +68,6 @@ mod ffi {
         /// `globalThis.__tsubame.pumpFrame(timestamp_ms)` を呼ぶ。続いて Hermes の
         /// マイクロタスクキューを排出する。
         fn pump_frame(self: Pin<&mut HermesApp>, timestamp_ms: f64);
-
-        /// `globalThis.__tsubame.resize(width, height, scale)` を呼ぶ。
-        fn resize(self: Pin<&mut HermesApp>, width: f32, height: f32, scale: f32);
     }
 }
 
@@ -94,10 +92,6 @@ impl JsHostBridge {
 
     fn render(&self, timestamp_ms: f64) {
         self.host.render(timestamp_ms);
-    }
-
-    fn on_resize(&self, width: f32, height: f32, scale: f32) {
-        self.host.on_resize(width, height, scale);
     }
 
     fn register_listener(&self, element_id: f64, event_kind: u32) -> Result<f64, String> {

@@ -19,23 +19,10 @@ import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
 
-export type ResizeObserverFactory = new (
-  callback: ResizeObserverCallback,
-) => ResizeObserver;
-
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
   cancelFrame?: (handle: number) => void;
   canvas?: HTMLCanvasElement;
-  /**
-   * `false` で ResizeObserver を付けない（埋め込みホストは手動でリサイズする）。
-   * `canvas` 指定時は既定で `true`。
-   */
-  autoResize?: boolean;
-  /** テスト用に注入する ResizeObserver コンストラクタ。 */
-  createResizeObserver?: ResizeObserverFactory;
-  /** テスト用の `devicePixelRatio` 上書き。既定は `globalThis.devicePixelRatio ?? 1`。 */
-  devicePixelRatio?: number;
 }
 
 interface ListenerEntry {
@@ -54,12 +41,6 @@ export class CanvasRenderer implements IRenderer {
   private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
-  /** DPR の明示上書き（テスト/埋め込みホスト）。未設定なら毎リサイズで実時の
-   * `globalThis.devicePixelRatio` を読む。モバイル Chrome は構築後に DPR を変える
-   * （入力中のソフトキーボード/フォーカスズーム）ため、構築時にキャッシュすると
-   * バッキングストアが小さすぎて生成され、シーンが拡大されてグリフが粗くなる。 */
-  private readonly devicePixelRatioOverride: number | undefined;
-  private resizeObserver: ResizeObserver | null = null;
   private frameHandle: number | null = null;
 
   constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
@@ -69,13 +50,10 @@ export class CanvasRenderer implements IRenderer {
       options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
     this.cancelFrame =
       options.cancelFrame ?? globalThis.cancelAnimationFrame.bind(globalThis);
-    this.devicePixelRatioOverride = options.devicePixelRatio;
 
-    const autoResize = options.autoResize ?? this.canvas !== null;
-    if (this.canvas !== null && autoResize) {
-      this.attachResizeObserver(this.canvas, options.createResizeObserver);
-    }
-
+    // viewport 追従（resize）は Tsubame の責務ではない。Web は hayate-adapter-web
+    // が、Android は native ループが `tree.set_viewport` を直接駆動する（ADR-0080,
+    // native 延長は issue #475）。CanvasRenderer は resize 経路に存在しない。
     this.frameHandle = this.requestFrame(this.frame);
   }
 
@@ -84,53 +62,6 @@ export class CanvasRenderer implements IRenderer {
       this.cancelFrame(this.frameHandle);
       this.frameHandle = null;
     }
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-  }
-
-  private attachResizeObserver(
-    canvas: HTMLCanvasElement,
-    createResizeObserver?: ResizeObserverFactory,
-  ): void {
-    const ResizeObserverCtor =
-      createResizeObserver ??
-      (typeof globalThis.ResizeObserver !== 'undefined'
-        ? globalThis.ResizeObserver
-        : undefined);
-    if (ResizeObserverCtor === undefined) {
-      return;
-    }
-
-    const syncFromContentBox = (width: number, height: number): void => {
-      this.resize(Math.round(width), Math.round(height), this.currentDevicePixelRatio());
-    };
-
-    const rect = canvas.getBoundingClientRect();
-    syncFromContentBox(rect.width, rect.height);
-
-    const observer = new ResizeObserverCtor((entries) => {
-      const entry = entries[0];
-      if (entry === undefined) return;
-      const { width, height } = entry.contentRect;
-      syncFromContentBox(width, height);
-    });
-    observer.observe(canvas);
-    this.resizeObserver = observer;
-  }
-
-  /** 次のリサイズに使う DPR を決める。明示上書きがあればそれを、なければ実時の
-   * グローバル値（毎回読み直し、キャッシュしない）。 */
-  private currentDevicePixelRatio(): number {
-    return this.devicePixelRatioOverride ?? globalThis.devicePixelRatio ?? 1;
-  }
-
-  resize(width: number, height: number, scale = 1): void {
-    const dpr = Math.max(1, scale);
-    if (this.canvas !== null) {
-      this.canvas.width = Math.round(width * dpr);
-      this.canvas.height = Math.round(height * dpr);
-    }
-    this.raw.on_resize(width, height, dpr);
   }
 
   createElement(kind: ElementKind): ElementId {

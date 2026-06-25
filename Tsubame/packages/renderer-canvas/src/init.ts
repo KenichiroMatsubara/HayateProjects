@@ -69,10 +69,12 @@ export async function initCanvasRenderer(
   }
 
   // ポインタ + ホイール入力・リサイズ検知・IME（EditContext / keydown）は
-  // hayate-adapter-web が `HayateElementRenderer::init` で自前で結線する（ADR-0080 / ADR-0069）。
-  // その ResizeObserver は発火ごとに最新の `devicePixelRatio` を読むため、ホストは 2 つ目の
-  // observer を付けてはならない。構築時に DPR をキャッシュした重複 observer は、モバイル Chrome
+  // すべて hayate-adapter-web が `HayateElementRenderer::init` で自前で結線する
+  // （ADR-0080 / ADR-0069）。その ResizeObserver は発火ごとに最新の `devicePixelRatio`
+  // を読み、`tree.set_viewport` を WASM 内で直接駆動するため、ホストは 2 つ目の observer
+  // を付けてはならない。構築時に DPR をキャッシュした重複 observer は、モバイル Chrome
   // （入力中のフォーカスズームで比率が変わる）でバッキングストアサイズを壊し、グリフを荒くする。
-  // 入力・リサイズ・IME の所有権はアダプタにあり、ホストはレンダーループの駆動だけを担う。
-  return new CanvasRenderer(raw, { ...options, canvas, autoResize: false });
+  // 入力・リサイズ・IME の所有権はアダプタにあり、Tsubame は resize / IME 経路に存在しない
+  // （issue #475 / #474）。ホストはレンダーループの駆動だけを担う。
+  return new CanvasRenderer(raw, { ...options, canvas });
 }

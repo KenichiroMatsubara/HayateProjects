@@ -13,8 +13,10 @@ import type { RawHayate } from './hayate.js';
  *
  * ブラウザ依存の排除点（ADR-0112 の設計どおり）:
  * - `canvas` を渡さない → `CanvasRenderer` 内の `canvas !== null` ガードが
- *   EditContext 同期と `ResizeObserver` の自己結線をスキップし、IME は
- *   ネイティブ GameTextInput が所有したままになる。
+ *   EditContext 同期をスキップし、IME はネイティブ GameTextInput が所有した
+ *   ままになる。viewport 追従（resize）は native ループが `tree.set_viewport` を
+ *   直接駆動するため、ハンドルにも `CanvasRenderer` にも resize 経路は無い
+ *   （ADR-0080 を native へ延長, issue #475）。
  * - フレームループは自走させない。`requestFrame` を「最新コールバックを保持する
  *   だけ」のものに差し替え、ネイティブの vsync ループが {@link
  *   AndroidCanvasRendererHandle.pumpFrame} で1フレームずつ駆動する。
@@ -24,16 +26,13 @@ export interface AndroidCanvasRendererHandle {
   /** ネイティブ vsync ループが毎フレーム単調増加ミリ秒で1回呼ぶ。保持中の
    * フレームコールバックを実行し、`CanvasRenderer` が次フレームを再登録する。 */
   pumpFrame(timestampMs: number): void;
-  /** サーフェス生成/リサイズ時にネイティブから呼ぶ。`raw.on_resize` 経由で
-   * ビューポートへ反映する（DPR は `scale`）。 */
-  resize(width: number, height: number, scale?: number): void;
   /** フレーム駆動を止める。 */
   stop(): void;
 }
 
 export type AndroidCanvasRendererOptions = Omit<
   CanvasRendererOptions,
-  'canvas' | 'autoResize' | 'requestFrame' | 'cancelFrame' | 'createResizeObserver'
+  'canvas' | 'requestFrame' | 'cancelFrame'
 >;
 
 export function createAndroidCanvasRenderer(
@@ -54,8 +53,7 @@ export function createAndroidCanvasRenderer(
     pendingFrame = null;
   };
 
-  // `canvas` は意図的に渡さない（→ 内部で null → autoResize=false、
-  // EditContext/ResizeObserver の自己結線を回避）。
+  // `canvas` は意図的に渡さない（→ 内部で null → EditContext 同期を回避）。
   const renderer = new CanvasRenderer(raw, {
     ...options,
     requestFrame,
@@ -68,9 +66,6 @@ export function createAndroidCanvasRenderer(
       const cb = pendingFrame;
       pendingFrame = null;
       cb?.(timestampMs);
-    },
-    resize(width: number, height: number, scale = 1): void {
-      renderer.resize(width, height, scale);
     },
     stop(): void {
       pendingFrame = null;

@@ -22,7 +22,6 @@ describe('renderer integration (stub IRenderer)', () => {
       setText: (id: number, text: string) => ops.push(`text:${id}=${text}`),
       setProperty: () => {},
       addEventListener: () => () => {},
-      resize: () => {},
     };
 
     setActiveRenderer(stub as never);
@@ -57,7 +56,6 @@ describe('renderer integration (stub IRenderer)', () => {
       setText: (id: number, text: string) => ops.push(`text:${id}=${text}`),
       setProperty: () => {},
       addEventListener: () => () => {},
-      resize: () => {},
     };
 
     setActiveRenderer(stub as never);

@@ -34,6 +34,4 @@ export interface IRenderer {
     event: EventKind,
     handler: EventHandler,
   ): Unsubscribe;
-
-  resize(width: number, height: number): void;
 }

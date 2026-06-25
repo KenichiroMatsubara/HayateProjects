@@ -2,9 +2,10 @@
  * Hermes（埋め込み JS エンジン, ADR-0112）向けの最小グローバル shim。
  *
  * ブラウザ実行時に存在する DOM / タイマー系グローバルのうち、Tsubame の
- * 共有コード（`renderTsubame` の resize フォールバック等）が実行時に参照する
- * ものだけを、クラッシュしない最小実装で用意する。実際のビューポート/フレーム
- * 駆動はネイティブが所有する（`__tsubame.resize` / `__tsubame.pumpFrame`）ので、
+ * 共有コード（Solid スケジューラ・Todo デモ等）が実行時に参照するものだけを、
+ * クラッシュしない最小実装で用意する。フレーム駆動はネイティブが所有し
+ * （`__tsubame.pumpFrame`）、viewport 追従（resize）は native ループが
+ * `tree.set_viewport` を直接駆動する（ADR-0080 を native へ延長, issue #475）ので、
  * ここで定義する `window` / `requestAnimationFrame` は no-op で良い。
  *
  * このモジュールは副作用 import であり、他のいかなる import よりも前に
@@ -44,8 +45,8 @@ if (typeof g['queueMicrotask'] !== 'function') {
 }
 
 // `requestAnimationFrame` は自走させない。フレーム駆動はネイティブ vsync が
-// `__tsubame.pumpFrame` で行う。ここでは renderTsubame の resize デバウンスが
-// 参照してもクラッシュしないだけの no-op を置く。
+// `__tsubame.pumpFrame` で行う。ここでは Solid スケジューラ等が参照しても
+// クラッシュしないだけの no-op を置く。
 if (typeof g['requestAnimationFrame'] !== 'function') {
   g['requestAnimationFrame'] = (_cb: FrameRequestCallback): number => 0;
 }
@@ -114,10 +115,9 @@ if (typeof g['URLSearchParams'] !== 'function') {
   g['URLSearchParams'] = MinimalURLSearchParams;
 }
 
-// `window`: renderTsubame は `element` 省略時に window.addEventListener('resize')
-// と window.innerWidth/innerHeight を参照し、Todo デモは window.location.search /
-// window.localStorage を参照する。リサイズはネイティブが `__tsubame.resize` で
-// 直接通知するので、イベント系は no-op で足りる。
+// `window`: Todo デモは window.location.search / window.localStorage を参照する。
+// viewport 追従（resize）は native ループが `tree.set_viewport` を直接駆動するため
+// JS は resize 経路に居らず（issue #475）、イベント系は no-op で足りる。
 if (g['window'] === undefined) {
   g['window'] = {
     addEventListener: (_type: string, _handler: unknown): void => {},

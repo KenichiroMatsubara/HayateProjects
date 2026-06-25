@@ -51,7 +51,8 @@ pub(crate) fn run(app: AndroidApp) {
     let tree: Rc<RefCell<ElementTree>> = Rc::new(RefCell::new(ElementTree::new()));
 
     // Hermes ランタイムを起動し、ネイティブ Hayate を __hayateHost として注入。
-    // バンドルが `globalThis.__tsubame`（pumpFrame/resize）を公開する。
+    // バンドルが `globalThis.__tsubame`（pumpFrame）を公開する。resize は native→tree
+    // 直結（下の set_viewport）で JS を経路から外した（ADR-0080 を native へ延長, #475）。
     let mut hermes: cxx::UniquePtr<HermesApp> = new_hermes_app(make_bridge(tree.clone()), &bundle);
 
     let mut gpu: Option<GpuSurface> = None;
@@ -94,7 +95,6 @@ pub(crate) fn run(app: AndroidApp) {
                                 let (w, h) = window_dimensions(window.width(), window.height());
                                 let (vw, vh) = viewport_for_surface(w, h);
                                 tree.borrow_mut().set_viewport(vw, vh);
-                                hermes.pin_mut().resize(vw, vh, 1.0);
                                 match pollster::block_on(init_gpu_surface(&window)) {
                                     Ok(surface) => gpu = Some(surface),
                                     Err(err) => log::error!(
@@ -110,7 +110,6 @@ pub(crate) fn run(app: AndroidApp) {
                             }
                             let (vw, vh) = viewport_for_surface(width, height);
                             tree.borrow_mut().set_viewport(vw, vh);
-                            hermes.pin_mut().resize(vw, vh, 1.0);
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
                         SurfaceLifecycleAction::NoOp => {}

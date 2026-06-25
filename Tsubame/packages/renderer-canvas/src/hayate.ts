@@ -43,7 +43,9 @@ export interface RawHayate {
     styles: Float32Array,
     texts: string[],
   ): void;
-  on_resize(width: number, height: number, scale: number): void;
+  // viewport 追従（`on_resize`）はこのポートから除いた。Web は hayate-adapter-web の
+  // 自己配線 ResizeObserver、Android は native ループが `tree.set_viewport` を直接
+  // 駆動する（ADR-0080, native 延長は issue #475）。Tsubame は resize 経路に居ない。
   on_pointer_move(x: number, y: number): void;
   on_pointer_down(x: number, y: number): void;
   on_pointer_up(x: number, y: number): void;

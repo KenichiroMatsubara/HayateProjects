@@ -5,11 +5,14 @@
 //! （`crates/platform/web/src/canvas.rs`）が `self.tree` に対して行う操作を、
 //! `Rc<RefCell<ElementTree>>` を介してネイティブ向けに写したもの。これにより
 //! Tsubame Canvas Renderer がフレームごとに呼ぶ最小メソッド集合
-//! （apply_mutations / render / poll_events / register_listener / on_resize /
+//! （apply_mutations / render / poll_events / register_listener /
 //! element_get_text_content / element_subtree_ids / element_get_bounds）を満たす。
 //!
 //! 入力（タッチ/IME）は Android では native→tree 直結のまま（app.rs）で、JS を
-//! 経由しないため `on_pointer_*` はここに含めない（ADR-0112）。
+//! 経由しないため `on_pointer_*` はここに含めない（ADR-0112）。resize も同様に
+//! native→tree 直結で、JS を resize 経路から排除する（ADR-0080 を native へ延長,
+//! issue #475）。surface 生成/リサイズ/回転時の `set_viewport` は app.rs が直接駆動し、
+//! ここには `on_resize` を置かない。
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -65,12 +68,6 @@ impl JsHost {
     /// `RefMut` に紐づくためここでは保持しない。app.rs が present 時に再取得する。
     pub(crate) fn render(&self, timestamp_ms: f64) {
         let _ = self.tree.borrow_mut().render(timestamp_ms);
-    }
-
-    /// ビューポート更新。Android の DPR は app.rs が物理ピクセルで吸収するため
-    /// ここでは論理サイズを viewport に渡す。
-    pub(crate) fn on_resize(&self, width: f32, height: f32, _scale: f32) {
-        self.tree.borrow_mut().set_viewport(width, height);
     }
 
     /// リスナ登録（ADR-0053）。未知の event kind は Err。
@@ -157,7 +154,6 @@ mod tests {
     fn empty_apply_and_render_ok() {
         let h = host();
         assert!(h.apply_mutations(&[], &[], &[]).is_ok());
-        h.on_resize(360.0, 640.0, 2.0);
         h.render(0.0);
         // 何も登録していなければ配信は空。
         assert!(h.poll_events().is_empty());
