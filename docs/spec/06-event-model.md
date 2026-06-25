@@ -40,8 +40,8 @@ delivery の wire 形式そのものは §10（PROTO-12〜17）に置く。
 ### EVT-06 — Tsubame Adapter は hover イベント購読を拒否
 **規範文:** Tsubame Adapter は `onHoverEnter` / `onHoverLeave` JSX prop を開発時に throw で拒否する。視覚ホバーは Hayate CSS `:hover` ブロックのみ。Hayate の hover delivery は low-level host / 非 Tsubame client 向けに内部に残す。
 **出典:** ADR-0059（ADR-0056 と整合）
-**状況:** ✅ — `Tsubame/packages/solid/src/events.ts` の `REJECTED_EVENT_PROPS = {onHoverEnter, onHoverLeave}`。event mapping に onHover* なし。
-**備考:** tsubame-vue/react は未実装のため当該検証は solid のみ（§11）。
+**状況:** ✅ — イベント語彙（`EVENT_PROP` / `REJECTED_EVENT_PROPS = {onHoverEnter, onHoverLeave}`）は `Tsubame/packages/renderer-protocol/src/event.ts` に移管され全 adapter が共有（`event-vocabulary.test.ts`）。`tsubame-solid`（`events.ts`）・`tsubame-react`（`props.ts`/`events.ts`・`host-config.test.tsx`）が共通語彙で onHover* を throw 拒否、event mapping に onHover* なし。
+**備考:** ホバー prop 拒否は renderer-protocol の共有語彙で solid/react に効く（`tsubame-vue` 実装時も同語彙で自動的に効く）。tsubame-vue は未実装（§11 TSUB-05）。
 
 ### EVT-07 — Interaction 状態機械は ElementTree が所有
 **規範文:** 入力→セマンティックイベントの状態機械（focus/active/hover の所有、`on_pointer_down/up/move`・`on_key_down`・`on_wheel`・`on_text_input`・`on_composition_*`）は `ElementTree`（Element Document Runtime）が持つ。各メソッドは hit-test（必要時）＋状態遷移＋イベント生成/dispatch を core で行う。Platform Adapter は raw platform 入力を `tree.on_*` に翻訳し描画を flush するだけで、interaction 状態を複製しない。

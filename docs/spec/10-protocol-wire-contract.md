@@ -113,10 +113,10 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 **備考:** —
 
 ### PROTO-16 — wireRole による到達制御
-**規範文:** event は `wireRole` で host への届け方を決める。`interaction` / `ime` は delivery、`hayate-internal`（例 `fetch_font`）は届けず runtime/adapter 内で完結、`host-echo`（例 `resize`）は届けず `IRenderer.resize` 指令を正とする。
-**出典:** ADR-0053
+**規範文:** event は `wireRole` で host への届け方を決める。`interaction` / `ime` は delivery、`hayate-internal`（例 `fetch_font`）は届けず runtime/adapter 内で完結、`host-echo`（例 `resize`）は届けず host 側 adapter の resize 経路（host→adapter→core・ADR-0080 を native まで延長）を正とする。
+**出典:** ADR-0053, ADR-0004（resize の正本を host adapter に確定）
 **状況:** ✅ — `event_kinds.json`: `fetch_font` = `hayate-internal`、`resize` = `host-echo`、`composition_*` = `ime`。
-**備考:** —
+**備考:** [更新] 旧記述「`IRenderer.resize` 指令を正とする」は ADR-0004 が訂正 — resize は Renderer Protocol surface ではなく host adapter の責務（`IRenderer.resize` は除去、§11 TSUB-08）。`host-echo`＝届けない点は不変。
 
 ### PROTO-17 — codec 検証（event/delivery 方向）
 **規範文:** delivery wire を `proto/spec/fixtures/delivery_encode.json`（`[{name, kind, fields, wire}]`、positional、全 event kind）の共有 fixture で固定し、Rust は `event → encode_event → wire` 照合、TS は `wire → parseEvent → kind+fields` 照合（ADR-0055 検証層 C5）。両側が同一 fixture を本番方向で参照し、両言語の delivery wire 一致を保証する。
@@ -129,10 +129,10 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ## 境界と未決
 
 ### PROTO-18 — semantic 層は Contract 外
-**規範文:** `StylePatch` / `HayateMutationPacket` / `IRenderer` の tree・style・imperative メソッド型、`setProperty`・`addEventListener` 購読 API・`resize` は spec 化しない（Renderer Protocol の領分、§11）。
-**出典:** ADR-0053, ADR-0055
-**状況:** ✅ — spec は wire（定数・codec・delivery）のみを所有し、semantic 型を含まない（意図通りの境界）。
-**備考:** これは「やらないこと」の規範。spec の肥大化と Renderer Protocol への侵食を防ぐ。
+**規範文:** `StylePatch` / `HayateMutationPacket` / `IRenderer` の tree・style・imperative メソッド型、`setProperty`・`addEventListener` 購読 API は spec 化しない（Renderer Protocol の領分、§11）。`resize` も spec 化しない（codegen 対象外）が、これは Renderer Protocol surface ではなく **host 側 adapter の責務**である（ADR-0004 が「resize＝Renderer Protocol surface」記述を誤分類として訂正、§11 TSUB-08 / PROTO-16）。
+**出典:** ADR-0053, ADR-0055, ADR-0004（resize の再分類）
+**状況:** ✅ — spec は wire（定数・codec・delivery）のみを所有し、semantic 型を含まない（意図通りの境界）。`resize` は spec にも `IRenderer` にも載らない（host adapter 所有）。
+**備考:** これは「やらないこと」の規範。spec の肥大化と Renderer Protocol への侵食を防ぐ。resize は「必要になった時に API 化」とし当面 spec Contract に入れない（ADR-0004）。
 
 ### PROTO-19 — app font と font_family の接続
 **規範文:** `font_family` は wire 上も登録上も**文字列**を正とする。app font は `hayate.config`（ADR-0044）で `{family, url}` を宣言し `register_font` に**名前**で接続する（数値 app font ID は導入しない）。web プリセットの名前は spec `enums.json` `font_family` が正本、名前→CDN URL は web adapter の `fonts.json` から `builtin_font_url` を codegen し、`fonts.json` は spec プリセット名を網羅する。
