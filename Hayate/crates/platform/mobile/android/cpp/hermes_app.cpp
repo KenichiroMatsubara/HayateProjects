@@ -9,7 +9,9 @@
 //    返し、引数（Float64Array/Float32Array/string[]）を取り出して
 //    `rust::Box<JsHostBridge>` のメソッドへ降ろす。
 //  - バンドル（main.android.tsx 由来）は `globalThis.__tsubame` を公開するので、
-//    pump_frame / resize はそれを呼ぶだけ。
+//    pump_frame はそれを呼ぶだけ。resize は native→tree 直結（app.rs が
+//    `set_viewport` を直接駆動）で JS を経路から外したため、`__hayateHost.on_resize`
+//    も `__tsubame.resize` も持たない（issue #475）。
 //  - スレッドは android_main 単一（ADR-0003）。
 // 生成ブリッジヘッダ（JsHostBridge の完全定義 + 共有構造体 FfiEventRow/FfiWireAtom
 // + crate コピーの hermes_app.h 経由で HermesApp 宣言）を取り込む。hermes_app.h を
@@ -121,18 +123,6 @@ class HayateHostObject : public jsi::HostObject {
           });
     }
 
-    if (prop == "on_resize") {
-      return jsi::Function::createFromHostFunction(
-          rt, name, 3,
-          [&b](jsi::Runtime&, const jsi::Value&, const jsi::Value* args,
-               size_t) -> jsi::Value {
-            b.on_resize(static_cast<float>(args[0].asNumber()),
-                        static_cast<float>(args[1].asNumber()),
-                        static_cast<float>(args[2].asNumber()));
-            return jsi::Value::undefined();
-          });
-    }
-
     if (prop == "register_listener") {
       return jsi::Function::createFromHostFunction(
           rt, name, 2,
@@ -210,7 +200,7 @@ class HayateHostObject : public jsi::HostObject {
 
 struct HermesApp::Impl {
   std::unique_ptr<jsi::Runtime> runtime;
-  // バンドルの eval に成功し __tsubame が公開されたか。false の間は frame/resize を
+  // バンドルの eval に成功し __tsubame が公開されたか。false の間は frame を
   // 呼ばない（JS エラーで __tsubame 未定義のときに毎フレーム例外を投げないため）。
   bool ready = false;
 };
@@ -261,23 +251,6 @@ void HermesApp::pump_frame(double timestamp_ms) {
   } catch (const std::exception& e) {
     HAYATE_LOGE("pumpFrame で例外: %s", e.what());
     impl_->ready = false;
-  }
-}
-
-void HermesApp::resize(float width, float height, float scale) {
-  if (!impl_->ready) return;
-  jsi::Runtime& rt = *impl_->runtime;
-  try {
-    jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
-    jsi::Function fn = tsubame.getPropertyAsFunction(rt, "resize");
-    fn.callWithThis(rt, tsubame,
-                    {jsi::Value(static_cast<double>(width)),
-                     jsi::Value(static_cast<double>(height)),
-                     jsi::Value(static_cast<double>(scale))});
-  } catch (const jsi::JSError& e) {
-    HAYATE_LOGE("resize で JS 例外: %s", e.getMessage().c_str());
-  } catch (const std::exception& e) {
-    HAYATE_LOGE("resize で例外: %s", e.what());
   }
 }
 

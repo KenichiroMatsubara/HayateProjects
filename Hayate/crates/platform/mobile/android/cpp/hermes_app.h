@@ -1,7 +1,8 @@
 // Hermes(JSI) ホスト + ランタイムの C++ 宣言（ADR-0112）。**device 未検証**。
 //
 // cxx の extern "C++" 側。Rust（hermes_bridge.rs）から `new_hermes_app` で生成し、
-// 毎フレーム `pump_frame` / `resize` を呼ぶ。実装は hermes_app.cpp。
+// 毎フレーム `pump_frame` を呼ぶ。実装は hermes_app.cpp。resize は native→tree 直結
+// （app.rs が `set_viewport` を直接駆動）で JS を経路から外したため無い（issue #475）。
 //
 // 注意（cxx 循環 include 回避）: このヘッダは生成ヘッダ `hermes_bridge.rs.h` を
 // include しない。bridge 側が `include!("...hermes_app.h")` でこのヘッダを取り込む
@@ -28,9 +29,6 @@ class HermesApp {
   // globalThis.__tsubame.pumpFrame(timestamp_ms) を呼び、続けて Hermes の
   // マイクロタスクキューを排出する。
   void pump_frame(double timestamp_ms);
-
-  // globalThis.__tsubame.resize(width, height, scale) を呼ぶ。
-  void resize(float width, float height, float scale);
 
  private:
   struct Impl;
