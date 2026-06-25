@@ -1,18 +1,21 @@
 import { CanvasRenderer } from './canvas-renderer.js';
-import type { CanvasRendererOptions } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
 import {
   resolveCanvasBackend,
   type CanvasBackend,
 } from './resolve-canvas-backend.js';
 
-export interface InitCanvasRendererOptions extends CanvasRendererOptions {
+export interface InitCanvasRendererOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
   /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して
    * 味付け定数のデフォルトを上書きする。不正な JSON は無視され、ビルド時の
    * デフォルトが維持される。未指定なら上書きしない。 */
   tuning?: string;
+  /** host が確立する frame-clock（ADR-0004）。未指定ならブラウザの rAF を使う。
+   * clock 源の確立は host bootstrap の責務で、host-blind コアは既定を持たない。 */
+  requestFrame?: (cb: FrameRequestCallback) => number;
+  cancelFrame?: (handle: number) => void;
 }
 
 export async function probeWebGPU(): Promise<boolean> {
@@ -72,9 +75,16 @@ export async function initCanvasRenderer(
   // すべて hayate-adapter-web が `HayateElementRenderer::init` で自前で結線する
   // （ADR-0080 / ADR-0069）。その ResizeObserver は発火ごとに最新の `devicePixelRatio`
   // を読み、`tree.set_viewport` を WASM 内で直接駆動するため、ホストは 2 つ目の observer
-  // を付けてはならない。構築時に DPR をキャッシュした重複 observer は、モバイル Chrome
-  // （入力中のフォーカスズームで比率が変わる）でバッキングストアサイズを壊し、グリフを荒くする。
-  // 入力・リサイズ・IME の所有権はアダプタにあり、Tsubame は resize / IME 経路に存在しない
-  // （issue #475 / #474）。ホストはレンダーループの駆動だけを担う。
-  return new CanvasRenderer(raw, { ...options, canvas });
+  // を付けてはならない。入力・リサイズ・IME の所有権はアダプタにあり、Tsubame は
+  // resize / IME 経路に存在しない（issue #475 / #474）。host はここで clock を確立し、
+  // host-blind コアに raw + clock を渡してレンダーループを駆動するだけ（#476, ADR-0004）。
+  const renderer = new CanvasRenderer({
+    raw,
+    requestFrame:
+      options?.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis),
+    cancelFrame:
+      options?.cancelFrame ?? globalThis.cancelAnimationFrame.bind(globalThis),
+  });
+  renderer.start();
+  return renderer;
 }

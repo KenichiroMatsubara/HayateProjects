@@ -19,10 +19,17 @@ import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
 
+/**
+ * host-blind コアの構築入力（#476, ADR-0004）。`raw` は Hayate ランタイムの
+ * ポート、`requestFrame`/`cancelFrame` は host が確立した frame-clock。これだけ。
+ * surface（canvas）・resize・IME・pointer は host 側 adapter が所有するので、
+ * platform 識別子（`HTMLCanvasElement` 型・`devicePixelRatio`・`ResizeObserver`・
+ * RAF 既定）はここに存在しない。clock 源の確立は host bootstrap の責務。
+ */
 export interface CanvasRendererOptions {
-  requestFrame?: (cb: FrameRequestCallback) => number;
-  cancelFrame?: (handle: number) => void;
-  canvas?: HTMLCanvasElement;
+  raw: RawHayate;
+  requestFrame: (cb: FrameRequestCallback) => number;
+  cancelFrame: (handle: number) => void;
 }
 
 interface ListenerEntry {
@@ -38,23 +45,23 @@ export class CanvasRenderer implements IRenderer {
 
   private readonly packet = new HayateMutationPacket();
 
-  private readonly canvas: HTMLCanvasElement | null;
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
   private frameHandle: number | null = null;
 
-  constructor(raw: RawHayate, options: CanvasRendererOptions = {}) {
-    this.raw = raw;
-    this.canvas = options.canvas ?? null;
-    this.requestFrame =
-      options.requestFrame ?? globalThis.requestAnimationFrame.bind(globalThis);
-    this.cancelFrame =
-      options.cancelFrame ?? globalThis.cancelAnimationFrame.bind(globalThis);
+  constructor(options: CanvasRendererOptions) {
+    this.raw = options.raw;
+    this.requestFrame = options.requestFrame;
+    this.cancelFrame = options.cancelFrame;
+    // 構築≠開始：コンストラクタは副作用なし。frame ループは明示 start() でしか
+    // 走らない（native は構築後 vsync 準備ができてから開始する, #476）。
+  }
 
-    // viewport 追従（resize）は Tsubame の責務ではない。Web は hayate-adapter-web
-    // が、Android は native ループが `tree.set_viewport` を直接駆動する（ADR-0080,
-    // native 延長は issue #475）。CanvasRenderer は resize 経路に存在しない。
-    this.frameHandle = this.requestFrame(this.frame);
+  /** frame ループを武装する。host が clock の準備を終えてから呼ぶ。冪等。 */
+  start(): void {
+    if (this.frameHandle === null) {
+      this.frameHandle = this.requestFrame(this.frame);
+    }
   }
 
   stop(): void {
