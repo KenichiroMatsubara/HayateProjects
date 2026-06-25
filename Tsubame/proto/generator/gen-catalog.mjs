@@ -21,6 +21,18 @@ function domFormatFromSpec(format) {
   return format;
 }
 
+// enum 値のうち、DOM CSS 形がパッチのキーワード形（enumTsKey: snake→kebab）と
+// 異なるものだけを上書きする。Rust 側 value_type.rs::enum_css_collect と対の関係。
+const ENUM_CSS_OVERRIDES = {
+  // grid-auto-flow の dense は CSS では空白区切り（`row dense` / `column dense`）。
+  grid_auto_flow: { 'row-dense': 'row dense', 'column-dense': 'column dense' },
+};
+
+function enumCssFromSpec(format) {
+  if (!format.startsWith('enum:')) return undefined;
+  return ENUM_CSS_OVERRIDES[format.slice('enum:'.length)];
+}
+
 function domExtrasFromSpec(extras) {
   if (!extras?.length) return undefined;
   return extras.map((extra) => ({
@@ -62,6 +74,8 @@ export function generateCatalog() {
     };
     const extras = domExtrasFromSpec(domCss.extras);
     if (extras) entry.domExtras = extras;
+    const enumCss = enumCssFromSpec(domCss.format);
+    if (enumCss) entry.enumCss = enumCss;
     return entry;
   });
 
@@ -74,8 +88,8 @@ export function generateCatalog() {
     '',
     "import type { HayateDimension, HayateShadow } from '@tsubame/renderer-protocol';",
     '',
-    "export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';",
-    "export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string';",
+    "export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';",
+    "export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string' | 'grid-span';",
     '',
     'export interface DomExtra {',
     '  readonly cssName: string;',
@@ -94,6 +108,9 @@ export function generateCatalog() {
     '  readonly cssProperty: string;',
     '  readonly targets: readonly ("packet" | "css")[];',
     '  readonly domExtras?: readonly DomExtra[];',
+    '  // enum 値のうち、DOM CSS 形がパッチのキーワード形と異なるものの上書き表',
+    '  // （例: grid-auto-flow の `row-dense` → CSS `row dense`）。',
+    '  readonly enumCss?: Readonly<Record<string, string>>;',
     '}',
     '',
     `export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = ${JSON.stringify(catalog, null, 2)};`,
@@ -159,10 +176,13 @@ export function generateCatalog() {
     '      return `${value}px`;',
     '    case "ms":',
     '      return `${value}ms`;',
+    '    case "grid-span":',
+    '      return `span ${value}`;',
+    '    case "enum":',
+    '      return entry.enumCss?.[value as string] ?? String(value);',
     '    case "integer":',
     '    case "number":',
     '    case "color":',
-    '    case "enum":',
     '    case "string":',
     '      return String(value);',
     '    default: {',

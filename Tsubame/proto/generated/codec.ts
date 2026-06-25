@@ -2,7 +2,7 @@
 // 生成元: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -222,6 +222,13 @@ const TRANSITION_TIMING_CODE: Record<string, number> = {
 const BOX_SIZING_CODE: Record<string, number> = {
   'border-box': BOX_SIZING.borderBox,
   'content-box': BOX_SIZING.contentBox,
+};
+
+const GRID_AUTO_FLOW_CODE: Record<string, number> = {
+  'row': GRID_AUTO_FLOW.row,
+  'column': GRID_AUTO_FLOW.column,
+  'row-dense': GRID_AUTO_FLOW.rowDense,
+  'column-dense': GRID_AUTO_FLOW.columnDense,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -576,6 +583,16 @@ function encode_gridAutoColumns(out: number[], value: import('@tsubame/renderer-
   }
 }
 
+function encode_gridAutoFlow(out: number[], value: string): void {
+  const code = GRID_AUTO_FLOW_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported gridAutoFlow "${value}"`);
+  out.push(TAG.GRID_AUTO_FLOW, code);
+}
+
+function encode_gridColumnSpan(out: number[], value: unknown): void {
+  out.push(TAG.GRID_COLUMN_SPAN, finiteInteger('gridColumnSpan', value));
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -639,6 +656,8 @@ const STYLE_ENCODERS = {
   boxSizing: encode_boxSizing,
   gridAutoRows: encode_gridAutoRows,
   gridAutoColumns: encode_gridAutoColumns,
+  gridAutoFlow: encode_gridAutoFlow,
+  gridColumnSpan: encode_gridColumnSpan,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

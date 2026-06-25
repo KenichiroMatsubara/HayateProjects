@@ -90,6 +90,8 @@ export const TAG = {
   BOX_SIZING: 59,
   GRID_AUTO_ROWS: 60,
   GRID_AUTO_COLUMNS: 61,
+  GRID_AUTO_FLOW: 62,
+  GRID_COLUMN_SPAN: 63,
 } as const;
 export type TAG = typeof TAG;
 
@@ -355,6 +357,14 @@ export const BOX_SIZING = {
   contentBox: 1,
 } as const;
 export type BOX_SIZING = typeof BOX_SIZING;
+
+export const GRID_AUTO_FLOW = {
+  row: 0,
+  column: 1,
+  rowDense: 2,
+  columnDense: 3,
+} as const;
+export type GRID_AUTO_FLOW = typeof GRID_AUTO_FLOW;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

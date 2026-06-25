@@ -3,8 +3,8 @@
 
 import type { HayateDimension, HayateShadow } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
-export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
+export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string' | 'grid-span';
 
 export interface DomExtra {
   readonly cssName: string;
@@ -23,6 +23,9 @@ export interface CatalogEntry {
   readonly cssProperty: string;
   readonly targets: readonly ("packet" | "css")[];
   readonly domExtras?: readonly DomExtra[];
+  // enum 値のうち、DOM CSS 形がパッチのキーワード形と異なるものの上書き表
+  // （例: grid-auto-flow の `row-dense` → CSS `row dense`）。
+  readonly enumCss?: Readonly<Record<string, string>>;
 }
 
 export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
@@ -851,6 +854,36 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "gridAutoFlow",
+    "tag": 62,
+    "unsetKind": null,
+    "wireKind": "gridAutoFlow",
+    "domFormat": "enum",
+    "cssName": "gridAutoFlow",
+    "cssProperty": "grid-auto-flow",
+    "targets": [
+      "packet",
+      "css"
+    ],
+    "enumCss": {
+      "row-dense": "row dense",
+      "column-dense": "column dense"
+    }
+  },
+  {
+    "patchKey": "gridColumnSpan",
+    "tag": 63,
+    "unsetKind": null,
+    "wireKind": "u32",
+    "domFormat": "grid-span",
+    "cssName": "gridColumn",
+    "cssProperty": "grid-column",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 
@@ -915,10 +948,13 @@ export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
       return `${value}px`;
     case "ms":
       return `${value}ms`;
+    case "grid-span":
+      return `span ${value}`;
+    case "enum":
+      return entry.enumCss?.[value as string] ?? String(value);
     case "integer":
     case "number":
     case "color":
-    case "enum":
     case "string":
       return String(value);
     default: {

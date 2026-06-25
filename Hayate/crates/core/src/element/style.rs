@@ -261,6 +261,19 @@ pub enum BoxSizingValue {
     ContentBox,
 }
 
+/// Grid の自動配置方向と詰め方（CSS `grid-auto-flow`、ADR は #493 で確立）。
+///
+/// `Row`/`Column` は暗黙配置の主軸（行を端から埋めるか列を端から埋めるか）を選ぶ。
+/// `*Dense` は dense 詰めを有効にし、後から来る小さいアイテムで前方の穴を埋め直す
+/// （疎配置では穴を残す）。レイアウト系なので Taffy の `grid_auto_flow` へ流れる。
+#[derive(Clone, Copy, Debug)]
+pub enum GridAutoFlowValue {
+    Row,
+    Column,
+    RowDense,
+    ColumnDense,
+}
+
 #[derive(Clone, Debug)]
 pub enum StyleProp {
     // 視覚
@@ -333,6 +346,10 @@ pub enum StyleProp {
     // grid の暗黙トラックサイズ
     GridAutoRows(Vec<Dimension>),
     GridAutoColumns(Vec<Dimension>),
+    // grid の自動配置方向・詰め方
+    GridAutoFlow(GridAutoFlowValue),
+    // grid アイテムが跨ぐ列トラック数（CSS `grid-column: span N`）
+    GridColumnSpan(u32),
     // 重なり順
     ZIndex(i32),
     // トランジション（ADR-0089）
@@ -383,6 +400,8 @@ impl StyleProp {
                 | Self::GridTemplateRows(_)
                 | Self::GridAutoRows(_)
                 | Self::GridAutoColumns(_)
+                | Self::GridAutoFlow(_)
+                | Self::GridColumnSpan(_)
         )
     }
 }

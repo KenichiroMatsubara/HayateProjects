@@ -486,5 +486,26 @@
         "value": 1
       }
     ]
+  },
+  {
+    "name": "grid_auto_flow",
+    "values": [
+      {
+        "name": "row",
+        "value": 0
+      },
+      {
+        "name": "column",
+        "value": 1
+      },
+      {
+        "name": "row_dense",
+        "value": 2
+      },
+      {
+        "name": "column_dense",
+        "value": 3
+      }
+    ]
   }
 ]

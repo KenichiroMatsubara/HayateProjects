@@ -220,13 +220,21 @@ impl ValueType {
                 }
                 other => panic!("Scalar tag domCss.format must be px, ms or number, got {other}"),
             },
-            ValueType::U32 => {
-                // `w` is consumed by the shared `extras` loop below (whenPositive/whenZero).
-                lines.push(format!("let w = {value_var} as f32;"));
-                lines.push(format!(
-                    "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {value_var})));"
-                ));
-            }
+            ValueType::U32 => match dom.format.as_str() {
+                // grid-column の span 記法（`grid-column: span N`）。extras は持たない。
+                "grid-span" => {
+                    lines.push(format!(
+                        "out.push((\"{css_prop}\".into(), format!(\"span {{}}\", {value_var})));"
+                    ));
+                }
+                _ => {
+                    // `w` is consumed by the shared `extras` loop below (whenPositive/whenZero).
+                    lines.push(format!("let w = {value_var} as f32;"));
+                    lines.push(format!(
+                        "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {value_var})));"
+                    ));
+                }
+            },
             ValueType::ZIndex => {
                 lines.push(format!(
                     "out.push((\"{css_prop}\".into(), {value_var}.to_string()));"
@@ -303,6 +311,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "position" => "position",
         "transition_timing" => "transition_timing",
         "box_sizing" => "box_sizing",
+        "grid_auto_flow" => "grid_auto_flow",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -413,6 +422,13 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
         "box_sizing" => {
             "BoxSizingValue::BorderBox => \"border-box\",\n\
             BoxSizingValue::ContentBox => \"content-box\","
+        }
+        // dense は CSS では空白区切り（`row dense` / `column dense`）。
+        "grid_auto_flow" => {
+            "GridAutoFlowValue::Row => \"row\",\n\
+            GridAutoFlowValue::Column => \"column\",\n\
+            GridAutoFlowValue::RowDense => \"row dense\",\n\
+            GridAutoFlowValue::ColumnDense => \"column dense\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };

@@ -156,6 +156,15 @@ fn encode_box_sizing(value: BoxSizingValue) -> f32 {
     }
 }
 
+fn encode_grid_auto_flow(value: GridAutoFlowValue) -> f32 {
+    match value {
+        GridAutoFlowValue::Row => 0.0,
+        GridAutoFlowValue::Column => 1.0,
+        GridAutoFlowValue::RowDense => 2.0,
+        GridAutoFlowValue::ColumnDense => 3.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -589,6 +598,14 @@ buf.push(encode_dim_unit(d.unit));
                     buf.push(d.value);
                     buf.push(encode_dim_unit(d.unit));
                 }
+            }
+            StyleProp::GridAutoFlow(v) => {
+                buf.push(TAG_GRID_AUTO_FLOW as f32);
+                buf.push(encode_grid_auto_flow(*v));
+            }
+            StyleProp::GridColumnSpan(v) => {
+                buf.push(TAG_GRID_COLUMN_SPAN as f32);
+                buf.push(*v as f32);
             }
         }
     }

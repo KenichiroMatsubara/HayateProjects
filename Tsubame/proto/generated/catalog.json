@@ -824,5 +824,35 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "gridAutoFlow",
+    "tag": 62,
+    "unsetKind": null,
+    "wireKind": "gridAutoFlow",
+    "domFormat": "enum",
+    "cssName": "gridAutoFlow",
+    "cssProperty": "grid-auto-flow",
+    "targets": [
+      "packet",
+      "css"
+    ],
+    "enumCss": {
+      "row-dense": "row dense",
+      "column-dense": "column dense"
+    }
+  },
+  {
+    "patchKey": "gridColumnSpan",
+    "tag": 63,
+    "unsetKind": null,
+    "wireKind": "u32",
+    "domFormat": "grid-span",
+    "cssName": "gridColumn",
+    "cssProperty": "grid-column",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]
