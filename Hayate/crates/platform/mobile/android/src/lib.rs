@@ -17,6 +17,9 @@
 // cfg(target_os) でリンクし統一 facade として露出するため pub。純粋部分はホストでコンパイル/
 // テストされ、AudioTrack FFI glue は target_os="android" のみ。
 pub mod audio_output;
+// wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
+// `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
+pub mod capability_stubs;
 mod scene_demo;
 mod surface_lifecycle;
 mod touch_input;

@@ -109,6 +109,10 @@ _Avoid_: Flutter platform channel / RN bridge 的なランタイム機構、fami
 各 OS のネイティブ API 呼び出しが**必須**な機能（audio / clipboard / notification / haptics / file picker 等）。共通度で三段階に分類する — 全 platform 共通（`platform/common/`）・family 共通（`platform/mobile/`・`platform/desktop/`）・leaf 固有。**契約（trait）は常に Core が所有**（`ImeBridge`/`Surface`/`FontFetcher` と同型・ADR-0068/0069）、実装は leaf。共通 API への昇格は原則 2 実装が揃ってから（ADR-0068 の投機 seam 戒め）だが、Flutter/RN の prior art で variation が確定済みかつ ADR-0012 で確定ターゲットの desktop 枠は前払い可。三段階の振り分け規則・Flutter/RN taxonomy からの分類例・「契約は Core / 昇格は 2 実装から / 借りるのは taxonomy のみで機構（channel/bridge）は借りない」の規律の正本は [`crates/platform/README.md`](crates/platform/README.md)（grouping doctrine）。
 _Avoid_: platform-free な共通ロジック（touch gesture / surface 状態機械 / IME 増分 = Core 所有）と混同する説明、capability 契約を adapter 側に置く説明
 
+**Capability Scaffold**:
+実機実装の前段として、capability を「Core trait ＋ android/ios 両 leaf stub ＋ mobile facade」で先に型として存在させ、呼ぶと typed な未実装エラー（`Unimplemented`）を返す breadth-first な状態。契約の形は Flutter の `platform_interface`（未実装は既定でエラーを throw）を写し、Rust では throw を `Result::Err` へ写像する。両 leaf stub が揃うことで「昇格は 2 実装から」ゲートの**意図**（1 platform 決め打ちで契約形を誤らない）を満たす — contract の形が実機実装で変わりうる点は受容する（ADR-0119）。
+_Avoid_: 空 trait の先置きと同一視（scaffold の stub は throw する契約を持つ）、panic/`unimplemented!()` で表す理解（typed な `Err` を返す）、機構（channel/bridge）まで Flutter から借りる理解（借りるのは taxonomy と throw-by-default な契約形のみ）、「完璧な契約設計」と捉える理解（狙うのは網羅・型付き・ちゃんとエラーまで）
+
 **Tsubame Adapter**:
 `tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持したまま、レンダリング先だけを `Renderer Protocol` に向け替える。
 _Avoid_: shared component runtime, unified signal runtime
