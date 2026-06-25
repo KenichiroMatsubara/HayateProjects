@@ -7,10 +7,10 @@
 ---
 
 ### WEBA-01 — モードはランタイム自動判定
-**規範文:** モード選択はランタイム自動判定とする。WebGPU と EditContext API の両方が使えれば Canvas Mode、いずれか欠ければ HTML Mode。判定は host（Tsubame init 層）が行い、Hayate は Canvas/HTML 両レンダラーを独立に export してアプリは意識しない。
-**出典:** ADR-0029, ADR-0037, `CONTEXT.md`
-**状況:** 🟡 — Tsubame `renderer-canvas/src/init.ts` の `probeWebGPU()` は **Vello（`hayate-adapter-web`）と tiny-skia CPU（`hayate-adapter-web-cpu`）バックエンドの選択**にとどまる（いずれも `HayateElementRenderer`＝Canvas Mode）。**Canvas↔HTML のモード自動判定（EditContext 欠如→HTML フォールバック）は未配線**：`HayateElementHtmlRenderer` は Hayate が export するのみで Tsubame init からは到達不能（dead path）。Hayate 内に判定がないのは設計通りだが、host 側の Canvas/HTML 切替が現状は存在しない。
-**備考:** ★ 規範文の「いずれか欠ければ HTML Mode」を満たすには Tsubame init に EditContext probe + HTML renderer 経路を追加する必要がある（実装ギャップ、徹底実装フェーズの作業対象）。
+**規範文:** モード選択はランタイム自動判定とする。WebGPU と EditContext API の両方が使えれば Canvas Mode、いずれか欠ければ HTML Mode。判定は host（Hayate web host bootstrap = `@hayate/host`）が行い、Hayate は Canvas/HTML 両レンダラーを独立に export してアプリは意識しない。
+**出典:** ADR-0029, ADR-0037, ADR-0004（host bootstrap の所属確定）, `CONTEXT.md`
+**状況:** 🟡 — backend 選択（Vello `hayate-adapter-web` ↔ tiny-skia CPU `hayate-adapter-web-cpu`）の probe は ADR-0004 で Tsubame `renderer-canvas/src/init.ts` から退去し Hayate 側 host bootstrap **`@hayate/host`（`src/resolve-backend.ts`・`web-host.test.ts` で固定）へ移管**（旧 `init.ts`/`probeWebGPU` は Tsubame に不在）。ただし選択肢は依然 Canvas Mode の2 GPU/CPU backend のみで、**Canvas↔HTML のモード自動判定（EditContext 欠如→HTML フォールバック）は未配線**：`HayateElementHtmlRenderer` は Hayate が export するのみで host bootstrap から到達不能（dead path）。Hayate 内に判定がないのは設計通りだが、host 側の Canvas/HTML 切替が現状は存在しない。
+**備考:** ★ 規範文の「いずれか欠ければ HTML Mode」を満たすには `@hayate/host` の backend resolve に EditContext probe + HTML renderer 経路を追加する必要がある（実装ギャップ、徹底実装フェーズの作業対象）。判定の所在は Tsubame init ではなく Hayate web host bootstrap（ADR-0004 で確定）。
 
 ### WEBA-02 — Canvas Mode は eager 変更
 **規範文:** Canvas Mode の変更（`element_create` / `element_set_style` / `element_append_child` 等）は `ElementTree` に即時反映する（遅延キューなし）。Tsubame が1フレーム分を JS 側でバッチ化し `apply_mutations` 1回で渡す。

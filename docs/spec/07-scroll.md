@@ -6,11 +6,11 @@
 
 ---
 
-### SCR-01 — 基本 offset 積算は Core、物理演算は Platform Adapter
-**規範文:** wheel delta の基本 offset 積算（nearest `scroll-view` 探索・content bounds への clamp）は hayate-core の Element Document Runtime が担う。慣性・rubber-band・snap 等の物理演算は Platform Adapter が担う。
-**出典:** ADR-0046, ADR-0053（ともに ADR-0022 を supersede）
-**状況:** ✅ — `tree.rs:832` `apply_wheel_delta()`（積算+clamp）、adapter `element_renderer.rs:323` `on_wheel()` が呼ぶ。clamp テスト `document_runtime.rs:252`。物理演算は adapter 責務として未実装（open）。
-**備考:** [履歴 C-7.1・解決] ADR-0022「scroll offset を上位層（Hayabusa）が所有」は superseded。`CONTEXT.md`「Scroll Offset」の旧 0022 参照（物理演算を上位層が持つ）は 0046/0053 に更新済み（2026-06-09）。
+### SCR-01 — 基本 offset 積算とスクロール物理は Core 所有、Platform Adapter はフレーム駆動と platform 識別供給に徹する
+**規範文:** wheel/touch の基本 offset 積算（nearest `scroll-view` 探索・content bounds への clamp）に加え、**スクロール物理は hayate-core が所有する**。Core は二軸を持つ — **Scroll Gesture（意図分類）**: raw ポインタ列を「タップ / scroll」「掴んだ `scroll-view`」「適用すべき 1:1 follow デルタ」へ分類する純粋状態機械（slop 等 tunable は Adapter が供給）。**Scroll Physics Profile（感触）**: `auto` / `ios` / `android` の閉じた三値で、iOS 風（指数減衰＋sigmoid rubber-band）と Android 風（OverScroller の spline＋Material stretch）の**別アルゴリズムをいずれも Core が実装**し、`auto` は Adapter が渡す platform 識別から各 OS 相当へ解決する（Core 自身は platform を検出せず enum で解決＝platform-free を保つ）。Platform Adapter はフレーム駆動（毎フレーム Core の step を進める）・`Scroll Offset` 適用・ポインタ位置サンプリング・tunable/platform 識別の供給に徹する。現状は `auto` のみ公開（web で iOS profile に解決）、明示 `ios`/`android` 上書きの公開 API は将来。
+**出典:** ADR-0113（スクロール物理を Core 所有とし ADR-0046 を supersede）、ADR-0046/0053（offset 積算は Core・ともに ADR-0022 を supersede）
+**状況:** ✅ — `scroll.rs` の `ScrollGesture`（`is_drag_scroll_pointer` / `exceeds_slop` / `on_move` / `MoveOutcome`）＋ Scroll Physics 純粋関数（`ScrollPhysicsTuning`・`rubber_band_offset`・fling 指数減衰・damped spring ばね戻し、iOS profile 実装）。基本積算は `tree.rs` `apply_wheel_delta()`（積算+clamp）、clamp テスト `document_runtime.rs`。Android profile（spline/stretch）は Android タッチスクロール実装時に Core へ追加予定。
+**備考:** [履歴] ADR-0046「物理演算は Platform Adapter 所有」は ADR-0113 が supersede（ジェスチャ認識の重複・別アルゴリズムの感触・プロファイル選択不能を解消）。`Scroll Offset` の基本積算を Element Document Runtime が単独所有する点・`scroll` イベントがアプリ通知専用な点は ADR-0046 から不変。[履歴 C-7.1] ADR-0022「scroll offset を上位層（Hayabusa）が所有」は superseded。
 
 ### SCR-02 — element_set_scroll_offset はプログラマティック専用
 **規範文:** `element_set_scroll_offset(id, x, y)` はプログラム制御のスクロール専用 API として残す。基本 wheel 積算の経路には使わない。

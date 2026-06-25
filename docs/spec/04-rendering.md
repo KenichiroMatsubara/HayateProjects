@@ -98,9 +98,19 @@
 
 ---
 
+## App Host（mount 先・boot シーム）
+
+### REND-13 — App Host の boot シーム（`tick` ＋ `request_redraw` ＋ push 型 DeliverySink）
+**規範文:** プラットフォーム非依存の共有層 **App Host**（tree 実体所有・フレームループ・Event Delivery drain・Font ロードを担い、内部で Render Host を駆動する mount 先）は、consumer（in-process Rust の Hayabusa / wire 経路の Tsubame Canvas Renderer）と platform を **consumer 非依存の2 seam** で繋ぐ。**(1) フレームループ**: OS フレームループ（web `requestAnimationFrame` / Android `Choreographer` / desktop winit event loop）は Platform Front が所有する。App Host は `tick(timestamp_ms)` を公開し（per-consumer なフレームコールバック trait は持たない）、構築時注入の単一 `request_redraw: impl Fn()` クロージャが唯一の wake 入口となる。idle からの wake 源は三つ（継続＝`tick` 末尾に App Host が／入力到着＝Platform Adapter が／非同期 signal 変化＝consumer が呼ぶ）で、いずれも同一 `request_redraw` を叩く。pending が無ければ idle へ落ちる（毎フレーム回し続けない）。**(2) Event Delivery**: drain は App Host、handler map は consumer 所有。App Host は push 型 `DeliverySink` を**毎フレーム無条件に**呼び（空 batch でも）、consumer が delivery handler 実行 ＋ reactive graph flush を行う。`tick` のフェーズ順は drain → advance（handler＋flush・唯一の flush 点）→ `commit_frame`（layout settling）→ render（`render_scene_graph`→Render Host→`Surface::present`）。
+**出典:** ADR-0117（app-host-boot-seam）、ADR-0068（共有層 hoist の継続）
+**状況:** ✅ — `crates/app-host/src/lib.rs` の `AppHost<S: Surface>`（`new(surface, request_redraw)` / `tick(timestamp_ms)` / `mount(DeliverySink)` / `tree_mut`）、`DeliverySink` trait。`tick` は drain（`poll_deliveries`）→ DeliverySink 無条件 push → `ElementTree::render`（内部 `commit_frame`）→ present → pending 残存時に `request_redraw` 再要求。回帰テスト `tick_drains_delivery_and_sink_mutates_tree`。
+**備考:** Render Host（REND-08・surface/present/fallback）の上位に立つ orchestration 層。consumer 固有知識（Hayabusa の handler map / Tsubame の wire projection）を App Host に持ち込まない設計が同一 App Host への両 mount を成立させる。
+
+---
+
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 11 | REND-01〜07, 09〜12 |
+| ✅実装済み | 12 | REND-01〜07, 09〜13 |
 | 🟡部分 | 1 | REND-08（Render Host 芯の共有層 hoist、ADR-0068） |
 | ⬜未実装 | 0 | — |
