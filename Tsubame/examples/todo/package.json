@@ -15,6 +15,7 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@hayate/host": "workspace:*",
     "@tsubame/renderer-canvas": "workspace:*",
     "@tsubame/renderer-dom": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",

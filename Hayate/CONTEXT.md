@@ -72,8 +72,8 @@ _Avoid_: Backend, Driver, adapter 内での SceneGraph walk
 _Avoid_: Scene Renderer と混同、Platform Adapter の責務
 
 **Render Host**:
-surface 初期化、capability 判定、renderer 切替、資源寿命管理を担う描画オーケストレーション層。描画そのものは `Scene Renderer` が担う。tree/loop/event drain は持たず、それらは上層の App Host が所有して Render Host を駆動する。
-_Avoid_: Platform Adapter, Backend, App Host（tree/loop/drain を持つ上層）との同一視
+surface 初期化、capability 判定、renderer 切替、資源寿命管理を担う描画オーケストレーション層。描画そのものは `Scene Renderer` が担う。tree/loop/event drain は持たず、それらは上層の App Host が所有して Render Host を駆動する。Tsubame Canvas Renderer（wire 経路）向けの web/native bootstrap は JS パッケージ `@hayate/host` が体現する：`createHayateWebHost(canvas)` が WebGPU プローブ・`Renderer Selection Policy`・WASM ロード・surface 取得を行い `RawHayate`(+frame-clock) を返し、`./native` の `createHayateNativeHost(raw)` が注入 RawHayate を vsync pump に結線する。host bootstrap は Tsubame の renderer パッケージには置かない（#477）。
+_Avoid_: Platform Adapter, Backend, App Host（tree/loop/drain を持つ上層）との同一視、host bootstrap を Tsubame renderer パッケージに置く設計
 
 **Renderer Selection Policy**:
 どの `Scene Renderer` を優先し、どの条件で採用・不採用にするかを決めるルール。`Render Host` から分離する。

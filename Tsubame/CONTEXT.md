@@ -19,7 +19,7 @@ renderer に platform への結合点を与える側。Tsubame は host を *掴
 _Avoid_: renderer が canvas / global / DOM を掴みに行く設計、`canvas: null` で host 知識を無効化して native を成立させる構造（知識が型に残るため原則破り）
 
 **Host bootstrap**:
-surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。App は host から `RawHayate`（+ clock）を受け、`new CanvasRenderer({ raw, clock })` して mount する。browser/native はこの形で対称（docs/adr/0004）。
+surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。具体的には Hayate 側 JS パッケージ `@hayate/host`（`createHayateWebHost(canvas) → {raw, requestFrame, cancelFrame}` と `./native` の `createHayateNativeHost(raw)`）が web/native の host を供給する（#477）。App は host から `RawHayate`（+ clock）を受け、`new CanvasRenderer({ raw, requestFrame, cancelFrame })` して mount する（合成ルート helper は `examples/todo` の `mountCanvasApp`）。browser/native はこの形で対称（docs/adr/0004）。
 _Avoid_: `@tsubame/renderer-canvas` 内に `init.ts` / `init-android.ts` 等の host bootstrap を置く設計、Tsubame が `hayate-adapter-web` に依存する設計、WASM 巻き込み回避のための `/android` サブパス分離
 
 **Canvas Renderer**:

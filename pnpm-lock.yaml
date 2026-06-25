@@ -21,6 +21,22 @@ importers:
         specifier: ^6.1.3
         version: 6.1.3
 
+  Hayate/host:
+    dependencies:
+      hayate-adapter-web:
+        specifier: file:../wasm-pkgs/pkg
+        version: link:../wasm-pkgs/pkg
+      hayate-adapter-web-cpu:
+        specifier: file:../wasm-pkgs/pkg-tiny-skia
+        version: link:../wasm-pkgs/pkg-tiny-skia
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+
   Hayate/proto:
     devDependencies:
       ajv:
@@ -37,6 +53,9 @@ importers:
 
   Tsubame/examples/todo:
     dependencies:
+      '@hayate/host':
+        specifier: workspace:*
+        version: link:../../../Hayate/host
       '@tsubame/renderer-canvas':
         specifier: workspace:*
         version: link:../../packages/renderer-canvas
@@ -99,15 +118,6 @@ importers:
       '@tsubame/renderer-protocol':
         specifier: workspace:*
         version: link:../renderer-protocol
-      hayate-adapter-web:
-        specifier: file:../../../Hayate/wasm-pkgs/pkg
-        version: link:../../../Hayate/wasm-pkgs/pkg
-      hayate-adapter-web-cpu:
-        specifier: file:../../../Hayate/wasm-pkgs/pkg-tiny-skia
-        version: link:../../../Hayate/wasm-pkgs/pkg-tiny-skia
-      hayate-adapter-web-null:
-        specifier: file:../../../Hayate/wasm-pkgs/pkg-null
-        version: link:../../../Hayate/wasm-pkgs/pkg-null
     devDependencies:
       '@tsubame/renderer-dom':
         specifier: workspace:*
@@ -118,6 +128,9 @@ importers:
       happy-dom:
         specifier: ^17.6.3
         version: 17.6.3
+      hayate-adapter-web-null:
+        specifier: file:../../../Hayate/wasm-pkgs/pkg-null
+        version: link:../../../Hayate/wasm-pkgs/pkg-null
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3

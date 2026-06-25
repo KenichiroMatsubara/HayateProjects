@@ -1,5 +1,6 @@
 packages:
   - 'Hayate'
+  - 'Hayate/host'
   - 'Hayate/proto'
   - 'Hayate/wasm-pkgs/pkg'
   - 'Hayate/wasm-pkgs/pkg-tiny-skia'

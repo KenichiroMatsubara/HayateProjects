@@ -8,8 +8,9 @@ import { fileURLToPath } from 'node:url';
 // も IME プリミティブ（`EditContext`）もコード上に現れない。surface・resize・IME・
 // pointer は host 側 adapter（`hayate-adapter-web` / native）が所有する。
 //
-// host bootstrap（`init.ts` / `init-android.ts`）はまだ canvas を扱うため対象外。
-// それらは後続スライスで renderer パッケージから退去する。
+// host bootstrap（`init.ts` / `init-android.ts`）は #477 でこのパッケージから退去し、
+// Hayate 側（`@hayate/host`）へ移った。残る出荷コード全体が host-blind であることは
+// 依存不変条件テスト `no-host-adapter-import.test.ts` が併せて固定する。
 
 /**
  * コードからコメント（`/* … *​/` と `// …`）を除く。IME を説明する散文に現れる
