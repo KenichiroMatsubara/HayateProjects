@@ -206,6 +206,40 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(box!.bounds[3]).toBeCloseTo(EXPECTED_HEIGHT, 1);
   });
 
+  it('grid-auto-rows sizes the implicit row beyond the explicit track (#492)', async () => {
+    // 明示行を 1 つだけ定義し、2 つ目のアイテムを暗黙行へあふれさせる。暗黙行の高さは
+    // grid-auto-rows が決める。WASM 解決の Canvas 経路で固定し、DOM はネイティブ CSS
+    // `grid-auto-rows` で同値を得る（hayate-css-parity が入力の単一ソース性を固定）。
+    const EXPLICIT_ROW = 50;
+    const AUTO_ROW = 30;
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp }) => {
+      const grid = createElement('view');
+      setProp(grid, 'style', {
+        display: 'grid',
+        gridTemplateColumns: ['1fr'],
+        gridTemplateRows: [`${EXPLICIT_ROW}px`],
+        gridAutoRows: [`${AUTO_ROW}px`],
+        width: '100px',
+        height: '100px',
+      });
+      const first = createElement('view');
+      const second = createElement('view');
+      insertNode(grid, first);
+      insertNode(grid, second);
+      setProp(first, 'style', { backgroundColor: '#ff0000' });
+      setProp(second, 'style', { backgroundColor: '#0000ff' });
+      return grid;
+    });
+
+    const frame = harness.capture();
+    // 暗黙行のアイテムは grid-auto-rows = 30 の高さで、明示行 (50) の直下 y=50 に置かれる。
+    // 高さ 30 のボックスは他に存在しないので、これで一意に特定できる。
+    const implicit = frame.elements.find((el) => Math.abs(el.bounds[3] - AUTO_ROW) < 1);
+    expect(implicit, 'implicit-row item must be present').toBeDefined();
+    expect(implicit!.bounds[1]).toBeCloseTo(EXPLICIT_ROW, 0);
+    expect(implicit!.bounds[3]).toBeCloseTo(AUTO_ROW, 0);
+  });
+
   it('box-sizing content-box adds padding outside a flex item width (#491)', async () => {
     // content-box では width は内容箱を指し、padding は外側に足される。WASM 解決の
     // Canvas 経路で外形 = width + 左右 padding を固定し、DOM はネイティブ CSS

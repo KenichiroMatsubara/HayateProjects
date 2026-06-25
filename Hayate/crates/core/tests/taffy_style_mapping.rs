@@ -159,3 +159,36 @@ fn align_content_maps_to_taffy_style() {
     ));
     assert_eq!(style.align_content, Some(AlignContent::SpaceBetween));
 }
+
+#[test]
+fn grid_auto_rows_maps_to_taffy_style() {
+    let mut style = Style::default();
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::GridAutoRows(vec![Dimension::px(30.0), Dimension::fr(1.0)])
+    ));
+    assert_eq!(style.grid_auto_rows.len(), 2);
+    assert_eq!(style.grid_auto_rows[0], length(30.0));
+    assert_eq!(style.grid_auto_rows[1], fr(1.0));
+    // 暗黙トラックは grid_auto_* に入り、明示トラック grid_template_* は触らない。
+    assert!(style.grid_template_rows.is_empty());
+}
+
+#[test]
+fn grid_auto_columns_maps_to_taffy_style() {
+    let mut style = Style::default();
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::GridAutoColumns(vec![Dimension::percent(50.0)])
+    ));
+    assert_eq!(style.grid_auto_columns.len(), 1);
+    assert_eq!(style.grid_auto_columns[0], percent(0.5));
+    assert!(style.grid_template_columns.is_empty());
+}
+
+#[test]
+fn grid_auto_tracks_are_layout_props() {
+    // レイアウト系なので Taffy へ流れる（Visual には入らない）。
+    assert!(StyleProp::GridAutoRows(vec![Dimension::px(30.0)]).is_layout());
+    assert!(StyleProp::GridAutoColumns(vec![Dimension::px(30.0)]).is_layout());
+}

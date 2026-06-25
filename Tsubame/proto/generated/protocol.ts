@@ -88,6 +88,8 @@ export const TAG = {
   BOX_SHADOW: 57,
   ASPECT_RATIO: 58,
   BOX_SIZING: 59,
+  GRID_AUTO_ROWS: 60,
+  GRID_AUTO_COLUMNS: 61,
 } as const;
 export type TAG = typeof TAG;
 

@@ -119,6 +119,8 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::AlignContent(_) => "align-content",
         StyleProp::GridTemplateColumns(_) => "grid-template-columns",
         StyleProp::GridTemplateRows(_) => "grid-template-rows",
+        StyleProp::GridAutoRows(_) => "grid-auto-rows",
+        StyleProp::GridAutoColumns(_) => "grid-auto-columns",
         StyleProp::FontSize(_) => "font-size",
         StyleProp::FontFamily(_) => "font-family",
         StyleProp::FontWeight(_) => "font-weight",

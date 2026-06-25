@@ -81,6 +81,8 @@ export interface HayateStyle {
   boxShadow: HayateShadow[];
   aspectRatio: number;
   boxSizing: BoxSizing;
+  gridAutoRows: HayateDimension[];
+  gridAutoColumns: HayateDimension[];
 }
 
 /**
