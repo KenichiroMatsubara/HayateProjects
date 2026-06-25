@@ -66,6 +66,16 @@ const ASPECT_RATIO_DEMO = { width: 128, ratio: 16 / 9, label: '16 / 9' } as cons
  */
 const BOX_SIZING_DEMO = { width: 120, padding: 16 } as const;
 
+/**
+ * grid-auto-rows / grid-auto-columns デモ（#492）: 明示トラックを 1 つだけ定義し、
+ * あふれたアイテムが暗黙トラックへ流れる様子を見せる。暗黙トラックのサイズは
+ * `grid-auto-*` が決める。トラックサイズはインラインのマジックナンバーにせず
+ * 名前付き定数にする。grid-auto-rows は既定の行フローでそのまま効く。
+ * grid-auto-columns は列フロー（後続スライス）で初めて目に見えるため、暗黙列サイズを
+ * 固定する語彙として提示する。
+ */
+const GRID_AUTO_DEMO = { explicitRow: 26, autoRow: 40, explicitCol: 40, autoCol: 64 } as const;
+
 export function MediaTiles(props: { colors: Palette }) {
   const p = props.colors;
   return (
@@ -489,6 +499,48 @@ export function buildSections(p: Palette): readonly GallerySection[] {
             }}>
               <view style={{ backgroundColor: p.accent, borderRadius: 4 }} />
               <view style={{ backgroundColor: p.blue, borderRadius: 4 }} />
+            </view>
+          ),
+        },
+        {
+          title: 'gridAutoRows',
+          properties: ['gridAutoRows'],
+          note: 'implicit row beyond the explicit track',
+          render: () => (
+            <view style={{
+              display: 'grid',
+              gridTemplateColumns: ['1fr'],
+              gridTemplateRows: [`${GRID_AUTO_DEMO.explicitRow}px`],
+              gridAutoRows: [`${GRID_AUTO_DEMO.autoRow}px`],
+              gap: 6,
+              width: 100,
+              backgroundColor: p.panel2,
+              padding: 6,
+              borderRadius: 8,
+            }}>
+              {/* 1 つ目は明示行、2 つ目は grid-auto-rows が決める暗黙行へ流れる。 */}
+              <view style={{ backgroundColor: p.accent, borderRadius: 4 }} />
+              <view style={{ backgroundColor: p.blue, borderRadius: 4 }} />
+            </view>
+          ),
+        },
+        {
+          title: 'gridAutoColumns',
+          properties: ['gridAutoColumns'],
+          note: 'implicit column track size',
+          render: () => (
+            <view style={{
+              display: 'grid',
+              gridTemplateColumns: [`${GRID_AUTO_DEMO.explicitCol}px`],
+              gridAutoColumns: [`${GRID_AUTO_DEMO.autoCol}px`],
+              gap: 6,
+              width: 140,
+              height: 40,
+              backgroundColor: p.panel2,
+              padding: 6,
+              borderRadius: 8,
+            }}>
+              <view style={{ backgroundColor: p.accent, borderRadius: 4 }} />
             </view>
           ),
         },

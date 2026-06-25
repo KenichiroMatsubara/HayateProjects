@@ -1,5 +1,5 @@
 use taffy::{
-    style_helpers::{fr, length, percent, TaffyAuto},
+    style_helpers::{fr, length, percent, FromFlex, FromLength, FromPercent, TaffyAuto},
     AlignContent, AlignItems, BoxSizing, Dimension as TaffyDim, Display, FlexDirection, FlexWrap,
     JustifyContent, LengthPercentage, LengthPercentageAuto, Position, Rect as TaffyRect, Size, Style,
     TrackSizingFunction,
@@ -43,12 +43,16 @@ fn to_taffy_lp(d: Dimension) -> LengthPercentage {
     }
 }
 
-fn to_taffy_track(d: Dimension) -> TrackSizingFunction {
+/// Hayate の `dimension` を Taffy のトラックサイズ関数へ写す。明示トラック
+/// (`grid-template-*`, `TrackSizingFunction`) と暗黙トラック (`grid-auto-*`,
+/// `NonRepeatedTrackSizingFunction`) の双方を同じ語彙で賄えるよう、`fr` / `length`
+/// / `percent` / `Auto` を出力型ジェネリックで構築する。
+fn to_taffy_track<T: FromLength + FromPercent + FromFlex + TaffyAuto>(d: Dimension) -> T {
     match d.unit {
         DimensionUnit::Px => length(d.value),
         DimensionUnit::Percent => percent(d.value / 100.0),
         DimensionUnit::Fr => fr(d.value),
-        DimensionUnit::Auto => TrackSizingFunction::AUTO,
+        DimensionUnit::Auto => T::AUTO,
     }
 }
 
@@ -218,6 +222,14 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         }
         StyleProp::GridTemplateRows(tracks) => {
             style.grid_template_rows = tracks.iter().copied().map(to_taffy_track).collect();
+        }
+        // 明示トラックを超えて生成される暗黙の行/列のサイズ。Taffy の
+        // `grid_auto_*`（`NonRepeatedTrackSizingFunction`）へ同じ語彙で写す。
+        StyleProp::GridAutoRows(tracks) => {
+            style.grid_auto_rows = tracks.iter().copied().map(to_taffy_track).collect();
+        }
+        StyleProp::GridAutoColumns(tracks) => {
+            style.grid_auto_columns = tracks.iter().copied().map(to_taffy_track).collect();
         }
         _ => return false,
     }

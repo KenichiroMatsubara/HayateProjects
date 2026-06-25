@@ -344,6 +344,22 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("box-sizing".into(), s.into()));
         }
+        StyleProp::GridAutoRows(ref tracks) => {
+            let s = tracks
+            .iter()
+            .map(|d| dom_css_dim(*d))
+            .collect::<Vec<_>>()
+            .join(" ");
+            out.push(("grid-auto-rows".into(), s));
+        }
+        StyleProp::GridAutoColumns(ref tracks) => {
+            let s = tracks
+            .iter()
+            .map(|d| dom_css_dim(*d))
+            .collect::<Vec<_>>()
+            .join(" ");
+            out.push(("grid-auto-columns".into(), s));
+        }
     }
 }
 

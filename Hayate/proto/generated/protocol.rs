@@ -112,6 +112,8 @@ pub const TAG_TRANSITION_TIMING: u32 = 56;
 pub const TAG_BOX_SHADOW: u32 = 57;
 pub const TAG_ASPECT_RATIO: u32 = 58;
 pub const TAG_BOX_SIZING: u32 = 59;
+pub const TAG_GRID_AUTO_ROWS: u32 = 60;
+pub const TAG_GRID_AUTO_COLUMNS: u32 = 61;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -659,6 +661,12 @@ pub enum StyleTag {
     BoxSizing {
         value: f32,
     },
+    GridAutoRows {
+        tracks: Vec<(f32, f32)>,
+    },
+    GridAutoColumns {
+        tracks: Vec<(f32, f32)>,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -1030,6 +1038,30 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::BoxSizing { value }, i + 1))
         }
+        60 => {
+            if i >= packed.len() { return Err("style tag track list truncated"); }
+            let track_count = packed[i] as usize;
+            let mut tracks = Vec::with_capacity(track_count);
+            let mut j = i + 1;
+            for _ in 0..track_count {
+                if j + 2 > packed.len() { return Err("style tag track list data truncated"); }
+                tracks.push((packed[j], packed[j + 1]));
+                j += 2;
+            }
+            Ok((StyleTag::GridAutoRows { tracks }, j))
+        }
+        61 => {
+            if i >= packed.len() { return Err("style tag track list truncated"); }
+            let track_count = packed[i] as usize;
+            let mut tracks = Vec::with_capacity(track_count);
+            let mut j = i + 1;
+            for _ in 0..track_count {
+                if j + 2 > packed.len() { return Err("style tag track list data truncated"); }
+                tracks.push((packed[j], packed[j + 1]));
+                j += 2;
+            }
+            Ok((StyleTag::GridAutoColumns { tracks }, j))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -1291,6 +1323,8 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
         StyleTag::BoxShadow { shadows } => StyleProp::BoxShadow(shadows.into_iter().map(codec_shadow).collect()),
         StyleTag::AspectRatio { value } => StyleProp::AspectRatio(value),
         StyleTag::BoxSizing { value } => StyleProp::BoxSizing(codec_box_sizing(value)),
+        StyleTag::GridAutoRows { tracks } => StyleProp::GridAutoRows(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
+        StyleTag::GridAutoColumns { tracks } => StyleProp::GridAutoColumns(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
     })
 }
 

@@ -574,6 +574,22 @@ buf.push(encode_dim_unit(d.unit));
                 buf.push(TAG_BOX_SIZING as f32);
                 buf.push(encode_box_sizing(*v));
             }
+            StyleProp::GridAutoRows(tracks) => {
+                buf.push(TAG_GRID_AUTO_ROWS as f32);
+                buf.push(tracks.len() as f32);
+                for d in tracks.iter().copied() {
+                    buf.push(d.value);
+                    buf.push(encode_dim_unit(d.unit));
+                }
+            }
+            StyleProp::GridAutoColumns(tracks) => {
+                buf.push(TAG_GRID_AUTO_COLUMNS as f32);
+                buf.push(tracks.len() as f32);
+                for d in tracks.iter().copied() {
+                    buf.push(d.value);
+                    buf.push(encode_dim_unit(d.unit));
+                }
+            }
         }
     }
 }

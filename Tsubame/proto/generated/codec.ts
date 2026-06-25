@@ -554,6 +554,28 @@ function encode_boxSizing(out: number[], value: string): void {
   out.push(TAG.BOX_SIZING, code);
 }
 
+function encode_gridAutoRows(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`CanvasRenderer: "gridAutoRows" must be an array of dimensions`);
+  }
+  out.push(TAG.GRID_AUTO_ROWS, value.length);
+  for (const item of value) {
+    const d = parseDimension(item);
+    out.push(d.value, UNIT_CODE[d.unit]!);
+  }
+}
+
+function encode_gridAutoColumns(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+  if (!Array.isArray(value)) {
+    throw new Error(`CanvasRenderer: "gridAutoColumns" must be an array of dimensions`);
+  }
+  out.push(TAG.GRID_AUTO_COLUMNS, value.length);
+  for (const item of value) {
+    const d = parseDimension(item);
+    out.push(d.value, UNIT_CODE[d.unit]!);
+  }
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -615,6 +637,8 @@ const STYLE_ENCODERS = {
   boxShadow: encode_boxShadow,
   aspectRatio: encode_aspectRatio,
   boxSizing: encode_boxSizing,
+  gridAutoRows: encode_gridAutoRows,
+  gridAutoColumns: encode_gridAutoColumns,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

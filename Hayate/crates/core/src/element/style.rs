@@ -330,6 +330,9 @@ pub enum StyleProp {
     // grid
     GridTemplateColumns(Vec<Dimension>),
     GridTemplateRows(Vec<Dimension>),
+    // grid の暗黙トラックサイズ
+    GridAutoRows(Vec<Dimension>),
+    GridAutoColumns(Vec<Dimension>),
     // 重なり順
     ZIndex(i32),
     // トランジション（ADR-0089）
@@ -378,6 +381,8 @@ impl StyleProp {
                 | Self::Bottom(_)
                 | Self::GridTemplateColumns(_)
                 | Self::GridTemplateRows(_)
+                | Self::GridAutoRows(_)
+                | Self::GridAutoColumns(_)
         )
     }
 }

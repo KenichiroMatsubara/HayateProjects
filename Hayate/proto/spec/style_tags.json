@@ -980,5 +980,39 @@
       "property": "box-sizing",
       "format": "enum:box_sizing"
     }
+  },
+  {
+    "name": "GRID_AUTO_ROWS",
+    "value": 60,
+    "inherit": "none",
+    "variable_length": true,
+    "encodeFrom": "dimension-list",
+    "params": [
+      {
+        "name": "tracks",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "grid-auto-rows",
+      "format": "dimension-list"
+    }
+  },
+  {
+    "name": "GRID_AUTO_COLUMNS",
+    "value": 61,
+    "inherit": "none",
+    "variable_length": true,
+    "encodeFrom": "dimension-list",
+    "params": [
+      {
+        "name": "tracks",
+        "type": "dimension"
+      }
+    ],
+    "domCss": {
+      "property": "grid-auto-columns",
+      "format": "dimension-list"
+    }
   }
 ]

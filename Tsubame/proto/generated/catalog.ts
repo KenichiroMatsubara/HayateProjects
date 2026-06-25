@@ -825,6 +825,32 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "gridAutoRows",
+    "tag": 60,
+    "unsetKind": null,
+    "wireKind": "dimensionList",
+    "domFormat": "dimension-list",
+    "cssName": "gridAutoRows",
+    "cssProperty": "grid-auto-rows",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gridAutoColumns",
+    "tag": 61,
+    "unsetKind": null,
+    "wireKind": "dimensionList",
+    "domFormat": "dimension-list",
+    "cssName": "gridAutoColumns",
+    "cssProperty": "grid-auto-columns",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 
