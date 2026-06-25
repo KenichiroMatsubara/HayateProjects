@@ -507,5 +507,51 @@
         "value": 3
       }
     ]
+  },
+  {
+    "name": "justify_items",
+    "values": [
+      {
+        "name": "start",
+        "value": 0
+      },
+      {
+        "name": "end",
+        "value": 1
+      },
+      {
+        "name": "center",
+        "value": 2
+      },
+      {
+        "name": "stretch",
+        "value": 3
+      }
+    ]
+  },
+  {
+    "name": "justify_self",
+    "values": [
+      {
+        "name": "auto",
+        "value": 0
+      },
+      {
+        "name": "start",
+        "value": 1
+      },
+      {
+        "name": "end",
+        "value": 2
+      },
+      {
+        "name": "center",
+        "value": 3
+      },
+      {
+        "name": "stretch",
+        "value": 4
+      }
+    ]
   }
 ]

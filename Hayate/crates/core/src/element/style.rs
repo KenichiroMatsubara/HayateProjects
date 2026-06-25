@@ -274,6 +274,35 @@ pub enum GridAutoFlowValue {
     ColumnDense,
 }
 
+/// Grid セル内のインライン軸（既定では水平）でのアイテム整列のコンテナ既定
+/// （CSS `justify-items`、ADR は #494 で確立）。
+///
+/// `Start`/`End`/`Center` はセル内の該当端へ寄せ、`Stretch` はセル幅いっぱいに
+/// 伸ばす（明示幅があれば伸びない）。レイアウト系なので Taffy の `justify_items`
+/// （`Option`）へ流れる。flex 用の `align_items` と違い grid 専用の語彙で、
+/// `flex-start`/`flex-end` ではなく `start`/`end` を使う。
+#[derive(Clone, Copy, Debug)]
+pub enum JustifyItemsValue {
+    Start,
+    End,
+    Center,
+    Stretch,
+}
+
+/// Grid アイテム個別のインライン軸整列。コンテナの `justify-items` を上書きする
+/// （CSS `justify-self`、ADR は #494 で確立）。
+///
+/// `Auto` はコンテナ既定に従う（Taffy では `None`）。それ以外は `justify-items`
+/// と同じ意味。レイアウト系なので Taffy の `justify_self`（`Option`）へ流れる。
+#[derive(Clone, Copy, Debug)]
+pub enum JustifySelfValue {
+    Auto,
+    Start,
+    End,
+    Center,
+    Stretch,
+}
+
 #[derive(Clone, Debug)]
 pub enum StyleProp {
     // 視覚
@@ -350,6 +379,9 @@ pub enum StyleProp {
     GridAutoFlow(GridAutoFlowValue),
     // grid アイテムが跨ぐ列トラック数（CSS `grid-column: span N`）
     GridColumnSpan(u32),
+    // grid セル内のインライン軸整列（コンテナ既定／アイテム上書き）
+    JustifyItems(JustifyItemsValue),
+    JustifySelf(JustifySelfValue),
     // 重なり順
     ZIndex(i32),
     // トランジション（ADR-0089）
@@ -402,6 +434,8 @@ impl StyleProp {
                 | Self::GridAutoColumns(_)
                 | Self::GridAutoFlow(_)
                 | Self::GridColumnSpan(_)
+                | Self::JustifyItems(_)
+                | Self::JustifySelf(_)
         )
     }
 }

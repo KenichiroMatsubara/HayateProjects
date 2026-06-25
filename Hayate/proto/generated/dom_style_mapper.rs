@@ -372,6 +372,25 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
         StyleProp::GridColumnSpan(v) => {
             out.push(("grid-column".into(), format!("span {}", v)));
         }
+        StyleProp::JustifyItems(v) => {
+            let s = match v {
+            JustifyItemsValue::Start => "start",
+            JustifyItemsValue::End => "end",
+            JustifyItemsValue::Center => "center",
+            JustifyItemsValue::Stretch => "stretch",
+            };
+            out.push(("justify-items".into(), s.into()));
+        }
+        StyleProp::JustifySelf(v) => {
+            let s = match v {
+            JustifySelfValue::Auto => "auto",
+            JustifySelfValue::Start => "start",
+            JustifySelfValue::End => "end",
+            JustifySelfValue::Center => "center",
+            JustifySelfValue::Stretch => "stretch",
+            };
+            out.push(("justify-self".into(), s.into()));
+        }
     }
 }
 

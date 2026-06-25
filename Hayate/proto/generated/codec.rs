@@ -165,6 +165,25 @@ fn encode_grid_auto_flow(value: GridAutoFlowValue) -> f32 {
     }
 }
 
+fn encode_justify_items(value: JustifyItemsValue) -> f32 {
+    match value {
+        JustifyItemsValue::Start => 0.0,
+        JustifyItemsValue::End => 1.0,
+        JustifyItemsValue::Center => 2.0,
+        JustifyItemsValue::Stretch => 3.0,
+    }
+}
+
+fn encode_justify_self(value: JustifySelfValue) -> f32 {
+    match value {
+        JustifySelfValue::Auto => 0.0,
+        JustifySelfValue::Start => 1.0,
+        JustifySelfValue::End => 2.0,
+        JustifySelfValue::Center => 3.0,
+        JustifySelfValue::Stretch => 4.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -606,6 +625,14 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::GridColumnSpan(v) => {
                 buf.push(TAG_GRID_COLUMN_SPAN as f32);
                 buf.push(*v as f32);
+            }
+            StyleProp::JustifyItems(v) => {
+                buf.push(TAG_JUSTIFY_ITEMS as f32);
+                buf.push(encode_justify_items(*v));
+            }
+            StyleProp::JustifySelf(v) => {
+                buf.push(TAG_JUSTIFY_SELF as f32);
+                buf.push(encode_justify_self(*v));
             }
         }
     }

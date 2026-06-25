@@ -32,6 +32,8 @@ const ENUM_TYPES = [
   { specName: 'transition_timing', typeName: 'TransitionTiming' },
   { specName: 'box_sizing', typeName: 'BoxSizing' },
   { specName: 'grid_auto_flow', typeName: 'GridAutoFlow' },
+  { specName: 'justify_items', typeName: 'JustifyItems' },
+  { specName: 'justify_self', typeName: 'JustifySelf' },
 ];
 
 function generateEnumTypes(proto) {

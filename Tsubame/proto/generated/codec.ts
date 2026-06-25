@@ -2,7 +2,7 @@
 // 生成元: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW } from './protocol.js';
+import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -229,6 +229,21 @@ const GRID_AUTO_FLOW_CODE: Record<string, number> = {
   'column': GRID_AUTO_FLOW.column,
   'row-dense': GRID_AUTO_FLOW.rowDense,
   'column-dense': GRID_AUTO_FLOW.columnDense,
+};
+
+const JUSTIFY_ITEMS_CODE: Record<string, number> = {
+  'start': JUSTIFY_ITEMS.start,
+  'end': JUSTIFY_ITEMS.end,
+  'center': JUSTIFY_ITEMS.center,
+  'stretch': JUSTIFY_ITEMS.stretch,
+};
+
+const JUSTIFY_SELF_CODE: Record<string, number> = {
+  'auto': JUSTIFY_SELF.auto,
+  'start': JUSTIFY_SELF.start,
+  'end': JUSTIFY_SELF.end,
+  'center': JUSTIFY_SELF.center,
+  'stretch': JUSTIFY_SELF.stretch,
 };
 
 function encode_backgroundColor(out: number[], value: string): void {
@@ -593,6 +608,18 @@ function encode_gridColumnSpan(out: number[], value: unknown): void {
   out.push(TAG.GRID_COLUMN_SPAN, finiteInteger('gridColumnSpan', value));
 }
 
+function encode_justifyItems(out: number[], value: string): void {
+  const code = JUSTIFY_ITEMS_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported justifyItems "${value}"`);
+  out.push(TAG.JUSTIFY_ITEMS, code);
+}
+
+function encode_justifySelf(out: number[], value: string): void {
+  const code = JUSTIFY_SELF_CODE[value];
+  if (code === undefined) throw new Error(`CanvasRenderer: unsupported justifySelf "${value}"`);
+  out.push(TAG.JUSTIFY_SELF, code);
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -658,6 +685,8 @@ const STYLE_ENCODERS = {
   gridAutoColumns: encode_gridAutoColumns,
   gridAutoFlow: encode_gridAutoFlow,
   gridColumnSpan: encode_gridColumnSpan,
+  justifyItems: encode_justifyItems,
+  justifySelf: encode_justifySelf,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

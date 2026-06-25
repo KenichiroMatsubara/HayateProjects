@@ -33,6 +33,8 @@ const KNOWN_ENUM_KINDS = new Set([
   'transition_timing',
   'box_sizing',
   'grid_auto_flow',
+  'justify_items',
+  'justify_self',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -178,6 +180,8 @@ const ENUM_CONST_NAMES = {
   transition_timing: 'TRANSITION_TIMING',
   box_sizing: 'BOX_SIZING',
   grid_auto_flow: 'GRID_AUTO_FLOW',
+  justify_items: 'JUSTIFY_ITEMS',
+  justify_self: 'JUSTIFY_SELF',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -198,6 +202,8 @@ const ENUM_PATCH_LABELS = {
   transition_timing: 'transitionTiming',
   box_sizing: 'boxSizing',
   grid_auto_flow: 'gridAutoFlow',
+  justify_items: 'justifyItems',
+  justify_self: 'justifySelf',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */

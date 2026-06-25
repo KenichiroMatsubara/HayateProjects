@@ -96,6 +96,35 @@ function autoFlowItems(color: string) {
  */
 const GRID_COLUMN_SPAN_DEMO = { track: 26, gap: 4, span: 2 } as const;
 
+/**
+ * justify-items / justify-self デモ（#494）: セル（track）より小さいアイテム
+ * （item）を 1 セル grid に置き、インライン軸でどこに寄るかを見せる。コンテナ既定は
+ * justify-items、最後の 1 つだけ justify-self で上書きする。セル・アイテム寸法は
+ * インラインのマジックナンバーにせず名前付き定数にする。Canvas/DOM で同じ配置に解決する。
+ */
+const JUSTIFY_GRID_DEMO = { track: 40, item: 18 } as const;
+
+function justifyCell(p: Palette, justifyItems: HayateCssStyle['justifyItems'], itemStyle?: HayateCssStyle) {
+  return (
+    <view style={{
+      display: 'grid',
+      gridTemplateColumns: [`${JUSTIFY_GRID_DEMO.track}px`],
+      gridTemplateRows: [`${JUSTIFY_GRID_DEMO.track}px`],
+      justifyItems,
+      backgroundColor: p.panel2,
+      borderRadius: 6,
+    }}>
+      <view style={{
+        width: JUSTIFY_GRID_DEMO.item,
+        height: JUSTIFY_GRID_DEMO.item,
+        backgroundColor: p.accent,
+        borderRadius: 4,
+        ...itemStyle,
+      }} />
+    </view>
+  );
+}
+
 export function MediaTiles(props: { colors: Palette }) {
   const p = props.colors;
   return (
@@ -615,6 +644,45 @@ export function buildSections(p: Palette): readonly GallerySection[] {
               <view style={{ gridColumnSpan: GRID_COLUMN_SPAN_DEMO.span, backgroundColor: p.accent, borderRadius: 4 }} />
               <view style={{ backgroundColor: p.success, borderRadius: 4 }} />
               <view style={{ backgroundColor: p.success, borderRadius: 4 }} />
+            </view>
+          ),
+        },
+        {
+          title: 'justifyItems',
+          properties: ['justifyItems'],
+          note: 'inline-axis alignment of items inside their grid cell',
+          render: () => (
+            <view style={{ display: 'flex', flexDirection: 'row', gap: 8, alignSelf: 'flex-start' }}>
+              <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {justifyCell(p, 'start')}
+                <text style={{ color: p.muted, fontSize: 11 }}>start</text>
+              </view>
+              <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {justifyCell(p, 'center')}
+                <text style={{ color: p.muted, fontSize: 11 }}>center</text>
+              </view>
+              <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {justifyCell(p, 'end')}
+                <text style={{ color: p.muted, fontSize: 11 }}>end</text>
+              </view>
+            </view>
+          ),
+        },
+        {
+          title: 'justifySelf',
+          properties: ['justifySelf'],
+          note: 'an item overrides the container justify-items',
+          render: () => (
+            <view style={{ display: 'flex', flexDirection: 'row', gap: 8, alignSelf: 'flex-start' }}>
+              <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {/* コンテナは start 既定。アイテムが justify-self で個別に上書きする。 */}
+                {justifyCell(p, 'start', { justifySelf: 'center' })}
+                <text style={{ color: p.muted, fontSize: 11 }}>self center</text>
+              </view>
+              <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {justifyCell(p, 'start', { justifySelf: 'end' })}
+                <text style={{ color: p.muted, fontSize: 11 }}>self end</text>
+              </view>
             </view>
           ),
         },
