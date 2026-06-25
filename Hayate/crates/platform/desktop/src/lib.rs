@@ -5,8 +5,12 @@
 //! 共有 demo fixture（`hayate_demo_fixtures::tasks_tree`）を native window に present する。
 //! 静的 1 枚を見せる tracer bullet（issue #505）に、winit pointer 入力（`CursorMoved` /
 //! `MouseInput`）を Core の座標 pointer dispatch（`PointerKind = Mouse`）へ配線して
-//! hover / active / focus を効かせる（issue #506）。keyboard / IME は未配線。
+//! hover / active / focus を効かせ（issue #506）、さらに winit keyboard 入力
+//! （`KeyboardInput` / `ModifiersChanged`）を `key_to_edit_intent` 経由で `apply_edit_intent`
+//! と `on_text_input` へ配線して編集（キャレット移動・選択・削除・入力）を効かせる（issue #507）。
+//! IME は未配線。
 
+pub mod keyboard_input;
 pub mod pointer_input;
 
 use std::sync::Arc;
@@ -23,6 +27,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
 /// renderer label shown in the demo fixture's AppBar badge — desktop presents with vello.
@@ -201,6 +206,9 @@ pub struct DesktopApp {
     /// 直近の `CursorMoved` 由来の論理（レイアウト）ポインタ座標。winit の `MouseInput` は
     /// 座標を運ばないので、press/release dispatch にこれを載せる。
     last_pointer_pos: (f32, f32),
+    /// 直近の `ModifiersChanged` 由来の修飾キー状態。winit の `KeyboardInput` は修飾を
+    /// 個別イベントで運ぶので、ここに持ち回って各キー押下の keymap 判定に載せる。
+    modifiers: ModifiersState,
 }
 
 impl DesktopApp {
@@ -303,6 +311,31 @@ impl ApplicationHandler for DesktopApp {
                         pointer_input::mouse_input_to_dispatch(state, button, self.last_pointer_pos)
                     {
                         pointer_input::apply_pointer_dispatch(app_host.tree_mut(), dispatch);
+                        window.request_redraw();
+                    }
+                }
+            }
+            // 修飾キー状態は個別イベントで届く。次の KeyboardInput の keymap 判定のため
+            // 持ち回る（winit の `KeyboardInput` は修飾を運ばない）。
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+            }
+            // キーボード入力（winit → Core の編集シーム・issue #507）。press のみを純粋
+            // 写像 seam（`keyboard_input`）へ通し、編集コマンドは focus 中 text-input に
+            // `apply_edit_intent`、印字可能文字は `on_text_input` で適用したうえで
+            // `request_redraw` でフレームを起こす（入力到着が唯一の wake 入口・ADR-0117）。
+            // repeat も auto-repeat 編集のため受ける。IME は別スライス。
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == winit::event::ElementState::Pressed {
+                    if let (Some(window), Some(app_host)) =
+                        (self.window.as_ref(), self.app_host.as_mut())
+                    {
+                        keyboard_input::apply_key_input(
+                            app_host.tree_mut(),
+                            &event.logical_key,
+                            event.text.as_deref(),
+                            self.modifiers,
+                        );
                         window.request_redraw();
                     }
                 }
