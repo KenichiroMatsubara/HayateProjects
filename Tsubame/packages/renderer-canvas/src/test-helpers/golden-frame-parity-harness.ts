@@ -28,10 +28,8 @@ export async function mountGoldenFrameParity(
 ): Promise<GoldenFrameParityHarness> {
   const fixture = await createNullHayate(options?.width ?? 200, options?.height ?? 100);
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(fixture.raw, {
-    ...sched,
-    canvas: fixture.canvas,
-  });
+  const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+  renderer.start();
 
   const setText = (node: TsubameNode, value: string): void => {
     renderer.setText(node.id, value);

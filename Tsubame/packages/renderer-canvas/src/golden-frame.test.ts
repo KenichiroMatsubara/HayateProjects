@@ -19,10 +19,8 @@ describe('golden frame cross-seam harness (ADR-0079)', () => {
   it('mounts a focused, typed text-input and captures a tree/style/layout/a11y golden frame', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer(fixture.raw, {
-      ...sched,
-      canvas: fixture.canvas,
-    });
+    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    renderer.start();
 
     let inputId = 0;
     dispose = renderTsubame(() => {

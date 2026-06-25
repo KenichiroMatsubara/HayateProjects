@@ -1,5 +1,4 @@
 import { CanvasRenderer } from './canvas-renderer.js';
-import type { CanvasRendererOptions } from './canvas-renderer.js';
 import type { RawHayate } from './hayate.js';
 
 /**
@@ -11,15 +10,15 @@ import type { RawHayate } from './hayate.js';
  * オブジェクトとして JS グローバルへ注入され、この関数がそれを `CanvasRenderer`
  * に結線する。
  *
- * ブラウザ依存の排除点（ADR-0112 の設計どおり）:
- * - `canvas` を渡さない → `CanvasRenderer` 内の `canvas !== null` ガードが
- *   EditContext 同期をスキップし、IME はネイティブ GameTextInput が所有した
- *   ままになる。viewport 追従（resize）は native ループが `tree.set_viewport` を
- *   直接駆動するため、ハンドルにも `CanvasRenderer` にも resize 経路は無い
- *   （ADR-0080 を native へ延長, issue #475）。
+ * ブラウザ依存の排除点（ADR-0112 / #476 の設計どおり）:
+ * - host-blind コアは surface を一切知らない（`canvas` フィールド自体が無い）。
+ *   IME はネイティブ GameTextInput が、viewport 追従（resize）は native ループが
+ *   `tree.set_viewport` を直接駆動して所有する。ハンドルにも `CanvasRenderer` にも
+ *   resize / IME 経路は無い（ADR-0080 を native へ延長, issue #475 / #474）。
  * - フレームループは自走させない。`requestFrame` を「最新コールバックを保持する
  *   だけ」のものに差し替え、ネイティブの vsync ループが {@link
- *   AndroidCanvasRendererHandle.pumpFrame} で1フレームずつ駆動する。
+ *   AndroidCanvasRendererHandle.pumpFrame} で1フレームずつ駆動する。`start()` が
+ *   最初のコールバックを武装し、以後は `frame` 末尾の再登録で連鎖する。
  */
 export interface AndroidCanvasRendererHandle {
   readonly renderer: CanvasRenderer;
@@ -30,14 +29,12 @@ export interface AndroidCanvasRendererHandle {
   stop(): void;
 }
 
-export type AndroidCanvasRendererOptions = Omit<
-  CanvasRendererOptions,
-  'canvas' | 'requestFrame' | 'cancelFrame'
->;
+/** 予約: host-blind コアは raw + clock 以外を取らないため現状フィールドは無い。 */
+export type AndroidCanvasRendererOptions = Record<string, never>;
 
 export function createAndroidCanvasRenderer(
   raw: RawHayate,
-  options?: AndroidCanvasRendererOptions,
+  _options?: AndroidCanvasRendererOptions,
 ): AndroidCanvasRendererHandle {
   // ネイティブ駆動フレームポンプ。`requestFrame` は最新コールバックを保持する
   // だけで自走しない。`CanvasRenderer.frame` は末尾で再登録するので、1回の
@@ -53,12 +50,10 @@ export function createAndroidCanvasRenderer(
     pendingFrame = null;
   };
 
-  // `canvas` は意図的に渡さない（→ 内部で null → EditContext 同期を回避）。
-  const renderer = new CanvasRenderer(raw, {
-    ...options,
-    requestFrame,
-    cancelFrame,
-  });
+  // host-blind コアに raw + clock を渡す（surface は渡さない／フィールドも無い）。
+  const renderer = new CanvasRenderer({ raw, requestFrame, cancelFrame });
+  // 最初のフレームコールバックを武装する。native の最初の `pumpFrame` がそれを実行する。
+  renderer.start();
 
   return {
     renderer,
