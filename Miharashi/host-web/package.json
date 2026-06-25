@@ -1,0 +1,35 @@
+{
+  "name": "@miharashi/host-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Miharashi Web ホスト — dev-server URL から App Bundle を fetch → eval し、@hayate/host の createHayateWebHost で host bootstrap を確立してバンドルの mount に渡す。FW も @tsubame/renderer-canvas も持たない（ADR-0001）。",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@hayate/host": "workspace:*"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "vitest": "^3.2.0"
+  }
+}

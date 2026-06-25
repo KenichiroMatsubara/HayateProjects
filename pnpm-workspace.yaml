@@ -9,6 +9,8 @@ packages:
   - 'Tsubame/proto'
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
+  - 'Miharashi/dev-server'
+  - 'Miharashi/host-web'
 
 allowBuilds:
   canvas: true
