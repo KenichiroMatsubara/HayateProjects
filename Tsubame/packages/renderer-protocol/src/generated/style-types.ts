@@ -78,6 +78,7 @@ export interface HayateStyle {
   transitionDuration: number;
   transitionTiming: TransitionTiming;
   boxShadow: HayateShadow[];
+  aspectRatio: number;
 }
 
 /**

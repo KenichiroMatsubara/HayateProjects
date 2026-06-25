@@ -89,6 +89,7 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::MinHeight(_) => "min-height",
         StyleProp::MaxWidth(_) => "max-width",
         StyleProp::MaxHeight(_) => "max-height",
+        StyleProp::AspectRatio(_) => "aspect-ratio",
         StyleProp::Display(_) => "display",
         StyleProp::FlexDirection(_) => "flex-direction",
         StyleProp::FlexWrap(_) => "flex-wrap",

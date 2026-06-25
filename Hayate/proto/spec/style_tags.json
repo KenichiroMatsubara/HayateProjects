@@ -948,5 +948,21 @@
       "property": "box-shadow",
       "format": "shadow-list"
     }
+  },
+  {
+    "name": "ASPECT_RATIO",
+    "value": 58,
+    "inherit": "none",
+    "encodeFrom": "f32",
+    "params": [
+      {
+        "name": "value",
+        "type": "f32"
+      }
+    ],
+    "domCss": {
+      "property": "aspect-ratio",
+      "format": "number"
+    }
   }
 ]

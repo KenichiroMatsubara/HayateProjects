@@ -267,6 +267,7 @@ pub enum StyleProp {
     MinHeight(Dimension),
     MaxWidth(Dimension),
     MaxHeight(Dimension),
+    AspectRatio(f32),
     // レイアウト
     Display(DisplayValue),
     FlexDirection(FlexDirectionValue),
@@ -334,6 +335,7 @@ impl StyleProp {
                 | Self::MinHeight(_)
                 | Self::MaxWidth(_)
                 | Self::MaxHeight(_)
+                | Self::AspectRatio(_)
                 | Self::Display(_)
                 | Self::FlexDirection(_)
                 | Self::FlexWrap(_)

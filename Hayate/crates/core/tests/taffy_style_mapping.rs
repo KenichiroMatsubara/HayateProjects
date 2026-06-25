@@ -106,6 +106,28 @@ fn inset_maps_each_edge_to_taffy_style() {
 }
 
 #[test]
+fn aspect_ratio_maps_to_taffy_style() {
+    let mut style = Style::default();
+    assert!(apply_to_style(&mut style, &StyleProp::AspectRatio(1.5)));
+    assert_eq!(style.aspect_ratio, Some(1.5));
+}
+
+#[test]
+fn aspect_ratio_non_positive_clears_taffy_override() {
+    let mut style = Style::default();
+    style.aspect_ratio = Some(2.0);
+    // 0 や負の比率は無効。Taffy には書き込まず無効化する。
+    assert!(apply_to_style(&mut style, &StyleProp::AspectRatio(0.0)));
+    assert_eq!(style.aspect_ratio, None);
+}
+
+#[test]
+fn aspect_ratio_is_a_layout_prop() {
+    // レイアウト系なので Taffy へ流れる（Visual には入らない）。
+    assert!(StyleProp::AspectRatio(1.5).is_layout());
+}
+
+#[test]
 fn align_content_maps_to_taffy_style() {
     let mut style = Style::default();
     assert!(apply_to_style(

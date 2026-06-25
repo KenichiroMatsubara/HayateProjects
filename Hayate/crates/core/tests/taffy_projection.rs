@@ -59,6 +59,39 @@ fn append_before_layout_still_produces_valid_geometry() {
     assert!((rect.3 - 40.0).abs() < 0.5);
 }
 
+/// aspect-ratio: 片方の寸法だけ指定すると、もう片方が比率で決まる（width / height）。
+/// レイアウト系プロパティとして Taffy へ流れ、解決後の幾何に現れる（issue #490）。
+#[test]
+fn aspect_ratio_derives_height_from_width() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(60, ElementKind::View);
+    let child = tree.element_create(61, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(300.0, 200.0);
+    // align-self: flex-start で交差軸の stretch を切り、高さを auto のままにする。
+    // そうしないと flex の stretch が高さを支配し、aspect-ratio の交差軸導出が起きない。
+    tree.element_set_style(
+        child,
+        &[
+            StyleProp::Width(hayate_core::Dimension::px(100.0)),
+            StyleProp::AlignSelf(hayate_core::AlignSelfValue::FlexStart),
+            StyleProp::AspectRatio(2.0),
+        ],
+    );
+    tree.element_append_child(root, child);
+    tree.render(0.0);
+
+    let rect = tree
+        .element_layout_rect(child)
+        .expect("child must have layout");
+    assert!((rect.2 - 100.0).abs() < 0.5, "width stays 100, got {}", rect.2);
+    assert!(
+        (rect.3 - 50.0).abs() < 0.5,
+        "height is width / ratio = 100 / 2 = 50, got {}",
+        rect.3
+    );
+}
+
 /// 最初のレイアウト前に削除した部分木は panic せず reconcile できなければならない。
 #[test]
 fn remove_lazy_subtree_before_first_layout_does_not_panic() {

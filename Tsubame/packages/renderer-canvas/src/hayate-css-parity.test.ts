@@ -135,6 +135,20 @@ describe("hayate-css catalog parity", () => {
     expect(domCssForPatch(patch).width).toBe("100px");
   });
 
+  it("aspect-ratio feeds the packet and DOM CSS from one numeric source (#490)", () => {
+    // 16:9 を単一の数値ソースとして両経路へ。Canvas はパケット、DOM は同じ数値の
+    // CSS `aspect-ratio` を受け取り、Canvas/DOM が同一比率で解決する。
+    const ratio = 16 / 9;
+    const patch = { aspectRatio: ratio } as StylePatch;
+
+    const out: number[] = [];
+    encodeStylePatch(patch, out);
+    expect(out[0]).toBe(TAG.ASPECT_RATIO);
+    expect(out[1]).toBe(ratio);
+
+    expect(domCssForPatch(patch).aspectRatio).toBe(String(ratio));
+  });
+
   it("ambient default* tags map to inheritable CSS properties (ADR-0070)", () => {
     const ambient = [
       ["defaultColor", "color", "color"],

@@ -539,6 +539,10 @@ function encode_boxShadow(out: number[], value: import('@tsubame/renderer-protoc
   }
 }
 
+function encode_aspectRatio(out: number[], value: unknown): void {
+  out.push(TAG.ASPECT_RATIO, finiteNumber('aspectRatio', value));
+}
+
 const STYLE_ENCODERS = {
   backgroundColor: encode_backgroundColor,
   opacity: encode_opacity,
@@ -598,6 +602,7 @@ const STYLE_ENCODERS = {
   transitionDuration: encode_transitionDuration,
   transitionTiming: encode_transitionTiming,
   boxShadow: encode_boxShadow,
+  aspectRatio: encode_aspectRatio,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {
