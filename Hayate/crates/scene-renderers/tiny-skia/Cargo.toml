@@ -12,4 +12,5 @@ skrifa = { workspace = true }
 
 [dev-dependencies]
 hayate-scene-test-support = { path = "../test-support" }
+hayate-demo-fixtures = { path = "../../demo-fixtures" }
 png = "0.18"

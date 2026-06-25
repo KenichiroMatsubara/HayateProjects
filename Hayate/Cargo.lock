@@ -801,6 +801,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-demo-fixtures"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+]
+
+[[package]]
 name = "hayate-proto-generator"
 version = "0.1.0"
 dependencies = [
@@ -813,6 +820,7 @@ name = "hayate-scene-renderer-tiny-skia"
 version = "0.1.0"
 dependencies = [
  "hayate-core",
+ "hayate-demo-fixtures",
  "hayate-scene-test-support",
  "png",
  "skrifa",
