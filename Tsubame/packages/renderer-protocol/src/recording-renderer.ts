@@ -21,7 +21,8 @@ export type RecordedCall =
   | { method: 'setStyleVariant'; id: ElementId; condition: ViewportCondition; style: StylePatch }
   | { method: 'setText'; id: ElementId; text: string }
   | { method: 'setProperty'; id: ElementId; name: string; value: unknown }
-  | { method: 'addEventListener'; id: ElementId; event: EventKind };
+  | { method: 'addEventListener'; id: ElementId; event: EventKind }
+  | { method: 'removeEventListener'; id: ElementId; event: EventKind };
 
 /**
  * 各呼び出しを記録するインメモリの {@link IRenderer}。Renderer Protocol の背後にある
@@ -76,7 +77,12 @@ export class RecordingRenderer implements IRenderer {
 
   addEventListener(id: ElementId, event: EventKind, _handler: EventHandler): Unsubscribe {
     this.calls.push({ method: 'addEventListener', id, event });
-    return () => {};
+    // 返す Unsubscribe を呼ぶと解除を記録する。リスナの差し替え／解除（旧購読を切って
+    // から再登録する経路）を、具象レンダラの内部状態に踏み込まず IRenderer 境界の
+    // 記録列だけで検証できるようにする（ADR-0008）。
+    return () => {
+      this.calls.push({ method: 'removeEventListener', id, event });
+    };
   }
 
   /** `id` に対して記録された最後の `setStyle` パッチ。なければ `undefined`。 */
