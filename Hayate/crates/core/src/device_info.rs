@@ -1,4 +1,4 @@
-//! device info capability 契約（ADR-0118）。モデル: `device_info_plus`
+//! device info capability 契約（ADR-0119）。モデル: `device_info_plus`
 //! （platform 別の大きな struct を返す）。Core では common 部分集合のみを持つ。
 
 use crate::capability::CapabilityError;

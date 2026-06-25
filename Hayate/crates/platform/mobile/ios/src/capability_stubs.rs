@@ -1,4 +1,4 @@
-//! iOS leaf の capability scaffold stub（ADR-0118）。
+//! iOS leaf の capability scaffold stub（ADR-0119）。
 //!
 //! Android leaf（`capability_stubs.rs`）の鏡写し。各 capability を「型として存在し、呼べば
 //! `Err(Unimplemented)` を返す」状態で置く。契約の正本は `hayate_core`、stub は Flutter
@@ -138,7 +138,7 @@ mod tests {
     use super::*;
 
     /// scaffold の核となる性質: 各 stub は呼ぶと panic せず `Err(Unimplemented{platform:"ios"})`
-    /// を返す。Android leaf と対称に host 検証する（ADR-0118）。
+    /// を返す。Android leaf と対称に host 検証する（ADR-0119）。
     #[test]
     fn every_stub_reports_unimplemented_on_ios() {
         assert_eq!(IosHaptics.feedback(HapticKind::Vibrate), Err(ni("haptics")));

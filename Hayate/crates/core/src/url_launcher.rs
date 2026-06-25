@@ -1,4 +1,4 @@
-//! url launcher capability 契約（ADR-0118）。モデル: `url_launcher`
+//! url launcher capability 契約（ADR-0119）。モデル: `url_launcher`
 //! （`canLaunchUrl(uri) -> bool` / `launchUrl(uri) -> bool`）。
 
 use crate::capability::CapabilityError;

@@ -1,5 +1,5 @@
-//! local notification capability 契約（ADR-0118）。モデル: `flutter_local_notifications`
-//! （`show(id, title, body, ...)` / `cancel(id)` / `cancelAll()`）。権限は別途（ADR-0118）。
+//! local notification capability 契約（ADR-0119）。モデル: `flutter_local_notifications`
+//! （`show(id, title, body, ...)` / `cancel(id)` / `cancelAll()`）。権限は別途（ADR-0119）。
 
 use crate::capability::CapabilityError;
 

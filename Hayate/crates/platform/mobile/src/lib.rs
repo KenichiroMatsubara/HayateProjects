@@ -16,7 +16,7 @@ pub use hayate_core::{
 };
 
 // wave-1 capability scaffold の契約・型も Core が正本。facade はこれを再露出するだけで別契約を
-// 切らない（ADR-0118）。clipboard は capability に含めない（ADR-0097 の編集境界が所有）。
+// 切らない（ADR-0119）。clipboard は capability に含めない（ADR-0097 の編集境界が所有）。
 pub use hayate_core::{
     Biometric, CapabilityError, DeviceInfo, DeviceInfoProvider, FileFilter, FilePicker, HapticKind,
     Haptics, KeyValueStore, LocalNotification, LocalNotifications, PickedFile, SavePath,
@@ -35,7 +35,7 @@ pub type MobileAudioOutput = hayate_adapter_android::audio_output::AudioTrackOut
 #[cfg(target_os = "ios")]
 pub type MobileAudioOutput = hayate_adapter_ios::audio_output::AvAudioEngineOutput;
 
-// --- wave-1 capability scaffold facade（ADR-0118）---
+// --- wave-1 capability scaffold facade（ADR-0119）---
 // audio と同型: 各 capability につき統一 facade 型名 1 つを、ビルド対象に応じて android/ios の
 // leaf stub へ cfg で解決する。上位は leaf を名指しせず `MobileXxx` だけを参照する。stub は
 // 呼ぶと `Err(Unimplemented)` を返す（実機実装で leaf 中身が差し替わっても facade 名は不変）。

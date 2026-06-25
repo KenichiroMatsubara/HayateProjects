@@ -1,4 +1,4 @@
-//! haptics capability 契約（ADR-0118）。モデル: Flutter `HapticFeedback`
+//! haptics capability 契約（ADR-0119）。モデル: Flutter `HapticFeedback`
 //! （`lightImpact` / `mediumImpact` / `heavyImpact` / `selectionClick` / `vibrate`）。
 
 use crate::capability::CapabilityError;

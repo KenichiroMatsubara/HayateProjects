@@ -1,6 +1,6 @@
-//! key-value storage capability 契約（ADR-0118）。モデル: `shared_preferences`
+//! key-value storage capability 契約（ADR-0119）。モデル: `shared_preferences`
 //! （typed getter 群）。scaffold は string 正準のみ — bool/int 等の typed メソッドは
-//! 「先置きしない」で実装時に足す（ADR-0118）。
+//! 「先置きしない」で実装時に足す（ADR-0119）。
 
 use crate::capability::CapabilityError;
 

@@ -1,6 +1,6 @@
-//! biometric (local auth) capability 契約（ADR-0118）。モデル: `local_auth`
+//! biometric (local auth) capability 契約（ADR-0119）。モデル: `local_auth`
 //! （`isDeviceSupported() -> bool` / `authenticate(reason) -> bool`）。失敗理由（cancel/lockout）
-//! は今 `Platform` エラーに畳み、専用 outcome enum は実装時に足す（ADR-0118）。
+//! は今 `Platform` エラーに畳み、専用 outcome enum は実装時に足す（ADR-0119）。
 
 use crate::capability::CapabilityError;
 

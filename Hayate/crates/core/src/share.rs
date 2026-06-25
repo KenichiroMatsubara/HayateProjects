@@ -1,5 +1,5 @@
-//! share capability 契約（ADR-0118）。モデル: `share_plus`（`Share.share(text, subject)`）。
-//! ファイル共有（`shareXFiles`）は file picker のファイルモデルが固まってから（ADR-0118）。
+//! share capability 契約（ADR-0119）。モデル: `share_plus`（`Share.share(text, subject)`）。
+//! ファイル共有（`shareXFiles`）は file picker のファイルモデルが固まってから（ADR-0119）。
 
 use crate::capability::CapabilityError;
 

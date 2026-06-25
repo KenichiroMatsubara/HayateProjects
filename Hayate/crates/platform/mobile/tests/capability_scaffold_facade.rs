@@ -1,4 +1,4 @@
-//! wave-1 capability scaffold の facade 契約（ADR-0118）。
+//! wave-1 capability scaffold の facade 契約（ADR-0119）。
 //!
 //! `audio_facade_selection.rs` と同じソース走査で、各 capability の facade が「両 cfg 分岐とも
 //! 同一の統一型名へ解決する」「契約の正本は Core のまま（facade は再露出のみ）」「ランタイム
@@ -103,7 +103,7 @@ fn facade_is_build_time_cfg_not_runtime_dispatch() {
 #[test]
 fn clipboard_is_not_re_scaffolded_as_a_capability() {
     let lib = lib_rs();
-    // clipboard は ADR-0097 の編集境界が所有する。capability facade に同名を作らない（ADR-0118）。
+    // clipboard は ADR-0097 の編集境界が所有する。capability facade に同名を作らない（ADR-0119）。
     assert!(
         !lib.contains("MobileClipboard"),
         "clipboard は capability に含めない（ADR-0097 の編集境界が所有）"

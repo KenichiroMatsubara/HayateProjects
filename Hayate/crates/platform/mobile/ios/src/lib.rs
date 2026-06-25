@@ -18,7 +18,7 @@
 // cfg(target_os) でリンクし統一 facade として露出するため pub。純粋部分はホストでコンパイル/
 // テストされ、AVAudioEngine FFI glue は target_os="ios" のみ。
 pub mod audio_output;
-// wave-1 capability scaffold stub（ADR-0118）。Family Adapter が cfg(target_os) でリンクし
+// wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;
 mod ime_input;

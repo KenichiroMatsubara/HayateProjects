@@ -27,11 +27,11 @@ pub mod wire;
 pub use audio_output::{
     AudioFormat, AudioOutput, DEFAULT_BUFFER_FRAMES, DEFAULT_CHANNEL_COUNT, DEFAULT_SAMPLE_RATE_HZ,
 };
-// capability scaffold（ADR-0118）。契約の正本は Core。leaf stub は `Unimplemented` を返す。
+// capability scaffold（ADR-0119）。契約の正本は Core。leaf stub は `Unimplemented` を返す。
 pub use biometric::Biometric;
 pub use capability::CapabilityError;
 // clipboard は capability に含めない: 編集境界 `element::clipboard::Clipboard`（ADR-0097 /
-// ADR-0014 の Platform Adapter 責務）が所有済み。同一 OS API への 2 重抽象を避ける（ADR-0118）。
+// ADR-0014 の Platform Adapter 責務）が所有済み。同一 OS API への 2 重抽象を避ける（ADR-0119）。
 pub use device_info::{DeviceInfo, DeviceInfoProvider};
 pub use file_picker::{FileFilter, FilePicker, PickedFile, SavePath};
 pub use haptics::{HapticKind, Haptics};

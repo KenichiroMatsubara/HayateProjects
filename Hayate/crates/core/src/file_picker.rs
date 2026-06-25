@@ -1,7 +1,7 @@
-//! file picker capability 契約（ADR-0118）。モデル: `file_selector`
+//! file picker capability 契約（ADR-0119）。モデル: `file_selector`
 //! （`openFile -> XFile?` / `getSaveLocation -> path?`）。
 //!
-//! 返り値の `XFile`（path か stream か）は ADR-0118 が名指しした risk 筆頭。scaffold では
+//! 返り値の `XFile`（path か stream か）は ADR-0119 が名指しした risk 筆頭。scaffold では
 //! opaque な path 文字列だけを持ち、stream 化は実機実装時に決める。
 
 use crate::capability::CapabilityError;

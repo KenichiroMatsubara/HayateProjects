@@ -110,7 +110,7 @@ _Avoid_: Flutter platform channel / RN bridge 的なランタイム機構、fami
 _Avoid_: platform-free な共通ロジック（touch gesture / surface 状態機械 / IME 増分 = Core 所有）と混同する説明、capability 契約を adapter 側に置く説明
 
 **Capability Scaffold**:
-実機実装の前段として、capability を「Core trait ＋ android/ios 両 leaf stub ＋ mobile facade」で先に型として存在させ、呼ぶと typed な未実装エラー（`Unimplemented`）を返す breadth-first な状態。契約の形は Flutter の `platform_interface`（未実装は既定でエラーを throw）を写し、Rust では throw を `Result::Err` へ写像する。両 leaf stub が揃うことで「昇格は 2 実装から」ゲートの**意図**（1 platform 決め打ちで契約形を誤らない）を満たす — contract の形が実機実装で変わりうる点は受容する（ADR-0118）。
+実機実装の前段として、capability を「Core trait ＋ android/ios 両 leaf stub ＋ mobile facade」で先に型として存在させ、呼ぶと typed な未実装エラー（`Unimplemented`）を返す breadth-first な状態。契約の形は Flutter の `platform_interface`（未実装は既定でエラーを throw）を写し、Rust では throw を `Result::Err` へ写像する。両 leaf stub が揃うことで「昇格は 2 実装から」ゲートの**意図**（1 platform 決め打ちで契約形を誤らない）を満たす — contract の形が実機実装で変わりうる点は受容する（ADR-0119）。
 _Avoid_: 空 trait の先置きと同一視（scaffold の stub は throw する契約を持つ）、panic/`unimplemented!()` で表す理解（typed な `Err` を返す）、機構（channel/bridge）まで Flutter から借りる理解（借りるのは taxonomy と throw-by-default な契約形のみ）、「完璧な契約設計」と捉える理解（狙うのは網羅・型付き・ちゃんとエラーまで）
 
 **Tsubame Adapter**:

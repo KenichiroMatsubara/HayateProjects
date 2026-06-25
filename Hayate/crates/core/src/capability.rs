@@ -1,4 +1,4 @@
-//! capability 契約共通の typed エラー（ADR-0118）。
+//! capability 契約共通の typed エラー（ADR-0119）。
 //!
 //! capability メソッドは原則 `Result<T, CapabilityError>` を返す。Flutter
 //! `platform_interface` が未実装で `UnimplementedError` を throw するのを、Rust では
@@ -6,7 +6,7 @@
 //! panic は FFI 越えで abort/UB）。scaffold stub は `Unimplemented` を返す。
 //!
 //! variant は最小 seed の 3 つ。`PermissionDenied` 等は最初の権限ゲート付き capability
-//! を実機実装する時に足す（error variant にも「先置きしない」を適用・ADR-0118）。
+//! を実機実装する時に足す（error variant にも「先置きしない」を適用・ADR-0119）。
 
 use std::fmt;
 

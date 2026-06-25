@@ -1,4 +1,4 @@
-//! Android leaf の capability scaffold stub（ADR-0118）。
+//! Android leaf の capability scaffold stub（ADR-0119）。
 //!
 //! wave-1 の各 capability を「型として存在し、呼べば `Err(Unimplemented)` を返す」状態で
 //! 置く。契約の正本は `hayate_core`、stub は throw-by-default（Flutter `platform_interface`
@@ -139,7 +139,7 @@ mod tests {
     use super::*;
 
     /// scaffold の核となる性質: 各 stub は呼ぶと panic せず `Err(Unimplemented{platform:"android"})`
-    /// を返す。実機 SDK 無しに公開契約越しでホスト検証できる（ADR-0118）。
+    /// を返す。実機 SDK 無しに公開契約越しでホスト検証できる（ADR-0119）。
     #[test]
     fn every_stub_reports_unimplemented_on_android() {
         assert_eq!(

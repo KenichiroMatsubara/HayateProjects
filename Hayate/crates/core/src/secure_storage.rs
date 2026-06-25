@@ -1,4 +1,4 @@
-//! secure storage capability 契約（ADR-0118）。モデル: `flutter_secure_storage`
+//! secure storage capability 契約（ADR-0119）。モデル: `flutter_secure_storage`
 //! （`read(key)` / `write(key, value)` / `delete(key)`）。実装は Keychain/Keystore（実装時）。
 
 use crate::capability::CapabilityError;
