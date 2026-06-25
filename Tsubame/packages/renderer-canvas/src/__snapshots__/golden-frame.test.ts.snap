@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed text-input and captures a tree/style/layout/a11y/IME golden frame 1`] = `
+exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed text-input and captures a tree/style/layout/a11y golden frame 1`] = `
 {
   "accessibility": {
     "focus": 2,
@@ -120,11 +120,6 @@ exports[`golden frame cross-seam harness (ADR-0079) > mounts a focused, typed te
       },
     },
   ],
-  "imeBounds": {
-    "height": 24,
-    "width": 1.5,
-    "x": 21.215999603271484,
-    "y": -1,
-  },
+  "imeBounds": null,
 }
 `;

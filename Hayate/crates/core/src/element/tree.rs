@@ -896,11 +896,13 @@ impl ElementTree {
         if !edit.paste(&pasted) {
             return;
         }
+        // 貼り付け断片ではなく確定後の全文を載せる（on_text_input と同型、ADR-0069 / #474）。
+        let value = self.element_get_text_content(id);
         self.dispatch_event(
             DocumentEventKind::TextInput,
             Event::TextInput {
                 target_id: id,
-                text: pasted,
+                text: value,
             },
         );
     }

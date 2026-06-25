@@ -18,7 +18,6 @@ import {
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
-import { syncEditContext } from './edit-context-sync.js';
 
 export interface CanvasRendererOptions {
   requestFrame?: (cb: FrameRequestCallback) => number;
@@ -147,13 +146,11 @@ export class CanvasRenderer implements IRenderer {
       if (entry === undefined) continue;
       const interaction = toInteractionEvent(event);
       if (interaction !== null) {
-        // text_input のワイヤペイロードは挿入された断片だけを運ぶが、
-        // `InteractionEvent.value` は契約上その要素の現在値（DOM レンダラは
-        // `target.value` を読む）。制御コンポーネントが最後のキー入力でなく
-        // 全文字列を見られるよう、正となる内容をツリーから読み戻す。
-        if (interaction.kind === 'input') {
-          interaction.value = this.raw.element_get_text_content(interaction.target);
-        }
+        // `input` の `value` はワイヤ配信が運ぶ要素の現在値全体（core が
+        // `Event::TextInput` に display_text を載せる、ADR-0069 / #474）。以前は
+        // 断片しか来ず `element_get_text_content` で読み戻していたが、その経路は
+        // 撤去した（IME 配線はアダプタ内で完結し、ホストは RawHayate に IME/読み戻し
+        // メソッドを持たない）。
         entry.handler(interaction);
       }
     }
@@ -161,10 +158,9 @@ export class CanvasRenderer implements IRenderer {
 
   private readonly frame = (timestampMs: number): void => {
     this.flush();
+    // IME（EditContext 着脱・preedit・候補窓 rect）は hayate-adapter-web が
+    // `render()` 内で自己配線・自己同期する（ADR-0069）。ホストは IME 経路に関与しない。
     this.raw.render(timestampMs);
-    if (this.canvas !== null) {
-      syncEditContext(this.canvas, this.raw);
-    }
     this.dispatchDeliveries(this.raw.poll_events());
     this.frameHandle = this.requestFrame(this.frame);
   };

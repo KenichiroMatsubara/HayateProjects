@@ -61,6 +61,7 @@ web-sys = { workspace = true, features = [
     "MouseEvent",
     "PointerEvent",
     "WheelEvent",
+    "KeyboardEvent",
     "AddEventListenerOptions",
     "Clipboard",
 ] }

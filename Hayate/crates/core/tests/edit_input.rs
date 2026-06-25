@@ -626,6 +626,29 @@ fn enter_in_a_single_line_field_does_not_insert_a_newline_and_signals_submit() {
 }
 
 #[test]
+fn text_input_event_carries_the_full_field_value_not_just_the_typed_fragment() {
+    // input イベントの value は要素の現在値全体（DOM の `input` → `target.value` と同じ）。
+    // 以前は断片だけをワイヤに載せ、ホストが `element_get_text_content` で読み戻していた。
+    // ADR-0069 完成（#474）で web ホストはこの読み戻しを撤去するため、配信ペイロード自体が
+    // 全文を運ぶ必要がある。
+    let (mut tree, input) = focused_input("hello"); // キャレットは末尾
+    let listener = tree.register_listener(input, hayate_core::DocumentEventKind::TextInput);
+
+    tree.on_text_input(input, "X");
+
+    let deliveries = tree.poll_deliveries();
+    let event = deliveries
+        .iter()
+        .find(|d| d.listener_id == listener)
+        .map(|d| &d.event)
+        .expect("a TextInput delivery");
+    assert!(
+        matches!(event, hayate_core::Event::TextInput { text, .. } if text == "helloX"),
+        "the input event must carry the full field value, got {event:?}",
+    );
+}
+
+#[test]
 fn enter_in_a_multiline_field_replaces_the_selection() {
     // replace-on-type: 範囲選択上の Enter は範囲を消しその位置に改行を挿入する。
     let mut tree = ElementTree::new();

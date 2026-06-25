@@ -28,6 +28,8 @@ mod shared;
 #[cfg(any(target_arch = "wasm32", test))]
 mod ime_bridge;
 #[cfg(any(target_arch = "wasm32", test))]
+mod edit_context;
+#[cfg(any(target_arch = "wasm32", test))]
 mod html_delivery;
 #[cfg(any(target_arch = "wasm32", test))]
 mod style_packet;

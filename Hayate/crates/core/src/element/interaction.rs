@@ -505,17 +505,19 @@ impl ElementTree {
             .map(|el| el.multiline)
             .unwrap_or(false);
         if key == "Enter" && multiline {
-            if let Some(edit) = self
+            let inserted = self
                 .elements
                 .get_mut(&focused)
                 .and_then(|el| el.edit.as_mut())
-            {
-                if edit.apply_key_down(key) {
-                    self.emit_interaction(Event::TextInput {
-                        target_id: focused,
-                        text: "\n".to_string(),
-                    });
-                }
+                .map(|edit| edit.apply_key_down(key))
+                .unwrap_or(false);
+            if inserted {
+                // 断片 "\n" ではなく改行挿入後の全文を載せる（上の on_text_input と同型）。
+                let value = self.element_get_text_content(focused);
+                self.emit_interaction(Event::TextInput {
+                    target_id: focused,
+                    text: value,
+                });
             }
         }
         self.emit_interaction(Event::KeyDown {
@@ -534,9 +536,13 @@ impl ElementTree {
             // キャレット位置に挿入し、選択範囲があれば置換する（ADR-0097）。
             edit.insert(text);
         }
+        // input イベントの value は要素の現在値全体（DOM の `input` → `target.value` と同型）。
+        // 挿入された断片ではなく結合表示テキストを載せることで、web ホストは
+        // `element_get_text_content` の読み戻し無しに配信ペイロードをそのまま使える（ADR-0069 / #474）。
+        let value = self.element_get_text_content(target);
         self.emit_interaction(Event::TextInput {
             target_id: target,
-            text: text.to_string(),
+            text: value,
         });
     }
 

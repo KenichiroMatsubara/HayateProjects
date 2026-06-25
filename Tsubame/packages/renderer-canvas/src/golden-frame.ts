@@ -1,4 +1,20 @@
-import type { HayateEffectiveVisual, RawHayate } from './hayate.js';
+import type { HayateEffectiveVisual } from './hayate.js';
+
+/**
+ * golden frame 取得が読む、Hayate の読み取り専用クエリ面（ADR-0079）。`RawHayate`
+ * ポートとは独立に定義する: `element_get_text_content` は IME 配線がアダプタへ移った後
+ * `RawHayate` から外れた（#474）が、編集可能内容のスナップショットには依然必要なため、
+ * テストハーネス側のこのローカル型で受ける。WASM レンダラは構造的にこれを充足する。
+ */
+export interface GoldenFrameSource {
+  element_subtree_ids(id: number): Float64Array;
+  element_get_text(id: number): string;
+  /** ライブツリーから編集可能なテキスト内容を返す。 */
+  element_get_text_content(id: number): string;
+  element_get_bounds(id: number): Float32Array | number[];
+  element_effective_visual(id: number): HayateEffectiveVisual | null;
+  poll_accessibility(): string | null;
+}
 
 /** 単一要素の構造・スタイル・レイアウト状態(ADR-0079)。 */
 export interface GoldenFrameElement {
@@ -35,7 +51,7 @@ export interface GoldenFrame {
  * Hayate の `ElementTree` がドキュメント順で返す)。
  */
 export function captureGoldenFrame(
-  raw: RawHayate,
+  raw: GoldenFrameSource,
   rootId: number,
   imeBounds: GoldenFrameImeBounds | null,
 ): GoldenFrame {
