@@ -559,6 +559,10 @@ buf.push(encode_dim_unit(d.unit));
                     buf.push(if s.inset { 1.0 } else { 0.0 });
                 }
             }
+            StyleProp::AspectRatio(v) => {
+                buf.push(TAG_ASPECT_RATIO as f32);
+                buf.push(*v);
+            }
         }
     }
 }

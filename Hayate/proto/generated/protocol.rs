@@ -110,6 +110,7 @@ pub const TAG_TEXT_OVERFLOW: u32 = 54;
 pub const TAG_TRANSITION_DURATION: u32 = 55;
 pub const TAG_TRANSITION_TIMING: u32 = 56;
 pub const TAG_BOX_SHADOW: u32 = 57;
+pub const TAG_ASPECT_RATIO: u32 = 58;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -651,6 +652,9 @@ pub enum StyleTag {
     BoxShadow {
         shadows: Vec<[f32; 9]>,
     },
+    AspectRatio {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -1012,6 +1016,11 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             }
             Ok((StyleTag::BoxShadow { shadows }, j))
         }
+        58 => {
+            if i + 1 > packed.len() { return Err("style tag ASPECT_RATIO truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::AspectRatio { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -1263,6 +1272,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
         StyleTag::TransitionDuration { value } => StyleProp::TransitionDuration(value),
         StyleTag::TransitionTiming { value } => StyleProp::TransitionTiming(codec_transition_timing(value)),
         StyleTag::BoxShadow { shadows } => StyleProp::BoxShadow(shadows.into_iter().map(codec_shadow).collect()),
+        StyleTag::AspectRatio { value } => StyleProp::AspectRatio(value),
     })
 }
 

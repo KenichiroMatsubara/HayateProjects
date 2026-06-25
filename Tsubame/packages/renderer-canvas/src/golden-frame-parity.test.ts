@@ -178,6 +178,34 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(frame).toMatchSnapshot();
   });
 
+  it('aspect-ratio derives a flex item height from its width (#490)', async () => {
+    // align-self: flex-start で交差軸 stretch を切り、高さを auto に保つ。aspect-ratio が
+    // width / ratio で高さを解決する。WASM 解決の Canvas 経路で固定し、DOM はネイティブ
+    // CSS `aspect-ratio` で同値を得る（hayate-css-parity が入力の単一ソース性を固定）。
+    const BOX_WIDTH = 80;
+    const ASPECT = 2; // width / height
+    const EXPECTED_HEIGHT = BOX_WIDTH / ASPECT; // 40
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp }) => {
+      const row = createElement('view');
+      setProp(row, 'style', { display: 'flex', width: '200px', height: '100px' });
+      const box = createElement('view');
+      insertNode(row, box);
+      setProp(box, 'style', {
+        width: `${BOX_WIDTH}px`,
+        alignSelf: 'flex-start',
+        aspectRatio: ASPECT,
+      });
+      return row;
+    });
+
+    const frame = harness.capture();
+    const box = frame.elements.find((el) => el.bounds[2] === BOX_WIDTH);
+    expect(box, 'aspect-ratio box must be present').toBeDefined();
+    // 高さは width / ratio = 80 / 2 = 40。スナップショットではなく解決幾何を直接固定する
+    // （bounds = [x, y, width, height]）。
+    expect(box!.bounds[3]).toBeCloseTo(EXPECTED_HEIGHT, 1);
+  });
+
   it('defaultFontSize on a block box penetrates to descendant text', async () => {
     harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
       const view = createElement('view');

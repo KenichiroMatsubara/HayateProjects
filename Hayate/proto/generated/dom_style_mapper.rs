@@ -334,6 +334,9 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("box-shadow".into(), s));
         }
+        StyleProp::AspectRatio(v) => {
+            out.push(("aspect-ratio".into(), format!("{}", v)));
+        }
     }
 }
 

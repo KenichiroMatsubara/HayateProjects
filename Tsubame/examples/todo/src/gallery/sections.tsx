@@ -50,6 +50,14 @@ const MQ_TILES: readonly { label: string; condition: ViewportCondition }[] = [
   { label: 'L  ≥ 1100', condition: { minWidth: 1100 } },
 ];
 
+/**
+ * aspect-ratio デモ（#490）: 幅だけ与え、高さは比率 (width / height) から導出させる。
+ * `SampleBox` は height を固定するため比率導出が起きない。専用ボックスで height を auto に
+ * 保ち、flex 親の交差軸 stretch を `alignSelf: 'flex-start'` で切る。寸法・比率はインラインの
+ * マジックナンバーにせず名前付き定数にする。
+ */
+const ASPECT_RATIO_DEMO = { width: 128, ratio: 16 / 9, label: '16 / 9' } as const;
+
 export function MediaTiles(props: { colors: Palette }) {
   const p = props.colors;
   return (
@@ -168,18 +176,40 @@ export function buildSections(p: Palette): readonly GallerySection[] {
     {
       title: 'Sizing',
       accent: p.blue,
-      cards: ([
-        ['width', { width: 140 }],
-        ['height', { height: 72 }],
-        ['minWidth', { minWidth: 120, width: 80 }],
-        ['minHeight', { minHeight: 64, height: 40 }],
-        ['maxWidth', { maxWidth: 90, width: 140 }],
-        ['maxHeight', { maxHeight: 40, height: 72 }],
-      ] as const).map(([name, style]) => ({
-        title: name,
-        properties: [name],
-        render: () => <SampleBox colors={p} label="Sample" style={style} />,
-      })),
+      cards: [
+        ...([
+          ['width', { width: 140 }],
+          ['height', { height: 72 }],
+          ['minWidth', { minWidth: 120, width: 80 }],
+          ['minHeight', { minHeight: 64, height: 40 }],
+          ['maxWidth', { maxWidth: 90, width: 140 }],
+          ['maxHeight', { maxHeight: 40, height: 72 }],
+        ] as const).map(([name, style]) => ({
+          title: name,
+          properties: [name] as readonly string[],
+          render: () => <SampleBox colors={p} label="Sample" style={style} />,
+        })),
+        {
+          title: 'aspectRatio',
+          properties: ['aspectRatio'] as readonly string[],
+          render: () => (
+            <view style={{
+              width: ASPECT_RATIO_DEMO.width,
+              aspectRatio: ASPECT_RATIO_DEMO.ratio,
+              alignSelf: 'flex-start',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: p.panel2,
+              borderWidth: 1,
+              borderColor: p.line,
+              borderRadius: 10,
+            }}>
+              <text style={{ color: p.text, fontSize: 12 }}>{ASPECT_RATIO_DEMO.label}</text>
+            </view>
+          ),
+        },
+      ],
     },
     {
       title: 'Spacing',

@@ -86,6 +86,7 @@ export const TAG = {
   TRANSITION_DURATION: 55,
   TRANSITION_TIMING: 56,
   BOX_SHADOW: 57,
+  ASPECT_RATIO: 58,
 } as const;
 export type TAG = typeof TAG;
 

@@ -92,6 +92,10 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         StyleProp::MinHeight(d) => style.min_size.height = to_taffy_dim(*d),
         StyleProp::MaxWidth(d) => style.max_size.width = to_taffy_dim(*d),
         StyleProp::MaxHeight(d) => style.max_size.height = to_taffy_dim(*d),
+        // aspect-ratio は width / height（Taffy も同じ向き）。負/非正は無効として無視。
+        StyleProp::AspectRatio(v) => {
+            style.aspect_ratio = if *v > 0.0 { Some(*v) } else { None };
+        }
         StyleProp::Display(v) => {
             style.display = match v {
                 DisplayValue::Flex => Display::Flex,

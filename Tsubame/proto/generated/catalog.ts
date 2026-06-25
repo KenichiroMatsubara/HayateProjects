@@ -799,6 +799,19 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "aspectRatio",
+    "tag": 58,
+    "unsetKind": null,
+    "wireKind": "f32",
+    "domFormat": "number",
+    "cssName": "aspectRatio",
+    "cssProperty": "aspect-ratio",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ];
 
