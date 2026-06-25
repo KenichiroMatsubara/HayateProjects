@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { RecordingRenderer, type RecordedCall } from '@tsubame/renderer-protocol';
 import type { ReactNode } from 'react';
 import { createTsubameRoot, renderTsubame } from './mount.js';
+import { applyProp } from './props.js';
+import { createInstance } from './instance.js';
 
 /**
  * React を {@link RecordingRenderer} へ同期 flush する薄い mount ヘルパ。
@@ -317,6 +319,94 @@ describe('@tsubame/react style channels (IRenderer boundary, ADR-0008)', () => {
     const styled = only(calls, 'setStyle').filter((c) => c.id === wrapperId);
     expect(styled).toHaveLength(1);
     expect(styled[0]!.style).toEqual({ color: '#4fd1c5', fontSize: 22 });
+  });
+});
+
+/** `kind` の element として createElement された唯一の id を引く。 */
+function soleIdOfKind(calls: readonly RecordedCall[], kind: string): number {
+  const created = only(calls, 'createElement').filter((c) => c.kind === kind);
+  expect(created).toHaveLength(1);
+  return created[0]!.id;
+}
+
+describe('@tsubame/react element properties (IRenderer boundary, ADR-0071)', () => {
+  it('records text-input semantic props (value/placeholder/disabled/multiline) as setProperty', () => {
+    const { calls } = mount(<text-input value="hi" placeholder="名前" disabled multiline />);
+    const inputId = soleIdOfKind(calls, 'text-input');
+
+    // 閉じたセマンティック prop は IRenderer.setProperty として流れる（再実装しない）。
+    const props = only(calls, 'setProperty').filter((c) => c.id === inputId);
+    expect(props).toEqual([
+      { method: 'setProperty', id: inputId, name: 'value', value: 'hi' },
+      { method: 'setProperty', id: inputId, name: 'placeholder', value: '名前' },
+      { method: 'setProperty', id: inputId, name: 'disabled', value: true },
+      { method: 'setProperty', id: inputId, name: 'multiline', value: true },
+    ]);
+  });
+
+  it('records image src as setProperty', () => {
+    const { calls } = mount(<image src="logo.png" />);
+    const imageId = soleIdOfKind(calls, 'image');
+
+    expect(only(calls, 'setProperty').filter((c) => c.id === imageId)).toEqual([
+      { method: 'setProperty', id: imageId, name: 'src', value: 'logo.png' },
+    ]);
+  });
+
+  it('records user-select as setProperty', () => {
+    const { calls } = mount(<view user-select="none" />);
+    // root view 自体は prop を持たない。user-select を運ぶ子 <view/> の id を引く。
+    const rootId = only(calls, 'setRoot')[0]!.id;
+    const viewId = only(calls, 'createElement').find(
+      (c) => c.kind === 'view' && c.id !== rootId,
+    )!.id;
+
+    expect(only(calls, 'setProperty').filter((c) => c.id === viewId)).toEqual([
+      { method: 'setProperty', id: viewId, name: 'user-select', value: 'none' },
+    ]);
+  });
+
+  it('renders children as elements, not a "children" property', () => {
+    const { calls } = mount(
+      <view>
+        <text>child</text>
+      </view>,
+    );
+
+    // children は独立した text element になり、'children' setProperty にはならない。
+    expect(only(calls, 'setProperty').map((c) => c.name)).not.toContain('children');
+    expect(only(calls, 'setText').map((c) => c.text)).toContain('child');
+  });
+
+  it('ignores structural props (children/ref/key) — no setProperty', () => {
+    // children / ref / key はホストへ流さない。ref は React が host instance を渡して
+    // 呼ぶため通常 props には現れないが、流れても renderer には漏れないことを継ぎ目で
+    // 直接確認する（ADR-0008）。
+    const recorder = new RecordingRenderer();
+    const id = recorder.createElement('view');
+    const instance = createInstance(id, 'view');
+
+    applyProp(recorder, instance, 'children', [{}]);
+    applyProp(recorder, instance, 'ref', () => {});
+    applyProp(recorder, instance, 'key', 'k');
+
+    expect(only(recorder.calls, 'setProperty')).toHaveLength(0);
+  });
+
+  it('throws on an unknown element property (ADR-0071)', () => {
+    // 未知 prop の判定は renderer-protocol の assertKnownElementProperty に委ねており
+    // （react 側で再実装しない）、それが throw する。React の render は host エラーを
+    // error logger に流して握りつぶすため、prop 適用の継ぎ目を IRenderer 越しに直接
+    // 突いて throw を検証する（tsubame-solid の setProp テストと対称、ADR-0008）。
+    const recorder = new RecordingRenderer();
+    const id = recorder.createElement('view');
+    const instance = createInstance(id, 'view');
+
+    expect(() => applyProp(recorder, instance, 'id', 'x')).toThrow(
+      /Unknown element property "id".*ADR-0071/,
+    );
+    // 拒否された prop は setProperty として記録されない。
+    expect(only(recorder.calls, 'setProperty')).toHaveLength(0);
   });
 });
 
