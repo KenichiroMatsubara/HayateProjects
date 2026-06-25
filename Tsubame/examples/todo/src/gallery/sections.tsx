@@ -76,6 +76,26 @@ const BOX_SIZING_DEMO = { width: 120, padding: 16 } as const;
  */
 const GRID_AUTO_DEMO = { explicitRow: 26, autoRow: 40, explicitCol: 40, autoCol: 64 } as const;
 
+/**
+ * grid-auto-flow デモ（#493）: 同じ 2×2 の明示グリッドに同数のアイテムを並べ、
+ * auto-flow だけを変える。`row` は行を端から（左→右→次の行）、`column` は列を端から
+ * （上→下→次の列）埋める。アイテム数・トラックサイズはインラインのマジックナンバーに
+ * せず名前付き定数にする。Canvas/DOM で同じ配置に解決する。
+ */
+const GRID_AUTO_FLOW_DEMO = { track: 26, gap: 4, items: 3 } as const;
+
+function autoFlowItems(color: string) {
+  return Array.from({ length: GRID_AUTO_FLOW_DEMO.items }, () => (
+    <view style={{ backgroundColor: color, borderRadius: 4 }} />
+  ));
+}
+
+/**
+ * grid-column span デモ（#493）: 3 列グリッドで先頭アイテムだけ 2 列ぶん跨がせる。
+ * 跨ぐ列数・トラックサイズはインラインのマジックナンバーにせず名前付き定数にする。
+ */
+const GRID_COLUMN_SPAN_DEMO = { track: 26, gap: 4, span: 2 } as const;
+
 export function MediaTiles(props: { colors: Palette }) {
   const p = props.colors;
   return (
@@ -541,6 +561,60 @@ export function buildSections(p: Palette): readonly GallerySection[] {
               borderRadius: 8,
             }}>
               <view style={{ backgroundColor: p.accent, borderRadius: 4 }} />
+            </view>
+          ),
+        },
+        {
+          title: 'gridAutoFlow',
+          properties: ['gridAutoFlow'],
+          note: 'row fills rows first, column fills columns first',
+          render: () => {
+            const base: HayateCssStyle = {
+              display: 'grid',
+              gridTemplateColumns: [`${GRID_AUTO_FLOW_DEMO.track}px`, `${GRID_AUTO_FLOW_DEMO.track}px`],
+              gridTemplateRows: [`${GRID_AUTO_FLOW_DEMO.track}px`, `${GRID_AUTO_FLOW_DEMO.track}px`],
+              gap: GRID_AUTO_FLOW_DEMO.gap,
+              padding: 6,
+              backgroundColor: p.panel2,
+              borderRadius: 8,
+            };
+            return (
+              <view style={{ display: 'flex', flexDirection: 'row', gap: 12, alignSelf: 'flex-start' }}>
+                <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <view style={{ ...base, gridAutoFlow: 'row' }}>{autoFlowItems(p.accent)}</view>
+                  <text style={{ color: p.muted, fontSize: 11 }}>row</text>
+                </view>
+                <view style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <view style={{ ...base, gridAutoFlow: 'column' }}>{autoFlowItems(p.success)}</view>
+                  <text style={{ color: p.muted, fontSize: 11 }}>column</text>
+                </view>
+              </view>
+            );
+          },
+        },
+        {
+          title: 'gridColumnSpan',
+          properties: ['gridColumnSpan'],
+          note: 'an item spans multiple column tracks',
+          render: () => (
+            <view style={{
+              display: 'grid',
+              gridTemplateColumns: [
+                `${GRID_COLUMN_SPAN_DEMO.track}px`,
+                `${GRID_COLUMN_SPAN_DEMO.track}px`,
+                `${GRID_COLUMN_SPAN_DEMO.track}px`,
+              ],
+              gridAutoRows: [`${GRID_COLUMN_SPAN_DEMO.track}px`],
+              gap: GRID_COLUMN_SPAN_DEMO.gap,
+              padding: 6,
+              backgroundColor: p.panel2,
+              borderRadius: 8,
+              alignSelf: 'flex-start',
+            }}>
+              {/* 先頭だけ 2 列ぶん跨ぐ。残りは暗黙トラックへ流れる。 */}
+              <view style={{ gridColumnSpan: GRID_COLUMN_SPAN_DEMO.span, backgroundColor: p.accent, borderRadius: 4 }} />
+              <view style={{ backgroundColor: p.success, borderRadius: 4 }} />
+              <view style={{ backgroundColor: p.success, borderRadius: 4 }} />
             </view>
           ),
         },

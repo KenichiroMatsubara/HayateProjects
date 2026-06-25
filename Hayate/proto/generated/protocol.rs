@@ -114,6 +114,8 @@ pub const TAG_ASPECT_RATIO: u32 = 58;
 pub const TAG_BOX_SIZING: u32 = 59;
 pub const TAG_GRID_AUTO_ROWS: u32 = 60;
 pub const TAG_GRID_AUTO_COLUMNS: u32 = 61;
+pub const TAG_GRID_AUTO_FLOW: u32 = 62;
+pub const TAG_GRID_COLUMN_SPAN: u32 = 63;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -667,6 +669,12 @@ pub enum StyleTag {
     GridAutoColumns {
         tracks: Vec<(f32, f32)>,
     },
+    GridAutoFlow {
+        value: f32,
+    },
+    GridColumnSpan {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -1062,6 +1070,16 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             }
             Ok((StyleTag::GridAutoColumns { tracks }, j))
         }
+        62 => {
+            if i + 1 > packed.len() { return Err("style tag GRID_AUTO_FLOW truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::GridAutoFlow { value }, i + 1))
+        }
+        63 => {
+            if i + 1 > packed.len() { return Err("style tag GRID_COLUMN_SPAN truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::GridColumnSpan { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -1071,7 +1089,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
 };
 
@@ -1261,6 +1279,16 @@ fn codec_box_sizing(raw: f32) -> BoxSizingValue {
     }
 }
 
+fn codec_grid_auto_flow(raw: f32) -> GridAutoFlowValue {
+    match raw as u32 {
+        0 => GridAutoFlowValue::Row,
+        1 => GridAutoFlowValue::Column,
+        2 => GridAutoFlowValue::RowDense,
+        3 => GridAutoFlowValue::ColumnDense,
+        _ => GridAutoFlowValue::Row,
+    }
+}
+
 fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
@@ -1325,6 +1353,8 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
         StyleTag::BoxSizing { value } => StyleProp::BoxSizing(codec_box_sizing(value)),
         StyleTag::GridAutoRows { tracks } => StyleProp::GridAutoRows(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
         StyleTag::GridAutoColumns { tracks } => StyleProp::GridAutoColumns(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
+        StyleTag::GridAutoFlow { value } => StyleProp::GridAutoFlow(codec_grid_auto_flow(value)),
+        StyleTag::GridColumnSpan { value } => StyleProp::GridColumnSpan(value as u32),
     })
 }
 

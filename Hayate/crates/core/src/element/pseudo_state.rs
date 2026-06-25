@@ -121,6 +121,8 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::GridTemplateRows(_) => "grid-template-rows",
         StyleProp::GridAutoRows(_) => "grid-auto-rows",
         StyleProp::GridAutoColumns(_) => "grid-auto-columns",
+        StyleProp::GridAutoFlow(_) => "grid-auto-flow",
+        StyleProp::GridColumnSpan(_) => "grid-column",
         StyleProp::FontSize(_) => "font-size",
         StyleProp::FontFamily(_) => "font-family",
         StyleProp::FontWeight(_) => "font-weight",

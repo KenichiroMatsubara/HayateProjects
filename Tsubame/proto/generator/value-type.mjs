@@ -32,6 +32,7 @@ const KNOWN_ENUM_KINDS = new Set([
   'position',
   'transition_timing',
   'box_sizing',
+  'grid_auto_flow',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -176,6 +177,7 @@ const ENUM_CONST_NAMES = {
   position: 'POSITION',
   transition_timing: 'TRANSITION_TIMING',
   box_sizing: 'BOX_SIZING',
+  grid_auto_flow: 'GRID_AUTO_FLOW',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -195,6 +197,7 @@ const ENUM_PATCH_LABELS = {
   position: 'position',
   transition_timing: 'transitionTiming',
   box_sizing: 'boxSizing',
+  grid_auto_flow: 'gridAutoFlow',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */

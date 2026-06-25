@@ -7,7 +7,7 @@ import {
   applyDomExtras,
 } from "@tsubame/hayate-css-catalog";
 import { encodeStylePatch } from "@tsubame/protocol-generated/codec";
-import { TAG, TRANSITION_TIMING, BOX_SIZING } from "@tsubame/protocol-generated/protocol";
+import { TAG, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW } from "@tsubame/protocol-generated/protocol";
 
 /** セマンティック等価チェック用に、wireKind ごとの代表サンプル値。 */
 const SAMPLES: Record<string, unknown> = {
@@ -34,6 +34,7 @@ const SAMPLES: Record<string, unknown> = {
   position: "absolute",
   transitionTiming: "ease",
   boxSizing: "border-box",
+  gridAutoFlow: "row-dense",
   f32: 0.75,
   u32: 2,
   zIndex: 10,
@@ -161,6 +162,23 @@ describe("hayate-css catalog parity", () => {
     expect(out[1]).toBe(BOX_SIZING.contentBox);
 
     expect(domCssForPatch(patch).boxSizing).toBe("content-box");
+  });
+
+  it("grid-auto-flow feeds the packet and DOM CSS from one enum source (#493)", () => {
+    // 主軸（row/column）は語彙キーワードがそのまま CSS と一致する。
+    const column = { gridAutoFlow: "column" } as StylePatch;
+    const out: number[] = [];
+    encodeStylePatch(column, out);
+    expect(out[0]).toBe(TAG.GRID_AUTO_FLOW);
+    expect(out[1]).toBe(GRID_AUTO_FLOW.column);
+    expect(domCssForPatch(column).gridAutoFlow).toBe("column");
+
+    // dense はパケットでは enum コード、DOM では空白区切りの CSS（`row dense`）。
+    const dense = { gridAutoFlow: "row-dense" } as StylePatch;
+    const denseOut: number[] = [];
+    encodeStylePatch(dense, denseOut);
+    expect(denseOut[1]).toBe(GRID_AUTO_FLOW.rowDense);
+    expect(domCssForPatch(dense).gridAutoFlow).toBe("row dense");
   });
 
   it("ambient default* tags map to inheritable CSS properties (ADR-0070)", () => {

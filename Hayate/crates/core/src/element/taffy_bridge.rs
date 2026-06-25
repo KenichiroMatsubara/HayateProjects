@@ -1,15 +1,15 @@
 use taffy::{
-    style_helpers::{fr, length, percent, FromFlex, FromLength, FromPercent, TaffyAuto},
+    style_helpers::{fr, length, percent, span, FromFlex, FromLength, FromPercent, TaffyAuto},
     AlignContent, AlignItems, BoxSizing, Dimension as TaffyDim, Display, FlexDirection, FlexWrap,
-    JustifyContent, LengthPercentage, LengthPercentageAuto, Position, Rect as TaffyRect, Size, Style,
-    TrackSizingFunction,
+    GridAutoFlow, JustifyContent, LengthPercentage, LengthPercentageAuto, Position,
+    Rect as TaffyRect, Size, Style, TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
     AlignContentValue, AlignSelfValue, AlignValue, BoxSizingValue, Dimension, DimensionUnit,
-    DisplayValue, FlexDirectionValue, FlexWrapValue, JustifyValue, OverflowValue, PositionValue,
-    StyleProp,
+    DisplayValue, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, JustifyValue, OverflowValue,
+    PositionValue, StyleProp,
 };
 
 /// 各 Taffy リーフに付ける文脈。measure クロージャがこれで分岐する。
@@ -230,6 +230,19 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         }
         StyleProp::GridAutoColumns(tracks) => {
             style.grid_auto_columns = tracks.iter().copied().map(to_taffy_track).collect();
+        }
+        // 自動配置の主軸と dense 詰め。Taffy の `grid_auto_flow` へそのまま写す。
+        StyleProp::GridAutoFlow(v) => {
+            style.grid_auto_flow = match v {
+                GridAutoFlowValue::Row => GridAutoFlow::Row,
+                GridAutoFlowValue::Column => GridAutoFlow::Column,
+                GridAutoFlowValue::RowDense => GridAutoFlow::RowDense,
+                GridAutoFlowValue::ColumnDense => GridAutoFlow::ColumnDense,
+            };
+        }
+        // grid アイテムが跨ぐ列数。開始位置は auto のまま終端を span で指定する。
+        StyleProp::GridColumnSpan(n) => {
+            style.grid_column = span(*n as u16);
         }
         _ => return false,
     }

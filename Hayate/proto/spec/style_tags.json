@@ -1014,5 +1014,37 @@
       "property": "grid-auto-columns",
       "format": "dimension-list"
     }
+  },
+  {
+    "name": "GRID_AUTO_FLOW",
+    "value": 62,
+    "inherit": "none",
+    "encodeFrom": "enum:grid_auto_flow",
+    "params": [
+      {
+        "name": "value",
+        "type": "grid_auto_flow"
+      }
+    ],
+    "domCss": {
+      "property": "grid-auto-flow",
+      "format": "enum:grid_auto_flow"
+    }
+  },
+  {
+    "name": "GRID_COLUMN_SPAN",
+    "value": 63,
+    "inherit": "none",
+    "encodeFrom": "u32",
+    "params": [
+      {
+        "name": "value",
+        "type": "u32"
+      }
+    ],
+    "domCss": {
+      "property": "grid-column",
+      "format": "grid-span"
+    }
   }
 ]

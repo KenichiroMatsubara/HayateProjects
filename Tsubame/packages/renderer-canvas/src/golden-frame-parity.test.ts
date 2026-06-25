@@ -240,6 +240,46 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(implicit!.bounds[3]).toBeCloseTo(AUTO_ROW, 0);
   });
 
+  it('grid-auto-flow column fills columns before rows (#493)', async () => {
+    // 2×2 の明示グリッドに 3 アイテムを column フローで自動配置する。column は列を端から
+    // 埋めるので 2 番目のアイテムは (col0,row1) = 下段左へ落ちる（row フローなら上段右）。
+    // WASM 解決の Canvas 経路で固定し、DOM はネイティブ CSS `grid-auto-flow: column` で
+    // 同じ配置を得る（hayate-css-parity が入力の単一ソース性を固定）。2 番目のアイテムは
+    // テキストプローブで一意に特定する。
+    const TRACK = 40;
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      const grid = createElement('view');
+      setProp(grid, 'style', {
+        display: 'grid',
+        gridTemplateColumns: [`${TRACK}px`, `${TRACK}px`],
+        gridTemplateRows: [`${TRACK}px`, `${TRACK}px`],
+        gridAutoFlow: 'column',
+        width: `${TRACK * 2}px`,
+        height: `${TRACK * 2}px`,
+      });
+      const first = createElement('view');
+      const second = createElement('view');
+      const third = createElement('view');
+      insertNode(grid, first);
+      insertNode(grid, second);
+      insertNode(grid, third);
+      setProp(first, 'style', { backgroundColor: '#ff0000' });
+      setProp(second, 'style', { backgroundColor: '#0000ff' });
+      setProp(third, 'style', { backgroundColor: '#00ff00' });
+      const probe = createElement('text');
+      insertNode(second, probe);
+      setText(probe, 'cflow');
+      return grid;
+    });
+
+    const frame = harness.capture();
+    const probe = findElementByText(frame, 'cflow');
+    expect(probe, 'second-item probe must be present').toBeDefined();
+    // 下段左セル: x は左列（< 1 トラック分）、y は下段（≈ 1 トラック分）。
+    expect(probe!.bounds[0]).toBeLessThan(TRACK);
+    expect(probe!.bounds[1]).toBeGreaterThan(TRACK / 2);
+  });
+
   it('box-sizing content-box adds padding outside a flex item width (#491)', async () => {
     // content-box では width は内容箱を指し、padding は外側に足される。WASM 解決の
     // Canvas 経路で外形 = width + 左右 padding を固定し、DOM はネイティブ CSS

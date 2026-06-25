@@ -360,6 +360,18 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             .join(" ");
             out.push(("grid-auto-columns".into(), s));
         }
+        StyleProp::GridAutoFlow(v) => {
+            let s = match v {
+            GridAutoFlowValue::Row => "row",
+            GridAutoFlowValue::Column => "column",
+            GridAutoFlowValue::RowDense => "row dense",
+            GridAutoFlowValue::ColumnDense => "column dense",
+            };
+            out.push(("grid-auto-flow".into(), s.into()));
+        }
+        StyleProp::GridColumnSpan(v) => {
+            out.push(("grid-column".into(), format!("span {}", v)));
+        }
     }
 }
 

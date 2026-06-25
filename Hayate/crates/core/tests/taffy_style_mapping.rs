@@ -192,3 +192,26 @@ fn grid_auto_tracks_are_layout_props() {
     assert!(StyleProp::GridAutoRows(vec![Dimension::px(30.0)]).is_layout());
     assert!(StyleProp::GridAutoColumns(vec![Dimension::px(30.0)]).is_layout());
 }
+
+#[test]
+fn grid_auto_flow_maps_each_value_to_taffy_style() {
+    use hayate_core::GridAutoFlowValue;
+
+    let cases = [
+        (GridAutoFlowValue::Row, GridAutoFlow::Row),
+        (GridAutoFlowValue::Column, GridAutoFlow::Column),
+        (GridAutoFlowValue::RowDense, GridAutoFlow::RowDense),
+        (GridAutoFlowValue::ColumnDense, GridAutoFlow::ColumnDense),
+    ];
+    for (input, expected) in cases {
+        let mut style = Style::default();
+        assert!(apply_to_style(&mut style, &StyleProp::GridAutoFlow(input)));
+        assert_eq!(style.grid_auto_flow, expected);
+    }
+}
+
+#[test]
+fn grid_auto_flow_is_a_layout_prop() {
+    // 自動配置の主軸・詰め方はレイアウト系なので Taffy へ流れる（Visual には入らない）。
+    assert!(StyleProp::GridAutoFlow(hayate_core::GridAutoFlowValue::RowDense).is_layout());
+}

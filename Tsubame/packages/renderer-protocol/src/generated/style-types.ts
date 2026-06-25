@@ -19,6 +19,7 @@ export type TextOverflow = 'clip' | 'ellipsis';
 export type Position = 'relative' | 'absolute';
 export type TransitionTiming = 'ease' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 export type BoxSizing = 'border-box' | 'content-box';
+export type GridAutoFlow = 'row' | 'column' | 'row-dense' | 'column-dense';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -83,6 +84,8 @@ export interface HayateStyle {
   boxSizing: BoxSizing;
   gridAutoRows: HayateDimension[];
   gridAutoColumns: HayateDimension[];
+  gridAutoFlow: GridAutoFlow;
+  gridColumnSpan: number;
 }
 
 /**
