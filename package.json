@@ -5,11 +5,12 @@
   "scripts": {
     "preinstall":     "node scripts/bootstrap-wasm-pkgs.mjs",
     "build:wasm":     "pnpm --filter hayate build",
+    "build:host":     "pnpm --filter @hayate/host build",
     "build:tsubame":  "pnpm --filter \"./Tsubame/packages/*\" build",
-    "build":          "pnpm run build:wasm && pnpm run build:tsubame",
+    "build":          "pnpm run build:wasm && pnpm run build:host && pnpm run build:tsubame",
     "dev":            "pnpm --filter @tsubame/example-todo dev",
     "dev:hayate":     "pnpm --filter hayate dev",
-    "typecheck":      "pnpm --filter \"./Tsubame/packages/*\" typecheck",
+    "typecheck":      "pnpm --filter @hayate/host typecheck && pnpm --filter \"./Tsubame/packages/*\" typecheck",
     "test":           "pnpm -r run test",
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
     "clean":          "pnpm -r run clean"

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCanvasBackend } from './resolve-canvas-backend.js';
+import { resolveCanvasBackend } from './resolve-backend.js';
 
+// Renderer Selection Policy（Hayate CONTEXT）: WebGPU プローブ結果と任意の
+// backend オーバーライドから、ロードすべき Scene Renderer の WASM バックエンドを
+// 決める純ロジック。Render Host から分離した「if 文連鎖でない」ルール本体。
 describe('resolveCanvasBackend', () => {
-  it('forces vello when backend override is vello', () => {
+  it('honours an explicit vello override regardless of WebGPU', () => {
     expect(resolveCanvasBackend({ backend: 'vello' }, false)).toBe('vello');
     expect(resolveCanvasBackend({ backend: 'vello' }, true)).toBe('vello');
   });
 
-  it('forces tiny-skia when backend override is tiny-skia', () => {
+  it('honours an explicit tiny-skia override regardless of WebGPU', () => {
     expect(resolveCanvasBackend({ backend: 'tiny-skia' }, true)).toBe('tiny-skia');
     expect(resolveCanvasBackend({ backend: 'tiny-skia' }, false)).toBe('tiny-skia');
   });

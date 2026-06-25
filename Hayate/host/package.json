@@ -1,0 +1,38 @@
+{
+  "name": "@hayate/host",
+  "version": "0.0.0",
+  "description": "Hayate JS host glue — web bootstrap (WebGPU probe / backend 選択 / WASM ロード / surface 取得) と native pump。RawHayate を返し、Tsubame の host-blind CanvasRenderer を駆動する合成ルートへ渡す（CONTEXT-MAP / ADR-0117）。",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./native": {
+      "types": "./dist/native.d.ts",
+      "import": "./dist/native.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "hayate-adapter-web": "file:../wasm-pkgs/pkg",
+    "hayate-adapter-web-cpu": "file:../wasm-pkgs/pkg-tiny-skia"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3",
+    "vitest": "^3.2.0"
+  }
+}

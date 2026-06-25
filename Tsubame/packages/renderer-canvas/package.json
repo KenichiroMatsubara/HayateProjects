@@ -11,10 +11,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./android": {
-      "types": "./dist/android.d.ts",
-      "import": "./dist/android.js"
     }
   },
   "files": [
@@ -34,15 +30,13 @@
   "dependencies": {
     "@tsubame/hayate-css-catalog": "workspace:*",
     "@tsubame/protocol-generated": "workspace:*",
-    "@tsubame/renderer-protocol": "workspace:*",
-    "hayate-adapter-web": "file:../../../Hayate/wasm-pkgs/pkg",
-    "hayate-adapter-web-cpu": "file:../../../Hayate/wasm-pkgs/pkg-tiny-skia",
-    "hayate-adapter-web-null": "file:../../../Hayate/wasm-pkgs/pkg-null"
+    "@tsubame/renderer-protocol": "workspace:*"
   },
   "devDependencies": {
     "@tsubame/renderer-dom": "workspace:*",
     "@tsubame/solid": "workspace:*",
     "happy-dom": "^17.6.3",
+    "hayate-adapter-web-null": "file:../../../Hayate/wasm-pkgs/pkg-null",
     "rimraf": "^6.1.3",
     "solid-js": "^1.9.13",
     "vitest": "^3.2.0"

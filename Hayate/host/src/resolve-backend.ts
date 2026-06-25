@@ -5,8 +5,9 @@ export interface ResolveCanvasBackendOptions {
 }
 
 /**
- * WebGPU プローブ結果とオプションの backend オーバーライドから
- * ロードすべき Canvas WASM バックエンドを決定する。
+ * WebGPU プローブ結果とオプションの backend オーバーライドから、ロードすべき
+ * Canvas WASM バックエンド（Scene Renderer）を決める Renderer Selection Policy。
+ * Render Host から分離し、host に埋め込んだ if 文連鎖にしない（Hayate CONTEXT）。
  */
 export function resolveCanvasBackend(
   options: ResolveCanvasBackendOptions | undefined,
