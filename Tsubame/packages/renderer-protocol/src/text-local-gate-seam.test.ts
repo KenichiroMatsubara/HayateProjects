@@ -56,7 +56,6 @@ describe('text-local gate seam (Tsubame ADR-0008, #323)', () => {
     gate.appendChild(root, child);
     gate.setText(child, 'hi');
     gate.setProperty(child, 'text-content', 'hi');
-    gate.resize(800, 600);
 
     expect(inner.calls.map((c) => c.method)).toEqual([
       'createElement',
@@ -65,7 +64,6 @@ describe('text-local gate seam (Tsubame ADR-0008, #323)', () => {
       'appendChild',
       'setText',
       'setProperty',
-      'resize',
     ]);
   });
 

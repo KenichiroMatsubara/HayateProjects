@@ -21,8 +21,7 @@ export type RecordedCall =
   | { method: 'setStyleVariant'; id: ElementId; condition: ViewportCondition; style: StylePatch }
   | { method: 'setText'; id: ElementId; text: string }
   | { method: 'setProperty'; id: ElementId; name: string; value: unknown }
-  | { method: 'addEventListener'; id: ElementId; event: EventKind }
-  | { method: 'resize'; width: number; height: number };
+  | { method: 'addEventListener'; id: ElementId; event: EventKind };
 
 /**
  * 各呼び出しを記録するインメモリの {@link IRenderer}。Renderer Protocol の背後にある
@@ -78,10 +77,6 @@ export class RecordingRenderer implements IRenderer {
   addEventListener(id: ElementId, event: EventKind, _handler: EventHandler): Unsubscribe {
     this.calls.push({ method: 'addEventListener', id, event });
     return () => {};
-  }
-
-  resize(width: number, height: number): void {
-    this.calls.push({ method: 'resize', width, height });
   }
 
   /** `id` に対して記録された最後の `setStyle` パッチ。なければ `undefined`。 */

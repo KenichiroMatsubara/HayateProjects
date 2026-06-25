@@ -33,7 +33,7 @@ _Avoid_: SSR, hydration, Hayate HTML Mode（Hayate 不使用のため）
 ## Integration Terms
 
 **Hayate Protocol Contract**:
-Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API は Renderer Protocol 独自 surface として Contract 外（codegen 対象外）。`resize` も spec codegen 対象外である点は同じだが、**もはや Renderer Protocol surface ではない** — host→adapter→core が所有し Tsubame は resize 経路から外れる（ADR-0080）。Tsubame が将来 viewport を要する場合のみ spec Contract の API として供給する（当面は入れない）。
+Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API は Renderer Protocol 独自 surface として Contract 外（codegen 対象外）。`resize` も spec codegen 対象外である点は同じだが、**もはや Renderer Protocol surface ではない** — host→adapter→core が所有し Tsubame は resize 経路から外れる（web は `hayate-adapter-web` の自己配線 ResizeObserver、android は native ループが `tree.set_viewport` を直接駆動。ADR-0080 を native へ延長, issue #475）。`CanvasRenderer.resize()` と `RawHayate.on_resize` は撤去済み。Tsubame が将来 viewport を要する場合のみ spec Contract の API として供給する（当面は入れない）。
 _Avoid_: wire only 生成、adapter 向け型の手書き維持、Contract から Renderer 実装まで生成する設計、`resize` を Renderer Protocol surface と呼ぶ説明、Tsubame が `raw.on_resize` を直接叩く設計
 
 **apply_mutations**:

@@ -16,3 +16,11 @@
 - `init.ts` の `attachPointerInput` 相当のロジック（`mousemove`/`mousedown`/`mouseup`/`wheel` の購読・`toCanvas()` 座標変換）は `hayate-adapter-web` 初期化時の自前イベントリスナー登録に置き換わる。
 - resize 検知（`ResizeObserver`）・Pointer Events 統一によるタッチ対応・Viewport Condition の resize 駆動再評価は、いずれもこの自動配線の上に構築される。
 - Tsubame host の役割は `poll_events()` によるdispatch結果の受信とアプリ listener 実行、および明示的なプログラマティック API 呼び出しに純化される。
+
+## native への延長（issue #475）
+
+同じ「viewport 追従は host glue でなく Platform Adapter / native が所有する」という原則を Android native ループへ延長する。web が `hayate-adapter-web` の自己配線 `ResizeObserver` で `tree.set_viewport`（core 抽象）を WASM 内から駆動するのと対称に、Android では native ループ（`hayate-adapter-android`）が surface 生成/リサイズ/回転時に `tree.set_viewport` を Rust から直接駆動し、JS（Tsubame / 埋め込み Hermes）を resize 経路から完全に排除する。
+
+- Tsubame 側は `CanvasRenderer.resize()` を撤去し、`RawHayate` ポートから `on_resize` を除く。`renderer.resize → raw.on_resize` を叩いていた Android 経路（`init-android.ts` の `handle.resize` / `__tsubame.resize` / Hermes `resize` ブリッジ）は native 直結に置き換わる。`renderTsubame` も resize を一切配線しない（DOM はブラウザ CSS リフロー、Canvas は adapter/native が viewport を所有）。
+- `resize` は **Renderer Protocol surface ではない**（ADR-0053 / 両 CONTEXT.md の当初記述を訂正）。`resize` を spec Contract に入れることは当面しない。
+- host 可読な契約テスト（`crates/core/tests/native_viewport_lifecycle.rs`）が、native surface lifecycle → `ViewportMetrics` → `tree.set_viewport` の駆動鎖を JS なしで再現し、viewport が surface に追従することを実機なしで固定する。

@@ -14,8 +14,10 @@ import type { DetectModeResult } from './detect-mode';
  *
  * ネイティブ Hayate ホスト（JSI HostObject 等）が `globalThis.__hayateHost` として
  * 注入した {@link RawHayate} を `CanvasRenderer` に結線し、同じ `TodoApp` を
- * Canvas Mode でマウントする。フレーム駆動とリサイズはネイティブ vsync ループが
- * `globalThis.__tsubame` 経由で行う。
+ * Canvas Mode でマウントする。フレーム駆動はネイティブ vsync ループが
+ * `globalThis.__tsubame` 経由で行う。viewport 追従（resize）は native ループが
+ * `tree.set_viewport` を直接駆動するため JS 経路には無い（ADR-0080 を native へ
+ * 延長, issue #475）。
  */
 declare global {
   // eslint-disable-next-line no-var
@@ -24,7 +26,6 @@ declare global {
   var __tsubame:
     | {
         pumpFrame(timestampMs: number): void;
-        resize(width: number, height: number, scale?: number): void;
         stop(): void;
       }
     | undefined;
@@ -52,7 +53,5 @@ renderTsubame(() => <TodoApp detected={detected} />, handle.renderer);
 // ネイティブ vsync ループ用に公開する。
 globalThis.__tsubame = {
   pumpFrame: (timestampMs: number) => handle.pumpFrame(timestampMs),
-  resize: (width: number, height: number, scale?: number) =>
-    handle.resize(width, height, scale),
   stop: () => handle.stop(),
 };
