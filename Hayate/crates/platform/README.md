@@ -17,12 +17,14 @@ platform/
 ├── mobile/              # mobile Family Adapter（android + ios の cfg facade）
 │   ├── android/         #   leaf（Android）
 │   └── ios/             #   leaf（iOS）
-├── desktop/             # desktop Family Adapter の枠（leaf 0・capability trait 未作成）
+├── desktop/             # desktop Platform Front（winit window + vello/wgpu Surface・ADR-0118）。capability facade は未着手
 └── web/                 # leaf（Web・family of 1 なので Family Adapter を持たない）
 ```
 
 `web` は単一 platform（family of 1）なので Family Adapter を持たず leaf を直接置く。`desktop` は
-leaf が 0 のため**枠（ディレクトリ + 本 doctrine）だけ**を前払いで用意する（[`desktop/README.md`](desktop/README.md)）。
+ADR-0118 で **初手の windowing leaf（`hayate-platform-desktop`）** に着手した — winit single crate で
+native window を開き、vello/wgpu の `Surface` 実装で共有 demo fixture を present する Platform Front。
+**capability facade（audio 等）は依然 0** で、空 facade を作らない規律は維持する（[`desktop/README.md`](desktop/README.md)）。
 
 ## 三段階の振り分け規則
 

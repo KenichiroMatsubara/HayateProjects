@@ -1,0 +1,27 @@
+[package]
+name = "hayate-platform-desktop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hayate desktop Platform Front — winit window + vello/wgpu Surface + App Host tick loop (ADR-0118)"
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[[bin]]
+name = "hayate-desktop"
+path = "src/main.rs"
+
+[dependencies]
+hayate-core = { path = "../../core" }
+hayate-app-host = { path = "../../app-host" }
+hayate-demo-fixtures = { path = "../../demo-fixtures" }
+hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
+wgpu = { workspace = true }
+winit = { workspace = true }
+pollster = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+hayate-scene-test-support = { path = "../../scene-renderers/test-support" }
