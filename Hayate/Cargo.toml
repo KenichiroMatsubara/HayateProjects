@@ -2,6 +2,7 @@
 members = [
     "crates/core",
     "crates/app-host",
+    "crates/demo-fixtures",
     "crates/scene-renderers/vello",
     "crates/scene-renderers/tiny-skia",
     "crates/scene-renderers/test-support",

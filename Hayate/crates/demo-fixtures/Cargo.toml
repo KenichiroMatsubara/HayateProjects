@@ -1,0 +1,10 @@
+[package]
+name = "hayate-demo-fixtures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Renderer-independent demo ElementTree fixtures shared by tests and the desktop bin (ADR-0118)"
+publish = false
+
+[dependencies]
+hayate-core = { path = "../core" }
