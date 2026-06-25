@@ -1,9 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { RecordingRenderer, type RecordedCall } from '@tsubame/renderer-protocol';
+import {
+  RecordingRenderer,
+  EVENT_PROP as PROTOCOL_EVENT_PROP,
+  REJECTED_EVENT_PROPS as PROTOCOL_REJECTED_EVENT_PROPS,
+  type RecordedCall,
+} from '@tsubame/renderer-protocol';
 import type { ReactNode } from 'react';
 import { createTsubameRoot, renderTsubame } from './mount.js';
 import { applyProp } from './props.js';
 import { createInstance } from './instance.js';
+import { EVENT_PROP, REJECTED_EVENT_PROPS } from './events.js';
 
 /**
  * React を {@link RecordingRenderer} へ同期 flush する薄い mount ヘルパ。
@@ -407,6 +413,120 @@ describe('@tsubame/react element properties (IRenderer boundary, ADR-0071)', () 
     );
     // 拒否された prop は setProperty として記録されない。
     expect(only(recorder.calls, 'setProperty')).toHaveLength(0);
+  });
+});
+
+describe('@tsubame/react event handling (IRenderer boundary, ADR-0008)', () => {
+  it('maps every EVENT_PROP entry to addEventListener with its EventKind', () => {
+    // onClick/onInput/onKeyDown/onFocus/onBlur は renderer-protocol の EVENT_PROP で
+    // EventKind に対応し、IRenderer.addEventListener として記録される（react 側で語彙を
+    // 再定義しない、#483）。
+    const { calls } = mount(
+      <view
+        onClick={() => {}}
+        onInput={() => {}}
+        onKeyDown={() => {}}
+        onFocus={() => {}}
+        onBlur={() => {}}
+      />,
+    );
+    const kinds = kindById(calls);
+
+    const subs = only(calls, 'addEventListener');
+    // 全リスナは style を運ぶ単一の <view/>（root view ではない）に乗る。
+    const targetId = subs[0]!.id;
+    expect(kinds.get(targetId)).toBe('view');
+    for (const s of subs) expect(s.id).toBe(targetId);
+
+    expect(subs.map((s) => s.event).sort()).toEqual(
+      ['blur', 'click', 'focus', 'input', 'keydown'].sort(),
+    );
+  });
+
+  it('re-registers on handler change: old listener unsubscribed, no double registration', () => {
+    const m = mount(<view onClick={() => {}} />);
+    const targetId = only(m.calls, 'addEventListener')[0]!.id;
+
+    const mark = m.calls.length;
+    m.render(<view onClick={() => {}} />);
+    const since = m.calls.slice(mark);
+
+    // ハンドラが変わると commitUpdate が旧購読を解除してから 1 度だけ再登録する。
+    expect(only(since, 'removeEventListener')).toEqual([
+      { method: 'removeEventListener', id: targetId, event: 'click' },
+    ]);
+    expect(only(since, 'addEventListener')).toEqual([
+      { method: 'addEventListener', id: targetId, event: 'click' },
+    ]);
+
+    // 最終的に click のアクティブリスナは 1 つ（二重登録していない）。
+    const adds = only(m.calls, 'addEventListener').filter(
+      (c) => c.id === targetId && c.event === 'click',
+    );
+    const removes = only(m.calls, 'removeEventListener').filter(
+      (c) => c.id === targetId && c.event === 'click',
+    );
+    expect(adds.length - removes.length).toBe(1);
+  });
+
+  it('unsubscribes the listener when the event prop is removed', () => {
+    const m = mount(<view onClick={() => {}} />);
+    const targetId = only(m.calls, 'addEventListener')[0]!.id;
+
+    const mark = m.calls.length;
+    m.render(<view />);
+    const since = m.calls.slice(mark);
+
+    // prop から外れたら解除のみ。再登録はしない。
+    expect(only(since, 'removeEventListener')).toEqual([
+      { method: 'removeEventListener', id: targetId, event: 'click' },
+    ]);
+    expect(only(since, 'addEventListener')).toHaveLength(0);
+  });
+
+  it('unsubscribes an element listener when the element itself is removed', () => {
+    function Conditional({ show }: { show: boolean }) {
+      return <view>{show && <view onClick={() => {}} />}</view>;
+    }
+
+    const m = mount(<Conditional show={true} />);
+    const targetId = only(m.calls, 'addEventListener')[0]!.id;
+
+    const mark = m.calls.length;
+    m.render(<Conditional show={false} />);
+    const since = m.calls.slice(mark);
+
+    // 要素ごと消えると detachDeletedInstance が自要素のリスナを解除する
+    // （構造は backend の removeChild に委ねる）。
+    expect(only(since, 'removeEventListener')).toEqual([
+      { method: 'removeEventListener', id: targetId, event: 'click' },
+    ]);
+  });
+
+  it.each(['onHoverEnter', 'onHoverLeave'])(
+    'throws on %s and never subscribes it (ADR-0059)',
+    (rejected) => {
+      // ホバーは REJECTED_EVENT_PROPS（renderer-protocol 由来、#483）。視覚ホバーは
+      // style の :hover で表現するため、購読要求は明確なエラーで弾く。React の render は
+      // host エラーを握りつぶすので、prop 適用の継ぎ目を IRenderer 越しに直接突く
+      // （unknown-prop テストと対称、ADR-0008）。
+      const recorder = new RecordingRenderer();
+      const id = recorder.createElement('view');
+      const instance = createInstance(id, 'view');
+
+      expect(() => applyProp(recorder, instance, rejected, () => {})).toThrow(
+        new RegExp(`${rejected} is not supported`),
+      );
+      // 拒否された prop は addEventListener として記録されない。
+      expect(only(recorder.calls, 'addEventListener')).toHaveLength(0);
+    },
+  );
+
+  it('reuses the protocol event vocabulary (no react-side redefinition, #483)', () => {
+    // react の events.ts は renderer-protocol の語彙を再 export するだけ。同一参照で
+    // あることを確認し、solid とドリフトする独自定義を持ち込んでいないことを固定する。
+    expect(EVENT_PROP).toBe(PROTOCOL_EVENT_PROP);
+    expect(REJECTED_EVENT_PROPS).toBe(PROTOCOL_REJECTED_EVENT_PROPS);
   });
 });
 
