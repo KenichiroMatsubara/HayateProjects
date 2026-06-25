@@ -24,3 +24,4 @@ This monorepo has multiple domain contexts. Read the `CONTEXT.md` relevant to th
 | Hayate-specific | [`Hayate/docs/adr/`](./Hayate/docs/adr/) |
 | Hayabusa-specific | [`Hayabusa/docs/adr/`](./Hayabusa/docs/adr/) |
 | Tsubame-specific | [`Tsubame/docs/adr/`](./Tsubame/docs/adr/) |
+| Miharashi-specific | [`Miharashi/docs/adr/`](./Miharashi/docs/adr/) |
