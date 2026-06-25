@@ -21,6 +21,7 @@ export type {
   EventHandler,
   Unsubscribe,
 } from './event.js';
+export { EVENT_PROP, REJECTED_EVENT_PROPS } from './event.js';
 
 export type { IRenderer } from './renderer.js';
 

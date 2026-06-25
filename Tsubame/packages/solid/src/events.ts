@@ -1,22 +1,4 @@
-import type { EventKind } from '@tsubame/renderer-protocol';
-
-/**
- * Tsubame Adapter が拒否する JSX イベント prop（ADR-0059）。
- * 視覚ホバーは `style` 内の `:hover` を使う。
- */
-export const REJECTED_EVENT_PROPS: ReadonlySet<string> = new Set([
-  'onHoverEnter',
-  'onHoverLeave',
-]);
-
-/**
- * JSX の prop 名から Tsubame の {@link EventKind} へのマッピング。
- * `on` + PascalCase 規約に従う。
- */
-export const EVENT_PROP: Record<string, EventKind> = {
-  onClick: 'click',
-  onInput: 'input',
-  onKeyDown: 'keydown',
-  onFocus: 'focus',
-  onBlur: 'blur',
-};
+// イベント語彙の正本は `@tsubame/renderer-protocol` にある（ADR-0010）。
+// `<view onClick>` 等の意味が Tsubame Adapter 間でドリフトしないよう、
+// tsubame-solid は protocol の語彙を再 export するだけに留める。
+export { EVENT_PROP, REJECTED_EVENT_PROPS } from '@tsubame/renderer-protocol';
