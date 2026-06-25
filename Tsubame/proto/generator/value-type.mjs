@@ -31,6 +31,7 @@ const KNOWN_ENUM_KINDS = new Set([
   'text_overflow',
   'position',
   'transition_timing',
+  'box_sizing',
 ]);
 
 function enumKindFromEncodeFrom(encodeFrom) {
@@ -174,6 +175,7 @@ const ENUM_CONST_NAMES = {
   text_overflow: 'TEXT_OVERFLOW',
   position: 'POSITION',
   transition_timing: 'TRANSITION_TIMING',
+  box_sizing: 'BOX_SIZING',
 };
 
 const ENUM_PATCH_LABELS = {
@@ -192,6 +194,7 @@ const ENUM_PATCH_LABELS = {
   text_overflow: 'textOverflow',
   position: 'position',
   transition_timing: 'transitionTiming',
+  box_sizing: 'boxSizing',
 };
 
 /** Lines for a per-tag style encoder function body (excluding signature). */

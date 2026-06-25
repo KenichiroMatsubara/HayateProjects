@@ -149,6 +149,13 @@ fn encode_transition_timing(value: TransitionTimingValue) -> f32 {
     }
 }
 
+fn encode_box_sizing(value: BoxSizingValue) -> f32 {
+    match value {
+        BoxSizingValue::BorderBox => 0.0,
+        BoxSizingValue::ContentBox => 1.0,
+    }
+}
+
 pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -562,6 +569,10 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::AspectRatio(v) => {
                 buf.push(TAG_ASPECT_RATIO as f32);
                 buf.push(*v);
+            }
+            StyleProp::BoxSizing(v) => {
+                buf.push(TAG_BOX_SIZING as f32);
+                buf.push(encode_box_sizing(*v));
             }
         }
     }

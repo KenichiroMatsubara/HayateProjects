@@ -18,6 +18,7 @@ export type Overflow = 'visible' | 'hidden';
 export type TextOverflow = 'clip' | 'ellipsis';
 export type Position = 'relative' | 'absolute';
 export type TransitionTiming = 'ease' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
+export type BoxSizing = 'border-box' | 'content-box';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -79,6 +80,7 @@ export interface HayateStyle {
   transitionTiming: TransitionTiming;
   boxShadow: HayateShadow[];
   aspectRatio: number;
+  boxSizing: BoxSizing;
 }
 
 /**

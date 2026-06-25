@@ -20,7 +20,7 @@ pub use audio_output::{
 pub use color::Color;
 pub use element::chrome_tuning::ChromeTuning;
 pub use element::{
-    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, CursorValue, Dimension,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, CursorValue, Dimension,
     DimensionUnit,
     DisplayValue,
     DocumentEventKind,

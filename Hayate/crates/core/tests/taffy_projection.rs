@@ -92,6 +92,50 @@ fn aspect_ratio_derives_height_from_width() {
     );
 }
 
+/// box-sizing: 同じ `width` + `padding` でも、border-box は padding を寸法に含め
+/// （外形 = width）、content-box は padding を外側に足す（外形 = width + 左右 padding）。
+/// レイアウト系プロパティとして Taffy へ流れ、解決後の幾何に差が出る（issue #491）。
+#[test]
+fn box_sizing_includes_or_adds_padding_to_resolved_width() {
+    use hayate_core::{BoxSizingValue, Dimension};
+
+    fn resolved_width(box_sizing: BoxSizingValue) -> f32 {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(70, ElementKind::View);
+        let child = tree.element_create(71, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(300.0, 200.0);
+        // align-self: flex-start で交差軸 stretch を切り、width が支配する状態にする。
+        tree.element_set_style(
+            child,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Padding(Dimension::px(20.0)),
+                StyleProp::AlignSelf(hayate_core::AlignSelfValue::FlexStart),
+                StyleProp::BoxSizing(box_sizing),
+            ],
+        );
+        tree.element_append_child(root, child);
+        tree.render(0.0);
+        tree.element_layout_rect(child)
+            .expect("child must have layout")
+            .2
+    }
+
+    // border-box: 外形は width のまま（padding は内側）。
+    let border = resolved_width(BoxSizingValue::BorderBox);
+    assert!(
+        (border - 100.0).abs() < 0.5,
+        "border-box keeps outer width at 100, got {border}"
+    );
+    // content-box: 外形は width + 左右 padding = 100 + 40 = 140。
+    let content = resolved_width(BoxSizingValue::ContentBox);
+    assert!(
+        (content - 140.0).abs() < 0.5,
+        "content-box adds padding outside: 100 + 2*20 = 140, got {content}"
+    );
+}
+
 /// 最初のレイアウト前に削除した部分木は panic せず reconcile できなければならない。
 #[test]
 fn remove_lazy_subtree_before_first_layout_does_not_panic() {

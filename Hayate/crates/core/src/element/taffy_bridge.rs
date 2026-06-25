@@ -1,14 +1,15 @@
 use taffy::{
     style_helpers::{fr, length, percent, TaffyAuto},
-    AlignContent, AlignItems, Dimension as TaffyDim, Display, FlexDirection, FlexWrap, JustifyContent,
-    LengthPercentage, LengthPercentageAuto, Position, Rect as TaffyRect, Size, Style,
+    AlignContent, AlignItems, BoxSizing, Dimension as TaffyDim, Display, FlexDirection, FlexWrap,
+    JustifyContent, LengthPercentage, LengthPercentageAuto, Position, Rect as TaffyRect, Size, Style,
     TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
-    AlignContentValue, AlignSelfValue, AlignValue, Dimension, DimensionUnit, DisplayValue,
-    FlexDirectionValue, FlexWrapValue, JustifyValue, OverflowValue, PositionValue, StyleProp,
+    AlignContentValue, AlignSelfValue, AlignValue, BoxSizingValue, Dimension, DimensionUnit,
+    DisplayValue, FlexDirectionValue, FlexWrapValue, JustifyValue, OverflowValue, PositionValue,
+    StyleProp,
 };
 
 /// 各 Taffy リーフに付ける文脈。measure クロージャがこれで分岐する。
@@ -95,6 +96,13 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         // aspect-ratio は width / height（Taffy も同じ向き）。負/非正は無効として無視。
         StyleProp::AspectRatio(v) => {
             style.aspect_ratio = if *v > 0.0 { Some(*v) } else { None };
+        }
+        // box-sizing は寸法が指す箱を選ぶ。Taffy の box_sizing へそのまま写す。
+        StyleProp::BoxSizing(v) => {
+            style.box_sizing = match v {
+                BoxSizingValue::BorderBox => BoxSizing::BorderBox,
+                BoxSizingValue::ContentBox => BoxSizing::ContentBox,
+            };
         }
         StyleProp::Display(v) => {
             style.display = match v {

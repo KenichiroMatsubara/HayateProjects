@@ -473,5 +473,18 @@
         "value": 2
       }
     ]
+  },
+  {
+    "name": "box_sizing",
+    "values": [
+      {
+        "name": "border_box",
+        "value": 0
+      },
+      {
+        "name": "content_box",
+        "value": 1
+      }
+    ]
   }
 ]
