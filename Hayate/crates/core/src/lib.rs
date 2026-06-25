@@ -45,6 +45,7 @@ pub use element::chrome_tuning::ChromeTuning;
 pub use element::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, CursorValue, Dimension,
     DimensionUnit,
+    apply_command, apply_ime_action,
     DisplayValue,
     DocumentEventKind,
     ElementId, ElementKind,
@@ -53,7 +54,7 @@ pub use element::{
     event_document_kind,
     CharacterBounds, Clipboard, CompositionClause, CompositionUnderline, Direction, EditIntent,
     EditState, FontStyleValue, Granularity,
-    ImeBridge, ImePresentation, InputModality, PointerKind, PointerMoveResult, Preedit, PseudoState,
+    ImeAction, ImeBridge, ImeBuffer, ImeCommand, ImePresentation, InputModality, PointerKind, PointerMoveResult, Preedit, PseudoState,
     ResolvedElement,
     Selection, SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles,
     SelectionPoint, SelectionToolbar, ToolbarAction, ToolbarButton, ToolbarRect,

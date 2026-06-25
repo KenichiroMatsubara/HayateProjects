@@ -8,8 +8,12 @@
 //! hover / active / focus を効かせ（issue #506）、さらに winit keyboard 入力
 //! （`KeyboardInput` / `ModifiersChanged`）を `key_to_edit_intent` 経由で `apply_edit_intent`
 //! と `on_text_input` へ配線して編集（キャレット移動・選択・削除・入力）を効かせる（issue #507）。
-//! IME は未配線。
+//! さらに winit IME 入力（`WindowEvent::Ime`）を `ime_input` 経由で Core 所有の増分 IME
+//! モデル（`ImeCommand` → `apply_command` → `apply_ime_action`・ADR-0117）へ配線し、focus/blur に
+//! 応じた IME enable/disable と変換候補ウィンドウのキャレット追従（`set_ime_cursor_area`）を
+//! Core の `drive_ime`（[`ImeBridge`]）経由で効かせる（issue #508）。
 
+pub mod ime_input;
 pub mod keyboard_input;
 pub mod pointer_input;
 
@@ -17,7 +21,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use hayate_app_host::{AppHost, Surface};
-use hayate_core::{SceneGraph, ViewportMetrics};
+use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, SceneGraph, ViewportMetrics};
 use hayate_demo_fixtures::tasks_tree;
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
@@ -195,6 +199,29 @@ impl Surface for WindowSurface {
     }
 }
 
+/// Core の [`ImePresentation`] を winit `Window` の IME 状態へ反映する [`ImeBridge`]
+/// （ADR-0069・issue #508）。編集可否（キーボードを*出すか*）と候補ウィンドウの位置
+/// （*どこに*）は Core の `drive_ime` が一元的に決め、本アダプタは winit へ転写するだけ
+/// （プラットフォーム個別の振る舞い乖離を防ぐ）。
+struct WinitImeBridge<'a> {
+    window: &'a Window,
+}
+
+impl ImeBridge for WinitImeBridge<'_> {
+    fn present(&mut self, presentation: ImePresentation) {
+        match presentation {
+            // text-input がフォーカスされている: IME を許可し、候補窓をキャレットへ向ける。
+            ImePresentation::Shown { bounds } => {
+                self.window.set_ime_allowed(true);
+                let (position, size) = ime_input::ime_cursor_area(bounds);
+                self.window.set_ime_cursor_area(position, size);
+            }
+            // 編集可能要素が非フォーカス: IME を無効化する（変換中バッファは winit が破棄）。
+            ImePresentation::Hidden => self.window.set_ime_allowed(false),
+        }
+    }
+}
+
 /// winit `ApplicationHandler`。OS の窓を開き、共有 fixture を載せた `App Host` を駆動する
 /// Platform Front（ADR-0118）。フレーム継続判定は App Host が所有し、ここはスケジューリング
 /// （`request_redraw` 配線・`RedrawRequested` → `tick`・resize 反映）だけを担う。
@@ -209,6 +236,10 @@ pub struct DesktopApp {
     /// 直近の `ModifiersChanged` 由来の修飾キー状態。winit の `KeyboardInput` は修飾を
     /// 個別イベントで運ぶので、ここに持ち回って各キー押下の keymap 判定に載せる。
     modifiers: ModifiersState,
+    /// IME の増分入力モデル（[`ImeCommand`](hayate_core::ImeCommand) → `apply_command`）が
+    /// フレームをまたいで保持するローカルバッファ（ADR-0117）。winit の `Ime` イベントを
+    /// ここへ畳んで最小のコア編集に変換する。
+    ime_buffer: ImeBuffer,
 }
 
 impl DesktopApp {
@@ -282,8 +313,17 @@ impl ApplicationHandler for DesktopApp {
             }
             WindowEvent::RedrawRequested => {
                 let ts = self.timestamp_ms();
-                if let Some(app_host) = self.app_host.as_mut() {
+                if let (Some(window), Some(app_host)) =
+                    (self.window.as_ref(), self.app_host.as_mut())
+                {
                     app_host.tick(ts);
+                    // tick 後（レイアウト確定後）に IME を一度駆動する。focus/blur の enable/
+                    // disable と、候補ウィンドウのキャレット追従（`set_ime_cursor_area`）を
+                    // Core の `drive_ime` が決め、`WinitImeBridge` が winit へ転写する
+                    // （issue #508）。全入力は request_redraw でここに合流するので、これが
+                    // IME 同期の唯一地点になる。
+                    let mut bridge = WinitImeBridge { window };
+                    app_host.tree().drive_ime(&mut bridge);
                 }
             }
             // ポインタ入力（winit → Core の座標 pointer dispatch、`PointerKind = Mouse`・
@@ -338,6 +378,18 @@ impl ApplicationHandler for DesktopApp {
                         );
                         window.request_redraw();
                     }
+                }
+            }
+            // IME 入力（winit `Ime` → Core 増分 IME モデル・issue #508）。`Enabled` /
+            // `Preedit` / `Commit` / `Disabled` を `ime_input` の純粋写像 seam で `ImeCommand`
+            // に変換し、フレームをまたぐ `ime_buffer` へ畳んで focus 中 text-input に適用する。
+            // request_redraw で次フレームを起こすと RedrawRequested 側で候補窓位置も同期する。
+            WindowEvent::Ime(ime) => {
+                if let (Some(window), Some(app_host)) =
+                    (self.window.as_ref(), self.app_host.as_mut())
+                {
+                    ime_input::apply_ime_input(app_host.tree_mut(), &ime, &mut self.ime_buffer);
+                    window.request_redraw();
                 }
             }
             WindowEvent::CursorLeft { .. } => {
