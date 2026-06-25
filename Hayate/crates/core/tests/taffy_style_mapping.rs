@@ -1,6 +1,7 @@
 use hayate_core::element::taffy_bridge::apply_to_style;
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, Dimension, FlexWrapValue, PositionValue, StyleProp,
+    AlignContentValue, AlignSelfValue, BoxSizingValue, Dimension, FlexWrapValue, PositionValue,
+    StyleProp,
 };
 use taffy::prelude::*;
 
@@ -125,6 +126,28 @@ fn aspect_ratio_non_positive_clears_taffy_override() {
 fn aspect_ratio_is_a_layout_prop() {
     // レイアウト系なので Taffy へ流れる（Visual には入らない）。
     assert!(StyleProp::AspectRatio(1.5).is_layout());
+}
+
+#[test]
+fn box_sizing_maps_each_value_to_taffy_style() {
+    let mut style = Style::default();
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::BoxSizing(BoxSizingValue::ContentBox)
+    ));
+    assert_eq!(style.box_sizing, BoxSizing::ContentBox);
+
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::BoxSizing(BoxSizingValue::BorderBox)
+    ));
+    assert_eq!(style.box_sizing, BoxSizing::BorderBox);
+}
+
+#[test]
+fn box_sizing_is_a_layout_prop() {
+    // レイアウト系なので Taffy へ流れる（Visual には入らない）。
+    assert!(StyleProp::BoxSizing(BoxSizingValue::ContentBox).is_layout());
 }
 
 #[test]

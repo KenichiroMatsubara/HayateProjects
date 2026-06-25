@@ -302,6 +302,7 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "text_overflow" => "text_overflow",
         "position" => "position",
         "transition_timing" => "transition_timing",
+        "box_sizing" => "box_sizing",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -408,6 +409,10 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
             TransitionTimingValue::EaseIn => \"ease-in\",\n\
             TransitionTimingValue::EaseOut => \"ease-out\",\n\
             TransitionTimingValue::EaseInOut => \"ease-in-out\","
+        }
+        "box_sizing" => {
+            "BoxSizingValue::BorderBox => \"border-box\",\n\
+            BoxSizingValue::ContentBox => \"content-box\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };

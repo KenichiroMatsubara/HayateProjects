@@ -964,5 +964,21 @@
       "property": "aspect-ratio",
       "format": "number"
     }
+  },
+  {
+    "name": "BOX_SIZING",
+    "value": 59,
+    "inherit": "none",
+    "encodeFrom": "enum:box_sizing",
+    "params": [
+      {
+        "name": "value",
+        "type": "box_sizing"
+      }
+    ],
+    "domCss": {
+      "property": "box-sizing",
+      "format": "enum:box_sizing"
+    }
   }
 ]

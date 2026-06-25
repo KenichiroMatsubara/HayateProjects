@@ -87,6 +87,7 @@ export const TAG = {
   TRANSITION_TIMING: 56,
   BOX_SHADOW: 57,
   ASPECT_RATIO: 58,
+  BOX_SIZING: 59,
 } as const;
 export type TAG = typeof TAG;
 
@@ -346,6 +347,12 @@ export const USER_SELECT = {
   contains: 2,
 } as const;
 export type USER_SELECT = typeof USER_SELECT;
+
+export const BOX_SIZING = {
+  borderBox: 0,
+  contentBox: 1,
+} as const;
+export type BOX_SIZING = typeof BOX_SIZING;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

@@ -206,6 +206,37 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(box!.bounds[3]).toBeCloseTo(EXPECTED_HEIGHT, 1);
   });
 
+  it('box-sizing content-box adds padding outside a flex item width (#491)', async () => {
+    // content-box では width は内容箱を指し、padding は外側に足される。WASM 解決の
+    // Canvas 経路で外形 = width + 左右 padding を固定し、DOM はネイティブ CSS
+    // `box-sizing: content-box` で同じ寸法規約を得る（hayate-css-parity が単一ソース性を固定）。
+    // align-self: flex-start で交差軸 stretch を切り、width が支配する状態にする。
+    const CONTENT_WIDTH = 80;
+    const PADDING = 20;
+    const EXPECTED_OUTER_WIDTH = CONTENT_WIDTH + PADDING * 2; // 120
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp }) => {
+      const row = createElement('view');
+      setProp(row, 'style', { display: 'flex', width: '300px', height: '100px' });
+      const box = createElement('view');
+      insertNode(row, box);
+      setProp(box, 'style', {
+        width: `${CONTENT_WIDTH}px`,
+        padding: `${PADDING}px`,
+        alignSelf: 'flex-start',
+        boxSizing: 'content-box',
+      });
+      return row;
+    });
+
+    const frame = harness.capture();
+    // 外形 = 80 + 2*20 = 120。スナップショットではなく解決幾何を直接固定する。
+    const box = frame.elements.find(
+      (el) => Math.round(el.bounds[2]) === EXPECTED_OUTER_WIDTH,
+    );
+    expect(box, 'content-box box must resolve to padded outer width').toBeDefined();
+    expect(box!.bounds[2]).toBeCloseTo(EXPECTED_OUTER_WIDTH, 1);
+  });
+
   it('defaultFontSize on a block box penetrates to descendant text', async () => {
     harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
       const view = createElement('view');

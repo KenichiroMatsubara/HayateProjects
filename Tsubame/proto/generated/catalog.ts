@@ -3,7 +3,7 @@
 
 import type { HayateDimension, HayateShadow } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string';
 
 export interface DomExtra {
@@ -808,6 +808,19 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "domFormat": "number",
     "cssName": "aspectRatio",
     "cssProperty": "aspect-ratio",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "boxSizing",
+    "tag": 59,
+    "unsetKind": null,
+    "wireKind": "boxSizing",
+    "domFormat": "enum",
+    "cssName": "boxSizing",
+    "cssProperty": "box-sizing",
     "targets": [
       "packet",
       "css"

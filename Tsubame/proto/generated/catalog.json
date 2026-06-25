@@ -785,5 +785,18 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "boxSizing",
+    "tag": 59,
+    "unsetKind": null,
+    "wireKind": "boxSizing",
+    "domFormat": "enum",
+    "cssName": "boxSizing",
+    "cssProperty": "box-sizing",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

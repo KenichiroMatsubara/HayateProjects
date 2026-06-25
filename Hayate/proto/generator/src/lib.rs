@@ -714,7 +714,7 @@ fn generate_style_codec(proto: &Proto) -> String {
 
     out.push_str("// ── Style packet codec (generated) ─────────────────────────────────────\n\n");
     out.push_str("use hayate_core::{\n");
-    out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,\n");
+    out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
     out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
     out.push_str("    TransitionTimingValue,\n");
@@ -763,6 +763,7 @@ fn generate_style_codec(proto: &Proto) -> String {
             "text_overflow" => "TextOverflowValue",
             "position" => "PositionValue",
             "transition_timing" => "TransitionTimingValue",
+            "box_sizing" => "BoxSizingValue",
             _ => continue,
         };
         let fn_name = format!("codec_{}", en.name);
@@ -855,6 +856,7 @@ fn generate_codec(proto: &Proto) -> String {
             "text_overflow" => "TextOverflowValue",
             "position" => "PositionValue",
             "transition_timing" => "TransitionTimingValue",
+            "box_sizing" => "BoxSizingValue",
             _ => continue,
         };
         let fn_name = format!("encode_{}", en.name);

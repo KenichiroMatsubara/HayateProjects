@@ -58,6 +58,14 @@ const MQ_TILES: readonly { label: string; condition: ViewportCondition }[] = [
  */
 const ASPECT_RATIO_DEMO = { width: 128, ratio: 16 / 9, label: '16 / 9' } as const;
 
+/**
+ * box-sizing デモ（#491）: 同じ width + padding を二つの箱に与え、box-sizing だけ変える。
+ * border-box は外形を width に保ち（padding は内側）、content-box は padding を外に足す
+ * （外形 = width + 左右 padding）。Canvas/DOM で同じ外形に解決する。寸法はインラインの
+ * マジックナンバーにせず名前付き定数にする。
+ */
+const BOX_SIZING_DEMO = { width: 120, padding: 16 } as const;
+
 export function MediaTiles(props: { colors: Palette }) {
   const p = props.colors;
   return (
@@ -206,6 +214,36 @@ export function buildSections(p: Palette): readonly GallerySection[] {
               borderRadius: 10,
             }}>
               <text style={{ color: p.text, fontSize: 12 }}>{ASPECT_RATIO_DEMO.label}</text>
+            </view>
+          ),
+        },
+        {
+          title: 'boxSizing',
+          properties: ['boxSizing'] as readonly string[],
+          render: () => (
+            <view style={{ display: 'flex', flexDirection: 'column', gap: 6, alignSelf: 'flex-start' }}>
+              <view style={{
+                width: BOX_SIZING_DEMO.width,
+                padding: BOX_SIZING_DEMO.padding,
+                boxSizing: 'border-box',
+                backgroundColor: p.panel2,
+                borderWidth: 1,
+                borderColor: p.line,
+                borderRadius: 8,
+              }}>
+                <text style={{ color: p.text, fontSize: 12 }}>border-box（外形 = width）</text>
+              </view>
+              <view style={{
+                width: BOX_SIZING_DEMO.width,
+                padding: BOX_SIZING_DEMO.padding,
+                boxSizing: 'content-box',
+                backgroundColor: p.panel2,
+                borderWidth: 1,
+                borderColor: p.line,
+                borderRadius: 8,
+              }}>
+                <text style={{ color: p.muted, fontSize: 12 }}>content-box（外形 = width + padding）</text>
+              </view>
             </view>
           ),
         },

@@ -7,7 +7,7 @@ import {
   applyDomExtras,
 } from "@tsubame/hayate-css-catalog";
 import { encodeStylePatch } from "@tsubame/protocol-generated/codec";
-import { TAG, TRANSITION_TIMING } from "@tsubame/protocol-generated/protocol";
+import { TAG, TRANSITION_TIMING, BOX_SIZING } from "@tsubame/protocol-generated/protocol";
 
 /** セマンティック等価チェック用に、wireKind ごとの代表サンプル値。 */
 const SAMPLES: Record<string, unknown> = {
@@ -33,6 +33,7 @@ const SAMPLES: Record<string, unknown> = {
   textOverflow: "ellipsis",
   position: "absolute",
   transitionTiming: "ease",
+  boxSizing: "border-box",
   f32: 0.75,
   u32: 2,
   zIndex: 10,
@@ -147,6 +148,19 @@ describe("hayate-css catalog parity", () => {
     expect(out[1]).toBe(ratio);
 
     expect(domCssForPatch(patch).aspectRatio).toBe(String(ratio));
+  });
+
+  it("box-sizing feeds the packet and DOM CSS from one enum source (#491)", () => {
+    // 単一の語彙値 'content-box' を両経路へ。Canvas は enum コードのパケット、DOM は
+    // 同じキーワードの CSS `box-sizing` を受け取り、両者が同じ寸法規約で解決する。
+    const patch = { boxSizing: "content-box" } as StylePatch;
+
+    const out: number[] = [];
+    encodeStylePatch(patch, out);
+    expect(out[0]).toBe(TAG.BOX_SIZING);
+    expect(out[1]).toBe(BOX_SIZING.contentBox);
+
+    expect(domCssForPatch(patch).boxSizing).toBe("content-box");
   });
 
   it("ambient default* tags map to inheritable CSS properties (ADR-0070)", () => {

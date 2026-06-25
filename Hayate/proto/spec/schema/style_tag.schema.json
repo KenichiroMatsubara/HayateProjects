@@ -35,6 +35,7 @@
         "enum:position",
         "enum:text_overflow",
         "enum:transition_timing",
+        "enum:box_sizing",
         "font-family",
         "dimension-list",
         "shadow-list",
@@ -84,6 +85,7 @@
             "enum:position",
             "enum:text_overflow",
             "enum:transition_timing",
+            "enum:box_sizing",
             "dimension-list",
             "shadow-list"
           ]

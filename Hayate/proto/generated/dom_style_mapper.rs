@@ -337,6 +337,13 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
         StyleProp::AspectRatio(v) => {
             out.push(("aspect-ratio".into(), format!("{}", v)));
         }
+        StyleProp::BoxSizing(v) => {
+            let s = match v {
+            BoxSizingValue::BorderBox => "border-box",
+            BoxSizingValue::ContentBox => "content-box",
+            };
+            out.push(("box-sizing".into(), s.into()));
+        }
     }
 }
 

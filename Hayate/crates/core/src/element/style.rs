@@ -249,6 +249,18 @@ pub enum AlignContentValue {
     SpaceEvenly,
 }
 
+/// 寸法（`width`/`min`/`max`）が指す箱（CSS `box-sizing`、ADR は #491 で確立）。
+///
+/// `BorderBox` は寸法に padding/border を含める（外形 = 指定寸法）。`ContentBox`
+/// はコンテンツ箱を指し、padding/border は外側に足される（外形 = 寸法 + padding +
+/// border）。レイアウト系なので Taffy の `box_sizing` へ流れる。CSS 既定は
+/// `content-box` だが、明示宣言が無いときの UA 既定は要素種別側で決まる。
+#[derive(Clone, Copy, Debug)]
+pub enum BoxSizingValue {
+    BorderBox,
+    ContentBox,
+}
+
 #[derive(Clone, Debug)]
 pub enum StyleProp {
     // 視覚
@@ -268,6 +280,7 @@ pub enum StyleProp {
     MaxWidth(Dimension),
     MaxHeight(Dimension),
     AspectRatio(f32),
+    BoxSizing(BoxSizingValue),
     // レイアウト
     Display(DisplayValue),
     FlexDirection(FlexDirectionValue),
@@ -336,6 +349,7 @@ impl StyleProp {
                 | Self::MaxWidth(_)
                 | Self::MaxHeight(_)
                 | Self::AspectRatio(_)
+                | Self::BoxSizing(_)
                 | Self::Display(_)
                 | Self::FlexDirection(_)
                 | Self::FlexWrap(_)

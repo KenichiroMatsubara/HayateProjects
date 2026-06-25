@@ -111,6 +111,7 @@ pub const TAG_TRANSITION_DURATION: u32 = 55;
 pub const TAG_TRANSITION_TIMING: u32 = 56;
 pub const TAG_BOX_SHADOW: u32 = 57;
 pub const TAG_ASPECT_RATIO: u32 = 58;
+pub const TAG_BOX_SIZING: u32 = 59;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -655,6 +656,9 @@ pub enum StyleTag {
     AspectRatio {
         value: f32,
     },
+    BoxSizing {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -1021,6 +1025,11 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::AspectRatio { value }, i + 1))
         }
+        59 => {
+            if i + 1 > packed.len() { return Err("style tag BOX_SIZING truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::BoxSizing { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -1028,7 +1037,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 // ── Style packet codec (generated) ─────────────────────────────────────
 
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, CursorValue, Dimension, DimensionUnit,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
     FlexDirectionValue, FlexWrapValue, FontStyleValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
@@ -1212,6 +1221,14 @@ fn codec_transition_timing(raw: f32) -> TransitionTimingValue {
     }
 }
 
+fn codec_box_sizing(raw: f32) -> BoxSizingValue {
+    match raw as u32 {
+        0 => BoxSizingValue::BorderBox,
+        1 => BoxSizingValue::ContentBox,
+        _ => BoxSizingValue::BorderBox,
+    }
+}
+
 fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
@@ -1273,6 +1290,7 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
         StyleTag::TransitionTiming { value } => StyleProp::TransitionTiming(codec_transition_timing(value)),
         StyleTag::BoxShadow { shadows } => StyleProp::BoxShadow(shadows.into_iter().map(codec_shadow).collect()),
         StyleTag::AspectRatio { value } => StyleProp::AspectRatio(value),
+        StyleTag::BoxSizing { value } => StyleProp::BoxSizing(codec_box_sizing(value)),
     })
 }
 
