@@ -71,11 +71,10 @@ export async function initCanvasRenderer(
 
   // ポインタ + ホイール入力とリサイズ検知は hayate-adapter-web が
   // `HayateElementRenderer::init` で自前で結線する（ADR-0080）。その ResizeObserver は
-  // 発火ごとに最新の `devicePixelRatio` を読むため、ホストは 2 つ目の observer を
-  // 付けてはならない。構築時に DPR をキャッシュした重複 observer は、モバイル Chrome
-  // （入力中のフォーカスズームで比率が変わる）でバッキングストアサイズを壊し、
-  // グリフを荒くする。リサイズの所有権はアダプタに残り、ホストは下の EditContext
-  // IME / キーボード連携だけを保持する。
+  // 発火ごとに最新の `devicePixelRatio` を読み、`tree.set_viewport` を WASM 内で直接
+  // 駆動する。Tsubame は resize 経路に存在しない（CanvasRenderer は ResizeObserver も
+  // `resize` も持たない, issue #475）。ホストは下の EditContext IME / キーボード連携
+  // だけを保持する。
   attachTextInput(canvas, raw);
-  return new CanvasRenderer(raw, { ...options, canvas, autoResize: false });
+  return new CanvasRenderer(raw, { ...options, canvas });
 }

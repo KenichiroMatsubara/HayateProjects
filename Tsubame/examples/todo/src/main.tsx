@@ -20,7 +20,9 @@ let renderer: IRenderer;
 if (detected.mode === 'DOM') {
   dom.hidden = false;
   renderer = new DomRenderer({ container: dom });
-  renderTsubame(() => <TodoApp detected={detected} />, renderer, { element: dom });
+  // viewport 追従はブラウザの CSS リフロー / `@media` が担う。Tsubame は resize を
+  // 配線しない（ADR-0080, issue #475）。
+  renderTsubame(() => <TodoApp detected={detected} />, renderer);
 } else {
   const { initCanvasRenderer } = await import('@tsubame/renderer-canvas');
   canvas.hidden = false;

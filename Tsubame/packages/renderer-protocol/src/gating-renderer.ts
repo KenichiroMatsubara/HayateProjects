@@ -66,10 +66,6 @@ class GatingRenderer implements IRenderer {
     return this.inner.addEventListener(id, event, handler);
   }
 
-  resize(width: number, height: number): void {
-    this.inner.resize(width, height);
-  }
-
   /**
    * 要素の kind が持たない text-local プロップを除去する。先行する
    * `createElement` がない id（kind 不明）はそのまま通す。

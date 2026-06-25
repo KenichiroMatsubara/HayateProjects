@@ -318,8 +318,6 @@ export class DomRenderer implements IRenderer {
     };
   }
 
-  resize(_width: number, _height: number): void {}
-
   /** 擬似スタイルシートのルール増減に合わせて、追跡中のルールインデックスをずらす。 */
   private bumpPseudoRuleIndices(from: number, delta: number): void {
     for (const entry of this.pseudoRules.values()) {
