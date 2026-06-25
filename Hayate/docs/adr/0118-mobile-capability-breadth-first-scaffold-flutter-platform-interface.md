@@ -55,7 +55,10 @@ breadth-first scaffold であり、doctrine の「昇格は 2 実装から / tra
 ### 対象境界：薄い native capability のみ（既所有・重量級は除外）
 
 - 既に Core/Platform Front/Adapter が所有する領域（IME/viewport/raw 入力/surface/font/テーマ）は
-  capability に含めない。
+  capability に含めない。**clipboard も含めない** — ADR-0014 が Platform Adapter の責務に clipboard を
+  明記し、ADR-0097 が編集境界 `element::clipboard::Clipboard`（選択テキストのコピペ経路）として実装
+  済み。同一 OS API（Pasteboard/ClipboardManager）への 2 重抽象を避ける。app からの programmatic
+  clipboard が要る時は ADR-0097 の trait を拡張する（並行 trait を切らない）。
 - 重量級サブシステム（camera / video_player / webview / google_maps / in_app_purchase）も含めない
   （薄い trait ではなく独立プロダクト）。
 
@@ -69,8 +72,9 @@ breadth-first scaffold であり、doctrine の「昇格は 2 実装から / tra
 
 ### phasing：wave-1 = 一発応答 10 個 / wave-2 = ストリーム 4 個 / permissions = さらに後
 
-- **wave-1（一発応答・fire-and-forget／正しい形で scaffold 可）**: clipboard・haptics・notification(local)・
+- **wave-1（一発応答・fire-and-forget／正しい形で scaffold 可・計 9 個）**: haptics・notification(local)・
   share・file picker・url launcher・key-value storage・secure storage・biometric(local auth)・device info。
+  （当初 clipboard を含めていたが、ADR-0097 の編集境界と重複するため上記境界で除外した。）
 - **wave-2（ストリーム型／query ＋ 状態変化イベントの連続供給）**: battery・connectivity・geolocation・
   sensors。これらは event/stream 契約が要り、プロジェクト固有のイベント経路（`DeliverySink`/poll・
   ADR-0117）に乗せるか別契約にするかが独立した設計分岐。今 stub すると形を誤る確率が高いので wave-2 へ。
