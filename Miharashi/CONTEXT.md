@@ -1,0 +1,39 @@
+# Miharashi Glossary
+
+**Miharashi（見晴らし）** は、Tsubame アプリを端末上でプレビューする**フレームワーク非依存の dev-client**である。語の二重性は世界観に沿う — 「風（Hayate＝疾風）に乗って舞う鳥（フレームワーク）の飛翔を見渡す高台」であり、同時に文字通りの "Viewer"。鳥（フレームワーク）でも風（基盤）でもない第三カテゴリの**道具**。
+
+> 語彙の正本。各語が**何であるか**を定義する。実装の仕組み・決定は各 ADR に置き、ここには書かない。
+
+## Core Terms
+
+**Miharashi（見晴らし）**:
+事前ビルド済みのネイティブホストに、Tsubame Adapter の JS バンドルをネットワーク経由で流し込んで実行・プレビューする dev-client App。フレームワーク非依存で、solid / react / vue のいずれのアプリも*別のバンドル*として同一ホストで動かす。Expo Go と同じ立ち位置（ホストは再ビルドせず、バンドルだけ差し替える）。
+_Avoid_: Tsubame Viewer（Tsubame context の一部だと誤読される）, フレームワーク, ランタイム, example ギャラリー
+
+**Host（Miharashi ホスト）**:
+端末側に常駐する事前ビルド済みシェル。JS エンジン（Hermes）・ネイティブ Hayate・`RawHayate` ブリッジ・frame clock（host bootstrap）だけを提供し、**フレームワークも `@tsubame/renderer-canvas` も持たない**。ADR-0112 の `hayate-adapter-android` cdylib 能力を*再利用*する（複製しない）。
+_Avoid_: フレームワークをホストに焼き込む設計, renderer-canvas をホスト側に置く設計
+
+**App Bundle（アプリバンドル）**:
+Miharashi に流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid / react / vue ランタイム）＋ `@tsubame/renderer-canvas` を 1 つにまとめたもの。ホストは中身のフレームワークを解さず、`RawHayate` を満たす JS として実行するだけ。Hayabusa（WASM／ネイティブ）はバンドル対象外（dev-client で配って実行する形が iOS で原理的に成立しない）。
+_Avoid_: フレームワークをバンドルから除く設計, Hayabusa バンドル, `.hbc` 固定（配信形式は別決定）
+
+**Dev Server**:
+開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
+_Avoid_: ホスト側に FW 固有 fast-refresh を持たせる設計
+
+**Protocol Version**:
+App Bundle 内の `@tsubame/renderer-canvas` が内包する wire 定数のバージョンと、ホストに焼き込まれたネイティブ decoder のバージョンの整合トークン。バンドルに埋め、Miharashi 起動時に突き合わせ、不一致は明示エラーにする（Expo Go の "SDK version" 整合と同型）。
+_Avoid_: 無検査での流し込み, decoder の暗黙後方互換前提
+
+**Reload**:
+バンドル変更を端末に反映する仕組み。暫定は **full reload**（バンドル全体を取り直し JS ランタイムを再構築、state は飛ぶ）で全 FW に一様に効く。目標は **HMR**（差分モジュール差し替え・state 維持）だが、FW 固有 fast-refresh はバンドル側に置き、ホストのネイティブ契約は full reload／HMR で不変。
+_Avoid_: ホスト側 HMR ランタイム, Hayabusa の "Hot Reload"（別 context の別語）
+
+## Related Contexts
+
+**Hayate**:
+Miharashi のネイティブ実行基盤。Miharashi ホストは Hayate のネイティブ runtime（ADR-0112 の Hermes 埋め込み＋ `RawHayate` ブリッジ cdylib 能力）に依存する。
+
+**Tsubame**:
+Miharashi が消費する対象。App Bundle は Tsubame Adapter ＋ `@tsubame/renderer-canvas` を内包する。Miharashi は Tsubame の renderer パッケージには属さない App（合成ルート）である（ADR-0004）。
