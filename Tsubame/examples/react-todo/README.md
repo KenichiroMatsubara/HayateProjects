@@ -6,6 +6,14 @@ Tsubame Renderer Protocol 経由で **DOM Renderer** に流し、素の TODO を
 `examples/todo`（SolidJS 版・Canvas/DOM 両対応の大きめのデモ）と対になる、React 経路の
 最小サンプル。Hayate（WASM/Canvas）は使わず DOM Renderer のみを使う。
 
+## デプロイ（GitHub Pages）
+
+`main` への push で `.github/workflows/deploy-pages.yml` が走り、Solid 版は Pages の
+ルートに、本 React 版は **`/react/` サブパス**に同梱されて公開される。
+
+- Solid 版: https://kenichiromatsubara.github.io/HayateProjects/
+- React 版: https://kenichiromatsubara.github.io/HayateProjects/react/
+
 ## 動かす
 
 ワークスペースの Tsubame パッケージをビルドしてから dev サーバを起動する

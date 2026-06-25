@@ -70,6 +70,19 @@ jobs:
           VITE_BASE: /HayateProjects/
         run: pnpm --filter @tsubame/example-todo run build
 
+      - name: Build Tsubame React Todo example
+        # React 版（tsubame-react）デモは Pages の /react/ サブパスに同梱する。
+        # base はサブパスに合わせる（todo と同じく VITE_BASE 経由）。
+        env:
+          VITE_BASE: /HayateProjects/react/
+        run: pnpm --filter @tsubame/example-react-todo run build
+
+      - name: Assemble Pages site (todo at root, react-todo under /react)
+        # Solid 版を root、React 版を /react/ に置いた単一の成果物へまとめる。
+        run: |
+          mkdir -p Tsubame/examples/todo/dist/react
+          cp -r Tsubame/examples/react-todo/dist/. Tsubame/examples/todo/dist/react/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
