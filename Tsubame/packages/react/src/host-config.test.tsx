@@ -233,6 +233,93 @@ describe('@tsubame/react element vocabulary (TSX typing, react-jsx)', () => {
   });
 });
 
+describe('@tsubame/react style channels (IRenderer boundary, ADR-0008)', () => {
+  it('records the base style as setStyle', () => {
+    // backgroundColor / width はどちらも text-local ではないので view にそのまま適用される。
+    const { calls } = mount(<view style={{ width: 120, backgroundColor: '#222' }} />);
+    const kinds = kindById(calls);
+
+    // root view は style を持たない。style を運ぶ <view/> の setStyle だけが記録される。
+    const styled = only(calls, 'setStyle');
+    expect(styled).toHaveLength(1);
+    expect(kinds.get(styled[0]!.id)).toBe('view');
+    expect(styled[0]!.style).toEqual({ width: 120, backgroundColor: '#222' });
+  });
+
+  it('splits :hover / :active / :focus blocks into setPseudoStyle', () => {
+    // base は setStyle、擬似クラスブロックは setPseudoStyle に分解される（splitHayateStyle）。
+    const { calls } = mount(
+      <view
+        style={{
+          width: 100,
+          ':hover': { backgroundColor: '#333' },
+          ':active': { backgroundColor: '#444' },
+          ':focus': { backgroundColor: '#555' },
+        }}
+      />,
+    );
+    const kinds = kindById(calls);
+
+    const base = only(calls, 'setStyle');
+    expect(base).toHaveLength(1);
+    expect(base[0]!.style).toEqual({ width: 100 });
+    const styledId = base[0]!.id;
+    expect(kinds.get(styledId)).toBe('view');
+
+    const pseudo = only(calls, 'setPseudoStyle').filter((c) => c.id === styledId);
+    expect(pseudo).toEqual([
+      { method: 'setPseudoStyle', id: styledId, pseudo: ':hover', style: { backgroundColor: '#333' } },
+      { method: 'setPseudoStyle', id: styledId, pseudo: ':active', style: { backgroundColor: '#444' } },
+      { method: 'setPseudoStyle', id: styledId, pseudo: ':focus', style: { backgroundColor: '#555' } },
+    ]);
+  });
+
+  it('forwards each styleVariants entry to setStyleVariant (ADR-0081)', () => {
+    const { calls } = mount(
+      <view
+        styleVariants={[
+          { condition: { maxWidth: 720 }, style: { flexDirection: 'column' } },
+          { condition: { minWidth: 1100 }, style: { gap: 24 } },
+        ]}
+      />,
+    );
+    const kinds = kindById(calls);
+
+    const variants = only(calls, 'setStyleVariant');
+    expect(variants).toHaveLength(2);
+    const styledId = variants[0]!.id;
+    expect(kinds.get(styledId)).toBe('view');
+    expect(variants).toEqual([
+      {
+        method: 'setStyleVariant',
+        id: styledId,
+        condition: { maxWidth: 720 },
+        style: { flexDirection: 'column' },
+      },
+      {
+        method: 'setStyleVariant',
+        id: styledId,
+        condition: { minWidth: 1100 },
+        style: { gap: 24 },
+      },
+    ]);
+  });
+
+  it('applies style to text elements (ADR-0058: text も Hayate element)', () => {
+    // color / fontSize は text-local だが text は carrier なのでそのまま適用される。
+    const { calls } = mount(<text style={{ color: '#4fd1c5', fontSize: 22 }}>hi</text>);
+    const kinds = kindById(calls);
+
+    // ラベル "hi" を内包する <text> ラッパー element に style が乗る。
+    const wrapperId = wrapperIdFor(calls, 'hi')!;
+    expect(kinds.get(wrapperId)).toBe('text');
+
+    const styled = only(calls, 'setStyle').filter((c) => c.id === wrapperId);
+    expect(styled).toHaveLength(1);
+    expect(styled[0]!.style).toEqual({ color: '#4fd1c5', fontSize: 22 });
+  });
+});
+
 describe('@tsubame/react renderTsubame lifecycle', () => {
   it('mounts the root view and returns a dispose that tears down the tree', () => {
     const recorder = new RecordingRenderer();
