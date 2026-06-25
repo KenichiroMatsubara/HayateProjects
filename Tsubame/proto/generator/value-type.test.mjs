@@ -52,6 +52,16 @@ describe('classify', () => {
     expect(classify(tag)).toEqual({ type: 'shadowList' });
   });
 
+  it('derives grid placement from encodeFrom and grid_placement param', () => {
+    const tag = sampleTag('grid-placement', [['placement', 'grid_placement']]);
+    expect(classify(tag)).toEqual({ type: 'gridPlacement' });
+  });
+
+  it('requires a grid_placement param for grid-placement', () => {
+    const tag = sampleTag('grid-placement', [['placement', 'u32']]);
+    expect(() => classify(tag)).toThrow(/grid_placement/);
+  });
+
   it('requires variable_length for shadow-list', () => {
     const tag = sampleTag('shadow-list', [['shadows', 'shadow']], false);
     expect(() => classify(tag)).toThrow(/variable_length/);
@@ -75,6 +85,7 @@ describe('wireKind', () => {
     expect(wireKind({ type: 'shadowList' })).toBe('shadowList');
     expect(wireKind({ type: 'fontFamily' })).toBe('fontFamily');
     expect(wireKind({ type: 'zIndex' })).toBe('zIndex');
+    expect(wireKind({ type: 'gridPlacement' })).toBe('gridPlacement');
     expect(wireKind({ type: 'enum', kind: 'display' })).toBe('display');
     expect(wireKind({ type: 'enum', kind: 'flex_direction' })).toBe('flexDirection');
   });
@@ -97,6 +108,7 @@ describe('tsType', () => {
     expect(tsType({ type: 'shadowList' })).toBe('HayateShadow[]');
     expect(tsType({ type: 'fontFamily' })).toBe('string');
     expect(tsType({ type: 'zIndex' })).toBe('number');
+    expect(tsType({ type: 'gridPlacement' })).toBe('HayateGridPlacement');
     expect(tsType({ type: 'enum', kind: 'display' })).toBe('Display');
     expect(tsType({ type: 'enum', kind: 'flex_direction' })).toBe('FlexDirection');
   });

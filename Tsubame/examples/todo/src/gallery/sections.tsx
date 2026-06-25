@@ -91,10 +91,19 @@ function autoFlowItems(color: string) {
 }
 
 /**
- * grid-column span デモ（#493）: 3 列グリッドで先頭アイテムだけ 2 列ぶん跨がせる。
- * 跨ぐ列数・トラックサイズはインラインのマジックナンバーにせず名前付き定数にする。
+ * grid-column / grid-row 明示配置デモ（#495）: 3 列 × 2 行グリッドで、1 つ目を
+ * 2 列目から 2 列ぶん跨がせ（gridColumn: 2 / span 2）、2 つ目を明示セル
+ * （gridColumn: 1, gridRow: 2）に置く。トラックサイズ・配置値はインラインの
+ * マジックナンバーにせず名前付き定数にする。
  */
-const GRID_COLUMN_SPAN_DEMO = { track: 26, gap: 4, span: 2 } as const;
+const GRID_PLACEMENT_DEMO = {
+  track: 24,
+  gap: 4,
+  columnStart: 2,
+  columnSpan: 2,
+  cellColumn: 1,
+  cellRow: 2,
+} as const;
 
 /**
  * justify-items / justify-self デモ（#494）: セル（track）より小さいアイテム
@@ -622,28 +631,40 @@ export function buildSections(p: Palette): readonly GallerySection[] {
           },
         },
         {
-          title: 'gridColumnSpan',
-          properties: ['gridColumnSpan'],
-          note: 'an item spans multiple column tracks',
+          title: 'gridColumn / gridRow',
+          properties: ['gridColumn', 'gridRow'],
+          note: 'place an item in explicit grid cells (line / span)',
           render: () => (
             <view style={{
               display: 'grid',
               gridTemplateColumns: [
-                `${GRID_COLUMN_SPAN_DEMO.track}px`,
-                `${GRID_COLUMN_SPAN_DEMO.track}px`,
-                `${GRID_COLUMN_SPAN_DEMO.track}px`,
+                `${GRID_PLACEMENT_DEMO.track}px`,
+                `${GRID_PLACEMENT_DEMO.track}px`,
+                `${GRID_PLACEMENT_DEMO.track}px`,
               ],
-              gridAutoRows: [`${GRID_COLUMN_SPAN_DEMO.track}px`],
-              gap: GRID_COLUMN_SPAN_DEMO.gap,
+              gridTemplateRows: [
+                `${GRID_PLACEMENT_DEMO.track}px`,
+                `${GRID_PLACEMENT_DEMO.track}px`,
+              ],
+              gap: GRID_PLACEMENT_DEMO.gap,
               padding: 6,
               backgroundColor: p.panel2,
               borderRadius: 8,
               alignSelf: 'flex-start',
             }}>
-              {/* 先頭だけ 2 列ぶん跨ぐ。残りは暗黙トラックへ流れる。 */}
-              <view style={{ gridColumnSpan: GRID_COLUMN_SPAN_DEMO.span, backgroundColor: p.accent, borderRadius: 4 }} />
-              <view style={{ backgroundColor: p.success, borderRadius: 4 }} />
-              <view style={{ backgroundColor: p.success, borderRadius: 4 }} />
+              {/* 上段: 2 列目から 2 列ぶん跨ぐ（gridColumn: 2 / span 2）。 */}
+              <view style={{
+                gridColumn: { start: GRID_PLACEMENT_DEMO.columnStart, end: { span: GRID_PLACEMENT_DEMO.columnSpan } },
+                backgroundColor: p.accent,
+                borderRadius: 4,
+              }} />
+              {/* 下段左: 明示セルに置く（gridColumn: 1, gridRow: 2）。 */}
+              <view style={{
+                gridColumn: { start: GRID_PLACEMENT_DEMO.cellColumn },
+                gridRow: { start: GRID_PLACEMENT_DEMO.cellRow },
+                backgroundColor: p.success,
+                borderRadius: 4,
+              }} />
             </view>
           ),
         },

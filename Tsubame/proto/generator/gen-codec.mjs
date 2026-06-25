@@ -135,6 +135,27 @@ function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.min(1, Math.max(0, value));
 }
+
+/**
+ * grid-placement の1スロット（start または end）を [種別タグ, 整数] の2 wire
+ * スロットへ符号化する。\`auto\`/undefined は \`[0, 0]\`、line(整数) は \`[1, n]\`、
+ * span は \`{ span: n }\` → \`[2, n]\`。
+ */
+export function encodeGridLine(out: number[], key: string, line: unknown): void {
+  if (line === undefined || line === null || line === 'auto') {
+    out.push(0, 0);
+    return;
+  }
+  if (typeof line === 'number') {
+    out.push(1, finiteInteger(key, line));
+    return;
+  }
+  if (typeof line === 'object' && 'span' in (line as Record<string, unknown>)) {
+    out.push(2, finiteInteger(\`\${key}.span\`, (line as { span: unknown }).span));
+    return;
+  }
+  throw new Error(\`CanvasRenderer: unsupported grid placement for "\${key}"\`);
+}
 `.trim();
 }
 

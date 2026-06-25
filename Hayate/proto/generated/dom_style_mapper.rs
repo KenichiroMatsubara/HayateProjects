@@ -369,8 +369,8 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             };
             out.push(("grid-auto-flow".into(), s.into()));
         }
-        StyleProp::GridColumnSpan(v) => {
-            out.push(("grid-column".into(), format!("span {}", v)));
+        StyleProp::GridColumn(ref p) => {
+            out.push(("grid-column".into(), format!("{} / {}", p.start.to_css(), p.end.to_css())));
         }
         StyleProp::JustifyItems(v) => {
             let s = match v {
@@ -390,6 +390,9 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
             JustifySelfValue::Stretch => "stretch",
             };
             out.push(("justify-self".into(), s.into()));
+        }
+        StyleProp::GridRow(ref p) => {
+            out.push(("grid-row".into(), format!("{} / {}", p.start.to_css(), p.end.to_css())));
         }
     }
 }

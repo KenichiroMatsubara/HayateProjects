@@ -115,9 +115,10 @@ pub const TAG_BOX_SIZING: u32 = 59;
 pub const TAG_GRID_AUTO_ROWS: u32 = 60;
 pub const TAG_GRID_AUTO_COLUMNS: u32 = 61;
 pub const TAG_GRID_AUTO_FLOW: u32 = 62;
-pub const TAG_GRID_COLUMN_SPAN: u32 = 63;
+pub const TAG_GRID_COLUMN: u32 = 63;
 pub const TAG_JUSTIFY_ITEMS: u32 = 64;
 pub const TAG_JUSTIFY_SELF: u32 = 65;
+pub const TAG_GRID_ROW: u32 = 66;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -674,14 +675,23 @@ pub enum StyleTag {
     GridAutoFlow {
         value: f32,
     },
-    GridColumnSpan {
-        value: f32,
+    GridColumn {
+        placement_start_kind: f32,
+        placement_start_value: f32,
+        placement_end_kind: f32,
+        placement_end_value: f32,
     },
     JustifyItems {
         value: f32,
     },
     JustifySelf {
         value: f32,
+    },
+    GridRow {
+        placement_start_kind: f32,
+        placement_start_value: f32,
+        placement_end_kind: f32,
+        placement_end_value: f32,
     },
 }
 
@@ -1084,9 +1094,12 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             Ok((StyleTag::GridAutoFlow { value }, i + 1))
         }
         63 => {
-            if i + 1 > packed.len() { return Err("style tag GRID_COLUMN_SPAN truncated"); }
-            let value = packed[i + 0];
-            Ok((StyleTag::GridColumnSpan { value }, i + 1))
+            if i + 4 > packed.len() { return Err("style tag GRID_COLUMN truncated"); }
+            let placement_start_kind = packed[i + 0];
+            let placement_start_value = packed[i + 1];
+            let placement_end_kind = packed[i + 2];
+            let placement_end_value = packed[i + 3];
+            Ok((StyleTag::GridColumn { placement_start_kind, placement_start_value, placement_end_kind, placement_end_value }, i + 4))
         }
         64 => {
             if i + 1 > packed.len() { return Err("style tag JUSTIFY_ITEMS truncated"); }
@@ -1098,6 +1111,14 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::JustifySelf { value }, i + 1))
         }
+        66 => {
+            if i + 4 > packed.len() { return Err("style tag GRID_ROW truncated"); }
+            let placement_start_kind = packed[i + 0];
+            let placement_start_value = packed[i + 1];
+            let placement_end_kind = packed[i + 2];
+            let placement_end_value = packed[i + 3];
+            Ok((StyleTag::GridRow { placement_start_kind, placement_start_value, placement_end_kind, placement_end_value }, i + 4))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -1107,7 +1128,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, GridLineValue, GridPlacementValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
 };
 
@@ -1393,9 +1414,10 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
         StyleTag::GridAutoRows { tracks } => StyleProp::GridAutoRows(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
         StyleTag::GridAutoColumns { tracks } => StyleProp::GridAutoColumns(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
         StyleTag::GridAutoFlow { value } => StyleProp::GridAutoFlow(codec_grid_auto_flow(value)),
-        StyleTag::GridColumnSpan { value } => StyleProp::GridColumnSpan(value as u32),
+        StyleTag::GridColumn { placement_start_kind, placement_start_value, placement_end_kind, placement_end_value } => StyleProp::GridColumn(GridPlacementValue { start: GridLineValue::from_wire(placement_start_kind, placement_start_value), end: GridLineValue::from_wire(placement_end_kind, placement_end_value) }),
         StyleTag::JustifyItems { value } => StyleProp::JustifyItems(codec_justify_items(value)),
         StyleTag::JustifySelf { value } => StyleProp::JustifySelf(codec_justify_self(value)),
+        StyleTag::GridRow { placement_start_kind, placement_start_value, placement_end_kind, placement_end_value } => StyleProp::GridRow(GridPlacementValue { start: GridLineValue::from_wire(placement_start_kind, placement_start_value), end: GridLineValue::from_wire(placement_end_kind, placement_end_value) }),
     })
 }
 

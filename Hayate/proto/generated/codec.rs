@@ -622,9 +622,12 @@ buf.push(encode_dim_unit(d.unit));
                 buf.push(TAG_GRID_AUTO_FLOW as f32);
                 buf.push(encode_grid_auto_flow(*v));
             }
-            StyleProp::GridColumnSpan(v) => {
-                buf.push(TAG_GRID_COLUMN_SPAN as f32);
-                buf.push(*v as f32);
+            StyleProp::GridColumn(p) => {
+                buf.push(TAG_GRID_COLUMN as f32);
+                buf.push(p.start.wire_kind());
+                buf.push(p.start.wire_value());
+                buf.push(p.end.wire_kind());
+                buf.push(p.end.wire_value());
             }
             StyleProp::JustifyItems(v) => {
                 buf.push(TAG_JUSTIFY_ITEMS as f32);
@@ -633,6 +636,13 @@ buf.push(encode_dim_unit(d.unit));
             StyleProp::JustifySelf(v) => {
                 buf.push(TAG_JUSTIFY_SELF as f32);
                 buf.push(encode_justify_self(*v));
+            }
+            StyleProp::GridRow(p) => {
+                buf.push(TAG_GRID_ROW as f32);
+                buf.push(p.start.wire_kind());
+                buf.push(p.start.wire_value());
+                buf.push(p.end.wire_kind());
+                buf.push(p.end.wire_value());
             }
         }
     }

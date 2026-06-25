@@ -262,3 +262,42 @@ fn justify_alignment_props_are_layout_props() {
     assert!(StyleProp::JustifyItems(hayate_core::JustifyItemsValue::Center).is_layout());
     assert!(StyleProp::JustifySelf(hayate_core::JustifySelfValue::End).is_layout());
 }
+
+#[test]
+fn grid_column_maps_start_and_end_to_taffy_line() {
+    use hayate_core::{GridLineValue, GridPlacementValue};
+
+    // grid-column: 2 / span 2 → start は明示線、end は span。auto は Taffy の Auto。
+    let mut style = Style::default();
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::GridColumn(GridPlacementValue::new(
+            GridLineValue::Line(2),
+            GridLineValue::Span(2),
+        )),
+    ));
+    assert_eq!(style.grid_column.start, line(2));
+    assert_eq!(style.grid_column.end, GridPlacement::Span(2));
+}
+
+#[test]
+fn grid_row_span_maps_to_taffy_line_with_auto_end() {
+    use hayate_core::GridPlacementValue;
+
+    // grid-row: span 3 → start=Span(3), end=Auto（コンストラクタの既定）。
+    let mut style = Style::default();
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::GridRow(GridPlacementValue::span(3)),
+    ));
+    assert_eq!(style.grid_row.start, GridPlacement::Span(3));
+    assert_eq!(style.grid_row.end, GridPlacement::Auto);
+}
+
+#[test]
+fn grid_placement_props_are_layout_props() {
+    // 明示配置はレイアウト系なので Taffy へ流れる（Visual には入らない）。
+    use hayate_core::GridPlacementValue;
+    assert!(StyleProp::GridColumn(GridPlacementValue::line(2)).is_layout());
+    assert!(StyleProp::GridRow(GridPlacementValue::span(2)).is_layout());
+}

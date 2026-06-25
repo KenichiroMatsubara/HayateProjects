@@ -1,5 +1,6 @@
 use hayate_core::{
-    Color, Dimension, DisplayValue, ElementKind, ElementTree, GridAutoFlowValue, StyleProp,
+    Color, Dimension, DisplayValue, ElementKind, ElementTree, GridAutoFlowValue,
+    GridPlacementValue, StyleProp,
 };
 
 /// dense 詰めの差を観測するため、span-2 アイテムで穴を作る。3 列グリッドに span-2 を
@@ -32,7 +33,7 @@ fn third_item_origin_with_spans(flow: GridAutoFlowValue) -> (f32, f32) {
         tree.element_append_child(root, item);
         let mut style = vec![StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))];
         if i < 2 {
-            style.push(StyleProp::GridColumnSpan(2));
+            style.push(StyleProp::GridColumn(GridPlacementValue::span(2)));
         }
         tree.element_set_style(item, &style);
         items.push(item);

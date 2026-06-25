@@ -1032,19 +1032,19 @@
     }
   },
   {
-    "name": "GRID_COLUMN_SPAN",
+    "name": "GRID_COLUMN",
     "value": 63,
     "inherit": "none",
-    "encodeFrom": "u32",
+    "encodeFrom": "grid-placement",
     "params": [
       {
-        "name": "value",
-        "type": "u32"
+        "name": "placement",
+        "type": "grid_placement"
       }
     ],
     "domCss": {
       "property": "grid-column",
-      "format": "grid-span"
+      "format": "grid-placement"
     }
   },
   {
@@ -1077,6 +1077,22 @@
     "domCss": {
       "property": "justify-self",
       "format": "enum:justify_self"
+    }
+  },
+  {
+    "name": "GRID_ROW",
+    "value": 66,
+    "inherit": "none",
+    "encodeFrom": "grid-placement",
+    "params": [
+      {
+        "name": "placement",
+        "type": "grid_placement"
+      }
+    ],
+    "domCss": {
+      "property": "grid-row",
+      "format": "grid-placement"
     }
   }
 ]

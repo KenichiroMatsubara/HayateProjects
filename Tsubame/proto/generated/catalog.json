@@ -843,11 +843,11 @@
     }
   },
   {
-    "patchKey": "gridColumnSpan",
+    "patchKey": "gridColumn",
     "tag": 63,
     "unsetKind": null,
-    "wireKind": "u32",
-    "domFormat": "grid-span",
+    "wireKind": "gridPlacement",
+    "domFormat": "grid-placement",
     "cssName": "gridColumn",
     "cssProperty": "grid-column",
     "targets": [
@@ -876,6 +876,19 @@
     "domFormat": "enum",
     "cssName": "justifySelf",
     "cssProperty": "justify-self",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gridRow",
+    "tag": 66,
+    "unsetKind": null,
+    "wireKind": "gridPlacement",
+    "domFormat": "grid-placement",
+    "cssName": "gridRow",
+    "cssProperty": "grid-row",
     "targets": [
       "packet",
       "css"
