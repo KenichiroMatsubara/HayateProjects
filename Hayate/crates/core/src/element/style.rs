@@ -274,6 +274,91 @@ pub enum GridAutoFlowValue {
     ColumnDense,
 }
 
+/// Grid アイテムの1軸ぶんの配置端（CSS `grid-column` / `grid-row` の start/end の
+/// 片側、ADR は #495 で確立）。
+///
+/// `Auto` は自動配置に委ねる。`Line(i)` は明示グリッド線 `i`（1 始まり、負値は
+/// 末尾から数える）に置く。`Span(n)` は `n` トラックぶん占有する。レイアウト系の
+/// 値型なので解決後の `Visual` には入らず Taffy の `GridPlacement` へ流れる。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GridLineValue {
+    Auto,
+    Line(i32),
+    Span(u32),
+}
+
+impl GridLineValue {
+    /// 種別タグの wire 値（`0=auto` / `1=line` / `2=span`）。
+    pub fn wire_kind(self) -> f32 {
+        match self {
+            GridLineValue::Auto => 0.0,
+            GridLineValue::Line(_) => 1.0,
+            GridLineValue::Span(_) => 2.0,
+        }
+    }
+
+    /// 整数ペイロードの wire 値（`auto` は 0）。
+    pub fn wire_value(self) -> f32 {
+        match self {
+            GridLineValue::Auto => 0.0,
+            GridLineValue::Line(n) => n as f32,
+            GridLineValue::Span(n) => n as f32,
+        }
+    }
+
+    /// wire の `(種別タグ, 整数)` ペアから復元する。未知タグは `Auto`。
+    pub fn from_wire(kind: f32, value: f32) -> Self {
+        match kind as u32 {
+            1 => GridLineValue::Line(value as i32),
+            2 => GridLineValue::Span(value as u32),
+            _ => GridLineValue::Auto,
+        }
+    }
+
+    /// CSS `grid-column` / `grid-row` 端の文字列形（`auto` / `2` / `span 2`）。
+    pub fn to_css(self) -> String {
+        match self {
+            GridLineValue::Auto => "auto".to_string(),
+            GridLineValue::Line(n) => n.to_string(),
+            GridLineValue::Span(n) => format!("span {n}"),
+        }
+    }
+}
+
+/// Grid アイテムの1軸ぶんの配置（CSS `grid-column` / `grid-row`、ADR は #495 で
+/// 確立）。`start` / `end` の2スロットを持ち、各々 `auto` / `line` / `span`。
+/// レイアウト系なので Taffy の `grid_column` / `grid_row`（`Line`）へ流れる。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GridPlacementValue {
+    pub start: GridLineValue,
+    pub end: GridLineValue,
+}
+
+impl GridPlacementValue {
+    /// `start` だけを指定し `end` は `auto` にする（CSS `grid-column: <start>`）。
+    pub fn start(start: GridLineValue) -> Self {
+        Self {
+            start,
+            end: GridLineValue::Auto,
+        }
+    }
+
+    /// `<start> / <end>` の両端指定。
+    pub fn new(start: GridLineValue, end: GridLineValue) -> Self {
+        Self { start, end }
+    }
+
+    /// 明示線 `i` から開始（CSS `grid-column: i`）。
+    pub fn line(i: i32) -> Self {
+        Self::start(GridLineValue::Line(i))
+    }
+
+    /// `n` トラックぶん占有（CSS `grid-column: span n`）。
+    pub fn span(n: u32) -> Self {
+        Self::start(GridLineValue::Span(n))
+    }
+}
+
 /// Grid セル内のインライン軸（既定では水平）でのアイテム整列のコンテナ既定
 /// （CSS `justify-items`、ADR は #494 で確立）。
 ///
@@ -377,8 +462,9 @@ pub enum StyleProp {
     GridAutoColumns(Vec<Dimension>),
     // grid の自動配置方向・詰め方
     GridAutoFlow(GridAutoFlowValue),
-    // grid アイテムが跨ぐ列トラック数（CSS `grid-column: span N`）
-    GridColumnSpan(u32),
+    // grid アイテムの明示配置（CSS `grid-column` / `grid-row`）
+    GridColumn(GridPlacementValue),
+    GridRow(GridPlacementValue),
     // grid セル内のインライン軸整列（コンテナ既定／アイテム上書き）
     JustifyItems(JustifyItemsValue),
     JustifySelf(JustifySelfValue),
@@ -433,7 +519,8 @@ impl StyleProp {
                 | Self::GridAutoRows(_)
                 | Self::GridAutoColumns(_)
                 | Self::GridAutoFlow(_)
-                | Self::GridColumnSpan(_)
+                | Self::GridColumn(_)
+                | Self::GridRow(_)
                 | Self::JustifyItems(_)
                 | Self::JustifySelf(_)
         )

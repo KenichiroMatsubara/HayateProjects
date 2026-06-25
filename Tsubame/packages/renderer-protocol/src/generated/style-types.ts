@@ -1,7 +1,7 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
 // 生成元: @hayate/protocol-spec
 
-import type { HayateDimension, HayateShadow } from '../style-primitives.js';
+import type { HayateDimension, HayateGridPlacement, HayateShadow } from '../style-primitives.js';
 
 export type Display = 'flex' | 'grid' | 'block' | 'none';
 export type FlexDirection = 'row' | 'column' | 'row-reverse' | 'column-reverse';
@@ -87,9 +87,10 @@ export interface HayateStyle {
   gridAutoRows: HayateDimension[];
   gridAutoColumns: HayateDimension[];
   gridAutoFlow: GridAutoFlow;
-  gridColumnSpan: number;
+  gridColumn: HayateGridPlacement;
   justifyItems: JustifyItems;
   justifySelf: JustifySelf;
+  gridRow: HayateGridPlacement;
 }
 
 /**

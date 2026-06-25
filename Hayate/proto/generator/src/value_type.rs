@@ -15,6 +15,9 @@ pub(crate) enum ValueType {
     ShadowList,
     FontFamily,
     ZIndex,
+    /// Grid アイテム配置（`grid-column` / `grid-row`）。start/end の2スロット、各々
+    /// `auto`/`line`/`span` の種別タグ + 整数の計4 f32 wire スロット（ADR は #495）。
+    GridPlacement,
 }
 
 impl ValueType {
@@ -70,6 +73,15 @@ impl ValueType {
                 );
                 ValueType::ZIndex
             }
+            "grid-placement" => {
+                assert_eq!(
+                    primary_param,
+                    Some("grid_placement"),
+                    "grid-placement tag {} requires grid_placement param",
+                    tag.name
+                );
+                ValueType::GridPlacement
+            }
             s if s.starts_with("enum:") => {
                 let kind = &s["enum:".len()..];
                 ValueType::Enum(enum_kind_to_static(kind))
@@ -95,6 +107,7 @@ impl ValueType {
             ValueType::ShadowList => "(shadows)",
             ValueType::FontFamily => "(f)",
             ValueType::ZIndex => "(z)",
+            ValueType::GridPlacement => "(p)",
         }
     }
 
@@ -139,6 +152,14 @@ impl ValueType {
                 }\n"
                 .to_string(),
             ValueType::ZIndex => "                buf.push(*z as f32);\n".to_string(),
+            ValueType::GridPlacement => [
+                "                buf.push(p.start.wire_kind());",
+                "                buf.push(p.start.wire_value());",
+                "                buf.push(p.end.wire_kind());",
+                "                buf.push(p.end.wire_value());",
+                "",
+            ]
+            .join("\n"),
         }
     }
 
@@ -164,6 +185,14 @@ impl ValueType {
             }
             ValueType::FontFamily => "family".to_string(),
             ValueType::ZIndex => "value as i32".to_string(),
+            ValueType::GridPlacement => {
+                let name = &params[0].name;
+                format!(
+                    "GridPlacementValue {{ \
+                     start: GridLineValue::from_wire({name}_start_kind, {name}_start_value), \
+                     end: GridLineValue::from_wire({name}_end_kind, {name}_end_value) }}"
+                )
+            }
         }
     }
 
@@ -176,6 +205,7 @@ impl ValueType {
             ValueType::ShadowList => ("(ref shadows)".to_string(), "shadows"),
             ValueType::FontFamily => ("(ref f)".to_string(), "f"),
             ValueType::ZIndex => ("(z)".to_string(), "z"),
+            ValueType::GridPlacement => ("(ref p)".to_string(), "p"),
         }
     }
 
@@ -220,21 +250,13 @@ impl ValueType {
                 }
                 other => panic!("Scalar tag domCss.format must be px, ms or number, got {other}"),
             },
-            ValueType::U32 => match dom.format.as_str() {
-                // grid-column の span 記法（`grid-column: span N`）。extras は持たない。
-                "grid-span" => {
-                    lines.push(format!(
-                        "out.push((\"{css_prop}\".into(), format!(\"span {{}}\", {value_var})));"
-                    ));
-                }
-                _ => {
-                    // `w` is consumed by the shared `extras` loop below (whenPositive/whenZero).
-                    lines.push(format!("let w = {value_var} as f32;"));
-                    lines.push(format!(
-                        "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {value_var})));"
-                    ));
-                }
-            },
+            ValueType::U32 => {
+                // `w` is consumed by the shared `extras` loop below (whenPositive/whenZero).
+                lines.push(format!("let w = {value_var} as f32;"));
+                lines.push(format!(
+                    "out.push((\"{css_prop}\".into(), format!(\"{{}}\", {value_var})));"
+                ));
+            }
             ValueType::ZIndex => {
                 lines.push(format!(
                     "out.push((\"{css_prop}\".into(), {value_var}.to_string()));"
@@ -271,6 +293,11 @@ impl ValueType {
             }
             ValueType::Enum(kind) => {
                 lines.push(enum_css_collect(css_prop, value_var, kind));
+            }
+            ValueType::GridPlacement => {
+                lines.push(format!(
+                    "out.push((\"{css_prop}\".into(), format!(\"{{}} / {{}}\", {value_var}.start.to_css(), {value_var}.end.to_css())));"
+                ));
             }
         }
 

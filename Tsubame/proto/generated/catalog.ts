@@ -3,8 +3,8 @@
 
 import type { HayateDimension, HayateShadow } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'justifyItems' | 'justifySelf' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
-export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string' | 'grid-span';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'justifyItems' | 'justifySelf' | 'gridPlacement' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
+export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string' | 'grid-placement';
 
 export interface DomExtra {
   readonly cssName: string;
@@ -873,11 +873,11 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     }
   },
   {
-    "patchKey": "gridColumnSpan",
+    "patchKey": "gridColumn",
     "tag": 63,
     "unsetKind": null,
-    "wireKind": "u32",
-    "domFormat": "grid-span",
+    "wireKind": "gridPlacement",
+    "domFormat": "grid-placement",
     "cssName": "gridColumn",
     "cssProperty": "grid-column",
     "targets": [
@@ -906,6 +906,19 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "domFormat": "enum",
     "cssName": "justifySelf",
     "cssProperty": "justify-self",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "gridRow",
+    "tag": 66,
+    "unsetKind": null,
+    "wireKind": "gridPlacement",
+    "domFormat": "grid-placement",
+    "cssName": "gridRow",
+    "cssProperty": "grid-row",
     "targets": [
       "packet",
       "css"
@@ -962,6 +975,20 @@ function formatShadowList(value: unknown): string {
   return value.map((item) => formatShadow(item as HayateShadow)).join(", ");
 }
 
+function formatGridLine(line: unknown): string {
+  if (line === undefined || line === null || line === "auto") return "auto";
+  if (typeof line === "number") return String(line);
+  if (typeof line === "object" && "span" in (line as Record<string, unknown>)) {
+    return `span ${(line as { span: number }).span}`;
+  }
+  throw new Error("DOMRenderer: unsupported grid placement");
+}
+
+function formatGridPlacement(value: unknown): string {
+  const p = (value ?? {}) as { start?: unknown; end?: unknown };
+  return `${formatGridLine(p.start)} / ${formatGridLine(p.end)}`;
+}
+
 export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
   switch (entry.domFormat) {
     case "dimension":
@@ -974,8 +1001,8 @@ export function formatDomCSSValue(entry: CatalogEntry, value: unknown): string {
       return `${value}px`;
     case "ms":
       return `${value}ms`;
-    case "grid-span":
-      return `span ${value}`;
+    case "grid-placement":
+      return formatGridPlacement(value);
     case "enum":
       return entry.enumCss?.[value as string] ?? String(value);
     case "integer":

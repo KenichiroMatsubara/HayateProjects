@@ -37,6 +37,7 @@ const SAMPLES: Record<string, unknown> = {
   gridAutoFlow: "row-dense",
   justifyItems: "center",
   justifySelf: "end",
+  gridPlacement: { start: 2, end: { span: 2 } },
   f32: 0.75,
   u32: 2,
   zIndex: 10,
@@ -201,6 +202,23 @@ describe("hayate-css catalog parity", () => {
     expect(domCssForPatch(self).justifySelf).toBe("auto");
 
     expect(domCssForPatch({ justifySelf: "center" }).justifySelf).toBe("center");
+  });
+
+  it("grid-column / grid-row feed the packet and DOM CSS from one placement source (#495)", () => {
+    // start=line(2), end=span(2) を単一ソースとして両経路へ。Canvas は種別タグ+整数の
+    // パケット（[tag, 1, 2, 2, 2]）、DOM は同じ配置の CSS `2 / span 2` を受け取る。
+    const column = { gridColumn: { start: 2, end: { span: 2 } } } as StylePatch;
+    const out: number[] = [];
+    encodeStylePatch(column, out);
+    expect(out).toEqual([TAG.GRID_COLUMN, 1, 2, 2, 2]);
+    expect(domCssForPatch(column).gridColumn).toBe("2 / span 2");
+
+    // 省略した端は auto（自動配置）。span 単独は `span N / auto` に写る。
+    const row = { gridRow: { start: { span: 3 } } } as StylePatch;
+    const rowOut: number[] = [];
+    encodeStylePatch(row, rowOut);
+    expect(rowOut).toEqual([TAG.GRID_ROW, 2, 3, 0, 0]);
+    expect(domCssForPatch(row).gridRow).toBe("span 3 / auto");
   });
 
   it("ambient default* tags map to inheritable CSS properties (ADR-0070)", () => {

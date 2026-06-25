@@ -66,7 +66,7 @@ export function generateStyleTypes() {
     '// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと',
     '// 生成元: @hayate/protocol-spec',
     '',
-    "import type { HayateDimension, HayateShadow } from '../style-primitives.js';",
+    "import type { HayateDimension, HayateGridPlacement, HayateShadow } from '../style-primitives.js';",
     '',
     generateEnumTypes(proto),
     '',

@@ -91,9 +91,10 @@ export const TAG = {
   GRID_AUTO_ROWS: 60,
   GRID_AUTO_COLUMNS: 61,
   GRID_AUTO_FLOW: 62,
-  GRID_COLUMN_SPAN: 63,
+  GRID_COLUMN: 63,
   JUSTIFY_ITEMS: 64,
   JUSTIFY_SELF: 65,
+  GRID_ROW: 66,
 } as const;
 export type TAG = typeof TAG;
 

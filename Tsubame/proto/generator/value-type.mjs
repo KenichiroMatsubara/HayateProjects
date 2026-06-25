@@ -12,7 +12,8 @@ import { toCamelCase } from '@hayate/protocol-spec/load';
  * @typedef {{ type: 'shadowList' }} ShadowListValueType
  * @typedef {{ type: 'fontFamily' }} FontFamilyValueType
  * @typedef {{ type: 'zIndex' }} ZIndexValueType
- * @typedef {ColorValueType | DimensionValueType | ScalarValueType | U32ValueType | EnumValueType | DimensionListValueType | ShadowListValueType | FontFamilyValueType | ZIndexValueType} ValueType
+ * @typedef {{ type: 'gridPlacement' }} GridPlacementValueType
+ * @typedef {ColorValueType | DimensionValueType | ScalarValueType | U32ValueType | EnumValueType | DimensionListValueType | ShadowListValueType | FontFamilyValueType | ZIndexValueType | GridPlacementValueType} ValueType
  */
 
 const KNOWN_ENUM_KINDS = new Set([
@@ -93,6 +94,12 @@ export function classify(tag) {
       }
       return { type: 'zIndex' };
     }
+    case 'grid-placement': {
+      if (primaryParam !== 'grid_placement') {
+        throw new Error(`grid-placement tag ${tag.name} requires grid_placement param`);
+      }
+      return { type: 'gridPlacement' };
+    }
     default: {
       if (encodeFrom.startsWith('enum:')) {
         return { type: 'enum', kind: enumKindFromEncodeFrom(encodeFrom) };
@@ -128,6 +135,8 @@ export function wireKind(valueType) {
       return 'fontFamily';
     case 'zIndex':
       return 'zIndex';
+    case 'gridPlacement':
+      return 'gridPlacement';
     case 'enum':
       return toCamelCase(valueType.kind);
     default: {
@@ -153,6 +162,8 @@ export function tsType(valueType) {
       return 'HayateDimension[]';
     case 'shadowList':
       return 'HayateShadow[]';
+    case 'gridPlacement':
+      return 'HayateGridPlacement';
     case 'enum':
       return enumKindToTsTypeName(valueType.kind);
     default: {
@@ -281,6 +292,17 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
         `      item.inset ? 1 : 0,`,
         `    );`,
         `  }`,
+        '}',
+      ];
+    case 'gridPlacement':
+      // start / end の2スロット、各々 [種別タグ, 整数] の2 wire スロット（計4）。
+      // 1スロットぶんの符号化は共有ヘルパ encodeGridLine に委ねる。
+      return [
+        `function ${fnName}(out: number[], value: unknown): void {`,
+        `  const placement = (value ?? {}) as { start?: unknown; end?: unknown };`,
+        `  out.push(TAG.${tagName});`,
+        `  encodeGridLine(out, '${patchKey}', placement.start);`,
+        `  encodeGridLine(out, '${patchKey}', placement.end);`,
         '}',
       ];
     case 'enum': {

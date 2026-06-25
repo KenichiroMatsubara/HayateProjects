@@ -46,6 +46,16 @@
     ]
   },
   {
+    "name": "grid_placement",
+    "raw_slots": 4,
+    "fields": [
+      { "name": "start_kind", "type": "f32" },
+      { "name": "start_value", "type": "f32" },
+      { "name": "end_kind", "type": "f32" },
+      { "name": "end_value", "type": "f32" }
+    ]
+  },
+  {
     "name": "shadow",
     "raw_slots": 9,
     "fields": [

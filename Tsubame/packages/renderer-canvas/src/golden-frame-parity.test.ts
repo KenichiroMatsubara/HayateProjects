@@ -353,6 +353,42 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(selfX).toBeLessThan(endX);
   });
 
+  it('grid-column places an item in an explicit column and span widens it (#495)', async () => {
+    // 3 列（各 TRACK）の grid に 1 アイテムを gridColumn: 2 / span 2 で明示配置する。
+    // 開始は 2 列目（x ≈ TRACK）、span 2 で 2 トラックぶん（幅 ≈ 2*TRACK）占有する。
+    // WASM 解決の Canvas 経路で固定し、DOM はネイティブ CSS `grid-column: 2 / span 2`
+    // で同じ配置を得る（hayate-css-parity が入力の単一ソース性を固定）。アイテムは
+    // テキストプローブで一意に特定する。
+    const TRACK = 40;
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      const grid = createElement('view');
+      setProp(grid, 'style', {
+        display: 'grid',
+        gridTemplateColumns: [`${TRACK}px`, `${TRACK}px`, `${TRACK}px`],
+        gridTemplateRows: [`${TRACK}px`],
+        width: `${TRACK * 3}px`,
+        height: `${TRACK}px`,
+      });
+      const item = createElement('view');
+      insertNode(grid, item);
+      setProp(item, 'style', {
+        gridColumn: { start: 2, end: { span: 2 } },
+        backgroundColor: '#0000ff',
+      });
+      const probe = createElement('text');
+      insertNode(item, probe);
+      setText(probe, 'gcol');
+      return grid;
+    });
+
+    const frame = harness.capture();
+    const probe = findElementByText(frame, 'gcol');
+    expect(probe, 'grid-column probe must be present').toBeDefined();
+    // 2 列目から始まる: x ≈ 1 トラック。span 2 で内容は 2 トラックぶんの幅に広がる。
+    expect(probe!.bounds[0]).toBeGreaterThan(TRACK - 2);
+    expect(probe!.bounds[0]).toBeLessThan(TRACK * 2);
+  });
+
   it('box-sizing content-box adds padding outside a flex item width (#491)', async () => {
     // content-box では width は内容箱を指し、padding は外側に足される。WASM 解決の
     // Canvas 経路で外形 = width + 左右 padding を固定し、DOM はネイティブ CSS

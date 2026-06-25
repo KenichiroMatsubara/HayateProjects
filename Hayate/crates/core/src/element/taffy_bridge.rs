@@ -1,16 +1,35 @@
 use taffy::{
-    style_helpers::{fr, length, percent, span, FromFlex, FromLength, FromPercent, TaffyAuto},
+    style_helpers::{fr, length, line, percent, FromFlex, FromLength, FromPercent, TaffyAuto},
     AlignContent, AlignItems, BoxSizing, Dimension as TaffyDim, Display, FlexDirection, FlexWrap,
-    GridAutoFlow, JustifyContent, LengthPercentage, LengthPercentageAuto, Position,
-    Rect as TaffyRect, Size, Style, TrackSizingFunction,
+    GridAutoFlow, GridPlacement, JustifyContent, LengthPercentage, LengthPercentageAuto, Line,
+    Position, Rect as TaffyRect, Size, Style, TrackSizingFunction,
 };
 
 use crate::element::id::ElementId;
 use crate::element::style::{
     AlignContentValue, AlignSelfValue, AlignValue, BoxSizingValue, Dimension, DimensionUnit,
-    DisplayValue, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, JustifyItemsValue,
-    JustifySelfValue, JustifyValue, OverflowValue, PositionValue, StyleProp,
+    DisplayValue, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, GridLineValue,
+    GridPlacementValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue,
+    PositionValue, StyleProp,
 };
+
+/// Hayate の grid 配置端を Taffy の `GridPlacement` へ写す。`Line(i)` は CSS の
+/// 1 始まりグリッド線、`Span(n)` は占有トラック数。
+fn to_taffy_grid_placement(value: GridLineValue) -> GridPlacement {
+    match value {
+        GridLineValue::Auto => GridPlacement::Auto,
+        GridLineValue::Line(i) => line(i as i16),
+        GridLineValue::Span(n) => GridPlacement::Span(n as u16),
+    }
+}
+
+/// `grid-column` / `grid-row` 値を Taffy の `Line<GridPlacement>`（start/end）へ。
+fn to_taffy_grid_line(placement: &GridPlacementValue) -> Line<GridPlacement> {
+    Line {
+        start: to_taffy_grid_placement(placement.start),
+        end: to_taffy_grid_placement(placement.end),
+    }
+}
 
 /// 各 Taffy リーフに付ける文脈。measure クロージャがこれで分岐する。
 #[derive(Clone, Copy, Debug)]
@@ -240,9 +259,12 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
                 GridAutoFlowValue::ColumnDense => GridAutoFlow::ColumnDense,
             };
         }
-        // grid アイテムが跨ぐ列数。開始位置は auto のまま終端を span で指定する。
-        StyleProp::GridColumnSpan(n) => {
-            style.grid_column = span(*n as u16);
+        // grid アイテムの明示配置。start/end を Taffy の Line<GridPlacement> へ写す。
+        StyleProp::GridColumn(p) => {
+            style.grid_column = to_taffy_grid_line(p);
+        }
+        StyleProp::GridRow(p) => {
+            style.grid_row = to_taffy_grid_line(p);
         }
         // grid セル内インライン軸のコンテナ既定。grid 専用なので start/end を使う。
         StyleProp::JustifyItems(v) => {

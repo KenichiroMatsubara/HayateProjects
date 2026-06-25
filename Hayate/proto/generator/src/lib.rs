@@ -716,7 +716,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("use hayate_core::{\n");
     out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
-    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
+    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, GridLineValue, GridPlacementValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
     out.push_str("    TransitionTimingValue,\n");
     out.push_str("};\n\n");
 

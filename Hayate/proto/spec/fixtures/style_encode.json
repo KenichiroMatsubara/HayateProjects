@@ -40,5 +40,15 @@
     "name": "border-style-dashed",
     "patch": { "borderStyle": "dashed" },
     "wire": [45, 2]
+  },
+  {
+    "name": "grid-column-line-to-span",
+    "patch": { "gridColumn": { "start": 2, "end": { "span": 2 } } },
+    "wire": [63, 1, 2, 2, 2]
+  },
+  {
+    "name": "grid-row-span-start",
+    "patch": { "gridRow": { "start": { "span": 3 } } },
+    "wire": [66, 2, 3, 0, 0]
   }
 ]

@@ -112,6 +112,27 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+/**
+ * grid-placement の1スロット（start または end）を [種別タグ, 整数] の2 wire
+ * スロットへ符号化する。`auto`/undefined は `[0, 0]`、line(整数) は `[1, n]`、
+ * span は `{ span: n }` → `[2, n]`。
+ */
+export function encodeGridLine(out: number[], key: string, line: unknown): void {
+  if (line === undefined || line === null || line === 'auto') {
+    out.push(0, 0);
+    return;
+  }
+  if (typeof line === 'number') {
+    out.push(1, finiteInteger(key, line));
+    return;
+  }
+  if (typeof line === 'object' && 'span' in (line as Record<string, unknown>)) {
+    out.push(2, finiteInteger(`${key}.span`, (line as { span: unknown }).span));
+    return;
+  }
+  throw new Error(`CanvasRenderer: unsupported grid placement for "${key}"`);
+}
+
 const DISPLAY_CODE: Record<string, number> = {
   'flex': DISPLAY.flex,
   'grid': DISPLAY.grid,
@@ -604,8 +625,11 @@ function encode_gridAutoFlow(out: number[], value: string): void {
   out.push(TAG.GRID_AUTO_FLOW, code);
 }
 
-function encode_gridColumnSpan(out: number[], value: unknown): void {
-  out.push(TAG.GRID_COLUMN_SPAN, finiteInteger('gridColumnSpan', value));
+function encode_gridColumn(out: number[], value: unknown): void {
+  const placement = (value ?? {}) as { start?: unknown; end?: unknown };
+  out.push(TAG.GRID_COLUMN);
+  encodeGridLine(out, 'gridColumn', placement.start);
+  encodeGridLine(out, 'gridColumn', placement.end);
 }
 
 function encode_justifyItems(out: number[], value: string): void {
@@ -618,6 +642,13 @@ function encode_justifySelf(out: number[], value: string): void {
   const code = JUSTIFY_SELF_CODE[value];
   if (code === undefined) throw new Error(`CanvasRenderer: unsupported justifySelf "${value}"`);
   out.push(TAG.JUSTIFY_SELF, code);
+}
+
+function encode_gridRow(out: number[], value: unknown): void {
+  const placement = (value ?? {}) as { start?: unknown; end?: unknown };
+  out.push(TAG.GRID_ROW);
+  encodeGridLine(out, 'gridRow', placement.start);
+  encodeGridLine(out, 'gridRow', placement.end);
 }
 
 const STYLE_ENCODERS = {
@@ -684,9 +715,10 @@ const STYLE_ENCODERS = {
   gridAutoRows: encode_gridAutoRows,
   gridAutoColumns: encode_gridAutoColumns,
   gridAutoFlow: encode_gridAutoFlow,
-  gridColumnSpan: encode_gridColumnSpan,
+  gridColumn: encode_gridColumn,
   justifyItems: encode_justifyItems,
   justifySelf: encode_justifySelf,
+  gridRow: encode_gridRow,
 } as Partial<Record<keyof StylePatch, (out: number[], value: unknown) => void>>;
 
 const INHERITED_UNSET: Partial<Record<string, number>> = {

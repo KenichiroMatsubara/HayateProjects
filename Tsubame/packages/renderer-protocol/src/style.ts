@@ -1,7 +1,12 @@
 import type { PseudoStylePatch } from './pseudo-style.js';
 import type { StylePatch } from './generated/style-types.js';
 
-export type { HayateDimension, HayateShadow } from './style-primitives.js';
+export type {
+  HayateDimension,
+  HayateGridLine,
+  HayateGridPlacement,
+  HayateShadow,
+} from './style-primitives.js';
 export type {
   Display,
   FlexDirection,
