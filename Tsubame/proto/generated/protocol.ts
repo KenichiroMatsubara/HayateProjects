@@ -92,6 +92,8 @@ export const TAG = {
   GRID_AUTO_COLUMNS: 61,
   GRID_AUTO_FLOW: 62,
   GRID_COLUMN_SPAN: 63,
+  JUSTIFY_ITEMS: 64,
+  JUSTIFY_SELF: 65,
 } as const;
 export type TAG = typeof TAG;
 
@@ -365,6 +367,23 @@ export const GRID_AUTO_FLOW = {
   columnDense: 3,
 } as const;
 export type GRID_AUTO_FLOW = typeof GRID_AUTO_FLOW;
+
+export const JUSTIFY_ITEMS = {
+  start: 0,
+  end: 1,
+  center: 2,
+  stretch: 3,
+} as const;
+export type JUSTIFY_ITEMS = typeof JUSTIFY_ITEMS;
+
+export const JUSTIFY_SELF = {
+  auto: 0,
+  start: 1,
+  end: 2,
+  center: 3,
+  stretch: 4,
+} as const;
+export type JUSTIFY_SELF = typeof JUSTIFY_SELF;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

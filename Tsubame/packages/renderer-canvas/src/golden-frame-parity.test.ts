@@ -280,6 +280,79 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     expect(probe!.bounds[1]).toBeGreaterThan(TRACK / 2);
   });
 
+  it('justify-items / justify-self align grid items on the inline axis (#494)', async () => {
+    // 1 セル（TRACK 角）の grid に、セルより小さい TRACK/3 角のアイテムを 2 つ別々の
+    // grid で置く。コンテナ既定 justify-items: end は左端のアイテムをインライン終端へ
+    // 寄せ（x ≈ TRACK - ITEM）、アイテムの justify-self: start はそれを上書きして始端へ
+    // 戻す（x ≈ 0）。WASM 解決の Canvas 経路で固定し、DOM はネイティブ CSS で同じ配置を
+    // 得る（hayate-css-parity が入力の単一ソース性を固定）。各アイテムはテキストプローブで
+    // 一意に特定する。
+    const TRACK = 60;
+    const ITEM = 20;
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      // 2 つの grid を縦積みにして両方の絶対 x 原点を 0 に揃える（インライン軸の差だけを見る）。
+      const row = createElement('view');
+      setProp(row, 'style', { display: 'flex', flexDirection: 'column' });
+
+      // コンテナ既定（justify-items: end）に従うアイテム。
+      const endGrid = createElement('view');
+      setProp(endGrid, 'style', {
+        display: 'grid',
+        gridTemplateColumns: [`${TRACK}px`],
+        gridTemplateRows: [`${TRACK}px`],
+        justifyItems: 'end',
+        width: `${TRACK}px`,
+        height: `${TRACK}px`,
+      });
+      const endItem = createElement('view');
+      setProp(endItem, 'style', { width: `${ITEM}px`, height: `${ITEM}px`, backgroundColor: '#ff0000' });
+      insertNode(endGrid, endItem);
+      const endProbe = createElement('text');
+      insertNode(endItem, endProbe);
+      setText(endProbe, 'jend');
+
+      // 同じコンテナ既定を justify-self: start で上書きするアイテム。
+      const selfGrid = createElement('view');
+      setProp(selfGrid, 'style', {
+        display: 'grid',
+        gridTemplateColumns: [`${TRACK}px`],
+        gridTemplateRows: [`${TRACK}px`],
+        justifyItems: 'end',
+        width: `${TRACK}px`,
+        height: `${TRACK}px`,
+      });
+      const selfItem = createElement('view');
+      setProp(selfItem, 'style', {
+        width: `${ITEM}px`,
+        height: `${ITEM}px`,
+        justifySelf: 'start',
+        backgroundColor: '#0000ff',
+      });
+      insertNode(selfGrid, selfItem);
+      const selfProbe = createElement('text');
+      insertNode(selfItem, selfProbe);
+      setText(selfProbe, 'jstart');
+
+      insertNode(row, endGrid);
+      insertNode(row, selfGrid);
+      return row;
+    });
+
+    const frame = harness.capture();
+    const endProbe = findElementByText(frame, 'jend');
+    const selfProbe = findElementByText(frame, 'jstart');
+    expect(endProbe, 'justify-items end probe must be present').toBeDefined();
+    expect(selfProbe, 'justify-self start probe must be present').toBeDefined();
+    const endX = endProbe!.bounds[0]!;
+    const selfX = selfProbe!.bounds[0]!;
+    // 縦積みなので両グリッドの絶対 x 原点は 0。justify-items: end はアイテムを終端へ
+    // 寄せる（x ≈ TRACK - ITEM）。
+    expect(endX).toBeGreaterThan(TRACK - ITEM - 2);
+    // justify-self: start はコンテナ既定の end を上書きして始端へ戻す（x ≈ 0）。
+    expect(selfX).toBeLessThan(ITEM);
+    expect(selfX).toBeLessThan(endX);
+  });
+
   it('box-sizing content-box adds padding outside a flex item width (#491)', async () => {
     // content-box では width は内容箱を指し、padding は外側に足される。WASM 解決の
     // Canvas 経路で外形 = width + 左右 padding を固定し、DOM はネイティブ CSS

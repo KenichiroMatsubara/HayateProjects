@@ -8,8 +8,8 @@ use taffy::{
 use crate::element::id::ElementId;
 use crate::element::style::{
     AlignContentValue, AlignSelfValue, AlignValue, BoxSizingValue, Dimension, DimensionUnit,
-    DisplayValue, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, JustifyValue, OverflowValue,
-    PositionValue, StyleProp,
+    DisplayValue, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, JustifyItemsValue,
+    JustifySelfValue, JustifyValue, OverflowValue, PositionValue, StyleProp,
 };
 
 /// 各 Taffy リーフに付ける文脈。measure クロージャがこれで分岐する。
@@ -243,6 +243,25 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         // grid アイテムが跨ぐ列数。開始位置は auto のまま終端を span で指定する。
         StyleProp::GridColumnSpan(n) => {
             style.grid_column = span(*n as u16);
+        }
+        // grid セル内インライン軸のコンテナ既定。grid 専用なので start/end を使う。
+        StyleProp::JustifyItems(v) => {
+            style.justify_items = Some(match v {
+                JustifyItemsValue::Start => AlignItems::Start,
+                JustifyItemsValue::End => AlignItems::End,
+                JustifyItemsValue::Center => AlignItems::Center,
+                JustifyItemsValue::Stretch => AlignItems::Stretch,
+            });
+        }
+        // grid アイテム個別のインライン軸整列。`auto` は None（コンテナ既定に従う）。
+        StyleProp::JustifySelf(v) => {
+            style.justify_self = match v {
+                JustifySelfValue::Auto => None,
+                JustifySelfValue::Start => Some(AlignItems::Start),
+                JustifySelfValue::End => Some(AlignItems::End),
+                JustifySelfValue::Center => Some(AlignItems::Center),
+                JustifySelfValue::Stretch => Some(AlignItems::Stretch),
+            };
         }
         _ => return false,
     }

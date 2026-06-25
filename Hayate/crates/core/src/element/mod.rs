@@ -58,6 +58,7 @@ pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, CursorValue, Dimension,
     DimensionUnit, DisplayValue, FlexDirectionValue, FlexWrapValue,
     FontStyleValue, GridAutoFlowValue,
+    JustifyItemsValue, JustifySelfValue,
     JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, StylePropKind,
     TextDecorationValue, TextOverflowValue, TransitionTimingValue, UserSelectValue,
     ViewportCondition,

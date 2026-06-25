@@ -1046,5 +1046,37 @@
       "property": "grid-column",
       "format": "grid-span"
     }
+  },
+  {
+    "name": "JUSTIFY_ITEMS",
+    "value": 64,
+    "inherit": "none",
+    "encodeFrom": "enum:justify_items",
+    "params": [
+      {
+        "name": "value",
+        "type": "justify_items"
+      }
+    ],
+    "domCss": {
+      "property": "justify-items",
+      "format": "enum:justify_items"
+    }
+  },
+  {
+    "name": "JUSTIFY_SELF",
+    "value": 65,
+    "inherit": "none",
+    "encodeFrom": "enum:justify_self",
+    "params": [
+      {
+        "name": "value",
+        "type": "justify_self"
+      }
+    ],
+    "domCss": {
+      "property": "justify-self",
+      "format": "enum:justify_self"
+    }
   }
 ]

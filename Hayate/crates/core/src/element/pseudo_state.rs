@@ -123,6 +123,8 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::GridAutoColumns(_) => "grid-auto-columns",
         StyleProp::GridAutoFlow(_) => "grid-auto-flow",
         StyleProp::GridColumnSpan(_) => "grid-column",
+        StyleProp::JustifyItems(_) => "justify-items",
+        StyleProp::JustifySelf(_) => "justify-self",
         StyleProp::FontSize(_) => "font-size",
         StyleProp::FontFamily(_) => "font-family",
         StyleProp::FontWeight(_) => "font-weight",

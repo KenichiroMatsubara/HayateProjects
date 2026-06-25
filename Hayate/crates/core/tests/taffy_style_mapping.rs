@@ -215,3 +215,50 @@ fn grid_auto_flow_is_a_layout_prop() {
     // 自動配置の主軸・詰め方はレイアウト系なので Taffy へ流れる（Visual には入らない）。
     assert!(StyleProp::GridAutoFlow(hayate_core::GridAutoFlowValue::RowDense).is_layout());
 }
+
+#[test]
+fn justify_items_maps_each_value_to_taffy_style() {
+    use hayate_core::JustifyItemsValue;
+
+    // grid 専用の語彙なので flex-start/flex-end ではなく start/end を使う。
+    let cases = [
+        (JustifyItemsValue::Start, AlignItems::Start),
+        (JustifyItemsValue::End, AlignItems::End),
+        (JustifyItemsValue::Center, AlignItems::Center),
+        (JustifyItemsValue::Stretch, AlignItems::Stretch),
+    ];
+    for (input, expected) in cases {
+        let mut style = Style::default();
+        assert!(apply_to_style(&mut style, &StyleProp::JustifyItems(input)));
+        assert_eq!(style.justify_items, Some(expected));
+    }
+}
+
+#[test]
+fn justify_self_maps_each_value_to_taffy_style() {
+    use hayate_core::JustifySelfValue;
+
+    // `auto` はコンテナ既定に従うので None。それ以外は Some(AlignItems) へ写る。
+    let mut style = Style::default();
+    assert!(apply_to_style(&mut style, &StyleProp::JustifySelf(JustifySelfValue::Auto)));
+    assert_eq!(style.justify_self, None);
+
+    let cases = [
+        (JustifySelfValue::Start, AlignItems::Start),
+        (JustifySelfValue::End, AlignItems::End),
+        (JustifySelfValue::Center, AlignItems::Center),
+        (JustifySelfValue::Stretch, AlignItems::Stretch),
+    ];
+    for (input, expected) in cases {
+        let mut style = Style::default();
+        assert!(apply_to_style(&mut style, &StyleProp::JustifySelf(input)));
+        assert_eq!(style.justify_self, Some(expected));
+    }
+}
+
+#[test]
+fn justify_alignment_props_are_layout_props() {
+    // インライン軸整列はレイアウト系なので Taffy へ流れる（Visual には入らない）。
+    assert!(StyleProp::JustifyItems(hayate_core::JustifyItemsValue::Center).is_layout());
+    assert!(StyleProp::JustifySelf(hayate_core::JustifySelfValue::End).is_layout());
+}

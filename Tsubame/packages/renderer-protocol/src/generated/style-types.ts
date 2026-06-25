@@ -20,6 +20,8 @@ export type Position = 'relative' | 'absolute';
 export type TransitionTiming = 'ease' | 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out';
 export type BoxSizing = 'border-box' | 'content-box';
 export type GridAutoFlow = 'row' | 'column' | 'row-dense' | 'column-dense';
+export type JustifyItems = 'start' | 'end' | 'center' | 'stretch';
+export type JustifySelf = 'auto' | 'start' | 'end' | 'center' | 'stretch';
 
 export interface HayateStyle {
   backgroundColor: string;
@@ -86,6 +88,8 @@ export interface HayateStyle {
   gridAutoColumns: HayateDimension[];
   gridAutoFlow: GridAutoFlow;
   gridColumnSpan: number;
+  justifyItems: JustifyItems;
+  justifySelf: JustifySelf;
 }
 
 /**

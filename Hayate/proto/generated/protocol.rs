@@ -116,6 +116,8 @@ pub const TAG_GRID_AUTO_ROWS: u32 = 60;
 pub const TAG_GRID_AUTO_COLUMNS: u32 = 61;
 pub const TAG_GRID_AUTO_FLOW: u32 = 62;
 pub const TAG_GRID_COLUMN_SPAN: u32 = 63;
+pub const TAG_JUSTIFY_ITEMS: u32 = 64;
+pub const TAG_JUSTIFY_SELF: u32 = 65;
 
 // Event kind constants
 pub const EVENT_KIND_CLICK: f64 = 0.0;
@@ -675,6 +677,12 @@ pub enum StyleTag {
     GridColumnSpan {
         value: f32,
     },
+    JustifyItems {
+        value: f32,
+    },
+    JustifySelf {
+        value: f32,
+    },
 }
 
 pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize), &'static str> {
@@ -1080,6 +1088,16 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
             let value = packed[i + 0];
             Ok((StyleTag::GridColumnSpan { value }, i + 1))
         }
+        64 => {
+            if i + 1 > packed.len() { return Err("style tag JUSTIFY_ITEMS truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::JustifyItems { value }, i + 1))
+        }
+        65 => {
+            if i + 1 > packed.len() { return Err("style tag JUSTIFY_SELF truncated"); }
+            let value = packed[i + 0];
+            Ok((StyleTag::JustifySelf { value }, i + 1))
+        }
         _ => Err("unknown style tag"),
     }
 }
@@ -1089,7 +1107,7 @@ pub fn parse_next_style_tag(packed: &[f32], i: usize) -> Result<(StyleTag, usize
 use hayate_core::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,
     DisplayValue,
-    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
+    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,
     TransitionTimingValue,
 };
 
@@ -1289,6 +1307,27 @@ fn codec_grid_auto_flow(raw: f32) -> GridAutoFlowValue {
     }
 }
 
+fn codec_justify_items(raw: f32) -> JustifyItemsValue {
+    match raw as u32 {
+        0 => JustifyItemsValue::Start,
+        1 => JustifyItemsValue::End,
+        2 => JustifyItemsValue::Center,
+        3 => JustifyItemsValue::Stretch,
+        _ => JustifyItemsValue::Start,
+    }
+}
+
+fn codec_justify_self(raw: f32) -> JustifySelfValue {
+    match raw as u32 {
+        0 => JustifySelfValue::Auto,
+        1 => JustifySelfValue::Start,
+        2 => JustifySelfValue::End,
+        3 => JustifySelfValue::Center,
+        4 => JustifySelfValue::Stretch,
+        _ => JustifySelfValue::Auto,
+    }
+}
+
 fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
     Ok(match tag {
         StyleTag::BackgroundColor { color_r, color_g, color_b, color_a } => StyleProp::BackgroundColor(codec_color(color_r, color_g, color_b, color_a)),
@@ -1355,6 +1394,8 @@ fn style_tag_to_prop(tag: StyleTag) -> Result<StyleProp, String> {
         StyleTag::GridAutoColumns { tracks } => StyleProp::GridAutoColumns(tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()),
         StyleTag::GridAutoFlow { value } => StyleProp::GridAutoFlow(codec_grid_auto_flow(value)),
         StyleTag::GridColumnSpan { value } => StyleProp::GridColumnSpan(value as u32),
+        StyleTag::JustifyItems { value } => StyleProp::JustifyItems(codec_justify_items(value)),
+        StyleTag::JustifySelf { value } => StyleProp::JustifySelf(codec_justify_self(value)),
     })
 }
 

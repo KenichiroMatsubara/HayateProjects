@@ -7,7 +7,7 @@ import {
   applyDomExtras,
 } from "@tsubame/hayate-css-catalog";
 import { encodeStylePatch } from "@tsubame/protocol-generated/codec";
-import { TAG, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW } from "@tsubame/protocol-generated/protocol";
+import { TAG, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from "@tsubame/protocol-generated/protocol";
 
 /** セマンティック等価チェック用に、wireKind ごとの代表サンプル値。 */
 const SAMPLES: Record<string, unknown> = {
@@ -35,6 +35,8 @@ const SAMPLES: Record<string, unknown> = {
   transitionTiming: "ease",
   boxSizing: "border-box",
   gridAutoFlow: "row-dense",
+  justifyItems: "center",
+  justifySelf: "end",
   f32: 0.75,
   u32: 2,
   zIndex: 10,
@@ -179,6 +181,26 @@ describe("hayate-css catalog parity", () => {
     encodeStylePatch(dense, denseOut);
     expect(denseOut[1]).toBe(GRID_AUTO_FLOW.rowDense);
     expect(domCssForPatch(dense).gridAutoFlow).toBe("row dense");
+  });
+
+  it("justify-items / justify-self feed the packet and DOM CSS from one enum source (#494)", () => {
+    // grid 専用なので語彙は start/end/center/stretch。キーワードはそのまま CSS と一致する。
+    const items = { justifyItems: "end" } as StylePatch;
+    const itemsOut: number[] = [];
+    encodeStylePatch(items, itemsOut);
+    expect(itemsOut[0]).toBe(TAG.JUSTIFY_ITEMS);
+    expect(itemsOut[1]).toBe(JUSTIFY_ITEMS.end);
+    expect(domCssForPatch(items).justifyItems).toBe("end");
+
+    // justify-self は auto を持ち、コンテナ既定に従う形で CSS にもそのまま写る。
+    const self = { justifySelf: "auto" } as StylePatch;
+    const selfOut: number[] = [];
+    encodeStylePatch(self, selfOut);
+    expect(selfOut[0]).toBe(TAG.JUSTIFY_SELF);
+    expect(selfOut[1]).toBe(JUSTIFY_SELF.auto);
+    expect(domCssForPatch(self).justifySelf).toBe("auto");
+
+    expect(domCssForPatch({ justifySelf: "center" }).justifySelf).toBe("center");
   });
 
   it("ambient default* tags map to inheritable CSS properties (ADR-0070)", () => {

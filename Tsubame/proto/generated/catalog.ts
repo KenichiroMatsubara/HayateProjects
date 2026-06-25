@@ -3,7 +3,7 @@
 
 import type { HayateDimension, HayateShadow } from '@tsubame/renderer-protocol';
 
-export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
+export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'justifyItems' | 'justifySelf' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string' | 'grid-span';
 
 export interface DomExtra {
@@ -880,6 +880,32 @@ export const HAYATE_CSS_CATALOG: readonly CatalogEntry[] = [
     "domFormat": "grid-span",
     "cssName": "gridColumn",
     "cssProperty": "grid-column",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "justifyItems",
+    "tag": 64,
+    "unsetKind": null,
+    "wireKind": "justifyItems",
+    "domFormat": "enum",
+    "cssName": "justifyItems",
+    "cssProperty": "justify-items",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "justifySelf",
+    "tag": 65,
+    "unsetKind": null,
+    "wireKind": "justifySelf",
+    "domFormat": "enum",
+    "cssName": "justifySelf",
+    "cssProperty": "justify-self",
     "targets": [
       "packet",
       "css"

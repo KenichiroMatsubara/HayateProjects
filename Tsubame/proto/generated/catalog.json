@@ -854,5 +854,31 @@
       "packet",
       "css"
     ]
+  },
+  {
+    "patchKey": "justifyItems",
+    "tag": 64,
+    "unsetKind": null,
+    "wireKind": "justifyItems",
+    "domFormat": "enum",
+    "cssName": "justifyItems",
+    "cssProperty": "justify-items",
+    "targets": [
+      "packet",
+      "css"
+    ]
+  },
+  {
+    "patchKey": "justifySelf",
+    "tag": 65,
+    "unsetKind": null,
+    "wireKind": "justifySelf",
+    "domFormat": "enum",
+    "cssName": "justifySelf",
+    "cssProperty": "justify-self",
+    "targets": [
+      "packet",
+      "css"
+    ]
   }
 ]

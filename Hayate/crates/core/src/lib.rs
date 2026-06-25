@@ -48,7 +48,7 @@ pub use element::{
     DisplayValue,
     DocumentEventKind,
     ElementId, ElementKind,
-    ElementTree, Event, EventDelivery, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, JustifyValue, LayoutPass,
+    ElementTree, Event, EventDelivery, FlexDirectionValue, FlexWrapValue, GridAutoFlowValue, JustifyItemsValue, JustifySelfValue, JustifyValue, LayoutPass,
     ListenerId, OverflowValue, PositionValue,
     event_document_kind,
     CharacterBounds, Clipboard, CompositionClause, CompositionUnderline, Direction, EditIntent,

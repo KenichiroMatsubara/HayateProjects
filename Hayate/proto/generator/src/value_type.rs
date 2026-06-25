@@ -312,6 +312,8 @@ fn enum_kind_to_static(kind: &str) -> &'static str {
         "transition_timing" => "transition_timing",
         "box_sizing" => "box_sizing",
         "grid_auto_flow" => "grid_auto_flow",
+        "justify_items" => "justify_items",
+        "justify_self" => "justify_self",
         other => panic!("unknown enum encodeFrom kind: {other}"),
     }
 }
@@ -429,6 +431,19 @@ fn enum_css_collect(css_prop: &str, value_var: &str, kind: &str) -> String {
             GridAutoFlowValue::Column => \"column\",\n\
             GridAutoFlowValue::RowDense => \"row dense\",\n\
             GridAutoFlowValue::ColumnDense => \"column dense\","
+        }
+        "justify_items" => {
+            "JustifyItemsValue::Start => \"start\",\n\
+            JustifyItemsValue::End => \"end\",\n\
+            JustifyItemsValue::Center => \"center\",\n\
+            JustifyItemsValue::Stretch => \"stretch\","
+        }
+        "justify_self" => {
+            "JustifySelfValue::Auto => \"auto\",\n\
+            JustifySelfValue::Start => \"start\",\n\
+            JustifySelfValue::End => \"end\",\n\
+            JustifySelfValue::Center => \"center\",\n\
+            JustifySelfValue::Stretch => \"stretch\","
         }
         other => panic!("unknown enum domCss kind: {other}"),
     };

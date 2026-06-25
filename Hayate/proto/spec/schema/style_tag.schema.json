@@ -37,6 +37,8 @@
         "enum:transition_timing",
         "enum:box_sizing",
         "enum:grid_auto_flow",
+        "enum:justify_items",
+        "enum:justify_self",
         "font-family",
         "dimension-list",
         "shadow-list",
@@ -89,6 +91,8 @@
             "enum:transition_timing",
             "enum:box_sizing",
             "enum:grid_auto_flow",
+            "enum:justify_items",
+            "enum:justify_self",
             "dimension-list",
             "shadow-list"
           ]

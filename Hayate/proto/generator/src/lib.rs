@@ -716,7 +716,7 @@ fn generate_style_codec(proto: &Proto) -> String {
     out.push_str("use hayate_core::{\n");
     out.push_str("    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, Color, CursorValue, Dimension, DimensionUnit,\n");
     out.push_str("    DisplayValue,\n");
-    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
+    out.push_str("    FlexDirectionValue, FlexWrapValue, FontStyleValue, GridAutoFlowValue, JustifyItemsValue, JustifySelfValue, JustifyValue, OverflowValue, PositionValue, Shadow, StyleProp, TextDecorationValue, TextOverflowValue,\n");
     out.push_str("    TransitionTimingValue,\n");
     out.push_str("};\n\n");
 
@@ -765,6 +765,8 @@ fn generate_style_codec(proto: &Proto) -> String {
             "transition_timing" => "TransitionTimingValue",
             "box_sizing" => "BoxSizingValue",
             "grid_auto_flow" => "GridAutoFlowValue",
+            "justify_items" => "JustifyItemsValue",
+            "justify_self" => "JustifySelfValue",
             _ => continue,
         };
         let fn_name = format!("codec_{}", en.name);
@@ -859,6 +861,8 @@ fn generate_codec(proto: &Proto) -> String {
             "transition_timing" => "TransitionTimingValue",
             "box_sizing" => "BoxSizingValue",
             "grid_auto_flow" => "GridAutoFlowValue",
+            "justify_items" => "JustifyItemsValue",
+            "justify_self" => "JustifySelfValue",
             _ => continue,
         };
         let fn_name = format!("encode_{}", en.name);
