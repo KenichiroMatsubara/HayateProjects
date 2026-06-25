@@ -7,6 +7,7 @@ members = [
     "crates/scene-renderers/tiny-skia",
     "crates/scene-renderers/test-support",
     "crates/platform/web",
+    "crates/platform/desktop",
     "crates/platform/mobile",
     "crates/platform/mobile/android",
     "crates/platform/mobile/ios",
@@ -25,6 +26,9 @@ repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 # GPU / rendering
 wgpu = { version = "29", features = ["wgsl"] }
 vello = "0.9"
+
+# Desktop windowing (ADR-0118) — winit が desktop family の windowing 層を畳む。
+winit = "0.30"
 tiny-skia = { version = "0.11", default-features = false, features = ["std"] }
 
 # Layout

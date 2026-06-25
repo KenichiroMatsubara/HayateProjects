@@ -74,6 +74,13 @@ impl<S: Surface> AppHost<S> {
         &self.tree
     }
 
+    /// 所有する `Surface` への可変参照。`tree_mut` と対称の seam。App Host が surface を
+    /// 所有しても、Platform Front は resize 時に present サーフェス（wgpu surface 等）を
+    /// 再 configure する必要があるため、ここで具体型 `S` へ可変アクセスする。
+    pub fn surface_mut(&mut self) -> &mut S {
+        &mut self.surface
+    }
+
     /// consumer の [`DeliverySink`] を登録する（mount）。
     pub fn mount(&mut self, sink: Box<dyn DeliverySink>) {
         self.sink = Some(sink);
@@ -124,6 +131,29 @@ mod tests {
         fn present(&mut self, _scene: &SceneGraph) {
             *self.present_count.borrow_mut() += 1;
         }
+    }
+
+    /// 可変フィールドを持つ最小 `Surface`。Platform Front の resize 経路を模す。
+    struct ReconfigurableSurface {
+        configured_size: (u32, u32),
+    }
+
+    impl Surface for ReconfigurableSurface {
+        fn present(&mut self, _scene: &SceneGraph) {}
+    }
+
+    #[test]
+    fn surface_mut_exposes_owned_surface_for_platform_front_resize() {
+        // App Host が surface を所有しても、Platform Front は resize で wgpu surface を
+        // 再 configure するため可変アクセスが要る（`tree_mut` と対称の seam）。
+        let mut app = AppHost::new(
+            ReconfigurableSurface {
+                configured_size: (0, 0),
+            },
+            Box::new(|| {}),
+        );
+        app.surface_mut().configured_size = (1920, 1080);
+        assert_eq!(app.surface_mut().configured_size, (1920, 1080));
     }
 
     /// テスト用の consumer sink。受け取った delivery バッチを記録し、Click delivery を
