@@ -103,7 +103,9 @@ describe('codec integration (C3)', () => {
 
     sched.tick(16);
 
-    const hayate = fixture.raw as {
+    // `element_get_text_content` は RawHayate ポートから外れた（IME 配線がアダプタへ移行、
+    // #474）が、WASM レンダラには残る読み取りクエリ。ここではローカル型で受けて確認する。
+    const hayate = fixture.raw as unknown as {
       element_get_text_content(id: number): string;
     };
     expect(hayate.element_get_text_content(1)).toBe('committed');

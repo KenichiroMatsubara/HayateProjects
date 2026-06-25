@@ -64,23 +64,8 @@ class StubHayate implements RawHayate {
     return false;
   }
   on_text_input(): void {}
-  on_composition_start(): void {}
-  on_composition_update(): void {}
-  on_composition_update_formatted(): void {}
-  on_composition_end(): void {}
-  focused_element_id(): number {
-    return 0;
-  }
-  ime_character_bounds(): number[] {
-    return [0, 0, 0, 0];
-  }
-  ime_wants_keyboard(): boolean {
-    return false;
-  }
-  textContents = new Map<number, string>();
-  element_get_text_content(id: number): string {
-    return this.textContents.get(id) ?? '';
-  }
+  // IME（on_composition_* / ime_* / focused_element_id / element_get_text_content）は
+  // RawHayate ポートから外れた（IME 配線はアダプタ内で完結、#474）ため stub にも無い。
   element_get_bounds(): number[] {
     return [0, 0, 0, 0];
   }
@@ -149,7 +134,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     expect(received).toEqual([{ kind: 'click', target: 2 }]);
   });
 
-  it('delivers the full current text content as the input event value, not the typed fragment', () => {
+  it('delivers the input event value straight from the wire (full current value, no read-back)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
     const renderer = new CanvasRenderer(hayate, sched);
@@ -160,11 +145,10 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     const received: unknown[] = [];
     renderer.addEventListener(input, 'input', (event) => received.push(event));
 
-    // Hayate コアは編集バッファに "ab" を蓄積済みだが、textupdate のワイヤ配信は
-    // 新規挿入された断片 "b" しか運ばない。ホスト契約（InteractionEvent.value は
-    // 現在値で、DOM レンダラの `target.value` と一致）は全文の配信を要求する。
-    hayate.textContents.set(input as unknown as number, 'ab');
-    hayate.events = [[1, EVENT_KIND.TEXT_INPUT, input, 'b']];
+    // core が text_input 配信に要素の現在値全体（display_text）を載せるため（ADR-0069 完成、
+    // #474）、ホストは `element_get_text_content` の読み戻しをせずワイヤの値をそのまま配る。
+    // InteractionEvent.value は契約上その要素の現在値で、DOM レンダラの `target.value` と一致する。
+    hayate.events = [[1, EVENT_KIND.TEXT_INPUT, input, 'ab']];
     sched.tick();
 
     expect(received).toEqual([{ kind: 'input', target: input, value: 'ab' }]);

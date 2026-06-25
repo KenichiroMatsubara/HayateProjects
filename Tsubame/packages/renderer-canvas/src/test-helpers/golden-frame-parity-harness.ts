@@ -1,6 +1,10 @@
 import { createElement, insertNode, renderTsubame, setProp, type TsubameNode } from '@tsubame/solid';
 import { CanvasRenderer } from '../canvas-renderer.js';
-import { captureGoldenFrame, type GoldenFrame } from '../golden-frame.js';
+import {
+  captureGoldenFrame,
+  type GoldenFrame,
+  type GoldenFrameSource,
+} from '../golden-frame.js';
 import { createNullHayate, type WasmHayateFixture } from './wasm-hayate.js';
 import { manualScheduler } from './manual-scheduler.js';
 
@@ -44,7 +48,10 @@ export async function mountGoldenFrameParity(
     fixture,
     renderer,
     tick: (ms = 16) => sched.tick(ms),
-    capture: () => captureGoldenFrame(fixture.raw, 1, null),
+    // WASM レンダラは `element_get_text_content`（RawHayate ポート外、#474）を構造的に
+    // 持つため、golden frame 取得用のローカル型で受ける。
+    capture: () =>
+      captureGoldenFrame(fixture.raw as unknown as GoldenFrameSource, 1, null),
     dispose: () => {
       disposeRender();
       fixture.dispose();

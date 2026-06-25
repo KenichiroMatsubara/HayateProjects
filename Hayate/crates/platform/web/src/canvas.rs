@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::edit_context::{self, EditContextHandle, EditInput};
 use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
 use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning};
@@ -136,6 +137,15 @@ pub struct HayateElementRenderer {
     /// `Clipboard::read_text` シームでは扱えない。ADR-0097）。
     pending_paste: PendingPaste,
     _pointer_input: PointerInputGuard,
+    /// 自前配線の EditContext / keydown リスナ（ADR-0069）がここへ積む。`render()` 冒頭で
+    /// 到着順に排出し、core の編集シームへ流す。
+    pending_edit: Rc<RefCell<Vec<EditInput>>>,
+    /// 「何か focus 中 or 文書選択あり」を直近 `render()` で更新するフラグ。keydown ゲートが
+    /// 同期に読む（旧 host の `focused_element_id()==0 && !has_selection()` 早期 return と同型）。
+    edit_armed: Rc<RefCell<bool>>,
+    /// アダプタ所有の EditContext とその配線（ADR-0069）。`render()` 末尾で着脱・候補窓 rect を
+    /// 駆動する。EditContext 非対応（HTML モード等）では `None`。
+    edit_context: Option<EditContextHandle>,
 }
 
 #[wasm_bindgen]
@@ -177,6 +187,13 @@ impl HayateElementRenderer {
         let pointer_guard =
             pointer_input::attach_pointer_input(&canvas, pending_pointer.clone())?;
 
+        // IME / keydown を自前で配線する（ADR-0069）。EditContext sync はアダプタの
+        // `render()` 内で完結し、JS ホストは IME 経路から外れる。
+        let pending_edit = Rc::new(RefCell::new(Vec::new()));
+        let edit_armed = Rc::new(RefCell::new(false));
+        let edit_context =
+            edit_context::attach_edit_context(&canvas, pending_edit.clone(), edit_armed.clone())?;
+
         Ok(Self {
             canvas,
             backend,
@@ -201,6 +218,9 @@ impl HayateElementRenderer {
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
             pending_paste: Rc::new(RefCell::new(Vec::new())),
             _pointer_input: pointer_guard,
+            pending_edit,
+            edit_armed,
+            edit_context,
         })
     }
 
@@ -343,6 +363,9 @@ impl HayateElementRenderer {
             self.apply_resize(metrics);
         }
         self.drain_pointer_inputs(timestamp_ms);
+        // ポインタの後で編集入力（composition / keydown）を排出する。pointerdown が
+        // 先に focus を確定してから、続くキー入力がそのターゲットに乗るようにする。
+        self.drain_edit_inputs();
         // このフレームの入力を排出した後（新規押下はアニメーションを中断し、リリースは起動する）、
         // 進行中のスクロール運動をフレーム間 dt だけ進める。慣性・バウンス・スプリングバックが
         // レイアウトと同じ rAF ループで積分される。
@@ -375,9 +398,85 @@ impl HayateElementRenderer {
         let sg = self.tree.render(timestamp_ms);
         let present = self.backend.render_scene(sg, self.background);
         // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
-        // ブリッジは JS ホストが適用するために記録するだけ。
+        // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
         self.tree.drive_ime(&mut self.ime);
+        self.sync_edit_context();
         present
+    }
+
+    /// `render()` 冒頭で自前配線の編集入力バッファを排出し、各入力を到着順に core の編集
+    /// シームへ流す（ADR-0069）。ターゲット要素はここで `focused_element()` から解決する
+    /// （旧 host が各イベントで `focused_element_id()` を読み直していたのと同型）。
+    fn drain_edit_inputs(&mut self) {
+        let buffered: Vec<EditInput> = self.pending_edit.borrow_mut().drain(..).collect();
+        for input in buffered {
+            match input {
+                EditInput::CompositionStart => {
+                    if let Some(target) = self.tree.focused_element() {
+                        self.tree.on_composition_start(target, "");
+                    }
+                }
+                EditInput::Text(text) => {
+                    if let Some(target) = self.tree.focused_element() {
+                        self.tree.on_text_input(target, &text);
+                    }
+                }
+                EditInput::CompositionUpdate(text) => {
+                    if let Some(target) = self.tree.focused_element() {
+                        self.tree.on_composition_update(target, &text);
+                    }
+                }
+                EditInput::CompositionFormat { text, wire } => {
+                    if let Some(target) = self.tree.focused_element() {
+                        let clauses = hayate_core::CompositionClause::from_wire(&wire);
+                        self.tree
+                            .on_composition_update_formatted(target, &text, clauses);
+                    }
+                }
+                EditInput::CompositionEnd(text) => {
+                    if let Some(target) = self.tree.focused_element() {
+                        self.tree.on_composition_end(target, &text);
+                    }
+                }
+                // 編集キーはアダプタのキーマップ経由で EditIntent に落ち、Ctrl/Cmd+V は非同期
+                // クリップボード読み取りを起動する（`on_key_down` がまとめて処理する）。
+                EditInput::Key { key, modifiers } => self.on_key_down(&key, modifiers),
+            }
+        }
+    }
+
+    /// `render()` 末尾で core の IME presentation を canvas の EditContext へ反映する（ADR-0069、
+    /// 旧 host の `syncEditContext` 相当）。`text-input` がフォーカス中（`wants`）の間だけ着脱し
+    /// （= モバイルのソフトキーボードを表示/解除）、候補窓 rect をキャレットの文字境界へ合わせる。
+    /// あわせて次フレームの keydown ゲート用フラグ（何か focus 中 or 文書選択あり）を更新する。
+    fn sync_edit_context(&self) {
+        *self.edit_armed.borrow_mut() =
+            self.tree.focused_element().is_some() || self.tree.selection().is_some();
+
+        let Some(handle) = self.edit_context.as_ref() else {
+            return;
+        };
+        let wants = self.ime.visible();
+        handle.set_attached(wants);
+        if !wants {
+            return;
+        }
+        let bounds = self.ime.last_bounds();
+        // まだレイアウトされていない（幅高さゼロの）キャレットには候補窓を動かさない。
+        if bounds.width == 0.0 && bounds.height == 0.0 {
+            return;
+        }
+        let rect = self.canvas.get_bounding_client_rect();
+        let (x, y, w, h) = edit_context::canvas_pixel_rect_to_screen(
+            (rect.left(), rect.top(), rect.width(), rect.height()),
+            self.canvas.width(),
+            self.canvas.height(),
+            bounds.x,
+            bounds.y,
+            bounds.width,
+            bounds.height,
+        );
+        handle.update_bounds(x, y, w, h);
     }
 
     /// `url` から画像（PNG / JPEG / WebP）を取得し Image 要素に紐付ける。element_set_src の

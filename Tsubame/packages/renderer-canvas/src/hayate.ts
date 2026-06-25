@@ -34,8 +34,6 @@ export interface RawHayate {
   // `apply_mutations`（ADR-0052 のバッチ経路）1 本を通る。構造系・クエリ・入力・
   // ライフサイクルだけが命令的なまま残る。
   element_get_text(id: number): string;
-  /** ライブツリーから編集可能なテキスト内容を返す。 */
-  element_get_text_content(id: number): string;
   /** `layout_cache` 由来の絶対レイアウト境界 `[x, y, width, height]`。 */
   element_get_bounds(id: number): Float32Array | number[];
   /** `id` とその子孫の要素 id（Hayate ElementTree が正）。 */
@@ -53,25 +51,11 @@ export interface RawHayate {
   on_key_down(key: string, modifiers: number): void;
   /** document 全体のテキスト選択が有効かどうか（ADR-0097）。 */
   has_selection(): boolean;
+  // IME（EditContext 着脱・preedit/commit・候補窓 rect）は hayate-adapter-web が
+  // `render()` 内で自己配線・自己同期する（ADR-0069 完成、#474）。ホストは IME 経路に
+  // 関与しないため、`on_composition_*` / `ime_*` / `focused_element_id` /
+  // `element_get_text_content` はこのポートに存在しない。
   on_text_input(id: number, text: string): void;
-  on_composition_start(id: number, text: string): void;
-  on_composition_update(id: number, text: string): void;
-  /** EditContext `textformatupdate` の節範囲を、フラットな
-   * `[start, end, weight]` の UTF-8 バイトオフセット三つ組ストリームとして
-   * 運ぶ preedit 更新（ADR-0102）。 */
-  on_composition_update_formatted(
-    id: number,
-    text: string,
-    formats: Uint32Array,
-  ): void;
-  on_composition_end(id: number, text: string): void;
-  focused_element_id(): number;
-  /** 直近の render で同期されたカーソル矩形（ADR-0069）。 */
-  ime_character_bounds(): number[];
-  /** ソフトキーボードを出すべきか。`text-input` がフォーカス中のときのみ true
-   * （ADR-0069）。ホストはこれが true のときだけ `EditContext`（キーボードを
-   * 出す）を装着するため、ただのタップではキーボードが出ない。 */
-  ime_wants_keyboard(): boolean;
   /** JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は `null`。 */
   poll_accessibility(): string | null;
   render(timestampMs: number): void;
