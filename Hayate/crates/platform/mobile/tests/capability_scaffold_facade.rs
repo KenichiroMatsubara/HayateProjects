@@ -44,11 +44,9 @@ const FACADES: &[(&str, &str, &str)] = &[
         "IosConnectivity",
     ),
     // wave-2 geolocation（ADR-0120）: battery の契約土台を再利用した同型 cfg facade。
-    (
-        "MobileGeolocation",
-        "AndroidGeolocation",
-        "IosGeolocation",
-    ),
+    ("MobileGeolocation", "AndroidGeolocation", "IosGeolocation"),
+    // wave-2 sensors（ADR-0120）: 単一 trait ＋ SensorKind 引数だが facade の形は同型 cfg facade。
+    ("MobileSensors", "AndroidSensors", "IosSensors"),
 ];
 
 #[test]
@@ -96,6 +94,7 @@ fn facade_reexports_core_contracts_without_redefining_them() {
         "Battery",
         "ConnectivityProvider",
         "Geolocation",
+        "Sensors",
     ] {
         assert!(
             !lib.contains(&format!("trait {contract}")),
@@ -125,7 +124,11 @@ fn permission_denied_is_deferred_while_permissions_stay_put() {
     // する（コメント中の言及は変数名形ではないので variant 宣言形だけを照合する）。
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../core/src/capability.rs");
     let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    for variant_form in ["PermissionDenied {", "PermissionDenied,", "PermissionDenied("] {
+    for variant_form in [
+        "PermissionDenied {",
+        "PermissionDenied,",
+        "PermissionDenied(",
+    ] {
         assert!(
             !src.contains(variant_form),
             "権限は据え置き: CapabilityError に PermissionDenied variant を足さない（ADR-0119/0120）"
