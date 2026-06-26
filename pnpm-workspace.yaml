@@ -11,6 +11,7 @@ packages:
   - 'Tsubame/examples/*'
   - 'Miharashi/dev-server'
   - 'Miharashi/host-web'
+  - 'Miharashi/protocol-handshake'
 
 allowBuilds:
   canvas: true

@@ -113,6 +113,45 @@ test.describe('Miharashi host — full reload on source change', () => {
   });
 });
 
+test.describe('Miharashi host — protocol version mismatch', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+  });
+
+  test('ホスト版数がバンドルと食い違うと明示エラーになり mount もクラッシュもしない', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+
+    // ページの致命的エラー（謎クラッシュ）が起きていないことも併せて検証する。
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
+
+    // `?protocolVersion=999` でホスト（decoder）版数を上書きし、バンドル（encoder）の版数と
+    // 食い違わせる。ホストは fetch → eval 後に突き合わせ、不一致を検知する。
+    await page.goto(`/host.html?dev=${encodeURIComponent(DEV_SERVER_URL)}&protocolVersion=999`);
+
+    // 明示エラー UI に落ちる（mount もクラッシュもしない）。
+    await expect(page.locator('html')).toHaveAttribute(
+      'data-miharashi-status',
+      'protocol-mismatch',
+      { timeout: 30_000 },
+    );
+
+    // 「このホストは protocol vX、バンドルは vY」を画面に出す。
+    const panel = page.locator('#miharashi-error');
+    await expect(panel).toBeVisible();
+    await expect(panel).toContainText('999');
+    await expect(panel).toContainText('protocol');
+
+    // mount には到達していない（mount count 未設定 = 一度も mount していない）。
+    expect(await readMountCount(page)).toBe(0);
+
+    // 不一致は明示エラーで止め、未捕捉例外（クラッシュ）にしていない。
+    expect(pageErrors, `unexpected page errors:\n${pageErrors.join('\n')}`).toEqual([]);
+  });
+});
+
 /** host ページが data 属性に出している mount 回数を読む（未設定なら 0）。 */
 async function readMountCount(page: import('@playwright/test').Page): Promise<number> {
   const value = await page.locator('html').getAttribute('data-miharashi-mount-count');

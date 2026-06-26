@@ -15,6 +15,11 @@ export function generateWire() {
     '',
   ];
 
+  // wire の protocol version（バンドル encoder ↔ ホスト decoder の整合トークン）。spec manifest の
+  // `version` を唯一の source of truth として焼き出す（#530 / CONTEXT.md「Protocol Version」）。
+  lines.push(`export const PROTOCOL_VERSION = ${proto.manifest.version};`);
+  lines.push('');
+
   lines.push('export const OP = {');
   for (const op of proto.opcodes ?? []) {
     lines.push(`  ${op.name}: ${op.value},`);

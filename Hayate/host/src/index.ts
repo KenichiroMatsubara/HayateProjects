@@ -1,8 +1,16 @@
+import manifest from '@hayate/protocol-spec/manifest' with { type: 'json' };
 import { resolveCanvasBackend, type CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
 
 export type { CanvasBackend } from './resolve-backend.js';
 export type { RawHayate, HayateEffectiveVisual, HayateColorRecord } from './raw-hayate.js';
+
+/**
+ * このホストに焼き込まれた decoder の wire 定数バージョン。Miharashi はこれをバンドルの encoder
+ * 版数と起動時に突き合わせ、一致時のみ mount する（#530 / CONTEXT「Protocol Version」）。decoder
+ * （WASM）と同じ `@hayate/protocol-spec` の manifest version を source of truth とする。
+ */
+export const HOST_PROTOCOL_VERSION: number = manifest.version;
 
 /**
  * web bootstrap が確立して合成ルートへ渡す host。`raw` は Hayate ランタイムのポート、

@@ -28,6 +28,9 @@ export function loadProtocolSpec(specDir = DEFAULT_SPEC_DIR) {
     const path = join(specDir, `${section}.json`);
     proto[section] = JSON.parse(readFileSync(path, 'utf8'));
   }
+  // manifest は wire の protocol version（整合トークン）の source of truth。section とは別に
+  // 読み込み、generator が `PROTOCOL_VERSION` として焼き出せるようにする（#530）。
+  proto.manifest = JSON.parse(readFileSync(join(specDir, 'manifest.json'), 'utf8'));
   return proto;
 }
 
