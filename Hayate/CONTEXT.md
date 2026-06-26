@@ -113,6 +113,14 @@ _Avoid_: platform-free な共通ロジック（touch gesture / surface 状態機
 実機実装の前段として、capability を「Core trait ＋ android/ios 両 leaf stub ＋ mobile facade」で先に型として存在させ、呼ぶと typed な未実装エラー（`Unimplemented`）を返す breadth-first な状態。契約の形は Flutter の `platform_interface`（未実装は既定でエラーを throw）を写し、Rust では throw を `Result::Err` へ写像する。両 leaf stub が揃うことで「昇格は 2 実装から」ゲートの**意図**（1 platform 決め打ちで契約形を誤らない）を満たす — contract の形が実機実装で変わりうる点は受容する（ADR-0119）。
 _Avoid_: 空 trait の先置きと同一視（scaffold の stub は throw する契約を持つ）、panic/`unimplemented!()` で表す理解（typed な `Err` を返す）、機構（channel/bridge）まで Flutter から借りる理解（借りるのは taxonomy と throw-by-default な契約形のみ）、「完璧な契約設計」と捉える理解（狙うのは網羅・型付き・ちゃんとエラーまで）
 
+**Stream Capability（ストリーム capability）**:
+「現在値の単発取得 ＋ 状態変化イベントの連続供給」が本質の capability（battery / connectivity / geolocation / sensors = ADR-0119 の wave-2）。一発応答（wave-1）と契約の形が違う。Core trait が `query()`（現在値・`&self`・`Result<T, CapabilityError>`・wave-1 同型）と `subscribe()`（変化ストリーム・`&mut self`・`Result<Subscription, _>`）の 2 メソッドを持ち、契約が保証するのは「`subscribe` が変化を流す」ことだけ（初期値が要れば `query` 併用）。`EventDelivery` には乗せず（element ターゲットでない）専用契約とし、変化通知は ADR-0117 の「非同期 signal 変化」wake 源に合流して tick の単一 flush 点で reactive flush する（ADR-0120）。
+_Avoid_: `EventDelivery`/`DeliverySink` に乗せる理解（element/bubble 前提を曲げる）、query と subscribe を 1 メソッドに畳む設計、subscribe が必ず初期値を出すと契約に書く理解、一発応答 capability（wave-1）と同一視
+
+**Capability Subscription（購読ハンドル）**:
+`Stream Capability` の `subscribe()` が返す **RAII ハンドル**で、購読の生存そのもの。`poll_changes() -> Vec<T>` で蓄積された変化を consumer が**フレームの flush 点で drain** する（`poll_deliveries` と同型・値コールバックは契約に持たない）。`Drop` で leaf（Platform Adapter）が native 登録を解除する（**契約と Drop 意味論は Core、解除の native 手続きは leaf**）。解除失敗は best-effort で握り潰す（`Result` を取らない）。所有者は consumer（アプリ／Hayabusa ランタイム側）で、unmount でハンドルが drop すれば購読も終わる。値の届き方は **wake = leaf push（`request_redraw`・ADR-0080/0117）／ value = consumer pull（drain）** のハイブリッドで、threading marshaling とバッファは leaf に隠れる（ADR-0120）。
+_Avoid_: 明示 `unsubscribe(id)` ペア（呼び忘れで native listener リーク）、pure poll（毎フレーム drain で idle 落ちを壊す）、値コールバック `FnMut(T)` を Core 契約に置く設計、解除に `Result` を期待する理解、buffer/marshaling を Core が持つ理解
+
 **Tsubame Adapter**:
 `tsubame-solid` / `tsubame-vue` / `tsubame-react` の総称。各フレームワーク固有ランタイムを維持したまま、レンダリング先だけを `Renderer Protocol` に向け替える。
 _Avoid_: shared component runtime, unified signal runtime
