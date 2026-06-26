@@ -32,6 +32,10 @@ pub use hayate_core::{Battery, BatteryStatus, Subscription, SubscriptionSource};
 // trait `ConnectivityProvider` を再露出するだけで別契約を切らない。
 pub use hayate_core::{Connectivity, ConnectivityProvider};
 
+// geolocation（ADR-0120）も同じ wave-2 契約土台を再利用する。facade は値型 `Position` と trait
+// `Geolocation` を再露出するだけで別契約を切らない（権限は据え置き・ADR-0119/0120）。
+pub use hayate_core::{Geolocation, Position};
+
 /// family 統一の音声出力 facade。ビルド対象に応じて、Core の [`AudioOutput`] を満たす leaf
 /// 実装（android = `AudioTrack` / ios = `AVAudioEngine`）へ解決する単一の型名。上位は leaf を
 /// 名指しせず本 facade だけを参照する。
@@ -111,3 +115,10 @@ pub type MobileBattery = hayate_adapter_ios::capability_stubs::IosBattery;
 pub type MobileConnectivity = hayate_adapter_android::capability_stubs::AndroidConnectivity;
 #[cfg(target_os = "ios")]
 pub type MobileConnectivity = hayate_adapter_ios::capability_stubs::IosConnectivity;
+
+// geolocation（ADR-0120）: battery と同型の cfg facade。stub は query/subscribe とも
+// `Err(Unimplemented)` を返す（権限ゲート付きだが scaffold では権限据え置き・ADR-0119/0120）。
+#[cfg(target_os = "android")]
+pub type MobileGeolocation = hayate_adapter_android::capability_stubs::AndroidGeolocation;
+#[cfg(target_os = "ios")]
+pub type MobileGeolocation = hayate_adapter_ios::capability_stubs::IosGeolocation;

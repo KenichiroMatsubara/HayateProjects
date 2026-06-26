@@ -11,9 +11,9 @@
 use hayate_core::capability::CapabilityError;
 use hayate_core::{
     Battery, BatteryStatus, Biometric, Connectivity, ConnectivityProvider, DeviceInfo,
-    DeviceInfoProvider, FileFilter, FilePicker, HapticKind, Haptics, KeyValueStore,
-    LocalNotification, LocalNotifications, PickedFile, SavePath, SecureStorage, Share, Subscription,
-    UrlLauncher,
+    DeviceInfoProvider, FileFilter, FilePicker, Geolocation, HapticKind, Haptics, KeyValueStore,
+    LocalNotification, LocalNotifications, PickedFile, Position, SavePath, SecureStorage, Share,
+    Subscription, UrlLauncher,
 };
 
 /// この leaf の platform 名（`CapabilityError` に載る）。
@@ -150,6 +150,21 @@ impl ConnectivityProvider for AndroidConnectivity {
     }
 }
 
+/// geolocation の Android stub（wave-2・実装時 `FusedLocationProviderClient` /
+/// `LocationManager`）。`query`/`subscribe` とも `Err(Unimplemented)`（位置変化の native 登録も
+/// 含め未実装・ADR-0120）。権限ゲート付きだが scaffold では権限据え置き（`PermissionDenied` は
+/// 返さず `Unimplemented` のまま・ADR-0119/0120）。
+#[derive(Default)]
+pub struct AndroidGeolocation;
+impl Geolocation for AndroidGeolocation {
+    fn query(&self) -> Result<Position, CapabilityError> {
+        Err(ni("geolocation"))
+    }
+    fn subscribe(&mut self) -> Result<Subscription<Position>, CapabilityError> {
+        Err(ni("geolocation"))
+    }
+}
+
 /// biometric の Android stub（実装時 `BiometricPrompt`）。
 #[derive(Default)]
 pub struct AndroidBiometric;
@@ -204,6 +219,14 @@ mod tests {
             AndroidConnectivity.subscribe().map(|_| ()),
             Err(ni("connectivity")),
             "connectivity subscribe も未実装（接続変化の native 登録はまだ無い）"
+        );
+        // wave-2 geolocation（ADR-0120）: battery と同型。query/subscribe とも Unimplemented。
+        // 権限ゲート付きだが scaffold では権限据え置き（`PermissionDenied` は返さない）。
+        assert_eq!(AndroidGeolocation.query(), Err(ni("geolocation")));
+        assert_eq!(
+            AndroidGeolocation.subscribe().map(|_| ()),
+            Err(ni("geolocation")),
+            "geolocation subscribe も未実装（位置変化の native 登録はまだ無い）"
         );
     }
 
