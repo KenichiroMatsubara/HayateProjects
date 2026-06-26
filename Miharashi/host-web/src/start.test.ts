@@ -19,6 +19,7 @@ describe('startMiharashiHost', () => {
 
     startMiharashiHost({
       devServerUrl: 'http://dev.example',
+      hostProtocolVersion: 1,
       acquireCanvas: () => canvas,
       boot,
       subscribe: () => ({ close() {} }),
@@ -36,6 +37,7 @@ describe('startMiharashiHost', () => {
 
     startMiharashiHost({
       devServerUrl: 'http://dev.example',
+      hostProtocolVersion: 1,
       acquireCanvas,
       boot,
       subscribe: (o: SubscribeReloadOptions) => {
@@ -58,6 +60,7 @@ describe('startMiharashiHost', () => {
 
     const handle = startMiharashiHost({
       devServerUrl: 'http://dev.example',
+      hostProtocolVersion: 1,
       acquireCanvas: () => ({}) as HTMLCanvasElement,
       boot: async () => {},
       subscribe: () => subscription,

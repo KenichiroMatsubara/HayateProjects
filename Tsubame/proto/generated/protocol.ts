@@ -1,6 +1,8 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
 // 生成元: @hayate/protocol-spec
 
+export const PROTOCOL_VERSION = 1;
+
 export const OP = {
   APPEND_CHILD: 0,
   INSERT_BEFORE: 1,

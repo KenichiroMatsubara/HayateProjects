@@ -1,6 +1,12 @@
 import type { CreateHayateWebHostOptions, WebHost } from '@hayate/host';
+import {
+  checkProtocolVersion,
+  ProtocolMismatchError,
+  readBundleProtocolVersion,
+} from '@miharashi/protocol-handshake';
 
 export type { WebHost } from '@hayate/host';
+export { ProtocolMismatchError } from '@miharashi/protocol-handshake';
 
 /**
  * App Bundle が `eval` 時に登録する mount。host bootstrap（`raw` + frame-clock）を受け取り、
@@ -29,6 +35,13 @@ export interface BootMiharashiHostOptions {
   readonly devServerUrl: string;
   /** mount 先の surface。`createHayateWebHost` がこの上に raw を確立する。 */
   readonly canvas: HTMLCanvasElement;
+  /**
+   * このホスト（decoder）に焼き込まれた protocol version。eval 後にバンドル（encoder）が
+   * 埋めた版数と突き合わせ、一致時のみ mount する。不一致は {@link ProtocolMismatchError} で
+   * 明示エラーにし、mount もクラッシュもさせない（#530）。合成ルートが `@hayate/host` の
+   * `HOST_PROTOCOL_VERSION` を渡す。
+   */
+  readonly hostProtocolVersion: number;
   /** dev-server 上のバンドルルート。既定は {@link DEFAULT_BUNDLE_ROUTE}。 */
   readonly bundleRoute?: string;
   /** `createHayateWebHost` に渡す backend / tuning 等。auto モードでは省略可。 */
@@ -39,6 +52,11 @@ export interface BootMiharashiHostOptions {
   readonly fetchBundle?: (bundleUrl: string) => Promise<string>;
   /** バンドル text を eval して mount を取り出す seam。既定は indirect eval + global 読み。 */
   readonly evalBundle?: (source: string) => MiharashiMount;
+  /**
+   * eval 済みバンドルが立てた protocol version を読む seam。既定は global
+   * （`__miharashiProtocolVersion`）を読む。未埋め込み（契約違反）は `undefined`。
+   */
+  readonly readBundleVersion?: () => number | undefined;
   /** host bootstrap を確立する seam。既定は `@hayate/host` の `createHayateWebHost`。 */
   readonly createHost?: (
     canvas: HTMLCanvasElement,
@@ -71,6 +89,11 @@ function defaultEvalBundle(source: string): MiharashiMount {
   return mount as MiharashiMount;
 }
 
+/** eval 済みバンドルが global に立てた protocol version を読む既定実装。 */
+function defaultReadBundleVersion(): number | undefined {
+  return readBundleProtocolVersion(globalThis);
+}
+
 /** `@hayate/host` の `createHayateWebHost` を遅延 import する既定実装。 */
 async function defaultCreateHost(
   canvas: HTMLCanvasElement,
@@ -89,12 +112,21 @@ async function defaultCreateHost(
 export async function bootMiharashiHost(options: BootMiharashiHostOptions): Promise<void> {
   const fetchBundle = options.fetchBundle ?? defaultFetchBundle;
   const evalBundle = options.evalBundle ?? defaultEvalBundle;
+  const readBundleVersion = options.readBundleVersion ?? defaultReadBundleVersion;
   const createHost = options.createHost ?? defaultCreateHost;
   const bundleRoute = options.bundleRoute ?? DEFAULT_BUNDLE_ROUTE;
 
   const bundleUrl = new URL(bundleRoute, options.devServerUrl).href;
   const source = await fetchBundle(bundleUrl);
   const mount = evalBundle(source);
+
+  // protocol version ハンドシェイク（#530）：eval 済みバンドルの encoder 版数とこのホストの
+  // decoder 版数を突き合わせる。不一致は host bootstrap を起こす前に明示エラーで止め、mount も
+  // クラッシュもさせない（謎クラッシュ回避）。突き合わせロジックは Web/Android 共有
+  // （`@miharashi/protocol-handshake`）。
+  const handshake = checkProtocolVersion(options.hostProtocolVersion, readBundleVersion());
+  if (!handshake.ok) throw new ProtocolMismatchError(handshake);
+
   const host = await createHost(options.canvas, options.hostOptions);
   mount(host);
 }
@@ -213,6 +245,12 @@ export interface StartMiharashiHostOptions {
   /** バンドルを取得し reload を購読する dev-server の origin（例 `http://127.0.0.1:5181`）。 */
   readonly devServerUrl: string;
   /**
+   * このホスト（decoder）の protocol version。boot 時にバンドルの encoder 版数と突き合わせ、
+   * 不一致は明示エラーにする（#530）。合成ルートが `@hayate/host` の `HOST_PROTOCOL_VERSION`
+   * を渡す。
+   */
+  readonly hostProtocolVersion: number;
+  /**
    * mount 先の surface を用意する。full reload は呼ぶたびに**新しい canvas**を返して、
    * レンダラ初期化と state を完全にやり直す（state は飛ぶ・ADR-0001 / CONTEXT.md「Reload」）。
    * canvas のコンテキスト型は一度決まると変えられないため、再 mount には新しい surface が要る。
@@ -251,6 +289,7 @@ export function startMiharashiHost(options: StartMiharashiHostOptions): Miharash
     boot({
       devServerUrl: options.devServerUrl,
       canvas: options.acquireCanvas(),
+      hostProtocolVersion: options.hostProtocolVersion,
       hostOptions: options.hostOptions,
     }).then(
       () => options.onBootSettled?.({ ok: true }),

@@ -1,8 +1,8 @@
 {
-  "name": "@miharashi/host-web",
+  "name": "@miharashi/protocol-handshake",
   "version": "0.0.0",
   "private": true,
-  "description": "Miharashi Web ホスト — dev-server URL から App Bundle を fetch → eval し、@hayate/host の createHayateWebHost で host bootstrap を確立してバンドルの mount に渡す。FW も @tsubame/renderer-canvas も持たない（ADR-0001）。",
+  "description": "Miharashi protocol version ハンドシェイク — バンドル（encoder）とホスト（decoder）の wire 整合を取る、FW/プラットフォーム非依存の突き合わせロジック。Web/Android のホストが共有する（#530 / #6）。",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,10 +23,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rimraf dist"
-  },
-  "dependencies": {
-    "@hayate/host": "workspace:*",
-    "@miharashi/protocol-handshake": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^6.1.3",

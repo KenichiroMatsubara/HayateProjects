@@ -23,6 +23,9 @@ importers:
 
   Hayate/host:
     dependencies:
+      '@hayate/protocol-spec':
+        specifier: workspace:*
+        version: link:../proto
       hayate-adapter-web:
         specifier: file:../wasm-pkgs/pkg
         version: link:../wasm-pkgs/pkg
@@ -69,6 +72,21 @@ importers:
       '@hayate/host':
         specifier: workspace:*
         version: link:../../Hayate/host
+      '@miharashi/protocol-handshake':
+        specifier: workspace:*
+        version: link:../protocol-handshake
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+
+  Miharashi/protocol-handshake:
     devDependencies:
       rimraf:
         specifier: ^6.1.3

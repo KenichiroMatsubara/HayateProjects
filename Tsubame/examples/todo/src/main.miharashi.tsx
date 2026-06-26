@@ -1,4 +1,5 @@
 import { renderTsubame } from '@tsubame/solid';
+import { PROTOCOL_VERSION } from '@tsubame/renderer-canvas';
 import type { WebHost } from '@hayate/host';
 import { TodoApp } from './App';
 import { mountCanvasApp } from './compose';
@@ -27,7 +28,15 @@ const detected: DetectModeResult = {
 declare global {
   // eslint-disable-next-line no-var
   var __miharashiMount: ((host: WebHost) => void) | undefined;
+  // eslint-disable-next-line no-var
+  var __miharashiProtocolVersion: number | undefined;
 }
+
+// 内包する `@tsubame/renderer-canvas` の wire 定数バージョンを protocol version として埋める
+// （#530）。global 名は `@miharashi/protocol-handshake` の MIHARASHI_PROTOCOL_VERSION_GLOBAL
+// （'__miharashiProtocolVersion'）と一致させる wire 契約。ホストは eval 後にこれを読み、自身の
+// decoder 版数と突き合わせて一致時のみ mount する。
+globalThis.__miharashiProtocolVersion = PROTOCOL_VERSION;
 
 // `@miharashi/host-web` の MIHARASHI_MOUNT_GLOBAL（'__miharashiMount'）と一致させる
 // wire 契約。ホストは eval 後にこの global を読み、host bootstrap を渡して呼ぶ。

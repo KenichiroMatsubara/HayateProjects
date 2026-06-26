@@ -30,8 +30,10 @@ describe('bootMiharashiHost', () => {
     await bootMiharashiHost({
       devServerUrl: 'http://dev.example',
       canvas,
+      hostProtocolVersion: 1,
       fetchBundle: async () => 'BUNDLE_SOURCE',
       evalBundle: () => mount,
+      readBundleVersion: () => 1,
       createHost: async () => host,
     });
 
@@ -44,8 +46,10 @@ describe('bootMiharashiHost', () => {
     await bootMiharashiHost({
       devServerUrl: 'http://127.0.0.1:5179',
       canvas,
+      hostProtocolVersion: 1,
       fetchBundle,
       evalBundle: () => vi.fn(),
+      readBundleVersion: () => 1,
       createHost: async () => fakeHost(),
     });
 
@@ -60,11 +64,13 @@ describe('bootMiharashiHost', () => {
     await bootMiharashiHost({
       devServerUrl: 'http://dev.example',
       canvas,
+      hostProtocolVersion: 1,
       fetchBundle: async () => 'src',
       evalBundle: () => {
         calls.push('eval');
         return vi.fn();
       },
+      readBundleVersion: () => 1,
       createHost: async () => {
         calls.push('createHost');
         return fakeHost();
@@ -86,7 +92,9 @@ describe('bootMiharashiHost', () => {
     await bootMiharashiHost({
       devServerUrl: 'http://dev.example',
       canvas,
+      hostProtocolVersion: 1,
       fetchBundle: async () => source,
+      readBundleVersion: () => 1,
       createHost: async () => host,
     });
 
@@ -99,6 +107,7 @@ describe('bootMiharashiHost', () => {
       bootMiharashiHost({
         devServerUrl: 'http://dev.example',
         canvas,
+        hostProtocolVersion: 1,
         fetchBundle: async () => '/* no mount registered */',
         createHost: async () => fakeHost(),
       }),
