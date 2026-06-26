@@ -15,8 +15,8 @@ _Avoid_: Tsubame Viewer（Tsubame context の一部だと誤読される）, フ
 _Avoid_: フレームワークをホストに焼き込む設計, renderer-canvas をホスト側に置く設計
 
 **App Bundle（アプリバンドル）**:
-Miharashi に流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid / react / vue ランタイム）＋ `@tsubame/renderer-canvas` を 1 つにまとめたもの。ホストは中身のフレームワークを解さず、`RawHayate` を満たす JS として実行するだけ。Hayabusa（WASM／ネイティブ）はバンドル対象外（dev-client で配って実行する形が iOS で原理的に成立しない）。
-_Avoid_: フレームワークをバンドルから除く設計, Hayabusa バンドル, `.hbc` 固定（配信形式は別決定）
+Miharashi に流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid / react / vue ランタイム）＋ `@tsubame/renderer-canvas` を 1 つにまとめたもの。ホストは中身のフレームワークを解さず、`RawHayate` を満たす JS として実行するだけ。Hayabusa（WASM／ネイティブ）は**現行（Hermes/JSI 直結・非 webview）ルートの**バンドル対象外（現ルートでは iOS で配って実行できない）。ただしこれは**恒久ではない** — Hayabusa 自体がまだ未完成のため未来の話だが、WebView+wasm ルート（ADR-0121：webview 上の canvas に wasm を wgpu 描画・IME はネイティブ API・native は wasm→js→native ブリッジ）を使えば、**原理的には iOS でも Hayabusa を載せられる**。
+_Avoid_: フレームワークをバンドルから除く設計, 現行ルートで Hayabusa をバンドルする設計, Hayabusa の iOS 不可を恒久／原理的と読む理解（現行ルート限定であり webview+wasm で将来可能・ADR-0121）, `.hbc` 固定（配信形式は別決定）
 
 **Dev Server**:
 開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
