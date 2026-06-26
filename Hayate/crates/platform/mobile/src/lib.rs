@@ -28,6 +28,10 @@ pub use hayate_core::{
 // で別契約を切らない。
 pub use hayate_core::{Battery, BatteryStatus, Subscription, SubscriptionSource};
 
+// connectivity（ADR-0120）も同じ wave-2 契約土台を再利用する。facade は値型 `Connectivity` と
+// trait `ConnectivityProvider` を再露出するだけで別契約を切らない。
+pub use hayate_core::{Connectivity, ConnectivityProvider};
+
 /// family 統一の音声出力 facade。ビルド対象に応じて、Core の [`AudioOutput`] を満たす leaf
 /// 実装（android = `AudioTrack` / ios = `AVAudioEngine`）へ解決する単一の型名。上位は leaf を
 /// 名指しせず本 facade だけを参照する。
@@ -100,3 +104,10 @@ pub type MobileBiometric = hayate_adapter_ios::capability_stubs::IosBiometric;
 pub type MobileBattery = hayate_adapter_android::capability_stubs::AndroidBattery;
 #[cfg(target_os = "ios")]
 pub type MobileBattery = hayate_adapter_ios::capability_stubs::IosBattery;
+
+// connectivity（ADR-0120）: battery と同型の cfg facade。stub は query/subscribe とも
+// `Err(Unimplemented)` を返す（実機実装で leaf 中身が差し替わっても facade 名は不変）。
+#[cfg(target_os = "android")]
+pub type MobileConnectivity = hayate_adapter_android::capability_stubs::AndroidConnectivity;
+#[cfg(target_os = "ios")]
+pub type MobileConnectivity = hayate_adapter_ios::capability_stubs::IosConnectivity;

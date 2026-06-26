@@ -9,9 +9,10 @@
 
 use hayate_core::capability::CapabilityError;
 use hayate_core::{
-    Battery, BatteryStatus, Biometric, DeviceInfo, DeviceInfoProvider, FileFilter, FilePicker,
-    HapticKind, Haptics, KeyValueStore, LocalNotification, LocalNotifications, PickedFile, SavePath,
-    SecureStorage, Share, Subscription, UrlLauncher,
+    Battery, BatteryStatus, Biometric, Connectivity, ConnectivityProvider, DeviceInfo,
+    DeviceInfoProvider, FileFilter, FilePicker, HapticKind, Haptics, KeyValueStore,
+    LocalNotification, LocalNotifications, PickedFile, SavePath, SecureStorage, Share, Subscription,
+    UrlLauncher,
 };
 
 /// この leaf の platform 名（`CapabilityError` に載る）。
@@ -134,6 +135,19 @@ impl Battery for IosBattery {
     }
 }
 
+/// connectivity の iOS stub（wave-2・実装時 `NWPathMonitor`）。`query`/`subscribe` とも
+/// `Err(Unimplemented)`（接続変化の native 登録も含め未実装・ADR-0120）。
+#[derive(Default)]
+pub struct IosConnectivity;
+impl ConnectivityProvider for IosConnectivity {
+    fn query(&self) -> Result<Connectivity, CapabilityError> {
+        Err(ni("connectivity"))
+    }
+    fn subscribe(&mut self) -> Result<Subscription<Connectivity>, CapabilityError> {
+        Err(ni("connectivity"))
+    }
+}
+
 /// biometric の iOS stub（実装時 `LAContext`）。
 #[derive(Default)]
 pub struct IosBiometric;
@@ -175,6 +189,13 @@ mod tests {
             IosBattery.subscribe().map(|_| ()),
             Err(ni("battery")),
             "battery subscribe も未実装（ストリーム購読の native 登録はまだ無い）"
+        );
+        // wave-2 connectivity（ADR-0120）: battery と同型。query/subscribe とも Unimplemented。
+        assert_eq!(IosConnectivity.query(), Err(ni("connectivity")));
+        assert_eq!(
+            IosConnectivity.subscribe().map(|_| ()),
+            Err(ni("connectivity")),
+            "connectivity subscribe も未実装（接続変化の native 登録はまだ無い）"
         );
     }
 

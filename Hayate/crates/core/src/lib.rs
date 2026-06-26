@@ -8,6 +8,7 @@ pub mod battery;
 pub mod biometric;
 pub mod capability;
 pub mod color;
+pub mod connectivity;
 pub mod device_info;
 pub mod element;
 pub mod file_picker;
@@ -34,6 +35,8 @@ pub use audio_output::{
 pub use battery::{Battery, BatteryStatus};
 pub use biometric::Biometric;
 pub use capability::CapabilityError;
+// wave-2 ストリーム capability（ADR-0120）。connectivity は battery の共有契約土台を再利用する。
+pub use connectivity::{Connectivity, ConnectivityProvider};
 // clipboard は capability に含めない: 編集境界 `element::clipboard::Clipboard`（ADR-0097 /
 // ADR-0014 の Platform Adapter 責務）が所有済み。同一 OS API への 2 重抽象を避ける（ADR-0119）。
 pub use device_info::{DeviceInfo, DeviceInfoProvider};
