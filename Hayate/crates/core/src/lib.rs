@@ -4,6 +4,7 @@
 extern crate self as hayate_core;
 
 pub mod audio_output;
+pub mod battery;
 pub mod biometric;
 pub mod capability;
 pub mod color;
@@ -18,6 +19,7 @@ pub mod render;
 pub mod scroll;
 pub mod secure_storage;
 pub mod share;
+pub mod subscription;
 pub mod surface_lifecycle;
 pub mod touch_input;
 pub mod url_launcher;
@@ -28,6 +30,8 @@ pub use audio_output::{
     AudioFormat, AudioOutput, DEFAULT_BUFFER_FRAMES, DEFAULT_CHANNEL_COUNT, DEFAULT_SAMPLE_RATE_HZ,
 };
 // capability scaffold（ADR-0119）。契約の正本は Core。leaf stub は `Unimplemented` を返す。
+// wave-2 ストリーム capability（ADR-0120）: battery が共有契約土台のトレーサーバレット。
+pub use battery::{Battery, BatteryStatus};
 pub use biometric::Biometric;
 pub use capability::CapabilityError;
 // clipboard は capability に含めない: 編集境界 `element::clipboard::Clipboard`（ADR-0097 /
@@ -39,6 +43,8 @@ pub use key_value_store::KeyValueStore;
 pub use local_notification::{LocalNotification, LocalNotifications};
 pub use secure_storage::SecureStorage;
 pub use share::Share;
+// wave-2 ストリーム capability 契約土台（ADR-0120）。Core 所有の RAII 購読ハンドルと producer 側。
+pub use subscription::{Subscription, SubscriptionSource};
 pub use url_launcher::UrlLauncher;
 pub use color::Color;
 pub use element::chrome_tuning::ChromeTuning;

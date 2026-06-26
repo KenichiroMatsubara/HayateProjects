@@ -35,6 +35,8 @@ const FACADES: &[(&str, &str, &str)] = &[
         "IosKeyValueStore",
     ),
     ("MobileBiometric", "AndroidBiometric", "IosBiometric"),
+    // wave-2 ストリーム capability 土台（ADR-0120）: battery も wave-1 と同型の cfg facade。
+    ("MobileBattery", "AndroidBattery", "IosBattery"),
 ];
 
 #[test]
@@ -79,6 +81,7 @@ fn facade_reexports_core_contracts_without_redefining_them() {
         "KeyValueStore",
         "Biometric",
         "CapabilityError",
+        "Battery",
     ] {
         assert!(
             !lib.contains(&format!("trait {contract}")),
