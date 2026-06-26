@@ -24,6 +24,10 @@ pub mod capability_stubs;
 // プラットフォーム非依存（素の TCP / std）なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod bundle_source;
+// Miharashi Android ホストが接続する dev-server の指定（#534）。端末 UI が入れた URL を host:port へ
+// 正規化し、fetch / reload の両方を同じ target で駆動する。純粋なのでホストでもコンパイル・テストされる。
+#[cfg(feature = "tsubame-js")]
+mod dev_server_target;
 // Miharashi Android ホストの protocol version 突き合わせ（#533）。Web #530 と同じ contract の
 // 純 Rust ミラー。プラットフォーム非依存なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]

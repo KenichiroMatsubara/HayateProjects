@@ -21,8 +21,8 @@ fn app_tsubame_src() -> String {
 fn host_fetches_the_bundle_over_the_network() {
     let src = app_tsubame_src();
     assert!(
-        src.contains("bundle_source::fetch_dev_bundle"),
-        "run() must obtain the bundle via the network fetch source (#532)"
+        src.contains("bundle_source::fetch_from"),
+        "run() must obtain the bundle via the network fetch source, driven by the resolved target (#532/#534)"
     );
 }
 

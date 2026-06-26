@@ -33,6 +33,7 @@ use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{init_gpu_surface, process_touch_input, sync_ime, GpuSurface};
 use crate::bundle_source;
+use crate::dev_server_target;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
 use crate::miharashi_reload::{
     boot_runtime, subscribe_reload, BootError, ReloadSocket, SubscribeReloadOptions,
@@ -84,6 +85,12 @@ pub(crate) fn run(app: AndroidApp) {
     // （生成物）から取る（#530/#533 共有）。
     let host_version = hayate_core::wire::PROTOCOL_VERSION;
 
+    // 接続先 dev-server：端末 UI（Kotlin の EditText）が internal data dir に書いた URL を読み戻して
+    // 1 つの target に解決する（未入力 / 不正なら既定 = エミュレータ loopback、#534）。この target が
+    // バンドル fetch（HTTP）と reload 購読（WS）の**両方**を駆動する＝同じ dev-server を指す（保持）。
+    // 毎 boot/reload で読み直されるので、再接続でも入力値が効く（再接続）。
+    let target = dev_server_target::resolve_entered(app.internal_data_path().as_deref());
+
     // 1 boot：dev-server からバンドルを取得 → Hermes ランタイムを構築（= eval。eval シームは
     // 不変 `new_hermes_app(make_bridge(tree.clone()), bundle)`）→ バンドルの protocol version を
     // 読みホスト版数と突き合わせる。一致時のみランタイムを返す（#532 の源 + #530 の突き合わせ）。
@@ -91,7 +98,7 @@ pub(crate) fn run(app: AndroidApp) {
     let boot = || {
         boot_runtime(
             host_version,
-            bundle_source::fetch_dev_bundle,
+            || bundle_source::fetch_from(&target),
             |bundle: &str| {
                 let tree: Rc<RefCell<ElementTree>> = Rc::new(RefCell::new(ElementTree::new()));
                 let hermes = new_hermes_app(make_bridge(tree.clone()), bundle);
@@ -128,8 +135,8 @@ pub(crate) fn run(app: AndroidApp) {
     let pending_for_schedule = Rc::clone(&pending_reconnect);
 
     let _reload_subscription = subscribe_reload(SubscribeReloadOptions {
-        host: bundle_source::DEV_SERVER_HOST.to_owned(),
-        port: bundle_source::DEV_SERVER_PORT,
+        host: target.host().to_owned(),
+        port: target.port(),
         on_reload: Box::new(move || reload_flag.set(true)),
         connect: Box::new(move |url| {
             let socket = connect_reload_ws(url);

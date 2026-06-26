@@ -12,23 +12,33 @@
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:hasCode="true">
 
+        <!-- Miharashi の最小 dev-server URL 入力画面（#534）。端末で接続先 URL を入力し、
+             internal files dir に書いてからネイティブの GameActivity を明示 Intent で起動する。
+             ネイティブはそのファイルを読み戻して fetch / reload の両方を駆動する。 -->
+        <activity
+            android:name=".DevServerSetupActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- GameActivity host; loads the Rust cdylib that android-activity's
              game-activity backend drives via `android_main`. The native library
              name is declared with `android.app.lib_name` (no `lib` prefix, no
              `.so` suffix). `adjustResize` lets the soft keyboard reflow layout
-             for the stage C IME bridge. -->
+             for the stage C IME bridge. Launched explicitly from the URL-entry
+             screen, so it is no longer the LAUNCHER itself. -->
         <activity
             android:name=".MainActivity"
-            android:exported="true"
+            android:exported="false"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density"
             android:windowSoftInputMode="adjustResize">
             <meta-data
                 android:name="android.app.lib_name"
                 android:value="hayate_adapter_android" />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
         </activity>
     </application>
 </manifest>
