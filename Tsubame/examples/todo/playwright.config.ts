@@ -49,9 +49,11 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      // Miharashi の最小 dev server。単一 App Bundle をビルドしてから HTTP 配信する。
-      // host.html はこのポートからバンドルを fetch → eval する（CORS は dev server が許可）。
-      command: `pnpm run build:miharashi && MIHARASHI_DEV_PORT=${MIHARASHI_DEV_PORT} node scripts/miharashi-dev-server.mjs`,
+      // Miharashi の最小 dev server。`vite build --watch` が単一 App Bundle を作り続け、dev server
+      // がそれを HTTP 配信 + bundle 変更を WS で `reload` 中継する（full reload ループ・ADR-0001）。
+      // 初回ビルド完了は `/bundle.js` の 200 で待つ（それまでは 404）。host.html はこのポートから
+      // バンドルを fetch → eval し、reload WS を購読する（CORS は dev server が許可）。
+      command: `MIHARASHI_DEV_PORT=${MIHARASHI_DEV_PORT} node scripts/miharashi-dev-server.mjs`,
       url: `http://localhost:${MIHARASHI_DEV_PORT}/bundle.js`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
