@@ -42,10 +42,10 @@ fn host_no_longer_reads_the_bundle_from_apk_assets() {
 #[test]
 fn eval_seam_is_unchanged() {
     let src = app_tsubame_src();
-    // 取得した JS ソース String をそのまま Hermes に eval する経路（`new_hermes_app(.., &bundle)`）
-    // は不変。源だけを差し替える。
+    // 取得した JS ソースをそのまま Hermes に eval する経路（`new_hermes_app(make_bridge(tree..), bundle)`）
+    // は不変。源（fetch）も reload も、この eval シームを呼び回すだけで作り替えない（#532/#533）。
     assert!(
-        src.contains("new_hermes_app(make_bridge(tree.clone()), &bundle)"),
+        src.contains("new_hermes_app(make_bridge(tree.clone()), bundle)"),
         "the fetched source must still flow into the unchanged eval seam"
     );
 }

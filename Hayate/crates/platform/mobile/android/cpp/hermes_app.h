@@ -30,6 +30,12 @@ class HermesApp {
   // マイクロタスクキューを排出する。
   void pump_frame(double timestamp_ms);
 
+  // eval 済みバンドルが立てた globalThis.__miharashiProtocolVersion を読む（#533）。有限数なら
+  // その値、未埋め込み / 非数値（契約違反 / 壊れた埋め込み）なら -1.0 を返す。ホスト（Rust 側
+  // app_tsubame）はこれを Option<u32> に直し、`@miharashi/protocol-handshake` 同型の突き合わせに
+  // かける。バンドル → ホストの wire global 名は Web（main.miharashi.tsx）と共有。
+  double protocol_version() const;
+
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

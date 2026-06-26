@@ -24,6 +24,18 @@ pub mod capability_stubs;
 // プラットフォーム非依存（素の TCP / std）なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod bundle_source;
+// Miharashi Android ホストの protocol version 突き合わせ（#533）。Web #530 と同じ contract の
+// 純 Rust ミラー。プラットフォーム非依存なのでホストでもコンパイル・テストされる。
+#[cfg(feature = "tsubame-js")]
+mod protocol_handshake;
+// Miharashi Android ホストの full reload ループ orchestration（#533）。device 依存を注入シームに
+// 逃がした純 Rust なのでホストでもコンパイル・テストされる。
+#[cfg(feature = "tsubame-js")]
+mod miharashi_reload;
+// reload WS クライアント（#533）。subscribe_reload の device connect シーム。中身は素の std なので
+// ホストでコンパイル検証はできるが、実駆動は device の app_tsubame のみ。
+#[cfg(feature = "tsubame-js")]
+mod reload_socket;
 mod scene_demo;
 mod surface_lifecycle;
 mod touch_input;
