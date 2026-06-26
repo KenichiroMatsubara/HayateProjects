@@ -1,18 +1,25 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 /**
- * Miharashi トレーサーバレット #1 の e2e（ADR-0001）。最小 dev server が HTTP 配信する
- * 単一 App Bundle を、Miharashi ホストページ（host.html）が fetch → eval し、
- * `createHayateWebHost` で canvas 上に host bootstrap を確立してバンドルの mount に渡す。
- * 「ホストページを開くと todo が描画される」を本物の Chromium で端から端まで検証する。
+ * Miharashi の e2e（ADR-0001）。最小 dev server が HTTP 配信する単一 App Bundle を、Miharashi
+ * ホストページ（host.html）が fetch → eval し、`createHayateWebHost` で canvas 上に host bootstrap
+ * を確立してバンドルの mount に渡す。さらに full reload ループ（ソース編集 → WS reload → 再 mount）を
+ * 本物の Chromium で端から端まで検証する。
  *
  * ホスト側は framework / renderer-canvas を持たず、それらは eval するバンドルが持ち込む。
- * この e2e が緑なら、その構造（host bootstrap だけ → バンドルが FW+renderer-canvas）が
- * 実ブラウザで成立していることの証拠になる。
+ *
+ * 両テストは同じ dev-server / host.html を共有し、reload テストのソース編集は接続中の全 host へ
+ * 配信される。テスト間で host ページが同時に開かないよう、このファイルは **serial** で走らせる。
  */
+test.describe.configure({ mode: 'serial' });
 
 const MIHARASHI_DEV_PORT = Number(process.env.MIHARASHI_DEV_PORT ?? 5181);
 const DEV_SERVER_URL = `http://localhost:${MIHARASHI_DEV_PORT}`;
+
+/** full reload e2e が編集する App Bundle のソース。コメント追記で再ビルドを誘発する。 */
+const RELOAD_EDIT_TARGET = fileURLToPath(new URL('../src/main.miharashi.tsx', import.meta.url));
 
 test.describe('Miharashi host — renders the HTTP-served Tsubame bundle', () => {
   test.beforeEach(async ({ page }) => {
@@ -70,3 +77,44 @@ test.describe('Miharashi host — renders the HTTP-served Tsubame bundle', () =>
     ).toBe(true);
   });
 });
+
+test.describe('Miharashi host — full reload on source change', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.clear());
+  });
+
+  test('examples/todo のソースを編集するとホストが手動リロード無しで再 mount する', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.goto(`/host.html?dev=${encodeURIComponent(DEV_SERVER_URL)}`);
+
+    // 初回 boot 完了（mount count = 1）まで待つ。
+    await expect(page.locator('html')).toHaveAttribute('data-miharashi-status', 'mounted', {
+      timeout: 30_000,
+    });
+    const baseline = await readMountCount(page);
+    expect(baseline).toBeGreaterThanOrEqual(1);
+
+    const original = readFileSync(RELOAD_EDIT_TARGET, 'utf8');
+    try {
+      // ソース編集 → `vite build --watch` が再ビルド → dev-server が bundle 変更を検知 →
+      // WS で `reload` → ホストが再 fetch + 新しい canvas で再 mount（手動リロード無し）。
+      writeFileSync(RELOAD_EDIT_TARGET, `${original}\n// miharashi full-reload e2e touch\n`);
+
+      // mount count が baseline を超える = full reload ループが端から端まで貫けた。
+      await expect
+        .poll(async () => readMountCount(page), { timeout: 90_000 })
+        .toBeGreaterThan(baseline);
+    } finally {
+      // ソースを必ず元に戻す（作業ツリーを汚さない）。
+      writeFileSync(RELOAD_EDIT_TARGET, original);
+    }
+  });
+});
+
+/** host ページが data 属性に出している mount 回数を読む（未設定なら 0）。 */
+async function readMountCount(page: import('@playwright/test').Page): Promise<number> {
+  const value = await page.locator('html').getAttribute('data-miharashi-mount-count');
+  return value ? Number(value) : 0;
+}
