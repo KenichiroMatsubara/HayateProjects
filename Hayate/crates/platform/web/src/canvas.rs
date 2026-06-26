@@ -148,6 +148,16 @@ pub struct HayateElementRenderer {
     edit_context: Option<EditContextHandle>,
 }
 
+impl HayateElementRenderer {
+    /// In-process projection（ADR-0045）用の `ElementTree` 借用。wire（`apply_mutations`）を
+    /// 介さず、同一プロセスの Rust consumer（Hayabusa）が直接ツリーを組み立てるための継ぎ目。
+    /// `render()` は tree からレイアウト → SceneGraph を生成するため、ここで組んだツリーが
+    /// そのまま present される。`wasm_bindgen` には出さない（`&mut ElementTree` は JS 非対応）。
+    pub fn tree_mut(&mut self) -> &mut ElementTree {
+        &mut self.tree
+    }
+}
+
 #[wasm_bindgen]
 impl HayateElementRenderer {
     pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateElementRenderer, JsValue> {
