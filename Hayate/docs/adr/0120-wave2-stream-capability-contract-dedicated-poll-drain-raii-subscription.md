@@ -99,7 +99,7 @@ ADR-0119 が mobile capability を wave 分割し、wave-2（battery・connectiv
 - **wire/JS 公開（`proto/spec/manifest.json` の mobile セクション投影）は不可避な収束先**だが、wire 契約は
   バージョン付き・言語横断・JS consumer が依存する **in-process trait より桁違いに不可逆**。実機実装が
   1 つも無く streaming 契約（`poll_changes`/`Vec<T>`/RAII）が未検証の段階で焼くのは ADR-0068 の投機 seam の
-  罠。よって**今は manifest を触らず**、wire 公開は **別の blocked issue で追跡**する。発火条件は
+  罠。よって**今は manifest を触らず**、wire 公開は **別の blocked issue（#542）で追跡**する。発火条件は
   「wave-2 in-process 契約が実機実装で検証済み」かつ「wire/JS 需要が現実化（例: ADR-0121 の webview+wasm
   経路、または JS フレームワークからの capability 要求）」。投影は style_tags 同型の single-source codegen で
   行い、JS 側で再宣言しない。
