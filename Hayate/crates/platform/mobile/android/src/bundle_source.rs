@@ -15,13 +15,8 @@ use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-/// 既定の dev-server ホスト。Android エミュレータからホスト機の loopback へ抜ける別名アドレス。
-/// 端末上での URL 入力 UI（#7）が入るまではこのハードコード値を使う。バンドル fetch（HTTP）と
-/// reload 購読（WS）が同じ dev-server を指すよう、app_tsubame の reload 配線と共有する（#533）。
-pub(crate) const DEV_SERVER_HOST: &str = "10.0.2.2";
-/// 既定の dev-server ポート（#528 Web ホストの docstring 例 `http://127.0.0.1:5179` と同値）。
-/// dev-server は OS 割当ポートでも起動できるため、これは当面のプレースホルダ（設定値化は #7）。
-pub(crate) const DEV_SERVER_PORT: u16 = 5179;
+use crate::dev_server_target::DevServerTarget;
+
 /// dev-server がバンドルを配信する HTTP ルート。`@miharashi/dev-server` の `BUNDLE_ROUTE`
 /// と一致させる wire 契約（node 依存をネイティブへ持ち込まないため値で複製する）。
 const BUNDLE_ROUTE: &str = "/bundle.js";
@@ -49,13 +44,13 @@ pub enum BundleFetchError {
     Io(std::io::ErrorKind),
 }
 
-/// 既定の dev-server からバンドルを取得する。`app_tsubame::run` はこれを APK asset 読み込みの
-/// 代わりに呼び、得た JS ソースをそのまま `new_hermes_app(.., &bundle)` の eval シームへ渡す。
-/// 名前付き定数（host / port / route / timeout）を 1 箇所で束ね、インラインのマジックナンバーを
-/// 持たせない。
+/// 解決済み [`DevServerTarget`]（端末 UI が入れた URL、無ければ既定）からバンドルを取得する。
+/// `app_tsubame::run` はこれを APK asset 読み込みの代わりに呼び、得た JS ソースをそのまま
+/// `new_hermes_app(.., &bundle)` の eval シームへ渡す。route / timeout は名前付き定数、host / port は
+/// target が持つ（同じ target が reload 購読も駆動する＝保持・#534）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn fetch_dev_bundle() -> Result<String, BundleFetchError> {
-    fetch_bundle(DEV_SERVER_HOST, DEV_SERVER_PORT, BUNDLE_ROUTE, FETCH_TIMEOUT)
+pub fn fetch_from(target: &DevServerTarget) -> Result<String, BundleFetchError> {
+    fetch_bundle(target.host(), target.port(), BUNDLE_ROUTE, FETCH_TIMEOUT)
 }
 
 /// dev-server URL（host:port）からバンドルルートを GET し、JS ソース String を取得する。
@@ -181,8 +176,17 @@ mod tests {
         assert_eq!(BUNDLE_ROUTE, "/bundle.js");
         // #528 Web ホストの BUNDLE_FETCH_TIMEOUT_MS = 10_000 と対称。
         assert_eq!(FETCH_TIMEOUT, Duration::from_secs(10));
-        // エミュレータからホスト loopback へ抜ける既定アドレス（端末上の URL 入力 UI は #7）。
-        assert_eq!(DEV_SERVER_HOST, "10.0.2.2");
+        // host / port は端末 UI が入れた URL から解決する DevServerTarget が持つ（既定は dev_server_target、#534）。
+    }
+
+    #[test]
+    fn fetches_from_the_resolved_target_host_and_port() {
+        // 端末 UI が入れた URL を解決した target の host:port で取りに行く（同じ target が reload も駆動する）。
+        let port = serve_once(
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/javascript\r\n\r\nglobalThis.__entered = 1;",
+        );
+        let target = crate::dev_server_target::resolve(Some(&format!("127.0.0.1:{port}")));
+        assert_eq!(fetch_from(&target).unwrap(), "globalThis.__entered = 1;");
     }
 
     #[test]
