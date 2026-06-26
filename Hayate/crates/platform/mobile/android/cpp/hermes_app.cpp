@@ -24,6 +24,7 @@
 
 #include <android/log.h>
 
+#include <cmath>
 #include <exception>
 #include <string>
 #include <vector>
@@ -251,6 +252,23 @@ void HermesApp::pump_frame(double timestamp_ms) {
   } catch (const std::exception& e) {
     HAYATE_LOGE("pumpFrame で例外: %s", e.what());
     impl_->ready = false;
+  }
+}
+
+double HermesApp::protocol_version() const {
+  // eval に失敗していれば版数は読めない＝未埋め込み扱い（ホストが明示エラーにする）。
+  if (!impl_->ready) return -1.0;
+  jsi::Runtime& rt = *impl_->runtime;
+  try {
+    jsi::Value value = rt.global().getProperty(rt, "__miharashiProtocolVersion");
+    if (!value.isNumber()) return -1.0;
+    double v = value.asNumber();
+    // 非有限（NaN/Inf）は壊れた埋め込み → 未埋め込み扱い。
+    if (!std::isfinite(v)) return -1.0;
+    return v;
+  } catch (const std::exception& e) {
+    HAYATE_LOGE("protocol_version の読み取りで例外: %s", e.what());
+    return -1.0;
   }
 }
 

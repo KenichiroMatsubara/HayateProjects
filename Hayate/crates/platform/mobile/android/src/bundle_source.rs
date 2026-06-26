@@ -16,11 +16,12 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 /// 既定の dev-server ホスト。Android エミュレータからホスト機の loopback へ抜ける別名アドレス。
-/// 端末上での URL 入力 UI（#7）が入るまではこのハードコード値を使う。
-const DEV_SERVER_HOST: &str = "10.0.2.2";
+/// 端末上での URL 入力 UI（#7）が入るまではこのハードコード値を使う。バンドル fetch（HTTP）と
+/// reload 購読（WS）が同じ dev-server を指すよう、app_tsubame の reload 配線と共有する（#533）。
+pub(crate) const DEV_SERVER_HOST: &str = "10.0.2.2";
 /// 既定の dev-server ポート（#528 Web ホストの docstring 例 `http://127.0.0.1:5179` と同値）。
 /// dev-server は OS 割当ポートでも起動できるため、これは当面のプレースホルダ（設定値化は #7）。
-const DEV_SERVER_PORT: u16 = 5179;
+pub(crate) const DEV_SERVER_PORT: u16 = 5179;
 /// dev-server がバンドルを配信する HTTP ルート。`@miharashi/dev-server` の `BUNDLE_ROUTE`
 /// と一致させる wire 契約（node 依存をネイティブへ持ち込まないため値で複製する）。
 const BUNDLE_ROUTE: &str = "/bundle.js";

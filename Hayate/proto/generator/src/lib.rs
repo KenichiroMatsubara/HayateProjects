@@ -43,6 +43,9 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
 
 #[derive(Default)]
 struct Proto {
+    /// wire decoder の版数（manifest.json の `version`）。ホスト（Web/Android）が protocol 突き合わせ
+    /// の source of truth に使う（#530 / #533）。
+    version: u32,
     types: Vec<TypeDef>,
     enums: Vec<EnumDef>,
     opcodes: Vec<Entry>,
@@ -262,7 +265,13 @@ fn enum_value_string(value: &serde_json::Value) -> String {
     }
 }
 
+#[derive(Deserialize)]
+struct ManifestJson {
+    version: u32,
+}
+
 fn load_spec(spec_dir: &Path) -> Proto {
+    let manifest: ManifestJson = read_json(spec_dir, "manifest.json");
     let types: Vec<TypeJson> = read_json(spec_dir, "types.json");
     let enums: Vec<EnumJson> = read_json(spec_dir, "enums.json");
     let opcodes: Vec<EntryJson> = read_json(spec_dir, "opcodes.json");
@@ -274,6 +283,7 @@ fn load_spec(spec_dir: &Path) -> Proto {
     let pseudo_states: Vec<PseudoStateJson> = read_json(spec_dir, "pseudo_states.json");
 
     Proto {
+        version: manifest.version,
         types: types
             .into_iter()
             .map(|t| TypeDef {
@@ -409,6 +419,15 @@ fn generate(proto: &Proto) -> String {
     let mut out = String::new();
 
     out.push_str(GENERATED_HEADER);
+
+    // Protocol version (decoder の wire 版数, manifest.json の version)。ホスト（Web/Android）が
+    // バンドル encoder の版数と突き合わせる source of truth（#530 / #533）。Web の
+    // HOST_PROTOCOL_VERSION（@hayate/host）と同じ manifest を source とする。
+    out.push_str("// Protocol version (wire decoder version, source of truth for host handshakes)\n");
+    out.push_str(&format!(
+        "pub const PROTOCOL_VERSION: u32 = {};\n\n",
+        proto.version
+    ));
 
     // OP_* constants
     out.push_str("// Opcode constants\n");
@@ -1765,6 +1784,21 @@ mod generator_tests {
         for tag in &proto.style_tags {
             let _ = ValueType::classify(tag);
         }
+    }
+
+    #[test]
+    fn protocol_rs_bakes_the_manifest_version() {
+        // ホスト（decoder）の wire 版数の source of truth は manifest.json の `version`。
+        // Web ホストの `HOST_PROTOCOL_VERSION = manifest.version`（@hayate/host）と同じ source を
+        // ネイティブ decoder（`hayate_core::wire`）にも露出し、Miharashi Android ホストが
+        // protocol 突き合わせに使う（#530 / #533）。
+        let spec_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec");
+        let proto = load_spec(&spec_dir);
+        let code = generate(&proto);
+        assert!(
+            code.contains(&format!("pub const PROTOCOL_VERSION: u32 = {};", proto.version)),
+            "protocol.rs must bake the manifest version as PROTOCOL_VERSION; got:\n{code}"
+        );
     }
 }
 

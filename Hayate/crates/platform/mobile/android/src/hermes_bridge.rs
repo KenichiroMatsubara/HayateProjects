@@ -68,6 +68,11 @@ mod ffi {
         /// `globalThis.__tsubame.pumpFrame(timestamp_ms)` を呼ぶ。続いて Hermes の
         /// マイクロタスクキューを排出する。
         fn pump_frame(self: Pin<&mut HermesApp>, timestamp_ms: f64);
+
+        /// eval 済みバンドルが立てた `globalThis.__miharashiProtocolVersion` を読む（#533）。
+        /// 有限数ならその値、未埋め込み / 非数値なら `-1.0`。`app_tsubame` がこれを `Option<u32>`
+        /// に直し、`protocol_handshake::check_protocol_version` にかける。
+        fn protocol_version(self: &HermesApp) -> f64;
     }
 }
 
