@@ -35,9 +35,10 @@
 | §10 | [Protocol & Wire Contract](./10-protocol-wire-contract.md) | 19 | 1 | – |
 | §11 | [Tsubame](./11-tsubame.md) | 5 | 3 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
-| | **合計** | **90** | **11** | **8** |
+| §13 | [Mobile Capabilities](./13-mobile-capabilities.md) | – | – | 2 |
+| | **合計** | **90** | **11** | **10** |
 
-全 **109 要件**。実装率（✅）83%。⬜ 8 件のうち 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外、2 件（PLAT-07 AccessKit inbound / PLAT-10 desktop winit leaf）は設計確定・未着手の作業対象。
+全 **111 要件**。⬜ 10 件のうち 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外、2 件（PLAT-07 AccessKit inbound / PLAT-10 desktop winit leaf）は設計確定・未着手の作業対象、2 件（MOBL-01 wave-2 ストリーム capability 契約 / MOBL-02 capability 公開境界）は ADR-0120 で設計確定・後続 scaffold 待ち。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
@@ -56,13 +57,15 @@
 | TSUB-05 | adapter は既存ランタイム持込 | solid✅・react✅（ADR-0010）、vue未実装 |
 | TSUB-08 | viewport/resize は host adapter 責務 | Tsubame 退去✅、Hayate web adapter の resize 抽象化は follow-up（ADR-0004） |
 
-### ⬜ 未実装（8件・うち2件が作業対象）
+### ⬜ 未実装（10件・うち2件が作業対象）
 | ID | 規範文要約 | 種別 |
 |---|---|---|
 | PLAT-07 | AccessKit inbound action の Core 写像 | 設計確定（ADR-0098）・ネイティブ adapter 前提で未着手（作業対象） |
 | PLAT-10 | Desktop winit 単一 crate leaf | 設計確定（ADR-0118）・`hayate-platform-desktop` crate 未実装（作業対象） |
 | WEBA-08 | ADR-0010/0011 は歴史的 | 歴史（実装不要） |
 | HAYA-01〜05 | Hayabusa 全般 | 設計確定・将来（凍結） |
+| MOBL-01 | wave-2 ストリーム capability 契約（専用契約・query/subscribe・poll-drain・RAII subscription） | 設計確定（ADR-0120）・後続 wave-2 scaffold 待ち |
+| MOBL-02 | capability 公開境界（in-process DI・wire/JS 公開は延期＝blocked issue 追跡） | 設計確定（ADR-0120）・wire 公開は blocked |
 
 ## 矛盾マップ
 
