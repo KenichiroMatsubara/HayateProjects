@@ -12,8 +12,8 @@ use hayate_core::capability::CapabilityError;
 use hayate_core::{
     Battery, BatteryStatus, Biometric, Connectivity, ConnectivityProvider, DeviceInfo,
     DeviceInfoProvider, FileFilter, FilePicker, Geolocation, HapticKind, Haptics, KeyValueStore,
-    LocalNotification, LocalNotifications, PickedFile, Position, SavePath, SecureStorage, Share,
-    Subscription, UrlLauncher,
+    LocalNotification, LocalNotifications, PickedFile, Position, SavePath, SecureStorage,
+    SensorKind, SensorSample, Sensors, Share, Subscription, UrlLauncher,
 };
 
 /// この leaf の platform 名（`CapabilityError` に載る）。
@@ -165,6 +165,23 @@ impl Geolocation for AndroidGeolocation {
     }
 }
 
+/// sensors の Android stub（wave-2・実装時 `SensorManager` / `SensorEventListener`）。単一 trait ＋
+/// `SensorKind` 引数で全 sensor を出し分ける。`query`/`subscribe` とも全 kind で `Err(Unimplemented)`
+/// （高頻度センサストリームの native 登録も含め未実装・ADR-0120）。
+#[derive(Default)]
+pub struct AndroidSensors;
+impl Sensors for AndroidSensors {
+    fn query(&self, _kind: SensorKind) -> Result<SensorSample, CapabilityError> {
+        Err(ni("sensors"))
+    }
+    fn subscribe(
+        &mut self,
+        _kind: SensorKind,
+    ) -> Result<Subscription<SensorSample>, CapabilityError> {
+        Err(ni("sensors"))
+    }
+}
+
 /// biometric の Android stub（実装時 `BiometricPrompt`）。
 #[derive(Default)]
 pub struct AndroidBiometric;
@@ -193,7 +210,10 @@ mod tests {
             AndroidLocalNotifications.cancel_all(),
             Err(ni("local_notification"))
         );
-        assert_eq!(AndroidUrlLauncher.can_launch("https://x"), Err(ni("url_launcher")));
+        assert_eq!(
+            AndroidUrlLauncher.can_launch("https://x"),
+            Err(ni("url_launcher"))
+        );
         assert_eq!(AndroidSecureStorage.read("k"), Err(ni("secure_storage")));
         assert_eq!(AndroidDeviceInfo.query(), Err(ni("device_info")));
         assert_eq!(AndroidShare.share_text("t", None), Err(ni("share")));
@@ -228,6 +248,20 @@ mod tests {
             Err(ni("geolocation")),
             "geolocation subscribe も未実装（位置変化の native 登録はまだ無い）"
         );
+        // wave-2 sensors（ADR-0120）: 単一 trait ＋ SensorKind 引数。query/subscribe とも全 kind で
+        // Unimplemented を返し panic しない（高頻度ストリームの native 登録はまだ無い）。
+        for kind in [
+            SensorKind::Accelerometer,
+            SensorKind::Gyroscope,
+            SensorKind::Magnetometer,
+        ] {
+            assert_eq!(AndroidSensors.query(kind), Err(ni("sensors")));
+            assert_eq!(
+                AndroidSensors.subscribe(kind).map(|_| ()),
+                Err(ni("sensors")),
+                "sensors subscribe も未実装（センサストリームの native 登録はまだ無い）"
+            );
+        }
     }
 
     /// platform 名が正しく載る（ios leaf と取り違えていない）。

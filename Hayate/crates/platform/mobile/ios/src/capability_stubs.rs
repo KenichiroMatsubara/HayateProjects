@@ -11,8 +11,8 @@ use hayate_core::capability::CapabilityError;
 use hayate_core::{
     Battery, BatteryStatus, Biometric, Connectivity, ConnectivityProvider, DeviceInfo,
     DeviceInfoProvider, FileFilter, FilePicker, Geolocation, HapticKind, Haptics, KeyValueStore,
-    LocalNotification, LocalNotifications, PickedFile, Position, SavePath, SecureStorage, Share,
-    Subscription, UrlLauncher,
+    LocalNotification, LocalNotifications, PickedFile, Position, SavePath, SecureStorage,
+    SensorKind, SensorSample, Sensors, Share, Subscription, UrlLauncher,
 };
 
 /// この leaf の platform 名（`CapabilityError` に載る）。
@@ -162,6 +162,23 @@ impl Geolocation for IosGeolocation {
     }
 }
 
+/// sensors の iOS stub（wave-2・実装時 `CMMotionManager`）。単一 trait ＋ `SensorKind` 引数で全
+/// sensor を出し分ける。`query`/`subscribe` とも全 kind で `Err(Unimplemented)`（高頻度センサ
+/// ストリームの native 登録も含め未実装・ADR-0120）。
+#[derive(Default)]
+pub struct IosSensors;
+impl Sensors for IosSensors {
+    fn query(&self, _kind: SensorKind) -> Result<SensorSample, CapabilityError> {
+        Err(ni("sensors"))
+    }
+    fn subscribe(
+        &mut self,
+        _kind: SensorKind,
+    ) -> Result<Subscription<SensorSample>, CapabilityError> {
+        Err(ni("sensors"))
+    }
+}
+
 /// biometric の iOS stub（実装時 `LAContext`）。
 #[derive(Default)]
 pub struct IosBiometric;
@@ -187,7 +204,10 @@ mod tests {
             IosLocalNotifications.cancel_all(),
             Err(ni("local_notification"))
         );
-        assert_eq!(IosUrlLauncher.can_launch("https://x"), Err(ni("url_launcher")));
+        assert_eq!(
+            IosUrlLauncher.can_launch("https://x"),
+            Err(ni("url_launcher"))
+        );
         assert_eq!(IosSecureStorage.read("k"), Err(ni("secure_storage")));
         assert_eq!(IosDeviceInfo.query(), Err(ni("device_info")));
         assert_eq!(IosShare.share_text("t", None), Err(ni("share")));
@@ -195,7 +215,10 @@ mod tests {
             IosFilePicker.open_file(&FileFilter::default()),
             Err(ni("file_picker"))
         );
-        assert_eq!(IosKeyValueStore.contains_key("k"), Err(ni("key_value_store")));
+        assert_eq!(
+            IosKeyValueStore.contains_key("k"),
+            Err(ni("key_value_store"))
+        );
         assert_eq!(IosBiometric.is_available(), Err(ni("biometric")));
         // wave-2 battery（ADR-0120）: query/subscribe とも Unimplemented を返し panic しない。
         assert_eq!(IosBattery.query(), Err(ni("battery")));
@@ -219,6 +242,20 @@ mod tests {
             Err(ni("geolocation")),
             "geolocation subscribe も未実装（位置変化の native 登録はまだ無い）"
         );
+        // wave-2 sensors（ADR-0120）: 単一 trait ＋ SensorKind 引数。query/subscribe とも全 kind で
+        // Unimplemented を返し panic しない（高頻度ストリームの native 登録はまだ無い）。
+        for kind in [
+            SensorKind::Accelerometer,
+            SensorKind::Gyroscope,
+            SensorKind::Magnetometer,
+        ] {
+            assert_eq!(IosSensors.query(kind), Err(ni("sensors")));
+            assert_eq!(
+                IosSensors.subscribe(kind).map(|_| ()),
+                Err(ni("sensors")),
+                "sensors subscribe も未実装（センサストリームの native 登録はまだ無い）"
+            );
+        }
     }
 
     /// platform 名が正しく載る（android leaf と取り違えていない）。

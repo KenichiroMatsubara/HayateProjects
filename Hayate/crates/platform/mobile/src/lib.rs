@@ -36,6 +36,11 @@ pub use hayate_core::{Connectivity, ConnectivityProvider};
 // `Geolocation` を再露出するだけで別契約を切らない（権限は据え置き・ADR-0119/0120）。
 pub use hayate_core::{Geolocation, Position};
 
+// sensors（ADR-0120）も同じ wave-2 契約土台を再利用する。facade は単一 trait `Sensors`・kind enum
+// `SensorKind`・値型 `SensorSample` を再露出するだけで別契約を切らない（高頻度 drain は土台の
+// `poll_changes -> Vec` が全件保持）。
+pub use hayate_core::{SensorKind, SensorSample, Sensors};
+
 /// family 統一の音声出力 facade。ビルド対象に応じて、Core の [`AudioOutput`] を満たす leaf
 /// 実装（android = `AudioTrack` / ios = `AVAudioEngine`）へ解決する単一の型名。上位は leaf を
 /// 名指しせず本 facade だけを参照する。
@@ -122,3 +127,11 @@ pub type MobileConnectivity = hayate_adapter_ios::capability_stubs::IosConnectiv
 pub type MobileGeolocation = hayate_adapter_android::capability_stubs::AndroidGeolocation;
 #[cfg(target_os = "ios")]
 pub type MobileGeolocation = hayate_adapter_ios::capability_stubs::IosGeolocation;
+
+// sensors（ADR-0120）: 単一 trait ＋ SensorKind 引数だが facade の形は battery と同型の cfg facade。
+// stub は query/subscribe とも `Err(Unimplemented)` を返す（実機実装で leaf 中身が差し替わっても
+// facade 名は不変）。
+#[cfg(target_os = "android")]
+pub type MobileSensors = hayate_adapter_android::capability_stubs::AndroidSensors;
+#[cfg(target_os = "ios")]
+pub type MobileSensors = hayate_adapter_ios::capability_stubs::IosSensors;

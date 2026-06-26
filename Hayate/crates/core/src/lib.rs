@@ -20,6 +20,7 @@ pub mod node;
 pub mod render;
 pub mod scroll;
 pub mod secure_storage;
+pub mod sensors;
 pub mod share;
 pub mod subscription;
 pub mod surface_lifecycle;
@@ -49,6 +50,9 @@ pub use haptics::{HapticKind, Haptics};
 pub use key_value_store::KeyValueStore;
 pub use local_notification::{LocalNotification, LocalNotifications};
 pub use secure_storage::SecureStorage;
+// wave-2 ストリーム capability（ADR-0120）。sensors は battery の共有契約土台を再利用しつつ、単一
+// trait ＋ `SensorKind` 引数という一段違う形で全 sensor を出し分ける（高頻度 drain・全件保持）。
+pub use sensors::{SensorKind, SensorSample, Sensors};
 pub use share::Share;
 // wave-2 ストリーム capability 契約土台（ADR-0120）。Core 所有の RAII 購読ハンドルと producer 側。
 pub use subscription::{Subscription, SubscriptionSource};
