@@ -10,9 +10,17 @@
 //!         → HayateElementRenderer::render()（tree → layout → SceneGraph → tiny-skia → canvas）
 //! ```
 //!
-//! 入力も実経路で通す：canvas 上に合成した Click を `dispatch_event` → `poll_deliveries` で
-//! delivery にし、`HayabusaApp` の handler（`+1`）が signal を更新、Memo→Effect が text を
-//! patch して再 present する。AppHost::tick と同型のループ。
+//! 入力もライブの実経路で通す。canvas renderer は `init()` 内で自前のポインタ listener を
+//! canvas へ attach する（production の todo デモと同じ経路）。本デモは `requestAnimationFrame`
+//! ループで毎フレーム:
+//!
+//! ```text
+//! render(ts)                         // buffered pointer を排出 → hit-test → Click を tree へ dispatch
+//!   → tree.poll_deliveries()         // その Click delivery を取り出し
+//!     → HayabusaApp::handle(d, tree) // listener→ElId→handler(+1)→signal 更新→Memo→Effect→text patch
+//! ```
+//!
+//! を回す。AppHost::tick と同型（ただし tree は renderer が所有）。クリックすると数が増える。
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,8 +31,8 @@ use hayabusa::prelude::{
 };
 use hayate_adapter_web::HayateElementRenderer;
 use hayate_app_host::DeliverySink;
-use hayate_core::{DocumentEventKind, ElementId, Event};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use web_sys::HtmlCanvasElement;
 
 /// core の既定 font-family（`hayate_core::DEFAULT_FONT_FAMILY`）。Hayabusa の style 語彙は
@@ -112,42 +120,47 @@ pub async fn boot(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     let handlers: Vec<Handler> = vec![increment];
     let sink = Rc::new(RefCell::new(RecordingSink::new()));
     let instance = instantiate(&rt, &template, &scope, handlers, sink);
-
-    // click ターゲット（= button）の ElId を mount 前に控えておく。
-    let click_targets = instance.click_target_ids();
     let mut app = HayabusaApp::new(instance);
 
     // ── 2. adapter-web：canvas 上に CPU(tiny-skia) present レンダラ ───────────
+    // init() が canvas へポインタ listener を attach する（hit-test → Click は render() で発火）。
     let mut renderer = HayateElementRenderer::init(canvas).await?;
     renderer.register_font_bytes(DEFAULT_FONT_FAMILY, NOTO_SANS_JP);
     renderer.set_background_color(0.043, 0.063, 0.125); // #0b1020
 
-    // ── 3. in-process projection：初期構築 mutation を借用ツリーへ drain（root 設定込み）─
+    // ── 3. in-process projection：初期構築 mutation を借用ツリーへ drain（root 設定 + listener 登録）─
     DeliverySink::handle(&mut app, &[], renderer.tree_mut());
 
-    // ── 4. 実入力経路で +1 を 3 回：合成 Click → delivery → handler → reactive → patch ─
-    if let Some(&button) = click_targets.first() {
-        for _ in 0..3 {
-            let tree = renderer.tree_mut();
-            tree.dispatch_event(
-                DocumentEventKind::Click,
-                Event::Click {
-                    target_id: ElementId::from_u64(button.0),
-                    x: 0.0,
-                    y: 0.0,
-                },
-            );
-            let deliveries = tree.poll_deliveries();
-            DeliverySink::handle(&mut app, &deliveries, renderer.tree_mut());
+    // ── 4. ライブ raf ループ：render → poll_deliveries → handle ───────────────
+    let state = Rc::new(RefCell::new((renderer, app)));
+    let raf: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+    let raf_kick = raf.clone();
+    *raf.borrow_mut() = Some(Closure::wrap(Box::new(move |ts: f64| {
+        {
+            let mut s = state.borrow_mut();
+            let (renderer, app) = &mut *s;
+            // render() が buffered pointer を排出し、hit-test 成立で Click を tree へ dispatch する。
+            let _ = renderer.render(ts);
+            // その Click delivery を取り出し、Hayabusa の handler 経由で reactive patch を起こす
+            // （適用先は同じ借用ツリー。次フレームの render で新しい text が present される）。
+            let deliveries = renderer.tree_mut().poll_deliveries();
+            if !deliveries.is_empty() {
+                DeliverySink::handle(app, &deliveries, renderer.tree_mut());
+            }
         }
-    }
+        request_animation_frame(raf_kick.borrow().as_ref().unwrap());
+    }) as Box<dyn FnMut(f64)>));
+    request_animation_frame(raf.borrow().as_ref().unwrap());
+    // raf チェーンが自身を保持し続けるよう Closure をリークさせる（ループは恒久）。
+    std::mem::forget(raf);
 
-    // ── 5. present：tree → layout → SceneGraph → tiny-skia → canvas ───────────
-    for frame in 0..3 {
-        renderer.render(frame as f64 * 16.0)?;
-    }
-
-    // 将来のフレーム駆動・ライブ入力配線の足場として renderer を保持（drop 回避）。
-    Box::leak(Box::new(renderer));
     Ok(())
+}
+
+/// 次フレームをスケジュールする小さなヘルパ。
+fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
+    web_sys::window()
+        .expect("no window")
+        .request_animation_frame(f.as_ref().unchecked_ref())
+        .expect("requestAnimationFrame failed");
 }

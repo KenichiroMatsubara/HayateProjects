@@ -55,11 +55,26 @@ try {
 } catch {
   console.log('WARN: ready flag not seen within timeout — shooting anyway');
 }
-await page.waitForTimeout(500);
+await page.waitForTimeout(300);
+
+const app = page.locator('#app');
+
+// 初期状態（count = 0）。
+await app.screenshot({ path: join(ROOT, 'hayabusa-web-before.png') });
+console.log('before screenshot (count=0)');
+
+// ライブ入力：canvas の「+1」ボタン（下部の青いバー）を実マウスで 5 回クリックする。
+// renderer が attach 済みのポインタ listener が拾い、raf ループの render→poll→handle が
+// reactive patch を起こして数が増える。座標は #app（360x240 CSS）ローカル。
+for (let i = 0; i < 5; i++) {
+  await app.click({ position: { x: 180, y: 212 } });
+  await page.waitForTimeout(80);
+}
+await page.waitForTimeout(300);
 
 const out = join(ROOT, 'hayabusa-web.png');
-await page.locator('#app').screenshot({ path: out });
-console.log('screenshot →', out);
+await app.screenshot({ path: out });
+console.log('after screenshot (5 live clicks) →', out);
 
 // ページ全体も保存（背景込みで「Web に出ている」ことが分かるよう）。
 await page.screenshot({ path: join(ROOT, 'hayabusa-web-page.png') });
