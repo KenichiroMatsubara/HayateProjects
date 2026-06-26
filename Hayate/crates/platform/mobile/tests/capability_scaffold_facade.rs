@@ -43,6 +43,12 @@ const FACADES: &[(&str, &str, &str)] = &[
         "AndroidConnectivity",
         "IosConnectivity",
     ),
+    // wave-2 geolocation（ADR-0120）: battery の契約土台を再利用した同型 cfg facade。
+    (
+        "MobileGeolocation",
+        "AndroidGeolocation",
+        "IosGeolocation",
+    ),
 ];
 
 #[test]
@@ -89,6 +95,7 @@ fn facade_reexports_core_contracts_without_redefining_them() {
         "CapabilityError",
         "Battery",
         "ConnectivityProvider",
+        "Geolocation",
     ] {
         assert!(
             !lib.contains(&format!("trait {contract}")),
@@ -108,6 +115,22 @@ fn facade_is_build_time_cfg_not_runtime_dispatch() {
         !lib.contains("cfg!(") && !lib.contains("consts::OS"),
         "leaf は #[cfg] のビルド時選択で、実行時 OS 判定で選ばない"
     );
+}
+
+#[test]
+fn permission_denied_is_deferred_while_permissions_stay_put() {
+    // 権限ゲート付き capability（geolocation 等）を scaffold しても、native 権限フローを実機実装
+    // するまでは CapabilityError に `PermissionDenied` variant を足さない（error variant も
+    // 「先置きしない」・ADR-0119/0120）。Core の capability.rs を走査し variant 宣言の不在を pin
+    // する（コメント中の言及は変数名形ではないので variant 宣言形だけを照合する）。
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../core/src/capability.rs");
+    let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    for variant_form in ["PermissionDenied {", "PermissionDenied,", "PermissionDenied("] {
+        assert!(
+            !src.contains(variant_form),
+            "権限は据え置き: CapabilityError に PermissionDenied variant を足さない（ADR-0119/0120）"
+        );
+    }
 }
 
 #[test]

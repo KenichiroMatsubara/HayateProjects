@@ -12,6 +12,7 @@ pub mod connectivity;
 pub mod device_info;
 pub mod element;
 pub mod file_picker;
+pub mod geolocation;
 pub mod haptics;
 pub mod key_value_store;
 pub mod local_notification;
@@ -41,6 +42,9 @@ pub use connectivity::{Connectivity, ConnectivityProvider};
 // ADR-0014 の Platform Adapter 責務）が所有済み。同一 OS API への 2 重抽象を避ける（ADR-0119）。
 pub use device_info::{DeviceInfo, DeviceInfoProvider};
 pub use file_picker::{FileFilter, FilePicker, PickedFile, SavePath};
+// wave-2 ストリーム capability（ADR-0120）。geolocation は battery の共有契約土台を再利用する
+// （権限は据え置き — `PermissionDenied` は足さない・ADR-0119/0120）。
+pub use geolocation::{Geolocation, Position};
 pub use haptics::{HapticKind, Haptics};
 pub use key_value_store::KeyValueStore;
 pub use local_notification::{LocalNotification, LocalNotifications};
