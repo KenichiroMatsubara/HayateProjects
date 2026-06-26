@@ -1,0 +1,33 @@
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+
+// Miharashi react App Bundle（#531：FW 非依存の実証）向けの単一ファイルバンドル。
+//
+// ブラウザ用 `vite.config.ts` と同じ React automatic runtime（`jsxImportSource` を
+// `@tsubame/react` に向ける）を使いつつ、エントリを `main.miharashi.tsx` にし、DOM/HTML を
+// 伴わない単一の IIFE として出力する。生成物（`dist-miharashi/bundle.js`）を Miharashi
+// dev-server が HTTP 配信し、Web ホストが fetch → eval して `globalThis.__miharashiMount` を拾う。
+//
+// solid 版（`examples/todo/vite.config.miharashi.ts`）と対称：FW 固有の変換はここ（バンドル側）
+// に閉じ、出力する wire シームは同一なので同じホストが描画できる（ADR-0001）。ブラウザの eval で
+// 実行するため class/modern 構文の降格は不要。
+export default defineConfig({
+  esbuild: {
+    jsx: 'automatic',
+    jsxImportSource: '@tsubame/react',
+  },
+  build: {
+    target: 'es2020',
+    outDir: 'dist-miharashi',
+    emptyOutDir: true,
+    cssCodeSplit: false,
+    // デバッグしやすさ優先で非圧縮。
+    minify: false,
+    lib: {
+      entry: fileURLToPath(new URL('./src/main.miharashi.tsx', import.meta.url)),
+      formats: ['iife'],
+      name: 'TsubameReactTodoMiharashi',
+      fileName: () => 'bundle.js',
+    },
+  },
+});
