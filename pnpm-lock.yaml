@@ -49,6 +49,37 @@ importers:
 
   Hayate/wasm-pkgs/pkg-tiny-skia: {}
 
+  Miharashi/dev-server:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.19.0
+        version: 22.19.19
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+
+  Miharashi/host-web:
+    dependencies:
+      '@hayate/host':
+        specifier: workspace:*
+        version: link:../../Hayate/host
+    devDependencies:
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+
   Tsubame: {}
 
   Tsubame/examples/react-todo:
@@ -84,6 +115,9 @@ importers:
       '@hayate/host':
         specifier: workspace:*
         version: link:../../../Hayate/host
+      '@miharashi/host-web':
+        specifier: workspace:*
+        version: link:../../../Miharashi/host-web
       '@tsubame/renderer-canvas':
         specifier: workspace:*
         version: link:../../packages/renderer-canvas
@@ -106,6 +140,9 @@ importers:
       '@babel/preset-env':
         specifier: ^8.0.2
         version: 8.0.2(@babel/core@8.0.1)
+      '@miharashi/dev-server':
+        specifier: workspace:*
+        version: link:../../../Miharashi/dev-server
       '@playwright/test':
         specifier: ^1.61.0
         version: 1.61.0
