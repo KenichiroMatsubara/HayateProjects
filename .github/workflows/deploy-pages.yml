@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Tsubame Todo demo (Rust WASM + Vite)
+    name: Build Tsubame Todo + Hayabusa present demos (Rust WASM + Vite)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,11 +77,27 @@ jobs:
           VITE_BASE: /HayateProjects/react/
         run: pnpm --filter @tsubame/example-react-todo run build
 
-      - name: Assemble Pages site (todo at root, react-todo under /react)
-        # Solid 版を root、React 版を /react/ に置いた単一の成果物へまとめる。
+      - name: Build Hayabusa web present demo (Rust WASM)
+        # Hayabusa が組む hayate_core::ElementTree を、wire を介さず in-process Rust
+        # projection（ADR-0045）で直接駆動し、hayate-adapter-web の tiny-skia バックエンドが
+        # canvas へ present するデモ。Tsubame 経路を介さない。Pages の /hayabusa/ に同梱する。
+        # index.html の import は相対なのでサブパス base は不要。setup-rust-toolchain の
+        # -Dwarnings は空にする（vendored crate の無害な警告のため。build:wasm と同じ理由）。
+        env:
+          RUSTFLAGS: ""
+        run: wasm-pack build Hayabusa/web-demo --target web --release --out-dir pkg
+
+      - name: Assemble Pages site (todo at root, react-todo under /react, hayabusa under /hayabusa)
+        # Solid 版を root、React 版を /react/、Hayabusa present デモを /hayabusa/ に置いた
+        # 単一の成果物へまとめる。
         run: |
           mkdir -p Tsubame/examples/todo/dist/react
           cp -r Tsubame/examples/react-todo/dist/. Tsubame/examples/todo/dist/react/
+          mkdir -p Tsubame/examples/todo/dist/hayabusa/pkg
+          cp Hayabusa/web-demo/index.html Tsubame/examples/todo/dist/hayabusa/index.html
+          cp Hayabusa/web-demo/pkg/hayabusa_web_demo.js \
+             Hayabusa/web-demo/pkg/hayabusa_web_demo_bg.wasm \
+             Tsubame/examples/todo/dist/hayabusa/pkg/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

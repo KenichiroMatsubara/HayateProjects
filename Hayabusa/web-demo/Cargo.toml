@@ -14,6 +14,11 @@ repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 [lib]
 crate-type = ["cdylib"]
 
+# hayate-adapter-web と同じく wasm-opt（binaryen）を回さない。CI で binaryen の取得・実行に
+# 依存させないため（Hayate scripts/build-wasm.sh と同方針）。release の opt-level だけで十分小さい。
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [dependencies]
 # Hayabusa 本体（実 core 駆動 + App Host mount）。
 hayabusa = { path = "..", features = ["hayate-core", "app-host"] }
