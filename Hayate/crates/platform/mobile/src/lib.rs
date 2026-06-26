@@ -23,6 +23,11 @@ pub use hayate_core::{
     SecureStorage, Share, UrlLauncher,
 };
 
+// wave-2 ストリーム capability の共有契約土台（ADR-0120）も Core が正本。facade は battery trait・
+// 値型・RAII 購読ハンドル（`Subscription`）と producer 側（`SubscriptionSource`）を再露出するだけ
+// で別契約を切らない。
+pub use hayate_core::{Battery, BatteryStatus, Subscription, SubscriptionSource};
+
 /// family 統一の音声出力 facade。ビルド対象に応じて、Core の [`AudioOutput`] を満たす leaf
 /// 実装（android = `AudioTrack` / ios = `AVAudioEngine`）へ解決する単一の型名。上位は leaf を
 /// 名指しせず本 facade だけを参照する。
@@ -85,3 +90,13 @@ pub type MobileKeyValueStore = hayate_adapter_ios::capability_stubs::IosKeyValue
 pub type MobileBiometric = hayate_adapter_android::capability_stubs::AndroidBiometric;
 #[cfg(target_os = "ios")]
 pub type MobileBiometric = hayate_adapter_ios::capability_stubs::IosBiometric;
+
+// --- wave-2 stream capability scaffold facade（ADR-0120）---
+// battery が wave-2 ストリーム契約土台のトレーサーバレット。wave-1 と同型の cfg facade で、
+// 上位は leaf を名指しせず `MobileBattery` だけを参照する。stub は query/subscribe とも
+// `Err(Unimplemented)` を返す（実機実装で leaf 中身が差し替わっても facade 名は不変）。
+
+#[cfg(target_os = "android")]
+pub type MobileBattery = hayate_adapter_android::capability_stubs::AndroidBattery;
+#[cfg(target_os = "ios")]
+pub type MobileBattery = hayate_adapter_ios::capability_stubs::IosBattery;

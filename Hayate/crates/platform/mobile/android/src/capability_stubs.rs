@@ -10,9 +10,9 @@
 
 use hayate_core::capability::CapabilityError;
 use hayate_core::{
-    Biometric, DeviceInfo, DeviceInfoProvider, FileFilter, FilePicker, HapticKind, Haptics,
-    KeyValueStore, LocalNotification, LocalNotifications, PickedFile, SavePath, SecureStorage,
-    Share, UrlLauncher,
+    Battery, BatteryStatus, Biometric, DeviceInfo, DeviceInfoProvider, FileFilter, FilePicker,
+    HapticKind, Haptics, KeyValueStore, LocalNotification, LocalNotifications, PickedFile, SavePath,
+    SecureStorage, Share, Subscription, UrlLauncher,
 };
 
 /// この leaf の platform 名（`CapabilityError` に載る）。
@@ -122,6 +122,19 @@ impl KeyValueStore for AndroidKeyValueStore {
     }
 }
 
+/// battery の Android stub（wave-2・実装時 `BatteryManager` / `ACTION_BATTERY_CHANGED`）。
+/// `query`/`subscribe` とも `Err(Unimplemented)`（ストリーム購読も含め未実装・ADR-0120）。
+#[derive(Default)]
+pub struct AndroidBattery;
+impl Battery for AndroidBattery {
+    fn query(&self) -> Result<BatteryStatus, CapabilityError> {
+        Err(ni("battery"))
+    }
+    fn subscribe(&mut self) -> Result<Subscription<BatteryStatus>, CapabilityError> {
+        Err(ni("battery"))
+    }
+}
+
 /// biometric の Android stub（実装時 `BiometricPrompt`）。
 #[derive(Default)]
 pub struct AndroidBiometric;
@@ -163,6 +176,13 @@ mod tests {
             Err(ni("key_value_store"))
         );
         assert_eq!(AndroidBiometric.is_available(), Err(ni("biometric")));
+        // wave-2 battery（ADR-0120）: query/subscribe とも Unimplemented を返し panic しない。
+        assert_eq!(AndroidBattery.query(), Err(ni("battery")));
+        assert_eq!(
+            AndroidBattery.subscribe().map(|_| ()),
+            Err(ni("battery")),
+            "battery subscribe も未実装（ストリーム購読の native 登録はまだ無い）"
+        );
     }
 
     /// platform 名が正しく載る（ios leaf と取り違えていない）。
