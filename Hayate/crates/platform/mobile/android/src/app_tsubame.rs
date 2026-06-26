@@ -1,8 +1,9 @@
 //! JS 駆動の描画 + 入力ループ（ADR-0112, feature=tsubame-js）。**device 未検証**。
 //!
 //! 既存の `app::android_main`（デモツリー直挿し）を非破壊で温存したまま、こちらは
-//! ネイティブ Hayate を `__hayateHost` として Hermes に注入し、APK assets の
-//! Tsubame バンドル（`tsubame.js`）を eval して描画する。
+//! ネイティブ Hayate を `__hayateHost` として Hermes に注入し、dev-server から**実行時
+//! ネットワーク fetch** した Tsubame バンドルを eval して描画する（Miharashi, #532）。源は
+//! `bundle_source` に切り出してホストで契約テストする。eval シームは不変。
 //!
 //! 1 フレームの順序（ADR-0112）:
 //!   1. 入力: タッチ/IME は native→tree 直結（既存 `app::process_touch_input` /
@@ -15,7 +16,6 @@
 //! tree は `Rc<RefCell<ElementTree>>` で JS ホストと共有する（単一スレッド,
 //! ADR-0003）。借用は各ステップで非重複（JS が返ってから present で借りる）。
 use std::cell::RefCell;
-use std::ffi::CString;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -23,26 +23,20 @@ use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{init_gpu_surface, process_touch_input, sync_ime, GpuSurface};
+use crate::bundle_source;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
 use hayate_core::element::ime_reconcile::TextInputState;
 use crate::surface_lifecycle::{
     viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
 };
 
-/// APK assets から Tsubame バンドル（`tsubame.js`）を読み出す。
-fn load_bundle(app: &AndroidApp) -> Option<String> {
-    let manager = app.asset_manager();
-    let path = CString::new("tsubame.js").ok()?;
-    let mut asset = manager.open(&path)?;
-    let bytes = asset.buffer().ok()?;
-    Some(String::from_utf8_lossy(bytes).into_owned())
-}
-
 pub(crate) fn run(app: AndroidApp) {
-    let bundle = match load_bundle(&app) {
-        Some(src) => src,
-        None => {
-            log::error!("hayate-adapter-android: assets/tsubame.js が見つかりません");
+    // バンドル源は dev-server からの実行時ネットワーク fetch（#532）。取得した JS ソースを
+    // そのまま下の eval シームへ渡す。
+    let bundle = match bundle_source::fetch_dev_bundle() {
+        Ok(src) => src,
+        Err(err) => {
+            log::error!("hayate-adapter-android: dev-server からのバンドル取得に失敗: {err:?}");
             return;
         }
     };

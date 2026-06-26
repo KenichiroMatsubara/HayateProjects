@@ -20,6 +20,10 @@ pub mod audio_output;
 // wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;
+// Miharashi Android ホストのバンドル源（#532）。dev-server からの HTTP fetch + marshalling。
+// プラットフォーム非依存（素の TCP / std）なのでホストでもコンパイル・テストされる。
+#[cfg(feature = "tsubame-js")]
+mod bundle_source;
 mod scene_demo;
 mod surface_lifecycle;
 mod touch_input;
