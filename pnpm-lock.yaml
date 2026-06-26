@@ -102,9 +102,18 @@ importers:
 
   Tsubame/examples/react-todo:
     dependencies:
+      '@hayate/host':
+        specifier: workspace:*
+        version: link:../../../Hayate/host
+      '@miharashi/host-web':
+        specifier: workspace:*
+        version: link:../../../Miharashi/host-web
       '@tsubame/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@tsubame/renderer-canvas':
+        specifier: workspace:*
+        version: link:../../packages/renderer-canvas
       '@tsubame/renderer-dom':
         specifier: workspace:*
         version: link:../../packages/renderer-dom
@@ -118,6 +127,12 @@ importers:
         specifier: ^0.32.0
         version: 0.32.0(react@19.2.7)
     devDependencies:
+      '@miharashi/dev-server':
+        specifier: workspace:*
+        version: link:../../../Miharashi/dev-server
+      '@playwright/test':
+        specifier: ^1.61.0
+        version: 1.61.0
       '@types/react':
         specifier: ^19.1.0
         version: 19.2.17
@@ -127,6 +142,9 @@ importers:
       vite:
         specifier: ^8.0.14
         version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
 
   Tsubame/examples/todo:
     dependencies:

@@ -1,0 +1,2 @@
+# vite lib build outputs（単一バンドル）。生成物は配信時にビルドする。
+dist-miharashi/

@@ -6,5 +6,5 @@
     "jsxImportSource": "@tsubame/react",
     "types": []
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "vite.config.miharashi.ts"]
 }
