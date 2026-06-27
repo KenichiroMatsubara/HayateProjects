@@ -3,6 +3,7 @@
   "npm.exclude": [
     "**/Hayate/**",
     "**/Tsubame/**",
+    "**/Miharashi/**",
     "**/.claude/**"
   ],
   "search.exclude": {
