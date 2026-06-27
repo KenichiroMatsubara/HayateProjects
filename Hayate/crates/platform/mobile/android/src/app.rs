@@ -195,6 +195,12 @@ pub(crate) fn sync_ime(
             start: span.start,
             end: span.end,
         }),
+        // キャレット/選択を確定テキスト座標へ写像してコアへ反映する。これが無いと
+        // preedit/確定が常に末尾へ落ちる（ADR-0094: 末尾キャレット前提の解消）。
+        selection: Some(TextSpan {
+            start: state.selection.start,
+            end: state.selection.end,
+        }),
     };
 
     if next != *prev {

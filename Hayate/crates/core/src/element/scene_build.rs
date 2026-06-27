@@ -1032,7 +1032,7 @@ fn emit_element<S: AnchorSink>(
                 let cursor_index = el
                     .edit
                     .as_ref()
-                    .map(|edit| edit.cursor_byte_index)
+                    .map(|edit| edit.display_cursor_byte_index())
                     .unwrap_or(0);
                 let cursor = parley::Cursor::from_byte_index(
                     &cl.layout,

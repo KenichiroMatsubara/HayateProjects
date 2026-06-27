@@ -842,6 +842,19 @@ impl ElementTree {
         self.layout.font_cx.collection.register_fonts(blob, None);
     }
 
+    /// TextInput のキャレット/選択を確定テキスト座標（`anchor`/`focus` バイト
+    /// オフセット）で設定する。ソフトキーボード/IME の絶対状態（ADR-0094）から
+    /// 報告される selection をコアへ反映し、preedit/確定をキャレット位置に置くために使う。
+    pub fn element_set_selection(&mut self, id: ElementId, anchor: usize, focus: usize) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.set_selection(anchor, focus);
+        }
+    }
+
     /// TextInput の IME preedit（変換中・未確定）を設定する。
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
         if let Some(edit) = self
