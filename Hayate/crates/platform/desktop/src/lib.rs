@@ -114,6 +114,12 @@ impl WindowSurface {
             .get_default_config(&adapter, width, height)
             .ok_or_else(|| "surface not supported by adapter".to_string())?;
         surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
+        // vello は offscreen target（`Rgba8Unorm`・非 sRGB）へ sRGB エンコード済みのバイトを書く。
+        // surface が *Srgb 形式（Windows の `get_default_config` 既定は `Rgba8UnormSrgb`）だと、
+        // blit の書き込みで linear→sRGB エンコードが二重にかかり色が淡く（washed out）見える。
+        // surface を非 sRGB 形式に揃えて二重エンコードを防ぐ（web の canvas は既定が非 sRGB なので
+        // この問題が出ない）。blitter は下でこの `surface_config.format` で生成するので整合する。
+        surface_config.format = surface_config.format.remove_srgb_suffix();
         surface.configure(&device, &surface_config);
 
         let target_view = create_target_view(&device, width, height);
