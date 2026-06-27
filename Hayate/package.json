@@ -6,6 +6,8 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "node scripts/build-wasm.mjs",
+    "desktop": "node scripts/run-desktop.mjs",
+    "desktop:build": "node scripts/run-desktop.mjs --build-only",
     "check": "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
     "check:fonts": "node scripts/check-font-urls.mjs",
     "test:fonts": "node --test scripts/*.test.mjs",
