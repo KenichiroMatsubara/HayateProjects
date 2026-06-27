@@ -895,6 +895,36 @@ impl ElementTree {
         }
     }
 
+    /// IME 変換確定: `text` をキャレット位置に確定する（アクティブな preedit があれば
+    /// 置換）。増分コマンド経路（`ImeAction::CommitText`、ADR-0117）の適用先で、
+    /// web 経路の `on_composition_end` と同じ `EditState::finish_composition` を駆動する。
+    pub fn element_finish_composition(&mut self, id: ElementId, text: &str) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.finish_composition(text);
+        }
+    }
+
+    /// キャレット直前の 1 グラフェムを削除する（キャレット対応の backspace）。末尾固定の
+    /// [`Self::element_backspace`] と違い、確定テキスト中央のキャレットからも正しく削る。
+    /// 増分コマンド経路（`ImeAction::DeleteBackward`、ADR-0117）の適用先。
+    pub fn element_delete_backward(&mut self, id: ElementId) {
+        use crate::element::edit_state::{Direction, EditIntent, Granularity};
+        if let Some(edit) = self
+            .elements
+            .get_mut(&id)
+            .and_then(|el| el.edit.as_mut())
+        {
+            edit.apply(EditIntent::Delete {
+                granularity: Granularity::Grapheme,
+                direction: Direction::Backward,
+            });
+        }
+    }
+
     /// 貼り付けテキストを TextInput へ届ける。有効な preedit を確定し、貼り付け
     /// テキストを追加し、TextInput イベントをキューする。非 TextInput 要素では no-op。
     pub fn element_paste(&mut self, id: ElementId, text: &str) {

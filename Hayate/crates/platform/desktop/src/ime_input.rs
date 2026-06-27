@@ -282,6 +282,43 @@ mod tests {
     }
 
     #[test]
+    fn committing_at_a_mid_caret_lands_at_the_caret_not_the_tail() {
+        // issue #563 の回帰: 確定テキスト "helloworld" の中央(5, hello|world)にキャレットを
+        // 置き、winit の `Ime::Preedit("X")` → `Ime::Commit("X")` で変換確定すると、確定文字は
+        // キャレット位置に入り（"helloworldX" ではなく "helloXworld"）、キャレットは挿入文字の
+        // 直後(6)へ進む。増分コマンド経路（ADR-0117）をデスクトップ seam 越しに駆動する
+        // 決定的テスト。
+        let (mut tree, input) = focused_input("helloworld");
+        tree.element_set_selection(input, 5, 5);
+        let mut buf = ImeBuffer::new();
+
+        // 変換中: preedit はキャレット位置に表示される（末尾ではない）。
+        assert!(apply_ime_input(
+            &mut tree,
+            &Ime::Preedit("X".into(), None),
+            &mut buf,
+        ));
+        assert_eq!(tree.element_get_text_content(input), "helloXworld");
+
+        // 確定: 文字がキャレット位置に入り、preedit は消える。
+        assert!(apply_ime_input(&mut tree, &Ime::Commit("X".into()), &mut buf));
+        assert_eq!(
+            tree.element_get_text_content(input),
+            "helloXworld",
+            "commit lands at the caret, not the tail",
+        );
+        assert_eq!(
+            tree.element_caret_byte_index(input),
+            Some(6),
+            "caret sits right after the inserted character",
+        );
+        assert!(
+            tree.element_composition_underlines(input).is_empty(),
+            "確定後は変換下線が残ってはならない",
+        );
+    }
+
+    #[test]
     fn ime_without_focus_is_a_no_op() {
         // focus 中の編集要素が無ければ何も適用しない（パニックしない）。
         let mut tree = ElementTree::new();
