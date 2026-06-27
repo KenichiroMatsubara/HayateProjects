@@ -1,19 +1,12 @@
 import { createRenderer } from 'solid-js/universal';
-import type {
-  ElementKind,
-  EventHandler,
-  StylePatch,
-  ViewportCondition,
-} from '@tsubame/renderer-protocol';
-import { assertKnownElementProperty } from '@tsubame/renderer-protocol';
-import { splitHayateStyle } from '@tsubame/renderer-protocol';
+import type { ElementKind } from '@tsubame/renderer-protocol';
+import { applyElementProp } from '@tsubame/renderer-protocol';
 import { activeRenderer } from './active-renderer.js';
 import { createElementNode, type TsubameNode } from './node.js';
-import { EVENT_PROP, REJECTED_EVENT_PROPS } from './events.js';
 
 function disposeEvents(node: TsubameNode): void {
-  for (const unsub of node.events.values()) unsub();
-  node.events.clear();
+  for (const unsub of node.listeners.values()) unsub();
+  node.listeners.clear();
   for (const child of node.children) disposeEvents(child);
 }
 
@@ -57,76 +50,18 @@ const {
   },
 
   replaceText(textNode: TsubameNode, value: string): void {
-    if (textNode.elementKind !== 'text') return;
+    if (textNode.kind !== 'text') return;
     activeRenderer().setText(textNode.id, value);
   },
 
   isTextNode(node: TsubameNode): boolean {
-    return node.elementKind === 'text';
+    return node.kind === 'text';
   },
 
   setProperty(node: TsubameNode, name: string, value: unknown): void {
-    const r = activeRenderer();
-
-    // text も Hayate element なので style は適用する（ADR-0058）。
-    // style 以外のプロパティは text には存在しないため無視する。
-    if (name === 'style') {
-      const { base, pseudo } = splitHayateStyle(
-        (value ?? {}) as Record<string, unknown>,
-      );
-      r.setStyle(node.id, base);
-      for (const [key, block] of Object.entries(pseudo)) {
-        if (block !== undefined) {
-          r.setPseudoStyle(
-            node.id,
-            key as ':hover' | ':active' | ':focus',
-            block,
-          );
-        }
-      }
-      return;
-    }
-
-    // ビューポート条件付きスタイル（ADR-0081）。各変種を setStyleVariant へ流す。
-    // DOM Renderer では本物の `@media` ルールに、Canvas では viewport 評価になる。
-    // 変種は要素ごとに不変な宣言を前提とし（条件は静的）、再評価時は同一
-    // `id|media` キーを in-place 更新する（dom-renderer の variantRuleKeys）。
-    if (name === 'styleVariants') {
-      const variants = (value ?? []) as ReadonlyArray<{
-        condition: ViewportCondition;
-        style: Record<string, unknown>;
-      }>;
-      for (const variant of variants) {
-        const { base } = splitHayateStyle((variant.style ?? {}) as Record<string, unknown>);
-        r.setStyleVariant(node.id, variant.condition, base);
-      }
-      return;
-    }
-
-    if (node.elementKind === 'text') return;
-
-    if (REJECTED_EVENT_PROPS.has(name)) {
-      throw new Error(
-        `${name} is not supported in tsubame-solid. Use ':hover' in style for visual feedback (ADR-0056, ADR-0059).`,
-      );
-    }
-
-    const eventKind = EVENT_PROP[name];
-    if (eventKind !== undefined) {
-      node.events.get(name)?.();
-      node.events.delete(name);
-      if (typeof value === 'function') {
-        node.events.set(
-          name,
-          r.addEventListener(node.id, eventKind, value as EventHandler),
-        );
-      }
-      return;
-    }
-
-    if (name === 'children' || name === 'ref') return;
-    assertKnownElementProperty(name);
-    r.setProperty(node.id, name, value);
+    // style チャンネル・event 語彙・閉じた要素プロパティの dispatch は
+    // `tsubame-react` と共通の `applyElementProp` seam に委譲する（ADR-0010）。
+    applyElementProp(activeRenderer(), node, name, value);
   },
 
   insertNode(parent: TsubameNode, node: TsubameNode, anchor?: TsubameNode | null): void {

@@ -56,3 +56,6 @@ export { shouldApplyTextLocalPatch, gateTextLocalPatch } from './text-local-gate
 export { withTextLocalGate } from './gating-renderer.js';
 export { RecordingRenderer } from './recording-renderer.js';
 export type { RecordedCall } from './recording-renderer.js';
+
+export { applyElementProp } from './apply-element-prop.js';
+export type { PropTarget } from './apply-element-prop.js';
