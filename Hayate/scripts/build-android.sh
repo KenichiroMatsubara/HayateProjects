@@ -24,6 +24,35 @@ set -euo pipefail
 # shellcheck source=/dev/null
 [ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
 
+# Android Studio GUI を開かずに叩けるよう、JDK と SDK を自前で解決する。
+# 既に環境変数 / PATH で見えていれば尊重し、無ければ既知の既定位置にフォールバックする。
+
+# JAVA_HOME: 未設定かつ java が PATH に無ければ Android Studio 同梱 JBR を使う。
+if [ -z "${JAVA_HOME:-}" ] && ! command -v java >/dev/null 2>&1; then
+  for jbr in \
+    "/c/Program Files/Android/Android Studio/jbr" \
+    "$LOCALAPPDATA/Programs/Android Studio/jbr" \
+    "$HOME/AppData/Local/Programs/Android Studio/jbr"; do
+    if [ -x "$jbr/bin/java" ] || [ -x "$jbr/bin/java.exe" ]; then
+      export JAVA_HOME="$jbr"
+      break
+    fi
+  done
+fi
+
+# ANDROID_HOME: 未設定なら local.properties(sdk.dir) → 既定 SDK 位置 の順に解決する。
+if [ -z "${ANDROID_HOME:-}" ] && [ -z "${ANDROID_SDK_ROOT:-}" ]; then
+  for sdk in \
+    "$LOCALAPPDATA/Android/Sdk" \
+    "$HOME/AppData/Local/Android/Sdk"; do
+    if [ -d "$sdk" ]; then
+      export ANDROID_HOME="$sdk"
+      export ANDROID_SDK_ROOT="$sdk"
+      break
+    fi
+  done
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ANDROID_DIR="$ROOT_DIR/crates/platform/mobile/android/android-app"
