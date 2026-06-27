@@ -26,7 +26,7 @@ if (detected.mode === 'DOM') {
 } else {
   // Canvas 経路：host bootstrap は Hayate 側（`@hayate/host`）が持つ。host が WebGPU を
   // プローブし backend を選び WASM をロードして surface 上に raw を確立し、frame-clock
-  // （rAF）も供給する。App は host から raw(+clock) を得て host-blind CanvasRenderer に
+  // （rAF）も供給する。App は host から raw(+clock) を得て host-blind HayateRenderer に
   // 結線し mount するだけ — native（`main.android.tsx`）と対称な薄い合成ルート（#477）。
   const { createHayateWebHost } = await import('@hayate/host');
   canvas.hidden = false;

@@ -1,5 +1,7 @@
 # apply_mutations のエンコーディングを Float64Array + Float32Array の 2 引数とする
 
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 > **Status: 一部廃止（Partially Superseded）**
 > `element_create` を「バッチ外の個別呼び出し」とした記述は **ADR-0005 により廃止**。
 > JS 側でモノトニックカウンターが ElementId を採番し、`OP_CREATE` を ops バッチに乗せる設計に変更済み。

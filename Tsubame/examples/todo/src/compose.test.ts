@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IRenderer } from '@tsubame/renderer-protocol';
-import type { RawHayate } from '@tsubame/renderer-canvas';
+import type { RawHayate } from '@tsubame/renderer-hayate';
 import { mountCanvasApp, type CanvasHost } from './compose.js';
 
 // #477 wiring seam: browser (`main.tsx`) と native (`main.android.tsx`) は同一形
-// 「host→raw(+clock)→CanvasRenderer→mount」に縮約される。その合成ルートを注入 host
+// 「host→raw(+clock)→HayateRenderer→mount」に縮約される。その合成ルートを注入 host
 // fake で固定し、host が確立した raw と frame-clock だけで renderer が駆動されること
 // （Tsubame は host を知らない）を保証する。
 

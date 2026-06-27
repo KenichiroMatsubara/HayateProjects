@@ -94,7 +94,7 @@ describe('createHayateWebHost', () => {
     expect(loadBackend).toHaveBeenCalledWith('tiny-skia', canvas);
   });
 
-  it('returns a RawHayate satisfying the CanvasRenderer drive surface', async () => {
+  it('returns a RawHayate satisfying the HayateRenderer drive surface', async () => {
     const host = await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
       loadBackend: async () => fakeRaw(),

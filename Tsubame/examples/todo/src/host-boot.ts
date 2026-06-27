@@ -7,7 +7,7 @@ import { HOST_PROTOCOL_VERSION } from '@hayate/host';
  * raw + frame-clock を確立してバンドルの mount に渡す。さらに dev-server の reload WS を購読し、
  * バンドル変更ごとに **full reload**（新しい canvas で再 mount。state は飛ぶ）する。
  *
- * フレームワークも `@tsubame/renderer-canvas` もここには無い — eval するバンドルが持ち込む。
+ * フレームワークも `@tsubame/renderer-hayate` もここには無い — eval するバンドルが持ち込む。
  * reload の意味づけはホスト側（`@miharashi/host-web`）に閉じ、ネイティブ契約は不変（ADR-0001）。
  */
 

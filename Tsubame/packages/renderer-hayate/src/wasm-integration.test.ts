@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { OP } from '@tsubame/protocol-generated/protocol';
-import { CanvasRenderer } from './canvas-renderer.js';
+import { HayateRenderer } from './hayate-renderer.js';
 import type { RawHayate } from './hayate.js';
 import { createNullHayate, type WasmHayateFixture } from './test-helpers/wasm-hayate.js';
 
@@ -30,10 +30,10 @@ describe('codec integration (C3)', () => {
     fixture = null;
   });
 
-  it('CanvasRenderer flush applies generated wire through real apply_mutations', async () => {
+  it('HayateRenderer flush applies generated wire through real apply_mutations', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const root = renderer.createElement('view');
@@ -57,7 +57,7 @@ describe('codec integration (C3)', () => {
   it('preserves ordered setText mutations without coalescing', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const text = renderer.createElement('text');
@@ -73,7 +73,7 @@ describe('codec integration (C3)', () => {
   it('removeChild drops subtree from Hayate element tree', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const parent = renderer.createElement('view');
@@ -98,7 +98,7 @@ describe('codec integration (C3)', () => {
   it('applies setProperty value through apply_mutations on text-input', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const input = renderer.createElement('text-input');
@@ -118,7 +118,7 @@ describe('codec integration (C3)', () => {
   it('applies batched pseudo-style through apply_mutations and resolves :hover', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const root = renderer.createElement('view');
@@ -174,7 +174,7 @@ describe('codec integration (C3)', () => {
   it('element_effective_visual resolves :hover pseudo style (ADR-0067)', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const root = renderer.createElement('view');
@@ -199,7 +199,7 @@ describe('codec integration (C3)', () => {
   it('matches binding.test ops wire for unified batch', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     const root = renderer.createElement('view');

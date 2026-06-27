@@ -18,7 +18,7 @@ export interface NativeHost {
   readonly requestFrame: (cb: FrameRequestCallback) => number;
   readonly cancelFrame: (handle: number) => void;
   /** ネイティブ vsync ループが毎フレーム単調増加ミリ秒で 1 回呼ぶ。保持中のフレーム
-   * コールバックを実行し、`CanvasRenderer` が次フレームを再登録する。 */
+   * コールバックを実行し、`HayateRenderer` が次フレームを再登録する。 */
   pumpFrame(timestampMs: number): void;
   /** フレーム駆動を止める。 */
   stop(): void;
@@ -26,7 +26,7 @@ export interface NativeHost {
 
 /**
  * 注入された {@link RawHayate} を pump 型 frame-clock に結線して {@link NativeHost} を返す。
- * `requestFrame` は最新コールバックを保持するだけ。`CanvasRenderer.frame` は末尾で再登録
+ * `requestFrame` は最新コールバックを保持するだけ。`HayateRenderer.frame` は末尾で再登録
  * するので、1 回の `pumpFrame` が 1 フレームを走らせ、次フレーム分を再武装する。
  */
 export function createHayateNativeHost(raw: RawHayate): NativeHost {

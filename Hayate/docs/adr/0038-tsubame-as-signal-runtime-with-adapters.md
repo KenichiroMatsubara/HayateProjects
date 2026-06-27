@@ -1,5 +1,7 @@
 # Tsubame をフレームワークではなく Signal ランタイムとし、Adapter 群をその上に構築する
 
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `@tsubame/renderer-canvas` は **Hayate Renderer** / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 superseded by: ADR-0040
 
 Tsubame は当初「SolidJS 的 Signal + TSX 記法のフレームワーク」として設計されていた。しかし将来 Vue・Svelte・React など複数の記法を Hayate（GPU Canvas）および DOM の両方に対応させることを考えると、記法ごとに独立した Signal ランタイムを持つ設計では Signal ロジックのコンポーネント間共有ができず、Canvas Renderer の実装コストも記法ごとに発生する。そこで Tsubame を pure JS の Signal ランタイム基盤（`createSignal` / `createEffect` / `createMemo` + Renderer Protocol）に再定義し、各記法は Tsubame の上に乗る Tsubame Adapter として実装する構成に変更した。

@@ -1,4 +1,4 @@
-import { CanvasRenderer, type RawHayate } from '@tsubame/renderer-canvas';
+import { HayateRenderer, type RawHayate } from '@tsubame/renderer-hayate';
 import type { IRenderer } from '@tsubame/renderer-protocol';
 
 /**
@@ -13,7 +13,7 @@ export interface CanvasHost {
 }
 
 /**
- * host から得た `raw`(+clock) を host-blind `CanvasRenderer` に結線し、開始し、App を
+ * host から得た `raw`(+clock) を host-blind `HayateRenderer` に結線し、開始し、App を
  * mount する対称合成ルート。browser（`main.tsx`）と native（`main.android.tsx`）は
  * この 1 形に縮約される — surface・WASM ロード・clock 源・native pump は host が所有し、
  * Tsubame は host を知らない（#477）。返した renderer で native pump は停止できる。
@@ -21,8 +21,8 @@ export interface CanvasHost {
 export function mountCanvasApp(
   host: CanvasHost,
   mount: (renderer: IRenderer) => void,
-): CanvasRenderer {
-  const renderer = new CanvasRenderer({
+): HayateRenderer {
+  const renderer = new HayateRenderer({
     raw: host.raw,
     requestFrame: host.requestFrame,
     cancelFrame: host.cancelFrame,

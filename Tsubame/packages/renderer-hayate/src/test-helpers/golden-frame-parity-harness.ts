@@ -1,5 +1,5 @@
 import { createElement, insertNode, renderTsubame, setProp, type TsubameNode } from '@tsubame/solid';
-import { CanvasRenderer } from '../canvas-renderer.js';
+import { HayateRenderer } from '../hayate-renderer.js';
 import {
   captureGoldenFrame,
   type GoldenFrame,
@@ -10,13 +10,13 @@ import { manualScheduler } from './manual-scheduler.js';
 
 export interface GoldenFrameParityHarness {
   readonly fixture: WasmHayateFixture;
-  readonly renderer: CanvasRenderer;
+  readonly renderer: HayateRenderer;
   readonly tick: (ms?: number) => void;
   capture(): GoldenFrame;
   dispose(): void;
 }
 
-/** パリティサンプルを tsubame-solid → CanvasRenderer → WASM 経由でマウントする（ADR-0079）。 */
+/** パリティサンプルを tsubame-solid → HayateRenderer → WASM 経由でマウントする（ADR-0079）。 */
 export async function mountGoldenFrameParity(
   build: (tools: {
     createElement: typeof createElement;
@@ -28,7 +28,7 @@ export async function mountGoldenFrameParity(
 ): Promise<GoldenFrameParityHarness> {
   const fixture = await createNullHayate(options?.width ?? 200, options?.height ?? 100);
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+  const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
   renderer.start();
 
   const setText = (node: TsubameNode, value: string): void => {

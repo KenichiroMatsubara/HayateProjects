@@ -265,7 +265,7 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       return [
         `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {`,
         `  if (!Array.isArray(value)) {`,
-        `    throw new Error(\`CanvasRenderer: "${patchKey}" must be an array of dimensions\`);`,
+        `    throw new Error(\`HayateRenderer: "${patchKey}" must be an array of dimensions\`);`,
         `  }`,
         `  out.push(TAG.${tagName}, value.length);`,
         `  for (const item of value) {`,
@@ -278,7 +278,7 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       return [
         `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateShadow[]): void {`,
         `  if (!Array.isArray(value)) {`,
-        `    throw new Error(\`CanvasRenderer: "${patchKey}" must be an array of shadows\`);`,
+        `    throw new Error(\`HayateRenderer: "${patchKey}" must be an array of shadows\`);`,
         `  }`,
         `  out.push(TAG.${tagName}, value.length);`,
         `  for (const item of value) {`,
@@ -314,7 +314,7 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       return [
         `function ${fnName}(out: number[], value: string): void {`,
         `  const code = ${constName}_CODE[value];`,
-        `  if (code === undefined) throw new Error(\`CanvasRenderer: unsupported ${label} "\${value}"\`);`,
+        `  if (code === undefined) throw new Error(\`HayateRenderer: unsupported ${label} "\${value}"\`);`,
         `  out.push(TAG.${tagName}, code);`,
         '}',
       ];

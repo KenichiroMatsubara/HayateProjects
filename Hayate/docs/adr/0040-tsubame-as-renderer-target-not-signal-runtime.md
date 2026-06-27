@@ -1,5 +1,7 @@
 # Tsubame を signal ランタイムではなくレンダラーターゲット基盤とする（ADR-0038 を supersede）
 
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `@tsubame/renderer-canvas` は **Hayate Renderer** / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 supersedes: ADR-0038
 
 ADR-0038 では Tsubame を unified signal ランタイムと定義し、tsubame-vue / tsubame-react の reactivity を Tsubame の `createSignal`/`createEffect`/`createMemo` のラッパーとして実装する方針を採用した。しかし「UI コンポーネント（マークアップを含む）は記法が異なるため adapter をまたいで共有できない」という事実と突き合わせると、signal 統一の主要なメリットが失われる。加えて、signal 統一は Vue・React の 3rd party エコシステム（Pinia / TanStack Query / Zustand 等）を全滅させるコストを伴う。そのため Tsubame の責務をレンダラーターゲット層（Renderer Protocol + DOM Renderer + Canvas Renderer）に限定し、各 adapter は既存ランタイムをそのまま持ち込む設計に変更する。

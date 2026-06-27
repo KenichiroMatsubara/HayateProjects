@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from '@tsubame/renderer-canvas';
+import { PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
 import { afterEach, describe, expect, it } from 'vitest';
 
 /**
@@ -16,7 +16,7 @@ describe('Android App Bundle embeds the Miharashi protocol version (#533)', () =
     delete (globalThis as Record<string, unknown>).__miharashiProtocolVersion;
   });
 
-  it('exposes the renderer-canvas protocol version for the native host handshake', async () => {
+  it('exposes the renderer-hayate protocol version for the native host handshake', async () => {
     await import('./main.android').catch(() => {
       // ホスト未注入の単体環境では `__hayateHost` 不在で throw する。version 埋め込みは
       // その前の副作用なので握りつぶしてよい。

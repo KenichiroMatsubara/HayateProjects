@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
  * を確立してバンドルの mount に渡す。さらに full reload ループ（ソース編集 → WS reload → 再 mount）を
  * 本物の Chromium で端から端まで検証する。
  *
- * ホスト側は framework / renderer-canvas を持たず、それらは eval するバンドルが持ち込む。
+ * ホスト側は framework / renderer-hayate を持たず、それらは eval するバンドルが持ち込む。
  *
  * 両テストは同じ dev-server / host.html を共有し、reload テストのソース編集は接続中の全 host へ
  * 配信される。テスト間で host ページが同時に開かないよう、このファイルは **serial** で走らせる。

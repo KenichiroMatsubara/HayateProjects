@@ -1,5 +1,7 @@
 # apply_mutations のエンコーディングを Float64Array + Float32Array の 2 引数とする
 
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `@tsubame/renderer-canvas` は **Hayate Renderer** / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 > **Superseded by ADR-0049** — OP_* 定数は `@hayate/protocol-spec`（`proto/spec/*.json`）が単一正本となり、generator で生成される。
 
 > **Status: 一部廃止（Partially Superseded）**

@@ -1,5 +1,7 @@
 # tsubame-react は react-reconciler HostConfig（write-only・構造ゼロ instance）とし、リスナのライフサイクルを backend に寄せる
 
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 **Status: accepted**
 
 **Date: 2026-06-25**

@@ -2,7 +2,7 @@
   "name": "@miharashi/host-web",
   "version": "0.0.0",
   "private": true,
-  "description": "Miharashi Web ホスト — dev-server URL から App Bundle を fetch → eval し、@hayate/host の createHayateWebHost で host bootstrap を確立してバンドルの mount に渡す。FW も @tsubame/renderer-canvas も持たない（ADR-0001）。",
+  "description": "Miharashi Web ホスト — dev-server URL から App Bundle を fetch → eval し、@hayate/host の createHayateWebHost で host bootstrap を確立してバンドルの mount に渡す。FW も @tsubame/renderer-hayate も持たない（ADR-0001）。",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
