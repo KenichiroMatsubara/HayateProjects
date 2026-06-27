@@ -3,20 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "preinstall":     "node scripts/bootstrap-wasm-pkgs.mjs",
-    "build:wasm":     "pnpm --filter hayate build",
-    "build:host":     "pnpm --filter @hayate/host build",
-    "build:tsubame":  "pnpm --filter \"./Tsubame/packages/*\" build",
-    "build":          "pnpm run build:wasm && pnpm run build:host && pnpm run build:tsubame",
-    "dev":            "pnpm --filter @tsubame/example-todo dev",
-    "dev:hayate":     "pnpm --filter hayate dev",
-    "typecheck":      "pnpm --filter @hayate/host typecheck && pnpm --filter \"./Tsubame/packages/*\" typecheck",
-    "test":           "pnpm -r run test",
-    "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
-    "clean":          "pnpm -r run clean",
+    "preinstall": "node scripts/bootstrap-wasm-pkgs.mjs",
 
-    "miharashi:android:install": "pnpm --filter hayate android:install",
-    "miharashi:android:bundle":  "pnpm --filter @tsubame/example-todo build:android && node scripts/copy-android-bundle.mjs && pnpm --filter hayate android:install"
+    "build":      "pnpm -r --filter \"!tsubame-monorepo\" run build",
+    "typecheck":  "pnpm -r --filter \"!tsubame-monorepo\" run typecheck",
+    "test":       "pnpm -r --filter \"!tsubame-monorepo\" run test",
+    "clean":      "pnpm -r --filter \"!tsubame-monorepo\" run clean",
+
+    "dev":        "pnpm --filter @tsubame/example-todo dev",
+    "dev:hayate": "pnpm --filter hayate dev",
+
+    "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
+    "android:bundle": "pnpm --filter @tsubame/example-todo build:android && node scripts/copy-android-bundle.mjs && pnpm --filter hayate android:install"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
