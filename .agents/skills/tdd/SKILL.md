@@ -40,6 +40,24 @@ RIGHT (vertical):
   ...
 ```
 
+## Multiple issues in one request
+
+When the request names **multiple issues** — a range like `x-y` (e.g. `3-7`),
+or a list like `#3, #5, #8` — handle them **all together in a single branch and
+a single pull request**. Do not open a branch or PR per issue.
+
+- Use the one designated branch and one PR for the whole batch.
+- Work through the issues **in order** (ascending issue number, or the order
+  given), running the full TDD loop below for each one.
+- Make a **separate commit for each issue** as you finish it, so the PR history
+  shows one commit (or a focused group of commits) per issue. Reference the
+  issue in each commit message (e.g. `Closes #3`).
+- Advance each issue's progress marker independently (see below): mark an issue
+  `status:implementing` when you start it and `status:implemented` when its
+  tests are green — don't wait for the whole batch.
+- Keep going until **every** issue in the range/list is cleared, then push the
+  single branch and (if requested) open the single PR covering all of them.
+
 ## Workflow
 
 ### 1. Planning
