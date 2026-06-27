@@ -153,20 +153,42 @@ pub struct EditState {
 impl EditState {
     pub fn display_text(&self) -> String {
         match &self.preedit {
-            Some(p) => format!("{}{}", self.text_content, p.text),
+            Some(p) => {
+                // preedit はキャレット位置に挿入される（末尾固定ではない）。
+                // text_content[..at] + preedit + text_content[at..]。
+                let at = self.cursor_byte_index.min(self.text_content.len());
+                let mut s = String::with_capacity(self.text_content.len() + p.text.len());
+                s.push_str(&self.text_content[..at]);
+                s.push_str(&p.text);
+                s.push_str(&self.text_content[at..]);
+                s
+            }
             None => self.text_content.clone(),
         }
     }
 
-    /// アクティブな変換の下線範囲を**表示テキストのバイトオフセット**（確定済み
-    /// `text_content` 接頭辞分シフト済み）で、それぞれの太さ付きで返す（ADR-0102）。
+    /// 表示テキスト（preedit 挿入済み）におけるキャレットのバイト位置。変換中は
+    /// preedit の末尾にキャレットを置く（Chromium と同じ振る舞い）。変換が無ければ
+    /// `cursor_byte_index` と一致する。
+    pub fn display_cursor_byte_index(&self) -> usize {
+        let at = self.cursor_byte_index.min(self.text_content.len());
+        match &self.preedit {
+            Some(p) => at + p.text.len(),
+            None => at,
+        }
+    }
+
+    /// アクティブな変換の下線範囲を**表示テキストのバイトオフセット**（キャレット位置の
+    /// preedit に合わせ、キャレットまでの接頭辞分シフト済み）で、それぞれの太さ付きで
+    /// 返す（ADR-0102）。
     /// 変換が非アクティブなら空。文節フォーマットがない場合は preedit 全体が単一の
     /// 細線範囲（IME が読みをセグメント分割する前の見た目）。
     pub fn composition_underlines(&self) -> Vec<(usize, usize, CompositionUnderline)> {
         let Some(preedit) = &self.preedit else {
             return Vec::new();
         };
-        let base = self.text_content.len();
+        // preedit はキャレット位置に挿入されるので、下線も同じ位置を基準にする。
+        let base = self.cursor_byte_index.min(self.text_content.len());
         if preedit.clauses.is_empty() {
             if preedit.text.is_empty() {
                 return Vec::new();
@@ -306,8 +328,10 @@ impl EditState {
 
     pub fn commit_preedit(&mut self) {
         if let Some(preedit) = self.preedit.take() {
-            self.text_content.push_str(&preedit.text);
-            self.collapse_to(self.text_content.len());
+            // 末尾追加ではなくキャレット位置へ確定する（preedit はそこに表示されていた）。
+            let at = self.cursor_byte_index.min(self.text_content.len());
+            self.text_content.insert_str(at, &preedit.text);
+            self.collapse_to(at + preedit.text.len());
         }
     }
 
@@ -1032,6 +1056,44 @@ mod tests {
         assert!(
             edit.composition_underlines().is_empty(),
             "committing the composition clears its underlines",
+        );
+    }
+
+    #[test]
+    fn preedit_displays_and_commits_at_the_caret_not_the_tail() {
+        // ユーザー報告バグの回帰: キャレットが中央でも、preedit と確定がキャレット
+        // 位置に入る（末尾に飛ばない）。
+        let mut edit = EditState::default();
+        edit.set("helloworld"); // キャレットは末尾(10)で縮退
+        edit.set_selection(5, 5); // hello|world
+        edit.set_preedit("X");
+        assert_eq!(edit.display_text(), "helloXworld", "preedit shows at the caret");
+        assert_eq!(
+            edit.display_cursor_byte_index(),
+            6,
+            "display caret sits at the end of the preedit",
+        );
+        edit.commit_preedit();
+        assert_eq!(edit.text_content, "helloXworld", "commit lands at the caret");
+        assert_eq!(edit.cursor_byte_index, 6, "caret advances past the inserted text");
+        assert!(edit.is_caret());
+    }
+
+    #[test]
+    fn composition_underlines_track_the_caret() {
+        // 下線も preedit 位置（キャレット基準）に揃う。
+        let mut edit = EditState::default();
+        edit.set("abXY"); // キャレット末尾(4)
+        edit.set_selection(2, 2); // ab|XY
+        edit.set_preedit_with_clauses(
+            "き",
+            vec![CompositionClause { start: 0, end: 3, underline: CompositionUnderline::Thick }],
+        );
+        assert_eq!(edit.display_text(), "abきXY");
+        assert_eq!(
+            edit.composition_underlines(),
+            vec![(2, 5, CompositionUnderline::Thick)],
+            "underline spans the preedit at the caret (bytes 2..5), not at the tail",
         );
     }
 
