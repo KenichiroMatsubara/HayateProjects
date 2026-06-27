@@ -51,6 +51,14 @@ pub enum ImeAction {
     /// アクティブな preedit（composing 領域）を置換する。空なら消す。
     /// `ElementTree::element_set_preedit` に対応。
     SetPreedit(String),
+    /// 確定文字列をキャレット位置に挿入して確定する（増分コマンド経路、ADR-0117）。
+    /// アクティブな preedit があれば確定文字列で置換してから確定する。末尾連結ではなく
+    /// 現在のキャレット位置に入り、キャレットは挿入文字の直後へ進む
+    /// （`EditState::finish_composition` に対応）。
+    CommitText(String),
+    /// キャレット直前の 1 グラフェムを削除する（増分コマンド経路の確定テキスト
+    /// backspace）。`ElementTree::element_delete_backward` に対応。
+    DeleteBackward,
 }
 
 /// 絶対状態を (確定テキスト, preedit, キャレット/選択) に分割する。確定テキストは
@@ -142,6 +150,8 @@ pub fn apply_ime_action(tree: &mut ElementTree, target: ElementId, action: &ImeA
             tree.element_set_selection(target, *anchor, *focus)
         }
         ImeAction::SetPreedit(preedit) => tree.element_set_preedit(target, preedit),
+        ImeAction::CommitText(text) => tree.element_finish_composition(target, text),
+        ImeAction::DeleteBackward => tree.element_delete_backward(target),
     }
 }
 
