@@ -1,10 +1,10 @@
-//! ホスト可読の音声 capability ガード（ADR-0117）。
+//! ホスト可読の音声 capability ガード（ADR-0117 / #562）。
 //!
-//! 1. **封じ込め**: `AudioTrack` を駆動する native FFI（`hayate_android_audio_*`）は audio
-//!    glue モジュール内にのみ現れてよい（`ime_bridge` のキーボード制御 FFI ガードと同型）。
+//! 1. **封じ込め**: 発音を駆動する native AAudio FFI（`AAudio*`）は audio glue モジュール内に
+//!    のみ現れてよい（`ime_bridge` のキーボード制御 FFI ガードと同型）。
 //! 2. **契約遵守**: leaf の `AudioTrackOutput` が Core の [`AudioOutput`] 契約を `#[cfg(
 //!    target_os = "android")]` glue として実装することをソース走査で固定する。実機（NDK +
-//!    AudioTrack）が無くてもホストで成立する。
+//!    AAudio）が無くてもホストで成立する。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 /// 音声 native FFI を呼んでよい唯一のモジュール。
 const AUDIO_FILE: &str = "audio_output.rs";
 
-/// audio glue のシーム内に留めるべき AudioTrack 駆動 FFI の接頭辞。
-const FORBIDDEN_PREFIX: &str = "hayate_android_audio_";
+/// audio glue のシーム内に留めるべき発音駆動 native FFI（AAudio）のトークン。
+const FORBIDDEN_PREFIX: &str = "AAudio";
 
 fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).expect("read src dir") {
@@ -32,7 +32,7 @@ fn read_src(rel: &str) -> String {
 }
 
 #[test]
-fn audio_track_ffi_is_confined_to_the_audio_module() {
+fn aaudio_ffi_is_confined_to_the_audio_module() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
     rs_files(&src, &mut files);
@@ -58,7 +58,7 @@ fn audio_track_ffi_is_confined_to_the_audio_module() {
 
     assert!(
         violations.is_empty(),
-        "AudioTrack-driving FFI (`{FORBIDDEN_PREFIX}*`) must live only in `{AUDIO_FILE}` \
+        "sound-driving AAudio FFI (`{FORBIDDEN_PREFIX}*`) must live only in `{AUDIO_FILE}` \
          (route through the Core `AudioOutput` contract); found:\n{}",
         violations.join("\n")
     );

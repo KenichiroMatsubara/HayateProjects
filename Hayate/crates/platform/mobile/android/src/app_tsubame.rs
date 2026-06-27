@@ -148,6 +148,25 @@ pub(crate) fn run(app: AndroidApp) {
         }),
     });
 
+    // 実機発音検証の最小導線（ADR-0117 / #562）。起動時に一度だけ、Core の `AudioOutput`
+    // 契約越しに 440Hz のテストトーンを数百 ms 鳴らし、logcat に証跡を残す。発音バックエンドの
+    // native 呼び出しはバッファが realtime に消費されるまでブロックし得るので、描画ループを
+    // 止めないよう専用スレッドで鳴らす（出力の生成・駆動はスレッド内で完結＝Send 不要）。
+    std::thread::spawn(|| {
+        log::info!(
+            "hayate-adapter-android: 起動テストトーン再生 — {}Hz を {}ms（AudioOutput 経由）",
+            crate::test_tone::DEFAULT_FREQUENCY_HZ,
+            crate::test_tone::TEST_TONE_DURATION_MS,
+        );
+        let mut output = crate::audio_output::AudioTrackOutput::default();
+        crate::test_tone::play_test_tone(
+            &mut output,
+            hayate_core::AudioFormat::DEFAULT,
+            crate::test_tone::TEST_TONE_DURATION_MS,
+        );
+        log::info!("hayate-adapter-android: 起動テストトーン再生 完了");
+    });
+
     let mut gpu: Option<GpuSurface> = None;
     let mut lifecycle = SurfaceLifecycleState::new();
     let start = Instant::now();
