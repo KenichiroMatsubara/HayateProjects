@@ -60,6 +60,12 @@ jobs:
           RUSTFLAGS: ""
         run: pnpm run build:wasm
 
+      - name: Build @hayate/host
+        # todo example は `import('@hayate/host')` で host bootstrap を取り込む（#477）。
+        # exports は dist/index.js（tsup 成果物）だけを向くので、ここで build しないと
+        # Rolldown が import を解決できずビルドが落ちる。
+        run: pnpm run build:host
+
       - name: Build Tsubame packages
         run: pnpm run build:tsubame
 
