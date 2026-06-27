@@ -118,7 +118,7 @@ _Avoid_: Canvas Renderer（旧称・ADR-0011）, Tsubame Canvas Mode, 個別 ele
 _Avoid_: Signal ベースの hover スタイル切替・Tsubame 経由の hover イベント購読
 
 **Selection（選択）**:
-アプリ全体で同時に一つだけ存在する有効な文字選択。anchor と focus を `(ElementId, byte offset)` で表し、document 順に正規化した連続範囲。Element Document Runtime が単独所有し、Selection Region の選択と text-input の選択は排他（新規選択で旧選択は解除）。単一キャレット（EditState の `cursor_byte_index`）は anchor=focus の縮退形。
+アプリ全体で同時に一つだけ存在する有効な文字選択。anchor と focus を `(ElementId, byte offset)` で表し、document 順に正規化した連続範囲。Element Document Runtime が単独所有し、Selection Region の選択と text-input の選択は排他（新規選択で旧選択は解除）。単一キャレット（EditState の `cursor_byte_index`）は anchor=focus の縮退形。runtime 内では `Selection` を deep module 化して正規化・縮退・contains 境界 clamp の不変条件を interface の裏へ集約し、値の field は `Interaction` module が持つ（read 経路は interface 越しに borrow）。これは runtime 内の再配置であり「runtime が単独所有」は不変（ADR-0122）。
 _Avoid_: 領域ごとに独立した複数の同時選択、cursor を selection と別概念とする理解
 
 **Selection Region（選択領域＝`user-select: contains` 境界）**:
