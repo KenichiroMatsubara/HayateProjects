@@ -165,10 +165,12 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
     let p = Palette;
     let mut b = TreeBuilder::new();
 
-    // Root column
+    // Root column. ルートは固定 px ではなくビューポート充填にして窓リサイズへ
+    // 追従させる (#567)。レイアウトエンジンは Percent ルートをビューポートに
+    // ピン留めするので、`set_viewport` のたびに新しい寸法へ再レイアウトされる。
     let root = b.view(&[
-        StyleProp::Width(Dimension::px(vw)),
-        StyleProp::Height(Dimension::px(vh)),
+        StyleProp::Width(Dimension::percent(100.0)),
+        StyleProp::Height(Dimension::percent(100.0)),
         StyleProp::Display(hayate_core::DisplayValue::Flex),
         StyleProp::FlexDirection(FlexDirectionValue::Column),
         StyleProp::BackgroundColor(p.bg()),
@@ -628,6 +630,25 @@ mod tests {
             .element_layout_rect(root)
             .expect("root must have a layout rect");
         assert_eq!((w, h), TASKS_VIEWPORT);
+    }
+
+    #[test]
+    fn tasks_tree_root_follows_viewport_resize() {
+        // 窓リサイズ追従 (#567): ルートはビューポートを充填し、`set_viewport`
+        // で寸法が変わったら再レイアウト後に新しいビューポートへ追従する。
+        // 固定 px ルートだとここで旧寸法のまま固まる。
+        let mut tree = tasks_tree("tiny-skia");
+        let _ = tree.render(0.0);
+
+        let resized = (1280.0, 720.0);
+        tree.set_viewport(resized.0, resized.1);
+        let _ = tree.render(0.0);
+
+        let root = tree.root().expect("fixture must set a root element");
+        let (_, _, w, h) = tree
+            .element_layout_rect(root)
+            .expect("root must have a layout rect");
+        assert_eq!((w, h), resized);
     }
 
     #[test]
