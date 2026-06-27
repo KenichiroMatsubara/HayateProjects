@@ -15,7 +15,7 @@ import {
 } from './hayate.js';
 
 describe('parity codegen seam (issue #235)', () => {
-  it('renderer-canvas parse helpers are the generated codec functions, not re-implementations', () => {
+  it('renderer-hayate parse helpers are the generated codec functions, not re-implementations', () => {
     // 単一の出所: canvas パッケージは codegen が生成したのと同一の関数オブジェクトを
     // 公開しなければならない。色パースの修正が一箇所で済むようにするため。
     expect(parseColor).toBe(codecParseColor);

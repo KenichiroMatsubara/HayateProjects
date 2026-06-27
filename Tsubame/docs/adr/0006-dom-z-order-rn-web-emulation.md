@@ -1,5 +1,7 @@
 # DOM Renderer の Z-Order は RN Web 現行方式で Hayate セマンティクスをエミュレートする
 
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 _origin: Hayate ADR-0021, react-native-web `View` base styles_
 
 Tsubame の DOM Renderer はブラウザ CSS をそのまま正本にせず、Hayate / Canvas Renderer と同じ React Native 方式の Z-Order セマンティクスを DOM 上で再現する。実装は react-native-web の現行 master が採用する方式（全 element に `position: relative` + デフォルト `zIndex: 0`）を踏襲する。ブラウザ CSS との完全一致は目標にしない。

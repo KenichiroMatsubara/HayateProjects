@@ -10,8 +10,8 @@ export { ProtocolMismatchError } from '@miharashi/protocol-handshake';
 
 /**
  * App Bundle が `eval` 時に登録する mount。host bootstrap（`raw` + frame-clock）を受け取り、
- * バンドル側が持ち込む `new CanvasRenderer({ raw, requestFrame, cancelFrame })` と FW で
- * App を mount する（ADR-0001：renderer-canvas も FW もバンドルが持つ）。
+ * バンドル側が持ち込む `new HayateRenderer({ raw, requestFrame, cancelFrame })` と FW で
+ * App を mount する（ADR-0001：renderer-hayate も FW もバンドルが持つ）。
  */
 export type MiharashiMount = (host: WebHost) => void;
 
@@ -106,7 +106,7 @@ async function defaultCreateHost(
 /**
  * Miharashi Web ホストを起動する：dev-server からバンドルを fetch → eval し、
  * `createHayateWebHost(canvas)` で host bootstrap（`raw` / `requestFrame` / `cancelFrame`）を
- * 確立して、バンドルが露出した mount に渡す。ホストは FW も `@tsubame/renderer-canvas` も
+ * 確立して、バンドルが露出した mount に渡す。ホストは FW も `@tsubame/renderer-hayate` も
  * 持たず、それらは流し込むバンドル側が持ち込む（ADR-0001）。
  */
 export async function bootMiharashiHost(options: BootMiharashiHostOptions): Promise<void> {

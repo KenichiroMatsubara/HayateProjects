@@ -1,5 +1,5 @@
 {
-  "name": "@tsubame/renderer-canvas",
+  "name": "@tsubame/renderer-hayate",
   "version": "0.0.0",
   "description": "Tsubame Canvas Renderer — フレーム単位で mutation をバッチ化し Hayate WASM の apply_mutations へ渡す IRenderer 実装",
   "license": "Apache-2.0",

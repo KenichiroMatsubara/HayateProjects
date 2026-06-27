@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CanvasRenderer,
+  HayateRenderer,
   OP,
   parseColor,
   encodeStylePatch,
@@ -75,10 +75,10 @@ function manualScheduler() {
   };
 }
 
-test('CanvasRenderer batches tree, style, and text mutations into unified apply_mutations (ADR-0052)', () => {
+test('HayateRenderer batches tree, style, and text mutations into unified apply_mutations (ADR-0052)', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
 
   const root = renderer.createElement('view');
   const text = renderer.createElement('text');
@@ -110,7 +110,7 @@ test('CanvasRenderer batches tree, style, and text mutations into unified apply_
 test('setStyle null resets route to unified OP_UNSET_STYLE records', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
 
   const node = renderer.createElement('text');
   renderer.setStyle(node, { color: null, fontSize: null, fontFamily: null });
@@ -129,10 +129,10 @@ test('setStyle null resets route to unified OP_UNSET_STYLE records', () => {
   assert.deepEqual(hayate.mutations[0].texts, []);
 });
 
-test('CanvasRenderer preserves text before later style mutations in one unified batch', () => {
+test('HayateRenderer preserves text before later style mutations in one unified batch', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
 
   const text = renderer.createElement('text');
   renderer.setText(text, 'Hello');
@@ -156,7 +156,7 @@ test('CanvasRenderer preserves text before later style mutations in one unified 
 test('setStyle with SET and null unset emits ordered SET_STYLE then OP_UNSET_STYLE', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
 
   const node = renderer.createElement('text');
   renderer.setStyle(node, { color: '#ff0000', fontSize: null });
@@ -176,7 +176,7 @@ test('setStyle with SET and null unset emits ordered SET_STYLE then OP_UNSET_STY
 test('multiple setText calls are emitted in order without coalescing', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
 
   const text = renderer.createElement('text');
   renderer.setText(text, 'A');
@@ -237,10 +237,10 @@ test('parseColor keeps colour records explicit', () => {
   });
 });
 
-test('CanvasRenderer registers listeners and dispatches poll deliveries (ADR-0053)', () => {
+test('HayateRenderer registers listeners and dispatches poll deliveries (ADR-0053)', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
   const button = renderer.createElement('button');
   const label = renderer.createElement('text');
   renderer.appendChild(button, label);
@@ -265,7 +265,7 @@ test('CanvasRenderer registers listeners and dispatches poll deliveries (ADR-005
 test('removeChild enqueues REMOVE without throwing on later poll', () => {
   const hayate = new StubHayate();
   const sched = manualScheduler();
-  const renderer = new CanvasRenderer(hayate, sched);
+  const renderer = new HayateRenderer(hayate, sched);
   const parent = renderer.createElement('view');
   const child = renderer.createElement('view');
   const grandchild = renderer.createElement('text');

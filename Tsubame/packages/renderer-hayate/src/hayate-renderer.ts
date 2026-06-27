@@ -26,7 +26,7 @@ import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubam
  * platform 識別子（`HTMLCanvasElement` 型・`devicePixelRatio`・`ResizeObserver`・
  * RAF 既定）はここに存在しない。clock 源の確立は host bootstrap の責務。
  */
-export interface CanvasRendererOptions {
+export interface HayateRendererOptions {
   raw: RawHayate;
   requestFrame: (cb: FrameRequestCallback) => number;
   cancelFrame: (handle: number) => void;
@@ -37,7 +37,7 @@ interface ListenerEntry {
   elementId: ElementId;
 }
 
-export class CanvasRenderer implements IRenderer {
+export class HayateRenderer implements IRenderer {
   private readonly raw: RawHayate;
   /** Hayate が発行したリスナ id → ホストのハンドラ（ADR-0053）。 */
   private readonly listeners = new Map<number, ListenerEntry>();
@@ -49,7 +49,7 @@ export class CanvasRenderer implements IRenderer {
   private readonly cancelFrame: (handle: number) => void;
   private frameHandle: number | null = null;
 
-  constructor(options: CanvasRendererOptions) {
+  constructor(options: HayateRendererOptions) {
     this.raw = options.raw;
     this.requestFrame = options.requestFrame;
     this.cancelFrame = options.cancelFrame;

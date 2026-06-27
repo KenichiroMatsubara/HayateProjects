@@ -15,7 +15,7 @@ export const HOST_PROTOCOL_VERSION: number = manifest.version;
 /**
  * web bootstrap が確立して合成ルートへ渡す host。`raw` は Hayate ランタイムのポート、
  * `requestFrame`/`cancelFrame` は host が確立した frame-clock。App はこれを
- * `new CanvasRenderer({ raw, requestFrame, cancelFrame })` に渡して mount する。
+ * `new HayateRenderer({ raw, requestFrame, cancelFrame })` に渡して mount する。
  * browser / native は同じ形（`./native` の {@link import('./native.js').NativeHost}）。
  */
 export interface WebHost {

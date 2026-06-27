@@ -1,6 +1,6 @@
 /**
  * Hayate WASM レンダラ（`HayateElementRenderer`）が公開する element-layer メソッドの
- * うち、Tsubame の host-blind `CanvasRenderer` が駆動に必要とする最小 surface。
+ * うち、Tsubame の host-blind `HayateRenderer` が駆動に必要とする最小 surface。
  *
  * これは host（producer）側が所有する「生成物の契約」である。Tsubame は自前の
  * `RawHayate` ポート（consumer 側の契約）を別に持ち、両者は App（合成ルート）で

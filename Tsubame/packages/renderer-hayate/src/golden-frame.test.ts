@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createElement, renderTsubame, setProp } from '@tsubame/solid';
-import { CanvasRenderer } from './canvas-renderer.js';
+import { HayateRenderer } from './hayate-renderer.js';
 import { createNullHayate, type WasmHayateFixture } from './test-helpers/wasm-hayate.js';
 import { manualScheduler } from './test-helpers/manual-scheduler.js';
 import { captureGoldenFrame, type GoldenFrameSource } from './golden-frame.js';
@@ -19,7 +19,7 @@ describe('golden frame cross-seam harness (ADR-0079)', () => {
   it('mounts a focused, typed text-input and captures a tree/style/layout/a11y golden frame', async () => {
     fixture = await createNullHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: fixture.raw, ...sched });
+    const renderer = new HayateRenderer({ raw: fixture.raw, ...sched });
     renderer.start();
 
     let inputId = 0;

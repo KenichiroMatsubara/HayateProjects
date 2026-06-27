@@ -10,7 +10,7 @@ import type { RawHayate } from './hayate.js';
 import { encodeMutations, type SemanticMutation } from './encode-mutations.js';
 
 /**
- * CanvasRenderer → Hayate WASM 境界向けの順序付き Hayate Mutation Packet キュー。
+ * HayateRenderer → Hayate WASM 境界向けの順序付き Hayate Mutation Packet キュー。
  *
  * パケットの B-lite 形式: セマンティックな操作順序を保ち、低レベルの op/style/text
  * バッファは境界フラッシュ時にのみ出力する。キュー済みのセマンティック変更を

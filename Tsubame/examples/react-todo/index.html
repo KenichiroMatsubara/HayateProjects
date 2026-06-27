@@ -10,16 +10,107 @@
         background: #0b1020;
         font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Hiragino Sans', sans-serif;
       }
-      #dom-host {
+      #dom-host, #canvas-stage {
         position: fixed;
         inset: 0;
         width: 100vw;
         height: 100dvh;
       }
+      #dom-host[hidden], #canvas-stage[hidden] { display: none; }
+      #canvas-stage { display: block; cursor: default; }
+
+      /* Renderer 切替UI（Hayate アプリの外側に置く素の HTML オーバーレイ・FW 非依存）。
+         solid 例題と同型で、?renderer= を切り替える。 */
+      #renderer-switch {
+        position: fixed;
+        top: max(10px, env(safe-area-inset-top));
+        right: max(10px, env(safe-area-inset-right));
+        z-index: 1000;
+        display: flex;
+        flex-direction: row-reverse;
+        align-items: center;
+        gap: 6px;
+        padding: 4px;
+        border-radius: 999px;
+        border: 1px solid #31425b;
+        background: color-mix(in srgb, #111827 90%, transparent);
+        backdrop-filter: blur(6px);
+        font-family: inherit;
+      }
+      #renderer-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: #eef4ff;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .rsw-dot { width: 8px; height: 8px; border-radius: 999px; background: #4fd1c5; }
+      .rsw-options { display: none; gap: 4px; }
+      #renderer-switch[data-open='true'] .rsw-options { display: flex; }
+      .rsw-options button {
+        padding: 4px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        color: #8ea1bb;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .rsw-options button.active { background: #14b8a6; color: #070b14; }
     </style>
   </head>
   <body>
-    <div id="dom-host"></div>
+    <div id="renderer-switch" data-open="false" aria-label="Renderer switch">
+      <button type="button" id="renderer-toggle" aria-expanded="false" aria-controls="renderer-options" title="レンダラを切り替え">
+        <span class="rsw-dot" aria-hidden="true"></span>
+        <span id="renderer-current">auto</span>
+      </button>
+      <div class="rsw-options" id="renderer-options" role="group">
+        <button type="button" data-renderer="auto">auto</button>
+        <button type="button" data-renderer="vello">vello</button>
+        <button type="button" data-renderer="tiny-skia">tiny-skia</button>
+        <button type="button" data-renderer="dom">dom</button>
+      </div>
+    </div>
+    <div id="dom-host" hidden></div>
+    <canvas id="canvas-stage" hidden></canvas>
+    <script>
+      (function initRendererSwitch() {
+        const params = new URLSearchParams(window.location.search);
+        const current = params.get('renderer') ?? 'auto';
+        const root = document.getElementById('renderer-switch');
+        const toggle = document.getElementById('renderer-toggle');
+        document.getElementById('renderer-current').textContent = current;
+        const setOpen = (open) => {
+          root.dataset.open = String(open);
+          toggle.setAttribute('aria-expanded', String(open));
+          window.localStorage.setItem('rsw-open', String(open));
+        };
+        setOpen(window.localStorage.getItem('rsw-open') === 'true');
+        toggle.addEventListener('click', () => setOpen(root.dataset.open !== 'true'));
+        for (const button of root.querySelectorAll('button[data-renderer]')) {
+          const value = button.getAttribute('data-renderer');
+          if (value === current) button.classList.add('active');
+          button.addEventListener('click', () => {
+            const next = new URLSearchParams(window.location.search);
+            next.set('renderer', value);
+            const query = next.toString();
+            window.location.search = query ? `?${query}` : '';
+          });
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

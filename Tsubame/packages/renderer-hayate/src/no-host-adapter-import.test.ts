@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 // 「Tsubame は host を知らない」の依存不変条件（#477, CONTEXT-MAP の依存境界）。
-// `@tsubame/renderer-canvas` の **出荷コード**（公開ライブラリ surface）は Hayate の
+// `@tsubame/renderer-hayate` の **出荷コード**（公開ライブラリ surface）は Hayate の
 // web ランタイム adapter（`hayate-adapter-web*`）を import しない。surface 取得・WASM
 // ロード・WebGPU プローブ・backend 選択は host bootstrap の責務で、それは Hayate 側
 // （`@hayate/host`）または App（合成ルート）が持つ。
@@ -39,7 +39,7 @@ function importsHostAdapter(source: string): boolean {
   return /\b(?:import|export)\b[^\n;]*['"]hayate-adapter-web[^'"]*['"]/.test(code);
 }
 
-describe('renderer-canvas shipped code is decoupled from the host adapter (#477)', () => {
+describe('renderer-hayate shipped code is decoupled from the host adapter (#477)', () => {
   const files = shippedSources(srcDir);
 
   it('finds shipped sources to check', () => {

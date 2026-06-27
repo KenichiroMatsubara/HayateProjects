@@ -1,5 +1,7 @@
 # Renderer Protocol + DOM Renderer + Canvas Renderer の 3 層構成とする
 
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。3 層構成の決定自体は不変。本文は決定当時の記録として原文のまま。
+
 _origin: Hayate ADR-0036_
 
 JS/TS ユーザー向けフレームワーク Tsubame の設計として、Renderer Protocol（`IRenderer`）を境界として DOM Renderer と Canvas Renderer の 2 実装を持つ構成を採用する。

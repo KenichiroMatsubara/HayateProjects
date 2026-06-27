@@ -23,7 +23,7 @@ export interface HayateColorRecord {
 export function finiteNumber(key: string, value: unknown): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    throw new Error(`CanvasRenderer: invalid numeric value for "${key}"`);
+    throw new Error(`HayateRenderer: invalid numeric value for "${key}"`);
   }
   return numeric;
 }
@@ -31,7 +31,7 @@ export function finiteNumber(key: string, value: unknown): number {
 export function finiteInteger(key: string, value: unknown): number {
   const numeric = finiteNumber(key, value);
   if (!Number.isInteger(numeric)) {
-    throw new Error(`CanvasRenderer: "${key}" must be an integer`);
+    throw new Error(`HayateRenderer: "${key}" must be an integer`);
   }
   return numeric;
 }
@@ -48,12 +48,12 @@ export function parseDimension(value: import('@tsubame/renderer-protocol').Hayat
 
   const match = trimmed.match(/^(-?(?:\d+|\d*\.\d+))(px|%|fr)?$/);
   if (match === null) {
-    throw new Error(`CanvasRenderer: unsupported dimension "${value}"`);
+    throw new Error(`HayateRenderer: unsupported dimension "${value}"`);
   }
 
   const numeric = Number(match[1]);
   if (!Number.isFinite(numeric)) {
-    throw new Error(`CanvasRenderer: invalid dimension "${value}"`);
+    throw new Error(`HayateRenderer: invalid dimension "${value}"`);
   }
 
   const unit = match[2] ?? 'px';
@@ -92,7 +92,7 @@ export function parseColor(input: string): HayateColorRecord {
     return { r: 0, g: 0, b: 0, a: 0 };
   }
 
-  throw new Error(`CanvasRenderer: unsupported color "${input}"`);
+  throw new Error(`HayateRenderer: unsupported color "${input}"`);
 }
 
 function parseColorChannel(raw: string): number {
@@ -130,7 +130,7 @@ export function encodeGridLine(out: number[], key: string, line: unknown): void 
     out.push(2, finiteInteger(`${key}.span`, (line as { span: unknown }).span));
     return;
   }
-  throw new Error(`CanvasRenderer: unsupported grid placement for "${key}"`);
+  throw new Error(`HayateRenderer: unsupported grid placement for "${key}"`);
 }
 
 const DISPLAY_CODE: Record<string, number> = {
@@ -321,25 +321,25 @@ function encode_maxHeight(out: number[], value: import('@tsubame/renderer-protoc
 
 function encode_display(out: number[], value: string): void {
   const code = DISPLAY_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported display "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported display "${value}"`);
   out.push(TAG.DISPLAY, code);
 }
 
 function encode_flexDirection(out: number[], value: string): void {
   const code = FLEX_DIRECTION_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported flexDirection "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported flexDirection "${value}"`);
   out.push(TAG.FLEX_DIRECTION, code);
 }
 
 function encode_alignItems(out: number[], value: string): void {
   const code = ALIGN_ITEMS_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported alignItems "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported alignItems "${value}"`);
   out.push(TAG.ALIGN_ITEMS, code);
 }
 
 function encode_justifyContent(out: number[], value: string): void {
   const code = JUSTIFY_CONTENT_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported justifyContent "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported justifyContent "${value}"`);
   out.push(TAG.JUSTIFY_CONTENT, code);
 }
 
@@ -427,13 +427,13 @@ function encode_fontWeight(out: number[], value: unknown): void {
 
 function encode_fontStyle(out: number[], value: string): void {
   const code = FONT_STYLE_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported fontStyle "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported fontStyle "${value}"`);
   out.push(TAG.FONT_STYLE, code);
 }
 
 function encode_textDecoration(out: number[], value: string): void {
   const code = TEXT_DECORATION_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported textDecoration "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported textDecoration "${value}"`);
   out.push(TAG.TEXT_DECORATION, code);
 }
 
@@ -458,7 +458,7 @@ function encode_defaultFontWeight(out: number[], value: unknown): void {
 
 function encode_gridTemplateColumns(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
-    throw new Error(`CanvasRenderer: "gridTemplateColumns" must be an array of dimensions`);
+    throw new Error(`HayateRenderer: "gridTemplateColumns" must be an array of dimensions`);
   }
   out.push(TAG.GRID_TEMPLATE_COLUMNS, value.length);
   for (const item of value) {
@@ -469,7 +469,7 @@ function encode_gridTemplateColumns(out: number[], value: import('@tsubame/rende
 
 function encode_gridTemplateRows(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
-    throw new Error(`CanvasRenderer: "gridTemplateRows" must be an array of dimensions`);
+    throw new Error(`HayateRenderer: "gridTemplateRows" must be an array of dimensions`);
   }
   out.push(TAG.GRID_TEMPLATE_ROWS, value.length);
   for (const item of value) {
@@ -489,37 +489,37 @@ function encode_flexBasis(out: number[], value: import('@tsubame/renderer-protoc
 
 function encode_alignSelf(out: number[], value: string): void {
   const code = ALIGN_SELF_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported alignSelf "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported alignSelf "${value}"`);
   out.push(TAG.ALIGN_SELF, code);
 }
 
 function encode_alignContent(out: number[], value: string): void {
   const code = ALIGN_CONTENT_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported alignContent "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported alignContent "${value}"`);
   out.push(TAG.ALIGN_CONTENT, code);
 }
 
 function encode_flexWrap(out: number[], value: string): void {
   const code = FLEX_WRAP_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported flexWrap "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported flexWrap "${value}"`);
   out.push(TAG.FLEX_WRAP, code);
 }
 
 function encode_borderStyle(out: number[], value: string): void {
   const code = BORDER_STYLE_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported borderStyle "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported borderStyle "${value}"`);
   out.push(TAG.BORDER_STYLE, code);
 }
 
 function encode_cursor(out: number[], value: string): void {
   const code = CURSOR_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported cursor "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported cursor "${value}"`);
   out.push(TAG.CURSOR, code);
 }
 
 function encode_position(out: number[], value: string): void {
   const code = POSITION_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported position "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported position "${value}"`);
   out.push(TAG.POSITION, code);
 }
 
@@ -545,7 +545,7 @@ function encode_bottom(out: number[], value: import('@tsubame/renderer-protocol'
 
 function encode_overflow(out: number[], value: string): void {
   const code = OVERFLOW_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported overflow "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported overflow "${value}"`);
   out.push(TAG.OVERFLOW, code);
 }
 
@@ -555,7 +555,7 @@ function encode_maxLines(out: number[], value: unknown): void {
 
 function encode_textOverflow(out: number[], value: string): void {
   const code = TEXT_OVERFLOW_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported textOverflow "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported textOverflow "${value}"`);
   out.push(TAG.TEXT_OVERFLOW, code);
 }
 
@@ -565,13 +565,13 @@ function encode_transitionDuration(out: number[], value: unknown): void {
 
 function encode_transitionTiming(out: number[], value: string): void {
   const code = TRANSITION_TIMING_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported transitionTiming "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported transitionTiming "${value}"`);
   out.push(TAG.TRANSITION_TIMING, code);
 }
 
 function encode_boxShadow(out: number[], value: import('@tsubame/renderer-protocol').HayateShadow[]): void {
   if (!Array.isArray(value)) {
-    throw new Error(`CanvasRenderer: "boxShadow" must be an array of shadows`);
+    throw new Error(`HayateRenderer: "boxShadow" must be an array of shadows`);
   }
   out.push(TAG.BOX_SHADOW, value.length);
   for (const item of value) {
@@ -593,13 +593,13 @@ function encode_aspectRatio(out: number[], value: unknown): void {
 
 function encode_boxSizing(out: number[], value: string): void {
   const code = BOX_SIZING_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported boxSizing "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported boxSizing "${value}"`);
   out.push(TAG.BOX_SIZING, code);
 }
 
 function encode_gridAutoRows(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
-    throw new Error(`CanvasRenderer: "gridAutoRows" must be an array of dimensions`);
+    throw new Error(`HayateRenderer: "gridAutoRows" must be an array of dimensions`);
   }
   out.push(TAG.GRID_AUTO_ROWS, value.length);
   for (const item of value) {
@@ -610,7 +610,7 @@ function encode_gridAutoRows(out: number[], value: import('@tsubame/renderer-pro
 
 function encode_gridAutoColumns(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
-    throw new Error(`CanvasRenderer: "gridAutoColumns" must be an array of dimensions`);
+    throw new Error(`HayateRenderer: "gridAutoColumns" must be an array of dimensions`);
   }
   out.push(TAG.GRID_AUTO_COLUMNS, value.length);
   for (const item of value) {
@@ -621,7 +621,7 @@ function encode_gridAutoColumns(out: number[], value: import('@tsubame/renderer-
 
 function encode_gridAutoFlow(out: number[], value: string): void {
   const code = GRID_AUTO_FLOW_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported gridAutoFlow "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported gridAutoFlow "${value}"`);
   out.push(TAG.GRID_AUTO_FLOW, code);
 }
 
@@ -634,13 +634,13 @@ function encode_gridColumn(out: number[], value: unknown): void {
 
 function encode_justifyItems(out: number[], value: string): void {
   const code = JUSTIFY_ITEMS_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported justifyItems "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported justifyItems "${value}"`);
   out.push(TAG.JUSTIFY_ITEMS, code);
 }
 
 function encode_justifySelf(out: number[], value: string): void {
   const code = JUSTIFY_SELF_CODE[value];
-  if (code === undefined) throw new Error(`CanvasRenderer: unsupported justifySelf "${value}"`);
+  if (code === undefined) throw new Error(`HayateRenderer: unsupported justifySelf "${value}"`);
   out.push(TAG.JUSTIFY_SELF, code);
 }
 
@@ -736,7 +736,7 @@ export function encodeStylePatch(patch: StylePatch, out: number[]): void {
     if (value === undefined || value === null) continue;
     const encoder = STYLE_ENCODERS[k];
     if (encoder === undefined) {
-      throw new Error(`CanvasRenderer: unsupported style property "${String(k)}"`);
+      throw new Error(`HayateRenderer: unsupported style property "${String(k)}"`);
     }
     encoder(out, value);
   }
@@ -750,7 +750,7 @@ export function unsetKindsOf(patch: StylePatch): number[] {
     if (patch[k] !== null) continue;
     const code = INHERITED_UNSET[k as string];
     if (code === undefined) {
-      throw new Error(`CanvasRenderer: cannot reset non-inheritable property "${String(k)}"`);
+      throw new Error(`HayateRenderer: cannot reset non-inheritable property "${String(k)}"`);
     }
     kinds.push(code);
   }

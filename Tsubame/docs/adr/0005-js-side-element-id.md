@@ -1,5 +1,7 @@
 # ElementId は JS 側で採番する
 
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 Canvas Renderer の `createElement` は当初 `element_create(kind)` を WASM に同期呼び出しして戻り値として ElementId を受け取る設計だった（仕様書 §3.3）。しかし JS 側がモノトニックカウンターで id を採番し `element_create(id, kind)` として WASM に通知する設計に変更した。これにより `createElement` を `ops` バッチストリームに乗せられ、JS→WASM 境界呼び出しを完全に排除できる。Hayate 側の `element_create` シグネチャをこの設計に合わせて変更済み。
 
 ## 採用した設計

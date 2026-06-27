@@ -47,7 +47,7 @@ export interface HayateColorRecord {
 export function finiteNumber(key: string, value: unknown): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
-    throw new Error(\`CanvasRenderer: invalid numeric value for "\${key}"\`);
+    throw new Error(\`HayateRenderer: invalid numeric value for "\${key}"\`);
   }
   return numeric;
 }
@@ -55,7 +55,7 @@ export function finiteNumber(key: string, value: unknown): number {
 export function finiteInteger(key: string, value: unknown): number {
   const numeric = finiteNumber(key, value);
   if (!Number.isInteger(numeric)) {
-    throw new Error(\`CanvasRenderer: "\${key}" must be an integer\`);
+    throw new Error(\`HayateRenderer: "\${key}" must be an integer\`);
   }
   return numeric;
 }
@@ -72,12 +72,12 @@ export function parseDimension(value: import('@tsubame/renderer-protocol').Hayat
 
   const match = trimmed.match(/^(-?(?:\\d+|\\d*\\.\\d+))(px|%|fr)?$/);
   if (match === null) {
-    throw new Error(\`CanvasRenderer: unsupported dimension "\${value}"\`);
+    throw new Error(\`HayateRenderer: unsupported dimension "\${value}"\`);
   }
 
   const numeric = Number(match[1]);
   if (!Number.isFinite(numeric)) {
-    throw new Error(\`CanvasRenderer: invalid dimension "\${value}"\`);
+    throw new Error(\`HayateRenderer: invalid dimension "\${value}"\`);
   }
 
   const unit = match[2] ?? 'px';
@@ -116,7 +116,7 @@ export function parseColor(input: string): HayateColorRecord {
     return { r: 0, g: 0, b: 0, a: 0 };
   }
 
-  throw new Error(\`CanvasRenderer: unsupported color "\${input}"\`);
+  throw new Error(\`HayateRenderer: unsupported color "\${input}"\`);
 }
 
 function parseColorChannel(raw: string): number {
@@ -154,7 +154,7 @@ export function encodeGridLine(out: number[], key: string, line: unknown): void 
     out.push(2, finiteInteger(\`\${key}.span\`, (line as { span: unknown }).span));
     return;
   }
-  throw new Error(\`CanvasRenderer: unsupported grid placement for "\${key}"\`);
+  throw new Error(\`HayateRenderer: unsupported grid placement for "\${key}"\`);
 }
 `.trim();
 }
@@ -279,7 +279,7 @@ export function generateCodec() {
     '    if (value === undefined || value === null) continue;',
     '    const encoder = STYLE_ENCODERS[k];',
     '    if (encoder === undefined) {',
-    '      throw new Error(`CanvasRenderer: unsupported style property "${String(k)}"`);',
+    '      throw new Error(`HayateRenderer: unsupported style property "${String(k)}"`);',
     '    }',
     '    encoder(out, value);',
     '  }',
@@ -293,7 +293,7 @@ export function generateCodec() {
     '    if (patch[k] !== null) continue;',
     '    const code = INHERITED_UNSET[k as string];',
     '    if (code === undefined) {',
-    '      throw new Error(`CanvasRenderer: cannot reset non-inheritable property "${String(k)}"`);',
+    '      throw new Error(`HayateRenderer: cannot reset non-inheritable property "${String(k)}"`);',
     '    }',
     '    kinds.push(code);',
     '  }',

@@ -16,7 +16,7 @@ export type {
 
 /**
  * 実 Hayate WASM（`HayateElementRenderer`）が公開する WIT element-layer の
- * メソッドのうち、`CanvasRenderer` が呼び出すものだけを型付けした最小 interface。
+ * メソッドのうち、`HayateRenderer` が呼び出すものだけを型付けした最小 interface。
  *
  * wasm-bindgen 生成クラスは構造的にこれを充足するため、`init.ts` では
  * 生成インスタンスをそのまま `RawHayate` として渡せる。スタイルは

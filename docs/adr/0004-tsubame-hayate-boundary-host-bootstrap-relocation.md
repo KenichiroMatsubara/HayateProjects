@@ -1,5 +1,7 @@
 # Tsubame と Hayate の境界を引き直し、host bootstrap を Tsubame から退去させる
 
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+
 **Status: proposed**
 
 **Date: 2026-06-24**

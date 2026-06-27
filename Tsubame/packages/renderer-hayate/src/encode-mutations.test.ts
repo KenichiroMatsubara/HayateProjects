@@ -8,7 +8,7 @@ import {
   type SemanticMutation,
 } from './encode-mutations.js';
 
-// `encodeMutations` は CanvasRenderer → Hayate WASM 境界で唯一の純粋な
+// `encodeMutations` は HayateRenderer → Hayate WASM 境界で唯一の純粋な
 // ワイヤーフォーマット生成器。これらのテストはエンコードを直接駆動し、
 // `RawHayate` スタブも WASM 越えも使わない。
 

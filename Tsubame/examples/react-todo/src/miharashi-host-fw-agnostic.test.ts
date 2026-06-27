@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
  * #531 の中核主張のガード：「Viewer 一本で全 JS フレームワークが動く」（ADR-0001）。
  *
  * react バンドルを描画する Miharashi ホストは、solid バンドルを描画するホストと**同一**で
- * なければならない。ホスト側に framework / renderer-canvas を焼き込むと FW 非依存原則が破れる
+ * なければならない。ホスト側に framework / renderer-hayate を焼き込むと FW 非依存原則が破れる
  * （CONTEXT.md「Host」: _Avoid_ フレームワークをホストに焼き込む設計）。
  *
  * このテストはユニットだが守る不変条件は振る舞い：誰かがホストに react 固有分岐を足したら
@@ -21,7 +21,7 @@ const reactHostHtml = fileURLToPath(new URL('../host.html', import.meta.url));
 const FRAMEWORK_PACKAGES = new Set([
   '@tsubame/react',
   '@tsubame/solid',
-  '@tsubame/renderer-canvas',
+  '@tsubame/renderer-hayate',
   '@tsubame/renderer-dom',
   'react',
   'react-reconciler',
@@ -48,7 +48,7 @@ describe('Miharashi host shell is framework-agnostic (#531)', () => {
 
   it('imports no framework or renderer into the host boot', () => {
     // プロセスの単語狩りではなく実際の import を見る — コメントが「ここには無い」と
-    // renderer-canvas に言及するのは FW 非依存の*肯定*であって違反ではない。
+    // renderer-hayate に言及するのは FW 非依存の*肯定*であって違反ではない。
     const imported = importSpecifiers(readFileSync(reactHostBoot, 'utf8'));
     const leaked = imported.filter((spec) => FRAMEWORK_PACKAGES.has(spec));
     expect(leaked).toEqual([]);

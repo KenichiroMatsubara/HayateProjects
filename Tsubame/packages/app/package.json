@@ -1,8 +1,7 @@
 {
-  "name": "@miharashi/host-web",
+  "name": "@tsubame/app",
   "version": "0.0.0",
-  "private": true,
-  "description": "Miharashi Web ホスト — dev-server URL から App Bundle を fetch → eval し、@hayate/host の createHayateWebHost で host bootstrap を確立してバンドルの mount に渡す。FW も @tsubame/renderer-hayate も持たない（ADR-0001）。",
+  "description": "Tsubame 合成ルート — runTsubameApp（Host が renderer を産み、唯一の FW 固有 mount seam に畳む）と web 専用の detectMode。@tsubame/renderer-protocol だけに依存し、具体 renderer も Hayate ランタイムも知らない（ADR-0012）。",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,9 +13,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
@@ -25,12 +22,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@hayate/host": "workspace:*",
-    "@miharashi/protocol-handshake": "workspace:*"
+    "@tsubame/renderer-protocol": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.15.0",
     "rimraf": "^6.1.3",
-    "tsup": "^8.5.1",
     "vitest": "^3.2.0"
   }
 }

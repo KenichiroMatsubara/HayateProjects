@@ -16,8 +16,9 @@
   "dependencies": {
     "@hayate/host": "workspace:*",
     "@miharashi/host-web": "workspace:*",
+    "@tsubame/app": "workspace:*",
     "@tsubame/react": "workspace:*",
-    "@tsubame/renderer-canvas": "workspace:*",
+    "@tsubame/renderer-hayate": "workspace:*",
     "@tsubame/renderer-dom": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
     "react": "^19.1.0",

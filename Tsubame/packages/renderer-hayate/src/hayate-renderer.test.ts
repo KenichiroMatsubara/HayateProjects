@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EVENT_KIND, OP, TAG, USER_SELECT } from '@tsubame/protocol-generated/protocol';
 import { coerceElementProperty, withTextLocalGate } from '@tsubame/renderer-protocol';
-import { CanvasRenderer } from './canvas-renderer.js';
+import { HayateRenderer } from './hayate-renderer.js';
 import type { RawHayate } from './hayate.js';
 
 class StubHayate implements RawHayate {
@@ -108,11 +108,11 @@ function manualScheduler() {
 
 // 構築≠開始：host-blind コアは clock（requestFrame/cancelFrame）だけを受け取り、
 // frame ループは明示 start() でしか走らない（#476, ADR-0004）。
-describe('CanvasRenderer lifecycle (host-blind core, #476)', () => {
+describe('HayateRenderer lifecycle (host-blind core, #476)', () => {
   it('does not run the frame loop until start() (no constructor side effects)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
 
     // 構築だけでは frame は登録されない。tick しても render は走らない。
     sched.tick(16);
@@ -131,11 +131,11 @@ describe('CanvasRenderer lifecycle (host-blind core, #476)', () => {
 });
 
 // 配信ポーリングのみ。apply_mutations のワイヤ統合は wasm-integration.test.ts にある。
-describe('CanvasRenderer delivery poll (ADR-0053)', () => {
+describe('HayateRenderer delivery poll (ADR-0053)', () => {
   it('registers Hayate listeners and dispatches poll deliveries', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
 
     const button = renderer.createElement('button');
@@ -158,7 +158,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('delivers the input event value straight from the wire (full current value, no read-back)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
 
     const input = renderer.createElement('text-input');
@@ -179,7 +179,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('removeChild requires adapter unsubscribe before stale deliveries stop', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
 
     const parent = renderer.createElement('view');
@@ -201,7 +201,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('batches setStyleVariant through apply_mutations as OP_SET_STYLE_VARIANT (ADR-0081)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const view = renderer.createElement('view');
 
@@ -224,7 +224,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('batches setPseudoStyle through apply_mutations without element_set_pseudo_style', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const button = renderer.createElement('button');
 
@@ -244,7 +244,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('preserves pseudo-style, base style, and structure order in one batch', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const root = renderer.createElement('view');
     const button = renderer.createElement('button');
@@ -273,7 +273,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('batches setProperty with structure mutations in one apply_mutations', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const parent = renderer.createElement('view');
     const child = renderer.createElement('text-input');
@@ -292,7 +292,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('defers setProperty value until frame flush via apply_mutations', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const input = renderer.createElement('text-input');
 
@@ -316,7 +316,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('throws on unknown setProperty names (ADR-0071)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const id = renderer.createElement('view');
     expect(() => renderer.setProperty(id, 'className', 'x')).toThrow(
@@ -327,7 +327,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('routes known setProperty names to Hayate (ADR-0071)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const input = renderer.createElement('text-input');
     const image = renderer.createElement('image');
@@ -353,7 +353,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('routes the multiline property to a SET_MULTILINE op (#362)', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const input = renderer.createElement('text-input');
 
@@ -378,7 +378,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     for (const [name, value, op] of cases) {
       const hayate = new StubHayate();
       const sched = manualScheduler();
-      const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+      const renderer = new HayateRenderer({ raw: hayate, ...sched });
       renderer.start();
       const el = renderer.createElement('text-input');
       renderer.setProperty(el, name, value);
@@ -405,7 +405,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     // Hayate の lowering には委ねない。text-local でない `width` は通る。
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const inner = new CanvasRenderer({ raw: hayate, ...sched });
+    const inner = new HayateRenderer({ raw: hayate, ...sched });
     inner.start();
     const renderer = withTextLocalGate(inner);
     const view = renderer.createElement('view');
@@ -423,7 +423,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     // text-local でない `width` とともに `color` と `fontSize` を残す。
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const inner = new CanvasRenderer({ raw: hayate, ...sched });
+    const inner = new HayateRenderer({ raw: hayate, ...sched });
     inner.start();
     const renderer = withTextLocalGate(inner);
     const text = renderer.createElement('text');
@@ -442,7 +442,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
     // `view` の :hover パッチは空に潰れ、SET_PSEUDO_STYLE はワイヤに届かない。
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const inner = new CanvasRenderer({ raw: hayate, ...sched });
+    const inner = new HayateRenderer({ raw: hayate, ...sched });
     inner.start();
     const renderer = withTextLocalGate(inner);
     const view = renderer.createElement('view');
@@ -457,7 +457,7 @@ describe('CanvasRenderer delivery poll (ADR-0053)', () => {
   it('unsubscribe stops delivery dispatch', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();
-    const renderer = new CanvasRenderer({ raw: hayate, ...sched });
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
     renderer.start();
     const node = renderer.createElement('button');
 
