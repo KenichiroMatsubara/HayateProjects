@@ -2,6 +2,13 @@
   "workbench.editor.enablePreview": false,
   "npm.exclude": [
     "**/Hayate/**",
-    "**/Tsubame/**"
-  ]
+    "**/Tsubame/**",
+    "**/.claude/**"
+  ],
+  "search.exclude": {
+    "**/.claude/**": true
+  },
+  "files.watcherExclude": {
+    "**/.claude/**": true
+  }
 }
