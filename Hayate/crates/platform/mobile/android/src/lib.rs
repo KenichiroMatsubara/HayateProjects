@@ -42,6 +42,10 @@ mod miharashi_reload;
 mod reload_socket;
 mod scene_demo;
 mod surface_lifecycle;
+// 実機発音検証用のテストトーン生成器（ADR-0117 / #562）。NDK 非依存の純粋計算なので
+// ホストでもコンパイル・テストされ、AAudio glue（audio_output.rs）はこのバッファを書く
+// だけの薄いグルーに保つ。
+mod test_tone;
 mod touch_input;
 
 // Tsubame JS 駆動経路の Rust 半分（ADR-0112）。埋め込み Hermes が呼ぶ
