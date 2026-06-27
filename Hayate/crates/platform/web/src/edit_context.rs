@@ -425,6 +425,11 @@ pub(crate) fn attach_edit_context(
                 return;
             }
             let key = ke.key();
+            // ファンクションキー（F1–F24）はブラウザ/OS 予約。DevTools（F12）や
+            // リロード（F5）等を奪わないよう、変換状態・バッファに関係なく素通しする。
+            if crate::edit_keymap::is_browser_reserved_key(&key) {
+                return;
+            }
             if compose.borrow().composing {
                 if key != "Escape" {
                     ke.prevent_default();

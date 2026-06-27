@@ -98,6 +98,16 @@ pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     })
 }
 
+/// ブラウザ/OS が予約するキー（ファンクションキー F1–F24）か。これらは編集にも
+/// ページ操作にも使われないため、アダプタは `prevent_default` せず素通しさせる必要が
+/// ある。さもないと F12（DevTools）や F5（リロード）等のショートカットを canvas が
+/// 奪ってしまう。
+pub fn is_browser_reserved_key(key: &str) -> bool {
+    key.strip_prefix('F')
+        .and_then(|n| n.parse::<u32>().ok())
+        .is_some_and(|n| (1..=24).contains(&n))
+}
+
 /// 文字（プライマリ修飾は呼び出し側で確定済み）をクリップボード／全選択の
 /// [`EditIntent`] へ写像する（ADR-0103）。他のキーは `None` で生の入力経路へ流れる。
 fn clipboard_intent(key: &str) -> Option<EditIntent> {
@@ -353,6 +363,26 @@ mod tests {
             assert_eq!(key_to_edit_intent("x", primary), Some(EditIntent::Cut));
             assert_eq!(key_to_edit_intent("v", primary), Some(EditIntent::Paste));
         }
+    }
+
+    #[test]
+    fn function_keys_are_browser_reserved() {
+        // F1–F24 は DevTools（F12）やリロード（F5）等で OS/ブラウザが予約する。
+        // canvas はこれらを prevent_default せず素通しさせなければならない。
+        assert!(is_browser_reserved_key("F12"));
+        assert!(is_browser_reserved_key("F1"));
+        assert!(is_browser_reserved_key("F24"));
+    }
+
+    #[test]
+    fn editing_and_printable_keys_are_not_browser_reserved() {
+        // 編集／印字キーは素通し対象ではない（従来どおりアダプタが扱う）。
+        assert!(!is_browser_reserved_key("F"));
+        assert!(!is_browser_reserved_key("F25"));
+        assert!(!is_browser_reserved_key("Find"));
+        assert!(!is_browser_reserved_key("ArrowLeft"));
+        assert!(!is_browser_reserved_key("Backspace"));
+        assert!(!is_browser_reserved_key("a"));
     }
 
     #[test]
