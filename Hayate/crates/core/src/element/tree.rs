@@ -201,9 +201,11 @@ pub struct ElementTree {
     pub(crate) scene_cache: SceneGraph,
     pub(crate) scene_lowering: SceneLowering,
     pub(crate) event_queue: Vec<Event>,
-    /// テキスト入力カーソルの点滅を担う要素。`render(timestamp_ms)` 自身が点滅を
-    /// 進められるよう、アダプタではなくここで追跡する（ADR-0032）。
-    pub(crate) focused_element: Option<ElementId>,
+    /// 横断的 interaction state を所有する deep module（ADR-0122）。この slice では
+    /// focus state（`render` のカーソル点滅を進めるための focus 要素、ADR-0032）を
+    /// 持ち、`apply_intent` 単一 seam 越しに遷移する。hover / active / press 位置 /
+    /// `PointerGesture` 等は後続 slice でここへ移ってくる。
+    pub(crate) interaction: crate::element::interaction::Interaction,
     /// 直近入力イベントのモダリティ。ネイティブフォーカスリングの `:focus-visible`
     /// 判定を駆動する（ADR-0102）。
     pub(crate) last_input_modality: crate::element::interaction::InputModality,
@@ -269,7 +271,7 @@ impl ElementTree {
             scene_cache: SceneGraph::new(),
             scene_lowering: SceneLowering::default(),
             event_queue: Vec::new(),
-            focused_element: None,
+            interaction: crate::element::interaction::Interaction::default(),
             // 最初のキーボードイベントまで Pointer。未フォーカス/ポインタ駆動直後の
             // UI がボタンに余計なリングを出さないように。
             last_input_modality: crate::element::interaction::InputModality::Pointer,
@@ -363,7 +365,7 @@ impl ElementTree {
         InteractionSnapshot {
             hovered: self.hovered_elements.clone(),
             active: self.active_element,
-            focused: self.focused_element,
+            focused: self.interaction.focused_element,
         }
     }
 
@@ -631,47 +633,25 @@ impl ElementTree {
 
     /// `id` をフォーカス要素にマークする。`render(timestamp_ms)` が内部でカーソル
     /// 点滅を駆動するのに使う（ADR-0032）。TextInput ターゲットではカーソルも表示し、
-    /// フォーカス後の最初のフレームで実線を描く。
+    /// フォーカス後の最初のフレームで実線を描く。focus 切替の原始操作（イベントは
+    /// 出さない）で、`Interaction` の同名 seam 操作へ委譲する（ADR-0122）。
     pub fn element_focus(&mut self, id: ElementId) {
-        if self.focused_element == Some(id) {
-            return;
-        }
-        if let Some(prev) = self.focused_element {
-            if let Some(el) = self.elements.get_mut(&prev) {
-                el.cursor_visible = false;
-            }
-            self.engine
-                .mark_visual_dirty(prev, VisualInvalidationReach::SelfOnly);
-            self.mark_pseudo_activation_dirty(prev, PseudoState::Focus);
-        }
-        if let Some(el) = self.elements.get_mut(&id) {
-            el.cursor_visible = true;
-        }
-        self.engine
-            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
-        self.mark_pseudo_activation_dirty(id, PseudoState::Focus);
-        self.focused_element = Some(id);
-        self.layout.last_cursor_toggle_ms = None;
+        let mut interaction = std::mem::take(&mut self.interaction);
+        interaction.element_focus(self, id);
+        self.interaction = interaction;
     }
 
     /// `id` のフォーカスを外す（`id` が現在フォーカスされていなければ no-op）。
+    /// イベントを出さない原始操作で、`Interaction` の seam 操作へ委譲する。
     pub fn element_blur(&mut self, id: ElementId) {
-        if self.focused_element != Some(id) {
-            return;
-        }
-        if let Some(el) = self.elements.get_mut(&id) {
-            el.cursor_visible = false;
-        }
-        self.engine
-            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
-        self.mark_pseudo_activation_dirty(id, PseudoState::Focus);
-        self.focused_element = None;
-        self.layout.last_cursor_toggle_ms = None;
+        let mut interaction = std::mem::take(&mut self.interaction);
+        interaction.element_blur(self, id);
+        self.interaction = interaction;
     }
 
     /// 現在フォーカスされている要素（あれば）。
     pub fn focused_element(&self) -> Option<ElementId> {
-        self.focused_element
+        self.interaction.focused_element
     }
 
     /// テキスト入力を受け付けるときのフォーカス要素。すなわちアダプタがソフト
@@ -680,7 +660,7 @@ impl ElementTree {
     /// `text-input` だけ。素のフォーカスでキーボードを出すと全タップで開いてしまう
     /// ため、アダプタはソフトキーボードをこれに紐付ける。
     pub fn focused_text_input(&self) -> Option<ElementId> {
-        let id = self.focused_element?;
+        let id = self.interaction.focused_element?;
         self.elements
             .get(&id)?
             .kind
@@ -728,7 +708,7 @@ impl ElementTree {
     /// コンテキストが要る）はリングし、ボタン等のウィジェットはしない。
     pub fn focus_visible_element(&self) -> Option<ElementId> {
         use crate::element::interaction::InputModality;
-        let id = self.focused_element?;
+        let id = self.interaction.focused_element?;
         let kind = self.elements.get(&id)?.kind;
         let visible = match self.last_input_modality {
             InputModality::Keyboard => true,
@@ -1380,8 +1360,8 @@ impl ElementTree {
             // structure-dirty（上）なので、無効化すべき擬似スタイルは残っていない。
             // だからこれらは、稼働中の状態切り替えを守る atomic な set/clear seam
             // （ADR-0100）を通さず、インタラクションフィールドを直接クリアする。
-            if self.focused_element == Some(node) {
-                self.focused_element = None;
+            if self.interaction.focused_element == Some(node) {
+                self.interaction.focused_element = None;
                 self.layout.last_cursor_toggle_ms = None;
             }
             self.hovered_elements.remove(&node);
@@ -1526,7 +1506,7 @@ impl ElementTree {
         if self.root.is_some() {
             if let Some(id) = self.layout.advance_cursor_blink(
                 &mut self.elements,
-                self.focused_element,
+                self.interaction.focused_element,
                 timestamp_ms,
             ) {
                 self.engine
@@ -2238,7 +2218,7 @@ impl ElementTree {
     pub fn test_tick_cursor_blink(&mut self, timestamp_ms: f64) -> bool {
         let Some(id) = self.layout.advance_cursor_blink(
             &mut self.elements,
-            self.focused_element,
+            self.interaction.focused_element,
             timestamp_ms,
         ) else {
             return false;

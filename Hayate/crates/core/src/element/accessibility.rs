@@ -314,6 +314,7 @@ impl ElementTree {
         walk_accessibility(self, root_id, root_id, &mut nodes);
 
         let focus = self
+            .interaction
             .focused_element
             .map(node_id)
             .unwrap_or_else(|| node_id(root_id));

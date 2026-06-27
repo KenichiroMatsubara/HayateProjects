@@ -1,5 +1,5 @@
 use crate::element::edit_state::{Direction, EditIntent, Granularity};
-use crate::element::event_spec::{event_document_kind, DocumentEventKind, Event};
+use crate::element::event_spec::{event_document_kind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pointer::PointerKind;
@@ -144,6 +144,124 @@ pub enum InputModality {
     Keyboard,
 }
 
+/// 入力意図の封筒（ADR-0122 決定 2）。pointer / keyboard / accessibility / edit の
+/// すべてが同一の閉じた値型に合流する flat dispatch 封筒で、各 adapter はこの値を
+/// 構築するだけで `Interaction::apply_intent` に流す（2 producer = 本物の seam）。
+/// この slice では `Focus` と `Click` の arm を持ち、`Edit(EditIntent)` / `SetValue` /
+/// `ScrollToReveal` 等の他 arm は後続 slice で加わる。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum InteractionIntent {
+    /// `target` をフォーカス要素にする focus 遷移。直前 focus の blur と、`Blur` /
+    /// `Focus` イベントの送出を伴う。既に focus 済みなら no-op。
+    Focus(ElementId),
+    /// `target` に意味的クリックを発行する。座標 `(x, y)` を `Click` イベントに載せ、
+    /// 通常のクリックと同様にバブルさせる。
+    Click { target: ElementId, x: f32, y: f32 },
+}
+
+/// `Interaction` が tree から借りる狭いビュー（ADR-0122 決定 1）。`Interaction` は
+/// 横断的 interaction state を所有し、element 位相・dirty マーク・イベント送出は
+/// この trait 越しに行う。fake 実装を与えることで full tree（`commit_frame` /
+/// `render`）なしに intent の振る舞いを単体検証できる ＝ interface がそのまま
+/// test surface になる。
+pub trait InteractionTreeView {
+    /// イベントを送出する。document イベントはハンドラ経路へディスパッチし、
+    /// それ以外は送出キューに積む（`ElementTree::emit_interaction` と同形）。
+    fn emit_event(&mut self, event: Event);
+    /// focus 取得の element 側効果：カーソル可視化・visual dirty・`:focus` 擬似
+    /// 無効化・カーソル点滅タイマのリセット。focus フィールド自体は `Interaction`
+    /// が持つのでここでは触らない。
+    fn apply_focus_effects(&mut self, id: ElementId);
+    /// blur の element 側効果（`apply_focus_effects` の対）。
+    fn apply_blur_effects(&mut self, id: ElementId);
+    /// 直近ポインタの物理デバイス。Touch blur で編集選択を畳むか判定する。
+    fn pointer_kind(&self) -> PointerKind;
+    /// 単一 text-input の編集選択をキャレットへ畳む（Touch blur ライフサイクル、
+    /// ADR-0104）。
+    fn collapse_edit_selection(&mut self, id: ElementId);
+}
+
+/// 横断的 interaction state を所有する deep module（ADR-0122 決定 1）。入口は
+/// [`apply_intent`](Self::apply_intent) 単一 seam で、pointer / keyboard /
+/// accessibility / edit の意図がここへ合流する。この slice では focus state のみを
+/// 持ち、hover / active / press 位置 / `PointerGesture` 等は後続 slice で移ってくる。
+#[derive(Default)]
+pub struct Interaction {
+    /// 現在フォーカスされている要素。`render` のカーソル点滅・`:focus-visible`・
+    /// accessibility outbound が読む唯一の focus 真実。
+    pub(crate) focused_element: Option<ElementId>,
+}
+
+impl Interaction {
+    /// 単一 seam：[`InteractionIntent`] を借りたビューに適用する。
+    pub fn apply_intent(&mut self, view: &mut dyn InteractionTreeView, intent: InteractionIntent) {
+        match intent {
+            InteractionIntent::Focus(id) => self.transition_focus(view, id),
+            InteractionIntent::Click { target, x, y } => {
+                view.emit_event(Event::Click {
+                    target_id: target,
+                    x,
+                    y,
+                });
+            }
+        }
+    }
+
+    /// 現在フォーカスされている要素（あれば）。
+    pub fn focused_element(&self) -> Option<ElementId> {
+        self.focused_element
+    }
+
+    /// `id` をフォーカス要素にし、`Focus` イベントを送出する。直前 focus は
+    /// `Blur` イベント付きで blur する。既に focus 済みなら何もしない。
+    pub(crate) fn transition_focus(&mut self, view: &mut dyn InteractionTreeView, id: ElementId) {
+        if self.focused_element == Some(id) {
+            return;
+        }
+        if let Some(prev) = self.focused_element {
+            self.blur_with_events(view, prev);
+        }
+        self.element_focus(view, id);
+        view.emit_event(Event::Focus { target_id: id });
+    }
+
+    /// `id` を blur し、モダリティ依存の blur ライフサイクル（ADR-0104）を経て
+    /// `Blur` イベントを送出する。Touch は編集選択をキャレットへ畳む。
+    pub(crate) fn blur_with_events(&mut self, view: &mut dyn InteractionTreeView, id: ElementId) {
+        if self.focused_element != Some(id) {
+            return;
+        }
+        self.element_blur(view, id);
+        if view.pointer_kind() == PointerKind::Touch {
+            view.collapse_edit_selection(id);
+        }
+        view.emit_event(Event::Blur { target_id: id });
+    }
+
+    /// `id` をフォーカス要素にマークする（イベントは出さない focus 切替の原始操作）。
+    /// 直前 focus の element 側効果を消し、新 focus の効果を点ける。
+    pub(crate) fn element_focus(&mut self, view: &mut dyn InteractionTreeView, id: ElementId) {
+        if self.focused_element == Some(id) {
+            return;
+        }
+        if let Some(prev) = self.focused_element {
+            view.apply_blur_effects(prev);
+        }
+        view.apply_focus_effects(id);
+        self.focused_element = Some(id);
+    }
+
+    /// `id` のフォーカスを外す（`id` が現在フォーカスでなければ no-op）。イベントは
+    /// 出さない原始操作。
+    pub(crate) fn element_blur(&mut self, view: &mut dyn InteractionTreeView, id: ElementId) {
+        if self.focused_element != Some(id) {
+            return;
+        }
+        view.apply_blur_effects(id);
+        self.focused_element = None;
+    }
+}
+
 /// 進行中の Mouse/Pen スクロールバー・サムドラッグ（ADR-0110）。サム上の
 /// pointer-down で捕捉し `on_pointer_move` が駆動する。各移動で軸方向の移動量を
 /// Scroll Offset デルタに変換し、ホイールと同じ `apply_wheel_delta` 継ぎ目で
@@ -259,7 +377,7 @@ impl ElementTree {
             // 上書きされないため）。
             self.active_press_pos = Some((x, y));
             self.transition_focus(t);
-        } else if let Some(prev) = self.focused_element {
+        } else if let Some(prev) = self.interaction.focused_element {
             self.blur_with_events(prev);
         }
     }
@@ -291,8 +409,10 @@ impl ElementTree {
         // が同一タップなら down≈up で、従来の Click 座標と一致する）。
         if let Some(t) = self.active_element {
             let (x, y) = self.active_press_pos.unwrap_or((0.0, 0.0));
-            self.emit_interaction(Event::Click {
-                target_id: t,
+            // クリック確定（リリース）を `Interaction` seam へ通す（ADR-0122）。
+            // accessibility の semantic click（#575）と同一の `Click` intent に合流する。
+            self.apply_interaction_intent(InteractionIntent::Click {
+                target: t,
                 x,
                 y,
             });
@@ -483,7 +603,7 @@ impl ElementTree {
         if self.handle_selection_key(key, modifiers) {
             return;
         }
-        let Some(focused) = self.focused_element else {
+        let Some(focused) = self.interaction.focused_element else {
             return;
         };
         // focus 中の text-input 内の編集キーは EditIntent に解釈され、単一の編集
@@ -1159,7 +1279,7 @@ impl ElementTree {
     /// chrome を出さないので、文書全体で active な選択は高々1つ＝focus 中のもの
     /// （単一 active、ADR-0097）。
     fn edit_selection_owner(&self) -> Option<ElementId> {
-        let id = self.focused_element?;
+        let id = self.interaction.focused_element?;
         self.elements
             .get(&id)?
             .edit
@@ -1833,36 +1953,28 @@ impl ElementTree {
         }
     }
 
+    /// focus 遷移（直前 focus の blur ＋ `Blur` / `Focus` イベント）。`Interaction`
+    /// seam へ `Focus` intent として委譲する（ADR-0122）。pointer 経路・accessibility
+    /// 経路が同じ seam を共有する。
     pub(crate) fn transition_focus(&mut self, id: ElementId) {
-        if self.focused_element == Some(id) {
-            return;
-        }
-        if let Some(prev) = self.focused_element {
-            self.blur_with_events(prev);
-        }
-        self.element_focus(id);
-        self.dispatch_event(
-            DocumentEventKind::Focus,
-            Event::Focus { target_id: id },
-        );
+        self.apply_interaction_intent(InteractionIntent::Focus(id));
     }
 
+    /// `id` をイベント付きで blur する（`id` が現在 focus でなければ no-op）。
+    /// `Interaction` の同名 seam 操作へ委譲する。
     fn blur_with_events(&mut self, id: ElementId) {
-        if self.focused_element != Some(id) {
-            return;
-        }
-        self.element_blur(id);
-        // モダリティ依存の blur ライフサイクル（ADR-0104）。Touch は選択を解除し、
-        // 編集範囲をキャレットへ畳む（Android: フィールド外タップで選択と chrome が
-        // 消える）。Mouse/Pen は範囲を EditState に保ち focus 連動ハイライトで隠すので、
-        // 再 focus で復元される（Chromium フォームコントロール同等）。
-        if self.last_pointer_kind == PointerKind::Touch {
-            self.collapse_edit_selection_of(id);
-        }
-        self.dispatch_event(
-            DocumentEventKind::Blur,
-            Event::Blur { target_id: id },
-        );
+        let mut interaction = std::mem::take(&mut self.interaction);
+        interaction.blur_with_events(self, id);
+        self.interaction = interaction;
+    }
+
+    /// [`InteractionIntent`] を `Interaction` deep module に適用する単一の橋
+    /// （ADR-0122）。`Interaction` を一時的に取り出すことで、残りの `ElementTree`
+    /// を [`InteractionTreeView`] として排他借用できる（単一書き手・aliasing なし）。
+    pub(crate) fn apply_interaction_intent(&mut self, intent: InteractionIntent) {
+        let mut interaction = std::mem::take(&mut self.interaction);
+        interaction.apply_intent(self, intent);
+        self.interaction = interaction;
     }
 
     /// 単一 text-input の編集選択をキャレットへ畳み、実際に範囲を持っていたときだけ
@@ -1898,6 +2010,43 @@ impl ElementTree {
     }
 }
 
+/// `Interaction` が借りる狭いビューを `ElementTree` の既存 seam 上に実装する
+/// （ADR-0122 決定 1）。focus フィールドは `Interaction` 側にあり、ここは element
+/// 位相・dirty・イベント送出といった tree 側効果だけを提供する。
+impl InteractionTreeView for ElementTree {
+    fn emit_event(&mut self, event: Event) {
+        self.emit_interaction(event);
+    }
+
+    fn apply_focus_effects(&mut self, id: ElementId) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.cursor_visible = true;
+        }
+        self.engine
+            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        self.mark_pseudo_activation_dirty(id, crate::element::pseudo_state::PseudoState::Focus);
+        self.layout.last_cursor_toggle_ms = None;
+    }
+
+    fn apply_blur_effects(&mut self, id: ElementId) {
+        if let Some(el) = self.elements.get_mut(&id) {
+            el.cursor_visible = false;
+        }
+        self.engine
+            .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        self.mark_pseudo_activation_dirty(id, crate::element::pseudo_state::PseudoState::Focus);
+        self.layout.last_cursor_toggle_ms = None;
+    }
+
+    fn pointer_kind(&self) -> PointerKind {
+        self.last_pointer_kind
+    }
+
+    fn collapse_edit_selection(&mut self, id: ElementId) {
+        self.collapse_edit_selection_of(id);
+    }
+}
+
 /// `acc`（min-x, min-y, max-x, max-y）を矩形 `(x, y, w, h)` を含むよう広げる。
 fn accumulate_rect(acc: &mut Option<(f32, f32, f32, f32)>, x: f32, y: f32, w: f32, h: f32) {
     let (x1, y1) = (x + w, y + h);
@@ -1916,5 +2065,169 @@ fn rect_from_bounds(
         y: y0,
         width: x1 - x0,
         height: y1 - y0,
+    }
+}
+
+#[cfg(test)]
+mod seam_tests {
+    use super::*;
+
+    fn id(raw: u64) -> ElementId {
+        ElementId::from_u64(raw)
+    }
+
+    /// 全 tree 効果を記録する fake `InteractionTreeView`。full tree / `commit_frame` /
+    /// `render` を立てずに `apply_intent` の振る舞い（状態遷移と発火 Event）を観測する。
+    struct FakeView {
+        events: Vec<Event>,
+        focus_effects: Vec<ElementId>,
+        blur_effects: Vec<ElementId>,
+        collapsed: Vec<ElementId>,
+        pointer_kind: PointerKind,
+    }
+
+    impl Default for FakeView {
+        fn default() -> Self {
+            Self {
+                events: Vec::new(),
+                focus_effects: Vec::new(),
+                blur_effects: Vec::new(),
+                collapsed: Vec::new(),
+                pointer_kind: PointerKind::Mouse,
+            }
+        }
+    }
+
+    impl InteractionTreeView for FakeView {
+        fn emit_event(&mut self, event: Event) {
+            self.events.push(event);
+        }
+        fn apply_focus_effects(&mut self, id: ElementId) {
+            self.focus_effects.push(id);
+        }
+        fn apply_blur_effects(&mut self, id: ElementId) {
+            self.blur_effects.push(id);
+        }
+        fn pointer_kind(&self) -> PointerKind {
+            self.pointer_kind
+        }
+        fn collapse_edit_selection(&mut self, id: ElementId) {
+            self.collapsed.push(id);
+        }
+    }
+
+    #[test]
+    fn focus_intent_on_unfocused_focuses_and_emits_focus() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let a = id(1);
+
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
+
+        assert_eq!(interaction.focused_element(), Some(a));
+        assert_eq!(view.focus_effects, vec![a]);
+        assert!(
+            matches!(view.events.as_slice(), [Event::Focus { target_id }] if *target_id == a),
+            "expected a single Focus event for the target, got {:?}",
+            view.events,
+        );
+    }
+
+    #[test]
+    fn focus_intent_over_existing_blurs_prev_then_focuses_new() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let (a, b) = (id(1), id(2));
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
+        view.events.clear();
+        view.focus_effects.clear();
+        view.blur_effects.clear();
+
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(b));
+
+        assert_eq!(interaction.focused_element(), Some(b));
+        assert_eq!(view.blur_effects, vec![a]);
+        assert_eq!(view.focus_effects, vec![b]);
+        assert!(
+            matches!(
+                view.events.as_slice(),
+                [Event::Blur { target_id: blurred }, Event::Focus { target_id: focused }]
+                    if *blurred == a && *focused == b
+            ),
+            "expected Blur(prev) then Focus(new), got {:?}",
+            view.events,
+        );
+    }
+
+    #[test]
+    fn focus_intent_on_already_focused_is_noop() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let a = id(1);
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
+        view.events.clear();
+        view.focus_effects.clear();
+        view.blur_effects.clear();
+
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
+
+        assert_eq!(interaction.focused_element(), Some(a));
+        assert!(view.events.is_empty(), "no events on re-focus, got {:?}", view.events);
+        assert!(view.focus_effects.is_empty());
+        assert!(view.blur_effects.is_empty());
+    }
+
+    #[test]
+    fn touch_blur_collapses_edit_selection_before_blur_event() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView {
+            pointer_kind: PointerKind::Touch,
+            ..FakeView::default()
+        };
+        let (a, b) = (id(1), id(2));
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
+        view.events.clear();
+
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(b));
+
+        assert_eq!(view.collapsed, vec![a], "touch blur collapses the blurred input");
+    }
+
+    #[test]
+    fn mouse_blur_does_not_collapse_edit_selection() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let (a, b) = (id(1), id(2));
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
+
+        interaction.apply_intent(&mut view, InteractionIntent::Focus(b));
+
+        assert!(view.collapsed.is_empty(), "mouse blur keeps the range in EditState");
+    }
+
+    #[test]
+    fn click_intent_emits_click_at_point() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(7);
+
+        interaction.apply_intent(
+            &mut view,
+            InteractionIntent::Click {
+                target,
+                x: 12.0,
+                y: 34.0,
+            },
+        );
+
+        assert!(
+            matches!(
+                view.events.as_slice(),
+                [Event::Click { target_id, x, y }]
+                    if *target_id == target && *x == 12.0 && *y == 34.0
+            ),
+            "expected a single Click at (12,34), got {:?}",
+            view.events,
+        );
     }
 }

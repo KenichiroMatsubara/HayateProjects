@@ -44,7 +44,9 @@ pub use ime_command::{apply_command, ImeBuffer, ImeCommand};
 pub use ime_reconcile::{apply_ime_action, translate_text_input, ImeAction, TextInputState, TextSpan};
 pub use event_spec::{event_document_kind, DocumentEventKind, Event};
 pub use id::ElementId;
-pub use interaction::{InputModality, PointerMoveResult};
+pub use interaction::{
+    Interaction, InputModality, InteractionIntent, InteractionTreeView, PointerMoveResult,
+};
 pub use kind::ElementKind;
 pub use pointer::PointerKind;
 pub use layout_pass::LayoutPass;
