@@ -3,10 +3,9 @@ import './android-prelude';
 
 import { createHayateNativeHost, type RawHayate } from '@hayate/host/native';
 import { renderTsubame } from '@tsubame/solid';
-import { PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { HayateRenderer, PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { runTsubameApp, type DetectModeResult, type Host } from '@tsubame/app';
 import { TodoApp } from './App';
-import { mountCanvasApp } from './compose';
-import type { DetectModeResult } from './detect-mode';
 
 /**
  * Android 用エントリ（ADR-0112）。ブラウザ用 `main.tsx` の置き換えで、同じ薄い対称
@@ -56,14 +55,31 @@ const detected: DetectModeResult = {
   renderer: 'vello',
 };
 
-const host = createHayateNativeHost(raw);
-const renderer = mountCanvasApp(host, (r) =>
-  renderTsubame(() => <TodoApp detected={detected} />, r),
+// native host（注入 raw + vsync pump）を Host adapter に包む。target は Hayate 固定で、
+// createRenderer は host-blind HayateRenderer を構築するだけ（ADR-0012）。web の bundle 経路
+// （main.miharashi.tsx）と同型 — 押し込まれた host を `Host` に包んで `runTsubameApp` を呼ぶ。
+const nativeHost = createHayateNativeHost(raw);
+let hayateRenderer: HayateRenderer | undefined;
+const host: Host = {
+  createRenderer() {
+    hayateRenderer = new HayateRenderer({
+      raw: nativeHost.raw,
+      requestFrame: nativeHost.requestFrame,
+      cancelFrame: nativeHost.cancelFrame,
+    });
+    hayateRenderer.start();
+    return hayateRenderer;
+  },
+  stop: () => hayateRenderer?.stop(),
+};
+
+const dispose = runTsubameApp(host, (renderer) =>
+  renderTsubame(() => <TodoApp detected={detected} />, renderer),
 );
 
 // ネイティブ vsync ループ用に公開する。pump は保持中のフレームを 1 つ進め、
 // `HayateRenderer` が次フレームを再登録する。stop は frame-clock を解除する。
 globalThis.__tsubame = {
-  pumpFrame: (timestampMs: number) => host.pumpFrame(timestampMs),
-  stop: () => renderer.stop(),
+  pumpFrame: (timestampMs: number) => nativeHost.pumpFrame(timestampMs),
+  stop: dispose,
 };

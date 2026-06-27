@@ -1,6 +1,7 @@
 import type { WebHost } from '@hayate/host';
 import { renderTsubame } from '@tsubame/react';
 import { HayateRenderer, PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { runTsubameApp, type Host } from '@tsubame/app';
 import { App } from './App';
 
 /**
@@ -30,12 +31,19 @@ globalThis.__miharashiProtocolVersion = PROTOCOL_VERSION;
 // `@miharashi/host-web` の MIHARASHI_MOUNT_GLOBAL（'__miharashiMount'）と一致させる wire 契約。
 // ホストは eval 後にこの global を読み、host bootstrap を渡して呼ぶ。バンドルはここで react と
 // HayateRenderer を結線する（host は両者を知らない）。
-globalThis.__miharashiMount = (host: WebHost) => {
-  const renderer = new HayateRenderer({
-    raw: host.raw,
-    requestFrame: host.requestFrame,
-    cancelFrame: host.cancelFrame,
-  });
-  renderer.start();
-  renderTsubame(<App />, renderer);
+globalThis.__miharashiMount = (webHost: WebHost) => {
+  // 押し込まれた host(raw+clock) を Host adapter に包み、合成ルートへ渡す。solid の
+  // main.miharashi.tsx と同型 — 露出する wire シームは FW 非依存（ADR-0012 / ADR-0001）。
+  const host: Host = {
+    createRenderer() {
+      const renderer = new HayateRenderer({
+        raw: webHost.raw,
+        requestFrame: webHost.requestFrame,
+        cancelFrame: webHost.cancelFrame,
+      });
+      renderer.start();
+      return renderer;
+    },
+  };
+  runTsubameApp(host, (renderer) => renderTsubame(<App />, renderer));
 };

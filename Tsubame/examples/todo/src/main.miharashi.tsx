@@ -1,9 +1,8 @@
 import { renderTsubame } from '@tsubame/solid';
-import { PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { HayateRenderer, PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { runTsubameApp, type DetectModeResult, type Host } from '@tsubame/app';
 import type { WebHost } from '@hayate/host';
 import { TodoApp } from './App';
-import { mountCanvasApp } from './compose';
-import type { DetectModeResult } from './detect-mode';
 
 /**
  * Miharashi App Bundle エントリ（ADR-0001 のスライス #1）。Miharashi Web ホストが
@@ -40,8 +39,21 @@ globalThis.__miharashiProtocolVersion = PROTOCOL_VERSION;
 
 // `@miharashi/host-web` の MIHARASHI_MOUNT_GLOBAL（'__miharashiMount'）と一致させる
 // wire 契約。ホストは eval 後にこの global を読み、host bootstrap を渡して呼ぶ。
-globalThis.__miharashiMount = (host: WebHost) => {
-  mountCanvasApp(host, (renderer) =>
+globalThis.__miharashiMount = (webHost: WebHost) => {
+  // 押し込まれた host(raw+clock) を Host adapter に包み、host-blind HayateRenderer を構築する。
+  // native（main.android.tsx）と同型の薄い合成（ADR-0012）。
+  const host: Host = {
+    createRenderer() {
+      const renderer = new HayateRenderer({
+        raw: webHost.raw,
+        requestFrame: webHost.requestFrame,
+        cancelFrame: webHost.cancelFrame,
+      });
+      renderer.start();
+      return renderer;
+    },
+  };
+  runTsubameApp(host, (renderer) =>
     renderTsubame(() => <TodoApp detected={detected} />, renderer),
   );
 };
