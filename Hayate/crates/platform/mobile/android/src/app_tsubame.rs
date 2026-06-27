@@ -118,7 +118,7 @@ pub(crate) fn run(app: AndroidApp) {
     };
 
     // 直近の viewport。reload で tree を作り直したら、新 tree に再適用して描画サイズを引き継ぐ。
-    let mut last_viewport: Option<(u32, u32)> = None;
+    let mut last_viewport: Option<(f32, f32)> = None;
 
     // ── full reload 購読（#533）────────────────────────────────────────────────
     // WS `reload` 受信で reload フラグを立て、poll ループが拾って再 boot する。WS の blocking read は
