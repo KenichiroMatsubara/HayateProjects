@@ -1,0 +1,6 @@
+# Gradle wrapper の行末・バイナリ指定。
+# gradlew は POSIX sh スクリプトなので LF 固定（core.autocrlf=true でも CRLF にしない。
+# CRLF だと Unix/macOS のシェルが解釈できずビルドが壊れる）。
+gradlew         text eol=lf
+gradlew.bat     text eol=crlf
+*.jar           binary
