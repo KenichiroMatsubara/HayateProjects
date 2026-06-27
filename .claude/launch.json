@@ -6,6 +6,13 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@tsubame/example-todo", "dev"],
       "port": 5177
+    },
+    {
+      "name": "miharashi-host",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tsubame/example-react-todo", "exec", "vite", "--port", "5182", "--strictPort"],
+      "port": 5182,
+      "autoPort": false
     }
   ]
 }

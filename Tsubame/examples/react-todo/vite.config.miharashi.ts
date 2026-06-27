@@ -16,6 +16,13 @@ export default defineConfig({
     jsx: 'automatic',
     jsxImportSource: '@tsubame/react',
   },
+  // React は `process.env.NODE_ENV` で prod/dev エントリを分岐する。バンドルはブラウザ host の
+  // `eval` で実行され `process` が無いため、未置換だと `ReferenceError: process is not defined` で
+  // 起動が落ちる（solid 版は `process` を参照しないので顕在化しない）。production 実体へ静的置換し、
+  // 残る `process` 参照は `typeof process === 'object'` ガード下のみ（ブラウザでは未到達）にする。
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   build: {
     target: 'es2020',
     outDir: 'dist-miharashi',
