@@ -69,3 +69,6 @@ tiny_skia_property_test!(css_pixel_align_self, 40);
 tiny_skia_property_test!(css_pixel_align_content, 41);
 tiny_skia_property_test!(css_pixel_flex_wrap, 42);
 tiny_skia_property_test!(css_pixel_border_style, 43);
+// box-shadow(45) / box-shadow-inset(46) は all_catalog で網羅。inset リングの
+// border-radius 追従回帰のみ名前付きで固定する。
+tiny_skia_property_test!(css_pixel_box_shadow_inset_radius, 47);
