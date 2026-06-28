@@ -51,7 +51,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Hayate WASM (incl. pkg-null for C3)
-        run: pnpm run build:wasm
+        run: pnpm --filter hayate build
 
       - name: Build renderer-canvas test dependencies
         run: |

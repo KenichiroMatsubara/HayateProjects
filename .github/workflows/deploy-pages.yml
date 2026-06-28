@@ -58,7 +58,7 @@ jobs:
         # （android-adapter.yml と同じ理由）。
         env:
           RUSTFLAGS: ""
-        run: pnpm run build:wasm
+        run: pnpm --filter hayate build
 
       - name: Build @hayate/host
         # todo example は `import('@hayate/host')` で host bootstrap を取り込む（#477）。
@@ -88,7 +88,7 @@ jobs:
         # projection（ADR-0045）で直接駆動し、hayate-adapter-web の tiny-skia バックエンドが
         # canvas へ present するデモ。Tsubame 経路を介さない。Pages の /hayabusa/ に同梱する。
         # index.html の import は相対なのでサブパス base は不要。setup-rust-toolchain の
-        # -Dwarnings は空にする（vendored crate の無害な警告のため。build:wasm と同じ理由）。
+        # -Dwarnings は空にする（vendored crate の無害な警告のため。hayate WASM build と同じ理由）。
         env:
           RUSTFLAGS: ""
         run: wasm-pack build Hayabusa/web-demo --target web --release --out-dir pkg

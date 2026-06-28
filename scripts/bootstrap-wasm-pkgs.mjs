@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Create stub hayate-adapter-web packages when WASM artifacts are missing.
- * Allows pnpm install on a fresh clone before `pnpm run build:wasm`.
+ * Allows pnpm install on a fresh clone before `pnpm --filter hayate build`.
  */
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -28,7 +28,7 @@ const PACKAGE_JSON = `{
 const JS_STUB = `export default async function init() {}
 export class HayateElementRenderer {
   static async init() {
-    throw new Error('WASM not built — run: pnpm run build:wasm');
+    throw new Error('WASM not built — run: pnpm --filter hayate build');
   }
 }
 export class HayateElementHtmlRenderer {}
