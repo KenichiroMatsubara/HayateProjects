@@ -86,7 +86,7 @@ vendoring されたスキル（`skills-lock.json` に載る全スキル）は、
 
 - 上流からの手動 vendoring・直接コピー・`git checkout`/`curl` でのスキル本体の差し替え。
 - `setup-matt-pocock-skills` など他スキルによる vendoring 済みスキル本体の書き換え。`setup-matt-pocock-skills` は repo 設定（issue tracker・ラベル・domain docs）専用であり、**スキル本体や `km_arrange.md` を更新してはならない**。`setup-matt-pocock-skills` 自身の更新も、直接行わず本スキルのレビューを経ること。
-- `pinnedLocal` スキル（`tdd`・`to-issues`・`to-prd`・`triage`・`grill-me`・`grill-with-docs`・`improve-codebase-architecture`・`setup-matt-pocock-skills`）の本体は、**いかなる場合も直接更新しない**。上流差分は本スキルが参考提示し、取り込みは差分→リスクスキャン→ユーザ承認を経た場合に限る。
+- `pinnedLocal` スキル（`triage`・`grill-me`・`grill-with-docs`・`improve-codebase-architecture`・`setup-matt-pocock-skills`）の本体は、**いかなる場合も直接置換しない**（自己完結フォーク）。上流差分は本スキルが参考提示するのみ。`km_arrange` のみのスキル（`tdd`・`to-issues`・`to-prd`）は本文が上流 pristine なのでクリーンに更新候補にできるが、それも本スキルの差分→リスクスキャン→ユーザ承認を経た場合に限る。
 
 要するに、vendoring 済みスキルへの変更経路は**この1つだけ**であり、必ず人間の審査（差分提示・リスク印・最終 OK）を通る。
 

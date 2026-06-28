@@ -1,13 +1,18 @@
 # km_arrange — このリポジトリ独自の編集
 
 > ⚠️ このファイルは Matt Pocock 上流ではなく、**このリポジトリ独自の追加・変更**を記録する。
-> 上流更新時もこの内容は保持する。`SKILL.md` の指示と衝突する場合は **このファイルを優先**する。
+> `SKILL.md` 本文は上流 pristine のまま保ち、独自仕様はすべてこのファイルに置く（更新容易性のため）。本文と衝突する場合は **このファイルを優先**する。
 
-このリポジトリの `to-prd` スキルは、上流に対して以下を独自に上書きしている。
+上流本文の PRD 作成・publish 手順に加えて、このリポジトリでは以下を**追加**する。
 
 ## 1. PRD は親 issue（`parent` ラベル＋ native sub-issue / ADR-0003）
 
-公開した PRD は親 issue として扱う。`parent` ラベルを付与（未作成なら作成）し、後で `/to-issues` が分解する子 issue を **native GitHub sub-issue** として登録できるようにする（ADR-0003）。
+publish した PRD は親 issue として扱う。`parent` ラベルを付与（未作成なら作成）し、後で `/to-issues` が分解する子 issue を **native GitHub sub-issue** として登録できるようにする（ADR-0003）。
+
+```sh
+gh label create "parent" --color 5319E7 --description "親イシュー — broken into child issues" 2>/dev/null || true
+gh issue edit <prd-number> --add-label "parent"
+```
 
 ## 2. 進捗バー・自動クローズ運用／手動クローズ禁止
 

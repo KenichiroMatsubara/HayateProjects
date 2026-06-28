@@ -44,38 +44,17 @@ RIGHT (vertical):
   ...
 ```
 
-## Multiple issues in one request
-
-When the request names **multiple issues** — a range like `x-y` (e.g. `3-7`),
-or a list like `#3, #5, #8` — handle them **all together in a single branch and
-a single pull request**. Do not open a branch or PR per issue.
-
-- Use the one designated branch and one PR for the whole batch.
-- Work through the issues **in order** (ascending issue number, or the order
-  given), running the full TDD loop below for each one.
-- Make a **separate commit for each issue** as you finish it, so the PR history
-  shows one commit (or a focused group of commits) per issue. Reference the
-  issue in each commit message (e.g. `Closes #3`).
-- Advance each issue's progress marker independently (see below): mark an issue
-  `status:implementing` when you start it and `status:implemented` when its
-  tests are green — don't wait for the whole batch.
-- Keep going until **every** issue in the range/list is cleared, then push the
-  single branch and (if requested) open the single PR covering all of them.
-
-> このリポジトリ独自の運用ルール（途中で止めて確認しない／issue ごとにコンテキスト圧縮 等）は、本文に混ぜず `km_arrange.md` に分離してある。**実行前に `km_arrange.md` を必ず読むこと。**
-
 ## Workflow
 
 ### 1. Planning
 
-When exploring the codebase, use the project's domain glossary so that test names and interface vocabulary match the project's language, and respect ADRs in the area you're touching.
+When exploring the codebase, read `CONTEXT.md` (if it exists) so that test names and interface vocabulary match the project's domain language, and respect ADRs in the area you're touching.
 
 Before writing any code:
 
 - [ ] Confirm with user what interface changes are needed
 - [ ] Confirm with user which behaviors to test (prioritize)
-- [ ] Identify opportunities for [deep modules](deep-modules.md) (small interface, deep implementation)
-- [ ] Design interfaces for [testability](interface-design.md)
+- [ ] Identify opportunities for deep modules (small interface, deep implementation) — run the `/codebase-design` skill for the vocabulary and the testability checks
 - [ ] List the behaviors to test (not implementation steps)
 - [ ] Get user approval on the plan
 
@@ -121,22 +100,6 @@ After all tests pass, look for [refactor candidates](refactoring.md):
 - [ ] Run tests after each refactor step
 
 **Never refactor while RED.** Get to GREEN first.
-
-## Progress markers (issue tracker)
-
-When the work corresponds to an issue on the tracker, advance its progress
-marker as you go. Markers are GitHub `status:*` labels; "merged" is the issue's
-closed state. See [status-markers.md](../../../docs/agents/status-markers.md).
-
-- **On starting** (before the first RED) — set `status:implementing` (remove any
-  other `status:*` label, create the label if missing). If `/search-issue`
-  already marked it, leave it.
-- **On finishing** — once all tests are green, the refactor pass is done, and the
-  PR is pushed, move to `status:implemented` (remove `status:implementing`).
-- **Do not close the issue yourself.** `closed` means the PR merged; closing is
-  the merge step, not part of the TDD loop.
-
-Skip this section entirely when there's no tracker issue (ad-hoc work).
 
 ## Checklist Per Cycle
 

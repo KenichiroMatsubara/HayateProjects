@@ -1,7 +1,7 @@
 {
   "version": 2,
   "sourceCommit": "5d78bd0903420f97c791f834201e550c765699f8",
-  "note": "Vendored Matt Pocock skills. NOT auto-updated. Run /update-matt-pocock-skills to review and pull upstream changes. computedHash = sha256 of the upstream SKILL.md at sourceCommit. km_arrange=has km_arrange.md (repo-specific tuning, never clobber). pinnedLocal=local body diverges intentionally; do not auto-adopt upstream body. Locally-authored skills (inherit-prompt, make-pr, search-issue, update-matt-pocock-skills) are intentionally NOT tracked here.",
+  "note": "Vendored Matt Pocock skills. NOT auto-updated. Run /update-matt-pocock-skills to review and pull upstream changes. computedHash = sha256 of the upstream SKILL.md at sourceCommit. km_arrange=has km_arrange.md (repo-specific tuning in an overlay file; SKILL.md body is kept pristine-upstream so it stays updatable; on conflict km_arrange wins). pinnedLocal=SKILL.md body is a self-contained fork that must NOT be auto-replaced by upstream (kept because upstream delegates to sub-skills not vendored here). Locally-authored skills (inherit-prompt, make-pr, search-issue, update-matt-pocock-skills) are intentionally NOT tracked here.",
   "skills": {
     "codebase-design": {
       "source": "mattpocock/skills",
@@ -82,24 +82,21 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/tdd/SKILL.md",
       "computedHash": "13722957277ed4960061a2d254a0ed7d86f95693e88b40d1c68307e7fdc98287",
-      "km_arrange": true,
-      "pinnedLocal": true
+      "km_arrange": true
     },
     "to-issues": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/to-issues/SKILL.md",
       "computedHash": "f8a72a5bc88aa830ae62b323a52b08934da52851b010984c55829a644c7f6ba6",
-      "km_arrange": true,
-      "pinnedLocal": true
+      "km_arrange": true
     },
     "to-prd": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/to-prd/SKILL.md",
       "computedHash": "db7e7188ac4fd47f4925ae6550e0233365b3b05be40f45235ab3a0a6b0165156",
-      "km_arrange": true,
-      "pinnedLocal": true
+      "km_arrange": true
     },
     "triage": {
       "source": "mattpocock/skills",

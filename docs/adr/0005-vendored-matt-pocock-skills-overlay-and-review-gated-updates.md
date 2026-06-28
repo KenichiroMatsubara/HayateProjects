@@ -54,13 +54,23 @@
 語の変更）→ 危険印を付けて提示 → **更新1回ごとにユーザの最終 OK で適用**。`km_arrange.md` と
 ローカル frontmatter は保持する。**完全無言の自動適用はしない。**
 
-### 3. 上流の委譲化を取り込まない自己完結スキルを `pinnedLocal` で固定
+### 3. 分離可能なものは本文を上流 pristine に戻し、不可能なものは `pinnedLocal` で固定
 
-`grill-me`・`grill-with-docs`・`triage`・`improve-codebase-architecture` は、未導入サブスキル
-へ委譲する上流の変更を取り込まず、自己完結版を保持する（`skills-lock.json` の
-`pinnedLocal: true`）。インライン・チューニングを持つ `tdd`・`to-issues`・`to-prd`・
-`setup-matt-pocock-skills` も同様に `pinnedLocal` とし、本体は自動置換せずレビューのみ対象に
-する。
+独自チューニングは原則 `km_arrange.md` に分離し、`SKILL.md` 本文は上流 pristine に保って更新
+容易性を確保する。ただし分離の質は上流の構造に依存して二分される：
+
+- **クリーン分離（`km_arrange` のみ、`pinnedLocal` なし）**：`tdd`・`to-issues`・`to-prd`。
+  本文を pin した上流 SKILL 本文に戻し（frontmatter の `description` だけローカル保持）、独自
+  仕様は全て `km_arrange.md` に置く（追加分、および本文の特定節を上書きする分を明示）。本文が
+  上流とクリーンに diff できるため、以後の更新は素直。
+- **自己完結フォーク（`km_arrange` ＋ `pinnedLocal`）**：`grill-me`・`grill-with-docs`・
+  `triage`・`improve-codebase-architecture`・`setup-matt-pocock-skills`。前4者は上流が本体を
+  未導入サブスキル（`/grilling`・`/domain-modeling`）へ委譲する形に作り替えたため、本文を上流
+  へ戻すと参照が宙に浮く。`setup-matt-pocock-skills` は差分が「上流が追加した PR 設問の削除」
+  という removal 型で、かつ同梱 seed（`domain.md` 等）がリポジトリ独自に改変済みのため、追加型
+  オーバーレイにクリーン分離できない。これらは本文を自己完結フォークとして保持し、上流本体で
+  自動置換しない。`/grilling`・`/domain-modeling` を将来 vendoring すれば、委譲型の4者もクリーン
+  分離へ移行できる。
 
 ### 4. 自作スキルは管理対象外
 

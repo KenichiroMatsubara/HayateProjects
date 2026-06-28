@@ -5,6 +5,8 @@
 
 このリポジトリの `triage` スキルは、上流に対して以下を独自に上書きしている。
 
+> **なぜ本文を上流 pristine に戻せないか（pinnedLocal）：** 現在の上流 `triage` は、grill 工程を `/grilling`＋`/domain-modeling` へ委譲し、外部 PR トリアージを本文全体に織り込む形に作り替えられている。これらサブスキルは未導入で、PR トリアージも不採用のため、本文を上流へ戻すと参照が宙に浮き、不要な記述が大量に入る。したがって `SKILL.md` 本文は**自己完結フォークとして保持**する（`skills-lock.json` の `pinnedLocal: true`）。上流差分は `/update-matt-pocock-skills` が参考提示するのみで、本文は自動置換しない。`/grilling`・`/domain-modeling` を将来 vendoring すれば、クリーン分離へ移行できる。
+
 ## 1. state は AFK / 完全人力 の二択（HITL state なし）
 
 - `ready-for-agent` = AFK（人手を介さず実装可能）。

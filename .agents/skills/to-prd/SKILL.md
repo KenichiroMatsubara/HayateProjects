@@ -15,20 +15,11 @@ The issue tracker and triage label vocabulary should have been provided to you �
 
 1. Explore the repo to understand the current state of the codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the PRD, and respect any ADRs in the area you're touching.
 
-2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can.
+2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
 
 Check with the user that these seams match their expectations.
 
 3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
-
-   A PRD is a parent issue: `/to-issues` will break it down into child issues and register them as **native GitHub sub-issues** of this PRD (see [ADR-0003](../../../docs/adr/0003-issue-parent-child-via-native-subissues-autoclose.md)). So also tag the published PRD with the `parent` label, creating it on first use if it does not exist yet:
-
-   ```sh
-   gh label create "parent" --color 5319E7 --description "親イシュー — broken into child issues" 2>/dev/null || true
-   gh issue edit <prd-number> --add-label "parent"
-   ```
-
-   Once children exist, GitHub shows a "達成された子Issue / 全子Issue" (N of M done) progress bar on this PRD in the issue list, and the auto-close workflow closes the PRD automatically when every child closes. Do NOT close the PRD by hand.
 
 <prd-template>
 
