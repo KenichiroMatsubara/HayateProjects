@@ -359,6 +359,41 @@ impl LayoutPass {
         }
 
         for (eid, mut layout) in pending {
+            // measure クロージャは Taffy のサイズ解決中に何度も呼ばれ、`pending` は最後の呼び出しの
+            // シェイプ結果を保持する（last-wins）。ところが Taffy は確定サイズの後にも intrinsic
+            // size プローブ（min/max-content）を走らせることがあり、特に `align-items: baseline` の
+            // 行ではその最後が MinContent（max_advance=0）になって、テキストが 1 文字/単語ごとに
+            // 折り返されたグリフ列を retained text_layout に残す。一方ボックス幾何は確定サイズの
+            // 測定からキャッシュされ正しい。結果、正しい幅のボックスに min-content で折り返した
+            // グリフが描かれボックスを縦にはみ出す（react-todo のタイトル折れ）。
+            //
+            // 確定後の幾何が唯一の真実なので、retained グリフを Taffy の最終解決インナー幅へ
+            // 揃え直す。最後の measure 呼び出しが既にその幅なら（非 baseline の通常ケース）
+            // 何もしない。これでグリフの折り返し幅が常にボックス幅と一致する。
+            if let Some(node) = projection.node_id(eid) {
+                // 丸め前（unrounded）の確定レイアウトを使う。Taffy は整数ピクセルへ丸めるため、
+                // 丸め後の幅は自然コンテンツ幅より最大 1px 狭くなり得る。その丸め幅で再シェイプ
+                // すると 1 行に収まるはずのテキストが余計に折り返す（例: 自然幅 70.17 → 丸め 70 →
+                // 折返し）。丸め前の確定インナー幅で揃えれば、グリフ折返しはレイアウトが
+                // ボックスを決めた幅と厳密に一致する。
+                let final_layout = projection.taffy.unrounded_layout(node);
+                let inner_w = final_layout.size.width
+                    - final_layout.padding.left
+                    - final_layout.padding.right
+                    - final_layout.border.left
+                    - final_layout.border.right;
+                let matches_final = layout
+                    .width_constraint
+                    .is_some_and(|w| (w - inner_w).abs() <= 0.5);
+                if inner_w.is_finite() && inner_w > 0.0 && !matches_final {
+                    let reshaped =
+                        inline_text::shape(elements, eid, Some(inner_w), font_cx, layout_cx, viewport);
+                    if !reshaped.text.is_empty() {
+                        layout = reshaped;
+                    }
+                }
+            }
+
             // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
             let src: Arc<str> = layout.text.clone();
             for run in &mut layout.runs {
