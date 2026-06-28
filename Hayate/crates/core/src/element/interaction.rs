@@ -504,8 +504,11 @@ impl Interaction {
 /// pointer-down で捕捉し `on_pointer_move` が駆動する。各移動で軸方向の移動量を
 /// Scroll Offset デルタに変換し、ホイールと同じ `apply_wheel_delta` 継ぎ目で
 /// コミットする（軸端に達した余りは祖先 ScrollView へ連鎖する）。
+///
+/// 公開 seam [`InteractionTreeView::drag_scrollbar`] の引数／戻り値に現れるため
+/// `pub`（trait と同じ可視性。#572）。フィールド型はすべて公開型。
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ScrollbarDrag {
+pub struct ScrollbarDrag {
     /// サムをドラッグしている ScrollView。
     pub scroll_view: ElementId,
     /// サムが滑る軸。
