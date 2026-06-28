@@ -213,7 +213,6 @@ pub(crate) fn shape(
             runs: Vec::new(),
             font_size: 16.0,
             text: std::sync::Arc::from(""),
-            width_constraint: max_advance,
             missing_families: Vec::new(),
             range_map: Some(ctx.range_map),
         };

@@ -1,18 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use linebender_resource_handle::Blob;
-use parley::{FontContext, LayoutContext};
 use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 
 use crate::element::font_fetch::FontFetchTracker;
 use crate::element::id::ElementId;
-use crate::element::kind::ElementKind;
 use crate::element::style::{StyleProp, ViewportCondition};
 use crate::element::taffy_bridge::{self, MeasureCtx};
-use crate::element::inline_text;
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
-use crate::element::text::{self, TextBrush, TextLayout};
+use crate::element::text::TextLayout;
+use crate::element::text_shaper::TextShaper;
 use crate::element::tree::{Element, Event};
 
 /// base の `layout_style`（作者の意図）に、現ビューポートで一致する **レイアウト系**
@@ -39,8 +36,9 @@ pub(crate) fn effective_layout_style(
 /// Parley 整形、フォント dirty 伝播、FetchFont イベント発行、レイアウトキャッシュ更新を駆動する。
 pub struct LayoutPass {
     pub(crate) projection: TaffyProjection,
-    pub(crate) font_cx: FontContext,
-    pub(crate) layout_cx: LayoutContext<TextBrush>,
+    /// テキスト整形器（ADR-0123）。font collection（`FontContext`）と `LayoutContext` を
+    /// 単独所有し、全シェイプ経路の唯一の入口になる。`projection`（箱）と対をなす。
+    pub(crate) shaper: TextShaper,
     /// オンデマンドのフォント取得状態。`FetchFont` の重複発行を抑制し、
     /// 失敗した family は再試行、有限のリトライ予算を超えたら断念する。
     pub(crate) font_fetches: FontFetchTracker,
@@ -53,16 +51,28 @@ pub struct LayoutPass {
 
 impl LayoutPass {
     pub fn new() -> Self {
-        let mut font_cx = FontContext::new();
-        init_bundled_fonts(&mut font_cx);
         Self {
             projection: TaffyProjection::new(),
-            font_cx,
-            layout_cx: LayoutContext::new(),
+            shaper: TextShaper::new(),
             font_fetches: FontFetchTracker::new(),
             last_cursor_toggle_ms: None,
             layout_cache: HashMap::new(),
         }
+    }
+
+    /// font collection への family 登録を整形器へ委譲する（`ElementTree::register_font`）。
+    pub(crate) fn register_font(&mut self, family_name: &str, bytes: Arc<Vec<u8>>) {
+        self.shaper.register_font(family_name, bytes);
+    }
+
+    /// 埋め込み family 名でフォントバイトを登録する（整形器へ委譲）。
+    pub(crate) fn register_font_bytes(&mut self, bytes: Vec<u8>) {
+        self.shaper.register_font_bytes(bytes);
+    }
+
+    /// toolbar 等の単発ラベルを整形する（整形器へ委譲、ADR-0097）。
+    pub(crate) fn shape_label(&mut self, text: &str, font_size: f32) -> TextLayout {
+        self.shaper.shape_label(text, font_size)
     }
 
     /// レイアウト用 `StyleProp` を `layout_style`（ドキュメントツリーが所有）へ変換し、
@@ -134,23 +144,7 @@ impl LayoutPass {
     /// system_fonts なし、`default_font` をデフォルト family ＋ sans-serif generic として登録する。
     /// ホスト導入フォントに依存せず `.notdef → FetchFont → register_font` の実経路をテストできる。
     pub(crate) fn set_wasm_like_font_context(&mut self, default_font: Vec<u8>) {
-        use fontique::{Collection, CollectionOptions, FontInfoOverride, GenericFamily};
-        self.font_cx.collection = Collection::new(CollectionOptions {
-            system_fonts: false,
-            ..Default::default()
-        });
-        let blob = Blob::new(Arc::new(default_font));
-        let override_info = FontInfoOverride {
-            family_name: Some(text::DEFAULT_FONT_FAMILY),
-            ..Default::default()
-        };
-        let registered = self.font_cx.collection.register_fonts(blob, Some(override_info));
-        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
-        if !ids.is_empty() {
-            self.font_cx
-                .collection
-                .set_generic_families(GenericFamily::SansSerif, ids.into_iter());
-        }
+        self.shaper.set_wasm_like_font_context(default_font);
         self.font_fetches = FontFetchTracker::new();
     }
 
@@ -275,24 +269,24 @@ impl LayoutPass {
 
         let LayoutPass {
             projection,
-            font_cx,
-            layout_cx,
+            shaper,
             font_fetches,
             ..
         } = self;
 
-        // 2 パス構成。measure クロージャ内で生成したテキストレイアウトを退避し、
-        // compute_layout から戻った後に各要素へ書き戻す。
-        let mut pending: HashMap<ElementId, TextLayout> = HashMap::new();
+        // 整形器に新しいレイアウトパスの開始を知らせ、幅キーのシェイプメモをクリアする。
+        shaper.begin_layout();
+
+        // measure を整形器へ配線する。IFC テキストは整形器の measure がシェイプしてメモを埋め、
+        // `text-input` の UA デフォルト幅（ADR-0109）はフィールド自身のテキストに依存しない
+        // フォント相対の固有コンテンツ幅を返す。明示 `width` / `flex-grow` / stretch は Taffy の
+        // 固有解決でこれより優先される。
         {
             let taffy = &mut projection.taffy;
             let _ = taffy.compute_layout_with_measure(
                 root_taffy,
                 available,
                 |known_dims, available_space, _node_id, ctx, _style| {
-                    // `text-input` の UA デフォルト幅（ADR-0109）。フィールド自身のテキストに
-                    // 依存しない、フォント相対の固有コンテンツ幅。明示 `width` / `flex-grow` /
-                    // stretch は Taffy の固有解決でこれより優先される。
                     if let Some(MeasureCtx::TextInput(eid)) = ctx {
                         let eid = *eid;
                         let (font_size, font_weight, font_style, font_family) = {
@@ -309,9 +303,7 @@ impl LayoutPass {
                                 el.visual.font_family.clone().or(ambient.font_family.clone()),
                             )
                         };
-                        let width = text::text_input_default_width(
-                            font_cx,
-                            layout_cx,
+                        let width = shaper.text_input_default_width(
                             font_size,
                             font_family.as_deref(),
                             font_weight,
@@ -337,226 +329,38 @@ impl LayoutPass {
                             AvailableSpace::MinContent => Some(0.0),
                         },
                     };
-                    let layout = inline_text::shape(
-                        elements,
-                        eid,
-                        max_advance,
-                        font_cx,
-                        layout_cx,
-                        viewport,
-                    );
-                    if layout.text.is_empty() {
-                        return TaffySize::ZERO;
-                    }
-                    let size = TaffySize {
-                        width: layout.layout.width(),
-                        height: layout.layout.height(),
-                    };
-                    pending.insert(eid, layout);
-                    size
+                    let (width, height) = shaper.measure(elements, eid, max_advance, viewport);
+                    TaffySize { width, height }
                 },
             );
         }
 
-        for (eid, mut layout) in pending {
-            // measure クロージャは Taffy のサイズ解決中に何度も呼ばれ、`pending` は最後の呼び出しの
-            // シェイプ結果を保持する（last-wins）。ところが Taffy は確定サイズの後にも intrinsic
-            // size プローブ（min/max-content）を走らせることがあり、特に `align-items: baseline` の
-            // 行ではその最後が MinContent（max_advance=0）になって、テキストが 1 文字/単語ごとに
-            // 折り返されたグリフ列を retained text_layout に残す。一方ボックス幾何は確定サイズの
-            // 測定からキャッシュされ正しい。結果、正しい幅のボックスに min-content で折り返した
-            // グリフが描かれボックスを縦にはみ出す（react-todo のタイトル折れ）。
-            //
-            // 確定後の幾何が唯一の真実なので、retained グリフを Taffy の最終解決インナー幅へ
-            // 揃え直す。最後の measure 呼び出しが既にその幅なら（非 baseline の通常ケース）
-            // 何もしない。これでグリフの折り返し幅が常にボックス幅と一致する。
-            if let Some(node) = projection.node_id(eid) {
-                // 丸め前（unrounded）の確定レイアウトを使う。Taffy は整数ピクセルへ丸めるため、
-                // 丸め後の幅は自然コンテンツ幅より最大 1px 狭くなり得る。その丸め幅で再シェイプ
-                // すると 1 行に収まるはずのテキストが余計に折り返す（例: 自然幅 70.17 → 丸め 70 →
-                // 折返し）。丸め前の確定インナー幅で揃えれば、グリフ折返しはレイアウトが
-                // ボックスを決めた幅と厳密に一致する。
-                let final_layout = projection.taffy.unrounded_layout(node);
-                let inner_w = final_layout.size.width
-                    - final_layout.padding.left
-                    - final_layout.padding.right
-                    - final_layout.border.left
-                    - final_layout.border.right;
-                let matches_final = layout
-                    .width_constraint
-                    .is_some_and(|w| (w - inner_w).abs() <= 0.5);
-                if inner_w.is_finite() && inner_w > 0.0 && !matches_final {
-                    let reshaped =
-                        inline_text::shape(elements, eid, Some(inner_w), font_cx, layout_cx, viewport);
-                    if !reshaped.text.is_empty() {
-                        layout = reshaped;
-                    }
-                }
+        // 不変条件の機械的保証: 整形器が**両 retained 層**（IFC の `text_layout` と text-input の
+        // `content_layout`）を Taffy の確定（unrounded）ボックス幅で retain する。measure クロージャ
+        // last-wins・compute 後の後付け再シェイプ・text-input の別ループはこの 1 点に畳まれた。
+        // 欠落 family は IFC/text-input を de-dup した単一集合として値で返り、`FetchFont` 発行は
+        // ここ 1 箇所で行う（重複発行の解消）。
+        let outcome = shaper.finalize(projection, elements, viewport);
+        for family in outcome.missing_families {
+            if font_fetches.should_request(&family) {
+                font_fetches.mark_requested(&family);
+                event_queue.push(Event::FetchFont { family });
             }
-
-            // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
-            let src: Arc<str> = layout.text.clone();
-            for run in &mut layout.runs {
-                if let Some(rd) = Arc::get_mut(run) {
-                    rd.text = src.clone();
-                }
-            }
-            for &fam in &layout.missing_families {
-                if font_fetches.should_request(fam) {
-                    font_fetches.mark_requested(fam);
-                    event_queue.push(Event::FetchFont {
-                        family: fam.to_string(),
-                    });
-                }
-            }
-            // 名前付きフォントを先回り取得する。Latin フォントは .notdef グリフを生まず、
-            // script ベースの検出が発火しない。解決した family が fontique コレクションに
-            // 未登録なら今要求し、次の register_font() → fonts_dirty サイクルで実フォントで再整形させる。
-            if let Some(el) = elements.get(&eid) {
-                if let Some(ref fam) = el.visual.font_family {
-                    // `font-family` はスタック。カンマ区切り全体ではなく、名前付きエントリを
-                    // 個別に解決・取得する。
-                    for resolved in text::parse_font_family_list(fam) {
-                        if resolved != text::DEFAULT_FONT_FAMILY
-                            && font_fetches.should_request(resolved)
-                            && font_cx.collection.family_id(resolved).is_none()
-                        {
-                            font_fetches.mark_requested(resolved);
-                            event_queue.push(Event::FetchFont {
-                                family: resolved.to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-            if let Some(el) = elements.get_mut(&eid) {
-                el.text_layout = Some(layout);
-            }
+        }
+        for eid in outcome.finalized {
             shape_dirty.remove(&eid);
         }
 
-        // TextInput 要素のコンテンツレイアウトを構築する（Canvas モードの描画＋カーソル用）。
-        let textinput_ids: Vec<ElementId> = elements
-            .iter()
-            .filter_map(|(id, el)| {
-                if el.kind == ElementKind::TextInput {
-                    Some(*id)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for eid in textinput_ids {
-            let (display_text, font_size, font_weight, font_style) = {
-                let el = match elements.get(&eid) {
-                    Some(e) => e,
-                    None => continue,
-                };
-                let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
-                let text = el
-                    .edit
-                    .as_ref()
-                    .map(|edit| edit.display_text())
-                    .unwrap_or_default();
-                (
-                    text,
-                    el.visual.font_size.unwrap_or(ambient.font_size),
-                    el.visual.font_weight.or(ambient.font_weight),
-                    el.visual.font_style,
-                )
-            };
-
-            let (max_advance, font_family) = {
-                let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
-                let el = elements.get(&eid).map(|e| {
-                    (
-                        projection.node_id(eid).and_then(|n| {
-                            projection
-                                .taffy
-                                .layout(n)
-                                .ok()
-                                .map(|l| l.content_box_width())
-                        }),
-                        e.visual
-                            .font_family
-                            .clone()
-                            .or(ambient.font_family.clone()),
-                    )
-                });
-                el.map(|(a, f)| (a, f)).unwrap_or((None, None))
-            };
-
-            let is_placeholder = display_text.is_empty();
-            let text_to_layout: Option<String> = if is_placeholder {
-                elements
-                    .get(&eid)
-                    .and_then(|el| el.text.clone())
-                    .filter(|t| !t.is_empty())
-            } else {
-                Some(display_text)
-            };
-
-            if let Some(text) = text_to_layout {
-                let layout = text::build_text_layout(
-                    font_cx,
-                    layout_cx,
-                    &text,
-                    font_size,
-                    max_advance,
-                    font_family.as_deref(),
-                    font_weight,
-                    font_style,
-                );
-
-                for &fam in &layout.missing_families {
-                    if font_fetches.should_request(fam) {
-                        font_fetches.mark_requested(fam);
-                        event_queue.push(Event::FetchFont {
-                            family: fam.to_string(),
-                        });
-                    }
-                }
-                if let Some(ref fam) = font_family {
-                    // `font-family` はスタック。カンマ区切り全体ではなく、名前付きエントリを
-                    // 個別に解決・取得する。
-                    for resolved in text::parse_font_family_list(fam) {
-                        if resolved != text::DEFAULT_FONT_FAMILY
-                            && font_fetches.should_request(resolved)
-                            && font_cx.collection.family_id(resolved).is_none()
-                        {
-                            font_fetches.mark_requested(resolved);
-                            event_queue.push(Event::FetchFont {
-                                family: resolved.to_string(),
-                            });
-                        }
-                    }
-                }
-                if let Some(el) = elements.get_mut(&eid) {
-                    if is_placeholder {
-                        el.content_layout = None;
-                        el.text_layout = Some(layout);
-                    } else {
-                        el.content_layout = Some(layout);
-                        el.text_layout = None;
-                        if let Some(edit) = el.edit.as_mut() {
-                            // 新しく整形したコンテンツに対しキャレット/選択を有効に保つが、
-                            // 末尾へ強制してはならない。これは毎回のリレイアウト（style 変更・
-                            // リサイズ・選択起因の再描画）で走るため、カーソルを `len` へ
-                            // 強制するとクリックで置いたばかりのキャレットを壊す（アンカーは
-                            // 据え置きでカーソルだけ末尾へ飛び、クリック点から末尾文字までの
-                            // 幻の選択を生む）。クランプはテキスト縮小後に範囲外となった
-                            // オフセットの修復のみ行う。キャレット位置自体は edit/pointer 操作が
-                            // 所有し、レイアウトパスは触らない。
-                            let len = edit.text_content.len();
-                            edit.cursor_byte_index = edit.cursor_byte_index.min(len);
-                            edit.selection_anchor = edit.selection_anchor.min(len);
-                        }
-                    }
-                }
-            } else if let Some(el) = elements.get_mut(&eid) {
-                el.content_layout = None;
-                el.text_layout = None;
+        // finalize 後の後処理: 新しく整形した text-input コンテンツのキャレット/選択を範囲内へ
+        // クランプする。整形意味論ではない編集状態（EditState・ADR-0069）なので `TextShaper` には
+        // 入れず Layout Pass に残す。これは毎回のリレイアウトで走るため、カーソルを `len` へ
+        // 強制してはならない（クリックで置いたキャレットを壊す）。テキスト縮小後に範囲外となった
+        // オフセットの修復のみ行い、キャレット位置自体は edit/pointer 操作が所有する。
+        for eid in outcome.content_finalized {
+            if let Some(edit) = elements.get_mut(&eid).and_then(|el| el.edit.as_mut()) {
+                let len = edit.text_content.len();
+                edit.cursor_byte_index = edit.cursor_byte_index.min(len);
+                edit.selection_anchor = edit.selection_anchor.min(len);
             }
         }
     }
@@ -721,25 +525,6 @@ mod tests {
 
         assert!(!applied, "visual prop must not be accepted by the layout seam");
         assert_eq!(style, before, "non-layout prop must not mutate layout_style");
-    }
-}
-
-fn init_bundled_fonts(font_cx: &mut FontContext) {
-    use fontique::{FontInfoOverride, GenericFamily};
-
-    static NOTO_SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/NotoSansJP.ttf");
-
-    let blob = Blob::new(Arc::new(NOTO_SANS_BYTES));
-    let override_info = FontInfoOverride {
-        family_name: Some(text::DEFAULT_FONT_FAMILY),
-        ..Default::default()
-    };
-    let registered = font_cx.collection.register_fonts(blob, Some(override_info));
-    let family_ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
-    if !family_ids.is_empty() {
-        font_cx
-            .collection
-            .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
     }
 }
 
