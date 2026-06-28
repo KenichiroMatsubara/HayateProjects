@@ -1,15 +1,17 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::element::caret_geometry::ParleyCaretGeometry;
 use crate::element::edit_state::{Direction, EditIntent, Granularity};
 use crate::element::event_spec::{event_document_kind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pointer::PointerKind;
-use crate::element::pointer_gesture::{DragMode, TapPhase};
+use crate::element::pointer_gesture::{DragMode, PointerGesture, TapPhase};
 use crate::element::selection::{
     self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
 };
 use crate::element::style::CursorValue;
-use crate::element::tree::ElementTree;
+use crate::element::tree::{ElementTree, TouchScrollIndicator};
 use crate::element::visual_invalidation::VisualInvalidationReach;
 
 /// サブピクセルの pointer-move 重複排除しきい値（px、ADR-0066/0088）。直近の
@@ -161,8 +163,6 @@ pub trait InteractionTreeView {
     fn apply_focus_effects(&mut self, id: ElementId);
     /// blur の element 側効果（`apply_focus_effects` の対）。
     fn apply_blur_effects(&mut self, id: ElementId);
-    /// 直近ポインタの物理デバイス。Touch blur で編集選択を畳むか判定する。
-    fn pointer_kind(&self) -> PointerKind;
     /// 単一 text-input の編集選択をキャレットへ畳む（Touch blur ライフサイクル、
     /// ADR-0104）。
     fn collapse_edit_selection(&mut self, id: ElementId);
@@ -175,13 +175,63 @@ pub trait InteractionTreeView {
 
 /// 横断的 interaction state を所有する deep module（ADR-0122 決定 1）。入口は
 /// [`apply_intent`](Self::apply_intent) 単一 seam で、pointer / keyboard /
-/// accessibility / edit の意図がここへ合流する。この slice では focus state のみを
-/// 持ち、hover / active / press 位置 / `PointerGesture` 等は後続 slice で移ってくる。
-#[derive(Default)]
+/// accessibility / edit の意図がここへ合流する。focus に加え、pointer 横断 state
+/// （hover / active / press 位置 / `PointerGesture` / modality / pointer-pos / cursor /
+/// touch scroll）を所有する（#572）。element 位相・layout 幾何・per-element
+/// `EditState`・scroll offset は所有せず、狭い [`InteractionTreeView`] 越しに借りる。
 pub struct Interaction {
     /// 現在フォーカスされている要素。`render` のカーソル点滅・`:focus-visible`・
     /// accessibility outbound が読む唯一の focus 真実。
     pub(crate) focused_element: Option<ElementId>,
+    /// 直近入力イベントのモダリティ。ネイティブフォーカスリングの `:focus-visible`
+    /// 判定を駆動する（ADR-0102）。
+    pub(crate) last_input_modality: InputModality,
+    /// 直近ポインタ操作の物理デバイス。インタラクションごとに保持する。
+    /// `last_input_modality` とは独立した軸で、タッチ押下は `InputModality::Pointer`
+    /// かつ `PointerKind::Touch` になる。
+    pub(crate) last_pointer_kind: PointerKind,
+    /// CSS `:hover` に一致する要素（ポインタ下の自身または子孫）。
+    pub(crate) hovered_elements: HashSet<ElementId>,
+    /// 現在押下中（`:active`）の要素。クリックはリリースで確定する（ADR-0082）。
+    pub(crate) active_element: Option<ElementId>,
+    /// 現在の押下（`active_element`）が始まった canvas 位置。pointer-up の `Click` に
+    /// 載せる。押下が（スクロール乗っ取り等で）キャンセルされると `active_element`
+    /// とともにクリアされ、以降のリリースはクリックを発火しない。
+    pub(crate) active_press_pos: Option<(f32, f32)>,
+    /// ポインタジェスチャ分類器（ADR-0066）。進行中のドラッグ種別（読み取り専用
+    /// 選択／編集選択／スクロールバーつまみは排他）と、単語／段落ジェスチャ用の
+    /// マルチクリック追跡を単独所有する。
+    pub(crate) pointer_gesture: PointerGesture,
+    /// 前回 render 以降に Touch モダリティでスクロールし、一時インジケータを
+    /// 再表示すべき ScrollView（ADR-0110）。
+    pub(crate) touch_scroll_pending: HashSet<ElementId>,
+    /// ScrollView をキーにした稼働中の Touch 一時インジケータ。
+    pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
+    /// サブピクセル move の重複排除用の直近ポインタ位置（ADR-0066）。
+    pub(crate) last_pointer_pos: Option<(f32, f32)>,
+    /// ポインタ下で直近に解決したカーソル。合成 move で報告する（ADR-0088）。
+    pub(crate) last_cursor: CursorValue,
+}
+
+impl Default for Interaction {
+    fn default() -> Self {
+        Self {
+            focused_element: None,
+            // 最初のキーボードイベントまで Pointer。未フォーカス/ポインタ駆動直後の
+            // UI がボタンに余計なリングを出さないように。
+            last_input_modality: InputModality::Pointer,
+            // 最初の実ポインタイベントがデバイスを報告するまで Mouse。
+            last_pointer_kind: PointerKind::Mouse,
+            hovered_elements: HashSet::new(),
+            active_element: None,
+            active_press_pos: None,
+            pointer_gesture: PointerGesture::default(),
+            touch_scroll_pending: HashSet::new(),
+            touch_scroll_indicators: HashMap::new(),
+            last_pointer_pos: None,
+            last_cursor: CursorValue::Default,
+        }
+    }
 }
 
 impl Interaction {
@@ -234,7 +284,9 @@ impl Interaction {
             return;
         }
         self.element_blur(view, id);
-        if view.pointer_kind() == PointerKind::Touch {
+        // pointer 種別は `Interaction` 自身が所有するので view 越しではなく自分で読む
+        // （#572）。Touch の blur は編集選択をキャレットへ畳む（ADR-0104）。
+        if self.last_pointer_kind == PointerKind::Touch {
             view.collapse_edit_selection(id);
         }
         view.emit_event(Event::Blur { target_id: id });
@@ -298,7 +350,7 @@ impl ElementTree {
         modifiers: u32,
         kind: PointerKind,
     ) {
-        self.last_pointer_kind = kind;
+        self.interaction.last_pointer_kind = kind;
         self.on_pointer_down_with(x, y, modifiers);
     }
 
@@ -344,7 +396,7 @@ impl ElementTree {
     pub fn on_long_press(&mut self, x: f32, y: f32) {
         // 長押しはタッチジェスチャで、始まる選択は Touch モダリティの操作なので、
         // その chrome（ハンドル＋ツールバー）が出る（ADR-0104）。
-        self.last_pointer_kind = PointerKind::Touch;
+        self.interaction.last_pointer_kind = PointerKind::Touch;
         let Some(point) = self.selection_point_at(x, y) else {
             return;
         };
@@ -352,8 +404,8 @@ impl ElementTree {
         self.select_bounds_at(point, selection::word_bounds);
         // 新規ジェスチャ。続くタップはこの長押しからのマルチクリック周期を再開せず、
         // キャレットを落とすべき。
-        self.pointer_gesture.clear_selection_drag();
-        self.pointer_gesture.reset_taps();
+        self.interaction.pointer_gesture.clear_selection_drag();
+        self.interaction.pointer_gesture.reset_taps();
     }
 
     /// 明示ターゲットへのポインタダウン（HTML Mode）。
@@ -362,7 +414,7 @@ impl ElementTree {
     }
 
     fn pointer_down_on_target(&mut self, target: Option<ElementId>, x: f32, y: f32) {
-        self.last_input_modality = InputModality::Pointer;
+        self.interaction.last_input_modality = InputModality::Pointer;
         if let Some(t) = target {
             // クリックはリリースで確定する（ADR-0082）。押下では `:active` を点け、
             // タップ起点を覚えるだけにする。押下→slop 超過でスクロールに化けた場合は
@@ -377,7 +429,7 @@ impl ElementTree {
             // リリースの Click が押下座標を載せられるよう起点を覚える（active を
             // セットした後に書く。`set_active_element(None)` 等の途中クリアに
             // 上書きされないため）。
-            self.active_press_pos = Some((x, y));
+            self.interaction.active_press_pos = Some((x, y));
             self.transition_focus(t);
         } else if let Some(prev) = self.interaction.focused_element {
             self.blur_with_events(prev);
@@ -388,13 +440,13 @@ impl ElementTree {
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
         let fallback = self.hit_test(x, y);
         self.pointer_up_with_fallback(fallback);
-        self.pointer_gesture.end_drag();
+        self.interaction.pointer_gesture.end_drag();
     }
 
     /// 物理 [`PointerKind`] を伴うポインタアップ。操作ごとに保持する。リリース挙動
     /// は [`on_pointer_up`](Self::on_pointer_up) と同一。
     pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: PointerKind) {
-        self.last_pointer_kind = kind;
+        self.interaction.last_pointer_kind = kind;
         self.on_pointer_up(x, y);
     }
 
@@ -409,8 +461,8 @@ impl ElementTree {
         // スクロールに化けた押下は `on_pointer_cancel` で active が既にクリアされて
         // いるので、ここでクリックは出ない。座標は押下時の起点を載せる（押下→離す
         // が同一タップなら down≈up で、従来の Click 座標と一致する）。
-        if let Some(t) = self.active_element {
-            let (x, y) = self.active_press_pos.unwrap_or((0.0, 0.0));
+        if let Some(t) = self.interaction.active_element {
+            let (x, y) = self.interaction.active_press_pos.unwrap_or((0.0, 0.0));
             // クリック確定（リリース）を `Interaction` seam へ通す（ADR-0122）。
             // accessibility の semantic click（#575）と同一の `Click` intent に合流する。
             self.apply_interaction_intent(InteractionIntent::Click {
@@ -419,7 +471,7 @@ impl ElementTree {
                 y,
             });
         }
-        let target = self.active_element.or(explicit_target);
+        let target = self.interaction.active_element.or(explicit_target);
         if let Some(t) = target {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
         }
@@ -435,9 +487,9 @@ impl ElementTree {
     /// dirty。pointer-up 経路を写す）。`PointerMove` は捏造しない。
     pub fn on_pointer_cancel(&mut self) {
         self.apply_pointer_hover(None);
-        self.last_pointer_pos = None;
-        self.pointer_gesture.end_drag();
-        if let Some(t) = self.active_element {
+        self.interaction.last_pointer_pos = None;
+        self.interaction.pointer_gesture.end_drag();
+        if let Some(t) = self.interaction.active_element {
             self.emit_interaction(Event::ActiveEnd { target_id: t });
         }
         // 押下の終了は active 状態を解除し `:active` 無効化を原子的に記録する
@@ -455,7 +507,7 @@ impl ElementTree {
         y: f32,
         kind: PointerKind,
     ) -> PointerMoveResult {
-        self.last_pointer_kind = kind;
+        self.interaction.last_pointer_kind = kind;
         self.on_pointer_move(x, y)
     }
 
@@ -466,33 +518,33 @@ impl ElementTree {
         if !self.has_layout() {
             return PointerMoveResult {
                 moved: false,
-                resolved_cursor: self.last_cursor,
+                resolved_cursor: self.interaction.last_cursor,
             };
         }
-        if let Some((lx, ly)) = self.last_pointer_pos {
+        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
             if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
                 return PointerMoveResult {
                     moved: false,
-                    resolved_cursor: self.last_cursor,
+                    resolved_cursor: self.interaction.last_cursor,
                 };
             }
         }
-        self.last_pointer_pos = Some((x, y));
+        self.interaction.last_pointer_pos = Some((x, y));
         self.push_event(Event::PointerMove {
             x,
             y,
-            pointer_kind: self.last_pointer_kind,
+            pointer_kind: self.interaction.last_pointer_kind,
         });
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
-        self.last_cursor = resolved_cursor;
+        self.interaction.last_cursor = resolved_cursor;
         // 進行中のドラッグを駆動する。種別はジェスチャ分類器が単独所有し、三者
         // （スクロールバー・サム／編集選択／読み取り専用選択）は排他なので単一の
         // match で分岐する（ADR-0066）。スクロールバー・サムドラッグ（ADR-0110）は
         // 選択が始まる前に掴まれる。読み取り専用は進行中の選択の focus を拡張する
         // （ADR-0097）。
-        match self.pointer_gesture.drag() {
+        match self.interaction.pointer_gesture.drag() {
             DragMode::Scrollbar(drag) => self.drag_scrollbar(drag, x, y),
             DragMode::Edit(input) => self.extend_edit_drag(input, x, y),
             DragMode::Selection => {
@@ -558,16 +610,16 @@ impl ElementTree {
     /// ターゲットなしのポインタムーブ（ヒットテスト hover を伴わない HTML Mode
     /// 座標ストリーム）。
     pub fn on_pointer_move_coords(&mut self, x: f32, y: f32) -> bool {
-        if let Some((lx, ly)) = self.last_pointer_pos {
+        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
             if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
                 return false;
             }
         }
-        self.last_pointer_pos = Some((x, y));
+        self.interaction.last_pointer_pos = Some((x, y));
         self.push_event(Event::PointerMove {
             x,
             y,
-            pointer_kind: self.last_pointer_kind,
+            pointer_kind: self.interaction.last_pointer_kind,
         });
         true
     }
@@ -578,7 +630,7 @@ impl ElementTree {
     /// `PointerMove` は push しない。HTML adapter の要素別 leave 継ぎ目と対称。
     pub fn on_pointer_leave(&mut self) {
         self.apply_pointer_hover(None);
-        self.last_pointer_pos = None;
+        self.interaction.last_pointer_pos = None;
     }
 
     pub fn on_wheel(&mut self, target: ElementId, delta_x: f32, delta_y: f32) {
@@ -598,7 +650,7 @@ impl ElementTree {
         // キーボード操作は Chromium の `:focus-visible` ヒューリスティクで次の
         // focus をリング対象にする。早期 return より前に記録するので、focus 中の
         // 要素に届かないキー押下でもモダリティは切り替わる。
-        self.last_input_modality = InputModality::Keyboard;
+        self.interaction.last_input_modality = InputModality::Keyboard;
         // 選択キーボードジェスチャは文書全体の選択に作用し要素 focus に依存しない
         // ので、先に走り、適用時にキーを消費する（例: Ctrl/Cmd+A、SelectionArea 上の
         // Shift+Arrow）。
@@ -750,7 +802,7 @@ impl ElementTree {
     }
 
     pub fn active_element(&self) -> Option<ElementId> {
-        self.active_element
+        self.interaction.active_element
     }
 
     /// 文書全体で唯一のテキスト選択（あれば）（ADR-0097）。
@@ -923,7 +975,7 @@ impl ElementTree {
     ///
     /// [`last_pointer_kind`]: Self::last_pointer_kind
     fn touch_chrome_visible(&self) -> bool {
-        self.last_pointer_kind == PointerKind::Touch
+        self.interaction.last_pointer_kind == PointerKind::Touch
     }
 
     /// active な選択のためのフローティング選択ツールバー。選択が active でなければ
@@ -1002,7 +1054,7 @@ impl ElementTree {
             SelectionHandleEnd::End => (start, end),
         };
         self.set_selection(Some(Selection { anchor, focus }));
-        self.pointer_gesture.begin_drag(DragMode::Selection);
+        self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
         true
     }
 
@@ -1017,7 +1069,7 @@ impl ElementTree {
     /// [`SCROLLBAR_PAGE_STEP`]: crate::element::scene_build::SCROLLBAR_PAGE_STEP
     fn begin_scrollbar_gesture(&mut self, x: f32, y: f32) -> bool {
         use crate::element::scene_build::{ScrollAxis, SCROLLBAR_PAGE_STEP};
-        if self.last_pointer_kind == PointerKind::Touch {
+        if self.interaction.last_pointer_kind == PointerKind::Touch {
             return false;
         }
         let Some((sv, axis, on_thumb)) = self.scrollbar_hit_at(x, y) else {
@@ -1035,7 +1087,7 @@ impl ElementTree {
                 ScrollAxis::Vertical => y,
                 ScrollAxis::Horizontal => x,
             };
-            self.pointer_gesture.begin_drag(DragMode::Scrollbar(ScrollbarDrag {
+            self.interaction.pointer_gesture.begin_drag(DragMode::Scrollbar(ScrollbarDrag {
                 scroll_view: sv,
                 axis: axis.axis,
                 last_pos,
@@ -1139,7 +1191,7 @@ impl ElementTree {
             }
         }
         drag.last_pos = pos;
-        self.pointer_gesture.begin_drag(DragMode::Scrollbar(drag));
+        self.interaction.pointer_gesture.begin_drag(DragMode::Scrollbar(drag));
     }
 
     /// 押下がフローティングツールバーのボタンに当たればそれを実行する。ツールバーが
@@ -1355,8 +1407,8 @@ impl ElementTree {
     /// `selectable` サブツリー外の押下は選択をクリアし、ドラッグを始めない。
     fn begin_selection_at(&mut self, x: f32, y: f32, modifiers: u32) {
         let Some(point) = self.selection_point_at(x, y) else {
-            self.pointer_gesture.end_drag();
-            self.pointer_gesture.reset_taps();
+            self.interaction.pointer_gesture.end_drag();
+            self.interaction.pointer_gesture.reset_taps();
             if self.selection.is_some() {
                 self.set_selection(None);
             }
@@ -1369,22 +1421,22 @@ impl ElementTree {
         if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
             // Shift+クリックは focus を調整。ドラッグを続けられるよう drag に留まる
             // が、マルチクリック周期は進めない。
-            self.pointer_gesture.begin_drag(DragMode::Selection);
-            self.pointer_gesture.note_single_tap(x, y);
+            self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
+            self.interaction.pointer_gesture.note_single_tap(x, y);
             return;
         }
 
-        match self.pointer_gesture.classify_tap(x, y) {
+        match self.interaction.pointer_gesture.classify_tap(x, y) {
             TapPhase::Caret => {
-                self.pointer_gesture.begin_drag(DragMode::Selection);
+                self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
                 self.set_selection(Some(Selection::caret(point)));
             }
             TapPhase::Word => {
-                self.pointer_gesture.end_drag();
+                self.interaction.pointer_gesture.end_drag();
                 self.select_bounds_at(point, selection::word_bounds);
             }
             TapPhase::Paragraph => {
-                self.pointer_gesture.end_drag();
+                self.interaction.pointer_gesture.end_drag();
                 self.select_bounds_at(point, selection::line_bounds);
             }
         }
@@ -1426,17 +1478,17 @@ impl ElementTree {
             if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
                 edit.move_focus(offset);
             }
-            self.pointer_gesture.begin_drag(DragMode::Edit(input));
-            self.pointer_gesture.note_single_tap(x, y);
+            self.interaction.pointer_gesture.begin_drag(DragMode::Edit(input));
+            self.interaction.pointer_gesture.note_single_tap(x, y);
             self.finish_edit_selection(input);
             return true;
         }
 
         // 同じ箇所付近の押下回数でキャレット → 単語 → 行を巡回する。単語と行は
         // Mouse/Pen の拡張で、Touch ではどの押下もキャレットのまま留まる。
-        let phase = self.pointer_gesture.classify_tap(x, y);
+        let phase = self.interaction.pointer_gesture.classify_tap(x, y);
         let bounds: Option<fn(&str, usize) -> (usize, usize)> =
-            match (phase, self.last_pointer_kind == PointerKind::Touch) {
+            match (phase, self.interaction.last_pointer_kind == PointerKind::Touch) {
                 (TapPhase::Word, false) => Some(selection::word_bounds),
                 (TapPhase::Paragraph, false) => Some(selection::line_bounds),
                 _ => None,
@@ -1452,7 +1504,7 @@ impl ElementTree {
         }
         // 単語／行選択はドラッグ拡張不可（読み取り専用経路と同等）。キャレットは
         // ユーザが拡張できるようドラッグを構える。
-        self.pointer_gesture.begin_drag(if bounds.is_none() {
+        self.interaction.pointer_gesture.begin_drag(if bounds.is_none() {
             DragMode::Edit(input)
         } else {
             DragMode::None
@@ -1919,6 +1971,7 @@ impl ElementTree {
             &mut self.interaction,
             Interaction {
                 focused_element: focused,
+                ..Interaction::default()
             },
         );
         let consumed = interaction.apply_intent(self, intent);
@@ -1987,10 +2040,6 @@ impl InteractionTreeView for ElementTree {
         self.layout.last_cursor_toggle_ms = None;
     }
 
-    fn pointer_kind(&self) -> PointerKind {
-        self.last_pointer_kind
-    }
-
     fn collapse_edit_selection(&mut self, id: ElementId) {
         self.collapse_edit_selection_of(id);
     }
@@ -2038,7 +2087,6 @@ mod seam_tests {
         focus_effects: Vec<ElementId>,
         blur_effects: Vec<ElementId>,
         collapsed: Vec<ElementId>,
-        pointer_kind: PointerKind,
         /// `Edit` arm が seam を通って届いた `(target, intent)` の記録。
         edits: Vec<(ElementId, EditIntent)>,
         /// `apply_edit` が返す「消費した」フラグ（テストごとに差し替える）。
@@ -2052,7 +2100,6 @@ mod seam_tests {
                 focus_effects: Vec::new(),
                 blur_effects: Vec::new(),
                 collapsed: Vec::new(),
-                pointer_kind: PointerKind::Mouse,
                 edits: Vec::new(),
                 edit_consumes: true,
             }
@@ -2068,9 +2115,6 @@ mod seam_tests {
         }
         fn apply_blur_effects(&mut self, id: ElementId) {
             self.blur_effects.push(id);
-        }
-        fn pointer_kind(&self) -> PointerKind {
-            self.pointer_kind
         }
         fn collapse_edit_selection(&mut self, id: ElementId) {
             self.collapsed.push(id);
@@ -2144,11 +2188,12 @@ mod seam_tests {
 
     #[test]
     fn touch_blur_collapses_edit_selection_before_blur_event() {
-        let mut interaction = Interaction::default();
-        let mut view = FakeView {
-            pointer_kind: PointerKind::Touch,
-            ..FakeView::default()
+        // pointer 種別は `Interaction` が所有する（#572）ので、それを Touch にする。
+        let mut interaction = Interaction {
+            last_pointer_kind: PointerKind::Touch,
+            ..Interaction::default()
         };
+        let mut view = FakeView::default();
         let (a, b) = (id(1), id(2));
         interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
         view.events.clear();

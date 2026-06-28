@@ -205,42 +205,13 @@ pub struct ElementTree {
     /// focus state（`render` のカーソル点滅を進めるための focus 要素、ADR-0032）を
     /// 持ち、`apply_intent` 単一 seam 越しに遷移する。hover / active / press 位置 /
     /// `PointerGesture` 等は後続 slice でここへ移ってくる。
+    /// 横断的 interaction state（focus / hover / active / press 位置 /
+    /// `PointerGesture` / modality / pointer-pos / cursor / touch scroll）を所有する
+    /// deep module（ADR-0122 / #572）。これらの field は `Interaction` 側にあり、
+    /// tree からは `self.interaction.*` 越しに借りる。
     pub(crate) interaction: crate::element::interaction::Interaction,
-    /// 直近入力イベントのモダリティ。ネイティブフォーカスリングの `:focus-visible`
-    /// 判定を駆動する（ADR-0102）。
-    pub(crate) last_input_modality: crate::element::interaction::InputModality,
-    /// 直近ポインタ操作の物理デバイス。インタラクションごとに保持する。
-    /// `last_input_modality` とは独立した軸で、タッチ押下は `InputModality::Pointer`
-    /// かつ `PointerKind::Touch` になる。
-    pub(crate) last_pointer_kind: crate::element::pointer::PointerKind,
-    /// CSS `:hover` に一致する要素（ポインタ下の自身または子孫）。
-    pub(crate) hovered_elements: HashSet<ElementId>,
-    pub(crate) active_element: Option<ElementId>,
-    /// 現在の押下（`active_element`）が始まった canvas 位置。クリックはリリースで
-    /// 確定する（ADR-0082）ので、押下時の座標を覚えておき pointer-up の `Click` に
-    /// 載せる。押下が（スクロール乗っ取り等で）キャンセルされると `active_element`
-    /// とともにクリアされ、以降のリリースはクリックを発火しない。
-    pub(crate) active_press_pos: Option<(f32, f32)>,
     /// 文書全体で唯一のテキスト選択（ADR-0097）。文書全体で同時に高々 1 つ。
     pub(crate) selection: Option<crate::element::selection::Selection>,
-    /// ポインタジェスチャ分類器（ADR-0066）。進行中のドラッグ種別（読み取り専用
-    /// 選択／編集選択／スクロールバーつまみは排他）と、単語／段落ジェスチャ用の
-    /// マルチクリック追跡を単独所有する。散らばった `*_drag` ブール値と生の
-    /// マルチクリックフィールドを一つの名前付き状態に集約する。
-    pub(crate) pointer_gesture: crate::element::pointer_gesture::PointerGesture,
-    /// 前回 render 以降に Touch モダリティでスクロールし、一時インジケータを
-    /// 再表示すべき ScrollView（ADR-0110）。スクロール seam がタイムスタンプを
-    /// 持たないため render 時にホストクロックで刻む（カーソル点滅と同じ
-    /// flag-then-stamp 形、ADR-0032）。
-    pub(crate) touch_scroll_pending: HashSet<ElementId>,
-    /// ScrollView をキーにした稼働中の Touch 一時インジケータ。エントリは show→fade
-    /// 窓内にある間だけ存在し、完全にフェードすると破棄される。静止した Touch 面は
-    /// 何も保持しない（常時表示バーなし）。
-    pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
-    /// サブピクセル move の重複排除用の直近ポインタ位置（ADR-0066）。
-    pub(crate) last_pointer_pos: Option<(f32, f32)>,
-    /// ポインタ下で直近に解決したカーソル。合成 move で報告する（ADR-0088）。
-    pub(crate) last_cursor: CursorValue,
     pub(crate) runtime: DocumentRuntime,
     /// コピー用のプラットフォームクリップボード（ADR-0097）。Platform Adapter が
     /// インストールするまで `None` で、その間コピーは no-op。core は選択テキストを
@@ -272,20 +243,7 @@ impl ElementTree {
             scene_lowering: SceneLowering::default(),
             event_queue: Vec::new(),
             interaction: crate::element::interaction::Interaction::default(),
-            // 最初のキーボードイベントまで Pointer。未フォーカス/ポインタ駆動直後の
-            // UI がボタンに余計なリングを出さないように。
-            last_input_modality: crate::element::interaction::InputModality::Pointer,
-            // 最初の実ポインタイベントがデバイスを報告するまで Mouse。
-            last_pointer_kind: crate::element::pointer::PointerKind::Mouse,
-            hovered_elements: HashSet::new(),
-            active_element: None,
-            active_press_pos: None,
             selection: None,
-            pointer_gesture: crate::element::pointer_gesture::PointerGesture::default(),
-            touch_scroll_pending: HashSet::new(),
-            touch_scroll_indicators: HashMap::new(),
-            last_pointer_pos: None,
-            last_cursor: CursorValue::Default,
             runtime: DocumentRuntime::new(),
             clipboard: None,
             selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),
@@ -363,8 +321,8 @@ impl ElementTree {
 
     pub fn interaction_snapshot(&self) -> InteractionSnapshot {
         InteractionSnapshot {
-            hovered: self.hovered_elements.clone(),
-            active: self.active_element,
+            hovered: self.interaction.hovered_elements.clone(),
+            active: self.interaction.active_element,
             focused: self.interaction.focused_element,
         }
     }
@@ -693,13 +651,13 @@ impl ElementTree {
     /// 直近入力イベントのモダリティ（ADR-0102）。`:focus-visible` を駆動する
     /// Pointer/Keyboard の軸。[`last_pointer_kind`](Self::last_pointer_kind) とは独立。
     pub fn last_input_modality(&self) -> crate::element::interaction::InputModality {
-        self.last_input_modality
+        self.interaction.last_input_modality
     }
 
     /// 直近ポインタ操作の物理デバイス。インタラクションごとに保持する。最初の
     /// ポインタイベントがデバイスを報告するまで `Mouse`。
     pub fn last_pointer_kind(&self) -> crate::element::pointer::PointerKind {
-        self.last_pointer_kind
+        self.interaction.last_pointer_kind
     }
 
     /// ネイティブフォーカスリングを表示すべきときのフォーカス要素。Chromium の
@@ -710,7 +668,7 @@ impl ElementTree {
         use crate::element::interaction::InputModality;
         let id = self.interaction.focused_element?;
         let kind = self.elements.get(&id)?.kind;
-        let visible = match self.last_input_modality {
+        let visible = match self.interaction.last_input_modality {
             InputModality::Keyboard => true,
             InputModality::Pointer => kind == ElementKind::TextInput,
         };
@@ -723,21 +681,21 @@ impl ElementTree {
     /// 抜けるとき まだ active）から始まる（ADR-0089）。`active_element` を書くのは
     /// この経路のみで、擬似状態の無効化なしに状態が切り替わることはない。
     pub(crate) fn set_active_element(&mut self, next: Option<ElementId>) {
-        if self.active_element == next {
+        if self.interaction.active_element == next {
             return;
         }
-        if let Some(prev) = self.active_element {
+        if let Some(prev) = self.interaction.active_element {
             self.mark_pseudo_activation_dirty(prev, PseudoState::Active);
         }
         if let Some(now) = next {
             self.mark_pseudo_activation_dirty(now, PseudoState::Active);
         }
-        self.active_element = next;
+        self.interaction.active_element = next;
         // 押下が終わる/切り替わると保留中タップの起点は無効になる。リリースで
         // クリックを発火する pointer-up 経路が起点を読むので、ここで一括クリアして
         // キャンセルされた押下が古い座標でクリックするのを防ぐ。
         if next.is_none() {
-            self.active_press_pos = None;
+            self.interaction.active_press_pos = None;
         }
     }
 
@@ -997,9 +955,9 @@ impl ElementTree {
         // 操作可能つまみに対する Touch 側の相当物（ADR-0110）。刻みはホストクロックを
         // 所有する render に委ねる。
         if scrolled_scroll_view
-            && self.last_pointer_kind == crate::element::pointer::PointerKind::Touch
+            && self.interaction.last_pointer_kind == crate::element::pointer::PointerKind::Touch
         {
-            self.touch_scroll_pending.insert(id);
+            self.interaction.touch_scroll_pending.insert(id);
         }
     }
 
@@ -1009,7 +967,7 @@ impl ElementTree {
     /// （`advance_touch_scroll_indicators`）計算されるので lowering は独自クロックを
     /// 持たない。
     pub(crate) fn touch_scroll_indicator_opacity(&self, id: ElementId) -> f32 {
-        self.touch_scroll_indicators
+        self.interaction.touch_scroll_indicators
             .get(&id)
             .map_or(0.0, |i| i.fade)
     }
@@ -1364,9 +1322,9 @@ impl ElementTree {
                 self.interaction.focused_element = None;
                 self.layout.last_cursor_toggle_ms = None;
             }
-            self.hovered_elements.remove(&node);
-            if self.active_element == Some(node) {
-                self.active_element = None;
+            self.interaction.hovered_elements.remove(&node);
+            if self.interaction.active_element == Some(node) {
+                self.interaction.active_element = None;
             }
         }
         if self.root == Some(id) {
@@ -1381,14 +1339,14 @@ impl ElementTree {
             Some(hit) => hover_set_for_hit(&self.elements, hit),
             None => HashSet::new(),
         };
-        let (entered, left) = diff_hover_sets(&self.hovered_elements, &next);
+        let (entered, left) = diff_hover_sets(&self.interaction.hovered_elements, &next);
         for id in &entered {
             self.mark_pseudo_activation_dirty(*id, PseudoState::Hover);
         }
         for id in &left {
             self.mark_pseudo_activation_dirty(*id, PseudoState::Hover);
         }
-        self.hovered_elements = next;
+        self.interaction.hovered_elements = next;
         (entered, left)
     }
 
@@ -1397,7 +1355,7 @@ impl ElementTree {
     /// HTML hover 経路は要素の `:hover` 見た目を再 lowering せずに hover 状態を変えら
     /// れない。集合が変わったかどうかを返す。
     pub fn hover_enter_element(&mut self, id: ElementId) -> bool {
-        if self.hovered_elements.insert(id) {
+        if self.interaction.hovered_elements.insert(id) {
             self.mark_pseudo_activation_dirty(id, PseudoState::Hover);
             true
         } else {
@@ -1408,7 +1366,7 @@ impl ElementTree {
     /// HTML `mouseleave` 経路: 離れた要素の hover をクリアし、`:hover` 無効化を同一
     /// 操作内でマークする（ADR-0100）。集合が変わったかどうかを返す。
     pub fn hover_leave_element(&mut self, id: ElementId) -> bool {
-        if self.hovered_elements.remove(&id) {
+        if self.interaction.hovered_elements.remove(&id) {
             self.mark_pseudo_activation_dirty(id, PseudoState::Hover);
             true
         } else {
@@ -1565,8 +1523,8 @@ impl ElementTree {
     /// 進める。最後の 1 つが落ち着くとフレームループは静止する（進行中トランジション /
     /// カーソル点滅の刻みと同形、ADR-0086/0093/0032）。
     fn advance_touch_scroll_indicators(&mut self, now_ms: f64) {
-        for id in std::mem::take(&mut self.touch_scroll_pending) {
-            self.touch_scroll_indicators.insert(
+        for id in std::mem::take(&mut self.interaction.touch_scroll_pending) {
+            self.interaction.touch_scroll_indicators.insert(
                 id,
                 TouchScrollIndicator {
                     shown_at_ms: now_ms,
@@ -1575,7 +1533,7 @@ impl ElementTree {
             );
         }
         let mut dirty = Vec::new();
-        self.touch_scroll_indicators.retain(|&id, ind| {
+        self.interaction.touch_scroll_indicators.retain(|&id, ind| {
             let elapsed = now_ms - ind.shown_at_ms;
             ind.fade = scene_build::touch_scroll_indicator_fade(elapsed);
             // インジケータが稼働中は箱を再 lowering し続け、fade をフレームごとに
