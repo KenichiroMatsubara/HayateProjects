@@ -106,8 +106,6 @@ pub struct TextLayout {
     pub runs: Vec<Arc<TextRunData>>,
     pub font_size: f32,
     pub text: Arc<str>,
-    /// 直近に使った幅制約。None なら単一行。
-    pub width_constraint: Option<f32>,
     /// シェーピング中に .notdef グリフが検出されたフォントファミリ名。
     /// 各エントリは動的に読み込むべきフォントを示す。
     pub missing_families: Vec<&'static str>,
@@ -214,7 +212,6 @@ pub fn build_text_layout(
         runs,
         font_size,
         text: Arc::<str>::from(text),
-        width_constraint: max_advance,
         missing_families,
         range_map: None,
     }
@@ -346,7 +343,6 @@ pub fn build_ranged_text_layout(
         runs,
         font_size: default_font_size,
         text: Arc::<str>::from(final_text),
-        width_constraint: max_advance,
         missing_families,
         range_map: None,
     }

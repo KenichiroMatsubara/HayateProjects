@@ -13,14 +13,52 @@ use linebender_resource_handle::Blob;
 use parley::{FontContext, LayoutContext};
 
 use crate::element::id::ElementId;
+use crate::element::inline_text;
 use crate::element::style::FontStyleValue;
+use crate::element::taffy_projection::TaffyProjection;
 use crate::element::text::{self, TextBrush, TextLayout};
 use crate::element::tree::Element;
 
+/// 幅キーのシェイプメモのマッチング許容幅（px）。Taffy の確定（unrounded）インナー幅は
+/// 丸めや浮動小数差で measure 時に使った幅と僅かにずれ得るため、この許容内なら同一幅と
+/// みなしメモを再利用する。ミスしても finalize がその場で box幅シェイプ（無メモ版）へ
+/// 優雅に劣化するので、正しさには影響しない純粋な最適化のための tunable。
+const SHAPE_MEMO_WIDTH_TOLERANCE_PX: f32 = 0.5;
+
+/// settle ごとの幅キーのシェイプメモの 1 エントリ。
+struct ShapeMemoEntry {
+    /// このレイアウトを生成した `max_advance`（`None` = 無制約）。メモキーの幅成分。
+    width: Option<f32>,
+    layout: TextLayout,
+}
+
+/// 2 つのメモキー幅が許容内で一致するか（[`SHAPE_MEMO_WIDTH_TOLERANCE_PX`]）。
+fn width_keys_match(a: Option<f32>, b: Option<f32>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => (x - y).abs() <= SHAPE_MEMO_WIDTH_TOLERANCE_PX,
+        _ => false,
+    }
+}
+
+/// `finalize` の戻り値。欠落フォント family（値で返し、`FetchFont` 発行は呼び出し側が 1 箇所で行う）
+/// と、retain した（shape を消化した）IFC ルート集合。
+pub(crate) struct FinalizeOutcome {
+    /// 取得すべき欠落 family 名（notdef 検出 + 名前付き先読みで collection 未登録のもの）。
+    pub(crate) missing_families: Vec<String>,
+    /// このパスで `text_layout` を retain した IFC ルート。呼び出し側が `shape_dirty` から外す。
+    pub(crate) finalized: Vec<ElementId>,
+}
+
 /// font collection と `LayoutContext` を所有し、全テキストを整形する内部 module。
+/// settle ごとの幅キーのシェイプメモを抱え、「retained グリフは最終ボックス幅で
+/// シェイプされる」box幅不変条件を `finalize` が機械的に保証する。
 pub(crate) struct TextShaper {
     font_cx: FontContext,
     layout_cx: LayoutContext<TextBrush>,
+    /// settle ごとの幅キーのシェイプメモ。`(eid, 幅)` でメモ化し、`begin_layout` でクリアする。
+    /// measure が埋め、finalize が box幅エントリを消化する。
+    shape_memo: HashMap<ElementId, Vec<ShapeMemoEntry>>,
 }
 
 impl TextShaper {
@@ -30,6 +68,7 @@ impl TextShaper {
         Self {
             font_cx,
             layout_cx: LayoutContext::new(),
+            shape_memo: HashMap::new(),
         }
     }
 
@@ -67,22 +106,150 @@ impl TextShaper {
         )
     }
 
-    /// IFC ルートのサブツリーを単一の Parley レイアウト＋バイト→要素マップに整形する。
-    pub(crate) fn shape_ifc(
+    /// 新しいレイアウトパスの開始。settle ごとの幅キーのシェイプメモをクリアする。
+    pub(crate) fn begin_layout(&mut self) {
+        self.shape_memo.clear();
+    }
+
+    /// Taffy への寸法回答。IFC ルート `eid` を `max_advance` で整形し、幅キーのメモを埋め、
+    /// レイアウトの `(width, height)` を返す。同じ `(eid, 幅)` が既にメモにあれば再シェイプしない。
+    pub(crate) fn measure(
         &mut self,
         elements: &HashMap<ElementId, Element>,
-        ifc_root_id: ElementId,
+        eid: ElementId,
         max_advance: Option<f32>,
         viewport: (f32, f32),
-    ) -> TextLayout {
-        crate::element::inline_text::shape(
+    ) -> (f32, f32) {
+        if let Some(entries) = self.shape_memo.get(&eid) {
+            if let Some(e) = entries
+                .iter()
+                .find(|e| width_keys_match(e.width, max_advance))
+            {
+                return layout_size(&e.layout);
+            }
+        }
+        let layout = inline_text::shape(
             elements,
-            ifc_root_id,
+            eid,
             max_advance,
             &mut self.font_cx,
             &mut self.layout_cx,
             viewport,
-        )
+        );
+        let size = layout_size(&layout);
+        self.shape_memo
+            .entry(eid)
+            .or_default()
+            .push(ShapeMemoEntry {
+                width: max_advance,
+                layout,
+            });
+        size
+    }
+
+    /// box幅不変条件の機械的保証。measure 済みの全 IFC ルートについて、Taffy の確定
+    /// （unrounded）インナーボックス幅で `text_layout` を retain する。幅キーのメモに box幅
+    /// 一致エントリがあれば再利用し（通常ケース＝measure が既に box幅で shape 済み）、無ければ
+    /// その場で box幅シェイプ（無メモ劣化＝決して間違わない）。欠落 family を値で返す。
+    pub(crate) fn finalize_ifc(
+        &mut self,
+        projection: &TaffyProjection,
+        elements: &mut HashMap<ElementId, Element>,
+        viewport: (f32, f32),
+    ) -> FinalizeOutcome {
+        let mut missing_families: Vec<String> = Vec::new();
+        let mut finalized: Vec<ElementId> = Vec::new();
+        let eids: Vec<ElementId> = self.shape_memo.keys().copied().collect();
+
+        for eid in eids {
+            // 確定（unrounded）インナーボックス幅。Taffy は整数ピクセルへ丸めるため、丸め前の
+            // 幅で揃えればグリフ折返しがレイアウトの決めた幅と厳密に一致する。
+            let inner_w = projection.node_id(eid).map(|node| {
+                let l = projection.taffy.unrounded_layout(node);
+                l.size.width - l.padding.left - l.padding.right - l.border.left - l.border.right
+            });
+
+            let layout = match inner_w {
+                Some(w) if w.is_finite() && w > 0.0 => self.take_or_shape(elements, eid, w, viewport),
+                // box幅不明: measure 済みの last-wins レイアウトを使う（reshape しない）。
+                _ => self.take_last(eid),
+            };
+            let Some(mut layout) = layout else { continue };
+            if layout.text.is_empty() {
+                continue;
+            }
+
+            // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
+            restamp_run_text(&mut layout);
+
+            // 欠落 family（notdef 検出）を値として収集する。
+            for &fam in &layout.missing_families {
+                missing_families.push(fam.to_string());
+            }
+            // 名前付きフォントの先読み。Latin フォントは .notdef を生まず script 検出が発火しない。
+            // 解決した family が collection 未登録なら取得対象に加える（`font-family` スタックを
+            // エントリ単位で解決）。
+            let named: Vec<String> = elements
+                .get(&eid)
+                .and_then(|el| el.visual.font_family.clone())
+                .map(|fam| {
+                    text::parse_font_family_list(&fam)
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            for resolved in named {
+                if resolved != text::DEFAULT_FONT_FAMILY && !self.has_family(&resolved) {
+                    missing_families.push(resolved);
+                }
+            }
+
+            if let Some(el) = elements.get_mut(&eid) {
+                el.text_layout = Some(layout);
+            }
+            finalized.push(eid);
+        }
+
+        self.shape_memo.clear();
+        FinalizeOutcome {
+            missing_families,
+            finalized,
+        }
+    }
+
+    /// `eid` の幅 `width` のメモエントリがあれば取り出し、無ければその場で box幅シェイプする。
+    fn take_or_shape(
+        &mut self,
+        elements: &HashMap<ElementId, Element>,
+        eid: ElementId,
+        width: f32,
+        viewport: (f32, f32),
+    ) -> Option<TextLayout> {
+        if let Some(entries) = self.shape_memo.get_mut(&eid) {
+            if let Some(idx) = entries
+                .iter()
+                .position(|e| width_keys_match(e.width, Some(width)))
+            {
+                return Some(entries.remove(idx).layout);
+            }
+        }
+        Some(inline_text::shape(
+            elements,
+            eid,
+            Some(width),
+            &mut self.font_cx,
+            &mut self.layout_cx,
+            viewport,
+        ))
+    }
+
+    /// `eid` の最後に measure したレイアウト（last-wins）を取り出す。
+    fn take_last(&mut self, eid: ElementId) -> Option<TextLayout> {
+        self.shape_memo
+            .get_mut(&eid)
+            .and_then(|v| v.pop())
+            .map(|e| e.layout)
     }
 
     /// 単一テキスト（text-input のコンテンツ/プレースホルダ）を整形する。
@@ -157,6 +324,26 @@ impl Default for TextShaper {
     }
 }
 
+/// measure が Taffy へ返す寸法。空テキストは（一行分の高さを持ち得るが）ボックスを生まない
+/// ので `(0, 0)` に潰す（旧 measure クロージャの early-return ZERO と同値）。
+fn layout_size(layout: &TextLayout) -> (f32, f32) {
+    if layout.text.is_empty() {
+        (0.0, 0.0)
+    } else {
+        (layout.layout.width(), layout.layout.height())
+    }
+}
+
+/// 各 lowered run に元テキストを刻み直す（HTML モードの DOM テキストノード復元用）。
+fn restamp_run_text(layout: &mut TextLayout) {
+    let src: Arc<str> = layout.text.clone();
+    for run in &mut layout.runs {
+        if let Some(rd) = Arc::get_mut(run) {
+            rd.text = src.clone();
+        }
+    }
+}
+
 fn init_bundled_fonts(font_cx: &mut FontContext) {
     use fontique::{FontInfoOverride, GenericFamily};
 
@@ -173,5 +360,233 @@ fn init_bundled_fonts(font_cx: &mut FontContext) {
         font_cx
             .collection
             .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize, Style as TaffyStyle};
+
+    use super::*;
+    use crate::element::kind::ElementKind;
+    use crate::element::taffy_bridge::MeasureCtx;
+    use crate::element::tree::Visual;
+
+    const VIEWPORT: (f32, f32) = (800.0, 600.0);
+
+    fn base_element(kind: ElementKind, parent: Option<ElementId>) -> Element {
+        Element {
+            kind,
+            parent,
+            children: Vec::new(),
+            layout_style: TaffyStyle::default(),
+            visual: Visual::default(),
+            text: None,
+            src: None,
+            text_layout: None,
+            transform: None,
+            scroll_offset: (0.0, 0.0),
+            src_image: None,
+            edit: None,
+            cursor_visible: false,
+            content_layout: None,
+            aria_label: None,
+            role: None,
+            pseudo_styles: Default::default(),
+            disabled: false,
+            selectable: false,
+            user_select: crate::element::style::UserSelectValue::Text,
+            multiline: false,
+            viewport_variants: Vec::new(),
+        }
+    }
+
+    /// 幅 `box_w` の column コンテナ root に、stretch で box 幅へ広がる単一 IFC テキスト子を置く。
+    /// stretch によりテキストノードの確定幅が `box_w` になるので、finalize の box幅 retain を
+    /// 観測できる（狭ければ折り返す）。
+    fn one_text_in_box(
+        text: &str,
+        font_family: Option<&str>,
+        box_w: f32,
+    ) -> (HashMap<ElementId, Element>, ElementId, ElementId) {
+        let root_id = ElementId::from_u64(1);
+        let text_id = ElementId::from_u64(2);
+
+        let mut root = base_element(ElementKind::View, None);
+        root.children = vec![text_id];
+        root.layout_style = TaffyStyle {
+            flex_direction: taffy::FlexDirection::Column,
+            size: TaffySize {
+                width: TaffyDim::Length(box_w),
+                height: TaffyDim::Auto,
+            },
+            ..Default::default()
+        };
+
+        let mut text_el = base_element(ElementKind::Text, Some(root_id));
+        text_el.text = Some(text.to_string());
+        text_el.visual.font_size = Some(16.0);
+        text_el.visual.font_family = font_family.map(|s| s.to_string());
+
+        let mut elements = HashMap::new();
+        elements.insert(root_id, root);
+        elements.insert(text_id, text_el);
+        (elements, root_id, text_id)
+    }
+
+    /// テキストレイアウトのために最小の Taffy projection を組み、measure を整形器へ配線して
+    /// compute し、`finalize_ifc` を呼ぶ。retained `text_layout` を要素へ書き込み、outcome を返す。
+    fn lay_out(
+        shaper: &mut TextShaper,
+        elements: &mut HashMap<ElementId, Element>,
+        root: ElementId,
+    ) -> FinalizeOutcome {
+        let mut projection = TaffyProjection::new();
+        projection.set_layout_viewport(VIEWPORT);
+        let mut structure_dirty: HashSet<ElementId> = HashSet::new();
+        projection.reconcile(&*elements, root, &mut structure_dirty);
+
+        let root_node = projection.node_id(root).expect("root projected node");
+        let available = TaffySize {
+            width: AvailableSpace::Definite(VIEWPORT.0),
+            height: AvailableSpace::Definite(VIEWPORT.1),
+        };
+
+        shaper.begin_layout();
+        {
+            let taffy = &mut projection.taffy;
+            let _ = taffy.compute_layout_with_measure(
+                root_node,
+                available,
+                |known_dims, available_space, _node, ctx, _style| {
+                    let eid = match ctx {
+                        Some(MeasureCtx::Text(eid)) => *eid,
+                        _ => return TaffySize::ZERO,
+                    };
+                    if elements.get(&eid).is_none() {
+                        return TaffySize::ZERO;
+                    }
+                    let max_advance = match known_dims.width {
+                        Some(w) => Some(w),
+                        None => match available_space.width {
+                            AvailableSpace::Definite(w) => Some(w),
+                            AvailableSpace::MaxContent => None,
+                            AvailableSpace::MinContent => Some(0.0),
+                        },
+                    };
+                    let (width, height) = shaper.measure(elements, eid, max_advance, VIEWPORT);
+                    TaffySize { width, height }
+                },
+            );
+        }
+        shaper.finalize_ifc(&projection, elements, VIEWPORT)
+    }
+
+    /// 整形器の `measure` は幅キーでメモ化する: 同一 `(eid, 幅)` の再 measure は再シェイプせず
+    /// 同じ寸法を返し（決定性）、メモのエントリは増えない。異なる幅は別エントリになる。
+    #[test]
+    fn measure_is_memoized_per_width_key_and_deterministic() {
+        let mut shaper = TextShaper::new();
+        let (elements, _root, text_id) = one_text_in_box("hello world foo bar", None, 200.0);
+
+        shaper.begin_layout();
+        let first = shaper.measure(&elements, text_id, Some(200.0), VIEWPORT);
+        let again = shaper.measure(&elements, text_id, Some(200.0), VIEWPORT);
+        assert_eq!(first, again, "same (eid, width) must return identical size");
+        assert_eq!(
+            shaper.shape_memo.get(&text_id).map(|v| v.len()),
+            Some(1),
+            "re-measuring the same width key must not append a second memo entry"
+        );
+
+        // 許容幅内（< 0.5px）の幅も同一キーとみなし再シェイプしない。
+        let near = shaper.measure(&elements, text_id, Some(200.3), VIEWPORT);
+        assert_eq!(first, near, "widths within tolerance share the memo entry");
+        assert_eq!(shaper.shape_memo.get(&text_id).map(|v| v.len()), Some(1));
+
+        // はっきり異なる幅は別エントリ。
+        let _ = shaper.measure(&elements, text_id, Some(60.0), VIEWPORT);
+        assert_eq!(
+            shaper.shape_memo.get(&text_id).map(|v| v.len()),
+            Some(2),
+            "a distinct width key must create a new memo entry"
+        );
+    }
+
+    /// `finalize_ifc` は retained `text_layout` を projection の確定ボックス幅でシェイプする。
+    /// 狭い箱では折り返して複数行になり、レイアウト幅は箱幅を超えない。広い箱では 1 行。
+    #[test]
+    fn finalize_retains_glyphs_at_projection_box_width() {
+        let text = "hello world foo bar baz qux";
+
+        // 狭い箱（60px）: 折り返して複数行、幅は箱に収まる。
+        let mut shaper = TextShaper::new();
+        let (mut narrow, root, text_id) = one_text_in_box(text, None, 60.0);
+        let _ = lay_out(&mut shaper, &mut narrow, root);
+        let tl = narrow[&text_id]
+            .text_layout
+            .as_ref()
+            .expect("finalize must retain text_layout");
+        let narrow_lines = tl.layout.lines().count();
+        assert!(
+            narrow_lines > 1,
+            "narrow box must wrap to multiple lines, got {narrow_lines}"
+        );
+        assert!(
+            tl.layout.width() <= 60.0 + SHAPE_MEMO_WIDTH_TOLERANCE_PX,
+            "retained glyphs must wrap within the box width, got {}",
+            tl.layout.width()
+        );
+
+        // 広い箱（600px）: 同じテキストが 1 行に収まる。box幅で retain される証左。
+        let mut shaper = TextShaper::new();
+        let (mut wide, root, text_id) = one_text_in_box(text, None, 600.0);
+        let _ = lay_out(&mut shaper, &mut wide, root);
+        let wide_lines = wide[&text_id]
+            .text_layout
+            .as_ref()
+            .expect("finalize must retain text_layout")
+            .layout
+            .lines()
+            .count();
+        assert_eq!(wide_lines, 1, "wide box must keep the text on one line");
+    }
+
+    /// 同一入力での `finalize` は決定的: 行数が再現する。
+    #[test]
+    fn finalize_is_deterministic_across_runs() {
+        let text = "hello world foo bar baz qux";
+        let lines = || -> usize {
+            let mut shaper = TextShaper::new();
+            let (mut elements, root, text_id) = one_text_in_box(text, None, 60.0);
+            let _ = lay_out(&mut shaper, &mut elements, root);
+            elements[&text_id]
+                .text_layout
+                .as_ref()
+                .unwrap()
+                .layout
+                .lines()
+                .count()
+        };
+        assert_eq!(lines(), lines(), "finalize line count must be deterministic");
+    }
+
+    /// `finalize_ifc` は欠落 family を値で返す: collection 未登録の名前付き `font-family` は
+    /// 先読み取得対象として戻り集合に載る（`FetchFont` 発行は呼び出し側の 1 箇所が行う）。
+    #[test]
+    fn finalize_returns_missing_named_family() {
+        let mut shaper = TextShaper::new();
+        let (mut elements, root, _text_id) = one_text_in_box("hello", Some("Inter"), 600.0);
+        let outcome = lay_out(&mut shaper, &mut elements, root);
+        assert!(
+            outcome
+                .missing_families
+                .iter()
+                .any(|f| f == "Inter"),
+            "an unregistered named family must be returned as missing, got {:?}",
+            outcome.missing_families
+        );
     }
 }

@@ -275,18 +275,19 @@ impl LayoutPass {
             ..
         } = self;
 
-        // 2 パス構成。measure クロージャ内で生成したテキストレイアウトを退避し、
-        // compute_layout から戻った後に各要素へ書き戻す。
-        let mut pending: HashMap<ElementId, TextLayout> = HashMap::new();
+        // 整形器に新しいレイアウトパスの開始を知らせ、幅キーのシェイプメモをクリアする。
+        shaper.begin_layout();
+
+        // measure を整形器へ配線する。IFC テキストは整形器の measure がシェイプしてメモを埋め、
+        // `text-input` の UA デフォルト幅（ADR-0109）はフィールド自身のテキストに依存しない
+        // フォント相対の固有コンテンツ幅を返す。明示 `width` / `flex-grow` / stretch は Taffy の
+        // 固有解決でこれより優先される。
         {
             let taffy = &mut projection.taffy;
             let _ = taffy.compute_layout_with_measure(
                 root_taffy,
                 available,
                 |known_dims, available_space, _node_id, ctx, _style| {
-                    // `text-input` の UA デフォルト幅（ADR-0109）。フィールド自身のテキストに
-                    // 依存しない、フォント相対の固有コンテンツ幅。明示 `width` / `flex-grow` /
-                    // stretch は Taffy の固有解決でこれより優先される。
                     if let Some(MeasureCtx::TextInput(eid)) = ctx {
                         let eid = *eid;
                         let (font_size, font_weight, font_style, font_family) = {
@@ -329,93 +330,24 @@ impl LayoutPass {
                             AvailableSpace::MinContent => Some(0.0),
                         },
                     };
-                    let layout = shaper.shape_ifc(elements, eid, max_advance, viewport);
-                    if layout.text.is_empty() {
-                        return TaffySize::ZERO;
-                    }
-                    let size = TaffySize {
-                        width: layout.layout.width(),
-                        height: layout.layout.height(),
-                    };
-                    pending.insert(eid, layout);
-                    size
+                    let (width, height) = shaper.measure(elements, eid, max_advance, viewport);
+                    TaffySize { width, height }
                 },
             );
         }
 
-        for (eid, mut layout) in pending {
-            // measure クロージャは Taffy のサイズ解決中に何度も呼ばれ、`pending` は最後の呼び出しの
-            // シェイプ結果を保持する（last-wins）。ところが Taffy は確定サイズの後にも intrinsic
-            // size プローブ（min/max-content）を走らせることがあり、特に `align-items: baseline` の
-            // 行ではその最後が MinContent（max_advance=0）になって、テキストが 1 文字/単語ごとに
-            // 折り返されたグリフ列を retained text_layout に残す。一方ボックス幾何は確定サイズの
-            // 測定からキャッシュされ正しい。結果、正しい幅のボックスに min-content で折り返した
-            // グリフが描かれボックスを縦にはみ出す（react-todo のタイトル折れ）。
-            //
-            // 確定後の幾何が唯一の真実なので、retained グリフを Taffy の最終解決インナー幅へ
-            // 揃え直す。最後の measure 呼び出しが既にその幅なら（非 baseline の通常ケース）
-            // 何もしない。これでグリフの折り返し幅が常にボックス幅と一致する。
-            if let Some(node) = projection.node_id(eid) {
-                // 丸め前（unrounded）の確定レイアウトを使う。Taffy は整数ピクセルへ丸めるため、
-                // 丸め後の幅は自然コンテンツ幅より最大 1px 狭くなり得る。その丸め幅で再シェイプ
-                // すると 1 行に収まるはずのテキストが余計に折り返す（例: 自然幅 70.17 → 丸め 70 →
-                // 折返し）。丸め前の確定インナー幅で揃えれば、グリフ折返しはレイアウトが
-                // ボックスを決めた幅と厳密に一致する。
-                let final_layout = projection.taffy.unrounded_layout(node);
-                let inner_w = final_layout.size.width
-                    - final_layout.padding.left
-                    - final_layout.padding.right
-                    - final_layout.border.left
-                    - final_layout.border.right;
-                let matches_final = layout
-                    .width_constraint
-                    .is_some_and(|w| (w - inner_w).abs() <= 0.5);
-                if inner_w.is_finite() && inner_w > 0.0 && !matches_final {
-                    let reshaped = shaper.shape_ifc(elements, eid, Some(inner_w), viewport);
-                    if !reshaped.text.is_empty() {
-                        layout = reshaped;
-                    }
-                }
+        // 不変条件の機械的保証: 整形器が全 IFC テキストの retained グリフ層（`text_layout`）を
+        // Taffy の確定（unrounded）ボックス幅で retain する。measure クロージャ last-wins と
+        // compute 後の後付け再シェイプ（旧 baseline 行の min-content 折返し対策）はこの 1 点に畳まれた。
+        // 欠落 family は値で返り、`FetchFont` 発行はここ 1 箇所で行う（IFC の発行サイトの集約）。
+        let outcome = shaper.finalize_ifc(projection, elements, viewport);
+        for family in outcome.missing_families {
+            if font_fetches.should_request(&family) {
+                font_fetches.mark_requested(&family);
+                event_queue.push(Event::FetchFont { family });
             }
-
-            // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
-            let src: Arc<str> = layout.text.clone();
-            for run in &mut layout.runs {
-                if let Some(rd) = Arc::get_mut(run) {
-                    rd.text = src.clone();
-                }
-            }
-            for &fam in &layout.missing_families {
-                if font_fetches.should_request(fam) {
-                    font_fetches.mark_requested(fam);
-                    event_queue.push(Event::FetchFont {
-                        family: fam.to_string(),
-                    });
-                }
-            }
-            // 名前付きフォントを先回り取得する。Latin フォントは .notdef グリフを生まず、
-            // script ベースの検出が発火しない。解決した family が fontique コレクションに
-            // 未登録なら今要求し、次の register_font() → fonts_dirty サイクルで実フォントで再整形させる。
-            if let Some(el) = elements.get(&eid) {
-                if let Some(ref fam) = el.visual.font_family {
-                    // `font-family` はスタック。カンマ区切り全体ではなく、名前付きエントリを
-                    // 個別に解決・取得する。
-                    for resolved in text::parse_font_family_list(fam) {
-                        if resolved != text::DEFAULT_FONT_FAMILY
-                            && font_fetches.should_request(resolved)
-                            && !shaper.has_family(resolved)
-                        {
-                            font_fetches.mark_requested(resolved);
-                            event_queue.push(Event::FetchFont {
-                                family: resolved.to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-            if let Some(el) = elements.get_mut(&eid) {
-                el.text_layout = Some(layout);
-            }
+        }
+        for eid in outcome.finalized {
             shape_dirty.remove(&eid);
         }
 
