@@ -10,7 +10,12 @@ export type { CanvasBackend } from './resolve-backend.js';
 export type { RawHayate, HayateEffectiveVisual, HayateColorRecord } from './raw-hayate.js';
 export {
   attachAccessibilityMirror,
+  ACCESSKIT_ROLE_TO_ARIA,
+  A11Y_ROOT_ATTR,
+  MIRROR_OPACITY,
+  MIRROR_POINTER_EVENTS,
   type DetachAccessibilityMirror,
+  type AccessibilityMirrorOptions,
 } from './accessibility-mirror.js';
 
 /**
