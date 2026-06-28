@@ -65,6 +65,77 @@ impl Selection {
     }
 }
 
+/// 文書全体で唯一のテキスト選択を所有する deep module（ADR-0097 / ADR-0122 決定4・
+/// #574）。正規化（document 順）・anchor=focus のキャレット縮退・文書全体で高々 1 つ
+/// の不変条件・contains 境界 clamp を小さな interface（set / extend / collapse-to-caret /
+/// clear / selected-range / is-empty）の裏へ集約し、誰も `anchor`/`focus` の byte offset
+/// を直接突かない。物理 storage は `Interaction` が持つ（主たる mutator）が、ここで
+/// 不変条件を守ることで「どの struct が field を持つか」は借用の都合に降格する。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DocumentSelection {
+    /// 文書全体で高々 1 つ（`Option` がその不変条件を型で表す）。
+    current: Option<Selection>,
+}
+
+impl DocumentSelection {
+    /// 選択を `selection` に設定する（document 全体で唯一に置き換える）。
+    pub fn set(&mut self, selection: Selection) {
+        self.current = Some(selection);
+    }
+
+    /// `point` のキャレット（退化選択）に設定する。
+    pub fn set_caret(&mut self, point: SelectionPoint) {
+        self.current = Some(Selection::caret(point));
+    }
+
+    /// 選択をクリアする（何も無ければ no-op）。
+    pub fn clear(&mut self) {
+        self.current = None;
+    }
+
+    /// anchor を固定したまま focus を `focus` へ移す（ドラッグ拡張 / Shift+矢印）。
+    /// 選択が無ければ何もせず `false`。拡張したら `true`。
+    pub fn extend_focus(&mut self, focus: SelectionPoint) -> bool {
+        match &mut self.current {
+            Some(sel) => {
+                sel.focus = focus;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// 選択を focus 位置のキャレットへ縮退する（single-active 強制、ADR-0097）。
+    /// 何も無ければ no-op。
+    pub fn collapse_to_caret(&mut self) {
+        if let Some(sel) = &mut self.current {
+            sel.anchor = sel.focus;
+        }
+    }
+
+    /// 現在の選択（値コピー）。read 経路はここから borrow する。
+    pub fn get(&self) -> Option<Selection> {
+        self.current
+    }
+
+    /// 現在の選択への参照。
+    pub fn as_ref(&self) -> Option<&Selection> {
+        self.current.as_ref()
+    }
+
+    /// 実質的にハイライトが無い（未選択、または退化したキャレット）とき `true`。
+    pub fn is_empty(&self) -> bool {
+        self.current.map_or(true, |s| s.is_caret())
+    }
+
+    /// `element` 内の選択バイト範囲を document 順に正規化し、`text_len` でクランプして
+    /// 返す（contains 境界 clamp）。両端点が `element` 内にないか未選択なら `None`。
+    pub fn range_within(&self, element: ElementId, text_len: usize) -> Option<(usize, usize)> {
+        let (start, end) = self.current?.range_within(element)?;
+        Some((start.min(text_len), end.min(text_len)))
+    }
+}
+
 /// 単語分割のための文字クラス。ダブルクリック（単語）選択は同一クラスの最大連続を
 /// まとめる。デスクトップのテキストビューに倣い、英数字・空白・その他を別クラスとする。
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -318,5 +389,89 @@ mod tests {
             focus: point(1, 4),
         };
         assert_eq!(sel.range_within(ElementId::from_u64(2)), None);
+    }
+
+    // --- #574: DocumentSelection deep module の不変条件 ---
+
+    #[test]
+    fn document_selection_starts_empty() {
+        let sel = DocumentSelection::default();
+        assert!(sel.is_empty(), "未選択は空");
+        assert_eq!(sel.get(), None);
+    }
+
+    #[test]
+    fn set_caret_is_empty_but_present() {
+        let mut sel = DocumentSelection::default();
+        sel.set_caret(point(1, 3));
+        // 退化したキャレットはハイライト無し（空扱い）だが選択値は存在する。
+        assert!(sel.is_empty());
+        assert!(sel.get().is_some());
+        assert!(sel.get().unwrap().is_caret());
+    }
+
+    #[test]
+    fn set_then_extend_keeps_anchor_and_widens() {
+        let mut sel = DocumentSelection::default();
+        sel.set(Selection::caret(point(1, 2)));
+        assert!(sel.extend_focus(point(1, 6)), "選択があれば拡張できる");
+        let s = sel.get().unwrap();
+        assert_eq!(s.anchor, point(1, 2), "anchor は固定");
+        assert_eq!(s.focus, point(1, 6), "focus がドラッグ点へ");
+        assert!(!sel.is_empty(), "範囲を持つので空でない");
+        assert_eq!(sel.range_within(ElementId::from_u64(1), 100), Some((2, 6)));
+    }
+
+    #[test]
+    fn extend_focus_on_empty_selection_is_a_noop() {
+        let mut sel = DocumentSelection::default();
+        assert!(!sel.extend_focus(point(1, 4)), "選択が無ければ拡張しない");
+        assert_eq!(sel.get(), None);
+    }
+
+    #[test]
+    fn drag_extends_across_elements() {
+        // ドラッグで要素をまたいで選択を広げる：anchor は要素1、focus は要素2。
+        let mut sel = DocumentSelection::default();
+        sel.set(Selection::caret(point(1, 1)));
+        sel.extend_focus(point(2, 5));
+        let s = sel.get().unwrap();
+        assert_eq!(s.anchor.element, ElementId::from_u64(1));
+        assert_eq!(s.focus.element, ElementId::from_u64(2));
+        // 単一要素 range はどちらの要素でも要素跨ぎなので None。
+        assert_eq!(sel.range_within(ElementId::from_u64(1), 100), None);
+    }
+
+    #[test]
+    fn collapse_to_caret_drops_the_range() {
+        let mut sel = DocumentSelection::default();
+        sel.set(Selection {
+            anchor: point(1, 2),
+            focus: point(1, 7),
+        });
+        assert!(!sel.is_empty());
+        sel.collapse_to_caret();
+        assert!(sel.is_empty(), "縮退でハイライト消失");
+        assert_eq!(sel.get().unwrap().focus, point(1, 7), "focus 位置のキャレットに残る");
+    }
+
+    #[test]
+    fn clear_drops_the_selection() {
+        let mut sel = DocumentSelection::default();
+        sel.set(Selection::caret(point(1, 0)));
+        sel.clear();
+        assert_eq!(sel.get(), None);
+        assert!(sel.is_empty());
+    }
+
+    #[test]
+    fn range_within_clamps_to_text_length() {
+        // contains 境界 clamp：text 長を越えるオフセットは末尾へ丸める。
+        let mut sel = DocumentSelection::default();
+        sel.set(Selection {
+            anchor: point(1, 3),
+            focus: point(1, 99),
+        });
+        assert_eq!(sel.range_within(ElementId::from_u64(1), 10), Some((3, 10)));
     }
 }

@@ -1,14 +1,17 @@
+use std::collections::{HashMap, HashSet};
+
+use crate::element::caret_geometry::{CaretGeometry, ParleyCaretGeometry};
 use crate::element::edit_state::{Direction, EditIntent, Granularity};
 use crate::element::event_spec::{event_document_kind, Event};
 use crate::element::id::ElementId;
 use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pointer::PointerKind;
-use crate::element::pointer_gesture::{DragMode, TapPhase};
+use crate::element::pointer_gesture::{DragMode, PointerGesture, TapPhase};
 use crate::element::selection::{
-    self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
+    self, DocumentSelection, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
 };
 use crate::element::style::CursorValue;
-use crate::element::tree::ElementTree;
+use crate::element::tree::{ElementTree, TouchScrollIndicator};
 use crate::element::visual_invalidation::VisualInvalidationReach;
 
 /// サブピクセルの pointer-move 重複排除しきい値（px、ADR-0066/0088）。直近の
@@ -84,29 +87,6 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     })
 }
 
-/// `offset` のキャレットが乗る表示行と、その content-local x。行はキャレットの
-/// 垂直中心を含むブロック帯の行で、最終行を越えたら最終行。垂直移動（↑/↓）と
-/// 表示行 Home/End が共有する（どちらもキャレットの現在行を基準にする）。
-fn caret_display_line(
-    layout: &parley::Layout<crate::element::text::TextBrush>,
-    offset: usize,
-) -> (usize, f32) {
-    use parley::{Affinity, Cursor};
-    let g = Cursor::from_byte_index(layout, offset, Affinity::Downstream).geometry(layout, 0.0);
-    let caret_x = g.x0 as f32;
-    let caret_mid_y = ((g.y0 + g.y1) / 2.0) as f32;
-    let line_count = layout.len();
-    let line = (0..line_count)
-        .find(|&i| {
-            layout.get(i).is_some_and(|line| {
-                let m = line.metrics();
-                caret_mid_y >= m.block_min_coord && caret_mid_y < m.block_max_coord
-            })
-        })
-        .unwrap_or_else(|| line_count.saturating_sub(1));
-    (line, caret_x)
-}
-
 /// プライマリ修飾＋文字をクリップボード／全選択の [`EditIntent`] に対応付ける
 /// （ADR-0103）。プライマリ修飾の保持は呼び出し側で確認済みなので、ここは文字
 /// だけを見る。それ以外のキーは `None`。
@@ -147,9 +127,12 @@ pub enum InputModality {
 /// 入力意図の封筒（ADR-0122 決定 2）。pointer / keyboard / accessibility / edit の
 /// すべてが同一の閉じた値型に合流する flat dispatch 封筒で、各 adapter はこの値を
 /// 構築するだけで `Interaction::apply_intent` に流す（2 producer = 本物の seam）。
-/// この slice では `Focus` と `Click` の arm を持ち、`Edit(EditIntent)` / `SetValue` /
-/// `ScrollToReveal` 等の他 arm は後続 slice で加わる。
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// `Focus` / `Click` / `Edit(EditIntent)`（#573）/ pointer arm（#572）に加え、
+/// `SetValue` / `ScrollToReveal`（accessibility inbound・#575）を並立 arm に持つ。
+/// `Edit` arm は既存の `EditIntent`（ADR-0103）を**そのまま内包**し、edit 専用
+/// シームの意味を再定義しない。`SetValue` が `String` を運ぶため値全体は `Copy`
+/// ではない（`Clone`）。
+#[derive(Clone, Debug, PartialEq)]
 pub enum InteractionIntent {
     /// `target` をフォーカス要素にする focus 遷移。直前 focus の blur と、`Blur` /
     /// `Focus` イベントの送出を伴う。既に focus 済みなら no-op。
@@ -157,6 +140,34 @@ pub enum InteractionIntent {
     /// `target` に意味的クリックを発行する。座標 `(x, y)` を `Click` イベントに載せ、
     /// 通常のクリックと同様にバブルさせる。
     Click { target: ElementId, x: f32, y: f32 },
+    /// `target`（text-input）へ閉じた [`EditIntent`] 語彙の編集を適用する
+    /// （ADR-0103 を内包）。幾何依存の縦移動・表示行 Home/End は `Caret Geometry`
+    /// seam の裏で純粋計算される（ADR-0122 決定 5）。
+    Edit {
+        target: ElementId,
+        intent: EditIntent,
+    },
+    /// canvas `(x, y)` での pointer-down（#572）。スクロールバー／ツールバー／ハンドル
+    /// 押下の消費判定、hit-test 駆動の active/focus 遷移、drag-mode 分類（selection /
+    /// edit / scrollbar thumb の排他）をこの単一 seam に通す。
+    PointerDown { x: f32, y: f32, modifiers: u32 },
+    /// pointer-up（#572）。`explicit_target` は active セッションが無いときの HTML
+    /// フォールバック。生きた押下があればリリースで Click を確定する（ADR-0082）。
+    PointerUp { explicit_target: Option<ElementId> },
+    /// canvas `(x, y)` での pointer-move（#572）。hover/cursor 更新と進行中ドラッグの
+    /// 駆動を通す。`on_pointer_move` 側で 1px dedup 済み。
+    PointerMove { x: f32, y: f32 },
+    /// pointer-cancel（タッチ中断／キャプチャ喪失、#572）。active な押下を解除して
+    /// 以降のリリースで Click を発火させない。
+    PointerCancel,
+    /// `target`（text-input）の値を `value` で意味的に置換する（accessibility inbound・
+    /// ADR-0098 / #575）。進行中 preedit を確定してから置換し、`TextInput` を発火する。
+    /// `text-input` 以外では no-op。AccessKit `SetValue` と編集経路が同一 seam を共有する。
+    SetValue { target: ElementId, value: String },
+    /// 最寄りの祖先 `scroll-view` の Scroll Offset を調整して `target` を表示に入れる
+    /// （AccessKit `ScrollIntoView`・ADR-0098 / #575）。reveal 幾何（`scroll_axis_to_reveal`）
+    /// は seam の裏（`Interaction` 実装）に置き、adapter は intent を出すだけ。
+    ScrollToReveal { target: ElementId },
 }
 
 /// `Interaction` が tree から借りる狭いビュー（ADR-0122 決定 1）。`Interaction` は
@@ -174,35 +185,152 @@ pub trait InteractionTreeView {
     fn apply_focus_effects(&mut self, id: ElementId);
     /// blur の element 側効果（`apply_focus_effects` の対）。
     fn apply_blur_effects(&mut self, id: ElementId);
-    /// 直近ポインタの物理デバイス。Touch blur で編集選択を畳むか判定する。
-    fn pointer_kind(&self) -> PointerKind;
     /// 単一 text-input の編集選択をキャレットへ畳む（Touch blur ライフサイクル、
     /// ADR-0104）。
     fn collapse_edit_selection(&mut self, id: ElementId);
+    /// `target`（text-input）へ [`EditIntent`] を適用し、消費したかを返す
+    /// （ADR-0103 / ADR-0122 決定 5）。幾何依存操作は `Caret Geometry` seam の裏で
+    /// 解決し、クリップボードや選択など tree 側の副作用もここで行う。`Interaction` は
+    /// 編集の中身を所有しないので、この借りた seam へ委譲する。
+    fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool;
+    /// `id` の `:active` 擬似状態の無効化を記録する（active 切替の element 側効果、
+    /// ADR-0100）。active フィールド自体は `Interaction` が持つ（#572）。
+    fn mark_active_dirty(&mut self, id: ElementId);
+    /// 進行中スクロールバーつまみドラッグをポインタ `(x, y)` へ進め、更新された
+    /// [`ScrollbarDrag`]（次フレームの基準）を返す（ADR-0110）。閾値未満の移動は
+    /// `None`（ドラッグ状態を据え置く）。Scroll Offset コミットは tree 側の幾何。
+    fn drag_scrollbar(&mut self, drag: ScrollbarDrag, x: f32, y: f32) -> Option<ScrollbarDrag>;
+    /// `input`（text-input）の編集選択ドラッグをポインタ `(x, y)` へ拡張する
+    /// （ADR-0097）。point→byte は `Caret Geometry` 幾何で、tree 側に置く。
+    fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32);
+    /// canvas 点 `(x, y)` を選択端点 `(IFC root, byte offset)` に解決する（ADR-0097 /
+    /// #574）。point→byte は `Caret Geometry` の `byte_at_point`（#571）。`selectable`
+    /// サブツリー外や整形テキストに当たらないとき `None`。
+    fn resolve_selection_point(&self, x: f32, y: f32) -> Option<SelectionPoint>;
+    /// 2 要素が同じ Selection Region に属するか（選択を境界内に閉じ込める contains
+    /// clamp の判定、ADR-0108）。
+    fn same_selection_region(&self, a: ElementId, b: ElementId) -> bool;
+    /// 文書グローバル選択が `prev` から `new` へ変わったときの tree 側効果：得失した
+    /// 各ブロックのハイライト再生成（visual dirty）と一度の `selection-change` 通知。
+    fn on_selection_changed(&mut self, prev: Selection, new: Selection);
+    /// `target`（text-input）の値を `value` で置換する（AccessKit `SetValue`・#575）。
+    /// preedit 確定 → 内容置換 → `TextInput` 発火。`text-input` 以外は no-op。
+    fn apply_set_value(&mut self, target: ElementId, value: &str);
+    /// 最寄りの祖先 `scroll-view` を `target` が表示に入る最小オフセットへ動かす
+    /// （reveal 幾何は tree 側・#575）。既に完全表示か scroll-view 祖先が無ければ no-op。
+    fn scroll_to_reveal(&mut self, target: ElementId);
 }
 
 /// 横断的 interaction state を所有する deep module（ADR-0122 決定 1）。入口は
 /// [`apply_intent`](Self::apply_intent) 単一 seam で、pointer / keyboard /
-/// accessibility / edit の意図がここへ合流する。この slice では focus state のみを
-/// 持ち、hover / active / press 位置 / `PointerGesture` 等は後続 slice で移ってくる。
-#[derive(Default)]
+/// accessibility / edit の意図がここへ合流する。focus に加え、pointer 横断 state
+/// （hover / active / press 位置 / `PointerGesture` / modality / pointer-pos / cursor /
+/// touch scroll）を所有する（#572）。element 位相・layout 幾何・per-element
+/// `EditState`・scroll offset は所有せず、狭い [`InteractionTreeView`] 越しに借りる。
 pub struct Interaction {
     /// 現在フォーカスされている要素。`render` のカーソル点滅・`:focus-visible`・
     /// accessibility outbound が読む唯一の focus 真実。
     pub(crate) focused_element: Option<ElementId>,
+    /// 直近入力イベントのモダリティ。ネイティブフォーカスリングの `:focus-visible`
+    /// 判定を駆動する（ADR-0102）。
+    pub(crate) last_input_modality: InputModality,
+    /// 直近ポインタ操作の物理デバイス。インタラクションごとに保持する。
+    /// `last_input_modality` とは独立した軸で、タッチ押下は `InputModality::Pointer`
+    /// かつ `PointerKind::Touch` になる。
+    pub(crate) last_pointer_kind: PointerKind,
+    /// CSS `:hover` に一致する要素（ポインタ下の自身または子孫）。
+    pub(crate) hovered_elements: HashSet<ElementId>,
+    /// 現在押下中（`:active`）の要素。クリックはリリースで確定する（ADR-0082）。
+    pub(crate) active_element: Option<ElementId>,
+    /// 現在の押下（`active_element`）が始まった canvas 位置。pointer-up の `Click` に
+    /// 載せる。押下が（スクロール乗っ取り等で）キャンセルされると `active_element`
+    /// とともにクリアされ、以降のリリースはクリックを発火しない。
+    pub(crate) active_press_pos: Option<(f32, f32)>,
+    /// ポインタジェスチャ分類器（ADR-0066）。進行中のドラッグ種別（読み取り専用
+    /// 選択／編集選択／スクロールバーつまみは排他）と、単語／段落ジェスチャ用の
+    /// マルチクリック追跡を単独所有する。
+    pub(crate) pointer_gesture: PointerGesture,
+    /// 前回 render 以降に Touch モダリティでスクロールし、一時インジケータを
+    /// 再表示すべき ScrollView（ADR-0110）。
+    pub(crate) touch_scroll_pending: HashSet<ElementId>,
+    /// ScrollView をキーにした稼働中の Touch 一時インジケータ。
+    pub(crate) touch_scroll_indicators: HashMap<ElementId, TouchScrollIndicator>,
+    /// サブピクセル move の重複排除用の直近ポインタ位置（ADR-0066）。
+    pub(crate) last_pointer_pos: Option<(f32, f32)>,
+    /// ポインタ下で直近に解決したカーソル。合成 move で報告する（ADR-0088）。
+    pub(crate) last_cursor: CursorValue,
+    /// 文書全体で唯一のテキスト選択を所有する deep module（ADR-0097 / #574）。
+    /// 正規化・縮退・one-per-document・contains clamp の不変条件を interface の裏で
+    /// 守る。`Interaction` が主たる mutator で、read 経路は interface 越しに borrow する。
+    pub(crate) selection: DocumentSelection,
+}
+
+impl Default for Interaction {
+    fn default() -> Self {
+        Self {
+            focused_element: None,
+            // 最初のキーボードイベントまで Pointer。未フォーカス/ポインタ駆動直後の
+            // UI がボタンに余計なリングを出さないように。
+            last_input_modality: InputModality::Pointer,
+            // 最初の実ポインタイベントがデバイスを報告するまで Mouse。
+            last_pointer_kind: PointerKind::Mouse,
+            hovered_elements: HashSet::new(),
+            active_element: None,
+            active_press_pos: None,
+            pointer_gesture: PointerGesture::default(),
+            touch_scroll_pending: HashSet::new(),
+            touch_scroll_indicators: HashMap::new(),
+            last_pointer_pos: None,
+            last_cursor: CursorValue::Default,
+            selection: DocumentSelection::default(),
+        }
+    }
 }
 
 impl Interaction {
-    /// 単一 seam：[`InteractionIntent`] を借りたビューに適用する。
-    pub fn apply_intent(&mut self, view: &mut dyn InteractionTreeView, intent: InteractionIntent) {
+    /// 単一 seam：[`InteractionIntent`] を借りたビューに適用する。intent を消費／適用
+    /// したかを返す（`Edit` の戻り値が入力の早期消費判定に使われる）。
+    pub fn apply_intent(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        intent: InteractionIntent,
+    ) -> bool {
         match intent {
-            InteractionIntent::Focus(id) => self.transition_focus(view, id),
+            InteractionIntent::Focus(id) => {
+                self.transition_focus(view, id);
+                true
+            }
             InteractionIntent::Click { target, x, y } => {
                 view.emit_event(Event::Click {
                     target_id: target,
                     x,
                     y,
                 });
+                true
+            }
+            InteractionIntent::Edit { target, intent } => view.apply_edit(target, intent),
+            InteractionIntent::PointerUp { explicit_target } => {
+                self.pointer_up(view, explicit_target);
+                true
+            }
+            InteractionIntent::PointerCancel => {
+                self.pointer_cancel(view);
+                true
+            }
+            InteractionIntent::SetValue { target, value } => {
+                view.apply_set_value(target, &value);
+                true
+            }
+            InteractionIntent::ScrollToReveal { target } => {
+                view.scroll_to_reveal(target);
+                true
+            }
+            // pointer-down / -move の重い hit-test / hover / begin パイプラインは
+            // `ElementTree` の dispatch が直接走らせる（`apply_interaction_intent` が
+            // mem-take せず分岐するので self.interaction を直読みできる）。ここへは届かない。
+            InteractionIntent::PointerDown { .. } | InteractionIntent::PointerMove { .. } => {
+                debug_assert!(false, "pointer down/move are dispatched without mem-take");
+                false
             }
         }
     }
@@ -232,7 +360,9 @@ impl Interaction {
             return;
         }
         self.element_blur(view, id);
-        if view.pointer_kind() == PointerKind::Touch {
+        // pointer 種別は `Interaction` 自身が所有するので view 越しではなく自分で読む
+        // （#572）。Touch の blur は編集選択をキャレットへ畳む（ADR-0104）。
+        if self.last_pointer_kind == PointerKind::Touch {
             view.collapse_edit_selection(id);
         }
         view.emit_event(Event::Blur { target_id: id });
@@ -260,14 +390,125 @@ impl Interaction {
         view.apply_blur_effects(id);
         self.focused_element = None;
     }
+
+    /// アクティブ要素を `next` に切り替え、active 状態が変わる全要素の `:active`
+    /// 無効化を view に記録させる（ADR-0100/0089）。dirty マークはフィールド書き込みに
+    /// 先行するので、`:active` トランジションは切替前の見た目から始まる。`active_element`
+    /// を書くのはこの経路のみ。`None` への切替は保留タップ起点もクリアする（#572）。
+    pub(crate) fn set_active(&mut self, view: &mut dyn InteractionTreeView, next: Option<ElementId>) {
+        if self.active_element == next {
+            return;
+        }
+        if let Some(prev) = self.active_element {
+            view.mark_active_dirty(prev);
+        }
+        if let Some(now) = next {
+            view.mark_active_dirty(now);
+        }
+        self.active_element = next;
+        // 押下が終わる/切り替わると保留中タップの起点は無効になる。
+        if next.is_none() {
+            self.active_press_pos = None;
+        }
+    }
+
+    /// pointer-up の状態機械（ADR-0082 / #572）。生きた押下（`active_element`）が
+    /// あれば、押下起点座標で `Click` をリリース確定する（スクロールに化けた押下は
+    /// `pointer_cancel` で active が消えており Click は出ない）。続けて `ActiveEnd` を
+    /// 出し active をクリアする。`explicit_target` は active セッションが無いときの
+    /// HTML フォールバック。
+    pub(crate) fn pointer_up(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        explicit_target: Option<ElementId>,
+    ) {
+        if let Some(t) = self.active_element {
+            let (x, y) = self.active_press_pos.unwrap_or((0.0, 0.0));
+            // accessibility の semantic click（#575）と同一の `Click` Event に合流する。
+            view.emit_event(Event::Click { target_id: t, x, y });
+        }
+        let target = self.active_element.or(explicit_target);
+        if let Some(t) = target {
+            view.emit_event(Event::ActiveEnd { target_id: t });
+        }
+        self.set_active(view, None);
+    }
+
+    /// pointer-cancel の状態機械（#572）。直近 pointer 位置を捨て、進行中ドラッグを
+    /// 畳み、生きた押下を `ActiveEnd` 付きで解除する（以降のリリースで Click を発火
+    /// させない）。hover 集合のクリアは座標非依存の別経路（呼び出し側が先に行う）。
+    pub(crate) fn pointer_cancel(&mut self, view: &mut dyn InteractionTreeView) {
+        self.last_pointer_pos = None;
+        self.pointer_gesture.end_drag();
+        if let Some(t) = self.active_element {
+            view.emit_event(Event::ActiveEnd { target_id: t });
+        }
+        self.set_active(view, None);
+    }
+
+    /// 進行中のドラッグを pointer-move `(x, y)` で駆動する（ADR-0066）。種別はジェスチャ
+    /// 分類器が単独所有し、三者（スクロールバーつまみ／編集選択／読み取り専用選択）は
+    /// 排他なので単一 match で分岐する。幾何（Scroll Offset コミット・point→byte）は
+    /// view（tree）側に置き、`Interaction` はドラッグ種別だけを所有する。
+    pub(crate) fn drive_active_drag(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        x: f32,
+        y: f32,
+    ) {
+        match self.pointer_gesture.drag() {
+            DragMode::Scrollbar(drag) => {
+                if let Some(updated) = view.drag_scrollbar(drag, x, y) {
+                    self.pointer_gesture.begin_drag(DragMode::Scrollbar(updated));
+                }
+            }
+            DragMode::Edit(input) => view.extend_edit_drag(input, x, y),
+            DragMode::Selection => {
+                // 点→選択端点の解決は view 幾何（`Caret Geometry` byte_at_point・#571）、
+                // しかし選択 state は `Interaction` 所有なので拡張は self 上で行う。
+                if let Some(point) = view.resolve_selection_point(x, y) {
+                    self.extend_selection_focus(view, point);
+                }
+            }
+            DragMode::None => {}
+        }
+    }
+
+    /// ドラッグ選択の focus を `point` へ拡張する（anchor 固定・ADR-0097 / #574）。
+    /// 選択 state は `Interaction` 所有なので self の deep module 上で mutate し（view
+    /// 経由だと drive の mem-take placeholder へ書いて失われる）、Selection Region への
+    /// contains clamp と dirty／`selection-change` 通知は view へ委ねる。focus が別の
+    /// `selectable` 領域へ迷い込んだら据え置く（選択は境界を越えない）。
+    pub(crate) fn extend_selection_focus(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        point: SelectionPoint,
+    ) {
+        let Some(prev) = self.selection.get() else {
+            return;
+        };
+        if prev.focus == point {
+            return;
+        }
+        if !view.same_selection_region(point.element, prev.anchor.element) {
+            return;
+        }
+        self.selection.extend_focus(point);
+        if let Some(now) = self.selection.get() {
+            view.on_selection_changed(prev, now);
+        }
+    }
 }
 
 /// 進行中の Mouse/Pen スクロールバー・サムドラッグ（ADR-0110）。サム上の
 /// pointer-down で捕捉し `on_pointer_move` が駆動する。各移動で軸方向の移動量を
 /// Scroll Offset デルタに変換し、ホイールと同じ `apply_wheel_delta` 継ぎ目で
 /// コミットする（軸端に達した余りは祖先 ScrollView へ連鎖する）。
+///
+/// 公開 seam [`InteractionTreeView::drag_scrollbar`] の引数／戻り値に現れるため
+/// `pub`（trait と同じ可視性。#572）。フィールド型はすべて公開型。
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ScrollbarDrag {
+pub struct ScrollbarDrag {
     /// サムをドラッグしている ScrollView。
     pub scroll_view: ElementId,
     /// サムが滑る軸。
@@ -296,13 +537,21 @@ impl ElementTree {
         modifiers: u32,
         kind: PointerKind,
     ) {
-        self.last_pointer_kind = kind;
+        self.interaction.last_pointer_kind = kind;
         self.on_pointer_down_with(x, y, modifiers);
     }
 
     /// キーボード修飾を伴うポインタダウン（ADR-0097）。Shift は新規選択を始めず
     /// 現在の選択の focus を拡張する。
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
+        // pointer-down を単一 seam（`InteractionIntent::PointerDown`）に通す（#572）。
+        self.apply_interaction_intent(InteractionIntent::PointerDown { x, y, modifiers });
+    }
+
+    /// pointer-down の hit-test／消費判定／begin パイプライン本体（#572）。
+    /// `apply_interaction_intent` が mem-take せず直接呼ぶので、`self.interaction.
+    /// pointer_gesture` 等を直読みでき、挙動は移行前と同一。
+    fn dispatch_pointer_down(&mut self, x: f32, y: f32, modifiers: u32) {
         // Mouse/Pen スクロールバー（サム／トラック）上の押下はそれを操作して
         // ジェスチャを消費する。オーバーレイ chrome はコンテンツの上にあるため、
         // その押下がコンテンツの選択／focus に届くことはない（ADR-0110）。
@@ -342,7 +591,7 @@ impl ElementTree {
     pub fn on_long_press(&mut self, x: f32, y: f32) {
         // 長押しはタッチジェスチャで、始まる選択は Touch モダリティの操作なので、
         // その chrome（ハンドル＋ツールバー）が出る（ADR-0104）。
-        self.last_pointer_kind = PointerKind::Touch;
+        self.interaction.last_pointer_kind = PointerKind::Touch;
         let Some(point) = self.selection_point_at(x, y) else {
             return;
         };
@@ -350,8 +599,8 @@ impl ElementTree {
         self.select_bounds_at(point, selection::word_bounds);
         // 新規ジェスチャ。続くタップはこの長押しからのマルチクリック周期を再開せず、
         // キャレットを落とすべき。
-        self.pointer_gesture.clear_selection_drag();
-        self.pointer_gesture.reset_taps();
+        self.interaction.pointer_gesture.clear_selection_drag();
+        self.interaction.pointer_gesture.reset_taps();
     }
 
     /// 明示ターゲットへのポインタダウン（HTML Mode）。
@@ -360,7 +609,7 @@ impl ElementTree {
     }
 
     fn pointer_down_on_target(&mut self, target: Option<ElementId>, x: f32, y: f32) {
-        self.last_input_modality = InputModality::Pointer;
+        self.interaction.last_input_modality = InputModality::Pointer;
         if let Some(t) = target {
             // クリックはリリースで確定する（ADR-0082）。押下では `:active` を点け、
             // タップ起点を覚えるだけにする。押下→slop 超過でスクロールに化けた場合は
@@ -375,7 +624,7 @@ impl ElementTree {
             // リリースの Click が押下座標を載せられるよう起点を覚える（active を
             // セットした後に書く。`set_active_element(None)` 等の途中クリアに
             // 上書きされないため）。
-            self.active_press_pos = Some((x, y));
+            self.interaction.active_press_pos = Some((x, y));
             self.transition_focus(t);
         } else if let Some(prev) = self.interaction.focused_element {
             self.blur_with_events(prev);
@@ -386,13 +635,13 @@ impl ElementTree {
     pub fn on_pointer_up(&mut self, x: f32, y: f32) {
         let fallback = self.hit_test(x, y);
         self.pointer_up_with_fallback(fallback);
-        self.pointer_gesture.end_drag();
+        self.interaction.pointer_gesture.end_drag();
     }
 
     /// 物理 [`PointerKind`] を伴うポインタアップ。操作ごとに保持する。リリース挙動
     /// は [`on_pointer_up`](Self::on_pointer_up) と同一。
     pub fn on_pointer_up_with_kind(&mut self, x: f32, y: f32, kind: PointerKind) {
-        self.last_pointer_kind = kind;
+        self.interaction.last_pointer_kind = kind;
         self.on_pointer_up(x, y);
     }
 
@@ -402,28 +651,9 @@ impl ElementTree {
     }
 
     fn pointer_up_with_fallback(&mut self, explicit_target: Option<ElementId>) {
-        // クリックはリリースで確定する（ADR-0082）。生きた押下（`active_element`）が
-        // ある＝この押下が slop を越えずタップに収まった場合のみ Click を発火する。
-        // スクロールに化けた押下は `on_pointer_cancel` で active が既にクリアされて
-        // いるので、ここでクリックは出ない。座標は押下時の起点を載せる（押下→離す
-        // が同一タップなら down≈up で、従来の Click 座標と一致する）。
-        if let Some(t) = self.active_element {
-            let (x, y) = self.active_press_pos.unwrap_or((0.0, 0.0));
-            // クリック確定（リリース）を `Interaction` seam へ通す（ADR-0122）。
-            // accessibility の semantic click（#575）と同一の `Click` intent に合流する。
-            self.apply_interaction_intent(InteractionIntent::Click {
-                target: t,
-                x,
-                y,
-            });
-        }
-        let target = self.active_element.or(explicit_target);
-        if let Some(t) = target {
-            self.emit_interaction(Event::ActiveEnd { target_id: t });
-        }
-        // active 状態の解除は同一操作で、まだ active の見た目を遷移開始として捕捉し
-        // `:active` 無効化を記録する（ADR-0100, ADR-0089）。
-        self.set_active_element(None);
+        // リリース確定（click-on-release・active 解除）は `Interaction` の状態機械が
+        // 所有し、単一 seam（`InteractionIntent::PointerUp`）に通す（ADR-0082 / #572）。
+        self.apply_interaction_intent(InteractionIntent::PointerUp { explicit_target });
     }
 
     /// ポインタキャンセル（タッチ中断／ポインタキャプチャ喪失）。座標非依存で、
@@ -432,15 +662,10 @@ impl ElementTree {
     /// active な押下を終える（`active_element.take()` → `ActiveEnd` ＋擬似活性
     /// dirty。pointer-up 経路を写す）。`PointerMove` は捏造しない。
     pub fn on_pointer_cancel(&mut self) {
+        // hover 全消去は座標非依存の別経路（surface-leave と同一）。続く active／
+        // ドラッグの解除は `Interaction` の状態機械が単一 seam で所有する（#572）。
         self.apply_pointer_hover(None);
-        self.last_pointer_pos = None;
-        self.pointer_gesture.end_drag();
-        if let Some(t) = self.active_element {
-            self.emit_interaction(Event::ActiveEnd { target_id: t });
-        }
-        // 押下の終了は active 状態を解除し `:active` 無効化を原子的に記録する
-        // （ADR-0100）。pointer-up 経路を写す。
-        self.set_active_element(None);
+        self.apply_interaction_intent(InteractionIntent::PointerCancel);
     }
 
     /// 物理 [`PointerKind`] を伴うポインタムーブ。操作ごとに保持し、発行される
@@ -453,7 +678,7 @@ impl ElementTree {
         y: f32,
         kind: PointerKind,
     ) -> PointerMoveResult {
-        self.last_pointer_kind = kind;
+        self.interaction.last_pointer_kind = kind;
         self.on_pointer_move(x, y)
     }
 
@@ -464,46 +689,58 @@ impl ElementTree {
         if !self.has_layout() {
             return PointerMoveResult {
                 moved: false,
-                resolved_cursor: self.last_cursor,
+                resolved_cursor: self.interaction.last_cursor,
             };
         }
-        if let Some((lx, ly)) = self.last_pointer_pos {
+        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
             if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
                 return PointerMoveResult {
                     moved: false,
-                    resolved_cursor: self.last_cursor,
+                    resolved_cursor: self.interaction.last_cursor,
                 };
             }
         }
-        self.last_pointer_pos = Some((x, y));
+        self.interaction.last_pointer_pos = Some((x, y));
+        // dedup を抜けた実移動だけを単一 seam（`InteractionIntent::PointerMove`）に
+        // 通す。hover/cursor 更新と進行中ドラッグの駆動はその裏で行う（#572）。
+        self.apply_interaction_intent(InteractionIntent::PointerMove { x, y });
+        PointerMoveResult {
+            moved: true,
+            resolved_cursor: self.interaction.last_cursor,
+        }
+    }
+
+    /// pointer-move の本体（#572）：`PointerMove` ワイヤイベント送出・hover/cursor の
+    /// 更新・進行中ドラッグの駆動。`apply_interaction_intent` が mem-take せず直接呼ぶ
+    /// ので `self.interaction.*` を直読み／直書きでき、挙動は移行前と同一。ドラッグ
+    /// 駆動の drag-mode dispatch は `Interaction::drive_active_drag` が所有する。
+    fn dispatch_pointer_move(&mut self, x: f32, y: f32) {
         self.push_event(Event::PointerMove {
             x,
             y,
-            pointer_kind: self.last_pointer_kind,
+            pointer_kind: self.interaction.last_pointer_kind,
         });
         let hit = self.hit_test(x, y);
         self.apply_pointer_hover(hit);
         let resolved_cursor = self.resolve_cursor(hit);
-        self.last_cursor = resolved_cursor;
-        // 進行中のドラッグを駆動する。種別はジェスチャ分類器が単独所有し、三者
-        // （スクロールバー・サム／編集選択／読み取り専用選択）は排他なので単一の
-        // match で分岐する（ADR-0066）。スクロールバー・サムドラッグ（ADR-0110）は
-        // 選択が始まる前に掴まれる。読み取り専用は進行中の選択の focus を拡張する
-        // （ADR-0097）。
-        match self.pointer_gesture.drag() {
-            DragMode::Scrollbar(drag) => self.drag_scrollbar(drag, x, y),
-            DragMode::Edit(input) => self.extend_edit_drag(input, x, y),
-            DragMode::Selection => {
-                if let Some(point) = self.selection_point_at(x, y) {
-                    self.update_selection_focus(point);
-                }
-            }
-            DragMode::None => {}
-        }
-        PointerMoveResult {
-            moved: true,
-            resolved_cursor,
-        }
+        self.interaction.last_cursor = resolved_cursor;
+        self.drive_active_drag(x, y);
+    }
+
+    /// 進行中ドラッグの駆動を `Interaction::drive_active_drag` へ委譲する橋（#572）。
+    /// `Interaction` を一時取り出し、残りの tree を [`InteractionTreeView`] として
+    /// 借りる。drag 種別は `Interaction` 所有なので moved-out 側の実値を読む。
+    fn drive_active_drag(&mut self, x: f32, y: f32) {
+        let focused = self.interaction.focused_element;
+        let mut interaction = std::mem::replace(
+            &mut self.interaction,
+            Interaction {
+                focused_element: focused,
+                ..Interaction::default()
+            },
+        );
+        interaction.drive_active_drag(self, x, y);
+        self.interaction = interaction;
     }
 
     /// ポインタ下の要素の実効カーソルを「明示 `cursor` → 要素種別の UA 既定 →
@@ -556,16 +793,16 @@ impl ElementTree {
     /// ターゲットなしのポインタムーブ（ヒットテスト hover を伴わない HTML Mode
     /// 座標ストリーム）。
     pub fn on_pointer_move_coords(&mut self, x: f32, y: f32) -> bool {
-        if let Some((lx, ly)) = self.last_pointer_pos {
+        if let Some((lx, ly)) = self.interaction.last_pointer_pos {
             if (x - lx).abs() < POINTER_MOVE_DEDUP_PX && (y - ly).abs() < POINTER_MOVE_DEDUP_PX {
                 return false;
             }
         }
-        self.last_pointer_pos = Some((x, y));
+        self.interaction.last_pointer_pos = Some((x, y));
         self.push_event(Event::PointerMove {
             x,
             y,
-            pointer_kind: self.last_pointer_kind,
+            pointer_kind: self.interaction.last_pointer_kind,
         });
         true
     }
@@ -576,7 +813,7 @@ impl ElementTree {
     /// `PointerMove` は push しない。HTML adapter の要素別 leave 継ぎ目と対称。
     pub fn on_pointer_leave(&mut self) {
         self.apply_pointer_hover(None);
-        self.last_pointer_pos = None;
+        self.interaction.last_pointer_pos = None;
     }
 
     pub fn on_wheel(&mut self, target: ElementId, delta_x: f32, delta_y: f32) {
@@ -596,7 +833,7 @@ impl ElementTree {
         // キーボード操作は Chromium の `:focus-visible` ヒューリスティクで次の
         // focus をリング対象にする。早期 return より前に記録するので、focus 中の
         // 要素に届かないキー押下でもモダリティは切り替わる。
-        self.last_input_modality = InputModality::Keyboard;
+        self.interaction.last_input_modality = InputModality::Keyboard;
         // 選択キーボードジェスチャは文書全体の選択に作用し要素 focus に依存しない
         // ので、先に走り、適用時にキーを消費する（例: Ctrl/Cmd+A、SelectionArea 上の
         // Shift+Arrow）。
@@ -612,7 +849,12 @@ impl ElementTree {
         // 1文字削除する。適用時に消費する（IME 変換中は決して消費せず、削除キーが
         // 変換を壊さない）。
         if let Some(intent) = key_edit_intent(key, modifiers) {
-            if self.apply_edit_intent(focused, intent) {
+            // 編集は `InteractionIntent::Edit` 封筒として単一 seam を通す（ADR-0122）。
+            // pointer/key 経路と accessibility 経路が同じ値型を生産する。
+            if self.apply_interaction_intent(InteractionIntent::Edit {
+                target: focused,
+                intent,
+            }) {
                 return;
             }
         }
@@ -743,12 +985,12 @@ impl ElementTree {
     }
 
     pub fn active_element(&self) -> Option<ElementId> {
-        self.active_element
+        self.interaction.active_element
     }
 
     /// 文書全体で唯一のテキスト選択（あれば）（ADR-0097）。
     pub fn selection(&self) -> Option<&Selection> {
-        self.selection.as_ref()
+        self.interaction.selection.as_ref()
     }
 
     /// active な選択の端点を文書順に正規化した `(start, end)`。`start` はツリーの
@@ -756,7 +998,7 @@ impl ElementTree {
     /// オフセットで、ブロック跨ぎはブロックの文書順で正規化する。選択が無ければ
     /// `None`。
     pub fn selection_ordered(&self) -> Option<(SelectionPoint, SelectionPoint)> {
-        let sel = self.selection?;
+        let sel = self.interaction.selection.get()?;
         if sel.anchor.element == sel.focus.element {
             let lo = sel.anchor.offset.min(sel.focus.offset);
             let hi = sel.anchor.offset.max(sel.focus.offset);
@@ -886,7 +1128,7 @@ impl ElementTree {
     /// コピーと同じ形）。選択が無い、または非空の範囲を何も覆わない（畳まれた
     /// キャレットはコピー対象なし）とき `None`。
     pub fn selected_text(&self) -> Option<String> {
-        let sel = self.selection?;
+        let sel = self.interaction.selection.get()?;
         let mut parts: Vec<String> = Vec::new();
         for block in self.blocks_spanned_by(sel) {
             let Some((start, end)) = self.selection_range_in_block(block) else {
@@ -916,7 +1158,7 @@ impl ElementTree {
     ///
     /// [`last_pointer_kind`]: Self::last_pointer_kind
     fn touch_chrome_visible(&self) -> bool {
-        self.last_pointer_kind == PointerKind::Touch
+        self.interaction.last_pointer_kind == PointerKind::Touch
     }
 
     /// active な選択のためのフローティング選択ツールバー。選択が active でなければ
@@ -950,7 +1192,7 @@ impl ElementTree {
         if !self.touch_chrome_visible() {
             return None;
         }
-        let sel = self.selection?;
+        let sel = self.interaction.selection.get()?;
         if sel.is_caret() {
             return None;
         }
@@ -995,7 +1237,7 @@ impl ElementTree {
             SelectionHandleEnd::End => (start, end),
         };
         self.set_selection(Some(Selection { anchor, focus }));
-        self.pointer_gesture.begin_drag(DragMode::Selection);
+        self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
         true
     }
 
@@ -1010,7 +1252,7 @@ impl ElementTree {
     /// [`SCROLLBAR_PAGE_STEP`]: crate::element::scene_build::SCROLLBAR_PAGE_STEP
     fn begin_scrollbar_gesture(&mut self, x: f32, y: f32) -> bool {
         use crate::element::scene_build::{ScrollAxis, SCROLLBAR_PAGE_STEP};
-        if self.last_pointer_kind == PointerKind::Touch {
+        if self.interaction.last_pointer_kind == PointerKind::Touch {
             return false;
         }
         let Some((sv, axis, on_thumb)) = self.scrollbar_hit_at(x, y) else {
@@ -1028,7 +1270,7 @@ impl ElementTree {
                 ScrollAxis::Vertical => y,
                 ScrollAxis::Horizontal => x,
             };
-            self.pointer_gesture.begin_drag(DragMode::Scrollbar(ScrollbarDrag {
+            self.interaction.pointer_gesture.begin_drag(DragMode::Scrollbar(ScrollbarDrag {
                 scroll_view: sv,
                 axis: axis.axis,
                 last_pos,
@@ -1112,7 +1354,15 @@ impl ElementTree {
     /// のドラッグ軸方向の移動量が Scroll Offset デルタになり、ホイールの継ぎ目
     /// `apply_wheel_delta` でコミットされるので、offset は連続的に動き、この
     /// ScrollView が軸端に達すると未消費の余りが祖先 ScrollView へ連鎖する。
-    fn drag_scrollbar(&mut self, mut drag: ScrollbarDrag, x: f32, y: f32) {
+    /// サムドラッグを 1 ステップ進め、更新済み [`ScrollbarDrag`]（次の基準）を返す。
+    /// 閾値未満の移動は `None`（状態据え置き）。drag 種別の保持は `Interaction` 側
+    /// （`drive_active_drag`）が行うので、ここは幾何コミットと last_pos 更新だけ（#572）。
+    fn drag_scrollbar_step(
+        &mut self,
+        mut drag: ScrollbarDrag,
+        x: f32,
+        y: f32,
+    ) -> Option<ScrollbarDrag> {
         use crate::element::scene_build::ScrollAxis;
         let pos = match drag.axis {
             ScrollAxis::Vertical => y,
@@ -1120,7 +1370,7 @@ impl ElementTree {
         };
         let pointer_delta = pos - drag.last_pos;
         if pointer_delta.abs() < SCROLLBAR_DRAG_MIN_DELTA_PX {
-            return;
+            return None;
         }
         let offset_delta = pointer_delta * drag.offset_per_px;
         match drag.axis {
@@ -1132,7 +1382,7 @@ impl ElementTree {
             }
         }
         drag.last_pos = pos;
-        self.pointer_gesture.begin_drag(DragMode::Scrollbar(drag));
+        Some(drag)
     }
 
     /// 押下がフローティングツールバーのボタンに当たればそれを実行する。ツールバーが
@@ -1231,7 +1481,7 @@ impl ElementTree {
     /// active な選択に対し全選択する。読み取り専用 SelectionArea 選択なら focus
     /// IFC 全体、編集可能なら text-input の内容全体（ADR-0097）。
     fn select_all_active_selection(&mut self) {
-        if let Some(sel) = self.selection {
+        if let Some(sel) = self.interaction.selection.get() {
             self.select_all_in(sel.focus.element);
             return;
         }
@@ -1257,7 +1507,7 @@ impl ElementTree {
         crate::element::selection_chrome::ToolbarRect,
     )> {
         use crate::element::selection_chrome::ToolbarAction;
-        if self.selection.is_some_and(|s| !s.is_caret()) {
+        if self.interaction.selection.get().is_some_and(|s| !s.is_caret()) {
             let bounds = self.read_only_selection_bounds()?;
             return Some((vec![ToolbarAction::Copy, ToolbarAction::SelectAll], bounds));
         }
@@ -1348,9 +1598,9 @@ impl ElementTree {
     /// `selectable` サブツリー外の押下は選択をクリアし、ドラッグを始めない。
     fn begin_selection_at(&mut self, x: f32, y: f32, modifiers: u32) {
         let Some(point) = self.selection_point_at(x, y) else {
-            self.pointer_gesture.end_drag();
-            self.pointer_gesture.reset_taps();
-            if self.selection.is_some() {
+            self.interaction.pointer_gesture.end_drag();
+            self.interaction.pointer_gesture.reset_taps();
+            if self.interaction.selection.get().is_some() {
                 self.set_selection(None);
             }
             return;
@@ -1362,22 +1612,22 @@ impl ElementTree {
         if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
             // Shift+クリックは focus を調整。ドラッグを続けられるよう drag に留まる
             // が、マルチクリック周期は進めない。
-            self.pointer_gesture.begin_drag(DragMode::Selection);
-            self.pointer_gesture.note_single_tap(x, y);
+            self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
+            self.interaction.pointer_gesture.note_single_tap(x, y);
             return;
         }
 
-        match self.pointer_gesture.classify_tap(x, y) {
+        match self.interaction.pointer_gesture.classify_tap(x, y) {
             TapPhase::Caret => {
-                self.pointer_gesture.begin_drag(DragMode::Selection);
+                self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
                 self.set_selection(Some(Selection::caret(point)));
             }
             TapPhase::Word => {
-                self.pointer_gesture.end_drag();
+                self.interaction.pointer_gesture.end_drag();
                 self.select_bounds_at(point, selection::word_bounds);
             }
             TapPhase::Paragraph => {
-                self.pointer_gesture.end_drag();
+                self.interaction.pointer_gesture.end_drag();
                 self.select_bounds_at(point, selection::line_bounds);
             }
         }
@@ -1419,17 +1669,17 @@ impl ElementTree {
             if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
                 edit.move_focus(offset);
             }
-            self.pointer_gesture.begin_drag(DragMode::Edit(input));
-            self.pointer_gesture.note_single_tap(x, y);
+            self.interaction.pointer_gesture.begin_drag(DragMode::Edit(input));
+            self.interaction.pointer_gesture.note_single_tap(x, y);
             self.finish_edit_selection(input);
             return true;
         }
 
         // 同じ箇所付近の押下回数でキャレット → 単語 → 行を巡回する。単語と行は
         // Mouse/Pen の拡張で、Touch ではどの押下もキャレットのまま留まる。
-        let phase = self.pointer_gesture.classify_tap(x, y);
+        let phase = self.interaction.pointer_gesture.classify_tap(x, y);
         let bounds: Option<fn(&str, usize) -> (usize, usize)> =
-            match (phase, self.last_pointer_kind == PointerKind::Touch) {
+            match (phase, self.interaction.last_pointer_kind == PointerKind::Touch) {
                 (TapPhase::Word, false) => Some(selection::word_bounds),
                 (TapPhase::Paragraph, false) => Some(selection::line_bounds),
                 _ => None,
@@ -1445,7 +1695,7 @@ impl ElementTree {
         }
         // 単語／行選択はドラッグ拡張不可（読み取り専用経路と同等）。キャレットは
         // ユーザが拡張できるようドラッグを構える。
-        self.pointer_gesture.begin_drag(if bounds.is_none() {
+        self.interaction.pointer_gesture.begin_drag(if bounds.is_none() {
             DragMode::Edit(input)
         } else {
             DragMode::None
@@ -1486,8 +1736,9 @@ impl ElementTree {
     }
 
     /// 進行中の text-input ドラッグを拡張する。編集選択の focus をポインタ下の
-    /// バイトオフセットへ移し、anchor を保つ（ADR-0097）。
-    fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32) {
+    /// バイトオフセットへ移し、anchor を保つ（ADR-0097）。trait 越しに呼ぶ inherent
+    /// 実体（#572）。
+    fn extend_edit_drag_to(&mut self, input: ElementId, x: f32, y: f32) {
         let Some(offset) = self.edit_offset_at(input, x, y) else {
             return;
         };
@@ -1532,7 +1783,7 @@ impl ElementTree {
     /// active な選択の anchor が同じ IFC にあるとき、現在の選択の focus を `point`
     /// へ移し anchor を保つ。適用したかを返す。
     fn extend_focus_to(&mut self, point: SelectionPoint) -> bool {
-        let Some(sel) = self.selection else {
+        let Some(sel) = self.interaction.selection.get() else {
             return false;
         };
         if sel.anchor.element != point.element {
@@ -1551,7 +1802,7 @@ impl ElementTree {
     /// - Shift+Arrow は focus を1文字、Alt（macOS）または Ctrl（Win/Linux）併用で
     ///   単語単位、移動する。anchor は固定なので、反復押下で範囲が伸縮する。
     fn handle_selection_key(&mut self, key: &str, modifiers: u32) -> bool {
-        let Some(sel) = self.selection else {
+        let Some(sel) = self.interaction.selection.get() else {
             return false;
         };
         if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("a") {
@@ -1669,60 +1920,26 @@ impl ElementTree {
         direction: Direction,
         extend: bool,
     ) -> bool {
-        let delta = match direction {
-            Direction::Up => -1,
-            Direction::Down => 1,
-            _ => return false,
-        };
-        let Some((offset, goal_x)) = self.vertical_caret_target(target, delta) else {
+        // 幾何移動解決は `Caret Geometry` seam の裏（`EditState::vertical_motion`）で
+        // 純粋計算する（ADR-0122 決定 5）。ここはフィールドの Parley `content_layout`
+        // を実 adapter に包み、注入するだけ。整形レイアウトや編集状態が無いと `false`
+        // を返し、呼び出し側は単一行意味論へフォールバックする。
+        let Some(el) = self.elements.get_mut(&target) else {
             return false;
         };
-        if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
-            if extend {
-                edit.move_focus(offset);
-            } else {
-                edit.set_selection(offset, offset);
-            }
-            // ゴール列は移動後も残るので、短い行を抜ける ↑/↓ の連続は元の列へ戻る。
-            edit.desired_x = Some(goal_x);
+        let Some(cl) = el.content_layout.as_ref() else {
+            return false;
+        };
+        let Some(edit) = el.edit.as_mut() else {
+            return false;
+        };
+        let geometry = ParleyCaretGeometry::new(&cl.layout);
+        let applied = edit.vertical_motion(&geometry, direction, extend);
+        if applied {
+            self.engine
+                .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
         }
-        self.engine
-            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
-        true
-    }
-
-    /// 表示行を `delta` 行移動した後にキャレットが着地するバイトオフセットと、
-    /// 狙ったゴール列（content-local x）のペア。フィールドの Parley `content_layout`
-    /// から解決する。整形レイアウトが無いとき `None`。
-    fn vertical_caret_target(&self, target: ElementId, delta: isize) -> Option<(usize, f32)> {
-        use parley::Cursor;
-        let el = self.elements.get(&target)?;
-        let edit = el.edit.as_ref()?;
-        let cl = el.content_layout.as_ref()?;
-        let layout = &cl.layout;
-        let line_count = layout.len();
-        if line_count == 0 {
-            return None;
-        }
-        let (current_line, caret_x) = caret_display_line(layout, edit.cursor_byte_index);
-        // 保存したゴール列を狙う。初回移動ではキャレットの現在 x。
-        let goal_x = edit.desired_x.unwrap_or(caret_x);
-        let target_line = current_line as isize + delta;
-        if target_line < 0 {
-            // 先頭行より上 → フィールド先頭（Chromium）。
-            return Some((0, goal_x));
-        }
-        if target_line as usize >= line_count {
-            // 最終行より下 → フィールド末尾。
-            return Some((edit.text_content.len(), goal_x));
-        }
-        let line = layout.get(target_line as usize)?;
-        let m = line.metrics();
-        // 対象行内のベースライン付近の y（Parley 自身の行ステップを写す）を、
-        // ゴール列でヒットテストする。
-        let y = m.block_max_coord - m.ascent * 0.5;
-        let dest = Cursor::from_point(layout, goal_x, y);
-        Some((dest.index(), goal_x))
+        applied
     }
 
     /// 複数行フィールドで現在の*表示*行の先頭／末尾へキャレットを移す（ソフト
@@ -1734,59 +1951,24 @@ impl ElementTree {
         direction: Direction,
         extend: bool,
     ) -> bool {
-        let Some(offset) = self.display_line_boundary_target(target, direction) else {
+        // 表示行 Home/End も `Caret Geometry` seam の裏（`EditState::display_line_boundary`）
+        // で計算する（ADR-0122 決定 5）。実 adapter を注入するだけ。
+        let Some(el) = self.elements.get_mut(&target) else {
             return false;
         };
-        if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
-            // Home/End は水平移動なので、粘着するゴール列を捨てる。
-            edit.desired_x = None;
-            if extend {
-                edit.move_focus(offset);
-            } else {
-                edit.set_selection(offset, offset);
-            }
+        let Some(cl) = el.content_layout.as_ref() else {
+            return false;
+        };
+        let Some(edit) = el.edit.as_mut() else {
+            return false;
+        };
+        let geometry = ParleyCaretGeometry::new(&cl.layout);
+        let applied = edit.display_line_boundary(&geometry, direction, extend);
+        if applied {
+            self.engine
+                .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
         }
-        self.engine
-            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
-        true
-    }
-
-    /// キャレットの現在表示行の先頭（Backward）または末尾（Forward）のバイト
-    /// オフセット。フィールドの Parley `content_layout` から得る。整形レイアウトが
-    /// 無いとき `None`。
-    fn display_line_boundary_target(
-        &self,
-        target: ElementId,
-        direction: Direction,
-    ) -> Option<usize> {
-        let el = self.elements.get(&target)?;
-        let edit = el.edit.as_ref()?;
-        let cl = el.content_layout.as_ref()?;
-        let layout = &cl.layout;
-        if layout.len() == 0 {
-            return None;
-        }
-        let (current_line, _) = caret_display_line(layout, edit.cursor_byte_index);
-        let line = layout.get(current_line)?;
-        let range = line.text_range();
-        match direction {
-            Direction::Backward => Some(range.start),
-            // ソフトラップ境界の空白／改行を除外し、End が行の最後の可視グリフに
-            // 着地するようにする。Parley の `line_end` に一致。
-            Direction::Forward => {
-                let mut end = range.end;
-                let text = &edit.text_content;
-                while end > range.start {
-                    match text[..end].chars().next_back() {
-                        Some(c) if c == '\n' || c == '\r' => end -= c.len_utf8(),
-                        _ => break,
-                    }
-                }
-                Some(end)
-            }
-            // Home/End は水平方向しか持たない。
-            Direction::Up | Direction::Down => None,
-        }
+        applied
     }
 
     /// `ifc` の整形済みテキスト全体を選択する（Ctrl/Cmd+A）。範囲を設定したかを
@@ -1822,7 +2004,8 @@ impl ElementTree {
         let ifc = ifc_root(&self.elements, hit).unwrap_or(hit);
         let tl = self.elements.get(&ifc)?.text_layout.as_ref()?;
         let (ex, ey, _, _) = self.layout.geometry(ifc)?;
-        let offset = byte_index_at_point(tl, x - ex, y - ey);
+        // drag-to-extend の point→byte は `Caret Geometry` seam（#571）越しに解決する。
+        let offset = ParleyCaretGeometry::new(&tl.layout).byte_at_point(x - ex, y - ey);
         Some(SelectionPoint::new(ifc, offset))
     }
 
@@ -1858,14 +2041,18 @@ impl ElementTree {
     }
 
     fn set_selection(&mut self, next: Option<Selection>) {
-        if self.selection == next {
+        if self.interaction.selection.get() == next {
             return;
         }
-        if let Some(prev) = self.selection {
+        if let Some(prev) = self.interaction.selection.get() {
             self.mark_selection_dirty(prev);
         }
-        self.selection = next;
-        if let Some(now) = self.selection {
+        // 状態変更は deep module の interface 経由（one-per-document の不変条件を裏で守る）。
+        match next {
+            Some(selection) => self.interaction.selection.set(selection),
+            None => self.interaction.selection.clear(),
+        }
+        if let Some(now) = self.interaction.selection.get() {
             self.mark_selection_dirty(now);
         }
         // 文書グローバル Selection の実質的変更（設定・移動・クリア。ジェスチャでも
@@ -1873,27 +2060,6 @@ impl ElementTree {
         // より冗長な設定は何も発しない。意図的にペイロードなし。ホストは DOM の
         // `selectionchange` 同様に `selection()` で新状態をポーリングする。
         self.emit_interaction(Event::SelectionChange);
-    }
-
-    /// ドラッグ focus を `point` へ移し anchor を保つ（ADR-0097）。focus は anchor の
-    /// Selection Region にクランプされる。別の `selectable` 領域（ネストしたもの、
-    /// または領域なし）へ迷い込んだドラッグは focus を元の位置に留めるので、選択は
-    /// `selectable` 境界を越えて漏れない。`set_selection` を通すので、範囲が得た／
-    /// 失った各ブロックがハイライトを再生成する。
-    fn update_selection_focus(&mut self, point: SelectionPoint) {
-        let Some(sel) = self.selection else {
-            return;
-        };
-        if sel.focus == point {
-            return;
-        }
-        if self.selection_region_of(point.element) != self.selection_region_of(sel.anchor.element) {
-            return;
-        }
-        self.set_selection(Some(Selection {
-            anchor: sel.anchor,
-            focus: point,
-        }));
     }
 
     /// 選択が覆う各ブロックを再生成し、ハイライトを追従させる。両端点ブロックと、
@@ -1971,10 +2137,39 @@ impl ElementTree {
     /// [`InteractionIntent`] を `Interaction` deep module に適用する単一の橋
     /// （ADR-0122）。`Interaction` を一時的に取り出すことで、残りの `ElementTree`
     /// を [`InteractionTreeView`] として排他借用できる（単一書き手・aliasing なし）。
-    pub(crate) fn apply_interaction_intent(&mut self, intent: InteractionIntent) {
-        let mut interaction = std::mem::take(&mut self.interaction);
-        interaction.apply_intent(self, intent);
+    pub(crate) fn apply_interaction_intent(&mut self, intent: InteractionIntent) -> bool {
+        // pointer-down / -move は hit-test・hover・begin パイプラインが
+        // `self.interaction.pointer_gesture` 等を直読み／直書きするので、mem-take した
+        // placeholder では壊れる。これらは tree dispatch を直接走らせて seam を通す
+        // （intent 封筒が 2-producer の seam 値。#572）。
+        match &intent {
+            InteractionIntent::PointerDown { x, y, modifiers } => {
+                let (x, y, modifiers) = (*x, *y, *modifiers);
+                self.dispatch_pointer_down(x, y, modifiers);
+                return true;
+            }
+            InteractionIntent::PointerMove { x, y } => {
+                let (x, y) = (*x, *y);
+                self.dispatch_pointer_move(x, y);
+                return true;
+            }
+            _ => {}
+        }
+        // `Interaction` を一時取り出して残りの tree を排他借用する（単一書き手）。
+        // ただし seam の裏で走る tree 側ロジック（`Edit` arm 越しの `edit_selection_owner`
+        // 等が現在 focus 中 text-input を解決する）が focus を読むため、placeholder にも
+        // 引き継ぎ、apply 中も正しい focus を観測できるようにする。
+        let focused = self.interaction.focused_element;
+        let mut interaction = std::mem::replace(
+            &mut self.interaction,
+            Interaction {
+                focused_element: focused,
+                ..Interaction::default()
+            },
+        );
+        let consumed = interaction.apply_intent(self, intent);
         self.interaction = interaction;
+        consumed
     }
 
     /// 単一 text-input の編集選択をキャレットへ畳み、実際に範囲を持っていたときだけ
@@ -2038,12 +2233,49 @@ impl InteractionTreeView for ElementTree {
         self.layout.last_cursor_toggle_ms = None;
     }
 
-    fn pointer_kind(&self) -> PointerKind {
-        self.last_pointer_kind
-    }
-
     fn collapse_edit_selection(&mut self, id: ElementId) {
         self.collapse_edit_selection_of(id);
+    }
+
+    fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool {
+        // tree 側の編集 seam（クリップボード・選択・`Caret Geometry` 注入を内包）へ
+        // 委譲する。`EditIntent` の edit 専用シーム意味は不変（ADR-0103）。
+        self.apply_edit_intent(target, intent)
+    }
+
+    fn mark_active_dirty(&mut self, id: ElementId) {
+        self.mark_pseudo_activation_dirty(id, crate::element::pseudo_state::PseudoState::Active);
+    }
+
+    fn drag_scrollbar(&mut self, drag: ScrollbarDrag, x: f32, y: f32) -> Option<ScrollbarDrag> {
+        self.drag_scrollbar_step(drag, x, y)
+    }
+
+    fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32) {
+        self.extend_edit_drag_to(input, x, y);
+    }
+
+    fn resolve_selection_point(&self, x: f32, y: f32) -> Option<SelectionPoint> {
+        self.selection_point_at(x, y)
+    }
+
+    fn same_selection_region(&self, a: ElementId, b: ElementId) -> bool {
+        self.selection_region_of(a) == self.selection_region_of(b)
+    }
+
+    fn on_selection_changed(&mut self, prev: Selection, new: Selection) {
+        self.mark_selection_dirty(prev);
+        self.mark_selection_dirty(new);
+        // 文書グローバル Selection の実質的変更を一度通知する（ADR-0097）。
+        self.emit_interaction(Event::SelectionChange);
+    }
+
+    fn apply_set_value(&mut self, target: ElementId, value: &str) {
+        self.apply_semantic_set_value(target, value);
+    }
+
+    fn scroll_to_reveal(&mut self, target: ElementId) {
+        self.scroll_into_view(target);
     }
 }
 
@@ -2083,7 +2315,25 @@ mod seam_tests {
         focus_effects: Vec<ElementId>,
         blur_effects: Vec<ElementId>,
         collapsed: Vec<ElementId>,
-        pointer_kind: PointerKind,
+        /// `Edit` arm が seam を通って届いた `(target, intent)` の記録。
+        edits: Vec<(ElementId, EditIntent)>,
+        /// `apply_edit` が返す「消費した」フラグ（テストごとに差し替える）。
+        edit_consumes: bool,
+        /// `:active` 無効化をマークされた要素（active 切替の観測）。
+        active_dirty: Vec<ElementId>,
+        /// `drive_active_drag` が呼んだドライブ種別の記録（drag-mode dispatch の観測）。
+        scrollbar_drives: Vec<(f32, f32)>,
+        edit_drives: Vec<(ElementId, f32, f32)>,
+        /// `resolve_selection_point` が返す点（テストごとに差し替える）。
+        resolve_point: Option<SelectionPoint>,
+        /// `same_selection_region` が返す値（既定 true）。
+        same_region: bool,
+        /// `on_selection_changed` で観測した `(prev, new)`。
+        selection_changes: Vec<(Selection, Selection)>,
+        /// `apply_set_value` で届いた `(target, value)`（accessibility SetValue の観測）。
+        set_values: Vec<(ElementId, String)>,
+        /// `scroll_to_reveal` で届いた target（accessibility ScrollToReveal の観測）。
+        reveals: Vec<ElementId>,
     }
 
     impl Default for FakeView {
@@ -2093,7 +2343,16 @@ mod seam_tests {
                 focus_effects: Vec::new(),
                 blur_effects: Vec::new(),
                 collapsed: Vec::new(),
-                pointer_kind: PointerKind::Mouse,
+                edits: Vec::new(),
+                edit_consumes: true,
+                active_dirty: Vec::new(),
+                scrollbar_drives: Vec::new(),
+                edit_drives: Vec::new(),
+                resolve_point: None,
+                same_region: true,
+                selection_changes: Vec::new(),
+                set_values: Vec::new(),
+                reveals: Vec::new(),
             }
         }
     }
@@ -2108,11 +2367,38 @@ mod seam_tests {
         fn apply_blur_effects(&mut self, id: ElementId) {
             self.blur_effects.push(id);
         }
-        fn pointer_kind(&self) -> PointerKind {
-            self.pointer_kind
-        }
         fn collapse_edit_selection(&mut self, id: ElementId) {
             self.collapsed.push(id);
+        }
+        fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool {
+            self.edits.push((target, intent));
+            self.edit_consumes
+        }
+        fn mark_active_dirty(&mut self, id: ElementId) {
+            self.active_dirty.push(id);
+        }
+        fn drag_scrollbar(&mut self, drag: ScrollbarDrag, x: f32, y: f32) -> Option<ScrollbarDrag> {
+            self.scrollbar_drives.push((x, y));
+            // 更新済み drag を返し、`drive_active_drag` の gesture 再設定経路も回す。
+            Some(drag)
+        }
+        fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32) {
+            self.edit_drives.push((input, x, y));
+        }
+        fn resolve_selection_point(&self, _x: f32, _y: f32) -> Option<SelectionPoint> {
+            self.resolve_point
+        }
+        fn same_selection_region(&self, _a: ElementId, _b: ElementId) -> bool {
+            self.same_region
+        }
+        fn on_selection_changed(&mut self, prev: Selection, new: Selection) {
+            self.selection_changes.push((prev, new));
+        }
+        fn apply_set_value(&mut self, target: ElementId, value: &str) {
+            self.set_values.push((target, value.to_string()));
+        }
+        fn scroll_to_reveal(&mut self, target: ElementId) {
+            self.reveals.push(target);
         }
     }
 
@@ -2179,11 +2465,12 @@ mod seam_tests {
 
     #[test]
     fn touch_blur_collapses_edit_selection_before_blur_event() {
-        let mut interaction = Interaction::default();
-        let mut view = FakeView {
-            pointer_kind: PointerKind::Touch,
-            ..FakeView::default()
+        // pointer 種別は `Interaction` が所有する（#572）ので、それを Touch にする。
+        let mut interaction = Interaction {
+            last_pointer_kind: PointerKind::Touch,
+            ..Interaction::default()
         };
+        let mut view = FakeView::default();
         let (a, b) = (id(1), id(2));
         interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
         view.events.clear();
@@ -2229,5 +2516,264 @@ mod seam_tests {
             "expected a single Click at (12,34), got {:?}",
             view.events,
         );
+    }
+
+    #[test]
+    fn edit_intent_routes_through_seam_to_apply_edit() {
+        // `Edit` arm は `apply_intent` 経由で view の `apply_edit` へ届き、その戻り値
+        // （消費したか）をそのまま返す（ADR-0122 決定 5）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(3);
+        let intent = EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Up,
+        };
+
+        let consumed = interaction.apply_intent(&mut view, InteractionIntent::Edit { target, intent });
+
+        assert!(consumed, "apply_edit が true を返せば intent も消費扱い");
+        assert_eq!(view.edits, vec![(target, intent)], "EditIntent が seam を通って届く");
+    }
+
+    #[test]
+    fn edit_intent_reports_unconsumed_when_apply_edit_declines() {
+        // text-input でない等で `apply_edit` が false なら、入力は消費されない
+        // （`on_key_down` が生の KeyDown 経路へ落ちられる）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView {
+            edit_consumes: false,
+            ..FakeView::default()
+        };
+        let intent = EditIntent::Delete {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Backward,
+        };
+
+        let consumed =
+            interaction.apply_intent(&mut view, InteractionIntent::Edit { target: id(9), intent });
+
+        assert!(!consumed, "apply_edit が false なら未消費");
+    }
+
+    // --- #572: pointer 状態機械（click-on-release / pointer-cancel / drag-mode）---
+
+    #[test]
+    fn pointer_up_fires_click_on_release_at_press_point() {
+        // 生きた押下があれば、リリースで押下起点座標の Click → ActiveEnd を出し、
+        // active をクリアして `:active` 無効化を記録する（ADR-0082 / #572）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let t = id(5);
+        interaction.active_element = Some(t);
+        interaction.active_press_pos = Some((3.0, 4.0));
+
+        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: None });
+
+        assert!(
+            matches!(
+                view.events.as_slice(),
+                [Event::Click { target_id, x, y }, Event::ActiveEnd { target_id: ae }]
+                    if *target_id == t && *x == 3.0 && *y == 4.0 && *ae == t
+            ),
+            "expected Click(press) then ActiveEnd, got {:?}",
+            view.events,
+        );
+        assert_eq!(interaction.active_element, None, "release clears active");
+        assert_eq!(view.active_dirty, vec![t], ":active invalidation recorded");
+    }
+
+    #[test]
+    fn pointer_up_without_a_live_press_fires_no_click() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+
+        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: None });
+
+        assert!(view.events.is_empty(), "no live press → no click, got {:?}", view.events);
+    }
+
+    #[test]
+    fn pointer_up_uses_explicit_target_for_active_end_without_active() {
+        // active セッションが無ければ Click は出ないが、明示ターゲットへ ActiveEnd は
+        // 出る（HTML フォールバック）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let t = id(9);
+
+        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: Some(t) });
+
+        assert!(
+            matches!(view.events.as_slice(), [Event::ActiveEnd { target_id }] if *target_id == t),
+            "expected only ActiveEnd for the explicit target, got {:?}",
+            view.events,
+        );
+    }
+
+    #[test]
+    fn pointer_cancel_clears_active_so_release_fires_no_click() {
+        // キャンセルは生きた押下を解除する（スクロール乗っ取りで化けた押下が、後続の
+        // リリースで Click を発火しない・ADR-0082）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let t = id(2);
+        interaction.active_element = Some(t);
+        interaction.active_press_pos = Some((1.0, 1.0));
+
+        interaction.apply_intent(&mut view, InteractionIntent::PointerCancel);
+
+        assert_eq!(interaction.active_element, None, "cancel clears the live press");
+        assert!(
+            matches!(view.events.as_slice(), [Event::ActiveEnd { target_id }] if *target_id == t),
+            "cancel emits ActiveEnd, got {:?}",
+            view.events,
+        );
+
+        view.events.clear();
+        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: None });
+        assert!(
+            view.events.is_empty(),
+            "a cancelled press fires no click on release, got {:?}",
+            view.events,
+        );
+    }
+
+    #[test]
+    fn drive_active_drag_dispatches_to_the_classified_drag_mode() {
+        // 進行中ドラッグ種別ごとに、対応する view ドライブだけが呼ばれる（三者排他、
+        // ADR-0066）。
+        let input = id(4);
+        let mut interaction = Interaction::default();
+        interaction.pointer_gesture.begin_drag(DragMode::Edit(input));
+        let mut view = FakeView::default();
+        interaction.drive_active_drag(&mut view, 10.0, 20.0);
+        assert_eq!(view.edit_drives, vec![(input, 10.0, 20.0)]);
+        assert!(view.scrollbar_drives.is_empty());
+    }
+
+    #[test]
+    fn drive_active_drag_extends_the_document_selection_across_elements() {
+        // 読み取り専用 SelectionArea ドラッグは、view が解決した点（`byte_at_point` ＝
+        // `Caret Geometry` #571）へ `Interaction` 所有の選択を要素をまたいで拡張する
+        // （#574）。anchor は固定、focus がドラッグ点へ。
+        let mut interaction = Interaction::default();
+        interaction.pointer_gesture.begin_drag(DragMode::Selection);
+        interaction
+            .selection
+            .set(Selection::caret(SelectionPoint::new(id(1), 2)));
+        let drag_point = SelectionPoint::new(id(2), 5);
+        let mut view = FakeView {
+            resolve_point: Some(drag_point),
+            ..FakeView::default()
+        };
+
+        interaction.drive_active_drag(&mut view, 7.0, 8.0);
+
+        let sel = interaction.selection.get().unwrap();
+        assert_eq!(sel.anchor, SelectionPoint::new(id(1), 2), "anchor は固定");
+        assert_eq!(sel.focus, drag_point, "focus が要素をまたいでドラッグ点へ");
+        assert_eq!(view.selection_changes.len(), 1, "選択変更が一度通知される");
+        assert!(view.edit_drives.is_empty() && view.scrollbar_drives.is_empty());
+    }
+
+    #[test]
+    fn drag_select_does_not_cross_a_selection_region_boundary() {
+        // focus が別 Selection Region へ迷い込んだら据え置く（選択は境界を越えない）。
+        let mut interaction = Interaction::default();
+        interaction.pointer_gesture.begin_drag(DragMode::Selection);
+        interaction
+            .selection
+            .set(Selection::caret(SelectionPoint::new(id(1), 2)));
+        let mut view = FakeView {
+            resolve_point: Some(SelectionPoint::new(id(2), 5)),
+            same_region: false, // 別領域
+            ..FakeView::default()
+        };
+
+        interaction.drive_active_drag(&mut view, 7.0, 8.0);
+
+        assert_eq!(
+            interaction.selection.get().unwrap().focus,
+            SelectionPoint::new(id(1), 2),
+            "境界外の点では focus を据え置く",
+        );
+        assert!(view.selection_changes.is_empty(), "変更通知も出ない");
+    }
+
+    #[test]
+    fn drive_active_drag_with_no_drag_is_a_noop() {
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+
+        interaction.drive_active_drag(&mut view, 1.0, 1.0);
+
+        assert!(
+            view.edit_drives.is_empty()
+                && view.selection_changes.is_empty()
+                && view.scrollbar_drives.is_empty(),
+            "DragMode::None drives nothing",
+        );
+    }
+
+    #[test]
+    fn drive_active_drag_advances_scrollbar_and_keeps_the_updated_drag() {
+        // スクロールバーつまみドラッグは view へ駆動を委ね、返った更新 drag を次の
+        // 基準として gesture に保持する（ADR-0110 / #572）。
+        use crate::element::scene_build::ScrollAxis;
+        let sv = id(11);
+        let drag = ScrollbarDrag {
+            scroll_view: sv,
+            axis: ScrollAxis::Vertical,
+            last_pos: 0.0,
+            offset_per_px: 1.0,
+        };
+        let mut interaction = Interaction::default();
+        interaction.pointer_gesture.begin_drag(DragMode::Scrollbar(drag));
+        let mut view = FakeView::default();
+
+        interaction.drive_active_drag(&mut view, 0.0, 25.0);
+
+        assert_eq!(view.scrollbar_drives, vec![(0.0, 25.0)], "scrollbar drag driven via view");
+        assert!(
+            matches!(interaction.pointer_gesture.drag(), DragMode::Scrollbar(d) if d.scroll_view == sv),
+            "the updated scrollbar drag is retained for the next move",
+        );
+    }
+
+    // --- #575: accessibility inbound が同一 seam を共有する ---
+
+    #[test]
+    fn set_value_intent_routes_through_seam_to_apply_set_value() {
+        // AccessKit `SetValue` は `InteractionIntent::SetValue` として apply_intent を
+        // 通り、view の `apply_set_value`（編集経路と同一の実体）へ届く（#575）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(8);
+
+        let consumed = interaction.apply_intent(
+            &mut view,
+            InteractionIntent::SetValue {
+                target,
+                value: "hello".to_string(),
+            },
+        );
+
+        assert!(consumed);
+        assert_eq!(view.set_values, vec![(target, "hello".to_string())]);
+    }
+
+    #[test]
+    fn scroll_to_reveal_intent_routes_through_seam() {
+        // AccessKit `ScrollIntoView` は `ScrollToReveal` として apply_intent を通り、
+        // reveal 幾何を持つ view の `scroll_to_reveal` へ届く（adapter は intent のみ・#575）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(6);
+
+        let consumed =
+            interaction.apply_intent(&mut view, InteractionIntent::ScrollToReveal { target });
+
+        assert!(consumed);
+        assert_eq!(view.reveals, vec![target]);
     }
 }

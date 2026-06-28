@@ -1,5 +1,6 @@
 pub mod accessibility;
 pub mod ambient_defaults;
+pub mod caret_geometry;
 pub mod chrome_tuning;
 pub mod clipboard;
 pub mod document_runtime;
@@ -34,6 +35,7 @@ mod viewport_resize;
 mod visual_invalidation;
 
 pub use accessibility::{map_action_request, AccessibilityAction};
+pub use caret_geometry::{CaretGeometry, ParleyCaretGeometry, TableCaretGeometry};
 pub use clipboard::Clipboard;
 pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
 pub use edit_state::{
@@ -51,7 +53,7 @@ pub use kind::ElementKind;
 pub use pointer::PointerKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
-pub use selection::{Selection, SelectionPoint};
+pub use selection::{DocumentSelection, Selection, SelectionPoint};
 pub use selection_chrome::{
     SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles, SelectionToolbar,
     ToolbarAction, ToolbarButton, ToolbarRect,
