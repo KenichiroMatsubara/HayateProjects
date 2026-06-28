@@ -3,9 +3,9 @@ name: tdd
 description: Test-driven development with red-green-refactor loop. Use when user wants to build features or fix bugs using TDD, mentions "red-green-refactor", wants integration tests, or asks for test-first development.
 ---
 
-> **⚠️ Local overrides（このリポジトリ独自の上書き）**
-> このスキルには同ディレクトリの `OVERRIDES.md` にリポジトリ独自の追加・変更がある。
-> **本文を読む前に必ず `OVERRIDES.md` を読むこと。本文の指示と衝突する場合は `OVERRIDES.md` を優先する。**
+> **⚠️ km_arrange（このリポジトリ独自の編集）あり**
+> このスキルには同ディレクトリの `km_arrange.md` にリポジトリ独自の追加・変更がある。
+> **本文を読む前に必ず `km_arrange.md` を読むこと。本文の指示と衝突する場合は `km_arrange.md` を優先する。**
 
 # Test-Driven Development
 
@@ -62,19 +62,7 @@ a single pull request**. Do not open a branch or PR per issue.
 - Keep going until **every** issue in the range/list is cleared, then push the
   single branch and (if requested) open the single PR covering all of them.
 
-### 【厳守】途中で止めて確認しない — 全部やり切ってから報告する
-
-**指示されたタスク（単一 issue でも、複数 issue の範囲/リストでも）は、すべて完了し、すべてコミットし終えるまで、絶対に途中で止まってユーザに確認・許可を求めてはならない。**
-
-- 「ここまでやりました、続けますか？」「次に進んでよいですか？」のような**進捗確認・続行許可の問い合わせを一切しない。** 黙って最後まで完遂する。複数 issue で最初の1件を終えた時点で止まって聞くのは重大な違反。**全 issue** を実装・コミットし終えるまで連続して進める。
-- **ユーザへの確認・報告は、全タスクをコミットし終えた後に一度だけ行う。**
-- 唯一の例外：実装を正しく続行できない**真の阻害要因**（要件が根本的に矛盾し推測で埋められない／不可逆な破壊的操作の承認が要る）に限り停止してよい。単なる進捗確認はこの例外に含まれない。
-
-### issue 1件ごとにコンテキストを要約・圧縮してから次へ
-
-複数 issue を処理するとき、**1件を完了（実装・テスト green・コミット）するたびに、次の issue に取り掛かる前に必ず現在のコンテキストウィンドウを要約して圧縮する。** 要約には「完了した issue 番号と要点・残りの issue・共有中の前提」を残し、不要な探索ログは捨てる。後続 issue を常に整理されたコンテキストで開始する。
-
-（この節はこのリポジトリ独自の上書き。`OVERRIDES.md` 参照。）
+> このリポジトリ独自の運用ルール（途中で止めて確認しない／issue ごとにコンテキスト圧縮 等）は、本文に混ぜず `km_arrange.md` に分離してある。**実行前に `km_arrange.md` を必ず読むこと。**
 
 ## Workflow
 

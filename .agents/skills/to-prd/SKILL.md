@@ -3,9 +3,9 @@ name: to-prd
 description: Turn the current conversation context into a PRD and publish it to the project issue tracker. Use when user wants to create a PRD from the current context.
 ---
 
-> **⚠️ Local overrides（このリポジトリ独自の上書き）**
-> このスキルには同ディレクトリの `OVERRIDES.md` にリポジトリ独自の追加・変更がある。
-> **本文を読む前に必ず `OVERRIDES.md` を読むこと。本文の指示と衝突する場合は `OVERRIDES.md` を優先する。**
+> **⚠️ km_arrange（このリポジトリ独自の編集）あり**
+> このスキルには同ディレクトリの `km_arrange.md` にリポジトリ独自の追加・変更がある。
+> **本文を読む前に必ず `km_arrange.md` を読むこと。本文の指示と衝突する場合は `km_arrange.md` を優先する。**
 
 This skill takes the current conversation context and codebase understanding and produces a PRD. Do NOT interview the user — just synthesize what you already know.
 

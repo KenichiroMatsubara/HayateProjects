@@ -1,6 +1,6 @@
 ---
 name: update-matt-pocock-skills
-description: Safely review and pull updates to the vendored Matt Pocock skills (mattpocock/skills) while preserving this repo's local OVERRIDES. Fetches upstream at a pinned commit, diffs against the last pinned base, runs a security risk-scan on every change, and applies only what the user approves. User-invoked only.
+description: Safely review and pull updates to the vendored Matt Pocock skills (mattpocock/skills) while preserving this repo's local km_arrange. Fetches upstream at a pinned commit, diffs against the last pinned base, runs a security risk-scan on every change, and applies only what the user approves. User-invoked only.
 disable-model-invocation: true
 ---
 
@@ -13,7 +13,7 @@ disable-model-invocation: true
 ## 大原則
 
 1. **pin で再現性を確保。** 上流は常に特定 commit SHA で取得し、`skills-lock.json` に記録する。floating branch を直接信用しない。
-2. **OVERRIDES とローカル frontmatter は保持。** `OVERRIDES.md` を持つスキルのローカル独自部分は決して上書きしない。`description` 等ローカル frontmatter も既定で保持する。
+2. **km_arrange とローカル frontmatter は保持。** `km_arrange.md` を持つスキルのローカル独自部分は決して上書きしない。`description` 等ローカル frontmatter も既定で保持する。
 3. **危険シグナルが出たら止まる。** リスクスキャンに引っかかった差分は、その箇所をユーザと個別確認するまで適用しない。
 4. **完全無言の自動適用はしない。** 差分とリスク印を必ず提示し、適用は更新1回ごとにユーザの最終 OK を得てから（このリポジトリで合意した自動化レベル = A）。
 
@@ -21,7 +21,7 @@ disable-model-invocation: true
 
 ### 1. 現在の pin を読む
 
-`skills-lock.json` を読む。`sourceCommit`（前回取り込んだ上流 commit SHA）、各スキルの `skillPath` / `computedHash`、`overrides`（OVERRIDES.md を持つか）/ `pinnedLocal`（上流本体を採用しない自己完結スキルか）フラグを把握する。
+`skills-lock.json` を読む。`sourceCommit`（前回取り込んだ上流 commit SHA）、各スキルの `skillPath` / `computedHash`、`km_arrange`（km_arrange.md を持つか）/ `pinnedLocal`（上流本体を採用しない自己完結スキルか）フラグを把握する。
 
 ### 2. 上流の最新 commit を解決して取得
 
@@ -44,7 +44,7 @@ disable-model-invocation: true
 
 ### 4. 差分を取る（base → 新上流）
 
-`pinnedLocal` でないスキルは、`前回 base（sourceCommit のSKILL本文）→ 新上流` の差分を取る。base が取れない初回は、現ローカル SKILL.md を暫定 base にして差分を示し、どれがローカル独自かを `OVERRIDES.md` と突き合わせて区別する。`OVERRIDES.md` に記録済みの独自部分は「あなたのチューニング（保持）」、それ以外の差分は「上流の変更（取り込み候補）」。
+`pinnedLocal` でないスキルは、`前回 base（sourceCommit のSKILL本文）→ 新上流` の差分を取る。base が取れない初回は、現ローカル SKILL.md を暫定 base にして差分を示し、どれがローカル独自かを `km_arrange.md` と突き合わせて区別する。`km_arrange.md` に記録済みの独自部分は「あなたのチューニング（保持）」、それ以外の差分は「上流の変更（取り込み候補）」。
 
 ### 5. リスクスキャン（全差分に必須）
 
@@ -57,7 +57,7 @@ disable-model-invocation: true
 
 ### 6. 提示して承認を得る（自動化レベル A）
 
-スキルごとに、(a) 上流の変更内容（要約＋必要なら差分本体）、(b) リスク印、(c) 保持する OVERRIDES、を表で提示する。
+スキルごとに、(a) 上流の変更内容（要約＋必要なら差分本体）、(b) リスク印、(c) 保持する km_arrange、を表で提示する。
 
 - 危険シグナルがゼロで差分も無害なら「取り込み推奨」とし、ユーザの一言 OK で適用。
 - 危険シグナルが出た箇所は、そこだけ立ち止まって内容を説明し、個別に可否を確認する。
@@ -67,21 +67,31 @@ disable-model-invocation: true
 
 承認された分のみ：
 
-- `pinnedLocal` でないスキルは、新上流の本文・同梱ファイルで `.claude/skills/<name>/` を更新。`OVERRIDES.md` と「Local overrides 参照ブロック」は維持し、ローカル frontmatter（`description` 等）は既定で保持する（上流側を採るとユーザが明示した場合のみ差し替え）。
+- `pinnedLocal` でないスキルは、新上流の本文・同梱ファイルで `.claude/skills/<name>/` を更新。`km_arrange.md` と「km_arrange 参照ブロック」は維持し、ローカル frontmatter（`description` 等）は既定で保持する（上流側を採るとユーザが明示した場合のみ差し替え）。
 - 改名追従が承認されたら、旧ディレクトリを削除し新名で入れ直す（旧スキルにローカル独自があれば移植可否を先に確認）。
 - 削除が承認されたら旧ディレクトリを削除。
 - **`.claude/skills/` を更新したら必ず `.agents/skills/` へ同期**（このリポジトリは両ツリー実体）。
 
 ### 8. lock を書き戻す
 
-`skills-lock.json` を更新：`sourceCommit` を新 SHA に、各スキルの `skillPath`（移動/改名を反映）と `computedHash`（新上流本文の sha256）を更新。`overrides` / `pinnedLocal` フラグを維持。削除したスキルはエントリ削除、新規導入したら追加。
+`skills-lock.json` を更新：`sourceCommit` を新 SHA に、各スキルの `skillPath`（移動/改名を反映）と `computedHash`（新上流本文の sha256）を更新。`km_arrange` / `pinnedLocal` フラグを維持。削除したスキルはエントリ削除、新規導入したら追加。
 
-### 9. ユーザが OVERRIDES を足すとき（authoring 方向）
+### 9. ユーザが km_arrange を足すとき（authoring 方向）
 
-ユーザがあるスキルに独自仕様を追加したいと言った場合は、それを `OVERRIDES.md` に書く（無ければ作成し、SKILL.md 冒頭に参照ブロックを付ける）。**その追加が元スキルの設計思想と衝突する場合は、書き込む前に必ずユーザに確認を取る。**
+ユーザがあるスキルに独自仕様を追加したいと言った場合は、それを `km_arrange.md` に書く（無ければ作成し、SKILL.md 冒頭に参照ブロックを付ける）。**その追加が元スキルの設計思想と衝突する場合は、書き込む前に必ずユーザに確認を取る。**
+
+## 直接更新の禁止（レビュー関門の強制）
+
+vendoring されたスキル（`skills-lock.json` に載る全スキル）は、**このスキル（`/update-matt-pocock-skills`）のレビュー関門を通してのみ**変更してよい。次を**禁止**する：
+
+- 上流からの手動 vendoring・直接コピー・`git checkout`/`curl` でのスキル本体の差し替え。
+- `setup-matt-pocock-skills` など他スキルによる vendoring 済みスキル本体の書き換え。`setup-matt-pocock-skills` は repo 設定（issue tracker・ラベル・domain docs）専用であり、**スキル本体や `km_arrange.md` を更新してはならない**。`setup-matt-pocock-skills` 自身の更新も、直接行わず本スキルのレビューを経ること。
+- `pinnedLocal` スキル（`tdd`・`to-issues`・`to-prd`・`triage`・`grill-me`・`grill-with-docs`・`improve-codebase-architecture`・`setup-matt-pocock-skills`）の本体は、**いかなる場合も直接更新しない**。上流差分は本スキルが参考提示し、取り込みは差分→リスクスキャン→ユーザ承認を経た場合に限る。
+
+要するに、vendoring 済みスキルへの変更経路は**この1つだけ**であり、必ず人間の審査（差分提示・リスク印・最終 OK）を通る。
 
 ## このリポジトリ固有の取り決め（既定方針）
 
 - **自己完結スキルを上流の委譲化で壊さない。** `grill-me` / `grill-with-docs` / `triage` / `improve-codebase-architecture` は、上流が `/grilling`・`/domain-modeling`・`/codebase-design` へ委譲する形に変わったが、未導入サブスキルへの参照が宙に浮くため、自己完結版を保持する（`pinnedLocal`）。
-- **外部 PR のトリアージは採用しない**（`triage` / `setup-matt-pocock-skills` の OVERRIDES 参照）。
+- **外部 PR のトリアージは採用しない**（`triage` / `setup-matt-pocock-skills` の km_arrange 参照）。
 - **自作スキルは対象外。** `inherit-prompt` / `make-pr` / `search-issue` は Matt Pocock 由来でないため、このスキルは一切触らない（`skills-lock.json` にも載せない）。
