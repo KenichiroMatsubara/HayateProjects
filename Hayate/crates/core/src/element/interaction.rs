@@ -127,11 +127,12 @@ pub enum InputModality {
 /// 入力意図の封筒（ADR-0122 決定 2）。pointer / keyboard / accessibility / edit の
 /// すべてが同一の閉じた値型に合流する flat dispatch 封筒で、各 adapter はこの値を
 /// 構築するだけで `Interaction::apply_intent` に流す（2 producer = 本物の seam）。
-/// `Focus` / `Click` に加え、この slice で `Edit(EditIntent)` arm を持つ
-/// （ADR-0122 決定 5 / #573）。`SetValue` / `ScrollToReveal` 等の他 arm は後続 slice
-/// で加わる。`Edit` arm は既存の `EditIntent`（ADR-0103）を**そのまま内包**し、
-/// edit 専用シームの意味を再定義しない。
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// `Focus` / `Click` / `Edit(EditIntent)`（#573）/ pointer arm（#572）に加え、
+/// `SetValue` / `ScrollToReveal`（accessibility inbound・#575）を並立 arm に持つ。
+/// `Edit` arm は既存の `EditIntent`（ADR-0103）を**そのまま内包**し、edit 専用
+/// シームの意味を再定義しない。`SetValue` が `String` を運ぶため値全体は `Copy`
+/// ではない（`Clone`）。
+#[derive(Clone, Debug, PartialEq)]
 pub enum InteractionIntent {
     /// `target` をフォーカス要素にする focus 遷移。直前 focus の blur と、`Blur` /
     /// `Focus` イベントの送出を伴う。既に focus 済みなら no-op。
@@ -159,6 +160,14 @@ pub enum InteractionIntent {
     /// pointer-cancel（タッチ中断／キャプチャ喪失、#572）。active な押下を解除して
     /// 以降のリリースで Click を発火させない。
     PointerCancel,
+    /// `target`（text-input）の値を `value` で意味的に置換する（accessibility inbound・
+    /// ADR-0098 / #575）。進行中 preedit を確定してから置換し、`TextInput` を発火する。
+    /// `text-input` 以外では no-op。AccessKit `SetValue` と編集経路が同一 seam を共有する。
+    SetValue { target: ElementId, value: String },
+    /// 最寄りの祖先 `scroll-view` の Scroll Offset を調整して `target` を表示に入れる
+    /// （AccessKit `ScrollIntoView`・ADR-0098 / #575）。reveal 幾何（`scroll_axis_to_reveal`）
+    /// は seam の裏（`Interaction` 実装）に置き、adapter は intent を出すだけ。
+    ScrollToReveal { target: ElementId },
 }
 
 /// `Interaction` が tree から借りる狭いビュー（ADR-0122 決定 1）。`Interaction` は
@@ -204,6 +213,12 @@ pub trait InteractionTreeView {
     /// 文書グローバル選択が `prev` から `new` へ変わったときの tree 側効果：得失した
     /// 各ブロックのハイライト再生成（visual dirty）と一度の `selection-change` 通知。
     fn on_selection_changed(&mut self, prev: Selection, new: Selection);
+    /// `target`（text-input）の値を `value` で置換する（AccessKit `SetValue`・#575）。
+    /// preedit 確定 → 内容置換 → `TextInput` 発火。`text-input` 以外は no-op。
+    fn apply_set_value(&mut self, target: ElementId, value: &str);
+    /// 最寄りの祖先 `scroll-view` を `target` が表示に入る最小オフセットへ動かす
+    /// （reveal 幾何は tree 側・#575）。既に完全表示か scroll-view 祖先が無ければ no-op。
+    fn scroll_to_reveal(&mut self, target: ElementId);
 }
 
 /// 横断的 interaction state を所有する deep module（ADR-0122 決定 1）。入口は
@@ -300,6 +315,14 @@ impl Interaction {
             }
             InteractionIntent::PointerCancel => {
                 self.pointer_cancel(view);
+                true
+            }
+            InteractionIntent::SetValue { target, value } => {
+                view.apply_set_value(target, &value);
+                true
+            }
+            InteractionIntent::ScrollToReveal { target } => {
+                view.scroll_to_reveal(target);
                 true
             }
             // pointer-down / -move の重い hit-test / hover / begin パイプラインは
@@ -2116,12 +2139,14 @@ impl ElementTree {
         // `self.interaction.pointer_gesture` 等を直読み／直書きするので、mem-take した
         // placeholder では壊れる。これらは tree dispatch を直接走らせて seam を通す
         // （intent 封筒が 2-producer の seam 値。#572）。
-        match intent {
+        match &intent {
             InteractionIntent::PointerDown { x, y, modifiers } => {
+                let (x, y, modifiers) = (*x, *y, *modifiers);
                 self.dispatch_pointer_down(x, y, modifiers);
                 return true;
             }
             InteractionIntent::PointerMove { x, y } => {
+                let (x, y) = (*x, *y);
                 self.dispatch_pointer_move(x, y);
                 return true;
             }
@@ -2241,6 +2266,14 @@ impl InteractionTreeView for ElementTree {
         // 文書グローバル Selection の実質的変更を一度通知する（ADR-0097）。
         self.emit_interaction(Event::SelectionChange);
     }
+
+    fn apply_set_value(&mut self, target: ElementId, value: &str) {
+        self.apply_semantic_set_value(target, value);
+    }
+
+    fn scroll_to_reveal(&mut self, target: ElementId) {
+        self.scroll_into_view(target);
+    }
 }
 
 /// `acc`（min-x, min-y, max-x, max-y）を矩形 `(x, y, w, h)` を含むよう広げる。
@@ -2294,6 +2327,10 @@ mod seam_tests {
         same_region: bool,
         /// `on_selection_changed` で観測した `(prev, new)`。
         selection_changes: Vec<(Selection, Selection)>,
+        /// `apply_set_value` で届いた `(target, value)`（accessibility SetValue の観測）。
+        set_values: Vec<(ElementId, String)>,
+        /// `scroll_to_reveal` で届いた target（accessibility ScrollToReveal の観測）。
+        reveals: Vec<ElementId>,
     }
 
     impl Default for FakeView {
@@ -2311,6 +2348,8 @@ mod seam_tests {
                 resolve_point: None,
                 same_region: true,
                 selection_changes: Vec::new(),
+                set_values: Vec::new(),
+                reveals: Vec::new(),
             }
         }
     }
@@ -2351,6 +2390,12 @@ mod seam_tests {
         }
         fn on_selection_changed(&mut self, prev: Selection, new: Selection) {
             self.selection_changes.push((prev, new));
+        }
+        fn apply_set_value(&mut self, target: ElementId, value: &str) {
+            self.set_values.push((target, value.to_string()));
+        }
+        fn scroll_to_reveal(&mut self, target: ElementId) {
+            self.reveals.push(target);
         }
     }
 
@@ -2690,5 +2735,42 @@ mod seam_tests {
             matches!(interaction.pointer_gesture.drag(), DragMode::Scrollbar(d) if d.scroll_view == sv),
             "the updated scrollbar drag is retained for the next move",
         );
+    }
+
+    // --- #575: accessibility inbound が同一 seam を共有する ---
+
+    #[test]
+    fn set_value_intent_routes_through_seam_to_apply_set_value() {
+        // AccessKit `SetValue` は `InteractionIntent::SetValue` として apply_intent を
+        // 通り、view の `apply_set_value`（編集経路と同一の実体）へ届く（#575）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(8);
+
+        let consumed = interaction.apply_intent(
+            &mut view,
+            InteractionIntent::SetValue {
+                target,
+                value: "hello".to_string(),
+            },
+        );
+
+        assert!(consumed);
+        assert_eq!(view.set_values, vec![(target, "hello".to_string())]);
+    }
+
+    #[test]
+    fn scroll_to_reveal_intent_routes_through_seam() {
+        // AccessKit `ScrollIntoView` は `ScrollToReveal` として apply_intent を通り、
+        // reveal 幾何を持つ view の `scroll_to_reveal` へ届く（adapter は intent のみ・#575）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(6);
+
+        let consumed =
+            interaction.apply_intent(&mut view, InteractionIntent::ScrollToReveal { target });
+
+        assert!(consumed);
+        assert_eq!(view.reveals, vec![target]);
     }
 }

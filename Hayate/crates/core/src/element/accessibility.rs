@@ -6,6 +6,7 @@ use accesskit::{
 
 use super::taffy_projection::TraversalStep;
 use super::tree::Element;
+use super::interaction::InteractionIntent;
 use super::{DocumentEventKind, ElementId, ElementKind, ElementTree, Event};
 
 fn node_id(id: ElementId) -> NodeId {
@@ -209,13 +210,38 @@ impl ElementTree {
     /// 写像する（Flutter 流の意味的アクション。合成ポインタやキー再生は使わない）。
     /// 非サポートのアクションは `Ignored` に畳まれ何もしない。
     pub fn on_accessibility_action(&mut self, req: ActionRequest) {
-        match map_action_request(&req) {
-            AccessibilityAction::Focus { target } => self.transition_focus(target),
-            AccessibilityAction::Click { target } => self.emit_semantic_click(target),
-            AccessibilityAction::SetValue { target, value } => self.apply_set_value(target, &value),
-            AccessibilityAction::ScrollIntoView { target } => self.scroll_into_view(target),
-            AccessibilityAction::Ignored => {}
+        // 純関数 `map_action_request` が `ActionRequest` → `AccessibilityAction` を作り、
+        // ここで `InteractionIntent` に写して単一 seam `apply_intent` に流すだけの薄い
+        // adapter（ADR-0122 決定 3・#575）。これで AccessKit 経路と pointer/key 経路が
+        // 同一 seam を共有する（2 adapter = 本物の seam）。合成 pointer/key の replay は
+        // 経由しない（Flutter semantic-action 同型）。reveal 幾何は seam の裏。
+        if let Some(intent) = self.accessibility_intent(map_action_request(&req)) {
+            self.apply_interaction_intent(intent);
         }
+    }
+
+    /// [`AccessibilityAction`] を [`InteractionIntent`] へ写す adapter（#575）。`Click` は
+    /// 既存リスナー互換のため対象レイアウト中心を座標に載せる（意味的起動はヒット
+    /// テストを経ないので、ここで中心を決める）。`Ignored` は intent なし。
+    fn accessibility_intent(&self, action: AccessibilityAction) -> Option<InteractionIntent> {
+        Some(match action {
+            AccessibilityAction::Focus { target } => InteractionIntent::Focus(target),
+            AccessibilityAction::Click { target } => {
+                let (x, y) = self
+                    .layout
+                    .geometry(target)
+                    .map(|(x, y, w, h)| (x + w / 2.0, y + h / 2.0))
+                    .unwrap_or((0.0, 0.0));
+                InteractionIntent::Click { target, x, y }
+            }
+            AccessibilityAction::SetValue { target, value } => {
+                InteractionIntent::SetValue { target, value }
+            }
+            AccessibilityAction::ScrollIntoView { target } => {
+                InteractionIntent::ScrollToReveal { target }
+            }
+            AccessibilityAction::Ignored => return None,
+        })
     }
 
     /// 最寄りの祖先 `scroll-view` の Scroll Offset を設定して `target` を表示に入れる
@@ -223,7 +249,7 @@ impl ElementTree {
     /// より手前なら先頭端、過ぎていれば末尾端）、既に完全表示なら触れない。オフセットが
     /// 実際に動いたときに限り scroll-view へ `Scroll` を配送する。慣性やスナップは持たず、
     /// AT 駆動のスクロールは基本オフセットのみ設定する。scroll-view 祖先がなければ何もしない。
-    fn scroll_into_view(&mut self, target: ElementId) {
+    pub(crate) fn scroll_into_view(&mut self, target: ElementId) {
         let Some(scroll_view) = super::tree::next_ancestor_scroll_view(self, target) else {
             return;
         };
@@ -257,31 +283,12 @@ impl ElementTree {
         );
     }
 
-    /// 意味的起動として `target` に直接 `Click` を発行する（ADR-0098）。座標は対象の
-    /// レイアウト中心とし、座標を読む既存リスナーをワイヤ変更なしに互換に保つ。イベントは
-    /// 通常の `Click` と同様にバブルしディスパッチされる。ポインタパイプラインを完全に
-    /// 迂回し、ヒットテスト・`:active`・マルチクリック計数・フォーカスジェスチャを行わない。
-    fn emit_semantic_click(&mut self, target: ElementId) {
-        let (x, y) = self
-            .layout
-            .geometry(target)
-            .map(|(x, y, w, h)| (x + w / 2.0, y + h / 2.0))
-            .unwrap_or((0.0, 0.0));
-        self.dispatch_event(
-            DocumentEventKind::Click,
-            Event::Click {
-                target_id: target,
-                x,
-                y,
-            },
-        );
-    }
-
     /// AccessKit `SetValue` を意味的な値置換として `target` に適用する（ADR-0098）。
     /// 進行中の preedit を確定し、text-input の内容を `value` で置換し、`TextInput`
     /// イベントをキューしてアプリのリスナーが通常の編集と同様に観測できるようにする。
-    /// `text-input` 以外の対象では何もせず、表示値が変わらない場合も無音。
-    fn apply_set_value(&mut self, target: ElementId, value: &str) {
+    /// `text-input` 以外の対象では何もせず、表示値が変わらない場合も無音。`apply_intent`
+    /// の `SetValue` arm が `InteractionTreeView::apply_set_value` 越しに呼ぶ実体（#575）。
+    pub(crate) fn apply_semantic_set_value(&mut self, target: ElementId, value: &str) {
         let el = match self.elements.get_mut(&target) {
             Some(e) if e.kind == ElementKind::TextInput => e,
             _ => return,
