@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ACCESSKIT_ROLE_TO_ARIA,
   A11Y_ROOT_ATTR,
+  A11Y_NODE_ID_PREFIX,
   MIRROR_OPACITY,
   MIRROR_POINTER_EVENTS,
   attachAccessibilityMirror,
@@ -232,6 +233,52 @@ describe('attachAccessibilityMirror', () => {
     expect(button.style.top).toBe('20px');
     expect(button.style.width).toBe('100px');
     expect(button.style.height).toBe('40px');
+  });
+
+  it('reflects TreeUpdate.focus via aria-activedescendant on the mirror root (ADR-0124)', () => {
+    const { canvas, container } = mountCanvas();
+    // focus = 3（textInput）。
+    const raw = fakeRawPolling(
+      treeUpdate(
+        1,
+        [
+          [1, node('window', { children: [2, 3] })],
+          [2, node('button', { label: 'Add' })],
+          [3, node('textInput', { value: 'Buy milk' })],
+        ],
+        3,
+      ),
+    );
+    attach(raw, canvas);
+    driver.tick();
+
+    const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
+    const focusId = `${A11Y_NODE_ID_PREFIX}3`;
+    expect(root.getAttribute('aria-activedescendant')).toBe(focusId);
+    // 指す id を持つ要素が実在し、focus 中の textbox であること。
+    const focused = container.querySelector(`#${focusId}`) as HTMLElement;
+    expect(focused).not.toBeNull();
+    expect(focused.getAttribute('role')).toBe('textbox');
+  });
+
+  it('moves focus reflection when TreeUpdate.focus changes', () => {
+    const { canvas, container } = mountCanvas();
+    const nodes: Array<[number, Record<string, unknown>]> = [
+      [1, node('window', { children: [2, 3] })],
+      [2, node('button', { label: 'Add' })],
+      [3, node('textInput', { value: 'Buy milk' })],
+    ];
+    const raw = fakeRawPolling(treeUpdate(1, nodes, 3));
+    attach(raw, canvas);
+    driver.tick();
+
+    const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
+    expect(root.getAttribute('aria-activedescendant')).toBe(`${A11Y_NODE_ID_PREFIX}3`);
+
+    // focus が button(2) に移る。
+    raw.json = treeUpdate(1, nodes, 2);
+    driver.tick();
+    expect(root.getAttribute('aria-activedescendant')).toBe(`${A11Y_NODE_ID_PREFIX}2`);
   });
 
   it('detach removes the mirror root and stops the rAF loop', () => {

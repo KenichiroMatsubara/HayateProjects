@@ -20,6 +20,12 @@ export const MIRROR_OPACITY = '0';
 export const MIRROR_POINTER_EVENTS = 'none';
 
 /**
+ * 投影ノードの DOM `id` の接頭辞。`<接頭辞><NodeId>` で一意 id を振り、root の
+ * `aria-activedescendant` が focus ノードを指せるようにする（ADR-0124 / #594）。
+ */
+export const A11Y_NODE_ID_PREFIX = 'hayate-a11y-node-';
+
+/**
  * AccessKit `Role`（accesskit 0.24 serde camelCase 文字列）→ ARIA role 文字列の写像表。
  * Core の `poll_accessibility()` が出す role を Playwright の `getByRole` が引ける ARIA role に
  * 写す。表に無い role は generic（role 属性なし）として投影し、name/value/構造は保つ。
@@ -136,6 +142,7 @@ export function attachAccessibilityMirror(
       let el = nodeEls.get(id);
       if (!el) {
         el = doc.createElement('div');
+        el.id = `${A11Y_NODE_ID_PREFIX}${id}`;
         nodeEls.set(id, el);
       }
       const aria = ACCESSKIT_ROLE_TO_ARIA[node.role] ?? '';
@@ -191,6 +198,15 @@ export function attachAccessibilityMirror(
     if (rootId != null) {
       const rootEl = nodeEls.get(rootId);
       if (rootEl) root.appendChild(rootEl);
+    }
+
+    // 5) focus を反映する。root の aria-activedescendant を focus ノードの id に向け、
+    // どの要素が focus されているかをテストから一意に判別できるようにする（#594）。
+    const focusId = update.focus;
+    if (focusId != null && nodeEls.has(focusId)) {
+      root.setAttribute('aria-activedescendant', `${A11Y_NODE_ID_PREFIX}${focusId}`);
+    } else {
+      root.removeAttribute('aria-activedescendant');
     }
   };
 

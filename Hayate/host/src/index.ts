@@ -12,6 +12,7 @@ export {
   attachAccessibilityMirror,
   ACCESSKIT_ROLE_TO_ARIA,
   A11Y_ROOT_ATTR,
+  A11Y_NODE_ID_PREFIX,
   MIRROR_OPACITY,
   MIRROR_POINTER_EVENTS,
   type DetachAccessibilityMirror,
