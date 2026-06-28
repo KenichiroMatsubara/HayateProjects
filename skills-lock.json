@@ -102,9 +102,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/triage/SKILL.md",
-      "computedHash": "d45827c299c021f77b0f146fefa3ee679b13f99e9a2ffdf48e8de2347adeefe1",
-      "km_arrange": true,
-      "pinnedLocal": true
+      "computedHash": "d45827c299c021f77b0f146fefa3ee679b13f99e9a2ffdf48e8de2347adeefe1"
     },
     "writing-great-skills": {
       "source": "mattpocock/skills",
