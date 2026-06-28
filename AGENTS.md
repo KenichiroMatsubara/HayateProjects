@@ -2,7 +2,9 @@
 
 ## Agent skills
 
-Matt Pocock engineering skills are installed under `.agents/skills/` and `.claude/skills/`. Run `/setup-matt-pocock-skills` again only if you need to switch issue trackers or restart configuration from scratch.
+Matt Pocock engineering skills are vendored under `.agents/skills/` and `.claude/skills/`, pinned in `skills-lock.json` (a fixed upstream commit). They are **not auto-updated**. Run `/setup-matt-pocock-skills` again only if you need to switch issue trackers or restart configuration from scratch.
+
+Repo-specific tuning of a vendored skill lives in that skill's `km_arrange.md` (referenced from the top of its `SKILL.md`); on conflict, `km_arrange.md` wins. To review and pull upstream changes safely, run `/update-matt-pocock-skills` — it diffs upstream at the pinned commit, risk-scans every change, preserves `km_arrange.md`, and applies only what you approve. Locally-authored skills (`inherit-prompt`, `make-pr`, `search-issue`, `update-matt-pocock-skills`) are not from Matt Pocock and are not tracked in `skills-lock.json`. See ADR-0005.
 
 ### Issue tracker
 
