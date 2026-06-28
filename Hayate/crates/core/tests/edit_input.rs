@@ -626,6 +626,33 @@ fn enter_in_a_single_line_field_does_not_insert_a_newline_and_signals_submit() {
 }
 
 #[test]
+fn composition_end_emits_a_text_input_event_with_the_committed_value() {
+    // IME 確定（compositionend）は内容を変える編集なので、DOM が `compositionend` 後に
+    // `input` を発火するのと同型に、確定後の全文を載せた TextInput を続けて発行する。
+    // これが無いと controlled input（value を state/signal にミラーする FW）は確定値を
+    // 受け取れず、`onInput` 不発で draft が空のまま残る（Canvas 専用の text-input 追加
+    // バグの根本原因）。
+    let (mut tree, input) = focused_input(""); // 空フィールドに IME で確定する
+    let listener = tree.register_listener(input, hayate_core::DocumentEventKind::TextInput);
+
+    tree.on_composition_start(input, "");
+    tree.on_composition_update(input, "ぎゅうにゅう");
+    tree.on_composition_end(input, "ぎゅうにゅう");
+
+    assert_eq!(tree.element_get_text_content(input), "ぎゅうにゅう");
+    let deliveries = tree.poll_deliveries();
+    let event = deliveries
+        .iter()
+        .find(|d| d.listener_id == listener)
+        .map(|d| &d.event)
+        .expect("compositionend must produce a TextInput delivery");
+    assert!(
+        matches!(event, hayate_core::Event::TextInput { text, .. } if text == "ぎゅうにゅう"),
+        "the IME-commit input event must carry the full committed value, got {event:?}",
+    );
+}
+
+#[test]
 fn text_input_event_carries_the_full_field_value_not_just_the_typed_fragment() {
     // input イベントの value は要素の現在値全体（DOM の `input` → `target.value` と同じ）。
     // 以前は断片だけをワイヤに載せ、ホストが `element_get_text_content` で読み戻していた。
