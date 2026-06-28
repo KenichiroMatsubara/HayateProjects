@@ -1,3 +1,4 @@
+use crate::element::caret_geometry::ParleyCaretGeometry;
 use crate::element::edit_state::{Direction, EditIntent, Granularity};
 use crate::element::event_spec::{event_document_kind, Event};
 use crate::element::id::ElementId;
@@ -84,29 +85,6 @@ fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
     })
 }
 
-/// `offset` のキャレットが乗る表示行と、その content-local x。行はキャレットの
-/// 垂直中心を含むブロック帯の行で、最終行を越えたら最終行。垂直移動（↑/↓）と
-/// 表示行 Home/End が共有する（どちらもキャレットの現在行を基準にする）。
-fn caret_display_line(
-    layout: &parley::Layout<crate::element::text::TextBrush>,
-    offset: usize,
-) -> (usize, f32) {
-    use parley::{Affinity, Cursor};
-    let g = Cursor::from_byte_index(layout, offset, Affinity::Downstream).geometry(layout, 0.0);
-    let caret_x = g.x0 as f32;
-    let caret_mid_y = ((g.y0 + g.y1) / 2.0) as f32;
-    let line_count = layout.len();
-    let line = (0..line_count)
-        .find(|&i| {
-            layout.get(i).is_some_and(|line| {
-                let m = line.metrics();
-                caret_mid_y >= m.block_min_coord && caret_mid_y < m.block_max_coord
-            })
-        })
-        .unwrap_or_else(|| line_count.saturating_sub(1));
-    (line, caret_x)
-}
-
 /// プライマリ修飾＋文字をクリップボード／全選択の [`EditIntent`] に対応付ける
 /// （ADR-0103）。プライマリ修飾の保持は呼び出し側で確認済みなので、ここは文字
 /// だけを見る。それ以外のキーは `None`。
@@ -147,8 +125,10 @@ pub enum InputModality {
 /// 入力意図の封筒（ADR-0122 決定 2）。pointer / keyboard / accessibility / edit の
 /// すべてが同一の閉じた値型に合流する flat dispatch 封筒で、各 adapter はこの値を
 /// 構築するだけで `Interaction::apply_intent` に流す（2 producer = 本物の seam）。
-/// この slice では `Focus` と `Click` の arm を持ち、`Edit(EditIntent)` / `SetValue` /
-/// `ScrollToReveal` 等の他 arm は後続 slice で加わる。
+/// `Focus` / `Click` に加え、この slice で `Edit(EditIntent)` arm を持つ
+/// （ADR-0122 決定 5 / #573）。`SetValue` / `ScrollToReveal` 等の他 arm は後続 slice
+/// で加わる。`Edit` arm は既存の `EditIntent`（ADR-0103）を**そのまま内包**し、
+/// edit 専用シームの意味を再定義しない。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum InteractionIntent {
     /// `target` をフォーカス要素にする focus 遷移。直前 focus の blur と、`Blur` /
@@ -157,6 +137,13 @@ pub enum InteractionIntent {
     /// `target` に意味的クリックを発行する。座標 `(x, y)` を `Click` イベントに載せ、
     /// 通常のクリックと同様にバブルさせる。
     Click { target: ElementId, x: f32, y: f32 },
+    /// `target`（text-input）へ閉じた [`EditIntent`] 語彙の編集を適用する
+    /// （ADR-0103 を内包）。幾何依存の縦移動・表示行 Home/End は `Caret Geometry`
+    /// seam の裏で純粋計算される（ADR-0122 決定 5）。
+    Edit {
+        target: ElementId,
+        intent: EditIntent,
+    },
 }
 
 /// `Interaction` が tree から借りる狭いビュー（ADR-0122 決定 1）。`Interaction` は
@@ -179,6 +166,11 @@ pub trait InteractionTreeView {
     /// 単一 text-input の編集選択をキャレットへ畳む（Touch blur ライフサイクル、
     /// ADR-0104）。
     fn collapse_edit_selection(&mut self, id: ElementId);
+    /// `target`（text-input）へ [`EditIntent`] を適用し、消費したかを返す
+    /// （ADR-0103 / ADR-0122 決定 5）。幾何依存操作は `Caret Geometry` seam の裏で
+    /// 解決し、クリップボードや選択など tree 側の副作用もここで行う。`Interaction` は
+    /// 編集の中身を所有しないので、この借りた seam へ委譲する。
+    fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool;
 }
 
 /// 横断的 interaction state を所有する deep module（ADR-0122 決定 1）。入口は
@@ -193,17 +185,27 @@ pub struct Interaction {
 }
 
 impl Interaction {
-    /// 単一 seam：[`InteractionIntent`] を借りたビューに適用する。
-    pub fn apply_intent(&mut self, view: &mut dyn InteractionTreeView, intent: InteractionIntent) {
+    /// 単一 seam：[`InteractionIntent`] を借りたビューに適用する。intent を消費／適用
+    /// したかを返す（`Edit` の戻り値が入力の早期消費判定に使われる）。
+    pub fn apply_intent(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        intent: InteractionIntent,
+    ) -> bool {
         match intent {
-            InteractionIntent::Focus(id) => self.transition_focus(view, id),
+            InteractionIntent::Focus(id) => {
+                self.transition_focus(view, id);
+                true
+            }
             InteractionIntent::Click { target, x, y } => {
                 view.emit_event(Event::Click {
                     target_id: target,
                     x,
                     y,
                 });
+                true
             }
+            InteractionIntent::Edit { target, intent } => view.apply_edit(target, intent),
         }
     }
 
@@ -612,7 +614,12 @@ impl ElementTree {
         // 1文字削除する。適用時に消費する（IME 変換中は決して消費せず、削除キーが
         // 変換を壊さない）。
         if let Some(intent) = key_edit_intent(key, modifiers) {
-            if self.apply_edit_intent(focused, intent) {
+            // 編集は `InteractionIntent::Edit` 封筒として単一 seam を通す（ADR-0122）。
+            // pointer/key 経路と accessibility 経路が同じ値型を生産する。
+            if self.apply_interaction_intent(InteractionIntent::Edit {
+                target: focused,
+                intent,
+            }) {
                 return;
             }
         }
@@ -1669,60 +1676,26 @@ impl ElementTree {
         direction: Direction,
         extend: bool,
     ) -> bool {
-        let delta = match direction {
-            Direction::Up => -1,
-            Direction::Down => 1,
-            _ => return false,
-        };
-        let Some((offset, goal_x)) = self.vertical_caret_target(target, delta) else {
+        // 幾何移動解決は `Caret Geometry` seam の裏（`EditState::vertical_motion`）で
+        // 純粋計算する（ADR-0122 決定 5）。ここはフィールドの Parley `content_layout`
+        // を実 adapter に包み、注入するだけ。整形レイアウトや編集状態が無いと `false`
+        // を返し、呼び出し側は単一行意味論へフォールバックする。
+        let Some(el) = self.elements.get_mut(&target) else {
             return false;
         };
-        if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
-            if extend {
-                edit.move_focus(offset);
-            } else {
-                edit.set_selection(offset, offset);
-            }
-            // ゴール列は移動後も残るので、短い行を抜ける ↑/↓ の連続は元の列へ戻る。
-            edit.desired_x = Some(goal_x);
+        let Some(cl) = el.content_layout.as_ref() else {
+            return false;
+        };
+        let Some(edit) = el.edit.as_mut() else {
+            return false;
+        };
+        let geometry = ParleyCaretGeometry::new(&cl.layout);
+        let applied = edit.vertical_motion(&geometry, direction, extend);
+        if applied {
+            self.engine
+                .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
         }
-        self.engine
-            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
-        true
-    }
-
-    /// 表示行を `delta` 行移動した後にキャレットが着地するバイトオフセットと、
-    /// 狙ったゴール列（content-local x）のペア。フィールドの Parley `content_layout`
-    /// から解決する。整形レイアウトが無いとき `None`。
-    fn vertical_caret_target(&self, target: ElementId, delta: isize) -> Option<(usize, f32)> {
-        use parley::Cursor;
-        let el = self.elements.get(&target)?;
-        let edit = el.edit.as_ref()?;
-        let cl = el.content_layout.as_ref()?;
-        let layout = &cl.layout;
-        let line_count = layout.len();
-        if line_count == 0 {
-            return None;
-        }
-        let (current_line, caret_x) = caret_display_line(layout, edit.cursor_byte_index);
-        // 保存したゴール列を狙う。初回移動ではキャレットの現在 x。
-        let goal_x = edit.desired_x.unwrap_or(caret_x);
-        let target_line = current_line as isize + delta;
-        if target_line < 0 {
-            // 先頭行より上 → フィールド先頭（Chromium）。
-            return Some((0, goal_x));
-        }
-        if target_line as usize >= line_count {
-            // 最終行より下 → フィールド末尾。
-            return Some((edit.text_content.len(), goal_x));
-        }
-        let line = layout.get(target_line as usize)?;
-        let m = line.metrics();
-        // 対象行内のベースライン付近の y（Parley 自身の行ステップを写す）を、
-        // ゴール列でヒットテストする。
-        let y = m.block_max_coord - m.ascent * 0.5;
-        let dest = Cursor::from_point(layout, goal_x, y);
-        Some((dest.index(), goal_x))
+        applied
     }
 
     /// 複数行フィールドで現在の*表示*行の先頭／末尾へキャレットを移す（ソフト
@@ -1734,59 +1707,24 @@ impl ElementTree {
         direction: Direction,
         extend: bool,
     ) -> bool {
-        let Some(offset) = self.display_line_boundary_target(target, direction) else {
+        // 表示行 Home/End も `Caret Geometry` seam の裏（`EditState::display_line_boundary`）
+        // で計算する（ADR-0122 決定 5）。実 adapter を注入するだけ。
+        let Some(el) = self.elements.get_mut(&target) else {
             return false;
         };
-        if let Some(edit) = self.elements.get_mut(&target).and_then(|el| el.edit.as_mut()) {
-            // Home/End は水平移動なので、粘着するゴール列を捨てる。
-            edit.desired_x = None;
-            if extend {
-                edit.move_focus(offset);
-            } else {
-                edit.set_selection(offset, offset);
-            }
+        let Some(cl) = el.content_layout.as_ref() else {
+            return false;
+        };
+        let Some(edit) = el.edit.as_mut() else {
+            return false;
+        };
+        let geometry = ParleyCaretGeometry::new(&cl.layout);
+        let applied = edit.display_line_boundary(&geometry, direction, extend);
+        if applied {
+            self.engine
+                .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
         }
-        self.engine
-            .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
-        true
-    }
-
-    /// キャレットの現在表示行の先頭（Backward）または末尾（Forward）のバイト
-    /// オフセット。フィールドの Parley `content_layout` から得る。整形レイアウトが
-    /// 無いとき `None`。
-    fn display_line_boundary_target(
-        &self,
-        target: ElementId,
-        direction: Direction,
-    ) -> Option<usize> {
-        let el = self.elements.get(&target)?;
-        let edit = el.edit.as_ref()?;
-        let cl = el.content_layout.as_ref()?;
-        let layout = &cl.layout;
-        if layout.len() == 0 {
-            return None;
-        }
-        let (current_line, _) = caret_display_line(layout, edit.cursor_byte_index);
-        let line = layout.get(current_line)?;
-        let range = line.text_range();
-        match direction {
-            Direction::Backward => Some(range.start),
-            // ソフトラップ境界の空白／改行を除外し、End が行の最後の可視グリフに
-            // 着地するようにする。Parley の `line_end` に一致。
-            Direction::Forward => {
-                let mut end = range.end;
-                let text = &edit.text_content;
-                while end > range.start {
-                    match text[..end].chars().next_back() {
-                        Some(c) if c == '\n' || c == '\r' => end -= c.len_utf8(),
-                        _ => break,
-                    }
-                }
-                Some(end)
-            }
-            // Home/End は水平方向しか持たない。
-            Direction::Up | Direction::Down => None,
-        }
+        applied
     }
 
     /// `ifc` の整形済みテキスト全体を選択する（Ctrl/Cmd+A）。範囲を設定したかを
@@ -1971,10 +1909,21 @@ impl ElementTree {
     /// [`InteractionIntent`] を `Interaction` deep module に適用する単一の橋
     /// （ADR-0122）。`Interaction` を一時的に取り出すことで、残りの `ElementTree`
     /// を [`InteractionTreeView`] として排他借用できる（単一書き手・aliasing なし）。
-    pub(crate) fn apply_interaction_intent(&mut self, intent: InteractionIntent) {
-        let mut interaction = std::mem::take(&mut self.interaction);
-        interaction.apply_intent(self, intent);
+    pub(crate) fn apply_interaction_intent(&mut self, intent: InteractionIntent) -> bool {
+        // `Interaction` を一時取り出して残りの tree を排他借用する（単一書き手）。
+        // ただし seam の裏で走る tree 側ロジック（`Edit` arm 越しの `edit_selection_owner`
+        // 等が現在 focus 中 text-input を解決する）が focus を読むため、placeholder にも
+        // 引き継ぎ、apply 中も正しい focus を観測できるようにする。
+        let focused = self.interaction.focused_element;
+        let mut interaction = std::mem::replace(
+            &mut self.interaction,
+            Interaction {
+                focused_element: focused,
+            },
+        );
+        let consumed = interaction.apply_intent(self, intent);
         self.interaction = interaction;
+        consumed
     }
 
     /// 単一 text-input の編集選択をキャレットへ畳み、実際に範囲を持っていたときだけ
@@ -2045,6 +1994,12 @@ impl InteractionTreeView for ElementTree {
     fn collapse_edit_selection(&mut self, id: ElementId) {
         self.collapse_edit_selection_of(id);
     }
+
+    fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool {
+        // tree 側の編集 seam（クリップボード・選択・`Caret Geometry` 注入を内包）へ
+        // 委譲する。`EditIntent` の edit 専用シーム意味は不変（ADR-0103）。
+        self.apply_edit_intent(target, intent)
+    }
 }
 
 /// `acc`（min-x, min-y, max-x, max-y）を矩形 `(x, y, w, h)` を含むよう広げる。
@@ -2084,6 +2039,10 @@ mod seam_tests {
         blur_effects: Vec<ElementId>,
         collapsed: Vec<ElementId>,
         pointer_kind: PointerKind,
+        /// `Edit` arm が seam を通って届いた `(target, intent)` の記録。
+        edits: Vec<(ElementId, EditIntent)>,
+        /// `apply_edit` が返す「消費した」フラグ（テストごとに差し替える）。
+        edit_consumes: bool,
     }
 
     impl Default for FakeView {
@@ -2094,6 +2053,8 @@ mod seam_tests {
                 blur_effects: Vec::new(),
                 collapsed: Vec::new(),
                 pointer_kind: PointerKind::Mouse,
+                edits: Vec::new(),
+                edit_consumes: true,
             }
         }
     }
@@ -2113,6 +2074,10 @@ mod seam_tests {
         }
         fn collapse_edit_selection(&mut self, id: ElementId) {
             self.collapsed.push(id);
+        }
+        fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool {
+            self.edits.push((target, intent));
+            self.edit_consumes
         }
     }
 
@@ -2229,5 +2194,43 @@ mod seam_tests {
             "expected a single Click at (12,34), got {:?}",
             view.events,
         );
+    }
+
+    #[test]
+    fn edit_intent_routes_through_seam_to_apply_edit() {
+        // `Edit` arm は `apply_intent` 経由で view の `apply_edit` へ届き、その戻り値
+        // （消費したか）をそのまま返す（ADR-0122 決定 5）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView::default();
+        let target = id(3);
+        let intent = EditIntent::Move {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Up,
+        };
+
+        let consumed = interaction.apply_intent(&mut view, InteractionIntent::Edit { target, intent });
+
+        assert!(consumed, "apply_edit が true を返せば intent も消費扱い");
+        assert_eq!(view.edits, vec![(target, intent)], "EditIntent が seam を通って届く");
+    }
+
+    #[test]
+    fn edit_intent_reports_unconsumed_when_apply_edit_declines() {
+        // text-input でない等で `apply_edit` が false なら、入力は消費されない
+        // （`on_key_down` が生の KeyDown 経路へ落ちられる）。
+        let mut interaction = Interaction::default();
+        let mut view = FakeView {
+            edit_consumes: false,
+            ..FakeView::default()
+        };
+        let intent = EditIntent::Delete {
+            granularity: Granularity::Grapheme,
+            direction: Direction::Backward,
+        };
+
+        let consumed =
+            interaction.apply_intent(&mut view, InteractionIntent::Edit { target: id(9), intent });
+
+        assert!(!consumed, "apply_edit が false なら未消費");
     }
 }

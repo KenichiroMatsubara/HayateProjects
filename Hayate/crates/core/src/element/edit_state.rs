@@ -233,6 +233,95 @@ impl EditState {
         self.cursor_byte_index = offset.min(self.text_content.len());
     }
 
+    /// 縦移動（↑/↓）を注入した [`CaretGeometry`] に対して純粋計算する
+    /// （ADR-0122 決定 5）。sticky な goal column（[`desired_x`](Self::desired_x)）で
+    /// 隣接表示行の最近 column に着地し、短い行を跨いでも元の列を保つ。`extend` は
+    /// anchor を保つ（Shift+矢印）。先頭行より上はフィールド先頭、最終行より下は
+    /// フィールド末尾へ（Chromium `<textarea>`）。整形行が無い（`line_count == 0`）と
+    /// `false` を返し、呼び出し側は単一行意味論へフォールバックする。
+    pub fn vertical_motion(
+        &mut self,
+        geometry: &dyn crate::element::caret_geometry::CaretGeometry,
+        direction: Direction,
+        extend: bool,
+    ) -> bool {
+        let delta: isize = match direction {
+            Direction::Up => -1,
+            Direction::Down => 1,
+            // 縦移動は上下のみ。
+            _ => return false,
+        };
+        let line_count = geometry.line_count();
+        if line_count == 0 {
+            return false;
+        }
+        let caret = self.cursor_byte_index;
+        let current_line = geometry.line_of(caret);
+        // 保存したゴール列を狙う。初回移動ではキャレットの現在 x。
+        let goal_x = self.desired_x.unwrap_or_else(|| geometry.x_of(caret));
+        let target_line = current_line as isize + delta;
+        let offset = if target_line < 0 {
+            // 先頭行より上 → フィールド先頭。
+            0
+        } else if target_line as usize >= line_count {
+            // 最終行より下 → フィールド末尾。
+            self.text_content.len()
+        } else {
+            geometry.byte_at_x_on_line(target_line as usize, goal_x)
+        };
+        if extend {
+            self.move_focus(offset);
+        } else {
+            self.set_selection(offset, offset);
+        }
+        // ゴール列は移動後も残るので、短い行を抜ける ↑/↓ の連続は元の列へ戻る。
+        self.desired_x = Some(goal_x);
+        true
+    }
+
+    /// 表示行 Home/End を注入した [`CaretGeometry`] に対して計算する（ADR-0122 決定 5）。
+    /// 現在の*表示*行（ソフトラップ後）の先頭（`Backward`）／末尾（`Forward`）へ
+    /// キャレットを移す。`extend` は anchor を保つ（Shift+Home/End）。End はソフト
+    /// ラップ境界の末尾改行を除外し最後の可視グリフへ着地する。整形行が無い・方向が
+    /// 上下のときは `false`。
+    pub fn display_line_boundary(
+        &mut self,
+        geometry: &dyn crate::element::caret_geometry::CaretGeometry,
+        direction: Direction,
+        extend: bool,
+    ) -> bool {
+        if geometry.line_count() == 0 {
+            return false;
+        }
+        let line = geometry.line_of(self.cursor_byte_index);
+        let (start, end) = geometry.line_bounds(line);
+        let offset = match direction {
+            Direction::Backward => start,
+            Direction::Forward => {
+                // ソフトラップ境界の空白／改行を除外し、End が行の最後の可視グリフに
+                // 着地するようにする（Parley の `line_end` に一致）。
+                let mut end = end;
+                while end > start {
+                    match self.text_content[..end].chars().next_back() {
+                        Some(c) if c == '\n' || c == '\r' => end -= c.len_utf8(),
+                        _ => break,
+                    }
+                }
+                end
+            }
+            // Home/End は水平方向しか持たない。
+            Direction::Up | Direction::Down => return false,
+        };
+        // Home/End は水平移動なので、粘着するゴール列を捨てる。
+        self.desired_x = None;
+        if extend {
+            self.move_focus(offset);
+        } else {
+            self.set_selection(offset, offset);
+        }
+        true
+    }
+
     /// 選択範囲を破棄し、現在の focus でキャレットに縮退する
     /// （single-active ルールの強制に使う、ADR-0097）。
     pub fn collapse(&mut self) {
@@ -523,6 +612,116 @@ mod tests {
         assert!(edit.backspace());
         assert_eq!(edit.text_content, "hell");
         assert_eq!(edit.cursor_byte_index, 4);
+    }
+
+    use crate::element::caret_geometry::TableCaretGeometry;
+
+    /// 縦移動テスト用の 2 表示行テーブル（ハード改行ありの "abcdef\nabcdef"）。
+    /// - 行0: `[0, 7)`（末尾 `\n` を含む）列 0→0px, 6→60px
+    /// - 行1: `[7, 13)`            列 7→0px, 13→60px
+    fn two_line_table() -> TableCaretGeometry {
+        TableCaretGeometry::new(
+            vec![
+                (0, 7, vec![(0, 0.0), (6, 60.0)]),
+                (7, 13, vec![(7, 0.0), (13, 60.0)]),
+            ],
+            10.0,
+        )
+    }
+
+    #[test]
+    fn vertical_motion_lands_on_nearest_column_of_adjacent_line() {
+        let geo = two_line_table();
+        let mut edit = EditState::default();
+        edit.set("abcdef\nabcdef");
+        edit.set_selection(13, 13); // 末尾、行1 の列 60px
+
+        assert!(edit.vertical_motion(&geo, Direction::Up, false));
+        assert_eq!(edit.cursor_byte_index, 6, "↑ は上の行の同じ列（byte 6, 60px）へ");
+        assert!(edit.is_caret());
+
+        assert!(edit.vertical_motion(&geo, Direction::Down, false));
+        assert_eq!(edit.cursor_byte_index, 13, "↓ は元の行・列へ戻る");
+    }
+
+    #[test]
+    fn vertical_motion_keeps_goal_column_across_a_short_line() {
+        // 中央が短い 3 行：長い行末から ↑↑ で短い行を跨ぎ、元の列へ戻る。
+        let geo = TableCaretGeometry::new(
+            vec![
+                (0, 6, vec![(0, 0.0), (5, 50.0)]),
+                (6, 9, vec![(6, 0.0), (8, 20.0)]), // 短い行（最大 20px）
+                (9, 14, vec![(9, 0.0), (14, 50.0)]),
+            ],
+            10.0,
+        );
+        let mut edit = EditState::default();
+        edit.set("world\nhi\nworld");
+        edit.set_selection(14, 14); // 行2 の 50px
+
+        assert!(edit.vertical_motion(&geo, Direction::Up, false));
+        assert_eq!(edit.cursor_byte_index, 8, "短い行ではその末尾(8)にクランプ");
+        assert_eq!(edit.desired_x, Some(50.0), "goal column は保持される");
+
+        assert!(edit.vertical_motion(&geo, Direction::Up, false));
+        assert_eq!(edit.cursor_byte_index, 5, "再度 ↑ で元の列(50px→byte 5)へ戻る");
+    }
+
+    #[test]
+    fn vertical_motion_past_top_and_bottom_jumps_to_field_ends() {
+        let geo = two_line_table();
+        let mut edit = EditState::default();
+        edit.set("abcdef\nabcdef");
+
+        edit.set_selection(2, 2); // 行0
+        assert!(edit.vertical_motion(&geo, Direction::Up, false));
+        assert_eq!(edit.cursor_byte_index, 0, "先頭行より上 → フィールド先頭");
+
+        edit.set_selection(9, 9); // 行1
+        assert!(edit.vertical_motion(&geo, Direction::Down, false));
+        assert_eq!(edit.cursor_byte_index, 13, "最終行より下 → フィールド末尾");
+    }
+
+    #[test]
+    fn vertical_motion_extend_keeps_anchor() {
+        let geo = two_line_table();
+        let mut edit = EditState::default();
+        edit.set("abcdef\nabcdef");
+        edit.set_selection(6, 6); // anchor=focus=6（行0 末尾）
+
+        assert!(edit.vertical_motion(&geo, Direction::Down, true));
+        assert_eq!(edit.selection_anchor, 6, "extend は anchor を保つ");
+        assert_eq!(edit.cursor_byte_index, 13, "focus は下の行の同じ列へ");
+    }
+
+    #[test]
+    fn vertical_motion_without_lines_is_noop_and_returns_false() {
+        let geo = TableCaretGeometry::new(Vec::new(), 10.0);
+        let mut edit = EditState::default();
+        edit.set("abc");
+        edit.set_selection(1, 1);
+        assert!(!edit.vertical_motion(&geo, Direction::Up, false), "行が無ければ false");
+        assert_eq!(edit.cursor_byte_index, 1, "状態は変わらない");
+    }
+
+    #[test]
+    fn display_line_boundary_moves_to_current_line_ends() {
+        let geo = two_line_table();
+        let mut edit = EditState::default();
+        edit.set("abcdef\nabcdef");
+        edit.set_selection(3, 3); // 行0 の途中
+        edit.desired_x = Some(99.0); // Home/End は捨てるはず
+
+        assert!(edit.display_line_boundary(&geo, Direction::Backward, false));
+        assert_eq!(edit.cursor_byte_index, 0, "Home → 表示行の先頭");
+        assert_eq!(edit.desired_x, None, "水平移動は goal column を捨てる");
+
+        edit.set_selection(3, 3);
+        assert!(edit.display_line_boundary(&geo, Direction::Forward, false));
+        assert_eq!(
+            edit.cursor_byte_index, 6,
+            "End → 表示行の末尾（末尾の改行は除外）",
+        );
     }
 
     fn move_grapheme(d: Direction) -> EditIntent {
