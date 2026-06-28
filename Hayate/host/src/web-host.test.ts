@@ -150,4 +150,29 @@ describe('createHayateWebHost', () => {
 
     expect(set_tuning).not.toHaveBeenCalled();
   });
+
+  it('attaches the accessibility mirror seam with the surface raw+canvas (ADR-0124)', async () => {
+    const attachMirror = vi.fn(() => () => undefined);
+    const raw = fakeRaw();
+    await createHayateWebHost(canvas, {
+      probeWebGPU: async () => false,
+      loadBackend: async () => raw,
+      attachMirror,
+    });
+
+    expect(attachMirror).toHaveBeenCalledWith(raw, canvas);
+  });
+
+  it('exposes the mirror detach as the host teardown seam (full reload calls it)', async () => {
+    const detach = vi.fn();
+    const host = await createHayateWebHost(canvas, {
+      probeWebGPU: async () => false,
+      loadBackend: async () => fakeRaw(),
+      attachMirror: () => detach,
+    });
+
+    host.detach();
+
+    expect(detach).toHaveBeenCalledTimes(1);
+  });
 });

@@ -109,7 +109,7 @@ async function defaultCreateHost(
  * 確立して、バンドルが露出した mount に渡す。ホストは FW も `@tsubame/renderer-hayate` も
  * 持たず、それらは流し込むバンドル側が持ち込む（ADR-0001）。
  */
-export async function bootMiharashiHost(options: BootMiharashiHostOptions): Promise<void> {
+export async function bootMiharashiHost(options: BootMiharashiHostOptions): Promise<WebHost> {
   const fetchBundle = options.fetchBundle ?? defaultFetchBundle;
   const evalBundle = options.evalBundle ?? defaultEvalBundle;
   const readBundleVersion = options.readBundleVersion ?? defaultReadBundleVersion;
@@ -129,6 +129,9 @@ export async function bootMiharashiHost(options: BootMiharashiHostOptions): Prom
 
   const host = await createHost(options.canvas, options.hostOptions);
   mount(host);
+  // 確立した host を返す。full reload ループ（`startMiharashiHost`）が次の reload で
+  // `host.detach()`（ADR-0124 のミラー teardown 等）を呼べるようにする。
+  return host;
 }
 
 // ── full reload ループ（ホスト側）────────────────────────────────────────────
@@ -264,8 +267,11 @@ export interface StartMiharashiHostOptions {
   readonly onBootSettled?: (result: { ok: true } | { ok: false; error: unknown }) => void;
 
   // ── テスト注入 seam ──────────────────────────────────────────────────────
-  /** 1 回分の fetch → eval → host → mount を行う seam。既定は {@link bootMiharashiHost}。 */
-  readonly boot?: (options: BootMiharashiHostOptions) => Promise<void>;
+  /**
+   * 1 回分の fetch → eval → host → mount を行う seam。既定は {@link bootMiharashiHost}。
+   * 確立した {@link WebHost} を返し、次の reload でその `detach`（ADR-0124）を畳めるようにする。
+   */
+  readonly boot?: (options: BootMiharashiHostOptions) => Promise<WebHost>;
   /** reload 購読を張る seam。既定は {@link subscribeReload}。 */
   readonly subscribe?: (options: SubscribeReloadOptions) => ReloadSubscription;
 }
@@ -285,14 +291,23 @@ export function startMiharashiHost(options: StartMiharashiHostOptions): Miharash
   const boot = options.boot ?? bootMiharashiHost;
   const subscribe = options.subscribe ?? subscribeReload;
 
+  // 直前に確立した host の teardown。full reload は新しい surface で建て直す前に、ここで
+  // 古い host が attach した物（ADR-0124 の Accessibility Mirror 等）を畳む（#591）。
+  let detachPrevious: (() => void) | undefined;
+
   const bootOnce = (): void => {
+    detachPrevious?.();
+    detachPrevious = undefined;
     boot({
       devServerUrl: options.devServerUrl,
       canvas: options.acquireCanvas(),
       hostProtocolVersion: options.hostProtocolVersion,
       hostOptions: options.hostOptions,
     }).then(
-      () => options.onBootSettled?.({ ok: true }),
+      (host) => {
+        detachPrevious = host?.detach;
+        options.onBootSettled?.({ ok: true });
+      },
       (error: unknown) => options.onBootSettled?.({ ok: false, error }),
     );
   };
