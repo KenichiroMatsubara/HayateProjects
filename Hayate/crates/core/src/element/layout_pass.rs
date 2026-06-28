@@ -1,8 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use linebender_resource_handle::Blob;
-use parley::{FontContext, LayoutContext};
 use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 
 use crate::element::font_fetch::FontFetchTracker;
@@ -10,9 +8,9 @@ use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::style::{StyleProp, ViewportCondition};
 use crate::element::taffy_bridge::{self, MeasureCtx};
-use crate::element::inline_text;
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
-use crate::element::text::{self, TextBrush, TextLayout};
+use crate::element::text::{self, TextLayout};
+use crate::element::text_shaper::TextShaper;
 use crate::element::tree::{Element, Event};
 
 /// base の `layout_style`（作者の意図）に、現ビューポートで一致する **レイアウト系**
@@ -39,8 +37,9 @@ pub(crate) fn effective_layout_style(
 /// Parley 整形、フォント dirty 伝播、FetchFont イベント発行、レイアウトキャッシュ更新を駆動する。
 pub struct LayoutPass {
     pub(crate) projection: TaffyProjection,
-    pub(crate) font_cx: FontContext,
-    pub(crate) layout_cx: LayoutContext<TextBrush>,
+    /// テキスト整形器（ADR-0123）。font collection（`FontContext`）と `LayoutContext` を
+    /// 単独所有し、全シェイプ経路の唯一の入口になる。`projection`（箱）と対をなす。
+    pub(crate) shaper: TextShaper,
     /// オンデマンドのフォント取得状態。`FetchFont` の重複発行を抑制し、
     /// 失敗した family は再試行、有限のリトライ予算を超えたら断念する。
     pub(crate) font_fetches: FontFetchTracker,
@@ -53,16 +52,28 @@ pub struct LayoutPass {
 
 impl LayoutPass {
     pub fn new() -> Self {
-        let mut font_cx = FontContext::new();
-        init_bundled_fonts(&mut font_cx);
         Self {
             projection: TaffyProjection::new(),
-            font_cx,
-            layout_cx: LayoutContext::new(),
+            shaper: TextShaper::new(),
             font_fetches: FontFetchTracker::new(),
             last_cursor_toggle_ms: None,
             layout_cache: HashMap::new(),
         }
+    }
+
+    /// font collection への family 登録を整形器へ委譲する（`ElementTree::register_font`）。
+    pub(crate) fn register_font(&mut self, family_name: &str, bytes: Arc<Vec<u8>>) {
+        self.shaper.register_font(family_name, bytes);
+    }
+
+    /// 埋め込み family 名でフォントバイトを登録する（整形器へ委譲）。
+    pub(crate) fn register_font_bytes(&mut self, bytes: Vec<u8>) {
+        self.shaper.register_font_bytes(bytes);
+    }
+
+    /// toolbar 等の単発ラベルを整形する（整形器へ委譲、ADR-0097）。
+    pub(crate) fn shape_label(&mut self, text: &str, font_size: f32) -> TextLayout {
+        self.shaper.shape_label(text, font_size)
     }
 
     /// レイアウト用 `StyleProp` を `layout_style`（ドキュメントツリーが所有）へ変換し、
@@ -134,23 +145,7 @@ impl LayoutPass {
     /// system_fonts なし、`default_font` をデフォルト family ＋ sans-serif generic として登録する。
     /// ホスト導入フォントに依存せず `.notdef → FetchFont → register_font` の実経路をテストできる。
     pub(crate) fn set_wasm_like_font_context(&mut self, default_font: Vec<u8>) {
-        use fontique::{Collection, CollectionOptions, FontInfoOverride, GenericFamily};
-        self.font_cx.collection = Collection::new(CollectionOptions {
-            system_fonts: false,
-            ..Default::default()
-        });
-        let blob = Blob::new(Arc::new(default_font));
-        let override_info = FontInfoOverride {
-            family_name: Some(text::DEFAULT_FONT_FAMILY),
-            ..Default::default()
-        };
-        let registered = self.font_cx.collection.register_fonts(blob, Some(override_info));
-        let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
-        if !ids.is_empty() {
-            self.font_cx
-                .collection
-                .set_generic_families(GenericFamily::SansSerif, ids.into_iter());
-        }
+        self.shaper.set_wasm_like_font_context(default_font);
         self.font_fetches = FontFetchTracker::new();
     }
 
@@ -275,8 +270,7 @@ impl LayoutPass {
 
         let LayoutPass {
             projection,
-            font_cx,
-            layout_cx,
+            shaper,
             font_fetches,
             ..
         } = self;
@@ -309,9 +303,7 @@ impl LayoutPass {
                                 el.visual.font_family.clone().or(ambient.font_family.clone()),
                             )
                         };
-                        let width = text::text_input_default_width(
-                            font_cx,
-                            layout_cx,
+                        let width = shaper.text_input_default_width(
                             font_size,
                             font_family.as_deref(),
                             font_weight,
@@ -337,14 +329,7 @@ impl LayoutPass {
                             AvailableSpace::MinContent => Some(0.0),
                         },
                     };
-                    let layout = inline_text::shape(
-                        elements,
-                        eid,
-                        max_advance,
-                        font_cx,
-                        layout_cx,
-                        viewport,
-                    );
+                    let layout = shaper.shape_ifc(elements, eid, max_advance, viewport);
                     if layout.text.is_empty() {
                         return TaffySize::ZERO;
                     }
@@ -386,8 +371,7 @@ impl LayoutPass {
                     .width_constraint
                     .is_some_and(|w| (w - inner_w).abs() <= 0.5);
                 if inner_w.is_finite() && inner_w > 0.0 && !matches_final {
-                    let reshaped =
-                        inline_text::shape(elements, eid, Some(inner_w), font_cx, layout_cx, viewport);
+                    let reshaped = shaper.shape_ifc(elements, eid, Some(inner_w), viewport);
                     if !reshaped.text.is_empty() {
                         layout = reshaped;
                     }
@@ -419,7 +403,7 @@ impl LayoutPass {
                     for resolved in text::parse_font_family_list(fam) {
                         if resolved != text::DEFAULT_FONT_FAMILY
                             && font_fetches.should_request(resolved)
-                            && font_cx.collection.family_id(resolved).is_none()
+                            && !shaper.has_family(resolved)
                         {
                             font_fetches.mark_requested(resolved);
                             event_queue.push(Event::FetchFont {
@@ -498,9 +482,7 @@ impl LayoutPass {
             };
 
             if let Some(text) = text_to_layout {
-                let layout = text::build_text_layout(
-                    font_cx,
-                    layout_cx,
+                let layout = shaper.shape_text(
                     &text,
                     font_size,
                     max_advance,
@@ -523,7 +505,7 @@ impl LayoutPass {
                     for resolved in text::parse_font_family_list(fam) {
                         if resolved != text::DEFAULT_FONT_FAMILY
                             && font_fetches.should_request(resolved)
-                            && font_cx.collection.family_id(resolved).is_none()
+                            && !shaper.has_family(resolved)
                         {
                             font_fetches.mark_requested(resolved);
                             event_queue.push(Event::FetchFont {
@@ -721,25 +703,6 @@ mod tests {
 
         assert!(!applied, "visual prop must not be accepted by the layout seam");
         assert_eq!(style, before, "non-layout prop must not mutate layout_style");
-    }
-}
-
-fn init_bundled_fonts(font_cx: &mut FontContext) {
-    use fontique::{FontInfoOverride, GenericFamily};
-
-    static NOTO_SANS_BYTES: &[u8] = include_bytes!("../../assets/fonts/NotoSansJP.ttf");
-
-    let blob = Blob::new(Arc::new(NOTO_SANS_BYTES));
-    let override_info = FontInfoOverride {
-        family_name: Some(text::DEFAULT_FONT_FAMILY),
-        ..Default::default()
-    };
-    let registered = font_cx.collection.register_fonts(blob, Some(override_info));
-    let family_ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
-    if !family_ids.is_empty() {
-        font_cx
-            .collection
-            .set_generic_families(GenericFamily::SansSerif, family_ids.into_iter());
     }
 }
 

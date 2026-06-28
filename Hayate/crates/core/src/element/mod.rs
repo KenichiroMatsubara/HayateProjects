@@ -29,6 +29,7 @@ pub mod style;
 pub mod taffy_bridge;
 pub mod taffy_projection;
 pub mod text;
+mod text_shaper;
 mod transition;
 pub mod tree;
 mod viewport_resize;

@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use linebender_resource_handle::Blob;
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
 use crate::element::edit_state::EditState;
@@ -263,16 +262,7 @@ impl ElementTree {
             if self.toolbar_label_cache.contains_key(&action) {
                 continue;
             }
-            let layout = text::build_text_layout(
-                &mut self.layout.font_cx,
-                &mut self.layout.layout_cx,
-                action.label(),
-                TOOLBAR_LABEL_FONT_SIZE,
-                None,
-                None,
-                None,
-                None,
-            );
+            let layout = self.layout.shape_label(action.label(), TOOLBAR_LABEL_FONT_SIZE);
             self.toolbar_label_cache.insert(action, layout);
         }
     }
@@ -741,11 +731,7 @@ impl ElementTree {
         // してはならない。そうするとバンドルの日本語カバー face を覆い隠し、Latin/emoji
         // フォールバックが取得された瞬間に全 CJK が tofu になる（デプロイ Pages の
         // カスケード）。`text::register_collection_font` 参照。
-        text::register_collection_font(
-            &mut self.layout.font_cx.collection,
-            family_name,
-            Arc::new(bytes),
-        );
+        self.layout.register_font(family_name, Arc::new(bytes));
 
         self.layout.font_fetches.mark_loaded(family_name);
         self.engine.mark_fonts_dirty();
@@ -773,8 +759,7 @@ impl ElementTree {
     /// フォントファイル自身に埋め込まれた family 名を使って生バイトから登録する。
     /// WIT の `element-load-font` エクスポートを支える。
     pub fn register_font_bytes(&mut self, bytes: Vec<u8>) {
-        let blob = Blob::new(Arc::new(bytes));
-        self.layout.font_cx.collection.register_fonts(blob, None);
+        self.layout.register_font_bytes(bytes);
     }
 
     /// TextInput のキャレット/選択を確定テキスト座標（`anchor`/`focus` バイト
