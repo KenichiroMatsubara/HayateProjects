@@ -5,7 +5,9 @@
 
 このリポジトリの `triage` スキルは、上流に対して以下を独自に上書きしている。
 
-> **なぜ本文を上流 pristine に戻せないか（pinnedLocal）：** 現在の上流 `triage` は、grill 工程を `/grilling`＋`/domain-modeling` へ委譲し、外部 PR トリアージを本文全体に織り込む形に作り替えられている。これらサブスキルは未導入で、PR トリアージも不採用のため、本文を上流へ戻すと参照が宙に浮き、不要な記述が大量に入る。したがって `SKILL.md` 本文は**自己完結フォークとして保持**する（`skills-lock.json` の `pinnedLocal: true`）。上流差分は `/update-matt-pocock-skills` が参考提示するのみで、本文は自動置換しない。`/grilling`・`/domain-modeling` を将来 vendoring すれば、クリーン分離へ移行できる。
+> **このスキルの provenance（要注意）：** 下記のうち「AFK / 完全人力 state」（§1）はユーザ確認済みのリポジトリ規約（`to-issues` と同じ哲学）。一方「外部 PR を扱わない」「grill は `/grill-with-docs`」（§2・§3）は、**ユーザが意図的に決めた記憶が無いと言っており**、調査の結果おそらく**ローカルが古い上流の名残**（外部 PR トリアージも `/grilling` 委譲も、上流が vendoring 後に追加したもの）。＝意図的なチューニングではない可能性が高い。
+>
+> **なぜ本文を上流 pristine に戻していないか（pinnedLocal）：** 現在の上流 `triage` は grill を `/grilling`＋`/domain-modeling`（未導入）へ委譲する形に変わっており、戻すと参照が宙に浮く。よって本文は自己完結フォークとして保持（`pinnedLocal: true`）。ただし §2・§3 は provenance 不明なので、**次回 `/update-matt-pocock-skills` 時にユーザへ「上流追従するか維持するか」要確認**。
 
 ## 1. state は AFK / 完全人力 の二択（HITL state なし）
 
@@ -17,9 +19,9 @@
 
 ## 2. 外部 PR のトリアージは廃止（issue のみ）
 
-上流は「外部 PR も issue と同じ state machine でトリアージする」機能を持つが、**このリポジトリではそれを採用しない**。トリアージ対象は issue のみ。上流更新で外部 PR 関連の記述が増えても取り込まない。
+現状のローカル本文は外部 PR を扱わず、issue のみをトリアージする。
 
-**なぜ：** このリポジトリは PR を issue と同じトリアージ queue で扱う運用にしていない。PR を混ぜると「外部 PR の定義」「PR か issue かの判定」「diff 検証」等が全工程に分岐として入り込み、本来の issue トリアージが複雑化する。issue だけに絞れば state machine が単純に保てる。
+**なぜ（provenance 不明・要確認）：** これがユーザの意図的決定なのか、単にローカルが古い上流（外部 PR 機能の追加前）の名残なのかは**未確定**。明確な理由は記録されておらず、私（エージェント）が created した理由は撤回した。次回更新時にユーザへ「外部 PR トリアージを上流から取り込むか、issue のみで維持するか」を確認すること。
 
 ## 3. grill は `/grill-with-docs` を使う
 
