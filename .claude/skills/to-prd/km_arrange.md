@@ -14,6 +14,11 @@ gh label create "parent" --color 5319E7 --description "親イシュー — broke
 gh issue edit <prd-number> --add-label "parent"
 ```
 
+**なぜ：** PRD を最初から親 issue にしておくと、`/to-issues` が子を分解したときに native sub-issue 関係が繋がり、進捗バーと自動クローズ（ADR-0003）がそのまま機能する。後付けで親子関係を張り直すのは手間が増え、抜けやすい。
+
 ## 2. 進捗バー・自動クローズ運用／手動クローズ禁止
 
 子 issue が揃うと GitHub 上で「達成された子Issue / 全子Issue」の進捗バーが表示され、全子クローズ時に auto-close workflow が PRD を自動クローズする。**PRD を手でクローズしない。**
+
+**なぜ：** PRD のクローズ条件は「全子が閉じたら」で workflow が自動判定する。手で閉じると、まだ子が残っているのに親が閉じる等、進捗バーと実態がズレる。
+

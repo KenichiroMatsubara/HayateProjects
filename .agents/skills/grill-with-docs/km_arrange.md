@@ -5,8 +5,12 @@
 
 ## 1. 自己完結版を保持（上流の委譲化を取り込まない）
 
-上流は `grill-with-docs` を「`/grilling` を `/domain-modeling` 付きで実行する」だけの空洞版に作り替えたが、**このリポジトリは `/grilling`・`/domain-modeling` サブスキルを導入していない**ため、自己完結のフル本体（CONTEXT.md / ADR の domain-awareness、用語のシャープ化、ADR を控えめに提案する手順を内蔵）を保持する。上流更新時、この空洞化は**取り込まない**。同梱の `CONTEXT-FORMAT.md` / `ADR-FORMAT.md` もこのリポジトリ独自に保持する。
+上流は `grill-with-docs` を「`/grilling` を `/domain-modeling` 付きで実行する」だけの空洞版に作り替えたが、**このリポジトリは `/grilling`・`/domain-modeling` サブスキルを導入していない**ため、自己完結のフル本体（CONTEXT.md / ADR の domain-awareness、用語のシャープ化、ADR を控えめに提案する手順を内蔵）を保持する。同梱の `CONTEXT-FORMAT.md` / `ADR-FORMAT.md` も独自に保持する。
+
+**なぜ：** 空洞版を取り込むと、未導入の `/grilling`・`/domain-modeling` を呼びに行って壊れる。grill しながら CONTEXT.md / ADR を更新するこのスキルの価値は本体に手順が揃っていてこそ働く。
 
 ## 2. 【厳守】質問は平文で。AskUserQuestion / structured-question ツールは使用禁止
 
-グリル中の質問は、必ず**自分のメッセージ内に平文（散文）**で書く。**`AskUserQuestion`（structured-question）ツールはこの環境で不安定なため使用してはならない。** 質問と推奨回答を文章で提示し、ユーザは平文で返す。1問ずつ、各回答を待ってから次へ。
+グリル中の質問は、必ず**自分のメッセージ内に平文（散文）**で書く。**`AskUserQuestion`（structured-question）ツールは使用してはならない。** 質問と推奨回答を文章で提示し、ユーザは平文で返す。1問ずつ、各回答を待ってから次へ。
+
+**なぜ：** この実行環境では structured-question ツールが不安定で、選択肢UIが壊れたり回答を取りこぼす。平文なら確実に届き、ユーザも自由記述で精密に返せる。また複数同時に聞くと相互依存する設計判断が混ざるため、依存順に1問ずつ潰す方が決定木をきれいに解消できる。
