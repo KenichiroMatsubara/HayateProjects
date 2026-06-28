@@ -241,6 +241,10 @@ _Avoid_: 毎フレーム allocate-and-discard する Immediate lowering
 element ごとの retained scene identity を担う構造専用 `NodeKind::ElementAnchor`。transform を持たず、子 element は親 anchor の子リストで子 anchor を参照する。1 element の border / rect / text run / Group / Clip は anchor 配下に lowering される。
 _Avoid_: Group（transform 用語との混同）
 
+**Text Shaper（テキスト整形器）**:
+要素のテキスト＋スタイル＋**確定ボックス幅**から、描画用の retained グリフ層（glyph runs）を生成する単一の所有者。`register_font` の登録先である font collection を内部に持ち、不変条件「**retained グリフは要素の最終ボックス幅でシェイプされる**」を interface の裏で保証する。欠落 family は値として報告するだけで、fetch のトランスポート・再試行・backoff は持たない。box の寸法決定時に Taffy へ measure を答え、レイアウト確定後に reconcile する二点で box レイアウトと接続する。Taffy Projection（箱）と対をなす Layout Pass 内部の deep module。
+_Avoid_: レイアウト（箱は Taffy Projection の領分）、フォント取得（port は別レイヤ）、Inline Formatting Context（整形「範囲」の概念であって所有者ではない）、`text_layout`（retain される値の名であって整形器ではない）、`width_constraint` を retained 値へ載せる設計（簿記は整形器内部）
+
 **Glyph Atlas**:
 レンダリング済みグリフを格納する GPU テクスチャ。
 
