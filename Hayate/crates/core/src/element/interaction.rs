@@ -949,17 +949,32 @@ impl ElementTree {
     }
 
     pub fn on_composition_end(&mut self, target: ElementId, text: &str) {
-        if let Some(edit) = self
+        let committed = self
             .elements
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
-        {
-            edit.finish_composition(text);
-        }
+            .map(|edit| {
+                edit.finish_composition(text);
+                true
+            })
+            .unwrap_or(false);
         self.emit_interaction(Event::CompositionEnd {
             target_id: target,
             text: text.to_string(),
         });
+        // IME 確定は内容変更（断片ではなく全文の置換）なので、DOM が `compositionend`
+        // の直後に `input` を発火するのと同型に、確定後の全文を載せた `TextInput` を
+        // 続けて発行する。これが無いと controlled input（value を signal/state にミラー
+        // する FW）は確定値を受け取れず、`onInput` が呼ばれないまま draft が空に
+        // 留まる（Canvas のみで再現する text-input 追加バグの根本原因）。on_text_input /
+        // paste / 複数行 Enter と同じく結合表示テキストを value に載せる（ADR-0069 / #474）。
+        if committed {
+            let value = self.element_get_text_content(target);
+            self.emit_interaction(Event::TextInput {
+                target_id: target,
+                text: value,
+            });
+        }
     }
 
     pub fn on_hover_enter(&mut self, target: ElementId) {
