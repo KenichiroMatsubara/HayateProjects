@@ -63,22 +63,25 @@
   本文を pin した上流 SKILL 本文に戻し（frontmatter の `description` だけローカル保持）、独自
   仕様は全て `km_arrange.md` に置く（追加分、および本文の特定節を上書きする分を明示）。本文が
   上流とクリーンに diff できるため、以後の更新は素直。
-- **自己完結フォーク（`km_arrange` ＋ `pinnedLocal`）**：`grill-me`・`grill-with-docs`・
-  `improve-codebase-architecture`・`setup-matt-pocock-skills`。前3者は上流が本体を
-  サブスキル（`/grilling`・`/domain-modeling`）へ委譲する形に作り替えたもの。`setup-matt-pocock-skills`
-  は差分が「上流が追加した PR 設問の削除」という removal 型で、かつ同梱 seed（`domain.md` 等）が
-  リポジトリ独自に改変済みのため、追加型オーバーレイにクリーン分離できない。これらは本文を自己
-  完結フォークとして保持し、上流本体で自動置換しない。
+- **環境制約のみの `km_arrange`（`pinnedLocal` なし）**：`grilling`。本文は上流 pristine。
+  `km_arrange.md` で「`AskUserQuestion`/structured-question ツール禁止」を付与（この環境のアプリ
+  バグで回答済みの質問が再表示されるため）。grill が走る全経路にこの制約を効かせる土台。
+- **自己完結フォーク（`km_arrange` ＋ `pinnedLocal`）**：`setup-matt-pocock-skills` のみ。差分が
+  「上流が追加した PR 設問の削除」という removal 型で、かつ同梱 seed（`domain.md` 等）がリポジトリ
+  独自に改変済みのため、追加型オーバーレイにクリーン分離できない。本文を自己完結フォークとして
+  保持し、上流本体で自動置換しない。
 
 `triage` は当初リポジトリ独自チューニング（外部 PR 不採用・AFK/完全人力 state）と判断したが、
 ユーザに確認したところ意図的に入れた記憶が無く、調査でも provenance を特定できなかった（古い
 上流の名残の可能性が高い）。ユーザ判断により **`triage` は上流 Matt Pocock 版をそのまま採用**
-（km_arrange・`pinnedLocal` を撤去し、純粋 vendoring に戻した）。上流 `triage` は `/grilling`・
-`/domain-modeling` を参照するため、ユーザ判断により**両スキルも上流から vendoring 済み**。
-`grilling` には環境制約（`AskUserQuestion`/structured-question ツール禁止＝この環境のアプリバグ
-で回答済みの質問が再表示されるため）を `km_arrange.md` で付与し、grill が走る全経路でこの制約が
-効くようにした。`/grilling`・`/domain-modeling` が導入されたことで、委譲型フォーク3者は将来クリーン
-分離へ移行可能になった（当面は自己完結を維持、移行は依頼ベース）。
+（純粋 vendoring）。上流 `triage` は `/grilling`・`/domain-modeling` を参照するため、ユーザ判断で
+**両スキルも上流から vendoring 済み**。
+
+`/grilling`・`/domain-modeling`（および既存の `/codebase-design`）が揃ったことで、上流が委譲型に
+作り替えた `grill-me`・`grill-with-docs`・`improve-codebase-architecture` も、ユーザ判断により
+**純粋 upstream（委譲版）へ移行**した（自己完結フォークを解消）。grill 系の `AskUserQuestion` 禁止
+は委譲先の `grilling` が担うので失われない。なお上流版はこの3者を `disable-model-invocation: true`
+（ユーザ起動専用）にしている点に留意（`improve-codebase-architecture` は自動発火しなくなる）。
 
 ### 4. 自作スキルは管理対象外
 

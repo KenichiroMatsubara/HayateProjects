@@ -92,7 +92,7 @@ vendoring されたスキル（`skills-lock.json` に載る全スキル）は、
 
 ## このリポジトリ固有の取り決め（既定方針）
 
-- **委譲型フォークは当面自己完結を維持。** `grill-me` / `grill-with-docs` / `improve-codebase-architecture` は、上流が `/grilling`・`/domain-modeling`・`/codebase-design` へ委譲する形に変わったもの。これら委譲先は現在すべて vendoring 済みだが、当面は自己完結版を保持する（`pinnedLocal`）。上流委譲版へのクリーン分離移行は依頼ベースで実施可能。
-- **`triage` は純粋 upstream**（独自チューニングなし）。上流 `triage` が参照する `/grilling`・`/domain-modeling` も vendoring 済み。
-- **`grilling` の環境制約。** vendoring した `/grilling` には `km_arrange.md` で「`AskUserQuestion`/structured-question ツール禁止」を付与（この環境のアプリバグで回答済みの質問が再表示されるため）。grill が走る全経路でこの制約を効かせる。
+- **委譲先が揃ったので純粋 upstream。** `grill-me` / `grill-with-docs` / `improve-codebase-architecture` / `triage` は、委譲先（`/grilling`・`/domain-modeling`・`/codebase-design`）がすべて vendoring 済みのため、独自チューニングを持たず純粋 upstream で扱う（自己完結フォークは解消済み）。上流版は前3者を `disable-model-invocation: true`（ユーザ起動専用）にしている点に留意。
+- **`grilling` の環境制約。** vendoring した `/grilling` には `km_arrange.md` で「`AskUserQuestion`/structured-question ツール禁止」を付与（この環境のアプリバグで回答済みの質問が再表示されるため）。grill 系（`grill-me`・`grill-with-docs`・`triage` の grill 工程）は全てここを経由するので、この1ファイルで制約が効く。
+- **唯一の自己完結フォーク（`pinnedLocal`）は `setup-matt-pocock-skills`。** 同梱 seed のリポジトリ独自改変＋PR設問削除（removal 型）のため、クリーン分離できない。本体は自動置換しない。
 - **自作スキルは対象外。** `inherit-prompt` / `make-pr` / `search-issue` は Matt Pocock 由来でないため、このスキルは一切触らない（`skills-lock.json` にも載せない）。
