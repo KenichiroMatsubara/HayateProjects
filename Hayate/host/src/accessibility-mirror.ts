@@ -49,7 +49,16 @@ interface AccessKitNode {
     readonly children?: readonly number[];
     readonly label?: string | null;
     readonly value?: string | null;
+    readonly bounds?: AccessKitRect | null;
   };
+}
+
+/** AccessKit `Rect`（serde）: 角の絶対座標。width/height は `x1-x0` / `y1-y0`。 */
+interface AccessKitRect {
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
 }
 
 /** AccessKit `TreeUpdate`（serde）の、ミラーが消費する部分形。 */
@@ -136,6 +145,18 @@ export function attachAccessibilityMirror(
       const label = node.properties?.label;
       if (label != null) el.setAttribute('aria-label', label);
       else el.removeAttribute('aria-label');
+
+      // bounds を on-canvas 矩形へ絶対配置する。これでミラーノードが当たり位置に重なり、
+      // Playwright が `boundingBox()` から駆動座標を得られる（pointer-events:none なので
+      // 座標クリックは下の <canvas> に届き、ミラーは横取りしない・ADR-0124）。
+      const bounds = node.properties?.bounds;
+      if (bounds) {
+        el.style.position = 'absolute';
+        el.style.left = `${bounds.x0}px`;
+        el.style.top = `${bounds.y0}px`;
+        el.style.width = `${bounds.x1 - bounds.x0}px`;
+        el.style.height = `${bounds.y1 - bounds.y0}px`;
+      }
     }
 
     // 2) 構造を結線する。子があれば子要素を順に再 parent、無ければ value を textContent に。

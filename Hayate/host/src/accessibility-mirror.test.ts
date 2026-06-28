@@ -213,6 +213,27 @@ describe('attachAccessibilityMirror', () => {
     expect(textbox.textContent).toBe('Buy bread');
   });
 
+  it('absolutely positions each node to its on-canvas bounds rect (ADR-0124)', () => {
+    const { canvas, container } = mountCanvas();
+    // bounds は AccessKit Rect: {x0,y0,x1,y1}（content 絶対座標）。
+    const raw = fakeRawPolling(
+      treeUpdate(1, [
+        [1, node('window', { children: [2] })],
+        [2, node('button', { label: 'Add', bounds: { x0: 10, y0: 20, x1: 110, y1: 60 } })],
+      ]),
+    );
+    attach(raw, canvas);
+    driver.tick();
+
+    const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
+    const button = root.querySelector('[role="button"]') as HTMLElement;
+    expect(button.style.position).toBe('absolute');
+    expect(button.style.left).toBe('10px');
+    expect(button.style.top).toBe('20px');
+    expect(button.style.width).toBe('100px');
+    expect(button.style.height).toBe('40px');
+  });
+
   it('detach removes the mirror root and stops the rAF loop', () => {
     const { canvas, container } = mountCanvas();
     const detach = attach(fakeRawPolling(todoFixture()), canvas);
