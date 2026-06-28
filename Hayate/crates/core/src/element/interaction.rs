@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::element::caret_geometry::ParleyCaretGeometry;
+use crate::element::caret_geometry::{CaretGeometry, ParleyCaretGeometry};
 use crate::element::edit_state::{Direction, EditIntent, Granularity};
 use crate::element::event_spec::{event_document_kind, Event};
 use crate::element::id::ElementId;
@@ -8,7 +8,7 @@ use crate::element::inline_text::{byte_index_at_point, ifc_root};
 use crate::element::pointer::PointerKind;
 use crate::element::pointer_gesture::{DragMode, PointerGesture, TapPhase};
 use crate::element::selection::{
-    self, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
+    self, DocumentSelection, Selection, SelectionPoint, MOD_ALT, MOD_CTRL, MOD_PRIMARY, MOD_SHIFT,
 };
 use crate::element::style::CursorValue;
 use crate::element::tree::{ElementTree, TouchScrollIndicator};
@@ -194,9 +194,16 @@ pub trait InteractionTreeView {
     /// `input`（text-input）の編集選択ドラッグをポインタ `(x, y)` へ拡張する
     /// （ADR-0097）。point→byte は `Caret Geometry` 幾何で、tree 側に置く。
     fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32);
-    /// 読み取り専用 SelectionArea のドラッグ選択の focus をポインタ `(x, y)` へ
-    /// 拡張する（ADR-0097）。点→選択端点の解決は tree 側の幾何。
-    fn extend_selection_drag(&mut self, x: f32, y: f32);
+    /// canvas 点 `(x, y)` を選択端点 `(IFC root, byte offset)` に解決する（ADR-0097 /
+    /// #574）。point→byte は `Caret Geometry` の `byte_at_point`（#571）。`selectable`
+    /// サブツリー外や整形テキストに当たらないとき `None`。
+    fn resolve_selection_point(&self, x: f32, y: f32) -> Option<SelectionPoint>;
+    /// 2 要素が同じ Selection Region に属するか（選択を境界内に閉じ込める contains
+    /// clamp の判定、ADR-0108）。
+    fn same_selection_region(&self, a: ElementId, b: ElementId) -> bool;
+    /// 文書グローバル選択が `prev` から `new` へ変わったときの tree 側効果：得失した
+    /// 各ブロックのハイライト再生成（visual dirty）と一度の `selection-change` 通知。
+    fn on_selection_changed(&mut self, prev: Selection, new: Selection);
 }
 
 /// 横断的 interaction state を所有する deep module（ADR-0122 決定 1）。入口は
@@ -237,6 +244,10 @@ pub struct Interaction {
     pub(crate) last_pointer_pos: Option<(f32, f32)>,
     /// ポインタ下で直近に解決したカーソル。合成 move で報告する（ADR-0088）。
     pub(crate) last_cursor: CursorValue,
+    /// 文書全体で唯一のテキスト選択を所有する deep module（ADR-0097 / #574）。
+    /// 正規化・縮退・one-per-document・contains clamp の不変条件を interface の裏で
+    /// 守る。`Interaction` が主たる mutator で、read 経路は interface 越しに borrow する。
+    pub(crate) selection: DocumentSelection,
 }
 
 impl Default for Interaction {
@@ -256,6 +267,7 @@ impl Default for Interaction {
             touch_scroll_indicators: HashMap::new(),
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
+            selection: DocumentSelection::default(),
         }
     }
 }
@@ -428,8 +440,39 @@ impl Interaction {
                 }
             }
             DragMode::Edit(input) => view.extend_edit_drag(input, x, y),
-            DragMode::Selection => view.extend_selection_drag(x, y),
+            DragMode::Selection => {
+                // 点→選択端点の解決は view 幾何（`Caret Geometry` byte_at_point・#571）、
+                // しかし選択 state は `Interaction` 所有なので拡張は self 上で行う。
+                if let Some(point) = view.resolve_selection_point(x, y) {
+                    self.extend_selection_focus(view, point);
+                }
+            }
             DragMode::None => {}
+        }
+    }
+
+    /// ドラッグ選択の focus を `point` へ拡張する（anchor 固定・ADR-0097 / #574）。
+    /// 選択 state は `Interaction` 所有なので self の deep module 上で mutate し（view
+    /// 経由だと drive の mem-take placeholder へ書いて失われる）、Selection Region への
+    /// contains clamp と dirty／`selection-change` 通知は view へ委ねる。focus が別の
+    /// `selectable` 領域へ迷い込んだら据え置く（選択は境界を越えない）。
+    pub(crate) fn extend_selection_focus(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        point: SelectionPoint,
+    ) {
+        let Some(prev) = self.selection.get() else {
+            return;
+        };
+        if prev.focus == point {
+            return;
+        }
+        if !view.same_selection_region(point.element, prev.anchor.element) {
+            return;
+        }
+        self.selection.extend_focus(point);
+        if let Some(now) = self.selection.get() {
+            view.on_selection_changed(prev, now);
         }
     }
 }
@@ -921,7 +964,7 @@ impl ElementTree {
 
     /// 文書全体で唯一のテキスト選択（あれば）（ADR-0097）。
     pub fn selection(&self) -> Option<&Selection> {
-        self.selection.as_ref()
+        self.interaction.selection.as_ref()
     }
 
     /// active な選択の端点を文書順に正規化した `(start, end)`。`start` はツリーの
@@ -929,7 +972,7 @@ impl ElementTree {
     /// オフセットで、ブロック跨ぎはブロックの文書順で正規化する。選択が無ければ
     /// `None`。
     pub fn selection_ordered(&self) -> Option<(SelectionPoint, SelectionPoint)> {
-        let sel = self.selection?;
+        let sel = self.interaction.selection.get()?;
         if sel.anchor.element == sel.focus.element {
             let lo = sel.anchor.offset.min(sel.focus.offset);
             let hi = sel.anchor.offset.max(sel.focus.offset);
@@ -1059,7 +1102,7 @@ impl ElementTree {
     /// コピーと同じ形）。選択が無い、または非空の範囲を何も覆わない（畳まれた
     /// キャレットはコピー対象なし）とき `None`。
     pub fn selected_text(&self) -> Option<String> {
-        let sel = self.selection?;
+        let sel = self.interaction.selection.get()?;
         let mut parts: Vec<String> = Vec::new();
         for block in self.blocks_spanned_by(sel) {
             let Some((start, end)) = self.selection_range_in_block(block) else {
@@ -1123,7 +1166,7 @@ impl ElementTree {
         if !self.touch_chrome_visible() {
             return None;
         }
-        let sel = self.selection?;
+        let sel = self.interaction.selection.get()?;
         if sel.is_caret() {
             return None;
         }
@@ -1412,7 +1455,7 @@ impl ElementTree {
     /// active な選択に対し全選択する。読み取り専用 SelectionArea 選択なら focus
     /// IFC 全体、編集可能なら text-input の内容全体（ADR-0097）。
     fn select_all_active_selection(&mut self) {
-        if let Some(sel) = self.selection {
+        if let Some(sel) = self.interaction.selection.get() {
             self.select_all_in(sel.focus.element);
             return;
         }
@@ -1438,7 +1481,7 @@ impl ElementTree {
         crate::element::selection_chrome::ToolbarRect,
     )> {
         use crate::element::selection_chrome::ToolbarAction;
-        if self.selection.is_some_and(|s| !s.is_caret()) {
+        if self.interaction.selection.get().is_some_and(|s| !s.is_caret()) {
             let bounds = self.read_only_selection_bounds()?;
             return Some((vec![ToolbarAction::Copy, ToolbarAction::SelectAll], bounds));
         }
@@ -1531,7 +1574,7 @@ impl ElementTree {
         let Some(point) = self.selection_point_at(x, y) else {
             self.interaction.pointer_gesture.end_drag();
             self.interaction.pointer_gesture.reset_taps();
-            if self.selection.is_some() {
+            if self.interaction.selection.get().is_some() {
                 self.set_selection(None);
             }
             return;
@@ -1714,7 +1757,7 @@ impl ElementTree {
     /// active な選択の anchor が同じ IFC にあるとき、現在の選択の focus を `point`
     /// へ移し anchor を保つ。適用したかを返す。
     fn extend_focus_to(&mut self, point: SelectionPoint) -> bool {
-        let Some(sel) = self.selection else {
+        let Some(sel) = self.interaction.selection.get() else {
             return false;
         };
         if sel.anchor.element != point.element {
@@ -1733,7 +1776,7 @@ impl ElementTree {
     /// - Shift+Arrow は focus を1文字、Alt（macOS）または Ctrl（Win/Linux）併用で
     ///   単語単位、移動する。anchor は固定なので、反復押下で範囲が伸縮する。
     fn handle_selection_key(&mut self, key: &str, modifiers: u32) -> bool {
-        let Some(sel) = self.selection else {
+        let Some(sel) = self.interaction.selection.get() else {
             return false;
         };
         if modifiers & MOD_PRIMARY != 0 && key.eq_ignore_ascii_case("a") {
@@ -1935,7 +1978,8 @@ impl ElementTree {
         let ifc = ifc_root(&self.elements, hit).unwrap_or(hit);
         let tl = self.elements.get(&ifc)?.text_layout.as_ref()?;
         let (ex, ey, _, _) = self.layout.geometry(ifc)?;
-        let offset = byte_index_at_point(tl, x - ex, y - ey);
+        // drag-to-extend の point→byte は `Caret Geometry` seam（#571）越しに解決する。
+        let offset = ParleyCaretGeometry::new(&tl.layout).byte_at_point(x - ex, y - ey);
         Some(SelectionPoint::new(ifc, offset))
     }
 
@@ -1971,14 +2015,18 @@ impl ElementTree {
     }
 
     fn set_selection(&mut self, next: Option<Selection>) {
-        if self.selection == next {
+        if self.interaction.selection.get() == next {
             return;
         }
-        if let Some(prev) = self.selection {
+        if let Some(prev) = self.interaction.selection.get() {
             self.mark_selection_dirty(prev);
         }
-        self.selection = next;
-        if let Some(now) = self.selection {
+        // 状態変更は deep module の interface 経由（one-per-document の不変条件を裏で守る）。
+        match next {
+            Some(selection) => self.interaction.selection.set(selection),
+            None => self.interaction.selection.clear(),
+        }
+        if let Some(now) = self.interaction.selection.get() {
             self.mark_selection_dirty(now);
         }
         // 文書グローバル Selection の実質的変更（設定・移動・クリア。ジェスチャでも
@@ -1986,27 +2034,6 @@ impl ElementTree {
         // より冗長な設定は何も発しない。意図的にペイロードなし。ホストは DOM の
         // `selectionchange` 同様に `selection()` で新状態をポーリングする。
         self.emit_interaction(Event::SelectionChange);
-    }
-
-    /// ドラッグ focus を `point` へ移し anchor を保つ（ADR-0097）。focus は anchor の
-    /// Selection Region にクランプされる。別の `selectable` 領域（ネストしたもの、
-    /// または領域なし）へ迷い込んだドラッグは focus を元の位置に留めるので、選択は
-    /// `selectable` 境界を越えて漏れない。`set_selection` を通すので、範囲が得た／
-    /// 失った各ブロックがハイライトを再生成する。
-    fn update_selection_focus(&mut self, point: SelectionPoint) {
-        let Some(sel) = self.selection else {
-            return;
-        };
-        if sel.focus == point {
-            return;
-        }
-        if self.selection_region_of(point.element) != self.selection_region_of(sel.anchor.element) {
-            return;
-        }
-        self.set_selection(Some(Selection {
-            anchor: sel.anchor,
-            focus: point,
-        }));
     }
 
     /// 選択が覆う各ブロックを再生成し、ハイライトを追従させる。両端点ブロックと、
@@ -2200,10 +2227,19 @@ impl InteractionTreeView for ElementTree {
         self.extend_edit_drag_to(input, x, y);
     }
 
-    fn extend_selection_drag(&mut self, x: f32, y: f32) {
-        if let Some(point) = self.selection_point_at(x, y) {
-            self.update_selection_focus(point);
-        }
+    fn resolve_selection_point(&self, x: f32, y: f32) -> Option<SelectionPoint> {
+        self.selection_point_at(x, y)
+    }
+
+    fn same_selection_region(&self, a: ElementId, b: ElementId) -> bool {
+        self.selection_region_of(a) == self.selection_region_of(b)
+    }
+
+    fn on_selection_changed(&mut self, prev: Selection, new: Selection) {
+        self.mark_selection_dirty(prev);
+        self.mark_selection_dirty(new);
+        // 文書グローバル Selection の実質的変更を一度通知する（ADR-0097）。
+        self.emit_interaction(Event::SelectionChange);
     }
 }
 
@@ -2252,7 +2288,12 @@ mod seam_tests {
         /// `drive_active_drag` が呼んだドライブ種別の記録（drag-mode dispatch の観測）。
         scrollbar_drives: Vec<(f32, f32)>,
         edit_drives: Vec<(ElementId, f32, f32)>,
-        selection_drives: Vec<(f32, f32)>,
+        /// `resolve_selection_point` が返す点（テストごとに差し替える）。
+        resolve_point: Option<SelectionPoint>,
+        /// `same_selection_region` が返す値（既定 true）。
+        same_region: bool,
+        /// `on_selection_changed` で観測した `(prev, new)`。
+        selection_changes: Vec<(Selection, Selection)>,
     }
 
     impl Default for FakeView {
@@ -2267,7 +2308,9 @@ mod seam_tests {
                 active_dirty: Vec::new(),
                 scrollbar_drives: Vec::new(),
                 edit_drives: Vec::new(),
-                selection_drives: Vec::new(),
+                resolve_point: None,
+                same_region: true,
+                selection_changes: Vec::new(),
             }
         }
     }
@@ -2300,8 +2343,14 @@ mod seam_tests {
         fn extend_edit_drag(&mut self, input: ElementId, x: f32, y: f32) {
             self.edit_drives.push((input, x, y));
         }
-        fn extend_selection_drag(&mut self, x: f32, y: f32) {
-            self.selection_drives.push((x, y));
+        fn resolve_selection_point(&self, _x: f32, _y: f32) -> Option<SelectionPoint> {
+            self.resolve_point
+        }
+        fn same_selection_region(&self, _a: ElementId, _b: ElementId) -> bool {
+            self.same_region
+        }
+        fn on_selection_changed(&mut self, prev: Selection, new: Selection) {
+            self.selection_changes.push((prev, new));
         }
     }
 
@@ -2551,14 +2600,56 @@ mod seam_tests {
         let mut view = FakeView::default();
         interaction.drive_active_drag(&mut view, 10.0, 20.0);
         assert_eq!(view.edit_drives, vec![(input, 10.0, 20.0)]);
-        assert!(view.selection_drives.is_empty() && view.scrollbar_drives.is_empty());
+        assert!(view.scrollbar_drives.is_empty());
+    }
 
+    #[test]
+    fn drive_active_drag_extends_the_document_selection_across_elements() {
+        // 読み取り専用 SelectionArea ドラッグは、view が解決した点（`byte_at_point` ＝
+        // `Caret Geometry` #571）へ `Interaction` 所有の選択を要素をまたいで拡張する
+        // （#574）。anchor は固定、focus がドラッグ点へ。
         let mut interaction = Interaction::default();
         interaction.pointer_gesture.begin_drag(DragMode::Selection);
-        let mut view = FakeView::default();
+        interaction
+            .selection
+            .set(Selection::caret(SelectionPoint::new(id(1), 2)));
+        let drag_point = SelectionPoint::new(id(2), 5);
+        let mut view = FakeView {
+            resolve_point: Some(drag_point),
+            ..FakeView::default()
+        };
+
         interaction.drive_active_drag(&mut view, 7.0, 8.0);
-        assert_eq!(view.selection_drives, vec![(7.0, 8.0)]);
+
+        let sel = interaction.selection.get().unwrap();
+        assert_eq!(sel.anchor, SelectionPoint::new(id(1), 2), "anchor は固定");
+        assert_eq!(sel.focus, drag_point, "focus が要素をまたいでドラッグ点へ");
+        assert_eq!(view.selection_changes.len(), 1, "選択変更が一度通知される");
         assert!(view.edit_drives.is_empty() && view.scrollbar_drives.is_empty());
+    }
+
+    #[test]
+    fn drag_select_does_not_cross_a_selection_region_boundary() {
+        // focus が別 Selection Region へ迷い込んだら据え置く（選択は境界を越えない）。
+        let mut interaction = Interaction::default();
+        interaction.pointer_gesture.begin_drag(DragMode::Selection);
+        interaction
+            .selection
+            .set(Selection::caret(SelectionPoint::new(id(1), 2)));
+        let mut view = FakeView {
+            resolve_point: Some(SelectionPoint::new(id(2), 5)),
+            same_region: false, // 別領域
+            ..FakeView::default()
+        };
+
+        interaction.drive_active_drag(&mut view, 7.0, 8.0);
+
+        assert_eq!(
+            interaction.selection.get().unwrap().focus,
+            SelectionPoint::new(id(1), 2),
+            "境界外の点では focus を据え置く",
+        );
+        assert!(view.selection_changes.is_empty(), "変更通知も出ない");
     }
 
     #[test]
@@ -2570,7 +2661,7 @@ mod seam_tests {
 
         assert!(
             view.edit_drives.is_empty()
-                && view.selection_drives.is_empty()
+                && view.selection_changes.is_empty()
                 && view.scrollbar_drives.is_empty(),
             "DragMode::None drives nothing",
         );

@@ -210,8 +210,6 @@ pub struct ElementTree {
     /// deep module（ADR-0122 / #572）。これらの field は `Interaction` 側にあり、
     /// tree からは `self.interaction.*` 越しに借りる。
     pub(crate) interaction: crate::element::interaction::Interaction,
-    /// 文書全体で唯一のテキスト選択（ADR-0097）。文書全体で同時に高々 1 つ。
-    pub(crate) selection: Option<crate::element::selection::Selection>,
     pub(crate) runtime: DocumentRuntime,
     /// コピー用のプラットフォームクリップボード（ADR-0097）。Platform Adapter が
     /// インストールするまで `None` で、その間コピーは no-op。core は選択テキストを
@@ -243,7 +241,6 @@ impl ElementTree {
             scene_lowering: SceneLowering::default(),
             event_queue: Vec::new(),
             interaction: crate::element::interaction::Interaction::default(),
-            selection: None,
             runtime: DocumentRuntime::new(),
             clipboard: None,
             selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),

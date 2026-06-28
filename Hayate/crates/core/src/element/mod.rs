@@ -53,7 +53,7 @@ pub use kind::ElementKind;
 pub use pointer::PointerKind;
 pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
-pub use selection::{Selection, SelectionPoint};
+pub use selection::{DocumentSelection, Selection, SelectionPoint};
 pub use selection_chrome::{
     SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles, SelectionToolbar,
     ToolbarAction, ToolbarButton, ToolbarRect,
