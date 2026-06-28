@@ -5,14 +5,14 @@ on:
     branches: [main]
     paths:
       - 'Hayate/**'
-      - 'Tsubame/packages/renderer-canvas/**'
+      - 'Tsubame/packages/renderer-hayate/**'
       - 'Tsubame/proto/**'
       - 'Hayate/proto/**'
       - '.github/workflows/wasm-c3.yml'
   pull_request:
     paths:
       - 'Hayate/**'
-      - 'Tsubame/packages/renderer-canvas/**'
+      - 'Tsubame/packages/renderer-hayate/**'
       - 'Tsubame/proto/**'
       - 'Hayate/proto/**'
       - '.github/workflows/wasm-c3.yml'
@@ -53,7 +53,7 @@ jobs:
       - name: Build Hayate WASM (incl. pkg-null for C3)
         run: pnpm --filter hayate build
 
-      - name: Build renderer-canvas test dependencies
+      - name: Build renderer-hayate test dependencies
         run: |
           pnpm --filter @tsubame/protocol-generated run generate
           pnpm --filter @tsubame/renderer-protocol build
@@ -61,8 +61,8 @@ jobs:
           # Vite が "Failed to resolve entry" でスイート読込ごと失敗するためビルド。
           pnpm --filter @tsubame/solid build
 
-      - name: Run renderer-canvas C3 tests
-        working-directory: Tsubame/packages/renderer-canvas
+      - name: Run renderer-hayate C3 tests
+        working-directory: Tsubame/packages/renderer-hayate
         run: pnpm run test:wasm
 
   pointer-input-firefox:
