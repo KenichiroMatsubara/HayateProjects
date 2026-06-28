@@ -5,9 +5,9 @@
 
 ## 1. 自己完結版を保持（上流の委譲化を取り込まない）
 
-上流は `grill-with-docs` を「`/grilling` を `/domain-modeling` 付きで実行する」だけの空洞版に作り替えたが、**このリポジトリは `/grilling`・`/domain-modeling` サブスキルを導入していない**ため、自己完結のフル本体（CONTEXT.md / ADR の domain-awareness、用語のシャープ化、ADR を控えめに提案する手順を内蔵）を保持する。同梱の `CONTEXT-FORMAT.md` / `ADR-FORMAT.md` も独自に保持する。
+上流は `grill-with-docs` を「`/grilling` を `/domain-modeling` 付きで実行する」だけの空洞版に作り替えた。`/grilling`・`/domain-modeling` は**現在 vendoring 済み**だが、本スキルは当面**自己完結のフル本体**（CONTEXT.md / ADR の domain-awareness、用語のシャープ化、ADR を控えめに提案する手順を内蔵）を維持する。同梱の `CONTEXT-FORMAT.md` / `ADR-FORMAT.md` も独自に保持する。上流委譲版への移行は依頼があった場合のみ実施。
 
-**なぜ：** 空洞版を取り込むと、未導入の `/grilling`・`/domain-modeling` を呼びに行って壊れる。grill しながら CONTEXT.md / ADR を更新するこのスキルの価値は本体に手順が揃っていてこそ働く。
+**なぜ：** 自己完結なら grill＋ドキュメント更新の手順を1ファイルで把握・調整できる。移行する場合でも、AskUserQuestion 禁止は `grilling/km_arrange.md` が担うので失われない。
 
 ## 2. 【厳守】質問は平文で。AskUserQuestion / structured-question ツールは使用禁止
 

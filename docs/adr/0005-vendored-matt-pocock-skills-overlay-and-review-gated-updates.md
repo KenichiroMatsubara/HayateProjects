@@ -65,19 +65,20 @@
   上流とクリーンに diff できるため、以後の更新は素直。
 - **自己完結フォーク（`km_arrange` ＋ `pinnedLocal`）**：`grill-me`・`grill-with-docs`・
   `improve-codebase-architecture`・`setup-matt-pocock-skills`。前3者は上流が本体を
-  未導入サブスキル（`/grilling`・`/domain-modeling`）へ委譲する形に作り替えたため、本文を上流
-  へ戻すと参照が宙に浮く。`setup-matt-pocock-skills` は差分が「上流が追加した PR 設問の削除」
-  という removal 型で、かつ同梱 seed（`domain.md` 等）がリポジトリ独自に改変済みのため、追加型
-  オーバーレイにクリーン分離できない。これらは本文を自己完結フォークとして保持し、上流本体で
-  自動置換しない。`/grilling`・`/domain-modeling` を将来 vendoring すれば、委譲型の3者もクリーン
-  分離へ移行できる。
+  サブスキル（`/grilling`・`/domain-modeling`）へ委譲する形に作り替えたもの。`setup-matt-pocock-skills`
+  は差分が「上流が追加した PR 設問の削除」という removal 型で、かつ同梱 seed（`domain.md` 等）が
+  リポジトリ独自に改変済みのため、追加型オーバーレイにクリーン分離できない。これらは本文を自己
+  完結フォークとして保持し、上流本体で自動置換しない。
 
 `triage` は当初リポジトリ独自チューニング（外部 PR 不採用・AFK/完全人力 state）と判断したが、
 ユーザに確認したところ意図的に入れた記憶が無く、調査でも provenance を特定できなかった（古い
 上流の名残の可能性が高い）。ユーザ判断により **`triage` は上流 Matt Pocock 版をそのまま採用**
-（km_arrange・`pinnedLocal` を撤去し、純粋 vendoring に戻した）。なお上流 `triage` は `/grilling`・
-`/domain-modeling`（未導入）を参照するため、grill 工程が必要な場合は別途その2スキルの vendoring
-が要る。
+（km_arrange・`pinnedLocal` を撤去し、純粋 vendoring に戻した）。上流 `triage` は `/grilling`・
+`/domain-modeling` を参照するため、ユーザ判断により**両スキルも上流から vendoring 済み**。
+`grilling` には環境制約（`AskUserQuestion`/structured-question ツール禁止＝この環境のアプリバグ
+で回答済みの質問が再表示されるため）を `km_arrange.md` で付与し、grill が走る全経路でこの制約が
+効くようにした。`/grilling`・`/domain-modeling` が導入されたことで、委譲型フォーク3者は将来クリーン
+分離へ移行可能になった（当面は自己完結を維持、移行は依頼ベース）。
 
 ### 4. 自作スキルは管理対象外
 

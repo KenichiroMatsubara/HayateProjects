@@ -21,6 +21,12 @@
       "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
       "computedHash": "7a0779480f323a66d109404646bcc1a14bf0232b45b3e3ea93b652a035718acb"
     },
+    "domain-modeling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/domain-modeling/SKILL.md",
+      "computedHash": "152e2c97239affb12a60c5f4a7e74ab546a49ae169688c81f4e2ccc42dafa579"
+    },
     "git-guardrails-claude-code": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -42,6 +48,13 @@
       "computedHash": "610d091047bcfb9db0f75c057d15538481a721111579fc5ec7f83ad9131a2165",
       "km_arrange": true,
       "pinnedLocal": true
+    },
+    "grilling": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "computedHash": "fe00af3e1815f97c0a7644605479328a726b5cd95ba6ef56a4be2a92fae6c20f",
+      "km_arrange": true
     },
     "handoff": {
       "source": "mattpocock/skills",
