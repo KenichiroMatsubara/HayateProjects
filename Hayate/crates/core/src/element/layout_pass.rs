@@ -5,11 +5,10 @@ use taffy::{AvailableSpace, Dimension as TaffyDim, Size as TaffySize};
 
 use crate::element::font_fetch::FontFetchTracker;
 use crate::element::id::ElementId;
-use crate::element::kind::ElementKind;
 use crate::element::style::{StyleProp, ViewportCondition};
 use crate::element::taffy_bridge::{self, MeasureCtx};
 use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
-use crate::element::text::{self, TextLayout};
+use crate::element::text::TextLayout;
 use crate::element::text_shaper::TextShaper;
 use crate::element::tree::{Element, Event};
 
@@ -336,11 +335,12 @@ impl LayoutPass {
             );
         }
 
-        // 不変条件の機械的保証: 整形器が全 IFC テキストの retained グリフ層（`text_layout`）を
-        // Taffy の確定（unrounded）ボックス幅で retain する。measure クロージャ last-wins と
-        // compute 後の後付け再シェイプ（旧 baseline 行の min-content 折返し対策）はこの 1 点に畳まれた。
-        // 欠落 family は値で返り、`FetchFont` 発行はここ 1 箇所で行う（IFC の発行サイトの集約）。
-        let outcome = shaper.finalize_ifc(projection, elements, viewport);
+        // 不変条件の機械的保証: 整形器が**両 retained 層**（IFC の `text_layout` と text-input の
+        // `content_layout`）を Taffy の確定（unrounded）ボックス幅で retain する。measure クロージャ
+        // last-wins・compute 後の後付け再シェイプ・text-input の別ループはこの 1 点に畳まれた。
+        // 欠落 family は IFC/text-input を de-dup した単一集合として値で返り、`FetchFont` 発行は
+        // ここ 1 箇所で行う（重複発行の解消）。
+        let outcome = shaper.finalize(projection, elements, viewport);
         for family in outcome.missing_families {
             if font_fetches.should_request(&family) {
                 font_fetches.mark_requested(&family);
@@ -351,126 +351,16 @@ impl LayoutPass {
             shape_dirty.remove(&eid);
         }
 
-        // TextInput 要素のコンテンツレイアウトを構築する（Canvas モードの描画＋カーソル用）。
-        let textinput_ids: Vec<ElementId> = elements
-            .iter()
-            .filter_map(|(id, el)| {
-                if el.kind == ElementKind::TextInput {
-                    Some(*id)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        for eid in textinput_ids {
-            let (display_text, font_size, font_weight, font_style) = {
-                let el = match elements.get(&eid) {
-                    Some(e) => e,
-                    None => continue,
-                };
-                let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
-                let text = el
-                    .edit
-                    .as_ref()
-                    .map(|edit| edit.display_text())
-                    .unwrap_or_default();
-                (
-                    text,
-                    el.visual.font_size.unwrap_or(ambient.font_size),
-                    el.visual.font_weight.or(ambient.font_weight),
-                    el.visual.font_style,
-                )
-            };
-
-            let (max_advance, font_family) = {
-                let ambient = crate::element::ambient_defaults::ambient_at(elements, eid);
-                let el = elements.get(&eid).map(|e| {
-                    (
-                        projection.node_id(eid).and_then(|n| {
-                            projection
-                                .taffy
-                                .layout(n)
-                                .ok()
-                                .map(|l| l.content_box_width())
-                        }),
-                        e.visual
-                            .font_family
-                            .clone()
-                            .or(ambient.font_family.clone()),
-                    )
-                });
-                el.map(|(a, f)| (a, f)).unwrap_or((None, None))
-            };
-
-            let is_placeholder = display_text.is_empty();
-            let text_to_layout: Option<String> = if is_placeholder {
-                elements
-                    .get(&eid)
-                    .and_then(|el| el.text.clone())
-                    .filter(|t| !t.is_empty())
-            } else {
-                Some(display_text)
-            };
-
-            if let Some(text) = text_to_layout {
-                let layout = shaper.shape_text(
-                    &text,
-                    font_size,
-                    max_advance,
-                    font_family.as_deref(),
-                    font_weight,
-                    font_style,
-                );
-
-                for &fam in &layout.missing_families {
-                    if font_fetches.should_request(fam) {
-                        font_fetches.mark_requested(fam);
-                        event_queue.push(Event::FetchFont {
-                            family: fam.to_string(),
-                        });
-                    }
-                }
-                if let Some(ref fam) = font_family {
-                    // `font-family` はスタック。カンマ区切り全体ではなく、名前付きエントリを
-                    // 個別に解決・取得する。
-                    for resolved in text::parse_font_family_list(fam) {
-                        if resolved != text::DEFAULT_FONT_FAMILY
-                            && font_fetches.should_request(resolved)
-                            && !shaper.has_family(resolved)
-                        {
-                            font_fetches.mark_requested(resolved);
-                            event_queue.push(Event::FetchFont {
-                                family: resolved.to_string(),
-                            });
-                        }
-                    }
-                }
-                if let Some(el) = elements.get_mut(&eid) {
-                    if is_placeholder {
-                        el.content_layout = None;
-                        el.text_layout = Some(layout);
-                    } else {
-                        el.content_layout = Some(layout);
-                        el.text_layout = None;
-                        if let Some(edit) = el.edit.as_mut() {
-                            // 新しく整形したコンテンツに対しキャレット/選択を有効に保つが、
-                            // 末尾へ強制してはならない。これは毎回のリレイアウト（style 変更・
-                            // リサイズ・選択起因の再描画）で走るため、カーソルを `len` へ
-                            // 強制するとクリックで置いたばかりのキャレットを壊す（アンカーは
-                            // 据え置きでカーソルだけ末尾へ飛び、クリック点から末尾文字までの
-                            // 幻の選択を生む）。クランプはテキスト縮小後に範囲外となった
-                            // オフセットの修復のみ行う。キャレット位置自体は edit/pointer 操作が
-                            // 所有し、レイアウトパスは触らない。
-                            let len = edit.text_content.len();
-                            edit.cursor_byte_index = edit.cursor_byte_index.min(len);
-                            edit.selection_anchor = edit.selection_anchor.min(len);
-                        }
-                    }
-                }
-            } else if let Some(el) = elements.get_mut(&eid) {
-                el.content_layout = None;
-                el.text_layout = None;
+        // finalize 後の後処理: 新しく整形した text-input コンテンツのキャレット/選択を範囲内へ
+        // クランプする。整形意味論ではない編集状態（EditState・ADR-0069）なので `TextShaper` には
+        // 入れず Layout Pass に残す。これは毎回のリレイアウトで走るため、カーソルを `len` へ
+        // 強制してはならない（クリックで置いたキャレットを壊す）。テキスト縮小後に範囲外となった
+        // オフセットの修復のみ行い、キャレット位置自体は edit/pointer 操作が所有する。
+        for eid in outcome.content_finalized {
+            if let Some(edit) = elements.get_mut(&eid).and_then(|el| el.edit.as_mut()) {
+                let len = edit.text_content.len();
+                edit.cursor_byte_index = edit.cursor_byte_index.min(len);
+                edit.selection_anchor = edit.selection_anchor.min(len);
             }
         }
     }

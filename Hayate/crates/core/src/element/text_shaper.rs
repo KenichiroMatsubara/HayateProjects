@@ -12,8 +12,10 @@ use std::sync::Arc;
 use linebender_resource_handle::Blob;
 use parley::{FontContext, LayoutContext};
 
+use crate::element::ambient_defaults;
 use crate::element::id::ElementId;
 use crate::element::inline_text;
+use crate::element::kind::ElementKind;
 use crate::element::style::FontStyleValue;
 use crate::element::taffy_projection::TaffyProjection;
 use crate::element::text::{self, TextBrush, TextLayout};
@@ -42,12 +44,17 @@ fn width_keys_match(a: Option<f32>, b: Option<f32>) -> bool {
 }
 
 /// `finalize` の戻り値。欠落フォント family（値で返し、`FetchFont` 発行は呼び出し側が 1 箇所で行う）
-/// と、retain した（shape を消化した）IFC ルート集合。
+/// と、retain した IFC ルート／text-input 集合。
 pub(crate) struct FinalizeOutcome {
     /// 取得すべき欠落 family 名（notdef 検出 + 名前付き先読みで collection 未登録のもの）。
+    /// IFC と text-input の両経路を 1 つに de-dup した単一集合。
     pub(crate) missing_families: Vec<String>,
-    /// このパスで `text_layout` を retain した IFC ルート。呼び出し側が `shape_dirty` から外す。
+    /// このパスで IFC の `text_layout` を retain した IFC ルート。呼び出し側が `shape_dirty` から外す。
     pub(crate) finalized: Vec<ElementId>,
+    /// `content_layout` を retain した text-input（プレースホルダではなく編集テキスト）。
+    /// キャレット/選択クランプ（編集意味論・ADR-0069）は整形器の外＝Layout Pass 後処理で行うため、
+    /// 対象集合だけを返す。
+    pub(crate) content_finalized: Vec<ElementId>,
 }
 
 /// font collection と `LayoutContext` を所有し、全テキストを整形する内部 module。
@@ -88,7 +95,7 @@ impl TextShaper {
 
     /// `family` が font collection に登録済みなら true。名前付き `font-family` の先読み
     /// 取得判定（未登録なら `FetchFont`）に使う。
-    pub(crate) fn has_family(&mut self, family: &str) -> bool {
+    fn has_family(&mut self, family: &str) -> bool {
         self.font_cx.collection.family_id(family).is_some()
     }
 
@@ -147,11 +154,19 @@ impl TextShaper {
         size
     }
 
-    /// box幅不変条件の機械的保証。measure 済みの全 IFC ルートについて、Taffy の確定
-    /// （unrounded）インナーボックス幅で `text_layout` を retain する。幅キーのメモに box幅
-    /// 一致エントリがあれば再利用し（通常ケース＝measure が既に box幅で shape 済み）、無ければ
-    /// その場で box幅シェイプ（無メモ劣化＝決して間違わない）。欠落 family を値で返す。
-    pub(crate) fn finalize_ifc(
+    /// box幅不変条件の機械的保証。**両 retained 層**（IFC の `text_layout` と text-input の
+    /// `content_layout`）を Taffy の確定（unrounded）ボックス幅で retain し、Text Shaper が所有する。
+    ///
+    /// - IFC: measure 済みの全 IFC ルートについて、幅キーのメモに box幅一致エントリがあれば再利用し
+    ///   （通常ケース＝measure が既に box幅で shape 済み）、無ければその場で box幅シェイプ
+    ///   （無メモ劣化＝決して間違わない）。
+    /// - text-input: 編集テキスト/プレースホルダを同じ確定ボックス幅で整形し `content_layout`
+    ///   （プレースホルダは `text_layout`）へ retain する。別ループは解消。
+    ///
+    /// 欠落 family の検出（notdef + 名前付き先読み）は両経路を 1 つに de-dup した単一集合として
+    /// **値で返す**（`FetchFont` 発行は呼び出し側が 1 箇所で行う）。キャレット/選択クランプ
+    /// （編集意味論・ADR-0069）は整形器の対象外で、`content_finalized` の集合を返すのみ。
+    pub(crate) fn finalize(
         &mut self,
         projection: &TaffyProjection,
         elements: &mut HashMap<ElementId, Element>,
@@ -159,17 +174,12 @@ impl TextShaper {
     ) -> FinalizeOutcome {
         let mut missing_families: Vec<String> = Vec::new();
         let mut finalized: Vec<ElementId> = Vec::new();
-        let eids: Vec<ElementId> = self.shape_memo.keys().copied().collect();
+        let mut content_finalized: Vec<ElementId> = Vec::new();
 
-        for eid in eids {
-            // 確定（unrounded）インナーボックス幅。Taffy は整数ピクセルへ丸めるため、丸め前の
-            // 幅で揃えればグリフ折返しがレイアウトの決めた幅と厳密に一致する。
-            let inner_w = projection.node_id(eid).map(|node| {
-                let l = projection.taffy.unrounded_layout(node);
-                l.size.width - l.padding.left - l.padding.right - l.border.left - l.border.right
-            });
-
-            let layout = match inner_w {
+        // --- IFC の retained グリフ層（text_layout）---
+        let ifc_eids: Vec<ElementId> = self.shape_memo.keys().copied().collect();
+        for eid in ifc_eids {
+            let layout = match unrounded_inner_width(projection, eid) {
                 Some(w) if w.is_finite() && w > 0.0 => self.take_or_shape(elements, eid, w, viewport),
                 // box幅不明: measure 済みの last-wins レイアウトを使う（reshape しない）。
                 _ => self.take_last(eid),
@@ -178,43 +188,101 @@ impl TextShaper {
             if layout.text.is_empty() {
                 continue;
             }
-
             // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
             restamp_run_text(&mut layout);
-
-            // 欠落 family（notdef 検出）を値として収集する。
-            for &fam in &layout.missing_families {
-                missing_families.push(fam.to_string());
-            }
-            // 名前付きフォントの先読み。Latin フォントは .notdef を生まず script 検出が発火しない。
-            // 解決した family が collection 未登録なら取得対象に加える（`font-family` スタックを
-            // エントリ単位で解決）。
-            let named: Vec<String> = elements
-                .get(&eid)
-                .and_then(|el| el.visual.font_family.clone())
-                .map(|fam| {
-                    text::parse_font_family_list(&fam)
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect()
-                })
-                .unwrap_or_default();
-            for resolved in named {
-                if resolved != text::DEFAULT_FONT_FAMILY && !self.has_family(&resolved) {
-                    missing_families.push(resolved);
-                }
-            }
-
+            let named = elements.get(&eid).and_then(|el| el.visual.font_family.clone());
+            self.collect_missing_into(&layout, named.as_deref(), &mut missing_families);
             if let Some(el) = elements.get_mut(&eid) {
                 el.text_layout = Some(layout);
             }
             finalized.push(eid);
         }
-
         self.shape_memo.clear();
+
+        // --- text-input の retained コンテンツ層（content_layout / プレースホルダ text_layout）---
+        let textinput_eids: Vec<ElementId> = elements
+            .iter()
+            .filter_map(|(id, el)| (el.kind == ElementKind::TextInput).then_some(*id))
+            .collect();
+        for eid in textinput_eids {
+            let ambient = ambient_defaults::ambient_at(elements, eid);
+            let Some(el) = elements.get(&eid) else { continue };
+            let display_text = el
+                .edit
+                .as_ref()
+                .map(|edit| edit.display_text())
+                .unwrap_or_default();
+            let font_size = el.visual.font_size.unwrap_or(ambient.font_size);
+            let font_weight = el.visual.font_weight.or(ambient.font_weight);
+            let font_style = el.visual.font_style;
+            let font_family = el.visual.font_family.clone().or(ambient.font_family.clone());
+            let placeholder = el.text.clone();
+
+            // 確定（unrounded）ボックス幅。IFC と同じソースで box幅を 1 箇所に決める。
+            let max_advance = unrounded_inner_width(projection, eid).filter(|w| w.is_finite());
+
+            let is_placeholder = display_text.is_empty();
+            let text_to_layout: Option<String> = if is_placeholder {
+                placeholder.filter(|t| !t.is_empty())
+            } else {
+                Some(display_text)
+            };
+
+            if let Some(text) = text_to_layout {
+                let layout = self.shape_text(
+                    &text,
+                    font_size,
+                    max_advance,
+                    font_family.as_deref(),
+                    font_weight,
+                    font_style,
+                );
+                self.collect_missing_into(&layout, font_family.as_deref(), &mut missing_families);
+                if let Some(el) = elements.get_mut(&eid) {
+                    if is_placeholder {
+                        el.content_layout = None;
+                        el.text_layout = Some(layout);
+                    } else {
+                        el.content_layout = Some(layout);
+                        el.text_layout = None;
+                        content_finalized.push(eid);
+                    }
+                }
+            } else if let Some(el) = elements.get_mut(&eid) {
+                el.content_layout = None;
+                el.text_layout = None;
+            }
+        }
+
         FinalizeOutcome {
             missing_families,
             finalized,
+            content_finalized,
+        }
+    }
+
+    /// 欠落 family を `out` に集める: notdef 検出（`layout.missing_families`）に加え、collection
+    /// 未登録の名前付き `font-family` を先読み取得対象として載せる（Latin フォントは .notdef を
+    /// 生まず script 検出が発火しないため）。`font-family` スタックはエントリ単位で解決する。
+    fn collect_missing_into(
+        &mut self,
+        layout: &TextLayout,
+        font_family: Option<&str>,
+        out: &mut Vec<String>,
+    ) {
+        for &fam in &layout.missing_families {
+            out.push(fam.to_string());
+        }
+        if let Some(fam) = font_family {
+            let resolved: Vec<String> = text::parse_font_family_list(fam)
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            for r in resolved {
+                if r != text::DEFAULT_FONT_FAMILY && !self.has_family(&r) {
+                    out.push(r);
+                }
+            }
         }
     }
 
@@ -254,7 +322,7 @@ impl TextShaper {
 
     /// 単一テキスト（text-input のコンテンツ/プレースホルダ）を整形する。
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn shape_text(
+    fn shape_text(
         &mut self,
         text: &str,
         font_size: f32,
@@ -332,6 +400,16 @@ fn layout_size(layout: &TextLayout) -> (f32, f32) {
     } else {
         (layout.layout.width(), layout.layout.height())
     }
+}
+
+/// `eid` の確定（unrounded）インナーボックス幅。Taffy は整数ピクセルへ丸めるため、丸め前の
+/// 幅で揃えればグリフ折返しがレイアウトの決めた幅と厳密に一致する。両 retained 層（IFC・
+/// text-input）でこの 1 つの式から box幅を導き、丸め/未丸めソースを 1 箇所に決める。
+fn unrounded_inner_width(projection: &TaffyProjection, eid: ElementId) -> Option<f32> {
+    projection.node_id(eid).map(|node| {
+        let l = projection.taffy.unrounded_layout(node);
+        l.size.width - l.padding.left - l.padding.right - l.border.left - l.border.right
+    })
 }
 
 /// 各 lowered run に元テキストを刻み直す（HTML モードの DOM テキストノード復元用）。
@@ -481,7 +559,7 @@ mod tests {
                 },
             );
         }
-        shaper.finalize_ifc(&projection, elements, VIEWPORT)
+        shaper.finalize(&projection, elements, VIEWPORT)
     }
 
     /// 整形器の `measure` は幅キーでメモ化する: 同一 `(eid, 幅)` の再 measure は再シェイプせず
