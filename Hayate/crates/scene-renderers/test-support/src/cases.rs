@@ -257,6 +257,46 @@ fn check_box_shadow_inset(data: &[u8]) {
     assert_clear(pixel(data, CANVAS_W, 80, 30), "box-shadow inset stays inside box");
 }
 
+fn build_box_shadow_inset_radius() -> ElementTree {
+    // 角丸ボックスの内側 inset リング。回帰: リングはコーナーの角丸に追従し、
+    // 対角線上（直線エッジの帯では届かない領域）も塗られていなければならない。
+    let mut tree = ElementTree::new();
+    let root = root_view(&mut tree, 72);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BorderRadius(16.0),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur: 0.0,
+                spread: 4.0,
+                color: Color::new(0.0, 0.0, 0.0, 0.7),
+                inset: true,
+            }]),
+        ],
+    );
+    tree
+}
+
+fn check_box_shadow_inset_radius(data: &[u8]) {
+    // コーナー対角線上（中心(16,16)から半径~14px、リング帯 12..16 内）は暗い。
+    // 直線エッジの帯クリップでは届かず空くため、これが border-radius 追従の回帰点。
+    let corner = pixel(data, CANVAS_W, 6, 6);
+    assert_channel_max(corner, 0, 200, "inset ring follows the rounded corner (diagonal)");
+    // 直線エッジの帯も暗い。
+    let edge = pixel(data, CANVAS_W, 30, 2);
+    assert_channel_max(edge, 0, 200, "inset ring darkens the straight edge");
+    // 中央はボックスの白いまま（リングは中心へ届かない）。
+    let center = pixel(data, CANVAS_W, 30, 30);
+    assert_channel_min(center, 0, 230, "inset ring leaves the interior light");
+    // 角丸コーナーの外側はクリア（ボックス外）。
+    assert_clear(pixel(data, CANVAS_W, 2, 2), "inset ring stays inside the rounded box");
+}
+
 fn build_border_style() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 6);
@@ -1537,6 +1577,11 @@ pub static CSS_PIXEL_CASES: &[CssPixelCase] = &[
         css_property: "box-shadow-inset",
         build: build_box_shadow_inset,
         check: check_box_shadow_inset,
+    },
+    CssPixelCase {
+        css_property: "box-shadow-inset-radius",
+        build: build_box_shadow_inset_radius,
+        check: check_box_shadow_inset_radius,
     },
 ];
 

@@ -1673,7 +1673,32 @@ fn emit_fill_rect(
 /// 影のガウスぼかしを近似する半透明レイヤー数（ADR-0095：「blur は許容範囲のガウス近似でよい」）。
 /// box-shadow は素の角丸矩形塗りへ lowering され、Vello と tiny-skia の描画が一致する（意味論的な
 /// DOM/Canvas パリティ）。blur ≈ 重なる半透明角丸矩形。
-const SHADOW_BLUR_LAYERS: usize = 6;
+const SHADOW_BLUR_LAYERS: usize = 10;
+
+/// CSS の blur 半径 `b` は標準偏差 σ = b/2 のガウスぼかしに対応する（CSS Backgrounds & Borders）。
+fn shadow_sigma(blur: f32) -> f32 {
+    (blur * 0.5).max(f32::MIN_POSITIVE)
+}
+
+/// 相補誤差関数 erfc(x)（Abramowitz & Stegun 7.1.26、最大誤差 ~1.5e-7）。
+/// ぼかしたシャドウ縁のアルファは、ステップ関数をガウスで畳み込んだ
+/// `base/2 · erfc(d / (σ√2))` で与えられる（d はシャドウ外形からの外向き距離）。
+fn erfc(x: f32) -> f32 {
+    let z = x.abs();
+    let t = 1.0 / (1.0 + 0.3275911 * z);
+    let poly = t
+        * (0.254829592
+            + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+    let erf = 1.0 - poly * (-z * z).exp();
+    let erf = if x < 0.0 { -erf } else { erf };
+    1.0 - erf
+}
+
+/// シャドウ外形の縁から外側へ距離 `d` の点における、ぼかしたシャドウのアルファ係数
+/// （ピーク `base_a` に対する比 0..0.5）。
+fn shadow_falloff(d: f32, sigma: f32) -> f32 {
+    0.5 * erfc(d / (sigma * std::f32::consts::SQRT_2))
+}
 
 /// 要素の box-shadow レイヤーのうち `inset == want_inset` の部分集合を出す。
 ///
@@ -1734,20 +1759,40 @@ fn emit_drop_shadow(
 
     let blur = shadow.blur.max(0.0);
     if blur <= 0.5 {
+        // ぼかしなしのハードシャドウは外形を 1 枚で不透明に塗る。
         emit_fill_rect(sg, parent_group, sx, sy, sw, sh, color.to_array_f32(), sr);
         return;
     }
 
-    // 色のアルファを重なるレイヤーに配分し、密な中心は合計が影のアルファに近づき、外縁は
-    // 柔らかなハロへフェードする。
+    // ぼかしたシャドウを同心の角丸矩形シェルで近似する。CSS の blur は σ = blur/2 のガウス
+    // なので、外形の縁から外向き距離 d でのアルファは `base · shadow_falloff(d)`（縁で base/2、
+    // σ の数倍で実質 0）。各シェルのアルファを falloff の差分にすると加算的に重なってこの
+    // 減衰を再現する。i=0 の核（grow=0, α=base/2）と外向きシェル（telescope）の合計は外形
+    // 内部で base に達し（spread 帯も正しく不透明）、外側はガウス減衰する。
+    //
+    // 従来は全シェル等アルファ・grow を blur 全幅まで線形に広げていたため、ハロが線形に
+    // 遠くまで（≈blur）広がり過ぎていた（DOM 比で約 2 倍）。
+    let sigma = shadow_sigma(blur);
+    // falloff が無視できる距離（~0.4% base）まで。それ以遠のシェルは見えない。
+    let reach = (sigma * 2.7).min(blur * 1.5);
     let n = SHADOW_BLUR_LAYERS;
-    let layer = Color {
-        a: color.a / (n as f64 + 1.0),
-        ..color
-    };
-    let layer_rgba = layer.to_array_f32();
+    // 外側（薄い大きな矩形）から内側へ重ねる。
     for i in (0..=n).rev() {
-        let grow = blur * (i as f32) / (n as f32);
+        let grow = reach * (i as f32) / (n as f32);
+        let cover = if i == 0 {
+            // 核：外形内部を base まで満たすぶん（境界での値 base/2）。
+            0.5_f32
+        } else {
+            let d_inner = reach * ((i - 1) as f32) / (n as f32);
+            shadow_falloff(d_inner, sigma) - shadow_falloff(grow, sigma)
+        };
+        let layer = Color {
+            a: color.a * cover as f64,
+            ..color
+        };
+        if layer.a <= 0.0 {
+            continue;
+        }
         emit_fill_rect(
             sg,
             parent_group,
@@ -1755,14 +1800,16 @@ fn emit_drop_shadow(
             sy - grow,
             sw + 2.0 * grow,
             sh + 2.0 * grow,
-            layer_rgba,
+            layer.to_array_f32(),
             (sr + grow).max(0.0),
         );
     }
 }
 
-/// inset 影：暗い内縁の帯。ボーダーボックス端から内側へ（spread + blur の厚みで）レイヤー化し、
-/// ボーダーボックスでクリップする。
+/// inset 影：内縁に沿った暗い帯。ボーダーボックスの角丸に追従する `RoundedRing`
+/// （even-odd の帯フィル）で描き、ボーダーボックスでクリップする。従来は上下左右の
+/// 直線矩形を角丸クリップしていたため、角丸コーナーで帯が途切れ／角張っていた
+/// （border-radius 非対応）。
 #[allow(clippy::too_many_arguments)]
 fn emit_inset_shadow(
     sg: &mut SceneGraph,
@@ -1778,6 +1825,7 @@ fn emit_inset_shadow(
     if width <= 0.0 || height <= 0.0 {
         return;
     }
+    // オフセット付き inset 影がボーダーボックス外へはみ出さないよう、角丸でクリップする。
     let clip_id = emit(
         sg,
         parent_group,
@@ -1793,35 +1841,63 @@ fn emit_inset_shadow(
         },
     );
 
-    let band = (shadow.spread + shadow.blur).max(0.5);
+    let spread = shadow.spread.max(0.0);
+    let blur = shadow.blur.max(0.0);
     let max_band = width.min(height) * 0.5;
-    let n = SHADOW_BLUR_LAYERS;
-    let layer = Color {
-        a: color.a / n as f64,
-        ..color
-    };
-    let layer_rgba = layer.to_array_f32();
-    // 加算的な半透明の縁帯を（角丸）ボーダーボックスでクリップする。重なるレイヤーが内周を
-    // 暗くし中心へフェードし、（リング塗りと違い）背景を消さずに inset 影を近似する。
-    // オフセットは帯矩形をずらすだけ。
     let bx = x + shadow.offset_x;
     let by = y + shadow.offset_y;
-    for i in 1..=n {
-        let bw = (band * (i as f32) / (n as f32)).min(max_band);
-        if bw <= 0.0 {
-            continue;
+    let mut ring = |bw: f32, c: Color| {
+        let bw = bw.min(max_band);
+        if bw <= 0.0 || c.a <= 0.0 {
+            return;
         }
-        // 上・下・左・右の帯
-        for (rx, ry, rw, rh) in [
-            (bx, by, width, bw),
-            (bx, by + height - bw, width, bw),
-            (bx, by + bw, bw, (height - 2.0 * bw).max(0.0)),
-            (bx + width - bw, by + bw, bw, (height - 2.0 * bw).max(0.0)),
-        ] {
-            if rw <= 0.0 || rh <= 0.0 {
-                continue;
-            }
-            emit_fill_rect(sg, Some(clip_id), rx, ry, rw, rh, layer_rgba, 0.0);
-        }
+        emit(
+            sg,
+            Some(clip_id),
+            Node {
+                kind: NodeKind::RoundedRing {
+                    x: bx,
+                    y: by,
+                    width,
+                    height,
+                    outer_radius: radius,
+                    border_width: bw,
+                    color: c.to_array_f32(),
+                },
+                children: Vec::new(),
+            },
+        );
+    };
+
+    if blur <= 0.5 {
+        // ぼかしなしのハードな内側リングは単色で塗る（厚み = spread）。
+        ring(spread.max(0.5), color);
+        return;
+    }
+
+    // ぼかしあり：spread 幅の単色コアリング + spread..spread+blur へ内側にフェードする
+    // リング群。各リングのアルファは縁からの外向き falloff の差分（ドロップ影と同じ
+    // テレスコープ和）で、加算的に `base · shadow_falloff(d - spread)` を再現する。
+    let sigma = shadow_sigma(blur);
+    let band = (spread + blur).min(max_band);
+    let n = SHADOW_BLUR_LAYERS;
+    for i in 0..=n {
+        let (bw, cover) = if i == 0 {
+            (spread, 0.5_f32)
+        } else {
+            let w = spread + (band - spread) * (i as f32) / (n as f32);
+            let w_prev = spread + (band - spread) * ((i - 1) as f32) / (n as f32);
+            (
+                w,
+                shadow_falloff(w_prev - spread, sigma) - shadow_falloff(w - spread, sigma),
+            )
+        };
+        ring(
+            bw,
+            Color {
+                a: color.a * cover as f64,
+                ..color
+            },
+        );
     }
 }
