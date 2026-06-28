@@ -3,6 +3,10 @@ name: triage
 description: Triage issues through a state machine driven by triage roles. Use when user wants to create an issue, triage issues, review incoming bugs or feature requests, prepare issues for an AFK agent, or manage issue workflow.
 ---
 
+> **⚠️ Local overrides（このリポジトリ独自の上書き）**
+> このスキルには同ディレクトリの `OVERRIDES.md` にリポジトリ独自の追加・変更がある。
+> **本文を読む前に必ず `OVERRIDES.md` を読むこと。本文の指示と衝突する場合は `OVERRIDES.md` を優先する。**
+
 # Triage
 
 Move issues on the project issue tracker through a small state machine of triage roles.

@@ -4,6 +4,10 @@ description: Sets up an `## Agent skills` block in AGENTS.md/CLAUDE.md and `docs
 disable-model-invocation: true
 ---
 
+> **⚠️ Local overrides（このリポジトリ独自の上書き）**
+> このスキルには同ディレクトリの `OVERRIDES.md` にリポジトリ独自の追加・変更がある。
+> **本文を読む前に必ず `OVERRIDES.md` を読むこと。本文の指示と衝突する場合は `OVERRIDES.md` を優先する。**
+
 # Setup Matt Pocock's Skills
 
 Scaffold the per-repo configuration that the engineering skills assume:
