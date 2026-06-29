@@ -5,6 +5,14 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { basename, dirname } from 'node:path';
 
+export { ALL_INTERFACES_HOSTNAME, localNetworkUrls, type LocalNetworkUrl } from './network.js';
+export { encodeQr, qrToTerminalString, type QrMatrix, type QrTerminalOptions } from './qr.js';
+export {
+  buildStartupBanner,
+  printStartupBanner,
+  type StartupBannerOptions,
+} from './startup-banner.js';
+
 /** App Bundle（単一 JS）を配信する HTTP ルート。ホスト側はこのパスで fetch する。 */
 export const BUNDLE_ROUTE = '/bundle.js';
 

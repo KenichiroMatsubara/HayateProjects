@@ -19,7 +19,11 @@
 import { spawn } from 'node:child_process';
 import { watch } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createBundleDevServer } from '@miharashi/dev-server';
+import {
+  ALL_INTERFACES_HOSTNAME,
+  createBundleDevServer,
+  printStartupBanner,
+} from '@miharashi/dev-server';
 
 // ネイティブ既定（dev_server_target.rs DEFAULT_DEV_SERVER_PORT）と一致させる既定ポート。
 const DEFAULT_PORT = 5179;
@@ -84,10 +88,12 @@ await rebuild();
 const srcWatcher = watch(srcDir, { recursive: true }, () => scheduleRebuild());
 
 // dist-android/tsubame.js を watch し、降格まで終わった最終 bundle の更新ごとに WS reload を送る。
-const server = createBundleDevServer({ bundlePath, port });
-const origin = await server.listen();
-console.log(`Miharashi android dev server: ${origin}`);
-console.log('  端末 / エミュレータの dev-server URL にこの host:port を入力してください。');
+// 0.0.0.0 で listen して実機（同じ Wi‑Fi の LAN）からも到達できるようにする。起動コマンドは
+// LAN URL と QR を出すので、端末の「QR スキャン」ボタンのカメラで読めばそのまま接続できる。
+const server = createBundleDevServer({ bundlePath, port, hostname: ALL_INTERFACES_HOSTNAME });
+await server.listen();
+printStartupBanner({ port, loopbackUrl: `http://localhost:${port}` });
+console.log('  実機: 上の QR を端末アプリの「QR スキャン」で読むか、LAN URL を入力してください。');
 console.log('  エミュレータで URL 未入力なら 10.0.2.2:' + port + ' に落ちます（既定）。');
 
 // プロセス終了時に watcher と server を確実に閉じる。

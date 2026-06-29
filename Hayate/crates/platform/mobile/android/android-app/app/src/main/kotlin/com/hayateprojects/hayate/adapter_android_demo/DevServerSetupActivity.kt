@@ -5,7 +5,11 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.io.File
 
 /**
@@ -24,7 +28,12 @@ import java.io.File
  * host-contract-tested in Rust (`dev_server_target`). Real "type a URL → todo boots" is
  * verified on a local device (out of scope for this issue).
  *
- * QR scanning is intentionally out of scope (future); this issue covers direct URL entry only.
+ * QR scanning: the dev-server startup command prints the LAN URL as a QR code, so on a real
+ * device the user can tap "QR スキャン" to read it with the camera instead of typing the IP.
+ * This uses Google Code Scanner (Play services scanner UI) — no CameraX, no camera permission
+ * to declare; the scanned `rawValue` (= the dev-server URL) just fills the field. The actual
+ * URL handling stays unchanged (write to the shared file → launch GameActivity), so the Rust
+ * host contract is untouched.
  */
 class DevServerSetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,15 +46,42 @@ class DevServerSetupActivity : AppCompatActivity() {
             setSingleLine(true)
             setText(if (urlFile.exists()) urlFile.readText().trim() else "")
         }
+        val scan = Button(this).apply { text = "QR スキャン" }
         val connect = Button(this).apply { text = "接続して起動" }
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             addView(input)
+            addView(scan)
             addView(connect)
         }
         setContentView(layout)
+
+        scan.setOnClickListener {
+            // 起動コマンドが端末に出した QR（= dev-server の LAN URL）をカメラで読み、欄に入れる。
+            // Google Code Scanner は UI もカメラ取得も Play services 側が担うので、ここは結果を
+            // 受け取って EditText に流すだけ（接続フローは「接続して起動」と同じく手入力を経由する）。
+            val options = GmsBarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build()
+            GmsBarcodeScanning.getClient(this, options)
+                .startScan()
+                .addOnSuccessListener { barcode ->
+                    val value = barcode.rawValue?.trim().orEmpty()
+                    if (value.isNotEmpty()) input.setText(value)
+                }
+                .addOnCanceledListener {
+                    // ユーザーがスキャンを閉じた：何もしない（手入力に戻れる）。
+                }
+                .addOnFailureListener { error ->
+                    Toast.makeText(
+                        this,
+                        "QR スキャンを使えませんでした: ${error.message}",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+        }
 
         connect.setOnClickListener {
             // 入力した URL をネイティブの読み戻し先へ書き、GameActivity（ネイティブ描画）を起動する。

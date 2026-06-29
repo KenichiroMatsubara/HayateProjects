@@ -7,6 +7,15 @@ import {
 
 export type { WebHost } from '@hayate/host';
 export { ProtocolMismatchError } from '@miharashi/protocol-handshake';
+export {
+  isCameraScanSupported,
+  scanQrFromCamera,
+  type BarcodeDetectorLike,
+  type CameraScanSeams,
+  type DetectedBarcode,
+  type QrScanController,
+  type ScanQrFromCameraOptions,
+} from './qr-scanner.js';
 
 /**
  * App Bundle が `eval` 時に登録する mount。host bootstrap（`raw` + frame-clock）を受け取り、
