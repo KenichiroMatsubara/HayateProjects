@@ -185,6 +185,12 @@ pub trait InteractionTreeView {
     fn apply_focus_effects(&mut self, id: ElementId);
     /// blur の element 側効果（`apply_focus_effects` の対）。
     fn apply_blur_effects(&mut self, id: ElementId);
+    /// blur 時にアクティブな IME preedit（未確定変換）を確定し、確定後の全文を載せた
+    /// `TextInput` イベントを発火する（DOM がフォーカス喪失時に `compositionend`＋
+    /// `input` を発火するのと同型・ADR-0069）。preedit が無ければ no-op。これが無いと
+    /// 変換中に他所をクリックして blur した controlled input は確定値を受け取れず、
+    /// `onInput` が呼ばれないまま draft が空に留まる（Canvas のみで再現する確定バグ）。
+    fn commit_preedit_on_blur(&mut self, id: ElementId);
     /// 単一 text-input の編集選択をキャレットへ畳む（Touch blur ライフサイクル、
     /// ADR-0104）。
     fn collapse_edit_selection(&mut self, id: ElementId);
@@ -360,6 +366,11 @@ impl Interaction {
             return;
         }
         self.element_blur(view, id);
+        // DOM パリティ: 変換中（preedit あり）の要素が blur すると、ブラウザは
+        // `compositionend`＋`input` を出して確定する。Canvas にはその等価が無いので、
+        // ここで preedit を確定し確定値を `TextInput` として発火する。順序も DOM に
+        // 倣い、`Blur` の前に出す（ADR-0069）。
+        view.commit_preedit_on_blur(id);
         // pointer 種別は `Interaction` 自身が所有するので view 越しではなく自分で読む
         // （#572）。Touch の blur は編集選択をキャレットへ畳む（ADR-0104）。
         if self.last_pointer_kind == PointerKind::Touch {
@@ -2252,6 +2263,32 @@ impl InteractionTreeView for ElementTree {
         self.collapse_edit_selection_of(id);
     }
 
+    fn commit_preedit_on_blur(&mut self, id: ElementId) {
+        let committed = self
+            .elements
+            .get_mut(&id)
+            .filter(|el| el.kind == crate::element::kind::ElementKind::TextInput)
+            .and_then(|el| el.edit.as_mut())
+            .is_some_and(|edit| {
+                if edit.preedit.is_some() {
+                    edit.commit_preedit();
+                    true
+                } else {
+                    false
+                }
+            });
+        if committed {
+            // on_text_input / paste / compositionend と同じく結合表示テキスト全文を
+            // value に載せる（ADR-0069 / #474）。確定後は preedit が無いので
+            // display == text_content。
+            let value = self.element_get_text_content(id);
+            self.emit_interaction(Event::TextInput {
+                target_id: id,
+                text: value,
+            });
+        }
+    }
+
     fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool {
         // tree 側の編集 seam（クリップボード・選択・`Caret Geometry` 注入を内包）へ
         // 委譲する。`EditIntent` の edit 専用シーム意味は不変（ADR-0103）。
@@ -2330,6 +2367,8 @@ mod seam_tests {
         focus_effects: Vec<ElementId>,
         blur_effects: Vec<ElementId>,
         collapsed: Vec<ElementId>,
+        /// `commit_preedit_on_blur` が呼ばれた要素の記録（blur 時 preedit 確定の観測）。
+        preedit_commits: Vec<ElementId>,
         /// `Edit` arm が seam を通って届いた `(target, intent)` の記録。
         edits: Vec<(ElementId, EditIntent)>,
         /// `apply_edit` が返す「消費した」フラグ（テストごとに差し替える）。
@@ -2358,6 +2397,7 @@ mod seam_tests {
                 focus_effects: Vec::new(),
                 blur_effects: Vec::new(),
                 collapsed: Vec::new(),
+                preedit_commits: Vec::new(),
                 edits: Vec::new(),
                 edit_consumes: true,
                 active_dirty: Vec::new(),
@@ -2384,6 +2424,9 @@ mod seam_tests {
         }
         fn collapse_edit_selection(&mut self, id: ElementId) {
             self.collapsed.push(id);
+        }
+        fn commit_preedit_on_blur(&mut self, id: ElementId) {
+            self.preedit_commits.push(id);
         }
         fn apply_edit(&mut self, target: ElementId, intent: EditIntent) -> bool {
             self.edits.push((target, intent));

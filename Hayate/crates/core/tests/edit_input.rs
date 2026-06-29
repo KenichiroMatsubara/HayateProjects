@@ -653,6 +653,77 @@ fn composition_end_emits_a_text_input_event_with_the_committed_value() {
 }
 
 #[test]
+fn blurring_during_an_active_composition_commits_the_preedit_and_emits_text_input() {
+    // 変換確定（Enter 等）を押さずに「他の適当な場所」をクリックして blur した場合も、
+    // DOM はブラウザが `compositionend`＋`input` を発火して確定する。Canvas にはその
+    // 等価が無く、以前は blur で preedit が捨てられ TextInput が出ないため、controlled
+    // input の draft が空のまま＝確定とならなかった。core の blur 経路で preedit を確定し
+    // 確定値を TextInput として発行することで DOM とパリティさせる（順序も DOM に倣い
+    // Blur の前に出す・ADR-0069）。
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    let input = tree.element_create(2, ElementKind::TextInput);
+    let pad = tree.element_create(3, ElementKind::View); // blur 用にクリックする外側
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+            StyleProp::FlexDirection(hayate_core::FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        input,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FontSize(16.0),
+        ],
+    );
+    tree.element_set_style(
+        pad,
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(120.0)),
+        ],
+    );
+    tree.element_append_child(root, input);
+    tree.element_append_child(root, pad); // y ≈ [40, 160]
+    tree.element_append_text_content(input, "ぎゅう");
+    tree.element_focus(input);
+    tree.render(0.0);
+
+    let listener = tree.register_listener(input, hayate_core::DocumentEventKind::TextInput);
+
+    // 変換を開始し未確定の preedit「にゅう」を持つ。
+    tree.on_composition_start(input, "");
+    tree.on_composition_update(input, "にゅう");
+
+    // 確定を押さずに外側 view（y ≈ 100）をクリックして blur する。
+    tree.on_pointer_down(100.0, 100.0);
+
+    assert_ne!(
+        tree.focused_element(),
+        Some(input),
+        "外側クリックで入力欄のフォーカスが外れる（blur する）"
+    );
+    // 確定後の全文（確定済み "ぎゅう" ＋ preedit "にゅう"）が content に昇格する。
+    assert_eq!(tree.element_get_text_content(input), "ぎゅうにゅう");
+    let deliveries = tree.poll_deliveries();
+    let event = deliveries
+        .iter()
+        .find(|d| d.listener_id == listener)
+        .map(|d| &d.event)
+        .expect("blurring mid-composition must produce a TextInput delivery");
+    assert!(
+        matches!(event, hayate_core::Event::TextInput { text, .. } if text == "ぎゅうにゅう"),
+        "the blur-commit input event must carry the full committed value, got {event:?}",
+    );
+}
+
+#[test]
 fn text_input_event_carries_the_full_field_value_not_just_the_typed_fragment() {
     // input イベントの value は要素の現在値全体（DOM の `input` → `target.value` と同じ）。
     // 以前は断片だけをワイヤに載せ、ホストが `element_get_text_content` で読み戻していた。
