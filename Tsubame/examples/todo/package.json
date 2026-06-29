@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:android": "vite build --config vite.config.android.ts && node scripts/lower-for-hermes.mjs",
     "build:miharashi": "vite build --config vite.config.miharashi.ts",
+    "miharashi:android:serve": "node scripts/miharashi-android-dev-server.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

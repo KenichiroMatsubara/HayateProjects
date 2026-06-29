@@ -14,7 +14,8 @@
     "dev:hayate": "pnpm --filter hayate dev",
 
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
-    "android:bundle": "pnpm --filter @tsubame/example-todo build:android && node scripts/copy-android-bundle.mjs && pnpm --filter hayate android:install"
+    "android:bundle": "pnpm --filter @tsubame/example-todo build:android && node scripts/copy-android-bundle.mjs && pnpm --filter hayate android:install",
+    "miharashi:android": "node scripts/miharashi-android.mjs"
   },
   "devDependencies": {
     "tsup": "^8.5.1",
