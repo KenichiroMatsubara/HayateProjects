@@ -34,6 +34,11 @@ pollster.workspace = true
 android-activity = { version = "0.6", features = ["game-activity"] }
 android_logger = "0.14"
 ndk = "0.9"
+# QR スキャナ leaf（ADR-0125）の Rust↔Kotlin JNI seam。Code Scanner は Play services の
+# Kotlin/Java API しか無いため、本 leaf だけ JNI で Kotlin（QrScannerBridge）を呼ぶ。
+# JavaVM / Activity(Context) は android-activity が設定する ndk-context から受け取る。
+jni = "0.21"
+ndk-context = "0.1"
 # Tsubame JS 駆動経路（ADR-0112）の C++/JSI ブリッジ。Hermes は JSI(C++)なので
 # cxx で flat-C ABI を張る。device ビルド（Gradle + NDK + libhermes）専用で、
 # ホスト `cargo check` には載らない（build.rs が target_os=android のときだけ

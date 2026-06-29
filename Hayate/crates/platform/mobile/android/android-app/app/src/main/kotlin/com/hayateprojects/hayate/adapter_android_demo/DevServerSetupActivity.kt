@@ -5,11 +5,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import java.io.File
 
 /**
@@ -30,10 +26,12 @@ import java.io.File
  *
  * QR scanning: the dev-server startup command prints the LAN URL as a QR code, so on a real
  * device the user can tap "QR スキャン" to read it with the camera instead of typing the IP.
- * This uses Google Code Scanner (Play services scanner UI) — no CameraX, no camera permission
- * to declare; the scanned `rawValue` (= the dev-server URL) just fills the field. The actual
- * URL handling stays unchanged (write to the shared file → launch GameActivity), so the Rust
- * host contract is untouched.
+ * The scan goes through {@link QrScannerBridge} — the SAME implementation that backs the
+ * cross-platform Rust capability `MobileQrScanner` (ADR-0125; android = Google Code Scanner,
+ * ios = VisionKit). This bootstrap UI is Android-specific, but it does not fork its own scanner:
+ * it reuses the leaf so there is one Android QR implementation. The scanned `rawValue`
+ * (= the dev-server URL) just fills the field; the URL handling (write to the shared file →
+ * launch GameActivity) stays unchanged, so the Rust host contract is untouched.
  */
 class DevServerSetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,27 +58,11 @@ class DevServerSetupActivity : AppCompatActivity() {
 
         scan.setOnClickListener {
             // 起動コマンドが端末に出した QR（= dev-server の LAN URL）をカメラで読み、欄に入れる。
-            // Google Code Scanner は UI もカメラ取得も Play services 側が担うので、ここは結果を
-            // 受け取って EditText に流すだけ（接続フローは「接続して起動」と同じく手入力を経由する）。
-            val options = GmsBarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build()
-            GmsBarcodeScanning.getClient(this, options)
-                .startScan()
-                .addOnSuccessListener { barcode ->
-                    val value = barcode.rawValue?.trim().orEmpty()
-                    if (value.isNotEmpty()) input.setText(value)
-                }
-                .addOnCanceledListener {
-                    // ユーザーがスキャンを閉じた：何もしない（手入力に戻れる）。
-                }
-                .addOnFailureListener { error ->
-                    Toast.makeText(
-                        this,
-                        "QR スキャンを使えませんでした: ${error.message}",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
+            // 統一 capability の Android leaf（QrScannerBridge）を共有する。キャンセル/失敗は null。
+            QrScannerBridge.startScan(this) { value ->
+                val url = value?.trim().orEmpty()
+                if (url.isNotEmpty()) input.setText(url)
+            }
         }
 
         connect.setOnClickListener {

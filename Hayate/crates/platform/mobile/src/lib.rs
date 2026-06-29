@@ -23,6 +23,10 @@ pub use hayate_core::{
     SecureStorage, Share, UrlLauncher,
 };
 
+// QR スキャナ capability（ADR-0125）も Core が正本。facade は契約・値型を再露出するだけ。
+// async-UI 一発取得（file_picker と同型）。android = Google Code Scanner / ios = VisionKit。
+pub use hayate_core::{QrScanner, ScannedCode};
+
 // wave-2 ストリーム capability の共有契約土台（ADR-0120）も Core が正本。facade は battery trait・
 // 値型・RAII 購読ハンドル（`Subscription`）と producer 側（`SubscriptionSource`）を再露出するだけ
 // で別契約を切らない。
@@ -103,6 +107,14 @@ pub type MobileKeyValueStore = hayate_adapter_ios::capability_stubs::IosKeyValue
 pub type MobileBiometric = hayate_adapter_android::capability_stubs::AndroidBiometric;
 #[cfg(target_os = "ios")]
 pub type MobileBiometric = hayate_adapter_ios::capability_stubs::IosBiometric;
+
+// QR スキャナ facade（ADR-0125）。android は実機実装（Code Scanner・`qr_scanner` モジュールへ昇格）、
+// ios は stub（VisionKit 実装は後）。上位は leaf を名指しせず `MobileQrScanner` だけを参照し、
+// iOS/Android を単一 API で扱う。web は family-of-1 で別 leaf（host-web の `scanQrFromCamera`）。
+#[cfg(target_os = "android")]
+pub type MobileQrScanner = hayate_adapter_android::qr_scanner::AndroidQrScanner;
+#[cfg(target_os = "ios")]
+pub type MobileQrScanner = hayate_adapter_ios::capability_stubs::IosQrScanner;
 
 // --- wave-2 stream capability scaffold facade（ADR-0120）---
 // battery が wave-2 ストリーム契約土台のトレーサーバレット。wave-1 と同型の cfg facade で、

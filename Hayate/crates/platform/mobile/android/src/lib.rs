@@ -17,6 +17,9 @@
 // cfg(target_os) でリンクし統一 facade として露出するため pub。純粋部分はホストでコンパイル/
 // テストされ、AudioTrack FFI glue は target_os="android" のみ。
 pub mod audio_output;
+// QR スキャナ leaf（ADR-0125）。Code Scanner は Kotlin/Java API なので本 leaf は唯一の
+// Rust↔Kotlin JNI seam。純粋部（契約再露出）はホスト、JNI glue は target_os="android" のみ。
+pub mod qr_scanner;
 // wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;
