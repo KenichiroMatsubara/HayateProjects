@@ -64,6 +64,26 @@ describe('StylePatch declaration emitter parity', () => {
     expect(body).toContain('border-style: dashed');
   });
 
+  it(':hover declarations are !important so they override the inline base style', () => {
+    // Regression: base visual props are written inline (el.style.*), while :hover
+    // is a stylesheet rule. Inline specificity (1,0,0,0) beats a [data-id]:hover
+    // rule (0,1,1,0), so without !important the declared :hover background never
+    // applies on DOM — diverging from Canvas, which overlays :hover over the base.
+    // The cursor gallery card surfaced this: the tile lit up on Canvas but not DOM.
+    const renderer = new DomRenderer({ document, container });
+    const id = renderer.createElement('view');
+    renderer.setRoot(id);
+
+    renderer.setStyle(id, { backgroundColor: '#ece6d8' });
+    renderer.setPseudoStyle(id, ':hover', { backgroundColor: '#14b8a6' });
+
+    const el = container.querySelector('div')!;
+    expect(el.style.backgroundColor).toBe('#ece6d8'); // base stays inline
+    const body = pseudoRuleBody(renderer, id);
+    expect(body).toContain('background-color: #14b8a6');
+    expect(body).toContain('!important'); // must beat the inline base
+  });
+
   it('viewport variant { borderStyle } emits border-style in the rule body', () => {
     const renderer = new DomRenderer({ document, container });
     const id = renderer.createElement('view');

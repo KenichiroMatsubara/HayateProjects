@@ -386,9 +386,19 @@ export class DomRenderer implements IRenderer {
   }
 }
 
+/**
+ * 擬似クラス（`:hover` / `:active` / `:focus`）ルール本体。ベーススタイルは
+ * インライン（`el.style`）に載るため、`!important` を付けないと擬似がベースを
+ * 上書きできない（インライン宣言 1,0,0,0 は属性セレクタ規則 0,1,1,0 に必ず勝つ）。
+ * これが無いと、ベースで `background-color` 等を持つ要素の `:hover` 背景・色が
+ * DOM Mode で一切効かず、Canvas Mode（`resolve_visual` が擬似をベースへ後勝ちで
+ * 重ねる）と乖離する（DOM≡Canvas パリティ違反）。@media variant 経路が同じ理由で
+ * 既に `!important` を付けている（`variantStyleDeclarations`）のと対称。
+ */
 function pseudoStyleDeclarations(kind: ElementKind, patch: StylePatch): string {
   return declarationsToRuleBody(
     declarationsFromStylePatch(kind, patch, { onUnknownKey: 'skip' }),
+    { important: true },
   );
 }
 
