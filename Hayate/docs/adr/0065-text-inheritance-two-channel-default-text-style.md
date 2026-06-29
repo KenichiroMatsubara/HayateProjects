@@ -34,8 +34,12 @@ ADR-0047 は「text 系スタイル（`color`/`font-size`/`font-family`）を全
 
 1. 自身の明示値
 2. text 祖先からの継承（text→text・IFC 内）
-3. ambient 既定（`default-*`・最寄り祖先・block 貫通）
+3. ambient 既定（`default-*`・**自身＋最寄り祖先**・block 貫通）
 4. ハード既定（Noto Sans / 16px / weight 400 / black）
+
+### 明確化（2026-06-29）：ambient 既定は self-inclusive
+
+step 3 の ambient 既定は、要素**自身**に置いた `default-*` も含む（子孫だけでなく自身のテキスト解決にも効く）。これが直感的挙動で、DOM Renderer（`default-*`→CSS 継承プロパティを当該要素に発行＝自己適用）とも一致する。当初の Canvas 実装は `default-*` を子孫のみへ降ろし、要素自身のテキスト色だけ祖先 ambient にフォールバックしていた（font-size 等は `ambient_at` 経由で既に self-inclusive だったため、**色のみ**が祖先 ambient に解決される内部不整合があった）。`effective_visual.rs::apply_text_inheritance` で `ctx.ambient.merge_visual(own)` を畳んで是正。`view` 等の非テキスト element に置いた `default-*` は自身には glyph が無いため無影響（従来どおり子孫へ供給）。
 
 ## Consequences
 

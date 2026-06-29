@@ -1,5 +1,226 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`golden frame semantic parity (ADR-0079, #151) > a text element’s OWN defaultColor applies to itself (self-inclusive, ADR-0065) 1`] = `
+{
+  "accessibility": {
+    "focus": 1,
+    "nodes": [
+      [
+        4,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 74,
+              "y0": 0,
+              "y1": 100,
+            },
+            "value": "done-task",
+          },
+          "role": "label",
+        },
+      ],
+      [
+        3,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 74,
+              "y0": 0,
+              "y1": 100,
+            },
+            "children": [
+              4,
+            ],
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        2,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 200,
+              "y0": 0,
+              "y1": 100,
+            },
+            "children": [
+              3,
+            ],
+          },
+          "role": "genericContainer",
+        },
+      ],
+      [
+        1,
+        {
+          "actions": 0,
+          "childActions": 0,
+          "flags": 0,
+          "properties": {
+            "bounds": {
+              "x0": 0,
+              "x1": 200,
+              "y0": 0,
+              "y1": 100,
+            },
+            "children": [
+              2,
+            ],
+          },
+          "role": "window",
+        },
+      ],
+    ],
+    "tree": {
+      "root": 1,
+      "toolkitName": null,
+      "toolkitVersion": null,
+    },
+    "treeId": "00000000-0000-0000-0000-000000000000",
+  },
+  "elements": [
+    {
+      "bounds": [
+        0,
+        0,
+        200,
+        100,
+      ],
+      "id": 1,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderStyle": "none",
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        200,
+        100,
+      ],
+      "id": 2,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderStyle": "none",
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0.9725490212440491,
+          "g": 0.929411768913269,
+          "r": 0.9058823585510254,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        74,
+        100,
+      ],
+      "id": 3,
+      "text": "",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderStyle": "none",
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0.9725490212440491,
+          "g": 0.929411768913269,
+          "r": 0.9058823585510254,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+    {
+      "bounds": [
+        0,
+        0,
+        74,
+        100,
+      ],
+      "id": 4,
+      "text": "done-task",
+      "textContent": "",
+      "visual": {
+        "backgroundColor": null,
+        "borderColor": null,
+        "borderRadius": 0,
+        "borderStyle": "none",
+        "borderWidth": 0,
+        "fontFamily": null,
+        "fontSize": 16,
+        "fontStyle": null,
+        "fontWeight": 400,
+        "opacity": 1,
+        "textColor": {
+          "a": 1,
+          "b": 0.7019608020782471,
+          "g": 0.5921568870544434,
+          "r": 0.5411764979362488,
+        },
+        "textDecoration": null,
+        "zIndex": 0,
+      },
+    },
+  ],
+  "imeBounds": null,
+}
+`;
+
 exports[`golden frame semantic parity (ADR-0079, #151) > block box color and fontSize do not leak to descendant text 1`] = `
 {
   "accessibility": {
@@ -297,8 +518,8 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultColor on a block
         "textColor": {
           "a": 1,
           "b": 0,
-          "g": 0,
-          "r": 0,
+          "g": 0.4000000059604645,
+          "r": 1,
         },
         "textDecoration": null,
         "zIndex": 0,
@@ -459,7 +680,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontFamily on a 
         "borderRadius": 0,
         "borderStyle": "none",
         "borderWidth": 0,
-        "fontFamily": null,
+        "fontFamily": "Noto Sans",
         "fontSize": 16,
         "fontStyle": null,
         "fontWeight": 400,
@@ -630,7 +851,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontSize on a bl
         "borderStyle": "none",
         "borderWidth": 0,
         "fontFamily": null,
-        "fontSize": 16,
+        "fontSize": 22,
         "fontStyle": null,
         "fontWeight": 400,
         "opacity": 1,
@@ -802,7 +1023,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > defaultFontWeight on a 
         "fontFamily": null,
         "fontSize": 16,
         "fontStyle": null,
-        "fontWeight": 400,
+        "fontWeight": 600,
         "opacity": 1,
         "textColor": {
           "a": 1,

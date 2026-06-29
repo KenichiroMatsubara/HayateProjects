@@ -13,6 +13,30 @@ describe('golden frame semantic parity (ADR-0079, #151)', () => {
     harness = null;
   });
 
+  it('a text element’s OWN defaultColor applies to itself (self-inclusive, ADR-0065)', async () => {
+    // react-todo の完了ラベル相当: 祖先 view が ambient ink を供給し、葉の text が自身に
+    // defaultColor(muted) を載せて完了色を表す。ambient Default Text Style は自身にも効く
+    // （解釈A）。DOM Renderer は defaultColor→CSS color で元から自己適用しており、本テストで
+    // Hayate も一致することを固定する。
+    harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
+      const shell = createElement('view');
+      setProp(shell, 'style', { width: '200px', height: '100px', defaultColor: '#e7edf8' });
+      const row = createElement('view');
+      insertNode(shell, row);
+      const text = createElement('text');
+      insertNode(row, text);
+      setProp(text, 'style', { defaultColor: '#8a97b3' }); // muted = r138 g151 b179
+      setText(text, 'done-task');
+      return shell;
+    });
+    const frame = harness.capture();
+    const text = findElementByText(frame, 'done-task');
+    expect(text?.visual?.textColor?.r).toBeCloseTo(138 / 255, 5);
+    expect(text?.visual?.textColor?.g).toBeCloseTo(151 / 255, 5);
+    expect(text?.visual?.textColor?.b).toBeCloseTo(179 / 255, 5);
+    expect(frame).toMatchSnapshot();
+  });
+
   it('defaultColor on a block box penetrates to descendant text', async () => {
     harness = await mountGoldenFrameParity(({ createElement, insertNode, setProp, setText }) => {
       const view = createElement('view');
