@@ -86,6 +86,73 @@ fn text_to_text_font_size_inherits_in_ifc() {
 }
 
 #[test]
+fn own_default_color_applies_to_self_text() {
+    // ADR-0065（解釈A）: 要素自身の `default-*` は self-inclusive。祖先が別の ambient 既定を
+    // 供給していても、text 自身の `default-color` がその text 自身の glyph に効く。react-todo の
+    // 完了ラベル相当で、DOM Renderer の挙動とも一致する。
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(10, ElementKind::View);
+    let text = tree.element_create(11, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_append_child(view, text);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+            // 祖先 ambient = 赤（祖先 ink 相当）。
+            StyleProp::DefaultColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    // text 自身の default-color = 緑（muted 相当）。
+    tree.element_set_style(text, &[StyleProp::DefaultColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
+    tree.element_set_text(text, "done");
+    let sg = tree.render(0.0);
+    let colors: Vec<[f32; 4]> = sg
+        .iter()
+        .filter_map(|(_, n)| match &n.kind {
+            NodeKind::TextRun { color, .. } => Some(*color),
+            _ => None,
+        })
+        .collect();
+    assert!(!colors.is_empty());
+    assert!(
+        colors
+            .iter()
+            .any(|c| (c[1] - 1.0).abs() < 0.05 && (c[0] - 0.0).abs() < 0.05),
+        "text 自身の default-color が自分の glyph に効くこと（self-inclusive）: {colors:?}"
+    );
+}
+
+#[test]
+fn own_default_font_size_applies_to_self_text() {
+    // 解釈A: text 自身の default-font-size が自分の glyph に効く（祖先 ambient より優先）。
+    let mut tree = ElementTree::new();
+    let view = tree.element_create(12, ElementKind::View);
+    let text = tree.element_create(13, ElementKind::Text);
+    tree.set_root(view);
+    tree.set_viewport(400.0, 300.0);
+    tree.element_append_child(view, text);
+    tree.element_set_style(
+        view,
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::Height(Dimension::px(300.0)),
+            StyleProp::DefaultFontSize(14.0),
+        ],
+    );
+    tree.element_set_style(text, &[StyleProp::DefaultFontSize(22.0)]);
+    tree.element_set_text(text, "title");
+    let sg = tree.render(0.0);
+    let sizes = text_run_font_sizes(&sg);
+    assert!(
+        sizes.iter().any(|s| (*s - 22.0).abs() < 0.5),
+        "text 自身の default-font-size が自分の glyph に効くこと: {sizes:?}"
+    );
+}
+
+#[test]
 fn default_color_penetrates_block_to_text() {
     let mut tree = ElementTree::new();
     let (view, _text) = setup_view_with_text(&mut tree, 8, 9);

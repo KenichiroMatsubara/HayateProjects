@@ -51,19 +51,25 @@ impl InheritedVisualContext {
 /// `own` の未設定 text/visual フィールドに ch1 + ch2 の継承を適用する。
 pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Visual {
     let mut v = own.clone();
+    // ch2（ambient Default Text Style）は要素**自身**の `default-*` も含める（ADR-0065 解決順
+    // step 3 の self-inclusive 化）。`ctx.ambient` は祖先のみを畳んだ値なので、ここで own の
+    // `default-*` を重ねて「自身に効く」ambient を作る。`ambient_at`（IFC/layout/text_shaper）が
+    // 既に self-inclusive なのと整合する。解決順は own 明示 → text 祖先（ch1）→ ambient（self+祖先）
+    // → ハード既定を維持する。
+    let ambient = ctx.ambient.merge_visual(own);
     if v.text_color.is_none() {
         v.text_color = ctx
             .text_local
             .as_ref()
             .map(|t| t.color)
-            .or(Some(ctx.ambient.color));
+            .or(Some(ambient.color));
     }
     if v.font_size.is_none() {
         v.font_size = Some(
             ctx.text_local
                 .as_ref()
                 .map(|t| t.font_size)
-                .unwrap_or(ctx.ambient.font_size),
+                .unwrap_or(ambient.font_size),
         );
     }
     if v.font_weight.is_none() {
@@ -71,14 +77,14 @@ pub fn apply_text_inheritance(ctx: &InheritedVisualContext, own: &Visual) -> Vis
             .text_local
             .as_ref()
             .and_then(|t| t.font_weight)
-            .or(ctx.ambient.font_weight);
+            .or(ambient.font_weight);
     }
     if v.font_family.is_none() {
         v.font_family = ctx
             .text_local
             .as_ref()
             .and_then(|t| t.font_family.clone())
-            .or_else(|| ctx.ambient.font_family.clone());
+            .or_else(|| ambient.font_family.clone());
     }
     if v.font_style.is_none() {
         v.font_style = ctx.text_local.as_ref().and_then(|t| t.font_style);
