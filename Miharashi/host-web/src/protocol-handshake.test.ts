@@ -14,6 +14,7 @@ function fakeHost(): WebHost {
     raw: {} as WebHost['raw'],
     requestFrame: () => 0,
     cancelFrame: () => undefined,
+    detach: () => undefined,
   };
 }
 

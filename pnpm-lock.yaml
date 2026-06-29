@@ -33,6 +33,9 @@ importers:
         specifier: file:../wasm-pkgs/pkg-tiny-skia
         version: link:../wasm-pkgs/pkg-tiny-skia
     devDependencies:
+      happy-dom:
+        specifier: ^17.4.4
+        version: 17.6.3
       rimraf:
         specifier: ^6.1.3
         version: 6.1.3

@@ -1,9 +1,23 @@
 import manifest from '@hayate/protocol-spec/manifest' with { type: 'json' };
 import { resolveCanvasBackend, type CanvasBackend } from './resolve-backend.js';
+import {
+  attachAccessibilityMirror,
+  type DetachAccessibilityMirror,
+} from './accessibility-mirror.js';
 import type { RawHayate } from './raw-hayate.js';
 
 export type { CanvasBackend } from './resolve-backend.js';
 export type { RawHayate, HayateEffectiveVisual, HayateColorRecord } from './raw-hayate.js';
+export {
+  attachAccessibilityMirror,
+  ACCESSKIT_ROLE_TO_ARIA,
+  A11Y_ROOT_ATTR,
+  A11Y_NODE_ID_PREFIX,
+  MIRROR_OPACITY,
+  MIRROR_POINTER_EVENTS,
+  type DetachAccessibilityMirror,
+  type AccessibilityMirrorOptions,
+} from './accessibility-mirror.js';
 
 /**
  * このホストに焼き込まれた decoder の wire 定数バージョン。Miharashi はこれをバンドルの encoder
@@ -22,6 +36,11 @@ export interface WebHost {
   readonly raw: RawHayate;
   readonly requestFrame: (cb: FrameRequestCallback) => number;
   readonly cancelFrame: (handle: number) => void;
+  /**
+   * host のライフサイクル teardown。現状は Accessibility Mirror（ADR-0124）の root 除去と
+   * rAF 停止を畳む。full reload 時に古い host を捨てる前に呼ぶ（`startMiharashiHost` が結線）。
+   */
+  readonly detach: () => void;
 }
 
 export interface CreateHayateWebHostOptions {
@@ -41,6 +60,14 @@ export interface CreateHayateWebHostOptions {
     backend: CanvasBackend,
     canvas: HTMLCanvasElement,
   ) => Promise<RawHayate>;
+  /**
+   * テスト注入 seam。既定は `@hayate/host` の {@link attachAccessibilityMirror}（ADR-0124）。
+   * canvas boot のたびに `(raw, canvas)` で呼び、返った detach を `WebHost.detach` に通す。
+   */
+  attachMirror?: (
+    raw: RawHayate,
+    canvas: HTMLCanvasElement,
+  ) => DetachAccessibilityMirror;
 }
 
 /** `navigator.gpu` で WebGPU の利用可否を判定する。 */
@@ -89,6 +116,7 @@ export async function createHayateWebHost(
 ): Promise<WebHost> {
   const probe = options?.probeWebGPU ?? probeWebGPU;
   const load = options?.loadBackend ?? loadCanvasBackend;
+  const attachMirror = options?.attachMirror ?? attachAccessibilityMirror;
 
   const webgpuAvailable = await probe();
   const backend = resolveCanvasBackend(options, webgpuAvailable);
@@ -112,5 +140,9 @@ export async function createHayateWebHost(
   const cancelFrame =
     options?.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
 
-  return { raw, requestFrame, cancelFrame };
+  // Accessibility Mirror（ADR-0124）の attach 点。canvas+raw を握るこの 1 箇所で attach し、
+  // teardown 用の detach を host に通す。本体は #592 が実装し、全 Canvas アプリへ自動で効く。
+  const detach = attachMirror(raw, canvas);
+
+  return { raw, requestFrame, cancelFrame, detach };
 }
