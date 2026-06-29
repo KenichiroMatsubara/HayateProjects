@@ -110,7 +110,12 @@ impl MutationSink for TreeSink<'_> {
     }
 
     fn set_text_content(&mut self, id: ElementId, text: &str) {
-        self.tree.element_set_text_content(id, text);
+        // controlled text-input の value 書き戻し経路（ADR-0007）。Tsubame（React /
+        // Solid）は `value={state}` を毎レンダー echo するため、無条件 `set()` だと
+        // 変化のない echo でもキャレットを末尾へ collapse し、IME 組成中なら preedit を
+        // 破壊する（ユーザー報告の謎挙動）。Hayabusa の in-process sink と同じく
+        // idle ガード（差分あり かつ 非組成中のみ適用）を通す。
+        self.tree.element_set_text_content_if_idle(id, text);
     }
 
     fn set_disabled(&mut self, id: ElementId, disabled: bool) {
@@ -174,12 +179,78 @@ mod tests {
     use super::*;
     use crate::ElementTree;
 
+    use crate::element::kind::ElementKind;
+
     // 空バッチは no-op で Ok（境界の配線確認）。
     #[test]
     fn empty_batch_is_ok() {
         let mut tree = ElementTree::new();
         let texts: Vec<String> = Vec::new();
         assert!(apply_mutations(&mut tree, &[], &[], &texts).is_ok());
+    }
+
+    /// 回帰（ユーザー報告: React/Tsubame の controlled text-input が謎挙動）。
+    ///
+    /// controlled input は `value={state}` を毎レンダー書き戻す。ユーザーがフィールド
+    /// 途中にキャレットを置いた状態で、変化のない value が wire 経由で echo され戻る
+    /// と、`SetTextContent` op がキャレットを末尾へ collapse してはいけない（差分が
+    /// 無いので no-op であるべき）。`TreeSink`（Canvas / Android の wire sink）は
+    /// Hayabusa と同じく idle ガード経路を通す（ADR-0007）。
+    #[test]
+    fn wire_value_echo_of_unchanged_text_does_not_move_the_caret() {
+        let mut tree = ElementTree::new();
+        let input = tree.element_create(1, ElementKind::TextInput);
+        tree.set_root(input);
+        tree.element_focus(input);
+        tree.element_set_text_content(input, "helloworld");
+        tree.element_set_selection(input, 5, 5); // hello|world
+
+        // React が onInput で受けた現在値をそのまま wire で書き戻す（controlled echo）。
+        {
+            let mut sink = TreeSink { tree: &mut tree };
+            sink.set_text_content(input, "helloworld");
+        }
+
+        assert_eq!(
+            tree.element_caret_byte_index(input),
+            Some(5),
+            "unchanged value echo must be a no-op, not collapse the caret to the end",
+        );
+
+        // ただし本物の value 変化（「追加」で draft を "" に戻す）はちゃんと適用される。
+        {
+            let mut sink = TreeSink { tree: &mut tree };
+            sink.set_text_content(input, "");
+        }
+        assert_eq!(
+            tree.element_get_text_content(input),
+            "",
+            "a real programmatic value change (clear-on-add) still applies",
+        );
+    }
+
+    /// 回帰: IME 組成中（preedit あり）に value が echo されても、preedit を確定/破棄
+    /// してはいけない（「入力確定」中に変換が壊れる謎挙動）。
+    #[test]
+    fn wire_value_echo_while_composing_does_not_clobber_preedit() {
+        let mut tree = ElementTree::new();
+        let input = tree.element_create(1, ElementKind::TextInput);
+        tree.set_root(input);
+        tree.element_focus(input);
+        tree.element_set_preedit(input, "へんかん"); // 変換中
+
+        // 表示テキスト（content + preedit）が wire で echo され戻る。
+        {
+            let mut sink = TreeSink { tree: &mut tree };
+            sink.set_text_content(input, "へんかん");
+        }
+
+        // 確定 text_content は空のまま（preedit は生きている）。
+        assert_eq!(
+            tree.element_caret_byte_index(input),
+            Some(0),
+            "composition must survive the echo; committed content stays empty",
+        );
     }
 
     /// ADR-0054 RecordingPainter と同型の記録 sink。木も DOM も持たず、decode が
