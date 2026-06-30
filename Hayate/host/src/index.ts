@@ -8,6 +8,15 @@ import type { RawHayate } from './raw-hayate.js';
 
 export type { CanvasBackend } from './resolve-backend.js';
 export type { RawHayate, HayateEffectiveVisual, HayateColorRecord } from './raw-hayate.js';
+export { MainThreadShim, WorkerEngineDispatcher } from './worker-host.js';
+export type {
+  CanvasHandle,
+  ImePresentation,
+  MainEditContextSink,
+  MainToWorker,
+  WorkerEngine,
+  WorkerToMain,
+} from './worker-host.js';
 export {
   attachAccessibilityMirror,
   ACCESSKIT_ROLE_TO_ARIA,
