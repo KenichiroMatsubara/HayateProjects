@@ -15,9 +15,23 @@
 //! 同一 `layer_dirty`（ADR-0125 コア・#609）を入力にするため、tiny-skia(CPU) 経路も同じ planning で
 //! 同じレイヤ化の恩恵を受ける（backend は trait 実装だけ差し替える）。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
+
+/// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は
+/// プレースホルダで、マジックナンバーをロジックへ散らさないことが目的。予算（ビューポート N 枚分）は
+/// platform が注入する既定値で、core のレイヤ判定はこれを知らない（policy=core, budget=platform）。
+pub mod tunables {
+    /// scroll 内容レイヤの可視域外オーバースキャン余白（上下それぞれ、論理 px）。
+    pub const OVERSCAN_MARGIN_PX: f32 = 600.0;
+    /// GPU 予算（ビューポート N 枚分）。モバイル既定は小さめ（ADR-0127）。
+    pub const GPU_BUDGET_VIEWPORTS_MOBILE: f32 = 3.0;
+    /// GPU 予算（ビューポート N 枚分）。デスクトップ/native ハイエンド既定は大きめ。
+    pub const GPU_BUDGET_VIEWPORTS_DESKTOP: f32 = 8.0;
+    /// 1 ピクセルあたりのバイト数（RGBA8 / BGRA8 とも 4）。
+    pub const BYTES_PER_PIXEL: u64 = 4;
+}
 
 /// 1 フレームのレイヤ raster 計画。`raster` は再 raster が要るレイヤ（cache miss / dirty）、`reuse` は
 /// キャッシュ texture をそのまま合成に使うレイヤ（描画順を保つ）。
@@ -29,12 +43,25 @@ pub struct RasterPlan {
     pub reuse: Vec<ElementId>,
 }
 
+/// キャッシュ済みレイヤ 1 件の台帳エントリ。GPU ハンドルは持たず、サイズと composite 直近性だけを
+/// 記録する（Send クリーン）。
+#[derive(Debug, Clone, Copy)]
+struct LayerEntry {
+    /// キャッシュ texture のバイト数（予算計上用）。`mark_rasterized` では 0、サイズ付き raster で実値。
+    bytes: u64,
+    /// 最後に composite に使われた論理時刻（LRU 退避の基準。ADR-0127「最も長く composite に
+    /// 使われていない」）。raster 時にも初期化する。
+    last_composited: u64,
+}
+
 /// レイヤ単位 retained texture キャッシュの **backend 非依存な台帳**。実 texture は backend が持つが、
-/// 「どのレイヤがキャッシュ済みか」「このフレームでどれを raster するか」はここが決める。`Send` クリーン
-/// （ADR-0128 で Raster スレッドへ移せるよう、GPU ハンドルを持たない）。
+/// 「どのレイヤがキャッシュ済みか」「このフレームでどれを raster するか」「予算超過で何を LRU 退避するか」
+/// はここが決める。`Send` クリーン（ADR-0128 で Raster スレッドへ移せるよう、GPU ハンドルを持たない）。
 #[derive(Debug, Default)]
 pub struct LayerCache {
-    cached: HashSet<ElementId>,
+    cached: HashMap<ElementId, LayerEntry>,
+    /// composite 使用の単調増加クロック（LRU の順序付け用）。
+    tick: u64,
 }
 
 impl LayerCache {
@@ -44,16 +71,16 @@ impl LayerCache {
 
     /// このレイヤのキャッシュ面が有効か（再 raster 不要か）。
     pub fn is_cached(&self, layer: ElementId) -> bool {
-        self.cached.contains(&layer)
+        self.cached.contains_key(&layer)
     }
 
-    /// 本フレームの raster 計画を立てる。レイヤは (a) 未キャッシュ（cache miss）、または
+    /// 本フレームの raster 計画を立てる。レイヤは (a) 未キャッシュ（cache miss / 退避済み）、または
     /// (b) `layer_dirty` に含まれる（内容が変わった）なら raster、それ以外はキャッシュ再利用。
     /// `layers` は現在の全レイヤ（描画順 = ADR-0021 の子順序）。
     pub fn plan_raster(&self, layers: &[ElementId], layer_dirty: &HashSet<ElementId>) -> RasterPlan {
         let mut plan = RasterPlan::default();
         for &layer in layers {
-            if !self.cached.contains(&layer) || layer_dirty.contains(&layer) {
+            if !self.cached.contains_key(&layer) || layer_dirty.contains(&layer) {
                 plan.raster.push(layer);
             } else {
                 plan.reuse.push(layer);
@@ -62,9 +89,32 @@ impl LayerCache {
         plan
     }
 
-    /// raster 済みレイヤをキャッシュ済みに記録する（backend が texture を書いた後に呼ぶ）。
+    /// raster 済みレイヤをキャッシュ済みに記録する（サイズ未指定＝0 バイト計上。backend が texture を
+    /// 書いた後に呼ぶ）。サイズを予算計上したい場合は [`mark_rasterized_sized`](Self::mark_rasterized_sized)。
     pub fn mark_rasterized(&mut self, layer: ElementId) {
-        self.cached.insert(layer);
+        self.mark_rasterized_sized(layer, 0);
+    }
+
+    /// サイズ（バイト）付きで raster 済みレイヤを記録する。GPU 予算計上に使う（ADR-0127）。
+    pub fn mark_rasterized_sized(&mut self, layer: ElementId, bytes: u64) {
+        let tick = self.tick;
+        self.cached.insert(
+            layer,
+            LayerEntry {
+                bytes,
+                last_composited: tick,
+            },
+        );
+    }
+
+    /// レイヤを composite に使ったと記録し、LRU 直近性を更新する（ADR-0127）。退避は「最も長く
+    /// composite に使われていない」面から行うため、合成のたびにこれを呼ぶ。
+    pub fn note_composited(&mut self, layer: ElementId) {
+        self.tick += 1;
+        let tick = self.tick;
+        if let Some(entry) = self.cached.get_mut(&layer) {
+            entry.last_composited = tick;
+        }
     }
 
     /// レイヤが消えた/退避されたらキャッシュから外す（再要求時に再 raster される）。
@@ -75,6 +125,90 @@ impl LayerCache {
     /// 現在キャッシュ済みのレイヤ数（測定/テスト用）。
     pub fn cached_len(&self) -> usize {
         self.cached.len()
+    }
+
+    /// 全キャッシュ texture の合計バイト（予算判定用）。
+    pub fn total_bytes(&self) -> u64 {
+        self.cached.values().map(|e| e.bytes).sum()
+    }
+
+    /// GPU 予算超過なら、最も長く composite に使われていないレイヤ texture から LRU 退避し、合計を
+    /// 予算内に収める（ADR-0127）。退避したレイヤ id を退避順に返す（再要求時に再 raster される）。
+    /// 予算 0 や同点は決定的に（古い tick → 小さい ElementId 順で）退避する。
+    pub fn enforce_budget(&mut self, budget: GpuBudget) -> Vec<ElementId> {
+        let mut evicted = Vec::new();
+        while self.total_bytes() > budget.max_bytes {
+            let Some(victim) = self
+                .cached
+                .iter()
+                .min_by_key(|(id, entry)| (entry.last_composited, id.to_u64()))
+                .map(|(id, _)| *id)
+            else {
+                break;
+            };
+            self.cached.remove(&victim);
+            evicted.push(victim);
+        }
+        evicted
+    }
+}
+
+/// platform が注入する GPU texture 予算（ADR-0127）。core（#609）のレイヤ判定・`layer_dirty` は
+/// これを知らない（policy=core, budget=platform）。単位「ビューポート N 枚分」をバイトに換算して持つ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GpuBudget {
+    pub max_bytes: u64,
+}
+
+impl GpuBudget {
+    /// 明示バイトで予算を作る。
+    pub fn from_bytes(max_bytes: u64) -> Self {
+        Self { max_bytes }
+    }
+
+    /// ビューポート（幅×高 px）× N 枚 × 4byte で予算バイトを計算する。viewport と N は platform が
+    /// 注入する（モバイルは [`tunables::GPU_BUDGET_VIEWPORTS_MOBILE`]、デスクトップは
+    /// [`tunables::GPU_BUDGET_VIEWPORTS_DESKTOP`] 等）。
+    pub fn from_viewports(viewport_w: u32, viewport_h: u32, viewports: f32) -> Self {
+        let per = u64::from(viewport_w) * u64::from(viewport_h) * tunables::BYTES_PER_PIXEL;
+        Self {
+            max_bytes: (per as f64 * f64::from(viewports)) as u64,
+        }
+    }
+}
+
+/// scroll 内容レイヤの texture が覆う縦帯（論理 px・ADR-0127）。全高でなく「可視域＋上下オーバースキャン」
+/// だけを raster してメモリを抑える。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScrollLayerExtent {
+    /// 帯の上端（content 座標、px）。
+    pub top: f32,
+    /// 帯の高さ（px）。content 全高でクランプされ、全高は確保しない。
+    pub height: f32,
+}
+
+impl ScrollLayerExtent {
+    /// この帯が可視域 `[visible_top, visible_top + viewport_height]` を完全に覆うか。覆っていなければ
+    /// 新規に現れた帯を差分 raster してキャッシュを更新する必要がある（ADR-0127）。
+    pub fn covers(&self, visible_top: f32, viewport_height: f32) -> bool {
+        self.top <= visible_top && (self.top + self.height) >= (visible_top + viewport_height)
+    }
+}
+
+/// スクロール offset・可視域・content 全高・オーバースキャンから、raster すべき縦帯を計算する
+/// （ADR-0127）。可視域の上下に `overscan` を足し、content の `[0, content_height]` でクランプする
+/// ＝全高は確保しない（縮退版タイル化。本格タイル化への自然な前段）。
+pub fn scroll_layer_extent(
+    scroll_offset: f32,
+    viewport_height: f32,
+    content_height: f32,
+    overscan: f32,
+) -> ScrollLayerExtent {
+    let top = (scroll_offset - overscan).max(0.0);
+    let bottom = (scroll_offset + viewport_height + overscan).min(content_height);
+    ScrollLayerExtent {
+        top,
+        height: (bottom - top).max(0.0),
     }
 }
 
@@ -278,5 +412,85 @@ mod tests {
         assert_send::<RasterPlan>();
         assert_send::<FramePlan>();
         assert_send::<PipelineVariant>();
+        assert_send::<GpuBudget>();
+    }
+
+    // ── ADR-0127: scroll overscan サイジング ───────────────────────────────────
+
+    #[test]
+    fn tall_scroll_layer_is_sized_to_viewport_plus_overscan_not_full_height() {
+        // content 10000px・viewport 800px・overscan 600px・offset 2000px。
+        let extent = scroll_layer_extent(2000.0, 800.0, 10000.0, 600.0);
+        // 全高 10000 ではなく、可視域 800 ＋ 上下 600 = 2000px だけ確保する。
+        assert_eq!(extent.top, 1400.0);
+        assert_eq!(extent.height, 2000.0);
+        assert!(extent.height < 10000.0, "全高分の texture は確保しない");
+        // 可視域は覆われている。
+        assert!(extent.covers(2000.0, 800.0));
+    }
+
+    #[test]
+    fn short_scroll_content_is_fully_covered() {
+        // content が可視域＋overscan 未満なら全部を 1 帯に収める（クランプ）。
+        let extent = scroll_layer_extent(0.0, 800.0, 500.0, 600.0);
+        assert_eq!(extent.top, 0.0);
+        assert_eq!(extent.height, 500.0);
+    }
+
+    #[test]
+    fn scrolling_beyond_the_cached_band_requires_reraster() {
+        // offset 0 で確保した帯は、overscan を超えてスクロールすると可視域を覆えなくなる。
+        let band = scroll_layer_extent(0.0, 800.0, 10000.0, 600.0); // top 0, height 1400
+        assert!(band.covers(0.0, 800.0));
+        // overscan(600) を超えて 700px スクロール → 可視域下端 1500 > band 下端 1400 で未カバー。
+        assert!(!band.covers(700.0, 800.0));
+    }
+
+    // ── ADR-0127: GPU 予算＋LRU 退避 ───────────────────────────────────────────
+
+    #[test]
+    fn budget_from_viewports_is_viewport_bytes_times_n() {
+        // 1000x800 ビューポート × 3 枚 × 4byte。
+        let budget = GpuBudget::from_viewports(1000, 800, 3.0);
+        assert_eq!(budget.max_bytes, 1000 * 800 * 4 * 3);
+    }
+
+    #[test]
+    fn over_budget_evicts_lru_until_within_budget() {
+        // 各 1000byte・予算 2500byte。3 枚入れると 3000 > 2500。
+        let mut cache = LayerCache::new();
+        cache.mark_rasterized_sized(id(1), 1000);
+        cache.mark_rasterized_sized(id(2), 1000);
+        cache.mark_rasterized_sized(id(3), 1000);
+        // composite 順 = 3, 1, 2（→ 2 が最も新しく使われた = 1 が最も古い…順に応じて）。
+        cache.note_composited(id(3));
+        cache.note_composited(id(1));
+        cache.note_composited(id(2));
+        // → last_composited 昇順は 3(最古) < 1 < 2。予算超過分を 3 から退避。
+        let evicted = cache.enforce_budget(GpuBudget::from_bytes(2500));
+        assert_eq!(evicted, vec![id(3)], "最も長く composite に使われていない面から LRU 退避");
+        assert!(cache.total_bytes() <= 2500, "合計が予算内に収まる");
+        // 退避された 3 は次フレームで再 raster 対象になる。
+        let plan = cache.plan_raster(&[id(1), id(2), id(3)], &dirty(&[]));
+        assert_eq!(plan.raster, vec![id(3)]);
+        assert_eq!(plan.reuse, vec![id(1), id(2)]);
+    }
+
+    #[test]
+    fn within_budget_evicts_nothing() {
+        let mut cache = LayerCache::new();
+        cache.mark_rasterized_sized(id(1), 1000);
+        cache.mark_rasterized_sized(id(2), 1000);
+        let evicted = cache.enforce_budget(GpuBudget::from_bytes(4000));
+        assert!(evicted.is_empty());
+        assert_eq!(cache.cached_len(), 2);
+    }
+
+    #[test]
+    fn named_tunables_have_documented_placeholder_values() {
+        // マジックナンバーを散らさないため、tunable は名前付き定数の単一正本に置く（ADR-0127）。
+        assert!(tunables::OVERSCAN_MARGIN_PX > 0.0);
+        assert!(tunables::GPU_BUDGET_VIEWPORTS_MOBILE < tunables::GPU_BUDGET_VIEWPORTS_DESKTOP);
+        assert_eq!(tunables::BYTES_PER_PIXEL, 4);
     }
 }
