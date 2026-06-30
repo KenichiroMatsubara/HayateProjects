@@ -44,6 +44,9 @@ mod miharashi_reload;
 #[cfg(feature = "tsubame-js")]
 mod reload_socket;
 mod scene_demo;
+// on-demand フレームループの起床/継続判定（ADR-0117 / ADR-0126）。android 非依存の純粋
+// 判定器なので、ホストの cargo test で振る舞いを固定する（app_tsubame の実ループが利用）。
+mod frame_schedule;
 mod surface_lifecycle;
 // 実機発音検証用のテストトーン生成器（ADR-0117 / #562）。NDK 非依存の純粋計算なので
 // ホストでもコンパイル・テストされ、AAudio glue（audio_output.rs）はこのバッファを書く

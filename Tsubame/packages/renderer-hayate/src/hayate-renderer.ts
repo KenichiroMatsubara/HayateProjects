@@ -48,6 +48,8 @@ export class HayateRenderer implements IRenderer {
   private readonly requestFrame: (cb: FrameRequestCallback) => number;
   private readonly cancelFrame: (handle: number) => void;
   private frameHandle: number | null = null;
+  /** start() 後だけ wake を許す（構築≠開始, #476）。stop() で false に戻す。 */
+  private started = false;
 
   constructor(options: HayateRendererOptions) {
     this.raw = options.raw;
@@ -57,56 +59,77 @@ export class HayateRenderer implements IRenderer {
     // 走らない（native は構築後 vsync 準備ができてから開始する, #476）。
   }
 
-  /** frame ループを武装する。host が clock の準備を終えてから呼ぶ。冪等。 */
+  /** frame ループを武装する。host が clock の準備を終えてから呼ぶ。冪等。
+   * これ自体が冷間始動の wake 入口で、以後は継続 pending / mutation 到着で再武装する。 */
   start(): void {
-    if (this.frameHandle === null) {
-      this.frameHandle = this.requestFrame(this.frame);
-    }
+    this.started = true;
+    this.scheduleFrame();
   }
 
   stop(): void {
+    this.started = false;
     if (this.frameHandle !== null) {
       this.cancelFrame(this.frameHandle);
       this.frameHandle = null;
     }
   }
 
+  /**
+   * 次フレームを 1 枚だけ要求する（ADR-0126 の唯一の wake 入口）。既に武装済み／
+   * 未 start なら何もしない（冪等）。start・継続 pending・mutation 到着のいずれの
+   * 経路もここを通り、idle ループの二重武装を防ぐ。
+   */
+  private scheduleFrame(): void {
+    if (this.started && this.frameHandle === null) {
+      this.frameHandle = this.requestFrame(this.frame);
+    }
+  }
+
   createElement(kind: ElementKind): ElementId {
     const id = asElementId(this.nextId++);
     this.packet.enqueueCreateElement(id, kind);
+    this.scheduleFrame();
     return id;
   }
 
   setRoot(id: ElementId): void {
     this.packet.enqueueSetRoot(id);
+    this.scheduleFrame();
   }
 
   appendChild(parent: ElementId, child: ElementId): void {
     this.packet.enqueueAppendChild(parent, child);
+    this.scheduleFrame();
   }
 
   insertBefore(parent: ElementId, child: ElementId, before: ElementId): void {
     this.packet.enqueueInsertBefore(parent, child, before);
+    this.scheduleFrame();
   }
 
   removeChild(_parent: ElementId, child: ElementId): void {
     this.packet.enqueueRemove(child);
+    this.scheduleFrame();
   }
 
   setStyle(id: ElementId, style: StylePatch): void {
     this.packet.enqueueSetStyle(id, style);
+    this.scheduleFrame();
   }
 
   setPseudoStyle(id: ElementId, pseudo: PseudoStyleKey, style: StylePatch): void {
     this.packet.enqueueSetPseudoStyle(id, pseudo, style);
+    this.scheduleFrame();
   }
 
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void {
     this.packet.enqueueSetStyleVariant(id, condition, style);
+    this.scheduleFrame();
   }
 
   setText(id: ElementId, text: string): void {
     this.packet.enqueueSetText(id, text);
+    this.scheduleFrame();
   }
 
   setProperty(id: ElementId, name: string, value: unknown): void {
@@ -122,6 +145,7 @@ export class HayateRenderer implements IRenderer {
       'user-select': ({ value }) => this.packet.enqueueSetUserSelect(id, value),
       multiline: ({ multiline }) => this.packet.enqueueSetMultiline(id, multiline),
     });
+    this.scheduleFrame();
   }
 
   addEventListener(
@@ -164,11 +188,20 @@ export class HayateRenderer implements IRenderer {
   }
 
   private readonly frame = (timestampMs: number): void => {
+    // このコールバックは消費された。継続 pending があるときだけ末尾で再武装する
+    // （無条件の自己再スケジュールを撤廃, ADR-0126）。
+    this.frameHandle = null;
     this.flush();
     // IME（EditContext 着脱・preedit・候補窓 rect）は hayate-adapter-web が
     // `render()` 内で自己配線・自己同期する（ADR-0069）。ホストは IME 経路に関与しない。
     this.raw.render(timestampMs);
     this.dispatchDeliveries(this.raw.poll_events());
-    this.frameHandle = this.requestFrame(this.frame);
+    // ADR-0126: idle（visual_dirty 空）では次フレームを出さない。継続すべき pending
+    // （進行中 transition / カーソル点滅 / スクロール物理）があるときだけ再武装する。
+    // delivery ハンドラが mutation を積んだ場合は dispatchDeliveries→scheduleFrame で
+    // 既に武装済みのこともある（scheduleFrame は冪等）。
+    if (this.raw.has_pending_visual_work()) {
+      this.scheduleFrame();
+    }
   };
 }

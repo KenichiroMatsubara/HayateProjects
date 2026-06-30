@@ -33,6 +33,7 @@ use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{init_gpu_surface, process_touch_input, sync_ime, GpuSurface};
 use crate::bundle_source;
+use crate::frame_schedule::OnDemandFrameLoop;
 use crate::dev_server_target;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
 use crate::miharashi_reload::{
@@ -177,9 +178,19 @@ pub(crate) fn run(app: AndroidApp) {
     let mut ime_keyboard_shown = false;
     let mut quit = false;
 
+    // ADR-0126: 無条件 pump を撤廃し on-demand 化する。冷間始動を要求した状態で開始し、以後は
+    // wake（入力到着・lifecycle・reload）と継続（描画後に残る visual_dirty）のあるときだけ
+    // pump+present する。idle ではフレームを 1 枚も出さない（`poll_events` の最大 16ms ブロックで
+    // OS イベント待ちに落ちる）。
+    let mut frame_loop = OnDemandFrameLoop::started();
+
     while !quit {
+        // このイテレーションで lifecycle イベントを観測したか（surface 作成/破棄/resize は
+        // いずれも再描画が要る wake 源）。closure からは frame_loop を可変借用できないので Cell 経由。
+        let lifecycle_wake = Cell::new(false);
         app.poll_events(Some(Duration::from_millis(16)), |event| {
             if let PollEvent::Main(main_event) = event {
+                lifecycle_wake.set(true);
                 let lifecycle_event = match main_event {
                     MainEvent::InitWindow { .. } => {
                         Some(crate::surface_lifecycle::SurfaceLifecycleEvent::InitWindow)
@@ -236,6 +247,11 @@ pub(crate) fn run(app: AndroidApp) {
             }
         });
 
+        // lifecycle イベント（surface 作成/破棄/resize/RedrawNeeded）は再描画が要る wake 源。
+        if lifecycle_wake.get() {
+            frame_loop.request_wake();
+        }
+
         // reload WS の受信を排出し（on_reload がフラグを立てる / on_close が再接続を保留する）、
         // 期限の来た backoff 再接続を main で起こす。
         if let Some(socket) = reload_socket_slot.borrow().as_ref() {
@@ -268,6 +284,8 @@ pub(crate) fn run(app: AndroidApp) {
                         runtime.tree.borrow_mut().set_viewport(vw, vh);
                     }
                     current = Some(runtime);
+                    // 新ツリーは未描画。冷間始動を要求して最初のフレームを必ず出す。
+                    frame_loop.request_wake();
                 }
                 Err(error) => {
                     report_boot_error(&error);
@@ -281,28 +299,46 @@ pub(crate) fn run(app: AndroidApp) {
             continue;
         };
 
-        // 1. 入力（native→tree 直結, 既存資産を共有）。
-        process_touch_input(&app, &mut runtime.tree.borrow_mut());
-        sync_ime(
+        // 1. 入力（native→tree 直結, 既存資産を共有）。入力は Platform Adapter の責務で
+        //    idle でも毎イテレーション排出する（これが入力 wake の出所, ADR-0080/0126）。到着した
+        //    タッチ/IME は on-demand ループを冷間始動する。
+        let touch_woke = process_touch_input(&app, &mut runtime.tree.borrow_mut());
+        let ime_woke = sync_ime(
             &app,
             &mut runtime.tree.borrow_mut(),
             &mut ime_state,
             &mut ime_target,
             &mut ime_keyboard_shown,
         );
+        if touch_woke || ime_woke {
+            frame_loop.request_wake();
+        }
+
+        // wake も継続 pending も無ければ idle：このフレームは pump も present もしない
+        //（ADR-0126: idle で 0 フレーム）。`poll_events` の最大 16ms ブロックが次の OS イベントを待つ。
+        if !frame_loop.wants_frame() {
+            continue;
+        }
 
         let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        // 2. JS フレーム（flush→render→poll_events を JS 内で回す）。
+        // 2. JS フレーム（flush→render→poll_events を JS 内で回す）。ホストブリッジの `render` が
+        //    `tree.render`（レイアウト + 保持シーン lower）を 1 回だけ走らせる。
         runtime.hermes.pin_mut().pump_frame(timestamp_ms);
 
-        // 3. present（保持シーンを取り出して GPU 提示）。
+        // 3. present（保持シーンを再取得して GPU 提示）。`tree.render` を再実行せず、JS フレームが
+        //    lower 済みの保持シーン（`scene_graph()`）をそのまま提示する＝tick 1 回 = 1 render
+        //    （ADR-0126 の二重 render 解消）。
         if let Some(surface) = gpu.as_mut() {
-            let mut tree_ref = runtime.tree.borrow_mut();
-            let scene = tree_ref.render(timestamp_ms);
-            if let Err(err) = surface.render_frame(scene) {
+            let tree_ref = runtime.tree.borrow();
+            if let Err(err) = surface.render_frame(tree_ref.scene_graph()) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
         }
+
+        // 描画後に残る pending visual work（進行中 transition / カーソル点滅 / スクロール物理）を
+        // 継続として記録する。残れば次イテレーションで自走し、無ければ idle へ落ちる。
+        let pending = runtime.tree.borrow().has_pending_visual_work();
+        frame_loop.note_frame_rendered(pending);
     }
 }

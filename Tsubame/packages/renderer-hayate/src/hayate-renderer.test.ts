@@ -71,6 +71,12 @@ class StubHayate implements RawHayate {
   poll_accessibility(): string | null {
     return null;
   }
+  /** ADR-0126: 継続すべき pending visual work（transition / カーソル点滅 /
+   * スクロール物理）があるか。テストは描画後の継続要否をこのフラグで制御する。 */
+  pendingVisualWork = false;
+  has_pending_visual_work(): boolean {
+    return this.pendingVisualWork;
+  }
   render(timestampMs: number): void {
     this.renders.push(timestampMs);
   }
@@ -127,6 +133,79 @@ describe('HayateRenderer lifecycle (host-blind core, #476)', () => {
     renderer.stop();
     sched.tick(32);
     expect(hayate.renders).toEqual([16]);
+  });
+});
+
+// ADR-0126: フレームループは App Host の idle/wake 契約に従う。描画と次フレームの
+// スケジューリングを分離し、継続 pending があるときだけ再武装する。idle では 1 枚も出さず、
+// signal 変化（mutation 到着）で冷間始動する。
+describe('HayateRenderer on-demand frame loop (ADR-0126, #608)', () => {
+  it('does not reschedule when no visual work is pending (idle → 0 further frames)', () => {
+    const hayate = new StubHayate();
+    hayate.pendingVisualWork = false;
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+
+    // 最初のフレームは走る（start の冷間始動）。
+    sched.tick(16);
+    expect(hayate.renders).toEqual([16]);
+
+    // idle（visual_dirty 空）：ループは再武装しない。以降の tick は no-op。
+    sched.tick(32);
+    sched.tick(48);
+    expect(hayate.renders).toEqual([16]);
+  });
+
+  it('keeps requesting frames while visual work is pending, and stops when it clears', () => {
+    const hayate = new StubHayate();
+    hayate.pendingVisualWork = true;
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+
+    // 進行中の transition / カーソル点滅 / スクロール物理：毎フレーム継続要求（退行なし）。
+    sched.tick(16);
+    sched.tick(32);
+    sched.tick(48);
+    expect(hayate.renders).toEqual([16, 32, 48]);
+
+    // pending が解消したフレームは描画し、その後は再武装しない（idle へ落ちる）。
+    hayate.pendingVisualWork = false;
+    sched.tick(64);
+    expect(hayate.renders).toEqual([16, 32, 48, 64]);
+    sched.tick(80);
+    expect(hayate.renders).toEqual([16, 32, 48, 64]);
+  });
+
+  it('cold-starts the idle loop when a mutation arrives (signal-change wake)', () => {
+    const hayate = new StubHayate();
+    hayate.pendingVisualWork = false;
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+
+    sched.tick(16); // 初回フレーム → idle
+    sched.tick(32); // idle: no-op
+    expect(hayate.renders).toEqual([16]);
+
+    // consumer の signal 変化が mutation を積む → idle ループを冷間始動する。
+    renderer.createElement('view');
+    sched.tick(48);
+    expect(hayate.renders).toEqual([16, 48]);
+    // その mutation はこのフレームで flush された。
+    expect(hayate.mutations.length).toBeGreaterThan(0);
+  });
+
+  it('does not arm the loop from a mutation before start() (構築≠開始)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+
+    // start 前の mutation はループを武装しない。tick しても描画は走らない。
+    renderer.createElement('view');
+    sched.tick(16);
+    expect(hayate.renders).toEqual([]);
   });
 });
 
