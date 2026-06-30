@@ -82,12 +82,22 @@
     // ── placeholder テキストの淡さ ──
     "placeholder_alpha": 0.54,             // 不透明度係数。Chromium は黒/白の約54%で描く。
 
-    // ── 選択ツールバー（フローティング）──
-    "toolbar_corner_radius": 4.0           // パネルの角丸（px）。配色・高さはテーマ所有なので対象外（下記）。
+    // ── 選択ツールバー（フローティング・Android お手本、#605）──
+    "toolbar_corner_radius": 4.0,          // パネルの角丸（px）。
+    "toolbar_height": 40.0,                // バー／各ボタンの高さ（px）。
+    "toolbar_label_font_size": 14.0,       // ボタンラベルの文字サイズ（px）。
+    "toolbar_button_pad_x": 12.0,          // ボタンラベル左右のパディング（px）。
+    "toolbar_gap": 8.0,                    // バーと選択の縦ギャップ（px）。
+    "toolbar_divider_color": [1.0, 1.0, 1.0, 0.12], // ボタン間 Material 区切り線の色 RGBA。
+    "toolbar_divider_width": 1.0,          // 区切り線の幅（px）。
+    "toolbar_elevation_offset_y": 2.0,     // drop shadow の下方向オフセット（px）。
+    "toolbar_elevation_blur": 8.0,         // drop shadow のぼかし（px）。大きく→淡く広がる。
+    "toolbar_elevation_spread": 0.0,       // drop shadow の spread（px）。
+    "toolbar_shadow_color": [0.0, 0.0, 0.0, 0.35]   // elevation の影色 RGBA。
 
     // ── v1 では上書き対象外（変更は再ビルド要・public/TUNING.md 参照）──
-    //   選択ハンドル/ツールバーの「配色」… テーマ（Material/Cupertino）所有 → selection_chrome.rs
-    //   ハンドルのヒット半径・ツールバー高さ/間隔/ラベル文字サイズ … 選択レイアウト側
+    //   パネル背景/ラベルの「配色」・選択ハンドルの「配色」… テーマ（Material/Cupertino）所有 → selection_chrome.rs
+    //   ハンドルのヒット半径・ツールバーのラベル送り（advance）… 選択レイアウト側（tree 非経由）
     //   Touch インジケータのフェード時間・スクロールバーのページステップ … tree 非経由パス
   }
 }

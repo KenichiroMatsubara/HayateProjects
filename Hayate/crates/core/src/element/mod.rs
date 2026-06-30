@@ -56,8 +56,8 @@ pub use layout_pass::LayoutPass;
 pub use pseudo_state::PseudoState;
 pub use selection::{DocumentSelection, Selection, SelectionPoint};
 pub use selection_chrome::{
-    SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles, SelectionToolbar,
-    ToolbarAction, ToolbarButton, ToolbarRect,
+    OverflowMenu, SelectionChromeStyle, SelectionHandle, SelectionHandleEnd, SelectionHandles,
+    SelectionToolbar, ToolbarAction, ToolbarButton, ToolbarHit, ToolbarRect,
 };
 pub use style::{
     AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, BoxSizingValue, CursorValue, Dimension,

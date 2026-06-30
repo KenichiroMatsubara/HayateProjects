@@ -50,17 +50,20 @@ spring_rest_offset, spring_rest_velocity).
 `chrome.*` — live: scrollbar thickness / track_margin / min_thumb_length /
 thumb_color / thumb_opacity, indicator thickness / color / opacity,
 selection_highlight_color, composition_underline_thin / thick, placeholder_alpha,
-toolbar_corner_radius.
+toolbar_corner_radius / height / label_font_size / button_pad_x / gap,
+toolbar_divider_color / divider_width, toolbar_elevation_offset_y / blur / spread,
+toolbar_shadow_color.
 
 ### Not overridable here (v1) — require a recompile
 
 These are owned by the switchable theme or the selection layout pass, which the
 override deliberately does not reach:
 
-- Selection **handle** and **toolbar** *colors* and the toolbar **height** /
-  **label font size** — owned by `SelectionChromeStyle` (Material/Cupertino) in
-  `selection_chrome.rs`.
-- Handle **hit radius**, toolbar **gap** / label advance — selection layout
-  geometry.
+- Selection **handle** colors and the toolbar **panel background / label**
+  *colors* — owned by `SelectionChromeStyle` (Material/Cupertino) in
+  `selection_chrome.rs`. (The toolbar's geometry, dividers, and elevation are
+  now live `chrome.*` keys above; only these theme colors stay compiled in.)
+- Handle **hit radius** and the toolbar **label advance** estimate — selection
+  layout geometry read by paths without tree access.
 - Touch indicator **fade timing** (`*_HOLD_MS` / `*_FADE_MS`) and scrollbar
   **page step** — read by paths without tree access.

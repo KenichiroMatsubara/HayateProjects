@@ -42,11 +42,24 @@ pub struct ChromeTuning {
     pub placeholder_alpha: f64,
     // ── フローティング選択ツールバー（Android ネイティブ）、ADR-0097 ──
     //
-    // 調整ノブはテーマ非依存のパネル角丸のみ。ツールバー/ハンドルの色や
-    // ツールバー高さ・ラベルフォントサイズは切替可能な `SelectionChromeStyle`
-    // テーマ（Material/Cupertino）か選択レイアウトパスが持ち、この上書きは触れない
-    // （const のまま、変更には再ビルド）。
+    // 視覚値（高さ・ラベルフォントサイズ・ボタン左右パディング・選択との gap・
+    // ディバイダ色/幅・elevation）は名前付きフィールドで `tuning.json` から再ビルド
+    // 不要に上書きできる。パネル背景/ラベルの*色*とハンドル色だけは引き続き切替式の
+    // `SelectionChromeStyle`（Material/Cupertino）テーマが所有し、この上書きは触れない
+    // （ADR-0097）。
     pub toolbar_corner_radius: f32,
+    pub toolbar_height: f32,
+    pub toolbar_label_font_size: f32,
+    pub toolbar_button_pad_x: f32,
+    pub toolbar_gap: f32,
+    /// ボタン間 Material ディバイダ（新規 affordance なので色も tunable）。
+    pub toolbar_divider_color: [f32; 4],
+    pub toolbar_divider_width: f32,
+    /// パネルの Material elevation（drop shadow）。既存 box-shadow lowering で描く。
+    pub toolbar_elevation_offset_y: f32,
+    pub toolbar_elevation_blur: f32,
+    pub toolbar_elevation_spread: f32,
+    pub toolbar_shadow_color: [f32; 4],
 }
 
 impl Default for ChromeTuning {
@@ -67,6 +80,16 @@ impl Default for ChromeTuning {
             composition_underline_thick: scene_build::COMPOSITION_UNDERLINE_THICK,
             placeholder_alpha: scene_build::PLACEHOLDER_ALPHA,
             toolbar_corner_radius: selection_chrome::TOOLBAR_CORNER_RADIUS,
+            toolbar_height: selection_chrome::TOOLBAR_HEIGHT,
+            toolbar_label_font_size: selection_chrome::TOOLBAR_LABEL_FONT_SIZE,
+            toolbar_button_pad_x: selection_chrome::TOOLBAR_BUTTON_PAD_X,
+            toolbar_gap: selection_chrome::TOOLBAR_GAP,
+            toolbar_divider_color: selection_chrome::TOOLBAR_DIVIDER_COLOR,
+            toolbar_divider_width: selection_chrome::TOOLBAR_DIVIDER_WIDTH,
+            toolbar_elevation_offset_y: selection_chrome::TOOLBAR_ELEVATION_OFFSET_Y,
+            toolbar_elevation_blur: selection_chrome::TOOLBAR_ELEVATION_BLUR,
+            toolbar_elevation_spread: selection_chrome::TOOLBAR_ELEVATION_SPREAD,
+            toolbar_shadow_color: selection_chrome::TOOLBAR_SHADOW_COLOR,
         }
     }
 }
@@ -86,5 +109,15 @@ mod tests {
         assert_eq!(d.placeholder_alpha, scene_build::PLACEHOLDER_ALPHA);
         assert_eq!(d.composition_underline_thick, scene_build::COMPOSITION_UNDERLINE_THICK);
         assert_eq!(d.toolbar_corner_radius, selection_chrome::TOOLBAR_CORNER_RADIUS);
+        assert_eq!(d.toolbar_height, selection_chrome::TOOLBAR_HEIGHT);
+        assert_eq!(d.toolbar_label_font_size, selection_chrome::TOOLBAR_LABEL_FONT_SIZE);
+        assert_eq!(d.toolbar_button_pad_x, selection_chrome::TOOLBAR_BUTTON_PAD_X);
+        assert_eq!(d.toolbar_gap, selection_chrome::TOOLBAR_GAP);
+        assert_eq!(d.toolbar_divider_color, selection_chrome::TOOLBAR_DIVIDER_COLOR);
+        assert_eq!(d.toolbar_divider_width, selection_chrome::TOOLBAR_DIVIDER_WIDTH);
+        assert_eq!(d.toolbar_elevation_offset_y, selection_chrome::TOOLBAR_ELEVATION_OFFSET_Y);
+        assert_eq!(d.toolbar_elevation_blur, selection_chrome::TOOLBAR_ELEVATION_BLUR);
+        assert_eq!(d.toolbar_elevation_spread, selection_chrome::TOOLBAR_ELEVATION_SPREAD);
+        assert_eq!(d.toolbar_shadow_color, selection_chrome::TOOLBAR_SHADOW_COLOR);
     }
 }
