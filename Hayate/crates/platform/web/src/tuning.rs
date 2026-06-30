@@ -204,6 +204,16 @@ pub struct ChromeJson {
     composition_underline_thick: Option<f32>,
     placeholder_alpha: Option<f64>,
     toolbar_corner_radius: Option<f32>,
+    toolbar_height: Option<f32>,
+    toolbar_label_font_size: Option<f32>,
+    toolbar_button_pad_x: Option<f32>,
+    toolbar_gap: Option<f32>,
+    toolbar_divider_color: Option<[f32; 4]>,
+    toolbar_divider_width: Option<f32>,
+    toolbar_elevation_offset_y: Option<f32>,
+    toolbar_elevation_blur: Option<f32>,
+    toolbar_elevation_spread: Option<f32>,
+    toolbar_shadow_color: Option<[f32; 4]>,
 }
 
 impl ChromeJson {
@@ -222,6 +232,16 @@ impl ChromeJson {
         overlay(&mut d.composition_underline_thick, self.composition_underline_thick);
         overlay(&mut d.placeholder_alpha, self.placeholder_alpha);
         overlay(&mut d.toolbar_corner_radius, self.toolbar_corner_radius);
+        overlay(&mut d.toolbar_height, self.toolbar_height);
+        overlay(&mut d.toolbar_label_font_size, self.toolbar_label_font_size);
+        overlay(&mut d.toolbar_button_pad_x, self.toolbar_button_pad_x);
+        overlay(&mut d.toolbar_gap, self.toolbar_gap);
+        overlay(&mut d.toolbar_divider_color, self.toolbar_divider_color);
+        overlay(&mut d.toolbar_divider_width, self.toolbar_divider_width);
+        overlay(&mut d.toolbar_elevation_offset_y, self.toolbar_elevation_offset_y);
+        overlay(&mut d.toolbar_elevation_blur, self.toolbar_elevation_blur);
+        overlay(&mut d.toolbar_elevation_spread, self.toolbar_elevation_spread);
+        overlay(&mut d.toolbar_shadow_color, self.toolbar_shadow_color);
         d
     }
 }

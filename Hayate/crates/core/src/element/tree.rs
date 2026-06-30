@@ -226,6 +226,9 @@ pub struct ElementTree {
     /// フォントコンテキストで一度シェイプしフレーム間で再利用する（ADR-0097）。
     pub(crate) toolbar_label_cache:
         HashMap<crate::element::selection_chrome::ToolbarAction, text::TextLayout>,
+    /// ⋮ オーバーフロートグルグリフのシェイプ済みレイアウト（ADR-0097）。ボタン
+    /// ラベルと同様に一度シェイプして再利用する。
+    pub(crate) toolbar_overflow_label: Option<text::TextLayout>,
 }
 
 impl ElementTree {
@@ -245,6 +248,7 @@ impl ElementTree {
             selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),
             chrome_tuning: crate::element::chrome_tuning::ChromeTuning::default(),
             toolbar_label_cache: HashMap::new(),
+            toolbar_overflow_label: None,
         }
     }
 
@@ -252,7 +256,9 @@ impl ElementTree {
     /// シェイプする（ADR-0097）。ラベルは静的なので一度シェイプして再利用する。
     /// scene の lowering 前に `render` から呼ぶ。
     fn ensure_toolbar_labels(&mut self) {
-        use crate::element::selection_chrome::{ToolbarAction, TOOLBAR_LABEL_FONT_SIZE};
+        use crate::element::selection_chrome::{ToolbarAction, OVERFLOW_GLYPH};
+        // フォントサイズは `ChromeTuning` 由来（再ビルド不要で上書き可、ADR-0097）。
+        let font_size = self.chrome_tuning.toolbar_label_font_size;
         for action in [
             ToolbarAction::Cut,
             ToolbarAction::Copy,
@@ -262,8 +268,11 @@ impl ElementTree {
             if self.toolbar_label_cache.contains_key(&action) {
                 continue;
             }
-            let layout = self.layout.shape_label(action.label(), TOOLBAR_LABEL_FONT_SIZE);
+            let layout = self.layout.shape_label(action.label(), font_size);
             self.toolbar_label_cache.insert(action, layout);
+        }
+        if self.toolbar_overflow_label.is_none() {
+            self.toolbar_overflow_label = Some(self.layout.shape_label(OVERFLOW_GLYPH, font_size));
         }
     }
 
@@ -274,6 +283,12 @@ impl ElementTree {
         action: crate::element::selection_chrome::ToolbarAction,
     ) -> Option<&text::TextLayout> {
         self.toolbar_label_cache.get(&action)
+    }
+
+    /// キャッシュ済みなら、⋮ オーバーフロートグルグリフのシェイプ済みレイアウト
+    /// （ADR-0097）。
+    pub(crate) fn toolbar_overflow_label_layout(&self) -> Option<&text::TextLayout> {
+        self.toolbar_overflow_label.as_ref()
     }
 
     /// 選択 chrome のテーマを切り替える（ADR-0097）。既定は Material。Cupertino は
@@ -292,6 +307,9 @@ impl ElementTree {
     /// 完全な上書きのいずれかを保持する。
     pub fn set_chrome_tuning(&mut self, tuning: crate::element::chrome_tuning::ChromeTuning) {
         self.chrome_tuning = tuning;
+        // ラベルフォントサイズは tuning 由来なので、上書きで再シェイプが要る。
+        self.toolbar_label_cache.clear();
+        self.toolbar_overflow_label = None;
     }
 
     /// scene-build の emit パスが読む、稼働中の chrome 味付け定数。

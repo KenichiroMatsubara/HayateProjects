@@ -269,6 +269,10 @@ pub struct Interaction {
     /// 正規化・縮退・one-per-document・contains clamp の不変条件を interface の裏で
     /// 守る。`Interaction` が主たる mutator で、read 経路は interface 越しに borrow する。
     pub(crate) selection: DocumentSelection,
+    /// フローティングツールバーの ⋮ オーバーフロー副メニューが開いているか
+    /// （ADR-0097）。⋮ トグルの押下で開閉し、選択が変われば閉じる。ツールバーは
+    /// `selection_toolbar` で都度レイアウトし直すので、この開閉状態だけを保持する。
+    pub(crate) toolbar_overflow_open: bool,
 }
 
 impl Default for Interaction {
@@ -289,6 +293,7 @@ impl Default for Interaction {
             last_pointer_pos: None,
             last_cursor: CursorValue::Default,
             selection: DocumentSelection::default(),
+            toolbar_overflow_open: false,
         }
     }
 }
@@ -1198,11 +1203,19 @@ impl ElementTree {
             return None;
         }
         let (actions, bounds) = self.active_selection_chrome()?;
+        let ct = *self.chrome_tuning();
+        let metrics = crate::element::selection_chrome::ToolbarMetrics {
+            height: ct.toolbar_height,
+            button_pad_x: ct.toolbar_button_pad_x,
+            gap: ct.toolbar_gap,
+        };
         crate::element::selection_chrome::layout(
             self.selection_chrome_style,
             &actions,
             bounds,
             self.viewport,
+            metrics,
+            self.interaction.toolbar_overflow_open,
         )
     }
 
@@ -1414,10 +1427,21 @@ impl ElementTree {
     /// 押下がフローティングツールバーのボタンに当たればそれを実行する。ツールバーが
     /// ジェスチャを消費したかを返す（ADR-0097）。
     fn try_selection_toolbar_tap(&mut self, x: f32, y: f32) -> bool {
-        let Some(action) = self.selection_toolbar().and_then(|tb| tb.action_at(x, y)) else {
+        use crate::element::selection_chrome::ToolbarHit;
+        let Some(hit) = self.selection_toolbar().and_then(|tb| tb.hit_test(x, y)) else {
             return false;
         };
-        self.dispatch_toolbar_action(action);
+        match hit {
+            // アクション（可視バー or 開いた副メニュー）はそれを実行し、副メニューを畳む。
+            ToolbarHit::Action(action) => {
+                self.interaction.toolbar_overflow_open = false;
+                self.dispatch_toolbar_action(action);
+            }
+            // ⋮ トグルは副メニューの開閉だけを切り替え、選択は触らない。
+            ToolbarHit::Overflow => {
+                self.interaction.toolbar_overflow_open = !self.interaction.toolbar_overflow_open;
+            }
+        }
         true
     }
 
@@ -2070,6 +2094,8 @@ impl ElementTree {
         if self.interaction.selection.get() == next {
             return;
         }
+        // 選択が実質的に変われば、別アクション集合/レイアウトの古い ⋮ 副メニューを畳む。
+        self.interaction.toolbar_overflow_open = false;
         if let Some(prev) = self.interaction.selection.get() {
             self.mark_selection_dirty(prev);
         }

@@ -499,9 +499,115 @@ fn refresh_selection_toolbar(
     lowering.toolbar_root = Some(emit_selection_toolbar(sg, tree, &toolbar));
 }
 
-/// [`SelectionToolbar`] をトップレベルのオーバーレイ部分木へ lowering する。角丸背景パネルと
-/// その上のボタンごとのラベルテキストランを持つ `Group`。最後に挿入してドキュメントの上に描く。
-/// グループ id を返す。
+/// `[r,g,b,a]`（0..1）の tuning 色を core の [`Color`] へ。
+fn toolbar_color(c: [f32; 4]) -> Color {
+    Color::new(c[0] as f64, c[1] as f64, c[2] as f64, c[3] as f64)
+}
+
+/// 角丸パネル（Material elevation の drop shadow ＋ 背景）を `group` に描く。影は既存の
+/// box-shadow lowering（[`emit_box_shadows`]）を再利用し、新規描画プリミティブを足さない
+/// （ADR-0095/0097）。影パラメータと色は tuning 由来、背景色はテーマ所有。
+fn emit_toolbar_panel(
+    sg: &mut SceneGraph,
+    group: NodeId,
+    style: crate::element::selection_chrome::SelectionChromeStyle,
+    bounds: crate::element::selection_chrome::ToolbarRect,
+    ct: &crate::element::chrome_tuning::ChromeTuning,
+) {
+    let shadow = Shadow {
+        offset_x: 0.0,
+        offset_y: ct.toolbar_elevation_offset_y,
+        blur: ct.toolbar_elevation_blur,
+        spread: ct.toolbar_elevation_spread,
+        color: toolbar_color(ct.toolbar_shadow_color),
+        inset: false,
+    };
+    emit_box_shadows(
+        sg,
+        Some(group),
+        bounds.x,
+        bounds.y,
+        bounds.width,
+        bounds.height,
+        ct.toolbar_corner_radius,
+        std::slice::from_ref(&shadow),
+        1.0,
+        false,
+    );
+    sg.insert_child(
+        group,
+        Node {
+            kind: NodeKind::Rect {
+                x: bounds.x,
+                y: bounds.y,
+                width: bounds.width,
+                height: bounds.height,
+                // パネル/ラベルの色はテーマ所有（Material か Cupertino、ADR-0097）。
+                // テーマ非依存の視覚値（角丸・elevation・divider）だけがチューニング値。
+                color: style.toolbar_background(),
+                corner_radius: ct.toolbar_corner_radius,
+            },
+            children: Vec::new(),
+        },
+    );
+}
+
+/// セル `cell` 内に中央寄せでシェイプ済みラベルのグリフ run を描く。
+fn emit_toolbar_label(
+    sg: &mut SceneGraph,
+    group: NodeId,
+    cell: crate::element::selection_chrome::ToolbarRect,
+    label: &crate::element::text::TextLayout,
+    color: [f32; 4],
+) {
+    let lx = cell.x + (cell.width - label.layout.width()) / 2.0;
+    let ly = cell.y + (cell.height - label.layout.height()) / 2.0;
+    for run in &label.runs {
+        sg.insert_child(
+            group,
+            Node {
+                kind: NodeKind::TextRun {
+                    x: lx,
+                    y: ly,
+                    color,
+                    data: run.clone(),
+                },
+                children: Vec::new(),
+            },
+        );
+    }
+}
+
+/// 縦長の Material ディバイダ（境界 `cx` を中心に幅 `width`、`y..y+height` を覆う）を描く。
+fn emit_toolbar_divider(
+    sg: &mut SceneGraph,
+    group: NodeId,
+    cx: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    color: [f32; 4],
+) {
+    sg.insert_child(
+        group,
+        Node {
+            kind: NodeKind::Rect {
+                x: cx - width / 2.0,
+                y,
+                width,
+                height,
+                color,
+                corner_radius: 0.0,
+            },
+            children: Vec::new(),
+        },
+    );
+}
+
+/// [`SelectionToolbar`] をトップレベルのオーバーレイ部分木へ lowering する（ADR-0097）。
+/// drop shadow（elevation）・角丸背景パネル・ボタンラベル・ボタン間 Material ディバイダ、
+/// そして畳みが起きていれば ⋮ オーバーフロートグルと（開いていれば）副メニューパネルを
+/// 持つ `Group`。最後に挿入してドキュメントの上に描く。グループ id を返す。
 fn emit_selection_toolbar(
     sg: &mut SceneGraph,
     tree: &ElementTree,
@@ -516,46 +622,58 @@ fn emit_selection_toolbar(
         },
         children: Vec::new(),
     });
-    sg.insert_child(
-        group,
-        Node {
-            kind: NodeKind::Rect {
-                x: toolbar.bounds.x,
-                y: toolbar.bounds.y,
-                width: toolbar.bounds.width,
-                height: toolbar.bounds.height,
-                // パネル/ラベルの色はテーマ所有（Material か Cupertino、ADR-0097）で
-                // `toolbar.style` に応じて切り替わるためスタイル由来のまま。テーマ非依存の
-                // `corner_radius` だけがチューニング値。
-                color: toolbar.style.toolbar_background(),
-                corner_radius: ct.toolbar_corner_radius,
-            },
-            children: Vec::new(),
-        },
-    );
+
+    let b = toolbar.bounds;
     let label_color = toolbar.style.toolbar_label();
+    // ディバイダ色は tuning 由来の非プリマルチプライ RGBA をそのまま Rect 色として使う。
+    let divider_color = ct.toolbar_divider_color;
+
+    // elevation + 背景パネル（影が最初なので背面に来る）。
+    emit_toolbar_panel(sg, group, toolbar.style, b, ct);
+
+    // 可視ボタンのラベル。
     for button in &toolbar.buttons {
-        let Some(label) = tree.toolbar_label_layout(button.action) else {
-            continue;
-        };
-        // ラベルをボタンセル内で中央寄せする。
-        let lx = button.bounds.x + (button.bounds.width - label.layout.width()) / 2.0;
-        let ly = button.bounds.y + (button.bounds.height - label.layout.height()) / 2.0;
-        for run in &label.runs {
-            sg.insert_child(
-                group,
-                Node {
-                    kind: NodeKind::TextRun {
-                        x: lx,
-                        y: ly,
-                        color: label_color,
-                        data: run.clone(),
-                    },
-                    children: Vec::new(),
-                },
-            );
+        if let Some(label) = tree.toolbar_label_layout(button.action) {
+            emit_toolbar_label(sg, group, button.bounds, label, label_color);
         }
     }
+
+    // 可視行のボタン間に縦ディバイダ。境界 = 各ボタンの左端（先頭を除く）と、
+    // オーバーフローがあれば ⋮ トグルの左端。
+    for button in toolbar.buttons.iter().skip(1) {
+        emit_toolbar_divider(sg, group, button.bounds.x, b.y, ct.toolbar_divider_width, b.height, divider_color);
+    }
+    if let Some(of) = &toolbar.overflow {
+        if !toolbar.buttons.is_empty() {
+            emit_toolbar_divider(sg, group, of.toggle.x, b.y, ct.toolbar_divider_width, b.height, divider_color);
+        }
+        // ⋮ トグルグリフ。
+        if let Some(label) = tree.toolbar_overflow_label_layout() {
+            emit_toolbar_label(sg, group, of.toggle, label, label_color);
+        }
+        // 開いていれば副メニューパネル（elevation 付き）＋畳まれた項目を縦積みで描く。
+        if of.open {
+            emit_toolbar_panel(sg, group, toolbar.style, of.panel, ct);
+            for (i, item) in of.items.iter().enumerate() {
+                if i > 0 {
+                    // 縦積み項目間の横ディバイダ（境界 = 項目の上端）。
+                    emit_toolbar_divider(
+                        sg,
+                        group,
+                        item.bounds.x + item.bounds.width / 2.0,
+                        item.bounds.y - ct.toolbar_divider_width / 2.0,
+                        item.bounds.width,
+                        ct.toolbar_divider_width,
+                        divider_color,
+                    );
+                }
+                if let Some(label) = tree.toolbar_label_layout(item.action) {
+                    emit_toolbar_label(sg, group, item.bounds, label, label_color);
+                }
+            }
+        }
+    }
+
     group
 }
 
