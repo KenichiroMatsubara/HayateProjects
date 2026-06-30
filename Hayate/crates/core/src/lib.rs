@@ -26,6 +26,7 @@ pub mod share;
 pub mod subscription;
 pub mod surface_lifecycle;
 pub mod touch_input;
+pub mod render_scale;
 pub mod url_launcher;
 pub mod viewport_metrics;
 pub mod wire;
@@ -91,6 +92,9 @@ pub use surface_lifecycle::{
     SurfaceLifecycleAction, SurfaceLifecycleEvent, SurfaceLifecycleState,
 };
 pub use touch_input::{translate_touch, PointerInput, TouchAction};
+pub use render_scale::{
+    effective_content_scale, hit_test_logical, RenderScaleGovernor,
+};
 pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};
 pub use render::{
     DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,
