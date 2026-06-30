@@ -19,6 +19,8 @@ use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
 
+pub mod pipeline_cache;
+pub use pipeline_cache::PipelineCacheKey;
 pub mod raster_thread;
 pub use raster_thread::{RasterHandoff, RasterHandoffError, RasterThread};
 
