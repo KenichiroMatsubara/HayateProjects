@@ -191,6 +191,9 @@ impl Biometric for IosBiometric {
     }
 }
 
+// qr scanner（ADR-0125）は stub を卒業し、`qr_scanner::IosQrScanner`（VisionKit FFI）へ昇格した。
+// audio_output と同じく、実機実装は専用モジュールに置き capability_stubs には残さない。
+
 #[cfg(test)]
 mod tests {
     use super::*;

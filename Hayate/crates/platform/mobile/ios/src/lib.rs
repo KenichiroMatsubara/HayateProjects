@@ -18,6 +18,9 @@
 // cfg(target_os) でリンクし統一 facade として露出するため pub。純粋部分はホストでコンパイル/
 // テストされ、AVAudioEngine FFI glue は target_os="ios" のみ。
 pub mod audio_output;
+// QR スキャナ leaf（ADR-0125）。VisionKit DataScannerViewController を Swift ホスト経由で呼ぶ。
+// 純粋部（契約再露出）はホスト、FFI glue は target_os="ios" のみ。Android leaf と対称。
+pub mod qr_scanner;
 // wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;

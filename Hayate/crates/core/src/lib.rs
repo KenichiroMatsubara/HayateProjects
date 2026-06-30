@@ -17,6 +17,7 @@ pub mod haptics;
 pub mod key_value_store;
 pub mod local_notification;
 pub mod node;
+pub mod qr_scanner;
 pub mod render;
 pub mod scroll;
 pub mod secure_storage;
@@ -49,6 +50,9 @@ pub use geolocation::{Geolocation, Position};
 pub use haptics::{HapticKind, Haptics};
 pub use key_value_store::KeyValueStore;
 pub use local_notification::{LocalNotification, LocalNotifications};
+// async-UI 一発取得 capability（ADR-0125）。file_picker と同型。Mobile Family Adapter の
+// `MobileQrScanner` が iOS/Android leaf を単一 API に解決する（web は family-of-1 で別 leaf）。
+pub use qr_scanner::{QrScanner, ScannedCode};
 pub use secure_storage::SecureStorage;
 // wave-2 ストリーム capability（ADR-0120）。sensors は battery の共有契約土台を再利用しつつ、単一
 // trait ＋ `SensorKind` 引数という一段違う形で全 sensor を出し分ける（高頻度 drain・全件保持）。

@@ -1,4 +1,9 @@
-import { startMiharashiHost, ProtocolMismatchError } from '@miharashi/host-web';
+import {
+  isCameraScanSupported,
+  scanQrFromCamera,
+  startMiharashiHost,
+  ProtocolMismatchError,
+} from '@miharashi/host-web';
 import { HOST_PROTOCOL_VERSION } from '@hayate/host';
 
 /**
@@ -9,10 +14,17 @@ import { HOST_PROTOCOL_VERSION } from '@hayate/host';
  *
  * フレームワークも `@tsubame/renderer-hayate` もここには無い — eval するバンドルが持ち込む。
  * reload の意味づけはホスト側（`@miharashi/host-web`）に閉じ、ネイティブ契約は不変（ADR-0001）。
+ *
+ * dev-server URL は `?dev=` で渡せるが、未指定ならスマホで使える URL ピッカー（カメラ QR スキャン
+ * ＋手入力）を出す。起動コマンドが端末に出した LAN URL の QR をスマホのカメラで読めば、`?dev=` を
+ * 手打ちせずに接続できる（CONTEXT.md「Dev Server」）。
  */
 
-/** `?dev=` 未指定時の dev-server origin。e2e / ローカルの既定ポートに合わせる。 */
+/** `?dev=` も保存値も無いときの dev-server origin。e2e / ローカルの既定ポートに合わせる。 */
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5181';
+
+/** 直近に使った dev-server URL を覚えておく localStorage キー（次回起動の手間を省く）。 */
+const LAST_URL_STORAGE_KEY = 'miharashi.devServerUrl';
 
 /** host.html の surface canvas の id。full reload で差し替える新 canvas にも同じ id を付ける。 */
 const CANVAS_ID = 'miharashi-canvas';
@@ -27,14 +39,22 @@ const HOST_PROTOCOL_VERSION_OVERRIDE_PARAM = 'protocolVersion';
 /** protocol 不一致の明示エラー UI を載せる要素の id。e2e はこれの可視と本文を検証する。 */
 const ERROR_PANEL_ID = 'miharashi-error';
 
+/** URL ピッカー（カメラ QR スキャン + 手入力）の root id。 */
+const PICKER_ID = 'miharashi-picker';
+
 const params = new URLSearchParams(window.location.search);
-const devServerUrl = params.get('dev') ?? DEFAULT_DEV_SERVER_URL;
 const root = document.documentElement;
 
 // e2e の不一致再現用。未指定なら焼き込みの decoder 版数を使う。
 const overrideRaw = params.get(HOST_PROTOCOL_VERSION_OVERRIDE_PARAM);
 const hostProtocolVersion =
   overrideRaw != null && overrideRaw !== '' ? Number(overrideRaw) : HOST_PROTOCOL_VERSION;
+
+/** `192.168.1.5:5179` のようにスキーム無しで入れても繋がるよう `http://` を補う。 */
+function normalizeDevServerUrl(raw: string): string {
+  const trimmed = raw.trim();
+  return /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
+}
 
 /**
  * protocol 不一致の明示エラー UI を表示する。謎クラッシュにせず「このホストは protocol vX、
@@ -76,23 +96,157 @@ function acquireCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-startMiharashiHost({
-  devServerUrl,
-  hostProtocolVersion,
-  acquireCanvas,
-  onBootSettled: (result) => {
-    if (result.ok) {
-      mountCount += 1;
-      root.dataset.miharashiMountCount = String(mountCount);
-      root.dataset.miharashiStatus = 'mounted';
-    } else if (result.error instanceof ProtocolMismatchError) {
-      // 不一致は mount もクラッシュもさせず、明示エラー UI に落とす（#530）。
-      showProtocolMismatch(result.error);
-      console.error('Miharashi host protocol mismatch', result.error);
+/**
+ * dev-server URL のピッカーを出して、確定した URL で resolve する。カメラ QR スキャン
+ * （対応ブラウザ）と手入力の両方を出す。起動コマンドの QR（= LAN URL）をカメラで読めば
+ * そのまま接続できる。`?dev=` があるときは呼ばれない。
+ */
+function pickDevServerUrl(): Promise<string> {
+  return new Promise((resolve) => {
+    const saved = (() => {
+      try {
+        return window.localStorage.getItem(LAST_URL_STORAGE_KEY);
+      } catch {
+        return null;
+      }
+    })();
+
+    const overlay = document.createElement('div');
+    overlay.id = PICKER_ID;
+    overlay.style.cssText =
+      'position:fixed;inset:0;display:flex;flex-direction:column;gap:16px;align-items:center;' +
+      'justify-content:center;padding:24px;background:#0b1020;color:#e2e8f0;' +
+      'font:16px/1.6 system-ui,sans-serif;';
+
+    const title = document.createElement('div');
+    title.textContent = 'Miharashi に接続';
+    title.style.cssText = 'font-size:20px;font-weight:600;';
+
+    const hint = document.createElement('div');
+    hint.textContent = '起動コマンドが表示した QR をカメラで読み取るか、dev-server URL を入力してください。';
+    hint.style.cssText = 'max-width:32em;text-align:center;color:#94a3b8;';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'url';
+    input.placeholder = 'dev-server URL（例 192.168.1.5:5181）';
+    input.value = saved ?? '';
+    input.style.cssText =
+      'width:min(90vw,28em);padding:12px 14px;border-radius:8px;border:1px solid #334155;' +
+      'background:#111827;color:#e2e8f0;font-size:16px;';
+
+    const status = document.createElement('div');
+    status.style.cssText = 'min-height:1.5em;color:#94a3b8;text-align:center;';
+
+    // 背面カメラのプレビュー（スキャン中だけ表示）。
+    const video = document.createElement('video');
+    video.setAttribute('playsinline', '');
+    video.muted = true;
+    video.style.cssText =
+      'display:none;width:min(90vw,28em);aspect-ratio:1/1;object-fit:cover;border-radius:12px;background:#000;';
+
+    const buttons = document.createElement('div');
+    buttons.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;justify-content:center;';
+
+    const connect = document.createElement('button');
+    connect.textContent = '接続';
+    const buttonStyle =
+      'padding:12px 18px;border-radius:8px;border:0;font-size:16px;cursor:pointer;' +
+      'background:#2563eb;color:#fff;';
+    connect.style.cssText = buttonStyle;
+
+    let scanController: { cancel(): void } | undefined;
+
+    const finish = (raw: string): void => {
+      scanController?.cancel();
+      const url = normalizeDevServerUrl(raw);
+      try {
+        window.localStorage.setItem(LAST_URL_STORAGE_KEY, raw.trim());
+      } catch {
+        // localStorage 不可（プライベートモード等）でも接続自体は続行する。
+      }
+      overlay.remove();
+      resolve(url);
+    };
+
+    connect.addEventListener('click', () => {
+      if (input.value.trim() === '') {
+        status.textContent = 'URL を入力してください。';
+        return;
+      }
+      finish(input.value);
+    });
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && input.value.trim() !== '') finish(input.value);
+    });
+
+    buttons.appendChild(connect);
+
+    if (isCameraScanSupported()) {
+      const scan = document.createElement('button');
+      scan.textContent = 'QR スキャン';
+      scan.style.cssText = buttonStyle.replace('#2563eb', '#0ea5e9');
+      scan.addEventListener('click', () => {
+        if (scanController != null) return; // 二重起動を防ぐ
+        status.textContent = 'カメラを起動しています…';
+        video.style.display = 'block';
+        scanController = scanQrFromCamera({
+          video,
+          onResult: (text) => {
+            input.value = text;
+            status.textContent = '読み取りました。接続します…';
+            finish(text);
+          },
+          onError: (error) => {
+            scanController = undefined;
+            video.style.display = 'none';
+            status.textContent = `カメラを使えませんでした（${String(error)}）。URL を入力してください。`;
+          },
+        });
+      });
+      buttons.appendChild(scan);
     } else {
-      root.dataset.miharashiStatus = 'error';
-      root.dataset.miharashiError = String(result.error);
-      console.error('Miharashi host boot failed', result.error);
+      hint.textContent += '（このブラウザはカメラ QR 非対応です。URL を入力してください。）';
     }
-  },
-});
+
+    overlay.append(title, hint, video, input, buttons, status);
+    document.body.appendChild(overlay);
+    input.focus();
+  });
+}
+
+/** ホストを起動する。reload 購読まで張る（full reload ループ）。 */
+function boot(devServerUrl: string): void {
+  startMiharashiHost({
+    devServerUrl,
+    hostProtocolVersion,
+    acquireCanvas,
+    onBootSettled: (result) => {
+      if (result.ok) {
+        mountCount += 1;
+        root.dataset.miharashiMountCount = String(mountCount);
+        root.dataset.miharashiStatus = 'mounted';
+      } else if (result.error instanceof ProtocolMismatchError) {
+        // 不一致は mount もクラッシュもさせず、明示エラー UI に落とす（#530）。
+        showProtocolMismatch(result.error);
+        console.error('Miharashi host protocol mismatch', result.error);
+      } else {
+        root.dataset.miharashiStatus = 'error';
+        root.dataset.miharashiError = String(result.error);
+        console.error('Miharashi host boot failed', result.error);
+      }
+    },
+  });
+}
+
+const devParam = params.get('dev');
+if (devParam != null && devParam !== '') {
+  // 明示指定（e2e / ブックマーク）はそのまま起動する。
+  boot(devParam);
+} else if (params.has('dev')) {
+  // `?dev=`（空）は「既定で繋ぐ」意図とみなし、ピッカーを出さず従来の既定 URL で起動する。
+  boot(DEFAULT_DEV_SERVER_URL);
+} else {
+  // 未指定ならスマホ向けピッカー（QR スキャン + 手入力）を出してから起動する。
+  void pickDevServerUrl().then(boot);
+}

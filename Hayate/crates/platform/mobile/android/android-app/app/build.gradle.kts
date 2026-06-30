@@ -61,6 +61,11 @@ dependencies {
     if (!project.hasProperty("nativedemo")) {
         implementation("com.facebook.fbjni:fbjni:0.7.0")
     }
+
+    // Miharashi: DevServerSetupActivity の「QR スキャン」で dev-server の LAN URL を読む。
+    // Google Code Scanner は Play services のスキャナ UI を使うので、CameraX も独自カメラ権限も
+    // 要らず、起動コマンドが端末に出した QR をそのまま読み取って URL 欄に入れられる。
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }
 
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.

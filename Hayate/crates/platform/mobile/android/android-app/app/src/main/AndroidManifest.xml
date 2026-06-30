@@ -12,6 +12,13 @@
         android:theme="@style/Theme.AppCompat.NoActionBar"
         android:hasCode="true">
 
+        <!-- Google Play services の barcode scanner モジュールを（必要なら）事前に取得させる。
+             これで DevServerSetupActivity の「QR スキャン」が初回でも待ち時間少なく開く。
+             カメラは Play services のスキャナ UI が扱うので CAMERA permission 宣言は不要。 -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <!-- Miharashi の最小 dev-server URL 入力画面（#534）。端末で接続先 URL を入力し、
              internal files dir に書いてからネイティブの GameActivity を明示 Intent で起動する。
              ネイティブはそのファイルを読み戻して fetch / reload の両方を駆動する。 -->

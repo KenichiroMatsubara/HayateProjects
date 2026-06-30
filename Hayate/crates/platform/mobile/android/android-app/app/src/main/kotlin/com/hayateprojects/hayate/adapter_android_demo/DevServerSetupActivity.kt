@@ -24,7 +24,14 @@ import java.io.File
  * host-contract-tested in Rust (`dev_server_target`). Real "type a URL → todo boots" is
  * verified on a local device (out of scope for this issue).
  *
- * QR scanning is intentionally out of scope (future); this issue covers direct URL entry only.
+ * QR scanning: the dev-server startup command prints the LAN URL as a QR code, so on a real
+ * device the user can tap "QR スキャン" to read it with the camera instead of typing the IP.
+ * The scan goes through {@link QrScannerBridge} — the SAME implementation that backs the
+ * cross-platform Rust capability `MobileQrScanner` (ADR-0125; android = Google Code Scanner,
+ * ios = VisionKit). This bootstrap UI is Android-specific, but it does not fork its own scanner:
+ * it reuses the leaf so there is one Android QR implementation. The scanned `rawValue`
+ * (= the dev-server URL) just fills the field; the URL handling (write to the shared file →
+ * launch GameActivity) stays unchanged, so the Rust host contract is untouched.
  */
 class DevServerSetupActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,15 +44,26 @@ class DevServerSetupActivity : AppCompatActivity() {
             setSingleLine(true)
             setText(if (urlFile.exists()) urlFile.readText().trim() else "")
         }
+        val scan = Button(this).apply { text = "QR スキャン" }
         val connect = Button(this).apply { text = "接続して起動" }
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 48, 48, 48)
             addView(input)
+            addView(scan)
             addView(connect)
         }
         setContentView(layout)
+
+        scan.setOnClickListener {
+            // 起動コマンドが端末に出した QR（= dev-server の LAN URL）をカメラで読み、欄に入れる。
+            // 統一 capability の Android leaf（QrScannerBridge）を共有する。キャンセル/失敗は null。
+            QrScannerBridge.startScan(this) { value ->
+                val url = value?.trim().orEmpty()
+                if (url.isNotEmpty()) input.setText(url)
+            }
+        }
 
         connect.setOnClickListener {
             // 入力した URL をネイティブの読み戻し先へ書き、GameActivity（ネイティブ描画）を起動する。

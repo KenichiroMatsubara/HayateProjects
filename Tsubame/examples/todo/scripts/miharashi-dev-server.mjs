@@ -10,7 +10,11 @@
 // readiness 判定）で待つ — それまでは 404 を返す。
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createBundleDevServer } from '@miharashi/dev-server';
+import {
+  ALL_INTERFACES_HOSTNAME,
+  createBundleDevServer,
+  printStartupBanner,
+} from '@miharashi/dev-server';
 
 // `playwright.config.ts` の MIHARASHI_DEV_PORT と一致させる既定ポート。
 const DEFAULT_PORT = 5181;
@@ -26,9 +30,11 @@ const builder = spawn(
   { cwd: todoRoot, stdio: 'inherit' },
 );
 
-const server = createBundleDevServer({ bundlePath, port });
-const origin = await server.listen();
-console.log(`Miharashi dev server: ${origin}`);
+// 0.0.0.0 で listen して同じ LAN のスマホ／別端末からも到達できるようにする（dev-only ツール）。
+// 起動コマンドは LAN URL とその QR を出すので、スマホのカメラで読み取って host へ入力できる。
+const server = createBundleDevServer({ bundlePath, port, hostname: ALL_INTERFACES_HOSTNAME });
+await server.listen();
+printStartupBanner({ port, loopbackUrl: `http://localhost:${port}` });
 
 // プロセス終了時に build --watch の子も確実に落とす。
 const shutdown = () => {

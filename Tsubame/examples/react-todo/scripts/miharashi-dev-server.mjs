@@ -15,7 +15,11 @@
 // readiness 判定）で待つ — それまでは 404 を返す。
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
-import { createBundleDevServer } from '@miharashi/dev-server';
+import {
+  ALL_INTERFACES_HOSTNAME,
+  createBundleDevServer,
+  printStartupBanner,
+} from '@miharashi/dev-server';
 
 // `playwright.config.ts` の MIHARASHI_DEV_PORT と一致させる既定ポート（solid 版 5181 と衝突回避）。
 const DEFAULT_PORT = 5183;
@@ -33,9 +37,11 @@ const watcher = await build({
   build: { watch: {} },
 });
 
-const server = createBundleDevServer({ bundlePath, port });
-const origin = await server.listen();
-console.log(`Miharashi react dev server: ${origin}`);
+// 0.0.0.0 で listen して同じ LAN のスマホ／別端末からも到達できるようにする（dev-only ツール）。
+// 起動コマンドは LAN URL とその QR を出すので、スマホのカメラで読み取って host へ入力できる。
+const server = createBundleDevServer({ bundlePath, port, hostname: ALL_INTERFACES_HOSTNAME });
+await server.listen();
+printStartupBanner({ port, loopbackUrl: `http://localhost:${port}` });
 
 // プロセス終了時に watcher も確実に閉じる。
 const shutdown = () => {
