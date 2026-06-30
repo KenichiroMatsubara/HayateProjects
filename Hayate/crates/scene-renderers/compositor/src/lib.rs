@@ -19,6 +19,9 @@ use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
 
+pub mod raster_thread;
+pub use raster_thread::{RasterHandoff, RasterHandoffError, RasterThread};
+
 /// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は
 /// プレースホルダで、マジックナンバーをロジックへ散らさないことが目的。予算（ビューポート N 枚分）は
 /// platform が注入する既定値で、core のレイヤ判定はこれを知らない（policy=core, budget=platform）。
