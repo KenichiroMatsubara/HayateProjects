@@ -11,8 +11,8 @@ use hayate_core::capability::CapabilityError;
 use hayate_core::{
     Battery, BatteryStatus, Biometric, Connectivity, ConnectivityProvider, DeviceInfo,
     DeviceInfoProvider, FileFilter, FilePicker, Geolocation, HapticKind, Haptics, KeyValueStore,
-    LocalNotification, LocalNotifications, PickedFile, Position, QrScanner, SavePath, ScannedCode,
-    SecureStorage, SensorKind, SensorSample, Sensors, Share, Subscription, UrlLauncher,
+    LocalNotification, LocalNotifications, PickedFile, Position, SavePath, SecureStorage,
+    SensorKind, SensorSample, Sensors, Share, Subscription, UrlLauncher,
 };
 
 /// この leaf の platform 名（`CapabilityError` に載る）。
@@ -191,16 +191,8 @@ impl Biometric for IosBiometric {
     }
 }
 
-/// qr scanner の iOS stub（ADR-0125・実装時 VisionKit `DataScannerViewController`）。`scan` は
-/// `Err(Unimplemented)`（カメラ UI の native 起動はまだ無い）。Android leaf（実機実装済み）と
-/// 対称の facade（`MobileQrScanner`）に載るので、iOS 実装が入っても上位 API は不変。
-#[derive(Default)]
-pub struct IosQrScanner;
-impl QrScanner for IosQrScanner {
-    fn scan(&mut self) -> Result<Option<ScannedCode>, CapabilityError> {
-        Err(ni("qr_scanner"))
-    }
-}
+// qr scanner（ADR-0125）は stub を卒業し、`qr_scanner::IosQrScanner`（VisionKit FFI）へ昇格した。
+// audio_output と同じく、実機実装は専用モジュールに置き capability_stubs には残さない。
 
 #[cfg(test)]
 mod tests {
@@ -231,8 +223,6 @@ mod tests {
             Err(ni("key_value_store"))
         );
         assert_eq!(IosBiometric.is_available(), Err(ni("biometric")));
-        // qr scanner（ADR-0125）: iOS は未実装 stub（VisionKit 実装は後）。scan は Unimplemented。
-        assert_eq!(IosQrScanner.scan(), Err(ni("qr_scanner")));
         // wave-2 battery（ADR-0120）: query/subscribe とも Unimplemented を返し panic しない。
         assert_eq!(IosBattery.query(), Err(ni("battery")));
         assert_eq!(

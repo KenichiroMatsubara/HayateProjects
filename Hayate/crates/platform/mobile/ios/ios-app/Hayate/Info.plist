@@ -25,6 +25,11 @@
     <key>LSRequiresIPhoneOS</key>
     <true/>
 
+    <!-- QR スキャナ capability（ADR-0125）の VisionKit DataScannerViewController がカメラを使う。
+         dev-server の LAN URL QR を読み取るための用途文言（iOS はこれが無いと撮影で必ずクラッシュ）。 -->
+    <key>NSCameraUsageDescription</key>
+    <string>dev-server の QR コードを読み取って接続するためにカメラを使用します。</string>
+
     <!-- wgpu renders via Metal on iOS (ADR-0002 / ADR-0115). Require the metal
          capability — the iOS analogue of Android's android.hardware.vulkan.level. -->
     <key>UIRequiredDeviceCapabilities</key>

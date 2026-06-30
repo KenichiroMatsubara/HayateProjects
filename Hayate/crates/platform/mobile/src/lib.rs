@@ -114,7 +114,7 @@ pub type MobileBiometric = hayate_adapter_ios::capability_stubs::IosBiometric;
 #[cfg(target_os = "android")]
 pub type MobileQrScanner = hayate_adapter_android::qr_scanner::AndroidQrScanner;
 #[cfg(target_os = "ios")]
-pub type MobileQrScanner = hayate_adapter_ios::capability_stubs::IosQrScanner;
+pub type MobileQrScanner = hayate_adapter_ios::qr_scanner::IosQrScanner;
 
 // --- wave-2 stream capability scaffold facade（ADR-0120）---
 // battery が wave-2 ストリーム契約土台のトレーサーバレット。wave-1 と同型の cfg facade で、

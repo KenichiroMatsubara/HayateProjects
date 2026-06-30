@@ -1,4 +1,4 @@
-# QR スキャナを Mobile Family Adapter の capability として iOS/Android 単一 API で扱い、Android は Google Code Scanner で実機実装（本アプリ初の Rust↔Kotlin JNI seam）・iOS は VisionKit を後続 stub とする
+# QR スキャナを Mobile Family Adapter の capability として iOS/Android 単一 API で扱い、Android は Google Code Scanner（本アプリ初の Rust↔Kotlin JNI seam）・iOS は VisionKit DataScannerViewController で両ネイティブ実機実装する
 
 status: accepted
 
@@ -40,10 +40,11 @@ QR スキャンを **Core capability** として定義し、ADR-0117 / ADR-0119 
 - **Android leaf は実機実装**：`hayate_adapter_android::qr_scanner::AndroidQrScanner`。バックエンドは
   **Google Code Scanner**（`play-services-code-scanner`）。Play services がスキャナ UI とカメラ取得を
   内包するので CameraX も独自カメラ権限も要らない。
-- **iOS leaf は後続 stub**：`hayate_adapter_ios::capability_stubs::IosQrScanner` は `Unimplemented` を
-  返す。実機実装は **VisionKit `DataScannerViewController`**（iOS 16+）で後から入れ、facade 名は不変。
-  「昇格は 2 実装から」の例外ではなく、**Android が実機・iOS が stub の状態でも facade 型名と契約は
-  確定済み**なので、iOS 実装は中身の差し替えだけで済む。
+- **iOS leaf も実機実装**：`hayate_adapter_ios::qr_scanner::IosQrScanner`。バックエンドは **VisionKit
+  `DataScannerViewController`**（iOS 16+）。`audio_output`（`hayate_ios_audio_*`）と同型に native は
+  `hayate_ios_qr_*` の薄い C FFI に閉じ、Swift ホスト（ios-app の `QrScanner.swift`）が `@_cdecl` で
+  実装する（ADR-0114 shape 1：Swift が UIKit/VisionKit を持ち Rust は ObjC-free）。stub は卒業し、
+  `audio_output` と同じく専用モジュールへ昇格した（capability_stubs には残さない）。
 - **Web は family-of-1 のまま**：`@miharashi/host-web` の `scanQrFromCamera`（`BarcodeDetector`、
   非対応ブラウザは手入力フォールバック）を直接 leaf として持つ。Family Adapter には載せない。
 - **bootstrap UI は leaf を共有する**：Android の `DevServerSetupActivity`（端末で dev-server URL を
@@ -66,12 +67,15 @@ Kotlin/Java API しか無く NDK 経路が無い**。QR デコードを純 nativ
 ## Consequences
 
 - 上位（Miharashi ホスト / 将来の Tsubame アプリ）は `MobileQrScanner` 一本で iOS/Android の QR
-  スキャンを呼べる。iOS 実機実装（VisionKit）が入っても API は不変。
-- **実機検証はサンドボックス外**：Android の JNI/Code Scanner はビルド（Gradle + NDK + Play services）と
-  端末が要るため host では検証できない（`audio_output` の AAudio FFI と同じ扱い）。host では Core 契約・
-  iOS stub・facade 解決・各 leaf の純粋部をコンパイル/テストする。
-- Android が実機・iOS が stub という非対称が一時的に残る。これは「契約と facade を先に確定し、leaf
-  中身を後で差し替える」ADR-0119 の scaffold 哲学の範囲内で、iOS は VisionKit 実装で対称化する。
+  スキャンを呼べる。両 leaf が実機実装済みで、capability は対称（昇格は 2 実装から・ADR-0117 を満たす）。
+- **実機検証はサンドボックス外**：Android の JNI/Code Scanner（Gradle + NDK + Play services）も iOS の
+  VisionKit FFI（Mac/iOS SDK + カメラ実機）も host では検証できない（`audio_output` の AAudio/
+  AVAudioEngine FFI と同じ扱い）。host では Core 契約・facade 解決・各 leaf の純粋部をコンパイル/
+  テストし、汚い FFI glue は encapsulation guard（`tests/qr_scanner_encapsulation.rs`）で各 leaf 内に
+  封じ込めることをソース走査で固定する。
+- iOS は VisionKit、Android は Code Scanner という別 native UI だが、`MobileQrScanner` という単一 API の
+  裏に隠れる。カメラ権限は iOS が `NSCameraUsageDescription`（Info.plist）、Android は Play services の
+  スキャナ UI が内包（宣言不要）と差があるが、これも facade の外側（packaging）の差として閉じる。
 - `DevServerSetupActivity` は独自スキャナを捨てて leaf を共有するので、Android の QR 実装の二重化が
   無くなる。pre-host bootstrap が Rust capability ではなく Kotlin 入口を直接使うのは、bootstrap が
   Rust ホスト起動**前**に動く Android 固有 UI だからで、跨プラットフォーム API（`MobileQrScanner`）の
