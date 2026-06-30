@@ -1024,6 +1024,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "hayate-layer-compositor"
+version = "0.1.0"
+dependencies = [
+ "hayate-core",
+]
+
+[[package]]
 name = "hayate-platform-desktop"
 version = "0.1.0"
 dependencies = [
