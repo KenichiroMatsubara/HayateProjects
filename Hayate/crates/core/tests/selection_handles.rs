@@ -82,19 +82,21 @@ fn chrome_style_switch_recolors_the_handles_and_is_additive() {
         select_a_range(&mut tree);
         tree.render(0.0);
         let h = tree.selection_handles().expect("handles");
+        // しずく本体は隅別クリップで切り出すベタ塗り矩形（corner_radius=0）。
         draw_ops(&tree)
             .into_iter()
             .find_map(|op| match op {
                 DrawOp::FillRect { x, y, width, height, corner_radius, color }
                     if (x + width / 2.0 - h.start.knob_x).abs() < 0.5
                         && (y + height / 2.0 - h.start.knob_y).abs() < 0.5
-                        && (corner_radius - width / 2.0).abs() < 0.5 =>
+                        && (width - 2.0 * h.start.radius).abs() < 0.5
+                        && corner_radius == 0.0 =>
                 {
                     Some(color)
                 }
                 _ => None,
             })
-            .expect("the start handle knob rect")
+            .expect("the start handle bulb rect")
     };
 
     // Material が既定。Cupertino への切り替えは加法的（同じハンドルモデルで
@@ -107,18 +109,67 @@ fn chrome_style_switch_recolors_the_handles_and_is_additive() {
     );
 }
 
-/// `(kx, ky)` を中心とする塗りつぶし円形ノブ（辺の半分を corner radius に持つ
-/// 正方形 FillRect）が描かれているか。色は問わない。
-fn knob_drawn_at(ops: &[DrawOp], kx: f32, ky: f32) -> bool {
+/// 本体中心 `(kx, ky)`・半径 `r` のしずく本体（隅別クリップで切り出すベタ塗りの
+/// `2r` 四方 FillRect、`corner_radius` は 0）が描かれているか。色は問わない。
+fn knob_drawn_at(ops: &[DrawOp], kx: f32, ky: f32, r: f32) -> bool {
     ops.iter().any(|op| {
         matches!(op,
             DrawOp::FillRect { x, y, width, height, corner_radius, .. }
                 if (x + width / 2.0 - kx).abs() < 0.5
                     && (y + height / 2.0 - ky).abs() < 0.5
-                    && (width - height).abs() < 0.5
-                    && (corner_radius - width / 2.0).abs() < 0.5
-                    && *corner_radius > 0.0)
+                    && (width - 2.0 * r).abs() < 0.5
+                    && (height - 2.0 * r).abs() < 0.5
+                    && *corner_radius == 0.0)
     })
+}
+
+/// ハンドル領域（テキスト行より下）の角丸クリップ矩形を `(corner_radii, box)` で
+/// 集める。core はしずく型ハンドルを `PushClipRect{corner_radii} > FillRect` で描く。
+fn handle_clips(ops: &[DrawOp]) -> Vec<([f32; 4], (f32, f32, f32, f32))> {
+    ops.iter()
+        .filter_map(|op| match op {
+            DrawOp::PushClipRect { x, y, width, height, corner_radii }
+                if *y > 15.0 && *width < 40.0 =>
+            {
+                Some((*corner_radii, (*x, *y, *width, *height)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn handles_are_mirrored_teardrops_framing_the_selection() {
+    // Chrome Android お手本: ドラッグハンドルは真円ではなく左右ミラーの「しずく型」。
+    // start（左端）は tip が右上で本体が左下へ、end（右端）は tip が左上で本体が右下へ。
+    // tip（角の隅 = 角丸 0）は選択の各端に触れ、本体は選択文字に被らず外側へぶら下がる。
+    let (mut tree, _v, _t) = selectable_paragraph();
+    select_a_range(&mut tree);
+    tree.render(0.0);
+
+    let h = tree.selection_handles().expect("handles");
+    let r = h.start.radius;
+    let clips = handle_clips(&draw_ops(&tree));
+    assert_eq!(clips.len(), 2, "exactly two teardrop handle clips are drawn");
+
+    // start = tip 右上（TR=0、他は r）、end = tip 左上（TL=0、他は r）の左右ミラー。
+    let start = clips
+        .iter()
+        .find(|(radii, _)| *radii == [r, 0.0, r, r])
+        .expect("start handle is a teardrop with a square top-right tip");
+    let end = clips
+        .iter()
+        .find(|(radii, _)| *radii == [0.0, r, r, r])
+        .expect("end handle is a teardrop with a square top-left tip");
+
+    // 本体は選択を外から囲む: start の右端（tip）が左、end の左端（tip）が右に来て、
+    // 二つの本体は重ならない（円のように選択文字へ食い込まない）。
+    let start_right = start.1 .0 + start.1 .2;
+    let end_left = end.1 .0;
+    assert!(
+        start_right <= end_left + 0.5,
+        "the start bulb hangs left of the end bulb, framing the selection",
+    );
 }
 
 #[test]
@@ -130,12 +181,12 @@ fn handles_are_drawn_by_core_during_selection() {
     let handles = tree.selection_handles().expect("handles after selecting");
     let ops = draw_ops(&tree);
     assert!(
-        knob_drawn_at(&ops, handles.start.knob_x, handles.start.knob_y),
-        "the start handle knob is drawn at its position",
+        knob_drawn_at(&ops, handles.start.knob_x, handles.start.knob_y, handles.start.radius),
+        "the start handle bulb is drawn at its position",
     );
     assert!(
-        knob_drawn_at(&ops, handles.end.knob_x, handles.end.knob_y),
-        "the end handle knob is drawn at its position",
+        knob_drawn_at(&ops, handles.end.knob_x, handles.end.knob_y, handles.end.radius),
+        "the end handle bulb is drawn at its position",
     );
 }
 
@@ -145,8 +196,8 @@ fn handles_disappear_from_the_scene_when_the_selection_clears() {
     select_a_range(&mut tree);
     tree.render(0.0);
     let handles = tree.selection_handles().expect("handles");
-    let (sx, sy) = (handles.start.knob_x, handles.start.knob_y);
-    assert!(knob_drawn_at(&draw_ops(&tree), sx, sy), "knob present while selecting");
+    let (sx, sy, sr) = (handles.start.knob_x, handles.start.knob_y, handles.start.radius);
+    assert!(knob_drawn_at(&draw_ops(&tree), sx, sy, sr), "knob present while selecting");
 
     // 空白部分をタップして選択を解除し、再描画する。
     tree.on_pointer_down(2.0, 150.0);
@@ -155,7 +206,7 @@ fn handles_disappear_from_the_scene_when_the_selection_clears() {
 
     assert!(tree.selection_handles().is_none(), "selection cleared");
     assert!(
-        !knob_drawn_at(&draw_ops(&tree), sx, sy),
+        !knob_drawn_at(&draw_ops(&tree), sx, sy, sr),
         "the handle overlay is removed once the selection clears",
     );
 }

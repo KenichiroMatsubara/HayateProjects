@@ -448,17 +448,33 @@ fn emit_selection_handles(
         children: Vec::new(),
     });
     for handle in [&handles.start, &handles.end] {
-        let d = handle.radius * 2.0;
-        sg.insert_child(
+        // しずく型 = 3 隅を丸め tip の隅だけ角にした角丸クリップ × ベタ塗り矩形
+        // （Chrome Android お手本、ADR-0097）。`Rect` の単一 `corner_radius` では
+        // 隅ごとに丸めを変えられないため、隅別の `Clip` で形を切り出す。
+        let (x, y, w, h) = handle.draw_box();
+        let clip = sg.insert_child(
             group,
             Node {
+                kind: NodeKind::Clip {
+                    x,
+                    y,
+                    width: w,
+                    height: h,
+                    corner_radii: handle.corner_radii(),
+                },
+                children: Vec::new(),
+            },
+        );
+        sg.insert_child(
+            clip,
+            Node {
                 kind: NodeKind::Rect {
-                    x: handle.knob_x - handle.radius,
-                    y: handle.knob_y - handle.radius,
-                    width: d,
-                    height: d,
+                    x,
+                    y,
+                    width: w,
+                    height: h,
                     color,
-                    corner_radius: handle.radius,
+                    corner_radius: 0.0,
                 },
                 children: Vec::new(),
             },
