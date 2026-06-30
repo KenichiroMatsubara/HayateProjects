@@ -97,17 +97,40 @@ pub enum SelectionHandleEnd {
     End,
 }
 
-/// Material のしずく型ドラッグハンドル1個。選択のキャレット端の直下に下がる円形の
-/// つまみで、ドラッグでその端点を調整する（ADR-0097）。形状はスタイル非依存で、
-/// テーマは色付けのみ行う。
+/// Material のしずく型ドラッグハンドル1個。選択のキャレット端から外側へ下がる
+/// しずく型のつまみで、ドラッグでその端点を調整する（ADR-0097）。形状はスタイル
+/// 非依存で、テーマは色付けのみ行う。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SelectionHandle {
     pub end: SelectionHandleEnd,
-    /// つまみ中心（canvas 座標）— 円形のグラブ対象。
+    /// しずくの本体（bulb）中心（canvas 座標）— 円形のグラブ対象。キャレット端から
+    /// 外側へ `radius` ずらしてあり、tip（角の隅）が選択の端に触れる。
     pub knob_x: f32,
     pub knob_y: f32,
     /// 見えるつまみの半径。
     pub radius: f32,
+}
+
+impl SelectionHandle {
+    /// しずく本体の描画ボックス（canvas 座標の `(x, y, width, height)`）。bulb 中心
+    /// `(knob_x, knob_y)` を囲む `2*radius` 四方。
+    pub fn draw_box(self) -> (f32, f32, f32, f32) {
+        let d = self.radius * 2.0;
+        (self.knob_x - self.radius, self.knob_y - self.radius, d, d)
+    }
+
+    /// しずく型を作るボックスの角丸（TL, TR, BR, BL）。Chrome Android お手本では、
+    /// 選択側を向く上の隅だけを角（半径 0 の tip）にし、残り 3 隅を半径 `radius` で
+    /// 丸める。`Start`（左端）は tip が右上、`End`（右端）は tip が左上の左右ミラー。
+    pub fn corner_radii(self) -> [f32; 4] {
+        let r = self.radius;
+        match self.end {
+            // tip = 右上 → 本体は左下へ。
+            SelectionHandleEnd::Start => [r, 0.0, r, r],
+            // tip = 左上 → 本体は右下へ。
+            SelectionHandleEnd::End => [0.0, r, r, r],
+        }
+    }
 }
 
 /// アクティブな選択を挟む Material ドラッグハンドルの対（ADR-0097）。範囲の各端に
@@ -146,18 +169,27 @@ pub(crate) const HANDLE_RADIUS: f32 = 8.0;
 pub(crate) const HANDLE_HIT_RADIUS: f32 = 22.0;
 
 /// 選択の両端のキャレット端（canvas 座標の `(x, baseline_bottom_y)`）から Material
-/// ドラッグハンドル2個を配置する。各つまみはテキスト端の半径1つ下に下げ、しずくが
-/// ベースラインに接するようにする（ADR-0097）。
+/// ドラッグハンドル2個を配置する。各しずくの tip（角の隅）はキャレット端に置き、
+/// 本体は選択の*外側*へ斜め下にぶら下げる（Chrome Android お手本）。`Start` は左下へ、
+/// `End` は右下へ。これで本体が選択の先頭/末尾グリフに被らず、選択を外から囲む。
 pub(crate) fn layout_handles(
     style: SelectionChromeStyle,
     start_caret: (f32, f32),
     end_caret: (f32, f32),
 ) -> SelectionHandles {
-    let handle = |end: SelectionHandleEnd, (cx, cy): (f32, f32)| SelectionHandle {
-        end,
-        knob_x: cx,
-        knob_y: cy + HANDLE_RADIUS,
-        radius: HANDLE_RADIUS,
+    let handle = |end: SelectionHandleEnd, (cx, cy): (f32, f32)| {
+        // bulb 中心をキャレット端から外側へ radius ずらすと、tip（内側上の隅）が
+        // ちょうどキャレット端 `(cx, cy)` に来る。
+        let knob_x = match end {
+            SelectionHandleEnd::Start => cx - HANDLE_RADIUS,
+            SelectionHandleEnd::End => cx + HANDLE_RADIUS,
+        };
+        SelectionHandle {
+            end,
+            knob_x,
+            knob_y: cy + HANDLE_RADIUS,
+            radius: HANDLE_RADIUS,
+        }
     };
     SelectionHandles {
         style,
@@ -356,16 +388,27 @@ mod tests {
     }
 
     #[test]
-    fn handles_hang_below_both_selection_ends() {
-        // 一行範囲の両端のキャレット端は同じベースラインを共有し、しずくのつまみは
-        // その直下に、各端の x に固定されて下がる。
+    fn handles_hang_outward_below_both_selection_ends() {
+        // 一行範囲の両端のキャレット端は同じベースラインを共有し、しずくの本体は
+        // その下に、各端の*外側*（start は左、end は右）へ半径ぶんずれて下がる。
+        // tip（角の隅）がちょうどキャレット端に来て、選択を外から囲む。
         let h = layout_handles(SelectionChromeStyle::Material, (10.0, 20.0), (80.0, 20.0));
         assert_eq!(h.start.end, SelectionHandleEnd::Start);
         assert_eq!(h.end.end, SelectionHandleEnd::End);
-        assert_eq!(h.start.knob_x, 10.0);
-        assert_eq!(h.end.knob_x, 80.0);
+        // 本体中心はキャレット端から外側へ radius オフセット。
+        assert_eq!(h.start.knob_x, 10.0 - HANDLE_RADIUS);
+        assert_eq!(h.end.knob_x, 80.0 + HANDLE_RADIUS);
         assert!(h.start.knob_y > 20.0, "knob hangs below the text edge");
         assert_eq!(h.start.knob_y, h.end.knob_y);
+        // 左右ミラーのしずく: start の tip は右上、end の tip は左上。
+        let r = HANDLE_RADIUS;
+        assert_eq!(h.start.corner_radii(), [r, 0.0, r, r]);
+        assert_eq!(h.end.corner_radii(), [0.0, r, r, r]);
+        // tip は選択の各端に触れる: start 本体の右端、end 本体の左端がキャレット x。
+        let (sx, _, sw, _) = h.start.draw_box();
+        let (ex, _, _, _) = h.end.draw_box();
+        assert_eq!(sx + sw, 10.0, "start tip sits at the left selection edge");
+        assert_eq!(ex, 80.0, "end tip sits at the right selection edge");
     }
 
     #[test]
