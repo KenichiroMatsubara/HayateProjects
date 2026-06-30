@@ -17,6 +17,10 @@ pub(crate) struct AnchorEntry {
     pub last_displayed: Option<Visual>,
     /// この要素の進行中トランジション（プロパティ単位）。
     pub transitions: ElementTransitions,
+    /// この要素が compositing layer の境界か（ADR-0125）。`load_compositing_layers` が live state
+    /// から導出して焼き付ける派生キャッシュで、真実の源は要素の trigger（transition/transform/
+    /// scroll）。バックエンドは本 slice では参照しない（layers があっても出力同一）。
+    pub is_compositing_layer: bool,
 }
 
 impl AnchorEntry {
@@ -25,6 +29,7 @@ impl AnchorEntry {
             anchor_id,
             last_displayed: None,
             transitions: ElementTransitions::default(),
+            is_compositing_layer: false,
         }
     }
 

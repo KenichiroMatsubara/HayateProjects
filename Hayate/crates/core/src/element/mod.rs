@@ -3,6 +3,7 @@ pub mod ambient_defaults;
 pub mod caret_geometry;
 pub mod chrome_tuning;
 pub mod clipboard;
+pub mod compositing;
 pub mod document_runtime;
 mod engine;
 pub mod edit_state;

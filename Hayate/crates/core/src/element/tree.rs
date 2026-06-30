@@ -11,6 +11,7 @@ use crate::element::ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
 use crate::element::event_spec::DocumentEventKind;
 
 pub use crate::element::event_spec::Event;
+use crate::element::compositing;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::inline_text::{self, ifc_root};
@@ -2098,6 +2099,81 @@ impl ElementTree {
     /// `visual_dirty` には現れない。これらの継続要求を畳み込むのは後続作業。
     pub fn has_pending_visual_work(&self) -> bool {
         !self.engine.visual_dirty.is_empty()
+    }
+
+    /// この要素の compositing 事実（ADR-0125）を live state から読む。境界判定に使う純データで、
+    /// transition active は保持中 anchor、transform/scroll は要素から取る。`ElementTree` の位相を
+    /// 読むだけで、判定そのものは純関数 `compositing` モジュールに閉じる（ADR-0099/0086）。
+    pub fn compositing_facts(&self, id: ElementId) -> compositing::CompositingFacts {
+        let el = self.elements.get(&id);
+        compositing::CompositingFacts {
+            has_active_transition: self
+                .scene_lowering
+                .anchors
+                .get(&id)
+                .is_some_and(|e| e.transitions.is_active()),
+            has_transform: el.is_some_and(|e| e.transform.is_some()),
+            is_scroll_container: el.is_some_and(|e| e.kind == ElementKind::ScrollView),
+        }
+    }
+
+    /// root からの DFS で全要素 id を document 順に返す。レイヤ順序を決定的にするため。
+    fn elements_in_document_order(&self) -> Vec<ElementId> {
+        let mut out = Vec::new();
+        if let Some(root) = self.root {
+            let mut stack = vec![root];
+            while let Some(id) = stack.pop() {
+                out.push(id);
+                if let Some(el) = self.elements.get(&id) {
+                    // 子を逆順で push して document 順（先頭子から）に訪れる。
+                    for &child in el.children.iter().rev() {
+                        stack.push(child);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// compositing layer 境界の要素集合を document 順（決定的）と HashSet で返す。
+    fn compositing_boundaries(&self) -> (Vec<ElementId>, HashSet<ElementId>) {
+        let ordered: Vec<ElementId> = self
+            .elements_in_document_order()
+            .into_iter()
+            .filter(|&id| self.compositing_facts(id).forms_layer())
+            .collect();
+        let set = ordered.iter().copied().collect();
+        (ordered, set)
+    }
+
+    /// compositing layer ツリーを live state から導出して load する（ADR-0125 コア半分）。境界要素の
+    /// anchor に `is_compositing_layer` を焼き付け、レイヤ親子（layer id ＝境界要素の `ElementId`）を
+    /// 返す。バックエンドは本 slice ではこれを無視する＝出力は不変（golden parity）。
+    pub fn load_compositing_layers(&mut self) -> compositing::LayerTree {
+        let (ordered, boundaries) = self.compositing_boundaries();
+        // 最新の境界判定を保持中 anchor へ焼き付ける（持っている anchor のみ）。
+        for (id, anchor) in self.scene_lowering.anchors.iter_mut() {
+            anchor.is_compositing_layer = boundaries.contains(id);
+        }
+        compositing::build_layer_tree(ordered, &boundaries, |id| {
+            self.elements.get(&id).and_then(|e| e.parent)
+        })
+    }
+
+    /// 現在の visual / shape / structure dirty から `layer_dirty` を導出する（ADR-0125）。各 dirty
+    /// 要素を内包する最近接レイヤを再 raster 対象とする。どのレイヤにも内包されない dirty は無視。
+    pub fn layer_dirty(&self) -> HashSet<ElementId> {
+        let (_, boundaries) = self.compositing_boundaries();
+        let dirty = self
+            .engine
+            .visual_dirty
+            .keys()
+            .chain(self.engine.shape_dirty.iter())
+            .chain(self.engine.structure_dirty.iter())
+            .copied();
+        compositing::derive_layer_dirty(dirty, &boundaries, |id| {
+            self.elements.get(&id).and_then(|e| e.parent)
+        })
     }
 
     pub fn test_shape_dirty_contains(&self, id: ElementId) -> bool {
