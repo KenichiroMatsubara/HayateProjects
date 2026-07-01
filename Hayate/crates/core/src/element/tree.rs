@@ -235,6 +235,12 @@ pub struct ElementTree {
     /// [`set_scroll_tuning`](Self::set_scroll_tuning) 経由で `tuning.json` を重ね、
     /// 再ビルドなしに実機で感触を調整する。慣性・ばね戻しの積分が読む。
     pub(crate) scroll_tuning: crate::scroll::ScrollPhysicsTuning,
+    /// 稼働中の Scroll Physics Profile（感触。ADR-0113/0131）。既定は
+    /// `ScrollPhysicsProfile::Auto`（iOS 風に解決）。dev ビルドは
+    /// [`set_scroll_profile`](Self::set_scroll_profile) 経由で `tuning.json` の
+    /// `profile` を重ねる。scene lowering の scroll group アフィンだけがこれで分岐し、
+    /// 物理・保存 offset・イベントは profile 非依存でパリティ。
+    pub(crate) scroll_profile: crate::scroll::ScrollPhysicsProfile,
     /// 直近 `render` に渡されたホストクロック（ms）。慣性 step のフレーム間 dt を
     /// 取るために保持する。まだ 1 度も render していなければ `None`。
     pub(crate) last_frame_ms: Option<f64>,
@@ -259,6 +265,7 @@ impl ElementTree {
             toolbar_label_cache: HashMap::new(),
             toolbar_overflow_label: None,
             scroll_tuning: crate::scroll::ScrollPhysicsProfile::Auto.default_tuning(),
+            scroll_profile: crate::scroll::ScrollPhysicsProfile::Auto,
             last_frame_ms: None,
         }
     }
@@ -1568,6 +1575,24 @@ impl ElementTree {
     /// を重ねるための seam。本番は既定（`ScrollPhysicsProfile::Auto` 解決値）のまま。
     pub fn set_scroll_tuning(&mut self, tuning: crate::scroll::ScrollPhysicsTuning) {
         self.scroll_tuning = tuning;
+    }
+
+    /// scene lowering が読む稼働中のスクロール物理チューニング。
+    pub(crate) fn scroll_tuning(&self) -> &crate::scroll::ScrollPhysicsTuning {
+        &self.scroll_tuning
+    }
+
+    /// 稼働中の Scroll Physics Profile を差し替える（ADR-0113/0131）。dev ビルドが
+    /// `tuning.json` の `profile` を重ねるための seam。本番は既定（`Auto` → iOS）のまま。
+    /// scene lowering の overscroll 表現（rubber-band translate / 一様スケール stretch）だけを
+    /// 変え、物理・保存 offset・`scroll` イベント・スクロールバー indicator はパリティ。
+    pub fn set_scroll_profile(&mut self, profile: crate::scroll::ScrollPhysicsProfile) {
+        self.scroll_profile = profile;
+    }
+
+    /// scene lowering が読む稼働中の Scroll Physics Profile。
+    pub(crate) fn scroll_profile(&self) -> crate::scroll::ScrollPhysicsProfile {
+        self.scroll_profile
     }
 
     /// リリース済み慣性スクロールを起動する（ADR-0082）。`sv` は指を離した scroll-view、

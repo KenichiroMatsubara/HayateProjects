@@ -141,6 +141,15 @@ pub mod physics {
     /// [`SPRING_REST_OFFSET`] 内に入った時、この速度(px/ms)未満でばねがエッジへスナップし
     /// アニメーションを終える。実機キャリブレーション済み。
     pub const SPRING_REST_VELOCITY: f32 = 0.10;
+
+    // ── Android stretch overscroll（ADR-0131） ──
+
+    /// Android 風 stretch overscroll の上限伸び率（一様スケール近似）。エッジがビューポート
+    /// 寸法いっぱいに overscroll したとき、ピン留めした端を固定してコンテンツを内側へ最大
+    /// `1 + STRETCH_MAX` 倍に伸ばす。iOS profile は使わない（rubber-band translate のまま）。
+    /// placeholder **0.15**（実機校正待ち）。マジックナンバーにせず `tuning.json` で再ビルド
+    /// なしに上書きできるよう名前付き定数＋ [`ScrollPhysicsTuning`] フィールドにする。
+    pub const STRETCH_MAX: f32 = 0.15;
 }
 
 /// スクロール物理ノブの、実行時に上書き可能なコピー。[`physics`] 定数（と [`SCROLL_SLOP_PX`]）が
@@ -160,6 +169,7 @@ pub struct ScrollPhysicsTuning {
     pub spring_damping: f32,
     pub spring_rest_offset: f32,
     pub spring_rest_velocity: f32,
+    pub stretch_max: f32,
 }
 
 impl Default for ScrollPhysicsTuning {
@@ -176,6 +186,7 @@ impl Default for ScrollPhysicsTuning {
             spring_damping: physics::SPRING_DAMPING,
             spring_rest_offset: physics::SPRING_REST_OFFSET,
             spring_rest_velocity: physics::SPRING_REST_VELOCITY,
+            stretch_max: physics::STRETCH_MAX,
         }
     }
 }
@@ -205,6 +216,20 @@ fn overscroll_curve(x: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
         return x.max(0.0);
     }
     (1.0 - 1.0 / (x * t.rubber_band_c / dimension + 1.0)) * dimension
+}
+
+/// Android 風 stretch overscroll の一様スケール係数（ADR-0131）。`displacement` は符号付きの
+/// 越境変位（エッジからの overscroll 距離。iOS profile の rubber-band と同じ既存の越境変位を
+/// read し替えるだけで、新しい物理状態は持たない）、`dimension` は当該軸のビューポート寸法。
+/// 写像 `1 + clamp(|displacement| / dimension, 0, 1) * stretch_max`：範囲内（変位 0）は 1.0、
+/// 越えるほど単調に増え、変位が `dimension` に達すると `1 + stretch_max` で頭打ち（有界）、
+/// 両端で対称。`dimension` が非正なら 1.0（伸ばすものがない——ゼロ除算回避）。
+pub fn overscroll_stretch_scale(displacement: f32, dimension: f32, t: &ScrollPhysicsTuning) -> f32 {
+    if dimension <= 0.0 {
+        return 1.0;
+    }
+    let ratio = (displacement.abs() / dimension).clamp(0.0, 1.0);
+    1.0 + ratio * t.stretch_max
 }
 
 /// 速度(px/ms)を対称な解放上限にクランプする。
@@ -315,23 +340,40 @@ pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &
 /// 本モジュールの物理）と Android 風（OverScroller spline＋Material stretch）は別アルゴリズムで、
 /// いずれも Hayate Core が所有する。
 ///
-/// **現状は `Auto` のみを公開・実装する。** `Auto` は唯一実装済みの iOS 風プロファイルへ解決する。
-/// 明示 `Ios` / `Android` 選択と Android プロファイルの実体は、Android タッチスクロール実装時に
-/// 本 enum へ variant として追加する（ADR-0113）。Scroll Gesture（意図分類）とは別軸。
+/// `Auto` は唯一 platform 解決される感触で、現状は iOS 風プロファイルへ解決する（既定・不変）。
+/// `Android` は Material 風 stretch overscroll（一様スケール近似、ADR-0131）を **scene lowering
+/// 一箇所**で選ぶ。物理・保存 `scroll_offset`・Scroll Gesture・`scroll` イベント・スクロールバー
+/// indicator は iOS と完全パリティで、感触差は overscroll の見せ方（rubber-band translate か
+/// 一様スケール stretch か）だけ。明示 `Ios` 選択と Android の spline fling は将来（ADR-0113/0131）。
+/// Scroll Gesture（意図分類）とは別軸。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ScrollPhysicsProfile {
     /// 実行プラットフォームに合わせて解決する（現状は iOS 風プロファイル）。
     #[default]
     Auto,
+    /// Android 風の「画面が伸びる」stretch overscroll（一様スケール近似、ADR-0131）。dev の
+    /// `tuning.json` の `profile: "android"` でのみ選ぶ。`Auto` の UA 自動解決は将来。
+    Android,
 }
 
 impl ScrollPhysicsProfile {
-    /// この感触の既定物理チューニング。`Auto` は iOS 風プロファイルへ解決する。Platform Adapter は
-    /// 必要なら開発時にこの上へ値をオーバーレイする（例: web の `tuning.json`）。本番は素の既定値。
+    /// この感触の既定物理チューニング。`Auto` は iOS 風プロファイルへ解決する。`Android` は
+    /// 物理（fling/spring/rubber-band）が iOS とパリティなので同じ既定値を返す——感触差は
+    /// scene lowering の overscroll 表現のみ（[`uses_stretch_overscroll`](Self::uses_stretch_overscroll)）。
+    /// Platform Adapter は必要なら開発時にこの上へ値をオーバーレイする（例: web の `tuning.json`）。本番は素の既定値。
     pub fn default_tuning(self) -> ScrollPhysicsTuning {
         match self {
-            ScrollPhysicsProfile::Auto => ScrollPhysicsTuning::default(),
+            ScrollPhysicsProfile::Auto | ScrollPhysicsProfile::Android => {
+                ScrollPhysicsTuning::default()
+            }
         }
+    }
+
+    /// この感触が overscroll を Android 風の一様スケール stretch で見せるか（ADR-0131）。iOS 風
+    /// （`Auto`）は overshoot を content translate の rubber-band で見せるので `false`。scene
+    /// lowering の scroll group アフィン合成はこの一点だけで分岐する。
+    pub fn uses_stretch_overscroll(self) -> bool {
+        matches!(self, ScrollPhysicsProfile::Android)
     }
 }
 
@@ -360,6 +402,66 @@ mod tests {
         assert_eq!(d.spring_damping, physics::SPRING_DAMPING);
         assert_eq!(d.spring_rest_offset, physics::SPRING_REST_OFFSET);
         assert_eq!(d.spring_rest_velocity, physics::SPRING_REST_VELOCITY);
+        assert_eq!(d.stretch_max, physics::STRETCH_MAX);
+    }
+
+    #[test]
+    fn stretch_max_is_a_named_tunable_constant_not_a_magic_number() {
+        // Android stretch overscroll の上限伸び率を単一の名前付きノブに保つため固定。
+        // placeholder 0.15（実機校正待ち）。マジックナンバーにしない。
+        assert_eq!(physics::STRETCH_MAX, 0.15);
+        // default チューニングが定数を反映するので、`tuning.json` で再ビルドなしに上書きできる。
+        assert_eq!(ScrollPhysicsTuning::default().stretch_max, physics::STRETCH_MAX);
+    }
+
+    #[test]
+    fn overscroll_stretch_scale_is_unity_inside_range_grows_bounded_and_symmetric() {
+        let t = t();
+        let dim = 200.0;
+        // 範囲内（越境変位 0）は伸びなし。
+        assert_eq!(overscroll_stretch_scale(0.0, dim, &t), 1.0);
+        // 越境すると 1.0 超で単調増加。
+        let near = overscroll_stretch_scale(-20.0, dim, &t);
+        let mid = overscroll_stretch_scale(-80.0, dim, &t);
+        let far = overscroll_stretch_scale(-160.0, dim, &t);
+        assert!(near > 1.0, "past the edge stretches (got {near})");
+        assert!(mid > near && far > mid, "monotonic increase outward");
+        // STRETCH_MAX で頭打ち（有界）: 変位が dimension を超えても 1 + STRETCH_MAX を超えない。
+        let capped = overscroll_stretch_scale(-100_000.0, dim, &t);
+        assert!(
+            (capped - (1.0 + physics::STRETCH_MAX)).abs() < 1e-6,
+            "bounded at 1 + STRETCH_MAX (got {capped})",
+        );
+        // ちょうど dimension で頭打ちに達する。
+        assert!((overscroll_stretch_scale(dim, dim, &t) - (1.0 + physics::STRETCH_MAX)).abs() < 1e-6);
+        // 両端対称: 同じ大きさの正負の変位は同じスケール。
+        assert_eq!(
+            overscroll_stretch_scale(-50.0, dim, &t),
+            overscroll_stretch_scale(50.0, dim, &t),
+        );
+    }
+
+    #[test]
+    fn overscroll_stretch_scale_has_no_stretch_without_a_dimension() {
+        // dimension が非正なら伸ばすものがない（ゼロ除算回避）。
+        assert_eq!(overscroll_stretch_scale(-50.0, 0.0, &t()), 1.0);
+    }
+
+    #[test]
+    fn android_profile_uses_stretch_overscroll_while_auto_stays_ios() {
+        // 既定は不変: Auto は iOS 風 profile へ解決し stretch を使わない（rubber-band translate）。
+        assert_eq!(ScrollPhysicsProfile::default(), ScrollPhysicsProfile::Auto);
+        assert!(!ScrollPhysicsProfile::Auto.uses_stretch_overscroll());
+        assert_eq!(
+            ScrollPhysicsProfile::Auto.default_tuning(),
+            ScrollPhysicsTuning::default(),
+        );
+        // Android は一様スケール stretch overscroll を使う。物理チューニングは iOS とパリティ。
+        assert!(ScrollPhysicsProfile::Android.uses_stretch_overscroll());
+        assert_eq!(
+            ScrollPhysicsProfile::Android.default_tuning(),
+            ScrollPhysicsTuning::default(),
+        );
     }
 
     #[test]
@@ -473,6 +575,8 @@ mod tests {
         assert_eq!(physics::SPRING_DAMPING, 0.015);
         assert_eq!(physics::SPRING_REST_OFFSET, 0.5);
         assert_eq!(physics::SPRING_REST_VELOCITY, 0.10);
+        // Android stretch のノブも同じブロックにある。
+        assert_eq!(physics::STRETCH_MAX, 0.15);
     }
 
     #[test]
