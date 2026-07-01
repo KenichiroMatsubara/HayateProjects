@@ -87,6 +87,32 @@ impl VelloSceneRenderer {
     }
 }
 
+// perf プローブ用 seam（`tests/perf_probe.rs`）：GPU なしで「SceneGraph → vello Scene
+// エンコード」だけの所要時間を測るために公開する。公開契約ではない。
+#[doc(hidden)]
+pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
+    let mut scene = Scene::new();
+    {
+        let mut painter = VelloPainter::new(&mut scene);
+        let scaled = content_scale != 1.0;
+        if scaled {
+            painter.push_transform([
+                content_scale as f64,
+                0.0,
+                0.0,
+                content_scale as f64,
+                0.0,
+                0.0,
+            ]);
+        }
+        render_scene_graph(graph, &mut painter);
+        if scaled {
+            painter.pop_transform();
+        }
+    }
+    scene
+}
+
 pub fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
     let target_texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("hayate_vello_target"),

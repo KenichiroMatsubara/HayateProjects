@@ -1070,6 +1070,7 @@ name = "hayate-scene-renderer-vello"
 version = "0.1.0"
 dependencies = [
  "hayate-core",
+ "hayate-demo-fixtures",
  "hayate-scene-test-support",
  "pollster",
  "skrifa",
