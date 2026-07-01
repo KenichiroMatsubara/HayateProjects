@@ -273,6 +273,16 @@ pub struct Interaction {
     /// （ADR-0097）。⋮ トグルの押下で開閉し、選択が変われば閉じる。ツールバーは
     /// `selection_toolbar` で都度レイアウトし直すので、この開閉状態だけを保持する。
     pub(crate) toolbar_overflow_open: bool,
+    /// リリース済み慣性スクロールの進行中アニメーション（ADR-0082 / ADR-0113 /
+    /// ADR-0126）。`(scroll_view, (vx, vy))` — ロックした ScrollView と、オフセット空間
+    /// （px/ms）の減衰速度。`render` が毎フレーム `scroll_motion_step` で積分し
+    /// （範囲内は摩擦、オーバースクロール中はばね戻し）、静止すると `None` に戻る。
+    /// 物理は Core が所有し（`rubber_band_offset` 等と同じく `scroll` モジュールの純関数）、
+    /// Platform Adapter は pointer-up で推定した解放速度を `start_scroll_momentum` に
+    /// 渡すだけの薄い配線に徹する。継続中は `has_pending_visual_work` を true に保ち、
+    /// on-demand フレームループ（ADR-0126）が指を離した直後に idle へ落ちて慣性を
+    /// 1 フレームで殺すのを防ぐ。
+    pub(crate) scroll_momentum: Option<(ElementId, (f32, f32))>,
 }
 
 impl Default for Interaction {
@@ -294,6 +304,7 @@ impl Default for Interaction {
             last_cursor: CursorValue::Default,
             selection: DocumentSelection::default(),
             toolbar_overflow_open: false,
+            scroll_momentum: None,
         }
     }
 }
@@ -560,6 +571,10 @@ impl ElementTree {
     /// キーボード修飾を伴うポインタダウン（ADR-0097）。Shift は新規選択を始めず
     /// 現在の選択の focus を拡張する。
     pub fn on_pointer_down_with(&mut self, x: f32, y: f32, modifiers: u32) {
+        // 新規押下は惰性中のフリック／スプリングバックを中断し、コンテンツを即座に
+        // 掴めるようにする（ADR-0082）。慣性は Core が所有するのでここで止める
+        // （旧: Platform Adapter 側で個別にクリアしていた）。
+        self.interaction.scroll_momentum = None;
         // pointer-down を単一 seam（`InteractionIntent::PointerDown`）に通す（#572）。
         self.apply_interaction_intent(InteractionIntent::PointerDown { x, y, modifiers });
     }

@@ -120,17 +120,12 @@ pub struct HayateElementRenderer {
     /// 端を越えたオーバースクロールでは指に遅れる。スクロール中でないときは `None`。
     /// 最初の `Scroll` でシードし、押下/リリース/キャンセルでクリア。
     drag_raw: Option<(ElementId, (f32, f32))>,
-    /// 進行中のリリース済みスクロール: ロックした scroll-view と、その軸別オフセット速度
-    /// （px/ms）。毎フレーム `scroll_motion_step` が積分する（範囲内は摩擦、オーバースクロール中は
-    /// バネ）。これによりフリックが惰性で滑り、端でバウンスし、定位置へ戻る。アニメーションが
-    /// なければ `None`。
-    scroll_motion: Option<(ElementId, (f32, f32))>,
-    /// 直前の `render()` フレームのタイムスタンプ。慣性積分器が進めるフレーム間 `dt` 用。
-    /// 最初のフレーム前は `None`。
-    last_frame_ms: Option<f64>,
     /// スクロール物理の調整値。既定は正準の const。dev ビルドでは
     /// [`set_tuning`](Self::set_tuning) で `tuning.json` を上書きし、再ビルドなしに実機で
-    /// 感触を調整できる。
+    /// 感触を調整できる。リリース済み慣性は Core が所有・積分するので（`tree.start_scroll_
+    /// momentum` / `render`）、この値は解放速度推定（`estimate_release_velocity`）と
+    /// ドラッグ中のラバーバンド／slop 判定にのみ使い、同じ調整値を `set_tuning` で
+    /// Core にも渡す。
     scroll_tuning: ScrollPhysicsTuning,
     /// 保留中の Ctrl/Cmd+V のため非同期クリップボードから読んだテキスト。次の `render()` で
     /// 適用する（ブラウザのクリップボード読み取りは非同期で、同期の
@@ -238,8 +233,6 @@ impl HayateElementRenderer {
             scroll_gesture: None,
             scroll_samples: Vec::new(),
             drag_raw: None,
-            scroll_motion: None,
-            last_frame_ms: None,
             // Scroll Physics Profile（ADR-0113）。現状 web は `Auto` のみで、iOS 風
             // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
@@ -271,6 +264,9 @@ impl HayateElementRenderer {
         let parsed = crate::tuning::TuningJson::parse(&text)
             .map_err(|e| JsValue::from_str(&format!("set_tuning: {e}")))?;
         self.scroll_tuning = parsed.scroll_tuning();
+        // 慣性・ばね戻しの積分は Core が所有するので、同じ調整値を Core にも渡す
+        // （adapter 側は解放速度推定にのみ使う）。
+        self.tree.set_scroll_tuning(self.scroll_tuning);
         self.tree.set_chrome_tuning(parsed.chrome_tuning());
         Ok(())
     }
@@ -394,11 +390,10 @@ impl HayateElementRenderer {
         // ポインタの後で編集入力（composition / keydown）を排出する。pointerdown が
         // 先に focus を確定してから、続くキー入力がそのターゲットに乗るようにする。
         self.drain_edit_inputs();
-        // このフレームの入力を排出した後（新規押下はアニメーションを中断し、リリースは起動する）、
-        // 進行中のスクロール運動をフレーム間 dt だけ進める。慣性・バウンス・スプリングバックが
-        // レイアウトと同じ rAF ループで積分される。
-        self.step_scroll_motion(timestamp_ms);
-        self.last_frame_ms = Some(timestamp_ms);
+        // リリース済み慣性スクロールの積分は Core が `render(timestamp_ms)` 内で所有する
+        // （新規押下がアニメーションを中断し、pointer-up が `start_scroll_momentum` で起動する）。
+        // adapter はもうフレーム間 dt もアニメ状態も持たない——`tree.render` 越しに Core が
+        // 進める（慣性は `rubber_band_offset` 等と同じく `scroll` モジュールの純物理）。
         // 失敗した取得をまず core へ報告する。各報告がフォントを dirty にするので、下の
         // commit_layout が再シェイプし、欠落を再検出し、次の poll_events で FetchFont を
         // 再発行する。core が断念したファミリは再要求しなくなるので、そのバックオフ
@@ -572,9 +567,9 @@ impl HayateElementRenderer {
                 // 通常のクリックとして解決される。
                 self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
                 self.scroll_gesture = None;
-                // 新規押下は惰性中のフリックやスプリングバックを中断し、コンテンツを即座に
-                // 掴めるようにする。静止状態から始める。
-                self.scroll_motion = None;
+                // 新規押下は惰性中のフリックやスプリングバックを中断する。慣性は Core が
+                // 所有するので、上の `on_pointer_down_with_kind` が既に `scroll_momentum` を
+                // クリア済み。adapter はドラッグ追跡状態だけリセットする。
                 self.drag_raw = None;
                 self.scroll_samples.clear();
                 if scroll::is_drag_scroll_pointer(kind) {
@@ -704,47 +699,13 @@ impl HayateElementRenderer {
     /// オーバースクロールで指を離した（速度 ≈ 0）場合も、端が必ず定位置へ戻るよう
     /// アニメーションする。範囲内で終わる遅いリリースは何もアニメーションしない。
     fn launch_scroll_motion(&mut self, sv: ElementId) {
+        // 解放速度を指サンプルから推定し（adapter が記録した唯一のデータ）、あとは Core に
+        // 渡す。フリック有無／オーバースクロール／軸別ゲートの判定と毎フレームの積分は
+        // すべて `tree.start_scroll_momentum` / `render` が所有する（物理は Core、ADR-0082）。
         let (vx, vy) = scroll::estimate_release_velocity(&self.scroll_samples, &self.scroll_tuning);
         self.scroll_samples.clear();
         self.drag_raw = None;
-        let (max_x, max_y, _, _) = self.scroll_bounds(sv);
-        // スクロール不可な軸（`max == 0`）はフリックもオーバースクロールもしない。リリース
-        // 速度を捨て、範囲外チェックでも無視することで、ユーザがスクロールできない軸を
-        // リリース運動がバウンスさせないようにする（上のドラッグ時の軸別ゲートと一致）。
-        let vx = if max_x > 0.0 { vx } else { 0.0 };
-        let vy = if max_y > 0.0 { vy } else { 0.0 };
-        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-        let out_of_bounds = (max_x > 0.0 && (ox < 0.0 || ox > max_x))
-            || (max_y > 0.0 && (oy < 0.0 || oy > max_y));
-        let has_fling = vx.abs() >= self.scroll_tuning.min_velocity
-            || vy.abs() >= self.scroll_tuning.min_velocity;
-        self.scroll_motion = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));
-    }
-
-    /// リリース済みスクロールを 1 フレーム進める。`scroll_motion_step` が各軸を積分し
-    /// （範囲内は摩擦、オーバースクロール中はバネ）、新しいオフセットをクランプせず
-    /// コミットし（指ドラッグ同様 `Event::Scroll` を発火）、減衰した速度を引き継ぐ。
-    /// アニメーションは両軸が静止し**かつ** `[0, max]` 内に戻ったときに終わる。慣性バウンスは
-    /// バネが定位置へ戻すまでオーバースクロール域を走り続ける。
-    fn step_scroll_motion(&mut self, now_ms: f64) {
-        let Some((sv, (vx, vy))) = self.scroll_motion else {
-            return;
-        };
-        // 積分には実際のフレーム間スパンが必要。確保できるまで速度を持ち越す。
-        let dt = match self.last_frame_ms {
-            Some(prev) if now_ms > prev => (now_ms - prev) as f32,
-            _ => return,
-        };
-        let (max_x, max_y, _, _) = self.scroll_bounds(sv);
-        let (ox, oy) = self.tree.element_get_scroll_offset(sv);
-        let (nx, vx2) = scroll::scroll_motion_step(ox, vx, max_x, dt, &self.scroll_tuning);
-        let (ny, vy2) = scroll::scroll_motion_step(oy, vy, max_y, dt, &self.scroll_tuning);
-        self.commit_scroll_offset(sv, nx, ny);
-        // 軸は速度を持つかオーバースクロール中である限りアニメーション継続中
-        // （バウンスの途中では一瞬速度ゼロを読むことがある）。
-        let x_active = vx2 != 0.0 || nx < 0.0 || nx > max_x;
-        let y_active = vy2 != 0.0 || ny < 0.0 || ny > max_y;
-        self.scroll_motion = (x_active || y_active).then_some((sv, (vx2, vy2)));
+        self.tree.start_scroll_momentum(sv, vx, vy);
     }
 
     pub fn on_resize(&mut self, width: f32, height: f32, scale: f32) {
