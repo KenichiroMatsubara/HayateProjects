@@ -19,9 +19,22 @@ use wasm_bindgen::closure::Closure;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
+use js_sys::Function;
+#[cfg(target_arch = "wasm32")]
 use web_sys::{
     AddEventListenerOptions, Event, HtmlCanvasElement, MouseEvent, PointerEvent, WheelEvent,
 };
+
+/// ADR-0080/0126: 入力がバッファされたら on-demand フレームループを 1 フレーム起こす。
+/// `request_redraw` セルは `set_request_redraw` で JS の `scheduleFrame` が注入される。まだ
+/// 注入されていなければ no-op（start 前の入力は次の start が拾う）。`scheduleFrame` は冪等
+/// なので、同フレーム内に複数入力が来ても二重武装しない。
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn wake(request_redraw: &Rc<RefCell<Option<Function>>>) {
+    if let Some(cb) = request_redraw.borrow().as_ref() {
+        let _ = cb.call0(&JsValue::NULL);
+    }
+}
 
 /// フレーム間でバッファされる生のポインタ入力。座標は DOM イベント捕捉時に
 /// `toCanvas` 変換済みで、canvas バッキングストア空間にある。
@@ -149,6 +162,7 @@ impl Drop for PointerInputGuard {
 pub(crate) fn attach_pointer_input(
     canvas: &HtmlCanvasElement,
     pending: Rc<RefCell<Vec<PointerInput>>>,
+    request_redraw: Rc<RefCell<Option<Function>>>,
 ) -> Result<PointerInputGuard, JsValue> {
     let mut listeners: Vec<(&'static str, Closure<dyn FnMut(Event)>)> = Vec::new();
 
@@ -165,6 +179,7 @@ pub(crate) fn attach_pointer_input(
         // ポインタもキャプチャする。
         let canvas_for_cb = canvas.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let Some(pe) = event.dyn_ref::<PointerEvent>() else {
                 return;
@@ -184,6 +199,7 @@ pub(crate) fn attach_pointer_input(
                 modifiers,
                 kind,
             });
+            wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback("pointerdown", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointerdown", closure));
@@ -195,6 +211,7 @@ pub(crate) fn attach_pointer_input(
     ] {
         let canvas_for_cb = canvas.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let Some(pe) = event.dyn_ref::<PointerEvent>() else {
                 return;
@@ -208,6 +225,7 @@ pub(crate) fn attach_pointer_input(
             let kind = PointerKind::from_dom(&pe.pointer_type());
             let (x, y) = pointer_event_to_canvas(&canvas_for_cb, pe.as_ref());
             pending.borrow_mut().push(make(x, y, kind));
+            wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback(name, closure.as_ref().unchecked_ref())?;
         listeners.push((name, closure));
@@ -217,8 +235,10 @@ pub(crate) fn attach_pointer_input(
         // `pointerleave` は座標非依存で、Core の hover 集合全体をクリアするため
         // `toCanvas` 変換は不要。
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |_event: Event| {
             pending.borrow_mut().push(PointerInput::Leave);
+            wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback("pointerleave", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointerleave", closure));
@@ -228,11 +248,13 @@ pub(crate) fn attach_pointer_input(
         // `pointercancel` は座標非依存（Core が位置に関わらず hover と active を
         // クリアする）なので、素の `Cancel` を積むだけ。
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             if event.dyn_ref::<PointerEvent>().is_none() {
                 return;
             }
             pending.borrow_mut().push(PointerInput::Cancel);
+            wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         canvas.add_event_listener_with_callback("pointercancel", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointercancel", closure));
@@ -241,6 +263,7 @@ pub(crate) fn attach_pointer_input(
     {
         let canvas_for_cb = canvas.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let Some(we) = event.dyn_ref::<WheelEvent>() else {
                 return;
@@ -259,6 +282,7 @@ pub(crate) fn attach_pointer_input(
                 delta_x: we.delta_x() as f32,
                 delta_y: we.delta_y() as f32,
             });
+            wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         // 上の `prevent_default` が実際にネイティブスクロールを抑制するよう非 passive にする。
         // passive リスナだと黙って無視されページもスクロールしてしまう。

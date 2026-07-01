@@ -92,6 +92,13 @@ class StubHayate implements RawHayate {
   }
   set_background_color(): void {}
   set_tuning(): void {}
+  /** ADR-0080/0126: Platform Adapter が入力到着で idle ループを起こすための wake
+   * コールバック。アダプタの自前配線ポインタ/編集 listener がバッファ後に叩く。
+   * テストは登録されたコールバックを保持し、入力到着を模して手動で発火する。 */
+  requestRedraw: (() => void) | null = null;
+  set_request_redraw(cb: () => void): void {
+    this.requestRedraw = cb;
+  }
 }
 
 function manualScheduler() {
@@ -195,6 +202,32 @@ describe('HayateRenderer on-demand frame loop (ADR-0126, #608)', () => {
     expect(hayate.renders).toEqual([16, 48]);
     // その mutation はこのフレームで flush された。
     expect(hayate.mutations.length).toBeGreaterThan(0);
+  });
+
+  it('wakes the idle loop when input arrives (ADR-0080/0126 input wake; Android Chrome tap fix)', () => {
+    // 回帰: ADR-0126 の on-demand ループ化で web の入力到着 wake が配線漏れになり、
+    // idle 時のタップが drain されず捨てられていた（Android Chrome でボタンが無反応）。
+    // Platform Adapter（自前配線ポインタ listener）の request_redraw が idle ループを
+    // 冷間始動しなければならない。
+    const hayate = new StubHayate();
+    hayate.pendingVisualWork = false;
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+
+    // 冷間始動フレームの後、idle に落ちる（継続 pending なし）。
+    sched.tick(16);
+    sched.tick(32);
+    expect(hayate.renders).toEqual([16]);
+
+    // renderer は start() で入力 wake を adapter に配線していなければならない。
+    expect(hayate.requestRedraw).toBeTypeOf('function');
+
+    // 入力到着（タップ）を模す: adapter の listener がバッファ後に wake を叩く。
+    // これで idle ループが 1 フレームだけ起き、pending_pointer が drain される。
+    hayate.requestRedraw?.();
+    sched.tick(48);
+    expect(hayate.renders).toEqual([16, 48]);
   });
 
   it('does not arm the loop from a mutation before start() (構築≠開始)', () => {

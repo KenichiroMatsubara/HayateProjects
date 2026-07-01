@@ -66,6 +66,15 @@ export interface RawHayate {
    * これが真のときだけ次フレームを要求し、偽なら idle に落ちる（毎フレーム自己再
    * スケジュールしない）。 */
   has_pending_visual_work(): boolean;
+  /** ADR-0080/0126: 入力到着で on-demand フレームループを冷間始動するための wake
+   * コールバックを登録する。Platform Adapter（web adapter）は自前配線したポインタ /
+   * 編集 listener が入力をバッファした直後にこれを叩き、idle に落ちたループを 1 フレーム
+   * だけ起こして `pending_pointer` / `pending_edit` を drain させる。これが無いと idle 時の
+   * タップ・キー入力が drain されず捨てられる（Android Chrome でボタンが無反応になる回帰）。
+   *
+   * 入力 ingress を持たない front（native ループが入力を直接駆動する Android 等）では
+   * 実装されないため optional。`HayateRenderer` は存在すれば `start()` で配線する。 */
+  set_request_redraw?(cb: () => void): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;

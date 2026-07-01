@@ -63,6 +63,12 @@ export class HayateRenderer implements IRenderer {
    * これ自体が冷間始動の wake 入口で、以後は継続 pending / mutation 到着で再武装する。 */
   start(): void {
     this.started = true;
+    // ADR-0080/0126: 入力到着（ポインタ / 編集）を wake 源として配線する。web adapter は
+    // 自前配線した listener で入力を Rust 側にバッファするだけなので、idle に落ちたループを
+    // JS の scheduleFrame で起こさないと drain されない（Android Chrome でタップが無反応に
+    // なる回帰の修正）。scheduleFrame は冪等・started ゲート付きなので二重武装しない。入力
+    // ingress を持たない front（set_request_redraw 未実装）では no-op。
+    this.raw.set_request_redraw?.(() => this.scheduleFrame());
     this.scheduleFrame();
   }
 
