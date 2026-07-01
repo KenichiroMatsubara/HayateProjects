@@ -230,6 +230,14 @@ pub struct ElementTree {
     /// ⋮ オーバーフロートグルグリフのシェイプ済みレイアウト（ADR-0097）。ボタン
     /// ラベルと同様に一度シェイプして再利用する。
     pub(crate) toolbar_overflow_label: Option<text::TextLayout>,
+    /// スクロール物理の味付け定数（ADR-0113）。既定は `ScrollPhysicsProfile::Auto`
+    /// が解決する iOS 風プロファイル。dev ビルドは
+    /// [`set_scroll_tuning`](Self::set_scroll_tuning) 経由で `tuning.json` を重ね、
+    /// 再ビルドなしに実機で感触を調整する。慣性・ばね戻しの積分が読む。
+    pub(crate) scroll_tuning: crate::scroll::ScrollPhysicsTuning,
+    /// 直近 `render` に渡されたホストクロック（ms）。慣性 step のフレーム間 dt を
+    /// 取るために保持する。まだ 1 度も render していなければ `None`。
+    pub(crate) last_frame_ms: Option<f64>,
 }
 
 impl ElementTree {
@@ -250,6 +258,8 @@ impl ElementTree {
             chrome_tuning: crate::element::chrome_tuning::ChromeTuning::default(),
             toolbar_label_cache: HashMap::new(),
             toolbar_overflow_label: None,
+            scroll_tuning: crate::scroll::ScrollPhysicsProfile::Auto.default_tuning(),
+            last_frame_ms: None,
         }
     }
 
@@ -1473,6 +1483,12 @@ impl ElementTree {
             }
         }
         self.advance_touch_scroll_indicators(timestamp_ms);
+        // リリース済み慣性スクロールを 1 フレーム進める（ADR-0082）。オフセット変更は
+        // `element_set_scroll_offset` が visual-dirty をマークするので、下の
+        // `collect_lowering_dirty` が同フレームで新オフセットを lowering する。継続は
+        // `has_pending_visual_work`（= `scroll_momentum.is_some()`）が表明する。
+        self.advance_scroll_motion(timestamp_ms);
+        self.last_frame_ms = Some(timestamp_ms);
         let mut dirty = collect_lowering_dirty(
             self,
             &self.engine.structure_dirty,
@@ -1545,6 +1561,73 @@ impl ElementTree {
         for id in dirty {
             self.engine
                 .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+        }
+    }
+
+    /// スクロール物理の味付け定数を差し替える（ADR-0113）。dev ビルドが `tuning.json`
+    /// を重ねるための seam。本番は既定（`ScrollPhysicsProfile::Auto` 解決値）のまま。
+    pub fn set_scroll_tuning(&mut self, tuning: crate::scroll::ScrollPhysicsTuning) {
+        self.scroll_tuning = tuning;
+    }
+
+    /// リリース済み慣性スクロールを起動する（ADR-0082）。`sv` は指を離した scroll-view、
+    /// `(vx, vy)` は Platform Adapter が指サンプルから推定した解放速度（オフセット空間、
+    /// px/ms。`scroll::estimate_release_velocity`）。本当のフリックがある（速度が
+    /// `min_velocity` 以上）か、オーバースクロール域で離した（端が定位置へ戻る必要がある）
+    /// ときだけアニメーションを保持する。範囲内で終わる遅い解放は何も起こさない。
+    /// スクロール不可な軸（`max == 0`）は速度を捨て、バウンスもさせない。以後は `render`
+    /// が毎フレーム [`advance_scroll_motion`](Self::advance_scroll_motion) で積分する。
+    pub fn start_scroll_momentum(&mut self, sv: ElementId, vx: f32, vy: f32) {
+        let (max_x, max_y) = self.element_scroll_max_offset(sv);
+        // スクロール不可な軸はフリックもオーバースクロールもしない（ドラッグ時の軸別
+        // ゲートと一致）。
+        let vx = if max_x > 0.0 { vx } else { 0.0 };
+        let vy = if max_y > 0.0 { vy } else { 0.0 };
+        let (ox, oy) = self.element_get_scroll_offset(sv);
+        let out_of_bounds = (max_x > 0.0 && (ox < 0.0 || ox > max_x))
+            || (max_y > 0.0 && (oy < 0.0 || oy > max_y));
+        let min_v = self.scroll_tuning.min_velocity;
+        let has_fling = vx.abs() >= min_v || vy.abs() >= min_v;
+        self.interaction.scroll_momentum = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));
+    }
+
+    /// リリース済み慣性スクロールを 1 フレーム進める（ADR-0082）。`scroll_motion_step`
+    /// が各軸を積分し（範囲内は摩擦、オーバースクロール中はばね）、新オフセットを
+    /// クランプせずコミットし（指ドラッグ同様 `Event::Scroll` を発火）、減衰した速度を
+    /// 引き継ぐ。両軸が静止し **かつ** `[0, max]` 内へ戻ると `scroll_momentum` を `None`
+    /// に落としてアニメーションを終える。慣性バウンスはばねが定位置へ戻すまで
+    /// オーバースクロール域を走り続ける。フレーム間 dt が取れないうち（初回 render 前や
+    /// 同一クロック）は速度を保持したまま次フレームを待つ。
+    fn advance_scroll_motion(&mut self, now_ms: f64) {
+        let Some((sv, (vx, vy))) = self.interaction.scroll_momentum else {
+            return;
+        };
+        let dt = match self.last_frame_ms {
+            Some(prev) if now_ms > prev => (now_ms - prev) as f32,
+            _ => return,
+        };
+        let (max_x, max_y) = self.element_scroll_max_offset(sv);
+        let (ox, oy) = self.element_get_scroll_offset(sv);
+        let t = self.scroll_tuning;
+        let (nx, vx2) = crate::scroll::scroll_motion_step(ox, vx, max_x, dt, &t);
+        let (ny, vy2) = crate::scroll::scroll_motion_step(oy, vy, max_y, dt, &t);
+        self.commit_momentum_offset(sv, nx, ny);
+        // 軸は速度を持つかオーバースクロール中である限りアニメーション継続中
+        // （バウンスの途中では一瞬速度ゼロを読むことがある）。
+        let x_active = vx2 != 0.0 || nx < 0.0 || nx > max_x;
+        let y_active = vy2 != 0.0 || ny < 0.0 || ny > max_y;
+        self.interaction.scroll_momentum = (x_active || y_active).then_some((sv, (vx2, vy2)));
+    }
+
+    /// 慣性で計算した新オフセットをクランプせず適用し（SCR-02。オーバースクロール域は
+    /// 意図的）、実際に動いたときだけ `Event::Scroll` を発火してパララックスや遅延読み込みが
+    /// タッチ慣性にも反応するようにする（ADR-0082）。
+    fn commit_momentum_offset(&mut self, sv: ElementId, nx: f32, ny: f32) {
+        let (ox, oy) = self.element_get_scroll_offset(sv);
+        let (dx, dy) = (nx - ox, ny - oy);
+        if dx.abs() > 1e-6 || dy.abs() > 1e-6 {
+            self.element_set_scroll_offset(sv, nx, ny);
+            self.on_wheel(sv, dx, dy);
         }
     }
 
@@ -2112,11 +2195,13 @@ impl ElementTree {
     /// `true` なのは「進行中 transition がある」ときで、App Host はこの間 `request_redraw`
     /// を出し続け、空になればフレームループを idle に落とす（ADR-0117）。
     ///
-    /// 注意：カーソル点滅は render 冒頭でマークされ同フレームで drain されるため、
-    /// またリリース済みスクロール物理は現状 web adapter 側にあるため、どちらも render 後の
-    /// `visual_dirty` には現れない。これらの継続要求を畳み込むのは後続作業。
+    /// 注意：カーソル点滅は render 冒頭でマークされ同フレームで drain されるため
+    /// render 後の `visual_dirty` には現れない（その継続要求の畳み込みは後続作業）。
+    /// リリース済みスクロール物理は Core が所有し（`scroll_momentum`）、進行中は
+    /// ここで明示的に継続を表明する——offset 変更が付ける visual-dirty は同フレームの
+    /// lowering で drain されるので、drain タイミングに依存しない `is_some()` を OR する。
     pub fn has_pending_visual_work(&self) -> bool {
-        !self.engine.visual_dirty.is_empty()
+        !self.engine.visual_dirty.is_empty() || self.interaction.scroll_momentum.is_some()
     }
 
     /// この要素の compositing 事実（ADR-0125）を live state から読む。境界判定に使う純データで、
