@@ -302,6 +302,7 @@ pub(crate) fn attach_edit_context(
     canvas: &HtmlCanvasElement,
     pending: Rc<RefCell<Vec<EditInput>>>,
     edit_armed: Rc<RefCell<bool>>,
+    request_redraw: Rc<RefCell<Option<js_sys::Function>>>,
 ) -> Result<Option<EditContextHandle>, JsValue> {
     if !edit_context_supported() {
         return Ok(None);
@@ -318,6 +319,7 @@ pub(crate) fn attach_edit_context(
     {
         let compose = compose.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let ec = edit_context.clone();
         let closure = Closure::wrap(Box::new(move |_event: Event| {
             let mut c = compose.borrow_mut();
@@ -326,6 +328,8 @@ pub(crate) fn attach_edit_context(
             c.base = reflect_u32(&JsValue::from(ec.clone()), "selectionStart").unwrap_or(0);
             c.text = String::new();
             pending.borrow_mut().push(EditInput::CompositionStart);
+            drop(c);
+            crate::pointer_input::wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         ec_target
             .add_event_listener_with_callback("compositionstart", closure.as_ref().unchecked_ref())?;
@@ -340,6 +344,7 @@ pub(crate) fn attach_edit_context(
     {
         let compose = compose.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let ev: &JsValue = event.as_ref();
             let text = reflect_string(ev, "text").unwrap_or_default();
@@ -352,6 +357,8 @@ pub(crate) fn attach_edit_context(
             } else {
                 pending.borrow_mut().push(EditInput::Text(text));
             }
+            drop(c);
+            crate::pointer_input::wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         ec_target
             .add_event_listener_with_callback("textupdate", closure.as_ref().unchecked_ref())?;
@@ -366,6 +373,7 @@ pub(crate) fn attach_edit_context(
     {
         let compose = compose.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let c = compose.borrow();
             if !c.composing {
@@ -377,6 +385,8 @@ pub(crate) fn attach_edit_context(
                 text: c.text.clone(),
                 wire,
             });
+            drop(c);
+            crate::pointer_input::wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         ec_target.add_event_listener_with_callback(
             "textformatupdate",
@@ -393,12 +403,15 @@ pub(crate) fn attach_edit_context(
     {
         let compose = compose.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let closure = Closure::wrap(Box::new(move |event: Event| {
             let data = reflect_string(event.as_ref(), "data").unwrap_or_default();
             let mut c = compose.borrow_mut();
             c.composing = false;
             c.text = String::new();
             pending.borrow_mut().push(EditInput::CompositionEnd(data));
+            drop(c);
+            crate::pointer_input::wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
         ec_target
             .add_event_listener_with_callback("compositionend", closure.as_ref().unchecked_ref())?;
@@ -415,6 +428,7 @@ pub(crate) fn attach_edit_context(
     {
         let compose = compose.clone();
         let pending = pending.clone();
+        let request_redraw = request_redraw.clone();
         let armed = edit_armed.clone();
         let canvas_target: EventTarget = canvas.clone().unchecked_into();
         let closure = Closure::wrap(Box::new(move |event: Event| {
@@ -453,6 +467,7 @@ pub(crate) fn attach_edit_context(
                 key: key.clone(),
                 modifiers: mods,
             });
+            crate::pointer_input::wake(&request_redraw);
             // 印字可能な単一文字（修飾なし）は EditContext の textupdate が挿入を担うため
             // 既定動作を残す。それ以外（矢印・Backspace 等）はページ操作を抑制する。
             let printable =

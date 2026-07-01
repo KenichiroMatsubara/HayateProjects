@@ -136,6 +136,11 @@ pub struct HayateElementRenderer {
     /// 適用する（ブラウザのクリップボード読み取りは非同期で、同期の
     /// `Clipboard::read_text` シームでは扱えない。ADR-0097）。
     pending_paste: PendingPaste,
+    /// ADR-0080/0126: 入力到着で on-demand フレームループを冷間始動する wake コールバック。
+    /// 自前配線のポインタ / 編集 listener が入力をバッファした直後に叩く。`set_request_redraw`
+    /// で JS ホスト（`HayateRenderer.start()`）が `scheduleFrame` を注入するまで `None`。これが
+    /// 無いと idle 時のタップ・キー入力が drain されず捨てられる（Android Chrome の無反応回帰）。
+    request_redraw: Rc<RefCell<Option<js_sys::Function>>>,
     _pointer_input: PointerInputGuard,
     /// 自前配線の EditContext / keydown リスナ（ADR-0069）がここへ積む。`render()` 冒頭で
     /// 到着順に排出し、core の編集シームへ流す。
@@ -193,16 +198,28 @@ impl HayateElementRenderer {
             last_viewport.clone(),
         )?;
 
+        // 入力到着で on-demand ループを起こす wake コールバック（ADR-0080/0126）。listener
+        // 群が入力バッファ後に叩けるよう、attach 前に共有セルを作って各配線へ渡す。JS ホストは
+        // `set_request_redraw` で `scheduleFrame` を後から注入する。
+        let request_redraw: Rc<RefCell<Option<js_sys::Function>>> = Rc::new(RefCell::new(None));
+
         let pending_pointer = Rc::new(RefCell::new(Vec::new()));
-        let pointer_guard =
-            pointer_input::attach_pointer_input(&canvas, pending_pointer.clone())?;
+        let pointer_guard = pointer_input::attach_pointer_input(
+            &canvas,
+            pending_pointer.clone(),
+            request_redraw.clone(),
+        )?;
 
         // IME / keydown を自前で配線する（ADR-0069）。EditContext sync はアダプタの
         // `render()` 内で完結し、JS ホストは IME 経路から外れる。
         let pending_edit = Rc::new(RefCell::new(Vec::new()));
         let edit_armed = Rc::new(RefCell::new(false));
-        let edit_context =
-            edit_context::attach_edit_context(&canvas, pending_edit.clone(), edit_armed.clone())?;
+        let edit_context = edit_context::attach_edit_context(
+            &canvas,
+            pending_edit.clone(),
+            edit_armed.clone(),
+            request_redraw.clone(),
+        )?;
 
         Ok(Self {
             canvas,
@@ -227,6 +244,7 @@ impl HayateElementRenderer {
             // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
             pending_paste: Rc::new(RefCell::new(Vec::new())),
+            request_redraw,
             _pointer_input: pointer_guard,
             pending_edit,
             edit_armed,
@@ -496,6 +514,14 @@ impl HayateElementRenderer {
         let image_data = fetch_image(&url).await?;
         self.tree.element_set_image(eid, Arc::new(image_data));
         Ok(())
+    }
+
+    /// 入力到着で on-demand フレームループを冷間始動する wake コールバックを登録する
+    /// （ADR-0080/0126）。JS ホスト（`HayateRenderer.start()`）が `scheduleFrame` を渡し、
+    /// 自前配線のポインタ / 編集 listener が入力をバッファした直後にこれを叩く。これが無いと
+    /// idle 時のタップ・キー入力が drain されず捨てられる（Android Chrome の無反応回帰）。
+    pub fn set_request_redraw(&self, cb: js_sys::Function) {
+        *self.request_redraw.borrow_mut() = Some(cb);
     }
 
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {

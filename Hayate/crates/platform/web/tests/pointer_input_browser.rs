@@ -8,6 +8,9 @@
 //! poll の全鎖を通す（ADR-0072）。
 #![cfg(target_arch = "wasm32")]
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use hayate_adapter_web::HayateElementRenderer;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -510,6 +513,52 @@ async fn pointer_move_over_button_applies_pointer_cursor_to_the_canvas() {
         "pointer",
         "hovering a button must apply the pointer cursor to the canvas element"
     );
+}
+
+#[wasm_bindgen_test]
+async fn a_buffered_pointer_input_wakes_the_on_demand_frame_loop() {
+    // 回帰（ADR-0080 / ADR-0126）: 自前配線のポインタ listener は入力をバッファした直後に
+    // `request_redraw` を叩き、idle に落ちた on-demand フレームループを 1 フレーム起こさねば
+    // ならない。これが無いと `render()` が呼ばれず `pending_pointer` が drain されないため、
+    // idle 時のタップが捨てられる（Android Chrome でボタンが無反応になる回帰）。
+    // ここでは wake コールバック（JS の `scheduleFrame` 相当）を注入し、`render()` を挟まずに
+    // 本物の `pointerdown` を dispatch して、listener が wake を叩くことを直接検証する。
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone())
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    renderer.set_root(1.0);
+    renderer.render(0.0).unwrap();
+
+    // wake コールバックの発火回数を数える。set_request_redraw で JS の scheduleFrame を注入
+    // する経路そのもの（HayateRenderer.start() が本番で叩く）。
+    let count = Rc::new(Cell::new(0u32));
+    let count_cb = count.clone();
+    let closure = Closure::wrap(Box::new(move || {
+        count_cb.set(count_cb.get() + 1);
+    }) as Box<dyn FnMut()>);
+    renderer.set_request_redraw(closure.as_ref().unchecked_ref::<js_sys::Function>().clone());
+
+    let rect = canvas.get_bounding_client_rect();
+    // 本物の touch pointerdown。render は呼ばない — wake だけを見る。
+    dispatch_touch_event(&canvas, "pointerdown", rect.left() + 50.0, rect.top() + 50.0);
+    assert!(
+        count.get() >= 1,
+        "a touch pointerdown must wake the on-demand frame loop via request_redraw"
+    );
+
+    // pointerup も wake する（タップの解放フレームが drain されるように）。
+    let before = count.get();
+    dispatch_touch_event(&canvas, "pointerup", rect.left() + 50.0, rect.top() + 50.0);
+    assert!(
+        count.get() > before,
+        "a touch pointerup must also wake the loop so the tap's release is drained"
+    );
+
+    drop(closure);
 }
 
 #[wasm_bindgen_test]
