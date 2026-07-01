@@ -848,6 +848,14 @@ impl HayateElementRenderer {
         self.tree.selection().is_some()
     }
 
+    /// 直近の `render()` 後に継続すべき pending visual work（進行中 transition /
+    /// カーソル点滅 / スクロール物理 = `visual_dirty`）が残るか（ADR-0117/0126）。
+    /// アダプタ（`HayateRenderer`）はこれが true のときだけ次フレームを要求し、false なら
+    /// idle に落ちる。毎フレームの無条件再スケジュールを撤廃する唯一の継続判定点。
+    pub fn has_pending_visual_work(&self) -> bool {
+        self.tree.has_pending_visual_work()
+    }
+
     /// 直近のポインタ操作の物理デバイス。`PointerKind` のワイヤ値（`mouse=0`, `touch=1`,
     /// `pen=2`）。ホストが分岐できるようインタラクション単位で保持する。
     pub fn last_pointer_kind(&self) -> u32 {

@@ -1,0 +1,15 @@
+[package]
+name = "hayate-layer-compositor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Layer texture cache + dedicated compositor seam for Hayate (ADR-0125 backend / ADR-0128 Send seam / ADR-0130a warmup)"
+repository.workspace = true
+
+[lib]
+# GPU 非依存の planning だけを持つので、ホストの cargo test で振る舞いを固定できる。実 raster
+# （Vello/tiny-skia）と実 composite（wgpu）は platform backend が trait 越しに差す。
+crate-type = ["rlib"]
+
+[dependencies]
+hayate-core = { path = "../../core" }

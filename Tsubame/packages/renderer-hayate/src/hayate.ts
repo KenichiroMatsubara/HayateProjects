@@ -61,6 +61,11 @@ export interface RawHayate {
   /** JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は `null`。 */
   poll_accessibility(): string | null;
   render(timestampMs: number): void;
+  /** ADR-0126: 直近の `render()` 後に継続すべき pending visual work（進行中
+   * transition / カーソル点滅 / スクロール物理 = `visual_dirty`）が残るか。アダプタは
+   * これが真のときだけ次フレームを要求し、偽なら idle に落ちる（毎フレーム自己再
+   * スケジュールしない）。 */
+  has_pending_visual_work(): boolean;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;

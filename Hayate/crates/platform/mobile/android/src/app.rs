@@ -161,27 +161,32 @@ pub fn android_main(app: AndroidApp) {
 /// ここに残るのはフォーカス中入力に対する生 GameTextInput バッファの変換のみで、
 /// diff/apply ロジックは core 所有の [`hayate_core::element::ime_reconcile`] にある。
 /// このラッパーは `android-activity` のテキスト入力 API への薄いグルー。
+/// IME 状態を core と同期し、編集入力 wake が起きたかを返す（ADR-0126）。focus 対象の変化や
+/// 新規 IME アクション適用は idle の on-demand ループを冷間始動すべき入力到着なので、呼び元は
+/// 戻り値で `request_wake` する。
 pub(crate) fn sync_ime(
     app: &AndroidApp,
     tree: &mut ElementTree,
     prev: &mut TextInputState,
     prev_target: &mut Option<ElementId>,
     keyboard_shown: &mut bool,
-) {
+) -> bool {
     // 抽象を通した表示制御。core が編集可否でゲートし、bridge が
     // キーボードを上げ下げする。
     let mut bridge = AndroidImeBridge::new(app, keyboard_shown);
     tree.drive_ime(&mut bridge);
 
     let target = tree.focused_text_input();
+    let mut woke = false;
     if *prev_target != target {
         *prev_target = target;
         // 新規フォーカスは空のベースラインバッファから始める。
         *prev = TextInputState::default();
+        woke = true;
     }
 
     let Some(target) = target else {
-        return;
+        return woke;
     };
 
     // GameTextInput は全バッファと任意の composing span（`text` へのバイト
@@ -208,7 +213,9 @@ pub(crate) fn sync_ime(
             apply_ime_action(tree, target, &action);
         }
         *prev = next;
+        woke = true;
     }
+    woke
 }
 
 /// 保留中の `MotionEvent` を捌き、`tree` の座標ベースのポインタ API を駆動する。
@@ -216,15 +223,19 @@ pub(crate) fn sync_ime(
 /// 単一ポインタのタップ/ドラッグのみ（ADR-0082）。マルチタッチジェスチャや
 /// スクロール慣性（ADR-0046）は対象外。イベントごとの計算はホストでテスト可能な
 /// [`translate_touch`] にあり、このラッパーは薄い NDK グルー。
-pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
+/// 保留中の `MotionEvent` を排出して `tree` のポインタ API を駆動する。少なくとも 1 つの
+/// タッチアクションをディスパッチしたら `true` を返す（ADR-0126 の入力 wake 源 — idle の
+/// on-demand ループを冷間始動するため、呼び元はこの戻り値で `request_wake` する）。
+pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) -> bool {
     let mut iter = match app.input_events_iter() {
         Ok(iter) => iter,
         Err(err) => {
             log::error!("hayate-adapter-android: input_events_iter failed: {err}");
-            return;
+            return false;
         }
     };
 
+    let mut dispatched = false;
     loop {
         let read = iter.next(|event| {
             if let InputEvent::MotionEvent(motion) = event {
@@ -238,6 +249,7 @@ pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
                         PointerInput::Up { x, y } => tree.on_pointer_up(x, y),
                         PointerInput::Cancel => tree.on_pointer_cancel(),
                     }
+                    dispatched = true;
                 }
             }
             android_activity::InputStatus::Unhandled
@@ -246,6 +258,7 @@ pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) {
             break;
         }
     }
+    dispatched
 }
 
 /// Android の `MotionAction` を単一ポインタの [`TouchAction`] に対応付ける。
