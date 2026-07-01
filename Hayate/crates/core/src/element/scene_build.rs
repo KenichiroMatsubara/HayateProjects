@@ -15,6 +15,65 @@ use crate::element::tree::{ElementTree, Visual};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
 use std::collections::HashSet;
 
+use crate::scroll::{overscroll_stretch_scale, ScrollPhysicsProfile, ScrollPhysicsTuning};
+
+/// 恒等 2x3 アフィン。scroll group がこれに等しいとき（オフセット 0・stretch 無し）は
+/// group ノードを省く。
+const IDENTITY_AFFINE: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// scroll group の 2x3 アフィン `[a, b, c, d, e, f]`（`x' = a·x + c·y + e`, `y' = b·x + d·y + f`）を
+/// 稼働 Scroll Physics Profile に応じて計算する（ADR-0131）。**プロファイル差はこの一箇所に閉じる。**
+///
+/// iOS 風（`Auto`）は overshoot 込みで content を丸ごと `translate(-offset)`（scale 無し）——従来
+/// 挙動を厳密に維持する。Android 風 stretch（`Android`）は overshoot を **軸ごとに独立して**
+/// 「端クランプ translate ＋ ピン端アンカー scale」へ分割する: 限界に達した端をビューポート境界に
+/// ピン留めしたまま（clamp した translate）、コンテンツを内側へ一様スケール（[`overscroll_stretch_scale`]）
+/// で伸ばす。スケールは `max > 0` の軸だけに掛かる（軸独立: 縦のみのページは横に伸びない）。
+///
+/// `offset` は表示スクロールオフセット（越境中は `[0, max]` 外）、`max` は軸ごとの最大オフセット、
+/// `viewport` はシーン座標の ScrollView ボックス `(x, y, w, h)`。物理・保存 `scroll_offset` は不変で、
+/// ここは既存の越境変位を read し替えて見せ方だけを変える。
+fn scroll_group_affine(
+    profile: ScrollPhysicsProfile,
+    offset: (f32, f32),
+    max: (f32, f32),
+    viewport: (f32, f32, f32, f32),
+    t: &ScrollPhysicsTuning,
+) -> [f64; 6] {
+    let (sx, sy) = offset;
+    if !profile.uses_stretch_overscroll() {
+        // iOS 風: overshoot 込みで丸ごと translate、scale 無し。
+        return [1.0, 0.0, 0.0, 1.0, -sx as f64, -sy as f64];
+    }
+    let (vx, vy, vw, vh) = viewport;
+    let (scale_x, tx) = stretch_axis(sx, max.0, vx, vx + vw, vw, t);
+    let (scale_y, ty) = stretch_axis(sy, max.1, vy, vy + vh, vh, t);
+    [scale_x, 0.0, 0.0, scale_y, tx, ty]
+}
+
+/// Android stretch の 1 軸分の `(scale, translate)`（ADR-0131）。範囲内 or スクロール不可（`max <= 0`）
+/// なら scale 1.0・素の `translate(-offset)`（iOS とパリティ）。越境時はピン端（`near`/`far` の
+/// シーン座標ビューポート境界）を固定するアンカー scale を、端クランプ translate に畳み込む:
+///   `final = scale·(content − clamped − anchor) + anchor = scale·content + (−scale·clamped + anchor·(1 − scale))`
+fn stretch_axis(offset: f32, max: f32, near: f32, far: f32, dimension: f32, t: &ScrollPhysicsTuning) -> (f64, f64) {
+    let max = max.max(0.0);
+    if max <= 0.0 {
+        // スクロール不可な軸は伸ばさない（軸独立）。iOS と同じ素の translate。
+        return (1.0, -offset as f64);
+    }
+    let clamped = offset.clamp(0.0, max);
+    let overshoot = offset - clamped;
+    if overshoot == 0.0 {
+        // 範囲内: clamped == offset なので iOS と同一の translate。
+        return (1.0, -clamped as f64);
+    }
+    let scale = overscroll_stretch_scale(overshoot, dimension, t) as f64;
+    // ピン端アンカー: 上/左越境（overshoot < 0）は near 端、下/右越境は far 端に固定。
+    let anchor = if overshoot < 0.0 { near } else { far } as f64;
+    let translate = -scale * clamped as f64 + anchor * (1.0 - scale);
+    (scale, translate)
+}
+
 /// `:focus-visible` のフォーカスリング幅（ADR-0102）。Chromium はボーダーボックスの
 /// すぐ外側に角丸に沿った実線リングを描く。Chrome の既定 `outline: auto` 相当。
 pub const FOCUS_RING_WIDTH: f32 = 2.0;
@@ -993,15 +1052,21 @@ fn emit_element<S: AnchorSink>(
                 children: Vec::new(),
             },
         );
-        let (sx, sy) = el.scroll_offset;
-        if sx != 0.0 || sy != 0.0 {
+        // scroll offset → group アフィン。プロファイル差（iOS translate / Android stretch）は
+        // ここ一箇所に閉じる（ADR-0131）。恒等変換なら group を省く。
+        let transform = scroll_group_affine(
+            tree.scroll_profile(),
+            el.scroll_offset,
+            tree.element_scroll_max_offset(id),
+            (x, y, w, h),
+            tree.scroll_tuning(),
+        );
+        if transform != IDENTITY_AFFINE {
             let scroll_group = emit(
                 ctx.sg,
                 Some(clip_id),
                 Node {
-                    kind: NodeKind::Group {
-                        transform: [1.0, 0.0, 0.0, 1.0, -sx as f64, -sy as f64],
-                    },
+                    kind: NodeKind::Group { transform },
                     children: Vec::new(),
                 },
             );
@@ -2033,5 +2098,94 @@ fn emit_inset_shadow(
                 ..color
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod scroll_group_affine_tests {
+    use super::scroll_group_affine;
+    use crate::scroll::{physics, ScrollPhysicsProfile, ScrollPhysicsTuning};
+
+    fn t() -> ScrollPhysicsTuning {
+        ScrollPhysicsTuning::default()
+    }
+
+    // シーン座標のビューポート: 左上 (0,0)、幅 200 × 高さ 100。
+    const VP: (f32, f32, f32, f32) = (0.0, 0.0, 200.0, 100.0);
+
+    #[test]
+    fn ios_profile_translates_by_the_full_offset_with_no_scale() {
+        // iOS 風は overshoot 込みで content を丸ごと translate、scale 無し（従来挙動を厳密維持）。
+        // 範囲内。
+        assert_eq!(
+            scroll_group_affine(ScrollPhysicsProfile::Auto, (0.0, 50.0), (0.0, 400.0), VP, &t()),
+            [1.0, 0.0, 0.0, 1.0, 0.0, -50.0],
+        );
+        // 下端を 20px overscroll していても、iOS は overshoot をそのまま translate に含める。
+        assert_eq!(
+            scroll_group_affine(ScrollPhysicsProfile::Auto, (0.0, 420.0), (0.0, 400.0), VP, &t()),
+            [1.0, 0.0, 0.0, 1.0, 0.0, -420.0],
+        );
+    }
+
+    #[test]
+    fn android_in_range_matches_ios_translate_with_no_scale() {
+        // 範囲内は stretch 無し: iOS と同じ素の translate、scale 1.0。パリティ。
+        assert_eq!(
+            scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, 50.0), (0.0, 400.0), VP, &t()),
+            [1.0, 0.0, 0.0, 1.0, 0.0, -50.0],
+        );
+    }
+
+    #[test]
+    fn android_bottom_overscroll_pins_the_bottom_edge_and_scales_content() {
+        // 下端を 20px 越えて overscroll: 端クランプ translate（clamped=max=400）＋ ピン端
+        // アンカー scale（far 端 = ビューポート下端 y=100）に分割する。
+        let m = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, 420.0), (0.0, 400.0), VP, &t());
+        // 縦のスケール = overscroll_stretch_scale(20, dim=100) = 1 + 0.2*0.15 = 1.03。
+        let scale_y = 1.0 + (20.0f64 / 100.0) * physics::STRETCH_MAX as f64;
+        assert!((m[3] - scale_y).abs() < 1e-6, "y scale = {} (want {scale_y})", m[3]);
+        // 横はスクロール不可（max_x=0）→ 伸びない（軸独立）。
+        assert_eq!(m[0], 1.0, "x is not stretched");
+        assert_eq!(m[4], 0.0, "x translate stays 0");
+        // ピン留めした下端はビューポート下端 (シーン y=100) に固定されたまま。
+        // 範囲内 max では content-bottom は content-y=500（500-400=100）にある。
+        let pinned = m[3] * 500.0 + m[5];
+        assert!((pinned - 100.0).abs() < 1e-4, "bottom edge pinned at viewport bottom (got {pinned})");
+    }
+
+    #[test]
+    fn android_top_overscroll_pins_the_top_edge_and_scales_content() {
+        // 上端を 30px 越えて overscroll（offset 負）: 端クランプ translate（clamped=0）＋
+        // ピン端アンカー scale（near 端 = ビューポート上端 y=0）。
+        let m = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, -30.0), (0.0, 400.0), VP, &t());
+        let scale_y = 1.0 + (30.0f64 / 100.0) * physics::STRETCH_MAX as f64;
+        assert!((m[3] - scale_y).abs() < 1e-6, "y scale = {} (want {scale_y})", m[3]);
+        // ピン留めした上端はビューポート上端 (シーン y=0) に固定: content-top は content-y=0。
+        let pinned = m[3] * 0.0 + m[5];
+        assert!(pinned.abs() < 1e-4, "top edge pinned at viewport top (got {pinned})");
+    }
+
+    #[test]
+    fn android_stretch_is_symmetric_at_both_edges() {
+        // 同じ大きさの上端／下端 overscroll は同じスケールを生む（両端対称）。
+        let top = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, -40.0), (0.0, 400.0), VP, &t());
+        let bottom = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, 440.0), (0.0, 400.0), VP, &t());
+        assert!((top[3] - bottom[3]).abs() < 1e-6, "scale symmetric at both edges");
+    }
+
+    #[test]
+    fn android_horizontal_overscroll_stretches_only_the_scrollable_axis() {
+        // 横スクロール可能・縦不可のページ: 右端 overscroll は横だけ伸ばし縦は伸ばさない。
+        let m = scroll_group_affine(ScrollPhysicsProfile::Android, (240.0, 0.0), (200.0, 0.0), VP, &t());
+        // dim_x = ビューポート幅 200、overshoot = 40 → scale_x = 1 + 0.2*0.15 = 1.03。
+        let scale_x = 1.0 + (40.0f64 / 200.0) * physics::STRETCH_MAX as f64;
+        assert!((m[0] - scale_x).abs() < 1e-6, "x scale = {} (want {scale_x})", m[0]);
+        assert_eq!(m[3], 1.0, "y is not stretched (vertical not scrollable)");
+        assert_eq!(m[5], 0.0, "y translate stays 0");
+        // ピン留めした右端はビューポート右端 (シーン x=200) に固定。max では content-right は
+        // content-x=400（400-200=200）。
+        let pinned = m[0] * 400.0 + m[4];
+        assert!((pinned - 200.0).abs() < 1e-4, "right edge pinned at viewport right (got {pinned})");
     }
 }

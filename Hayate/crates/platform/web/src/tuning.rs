@@ -11,14 +11,27 @@
 use hayate_core::{ChromeTuning, Color};
 use serde::Deserialize;
 
-use hayate_core::scroll::ScrollPhysicsTuning;
+use hayate_core::scroll::{ScrollPhysicsProfile, ScrollPhysicsTuning};
 
-/// `tuning.json` のトップレベル形状。任意の 2 セクション。
+/// `tuning.json` のトップレベル形状。任意のセクションと、スクロール感触を選ぶ `profile`。
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TuningJson {
     pub scroll: Option<ScrollJson>,
     pub chrome: Option<ChromeJson>,
+    /// Scroll Physics Profile（感触。ADR-0113/0131）。`auto`/`ios`/`android` のいずれか。
+    /// 未知の値は enum 化で拒否され、呼び出し側は既定へフォールバックできる。省略時は `auto`。
+    pub profile: Option<ProfileJson>,
+}
+
+/// `tuning.json` の `profile` 値。`#[serde(rename_all = "lowercase")]` により未知の文字列は
+/// パースエラーになる（キーのタイポと同様に値のタイポも表面化する）。
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProfileJson {
+    Auto,
+    Ios,
+    Android,
 }
 
 impl TuningJson {
@@ -40,6 +53,15 @@ impl TuningJson {
     /// マージ済み chrome 値（存在キーでデフォルトを上書き）。
     pub fn chrome_tuning(&self) -> ChromeTuning {
         self.chrome.as_ref().map(ChromeJson::merged).unwrap_or_default()
+    }
+
+    /// 稼働させる Scroll Physics Profile（ADR-0113/0131）。`android` は Android stretch、
+    /// `ios`/`auto`/省略は `Auto`（現状 core に明示 Ios variant は無く、`Auto` が iOS へ解決する）。
+    pub fn scroll_profile(&self) -> ScrollPhysicsProfile {
+        match self.profile {
+            Some(ProfileJson::Android) => ScrollPhysicsProfile::Android,
+            Some(ProfileJson::Auto) | Some(ProfileJson::Ios) | None => ScrollPhysicsProfile::Auto,
+        }
     }
 }
 
@@ -169,6 +191,7 @@ pub struct ScrollJson {
     spring_damping: Option<f32>,
     spring_rest_offset: Option<f32>,
     spring_rest_velocity: Option<f32>,
+    stretch_max: Option<f32>,
 }
 
 impl ScrollJson {
@@ -184,6 +207,7 @@ impl ScrollJson {
         overlay(&mut d.spring_damping, self.spring_damping);
         overlay(&mut d.spring_rest_offset, self.spring_rest_offset);
         overlay(&mut d.spring_rest_velocity, self.spring_rest_velocity);
+        overlay(&mut d.stretch_max, self.stretch_max);
         d
     }
 }
@@ -266,6 +290,41 @@ mod tests {
         // …他はデフォルト const のまま。
         assert_eq!(s.slop_px, ScrollPhysicsTuning::default().slop_px);
         assert_eq!(s.spring_damping, ScrollPhysicsTuning::default().spring_damping);
+    }
+
+    #[test]
+    fn profile_android_selects_the_android_stretch_profile() {
+        let t = TuningJson::parse(r#"{ "profile": "android" }"#).unwrap();
+        assert_eq!(t.scroll_profile(), ScrollPhysicsProfile::Android);
+    }
+
+    #[test]
+    fn absent_or_ios_or_auto_profile_stays_auto_ios() {
+        // profile 無しは既定 Auto（iOS 解決）。
+        assert_eq!(TuningJson::parse("{}").unwrap().scroll_profile(), ScrollPhysicsProfile::Auto);
+        // 明示 "ios" / "auto" も現状は Auto（core に明示 Ios variant は無く Auto が iOS 解決）。
+        assert_eq!(
+            TuningJson::parse(r#"{ "profile": "ios" }"#).unwrap().scroll_profile(),
+            ScrollPhysicsProfile::Auto,
+        );
+        assert_eq!(
+            TuningJson::parse(r#"{ "profile": "auto" }"#).unwrap().scroll_profile(),
+            ScrollPhysicsProfile::Auto,
+        );
+    }
+
+    #[test]
+    fn unknown_profile_value_is_rejected_so_typos_surface() {
+        // 未知の値は黙って無視せず拒否（キーのタイポ拒否と同じ方針）。
+        assert!(TuningJson::parse(r#"{ "profile": "windows" }"#).is_err());
+    }
+
+    #[test]
+    fn stretch_max_overrides_the_default() {
+        let t = TuningJson::parse(r#"{ "scroll": { "stretch_max": 0.3 } }"#).unwrap();
+        assert_eq!(t.scroll_tuning().stretch_max, 0.3);
+        // 触れていないキーは既定のまま。
+        assert_eq!(t.scroll_tuning().slop_px, ScrollPhysicsTuning::default().slop_px);
     }
 
     #[test]

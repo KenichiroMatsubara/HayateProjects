@@ -268,6 +268,9 @@ impl HayateElementRenderer {
         // （adapter 側は解放速度推定にのみ使う）。
         self.tree.set_scroll_tuning(self.scroll_tuning);
         self.tree.set_chrome_tuning(parsed.chrome_tuning());
+        // 稼働 Scroll Physics Profile も Core へ渡す（ADR-0131）。scene lowering の overscroll
+        // 表現（iOS translate / Android stretch）だけがこれで分岐する。
+        self.tree.set_scroll_profile(parsed.scroll_profile());
         Ok(())
     }
 
