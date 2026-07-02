@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+
+use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
@@ -47,6 +50,27 @@ pub(crate) trait SceneRenderer {
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue>;
     #[allow(dead_code)]
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
+
+    /// このバックエンドが per-layer present（#636）を実装するか。true なら present ループは
+    /// [`present_layers`](Self::present_layers) を使い、dirty レイヤだけ再 raster してキャッシュ面を
+    /// 合成する。false（既定）のバックエンドは単一 root の全面 raster にフォールバックする。
+    fn supports_layer_present(&self) -> bool {
+        false
+    }
+
+    /// per-layer present（#636・ADR-0125 web CPU 経路）。`layers` / `layer_dirty` は core が
+    /// `render()` で捕捉した `frame_layers()` / 再 raster 対象。dirty / 未キャッシュのレイヤだけ
+    /// キャッシュ面へ raster し、placement quad で合成する（composite-only フレームは全面 raster
+    /// を起動しない）。既定は全面 `render_scene` にフォールバック（未対応バックエンド）。
+    fn present_layers(
+        &mut self,
+        scene: &SceneGraph,
+        _layers: &[ElementId],
+        _layer_dirty: &HashSet<ElementId>,
+        clear_color: ClearColor,
+    ) -> Result<(), JsValue> {
+        self.render_scene(scene, clear_color)
+    }
 
     /// 描画サーフェスを canvas の新しいピクセル寸法に合わせてリサイズする。
     /// `content_scale` は CSS レイアウト座標を物理ピクセルに変換する（dpr）。
@@ -379,6 +403,32 @@ impl SceneRenderer for RenderHost {
             Ok(()) => Ok(()),
             Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
                 renderer.render_scene(scene, clear_color)
+            }),
+        }
+    }
+
+    fn supports_layer_present(&self) -> bool {
+        self.renderer
+            .as_ref()
+            .is_some_and(|renderer| renderer.supports_layer_present())
+    }
+
+    fn present_layers(
+        &mut self,
+        scene: &SceneGraph,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
+        clear_color: ClearColor,
+    ) -> Result<(), JsValue> {
+        let Some(renderer) = self.renderer.as_mut() else {
+            return Err(JsValue::from_str("RenderHost has no active scene renderer"));
+        };
+        debug_assert!(self.selection_plan.includes(renderer.kind()));
+        match renderer.present_layers(scene, layers, layer_dirty, clear_color) {
+            Ok(()) => Ok(()),
+            // ランタイムフォールバック時は次バックエンドの present（既定は全面 raster）へ委ねる。
+            Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
+                renderer.present_layers(scene, layers, layer_dirty, clear_color)
             }),
         }
     }

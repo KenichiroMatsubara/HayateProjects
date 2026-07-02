@@ -1,3 +1,4 @@
+mod layer_compositor;
 mod painter;
 
 use hayate_core::{render_scene_graph, SceneGraph};
@@ -5,6 +6,10 @@ use tiny_skia::{Color, Pixmap};
 
 // ADR-0054: ScenePainter は crate 内部 seam。host 向け公開契約ではない。
 use painter::TinySkiaPainter;
+
+pub use layer_compositor::{
+    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer,
+};
 
 pub struct TinySkiaSceneRenderer;
 

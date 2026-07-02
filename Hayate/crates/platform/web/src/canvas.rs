@@ -427,24 +427,41 @@ impl HayateElementRenderer {
             self.tree.element_paste(id, &text);
         }
         let _ = self.tree.render(timestamp_ms);
-        // render() が捕捉した frame_layers / frame_layer_dirty を FramePlan に通してから raster する
-        // （#632・ADR-0125）。clean フレームは backend の raster を呼ばず、canvas に表示中の
-        // raster 済みフレームを維持する（composite-only 相当＝出力不変で raster 回数だけ減る）。
-        // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
-        // dirty から分離）も保守的に raster トリガへ含める（per-layer 化は #636）。
-        let mut raster_trigger = self.tree.frame_layer_dirty().clone();
-        raster_trigger.extend(self.tree.frame_layer_transform_dirty().iter().copied());
-        let plan = self.planner.plan(self.tree.frame_layers(), &raster_trigger);
-        let present = if plan.needs_raster {
-            let result = self
-                .backend
-                .render_scene(self.tree.scene_graph(), self.background);
-            if result.is_ok() {
-                self.planner.note_full_raster(self.tree.frame_layers());
-            }
-            result
+        // render() が捕捉した frame_layers / frame_layer_dirty を通して raster を gating する
+        // （#632/#636・ADR-0125）。per-layer 対応バックエンド（tiny-skia）は dirty レイヤだけ
+        // キャッシュ面へ再 raster し、clean レイヤはキャッシュ面を合成する（composite-only フレームで
+        // 全面 render_scene を起動しない）。未対応バックエンドは従来の単一 root FramePlan gating
+        // にフォールバックする。scroll フレーム（#634 で content dirty から分離した chrome dirty）は
+        // 単一 Pixmap/texture 経路では offset がキャッシュ面へ焼き込まれるため、保守的に raster
+        // トリガへ含める（stale フレーム回避）。transform 係数だけの変化は quad が適用するので
+        // per-layer 経路では raster トリガに含めない（composite-only）。
+        let present = if self.backend.supports_layer_present() {
+            let mut layer_dirty = self.tree.frame_layer_dirty().clone();
+            layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+            self.backend.present_layers(
+                self.tree.scene_graph(),
+                self.tree.frame_layers(),
+                &layer_dirty,
+                self.background,
+            )
         } else {
-            Ok(())
+            // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
+            // dirty から分離）と scroll chrome（#634）も保守的に raster トリガへ含める。
+            let mut raster_trigger = self.tree.frame_layer_dirty().clone();
+            raster_trigger.extend(self.tree.frame_layer_transform_dirty().iter().copied());
+            raster_trigger.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+            let plan = self.planner.plan(self.tree.frame_layers(), &raster_trigger);
+            if plan.needs_raster {
+                let result = self
+                    .backend
+                    .render_scene(self.tree.scene_graph(), self.background);
+                if result.is_ok() {
+                    self.planner.note_full_raster(self.tree.frame_layers());
+                }
+                result
+            } else {
+                Ok(())
+            }
         };
         // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
         // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
