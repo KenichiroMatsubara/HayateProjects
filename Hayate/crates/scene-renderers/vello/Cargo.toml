@@ -13,4 +13,5 @@ wgpu = { workspace = true }
 
 [dev-dependencies]
 hayate-scene-test-support = { path = "../test-support" }
+hayate-demo-fixtures = { path = "../../demo-fixtures" }
 pollster = { workspace = true }
