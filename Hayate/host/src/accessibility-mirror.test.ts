@@ -6,6 +6,7 @@ import {
   A11Y_NODE_ID_PREFIX,
   MIRROR_OPACITY,
   MIRROR_POINTER_EVENTS,
+  MIRROR_BOUNDS_THROTTLE_MS,
   attachAccessibilityMirror,
 } from './accessibility-mirror.js';
 import type { RawHayate } from './raw-hayate.js';
@@ -314,5 +315,124 @@ describe('attachAccessibilityMirror', () => {
     expect(() => mirror.poll()).not.toThrow();
     expect(spy).not.toHaveBeenCalled();
     expect(() => mirror.detach()).not.toThrow();
+  });
+});
+
+describe('attachAccessibilityMirror bounds throttle (#646)', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  /** 単一 button（window>button）を、与えた bounds / label で作る fixture。 */
+  function buttonFixture(
+    bounds: { x0: number; y0: number; x1: number; y1: number },
+    label = 'Add',
+  ): string {
+    return treeUpdate(1, [
+      [1, node('window', { children: [2] })],
+      [2, node('button', { label, bounds })],
+    ]);
+  }
+
+  /** 注入 clock 付きで attach する。`clock.t` を進めて `poll()` するとフレーム時刻を制御できる。 */
+  function attachWithClock(raw: RawHayate, canvas: HTMLCanvasElement) {
+    const clock = { t: 0 };
+    const mirror = attachAccessibilityMirror(raw, canvas, {
+      now: () => clock.t,
+      boundsThrottleMs: 100,
+    });
+    return { mirror, clock };
+  }
+
+  function buttonEl(container: HTMLElement): HTMLElement {
+    return container.querySelector('[role="button"]') as HTMLElement;
+  }
+
+  it('exposes a named, positive throttle interval constant (no magic number)', () => {
+    expect(typeof MIRROR_BOUNDS_THROTTLE_MS).toBe('number');
+    expect(MIRROR_BOUNDS_THROTTLE_MS).toBeGreaterThan(0);
+  });
+
+  it('throttles bounds-only DOM writes during a scroll burst (AC1: work-count)', () => {
+    const { canvas, container } = mountCanvas();
+    const raw = fakeRawPolling(buttonFixture({ x0: 0, y0: 0, x1: 100, y1: 40 }));
+    const { mirror, clock } = attachWithClock(raw, canvas);
+
+    mirror.poll(); // t=0 初回投影（構造変化）→ bounds 反映（left=0）
+    expect(buttonEl(container).style.left).toBe('0px');
+
+    // スクロール中の連続フレーム：bounds のみが毎フレーム変わる（構造・label は不変）。
+    // すべて throttle 窓（100ms）内なので DOM の bounds は書き換わらない（最初の値のまま）。
+    for (const [t, y] of [
+      [10, 5],
+      [20, 12],
+      [30, 21],
+    ] as const) {
+      clock.t = t;
+      raw.json = buttonFixture({ x0: 0, y0: y, x1: 100, y1: y + 40 });
+      mirror.poll();
+    }
+    expect(buttonEl(container).style.top).toBe('0px'); // throttle により最新 y は未反映。
+  });
+
+  it('always reflects the final bounds after the scroll settles (AC2: no drop)', () => {
+    const { canvas, container } = mountCanvas();
+    const raw = fakeRawPolling(buttonFixture({ x0: 0, y0: 0, x1: 100, y1: 40 }));
+    const { mirror, clock } = attachWithClock(raw, canvas);
+
+    mirror.poll(); // t=0 初回
+
+    // throttle 窓内でスクロール（bounds のみ変化）。最後のフレームの y=21 が最終値。
+    for (const [t, y] of [
+      [10, 5],
+      [20, 12],
+      [30, 21],
+    ] as const) {
+      clock.t = t;
+      raw.json = buttonFixture({ x0: 0, y0: y, x1: 100, y1: y + 40 });
+      mirror.poll();
+    }
+    expect(buttonEl(container).style.top).toBe('0px'); // まだ throttle 中。
+
+    // スクロール静定：core の dirty ゲートが「変更なし」を null で返すフレーム。
+    // 保留していた最終 bounds を必ず反映する（取りこぼしなし）。
+    clock.t = 40;
+    raw.json = null;
+    mirror.poll();
+    expect(buttonEl(container).style.top).toBe('21px');
+  });
+
+  it('reflects deferred bounds once the throttle window elapses during a long scroll', () => {
+    const { canvas, container } = mountCanvas();
+    const raw = fakeRawPolling(buttonFixture({ x0: 0, y0: 0, x1: 100, y1: 40 }));
+    const { mirror, clock } = attachWithClock(raw, canvas);
+
+    mirror.poll(); // t=0 apply（left/top=0）
+
+    clock.t = 50; // 窓内
+    raw.json = buttonFixture({ x0: 0, y0: 10, x1: 100, y1: 50 });
+    mirror.poll();
+    expect(buttonEl(container).style.top).toBe('0px'); // deferred。
+
+    clock.t = 120; // 窓（100ms）経過
+    raw.json = buttonFixture({ x0: 0, y0: 33, x1: 100, y1: 73 });
+    mirror.poll();
+    expect(buttonEl(container).style.top).toBe('33px'); // 窓経過で最新 bounds を反映。
+  });
+
+  it('reflects structural / label / value / focus changes immediately, even mid-throttle (AC3)', () => {
+    const { canvas, container } = mountCanvas();
+    const raw = fakeRawPolling(buttonFixture({ x0: 0, y0: 0, x1: 100, y1: 40 }, 'Add'));
+    const { mirror, clock } = attachWithClock(raw, canvas);
+
+    mirror.poll(); // t=0
+    expect(buttonEl(container).getAttribute('aria-label')).toBe('Add');
+
+    // throttle 窓内（t=10）だが label が変わる = 構造変化。遅延なく反映し、bounds も同時に更新する。
+    clock.t = 10;
+    raw.json = buttonFixture({ x0: 0, y0: 7, x1: 100, y1: 47 }, 'Rename');
+    mirror.poll();
+    expect(buttonEl(container).getAttribute('aria-label')).toBe('Rename');
+    expect(buttonEl(container).style.top).toBe('7px'); // 構造変化フレームは bounds も即時。
   });
 });

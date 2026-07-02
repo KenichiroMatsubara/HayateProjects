@@ -24,6 +24,14 @@ export interface AccessibilityMirror {
   readonly detach: DetachAccessibilityMirror;
 }
 
+/** ミラーの注入 seam（#646）。既定は本番のブラウザ時計と組み込みの throttle 定数。 */
+export interface AccessibilityMirrorOptions {
+  /** フレーム時刻源（ms 単調）。bounds throttle の窓判定に使う。既定は `performance.now`。テスト注入用。 */
+  readonly now?: () => number;
+  /** bounds 反映の最小間隔（ms）。既定は {@link MIRROR_BOUNDS_THROTTLE_MS}。`tuning.json` 上書き用。 */
+  readonly boundsThrottleMs?: number;
+}
+
 /** ミラー root コンテナを識別する属性名。Playwright / テストはこの配下を観測する（ADR-0124）。 */
 export const A11Y_ROOT_ATTR = 'data-hayate-a11y';
 
@@ -34,6 +42,19 @@ export const A11Y_ROOT_ATTR = 'data-hayate-a11y';
  */
 export const MIRROR_OPACITY = '0';
 export const MIRROR_POINTER_EVENTS = 'none';
+
+/**
+ * スクロール / transition 中に毎フレーム変わる bounds の DOM 反映を間引く最小間隔（ms、#646）。
+ * bounds は毎フレーム変わるため「前回 JSON と同一ならスキップ」が効かず、全ノードの
+ * position/width/height 書き換えとミラー DOM のレイアウト無効化が描画と同じ main スレッドで走る
+ * （診断 要因 1）。この間隔でのみ bounds を反映し、静定後は必ず最終値を反映する。構造・role/label/
+ * value・focus の変化は throttle 対象外で常に即時反映する。ブラウザ自身の accessibility tree も
+ * 非同期・低頻度更新であり AT の意味論を壊さない。
+ *
+ * プレースホルダ値。実機での値調整は後続の完全人力スライスが担う（#619 系）。`createHayateWebHost`
+ * が `tuning.json` 由来の値を {@link AccessibilityMirrorOptions.boundsThrottleMs} で上書きできる。
+ */
+export const MIRROR_BOUNDS_THROTTLE_MS = 100;
 
 /**
  * 投影ノードの DOM `id` の接頭辞。`<接頭辞><NodeId>` で一意 id を振り、root の
@@ -110,12 +131,18 @@ interface AccessKitTreeUpdate {
 export function attachAccessibilityMirror(
   raw: RawHayate,
   canvas: HTMLCanvasElement,
+  options?: AccessibilityMirrorOptions,
 ): AccessibilityMirror {
   // 非ブラウザ環境（テストの fake canvas 等）や DOM 未接続の canvas では建てられない。
   // host 構築を落とさないため no-op のミラーを返す（clock lookup を遅延するのと同じ思想）。
   const doc = canvas?.ownerDocument;
   const parent = canvas?.parentNode;
   if (!doc || !parent) return { poll: () => {}, detach: () => {} };
+
+  const now =
+    options?.now ??
+    (() => (typeof performance !== 'undefined' ? performance.now() : Date.now()));
+  const boundsThrottleMs = options?.boundsThrottleMs ?? MIRROR_BOUNDS_THROTTLE_MS;
 
   const root = doc.createElement('div');
   root.setAttribute(A11Y_ROOT_ATTR, '');
@@ -130,16 +157,26 @@ export function attachAccessibilityMirror(
   // NodeId → 投影要素。差分適用で要素の identity を保つ（不変フレームは触らない）。
   const nodeEls = new Map<number, HTMLElement>();
   let lastApplied: string | null = null;
+  // 直近に反映した構造の指紋（bounds を除く role/label/value/children/focus）。これが変わらず
+  // bounds だけ違うフレームは「bounds-only」と分類し throttle 対象にする（#646）。
+  let lastStructuralKey: string | null = null;
+  // throttle で反映を保留した最新フレーム（静定 null poll・窓経過で必ず flush する）。
+  let pendingBounds: AccessKitTreeUpdate | null = null;
+  let lastBoundsAppliedAt = 0;
   let detached = false;
 
-  const project = (json: string): void => {
-    let update: AccessKitTreeUpdate;
-    try {
-      update = JSON.parse(json) as AccessKitTreeUpdate;
-    } catch {
-      return; // 壊れた JSON は前フレームの DOM を保つ。
+  /** bounds を除いた構造の指紋。role/label/value/children/tree root/focus のいずれかが変われば変化。 */
+  const structuralKey = (update: AccessKitTreeUpdate): string => {
+    let key = `r:${update.tree?.root ?? ''};f:${update.focus ?? ''};`;
+    for (const [id, node] of update.nodes) {
+      const p = node.properties;
+      key += `${id}|${node.role}|${p?.label ?? ''}|${p?.value ?? ''}|${(p?.children ?? []).join(',')};`;
     }
+    return key;
+  };
 
+  /** 構造（role / accessible name / value / 子結線 / 除去 / root 取り付け / focus）を反映する（#646: 即時）。 */
+  const applyStructure = (update: AccessKitTreeUpdate): void => {
     const present = new Set<number>();
 
     // 1) 各ノードの要素を get-or-create し、role / accessible name を反映する。
@@ -158,18 +195,6 @@ export function attachAccessibilityMirror(
       const label = node.properties?.label;
       if (label != null) el.setAttribute('aria-label', label);
       else el.removeAttribute('aria-label');
-
-      // bounds を on-canvas 矩形へ絶対配置する。これでミラーノードが当たり位置に重なり、
-      // Playwright が `boundingBox()` から駆動座標を得られる（pointer-events:none なので
-      // 座標クリックは下の <canvas> に届き、ミラーは横取りしない・ADR-0124）。
-      const bounds = node.properties?.bounds;
-      if (bounds) {
-        el.style.position = 'absolute';
-        el.style.left = `${bounds.x0}px`;
-        el.style.top = `${bounds.y0}px`;
-        el.style.width = `${bounds.x1 - bounds.x0}px`;
-        el.style.height = `${bounds.y1 - bounds.y0}px`;
-      }
     }
 
     // 2) 構造を結線する。子があれば子要素を順に再 parent、無ければ value を textContent に。
@@ -216,18 +241,68 @@ export function attachAccessibilityMirror(
     }
   };
 
+  /**
+   * bounds を各ノードの on-canvas 矩形へ絶対配置する（#646: throttle 対象）。これでミラーノードが当たり
+   * 位置に重なり、Playwright が `boundingBox()` から駆動座標を得られる（pointer-events:none なので座標
+   * クリックは下の `<canvas>` に届き、ミラーは横取りしない・ADR-0124）。全ノードの position/width/height
+   * 書き換えがレイアウトを無効化するため、スクロール中はこの適用を間引く。
+   */
+  const applyBounds = (update: AccessKitTreeUpdate, at: number): void => {
+    for (const [id, node] of update.nodes) {
+      const bounds = node.properties?.bounds;
+      if (!bounds) continue;
+      const el = nodeEls.get(id);
+      if (!el) continue;
+      el.style.position = 'absolute';
+      el.style.left = `${bounds.x0}px`;
+      el.style.top = `${bounds.y0}px`;
+      el.style.width = `${bounds.x1 - bounds.x0}px`;
+      el.style.height = `${bounds.y1 - bounds.y0}px`;
+    }
+    lastBoundsAppliedAt = at;
+    pendingBounds = null;
+  };
+
   const poll = (): void => {
     // detach 後にレンダラのフレーム相乗り poll が 1 回遅れて来ても、DOM を再生させず安全に抜ける。
     if (detached) return;
+    const t = now();
     const json = raw.poll_accessibility();
     // #642: core の dirty ゲートが「変更なし」フレームを `null` で返す（全ツリー walk も JSON 生成も
-    // しない）。`null` は文字列比較なしにスキップし、直近適用 JSON も温存する（次の実変更まで DOM 不変）。
-    // 非 null（＝a11y 変更あり）でも、稀な over-bump（視覚のみ変更で a11y JSON は同一）に備え文字列
-    // 比較を二段目のガードとして残し、同一なら再投影しない。
-    if (json == null) return;
-    if (json !== lastApplied) {
-      lastApplied = json;
-      project(json);
+    // しない）。scroll が静定するとバウンド変化も止まり dirty ゲートが `null` を返す — このとき保留して
+    // いた最終 bounds を必ず反映する（#646: 取りこぼしなし）。
+    if (json == null) {
+      if (pendingBounds) applyBounds(pendingBounds, t);
+      return;
+    }
+    // 稀な over-bump（視覚のみ変更で a11y JSON は同一）に備え、完全同一 JSON は再投影しない。
+    if (json === lastApplied) {
+      if (pendingBounds) applyBounds(pendingBounds, t);
+      return;
+    }
+
+    let update: AccessKitTreeUpdate;
+    try {
+      update = JSON.parse(json) as AccessKitTreeUpdate;
+    } catch {
+      return; // 壊れた JSON は前フレームの DOM を保つ。
+    }
+    lastApplied = json;
+
+    const key = structuralKey(update);
+    if (key !== lastStructuralKey) {
+      // 構造・role/label/value・focus の変化は throttle 対象外で即時反映し、bounds も同時に更新する。
+      lastStructuralKey = key;
+      applyStructure(update);
+      applyBounds(update, t);
+      return;
+    }
+
+    // bounds-only の変化：throttle 窓が空いていれば反映、そうでなければ最新を保留（静定 / 窓経過で flush）。
+    if (t - lastBoundsAppliedAt >= boundsThrottleMs) {
+      applyBounds(update, t);
+    } else {
+      pendingBounds = update;
     }
   };
 
