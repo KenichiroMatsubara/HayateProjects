@@ -67,6 +67,8 @@ fn compositor_pipelines_are_warmed_up_at_init() {
 fn present_consumes_core_captured_frame_layers() {
     // 判定入力は core が render() 内で捕捉した frame_layers / frame_layer_dirty。render 前の
     // スナップショットではカーソル点滅等の in-render 継続を取りこぼす（stale frame になる）。
+    // #635 で present は handoff を組む `frame_handoff` に集約された（scene の owned スナップショット
+    // ＋捕捉レイヤ）。app.rs がその捕捉を握り、両経路が frame_handoff を通す。
     let src = app_src();
     assert!(
         src.contains("frame_layers()") && src.contains("frame_layer_dirty()"),
@@ -74,9 +76,44 @@ fn present_consumes_core_captured_frame_layers() {
     );
     let tsubame = read_relative("src/app_tsubame.rs");
     assert!(
-        tsubame.contains("frame_layers()") && tsubame.contains("frame_layer_dirty()"),
-        "the tsubame-js present path must consume the captured frame layers too (#632)"
+        tsubame.contains("frame_handoff("),
+        "the tsubame-js present path must build a handoff from the captured frame layers (#635)"
     );
+}
+
+#[test]
+fn present_runs_raster_on_a_dedicated_thread() {
+    // #635/ADR-0128: raster/composite は専用 Raster スレッドが所有する GpuSurface で走り、UI
+    // スレッドは owned handoff を送るだけ（raster 完了を待たない）。両経路が RasterThread へ配線される。
+    let src = app_src();
+    assert!(
+        src.contains("RasterThread::spawn") && src.contains("RasterCommand::Frame"),
+        "app.rs must move the surface onto a RasterThread and present via RasterCommand::Frame (#635)"
+    );
+    assert!(
+        src.contains("scene: tree.scene_graph().clone()"),
+        "the handoff must carry an owned SceneGraph snapshot across the thread boundary (#635)"
+    );
+    for (name, path) in [("app.rs", "src/app.rs"), ("app_tsubame.rs", "src/app_tsubame.rs")] {
+        let s = read_relative(path);
+        assert!(
+            s.contains("spawn_raster_thread(") && s.contains(".send("),
+            "{name} present loop must produce onto the Raster thread (non-blocking, ADR-0128) (#635)"
+        );
+    }
+}
+
+#[test]
+fn surface_teardown_stops_the_raster_thread() {
+    // surface 破棄（TerminateWindow）で Raster スレッドを安全に停止する＝ハンドルを None にして
+    // drop → 送信済みを処理して join。両経路で DestroySurface が raster を畳む。
+    for (name, path) in [("app.rs", "src/app.rs"), ("app_tsubame.rs", "src/app_tsubame.rs")] {
+        let s = read_relative(path);
+        assert!(
+            s.contains("DestroySurface => raster = None"),
+            "{name} must stop the Raster thread on surface teardown (#635)"
+        );
+    }
 }
 
 #[test]

@@ -27,7 +27,7 @@ pub use pipeline_cache::PipelineCacheKey;
 pub mod present;
 pub use present::PresentPlanner;
 pub mod raster_thread;
-pub use raster_thread::{RasterHandoff, RasterHandoffError, RasterThread};
+pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
 
 /// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は
 /// プレースホルダで、マジックナンバーをロジックへ散らさないことが目的。予算（ビューポート N 枚分）は
