@@ -152,7 +152,7 @@ describe('createHayateWebHost', () => {
   });
 
   it('attaches the accessibility mirror seam with the surface raw+canvas (ADR-0124)', async () => {
-    const attachMirror = vi.fn(() => () => undefined);
+    const attachMirror = vi.fn(() => ({ poll: () => {}, detach: () => {} }));
     const raw = fakeRaw();
     await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
@@ -168,11 +168,53 @@ describe('createHayateWebHost', () => {
     const host = await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
       loadBackend: async () => fakeRaw(),
-      attachMirror: () => detach,
+      attachMirror: () => ({ poll: () => {}, detach }),
     });
 
     host.detach();
 
     expect(detach).toHaveBeenCalledTimes(1);
+  });
+
+  it('rides the mirror poll on the renderer frame-clock: polls once after each frame (#645)', async () => {
+    // レンダラのフレーム cb → その末尾でミラー poll、の順で 1 フレームにつき 1 回だけ相乗りする。
+    let scheduled: FrameRequestCallback | null = null;
+    const poll = vi.fn();
+    const host = await createHayateWebHost(canvas, {
+      probeWebGPU: async () => false,
+      loadBackend: async () => fakeRaw(),
+      attachMirror: () => ({ poll, detach: () => {} }),
+      requestFrame: (cb) => {
+        scheduled = cb;
+        return 1;
+      },
+      cancelFrame: () => {},
+    });
+
+    const order: string[] = [];
+    // 合成ルート（HayateRenderer 相当）が host.requestFrame でフレームを予約する。
+    host.requestFrame(() => order.push('render'));
+    expect(poll).not.toHaveBeenCalled(); // 予約だけ。まだフレームは出ていない。
+
+    // clock が 1 フレーム発火する。
+    scheduled!(0);
+    order.push('poll:' + poll.mock.calls.length);
+    expect(order).toEqual(['render', 'poll:1']); // レンダラ → ミラー poll の順。
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not tick the mirror while idle: no scheduled frame means no poll (#645)', async () => {
+    // フレームが予約されない（visual_dirty 空・入力なし）限りミラー poll はゼロ。独立ループが無い。
+    const poll = vi.fn();
+    await createHayateWebHost(canvas, {
+      probeWebGPU: async () => false,
+      loadBackend: async () => fakeRaw(),
+      attachMirror: () => ({ poll, detach: () => {} }),
+      requestFrame: () => 1,
+      cancelFrame: () => {},
+    });
+
+    // host は attach しただけでフレームを予約していない。ミラーは一切走らない。
+    expect(poll).not.toHaveBeenCalled();
   });
 });

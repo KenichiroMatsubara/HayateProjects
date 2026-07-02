@@ -2,7 +2,7 @@ import manifest from '@hayate/protocol-spec/manifest' with { type: 'json' };
 import { resolveCanvasBackend, type CanvasBackend } from './resolve-backend.js';
 import {
   attachAccessibilityMirror,
-  type DetachAccessibilityMirror,
+  type AccessibilityMirror,
 } from './accessibility-mirror.js';
 import type { RawHayate } from './raw-hayate.js';
 
@@ -25,7 +25,7 @@ export {
   MIRROR_OPACITY,
   MIRROR_POINTER_EVENTS,
   type DetachAccessibilityMirror,
-  type AccessibilityMirrorOptions,
+  type AccessibilityMirror,
 } from './accessibility-mirror.js';
 
 /**
@@ -46,8 +46,9 @@ export interface WebHost {
   readonly requestFrame: (cb: FrameRequestCallback) => number;
   readonly cancelFrame: (handle: number) => void;
   /**
-   * host のライフサイクル teardown。現状は Accessibility Mirror（ADR-0124）の root 除去と
-   * rAF 停止を畳む。full reload 時に古い host を捨てる前に呼ぶ（`startMiharashiHost` が結線）。
+   * host のライフサイクル teardown。現状は Accessibility Mirror（ADR-0124）の root 除去を畳む。
+   * ミラーは独立ループを持たず frame-clock に相乗りするため（#645）、レンダラ停止でミラーの tick も
+   * 止まる。full reload 時に古い host を捨てる前に呼ぶ（`startMiharashiHost` が結線）。
    */
   readonly detach: () => void;
 }
@@ -71,12 +72,13 @@ export interface CreateHayateWebHostOptions {
   ) => Promise<RawHayate>;
   /**
    * テスト注入 seam。既定は `@hayate/host` の {@link attachAccessibilityMirror}（ADR-0124）。
-   * canvas boot のたびに `(raw, canvas)` で呼び、返った detach を `WebHost.detach` に通す。
+   * canvas boot のたびに `(raw, canvas)` で呼ぶ。返った {@link AccessibilityMirror} の `poll` は
+   * host が frame-clock に相乗りさせ（#645）、`detach` を `WebHost.detach` に通す。
    */
   attachMirror?: (
     raw: RawHayate,
     canvas: HTMLCanvasElement,
-  ) => DetachAccessibilityMirror;
+  ) => AccessibilityMirror;
 }
 
 /** `navigator.gpu` で WebGPU の利用可否を判定する。 */
@@ -144,14 +146,25 @@ export async function createHayateWebHost(
 
   // 既定 clock はブラウザの rAF。lookup は tick 時まで遅延させ、非ブラウザ環境での
   // 構築（テスト等）が落ちないようにする。clock 源の確立は host bootstrap の責務。
-  const requestFrame =
+  const baseRequestFrame =
     options?.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
   const cancelFrame =
     options?.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
 
   // Accessibility Mirror（ADR-0124）の attach 点。canvas+raw を握るこの 1 箇所で attach し、
   // teardown 用の detach を host に通す。本体は #592 が実装し、全 Canvas アプリへ自動で効く。
-  const detach = attachMirror(raw, canvas);
+  const mirror = attachMirror(raw, canvas);
 
-  return { raw, requestFrame, cancelFrame, detach };
+  // #645: ミラーはもう独立 rAF ループを持たない。host が返す frame-clock を包み、レンダラの各フレーム
+  // コールバック末尾でミラーを 1 回 poll する（相乗り）。レンダラが idle に落ちて frame を出さなければ
+  // ミラーの tick も走らず、frame-clock がアプリ全体で 1 本になる（診断 要因 1 / ADR-0126）。ミラー poll
+  // は #642 の dirty ゲートで変更なしフレームはほぼ無償。フレーム後に poll するのでレイアウト後の bounds
+  // を読める。
+  const requestFrame = (cb: FrameRequestCallback): number =>
+    baseRequestFrame((timestamp) => {
+      cb(timestamp);
+      mirror.poll();
+    });
+
+  return { raw, requestFrame, cancelFrame, detach: mirror.detach };
 }

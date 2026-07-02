@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ACCESSKIT_ROLE_TO_ARIA,
   A11Y_ROOT_ATTR,
@@ -11,11 +11,11 @@ import {
 import type { RawHayate } from './raw-hayate.js';
 
 /**
- * Accessibility Mirror（ADR-0124）の walking skeleton 契約テスト（#592）。実 WASM を巻き込まず、
- * `poll_accessibility()` が返す AccessKit `TreeUpdate` JSON を fake `raw` で差し替え、rAF も注入
- * seam で 1 フレームずつ手動駆動して、生成 DOM の role / accessible name / value / 構造と、
- * 不変フレームでの no-op を観測する。fixture の作り方は `golden-frame.ts`、happy-dom 環境は
- * `renderer-dom` の prior art に倣う。
+ * Accessibility Mirror（ADR-0124）の walking skeleton 契約テスト（#592 / #645）。実 WASM を巻き込まず、
+ * `poll_accessibility()` が返す AccessKit `TreeUpdate` JSON を fake `raw` で差し替え、ミラーの `poll()`
+ * を手で呼んで 1 フレームずつ駆動して、生成 DOM の role / accessible name / value / 構造と、不変フレーム
+ * での no-op を観測する。#645 以降、ミラーは独立 rAF ループを持たず、レンダラのフレームに相乗りして
+ * `poll()` が外から駆動される（idle でレンダラが止まればミラーも完全に止まる）。
  */
 
 /** `<canvas>` を親コンテナ配下に建てて DOM に挿す（ミラーは canvas の兄弟に建つ）。 */
@@ -25,28 +25,6 @@ function mountCanvas(): { canvas: HTMLCanvasElement; container: HTMLElement } {
   container.appendChild(canvas);
   document.body.appendChild(container);
   return { canvas, container };
-}
-
-/** rAF を手で進めるための駆動子。`tick()` が登録済みフレームコールバックを 1 回走らせる。 */
-function frameDriver() {
-  let cb: FrameRequestCallback | null = null;
-  return {
-    requestFrame: (fn: FrameRequestCallback): number => {
-      cb = fn;
-      return 1;
-    },
-    cancelFrame: (): void => {
-      cb = null;
-    },
-    tick(): void {
-      const fn = cb;
-      cb = null;
-      fn?.(0);
-    },
-    get scheduled(): boolean {
-      return cb != null;
-    },
-  };
 }
 
 /** `poll_accessibility()` だけを差し替えた最小 raw。返す JSON 文字列を後から切り替えられる。 */
@@ -118,25 +96,13 @@ function todoFixture(): string {
 }
 
 describe('attachAccessibilityMirror', () => {
-  let driver: ReturnType<typeof frameDriver>;
-
-  beforeEach(() => {
-    driver = frameDriver();
-  });
   afterEach(() => {
     document.body.innerHTML = '';
   });
 
-  function attach(raw: RawHayate, canvas: HTMLCanvasElement) {
-    return attachAccessibilityMirror(raw, canvas, {
-      requestFrame: driver.requestFrame,
-      cancelFrame: driver.cancelFrame,
-    });
-  }
-
   it('builds a data-hayate-a11y root as the canvas sibling, invisible and non-interactive', () => {
     const { canvas, container } = mountCanvas();
-    attach(fakeRawPolling(null), canvas);
+    attachAccessibilityMirror(fakeRawPolling(null), canvas);
 
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
     expect(root).not.toBeNull();
@@ -145,12 +111,25 @@ describe('attachAccessibilityMirror', () => {
     expect(root.style.pointerEvents).toBe(MIRROR_POINTER_EVENTS);
   });
 
+  it('arms no independent frame loop: poll_accessibility is untouched until poll() is called (#645)', () => {
+    const { canvas } = mountCanvas();
+    const raw = fakeRawPolling(todoFixture());
+    const spy = vi.spyOn(raw, 'poll_accessibility');
+    const mirror = attachAccessibilityMirror(raw, canvas);
+
+    // attach 自体はレンダラフレームを掴まない。外から poll() されるまで一切走らない。
+    expect(spy).not.toHaveBeenCalled();
+
+    mirror.poll();
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
   it('projects the TreeUpdate 1:1 with correct ARIA role, accessible name and value', () => {
     const { canvas, container } = mountCanvas();
     const raw = fakeRawPolling(todoFixture());
-    attach(raw, canvas);
+    const mirror = attachAccessibilityMirror(raw, canvas);
 
-    driver.tick(); // 1 フレーム poll → 投影
+    mirror.poll(); // 1 フレーム poll → 投影
 
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
 
@@ -180,15 +159,15 @@ describe('attachAccessibilityMirror', () => {
   it('skips DOM mutation when the polled JSON is unchanged (cheap string compare)', () => {
     const { canvas, container } = mountCanvas();
     const raw = fakeRawPolling(todoFixture());
-    attach(raw, canvas);
+    const mirror = attachAccessibilityMirror(raw, canvas);
 
-    driver.tick(); // 投影
+    mirror.poll(); // 投影
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
     const button = root.querySelector('[role="button"]') as HTMLElement;
 
     // DOM を外から改竄しておく。JSON 不変なら 2 フレーム目は触らないので改竄が残る。
     button.setAttribute('aria-label', 'TAMPERED');
-    driver.tick(); // 同一 JSON → no-op
+    mirror.poll(); // 同一 JSON → no-op
 
     expect(
       (root.querySelector('[role="button"]') as HTMLElement).getAttribute('aria-label'),
@@ -200,16 +179,16 @@ describe('attachAccessibilityMirror', () => {
     // スキップし、直近投影の DOM をそのまま保つ（次の実変更まで触らない）。
     const { canvas, container } = mountCanvas();
     const raw = fakeRawPolling(todoFixture());
-    attach(raw, canvas);
+    const mirror = attachAccessibilityMirror(raw, canvas);
 
-    driver.tick(); // 初回投影
+    mirror.poll(); // 初回投影
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
     const button = root.querySelector('[role="button"]') as HTMLElement;
     button.setAttribute('aria-label', 'TAMPERED');
 
     // core が「変更なし」を null で返すフレーム。投影は走らず改竄が残る。
     raw.json = null;
-    driver.tick();
+    mirror.poll();
     expect(
       (root.querySelector('[role="button"]') as HTMLElement).getAttribute('aria-label'),
     ).toBe('TAMPERED');
@@ -219,7 +198,7 @@ describe('attachAccessibilityMirror', () => {
       [1, node('window', { children: [2] })],
       [2, node('button', { label: 'Renamed' })],
     ]);
-    driver.tick();
+    mirror.poll();
     expect(
       (root.querySelector('[role="button"]') as HTMLElement).getAttribute('aria-label'),
     ).toBe('Renamed');
@@ -228,9 +207,9 @@ describe('attachAccessibilityMirror', () => {
   it('re-projects when the polled JSON changes', () => {
     const { canvas, container } = mountCanvas();
     const raw = fakeRawPolling(todoFixture());
-    attach(raw, canvas);
+    const mirror = attachAccessibilityMirror(raw, canvas);
 
-    driver.tick();
+    mirror.poll();
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
 
     // textInput の値が変わる新フレーム。
@@ -238,7 +217,7 @@ describe('attachAccessibilityMirror', () => {
       [1, node('window', { children: [3] })],
       [3, node('textInput', { value: 'Buy bread' })],
     ]);
-    driver.tick();
+    mirror.poll();
 
     const textbox = root.querySelector('[role="textbox"]') as HTMLElement;
     expect(textbox.textContent).toBe('Buy bread');
@@ -253,8 +232,8 @@ describe('attachAccessibilityMirror', () => {
         [2, node('button', { label: 'Add', bounds: { x0: 10, y0: 20, x1: 110, y1: 60 } })],
       ]),
     );
-    attach(raw, canvas);
-    driver.tick();
+    const mirror = attachAccessibilityMirror(raw, canvas);
+    mirror.poll();
 
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
     const button = root.querySelector('[role="button"]') as HTMLElement;
@@ -279,8 +258,8 @@ describe('attachAccessibilityMirror', () => {
         3,
       ),
     );
-    attach(raw, canvas);
-    driver.tick();
+    const mirror = attachAccessibilityMirror(raw, canvas);
+    mirror.poll();
 
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
     const focusId = `${A11Y_NODE_ID_PREFIX}3`;
@@ -299,37 +278,41 @@ describe('attachAccessibilityMirror', () => {
       [3, node('textInput', { value: 'Buy milk' })],
     ];
     const raw = fakeRawPolling(treeUpdate(1, nodes, 3));
-    attach(raw, canvas);
-    driver.tick();
+    const mirror = attachAccessibilityMirror(raw, canvas);
+    mirror.poll();
 
     const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
     expect(root.getAttribute('aria-activedescendant')).toBe(`${A11Y_NODE_ID_PREFIX}3`);
 
     // focus が button(2) に移る。
     raw.json = treeUpdate(1, nodes, 2);
-    driver.tick();
+    mirror.poll();
     expect(root.getAttribute('aria-activedescendant')).toBe(`${A11Y_NODE_ID_PREFIX}2`);
   });
 
-  it('detach removes the mirror root and stops the rAF loop', () => {
+  it('detach removes the mirror root; a later poll is a safe no-op (no lingering loop, #645)', () => {
     const { canvas, container } = mountCanvas();
-    const detach = attach(fakeRawPolling(todoFixture()), canvas);
+    const raw = fakeRawPolling(todoFixture());
+    const mirror = attachAccessibilityMirror(raw, canvas);
 
-    driver.tick();
+    mirror.poll();
     expect(container.querySelector(`[${A11Y_ROOT_ATTR}]`)).not.toBeNull();
-    expect(driver.scheduled).toBe(true);
 
-    detach();
+    mirror.detach();
     expect(container.querySelector(`[${A11Y_ROOT_ATTR}]`)).toBeNull();
-    expect(driver.scheduled).toBe(false);
+
+    // detach 後の相乗り poll が来ても DOM を再生させず、例外も投げない。
+    raw.json = treeUpdate(1, [[1, node('window', {})]]);
+    expect(() => mirror.poll()).not.toThrow();
+    expect(container.querySelector(`[${A11Y_ROOT_ATTR}]`)).toBeNull();
   });
 
   it('is a no-op when the canvas is not attached to a document (non-DOM env safety)', () => {
-    const detach = attachAccessibilityMirror(fakeRawPolling(null), {} as HTMLCanvasElement, {
-      requestFrame: driver.requestFrame,
-      cancelFrame: driver.cancelFrame,
-    });
-    expect(driver.scheduled).toBe(false);
-    expect(() => detach()).not.toThrow();
+    const raw = fakeRawPolling(null);
+    const spy = vi.spyOn(raw, 'poll_accessibility');
+    const mirror = attachAccessibilityMirror(raw, {} as HTMLCanvasElement);
+    expect(() => mirror.poll()).not.toThrow();
+    expect(spy).not.toHaveBeenCalled();
+    expect(() => mirror.detach()).not.toThrow();
   });
 });
