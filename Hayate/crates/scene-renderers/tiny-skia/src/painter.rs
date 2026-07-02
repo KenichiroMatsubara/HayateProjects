@@ -405,9 +405,9 @@ fn draw_image(
     }
 
     let src_data = match image.alpha_type {
-        RenderImageAlphaType::Premultiplied => image.data.to_vec(),
+        RenderImageAlphaType::Premultiplied => image.data.data().to_vec(),
         _ => {
-            let mut buf = image.data.to_vec();
+            let mut buf = image.data.data().to_vec();
             straight_to_premultiplied(&mut buf);
             buf
         }
