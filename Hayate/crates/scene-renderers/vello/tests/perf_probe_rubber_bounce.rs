@@ -258,4 +258,73 @@ fn perf_probe_rubber_bounce() {
             }
         }
     }
+
+    // ── 4. #639: present の raster gating（composite-only work-count）─────────────
+    // 上の GPU 計測は「web backend の現行 present（毎フレーム全画面フル pipeline）」の比 ~1.0 を出す。
+    // ここでは #639 の配線（core の chrome dirty 分類 ＋ content-visible 帯カバレッジのクランプ）を
+    // PresentPlanner に通し、スプリングバック中に実際に走る raster 回数を数える。全フレームが
+    // composite-only（raster 0）なら、フル pipeline フレーム（比 ~1.0）から単一 composite（実質 raster
+    // ゼロ）へ落ちる ＝ バウンス/コールド比のホスト可測プロキシ。
+    let (frames, rasters) = present_gated_bounce(120.0);
+    println!(
+        "[bounce-probe] #639 present-gated springback: {frames} frames, {rasters} raster (non-composite), \
+         composite-only {}/{} → per-frame work は full-pipeline から single-composite へ",
+        frames - rasters,
+        frames
+    );
+}
+
+/// #639 の present raster gating をバウンス経路に通し、(springback フレーム数, raster フレーム数) を返す。
+/// content-visible 帯カバレッジ（`scroll_content_visible_top` のクランプ）で越境フレームも composite-only
+/// に保つ。下端まで scroll 済み（帯キャッシュ済み）の状態から overshoot 解放する実バウンス。
+fn present_gated_bounce(overshoot: f32) -> (usize, usize) {
+    use hayate_layer_compositor::PresentPlanner;
+
+    const BPP: u64 = 4;
+    fn pump(
+        tree: &mut ElementTree,
+        planner: &mut PresentPlanner,
+        sv: hayate_core::ElementId,
+        ts: f64,
+    ) -> bool {
+        use hayate_layer_compositor::{scroll_content_visible_top, scroll_layer_extent, tunables};
+        let _ = tree.render(ts);
+        let (_, oy) = tree.element_get_scroll_offset(sv);
+        let (_, max_y) = tree.element_scroll_max_offset(sv);
+        let (_, _, w, vh) = tree.element_layout_rect(sv).unwrap();
+        let top = scroll_content_visible_top(oy, max_y);
+        let content_h = vh + max_y;
+        let band = scroll_layer_extent(top, vh, content_h, tunables::OVERSCAN_MARGIN_PX);
+        let bytes = (w as u64) * (band.height.ceil() as u64) * BPP;
+        let content_dirty = tree.frame_layer_dirty().contains(&sv);
+        if content_dirty || planner.scroll_layer_needs_raster(sv, top, vh) {
+            planner.note_scroll_rasterized(sv, band, bytes);
+            planner.note_composited(sv);
+            true
+        } else {
+            planner.note_composited(sv);
+            false
+        }
+    }
+
+    let (mut tree, sv) = scrollable_list_tree();
+    let mut planner = PresentPlanner::new();
+    // cold（top 帯）→ 下端へスクロール（帯を跨いで bottom 帯を raster）。
+    let _ = pump(&mut tree, &mut planner, sv, 0.0);
+    let (_, max_y) = tree.element_scroll_max_offset(sv);
+    tree.element_set_scroll_offset(sv, 0.0, max_y);
+    let _ = pump(&mut tree, &mut planner, sv, FRAME_MS);
+    // 下端を越えた位置で解放 → スプリングバック。
+    tree.element_set_scroll_offset(sv, 0.0, max_y + overshoot);
+    tree.start_scroll_momentum(sv, 0.0, 0.0);
+    let mut ts = 2.0 * FRAME_MS;
+    let (mut frames, mut rasters) = (0usize, 0usize);
+    while tree.has_pending_visual_work() && frames < MAX_BOUNCE_FRAMES {
+        if pump(&mut tree, &mut planner, sv, ts) {
+            rasters += 1;
+        }
+        frames += 1;
+        ts += FRAME_MS;
+    }
+    (frames, rasters)
 }

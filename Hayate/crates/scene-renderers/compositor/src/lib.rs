@@ -250,6 +250,20 @@ pub fn scroll_layer_extent(
     }
 }
 
+/// content-visible な帯の上端（content 座標・px・#639）。バウンス（overscroll）中は表示スクロール
+/// offset が `[0, max]` の外へ出るが、**端を越えて露出するのは背景**であって新しい content ではない
+/// （その見せ方＝rubber-band translate / Android stretch は合成時 affine が担う・ADR-0131）。したがって
+/// content レイヤ帯が覆うべき範囲は、offset を `[0, max]` にクランプした「content-visible」位置で決まる。
+///
+/// これが #639 の芯：生 offset で帯カバレッジ（[`ScrollLayerExtent::covers`]）を判定すると、越境フレームは
+/// content 帯が可視域を覆えず（帯は `[0, content_height]` にクランプされるため）、#634（帯内スクロールの
+/// composite-only 化）が入ってもバウンス毎フレームがレイヤ再 raster に落ちる。クランプ後の top で帯と
+/// カバレッジを組めば、バウンス中も端の帯を再利用でき composite-only を保てる。overshoot は帯にも
+/// カバレッジにも一切影響しない（純粋に合成 affine の見せ方）。
+pub fn scroll_content_visible_top(scroll_offset: f32, max_offset: f32) -> f32 {
+    scroll_offset.clamp(0.0, max_offset.max(0.0))
+}
+
 /// 1 フレームの描画計画。`needs_raster` が false なら Vello/tiny-skia を起動せず、専用 compositor だけ
 /// でキャッシュ面を合成する（composite-only フレーム＝ADR-0125「合成は安い・毎フレーム」）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -522,6 +536,47 @@ mod tests {
         assert!(band.covers(0.0, 800.0));
         // overscan(600) を超えて 700px スクロール → 可視域下端 1500 > band 下端 1400 で未カバー。
         assert!(!band.covers(700.0, 800.0));
+    }
+
+    // ── #639: overscroll（バウンス）中の content-visible 帯 ─────────────────────
+
+    #[test]
+    fn in_bounds_offset_is_its_own_visible_top() {
+        // 範囲内では content-visible top ＝ offset そのもの（クランプなし）。
+        assert_eq!(scroll_content_visible_top(0.0, 4800.0), 0.0);
+        assert_eq!(scroll_content_visible_top(1200.0, 4800.0), 1200.0);
+        assert_eq!(scroll_content_visible_top(4800.0, 4800.0), 4800.0);
+    }
+
+    #[test]
+    fn overscroll_offset_clamps_to_the_content_edge() {
+        // バウンス中（offset が [0, max] の外）でも、露出するのは背景であって新しい content
+        // ではない。覆うべき content 帯は端にクランプした位置で決まる（overshoot は合成 affine
+        // が担う・ADR-0131）。下端越境は max、上端越境は 0 にクランプ。
+        assert_eq!(scroll_content_visible_top(4920.0, 4800.0), 4800.0, "下端越境は max へ");
+        assert_eq!(scroll_content_visible_top(-120.0, 4800.0), 0.0, "上端越境は 0 へ");
+    }
+
+    #[test]
+    fn overscroll_band_from_visible_top_still_covers_the_viewport() {
+        // 生 offset だと content 帯は可視域を覆えない（#634 が入ってもバウンスが再 raster に
+        // 落ちる回帰）。content-visible top（クランプ）で組んだ帯なら覆う ＝ composite-only。
+        let (max, vh, content_h) = (4800.0f32, 200.0f32, 5000.0f32);
+        let raw_offset = max + 120.0; // 下端を 120px 越えたバウンスフレーム。
+        let raw_band = scroll_layer_extent(raw_offset, vh, content_h, tunables::OVERSCAN_MARGIN_PX);
+        assert!(!raw_band.covers(raw_offset, vh), "生 offset の帯は可視域を覆えない（回帰の芯）");
+
+        let top = scroll_content_visible_top(raw_offset, max);
+        let band = scroll_layer_extent(top, vh, content_h, tunables::OVERSCAN_MARGIN_PX);
+        assert!(band.covers(top, vh), "content-visible top の帯は可視域を覆う（composite-only）");
+    }
+
+    #[test]
+    fn non_scrollable_axis_visible_top_is_zero() {
+        // スクロール不可（max <= 0）な軸は content-visible top 0 に張り付く（バウンスもしない）。
+        assert_eq!(scroll_content_visible_top(0.0, 0.0), 0.0);
+        assert_eq!(scroll_content_visible_top(50.0, 0.0), 0.0);
+        assert_eq!(scroll_content_visible_top(-30.0, 0.0), 0.0);
     }
 
     // ── ADR-0127: GPU 予算＋LRU 退避 ───────────────────────────────────────────

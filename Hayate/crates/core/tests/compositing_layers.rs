@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use hayate_core::{Color, ElementKind, ElementTree};
-use hayate_core::element::style::StyleProp;
+use hayate_core::element::style::{Dimension, StyleProp};
 
 #[test]
 fn scroll_view_and_transform_elements_become_layers() {
@@ -396,6 +396,88 @@ fn touch_indicator_fade_frames_stay_chrome_dirty() {
         tree.frame_layer_chrome_dirty().contains(&scroll),
         "インジケータ fade の継続フレームは chrome dirty"
     );
+}
+
+// ── #639: overscroll（rubber バウンド）中も content 非 dirty（composite-only）───────────────
+//
+// バウンス中に変わるのは scroll Group affine（越境変位込み・rubber-band translate / Android stretch）
+// 1 本だけで、content band texture のピクセルは不変。したがって offset が `[0, max]` の外へ出るフレーム
+// でも、#634 と同じく content dirty（`frame_layer_dirty`）ではなく chrome dirty へ流れる（合成 transform
+// 変更として扱う）。ここは classification（純関数 dirty 分類）を ElementTree 越しに固定する。
+
+fn scrollable_fixture() -> (ElementTree, hayate_core::ElementId) {
+    // root > scroll(200x200) > content(200x5000)：max_y > 0 で縦バウンスが成立する。
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let content = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+    );
+    tree.element_set_style(
+        content,
+        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(5000.0))],
+    );
+    (tree, scroll)
+}
+
+#[test]
+fn overscroll_offset_is_chrome_dirty_not_content_dirty() {
+    let (mut tree, scroll) = scrollable_fixture();
+    let _ = tree.render(0.0);
+    let (_, max_y) = tree.element_scroll_max_offset(scroll);
+    assert!(max_y > 0.0);
+
+    // 下端を越えたバウンス位置（offset > max）。
+    tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
+    let _ = tree.render(16.0);
+    assert!(
+        tree.frame_layer_dirty().is_empty(),
+        "越境 offset でも content dirty にならない（overshoot は合成 affine の担当・composite-only）"
+    );
+    assert!(
+        tree.frame_layer_chrome_dirty().contains(&scroll),
+        "越境 offset の変化も chrome dirty（合成 transform 変更）"
+    );
+
+    // 上端を越えたバウンス位置（offset < 0）でも同じ。
+    tree.element_set_scroll_offset(scroll, 0.0, -80.0);
+    let _ = tree.render(32.0);
+    assert!(
+        tree.frame_layer_dirty().is_empty(),
+        "上端越境 offset でも content dirty にならない"
+    );
+    assert!(tree.frame_layer_chrome_dirty().contains(&scroll));
+}
+
+#[test]
+fn overscroll_shows_up_in_scroll_group_affine_per_profile() {
+    // 越境変位は content の再 raster ではなく scroll Group affine に現れる。プロファイル差は
+    // この 1 本に閉じる（ADR-0131）：iOS は overshoot 込みの素の translate、Android は端ピンの
+    // 一様 stretch scale。どちらも present 側 quad transform がそのまま読む（#634 getter）。
+    use hayate_core::scroll::ScrollPhysicsProfile;
+
+    // iOS 既定（Auto→iOS）：overshoot 込みで丸ごと translate、scale は恒等。
+    let (mut tree, scroll) = scrollable_fixture();
+    let _ = tree.render(0.0);
+    let (_, max_y) = tree.element_scroll_max_offset(scroll);
+    tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
+    let ios = tree.element_scroll_group_affine(scroll);
+    assert_eq!(ios, [1.0, 0.0, 0.0, 1.0, 0.0, -(max_y + 120.0) as f64], "iOS は overshoot 込みの素の translate");
+
+    // Android stretch：越境軸は scale > 1 の一様スケール（端ピン）。translate だけでは表せない。
+    let (mut tree, scroll) = scrollable_fixture();
+    tree.set_scroll_profile(ScrollPhysicsProfile::Android);
+    let _ = tree.render(0.0);
+    let (_, max_y) = tree.element_scroll_max_offset(scroll);
+    tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
+    let android = tree.element_scroll_group_affine(scroll);
+    assert!(android[3] > 1.0, "Android は越境軸を一様 stretch scale（scale_y > 1）: {android:?}");
 }
 
 #[test]
