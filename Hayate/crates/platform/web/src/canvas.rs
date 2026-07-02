@@ -1087,7 +1087,9 @@ async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     let raw = rgba.into_raw();
 
     Ok(RenderImage {
-        data: Arc::from(raw.into_boxed_slice()),
+        // Blob 化はここで一度だけ行う。以後この画像が生きている間は Blob id が
+        // 安定し、vello の画像アトラスに毎フレームヒットする（issue #630）。
+        data: hayate_core::Blob::from(raw),
         format: RenderImageFormat::Rgba8,
         alpha_type: RenderImageAlphaType::Alpha,
         width,

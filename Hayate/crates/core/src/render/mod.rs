@@ -2,9 +2,9 @@ mod missing_glyph;
 mod painter;
 pub(crate) mod text_synthesis;
 
-use std::sync::Arc;
+use linebender_resource_handle::FontData;
 
-use linebender_resource_handle::{Blob, FontData};
+pub use linebender_resource_handle::Blob;
 
 pub use missing_glyph::{
     FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, is_notdef,
@@ -65,5 +65,9 @@ pub struct RenderImage {
     pub height: u32,
     pub format: RenderImageFormat,
     pub alpha_type: RenderImageAlphaType,
-    pub data: Arc<[u8]>,
+    /// ピクセルデータ。`RenderFont` と同じく [`Blob`] で保持し、同一画像が生きて
+    /// いる間は Blob id が安定する。vello の画像アトラスは Blob id をキーに常駐
+    /// 管理するため、id が毎フレーム変わると変化のない画像でも毎フレーム GPU へ
+    /// 再アップロードされる（issue #630）。
+    pub data: Blob<u8>,
 }

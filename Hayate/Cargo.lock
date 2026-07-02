@@ -1075,6 +1075,7 @@ dependencies = [
  "pollster",
  "skrifa",
  "vello",
+ "vello_encoding",
  "wgpu",
 ]
 

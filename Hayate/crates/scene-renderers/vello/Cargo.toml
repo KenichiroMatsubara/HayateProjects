@@ -15,3 +15,5 @@ wgpu = { workspace = true }
 hayate-scene-test-support = { path = "../test-support" }
 hayate-demo-fixtures = { path = "../../demo-fixtures" }
 pollster = { workspace = true }
+# vendored 経由（[patch.crates-io]）。エンコード結果の画像 patch を検査するテスト用。
+vello_encoding = "0.9"

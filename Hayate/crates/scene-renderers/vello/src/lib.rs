@@ -1,14 +1,13 @@
 mod painter;
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
 
 use hayate_core::{
     render_scene_graph, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph,
     ScenePainter,
 };
 use vello::{
-    peniko::{Blob, ImageAlphaType, ImageData, ImageFormat},
+    peniko::{ImageAlphaType, ImageData, ImageFormat},
     AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
 };
 use vello::peniko::color::{AlphaColor, Srgb};
@@ -144,7 +143,9 @@ pub(crate) fn to_vello_image(image: &RenderImage) -> ImageData {
         RenderImageAlphaType::Premultiplied => ImageAlphaType::AlphaPremultiplied,
     };
     ImageData {
-        data: Blob::new(Arc::new(image.data.as_ref().to_vec().into_boxed_slice())),
+        // `RenderImage` が保持する Blob をそのまま共有する（コピー無し）。id が
+        // 安定するので vello の画像アトラスにヒットし、再アップロードされない。
+        data: image.data.clone(),
         format,
         alpha_type,
         width: image.width,
