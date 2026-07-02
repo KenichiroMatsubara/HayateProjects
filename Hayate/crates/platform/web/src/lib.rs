@@ -19,6 +19,8 @@ mod resize_observer;
 mod pointer_input;
 #[cfg(any(target_arch = "wasm32", test))]
 mod tuning;
+// 画像デコードの共通経路（#643）。純粋（image + core のみ）なのでホストでテストできる。
+mod image_decode;
 #[cfg(target_arch = "wasm32")]
 mod canvas;
 #[cfg(target_arch = "wasm32")]
