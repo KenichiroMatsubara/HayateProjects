@@ -10,11 +10,13 @@ use std::time::{Duration, Instant};
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementTree, SceneGraph};
-use hayate_layer_compositor::PresentPlanner;
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+use hayate_layer_compositor::{
+    collect_layer_placements, extract_layer_scene, extract_root_scene, CompositeQuad,
+    LayerCompositor, LayerRasterizer, PresentPlanner,
 };
-use wgpu::util::TextureBlitter;
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
+};
 
 use hayate_core::ElementId;
 
@@ -36,14 +38,18 @@ pub(crate) struct GpuSurface {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
     width: u32,
     height: u32,
-    scene_renderer: VelloSceneRenderer,
-    /// present 側 raster gating（#632・ADR-0125）。clean フレーム（`frame_layer_dirty` 空・
-    /// キャッシュ有効）では `render_scene` を呼ばず、raster 済み `target_view` をそのまま blit する。
+    /// present 側 raster gating（#632/#633・ADR-0125）。`plan_layers` が dirty / 未キャッシュの
+    /// レイヤだけを raster 対象にし、clean レイヤはキャッシュ texture を合成に再利用する。
     planner: PresentPlanner,
+    /// レイヤ texture キャッシュ ＋ vello raster（`LayerRasterizer` の wgpu 実装、#633）。
+    rasterizer: VelloLayerRasterizer,
+    /// 専用 wgpu quad compositor（`LayerCompositor` の wgpu 実装、#633）。合成に vello は
+    /// 使わない（ADR-0125 Decision 4）。パイプライン variant は init 時に warmup 済み（ADR-0130a）。
+    compositor: WgpuQuadCompositor,
+    /// 前フレームのレイヤ集合。消えたレイヤのキャッシュ面と台帳を掃除するため。
+    prev_layers: HashSet<ElementId>,
 }
 
 /// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
@@ -337,69 +343,103 @@ pub(crate) async fn init_gpu_surface(
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let surface_format = surface_config.format;
-    let target_view = create_target_view(&device, width, height);
-    let blitter = create_blitter(&device, surface_format);
-    let scene_renderer = VelloSceneRenderer::new(&device)?;
+    let rasterizer = VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height)?;
+    let mut compositor = WgpuQuadCompositor::new(device.clone(), queue.clone());
+    // init 時に全パイプライン variant（surface format × blend）を前倒し生成し、初回合成フレームの
+    // 遅延生成スパイクを消す（ADR-0130a）。composite は遅延生成経路を持たない。
+    compositor.warmup();
 
     Ok(GpuSurface {
         device,
         queue,
         surface,
         surface_config,
-        target_view,
-        blitter,
         width,
         height,
-        scene_renderer,
         planner: PresentPlanner::new(),
+        rasterizer,
+        compositor,
+        prev_layers: HashSet::new(),
     })
 }
 
 impl GpuSurface {
-    /// 1 フレームの提示。`layers` / `layer_dirty` は core が `render()` で捕捉した
-    /// `frame_layers()` / `frame_layer_dirty()`。`LayerCache::plan_raster` → `FramePlan` の判定を
-    /// 通し、`needs_raster` のときだけ従来どおり全面 raster する（#632・ADR-0125 backend 半分の
-    /// 入口）。clean フレームは raster を呼ばず、raster 済み `target_view` の blit（composite 相当・
-    /// 毎フレーム・安い）だけで提示する＝描画出力は不変。
+    /// 1 フレームの提示（#633・ADR-0125 backend 半分）。`layers` / `layer_dirty` は core が
+    /// `render()` で捕捉した `frame_layers()` / `frame_layer_dirty()`（transform 係数だけの変化は
+    /// 含まれない——quad transform は placement が毎フレーム読む）。
+    ///
+    /// 1. `plan_layers`（`LayerCache::plan_raster`）で dirty / 未キャッシュのレイヤだけ vello で
+    ///    レイヤ texture へ raster する（transform のみのフレームは raster ゼロ）。
+    /// 2. 専用 wgpu compositor がキャッシュ texture を CompositeQuad（transform / clip 付き、
+    ///    placement は保持シーンから毎フレーム導出）として 1 render pass で合成し present する。
     pub(crate) fn render_frame(
         &mut self,
         scene: &SceneGraph,
-        layers: &[hayate_core::ElementId],
-        layer_dirty: &HashSet<hayate_core::ElementId>,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
     ) -> Result<(), String> {
-        let plan = self.planner.plan(layers, layer_dirty);
-        if plan.needs_raster {
-            let target = VelloRenderTarget {
-                device: &self.device,
-                queue: &self.queue,
-                target_view: &self.target_view,
-                width: self.width,
-                height: self.height,
+        let Some(&root) = layers.first() else {
+            return Ok(());
+        };
+        let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+
+        // 消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
+        for stale in self.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
+            self.rasterizer.discard(stale);
+            self.planner.evict(stale);
+        }
+        self.prev_layers = boundaries.clone();
+
+        // 1) dirty / 未キャッシュのレイヤだけ再 raster（plan_raster の raster/reuse どおり）。
+        let plan = self.planner.plan_layers(layers, layer_dirty);
+        for &layer in &plan.raster {
+            let extracted = if layer == root {
+                extract_root_scene(scene, root, &boundaries)
+            } else {
+                match extract_layer_scene(scene, layer, &boundaries) {
+                    Some(extracted) => extracted,
+                    None => continue, // 未 lowering（次フレームで raster される）
+                }
             };
-            self.scene_renderer
-                .render_scene(scene, &target, CLEAR_COLOR, 1.0)?;
-            self.planner.note_full_raster(layers);
+            self.rasterizer.rasterize(layer, &extracted)?;
+            self.planner
+                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
         }
 
+        // 2) 合成のみ（composite-only フレームは vello を一切起動しない）。
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
             other => return Err(format!("get_current_texture: {other:?}")),
         };
-
         let surface_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate_android_blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
+        let mut target = CompositeTarget {
+            view: surface_view,
+            width: self.width,
+            height: self.height,
+            format: self.surface_config.format,
+            clear: CLEAR_COLOR,
+        };
+        let placements = collect_layer_placements(scene, root, &boundaries);
+        let quads: Vec<CompositeQuad<'_, _>> = placements
+            .iter()
+            .filter_map(|placement| {
+                self.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
+                    layer: placement.layer,
+                    transform: placement.transform,
+                    opacity: 1.0,
+                    clip: placement.clip,
+                    texture,
+                })
+            })
+            .collect();
+        self.compositor.composite(&mut target, &quads)?;
+        for quad in &quads {
+            self.planner.note_composited(quad.layer);
+        }
         surface_texture.present();
         Ok(())
     }
@@ -413,9 +453,9 @@ impl GpuSurface {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.target_view = create_target_view(&self.device, width, height);
-        // target_view を作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster する
-        // （invalidate しないと古いサイズの内容を blit し続ける）。
+        // レイヤ texture はサーフェスサイズなので全部作り直し＝台帳ごと invalidate する
+        // （invalidate しないと古いサイズの内容を合成し続ける）。
+        self.rasterizer.resize(width, height);
         self.planner.invalidate();
     }
 }

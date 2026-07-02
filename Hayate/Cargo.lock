@@ -1030,6 +1030,8 @@ name = "hayate-layer-compositor"
 version = "0.1.0"
 dependencies = [
  "hayate-core",
+ "hayate-scene-renderer-tiny-skia",
+ "tiny-skia",
 ]
 
 [[package]]
@@ -1073,6 +1075,7 @@ version = "0.1.0"
 dependencies = [
  "hayate-core",
  "hayate-demo-fixtures",
+ "hayate-layer-compositor",
  "hayate-scene-test-support",
  "pollster",
  "skrifa",

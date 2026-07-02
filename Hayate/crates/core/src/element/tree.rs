@@ -250,6 +250,8 @@ pub struct ElementTree {
     /// 直前に捕捉するので、render 内でマーク→同フレーム drain される継続（カーソル点滅・慣性・
     /// インジケータ fade）も取りこぼさない。
     pub(crate) frame_layer_dirty: HashSet<ElementId>,
+    /// 直近 `render()` で transform 係数だけが変わったレイヤ集合（#633）。内容不変＝quad 更新のみ。
+    pub(crate) frame_layer_transform_dirty: HashSet<ElementId>,
 }
 
 impl ElementTree {
@@ -275,6 +277,7 @@ impl ElementTree {
             last_frame_ms: None,
             frame_layers: Vec::new(),
             frame_layer_dirty: HashSet::new(),
+            frame_layer_transform_dirty: HashSet::new(),
         }
     }
 
@@ -962,10 +965,26 @@ impl ElementTree {
     /// クリア。変換はレイアウト座標の上に適用される。
     pub fn element_set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
         if let Some(el) = self.elements.get_mut(&id) {
+            let old = el.transform;
             el.transform = matrix;
-            self.engine
-                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+            match (old, matrix) {
+                (Some(prev), Some(next)) if prev == next => {}
+                // 係数だけの変化（transform アニメーションの毎フレーム）はレイヤ内容を変えない。
+                // re-lower せず、`render()` が保持シーンの Group ノードを patch する（#633）。
+                // present 側はこれを composite-only（quad transform 更新のみ）で提示できる。
+                (Some(_), Some(_)) => self.engine.mark_transform_dirty(id),
+                // None↔Some は emit されるノード構造が変わる（Group ラッパの出現/消滅）＝re-lower。
+                _ => self
+                    .engine
+                    .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly),
+            }
         }
+    }
+
+    /// 現在の transform 係数（kurbo アフィン [a,b,c,d,e,f]）。present 側が compositing layer の
+    /// quad transform を毎フレーム読むための getter（#633）。
+    pub fn element_transform(&self, id: ElementId) -> Option<[f64; 6]> {
+        self.elements.get(&id).and_then(|el| el.transform)
     }
 
     /// ScrollView 要素のスクロールオフセットをプログラムから設定する。
@@ -1547,7 +1566,37 @@ impl ElementTree {
         }
         self.scene_cache = scene_cache;
         self.scene_lowering = scene_lowering;
+        // transform 係数だけの変化（Some→Some）を保持シーンへ patch する（#633）。re-lower なしで
+        // 全面 raster 経路（FramePlan が raster を選んだフレーム）の出力を正しく保つ。
+        self.patch_transform_groups();
         &self.scene_cache
+    }
+
+    /// transform 係数だけが変わった要素の保持シーン Group ノードを patch する（#633）。anchor 直下の
+    /// 最初の Group が transform ラッパ（`scene_build` の attach_point と同じ規約）。同フレームで
+    /// re-lower もされた要素は lowering が新係数で emit 済みなので、patch は冪等。
+    fn patch_transform_groups(&mut self) {
+        for id in self.engine.drain_transform_dirty() {
+            let Some(transform) = self.elements.get(&id).and_then(|el| el.transform) else {
+                continue; // 同フレームで None に戻された等 → visual dirty 側が re-lower 済み
+            };
+            let Some(anchor_id) = self.scene_lowering.anchors.get(&id).map(|a| a.anchor_id) else {
+                continue; // 未 lowering（初回 build が新値でそのまま emit する）
+            };
+            let group_id = self.scene_cache.get(anchor_id).and_then(|anchor| {
+                anchor.children.iter().copied().find(|&child| {
+                    matches!(
+                        self.scene_cache.get(child).map(|n| &n.kind),
+                        Some(crate::node::NodeKind::Group { .. })
+                    )
+                })
+            });
+            if let Some(group_id) = group_id {
+                if let Some(node) = self.scene_cache.get_mut(group_id) {
+                    node.kind = crate::node::NodeKind::Group { transform };
+                }
+            }
+        }
     }
 
     /// 本フレームの Touch 一時スクロールバーインジケータを進める（ADR-0110）。前回
@@ -2325,6 +2374,14 @@ impl ElementTree {
                 self.elements.get(&id).and_then(|e| e.parent)
             })
         };
+        // transform 係数だけが変わったレイヤ（#633）。内容は不変＝再 raster 不要で、合成時の
+        // quad transform 更新だけが要る。per-layer compositor を持たない backend（#632 の単一
+        // root 経路）は content ∪ transform を保守的に raster トリガとして扱う。
+        self.frame_layer_transform_dirty = compositing::derive_layer_dirty(
+            self.engine.transform_dirty.iter().copied(),
+            &boundaries,
+            |id| self.elements.get(&id).and_then(|e| e.parent),
+        );
         self.frame_layers = ordered;
     }
 
@@ -2339,6 +2396,13 @@ impl ElementTree {
     /// このフレームの scene は前フレームと同一＝キャッシュ有効なら raster 不要（composite-only）。
     pub fn frame_layer_dirty(&self) -> &HashSet<ElementId> {
         &self.frame_layer_dirty
+    }
+
+    /// 直近の `render()` で transform 係数だけが変わったレイヤ集合（#633）。内容キャッシュは有効な
+    /// まま、合成時の quad transform 更新だけが要る。per-layer compositor を持たない backend は
+    /// [`frame_layer_dirty`](Self::frame_layer_dirty) との和集合を保守的に raster トリガとして扱う。
+    pub fn frame_layer_transform_dirty(&self) -> &HashSet<ElementId> {
+        &self.frame_layer_transform_dirty
     }
 
     /// 現在の visual / shape / structure dirty から `layer_dirty` を導出する（ADR-0125）。各 dirty

@@ -177,6 +177,84 @@ fn in_render_transition_continuation_is_captured() {
     );
 }
 
+// ── #633: transform-only 変化は content dirty にしない（composite-only フレームの core 前提）──
+//
+// `element_set_transform` の Some→Some（係数だけの変化）はレイヤ内容を変えない——変わるのは合成時の
+// quad transform だけ。これを visual dirty に流すと transform アニメーションの毎フレームがレイヤ
+// 再 raster になり、#633 の「transform だけが変わるフレームは vello raster ゼロ」が成立しない。
+// core は係数変化を専用チャネルで受け、保持シーンの Group ノードだけを patch する（re-lower なし）。
+
+#[test]
+fn transform_coefficient_change_is_not_content_dirty() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let boxed = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, boxed);
+    tree.set_root(root);
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 10.0, 0.0]));
+    let _ = tree.render(0.0);
+
+    // Some→Some の係数変化：レイヤ内容は不変なので content dirty（frame_layer_dirty）は空。
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 20.0, 0.0]));
+    let _ = tree.render(16.0);
+    assert!(
+        tree.frame_layer_dirty().is_empty(),
+        "transform 係数だけの変化は content dirty にならない（composite-only 前提）"
+    );
+    // quad 用の現在値は公開 getter から読める。
+    assert_eq!(tree.element_transform(boxed), Some([1.0, 0.0, 0.0, 1.0, 20.0, 0.0]));
+}
+
+#[test]
+fn transform_coefficient_change_still_updates_the_retained_scene() {
+    // 全面 raster 経路（FramePlan が raster を選んだフレーム）でも出力が正しいよう、保持シーンの
+    // Group ノードは patch されて新しい係数を持つ（re-lower はしない）。
+    use hayate_core::{render_scene_graph, DrawOp, RecordingPainter};
+
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let boxed = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, boxed);
+    tree.set_root(root);
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 10.0, 0.0]));
+    let _ = tree.render(0.0);
+
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 20.0, 0.0]));
+    let _ = tree.render(16.0);
+
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(tree.scene_graph(), &mut painter);
+    let has_new = painter.ops().iter().any(|op| {
+        matches!(op, DrawOp::PushTransform { transform } if *transform == [1.0, 0.0, 0.0, 1.0, 20.0, 0.0])
+    });
+    assert!(has_new, "保持シーンの Group は新しい transform 係数へ patch される");
+}
+
+#[test]
+fn transform_none_to_some_is_content_dirty() {
+    // None↔Some は emit されるノード構造が変わる（Group ラッパの出現/消滅）＝re-lower が要る。
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let boxed = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, boxed);
+    tree.set_root(root);
+    let _ = tree.render(0.0);
+
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 10.0, 0.0]));
+    let _ = tree.render(16.0);
+    assert!(
+        tree.frame_layer_dirty().contains(&boxed),
+        "None→Some は新レイヤの内容構築＝content dirty"
+    );
+
+    tree.element_set_transform(boxed, None);
+    let _ = tree.render(32.0);
+    assert!(
+        !tree.frame_layer_dirty().is_empty(),
+        "Some→None はラッパ消滅＝content dirty（内包レイヤへ流れる）"
+    );
+}
+
 #[test]
 fn layer_dirty_routes_descendant_dirty_to_enclosing_layer() {
     // root(view) > scroll(ScrollView) > item(view)

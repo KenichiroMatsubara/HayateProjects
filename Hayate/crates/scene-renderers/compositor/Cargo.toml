@@ -13,3 +13,9 @@ crate-type = ["rlib"]
 
 [dependencies]
 hayate-core = { path = "../../core" }
+
+[dev-dependencies]
+# レイヤ分解（extract + quad 合成）の出力パリティを CPU でホスト固定するため（#633）。
+# 本体依存には含めない——planning は GPU/raster 非依存のまま。
+hayate-scene-renderer-tiny-skia = { path = "../tiny-skia" }
+tiny-skia = { workspace = true, features = ["std"] }

@@ -28,6 +28,10 @@ pub(crate) struct ElementEngine {
     /// `register_font` でセットし、次の `resolve` 冒頭でクリアする。
     /// 新規登録フォントで全テキスト要素を再シェイプさせる。
     pub(crate) fonts_dirty: bool,
+    /// transform 係数だけが変わった要素（Some→Some、#633）。レイヤ内容は不変なので visual dirty
+    /// （re-lower）には流さず、`render()` が保持シーンの Group ノードだけを patch する。present 側
+    /// composite-only フレーム（quad transform 更新のみで raster ゼロ）の core 前提。
+    pub(crate) transform_dirty: HashSet<ElementId>,
 }
 
 impl ElementEngine {
@@ -39,7 +43,16 @@ impl ElementEngine {
             visual_dirty: HashMap::new(),
             layout_geometry_dirty: HashSet::new(),
             fonts_dirty: false,
+            transform_dirty: HashSet::new(),
         }
+    }
+
+    pub fn mark_transform_dirty(&mut self, id: ElementId) {
+        self.transform_dirty.insert(id);
+    }
+
+    pub fn drain_transform_dirty(&mut self) -> HashSet<ElementId> {
+        std::mem::take(&mut self.transform_dirty)
     }
 
     pub fn mark_structure_dirty(&mut self, id: ElementId) {

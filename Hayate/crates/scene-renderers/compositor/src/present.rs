@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 use hayate_core::element::id::ElementId;
 
-use crate::{FramePlan, LayerCache};
+use crate::{FramePlan, LayerCache, RasterPlan};
 
 /// backend 非依存の present 側 raster gating。「このフレームで raster パイプラインを起動するか」を
 /// [`LayerCache`] の台帳から決める。GPU ハンドルは持たない（`Send` クリーン・ADR-0128 の布石）。
@@ -33,6 +33,34 @@ impl PresentPlanner {
     /// 1 レイヤでも未キャッシュ / dirty なら raster、全レイヤのキャッシュが有効なら composite-only。
     pub fn plan(&self, layers: &[ElementId], layer_dirty: &HashSet<ElementId>) -> FramePlan {
         FramePlan::from_raster(&self.cache.plan_raster(layers, layer_dirty))
+    }
+
+    /// per-layer の raster 計画（#633）。dirty レイヤと未キャッシュレイヤだけを `raster` に、残りを
+    /// `reuse` に置く。transform 係数だけが変わったレイヤ（`frame_layer_transform_dirty`）は
+    /// ここに渡さない——内容キャッシュは有効なままで、合成時の quad transform 更新だけが要る。
+    pub fn plan_layers(&self, layers: &[ElementId], content_dirty: &HashSet<ElementId>) -> RasterPlan {
+        self.cache.plan_raster(layers, content_dirty)
+    }
+
+    /// レイヤ 1 枚の raster 完了をサイズ（バイト）付きで記録する（`mark_rasterized_sized`）。
+    /// GPU 予算（ADR-0127）の計上に使う。
+    pub fn note_layer_rasterized(&mut self, layer: ElementId, bytes: u64) {
+        self.cache.mark_rasterized_sized(layer, bytes);
+    }
+
+    /// 全キャッシュ texture の合計バイト（予算判定・テスト用）。
+    pub fn cached_bytes(&self) -> u64 {
+        self.cache.total_bytes()
+    }
+
+    /// レイヤを composite に使ったと記録する（LRU 直近性の更新・ADR-0127）。
+    pub fn note_composited(&mut self, layer: ElementId) {
+        self.cache.note_composited(layer);
+    }
+
+    /// レイヤ 1 枚を台帳から外す（レイヤ消滅・退避）。次に必要になったら再 raster される。
+    pub fn evict(&mut self, layer: ElementId) {
+        self.cache.evict(layer);
     }
 
     /// 全面 raster（従来の `render_scene` 1 回）が完了したことを記録する。単一 root slice では

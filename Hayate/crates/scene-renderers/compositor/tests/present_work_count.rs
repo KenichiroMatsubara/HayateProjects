@@ -10,10 +10,13 @@ use hayate_core::element::style::StyleProp;
 use hayate_core::{Color, ElementKind, ElementTree};
 use hayate_layer_compositor::PresentPlanner;
 
-/// 1 フレーム回して「raster が走ったか」を返す（backend の present と同じ順序）。
+/// 1 フレーム回して「raster が走ったか」を返す（backend の present と同じ順序）。単一 root 経路は
+/// quad 合成を持たないため、transform 係数だけの変化も保守的に raster トリガへ含める（#633）。
 fn pump_frame(tree: &mut ElementTree, planner: &mut PresentPlanner, timestamp_ms: f64) -> bool {
     let _ = tree.render(timestamp_ms);
-    let plan = planner.plan(tree.frame_layers(), tree.frame_layer_dirty());
+    let mut trigger = tree.frame_layer_dirty().clone();
+    trigger.extend(tree.frame_layer_transform_dirty().iter().copied());
+    let plan = planner.plan(tree.frame_layers(), &trigger);
     if plan.needs_raster {
         // backend はここで render_scene（全面 raster）を 1 回呼び、完了を planner に記録する。
         planner.note_full_raster(tree.frame_layers());

@@ -430,9 +430,11 @@ impl HayateElementRenderer {
         // render() が捕捉した frame_layers / frame_layer_dirty を FramePlan に通してから raster する
         // （#632・ADR-0125）。clean フレームは backend の raster を呼ばず、canvas に表示中の
         // raster 済みフレームを維持する（composite-only 相当＝出力不変で raster 回数だけ減る）。
-        let plan = self
-            .planner
-            .plan(self.tree.frame_layers(), self.tree.frame_layer_dirty());
+        // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
+        // dirty から分離）も保守的に raster トリガへ含める（per-layer 化は #636）。
+        let mut raster_trigger = self.tree.frame_layer_dirty().clone();
+        raster_trigger.extend(self.tree.frame_layer_transform_dirty().iter().copied());
+        let plan = self.planner.plan(self.tree.frame_layers(), &raster_trigger);
         let present = if plan.needs_raster {
             let result = self
                 .backend
