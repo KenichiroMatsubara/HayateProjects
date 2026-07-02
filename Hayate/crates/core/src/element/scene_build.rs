@@ -33,7 +33,7 @@ const IDENTITY_AFFINE: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 /// `offset` は表示スクロールオフセット（越境中は `[0, max]` 外）、`max` は軸ごとの最大オフセット、
 /// `viewport` はシーン座標の ScrollView ボックス `(x, y, w, h)`。物理・保存 `scroll_offset` は不変で、
 /// ここは既存の越境変位を read し替えて見せ方だけを変える。
-fn scroll_group_affine(
+pub(crate) fn scroll_group_affine(
     profile: ScrollPhysicsProfile,
     offset: (f32, f32),
     max: (f32, f32),

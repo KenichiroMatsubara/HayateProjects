@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 use hayate_core::element::id::ElementId;
 
-use crate::{FramePlan, LayerCache, RasterPlan};
+use crate::{FramePlan, GpuBudget, LayerCache, RasterPlan, ScrollLayerExtent};
 
 /// backend 非依存の present 側 raster gating。「このフレームで raster パイプラインを起動するか」を
 /// [`LayerCache`] の台帳から決める。GPU ハンドルは持たない（`Send` クリーン・ADR-0128 の布石）。
@@ -51,6 +51,24 @@ impl PresentPlanner {
     /// 全キャッシュ texture の合計バイト（予算判定・テスト用）。
     pub fn cached_bytes(&self) -> u64 {
         self.cache.total_bytes()
+    }
+
+    /// scroll レイヤの帯 raster をサイズ付きで記録する（#634）。`band` は今回 raster した縦帯
+    /// （可視域＋overscan）、`bytes` は帯サイズの texture バイト（content 全高でなく帯サイズ）。
+    pub fn note_scroll_rasterized(&mut self, layer: ElementId, band: ScrollLayerExtent, bytes: u64) {
+        self.cache.mark_scroll_rasterized(layer, band, bytes);
+    }
+
+    /// scroll レイヤが本フレームで（差分）raster を要するか（#634）。キャッシュ帯が現在の可視域
+    /// `[visible_top, visible_top + viewport_height]` を覆っていれば false（composite-only スクロール）。
+    pub fn scroll_layer_needs_raster(&self, layer: ElementId, visible_top: f32, viewport_height: f32) -> bool {
+        self.cache.scroll_needs_raster(layer, visible_top, viewport_height)
+    }
+
+    /// GPU 予算超過なら最も長く composite に使われていないレイヤ texture から LRU 退避し、合計を
+    /// 予算内に収める（ADR-0127）。退避した id を返す（backend は対応する実 texture を解放する）。
+    pub fn enforce_budget(&mut self, budget: GpuBudget) -> Vec<ElementId> {
+        self.cache.enforce_budget(budget)
     }
 
     /// レイヤを composite に使ったと記録する（LRU 直近性の更新・ADR-0127）。

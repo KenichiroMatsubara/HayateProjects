@@ -11,8 +11,8 @@ use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementTree, SceneGraph};
 use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, CompositeQuad,
-    LayerCompositor, LayerRasterizer, PresentPlanner,
+    collect_layer_placements, extract_layer_scene, extract_root_scene, tunables, CompositeQuad,
+    GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
@@ -160,6 +160,7 @@ pub fn android_main(app: AndroidApp) {
                 tree.scene_graph(),
                 tree.frame_layers(),
                 tree.frame_layer_dirty(),
+                tree.frame_layer_chrome_dirty(),
             ) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
@@ -364,19 +365,27 @@ pub(crate) async fn init_gpu_surface(
 }
 
 impl GpuSurface {
-    /// 1 フレームの提示（#633・ADR-0125 backend 半分）。`layers` / `layer_dirty` は core が
-    /// `render()` で捕捉した `frame_layers()` / `frame_layer_dirty()`（transform 係数だけの変化は
-    /// 含まれない——quad transform は placement が毎フレーム読む）。
+    /// 1 フレームの提示（#633/#634・ADR-0125 backend 半分）。`layers` / `layer_dirty` /
+    /// `chrome_dirty` は core が `render()` で捕捉した `frame_layers()` / `frame_layer_dirty()` /
+    /// `frame_layer_chrome_dirty()`（transform 係数だけの変化は含まれない——quad transform は
+    /// placement が毎フレーム読む）。
     ///
     /// 1. `plan_layers`（`LayerCache::plan_raster`）で dirty / 未キャッシュのレイヤだけ vello で
-    ///    レイヤ texture へ raster する（transform のみのフレームは raster ゼロ）。
+    ///    レイヤ texture へ raster する（transform のみのフレームは raster ゼロ）。scroll フレームの
+    ///    chrome dirty（スクロールバー / インジケータ）は content とレイヤ texture を共有するため、
+    ///    この単一 texture 経路では content ∪ chrome を保守的に raster トリガとして扱う（scroll offset
+    ///    は保持シーンの scroll Group に焼き込まれているので stale を避ける）。帯サイズ texture への
+    ///    分解と content/chrome のレイヤ分離は後続（scrollbar chrome レイヤ化）で入れる。
     /// 2. 専用 wgpu compositor がキャッシュ texture を CompositeQuad（transform / clip 付き、
     ///    placement は保持シーンから毎フレーム導出）として 1 render pass で合成し present する。
+    /// 3. GPU 予算（`GpuBudget::from_viewports`、モバイルは `GPU_BUDGET_VIEWPORTS_MOBILE`）を超えたら
+    ///    最も長く composite に使われていないレイヤ texture を LRU 退避する（ADR-0127）。
     pub(crate) fn render_frame(
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        chrome_dirty: &HashSet<ElementId>,
     ) -> Result<(), String> {
         let Some(&root) = layers.first() else {
             return Ok(());
@@ -391,7 +400,10 @@ impl GpuSurface {
         self.prev_layers = boundaries.clone();
 
         // 1) dirty / 未キャッシュのレイヤだけ再 raster（plan_raster の raster/reuse どおり）。
-        let plan = self.planner.plan_layers(layers, layer_dirty);
+        //    content ∪ chrome を raster トリガに（単一 texture 経路の保守的正当性・上記 doc）。
+        let raster_trigger: HashSet<ElementId> =
+            layer_dirty.union(chrome_dirty).copied().collect();
+        let plan = self.planner.plan_layers(layers, &raster_trigger);
         for &layer in &plan.raster {
             let extracted = if layer == root {
                 extract_root_scene(scene, root, &boundaries)
@@ -441,6 +453,17 @@ impl GpuSurface {
             self.planner.note_composited(quad.layer);
         }
         surface_texture.present();
+
+        // 3) GPU 予算超過なら最も長く composite に使われていないレイヤ texture を LRU 退避する
+        //    （ADR-0127）。退避した実 texture を rasterizer からも解放し、次要求時に再 raster させる。
+        let budget = GpuBudget::from_viewports(
+            self.width,
+            self.height,
+            tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+        );
+        for evicted in self.planner.enforce_budget(budget) {
+            self.rasterizer.discard(evicted);
+        }
         Ok(())
     }
 

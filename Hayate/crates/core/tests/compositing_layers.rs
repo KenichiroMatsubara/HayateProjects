@@ -275,3 +275,142 @@ fn layer_dirty_routes_descendant_dirty_to_enclosing_layer() {
     assert!(dirty.contains(&scroll), "item の dirty は内包する scroll レイヤへ流れる");
     assert!(!dirty.contains(&item), "layer_dirty はレイヤ id（境界要素）だけを含む");
 }
+
+// ── #634: scroll frame は chrome dirty（content 非 dirty＝composite-only スクロール前提）─────
+//
+// scroll offset だけの変化は content band texture のピクセルを変えない（offset は scroll Group
+// affine ＝ composite 段で適用）。変わるのは chrome（スクロールバー/インジケータ、Clip の外側）
+// だけなので、`frame_layer_dirty`（content）でなく `frame_layer_chrome_dirty` に流れる。
+// 同フレームに他の視覚変化が重なったら chrome-only 判定は毒され、保守的に content dirty へ戻る。
+
+fn scroll_fixture() -> (ElementTree, hayate_core::ElementId, hayate_core::ElementId) {
+    // root(view) > scroll(ScrollView) > item(view)
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let item = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, item);
+    tree.set_root(root);
+    (tree, scroll, item)
+}
+
+#[test]
+fn scroll_offset_change_is_chrome_dirty_not_content_dirty() {
+    let (mut tree, scroll, _) = scroll_fixture();
+    let _ = tree.render(0.0);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+    let _ = tree.render(16.0);
+    assert!(
+        tree.frame_layer_dirty().is_empty(),
+        "offset だけの変化は content dirty にならない（composite-only スクロール前提）"
+    );
+    assert!(
+        tree.frame_layer_chrome_dirty().contains(&scroll),
+        "offset 変化は chrome dirty（スクロールバー面の再 raster だけが要る）"
+    );
+}
+
+#[test]
+fn scroll_offset_change_still_updates_the_retained_scene() {
+    // chrome dirty の SelfOnly 再 lowering が scroll Group affine を新 offset で emit し直す。
+    // composite の quad transform／全面 raster 経路の両方がこれを読むので出力は常に正しい。
+    use hayate_core::{render_scene_graph, DrawOp, RecordingPainter};
+
+    let (mut tree, scroll, _) = scroll_fixture();
+    let _ = tree.render(0.0);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+    let _ = tree.render(16.0);
+
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(tree.scene_graph(), &mut painter);
+    let has_new = painter.ops().iter().any(|op| {
+        matches!(op, DrawOp::PushTransform { transform } if *transform == [1.0, 0.0, 0.0, 1.0, 0.0, -50.0])
+    });
+    assert!(has_new, "保持シーンの scroll Group は新 offset の affine を持つ");
+}
+
+#[test]
+fn scroll_offset_plus_other_visual_change_is_content_dirty() {
+    // 同フレームで背景色も変わったら、SelfOnly 再 lowering は content band 内のピクセル
+    //（ScrollView 自身の背景は Clip の内側）も変える＝chrome-only 判定は両順序で毒される。
+    for style_first in [true, false] {
+        let (mut tree, scroll, _) = scroll_fixture();
+        let _ = tree.render(0.0);
+
+        if style_first {
+            tree.element_set_style(scroll, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+            tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+        } else {
+            tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+            tree.element_set_style(scroll, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+        }
+        let _ = tree.render(16.0);
+        assert!(
+            tree.frame_layer_dirty().contains(&scroll),
+            "他の視覚変化が重なったフレームは content dirty（style_first={style_first}）"
+        );
+        assert!(
+            !tree.frame_layer_chrome_dirty().contains(&scroll),
+            "content dirty へ昇格したら chrome dirty には残らない（style_first={style_first}）"
+        );
+    }
+}
+
+#[test]
+fn descendant_change_during_scroll_keeps_content_dirty() {
+    // item の変化は内包レイヤ（scroll）の content dirty。同フレームの offset 変化はそれを消さない。
+    let (mut tree, scroll, item) = scroll_fixture();
+    let _ = tree.render(0.0);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+    tree.element_set_style(item, &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
+    let _ = tree.render(16.0);
+    assert!(
+        tree.frame_layer_dirty().contains(&scroll),
+        "子孫の変化は offset 変化と同フレームでも content dirty のまま"
+    );
+}
+
+#[test]
+fn touch_indicator_fade_frames_stay_chrome_dirty() {
+    // Touch スクロールの一時インジケータは表示→fade の間、毎フレーム SelfOnly 再 lowering される
+    //（ADR-0110）。この継続フレームも chrome dirty ＝ content band は composite-only のまま。
+    use hayate_core::element::pointer::PointerKind;
+
+    let (mut tree, scroll, _) = scroll_fixture();
+    let _ = tree.render(0.0);
+
+    tree.on_pointer_down_with_kind(0.0, 0.0, 0, PointerKind::Touch);
+    tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+    let _ = tree.render(16.0);
+    // インジケータ稼働中の継続フレーム（offset は変えない）。
+    let _ = tree.render(32.0);
+    assert!(
+        tree.frame_layer_dirty().is_empty(),
+        "インジケータ fade の継続フレームは content dirty にならない"
+    );
+    assert!(
+        tree.frame_layer_chrome_dirty().contains(&scroll),
+        "インジケータ fade の継続フレームは chrome dirty"
+    );
+}
+
+#[test]
+fn scroll_quad_getters_expose_affine_and_kind() {
+    // present 側が content band quad を組むための getter：scroll Group affine（iOS プロファイル
+    // 既定＝素の translate）と ScrollView 判定。
+    let (mut tree, scroll, item) = scroll_fixture();
+    let _ = tree.render(0.0);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 50.0);
+    assert_eq!(
+        tree.element_scroll_group_affine(scroll),
+        [1.0, 0.0, 0.0, 1.0, 0.0, -50.0],
+        "既定（Auto→iOS）プロファイルは素の translate"
+    );
+    assert!(tree.element_is_scroll_view(scroll));
+    assert!(!tree.element_is_scroll_view(item));
+}

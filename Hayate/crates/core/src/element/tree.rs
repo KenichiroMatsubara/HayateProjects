@@ -252,6 +252,9 @@ pub struct ElementTree {
     pub(crate) frame_layer_dirty: HashSet<ElementId>,
     /// 直近 `render()` で transform 係数だけが変わったレイヤ集合（#633）。内容不変＝quad 更新のみ。
     pub(crate) frame_layer_transform_dirty: HashSet<ElementId>,
+    /// scroll フレーム（offset 変化・インジケータ fade）だけが理由で dirty な scroll レイヤ（#634）。
+    /// content band は composite-only のまま、chrome（スクロールバー）面の再 raster だけが要る。
+    pub(crate) frame_layer_chrome_dirty: HashSet<ElementId>,
 }
 
 impl ElementTree {
@@ -278,6 +281,7 @@ impl ElementTree {
             frame_layers: Vec::new(),
             frame_layer_dirty: HashSet::new(),
             frame_layer_transform_dirty: HashSet::new(),
+            frame_layer_chrome_dirty: HashSet::new(),
         }
     }
 
@@ -991,10 +995,17 @@ impl ElementTree {
     pub fn element_set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
         let mut scrolled_scroll_view = false;
         if let Some(el) = self.elements.get_mut(&id) {
-            scrolled_scroll_view = el.scroll_offset != (x, y) && el.kind == ElementKind::ScrollView;
+            let is_scroll_view = el.kind == ElementKind::ScrollView;
+            scrolled_scroll_view = el.scroll_offset != (x, y) && is_scroll_view;
             el.scroll_offset = (x, y);
-            self.engine
-                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+            if is_scroll_view {
+                // offset は scroll Group affine（composite 段）と chrome（スクロールバー）しか
+                // 変えない＝content band は composite-only に保てる（#634）。
+                self.engine.mark_scroll_chrome_dirty(id);
+            } else {
+                self.engine
+                    .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+            }
         }
         // Touch モダリティでのスクロールは一時インジケータを再表示する。Mouse/Pen の
         // 操作可能つまみに対する Touch 側の相当物（ADR-0110）。刻みはホストクロックを
@@ -1022,6 +1033,37 @@ impl ElementTree {
         self.elements
             .get(&id)
             .map_or((0.0, 0.0), |e| e.scroll_offset)
+    }
+
+    /// scroll Group の現在 affine（ADR-0131 のプロファイル差はここに閉じる）。present 側が
+    /// content band quad の transform を組むために毎フレーム読む（#634）。未レイアウト／
+    /// 非 ScrollView は恒等。
+    pub fn element_scroll_group_affine(&self, id: ElementId) -> [f64; 6] {
+        const IDENTITY: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let Some(el) = self.elements.get(&id) else {
+            return IDENTITY;
+        };
+        if el.kind != ElementKind::ScrollView {
+            return IDENTITY;
+        }
+        let Some(rect) = self.element_layout_rect(id) else {
+            return IDENTITY;
+        };
+        scene_build::scroll_group_affine(
+            self.scroll_profile(),
+            el.scroll_offset,
+            self.element_scroll_max_offset(id),
+            rect,
+            self.scroll_tuning(),
+        )
+    }
+
+    /// `id` が ScrollView（scroll compositing layer の trigger）かどうか。present 側が
+    /// scroll レイヤの band/chrome 分解を選ぶために読む（#634）。
+    pub fn element_is_scroll_view(&self, id: ElementId) -> bool {
+        self.elements
+            .get(&id)
+            .is_some_and(|e| e.kind == ElementKind::ScrollView)
     }
 
     /// 直近 render パスの絶対レイアウト矩形 (x, y, w, h) を返す。縮約レイアウト
@@ -1541,6 +1583,8 @@ impl ElementTree {
         let _ = self.engine.drain_visual_dirty();
         let _ = self.engine.drain_shape_lowering_reach();
         for id in geometry_dirty {
+            // ボックス幾何の変化は content band 内のピクセルも動かす＝chrome-only 判定を毒す（#634）。
+            self.engine.scroll_chrome_only.remove(&id);
             visual_invalidation::apply_visual_invalidation(
                 self,
                 id,
@@ -1626,8 +1670,9 @@ impl ElementTree {
             ind.fade > 0.0
         });
         for id in dirty {
-            self.engine
-                .mark_visual_dirty(id, VisualInvalidationReach::SelfOnly);
+            // インジケータは Clip 外の chrome。fade の継続フレームも content band は
+            // composite-only のまま（#634）。
+            self.engine.mark_scroll_chrome_dirty(id);
         }
     }
 
@@ -2361,18 +2406,30 @@ impl ElementTree {
                 ordered.insert(0, root);
             }
         }
-        self.frame_layer_dirty = if dirty.full_rebuild || !self.scene_lowering.built {
-            // 全面（再）構築＝全レイヤの内容が作り直される。cold cache と同じ扱いで全レイヤ dirty。
-            boundaries.clone()
+        let chrome_only = self.engine.drain_scroll_chrome_only();
+        (self.frame_layer_dirty, self.frame_layer_chrome_dirty) = if dirty.full_rebuild
+            || !self.scene_lowering.built
+        {
+            // 全面（再）構築＝全レイヤの内容が作り直される。cold cache と同じ扱いで全レイヤ dirty
+            // （content dirty は chrome 面の再 raster も含意するので chrome dirty は空でよい）。
+            (boundaries.clone(), HashSet::new())
         } else {
+            // scroll フレームだけが理由の ScrollView は chrome dirty へ分類（#634）。content band
+            // texture のピクセルは不変＝band は composite-only、再 raster はスクロールバー面だけ。
             let marked = dirty
                 .elements
                 .keys()
+                .filter(|e| !chrome_only.contains(e))
                 .chain(dirty.z_index_reorder_parents.iter())
                 .copied();
-            compositing::derive_layer_dirty(marked, &boundaries, |id| {
+            let content = compositing::derive_layer_dirty(marked, &boundaries, |id| {
                 self.elements.get(&id).and_then(|e| e.parent)
-            })
+            });
+            let chrome = chrome_only
+                .into_iter()
+                .filter(|e| boundaries.contains(e) && !content.contains(e))
+                .collect();
+            (content, chrome)
         };
         // transform 係数だけが変わったレイヤ（#633）。内容は不変＝再 raster 不要で、合成時の
         // quad transform 更新だけが要る。per-layer compositor を持たない backend（#632 の単一
@@ -2403,6 +2460,13 @@ impl ElementTree {
     /// [`frame_layer_dirty`](Self::frame_layer_dirty) との和集合を保守的に raster トリガとして扱う。
     pub fn frame_layer_transform_dirty(&self) -> &HashSet<ElementId> {
         &self.frame_layer_transform_dirty
+    }
+
+    /// scroll フレーム（offset 変化・インジケータ fade）だけが理由で dirty な scroll レイヤ（#634）。
+    /// per-layer compositor は content band を composite-only に保ち、chrome（スクロールバー）面
+    /// だけを再 raster する。単一 root 経路は content ∪ chrome を保守的に raster トリガとして扱う。
+    pub fn frame_layer_chrome_dirty(&self) -> &HashSet<ElementId> {
+        &self.frame_layer_chrome_dirty
     }
 
     /// 現在の visual / shape / structure dirty から `layer_dirty` を導出する（ADR-0125）。各 dirty

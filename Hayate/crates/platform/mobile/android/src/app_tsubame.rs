@@ -337,6 +337,7 @@ pub(crate) fn run(app: AndroidApp) {
                 tree_ref.scene_graph(),
                 tree_ref.frame_layers(),
                 tree_ref.frame_layer_dirty(),
+                tree_ref.frame_layer_chrome_dirty(),
             ) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }

@@ -62,6 +62,9 @@ struct LayerEntry {
     /// 最後に composite に使われた論理時刻（LRU 退避の基準。ADR-0127「最も長く composite に
     /// 使われていない」）。raster 時にも初期化する。
     last_composited: u64,
+    /// scroll レイヤなら現在キャッシュ済みの縦帯（#634）。この帯が可視域を覆っている間は再 raster
+    /// せず quad 平行移動で済ませる。非 scroll レイヤは `None`。
+    scroll_band: Option<ScrollLayerExtent>,
 }
 
 /// レイヤ単位 retained texture キャッシュの **backend 非依存な台帳**。実 texture は backend が持つが、
@@ -113,8 +116,33 @@ impl LayerCache {
             LayerEntry {
                 bytes,
                 last_composited: tick,
+                scroll_band: None,
             },
         );
+    }
+
+    /// scroll レイヤの帯 raster を記録する（#634）。texture は帯サイズ（可視域＋overscan）なので
+    /// `bytes` は帯サイズで渡す。以後この帯が可視域を覆う間は [`scroll_needs_raster`] が false を返し、
+    /// present は quad 平行移動だけで済ませる（composite-only スクロール）。
+    pub fn mark_scroll_rasterized(&mut self, layer: ElementId, band: ScrollLayerExtent, bytes: u64) {
+        let tick = self.tick;
+        self.cached.insert(
+            layer,
+            LayerEntry {
+                bytes,
+                last_composited: tick,
+                scroll_band: Some(band),
+            },
+        );
+    }
+
+    /// scroll レイヤが本フレームで（差分）raster を要するか（#634）。未キャッシュ（cache miss /
+    /// LRU 退避）か、キャッシュ帯が現在の可視域を覆っていなければ true。覆っていれば composite-only。
+    pub fn scroll_needs_raster(&self, layer: ElementId, visible_top: f32, viewport_height: f32) -> bool {
+        match self.cached.get(&layer).and_then(|e| e.scroll_band) {
+            Some(band) => !band.covers(visible_top, viewport_height),
+            None => true, // 未キャッシュ、または帯情報を持たない（非 scroll として記録された）。
+        }
     }
 
     /// レイヤを composite に使ったと記録し、LRU 直近性を更新する（ADR-0127）。退避は「最も長く
