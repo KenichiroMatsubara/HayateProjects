@@ -29,8 +29,15 @@ struct VelloSurfaceHost {
 impl SelectedBackend {
     pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let surface_host = VelloSurfaceHost::init(canvas).await?;
-        let scene_renderer = VelloSceneRenderer::new(surface_host.device())
+        let mut scene_renderer = VelloSceneRenderer::new(surface_host.device())
             .map_err(|e| JsValue::from_str(&e))?;
+        // init 直後・最初の実アプリフレーム前に vello パイプラインを warmup する（#644）。ブラウザ
+        // （Dawn）は非同期にパイプラインをコンパイルするため、warmup が無いと初回タップ/スクロールの
+        // フレームにコンパイル遅延が乗る。warmup の失敗は boot を落とさず、警告のみで続行する
+        // （初回フレームで従来どおりコンパイル遅延が出るだけで、描画は壊れない）。
+        if let Err(e) = scene_renderer.warmup(surface_host.device(), surface_host.queue()) {
+            web_sys::console::warn_1(&JsValue::from_str(&format!("vello warmup skipped: {e}")));
+        }
         Ok(Self {
             surface_host,
             scene_renderer,
@@ -95,7 +102,6 @@ impl VelloSurfaceHost {
         &self.device
     }
 
-    #[allow(dead_code)]
     fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }

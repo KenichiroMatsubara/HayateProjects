@@ -12,9 +12,10 @@ use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile
 
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
-    ElementTree, Event, FontStyleValue, RenderImage, RenderImageAlphaType, RenderImageFormat,
+    ElementTree, Event, FontStyleValue, RenderImage,
     StyleProp, TextDecorationValue,
 };
+use crate::image_decode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
@@ -1059,14 +1060,18 @@ impl HayateElementRenderer {
         encode_deliveries(&self.tree.poll_deliveries())
     }
 
-    /// JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は null を返す。
-    pub fn poll_accessibility(&self) -> JsValue {
-        match self.tree.accessibility_update() {
-            Some(update) => match serde_json::to_string(&update) {
+    /// JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。
+    ///
+    /// dirty ゲート（#642）: 前回 poll 以降 a11y ツリーに影響する変更が無いフレームでは、全ツリー
+    /// walk も JSON シリアライズも行わず `null` を返す。ミラーは `null` を「変更なし」として文字列
+    /// 比較なしにスキップできる。レイアウト前も同様に `null`。core が世代を追うため `&mut self`。
+    pub fn poll_accessibility(&mut self) -> JsValue {
+        match self.tree.poll_accessibility_update() {
+            hayate_core::AccessibilityPoll::Changed(update) => match serde_json::to_string(&update) {
                 Ok(json) => JsValue::from_str(&json),
                 Err(_) => JsValue::NULL,
             },
-            None => JsValue::NULL,
+            hayate_core::AccessibilityPoll::Unchanged => JsValue::NULL,
         }
     }
 }
@@ -1111,7 +1116,13 @@ fn border_style_to_js(value: BorderStyleValue) -> JsValue {
     }
 }
 
-/// URL を取得し RGBA8 としてデコードする（PNG / JPEG / WebP 対応）。
+/// URL を取得し RGBA8 としてデコードする（PNG / JPEG / WebP 対応、#643）。
+///
+/// 主経路はブラウザの `createImageBitmap`（オフスレッドデコード）。大きめの画像 1 枚を
+/// main スレッドで同期 CPU デコードするとフレームが数十〜数百 ms 落ちるため（診断 要因 4）、
+/// デコードを別スレッドへ逃がす。`createImageBitmap` 非対応・失敗時は `image` クレートの
+/// 従来 WASM 同期デコードへフォールバックし、描画が壊れないようにする。どちらの経路も同じ
+/// [`image_decode::render_image_from_rgba`] で `RenderImage` を組む。
 async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     use js_sys::{ArrayBuffer, Uint8Array};
 
@@ -1122,21 +1133,73 @@ async fn fetch_image(url: &str) -> Result<RenderImage, JsValue> {
     let buf: ArrayBuffer = JsFuture::from(resp.array_buffer()?).await?.dyn_into()?;
     let bytes = Uint8Array::new(&buf).to_vec();
 
-    let img = image::load_from_memory(&bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let rgba = img.into_rgba8();
-    let width = rgba.width();
-    let height = rgba.height();
-    let raw = rgba.into_raw();
+    // 主経路: createImageBitmap でオフスレッドデコード。非対応・失敗なら WASM 同期デコードへ。
+    let decoded = match decode_via_image_bitmap(&window, &bytes).await {
+        Some(decoded) => decoded,
+        None => image_decode::decode_image_bytes(&bytes).map_err(|e| JsValue::from_str(&e))?,
+    };
+    Ok(image_decode::render_image_from_rgba(decoded))
+}
 
-    Ok(RenderImage {
-        // Blob 化はここで一度だけ行う。以後この画像が生きている間は Blob id が
-        // 安定し、vello の画像アトラスに毎フレームヒットする（issue #630）。
-        data: hayate_core::Blob::from(raw),
-        format: RenderImageFormat::Rgba8,
-        alpha_type: RenderImageAlphaType::Alpha,
+/// `createImageBitmap`（オフスレッドデコード）で画像バイト列をストレート αRGBA8 に復号する（#643）。
+///
+/// デコード自体はブラウザが別スレッドで行い、ここでは結果の `ImageBitmap` を離脱 canvas へ 1 回
+/// 描画して `getImageData` で RGBA を読み戻すだけ（重いデコードは main スレッドを塞がない）。
+/// `createImageBitmap` 非対応の環境や、Blob/デコード/描画のいずれかが失敗したときは `None` を返し、
+/// 呼び出し側が従来の WASM 同期デコードへフォールバックする（boot も描画も壊さない）。
+async fn decode_via_image_bitmap(
+    window: &web_sys::Window,
+    bytes: &[u8],
+) -> Option<image_decode::DecodedRgba> {
+    use wasm_bindgen::JsCast;
+
+    // バイト列を Blob に包む（createImageBitmap の入力）。Uint8Array ビューを 1 要素の
+    // sequence として渡す。
+    let view = js_sys::Uint8Array::from(bytes);
+    let parts = js_sys::Array::new();
+    parts.push(&view);
+    let blob = web_sys::Blob::new_with_u8_array_sequence(&parts).ok()?;
+
+    // createImageBitmap 非対応・引数不一致は `Err`（例外）として返るので `ok()?` でフォールバックへ。
+    let promise = window.create_image_bitmap_with_blob(&blob).ok()?;
+    let bitmap: web_sys::ImageBitmap = JsFuture::from(promise).await.ok()?.dyn_into().ok()?;
+
+    let width = bitmap.width();
+    let height = bitmap.height();
+    let raw = image_bitmap_to_rgba(window, &bitmap, width, height);
+    // ImageBitmap のデコード済みバッファを明示的に解放する（GC 待ちにしない）。
+    bitmap.close();
+
+    Some(image_decode::DecodedRgba {
+        raw: raw?,
         width,
         height,
     })
+}
+
+/// `ImageBitmap` を離脱 2D canvas へ描画し、`getImageData` でストレート αRGBA8 を読み戻す（#643）。
+/// いずれかの DOM 操作が失敗したら `None`（呼び出し側がフォールバックする）。
+fn image_bitmap_to_rgba(
+    window: &web_sys::Window,
+    bitmap: &web_sys::ImageBitmap,
+    width: u32,
+    height: u32,
+) -> Option<Vec<u8>> {
+    use wasm_bindgen::JsCast;
+
+    let document = window.document()?;
+    let canvas: HtmlCanvasElement = document.create_element("canvas").ok()?.dyn_into().ok()?;
+    canvas.set_width(width);
+    canvas.set_height(height);
+    let ctx: web_sys::CanvasRenderingContext2d =
+        canvas.get_context("2d").ok()??.dyn_into().ok()?;
+    ctx.draw_image_with_image_bitmap(bitmap, 0.0, 0.0).ok()?;
+    // getImageData はストレート α（非 premultiplied）で返すため、image クレートの
+    // into_rgba8() とアルファ扱いが一致する（parity）。
+    let image_data = ctx
+        .get_image_data(0.0, 0.0, width as f64, height as f64)
+        .ok()?;
+    Some(image_data.data().0)
 }
 
 /// ポインタ下で解決したカーソルからブラウザのカーソルを駆動する（ADR-0088 / ADR-0105）。

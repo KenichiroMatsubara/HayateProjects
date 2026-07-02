@@ -13,6 +13,15 @@ fn node_id(id: ElementId) -> NodeId {
     NodeId(id.to_u64())
 }
 
+/// [`ElementTree::poll_accessibility_update`] の結果（#642）。dirty ゲートが「変更なし」を
+/// 一級の値として表し、ホスト（Accessibility Mirror）が文字列比較なしにミラー更新をスキップできる。
+pub enum AccessibilityPoll {
+    /// 前回 poll 以降 a11y ツリーは不変。walk も serde も行っていない。
+    Unchanged,
+    /// a11y ツリーが変わった。最新の `TreeUpdate` を運ぶ。
+    Changed(TreeUpdate),
+}
+
 /// 1 軸について、対象スパン `[content_pos, content_pos + size]` がビューポート
 /// `[offset, offset + viewport]` 内に収まる最小の新オフセットを `[0, max]` に
 /// クランプして返す。
@@ -299,6 +308,8 @@ impl ElementTree {
         if !edit.set_value(value) {
             return;
         }
+        // 意味的 SetValue は a11y value を変える（#642、dirty 集合を通らない編集経路）。
+        self.bump_a11y_generation();
         self.dispatch_event(
             DocumentEventKind::TextInput,
             Event::TextInput {
@@ -306,6 +317,29 @@ impl ElementTree {
                 text: value.to_string(),
             },
         );
+    }
+
+    /// 変更ゲート付き a11y poll（#642）。前回この関数が `TreeUpdate` を構築して以降、a11y ツリーに
+    /// 影響する変更（ツリー構造・role/label/value・レイアウト・focus・scroll offset）が **無ければ**、
+    /// 全ツリー walk も `TreeUpdate` 構築も行わず [`AccessibilityPoll::Unchanged`] を即返す。変更が
+    /// あれば最新の `TreeUpdate` を構築して [`AccessibilityPoll::Changed`] で返し、消費済み世代を進める。
+    ///
+    /// これで ADR-0124 の Accessibility Mirror が毎 vsync 呼んでも、アイドルフレームでは Rust 側
+    /// コストがゼロになる（全ツリー再構築＋serde 全量シリアライズを払わない）。まだレイアウト前で
+    /// `accessibility_update` が `None` を返す間は消費世代を進めず、レイアウト確定後の最初の poll が
+    /// 確実に `Changed` を返す。
+    pub fn poll_accessibility_update(&mut self) -> AccessibilityPoll {
+        if self.a11y_polled_generation == self.a11y_generation {
+            return AccessibilityPoll::Unchanged;
+        }
+        match self.accessibility_update() {
+            Some(update) => {
+                self.a11y_polled_generation = self.a11y_generation;
+                AccessibilityPoll::Changed(update)
+            }
+            // レイアウト前（root 無し / geometry 無し）。消費世代は据え置き、レイアウト後に再試行させる。
+            None => AccessibilityPoll::Unchanged,
+        }
     }
 
     /// 現在の要素ツリーとレイアウトキャッシュから AccessKit `TreeUpdate` を構築する。
@@ -919,6 +953,180 @@ mod tests {
             "ScrollIntoView on a target with no scroll-view ancestor must do nothing",
         );
         let _ = (l_root, l_target);
+    }
+
+    /// root+button の最小シーンをレイアウト済みで返す。dirty ゲート契約テスト用。
+    fn gated_scene() -> (ElementTree, ElementId, ElementId) {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let button = tree.element_create(2, ElementKind::Button);
+        tree.element_append_child(root, button);
+        tree.element_set_style(
+            button,
+            &[
+                StyleProp::Width(Dimension::px(100.0)),
+                StyleProp::Height(Dimension::px(40.0)),
+            ],
+        );
+        tree.render(0.0);
+        (tree, root, button)
+    }
+
+    fn changed(poll: AccessibilityPoll) -> TreeUpdate {
+        match poll {
+            AccessibilityPoll::Changed(update) => update,
+            AccessibilityPoll::Unchanged => panic!("expected Changed, got Unchanged"),
+        }
+    }
+
+    #[test]
+    fn poll_accessibility_skips_rebuild_on_unchanged_frame() {
+        // ADR-0086 方式の work-count 契約: 変更なしフレームで再構築（全ツリー walk）が走らないことを、
+        // 「世代が進まない」かつ「poll が Unchanged を返す（＝walk 前に return する）」で固定する（#642）。
+        let (mut tree, _root, _button) = gated_scene();
+
+        // 最初の poll はレイアウト後の初回なので最新ツリーを返し、消費世代を揃える。
+        let first = tree.poll_accessibility_update();
+        assert!(matches!(first, AccessibilityPoll::Changed(_)));
+        let gen_after_first = tree.accessibility_generation();
+
+        // 変更なしフレームを 3 回進めても世代は不変で、poll は毎回 Unchanged（再構築ゼロ）。
+        let mut ts = 16.0;
+        for _ in 0..3 {
+            tree.render(ts);
+            ts += 16.0;
+            assert_eq!(
+                tree.accessibility_generation(),
+                gen_after_first,
+                "idle frame must not advance the a11y generation",
+            );
+            assert!(
+                matches!(tree.poll_accessibility_update(), AccessibilityPoll::Unchanged),
+                "idle frame poll must skip rebuild and report Unchanged",
+            );
+        }
+    }
+
+    #[test]
+    fn poll_accessibility_returns_latest_after_label_change() {
+        let (mut tree, _root, button) = gated_scene();
+        let _ = tree.poll_accessibility_update(); // 初回を消費
+
+        // label は視覚 dirty を立てないが a11y 世代は進み、poll は新しい label を含む最新ツリーを返す。
+        tree.element_set_aria_label(button, "Renamed");
+        let update = changed(tree.poll_accessibility_update());
+        let node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(button))
+            .map(|(_, n)| n)
+            .expect("button node");
+        assert_eq!(node.label(), Some("Renamed"));
+
+        // 同じ label を再設定しても変化なし＝世代は進まず Unchanged。
+        tree.element_set_aria_label(button, "Renamed");
+        assert!(matches!(
+            tree.poll_accessibility_update(),
+            AccessibilityPoll::Unchanged
+        ));
+    }
+
+    #[test]
+    fn poll_accessibility_returns_latest_after_role_change() {
+        let (mut tree, _root, button) = gated_scene();
+        let _ = tree.poll_accessibility_update();
+
+        tree.element_set_role(button, "link");
+        let update = changed(tree.poll_accessibility_update());
+        let node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(button))
+            .map(|(_, n)| n)
+            .expect("button node");
+        assert_eq!(node.role(), Role::Link, "role change must reach the poll");
+    }
+
+    #[test]
+    fn poll_accessibility_returns_latest_after_value_change() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let input = tree.element_create(2, ElementKind::TextInput);
+        tree.element_append_child(root, input);
+        tree.element_set_text_content(input, "before");
+        tree.render(0.0);
+        let _ = tree.poll_accessibility_update();
+
+        tree.element_set_text_content(input, "after");
+        tree.render(16.0);
+        let update = changed(tree.poll_accessibility_update());
+        let node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(input))
+            .map(|(_, n)| n)
+            .expect("input node");
+        assert_eq!(node.value(), Some("after"), "value change must reach the poll");
+    }
+
+    #[test]
+    fn poll_accessibility_returns_latest_after_structure_change() {
+        let (mut tree, root, _button) = gated_scene();
+        let _ = tree.poll_accessibility_update();
+
+        let added = tree.element_create(3, ElementKind::Button);
+        tree.element_append_child(root, added);
+        tree.render(16.0);
+        let update = changed(tree.poll_accessibility_update());
+        assert!(
+            update.nodes.iter().any(|(id, _)| *id == node_id(added)),
+            "newly attached element must appear after a structure change",
+        );
+    }
+
+    #[test]
+    fn poll_accessibility_returns_latest_after_focus_change() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let input = tree.element_create(2, ElementKind::TextInput);
+        tree.element_append_child(root, input);
+        tree.render(0.0);
+        let _ = tree.poll_accessibility_update();
+
+        tree.on_accessibility_action(action_request(Action::Focus, node_id(input)));
+        tree.render(16.0);
+        let update = changed(tree.poll_accessibility_update());
+        assert_eq!(
+            update.focus,
+            node_id(input),
+            "focus change must reach the poll",
+        );
+    }
+
+    #[test]
+    fn poll_accessibility_returns_latest_after_scroll_offset_change() {
+        let (mut tree, scroll, _target) = scroll_into_view_scene();
+        let _ = tree.poll_accessibility_update();
+
+        // scroll offset を動かすと content 内の a11y bounds が動くため、poll は最新ツリーを返す。
+        tree.element_set_scroll_offset(scroll, 0.0, 120.0);
+        tree.render(16.0);
+        assert!(
+            matches!(
+                tree.poll_accessibility_update(),
+                AccessibilityPoll::Changed(_)
+            ),
+            "scroll offset change must advance the a11y generation",
+        );
     }
 
     #[test]

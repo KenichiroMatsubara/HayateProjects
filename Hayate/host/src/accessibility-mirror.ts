@@ -212,9 +212,17 @@ export function attachAccessibilityMirror(
 
   const tick: FrameRequestCallback = () => {
     const json = raw.poll_accessibility();
+    // #642: core の dirty ゲートが「変更なし」フレームを `null` で返す（全ツリー walk も JSON 生成も
+    // しない）。`null` は文字列比較なしにスキップし、直近適用 JSON も温存する（次の実変更まで DOM 不変）。
+    // 非 null（＝a11y 変更あり）でも、稀な over-bump（視覚のみ変更で a11y JSON は同一）に備え文字列
+    // 比較を二段目のガードとして残し、同一なら再投影しない。
+    if (json == null) {
+      handle = requestFrame(tick);
+      return;
+    }
     if (json !== lastApplied) {
       lastApplied = json;
-      if (json != null) project(json);
+      project(json);
     }
     handle = requestFrame(tick);
   };

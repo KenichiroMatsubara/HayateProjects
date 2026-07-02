@@ -255,6 +255,15 @@ pub struct ElementTree {
     /// scroll フレーム（offset 変化・インジケータ fade）だけが理由で dirty な scroll レイヤ（#634）。
     /// content band は composite-only のまま、chrome（スクロールバー）面の再 raster だけが要る。
     pub(crate) frame_layer_chrome_dirty: HashSet<ElementId>,
+    /// a11y ツリー（AccessKit）に影響する変更で単調増加する世代カウンタ（#642）。ツリー構造・
+    /// role/label/value・レイアウト・focus・scroll offset のいずれかが変わったフレームだけ進む。
+    /// `poll_accessibility_update` がこれを前回消費世代と比べ、変更なしフレームでは全ツリー walk も
+    /// serde も走らせずに「変更なし」を返せるようにする（ADR-0124 の毎 vsync ミラー tick 対策）。
+    /// dirty 追跡は render() の既存 dirty 集合に相乗りし、新しい walk を足さない。
+    pub(crate) a11y_generation: u64,
+    /// `poll_accessibility_update` が最後に `TreeUpdate` を構築した世代（#642）。これが
+    /// `a11y_generation` と一致していれば a11y ツリーは前回 poll から不変で、再構築を省ける。
+    pub(crate) a11y_polled_generation: u64,
 }
 
 impl ElementTree {
@@ -282,7 +291,22 @@ impl ElementTree {
             frame_layer_dirty: HashSet::new(),
             frame_layer_transform_dirty: HashSet::new(),
             frame_layer_chrome_dirty: HashSet::new(),
+            a11y_generation: 0,
+            a11y_polled_generation: 0,
         }
+    }
+
+    /// a11y ツリーに影響する変更が起きたことを記録する（#642）。単調増加のカウンタを 1 進め、
+    /// 次の `poll_accessibility_update` が「変更あり」を検出できるようにする。`wrapping_add` で
+    /// 桁溢れしても隣接値が衝突しない限り検出は成立する（実運用で 2^64 フレームには達しない）。
+    pub(crate) fn bump_a11y_generation(&mut self) {
+        self.a11y_generation = self.a11y_generation.wrapping_add(1);
+    }
+
+    /// 現在の a11y 世代（#642）。a11y ツリーに影響する変更のたびに進む。ホストは前回値と
+    /// 比較して、変更なしフレームで再構築を省ける（`poll_accessibility_update` が内部で行う）。
+    pub fn accessibility_generation(&self) -> u64 {
+        self.a11y_generation
     }
 
     /// 未キャッシュのツールバーボタンラベルを layout pass のフォントコンテキストで
@@ -563,12 +587,21 @@ impl ElementTree {
 
     /// TextInput 要素の編集可能テキスト内容を置き換える。
     pub fn element_set_text_content(&mut self, id: ElementId, text: &str) {
-        if let Some(edit) = self
+        let changed = if let Some(edit) = self
             .elements
             .get_mut(&id)
             .and_then(|el| el.edit.as_mut())
         {
+            let before = edit.display_text();
             edit.set(text);
+            edit.display_text() != before
+        } else {
+            false
+        };
+        // TextInput の a11y value は `edit.display_text()`。編集は視覚を別経路で反映し dirty 集合を
+        // 通らないため、値が変わったら a11y 世代を明示的に進める（#642）。
+        if changed {
+            self.bump_a11y_generation();
         }
     }
 
@@ -577,33 +610,45 @@ impl ElementTree {
     /// かつ IME 組成中（preedit あり）でないときだけ**適用する。毎キーストロークの echo は
     /// この差分・組成中ガードで no-op に倒れ、preedit / cursor を壊さない。適用したら `true`。
     pub fn element_set_text_content_if_idle(&mut self, id: ElementId, text: &str) -> bool {
-        if let Some(edit) = self
+        let applied = if let Some(edit) = self
             .elements
             .get_mut(&id)
             .and_then(|el| el.edit.as_mut())
         {
             // IME 組成中は書き戻さない（preedit / cursor を保護する）。
             if edit.preedit.is_some() {
-                return false;
+                false
+            } else if edit.text_content == text {
+                // 差分が無ければ何もしない（キーストローク echo の抑止）。
+                false
+            } else {
+                edit.set(text);
+                true
             }
-            // 差分が無ければ何もしない（キーストローク echo の抑止）。
-            if edit.text_content == text {
-                return false;
-            }
-            edit.set(text);
-            return true;
+        } else {
+            false
+        };
+        if applied {
+            self.bump_a11y_generation();
         }
-        false
+        applied
     }
 
     /// TextInput の確定済み内容にテキストを追加する。
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
-        if let Some(edit) = self
+        let changed = if let Some(edit) = self
             .elements
             .get_mut(&id)
             .and_then(|el| el.edit.as_mut())
         {
+            let before = edit.display_text();
             edit.append(text);
+            edit.display_text() != before
+        } else {
+            false
+        };
+        if changed {
+            self.bump_a11y_generation();
         }
     }
 
@@ -754,23 +799,34 @@ impl ElementTree {
 
     /// スクリーンリーダー向けの ARIA ラベルを設定する。
     pub fn element_set_aria_label(&mut self, id: ElementId, label: &str) {
+        let next = if label.is_empty() {
+            None
+        } else {
+            Some(label.to_string())
+        };
         if let Some(el) = self.elements.get_mut(&id) {
-            el.aria_label = if label.is_empty() {
-                None
-            } else {
-                Some(label.to_string())
-            };
+            // label は a11y 専用で視覚に効かないため visual dirty は立てない（無用な re-lower/raster を
+            // 招く）。代わりに a11y 世代だけを進め、変わったときに限り poll が最新ツリーを返す（#642）。
+            if el.aria_label != next {
+                el.aria_label = next;
+                self.bump_a11y_generation();
+            }
         }
     }
 
     /// ARIA ロール（例 "button" / "listitem" / "img"）を設定する。空文字列でクリア。
     pub fn element_set_role(&mut self, id: ElementId, role: &str) {
+        let next = if role.is_empty() {
+            None
+        } else {
+            Some(role.to_string())
+        };
         if let Some(el) = self.elements.get_mut(&id) {
-            el.role = if role.is_empty() {
-                None
-            } else {
-                Some(role.to_string())
-            };
+            // role も a11y 専用チャネル（視覚不変）。label と同じく a11y 世代だけを進める（#642）。
+            if el.role != next {
+                el.role = next;
+                self.bump_a11y_generation();
+            }
         }
     }
 
@@ -884,7 +940,7 @@ impl ElementTree {
     /// 増分コマンド経路（`ImeAction::DeleteBackward`、ADR-0117）の適用先。
     pub fn element_delete_backward(&mut self, id: ElementId) {
         use crate::element::edit_state::{Direction, EditIntent, Granularity};
-        if let Some(edit) = self
+        let edited = if let Some(edit) = self
             .elements
             .get_mut(&id)
             .and_then(|el| el.edit.as_mut())
@@ -893,6 +949,13 @@ impl ElementTree {
                 granularity: Granularity::Grapheme,
                 direction: Direction::Backward,
             });
+            true
+        } else {
+            false
+        };
+        // 削除は a11y value を変える（#642、dirty 集合を通らない編集経路）。
+        if edited {
+            self.bump_a11y_generation();
         }
     }
 
@@ -910,6 +973,8 @@ impl ElementTree {
         if !edit.paste(&pasted) {
             return;
         }
+        // 貼り付けは a11y value を変える（#642、on_text_input と同型で dirty 集合を通らない）。
+        self.bump_a11y_generation();
         // 貼り付け断片ではなく確定後の全文を載せる（on_text_input と同型、ADR-0069 / #474）。
         let value = self.element_get_text_content(id);
         self.dispatch_event(
@@ -1573,6 +1638,14 @@ impl ElementTree {
             &self.engine.visual_dirty,
             self.engine.fonts_dirty,
         );
+        // このフレームが a11y ツリー（AccessKit）に影響したかを、commit で消費される前の既存
+        // dirty 集合から判定する（#642・新たな walk を足さない）。structure=ツリー構造、
+        // shape=テキスト/value 再シェイプ、visual=focus/blur・scroll offset・その他の視覚変更を捕捉する。
+        // commit 後の geometry diff（レイアウトで bounds が動いた要素）は下で加える。role/label は
+        // 視覚 dirty を立てないため、各セッタが別途世代を進める。
+        let a11y_touched_pre = !self.engine.structure_dirty.is_empty()
+            || !self.engine.shape_dirty.is_empty()
+            || !self.engine.visual_dirty.is_empty();
         self.commit_frame();
         // `commit_frame` がレイアウトを再実行した。box ジオメトリが変わった要素を
         // 本フレームの lowering 集合へ畳み込み、リフローしただけで他は綺麗な箱
@@ -1580,6 +1653,10 @@ impl ElementTree {
         // ようにする。差分は新しいレイアウトキャッシュができて初めて分かるので
         // commit 後に、かつ `scene_build::update` が `dirty` を消費する前に行う。
         let geometry_dirty = self.engine.drain_layout_geometry_dirty();
+        // bounds が動いた（または出現した）要素は a11y ノードの矩形も変える（#642）。
+        if a11y_touched_pre || !geometry_dirty.is_empty() {
+            self.bump_a11y_generation();
+        }
         let _ = self.engine.drain_visual_dirty();
         let _ = self.engine.drain_shape_lowering_reach();
         for id in geometry_dirty {

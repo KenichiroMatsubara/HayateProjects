@@ -921,13 +921,21 @@ impl ElementTree {
     }
 
     pub fn on_text_input(&mut self, target: ElementId, text: &str) {
-        if let Some(edit) = self
+        let edited = if let Some(edit) = self
             .elements
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
         {
             // キャレット位置に挿入し、選択範囲があれば置換する（ADR-0097）。
             edit.insert(text);
+            true
+        } else {
+            false
+        };
+        // 挿入は a11y value（`edit.display_text()`）を変える。編集は視覚を別経路で反映し dirty 集合を
+        // 通らないため、a11y 世代を明示的に進めて次の poll が最新値を返すようにする（#642）。
+        if edited {
+            self.bump_a11y_generation();
         }
         // input イベントの value は要素の現在値全体（DOM の `input` → `target.value` と同型）。
         // 挿入された断片ではなく結合表示テキストを載せることで、web ホストは
@@ -940,12 +948,19 @@ impl ElementTree {
     }
 
     pub fn on_composition_start(&mut self, target: ElementId, text: &str) {
-        if let Some(edit) = self
+        let edited = if let Some(edit) = self
             .elements
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
         {
             edit.set_preedit(text);
+            true
+        } else {
+            false
+        };
+        // preedit は display_text に含まれる＝a11y value を変える（#642）。
+        if edited {
+            self.bump_a11y_generation();
         }
         self.emit_interaction(Event::CompositionStart {
             target_id: target,
@@ -966,12 +981,18 @@ impl ElementTree {
         text: &str,
         clauses: Vec<crate::element::edit_state::CompositionClause>,
     ) {
-        if let Some(edit) = self
+        let edited = if let Some(edit) = self
             .elements
             .get_mut(&target)
             .and_then(|el| el.edit.as_mut())
         {
             edit.set_preedit_with_clauses(text, clauses);
+            true
+        } else {
+            false
+        };
+        if edited {
+            self.bump_a11y_generation();
         }
         self.emit_interaction(Event::CompositionUpdate {
             target_id: target,
@@ -989,6 +1010,10 @@ impl ElementTree {
                 true
             })
             .unwrap_or(false);
+        // 確定は preedit を確定値へ畳む＝display_text（a11y value）を変える（#642）。
+        if committed {
+            self.bump_a11y_generation();
+        }
         self.emit_interaction(Event::CompositionEnd {
             target_id: target,
             text: text.to_string(),

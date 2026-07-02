@@ -195,6 +195,36 @@ describe('attachAccessibilityMirror', () => {
     ).toBe('TAMPERED');
   });
 
+  it('treats a null poll (core dirty-gate: no change) as a skip that preserves the last projection', () => {
+    // #642: core の dirty ゲートが変更なしフレームで `null` を返す。ミラーは文字列比較なしに
+    // スキップし、直近投影の DOM をそのまま保つ（次の実変更まで触らない）。
+    const { canvas, container } = mountCanvas();
+    const raw = fakeRawPolling(todoFixture());
+    attach(raw, canvas);
+
+    driver.tick(); // 初回投影
+    const root = container.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
+    const button = root.querySelector('[role="button"]') as HTMLElement;
+    button.setAttribute('aria-label', 'TAMPERED');
+
+    // core が「変更なし」を null で返すフレーム。投影は走らず改竄が残る。
+    raw.json = null;
+    driver.tick();
+    expect(
+      (root.querySelector('[role="button"]') as HTMLElement).getAttribute('aria-label'),
+    ).toBe('TAMPERED');
+
+    // その後の実変更（非 null）は通常どおり再投影する。
+    raw.json = treeUpdate(1, [
+      [1, node('window', { children: [2] })],
+      [2, node('button', { label: 'Renamed' })],
+    ]);
+    driver.tick();
+    expect(
+      (root.querySelector('[role="button"]') as HTMLElement).getAttribute('aria-label'),
+    ).toBe('Renamed');
+  });
+
   it('re-projects when the polled JSON changes', () => {
     const { canvas, container } = mountCanvas();
     const raw = fakeRawPolling(todoFixture());
