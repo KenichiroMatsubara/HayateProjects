@@ -40,6 +40,10 @@ const WARMUP_CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
 pub struct VelloSceneRenderer {
     renderer: Renderer,
+    /// フレーム間で再利用する Scene（#649）。毎フレーム `Scene::new()` すると内部エンコードバッファを
+    /// 作り直して alloc churn（GC 圧）になる。`Scene::reset()` でバッファ容量を保ったまま内容だけ
+    /// クリアして再エンコードすることで、毎フレームの新規確保を消す（描画出力は不変）。
+    scene: Scene,
 }
 
 impl VelloSceneRenderer {
@@ -54,7 +58,10 @@ impl VelloSceneRenderer {
             },
         )
         .map_err(|e| format!("Vello init failed: {e}"))?;
-        Ok(Self { renderer })
+        Ok(Self {
+            renderer,
+            scene: Scene::new(),
+        })
     }
 
     /// init 直後に極小のダミーシーンを 1 回 render し、vello の主要パイプライン variant を実
@@ -108,30 +115,13 @@ impl VelloSceneRenderer {
         clear_color: [f32; 4],
         content_scale: f32,
     ) -> Result<(), String> {
-        let mut scene = Scene::new();
-        {
-            let mut painter = VelloPainter::new(&mut scene);
-            let scaled = content_scale != 1.0;
-            if scaled {
-                painter.push_transform([
-                    content_scale as f64,
-                    0.0,
-                    0.0,
-                    content_scale as f64,
-                    0.0,
-                    0.0,
-                ]);
-            }
-            render_scene_graph(graph, &mut painter);
-            if scaled {
-                painter.pop_transform();
-            }
-        }
+        // #649: 毎フレーム `Scene::new()` せず、常駐 Scene を reset して再エンコードする（alloc churn 削減）。
+        encode_frame(&mut self.scene, graph, content_scale);
         self.renderer
             .render_to_texture(
                 target.device,
                 target.queue,
-                &scene,
+                &self.scene,
                 target.target_view,
                 &RenderParams {
                     base_color: AlphaColor::<Srgb>::new(clear_color),
@@ -144,30 +134,37 @@ impl VelloSceneRenderer {
     }
 }
 
+/// `graph` を `scene` へエンコードする（#649）。冒頭で `Scene::reset()` して前フレームの内容を消して
+/// から再エンコードするので、常駐 Scene をフレーム間で再利用しても内容は毎フレーム新規 Scene と同値。
+/// content_scale != 1.0 のときは content scale の transform を被せる（ADR-0129 のバッファ縮小と同経路）。
+fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
+    scene.reset();
+    let mut painter = VelloPainter::new(scene);
+    let scaled = content_scale != 1.0;
+    if scaled {
+        painter.push_transform([content_scale as f64, 0.0, 0.0, content_scale as f64, 0.0, 0.0]);
+    }
+    render_scene_graph(graph, &mut painter);
+    if scaled {
+        painter.pop_transform();
+    }
+}
+
 // perf プローブ用 seam（`tests/perf_probe.rs`）：GPU なしで「SceneGraph → vello Scene
 // エンコード」だけの所要時間を測るために公開する。公開契約ではない。
 #[doc(hidden)]
 pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
     let mut scene = Scene::new();
-    {
-        let mut painter = VelloPainter::new(&mut scene);
-        let scaled = content_scale != 1.0;
-        if scaled {
-            painter.push_transform([
-                content_scale as f64,
-                0.0,
-                0.0,
-                content_scale as f64,
-                0.0,
-                0.0,
-            ]);
-        }
-        render_scene_graph(graph, &mut painter);
-        if scaled {
-            painter.pop_transform();
-        }
-    }
+    encode_frame(&mut scene, graph, content_scale);
     scene
+}
+
+// フレーム間 Scene 再利用（#649）の GPU なし検証 seam：呼び出し側が持つ Scene を reset して再エンコード
+// する。render_scene と同じ経路（`encode_frame`）を通すので、reset 再利用の内容が新規 Scene と同値かつ
+// 前フレームを持ち越さないことを GPU 抜きで固定できる。
+#[doc(hidden)]
+pub fn debug_encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
+    encode_frame(scene, graph, content_scale);
 }
 
 pub fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {

@@ -158,6 +158,14 @@ pub struct HayateElementRenderer {
     render_scale: RenderScaleDriver,
     /// 現在の base DPR（デバイス実 DPR。resize で更新）。実効 content scale = `base_dpr * render_scale`。
     base_dpr: f32,
+    /// イベントなしフレーム用の常駐・空 `js_sys::Array`（#649）。配信ゼロのフレームで毎回 `Array::new()`
+    /// すると JS ヒープに空配列を確保して GC 圧になる。空フレームはこのハンドルを clone して返す
+    /// （新規 JS 配列を作らない）。消費側は結果を読むだけで push しないので共有して安全。
+    empty_events: js_sys::Array,
+    /// EditContext 候補窓 rect 同期用にキャッシュした canvas の画面矩形（#649）。`getBoundingClientRect()`
+    /// は強制レイアウト読みで、キーボード表示中に毎フレーム呼ぶとレイアウト thrash になる。canvas の
+    /// 画面位置は resize（backing store 差し替え）でしか変わらないので、そのときだけ無効化して再読する。
+    edit_context_canvas_rect: RefCell<Option<(f64, f64, f64, f64)>>,
 }
 
 impl HayateElementRenderer {
@@ -250,6 +258,8 @@ impl HayateElementRenderer {
             // device_pixel_ratio。逼迫が続くと render_scale を段階的に下げ、buffer を縮小する。
             render_scale: RenderScaleDriver::new(FRAME_BUDGET_60HZ_MS),
             base_dpr: dpr as f32,
+            empty_events: js_sys::Array::new(),
+            edit_context_canvas_rect: RefCell::new(None),
             // Scroll Physics Profile（ADR-0113）。現状 web は `Auto` のみで、iOS 風
             // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
@@ -572,9 +582,19 @@ impl HayateElementRenderer {
         if bounds.width == 0.0 && bounds.height == 0.0 {
             return;
         }
-        let rect = self.canvas.get_bounding_client_rect();
+        // #649: canvas の画面矩形をキャッシュする。`getBoundingClientRect()` は強制レイアウト読みで、
+        // キーボード表示中に毎フレーム呼ぶとレイアウト thrash になる。canvas の画面位置は resize でしか
+        // 変わらない（apply_resize でキャッシュを無効化する）ので、キャッシュヒット時は再読しない。
+        // キャレット位置の変化は `bounds`（core 由来）で毎フレーム反映されるため、rect のキャッシュとは直交。
+        let (rl, rt, rw, rh) = {
+            let mut cached = self.edit_context_canvas_rect.borrow_mut();
+            *cached.get_or_insert_with(|| {
+                let rect = self.canvas.get_bounding_client_rect();
+                (rect.left(), rect.top(), rect.width(), rect.height())
+            })
+        };
         let (x, y, w, h) = edit_context::canvas_pixel_rect_to_screen(
-            (rect.left(), rect.top(), rect.width(), rect.height()),
+            (rl, rt, rw, rh),
             self.canvas.width(),
             self.canvas.height(),
             bounds.x,
@@ -819,6 +839,9 @@ impl HayateElementRenderer {
         self.base_dpr = metrics.content_scale;
         // 描画サーフェスを作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster。
         self.planner.invalidate();
+        // #649: canvas の画面矩形が変わり得るので EditContext 用 rect キャッシュを無効化する（次の
+        // sync_edit_context で 1 回だけ再読）。
+        *self.edit_context_canvas_rect.borrow_mut() = None;
         self.tree
             .on_resize(metrics.viewport_width, metrics.viewport_height);
         *self.last_viewport.borrow_mut() = (metrics.viewport_width, metrics.viewport_height);
@@ -1099,7 +1122,13 @@ impl HayateElementRenderer {
                 }
             }
         }
-        encode_deliveries(&self.tree.poll_deliveries())
+        // #649: 配信ゼロのフレーム（イベントなし）は常駐の空 Array を clone して返し、`encode_deliveries`
+        // 内の `Array::new()`（毎フレームの JS ヒープ確保）を避ける。実イベントのあるフレームだけ確保する。
+        let deliveries = self.tree.poll_deliveries();
+        if deliveries.is_empty() {
+            return self.empty_events.clone();
+        }
+        encode_deliveries(&deliveries)
     }
 
     /// JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。

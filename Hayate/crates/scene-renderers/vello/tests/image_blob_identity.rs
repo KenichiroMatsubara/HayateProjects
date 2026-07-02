@@ -10,7 +10,7 @@ use std::sync::Arc;
 use hayate_core::{
     Blob, Node, NodeKind, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph,
 };
-use hayate_scene_renderer_vello::debug_encode_scene;
+use hayate_scene_renderer_vello::{debug_encode_frame, debug_encode_scene};
 use vello_encoding::Patch;
 
 fn test_image() -> RenderImage {
@@ -107,6 +107,35 @@ fn distinct_render_image_yields_distinct_blob_id() {
     assert_ne!(
         ids1[0], ids2[0],
         "a new RenderImage instance must present a new Blob id so changed content re-uploads"
+    );
+}
+
+#[test]
+fn reused_scene_resets_between_frames_and_matches_a_fresh_scene() {
+    // #649: 常駐 Scene を `reset()` してフレーム間で再利用しても、(1) 前フレームのエンコードを持ち越さず、
+    // (2) 内容は毎フレーム新規 Scene と同値であること（描画出力不変・parity）を GPU 抜きで固定する。
+    let mut scene = vello::Scene::new();
+
+    // フレーム 1：画像 1 枚 → image patch が 1 つ。
+    debug_encode_frame(&mut scene, &scene_graph_with(Arc::new(test_image())), 1.0);
+    assert_eq!(image_blob_ids(&scene).len(), 1, "frame 1 should encode one image patch");
+
+    // フレーム 2（同じ Scene を再利用）：空グラフ → reset が前フレームの patch を消すので 0。
+    debug_encode_frame(&mut scene, &SceneGraph::new(), 1.0);
+    assert_eq!(
+        image_blob_ids(&scene).len(),
+        0,
+        "reset() must clear the prior frame's encoding when the scene is reused"
+    );
+
+    // フレーム 3：再び画像 → 再利用 Scene のエンコードが、新規 Scene のエンコードと同値（parity）。
+    let image = Arc::new(test_image());
+    debug_encode_frame(&mut scene, &scene_graph_with(image.clone()), 1.0);
+    let fresh = debug_encode_scene(&scene_graph_with(image), 1.0);
+    assert_eq!(
+        image_blob_ids(&scene),
+        image_blob_ids(&fresh),
+        "a reused (reset) scene must encode identically to a fresh scene"
     );
 }
 
