@@ -1059,14 +1059,18 @@ impl HayateElementRenderer {
         encode_deliveries(&self.tree.poll_deliveries())
     }
 
-    /// JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は null を返す。
-    pub fn poll_accessibility(&self) -> JsValue {
-        match self.tree.accessibility_update() {
-            Some(update) => match serde_json::to_string(&update) {
+    /// JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。
+    ///
+    /// dirty ゲート（#642）: 前回 poll 以降 a11y ツリーに影響する変更が無いフレームでは、全ツリー
+    /// walk も JSON シリアライズも行わず `null` を返す。ミラーは `null` を「変更なし」として文字列
+    /// 比較なしにスキップできる。レイアウト前も同様に `null`。core が世代を追うため `&mut self`。
+    pub fn poll_accessibility(&mut self) -> JsValue {
+        match self.tree.poll_accessibility_update() {
+            hayate_core::AccessibilityPoll::Changed(update) => match serde_json::to_string(&update) {
                 Ok(json) => JsValue::from_str(&json),
                 Err(_) => JsValue::NULL,
             },
-            None => JsValue::NULL,
+            hayate_core::AccessibilityPoll::Unchanged => JsValue::NULL,
         }
     }
 }
