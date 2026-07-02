@@ -4,11 +4,13 @@
 //! 座標ベースのポインタ API に変換され、タップでデモボタンの `:active` 色が
 //! 画面上で切り替わる。IME / AccessKit / クリップボードは未実装。
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementTree, SceneGraph};
+use hayate_layer_compositor::PresentPlanner;
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
 };
@@ -39,6 +41,9 @@ pub(crate) struct GpuSurface {
     width: u32,
     height: u32,
     scene_renderer: VelloSceneRenderer,
+    /// present 側 raster gating（#632・ADR-0125）。clean フレーム（`frame_layer_dirty` 空・
+    /// キャッシュ有効）では `render_scene` を呼ばず、raster 済み `target_view` をそのまま blit する。
+    planner: PresentPlanner,
 }
 
 /// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
@@ -142,8 +147,14 @@ pub fn android_main(app: AndroidApp) {
             // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
             // シーンを提示する（`hayate-adapter-web` の `render` に対応）。
             let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
-            let scene = tree.render(timestamp_ms);
-            if let Err(err) = surface.render_frame(scene) {
+            let _ = tree.render(timestamp_ms);
+            // render() が捕捉した frame_layers / frame_layer_dirty を present へ渡し、
+            // FramePlan を通してから raster する（#632）。
+            if let Err(err) = surface.render_frame(
+                tree.scene_graph(),
+                tree.frame_layers(),
+                tree.frame_layer_dirty(),
+            ) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
         }
@@ -341,20 +352,35 @@ pub(crate) async fn init_gpu_surface(
         width,
         height,
         scene_renderer,
+        planner: PresentPlanner::new(),
     })
 }
 
 impl GpuSurface {
-    pub(crate) fn render_frame(&mut self, scene: &SceneGraph) -> Result<(), String> {
-        let target = VelloRenderTarget {
-            device: &self.device,
-            queue: &self.queue,
-            target_view: &self.target_view,
-            width: self.width,
-            height: self.height,
-        };
-        self.scene_renderer
-            .render_scene(scene, &target, CLEAR_COLOR, 1.0)?;
+    /// 1 フレームの提示。`layers` / `layer_dirty` は core が `render()` で捕捉した
+    /// `frame_layers()` / `frame_layer_dirty()`。`LayerCache::plan_raster` → `FramePlan` の判定を
+    /// 通し、`needs_raster` のときだけ従来どおり全面 raster する（#632・ADR-0125 backend 半分の
+    /// 入口）。clean フレームは raster を呼ばず、raster 済み `target_view` の blit（composite 相当・
+    /// 毎フレーム・安い）だけで提示する＝描画出力は不変。
+    pub(crate) fn render_frame(
+        &mut self,
+        scene: &SceneGraph,
+        layers: &[hayate_core::ElementId],
+        layer_dirty: &HashSet<hayate_core::ElementId>,
+    ) -> Result<(), String> {
+        let plan = self.planner.plan(layers, layer_dirty);
+        if plan.needs_raster {
+            let target = VelloRenderTarget {
+                device: &self.device,
+                queue: &self.queue,
+                target_view: &self.target_view,
+                width: self.width,
+                height: self.height,
+            };
+            self.scene_renderer
+                .render_scene(scene, &target, CLEAR_COLOR, 1.0)?;
+            self.planner.note_full_raster(layers);
+        }
 
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
@@ -388,5 +414,8 @@ impl GpuSurface {
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
         self.target_view = create_target_view(&self.device, width, height);
+        // target_view を作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster する
+        // （invalidate しないと古いサイズの内容を blit し続ける）。
+        self.planner.invalidate();
     }
 }

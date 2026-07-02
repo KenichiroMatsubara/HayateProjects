@@ -146,6 +146,10 @@ pub struct HayateElementRenderer {
     /// アダプタ所有の EditContext とその配線（ADR-0069）。`render()` 末尾で着脱・候補窓 rect を
     /// 駆動する。EditContext 非対応（HTML モード等）では `None`。
     edit_context: Option<EditContextHandle>,
+    /// present 側 raster gating（#632・ADR-0125）。clean フレーム（`frame_layer_dirty` 空・
+    /// キャッシュ有効）では `backend.render_scene` を呼ばず、canvas に表示中の raster 済み
+    /// フレームをそのまま維持する（composite-only 相当）。resize でキャッシュ面ごと invalidate。
+    planner: hayate_layer_compositor::PresentPlanner,
 }
 
 impl HayateElementRenderer {
@@ -233,6 +237,7 @@ impl HayateElementRenderer {
             scroll_gesture: None,
             scroll_samples: Vec::new(),
             drag_raw: None,
+            planner: hayate_layer_compositor::PresentPlanner::new(),
             // Scroll Physics Profile（ADR-0113）。現状 web は `Auto` のみで、iOS 風
             // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
@@ -421,8 +426,24 @@ impl HayateElementRenderer {
         for (id, text) in pasted {
             self.tree.element_paste(id, &text);
         }
-        let sg = self.tree.render(timestamp_ms);
-        let present = self.backend.render_scene(sg, self.background);
+        let _ = self.tree.render(timestamp_ms);
+        // render() が捕捉した frame_layers / frame_layer_dirty を FramePlan に通してから raster する
+        // （#632・ADR-0125）。clean フレームは backend の raster を呼ばず、canvas に表示中の
+        // raster 済みフレームを維持する（composite-only 相当＝出力不変で raster 回数だけ減る）。
+        let plan = self
+            .planner
+            .plan(self.tree.frame_layers(), self.tree.frame_layer_dirty());
+        let present = if plan.needs_raster {
+            let result = self
+                .backend
+                .render_scene(self.tree.scene_graph(), self.background);
+            if result.is_ok() {
+                self.planner.note_full_raster(self.tree.frame_layers());
+            }
+            result
+        } else {
+            Ok(())
+        };
         // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
         // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
         self.tree.drive_ime(&mut self.ime);
@@ -734,6 +755,8 @@ impl HayateElementRenderer {
             metrics.buffer_height,
             metrics.content_scale,
         );
+        // 描画サーフェスを作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster。
+        self.planner.invalidate();
         self.tree
             .on_resize(metrics.viewport_width, metrics.viewport_height);
         *self.last_viewport.borrow_mut() = (metrics.viewport_width, metrics.viewport_height);

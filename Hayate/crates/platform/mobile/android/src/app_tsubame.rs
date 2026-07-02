@@ -328,10 +328,16 @@ pub(crate) fn run(app: AndroidApp) {
 
         // 3. present（保持シーンを再取得して GPU 提示）。`tree.render` を再実行せず、JS フレームが
         //    lower 済みの保持シーン（`scene_graph()`）をそのまま提示する＝tick 1 回 = 1 render
-        //    （ADR-0126 の二重 render 解消）。
+        //    （ADR-0126 の二重 render 解消）。raster gating の入力は JS フレーム内の `tree.render`
+        //    が捕捉した frame_layers / frame_layer_dirty（#632）。JS の flush（apply_mutations）が
+        //    立てた dirty も render 内捕捉なので取りこぼさない。
         if let Some(surface) = gpu.as_mut() {
             let tree_ref = runtime.tree.borrow();
-            if let Err(err) = surface.render_frame(tree_ref.scene_graph()) {
+            if let Err(err) = surface.render_frame(
+                tree_ref.scene_graph(),
+                tree_ref.frame_layers(),
+                tree_ref.frame_layer_dirty(),
+            ) {
                 log::error!("hayate-adapter-android: render failed: {err}");
             }
         }

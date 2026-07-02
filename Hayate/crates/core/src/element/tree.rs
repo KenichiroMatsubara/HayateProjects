@@ -21,7 +21,7 @@ use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
-use crate::element::scene_lowering::{collect_lowering_dirty, SceneLowering};
+use crate::element::scene_lowering::{collect_lowering_dirty, LoweringDirtySnapshot, SceneLowering};
 use crate::element::style::{
     BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, Shadow, StyleProp, StylePropKind,
     TextDecorationValue, TextOverflowValue, TransitionTimingValue, ViewportCondition,
@@ -244,6 +244,12 @@ pub struct ElementTree {
     /// 直近 `render` に渡されたホストクロック（ms）。慣性 step のフレーム間 dt を
     /// 取るために保持する。まだ 1 度も render していなければ `None`。
     pub(crate) last_frame_ms: Option<f64>,
+    /// 直近 `render()` が捕捉した compositing layer 列（描画順・root 暗黙レイヤ込み、#632）。
+    pub(crate) frame_layers: Vec<ElementId>,
+    /// 直近 `render()` で scene が実際に変わったレイヤ集合（#632）。scene_build が dirty を消費する
+    /// 直前に捕捉するので、render 内でマーク→同フレーム drain される継続（カーソル点滅・慣性・
+    /// インジケータ fade）も取りこぼさない。
+    pub(crate) frame_layer_dirty: HashSet<ElementId>,
 }
 
 impl ElementTree {
@@ -267,6 +273,8 @@ impl ElementTree {
             scroll_tuning: crate::scroll::ScrollPhysicsProfile::Auto.default_tuning(),
             scroll_profile: crate::scroll::ScrollPhysicsProfile::Auto,
             last_frame_ms: None,
+            frame_layers: Vec::new(),
+            frame_layer_dirty: HashSet::new(),
         }
     }
 
@@ -1524,6 +1532,9 @@ impl ElementTree {
         }
         // lowering が読む前にツールバーラベルをシェイプする（ADR-0097）。
         self.ensure_toolbar_labels();
+        // scene_build が dirty を消費する直前＝このフレームで scene が変わる要素集合が確定した
+        // 唯一の点で、present 側 raster gating 用のレイヤ列と layer_dirty を捕捉する（#632）。
+        self.capture_frame_layers(&dirty);
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
@@ -2286,6 +2297,48 @@ impl ElementTree {
         compositing::build_layer_tree(ordered, &boundaries, |id| {
             self.elements.get(&id).and_then(|e| e.parent)
         })
+    }
+
+    /// scene_build が消費する直前の lowering dirty から、present 側 raster gating 用のレイヤ列と
+    /// layer_dirty を捕捉する（#632）。カーソル点滅・スクロール慣性・インジケータ fade は render 内で
+    /// マーク→同フレーム drain されるため、render 前のスナップショットでは取りこぼす——ここが唯一
+    /// 取りこぼしの無い捕捉点。root は暗黙の compositing layer 境界としてレイヤ列の先頭に必ず含め、
+    /// どの trigger レイヤにも内包されない dirty を root へ流す（落とすと raster がスキップされ
+    /// stale frame になる＝出力不変の前提）。
+    fn capture_frame_layers(&mut self, dirty: &LoweringDirtySnapshot) {
+        let (mut ordered, mut boundaries) = self.compositing_boundaries();
+        if let Some(root) = self.root {
+            if boundaries.insert(root) {
+                ordered.insert(0, root);
+            }
+        }
+        self.frame_layer_dirty = if dirty.full_rebuild || !self.scene_lowering.built {
+            // 全面（再）構築＝全レイヤの内容が作り直される。cold cache と同じ扱いで全レイヤ dirty。
+            boundaries.clone()
+        } else {
+            let marked = dirty
+                .elements
+                .keys()
+                .chain(dirty.z_index_reorder_parents.iter())
+                .copied();
+            compositing::derive_layer_dirty(marked, &boundaries, |id| {
+                self.elements.get(&id).and_then(|e| e.parent)
+            })
+        };
+        self.frame_layers = ordered;
+    }
+
+    /// 直近の `render()` が捕捉した compositing layer 列（描画順 = ADR-0021、root 暗黙レイヤ込み）。
+    /// present 側は毎フレームこれと [`frame_layer_dirty`](Self::frame_layer_dirty) を
+    /// `LayerCache::plan_raster` に渡し、`FramePlan` で raster gating する（#632）。
+    pub fn frame_layers(&self) -> &[ElementId] {
+        &self.frame_layers
+    }
+
+    /// 直近の `render()` で scene が実際に変わったレイヤ集合（root 暗黙レイヤ込み、#632）。空なら
+    /// このフレームの scene は前フレームと同一＝キャッシュ有効なら raster 不要（composite-only）。
+    pub fn frame_layer_dirty(&self) -> &HashSet<ElementId> {
+        &self.frame_layer_dirty
     }
 
     /// 現在の visual / shape / structure dirty から `layer_dirty` を導出する（ADR-0125）。各 dirty

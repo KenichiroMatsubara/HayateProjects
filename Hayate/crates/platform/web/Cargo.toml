@@ -18,6 +18,7 @@ backend-null = []
 
 [dependencies]
 hayate-core = { path = "../../core" }
+hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional = true }
 hayate-scene-renderer-tiny-skia = { path = "../../scene-renderers/tiny-skia", optional = true }
 wgpu = { workspace = true, optional = true }
