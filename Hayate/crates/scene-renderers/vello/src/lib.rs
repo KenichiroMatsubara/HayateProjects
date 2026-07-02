@@ -1,3 +1,4 @@
+pub mod layer_compositor;
 mod painter;
 
 use std::num::NonZeroUsize;

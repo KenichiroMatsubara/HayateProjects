@@ -4,15 +4,20 @@
 //! 座標ベースのポインタ API に変換され、タップでデモボタンの `:active` 色が
 //! 画面上で切り替わる。IME / AccessKit / クリップボードは未実装。
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementTree, SceneGraph};
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+use hayate_layer_compositor::{
+    collect_layer_placements, extract_layer_scene, extract_root_scene, tunables, CompositeQuad,
+    GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner, RasterCommand, RasterHandoff,
+    RasterThread,
 };
-use wgpu::util::TextureBlitter;
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
+};
 
 use hayate_core::ElementId;
 
@@ -34,11 +39,18 @@ pub(crate) struct GpuSurface {
     queue: wgpu::Queue,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
     width: u32,
     height: u32,
-    scene_renderer: VelloSceneRenderer,
+    /// present 側 raster gating（#632/#633・ADR-0125）。`plan_layers` が dirty / 未キャッシュの
+    /// レイヤだけを raster 対象にし、clean レイヤはキャッシュ texture を合成に再利用する。
+    planner: PresentPlanner,
+    /// レイヤ texture キャッシュ ＋ vello raster（`LayerRasterizer` の wgpu 実装、#633）。
+    rasterizer: VelloLayerRasterizer,
+    /// 専用 wgpu quad compositor（`LayerCompositor` の wgpu 実装、#633）。合成に vello は
+    /// 使わない（ADR-0125 Decision 4）。パイプライン variant は init 時に warmup 済み（ADR-0130a）。
+    compositor: WgpuQuadCompositor,
+    /// 前フレームのレイヤ集合。消えたレイヤのキャッシュ面と台帳を掃除するため。
+    prev_layers: HashSet<ElementId>,
 }
 
 /// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
@@ -60,7 +72,10 @@ pub fn android_main(app: AndroidApp) {
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
 
-    let mut gpu: Option<GpuSurface> = None;
+    // #635: raster/composite は専用 Raster スレッドが所有する GpuSurface で走る（ADR-0128）。UI
+    // スレッドは handoff を送るだけで raster 完了を待たない。surface 作成/破棄はこのハンドルの
+    // Some/None で表す（None にすると drop → 安全に join、= surface 破棄で Raster スレッド停止）。
+    let mut raster: Option<RasterHandle> = None;
     let mut lifecycle = SurfaceLifecycleState::new();
     let mut tree = build_demo_tree();
     let start = Instant::now();
@@ -105,7 +120,8 @@ pub fn android_main(app: AndroidApp) {
                                 let (vw, vh) = viewport_for_surface(w, h);
                                 tree.set_viewport(vw, vh);
                                 match pollster::block_on(init_gpu_surface(&window)) {
-                                    Ok(surface) => gpu = Some(surface),
+                                    // 生成した surface を Raster スレッドへ move（move-after-creation）。
+                                    Ok(surface) => raster = Some(spawn_raster_thread(surface)),
                                     Err(err) => {
                                         log::error!(
                                             "hayate-adapter-android: GPU init failed: {err}"
@@ -114,10 +130,11 @@ pub fn android_main(app: AndroidApp) {
                                 }
                             }
                         }
-                        SurfaceLifecycleAction::DestroySurface => gpu = None,
+                        // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
+                        SurfaceLifecycleAction::DestroySurface => raster = None,
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
-                            if let Some(surface) = gpu.as_mut() {
-                                surface.resize(width, height);
+                            if let Some(rt) = raster.as_ref() {
+                                let _ = rt.send(RasterCommand::Resize { width, height });
                             }
                             let (vw, vh) = viewport_for_surface(width, height);
                             tree.set_viewport(vw, vh);
@@ -138,14 +155,15 @@ pub fn android_main(app: AndroidApp) {
             &mut ime_keyboard_shown,
         );
 
-        if let Some(surface) = gpu.as_mut() {
+        if let Some(rt) = raster.as_ref() {
             // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
             // シーンを提示する（`hayate-adapter-web` の `render` に対応）。
             let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
-            let scene = tree.render(timestamp_ms);
-            if let Err(err) = surface.render_frame(scene) {
-                log::error!("hayate-adapter-android: render failed: {err}");
-            }
+            let _ = tree.render(timestamp_ms);
+            // render() が捕捉した保持シーン + frame_layers / frame_layer_dirty / chrome_dirty を
+            // owned handoff にして Raster スレッドへ送る（#635）。UI スレッドは raster を待たず、
+            // 続けて入力処理・次フレーム生成へ進める（ADR-0128）。
+            let _ = rt.send(frame_handoff(&tree));
         }
     }
 }
@@ -326,55 +344,126 @@ pub(crate) async fn init_gpu_surface(
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let surface_format = surface_config.format;
-    let target_view = create_target_view(&device, width, height);
-    let blitter = create_blitter(&device, surface_format);
-    let scene_renderer = VelloSceneRenderer::new(&device)?;
+    let rasterizer = VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height)?;
+    let mut compositor = WgpuQuadCompositor::new(device.clone(), queue.clone());
+    // init 時に全パイプライン variant（surface format × blend）を前倒し生成し、初回合成フレームの
+    // 遅延生成スパイクを消す（ADR-0130a）。composite は遅延生成経路を持たない。
+    compositor.warmup();
 
     Ok(GpuSurface {
         device,
         queue,
         surface,
         surface_config,
-        target_view,
-        blitter,
         width,
         height,
-        scene_renderer,
+        planner: PresentPlanner::new(),
+        rasterizer,
+        compositor,
+        prev_layers: HashSet::new(),
     })
 }
 
 impl GpuSurface {
-    pub(crate) fn render_frame(&mut self, scene: &SceneGraph) -> Result<(), String> {
-        let target = VelloRenderTarget {
-            device: &self.device,
-            queue: &self.queue,
-            target_view: &self.target_view,
-            width: self.width,
-            height: self.height,
+    /// 1 フレームの提示（#633/#634・ADR-0125 backend 半分）。`layers` / `layer_dirty` /
+    /// `chrome_dirty` は core が `render()` で捕捉した `frame_layers()` / `frame_layer_dirty()` /
+    /// `frame_layer_chrome_dirty()`（transform 係数だけの変化は含まれない——quad transform は
+    /// placement が毎フレーム読む）。
+    ///
+    /// 1. `plan_layers`（`LayerCache::plan_raster`）で dirty / 未キャッシュのレイヤだけ vello で
+    ///    レイヤ texture へ raster する（transform のみのフレームは raster ゼロ）。scroll フレームの
+    ///    chrome dirty（スクロールバー / インジケータ）は content とレイヤ texture を共有するため、
+    ///    この単一 texture 経路では content ∪ chrome を保守的に raster トリガとして扱う（scroll offset
+    ///    は保持シーンの scroll Group に焼き込まれているので stale を避ける）。帯サイズ texture への
+    ///    分解と content/chrome のレイヤ分離は後続（scrollbar chrome レイヤ化）で入れる。
+    /// 2. 専用 wgpu compositor がキャッシュ texture を CompositeQuad（transform / clip 付き、
+    ///    placement は保持シーンから毎フレーム導出）として 1 render pass で合成し present する。
+    /// 3. GPU 予算（`GpuBudget::from_viewports`、モバイルは `GPU_BUDGET_VIEWPORTS_MOBILE`）を超えたら
+    ///    最も長く composite に使われていないレイヤ texture を LRU 退避する（ADR-0127）。
+    pub(crate) fn render_frame(
+        &mut self,
+        scene: &SceneGraph,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
+        chrome_dirty: &HashSet<ElementId>,
+    ) -> Result<(), String> {
+        let Some(&root) = layers.first() else {
+            return Ok(());
         };
-        self.scene_renderer
-            .render_scene(scene, &target, CLEAR_COLOR, 1.0)?;
+        let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
 
+        // 消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
+        for stale in self.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
+            self.rasterizer.discard(stale);
+            self.planner.evict(stale);
+        }
+        self.prev_layers = boundaries.clone();
+
+        // 1) dirty / 未キャッシュのレイヤだけ再 raster（plan_raster の raster/reuse どおり）。
+        //    content ∪ chrome を raster トリガに（単一 texture 経路の保守的正当性・上記 doc）。
+        let raster_trigger: HashSet<ElementId> =
+            layer_dirty.union(chrome_dirty).copied().collect();
+        let plan = self.planner.plan_layers(layers, &raster_trigger);
+        for &layer in &plan.raster {
+            let extracted = if layer == root {
+                extract_root_scene(scene, root, &boundaries)
+            } else {
+                match extract_layer_scene(scene, layer, &boundaries) {
+                    Some(extracted) => extracted,
+                    None => continue, // 未 lowering（次フレームで raster される）
+                }
+            };
+            self.rasterizer.rasterize(layer, &extracted)?;
+            self.planner
+                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+        }
+
+        // 2) 合成のみ（composite-only フレームは vello を一切起動しない）。
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
             other => return Err(format!("get_current_texture: {other:?}")),
         };
-
         let surface_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate_android_blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
+        let mut target = CompositeTarget {
+            view: surface_view,
+            width: self.width,
+            height: self.height,
+            format: self.surface_config.format,
+            clear: CLEAR_COLOR,
+        };
+        let placements = collect_layer_placements(scene, root, &boundaries);
+        let quads: Vec<CompositeQuad<'_, _>> = placements
+            .iter()
+            .filter_map(|placement| {
+                self.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
+                    layer: placement.layer,
+                    transform: placement.transform,
+                    opacity: 1.0,
+                    clip: placement.clip,
+                    texture,
+                })
+            })
+            .collect();
+        self.compositor.composite(&mut target, &quads)?;
+        for quad in &quads {
+            self.planner.note_composited(quad.layer);
+        }
         surface_texture.present();
+
+        // 3) GPU 予算超過なら最も長く composite に使われていないレイヤ texture を LRU 退避する
+        //    （ADR-0127）。退避した実 texture を rasterizer からも解放し、次要求時に再 raster させる。
+        let budget = GpuBudget::from_viewports(
+            self.width,
+            self.height,
+            tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+        );
+        for evicted in self.planner.enforce_budget(budget) {
+            self.rasterizer.discard(evicted);
+        }
         Ok(())
     }
 
@@ -387,6 +476,54 @@ impl GpuSurface {
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
-        self.target_view = create_target_view(&self.device, width, height);
+        // レイヤ texture はサーフェスサイズなので全部作り直し＝台帳ごと invalidate する
+        // （invalidate しないと古いサイズの内容を合成し続ける）。
+        self.rasterizer.resize(width, height);
+        self.planner.invalidate();
     }
+}
+
+/// UI スレッドが握る Raster スレッドのハンドル（ADR-0128・#635）。`GpuSurface`（wgpu surface +
+/// cache + compositor）を Raster スレッドへ move して所有させ、UI スレッドは [`RasterCommand`] を
+/// 送るだけ（raster/composite は UI スレッド外で走る）。surface 作成は window ハンドルを要するため
+/// UI スレッドで行い、生成後の surface をここで move する（move-after-creation。window をスレッド
+/// 境界へ送らない）。TerminateWindow / reload では `Option` を `None` にして drop → 安全に join。
+pub(crate) type RasterHandle = RasterThread<RasterCommand>;
+
+/// 生成済み `GpuSurface` を所有する Raster スレッドを起動する（#635）。sink は Frame を present、
+/// Resize を surface 再構成へ写す。surface が失われている間（SurfaceLost〜RebuildSurface）は
+/// present をスキップする——このデモ経路では surface 破棄 = スレッドごと drop なので、Lost/Rebuild
+/// は tsubame 経路（surface を握ったまま再アタッチする将来拡張）向けに状態だけ持つ。
+pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
+    let mut surface_ready = true;
+    RasterThread::spawn(move |cmd: RasterCommand| match cmd {
+        RasterCommand::Frame(handoff) => {
+            if !surface_ready {
+                return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+            }
+            let RasterHandoff {
+                scene,
+                layers,
+                layer_dirty,
+                chrome_dirty,
+            } = handoff;
+            if let Err(err) = surface.render_frame(&scene, &layers, &layer_dirty, &chrome_dirty) {
+                log::error!("hayate-adapter-android: raster-thread render failed: {err}");
+            }
+        }
+        RasterCommand::Resize { width, height } => surface.resize(width, height),
+        RasterCommand::SurfaceLost => surface_ready = false,
+        RasterCommand::RebuildSurface => surface_ready = true,
+    })
+}
+
+/// UI スレッドが握る保持シーンから 1 フレーム分の owned ハンドオフを組む（#635）。scene は境界を
+/// 越えて move するので clone（ADR-0128：スレッド境界＝lower 済み SceneGraph の owned スナップショット）。
+pub(crate) fn frame_handoff(tree: &ElementTree) -> RasterCommand {
+    RasterCommand::Frame(RasterHandoff {
+        scene: tree.scene_graph().clone(),
+        layers: tree.frame_layers().to_vec(),
+        layer_dirty: tree.frame_layer_dirty().clone(),
+        chrome_dirty: tree.frame_layer_chrome_dirty().clone(),
+    })
 }

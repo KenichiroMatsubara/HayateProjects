@@ -28,6 +28,17 @@ pub(crate) struct ElementEngine {
     /// `register_font` でセットし、次の `resolve` 冒頭でクリアする。
     /// 新規登録フォントで全テキスト要素を再シェイプさせる。
     pub(crate) fonts_dirty: bool,
+    /// transform 係数だけが変わった要素（Some→Some、#633）。レイヤ内容は不変なので visual dirty
+    /// （re-lower）には流さず、`render()` が保持シーンの Group ノードだけを patch する。present 側
+    /// composite-only フレーム（quad transform 更新のみで raster ゼロ）の core 前提。
+    pub(crate) transform_dirty: HashSet<ElementId>,
+    /// scroll フレーム（offset 変化・インジケータ fade）だけが理由で visual dirty になった
+    /// ScrollView（#634）。これらは Clip 外の chrome（スクロールバー面）と scroll Group affine
+    /// （composite 段の quad transform）しか変えず、content band texture のピクセルは不変なので、
+    /// present は band を composite-only に保てる。同フレームで他の経路から dirty が来たら
+    /// （背景色変更等＝band 内ピクセルも変わる）チャネルから外し content dirty へ戻す。
+    /// マーク順に依らず毒されるよう、先着 dirty があれば入れず・後着 dirty は常に外す。
+    pub(crate) scroll_chrome_only: HashSet<ElementId>,
 }
 
 impl ElementEngine {
@@ -39,19 +50,58 @@ impl ElementEngine {
             visual_dirty: HashMap::new(),
             layout_geometry_dirty: HashSet::new(),
             fonts_dirty: false,
+            transform_dirty: HashSet::new(),
+            scroll_chrome_only: HashSet::new(),
         }
     }
 
+    /// scroll フレーム由来の SelfOnly 再 lowering をマークする（#634）。visual dirty には
+    /// 通常どおり流し（chrome とscroll Group affine を re-lower で更新する）、加えて
+    /// 「このフレームの dirty は scroll フレームだけが理由」という chrome-only 判定を立てる。
+    pub fn mark_scroll_chrome_dirty(&mut self, id: ElementId) {
+        let already_content_dirty = self.visual_dirty.contains_key(&id)
+            || self.shape_dirty.contains(&id)
+            || self.structure_dirty.contains(&id);
+        if !already_content_dirty {
+            self.scroll_chrome_only.insert(id);
+        }
+        visual_invalidation::merge_reach(
+            &mut self.visual_dirty,
+            id,
+            VisualInvalidationReach::SelfOnly,
+        );
+    }
+
+    pub fn drain_scroll_chrome_only(&mut self) -> HashSet<ElementId> {
+        std::mem::take(&mut self.scroll_chrome_only)
+    }
+
+    /// scroll フレーム以外の理由による dirty が来た＝chrome-only 判定を毒す（#634）。
+    fn poison_scroll_chrome_only(&mut self, id: ElementId) {
+        self.scroll_chrome_only.remove(&id);
+    }
+
+    pub fn mark_transform_dirty(&mut self, id: ElementId) {
+        self.transform_dirty.insert(id);
+    }
+
+    pub fn drain_transform_dirty(&mut self) -> HashSet<ElementId> {
+        std::mem::take(&mut self.transform_dirty)
+    }
+
     pub fn mark_structure_dirty(&mut self, id: ElementId) {
+        self.poison_scroll_chrome_only(id);
         self.structure_dirty.insert(id);
     }
 
     pub fn mark_shape_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+        self.poison_scroll_chrome_only(id);
         self.shape_dirty.insert(id);
         visual_invalidation::merge_reach(&mut self.shape_lowering_reach, id, reach);
     }
 
     pub fn mark_visual_dirty(&mut self, id: ElementId, reach: VisualInvalidationReach) {
+        self.poison_scroll_chrome_only(id);
         visual_invalidation::merge_reach(&mut self.visual_dirty, id, reach);
     }
 

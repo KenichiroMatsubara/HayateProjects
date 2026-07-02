@@ -31,7 +31,11 @@ use std::time::{Duration, Instant};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementId, ElementTree};
 
-use crate::app::{init_gpu_surface, process_touch_input, sync_ime, GpuSurface};
+use crate::app::{
+    frame_handoff, init_gpu_surface, process_touch_input, spawn_raster_thread, sync_ime,
+    RasterHandle,
+};
+use hayate_layer_compositor::RasterCommand;
 use crate::bundle_source;
 use crate::frame_schedule::OnDemandFrameLoop;
 use crate::dev_server_target;
@@ -168,7 +172,8 @@ pub(crate) fn run(app: AndroidApp) {
         log::info!("hayate-adapter-android: 起動テストトーン再生 完了");
     });
 
-    let mut gpu: Option<GpuSurface> = None;
+    // #635: raster/composite は専用 Raster スレッド（ADR-0128）。UI スレッドは handoff を送るだけ。
+    let mut raster: Option<RasterHandle> = None;
     let mut lifecycle = SurfaceLifecycleState::new();
     let start = Instant::now();
 
@@ -222,17 +227,19 @@ pub(crate) fn run(app: AndroidApp) {
                                     runtime.tree.borrow_mut().set_viewport(vw, vh);
                                 }
                                 match pollster::block_on(init_gpu_surface(&window)) {
-                                    Ok(surface) => gpu = Some(surface),
+                                    // 生成した surface を Raster スレッドへ move（#635）。
+                                    Ok(surface) => raster = Some(spawn_raster_thread(surface)),
                                     Err(err) => log::error!(
                                         "hayate-adapter-android: GPU init failed: {err}"
                                     ),
                                 }
                             }
                         }
-                        SurfaceLifecycleAction::DestroySurface => gpu = None,
+                        // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
+                        SurfaceLifecycleAction::DestroySurface => raster = None,
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
-                            if let Some(surface) = gpu.as_mut() {
-                                surface.resize(width, height);
+                            if let Some(rt) = raster.as_ref() {
+                                let _ = rt.send(RasterCommand::Resize { width, height });
                             }
                             let (vw, vh) = viewport_for_surface(width, height);
                             last_viewport = Some((vw, vh));
@@ -328,12 +335,14 @@ pub(crate) fn run(app: AndroidApp) {
 
         // 3. present（保持シーンを再取得して GPU 提示）。`tree.render` を再実行せず、JS フレームが
         //    lower 済みの保持シーン（`scene_graph()`）をそのまま提示する＝tick 1 回 = 1 render
-        //    （ADR-0126 の二重 render 解消）。
-        if let Some(surface) = gpu.as_mut() {
+        //    （ADR-0126 の二重 render 解消）。raster gating の入力は JS フレーム内の `tree.render`
+        //    が捕捉した frame_layers / frame_layer_dirty（#632）。JS の flush（apply_mutations）が
+        //    立てた dirty も render 内捕捉なので取りこぼさない。
+        if let Some(rt) = raster.as_ref() {
+            // 保持シーンの owned スナップショットを Raster スレッドへ送る（#635）。UI スレッドは
+            // raster を待たず、続けて次の JS フレーム / 入力処理へ進める（ADR-0128）。
             let tree_ref = runtime.tree.borrow();
-            if let Err(err) = surface.render_frame(tree_ref.scene_graph()) {
-                log::error!("hayate-adapter-android: render failed: {err}");
-            }
+            let _ = rt.send(frame_handoff(&tree_ref));
         }
 
         // 描画後に残る pending visual work（進行中 transition / カーソル点滅 / スクロール物理）を

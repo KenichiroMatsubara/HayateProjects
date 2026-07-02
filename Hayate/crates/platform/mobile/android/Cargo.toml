@@ -23,6 +23,7 @@ tsubame-js = []
 [dependencies]
 hayate-core = { path = "../../../core" }
 hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
+hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true

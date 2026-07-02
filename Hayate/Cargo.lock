@@ -940,6 +940,7 @@ dependencies = [
  "cxx",
  "cxx-build",
  "hayate-core",
+ "hayate-layer-compositor",
  "hayate-scene-renderer-vello",
  "jni 0.21.1",
  "log",
@@ -977,6 +978,7 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "hayate-core",
+ "hayate-layer-compositor",
  "hayate-scene-renderer-tiny-skia",
  "hayate-scene-renderer-vello",
  "image",
@@ -1029,6 +1031,8 @@ name = "hayate-layer-compositor"
 version = "0.1.0"
 dependencies = [
  "hayate-core",
+ "hayate-scene-renderer-tiny-skia",
+ "tiny-skia",
 ]
 
 [[package]]
@@ -1060,6 +1064,7 @@ version = "0.1.0"
 dependencies = [
  "hayate-core",
  "hayate-demo-fixtures",
+ "hayate-layer-compositor",
  "hayate-scene-test-support",
  "png",
  "skrifa",
@@ -1072,6 +1077,7 @@ version = "0.1.0"
 dependencies = [
  "hayate-core",
  "hayate-demo-fixtures",
+ "hayate-layer-compositor",
  "hayate-scene-test-support",
  "pollster",
  "skrifa",

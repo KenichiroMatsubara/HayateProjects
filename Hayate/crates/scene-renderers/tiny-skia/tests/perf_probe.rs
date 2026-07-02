@@ -8,10 +8,19 @@
 //! 実行: HAYATE_PERF_PROBE=1 cargo test --release -p hayate-scene-renderer-tiny-skia \
 //!        --test perf_probe -- --nocapture
 
+use std::collections::HashSet;
 use std::time::Instant;
 
+use hayate_core::ElementId;
 use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
-use hayate_scene_renderer_tiny_skia::{premultiplied_to_straight, TinySkiaSceneRenderer};
+use hayate_layer_compositor::layer_scene::{
+    collect_layer_placements, extract_layer_scene, extract_root_scene,
+};
+use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
+use hayate_scene_renderer_tiny_skia::{
+    premultiplied_to_straight, TinySkiaCompositeTarget, TinySkiaLayerCompositor,
+    TinySkiaLayerRasterizer, TinySkiaSceneRenderer,
+};
 use tiny_skia::Pixmap;
 
 fn ms(d: std::time::Duration) -> f64 {
@@ -121,6 +130,55 @@ fn perf_probe() {
                 let mut data = pixmap.data().to_vec();
                 premultiplied_to_straight(&mut data);
                 std::hint::black_box(&data);
+            },
+        );
+    }
+
+    // #636: composite-only フレーム（スクロール/transform）の CPU コストを全面ラスタと並べて計測する。
+    // 配線前は毎フレーム全面 render_scene（上の scale ループ）。配線後はキャッシュ Pixmap の draw_pixmap
+    // 合成だけ。差がそのままスクロール中フレームの短縮分（診断 原因 2 の効き）。
+    for scale in [1.0f32, 2.0, 3.0] {
+        let w = (vw * scale) as u32;
+        let h = (vh * scale) as u32;
+        let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+        let root = tree.frame_layers()[0];
+        // 全レイヤを一度 raster してキャッシュを温める（composite-only フレームの前提）。
+        let mut rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
+        for &layer in tree.frame_layers() {
+            let scene = if layer == root {
+                extract_root_scene(&graph, root, &boundaries)
+            } else {
+                match extract_layer_scene(&graph, layer, &boundaries) {
+                    Some(s) => s,
+                    None => continue,
+                }
+            };
+            rasterizer.rasterize(layer, &scene).unwrap();
+        }
+        let placements = collect_layer_placements(&graph, root, &boundaries);
+        let mut compositor = TinySkiaLayerCompositor::new(scale);
+        let mut target = TinySkiaCompositeTarget {
+            pixmap: Pixmap::new(w, h).expect("pixmap"),
+            clear: [1.0, 1.0, 1.0, 1.0],
+        };
+        bench(
+            &format!("tiny-skia COMPOSITE-ONLY {w}x{h} (scale {scale}, {} layers)", placements.len()),
+            20,
+            || {
+                let quads: Vec<CompositeQuad<'_, Pixmap>> = placements
+                    .iter()
+                    .filter_map(|p| {
+                        rasterizer.texture(p.layer).map(|texture| CompositeQuad {
+                            layer: p.layer,
+                            transform: p.transform,
+                            opacity: 1.0,
+                            clip: p.clip,
+                            texture,
+                        })
+                    })
+                    .collect();
+                compositor.composite(&mut target, &quads).unwrap();
+                std::hint::black_box(&target.pixmap);
             },
         );
     }

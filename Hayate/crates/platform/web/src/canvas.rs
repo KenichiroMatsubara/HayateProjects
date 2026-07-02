@@ -146,6 +146,10 @@ pub struct HayateElementRenderer {
     /// アダプタ所有の EditContext とその配線（ADR-0069）。`render()` 末尾で着脱・候補窓 rect を
     /// 駆動する。EditContext 非対応（HTML モード等）では `None`。
     edit_context: Option<EditContextHandle>,
+    /// present 側 raster gating（#632・ADR-0125）。clean フレーム（`frame_layer_dirty` 空・
+    /// キャッシュ有効）では `backend.render_scene` を呼ばず、canvas に表示中の raster 済み
+    /// フレームをそのまま維持する（composite-only 相当）。resize でキャッシュ面ごと invalidate。
+    planner: hayate_layer_compositor::PresentPlanner,
 }
 
 impl HayateElementRenderer {
@@ -233,6 +237,7 @@ impl HayateElementRenderer {
             scroll_gesture: None,
             scroll_samples: Vec::new(),
             drag_raw: None,
+            planner: hayate_layer_compositor::PresentPlanner::new(),
             // Scroll Physics Profile（ADR-0113）。現状 web は `Auto` のみで、iOS 風
             // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
@@ -421,8 +426,43 @@ impl HayateElementRenderer {
         for (id, text) in pasted {
             self.tree.element_paste(id, &text);
         }
-        let sg = self.tree.render(timestamp_ms);
-        let present = self.backend.render_scene(sg, self.background);
+        let _ = self.tree.render(timestamp_ms);
+        // render() が捕捉した frame_layers / frame_layer_dirty を通して raster を gating する
+        // （#632/#636・ADR-0125）。per-layer 対応バックエンド（tiny-skia）は dirty レイヤだけ
+        // キャッシュ面へ再 raster し、clean レイヤはキャッシュ面を合成する（composite-only フレームで
+        // 全面 render_scene を起動しない）。未対応バックエンドは従来の単一 root FramePlan gating
+        // にフォールバックする。scroll フレーム（#634 で content dirty から分離した chrome dirty）は
+        // 単一 Pixmap/texture 経路では offset がキャッシュ面へ焼き込まれるため、保守的に raster
+        // トリガへ含める（stale フレーム回避）。transform 係数だけの変化は quad が適用するので
+        // per-layer 経路では raster トリガに含めない（composite-only）。
+        let present = if self.backend.supports_layer_present() {
+            let mut layer_dirty = self.tree.frame_layer_dirty().clone();
+            layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+            self.backend.present_layers(
+                self.tree.scene_graph(),
+                self.tree.frame_layers(),
+                &layer_dirty,
+                self.background,
+            )
+        } else {
+            // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
+            // dirty から分離）と scroll chrome（#634）も保守的に raster トリガへ含める。
+            let mut raster_trigger = self.tree.frame_layer_dirty().clone();
+            raster_trigger.extend(self.tree.frame_layer_transform_dirty().iter().copied());
+            raster_trigger.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+            let plan = self.planner.plan(self.tree.frame_layers(), &raster_trigger);
+            if plan.needs_raster {
+                let result = self
+                    .backend
+                    .render_scene(self.tree.scene_graph(), self.background);
+                if result.is_ok() {
+                    self.planner.note_full_raster(self.tree.frame_layers());
+                }
+                result
+            } else {
+                Ok(())
+            }
+        };
         // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
         // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
         self.tree.drive_ime(&mut self.ime);
@@ -734,6 +774,8 @@ impl HayateElementRenderer {
             metrics.buffer_height,
             metrics.content_scale,
         );
+        // 描画サーフェスを作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster。
+        self.planner.invalidate();
         self.tree
             .on_resize(metrics.viewport_width, metrics.viewport_height);
         *self.last_viewport.borrow_mut() = (metrics.viewport_width, metrics.viewport_height);

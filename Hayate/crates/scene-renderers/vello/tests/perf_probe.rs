@@ -8,9 +8,14 @@
 //! 実行: HAYATE_PERF_PROBE=1 cargo test --release -p hayate-scene-renderer-vello \
 //!        --test perf_probe -- --nocapture
 
+use std::collections::HashSet;
 use std::time::Instant;
 
+use hayate_core::ElementId;
 use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
+use hayate_layer_compositor::layer_scene::{
+    collect_layer_placements, extract_layer_scene, extract_root_scene,
+};
 use hayate_scene_renderer_vello::debug_encode_scene;
 
 fn ms(d: std::time::Duration) -> f64 {
@@ -66,6 +71,28 @@ fn perf_probe() {
     });
     bench("vello Scene full encode scale=3.0", 100, || {
         let s = debug_encode_scene(&graph, 3.0);
+        std::hint::black_box(&s);
+    });
+
+    // ── #636: composite-only フレームの CPU 仕事 ────────────────────────────────
+    // 配線前は上の full encode が毎フレーム走る（present ごと）。配線後、キャッシュ texture を
+    // 再利用する composite-only フレームでは vello エンコードは走らず、CPU 仕事は placement 収集
+    // （保持シーンから quad 配置を導出）だけ。差がスクロール/transform フレームの短縮分。
+    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+    let root = tree.frame_layers()[0];
+    bench("layer placements collect (composite-only frame CPU)", 200, || {
+        let p = collect_layer_placements(&graph, root, &boundaries);
+        std::hint::black_box(&p);
+    });
+    // dirty レイヤ 1 枚だけを再 raster するフレームのエンコードコスト（full encode との対比）。
+    let layer_scene = if tree.frame_layers().len() > 1 {
+        extract_layer_scene(&graph, tree.frame_layers()[1], &boundaries)
+    } else {
+        Some(extract_root_scene(&graph, root, &boundaries))
+    }
+    .unwrap_or_else(|| extract_root_scene(&graph, root, &boundaries));
+    bench("vello single-layer encode scale=1.0 (dirty-layer reraster)", 100, || {
+        let s = debug_encode_scene(&layer_scene, 1.0);
         std::hint::black_box(&s);
     });
 

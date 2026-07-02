@@ -18,11 +18,16 @@
 use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
+use hayate_core::SceneGraph;
 
+pub mod layer_scene;
+pub use layer_scene::{collect_layer_placements, extract_layer_scene, extract_root_scene, LayerPlacement};
 pub mod pipeline_cache;
 pub use pipeline_cache::PipelineCacheKey;
+pub mod present;
+pub use present::PresentPlanner;
 pub mod raster_thread;
-pub use raster_thread::{RasterHandoff, RasterHandoffError, RasterThread};
+pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
 
 /// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は
 /// プレースホルダで、マジックナンバーをロジックへ散らさないことが目的。予算（ビューポート N 枚分）は
@@ -57,6 +62,9 @@ struct LayerEntry {
     /// 最後に composite に使われた論理時刻（LRU 退避の基準。ADR-0127「最も長く composite に
     /// 使われていない」）。raster 時にも初期化する。
     last_composited: u64,
+    /// scroll レイヤなら現在キャッシュ済みの縦帯（#634）。この帯が可視域を覆っている間は再 raster
+    /// せず quad 平行移動で済ませる。非 scroll レイヤは `None`。
+    scroll_band: Option<ScrollLayerExtent>,
 }
 
 /// レイヤ単位 retained texture キャッシュの **backend 非依存な台帳**。実 texture は backend が持つが、
@@ -108,8 +116,33 @@ impl LayerCache {
             LayerEntry {
                 bytes,
                 last_composited: tick,
+                scroll_band: None,
             },
         );
+    }
+
+    /// scroll レイヤの帯 raster を記録する（#634）。texture は帯サイズ（可視域＋overscan）なので
+    /// `bytes` は帯サイズで渡す。以後この帯が可視域を覆う間は [`scroll_needs_raster`] が false を返し、
+    /// present は quad 平行移動だけで済ませる（composite-only スクロール）。
+    pub fn mark_scroll_rasterized(&mut self, layer: ElementId, band: ScrollLayerExtent, bytes: u64) {
+        let tick = self.tick;
+        self.cached.insert(
+            layer,
+            LayerEntry {
+                bytes,
+                last_composited: tick,
+                scroll_band: Some(band),
+            },
+        );
+    }
+
+    /// scroll レイヤが本フレームで（差分）raster を要するか（#634）。未キャッシュ（cache miss /
+    /// LRU 退避）か、キャッシュ帯が現在の可視域を覆っていなければ true。覆っていれば composite-only。
+    pub fn scroll_needs_raster(&self, layer: ElementId, visible_top: f32, viewport_height: f32) -> bool {
+        match self.cached.get(&layer).and_then(|e| e.scroll_band) {
+            Some(band) => !band.covers(visible_top, viewport_height),
+            None => true, // 未キャッシュ、または帯情報を持たない（非 scroll として記録された）。
+        }
     }
 
     /// レイヤを composite に使ったと記録し、LRU 直近性を更新する（ADR-0127）。退避は「最も長く
@@ -240,15 +273,23 @@ impl FramePlan {
 }
 
 /// compositor パイプラインの surface format variant。warmup の正本（マジック値の散在を防ぐ）。
+/// surface は sRGB view で来ることがある（Android Vulkan 等）ため、sRGB variant も直積に含める。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SurfaceFormat {
     Bgra8Unorm,
+    Bgra8UnormSrgb,
     Rgba8Unorm,
+    Rgba8UnormSrgb,
 }
 
 impl SurfaceFormat {
     /// warmup で前倒し生成する全 surface format。
-    pub const ALL: [SurfaceFormat; 2] = [SurfaceFormat::Bgra8Unorm, SurfaceFormat::Rgba8Unorm];
+    pub const ALL: [SurfaceFormat; 4] = [
+        SurfaceFormat::Bgra8Unorm,
+        SurfaceFormat::Bgra8UnormSrgb,
+        SurfaceFormat::Rgba8Unorm,
+        SurfaceFormat::Rgba8UnormSrgb,
+    ];
 }
 
 /// compositor の blend variant。キャッシュ texture quad を不透明/アルファ合成する。
@@ -283,34 +324,66 @@ pub fn warmup_variants() -> Vec<PipelineVariant> {
     out
 }
 
+/// native では `Send`、wasm では無条件で満たされる境界（ADR-0128）。native の raster seam は
+/// Raster スレッドへ移せるよう `Send` クリーンを要求するが、web は SceneGraph がスレッドを
+/// 跨がない（エンジン丸ごと単一 Worker の近似形）ため wgpu の `!Send` 型をそのまま使える。
+#[cfg(not(target_arch = "wasm32"))]
+pub trait MaybeSend: Send {}
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Send> MaybeSend for T {}
+#[cfg(target_arch = "wasm32")]
+pub trait MaybeSend {}
+#[cfg(target_arch = "wasm32")]
+impl<T> MaybeSend for T {}
+
 /// レイヤ 1 枚を cache texture へ raster する backend 能力（Vello = wgpu texture / tiny-skia =
-/// `Pixmap`）。ADR-0128 の Raster スレッド分離に備え `Send` を要求し、cache/compositor を `Send`
-/// クリーンな seam の裏に保つ（実行は現スレッドでよい）。
-pub trait LayerRasterizer: Send {
+/// `Pixmap`）。キャッシュ面は backend が所有・再利用し、planning（[`LayerCache`]）は台帳だけを持つ。
+/// ADR-0128 の Raster スレッド分離に備え native では `Send` を要求し、cache/compositor を `Send`
+/// クリーンな seam の裏に保つ（実行は現スレッドでよい。wasm は単一スレッドなので要求しない）。
+pub trait LayerRasterizer: MaybeSend {
     /// backend ごとのキャッシュ面型（wgpu texture / `Pixmap`）。
     type Texture;
-    /// `layer` のサブツリーをキャッシュ面へ raster して返す。
-    fn rasterize(&mut self, layer: ElementId) -> Self::Texture;
+    /// `layer` の抽出済み sub-scene（[`layer_scene::extract_layer_scene`] /
+    /// [`layer_scene::extract_root_scene`]）を透明クリアのキャッシュ面へ raster する。
+    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph) -> Result<(), String>;
+    /// raster 済みキャッシュ面（合成入力）。未 raster / 破棄済みなら `None`。
+    fn texture(&self, layer: ElementId) -> Option<&Self::Texture>;
+    /// キャッシュ面 1 枚のバイト数（`mark_rasterized_sized` の計上値・ADR-0127）。
+    fn texture_bytes_per_layer(&self) -> u64;
+    /// レイヤ 1 枚のキャッシュ面を破棄する（LRU 退避・レイヤ消滅）。
+    fn discard(&mut self, layer: ElementId);
+    /// 全キャッシュ面を破棄する（resize / surface 再作成）。
+    fn discard_all(&mut self);
 }
 
-/// キャッシュ texture quad を transform/opacity 付きで 1 render pass で合成する backend 能力（専用
-/// wgpu compositor。合成に Vello は使わない・ADR-0125 Decision 4）。compositor は軸並行 clip のみ扱い、
-/// 角丸 clip はレイヤ内容に焼き込む。`Send` クリーン（ADR-0128）。
-pub trait LayerCompositor: Send {
+/// キャッシュ texture quad を transform/opacity/軸並行 clip 付きで 1 render pass で合成する backend
+/// 能力（専用 wgpu compositor。合成に Vello は使わない・ADR-0125 Decision 4）。角丸 clip はレイヤ
+/// 内容に焼き込む。native では `Send` クリーン（ADR-0128。wasm は単一スレッドなので要求しない）。
+pub trait LayerCompositor: MaybeSend {
     /// backend ごとのキャッシュ面型。
     type Texture;
-    /// `quads`（レイヤ id・kurbo アフィン [a,b,c,d,e,f]・opacity・キャッシュ面）を描画順に 1 pass で合成。
-    fn composite(&mut self, quads: &[CompositeQuad<Self::Texture>]);
+    /// backend ごとの合成先（wgpu = surface view + format / tiny-skia = `Pixmap`）。
+    type Target;
+    /// `quads` を描画順に 1 pass で合成する。パイプライン variant は init 時に warmup 済みで、
+    /// ここでの遅延生成は行わない（ADR-0130a。未生成 variant はエラー）。
+    fn composite(
+        &mut self,
+        target: &mut Self::Target,
+        quads: &[CompositeQuad<'_, Self::Texture>],
+    ) -> Result<(), String>;
 }
 
-/// compositor が 1 枚のキャッシュ texture を合成するための quad（transform/opacity 付き）。
+/// compositor が 1 枚のキャッシュ texture を合成するための quad（transform/opacity/clip 付き）。
+/// `transform` / `clip` は [`layer_scene::collect_layer_placements`] の placement をそのまま渡す。
 #[derive(Debug, Clone, Copy)]
-pub struct CompositeQuad<T> {
+pub struct CompositeQuad<'a, T> {
     pub layer: ElementId,
-    /// kurbo アフィン係数 [a,b,c,d,e,f]（ADR-0020 の group transform）。
+    /// kurbo アフィン係数 [a,b,c,d,e,f]（ADR-0020 の group transform、祖先合成済み）。
     pub transform: [f64; 6],
     pub opacity: f32,
-    pub texture: T,
+    /// 祖先の軸並行 clip（デバイス空間 `[x, y, w, h]`）。scissor 相当。
+    pub clip: Option<[f32; 4]>,
+    pub texture: &'a T,
 }
 
 #[cfg(test)]

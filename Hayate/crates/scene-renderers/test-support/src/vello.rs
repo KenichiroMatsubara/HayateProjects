@@ -84,6 +84,17 @@ pub fn render_scene_to_pixels_scaled(
     readback_texture_rgba8(&harness.device, &harness.queue, &texture, width, height)
 }
 
+/// 任意の Rgba8 texture を CPU に読み戻す（compositor 系テストの合成先検証用に公開）。
+pub fn readback_rgba8(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+) -> Option<Vec<u8>> {
+    readback_texture_rgba8(device, queue, texture, width, height)
+}
+
 fn readback_texture_rgba8(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
