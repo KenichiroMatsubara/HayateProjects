@@ -117,3 +117,31 @@ rubber バウンドは「毎フレーム dirty が ~0.4 秒続く」その最悪
 プローブは env ゲート付きで常設（`crates/scene-renderers/vello/tests/perf_probe_rubber_bounce.rs`）。
 1. の配線後に同コマンドを流し、「バウンス 1 フレーム vs コールドフル」比が
 ~1.0 から大きく下がる（composite-only 化）ことをホストで確認できる。
+
+### #639 配線後（present raster gating）
+
+`element_set_scroll_offset` を chrome dirty に分類（#634）した上で、越境（バウンス）フレームでも
+**content-visible 帯カバレッジ**（`scroll_content_visible_top` で offset を `[0, max]` にクランプ。
+overshoot は合成 affine の担当）で判定するよう present を配線した（#639）。プローブに
+`present-gated springback` セクションを追加し、スプリングバック中に実際に走る raster 回数を数える:
+
+```
+[bounce-probe] #639 present-gated springback: 23 frames, 0 raster (non-composite), composite-only 23/23
+```
+
+**スプリングバック 23 フレーム全部が composite-only（raster 呼び出し 0 回）**。#634 の帯内スクロール
+composite-only 化がバウンスへ拡張され、越境フレームが「端の帯を跨いだ」と誤判定されて毎フレーム
+再 raster に落ちる回帰が消えた（クランプ前は越境フレームの帯カバレッジが常に false になり、
+`covers(生 offset, vh)` がバウンス毎フレームで再 raster を要求していた）。
+
+読み方: 上表の GPU 比 ~1.0（毎フレーム全画面フル pipeline）は「present に dirty ゲートが無い」
+現行 web backend の値。#639 の gating を通すと、バウンス中は raster が 0 回になり、per-frame の仕事が
+「フル pipeline（新規 `vello::Scene` フルエンコード＋全段コンピュート＋全画面 blit）」から
+「キャッシュ帯 texture の quad を 1 回合成するだけ」へ落ちる。すなわち比は composite-only 相当
+（実質 raster ゼロ）へ下がる。wgpu アダプタのあるホストでは GPU 節（section 3）の bounce-frame も
+gating を通せば同様に単一 composite コストへ落ちる（present の実 backend 配線は #636 側）。
+
+work-count の常設回帰は `crates/scene-renderers/compositor/tests/bounce_composite_only.rs`
+（上下端バウンスの全フレーム raster 0）、越境の分類・affine は
+`crates/core/tests/compositing_layers.rs`、合成パリティ（iOS translate / Android stretch が全面描画と
+一致）は `crates/scene-renderers/compositor/tests/layer_scene_parity.rs` で固定する。

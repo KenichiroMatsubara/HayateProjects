@@ -229,6 +229,90 @@ fn layer_extraction_strips_the_outer_transform_group() {
     assert_eq!(boxed_placement.transform, [1.0, 0.0, 0.0, 1.0, 30.0, 20.0]);
 }
 
+/// scroll(150x100) 直下に単色コンテンツ 1 枚を持つツリー。overscroll のバウンス位置で render する。
+/// `profile` が iOS（素の translate）/ Android（stretch）を切り替える。
+fn overscroll_tree(
+    profile: hayate_core::scroll::ScrollPhysicsProfile,
+    release_offset: f32,
+) -> (ElementTree, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let content = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.set_scroll_profile(profile);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::BackgroundColor(Color::new(0.9, 0.85, 0.2, 1.0)), // 露出する背景（黄）
+        ],
+    );
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(150.0)), StyleProp::Height(px(100.0))],
+    );
+    tree.element_set_style(
+        content,
+        &[
+            StyleProp::Width(px(150.0)),
+            StyleProp::Height(px(400.0)), // max_y = 300
+            StyleProp::BackgroundColor(Color::new(0.0, 0.3, 0.8, 1.0)),
+        ],
+    );
+    let _ = tree.render(0.0);
+    tree.element_set_scroll_offset(scroll, 0.0, release_offset);
+    let _ = tree.render(16.0);
+    (tree, root, scroll)
+}
+
+#[test]
+fn ios_bottom_overscroll_composite_matches_full_raster() {
+    // iOS プロファイル：下端を 80px 越えたバウンス位置。content は整数 translate で丸ごと上へ動き、
+    // 下端に背景（黄）が露出する。合成（テクスチャ quad）と全面 raster がピクセル一致することで、
+    // 「overscroll 域のカバレッジ＋背景露出が従来（全面描画）と一致」を固定する（#639 AC）。
+    let (tree, root, _) = overscroll_tree(hayate_core::scroll::ScrollPhysicsProfile::Auto, 300.0 + 80.0);
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "iOS bottom overscroll",
+    );
+}
+
+#[test]
+fn ios_top_overscroll_composite_matches_full_raster() {
+    // iOS プロファイル：上端を 60px 越えたバウンス位置（offset < 0）。content は下へ動き、上端に
+    // 背景が露出する。整数 translate なので合成と全面 raster がピクセル一致。
+    let (tree, root, _) = overscroll_tree(hayate_core::scroll::ScrollPhysicsProfile::Auto, -60.0);
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "iOS top overscroll",
+    );
+}
+
+#[test]
+fn android_stretch_bottom_overscroll_composite_matches_full_raster() {
+    // Android stretch プロファイル（ADR-0131）：下端を 80px 越えたバウンス位置。越境は scroll Group の
+    // 一様スケール（scale_y > 1・端ピン）に現れる。レイヤ合成はその Group を含む sub-scene をベクタ
+    // 再 raster するので、全面 raster と同じ crisp なスケール結果になりピクセル一致する（テクスチャ
+    // 拡大のリサンプリングではない）。stretch profile の合成出力が従来の全面描画と一致することを固定。
+    let (tree, root, scroll) =
+        overscroll_tree(hayate_core::scroll::ScrollPhysicsProfile::Android, 300.0 + 80.0);
+    // 越境がスケールとして affine に載っていることを確認（profile が効いている前提の担保）。
+    let affine = tree.element_scroll_group_affine(scroll);
+    assert!(affine[3] > 1.0, "Android 越境は一様 stretch scale（scale_y > 1）: {affine:?}");
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "Android stretch bottom overscroll",
+    );
+}
+
 #[test]
 fn layer_inside_scroll_container_gets_scroll_offset_and_clip() {
     // scroll(高さ 100, 内容 300) の中の transform レイヤ。スクロール済み状態で合成しても、
