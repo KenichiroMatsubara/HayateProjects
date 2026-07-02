@@ -4,11 +4,32 @@ import {
   attachAccessibilityMirror,
   type AccessibilityMirror,
 } from './accessibility-mirror.js';
+import {
+  bootWorkerEngineBridge,
+  createWorkerInputProxy,
+  shouldUseWorkerEngine,
+  type WorkerTransport,
+} from './worker-boot.js';
+import type { CanvasHandle, MainEditContextSink } from './worker-host.js';
 import type { RawHayate } from './raw-hayate.js';
 
 export type { CanvasBackend } from './resolve-backend.js';
 export type { RawHayate, HayateEffectiveVisual, HayateColorRecord } from './raw-hayate.js';
 export { MainThreadShim, WorkerEngineDispatcher } from './worker-host.js';
+export {
+  bootWorkerEngineBridge,
+  createWorkerInputProxy,
+  shouldUseWorkerEngine,
+  WORKER_ENGINE_QUERY_PARAM,
+  WORKER_ENGINE_QUERY_VALUE,
+  KEY_MODIFIER_SHIFT,
+  KEY_MODIFIER_CTRL,
+  KEY_MODIFIER_ALT,
+  KEY_MODIFIER_META,
+  type WorkerTransport,
+  type WorkerEngineBridgeHandle,
+  type BootWorkerEngineBridgeOptions,
+} from './worker-boot.js';
 export type {
   CanvasHandle,
   ImePresentation,
@@ -79,6 +100,20 @@ export interface CreateHayateWebHostOptions {
     raw: RawHayate,
     canvas: HTMLCanvasElement,
   ) => AccessibilityMirror;
+  /**
+   * OffscreenCanvas＋単一 Worker へエンジンを載せる opt-in（ADR-0128 web 半分・#648）。明示 true で
+   * 有効、false で無効、未指定なら {@link locationSearch} のクエリパラメータで判定する。**既定は OFF**
+   * （計測ゲート）。有効化には {@link spawnWorker} が要る（無ければ警告して従来の main 経路へフォールバック）。
+   */
+  workerEngine?: boolean;
+  /** opt-in 判定に使う query 文字列。既定は `location.search`。テスト注入 seam。 */
+  locationSearch?: string;
+  /** Worker モードで main↔Worker transport を作る。実 `Worker` を包む。テスト注入 seam。 */
+  spawnWorker?: () => WorkerTransport;
+  /** Worker モードで Worker→main の IME presentation を適用する EditContext 面（ADR-0069）。既定 no-op。 */
+  imeSink?: MainEditContextSink;
+  /** `canvas.transferControlToOffscreen()` の注入 seam。既定は実 API。 */
+  transferControlToOffscreen?: (canvas: HTMLCanvasElement) => CanvasHandle;
 }
 
 /** `navigator.gpu` で WebGPU の利用可否を判定する。 */
@@ -112,6 +147,51 @@ async function loadCanvasBackend(
   return (await cpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
 }
 
+/** no-op の EditContext 面。Worker モードで `imeSink` 未指定時の既定（IME 反映先が無い環境向け）。 */
+const NOOP_IME_SINK: MainEditContextSink = {
+  setKeyboardVisible: () => {},
+  setCaretRect: () => {},
+};
+
+/**
+ * Worker エンジン経路（#648）を組む。`spawnWorker` が無ければ（実 Worker を作れない）`null` を返し、
+ * 呼び出し側は従来 main 経路へフォールバックする。成功時は canvas を Worker へ transfer し、入力/IME を
+ * 橋渡しする shim を配線した {@link WebHost} を返す。`raw` は Worker がエンジンを所有する前提の input
+ * proxy（drive/query は main では不活性）。`detach` は Worker 停止＋リスナ除去（full reload で再構築）。
+ */
+function tryCreateWorkerEngineHost(
+  canvas: HTMLCanvasElement,
+  options?: CreateHayateWebHostOptions,
+): WebHost | null {
+  const spawn = options?.spawnWorker;
+  if (!spawn) return null;
+
+  const transferControlToOffscreen =
+    options?.transferControlToOffscreen ??
+    ((c: HTMLCanvasElement) =>
+      (c as unknown as { transferControlToOffscreen(): CanvasHandle }).transferControlToOffscreen());
+  const dpr = typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1;
+
+  const bridge = bootWorkerEngineBridge(canvas, {
+    transport: spawn(),
+    ime: options?.imeSink ?? NOOP_IME_SINK,
+    transferControlToOffscreen,
+    dpr,
+  });
+
+  const requestFrame =
+    options?.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
+  const cancelFrame =
+    options?.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
+
+  return {
+    raw: createWorkerInputProxy(bridge.shim),
+    requestFrame,
+    cancelFrame,
+    detach: bridge.detach,
+  };
+}
+
 /**
  * Hayate の web Render Host を起動する：WebGPU をプローブし、Renderer Selection Policy
  * で backend を選び、WASM をロードして surface 上にレンダラを初期化し、{@link WebHost}
@@ -125,6 +205,19 @@ export async function createHayateWebHost(
   canvas: HTMLCanvasElement,
   options?: CreateHayateWebHostOptions,
 ): Promise<WebHost> {
+  // #648: OffscreenCanvas＋単一 Worker 経路の opt-in（既定 OFF・計測ゲート、ADR-0128）。有効時は main で
+  // WASM をロードせず、canvas を Worker へ transfer してエンジンを Worker 側で走らせ、main は入力/IME を
+  // 橋渡しする薄い shim に徹する（診断 要因 2）。無効時は以降の従来 main スレッド経路のまま挙動不変。
+  const search =
+    options?.locationSearch ??
+    (typeof location !== 'undefined' ? location.search : undefined);
+  if (shouldUseWorkerEngine(options?.workerEngine, search)) {
+    const worker = tryCreateWorkerEngineHost(canvas, options);
+    if (worker) return worker;
+    // spawnWorker 未提供（実 Worker を作れない）等では従来 main 経路へフォールバックする。
+    console.warn('createHayateWebHost: worker engine opt-in requested but unavailable; using main-thread path');
+  }
+
   const probe = options?.probeWebGPU ?? probeWebGPU;
   const load = options?.loadBackend ?? loadCanvasBackend;
   const attachMirror = options?.attachMirror ?? attachAccessibilityMirror;
