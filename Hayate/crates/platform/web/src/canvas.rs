@@ -12,9 +12,10 @@ use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile
 
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
-    ElementTree, Event, FontStyleValue, RenderImage,
-    StyleProp, TextDecorationValue,
+    ElementTree, Event, FontStyleValue, RenderImage, RenderScaleDriver,
+    StyleProp, TextDecorationValue, effective_content_scale,
 };
+use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
 use crate::image_decode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -151,6 +152,12 @@ pub struct HayateElementRenderer {
     /// キャッシュ有効）では `backend.render_scene` を呼ばず、canvas に表示中の raster 済み
     /// フレームをそのまま維持する（composite-only 相当）。resize でキャッシュ面ごと invalidate。
     planner: hayate_layer_compositor::PresentPlanner,
+    /// 適応的レンダースケール劣化（ADR-0129・#647）。各 `render()` で rAF timestamp 差分から frame
+    /// 時間を導出して駆動し、逼迫時は render_scale を段階的に下げる。スケール変更時のみ buffer を
+    /// 実効 content scale で resize する（CSS/レイアウトビューポートは不変・ヒットテストは論理座標のまま）。
+    render_scale: RenderScaleDriver,
+    /// 現在の base DPR（デバイス実 DPR。resize で更新）。実効 content scale = `base_dpr * render_scale`。
+    base_dpr: f32,
 }
 
 impl HayateElementRenderer {
@@ -239,6 +246,10 @@ impl HayateElementRenderer {
             scroll_samples: Vec::new(),
             drag_raw: None,
             planner: hayate_layer_compositor::PresentPlanner::new(),
+            // 適応的レンダースケール劣化（ADR-0129・#647）。60Hz 予算で開始。base DPR は init 時の
+            // device_pixel_ratio。逼迫が続くと render_scale を段階的に下げ、buffer を縮小する。
+            render_scale: RenderScaleDriver::new(FRAME_BUDGET_60HZ_MS),
+            base_dpr: dpr as f32,
             // Scroll Physics Profile（ADR-0113）。現状 web は `Auto` のみで、iOS 風
             // プロファイルへ解決する。dev ビルドは `set_tuning` で tuning.json を上書きする。
             scroll_tuning: ScrollPhysicsProfile::Auto.default_tuning(),
@@ -468,7 +479,35 @@ impl HayateElementRenderer {
         // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
         self.tree.drive_ime(&mut self.ime);
         self.sync_edit_context();
+
+        // 適応的レンダースケール（ADR-0129・#647）。このフレームの timestamp 差分から frame 時間を
+        // 導出して governor を駆動する。逼迫が続いてスケールが変わったフレームだけ、実効 content scale で
+        // buffer を resize する（余裕が続けばヒステリシス付きで 1 段ずつ復帰）。CSS/レイアウトビューポートは
+        // 不変なのでブラウザが拡大表示し、ヒットテストは論理座標のまま整合する。熱シグナルは web では
+        // 未接続（false）で、フレーム時間予算超過のみで判定する。
+        if let Some(render_scale) = self.render_scale.note_frame(timestamp_ms, false) {
+            self.apply_render_scale(render_scale);
+        }
         present
+    }
+
+    /// レンダースケール変更（ADR-0129・#647）を buffer に適用する。CSS ビューポート（レイアウト）は
+    /// 不変のまま、実効 content scale = `base_dpr * render_scale` で backing store を resize する。逼迫時は
+    /// 縮小、復帰時は拡大。ヒットテスト座標は論理（CSS px）のままで、layout も CSS px なので描画と整合する。
+    fn apply_render_scale(&mut self, render_scale: f32) {
+        let (css_w, css_h) = *self.last_viewport.borrow();
+        if css_w <= 0.0 || css_h <= 0.0 {
+            return;
+        }
+        let effective = effective_content_scale(self.base_dpr, render_scale);
+        let metrics = resize_observer::canvas_resize_metrics(css_w, css_h, effective as f64);
+        self.canvas.set_width(metrics.buffer_width);
+        self.canvas.set_height(metrics.buffer_height);
+        // buffer 寸法と content scale だけを差し替える。viewport（CSS px）は据え置き＝layout・
+        // ヒットテストは論理座標のまま。描画サーフェスを作り直したのでキャッシュ面を invalidate。
+        self.backend
+            .resize(metrics.buffer_width, metrics.buffer_height, metrics.content_scale);
+        self.planner.invalidate();
     }
 
     /// `render()` 冒頭で自前配線の編集入力バッファを排出し、各入力を到着順に core の編集
@@ -775,6 +814,9 @@ impl HayateElementRenderer {
             metrics.buffer_height,
             metrics.content_scale,
         );
+        // OS/ブラウザ由来のリサイズは実 DPR を反映する。以後の render_scale はこの base に乗る（ADR-0129）。
+        // governor 状態は保持されるので、逼迫が続いていれば次の数フレームで再び劣化へ収束する。
+        self.base_dpr = metrics.content_scale;
         // 描画サーフェスを作り直した＝キャッシュ面は失われた。次フレームは clean でも全面 raster。
         self.planner.invalidate();
         self.tree

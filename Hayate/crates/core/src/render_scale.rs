@@ -90,6 +90,52 @@ impl RenderScaleGovernor {
     }
 }
 
+/// rAF timestamp 列から [`RenderScaleGovernor`] を駆動するフレームループドライバ（ADR-0129）。
+///
+/// バックエンド（web の frame ループ等）は生の frame 時間 dt を持たず rAF timestamp しか持たないため、
+/// このドライバが**連続 timestamp の差分から dt を導出**して governor に渡す。最初のフレームは前フレーム
+/// timestamp が無いので dt を測れず、劣化判定に寄与させない（スパイクとして誤検出しない）。スケールが
+/// 変わったフレームだけ新しい render_scale を返し、バックエンドはそのときだけ buffer resize を起こす。
+///
+/// governor と同じく layout（CSS px）・ヒットテスト（論理座標）は不変で、render_scale は buffer 寸法と
+/// `effective_content_scale` にのみ効く（CSS サイズは不変でブラウザが拡大表示する）。
+#[derive(Debug, Clone)]
+pub struct RenderScaleDriver {
+    governor: RenderScaleGovernor,
+    last_timestamp_ms: Option<f64>,
+}
+
+impl RenderScaleDriver {
+    /// リフレッシュ予算（ms。例 [`tunables::FRAME_BUDGET_60HZ_MS`]）を与えてフル DPR で開始する。
+    pub fn new(budget_ms: f64) -> Self {
+        Self {
+            governor: RenderScaleGovernor::new(budget_ms),
+            last_timestamp_ms: None,
+        }
+    }
+
+    /// 1 フレームの rAF `timestamp_ms`（単調増加）を反映する。前フレームとの差分を frame 時間として
+    /// governor に渡す。スケールが変わったら新しい render_scale（base DPR への乗数）を `Some` で返す。
+    /// 最初のフレーム（基準 timestamp が無い）は dt を測れないので必ず `None`。
+    pub fn note_frame(&mut self, timestamp_ms: f64, thermal_pressure: bool) -> Option<f32> {
+        let changed = match self.last_timestamp_ms {
+            Some(prev) => self.governor.note_frame(timestamp_ms - prev, thermal_pressure),
+            None => false,
+        };
+        self.last_timestamp_ms = Some(timestamp_ms);
+        if changed {
+            Some(self.governor.scale())
+        } else {
+            None
+        }
+    }
+
+    /// 現在の render_scale（base DPR への乗数）。平常時は `1.0`。
+    pub fn scale(&self) -> f32 {
+        self.governor.scale()
+    }
+}
+
 /// base DPR とレンダースケール乗数から実効 content scale を求める。バッファ寸法導出
 /// （`ViewportMetrics`）とヒットテストはこの同じ値を使う（ADR-0129）。
 pub fn effective_content_scale(base_dpr: f32, render_scale: f32) -> f32 {
@@ -199,6 +245,66 @@ mod tests {
         for pair in tunables::SCALE_STEPS.windows(2) {
             assert!(pair[1] < pair[0], "スケール段階は単調減少");
         }
+    }
+
+    /// budget を継続的に超える dt を刻む timestamp 列（0, step, 2*step, ...）。
+    fn timestamps(step: f64, n: u32) -> Vec<f64> {
+        (0..n).map(|i| i as f64 * step).collect()
+    }
+
+    #[test]
+    fn driver_first_frame_never_degrades_lacking_a_dt_baseline() {
+        // 最初の 1 フレームは前 timestamp が無く dt を測れない。単発の劣化には数えない。
+        let mut d = RenderScaleDriver::new(tunables::FRAME_BUDGET_60HZ_MS);
+        assert_eq!(d.note_frame(0.0, false), None);
+        assert_eq!(d.scale(), 1.0);
+    }
+
+    #[test]
+    fn driver_derives_frame_time_from_timestamp_deltas_and_degrades() {
+        // 50ms 間隔（>16.6ms 予算）の timestamp を刻むと、PRESSURE 連続で 1 段劣化を返す。
+        let mut d = RenderScaleDriver::new(tunables::FRAME_BUDGET_60HZ_MS);
+        let ts = timestamps(50.0, tunables::PRESSURE_FRAMES_TO_DEGRADE + 1);
+        let mut changes: Vec<f32> = Vec::new();
+        for &t in &ts {
+            if let Some(scale) = d.note_frame(t, false) {
+                changes.push(scale);
+            }
+        }
+        // 基準フレーム 1 つ＋PRESSURE 連続の超過で、ちょうど 1 回だけスケール変更を返す。
+        assert_eq!(changes, vec![tunables::SCALE_STEPS[1]]);
+        assert_eq!(d.scale(), tunables::SCALE_STEPS[1]);
+    }
+
+    #[test]
+    fn driver_returns_none_on_frames_without_a_scale_change() {
+        // 予算内（8ms 間隔）の timestamp では一度もスケールが変わらない＝毎フレーム None。
+        let mut d = RenderScaleDriver::new(tunables::FRAME_BUDGET_60HZ_MS);
+        for &t in &timestamps(8.0, 20) {
+            assert_eq!(d.note_frame(t, false), None);
+        }
+        assert_eq!(d.scale(), 1.0);
+    }
+
+    #[test]
+    fn driver_effective_scale_shrinks_buffer_but_not_the_logical_viewport() {
+        // 劣化しても実効 content scale（= buffer 寸法の乗数）だけが縮み、CSS/論理ビューポートは不変。
+        // ヒットテストは論理座標のままなので、劣化前後で論理←→物理往復が整合する（ADR-0129）。
+        let base_dpr = 3.0_f32;
+        let mut d = RenderScaleDriver::new(tunables::FRAME_BUDGET_60HZ_MS);
+        for &t in &timestamps(50.0, tunables::PRESSURE_FRAMES_TO_DEGRADE + 1) {
+            d.note_frame(t, false);
+        }
+        let render_scale = d.scale();
+        assert!(render_scale < 1.0, "逼迫で劣化している");
+        let eff = effective_content_scale(base_dpr, render_scale);
+        assert!(eff < base_dpr, "buffer 乗数は base DPR より小さい");
+        // 論理座標のヒットテストは effective_scale で物理に写しても元へ戻る（描画と整合）。
+        let logical = (120.0_f32, 80.0_f32);
+        let physical = (logical.0 * eff, logical.1 * eff);
+        let back = hit_test_logical(physical, eff);
+        assert!((back.0 - logical.0).abs() < 1e-3);
+        assert!((back.1 - logical.1).abs() < 1e-3);
     }
 
     #[test]
