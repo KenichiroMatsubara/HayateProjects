@@ -20,6 +20,28 @@ pub enum DrawOp {
         border_width: f32,
         color: [f32; 4],
     },
+    FillBlurredRoundedRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+        occluder: Option<crate::node::ShadowOccluder>,
+    },
+    FillInsetBlurredRoundedRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        spread: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    },
     DashedBorder {
         x: f32,
         y: f32,
@@ -77,6 +99,82 @@ pub trait ScenePainter {
         border_width: f32,
         color: [f32; 4],
     );
+
+    /// ぼかし角丸矩形（drop shadow）を塗る（issue #657）。`(x, y, width, height)` は影外形
+    /// （オフセット・spread 適用済み）、`corner_radius` はその角丸半径、`std_dev` はガウス σ、
+    /// `color` は影色（straight RGBA・不透明度適用済み）。
+    ///
+    /// default 実装は erf シェル近似（[`crate::render::shadow::SHADOW_BLUR_FALLBACK_LAYERS`] 枚）を
+    /// `fill_rect` で積む——解析パスを持たないレンダラのピクセル出力は現行のシェル塗りと不変。
+    /// 解析パスを持つ painter（vello の `draw_blurred_rounded_rect` / tiny-skia の per-pixel）は
+    /// これを override する。
+    ///
+    /// `occluder`（issue #659）はこの影を覆う不透明 owner の内側矩形。default 実装は最適化を
+    /// **無視して影全面を塗る**——覆う不透明ボックスが直後に上から描かれるため最終ピクセルは
+    /// どちらでも不変（安全側フォールバック）。解析 painter は覆われる領域を省いて overdraw を削る。
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+        _occluder: Option<crate::node::ShadowOccluder>,
+    ) {
+        crate::render::shadow::for_each_shadow_shell(
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
+            color,
+            |sx, sy, sw, sh, shell_color, shell_radius| {
+                self.fill_rect(sx, sy, sw, sh, shell_color, shell_radius)
+            },
+        );
+    }
+
+    /// inset ぼかしシャドウを塗る（issue #660）。`(x, y, width, height, corner_radius)` は
+    /// border-box（塗り領域。角丸クリップは呼び出し側の `Clip` が与える）、`(offset_x, offset_y)`
+    /// は影オフセット、`spread` は内側への広がり、`std_dev` はガウス σ、`color` は影色
+    /// （straight RGBA・不透明度適用済み）。
+    ///
+    /// default 実装は同心 `RoundedRing` 帯（erf 減衰の近似）を積む——解析パスを持たないレンダラ
+    /// でも現行のシェル塗りと同等に描く。vello（DestOut レイヤ）/ tiny-skia（per-pixel `1 − 被覆`）は
+    /// これを override して 1 描画で塗る。
+    #[allow(clippy::too_many_arguments)]
+    fn fill_inset_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        spread: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        crate::render::shadow::for_each_inset_shadow_ring(
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            offset_x,
+            offset_y,
+            spread,
+            std_dev,
+            color,
+            |rx, ry, rw, rh, outer_radius, border_width, ring_color| {
+                self.fill_rounded_ring(rx, ry, rw, rh, outer_radius, border_width, ring_color)
+            },
+        );
+    }
 
     /// ボックス外周に沿って破線ボーダーを描く（`border-style: dashed`）。
     fn stroke_dashed_border(
@@ -168,6 +266,59 @@ impl ScenePainter for RecordingPainter {
             height,
             outer_radius,
             border_width,
+            color,
+        });
+    }
+
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+        occluder: Option<crate::node::ShadowOccluder>,
+    ) {
+        // シェルへ展開せず 1 op として記録する（影1個 = ぼかし矩形1 op、issue #657）。
+        self.ops.push(DrawOp::FillBlurredRoundedRect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
+            color,
+            occluder,
+        });
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fill_inset_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        spread: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        // シェルへ展開せず 1 op として記録する（inset 影1個 = 1 op、issue #660）。
+        self.ops.push(DrawOp::FillInsetBlurredRoundedRect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            offset_x,
+            offset_y,
+            spread,
+            std_dev,
             color,
         });
     }
@@ -265,6 +416,35 @@ impl ScenePainter for NullPainter {
         _height: f32,
         _outer_radius: f32,
         _border_width: f32,
+        _color: [f32; 4],
+    ) {
+    }
+
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _corner_radius: f32,
+        _std_dev: f32,
+        _color: [f32; 4],
+        _occluder: Option<crate::node::ShadowOccluder>,
+    ) {
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn fill_inset_blurred_rounded_rect(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _corner_radius: f32,
+        _offset_x: f32,
+        _offset_y: f32,
+        _spread: f32,
+        _std_dev: f32,
         _color: [f32; 4],
     ) {
     }
@@ -372,6 +552,48 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             *height,
             *outer_radius,
             *border_width,
+            *color,
+        ),
+        NodeKind::BlurredRoundedRect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
+            color,
+            occluder,
+        } => painter.fill_blurred_rounded_rect(
+            *x,
+            *y,
+            *width,
+            *height,
+            *corner_radius,
+            *std_dev,
+            *color,
+            *occluder,
+        ),
+        NodeKind::InsetBlurredRoundedRect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            offset_x,
+            offset_y,
+            spread,
+            std_dev,
+            color,
+        } => painter.fill_inset_blurred_rounded_rect(
+            *x,
+            *y,
+            *width,
+            *height,
+            *corner_radius,
+            *offset_x,
+            *offset_y,
+            *spread,
+            *std_dev,
             *color,
         ),
         NodeKind::DashedBorder {

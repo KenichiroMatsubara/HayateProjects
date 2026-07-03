@@ -12,7 +12,8 @@ use crate::element::scene_lowering::{
 use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::{ElementTree, Visual};
-use crate::node::{Node, NodeId, NodeKind, SceneGraph};
+use crate::node::{Node, NodeId, NodeKind, SceneGraph, ShadowOccluder};
+use crate::render::shadow::{shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD};
 use std::collections::HashSet;
 
 use crate::scroll::{overscroll_stretch_scale, ScrollPhysicsProfile, ScrollPhysicsTuning};
@@ -592,6 +593,9 @@ fn emit_toolbar_panel(
         std::slice::from_ref(&shadow),
         1.0,
         false,
+        // ツールバーパネルの背景は直後に不透明で塗られるが、occluder 最適化はこの小さな
+        // オーバーレイでは省く（正しさには影響しない・全面塗り）。
+        None,
     );
     sg.insert_child(
         group,
@@ -1095,6 +1099,9 @@ fn emit_element<S: AnchorSink>(
     };
 
     if !visual.box_shadow.is_empty() {
+        // owner 背景が不透明なら、drop shadow の被覆 border-box 内側を塗り領域から除外する
+        // （issue #659。覆われて見えない中央の overdraw を削る。出力ピクセルは不変）。
+        let occluder = drop_shadow_occluder(&visual, x, y, w, h);
         emit_box_shadows(
             ctx.sg,
             effective_parent,
@@ -1106,6 +1113,7 @@ fn emit_element<S: AnchorSink>(
             &visual.box_shadow,
             visual.opacity,
             false,
+            occluder,
         );
     }
 
@@ -1136,6 +1144,8 @@ fn emit_element<S: AnchorSink>(
             &visual.box_shadow,
             visual.opacity,
             true,
+            // inset 影は border-box でクリップされ occluder の対象外。
+            None,
         );
     }
 
@@ -1869,40 +1879,11 @@ fn emit_fill_rect(
     );
 }
 
-/// 影のガウスぼかしを近似する半透明レイヤー数（ADR-0095：「blur は許容範囲のガウス近似でよい」）。
-/// box-shadow は素の角丸矩形塗りへ lowering され、Vello と tiny-skia の描画が一致する（意味論的な
-/// DOM/Canvas パリティ）。blur ≈ 重なる半透明角丸矩形。
-const SHADOW_BLUR_LAYERS: usize = 10;
-
-/// CSS の blur 半径 `b` は標準偏差 σ = b/2 のガウスぼかしに対応する（CSS Backgrounds & Borders）。
-fn shadow_sigma(blur: f32) -> f32 {
-    (blur * 0.5).max(f32::MIN_POSITIVE)
-}
-
-/// 相補誤差関数 erfc(x)（Abramowitz & Stegun 7.1.26、最大誤差 ~1.5e-7）。
-/// ぼかしたシャドウ縁のアルファは、ステップ関数をガウスで畳み込んだ
-/// `base/2 · erfc(d / (σ√2))` で与えられる（d はシャドウ外形からの外向き距離）。
-fn erfc(x: f32) -> f32 {
-    let z = x.abs();
-    let t = 1.0 / (1.0 + 0.3275911 * z);
-    let poly = t
-        * (0.254829592
-            + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
-    let erf = 1.0 - poly * (-z * z).exp();
-    let erf = if x < 0.0 { -erf } else { erf };
-    1.0 - erf
-}
-
-/// シャドウ外形の縁から外側へ距離 `d` の点における、ぼかしたシャドウのアルファ係数
-/// （ピーク `base_a` に対する比 0..0.5）。
-fn shadow_falloff(d: f32, sigma: f32) -> f32 {
-    0.5 * erfc(d / (sigma * std::f32::consts::SQRT_2))
-}
-
 /// 要素の box-shadow レイヤーのうち `inset == want_inset` の部分集合を出す。
 ///
 /// CSS は最初に挙げた影を最前面に描くので、逆順で出す（最後の影が先＝最背面）。outset 影は
 /// ボックスの背後に、inset 影は背景の上にボーダーボックスでクリップして出す。
+#[allow(clippy::too_many_arguments)]
 #[allow(clippy::too_many_arguments)]
 fn emit_box_shadows(
     sg: &mut SceneGraph,
@@ -1915,6 +1896,7 @@ fn emit_box_shadows(
     shadows: &[Shadow],
     opacity: f32,
     want_inset: bool,
+    occluder: Option<ShadowOccluder>,
 ) {
     let radius = border_radius.max(0.0);
     for shadow in shadows.iter().rev() {
@@ -1928,13 +1910,59 @@ fn emit_box_shadows(
         if want_inset {
             emit_inset_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
         } else {
-            emit_drop_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
+            emit_drop_shadow(sg, parent_group, x, y, width, height, radius, shadow, color, occluder);
         }
     }
 }
 
-/// outset（ドロップ）影：`spread` で拡大しオフセットでずらした角丸矩形を、重なる半透明角丸矩形で
-/// ぼかす。
+/// 不透明判定の閾値（アルファ）。owner 背景と opacity がともにこの値以上なら「不透明」とみなし、
+/// drop shadow の被覆 border-box 内側を塗り領域から除外する（issue #659）。ピクセル不変を保つため
+/// 完全不透明（= 1.0）を要求する——半透明背景では影が透けるので除外できない。
+const OPAQUE_OCCLUSION_ALPHA_THRESHOLD: f32 = 1.0;
+
+/// occluder を owner の塗り境界から内側へ縮める余白（px）。owner 背景フィルの縁は
+/// アンチエイリアスで被覆 < 1 になるため、その帯の影を省くと最終ピクセルが変わってしまう。
+/// フィルが完全不透明な内側だけを occluder にするための余白（AA 帯 ~1px を吸収）。
+const SHADOW_OCCLUDER_AA_INSET: f32 = 1.0;
+
+/// owner の不透明背景が覆う border-box 内側（drop shadow の occluder）。背景・opacity がともに
+/// 不透明でなければ `None`（半透明・transparent 背景では影が透けるため全面塗り）。border があれば
+/// その内側（bg で不透明に塗られる領域）を返す——border リング自体は不透明とは限らないので除外しない。
+fn drop_shadow_occluder(visual: &Visual, x: f32, y: f32, w: f32, h: f32) -> Option<ShadowOccluder> {
+    if visual.opacity < OPAQUE_OCCLUSION_ALPHA_THRESHOLD {
+        return None;
+    }
+    let bg = visual.background_color?;
+    if (bg.a as f32) < OPAQUE_OCCLUSION_ALPHA_THRESHOLD {
+        return None;
+    }
+    let bw = if visual.border_width > 0.0 && visual.border_style != BorderStyleValue::None {
+        visual.border_width
+    } else {
+        0.0
+    };
+    // border-box 内側（bg で不透明に塗られる領域）を、AA 帯ぶん内側へ縮めた矩形。
+    let m = bw + SHADOW_OCCLUDER_AA_INSET;
+    let iw = w - 2.0 * m;
+    let ih = h - 2.0 * m;
+    if iw <= 0.0 || ih <= 0.0 {
+        return None;
+    }
+    Some(ShadowOccluder {
+        x: x + m,
+        y: y + m,
+        width: iw,
+        height: ih,
+        corner_radius: (visual.border_radius.max(0.0) - m).max(0.0),
+    })
+}
+
+/// outset（ドロップ）影：`spread` で拡大しオフセットでずらした角丸矩形を、ぼかす。
+///
+/// ぼかしたシャドウは第一級プリミティブ [`NodeKind::BlurredRoundedRect`] 1 ノードとして emit し
+/// （影1個 = 1描画）、ラスタ方式は painter に委ねる——解析パス（vello の
+/// `draw_blurred_rounded_rect` / tiny-skia の per-pixel）か、erf シェル近似の default フォールバック。
+/// ぼかしなし（`blur <= HARD_SHADOW_BLUR_THRESHOLD`）のハードシャドウは外形 1 枚を `Rect` で塗る。
 #[allow(clippy::too_many_arguments)]
 fn emit_drop_shadow(
     sg: &mut SceneGraph,
@@ -1946,6 +1974,7 @@ fn emit_drop_shadow(
     radius: f32,
     shadow: &Shadow,
     color: Color,
+    occluder: Option<ShadowOccluder>,
 ) {
     let sx = x + shadow.offset_x - shadow.spread;
     let sy = y + shadow.offset_y - shadow.spread;
@@ -1957,52 +1986,29 @@ fn emit_drop_shadow(
     }
 
     let blur = shadow.blur.max(0.0);
-    if blur <= 0.5 {
+    if blur <= HARD_SHADOW_BLUR_THRESHOLD {
         // ぼかしなしのハードシャドウは外形を 1 枚で不透明に塗る。
         emit_fill_rect(sg, parent_group, sx, sy, sw, sh, color.to_array_f32(), sr);
         return;
     }
 
-    // ぼかしたシャドウを同心の角丸矩形シェルで近似する。CSS の blur は σ = blur/2 のガウス
-    // なので、外形の縁から外向き距離 d でのアルファは `base · shadow_falloff(d)`（縁で base/2、
-    // σ の数倍で実質 0）。各シェルのアルファを falloff の差分にすると加算的に重なってこの
-    // 減衰を再現する。i=0 の核（grow=0, α=base/2）と外向きシェル（telescope）の合計は外形
-    // 内部で base に達し（spread 帯も正しく不透明）、外側はガウス減衰する。
-    //
-    // 従来は全シェル等アルファ・grow を blur 全幅まで線形に広げていたため、ハロが線形に
-    // 遠くまで（≈blur）広がり過ぎていた（DOM 比で約 2 倍）。
-    let sigma = shadow_sigma(blur);
-    // falloff が無視できる距離（~0.4% base）まで。それ以遠のシェルは見えない。
-    let reach = (sigma * 2.7).min(blur * 1.5);
-    let n = SHADOW_BLUR_LAYERS;
-    // 外側（薄い大きな矩形）から内側へ重ねる。
-    for i in (0..=n).rev() {
-        let grow = reach * (i as f32) / (n as f32);
-        let cover = if i == 0 {
-            // 核：外形内部を base まで満たすぶん（境界での値 base/2）。
-            0.5_f32
-        } else {
-            let d_inner = reach * ((i - 1) as f32) / (n as f32);
-            shadow_falloff(d_inner, sigma) - shadow_falloff(grow, sigma)
-        };
-        let layer = Color {
-            a: color.a * cover as f64,
-            ..color
-        };
-        if layer.a <= 0.0 {
-            continue;
-        }
-        emit_fill_rect(
-            sg,
-            parent_group,
-            sx - grow,
-            sy - grow,
-            sw + 2.0 * grow,
-            sh + 2.0 * grow,
-            layer.to_array_f32(),
-            (sr + grow).max(0.0),
-        );
-    }
+    emit(
+        sg,
+        parent_group,
+        Node {
+            kind: NodeKind::BlurredRoundedRect {
+                x: sx,
+                y: sy,
+                width: sw,
+                height: sh,
+                corner_radius: sr,
+                std_dev: shadow_sigma(blur),
+                color: color.to_array_f32(),
+                occluder,
+            },
+            children: Vec::new(),
+        },
+    );
 }
 
 /// inset 影：内縁に沿った暗い帯。ボーダーボックスの角丸に追従する `RoundedRing`
@@ -2043,62 +2049,55 @@ fn emit_inset_shadow(
     let spread = shadow.spread.max(0.0);
     let blur = shadow.blur.max(0.0);
     let max_band = width.min(height) * 0.5;
-    let bx = x + shadow.offset_x;
-    let by = y + shadow.offset_y;
-    let mut ring = |bw: f32, c: Color| {
-        let bw = bw.min(max_band);
-        if bw <= 0.0 || c.a <= 0.0 {
-            return;
-        }
-        emit(
-            sg,
-            Some(clip_id),
-            Node {
-                kind: NodeKind::RoundedRing {
-                    x: bx,
-                    y: by,
-                    width,
-                    height,
-                    outer_radius: radius,
-                    border_width: bw,
-                    color: c.to_array_f32(),
-                },
-                children: Vec::new(),
-            },
-        );
-    };
 
-    if blur <= 0.5 {
-        // ぼかしなしのハードな内側リングは単色で塗る（厚み = spread）。
-        ring(spread.max(0.5), color);
+    if blur <= HARD_SHADOW_BLUR_THRESHOLD {
+        // ぼかしなしのハードな内側リングは単色で塗る（厚み = spread）。ぼかしプリミティブ化せず
+        // 従来どおり 1 枚の `RoundedRing`（ピクセル不変）。
+        let bw = spread.max(0.5).min(max_band);
+        if bw > 0.0 && color.a > 0.0 {
+            emit(
+                sg,
+                Some(clip_id),
+                Node {
+                    kind: NodeKind::RoundedRing {
+                        x: x + shadow.offset_x,
+                        y: y + shadow.offset_y,
+                        width,
+                        height,
+                        outer_radius: radius,
+                        border_width: bw,
+                        color: color.to_array_f32(),
+                    },
+                    children: Vec::new(),
+                },
+            );
+        }
         return;
     }
 
-    // ぼかしあり：spread 幅の単色コアリング + spread..spread+blur へ内側にフェードする
-    // リング群。各リングのアルファは縁からの外向き falloff の差分（ドロップ影と同じ
-    // テレスコープ和）で、加算的に `base · shadow_falloff(d - spread)` を再現する。
-    let sigma = shadow_sigma(blur);
-    let band = (spread + blur).min(max_band);
-    let n = SHADOW_BLUR_LAYERS;
-    for i in 0..=n {
-        let (bw, cover) = if i == 0 {
-            (spread, 0.5_f32)
-        } else {
-            let w = spread + (band - spread) * (i as f32) / (n as f32);
-            let w_prev = spread + (band - spread) * ((i - 1) as f32) / (n as f32);
-            (
-                w,
-                shadow_falloff(w_prev - spread, sigma) - shadow_falloff(w - spread, sigma),
-            )
-        };
-        ring(
-            bw,
-            Color {
-                a: color.a * cover as f64,
-                ..color
+    // ぼかしあり：inset 影を第一級プリミティブ 1 ノードとして border-box クリップ内に emit する
+    // （影1個 = 1描画、現行の 10 段リングを置換・issue #660）。ラスタ方式は painter に委ねる——
+    // 解析パス（vello の DestOut レイヤ / tiny-skia の per-pixel `1 − 被覆`）か、同心リングの
+    // default フォールバック。border-box への角丸クリップは上の `Clip` ノードが与える。
+    emit(
+        sg,
+        Some(clip_id),
+        Node {
+            kind: NodeKind::InsetBlurredRoundedRect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius: radius,
+                offset_x: shadow.offset_x,
+                offset_y: shadow.offset_y,
+                spread,
+                std_dev: shadow_sigma(blur),
+                color: color.to_array_f32(),
             },
-        );
-    }
+            children: Vec::new(),
+        },
+    );
 }
 
 #[cfg(test)]

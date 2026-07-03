@@ -52,13 +52,15 @@ fn perf_probe() {
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("tiny-skia");
     let graph = tree.render(0.0).clone();
-    let (mut rects, mut rings, mut texts, mut glyphs, mut groups, mut clips, mut images, mut anchors, mut dashed) =
-        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut rects, mut rings, mut texts, mut glyphs, mut groups, mut clips, mut images, mut anchors, mut dashed, mut blurred) =
+        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
     for (_, node) in graph.iter() {
         use hayate_core::NodeKind::*;
         match &node.kind {
             Rect { .. } => rects += 1,
             RoundedRing { .. } => rings += 1,
+            BlurredRoundedRect { .. } => blurred += 1,
+            InsetBlurredRoundedRect { .. } => blurred += 1,
             DashedBorder { .. } => dashed += 1,
             TextRun { data, .. } => {
                 texts += 1;
@@ -71,7 +73,7 @@ fn perf_probe() {
         }
     }
     println!(
-        "[perf-probe] fixture {vw}x{vh}: nodes {} (rect {rects}, ring {rings}, dashed {dashed}, textrun {texts} / glyphs {glyphs}, group {groups}, clip {clips}, image {images}, anchor {anchors})",
+        "[perf-probe] fixture {vw}x{vh}: nodes {} (rect {rects}, ring {rings}, blurred {blurred}, dashed {dashed}, textrun {texts} / glyphs {glyphs}, group {groups}, clip {clips}, image {images}, anchor {anchors})",
         graph.iter().count()
     );
     let rect_area: f64 = graph
