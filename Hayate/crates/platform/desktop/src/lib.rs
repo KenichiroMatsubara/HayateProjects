@@ -1,7 +1,7 @@
 //! Desktop Platform Front（ADR-0118）。
 //!
 //! winit single crate で macos / windows / linux を windowing / event-loop / GPU surface の
-//! 層に畳み、winit window + vello/wgpu の [`Surface`] 実装 + `App Host::tick` 駆動を最小配線して、
+//! 層に畳み、winit window + vello/wgpu の [`PresentTarget`] 実装 + `App Host::tick` 駆動を最小配線して、
 //! 共有 demo fixture（`hayate_demo_fixtures::tasks_tree`）を native window に present する。
 //! 静的 1 枚を見せる tracer bullet（issue #505）に、winit pointer 入力（`CursorMoved` /
 //! `MouseInput`）を Core の座標 pointer dispatch（`PointerKind = Mouse`）へ配線して
@@ -20,7 +20,7 @@ pub mod pointer_input;
 use std::sync::Arc;
 use std::time::Instant;
 
-use hayate_app_host::{AppHost, Surface};
+use hayate_app_host::{AppHost, PresentTarget};
 use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, SceneGraph, ViewportMetrics};
 use hayate_demo_fixtures::tasks_tree;
 use hayate_scene_renderer_vello::{
@@ -55,7 +55,7 @@ pub fn viewport_metrics(physical_width: u32, physical_height: u32, scale_factor:
     ViewportMetrics::from_physical_size(physical_width as i32, physical_height as i32, scale_factor as f32)
 }
 
-/// winit の wgpu surface へ present する vello/wgpu の [`Surface`] 実装（ADR-0118）。
+/// winit の wgpu surface へ present する vello/wgpu の [`PresentTarget`] 実装（ADR-0118）。
 ///
 /// 1 フレームの `SceneGraph` を、vello の `render_to_texture` で offscreen target に焼き、
 /// `TextureBlitter` で winit の swapchain surface に blit する。web の vello backend と同型で、
@@ -157,7 +157,7 @@ impl WindowSurface {
     }
 }
 
-impl Surface for WindowSurface {
+impl PresentTarget for WindowSurface {
     fn present(&mut self, scene: &SceneGraph) {
         let render = self.renderer.render_scene(
             scene,

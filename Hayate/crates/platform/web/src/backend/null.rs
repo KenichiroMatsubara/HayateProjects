@@ -26,11 +26,11 @@ impl CanvasBackend for SelectedBackend {
         &mut self,
         _scene: &SceneGraph,
         _clear_color: ClearColor,
-    ) -> Result<(), JsValue> {
+    ) -> Result<(), anyhow::Error> {
         Ok(())
     }
 
-    fn clear(&mut self, _clear_color: ClearColor) -> Result<(), JsValue> {
+    fn clear(&mut self, _clear_color: ClearColor) -> Result<(), anyhow::Error> {
         Ok(())
     }
 }

@@ -14,3 +14,8 @@ backend-null = []
 
 [dependencies]
 hayate-core = { path = "../core" }
+anyhow.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true

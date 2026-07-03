@@ -12,27 +12,30 @@
 //! （空のこともある）を毎フレーム sink へ同期 push する。`ListenerId → handler` の解決と
 //! reactive flush は consumer 側の責務で、App Host は consumer 非依存を保つ。
 //!
-//! このクレートは ADR-0068 の Render Host を共有層へ hoist する作業に先行する headless な
-//! 骨組みで、描画の present は [`Surface`] trait の裏に置く（テストは no-op 実装を渡す）。
+//! ADR-0068 の Render Host は [`render_host`] へ hoist 済み（ADR-0132 スライス3）。GPU
+//! サーフェス資源の契約は [`hayate_core::Surface`] が core 所有で持つ。App Host 自身は
+//! `Render Host` を「フレームごとに scene graph を提示できる何か」としてのみ扱い、その
+//! 最小 seam を [`PresentTarget`] trait の裏に置く（テストは no-op 実装を渡す）。
 
 use hayate_core::{ElementTree, EventDelivery, SceneGraph};
 
 mod font_mailbox;
+pub mod render_host;
 pub mod renderer_selection;
 
 pub use font_mailbox::{FontFetchResult, FontMailbox, FontMailboxHandle};
 
-/// 1 フレーム分の `SceneGraph` の提示先。Render Host（ADR-0068）の present サーフェスを
+/// 1 フレーム分の `SceneGraph` の提示先。`Render Host`（[`render_host::RenderHost`]）を
 /// App Host から見た最小 seam。headless・テストでは no-op 実装を渡す。
-pub trait Surface {
+pub trait PresentTarget {
     /// 本フレームの scene graph を提示する。
     fn present(&mut self, scene: &SceneGraph);
 }
 
-/// `()` を提示先とする no-op `Surface`。headless 実行やテストで使う。
-pub struct HeadlessSurface;
+/// `()` を提示先とする no-op `PresentTarget`。headless 実行やテストで使う。
+pub struct HeadlessPresentTarget;
 
-impl Surface for HeadlessSurface {
+impl PresentTarget for HeadlessPresentTarget {
     fn present(&mut self, _scene: &SceneGraph) {}
 }
 
@@ -49,7 +52,7 @@ pub trait DeliverySink {
 }
 
 /// platform 非依存の最上位協調層。`ElementTree` 実体を所有し、`tick` でフレームを進める。
-pub struct AppHost<S: Surface> {
+pub struct AppHost<S: PresentTarget> {
     tree: ElementTree,
     surface: S,
     request_redraw: Box<dyn Fn()>,
@@ -57,7 +60,7 @@ pub struct AppHost<S: Surface> {
     font_mailbox: FontMailbox,
 }
 
-impl<S: Surface> AppHost<S> {
+impl<S: PresentTarget> AppHost<S> {
     /// 空の `ElementTree` で App Host を構築する。`request_redraw` は Platform Front が
     /// 供給するフレーム要求クロージャ（唯一の wake 入口・ADR-0117）。
     pub fn new(surface: S, request_redraw: Box<dyn Fn()>) -> Self {
@@ -88,7 +91,7 @@ impl<S: Surface> AppHost<S> {
         &self.tree
     }
 
-    /// 所有する `Surface` への可変参照。`tree_mut` と対称の seam。App Host が surface を
+    /// 所有する `PresentTarget` への可変参照。`tree_mut` と対称の seam。App Host が surface を
     /// 所有しても、Platform Front は resize 時に present サーフェス（wgpu surface 等）を
     /// 再 configure する必要があるため、ここで具体型 `S` へ可変アクセスする。
     pub fn surface_mut(&mut self) -> &mut S {
@@ -110,7 +113,7 @@ impl<S: Surface> AppHost<S> {
     ///    handler 実行＋reactive flush＋mutation 発行を return 前に済ます。
     /// 3+4. **commit_frame ＋ render**：`ElementTree::render` が内部で `commit_frame()` を
     ///    呼ぶので（layout settling → scene lowering）、App Host は `render` 一回で両フェーズを
-    ///    回し、得た scene を `Surface` へ present する。
+    ///    回し、得た scene を `PresentTarget` へ present する。
     /// 5. **再要求判定**：pending visual work（進行中 transition 等）が残れば `request_redraw`。
     pub fn tick(&mut self, timestamp_ms: f64) {
         // 0. font mailbox drain — layout より前。
@@ -149,23 +152,23 @@ mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    /// present 回数を数える `Surface`。
+    /// present 回数を数える `PresentTarget`。
     struct CountingSurface {
         present_count: Rc<RefCell<u32>>,
     }
 
-    impl Surface for CountingSurface {
+    impl PresentTarget for CountingSurface {
         fn present(&mut self, _scene: &SceneGraph) {
             *self.present_count.borrow_mut() += 1;
         }
     }
 
-    /// 可変フィールドを持つ最小 `Surface`。Platform Front の resize 経路を模す。
+    /// 可変フィールドを持つ最小 `PresentTarget`。Platform Front の resize 経路を模す。
     struct ReconfigurableSurface {
         configured_size: (u32, u32),
     }
 
-    impl Surface for ReconfigurableSurface {
+    impl PresentTarget for ReconfigurableSurface {
         fn present(&mut self, _scene: &SceneGraph) {}
     }
 
@@ -253,7 +256,7 @@ mod tests {
 
     #[test]
     fn sink_called_every_tick_even_without_deliveries() {
-        let surface = HeadlessSurface;
+        let surface = HeadlessPresentTarget;
         let mut app = AppHost::new(surface, Box::new(|| {}));
         let (_button, text) = build_min_tree(app.tree_mut());
 
@@ -276,7 +279,7 @@ mod tests {
     fn idle_when_no_pending_visual_work_does_not_request_redraw() {
         let redraws = Rc::new(RefCell::new(0));
         let r = redraws.clone();
-        let surface = HeadlessSurface;
+        let surface = HeadlessPresentTarget;
         let mut app = AppHost::new(surface, Box::new(move || *r.borrow_mut() += 1));
         let (_button, _text) = build_min_tree(app.tree_mut());
         app.mount(Box::new(RecordingSink {
@@ -299,8 +302,8 @@ mod tests {
     static NOTO_SANS_JP: &[u8] = include_bytes!("../../core/assets/fonts/NotoSansJP.ttf");
 
     /// Latin のみのバンドル上に日本語 Text を 1 つ置く。戻り値は (app, label)。
-    fn app_with_missing_cjk_font() -> (AppHost<HeadlessSurface>, hayate_core::ElementId) {
-        let mut app = AppHost::new(HeadlessSurface, Box::new(|| {}));
+    fn app_with_missing_cjk_font() -> (AppHost<HeadlessPresentTarget>, hayate_core::ElementId) {
+        let mut app = AppHost::new(HeadlessPresentTarget, Box::new(|| {}));
         let root = app.tree_mut().element_create(0, ElementKind::View);
         let label = app.tree_mut().element_create(1, ElementKind::Text);
         app.tree_mut().element_append_child(root, label);

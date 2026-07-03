@@ -1000,7 +1000,10 @@ dependencies = [
 name = "hayate-app-host"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "hayate-core",
+ "log",
+ "pollster",
 ]
 
 [[package]]

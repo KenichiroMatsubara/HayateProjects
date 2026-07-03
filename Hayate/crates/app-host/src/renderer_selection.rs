@@ -12,7 +12,7 @@
 //! 共有するのは [`RendererSelectionReason`] という語彙（enum）のみとし、分類ロジック
 //! 自体は各 adapter が持つ（ADR-0132）。
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[allow(dead_code)] // feature セットごとに有効なバックエンドは 1 つだけ
 pub enum SceneRendererKind {
     Vello,

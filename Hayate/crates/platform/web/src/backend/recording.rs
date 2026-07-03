@@ -26,12 +26,12 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Recording
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
+    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         self.recorder.record(scene, clear_color);
         Ok(())
     }
 
-    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
+    fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         self.recorder.clear(clear_color);
         Ok(())
     }

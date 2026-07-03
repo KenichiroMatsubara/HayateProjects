@@ -6,7 +6,9 @@ status: accepted
 
 ADR-0117 で adapter 層を Core / Family Adapter / leaf の三層に再編し、desktop は **枠（ディレクトリ + grouping doctrine）だけ**を前払いした。だが desktop は **leaf 0** のまま — windowing も Platform Front（native binding）も Surface も無く、native でレンダリング結果を実際に画面へ出す経路が一本も無い。
 
-ADR-0012 は **native を本体（primary target）** と定め、web が先行したのは開発速度の事情に過ぎないと明記する。App Host（ADR-0117）・`Surface` trait・vello/tiny-skia scene-renderer・Core の interaction/IME 増分 seam は揃っており、欠けているのは「OS の窓を開き、`App Host::tick` を回し、scene を present し、native 入力を Core へ流す」desktop 側の駆動・glue だけである。
+ADR-0012 は **native を本体（primary target）** と定め、web が先行したのは開発速度の事情に過ぎないと明記する。App Host（ADR-0117）・vello/tiny-skia scene-renderer・Core の interaction/IME 増分 seam は揃っており、欠けているのは「OS の窓を開き、`App Host::tick` を回し、scene を present し、native 入力を Core へ流す」desktop 側の駆動・glue だけである。
+
+（訂正・ADR-0132）本 ADR 執筆時点では GPU 専用の `Surface` trait・`RenderHost`・`SceneRenderer` は存在せず、`hayate-app-host` は present-only の最小スタブ（現 `PresentTarget`、`fn present(&mut self, scene: &SceneGraph)` のみ）しか持たなかった。ADR-0132 のスライス3が `Surface`（GPU 専用、`hayate-core` 所有）・`RenderHost`／`SceneRenderer`（`hayate-app-host`、`anyhow::Error` ベース）を実際に hoist した。本 desktop leaf（`WindowSurface`）はレンダラー選択・実行時フォールバックを必要としない単一 vello 経路のため、引き続き軽量な `PresentTarget` 実装のまま — GPU `Surface`/`RenderHost` は今のところ web adapter のみの消費者である。
 
 ここで ADR-0117 のモデルと実装機構が一点擦れる。ADR-0117 は desktop を **3 つの per-OS leaf（macos / windows / linux）** としてモデル化するが、**winit + wgpu は 3 OS を windowing / event-loop / GPU surface の層で 1 crate に畳む**。per-OS に割れる必然が生じるのは native capability（audio 等）と native IME（TSF / TSM / IBus）に踏み込んだときであり、本決定はそこへは踏み込まない。
 

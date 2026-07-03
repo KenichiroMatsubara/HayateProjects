@@ -24,6 +24,7 @@ pub mod secure_storage;
 pub mod sensors;
 pub mod share;
 pub mod subscription;
+pub mod surface;
 pub mod surface_lifecycle;
 pub mod touch_input;
 pub mod render_scale;
@@ -94,6 +95,7 @@ pub use node::{
 pub use scroll::{
     MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
+pub use surface::Surface;
 pub use surface_lifecycle::{
     SurfaceLifecycleAction, SurfaceLifecycleEvent, SurfaceLifecycleState,
 };

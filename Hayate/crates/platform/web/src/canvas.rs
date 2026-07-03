@@ -24,7 +24,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
 
-use crate::backend::{CanvasBackend, SelectedBackend};
+use crate::backend::{anyhow_to_js, init_render_host, CanvasBackend, SelectedBackend};
 use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
 use crate::ime_bridge::WebImeBridge;
@@ -238,7 +238,7 @@ impl HayateElementRenderer {
         canvas.set_width(metrics.buffer_width);
         canvas.set_height(metrics.buffer_height);
 
-        let mut backend = SelectedBackend::init(canvas.clone()).await?;
+        let mut backend: SelectedBackend = init_render_host(canvas.clone()).await.map_err(anyhow_to_js)?;
         backend.resize(
             metrics.buffer_width,
             metrics.buffer_height,
@@ -550,12 +550,14 @@ impl HayateElementRenderer {
         if self.backend.supports_layer_present() {
             let mut layer_dirty = self.tree.frame_layer_dirty().clone();
             layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
-            self.backend.present_layers(
-                self.tree.scene_graph(),
-                self.tree.frame_layers(),
-                &layer_dirty,
-                self.background,
-            )
+            self.backend
+                .present_layers(
+                    self.tree.scene_graph(),
+                    self.tree.frame_layers(),
+                    &layer_dirty,
+                    self.background,
+                )
+                .map_err(anyhow_to_js)
         } else {
             // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
             // dirty から分離）と scroll chrome（#634）も保守的に raster トリガへ含める。
@@ -570,7 +572,7 @@ impl HayateElementRenderer {
                 if result.is_ok() {
                     self.planner.note_full_raster(self.tree.frame_layers());
                 }
-                result
+                result.map_err(anyhow_to_js)
             } else {
                 Ok(())
             }
