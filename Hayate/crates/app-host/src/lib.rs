@@ -17,6 +17,8 @@
 
 use hayate_core::{ElementTree, EventDelivery, SceneGraph};
 
+pub mod renderer_selection;
+
 /// 1 フレーム分の `SceneGraph` の提示先。Render Host（ADR-0068）の present サーフェスを
 /// App Host から見た最小 seam。headless・テストでは no-op 実装を渡す。
 pub trait Surface {

@@ -2,17 +2,19 @@
 //! 採否を決めるかのルール（Hayate `CONTEXT.md`）。
 //!
 //! `Render Host` から切り出した純粋な継ぎ目。`wasm-bindgen` / `web-sys` 型を
-//! 一切持たず GPU にも触れない。判定は [`RendererCapabilities`] の純粋関数なので、
-//! 実 GPU もブラウザもなく capability 入力だけで検証できる。ホストは capability を
-//! 集めて結果の [`RendererSelectionPlan`] を消費するだけで、選択ルール自体は持たない。
-
-// ネイティブ（非 wasm）ビルドではテスト経路のみがこのモジュールを使う。残りを
-// 消費するホストコードは `cfg(target_arch = "wasm32")` の背後にある。
-#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+//! 一切持たず GPU にも触れない（ADR-0132 スライス1）。判定は
+//! [`RendererCapabilities`] の純粋関数なので、実 GPU もブラウザもなく capability
+//! 入力だけで検証できる。ホストは capability を集めて結果の
+//! [`RendererSelectionPlan`] を消費するだけで、選択ルール自体は持たない。
+//!
+//! `classify_init_error`（各 platform adapter が個別実装）はここでは扱わない。
+//! wgpu 語彙（platform 非依存）と adapter 固有のエラー形状が1関数に混在するため、
+//! 共有するのは [`RendererSelectionReason`] という語彙（enum）のみとし、分類ロジック
+//! 自体は各 adapter が持つ（ADR-0132）。
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[allow(dead_code)] // feature セットごとに有効なバックエンドは 1 つだけ
-pub(crate) enum SceneRendererKind {
+pub enum SceneRendererKind {
     Vello,
     TinySkia,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
@@ -24,7 +26,7 @@ pub(crate) enum SceneRendererKind {
 impl SceneRendererKind {
     /// 初期化に `navigator.gpu` が要るか。必要なのは WebGPU ベースの Vello だけで、
     /// 他は CPU で描画する。
-    pub(crate) fn requires_webgpu(self) -> bool {
+    pub fn requires_webgpu(self) -> bool {
         matches!(self, Self::Vello)
     }
 
@@ -33,12 +35,12 @@ impl SceneRendererKind {
     /// 流す）。CPU ペインタはアウトラインのみなので、そこではカラー絵文字がモノクロに
     /// 退化する（ADR-0101）。アダプタはフォント調達時にカラー版/モノクロ版を選ぶため
     /// これを参照する。
-    pub(crate) fn paints_color_glyphs(self) -> bool {
+    pub fn paints_color_glyphs(self) -> bool {
         matches!(self, Self::Vello)
     }
 
     /// ログ・エラーメッセージ用の安定したレンダラ ID。
-    pub(crate) fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Self::Vello => "vello",
             Self::TinySkia => "tiny-skia",
@@ -51,7 +53,7 @@ impl SceneRendererKind {
 /// `Render Host` がレンダラを採用しなかった、あるいは切り替えた理由。
 /// 場当たりのエラー文字列でなく観測可能にするための共通語彙。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum RendererSelectionReason {
+pub enum RendererSelectionReason {
     WebGpuUnavailable,
     RendererInitFailed,
     SurfaceLost,
@@ -62,7 +64,7 @@ pub(crate) enum RendererSelectionReason {
 /// この理由を伴う実行時失敗が、次のレンダラへの一方向フォールバックを引き起こすか
 /// （ADR-0050）。`WebGpuUnavailable` と `DisabledByPolicy` は選択時に確定し、
 /// フレーム途中で起きることはない。
-pub(crate) fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
+pub fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
     matches!(
         reason,
         RendererSelectionReason::SurfaceLost
@@ -75,25 +77,25 @@ pub(crate) fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> boo
 /// どの `Scene Renderer` も初期化せずに集めるので、判定は GPU 非依存かつテスト可能に
 /// 保たれる。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct RendererCapabilities {
-    /// `navigator.gpu` が存在するか。WebGPU ベースのレンダラ（Vello）はこれなしでは
+pub struct RendererCapabilities {
+    /// `navigator.gpu` が存在するか。WebGPU ベースのレンダラー（Vello）はこれなしでは
     /// 動かず、CPU レンダラ（tiny-skia）は影響を受けない。
-    pub(crate) webgpu_available: bool,
+    pub webgpu_available: bool,
 }
 
 /// ポリシーが見送った `Scene Renderer` と、その理由を表す
 /// `Renderer Selection Reason` の組。
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct RendererRejection {
-    pub(crate) renderer: SceneRendererKind,
-    pub(crate) reason: RendererSelectionReason,
+pub struct RendererRejection {
+    pub renderer: SceneRendererKind,
+    pub reason: RendererSelectionReason,
 }
 
 /// 与えた capability に対するポリシーの決定。試行するレンダラ（優先順、capability 上
 /// 実現可能なものだけ）と、事前に却下したレンダラ（各々理由付き）。呼び出し側がなぜ
 /// 選ばれた／選ばれなかったかを報告できるよう観測可能にしてある。
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct RendererSelectionPlan {
+pub struct RendererSelectionPlan {
     attempt_order: Vec<SceneRendererKind>,
     rejected: Vec<RendererRejection>,
 }
@@ -102,33 +104,30 @@ impl RendererSelectionPlan {
     /// 実現可能なものがあれば、ホストが最初に試すべきレンダラ。
     /// 観測用アクセサ。すべてのバックエンド構成が使うわけではない。
     #[allow(dead_code)]
-    pub(crate) fn primary(&self) -> Option<SceneRendererKind> {
+    pub fn primary(&self) -> Option<SceneRendererKind> {
         self.attempt_order.first().copied()
     }
 
     /// 実現可能なレンダラを、ホストが試すべき順に並べたもの。
-    pub(crate) fn attempt_order(&self) -> &[SceneRendererKind] {
+    pub fn attempt_order(&self) -> &[SceneRendererKind] {
         &self.attempt_order
     }
 
     /// ポリシーが init 前に却下したレンダラ（各々理由付き）。
-    pub(crate) fn rejected(&self) -> &[RendererRejection] {
+    pub fn rejected(&self) -> &[RendererRejection] {
         &self.rejected
     }
 
     /// `renderer` が試行シーケンスに含まれるか。ホストは現在アクティブなレンダラに
     /// ついてこの不変条件を維持する。
-    pub(crate) fn includes(&self, renderer: SceneRendererKind) -> bool {
+    pub fn includes(&self, renderer: SceneRendererKind) -> bool {
         self.attempt_order.contains(&renderer)
     }
 
     /// ポリシーが `renderer` を見送った場合の理由。
     /// 観測用アクセサ。すべてのバックエンド構成が使うわけではない。
     #[allow(dead_code)]
-    pub(crate) fn rejection_reason(
-        &self,
-        renderer: SceneRendererKind,
-    ) -> Option<RendererSelectionReason> {
+    pub fn rejection_reason(&self, renderer: SceneRendererKind) -> Option<RendererSelectionReason> {
         self.rejected
             .iter()
             .find(|rejection| rejection.renderer == renderer)
@@ -137,20 +136,20 @@ impl RendererSelectionPlan {
 
     /// このプランで `failed` の次に試すレンダラ。実行時フォールバック経路が、選択を
     /// 再導出せずポリシーの決定に従うために使う。
-    pub(crate) fn next_after(&self, failed: SceneRendererKind) -> Option<SceneRendererKind> {
+    pub fn next_after(&self, failed: SceneRendererKind) -> Option<SceneRendererKind> {
         let failed_index = self.attempt_order.iter().position(|&kind| kind == failed)?;
         self.attempt_order.get(failed_index + 1).copied()
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct RendererSelectionPolicy {
+pub struct RendererSelectionPolicy {
     allowed_renderers: &'static [SceneRendererKind],
     preferred_renderer_order: &'static [SceneRendererKind],
 }
 
 impl RendererSelectionPolicy {
-    pub(crate) const fn new(
+    pub const fn new(
         allowed_renderers: &'static [SceneRendererKind],
         preferred_renderer_order: &'static [SceneRendererKind],
     ) -> Self {
@@ -160,7 +159,7 @@ impl RendererSelectionPolicy {
         }
     }
 
-    pub(crate) fn allows(self, renderer: SceneRendererKind) -> bool {
+    pub fn allows(self, renderer: SceneRendererKind) -> bool {
         self.allowed_renderers.contains(&renderer)
     }
 
@@ -168,7 +167,7 @@ impl RendererSelectionPolicy {
     /// レンダラリストと capability 入力だけを使うので、実 GPU なしで完全にテストできる。
     /// 許可されない、または capability を満たさないレンダラは事前に除外して理由付きで
     /// [`RendererSelectionPlan::rejected`] に記録し、残りは優先順のまま試行シーケンスにする。
-    pub(crate) fn choose(self, capabilities: RendererCapabilities) -> RendererSelectionPlan {
+    pub fn choose(self, capabilities: RendererCapabilities) -> RendererSelectionPlan {
         let mut attempt_order = Vec::new();
         let mut rejected = Vec::new();
 
@@ -219,12 +218,12 @@ const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
     feature = "backend-tiny-skia",
     feature = "backend-null"
 ))]
-pub(crate) fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
+pub fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
 }
 
 /// 診断 init 用の予約（ADR-0050）。本番 `init` では使わない。
-pub(crate) fn diagnostic_renderer_selection_policy() -> RendererSelectionPolicy {
+pub fn diagnostic_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(DIAGNOSTIC_RENDERERS, DIAGNOSTIC_RENDERERS)
 }
 

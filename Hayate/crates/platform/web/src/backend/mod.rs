@@ -5,7 +5,7 @@ use hayate_core::SceneGraph;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use crate::renderer_selection::{
+use hayate_app_host::renderer_selection::{
     diagnostic_renderer_selection_policy, is_runtime_fallback_reason,
     standard_renderer_selection_policy, RendererCapabilities, RendererSelectionPlan,
     RendererSelectionPolicy, RendererSelectionReason, SceneRendererKind,
@@ -80,20 +80,21 @@ pub(crate) trait SceneRenderer {
     fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {}
 }
 
-impl RendererCapabilities {
-    /// ポリシーが必要とする実行環境の事実を調べる。WebGPU 系レンダラー（Vello）の採否を
-    /// 判断できるよう、実際にアダプタを取得できるかまで確認する。
-    ///
-    /// `navigator.gpu` の有無だけでは不十分。Chrome は GPU が無効な Linux などで
-    /// `navigator.gpu` を公開しつつ実アダプタを持たないことがあり、その環境で Vello を
-    /// 試すと wgpu が canvas に `getContext("webgpu")` を発行して canvas を「webgpu 専用」に
-    /// 固定してしまう。すると後続の tiny-skia フォールバックの `getContext("2d")` が null を
-    /// 返し、DOM は描けるのに Canvas に何も描画されなくなる。アダプタ取得はここで一度だけ
-    /// 行う（canvas 非依存なので汚染しない）。取得できた時だけ Vello を試行させる。
-    async fn detect() -> Self {
-        Self {
-            webgpu_available: webgpu_adapter_available().await,
-        }
+/// ポリシーが必要とする実行環境の事実を調べる。WebGPU 系レンダラー（Vello）の採否を
+/// 判断できるよう、実際にアダプタを取得できるかまで確認する。
+///
+/// `navigator.gpu` の有無だけでは不十分。Chrome は GPU が無効な Linux などで
+/// `navigator.gpu` を公開しつつ実アダプタを持たないことがあり、その環境で Vello を
+/// 試すと wgpu が canvas に `getContext("webgpu")` を発行して canvas を「webgpu 専用」に
+/// 固定してしまう。すると後続の tiny-skia フォールバックの `getContext("2d")` が null を
+/// 返し、DOM は描けるのに Canvas に何も描画されなくなる。アダプタ取得はここで一度だけ
+/// 行う（canvas 非依存なので汚染しない）。取得できた時だけ Vello を試行させる。
+///
+/// `RendererCapabilities` は `hayate-app-host` に定義された型（ADR-0132 スライス1）なので、
+/// 検出ロジックは web 固有の自由関数として持つ（foreign type への inherent impl は禁止）。
+async fn detect_renderer_capabilities() -> RendererCapabilities {
+    RendererCapabilities {
+        webgpu_available: webgpu_adapter_available().await,
     }
 }
 
@@ -132,11 +133,22 @@ async fn webgpu_adapter_available() -> bool {
     false
 }
 
-impl SceneRendererKind {
-    pub(crate) async fn try_init(
+/// web adapter 固有の `SceneRendererKind` 拡張（init・エラー分類）。`SceneRendererKind` は
+/// `hayate-app-host` 所有の foreign type なので inherent impl は書けず、拡張 trait にする
+/// （ADR-0132 スライス1：`classify_init_error` は共有せず adapter 個別実装のまま）。
+trait SceneRendererKindExt {
+    async fn try_init(self, canvas: HtmlCanvasElement) -> Result<Box<dyn SceneRenderer>, JsValue>;
+
+    fn try_init_sync_for_fallback(
         self,
         canvas: HtmlCanvasElement,
-    ) -> Result<Box<dyn SceneRenderer>, JsValue> {
+    ) -> Result<Box<dyn SceneRenderer>, JsValue>;
+
+    fn classify_init_error(self, error: &JsValue) -> RendererSelectionReason;
+}
+
+impl SceneRendererKindExt for SceneRendererKind {
+    async fn try_init(self, canvas: HtmlCanvasElement) -> Result<Box<dyn SceneRenderer>, JsValue> {
         match self {
             Self::Vello => {
                 #[cfg(feature = "backend-vello")]
@@ -186,7 +198,7 @@ impl SceneRendererKind {
     }
 
     /// 一方向のランタイムフォールバック用の同期初期化（ADR-0050）。
-    pub(crate) fn try_init_sync_for_fallback(
+    fn try_init_sync_for_fallback(
         self,
         canvas: HtmlCanvasElement,
     ) -> Result<Box<dyn SceneRenderer>, JsValue> {
@@ -231,7 +243,7 @@ impl SceneRendererKind {
         }
     }
 
-    pub(crate) fn classify_init_error(self, error: &JsValue) -> RendererSelectionReason {
+    fn classify_init_error(self, error: &JsValue) -> RendererSelectionReason {
         let message = js_error_message(error).to_ascii_lowercase();
 
         if self == Self::Vello
@@ -294,7 +306,7 @@ impl RenderHost {
         // ポリシーは検出した能力だけから、どのレンダラーをどの順で試すかを
         // 純粋に決める。`init` はその決定を実行するだけ（計画順に各レンダラー
         // を試し、失敗を表面化する）。
-        let plan = selection_policy.choose(RendererCapabilities::detect().await);
+        let plan = selection_policy.choose(detect_renderer_capabilities().await);
 
         let mut attempts: Vec<String> = plan
             .rejected()
