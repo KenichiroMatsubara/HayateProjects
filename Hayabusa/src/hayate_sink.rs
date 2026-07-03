@@ -114,15 +114,15 @@ pub(crate) fn to_core_style(prop: StyleProp) -> CoreStyleProp {
             style::FlexDirection::Column => FlexDirectionValue::Column,
         }),
         StyleProp::AlignItems(a) => CoreStyleProp::AlignItems(match a {
-            style::Align::Start => AlignValue::FlexStart,
+            style::Align::FlexStart => AlignValue::FlexStart,
             style::Align::Center => AlignValue::Center,
-            style::Align::End => AlignValue::FlexEnd,
+            style::Align::FlexEnd => AlignValue::FlexEnd,
             style::Align::Stretch => AlignValue::Stretch,
         }),
         StyleProp::JustifyContent(j) => CoreStyleProp::JustifyContent(match j {
-            style::Justify::Start => JustifyValue::FlexStart,
+            style::Justify::FlexStart => JustifyValue::FlexStart,
             style::Justify::Center => JustifyValue::Center,
-            style::Justify::End => JustifyValue::FlexEnd,
+            style::Justify::FlexEnd => JustifyValue::FlexEnd,
             style::Justify::SpaceBetween => JustifyValue::SpaceBetween,
             style::Justify::SpaceAround => JustifyValue::SpaceAround,
             style::Justify::SpaceEvenly => JustifyValue::SpaceEvenly,
@@ -138,32 +138,61 @@ fn to_core_styles(props: &[StyleProp]) -> Vec<CoreStyleProp> {
     props.iter().copied().map(to_core_style).collect()
 }
 
+/// `ElementSink` の8操作それぞれが実 `ElementTree` へどう写るかの唯一の配線。
+/// live 経路（`impl ElementSink for HayateSink`）と buffered 経路（[`apply_mutation`]）の
+/// 両方がこれらを呼ぶ——どちらかを消してももう一方に書き直す必要が無いよう、ここに集約する
+/// （値の変換自体は `to_core_*` に既に集約済みで、ここが集約するのは tree メソッド呼び出しの配線）。
+fn write_create(tree: &mut ElementTree, id: u64, kind: ElementKind) {
+    tree.element_create(id, to_core_kind(kind));
+}
+
+fn write_set_text(tree: &mut ElementTree, id: ElId, text: &str) {
+    tree.element_set_text(to_core_id(id), text);
+}
+
+fn write_append_child(tree: &mut ElementTree, parent: ElId, child: ElId) {
+    tree.element_append_child(to_core_id(parent), to_core_id(child));
+}
+
+fn write_insert_before(tree: &mut ElementTree, parent: ElId, child: ElId, before: ElId) {
+    tree.element_insert_before(to_core_id(parent), to_core_id(child), to_core_id(before));
+}
+
+fn write_remove(tree: &mut ElementTree, id: ElId) {
+    tree.element_remove(to_core_id(id));
+}
+
+fn write_set_root(tree: &mut ElementTree, id: ElId) {
+    tree.set_root(to_core_id(id));
+}
+
+/// 差分・非組成中ガードは core 側（ADR-0007）。戻り値（適用されたか）は捨てる。
+fn write_value(tree: &mut ElementTree, id: ElId, text: &str) {
+    tree.element_set_text_content_if_idle(to_core_id(id), text);
+}
+
+fn write_style(tree: &mut ElementTree, id: ElId, props: &[StyleProp]) {
+    tree.element_set_style(to_core_id(id), &to_core_styles(props));
+}
+
 /// 記録済みの 1 件の [`Mutation`] を実 `ElementTree` へ適用する。`RecordingSink` を
 /// buffering sink として使う経路（App Host への drain・src/app_host.rs）が、effect が
 /// 積んだ mutation 列をフレーム内でこの関数で借用ツリーへ出し切る。`HayateSink` の
-/// ライブ転送と同じ 1:1 写像で、id は記録時に払い出し済みのものをそのまま使う。
+/// ライブ転送と同じ `write_*` 配線を使い、id は記録時に払い出し済みのものをそのまま使う。
 pub(crate) fn apply_mutation(tree: &mut ElementTree, m: &Mutation) {
     match m {
-        Mutation::Create { id, kind } => {
-            tree.element_create(id.0, to_core_kind(*kind));
-        }
-        Mutation::SetText { id, text } => tree.element_set_text(to_core_id(*id), text),
-        Mutation::AppendChild { parent, child } => {
-            tree.element_append_child(to_core_id(*parent), to_core_id(*child))
-        }
+        Mutation::Create { id, kind } => write_create(tree, id.0, *kind),
+        Mutation::SetText { id, text } => write_set_text(tree, *id, text),
+        Mutation::AppendChild { parent, child } => write_append_child(tree, *parent, *child),
         Mutation::InsertBefore {
             parent,
             child,
             before,
-        } => tree.element_insert_before(to_core_id(*parent), to_core_id(*child), to_core_id(*before)),
-        Mutation::Remove { id } => tree.element_remove(to_core_id(*id)),
-        Mutation::SetRoot { id } => tree.set_root(to_core_id(*id)),
-        Mutation::SetValue { id, text } => {
-            tree.element_set_text_content_if_idle(to_core_id(*id), text);
-        }
-        Mutation::SetStyle { id, props } => {
-            tree.element_set_style(to_core_id(*id), &to_core_styles(props));
-        }
+        } => write_insert_before(tree, *parent, *child, *before),
+        Mutation::Remove { id } => write_remove(tree, *id),
+        Mutation::SetRoot { id } => write_set_root(tree, *id),
+        Mutation::SetValue { id, text } => write_value(tree, *id, text),
+        Mutation::SetStyle { id, props } => write_style(tree, *id, props),
     }
 }
 
@@ -171,40 +200,36 @@ impl ElementSink for HayateSink {
     fn create_element(&mut self, kind: ElementKind) -> ElId {
         let raw = self.next_id;
         self.next_id += 1;
-        self.tree.element_create(raw, to_core_kind(kind));
+        write_create(&mut self.tree, raw, kind);
         ElId(raw)
     }
 
     fn set_text(&mut self, id: ElId, text: &str) {
-        self.tree.element_set_text(to_core_id(id), text);
+        write_set_text(&mut self.tree, id, text);
     }
 
     fn append_child(&mut self, parent: ElId, child: ElId) {
-        self.tree
-            .element_append_child(to_core_id(parent), to_core_id(child));
+        write_append_child(&mut self.tree, parent, child);
     }
 
     fn insert_before(&mut self, parent: ElId, child: ElId, before: ElId) {
-        self.tree
-            .element_insert_before(to_core_id(parent), to_core_id(child), to_core_id(before));
+        write_insert_before(&mut self.tree, parent, child, before);
     }
 
     fn remove(&mut self, id: ElId) {
-        self.tree.element_remove(to_core_id(id));
+        write_remove(&mut self.tree, id);
     }
 
     fn set_root(&mut self, id: ElId) {
-        self.tree.set_root(to_core_id(id));
+        write_set_root(&mut self.tree, id);
     }
 
     fn set_value(&mut self, id: ElId, text: &str) {
-        // 差分・非組成中ガードは core 側（ADR-0007）。戻り値（適用されたか）は捨てる。
-        self.tree.element_set_text_content_if_idle(to_core_id(id), text);
+        write_value(&mut self.tree, id, text);
     }
 
     fn set_style(&mut self, id: ElId, props: &[StyleProp]) {
-        self.tree
-            .element_set_style(to_core_id(id), &to_core_styles(props));
+        write_style(&mut self.tree, id, props);
     }
 }
 

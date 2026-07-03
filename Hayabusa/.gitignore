@@ -1,5 +1,7 @@
 # Rust build artifacts
 target/
 
-# codegen is a zero-dep library build-dependency; libraries don't commit their lockfile.
+# codegen and style-vocab are zero-dep library (build-)dependencies; libraries
+# don't commit their lockfile.
 codegen/Cargo.lock
+style-vocab/Cargo.lock

@@ -26,8 +26,13 @@ hayate-app-host = { path = "../Hayate/crates/app-host", optional = true }
 
 # `.hybs` → 生成 Rust の build 時 codegen（ADR-0008）。build.rs から使う。クレートは自身の
 # ライブラリを build.rs から使えないため、パース／生成は別クレートに置く。
+#
+# style DSL の enum 語彙（Display/FlexDirection/Align/Justify）は Hayate の proto/spec を
+# 正本として hayabusa-style-vocab が生成する（ADR-0011）。build.rs がこれを読んで
+# src/style.rs の実 enum を生成する。
 [build-dependencies]
 hayabusa-codegen = { path = "codegen" }
+hayabusa-style-vocab = { path = "style-vocab" }
 
 # Hayate vendors several crates and rewires them via `[patch.crates-io]` in its own
 # workspace (Hayate/Cargo.toml, ADR-0007). Cargo does NOT inherit a dependency's

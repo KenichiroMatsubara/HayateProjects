@@ -1,0 +1,16 @@
+[package]
+name = "hayabusa-style-vocab"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Hayabusa style DSL enum vocabulary, generated at build time from Hayate's proto/spec (ADR-0011)"
+repository = "https://github.com/KenichiroMatsubara/HayateProjects"
+build = "build.rs"
+
+# Pure-std, no dependencies: this crate is used both as an ordinary dependency
+# (hayabusa-codegen, itself a build-dependency of hayabusa — ADR-0008) and as a
+# build-dependency of hayabusa (to generate style.rs's enums). Either consumer
+# could pull it in from a build-script context, so it stays dependency-free.
+[dependencies]
+
+[build-dependencies]

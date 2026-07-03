@@ -165,12 +165,20 @@ name = "hayabusa"
 version = "0.1.0"
 dependencies = [
  "hayabusa-codegen",
+ "hayabusa-style-vocab",
  "hayate-app-host",
  "hayate-core",
 ]
 
 [[package]]
 name = "hayabusa-codegen"
+version = "0.1.0"
+dependencies = [
+ "hayabusa-style-vocab",
+]
+
+[[package]]
+name = "hayabusa-style-vocab"
 version = "0.1.0"
 
 [[package]]

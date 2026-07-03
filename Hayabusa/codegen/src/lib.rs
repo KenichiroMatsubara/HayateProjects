@@ -518,14 +518,10 @@ fn parse_inline_style(s: &str) -> Result<Vec<String>, CompileError> {
                 format!("StyleProp::BackgroundColor({})", style_color(val)?)
             }
             "color" => format!("StyleProp::TextColor({})", style_color(val)?),
-            "display" => format!("StyleProp::Display(Display::{})", style_enum(val, key)?),
-            "flex-direction" => {
-                format!("StyleProp::FlexDirection(FlexDirection::{})", style_enum(val, key)?)
-            }
-            "align-items" => format!("StyleProp::AlignItems(Align::{})", style_enum(val, key)?),
-            "justify-content" => {
-                format!("StyleProp::JustifyContent(Justify::{})", style_enum(val, key)?)
-            }
+            "display" => format!("StyleProp::Display({})", enum_variant(key, val)?),
+            "flex-direction" => format!("StyleProp::FlexDirection({})", enum_variant(key, val)?),
+            "align-items" => format!("StyleProp::AlignItems({})", enum_variant(key, val)?),
+            "justify-content" => format!("StyleProp::JustifyContent({})", enum_variant(key, val)?),
             other => {
                 return Err(CompileError::new(format!(
                     "unsupported style property `{other}`"
@@ -618,31 +614,20 @@ fn rgba_lit(r: u8, g: u8, b: u8, a: u8) -> String {
     format!("Rgba::new({}, {}, {}, {})", f(r), f(g), f(b), f(a))
 }
 
-/// 列挙値のキーワード → Rust バリアント名。
-fn style_enum(val: &str, prop: &str) -> Result<String, CompileError> {
-    let variant = match (prop, val) {
-        ("display", "flex") => "Flex",
-        ("display", "block") => "Block",
-        ("display", "none") => "None",
-        ("flex-direction", "row") => "Row",
-        ("flex-direction", "column") => "Column",
-        ("align-items", "start" | "flex-start") => "Start",
-        ("align-items", "center") => "Center",
-        ("align-items", "end" | "flex-end") => "End",
-        ("align-items", "stretch") => "Stretch",
-        ("justify-content", "start" | "flex-start") => "Start",
-        ("justify-content", "center") => "Center",
-        ("justify-content", "end" | "flex-end") => "End",
-        ("justify-content", "space-between") => "SpaceBetween",
-        ("justify-content", "space-around") => "SpaceAround",
-        ("justify-content", "space-evenly") => "SpaceEvenly",
-        _ => {
-            return Err(CompileError::new(format!(
-                "unsupported value `{val}` for `{prop}`"
-            )))
-        }
-    };
-    Ok(variant.to_string())
+/// キーワード → 完全修飾 variant 式（例: `"align-items"`, `"flex-start"` → `"Align::FlexStart"`）。
+/// 語彙は `hayabusa-style-vocab`（Hayate の proto/spec が正本・ADR-0011）から読む——このクレートで
+/// キーワードや variant 名を再宣言しない。
+fn enum_variant(prop: &str, val: &str) -> Result<String, CompileError> {
+    let spec = hayabusa_style_vocab::ENUM_KEYWORDS
+        .iter()
+        .find(|s| s.prop == prop)
+        .unwrap_or_else(|| panic!("`{prop}` is not a style_enum prop (parse_inline_style's match should have rejected it first)"));
+    match spec.variants.iter().find(|(keyword, _)| *keyword == val) {
+        Some((_, variant)) => Ok(format!("{}::{variant}", spec.enum_name)),
+        None => Err(CompileError::new(format!(
+            "unsupported value `{val}` for `{prop}`"
+        ))),
+    }
 }
 
 // ───────────────────────── 収集（handler / 自由変数） ─────────────────────────

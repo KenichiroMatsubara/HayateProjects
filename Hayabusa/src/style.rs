@@ -33,40 +33,10 @@ impl Rgba {
     }
 }
 
-/// `display`。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Display {
-    Flex,
-    Block,
-    None,
-}
-
-/// `flex-direction`（row / column）。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FlexDirection {
-    Row,
-    Column,
-}
-
-/// `align-items`。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Align {
-    Start,
-    Center,
-    End,
-    Stretch,
-}
-
-/// `justify-content`。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Justify {
-    Start,
-    Center,
-    End,
-    SpaceBetween,
-    SpaceAround,
-    SpaceEvenly,
-}
+// `Display` / `FlexDirection` / `Align` / `Justify` は `hayabusa-style-vocab`（Hayate の
+// proto/spec が正本・ADR-0011）から `build.rs` が生成する。手書きすると codegen 側の
+// キーワード変換と語彙が二重管理になる。
+include!(concat!(env!("OUT_DIR"), "/style_enums_generated.rs"));
 
 /// static なスタイルプロパティ 1 件。要素へ一度だけ適用される（ADR-0010）。
 #[derive(Clone, Copy, Debug, PartialEq)]
