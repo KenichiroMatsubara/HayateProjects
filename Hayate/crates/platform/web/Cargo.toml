@@ -11,13 +11,14 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["backend-vello", "backend-tiny-skia"]
-backend-vello = ["dep:wgpu", "dep:hayate-scene-renderer-vello"]
-backend-tiny-skia = ["dep:tiny-skia", "dep:hayate-scene-renderer-tiny-skia"]
-backend-recording = []
-backend-null = []
+backend-vello = ["dep:wgpu", "dep:hayate-scene-renderer-vello", "hayate-app-host/backend-vello"]
+backend-tiny-skia = ["dep:tiny-skia", "dep:hayate-scene-renderer-tiny-skia", "hayate-app-host/backend-tiny-skia"]
+backend-recording = ["hayate-app-host/backend-recording"]
+backend-null = ["hayate-app-host/backend-null"]
 
 [dependencies]
 hayate-core = { path = "../../core" }
+hayate-app-host = { path = "../../app-host" }
 hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional = true }
 hayate-scene-renderer-tiny-skia = { path = "../../scene-renderers/tiny-skia", optional = true }

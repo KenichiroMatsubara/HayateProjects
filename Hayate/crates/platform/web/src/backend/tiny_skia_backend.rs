@@ -14,7 +14,7 @@ use tiny_skia::Pixmap;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use super::{CanvasBackend, ClearColor, SceneRendererKind};
+use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
     ctx: web_sys::CanvasRenderingContext2d,
@@ -70,24 +70,24 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::TinySkia
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
+    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         self.scene_renderer.render_scene(
             scene,
             &mut self.pixmap,
             clear_color,
             self.content_scale,
         );
-        blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
+        blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
     }
 
-    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
+    fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         self.scene_renderer.render_scene(
             &SceneGraph::new(),
             &mut self.pixmap,
             clear_color,
             self.content_scale,
         );
-        blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
+        blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
     }
 
     fn supports_layer_present(&self) -> bool {
@@ -100,7 +100,7 @@ impl CanvasBackend for SelectedBackend {
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
         clear_color: ClearColor,
-    ) -> Result<(), JsValue> {
+    ) -> Result<(), anyhow::Error> {
         let Some(&root) = layers.first() else {
             return Ok(());
         };
@@ -126,7 +126,7 @@ impl CanvasBackend for SelectedBackend {
             };
             self.rasterizer
                 .rasterize(layer, &extracted)
-                .map_err(|e| JsValue::from_str(&e))?;
+                .map_err(|e| anyhow::anyhow!(e))?;
             self.planner
                 .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
         }
@@ -155,11 +155,11 @@ impl CanvasBackend for SelectedBackend {
         };
         let result = self.compositor.composite(&mut target, &quads);
         self.pixmap = target.pixmap;
-        result.map_err(|e| JsValue::from_str(&e))?;
+        result.map_err(|e| anyhow::anyhow!(e))?;
         for quad in &quads {
             self.planner.note_composited(quad.layer);
         }
-        blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height)
+        blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
     }
 
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {

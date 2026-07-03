@@ -7,6 +7,7 @@ use crate::element::edit_state::EditState;
 use crate::element::engine::ElementEngine;
 use crate::element::effective_visual::{self, child_inherited_context};
 use crate::element::viewport_resize;
+use crate::element::font_fetcher::FontFetcher;
 use crate::element::ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
 use crate::element::event_spec::DocumentEventKind;
 
@@ -729,6 +730,18 @@ impl ElementTree {
             None => ImePresentation::Hidden,
         };
         ime.present(presentation);
+    }
+
+    /// 欠落フォントのオンデマンド取得を駆動する（ADR-0132 スライス2、`drive_ime` と同型）。
+    /// レイアウトが `.notdef` を検出して積んだ `Event::FetchFont` を drain し、検出の
+    /// たびに [`FontFetcher::request`] を同期に呼ぶ。取得の成否は `register_font` /
+    /// `font_fetch_failed` で別途 core へ報告される（ここでは結果を待たない）。
+    pub fn drive_font_requests(&mut self, fetcher: &mut impl FontFetcher) {
+        for event in self.poll_events() {
+            if let Event::FetchFont { family } = event {
+                fetcher.request(&family);
+            }
+        }
     }
 
     /// 直近入力イベントのモダリティ（ADR-0102）。`:focus-visible` を駆動する

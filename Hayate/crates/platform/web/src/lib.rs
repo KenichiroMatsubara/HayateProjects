@@ -1,8 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 mod backend;
 #[cfg(any(target_arch = "wasm32", test))]
-mod renderer_selection;
-#[cfg(any(target_arch = "wasm32", test))]
 mod builtin_fonts;
 #[cfg(any(target_arch = "wasm32", test))]
 mod edit_keymap;

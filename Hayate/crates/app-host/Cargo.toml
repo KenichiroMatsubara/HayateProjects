@@ -6,5 +6,16 @@ license.workspace = true
 description = "Hayate App Host — platform-independent mount point and frame loop (ADR-0117)"
 repository.workspace = true
 
+[features]
+backend-vello = []
+backend-tiny-skia = []
+backend-recording = []
+backend-null = []
+
 [dependencies]
 hayate-core = { path = "../core" }
+anyhow.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true

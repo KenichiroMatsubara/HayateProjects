@@ -9,6 +9,7 @@ mod engine;
 pub mod edit_state;
 pub mod effective_visual;
 mod font_fetch;
+pub mod font_fetcher;
 pub mod ime_bridge;
 pub mod ime_command;
 pub mod ime_reconcile;
@@ -43,6 +44,7 @@ pub use document_runtime::{DocumentRuntime, EventDelivery, ListenerId};
 pub use edit_state::{
     CompositionClause, CompositionUnderline, Direction, EditIntent, EditState, Granularity, Preedit,
 };
+pub use font_fetcher::FontFetcher;
 pub use ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
 pub use ime_command::{apply_command, ImeBuffer, ImeCommand};
 pub use ime_reconcile::{apply_ime_action, translate_text_input, ImeAction, TextInputState, TextSpan};

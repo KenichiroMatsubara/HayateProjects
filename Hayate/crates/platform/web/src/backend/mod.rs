@@ -1,17 +1,15 @@
-use std::collections::HashSet;
-
-use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::Surface;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
-use crate::renderer_selection::{
-    diagnostic_renderer_selection_policy, is_runtime_fallback_reason,
-    standard_renderer_selection_policy, RendererCapabilities, RendererSelectionPlan,
-    RendererSelectionPolicy, RendererSelectionReason, SceneRendererKind,
+use hayate_app_host::render_host::{
+    ClearColor, RenderHost as GenericRenderHost, RendererInit, SceneRenderer,
 };
-
-pub(crate) type ClearColor = [f32; 4];
+pub(crate) use hayate_app_host::render_host::SceneRenderer as CanvasBackend;
+use hayate_app_host::renderer_selection::{
+    diagnostic_renderer_selection_policy, standard_renderer_selection_policy,
+    RendererCapabilities, RendererSelectionReason, SceneRendererKind,
+};
 
 #[cfg(feature = "backend-vello")]
 mod vello;
@@ -45,55 +43,201 @@ use null::SelectedBackend as NullBackend;
 )))]
 compile_error!("Enable one of: backend-vello, backend-recording, backend-tiny-skia, backend-null");
 
-pub(crate) trait SceneRenderer {
-    fn kind(&self) -> SceneRendererKind;
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue>;
-    #[allow(dead_code)]
-    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue>;
+/// `hayate_core::Surface`（GPU 経路専用の提示サーフェス契約、ADR-0132 スライス3）の web 実装。
+/// `RenderHost`（hoist 済み、`hayate-app-host`）が必要とする最小面（clone・width・height）だけを
+/// 持つ薄いラッパー。実際の canvas 資源は `WebRendererInit` がバックエンド初期化時に取り出す。
+#[derive(Clone)]
+pub(crate) struct WebCanvasSurface(pub(crate) HtmlCanvasElement);
 
-    /// このバックエンドが per-layer present（#636）を実装するか。true なら present ループは
-    /// [`present_layers`](Self::present_layers) を使い、dirty レイヤだけ再 raster してキャッシュ面を
-    /// 合成する。false（既定）のバックエンドは単一 root の全面 raster にフォールバックする。
-    fn supports_layer_present(&self) -> bool {
-        false
+impl Surface for WebCanvasSurface {
+    fn width(&self) -> u32 {
+        self.0.width()
     }
 
-    /// per-layer present（#636・ADR-0125 web CPU 経路）。`layers` / `layer_dirty` は core が
-    /// `render()` で捕捉した `frame_layers()` / 再 raster 対象。dirty / 未キャッシュのレイヤだけ
-    /// キャッシュ面へ raster し、placement quad で合成する（composite-only フレームは全面 raster
-    /// を起動しない）。既定は全面 `render_scene` にフォールバック（未対応バックエンド）。
-    fn present_layers(
-        &mut self,
-        scene: &SceneGraph,
-        _layers: &[ElementId],
-        _layer_dirty: &HashSet<ElementId>,
-        clear_color: ClearColor,
-    ) -> Result<(), JsValue> {
-        self.render_scene(scene, clear_color)
+    fn height(&self) -> u32 {
+        self.0.height()
     }
-
-    /// 描画サーフェスを canvas の新しいピクセル寸法に合わせてリサイズする。
-    /// `content_scale` は CSS レイアウト座標を物理ピクセルに変換する（dpr）。
-    /// オフスクリーン対象（GPU テクスチャ / CPU ピクスマップ）に描画する
-    /// バックエンドはここで再確保しないと、canvas が広がっても内容が初期
-    /// サイズにクリップされたままになる。サイズを持たないバックエンドは no-op。
-    fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {}
 }
 
-impl RendererCapabilities {
-    /// ポリシーが必要とする実行環境の事実を調べる。WebGPU 系レンダラー（Vello）の採否を
-    /// 判断できるよう、実際にアダプタを取得できるかまで確認する。
-    ///
-    /// `navigator.gpu` の有無だけでは不十分。Chrome は GPU が無効な Linux などで
-    /// `navigator.gpu` を公開しつつ実アダプタを持たないことがあり、その環境で Vello を
-    /// 試すと wgpu が canvas に `getContext("webgpu")` を発行して canvas を「webgpu 専用」に
-    /// 固定してしまう。すると後続の tiny-skia フォールバックの `getContext("2d")` が null を
-    /// 返し、DOM は描けるのに Canvas に何も描画されなくなる。アダプタ取得はここで一度だけ
-    /// 行う（canvas 非依存なので汚染しない）。取得できた時だけ Vello を試行させる。
-    async fn detect() -> Self {
-        Self {
-            webgpu_available: webgpu_adapter_available().await,
+/// web adapter による [`RendererInit`] 実装（ADR-0132 スライス3）。`hayate-app-host` の
+/// `RenderHost` はこれ越しにしか wasm-bindgen/web-sys 型へ触れない。`classify_init_error` は
+/// #672 の決定どおり adapter 個別実装のまま（wgpu 語彙と canvas 2D コンテキスト取得失敗という
+/// web 固有のエラー形状が1関数に混在するため共有しない）。
+pub(crate) struct WebRendererInit;
+
+impl RendererInit<WebCanvasSurface> for WebRendererInit {
+    async fn try_init(
+        &self,
+        kind: SceneRendererKind,
+        surface: WebCanvasSurface,
+    ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
+        let canvas = surface.0;
+        match kind {
+            SceneRendererKind::Vello => {
+                #[cfg(feature = "backend-vello")]
+                {
+                    return VelloBackend::init(canvas)
+                        .await
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-vello"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
+            SceneRendererKind::TinySkia => {
+                #[cfg(feature = "backend-tiny-skia")]
+                {
+                    return TinySkiaBackend::init(canvas)
+                        .await
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-tiny-skia"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
+            SceneRendererKind::Recording => {
+                #[cfg(feature = "backend-recording")]
+                {
+                    return RecordingBackend::init(canvas)
+                        .await
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-recording"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
+            SceneRendererKind::Null => {
+                #[cfg(feature = "backend-null")]
+                {
+                    return NullBackend::init(canvas)
+                        .await
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-null"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
         }
+    }
+
+    /// 一方向のランタイムフォールバック用の同期初期化（ADR-0050）。
+    fn try_init_sync_for_fallback(
+        &self,
+        kind: SceneRendererKind,
+        surface: WebCanvasSurface,
+    ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
+        let canvas = surface.0;
+        match kind {
+            SceneRendererKind::Vello => Err(anyhow::anyhow!(
+                "renderer cannot be initialized synchronously for runtime fallback: {}",
+                kind.name()
+            )),
+            SceneRendererKind::TinySkia => {
+                #[cfg(feature = "backend-tiny-skia")]
+                {
+                    return TinySkiaBackend::init_sync(canvas)
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-tiny-skia"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
+            SceneRendererKind::Recording => {
+                #[cfg(feature = "backend-recording")]
+                {
+                    return RecordingBackend::init_sync(canvas)
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-recording"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
+            SceneRendererKind::Null => {
+                #[cfg(feature = "backend-null")]
+                {
+                    return NullBackend::init_sync(canvas)
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-null"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
+        }
+    }
+
+    fn classify_init_error(&self, kind: SceneRendererKind, error: &anyhow::Error) -> RendererSelectionReason {
+        let message = error.to_string().to_ascii_lowercase();
+
+        if kind == SceneRendererKind::Vello
+            && (message.contains("webgpu")
+                || message.contains("navigator.gpu")
+                || message.contains("adapter not found"))
+        {
+            return RendererSelectionReason::WebGpuUnavailable;
+        }
+
+        if message.contains("surface lost")
+            || message.contains("surface outdated")
+            || message.contains("validation error")
+        {
+            return RendererSelectionReason::SurfaceLost;
+        }
+
+        if message.contains("surface not supported")
+            || message.contains("context unavailable")
+            || message.contains("failed to cast")
+        {
+            return RendererSelectionReason::CapabilityUnsupported;
+        }
+
+        if message.contains("not compiled") {
+            return RendererSelectionReason::DisabledByPolicy;
+        }
+
+        RendererSelectionReason::RendererInitFailed
+    }
+}
+
+fn not_compiled_error(kind: SceneRendererKind) -> anyhow::Error {
+    anyhow::anyhow!("renderer not compiled: {}", kind.name())
+}
+
+/// ポリシーが必要とする実行環境の事実を調べる。WebGPU 系レンダラー（Vello）の採否を
+/// 判断できるよう、実際にアダプタを取得できるかまで確認する。
+///
+/// `navigator.gpu` の有無だけでは不十分。Chrome は GPU が無効な Linux などで
+/// `navigator.gpu` を公開しつつ実アダプタを持たないことがあり、その環境で Vello を
+/// 試すと wgpu が canvas に `getContext("webgpu")` を発行して canvas を「webgpu 専用」に
+/// 固定してしまう。すると後続の tiny-skia フォールバックの `getContext("2d")` が null を
+/// 返し、DOM は描けるのに Canvas に何も描画されなくなる。アダプタ取得はここで一度だけ
+/// 行う（canvas 非依存なので汚染しない）。取得できた時だけ Vello を試行させる。
+///
+/// `RendererCapabilities` は `hayate-app-host` に定義された型（ADR-0132 スライス1）なので、
+/// 検出ロジックは web 固有の自由関数として持つ（foreign type への inherent impl は禁止）。
+async fn detect_renderer_capabilities() -> RendererCapabilities {
+    RendererCapabilities {
+        webgpu_available: webgpu_adapter_available().await,
     }
 }
 
@@ -132,330 +276,52 @@ async fn webgpu_adapter_available() -> bool {
     false
 }
 
-impl SceneRendererKind {
-    pub(crate) async fn try_init(
-        self,
-        canvas: HtmlCanvasElement,
-    ) -> Result<Box<dyn SceneRenderer>, JsValue> {
-        match self {
-            Self::Vello => {
-                #[cfg(feature = "backend-vello")]
-                {
-                    return Ok(Box::new(VelloBackend::init(canvas).await?));
-                }
-                #[cfg(not(feature = "backend-vello"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-            Self::TinySkia => {
-                #[cfg(feature = "backend-tiny-skia")]
-                {
-                    return Ok(Box::new(TinySkiaBackend::init(canvas).await?));
-                }
-                #[cfg(not(feature = "backend-tiny-skia"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-            Self::Recording => {
-                #[cfg(feature = "backend-recording")]
-                {
-                    return Ok(Box::new(RecordingBackend::init(canvas).await?));
-                }
-                #[cfg(not(feature = "backend-recording"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-            Self::Null => {
-                #[cfg(feature = "backend-null")]
-                {
-                    return Ok(Box::new(NullBackend::init(canvas).await?));
-                }
-                #[cfg(not(feature = "backend-null"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-        }
-    }
+/// `Render Host`（hoist 済み、ADR-0132 スライス3）の web adapter 具体化。`Surface`（GPU 経路
+/// 専用）は [`WebCanvasSurface`]、バックエンド構築・エラー分類は [`WebRendererInit`]。
+pub(crate) type RenderHost = GenericRenderHost<WebCanvasSurface, WebRendererInit>;
+pub(crate) type SelectedBackend = RenderHost;
 
-    /// 一方向のランタイムフォールバック用の同期初期化（ADR-0050）。
-    pub(crate) fn try_init_sync_for_fallback(
-        self,
-        canvas: HtmlCanvasElement,
-    ) -> Result<Box<dyn SceneRenderer>, JsValue> {
-        match self {
-            Self::Vello => Err(JsValue::from_str(&format!(
-                "renderer cannot be initialized synchronously for runtime fallback: {}",
-                self.name()
-            ))),
-            Self::TinySkia => {
-                #[cfg(feature = "backend-tiny-skia")]
-                {
-                    return Ok(Box::new(TinySkiaBackend::init_sync(canvas)?));
-                }
-                #[cfg(not(feature = "backend-tiny-skia"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-            Self::Recording => {
-                #[cfg(feature = "backend-recording")]
-                {
-                    return Ok(Box::new(RecordingBackend::init_sync(canvas)?));
-                }
-                #[cfg(not(feature = "backend-recording"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-            Self::Null => {
-                #[cfg(feature = "backend-null")]
-                {
-                    return Ok(Box::new(NullBackend::init_sync(canvas)?));
-                }
-                #[cfg(not(feature = "backend-null"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(self))
-                }
-            }
-        }
-    }
-
-    pub(crate) fn classify_init_error(self, error: &JsValue) -> RendererSelectionReason {
-        let message = js_error_message(error).to_ascii_lowercase();
-
-        if self == Self::Vello
-            && (message.contains("webgpu")
-                || message.contains("navigator.gpu")
-                || message.contains("adapter not found"))
-        {
-            return RendererSelectionReason::WebGpuUnavailable;
-        }
-
-        if message.contains("surface lost")
-            || message.contains("surface outdated")
-            || message.contains("validation error")
-        {
-            return RendererSelectionReason::SurfaceLost;
-        }
-
-        if message.contains("surface not supported")
-            || message.contains("context unavailable")
-            || message.contains("failed to cast")
-        {
-            return RendererSelectionReason::CapabilityUnsupported;
-        }
-
-        if message.contains("not compiled") {
-            return RendererSelectionReason::DisabledByPolicy;
-        }
-
-        RendererSelectionReason::RendererInitFailed
-    }
+pub(crate) async fn init_render_host(canvas: HtmlCanvasElement) -> Result<RenderHost, anyhow::Error> {
+    init_render_host_with_policy(canvas, standard_renderer_selection_policy()).await
 }
 
-fn not_compiled_error(kind: SceneRendererKind) -> JsValue {
-    JsValue::from_str(&format!("renderer not compiled: {}", kind.name()))
-}
-
-pub(crate) struct RenderHost {
+/// テスト・診断用（ADR-0050）。本番は `init_render_host` を使う。
+#[allow(dead_code)]
+pub(crate) async fn init_diagnostic_render_host(
     canvas: HtmlCanvasElement,
-    renderer: Option<Box<dyn SceneRenderer>>,
-    /// このホストが実行するポリシー決定。どのレンダラーを試すか、なぜ他が
-    /// 棄却されたか。ホストは実行するだけで再導出はしない。
-    selection_plan: RendererSelectionPlan,
+) -> Result<RenderHost, anyhow::Error> {
+    init_render_host_with_policy(canvas, diagnostic_renderer_selection_policy()).await
 }
 
-impl RenderHost {
-    pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::init_with_policy(canvas, standard_renderer_selection_policy()).await
-    }
-
-    /// テスト・診断用（ADR-0050）。本番は `init` を使う。
-    #[allow(dead_code)]
-    pub(crate) async fn init_diagnostic(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
-        Self::init_with_policy(canvas, diagnostic_renderer_selection_policy()).await
-    }
-
-    pub(crate) async fn init_with_policy(
-        canvas: HtmlCanvasElement,
-        selection_policy: RendererSelectionPolicy,
-    ) -> Result<Self, JsValue> {
-        // ポリシーは検出した能力だけから、どのレンダラーをどの順で試すかを
-        // 純粋に決める。`init` はその決定を実行するだけ（計画順に各レンダラー
-        // を試し、失敗を表面化する）。
-        let plan = selection_policy.choose(RendererCapabilities::detect().await);
-
-        let mut attempts: Vec<String> = plan
-            .rejected()
-            .iter()
-            .map(|rejection| format!("{}: {:?}", rejection.renderer.name(), rejection.reason))
-            .collect();
-
-        for &renderer_kind in plan.attempt_order() {
-            match renderer_kind.try_init(canvas.clone()).await {
-                Ok(renderer) => {
-                    log::info!("selected scene renderer: {}", renderer.kind().name());
-                    return Ok(Self {
-                        canvas,
-                        renderer: Some(renderer),
-                        selection_plan: plan,
-                    });
-                }
-                Err(error) => {
-                    let reason = renderer_kind.classify_init_error(&error);
-                    log::warn!(
-                        "scene renderer init failed: {} ({reason:?})",
-                        renderer_kind.name()
-                    );
-                    attempts.push(format!(
-                        "{}: {reason:?} ({})",
-                        renderer_kind.name(),
-                        js_error_message(&error)
-                    ));
-                }
-            }
-        }
-
-        Err(JsValue::from_str(&format!(
-            "no scene renderer could be selected; attempts: {}",
-            attempts.join(", ")
-        )))
-    }
-
-    fn fallback_after_runtime_failure(
-        &mut self,
-        error: JsValue,
-        retry: impl FnOnce(&mut dyn SceneRenderer) -> Result<(), JsValue>,
-    ) -> Result<(), JsValue> {
-        let Some(failed_kind) = self.renderer.as_ref().map(|renderer| renderer.kind()) else {
-            return Err(error);
-        };
-        let reason = failed_kind.classify_init_error(&error);
-        if !is_runtime_fallback_reason(reason) {
-            return Err(error);
-        }
-
-        // ポリシー決定に従う。次のレンダラーは計画が失敗したものの後ろに
-        // すでに置いたもの。再選択もしないし、ポリシーが見送ったレンダラーの
-        // init を再実行もしない。
-        let Some(next_kind) = self.selection_plan.next_after(failed_kind) else {
-            return Err(error);
-        };
-
-        log::warn!(
-            "scene renderer runtime failure: {} ({reason:?}); one-way fallback to {}",
-            failed_kind.name(),
-            next_kind.name()
-        );
-
-        let failed_renderer = self
-            .renderer
-            .take()
-            .expect("runtime fallback requires an active scene renderer");
-        drop(failed_renderer);
-
-        match next_kind.try_init_sync_for_fallback(self.canvas.clone()) {
-            Ok(mut renderer) => {
-                debug_assert!(self.selection_plan.includes(renderer.kind()));
-                renderer.resize(self.canvas.width(), self.canvas.height(), 1.0);
-                let retry_result = retry(renderer.as_mut());
-                self.renderer = Some(renderer);
-                retry_result
-            }
-            Err(fallback_error) => Err(JsValue::from_str(&format!(
-                "{} failed with {reason:?} ({}); fallback to {} also failed ({})",
-                failed_kind.name(),
-                js_error_message(&error),
-                next_kind.name(),
-                js_error_message(&fallback_error)
-            ))),
-        }
-    }
+async fn init_render_host_with_policy(
+    canvas: HtmlCanvasElement,
+    selection_policy: hayate_app_host::renderer_selection::RendererSelectionPolicy,
+) -> Result<RenderHost, anyhow::Error> {
+    // ポリシーは検出した能力だけから、どのレンダラーをどの順で試すかを純粋に決める。
+    // `RenderHost::init_with_policy`（hoist 済み）はその決定を実行するだけ。capability 検出は
+    // web 固有なのでここで行い、済んだ値を渡す（core/app-host は検出方法を一切知らない）。
+    let capabilities = detect_renderer_capabilities().await;
+    RenderHost::init_with_policy(
+        WebCanvasSurface(canvas),
+        selection_policy,
+        capabilities,
+        WebRendererInit,
+    )
+    .await
 }
 
-impl SceneRenderer for RenderHost {
-    fn kind(&self) -> SceneRendererKind {
-        let renderer = self
-            .renderer
-            .as_ref()
-            .expect("RenderHost has no active scene renderer");
-        debug_assert!(self.selection_plan.includes(renderer.kind()));
-        renderer.kind()
-    }
+/// wasm-bindgen の `JsValue` エラーを `anyhow::Error` へ変換する。`hayate-app-host` の
+/// `SceneRenderer`/`RendererInit` は `anyhow::Error` を使うが、web-sys API 自体は
+/// `JsValue` エラーを返すため、境界でここを通す（ADR-0132 スライス3）。
+pub(crate) fn js_to_anyhow(error: JsValue) -> anyhow::Error {
+    anyhow::anyhow!(js_error_message(&error))
+}
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
-        let Some(renderer) = self.renderer.as_mut() else {
-            return Err(JsValue::from_str("RenderHost has no active scene renderer"));
-        };
-        debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.render_scene(scene, clear_color) {
-            Ok(()) => Ok(()),
-            Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.render_scene(scene, clear_color)
-            }),
-        }
-    }
-
-    fn supports_layer_present(&self) -> bool {
-        self.renderer
-            .as_ref()
-            .is_some_and(|renderer| renderer.supports_layer_present())
-    }
-
-    fn present_layers(
-        &mut self,
-        scene: &SceneGraph,
-        layers: &[ElementId],
-        layer_dirty: &HashSet<ElementId>,
-        clear_color: ClearColor,
-    ) -> Result<(), JsValue> {
-        let Some(renderer) = self.renderer.as_mut() else {
-            return Err(JsValue::from_str("RenderHost has no active scene renderer"));
-        };
-        debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.present_layers(scene, layers, layer_dirty, clear_color) {
-            Ok(()) => Ok(()),
-            // ランタイムフォールバック時は次バックエンドの present（既定は全面 raster）へ委ねる。
-            Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.present_layers(scene, layers, layer_dirty, clear_color)
-            }),
-        }
-    }
-
-    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
-        let Some(renderer) = self.renderer.as_mut() else {
-            return Err(JsValue::from_str("RenderHost has no active scene renderer"));
-        };
-        debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.clear(clear_color) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                self.fallback_after_runtime_failure(error, |renderer| renderer.clear(clear_color))
-            }
-        }
-    }
-
-    fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
-        if let Some(renderer) = self.renderer.as_mut() {
-            renderer.resize(width, height, content_scale);
-        }
-    }
+/// `anyhow::Error` を wasm-bindgen 公開 API 境界（`Result<(), JsValue>`）へ変換する。
+pub(crate) fn anyhow_to_js(error: anyhow::Error) -> JsValue {
+    JsValue::from_str(&error.to_string())
 }
 
 fn js_error_message(error: &JsValue) -> String {
     error.as_string().unwrap_or_else(|| format!("{error:?}"))
 }
-
-pub(crate) use RenderHost as SelectedBackend;
-pub(crate) use SceneRenderer as CanvasBackend;

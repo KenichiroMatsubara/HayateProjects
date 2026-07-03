@@ -977,6 +977,7 @@ dependencies = [
  "anyhow",
  "console_error_panic_hook",
  "console_log",
+ "hayate-app-host",
  "hayate-core",
  "hayate-layer-compositor",
  "hayate-scene-renderer-tiny-skia",
@@ -999,7 +1000,10 @@ dependencies = [
 name = "hayate-app-host"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "hayate-core",
+ "log",
+ "pollster",
 ]
 
 [[package]]

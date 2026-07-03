@@ -12,31 +12,24 @@ use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile
 
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
-    ElementTree, Event, FontStyleValue, RenderImage, RenderScaleDriver,
+    ElementTree, FontFetcher, FontStyleValue, RenderImage, RenderScaleDriver,
     StyleProp, TextDecorationValue, effective_content_scale,
 };
 use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
+use hayate_app_host::renderer_selection::SceneRendererKind;
+use hayate_app_host::{FontFetchResult, FontMailbox, FontMailboxHandle};
 use crate::frame_surface;
 use crate::image_decode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
 
-use crate::backend::{CanvasBackend, SelectedBackend};
+use crate::backend::{anyhow_to_js, init_render_host, CanvasBackend, SelectedBackend};
 use crate::builtin_fonts::font_url_for_renderer;
 use crate::generated::encode_deliveries;
 use crate::ime_bridge::WebImeBridge;
 
 use crate::shared::{element_id_from_f64, element_id_to_f64, fetch_bytes, kind_from_u32};
-
-/// アダプタが非同期取得したフォント。次の `poll_events()` でツリーへ流し込む
-/// （単一スレッド WASM なので Rc<RefCell> で安全）。
-type FontQueue = Rc<RefCell<Vec<(String, Vec<u8>)>>>;
-
-/// 取得に失敗したファミリ。次の `render()` で `tree.font_fetch_failed` へ流し込み、
-/// core が再要求（または断念）できるようにする。これがないとファミリが `pending`
-/// に固定されたまま残る。
-type FontFailureQueue = Rc<RefCell<Vec<String>>>;
 
 /// ファミリ別の失敗回数。指数バックオフでリトライ間隔を空けるためだけに使う。
 /// 断念の判断（予算）は core が持ち、ここはタイミングだけを持つ。
@@ -83,6 +76,55 @@ impl hayate_core::Clipboard for WebClipboard {
     }
 }
 
+/// core の `FontFetcher` シームの Web 実装（ADR-0132 スライス2）。`ElementTree::drive_font_requests`
+/// が欠落を検出するたびに `request` を同期に呼ぶ。URL 解決（レンダラを意識した調達、ADR-0043）・
+/// 非同期 fetch・指数バックオフはすべてここに閉じ、結果は `mailbox` へ push する
+/// （core/app-host は非同期実行を一切知らない）。
+struct WebFontFetcher {
+    renderer_kind: SceneRendererKind,
+    mailbox: FontMailboxHandle,
+    attempts: FontFetchAttempts,
+}
+
+impl FontFetcher for WebFontFetcher {
+    fn request(&mut self, family: &str) {
+        // レンダラを意識した調達（ADR-0043）。GPU 経路ではモノクロ絵文字ファミリを
+        // COLR ビルドに格上げする。バイトは `family` 名で登録するので core のルーティングは
+        // そのまま。
+        let Some(url) = font_url_for_renderer(family, self.renderer_kind) else {
+            web_sys::console::warn_1(&JsValue::from_str(&format!(
+                "FetchFont: no URL for \"{family}\""
+            )));
+            return;
+        };
+        let mailbox = self.mailbox.clone();
+        let attempts = self.attempts.clone();
+        let url = url.to_string();
+        let family = family.to_string();
+        wasm_bindgen_futures::spawn_local(async move {
+            match fetch_bytes(&url).await {
+                Ok(bytes) => mailbox.report_loaded(family, bytes),
+                Err(e) => {
+                    web_sys::console::warn_1(&e);
+                    // バックオフした後で失敗を報告し、core が再要求できるように
+                    // する（リトライ予算を使い切るまで）。
+                    let n = {
+                        let mut a = attempts.borrow_mut();
+                        let c = a.entry(family.clone()).or_insert(0);
+                        *c += 1;
+                        *c
+                    };
+                    let delay = FETCH_BACKOFF_BASE_MS
+                        .saturating_mul(1 << (n - 1).min(8))
+                        .min(FETCH_BACKOFF_MAX_MS);
+                    backoff_sleep(delay).await;
+                    mailbox.report_failed(family);
+                }
+            }
+        });
+    }
+}
+
 // ── Canvas Mode レンダラ ─────────────────────────────────────────────────
 
 #[wasm_bindgen]
@@ -94,10 +136,9 @@ pub struct HayateElementRenderer {
     /// `render(timestamp_ms)` から分離されている（ADR-0032 で render は timestamp のみ）。
     /// `set_background_color` で別途設定する。
     background: [f32; 4],
-    /// future が取得したフォント。次の poll_events でツリーへ適用する。
-    font_queue: FontQueue,
-    /// 取得に失敗したファミリ。次の `render()` で core へ報告する。
-    font_failure_queue: FontFailureQueue,
+    /// フォント取得完了報告用の mailbox（ADR-0132 スライス2）。`WebFontFetcher` が
+    /// 非同期クロージャからここへ push し、次の `render()` で `tree` へ流し込む。
+    font_mailbox: FontMailbox,
     /// ファミリ別の失敗回数。指数リトライバックオフ用。
     font_fetch_attempts: FontFetchAttempts,
     /// 毎 render で同期する IME 候補ウィンドウの境界（ADR-0069）。
@@ -197,7 +238,7 @@ impl HayateElementRenderer {
         canvas.set_width(metrics.buffer_width);
         canvas.set_height(metrics.buffer_height);
 
-        let mut backend = SelectedBackend::init(canvas.clone()).await?;
+        let mut backend: SelectedBackend = init_render_host(canvas.clone()).await.map_err(anyhow_to_js)?;
         backend.resize(
             metrics.buffer_width,
             metrics.buffer_height,
@@ -248,8 +289,7 @@ impl HayateElementRenderer {
             backend,
             tree,
             background: [0.0, 0.0, 0.0, 1.0],
-            font_queue: Rc::new(RefCell::new(Vec::new())),
-            font_failure_queue: Rc::new(RefCell::new(Vec::new())),
+            font_mailbox: FontMailbox::new(),
             font_fetch_attempts: Rc::new(RefCell::new(HashMap::new())),
             ime: WebImeBridge::default(),
             pending_resize,
@@ -432,23 +472,23 @@ impl HayateElementRenderer {
         // （新規押下がアニメーションを中断し、pointer-up が `start_scroll_momentum` で起動する）。
         // adapter はもうフレーム間 dt もアニメ状態も持たない——`tree.render` 越しに Core が
         // 進める（慣性は `rubber_band_offset` 等と同じく `scroll` モジュールの純物理）。
-        // 失敗した取得をまず core へ報告する。各報告がフォントを dirty にするので、下の
+        // フォント取得完了報告（成功／失敗）を mailbox から layout より前に流し込む
+        // （ADR-0132 スライス2）。失敗報告はフォントを dirty にするので、下の
         // commit_layout が再シェイプし、欠落を再検出し、次の poll_events で FetchFont を
         // 再発行する。core が断念したファミリは再要求しなくなるので、そのバックオフ
         // カウンタも破棄する。
-        let failures: Vec<String> = self.font_failure_queue.borrow_mut().drain(..).collect();
-        for family in failures {
-            if !self.tree.font_fetch_failed(&family) {
-                self.font_fetch_attempts.borrow_mut().remove(&family);
+        for result in self.font_mailbox.drain() {
+            match result {
+                FontFetchResult::Loaded { family, bytes } => {
+                    self.font_fetch_attempts.borrow_mut().remove(&family);
+                    self.tree.register_font(&family, bytes);
+                }
+                FontFetchResult::Failed { family } => {
+                    if !self.tree.font_fetch_failed(&family) {
+                        self.font_fetch_attempts.borrow_mut().remove(&family);
+                    }
+                }
             }
-        }
-        // 取得完了フォントを layout より前に登録することで、同フレーム内で
-        // fonts_dirty → compute_layout → 正しいグリフ、が成立する
-        // （poll_events より先に render が呼ばれる raf ループでも豆腐にならない）。
-        let loaded: Vec<(String, Vec<u8>)> = self.font_queue.borrow_mut().drain(..).collect();
-        for (family, bytes) in loaded {
-            self.font_fetch_attempts.borrow_mut().remove(&family);
-            self.tree.register_font(&family, bytes);
         }
         // 前フレーム以降に非同期 Ctrl/Cmd+V の読み取りが解決したクリップボードテキストを、
         // レイアウト前に適用する。貼り付けテキストがこのフレームでシェイプされる。
@@ -510,12 +550,14 @@ impl HayateElementRenderer {
         if self.backend.supports_layer_present() {
             let mut layer_dirty = self.tree.frame_layer_dirty().clone();
             layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
-            self.backend.present_layers(
-                self.tree.scene_graph(),
-                self.tree.frame_layers(),
-                &layer_dirty,
-                self.background,
-            )
+            self.backend
+                .present_layers(
+                    self.tree.scene_graph(),
+                    self.tree.frame_layers(),
+                    &layer_dirty,
+                    self.background,
+                )
+                .map_err(anyhow_to_js)
         } else {
             // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
             // dirty から分離）と scroll chrome（#634）も保守的に raster トリガへ含める。
@@ -530,7 +572,7 @@ impl HayateElementRenderer {
                 if result.is_ok() {
                     self.planner.note_full_raster(self.tree.frame_layers());
                 }
-                result
+                result.map_err(anyhow_to_js)
             } else {
                 Ok(())
             }
@@ -1101,44 +1143,14 @@ impl HayateElementRenderer {
     /// ADR-0053: 配信行 `[listener_id, kind, ...fields]`。`fetch_font` はここで消費され、
     /// ホストへは配信されない。
     pub fn poll_events(&mut self) -> js_sys::Array {
-        for event in self.tree.poll_events() {
-            if let Event::FetchFont { family } = event {
-                // レンダラを意識した調達（ADR-0043）。GPU 経路ではモノクロ絵文字ファミリを
-                // COLR ビルドに格上げする。バイトは `family` 名で登録するので core のルーティングは
-                // そのまま。
-                if let Some(url) = font_url_for_renderer(&family, self.backend.kind()) {
-                    let queue = self.font_queue.clone();
-                    let failures = self.font_failure_queue.clone();
-                    let attempts = self.font_fetch_attempts.clone();
-                    let url = url.to_string();
-                    wasm_bindgen_futures::spawn_local(async move {
-                        match fetch_bytes(&url).await {
-                            Ok(bytes) => queue.borrow_mut().push((family, bytes)),
-                            Err(e) => {
-                                web_sys::console::warn_1(&e);
-                                // バックオフした後で失敗を報告し、core が再要求できるように
-                                // する（リトライ予算を使い切るまで）。
-                                let n = {
-                                    let mut a = attempts.borrow_mut();
-                                    let c = a.entry(family.clone()).or_insert(0);
-                                    *c += 1;
-                                    *c
-                                };
-                                let delay = FETCH_BACKOFF_BASE_MS
-                                    .saturating_mul(1 << (n - 1).min(8))
-                                    .min(FETCH_BACKOFF_MAX_MS);
-                                backoff_sleep(delay).await;
-                                failures.borrow_mut().push(family);
-                            }
-                        }
-                    });
-                } else {
-                    web_sys::console::warn_1(&JsValue::from_str(&format!(
-                        "FetchFont: no URL for \"{family}\""
-                    )));
-                }
-            }
-        }
+        // 欠落フォントの検出とオンデマンド取得の起動は core 所有（ADR-0132 スライス2）。
+        // `WebFontFetcher::request` が URL 解決・非同期 fetch・バックオフを担う。
+        let mut fetcher = WebFontFetcher {
+            renderer_kind: self.backend.kind(),
+            mailbox: self.font_mailbox.handle(),
+            attempts: self.font_fetch_attempts.clone(),
+        };
+        self.tree.drive_font_requests(&mut fetcher);
         // #649: 配信ゼロのフレーム（イベントなし）は常駐の空 Array を clone して返し、`encode_deliveries`
         // 内の `Array::new()`（毎フレームの JS ヒープ確保）を避ける。実イベントのあるフレームだけ確保する。
         let deliveries = self.tree.poll_deliveries();

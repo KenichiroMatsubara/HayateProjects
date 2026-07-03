@@ -7,7 +7,7 @@ use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
 };
 
-use super::{CanvasBackend, ClearColor, SceneRendererKind};
+use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
 
 pub(crate) struct SelectedBackend {
     surface_host: VelloSurfaceHost,
@@ -173,15 +173,15 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Vello
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), JsValue> {
+    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         let target = self.surface_host.render_target();
         self.scene_renderer
             .render_scene(scene, &target, clear_color, self.content_scale)
-            .map_err(|e| JsValue::from_str(&e))?;
-        self.surface_host.present_target()
+            .map_err(|e| anyhow::anyhow!(e))?;
+        self.surface_host.present_target().map_err(js_to_anyhow)
     }
 
-    fn clear(&mut self, clear_color: ClearColor) -> Result<(), JsValue> {
+    fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
         self.render_scene(&SceneGraph::new(), clear_color)
     }
 

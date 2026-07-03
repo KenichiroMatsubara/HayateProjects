@@ -5,7 +5,7 @@
 include!(concat!(env!("OUT_DIR"), "/builtin_fonts_gen.rs"));
 
 #[cfg(any(target_arch = "wasm32", test))]
-use crate::renderer_selection::SceneRendererKind;
+use hayate_app_host::renderer_selection::SceneRendererKind;
 
 /// カラー（COLR/CPAL）emoji ビルド。カラーグリフを描けるレンダラのみここへ
 /// 振り分ける。バイト列は core が要求したファミリ名で登録されるため、core の
@@ -38,7 +38,7 @@ pub(crate) fn font_url_for_renderer(
 #[cfg(test)]
 mod tests {
     use super::{builtin_font_url, font_url_for_renderer};
-    use crate::renderer_selection::SceneRendererKind;
+    use hayate_app_host::renderer_selection::SceneRendererKind;
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
