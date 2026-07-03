@@ -1,6 +1,8 @@
 # DOM Renderer の Z-Order は RN Web 現行方式で Hayate セマンティクスをエミュレートする
 
 > **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+>
+> **一部 supersede（ADR-0013）**: 下記「静的コード」節（`DomStylePatch` による IDE 診断）は撤回された。adapter が renderer 非依存であるため型分岐の利用箇所が成立しなかったため。「動的値」節（runtime `console.warn`）は変更なく有効。
 
 _origin: Hayate ADR-0021, react-native-web `View` base styles_
 

@@ -35,8 +35,8 @@ Hayate 向け renderer 実装。JS 側でフレーム分の変更を積み、`ap
 _Avoid_: Canvas Renderer（旧称・ADR-0011）, 個別 `element_set_*` 呼び出しを現行 hot path とみなす説明、`HayateRenderer` が `HTMLCanvasElement` を型に持つ設計、`resize()` を renderer に置く設計、`Hayate Renderer` 採用＝自動 Android 対応とみなす理解
 
 **DOM Renderer**:
-ブラウザ DOM へ直接反映する renderer 実装。Renderer Protocol のもう一つの実装。Z-Order は Hayate と同じ RN 方式（兄弟内のみ・後勝ち・root 配置で親をまたぐ）を、RN Web 現行方式（全 Element kind に `position: relative` + デフォルト `zIndex: 0`）で DOM 上にエミュレートする。ブラウザ CSS との完全一致は目標にしない。Canvas / Hayate と Z-Order が乖離しうるスタイルを設定した場合は開発時に警告する（拒否はしない）。警告対象は拡張可能な registry で管理し、現行は `opacity`、Element スタイルに追加された `transform` を含む。静的コードへの警告は `DomStylePatch` の TypeScript `@deprecated` で IDE ファイル診断とする（ビルド失敗なし、`tsubame lint` CLI は設けない）。動的値は dev のみ runtime `console.warn`（同一 element + property につきセッション 1 回）。将来 ESLint によるファイル警告は理想だが初期スコープ外。
-_Avoid_: SSR, hydration, Hayate HTML Mode（Hayate 不使用のため）
+ブラウザ DOM へ直接反映する renderer 実装。Renderer Protocol のもう一つの実装。Z-Order は Hayate と同じ RN 方式（兄弟内のみ・後勝ち・root 配置で親をまたぐ）を、RN Web 現行方式（全 Element kind に `position: relative` + デフォルト `zIndex: 0`）で DOM 上にエミュレートする。ブラウザ CSS との完全一致は目標にしない。Canvas / Hayate と Z-Order が乖離しうるスタイルを設定した場合は開発時に警告する（拒否はしない）。警告対象は拡張可能な registry（`Z_ORDER_DIVERGENCE_PROPERTIES`）で管理し、現行は `opacity`、Element スタイルに追加された `transform` を含む。警告は dev のみ runtime `console.warn`（同一 element + property につきセッション 1 回）の単独 seam で行う。静的型チェック（`DomStylePatch`）は Tsubame Adapter が renderer 非依存（DOM/Hayate いずれのターゲットにもなり得る）であるため型分岐の利用箇所が成立せず不採用とした（ADR-0013、ADR-0006 の当該部分を supersede）。将来 ESLint によるファイル警告は理想だが初期スコープ外。
+_Avoid_: SSR, hydration, Hayate HTML Mode（Hayate 不使用のため）, DomStylePatch による静的チェック（ADR-0013 で不採用）
 
 ## Integration Terms
 

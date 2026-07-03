@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  DEFAULT_RELOAD_ROUTE,
-  RELOAD_MESSAGE,
-  subscribeReload,
-  type ReloadSocket,
-} from './index.js';
+import { devServerContract } from '@miharashi/dev-server-contract';
+import { subscribeReload, type ReloadSocket } from './index.js';
 
 /**
  * Miharashi Web ホストの full reload ループ（ホスト側）の配線契約テスト（ADR-0001 / CONTEXT.md
@@ -52,7 +48,7 @@ describe('subscribeReload', () => {
       connect: () => socket,
     });
 
-    socket.emitMessage(RELOAD_MESSAGE);
+    socket.emitMessage(devServerContract.reloadMessage);
 
     expect(onReload).toHaveBeenCalledTimes(1);
   });
@@ -81,7 +77,7 @@ describe('subscribeReload', () => {
       connect,
     });
 
-    expect(connect).toHaveBeenCalledWith(`ws://127.0.0.1:5181${DEFAULT_RELOAD_ROUTE}`);
+    expect(connect).toHaveBeenCalledWith(`ws://127.0.0.1:5181${devServerContract.reloadRoute}`);
   });
 
   it('reconnects after a fixed backoff when the socket closes', () => {

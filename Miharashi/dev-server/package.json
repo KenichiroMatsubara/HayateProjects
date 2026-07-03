@@ -24,6 +24,9 @@
     "test:watch": "vitest",
     "clean": "rimraf dist"
   },
+  "dependencies": {
+    "@miharashi/dev-server-contract": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.19.0",
     "jsqr": "^1.4.0",

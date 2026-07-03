@@ -10,7 +10,9 @@ packages:
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
   - 'Miharashi/dev-server'
+  - 'Miharashi/dev-server-contract'
   - 'Miharashi/host-web'
+  - 'Miharashi/integration'
   - 'Miharashi/protocol-handshake'
 
 allowBuilds:

@@ -2,11 +2,12 @@ import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createBundleDevServer, RELOAD_MESSAGE, RELOAD_ROUTE, type BundleDevServer } from './index.js';
+import { devServerContract } from '@miharashi/dev-server-contract';
+import { createBundleDevServer, type BundleDevServer } from './index.js';
 
 /**
  * full reload ループの dev-server 側契約テスト（ADR-0001 / CONTEXT.md「Reload」）。
- * 実際に listen し、本物の WebSocket（Node 22 の global WS クライアント）で `RELOAD_ROUTE` に
+ * 実際に listen し、本物の WebSocket（Node 22 の global WS クライアント）で `devServerContract.reloadRoute` に
  * 繋ぎ、watch 対象ファイルを書き換えて「dev-server がソース変更を検知して WS で `reload` を
  * 送る」を本物のネットワーク経路で確認する。
  */
@@ -56,24 +57,24 @@ describe('createBundleDevServer — reload over WebSocket', () => {
   });
 
   it('broadcasts a reload signal to connected clients when the watched bundle changes', async () => {
-    const ws = new WebSocket(`${toWs(origin)}${RELOAD_ROUTE}`);
+    const ws = new WebSocket(`${toWs(origin)}${devServerContract.reloadRoute}`);
     sockets.push(ws);
     await opened(ws);
 
     const message = nextMessage(ws);
     await writeFile(bundlePath, 'globalThis.__miharashiMount = () => { /* edited */ };\n');
 
-    expect(await message).toBe(RELOAD_MESSAGE);
+    expect(await message).toBe(devServerContract.reloadMessage);
   });
 
   it('coalesces a burst of changes into a single reload (debounce)', async () => {
-    const ws = new WebSocket(`${toWs(origin)}${RELOAD_ROUTE}`);
+    const ws = new WebSocket(`${toWs(origin)}${devServerContract.reloadRoute}`);
     sockets.push(ws);
     await opened(ws);
 
     let reloadCount = 0;
     ws.addEventListener('message', (ev) => {
-      if (String((ev as MessageEvent).data) === RELOAD_MESSAGE) reloadCount += 1;
+      if (String((ev as MessageEvent).data) === devServerContract.reloadMessage) reloadCount += 1;
     });
 
     // ビルドが 1 編集で起こす複数書き込みを模した連続変更。
@@ -89,7 +90,7 @@ describe('createBundleDevServer — reload over WebSocket', () => {
   it('detects an atomic replace (write temp + rename) as a change', async () => {
     // ビルドツールは出力をアトミックに差し替える（temp に書いて rename）ことがある。ファイル単体で
     // なく親ディレクトリを watch するのは、この rename を取りこぼさないため。
-    const ws = new WebSocket(`${toWs(origin)}${RELOAD_ROUTE}`);
+    const ws = new WebSocket(`${toWs(origin)}${devServerContract.reloadRoute}`);
     sockets.push(ws);
     await opened(ws);
 
@@ -98,6 +99,6 @@ describe('createBundleDevServer — reload over WebSocket', () => {
     await writeFile(tmp, 'globalThis.__miharashiMount = () => { /* rebuilt */ };\n');
     await rename(tmp, bundlePath);
 
-    expect(await message).toBe(RELOAD_MESSAGE);
+    expect(await message).toBe(devServerContract.reloadMessage);
   });
 });

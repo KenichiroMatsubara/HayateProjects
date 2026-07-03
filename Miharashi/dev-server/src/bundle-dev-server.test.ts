@@ -2,7 +2,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { BUNDLE_ROUTE, createBundleDevServer, type BundleDevServer } from './index.js';
+import { devServerContract } from '@miharashi/dev-server-contract';
+import { createBundleDevServer, type BundleDevServer } from './index.js';
 
 /**
  * 最小 dev server の契約テスト。実際に listen して `fetch` で叩き、「単一 App Bundle を
@@ -28,21 +29,21 @@ describe('createBundleDevServer', () => {
   });
 
   it('serves the App Bundle at the bundle route over HTTP', async () => {
-    const res = await fetch(`${origin}${BUNDLE_ROUTE}`);
+    const res = await fetch(`${origin}${devServerContract.bundleRoute}`);
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe('globalThis.__miharashiMount = () => {};\n');
   });
 
   it('serves the bundle with a JavaScript content-type', async () => {
-    const res = await fetch(`${origin}${BUNDLE_ROUTE}`);
+    const res = await fetch(`${origin}${devServerContract.bundleRoute}`);
 
     expect(res.headers.get('content-type')).toMatch(/javascript/);
   });
 
   it('allows a cross-origin host page to fetch the bundle (CORS)', async () => {
     // ホストページは別 origin（examples/todo の vite）で動き、fetch でバンドルを取りに来る。
-    const res = await fetch(`${origin}${BUNDLE_ROUTE}`);
+    const res = await fetch(`${origin}${devServerContract.bundleRoute}`);
 
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
   });

@@ -1,4 +1,5 @@
 import type { CreateHayateWebHostOptions, WebHost } from '@hayate/host';
+import { devServerContract } from '@miharashi/dev-server-contract';
 import {
   checkProtocolVersion,
   ProtocolMismatchError,
@@ -30,12 +31,6 @@ export type MiharashiMount = (host: WebHost) => void;
  */
 export const MIHARASHI_MOUNT_GLOBAL = '__miharashiMount';
 
-/**
- * dev-server がバンドルを配信する HTTP ルート。`@miharashi/dev-server` の `BUNDLE_ROUTE`
- * と一致させる wire 契約（node 依存を web ホストへ持ち込まないため値で複製する）。
- */
-export const DEFAULT_BUNDLE_ROUTE = '/bundle.js';
-
 /** バンドル fetch のタイムアウト。応答しない dev-server で永久に待たないための上限。 */
 const BUNDLE_FETCH_TIMEOUT_MS = 10_000;
 
@@ -51,7 +46,7 @@ export interface BootMiharashiHostOptions {
    * `HOST_PROTOCOL_VERSION` を渡す。
    */
   readonly hostProtocolVersion: number;
-  /** dev-server 上のバンドルルート。既定は {@link DEFAULT_BUNDLE_ROUTE}。 */
+  /** dev-server 上のバンドルルート。既定は {@link devServerContract} の bundleRoute。 */
   readonly bundleRoute?: string;
   /** `createHayateWebHost` に渡す backend / tuning 等。auto モードでは省略可。 */
   readonly hostOptions?: CreateHayateWebHostOptions;
@@ -123,7 +118,7 @@ export async function bootMiharashiHost(options: BootMiharashiHostOptions): Prom
   const evalBundle = options.evalBundle ?? defaultEvalBundle;
   const readBundleVersion = options.readBundleVersion ?? defaultReadBundleVersion;
   const createHost = options.createHost ?? defaultCreateHost;
-  const bundleRoute = options.bundleRoute ?? DEFAULT_BUNDLE_ROUTE;
+  const bundleRoute = options.bundleRoute ?? devServerContract.bundleRoute;
 
   const bundleUrl = new URL(bundleRoute, options.devServerUrl).href;
   const source = await fetchBundle(bundleUrl);
@@ -144,15 +139,6 @@ export async function bootMiharashiHost(options: BootMiharashiHostOptions): Prom
 }
 
 // ── full reload ループ（ホスト側）────────────────────────────────────────────
-
-/**
- * dev-server が reload シグナルを流す WS ルート。`@miharashi/dev-server` の `RELOAD_ROUTE` と
- * 一致させる wire 契約（node 依存を web ホストへ持ち込まないため値で複製する）。
- */
-export const DEFAULT_RELOAD_ROUTE = '/reload';
-
-/** ホストに full reload を促す WS メッセージ本文。`@miharashi/dev-server` の `RELOAD_MESSAGE` と一致。 */
-export const RELOAD_MESSAGE = 'reload';
 
 /**
  * WS 切断後に再接続するまでの待ち時間（ms）。dev-server 再起動・ネットワーク瞬断後に繋ぎ直す。
@@ -178,7 +164,7 @@ export interface SubscribeReloadOptions {
   readonly devServerUrl: string;
   /** `reload` 受信時に呼ぶ。ホストはここで full reload（再 fetch → 再 mount）を起こす。 */
   readonly onReload: () => void;
-  /** dev-server 上の reload ルート。既定は {@link DEFAULT_RELOAD_ROUTE}。 */
+  /** dev-server 上の reload ルート。既定は {@link devServerContract} の reloadRoute。 */
   readonly reloadRoute?: string;
 
   // ── テスト注入 seam ──────────────────────────────────────────────────────
@@ -223,7 +209,7 @@ function defaultScheduleReconnect(fn: () => void, delayMs: number): void {
 export function subscribeReload(options: SubscribeReloadOptions): ReloadSubscription {
   const connect = options.connect ?? defaultConnect;
   const scheduleReconnect = options.scheduleReconnect ?? defaultScheduleReconnect;
-  const reloadRoute = options.reloadRoute ?? DEFAULT_RELOAD_ROUTE;
+  const reloadRoute = options.reloadRoute ?? devServerContract.reloadRoute;
   const wsUrl = new URL(reloadRoute, options.devServerUrl).href.replace(/^http/, 'ws');
 
   let stopped = false;
@@ -233,7 +219,7 @@ export function subscribeReload(options: SubscribeReloadOptions): ReloadSubscrip
     if (stopped) return;
     socket = connect(wsUrl);
     socket.onMessage((data) => {
-      if (data === RELOAD_MESSAGE) options.onReload();
+      if (data === devServerContract.reloadMessage) options.onReload();
     });
     socket.onClose(() => {
       if (stopped) return;
@@ -270,7 +256,7 @@ export interface StartMiharashiHostOptions {
   readonly acquireCanvas: () => HTMLCanvasElement;
   /** `createHayateWebHost` に渡す backend / tuning 等。auto モードでは省略可。 */
   readonly hostOptions?: CreateHayateWebHostOptions;
-  /** dev-server 上の reload ルート。既定は {@link DEFAULT_RELOAD_ROUTE}。 */
+  /** dev-server 上の reload ルート。既定は {@link devServerContract} の reloadRoute。 */
   readonly reloadRoute?: string;
   /** boot 完了 / 失敗の通知。e2e / デバッグが mount 到達を観測できるようにする。 */
   readonly onBootSettled?: (result: { ok: true } | { ok: false; error: unknown }) => void;
