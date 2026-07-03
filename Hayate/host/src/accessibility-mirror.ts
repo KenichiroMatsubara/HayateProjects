@@ -147,9 +147,14 @@ export function attachAccessibilityMirror(
   const root = doc.createElement('div');
   root.setAttribute(A11Y_ROOT_ATTR, '');
   // 矩形配置のまま不可視・非干渉にする。精密な per-node bounds は #593。
-  root.style.position = 'absolute';
-  root.style.top = '0';
-  root.style.left = '0';
+  // `fixed` + `inset:0` + `overflow:hidden` で canvas と同じビューポート矩形に固定する。
+  // スクロール外/折り返し前の bounds を持つ子孫（画面外の行、折り返し前の広い AppBar 等）が
+  // このボックスを越えて documentElement の scrollWidth/Height を押し広げると、モバイルブラウザが
+  // レイアウトビューポートをそれに合わせて拡張し、`#renderer-switch`（shell 側の `position:fixed`
+  // オーバーレイ）が実際の画面外へ押し出されて見えなくなる（DOM モードはミラーが無く無縁）。
+  root.style.position = 'fixed';
+  root.style.inset = '0';
+  root.style.overflow = 'hidden';
   root.style.opacity = MIRROR_OPACITY;
   root.style.pointerEvents = MIRROR_POINTER_EVENTS;
   parent.insertBefore(root, canvas.nextSibling);
