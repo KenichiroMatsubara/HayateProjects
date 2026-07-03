@@ -6,8 +6,13 @@ license = "Apache-2.0"
 description = "Hayabusa .hybs → generated Rust compiler (build-time codegen, ADR-0008)"
 repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 
-# Pure-std, no dependencies: this crate is a `[build-dependencies]` of the hayabusa
-# crate (a crate cannot use its own library from build.rs, ADR-0008). It parses
-# `.hybs` and emits Rust source; the generated code depends on the hayabusa public
-# API, not on this crate.
+# This crate is a `[build-dependencies]` of the hayabusa crate (a crate cannot use
+# its own library from build.rs, ADR-0008). It parses `.hybs` and emits Rust source;
+# the generated code depends on the hayabusa public API, not on this crate.
+#
+# hayabusa-style-vocab is the one exception to "pure-std, no dependencies": it's a
+# small zero-dependency data crate (style DSL enum keywords, generated from Hayate's
+# proto/spec — ADR-0011), not a runtime dependency, so pulling it in here doesn't
+# reintroduce what ADR-0008 was guarding against.
 [dependencies]
+hayabusa-style-vocab = { path = "../style-vocab" }
