@@ -4,7 +4,7 @@ use hayate_core::{
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
     peniko::{
-        Fill, FontData, ImageBrush,
+        BlendMode, Compose, Fill, FontData, ImageBrush, Mix,
         color::{AlphaColor, Srgb},
         kurbo::Diagonal2,
     },
@@ -190,6 +190,55 @@ impl ScenePainter for VelloPainter<'_> {
                     std_dev as f64,
                 );
             }
+        }
+    }
+
+    fn fill_inset_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        spread: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        // inset 影 = border-box を影色でベタ塗り → 内側 hole を解析ぼかしで DestOut して削る
+        // （issue #660）。結果は `color.a · (1 − hole_coverage)`。border-box への角丸クリップは
+        // 呼び出し側 `Clip` が与える。影1個 = 1描画（+ 塗り）。
+        if width <= 0.0 || height <= 0.0 {
+            return;
+        }
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        let border = RoundedRect::new(
+            x as f64,
+            y as f64,
+            (x + width) as f64,
+            (y + height) as f64,
+            corner_radius.max(0.0) as f64,
+        );
+        // 1. border-box を影色で塗る。
+        scene.fill(Fill::NonZero, Affine::IDENTITY, brush, None, &border);
+
+        // 2. hole をぼかして DestOut → 塗りを `1 − hole_coverage` に削る。
+        let spread = spread.max(0.0);
+        let hole_w = width - 2.0 * spread;
+        let hole_h = height - 2.0 * spread;
+        if hole_w > 0.0 && hole_h > 0.0 {
+            let hx = (x + offset_x + spread) as f64;
+            let hy = (y + offset_y + spread) as f64;
+            let hole = Rect::new(hx, hy, hx + hole_w as f64, hy + hole_h as f64);
+            let hole_radius = (corner_radius - spread).max(0.0) as f64;
+            let blend = BlendMode::new(Mix::Normal, Compose::DestOut);
+            scene.push_layer(Fill::NonZero, blend, 1.0, Affine::IDENTITY, &border);
+            // DestOut は src のアルファ（= hole 被覆）だけを見るので、不透明ブラシで塗る。
+            let opaque = AlphaColor::<Srgb>::new([0.0, 0.0, 0.0, 1.0]);
+            scene.draw_blurred_rounded_rect(Affine::IDENTITY, hole, opaque, hole_radius, std_dev as f64);
+            scene.pop_layer();
         }
     }
 
@@ -429,6 +478,44 @@ mod tests {
             scene.encoding().draw_tags.len(),
             1,
             "clipping the shadow to a ring must not add extra draws"
+        );
+    }
+
+    /// inset 影が解析ぼかし経路で描かれる（シェルリングではない・issue #660）。encoding に
+    /// ぼかし矩形ドロー（`DrawTag::BLUR_RECT` = 0x2d4）が 1 個現れることを確認する。
+    #[test]
+    fn inset_blurred_rounded_rect_uses_the_analytic_blur_draw() {
+        const BLUR_RECT_TAG: u32 = 0x2d4;
+        let mut sg = SceneGraph::new();
+        sg.insert(Node {
+            kind: NodeKind::InsetBlurredRoundedRect {
+                x: 10.0,
+                y: 10.0,
+                width: 60.0,
+                height: 60.0,
+                corner_radius: 12.0,
+                offset_x: 0.0,
+                offset_y: 0.0,
+                spread: 2.0,
+                std_dev: 4.0,
+                color: [0.0, 0.0, 0.0, 0.6],
+            },
+            children: Vec::new(),
+        });
+
+        let mut scene = Scene::new();
+        let mut painter = VelloPainter::new(&mut scene);
+        render_scene_graph(&sg, &mut painter);
+
+        let blur_draws = scene
+            .encoding()
+            .draw_tags
+            .iter()
+            .filter(|t| t.0 == BLUR_RECT_TAG)
+            .count();
+        assert_eq!(
+            blur_draws, 1,
+            "the inset shadow must be drawn with one analytic gaussian blur, not shell rings"
         );
     }
 }

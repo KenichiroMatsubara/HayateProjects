@@ -99,3 +99,67 @@ pub fn for_each_shadow_shell(
         );
     }
 }
+
+/// inset box-shadow を同心角丸リング（`RoundedRing`）へ分解し、可視リングごとに `ring` を呼ぶ。
+///
+/// `(x, y, width, height, corner_radius)` は border-box、`(offset_x, offset_y)` は影オフセット、
+/// `spread` は内側への広がり、`std_dev` はガウス σ、`color` は影色（straight RGBA・不透明度適用済み）。
+/// `ring(x, y, width, height, outer_radius, border_width, color)` は 1 リング分の帯フィル
+/// （呼び出し側の border-box `Clip` の内側で描く）。解析パスを持たない painter の default フォール
+/// バック——inset 影の内向き erf 減衰を、spread 幅の単色コアリング + 内側へフェードするリング群で
+/// 近似する（drop 影と同じテレスコープ和）。
+#[allow(clippy::too_many_arguments)]
+pub fn for_each_inset_shadow_ring(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    corner_radius: f32,
+    offset_x: f32,
+    offset_y: f32,
+    spread: f32,
+    std_dev: f32,
+    color: [f32; 4],
+    mut ring: impl FnMut(f32, f32, f32, f32, f32, f32, [f32; 4]),
+) {
+    if width <= 0.0 || height <= 0.0 {
+        return;
+    }
+    let bx = x + offset_x;
+    let by = y + offset_y;
+    let max_band = width.min(height) * 0.5;
+    let spread = spread.max(0.0);
+    let sigma = std_dev;
+    let blur = std_dev * 2.0;
+    let band = (spread + blur).min(max_band);
+    let n = SHADOW_BLUR_FALLBACK_LAYERS;
+    let mut emit = |bw: f32, cover: f32| {
+        let bw = bw.min(max_band);
+        let a = f64::from(color[3]) * f64::from(cover);
+        if bw <= 0.0 || a <= 0.0 {
+            return;
+        }
+        ring(
+            bx,
+            by,
+            width,
+            height,
+            corner_radius,
+            bw,
+            [color[0], color[1], color[2], a as f32],
+        );
+    };
+    for i in 0..=n {
+        let (bw, cover) = if i == 0 {
+            (spread, 0.5_f32)
+        } else {
+            let w = spread + (band - spread) * (i as f32) / (n as f32);
+            let w_prev = spread + (band - spread) * ((i - 1) as f32) / (n as f32);
+            (
+                w,
+                shadow_falloff(w_prev - spread, sigma) - shadow_falloff(w - spread, sigma),
+            )
+        };
+        emit(bw, cover);
+    }
+}

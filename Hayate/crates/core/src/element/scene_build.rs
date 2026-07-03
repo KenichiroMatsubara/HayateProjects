@@ -13,9 +13,7 @@ use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::{ElementTree, Visual};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph, ShadowOccluder};
-use crate::render::shadow::{
-    shadow_falloff, shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD, SHADOW_BLUR_FALLBACK_LAYERS,
-};
+use crate::render::shadow::{shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD};
 use std::collections::HashSet;
 
 use crate::scroll::{overscroll_stretch_scale, ScrollPhysicsProfile, ScrollPhysicsTuning};
@@ -2051,62 +2049,55 @@ fn emit_inset_shadow(
     let spread = shadow.spread.max(0.0);
     let blur = shadow.blur.max(0.0);
     let max_band = width.min(height) * 0.5;
-    let bx = x + shadow.offset_x;
-    let by = y + shadow.offset_y;
-    let mut ring = |bw: f32, c: Color| {
-        let bw = bw.min(max_band);
-        if bw <= 0.0 || c.a <= 0.0 {
-            return;
-        }
-        emit(
-            sg,
-            Some(clip_id),
-            Node {
-                kind: NodeKind::RoundedRing {
-                    x: bx,
-                    y: by,
-                    width,
-                    height,
-                    outer_radius: radius,
-                    border_width: bw,
-                    color: c.to_array_f32(),
-                },
-                children: Vec::new(),
-            },
-        );
-    };
 
     if blur <= HARD_SHADOW_BLUR_THRESHOLD {
-        // ぼかしなしのハードな内側リングは単色で塗る（厚み = spread）。
-        ring(spread.max(0.5), color);
+        // ぼかしなしのハードな内側リングは単色で塗る（厚み = spread）。ぼかしプリミティブ化せず
+        // 従来どおり 1 枚の `RoundedRing`（ピクセル不変）。
+        let bw = spread.max(0.5).min(max_band);
+        if bw > 0.0 && color.a > 0.0 {
+            emit(
+                sg,
+                Some(clip_id),
+                Node {
+                    kind: NodeKind::RoundedRing {
+                        x: x + shadow.offset_x,
+                        y: y + shadow.offset_y,
+                        width,
+                        height,
+                        outer_radius: radius,
+                        border_width: bw,
+                        color: color.to_array_f32(),
+                    },
+                    children: Vec::new(),
+                },
+            );
+        }
         return;
     }
 
-    // ぼかしあり：spread 幅の単色コアリング + spread..spread+blur へ内側にフェードする
-    // リング群。各リングのアルファは縁からの外向き falloff の差分（ドロップ影と同じ
-    // テレスコープ和）で、加算的に `base · shadow_falloff(d - spread)` を再現する。
-    let sigma = shadow_sigma(blur);
-    let band = (spread + blur).min(max_band);
-    let n = SHADOW_BLUR_FALLBACK_LAYERS;
-    for i in 0..=n {
-        let (bw, cover) = if i == 0 {
-            (spread, 0.5_f32)
-        } else {
-            let w = spread + (band - spread) * (i as f32) / (n as f32);
-            let w_prev = spread + (band - spread) * ((i - 1) as f32) / (n as f32);
-            (
-                w,
-                shadow_falloff(w_prev - spread, sigma) - shadow_falloff(w - spread, sigma),
-            )
-        };
-        ring(
-            bw,
-            Color {
-                a: color.a * cover as f64,
-                ..color
+    // ぼかしあり：inset 影を第一級プリミティブ 1 ノードとして border-box クリップ内に emit する
+    // （影1個 = 1描画、現行の 10 段リングを置換・issue #660）。ラスタ方式は painter に委ねる——
+    // 解析パス（vello の DestOut レイヤ / tiny-skia の per-pixel `1 − 被覆`）か、同心リングの
+    // default フォールバック。border-box への角丸クリップは上の `Clip` ノードが与える。
+    emit(
+        sg,
+        Some(clip_id),
+        Node {
+            kind: NodeKind::InsetBlurredRoundedRect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius: radius,
+                offset_x: shadow.offset_x,
+                offset_y: shadow.offset_y,
+                spread,
+                std_dev: shadow_sigma(blur),
+                color: color.to_array_f32(),
             },
-        );
-    }
+            children: Vec::new(),
+        },
+    );
 }
 
 #[cfg(test)]

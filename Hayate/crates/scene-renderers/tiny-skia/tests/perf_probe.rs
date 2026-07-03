@@ -60,6 +60,7 @@ fn perf_probe() {
             Rect { .. } => rects += 1,
             RoundedRing { .. } => rings += 1,
             BlurredRoundedRect { .. } => blurred += 1,
+            InsetBlurredRoundedRect { .. } => blurred += 1,
             DashedBorder { .. } => dashed += 1,
             TextRun { data, .. } => {
                 texts += 1;

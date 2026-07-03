@@ -142,6 +142,86 @@ fn transparent_owner_gets_no_occluder() {
     assert_eq!(occluder, None, "a background-less owner must not occlude its shadow");
 }
 
+fn inset_tree(blur: f32) -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BorderRadius(12.0),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur,
+                spread: 2.0,
+                color: Color::new(0.0, 0.0, 0.0, 0.6),
+                inset: true,
+            }]),
+        ],
+    );
+    tree
+}
+
+fn count_kind(tree: &ElementTree, pred: impl Fn(&NodeKind) -> bool) -> usize {
+    tree.scene_graph().iter().filter(|(_, n)| pred(&n.kind)).count()
+}
+
+#[test]
+fn blurred_inset_shadow_lowers_to_one_primitive_clipped_to_the_border_box() {
+    let mut tree = inset_tree(8.0);
+    tree.render(0.0);
+
+    let inset_nodes = count_kind(&tree, |k| matches!(k, NodeKind::InsetBlurredRoundedRect { .. }));
+    assert_eq!(inset_nodes, 1, "a blurred inset shadow lowers to exactly one primitive node");
+    // シェルの `RoundedRing` は出さない（10 段から 1 ノードへ削減、issue #660）。
+    let rings = count_kind(&tree, |k| matches!(k, NodeKind::RoundedRing { .. }));
+    assert_eq!(rings, 0, "the blurred inset must not fall back to shell rings");
+
+    // painter からは border-box クリップの中で 1 op として見える。
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(tree.scene_graph(), &mut painter);
+    let ops = painter.ops();
+    let inset_pos = ops
+        .iter()
+        .position(|op| matches!(op, DrawOp::FillInsetBlurredRoundedRect { .. }))
+        .expect("one inset blurred op");
+    assert_eq!(
+        ops.iter().filter(|op| matches!(op, DrawOp::FillInsetBlurredRoundedRect { .. })).count(),
+        1,
+        "exactly one inset op per shadow"
+    );
+    // 直前に border-box クリップが積まれ、直後に外される。
+    assert!(
+        ops[..inset_pos].iter().rev().any(|op| matches!(op, DrawOp::PushClipRect { .. })),
+        "the inset shadow is clipped to the border-box"
+    );
+    assert!(
+        ops[inset_pos + 1..].iter().any(|op| matches!(op, DrawOp::PopClip)),
+        "the border-box clip is popped after the inset shadow"
+    );
+}
+
+#[test]
+fn hard_inset_shadow_stays_a_rounded_ring() {
+    // ぼかしなし（blur=0）のハード inset は従来どおり `RoundedRing`（ピクセル不変）。
+    let mut tree = inset_tree(0.0);
+    tree.render(0.0);
+    assert_eq!(
+        count_kind(&tree, |k| matches!(k, NodeKind::InsetBlurredRoundedRect { .. })),
+        0,
+        "a hard inset shadow must not use the blurred primitive"
+    );
+    assert!(
+        count_kind(&tree, |k| matches!(k, NodeKind::RoundedRing { .. })) >= 1,
+        "a hard inset shadow is drawn as a rounded ring"
+    );
+}
+
 #[test]
 fn hard_drop_shadow_stays_a_plain_rect() {
     // ぼかしなし（blur=0）のハードシャドウはプリミティブ化せず、従来どおり 1 枚の Rect。

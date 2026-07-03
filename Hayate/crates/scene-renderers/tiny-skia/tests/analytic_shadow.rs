@@ -143,6 +143,59 @@ fn occluder_skips_the_covered_interior_but_keeps_the_falloff_ring() {
     );
 }
 
+fn inset_scene(blur: f32) -> Vec<u8> {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(100.0, 100.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur,
+                spread: 0.0,
+                color: Color::new(0.0, 0.0, 0.0, 0.7),
+                inset: true,
+            }]),
+        ],
+    );
+    render_scene_to_pixels(&tree.render(0.0).clone())
+}
+
+#[test]
+fn inset_shadow_darkens_the_inner_edge_and_fades_to_a_clear_center() {
+    // 60x60 のボックス (0,0)-(60,60)、blur 16。inset 影は内縁を暗くし中央へ薄れる（issue #660）。
+    let data = inset_scene(16.0);
+
+    // 内縁の帯（左辺内側 x=0..8, 縦中央 y=30）に暗い影ピクセルがある（ピーク ~170 前後）。
+    let edge_min = (0..8u32).map(|x| pixel(&data, CANVAS_W, x, 30)[0]).min().unwrap();
+    assert!(edge_min < 185, "the inner edge must be darkened by the inset shadow, got {edge_min}");
+    // 中央 (30,30) は白いボックスのまま（影は中央へ届かない）。
+    let center = pixel(&data, CANVAS_W, 30, 30);
+    assert!(center[0] > 235, "the box centre stays light, got {center:?}");
+    // 縁は中央よりはっきり暗い（内向きフェードが効いている）。
+    assert!(
+        (center[0] as i32 - edge_min as i32) > 50,
+        "the inset shadow fades from a dark edge to a light centre (edge={edge_min}, center={})",
+        center[0]
+    );
+    // 内縁から中央へ向けて概ね単調に明るくなる（滑らかな内向きフェード）。
+    let mut prev = -1.0_f32;
+    for x in 3..=30u32 {
+        let v = pixel(&data, CANVAS_W, x, 30)[0] as f32;
+        assert!(v >= prev - 4.0, "inset shadow must lighten inward at x={x}: {v} < {prev}");
+        prev = v;
+    }
+    // ボックスの外（x=70）は影が漏れない（border-box クリップ）。
+    let outside = pixel(&data, CANVAS_W, 70, 30);
+    assert!(outside[0] >= 250, "inset shadow must stay inside the border box, got {outside:?}");
+}
+
 #[test]
 fn wider_blur_spreads_the_shadow_farther() {
     // σ が大きいほど裾は遠くまで届く。ボックス縁（x=40）から 12px 外の x=52 では、

@@ -136,6 +136,39 @@ impl ScenePainter for TinySkiaPainter<'_> {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn fill_inset_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        spread: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        let transform = self.state.transform;
+        let mask = self.state.clip_masks.last();
+        draw_inset_blurred_rounded_rect(
+            &mut self.pixmap,
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            offset_x,
+            offset_y,
+            spread,
+            std_dev,
+            color,
+            transform,
+            mask,
+        );
+    }
+
     fn stroke_dashed_border(
         &mut self,
         x: f32,
@@ -325,6 +358,155 @@ fn blurred_rrect_coverage(
     alpha.clamp(0.0, 1.0)
 }
 
+/// ガウス × 角丸矩形の被覆を評価するための、影ごとの形状定数（Raph 近似・vello シェーダと同順）。
+struct BlurShape {
+    adj_w: f32,
+    adj_h: f32,
+    min_edge: f32,
+    r1: f32,
+    exponent: f32,
+    inv_exponent: f32,
+    inv_std_dev: f32,
+    scale: f32,
+}
+
+impl BlurShape {
+    fn compute(width: f32, height: f32, corner_radius: f32, std_dev: f32) -> Self {
+        let inv_std_dev = 1.0 / std_dev;
+        let min_edge = width.min(height);
+        let radius_max = 0.5 * min_edge;
+        let radius = corner_radius.max(0.0);
+        let r0 = (radius * radius + (std_dev * SHADOW_BLUR_RADIUS_INNER_SIGMA).powi(2))
+            .sqrt()
+            .min(radius_max);
+        let r1 = (radius * radius + (std_dev * SHADOW_BLUR_RADIUS_OUTER_SIGMA).powi(2))
+            .sqrt()
+            .min(radius_max);
+        let exponent = 2.0 * r1 / r0;
+        let inv_exponent = 1.0 / exponent;
+        // 長辺を引き込み偏心を弱める（delta は元の width/height から求める）。
+        let delta = SHADOW_BLUR_ECCENTRICITY
+            * std_dev
+            * ((-(0.5 * inv_std_dev * width).powi(2)).exp()
+                - (-(0.5 * inv_std_dev * height).powi(2)).exp());
+        let adj_w = width + delta.min(0.0);
+        let adj_h = height - delta.max(0.0);
+        let scale = 0.5 * erf7(inv_std_dev * 0.5 * (adj_w.max(adj_h) - 0.5 * radius));
+        Self {
+            adj_w,
+            adj_h,
+            min_edge,
+            r1,
+            exponent,
+            inv_exponent,
+            inv_std_dev,
+            scale,
+        }
+    }
+
+    /// 矩形中心を原点とする局所座標 `(lx, ly)` の被覆（0..1）。
+    fn coverage(&self, lx: f32, ly: f32) -> f32 {
+        blurred_rrect_coverage(
+            lx,
+            ly,
+            self.adj_w,
+            self.adj_h,
+            self.min_edge,
+            self.r1,
+            self.exponent,
+            self.inv_exponent,
+            self.inv_std_dev,
+            self.scale,
+        )
+    }
+}
+
+/// inset ぼかしシャドウを解析被覆で border-box に塗る（issue #660）。`(x, y, width, height,
+/// corner_radius)` は border-box（塗り領域。角丸クリップは `mask` が与える）、`(offset_x, offset_y)`
+/// は影オフセット、`spread` は内側への広がり、`std_dev` はガウス σ。影が差し込む内側 hole の外側で
+/// `color`、内側でフェード（`color.a · (1 − blurred_coverage(hole))`）。drop 影と同じ合成経路を再利用する。
+#[allow(clippy::too_many_arguments)]
+fn draw_inset_blurred_rounded_rect(
+    pixmap: &mut Pixmap,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    corner_radius: f32,
+    offset_x: f32,
+    offset_y: f32,
+    spread: f32,
+    std_dev: f32,
+    color: [f32; 4],
+    transform: Transform,
+    mask: Option<&Mask>,
+) {
+    if width <= 0.0 || height <= 0.0 {
+        return;
+    }
+    let std_dev = std_dev.max(1e-5);
+    let spread = spread.max(0.0);
+
+    // 塗り領域 = border-box（シーン座標）。角丸クリップは呼び出し側 `Clip` の mask が与える。
+    let bx0 = x;
+    let by0 = y;
+    let bx1 = x + width;
+    let by1 = y + height;
+
+    // 影が差し込む内側 hole（オフセットずらし・spread 縮め）。中心と半外形。
+    let hole_w = width - 2.0 * spread;
+    let hole_h = height - 2.0 * spread;
+    let cx = x + offset_x + width * 0.5;
+    let cy = y + offset_y + height * 0.5;
+
+    let no_skew = transform.kx == 0.0
+        && transform.ky == 0.0
+        && transform.sx > 0.0
+        && transform.sy > 0.0;
+
+    // hole が潰れていれば border-box 全面が影（被覆 = 1）。
+    if hole_w <= 0.0 || hole_h <= 0.0 {
+        let full = |_lx: f32, _ly: f32| 1.0_f32;
+        if no_skew {
+            composite_blur_direct(
+                pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, None, full,
+            );
+        } else {
+            composite_blur_via_temp(
+                pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, None, full,
+            );
+        }
+        return;
+    }
+
+    let hole = BlurShape::compute(hole_w, hole_h, (corner_radius - spread).max(0.0), std_dev);
+    let hole_hx = hole_w * 0.5;
+    let hole_hy = hole_h * 0.5;
+    // hole から十分内側は被覆 1 → inset 0（影なし・skip）。十分外側は被覆 0 → inset 1（全影・超越関数省略）。
+    let interior = SHADOW_BLUR_INTERIOR_SIGMAS * std_dev;
+    let pad = SHADOW_BLUR_KERNEL_SIGMAS * std_dev;
+    let inset_coverage = move |lx: f32, ly: f32| -> f32 {
+        let ax = lx.abs();
+        let ay = ly.abs();
+        if ax <= hole_hx - interior && ay <= hole_hy - interior {
+            0.0 // hole 深部: 影なし
+        } else if ax >= hole_hx + pad || ay >= hole_hy + pad {
+            1.0 // hole 外の遠方: 全影（falloff 無視）
+        } else {
+            1.0 - hole.coverage(lx, ly)
+        }
+    };
+    if no_skew {
+        composite_blur_direct(
+            pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, None, inset_coverage,
+        );
+    } else {
+        composite_blur_via_temp(
+            pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, None, inset_coverage,
+        );
+    }
+}
+
 /// ぼかし角丸矩形の影を解析被覆で影 bbox に塗る。`(x, y, width, height)` は影外形
 /// （オフセット・spread 適用済み）、`corner_radius` はその角丸半径、`std_dev` はガウス σ、
 /// `color` は影色（straight RGBA・不透明度適用済み）。被覆を premultiplied な小 pixmap に焼き、
@@ -347,28 +529,7 @@ fn draw_blurred_rounded_rect(
         return;
     }
     let std_dev = std_dev.max(1e-5);
-    let inv_std_dev = 1.0 / std_dev;
-
-    // 影ごとに一度だけ計算する形状定数（vello シェーダと同順）。
-    let min_edge = width.min(height);
-    let radius_max = 0.5 * min_edge;
-    let radius = corner_radius.max(0.0);
-    let r0 = (radius * radius + (std_dev * SHADOW_BLUR_RADIUS_INNER_SIGMA).powi(2))
-        .sqrt()
-        .min(radius_max);
-    let r1 = (radius * radius + (std_dev * SHADOW_BLUR_RADIUS_OUTER_SIGMA).powi(2))
-        .sqrt()
-        .min(radius_max);
-    let exponent = 2.0 * r1 / r0;
-    let inv_exponent = 1.0 / exponent;
-    // 長辺を引き込み偏心を弱める（delta は元の width/height から求める）。
-    let delta = SHADOW_BLUR_ECCENTRICITY
-        * std_dev
-        * ((-(0.5 * inv_std_dev * width).powi(2)).exp()
-            - (-(0.5 * inv_std_dev * height).powi(2)).exp());
-    let adj_w = width + delta.min(0.0);
-    let adj_h = height - delta.max(0.0);
-    let scale = 0.5 * erf7(inv_std_dev * 0.5 * (adj_w.max(adj_h) - 0.5 * radius));
+    let shape = BlurShape::compute(width, height, corner_radius, std_dev);
 
     let cx = x + width * 0.5;
     let cy = y + height * 0.5;
@@ -384,9 +545,7 @@ fn draw_blurred_rounded_rect(
         if ly.abs() <= interior_hy && lx.abs() <= interior_hx {
             1.0
         } else {
-            blurred_rrect_coverage(
-                lx, ly, adj_w, adj_h, min_edge, r1, exponent, inv_exponent, inv_std_dev, scale,
-            )
+            shape.coverage(lx, ly)
         }
     };
 

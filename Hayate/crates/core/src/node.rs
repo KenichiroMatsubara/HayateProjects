@@ -135,6 +135,24 @@ pub enum NodeKind {
         color: [f32; 4],
         occluder: Option<ShadowOccluder>,
     },
+    /// inset box-shadow の解析プリミティブ（issue #660）。border-box `(x, y, width, height,
+    /// corner_radius)` を塗り領域とし、影が差し込む内側 hole（`(offset_x, offset_y)` ずらし・
+    /// `spread` 縮め）の外側で `color`、内側でフェードする（`color.a · (1 − blurred_coverage(hole))`）。
+    /// `std_dev` はガウス σ（= blur/2）。border-box への角丸クリップは呼び出し側の `Clip` ノードが
+    /// 与える。ぼかしなしのハード inset は `RoundedRing` で表す。解析パスを持たない painter の
+    /// default 実装は同心 `RoundedRing` 帯（`SHADOW_BLUR_FALLBACK_LAYERS` 段）で近似する。
+    InsetBlurredRoundedRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        offset_x: f32,
+        offset_y: f32,
+        spread: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    },
     TextRun {
         x: f32,
         y: f32,
