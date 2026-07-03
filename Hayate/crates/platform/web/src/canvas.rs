@@ -16,6 +16,7 @@ use hayate_core::{
     StyleProp, TextDecorationValue, effective_content_scale,
 };
 use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
+use crate::frame_surface;
 use crate::image_decode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -156,6 +157,12 @@ pub struct HayateElementRenderer {
     /// 時間を導出して駆動し、逼迫時は render_scale を段階的に下げる。スケール変更時のみ buffer を
     /// 実効 content scale で resize する（CSS/レイアウトビューポートは不変・ヒットテストは論理座標のまま）。
     render_scale: RenderScaleDriver,
+    /// 前フレームの `render_scale.note_frame` がスケール変更を検知した場合の、まだ適用していない
+    /// render_scale（#666）。**このフレームの** present より前ではなく、**次フレームの**先頭・present
+    /// より前に適用する。buffer resize を present の後に行うと、直後の `backend.resize` は新バッファを
+    /// 確保し直すだけで再描画しないため、そのフレームで描画済みの内容が消えたまま次の render() まで
+    /// canvas が空白になる（`canvas.set_width`/`set_height` は HTML5 仕様で即座にバッファをクリアする）。
+    pending_render_scale: Option<f32>,
     /// 現在の base DPR（デバイス実 DPR。resize で更新）。実効 content scale = `base_dpr * render_scale`。
     base_dpr: f32,
     /// イベントなしフレーム用の常駐・空 `js_sys::Array`（#649）。配信ゼロのフレームで毎回 `Array::new()`
@@ -257,6 +264,7 @@ impl HayateElementRenderer {
             // 適応的レンダースケール劣化（ADR-0129・#647）。60Hz 予算で開始。base DPR は init 時の
             // device_pixel_ratio。逼迫が続くと render_scale を段階的に下げ、buffer を縮小する。
             render_scale: RenderScaleDriver::new(FRAME_BUDGET_60HZ_MS),
+            pending_render_scale: None,
             base_dpr: dpr as f32,
             empty_events: js_sys::Array::new(),
             edit_context_canvas_rect: RefCell::new(None),
@@ -449,15 +457,57 @@ impl HayateElementRenderer {
             self.tree.element_paste(id, &text);
         }
         let _ = self.tree.render(timestamp_ms);
-        // render() が捕捉した frame_layers / frame_layer_dirty を通して raster を gating する
-        // （#632/#636・ADR-0125）。per-layer 対応バックエンド（tiny-skia）は dirty レイヤだけ
-        // キャッシュ面へ再 raster し、clean レイヤはキャッシュ面を合成する（composite-only フレームで
-        // 全面 render_scene を起動しない）。未対応バックエンドは従来の単一 root FramePlan gating
-        // にフォールバックする。scroll フレーム（#634 で content dirty から分離した chrome dirty）は
-        // 単一 Pixmap/texture 経路では offset がキャッシュ面へ焼き込まれるため、保守的に raster
-        // トリガへ含める（stale フレーム回避）。transform 係数だけの変化は quad が適用するので
-        // per-layer 経路では raster トリガに含めない（composite-only）。
-        let present = if self.backend.supports_layer_present() {
+
+        // #666: 前フレームで測ったスケール変更（あれば）をこのフレームの present より前に適用してから
+        // present する（frame_surface::advance_frame 経由。resize→present の順序を型で固定する）。
+        let pending_render_scale = self.pending_render_scale.take();
+        let present = frame_surface::advance_frame(self, pending_render_scale);
+
+        // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
+        // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
+        self.tree.drive_ime(&mut self.ime);
+        self.sync_edit_context();
+
+        // 適応的レンダースケール（ADR-0129・#647）。このフレームの timestamp 差分から frame 時間を
+        // 導出して governor を駆動する。逼迫が続いてスケールが変わったら、次フレームの `advance_frame`
+        // が present より前に buffer を実効 content scale で resize する（余裕が続けばヒステリシス付きで
+        // 1 段ずつ復帰）。CSS/レイアウトビューポートは不変なのでブラウザが拡大表示し、ヒットテストは
+        // 論理座標のまま整合する。熱シグナルは web では未接続（false）で、フレーム時間予算超過のみで判定する。
+        if let Some(render_scale) = self.render_scale.note_frame(timestamp_ms, false) {
+            self.pending_render_scale = Some(render_scale);
+        }
+        present
+    }
+
+    /// レンダースケール変更（ADR-0129・#647）を buffer に適用する。CSS ビューポート（レイアウト）は
+    /// 不変のまま、実効 content scale = `base_dpr * render_scale` で backing store を resize する。逼迫時は
+    /// 縮小、復帰時は拡大。ヒットテスト座標は論理（CSS px）のままで、layout も CSS px なので描画と整合する。
+    fn apply_render_scale(&mut self, render_scale: f32) {
+        let (css_w, css_h) = *self.last_viewport.borrow();
+        if css_w <= 0.0 || css_h <= 0.0 {
+            return;
+        }
+        let effective = effective_content_scale(self.base_dpr, render_scale);
+        let metrics = resize_observer::canvas_resize_metrics(css_w, css_h, effective as f64);
+        self.canvas.set_width(metrics.buffer_width);
+        self.canvas.set_height(metrics.buffer_height);
+        // buffer 寸法と content scale だけを差し替える。viewport（CSS px）は据え置き＝layout・
+        // ヒットテストは論理座標のまま。描画サーフェスを作り直したのでキャッシュ面を invalidate。
+        self.backend
+            .resize(metrics.buffer_width, metrics.buffer_height, metrics.content_scale);
+        self.planner.invalidate();
+    }
+
+    /// render_scale 変更なしのフレームの present 本体（#666 で `render()` から抽出）。render() が
+    /// 捕捉した frame_layers / frame_layer_dirty を通して raster を gating する（#632/#636・ADR-0125）。
+    /// per-layer 対応バックエンド（tiny-skia）は dirty レイヤだけキャッシュ面へ再 raster し、clean
+    /// レイヤはキャッシュ面を合成する（composite-only フレームで全面 render_scene を起動しない）。
+    /// 未対応バックエンドは従来の単一 root FramePlan gating にフォールバックする。scroll フレーム
+    /// （#634 で content dirty から分離した chrome dirty）は単一 Pixmap/texture 経路では offset が
+    /// キャッシュ面へ焼き込まれるため、保守的に raster トリガへ含める（stale フレーム回避）。transform
+    /// 係数だけの変化は quad が適用するので per-layer 経路では raster トリガに含めない（composite-only）。
+    fn present_frame(&mut self) -> Result<(), JsValue> {
+        if self.backend.supports_layer_present() {
             let mut layer_dirty = self.tree.frame_layer_dirty().clone();
             layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
             self.backend.present_layers(
@@ -484,40 +534,7 @@ impl HayateElementRenderer {
             } else {
                 Ok(())
             }
-        };
-        // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
-        // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
-        self.tree.drive_ime(&mut self.ime);
-        self.sync_edit_context();
-
-        // 適応的レンダースケール（ADR-0129・#647）。このフレームの timestamp 差分から frame 時間を
-        // 導出して governor を駆動する。逼迫が続いてスケールが変わったフレームだけ、実効 content scale で
-        // buffer を resize する（余裕が続けばヒステリシス付きで 1 段ずつ復帰）。CSS/レイアウトビューポートは
-        // 不変なのでブラウザが拡大表示し、ヒットテストは論理座標のまま整合する。熱シグナルは web では
-        // 未接続（false）で、フレーム時間予算超過のみで判定する。
-        if let Some(render_scale) = self.render_scale.note_frame(timestamp_ms, false) {
-            self.apply_render_scale(render_scale);
         }
-        present
-    }
-
-    /// レンダースケール変更（ADR-0129・#647）を buffer に適用する。CSS ビューポート（レイアウト）は
-    /// 不変のまま、実効 content scale = `base_dpr * render_scale` で backing store を resize する。逼迫時は
-    /// 縮小、復帰時は拡大。ヒットテスト座標は論理（CSS px）のままで、layout も CSS px なので描画と整合する。
-    fn apply_render_scale(&mut self, render_scale: f32) {
-        let (css_w, css_h) = *self.last_viewport.borrow();
-        if css_w <= 0.0 || css_h <= 0.0 {
-            return;
-        }
-        let effective = effective_content_scale(self.base_dpr, render_scale);
-        let metrics = resize_observer::canvas_resize_metrics(css_w, css_h, effective as f64);
-        self.canvas.set_width(metrics.buffer_width);
-        self.canvas.set_height(metrics.buffer_height);
-        // buffer 寸法と content scale だけを差し替える。viewport（CSS px）は据え置き＝layout・
-        // ヒットテストは論理座標のまま。描画サーフェスを作り直したのでキャッシュ面を invalidate。
-        self.backend
-            .resize(metrics.buffer_width, metrics.buffer_height, metrics.content_scale);
-        self.planner.invalidate();
     }
 
     /// `render()` 冒頭で自前配線の編集入力バッファを排出し、各入力を到着順に core の編集
@@ -1147,6 +1164,17 @@ impl HayateElementRenderer {
     }
 }
 
+impl frame_surface::FrameSurface for HayateElementRenderer {
+    type Present = Result<(), JsValue>;
+
+    fn apply_render_scale(&mut self, render_scale: f32) {
+        HayateElementRenderer::apply_render_scale(self, render_scale);
+    }
+
+    fn present(&mut self) -> Result<(), JsValue> {
+        self.present_frame()
+    }
+}
 
 /// `Some(Color)` を `{r,g,b,a}` に、`None` を `null` に変換する。
 fn color_to_js(color: Option<Color>) -> JsValue {

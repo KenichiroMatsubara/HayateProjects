@@ -21,6 +21,8 @@ mod pointer_input;
 mod tuning;
 // 画像デコードの共通経路（#643）。純粋（image + core のみ）なのでホストでテストできる。
 mod image_decode;
+// render() の resize→present 順序（#666）。DOM/GPU 非依存の純粋モジュールでホストでテストできる。
+mod frame_surface;
 #[cfg(target_arch = "wasm32")]
 mod canvas;
 #[cfg(target_arch = "wasm32")]
