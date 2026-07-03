@@ -95,7 +95,7 @@ pub use surface_lifecycle::{
 };
 pub use touch_input::{translate_touch, PointerInput, TouchAction};
 pub use render_scale::{
-    effective_content_scale, hit_test_logical, RenderScaleGovernor,
+    effective_content_scale, hit_test_logical, RenderScaleDriver, RenderScaleGovernor,
 };
 pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};
 pub use render::{

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHayateWebHost } from './index.js';
+import {
+  createHayateWebHost,
+  WORKER_ENGINE_QUERY_PARAM,
+  WORKER_ENGINE_QUERY_VALUE,
+} from './index.js';
 import type { CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
 
@@ -152,7 +156,7 @@ describe('createHayateWebHost', () => {
   });
 
   it('attaches the accessibility mirror seam with the surface raw+canvas (ADR-0124)', async () => {
-    const attachMirror = vi.fn(() => () => undefined);
+    const attachMirror = vi.fn(() => ({ poll: () => {}, detach: () => {} }));
     const raw = fakeRaw();
     await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
@@ -168,11 +172,145 @@ describe('createHayateWebHost', () => {
     const host = await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
       loadBackend: async () => fakeRaw(),
-      attachMirror: () => detach,
+      attachMirror: () => ({ poll: () => {}, detach }),
     });
 
     host.detach();
 
     expect(detach).toHaveBeenCalledTimes(1);
+  });
+
+  it('rides the mirror poll on the renderer frame-clock: polls once after each frame (#645)', async () => {
+    // レンダラのフレーム cb → その末尾でミラー poll、の順で 1 フレームにつき 1 回だけ相乗りする。
+    let scheduled: FrameRequestCallback | null = null;
+    const poll = vi.fn();
+    const host = await createHayateWebHost(canvas, {
+      probeWebGPU: async () => false,
+      loadBackend: async () => fakeRaw(),
+      attachMirror: () => ({ poll, detach: () => {} }),
+      requestFrame: (cb) => {
+        scheduled = cb;
+        return 1;
+      },
+      cancelFrame: () => {},
+    });
+
+    const order: string[] = [];
+    // 合成ルート（HayateRenderer 相当）が host.requestFrame でフレームを予約する。
+    host.requestFrame(() => order.push('render'));
+    expect(poll).not.toHaveBeenCalled(); // 予約だけ。まだフレームは出ていない。
+
+    // clock が 1 フレーム発火する。
+    scheduled!(0);
+    order.push('poll:' + poll.mock.calls.length);
+    expect(order).toEqual(['render', 'poll:1']); // レンダラ → ミラー poll の順。
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not tick the mirror while idle: no scheduled frame means no poll (#645)', async () => {
+    // フレームが予約されない（visual_dirty 空・入力なし）限りミラー poll はゼロ。独立ループが無い。
+    const poll = vi.fn();
+    await createHayateWebHost(canvas, {
+      probeWebGPU: async () => false,
+      loadBackend: async () => fakeRaw(),
+      attachMirror: () => ({ poll, detach: () => {} }),
+      requestFrame: () => 1,
+      cancelFrame: () => {},
+    });
+
+    // host は attach しただけでフレームを予約していない。ミラーは一切走らない。
+    expect(poll).not.toHaveBeenCalled();
+  });
+
+  // ── OffscreenCanvas + Worker opt-in（ADR-0128 web 半分・#648）──────────────────
+  function fakeWorkerTransport() {
+    const sent: unknown[] = [];
+    return {
+      transport: {
+        postMessage: (msg: unknown) => sent.push(msg),
+        onMessage: () => {},
+        terminate: vi.fn(),
+      },
+      sent,
+    };
+  }
+  const workerCanvas = {
+    width: 800,
+    height: 600,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  } as unknown as HTMLCanvasElement;
+
+  it('opt-in off (default): loads a main-thread backend, spawns no worker (#648)', async () => {
+    const spawnWorker = vi.fn();
+    const loadBackend = vi.fn(async () => fakeRaw());
+    await createHayateWebHost(workerCanvas, {
+      probeWebGPU: async () => false,
+      loadBackend,
+      spawnWorker,
+      locationSearch: '',
+    });
+
+    expect(loadBackend).toHaveBeenCalledTimes(1);
+    expect(spawnWorker).not.toHaveBeenCalled();
+  });
+
+  it('opt-in on (flag): boots the worker engine and does not load a main-thread backend (#648)', async () => {
+    const { transport } = fakeWorkerTransport();
+    const spawnWorker = vi.fn(() => transport);
+    const loadBackend = vi.fn(async () => fakeRaw());
+    const transferControlToOffscreen = vi.fn(() => ({ token: 'offscreen' }));
+
+    const host = await createHayateWebHost(workerCanvas, {
+      workerEngine: true,
+      spawnWorker,
+      transferControlToOffscreen,
+      loadBackend,
+    });
+
+    // Worker がエンジンを所有：main では WASM backend をロードしない（毎フレームのエンジン仕事が無い）。
+    expect(loadBackend).not.toHaveBeenCalled();
+    expect(spawnWorker).toHaveBeenCalledTimes(1);
+    expect(transferControlToOffscreen).toHaveBeenCalledWith(workerCanvas);
+    // main の raw は input proxy：入力面は関数、drive/query は不活性の既定。
+    expect(typeof host.raw.on_pointer_down).toBe('function');
+    expect(host.raw.poll_events()).toEqual([]);
+  });
+
+  it('opt-in on (query param): boots the worker path (#648)', async () => {
+    const { transport } = fakeWorkerTransport();
+    const spawnWorker = vi.fn(() => transport);
+    await createHayateWebHost(workerCanvas, {
+      spawnWorker,
+      transferControlToOffscreen: () => ({}),
+      locationSearch: `?${WORKER_ENGINE_QUERY_PARAM}=${WORKER_ENGINE_QUERY_VALUE}`,
+      loadBackend: async () => fakeRaw(),
+    });
+
+    expect(spawnWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it('opt-in on but no spawnWorker: falls back to the main-thread path (#648)', async () => {
+    const loadBackend = vi.fn(async () => fakeRaw());
+    const host = await createHayateWebHost(workerCanvas, {
+      workerEngine: true,
+      probeWebGPU: async () => false,
+      loadBackend,
+    });
+
+    expect(loadBackend).toHaveBeenCalledTimes(1);
+    expect(host.raw).toBeDefined();
+  });
+
+  it('worker host detach terminates the worker (safe teardown / rebuild, #648)', async () => {
+    const { transport } = fakeWorkerTransport();
+    const host = await createHayateWebHost(workerCanvas, {
+      workerEngine: true,
+      spawnWorker: () => transport,
+      transferControlToOffscreen: () => ({}),
+    });
+
+    host.detach();
+    expect(transport.terminate).toHaveBeenCalledTimes(1);
   });
 });
