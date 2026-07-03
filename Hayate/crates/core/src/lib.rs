@@ -77,6 +77,7 @@ pub use element::{
     event_document_kind,
     CharacterBounds, Clipboard, CompositionClause, CompositionUnderline, Direction, EditIntent,
     EditState, FontStyleValue, Granularity,
+    FontFetcher,
     ImeAction, ImeBridge, ImeBuffer, ImeCommand, ImePresentation, InputModality, PointerKind, PointerMoveResult, Preedit, PseudoState,
     ResolvedElement,
     OverflowMenu, Selection, SelectionChromeStyle, SelectionHandle, SelectionHandleEnd,
