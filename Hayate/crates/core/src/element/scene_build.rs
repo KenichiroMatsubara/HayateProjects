@@ -13,6 +13,9 @@ use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::{ElementTree, Visual};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph};
+use crate::render::shadow::{
+    shadow_falloff, shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD, SHADOW_BLUR_FALLBACK_LAYERS,
+};
 use std::collections::HashSet;
 
 use crate::scroll::{overscroll_stretch_scale, ScrollPhysicsProfile, ScrollPhysicsTuning};
@@ -1869,36 +1872,6 @@ fn emit_fill_rect(
     );
 }
 
-/// 影のガウスぼかしを近似する半透明レイヤー数（ADR-0095：「blur は許容範囲のガウス近似でよい」）。
-/// box-shadow は素の角丸矩形塗りへ lowering され、Vello と tiny-skia の描画が一致する（意味論的な
-/// DOM/Canvas パリティ）。blur ≈ 重なる半透明角丸矩形。
-const SHADOW_BLUR_LAYERS: usize = 10;
-
-/// CSS の blur 半径 `b` は標準偏差 σ = b/2 のガウスぼかしに対応する（CSS Backgrounds & Borders）。
-fn shadow_sigma(blur: f32) -> f32 {
-    (blur * 0.5).max(f32::MIN_POSITIVE)
-}
-
-/// 相補誤差関数 erfc(x)（Abramowitz & Stegun 7.1.26、最大誤差 ~1.5e-7）。
-/// ぼかしたシャドウ縁のアルファは、ステップ関数をガウスで畳み込んだ
-/// `base/2 · erfc(d / (σ√2))` で与えられる（d はシャドウ外形からの外向き距離）。
-fn erfc(x: f32) -> f32 {
-    let z = x.abs();
-    let t = 1.0 / (1.0 + 0.3275911 * z);
-    let poly = t
-        * (0.254829592
-            + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
-    let erf = 1.0 - poly * (-z * z).exp();
-    let erf = if x < 0.0 { -erf } else { erf };
-    1.0 - erf
-}
-
-/// シャドウ外形の縁から外側へ距離 `d` の点における、ぼかしたシャドウのアルファ係数
-/// （ピーク `base_a` に対する比 0..0.5）。
-fn shadow_falloff(d: f32, sigma: f32) -> f32 {
-    0.5 * erfc(d / (sigma * std::f32::consts::SQRT_2))
-}
-
 /// 要素の box-shadow レイヤーのうち `inset == want_inset` の部分集合を出す。
 ///
 /// CSS は最初に挙げた影を最前面に描くので、逆順で出す（最後の影が先＝最背面）。outset 影は
@@ -1933,8 +1906,12 @@ fn emit_box_shadows(
     }
 }
 
-/// outset（ドロップ）影：`spread` で拡大しオフセットでずらした角丸矩形を、重なる半透明角丸矩形で
-/// ぼかす。
+/// outset（ドロップ）影：`spread` で拡大しオフセットでずらした角丸矩形を、ぼかす。
+///
+/// ぼかしたシャドウは第一級プリミティブ [`NodeKind::BlurredRoundedRect`] 1 ノードとして emit し
+/// （影1個 = 1描画）、ラスタ方式は painter に委ねる——解析パス（vello の
+/// `draw_blurred_rounded_rect` / tiny-skia の per-pixel）か、erf シェル近似の default フォールバック。
+/// ぼかしなし（`blur <= HARD_SHADOW_BLUR_THRESHOLD`）のハードシャドウは外形 1 枚を `Rect` で塗る。
 #[allow(clippy::too_many_arguments)]
 fn emit_drop_shadow(
     sg: &mut SceneGraph,
@@ -1957,52 +1934,28 @@ fn emit_drop_shadow(
     }
 
     let blur = shadow.blur.max(0.0);
-    if blur <= 0.5 {
+    if blur <= HARD_SHADOW_BLUR_THRESHOLD {
         // ぼかしなしのハードシャドウは外形を 1 枚で不透明に塗る。
         emit_fill_rect(sg, parent_group, sx, sy, sw, sh, color.to_array_f32(), sr);
         return;
     }
 
-    // ぼかしたシャドウを同心の角丸矩形シェルで近似する。CSS の blur は σ = blur/2 のガウス
-    // なので、外形の縁から外向き距離 d でのアルファは `base · shadow_falloff(d)`（縁で base/2、
-    // σ の数倍で実質 0）。各シェルのアルファを falloff の差分にすると加算的に重なってこの
-    // 減衰を再現する。i=0 の核（grow=0, α=base/2）と外向きシェル（telescope）の合計は外形
-    // 内部で base に達し（spread 帯も正しく不透明）、外側はガウス減衰する。
-    //
-    // 従来は全シェル等アルファ・grow を blur 全幅まで線形に広げていたため、ハロが線形に
-    // 遠くまで（≈blur）広がり過ぎていた（DOM 比で約 2 倍）。
-    let sigma = shadow_sigma(blur);
-    // falloff が無視できる距離（~0.4% base）まで。それ以遠のシェルは見えない。
-    let reach = (sigma * 2.7).min(blur * 1.5);
-    let n = SHADOW_BLUR_LAYERS;
-    // 外側（薄い大きな矩形）から内側へ重ねる。
-    for i in (0..=n).rev() {
-        let grow = reach * (i as f32) / (n as f32);
-        let cover = if i == 0 {
-            // 核：外形内部を base まで満たすぶん（境界での値 base/2）。
-            0.5_f32
-        } else {
-            let d_inner = reach * ((i - 1) as f32) / (n as f32);
-            shadow_falloff(d_inner, sigma) - shadow_falloff(grow, sigma)
-        };
-        let layer = Color {
-            a: color.a * cover as f64,
-            ..color
-        };
-        if layer.a <= 0.0 {
-            continue;
-        }
-        emit_fill_rect(
-            sg,
-            parent_group,
-            sx - grow,
-            sy - grow,
-            sw + 2.0 * grow,
-            sh + 2.0 * grow,
-            layer.to_array_f32(),
-            (sr + grow).max(0.0),
-        );
-    }
+    emit(
+        sg,
+        parent_group,
+        Node {
+            kind: NodeKind::BlurredRoundedRect {
+                x: sx,
+                y: sy,
+                width: sw,
+                height: sh,
+                corner_radius: sr,
+                std_dev: shadow_sigma(blur),
+                color: color.to_array_f32(),
+            },
+            children: Vec::new(),
+        },
+    );
 }
 
 /// inset 影：内縁に沿った暗い帯。ボーダーボックスの角丸に追従する `RoundedRing`
@@ -2068,7 +2021,7 @@ fn emit_inset_shadow(
         );
     };
 
-    if blur <= 0.5 {
+    if blur <= HARD_SHADOW_BLUR_THRESHOLD {
         // ぼかしなしのハードな内側リングは単色で塗る（厚み = spread）。
         ring(spread.max(0.5), color);
         return;
@@ -2079,7 +2032,7 @@ fn emit_inset_shadow(
     // テレスコープ和）で、加算的に `base · shadow_falloff(d - spread)` を再現する。
     let sigma = shadow_sigma(blur);
     let band = (spread + blur).min(max_band);
-    let n = SHADOW_BLUR_LAYERS;
+    let n = SHADOW_BLUR_FALLBACK_LAYERS;
     for i in 0..=n {
         let (bw, cover) = if i == 0 {
             (spread, 0.5_f32)

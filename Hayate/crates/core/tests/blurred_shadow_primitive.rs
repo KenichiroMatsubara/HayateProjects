@@ -1,0 +1,113 @@
+//! ぼかし角丸矩形プリミティブ（issue #657）。drop shadow の lowering が、シェル多数 emit ではなく
+//! 第一級プリミティブ [`NodeKind::BlurredRoundedRect`] を **影1個につき1ノード** emit すること、
+//! `RecordingPainter` がそれを **1 op** として記録すること、ハードシャドウ（blur なし）は従来どおり
+//! `Rect` のままであることを検証する。default painter のシェル近似フォールバックのピクセル不変は
+//! tiny-skia の box-shadow ゴールデン（`parity_box_shadow_drop`）が別途担保する。
+
+use hayate_core::{
+    Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, RecordingPainter, Shadow,
+    StyleProp, render_scene_graph,
+};
+
+fn tree_with_shadow(shadow: Shadow) -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(50.0)),
+            StyleProp::Height(Dimension::px(50.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BoxShadow(vec![shadow]),
+        ],
+    );
+    tree
+}
+
+fn blurred_shadow() -> Shadow {
+    Shadow {
+        offset_x: 8.0,
+        offset_y: 8.0,
+        blur: 6.0,
+        spread: 0.0,
+        color: Color::new(0.0, 0.0, 0.0, 0.5),
+        inset: false,
+    }
+}
+
+fn blurred_rect_nodes(tree: &ElementTree) -> Vec<(f32, f32, f32, f32, f32, f32, [f32; 4])> {
+    tree.scene_graph()
+        .iter()
+        .filter_map(|(_, n)| match n.kind {
+            NodeKind::BlurredRoundedRect {
+                x,
+                y,
+                width,
+                height,
+                corner_radius,
+                std_dev,
+                color,
+            } => Some((x, y, width, height, corner_radius, std_dev, color)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn blurred_drop_shadow_lowers_to_a_single_primitive_node() {
+    let mut tree = tree_with_shadow(blurred_shadow());
+    tree.render(0.0);
+
+    let blurred = blurred_rect_nodes(&tree);
+    assert_eq!(
+        blurred.len(),
+        1,
+        "a blurred drop shadow must lower to exactly one BlurredRoundedRect node, got {}",
+        blurred.len()
+    );
+
+    // 外形は spread=0 なのでオフセット済みのボーダーボックス、σ = blur/2、色は不透明度適用済み。
+    let (x, y, w, h, radius, std_dev, color) = blurred[0];
+    assert_eq!((x, y, w, h), (8.0, 8.0, 50.0, 50.0), "shadow outline geometry");
+    assert_eq!(radius, 8.0, "corner radius follows the box");
+    assert_eq!(std_dev, 3.0, "std_dev is blur/2");
+    assert_eq!(color, [0.0, 0.0, 0.0, 0.5], "shadow colour with opacity applied");
+}
+
+#[test]
+fn recording_painter_records_one_op_per_blurred_shadow() {
+    let mut tree = tree_with_shadow(blurred_shadow());
+    tree.render(0.0);
+
+    let mut painter = RecordingPainter::new();
+    render_scene_graph(tree.scene_graph(), &mut painter);
+
+    let blurred_ops = painter
+        .ops()
+        .iter()
+        .filter(|op| matches!(op, DrawOp::FillBlurredRoundedRect { .. }))
+        .count();
+    assert_eq!(
+        blurred_ops, 1,
+        "one shadow must record exactly one FillBlurredRoundedRect op (not {} shells)",
+        blurred_ops
+    );
+}
+
+#[test]
+fn hard_drop_shadow_stays_a_plain_rect() {
+    // ぼかしなし（blur=0）のハードシャドウはプリミティブ化せず、従来どおり 1 枚の Rect。
+    let mut tree = tree_with_shadow(Shadow {
+        blur: 0.0,
+        ..blurred_shadow()
+    });
+    tree.render(0.0);
+
+    assert!(
+        blurred_rect_nodes(&tree).is_empty(),
+        "a hard (blur=0) shadow must not emit a BlurredRoundedRect"
+    );
+}

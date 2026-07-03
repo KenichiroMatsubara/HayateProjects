@@ -1,5 +1,6 @@
 mod missing_glyph;
 mod painter;
+pub(crate) mod shadow;
 pub(crate) mod text_synthesis;
 
 use linebender_resource_handle::FontData;

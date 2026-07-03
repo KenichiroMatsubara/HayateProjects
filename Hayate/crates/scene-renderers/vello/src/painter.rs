@@ -125,6 +125,36 @@ impl ScenePainter for VelloPainter<'_> {
         scene.fill(Fill::EvenOdd, Affine::IDENTITY, brush, None, &path);
     }
 
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        // vendor 済みの解析ガウス経路（Evan-Wallace 式）へ直結する。影1個 = 1描画で、
+        // シェル近似の 11 パス emit を置き換える（issue #657）。`rect` は鋭い角丸矩形
+        // （影外形）、ぼかしはこの周りに解析的に広がる。
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        let rect = Rect::new(
+            x as f64,
+            y as f64,
+            (x + width) as f64,
+            (y + height) as f64,
+        );
+        scene.draw_blurred_rounded_rect(
+            Affine::IDENTITY,
+            rect,
+            brush,
+            corner_radius as f64,
+            std_dev as f64,
+        );
+    }
+
     fn stroke_dashed_border(
         &mut self,
         x: f32,
@@ -288,5 +318,41 @@ impl ScenePainter for VelloPainter<'_> {
         }
         self.target().pop_layer();
         self.clip_depth -= 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hayate_core::{render_scene_graph, Node, NodeKind, SceneGraph};
+
+    /// ぼかし角丸矩形プリミティブ 1 個が、解析ガウス経路で **1 描画** にエンコードされること
+    /// （issue #657：シェル近似の 11 パス → 1 描画）。GPU デバイス無しで Scene の encoding を
+    /// 直接検査する。フォールバックのシェル近似なら 11 枚の COLOR fill になる。
+    #[test]
+    fn blurred_rounded_rect_encodes_a_single_draw() {
+        let mut sg = SceneGraph::new();
+        sg.insert(Node {
+            kind: NodeKind::BlurredRoundedRect {
+                x: 8.0,
+                y: 8.0,
+                width: 50.0,
+                height: 50.0,
+                corner_radius: 8.0,
+                std_dev: 3.0,
+                color: [0.0, 0.0, 0.0, 0.5],
+            },
+            children: Vec::new(),
+        });
+
+        let mut scene = Scene::new();
+        let mut painter = VelloPainter::new(&mut scene);
+        render_scene_graph(&sg, &mut painter);
+
+        assert_eq!(
+            scene.encoding().draw_tags.len(),
+            1,
+            "the analytic path must encode one draw per shadow, not a stack of shell fills"
+        );
     }
 }

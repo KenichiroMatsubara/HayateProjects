@@ -70,6 +70,20 @@ pub enum NodeKind {
         border_width: f32,
         color: [f32; 4],
     },
+    /// ぼかし角丸矩形（drop shadow）の第一級プリミティブ（issue #657）。`(x, y, width,
+    /// height)` は影外形（オフセット・spread 適用済み）、`corner_radius` はその角丸半径、
+    /// `std_dev` はガウス σ（= blur/2）、`color` は影色（straight RGBA・不透明度適用済み）。
+    /// painter は解析パス（vello `draw_blurred_rounded_rect` / tiny-skia per-pixel）または
+    /// erf シェル近似の default フォールバックで描く。ぼかしなしのハードシャドウは `Rect` で表す。
+    BlurredRoundedRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    },
     TextRun {
         x: f32,
         y: f32,

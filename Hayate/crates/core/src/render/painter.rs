@@ -20,6 +20,15 @@ pub enum DrawOp {
         border_width: f32,
         color: [f32; 4],
     },
+    FillBlurredRoundedRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    },
     DashedBorder {
         x: f32,
         y: f32,
@@ -77,6 +86,38 @@ pub trait ScenePainter {
         border_width: f32,
         color: [f32; 4],
     );
+
+    /// ぼかし角丸矩形（drop shadow）を塗る（issue #657）。`(x, y, width, height)` は影外形
+    /// （オフセット・spread 適用済み）、`corner_radius` はその角丸半径、`std_dev` はガウス σ、
+    /// `color` は影色（straight RGBA・不透明度適用済み）。
+    ///
+    /// default 実装は erf シェル近似（[`crate::render::shadow::SHADOW_BLUR_FALLBACK_LAYERS`] 枚）を
+    /// `fill_rect` で積む——解析パスを持たないレンダラのピクセル出力は現行のシェル塗りと不変。
+    /// 解析パスを持つ painter（vello の `draw_blurred_rounded_rect` / tiny-skia の per-pixel）は
+    /// これを override する。
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        crate::render::shadow::for_each_shadow_shell(
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
+            color,
+            |sx, sy, sw, sh, shell_color, shell_radius| {
+                self.fill_rect(sx, sy, sw, sh, shell_color, shell_radius)
+            },
+        );
+    }
 
     /// ボックス外周に沿って破線ボーダーを描く（`border-style: dashed`）。
     fn stroke_dashed_border(
@@ -168,6 +209,28 @@ impl ScenePainter for RecordingPainter {
             height,
             outer_radius,
             border_width,
+            color,
+        });
+    }
+
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        corner_radius: f32,
+        std_dev: f32,
+        color: [f32; 4],
+    ) {
+        // シェルへ展開せず 1 op として記録する（影1個 = ぼかし矩形1 op、issue #657）。
+        self.ops.push(DrawOp::FillBlurredRoundedRect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
             color,
         });
     }
@@ -265,6 +328,18 @@ impl ScenePainter for NullPainter {
         _height: f32,
         _outer_radius: f32,
         _border_width: f32,
+        _color: [f32; 4],
+    ) {
+    }
+
+    fn fill_blurred_rounded_rect(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _corner_radius: f32,
+        _std_dev: f32,
         _color: [f32; 4],
     ) {
     }
@@ -372,6 +447,23 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             *height,
             *outer_radius,
             *border_width,
+            *color,
+        ),
+        NodeKind::BlurredRoundedRect {
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
+            color,
+        } => painter.fill_blurred_rounded_rect(
+            *x,
+            *y,
+            *width,
+            *height,
+            *corner_radius,
+            *std_dev,
             *color,
         ),
         NodeKind::DashedBorder {
