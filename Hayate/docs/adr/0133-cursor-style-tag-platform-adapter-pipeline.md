@@ -4,6 +4,11 @@
 
 **Date: 2026-06-13**
 
+> 番号棚卸し（2026-07-03）: 本 ADR は当初 `0088` として書かれたが、同じ番号が
+> `0088-pointer-cursor-resolved-from-element.md`（コード側が既に `ADR-0088` として
+> 参照済みの、実装と一致する記録）と重複していたため `0133` へ採番し直した。決定内容
+> （cursor は style_tags・Platform Adapter が適用）自体は変わらない。
+
 ## Context
 
 ボタンやリンク相当の要素では `cursor: pointer`、テキスト入力では `cursor: text`、ドラッグ中は `cursor: grabbing` など、インタラクションに応じてポインタ形状を変えることは基本的な DX 要件である。この機能を誰が担うかの設計を決める必要がある。
