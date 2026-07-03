@@ -112,6 +112,20 @@ describe('attachAccessibilityMirror', () => {
     expect(root.style.pointerEvents).toBe(MIRROR_POINTER_EVENTS);
   });
 
+  it('clips the root to the viewport so off-canvas node bounds cannot inflate document scroll size', () => {
+    // 退行防止: root が `position:absolute` のまま無制限だと、画面外/折り返し前の bounds を持つ
+    // 子孫が documentElement の scrollWidth/Height を押し広げ、モバイルブラウザがレイアウト
+    // ビューポートをそれに追従させて `#renderer-switch`（shell の position:fixed オーバーレイ）が
+    // 実画面外へ押し出される（Canvas モードのみ・DOM モードはミラーが無く無縁）。
+    const { canvas } = mountCanvas();
+    attachAccessibilityMirror(fakeRawPolling(null), canvas);
+
+    const root = document.querySelector(`[${A11Y_ROOT_ATTR}]`) as HTMLElement;
+    expect(root.style.position).toBe('fixed');
+    expect(root.style.inset).toBe('0');
+    expect(root.style.overflow).toBe('hidden');
+  });
+
   it('arms no independent frame loop: poll_accessibility is untouched until poll() is called (#645)', () => {
     const { canvas } = mountCanvas();
     const raw = fakeRawPolling(todoFixture());
