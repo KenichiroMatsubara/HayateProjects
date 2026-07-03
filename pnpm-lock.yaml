@@ -242,6 +242,9 @@ importers:
         specifier: workspace:*
         version: link:../renderer-protocol
     devDependencies:
+      '@tsubame/renderer-hayate':
+        specifier: workspace:*
+        version: link:../renderer-hayate
       '@types/react':
         specifier: ^19.1.0
         version: 19.2.17
