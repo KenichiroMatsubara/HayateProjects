@@ -24,6 +24,11 @@ pub mod tunables {
     /// レンダースケール段階（フル→劣化）。`1.0` が平常時のフル DPR。base DPR への乗数で、下げると
     /// バッファが縮む。モバイル DPR(≈2.5–3) では最小 0.5 でも実効スケールは 1.0 を上回る。
     pub const SCALE_STEPS: [f32; 4] = [1.0, 0.85, 0.7, 0.5];
+    /// これを超える `dt`（ms）は実フレーム時間ではなく on-demand ループ（ADR-0126）のアイドル
+    /// ギャップとみなし、「計測不能」として over/under どちらのストリークにも数えない（#667・
+    /// プレースホルダ値）。web の frame ループはアイドルへ落ちると rAF を止めるため、アイドル明けの
+    /// 次フレームは前フレームからの経過時間（アイドル時間そのもの）がそのまま dt になり得る。
+    pub const MAX_PLAUSIBLE_FRAME_MS: f64 = 250.0;
 }
 
 /// 適応的レンダースケールの状態機械（ADR-0129）。フレーム時間/熱の逼迫で段階的に劣化し、余裕が続けば
@@ -116,10 +121,20 @@ impl RenderScaleDriver {
 
     /// 1 フレームの rAF `timestamp_ms`（単調増加）を反映する。前フレームとの差分を frame 時間として
     /// governor に渡す。スケールが変わったら新しい render_scale（base DPR への乗数）を `Some` で返す。
-    /// 最初のフレーム（基準 timestamp が無い）は dt を測れないので必ず `None`。
+    /// 最初のフレーム（基準 timestamp が無い）は dt を測れないので必ず `None`。`dt` が
+    /// [`tunables::MAX_PLAUSIBLE_FRAME_MS`] を超えるときも同様に `None`（#667）：on-demand ループ
+    /// （ADR-0126）のアイドル明けはアイドル時間そのものが dt になり得るため、実フレーム時間として
+    /// governor に渡さず「計測不能」として無視する（over/under どちらのストリークも変化しない）。
     pub fn note_frame(&mut self, timestamp_ms: f64, thermal_pressure: bool) -> Option<f32> {
         let changed = match self.last_timestamp_ms {
-            Some(prev) => self.governor.note_frame(timestamp_ms - prev, thermal_pressure),
+            Some(prev) => {
+                let dt = timestamp_ms - prev;
+                if dt > tunables::MAX_PLAUSIBLE_FRAME_MS {
+                    false
+                } else {
+                    self.governor.note_frame(dt, thermal_pressure)
+                }
+            }
             None => false,
         };
         self.last_timestamp_ms = Some(timestamp_ms);
@@ -274,6 +289,25 @@ mod tests {
         // 基準フレーム 1 つ＋PRESSURE 連続の超過で、ちょうど 1 回だけスケール変更を返す。
         assert_eq!(changes, vec![tunables::SCALE_STEPS[1]]);
         assert_eq!(d.scale(), tunables::SCALE_STEPS[1]);
+    }
+
+    #[test]
+    fn driver_ignores_idle_gaps_larger_than_the_plausible_frame_ceiling() {
+        // web の on-demand フレームループ（ADR-0126）は pending な視覚更新が無ければ rAF を止めて
+        // 完全にアイドルへ落ちる。アイドル明けの次フレームは、前フレームからの経過時間（＝アイドル
+        // 時間そのもの、数百 ms 以上）がそのまま dt になる。実際には負荷が全く無いのに、これを
+        // 「予算超過」と誤検出して劣化してはならない（#667）。
+        let mut d = RenderScaleDriver::new(tunables::FRAME_BUDGET_60HZ_MS);
+        assert_eq!(d.note_frame(0.0, false), None);
+
+        // 大きな間隔（アイドル明け）を挟んだ単発フレームを PRESSURE_FRAMES_TO_DEGRADE を超えて
+        // 繰り返しても、一度も劣化しない（間欠的な on-demand ウェイクを模したケース）。
+        let mut t = 0.0;
+        for _ in 0..20 {
+            t += tunables::MAX_PLAUSIBLE_FRAME_MS + 500.0;
+            assert_eq!(d.note_frame(t, false), None);
+        }
+        assert_eq!(d.scale(), 1.0, "アイドル明けの単発フレームでは劣化しない");
     }
 
     #[test]
