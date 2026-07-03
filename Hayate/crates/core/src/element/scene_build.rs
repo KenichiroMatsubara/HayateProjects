@@ -12,7 +12,7 @@ use crate::element::scene_lowering::{
 use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::{ElementTree, Visual};
-use crate::node::{Node, NodeId, NodeKind, SceneGraph};
+use crate::node::{Node, NodeId, NodeKind, SceneGraph, ShadowOccluder};
 use crate::render::shadow::{
     shadow_falloff, shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD, SHADOW_BLUR_FALLBACK_LAYERS,
 };
@@ -595,6 +595,9 @@ fn emit_toolbar_panel(
         std::slice::from_ref(&shadow),
         1.0,
         false,
+        // ツールバーパネルの背景は直後に不透明で塗られるが、occluder 最適化はこの小さな
+        // オーバーレイでは省く（正しさには影響しない・全面塗り）。
+        None,
     );
     sg.insert_child(
         group,
@@ -1098,6 +1101,9 @@ fn emit_element<S: AnchorSink>(
     };
 
     if !visual.box_shadow.is_empty() {
+        // owner 背景が不透明なら、drop shadow の被覆 border-box 内側を塗り領域から除外する
+        // （issue #659。覆われて見えない中央の overdraw を削る。出力ピクセルは不変）。
+        let occluder = drop_shadow_occluder(&visual, x, y, w, h);
         emit_box_shadows(
             ctx.sg,
             effective_parent,
@@ -1109,6 +1115,7 @@ fn emit_element<S: AnchorSink>(
             &visual.box_shadow,
             visual.opacity,
             false,
+            occluder,
         );
     }
 
@@ -1139,6 +1146,8 @@ fn emit_element<S: AnchorSink>(
             &visual.box_shadow,
             visual.opacity,
             true,
+            // inset 影は border-box でクリップされ occluder の対象外。
+            None,
         );
     }
 
@@ -1877,6 +1886,7 @@ fn emit_fill_rect(
 /// CSS は最初に挙げた影を最前面に描くので、逆順で出す（最後の影が先＝最背面）。outset 影は
 /// ボックスの背後に、inset 影は背景の上にボーダーボックスでクリップして出す。
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn emit_box_shadows(
     sg: &mut SceneGraph,
     parent_group: Option<NodeId>,
@@ -1888,6 +1898,7 @@ fn emit_box_shadows(
     shadows: &[Shadow],
     opacity: f32,
     want_inset: bool,
+    occluder: Option<ShadowOccluder>,
 ) {
     let radius = border_radius.max(0.0);
     for shadow in shadows.iter().rev() {
@@ -1901,9 +1912,51 @@ fn emit_box_shadows(
         if want_inset {
             emit_inset_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
         } else {
-            emit_drop_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
+            emit_drop_shadow(sg, parent_group, x, y, width, height, radius, shadow, color, occluder);
         }
     }
+}
+
+/// 不透明判定の閾値（アルファ）。owner 背景と opacity がともにこの値以上なら「不透明」とみなし、
+/// drop shadow の被覆 border-box 内側を塗り領域から除外する（issue #659）。ピクセル不変を保つため
+/// 完全不透明（= 1.0）を要求する——半透明背景では影が透けるので除外できない。
+const OPAQUE_OCCLUSION_ALPHA_THRESHOLD: f32 = 1.0;
+
+/// occluder を owner の塗り境界から内側へ縮める余白（px）。owner 背景フィルの縁は
+/// アンチエイリアスで被覆 < 1 になるため、その帯の影を省くと最終ピクセルが変わってしまう。
+/// フィルが完全不透明な内側だけを occluder にするための余白（AA 帯 ~1px を吸収）。
+const SHADOW_OCCLUDER_AA_INSET: f32 = 1.0;
+
+/// owner の不透明背景が覆う border-box 内側（drop shadow の occluder）。背景・opacity がともに
+/// 不透明でなければ `None`（半透明・transparent 背景では影が透けるため全面塗り）。border があれば
+/// その内側（bg で不透明に塗られる領域）を返す——border リング自体は不透明とは限らないので除外しない。
+fn drop_shadow_occluder(visual: &Visual, x: f32, y: f32, w: f32, h: f32) -> Option<ShadowOccluder> {
+    if visual.opacity < OPAQUE_OCCLUSION_ALPHA_THRESHOLD {
+        return None;
+    }
+    let bg = visual.background_color?;
+    if (bg.a as f32) < OPAQUE_OCCLUSION_ALPHA_THRESHOLD {
+        return None;
+    }
+    let bw = if visual.border_width > 0.0 && visual.border_style != BorderStyleValue::None {
+        visual.border_width
+    } else {
+        0.0
+    };
+    // border-box 内側（bg で不透明に塗られる領域）を、AA 帯ぶん内側へ縮めた矩形。
+    let m = bw + SHADOW_OCCLUDER_AA_INSET;
+    let iw = w - 2.0 * m;
+    let ih = h - 2.0 * m;
+    if iw <= 0.0 || ih <= 0.0 {
+        return None;
+    }
+    Some(ShadowOccluder {
+        x: x + m,
+        y: y + m,
+        width: iw,
+        height: ih,
+        corner_radius: (visual.border_radius.max(0.0) - m).max(0.0),
+    })
 }
 
 /// outset（ドロップ）影：`spread` で拡大しオフセットでずらした角丸矩形を、ぼかす。
@@ -1923,6 +1976,7 @@ fn emit_drop_shadow(
     radius: f32,
     shadow: &Shadow,
     color: Color,
+    occluder: Option<ShadowOccluder>,
 ) {
     let sx = x + shadow.offset_x - shadow.spread;
     let sy = y + shadow.offset_y - shadow.spread;
@@ -1952,6 +2006,7 @@ fn emit_drop_shadow(
                 corner_radius: sr,
                 std_dev: shadow_sigma(blur),
                 color: color.to_array_f32(),
+                occluder,
             },
             children: Vec::new(),
         },

@@ -28,6 +28,7 @@ pub enum DrawOp {
         corner_radius: f32,
         std_dev: f32,
         color: [f32; 4],
+        occluder: Option<crate::node::ShadowOccluder>,
     },
     DashedBorder {
         x: f32,
@@ -95,6 +96,10 @@ pub trait ScenePainter {
     /// `fill_rect` で積む——解析パスを持たないレンダラのピクセル出力は現行のシェル塗りと不変。
     /// 解析パスを持つ painter（vello の `draw_blurred_rounded_rect` / tiny-skia の per-pixel）は
     /// これを override する。
+    ///
+    /// `occluder`（issue #659）はこの影を覆う不透明 owner の内側矩形。default 実装は最適化を
+    /// **無視して影全面を塗る**——覆う不透明ボックスが直後に上から描かれるため最終ピクセルは
+    /// どちらでも不変（安全側フォールバック）。解析 painter は覆われる領域を省いて overdraw を削る。
     fn fill_blurred_rounded_rect(
         &mut self,
         x: f32,
@@ -104,6 +109,7 @@ pub trait ScenePainter {
         corner_radius: f32,
         std_dev: f32,
         color: [f32; 4],
+        _occluder: Option<crate::node::ShadowOccluder>,
     ) {
         crate::render::shadow::for_each_shadow_shell(
             x,
@@ -222,6 +228,7 @@ impl ScenePainter for RecordingPainter {
         corner_radius: f32,
         std_dev: f32,
         color: [f32; 4],
+        occluder: Option<crate::node::ShadowOccluder>,
     ) {
         // シェルへ展開せず 1 op として記録する（影1個 = ぼかし矩形1 op、issue #657）。
         self.ops.push(DrawOp::FillBlurredRoundedRect {
@@ -232,6 +239,7 @@ impl ScenePainter for RecordingPainter {
             corner_radius,
             std_dev,
             color,
+            occluder,
         });
     }
 
@@ -341,6 +349,7 @@ impl ScenePainter for NullPainter {
         _corner_radius: f32,
         _std_dev: f32,
         _color: [f32; 4],
+        _occluder: Option<crate::node::ShadowOccluder>,
     ) {
     }
 
@@ -457,6 +466,7 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             corner_radius,
             std_dev,
             color,
+            occluder,
         } => painter.fill_blurred_rounded_rect(
             *x,
             *y,
@@ -465,6 +475,7 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             *corner_radius,
             *std_dev,
             *color,
+            *occluder,
         ),
         NodeKind::DashedBorder {
             x,

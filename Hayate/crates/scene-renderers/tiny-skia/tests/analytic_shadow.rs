@@ -5,7 +5,10 @@
 //! 異なる連続プロファイル。背景は不透明白（`CLEAR_COLOR`）なので、黒影の premultiplied 出力
 //! `rgb = 255·(1 − α_final)` から被覆を復元できる。
 
-use hayate_core::{Color, Dimension, ElementKind, ElementTree, Shadow, StyleProp};
+use hayate_core::{
+    Color, Dimension, ElementKind, ElementTree, Node, NodeKind, SceneGraph, Shadow, ShadowOccluder,
+    StyleProp,
+};
 use hayate_scene_test_support::pixel::pixel;
 use hayate_scene_test_support::tiny_skia::render_scene_to_pixels;
 
@@ -83,6 +86,60 @@ fn drop_shadow_fades_smoothly_and_monotonically_outside_the_box() {
     assert!(
         mid >= 14,
         "an analytic falloff should show many intermediate coverage levels, got {mid}"
+    );
+}
+
+/// 単一の BlurredRoundedRect ノード（任意の occluder 付き）だけのシーンを白背景に描く。
+fn blurred_node_scene(occluder: Option<ShadowOccluder>) -> Vec<u8> {
+    let mut sg = SceneGraph::new();
+    sg.insert(Node {
+        kind: NodeKind::BlurredRoundedRect {
+            x: 30.0,
+            y: 30.0,
+            width: 40.0,
+            height: 40.0,
+            corner_radius: 0.0,
+            std_dev: 5.0,
+            color: [0.0, 0.0, 0.0, 0.8],
+            occluder,
+        },
+        children: Vec::new(),
+    });
+    render_scene_to_pixels(&sg)
+}
+
+#[test]
+fn occluder_skips_the_covered_interior_but_keeps_the_falloff_ring() {
+    // occluder（不透明 owner の内側）を (34,34)-(66,66) に置く。中央は覆われるので影を描かない、
+    // 一方 owner 外側の falloff 帯は従来どおり描く（issue #659）。
+    let occluded = blurred_node_scene(Some(ShadowOccluder {
+        x: 34.0,
+        y: 34.0,
+        width: 32.0,
+        height: 32.0,
+        corner_radius: 0.0,
+    }));
+    let full = blurred_node_scene(None);
+
+    // 中央 (50,50): occluder 内。occluder ありでは白（未塗り）、なしでは暗い影。
+    let center_occ = pixel(&occluded, CANVAS_W, 50, 50);
+    let center_full = pixel(&full, CANVAS_W, 50, 50);
+    assert!(
+        center_occ[0] >= 250,
+        "occluded interior must be left unpainted (white), got {center_occ:?}"
+    );
+    assert!(
+        center_full[0] < 120,
+        "without an occluder the interior is a solid shadow, got {center_full:?}"
+    );
+
+    // 外形の外（x=75, box 右縁 70 の外・occluder 外）の falloff 帯は両方で描かれる。
+    let ring_occ = pixel(&occluded, CANVAS_W, 75, 50);
+    let ring_full = pixel(&full, CANVAS_W, 75, 50);
+    assert!(ring_occ[0] < 250, "the falloff ring outside the owner must still be painted, got {ring_occ:?}");
+    assert_eq!(
+        ring_occ, ring_full,
+        "outside the occluder the shadow is identical with or without occlusion"
     );
 }
 

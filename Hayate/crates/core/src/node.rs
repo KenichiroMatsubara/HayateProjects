@@ -39,6 +39,52 @@ pub struct TextRunData {
     pub normalized_coords: Vec<i16>,
 }
 
+/// 不透明 owner ボックスが drop shadow を覆う border-box 内側の角丸矩形（issue #659）。
+/// 解析 painter はこの領域の影ピクセルを省く（覆われて見えないので出力不変）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowOccluder {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub corner_radius: f32,
+}
+
+impl ShadowOccluder {
+    /// シーン座標の点がこの角丸矩形の内側か（境界含む）。角の丸みに追従する。
+    pub fn contains(&self, px: f32, py: f32) -> bool {
+        if px < self.x || py < self.y || px > self.x + self.width || py > self.y + self.height {
+            return false;
+        }
+        let r = self.corner_radius.min(self.width * 0.5).min(self.height * 0.5);
+        if r <= 0.0 {
+            return true;
+        }
+        // 角の丸み領域だけ半径で判定。直線帯（中央）は常に内側。
+        let cxl = self.x + r;
+        let cxr = self.x + self.width - r;
+        let cyt = self.y + r;
+        let cyb = self.y + self.height - r;
+        let qx = if px < cxl {
+            cxl
+        } else if px > cxr {
+            cxr
+        } else {
+            return true;
+        };
+        let qy = if py < cyt {
+            cyt
+        } else if py > cyb {
+            cyb
+        } else {
+            return true;
+        };
+        let dx = px - qx;
+        let dy = py - qy;
+        dx * dx + dy * dy <= r * r
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum NodeKind {
     Rect {
@@ -75,6 +121,10 @@ pub enum NodeKind {
     /// `std_dev` はガウス σ（= blur/2）、`color` は影色（straight RGBA・不透明度適用済み）。
     /// painter は解析パス（vello `draw_blurred_rounded_rect` / tiny-skia per-pixel）または
     /// erf シェル近似の default フォールバックで描く。ぼかしなしのハードシャドウは `Rect` で表す。
+    ///
+    /// `occluder`（issue #659）は、この影を覆う不透明 owner ボックスの border-box 内側。設定時、
+    /// 解析 painter はこの角丸矩形内のピクセルを描かない——直後に owner の不透明背景で覆われ最終
+    /// ピクセルに寄与しない純粋な無駄描画だから（出力は不変）。`None` なら影全面を塗る。
     BlurredRoundedRect {
         x: f32,
         y: f32,
@@ -83,6 +133,7 @@ pub enum NodeKind {
         corner_radius: f32,
         std_dev: f32,
         color: [f32; 4],
+        occluder: Option<ShadowOccluder>,
     },
     TextRun {
         x: f32,

@@ -6,7 +6,7 @@
 
 use hayate_core::{
     Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, RecordingPainter, Shadow,
-    StyleProp, render_scene_graph,
+    ShadowOccluder, StyleProp, render_scene_graph,
 };
 
 fn tree_with_shadow(shadow: Shadow) -> ElementTree {
@@ -38,7 +38,9 @@ fn blurred_shadow() -> Shadow {
     }
 }
 
-fn blurred_rect_nodes(tree: &ElementTree) -> Vec<(f32, f32, f32, f32, f32, f32, [f32; 4])> {
+type BlurredNode = (f32, f32, f32, f32, f32, f32, [f32; 4], Option<ShadowOccluder>);
+
+fn blurred_rect_nodes(tree: &ElementTree) -> Vec<BlurredNode> {
     tree.scene_graph()
         .iter()
         .filter_map(|(_, n)| match n.kind {
@@ -50,7 +52,8 @@ fn blurred_rect_nodes(tree: &ElementTree) -> Vec<(f32, f32, f32, f32, f32, f32, 
                 corner_radius,
                 std_dev,
                 color,
-            } => Some((x, y, width, height, corner_radius, std_dev, color)),
+                occluder,
+            } => Some((x, y, width, height, corner_radius, std_dev, color, occluder)),
             _ => None,
         })
         .collect()
@@ -70,11 +73,18 @@ fn blurred_drop_shadow_lowers_to_a_single_primitive_node() {
     );
 
     // 外形は spread=0 なのでオフセット済みのボーダーボックス、σ = blur/2、色は不透明度適用済み。
-    let (x, y, w, h, radius, std_dev, color) = blurred[0];
+    let (x, y, w, h, radius, std_dev, color, occluder) = blurred[0];
     assert_eq!((x, y, w, h), (8.0, 8.0, 50.0, 50.0), "shadow outline geometry");
     assert_eq!(radius, 8.0, "corner radius follows the box");
     assert_eq!(std_dev, 3.0, "std_dev is blur/2");
     assert_eq!(color, [0.0, 0.0, 0.0, 0.5], "shadow colour with opacity applied");
+    // 背景が不透明（白）なので occluder = ボーダーボックス内側（border 無し = 全ボックス）を
+    // AA 帯ぶん（1px）内側へ縮めた矩形。
+    assert_eq!(
+        occluder,
+        Some(ShadowOccluder { x: 1.0, y: 1.0, width: 48.0, height: 48.0, corner_radius: 7.0 }),
+        "opaque owner sets a border-box occluder inset by the AA margin"
+    );
 }
 
 #[test]
@@ -95,6 +105,41 @@ fn recording_painter_records_one_op_per_blurred_shadow() {
         "one shadow must record exactly one FillBlurredRoundedRect op (not {} shells)",
         blurred_ops
     );
+}
+
+fn tree_with_bg_and_shadow(bg: Option<Color>) -> ElementTree {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(1, ElementKind::View);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 200.0);
+    let mut props = vec![
+        StyleProp::Width(Dimension::px(50.0)),
+        StyleProp::Height(Dimension::px(50.0)),
+        StyleProp::BoxShadow(vec![blurred_shadow()]),
+    ];
+    if let Some(c) = bg {
+        props.push(StyleProp::BackgroundColor(c));
+    }
+    tree.element_set_style(root, &props);
+    tree
+}
+
+#[test]
+fn semi_transparent_owner_gets_no_occluder() {
+    // 半透明背景では影が透けるので occluder を付けない（全面塗り・回帰なし、issue #659）。
+    let mut tree = tree_with_bg_and_shadow(Some(Color::new(1.0, 1.0, 1.0, 0.5)));
+    tree.render(0.0);
+    let (.., occluder) = blurred_rect_nodes(&tree)[0];
+    assert_eq!(occluder, None, "a translucent owner must not occlude its shadow");
+}
+
+#[test]
+fn transparent_owner_gets_no_occluder() {
+    // 背景色なし（透明）でも occluder は付かない。
+    let mut tree = tree_with_bg_and_shadow(None);
+    tree.render(0.0);
+    let (.., occluder) = blurred_rect_nodes(&tree)[0];
+    assert_eq!(occluder, None, "a background-less owner must not occlude its shadow");
 }
 
 #[test]

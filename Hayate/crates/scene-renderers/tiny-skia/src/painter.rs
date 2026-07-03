@@ -1,5 +1,5 @@
 use hayate_core::{
-    RenderImage, RenderImageAlphaType, ScenePainter, TextRunData, is_notdef,
+    RenderImage, RenderImageAlphaType, ScenePainter, ShadowOccluder, TextRunData, is_notdef,
     missing_glyph_placeholder,
 };
 use skrifa::{
@@ -117,6 +117,7 @@ impl ScenePainter for TinySkiaPainter<'_> {
         corner_radius: f32,
         std_dev: f32,
         color: [f32; 4],
+        occluder: Option<ShadowOccluder>,
     ) {
         let transform = self.state.transform;
         let mask = self.state.clip_masks.last();
@@ -129,6 +130,7 @@ impl ScenePainter for TinySkiaPainter<'_> {
             corner_radius,
             std_dev,
             color,
+            occluder,
             transform,
             mask,
         );
@@ -337,6 +339,7 @@ fn draw_blurred_rounded_rect(
     corner_radius: f32,
     std_dev: f32,
     color: [f32; 4],
+    occluder: Option<ShadowOccluder>,
     transform: Transform,
     mask: Option<&Mask>,
 ) {
@@ -405,9 +408,13 @@ fn draw_blurred_rounded_rect(
         && transform.sx > 0.0
         && transform.sy > 0.0;
     if no_skew {
-        composite_blur_direct(pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, coverage);
+        composite_blur_direct(
+            pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, occluder, coverage,
+        );
     } else {
-        composite_blur_via_temp(pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, coverage);
+        composite_blur_via_temp(
+            pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, occluder, coverage,
+        );
     }
 }
 
@@ -426,6 +433,7 @@ fn composite_blur_direct(
     cx: f32,
     cy: f32,
     color: [f32; 4],
+    occluder: Option<ShadowOccluder>,
     coverage: impl Fn(f32, f32) -> f32,
 ) {
     let [cr, cg, cb, ca] = color;
@@ -448,10 +456,18 @@ fn composite_blur_direct(
     let pw_us = pw as usize;
     let pixels = pixmap.pixels_mut();
     for dy in dy0..dy1 {
-        let ly = (dy as f32 + 0.5 - ty) * inv_sy - cy;
+        let scene_y = (dy as f32 + 0.5 - ty) * inv_sy;
+        let ly = scene_y - cy;
         let row = dy as usize * pw_us;
         for dx in dx0..dx1 {
-            let lx = (dx as f32 + 0.5 - tx) * inv_sx - cx;
+            let scene_x = (dx as f32 + 0.5 - tx) * inv_sx;
+            let lx = scene_x - cx;
+            // 不透明 owner に覆われる内側は描かない（issue #659。覆われて見えない overdraw を省く）。
+            if let Some(occ) = occluder {
+                if occ.contains(scene_x, scene_y) {
+                    continue;
+                }
+            }
             let cov = coverage(lx, ly);
             if cov <= 0.0 {
                 continue;
@@ -499,6 +515,7 @@ fn composite_blur_via_temp(
     cx: f32,
     cy: f32,
     color: [f32; 4],
+    occluder: Option<ShadowOccluder>,
     coverage: impl Fn(f32, f32) -> f32,
 ) {
     let [cr, cg, cb, ca] = color;
@@ -515,9 +532,17 @@ fn composite_blur_via_temp(
     }
     let mut buf = vec![0u8; (bw as usize) * (bh as usize) * 4];
     for py in 0..bh {
-        let ly = by0 + py as f32 + 0.5 - cy;
+        let scene_y = by0 + py as f32 + 0.5;
+        let ly = scene_y - cy;
         for px in 0..bw {
-            let lx = bx0 + px as f32 + 0.5 - cx;
+            let scene_x = bx0 + px as f32 + 0.5;
+            let lx = scene_x - cx;
+            // 不透明 owner に覆われる内側は描かない（issue #659）。
+            if let Some(occ) = occluder {
+                if occ.contains(scene_x, scene_y) {
+                    continue;
+                }
+            }
             let cov = coverage(lx, ly);
             if cov <= 0.0 {
                 continue;

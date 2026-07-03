@@ -1,5 +1,5 @@
 use hayate_core::{
-    RenderImage, ScenePainter, TextRunData, is_notdef, missing_glyph_placeholder,
+    RenderImage, ScenePainter, ShadowOccluder, TextRunData, is_notdef, missing_glyph_placeholder,
 };
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
@@ -134,6 +134,7 @@ impl ScenePainter for VelloPainter<'_> {
         corner_radius: f32,
         std_dev: f32,
         color: [f32; 4],
+        occluder: Option<ShadowOccluder>,
     ) {
         // vendor 済みの解析ガウス経路（Evan-Wallace 式）へ直結する。影1個 = 1描画で、
         // シェル近似の 11 パス emit を置き換える（issue #657）。`rect` は鋭い角丸矩形
@@ -146,13 +147,50 @@ impl ScenePainter for VelloPainter<'_> {
             (x + width) as f64,
             (y + height) as f64,
         );
-        scene.draw_blurred_rounded_rect(
-            Affine::IDENTITY,
-            rect,
-            brush,
-            corner_radius as f64,
-            std_dev as f64,
-        );
+        match occluder {
+            // 不透明 owner が覆う border-box 内側を塗りから除外する（issue #659）。ぼかしを
+            // 「外側 bbox − occluder 角丸矩形」のリング形状にクリップして描く。覆われて見えない
+            // 中央を GPU がラスタしない（出力ピクセルは不変）。
+            Some(occ) if occ.width > 0.0 && occ.height > 0.0 => {
+                use vello::kurbo::{BezPath, RoundedRect, Shape};
+                // ぼかしの可視範囲を覆う外側形状（vendor の打ち切り 2.5σ に一致）。
+                let kernel = 2.5 * std_dev as f64;
+                let outer = rect.inflate(kernel, kernel);
+                let mut path = BezPath::new();
+                path.extend(outer.path_elements(0.1));
+                let mut hole = BezPath::new();
+                hole.extend(
+                    RoundedRect::new(
+                        occ.x as f64,
+                        occ.y as f64,
+                        (occ.x + occ.width) as f64,
+                        (occ.y + occ.height) as f64,
+                        occ.corner_radius as f64,
+                    )
+                    .path_elements(0.1),
+                );
+                // 逆巻きの穴を足し、NonZero 塗りでリング（外側マイナス内側）にする。
+                hole.reverse_subpaths();
+                path.extend(hole);
+                scene.draw_blurred_rounded_rect_in(
+                    &path,
+                    Affine::IDENTITY,
+                    rect,
+                    brush,
+                    corner_radius as f64,
+                    std_dev as f64,
+                );
+            }
+            _ => {
+                scene.draw_blurred_rounded_rect(
+                    Affine::IDENTITY,
+                    rect,
+                    brush,
+                    corner_radius as f64,
+                    std_dev as f64,
+                );
+            }
+        }
     }
 
     fn stroke_dashed_border(
@@ -341,6 +379,7 @@ mod tests {
                 corner_radius: 8.0,
                 std_dev: 3.0,
                 color: [0.0, 0.0, 0.0, 0.5],
+                occluder: None,
             },
             children: Vec::new(),
         });
@@ -353,6 +392,43 @@ mod tests {
             scene.encoding().draw_tags.len(),
             1,
             "the analytic path must encode one draw per shadow, not a stack of shell fills"
+        );
+    }
+
+    /// occluder 付き（不透明 owner）でも解析ドロー1個へエンコードされる（issue #659）。ぼかしは
+    /// リング形状にクリップされるだけで、描画コマンド数は増えない。
+    #[test]
+    fn occluded_blurred_rounded_rect_still_encodes_a_single_draw() {
+        use hayate_core::ShadowOccluder;
+        let mut sg = SceneGraph::new();
+        sg.insert(Node {
+            kind: NodeKind::BlurredRoundedRect {
+                x: 8.0,
+                y: 8.0,
+                width: 50.0,
+                height: 50.0,
+                corner_radius: 8.0,
+                std_dev: 3.0,
+                color: [0.0, 0.0, 0.0, 0.5],
+                occluder: Some(ShadowOccluder {
+                    x: 8.0,
+                    y: 8.0,
+                    width: 50.0,
+                    height: 50.0,
+                    corner_radius: 8.0,
+                }),
+            },
+            children: Vec::new(),
+        });
+
+        let mut scene = Scene::new();
+        let mut painter = VelloPainter::new(&mut scene);
+        render_scene_graph(&sg, &mut painter);
+
+        assert_eq!(
+            scene.encoding().draw_tags.len(),
+            1,
+            "clipping the shadow to a ring must not add extra draws"
         );
     }
 }

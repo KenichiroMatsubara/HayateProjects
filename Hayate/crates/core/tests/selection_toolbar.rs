@@ -315,12 +315,20 @@ fn the_panel_is_drawn_with_a_material_elevation_drop_shadow() {
 
     let bounds = tree.selection_toolbar().expect("a toolbar").bounds;
     let rects = fill_rects(&tree);
-    // 影色（赤・RGB 保存、α は blur 減衰で変わる）の塗り。
-    let shadow_idx = rects
-        .iter()
-        .find(|(_, _, _, _, _, c, _)| c[0] > 0.5 && c[1] < 0.1 && c[2] < 0.1 && c[3] > 0.0)
-        .map(|t| t.0)
-        .expect("a drop-shadow fill layer in the toolbar's shadow color");
+    // 影は第一級のぼかし角丸矩形プリミティブとして 1 個描かれる（issue #657）。影色は赤
+    // （RGB 保存・α は不透明度適用済み）。
+    let shadow_idx = draw_ops(&tree)
+        .into_iter()
+        .enumerate()
+        .find(|(_, op)| {
+            matches!(
+                op,
+                DrawOp::FillBlurredRoundedRect { color, .. }
+                    if color[0] > 0.5 && color[1] < 0.1 && color[2] < 0.1 && color[3] > 0.0
+            )
+        })
+        .map(|(i, _)| i)
+        .expect("a drop-shadow blurred layer in the toolbar's shadow color");
     // パネル本体（bounds 位置・角丸）。
     let panel_idx = rects
         .iter()

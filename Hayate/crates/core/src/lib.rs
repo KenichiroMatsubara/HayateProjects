@@ -86,7 +86,10 @@ pub use element::{
     StyleProp, StylePropKind, TextDecorationValue, TextOverflowValue, TransitionTimingValue,
     UserSelectValue, ViewportCondition,
 };
-pub use node::{Node, NodeId, NodeKind, SceneGraph, TextDecorationLine, TextRunData, TextSynthesis};
+pub use node::{
+    Node, NodeId, NodeKind, SceneGraph, ShadowOccluder, TextDecorationLine, TextRunData,
+    TextSynthesis,
+};
 pub use scroll::{
     MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
