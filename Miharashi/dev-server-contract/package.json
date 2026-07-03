@@ -1,8 +1,8 @@
 {
-  "name": "@miharashi/host-web",
+  "name": "@miharashi/dev-server-contract",
   "version": "0.0.0",
   "private": true,
-  "description": "Miharashi Web ホスト — dev-server URL から App Bundle を fetch → eval し、@hayate/host の createHayateWebHost で host bootstrap を確立してバンドルの mount に渡す。FW も @tsubame/renderer-hayate も持たない（ADR-0001）。",
+  "description": "Miharashi Dev Server の wire 契約（App Bundle route・reload route・reload message）。dev-server と host-web の双方が対等に参照する唯一の入口（ADR-0001）。",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,11 +23,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "clean": "rimraf dist"
-  },
-  "dependencies": {
-    "@hayate/host": "workspace:*",
-    "@miharashi/dev-server-contract": "workspace:*",
-    "@miharashi/protocol-handshake": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^6.1.3",

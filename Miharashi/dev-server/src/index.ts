@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { basename, dirname } from 'node:path';
+import { devServerContract } from '@miharashi/dev-server-contract';
 
 export { ALL_INTERFACES_HOSTNAME, localNetworkUrls, type LocalNetworkUrl } from './network.js';
 export { encodeQr, qrToTerminalString, type QrMatrix, type QrTerminalOptions } from './qr.js';
@@ -12,15 +13,6 @@ export {
   printStartupBanner,
   type StartupBannerOptions,
 } from './startup-banner.js';
-
-/** App Bundle（単一 JS）を配信する HTTP ルート。ホスト側はこのパスで fetch する。 */
-export const BUNDLE_ROUTE = '/bundle.js';
-
-/** reload シグナルを流す WebSocket ルート。ホストはここに繋ぎ `reload` を待つ。 */
-export const RELOAD_ROUTE = '/reload';
-
-/** ホストに full reload を促す WS メッセージ本文。ホストはこれを受けてバンドルを再 fetch → 再 mount する。 */
-export const RELOAD_MESSAGE = 'reload';
 
 /**
  * watch のデバウンス時間（ms）。ビルドは 1 編集で複数のファイル書き込みを起こすため、
@@ -70,7 +62,7 @@ export interface BundleDevServerOptions {
   /** バインドするホスト名。既定は loopback。 */
   readonly hostname?: string;
   /**
-   * 変更を監視するパス。変更を検知したら接続中のホストに {@link RELOAD_MESSAGE} を送る。
+   * 変更を監視するパス。変更を検知したら接続中のホストに {@link devServerContract} の reloadMessage を送る。
    * 既定は {@link bundlePath}（配信している成果物そのものを監視する）。ビルドは外部
    * （例 `vite build --watch`）が担い、dev-server は成果物の更新を見て reload を中継するだけ
    * — FW/ビルドツール非依存を保つ（ADR-0001）。
@@ -110,7 +102,7 @@ class NodeBundleDevServer implements BundleDevServer {
     this.#debounceMs = options.debounceMs ?? WATCH_DEBOUNCE_MS;
     this.#server = createServer((req, res) => {
       res.setHeader('access-control-allow-origin', ACCESS_CONTROL_ALLOW_ORIGIN);
-      if (req.url === BUNDLE_ROUTE) {
+      if (req.url === devServerContract.bundleRoute) {
         readFile(options.bundlePath).then(
           (body) => {
             res.statusCode = 200;
@@ -130,10 +122,10 @@ class NodeBundleDevServer implements BundleDevServer {
     this.#server.on('upgrade', (req, socket) => this.#handleUpgrade(req, socket as Socket));
   }
 
-  /** RELOAD_ROUTE への WS ハンドシェイクを受理し、ソケットを reload 配信対象に加える。 */
+  /** devServerContract.reloadRoute への WS ハンドシェイクを受理し、ソケットを reload 配信対象に加える。 */
   #handleUpgrade(req: IncomingMessage, socket: Socket): void {
     const key = req.headers['sec-websocket-key'];
-    if (req.url !== RELOAD_ROUTE || typeof key !== 'string') {
+    if (req.url !== devServerContract.reloadRoute || typeof key !== 'string') {
       socket.destroy();
       return;
     }
@@ -177,9 +169,9 @@ class NodeBundleDevServer implements BundleDevServer {
     }, this.#debounceMs);
   }
 
-  /** 接続中の全ホストに {@link RELOAD_MESSAGE} を送る。 */
+  /** 接続中の全ホストに {@link devServerContract} の reloadMessage を送る。 */
   #broadcastReload(): void {
-    const frame = encodeTextFrame(RELOAD_MESSAGE);
+    const frame = encodeTextFrame(devServerContract.reloadMessage);
     for (const socket of this.#clients) socket.write(frame);
   }
 
@@ -206,7 +198,7 @@ class NodeBundleDevServer implements BundleDevServer {
 
 /**
  * Miharashi の最小 dev server を生成する。`bundlePath` の単一 App Bundle を
- * {@link BUNDLE_ROUTE} で HTTP 配信するだけ — watch / WS / protocol version は持たない
+ * {@link devServerContract} の bundleRoute で HTTP 配信するだけ — watch / WS / protocol version は持たない
  * （後続スライス #2 / #3, ADR-0001）。
  */
 export function createBundleDevServer(options: BundleDevServerOptions): BundleDevServer {
