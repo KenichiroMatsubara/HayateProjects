@@ -15,6 +15,11 @@ describe('resolveCanvasBackend', () => {
     expect(resolveCanvasBackend({ backend: 'tiny-skia' }, false)).toBe('tiny-skia');
   });
 
+  it('honours an explicit vello-cpu override regardless of WebGPU', () => {
+    expect(resolveCanvasBackend({ backend: 'vello-cpu' }, true)).toBe('vello-cpu');
+    expect(resolveCanvasBackend({ backend: 'vello-cpu' }, false)).toBe('vello-cpu');
+  });
+
   it('auto-selects vello when WebGPU is available and no override', () => {
     expect(resolveCanvasBackend(undefined, true)).toBe('vello');
     expect(resolveCanvasBackend({}, true)).toBe('vello');
