@@ -2489,7 +2489,14 @@ impl ElementTree {
     /// 取りこぼしの無い捕捉点。root は暗黙の compositing layer 境界としてレイヤ列の先頭に必ず含め、
     /// どの trigger レイヤにも内包されない dirty を root へ流す（落とすと raster がスキップされ
     /// stale frame になる＝出力不変の前提）。
+    ///
+    /// #680: 前フレームまで境界だったが今フレームで境界から外れた要素（transition 終了等で
+    /// 親レイヤへ畳み戻る「降格」）も、畳み戻り先の最近接レイヤを dirty にする。昇格中に親が
+    /// その要素を除外して raster したことがあれば、親のキャッシュはその領域を穴あきのまま
+    /// 持っている——降格時に親を dirty にしないと、要素自身の texture は破棄済みなのに親の
+    /// 穴あきキャッシュだけが reuse され続け、要素が画面から消えたまま戻らない。
     fn capture_frame_layers(&mut self, dirty: &LoweringDirtySnapshot) {
+        let prev_boundaries: HashSet<ElementId> = self.frame_layers.iter().copied().collect();
         let (mut ordered, mut boundaries) = self.compositing_boundaries();
         if let Some(root) = self.root {
             if boundaries.insert(root) {
@@ -2506,12 +2513,14 @@ impl ElementTree {
         } else {
             // scroll フレームだけが理由の ScrollView は chrome dirty へ分類（#634）。content band
             // texture のピクセルは不変＝band は composite-only、再 raster はスクロールバー面だけ。
+            let demoted = prev_boundaries.difference(&boundaries).copied();
             let marked = dirty
                 .elements
                 .keys()
                 .filter(|e| !chrome_only.contains(e))
-                .chain(dirty.z_index_reorder_parents.iter())
-                .copied();
+                .copied()
+                .chain(dirty.z_index_reorder_parents.iter().copied())
+                .chain(demoted);
             let content = compositing::derive_layer_dirty(marked, &boundaries, |id| {
                 self.elements.get(&id).and_then(|e| e.parent)
             });

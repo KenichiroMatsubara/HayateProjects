@@ -177,6 +177,76 @@ fn in_render_transition_continuation_is_captured() {
     );
 }
 
+// ── #680: レイヤ降格（transition 終了）は内包する親レイヤを dirty にする ────────────────
+//
+// タップ等で一時的に compositing layer へ昇格した兄弟要素（active transition trigger）が、
+// 昇格中に他の視覚変化で親（root）レイヤが「その兄弟を除外した」raster を一度でも行うと、
+// 親レイヤのキャッシュ texture はその兄弟の領域を穴あきのまま持つ（昇格中は兄弟自身の
+// texture がその穴を埋めるので見た目には出ない）。transition が終わって兄弟がレイヤ境界
+// から外れる（親へ畳み戻る）と、兄弟自身の texture は破棄され、親レイヤは dirty でない
+// 限り穴あきキャッシュのまま再利用される＝兄弟要素が画面から消えたまま戻らない回帰。
+
+#[test]
+fn layer_demotion_marks_the_enclosing_layer_dirty() {
+    use hayate_core::element::style::Dimension;
+    use hayate_core::PseudoState;
+
+    // root(view) > sibling(view, hover で transition), other(view, 無関係の兄弟)。
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let sibling = tree.element_create(1, ElementKind::View);
+    let other = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, sibling);
+    tree.element_append_child(root, other);
+    tree.set_root(root);
+    tree.element_set_style(
+        sibling,
+        &[
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::TransitionDuration(200.0),
+        ],
+    );
+    tree.element_set_pseudo_style(
+        sibling,
+        PseudoState::Hover,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
+
+    let _ = tree.render(0.0);
+    tree.update_pointer_hover(Some(sibling)); // タップ相当：sibling に transition を起こす
+    let _ = tree.render(16.0); // transition 開始（is_active は次フレームまで未反映）
+
+    // 昇格中に他の兄弟（other）の視覚変化で root を再 raster させる（cursor blink 等の実際の
+    // トリガを模す）。root は sibling を除外した「穴あき」キャッシュを持つことになる。
+    tree.element_set_style(other, &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))]);
+    let _ = tree.render(200.0);
+    assert!(
+        tree.frame_layers().contains(&sibling),
+        "transition 中は sibling が独立 compositing layer"
+    );
+    assert!(
+        tree.frame_layer_dirty().contains(&root),
+        "root は sibling を除外した穴あき raster を行う（前提の確認）"
+    );
+
+    // transition が完了する時刻（start_ms=16.0 + duration 200.0）まで進める。
+    let _ = tree.render(216.0);
+    // 降格フレーム：sibling はもう独立レイヤでない。他に何も dirty がなくても、
+    // 畳み戻り先の root は穴あきキャッシュを直すため content dirty にならなければならない。
+    let _ = tree.render(232.0);
+    assert!(
+        !tree.frame_layers().contains(&sibling),
+        "transition 終了で sibling はレイヤから降格し root へ畳み戻る"
+    );
+    assert!(
+        tree.frame_layer_dirty().contains(&root),
+        "降格した sibling を内包する root が content dirty にならないと、穴あきキャッシュが\
+         再利用され続け sibling が画面から消えたままになる（#680 回帰）"
+    );
+}
+
 // ── #633: transform-only 変化は content dirty にしない（composite-only フレームの core 前提）──
 //
 // `element_set_transform` の Some→Some（係数だけの変化）はレイヤ内容を変えない——変わるのは合成時の
