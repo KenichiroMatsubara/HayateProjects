@@ -73,4 +73,27 @@ describe('createHayateNativeHost', () => {
 
     expect(cb).not.toHaveBeenCalled();
   });
+
+  // native の on-demand ループ（app_tsubame.rs）には web の requestAnimationFrame の
+  // ような自走クロックが無く、`request_pump` の native wake が無いと armed になった
+  // フレームが二度と pump されない（タップ/スクロールが一切効かなくなる回帰）。
+  it('notifies native that a frame is armed every time requestFrame is called', () => {
+    const requestPump = vi.fn();
+    const raw = { ...stubRaw, request_pump: requestPump } as unknown as RawHayate;
+    const host = createHayateNativeHost(raw);
+
+    host.requestFrame(vi.fn());
+    expect(requestPump).toHaveBeenCalledTimes(1);
+
+    // 再武装（例: click ハンドラの mutation が scheduleFrame を叩く継続フレーム）でも
+    // 都度呼ぶ — native はこれが無いと再武装を知る術が無い。
+    host.pumpFrame(16);
+    host.requestFrame(vi.fn());
+    expect(requestPump).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not throw when the host has no request_pump (optional, e.g. older hosts)', () => {
+    const host = createHayateNativeHost(stubRaw);
+    expect(() => host.requestFrame(vi.fn())).not.toThrow();
+  });
 });

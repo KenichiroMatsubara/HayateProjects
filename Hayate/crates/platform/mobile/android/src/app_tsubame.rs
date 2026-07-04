@@ -339,6 +339,24 @@ pub(crate) fn run(app: AndroidApp) {
         );
         if touch_woke || ime_woke {
             frame_loop.request_wake();
+            // JS 側の frame ループは自前の armed 状態（`HayateRenderer` の `pendingFrame`）を
+            // 持ち、native の on-demand ループ（`frame_loop`）が起きただけでは再武装されない
+            // （issue #475 で resize は native→tree 直結にしたが、`pumpFrame` 自体は JS が
+            // armed でないと何もしない一発コールバック契約のまま）。Web は自前配線した
+            // ポインタ/編集 listener から `set_request_redraw` を叩いて揃えている
+            // （hayate-renderer.ts の `start()` 参照）。Android は入力を native→tree 直結で
+            // 処理するため同じ配線が無く、初回フレーム以降ずっと `pendingFrame` が null の
+            // まま＝タップ/スクロールが一切効かなくなっていた。ここで揃える。
+            runtime.hermes.pin_mut().request_redraw();
+        }
+        // JS の frame ループが armed になった（`requestFrame` が呼ばれた）ことを都度拾う。
+        // web の requestAnimationFrame と違い、Android の on-demand ループには自走クロックが
+        // 無い。click ハンドラが `setStyle` 等を呼ぶと `scheduleFrame` が自己再武装するが、
+        // その変更は次の `flush` でしか native tree に反映されない。この wake が無いと、次の
+        // native 入力が来るまで pump が二度と起きず、タップの結果が永久に描画へ反映されない
+        // （register_listener/dispatch 自体は成功しているのに見た目が変わらない不具合の原因）。
+        if runtime.hermes.pin_mut().consume_wants_pump() {
+            frame_loop.request_wake();
         }
 
         // wake も継続 pending も無ければ idle：このフレームは pump も present もしない

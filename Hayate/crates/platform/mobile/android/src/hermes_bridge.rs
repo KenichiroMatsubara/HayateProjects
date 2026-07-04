@@ -70,6 +70,15 @@ mod ffi {
         /// マイクロタスクキューを排出する。
         fn pump_frame(self: Pin<&mut HermesApp>, timestamp_ms: f64);
 
+        /// JS が `set_request_redraw` で登録したコールバックを呼ぶ（未登録なら no-op）。
+        /// native の入力 wake（タッチ/IME）のたびに呼び、JS 側の frame ループの armed 状態
+        /// （`HayateRenderer` の `pendingFrame`）を native の wake と揃える。
+        fn request_redraw(self: Pin<&mut HermesApp>);
+
+        /// JS が `request_pump` を呼んだか（＝JS 側の frame ループが armed になったか）を
+        /// 読んで消費する。native のループは毎イテレーション呼び、true なら wake する。
+        fn consume_wants_pump(self: Pin<&mut HermesApp>) -> bool;
+
         /// eval 済みバンドルが立てた `globalThis.__miharashiProtocolVersion` を読む（#533）。
         /// 有限数ならその値、未埋め込み / 非数値なら `-1.0`。`app_tsubame` がこれを `Option<u32>`
         /// に直し、`protocol_handshake::check_protocol_version` にかける。

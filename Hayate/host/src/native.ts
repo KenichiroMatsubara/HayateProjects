@@ -37,6 +37,11 @@ export function createHayateNativeHost(raw: RawHayate): NativeHost {
     raw,
     requestFrame(cb: FrameRequestCallback): number {
       pendingFrame = cb;
+      // ADR-0080/0126 の Android 延長: native の on-demand ループには rAF のような自走
+      // クロックが無いため、armed になったことを都度知らせないと（新規タッチ等の native
+      // wake が無い限り）二度と pump されない。web の requestAnimationFrame は compositor
+      // が自動で呼び戻すのでこの通知は不要＝実装されていないため optional。
+      raw.request_pump?.();
       return handleSeq++;
     },
     cancelFrame(_handle: number): void {
