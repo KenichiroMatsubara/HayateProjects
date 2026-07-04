@@ -45,6 +45,7 @@ pub(crate) fn attach_resize_observer(
     canvas: &HtmlCanvasElement,
     pending_resize: Rc<RefCell<Option<CanvasResizeMetrics>>>,
     last_viewport: Rc<RefCell<(f32, f32)>>,
+    request_redraw: Rc<RefCell<Option<js_sys::Function>>>,
 ) -> Result<ResizeObserverGuard, JsValue> {
     let canvas_for_cb = canvas.clone();
     let closure = Closure::wrap(Box::new(move |entries: js_sys::Array| {
@@ -65,6 +66,12 @@ pub(crate) fn attach_resize_observer(
         let _ = canvas_for_cb.set_width(metrics.buffer_width);
         let _ = canvas_for_cb.set_height(metrics.buffer_height);
         *pending_resize.borrow_mut() = Some(metrics);
+        // `set_width`/`set_height` は HTML5 仕様でバッキングストアを即座にクリアする
+        // （透明になる）。on-demand フレームループ（ADR-0080/0126）はこの resize 自体を
+        // wake 源として扱わないため、他の入力が来ないままだと `pending_resize` が
+        // 消費される次の `render()` が呼ばれず、canvas が空白/古い内容のまま止まる。
+        // ポインタ/編集入力と同様にここでも明示的に起こす。
+        crate::pointer_input::wake(&request_redraw);
     }) as Box<dyn Fn(js_sys::Array)>);
 
     let observer = ResizeObserver::new(closure.as_ref().unchecked_ref())?;

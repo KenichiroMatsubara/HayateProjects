@@ -52,6 +52,7 @@ mod ffi {
         fn element_subtree_ids(self: &JsHostBridge, id: f64) -> Vec<f64>;
         fn element_get_bounds(self: &JsHostBridge, id: f64) -> Vec<f32>;
         fn poll_events(self: &JsHostBridge) -> Vec<FfiEventRow>;
+        fn has_pending_visual_work(self: &JsHostBridge) -> bool;
     }
 
     unsafe extern "C++" {
@@ -117,6 +118,10 @@ impl JsHostBridge {
 
     fn poll_events(&self) -> Vec<ffi::FfiEventRow> {
         self.host.poll_events().into_iter().map(ffi_row_from).collect()
+    }
+
+    fn has_pending_visual_work(&self) -> bool {
+        self.host.has_pending_visual_work()
     }
 }
 

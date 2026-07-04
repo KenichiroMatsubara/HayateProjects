@@ -250,6 +250,12 @@ impl HayateElementRenderer {
         // のクリップボードを配線する（ADR-0097）。
         tree.set_clipboard(Box::new(WebClipboard));
 
+        // 入力到着で on-demand ループを起こす wake コールバック（ADR-0080/0126）。listener
+        // 群が入力バッファ後に叩けるよう、attach 前に共有セルを作って各配線へ渡す。JS ホストは
+        // `set_request_redraw` で `scheduleFrame` を後から注入する。resize observer もこれで
+        // 起こす必要があるため、resize 配線より前にここで作る。
+        let request_redraw: Rc<RefCell<Option<js_sys::Function>>> = Rc::new(RefCell::new(None));
+
         let pending_resize = Rc::new(RefCell::new(None));
         let last_viewport = Rc::new(RefCell::new((
             metrics.viewport_width,
@@ -259,12 +265,8 @@ impl HayateElementRenderer {
             &canvas,
             pending_resize.clone(),
             last_viewport.clone(),
+            request_redraw.clone(),
         )?;
-
-        // 入力到着で on-demand ループを起こす wake コールバック（ADR-0080/0126）。listener
-        // 群が入力バッファ後に叩けるよう、attach 前に共有セルを作って各配線へ渡す。JS ホストは
-        // `set_request_redraw` で `scheduleFrame` を後から注入する。
-        let request_redraw: Rc<RefCell<Option<js_sys::Function>>> = Rc::new(RefCell::new(None));
 
         let pending_pointer = Rc::new(RefCell::new(Vec::new()));
         let pointer_guard = pointer_input::attach_pointer_input(

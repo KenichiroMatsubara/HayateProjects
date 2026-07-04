@@ -224,7 +224,17 @@ pub(crate) fn run(app: AndroidApp) {
                                 let (vw, vh) = viewport_for_surface(w, h);
                                 last_viewport = Some((vw, vh));
                                 if let Some(runtime) = current.as_ref() {
-                                    runtime.tree.borrow_mut().set_viewport(vw, vh);
+                                    let mut tree = runtime.tree.borrow_mut();
+                                    tree.set_viewport(vw, vh);
+                                    // `set_viewport` はメトリクスを差し替えるだけでレイアウトは
+                                    // 再計算しない。JS 駆動の on-demand フレームループ（ADR-0126）
+                                    // は resize を関知しないため（issue #475: resize は native→tree
+                                    // 直結で JS 経路から外れている）、ここで明示的に `render` を
+                                    // 起こさないと直近の pumpFrame が焼き込んだ古いビューポートの
+                                    // レイアウトのまま固まる（起動直後は Hermes 側のデフォルト viewport
+                                    // で 1 回 render 済みのため、実サイズ確定前に描いた小さいレイアウトが
+                                    // 永久に残る）。
+                                    let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                                 }
                                 match pollster::block_on(init_gpu_surface(&window)) {
                                     // 生成した surface を Raster スレッドへ move（#635）。
@@ -244,7 +254,11 @@ pub(crate) fn run(app: AndroidApp) {
                             let (vw, vh) = viewport_for_surface(width, height);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
-                                runtime.tree.borrow_mut().set_viewport(vw, vh);
+                                let mut tree = runtime.tree.borrow_mut();
+                                tree.set_viewport(vw, vh);
+                                // CreateSurface と同じ理由（上のコメント参照）で、viewport 変更を
+                                // 即座にレイアウトへ反映させるため明示的に render を起こす。
+                                let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                             }
                         }
                         SurfaceLifecycleAction::Quit => quit = true,

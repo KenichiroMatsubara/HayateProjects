@@ -190,6 +190,15 @@ class HayateHostObject : public jsi::HostObject {
           });
     }
 
+    if (prop == "has_pending_visual_work") {
+      return jsi::Function::createFromHostFunction(
+          rt, name, 0,
+          [&b](jsi::Runtime&, const jsi::Value&, const jsi::Value*,
+               size_t) -> jsi::Value {
+            return jsi::Value(b.has_pending_visual_work());
+          });
+    }
+
     return jsi::Value::undefined();
   }
 

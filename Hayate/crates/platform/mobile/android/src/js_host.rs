@@ -6,7 +6,8 @@
 //! `Rc<RefCell<ElementTree>>` を介してネイティブ向けに写したもの。これにより
 //! Tsubame Canvas Renderer がフレームごとに呼ぶ最小メソッド集合
 //! （apply_mutations / render / poll_events / register_listener /
-//! element_get_text_content / element_subtree_ids / element_get_bounds）を満たす。
+//! element_get_text_content / element_subtree_ids / element_get_bounds /
+//! has_pending_visual_work）を満たす。
 //!
 //! 入力（タッチ/IME）は Android では native→tree 直結のまま（app.rs）で、JS を
 //! 経由しないため `on_pointer_*` はここに含めない（ADR-0112）。resize も同様に
@@ -110,6 +111,15 @@ impl JsHost {
             .element_layout_rect(ElementId::from_u64(id as u64))
             .unwrap_or((0.0, 0.0, 0.0, 0.0));
         vec![x, y, w, h]
+    }
+
+    /// ADR-0126: 直近の `render()` 後に継続すべき pending visual work（進行中
+    /// transition / カーソル点滅 / スクロール物理）が残るか。JS の on-demand フレーム
+    /// ループ（`hayate-renderer.ts` の `frame()`）がこれを毎フレーム呼ぶため必須
+    /// （欠けると `undefined is not a function` で毎フレーム JS 例外になり、C++ 側の
+    /// `pump_frame` が安全弁で `ready=false` に落として以後フレームが二度と進まなくなる）。
+    pub(crate) fn has_pending_visual_work(&self) -> bool {
+        self.tree.borrow().has_pending_visual_work()
     }
 
     /// 配信のポーリング（ADR-0053）。各行は `[listener_id, kind, ...fields]`。
