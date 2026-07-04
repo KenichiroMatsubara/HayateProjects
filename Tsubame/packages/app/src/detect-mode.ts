@@ -1,7 +1,7 @@
 export type Mode = 'DOM' | 'Canvas';
 export type ModeSource = 'query' | 'auto';
-export type RendererQuery = 'auto' | 'vello' | 'tiny-skia' | 'dom';
-export type CanvasBackend = 'vello' | 'tiny-skia';
+export type RendererQuery = 'auto' | 'vello' | 'tiny-skia' | 'vello-cpu' | 'dom';
+export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu';
 
 export interface DetectModeInput {
   rendererQuery: RendererQuery | null;
@@ -22,7 +22,7 @@ export interface DetectModeResult {
  * - EditContext なし → DOM
  * - EditContext あり・WebGPU なし → Canvas (tiny-skia)
  * - EditContext あり・WebGPU あり → Canvas (vello)
- * - `?renderer=vello|tiny-skia|dom` で明示指定
+ * - `?renderer=vello|tiny-skia|vello-cpu|dom` で明示指定
  */
 export function detectMode(input: DetectModeInput): DetectModeResult {
   const { rendererQuery, hasEditContext, hasWebGPU } = input;
@@ -36,6 +36,9 @@ export function detectMode(input: DetectModeInput): DetectModeResult {
   if (rendererQuery === 'tiny-skia') {
     return { mode: 'Canvas', backend: 'tiny-skia', source: 'query', renderer: 'tiny-skia' };
   }
+  if (rendererQuery === 'vello-cpu') {
+    return { mode: 'Canvas', backend: 'vello-cpu', source: 'query', renderer: 'vello-cpu' };
+  }
 
   if (!hasEditContext) {
     return { mode: 'DOM', source: 'auto', renderer: 'auto' };
@@ -47,7 +50,13 @@ export function detectMode(input: DetectModeInput): DetectModeResult {
 
 export function parseRendererQuery(search: string): RendererQuery | null {
   const value = new URLSearchParams(search).get('renderer');
-  if (value === 'auto' || value === 'vello' || value === 'tiny-skia' || value === 'dom') {
+  if (
+    value === 'auto' ||
+    value === 'vello' ||
+    value === 'tiny-skia' ||
+    value === 'vello-cpu' ||
+    value === 'dom'
+  ) {
     return value;
   }
   return null;

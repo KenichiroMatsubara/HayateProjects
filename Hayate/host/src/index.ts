@@ -142,6 +142,11 @@ async function loadCanvasBackend(
     await velloMod.default();
     return (await velloMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
   }
+  if (backend === 'vello-cpu') {
+    const velloCpuMod = await import('hayate-adapter-web-vello-cpu');
+    await velloCpuMod.default();
+    return (await velloCpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  }
   const cpuMod = await import('hayate-adapter-web-cpu');
   await cpuMod.default();
   return (await cpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;

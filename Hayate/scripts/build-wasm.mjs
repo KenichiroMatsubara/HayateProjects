@@ -15,16 +15,18 @@ const ROOT_DIR = join(SCRIPT_DIR, '..');
 const CRATE_DIR = join(ROOT_DIR, 'crates', 'platform', 'web');
 const OUT_DIR = join(ROOT_DIR, 'wasm-pkgs', 'pkg');
 const OUT_DIR_CPU = join(ROOT_DIR, 'wasm-pkgs', 'pkg-tiny-skia');
+const OUT_DIR_VELLO_CPU = join(ROOT_DIR, 'wasm-pkgs', 'pkg-vello-cpu');
 const OUT_DIR_NULL = join(ROOT_DIR, 'wasm-pkgs', 'pkg-null');
 
-// backend ごとに CARGO_TARGET_DIR を分離する。3つの wasm-pack は default / backend-tiny-skia /
-// backend-null と排他的な feature 構成なので、同一 target を共有すると毎回相手を無効化して
-// フル再コンパイルになる（feature 綱引き）。target を分ければ各 backend が自分の incremental
-// キャッシュを保持し、変更の無い backend は cargo コンパイルがフルキャッシュされる（残りは
-// wasm-bindgen / wasm-opt の固定後処理のみ）。すべて gitignore 済みの target/ 配下に置く。
+// backend ごとに CARGO_TARGET_DIR を分離する。4つの wasm-pack は default / backend-tiny-skia /
+// backend-vello-cpu / backend-null と排他的な feature 構成なので、同一 target を共有すると毎回
+// 相手を無効化してフル再コンパイルになる（feature 綱引き）。target を分ければ各 backend が自分の
+// incremental キャッシュを保持し、変更の無い backend は cargo コンパイルがフルキャッシュされる
+// （残りは wasm-bindgen / wasm-opt の固定後処理のみ）。すべて gitignore 済みの target/ 配下に置く。
 // cargo check は default features なので pkg と同じ target を共有してキャッシュを再利用する。
 const TARGET_DIR = join(ROOT_DIR, 'target', 'wasm');
 const TARGET_DIR_CPU = join(ROOT_DIR, 'target', 'wasm-tiny-skia');
+const TARGET_DIR_VELLO_CPU = join(ROOT_DIR, 'target', 'wasm-vello-cpu');
 const TARGET_DIR_NULL = join(ROOT_DIR, 'target', 'wasm-null');
 
 const BOLD = '\x1b[1m';
@@ -132,7 +134,28 @@ run(
 finalizePkg(OUT_DIR_CPU);
 console.log();
 
-// ── Step 4: wasm-pack build (null backend — C3 codec integration tests) ─────
+// ── Step 4: wasm-pack build (vello_cpu backend — tiny-skia 置き換え候補の検証中) ─
+console.log(`${CYAN}▶ wasm-pack build --target web (backend-vello-cpu)...${RESET}`);
+run(
+  'wasm-pack',
+  [
+    'build',
+    CRATE_DIR,
+    '--target',
+    'web',
+    '--out-dir',
+    OUT_DIR_VELLO_CPU,
+    '--',
+    '--no-default-features',
+    '--features',
+    'backend-vello-cpu',
+  ],
+  TARGET_DIR_VELLO_CPU,
+);
+finalizePkg(OUT_DIR_VELLO_CPU);
+console.log();
+
+// ── Step 5: wasm-pack build (null backend — C3 codec integration tests) ─────
 console.log(`${CYAN}▶ wasm-pack build --target web (backend-null)...${RESET}`);
 run(
   'wasm-pack',
@@ -156,5 +179,6 @@ console.log();
 console.log(`${GREEN}${BOLD}✓ Done!${RESET}`);
 console.log('  pkg           → wasm-pkgs/pkg/');
 console.log('  pkg-tiny-skia → wasm-pkgs/pkg-tiny-skia/');
+console.log('  pkg-vello-cpu → wasm-pkgs/pkg-vello-cpu/');
 console.log('  pkg-null      → wasm-pkgs/pkg-null/');
 console.log('  consumed by Tsubame renderer-hayate (file: deps in wasm-pkgs/*)');

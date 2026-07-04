@@ -12,6 +12,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG_DIRS = [
   join(root, 'Hayate/wasm-pkgs/pkg'),
   join(root, 'Hayate/wasm-pkgs/pkg-tiny-skia'),
+  join(root, 'Hayate/wasm-pkgs/pkg-vello-cpu'),
   join(root, 'Hayate/wasm-pkgs/pkg-null'),
 ];
 

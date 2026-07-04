@@ -1,4 +1,4 @@
-export type CanvasBackend = 'vello' | 'tiny-skia';
+export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu';
 
 export interface ResolveCanvasBackendOptions {
   backend?: CanvasBackend;

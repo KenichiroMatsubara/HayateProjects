@@ -6,6 +6,7 @@ describe('parseRendererQuery', () => {
     expect(parseRendererQuery('?renderer=dom')).toBe('dom');
     expect(parseRendererQuery('?renderer=vello')).toBe('vello');
     expect(parseRendererQuery('?renderer=tiny-skia')).toBe('tiny-skia');
+    expect(parseRendererQuery('?renderer=vello-cpu')).toBe('vello-cpu');
     expect(parseRendererQuery('?renderer=auto')).toBe('auto');
   });
 
@@ -47,6 +48,19 @@ describe('detectMode', () => {
       backend: 'tiny-skia',
       source: 'query',
       renderer: 'tiny-skia',
+    });
+  });
+
+  it('forces vello-cpu canvas when renderer=vello-cpu', () => {
+    expect(detectMode({
+      rendererQuery: 'vello-cpu',
+      hasEditContext: true,
+      hasWebGPU: false,
+    })).toEqual({
+      mode: 'Canvas',
+      backend: 'vello-cpu',
+      source: 'query',
+      renderer: 'vello-cpu',
     });
   });
 
