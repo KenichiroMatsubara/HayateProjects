@@ -17,7 +17,7 @@
     "clean": "cargo clean && rimraf wasm-pkgs/pkg wasm-pkgs/pkg-tiny-skia wasm-pkgs/pkg-null && node ../scripts/bootstrap-wasm-pkgs.mjs",
     "android:build": "bash scripts/build-android.sh assembleDebug",
     "android:build:release": "bash scripts/build-android.sh assembleRelease",
-    "android:install": "bash scripts/build-android.sh installDebug",
+    "miharashi:android:install": "bash scripts/build-android.sh installDebug",
     "android:nativedemo": "bash scripts/build-android.sh installDebug -Pnativedemo",
     "android:clean": "bash scripts/build-android.sh clean"
   },

@@ -176,8 +176,11 @@ class NodeBundleDevServer implements BundleDevServer {
   }
 
   listen(): Promise<string> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      const onError = (err: Error) => reject(err);
+      this.#server.once('error', onError);
       this.#server.listen(this.#port, this.#hostname, () => {
+        this.#server.off('error', onError);
         this.#startWatching();
         const { port } = this.#server.address() as AddressInfo;
         resolve(`http://${this.#hostname}:${port}`);

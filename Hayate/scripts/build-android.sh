@@ -31,8 +31,11 @@ set -euo pipefail
 if [ -z "${JAVA_HOME:-}" ] && ! command -v java >/dev/null 2>&1; then
   for jbr in \
     "/c/Program Files/Android/Android Studio/jbr" \
-    "$LOCALAPPDATA/Programs/Android Studio/jbr" \
-    "$HOME/AppData/Local/Programs/Android Studio/jbr"; do
+    "${LOCALAPPDATA:-}/Programs/Android Studio/jbr" \
+    "$HOME/AppData/Local/Programs/Android Studio/jbr" \
+    "$HOME/android-studio/jbr" \
+    "/opt/android-studio/jbr" \
+    "/usr/local/android-studio/jbr"; do
     if [ -x "$jbr/bin/java" ] || [ -x "$jbr/bin/java.exe" ]; then
       export JAVA_HOME="$jbr"
       break
@@ -43,8 +46,9 @@ fi
 # ANDROID_HOME: 未設定なら local.properties(sdk.dir) → 既定 SDK 位置 の順に解決する。
 if [ -z "${ANDROID_HOME:-}" ] && [ -z "${ANDROID_SDK_ROOT:-}" ]; then
   for sdk in \
-    "$LOCALAPPDATA/Android/Sdk" \
-    "$HOME/AppData/Local/Android/Sdk"; do
+    "${LOCALAPPDATA:-}/Android/Sdk" \
+    "$HOME/AppData/Local/Android/Sdk" \
+    "$HOME/Android/Sdk"; do
     if [ -d "$sdk" ]; then
       export ANDROID_HOME="$sdk"
       export ANDROID_SDK_ROOT="$sdk"
@@ -56,6 +60,14 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ANDROID_DIR="$ROOT_DIR/crates/platform/mobile/android/android-app"
+
+# rust-android-gradle は既定で `<cargo module>/target`（= crates/.../android/target）を見るが、
+# このクレートは Hayate ワークスペースの一員なので実際の cargo 出力は共有の `$ROOT_DIR/target`
+# に置かれる。未設定のままだと cargoBuild が .so を見つけられず、jniLibs に何も入らないまま
+# ビルドは「成功」してしまい、アプリは起動直後に
+# `IllegalArgumentException: unable to find native library libhayate_adapter_android.so` で
+# 落ちる（画面にすら到達しない）。ここで揃えて既定の食い違いを解消する。
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/target}"
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'

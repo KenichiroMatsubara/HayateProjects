@@ -185,7 +185,9 @@ version = "0.1.0"
 name = "hayate-app-host"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "hayate-core",
+ "log",
 ]
 
 [[package]]

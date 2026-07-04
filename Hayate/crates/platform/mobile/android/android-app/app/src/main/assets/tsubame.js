@@ -1010,6 +1010,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   var asElementId = function asElementId(n) {
     return n;
   };
+  var EVENT_PROP = {
+    onClick: "click",
+    onInput: "input",
+    onKeyDown: "keydown",
+    onFocus: "focus",
+    onBlur: "blur"
+  };
+  var REJECTED_EVENT_PROPS = /* @__PURE__ */new Set(["onHoverEnter", "onHoverLeave"]);
   var ELEMENT_PROPERTY_NAMES = ["value", "placeholder", "src", "disabled", "user-select", "multiline"];
   function coerceElementProperty(name, value) {
     switch (name) {
@@ -1165,11 +1173,6 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       value: function addEventListener(id, event, handler) {
         return this.inner.addEventListener(id, event, handler);
       }
-    }, {
-      key: "resize",
-      value: function resize(width, height) {
-        this.inner.resize(width, height);
-      }
       /**
       * 要素の kind が持たない text-local プロップを除去する。先行する
       * `createElement` がない id（kind 不明）はそのまま通す。
@@ -1185,6 +1188,54 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function withTextLocalGate(inner) {
     return new GatingRenderer(inner);
   }
+  var STRUCTURAL_PROPS = /* @__PURE__ */new Set(["children", "ref", "key"]);
+  function applyElementProp(renderer, target, name, value) {
+    if (STRUCTURAL_PROPS.has(name)) return;
+    if (name === "style") {
+      var _splitHayateStyle = splitHayateStyle(value !== null && value !== void 0 ? value : {}),
+        base = _splitHayateStyle.base,
+        pseudo = _splitHayateStyle.pseudo;
+      renderer.setStyle(target.id, base);
+      for (var _i9 = 0, _Object$entries2 = Object.entries(pseudo); _i9 < _Object$entries2.length; _i9++) {
+        var _Object$entries2$_i = _slicedToArray(_Object$entries2[_i9], 2),
+          key = _Object$entries2$_i[0],
+          block = _Object$entries2$_i[1];
+        if (block !== void 0) renderer.setPseudoStyle(target.id, key, block);
+      }
+      return;
+    }
+    if (name === "styleVariants") {
+      var variants = value !== null && value !== void 0 ? value : [];
+      var _iterator5 = _createForOfIteratorHelper(variants),
+        _step5;
+      try {
+        for (_iterator5.s(); !(_step5 = _iterator5.n()).done;) {
+          var _variant$style;
+          var variant = _step5.value;
+          var _splitHayateStyle2 = splitHayateStyle((_variant$style = variant.style) !== null && _variant$style !== void 0 ? _variant$style : {}),
+            _base = _splitHayateStyle2.base;
+          renderer.setStyleVariant(target.id, variant.condition, _base);
+        }
+      } catch (err) {
+        _iterator5.e(err);
+      } finally {
+        _iterator5.f();
+      }
+      return;
+    }
+    if (target.kind === "text") return;
+    if (REJECTED_EVENT_PROPS.has(name)) throw new Error("".concat(name, " is not supported as an event prop. Use ':hover' / ':active' / ':focus' in style for visual feedback (ADR-0056, ADR-0059)."));
+    var eventKind = EVENT_PROP[name];
+    if (eventKind !== void 0) {
+      var _target$listeners$get;
+      (_target$listeners$get = target.listeners.get(name)) === null || _target$listeners$get === void 0 || _target$listeners$get();
+      target.listeners.delete(name);
+      if (typeof value === "function") target.listeners.set(name, renderer.addEventListener(target.id, eventKind, value));
+      return;
+    }
+    assertKnownElementProperty(name);
+    renderer.setProperty(target.id, name, value);
+  }
   //#endregion
   //#region ../../packages/solid/dist/index.js
   var active = null;
@@ -1195,48 +1246,40 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     if (active === null) throw new Error("tsubame-solid: アクティブな Renderer が未設定です。renderTsubame() を使うか setActiveRenderer() を先に呼んでください。");
     return active;
   }
-  function createElementNode(id, elementKind) {
+  function createElementNode(id, kind) {
     return {
       id: id,
-      elementKind: elementKind,
+      kind: kind,
       parent: null,
       children: [],
-      events: /* @__PURE__ */new Map()
+      listeners: /* @__PURE__ */new Map()
     };
   }
-  var REJECTED_EVENT_PROPS = /* @__PURE__ */new Set(["onHoverEnter", "onHoverLeave"]);
-  var EVENT_PROP = {
-    onClick: "click",
-    onInput: "input",
-    onKeyDown: "keydown",
-    onFocus: "focus",
-    onBlur: "blur"
-  };
   function disposeEvents(node) {
-    var _iterator5 = _createForOfIteratorHelper(node.events.values()),
-      _step5;
-    try {
-      for (_iterator5.s(); !(_step5 = _iterator5.n()).done;) {
-        var unsub = _step5.value;
-        unsub();
-      }
-    } catch (err) {
-      _iterator5.e(err);
-    } finally {
-      _iterator5.f();
-    }
-    node.events.clear();
-    var _iterator6 = _createForOfIteratorHelper(node.children),
+    var _iterator6 = _createForOfIteratorHelper(node.listeners.values()),
       _step6;
     try {
       for (_iterator6.s(); !(_step6 = _iterator6.n()).done;) {
-        var child = _step6.value;
-        disposeEvents(child);
+        var unsub = _step6.value;
+        unsub();
       }
     } catch (err) {
       _iterator6.e(err);
     } finally {
       _iterator6.f();
+    }
+    node.listeners.clear();
+    var _iterator7 = _createForOfIteratorHelper(node.children),
+      _step7;
+    try {
+      for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
+        var child = _step7.value;
+        disposeEvents(child);
+      }
+    } catch (err) {
+      _iterator7.e(err);
+    } finally {
+      _iterator7.f();
     }
   }
   function insertIntoChildren(parent, node, anchor) {
@@ -1257,59 +1300,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         return createElementNode(id, "text");
       },
       replaceText: function replaceText(textNode, value) {
-        if (textNode.elementKind !== "text") return;
+        if (textNode.kind !== "text") return;
         activeRenderer().setText(textNode.id, value);
       },
       isTextNode: function isTextNode(node) {
-        return node.elementKind === "text";
+        return node.kind === "text";
       },
       setProperty: function setProperty(node, name, value) {
-        var r = activeRenderer();
-        if (name === "style") {
-          var _splitHayateStyle = splitHayateStyle(value !== null && value !== void 0 ? value : {}),
-            base = _splitHayateStyle.base,
-            pseudo = _splitHayateStyle.pseudo;
-          r.setStyle(node.id, base);
-          for (var _i9 = 0, _Object$entries2 = Object.entries(pseudo); _i9 < _Object$entries2.length; _i9++) {
-            var _Object$entries2$_i = _slicedToArray(_Object$entries2[_i9], 2),
-              key = _Object$entries2$_i[0],
-              block = _Object$entries2$_i[1];
-            if (block !== void 0) r.setPseudoStyle(node.id, key, block);
-          }
-          return;
-        }
-        if (name === "styleVariants") {
-          var variants = value !== null && value !== void 0 ? value : [];
-          var _iterator7 = _createForOfIteratorHelper(variants),
-            _step7;
-          try {
-            for (_iterator7.s(); !(_step7 = _iterator7.n()).done;) {
-              var _variant$style;
-              var variant = _step7.value;
-              var _splitHayateStyle2 = splitHayateStyle((_variant$style = variant.style) !== null && _variant$style !== void 0 ? _variant$style : {}),
-                _base = _splitHayateStyle2.base;
-              r.setStyleVariant(node.id, variant.condition, _base);
-            }
-          } catch (err) {
-            _iterator7.e(err);
-          } finally {
-            _iterator7.f();
-          }
-          return;
-        }
-        if (node.elementKind === "text") return;
-        if (REJECTED_EVENT_PROPS.has(name)) throw new Error("".concat(name, " is not supported in tsubame-solid. Use ':hover' in style for visual feedback (ADR-0056, ADR-0059)."));
-        var eventKind = EVENT_PROP[name];
-        if (eventKind !== void 0) {
-          var _node$events$get;
-          (_node$events$get = node.events.get(name)) === null || _node$events$get === void 0 || _node$events$get();
-          node.events.delete(name);
-          if (typeof value === "function") node.events.set(name, r.addEventListener(node.id, eventKind, value));
-          return;
-        }
-        if (name === "children" || name === "ref") return;
-        assertKnownElementProperty(name);
-        r.setProperty(node.id, name, value);
+        applyElementProp(activeRenderer(), node, name, value);
       },
       insertNode: function insertNode(parent, node, anchor) {
         node.parent = parent;
@@ -1353,49 +1351,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     spread = _createRenderer.spread,
     setProp = _createRenderer.setProp,
     mergeProps = _createRenderer.mergeProps;
-  function renderTsubame(code, target, options) {
+  function renderTsubame(code, target) {
     var renderer = withTextLocalGate(target);
     setActiveRenderer(renderer);
     var rootId = renderer.createElement("view");
     renderer.setRoot(rootId);
-    var root = createElementNode(rootId, "view");
-    var rafHandle = null;
-    var notifyResize = function notifyResize(w, h) {
-      if (rafHandle !== null) cancelAnimationFrame(rafHandle);
-      rafHandle = requestAnimationFrame(function () {
-        rafHandle = null;
-        renderer.resize(w, h);
-      });
-    };
-    var cleanupResize = null;
-    var el = options === null || options === void 0 ? void 0 : options.element;
-    if (el !== void 0 && typeof ResizeObserver !== "undefined") {
-      var ro = new ResizeObserver(function (entries) {
-        var entry = entries[0];
-        if (!entry) return;
-        var _entry$contentRect = entry.contentRect,
-          width = _entry$contentRect.width,
-          height = _entry$contentRect.height;
-        notifyResize(Math.round(width), Math.round(height));
-      });
-      ro.observe(el);
-      cleanupResize = function cleanupResize() {
-        return ro.disconnect();
-      };
-    } else {
-      var handler = function handler() {
-        return notifyResize(window.innerWidth, window.innerHeight);
-      };
-      window.addEventListener("resize", handler);
-      cleanupResize = function cleanupResize() {
-        return window.removeEventListener("resize", handler);
-      };
-    }
-    var dispose = render(code, root);
+    var dispose = render(code, createElementNode(rootId, "view"));
     return function () {
-      var _cleanupResize;
-      if (rafHandle !== null) cancelAnimationFrame(rafHandle);
-      (_cleanupResize = cleanupResize) === null || _cleanupResize === void 0 || _cleanupResize();
       dispose();
     };
   }
@@ -1544,6 +1506,30 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     baseURI: ""
   };
   //#endregion
+  //#region ../../../Hayate/host/dist/native.js
+  function createHayateNativeHost(raw) {
+    var pendingFrame = null;
+    var handleSeq = 1;
+    return {
+      raw: raw,
+      requestFrame: function requestFrame(cb) {
+        pendingFrame = cb;
+        return handleSeq++;
+      },
+      cancelFrame: function cancelFrame(_handle) {
+        pendingFrame = null;
+      },
+      pumpFrame: function pumpFrame(timestampMs) {
+        var cb = pendingFrame;
+        pendingFrame = null;
+        cb === null || cb === void 0 || cb(timestampMs);
+      },
+      stop: function stop() {
+        pendingFrame = null;
+      }
+    };
+  }
+  //#endregion
   //#region ../../proto/generated/protocol.ts
   var OP = {
     APPEND_CHILD: 0,
@@ -1564,7 +1550,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     SET_PSEUDO_STYLE: 15,
     SET_STYLE_VARIANT: 16,
     SET_USER_SELECT: 17,
-    SET_MULTILINE: 18
+    SET_MULTILINE: 18,
+    SET_ARIA_LABEL: 19,
+    SET_ROLE: 20,
+    SET_FONT_FAMILY: 21
   };
   var TAG = {
     BACKGROUND_COLOR: 0,
@@ -1624,7 +1613,16 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     TEXT_OVERFLOW: 54,
     TRANSITION_DURATION: 55,
     TRANSITION_TIMING: 56,
-    BOX_SHADOW: 57
+    BOX_SHADOW: 57,
+    ASPECT_RATIO: 58,
+    BOX_SIZING: 59,
+    GRID_AUTO_ROWS: 60,
+    GRID_AUTO_COLUMNS: 61,
+    GRID_AUTO_FLOW: 62,
+    GRID_COLUMN: 63,
+    JUSTIFY_ITEMS: 64,
+    JUSTIFY_SELF: 65,
+    GRID_ROW: 66
   };
   var EVENT_KIND = {
     CLICK: 0,
@@ -1762,6 +1760,29 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     none: 1,
     contains: 2
   };
+  var BOX_SIZING = {
+    borderBox: 0,
+    contentBox: 1
+  };
+  var GRID_AUTO_FLOW = {
+    row: 0,
+    column: 1,
+    rowDense: 2,
+    columnDense: 3
+  };
+  var JUSTIFY_ITEMS = {
+    start: 0,
+    end: 1,
+    center: 2,
+    stretch: 3
+  };
+  var JUSTIFY_SELF = {
+    auto: 0,
+    start: 1,
+    end: 2,
+    center: 3,
+    stretch: 4
+  };
   var UNIT_CODE = DIMENSION_UNIT;
   function parseEvent(ev) {
     var kind = ev[0];
@@ -1888,12 +1909,12 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   //#region ../../proto/generated/codec.ts
   function finiteNumber(key, value) {
     var numeric = Number(value);
-    if (!Number.isFinite(numeric)) throw new Error("CanvasRenderer: invalid numeric value for \"".concat(key, "\""));
+    if (!Number.isFinite(numeric)) throw new Error("HayateRenderer: invalid numeric value for \"".concat(key, "\""));
     return numeric;
   }
   function finiteInteger(key, value) {
     var numeric = finiteNumber(key, value);
-    if (!Number.isInteger(numeric)) throw new Error("CanvasRenderer: \"".concat(key, "\" must be an integer"));
+    if (!Number.isInteger(numeric)) throw new Error("HayateRenderer: \"".concat(key, "\" must be an integer"));
     return numeric;
   }
   function parseDimension(value) {
@@ -1908,9 +1929,9 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       unit: "auto"
     };
     var match = trimmed.match(/^(-?(?:\d+|\d*\.\d+))(px|%|fr)?$/);
-    if (match === null) throw new Error("CanvasRenderer: unsupported dimension \"".concat(value, "\""));
+    if (match === null) throw new Error("HayateRenderer: unsupported dimension \"".concat(value, "\""));
     var numeric = Number(match[1]);
-    if (!Number.isFinite(numeric)) throw new Error("CanvasRenderer: invalid dimension \"".concat(value, "\""));
+    if (!Number.isFinite(numeric)) throw new Error("HayateRenderer: invalid dimension \"".concat(value, "\""));
     var unit = (_match$ = match[2]) !== null && _match$ !== void 0 ? _match$ : "px";
     if (unit === "%") return {
       value: numeric,
@@ -1976,7 +1997,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       b: 0,
       a: 0
     };
-    throw new Error("CanvasRenderer: unsupported color \"".concat(input, "\""));
+    throw new Error("HayateRenderer: unsupported color \"".concat(input, "\""));
   }
   function parseColorChannel(raw) {
     var value = raw.trim();
@@ -1991,6 +2012,26 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function clamp01(value) {
     if (!Number.isFinite(value)) return 0;
     return Math.min(1, Math.max(0, value));
+  }
+  /**
+  * grid-placement の1スロット（start または end）を [種別タグ, 整数] の2 wire
+  * スロットへ符号化する。`auto`/undefined は `[0, 0]`、line(整数) は `[1, n]`、
+  * span は `{ span: n }` → `[2, n]`。
+  */
+  function encodeGridLine(out, key, line) {
+    if (line === void 0 || line === null || line === "auto") {
+      out.push(0, 0);
+      return;
+    }
+    if (typeof line === "number") {
+      out.push(1, finiteInteger(key, line));
+      return;
+    }
+    if (_typeof2(line) === "object" && "span" in line) {
+      out.push(2, finiteInteger("".concat(key, ".span"), line.span));
+      return;
+    }
+    throw new Error("HayateRenderer: unsupported grid placement for \"".concat(key, "\""));
   }
   var DISPLAY_CODE = {
     "flex": DISPLAY.flex,
@@ -2084,6 +2125,29 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     "ease-out": TRANSITION_TIMING.easeOut,
     "ease-in-out": TRANSITION_TIMING.easeInOut
   };
+  var BOX_SIZING_CODE = {
+    "border-box": BOX_SIZING.borderBox,
+    "content-box": BOX_SIZING.contentBox
+  };
+  var GRID_AUTO_FLOW_CODE = {
+    "row": GRID_AUTO_FLOW.row,
+    "column": GRID_AUTO_FLOW.column,
+    "row-dense": GRID_AUTO_FLOW.rowDense,
+    "column-dense": GRID_AUTO_FLOW.columnDense
+  };
+  var JUSTIFY_ITEMS_CODE = {
+    "start": JUSTIFY_ITEMS.start,
+    "end": JUSTIFY_ITEMS.end,
+    "center": JUSTIFY_ITEMS.center,
+    "stretch": JUSTIFY_ITEMS.stretch
+  };
+  var JUSTIFY_SELF_CODE = {
+    "auto": JUSTIFY_SELF.auto,
+    "start": JUSTIFY_SELF.start,
+    "end": JUSTIFY_SELF.end,
+    "center": JUSTIFY_SELF.center,
+    "stretch": JUSTIFY_SELF.stretch
+  };
   function encode_backgroundColor(out, value) {
     var c = parseColor(value);
     out.push(TAG.BACKGROUND_COLOR, c.r, c.g, c.b, c.a);
@@ -2127,22 +2191,22 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   function encode_display(out, value) {
     var code = DISPLAY_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported display \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported display \"".concat(value, "\""));
     out.push(TAG.DISPLAY, code);
   }
   function encode_flexDirection(out, value) {
     var code = FLEX_DIRECTION_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported flexDirection \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported flexDirection \"".concat(value, "\""));
     out.push(TAG.FLEX_DIRECTION, code);
   }
   function encode_alignItems(out, value) {
     var code = ALIGN_ITEMS_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported alignItems \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported alignItems \"".concat(value, "\""));
     out.push(TAG.ALIGN_ITEMS, code);
   }
   function encode_justifyContent(out, value) {
     var code = JUSTIFY_CONTENT_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported justifyContent \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported justifyContent \"".concat(value, "\""));
     out.push(TAG.JUSTIFY_CONTENT, code);
   }
   function encode_gap(out, value) {
@@ -2223,12 +2287,12 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   function encode_fontStyle(out, value) {
     var code = FONT_STYLE_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported fontStyle \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported fontStyle \"".concat(value, "\""));
     out.push(TAG.FONT_STYLE, code);
   }
   function encode_textDecoration(out, value) {
     var code = TEXT_DECORATION_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported textDecoration \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported textDecoration \"".concat(value, "\""));
     out.push(TAG.TEXT_DECORATION, code);
   }
   function encode_defaultColor(out, value) {
@@ -2258,7 +2322,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     out.push(TAG.DEFAULT_FONT_WEIGHT, finiteNumber("defaultFontWeight", value));
   }
   function encode_gridTemplateColumns(out, value) {
-    if (!Array.isArray(value)) throw new Error("CanvasRenderer: \"gridTemplateColumns\" must be an array of dimensions");
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridTemplateColumns\" must be an array of dimensions");
     out.push(TAG.GRID_TEMPLATE_COLUMNS, value.length);
     var _iterator1 = _createForOfIteratorHelper(value),
       _step1;
@@ -2275,7 +2339,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }
   }
   function encode_gridTemplateRows(out, value) {
-    if (!Array.isArray(value)) throw new Error("CanvasRenderer: \"gridTemplateRows\" must be an array of dimensions");
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridTemplateRows\" must be an array of dimensions");
     out.push(TAG.GRID_TEMPLATE_ROWS, value.length);
     var _iterator10 = _createForOfIteratorHelper(value),
       _step10;
@@ -2300,32 +2364,32 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   function encode_alignSelf(out, value) {
     var code = ALIGN_SELF_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported alignSelf \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported alignSelf \"".concat(value, "\""));
     out.push(TAG.ALIGN_SELF, code);
   }
   function encode_alignContent(out, value) {
     var code = ALIGN_CONTENT_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported alignContent \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported alignContent \"".concat(value, "\""));
     out.push(TAG.ALIGN_CONTENT, code);
   }
   function encode_flexWrap(out, value) {
     var code = FLEX_WRAP_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported flexWrap \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported flexWrap \"".concat(value, "\""));
     out.push(TAG.FLEX_WRAP, code);
   }
   function encode_borderStyle(out, value) {
     var code = BORDER_STYLE_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported borderStyle \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported borderStyle \"".concat(value, "\""));
     out.push(TAG.BORDER_STYLE, code);
   }
   function encode_cursor(out, value) {
     var code = CURSOR_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported cursor \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported cursor \"".concat(value, "\""));
     out.push(TAG.CURSOR, code);
   }
   function encode_position(out, value) {
     var code = POSITION_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported position \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported position \"".concat(value, "\""));
     out.push(TAG.POSITION, code);
   }
   function encode_top(out, value) {
@@ -2346,7 +2410,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   function encode_overflow(out, value) {
     var code = OVERFLOW_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported overflow \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported overflow \"".concat(value, "\""));
     out.push(TAG.OVERFLOW, code);
   }
   function encode_maxLines(out, value) {
@@ -2354,7 +2418,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   function encode_textOverflow(out, value) {
     var code = TEXT_OVERFLOW_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported textOverflow \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported textOverflow \"".concat(value, "\""));
     out.push(TAG.TEXT_OVERFLOW, code);
   }
   function encode_transitionDuration(out, value) {
@@ -2362,11 +2426,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   function encode_transitionTiming(out, value) {
     var code = TRANSITION_TIMING_CODE[value];
-    if (code === void 0) throw new Error("CanvasRenderer: unsupported transitionTiming \"".concat(value, "\""));
+    if (code === void 0) throw new Error("HayateRenderer: unsupported transitionTiming \"".concat(value, "\""));
     out.push(TAG.TRANSITION_TIMING, code);
   }
   function encode_boxShadow(out, value) {
-    if (!Array.isArray(value)) throw new Error("CanvasRenderer: \"boxShadow\" must be an array of shadows");
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"boxShadow\" must be an array of shadows");
     out.push(TAG.BOX_SHADOW, value.length);
     var _iterator11 = _createForOfIteratorHelper(value),
       _step11;
@@ -2381,6 +2445,75 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     } finally {
       _iterator11.f();
     }
+  }
+  function encode_aspectRatio(out, value) {
+    out.push(TAG.ASPECT_RATIO, finiteNumber("aspectRatio", value));
+  }
+  function encode_boxSizing(out, value) {
+    var code = BOX_SIZING_CODE[value];
+    if (code === void 0) throw new Error("HayateRenderer: unsupported boxSizing \"".concat(value, "\""));
+    out.push(TAG.BOX_SIZING, code);
+  }
+  function encode_gridAutoRows(out, value) {
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridAutoRows\" must be an array of dimensions");
+    out.push(TAG.GRID_AUTO_ROWS, value.length);
+    var _iterator12 = _createForOfIteratorHelper(value),
+      _step12;
+    try {
+      for (_iterator12.s(); !(_step12 = _iterator12.n()).done;) {
+        var item = _step12.value;
+        var d = parseDimension(item);
+        out.push(d.value, UNIT_CODE[d.unit]);
+      }
+    } catch (err) {
+      _iterator12.e(err);
+    } finally {
+      _iterator12.f();
+    }
+  }
+  function encode_gridAutoColumns(out, value) {
+    if (!Array.isArray(value)) throw new Error("HayateRenderer: \"gridAutoColumns\" must be an array of dimensions");
+    out.push(TAG.GRID_AUTO_COLUMNS, value.length);
+    var _iterator13 = _createForOfIteratorHelper(value),
+      _step13;
+    try {
+      for (_iterator13.s(); !(_step13 = _iterator13.n()).done;) {
+        var item = _step13.value;
+        var d = parseDimension(item);
+        out.push(d.value, UNIT_CODE[d.unit]);
+      }
+    } catch (err) {
+      _iterator13.e(err);
+    } finally {
+      _iterator13.f();
+    }
+  }
+  function encode_gridAutoFlow(out, value) {
+    var code = GRID_AUTO_FLOW_CODE[value];
+    if (code === void 0) throw new Error("HayateRenderer: unsupported gridAutoFlow \"".concat(value, "\""));
+    out.push(TAG.GRID_AUTO_FLOW, code);
+  }
+  function encode_gridColumn(out, value) {
+    var placement = value !== null && value !== void 0 ? value : {};
+    out.push(TAG.GRID_COLUMN);
+    encodeGridLine(out, "gridColumn", placement.start);
+    encodeGridLine(out, "gridColumn", placement.end);
+  }
+  function encode_justifyItems(out, value) {
+    var code = JUSTIFY_ITEMS_CODE[value];
+    if (code === void 0) throw new Error("HayateRenderer: unsupported justifyItems \"".concat(value, "\""));
+    out.push(TAG.JUSTIFY_ITEMS, code);
+  }
+  function encode_justifySelf(out, value) {
+    var code = JUSTIFY_SELF_CODE[value];
+    if (code === void 0) throw new Error("HayateRenderer: unsupported justifySelf \"".concat(value, "\""));
+    out.push(TAG.JUSTIFY_SELF, code);
+  }
+  function encode_gridRow(out, value) {
+    var placement = value !== null && value !== void 0 ? value : {};
+    out.push(TAG.GRID_ROW);
+    encodeGridLine(out, "gridRow", placement.start);
+    encodeGridLine(out, "gridRow", placement.end);
   }
   var STYLE_ENCODERS = {
     backgroundColor: encode_backgroundColor,
@@ -2440,7 +2573,16 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     textOverflow: encode_textOverflow,
     transitionDuration: encode_transitionDuration,
     transitionTiming: encode_transitionTiming,
-    boxShadow: encode_boxShadow
+    boxShadow: encode_boxShadow,
+    aspectRatio: encode_aspectRatio,
+    boxSizing: encode_boxSizing,
+    gridAutoRows: encode_gridAutoRows,
+    gridAutoColumns: encode_gridAutoColumns,
+    gridAutoFlow: encode_gridAutoFlow,
+    gridColumn: encode_gridColumn,
+    justifyItems: encode_justifyItems,
+    justifySelf: encode_justifySelf,
+    gridRow: encode_gridRow
   };
   var INHERITED_UNSET = {
     color: UNSET_KIND.color,
@@ -2455,7 +2597,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       var value = patch[k];
       if (value === void 0 || value === null) continue;
       var encoder = STYLE_ENCODERS[k];
-      if (encoder === void 0) throw new Error("CanvasRenderer: unsupported style property \"".concat(String(k), "\""));
+      if (encoder === void 0) throw new Error("HayateRenderer: unsupported style property \"".concat(String(k), "\""));
       encoder(out, value);
     }
   }
@@ -2466,7 +2608,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       var k = key;
       if (patch[k] !== null) continue;
       var code = INHERITED_UNSET[k];
-      if (code === void 0) throw new Error("CanvasRenderer: cannot reset non-inheritable property \"".concat(String(k), "\""));
+      if (code === void 0) throw new Error("HayateRenderer: cannot reset non-inheritable property \"".concat(String(k), "\""));
       kinds.push(code);
     }
     return kinds;
@@ -2620,7 +2762,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }
   }
   //#endregion
-  //#region ../../packages/renderer-canvas/dist/chunk-7ZONU764.js
+  //#region ../../packages/renderer-hayate/dist/index.js
   function viewportAxis(value) {
     return value === void 0 ? -1 : value;
   }
@@ -2637,11 +2779,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     var ops = [];
     var styles = [];
     var texts = [];
-    var _iterator12 = _createForOfIteratorHelper(mutations),
-      _step12;
+    var _iterator14 = _createForOfIteratorHelper(mutations),
+      _step14;
     try {
-      for (_iterator12.s(); !(_step12 = _iterator12.n()).done;) {
-        var mutation = _step12.value;
+      for (_iterator14.s(); !(_step14 = _iterator14.n()).done;) {
+        var mutation = _step14.value;
         switch (mutation.kind) {
           case "createElement":
             appendCreate(ops, mutation.id, ELEMENT_KIND[mutation.elementKind]);
@@ -2664,17 +2806,17 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
               encodeStylePatch(mutation.style, styles);
               var len = styles.length - offset;
               if (len > 0) appendSetStyle(ops, mutation.id, offset, len);
-              var _iterator13 = _createForOfIteratorHelper(unsetKindsOf(mutation.style)),
-                _step13;
+              var _iterator15 = _createForOfIteratorHelper(unsetKindsOf(mutation.style)),
+                _step15;
               try {
-                for (_iterator13.s(); !(_step13 = _iterator13.n()).done;) {
-                  var unsetKind = _step13.value;
+                for (_iterator15.s(); !(_step15 = _iterator15.n()).done;) {
+                  var unsetKind = _step15.value;
                   appendUnsetStyle(ops, mutation.id, unsetKind);
                 }
               } catch (err) {
-                _iterator13.e(err);
+                _iterator15.e(err);
               } finally {
-                _iterator13.f();
+                _iterator15.f();
               }
               break;
             }
@@ -2717,28 +2859,28 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
               break;
             }
           case "setStyleVariant":
-            var _iterator14 = _createForOfIteratorHelper(splitStyleVariant(mutation.style)),
-              _step14;
+            var _iterator16 = _createForOfIteratorHelper(splitStyleVariant(mutation.style)),
+              _step16;
             try {
-              for (_iterator14.s(); !(_step14 = _iterator14.n()).done;) {
-                var single = _step14.value;
+              for (_iterator16.s(); !(_step16 = _iterator16.n()).done;) {
+                var single = _step16.value;
                 var _offset2 = styles.length;
                 encodeStylePatch(single, styles);
                 var _len4 = styles.length - _offset2;
                 if (_len4 > 0) appendSetStyleVariant(ops, mutation.id, viewportAxis(mutation.condition.minWidth), viewportAxis(mutation.condition.maxWidth), viewportAxis(mutation.condition.minHeight), viewportAxis(mutation.condition.maxHeight), _offset2, _len4);
               }
             } catch (err) {
-              _iterator14.e(err);
+              _iterator16.e(err);
             } finally {
-              _iterator14.f();
+              _iterator16.f();
             }
             break;
         }
       }
     } catch (err) {
-      _iterator12.e(err);
+      _iterator14.e(err);
     } finally {
-      _iterator12.f();
+      _iterator14.f();
     }
     return {
       ops: new Float64Array(ops),
@@ -2891,170 +3033,119 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       }
     }]);
   }();
-  new TextEncoder();
-  function canvasPixelRectToDomRect(canvas, x, y, width, height) {
-    var rect = canvas.getBoundingClientRect();
-    var scaleX = canvas.width === 0 ? 1 : rect.width / canvas.width;
-    var scaleY = canvas.height === 0 ? 1 : rect.height / canvas.height;
-    return new DOMRect(rect.left + x * scaleX, rect.top + y * scaleY, width * scaleX, height * scaleY);
-  }
-  var editContexts = /* @__PURE__ */new WeakMap();
-  function syncEditContext(canvas, raw) {
-    var wants = raw.ime_wants_keyboard();
-    var owned = editContexts.get(canvas);
-    if (owned !== void 0) {
-      if (wants) {
-        if (canvas.editContext !== owned) canvas.editContext = owned;
-      } else if (canvas.editContext === owned) canvas.editContext = null;
-    }
-    if (!wants) return;
-    var editContext = canvas.editContext;
-    if (editContext === void 0 || editContext === null) return;
-    var bounds = raw.ime_character_bounds();
-    if (bounds[2] === 0 && bounds[3] === 0) return;
-    var dom = canvasPixelRectToDomRect(canvas, bounds[0], bounds[1], bounds[2], bounds[3]);
-    editContext.updateControlBounds(dom);
-    editContext.updateSelectionBounds(dom);
-  }
-  var CanvasRenderer = /*#__PURE__*/function () {
-    function CanvasRenderer(raw) {
-      var _this2 = this,
-        _options$canvas,
-        _options$requestFrame,
-        _options$cancelFrame,
-        _options$autoResize;
-      var options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
-      _classCallCheck(this, CanvasRenderer);
+  var HayateRenderer = /*#__PURE__*/function () {
+    function HayateRenderer(options) {
+      var _this2 = this;
+      _classCallCheck(this, HayateRenderer);
       _defineProperty(this, "raw", void 0);
       _defineProperty(this, /** Hayate が発行したリスナ id → ホストのハンドラ（ADR-0053）。 */
       "listeners", /* @__PURE__ */new Map());
       _defineProperty(this, "nextId", 1);
       _defineProperty(this, "packet", new HayateMutationPacket());
-      _defineProperty(this, "canvas", void 0);
       _defineProperty(this, "requestFrame", void 0);
       _defineProperty(this, "cancelFrame", void 0);
-      _defineProperty(this,
-      /** DPR の明示上書き（テスト/埋め込みホスト）。未設定なら毎リサイズで実時の
-      * `globalThis.devicePixelRatio` を読む。モバイル Chrome は構築後に DPR を変える
-      * （入力中のソフトキーボード/フォーカスズーム）ため、構築時にキャッシュすると
-      * バッキングストアが小さすぎて生成され、シーンが拡大されてグリフが粗くなる。 */
-      "devicePixelRatioOverride", void 0);
-      _defineProperty(this, "resizeObserver", null);
       _defineProperty(this, "frameHandle", null);
+      _defineProperty(this, /** start() 後だけ wake を許す（構築≠開始, #476）。stop() で false に戻す。 */
+      "started", false);
       _defineProperty(this, "frame", function (timestampMs) {
+        _this2.frameHandle = null;
         _this2.flush();
         _this2.raw.render(timestampMs);
-        if (_this2.canvas !== null) syncEditContext(_this2.canvas, _this2.raw);
         _this2.dispatchDeliveries(_this2.raw.poll_events());
-        _this2.frameHandle = _this2.requestFrame(_this2.frame);
+        if (_this2.raw.has_pending_visual_work()) _this2.scheduleFrame();
       });
-      this.raw = raw;
-      this.canvas = (_options$canvas = options.canvas) !== null && _options$canvas !== void 0 ? _options$canvas : null;
-      this.requestFrame = (_options$requestFrame = options.requestFrame) !== null && _options$requestFrame !== void 0 ? _options$requestFrame : globalThis.requestAnimationFrame.bind(globalThis);
-      this.cancelFrame = (_options$cancelFrame = options.cancelFrame) !== null && _options$cancelFrame !== void 0 ? _options$cancelFrame : globalThis.cancelAnimationFrame.bind(globalThis);
-      this.devicePixelRatioOverride = options.devicePixelRatio;
-      var autoResize = (_options$autoResize = options.autoResize) !== null && _options$autoResize !== void 0 ? _options$autoResize : this.canvas !== null;
-      if (this.canvas !== null && autoResize) this.attachResizeObserver(this.canvas, options.createResizeObserver);
-      this.frameHandle = this.requestFrame(this.frame);
+      this.raw = options.raw;
+      this.requestFrame = options.requestFrame;
+      this.cancelFrame = options.cancelFrame;
     }
-    return _createClass(CanvasRenderer, [{
+    /** frame ループを武装する。host が clock の準備を終えてから呼ぶ。冪等。
+    * これ自体が冷間始動の wake 入口で、以後は継続 pending / mutation 到着で再武装する。 */
+    return _createClass(HayateRenderer, [{
+      key: "start",
+      value: function start() {
+        var _this$raw$set_request,
+          _this$raw,
+          _this3 = this;
+        this.started = true;
+        (_this$raw$set_request = (_this$raw = this.raw).set_request_redraw) === null || _this$raw$set_request === void 0 || _this$raw$set_request.call(_this$raw, function () {
+          return _this3.scheduleFrame();
+        });
+        this.scheduleFrame();
+      }
+    }, {
       key: "stop",
       value: function stop() {
-        var _this$resizeObserver;
+        this.started = false;
         if (this.frameHandle !== null) {
           this.cancelFrame(this.frameHandle);
           this.frameHandle = null;
         }
-        (_this$resizeObserver = this.resizeObserver) === null || _this$resizeObserver === void 0 || _this$resizeObserver.disconnect();
-        this.resizeObserver = null;
       }
+      /**
+      * 次フレームを 1 枚だけ要求する（ADR-0126 の唯一の wake 入口）。既に武装済み／
+      * 未 start なら何もしない（冪等）。start・継続 pending・mutation 到着のいずれの
+      * 経路もここを通り、idle ループの二重武装を防ぐ。
+      */
     }, {
-      key: "attachResizeObserver",
-      value: function attachResizeObserver(canvas, createResizeObserver) {
-        var _this3 = this;
-        var ResizeObserverCtor = createResizeObserver !== null && createResizeObserver !== void 0 ? createResizeObserver : typeof globalThis.ResizeObserver !== "undefined" ? globalThis.ResizeObserver : void 0;
-        if (ResizeObserverCtor === void 0) return;
-        var syncFromContentBox = function syncFromContentBox(width, height) {
-          _this3.resize(Math.round(width), Math.round(height), _this3.currentDevicePixelRatio());
-        };
-        var rect = canvas.getBoundingClientRect();
-        syncFromContentBox(rect.width, rect.height);
-        var observer = new ResizeObserverCtor(function (entries) {
-          var entry = entries[0];
-          if (entry === void 0) return;
-          var _entry$contentRect2 = entry.contentRect,
-            width = _entry$contentRect2.width,
-            height = _entry$contentRect2.height;
-          syncFromContentBox(width, height);
-        });
-        observer.observe(canvas);
-        this.resizeObserver = observer;
-      }
-      /** 次のリサイズに使う DPR を決める。明示上書きがあればそれを、なければ実時の
-      * グローバル値（毎回読み直し、キャッシュしない）。 */
-    }, {
-      key: "currentDevicePixelRatio",
-      value: function currentDevicePixelRatio() {
-        var _ref2, _this$devicePixelRati;
-        return (_ref2 = (_this$devicePixelRati = this.devicePixelRatioOverride) !== null && _this$devicePixelRati !== void 0 ? _this$devicePixelRati : globalThis.devicePixelRatio) !== null && _ref2 !== void 0 ? _ref2 : 1;
-      }
-    }, {
-      key: "resize",
-      value: function resize(width, height) {
-        var scale = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 1;
-        var dpr = Math.max(1, scale);
-        if (this.canvas !== null) {
-          this.canvas.width = Math.round(width * dpr);
-          this.canvas.height = Math.round(height * dpr);
-        }
-        this.raw.on_resize(width, height, dpr);
+      key: "scheduleFrame",
+      value: function scheduleFrame() {
+        if (this.started && this.frameHandle === null) this.frameHandle = this.requestFrame(this.frame);
       }
     }, {
       key: "createElement",
       value: function createElement(kind) {
         var id = asElementId(this.nextId++);
         this.packet.enqueueCreateElement(id, kind);
+        this.scheduleFrame();
         return id;
       }
     }, {
       key: "setRoot",
       value: function setRoot(id) {
         this.packet.enqueueSetRoot(id);
+        this.scheduleFrame();
       }
     }, {
       key: "appendChild",
       value: function appendChild(parent, child) {
         this.packet.enqueueAppendChild(parent, child);
+        this.scheduleFrame();
       }
     }, {
       key: "insertBefore",
       value: function insertBefore(parent, child, before) {
         this.packet.enqueueInsertBefore(parent, child, before);
+        this.scheduleFrame();
       }
     }, {
       key: "removeChild",
       value: function removeChild(_parent, child) {
         this.packet.enqueueRemove(child);
+        this.scheduleFrame();
       }
     }, {
       key: "setStyle",
       value: function setStyle(id, style) {
         this.packet.enqueueSetStyle(id, style);
+        this.scheduleFrame();
       }
     }, {
       key: "setPseudoStyle",
       value: function setPseudoStyle(id, pseudo, style) {
         this.packet.enqueueSetPseudoStyle(id, pseudo, style);
+        this.scheduleFrame();
       }
     }, {
       key: "setStyleVariant",
       value: function setStyleVariant(id, condition, style) {
         this.packet.enqueueSetStyleVariant(id, condition, style);
+        this.scheduleFrame();
       }
     }, {
       key: "setText",
       value: function setText(id, text) {
         this.packet.enqueueSetText(id, text);
+        this.scheduleFrame();
       }
     }, {
       key: "setProperty",
@@ -3062,31 +3153,32 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         var _this4 = this;
         assertKnownElementProperty(name);
         dispatchElementPropertyOp(coerceElementProperty(name, value), {
-          "text-content": function textContent(_ref3) {
-            var text = _ref3.text;
+          "text-content": function textContent(_ref2) {
+            var text = _ref2.text;
             return _this4.packet.enqueueSetTextContent(id, text);
           },
-          placeholder: function placeholder(_ref4) {
-            var text = _ref4.text;
+          placeholder: function placeholder(_ref3) {
+            var text = _ref3.text;
             return _this4.packet.enqueueSetText(id, text);
           },
-          src: function src(_ref5) {
-            var text = _ref5.text;
+          src: function src(_ref4) {
+            var text = _ref4.text;
             return _this4.packet.enqueueSetSrc(id, text);
           },
-          disabled: function disabled(_ref6) {
-            var _disabled = _ref6.disabled;
+          disabled: function disabled(_ref5) {
+            var _disabled = _ref5.disabled;
             return _this4.packet.enqueueSetDisabled(id, _disabled);
           },
-          "user-select": function userSelect(_ref7) {
-            var value2 = _ref7.value;
+          "user-select": function userSelect(_ref6) {
+            var value2 = _ref6.value;
             return _this4.packet.enqueueSetUserSelect(id, value2);
           },
-          multiline: function multiline(_ref8) {
-            var _multiline = _ref8.multiline;
+          multiline: function multiline(_ref7) {
+            var _multiline = _ref7.multiline;
             return _this4.packet.enqueueSetMultiline(id, _multiline);
           }
         });
+        this.scheduleFrame();
       }
     }, {
       key: "addEventListener",
@@ -3112,61 +3204,49 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     }, {
       key: "dispatchDeliveries",
       value: function dispatchDeliveries(rows) {
-        var _iterator15 = _createForOfIteratorHelper(rows),
-          _step15;
+        var _iterator17 = _createForOfIteratorHelper(rows),
+          _step17;
         try {
-          for (_iterator15.s(); !(_step15 = _iterator15.n()).done;) {
-            var row = _step15.value;
+          for (_iterator17.s(); !(_step17 = _iterator17.n()).done;) {
+            var row = _step17.value;
             var _parseDelivery = parseDelivery(row),
               listenerId = _parseDelivery.listenerId,
               event = _parseDelivery.event;
             var entry = this.listeners.get(listenerId);
             if (entry === void 0) continue;
             var interaction = toInteractionEvent(event);
-            if (interaction !== null) {
-              if (interaction.kind === "input") interaction.value = this.raw.element_get_text_content(interaction.target);
-              entry.handler(interaction);
-            }
+            if (interaction !== null) entry.handler(interaction);
           }
         } catch (err) {
-          _iterator15.e(err);
+          _iterator17.e(err);
         } finally {
-          _iterator15.f();
+          _iterator17.f();
         }
       }
     }]);
   }();
   //#endregion
-  //#region ../../packages/renderer-canvas/dist/android.js
-  function createAndroidCanvasRenderer(raw, options) {
-    var pendingFrame = null;
-    var handleSeq = 1;
-    var requestFrame = function requestFrame(cb) {
-      pendingFrame = cb;
-      return handleSeq++;
+  //#region ../../packages/app/dist/index.js
+  function isPromise(value) {
+    return typeof value.then === "function";
+  }
+  function runTsubameApp(host, mount) {
+    var disposed = false;
+    var mountDispose;
+    var onRenderer = function onRenderer(renderer) {
+      if (disposed) return;
+      mountDispose = mount(renderer);
     };
-    var cancelFrame = function cancelFrame(_handle) {
-      pendingFrame = null;
-    };
-    var renderer = new CanvasRenderer(raw, _objectSpread(_objectSpread({}, options), {}, {
-      requestFrame: requestFrame,
-      cancelFrame: cancelFrame
-    }));
-    return {
-      renderer: renderer,
-      pumpFrame: function pumpFrame(timestampMs) {
-        var cb = pendingFrame;
-        pendingFrame = null;
-        cb === null || cb === void 0 || cb(timestampMs);
-      },
-      resize: function resize(width, height) {
-        var scale = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : 1;
-        renderer.resize(width, height, scale);
-      },
-      stop: function stop() {
-        pendingFrame = null;
-        renderer.stop();
-      }
+    var created = host.createRenderer();
+    if (isPromise(created)) created.then(onRenderer).catch(function (error) {
+      console.error(error);
+    });else onRenderer(created);
+    return function () {
+      var _host$stop;
+      if (disposed) return;
+      disposed = true;
+      if (typeof mountDispose === "function") mountDispose();
+      (_host$stop = host.stop) === null || _host$stop === void 0 || _host$stop.call(host);
     };
   }
   //#endregion
@@ -3356,27 +3436,141 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       minWidth: 1100
     }
   }];
+  /**
+  * aspect-ratio デモ（#490）: 幅だけ与え、高さは比率 (width / height) から導出させる。
+  * `SampleBox` は height を固定するため比率導出が起きない。専用ボックスで height を auto に
+  * 保ち、flex 親の交差軸 stretch を `alignSelf: 'flex-start'` で切る。寸法・比率はインラインの
+  * マジックナンバーにせず名前付き定数にする。
+  */
+  var ASPECT_RATIO_DEMO = {
+    width: 128,
+    ratio: 16 / 9,
+    label: "16 / 9"
+  };
+  /**
+  * box-sizing デモ（#491）: 同じ width + padding を二つの箱に与え、box-sizing だけ変える。
+  * border-box は外形を width に保ち（padding は内側）、content-box は padding を外に足す
+  * （外形 = width + 左右 padding）。Canvas/DOM で同じ外形に解決する。寸法はインラインの
+  * マジックナンバーにせず名前付き定数にする。
+  */
+  var BOX_SIZING_DEMO = {
+    width: 120,
+    padding: 16
+  };
+  /**
+  * grid-auto-rows / grid-auto-columns デモ（#492）: 明示トラックを 1 つだけ定義し、
+  * あふれたアイテムが暗黙トラックへ流れる様子を見せる。暗黙トラックのサイズは
+  * `grid-auto-*` が決める。トラックサイズはインラインのマジックナンバーにせず
+  * 名前付き定数にする。grid-auto-rows は既定の行フローでそのまま効く。
+  * grid-auto-columns は列フロー（後続スライス）で初めて目に見えるため、暗黙列サイズを
+  * 固定する語彙として提示する。
+  */
+  var GRID_AUTO_DEMO = {
+    explicitRow: 26,
+    autoRow: 40,
+    explicitCol: 40,
+    autoCol: 64
+  };
+  /**
+  * grid-auto-flow デモ（#493）: 同じ 2×2 の明示グリッドに同数のアイテムを並べ、
+  * auto-flow だけを変える。`row` は行を端から（左→右→次の行）、`column` は列を端から
+  * （上→下→次の列）埋める。アイテム数・トラックサイズはインラインのマジックナンバーに
+  * せず名前付き定数にする。Canvas/DOM で同じ配置に解決する。
+  */
+  var GRID_AUTO_FLOW_DEMO = {
+    track: 26,
+    gap: 4,
+    items: 3
+  };
+  function autoFlowItems(color) {
+    return Array.from({
+      length: GRID_AUTO_FLOW_DEMO.items
+    }, function () {
+      return function () {
+        var _el$ = createElement("view");
+        setProp(_el$, "style", {
+          backgroundColor: color,
+          borderRadius: 4
+        });
+        return _el$;
+      }();
+    });
+  }
+  /**
+  * grid-column / grid-row 明示配置デモ（#495）: 3 列 × 2 行グリッドで、1 つ目を
+  * 2 列目から 2 列ぶん跨がせ（gridColumn: 2 / span 2）、2 つ目を明示セル
+  * （gridColumn: 1, gridRow: 2）に置く。トラックサイズ・配置値はインラインの
+  * マジックナンバーにせず名前付き定数にする。
+  */
+  var GRID_PLACEMENT_DEMO = {
+    track: 24,
+    gap: 4,
+    columnStart: 2,
+    columnSpan: 2,
+    cellColumn: 1,
+    cellRow: 2
+  };
+  /**
+  * justify-items / justify-self デモ（#494）: セル（track）より小さいアイテム
+  * （item）を 1 セル grid に置き、インライン軸でどこに寄るかを見せる。コンテナ既定は
+  * justify-items、最後の 1 つだけ justify-self で上書きする。セル・アイテム寸法は
+  * インラインのマジックナンバーにせず名前付き定数にする。Canvas/DOM で同じ配置に解決する。
+  */
+  var JUSTIFY_GRID_DEMO = {
+    track: 40,
+    item: 18
+  };
+  function justifyCell(p, justifyItems, itemStyle) {
+    return function () {
+      var _el$2 = createElement("view"),
+        _el$3 = createElement("view");
+      insertNode(_el$2, _el$3);
+      effect(function (_p$) {
+        var _v$ = {
+            display: "grid",
+            gridTemplateColumns: ["".concat(JUSTIFY_GRID_DEMO.track, "px")],
+            gridTemplateRows: ["".concat(JUSTIFY_GRID_DEMO.track, "px")],
+            justifyItems: justifyItems,
+            backgroundColor: p.panel2,
+            borderRadius: 6
+          },
+          _v$2 = _objectSpread({
+            width: JUSTIFY_GRID_DEMO.item,
+            height: JUSTIFY_GRID_DEMO.item,
+            backgroundColor: p.accent,
+            borderRadius: 4
+          }, itemStyle);
+        _v$ !== _p$.e && (_p$.e = setProp(_el$2, "style", _v$, _p$.e));
+        _v$2 !== _p$.t && (_p$.t = setProp(_el$3, "style", _v$2, _p$.t));
+        return _p$;
+      }, {
+        e: void 0,
+        t: void 0
+      });
+      return _el$2;
+    }();
+  }
   function MediaTiles(props) {
     var p = props.colors;
     return function () {
-      var _el$ = createElement("view");
-      setProp(_el$, "style", {
+      var _el$4 = createElement("view");
+      setProp(_el$4, "style", {
         display: "flex",
         flexDirection: "column",
         gap: 6,
         width: 200
       });
-      insert(_el$, function () {
+      insert(_el$4, function () {
         return MQ_TILES.map(function (tile) {
           return function () {
-            var _el$2 = createElement("view"),
-              _el$3 = createElement("text");
-            insertNode(_el$2, _el$3);
-            insert(_el$3, function () {
+            var _el$5 = createElement("view"),
+              _el$6 = createElement("text");
+            insertNode(_el$5, _el$6);
+            insert(_el$6, function () {
               return tile.label;
             });
             effect(function (_p$) {
-              var _v$ = {
+              var _v$3 = {
                   height: 34,
                   display: "flex",
                   alignItems: "center",
@@ -3389,7 +3583,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   borderStyle: "solid",
                   borderColor: p.line
                 },
-                _v$2 = [{
+                _v$4 = [{
                   condition: tile.condition,
                   style: {
                     backgroundColor: p.accent,
@@ -3397,30 +3591,30 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                     borderColor: p.accent
                   }
                 }];
-              _v$ !== _p$.e && (_p$.e = setProp(_el$2, "style", _v$, _p$.e));
-              _v$2 !== _p$.t && (_p$.t = setProp(_el$2, "styleVariants", _v$2, _p$.t));
+              _v$3 !== _p$.e && (_p$.e = setProp(_el$5, "style", _v$3, _p$.e));
+              _v$4 !== _p$.t && (_p$.t = setProp(_el$5, "styleVariants", _v$4, _p$.t));
               return _p$;
             }, {
               e: void 0,
               t: void 0
             });
-            return _el$2;
+            return _el$5;
           }();
         });
       });
-      return _el$;
+      return _el$4;
     }();
   }
   function SampleBox(props) {
     return function () {
-      var _el$4 = createElement("view"),
-        _el$5 = createElement("text");
-      insertNode(_el$4, _el$5);
-      insert(_el$5, function () {
+      var _el$7 = createElement("view"),
+        _el$8 = createElement("text");
+      insertNode(_el$7, _el$8);
+      insert(_el$8, function () {
         return props.label;
       });
       effect(function (_p$) {
-        var _v$3 = _objectSpread({
+        var _v$5 = _objectSpread({
             width: 120,
             height: 56,
             display: "flex",
@@ -3431,18 +3625,18 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
             borderColor: props.colors.line,
             borderRadius: 10
           }, props.style),
-          _v$4 = {
+          _v$6 = {
             color: props.colors.text,
             fontSize: 12
           };
-        _v$3 !== _p$.e && (_p$.e = setProp(_el$4, "style", _v$3, _p$.e));
-        _v$4 !== _p$.t && (_p$.t = setProp(_el$5, "style", _v$4, _p$.t));
+        _v$5 !== _p$.e && (_p$.e = setProp(_el$7, "style", _v$5, _p$.e));
+        _v$6 !== _p$.t && (_p$.t = setProp(_el$8, "style", _v$6, _p$.t));
         return _p$;
       }, {
         e: void 0,
         t: void 0
       });
-      return _el$4;
+      return _el$7;
     }();
   }
   function buildSections(p) {
@@ -3523,13 +3717,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "solid / dashed",
         render: function render() {
           return function () {
-            var _el$6 = createElement("view");
-            setProp(_el$6, "style", {
+            var _el$9 = createElement("view");
+            setProp(_el$9, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 6
             });
-            insert(_el$6, createComponent(SampleBox, {
+            insert(_el$9, createComponent(SampleBox, {
               colors: p,
               label: "solid",
               get style() {
@@ -3540,7 +3734,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 };
               }
             }), null);
-            insert(_el$6, createComponent(SampleBox, {
+            insert(_el$9, createComponent(SampleBox, {
               colors: p,
               label: "dashed",
               get style() {
@@ -3551,7 +3745,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 };
               }
             }), null);
-            return _el$6;
+            return _el$9;
           }();
         }
       }, {
@@ -3560,14 +3754,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "elevation + inset ring — ADR-0095",
         render: function render() {
           return function () {
-            var _el$7 = createElement("view");
-            setProp(_el$7, "style", {
+            var _el$0 = createElement("view");
+            setProp(_el$0, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 10,
               padding: 6
             });
-            insert(_el$7, createComponent(SampleBox, {
+            insert(_el$0, createComponent(SampleBox, {
               colors: p,
               label: "lift",
               get style() {
@@ -3583,7 +3777,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 };
               }
             }), null);
-            insert(_el$7, createComponent(SampleBox, {
+            insert(_el$0, createComponent(SampleBox, {
               colors: p,
               label: "inset",
               get style() {
@@ -3599,14 +3793,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 };
               }
             }), null);
-            return _el$7;
+            return _el$0;
           }();
         }
       }]
     }, {
       title: "Sizing",
       accent: p.blue,
-      cards: [["width", {
+      cards: [].concat(_toConsumableArray([["width", {
         width: 140
       }], ["height", {
         height: 72
@@ -3622,10 +3816,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       }], ["maxHeight", {
         maxHeight: 40,
         height: 72
-      }]].map(function (_ref9) {
-        var _ref0 = _slicedToArray(_ref9, 2),
-          name = _ref0[0],
-          style = _ref0[1];
+      }]].map(function (_ref8) {
+        var _ref9 = _slicedToArray(_ref8, 2),
+          name = _ref9[0],
+          style = _ref9[1];
         return {
           title: name,
           properties: [name],
@@ -3637,7 +3831,108 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
             });
           }
         };
-      })
+      })), [{
+        title: "aspectRatio",
+        properties: ["aspectRatio"],
+        render: function render() {
+          return function () {
+            var _el$1 = createElement("view"),
+              _el$10 = createElement("text");
+            insertNode(_el$1, _el$10);
+            insert(_el$10, function () {
+              return ASPECT_RATIO_DEMO.label;
+            });
+            effect(function (_p$) {
+              var _v$7 = {
+                  width: ASPECT_RATIO_DEMO.width,
+                  aspectRatio: ASPECT_RATIO_DEMO.ratio,
+                  alignSelf: "flex-start",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: p.panel2,
+                  borderWidth: 1,
+                  borderColor: p.line,
+                  borderRadius: 10
+                },
+                _v$8 = {
+                  color: p.text,
+                  fontSize: 12
+                };
+              _v$7 !== _p$.e && (_p$.e = setProp(_el$1, "style", _v$7, _p$.e));
+              _v$8 !== _p$.t && (_p$.t = setProp(_el$10, "style", _v$8, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$1;
+          }();
+        }
+      }, {
+        title: "boxSizing",
+        properties: ["boxSizing"],
+        render: function render() {
+          return function () {
+            var _el$11 = createElement("view"),
+              _el$12 = createElement("view"),
+              _el$13 = createElement("text"),
+              _el$15 = createElement("view"),
+              _el$16 = createElement("text");
+            insertNode(_el$11, _el$12);
+            insertNode(_el$11, _el$15);
+            setProp(_el$11, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              alignSelf: "flex-start"
+            });
+            insertNode(_el$12, _el$13);
+            insertNode(_el$13, createTextNode("border-box\uFF08\u5916\u5F62 = width\uFF09"));
+            insertNode(_el$15, _el$16);
+            insertNode(_el$16, createTextNode("content-box\uFF08\u5916\u5F62 = width + padding\uFF09"));
+            effect(function (_p$) {
+              var _v$9 = {
+                  width: BOX_SIZING_DEMO.width,
+                  padding: BOX_SIZING_DEMO.padding,
+                  boxSizing: "border-box",
+                  backgroundColor: p.panel2,
+                  borderWidth: 1,
+                  borderColor: p.line,
+                  borderRadius: 8
+                },
+                _v$0 = {
+                  color: p.text,
+                  fontSize: 12
+                },
+                _v$1 = {
+                  width: BOX_SIZING_DEMO.width,
+                  padding: BOX_SIZING_DEMO.padding,
+                  boxSizing: "content-box",
+                  backgroundColor: p.panel2,
+                  borderWidth: 1,
+                  borderColor: p.line,
+                  borderRadius: 8
+                },
+                _v$10 = {
+                  color: p.muted,
+                  fontSize: 12
+                };
+              _v$9 !== _p$.e && (_p$.e = setProp(_el$12, "style", _v$9, _p$.e));
+              _v$0 !== _p$.t && (_p$.t = setProp(_el$13, "style", _v$0, _p$.t));
+              _v$1 !== _p$.a && (_p$.a = setProp(_el$15, "style", _v$1, _p$.a));
+              _v$10 !== _p$.o && (_p$.o = setProp(_el$16, "style", _v$10, _p$.o));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0,
+              o: void 0
+            });
+            return _el$11;
+          }();
+        }
+      }])
     }, {
       title: "Spacing",
       accent: p.violet,
@@ -3647,30 +3942,30 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
           properties: [key],
           render: function render() {
             return function () {
-              var _el$8 = createElement("view"),
-                _el$9 = createElement("view");
-              insertNode(_el$8, _el$9);
+              var _el$18 = createElement("view"),
+                _el$19 = createElement("view");
+              insertNode(_el$18, _el$19);
               effect(function (_p$) {
-                var _v$5 = _defineProperty2({
+                var _v$11 = _defineProperty2({
                     backgroundColor: p.panel2,
                     borderWidth: 1,
                     borderColor: p.line,
                     borderRadius: 8
                   }, key, 14),
-                  _v$6 = {
+                  _v$12 = {
                     backgroundColor: p.accent,
                     height: 28,
                     width: 80,
                     borderRadius: 6
                   };
-                _v$5 !== _p$.e && (_p$.e = setProp(_el$8, "style", _v$5, _p$.e));
-                _v$6 !== _p$.t && (_p$.t = setProp(_el$9, "style", _v$6, _p$.t));
+                _v$11 !== _p$.e && (_p$.e = setProp(_el$18, "style", _v$11, _p$.e));
+                _v$12 !== _p$.t && (_p$.t = setProp(_el$19, "style", _v$12, _p$.t));
                 return _p$;
               }, {
                 e: void 0,
                 t: void 0
               });
-              return _el$8;
+              return _el$18;
             }();
           }
         };
@@ -3680,16 +3975,16 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
           properties: [key],
           render: function render() {
             return function () {
-              var _el$0 = createElement("view"),
-                _el$1 = createElement("view");
-              insertNode(_el$0, _el$1);
+              var _el$20 = createElement("view"),
+                _el$21 = createElement("view");
+              insertNode(_el$20, _el$21);
               effect(function (_p$) {
-                var _v$7 = {
+                var _v$13 = {
                     backgroundColor: p.black,
                     padding: 4,
                     borderRadius: 8
                   },
-                  _v$8 = _defineProperty2({
+                  _v$14 = _defineProperty2({
                     backgroundColor: p.panel2,
                     borderWidth: 1,
                     borderColor: p.line,
@@ -3697,14 +3992,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                     height: 28,
                     width: 80
                   }, key, 10);
-                _v$7 !== _p$.e && (_p$.e = setProp(_el$0, "style", _v$7, _p$.e));
-                _v$8 !== _p$.t && (_p$.t = setProp(_el$1, "style", _v$8, _p$.t));
+                _v$13 !== _p$.e && (_p$.e = setProp(_el$20, "style", _v$13, _p$.e));
+                _v$14 !== _p$.t && (_p$.t = setProp(_el$21, "style", _v$14, _p$.t));
                 return _p$;
               }, {
                 e: void 0,
                 t: void 0
               });
-              return _el$0;
+              return _el$20;
             }();
           }
         };
@@ -3713,13 +4008,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["gap"],
         render: function render() {
           return function () {
-            var _el$10 = createElement("view"),
-              _el$11 = createElement("view"),
-              _el$12 = createElement("view");
-            insertNode(_el$10, _el$11);
-            insertNode(_el$10, _el$12);
+            var _el$22 = createElement("view"),
+              _el$23 = createElement("view"),
+              _el$24 = createElement("view");
+            insertNode(_el$22, _el$23);
+            insertNode(_el$22, _el$24);
             effect(function (_p$) {
-              var _v$9 = {
+              var _v$15 = {
                   display: "flex",
                   flexDirection: "row",
                   gap: 16,
@@ -3729,28 +4024,28 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   borderWidth: 1,
                   borderColor: p.line
                 },
-                _v$0 = {
+                _v$16 = {
                   width: 36,
                   height: 24,
                   backgroundColor: p.accent,
                   borderRadius: 6
                 },
-                _v$1 = {
+                _v$17 = {
                   width: 36,
                   height: 24,
                   backgroundColor: p.blue,
                   borderRadius: 6
                 };
-              _v$9 !== _p$.e && (_p$.e = setProp(_el$10, "style", _v$9, _p$.e));
-              _v$0 !== _p$.t && (_p$.t = setProp(_el$11, "style", _v$0, _p$.t));
-              _v$1 !== _p$.a && (_p$.a = setProp(_el$12, "style", _v$1, _p$.a));
+              _v$15 !== _p$.e && (_p$.e = setProp(_el$22, "style", _v$15, _p$.e));
+              _v$16 !== _p$.t && (_p$.t = setProp(_el$23, "style", _v$16, _p$.t));
+              _v$17 !== _p$.a && (_p$.a = setProp(_el$24, "style", _v$17, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$10;
+            return _el$22;
           }();
         }
       }])
@@ -3762,37 +4057,37 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["display"],
         render: function render() {
           return function () {
-            var _el$13 = createElement("view"),
-              _el$14 = createElement("view"),
-              _el$15 = createElement("view");
-            insertNode(_el$13, _el$14);
-            insertNode(_el$13, _el$15);
-            setProp(_el$13, "style", {
+            var _el$25 = createElement("view"),
+              _el$26 = createElement("view"),
+              _el$27 = createElement("view");
+            insertNode(_el$25, _el$26);
+            insertNode(_el$25, _el$27);
+            setProp(_el$25, "style", {
               display: "flex",
               flexDirection: "row",
               gap: 6
             });
             effect(function (_p$) {
-              var _v$10 = {
+              var _v$18 = {
                   width: 24,
                   height: 24,
                   backgroundColor: p.accent,
                   borderRadius: 6
                 },
-                _v$11 = {
+                _v$19 = {
                   width: 24,
                   height: 24,
                   backgroundColor: p.blue,
                   borderRadius: 6
                 };
-              _v$10 !== _p$.e && (_p$.e = setProp(_el$14, "style", _v$10, _p$.e));
-              _v$11 !== _p$.t && (_p$.t = setProp(_el$15, "style", _v$11, _p$.t));
+              _v$18 !== _p$.e && (_p$.e = setProp(_el$26, "style", _v$18, _p$.e));
+              _v$19 !== _p$.t && (_p$.t = setProp(_el$27, "style", _v$19, _p$.t));
               return _p$;
             }, {
               e: void 0,
               t: void 0
             });
-            return _el$13;
+            return _el$25;
           }();
         }
       }, {
@@ -3800,38 +4095,38 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["flexDirection"],
         render: function render() {
           return function () {
-            var _el$16 = createElement("view"),
-              _el$17 = createElement("view"),
-              _el$18 = createElement("view");
-            insertNode(_el$16, _el$17);
-            insertNode(_el$16, _el$18);
-            setProp(_el$16, "style", {
+            var _el$28 = createElement("view"),
+              _el$29 = createElement("view"),
+              _el$30 = createElement("view");
+            insertNode(_el$28, _el$29);
+            insertNode(_el$28, _el$30);
+            setProp(_el$28, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 6,
               height: 72
             });
             effect(function (_p$) {
-              var _v$12 = {
+              var _v$20 = {
                   width: 48,
                   height: 16,
                   backgroundColor: p.accent,
                   borderRadius: 4
                 },
-                _v$13 = {
+                _v$21 = {
                   width: 48,
                   height: 16,
                   backgroundColor: p.blue,
                   borderRadius: 4
                 };
-              _v$12 !== _p$.e && (_p$.e = setProp(_el$17, "style", _v$12, _p$.e));
-              _v$13 !== _p$.t && (_p$.t = setProp(_el$18, "style", _v$13, _p$.t));
+              _v$20 !== _p$.e && (_p$.e = setProp(_el$29, "style", _v$20, _p$.e));
+              _v$21 !== _p$.t && (_p$.t = setProp(_el$30, "style", _v$21, _p$.t));
               return _p$;
             }, {
               e: void 0,
               t: void 0
             });
-            return _el$16;
+            return _el$28;
           }();
         }
       }, {
@@ -3839,48 +4134,48 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["flexWrap"],
         render: function render() {
           return function () {
-            var _el$19 = createElement("view"),
-              _el$20 = createElement("view"),
-              _el$21 = createElement("view"),
-              _el$22 = createElement("view");
-            insertNode(_el$19, _el$20);
-            insertNode(_el$19, _el$21);
-            insertNode(_el$19, _el$22);
-            setProp(_el$19, "style", {
+            var _el$31 = createElement("view"),
+              _el$32 = createElement("view"),
+              _el$33 = createElement("view"),
+              _el$34 = createElement("view");
+            insertNode(_el$31, _el$32);
+            insertNode(_el$31, _el$33);
+            insertNode(_el$31, _el$34);
+            setProp(_el$31, "style", {
               display: "flex",
               flexWrap: "wrap",
               width: 120,
               gap: 4
             });
             effect(function (_p$) {
-              var _v$14 = {
+              var _v$22 = {
                   width: 48,
                   height: 20,
                   backgroundColor: p.accent,
                   borderRadius: 4
                 },
-                _v$15 = {
+                _v$23 = {
                   width: 48,
                   height: 20,
                   backgroundColor: p.blue,
                   borderRadius: 4
                 },
-                _v$16 = {
+                _v$24 = {
                   width: 48,
                   height: 20,
                   backgroundColor: p.violet,
                   borderRadius: 4
                 };
-              _v$14 !== _p$.e && (_p$.e = setProp(_el$20, "style", _v$14, _p$.e));
-              _v$15 !== _p$.t && (_p$.t = setProp(_el$21, "style", _v$15, _p$.t));
-              _v$16 !== _p$.a && (_p$.a = setProp(_el$22, "style", _v$16, _p$.a));
+              _v$22 !== _p$.e && (_p$.e = setProp(_el$32, "style", _v$22, _p$.e));
+              _v$23 !== _p$.t && (_p$.t = setProp(_el$33, "style", _v$23, _p$.t));
+              _v$24 !== _p$.a && (_p$.a = setProp(_el$34, "style", _v$24, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$19;
+            return _el$31;
           }();
         }
       }, {
@@ -3888,13 +4183,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["alignItems"],
         render: function render() {
           return function () {
-            var _el$23 = createElement("view"),
-              _el$24 = createElement("view"),
-              _el$25 = createElement("view");
-            insertNode(_el$23, _el$24);
-            insertNode(_el$23, _el$25);
+            var _el$35 = createElement("view"),
+              _el$36 = createElement("view"),
+              _el$37 = createElement("view");
+            insertNode(_el$35, _el$36);
+            insertNode(_el$35, _el$37);
             effect(function (_p$) {
-              var _v$17 = {
+              var _v$25 = {
                   display: "flex",
                   flexDirection: "row",
                   alignItems: "center",
@@ -3903,195 +4198,33 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   backgroundColor: p.panel2,
                   borderRadius: 8
                 },
-                _v$18 = {
+                _v$26 = {
                   width: 20,
                   height: 20,
                   backgroundColor: p.accent,
                   borderRadius: 4
                 },
-                _v$19 = {
+                _v$27 = {
                   width: 20,
                   height: 36,
                   backgroundColor: p.blue,
                   borderRadius: 4
                 };
-              _v$17 !== _p$.e && (_p$.e = setProp(_el$23, "style", _v$17, _p$.e));
-              _v$18 !== _p$.t && (_p$.t = setProp(_el$24, "style", _v$18, _p$.t));
-              _v$19 !== _p$.a && (_p$.a = setProp(_el$25, "style", _v$19, _p$.a));
+              _v$25 !== _p$.e && (_p$.e = setProp(_el$35, "style", _v$25, _p$.e));
+              _v$26 !== _p$.t && (_p$.t = setProp(_el$36, "style", _v$26, _p$.t));
+              _v$27 !== _p$.a && (_p$.a = setProp(_el$37, "style", _v$27, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
-            });
-            return _el$23;
-          }();
-        }
-      }, {
-        title: "justifyContent",
-        properties: ["justifyContent"],
-        render: function render() {
-          return function () {
-            var _el$26 = createElement("view"),
-              _el$27 = createElement("view"),
-              _el$28 = createElement("view");
-            insertNode(_el$26, _el$27);
-            insertNode(_el$26, _el$28);
-            effect(function (_p$) {
-              var _v$20 = {
-                  display: "flex",
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  width: 140,
-                  backgroundColor: p.panel2,
-                  borderRadius: 8
-                },
-                _v$21 = {
-                  width: 20,
-                  height: 20,
-                  backgroundColor: p.accent,
-                  borderRadius: 4
-                },
-                _v$22 = {
-                  width: 20,
-                  height: 20,
-                  backgroundColor: p.blue,
-                  borderRadius: 4
-                };
-              _v$20 !== _p$.e && (_p$.e = setProp(_el$26, "style", _v$20, _p$.e));
-              _v$21 !== _p$.t && (_p$.t = setProp(_el$27, "style", _v$21, _p$.t));
-              _v$22 !== _p$.a && (_p$.a = setProp(_el$28, "style", _v$22, _p$.a));
-              return _p$;
-            }, {
-              e: void 0,
-              t: void 0,
-              a: void 0
-            });
-            return _el$26;
-          }();
-        }
-      }, {
-        title: "flexGrow",
-        properties: ["flexGrow"],
-        render: function render() {
-          return function () {
-            var _el$29 = createElement("view"),
-              _el$30 = createElement("view"),
-              _el$31 = createElement("view");
-            insertNode(_el$29, _el$30);
-            insertNode(_el$29, _el$31);
-            setProp(_el$29, "style", {
-              display: "flex",
-              flexDirection: "row",
-              width: 140,
-              gap: 4
-            });
-            effect(function (_p$) {
-              var _v$23 = {
-                  flexGrow: 1,
-                  height: 24,
-                  backgroundColor: p.accent,
-                  borderRadius: 4
-                },
-                _v$24 = {
-                  width: 24,
-                  height: 24,
-                  backgroundColor: p.blue,
-                  borderRadius: 4
-                };
-              _v$23 !== _p$.e && (_p$.e = setProp(_el$30, "style", _v$23, _p$.e));
-              _v$24 !== _p$.t && (_p$.t = setProp(_el$31, "style", _v$24, _p$.t));
-              return _p$;
-            }, {
-              e: void 0,
-              t: void 0
-            });
-            return _el$29;
-          }();
-        }
-      }, {
-        title: "flexShrink",
-        properties: ["flexShrink"],
-        render: function render() {
-          return function () {
-            var _el$32 = createElement("view"),
-              _el$33 = createElement("view"),
-              _el$34 = createElement("view");
-            insertNode(_el$32, _el$33);
-            insertNode(_el$32, _el$34);
-            setProp(_el$32, "style", {
-              display: "flex",
-              flexDirection: "row",
-              width: 100,
-              gap: 4
-            });
-            effect(function (_p$) {
-              var _v$25 = {
-                  width: 80,
-                  flexShrink: 2,
-                  height: 24,
-                  backgroundColor: p.accent,
-                  borderRadius: 4
-                },
-                _v$26 = {
-                  width: 80,
-                  flexShrink: 0,
-                  height: 24,
-                  backgroundColor: p.blue,
-                  borderRadius: 4
-                };
-              _v$25 !== _p$.e && (_p$.e = setProp(_el$33, "style", _v$25, _p$.e));
-              _v$26 !== _p$.t && (_p$.t = setProp(_el$34, "style", _v$26, _p$.t));
-              return _p$;
-            }, {
-              e: void 0,
-              t: void 0
-            });
-            return _el$32;
-          }();
-        }
-      }, {
-        title: "flexBasis",
-        properties: ["flexBasis"],
-        render: function render() {
-          return function () {
-            var _el$35 = createElement("view"),
-              _el$36 = createElement("view"),
-              _el$37 = createElement("view");
-            insertNode(_el$35, _el$36);
-            insertNode(_el$35, _el$37);
-            setProp(_el$35, "style", {
-              display: "flex",
-              flexDirection: "row",
-              width: 140,
-              gap: 4
-            });
-            effect(function (_p$) {
-              var _v$27 = {
-                  flexBasis: 60,
-                  height: 24,
-                  backgroundColor: p.accent,
-                  borderRadius: 4
-                },
-                _v$28 = {
-                  flexGrow: 1,
-                  height: 24,
-                  backgroundColor: p.blue,
-                  borderRadius: 4
-                };
-              _v$27 !== _p$.e && (_p$.e = setProp(_el$36, "style", _v$27, _p$.e));
-              _v$28 !== _p$.t && (_p$.t = setProp(_el$37, "style", _v$28, _p$.t));
-              return _p$;
-            }, {
-              e: void 0,
-              t: void 0
             });
             return _el$35;
           }();
         }
       }, {
-        title: "alignSelf",
-        properties: ["alignSelf"],
+        title: "justifyContent",
+        properties: ["justifyContent"],
         render: function render() {
           return function () {
             var _el$38 = createElement("view"),
@@ -4100,31 +4233,29 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
             insertNode(_el$38, _el$39);
             insertNode(_el$38, _el$40);
             effect(function (_p$) {
-              var _v$29 = {
+              var _v$28 = {
                   display: "flex",
                   flexDirection: "row",
-                  alignItems: "flex-start",
-                  gap: 6,
-                  height: 56,
+                  justifyContent: "space-between",
+                  width: 140,
                   backgroundColor: p.panel2,
                   borderRadius: 8
+                },
+                _v$29 = {
+                  width: 20,
+                  height: 20,
+                  backgroundColor: p.accent,
+                  borderRadius: 4
                 },
                 _v$30 = {
                   width: 20,
                   height: 20,
-                  backgroundColor: p.muted,
-                  borderRadius: 4
-                },
-                _v$31 = {
-                  width: 20,
-                  height: 36,
-                  alignSelf: "flex-end",
-                  backgroundColor: p.accent,
+                  backgroundColor: p.blue,
                   borderRadius: 4
                 };
-              _v$29 !== _p$.e && (_p$.e = setProp(_el$38, "style", _v$29, _p$.e));
-              _v$30 !== _p$.t && (_p$.t = setProp(_el$39, "style", _v$30, _p$.t));
-              _v$31 !== _p$.a && (_p$.a = setProp(_el$40, "style", _v$31, _p$.a));
+              _v$28 !== _p$.e && (_p$.e = setProp(_el$38, "style", _v$28, _p$.e));
+              _v$29 !== _p$.t && (_p$.t = setProp(_el$39, "style", _v$29, _p$.t));
+              _v$30 !== _p$.a && (_p$.a = setProp(_el$40, "style", _v$30, _p$.a));
               return _p$;
             }, {
               e: void 0,
@@ -4135,21 +4266,185 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
           }();
         }
       }, {
-        title: "alignContent",
-        properties: ["alignContent"],
+        title: "flexGrow",
+        properties: ["flexGrow"],
         render: function render() {
           return function () {
             var _el$41 = createElement("view"),
               _el$42 = createElement("view"),
-              _el$43 = createElement("view"),
-              _el$44 = createElement("view"),
-              _el$45 = createElement("view");
+              _el$43 = createElement("view");
             insertNode(_el$41, _el$42);
             insertNode(_el$41, _el$43);
-            insertNode(_el$41, _el$44);
-            insertNode(_el$41, _el$45);
+            setProp(_el$41, "style", {
+              display: "flex",
+              flexDirection: "row",
+              width: 140,
+              gap: 4
+            });
             effect(function (_p$) {
-              var _v$32 = {
+              var _v$31 = {
+                  flexGrow: 1,
+                  height: 24,
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                },
+                _v$32 = {
+                  width: 24,
+                  height: 24,
+                  backgroundColor: p.blue,
+                  borderRadius: 4
+                };
+              _v$31 !== _p$.e && (_p$.e = setProp(_el$42, "style", _v$31, _p$.e));
+              _v$32 !== _p$.t && (_p$.t = setProp(_el$43, "style", _v$32, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$41;
+          }();
+        }
+      }, {
+        title: "flexShrink",
+        properties: ["flexShrink"],
+        render: function render() {
+          return function () {
+            var _el$44 = createElement("view"),
+              _el$45 = createElement("view"),
+              _el$46 = createElement("view");
+            insertNode(_el$44, _el$45);
+            insertNode(_el$44, _el$46);
+            setProp(_el$44, "style", {
+              display: "flex",
+              flexDirection: "row",
+              width: 100,
+              gap: 4
+            });
+            effect(function (_p$) {
+              var _v$33 = {
+                  width: 80,
+                  flexShrink: 2,
+                  height: 24,
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                },
+                _v$34 = {
+                  width: 80,
+                  flexShrink: 0,
+                  height: 24,
+                  backgroundColor: p.blue,
+                  borderRadius: 4
+                };
+              _v$33 !== _p$.e && (_p$.e = setProp(_el$45, "style", _v$33, _p$.e));
+              _v$34 !== _p$.t && (_p$.t = setProp(_el$46, "style", _v$34, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$44;
+          }();
+        }
+      }, {
+        title: "flexBasis",
+        properties: ["flexBasis"],
+        render: function render() {
+          return function () {
+            var _el$47 = createElement("view"),
+              _el$48 = createElement("view"),
+              _el$49 = createElement("view");
+            insertNode(_el$47, _el$48);
+            insertNode(_el$47, _el$49);
+            setProp(_el$47, "style", {
+              display: "flex",
+              flexDirection: "row",
+              width: 140,
+              gap: 4
+            });
+            effect(function (_p$) {
+              var _v$35 = {
+                  flexBasis: 60,
+                  height: 24,
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                },
+                _v$36 = {
+                  flexGrow: 1,
+                  height: 24,
+                  backgroundColor: p.blue,
+                  borderRadius: 4
+                };
+              _v$35 !== _p$.e && (_p$.e = setProp(_el$48, "style", _v$35, _p$.e));
+              _v$36 !== _p$.t && (_p$.t = setProp(_el$49, "style", _v$36, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$47;
+          }();
+        }
+      }, {
+        title: "alignSelf",
+        properties: ["alignSelf"],
+        render: function render() {
+          return function () {
+            var _el$50 = createElement("view"),
+              _el$51 = createElement("view"),
+              _el$52 = createElement("view");
+            insertNode(_el$50, _el$51);
+            insertNode(_el$50, _el$52);
+            effect(function (_p$) {
+              var _v$37 = {
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: 6,
+                  height: 56,
+                  backgroundColor: p.panel2,
+                  borderRadius: 8
+                },
+                _v$38 = {
+                  width: 20,
+                  height: 20,
+                  backgroundColor: p.muted,
+                  borderRadius: 4
+                },
+                _v$39 = {
+                  width: 20,
+                  height: 36,
+                  alignSelf: "flex-end",
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                };
+              _v$37 !== _p$.e && (_p$.e = setProp(_el$50, "style", _v$37, _p$.e));
+              _v$38 !== _p$.t && (_p$.t = setProp(_el$51, "style", _v$38, _p$.t));
+              _v$39 !== _p$.a && (_p$.a = setProp(_el$52, "style", _v$39, _p$.a));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0
+            });
+            return _el$50;
+          }();
+        }
+      }, {
+        title: "alignContent",
+        properties: ["alignContent"],
+        render: function render() {
+          return function () {
+            var _el$53 = createElement("view"),
+              _el$54 = createElement("view"),
+              _el$55 = createElement("view"),
+              _el$56 = createElement("view"),
+              _el$57 = createElement("view");
+            insertNode(_el$53, _el$54);
+            insertNode(_el$53, _el$55);
+            insertNode(_el$53, _el$56);
+            insertNode(_el$53, _el$57);
+            effect(function (_p$) {
+              var _v$40 = {
                   display: "flex",
                   flexWrap: "wrap",
                   alignContent: "space-between",
@@ -4159,35 +4454,35 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   backgroundColor: p.panel2,
                   borderRadius: 8
                 },
-                _v$33 = {
+                _v$41 = {
                   width: 40,
                   height: 20,
                   backgroundColor: p.accent,
                   borderRadius: 4
                 },
-                _v$34 = {
+                _v$42 = {
                   width: 40,
                   height: 20,
                   backgroundColor: p.blue,
                   borderRadius: 4
                 },
-                _v$35 = {
+                _v$43 = {
                   width: 40,
                   height: 20,
                   backgroundColor: p.violet,
                   borderRadius: 4
                 },
-                _v$36 = {
+                _v$44 = {
                   width: 40,
                   height: 20,
                   backgroundColor: p.accent,
                   borderRadius: 4
                 };
-              _v$32 !== _p$.e && (_p$.e = setProp(_el$41, "style", _v$32, _p$.e));
-              _v$33 !== _p$.t && (_p$.t = setProp(_el$42, "style", _v$33, _p$.t));
-              _v$34 !== _p$.a && (_p$.a = setProp(_el$43, "style", _v$34, _p$.a));
-              _v$35 !== _p$.o && (_p$.o = setProp(_el$44, "style", _v$35, _p$.o));
-              _v$36 !== _p$.i && (_p$.i = setProp(_el$45, "style", _v$36, _p$.i));
+              _v$40 !== _p$.e && (_p$.e = setProp(_el$53, "style", _v$40, _p$.e));
+              _v$41 !== _p$.t && (_p$.t = setProp(_el$54, "style", _v$41, _p$.t));
+              _v$42 !== _p$.a && (_p$.a = setProp(_el$55, "style", _v$42, _p$.a));
+              _v$43 !== _p$.o && (_p$.o = setProp(_el$56, "style", _v$43, _p$.o));
+              _v$44 !== _p$.i && (_p$.i = setProp(_el$57, "style", _v$44, _p$.i));
               return _p$;
             }, {
               e: void 0,
@@ -4196,7 +4491,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
               o: void 0,
               i: void 0
             });
-            return _el$41;
+            return _el$53;
           }();
         }
       }, {
@@ -4204,26 +4499,26 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["zIndex"],
         render: function render() {
           return function () {
-            var _el$46 = createElement("view"),
-              _el$47 = createElement("view"),
-              _el$48 = createElement("view");
-            insertNode(_el$46, _el$47);
-            insertNode(_el$46, _el$48);
-            setProp(_el$46, "style", {
+            var _el$58 = createElement("view"),
+              _el$59 = createElement("view"),
+              _el$60 = createElement("view");
+            insertNode(_el$58, _el$59);
+            insertNode(_el$58, _el$60);
+            setProp(_el$58, "style", {
               display: "flex",
               flexDirection: "row",
               width: 100,
               height: 40
             });
             effect(function (_p$) {
-              var _v$37 = {
+              var _v$45 = {
                   width: 56,
                   height: 32,
                   backgroundColor: p.panel3,
                   zIndex: 1,
                   borderRadius: 6
                 },
-                _v$38 = {
+                _v$46 = {
                   width: 56,
                   height: 32,
                   backgroundColor: p.accent,
@@ -4231,14 +4526,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   marginLeft: -24,
                   borderRadius: 6
                 };
-              _v$37 !== _p$.e && (_p$.e = setProp(_el$47, "style", _v$37, _p$.e));
-              _v$38 !== _p$.t && (_p$.t = setProp(_el$48, "style", _v$38, _p$.t));
+              _v$45 !== _p$.e && (_p$.e = setProp(_el$59, "style", _v$45, _p$.e));
+              _v$46 !== _p$.t && (_p$.t = setProp(_el$60, "style", _v$46, _p$.t));
               return _p$;
             }, {
               e: void 0,
               t: void 0
             });
-            return _el$46;
+            return _el$58;
           }();
         }
       }, {
@@ -4246,13 +4541,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["gridTemplateColumns"],
         render: function render() {
           return function () {
-            var _el$49 = createElement("view"),
-              _el$50 = createElement("view"),
-              _el$51 = createElement("view");
-            insertNode(_el$49, _el$50);
-            insertNode(_el$49, _el$51);
+            var _el$61 = createElement("view"),
+              _el$62 = createElement("view"),
+              _el$63 = createElement("view");
+            insertNode(_el$61, _el$62);
+            insertNode(_el$61, _el$63);
             effect(function (_p$) {
-              var _v$39 = {
+              var _v$47 = {
                   display: "grid",
                   gridTemplateColumns: ["1fr", "1fr"],
                   gap: 6,
@@ -4261,26 +4556,26 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   padding: 6,
                   borderRadius: 8
                 },
-                _v$40 = {
+                _v$48 = {
                   height: 24,
                   backgroundColor: p.accent,
                   borderRadius: 4
                 },
-                _v$41 = {
+                _v$49 = {
                   height: 24,
                   backgroundColor: p.blue,
                   borderRadius: 4
                 };
-              _v$39 !== _p$.e && (_p$.e = setProp(_el$49, "style", _v$39, _p$.e));
-              _v$40 !== _p$.t && (_p$.t = setProp(_el$50, "style", _v$40, _p$.t));
-              _v$41 !== _p$.a && (_p$.a = setProp(_el$51, "style", _v$41, _p$.a));
+              _v$47 !== _p$.e && (_p$.e = setProp(_el$61, "style", _v$47, _p$.e));
+              _v$48 !== _p$.t && (_p$.t = setProp(_el$62, "style", _v$48, _p$.t));
+              _v$49 !== _p$.a && (_p$.a = setProp(_el$63, "style", _v$49, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$49;
+            return _el$61;
           }();
         }
       }, {
@@ -4288,13 +4583,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["gridTemplateRows"],
         render: function render() {
           return function () {
-            var _el$52 = createElement("view"),
-              _el$53 = createElement("view"),
-              _el$54 = createElement("view");
-            insertNode(_el$52, _el$53);
-            insertNode(_el$52, _el$54);
+            var _el$64 = createElement("view"),
+              _el$65 = createElement("view"),
+              _el$66 = createElement("view");
+            insertNode(_el$64, _el$65);
+            insertNode(_el$64, _el$66);
             effect(function (_p$) {
-              var _v$42 = {
+              var _v$50 = {
                   display: "grid",
                   gridTemplateRows: ["1fr", "1fr"],
                   gap: 6,
@@ -4304,24 +4599,376 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   padding: 6,
                   borderRadius: 8
                 },
-                _v$43 = {
+                _v$51 = {
                   backgroundColor: p.accent,
                   borderRadius: 4
                 },
-                _v$44 = {
+                _v$52 = {
                   backgroundColor: p.blue,
                   borderRadius: 4
                 };
-              _v$42 !== _p$.e && (_p$.e = setProp(_el$52, "style", _v$42, _p$.e));
-              _v$43 !== _p$.t && (_p$.t = setProp(_el$53, "style", _v$43, _p$.t));
-              _v$44 !== _p$.a && (_p$.a = setProp(_el$54, "style", _v$44, _p$.a));
+              _v$50 !== _p$.e && (_p$.e = setProp(_el$64, "style", _v$50, _p$.e));
+              _v$51 !== _p$.t && (_p$.t = setProp(_el$65, "style", _v$51, _p$.t));
+              _v$52 !== _p$.a && (_p$.a = setProp(_el$66, "style", _v$52, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$52;
+            return _el$64;
+          }();
+        }
+      }, {
+        title: "gridAutoRows",
+        properties: ["gridAutoRows"],
+        note: "implicit row beyond the explicit track",
+        render: function render() {
+          return function () {
+            var _el$67 = createElement("view"),
+              _el$68 = createElement("view"),
+              _el$69 = createElement("view");
+            insertNode(_el$67, _el$68);
+            insertNode(_el$67, _el$69);
+            effect(function (_p$) {
+              var _v$53 = {
+                  display: "grid",
+                  gridTemplateColumns: ["1fr"],
+                  gridTemplateRows: ["".concat(GRID_AUTO_DEMO.explicitRow, "px")],
+                  gridAutoRows: ["".concat(GRID_AUTO_DEMO.autoRow, "px")],
+                  gap: 6,
+                  width: 100,
+                  backgroundColor: p.panel2,
+                  padding: 6,
+                  borderRadius: 8
+                },
+                _v$54 = {
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                },
+                _v$55 = {
+                  backgroundColor: p.blue,
+                  borderRadius: 4
+                };
+              _v$53 !== _p$.e && (_p$.e = setProp(_el$67, "style", _v$53, _p$.e));
+              _v$54 !== _p$.t && (_p$.t = setProp(_el$68, "style", _v$54, _p$.t));
+              _v$55 !== _p$.a && (_p$.a = setProp(_el$69, "style", _v$55, _p$.a));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0
+            });
+            return _el$67;
+          }();
+        }
+      }, {
+        title: "gridAutoColumns",
+        properties: ["gridAutoColumns"],
+        note: "implicit column track size",
+        render: function render() {
+          return function () {
+            var _el$70 = createElement("view"),
+              _el$71 = createElement("view");
+            insertNode(_el$70, _el$71);
+            effect(function (_p$) {
+              var _v$56 = {
+                  display: "grid",
+                  gridTemplateColumns: ["".concat(GRID_AUTO_DEMO.explicitCol, "px")],
+                  gridAutoColumns: ["".concat(GRID_AUTO_DEMO.autoCol, "px")],
+                  gap: 6,
+                  width: 140,
+                  height: 40,
+                  backgroundColor: p.panel2,
+                  padding: 6,
+                  borderRadius: 8
+                },
+                _v$57 = {
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                };
+              _v$56 !== _p$.e && (_p$.e = setProp(_el$70, "style", _v$56, _p$.e));
+              _v$57 !== _p$.t && (_p$.t = setProp(_el$71, "style", _v$57, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$70;
+          }();
+        }
+      }, {
+        title: "gridAutoFlow",
+        properties: ["gridAutoFlow"],
+        note: "row fills rows first, column fills columns first",
+        render: function render() {
+          var base = {
+            display: "grid",
+            gridTemplateColumns: ["".concat(GRID_AUTO_FLOW_DEMO.track, "px"), "".concat(GRID_AUTO_FLOW_DEMO.track, "px")],
+            gridTemplateRows: ["".concat(GRID_AUTO_FLOW_DEMO.track, "px"), "".concat(GRID_AUTO_FLOW_DEMO.track, "px")],
+            gap: GRID_AUTO_FLOW_DEMO.gap,
+            padding: 6,
+            backgroundColor: p.panel2,
+            borderRadius: 8
+          };
+          return function () {
+            var _el$72 = createElement("view"),
+              _el$73 = createElement("view"),
+              _el$74 = createElement("view"),
+              _el$75 = createElement("text"),
+              _el$77 = createElement("view"),
+              _el$78 = createElement("view"),
+              _el$79 = createElement("text");
+            insertNode(_el$72, _el$73);
+            insertNode(_el$72, _el$77);
+            setProp(_el$72, "style", {
+              display: "flex",
+              flexDirection: "row",
+              gap: 12,
+              alignSelf: "flex-start"
+            });
+            insertNode(_el$73, _el$74);
+            insertNode(_el$73, _el$75);
+            setProp(_el$73, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$74, function () {
+              return autoFlowItems(p.accent);
+            });
+            insertNode(_el$75, createTextNode("row"));
+            insertNode(_el$77, _el$78);
+            insertNode(_el$77, _el$79);
+            setProp(_el$77, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$78, function () {
+              return autoFlowItems(p.success);
+            });
+            insertNode(_el$79, createTextNode("column"));
+            effect(function (_p$) {
+              var _v$58 = _objectSpread(_objectSpread({}, base), {}, {
+                  gridAutoFlow: "row"
+                }),
+                _v$59 = {
+                  color: p.muted,
+                  fontSize: 11
+                },
+                _v$60 = _objectSpread(_objectSpread({}, base), {}, {
+                  gridAutoFlow: "column"
+                }),
+                _v$61 = {
+                  color: p.muted,
+                  fontSize: 11
+                };
+              _v$58 !== _p$.e && (_p$.e = setProp(_el$74, "style", _v$58, _p$.e));
+              _v$59 !== _p$.t && (_p$.t = setProp(_el$75, "style", _v$59, _p$.t));
+              _v$60 !== _p$.a && (_p$.a = setProp(_el$78, "style", _v$60, _p$.a));
+              _v$61 !== _p$.o && (_p$.o = setProp(_el$79, "style", _v$61, _p$.o));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0,
+              o: void 0
+            });
+            return _el$72;
+          }();
+        }
+      }, {
+        title: "gridColumn / gridRow",
+        properties: ["gridColumn", "gridRow"],
+        note: "place an item in explicit grid cells (line / span)",
+        render: function render() {
+          return function () {
+            var _el$81 = createElement("view"),
+              _el$82 = createElement("view"),
+              _el$83 = createElement("view");
+            insertNode(_el$81, _el$82);
+            insertNode(_el$81, _el$83);
+            effect(function (_p$) {
+              var _v$62 = {
+                  display: "grid",
+                  gridTemplateColumns: ["".concat(GRID_PLACEMENT_DEMO.track, "px"), "".concat(GRID_PLACEMENT_DEMO.track, "px"), "".concat(GRID_PLACEMENT_DEMO.track, "px")],
+                  gridTemplateRows: ["".concat(GRID_PLACEMENT_DEMO.track, "px"), "".concat(GRID_PLACEMENT_DEMO.track, "px")],
+                  gap: GRID_PLACEMENT_DEMO.gap,
+                  padding: 6,
+                  backgroundColor: p.panel2,
+                  borderRadius: 8,
+                  alignSelf: "flex-start"
+                },
+                _v$63 = {
+                  gridColumn: {
+                    start: GRID_PLACEMENT_DEMO.columnStart,
+                    end: {
+                      span: GRID_PLACEMENT_DEMO.columnSpan
+                    }
+                  },
+                  backgroundColor: p.accent,
+                  borderRadius: 4
+                },
+                _v$64 = {
+                  gridColumn: {
+                    start: GRID_PLACEMENT_DEMO.cellColumn
+                  },
+                  gridRow: {
+                    start: GRID_PLACEMENT_DEMO.cellRow
+                  },
+                  backgroundColor: p.success,
+                  borderRadius: 4
+                };
+              _v$62 !== _p$.e && (_p$.e = setProp(_el$81, "style", _v$62, _p$.e));
+              _v$63 !== _p$.t && (_p$.t = setProp(_el$82, "style", _v$63, _p$.t));
+              _v$64 !== _p$.a && (_p$.a = setProp(_el$83, "style", _v$64, _p$.a));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0
+            });
+            return _el$81;
+          }();
+        }
+      }, {
+        title: "justifyItems",
+        properties: ["justifyItems"],
+        note: "inline-axis alignment of items inside their grid cell",
+        render: function render() {
+          return function () {
+            var _el$84 = createElement("view"),
+              _el$85 = createElement("view"),
+              _el$86 = createElement("text"),
+              _el$88 = createElement("view"),
+              _el$89 = createElement("text"),
+              _el$91 = createElement("view"),
+              _el$92 = createElement("text");
+            insertNode(_el$84, _el$85);
+            insertNode(_el$84, _el$88);
+            insertNode(_el$84, _el$91);
+            setProp(_el$84, "style", {
+              display: "flex",
+              flexDirection: "row",
+              gap: 8,
+              alignSelf: "flex-start"
+            });
+            insertNode(_el$85, _el$86);
+            setProp(_el$85, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$85, function () {
+              return justifyCell(p, "start");
+            }, _el$86);
+            insertNode(_el$86, createTextNode("start"));
+            insertNode(_el$88, _el$89);
+            setProp(_el$88, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$88, function () {
+              return justifyCell(p, "center");
+            }, _el$89);
+            insertNode(_el$89, createTextNode("center"));
+            insertNode(_el$91, _el$92);
+            setProp(_el$91, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$91, function () {
+              return justifyCell(p, "end");
+            }, _el$92);
+            insertNode(_el$92, createTextNode("end"));
+            effect(function (_p$) {
+              var _v$65 = {
+                  color: p.muted,
+                  fontSize: 11
+                },
+                _v$66 = {
+                  color: p.muted,
+                  fontSize: 11
+                },
+                _v$67 = {
+                  color: p.muted,
+                  fontSize: 11
+                };
+              _v$65 !== _p$.e && (_p$.e = setProp(_el$86, "style", _v$65, _p$.e));
+              _v$66 !== _p$.t && (_p$.t = setProp(_el$89, "style", _v$66, _p$.t));
+              _v$67 !== _p$.a && (_p$.a = setProp(_el$92, "style", _v$67, _p$.a));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0
+            });
+            return _el$84;
+          }();
+        }
+      }, {
+        title: "justifySelf",
+        properties: ["justifySelf"],
+        note: "an item overrides the container justify-items",
+        render: function render() {
+          return function () {
+            var _el$94 = createElement("view"),
+              _el$95 = createElement("view"),
+              _el$96 = createElement("text"),
+              _el$98 = createElement("view"),
+              _el$99 = createElement("text");
+            insertNode(_el$94, _el$95);
+            insertNode(_el$94, _el$98);
+            setProp(_el$94, "style", {
+              display: "flex",
+              flexDirection: "row",
+              gap: 8,
+              alignSelf: "flex-start"
+            });
+            insertNode(_el$95, _el$96);
+            setProp(_el$95, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$95, function () {
+              return justifyCell(p, "start", {
+                justifySelf: "center"
+              });
+            }, _el$96);
+            insertNode(_el$96, createTextNode("self center"));
+            insertNode(_el$98, _el$99);
+            setProp(_el$98, "style", {
+              display: "flex",
+              flexDirection: "column",
+              gap: 4
+            });
+            insert(_el$98, function () {
+              return justifyCell(p, "start", {
+                justifySelf: "end"
+              });
+            }, _el$99);
+            insertNode(_el$99, createTextNode("self end"));
+            effect(function (_p$) {
+              var _v$68 = {
+                  color: p.muted,
+                  fontSize: 11
+                },
+                _v$69 = {
+                  color: p.muted,
+                  fontSize: 11
+                };
+              _v$68 !== _p$.e && (_p$.e = setProp(_el$96, "style", _v$68, _p$.e));
+              _v$69 !== _p$.t && (_p$.t = setProp(_el$99, "style", _v$69, _p$.t));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0
+            });
+            return _el$94;
           }();
         }
       }]
@@ -4334,13 +4981,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "absolute children pinned to corners",
         render: function render() {
           return function () {
-            var _el$55 = createElement("view"),
-              _el$56 = createElement("view"),
-              _el$57 = createElement("view");
-            insertNode(_el$55, _el$56);
-            insertNode(_el$55, _el$57);
+            var _el$101 = createElement("view"),
+              _el$102 = createElement("view"),
+              _el$103 = createElement("view");
+            insertNode(_el$101, _el$102);
+            insertNode(_el$101, _el$103);
             effect(function (_p$) {
-              var _v$45 = {
+              var _v$70 = {
                   position: "relative",
                   width: 160,
                   height: 80,
@@ -4349,7 +4996,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   borderWidth: 1,
                   borderColor: p.line
                 },
-                _v$46 = {
+                _v$71 = {
                   position: "absolute",
                   top: 8,
                   left: 8,
@@ -4358,7 +5005,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   backgroundColor: p.accent,
                   borderRadius: 6
                 },
-                _v$47 = {
+                _v$72 = {
                   position: "absolute",
                   right: 8,
                   bottom: 8,
@@ -4367,16 +5014,16 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   backgroundColor: p.accent2,
                   borderRadius: 6
                 };
-              _v$45 !== _p$.e && (_p$.e = setProp(_el$55, "style", _v$45, _p$.e));
-              _v$46 !== _p$.t && (_p$.t = setProp(_el$56, "style", _v$46, _p$.t));
-              _v$47 !== _p$.a && (_p$.a = setProp(_el$57, "style", _v$47, _p$.a));
+              _v$70 !== _p$.e && (_p$.e = setProp(_el$101, "style", _v$70, _p$.e));
+              _v$71 !== _p$.t && (_p$.t = setProp(_el$102, "style", _v$71, _p$.t));
+              _v$72 !== _p$.a && (_p$.a = setProp(_el$103, "style", _v$72, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$55;
+            return _el$101;
           }();
         }
       }, {
@@ -4385,11 +5032,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "hidden clips the oversized child",
         render: function render() {
           return function () {
-            var _el$58 = createElement("view"),
-              _el$59 = createElement("view");
-            insertNode(_el$58, _el$59);
+            var _el$104 = createElement("view"),
+              _el$105 = createElement("view");
+            insertNode(_el$104, _el$105);
             effect(function (_p$) {
-              var _v$48 = {
+              var _v$73 = {
                   width: 96,
                   height: 56,
                   overflow: "hidden",
@@ -4398,20 +5045,20 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   borderWidth: 1,
                   borderColor: p.line
                 },
-                _v$49 = {
+                _v$74 = {
                   width: 160,
                   height: 100,
                   backgroundColor: p.accent,
                   borderRadius: 6
                 };
-              _v$48 !== _p$.e && (_p$.e = setProp(_el$58, "style", _v$48, _p$.e));
-              _v$49 !== _p$.t && (_p$.t = setProp(_el$59, "style", _v$49, _p$.t));
+              _v$73 !== _p$.e && (_p$.e = setProp(_el$104, "style", _v$73, _p$.e));
+              _v$74 !== _p$.t && (_p$.t = setProp(_el$105, "style", _v$74, _p$.t));
               return _p$;
             }, {
               e: void 0,
               t: void 0
             });
-            return _el$58;
+            return _el$104;
           }();
         }
       }]
@@ -4423,15 +5070,15 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["fontSize"],
         render: function render() {
           return function () {
-            var _el$60 = createElement("text");
-            insertNode(_el$60, createTextNode("Sample"));
+            var _el$106 = createElement("text");
+            insertNode(_el$106, createTextNode("Sample"));
             effect(function (_$p) {
-              return setProp(_el$60, "style", {
+              return setProp(_el$106, "style", {
                 fontSize: 22,
                 color: p.text
               }, _$p);
             });
-            return _el$60;
+            return _el$106;
           }();
         }
       }, {
@@ -4439,15 +5086,15 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["fontFamily"],
         render: function render() {
           return function () {
-            var _el$62 = createElement("text");
-            insertNode(_el$62, createTextNode("Sample"));
+            var _el$108 = createElement("text");
+            insertNode(_el$108, createTextNode("Sample"));
             effect(function (_$p) {
-              return setProp(_el$62, "style", {
+              return setProp(_el$108, "style", {
                 fontFamily: "Georgia, serif",
                 color: p.text
               }, _$p);
             });
-            return _el$62;
+            return _el$108;
           }();
         }
       }, {
@@ -4455,44 +5102,44 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["fontWeight"],
         render: function render() {
           return function () {
-            var _el$64 = createElement("view"),
-              _el$65 = createElement("text"),
-              _el$67 = createElement("text"),
-              _el$69 = createElement("text");
-            insertNode(_el$64, _el$65);
-            insertNode(_el$64, _el$67);
-            insertNode(_el$64, _el$69);
-            setProp(_el$64, "style", {
+            var _el$110 = createElement("view"),
+              _el$111 = createElement("text"),
+              _el$113 = createElement("text"),
+              _el$115 = createElement("text");
+            insertNode(_el$110, _el$111);
+            insertNode(_el$110, _el$113);
+            insertNode(_el$110, _el$115);
+            setProp(_el$110, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 4
             });
-            insertNode(_el$65, createTextNode("Regular 400"));
-            insertNode(_el$67, createTextNode("Semibold 600"));
-            insertNode(_el$69, createTextNode("Bold 700"));
+            insertNode(_el$111, createTextNode("Regular 400"));
+            insertNode(_el$113, createTextNode("Semibold 600"));
+            insertNode(_el$115, createTextNode("Bold 700"));
             effect(function (_p$) {
-              var _v$50 = {
+              var _v$75 = {
                   fontWeight: 400,
                   color: p.text
                 },
-                _v$51 = {
+                _v$76 = {
                   fontWeight: 600,
                   color: p.text
                 },
-                _v$52 = {
+                _v$77 = {
                   fontWeight: 700,
                   color: p.text
                 };
-              _v$50 !== _p$.e && (_p$.e = setProp(_el$65, "style", _v$50, _p$.e));
-              _v$51 !== _p$.t && (_p$.t = setProp(_el$67, "style", _v$51, _p$.t));
-              _v$52 !== _p$.a && (_p$.a = setProp(_el$69, "style", _v$52, _p$.a));
+              _v$75 !== _p$.e && (_p$.e = setProp(_el$111, "style", _v$75, _p$.e));
+              _v$76 !== _p$.t && (_p$.t = setProp(_el$113, "style", _v$76, _p$.t));
+              _v$77 !== _p$.a && (_p$.a = setProp(_el$115, "style", _v$77, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$64;
+            return _el$110;
           }();
         }
       }, {
@@ -4500,35 +5147,35 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["fontStyle"],
         render: function render() {
           return function () {
-            var _el$71 = createElement("view"),
-              _el$72 = createElement("text"),
-              _el$74 = createElement("text");
-            insertNode(_el$71, _el$72);
-            insertNode(_el$71, _el$74);
-            setProp(_el$71, "style", {
+            var _el$117 = createElement("view"),
+              _el$118 = createElement("text"),
+              _el$120 = createElement("text");
+            insertNode(_el$117, _el$118);
+            insertNode(_el$117, _el$120);
+            setProp(_el$117, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 4
             });
-            insertNode(_el$72, createTextNode("Upright"));
-            insertNode(_el$74, createTextNode("Italic (synth)"));
+            insertNode(_el$118, createTextNode("Upright"));
+            insertNode(_el$120, createTextNode("Italic (synth)"));
             effect(function (_p$) {
-              var _v$53 = {
+              var _v$78 = {
                   fontStyle: "normal",
                   color: p.text
                 },
-                _v$54 = {
+                _v$79 = {
                   fontStyle: "italic",
                   color: p.text
                 };
-              _v$53 !== _p$.e && (_p$.e = setProp(_el$72, "style", _v$53, _p$.e));
-              _v$54 !== _p$.t && (_p$.t = setProp(_el$74, "style", _v$54, _p$.t));
+              _v$78 !== _p$.e && (_p$.e = setProp(_el$118, "style", _v$78, _p$.e));
+              _v$79 !== _p$.t && (_p$.t = setProp(_el$120, "style", _v$79, _p$.t));
               return _p$;
             }, {
               e: void 0,
               t: void 0
             });
-            return _el$71;
+            return _el$117;
           }();
         }
       }, {
@@ -4536,15 +5183,15 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["textDecoration"],
         render: function render() {
           return function () {
-            var _el$76 = createElement("text");
-            insertNode(_el$76, createTextNode("Sample"));
+            var _el$122 = createElement("text");
+            insertNode(_el$122, createTextNode("Sample"));
             effect(function (_$p) {
-              return setProp(_el$76, "style", {
+              return setProp(_el$122, "style", {
                 textDecoration: "underline",
                 color: p.text
               }, _$p);
             });
-            return _el$76;
+            return _el$122;
           }();
         }
       }, {
@@ -4552,14 +5199,14 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: ["color"],
         render: function render() {
           return function () {
-            var _el$78 = createElement("text");
-            insertNode(_el$78, createTextNode("Sample"));
+            var _el$124 = createElement("text");
+            insertNode(_el$124, createTextNode("Sample"));
             effect(function (_$p) {
-              return setProp(_el$78, "style", {
+              return setProp(_el$124, "style", {
                 color: p.accent
               }, _$p);
             });
-            return _el$78;
+            return _el$124;
           }();
         }
       }, {
@@ -4568,22 +5215,22 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "clamp to 2 lines with ellipsis",
         render: function render() {
           return function () {
-            var _el$80 = createElement("view"),
-              _el$81 = createElement("text");
-            insertNode(_el$80, _el$81);
-            setProp(_el$80, "style", {
+            var _el$126 = createElement("view"),
+              _el$127 = createElement("text");
+            insertNode(_el$126, _el$127);
+            setProp(_el$126, "style", {
               width: 168
             });
-            insertNode(_el$81, createTextNode("This caption runs long on purpose so the renderer clamps it to two lines and trails an ellipsis."));
+            insertNode(_el$127, createTextNode("This caption runs long on purpose so the renderer clamps it to two lines and trails an ellipsis."));
             effect(function (_$p) {
-              return setProp(_el$81, "style", {
+              return setProp(_el$127, "style", {
                 color: p.text,
                 fontSize: 13,
                 maxLines: 2,
                 textOverflow: "ellipsis"
               }, _$p);
             });
-            return _el$80;
+            return _el$126;
           }();
         }
       }, {
@@ -4592,15 +5239,15 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "inherited text defaults",
         render: function render() {
           return function () {
-            var _el$83 = createElement("view"),
-              _el$84 = createElement("text"),
-              _el$86 = createElement("text");
-            insertNode(_el$83, _el$84);
-            insertNode(_el$83, _el$86);
-            insertNode(_el$84, createTextNode("Inherited text styles"));
-            insertNode(_el$86, createTextNode("Second line inherits defaults"));
+            var _el$129 = createElement("view"),
+              _el$130 = createElement("text"),
+              _el$132 = createElement("text");
+            insertNode(_el$129, _el$130);
+            insertNode(_el$129, _el$132);
+            insertNode(_el$130, createTextNode("Inherited text styles"));
+            insertNode(_el$132, createTextNode("Second line inherits defaults"));
             effect(function (_$p) {
-              return setProp(_el$83, "style", {
+              return setProp(_el$129, "style", {
                 display: "flex",
                 flexDirection: "column",
                 gap: 6,
@@ -4615,7 +5262,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 defaultFontWeight: 700
               }, _$p);
             });
-            return _el$83;
+            return _el$129;
           }();
         }
       }]
@@ -4628,10 +5275,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "hover to ease the color over 250ms",
         render: function render() {
           return function () {
-            var _el$88 = createElement("button");
-            insertNode(_el$88, createTextNode("Hover to ease"));
+            var _el$134 = createElement("button");
+            insertNode(_el$134, createTextNode("Hover to ease"));
             effect(function (_$p) {
-              return setProp(_el$88, "style", {
+              return setProp(_el$134, "style", {
                 height: 40,
                 paddingLeft: 16,
                 paddingRight: 16,
@@ -4652,7 +5299,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 }
               }, _$p);
             });
-            return _el$88;
+            return _el$134;
           }();
         }
       }]
@@ -4665,25 +5312,25 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "hover each tile — the pointer changes and the tile lights up",
         render: function render() {
           return function () {
-            var _el$90 = createElement("view");
-            setProp(_el$90, "style", {
+            var _el$136 = createElement("view");
+            setProp(_el$136, "style", {
               display: "flex",
               flexWrap: "wrap",
               gap: 6,
               width: 168
             });
-            insert(_el$90, function () {
+            insert(_el$136, function () {
               return ["pointer", "grab", "text", "not-allowed"].map(function (kind) {
                 return function () {
-                  var _el$91 = createElement("view"),
-                    _el$92 = createElement("text");
-                  insertNode(_el$91, _el$92);
-                  setProp(_el$92, "style", {
+                  var _el$137 = createElement("view"),
+                    _el$138 = createElement("text");
+                  insertNode(_el$137, _el$138);
+                  setProp(_el$138, "style", {
                     fontSize: 11
                   });
-                  insert(_el$92, kind);
+                  insert(_el$138, kind);
                   effect(function (_$p) {
-                    return setProp(_el$91, "style", {
+                    return setProp(_el$137, "style", {
                       width: 78,
                       height: 30,
                       display: "flex",
@@ -4704,11 +5351,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                       }
                     }, _$p);
                   });
-                  return _el$91;
+                  return _el$137;
                 }();
               });
             });
-            return _el$90;
+            return _el$136;
           }();
         }
       }, {
@@ -4716,10 +5363,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$93 = createElement("button");
-            insertNode(_el$93, createTextNode("Hover me"));
+            var _el$139 = createElement("button");
+            insertNode(_el$139, createTextNode("Hover me"));
             effect(function (_$p) {
-              return setProp(_el$93, "style", {
+              return setProp(_el$139, "style", {
                 height: 36,
                 paddingLeft: 14,
                 paddingRight: 14,
@@ -4735,7 +5382,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 }
               }, _$p);
             });
-            return _el$93;
+            return _el$139;
           }();
         }
       }, {
@@ -4743,10 +5390,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$95 = createElement("button");
-            insertNode(_el$95, createTextNode("Press me"));
+            var _el$141 = createElement("button");
+            insertNode(_el$141, createTextNode("Press me"));
             effect(function (_$p) {
-              return setProp(_el$95, "style", {
+              return setProp(_el$141, "style", {
                 height: 36,
                 paddingLeft: 14,
                 paddingRight: 14,
@@ -4762,7 +5409,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 }
               }, _$p);
             });
-            return _el$95;
+            return _el$141;
           }();
         }
       }, {
@@ -4770,12 +5417,12 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$97 = createElement("text-input");
-            setProp(_el$97, "value", "Focus me");
+            var _el$143 = createElement("text-input");
+            setProp(_el$143, "value", "Focus me");
             effect(function (_$p) {
-              return setProp(_el$97, "style", inputStyle(p), _$p);
+              return setProp(_el$143, "style", inputStyle(p), _$p);
             });
-            return _el$97;
+            return _el$143;
           }();
         }
       }, {
@@ -4783,31 +5430,31 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$98 = createElement("scroll-view"),
-              _el$99 = createElement("view");
-            insertNode(_el$98, _el$99);
-            setProp(_el$99, "style", {
+            var _el$144 = createElement("scroll-view"),
+              _el$145 = createElement("view");
+            insertNode(_el$144, _el$145);
+            setProp(_el$145, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 6
             });
-            insert(_el$99, function () {
+            insert(_el$145, function () {
               return [1, 2, 3, 4, 5, 6].map(function (n) {
                 return function () {
-                  var _el$100 = createElement("text");
-                  insert(_el$100, "Line ".concat(n));
+                  var _el$146 = createElement("text");
+                  insert(_el$146, "Line ".concat(n));
                   effect(function (_$p) {
-                    return setProp(_el$100, "style", {
+                    return setProp(_el$146, "style", {
                       color: p.text,
                       fontSize: 12
                     }, _$p);
                   });
-                  return _el$100;
+                  return _el$146;
                 }();
               });
             });
             effect(function (_$p) {
-              return setProp(_el$98, "style", {
+              return setProp(_el$144, "style", {
                 width: 168,
                 height: 72,
                 backgroundColor: p.panel2,
@@ -4817,7 +5464,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 padding: 8
               }, _$p);
             });
-            return _el$98;
+            return _el$144;
           }();
         }
       }, {
@@ -4825,65 +5472,65 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$101 = createElement("scroll-view"),
-              _el$102 = createElement("view"),
-              _el$103 = createElement("text"),
-              _el$105 = createElement("scroll-view"),
-              _el$106 = createElement("view"),
-              _el$107 = createElement("view");
-            insertNode(_el$101, _el$102);
-            insertNode(_el$102, _el$103);
-            insertNode(_el$102, _el$105);
-            insertNode(_el$102, _el$107);
-            setProp(_el$102, "style", {
+            var _el$147 = createElement("scroll-view"),
+              _el$148 = createElement("view"),
+              _el$149 = createElement("text"),
+              _el$151 = createElement("scroll-view"),
+              _el$152 = createElement("view"),
+              _el$153 = createElement("view");
+            insertNode(_el$147, _el$148);
+            insertNode(_el$148, _el$149);
+            insertNode(_el$148, _el$151);
+            insertNode(_el$148, _el$153);
+            setProp(_el$148, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 8
             });
-            insertNode(_el$103, createTextNode("Outer \u2014 scroll past inner edge"));
-            insertNode(_el$105, _el$106);
-            setProp(_el$106, "style", {
+            insertNode(_el$149, createTextNode("Outer \u2014 scroll past inner edge"));
+            insertNode(_el$151, _el$152);
+            setProp(_el$152, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 4
             });
-            insert(_el$106, function () {
+            insert(_el$152, function () {
               return ["A", "B", "C", "D", "E"].map(function (c) {
                 return function () {
-                  var _el$108 = createElement("text");
-                  insert(_el$108, "Inner ".concat(c));
+                  var _el$154 = createElement("text");
+                  insert(_el$154, "Inner ".concat(c));
                   effect(function (_$p) {
-                    return setProp(_el$108, "style", {
+                    return setProp(_el$154, "style", {
                       color: p.text,
                       fontSize: 11
                     }, _$p);
                   });
-                  return _el$108;
+                  return _el$154;
                 }();
               });
             });
-            setProp(_el$107, "style", {
+            setProp(_el$153, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 4
             });
-            insert(_el$107, function () {
+            insert(_el$153, function () {
               return [1, 2, 3, 4].map(function (n) {
                 return function () {
-                  var _el$109 = createElement("text");
-                  insert(_el$109, "Outer tail ".concat(n));
+                  var _el$155 = createElement("text");
+                  insert(_el$155, "Outer tail ".concat(n));
                   effect(function (_$p) {
-                    return setProp(_el$109, "style", {
+                    return setProp(_el$155, "style", {
                       color: p.text,
                       fontSize: 11
                     }, _$p);
                   });
-                  return _el$109;
+                  return _el$155;
                 }();
               });
             });
             effect(function (_p$) {
-              var _v$55 = {
+              var _v$80 = {
                   width: 180,
                   height: 120,
                   backgroundColor: p.panel,
@@ -4892,11 +5539,11 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   borderRadius: 8,
                   padding: 6
                 },
-                _v$56 = {
+                _v$81 = {
                   color: p.muted,
                   fontSize: 11
                 },
-                _v$57 = {
+                _v$82 = {
                   width: 160,
                   height: 64,
                   backgroundColor: p.panel2,
@@ -4905,16 +5552,16 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                   borderRadius: 6,
                   padding: 6
                 };
-              _v$55 !== _p$.e && (_p$.e = setProp(_el$101, "style", _v$55, _p$.e));
-              _v$56 !== _p$.t && (_p$.t = setProp(_el$103, "style", _v$56, _p$.t));
-              _v$57 !== _p$.a && (_p$.a = setProp(_el$105, "style", _v$57, _p$.a));
+              _v$80 !== _p$.e && (_p$.e = setProp(_el$147, "style", _v$80, _p$.e));
+              _v$81 !== _p$.t && (_p$.t = setProp(_el$149, "style", _v$81, _p$.t));
+              _v$82 !== _p$.a && (_p$.a = setProp(_el$151, "style", _v$82, _p$.a));
               return _p$;
             }, {
               e: void 0,
               t: void 0,
               a: void 0
             });
-            return _el$101;
+            return _el$147;
           }();
         }
       }, {
@@ -4922,13 +5569,13 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$110 = createElement("text-input");
-            setProp(_el$110, "placeholder", "Type here");
-            setProp(_el$110, "value", "");
+            var _el$156 = createElement("text-input");
+            setProp(_el$156, "placeholder", "Type here");
+            setProp(_el$156, "value", "");
             effect(function (_$p) {
-              return setProp(_el$110, "style", inputStyle(p), _$p);
+              return setProp(_el$156, "style", inputStyle(p), _$p);
             });
-            return _el$110;
+            return _el$156;
           }();
         }
       }, {
@@ -4936,10 +5583,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         properties: [],
         render: function render() {
           return function () {
-            var _el$111 = createElement("button");
-            insertNode(_el$111, createTextNode("Click"));
+            var _el$157 = createElement("button");
+            insertNode(_el$157, createTextNode("Click"));
             effect(function (_$p) {
-              return setProp(_el$111, "style", {
+              return setProp(_el$157, "style", {
                 height: 36,
                 paddingLeft: 14,
                 paddingRight: 14,
@@ -4950,7 +5597,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
                 borderColor: p.blue
               }, _$p);
             });
-            return _el$111;
+            return _el$157;
           }();
         }
       }, {
@@ -4959,50 +5606,50 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
         note: "view/text 既定選択可・user-select:none で除外",
         render: function render() {
           return function () {
-            var _el$113 = createElement("view"),
-              _el$114 = createElement("view"),
-              _el$115 = createElement("text"),
-              _el$117 = createElement("view"),
-              _el$118 = createElement("text");
-            insertNode(_el$113, _el$114);
-            insertNode(_el$113, _el$117);
-            setProp(_el$113, "style", {
+            var _el$159 = createElement("view"),
+              _el$160 = createElement("view"),
+              _el$161 = createElement("text"),
+              _el$163 = createElement("view"),
+              _el$164 = createElement("text");
+            insertNode(_el$159, _el$160);
+            insertNode(_el$159, _el$163);
+            setProp(_el$159, "style", {
               display: "flex",
               flexDirection: "column",
               gap: 6
             });
-            insertNode(_el$114, _el$115);
-            insertNode(_el$115, createTextNode("\u65E2\u5B9A\u3067\u9078\u629E\u3067\u304D\u308B\uFF08\u5BA3\u8A00\u306A\u3057\uFF09"));
-            insertNode(_el$117, _el$118);
-            setProp(_el$117, "user-select", "none");
-            insertNode(_el$118, createTextNode("user-select: none \u3067\u9078\u629E\u4E0D\u53EF"));
+            insertNode(_el$160, _el$161);
+            insertNode(_el$161, createTextNode("\u65E2\u5B9A\u3067\u9078\u629E\u3067\u304D\u308B\uFF08\u5BA3\u8A00\u306A\u3057\uFF09"));
+            insertNode(_el$163, _el$164);
+            setProp(_el$163, "user-select", "none");
+            insertNode(_el$164, createTextNode("user-select: none \u3067\u9078\u629E\u4E0D\u53EF"));
             effect(function (_p$) {
-              var _v$58 = {
+              var _v$83 = {
                   padding: 8,
                   backgroundColor: p.panel2,
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: p.line
                 },
-                _v$59 = {
+                _v$84 = {
                   color: p.text,
                   fontSize: 12
                 },
-                _v$60 = {
+                _v$85 = {
                   padding: 8,
                   backgroundColor: p.panel2,
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: p.line
                 },
-                _v$61 = {
+                _v$86 = {
                   color: p.muted,
                   fontSize: 12
                 };
-              _v$58 !== _p$.e && (_p$.e = setProp(_el$114, "style", _v$58, _p$.e));
-              _v$59 !== _p$.t && (_p$.t = setProp(_el$115, "style", _v$59, _p$.t));
-              _v$60 !== _p$.a && (_p$.a = setProp(_el$117, "style", _v$60, _p$.a));
-              _v$61 !== _p$.o && (_p$.o = setProp(_el$118, "style", _v$61, _p$.o));
+              _v$83 !== _p$.e && (_p$.e = setProp(_el$160, "style", _v$83, _p$.e));
+              _v$84 !== _p$.t && (_p$.t = setProp(_el$161, "style", _v$84, _p$.t));
+              _v$85 !== _p$.a && (_p$.a = setProp(_el$163, "style", _v$85, _p$.a));
+              _v$86 !== _p$.o && (_p$.o = setProp(_el$164, "style", _v$86, _p$.o));
               return _p$;
             }, {
               e: void 0,
@@ -5010,7 +5657,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
               a: void 0,
               o: void 0
             });
-            return _el$113;
+            return _el$159;
           }();
         }
       }]
@@ -5036,9 +5683,9 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }).flatMap(function (card) {
     return card.properties;
   });
-  ROADMAP.map(function (_ref1) {
-    var _ref10 = _slicedToArray(_ref1, 1),
-      name = _ref10[0];
+  ROADMAP.map(function (_ref0) {
+    var _ref1 = _slicedToArray(_ref0, 1),
+      name = _ref1[0];
     return name;
   });
   //#endregion
@@ -5235,10 +5882,10 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
       insertNode(_el$15, _el$16);
       insertNode(_el$16, createTextNode("Future CSS candidates not yet in style_tags.json \u2014 shown as static reference only."));
       insert(_el$15, function () {
-        return ROADMAP.map(function (_ref11) {
-          var _ref12 = _slicedToArray(_ref11, 2),
-            name = _ref12[0],
-            description = _ref12[1];
+        return ROADMAP.map(function (_ref10) {
+          var _ref11 = _slicedToArray(_ref10, 2),
+            name = _ref11[0],
+            description = _ref11[1];
           return function () {
             var _el$18 = createElement("view"),
               _el$19 = createElement("text"),
@@ -5436,9 +6083,9 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   function swap(todos, i) {
     if (i < 0 || i + 1 >= todos.length) return _toConsumableArray(todos);
     var next = _toConsumableArray(todos);
-    var _ref13 = [next[i + 1], next[i]];
-    next[i] = _ref13[0];
-    next[i + 1] = _ref13[1];
+    var _ref12 = [next[i + 1], next[i]];
+    next[i] = _ref12[0];
+    next[i + 1] = _ref12[1];
     return next;
   }
   /** 指定 id を一つ上へ移動する（手動並べ替え）。 */
@@ -5595,6 +6242,29 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     if (prio === 3) return p.danger;
     if (prio === 2) return p.accent2;
     return p.blue;
+  }
+  /** はみ出したタイトルの末尾表現。clip（ばっさり）ではなく ellipsis（…）。 */
+  var TITLE_TEXT_OVERFLOW = "ellipsis";
+  /** クランプを成立させるはみ出し制御。visible だと溢れて行を押し広げる。 */
+  var TITLE_OVERFLOW = "hidden";
+  /** タイトルボタンの基本スタイル（はみ出し方針込み）。 */
+  function titleStyle(p, done) {
+    return _objectSpread(_objectSpread({
+      display: "flex",
+      alignItems: "center",
+      backgroundColor: "transparent",
+      defaultColor: done ? p.quiet : p.ink,
+      defaultFontSize: 15,
+      borderWidth: 0,
+      borderStyle: "solid",
+      maxLines: 1,
+      textOverflow: TITLE_TEXT_OVERFLOW,
+      overflow: TITLE_OVERFLOW
+    }, EASE), {}, {
+      ":hover": {
+        defaultColor: p.accent
+      }
+    });
   }
   //#endregion
   //#region src/components/AddForm.tsx
@@ -6405,19 +7075,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
               return props.todo.text;
             });
             effect(function (_p$) {
-              var _v$1 = _objectSpread(_objectSpread({
-                  display: "flex",
-                  alignItems: "center",
-                  backgroundColor: "transparent",
-                  defaultColor: done ? p.quiet : p.ink,
-                  defaultFontSize: 15,
-                  borderWidth: 0,
-                  borderStyle: "solid"
-                }, EASE), {}, {
-                  ":hover": {
-                    defaultColor: p.accent
-                  }
-                }),
+              var _v$1 = titleStyle(p, done),
                 _v$10 = props.onBeginEdit;
               _v$1 !== _p$.e && (_p$.e = setProp(_el$9, "style", _v$1, _p$.e));
               _v$10 !== _p$.t && (_p$.t = setProp(_el$9, "onClick", _v$10, _p$.t));
@@ -7035,6 +7693,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   //#endregion
   //#region src/main.android.tsx
+  globalThis.__miharashiProtocolVersion = 1;
   var raw = globalThis.__hayateHost;
   if (raw === void 0) throw new Error("Android: globalThis.__hayateHost (native RawHayate) が注入されていません");
   var detected = {
@@ -7043,22 +7702,34 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
     source: "query",
     renderer: "vello"
   };
-  var handle = createAndroidCanvasRenderer(raw);
-  renderTsubame(function () {
-    return createComponent(TodoApp, {
-      detected: detected
-    });
-  }, handle.renderer);
-  globalThis.__tsubame = {
-    pumpFrame: function pumpFrame(timestampMs) {
-      return handle.pumpFrame(timestampMs);
-    },
-    resize: function resize(width, height, scale) {
-      return handle.resize(width, height, scale);
+  var nativeHost = createHayateNativeHost(raw);
+  var hayateRenderer;
+  var dispose = runTsubameApp({
+    createRenderer: function createRenderer() {
+      hayateRenderer = new HayateRenderer({
+        raw: nativeHost.raw,
+        requestFrame: nativeHost.requestFrame,
+        cancelFrame: nativeHost.cancelFrame
+      });
+      hayateRenderer.start();
+      return hayateRenderer;
     },
     stop: function stop() {
-      return handle.stop();
+      var _hayateRenderer;
+      return (_hayateRenderer = hayateRenderer) === null || _hayateRenderer === void 0 ? void 0 : _hayateRenderer.stop();
     }
+  }, function (renderer) {
+    return renderTsubame(function () {
+      return createComponent(TodoApp, {
+        detected: detected
+      });
+    }, renderer);
+  });
+  globalThis.__tsubame = {
+    pumpFrame: function pumpFrame(timestampMs) {
+      return nativeHost.pumpFrame(timestampMs);
+    },
+    stop: dispose
   };
   //#endregion
 })();
