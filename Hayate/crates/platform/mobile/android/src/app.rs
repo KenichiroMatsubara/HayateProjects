@@ -29,7 +29,8 @@ use crate::scene_demo::build_demo_tree;
 use crate::surface_lifecycle::{
     viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
 };
-use crate::touch_input::{translate_touch, PointerInput, TouchAction};
+use crate::touch_input::{translate_touch, TouchAction};
+use crate::touch_scroll::TouchScrollState;
 
 /// スモークテスト用の RGBA クリアカラー。
 pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
@@ -80,6 +81,9 @@ pub fn android_main(app: AndroidApp) {
     let mut raster: Option<RasterHandle> = None;
     let mut lifecycle = SurfaceLifecycleState::new();
     let mut tree = build_demo_tree();
+    // scroll-view 上のタッチドラッグ→スクロールジェスチャ（ADR-0082）。フレームを
+    // またいで 1 つの scroll-view にロックされた状態を保持する（`touch_scroll` 参照）。
+    let mut touch_scroll = TouchScrollState::new();
     let start = Instant::now();
     // 最後に同期した GameTextInput バッファ、それが属するテキスト入力、および
     // ソフトキーボードが現在表示中かどうか（IME, ADR-0094）。キーボードフラグは
@@ -154,7 +158,10 @@ pub fn android_main(app: AndroidApp) {
             }
         });
 
-        process_touch_input(&app, &mut tree);
+        // 単調増加クロック。スクロールのリリース速度推定（指サンプルのタイムスタンプ）と
+        // 下の `tree.render` の両方がこれを共有する（フレーム内で同一時刻とみなす）。
+        let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
+        process_touch_input(&app, &mut tree, &mut touch_scroll, timestamp_ms);
         sync_ime(
             &app,
             &mut tree,
@@ -166,7 +173,6 @@ pub fn android_main(app: AndroidApp) {
         if let Some(rt) = raster.as_ref() {
             // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
             // シーンを提示する（`hayate-adapter-web` の `render` に対応）。
-            let timestamp_ms = start.elapsed().as_secs_f64() * 1000.0;
             let _ = tree.render(timestamp_ms);
             // render() が捕捉した保持シーン + frame_layers / frame_layer_dirty / chrome_dirty を
             // owned handoff にして Raster スレッドへ送る（#635）。UI スレッドは raster を待たず、
@@ -246,13 +252,21 @@ pub(crate) fn sync_ime(
 
 /// 保留中の `MotionEvent` を捌き、`tree` の座標ベースのポインタ API を駆動する。
 ///
-/// 単一ポインタのタップ/ドラッグのみ（ADR-0082）。マルチタッチジェスチャや
-/// スクロール慣性（ADR-0046）は対象外。イベントごとの計算はホストでテスト可能な
-/// [`translate_touch`] にあり、このラッパーは薄い NDK グルー。
+/// 単一ポインタのタップ/ドラッグのみ（ADR-0082）。マルチタッチジェスチャは対象外。
+/// イベントごとの計算はホストでテスト可能な [`translate_touch`] と
+/// [`TouchScrollState`]（`touch_scroll` モジュール）にあり、このラッパーは薄い
+/// NDK グルー。scroll-view 上のドラッグ→スクロール（slop 判定・ラバーバンド・
+/// リリース慣性の起動）は `state` が Web アダプタと同じ配線パターンで駆動する
+/// （ADR-0082、`hayate_core::scroll` の純物理・純判定を消費）。
 /// 保留中の `MotionEvent` を排出して `tree` のポインタ API を駆動する。少なくとも 1 つの
 /// タッチアクションをディスパッチしたら `true` を返す（ADR-0126 の入力 wake 源 — idle の
 /// on-demand ループを冷間始動するため、呼び元はこの戻り値で `request_wake` する）。
-pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) -> bool {
+pub(crate) fn process_touch_input(
+    app: &AndroidApp,
+    tree: &mut ElementTree,
+    scroll: &mut TouchScrollState,
+    now_ms: f64,
+) -> bool {
     let mut iter = match app.input_events_iter() {
         Ok(iter) => iter,
         Err(err) => {
@@ -273,14 +287,7 @@ pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) -> b
                     let pointer = motion.pointer_at_index(motion.pointer_index());
                     let x = pointer.x() / content_scale;
                     let y = pointer.y() / content_scale;
-                    match translate_touch(action, x, y) {
-                        PointerInput::Down { x, y } => tree.on_pointer_down(x, y),
-                        PointerInput::Move { x, y } => {
-                            let _ = tree.on_pointer_move(x, y);
-                        }
-                        PointerInput::Up { x, y } => tree.on_pointer_up(x, y),
-                        PointerInput::Cancel => tree.on_pointer_cancel(),
-                    }
+                    scroll.apply(tree, translate_touch(action, x, y), now_ms);
                     dispatched = true;
                 }
             }
