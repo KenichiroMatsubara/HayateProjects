@@ -53,6 +53,11 @@ mod surface_lifecycle;
 // だけの薄いグルーに保つ。
 mod test_tone;
 mod touch_input;
+// タッチドラッグ→スクロール配線（ADR-0082）。Web アダプタ（`hayate-adapter-web`）の
+// 参照実装を移植した platform-free なジェスチャ配線層。NDK 非依存なのでホストで
+// コンパイル・テストされ、`app.rs::process_touch_input`（android のみ）が実 MotionEvent
+// からこれを駆動する薄いグルーに徹する。
+mod touch_scroll;
 
 // Tsubame JS 駆動経路の Rust 半分（ADR-0112）。埋め込み Hermes が呼ぶ
 // apply_mutations を、Web と共有の中立 dispatch 経由で ElementTree に適用する。

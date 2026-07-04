@@ -35,6 +35,7 @@ use crate::app::{
     frame_handoff, init_gpu_surface, process_touch_input, spawn_raster_thread, sync_ime,
     RasterHandle,
 };
+use crate::touch_scroll::TouchScrollState;
 use hayate_layer_compositor::RasterCommand;
 use crate::bundle_source;
 use crate::frame_schedule::OnDemandFrameLoop;
@@ -50,10 +51,14 @@ use crate::surface_lifecycle::{
 };
 
 /// 1 boot 分の Hermes ランタイムと、それと共有する ElementTree。full reload では丸ごと作り直して
-/// state を捨てる（CONTEXT.md「Reload」）。
+/// state を捨てる（CONTEXT.md「Reload」）。scroll-view 上のタッチドラッグ→スクロール
+/// ジェスチャ（ADR-0082）は特定 tree の `ElementId` にロックされるので、tree と運命を
+/// 共にする——reload で古い ID を握ったまま残らないよう、ここにも同じタイミングで
+/// 作り直す。
 struct Runtime {
     hermes: cxx::UniquePtr<HermesApp>,
     tree: Rc<RefCell<ElementTree>>,
+    touch_scroll: TouchScrollState,
 }
 
 /// eval 済みバンドルが立てた protocol version（`__miharashiProtocolVersion`）を読み、`Option<u32>`
@@ -107,7 +112,11 @@ pub(crate) fn run(app: AndroidApp) {
             |bundle: &str| {
                 let tree: Rc<RefCell<ElementTree>> = Rc::new(RefCell::new(ElementTree::new()));
                 let hermes = new_hermes_app(make_bridge(tree.clone()), bundle);
-                Runtime { hermes, tree }
+                Runtime {
+                    hermes,
+                    tree,
+                    touch_scroll: TouchScrollState::new(),
+                }
             },
             |runtime: &Runtime| read_bundle_protocol_version(&runtime.hermes),
         )
@@ -329,7 +338,12 @@ pub(crate) fn run(app: AndroidApp) {
         // 1. 入力（native→tree 直結, 既存資産を共有）。入力は Platform Adapter の責務で
         //    idle でも毎イテレーション排出する（これが入力 wake の出所, ADR-0080/0126）。到着した
         //    タッチ/IME は on-demand ループを冷間始動する。
-        let touch_woke = process_touch_input(&app, &mut runtime.tree.borrow_mut());
+        let touch_woke = process_touch_input(
+            &app,
+            &mut runtime.tree.borrow_mut(),
+            &mut runtime.touch_scroll,
+            start.elapsed().as_secs_f64() * 1000.0,
+        );
         let ime_woke = sync_ime(
             &app,
             &mut runtime.tree.borrow_mut(),
