@@ -9,6 +9,7 @@ repository.workspace = true
 [features]
 backend-vello = []
 backend-tiny-skia = []
+backend-vello-cpu = []
 backend-recording = []
 backend-null = []
 

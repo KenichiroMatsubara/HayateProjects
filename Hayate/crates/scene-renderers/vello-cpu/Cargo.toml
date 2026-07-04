@@ -1,0 +1,17 @@
+[package]
+name = "hayate-scene-renderer-vello-cpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "vello_cpu Scene Renderer for Hayate"
+
+[dependencies]
+hayate-core = { path = "../../core" }
+hayate-layer-compositor = { path = "../compositor" }
+vello_cpu = { workspace = true }
+skrifa = { workspace = true }
+
+[dev-dependencies]
+hayate-scene-test-support = { path = "../test-support" }
+hayate-demo-fixtures = { path = "../../demo-fixtures" }
+png = "0.18"

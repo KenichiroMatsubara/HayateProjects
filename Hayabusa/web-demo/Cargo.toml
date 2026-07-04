@@ -14,6 +14,11 @@ repository = "https://github.com/KenichiroMatsubara/HayateProjects"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = ["tiny-skia"]
+tiny-skia = ["hayate-adapter-web/backend-tiny-skia"]
+vello-cpu = ["hayate-adapter-web/backend-vello-cpu"]
+
 # hayate-adapter-web と同じく wasm-opt（binaryen）を回さない。CI で binaryen の取得・実行に
 # 依存させないため（Hayate scripts/build-wasm.sh と同方針）。release の opt-level だけで十分小さい。
 [package.metadata.wasm-pack.profile.release]
@@ -26,10 +31,9 @@ hayabusa = { path = "..", features = ["hayate-core", "app-host"] }
 hayate-app-host = { path = "../../Hayate/crates/app-host" }
 # click を合成して reactive 経路を駆動するための `Event` / `DocumentEventKind` / `ElementId`。
 hayate-core = { path = "../../Hayate/crates/core" }
-# Web present アダプタ。CPU バックエンド（tiny-skia）だけを引き、wgpu/vello を排除する。
-hayate-adapter-web = { path = "../../Hayate/crates/platform/web", default-features = false, features = [
-    "backend-tiny-skia",
-] }
+# Web present アダプタ。CPU バックエンドだけを引き、wgpu/vello を排除する。feature で
+# tiny-skia / vello_cpu（スパイク中の置き換え候補）を切り替える。
+hayate-adapter-web = { path = "../../Hayate/crates/platform/web", default-features = false }
 
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"

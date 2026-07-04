@@ -17,6 +17,8 @@
 pub enum SceneRendererKind {
     Vello,
     TinySkia,
+    /// tiny-skia の置き換え候補として検証中の CPU レンダラ（vello_cpu、Web限定スパイク）。
+    VelloCpu,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
     Recording,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
@@ -44,6 +46,7 @@ impl SceneRendererKind {
         match self {
             Self::Vello => "vello",
             Self::TinySkia => "tiny-skia",
+            Self::VelloCpu => "vello-cpu",
             Self::Recording => "recording",
             Self::Null => "null",
         }
@@ -198,14 +201,25 @@ impl RendererSelectionPolicy {
     }
 }
 
-#[cfg(any(feature = "backend-vello", feature = "backend-tiny-skia"))]
-const PRODUCTION_RENDERERS: &[SceneRendererKind] =
-    &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
+#[cfg(any(
+    feature = "backend-vello",
+    feature = "backend-tiny-skia",
+    feature = "backend-vello-cpu"
+))]
+const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[
+    SceneRendererKind::Vello,
+    SceneRendererKind::TinySkia,
+    SceneRendererKind::VelloCpu,
+];
 
 /// C3 コーデック統合テストは `--features backend-null` のみでビルドする。
 #[cfg(all(
     feature = "backend-null",
-    not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
+    not(any(
+        feature = "backend-vello",
+        feature = "backend-tiny-skia",
+        feature = "backend-vello-cpu"
+    ))
 ))]
 const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
 
@@ -216,6 +230,7 @@ const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
 #[cfg(any(
     feature = "backend-vello",
     feature = "backend-tiny-skia",
+    feature = "backend-vello-cpu",
     feature = "backend-null"
 ))]
 pub fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
@@ -244,6 +259,7 @@ mod tests {
         // try_draw_colr に流し、CPU/診断ペインタはアウトラインのみ描く。
         assert!(SceneRendererKind::Vello.paints_color_glyphs());
         assert!(!SceneRendererKind::TinySkia.paints_color_glyphs());
+        assert!(!SceneRendererKind::VelloCpu.paints_color_glyphs());
         assert!(!SceneRendererKind::Recording.paints_color_glyphs());
         assert!(!SceneRendererKind::Null.paints_color_glyphs());
     }
