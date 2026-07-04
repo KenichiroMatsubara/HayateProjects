@@ -356,6 +356,16 @@ pub(crate) async fn init_gpu_surface(
     let mut surface_config = surface
         .get_default_config(&adapter, width, height)
         .ok_or("surface not supported by adapter")?;
+    // UI 色は CSS hex 由来の sRGB エンコード済みバイト値をそのまま格納する規約（Web と同じ、
+    // ADR-0125 レイヤ合成パス）。`get_default_config` は sRGB 対応 swapchain フォーマットを
+    // 優先して返すため、そのまま使うと GPU が store 時にもう一段 sRGB エンコードを掛けてしまい
+    // 色が白っぽく退色する（二重ガンマ）。Web の canvas 既定フォーマットは非 sRGB（バイト値
+    // そのまま格納）なので、Android でも対応していれば非 sRGB を明示選択して揃える。
+    let capabilities = surface.get_capabilities(&adapter);
+    surface_config.format = crate::surface_lifecycle::prefer_non_srgb_format(
+        surface_config.format,
+        &capabilities.formats,
+    );
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 

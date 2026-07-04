@@ -58,9 +58,57 @@ pub fn viewport_for_surface(width: u32, height: u32, content_scale: f32) -> (f32
     surface_metrics(width as i32, height as i32, content_scale).viewport_size()
 }
 
+/// swapchain の既定フォーマットが sRGB 対応なら、対応していれば非 sRGB 版を選ぶ。
+///
+/// UI 色は CSS hex 由来の sRGB エンコード済みバイト値をそのまま格納する規約（Web と同じ）。
+/// sRGB フォーマットの surface にそのまま store すると GPU がもう一段 sRGB エンコードを掛けて
+/// しまい、色が白っぽく退色する（二重ガンマ）。非 sRGB 版が capabilities に無ければ、present
+/// 不能になるより退色の方がまし＝既定値のままにする。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn prefer_non_srgb_format(
+    default_format: wgpu::TextureFormat,
+    available: &[wgpu::TextureFormat],
+) -> wgpu::TextureFormat {
+    let non_srgb = default_format.remove_srgb_suffix();
+    if available.contains(&non_srgb) {
+        non_srgb
+    } else {
+        default_format
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wgpu::TextureFormat;
+
+    #[test]
+    fn falls_back_to_non_srgb_variant_when_available() {
+        // 実機（Vulkan）で観測した既定値。対応する非 sRGB 版があれば二重ガンマを避けるため
+        // そちらを選ぶ（色が退色するバグの直接の原因）。
+        let picked = prefer_non_srgb_format(
+            TextureFormat::Bgra8UnormSrgb,
+            &[TextureFormat::Bgra8UnormSrgb, TextureFormat::Bgra8Unorm],
+        );
+        assert_eq!(picked, TextureFormat::Bgra8Unorm);
+    }
+
+    #[test]
+    fn leaves_already_non_srgb_format_untouched() {
+        let picked = prefer_non_srgb_format(
+            TextureFormat::Rgba8Unorm,
+            &[TextureFormat::Rgba8Unorm, TextureFormat::Rgba8UnormSrgb],
+        );
+        assert_eq!(picked, TextureFormat::Rgba8Unorm);
+    }
+
+    #[test]
+    fn keeps_srgb_format_when_no_non_srgb_variant_is_available() {
+        // present 不能になるくらいなら退色の方がまし。
+        let picked =
+            prefer_non_srgb_format(TextureFormat::Bgra8UnormSrgb, &[TextureFormat::Bgra8UnormSrgb]);
+        assert_eq!(picked, TextureFormat::Bgra8UnormSrgb);
+    }
 
     #[test]
     fn window_dimensions_clamp_to_at_least_one_pixel() {
