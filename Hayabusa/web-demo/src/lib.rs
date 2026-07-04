@@ -131,6 +131,11 @@ pub async fn boot(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
     // ── 3. in-process projection：初期構築 mutation を借用ツリーへ drain（root 設定 + listener 登録）─
     DeliverySink::handle(&mut app, &[], renderer.tree_mut());
 
+    // 初回フレームを即座に描く。タブが非表示（`document.hidden`）だと最初の
+    // `requestAnimationFrame` が発火するまで canvas が空のままになるため、RAF ループの開始を
+    // 待たずここで一度同期 render しておく（以後は通常どおり RAF が引き継ぐ）。
+    let _ = renderer.render(0.0);
+
     // ── 4. ライブ raf ループ：render → poll_deliveries → handle ───────────────
     let state = Rc::new(RefCell::new((renderer, app)));
     let raf: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));

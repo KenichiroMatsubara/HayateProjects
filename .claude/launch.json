@@ -13,6 +13,12 @@
       "runtimeArgs": ["--filter", "@tsubame/example-react-todo", "exec", "vite", "--port", "5182", "--strictPort"],
       "port": 5182,
       "autoPort": false
+    },
+    {
+      "name": "hayabusa-web-demo",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8791", "--directory", "Hayabusa/web-demo"],
+      "port": 8791
     }
   ]
 }

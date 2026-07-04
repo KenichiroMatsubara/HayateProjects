@@ -5,6 +5,7 @@ members = [
     "crates/demo-fixtures",
     "crates/scene-renderers/vello",
     "crates/scene-renderers/tiny-skia",
+    "crates/scene-renderers/vello-cpu",
     "crates/scene-renderers/test-support",
     "crates/scene-renderers/compositor",
     "crates/platform/web",
@@ -31,6 +32,7 @@ vello = "0.9"
 # Desktop windowing (ADR-0118) — winit が desktop family の windowing 層を畳む。
 winit = "0.30"
 tiny-skia = { version = "0.11", default-features = false, features = ["std"] }
+vello_cpu = "0.0.9"
 
 # Layout
 taffy = "0.7"
