@@ -220,8 +220,9 @@ pub(crate) fn run(app: AndroidApp) {
                     match lifecycle.handle(event) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
+                                let scale = crate::surface_lifecycle::content_scale(&app);
                                 let (w, h) = window_dimensions(window.width(), window.height());
-                                let (vw, vh) = viewport_for_surface(w, h);
+                                let (vw, vh) = viewport_for_surface(w, h, scale);
                                 last_viewport = Some((vw, vh));
                                 if let Some(runtime) = current.as_ref() {
                                     let mut tree = runtime.tree.borrow_mut();
@@ -236,7 +237,7 @@ pub(crate) fn run(app: AndroidApp) {
                                     // 永久に残る）。
                                     let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                                 }
-                                match pollster::block_on(init_gpu_surface(&window)) {
+                                match pollster::block_on(init_gpu_surface(&window, scale)) {
                                     // 生成した surface を Raster スレッドへ move（#635）。
                                     Ok(surface) => raster = Some(spawn_raster_thread(surface)),
                                     Err(err) => log::error!(
@@ -248,10 +249,15 @@ pub(crate) fn run(app: AndroidApp) {
                         // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
                         SurfaceLifecycleAction::DestroySurface => raster = None,
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
+                            let scale = crate::surface_lifecycle::content_scale(&app);
                             if let Some(rt) = raster.as_ref() {
-                                let _ = rt.send(RasterCommand::Resize { width, height });
+                                let _ = rt.send(RasterCommand::Resize {
+                                    width,
+                                    height,
+                                    content_scale: scale,
+                                });
                             }
-                            let (vw, vh) = viewport_for_surface(width, height);
+                            let (vw, vh) = viewport_for_surface(width, height, scale);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
                                 let mut tree = runtime.tree.borrow_mut();

@@ -51,6 +51,8 @@ pub(crate) struct GpuSurface {
     compositor: WgpuQuadCompositor,
     /// 前フレームのレイヤ集合。消えたレイヤのキャッシュ面と台帳を掃除するため。
     prev_layers: HashSet<ElementId>,
+    /// 論理px→物理pxの倍率（DPI 対応）。`rasterizer.resize` へ resize のたび渡す。
+    content_scale: f32,
 }
 
 /// JS 駆動経路（ADR-0112, feature=tsubame-js）。Hermes に Tsubame バンドルを載せ、
@@ -115,11 +117,12 @@ pub fn android_main(app: AndroidApp) {
                     match lifecycle.handle(event) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
+                                let scale = crate::surface_lifecycle::content_scale(&app);
                                 let (w, h) =
                                     window_dimensions(window.width(), window.height());
-                                let (vw, vh) = viewport_for_surface(w, h);
+                                let (vw, vh) = viewport_for_surface(w, h, scale);
                                 tree.set_viewport(vw, vh);
-                                match pollster::block_on(init_gpu_surface(&window)) {
+                                match pollster::block_on(init_gpu_surface(&window, scale)) {
                                     // 生成した surface を Raster スレッドへ move（move-after-creation）。
                                     Ok(surface) => raster = Some(spawn_raster_thread(surface)),
                                     Err(err) => {
@@ -133,10 +136,15 @@ pub fn android_main(app: AndroidApp) {
                         // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
                         SurfaceLifecycleAction::DestroySurface => raster = None,
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
+                            let scale = crate::surface_lifecycle::content_scale(&app);
                             if let Some(rt) = raster.as_ref() {
-                                let _ = rt.send(RasterCommand::Resize { width, height });
+                                let _ = rt.send(RasterCommand::Resize {
+                                    width,
+                                    height,
+                                    content_scale: scale,
+                                });
                             }
-                            let (vw, vh) = viewport_for_surface(width, height);
+                            let (vw, vh) = viewport_for_surface(width, height, scale);
                             tree.set_viewport(vw, vh);
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
@@ -253,13 +261,19 @@ pub(crate) fn process_touch_input(app: &AndroidApp, tree: &mut ElementTree) -> b
         }
     };
 
+    // タッチ座標は物理pxで届くが、レイアウト/ヒットテストは論理px空間（`viewport_for_surface`
+    // と同じ content_scale）で動く。揃えないと高密度端末でタップ位置がずれる。
+    let content_scale = crate::surface_lifecycle::content_scale(app);
+
     let mut dispatched = false;
     loop {
         let read = iter.next(|event| {
             if let InputEvent::MotionEvent(motion) = event {
                 if let Some(action) = motion_action_to_touch(motion.action()) {
                     let pointer = motion.pointer_at_index(motion.pointer_index());
-                    match translate_touch(action, pointer.x(), pointer.y()) {
+                    let x = pointer.x() / content_scale;
+                    let y = pointer.y() / content_scale;
+                    match translate_touch(action, x, y) {
                         PointerInput::Down { x, y } => tree.on_pointer_down(x, y),
                         PointerInput::Move { x, y } => {
                             let _ = tree.on_pointer_move(x, y);
@@ -293,6 +307,7 @@ fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
 
 pub(crate) async fn init_gpu_surface(
     window: &ndk::native_window::NativeWindow,
+    content_scale: f32,
 ) -> Result<GpuSurface, String> {
     let (width, height) = window_dimensions(window.width(), window.height());
 
@@ -344,7 +359,8 @@ pub(crate) async fn init_gpu_surface(
     surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
     surface.configure(&device, &surface_config);
 
-    let rasterizer = VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height)?;
+    let rasterizer =
+        VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height, content_scale)?;
     let mut compositor = WgpuQuadCompositor::new(device.clone(), queue.clone());
     // init 時に全パイプライン variant（surface format × blend）を前倒し生成し、初回合成フレームの
     // 遅延生成スパイクを消す（ADR-0130a）。composite は遅延生成経路を持たない。
@@ -361,6 +377,7 @@ pub(crate) async fn init_gpu_surface(
         rasterizer,
         compositor,
         prev_layers: HashSet::new(),
+        content_scale,
     })
 }
 
@@ -467,18 +484,23 @@ impl GpuSurface {
         Ok(())
     }
 
-    pub(crate) fn resize(&mut self, width: u32, height: u32) {
-        if width == 0 || height == 0 || (width == self.width && height == self.height) {
+    pub(crate) fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+        let content_scale = content_scale.max(1.0);
+        if width == 0
+            || height == 0
+            || (width == self.width && height == self.height && content_scale == self.content_scale)
+        {
             return;
         }
         self.width = width;
         self.height = height;
+        self.content_scale = content_scale;
         self.surface_config.width = width;
         self.surface_config.height = height;
         self.surface.configure(&self.device, &self.surface_config);
         // レイヤ texture はサーフェスサイズなので全部作り直し＝台帳ごと invalidate する
         // （invalidate しないと古いサイズの内容を合成し続ける）。
-        self.rasterizer.resize(width, height);
+        self.rasterizer.resize(width, height, content_scale);
         self.planner.invalidate();
     }
 }
@@ -511,7 +533,9 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
                 log::error!("hayate-adapter-android: raster-thread render failed: {err}");
             }
         }
-        RasterCommand::Resize { width, height } => surface.resize(width, height),
+        RasterCommand::Resize { width, height, content_scale } => {
+            surface.resize(width, height, content_scale)
+        }
         RasterCommand::SurfaceLost => surface_ready = false,
         RasterCommand::RebuildSurface => surface_ready = true,
     })
