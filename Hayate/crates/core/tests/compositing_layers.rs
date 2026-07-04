@@ -304,6 +304,134 @@ fn on_demand_loop_keeps_rendering_through_layer_demotion() {
     );
 }
 
+#[test]
+fn on_demand_loop_settles_two_concurrent_sibling_transitions() {
+    // #680 実機回帰（追加ケース）: 実機の優先度セグメントボタン（高/中/低）は 1 回の
+    // クリックで「選択されていた方」が非アクティブ色へ、「新しく選択された方」がアクティブ色へ、
+    // 2 要素が同一フレームで同時に transition を開始し、同じ duration で同時に終わる
+    // （`AddForm.tsx` の `seg()` — `backgroundColor: active ? tone : panel2` を 2 兄弟へ同時適用）。
+    // 既存の回帰テストは 1 要素だけが transition する場合しか固定していない。2 要素が同時に
+    // 昇格・降格する場合、`has_pending_layer_transition` の境界差分比較は集合演算なので原理上
+    // 複数要素でも成立するはずだが、実機では両方降格せず片方（または両方）が消えたまま固まる
+    // 挙動が観測されている——ここでその前提を明示的に固定する。
+    use hayate_core::element::style::Dimension;
+
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let a = tree.element_create(1, ElementKind::View); // 元々アクティブ（緑）→ 非アクティブへ
+    let b = tree.element_create(2, ElementKind::View); // 元々非アクティブ（灰）→ アクティブへ
+    tree.element_append_child(root, a);
+    tree.element_append_child(root, b);
+    tree.set_root(root);
+
+    let active = Color::new(0.0, 1.0, 0.0, 1.0);
+    let inactive = Color::new(0.5, 0.5, 0.5, 1.0);
+    let common = |bg: Color| {
+        vec![
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(bg),
+            StyleProp::TransitionDuration(160.0),
+        ]
+    };
+    tree.element_set_style(a, &common(active));
+    tree.element_set_style(b, &common(inactive));
+    let _ = tree.render(0.0);
+
+    // タップ相当：クリックハンドラが同一フレームで a を非アクティブへ、b をアクティブへ
+    // 同時に切り替える（`onClick={() => props.onPrio(prio)}` の再描画で両方の `seg()` が
+    // 新しい `active` 値で呼ばれるのと同型）。
+    tree.element_set_style(a, &[StyleProp::BackgroundColor(inactive)]);
+    tree.element_set_style(b, &[StyleProp::BackgroundColor(active)]);
+    assert!(tree.has_pending_visual_work(), "スタイル変更直後は継続フレームを要求する");
+
+    let mut t = 16.0;
+    let mut frames = 0;
+    while tree.has_pending_visual_work() {
+        let _ = tree.render(t);
+        t += 16.0;
+        frames += 1;
+        assert!(frames < 200, "有限フレームで idle に落ちなければならない");
+    }
+
+    assert!(
+        !tree.frame_layers().contains(&a),
+        "idle 到達時点で a の降格が capture_frame_layers に反映されていなければならない\
+         （2 要素同時 transition の片方が取り残される #680 回帰）"
+    );
+    assert!(
+        !tree.frame_layers().contains(&b),
+        "idle 到達時点で b の降格も同様に反映されていなければならない"
+    );
+    assert!(
+        tree.frame_layer_dirty().contains(&root),
+        "a・b の両方を内包する root は穴あきキャッシュを直すため content dirty にならなければ\
+         ならない（片方だけ直って他方が消えたままになる回帰を防ぐ）"
+    );
+}
+
+#[test]
+fn on_demand_loop_settles_sibling_transitions_inside_a_scroll_view() {
+    // #680 実機回帰（追加ケース・2）: 実機の優先度セグメントボタンは root 直下ではなく、
+    // Tasks パネル全体を包む ScrollView の中にある（`AddForm` は Tasks カードの子）。
+    // ScrollView 自身が常時 compositing layer 境界なので、ボタンの降格 dirty は root では
+    // なく「内包する ScrollView」へ流れる（`derive_layer_dirty` は最近接レイヤへルーティング
+    // する）。上のテストは root 直下の平だな階層でしか固定していないので、ScrollView を
+    // 挟んだ経路に別の穴（demoted dirty が ScrollView の chrome/content 分離を通り抜けられ
+    // ない等）が無いかをここで固定する。
+    use hayate_core::element::style::Dimension;
+
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let a = tree.element_create(2, ElementKind::View);
+    let b = tree.element_create(3, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, a);
+    tree.element_append_child(scroll, b);
+    tree.set_root(root);
+    tree.set_viewport(200.0, 100.0);
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
+    );
+
+    let active = Color::new(0.0, 1.0, 0.0, 1.0);
+    let inactive = Color::new(0.5, 0.5, 0.5, 1.0);
+    let common = |bg: Color| {
+        vec![
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(bg),
+            StyleProp::TransitionDuration(160.0),
+        ]
+    };
+    tree.element_set_style(a, &common(active));
+    tree.element_set_style(b, &common(inactive));
+    let _ = tree.render(0.0);
+
+    tree.element_set_style(a, &[StyleProp::BackgroundColor(inactive)]);
+    tree.element_set_style(b, &[StyleProp::BackgroundColor(active)]);
+    assert!(tree.has_pending_visual_work(), "スタイル変更直後は継続フレームを要求する");
+
+    let mut t = 16.0;
+    let mut frames = 0;
+    while tree.has_pending_visual_work() {
+        let _ = tree.render(t);
+        t += 16.0;
+        frames += 1;
+        assert!(frames < 200, "有限フレームで idle に落ちなければならない");
+    }
+
+    assert!(!tree.frame_layers().contains(&a), "idle 到達時点で a は降格済みのはず");
+    assert!(!tree.frame_layers().contains(&b), "idle 到達時点で b も降格済みのはず");
+    assert!(
+        tree.frame_layer_dirty().contains(&scroll),
+        "a・b を内包する ScrollView が穴あきキャッシュを直すため content dirty に\
+         ならなければならない（root 直下では無く ScrollView 内にある実機構成の回帰）"
+    );
+}
+
 // ── #633: transform-only 変化は content dirty にしない（composite-only フレームの core 前提）──
 //
 // `element_set_transform` の Some→Some（係数だけの変化）はレイヤ内容を変えない——変わるのは合成時の

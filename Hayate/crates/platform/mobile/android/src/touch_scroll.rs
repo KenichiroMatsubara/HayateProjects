@@ -257,6 +257,50 @@ mod tests {
     }
 
     #[test]
+    fn grabbing_during_active_momentum_immediately_overrides_it() {
+        // AC: 前のフリックの慣性がまだ続いている最中に新しい指で掴んだら、慣性の続きに
+        // 打ち勝って新しいドラッグの指位置へ即座に一致しなければならない（慣性が自然に
+        // 止まるまで新しい操作が無視される、という退行を防ぐ）。
+        let (mut tree, scroll) = scrollable();
+        let mut state = TouchScrollState::new();
+
+        state.apply(&mut tree, PointerInput::Down { x: 100.0, y: 90.0 }, 0.0);
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 60.0 }, 16.0);
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 30.0 }, 32.0);
+        state.apply(&mut tree, PointerInput::Up { x: 100.0, y: 30.0 }, 48.0);
+
+        // 慣性を数フレーム進める（まだ止まっていない状態を作る）。
+        let mut t = 64.0;
+        for _ in 0..3 {
+            tree.render(t);
+            t += 16.0;
+        }
+        assert!(tree.has_pending_visual_work(), "この時点でまだ慣性が続いているはず");
+        let (_, oy_mid_momentum) = tree.element_get_scroll_offset(scroll);
+
+        // 慣性が止まる前に、新しい指で掴んで下方向にドラッグする
+        // （down→10px→slop超過の遷移フレーム→実ドラッグ適用、の順は他のテストと同じ配線）。
+        state.apply(&mut tree, PointerInput::Down { x: 100.0, y: 20.0 }, t);
+        t += 16.0;
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 30.0 }, t);
+        t += 16.0;
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 60.0 }, t);
+        t += 16.0;
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 90.0 }, t);
+
+        tree.render(t);
+        let (_, oy_after) = tree.element_get_scroll_offset(scroll);
+
+        // 実ドラッグ適用は最後の 2 move（30px+30px=60px）だけなので、期待値は mid - 60。
+        assert!(
+            (oy_after - (oy_mid_momentum - 60.0)).abs() < 1.0,
+            "新しいドラッグが慣性の続きに打ち勝てていない: \
+             mid={oy_mid_momentum}, expected≈{}, got={oy_after}",
+            oy_mid_momentum - 60.0
+        );
+    }
+
+    #[test]
     fn dragging_past_the_scroll_end_applies_rubber_band_resistance() {
         let (mut tree, scroll) = scrollable();
         let mut state = TouchScrollState::new();

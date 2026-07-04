@@ -8,12 +8,23 @@
 //! UI スレッドが produce、Raster スレッドが consume する。`Send + Sync` 境界はこのハンドオフに引く。
 //! ハンドオフは非ブロッキング channel なので、重い raster が UI スレッドの入力処理を止めない。
 //!
+//! キューは無制限だが FIFO ではない——[`Coalesce`] が「まだ未処理の直近メッセージへ、新着を
+//! 安全に合成してよいか」を決める。`Frame` は連続する限り最新の SceneGraph へ差し替えつつ、
+//! `layer_dirty`/`chrome_dirty` は union で畳む（古いスクロールオフセットを積み上げて後から
+//! 秒単位で「再生」しない一方、合成で消えた古いフレームが持っていた「このレイヤは要 raster」
+//! という情報は失わない——上書きにすると #680 と同系統の「穴あきキャッシュが直らず要素が
+//! 消えたまま」を raster バックログ側でも再現してしまう）。Resize/SurfaceLost/RebuildSurface の
+//! ようなライフサイクル境界は絶対に合成しない——`Coalesce` は直前と直後が両方 `Frame` のときだけ
+//! 合成し、境界を挟んだ相対順序はこれまで通り保たれる（元は #635 の単純な mpsc FIFO だったが、
+//! raster が入力より遅くなった瞬間に無制限バックログとして溜まり、表示が数秒遅れて「追いつく」
+//! 形で見えていた——診断の詳細は該当 issue のコミットメッセージ参照）。
+//!
 //! 実 Vello/wgpu の raster/composite は [`RasterThread::spawn`] に渡す sink が担う（native backend が
 //! cache+compositor を所有して Raster スレッド上だけで触る）。本モジュールはスレッドモデルと境界型を
 //! host で固定し、出力がシングルスレッド時と同値であることをテストする。
 
-use std::collections::HashSet;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::collections::{HashSet, VecDeque};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
 use hayate_core::element::id::ElementId;
@@ -54,22 +65,75 @@ pub enum RasterCommand {
     RebuildSurface,
 }
 
+impl Coalesce for RasterCommand {
+    fn merge(&mut self, incoming: Self) -> Result<(), Self> {
+        // Frame が連続するときだけ合成してよい（Resize/SurfaceLost/RebuildSurface を跨いだ
+        // 相対順序は壊せない——surface ライフサイクルの正しさが崩れる）。SceneGraph/layers は
+        // 最新のものに差し替えるが、`layer_dirty`/`chrome_dirty` は union する——上書きすると、
+        // 合成されて消えた古い方が持っていた「このレイヤは穴あきキャッシュを直すため要
+        // raster」という情報が失われ、raster が詰まっている間にマークされた dirty が
+        // そのまま失われて要素が画面から消えたまま戻らなくなる（#680 と同系統の退行）。
+        match (&mut *self, incoming) {
+            (RasterCommand::Frame(existing), RasterCommand::Frame(new)) => {
+                existing.scene = new.scene;
+                existing.layers = new.layers;
+                existing.layer_dirty.extend(new.layer_dirty);
+                existing.chrome_dirty.extend(new.chrome_dirty);
+                Ok(())
+            }
+            (_, incoming) => Err(incoming),
+        }
+    }
+}
+
 /// ハンドオフ失敗（Raster スレッドが既に終了している）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RasterHandoffError {
     Disconnected,
 }
 
+/// `M` の新着メッセージを、まだ raster スレッドに拾われていない直近のキュー末尾へ安全に
+/// 合成してよいか（＝古い方を単に捨てるのではなく、両者の情報を失わず 1 件へ畳めるか）を決める。
+///
+/// 合成できるときは `self` を新しい状態へ更新して `Ok(())` を返す（キューには積み増さない）。
+/// 合成できないときは `incoming` をそのまま `Err` で返す（呼び出し側がキューへ積む）。常に
+/// `Err(incoming)` を返す実装は無制限 FIFO と同値（旧来の挙動）。
+///
+/// **正しさの要件**: 合成後の 1 件は、合成前の 2 件を順番に処理したのと観測可能な結果が
+/// 一致しなければならない。例えば [`RasterCommand::Frame`] は最新の SceneGraph へ差し替える
+/// だけでなく、`layer_dirty`/`chrome_dirty` を union する——ここを上書きにすると、消えた古い
+/// 方が持っていた「このレイヤは要 raster」という情報が失われ、詰まっている間にマークされた
+/// dirty がそのまま失われて要素が画面から消えたまま戻らなくなる（#680 と同系統の退行）。
+pub trait Coalesce: Sized {
+    fn merge(&mut self, incoming: Self) -> Result<(), Self>;
+}
+
+impl Coalesce for RasterHandoff {
+    fn merge(&mut self, incoming: Self) -> Result<(), Self> {
+        Err(incoming)
+    }
+}
+
+struct QueueState<M> {
+    queue: VecDeque<M>,
+    closed: bool,
+}
+
+struct Shared<M> {
+    state: Mutex<QueueState<M>>,
+    condvar: Condvar,
+}
+
 /// 専用 Raster スレッド。UI スレッド（core＝単一スレッドのまま）が produce したメッセージ `M`
 /// （典型は [`RasterCommand`]）を受けて raster/composite する。`sink` は cache+compositor
 /// （#610 の `Send` クリーン seam）と surface を所有し、Raster スレッド上だけで触る。core 自体は
-/// マルチスレッド化しない（ADR-0003 維持）。メッセージは 1 本の channel に直列化されるので、
-/// Frame と surface ライフサイクル（resize / lost / rebuild）の相対順序が保たれる。
+/// マルチスレッド化しない（ADR-0003 維持）。キューは [`Coalesce`] が許す範囲でのみ合成され、それ以外の
+/// 相対順序（Frame と surface ライフサイクルの順序を含む）は 1 本のキューに直列化されたまま保たれる。
 pub struct RasterThread<M = RasterCommand>
 where
     M: Send + 'static,
 {
-    sender: Option<Sender<M>>,
+    shared: Option<Arc<Shared<M>>>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -82,34 +146,84 @@ where
     where
         S: FnMut(M) + Send + 'static,
     {
-        let (sender, receiver): (Sender<M>, Receiver<M>) = mpsc::channel();
-        let handle = thread::spawn(move || {
-            // sender が全て drop されると recv が Err になりループを抜ける（綺麗な終了）。
-            while let Ok(message) = receiver.recv() {
-                sink(message);
+        let shared = Arc::new(Shared {
+            state: Mutex::new(QueueState {
+                queue: VecDeque::new(),
+                closed: false,
+            }),
+            condvar: Condvar::new(),
+        });
+        let worker_shared = Arc::clone(&shared);
+        let handle = thread::spawn(move || loop {
+            let message = {
+                let mut state = worker_shared.state.lock().unwrap();
+                loop {
+                    if let Some(message) = state.queue.pop_front() {
+                        break Some(message);
+                    }
+                    if state.closed {
+                        break None;
+                    }
+                    state = worker_shared.condvar.wait(state).unwrap();
+                }
+            };
+            match message {
+                Some(message) => sink(message),
+                // closed かつキューが空＝送信側が全て drop された（綺麗な終了）。
+                None => break,
             }
         });
         Self {
-            sender: Some(sender),
+            shared: Some(shared),
             handle: Some(handle),
         }
     }
 
     /// UI スレッドからメッセージを渡す（非ブロッキング）。raster 完了を待たずに返るので、UI スレッドは
     /// 続けて入力処理・次フレーム生成ができる（重い raster が入力を止めない・ADR-0128）。
-    pub fn send(&self, message: M) -> Result<(), RasterHandoffError> {
-        match self.sender.as_ref() {
-            Some(sender) => sender
-                .send(message)
-                .map_err(|_| RasterHandoffError::Disconnected),
-            None => Err(RasterHandoffError::Disconnected),
+    ///
+    /// キュー末尾がまだ raster に拾われておらず、かつ `M::merge` が合成に成功したときは、
+    /// 積み増さずにその場で合成する——raster が詰まっても「stale なフレームの山を後から順に
+    /// 再生して数秒遅れて追いつく」のではなく、詰まりが解けた瞬間に最新の状態へ飛ぶ。合成は
+    /// 両者の情報を失わず 1 件へ畳む（`Coalesce` の正しさの要件）ので、キューが短くなっても
+    /// dirty 情報が失われることはない。
+    pub fn send(&self, message: M) -> Result<(), RasterHandoffError>
+    where
+        M: Coalesce,
+    {
+        let Some(shared) = self.shared.as_ref() else {
+            return Err(RasterHandoffError::Disconnected);
+        };
+        let mut state = shared
+            .state
+            .lock()
+            .map_err(|_| RasterHandoffError::Disconnected)?;
+        if state.closed {
+            return Err(RasterHandoffError::Disconnected);
         }
+        let mut message = message;
+        if let Some(last) = state.queue.back_mut() {
+            match last.merge(message) {
+                Ok(()) => {
+                    shared.condvar.notify_one();
+                    return Ok(());
+                }
+                Err(returned) => message = returned,
+            }
+        }
+        state.queue.push_back(message);
+        shared.condvar.notify_one();
+        Ok(())
     }
 
-    /// Raster スレッドを停止して join する（surface 破棄 / reload で明示的に畳むとき）。以後の
-    /// [`send`](Self::send) は `Disconnected` を返す。Drop でも同じ手順で畳まれる。
+    /// Raster スレッドを停止して join する（surface 破棄 / reload で明示的に畳むとき）。送信済みで
+    /// まだキューにあるメッセージは畳む前に drain される。以後の [`send`](Self::send) は
+    /// `Disconnected` を返す。Drop でも同じ手順で畳まれる。
     pub fn shutdown(&mut self) {
-        self.sender.take();
+        if let Some(shared) = self.shared.take() {
+            shared.state.lock().unwrap().closed = true;
+            shared.condvar.notify_all();
+        }
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
@@ -121,7 +235,8 @@ where
     M: Send + 'static,
 {
     fn drop(&mut self) {
-        // sender を先に drop して recv を切り、ワーカーを抜けさせてから join する（join 先行は deadlock）。
+        // closed を先に立てて worker がキュー drain 後に抜けられるようにしてから join する
+        // （join 先行は deadlock）。
         self.shutdown();
     }
 }
@@ -130,7 +245,7 @@ where
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
-    use std::sync::Arc;
+    use std::sync::{mpsc, Arc};
 
     fn id(raw: u64) -> ElementId {
         ElementId::from_u64(raw)
@@ -371,5 +486,79 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<RasterCommand>();
         assert_send::<RasterHandoff>();
+    }
+
+    // ── backlog coalescing（raster が入力より遅くなったときの挙動）────────────────────────
+
+    #[test]
+    fn slow_raster_drops_backlog_instead_of_replaying_it() {
+        // AC: raster が詰まっている間に大量の Frame が届いても、詰まりが解けたとき無制限 FIFO の
+        // ように全件を順に再生してはいけない——1 件に一本化され、表示は「今」へ飛ぶ。旧実装
+        // （単純な mpsc）だとこのテストは 52 件（gate 分 1 + 送信 51 件）を全部 present し、表示が
+        // 実入力から数秒分遅れて「追いつく」形で見える不具合を再現してしまう。
+        //
+        // 一本化は SceneGraph/layers を最新のものへ差し替えるだけでなく、`layer_dirty` を
+        // union しなければならない——合成で消えた古いフレームの dirty を単純上書きで捨てると、
+        // そのフレームでしかマークされなかった「このレイヤは穴あきキャッシュを直すため要
+        // raster」という情報が失われ、#680 と同系統の「要素が消えたまま戻らない」を raster
+        // バックログ側で再現してしまう。
+        let gate_hit = Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()));
+        let gate_for_sink = Arc::clone(&gate_hit);
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let release_rx = std::sync::Mutex::new(release_rx);
+        let processed: Arc<std::sync::Mutex<Vec<Vec<u64>>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink_processed = Arc::clone(&processed);
+        let mut first = true;
+
+        let rt = RasterThread::spawn(move |cmd: RasterCommand| {
+            if let RasterCommand::Frame(h) = &cmd {
+                let v = rasterize(h);
+                if first {
+                    first = false;
+                    // raster が最初の 1 件を掴んだことをテストスレッドへ知らせ、テストスレッドが
+                    // 「詰まっている間の」後続送信を全部終えるまでここで足止めする。
+                    let (lock, cvar) = &*gate_for_sink;
+                    *lock.lock().unwrap() = true;
+                    cvar.notify_all();
+                    let _ = release_rx.lock().unwrap().recv();
+                }
+                sink_processed.lock().unwrap().push(v);
+            }
+        });
+
+        rt.send(RasterCommand::Frame(handoff(&[0]))).unwrap();
+
+        // raster が最初の 1 件を掴んでブロックするまで待つ。
+        {
+            let (lock, cvar) = &*gate_hit;
+            let mut hit = lock.lock().unwrap();
+            while !*hit {
+                hit = cvar.wait(hit).unwrap();
+            }
+        }
+
+        // raster が詰まっている間に、後続フレームを大量に送る（1 件ずつ別々の layer を dirty に）。
+        for i in 1..=50u64 {
+            rt.send(RasterCommand::Frame(handoff(&[i]))).unwrap();
+        }
+
+        release_tx.send(()).unwrap();
+        drop(rt); // 残り（合成後の最終 1 件）を drain させてから join。
+
+        let done = processed.lock().unwrap();
+        assert_eq!(
+            done.len(),
+            2,
+            "raster 呼び出しは「詰まっていた最初の 1 件」+「合成された最終 1 件」の 2 回だけ\
+             （51 件を順に再生する退行を防ぐ）"
+        );
+        assert_eq!(done[0], vec![0], "1 件目はゲートで足止めした最初の送信そのまま");
+        assert_eq!(
+            done[1],
+            (1..=50).collect::<Vec<u64>>(),
+            "合成された 1 件の layer_dirty は詰まっている間に届いた 50 件全ての union のはず\
+             ——上書きで一部が失われていない"
+        );
     }
 }
