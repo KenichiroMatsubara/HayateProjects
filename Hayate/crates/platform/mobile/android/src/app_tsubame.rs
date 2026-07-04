@@ -220,13 +220,24 @@ pub(crate) fn run(app: AndroidApp) {
                     match lifecycle.handle(event) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
+                                let scale = crate::surface_lifecycle::content_scale(&app);
                                 let (w, h) = window_dimensions(window.width(), window.height());
-                                let (vw, vh) = viewport_for_surface(w, h);
+                                let (vw, vh) = viewport_for_surface(w, h, scale);
                                 last_viewport = Some((vw, vh));
                                 if let Some(runtime) = current.as_ref() {
-                                    runtime.tree.borrow_mut().set_viewport(vw, vh);
+                                    let mut tree = runtime.tree.borrow_mut();
+                                    tree.set_viewport(vw, vh);
+                                    // `set_viewport` はメトリクスを差し替えるだけでレイアウトは
+                                    // 再計算しない。JS 駆動の on-demand フレームループ（ADR-0126）
+                                    // は resize を関知しないため（issue #475: resize は native→tree
+                                    // 直結で JS 経路から外れている）、ここで明示的に `render` を
+                                    // 起こさないと直近の pumpFrame が焼き込んだ古いビューポートの
+                                    // レイアウトのまま固まる（起動直後は Hermes 側のデフォルト viewport
+                                    // で 1 回 render 済みのため、実サイズ確定前に描いた小さいレイアウトが
+                                    // 永久に残る）。
+                                    let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                                 }
-                                match pollster::block_on(init_gpu_surface(&window)) {
+                                match pollster::block_on(init_gpu_surface(&window, scale)) {
                                     // 生成した surface を Raster スレッドへ move（#635）。
                                     Ok(surface) => raster = Some(spawn_raster_thread(surface)),
                                     Err(err) => log::error!(
@@ -238,13 +249,22 @@ pub(crate) fn run(app: AndroidApp) {
                         // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。
                         SurfaceLifecycleAction::DestroySurface => raster = None,
                         SurfaceLifecycleAction::ResizeSurface { width, height } => {
+                            let scale = crate::surface_lifecycle::content_scale(&app);
                             if let Some(rt) = raster.as_ref() {
-                                let _ = rt.send(RasterCommand::Resize { width, height });
+                                let _ = rt.send(RasterCommand::Resize {
+                                    width,
+                                    height,
+                                    content_scale: scale,
+                                });
                             }
-                            let (vw, vh) = viewport_for_surface(width, height);
+                            let (vw, vh) = viewport_for_surface(width, height, scale);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
-                                runtime.tree.borrow_mut().set_viewport(vw, vh);
+                                let mut tree = runtime.tree.borrow_mut();
+                                tree.set_viewport(vw, vh);
+                                // CreateSurface と同じ理由（上のコメント参照）で、viewport 変更を
+                                // 即座にレイアウトへ反映させるため明示的に render を起こす。
+                                let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                             }
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
@@ -318,6 +338,24 @@ pub(crate) fn run(app: AndroidApp) {
             &mut ime_keyboard_shown,
         );
         if touch_woke || ime_woke {
+            frame_loop.request_wake();
+            // JS 側の frame ループは自前の armed 状態（`HayateRenderer` の `pendingFrame`）を
+            // 持ち、native の on-demand ループ（`frame_loop`）が起きただけでは再武装されない
+            // （issue #475 で resize は native→tree 直結にしたが、`pumpFrame` 自体は JS が
+            // armed でないと何もしない一発コールバック契約のまま）。Web は自前配線した
+            // ポインタ/編集 listener から `set_request_redraw` を叩いて揃えている
+            // （hayate-renderer.ts の `start()` 参照）。Android は入力を native→tree 直結で
+            // 処理するため同じ配線が無く、初回フレーム以降ずっと `pendingFrame` が null の
+            // まま＝タップ/スクロールが一切効かなくなっていた。ここで揃える。
+            runtime.hermes.pin_mut().request_redraw();
+        }
+        // JS の frame ループが armed になった（`requestFrame` が呼ばれた）ことを都度拾う。
+        // web の requestAnimationFrame と違い、Android の on-demand ループには自走クロックが
+        // 無い。click ハンドラが `setStyle` 等を呼ぶと `scheduleFrame` が自己再武装するが、
+        // その変更は次の `flush` でしか native tree に反映されない。この wake が無いと、次の
+        // native 入力が来るまで pump が二度と起きず、タップの結果が永久に描画へ反映されない
+        // （register_listener/dispatch 自体は成功しているのに見た目が変わらない不具合の原因）。
+        if runtime.hermes.pin_mut().consume_wants_pump() {
             frame_loop.request_wake();
         }
 

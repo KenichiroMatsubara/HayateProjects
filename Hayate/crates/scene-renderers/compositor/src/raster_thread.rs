@@ -40,8 +40,14 @@ pub struct RasterHandoff {
 pub enum RasterCommand {
     /// 1 フレームを raster/composite して present する。
     Frame(RasterHandoff),
-    /// surface サイズ変更（swapchain 再構成＋レイヤ texture invalidate）。
-    Resize { width: u32, height: u32 },
+    /// surface サイズ変更（swapchain 再構成＋レイヤ texture invalidate）。`content_scale` は
+    /// レイヤ raster（Vello）が論理座標を物理バッファへ引き伸ばす倍率（DPI 対応, ADR-0080 の
+    /// Android 延長）。
+    Resize {
+        width: u32,
+        height: u32,
+        content_scale: f32,
+    },
     /// surface が失われた（Android TerminateWindow）。以後の Frame は present をスキップする。
     SurfaceLost,
     /// surface を再構築する（新規作成 / Miharashi full reload）。sink が握る factory を起動する。
@@ -266,7 +272,7 @@ mod tests {
                         t.events.push(format!("skip {dirty:?}"));
                     }
                 }
-                RasterCommand::Resize { width, height } => {
+                RasterCommand::Resize { width, height, .. } => {
                     t.events.push(format!("resize {width}x{height}"));
                 }
                 RasterCommand::SurfaceLost => {
@@ -288,7 +294,7 @@ mod tests {
 
         rt.send(RasterCommand::RebuildSurface).unwrap();
         rt.send(RasterCommand::Frame(handoff(&[1]))).unwrap();
-        rt.send(RasterCommand::Resize { width: 800, height: 600 }).unwrap();
+        rt.send(RasterCommand::Resize { width: 800, height: 600, content_scale: 1.0 }).unwrap();
         rt.send(RasterCommand::Frame(handoff(&[2]))).unwrap();
         drop(rt); // 送信済みメッセージを全部処理してから join。
 

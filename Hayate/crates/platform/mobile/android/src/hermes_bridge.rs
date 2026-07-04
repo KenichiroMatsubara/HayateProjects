@@ -52,6 +52,7 @@ mod ffi {
         fn element_subtree_ids(self: &JsHostBridge, id: f64) -> Vec<f64>;
         fn element_get_bounds(self: &JsHostBridge, id: f64) -> Vec<f32>;
         fn poll_events(self: &JsHostBridge) -> Vec<FfiEventRow>;
+        fn has_pending_visual_work(self: &JsHostBridge) -> bool;
     }
 
     unsafe extern "C++" {
@@ -68,6 +69,15 @@ mod ffi {
         /// `globalThis.__tsubame.pumpFrame(timestamp_ms)` を呼ぶ。続いて Hermes の
         /// マイクロタスクキューを排出する。
         fn pump_frame(self: Pin<&mut HermesApp>, timestamp_ms: f64);
+
+        /// JS が `set_request_redraw` で登録したコールバックを呼ぶ（未登録なら no-op）。
+        /// native の入力 wake（タッチ/IME）のたびに呼び、JS 側の frame ループの armed 状態
+        /// （`HayateRenderer` の `pendingFrame`）を native の wake と揃える。
+        fn request_redraw(self: Pin<&mut HermesApp>);
+
+        /// JS が `request_pump` を呼んだか（＝JS 側の frame ループが armed になったか）を
+        /// 読んで消費する。native のループは毎イテレーション呼び、true なら wake する。
+        fn consume_wants_pump(self: Pin<&mut HermesApp>) -> bool;
 
         /// eval 済みバンドルが立てた `globalThis.__miharashiProtocolVersion` を読む（#533）。
         /// 有限数ならその値、未埋め込み / 非数値なら `-1.0`。`app_tsubame` がこれを `Option<u32>`
@@ -117,6 +127,10 @@ impl JsHostBridge {
 
     fn poll_events(&self) -> Vec<ffi::FfiEventRow> {
         self.host.poll_events().into_iter().map(ffi_row_from).collect()
+    }
+
+    fn has_pending_visual_work(&self) -> bool {
+        self.host.has_pending_visual_work()
     }
 }
 

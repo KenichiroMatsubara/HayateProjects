@@ -30,6 +30,20 @@ class HermesApp {
   // マイクロタスクキューを排出する。
   void pump_frame(double timestamp_ms);
 
+  // JS が `__hayateHost.set_request_redraw(cb)` で登録したコールバックを呼ぶ（あれば）。
+  // Android は入力を native→tree 直結で処理するが（issue #475）、JS 側の frame ループは
+  // 別に自分の armed 状態（`pendingFrame`）を持つため、native の on-demand ループが起きた
+  // だけでは JS 側は再武装されない。native の入力 wake（タッチ/IME）が起きるたびにこれを
+  // 呼び、JS の `scheduleFrame` を叩いて armed 状態を揃える（ADR-0080/0126 を Android へ延長）。
+  void request_redraw();
+
+  // JS が `__hayateHost.request_pump()` を呼んだか（＝JS 側の frame ループが armed に
+  // なったか）を読んで消費する。native の on-demand ループ（app_tsubame.rs）はこれを
+  // 毎イテレーション呼び、true なら wake する。web の requestAnimationFrame に相当する
+  // 自走クロックが無い Android では、click ハンドラの `setStyle` 等が自己再武装しても
+  // これが無いと二度と pump されず、見た目の更新が永久に止まる。
+  bool consume_wants_pump();
+
   // eval 済みバンドルが立てた globalThis.__miharashiProtocolVersion を読む（#533）。有限数なら
   // その値、未埋め込み / 非数値（契約違反 / 壊れた埋め込み）なら -1.0 を返す。ホスト（Rust 側
   // app_tsubame）はこれを Option<u32> に直し、`@miharashi/protocol-handshake` 同型の突き合わせに

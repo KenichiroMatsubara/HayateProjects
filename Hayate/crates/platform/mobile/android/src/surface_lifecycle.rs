@@ -14,40 +14,101 @@ pub use hayate_core::{SurfaceLifecycleAction, SurfaceLifecycleEvent, SurfaceLife
 
 use hayate_core::ViewportMetrics;
 
-/// content scale 1.0 で描画する現行 Android 経路の content scale。
+/// Android の baseline density（160dpi = 等倍。Web の CSS px と同じ意味論）。
+#[cfg(target_os = "android")]
+const BASELINE_DENSITY_DPI: f32 = 160.0;
+
+/// 実機の density から content scale（DPI 倍率）を導く。取得できなければ等倍（1.0）。
 ///
-/// DPI 対応を入れる際は、ここを実機の density から取得した値へ差し替え、`translate_touch`
-/// が渡すタッチ座標も同じ scale で再スケールしてヒットテストと描画を揃える。
-const ANDROID_CONTENT_SCALE: f32 = 1.0;
+/// レイアウト/ヒットテストは論理px（Web の CSS px 相当）で動くため、実密度を反映しないと
+/// 高密度端末で物理px＝論理pxとして扱われ、レイアウトが本来よりずっと広いビューポートだと
+/// 誤認して（例: 3x密度の1080px物理幅を1080論理pxとして扱う）、デスクトップ向けの
+/// styleVariants（`maxWidth` 判定）が誤って選ばれる。
+#[cfg(target_os = "android")]
+pub fn content_scale(app: &android_activity::AndroidApp) -> f32 {
+    app.config()
+        .density()
+        .map(|dpi| (dpi as f32 / BASELINE_DENSITY_DPI).max(1.0))
+        .unwrap_or(1.0)
+}
 
 /// ネイティブウィンドウ寸法と content scale から論理ビューポート/バッファを導く。
 ///
 /// 計算は Web 経路と共有する `ViewportMetrics::from_physical_size` に集約されている。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn surface_metrics(width: i32, height: i32) -> ViewportMetrics {
-    ViewportMetrics::from_physical_size(width, height, ANDROID_CONTENT_SCALE)
+pub fn surface_metrics(width: i32, height: i32, content_scale: f32) -> ViewportMetrics {
+    ViewportMetrics::from_physical_size(width, height, content_scale)
 }
 
-/// wgpu サーフェス設定のため、ネイティブウィンドウ寸法を最低 1×1 にクランプする。
+/// wgpu サーフェス設定のため、ネイティブウィンドウ寸法を最低 1×1 にクランプする。バッファは
+/// 常に物理 px そのものなので content scale に依存しない。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
-    surface_metrics(width, height).buffer_size()
+    surface_metrics(width, height, 1.0).buffer_size()
 }
 
-/// クランプ済みサーフェス寸法(物理 px)を `ElementTree` のビューポートへ写す。
+/// クランプ済みサーフェス寸法(物理 px)と content scale から `ElementTree` の論理ビューポートを導く。
 ///
-/// content scale 1.0 で描画するため、レイアウト/ビューポート空間は物理サーフェス
-/// ピクセルそのもの。これは `translate_touch` がポインタ API に渡す空間と同じで、
-/// ヒットテストが画面描画と揃う。DPI 対応のコンテンツスケーリングを入れる際は、
-/// この整合を保つためタッチ座標を同調して再スケールする必要がある。
+/// レイアウト/ヒットテストは論理px空間（`viewport_width = buffer_width / content_scale`）で動く。
+/// 描画は Vello（`hayate-scene-renderer-vello`）側で同じ content_scale を掛けて物理バッファへ
+/// 引き伸ばす（`VelloLayerRasterizer`）。タッチ座標も `process_touch_input` が同じ scale で
+/// 論理px化してから `translate_touch` に渡し、ヒットテストと描画を揃える。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn viewport_for_surface(width: u32, height: u32) -> (f32, f32) {
-    surface_metrics(width as i32, height as i32).viewport_size()
+pub fn viewport_for_surface(width: u32, height: u32, content_scale: f32) -> (f32, f32) {
+    surface_metrics(width as i32, height as i32, content_scale).viewport_size()
+}
+
+/// swapchain の既定フォーマットが sRGB 対応なら、対応していれば非 sRGB 版を選ぶ。
+///
+/// UI 色は CSS hex 由来の sRGB エンコード済みバイト値をそのまま格納する規約（Web と同じ）。
+/// sRGB フォーマットの surface にそのまま store すると GPU がもう一段 sRGB エンコードを掛けて
+/// しまい、色が白っぽく退色する（二重ガンマ）。非 sRGB 版が capabilities に無ければ、present
+/// 不能になるより退色の方がまし＝既定値のままにする。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn prefer_non_srgb_format(
+    default_format: wgpu::TextureFormat,
+    available: &[wgpu::TextureFormat],
+) -> wgpu::TextureFormat {
+    let non_srgb = default_format.remove_srgb_suffix();
+    if available.contains(&non_srgb) {
+        non_srgb
+    } else {
+        default_format
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wgpu::TextureFormat;
+
+    #[test]
+    fn falls_back_to_non_srgb_variant_when_available() {
+        // 実機（Vulkan）で観測した既定値。対応する非 sRGB 版があれば二重ガンマを避けるため
+        // そちらを選ぶ（色が退色するバグの直接の原因）。
+        let picked = prefer_non_srgb_format(
+            TextureFormat::Bgra8UnormSrgb,
+            &[TextureFormat::Bgra8UnormSrgb, TextureFormat::Bgra8Unorm],
+        );
+        assert_eq!(picked, TextureFormat::Bgra8Unorm);
+    }
+
+    #[test]
+    fn leaves_already_non_srgb_format_untouched() {
+        let picked = prefer_non_srgb_format(
+            TextureFormat::Rgba8Unorm,
+            &[TextureFormat::Rgba8Unorm, TextureFormat::Rgba8UnormSrgb],
+        );
+        assert_eq!(picked, TextureFormat::Rgba8Unorm);
+    }
+
+    #[test]
+    fn keeps_srgb_format_when_no_non_srgb_variant_is_available() {
+        // present 不能になるくらいなら退色の方がまし。
+        let picked =
+            prefer_non_srgb_format(TextureFormat::Bgra8UnormSrgb, &[TextureFormat::Bgra8UnormSrgb]);
+        assert_eq!(picked, TextureFormat::Bgra8UnormSrgb);
+    }
 
     #[test]
     fn window_dimensions_clamp_to_at_least_one_pixel() {
@@ -57,7 +118,14 @@ mod tests {
 
     #[test]
     fn viewport_tracks_surface_pixels_at_unit_scale() {
-        assert_eq!(viewport_for_surface(1080, 1920), (1080.0, 1920.0));
-        assert_eq!(viewport_for_surface(1, 1), (1.0, 1.0));
+        assert_eq!(viewport_for_surface(1080, 1920, 1.0), (1080.0, 1920.0));
+        assert_eq!(viewport_for_surface(1, 1, 1.0), (1.0, 1.0));
+    }
+
+    #[test]
+    fn viewport_divides_by_content_scale_for_high_density_screens() {
+        // 3x密度（480dpi 相当）の 1080px 幅は論理 360px。styleVariants の maxWidth 判定が
+        // デスクトップ幅と誤認しないよう、物理pxをそのまま論理pxに使ってはいけない。
+        assert_eq!(viewport_for_surface(1080, 2400, 3.0), (360.0, 800.0));
     }
 }

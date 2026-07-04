@@ -65,10 +65,20 @@ pub struct VelloLayerRasterizer {
     textures: HashMap<ElementId, LayerTexture>,
     width: u32,
     height: u32,
+    /// 論理座標（layout ビューポート単位）を物理バッファへ引き伸ばす倍率（DPI 対応）。
+    /// Web の `hayate-adapter-web` と同じ `VelloSceneRenderer::render_scene` 契約を使う
+    /// （tiny-skia 側は `LayerCompositor::content_scale` で同型に持つ）。
+    content_scale: f32,
 }
 
 impl VelloLayerRasterizer {
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue, width: u32, height: u32) -> Result<Self, String> {
+    pub fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+    ) -> Result<Self, String> {
         let renderer = VelloSceneRenderer::new(&device)?;
         Ok(Self {
             device,
@@ -77,13 +87,15 @@ impl VelloLayerRasterizer {
             textures: HashMap::new(),
             width,
             height,
+            content_scale: content_scale.max(1.0),
         })
     }
 
     /// サーフェスサイズ変更。キャッシュ面は全部作り直しになる（呼び元は planner も invalidate）。
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
         self.width = width;
         self.height = height;
+        self.content_scale = content_scale.max(1.0);
         self.textures.clear();
     }
 
@@ -126,7 +138,7 @@ impl LayerRasterizer for VelloLayerRasterizer {
                 height: self.height,
             },
             TRANSPARENT,
-            1.0,
+            self.content_scale,
         )
     }
 

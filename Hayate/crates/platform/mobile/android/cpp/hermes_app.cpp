@@ -26,6 +26,8 @@
 
 #include <cmath>
 #include <exception>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -86,11 +88,29 @@ jsi::Value vec_to_js_array(jsi::Runtime& rt, const Vec& v) {
   return arr;
 }
 
+// `set_request_redraw` が登録した JS コールバックの置き場（ADR-0080/0126 の Android 延長）。
+// HayateHostObject（JS から書き込む）と HermesApp::Impl（native の wake から読む）の両方が
+// 共有する必要があるため shared_ptr で持つ。
+struct RedrawSlot {
+  std::optional<jsi::Function> fn;
+};
+
+// `request_pump` が立てるフラグの置き場。JS の frame ループが armed になるたびに
+// HayateHostObject が true を書き込み、HermesApp::consume_wants_pump() が読んで消す
+// （ADR-0003: 単一スレッドなので plain bool で足りる）。
+struct PumpFlag {
+  bool wanted = false;
+};
+
 // __hayateHost: RawHayate を満たす jsi::HostObject。
 class HayateHostObject : public jsi::HostObject {
  public:
-  explicit HayateHostObject(rust::Box<JsHostBridge> bridge)
-      : bridge_(std::move(bridge)) {}
+  HayateHostObject(rust::Box<JsHostBridge> bridge,
+                    std::shared_ptr<RedrawSlot> redraw_slot,
+                    std::shared_ptr<PumpFlag> pump_flag)
+      : bridge_(std::move(bridge)),
+        redraw_slot_(std::move(redraw_slot)),
+        pump_flag_(std::move(pump_flag)) {}
 
   jsi::Value get(jsi::Runtime& rt, const jsi::PropNameID& name) override {
     std::string prop = name.utf8(rt);
@@ -190,11 +210,44 @@ class HayateHostObject : public jsi::HostObject {
           });
     }
 
+    if (prop == "has_pending_visual_work") {
+      return jsi::Function::createFromHostFunction(
+          rt, name, 0,
+          [&b](jsi::Runtime&, const jsi::Value&, const jsi::Value*,
+               size_t) -> jsi::Value {
+            return jsi::Value(b.has_pending_visual_work());
+          });
+    }
+
+    if (prop == "set_request_redraw") {
+      return jsi::Function::createFromHostFunction(
+          rt, name, 1,
+          [slot = redraw_slot_](jsi::Runtime& rt, const jsi::Value&,
+                                 const jsi::Value* args, size_t) -> jsi::Value {
+            if (args[0].isObject() && args[0].getObject(rt).isFunction(rt)) {
+              slot->fn = args[0].getObject(rt).asFunction(rt);
+            }
+            return jsi::Value::undefined();
+          });
+    }
+
+    if (prop == "request_pump") {
+      return jsi::Function::createFromHostFunction(
+          rt, name, 0,
+          [flag = pump_flag_](jsi::Runtime&, const jsi::Value&, const jsi::Value*,
+                               size_t) -> jsi::Value {
+            flag->wanted = true;
+            return jsi::Value::undefined();
+          });
+    }
+
     return jsi::Value::undefined();
   }
 
  private:
   rust::Box<JsHostBridge> bridge_;
+  std::shared_ptr<RedrawSlot> redraw_slot_;
+  std::shared_ptr<PumpFlag> pump_flag_;
 };
 
 }  // namespace
@@ -204,6 +257,10 @@ struct HermesApp::Impl {
   // バンドルの eval に成功し __tsubame が公開されたか。false の間は frame を
   // 呼ばない（JS エラーで __tsubame 未定義のときに毎フレーム例外を投げないため）。
   bool ready = false;
+  // `set_request_redraw` で JS が登録したコールバックの置き場（`request_redraw` が読む）。
+  std::shared_ptr<RedrawSlot> redraw_slot = std::make_shared<RedrawSlot>();
+  // `request_pump` が立てたフラグの置き場（`consume_wants_pump` が読んで消す）。
+  std::shared_ptr<PumpFlag> pump_flag = std::make_shared<PumpFlag>();
 };
 
 HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
@@ -212,9 +269,24 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   jsi::Runtime& rt = *impl_->runtime;
 
   // __hayateHost を注入。
-  auto host_obj = std::make_shared<HayateHostObject>(std::move(host));
+  auto host_obj = std::make_shared<HayateHostObject>(
+      std::move(host), impl_->redraw_slot, impl_->pump_flag);
   rt.global().setProperty(rt, "__hayateHost",
                           jsi::Object::createFromHostObject(rt, host_obj));
+
+  // console.log 等が呼ぶ __hayateLog を logcat へ橋渡しする（android-prelude.ts 参照）。
+  // 未実装のままだと console.* が完全な no-op になり JS 側の診断ができない。
+  rt.global().setProperty(
+      rt, "__hayateLog",
+      jsi::Function::createFromHostFunction(
+          rt, jsi::PropNameID::forAscii(rt, "__hayateLog"), 2,
+          [](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
+             size_t count) -> jsi::Value {
+            std::string level = count > 0 ? args[0].toString(rt).utf8(rt) : "log";
+            std::string message = count > 1 ? args[1].toString(rt).utf8(rt) : "";
+            HAYATE_LOGE("[JS %s] %s", level.c_str(), message.c_str());
+            return jsi::Value::undefined();
+          }));
 
   // バンドルを eval（main.android.tsx 由来。__tsubame を公開する）。JS の例外
   // （jsi::JSError）はここで捕捉してメッセージと JS スタックをログに出す。捕まえない
@@ -253,6 +325,26 @@ void HermesApp::pump_frame(double timestamp_ms) {
     HAYATE_LOGE("pumpFrame で例外: %s", e.what());
     impl_->ready = false;
   }
+}
+
+void HermesApp::request_redraw() {
+  // eval 未成功、または JS がまだ set_request_redraw を呼んでいなければ何もしない。
+  if (!impl_->ready || !impl_->redraw_slot->fn.has_value()) return;
+  jsi::Runtime& rt = *impl_->runtime;
+  try {
+    impl_->redraw_slot->fn->call(rt);
+  } catch (const jsi::JSError& e) {
+    HAYATE_LOGE("request_redraw で JS 例外: %s\nJS stack:\n%s",
+                e.getMessage().c_str(), e.getStack().c_str());
+  } catch (const std::exception& e) {
+    HAYATE_LOGE("request_redraw で例外: %s", e.what());
+  }
+}
+
+bool HermesApp::consume_wants_pump() {
+  bool wanted = impl_->pump_flag->wanted;
+  impl_->pump_flag->wanted = false;
+  return wanted;
 }
 
 double HermesApp::protocol_version() const {

@@ -75,6 +75,16 @@ export interface RawHayate {
    * 入力 ingress を持たない front（native ループが入力を直接駆動する Android 等）では
    * 実装されないため optional。`HayateRenderer` は存在すれば `start()` で配線する。 */
   set_request_redraw?(cb: () => void): void;
+  /** ADR-0080/0126 の Android 延長: `requestFrame` が呼ばれる（＝この host の
+   * frame ループが armed になる）たびに native へ知らせる。Web は `requestFrame` が
+   * `window.requestAnimationFrame` に直結するため、armed になれば OS の compositor が
+   * 次の vsync で必ず呼び戻してくれる。Android の on-demand ループにはその自走クロックが
+   * 無く、native は「入力到着」でしか起きないため、click ハンドラが `setStyle` 等を呼んで
+   * `scheduleFrame` が自己再武装した場合（次の `flush` でしか反映されない）、native 側の
+   * wake が来ないと二度と pump されず、タップの見た目の反映が永久に止まっていた。
+   * 入力 ingress を持たない front（native ループが入力を直接駆動しない Web 等）では
+   * 実装されないため optional。 */
+  request_pump?(): void;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;

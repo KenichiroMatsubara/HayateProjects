@@ -35,6 +35,10 @@ export interface RawHayate {
    * 未知のキーで throw するが、host は握りつぶしコンパイル済み既定を残す。 */
   set_tuning(json: string): void;
   element_effective_visual(id: number): HayateEffectiveVisual | null;
+  /** ADR-0080/0126 の Android 延長: host の frame ループが armed になるたびに
+   * native へ知らせる（`@tsubame/renderer-hayate` の `RawHayate` と同型）。native.ts の
+   * `requestFrame` がこれを叩く。Web ホストでは実装しないため optional。 */
+  request_pump?(): void;
 }
 
 /** `{ r, g, b, a }`（0..1）。生成 codec の `HayateColorRecord` と構造的に同一。 */
