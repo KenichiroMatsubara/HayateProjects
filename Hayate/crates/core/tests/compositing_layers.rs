@@ -247,6 +247,63 @@ fn layer_demotion_marks_the_enclosing_layer_dirty() {
     );
 }
 
+#[test]
+fn on_demand_loop_keeps_rendering_through_layer_demotion() {
+    // #680 実機回帰：Android の on-demand フレームループは `has_pending_visual_work()` が
+    // false になった時点で render() を止める（ADR-0117/0126）。だが is_active() は
+    // `capture_frame_layers`（render 冒頭）より後で `scene_build::update` が更新するため、
+    // transition が完了する render() 呼び出しの**その場では**まだ降格（frame_layers からの
+    // 除外）が反映されない——反映されるのは次の render() 呼び出し（1 フレーム遅延・上の
+    // テスト参照）。`has_pending_visual_work` が「transition がまだ active か」だけを見て
+    // いると、is_active が false に落ちた瞬間にループが停止し、降格を capture する
+    // render() がもう二度と呼ばれない。昇格中に穴あき raster された親レイヤのキャッシュが
+    // 永久に再利用され続け、実機では「タップした瞬間に消えたまま」固まる（別の場所を
+    // もう一度タップして初めて次の render() が起き、直る——ユーザ報告の「謎挙動」の正体）。
+    use hayate_core::element::style::Dimension;
+    use hayate_core::PseudoState;
+
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let sibling = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, sibling);
+    tree.set_root(root);
+    tree.element_set_style(
+        sibling,
+        &[
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::TransitionDuration(20.0),
+        ],
+    );
+    tree.element_set_pseudo_style(
+        sibling,
+        PseudoState::Hover,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
+
+    let _ = tree.render(0.0);
+    tree.update_pointer_hover(Some(sibling)); // タップ相当
+    assert!(tree.has_pending_visual_work(), "hover 直後は継続フレームを要求する");
+
+    // on-demand ループそのものを模す：継続要求がある間だけ render を回す。
+    let mut t = 16.0;
+    let mut frames = 0;
+    while tree.has_pending_visual_work() {
+        let _ = tree.render(t);
+        t += 16.0;
+        frames += 1;
+        assert!(frames < 200, "有限フレームで idle に落ちなければならない");
+    }
+
+    assert!(
+        !tree.frame_layers().contains(&sibling),
+        "ループが idle に落ちた時点で sibling の降格が capture_frame_layers に反映されて\
+         いなければならない。さもなくば穴あきキャッシュのまま二度と render() が呼ばれず、\
+         画面が消えたまま固まる（#680 実機回帰の芯）"
+    );
+}
+
 // ── #633: transform-only 変化は content dirty にしない（composite-only フレームの core 前提）──
 //
 // `element_set_transform` の Some→Some（係数だけの変化）はレイヤ内容を変えない——変わるのは合成時の

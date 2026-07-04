@@ -2421,7 +2421,26 @@ impl ElementTree {
     /// ここで明示的に継続を表明する——offset 変更が付ける visual-dirty は同フレームの
     /// lowering で drain されるので、drain タイミングに依存しない `is_some()` を OR する。
     pub fn has_pending_visual_work(&self) -> bool {
-        !self.engine.visual_dirty.is_empty() || self.interaction.scroll_momentum.is_some()
+        !self.engine.visual_dirty.is_empty()
+            || self.interaction.scroll_momentum.is_some()
+            || self.has_pending_layer_transition()
+    }
+
+    /// #680 実機回帰：compositing layer 境界（ADR-0125）が直近の `render()` 捕捉
+    /// （[`frame_layers`](Self::frame_layers)）とズレているか。`is_active_transition` は
+    /// `capture_frame_layers`（render 冒頭）より後で `scene_build::update` が更新するため、
+    /// transition が完了する render() 呼び出しの場では、その render() 自身が捕捉した
+    /// `frame_layers` にまだ降格が反映されない（次の render() で初めて反映される・1 フレーム
+    /// 遅延）。`visual_dirty` だけを見て継続要求すると、is_active が false に落ちた瞬間に
+    /// on-demand ループが idle に落ち、降格を捕捉する render() が二度と呼ばれない——昇格中に
+    /// 穴あき raster された親レイヤのキャッシュが永久に再利用され、画面が消えたまま固まる。
+    fn has_pending_layer_transition(&self) -> bool {
+        let (_, mut boundaries) = self.compositing_boundaries();
+        if let Some(root) = self.root {
+            boundaries.insert(root);
+        }
+        let captured: HashSet<ElementId> = self.frame_layers.iter().copied().collect();
+        boundaries != captured
     }
 
     /// この要素の compositing 事実（ADR-0125）を live state から読む。境界判定に使う純データで、
