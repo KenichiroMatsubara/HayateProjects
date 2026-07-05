@@ -32,9 +32,6 @@ importers:
       hayate-adapter-web-cpu:
         specifier: file:../wasm-pkgs/pkg-tiny-skia
         version: link:../wasm-pkgs/pkg-tiny-skia
-      hayate-adapter-web-layer-present:
-        specifier: file:../wasm-pkgs/pkg-layer-present
-        version: link:../wasm-pkgs/pkg-layer-present
       hayate-adapter-web-vello-cpu:
         specifier: file:../wasm-pkgs/pkg-vello-cpu
         version: link:../wasm-pkgs/pkg-vello-cpu
@@ -56,8 +53,6 @@ importers:
         version: 8.18.0
 
   Hayate/wasm-pkgs/pkg: {}
-
-  Hayate/wasm-pkgs/pkg-layer-present: {}
 
   Hayate/wasm-pkgs/pkg-null: {}
 

@@ -79,17 +79,17 @@ export interface CreateHayateWebHostOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
   /**
-   * `backend === 'vello'` の時だけ効く、layer-present（per-layer 経路、ADR-0125/0127）の
-   * 有効化。ADR-0137 により Web は既定 `true`。
+   * `backend === 'vello'` の時だけ効く、layer-present（per-layer 経路、ADR-0125/0127・
+   * ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
    *
-   * `false` を渡すと全面 raster 版（`hayate-adapter-web`）に戻せる、比較用の逃げ道として
-   * 残している。native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。
+   * `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残している。
+   * native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。
    */
   layerPresent?: boolean;
   /**
    * `backend === 'tiny-skia' | 'vello-cpu'` の時だけ効く、per-layer 経路の比較用トグル
-   * （ADR-0138）。既定 `true`。vello の `layerPresent`（パッケージ選択、コンパイル時）とは
-   * 別物のランタイムフラグ。`false` で全面 raster にフォールバックする。
+   * （ADR-0138）。既定 `true`。vello の `layerPresent`（上記）とは別物の意味を持つ、
+   * 独立したランタイムフラグ。`false` で全面 raster にフォールバックする。
    */
   cpuLayerPresent?: boolean;
   /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して味付け

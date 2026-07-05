@@ -6,7 +6,6 @@
   "license": "Apache-2.0",
   "scripts": {
     "build": "node scripts/build-wasm.mjs",
-    "build:layer-present": "node scripts/build-wasm.mjs pkg-layer-present",
     "build:all": "node scripts/build-wasm.mjs --all",
     "desktop": "node scripts/run-desktop.mjs",
     "desktop:build": "node scripts/run-desktop.mjs --build-only",

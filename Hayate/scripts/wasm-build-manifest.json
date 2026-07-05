@@ -10,7 +10,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web",
-      "host": { "backend": "vello" }
+      "host": { "backend": "vello", "runtimeLayerPresentArg": "layerPresent" }
     },
     {
       "name": "pkg-tiny-skia",
@@ -20,7 +20,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web-cpu",
-      "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": true }
+      "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
       "name": "pkg-vello-cpu",
@@ -30,7 +30,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web-vello-cpu",
-      "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": true }
+      "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
       "name": "pkg-null",
@@ -41,16 +41,6 @@
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web-null",
       "host": null
-    },
-    {
-      "name": "pkg-layer-present",
-      "outDir": "wasm-pkgs/pkg-layer-present",
-      "targetDir": "target/wasm-layer-present",
-      "cargoFeatures": { "mode": "additive", "names": ["layer-present"] },
-      "description": "Hayate — GPU-native UI substrate (layer-present feature, #697 E2E harness only)",
-      "includeInDefaultBuild": false,
-      "npmName": "hayate-adapter-web-layer-present",
-      "host": { "backend": "vello", "variantFlag": "layerPresent" }
     }
   ]
 }

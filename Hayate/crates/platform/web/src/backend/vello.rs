@@ -1,48 +1,70 @@
-#[cfg(feature = "layer-present")]
 use std::collections::{HashMap, HashSet};
 
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wgpu::util::TextureBlitter;
 
-#[cfg(feature = "layer-present")]
 use hayate_core::ElementId;
 use hayate_core::SceneGraph;
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
 };
-#[cfg(feature = "layer-present")]
 use hayate_layer_compositor::{
     collect_layer_placements, extract_layer_scene, extract_root_scene, layer_scene::compose,
     tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPlacement, LayerRasterizer,
     PresentPlanner, ScrollLayerGeometry,
 };
-#[cfg(feature = "layer-present")]
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
 };
 
 use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
 
+/// per-layer present（#690・ADR-0125/0127）の GPU リソース。`VelloLayerRasterizer`（GPU
+/// device/queue を握る）・`WgpuQuadCompositor`（`warmup()` で GPU パイプラインを前倒しコンパイル
+/// する、ADR-0130a）という実 GPU リソースを伴うため、`SelectedBackend::ensure_layer_present_resources`
+/// が `set_layer_present_enabled(true)` の初回呼び出しでのみ construct・warmup する
+/// （ADR-0140・#718 の遅延初期化）。
+struct LayerPresentState {
+    planner: PresentPlanner,
+    rasterizer: VelloLayerRasterizer,
+    compositor: WgpuQuadCompositor,
+    /// 前フレームのレイヤ集合。消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
+    prev_layers: HashSet<ElementId>,
+}
+
+impl LayerPresentState {
+    fn new(device: wgpu::Device, queue: wgpu::Queue, width: u32, height: u32, content_scale: f32) -> Result<Self, String> {
+        let rasterizer = VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height, content_scale)?;
+        let mut compositor = WgpuQuadCompositor::new(device, queue);
+        // construct 時に全パイプライン variant を前倒し生成し、初回合成フレームの遅延生成
+        // スパイクを消す（ADR-0130a）。
+        compositor.warmup();
+        Ok(Self {
+            planner: PresentPlanner::new(),
+            rasterizer,
+            compositor,
+            prev_layers: HashSet::new(),
+        })
+    }
+}
+
 pub(crate) struct SelectedBackend {
     surface_host: VelloSurfaceHost,
     scene_renderer: VelloSceneRenderer,
     content_scale: f32,
-    /// per-layer present（#690・ADR-0125/0127）。`layer-present` feature が ON のときだけ使う。
-    /// dirty / 未キャッシュのレイヤだけ texture へ再 raster し、専用 wgpu compositor で合成する。
-    ///
-    /// ⚠️ ADR-0135 により封印中 — この feature を有効にしないこと。#697 で実 Chromium 実行時に
-    /// 描画バグが確認され、実用段階にないと判定された。性能上の実害が具体的に発生するまで
-    /// 再開しない（native golden-frame テストのみでの再開は不可）。
-    #[cfg(feature = "layer-present")]
-    planner: PresentPlanner,
-    #[cfg(feature = "layer-present")]
-    rasterizer: VelloLayerRasterizer,
-    #[cfg(feature = "layer-present")]
-    compositor: WgpuQuadCompositor,
-    /// 前フレームのレイヤ集合。消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
-    #[cfg(feature = "layer-present")]
-    prev_layers: HashSet<ElementId>,
+    /// ADR-0138/ADR-0140 比較用トグル。既定 ON（#690 の per-layer 経路を維持）——
+    /// `HayateElementRenderer::init` の `layer_present_enabled` 引数で OFF にすると
+    /// `supports_layer_present()` が false を返し、呼び出し側（`canvas.rs`）が全面
+    /// `render_scene` にフォールバックする。「製品としては有効化しない」という ADR-0135 の
+    /// 封印意図は、以後この既定値と本コメント・ADR-0140 に記録される（cargo feature という
+    /// 物理的な仕組みではなく運用上の取り決め）。
+    layer_present_enabled: bool,
+    /// per-layer present（#690・ADR-0125/0127）の GPU リソース。`layer_present_enabled` が
+    /// true でも、`set_layer_present_enabled(true)` が一度も呼ばれていなければ `None` のまま
+    /// （ADR-0140 の遅延初期化 — `?layerPresent=0` を選ぶユーザーに不要な GPU 初期化コストを
+    /// 払わせない）。
+    layer_present: Option<LayerPresentState>,
 }
 
 struct VelloSurfaceHost {
@@ -68,35 +90,42 @@ impl SelectedBackend {
         if let Err(e) = scene_renderer.warmup(surface_host.device(), surface_host.queue()) {
             web_sys::console::warn_1(&JsValue::from_str(&format!("vello warmup skipped: {e}")));
         }
-        #[cfg(feature = "layer-present")]
-        let rasterizer = VelloLayerRasterizer::new(
-            surface_host.device().clone(),
-            surface_host.queue().clone(),
-            surface_host.width,
-            surface_host.height,
-            1.0,
-        )
-        .map_err(|e| JsValue::from_str(&e))?;
-        #[cfg(feature = "layer-present")]
-        let mut compositor =
-            WgpuQuadCompositor::new(surface_host.device().clone(), surface_host.queue().clone());
-        // init 時に全パイプライン variant を前倒し生成し、初回合成フレームの遅延生成スパイクを
-        // 消す（ADR-0130a）。
-        #[cfg(feature = "layer-present")]
-        compositor.warmup();
         Ok(Self {
             surface_host,
             scene_renderer,
             content_scale: 1.0,
-            #[cfg(feature = "layer-present")]
-            planner: PresentPlanner::new(),
-            #[cfg(feature = "layer-present")]
-            rasterizer,
-            #[cfg(feature = "layer-present")]
-            compositor,
-            #[cfg(feature = "layer-present")]
-            prev_layers: HashSet::new(),
+            layer_present_enabled: true,
+            // ADR-0140: GPU リソースは construct しない——`set_layer_present_enabled(true)`
+            // （production では `HayateElementRenderer::init` が既定引数で必ずすぐ呼ぶ）が
+            // 最初に呼ばれたとき・または `present_layers` が最初に実際に呼ばれたときに、
+            // `ensure_layer_present_resources` が construct する。
+            layer_present: None,
         })
+    }
+
+    /// per-layer 経路の GPU リソースを必要になった時点で construct・warmup する（ADR-0140）。
+    /// construct 済みなら何もしない（再 construct・再 warmup しない）。construct 失敗時は
+    /// vello scene warmup 失敗時と同じ「boot/フレームを落とさず警告ログのみで続行する」
+    /// パターンに倣い、`layer_present_enabled` を false にして全面 raster にフォールバックする。
+    fn ensure_layer_present_resources(&mut self) {
+        if self.layer_present.is_some() {
+            return;
+        }
+        match LayerPresentState::new(
+            self.surface_host.device().clone(),
+            self.surface_host.queue().clone(),
+            self.surface_host.width,
+            self.surface_host.height,
+            self.content_scale,
+        ) {
+            Ok(state) => self.layer_present = Some(state),
+            Err(e) => {
+                web_sys::console::warn_1(&JsValue::from_str(&format!(
+                    "vello layer-present init skipped, falling back to full-surface raster: {e}"
+                )));
+                self.layer_present_enabled = false;
+            }
+        }
     }
 }
 
@@ -219,7 +248,6 @@ impl VelloSurfaceHost {
 
     /// per-layer present（#690）: レイヤ texture quad を専用 wgpu compositor でサーフェスへ直接
     /// 合成する（`target_view`/`blitter` は使わない——合成が単一 blit の代わりを担う）。
-    #[cfg(feature = "layer-present")]
     fn present_composite(
         &mut self,
         compositor: &mut WgpuQuadCompositor,
@@ -267,7 +295,6 @@ impl VelloSurfaceHost {
 /// instead of freezing at whatever offset was current when it was last rastered. Every other
 /// layer (non-scroll, or scroll but not yet rastered this present) is unaffected — returns
 /// `placement.transform` unchanged.
-#[cfg(feature = "layer-present")]
 fn quad_transform(
     placement: &LayerPlacement,
     planner: &PresentPlanner,
@@ -299,9 +326,15 @@ impl CanvasBackend for SelectedBackend {
         self.render_scene(&SceneGraph::new(), clear_color)
     }
 
-    #[cfg(feature = "layer-present")]
     fn supports_layer_present(&self) -> bool {
-        true
+        self.layer_present_enabled
+    }
+
+    fn set_layer_present_enabled(&mut self, enabled: bool) {
+        self.layer_present_enabled = enabled;
+        if enabled {
+            self.ensure_layer_present_resources();
+        }
     }
 
     /// per-layer present（#690・ADR-0125/0127、scroll overscan サイジング配線 #707）。Android の旧
@@ -314,7 +347,6 @@ impl CanvasBackend for SelectedBackend {
     /// フレームを見逃す (3) 専用 wgpu compositor で quad 合成しつつ present——scroll レイヤの quad
     /// は、texture が絶対シーン座標の一部（帯）しか持たないぶんの compensating translate を追加で
     /// 持つ (4) GPU 予算超過分を LRU 退避（scroll レイヤは帯サイズのバイト数で計上、#707）。
-    #[cfg(feature = "layer-present")]
     fn present_layers(
         &mut self,
         scene: &SceneGraph,
@@ -323,16 +355,22 @@ impl CanvasBackend for SelectedBackend {
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
+        self.ensure_layer_present_resources();
+        let Some(state) = self.layer_present.as_mut() else {
+            // construct が失敗した直後（ensure_layer_present_resources が layer_present_enabled
+            // を false に落とした）。このフレームは全面 raster にフォールバックする。
+            return self.render_scene(scene, clear_color);
+        };
         let Some(&root) = layers.first() else {
             return Ok(());
         };
         let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
 
-        for stale in self.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
-            self.rasterizer.discard(stale);
-            self.planner.evict(stale);
+        for stale in state.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
+            state.rasterizer.discard(stale);
+            state.planner.evict(stale);
         }
-        self.prev_layers = boundaries.clone();
+        state.prev_layers = boundaries.clone();
 
         let extract = |layer: ElementId| -> Option<SceneGraph> {
             if layer == root {
@@ -349,16 +387,18 @@ impl CanvasBackend for SelectedBackend {
             .copied()
             .filter(|layer| !scroll_geometry.contains_key(layer))
             .collect();
-        let plan = self.planner.plan_layers(&non_scroll_layers, layer_dirty);
+        let plan = state.planner.plan_layers(&non_scroll_layers, layer_dirty);
         for &layer in &plan.raster {
             let Some(extracted) = extract(layer) else {
                 continue; // 未 lowering（次フレームで raster される）
             };
-            self.rasterizer
+            state
+                .rasterizer
                 .rasterize(layer, &extracted, None)
                 .map_err(|e| anyhow::anyhow!(e))?;
-            self.planner
-                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+            state
+                .planner
+                .note_layer_rasterized(layer, state.rasterizer.texture_bytes_per_layer());
         }
 
         // scroll 内容レイヤ（ADR-0127・#707）: キャッシュ済み帯が現在の可視域を覆っていれば
@@ -372,7 +412,7 @@ impl CanvasBackend for SelectedBackend {
                 continue; // 非 scroll レイヤは上のループで処理済み
             };
             if !geometry.content_dirty
-                && !self
+                && !state
                     .planner
                     .scroll_layer_needs_raster(layer, geometry.visible_top, geometry.viewport_height)
             {
@@ -382,20 +422,21 @@ impl CanvasBackend for SelectedBackend {
                 continue;
             };
             let raster_band = geometry.raster_band();
-            self.rasterizer
+            state
+                .rasterizer
                 .rasterize(layer, &extracted, Some(raster_band))
                 .map_err(|e| anyhow::anyhow!(e))?;
-            let bytes = self.rasterizer.scroll_band_bytes(geometry.band);
-            self.planner.note_scroll_rasterized(layer, geometry.band, bytes);
+            let bytes = state.rasterizer.scroll_band_bytes(geometry.band);
+            state.planner.note_scroll_rasterized(layer, geometry.band, bytes);
         }
 
         let placements = collect_layer_placements(scene, root, &boundaries);
         let quads: Vec<CompositeQuad<'_, LayerTexture>> = placements
             .iter()
             .filter_map(|placement| {
-                self.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
+                state.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
                     layer: placement.layer,
-                    transform: quad_transform(placement, &self.planner, scroll_geometry),
+                    transform: quad_transform(placement, &state.planner, scroll_geometry),
                     opacity: 1.0,
                     clip: placement.clip,
                     texture,
@@ -403,10 +444,10 @@ impl CanvasBackend for SelectedBackend {
             })
             .collect();
         self.surface_host
-            .present_composite(&mut self.compositor, &quads, clear_color)
+            .present_composite(&mut state.compositor, &quads, clear_color)
             .map_err(js_to_anyhow)?;
         for quad in &quads {
-            self.planner.note_composited(quad.layer);
+            state.planner.note_composited(quad.layer);
         }
 
         // GPU 予算超過なら最も長く composite に使われていないレイヤ texture から LRU 退避する
@@ -416,8 +457,8 @@ impl CanvasBackend for SelectedBackend {
             self.surface_host.height,
             tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
         );
-        for evicted in self.planner.enforce_budget(budget) {
-            self.rasterizer.discard(evicted);
+        for evicted in state.planner.enforce_budget(budget) {
+            state.rasterizer.discard(evicted);
         }
         Ok(())
     }
@@ -425,13 +466,13 @@ impl CanvasBackend for SelectedBackend {
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
         self.content_scale = content_scale.max(1.0);
         self.surface_host.resize(width, height);
-        #[cfg(feature = "layer-present")]
-        {
+        if let Some(state) = self.layer_present.as_mut() {
             // レイヤ texture はサーフェスサイズなので作り直し＝台帳ごと invalidate する
             // （invalidate しないと古いサイズの内容を合成し続ける）。
-            self.rasterizer
+            state
+                .rasterizer
                 .resize(self.surface_host.width, self.surface_host.height, self.content_scale);
-            self.planner.invalidate();
+            state.planner.invalidate();
         }
     }
 }
