@@ -1,6 +1,6 @@
 # compositing layer による damage ベース incremental rendering（raster/composite 分離）
 
-**Status: proposed (draft)**
+**Status: proposed (draft) — Phase 2+（バックエンド半分・layer-present feature）は ADR-0135 により封印中。有効化禁止**
 
 **Date: 2026-06-30**
 

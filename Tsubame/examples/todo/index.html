@@ -24,7 +24,7 @@
        * Renderer 切替UI（Hayate アプリの外側に置く素の HTML オーバーレイ）。
        * 色は App.tsx が解決済みパレットから document.documentElement へ流し込む
        * CSS 変数（--rsw-*）に追従する。fallback はライト teal（既定テーマ）。
-       * 既定は格納（ハンドルのみ）で、タップすると候補が展開する。
+       * 既定は格納（ハンドルのみ）で、タップすると2列（レンダラ／最適化）が展開する。
        */
       #renderer-switch {
         position: fixed;
@@ -32,14 +32,9 @@
         right: max(10px, env(safe-area-inset-right));
         z-index: 1000;
         display: flex;
-        flex-direction: row-reverse;
-        align-items: center;
+        flex-direction: column;
+        align-items: flex-end;
         gap: 6px;
-        padding: 4px;
-        border-radius: 999px;
-        border: 1px solid var(--rsw-line, #d9d3c6);
-        background: color-mix(in srgb, var(--rsw-bg, #fbf8f1) 90%, transparent);
-        backdrop-filter: blur(6px);
         font-family: inherit;
       }
       #renderer-toggle {
@@ -47,9 +42,10 @@
         align-items: center;
         gap: 6px;
         padding: 4px 10px;
-        border: none;
+        border: 1px solid var(--rsw-line, #d9d3c6);
         border-radius: 999px;
-        background: transparent;
+        background: color-mix(in srgb, var(--rsw-bg, #fbf8f1) 90%, transparent);
+        backdrop-filter: blur(6px);
         color: var(--rsw-ink, #262130);
         font-size: 11px;
         font-weight: 700;
@@ -64,11 +60,23 @@
         border-radius: 999px;
         background: var(--rsw-accent, #14b8a6);
       }
-      .rsw-options {
+      /* 展開パネル: 1列目=レンダラ選択、2列目=最適化(layer-present)トグル（ADR-0135）。 */
+      .rsw-panel {
         display: none;
-        gap: 4px;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
       }
-      #renderer-switch[data-open='true'] .rsw-options { display: flex; }
+      #renderer-switch[data-open='true'] .rsw-panel { display: flex; }
+      .rsw-options {
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        border: 1px solid var(--rsw-line, #d9d3c6);
+        background: color-mix(in srgb, var(--rsw-bg, #fbf8f1) 90%, transparent);
+        backdrop-filter: blur(6px);
+      }
       .rsw-options button {
         padding: 4px 12px;
         font-size: 11px;
@@ -88,6 +96,25 @@
       .rsw-options button:hover:not(.active) {
         color: var(--rsw-ink, #262130);
         background: var(--rsw-hover, #e0d8c7);
+      }
+      /*
+       * 最適化(layer-present)トグル: ADR-0135 が定める本人調査用の明示的例外。
+       * 既定 OFF・既知の描画バグあり・非推奨 — 通常のレンダラ切替と混同しないよう警告色にする。
+       */
+      .rsw-optimize {
+        border-color: var(--rsw-danger, #c2410c);
+      }
+      .rsw-optimize-label {
+        padding: 4px 6px 4px 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--rsw-danger, #c2410c);
+        white-space: nowrap;
+      }
+      .rsw-optimize button.active {
+        background: var(--rsw-danger, #c2410c);
+        color: #fff8f0;
       }
     </style>
     <script>
@@ -117,21 +144,40 @@
         root.setProperty('--rsw-hover', dark ? '#21344e' : '#e0d8c7');
         root.setProperty('--rsw-on-accent', dark ? '#070b14' : '#14101c');
         root.setProperty('--rsw-accent', dark ? acc[1] : acc[0]);
+        root.setProperty('--rsw-danger', dark ? '#f2795b' : '#c2410c');
       })();
     </script>
   </head>
   <body>
     <div id="renderer-switch" data-open="false" aria-label="Renderer switch">
-      <button type="button" id="renderer-toggle" aria-expanded="false" aria-controls="renderer-options" title="レンダラを切り替え">
+      <button type="button" id="renderer-toggle" aria-expanded="false" aria-controls="renderer-panel" title="レンダラを切り替え">
         <span class="rsw-dot" aria-hidden="true"></span>
         <span id="renderer-current">auto</span>
       </button>
-      <div class="rsw-options" id="renderer-options" role="group">
-        <button type="button" data-renderer="auto">auto</button>
-        <button type="button" data-renderer="vello">vello</button>
-        <button type="button" data-renderer="tiny-skia">tiny-skia</button>
-        <button type="button" data-renderer="vello-cpu">vello-cpu</button>
-        <button type="button" data-renderer="dom">dom</button>
+      <div class="rsw-panel" id="renderer-panel">
+        <div class="rsw-options" id="renderer-options" role="group" aria-label="レンダラ">
+          <button type="button" data-renderer="auto">auto</button>
+          <button type="button" data-renderer="vello">vello</button>
+          <button type="button" data-renderer="tiny-skia">tiny-skia</button>
+          <button type="button" data-renderer="vello-cpu">vello-cpu</button>
+          <button type="button" data-renderer="dom">dom</button>
+        </div>
+        <!--
+          ADR-0135 が定める本人調査用トグル（既定 OFF）。vello レンダラー選択時のみ効く
+          layer-present（per-layer 経路）の有効化 — 実ブラウザで描画バグが確認され既知の
+          非推奨機能（ADR-0135）。誤操作を避けるため警告色にし、title/aria-label で明示する。
+        -->
+        <div
+          class="rsw-options rsw-optimize"
+          id="layer-present-options"
+          role="group"
+          aria-label="最適化（layer-present、実験的・既知の描画バグあり、ADR-0135・非推奨）"
+          title="⚠️ 実験的機能: 既知の描画バグあり（ADR-0135・非推奨）。vello レンダラー選択時のみ有効。既定は OFF。"
+        >
+          <span class="rsw-optimize-label">最適化⚠️</span>
+          <button type="button" data-layer-present="0">OFF</button>
+          <button type="button" data-layer-present="1">ON</button>
+        </div>
       </div>
     </div>
     <div id="dom-host" hidden></div>
@@ -140,10 +186,11 @@
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
         const current = params.get('renderer') ?? 'auto';
+        const layerPresentOn = params.get('layerPresent') === '1';
         const root = document.getElementById('renderer-switch');
         const toggle = document.getElementById('renderer-toggle');
         const currentLabel = document.getElementById('renderer-current');
-        currentLabel.textContent = current;
+        currentLabel.textContent = current + (layerPresentOn ? ' ⚠optim' : '');
 
         // 開閉状態は localStorage に保存し、再読込でも維持する。
         const setOpen = (open) => {
@@ -160,6 +207,19 @@
           button.addEventListener('click', () => {
             const next = new URLSearchParams(window.location.search);
             next.set('renderer', value);
+            const query = next.toString();
+            window.location.search = query ? `?${query}` : '';
+          });
+        }
+
+        // 最適化(layer-present)トグル: ADR-0135 の本人調査用例外。既定 OFF。
+        for (const button of root.querySelectorAll('button[data-layer-present]')) {
+          const isOn = button.getAttribute('data-layer-present') === '1';
+          if (isOn === layerPresentOn) button.classList.add('active');
+          button.addEventListener('click', () => {
+            const next = new URLSearchParams(window.location.search);
+            if (isOn) next.set('layerPresent', '1');
+            else next.delete('layerPresent');
             const query = next.toString();
             window.location.search = query ? `?${query}` : '';
           });

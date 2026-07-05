@@ -77,6 +77,15 @@ export interface WebHost {
 export interface CreateHayateWebHostOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
+  /**
+   * `backend === 'vello'` の時だけ効く、layer-present（per-layer 経路、ADR-0125/0127）の
+   * 有効化。既定 `false`。
+   *
+   * ⚠️ ADR-0135 により本経路は Core として非推奨（実ブラウザで描画バグが確認され、実用
+   * 段階にない）。このオプションは ADR-0135 が定める「本人による実ブラウザでの継続調査」
+   * 用の明示的な例外としてのみ存在する — 製品としての有効化・推奨を意味しない。
+   */
+  layerPresent?: boolean;
   /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して味付け
    * 定数のデフォルトを上書きする。不正な JSON は無視され、ビルド時のデフォルトが
    * 維持される。未指定なら上書きしない。 */
@@ -132,13 +141,20 @@ export async function probeWebGPU(): Promise<boolean> {
  * 選択した backend の WASM を動的 import し、surface（canvas）上で `HayateElementRenderer`
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
+ *
+ * `layerPresent` は ADR-0135 が定める本人調査用の明示的な例外のみに使う（既定 false）。
  */
 async function loadCanvasBackend(
   backend: CanvasBackend,
   canvas: HTMLCanvasElement,
+  layerPresent = false,
 ): Promise<RawHayate> {
   if (backend === 'vello') {
-    const velloMod = await import('hayate-adapter-web');
+    // ⚠️ ADR-0135: layer-present は封印中。layerPresent=true は本人調査用トグル経由の
+    // 明示指定でのみ踏む（既定 false・製品としては非推奨）。
+    const velloMod = layerPresent
+      ? await import('hayate-adapter-web-layer-present')
+      : await import('hayate-adapter-web');
     await velloMod.default();
     return (await velloMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
   }
@@ -224,7 +240,10 @@ export async function createHayateWebHost(
   }
 
   const probe = options?.probeWebGPU ?? probeWebGPU;
-  const load = options?.loadBackend ?? loadCanvasBackend;
+  const load =
+    options?.loadBackend ??
+    ((backend: CanvasBackend, canvas: HTMLCanvasElement) =>
+      loadCanvasBackend(backend, canvas, options?.layerPresent));
   const attachMirror = options?.attachMirror ?? attachAccessibilityMirror;
 
   const webgpuAvailable = await probe();

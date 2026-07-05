@@ -4,8 +4,9 @@
     {
       "name": "tsubame-todo",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tsubame/example-todo", "dev"],
-      "port": 5177
+      "runtimeArgs": ["--filter", "@tsubame/example-todo", "exec", "vite", "--port", "5177", "--strictPort"],
+      "port": 5177,
+      "autoPort": false
     },
     {
       "name": "miharashi-host",

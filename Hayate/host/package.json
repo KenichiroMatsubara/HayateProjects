@@ -31,7 +31,8 @@
     "@hayate/protocol-spec": "workspace:*",
     "hayate-adapter-web": "file:../wasm-pkgs/pkg",
     "hayate-adapter-web-cpu": "file:../wasm-pkgs/pkg-tiny-skia",
-    "hayate-adapter-web-vello-cpu": "file:../wasm-pkgs/pkg-vello-cpu"
+    "hayate-adapter-web-vello-cpu": "file:../wasm-pkgs/pkg-vello-cpu",
+    "hayate-adapter-web-layer-present": "file:../wasm-pkgs/pkg-layer-present"
   },
   "devDependencies": {
     "happy-dom": "^17.4.4",

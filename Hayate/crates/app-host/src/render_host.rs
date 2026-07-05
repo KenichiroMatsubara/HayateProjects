@@ -33,12 +33,19 @@ pub trait SceneRenderer {
 
     /// このバックエンドが per-layer present（#636）を実装するか。true なら present ループは
     /// [`present_layers`](Self::present_layers) を使う。既定（false）は全面 raster にフォールバック。
+    ///
+    /// ⚠️ ADR-0135 により封印中 — true を返す実装（web `layer-present` feature 等）を製品として
+    /// 有効化しないこと。#697 で実 Chromium 実行時に描画バグが確認され、実用段階にないと判定
+    /// された。性能上の実害が具体的に発生するまで再開しない（ADR-0135 が定める本人調査用
+    /// トグルは例外）。
     fn supports_layer_present(&self) -> bool {
         false
     }
 
     /// per-layer present（#636・ADR-0125）。既定は全面 `render_scene` にフォールバック
     /// （未対応バックエンド）。
+    ///
+    /// ⚠️ ADR-0135 により封印中 — 詳細は [`supports_layer_present`](Self::supports_layer_present)。
     fn present_layers(
         &mut self,
         scene: &SceneGraph,

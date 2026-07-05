@@ -1,6 +1,6 @@
 # レイヤキャッシュのメモリ予算と scroll レイヤの overscan サイジング（GPU 予算＋LRU 退避）
 
-**Status: proposed (draft)**
+**Status: proposed (draft) — ADR-0135 により封印中（layer-present feature 有効化禁止）**
 
 **Date: 2026-06-30**
 
