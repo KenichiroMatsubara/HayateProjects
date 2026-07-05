@@ -32,6 +32,10 @@ pub mod present;
 pub use present::PresentPlanner;
 pub mod raster_thread;
 pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
+pub mod scroll_geometry;
+pub use scroll_geometry::{
+    scroll_layer_geometry, scroll_layer_geometry_table, RasterBand, ScrollLayerGeometry,
+};
 
 /// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は
 /// プレースホルダで、マジックナンバーをロジックへ散らさないことが目的。予算（ビューポート N 枚分）は
@@ -147,6 +151,15 @@ impl LayerCache {
             Some(band) => !band.covers(visible_top, viewport_height),
             None => true, // 未キャッシュ、または帯情報を持たない（非 scroll として記録された）。
         }
+    }
+
+    /// このレイヤの現在キャッシュ済み scroll 帯（content-local、#707）。合成時に、texture へ実際に
+    /// 入っている帯を正しい画面位置へ戻す平行移動を組むために使う——**このフレームの**（新規）帯では
+    /// なく、composite-only フレーム（`scroll_needs_raster` が false）では texture に入っている帯は
+    /// 過去に raster したときのものなので、そちらを返す必要がある。scroll レイヤでない、または
+    /// 未キャッシュなら `None`。
+    pub fn cached_scroll_band(&self, layer: ElementId) -> Option<ScrollLayerExtent> {
+        self.cached.get(&layer).and_then(|e| e.scroll_band)
     }
 
     /// レイヤを composite に使ったと記録し、LRU 直近性を更新する（ADR-0127）。退避は「最も長く
@@ -362,8 +375,17 @@ pub trait LayerRasterizer: MaybeSend {
     /// backend ごとのキャッシュ面型（wgpu texture / `Pixmap`）。
     type Texture;
     /// `layer` の抽出済み sub-scene（[`layer_scene::extract_layer_scene`] /
-    /// [`layer_scene::extract_root_scene`]）を透明クリアのキャッシュ面へ raster する。
-    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph) -> Result<(), String>;
+    /// [`layer_scene::extract_root_scene`]）を透明クリアのキャッシュ面へ raster する。`band` が
+    /// `Some` なら scroll 内容レイヤの overscan 帯サイジング（ADR-0127・#707）: 実装は
+    /// キャッシュ面をフルサーフェスではなく `band.height` に合わせて確保し、`band.origin_y` が
+    /// texture 行 0 に来るよう内容を平行移動して raster してよい（対応しない実装は無視して
+    /// 従来どおりフルサーフェス raster してもよい——出力は変わらないがメモリ削減が効かないだけ）。
+    fn rasterize(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        band: Option<RasterBand>,
+    ) -> Result<(), String>;
     /// raster 済みキャッシュ面（合成入力）。未 raster / 破棄済みなら `None`。
     fn texture(&self, layer: ElementId) -> Option<&Self::Texture>;
     /// キャッシュ面 1 枚のバイト数（`mark_rasterized_sized` の計上値・ADR-0127）。

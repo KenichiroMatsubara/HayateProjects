@@ -228,7 +228,14 @@ impl HayateElementRenderer {
 
 #[wasm_bindgen]
 impl HayateElementRenderer {
-    pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateElementRenderer, JsValue> {
+    /// `layer_present_enabled` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル
+    /// （ADR-0138）。未指定（`None`）は既定 ON。vello など、コンパイル時にしか
+    /// per-layer 対応を決めないバックエンドには無害（`SceneRenderer::set_layer_present_enabled`
+    /// の既定実装が no-op）。
+    pub async fn init(
+        canvas: HtmlCanvasElement,
+        layer_present_enabled: Option<bool>,
+    ) -> Result<HayateElementRenderer, JsValue> {
         let rect = canvas.get_bounding_client_rect();
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
@@ -239,6 +246,7 @@ impl HayateElementRenderer {
         canvas.set_height(metrics.buffer_height);
 
         let mut backend: SelectedBackend = init_render_host(canvas.clone()).await.map_err(anyhow_to_js)?;
+        backend.set_layer_present_enabled(layer_present_enabled.unwrap_or(true));
         backend.resize(
             metrics.buffer_width,
             metrics.buffer_height,
@@ -552,11 +560,21 @@ impl HayateElementRenderer {
         if self.backend.supports_layer_present() {
             let mut layer_dirty = self.tree.frame_layer_dirty().clone();
             layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+            // ADR-0127 scroll overscan サイジングの配線（#707）: `present_layers` は
+            // `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、scroll
+            // レイヤごとの帯ジオメトリをここで一度だけ計算して渡す（vello バックエンドはこれを
+            // 使って scroll 内容レイヤを可視域＋overscan の帯サイズだけ raster する。対応しない
+            // バックエンドは無視して従来どおりフルサーフェス raster する）。
+            let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_table(
+                &self.tree,
+                self.tree.frame_layers(),
+            );
             self.backend
                 .present_layers(
                     self.tree.scene_graph(),
                     self.tree.frame_layers(),
                     &layer_dirty,
+                    &scroll_geometry,
                     self.background,
                 )
                 .map_err(anyhow_to_js)

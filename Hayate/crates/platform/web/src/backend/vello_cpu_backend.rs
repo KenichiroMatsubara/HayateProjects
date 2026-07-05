@@ -1,11 +1,13 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner};
+use hayate_layer_compositor::{
+    CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner, ScrollLayerGeometry,
+};
 use hayate_scene_renderer_vello_cpu::{
     premultiplied_to_straight, VelloCpuCompositeTarget, VelloCpuLayerCompositor,
     VelloCpuLayerRasterizer, VelloCpuSceneRenderer,
@@ -33,6 +35,10 @@ pub(crate) struct SelectedBackend {
     rasterizer: VelloCpuLayerRasterizer,
     compositor: VelloCpuLayerCompositor,
     prev_layers: HashSet<ElementId>,
+    // ADR-0138 比較用トグル。既定 ON（tiny-skia backend と同じ設計）——`HayateElementRenderer::init`
+    // の `layer_present_enabled` 引数で OFF にすると `supports_layer_present()` が false を返し、
+    // 呼び出し側（`canvas.rs`）が全面 `render_scene` にフォールバックする。
+    layer_present_enabled: bool,
 }
 
 impl SelectedBackend {
@@ -64,6 +70,7 @@ impl SelectedBackend {
             rasterizer: VelloCpuLayerRasterizer::new(width, height, 1.0),
             compositor: VelloCpuLayerCompositor::new(1.0),
             prev_layers: HashSet::new(),
+            layer_present_enabled: true,
         })
     }
 }
@@ -94,7 +101,11 @@ impl CanvasBackend for SelectedBackend {
     }
 
     fn supports_layer_present(&self) -> bool {
-        true
+        self.layer_present_enabled
+    }
+
+    fn set_layer_present_enabled(&mut self, enabled: bool) {
+        self.layer_present_enabled = enabled;
     }
 
     fn present_layers(
@@ -102,6 +113,10 @@ impl CanvasBackend for SelectedBackend {
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        // #707 (ADR-0127): scroll-band overscan sizing is vello-only for now (see vello.rs's
+        // `present_layers`) — vello_cpu's per-layer path stays exactly as before this parameter
+        // existed (every layer, including `ScrollView`s, gets a full-surface `Pixmap`).
+        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
         let Some(&root) = layers.first() else {
@@ -128,7 +143,7 @@ impl CanvasBackend for SelectedBackend {
                 }
             };
             self.rasterizer
-                .rasterize(layer, &extracted)
+                .rasterize(layer, &extracted, None)
                 .map_err(|e| anyhow::anyhow!(e))?;
             self.planner
                 .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());

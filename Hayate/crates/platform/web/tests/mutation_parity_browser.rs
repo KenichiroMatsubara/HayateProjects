@@ -64,7 +64,7 @@ fn texts(values: &[&str]) -> js_sys::Array {
 #[wasm_bindgen_test]
 async fn canvas_and_html_sinks_agree_on_text_content_for_one_op_stream() {
     let canvas = make_canvas(200);
-    let mut canvas_renderer = HayateElementRenderer::init(canvas)
+    let mut canvas_renderer = HayateElementRenderer::init(canvas, None)
         .await
         .expect("canvas renderer init");
 

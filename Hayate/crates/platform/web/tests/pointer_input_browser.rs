@@ -160,7 +160,7 @@ fn has_delivery(rows: &js_sys::Array, listener_id: f64, kind: f64) -> bool {
 #[wasm_bindgen_test]
 async fn dispatched_pointermove_delivers_hover_enter() {
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -196,7 +196,7 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
     // サーフェスサイズの ScrollView に、それより高い子を持たせ、縦スクロール
     // 余地を作る（コンテンツ 600 対ビューポート 200）。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -245,7 +245,7 @@ async fn wheel_over_canvas_suppresses_the_native_scroll() {
     // スクロールしてしまう（二重スクロール）。passive リスナは `preventDefault` を
     // 黙って捨て、ネイティブスクロールが生き、`defaultPrevented` も false になる。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -280,7 +280,7 @@ async fn wheel_over_canvas_suppresses_the_native_scroll() {
 /// `Scroll` リスナを登録し、一度レイアウトして、renderer と canvas のクライアント
 /// 原点・リスナ id を返す。momentum の e2e テスト群で共有する。
 async fn scrollable_renderer(canvas: &HtmlCanvasElement) -> (HayateElementRenderer, f64, f64, f64) {
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -452,7 +452,7 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
     // ションごとに `last_pointer_kind` を保持する。renderer のアクセサ経由で
     // エンドツーエンドに観測する（テスト専用エクスポートなし、ADR-0072）。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -494,7 +494,7 @@ async fn pointer_move_over_button_applies_pointer_cursor_to_the_canvas() {
     // 要素種別の UA 既定（pointer）が出るため、アプリが個別に styling せずとも
     // Canvas が DOM の `<button>` に一致する。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -524,7 +524,7 @@ async fn a_buffered_pointer_input_wakes_the_on_demand_frame_loop() {
     // ここでは wake コールバック（JS の `scheduleFrame` 相当）を注入し、`render()` を挟まずに
     // 本物の `pointerdown` を dispatch して、listener が wake を叩くことを直接検証する。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -564,7 +564,7 @@ async fn a_buffered_pointer_input_wakes_the_on_demand_frame_loop() {
 #[wasm_bindgen_test]
 async fn dispatched_pointerleave_delivers_hover_leave() {
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 

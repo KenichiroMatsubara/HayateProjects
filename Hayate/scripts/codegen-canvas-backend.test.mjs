@@ -42,6 +42,38 @@ test('generates a layerPresent-gated ternary for a backend with a variant', () =
   );
 });
 
+// ADR-0138 (#710): tiny-skia/vello_cpu take a runtime per-layer-present toggle
+// distinct from vello's compile-time `layerPresent` package variant. A target
+// opts in via `host.runtimeLayerPresentArg`, which threads a second `init()`
+// argument and adds `cpuLayerPresent` to loadCanvasBackend's own signature.
+test('threads a runtime layer-present arg into init() for a backend that opts in', () => {
+  const manifest = {
+    targets: [
+      {
+        name: 'pkg-tiny-skia',
+        npmName: 'hayate-adapter-web-cpu',
+        host: { backend: 'tiny-skia', runtimeLayerPresentArg: true },
+      },
+    ],
+  };
+
+  const source = generateLoadCanvasBackend(manifest);
+
+  assert.match(source, /cpuLayerPresent = true/);
+  assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, cpuLayerPresent\)/);
+});
+
+test('leaves init() at a single canvas arg for a backend that does not opt in', () => {
+  const manifest = {
+    targets: [{ name: 'pkg-tiny-skia', npmName: 'hayate-adapter-web-cpu', host: { backend: 'tiny-skia' } }],
+  };
+
+  const source = generateLoadCanvasBackend(manifest);
+
+  assert.doesNotMatch(source, /cpuLayerPresent/);
+  assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas\)/);
+});
+
 // The whole point of #703: every import() must stay a literal string a bundler
 // can statically analyze — never a computed/dynamic specifier.
 test('every import() call in the generated source is a static string literal', () => {
@@ -71,6 +103,10 @@ test('the real manifest reproduces the original hand-written loadCanvasBackend b
   assert.match(source, /await import\('hayate-adapter-web-cpu'\)/);
   assert.match(source, /if \(backend === 'vello-cpu'\)/);
   assert.match(source, /await import\('hayate-adapter-web-vello-cpu'\)/);
+  // ADR-0138 (#710): tiny-skia/vello_cpu get the runtime layer-present toggle, vello does not
+  // (its own layerPresent gate is the compile-time package variant above).
+  assert.match(source, /cpuLayerPresent = true/);
+  assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, cpuLayerPresent\)/g);
   // pkg-null must never surface in host-side branching — it has no CanvasBackend.
   assert.doesNotMatch(source, /hayate-adapter-web-null/);
   assert.match(source, /AUTO-GENERATED/);

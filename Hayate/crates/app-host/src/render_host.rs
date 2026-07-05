@@ -9,11 +9,12 @@
 //! オーケストレーション（どの順で試すか・いつフォールバックするか）はここに hoist
 //! されているので、`RendererInit` 越しに呼ぶ。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Error;
 use hayate_core::element::id::ElementId;
 use hayate_core::{SceneGraph, Surface};
+use hayate_layer_compositor::ScrollLayerGeometry;
 
 use crate::renderer_selection::{
     is_runtime_fallback_reason, RendererCapabilities, RendererSelectionPlan,
@@ -42,8 +43,21 @@ pub trait SceneRenderer {
         false
     }
 
+    /// per-layer present の有効・無効をランタイムで切り替える（ADR-0138、tiny-skia/vello_cpu
+    /// の比較トグル用）。既定（no-op）はコンパイル時にしか対応を決めないバックエンド
+    /// （vello の `layer-present` feature 等）向け——切り替え可能なバックエンドだけが
+    /// override して [`supports_layer_present`](Self::supports_layer_present) が読む
+    /// フィールドを更新する。
+    fn set_layer_present_enabled(&mut self, _enabled: bool) {}
+
     /// per-layer present（#636・ADR-0125）。既定は全面 `render_scene` にフォールバック
     /// （未対応バックエンド）。
+    ///
+    /// `scroll_geometry` は `ElementKind::ScrollView` レイヤごとの ADR-0127 overscan 帯ジオメトリ
+    /// （#707）——呼び出し側（`present_frame`）が `ElementTree` から一度だけ計算して渡す。
+    /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、
+    /// scroll offset / viewport / content 高を自分では問い合わせられない（この小さな表がその境界を
+    /// またぐ唯一の橋渡し）。対応しないバックエンド（既定実装含む）は無視してよい。
     ///
     /// ⚠️ ADR-0135 により封印中 — 詳細は [`supports_layer_present`](Self::supports_layer_present)。
     fn present_layers(
@@ -51,6 +65,7 @@ pub trait SceneRenderer {
         scene: &SceneGraph,
         _layers: &[ElementId],
         _layer_dirty: &HashSet<ElementId>,
+        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
         self.render_scene(scene, clear_color)
@@ -227,22 +242,29 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
             .is_some_and(|renderer| renderer.supports_layer_present())
     }
 
+    fn set_layer_present_enabled(&mut self, enabled: bool) {
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_layer_present_enabled(enabled);
+        }
+    }
+
     fn present_layers(
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
         debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.present_layers(scene, layers, layer_dirty, clear_color) {
+        match renderer.present_layers(scene, layers, layer_dirty, scroll_geometry, clear_color) {
             Ok(()) => Ok(()),
             // ランタイムフォールバック時は次バックエンドの present（既定は全面 raster）へ委ねる。
             Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.present_layers(scene, layers, layer_dirty, clear_color)
+                renderer.present_layers(scene, layers, layer_dirty, scroll_geometry, clear_color)
             }),
         }
     }
@@ -295,6 +317,7 @@ mod tests {
         kind: SceneRendererKind,
         fails: Rc<RefCell<HashSet<SceneRendererKind>>>,
         resized: Rc<RefCell<Vec<SceneRendererKind>>>,
+        layer_present_enabled: Rc<RefCell<bool>>,
     }
 
     impl SceneRenderer for FakeRenderer {
@@ -314,6 +337,12 @@ mod tests {
         fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {
             self.resized.borrow_mut().push(self.kind);
         }
+        fn supports_layer_present(&self) -> bool {
+            *self.layer_present_enabled.borrow()
+        }
+        fn set_layer_present_enabled(&mut self, enabled: bool) {
+            *self.layer_present_enabled.borrow_mut() = enabled;
+        }
     }
 
     /// init 呼び出しを記録し、`unavailable` に含まれる kind の init は失敗するフェイク。
@@ -322,6 +351,7 @@ mod tests {
         unavailable: HashSet<SceneRendererKind>,
         resized: Rc<RefCell<Vec<SceneRendererKind>>>,
         sync_init_calls: Rc<RefCell<Vec<SceneRendererKind>>>,
+        layer_present_enabled: Rc<RefCell<bool>>,
     }
 
     impl RendererInit<FakeSurface> for FakeInit {
@@ -337,6 +367,7 @@ mod tests {
                 kind,
                 fails: self.fails.clone(),
                 resized: self.resized.clone(),
+                layer_present_enabled: self.layer_present_enabled.clone(),
             }))
         }
 
@@ -353,6 +384,7 @@ mod tests {
                 kind,
                 fails: self.fails.clone(),
                 resized: self.resized.clone(),
+                layer_present_enabled: self.layer_present_enabled.clone(),
             }))
         }
 
@@ -382,6 +414,7 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let host = RenderHost::init_with_policy(
                 FakeSurface { width: 800, height: 600 },
@@ -406,6 +439,7 @@ mod tests {
                 unavailable,
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let host = RenderHost::init_with_policy(
                 FakeSurface { width: 800, height: 600 },
@@ -431,6 +465,7 @@ mod tests {
                 unavailable,
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let result = RenderHost::init_with_policy(
                 FakeSurface { width: 800, height: 600 },
@@ -456,6 +491,7 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: resized.clone(),
                 sync_init_calls: sync_init_calls.clone(),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
                 FakeSurface { width: 800, height: 600 },
@@ -489,6 +525,7 @@ mod tests {
                 unavailable: HashSet::new(),
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: Rc::new(RefCell::new(Vec::new())),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
                 FakeSurface { width: 800, height: 600 },
@@ -508,6 +545,39 @@ mod tests {
                 result.is_err(),
                 "the last renderer in the plan has nowhere left to fall back to"
             );
+        });
+    }
+
+    #[test]
+    fn set_layer_present_enabled_delegates_to_the_active_renderer() {
+        pollster::block_on(async {
+            let layer_present_enabled = Rc::new(RefCell::new(true));
+            let init = FakeInit {
+                fails: Rc::new(RefCell::new(HashSet::new())),
+                unavailable: HashSet::new(),
+                resized: Rc::new(RefCell::new(Vec::new())),
+                sync_init_calls: Rc::new(RefCell::new(Vec::new())),
+                layer_present_enabled: layer_present_enabled.clone(),
+            };
+            let mut host = RenderHost::init_with_policy(
+                FakeSurface { width: 800, height: 600 },
+                policy(),
+                RendererCapabilities { webgpu_available: true },
+                init,
+            )
+            .await
+            .expect("a feasible renderer must be selected");
+
+            assert!(host.supports_layer_present());
+
+            host.set_layer_present_enabled(false);
+            assert!(
+                !host.supports_layer_present(),
+                "set_layer_present_enabled(false) must flip supports_layer_present() on the active renderer"
+            );
+
+            host.set_layer_present_enabled(true);
+            assert!(host.supports_layer_present());
         });
     }
 }

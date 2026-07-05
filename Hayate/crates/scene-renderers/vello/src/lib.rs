@@ -115,8 +115,28 @@ impl VelloSceneRenderer {
         clear_color: [f32; 4],
         content_scale: f32,
     ) -> Result<(), String> {
+        self.render_scene_at(graph, target, clear_color, content_scale, 0.0)
+    }
+
+    /// Like [`Self::render_scene`] but additionally shifts the encoded content up by `origin_y`
+    /// (logical px, applied *before* `content_scale`) — `origin_y == 0.0` is exactly
+    /// `render_scene`. Used by [`crate::layer_compositor::VelloLayerRasterizer`] to raster a
+    /// scroll-content band whose texture only covers `[origin_y, origin_y + height)` of the
+    /// layer's absolute scene content (ADR-0127 overscan sizing): vello has no scissor/viewport
+    /// render concept (`RenderParams` is just `{base_color, width, height,
+    /// antialiasing_method}`), so the destination texture's own extent *is* the render bounds —
+    /// the only way to raster a sub-region is to translate content so that region's top lands at
+    /// texture row 0.
+    pub fn render_scene_at(
+        &mut self,
+        graph: &SceneGraph,
+        target: &VelloRenderTarget<'_>,
+        clear_color: [f32; 4],
+        content_scale: f32,
+        origin_y: f32,
+    ) -> Result<(), String> {
         // #649: 毎フレーム `Scene::new()` せず、常駐 Scene を reset して再エンコードする（alloc churn 削減）。
-        encode_frame(&mut self.scene, graph, content_scale);
+        encode_frame(&mut self.scene, graph, content_scale, origin_y);
         self.renderer
             .render_to_texture(
                 target.device,
@@ -136,15 +156,25 @@ impl VelloSceneRenderer {
 
 /// `graph` を `scene` へエンコードする（#649）。冒頭で `Scene::reset()` して前フレームの内容を消して
 /// から再エンコードするので、常駐 Scene をフレーム間で再利用しても内容は毎フレーム新規 Scene と同値。
-/// content_scale != 1.0 のときは content scale の transform を被せる（ADR-0129 のバッファ縮小と同経路）。
-fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
+/// `content_scale != 1.0` のときは content scale の transform を被せる（ADR-0129 のバッファ縮小と同経路）。
+/// `origin_y != 0.0` のときは、その **内側**（content_scale 適用前の論理座標）で追加の
+/// `translate(0, -origin_y)` を被せる（ADR-0127 の scroll band 平行移動 — ネストした
+/// push_transform は outer∘inner で合成されるため、scale は shift 後の量にも一様に掛かる）。
+fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32, origin_y: f32) {
     scene.reset();
     let mut painter = VelloPainter::new(scene);
     let scaled = content_scale != 1.0;
     if scaled {
         painter.push_transform([content_scale as f64, 0.0, 0.0, content_scale as f64, 0.0, 0.0]);
     }
+    let shifted = origin_y != 0.0;
+    if shifted {
+        painter.push_transform([1.0, 0.0, 0.0, 1.0, 0.0, -origin_y as f64]);
+    }
     render_scene_graph(graph, &mut painter);
+    if shifted {
+        painter.pop_transform();
+    }
     if scaled {
         painter.pop_transform();
     }
@@ -155,7 +185,7 @@ fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
 #[doc(hidden)]
 pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
     let mut scene = Scene::new();
-    encode_frame(&mut scene, graph, content_scale);
+    encode_frame(&mut scene, graph, content_scale, 0.0);
     scene
 }
 
@@ -164,7 +194,7 @@ pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
 // 前フレームを持ち越さないことを GPU 抜きで固定できる。
 #[doc(hidden)]
 pub fn debug_encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
-    encode_frame(scene, graph, content_scale);
+    encode_frame(scene, graph, content_scale, 0.0);
 }
 
 pub fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
