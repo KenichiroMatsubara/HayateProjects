@@ -1,0 +1,19 @@
+{
+  "name": "hayate-fonts",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "upload": "node scripts/upload.mjs",
+    "verify": "node scripts/verify.mjs",
+    "apply-fonts-json": "node scripts/generate-fonts-json.mjs",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260705.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.107.0"
+  }
+}

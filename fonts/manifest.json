@@ -1,0 +1,263 @@
+[
+  {
+    "family": "Noto Sans JP",
+    "slug": "noto-sans-jp",
+    "r2Key": "noto-sans-jp.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/OFL.txt",
+    "oflR2Key": "noto-sans-jp.OFL.txt",
+    "scripts": ["cjk", "japanese"]
+  },
+  {
+    "family": "Noto Sans KR",
+    "slug": "noto-sans-kr",
+    "r2Key": "noto-sans-kr.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanskr/OFL.txt",
+    "oflR2Key": "noto-sans-kr.OFL.txt",
+    "scripts": ["cjk", "korean"]
+  },
+  {
+    "family": "Noto Sans SC",
+    "slug": "noto-sans-sc",
+    "r2Key": "noto-sans-sc.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanssc/OFL.txt",
+    "oflR2Key": "noto-sans-sc.OFL.txt",
+    "scripts": ["cjk", "simplified-chinese"]
+  },
+  {
+    "family": "Noto Sans TC",
+    "slug": "noto-sans-tc",
+    "r2Key": "noto-sans-tc.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanstc/OFL.txt",
+    "oflR2Key": "noto-sans-tc.OFL.txt",
+    "scripts": ["cjk", "traditional-chinese"]
+  },
+  {
+    "family": "Noto Sans Arabic",
+    "slug": "noto-sans-arabic",
+    "r2Key": "noto-sans-arabic.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/OFL.txt",
+    "oflR2Key": "noto-sans-arabic.OFL.txt",
+    "scripts": ["arabic"]
+  },
+  {
+    "family": "Noto Sans Thai",
+    "slug": "noto-sans-thai",
+    "r2Key": "noto-sans-thai.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansthai/OFL.txt",
+    "oflR2Key": "noto-sans-thai.OFL.txt",
+    "scripts": ["thai"]
+  },
+  {
+    "family": "Noto Sans Devanagari",
+    "slug": "noto-sans-devanagari",
+    "r2Key": "noto-sans-devanagari.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansdevanagari/OFL.txt",
+    "oflR2Key": "noto-sans-devanagari.OFL.txt",
+    "scripts": ["devanagari"]
+  },
+  {
+    "family": "Noto Sans Hebrew",
+    "slug": "noto-sans-hebrew",
+    "r2Key": "noto-sans-hebrew.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosanshebrew/OFL.txt",
+    "oflR2Key": "noto-sans-hebrew.OFL.txt",
+    "scripts": ["hebrew"]
+  },
+  {
+    "family": "Noto Emoji",
+    "slug": "noto-emoji",
+    "r2Key": "noto-emoji.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoemoji/OFL.txt",
+    "oflR2Key": "noto-emoji.OFL.txt",
+    "scripts": ["emoji"]
+  },
+  {
+    "family": "Noto Color Emoji",
+    "slug": "noto-color-emoji",
+    "r2Key": "noto-color-emoji.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notocoloremoji/OFL.txt",
+    "oflR2Key": "noto-color-emoji.OFL.txt",
+    "scripts": ["emoji"]
+  },
+  {
+    "family": "Noto Serif",
+    "slug": "noto-serif",
+    "r2Key": "noto-serif.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notoserif/OFL.txt",
+    "oflR2Key": "noto-serif.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Noto Sans Mono",
+    "slug": "noto-sans-mono",
+    "r2Key": "noto-sans-mono.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansmono/NotoSansMono%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansmono/OFL.txt",
+    "oflR2Key": "noto-sans-mono.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Inter",
+    "slug": "inter",
+    "r2Key": "inter.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/OFL.txt",
+    "oflR2Key": "inter.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Roboto",
+    "slug": "roboto",
+    "r2Key": "roboto.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/Roboto%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/roboto/OFL.txt",
+    "oflR2Key": "roboto.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Open Sans",
+    "slug": "open-sans",
+    "r2Key": "open-sans.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/opensans/OFL.txt",
+    "oflR2Key": "open-sans.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Lato",
+    "slug": "lato",
+    "r2Key": "lato.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/lato/Lato-Regular.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/lato/OFL.txt",
+    "oflR2Key": "lato.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Poppins",
+    "slug": "poppins",
+    "r2Key": "poppins.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/Poppins-Regular.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/poppins/OFL.txt",
+    "oflR2Key": "poppins.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Montserrat",
+    "slug": "montserrat",
+    "r2Key": "montserrat.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/OFL.txt",
+    "oflR2Key": "montserrat.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Raleway",
+    "slug": "raleway",
+    "r2Key": "raleway.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/raleway/Raleway%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/raleway/OFL.txt",
+    "oflR2Key": "raleway.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Nunito",
+    "slug": "nunito",
+    "r2Key": "nunito.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/nunito/Nunito%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/nunito/OFL.txt",
+    "oflR2Key": "nunito.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Oswald",
+    "slug": "oswald",
+    "r2Key": "oswald.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/oswald/Oswald%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/oswald/OFL.txt",
+    "oflR2Key": "oswald.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Source Sans 3",
+    "slug": "source-sans-3",
+    "r2Key": "source-sans-3.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/sourcesans3/OFL.txt",
+    "oflR2Key": "source-sans-3.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Playfair Display",
+    "slug": "playfair-display",
+    "r2Key": "playfair-display.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/playfairdisplay/OFL.txt",
+    "oflR2Key": "playfair-display.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Merriweather",
+    "slug": "merriweather",
+    "r2Key": "merriweather.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/merriweather/Merriweather%5Bopsz%2Cwdth%2Cwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/merriweather/OFL.txt",
+    "oflR2Key": "merriweather.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Lora",
+    "slug": "lora",
+    "r2Key": "lora.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/lora/Lora%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/lora/OFL.txt",
+    "oflR2Key": "lora.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "JetBrains Mono",
+    "slug": "jetbrains-mono",
+    "r2Key": "jetbrains-mono.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/jetbrainsmono/OFL.txt",
+    "oflR2Key": "jetbrains-mono.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Fira Code",
+    "slug": "fira-code",
+    "r2Key": "fira-code.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/firacode/FiraCode%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/firacode/OFL.txt",
+    "oflR2Key": "fira-code.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "Source Code Pro",
+    "slug": "source-code-pro",
+    "r2Key": "source-code-pro.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/sourcecodepro/SourceCodePro%5Bwght%5D.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/sourcecodepro/OFL.txt",
+    "oflR2Key": "source-code-pro.OFL.txt",
+    "scripts": []
+  },
+  {
+    "family": "M PLUS Rounded 1c",
+    "slug": "m-plus-rounded-1c",
+    "r2Key": "m-plus-rounded-1c.ttf",
+    "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/mplusrounded1c/MPLUSRounded1c-Regular.ttf",
+    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/mplusrounded1c/OFL.txt",
+    "oflR2Key": "m-plus-rounded-1c.OFL.txt",
+    "scripts": ["cjk", "japanese"]
+  }
+]

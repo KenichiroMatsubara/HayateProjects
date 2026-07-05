@@ -5,6 +5,9 @@ Tsubame/.git-merged/
 node_modules/
 .claude/worktrees/
 
+# Cloudflare Workers local dev state
+.wrangler/
+
 # JetBrains IDE (Android Studio / IntelliJ) — 開発者ごとのプロジェクト設定。
 # 開くたびに再生成・更新されるため追跡しない。
 .idea/
