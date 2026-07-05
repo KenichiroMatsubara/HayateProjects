@@ -15,7 +15,7 @@ const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.me
 
 let failed = 0;
 for (const entry of manifest) {
-  for (const key of [entry.r2Key, entry.oflR2Key]) {
+  for (const key of [entry.r2Key, entry.oflR2Key].filter(Boolean)) {
     const url = `${baseUrl.replace(/\/$/, "")}/${key}`;
     try {
       const res = await fetch(url);

@@ -14,28 +14,18 @@ const fontsDir = fileURLToPath(new URL("..", import.meta.url));
 const manifest = JSON.parse(await readFile(new URL("../manifest.json", import.meta.url)));
 const workdir = await mkdtemp(join(tmpdir(), "hayate-fonts-"));
 
-const missingOfl = [];
-
 for (const entry of manifest) {
   console.log(`\n== ${entry.family} ==`);
   await uploadOne(entry.sourceUrl, entry.r2Key);
-  try {
+  if (entry.oflUrl) {
     await uploadOne(entry.oflUrl, entry.oflR2Key);
-  } catch (err) {
-    // Not every google/fonts directory has an OFL.txt (e.g. mplusrounded1c) even
-    // though METADATA.pb declares an OFL license — an upstream gap, not ours.
-    // Missing license text doesn't block serving the font, so don't abort the run.
-    console.warn(`  skipping OFL.txt for ${entry.family}: ${err.message}`);
-    missingOfl.push(entry.family);
+  } else {
+    console.log(`  no OFL.txt upstream (${entry.oflNote}), skipping`);
   }
 }
 
 console.log("\nDone. Deploy the worker (`pnpm run deploy`), then verify with:");
 console.log("  pnpm run verify -- <worker-url>");
-if (missingOfl.length > 0) {
-  console.log(`\nNo OFL.txt found upstream for: ${missingOfl.join(", ")}`);
-  console.log("(METADATA.pb still declares an OFL license for these — check google/fonts directly if this matters.)");
-}
 
 async function uploadOne(sourceUrl, r2Key) {
   console.log(`fetching ${sourceUrl}`);

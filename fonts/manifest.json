@@ -256,8 +256,9 @@
     "slug": "m-plus-rounded-1c",
     "r2Key": "m-plus-rounded-1c.ttf",
     "sourceUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/mplusrounded1c/MPLUSRounded1c-Regular.ttf",
-    "oflUrl": "https://raw.githubusercontent.com/google/fonts/main/ofl/mplusrounded1c/OFL.txt",
-    "oflR2Key": "m-plus-rounded-1c.OFL.txt",
+    "oflUrl": null,
+    "oflR2Key": null,
+    "oflNote": "no OFL.txt in google/fonts upstream despite METADATA.pb license: OFL",
     "scripts": ["cjk", "japanese"]
   }
 ]
