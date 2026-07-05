@@ -1,6 +1,6 @@
 # layer-present（per-layer 経路）を封印する — 実ブラウザで描画バグを確認したため
 
-**Status: sealed — 製品としては有効化禁止（本人の実ブラウザ調査用トグルのみ例外、Decision 参照）。#697 の描画バグの根本原因・修正は ADR-0136 参照**
+**Status: sealed（native のみ）— native（Android/iOS）は製品としては有効化禁止（本人の実ブラウザ調査用トグルのみ例外、Decision 参照）のまま。Web は ADR-0137 により既定 ON へ改定済み。#697 の描画バグの根本原因・修正は ADR-0136 参照**
 
 **Date: 2026-07-05**
 
