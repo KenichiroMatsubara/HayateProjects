@@ -1,129 +1,156 @@
 [
   {
     "family": "Noto Sans JP",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf",
-    "scripts": ["cjk", "japanese"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-jp.ttf",
+    "scripts": [
+      "cjk",
+      "japanese"
+    ]
   },
   {
     "family": "Noto Sans KR",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf",
-    "scripts": ["cjk", "korean"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-kr.ttf",
+    "scripts": [
+      "cjk",
+      "korean"
+    ]
   },
   {
     "family": "Noto Sans SC",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf",
-    "scripts": ["cjk", "simplified-chinese"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-sc.ttf",
+    "scripts": [
+      "cjk",
+      "simplified-chinese"
+    ]
   },
   {
     "family": "Noto Sans TC",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanstc/NotoSansTC%5Bwght%5D.ttf",
-    "scripts": ["cjk", "traditional-chinese"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-tc.ttf",
+    "scripts": [
+      "cjk",
+      "traditional-chinese"
+    ]
   },
   {
     "family": "Noto Sans Arabic",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
-    "scripts": ["arabic"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-arabic.ttf",
+    "scripts": [
+      "arabic"
+    ]
   },
   {
     "family": "Noto Sans Thai",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansthai/NotoSansThai%5Bwdth%2Cwght%5D.ttf",
-    "scripts": ["thai"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-thai.ttf",
+    "scripts": [
+      "thai"
+    ]
   },
   {
     "family": "Noto Sans Devanagari",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansdevanagari/NotoSansDevanagari%5Bwdth%2Cwght%5D.ttf",
-    "scripts": ["devanagari"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-devanagari.ttf",
+    "scripts": [
+      "devanagari"
+    ]
   },
   {
     "family": "Noto Sans Hebrew",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanshebrew/NotoSansHebrew%5Bwdth%2Cwght%5D.ttf",
-    "scripts": ["hebrew"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-hebrew.ttf",
+    "scripts": [
+      "hebrew"
+    ]
   },
   {
     "family": "Noto Emoji",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
-    "scripts": ["emoji"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-emoji.ttf",
+    "scripts": [
+      "emoji"
+    ]
   },
   {
     "family": "Noto Color Emoji",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notocoloremoji/NotoColorEmoji-Regular.ttf",
-    "scripts": ["emoji"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-color-emoji.ttf",
+    "scripts": [
+      "emoji"
+    ]
   },
   {
     "family": "Noto Serif",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-serif.ttf"
   },
   {
     "family": "Noto Sans Mono",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansmono/NotoSansMono%5Bwdth%2Cwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-mono.ttf"
   },
   {
     "family": "Inter",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/inter.ttf"
   },
   {
     "family": "Roboto",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/roboto.ttf"
   },
   {
     "family": "Open Sans",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/open-sans.ttf"
   },
   {
     "family": "Lato",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lato/Lato-Regular.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/lato.ttf"
   },
   {
     "family": "Poppins",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Regular.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/poppins.ttf"
   },
   {
     "family": "Montserrat",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/montserrat.ttf"
   },
   {
     "family": "Raleway",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/raleway/Raleway%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/raleway.ttf"
   },
   {
     "family": "Nunito",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nunito/Nunito%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/nunito.ttf"
   },
   {
     "family": "Oswald",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/oswald/Oswald%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/oswald.ttf"
   },
   {
     "family": "Source Sans 3",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcesans3/SourceSans3%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/source-sans-3.ttf"
   },
   {
     "family": "Playfair Display",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/playfair-display.ttf"
   },
   {
     "family": "Merriweather",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/merriweather/Merriweather%5Bopsz%2Cwdth%2Cwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/merriweather.ttf"
   },
   {
     "family": "Lora",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lora/Lora%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/lora.ttf"
   },
   {
     "family": "JetBrains Mono",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/jetbrains-mono.ttf"
   },
   {
     "family": "Fira Code",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/firacode/FiraCode%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/fira-code.ttf"
   },
   {
     "family": "Source Code Pro",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/sourcecodepro/SourceCodePro%5Bwght%5D.ttf"
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/source-code-pro.ttf"
   },
   {
     "family": "M PLUS Rounded 1c",
-    "url": "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mplusrounded1c/MPLUSRounded1c-Regular.ttf",
-    "scripts": ["cjk", "japanese"]
+    "url": "https://hayate-fonts.kenmatsu331.workers.dev/m-plus-rounded-1c.ttf",
+    "scripts": [
+      "cjk",
+      "japanese"
+    ]
   }
 ]

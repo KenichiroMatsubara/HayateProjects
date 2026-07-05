@@ -1,0 +1,7 @@
+name = "hayate-fonts"
+main = "worker/src/index.ts"
+compatibility_date = "2026-07-05"
+
+[[r2_buckets]]
+binding = "FONTS_BUCKET"
+bucket_name = "hayate-fonts"
