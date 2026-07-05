@@ -52,7 +52,7 @@ test('threads a runtime layer-present arg into init() for a backend that opts in
       {
         name: 'pkg-tiny-skia',
         npmName: 'hayate-adapter-web-cpu',
-        host: { backend: 'tiny-skia', runtimeLayerPresentArg: true },
+        host: { backend: 'tiny-skia', runtimeLayerPresentArg: 'cpuLayerPresent' },
       },
     ],
   };
@@ -61,6 +61,28 @@ test('threads a runtime layer-present arg into init() for a backend that opts in
 
   assert.match(source, /cpuLayerPresent = true/);
   assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, cpuLayerPresent\)/);
+});
+
+// #717 (prefactor for #718): runtimeLayerPresentArg is the literal init() variable
+// name a target opts in with, not just an on/off bool — a backend other than
+// tiny-skia/vello-cpu must be able to thread its own differently-named flag.
+test('threads a target-chosen variable name (not hardcoded to cpuLayerPresent) into init()', () => {
+  const manifest = {
+    targets: [
+      {
+        name: 'pkg-tiny-skia',
+        npmName: 'hayate-adapter-web-cpu',
+        host: { backend: 'tiny-skia', runtimeLayerPresentArg: 'fooFlag' },
+      },
+    ],
+  };
+
+  const source = generateLoadCanvasBackend(manifest);
+
+  assert.match(source, /fooFlag = true/);
+  assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, fooFlag\)/);
+  assert.doesNotMatch(source, /cpuLayerPresent = true/);
+  assert.doesNotMatch(source, /init\(canvas, cpuLayerPresent\)/);
 });
 
 test('leaves init() at a single canvas arg for a backend that does not opt in', () => {

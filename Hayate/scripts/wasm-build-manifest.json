@@ -20,7 +20,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web-cpu",
-      "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": true }
+      "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
       "name": "pkg-vello-cpu",
@@ -30,7 +30,7 @@
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
       "npmName": "hayate-adapter-web-vello-cpu",
-      "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": true }
+      "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
       "name": "pkg-null",
