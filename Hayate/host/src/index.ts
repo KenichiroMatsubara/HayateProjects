@@ -86,6 +86,12 @@ export interface CreateHayateWebHostOptions {
    * 残している。native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。
    */
   layerPresent?: boolean;
+  /**
+   * `backend === 'tiny-skia' | 'vello-cpu'` の時だけ効く、per-layer 経路の比較用トグル
+   * （ADR-0138）。既定 `true`。vello の `layerPresent`（パッケージ選択、コンパイル時）とは
+   * 別物のランタイムフラグ。`false` で全面 raster にフォールバックする。
+   */
+  cpuLayerPresent?: boolean;
   /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して味付け
    * 定数のデフォルトを上書きする。不正な JSON は無視され、ビルド時のデフォルトが
    * 維持される。未指定なら上書きしない。 */
@@ -212,7 +218,7 @@ export async function createHayateWebHost(
   const load =
     options?.loadBackend ??
     ((backend: CanvasBackend, canvas: HTMLCanvasElement) =>
-      loadCanvasBackend(backend, canvas, options?.layerPresent));
+      loadCanvasBackend(backend, canvas, options?.layerPresent, options?.cpuLayerPresent));
   const attachMirror = options?.attachMirror ?? attachAccessibilityMirror;
 
   const webgpuAvailable = await probe();

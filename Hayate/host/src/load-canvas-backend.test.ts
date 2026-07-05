@@ -13,13 +13,15 @@ vi.mock('hayate-adapter-web-layer-present', () => ({
   default: vi.fn(async () => {}),
   HayateElementRenderer: { init: vi.fn(async () => 'raw:vello-layer-present') },
 }));
+const tinySkiaInit = vi.fn(async () => 'raw:tiny-skia');
 vi.mock('hayate-adapter-web-cpu', () => ({
   default: vi.fn(async () => {}),
-  HayateElementRenderer: { init: vi.fn(async () => 'raw:tiny-skia') },
+  HayateElementRenderer: { init: tinySkiaInit },
 }));
+const velloCpuInit = vi.fn(async () => 'raw:vello-cpu');
 vi.mock('hayate-adapter-web-vello-cpu', () => ({
   default: vi.fn(async () => {}),
-  HayateElementRenderer: { init: vi.fn(async () => 'raw:vello-cpu') },
+  HayateElementRenderer: { init: velloCpuInit },
 }));
 
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
@@ -41,5 +43,20 @@ describe('loadCanvasBackend (generated from wasm-build-manifest.json, #703)', ()
 
   it('vello-cpu loads hayate-adapter-web-vello-cpu', async () => {
     await expect(loadCanvasBackend('vello-cpu', canvas)).resolves.toBe('raw:vello-cpu');
+  });
+
+  it('tiny-skia forwards cpuLayerPresent to init (ADR-0138 default ON)', async () => {
+    await loadCanvasBackend('tiny-skia', canvas);
+    expect(tinySkiaInit).toHaveBeenCalledWith(canvas, true);
+  });
+
+  it('tiny-skia forwards cpuLayerPresent=false when passed', async () => {
+    await loadCanvasBackend('tiny-skia', canvas, true, false);
+    expect(tinySkiaInit).toHaveBeenCalledWith(canvas, false);
+  });
+
+  it('vello-cpu forwards cpuLayerPresent to init (ADR-0138 default ON)', async () => {
+    await loadCanvasBackend('vello-cpu', canvas);
+    expect(velloCpuInit).toHaveBeenCalledWith(canvas, true);
   });
 });

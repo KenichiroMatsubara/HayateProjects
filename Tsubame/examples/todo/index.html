@@ -164,6 +164,20 @@
           <button type="button" data-layer-present="0">OFF</button>
           <button type="button" data-layer-present="1">ON</button>
         </div>
+        <!--
+          ADR-0138: tiny-skia/vello-cpu レンダラー選択時のみ効く per-layer 経路の比較用
+          トグル。既知のバグはないため vello の列と違い警告色は使わない。既定 ON。
+        -->
+        <div
+          class="rsw-options"
+          id="cpu-layer-present-options"
+          role="group"
+          aria-label="layer-present（tiny-skia/vello-cpu レンダラー選択時のみ有効）"
+        >
+          <span class="rsw-optimize-label">layer-present</span>
+          <button type="button" data-cpu-layer-present="0">OFF</button>
+          <button type="button" data-cpu-layer-present="1">ON</button>
+        </div>
       </div>
     </div>
     <div id="dom-host" hidden></div>
@@ -206,6 +220,21 @@
             const next = new URLSearchParams(window.location.search);
             if (isOn) next.delete('layerPresent');
             else next.set('layerPresent', '0');
+            const query = next.toString();
+            window.location.search = query ? `?${query}` : '';
+          });
+        }
+
+        // tiny-skia/vello-cpu 用 layer-present トグル（ADR-0138）: 既定 ON。OFF で全面
+        // raster 版に戻す。vello の `layerPresent` とは別のクエリキー。
+        const cpuLayerPresentOn = params.get('cpuLayerPresent') !== '0';
+        for (const button of root.querySelectorAll('button[data-cpu-layer-present]')) {
+          const isOn = button.getAttribute('data-cpu-layer-present') === '1';
+          if (isOn === cpuLayerPresentOn) button.classList.add('active');
+          button.addEventListener('click', () => {
+            const next = new URLSearchParams(window.location.search);
+            if (isOn) next.delete('cpuLayerPresent');
+            else next.set('cpuLayerPresent', '0');
             const query = next.toString();
             window.location.search = query ? `?${query}` : '';
           });

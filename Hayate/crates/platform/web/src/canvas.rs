@@ -228,7 +228,14 @@ impl HayateElementRenderer {
 
 #[wasm_bindgen]
 impl HayateElementRenderer {
-    pub async fn init(canvas: HtmlCanvasElement) -> Result<HayateElementRenderer, JsValue> {
+    /// `layer_present_enabled` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル
+    /// （ADR-0138）。未指定（`None`）は既定 ON。vello など、コンパイル時にしか
+    /// per-layer 対応を決めないバックエンドには無害（`SceneRenderer::set_layer_present_enabled`
+    /// の既定実装が no-op）。
+    pub async fn init(
+        canvas: HtmlCanvasElement,
+        layer_present_enabled: Option<bool>,
+    ) -> Result<HayateElementRenderer, JsValue> {
         let rect = canvas.get_bounding_client_rect();
         let dpr = web_sys::window()
             .map(|w| w.device_pixel_ratio())
@@ -239,6 +246,7 @@ impl HayateElementRenderer {
         canvas.set_height(metrics.buffer_height);
 
         let mut backend: SelectedBackend = init_render_host(canvas.clone()).await.map_err(anyhow_to_js)?;
+        backend.set_layer_present_enabled(layer_present_enabled.unwrap_or(true));
         backend.resize(
             metrics.buffer_width,
             metrics.buffer_height,

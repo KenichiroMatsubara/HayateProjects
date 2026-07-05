@@ -11,11 +11,17 @@ import type { RawHayate } from './raw-hayate.js';
  * `layerPresent` は vello の per-layer 経路（ADR-0125/0127）の有効化。ADR-0137 により
  * Web は既定 ON — `false` を渡すと全面 raster 版（`hayate-adapter-web`）に戻せる、
  * 比較用の逃げ道として残す。native は本パスを経由しないため既定 OFF のまま変更なし。
+ *
+ * `cpuLayerPresent` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル（ADR-0138）。
+ * vello の `layerPresent`（パッケージ選択、コンパイル時）とは別物 — こちらはランタイム
+ * フラグとして `HayateElementRenderer.init` に渡す。既定 ON、`false` で全面 raster
+ * にフォールバックする。
  */
 export async function loadCanvasBackend(
   backend: CanvasBackend,
   canvas: HTMLCanvasElement,
   layerPresent = true,
+  cpuLayerPresent = true,
 ): Promise<RawHayate> {
   if (backend === 'vello') {
     const mod = layerPresent ? await import('hayate-adapter-web-layer-present') : await import('hayate-adapter-web');
@@ -25,12 +31,12 @@ export async function loadCanvasBackend(
   if (backend === 'tiny-skia') {
     const mod = await import('hayate-adapter-web-cpu');
     await mod.default();
-    return (await mod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+    return (await mod.HayateElementRenderer.init(canvas, cpuLayerPresent)) as unknown as RawHayate;
   }
   if (backend === 'vello-cpu') {
     const mod = await import('hayate-adapter-web-vello-cpu');
     await mod.default();
-    return (await mod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+    return (await mod.HayateElementRenderer.init(canvas, cpuLayerPresent)) as unknown as RawHayate;
   }
   throw new Error(`loadCanvasBackend: no wasm-build-manifest.json target maps to backend "${backend}"`);
 }

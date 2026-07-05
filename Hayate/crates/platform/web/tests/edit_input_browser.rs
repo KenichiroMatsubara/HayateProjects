@@ -123,7 +123,7 @@ async fn flush_microtasks() {
 #[wasm_bindgen_test]
 async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -178,7 +178,7 @@ async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
     // 複数行 text-input では Enter を末尾追加ではなくキャレット位置への
     // 改行挿入として扱う。キャレットを先頭へ動かしてから Enter。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -217,7 +217,7 @@ async fn enter_in_a_single_line_field_does_not_insert_a_newline() {
     // 既定（単一行）の text-input は Enter でテキストを変えない。
     // このキーはアプリの送信シグナルであり改行ではない。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -247,7 +247,7 @@ async fn enter_in_a_single_line_field_does_not_insert_a_newline() {
 #[wasm_bindgen_test]
 async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -289,7 +289,7 @@ async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
 #[wasm_bindgen_test]
 async fn delete_keys_remove_chars_through_the_canvas_keymap() {
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -338,7 +338,7 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
     // Ctrl+Backspace / Ctrl+Delete は wasm 境界を越え、アダプタのキーマップで
     // Delete/Word intent に変換され、単語まるごとを削除する。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 
@@ -388,7 +388,7 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
     // `element_paste` に戻す。読み取りをスタブすればこの経路全体が観測でき、
     // 空のフォーカス中フィールドにクリップボードのテキストが入る。
     let canvas = make_canvas(200);
-    let mut renderer = HayateElementRenderer::init(canvas.clone())
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
         .await
         .expect("renderer init");
 

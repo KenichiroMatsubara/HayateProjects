@@ -51,11 +51,16 @@ const host: Host =
           // `?layerPresent=0` を書くと明示的にフルraster版へ戻せる。`@tsubame/app` の
           // detectMode は host-blind のまま保つため（ADR-0012）、この web/Hayate 固有
           // フラグはここで直接読む。
-          const layerPresent = new URLSearchParams(window.location.search).get('layerPresent') !== '0';
+          const query = new URLSearchParams(window.location.search);
+          const layerPresent = query.get('layerPresent') !== '0';
+          // tiny-skia/vello-cpu 選択時のみ効く per-layer 経路の比較用トグル（ADR-0138）。
+          // vello の `layerPresent` とは別のクエリキー — 既定は逆（こちらは既定 ON）。
+          const cpuLayerPresent = query.get('cpuLayerPresent') !== '0';
           const webHost = await createHayateWebHost(canvas, {
             backend: detected.backend,
             tuning,
             layerPresent,
+            cpuLayerPresent,
           });
           hayateRenderer = new HayateRenderer({
             raw: webHost.raw,

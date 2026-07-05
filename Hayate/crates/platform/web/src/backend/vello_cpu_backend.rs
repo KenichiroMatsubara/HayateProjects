@@ -35,6 +35,10 @@ pub(crate) struct SelectedBackend {
     rasterizer: VelloCpuLayerRasterizer,
     compositor: VelloCpuLayerCompositor,
     prev_layers: HashSet<ElementId>,
+    // ADR-0138 比較用トグル。既定 ON（tiny-skia backend と同じ設計）——`HayateElementRenderer::init`
+    // の `layer_present_enabled` 引数で OFF にすると `supports_layer_present()` が false を返し、
+    // 呼び出し側（`canvas.rs`）が全面 `render_scene` にフォールバックする。
+    layer_present_enabled: bool,
 }
 
 impl SelectedBackend {
@@ -66,6 +70,7 @@ impl SelectedBackend {
             rasterizer: VelloCpuLayerRasterizer::new(width, height, 1.0),
             compositor: VelloCpuLayerCompositor::new(1.0),
             prev_layers: HashSet::new(),
+            layer_present_enabled: true,
         })
     }
 }
@@ -96,7 +101,11 @@ impl CanvasBackend for SelectedBackend {
     }
 
     fn supports_layer_present(&self) -> bool {
-        true
+        self.layer_present_enabled
+    }
+
+    fn set_layer_present_enabled(&mut self, enabled: bool) {
+        self.layer_present_enabled = enabled;
     }
 
     fn present_layers(
