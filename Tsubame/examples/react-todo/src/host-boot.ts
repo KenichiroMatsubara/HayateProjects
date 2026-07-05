@@ -57,11 +57,11 @@ function normalizeDevServerUrl(raw: string): string {
 }
 
 /**
- * protocol 不一致の明示エラー UI を表示する。謎クラッシュにせず「このホストは protocol vX、
- * バンドルは vY」を画面に出す（#530）。canvas は mount しないまま残す。
+ * 明示エラー UI を画面に出す。謎の空白/フリーズにせず、原因を読める形で表示する
+ * （boot 失敗・protocol 不一致・mount 後の未捕捉例外など、失敗の種類を問わず共通の 1 経路）。
  */
-function showProtocolMismatch(error: ProtocolMismatchError): void {
-  root.dataset.miharashiStatus = 'protocol-mismatch';
+function showErrorPanel(message: string, status: string): void {
+  root.dataset.miharashiStatus = status;
   let panel = document.getElementById(ERROR_PANEL_ID);
   if (!panel) {
     panel = document.createElement('div');
@@ -69,11 +69,43 @@ function showProtocolMismatch(error: ProtocolMismatchError): void {
     panel.setAttribute('role', 'alert');
     panel.style.cssText =
       'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
-      'padding:24px;color:#fca5a5;background:#0b1020;font:16px/1.6 system-ui,sans-serif;text-align:center;';
+      'padding:24px;color:#fca5a5;background:#0b1020;font:16px/1.6 system-ui,sans-serif;text-align:center;' +
+      'white-space:pre-wrap;z-index:9999;';
     document.body.appendChild(panel);
   }
-  panel.textContent = `protocol version 不一致: ${error.message}`;
+  panel.textContent = message;
 }
+
+/**
+ * protocol 不一致の明示エラー UI を表示する。謎クラッシュにせず「このホストは protocol vX、
+ * バンドルは vY」を画面に出す（#530）。canvas は mount しないまま残す。
+ */
+function showProtocolMismatch(error: ProtocolMismatchError): void {
+  showErrorPanel(`protocol version 不一致: ${error.message}`, 'protocol-mismatch');
+}
+
+/** boot 中の未捕捉例外（バンドル取得失敗・eval/mount の throw 等）を画面に出す。 */
+function showBootFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  showErrorPanel(`Miharashi の起動に失敗しました:\n${message}`, 'error');
+}
+
+/**
+ * mount 後にアプリが投げた未捕捉例外 / 未処理の Promise 拒否を画面に出す。これが無いと、
+ * mount 済みの canvas がそのまま固まる（or 消える）だけで、何が起きたか一切わからない
+ * まま「エラーメッセージなく落ちる」ように見えていた。
+ */
+function installRuntimeCrashReporter(): void {
+  window.addEventListener('error', (event) => {
+    const message = event.error instanceof Error ? event.error.message : event.message;
+    showErrorPanel(`Miharashi で未捕捉の例外が発生しました:\n${message}`, 'runtime-error');
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+    showErrorPanel(`Miharashi で未処理の Promise 拒否が発生しました:\n${reason}`, 'runtime-error');
+  });
+}
+installRuntimeCrashReporter();
 
 // e2e / デバッグが「何回 mount まで貫けたか」を観測できるよう mount 回数を data 属性に出す。
 // full reload が効くと、ソース編集のたびにこの数が増える。
@@ -226,13 +258,16 @@ function boot(devServerUrl: string): void {
         mountCount += 1;
         root.dataset.miharashiMountCount = String(mountCount);
         root.dataset.miharashiStatus = 'mounted';
+        // 前回の reload がエラー UI を出していたら、mount 成功で隠す（reload で復帰した場合に
+        // 古いエラーパネルが新しい canvas を覆ったまま残らないように）。
+        document.getElementById(ERROR_PANEL_ID)?.remove();
       } else if (result.error instanceof ProtocolMismatchError) {
         // 不一致は mount もクラッシュもさせず、明示エラー UI に落とす（#530）。
         showProtocolMismatch(result.error);
         console.error('Miharashi host protocol mismatch', result.error);
       } else {
-        root.dataset.miharashiStatus = 'error';
         root.dataset.miharashiError = String(result.error);
+        showBootFailure(result.error);
         console.error('Miharashi host boot failed', result.error);
       }
     },
