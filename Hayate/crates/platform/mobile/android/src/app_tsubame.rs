@@ -74,20 +74,22 @@ fn read_bundle_protocol_version(hermes: &cxx::UniquePtr<HermesApp>) -> Option<u3
     }
 }
 
-/// boot 失敗を明示ログにする（mount もクラッシュもさせない・#530）。不一致は両版数を、取得失敗は
-/// その種別を出す。pump には進めない（current=None のまま）。
-fn report_boot_error(error: &BootError) {
-    match error {
-        BootError::ProtocolMismatch(mismatch) => log::error!(
+/// boot 失敗をログと画面向けの読める文言にする（mount もクラッシュもさせない・#530）。不一致は
+/// 両版数を、取得失敗はその種別を出す。pump には進めない（current=None のまま）。返した文言は
+/// 呼び出し側が `error_screen::build_error_tree` でそのまま画面に描画する——Web ホストの
+/// built-in error panel と対称に、consumer（アプリ側）の実装に依存せず画面に出す保証。
+fn report_boot_error(error: &BootError) -> String {
+    let message = match error {
+        BootError::ProtocolMismatch(mismatch) => format!(
             "Miharashi: protocol version 不一致のため mount しません — {}（host v{}, bundle {:?}）",
-            mismatch.message,
-            mismatch.host_version,
-            mismatch.bundle_version,
+            mismatch.message, mismatch.host_version, mismatch.bundle_version,
         ),
-        BootError::Fetch(err) => log::error!(
+        BootError::Fetch(err) => format!(
             "Miharashi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}"
         ),
-    }
+    };
+    log::error!("{message}");
+    message
 }
 
 pub(crate) fn run(app: AndroidApp) {
@@ -124,10 +126,13 @@ pub(crate) fn run(app: AndroidApp) {
     };
 
     // 現在駆動中のランタイム（boot 失敗 / 不一致のあいだは None で、pump せず明示エラーのまま回す）。
+    // boot 失敗中に画面へ出すエラーツリー（Web ホストの built-in error panel と対称。#530）。
+    let mut error_tree: Option<ElementTree> = None;
     let mut current: Option<Runtime> = match boot() {
         Ok(runtime) => Some(runtime),
         Err(error) => {
-            report_boot_error(&error);
+            let message = report_boot_error(&error);
+            error_tree = Some(crate::error_screen::build_error_tree(&message));
             None
         }
     };
@@ -354,18 +359,38 @@ pub(crate) fn run(app: AndroidApp) {
                         runtime.tree.borrow_mut().set_viewport(vw, vh);
                     }
                     current = Some(runtime);
+                    error_tree = None;
                     // 新ツリーは未描画。冷間始動を要求して最初のフレームを必ず出す。
                     frame_loop.request_wake();
                 }
                 Err(error) => {
-                    report_boot_error(&error);
+                    let message = report_boot_error(&error);
+                    error_tree = Some(crate::error_screen::build_error_tree(&message));
                     current = None;
+                    // 既存の surface にまだ前回の成功フレームが出たままなので、エラー画面へ
+                    // 即座に描き直す（次の lifecycle wake を待たない）。
+                    frame_loop.request_wake();
                 }
             }
         }
 
-        // ランタイム未確立（boot 失敗 / 不一致 / reload 待ち）なら入力も描画もしない（謎クラッシュ回避）。
+        // ランタイム未確立（boot 失敗 / 不一致 / reload 待ち）なら入力も JS pump もしない
+        // （謎クラッシュ回避）。ただし on-demand wake が立っていればエラー画面だけは描画する
+        // ——さもないと画面が永久に白紙のまま「エラーメッセージなく落ちる」ように見える
+        // （Web ホストの built-in error panel と対称の保証、#530）。
         let Some(runtime) = current.as_mut() else {
+            if frame_loop.wants_frame() {
+                if let Some(tree) = error_tree.as_mut() {
+                    if let Some((vw, vh)) = last_viewport {
+                        tree.set_viewport(vw, vh);
+                    }
+                    let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
+                    if let Some(rt) = raster.as_ref() {
+                        let _ = rt.send(frame_handoff(tree));
+                    }
+                }
+                frame_loop.note_frame_rendered(false);
+            }
             continue;
         };
 

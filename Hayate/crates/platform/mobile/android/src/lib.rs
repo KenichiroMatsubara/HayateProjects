@@ -44,6 +44,9 @@ mod miharashi_reload;
 #[cfg(feature = "tsubame-js")]
 mod reload_socket;
 mod scene_demo;
+// boot 失敗を画面に出す最小エラー画面（Miharashi, #530 系）。NDK 非依存の純粋な要素ツリー
+// 構築なのでホストでもコンパイル・テストされ、`app_tsubame.rs` が boot 失敗時に描画する。
+mod error_screen;
 // on-demand フレームループの起床/継続判定（ADR-0117 / ADR-0126）。android 非依存の純粋
 // 判定器なので、ホストの cargo test で振る舞いを固定する（app_tsubame の実ループが利用）。
 mod frame_schedule;
