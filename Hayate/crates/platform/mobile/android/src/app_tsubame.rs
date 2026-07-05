@@ -47,7 +47,8 @@ use crate::miharashi_reload::{
 use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
 use hayate_core::element::ime_reconcile::TextInputState;
 use crate::surface_lifecycle::{
-    viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
+    safe_window_dimensions, viewport_for_surface, window_dimensions, SurfaceLifecycleAction,
+    SurfaceLifecycleState,
 };
 
 /// 1 boot 分の Hermes ランタイムと、それと共有する ElementTree。full reload では丸ごと作り直して
@@ -222,6 +223,31 @@ pub(crate) fn run(app: AndroidApp) {
                     MainEvent::Destroy => {
                         Some(crate::surface_lifecycle::SurfaceLifecycleEvent::Destroy)
                     }
+                    // システムUI（ステータスバー/ナビゲーションバー/ソフトキーボード）の実表示
+                    // 領域が変わったときに届く（surface 自体の init/resize/destroy ではない）。
+                    // 四論理イベントの state machine には乗せず、ここで直接ビューポートだけ
+                    // 更新する（最下点固定ピクセルずれバグの修正）。
+                    MainEvent::ContentRectChanged { .. } => {
+                        if let Some(window) = app.native_window() {
+                            let scale = crate::surface_lifecycle::content_scale(&app);
+                            let (w, h) = window_dimensions(window.width(), window.height());
+                            let rect = app.content_rect();
+                            let (safe_w, safe_h) = safe_window_dimensions(
+                                w, h, rect.left, rect.top, rect.right, rect.bottom,
+                            );
+                            let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
+                            last_viewport = Some((vw, vh));
+                            if let Some(runtime) = current.as_ref() {
+                                let mut tree = runtime.tree.borrow_mut();
+                                tree.set_viewport(vw, vh);
+                                // CreateSurface/ResizeSurface と同じ理由（下のコメント参照）で、
+                                // viewport 変更を即座にレイアウトへ反映させるため明示的に render
+                                // を起こす。
+                                let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
+                            }
+                        }
+                        None
+                    }
                     _ => None,
                 };
 
@@ -231,7 +257,11 @@ pub(crate) fn run(app: AndroidApp) {
                             if let Some(window) = app.native_window() {
                                 let scale = crate::surface_lifecycle::content_scale(&app);
                                 let (w, h) = window_dimensions(window.width(), window.height());
-                                let (vw, vh) = viewport_for_surface(w, h, scale);
+                                let rect = app.content_rect();
+                                let (safe_w, safe_h) = safe_window_dimensions(
+                                    w, h, rect.left, rect.top, rect.right, rect.bottom,
+                                );
+                                let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
                                 last_viewport = Some((vw, vh));
                                 if let Some(runtime) = current.as_ref() {
                                     let mut tree = runtime.tree.borrow_mut();
@@ -266,7 +296,11 @@ pub(crate) fn run(app: AndroidApp) {
                                     content_scale: scale,
                                 });
                             }
-                            let (vw, vh) = viewport_for_surface(width, height, scale);
+                            let rect = app.content_rect();
+                            let (safe_w, safe_h) = safe_window_dimensions(
+                                width, height, rect.left, rect.top, rect.right, rect.bottom,
+                            );
+                            let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
                                 let mut tree = runtime.tree.borrow_mut();

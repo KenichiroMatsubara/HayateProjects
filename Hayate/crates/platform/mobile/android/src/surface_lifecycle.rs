@@ -47,6 +47,32 @@ pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
     surface_metrics(width, height, 1.0).buffer_size()
 }
 
+/// `content_rect`（ウィンドウ内で実際に見える領域。`AndroidApp::content_rect()`）から、
+/// レイアウトに渡す安全なビューポート物理サイズを導く。
+///
+/// GameActivity はステータスバー/ナビゲーションバー（ジェスチャーバー含む）の下まで含めた
+/// ウィンドウ全体を `ANativeWindow` として渡してくるが、それをそのまま `viewport_for_surface`
+/// に渡すとレイアウトが「システムUIの裏側も見えている」前提になり、最下点（bottom-anchored
+/// な要素）がナビゲーションバー分だけ画面外にずれる。GPU surface/swapchain は変わらず
+/// ウィンドウ全体のサイズを使う（`window_dimensions` のまま）が、レイアウト用ビューポートだけ
+/// この安全領域サイズに差し替える。`content_rect` が空/不正（初回レイアウト前など）なら
+/// ウィンドウ全体にフォールバックする。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn safe_window_dimensions(
+    window_width: u32,
+    window_height: u32,
+    content_left: i32,
+    content_top: i32,
+    content_right: i32,
+    content_bottom: i32,
+) -> (u32, u32) {
+    let visible_width = (content_right - content_left).max(0) as u32;
+    let visible_height = (content_bottom - content_top).max(0) as u32;
+    let width = if visible_width == 0 { window_width } else { visible_width.min(window_width) };
+    let height = if visible_height == 0 { window_height } else { visible_height.min(window_height) };
+    (width, height)
+}
+
 /// クランプ済みサーフェス寸法(物理 px)と content scale から `ElementTree` の論理ビューポートを導く。
 ///
 /// レイアウト/ヒットテストは論理px空間（`viewport_width = buffer_width / content_scale`）で動く。
@@ -127,5 +153,23 @@ mod tests {
         // 3x密度（480dpi 相当）の 1080px 幅は論理 360px。styleVariants の maxWidth 判定が
         // デスクトップ幅と誤認しないよう、物理pxをそのまま論理pxに使ってはいけない。
         assert_eq!(viewport_for_surface(1080, 2400, 3.0), (360.0, 800.0));
+    }
+
+    #[test]
+    fn safe_window_dimensions_shrinks_by_the_navigation_bar_inset() {
+        // ウィンドウ 1080x2400 のうち下 120px がジェスチャーバー（content_rect.bottom=2280）。
+        // 最下点がその裏へずれるバグの回帰防止（issue 報告: 最下点固定ピクセルずれ）。
+        assert_eq!(safe_window_dimensions(1080, 2400, 0, 0, 1080, 2280), (1080, 2280));
+    }
+
+    #[test]
+    fn safe_window_dimensions_falls_back_to_the_full_window_when_content_rect_is_empty() {
+        // 初回レイアウト前など content_rect がまだ届いていない場合は安全側（ウィンドウ全体）。
+        assert_eq!(safe_window_dimensions(1080, 2400, 0, 0, 0, 0), (1080, 2400));
+    }
+
+    #[test]
+    fn safe_window_dimensions_clamps_to_the_window_even_if_content_rect_overshoots() {
+        assert_eq!(safe_window_dimensions(1080, 2400, 0, 0, 2000, 3000), (1080, 2400));
     }
 }

@@ -24,7 +24,8 @@ use hayate_core::element::ime_reconcile::{
 };
 use crate::scene_demo::build_demo_tree;
 use crate::surface_lifecycle::{
-    viewport_for_surface, window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
+    safe_window_dimensions, viewport_for_surface, window_dimensions, SurfaceLifecycleAction,
+    SurfaceLifecycleState,
 };
 use crate::touch_input::{translate_touch, TouchAction};
 use crate::touch_scroll::TouchScrollState;
@@ -114,6 +115,18 @@ pub fn android_main(app: AndroidApp) {
                     MainEvent::Destroy => {
                         Some(crate::surface_lifecycle::SurfaceLifecycleEvent::Destroy)
                     }
+                    // システムUI（ステータスバー/ナビゲーションバー/ソフトキーボード）の
+                    // 実表示領域が変わったときに届く（surface 自体の init/resize/destroy では
+                    // ない）。四論理イベントの state machine には乗せず、ここで直接ビューポート
+                    // だけ更新する（最下点固定ピクセルずれバグの修正）。
+                    MainEvent::ContentRectChanged { .. } => {
+                        if let Some(window) = app.native_window() {
+                            let scale = crate::surface_lifecycle::content_scale(&app);
+                            let (vw, vh) = safe_viewport(&app, &window, scale);
+                            tree.set_viewport(vw, vh);
+                        }
+                        None
+                    }
                     _ => None,
                 };
 
@@ -122,9 +135,7 @@ pub fn android_main(app: AndroidApp) {
                         SurfaceLifecycleAction::CreateSurface => {
                             if let Some(window) = app.native_window() {
                                 let scale = crate::surface_lifecycle::content_scale(&app);
-                                let (w, h) =
-                                    window_dimensions(window.width(), window.height());
-                                let (vw, vh) = viewport_for_surface(w, h, scale);
+                                let (vw, vh) = safe_viewport(&app, &window, scale);
                                 tree.set_viewport(vw, vh);
                                 match pollster::block_on(init_gpu_surface(&window, scale)) {
                                     // 生成した surface を Raster スレッドへ move（move-after-creation）。
@@ -148,7 +159,11 @@ pub fn android_main(app: AndroidApp) {
                                     content_scale: scale,
                                 });
                             }
-                            let (vw, vh) = viewport_for_surface(width, height, scale);
+                            let rect = app.content_rect();
+                            let (safe_w, safe_h) = safe_window_dimensions(
+                                width, height, rect.left, rect.top, rect.right, rect.bottom,
+                            );
+                            let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
                             tree.set_viewport(vw, vh);
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
@@ -310,6 +325,22 @@ fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
         MotionAction::Cancel => Some(TouchAction::Cancel),
         _ => None,
     }
+}
+
+/// ネイティブウィンドウ全体の物理サイズと `content_rect()`（システムUIを除いた実表示領域）
+/// から、レイアウトに渡す論理ビューポートを導く。GPU surface のサイズはウィンドウ全体の
+/// ままで変えない（`window_dimensions` を別途使う）——ここで縮めるのはレイアウトが使う
+/// ビューポートだけ（最下点固定ピクセルずれバグの修正、`safe_window_dimensions` 参照）。
+fn safe_viewport(
+    app: &AndroidApp,
+    window: &ndk::native_window::NativeWindow,
+    content_scale: f32,
+) -> (f32, f32) {
+    let (w, h) = window_dimensions(window.width(), window.height());
+    let rect = app.content_rect();
+    let (safe_w, safe_h) =
+        safe_window_dimensions(w, h, rect.left, rect.top, rect.right, rect.bottom);
+    viewport_for_surface(safe_w, safe_h, content_scale)
 }
 
 pub(crate) async fn init_gpu_surface(
