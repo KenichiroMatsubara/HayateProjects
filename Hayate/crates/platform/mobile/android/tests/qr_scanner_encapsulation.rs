@@ -1,8 +1,10 @@
 //! ホスト可読の QR スキャナ capability ガード（ADR-0125）。iOS の `qr_scanner_encapsulation.rs` の
-//! 鏡写し。本アプリ初の Rust↔Kotlin JNI seam を 1 モジュールに封じ込める。
+//! 鏡写し。Rust↔Kotlin JNI を共通下地 1 モジュールに封じ込める。
 //!
-//! 1. **封じ込め**: Code Scanner を呼ぶ JNI（`jni::` の使用）は QR glue モジュール内にのみ現れてよい。
-//!    audio の `hayate_ios_audio_*` ガードと同型に、汚い FFI を 1 か所へ寄せる。
+//! 1. **封じ込め**: `jni::` の直接使用は共通下地（`jni_bridge.rs`）内にのみ現れてよい。
+//!    audio の `hayate_ios_audio_*` ガードと同型に、汚い FFI を 1 か所へ寄せる。QR スキャナ
+//!    （`qr_scanner.rs`）・エラーオーバーレイ（`error_overlay.rs`）等の JNI leaf は全て
+//!    `jni_bridge::with_activity_env` 経由で呼び、`jni::` を直接触らない。
 //! 2. **契約遵守**: leaf の `AndroidQrScanner` が Core の [`QrScanner`] 契約を `#[cfg(target_os =
 //!    "android")]` glue として実装することをソース走査で固定する。実機（NDK + Play services）が
 //!    無くても成立する。
@@ -10,10 +12,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// JNI を使ってよい唯一のモジュール（QR スキャナ leaf）。
+/// `jni::` を直接使ってよい唯一のファイル（Rust↔Kotlin JNI の共通下地）。
+const JNI_BRIDGE_FILE: &str = "jni_bridge.rs";
+
+/// QR スキャナ leaf のファイル（`QrScanner` 契約の実装を固定する対象）。
 const QR_FILE: &str = "qr_scanner.rs";
 
-/// QR glue のシーム内に留めるべき Rust↔Kotlin JNI の使用マーカー。
+/// JNI の使用マーカー。共通下地（`JNI_BRIDGE_FILE`）以外に現れてはいけない。
 const FORBIDDEN_MARKER: &str = "jni::";
 
 fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -33,7 +38,7 @@ fn read_src(rel: &str) -> String {
 }
 
 #[test]
-fn jni_is_confined_to_the_qr_module() {
+fn jni_is_confined_to_the_bridge_module() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut files = Vec::new();
     rs_files(&src, &mut files);
@@ -42,7 +47,7 @@ fn jni_is_confined_to_the_qr_module() {
     let mut violations = Vec::new();
     for file in &files {
         let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name == QR_FILE {
+        if name == JNI_BRIDGE_FILE {
             continue;
         }
         let text = fs::read_to_string(file).expect("read source");
@@ -59,8 +64,8 @@ fn jni_is_confined_to_the_qr_module() {
 
     assert!(
         violations.is_empty(),
-        "Rust↔Kotlin JNI (`{FORBIDDEN_MARKER}*`) must live only in `{QR_FILE}` \
-         (route through the Core `QrScanner` contract); found:\n{}",
+        "Rust↔Kotlin JNI (`{FORBIDDEN_MARKER}*`) must live only in `{JNI_BRIDGE_FILE}` \
+         (route through `jni_bridge::with_activity_env`); found:\n{}",
         violations.join("\n")
     );
 }
