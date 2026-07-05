@@ -59,8 +59,11 @@ export function loadManifest(path = MANIFEST_PATH) {
 // No names => every target marked includeInDefaultBuild (today's `pnpm run
 // build`). Explicit names => exactly those targets, in the given order,
 // regardless of includeInDefaultBuild (today's `pnpm run build:layer-present`,
-// generalized to any target by name).
-export function selectTargets(manifest, names) {
+// generalized to any target by name). { all: true } => literally every target
+// regardless of includeInDefaultBuild — the seam CI's Pages deploy uses so a
+// new manifest entry can't be silently left out of the deployed artifact.
+export function selectTargets(manifest, names, { all = false } = {}) {
+  if (all) return manifest.targets;
   if (names.length === 0) return manifest.targets.filter((t) => t.includeInDefaultBuild);
   return names.map((name) => {
     const target = manifest.targets.find((t) => t.name === name);

@@ -176,6 +176,22 @@ test('selectTargets: an unknown name throws a clear error', () => {
   assert.throws(() => selectTargets(manifest, ['pkg-quantum']), /pkg-quantum/);
 });
 
+// CI's Pages deploy needs every target built (including opt-in ones like
+// pkg-layer-present), not just the default set — { all: true } is the seam
+// that guarantees a manifest entry can never be silently missing from that
+// build, regardless of its includeInDefaultBuild value.
+test('selectTargets: { all: true } selects every target, default or opt-in', () => {
+  const manifest = loadManifest();
+
+  assert.deepEqual(selectTargets(manifest, [], { all: true }).map((t) => t.name), [
+    'pkg',
+    'pkg-tiny-skia',
+    'pkg-vello-cpu',
+    'pkg-null',
+    'pkg-layer-present',
+  ]);
+});
+
 function validManifestFixture(overrides = {}) {
   return {
     crateDir: 'crates/platform/web',

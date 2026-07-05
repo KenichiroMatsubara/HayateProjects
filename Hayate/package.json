@@ -7,6 +7,7 @@
   "scripts": {
     "build": "node scripts/build-wasm.mjs",
     "build:layer-present": "node scripts/build-wasm.mjs pkg-layer-present",
+    "build:all": "node scripts/build-wasm.mjs --all",
     "desktop": "node scripts/run-desktop.mjs",
     "desktop:build": "node scripts/run-desktop.mjs --build-only",
     "check": "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",

@@ -51,6 +51,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Hayate WASM (incl. pkg-null for C3)
+        # `pnpm --filter hayate build` builds every includeInDefaultBuild target in
+        # Hayate/scripts/wasm-build-manifest.json (#700) — pkg-null (the only one this
+        # job needs) is one of them. Adding a new default-build target needs no change
+        # here; it's picked up automatically (#701).
         run: pnpm --filter hayate build
 
       - name: Build renderer-hayate test dependencies

@@ -11,6 +11,9 @@
 // 引数無し = マニフェストの includeInDefaultBuild 全部（旧 build-wasm.mjs 相当、4 backend）。
 // 引数にターゲット名を渡すとそれだけをビルドする
 // （例: `node build-wasm.mjs pkg-layer-present` で旧 build-wasm-layer-present.mjs 相当）。
+// `--all` は includeInDefaultBuild を無視してマニフェストの全ターゲットをビルドする
+// （#701: CI の Pages デプロイが使う — マニフェストにターゲットを追加してもこのモードの
+// 呼び出し側 [CI workflow] は変更不要になる）。
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -63,8 +66,14 @@ function buildTarget(target, manifest, crateDir) {
   console.log();
 }
 
+const argv = process.argv.slice(2);
+const all = argv.includes('--all');
 const manifest = loadManifest();
-const targets = selectTargets(manifest, process.argv.slice(2));
+const targets = selectTargets(
+  manifest,
+  argv.filter((a) => a !== '--all'),
+  { all },
+);
 const crateDir = join(ROOT_DIR, manifest.crateDir);
 
 console.log(`${BOLD}━━━ hayate WASM build ━━━${RESET}`);
