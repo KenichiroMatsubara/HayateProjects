@@ -18,6 +18,9 @@ pub static NOTO_SANS_JP_BYTES: &[u8] = include_bytes!("../../core/assets/fonts/N
 /// Logical viewport the [`tasks_tree`] fixture is laid out for, in CSS px.
 pub const TASKS_VIEWPORT: (f32, f32) = (980.0, 1060.0);
 
+/// Logical viewport the [`dual_transition_tree`] fixture is laid out for, in CSS px.
+pub const DUAL_TRANSITION_VIEWPORT: (f32, f32) = (200.0, 80.0);
+
 /// `#rgb`, `#rrggbb`, `#rrggbbaa` parsed into core's [`Color`].
 pub fn hex(s: &str) -> Color {
     let h = s.trim_start_matches('#');
@@ -601,6 +604,58 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
     b.tree
 }
 
+/// issue #680 実機回帰の再現構成: 優先度セグメントボタン（`Tsubame/examples/todo/src/components/
+/// AddForm.tsx` の `seg()`）と同型に、2 要素が同一フレームで同時に transition を開始し、同じ
+/// duration（160ms・`seg()` が使う `EASE` 定数と同値）で同時に終わる。選択されていた方（`a`）が
+/// 非アクティブ色へ、新しく選択された方（`b`）がアクティブ色へ切り替わる。
+///
+/// 返る tree はコールドフレーム（`render(0.0)`）で `a`＝アクティブ／`b`＝非アクティブの状態を
+/// 一度確定させ、その直後に両方の背景色を入れ替え済み——呼び出し側の最初の `render(t)` が
+/// transition 1 フレーム目になる（perf プローブが「実際に 2 レイヤが同時に dirty になった
+/// フレーム」を計測できるようにするため）。
+pub fn dual_transition_tree() -> ElementTree {
+    let (vw, vh) = DUAL_TRANSITION_VIEWPORT;
+    let mut b = TreeBuilder::new();
+    let root = b.view(&[
+        StyleProp::Width(Dimension::px(vw)),
+        StyleProp::Height(Dimension::px(vh)),
+        StyleProp::Display(hayate_core::DisplayValue::Flex),
+        StyleProp::FlexDirection(FlexDirectionValue::Row),
+        StyleProp::AlignItems(AlignValue::Center),
+        StyleProp::JustifyContent(JustifyValue::Center),
+        StyleProp::Gap(Dimension::px(4.0)),
+        StyleProp::BackgroundColor(Color::new(0.95, 0.93, 0.89, 1.0)),
+    ]);
+    b.tree.set_root(root);
+    b.tree.set_viewport(vw, vh);
+
+    let active = Color::new(0.05, 0.72, 0.63, 1.0); // accent tone
+    let inactive = Color::new(0.93, 0.90, 0.85, 1.0); // panel2 tone
+    let seg = |bg: Color| {
+        vec![
+            StyleProp::Height(Dimension::px(38.0)),
+            StyleProp::Width(Dimension::px(40.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(bg),
+            StyleProp::BorderRadius(9.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(bg),
+            StyleProp::TransitionDuration(160.0),
+        ]
+    };
+    let a = b.view(&seg(active));
+    let bx = b.view(&seg(inactive));
+    b.children(root, &[a, bx]);
+
+    let _ = b.tree.render(0.0);
+    b.tree.element_set_style(a, &[StyleProp::BackgroundColor(inactive), StyleProp::BorderColor(inactive)]);
+    b.tree.element_set_style(bx, &[StyleProp::BackgroundColor(active), StyleProp::BorderColor(active)]);
+    b.tree
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,5 +733,22 @@ mod tests {
             !runs.iter().any(|t| t == "tiny-skia"),
             "tiny-skia label must not leak when building for another renderer; got {runs:?}"
         );
+    }
+
+    #[test]
+    fn dual_transition_tree_returns_with_both_segments_already_toggled_and_pending() {
+        // The fixture pre-applies the #680 toggle (a active->inactive, b inactive->active) so the
+        // caller's first render() is transition frame 1, not the cold frame.
+        let mut tree = dual_transition_tree();
+        assert!(
+            tree.has_pending_visual_work(),
+            "fixture must return with a transition already in flight"
+        );
+        let root = tree.root().expect("fixture must set a root element");
+        let _ = tree.render(16.0);
+        let (_, _, w, h) = tree
+            .element_layout_rect(root)
+            .expect("root must have a layout rect");
+        assert_eq!((w, h), DUAL_TRANSITION_VIEWPORT);
     }
 }

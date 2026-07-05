@@ -12,11 +12,87 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use hayate_core::ElementId;
-use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
+use hayate_demo_fixtures::{dual_transition_tree, tasks_tree, DUAL_TRANSITION_VIEWPORT, TASKS_VIEWPORT};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
+use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
+};
 use hayate_scene_renderer_vello::debug_encode_scene;
+use hayate_scene_test_support::vello::{readback_rgba8, render_scene_to_pixels_scaled, VelloHarness};
+
+/// #690/#692: 1 フレーム分のレイヤ raster + wgpu quad 合成（persistent キャッシュ）。呼び出し側が
+/// `cached`（既に raster 済みのレイヤ集合）を跨フレームで持ち回すことで、`present_layers()` の実運用
+/// 挙動（dirty / 未キャッシュのレイヤだけ再 raster）を計測でも再現する。
+fn layered_gpu_frame(
+    h: &mut VelloHarness,
+    rasterizer: &mut VelloLayerRasterizer,
+    compositor: &mut WgpuQuadCompositor,
+    cached: &mut HashSet<ElementId>,
+    graph: &hayate_core::SceneGraph,
+    layers: &[ElementId],
+    layer_dirty: &HashSet<ElementId>,
+    w: u32,
+    hgt: u32,
+) -> Option<Vec<u8>> {
+    let Some(&root) = layers.first() else { return None };
+    let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+    for &layer in layers {
+        if cached.contains(&layer) && !layer_dirty.contains(&layer) {
+            continue;
+        }
+        let extracted = if layer == root {
+            Some(extract_root_scene(graph, root, &boundaries))
+        } else {
+            extract_layer_scene(graph, layer, &boundaries)
+        };
+        if let Some(extracted) = extracted {
+            rasterizer.rasterize(layer, &extracted).ok()?;
+            cached.insert(layer);
+        }
+    }
+    let placements = collect_layer_placements(graph, root, &boundaries);
+    let quads: Vec<CompositeQuad<'_, _>> = placements
+        .iter()
+        .filter_map(|p| {
+            rasterizer.texture(p.layer).map(|texture| CompositeQuad {
+                layer: p.layer,
+                transform: p.transform,
+                opacity: 1.0,
+                clip: p.clip,
+                texture,
+            })
+        })
+        .collect();
+    let target_texture = h.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("perf_probe_layered_target"),
+        size: wgpu::Extent3d { width: w, height: hgt, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let mut target = CompositeTarget {
+        view: target_texture.create_view(&wgpu::TextureViewDescriptor::default()),
+        width: w,
+        height: hgt,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        clear: [1.0, 1.0, 1.0, 1.0],
+    };
+    compositor.composite(&mut target, &quads).ok()?;
+    readback_rgba8(&h.device, &h.queue, &target_texture, w, hgt)
+}
+
+fn percentiles(samples: &mut [f64]) -> (f64, f64) {
+    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let p50 = samples[samples.len() / 2];
+    let p95 = samples[((samples.len() as f64 * 0.95) as usize).min(samples.len() - 1)];
+    (p50, p95)
+}
 
 fn ms(d: std::time::Duration) -> f64 {
     d.as_secs_f64() * 1000.0
@@ -130,6 +206,97 @@ fn perf_probe() {
             let first: f64 = times[..20].iter().sum::<f64>() / 20.0;
             let last: f64 = times[20..].iter().sum::<f64>() / 20.0;
             println!("[perf-probe] 40 frames same renderer: avg first-half {first:.3}ms / second-half {last:.3}ms");
+
+            // ── #692: 全面描画（feature layer-present OFF 相当）vs レイヤ raster+合成
+            //    （ON 相当）の raster 所要時間比較。tasks_tree はレイヤが root 1 枚だけ
+            //    （scroll コンテナ/transition が起きていない）ので、per-layer 経路の
+            //    オーバーヘッドが単一レイヤの度数分布としてそのまま出る。
+            let w = vw as u32;
+            let hgt = vh as u32;
+            let layers = tree.frame_layers().to_vec();
+            let dirty: HashSet<ElementId> = HashSet::new();
+            let mut rasterizer =
+                VelloLayerRasterizer::new(h.device.clone(), h.queue.clone(), w, hgt, 1.0).unwrap();
+            let mut compositor = WgpuQuadCompositor::new(h.device.clone(), h.queue.clone());
+            compositor.warmup();
+            let mut cached = HashSet::new();
+            let mut full_samples = Vec::new();
+            let mut layered_samples = Vec::new();
+            for _ in 0..10 {
+                let t = Instant::now();
+                let px = render_scene_to_pixels_scaled(&mut h, &graph, w, hgt, 1.0);
+                assert!(px.is_some());
+                full_samples.push(ms(t.elapsed()));
+
+                let t = Instant::now();
+                let px = layered_gpu_frame(
+                    &mut h, &mut rasterizer, &mut compositor, &mut cached, &graph, &layers, &dirty, w, hgt,
+                );
+                assert!(px.is_some());
+                layered_samples.push(ms(t.elapsed()));
+            }
+            let (full_p50, full_p95) = percentiles(&mut full_samples);
+            let (layered_p50, layered_p95) = percentiles(&mut layered_samples);
+            println!(
+                "[perf-probe] tasks_tree {w}x{hgt} full-raster (OFF)   p50 {full_p50:8.3}ms  p95 {full_p95:8.3}ms"
+            );
+            println!(
+                "[perf-probe] tasks_tree {w}x{hgt} layered-present (ON) p50 {layered_p50:8.3}ms  p95 {layered_p95:8.3}ms"
+            );
+        }
+    }
+
+    // ── #692: #680 型フィクスチャ（2 要素同時 transition）の全面描画 vs per-layer 比較 ──
+    match hayate_scene_test_support::vello::try_vello_harness() {
+        None => println!("[perf-probe] wgpu adapter なし → dual-transition GPU 計測はスキップ"),
+        Some(mut h) => {
+            let (dvw, dvh) = DUAL_TRANSITION_VIEWPORT;
+            let w = dvw as u32;
+            let hgt = dvh as u32;
+            let mut dtree = dual_transition_tree();
+            println!("[perf-probe] dual-transition fixture viewport {dvw}x{dvh} (logical px)");
+
+            let mut rasterizer =
+                VelloLayerRasterizer::new(h.device.clone(), h.queue.clone(), w, hgt, 1.0).unwrap();
+            let mut compositor = WgpuQuadCompositor::new(h.device.clone(), h.queue.clone());
+            compositor.warmup();
+            let mut cached = HashSet::new();
+            let mut full_samples = Vec::new();
+            let mut layered_samples = Vec::new();
+
+            // 実際の transition が続く限り、毎フレーム 2 要素とも dirty（背景色補間中）——
+            // `present_layers()` が実運用で受け取る dirty 集合と同じものを都度計測に渡す。
+            let mut t = 16.0;
+            let mut frames = 0;
+            while dtree.has_pending_visual_work() && frames < 60 {
+                let graph = dtree.render(t).clone();
+                let layers = dtree.frame_layers().to_vec();
+                let dirty = dtree.frame_layer_dirty().clone();
+
+                let bt = Instant::now();
+                let px = render_scene_to_pixels_scaled(&mut h, &graph, w, hgt, 1.0);
+                assert!(px.is_some());
+                full_samples.push(ms(bt.elapsed()));
+
+                let bt = Instant::now();
+                let px = layered_gpu_frame(
+                    &mut h, &mut rasterizer, &mut compositor, &mut cached, &graph, &layers, &dirty, w, hgt,
+                );
+                assert!(px.is_some());
+                layered_samples.push(ms(bt.elapsed()));
+
+                t += 16.0;
+                frames += 1;
+            }
+            println!("[perf-probe] dual-transition animated for {frames} frames before settling");
+            let (full_p50, full_p95) = percentiles(&mut full_samples);
+            let (layered_p50, layered_p95) = percentiles(&mut layered_samples);
+            println!(
+                "[perf-probe] dual-transition {w}x{hgt} full-raster (OFF)   p50 {full_p50:8.3}ms  p95 {full_p95:8.3}ms"
+            );
+            println!(
+                "[perf-probe] dual-transition {w}x{hgt} layered-present (ON) p50 {layered_p50:8.3}ms  p95 {layered_p95:8.3}ms"
+            );
         }
     }
 }
