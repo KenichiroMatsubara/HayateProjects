@@ -6,6 +6,16 @@
 //! 「エラーメッセージなく落ちる」ように見える（#530 / Web ホスト側と同じ教訓）。
 //!
 //! `hayate-core` の要素 API のみを使う（NDK 非依存）ため、ツリーの中身をホスト上でテストできる。
+//!
+//! Web ホストはこれを生 DOM/CSS で描く（`Miharashi/host-web/src/index.ts` の
+//! `renderBuiltinErrorPanel`）のに対し、こちらは Hayate 自身の要素ツリー→GPU パイプラインで
+//! 描く——実装を分けているのは単に Rust/TS が実行時コードを共有できないからだけではない。
+//! Web の生 DOM は Hayate/WebGPU の初期化自体が失敗しても描画できる「潰れない土台」だが、
+//! Android はまだそれに相当する GPU 非依存の表示手段を持たない（Kotlin 側に JNI 経由で
+//! Toast/TextView を生やす別作業が要る、QR スキャナの JNI ブリッジと同種）。よって
+//! `init_gpu_surface` 自体が失敗した場合はこの画面も出せず、ログにのみ残る——既知の非対称。
+//! 色・文言は「見た目の仕様」として揃えているが、実行時コードは共有できないため Web 側の
+//! 値を手で複製し、下記テストで固定する（`protocol_handshake.rs` と同じ方針）。
 
 use hayate_core::{
     AlignValue, Color, Dimension, DisplayValue, ElementKind, ElementTree, FlexDirectionValue,
@@ -16,9 +26,10 @@ use hayate_core::{
 const ROOT_ID: u64 = 101;
 const TEXT_ID: u64 = 102;
 
-/// 背景色（Web ホストの built-in error panel と揃えた濃紺）。
+/// 背景色。Web ホストの built-in error panel（`background:#0b1020`）と同じ値を複製する
+/// （下記 `web_colors_match_the_documented_hex_values` で固定）。
 const BACKGROUND: Color = Color::new(0.043, 0.063, 0.125, 1.0);
-/// テキスト色（Web ホストの built-in error panel と揃えた淡赤）。
+/// テキスト色。Web ホストの built-in error panel（`color:#fca5a5`）と同じ値を複製する。
 const TEXT_COLOR: Color = Color::new(0.988, 0.647, 0.647, 1.0);
 
 /// 明示エラーメッセージを画面いっぱいに表示するツリーを組む。boot 失敗時、consumer が
@@ -62,6 +73,37 @@ pub fn build_error_tree(message: &str) -> ElementTree {
 mod tests {
     use super::*;
     use hayate_core::ElementId;
+
+    /// `#rrggbb` を `Color`（sRGB バイト値、0.0..=1.0）に変換する。テスト専用の逆算ヘルパー。
+    fn from_hex(hex: &str) -> Color {
+        let bytes = u32::from_str_radix(hex.trim_start_matches('#'), 16).expect("valid hex");
+        let r = ((bytes >> 16) & 0xff) as f64 / 255.0;
+        let g = ((bytes >> 8) & 0xff) as f64 / 255.0;
+        let b = (bytes & 0xff) as f64 / 255.0;
+        Color::new(r, g, b, 1.0)
+    }
+
+    #[test]
+    fn web_colors_match_the_documented_hex_values() {
+        // Web ホスト（`Miharashi/host-web/src/index.ts` の `renderBuiltinErrorPanel`）が使う
+        // `background:#0b1020` / `color:#fca5a5` を手複製した定数が、実際にその hex 値と一致する
+        // ことを固定する（`protocol_handshake.rs` の wire 契約 pin テストと同じ方針）。
+        let background_from_hex = from_hex("#0b1020");
+        assert!(
+            (BACKGROUND.r - background_from_hex.r).abs() < 0.002
+                && (BACKGROUND.g - background_from_hex.g).abs() < 0.002
+                && (BACKGROUND.b - background_from_hex.b).abs() < 0.002,
+            "BACKGROUND {BACKGROUND:?} should match #0b1020 ({background_from_hex:?})"
+        );
+
+        let text_from_hex = from_hex("#fca5a5");
+        assert!(
+            (TEXT_COLOR.r - text_from_hex.r).abs() < 0.002
+                && (TEXT_COLOR.g - text_from_hex.g).abs() < 0.002
+                && (TEXT_COLOR.b - text_from_hex.b).abs() < 0.002,
+            "TEXT_COLOR {TEXT_COLOR:?} should match #fca5a5 ({text_from_hex:?})"
+        );
+    }
 
     #[test]
     fn shows_the_given_message() {

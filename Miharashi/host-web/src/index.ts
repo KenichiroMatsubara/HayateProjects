@@ -250,6 +250,15 @@ export const MIHARASHI_ERROR_PANEL_ID = 'miharashi-error';
  * 実装し忘れると存在しない機能」にしないための、ホスト自身の保証（#530 の教訓：protocol
  * mismatch にしかパネルが無く、それ以外の失敗は console.error だけで画面には何も出ず、
  * 見た目上「エラーメッセージなく落ちる」ようになっていた）。
+ *
+ * あえて生 DOM/CSS で描く（Hayate の `createHayateWebHost` を経由しない）。Hayate/WebGPU の
+ * 初期化自体が失敗しても、この画面だけは描画できる「潰れない土台」が要るため——エラー報告の
+ * 仕組みが、報告対象になり得るサブシステムに依存してはいけない、という原則（Vite のエラー
+ * オーバーレイ・React の Error Boundary と同じ）。Android ホスト（`error_screen.rs`）は逆に
+ * Hayate 自身の要素ツリー→GPU パイプラインで描いており、これは実装の手抜きで揃っていないの
+ * ではなく、Android がまだこの生 DOM に相当する「GPU 非依存の確実な表示手段」を持たない
+ * （Kotlin 側に Toast/TextView を JNI 経由で生やす別作業が要る）という非対称のため。色は
+ * `error_screen.rs` 側で手複製し、Rust 側のテストで固定している。
  */
 function renderBuiltinErrorPanel(message: string): void {
   if (typeof document === 'undefined') return;
