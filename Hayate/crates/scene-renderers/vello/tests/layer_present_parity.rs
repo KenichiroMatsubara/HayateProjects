@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use hayate_core::element::style::{Dimension, StyleProp};
+use hayate_core::element::style::{Dimension, Shadow, StyleProp};
 use hayate_core::{Color, ElementId, ElementKind, ElementTree};
 use hayate_layer_compositor::{
     collect_layer_placements, extract_layer_scene, extract_root_scene, CompositeQuad,
@@ -209,4 +209,78 @@ fn layered_present_matches_full_raster_for_a_scrolled_container() {
     };
     let (tree, root) = scrolled_scroll_view_tree();
     assert_layered_matches_full(&mut harness, &tree, root, "scrolled scroll-view");
+}
+
+/// #699 回帰用フィクスチャ: transition でレイヤ昇格する要素に半透明（alpha 0.3）の
+/// ぼかし box-shadow を持たせる。`dual_transition_tree`/`scrolled_scroll_view_tree` は
+/// 不透明色（alpha=1.0）しか使わないため、レイヤ texture が straight alpha なのに
+/// premultiplied 前提で合成される #699 のバグを検出できなかった（alpha=1 では
+/// premultiplied も straight も同じ値になり差が出ない）。シャドウ色は非黒（彩度あり）で
+/// なければならない——黒（0,0,0）は straight/premultiplied どちらで解釈しても src 項が
+/// 0 のままで差が出ず、このクラスのバグを検出できない（実際に一度黒で書いて検出漏れを確認済み）。
+fn single_transitioning_box_with_translucent_shadow_tree() -> (ElementTree, ElementId, ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let a = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, a);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(hayate_core::AlignValue::Center),
+            StyleProp::JustifyContent(hayate_core::JustifyValue::Center),
+            StyleProp::BackgroundColor(Color::new(0.9, 0.85, 0.2, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        a,
+        &[
+            StyleProp::Width(px(60.0)),
+            StyleProp::Height(px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::TransitionDuration(160.0),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur: 20.0,
+                spread: 0.0,
+                // 非黒・高彩度: straight を premultiplied として合成すると src 項を alpha で
+                // 減衰し忘れる（#699）。黒（0,0,0）は src 項が恒等的に 0 で差が出ない。
+                color: Color::new(1.0, 0.0, 0.0, 0.3),
+                inset: false,
+            }]),
+        ],
+    );
+    let _ = tree.render(0.0);
+    (tree, root, a)
+}
+
+#[test]
+fn layered_present_matches_full_raster_for_translucent_box_shadow_during_transition() {
+    let Some(mut harness) = try_vello_harness() else {
+        eprintln!("skip: no wgpu adapter");
+        return;
+    };
+    let (mut tree, root, a) = single_transitioning_box_with_translucent_shadow_tree();
+
+    // 補間対象プロパティ（背景色）を変えて active transition を発生させ、a をレイヤへ昇格させる
+    // （ADR-0125 の compositing trigger）。box-shadow 自体の値は変えない——検査したいのは
+    // 「半透明シャドウを持つ要素がレイヤ化されたときの合成」であって transition の値ではない。
+    // `frame_layers()` への反映は 1 フレーム遅れる（`capture_frame_layers` は scene_build 直前の
+    // dirty スナップショットから捕捉するため）——render(16.0) 直後はまだ root だけで、a が
+    // 実際にレイヤとして分解 raster されるのは次の render 呼び出し以降。
+    tree.element_set_style(a, &[StyleProp::BackgroundColor(Color::new(0.2, 0.2, 0.2, 1.0))]);
+    let _ = tree.render(16.0); // transition 開始（この時点ではまだ a はレイヤ化されていない）
+    let _ = tree.render(32.0); // a がレイヤへ昇格し、分解 raster + quad 合成の経路を通る
+
+    assert_layered_matches_full(
+        &mut harness,
+        &tree,
+        root,
+        "translucent box-shadow while element is layer-promoted (issue #699)",
+    );
 }

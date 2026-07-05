@@ -12,7 +12,9 @@
 //! 起きない。
 //!
 //! quad の頂点は CPU 側でアフィン変換・NDC 変換まで済ませて流し込む（シェーダは通過＋サンプルのみ）。
-//! レイヤ texture は premultiplied alpha（vello 出力）なので、blend は (One, OneMinusSrcAlpha)。
+//! レイヤ texture は straight alpha（vello の `render_to_texture` 出力）なので、blend の色チャネルは
+//! (SrcAlpha, OneMinusSrcAlpha)（issue #699 — 以前は premultiplied 前提で (One, ...) にしており、
+//! 半透明 box-shadow を持つレイヤが白潰れする不具合があった）。
 
 use std::collections::HashMap;
 
@@ -289,10 +291,14 @@ impl WgpuQuadCompositor {
 
     fn build_pipeline(&self, variant: PipelineVariant) -> wgpu::RenderPipeline {
         let blend = match variant.blend {
-            // premultiplied alpha 合成（vello のレイヤ出力前提）。
+            // Layer textures hold straight (non-premultiplied) alpha, not premultiplied alpha
+            // as this comment previously assumed — see issue #699. `render_scene`'s Vello
+            // output written into an isolated layer texture is straight-alpha, so the color
+            // channel must scale by `src.a` here (`SrcAlpha`), not skip that scaling (`One`,
+            // which is only correct for already-premultiplied input).
             BlendMode::Alpha => Some(wgpu::BlendState {
                 color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::One,
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
                     dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
                     operation: wgpu::BlendOperation::Add,
                 },

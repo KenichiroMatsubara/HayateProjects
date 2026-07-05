@@ -9,7 +9,7 @@
 
 use std::collections::HashSet;
 
-use hayate_core::element::style::{Dimension, StyleProp};
+use hayate_core::element::style::{Dimension, Shadow, StyleProp};
 use hayate_core::{Color, ElementId, ElementKind, ElementTree};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
@@ -136,6 +136,64 @@ fn transform_layer_cpu_composite_matches_full_raster() {
     let root = ElementId::from_u64(0);
     let _ = tree.render(0.0);
     assert_pixmaps_equal(&render_full(&tree), &render_layered(&tree, root), "cpu transform layer");
+}
+
+/// #699 追加確認用（vello/wgpu 経路の premultiplied/straight alpha 取り違えバグが CPU 経路にも
+/// あるか）: transform でレイヤ化した要素に非黒・半透明（alpha 0.3）の box-shadow を持たせる。
+/// 黒（0,0,0）は straight/premultiplied どちらで解釈しても src 項が 0 のままで差が出ないため、
+/// 非黒の彩度ある色が必須（vello 側の回帰テストで実際に検出漏れを確認済み）。root 中央に配置し
+/// （flex center）、shadow の blur 到達域（reach ≈ 54px）が要素の pre-transform 位置（transform
+/// 前の layout 位置）から見て画面内に収まるようにする——`boxed` を原点付近に置くと
+/// `layer_scene.rs` が明記する既知の v1 制限（「texture 前の座標がビューポート外にある内容は
+/// texture に載らない」）を誤って踏み、premultiplied/straight とは別問題を計測してしまう。
+fn transform_tree_with_translucent_shadow() -> (ElementTree, ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let boxed = tree.element_create(1, ElementKind::View);
+    tree.element_append_child(root, boxed);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(hayate_core::AlignValue::Center),
+            StyleProp::JustifyContent(hayate_core::JustifyValue::Center),
+            StyleProp::BackgroundColor(Color::new(0.9, 0.85, 0.2, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        boxed,
+        &[
+            StyleProp::Width(px(60.0)),
+            StyleProp::Height(px(60.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 1.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: 0.0,
+                offset_y: 0.0,
+                blur: 20.0,
+                spread: 0.0,
+                color: Color::new(1.0, 0.0, 0.0, 0.3),
+                inset: false,
+            }]),
+        ],
+    );
+    tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 5.0, 5.0]));
+    (tree, boxed)
+}
+
+#[test]
+fn translucent_box_shadow_layer_cpu_composite_matches_full_raster() {
+    let (mut tree, _boxed) = transform_tree_with_translucent_shadow();
+    let root = ElementId::from_u64(0);
+    let _ = tree.render(0.0);
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "cpu translucent box-shadow layer (issue #699)",
+    );
 }
 
 #[test]
