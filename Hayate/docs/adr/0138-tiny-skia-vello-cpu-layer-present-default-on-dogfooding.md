@@ -74,7 +74,8 @@ UI は付けない——単に「per-layer: ON/OFF」の比較用ラベルとす
 - **再検討トリガー**: 本人以外の実利用者・実検証者が想定される段階になったら、本 ADR・
   ADR-0137 の両方の「既定 ON」判断を再検討する。
 - vello の `layer-present` cargo feature をランタイムフラグ化し `pkg-layer-present` を
-  廃止できないか、という論点は本 ADR のスコープ外——別 issue で追う。
+  廃止できないか、という論点は本 ADR のスコープ外——別 issue で追う。**解消: ADR-0140
+  （issue #711/#716〜#718）で、tiny-skia/vello_cpu と同じランタイムフラグ方式へ移行した。**
 - tiny-skia/vello_cpu 比較トグルの実装（UI・ランタイムフラグ配線）は本 ADR のスコープ外
   ——別 issue で追う。
 

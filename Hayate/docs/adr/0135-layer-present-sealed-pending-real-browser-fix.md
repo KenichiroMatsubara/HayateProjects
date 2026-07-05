@@ -64,3 +64,7 @@ Core は本経路を **現状非推奨（do-not-use、ADR-0135）** として扱
 - **freezes** ADR-0125（compositing layer incremental rendering、Phase 2 backend half）,
   ADR-0127（layer cache memory budget / scroll overscan）。
 - 動機となった実測: #697（Playwright 実 Chromium 検証、実ブラウザでの描画バグ発見）。
+- **amended by** ADR-0140（vello の `layer-present` を cargo feature からランタイムフラグへ移行。
+  「製品としては有効化しない」を実現する手段が cargo feature からランタイムフラグの既定値へ
+  変わる。native はこの cargo feature に元々依存しておらず、本 ADR が定める native への封印
+  方針自体は ADR-0140 でも変更されない）。
