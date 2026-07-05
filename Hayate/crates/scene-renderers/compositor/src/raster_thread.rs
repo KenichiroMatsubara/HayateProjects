@@ -39,6 +39,9 @@ pub struct RasterHandoff {
     pub layers: Vec<ElementId>,
     /// 本フレームで再 raster すべきレイヤ（#609 の `layer_dirty`）。
     pub layer_dirty: HashSet<ElementId>,
+    /// transform 係数だけが変わったレイヤ（#633）。単一 root 経路は per-layer quad 合成を
+    /// 持たないため、content dirty と union して保守的に raster トリガへ含める（#687）。
+    pub transform_dirty: HashSet<ElementId>,
     /// scroll フレームの chrome dirty（#634）。単一 texture 経路では content と union して扱う。
     pub chrome_dirty: HashSet<ElementId>,
 }
@@ -78,6 +81,7 @@ impl Coalesce for RasterCommand {
                 existing.scene = new.scene;
                 existing.layers = new.layers;
                 existing.layer_dirty.extend(new.layer_dirty);
+                existing.transform_dirty.extend(new.transform_dirty);
                 existing.chrome_dirty.extend(new.chrome_dirty);
                 Ok(())
             }
@@ -256,6 +260,7 @@ mod tests {
             scene: SceneGraph::new(),
             layers: dirty.iter().map(|&r| id(r)).collect(),
             layer_dirty: dirty.iter().map(|&r| id(r)).collect(),
+            transform_dirty: HashSet::new(),
             chrome_dirty: HashSet::new(),
         }
     }
@@ -486,6 +491,35 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<RasterCommand>();
         assert_send::<RasterHandoff>();
+    }
+
+    #[test]
+    fn merging_frames_unions_transform_dirty_instead_of_overwriting() {
+        // #687: transform_dirty は layer_dirty/chrome_dirty と同じ穴あきキャッシュ問題を持つ
+        // （単一 root 経路の raster トリガに union される、canvas.rs 参照）。コアレス時に
+        // 上書きすると、合成で消えた古いフレームの「transform だけ変わった」情報が失われる。
+        let mut a = RasterCommand::Frame(handoff_with_transform_dirty(&[1]));
+        let b = RasterCommand::Frame(handoff_with_transform_dirty(&[2]));
+        if a.merge(b).is_err() {
+            panic!("consecutive Frame commands must coalesce");
+        }
+
+        let RasterCommand::Frame(merged) = a else {
+            panic!("merge must keep the command a Frame");
+        };
+        let mut ids: Vec<u64> = merged.transform_dirty.iter().map(|i| i.to_u64()).collect();
+        ids.sort_unstable();
+        assert_eq!(
+            ids,
+            vec![1, 2],
+            "transform_dirty must union across coalesced frames, not overwrite"
+        );
+    }
+
+    fn handoff_with_transform_dirty(dirty: &[u64]) -> RasterHandoff {
+        let mut h = handoff(&[]);
+        h.transform_dirty = dirty.iter().map(|&r| id(r)).collect();
+        h
     }
 
     // ── backlog coalescing（raster が入力より遅くなったときの挙動）────────────────────────
