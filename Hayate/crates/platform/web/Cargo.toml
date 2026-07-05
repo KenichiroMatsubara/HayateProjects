@@ -16,6 +16,10 @@ backend-tiny-skia = ["dep:tiny-skia", "dep:hayate-scene-renderer-tiny-skia", "ha
 backend-vello-cpu = ["dep:vello_cpu", "dep:hayate-scene-renderer-vello-cpu", "hayate-app-host/backend-vello-cpu"]
 backend-recording = ["hayate-app-host/backend-recording"]
 backend-null = ["hayate-app-host/backend-null"]
+# per-layer レイヤキャッシュ経路（#690・ADR-0125/0127）。既定 OFF: 有効時のみ vello backend の
+# `supports_layer_present()` が true を返し `present_layers()` の per-layer 経路が動く。OFF では
+# 従来の全面 render_scene 経路のみ（挙動・出力とも無変更）。
+layer-present = ["backend-vello"]
 
 [dependencies]
 hayate-core = { path = "../../core" }
