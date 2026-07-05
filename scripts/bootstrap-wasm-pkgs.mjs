@@ -14,6 +14,9 @@ const PKG_DIRS = [
   join(root, 'Hayate/wasm-pkgs/pkg-tiny-skia'),
   join(root, 'Hayate/wasm-pkgs/pkg-vello-cpu'),
   join(root, 'Hayate/wasm-pkgs/pkg-null'),
+  // ADR-0135 の本人調査用トグル（既定 OFF）が読む layer-present ビルド。`pnpm --filter hayate
+  // build:layer-present` が生成するまではこのスタブで `pnpm install` を通す。
+  join(root, 'Hayate/wasm-pkgs/pkg-layer-present'),
 ];
 
 const PACKAGE_JSON = `{
