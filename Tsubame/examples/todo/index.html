@@ -97,24 +97,13 @@
         color: var(--rsw-ink, #262130);
         background: var(--rsw-hover, #e0d8c7);
       }
-      /*
-       * 最適化(layer-present)トグル: ADR-0135 が定める本人調査用の明示的例外。
-       * 既定 OFF・既知の描画バグあり・非推奨 — 通常のレンダラ切替と混同しないよう警告色にする。
-       */
-      .rsw-optimize {
-        border-color: var(--rsw-danger, #c2410c);
-      }
       .rsw-optimize-label {
         padding: 4px 6px 4px 10px;
         font-size: 10px;
         font-weight: 700;
         letter-spacing: 0.03em;
-        color: var(--rsw-danger, #c2410c);
+        color: var(--rsw-text, #6f6878);
         white-space: nowrap;
-      }
-      .rsw-optimize button.active {
-        background: var(--rsw-danger, #c2410c);
-        color: #fff8f0;
       }
     </style>
     <script>
@@ -144,7 +133,6 @@
         root.setProperty('--rsw-hover', dark ? '#21344e' : '#e0d8c7');
         root.setProperty('--rsw-on-accent', dark ? '#070b14' : '#14101c');
         root.setProperty('--rsw-accent', dark ? acc[1] : acc[0]);
-        root.setProperty('--rsw-danger', dark ? '#f2795b' : '#c2410c');
       })();
     </script>
   </head>
@@ -163,18 +151,16 @@
           <button type="button" data-renderer="dom">dom</button>
         </div>
         <!--
-          ADR-0135 が定める本人調査用トグル（既定 OFF）。vello レンダラー選択時のみ効く
-          layer-present（per-layer 経路）の有効化 — 実ブラウザで描画バグが確認され既知の
-          非推奨機能（ADR-0135）。誤操作を避けるため警告色にし、title/aria-label で明示する。
+          ADR-0137 により Web は既定 ON。vello レンダラー選択時のみ効く layer-present
+          （per-layer 経路）の比較用トグル — OFF で全面 raster 版に戻せる。
         -->
         <div
-          class="rsw-options rsw-optimize"
+          class="rsw-options"
           id="layer-present-options"
           role="group"
-          aria-label="最適化（layer-present、実験的・既知の描画バグあり、ADR-0135・非推奨）"
-          title="⚠️ 実験的機能: 既知の描画バグあり（ADR-0135・非推奨）。vello レンダラー選択時のみ有効。既定は OFF。"
+          aria-label="layer-present（vello レンダラー選択時のみ有効）"
         >
-          <span class="rsw-optimize-label">最適化⚠️</span>
+          <span class="rsw-optimize-label">layer-present</span>
           <button type="button" data-layer-present="0">OFF</button>
           <button type="button" data-layer-present="1">ON</button>
         </div>
@@ -186,11 +172,11 @@
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
         const current = params.get('renderer') ?? 'auto';
-        const layerPresentOn = params.get('layerPresent') === '1';
+        const layerPresentOn = params.get('layerPresent') !== '0';
         const root = document.getElementById('renderer-switch');
         const toggle = document.getElementById('renderer-toggle');
         const currentLabel = document.getElementById('renderer-current');
-        currentLabel.textContent = current + (layerPresentOn ? ' ⚠optim' : '');
+        currentLabel.textContent = current;
 
         // 開閉状態は localStorage に保存し、再読込でも維持する。
         const setOpen = (open) => {
@@ -212,14 +198,14 @@
           });
         }
 
-        // 最適化(layer-present)トグル: ADR-0135 の本人調査用例外。既定 OFF。
+        // layer-present トグル: ADR-0137 により既定 ON。OFF で全面 raster 版に戻す。
         for (const button of root.querySelectorAll('button[data-layer-present]')) {
           const isOn = button.getAttribute('data-layer-present') === '1';
           if (isOn === layerPresentOn) button.classList.add('active');
           button.addEventListener('click', () => {
             const next = new URLSearchParams(window.location.search);
-            if (isOn) next.set('layerPresent', '1');
-            else next.delete('layerPresent');
+            if (isOn) next.delete('layerPresent');
+            else next.set('layerPresent', '0');
             const query = next.toString();
             window.location.search = query ? `?${query}` : '';
           });

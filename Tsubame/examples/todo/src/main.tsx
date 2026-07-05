@@ -47,10 +47,11 @@ const host: Host =
           const tuning = await fetch(new URL('tuning.jsonc', document.baseURI).href)
             .then((r) => (r.ok ? r.text() : undefined))
             .catch(() => undefined);
-          // ADR-0135 が定める本人調査用トグル（既定 OFF）。index.html の「最適化」行が
-          // `?layerPresent=1` を書く。`@tsubame/app` の detectMode は host-blind のまま
-          // 保つため（ADR-0012）、この web/Hayate 固有フラグはここで直接読む。
-          const layerPresent = new URLSearchParams(window.location.search).get('layerPresent') === '1';
+          // ADR-0137 により Web は既定 ON。index.html の「最適化」行が
+          // `?layerPresent=0` を書くと明示的にフルraster版へ戻せる。`@tsubame/app` の
+          // detectMode は host-blind のまま保つため（ADR-0012）、この web/Hayate 固有
+          // フラグはここで直接読む。
+          const layerPresent = new URLSearchParams(window.location.search).get('layerPresent') !== '0';
           const webHost = await createHayateWebHost(canvas, {
             backend: detected.backend,
             tuning,

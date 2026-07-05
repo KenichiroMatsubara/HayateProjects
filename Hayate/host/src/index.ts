@@ -80,11 +80,10 @@ export interface CreateHayateWebHostOptions {
   backend?: CanvasBackend;
   /**
    * `backend === 'vello'` の時だけ効く、layer-present（per-layer 経路、ADR-0125/0127）の
-   * 有効化。既定 `false`。
+   * 有効化。ADR-0137 により Web は既定 `true`。
    *
-   * ⚠️ ADR-0135 により本経路は Core として非推奨（実ブラウザで描画バグが確認され、実用
-   * 段階にない）。このオプションは ADR-0135 が定める「本人による実ブラウザでの継続調査」
-   * 用の明示的な例外としてのみ存在する — 製品としての有効化・推奨を意味しない。
+   * `false` を渡すと全面 raster 版（`hayate-adapter-web`）に戻せる、比較用の逃げ道として
+   * 残している。native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。
    */
   layerPresent?: boolean;
   /** 開発時専用の `tuning.json` テキスト。指定すると WASM レンダラに渡して味付け
