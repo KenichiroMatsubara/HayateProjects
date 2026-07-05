@@ -237,6 +237,70 @@ export function subscribeReload(options: SubscribeReloadOptions): ReloadSubscrip
   };
 }
 
+// ── 既定のエラー可視化（ホスト側が保証する。消費側の実装漏れに依存しない）──────────────
+
+/**
+ * 明示エラー UI を載せる要素の id。`startMiharashiHost` を呼ぶだけで、消費側が何も実装しなくても
+ * この id の要素が保証される。e2e / 消費側は可視性と本文をこの id で検証・スタイル調整できる。
+ */
+export const MIHARASHI_ERROR_PANEL_ID = 'miharashi-error';
+
+/**
+ * boot 失敗・mount 後の未捕捉例外を画面に出す既定 UI。エラー表示を「消費側（host-boot.ts 等）が
+ * 実装し忘れると存在しない機能」にしないための、ホスト自身の保証（#530 の教訓：protocol
+ * mismatch にしかパネルが無く、それ以外の失敗は console.error だけで画面には何も出ず、
+ * 見た目上「エラーメッセージなく落ちる」ようになっていた）。
+ */
+function renderBuiltinErrorPanel(message: string): void {
+  if (typeof document === 'undefined') return;
+  let panel = document.getElementById(MIHARASHI_ERROR_PANEL_ID);
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = MIHARASHI_ERROR_PANEL_ID;
+    panel.setAttribute('role', 'alert');
+    panel.style.cssText =
+      'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
+      'padding:24px;color:#fca5a5;background:#0b1020;font:16px/1.6 system-ui,sans-serif;' +
+      'text-align:center;white-space:pre-wrap;z-index:9999;';
+    document.body.appendChild(panel);
+  }
+  panel.textContent = message;
+}
+
+/** mount 成功で既定エラー UI を隠す（reload で復帰した場合に古いパネルが新しい canvas を覆ったまま残らないように）。 */
+function clearBuiltinErrorPanel(): void {
+  if (typeof document === 'undefined') return;
+  document.getElementById(MIHARASHI_ERROR_PANEL_ID)?.remove();
+}
+
+/** boot 失敗の `unknown` を画面向けの読める文言にする（protocol 不一致は専用の文言）。 */
+function formatBootFailureMessage(error: unknown): string {
+  if (error instanceof ProtocolMismatchError) {
+    return `protocol version 不一致: ${error.message}`;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return `Miharashi の起動に失敗しました:\n${message}`;
+}
+
+let runtimeCrashReporterInstalled = false;
+
+/**
+ * mount 後にアプリが投げた未捕捉例外 / 未処理の Promise 拒否を既定で画面に出す。`startMiharashiHost`
+ * が自動でインストールするので、消費側は何もしなくてよい（何度呼ばれても 1 度しか登録しない）。
+ */
+function installRuntimeCrashReporter(): void {
+  if (runtimeCrashReporterInstalled || typeof window === 'undefined') return;
+  runtimeCrashReporterInstalled = true;
+  window.addEventListener('error', (event) => {
+    const message = event.error instanceof Error ? event.error.message : event.message;
+    renderBuiltinErrorPanel(`Miharashi で未捕捉の例外が発生しました:\n${message}`);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+    renderBuiltinErrorPanel(`Miharashi で未処理の Promise 拒否が発生しました:\n${reason}`);
+  });
+}
+
 // ── full reload の合成ルート（ホスト側）──────────────────────────────────────
 
 export interface StartMiharashiHostOptions {
@@ -286,6 +350,9 @@ export function startMiharashiHost(options: StartMiharashiHostOptions): Miharash
   const boot = options.boot ?? bootMiharashiHost;
   const subscribe = options.subscribe ?? subscribeReload;
 
+  // エラー可視化はここが必ず保証する（消費側が `onBootSettled` を実装するかどうかに関わらず）。
+  installRuntimeCrashReporter();
+
   // 直前に確立した host の teardown。full reload は新しい surface で建て直す前に、ここで
   // 古い host が attach した物（ADR-0124 の Accessibility Mirror 等）を畳む（#591）。
   let detachPrevious: (() => void) | undefined;
@@ -301,9 +368,13 @@ export function startMiharashiHost(options: StartMiharashiHostOptions): Miharash
     }).then(
       (host) => {
         detachPrevious = host?.detach;
+        clearBuiltinErrorPanel();
         options.onBootSettled?.({ ok: true });
       },
-      (error: unknown) => options.onBootSettled?.({ ok: false, error }),
+      (error: unknown) => {
+        renderBuiltinErrorPanel(formatBootFailureMessage(error));
+        options.onBootSettled?.({ ok: false, error });
+      },
     );
   };
 
