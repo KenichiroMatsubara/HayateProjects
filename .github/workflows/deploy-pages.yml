@@ -60,6 +60,15 @@ jobs:
           RUSTFLAGS: ""
         run: pnpm --filter hayate build
 
+      - name: Build WASM (hayate-adapter-web, layer-present variant)
+        # ADR-0135 が定める本人調査用トグル（Tsubame Todo デプロイ済みページの
+        # `?layerPresent=1`、既定 OFF・警告表示付き）が読む追加ビルド。この feature は
+        # Core としては非推奨（実ブラウザで描画バグ確認済み）— 既定の pkg には含めず、
+        # 別出力（wasm-pkgs/pkg-layer-present）としてのみ同梱する。
+        env:
+          RUSTFLAGS: ""
+        run: pnpm --filter hayate build:layer-present
+
       - name: Build @hayate/host
         # todo example は `import('@hayate/host')` で host bootstrap を取り込む（#477）。
         # exports は dist/index.js（tsup 成果物）だけを向くので、ここで build しないと
