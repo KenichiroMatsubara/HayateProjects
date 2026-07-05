@@ -50,6 +50,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check generated loadCanvasBackend is in sync with the manifest (#703)
+        # Regenerates Hayate/host/src/load-canvas-backend.generated.ts from
+        # wasm-build-manifest.json and fails if that changes anything — catches
+        # a manifest edit (e.g. a new host-mapped target) that wasn't followed
+        # by `npm run generate:canvas-backend`. No Rust toolchain needed, so it
+        # runs before the (much slower) wasm build.
+        run: pnpm --filter hayate run check:canvas-backend
+
       - name: Build Hayate WASM (incl. pkg-null for C3)
         # `pnpm --filter hayate build` builds every includeInDefaultBuild target in
         # Hayate/scripts/wasm-build-manifest.json (#700) — pkg-null (the only one this

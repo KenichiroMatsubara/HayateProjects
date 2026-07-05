@@ -24,6 +24,15 @@ function validateTarget(target) {
   if (typeof target.targetDir !== 'string') invalid(target, 'targetDir must be a string');
   if (typeof target.description !== 'string') invalid(target, 'description must be a string');
   if (typeof target.includeInDefaultBuild !== 'boolean') invalid(target, 'includeInDefaultBuild must be a boolean');
+  if (typeof target.npmName !== 'string' || target.npmName === '') invalid(target, 'npmName must be a non-empty string');
+
+  // host maps a target to the CanvasBackend value Hayate/host/src/index.ts's
+  // loadCanvasBackend loads it for (null when nothing in the host imports this
+  // target, e.g. pkg-null is Tsubame-test-only — see #703).
+  if (target.host !== null) {
+    if (typeof target.host !== 'object') invalid(target, 'host must be null or an object');
+    if (typeof target.host.backend !== 'string') invalid(target, 'host.backend must be a string');
+  }
 
   const { cargoFeatures } = target;
   if (!cargoFeatures || !FEATURE_MODES.has(cargoFeatures.mode)) {

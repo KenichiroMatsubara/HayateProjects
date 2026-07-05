@@ -192,6 +192,30 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
   ]);
 });
 
+// Pins the exact npmName/host mapping loadCanvasBackend's codegen depends on
+// (#703) — including the real naming mismatch (pkg-tiny-skia's bare specifier
+// is "-cpu", not "-tiny-skia"), pkg-null having no host consumer, and
+// pkg-layer-present being a variant of the vello branch, not its own backend.
+test('npmName/host mapping matches what Hayate/host/src actually imports', () => {
+  const manifest = loadManifest();
+  const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
+
+  assert.equal(byName['pkg'].npmName, 'hayate-adapter-web');
+  assert.deepEqual(byName['pkg'].host, { backend: 'vello' });
+
+  assert.equal(byName['pkg-tiny-skia'].npmName, 'hayate-adapter-web-cpu');
+  assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia' });
+
+  assert.equal(byName['pkg-vello-cpu'].npmName, 'hayate-adapter-web-vello-cpu');
+  assert.deepEqual(byName['pkg-vello-cpu'].host, { backend: 'vello-cpu' });
+
+  assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');
+  assert.equal(byName['pkg-null'].host, null);
+
+  assert.equal(byName['pkg-layer-present'].npmName, 'hayate-adapter-web-layer-present');
+  assert.deepEqual(byName['pkg-layer-present'].host, { backend: 'vello', variantFlag: 'layerPresent' });
+});
+
 function validManifestFixture(overrides = {}) {
   return {
     crateDir: 'crates/platform/web',
@@ -204,6 +228,8 @@ function validManifestFixture(overrides = {}) {
         cargoFeatures: { mode: 'inherit', names: [] },
         description: 'x',
         includeInDefaultBuild: true,
+        npmName: 'hayate-adapter-web',
+        host: { backend: 'vello' },
       },
     ],
     ...overrides,
@@ -220,11 +246,35 @@ test('validateManifest rejects an exclusive-mode target with no feature names', 
         cargoFeatures: { mode: 'exclusive', names: [] },
         description: 'x',
         includeInDefaultBuild: true,
+        npmName: 'hayate-adapter-web-broken',
+        host: null,
       },
     ],
   });
 
   assert.throws(() => validateManifest(manifest), /pkg-broken.*cargoFeatures\.names/);
+});
+
+test('validateManifest rejects a target missing npmName', () => {
+  const target = { ...validManifestFixture().targets[0] };
+  delete target.npmName;
+  const manifest = validManifestFixture({ targets: [target] });
+
+  assert.throws(() => validateManifest(manifest), /npmName/);
+});
+
+test('validateManifest accepts host: null (no host-side consumer, e.g. pkg-null)', () => {
+  const manifest = validManifestFixture({ targets: [{ ...validManifestFixture().targets[0], host: null }] });
+
+  assert.doesNotThrow(() => validateManifest(manifest));
+});
+
+test('validateManifest rejects a host object missing backend', () => {
+  const manifest = validManifestFixture({
+    targets: [{ ...validManifestFixture().targets[0], host: { variantFlag: 'layerPresent' } }],
+  });
+
+  assert.throws(() => validateManifest(manifest), /host\.backend/);
 });
 
 test('validateManifest rejects duplicate target names', () => {
@@ -248,6 +298,8 @@ test('a brand new manifest entry needs no special-casing in any helper', () => {
         cargoFeatures: { mode: 'exclusive', names: ['backend-quantum'] },
         description: 'Hayate — quantum backend (hypothetical)',
         includeInDefaultBuild: false,
+        npmName: 'hayate-adapter-web-quantum',
+        host: null,
       },
     ],
   });

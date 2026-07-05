@@ -1,5 +1,6 @@
 import manifest from '@hayate/protocol-spec/manifest' with { type: 'json' };
 import { resolveCanvasBackend, type CanvasBackend } from './resolve-backend.js';
+import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 import {
   attachAccessibilityMirror,
   type AccessibilityMirror,
@@ -135,37 +136,6 @@ export async function probeWebGPU(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * 選択した backend の WASM を動的 import し、surface（canvas）上で `HayateElementRenderer`
- * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
- * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
- *
- * `layerPresent` は ADR-0135 が定める本人調査用の明示的な例外のみに使う（既定 false）。
- */
-async function loadCanvasBackend(
-  backend: CanvasBackend,
-  canvas: HTMLCanvasElement,
-  layerPresent = false,
-): Promise<RawHayate> {
-  if (backend === 'vello') {
-    // ⚠️ ADR-0135: layer-present は封印中。layerPresent=true は本人調査用トグル経由の
-    // 明示指定でのみ踏む（既定 false・製品としては非推奨）。
-    const velloMod = layerPresent
-      ? await import('hayate-adapter-web-layer-present')
-      : await import('hayate-adapter-web');
-    await velloMod.default();
-    return (await velloMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
-  }
-  if (backend === 'vello-cpu') {
-    const velloCpuMod = await import('hayate-adapter-web-vello-cpu');
-    await velloCpuMod.default();
-    return (await velloCpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
-  }
-  const cpuMod = await import('hayate-adapter-web-cpu');
-  await cpuMod.default();
-  return (await cpuMod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
 }
 
 /** no-op の EditContext 面。Worker モードで `imeSink` 未指定時の既定（IME 反映先が無い環境向け）。 */
