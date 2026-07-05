@@ -57,12 +57,14 @@ import type { RawHayate } from './raw-hayate.js';
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
  *
- * \`layerPresent\` は ADR-0135 が定める本人調査用の明示的な例外のみに使う（既定 false）。
+ * \`layerPresent\` は vello の per-layer 経路（ADR-0125/0127）の有効化。ADR-0137 により
+ * Web は既定 ON — \`false\` を渡すと全面 raster 版（\`hayate-adapter-web\`）に戻せる、
+ * 比較用の逃げ道として残す。native は本パスを経由しないため既定 OFF のまま変更なし。
  */
 export async function loadCanvasBackend(
   backend: CanvasBackend,
   canvas: HTMLCanvasElement,
-  layerPresent = false,
+  layerPresent = true,
 ): Promise<RawHayate> {
 ${branches.join('\n')}
   throw new Error(\`loadCanvasBackend: no wasm-build-manifest.json target maps to backend "\${backend}"\`);

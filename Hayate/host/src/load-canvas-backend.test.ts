@@ -27,12 +27,12 @@ import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 const canvas = {} as HTMLCanvasElement;
 
 describe('loadCanvasBackend (generated from wasm-build-manifest.json, #703)', () => {
-  it('vello with no layerPresent loads hayate-adapter-web', async () => {
-    await expect(loadCanvasBackend('vello', canvas)).resolves.toBe('raw:vello');
+  it('vello with no layerPresent loads hayate-adapter-web-layer-present (ADR-0137 default ON)', async () => {
+    await expect(loadCanvasBackend('vello', canvas)).resolves.toBe('raw:vello-layer-present');
   });
 
-  it('vello with layerPresent loads hayate-adapter-web-layer-present (ADR-0135 toggle)', async () => {
-    await expect(loadCanvasBackend('vello', canvas, true)).resolves.toBe('raw:vello-layer-present');
+  it('vello with layerPresent=false loads hayate-adapter-web (ADR-0137 escape hatch)', async () => {
+    await expect(loadCanvasBackend('vello', canvas, false)).resolves.toBe('raw:vello');
   });
 
   it('tiny-skia loads hayate-adapter-web-cpu (not hayate-adapter-web-tiny-skia)', async () => {
