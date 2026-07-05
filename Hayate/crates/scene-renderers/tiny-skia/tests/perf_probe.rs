@@ -155,7 +155,7 @@ fn perf_probe() {
                     None => continue,
                 }
             };
-            rasterizer.rasterize(layer, &scene).unwrap();
+            rasterizer.rasterize(layer, &scene, None).unwrap();
         }
         let placements = collect_layer_placements(&graph, root, &boundaries);
         let mut compositor = TinySkiaLayerCompositor::new(scale);

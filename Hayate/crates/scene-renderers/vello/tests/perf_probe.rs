@@ -49,7 +49,7 @@ fn layered_gpu_frame(
             extract_layer_scene(graph, layer, &boundaries)
         };
         if let Some(extracted) = extracted {
-            rasterizer.rasterize(layer, &extracted).ok()?;
+            rasterizer.rasterize(layer, &extracted, None).ok()?;
             cached.insert(layer);
         }
     }

@@ -119,9 +119,9 @@ fn wgpu_layered_composite_matches_full_raster() {
     let mut rasterizer =
         VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0).unwrap();
     let root_scene = extract_root_scene(graph, root, &boundaries);
-    rasterizer.rasterize(root, &root_scene).unwrap();
+    rasterizer.rasterize(root, &root_scene, None).unwrap();
     let boxed_scene = extract_layer_scene(graph, boxed, &boundaries).unwrap();
-    rasterizer.rasterize(boxed, &boxed_scene).unwrap();
+    rasterizer.rasterize(boxed, &boxed_scene, None).unwrap();
 
     let mut compositor = WgpuQuadCompositor::new(harness.device.clone(), harness.queue.clone());
     compositor.warmup();

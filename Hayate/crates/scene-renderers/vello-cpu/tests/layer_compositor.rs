@@ -46,7 +46,7 @@ fn render_layered(tree: &ElementTree, root: ElementId) -> Pixmap {
                 None => continue,
             }
         };
-        rasterizer.rasterize(layer, &scene).unwrap();
+        rasterizer.rasterize(layer, &scene, None).unwrap();
     }
 
     let quads: Vec<CompositeQuad<'_, _>> = placements

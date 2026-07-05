@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
+use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, RasterBand};
 use tiny_skia::{
     Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Rect, Transform,
 };
@@ -67,7 +67,16 @@ impl TinySkiaLayerRasterizer {
 impl LayerRasterizer for TinySkiaLayerRasterizer {
     type Texture = Pixmap;
 
-    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph) -> Result<(), String> {
+    fn rasterize(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        // #707 (ADR-0127): scroll-band sizing is vello-only for now — tiny-skia's CPU `Pixmap`
+        // is cheap to resize per-layer but that optimization is out of scope for this issue, so
+        // the band is accepted (to satisfy the shared trait) and intentionally ignored; every
+        // layer still gets a full-surface `Pixmap`, unchanged from before this parameter existed.
+        _band: Option<RasterBand>,
+    ) -> Result<(), String> {
         let mut pixmap = Pixmap::new(self.width, self.height)
             .ok_or_else(|| format!("tiny-skia layer pixmap {}x{}", self.width, self.height))?;
         // 透明クリアのキャッシュ面へ抽出済み sub-scene を raster（content_scale は render_scene が適用）。

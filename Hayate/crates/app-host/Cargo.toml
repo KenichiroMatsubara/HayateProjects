@@ -15,6 +15,7 @@ backend-null = []
 
 [dependencies]
 hayate-core = { path = "../core" }
+hayate-layer-compositor = { path = "../scene-renderers/compositor" }
 anyhow.workspace = true
 log.workspace = true
 

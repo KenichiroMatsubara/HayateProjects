@@ -65,6 +65,14 @@ impl PresentPlanner {
         self.cache.scroll_needs_raster(layer, visible_top, viewport_height)
     }
 
+    /// レイヤの現在キャッシュ済み scroll 帯（content-local、#707）。合成時の compensating
+    /// translate に使う——`scroll_layer_needs_raster`/`note_scroll_rasterized` は「raster すべきか」
+    /// を判定・記録するが、実際に texture へ入っている帯（composite-only フレームでは過去に
+    /// raster したときのもの）を読むにはこちらを使う。
+    pub fn cached_scroll_band(&self, layer: ElementId) -> Option<ScrollLayerExtent> {
+        self.cache.cached_scroll_band(layer)
+    }
+
     /// GPU 予算超過なら最も長く composite に使われていないレイヤ texture から LRU 退避し、合計を
     /// 予算内に収める（ADR-0127）。退避した id を返す（backend は対応する実 texture を解放する）。
     pub fn enforce_budget(&mut self, budget: GpuBudget) -> Vec<ElementId> {
@@ -150,5 +158,46 @@ mod tests {
         // ADR-0128: Raster スレッドへ移せるよう GPU ハンドルを持たない。
         fn assert_send<T: Send>() {}
         assert_send::<PresentPlanner>();
+    }
+
+    // ── #707: cached_scroll_band（合成時 compensating translate 用） ────────────
+
+    #[test]
+    fn cached_scroll_band_is_none_before_any_scroll_raster() {
+        let planner = PresentPlanner::new();
+        assert_eq!(planner.cached_scroll_band(id(1)), None);
+    }
+
+    #[test]
+    fn cached_scroll_band_reflects_the_last_rastered_band_not_this_frames() {
+        let mut planner = PresentPlanner::new();
+        let first = ScrollLayerExtent { top: 0.0, height: 800.0 };
+        planner.note_scroll_rasterized(id(1), first, 1000);
+        assert_eq!(planner.cached_scroll_band(id(1)), Some(first));
+
+        // composite-only フレーム（帯が可視域を覆っている間）は raster しない＝texture の帯は
+        // 前回のまま——`cached_scroll_band` は常にそれを返す（このフレームの新規帯ではない）。
+        assert_eq!(planner.cached_scroll_band(id(1)), Some(first));
+
+        let second = ScrollLayerExtent { top: 200.0, height: 800.0 };
+        planner.note_scroll_rasterized(id(1), second, 1000);
+        assert_eq!(planner.cached_scroll_band(id(1)), Some(second), "再 raster 後は新しい帯を返す");
+    }
+
+    #[test]
+    fn cached_scroll_band_is_none_for_a_blanket_rastered_layer() {
+        // 非 scroll レイヤ（`note_layer_rasterized`/`mark_rasterized_sized` 経由）は帯情報を持たない。
+        let mut planner = PresentPlanner::new();
+        planner.note_layer_rasterized(id(1), 1000);
+        assert_eq!(planner.cached_scroll_band(id(1)), None);
+    }
+
+    #[test]
+    fn cached_scroll_band_is_cleared_on_eviction() {
+        let mut planner = PresentPlanner::new();
+        let band = ScrollLayerExtent { top: 0.0, height: 800.0 };
+        planner.note_scroll_rasterized(id(1), band, 1000);
+        planner.evict(id(1));
+        assert_eq!(planner.cached_scroll_band(id(1)), None);
     }
 }
