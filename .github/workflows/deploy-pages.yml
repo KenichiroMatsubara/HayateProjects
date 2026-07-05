@@ -52,22 +52,19 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # ── Build ──────────────────────────────────────────────────────────────
-      - name: Build WASM (hayate-adapter-web)
+      - name: Build WASM (hayate-adapter-web, all manifest targets)
         # setup-rust-toolchain は既定で RUSTFLAGS=-Dwarnings を立てる。
         # web パスには本筋と無関係の dead_code 警告があるため空にする
         # （android-adapter.yml と同じ理由）。
+        # `build:all` は Hayate/scripts/wasm-build-manifest.json（#700）の全ターゲットを
+        # ビルドする。pkg-layer-present もここに含まれる — ADR-0135 により Core としては
+        # 非推奨の feature（実ブラウザで描画バグ確認済み）だが、Tsubame Todo デプロイ済み
+        # ページの本人調査用トグル（`?layerPresent=1`、既定 OFF・警告表示付き）が読む
+        # 別出力（wasm-pkgs/pkg-layer-present）として同梱する。マニフェストにターゲットを
+        # 追加してもこのステップの変更は不要（#701）。
         env:
           RUSTFLAGS: ""
-        run: pnpm --filter hayate build
-
-      - name: Build WASM (hayate-adapter-web, layer-present variant)
-        # ADR-0135 が定める本人調査用トグル（Tsubame Todo デプロイ済みページの
-        # `?layerPresent=1`、既定 OFF・警告表示付き）が読む追加ビルド。この feature は
-        # Core としては非推奨（実ブラウザで描画バグ確認済み）— 既定の pkg には含めず、
-        # 別出力（wasm-pkgs/pkg-layer-present）としてのみ同梱する。
-        env:
-          RUSTFLAGS: ""
-        run: pnpm --filter hayate build:layer-present
+        run: pnpm --filter hayate run build:all
 
       - name: Build @hayate/host
         # todo example は `import('@hayate/host')` で host bootstrap を取り込む（#477）。
