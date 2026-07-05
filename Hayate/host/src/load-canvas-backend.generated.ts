@@ -8,14 +8,14 @@ import type { RawHayate } from './raw-hayate.js';
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
  *
- * `layerPresent` は vello の per-layer 経路（ADR-0125/0127）の有効化。ADR-0137 により
- * Web は既定 ON — `false` を渡すと全面 raster 版（`hayate-adapter-web`）に戻せる、
- * 比較用の逃げ道として残す。native は本パスを経由しないため既定 OFF のまま変更なし。
+ * `layerPresent` は vello 専用のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
+ * `HayateElementRenderer.init` にランタイムフラグとして渡す。ADR-0137 により Web は既定
+ * ON — `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残す。
+ * native は本パスを経由しないため既定 OFF のまま変更なし。
  *
  * `cpuLayerPresent` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル（ADR-0138）。
- * vello の `layerPresent`（パッケージ選択、コンパイル時）とは別物 — こちらはランタイム
- * フラグとして `HayateElementRenderer.init` に渡す。既定 ON、`false` で全面 raster
- * にフォールバックする。
+ * vello の `layerPresent`（上記）とは別物の意味を持つが、同じ機構（`HayateElementRenderer.init`
+ * へのランタイムフラグ）で渡す。既定 ON、`false` で全面 raster にフォールバックする。
  */
 export async function loadCanvasBackend(
   backend: CanvasBackend,
@@ -24,9 +24,9 @@ export async function loadCanvasBackend(
   cpuLayerPresent = true,
 ): Promise<RawHayate> {
   if (backend === 'vello') {
-    const mod = layerPresent ? await import('hayate-adapter-web-layer-present') : await import('hayate-adapter-web');
+    const mod = await import('hayate-adapter-web');
     await mod.default();
-    return (await mod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+    return (await mod.HayateElementRenderer.init(canvas, layerPresent)) as unknown as RawHayate;
   }
   if (backend === 'tiny-skia') {
     const mod = await import('hayate-adapter-web-cpu');

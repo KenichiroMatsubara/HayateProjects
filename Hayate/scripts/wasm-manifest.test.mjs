@@ -17,11 +17,11 @@ import {
   cargoArgsFor,
 } from './wasm-manifest.mjs';
 
-test('the manifest declares exactly the 5 known wasm-pkgs targets', () => {
+test('the manifest declares exactly the 4 known wasm-pkgs targets', () => {
   const manifest = loadManifest();
   const names = manifest.targets.map((t) => t.name);
 
-  assert.deepEqual(names, ['pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null', 'pkg-layer-present']);
+  assert.deepEqual(names, ['pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null']);
 });
 
 // Pins the exact `wasm-pack build` argv the two legacy scripts used to hardcode,
@@ -79,18 +79,6 @@ test('wasmPackArgsFor reproduces each legacy script\'s exact argv', () => {
     '--features',
     'backend-null',
   ]);
-
-  assert.deepEqual(wasmPackArgsFor(byName['pkg-layer-present'], crateDir, 'wasm-pkgs/pkg-layer-present'), [
-    'build',
-    crateDir,
-    '--target',
-    'web',
-    '--out-dir',
-    'wasm-pkgs/pkg-layer-present',
-    '--',
-    '--features',
-    'layer-present',
-  ]);
 });
 
 // Pins the exact OUT_DIR*/TARGET_DIR* constants the legacy scripts hardcoded,
@@ -107,7 +95,6 @@ test('outDirFor and targetDirFor reproduce the legacy OUT_DIR*/TARGET_DIR* paths
     'pkg-tiny-skia': ['wasm-pkgs/pkg-tiny-skia', 'target/wasm-tiny-skia'],
     'pkg-vello-cpu': ['wasm-pkgs/pkg-vello-cpu', 'target/wasm-vello-cpu'],
     'pkg-null': ['wasm-pkgs/pkg-null', 'target/wasm-null'],
-    'pkg-layer-present': ['wasm-pkgs/pkg-layer-present', 'target/wasm-layer-present'],
   };
 
   for (const [name, [outDir, targetDir]] of Object.entries(expected)) {
@@ -141,12 +128,6 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   // like pkg-tiny-skia (consumers alias it differently in their own deps).
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, 'hayate-adapter-web');
 
-  const layerPresentJson = JSON.parse(packageJsonFor(byName['pkg-layer-present'], manifest));
-  assert.equal(
-    layerPresentJson.description,
-    'Hayate — GPU-native UI substrate (layer-present feature, #697 E2E harness only)',
-  );
-
   assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n');
 });
 
@@ -166,7 +147,7 @@ test('selectTargets: no names selects the default-build set, in manifest order',
 test('selectTargets: an explicit name selects just that target, default or not', () => {
   const manifest = loadManifest();
 
-  assert.deepEqual(selectTargets(manifest, ['pkg-layer-present']).map((t) => t.name), ['pkg-layer-present']);
+  assert.deepEqual(selectTargets(manifest, ['pkg-null']).map((t) => t.name), ['pkg-null']);
   assert.deepEqual(selectTargets(manifest, ['pkg-null', 'pkg']).map((t) => t.name), ['pkg-null', 'pkg']);
 });
 
@@ -176,10 +157,11 @@ test('selectTargets: an unknown name throws a clear error', () => {
   assert.throws(() => selectTargets(manifest, ['pkg-quantum']), /pkg-quantum/);
 });
 
-// CI's Pages deploy needs every target built (including opt-in ones like
-// pkg-layer-present), not just the default set — { all: true } is the seam
-// that guarantees a manifest entry can never be silently missing from that
-// build, regardless of its includeInDefaultBuild value.
+// CI's Pages deploy needs every target built, not just the default set — { all: true } is the
+// seam that guarantees a manifest entry can never be silently missing from that build,
+// regardless of its includeInDefaultBuild value. Since ADR-0140 (#718) removed the manifest's
+// one opt-in target (pkg-layer-present), the current manifest happens to have { all: true }
+// equal the default-build set — the seam itself still exists for the next opt-in target.
 test('selectTargets: { all: true } selects every target, default or opt-in', () => {
   const manifest = loadManifest();
 
@@ -188,32 +170,28 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
     'pkg-tiny-skia',
     'pkg-vello-cpu',
     'pkg-null',
-    'pkg-layer-present',
   ]);
 });
 
-// Pins the exact npmName/host mapping loadCanvasBackend's codegen depends on
-// (#703) — including the real naming mismatch (pkg-tiny-skia's bare specifier
-// is "-cpu", not "-tiny-skia"), pkg-null having no host consumer, and
-// pkg-layer-present being a variant of the vello branch, not its own backend.
+// Pins the exact npmName/host mapping loadCanvasBackend's codegen depends on (#703) —
+// including the real naming mismatch (pkg-tiny-skia's bare specifier is "-cpu", not
+// "-tiny-skia"), pkg-null having no host consumer, and each per-layer-present opt-in
+// target naming its own init() runtime arg (ADR-0138/ADR-0140, #710/#717/#718).
 test('npmName/host mapping matches what Hayate/host/src actually imports', () => {
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
   assert.equal(byName['pkg'].npmName, 'hayate-adapter-web');
-  assert.deepEqual(byName['pkg'].host, { backend: 'vello' });
+  assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });
 
   assert.equal(byName['pkg-tiny-skia'].npmName, 'hayate-adapter-web-cpu');
-  assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia' });
+  assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
   assert.equal(byName['pkg-vello-cpu'].npmName, 'hayate-adapter-web-vello-cpu');
-  assert.deepEqual(byName['pkg-vello-cpu'].host, { backend: 'vello-cpu' });
+  assert.deepEqual(byName['pkg-vello-cpu'].host, { backend: 'vello-cpu', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
   assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');
   assert.equal(byName['pkg-null'].host, null);
-
-  assert.equal(byName['pkg-layer-present'].npmName, 'hayate-adapter-web-layer-present');
-  assert.deepEqual(byName['pkg-layer-present'].host, { backend: 'vello', variantFlag: 'layerPresent' });
 });
 
 function validManifestFixture(overrides = {}) {
@@ -271,7 +249,7 @@ test('validateManifest accepts host: null (no host-side consumer, e.g. pkg-null)
 
 test('validateManifest rejects a host object missing backend', () => {
   const manifest = validManifestFixture({
-    targets: [{ ...validManifestFixture().targets[0], host: { variantFlag: 'layerPresent' } }],
+    targets: [{ ...validManifestFixture().targets[0], host: { runtimeLayerPresentArg: 'layerPresent' } }],
   });
 
   assert.throws(() => validateManifest(manifest), /host\.backend/);
