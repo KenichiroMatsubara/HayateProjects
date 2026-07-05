@@ -46,6 +46,11 @@ WSL2 / 素の Linux では `libnss3 libnspr4 libasound2` 等が無いと Chromiu
 
 ## `layer-present` feature の実 Chromium 検証（#697）
 
+> ⚠️ **ADR-0135 により `layer-present` feature 自体が封印中（有効化禁止）**。#697 の実
+> Chromium 検証で描画バグが確認され、実用段階にないと判定された。以下の harness は
+> 削除せず維持するが、再開（性能上の実害が具体的に発生した時）までは実行対象として
+> 使わない — 再開時の回帰ガード／出発点として保存してある。
+
 `layer-present`（#690・ADR-0125/0127、既定 OFF）は cargo feature なのでランタイムに切り替え
 不可 — ON/OFF は別 WASM バイナリになる。`layer-present-webgpu.spec.ts` はこの2ビルドを実
 Chromium（Playwright、`--enable-unsafe-webgpu --ignore-gpu-blocklist --use-angle=vulkan`）で

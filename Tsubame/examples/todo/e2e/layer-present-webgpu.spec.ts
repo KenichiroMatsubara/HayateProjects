@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /**
+ * ⚠️ ADR-0135 により `layer-present` feature 自体が封印中（有効化禁止）。この spec が実
+ * Chromium で発見した描画バグが理由 — 削除はせず、再開時の回帰ガード／出発点として保存
+ * してある。`pnpm test:e2e` の既定実行対象ではない（e2e/README.md 参照）。
+ *
  * #697: 実 Chromium（`playwright.config.layer-present.ts`、通常ブランチ限定）で
  * `navigator.gpu.requestAdapter()` の成否を明示的に記録し（取れなければ理由付きで `test.skip`）、
  * 取れた場合は layer-present OFF（`Hayate/wasm-pkgs/pkg`）/ ON（`pkg-layer-present`、

@@ -19,6 +19,10 @@ backend-null = ["hayate-app-host/backend-null"]
 # per-layer レイヤキャッシュ経路（#690・ADR-0125/0127）。既定 OFF: 有効時のみ vello backend の
 # `supports_layer_present()` が true を返し `present_layers()` の per-layer 経路が動く。OFF では
 # 従来の全面 render_scene 経路のみ（挙動・出力とも無変更）。
+#
+# ⚠️ ADR-0135 により封印中 — 有効化禁止。#697 で実 Chromium 実行時に描画バグが確認され、
+# 実用段階にないと判定された。性能上の実害が具体的に発生するまで再開しない。いかなる
+# ビルド・製品でもこの feature を有効にしないこと。
 layer-present = ["backend-vello"]
 
 [dependencies]

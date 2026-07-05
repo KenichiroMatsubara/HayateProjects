@@ -29,6 +29,10 @@ pub(crate) struct SelectedBackend {
     content_scale: f32,
     /// per-layer present（#690・ADR-0125/0127）。`layer-present` feature が ON のときだけ使う。
     /// dirty / 未キャッシュのレイヤだけ texture へ再 raster し、専用 wgpu compositor で合成する。
+    ///
+    /// ⚠️ ADR-0135 により封印中 — この feature を有効にしないこと。#697 で実 Chromium 実行時に
+    /// 描画バグが確認され、実用段階にないと判定された。性能上の実害が具体的に発生するまで
+    /// 再開しない（native golden-frame テストのみでの再開は不可）。
     #[cfg(feature = "layer-present")]
     planner: PresentPlanner,
     #[cfg(feature = "layer-present")]

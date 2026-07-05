@@ -1,6 +1,9 @@
 // scripts/build-wasm-layer-present.mjs — hayate-adapter-web を `layer-present` feature 有効で
 // wasm-pack ビルドする（#697）。
 //
+// ⚠️ ADR-0135 により `layer-present` feature 自体が封印中（有効化禁止）。本番ビルドでは
+// 使わないこと — この ON ビルドは e2e/README.md の回帰ガード／再開時の出発点としてのみ存在する。
+//
 // `layer-present`（#690・ADR-0125/0127、既定 OFF）は cargo feature なのでランタイムには切り
 // 替えられず、ON/OFF は別バイナリになる。`build-wasm.mjs` の既定ビルド（`wasm-pkgs/pkg`）は
 // layer-present OFF のまま据え置き、本スクリプトは同じ default features に `layer-present` を

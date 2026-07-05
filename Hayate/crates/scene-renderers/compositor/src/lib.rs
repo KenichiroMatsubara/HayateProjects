@@ -14,6 +14,10 @@
 //!
 //! 同一 `layer_dirty`（ADR-0125 コア・#609）を入力にするため、tiny-skia(CPU) 経路も同じ planning で
 //! 同じレイヤ化の恩恵を受ける（backend は trait 実装だけ差し替える）。
+//!
+//! ⚠️ **ADR-0135 により封印中** — この crate が支える per-layer 経路（web `layer-present`
+//! feature）を有効化しないこと。#697 で実 Chromium 実行時に描画バグが確認され、実用段階に
+//! ないと判定された。性能上の実害が具体的に発生するまで再開しない。
 
 use std::collections::{HashMap, HashSet};
 
