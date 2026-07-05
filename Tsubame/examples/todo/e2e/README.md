@@ -41,3 +41,34 @@ WSL2 / 素の Linux では `libnss3 libnspr4 libasound2` 等が無いと Chromiu
 - 安定セレクタ: 追加フォームは `input[placeholder="新しいタスクを入力…"]`、
   seed タスクの文言は `todo-model.ts` の `SEED`。
 - canvas レンダラーは DOM を覗けないので、`expect(page).toHaveScreenshot()` で確認する。
+  Accessibility Mirror（ADR-0124、`[data-hayate-a11y]`）経由で `getByRole` 照会 →
+  `boundingBox()` の座標で canvas をクリックする駆動パターンは `canvas-a11y-mirror.spec.ts` 参照。
+
+## `layer-present` feature の実 Chromium 検証（#697）
+
+`layer-present`（#690・ADR-0125/0127、既定 OFF）は cargo feature なのでランタイムに切り替え
+不可 — ON/OFF は別 WASM バイナリになる。`layer-present-webgpu.spec.ts` はこの2ビルドを実
+Chromium（Playwright、`--enable-unsafe-webgpu --ignore-gpu-blocklist --use-angle=vulkan`）で
+起動し、`navigator.gpu.requestAdapter()` の成否・`selected scene renderer` ログ・優先度
+セグメントトグル後の canvas 画素一致・クリック→フレームのレイテンシ p50/p95 を記録する。
+
+**本番の `pnpm test:e2e` には含まれない**（既定ビルド `wasm-pkgs/pkg` しか無い環境でも他の
+スモークを止めずに走らせるため、専用の config/script に分離してある）。
+
+```bash
+# 1. ON 版 WASM ビルド（Hayate/wasm-pkgs/pkg-layer-present、default features + layer-present）
+pnpm --filter hayate build:layer-present
+
+# 2. Tsubame/examples/todo で
+pnpm test:e2e:layer-present
+```
+
+- OFF は既定ビルド（`Hayate/wasm-pkgs/pkg`、`vite.config.ts` そのまま）、ON は
+  `vite.config.e2e-layer-present.ts`（`hayate-adapter-web` を `pkg-layer-present` へ alias、
+  本番コードは無変更）で配信する別 dev server（既定ポート 5185/5186、`E2E_LAYER_PRESENT_OFF_PORT`
+  / `E2E_LAYER_PRESENT_ON_PORT` で変更可）。
+- WebGPU アダプタが取れない環境では `test.skip` で理由を明示してテスト出力に残す
+  （黙って green にはしない）。
+- Playwright 管理の chromium が未インストールの環境では `/opt/pw-browsers/chromium` →
+  システムの `google-chrome`（`/usr/bin/google-chrome`）の順にフォールバックする
+  （`playwright.config.layer-present.ts`）。
