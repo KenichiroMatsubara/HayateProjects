@@ -1,5 +1,5 @@
 #[cfg(feature = "layer-present")]
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
@@ -13,8 +13,9 @@ use hayate_scene_renderer_vello::{
 };
 #[cfg(feature = "layer-present")]
 use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, tunables, CompositeQuad,
-    GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner,
+    collect_layer_placements, extract_layer_scene, extract_root_scene, layer_scene::compose,
+    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPlacement, LayerRasterizer,
+    PresentPlanner, ScrollLayerGeometry,
 };
 #[cfg(feature = "layer-present")]
 use hayate_scene_renderer_vello::layer_compositor::{
@@ -255,6 +256,32 @@ impl VelloSurfaceHost {
     }
 }
 
+/// The compositing transform for one layer `placement` (ADR-0127・#707). For a banded scroll
+/// layer (present in both `planner`'s cache and `scroll_geometry`, this frame), this composes
+/// `placement.transform` with the compensating translate that places the cached (possibly
+/// several-frames-stale) band at *this frame's* correct screen position —
+/// `ScrollLayerGeometry::screen_top_for_band`'s doc comment has the full derivation of why both
+/// the **cached** band (what's actually in the texture right now — composite-only frames don't
+/// re-raster) and **this frame's** geometry (fresh every frame) are needed together: that pairing
+/// is what makes scrolling within an already-cached band keep tracking live scroll position
+/// instead of freezing at whatever offset was current when it was last rastered. Every other
+/// layer (non-scroll, or scroll but not yet rastered this present) is unaffected — returns
+/// `placement.transform` unchanged.
+#[cfg(feature = "layer-present")]
+fn quad_transform(
+    placement: &LayerPlacement,
+    planner: &PresentPlanner,
+    scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+) -> [f64; 6] {
+    match (planner.cached_scroll_band(placement.layer), scroll_geometry.get(&placement.layer)) {
+        (Some(cached_band), Some(geometry)) => {
+            let screen_top = geometry.screen_top_for_band(cached_band);
+            compose(placement.transform, [1.0, 0.0, 0.0, 1.0, 0.0, screen_top as f64])
+        }
+        _ => placement.transform,
+    }
+}
+
 impl CanvasBackend for SelectedBackend {
     fn kind(&self) -> SceneRendererKind {
         SceneRendererKind::Vello
@@ -277,16 +304,23 @@ impl CanvasBackend for SelectedBackend {
         true
     }
 
-    /// per-layer present（#690・ADR-0125/0127）。Android の旧 `GpuSurface::render_frame`
-    /// （#687 で撤去済み、per-layer 実装コード自体は撤去していない）と同型のロジック:
-    /// (1) 消えたレイヤの掃除 (2) dirty / 未キャッシュのレイヤだけ vello でレイヤ texture へ
-    /// raster (3) 専用 wgpu compositor で quad 合成しつつ present (4) GPU 予算超過分を LRU 退避。
+    /// per-layer present（#690・ADR-0125/0127、scroll overscan サイジング配線 #707）。Android の旧
+    /// `GpuSurface::render_frame`（#687 で撤去済み、per-layer 実装コード自体は撤去していない）と
+    /// 同型のロジック: (1) 消えたレイヤの掃除 (2) dirty / 未キャッシュの非 scroll レイヤだけ vello
+    /// でレイヤ texture へ raster (2b) scroll 内容レイヤ（`scroll_geometry` にあるレイヤ）は帯
+    /// カバレッジで別途 gating し、必要なら overscan 帯サイズで raster する——scroll offset だけの
+    /// 変化は `layer_dirty`（content dirty）に含まれない（chrome dirty 扱い、#634）ため、非 scroll
+    /// と同じ一括判定に混ぜると「offset が変わっても帯はまだ可視域を覆っている」composite-only
+    /// フレームを見逃す (3) 専用 wgpu compositor で quad 合成しつつ present——scroll レイヤの quad
+    /// は、texture が絶対シーン座標の一部（帯）しか持たないぶんの compensating translate を追加で
+    /// 持つ (4) GPU 予算超過分を LRU 退避（scroll レイヤは帯サイズのバイト数で計上、#707）。
     #[cfg(feature = "layer-present")]
     fn present_layers(
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
         let Some(&root) = layers.first() else {
@@ -300,21 +334,59 @@ impl CanvasBackend for SelectedBackend {
         }
         self.prev_layers = boundaries.clone();
 
-        let plan = self.planner.plan_layers(layers, layer_dirty);
-        for &layer in &plan.raster {
-            let extracted = if layer == root {
-                extract_root_scene(scene, root, &boundaries)
+        let extract = |layer: ElementId| -> Option<SceneGraph> {
+            if layer == root {
+                Some(extract_root_scene(scene, root, &boundaries))
             } else {
-                match extract_layer_scene(scene, layer, &boundaries) {
-                    Some(extracted) => extracted,
-                    None => continue, // 未 lowering（次フレームで raster される）
-                }
+                extract_layer_scene(scene, layer, &boundaries)
+            }
+        };
+
+        // 非 scroll レイヤは従来どおり: dirty / 未キャッシュのものだけ一括判定で raster する。
+        // scroll レイヤ（`scroll_geometry` にあるもの）はここから除外し、下の専用ループで扱う。
+        let non_scroll_layers: Vec<ElementId> = layers
+            .iter()
+            .copied()
+            .filter(|layer| !scroll_geometry.contains_key(layer))
+            .collect();
+        let plan = self.planner.plan_layers(&non_scroll_layers, layer_dirty);
+        for &layer in &plan.raster {
+            let Some(extracted) = extract(layer) else {
+                continue; // 未 lowering（次フレームで raster される）
             };
             self.rasterizer
-                .rasterize(layer, &extracted)
+                .rasterize(layer, &extracted, None)
                 .map_err(|e| anyhow::anyhow!(e))?;
             self.planner
                 .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+        }
+
+        // scroll 内容レイヤ（ADR-0127・#707）: キャッシュ済み帯が現在の可視域を覆っていれば
+        // composite-only（raster しない）。覆っていなければ新しい帯を差分 raster する
+        // （`compositor/tests/scroll_composite_only.rs` の `pump_scroll` と同じ判定順）。
+        // `geometry.content_dirty`（`frame_layer_dirty()` のみ）を使う——呼び出し側が渡す
+        // `layer_dirty` は非 scroll 経路のために scroll chrome dirty（スクロールバー fade 等）も
+        // 混ぜているため、それをここで使うとスクロールバーが動くたびに composite-only が崩れる。
+        for &layer in layers {
+            let Some(geometry) = scroll_geometry.get(&layer) else {
+                continue; // 非 scroll レイヤは上のループで処理済み
+            };
+            if !geometry.content_dirty
+                && !self
+                    .planner
+                    .scroll_layer_needs_raster(layer, geometry.visible_top, geometry.viewport_height)
+            {
+                continue; // キャッシュ済み帯がまだ可視域を覆っている
+            }
+            let Some(extracted) = extract(layer) else {
+                continue;
+            };
+            let raster_band = geometry.raster_band();
+            self.rasterizer
+                .rasterize(layer, &extracted, Some(raster_band))
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let bytes = self.rasterizer.scroll_band_bytes(geometry.band);
+            self.planner.note_scroll_rasterized(layer, geometry.band, bytes);
         }
 
         let placements = collect_layer_placements(scene, root, &boundaries);
@@ -323,7 +395,7 @@ impl CanvasBackend for SelectedBackend {
             .filter_map(|placement| {
                 self.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
                     layer: placement.layer,
-                    transform: placement.transform,
+                    transform: quad_transform(placement, &self.planner, scroll_geometry),
                     opacity: 1.0,
                     clip: placement.clip,
                     texture,

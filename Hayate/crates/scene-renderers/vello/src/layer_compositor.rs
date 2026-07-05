@@ -1,10 +1,20 @@
-//! `LayerRasterizer` / `LayerCompositor` の wgpu 実装（#633・ADR-0125 backend 半分）。
+//! `LayerRasterizer` / `LayerCompositor` の wgpu 実装（#633・ADR-0125 backend 半分 / #707 ADR-0127
+//! scroll overscan サイジング配線）。
 //!
 //! - [`VelloLayerRasterizer`]: レイヤの抽出済み sub-scene を vello でレイヤ texture
-//!   （サーフェスサイズ・Rgba8Unorm・透明クリア）へ raster してキャッシュする。
+//!   （既定はサーフェスサイズ・Rgba8Unorm・透明クリア）へ raster してキャッシュする。scroll 内容
+//!   レイヤは [`RasterBand`] 付きで呼ばれると、texture を帯サイズに縮めて確保し、内容を
+//!   `origin_y` だけ平行移動してから raster する（#707）——vello に scissor/viewport の概念は無く
+//!   （`vello::RenderParams` は `{base_color, width, height, antialiasing_method}` のみ）、texture の
+//!   寸法そのものが render 範囲になるため、部分帯だけ欲しければ「小さい texture へ内容をずらして
+//!   焼く」以外の手段が無い。
 //! - [`WgpuQuadCompositor`]: キャッシュ texture を CompositeQuad（transform / opacity / 軸並行
 //!   clip = scissor）として **1 render pass** で合成する。合成に vello は使わない
 //!   （ADR-0125 Decision 4）——composite-only フレームでは vello フルパイプラインが一切動かない。
+//!   quad の「素の」矩形は **texture 自身の寸法**（`quad.texture.width/height`）を使う——帯サイズの
+//!   scroll レイヤ texture は full-surface レイヤより小さいため、合成先 `target` の寸法を流用すると
+//!   帯を surface 全体に引き伸ばしてしまう（#707 で修正。full-surface レイヤは texture 寸法 ==
+//!   target 寸法なので、この修正は既存レイヤの出力を変えない）。
 //!
 //! パイプライン variant（surface format × blend）は [`WgpuQuadCompositor::warmup`] がエンジン初期化
 //! 時に全直積を前倒し生成する（ADR-0130a）。`composite` は生成済み variant を引くだけで、遅延生成の
@@ -21,8 +31,8 @@ use std::collections::HashMap;
 use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
 use hayate_layer_compositor::{
-    warmup_variants, BlendMode, CompositeQuad, LayerCompositor, LayerRasterizer, PipelineVariant,
-    SurfaceFormat,
+    tunables, warmup_variants, BlendMode, CompositeQuad, LayerCompositor, LayerRasterizer,
+    PipelineVariant, RasterBand, ScrollLayerExtent, SurfaceFormat,
 };
 
 use crate::{VelloRenderTarget, VelloSceneRenderer};
@@ -51,11 +61,15 @@ fn wgpu_format(format: SurfaceFormat) -> wgpu::TextureFormat {
     }
 }
 
-/// レイヤ 1 枚のキャッシュ面（vello の raster 先 ＝ compositor のサンプル元）。
+/// レイヤ 1 枚のキャッシュ面（vello の raster 先 ＝ compositor のサンプル元）。`width`/`height` は
+/// device px の実サイズ（#707 以降、scroll 内容レイヤは帯サイズで full-surface より小さくなり得る
+/// ため、compositor 側が `target` の寸法を仮定できるように texture 自身が寸法を持つ）。
 #[derive(Debug)]
 pub struct LayerTexture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// vello によるレイヤ rasterizer（`LayerRasterizer` の wgpu 実装）。キャッシュ texture は
@@ -101,12 +115,15 @@ impl VelloLayerRasterizer {
         self.textures.clear();
     }
 
-    fn create_texture(&self) -> LayerTexture {
+    /// `width`×`height`（device px）のキャッシュ texture を確保する。既定（非 scroll レイヤ）は
+    /// 常に `self.width`×`self.height`（サーフェスサイズ）で呼ぶ；scroll 帯は
+    /// [`Self::band_device_height`] で決めた、より小さい高さで呼ぶ（#707）。
+    fn create_texture(&self, width: u32, height: u32) -> LayerTexture {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("hayate_layer_cache"),
             size: wgpu::Extent3d {
-                width: self.width,
-                height: self.height,
+                width,
+                height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -117,30 +134,62 @@ impl VelloLayerRasterizer {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        LayerTexture { texture, view }
+        LayerTexture { texture, view, width, height }
+    }
+
+    /// `band`（論理 px の帯高）が device px で占めるキャッシュ texture の高さ（ADR-0127）。
+    /// `self.content_scale` を掛けて切り上げる——full-surface レイヤの `self.height` が既に
+    /// device px であるのと同じ変換（下側で切ると帯の下端が 1px 欠けて可視域を覆い損ねうる）。
+    fn band_device_height(&self, band_height_logical: f32) -> u32 {
+        (band_height_logical * self.content_scale).ceil().max(1.0) as u32
+    }
+
+    /// `band`（content-local、`ScrollLayerExtent` 語彙）で scroll レイヤを raster したときの
+    /// キャッシュ texture バイト数（ADR-0127 の GPU 予算計上・#707）。`texture_bytes_per_layer`
+    /// が非 scroll レイヤの一様な full-surface バイトを返すのに対し、こちらは帯の高さだけを
+    /// 計上する（全高では確保しないので、予算に対してもそう計上する）。`present_layers` が
+    /// `PresentPlanner::note_scroll_rasterized` へ渡す値の単一正本——ここと [`Self::rasterize`]
+    /// の [`Self::band_device_height`] 呼び出しが分岐すると、予算計上と実 texture サイズが
+    /// ずれてしまう。
+    pub fn scroll_band_bytes(&self, band: ScrollLayerExtent) -> u64 {
+        u64::from(self.width) * u64::from(self.band_device_height(band.height)) * tunables::BYTES_PER_PIXEL
     }
 }
 
 impl LayerRasterizer for VelloLayerRasterizer {
     type Texture = LayerTexture;
 
-    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph) -> Result<(), String> {
-        if !self.textures.contains_key(&layer) {
-            let texture = self.create_texture();
+    /// `band` が `Some` なら scroll 内容レイヤの overscan 帯サイジング（ADR-0127・#707）:
+    /// texture を `self.width`×帯高（device px）に確保し、`band.origin_y`（絶対シーン座標）が
+    /// texture 行 0 に来るよう内容を平行移動して raster する。キャッシュ済み texture の寸法が
+    /// 要求と食い違えば（帯が動いた／非 scroll へ戻った等）作り直す。`None` は従来どおり
+    /// サーフェスサイズで raster する（既存レイヤの挙動は無変更）。
+    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph, band: Option<RasterBand>) -> Result<(), String> {
+        let (texture_width, texture_height, origin_y) = match band {
+            Some(band) => (self.width, self.band_device_height(band.height), band.origin_y),
+            None => (self.width, self.height, 0.0),
+        };
+        let needs_new_texture = self
+            .textures
+            .get(&layer)
+            .is_none_or(|existing| existing.width != texture_width || existing.height != texture_height);
+        if needs_new_texture {
+            let texture = self.create_texture(texture_width, texture_height);
             self.textures.insert(layer, texture);
         }
         let target_view = &self.textures[&layer].view;
-        self.renderer.render_scene(
+        self.renderer.render_scene_at(
             scene,
             &VelloRenderTarget {
                 device: &self.device,
                 queue: &self.queue,
                 target_view,
-                width: self.width,
-                height: self.height,
+                width: texture_width,
+                height: texture_height,
             },
             TRANSPARENT,
             self.content_scale,
+            origin_y,
         )
     }
 
@@ -149,7 +198,7 @@ impl LayerRasterizer for VelloLayerRasterizer {
     }
 
     fn texture_bytes_per_layer(&self) -> u64 {
-        u64::from(self.width) * u64::from(self.height) * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+        u64::from(self.width) * u64::from(self.height) * tunables::BYTES_PER_PIXEL
     }
 
     fn discard(&mut self, layer: ElementId) {
@@ -358,28 +407,35 @@ impl WgpuQuadCompositor {
             })
     }
 
-    /// quad の 6 頂点（2 三角形）を CPU 側でアフィン → NDC 変換して作る。texture は絶対座標
-    /// `[0,0,w,h]` を覆う（レイヤは絶対座標のまま raster されている）。
+    /// quad の 6 頂点（2 三角形）を CPU 側でアフィン → NDC 変換して作る。「素の」矩形は
+    /// **texture 自身の寸法**（`quad.texture.width/height`、device px）を使う——レイヤは絶対座標の
+    /// まま raster されているので、full-surface レイヤ（従来どおり）は texture 寸法 == `target`
+    /// 寸法だが、scroll 帯レイヤ（#707・ADR-0127）は texture が帯サイズに縮んでいるため、素の矩形
+    /// も帯サイズでなければ全体を surface へ引き伸ばしてしまう。NDC 正規化（`dx/target_w` 等）は
+    /// 引き続き合成先 `target` の寸法を使う（NDC は render target 基準——`quad.transform` の
+    /// 「素の矩形→絶対シーン座標」変換とは独立な軸）。
     fn quad_vertices(&self, quad: &CompositeQuad<'_, LayerTexture>, target: &CompositeTarget) -> [QuadVertex; VERTICES_PER_QUAD] {
-        let w = target.width as f64;
-        let h = target.height as f64;
+        let tex_w = quad.texture.width as f64;
+        let tex_h = quad.texture.height as f64;
+        let target_w = target.width as f64;
+        let target_h = target.height as f64;
         let t = quad.transform;
         let corner = |cx: f64, cy: f64, u: f32, v: f32| {
             let dx = t[0] * cx + t[2] * cy + t[4];
             let dy = t[1] * cx + t[3] * cy + t[5];
             QuadVertex {
                 pos: [
-                    (dx / w * 2.0 - 1.0) as f32,
-                    (1.0 - dy / h * 2.0) as f32,
+                    (dx / target_w * 2.0 - 1.0) as f32,
+                    (1.0 - dy / target_h * 2.0) as f32,
                 ],
                 uv: [u, v],
                 opacity: quad.opacity,
             }
         };
         let tl = corner(0.0, 0.0, 0.0, 0.0);
-        let tr = corner(w, 0.0, 1.0, 0.0);
-        let bl = corner(0.0, h, 0.0, 1.0);
-        let br = corner(w, h, 1.0, 1.0);
+        let tr = corner(tex_w, 0.0, 1.0, 0.0);
+        let bl = corner(0.0, tex_h, 0.0, 1.0);
+        let br = corner(tex_w, tex_h, 1.0, 1.0);
         [tl, tr, bl, tr, br, bl]
     }
 }

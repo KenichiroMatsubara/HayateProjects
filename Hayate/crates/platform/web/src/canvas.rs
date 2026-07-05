@@ -552,11 +552,21 @@ impl HayateElementRenderer {
         if self.backend.supports_layer_present() {
             let mut layer_dirty = self.tree.frame_layer_dirty().clone();
             layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+            // ADR-0127 scroll overscan サイジングの配線（#707）: `present_layers` は
+            // `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、scroll
+            // レイヤごとの帯ジオメトリをここで一度だけ計算して渡す（vello バックエンドはこれを
+            // 使って scroll 内容レイヤを可視域＋overscan の帯サイズだけ raster する。対応しない
+            // バックエンドは無視して従来どおりフルサーフェス raster する）。
+            let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_table(
+                &self.tree,
+                self.tree.frame_layers(),
+            );
             self.backend
                 .present_layers(
                     self.tree.scene_graph(),
                     self.tree.frame_layers(),
                     &layer_dirty,
+                    &scroll_geometry,
                     self.background,
                 )
                 .map_err(anyhow_to_js)

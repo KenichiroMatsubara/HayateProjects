@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
+use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, RasterBand};
 use vello_cpu::kurbo::{Affine, Rect};
 use vello_cpu::peniko::{Color, Fill};
 use vello_cpu::{Image, ImageSource, Pixmap, RenderContext, Resources};
@@ -63,7 +63,14 @@ impl VelloCpuLayerRasterizer {
 impl LayerRasterizer for VelloCpuLayerRasterizer {
     type Texture = Arc<Pixmap>;
 
-    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph) -> Result<(), String> {
+    fn rasterize(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        // #707 (ADR-0127): scroll-band sizing is vello-only for now — see the identical note in
+        // tiny-skia's `layer_compositor.rs`. Accepted (shared trait) and intentionally ignored.
+        _band: Option<RasterBand>,
+    ) -> Result<(), String> {
         let (w, h) = (clamp_u16(self.width), clamp_u16(self.height));
         let mut pixmap = Pixmap::new(w, h);
         VelloCpuSceneRenderer::new().render_scene(scene, &mut pixmap, TRANSPARENT, self.content_scale);

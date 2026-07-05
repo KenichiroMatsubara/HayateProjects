@@ -50,7 +50,7 @@ fn render_layered(tree: &ElementTree, root: ElementId) -> Pixmap {
                 None => continue,
             }
         };
-        rasterizer.rasterize(layer, &scene).unwrap();
+        rasterizer.rasterize(layer, &scene, None).unwrap();
     }
 
     let quads: Vec<CompositeQuad<'_, Pixmap>> = placements
@@ -261,7 +261,7 @@ fn pump(tree: &mut ElementTree, planner: &mut PresentPlanner, rz: &mut TinySkiaL
                 None => continue,
             }
         };
-        rz.rasterize(layer, &scene).unwrap();
+        rz.rasterize(layer, &scene, None).unwrap();
         planner.note_layer_rasterized(layer, rz.texture_bytes_per_layer());
     }
     plan.raster.len()

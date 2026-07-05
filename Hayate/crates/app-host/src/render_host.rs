@@ -9,11 +9,12 @@
 //! オーケストレーション（どの順で試すか・いつフォールバックするか）はここに hoist
 //! されているので、`RendererInit` 越しに呼ぶ。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Error;
 use hayate_core::element::id::ElementId;
 use hayate_core::{SceneGraph, Surface};
+use hayate_layer_compositor::ScrollLayerGeometry;
 
 use crate::renderer_selection::{
     is_runtime_fallback_reason, RendererCapabilities, RendererSelectionPlan,
@@ -45,12 +46,19 @@ pub trait SceneRenderer {
     /// per-layer present（#636・ADR-0125）。既定は全面 `render_scene` にフォールバック
     /// （未対応バックエンド）。
     ///
+    /// `scroll_geometry` は `ElementKind::ScrollView` レイヤごとの ADR-0127 overscan 帯ジオメトリ
+    /// （#707）——呼び出し側（`present_frame`）が `ElementTree` から一度だけ計算して渡す。
+    /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、
+    /// scroll offset / viewport / content 高を自分では問い合わせられない（この小さな表がその境界を
+    /// またぐ唯一の橋渡し）。対応しないバックエンド（既定実装含む）は無視してよい。
+    ///
     /// ⚠️ ADR-0135 により封印中 — 詳細は [`supports_layer_present`](Self::supports_layer_present)。
     fn present_layers(
         &mut self,
         scene: &SceneGraph,
         _layers: &[ElementId],
         _layer_dirty: &HashSet<ElementId>,
+        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
         self.render_scene(scene, clear_color)
@@ -232,17 +240,18 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
         debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.present_layers(scene, layers, layer_dirty, clear_color) {
+        match renderer.present_layers(scene, layers, layer_dirty, scroll_geometry, clear_color) {
             Ok(()) => Ok(()),
             // ランタイムフォールバック時は次バックエンドの present（既定は全面 raster）へ委ねる。
             Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.present_layers(scene, layers, layer_dirty, clear_color)
+                renderer.present_layers(scene, layers, layer_dirty, scroll_geometry, clear_color)
             }),
         }
     }

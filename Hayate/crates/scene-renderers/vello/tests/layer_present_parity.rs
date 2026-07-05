@@ -47,7 +47,7 @@ fn assert_layered_matches_full(harness: &mut VelloHarness, tree: &ElementTree, r
             extract_layer_scene(graph, layer, &boundaries)
         };
         if let Some(extracted) = extracted {
-            rasterizer.rasterize(layer, &extracted).unwrap();
+            rasterizer.rasterize(layer, &extracted, None).unwrap();
         }
     }
 
