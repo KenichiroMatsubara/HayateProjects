@@ -34,7 +34,7 @@ importers:
         version: link:../wasm-pkgs/pkg-tiny-skia
       hayate-adapter-web-layer-present:
         specifier: file:../wasm-pkgs/pkg-layer-present
-        version: hayate-adapter-web@file:Hayate/wasm-pkgs/pkg-layer-present
+        version: link:../wasm-pkgs/pkg-layer-present
       hayate-adapter-web-vello-cpu:
         specifier: file:../wasm-pkgs/pkg-vello-cpu
         version: link:../wasm-pkgs/pkg-vello-cpu
@@ -56,6 +56,8 @@ importers:
         version: 8.18.0
 
   Hayate/wasm-pkgs/pkg: {}
+
+  Hayate/wasm-pkgs/pkg-layer-present: {}
 
   Hayate/wasm-pkgs/pkg-null: {}
 
@@ -1815,9 +1817,6 @@ packages:
   happy-dom@17.6.3:
     resolution: {integrity: sha512-UVIHeVhxmxedbWPCfgS55Jg2rDfwf2BCKeylcPSqazLz5w3Kri7Q4xdBJubsr/+VUzFLh0VjIvh13RaDA2/Xug==}
     engines: {node: '>=20.0.0'}
-
-  hayate-adapter-web@file:Hayate/wasm-pkgs/pkg-layer-present:
-    resolution: {directory: Hayate/wasm-pkgs/pkg-layer-present, type: directory}
 
   html-entities@2.3.3:
     resolution: {integrity: sha512-DV5Ln36z34NNTDgnz0EWGBLZENelNAtkiFA4kyNOG2tDI6Mz1uSWiq1wAKdyjnJwyDiDO7Fa2SO1CTxPXL8VxA==}
@@ -3713,8 +3712,6 @@ snapshots:
     dependencies:
       webidl-conversions: 7.0.0
       whatwg-mimetype: 3.0.0
-
-  hayate-adapter-web@file:Hayate/wasm-pkgs/pkg-layer-present: {}
 
   html-entities@2.3.3: {}
 
