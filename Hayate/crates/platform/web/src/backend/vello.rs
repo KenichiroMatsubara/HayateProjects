@@ -1,10 +1,24 @@
+#[cfg(feature = "layer-present")]
+use std::collections::HashSet;
+
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wgpu::util::TextureBlitter;
 
+#[cfg(feature = "layer-present")]
+use hayate_core::ElementId;
 use hayate_core::SceneGraph;
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+};
+#[cfg(feature = "layer-present")]
+use hayate_layer_compositor::{
+    collect_layer_placements, extract_layer_scene, extract_root_scene, tunables, CompositeQuad,
+    GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner,
+};
+#[cfg(feature = "layer-present")]
+use hayate_scene_renderer_vello::layer_compositor::{
+    CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
 };
 
 use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
@@ -13,6 +27,17 @@ pub(crate) struct SelectedBackend {
     surface_host: VelloSurfaceHost,
     scene_renderer: VelloSceneRenderer,
     content_scale: f32,
+    /// per-layer present（#690・ADR-0125/0127）。`layer-present` feature が ON のときだけ使う。
+    /// dirty / 未キャッシュのレイヤだけ texture へ再 raster し、専用 wgpu compositor で合成する。
+    #[cfg(feature = "layer-present")]
+    planner: PresentPlanner,
+    #[cfg(feature = "layer-present")]
+    rasterizer: VelloLayerRasterizer,
+    #[cfg(feature = "layer-present")]
+    compositor: WgpuQuadCompositor,
+    /// 前フレームのレイヤ集合。消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
+    #[cfg(feature = "layer-present")]
+    prev_layers: HashSet<ElementId>,
 }
 
 struct VelloSurfaceHost {
@@ -38,10 +63,34 @@ impl SelectedBackend {
         if let Err(e) = scene_renderer.warmup(surface_host.device(), surface_host.queue()) {
             web_sys::console::warn_1(&JsValue::from_str(&format!("vello warmup skipped: {e}")));
         }
+        #[cfg(feature = "layer-present")]
+        let rasterizer = VelloLayerRasterizer::new(
+            surface_host.device().clone(),
+            surface_host.queue().clone(),
+            surface_host.width,
+            surface_host.height,
+            1.0,
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
+        #[cfg(feature = "layer-present")]
+        let mut compositor =
+            WgpuQuadCompositor::new(surface_host.device().clone(), surface_host.queue().clone());
+        // init 時に全パイプライン variant を前倒し生成し、初回合成フレームの遅延生成スパイクを
+        // 消す（ADR-0130a）。
+        #[cfg(feature = "layer-present")]
+        compositor.warmup();
         Ok(Self {
             surface_host,
             scene_renderer,
             content_scale: 1.0,
+            #[cfg(feature = "layer-present")]
+            planner: PresentPlanner::new(),
+            #[cfg(feature = "layer-present")]
+            rasterizer,
+            #[cfg(feature = "layer-present")]
+            compositor,
+            #[cfg(feature = "layer-present")]
+            prev_layers: HashSet::new(),
         })
     }
 }
@@ -121,14 +170,16 @@ impl VelloSurfaceHost {
         }
     }
 
-    fn present_target(&mut self) -> Result<(), JsValue> {
+    /// 次に present するサーフェス texture とその view を取得する。`Occluded` は「今フレームは
+    /// 何もしない」を表すため `Ok(None)` を返す（present_target/present_layers 共通の分岐）。
+    fn acquire_surface_view(&self) -> Result<Option<(wgpu::SurfaceTexture, wgpu::TextureView)>, JsValue> {
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             wgpu::CurrentSurfaceTexture::Timeout => {
                 return Err(JsValue::from_str("get_current_texture: timeout"));
             }
-            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
+            wgpu::CurrentSurfaceTexture::Occluded => return Ok(None),
             wgpu::CurrentSurfaceTexture::Outdated => {
                 return Err(JsValue::from_str("get_current_texture: surface outdated"));
             }
@@ -139,10 +190,16 @@ impl VelloSurfaceHost {
                 return Err(JsValue::from_str("get_current_texture: validation error"));
             }
         };
-
         let surface_view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        Ok(Some((surface_texture, surface_view)))
+    }
+
+    fn present_target(&mut self) -> Result<(), JsValue> {
+        let Some((surface_texture, surface_view)) = self.acquire_surface_view()? else {
+            return Ok(());
+        };
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -151,6 +208,32 @@ impl VelloSurfaceHost {
         self.blitter
             .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
         self.queue.submit(std::iter::once(encoder.finish()));
+        surface_texture.present();
+        Ok(())
+    }
+
+    /// per-layer present（#690）: レイヤ texture quad を専用 wgpu compositor でサーフェスへ直接
+    /// 合成する（`target_view`/`blitter` は使わない——合成が単一 blit の代わりを担う）。
+    #[cfg(feature = "layer-present")]
+    fn present_composite(
+        &mut self,
+        compositor: &mut WgpuQuadCompositor,
+        quads: &[CompositeQuad<'_, LayerTexture>],
+        clear_color: ClearColor,
+    ) -> Result<(), JsValue> {
+        let Some((surface_texture, surface_view)) = self.acquire_surface_view()? else {
+            return Ok(());
+        };
+        let mut target = CompositeTarget {
+            view: surface_view,
+            width: self.width,
+            height: self.height,
+            format: self.surface_config.format,
+            clear: clear_color,
+        };
+        compositor
+            .composite(&mut target, quads)
+            .map_err(|e| JsValue::from_str(&e))?;
         surface_texture.present();
         Ok(())
     }
@@ -185,8 +268,94 @@ impl CanvasBackend for SelectedBackend {
         self.render_scene(&SceneGraph::new(), clear_color)
     }
 
+    #[cfg(feature = "layer-present")]
+    fn supports_layer_present(&self) -> bool {
+        true
+    }
+
+    /// per-layer present（#690・ADR-0125/0127）。Android の旧 `GpuSurface::render_frame`
+    /// （#687 で撤去済み、per-layer 実装コード自体は撤去していない）と同型のロジック:
+    /// (1) 消えたレイヤの掃除 (2) dirty / 未キャッシュのレイヤだけ vello でレイヤ texture へ
+    /// raster (3) 専用 wgpu compositor で quad 合成しつつ present (4) GPU 予算超過分を LRU 退避。
+    #[cfg(feature = "layer-present")]
+    fn present_layers(
+        &mut self,
+        scene: &SceneGraph,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
+        clear_color: ClearColor,
+    ) -> Result<(), anyhow::Error> {
+        let Some(&root) = layers.first() else {
+            return Ok(());
+        };
+        let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+
+        for stale in self.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
+            self.rasterizer.discard(stale);
+            self.planner.evict(stale);
+        }
+        self.prev_layers = boundaries.clone();
+
+        let plan = self.planner.plan_layers(layers, layer_dirty);
+        for &layer in &plan.raster {
+            let extracted = if layer == root {
+                extract_root_scene(scene, root, &boundaries)
+            } else {
+                match extract_layer_scene(scene, layer, &boundaries) {
+                    Some(extracted) => extracted,
+                    None => continue, // 未 lowering（次フレームで raster される）
+                }
+            };
+            self.rasterizer
+                .rasterize(layer, &extracted)
+                .map_err(|e| anyhow::anyhow!(e))?;
+            self.planner
+                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+        }
+
+        let placements = collect_layer_placements(scene, root, &boundaries);
+        let quads: Vec<CompositeQuad<'_, LayerTexture>> = placements
+            .iter()
+            .filter_map(|placement| {
+                self.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
+                    layer: placement.layer,
+                    transform: placement.transform,
+                    opacity: 1.0,
+                    clip: placement.clip,
+                    texture,
+                })
+            })
+            .collect();
+        self.surface_host
+            .present_composite(&mut self.compositor, &quads, clear_color)
+            .map_err(js_to_anyhow)?;
+        for quad in &quads {
+            self.planner.note_composited(quad.layer);
+        }
+
+        // GPU 予算超過なら最も長く composite に使われていないレイヤ texture から LRU 退避する
+        // （ADR-0127）。Web はデスクトップ既定値をそのまま使う（このスライスでチューニングしない）。
+        let budget = GpuBudget::from_viewports(
+            self.surface_host.width,
+            self.surface_host.height,
+            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
+        );
+        for evicted in self.planner.enforce_budget(budget) {
+            self.rasterizer.discard(evicted);
+        }
+        Ok(())
+    }
+
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
         self.content_scale = content_scale.max(1.0);
         self.surface_host.resize(width, height);
+        #[cfg(feature = "layer-present")]
+        {
+            // レイヤ texture はサーフェスサイズなので作り直し＝台帳ごと invalidate する
+            // （invalidate しないと古いサイズの内容を合成し続ける）。
+            self.rasterizer
+                .resize(self.surface_host.width, self.surface_host.height, self.content_scale);
+            self.planner.invalidate();
+        }
     }
 }
