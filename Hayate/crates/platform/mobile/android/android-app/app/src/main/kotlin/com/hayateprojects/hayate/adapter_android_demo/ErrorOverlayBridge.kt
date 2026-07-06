@@ -1,6 +1,8 @@
 package com.hayateprojects.hayate.adapter_android_demo
 
 import android.app.Activity
+import android.content.Context
+import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -25,6 +27,7 @@ import android.widget.TextView
  */
 object ErrorOverlayBridge {
     private const val OVERLAY_TAG = "hayate_error_overlay"
+    private const val LOG_TAG = "ErrorOverlayBridge"
 
     // Web ホストの built-in error panel（`background:#0b1020` / `color:#fca5a5`）と揃えた配色。
     private const val BACKGROUND_COLOR = 0xFF0B1020.toInt()
@@ -35,8 +38,21 @@ object ErrorOverlayBridge {
      * panic hook の両方から呼ばれる想定。既にオーバーレイがあれば本文だけ差し替える
      * （reload 失敗が連続しても View を積み増さない）。
      */
+    /**
+     * Rust（`ndk_context`）が持つのは Application Context であって Activity ではないため、
+     * JNI 入口は `Context` を受け、Activity は [CurrentActivity] レジストリで解決する。
+     * Activity が無い（未登録・破棄済み）ときは表示しようがないのでログだけ残す——
+     * ここで例外を投げると「エラー表示の失敗」が新たなクラッシュになるため。
+     */
+    private fun resolveActivity(context: Context): Activity? =
+        (context as? Activity) ?: CurrentActivity.get() ?: run {
+            Log.e(LOG_TAG, "前面 Activity が未登録のためエラーオーバーレイを表示できません")
+            null
+        }
+
     @JvmStatic
-    fun showError(activity: Activity, message: String) {
+    fun showError(context: Context, message: String) {
+        val activity = resolveActivity(context) ?: return
         activity.runOnUiThread {
             val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@runOnUiThread
             val overlay = content.findViewWithTag<TextView>(OVERLAY_TAG)
@@ -62,7 +78,8 @@ object ErrorOverlayBridge {
 
     /** オーバーレイを消す（boot 成功時。Web ホストの `clearBuiltinErrorPanel` と対称）。 */
     @JvmStatic
-    fun clearError(activity: Activity) {
+    fun clearError(context: Context) {
+        val activity = resolveActivity(context) ?: return
         activity.runOnUiThread {
             val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return@runOnUiThread
             content.findViewWithTag<TextView>(OVERLAY_TAG)?.let { content.removeView(it) }

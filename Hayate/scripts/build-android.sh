@@ -61,12 +61,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ANDROID_DIR="$ROOT_DIR/crates/platform/mobile/android/android-app"
 
-# rust-android-gradle は既定で `<cargo module>/target`（= crates/.../android/target）を見るが、
-# このクレートは Hayate ワークスペースの一員なので実際の cargo 出力は共有の `$ROOT_DIR/target`
-# に置かれる。未設定のままだと cargoBuild が .so を見つけられず、jniLibs に何も入らないまま
-# ビルドは「成功」してしまい、アプリは起動直後に
-# `IllegalArgumentException: unable to find native library libhayate_adapter_android.so` で
-# 落ちる（画面にすら到達しない）。ここで揃えて既定の食い違いを解消する。
+# cargo の出力先はワークスペース共有の `$ROOT_DIR/target`。かつてはここで export しないと
+# rust-android-gradle が既定の `<cargo module>/target` を見て .so を取りこぼし、jniLibs 空の
+# 起動即クラッシュ APK が「成功」扱いで出来上がっていた。現在は app/build.gradle.kts が
+# `cargo.targetDirectory` をワークスペース target に固定し、さらに verifyRustJniLib タスクが
+# .so の欠落・stale を検出してビルドを失敗させるため、素の `./gradlew` でも安全。
+# この export は他ツールとの整合を保つための念押し（プラグインの解決順は
+# rust.cargoTargetDir → env CARGO_TARGET_DIR → cargo.targetDirectory → 既定）。
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/target}"
 
 BOLD='\033[1m'

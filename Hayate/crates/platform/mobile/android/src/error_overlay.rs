@@ -10,10 +10,13 @@
 
 /// Kotlin の橋渡しクラス（android-app の `ErrorOverlayBridge`）の JNI 名。
 const BRIDGE_CLASS: &str = "com/hayateprojects/hayate/adapter_android_demo/ErrorOverlayBridge";
+// `ndk_context` が渡してくるのは Application Context（Activity ではない。android-activity 0.6
+// の `initialize_android_context` 参照）ため、Kotlin 側は `Context` で受けて Activity を
+// `CurrentActivity` レジストリで解決する。
 const SHOW_METHOD: &str = "showError";
-const SHOW_SIG: &str = "(Landroid/app/Activity;Ljava/lang/String;)V";
+const SHOW_SIG: &str = "(Landroid/content/Context;Ljava/lang/String;)V";
 const CLEAR_METHOD: &str = "clearError";
-const CLEAR_SIG: &str = "(Landroid/app/Activity;)V";
+const CLEAR_SIG: &str = "(Landroid/content/Context;)V";
 
 /// 画面に明示エラーメッセージのオーバーレイを出す。boot 失敗ハンドリング（`app_tsubame::run`）・
 /// panic hook（`app::install_panic_logger`）の両方から呼ぶ。Hayate/GPU パイプラインを一切
@@ -39,22 +42,22 @@ pub fn clear_error() {
 /// （`showError`）、`None` なら 1 引数版（`clearError`）を呼ぶ。attach は `jni_bridge` に任せる。
 fn call(method: &str, sig: &str, message: Option<&str>) -> Result<(), String> {
     crate::jni_bridge::with_activity_env(|env, activity| {
-        match message {
+        // native スレッドの FindClass はアプリのクラスを見つけられない（システム classloader に
+        // 落ちる）ため、必ずアプリ classloader 経由で解決する。
+        let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
+        let result = match message {
             Some(text) => {
-                let jtext = env.new_string(text).map_err(|e| e.to_string())?;
-                env.call_static_method(
-                    BRIDGE_CLASS,
-                    method,
-                    sig,
-                    &[activity.into(), (&jtext).into()],
-                )
-                .map_err(|e| e.to_string())?;
+                let jtext = match env.new_string(text) {
+                    Ok(s) => s,
+                    Err(e) => return Err(crate::jni_bridge::describe_java_error(env, e)),
+                };
+                env.call_static_method(&class, method, sig, &[activity.into(), (&jtext).into()])
             }
-            None => {
-                env.call_static_method(BRIDGE_CLASS, method, sig, &[activity.into()])
-                    .map_err(|e| e.to_string())?;
-            }
+            None => env.call_static_method(&class, method, sig, &[activity.into()]),
+        };
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(crate::jni_bridge::describe_java_error(env, e)),
         }
-        Ok(())
     })
 }
