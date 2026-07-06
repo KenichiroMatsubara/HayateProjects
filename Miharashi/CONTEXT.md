@@ -22,6 +22,14 @@ _Avoid_: フレームワークをバンドルから除く設計, 現行ルート
 開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
 _Avoid_: ホスト側に FW 固有 fast-refresh を持たせる設計
 
+**Demo Endpoint（デモ配信点）**:
+テスター・審査者向けに、ビルド済みデモ App Bundle と Demo Manifest を常時 HTTPS 配信する公開点。watch もビルドも行わず、reload シグナルも発しない（WS は受けて保持するだけ）点で Dev Server とは**別物**。Play 配布ホストの既定接続先であり、開発機の稼働と無関係に「いつでも」応答する。
+_Avoid_: Dev Server と混同（Dev Server は開発機上で watch して動くツール）, main 追従の自動更新（配信物はリリースと lockstep・ADR-0003）
+
+**Demo Manifest（デモマニフェスト）**:
+Demo Endpoint が配信するデモ一覧（各エントリ＝表示名とバンドル URL）。ホストはこれを取得してデモ選択メニューを構成し、初回起動は先頭デモを自動ロードする。デモの追加・改名はマニフェスト更新であり、ホストのアプリ更新（Play 審査）を要しない。
+_Avoid_: デモ一覧のホストへのハードコード, フレームワーク知識のホスト側持ち込み（エントリは不透明なバンドル URL）
+
 **Protocol Version**:
 App Bundle 内の `@tsubame/renderer-canvas` が内包する wire 定数のバージョンと、ホストに焼き込まれたネイティブ decoder のバージョンの整合トークン。バンドルに埋め、Miharashi 起動時に突き合わせ、不一致は明示エラーにする（Expo Go の "SDK version" 整合と同型）。
 _Avoid_: 無検査での流し込み, decoder の暗黙後方互換前提
