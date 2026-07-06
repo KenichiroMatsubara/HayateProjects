@@ -61,6 +61,14 @@ _Avoid_: CSS（フル互換の含意）、CSS 風スタイル、Element Style
 Hayate の内部 lowering target。絶対座標・確定スタイル済みの描画コマンド（`SceneGraph` / `Node`）。外部公開しない内部実装。
 _Avoid_: 外部公開 API・公開サーフェス、Draw Layer
 
+**Draw（draw property / painter）**:
+`view` の命令的 2D 描画レイヤ property。値は painter（`paint(canvas, size)` ＋任意の `shouldRepaint`）で、フレームワークが painter を呼んで記録した Display List が background → border → draw → children の順で描かれる（Flutter Picture モデル・ADR-0141）。座標はボーダーボックス左上原点・論理 px・DPR 不可視、はみ出しは既存 `overflow` に従い（既定 visible）、hit-test は box 判定のまま。公開サーフェスは Element Layer 1つのまま（ADR-0072 維持）。
+_Avoid_: 第2の公開描画契約（Raw Layer 公開）、canvas element（新 element-kind）、毎フレーム直接実行される命令的 API という理解、draw で layout が変わる理解
+
+**Display List（描画記録）**:
+painter の命令列（パス幾何・fill/stroke・座標操作/クリップ、将来はグラデーション〜シェーダ）を記録した値で、wire では `apply_mutations` の `draws` チャネルに載る。op 表・Paint フィールド・enum は proto spec が正本で、各言語の記録 API（TS 表面は Flutter 語彙 `Canvas` / `Path` / `Paint`）は spec から表駆動生成される薄いステートレス encoder（ADR-0142）。
+_Avoid_: 不透明バイナリ、ステートフル Canvas 2D 流 API、Scene Graph の `Node` との同一視、Hayate 内部語彙としての「Canvas」
+
 **WIT（WebAssembly Interface Types）**【歴史】:
 Hayate の公開境界として**かつて**使っていた設計語彙。現行の Hayate–Tsubame プロトコル正本ではない（現行は proto 契約）。文書で言及する際は過去設計であることを明示する。
 _Avoid_: 現行の公開 API・現行プロトコル正本
