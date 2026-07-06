@@ -1,3 +1,5 @@
+import java.nio.file.Files
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -68,12 +70,20 @@ dependencies {
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }
 
+// rust-android-gradle は既定で `${module}/target`（= crates/.../android/target）から .so を
+// 拾うが、このクレートはワークスペース共有の `Hayate/target` に出力するため、既定のままだと
+// cargoBuild は「コピー対象なし」を黙って成功させ、.so 無しの起動即クラッシュ APK ができる。
+// プラグインの解決順は local.properties(rust.cargoTargetDir) → env CARGO_TARGET_DIR →
+// targetDirectory → 既定。env を設定する scripts/build-android.sh 経由でも矛盾しない。
+val workspaceTargetDir = project.file("../../../../../../target").canonicalPath
+
 // Build the `hayate-adapter-android` cdylib and fold it into the APK's jniLibs.
 cargo {
     module = "../.."
     libname = "hayate_adapter_android"
     targets = listOf("arm64")
     profile = "release"
+    targetDirectory = workspaceTargetDir
     // 既定は Tsubame Todo（tsubame-js は Cargo.toml の default feature, ADR-0112）。
     // Hayate 単体のネイティブデモ（build_demo_tree）を見たいときだけ `-Pnativedemo` で
     // default features を外す。
@@ -96,8 +106,42 @@ cargo {
     }
 }
 
-tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
+// cargoBuild が .so をコピーし損ねても Gradle は成功してしまうため、パッケージング前に
+// 実物の存在を検証して欠落を即失敗にする（無言で壊れた APK を作らせない）。
+val verifyRustJniLib = tasks.register("verifyRustJniLib") {
     dependsOn("cargoBuild")
+    doLast {
+        val copied = layout.buildDirectory
+            .file("rustJniLibs/android/arm64-v8a/libhayate_adapter_android.so").get().asFile
+        if (!copied.exists()) {
+            throw GradleException(
+                "libhayate_adapter_android.so が rustJniLibs にコピーされていません。" +
+                    "このまま進むと起動直後に UnsatisfiedLink で落ちる APK ができます。" +
+                    "cargo の出力先（rust.cargoTargetDir / CARGO_TARGET_DIR / cargo.targetDirectory）" +
+                    "と実際の出力（$workspaceTargetDir）が一致しているか確認してください。"
+            )
+        }
+        val built = File(
+            System.getenv("CARGO_TARGET_DIR") ?: workspaceTargetDir,
+            "aarch64-linux-android/release/libhayate_adapter_android.so"
+        )
+        if (built.exists() &&
+            Files.mismatch(copied.toPath(), built.toPath()) != -1L
+        ) {
+            throw GradleException(
+                "rustJniLibs の libhayate_adapter_android.so が cargo の最新出力（$built）と" +
+                    "一致しません。古い .so が APK に入るのを防ぐため失敗させます。"
+            )
+        }
+    }
+}
+
+tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
+    dependsOn("cargoBuild", verifyRustJniLib)
+    // AGP 8 では plugin が後付けする rustJniLibs srcDir が merge タスクの入力追跡に
+    // 乗らず、.so が更新されても UP-TO-DATE 扱いで古い/空の APK ができる。
+    // 明示的に入力登録して、.so の変化で必ず再マージさせる。
+    inputs.dir(layout.buildDirectory.dir("rustJniLibs/android"))
 }
 
 // Tsubame バンドル（tsubame.js）は src/main/assets/ にコミット済み（ADR-0112）。AGP が

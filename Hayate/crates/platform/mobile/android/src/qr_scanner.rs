@@ -33,7 +33,9 @@ mod platform {
     /// 以外から呼ぶ前提（`QrScanner` 契約どおり）。
     const BRIDGE_CLASS: &str = "com/hayateprojects/hayate/adapter_android_demo/QrScannerBridge";
     const BRIDGE_METHOD: &str = "scanBlocking";
-    const BRIDGE_SIG: &str = "(Landroid/app/Activity;)Ljava/lang/String;";
+    // `ndk_context` の Context は Application（Activity ではない）ため、Kotlin 側は `Context` で
+    // 受けて Activity を `CurrentActivity` レジストリで解決する（error_overlay.rs と同じ理由）。
+    const BRIDGE_SIG: &str = "(Landroid/content/Context;)Ljava/lang/String;";
 
     /// Code Scanner（Play services）でカメラ QR を 1 件読む Android leaf。役割名は
     /// 「QR/バーコードのスキャナ UI」。具体バックエンドは Google Code Scanner。
@@ -53,10 +55,16 @@ mod platform {
             // JavaVM/Activity への attach は共通下地（`jni_bridge`）に任せる（capability は worker
             // スレッドから呼ばれる前提。`jni_bridge::with_activity_env` が現在スレッドを attach する）。
             crate::jni_bridge::with_activity_env(|env, activity| {
+                // native スレッドの FindClass はアプリのクラスを見つけられないため、
+                // アプリ classloader 経由で解決する（`jni_bridge::app_class` のコメント参照）。
+                let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
                 // Kotlin: Code Scanner を UI スレッドで起動し、結果まで native スレッドをブロックして返す。
-                let result = env
-                    .call_static_method(BRIDGE_CLASS, BRIDGE_METHOD, BRIDGE_SIG, &[activity.into()])
-                    .map_err(|e| e.to_string())?;
+                let result = match env
+                    .call_static_method(&class, BRIDGE_METHOD, BRIDGE_SIG, &[activity.into()])
+                {
+                    Ok(r) => r,
+                    Err(e) => return Err(crate::jni_bridge::describe_java_error(env, e)),
+                };
                 let obj = result.l().map_err(|e| e.to_string())?;
                 if obj.is_null() {
                     // ユーザがスキャナを閉じた（キャンセル）。

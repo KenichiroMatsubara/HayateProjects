@@ -1,6 +1,7 @@
 package com.hayateprojects.hayate.adapter_android_demo
 
 import android.app.Activity
+import android.content.Context
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
@@ -52,7 +53,10 @@ object QrScannerBridge {
      * デッドロックする）— Rust capability は worker スレッドから呼ぶ。
      */
     @JvmStatic
-    fun scanBlocking(activity: Activity): String? {
+    fun scanBlocking(context: Context): String? {
+        // Rust（`ndk_context`）が持つのは Application Context であって Activity ではないため
+        // `Context` で受け、Activity は [CurrentActivity] レジストリで解決する。
+        val activity = (context as? Activity) ?: CurrentActivity.get() ?: return null
         val latch = CountDownLatch(1)
         val result = AtomicReference<String?>(null)
         activity.runOnUiThread {
