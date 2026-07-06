@@ -26,8 +26,22 @@ export const OP = {
   SET_ARIA_LABEL: 19,
   SET_ROLE: 20,
   SET_FONT_FAMILY: 21,
+  SET_DRAW: 22,
 } as const;
 export type OP = typeof OP;
+
+export const DRAW_OP = {
+  MOVE_TO: 0,
+  LINE_TO: 1,
+  CLOSE: 2,
+  FILL: 3,
+} as const;
+export type DRAW_OP = typeof DRAW_OP;
+
+export const DRAW_PAINT_FIELD = {
+  COLOR: 0,
+} as const;
+export type DRAW_PAINT_FIELD = typeof DRAW_PAINT_FIELD;
 
 export const TAG = {
   BACKGROUND_COLOR: 0,
@@ -390,7 +404,7 @@ export type JUSTIFY_SELF = typeof JUSTIFY_SELF;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 
-export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2, 2, 2, 2, 2];
+export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2, 2, 2, 2, 2, 3];
 
 // ── イベントペイロード型 ─────────────────────────────────────────────────
 

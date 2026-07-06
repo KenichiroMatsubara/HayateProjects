@@ -394,6 +394,9 @@ pub fn style_prop_css_entries(prop: &StyleProp, out: &mut Vec<(String, String)>)
         StyleProp::GridRow(ref p) => {
             out.push(("grid-row".into(), format!("{} / {}", p.start.to_css(), p.end.to_css())));
         }
+        // draw display list は CSS へマップしない（DOM Renderer は canvas 2D
+        // replay で描く・ADR-0141。HTML Mode は v1 で draw 非対応）。
+        StyleProp::Draw(..) => {}
     }
 }
 

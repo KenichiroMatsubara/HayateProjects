@@ -1,6 +1,6 @@
 use hayate_core::{
-    RenderImage, RenderImageAlphaType, ScenePainter, ShadowOccluder, TextRunData, is_notdef,
-    missing_glyph_placeholder,
+    PathVerb, RenderImage, RenderImageAlphaType, ScenePainter, ShadowOccluder, TextRunData,
+    is_notdef, missing_glyph_placeholder,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -106,6 +106,18 @@ impl ScenePainter for TinySkiaPainter<'_> {
         if let Some(path) = pb.finish() {
             pixmap.fill_path(&path, &paint, FillRule::EvenOdd, transform, mask);
         }
+    }
+
+    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+        let Some(path) = verbs_to_path(verbs) else {
+            return;
+        };
+        // verbs はボーダーボックス相対。原点 `(x, y)` は transform の平行移動で与える。
+        let transform = self.state.transform.pre_translate(x, y);
+        let mask = self.state.clip_masks.last();
+        let paint = color_to_paint(color);
+        self.pixmap
+            .fill_path(&path, &paint, FillRule::Winding, transform, mask);
     }
 
     fn fill_blurred_rounded_rect(
@@ -757,6 +769,29 @@ fn push_rounded_rect(pb: &mut PathBuilder, x: f32, y: f32, w: f32, h: f32, r: f3
 fn rounded_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let mut pb = PathBuilder::new();
     push_rounded_rect(&mut pb, x, y, w, h, r);
+    pb.finish()
+}
+
+/// draw display list のパス動詞列（ボーダーボックス相対）を tiny-skia Path へ変換する。
+/// MoveTo で開いた subpath の中でだけ LineTo / Close を受け付け（退化列は黙って
+/// 捨てる。3 painter 共通の意味論）、空・退化パスは `None`。
+fn verbs_to_path(verbs: &[PathVerb]) -> Option<Path> {
+    let mut pb = PathBuilder::new();
+    let mut open = false;
+    for verb in verbs {
+        match verb {
+            PathVerb::MoveTo { x, y } => {
+                pb.move_to(*x, *y);
+                open = true;
+            }
+            PathVerb::LineTo { x, y } if open => pb.line_to(*x, *y),
+            PathVerb::Close if open => {
+                pb.close();
+                open = false;
+            }
+            PathVerb::LineTo { .. } | PathVerb::Close => {}
+        }
+    }
     pb.finish()
 }
 

@@ -18,7 +18,7 @@ export interface RawHayate {
   element_get_text(id: number): string;
   element_get_bounds(id: number): Float32Array | number[];
   element_subtree_ids(id: number): Float64Array;
-  apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void;
+  apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[], draws: Float32Array): void;
   on_pointer_move(x: number, y: number): void;
   on_pointer_down(x: number, y: number): void;
   on_pointer_up(x: number, y: number): void;

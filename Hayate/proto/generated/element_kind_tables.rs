@@ -34,3 +34,12 @@ pub fn accepts_text_input(kind: ElementKind) -> bool {
         ElementKind::TextInput
     )
 }
+
+/// Whether `kind` carries the `draw` display-list property (#724 / ADR-0141).
+/// Draw on non-carriers is a no-op (carrier culture, like carriesTextLocal).
+pub fn carries_draw(kind: ElementKind) -> bool {
+    matches!(
+        kind,
+        ElementKind::View
+    )
+}

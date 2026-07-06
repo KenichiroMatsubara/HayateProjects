@@ -42,6 +42,7 @@ export interface RawHayate {
     ops: Float64Array,
     styles: Float32Array,
     texts: string[],
+    draws: Float32Array,
   ): void;
   // viewport 追従（`on_resize`）はこのポートから除いた。Web は hayate-adapter-web の
   // 自己配線 ResizeObserver、Android は native ループが `tree.set_viewport` を直接

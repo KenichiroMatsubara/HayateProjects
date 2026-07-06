@@ -49,6 +49,8 @@ struct Proto {
     types: Vec<TypeDef>,
     enums: Vec<EnumDef>,
     opcodes: Vec<Entry>,
+    draw_ops: Vec<Entry>,
+    draw_paint_fields: Vec<Entry>,
     style_tags: Vec<Entry>,
     event_kinds: Vec<Entry>,
     element_kinds: Vec<SimpleEntry>,
@@ -84,6 +86,8 @@ struct Entry {
     name: String,
     value: u32,
     variable_length: bool,
+    /// Draw display-list role: `path-verb` / `draw-command` (draw_ops only).
+    draw_role: Option<String>,
     /// Style Channel: `text-local` / `ambient` / `none` (style_tags only).
     inherit: Option<String>,
     params: Vec<Param>,
@@ -126,6 +130,9 @@ struct SimpleEntry {
     value: u32,
     /// Text-Local Carrier: carries channel-1 styles as CSS (element_kinds only).
     carries_text_local: bool,
+    /// Draw Carrier: carries the `draw` display-list property (element_kinds
+    /// only; #724 / ADR-0141). `view` のみ真。
+    carries_draw: bool,
     /// UA default cursor for this kind when no explicit `cursor` is set
     /// (element_kinds only; ADR-0105). A `cursor` enum value name; `None` means
     /// the kind has no default (resolves to `Default`).
@@ -168,6 +175,8 @@ struct EntryJson {
     inherit: Option<String>,
     #[serde(default)]
     variable_length: bool,
+    #[serde(default, rename = "drawRole")]
+    draw_role: Option<String>,
     #[serde(default)]
     params: Vec<ParamJson>,
     #[serde(default, rename = "encodeFrom")]
@@ -232,6 +241,8 @@ struct SimpleJson {
     value: u32,
     #[serde(default, rename = "carriesTextLocal")]
     carries_text_local: bool,
+    #[serde(default, rename = "carriesDraw")]
+    carries_draw: bool,
     #[serde(default, rename = "defaultCursor")]
     default_cursor: Option<String>,
     #[serde(default, rename = "defaultUserSelect")]
@@ -275,6 +286,8 @@ fn load_spec(spec_dir: &Path) -> Proto {
     let types: Vec<TypeJson> = read_json(spec_dir, "types.json");
     let enums: Vec<EnumJson> = read_json(spec_dir, "enums.json");
     let opcodes: Vec<EntryJson> = read_json(spec_dir, "opcodes.json");
+    let draw_ops: Vec<EntryJson> = read_json(spec_dir, "draw_ops.json");
+    let draw_paint_fields: Vec<EntryJson> = read_json(spec_dir, "draw_paint_fields.json");
     let style_tags: Vec<EntryJson> = read_json(spec_dir, "style_tags.json");
     let event_kinds: Vec<EntryJson> = read_json(spec_dir, "event_kinds.json");
     let element_kinds: Vec<SimpleJson> = read_json(spec_dir, "element_kinds.json");
@@ -316,6 +329,8 @@ fn load_spec(spec_dir: &Path) -> Proto {
             })
             .collect(),
         opcodes: entries_from_json(opcodes),
+        draw_ops: entries_from_json(draw_ops),
+        draw_paint_fields: entries_from_json(draw_paint_fields),
         style_tags: entries_from_json(style_tags),
         event_kinds: entries_from_json(event_kinds),
         element_kinds: simple_from_json(element_kinds),
@@ -340,6 +355,7 @@ fn entries_from_json(entries: Vec<EntryJson>) -> Vec<Entry> {
             name: e.name,
             value: e.value,
             variable_length: e.variable_length,
+            draw_role: e.draw_role,
             inherit: e.inherit,
             params: e
                 .params
@@ -381,6 +397,7 @@ fn simple_from_json(entries: Vec<SimpleJson>) -> Vec<SimpleEntry> {
             name: e.name,
             value: e.value,
             carries_text_local: e.carries_text_local,
+            carries_draw: e.carries_draw,
             default_cursor: e.default_cursor,
             default_user_select: e.default_user_select,
             accepts_text_input: e.accepts_text_input,
@@ -723,9 +740,235 @@ fn generate(proto: &Proto) -> String {
     out.push_str("}\n\n");
 
     out.push_str(&generate_style_codec(proto));
+    out.push_str(&generate_draw_codec(proto));
     out.push_str(&generate_encode_event_wire(proto));
 
     out
+}
+
+/// draw display list（`draws` チャネル・ADR-0141/0142）の定数・型・decode を生成する。
+///
+/// エンコーディングは style packet と同族: path verb は固定スロット、draw command
+/// （FILL 等）は `paint_len` プレフィックス付きの tagged paint packet を後続に持つ。
+/// 将来の op / paint field 追加は「表への行追加」であり既存レコードの形を変えない
+/// （後回しは封印ではない・PRD #723）。
+fn generate_draw_codec(proto: &Proto) -> String {
+    let mut out = String::new();
+
+    // DRAW_OP_* constants
+    out.push_str("// Draw op constants (display list ops on the `draws` channel; draw_ops.json)\n");
+    for op in &proto.draw_ops {
+        out.push_str(&format!(
+            "pub const DRAW_OP_{}: u32 = {};\n",
+            op.name, op.value
+        ));
+    }
+    out.push('\n');
+
+    // DRAW_PAINT_* constants
+    out.push_str("// Draw paint field constants (tagged paint packet; draw_paint_fields.json)\n");
+    for field in &proto.draw_paint_fields {
+        out.push_str(&format!(
+            "pub const DRAW_PAINT_{}: u32 = {};\n",
+            field.name, field.value
+        ));
+    }
+    out.push('\n');
+
+    let verbs: Vec<&Entry> = proto
+        .draw_ops
+        .iter()
+        .filter(|op| op.draw_role.as_deref() == Some("path-verb"))
+        .collect();
+    let commands: Vec<&Entry> = proto
+        .draw_ops
+        .iter()
+        .filter(|op| op.draw_role.as_deref() == Some("draw-command"))
+        .collect();
+    for op in &proto.draw_ops {
+        if op.draw_role.is_none() {
+            panic!("draw_ops.{}: missing drawRole", op.name);
+        }
+    }
+
+    // PathVerb enum
+    out.push_str("// Path verb of a draw display list (drawRole=path-verb)\n");
+    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    out.push_str("pub enum PathVerb {\n");
+    for verb in &verbs {
+        let variant = to_pascal(&verb.name);
+        if verb.params.is_empty() {
+            out.push_str(&format!("    {},\n", variant));
+        } else {
+            out.push_str(&format!("    {} {{\n", variant));
+            for p in &verb.params {
+                let count = if p.count == 0 { 1 } else { p.count };
+                out.push_str(&format!(
+                    "        {}: {},\n",
+                    p.name,
+                    param_rust_type(&p.typ, count)
+                ));
+            }
+            out.push_str("    },\n");
+        }
+    }
+    out.push_str("}\n\n");
+
+    // DrawPaint struct
+    out.push_str("// Paint of a draw command (tagged packet; unspecified fields keep defaults)\n");
+    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    out.push_str("pub struct DrawPaint {\n");
+    for field in &proto.draw_paint_fields {
+        out.push_str(&format!(
+            "    pub {}: {},\n",
+            field.name.to_lowercase(),
+            draw_paint_field_rust_type(field)
+        ));
+    }
+    out.push_str("}\n\n");
+
+    out.push_str("impl Default for DrawPaint {\n");
+    out.push_str("    fn default() -> Self {\n");
+    out.push_str("        Self {\n");
+    for field in &proto.draw_paint_fields {
+        let default = match field.name.as_str() {
+            // Flutter Paint 既定と同じ不透明黒。
+            "COLOR" => "[0.0, 0.0, 0.0, 1.0]".to_string(),
+            other => panic!("draw_paint_fields.{other}: unhandled default (add an arm)"),
+        };
+        out.push_str(&format!(
+            "            {}: {},\n",
+            field.name.to_lowercase(),
+            default
+        ));
+    }
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("}\n\n");
+
+    // DrawCommand enum
+    out.push_str("// Draw command of a display list (drawRole=draw-command)\n");
+    out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
+    out.push_str("pub enum DrawCommand {\n");
+    for command in &commands {
+        match command.name.as_str() {
+            "FILL" => out.push_str(
+                "    FillPath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
+            ),
+            other => panic!("draw_ops.{other}: unhandled draw-command variant (add an arm)"),
+        }
+    }
+    out.push_str("}\n\n");
+
+    // decode_draw_paint
+    out.push_str("pub fn decode_draw_paint(packed: &[f32]) -> Result<DrawPaint, String> {\n");
+    out.push_str("    let mut paint = DrawPaint::default();\n");
+    out.push_str("    let mut i = 0usize;\n");
+    out.push_str("    while i < packed.len() {\n");
+    out.push_str("        let field = packed[i] as u32;\n");
+    out.push_str("        i += 1;\n");
+    out.push_str("        match field {\n");
+    for field in &proto.draw_paint_fields {
+        let slots: usize = field.params.iter().map(param_slots).sum();
+        out.push_str(&format!("            DRAW_PAINT_{} => {{\n", field.name));
+        out.push_str(&format!(
+            "                if i + {} > packed.len() {{ return Err(\"draw paint field {} truncated\".to_string()); }}\n",
+            slots, field.name
+        ));
+        let reads: Vec<String> = (0..slots).map(|s| format!("packed[i + {s}]")).collect();
+        if field.params.len() > 1 {
+            out.push_str(&format!(
+                "                paint.{} = [{}];\n",
+                field.name.to_lowercase(),
+                reads.join(", ")
+            ));
+        } else {
+            out.push_str(&format!(
+                "                paint.{} = {};\n",
+                field.name.to_lowercase(),
+                reads[0]
+            ));
+        }
+        out.push_str(&format!("                i += {};\n", slots));
+        out.push_str("            }\n");
+    }
+    out.push_str("            other => return Err(format!(\"unknown draw paint field {other}\")),\n");
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("    Ok(paint)\n");
+    out.push_str("}\n\n");
+
+    // decode_draw_list
+    out.push_str("pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {\n");
+    out.push_str("    let mut out = Vec::new();\n");
+    out.push_str("    let mut verbs: Vec<PathVerb> = Vec::new();\n");
+    out.push_str("    let mut i = 0usize;\n");
+    out.push_str("    while i < data.len() {\n");
+    out.push_str("        let op = data[i] as u32;\n");
+    out.push_str("        i += 1;\n");
+    out.push_str("        match op {\n");
+    for verb in &verbs {
+        let variant = to_pascal(&verb.name);
+        let slots: usize = verb.params.iter().map(param_slots).sum();
+        out.push_str(&format!("            DRAW_OP_{} => {{\n", verb.name));
+        if slots > 0 {
+            out.push_str(&format!(
+                "                if i + {} > data.len() {{ return Err(\"draw op {} truncated\".to_string()); }}\n",
+                slots, verb.name
+            ));
+            let fields: Vec<String> = verb
+                .params
+                .iter()
+                .enumerate()
+                .map(|(s, p)| format!("{}: data[i + {}]", p.name, s))
+                .collect();
+            out.push_str(&format!(
+                "                verbs.push(PathVerb::{} {{ {} }});\n",
+                variant,
+                fields.join(", ")
+            ));
+            out.push_str(&format!("                i += {};\n", slots));
+        } else {
+            out.push_str(&format!(
+                "                verbs.push(PathVerb::{});\n",
+                variant
+            ));
+        }
+        out.push_str("            }\n");
+    }
+    for command in &commands {
+        match command.name.as_str() {
+            "FILL" => {
+                out.push_str("            DRAW_OP_FILL => {\n");
+                out.push_str("                if i >= data.len() { return Err(\"draw op FILL truncated\".to_string()); }\n");
+                out.push_str("                let paint_len = data[i] as usize;\n");
+                out.push_str("                i += 1;\n");
+                out.push_str("                if i + paint_len > data.len() { return Err(\"draw op FILL paint packet truncated\".to_string()); }\n");
+                out.push_str("                let paint = decode_draw_paint(&data[i..i + paint_len])?;\n");
+                out.push_str("                i += paint_len;\n");
+                out.push_str("                out.push(DrawCommand::FillPath { verbs: std::mem::take(&mut verbs), paint });\n");
+                out.push_str("            }\n");
+            }
+            other => panic!("draw_ops.{other}: unhandled draw-command decode (add an arm)"),
+        }
+    }
+    out.push_str("            other => return Err(format!(\"unknown draw op {other}\")),\n");
+    out.push_str("        }\n");
+    out.push_str("    }\n");
+    out.push_str("    Ok(out)\n");
+    out.push_str("}\n\n");
+
+    out
+}
+
+/// draw paint field の Rust 型（複数 param は f32 配列に平坦化）。
+fn draw_paint_field_rust_type(field: &Entry) -> String {
+    let slots: usize = field.params.iter().map(param_slots).sum();
+    if field.params.len() > 1 {
+        format!("[f32; {}]", slots)
+    } else {
+        param_rust_type(&field.params[0].typ, slots)
+    }
 }
 
 fn generate_style_codec(proto: &Proto) -> String {
@@ -946,6 +1189,9 @@ fn generate_codec(proto: &Proto) -> String {
         out.push_str(&vt.encode_body());
         out.push_str("            }\n");
     }
+    out.push_str("            // draw display list は style packet ではなく draws チャネルに載る\n");
+    out.push_str("            // （OP_SET_DRAW・ADR-0141）。style tag を持たないため encode 対象外。\n");
+    out.push_str("            StyleProp::Draw(..) => {}\n");
     out.push_str("        }\n");
     out.push_str("    }\n");
     out.push_str("}\n");
@@ -1020,6 +1266,9 @@ fn generate_dom_style_mapper(proto: &Proto) -> String {
         out.push_str("        }\n");
     }
 
+    out.push_str("        // draw display list は CSS へマップしない（DOM Renderer は canvas 2D\n");
+    out.push_str("        // replay で描く・ADR-0141。HTML Mode は v1 で draw 非対応）。\n");
+    out.push_str("        StyleProp::Draw(..) => {}\n");
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
@@ -1114,6 +1363,7 @@ fn sink_method_sig(op_name: &str) -> (&'static str, &'static str) {
         "SET_ARIA_LABEL" => ("set_aria_label", ", id: ElementId, label: &str"),
         "SET_ROLE" => ("set_role", ", id: ElementId, role: &str"),
         "SET_FONT_FAMILY" => ("set_font_family", ", id: ElementId, family: &str"),
+        "SET_DRAW" => ("set_draw", ", id: ElementId, commands: Vec<DrawCommand>"),
         other => panic!("sink_method_sig: unmapped opcode {other} (add a MutationSink mapping)"),
     }
 }
@@ -1127,7 +1377,7 @@ fn generate_mutation_sink(proto: &Proto) -> String {
     let mut out = String::new();
     out.push_str(GENERATED_HEADER);
     out.push_str(
-        "use hayate_core::{ElementId, ElementKind, PseudoState, StyleProp, StylePropKind, UserSelectValue, ViewportCondition};\n\n",
+        "use hayate_core::{DrawCommand, ElementId, ElementKind, PseudoState, StyleProp, StylePropKind, UserSelectValue, ViewportCondition};\n\n",
     );
     out.push_str("/// Mode-agnostic batched-mutation sink generated from `proto/spec/opcodes.json`.\n");
     out.push_str("/// One method per wire op, receiving fully-decoded semantic arguments from the\n");
@@ -1148,7 +1398,7 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str(
         "use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, UserSelectValue, ViewportCondition};\n\n",
     );
-    out.push_str("use super::protocol::{Op, decode_style_packet, parse_next_op};\n");
+    out.push_str("use super::protocol::{Op, decode_draw_list, decode_style_packet, parse_next_op};\n");
     out.push_str("use super::mutation_sink::MutationSink;\n\n");
 
     out.push_str("pub fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {\n");
@@ -1179,12 +1429,13 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    ops: &[f64],\n");
     out.push_str("    styles: &[f32],\n");
     out.push_str("    texts: &[String],\n");
+    out.push_str("    draws: &[f32],\n");
     out.push_str(") -> Result<(), String> {\n");
     out.push_str("    let mut i = 0usize;\n");
     out.push_str("    while i < ops.len() {\n");
     out.push_str("        let (op, next) = parse_next_op(ops, i).map_err(|e| e.to_string())?;\n");
     out.push_str("        i = next;\n");
-    out.push_str("        apply_parsed_op(sink, op, styles, texts)?;\n");
+    out.push_str("        apply_parsed_op(sink, op, styles, texts, draws)?;\n");
     out.push_str("    }\n");
     out.push_str("    Ok(())\n");
     out.push_str("}\n\n");
@@ -1194,6 +1445,7 @@ fn generate_dispatch(proto: &Proto) -> String {
     out.push_str("    op: Op,\n");
     out.push_str("    styles: &[f32],\n");
     out.push_str("    texts: &[String],\n");
+    out.push_str("    draws: &[f32],\n");
     out.push_str(") -> Result<(), String> {\n");
     out.push_str("    match op {\n");
 
@@ -1375,6 +1627,15 @@ fn dispatch_op_body(op_name: &str, _params: &[Param]) -> String {
                 .get(text_index)
                 .ok_or_else(|| "text index out of bounds in OP_SET_FONT_FAMILY".to_string())?;
             sink.set_font_family(ElementId::from_u64(id), family);
+            Ok(())
+"#.to_string()
+        }
+        "SET_DRAW" => {
+            r#"            let slice = draws
+                .get(draw_offset..draw_offset + draw_len)
+                .ok_or_else(|| "draws slice out of bounds in OP_SET_DRAW".to_string())?;
+            let commands = decode_draw_list(slice)?;
+            sink.set_draw(ElementId::from_u64(id), commands);
             Ok(())
 "#.to_string()
         }
@@ -1764,6 +2025,26 @@ fn generate_element_kind_tables(proto: &Proto) -> String {
     } else {
         out.push_str("    matches!(\n        kind,\n        ");
         out.push_str(&editable.join("\n            | "));
+        out.push_str("\n    )\n");
+    }
+    out.push_str("}\n\n");
+
+    let draw_carriers: Vec<String> = proto
+        .element_kinds
+        .iter()
+        .filter(|k| k.carries_draw)
+        .map(|k| format!("ElementKind::{}", to_pascal(&k.name)))
+        .collect();
+    out.push_str(
+        "/// Whether `kind` carries the `draw` display-list property (#724 / ADR-0141).\n\
+         /// Draw on non-carriers is a no-op (carrier culture, like carriesTextLocal).\n",
+    );
+    out.push_str("pub fn carries_draw(kind: ElementKind) -> bool {\n");
+    if draw_carriers.is_empty() {
+        out.push_str("    let _ = kind;\n    false\n");
+    } else {
+        out.push_str("    matches!(\n        kind,\n        ");
+        out.push_str(&draw_carriers.join("\n            | "));
         out.push_str("\n    )\n");
     }
     out.push_str("}\n");

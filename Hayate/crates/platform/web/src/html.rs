@@ -325,12 +325,13 @@ impl HayateElementHtmlRenderer {
         ops: &[f64],
         styles: &[f32],
         texts: js_sys::Array,
+        draws: &[f32],
     ) -> Result<(), JsValue> {
         let texts: Vec<String> = texts
             .iter()
             .map(|v| v.as_string().unwrap_or_default())
             .collect();
-        hayate_core::wire::apply_mutations_to_sink(self, ops, styles, &texts)
+        hayate_core::wire::apply_mutations_to_sink(self, ops, styles, &texts, draws)
             .map_err(|e| JsValue::from_str(&e))
     }
 
@@ -612,6 +613,11 @@ impl MutationSink for HayateElementHtmlRenderer {
             id,
             family: family.to_string(),
         });
+    }
+
+    fn set_draw(&mut self, _id: ElementId, _commands: Vec<hayate_core::DrawCommand>) {
+        // HTML Mode は v1 で draw 非対応（PRD #723 / ADR-0141: Tsubame init から到達
+        // 不能な dead path のため、生きた経路を先に揃える）。decode は受けて捨てる。
     }
 
     fn set_aria_label(&mut self, id: ElementId, label: &str) {

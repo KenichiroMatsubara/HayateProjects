@@ -399,6 +399,10 @@ pub enum StyleProp {
     BorderStyle(BorderStyleValue),
     BoxShadow(Vec<Shadow>),
     Overflow(OverflowValue),
+    /// draw display list（decode 済みコマンド列・#724 / ADR-0141）。`view` 限定
+    /// （`element_kinds.carriesDraw`）。空リストは「描画なし」。`Arc` 共有により
+    /// `Visual` の clone / effective 解決を通じてコピーしない。
+    Draw(std::sync::Arc<Vec<crate::wire::protocol::DrawCommand>>),
     // サイズ
     Width(Dimension),
     Height(Dimension),

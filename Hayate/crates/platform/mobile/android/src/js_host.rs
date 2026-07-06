@@ -56,13 +56,17 @@ impl JsHost {
     }
 
     /// バッチ適用（ADR-0052）。共有の中立 dispatch を通す。
+    ///
+    /// `draws` チャネル（#724）: Android の JSI/C++ ホストはまだ draws を運ばない
+    /// （デバイスビルド側の C++ 配線が未対応）。中立 dispatch には空チャネルを渡す。
+    /// C++ ホストが draws を学んだら hermes_bridge ごと引数を増やす（follow-up）。
     pub(crate) fn apply_mutations(
         &self,
         ops: &[f64],
         styles: &[f32],
         texts: &[String],
     ) -> Result<(), String> {
-        js_apply::apply_mutations(&mut self.tree.borrow_mut(), ops, styles, texts)
+        js_apply::apply_mutations(&mut self.tree.borrow_mut(), ops, styles, texts, &[])
     }
 
     /// レイアウト + 保持シーンの lower（ADR-0086）。戻り値の `&SceneGraph` は

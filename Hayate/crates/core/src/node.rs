@@ -178,6 +178,15 @@ pub enum NodeKind {
         height: f32,
         data: Arc<RenderImage>,
     },
+    /// draw display list を保持する retained ノード（#724 / ADR-0141）。`(x, y)` は
+    /// 要素のボーダーボックス左上（絶対・論理 px）で、コマンド内のパス座標は
+    /// ボーダーボックス相対のまま保持し painter が平行移動する。クリップは持たず、
+    /// 祖先の `overflow`（`Clip` ラップ）に従う（既定 visible = はみ出し可）。
+    DrawList {
+        x: f32,
+        y: f32,
+        commands: Arc<Vec<crate::wire::protocol::DrawCommand>>,
+    },
     /// 要素に retained シーン上の同一性を与える構造専用ノード。transform は持たず、
     /// painter は子を透過的にたどる。
     ElementAnchor {

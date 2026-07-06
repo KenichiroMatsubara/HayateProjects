@@ -100,11 +100,16 @@ export class HayateMutationPacket {
     });
   }
 
+  /** 記録済み draw display list（draw_ops.json の op 列・#724 / ADR-0141）。 */
+  enqueueSetDraw(id: ElementId, list: readonly number[]): void {
+    this.mutations.push({ kind: 'setDraw', id, list: [...list] });
+  }
+
   flush(raw: RawHayate): void {
     if (this.mutations.length === 0) return;
-    const { ops, styles, texts } = encodeMutations(this.mutations);
+    const { ops, styles, texts, draws } = encodeMutations(this.mutations);
     if (ops.length > 0) {
-      raw.apply_mutations(ops, styles, texts);
+      raw.apply_mutations(ops, styles, texts, draws);
     }
     this.mutations.length = 0;
   }

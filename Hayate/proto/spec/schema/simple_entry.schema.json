@@ -11,6 +11,10 @@
       "description": "Text-Local Carrier: element-kind carries channel-1 (text-local) styles as CSS (ADR-0002).",
       "type": "boolean"
     },
+    "carriesDraw": {
+      "description": "Draw Carrier: element-kind carries the `draw` display-list property (#724 / ADR-0141). True for view only; draw on non-carriers is a no-op.",
+      "type": "boolean"
+    },
     "defaultCursor": {
       "description": "UA default cursor for this element-kind when no explicit `cursor` is set (ADR-0105). Single source for Canvas/DOM kind-default cursor; a `cursor` enum value name.",
       "type": "string",

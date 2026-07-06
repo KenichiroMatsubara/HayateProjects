@@ -9,14 +9,16 @@ use hayate_core::ElementTree;
 
 /// core の中立 `apply_mutations`（ADR-0112）を ElementTree に適用する。`ops` は
 /// Float64 レコード列、`styles` は style_packet の f32 列、`texts` は `OP_SET_TEXT` 等が
-/// 参照する文字列テーブル（JS の `string[]` 相当）。
+/// 参照する文字列テーブル（JS の `string[]` 相当）、`draws` は `OP_SET_DRAW` が参照する
+/// draw display list の f32 列（texts と同格のチャネル・#724 / ADR-0141）。
 pub(crate) fn apply_mutations(
     tree: &mut ElementTree,
     ops: &[f64],
     styles: &[f32],
     texts: &[String],
+    draws: &[f32],
 ) -> Result<(), String> {
-    hayate_core::wire::apply_mutations(tree, ops, styles, texts)
+    hayate_core::wire::apply_mutations(tree, ops, styles, texts, draws)
 }
 
 #[cfg(test)]
@@ -30,6 +32,6 @@ mod tests {
     fn empty_batch_is_ok() {
         let mut tree = ElementTree::new();
         let texts: Vec<String> = Vec::new();
-        assert!(apply_mutations(&mut tree, &[], &[], &texts).is_ok());
+        assert!(apply_mutations(&mut tree, &[], &[], &texts, &[]).is_ok());
     }
 }

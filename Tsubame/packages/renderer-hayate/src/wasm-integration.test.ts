@@ -137,13 +137,13 @@ describe('codec integration (C3)', () => {
     const recorded: { ops: number[]; styles: number[]; texts: string[] }[] = [];
     const raw = fixture.raw;
     const original = raw.apply_mutations.bind(raw);
-    raw.apply_mutations = (ops, styles, texts) => {
+    raw.apply_mutations = (ops, styles, texts, draws) => {
       recorded.push({
         ops: Array.from(ops),
         styles: Array.from(styles),
         texts: [...texts],
       });
-      original(ops, styles, texts);
+      original(ops, styles, texts, draws);
     };
 
     sched.tick(16);
@@ -212,13 +212,13 @@ describe('codec integration (C3)', () => {
     const recorded: { ops: number[]; styles: number[]; texts: string[] }[] = [];
     const raw = fixture.raw;
     const original = raw.apply_mutations.bind(raw);
-    raw.apply_mutations = (ops, styles, texts) => {
+    raw.apply_mutations = (ops, styles, texts, draws) => {
       recorded.push({
         ops: Array.from(ops),
         styles: Array.from(styles),
         texts: [...texts],
       });
-      original(ops, styles, texts);
+      original(ops, styles, texts, draws);
     };
 
     sched.tick(33);

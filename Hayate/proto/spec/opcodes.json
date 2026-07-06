@@ -335,5 +335,24 @@
         "type": "usize"
       }
     ]
+  },
+  {
+    "name": "SET_DRAW",
+    "value": 22,
+    "params": [
+      {
+        "name": "id",
+        "type": "element_id"
+      },
+      {
+        "name": "draw_offset",
+        "type": "usize"
+      },
+      {
+        "name": "draw_len",
+        "type": "usize"
+      }
+    ],
+    "description": "Set the element's draw display list from the `draws` Float32Array channel (offset/length reference; ops per draw_ops.json). #724 / ADR-0141."
   }
 ]

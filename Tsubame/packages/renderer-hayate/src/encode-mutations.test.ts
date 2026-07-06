@@ -122,3 +122,35 @@ describe('encodeMutations – text buffer', () => {
     ]);
   });
 });
+
+describe('encodeMutations – draws channel (#724 / ADR-0141)', () => {
+  it('encodes setDraw as [OP.SET_DRAW, id, offset, len] with the list in the draws buffer', () => {
+    const list = [0, 10, 10, 1, 90, 10, 2, 3, 5, 0, 1, 0, 0, 1];
+    const { ops, draws } = encodeMutations([
+      { kind: 'setDraw', id: 5 as never, list },
+    ]);
+    expect(Array.from(ops)).toEqual([OP.SET_DRAW, 5, 0, list.length]);
+    expect(Array.from(draws)).toEqual(list);
+  });
+
+  it('packs consecutive setDraw lists back to back with offset references', () => {
+    const a = [0, 0, 0, 3, 0];
+    const b = [0, 1, 1, 3, 0];
+    const { ops, draws } = encodeMutations([
+      { kind: 'setDraw', id: 1 as never, list: a },
+      { kind: 'setDraw', id: 2 as never, list: b },
+    ]);
+    expect(Array.from(ops)).toEqual([
+      OP.SET_DRAW, 1, 0, a.length,
+      OP.SET_DRAW, 2, a.length, b.length,
+    ]);
+    expect(Array.from(draws)).toEqual([...a, ...b]);
+  });
+
+  it('emits an empty draws buffer when no setDraw mutations are queued', () => {
+    const { draws } = encodeMutations([
+      { kind: 'createElement', id: 7 as never, elementKind: 'view' },
+    ]);
+    expect(Array.from(draws)).toEqual([]);
+  });
+});

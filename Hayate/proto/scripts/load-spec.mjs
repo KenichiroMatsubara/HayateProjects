@@ -13,6 +13,8 @@ export const SPEC_SECTIONS = [
   'types',
   'enums',
   'opcodes',
+  'draw_ops',
+  'draw_paint_fields',
   'style_tags',
   'event_kinds',
   'element_kinds',

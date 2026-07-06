@@ -157,21 +157,27 @@ impl MutationSink for TreeSink<'_> {
     fn set_font_family(&mut self, id: ElementId, family: &str) {
         self.tree.element_set_font_family(id, family);
     }
+
+    fn set_draw(&mut self, id: ElementId, commands: Vec<protocol::DrawCommand>) {
+        self.tree.element_set_draw(id, commands);
+    }
 }
 
 /// 中立 `apply_mutations`（ADR-0052 / ADR-0112）。wire ops（op レコード列・style
-/// packet の f32 列・`OP_SET_TEXT` 等が参照する文字列テーブル）を decode して
-/// `ElementTree` に即時適用する。Web Canvas（wasm 境界）と Android（埋め込み
-/// Hermes）の両アダプタが共有する木即時適用の経路。HTML Mode は自身の遅延 sink を
+/// packet の f32 列・`OP_SET_TEXT` 等が参照する文字列テーブル・`OP_SET_DRAW` が
+/// 参照する draw display list の f32 列）を decode して `ElementTree` に即時適用
+/// する。Web Canvas（wasm 境界）と Android（埋め込み Hermes）の両アダプタが共有
+/// する木即時適用の経路。HTML Mode は自身の遅延 sink を
 /// [`apply_mutations_to_sink`] に渡す。
 pub fn apply_mutations(
     tree: &mut ElementTree,
     ops: &[f64],
     styles: &[f32],
     texts: &[String],
+    draws: &[f32],
 ) -> Result<(), String> {
     let mut sink = TreeSink { tree };
-    apply_mutations_to_sink(&mut sink, ops, styles, texts)
+    apply_mutations_to_sink(&mut sink, ops, styles, texts, draws)
 }
 
 #[cfg(test)]
@@ -186,7 +192,7 @@ mod tests {
     fn empty_batch_is_ok() {
         let mut tree = ElementTree::new();
         let texts: Vec<String> = Vec::new();
-        assert!(apply_mutations(&mut tree, &[], &[], &texts).is_ok());
+        assert!(apply_mutations(&mut tree, &[], &[], &texts, &[]).is_ok());
     }
 
     /// 回帰（ユーザー報告: React/Tsubame の controlled text-input が謎挙動）。
@@ -354,6 +360,10 @@ mod tests {
             self.calls
                 .push(format!("set_font_family({}, {family:?})", id.to_u64()));
         }
+        fn set_draw(&mut self, id: ElementId, commands: Vec<protocol::DrawCommand>) {
+            self.calls
+                .push(format!("set_draw({}, {} commands)", id.to_u64(), commands.len()));
+        }
     }
 
     // decode は木も DOM も無く意味的ミューテーションへ落ちる。CREATE→SET_TEXT を
@@ -370,7 +380,7 @@ mod tests {
             0.0,
         ];
         let texts = vec!["hello".to_string()];
-        apply_mutations_to_sink(&mut sink, &ops, &[], &texts).unwrap();
+        apply_mutations_to_sink(&mut sink, &ops, &[], &texts, &[]).unwrap();
         assert_eq!(
             sink.calls,
             vec!["create(7, Text)".to_string(), "set_text(7, \"hello\")".to_string()]
@@ -394,7 +404,7 @@ mod tests {
             2.0,
         ];
         let texts = vec!["Close".to_string(), "button".to_string(), "Inter".to_string()];
-        apply_mutations_to_sink(&mut sink, &ops, &[], &texts).unwrap();
+        apply_mutations_to_sink(&mut sink, &ops, &[], &texts, &[]).unwrap();
         assert_eq!(
             sink.calls,
             vec![
@@ -403,6 +413,45 @@ mod tests {
                 "set_font_family(1, \"Inter\")".to_string(),
             ]
         );
+    }
+
+    // draws チャネル（texts と同格の Float32Array・#724）: SET_DRAW が draws バッファの
+    // オフセット/長さ参照を decode 済み DrawCommand 列へ解決して sink の意味メソッドへ
+    // 届ける（display list の中身は draw_codec_fixtures が検証）。
+    #[test]
+    fn recording_sink_decodes_set_draw_from_draws_channel() {
+        let mut sink = RecordingSink::default();
+        // id=5, draw_offset=3, draw_len=14（先頭3スロットはオフセット参照確認用のパディング）
+        let ops = vec![OP_SET_DRAW as f64, 5.0, 3.0, 14.0];
+        let draws = vec![
+            9.0,
+            9.0,
+            9.0,
+            DRAW_OP_MOVE_TO as f32,
+            0.0,
+            0.0,
+            DRAW_OP_LINE_TO as f32,
+            10.0,
+            0.0,
+            DRAW_OP_CLOSE as f32,
+            DRAW_OP_FILL as f32,
+            5.0,
+            DRAW_PAINT_COLOR as f32,
+            1.0,
+            0.0,
+            0.0,
+            1.0,
+        ];
+        apply_mutations_to_sink(&mut sink, &ops, &[], &[], &draws).unwrap();
+        assert_eq!(sink.calls, vec!["set_draw(5, 1 commands)".to_string()]);
+    }
+
+    // draws バッファ外を指す SET_DRAW はエラー（黙って無視しない）。
+    #[test]
+    fn set_draw_out_of_bounds_is_an_error() {
+        let mut sink = RecordingSink::default();
+        let ops = vec![OP_SET_DRAW as f64, 5.0, 0.0, 4.0];
+        assert!(apply_mutations_to_sink(&mut sink, &ops, &[], &[], &[]).is_err());
     }
 
     // user-select の wire 値（text=0 / none=1 / contains=2）が意味 enum へ decode される。
@@ -420,7 +469,7 @@ mod tests {
             3.0,
             0.0,
         ];
-        apply_mutations_to_sink(&mut sink, &ops, &[], &[]).unwrap();
+        apply_mutations_to_sink(&mut sink, &ops, &[], &[], &[]).unwrap();
         assert_eq!(
             sink.calls,
             vec![

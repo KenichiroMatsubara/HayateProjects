@@ -1,5 +1,6 @@
 use hayate_core::{
-    RenderImage, ScenePainter, ShadowOccluder, TextRunData, is_notdef, missing_glyph_placeholder,
+    PathVerb, RenderImage, ScenePainter, ShadowOccluder, TextRunData, is_notdef,
+    missing_glyph_placeholder,
 };
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
@@ -123,6 +124,44 @@ impl ScenePainter for VelloPainter<'_> {
         inner.reverse_subpaths();
         path.extend(inner);
         scene.fill(Fill::EvenOdd, Affine::IDENTITY, brush, None, &path);
+    }
+
+    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+        use vello::kurbo::BezPath;
+
+        let mut path = BezPath::new();
+        // MoveTo で開いた subpath の中でだけ LineTo / Close を受け付ける（退化列を
+        // 黙って捨てる。3 painter 共通の意味論）。
+        let mut open = false;
+        for verb in verbs {
+            match verb {
+                PathVerb::MoveTo { x, y } => {
+                    path.move_to((f64::from(*x), f64::from(*y)));
+                    open = true;
+                }
+                PathVerb::LineTo { x, y } if open => {
+                    path.line_to((f64::from(*x), f64::from(*y)));
+                }
+                PathVerb::Close if open => {
+                    path.close_path();
+                    open = false;
+                }
+                PathVerb::LineTo { .. } | PathVerb::Close => {}
+            }
+        }
+        if path.is_empty() {
+            return;
+        }
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        // verbs はボーダーボックス相対。原点 `(x, y)` は平行移動で与える。
+        scene.fill(
+            Fill::NonZero,
+            Affine::translate((f64::from(x), f64::from(y))),
+            brush,
+            None,
+            &path,
+        );
     }
 
     fn fill_blurred_rounded_rect(

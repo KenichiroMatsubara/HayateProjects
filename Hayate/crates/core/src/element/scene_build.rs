@@ -1149,6 +1149,25 @@ fn emit_element<S: AnchorSink>(
         );
     }
 
+    // draw display list（#724 / ADR-0141）: 描画順は background → border → draw →
+    // children。ノードはボーダーボックス左上の絶対原点 `(x, y)` を持ち、コマンドの
+    // パス座標はボーダーボックス相対のまま。クリップは上の overflow ラップに従う
+    // （既定 visible = box 外へのはみ出し可）。
+    if !visual.draw.is_empty() {
+        emit(
+            ctx.sg,
+            effective_parent,
+            Node {
+                kind: NodeKind::DrawList {
+                    x,
+                    y,
+                    commands: visual.draw.clone(),
+                },
+                children: Vec::new(),
+            },
+        );
+    }
+
     if el.kind == ElementKind::Image {
         if let Some(img) = el.src_image.clone() {
             emit(

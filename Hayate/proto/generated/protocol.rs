@@ -27,6 +27,7 @@ pub const OP_SET_MULTILINE: u32 = 18;
 pub const OP_SET_ARIA_LABEL: u32 = 19;
 pub const OP_SET_ROLE: u32 = 20;
 pub const OP_SET_FONT_FAMILY: u32 = 21;
+pub const OP_SET_DRAW: u32 = 22;
 
 // Payload slot counts per opcode (op discriminant excluded)
 pub const OP_SLOTS: &[usize] = &[
@@ -52,6 +53,7 @@ pub const OP_SLOTS: &[usize] = &[
     2, // SET_ARIA_LABEL
     2, // SET_ROLE
     2, // SET_FONT_FAMILY
+    3, // SET_DRAW
 ];
 
 // Style tag constants
@@ -296,6 +298,11 @@ pub enum Op {
         id: u64,
         text_index: usize,
     },
+    SetDraw {
+        id: u64,
+        draw_offset: usize,
+        draw_len: usize,
+    },
 }
 
 pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str> {
@@ -447,6 +454,13 @@ pub fn parse_next_op(ops: &[f64], i: usize) -> Result<(Op, usize), &'static str>
             let id = ops[i + 0] as u64;
             let text_index = ops[i + 1] as usize;
             Ok((Op::SetFontFamily { id, text_index }, i + 2))
+        }
+        22 => {
+            if i + 3 > ops.len() { return Err("op SET_DRAW truncated"); }
+            let id = ops[i + 0] as u64;
+            let draw_offset = ops[i + 1] as usize;
+            let draw_len = ops[i + 2] as usize;
+            Ok((Op::SetDraw { id, draw_offset, draw_len }, i + 3))
         }
         _ => Err("unknown opcode"),
     }
@@ -1432,6 +1446,106 @@ pub fn decode_style_packet(packed: &[f32]) -> Result<Vec<StyleProp>, String> {
             .map_err(|e| e.to_string())?;
         i = next;
         out.push(style_tag_to_prop(tag)?);
+    }
+    Ok(out)
+}
+
+// Draw op constants (display list ops on the `draws` channel; draw_ops.json)
+pub const DRAW_OP_MOVE_TO: u32 = 0;
+pub const DRAW_OP_LINE_TO: u32 = 1;
+pub const DRAW_OP_CLOSE: u32 = 2;
+pub const DRAW_OP_FILL: u32 = 3;
+
+// Draw paint field constants (tagged paint packet; draw_paint_fields.json)
+pub const DRAW_PAINT_COLOR: u32 = 0;
+
+// Path verb of a draw display list (drawRole=path-verb)
+#[derive(Debug, Clone, PartialEq)]
+pub enum PathVerb {
+    MoveTo {
+        x: f32,
+        y: f32,
+    },
+    LineTo {
+        x: f32,
+        y: f32,
+    },
+    Close,
+}
+
+// Paint of a draw command (tagged packet; unspecified fields keep defaults)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawPaint {
+    pub color: [f32; 4],
+}
+
+impl Default for DrawPaint {
+    fn default() -> Self {
+        Self {
+            color: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
+}
+
+// Draw command of a display list (drawRole=draw-command)
+#[derive(Debug, Clone, PartialEq)]
+pub enum DrawCommand {
+    FillPath {
+        verbs: Vec<PathVerb>,
+        paint: DrawPaint,
+    },
+}
+
+pub fn decode_draw_paint(packed: &[f32]) -> Result<DrawPaint, String> {
+    let mut paint = DrawPaint::default();
+    let mut i = 0usize;
+    while i < packed.len() {
+        let field = packed[i] as u32;
+        i += 1;
+        match field {
+            DRAW_PAINT_COLOR => {
+                if i + 4 > packed.len() { return Err("draw paint field COLOR truncated".to_string()); }
+                paint.color = [packed[i + 0], packed[i + 1], packed[i + 2], packed[i + 3]];
+                i += 4;
+            }
+            other => return Err(format!("unknown draw paint field {other}")),
+        }
+    }
+    Ok(paint)
+}
+
+pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
+    let mut out = Vec::new();
+    let mut verbs: Vec<PathVerb> = Vec::new();
+    let mut i = 0usize;
+    while i < data.len() {
+        let op = data[i] as u32;
+        i += 1;
+        match op {
+            DRAW_OP_MOVE_TO => {
+                if i + 2 > data.len() { return Err("draw op MOVE_TO truncated".to_string()); }
+                verbs.push(PathVerb::MoveTo { x: data[i + 0], y: data[i + 1] });
+                i += 2;
+            }
+            DRAW_OP_LINE_TO => {
+                if i + 2 > data.len() { return Err("draw op LINE_TO truncated".to_string()); }
+                verbs.push(PathVerb::LineTo { x: data[i + 0], y: data[i + 1] });
+                i += 2;
+            }
+            DRAW_OP_CLOSE => {
+                verbs.push(PathVerb::Close);
+            }
+            DRAW_OP_FILL => {
+                if i >= data.len() { return Err("draw op FILL truncated".to_string()); }
+                let paint_len = data[i] as usize;
+                i += 1;
+                if i + paint_len > data.len() { return Err("draw op FILL paint packet truncated".to_string()); }
+                let paint = decode_draw_paint(&data[i..i + paint_len])?;
+                i += paint_len;
+                out.push(DrawCommand::FillPath { verbs: std::mem::take(&mut verbs), paint });
+            }
+            other => return Err(format!("unknown draw op {other}")),
+        }
     }
     Ok(out)
 }

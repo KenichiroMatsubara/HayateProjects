@@ -1,6 +1,6 @@
 use hayate_core::{
-    is_notdef, missing_glyph_placeholder, RenderImage, RenderImageAlphaType, ScenePainter,
-    TextRunData,
+    is_notdef, missing_glyph_placeholder, PathVerb, RenderImage, RenderImageAlphaType,
+    ScenePainter, TextRunData,
 };
 use skrifa::{
     instance::{LocationRef, NormalizedCoord, Size},
@@ -104,6 +104,38 @@ impl ScenePainter for VelloCpuPainter<'_> {
         self.context.set_fill_rule(Fill::EvenOdd);
         self.context.fill_path(&path);
         self.context.set_fill_rule(Fill::NonZero);
+    }
+
+    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+        let mut path = BezPath::new();
+        // MoveTo で開いた subpath の中でだけ LineTo / Close を受け付ける（退化列を
+        // 黙って捨てる。3 painter 共通の意味論）。
+        let mut open = false;
+        for verb in verbs {
+            match verb {
+                PathVerb::MoveTo { x, y } => {
+                    path.move_to((f64::from(*x), f64::from(*y)));
+                    open = true;
+                }
+                PathVerb::LineTo { x, y } if open => {
+                    path.line_to((f64::from(*x), f64::from(*y)));
+                }
+                PathVerb::Close if open => {
+                    path.close_path();
+                    open = false;
+                }
+                PathVerb::LineTo { .. } | PathVerb::Close => {}
+            }
+        }
+        if path.is_empty() {
+            return;
+        }
+        // verbs はボーダーボックス相対。原点 `(x, y)` は transform の平行移動で与える。
+        self.context
+            .set_transform(self.state.transform * Affine::translate((f64::from(x), f64::from(y))));
+        self.context.set_paint(to_color(color));
+        self.context.set_fill_rule(Fill::NonZero);
+        self.context.fill_path(&path);
     }
 
     fn stroke_dashed_border(

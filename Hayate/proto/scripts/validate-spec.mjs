@@ -32,6 +32,8 @@ const validators = {
   types: validatorFor('type.schema.json'),
   enums: validatorFor('enum.schema.json'),
   opcodes: validatorFor('entry.schema.json'),
+  draw_ops: validatorFor('entry.schema.json'),
+  draw_paint_fields: validatorFor('entry.schema.json'),
   style_tags: validatorFor('style_tag.schema.json'),
   event_kinds: validatorFor('event_kind.schema.json'),
   element_kinds: validatorFor('simple_entry.schema.json'),

@@ -83,6 +83,7 @@ pub fn style_prop_key(prop: &StyleProp) -> &'static str {
         StyleProp::BorderStyle(_) => "border-style",
         StyleProp::BoxShadow(_) => "box-shadow",
         StyleProp::Overflow(_) => "overflow",
+        StyleProp::Draw(_) => "draw",
         StyleProp::Width(_) => "width",
         StyleProp::Height(_) => "height",
         StyleProp::MinWidth(_) => "min-width",
