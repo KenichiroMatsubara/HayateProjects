@@ -1,5 +1,6 @@
 use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
 use crate::render::RenderImage;
+use crate::wire::protocol::PathVerb;
 
 #[derive(Debug, Clone)]
 pub enum DrawOp {
@@ -63,6 +64,12 @@ pub enum DrawOp {
         width: f32,
         height: f32,
         data: RenderImage,
+    },
+    FillPath {
+        x: f32,
+        y: f32,
+        verbs: Vec<PathVerb>,
+        color: [f32; 4],
     },
     PushTransform {
         transform: [f64; 6],
@@ -187,6 +194,13 @@ pub trait ScenePainter {
         border_width: f32,
         color: [f32; 4],
     );
+
+    /// draw display list のパスを単色で塗る（#724 / ADR-0141）。`(x, y)` は要素の
+    /// ボーダーボックス左上（絶対・論理 px）、`verbs` はボーダーボックス相対のパス
+    /// 動詞列（fill rule は nonZero）。painter が `(x, y)` の平行移動を適用する。
+    /// 将来の stroke / fill rule / グラデーション等は verbs・Paint 語彙の拡張として
+    /// 生える（PRD #723「後回しは封印ではない」）。
+    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]);
 
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
 
@@ -344,6 +358,15 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
+    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+        self.ops.push(DrawOp::FillPath {
+            x,
+            y,
+            verbs: verbs.to_vec(),
+            color,
+        });
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         self.ops.push(DrawOp::DrawTextRun {
             x,
@@ -460,6 +483,8 @@ impl ScenePainter for NullPainter {
         _color: [f32; 4],
     ) {
     }
+
+    fn fill_path(&mut self, _x: f32, _y: f32, _verbs: &[PathVerb], _color: [f32; 4]) {}
 
     fn draw_text_run(&mut self, _x: f32, _y: f32, _color: [f32; 4], _data: &TextRunData) {}
 
@@ -644,6 +669,15 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
                 walk_node(graph, child_id, painter);
             }
             painter.pop_clip();
+        }
+        NodeKind::DrawList { x, y, commands } => {
+            for command in commands.iter() {
+                match command {
+                    crate::wire::protocol::DrawCommand::FillPath { verbs, paint } => {
+                        painter.fill_path(*x, *y, verbs, paint.color);
+                    }
+                }
+            }
         }
         NodeKind::ElementAnchor { .. } => {
             let children = node.children.clone();

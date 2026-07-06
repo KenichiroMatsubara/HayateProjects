@@ -28,6 +28,23 @@ export function generateWire() {
   lines.push('export type OP = typeof OP;');
   lines.push('');
 
+  // draw display list（`draws` チャネル・ADR-0141/0142）の op / paint field 定数。
+  lines.push('export const DRAW_OP = {');
+  for (const op of proto.draw_ops ?? []) {
+    lines.push(`  ${op.name}: ${op.value},`);
+  }
+  lines.push('} as const;');
+  lines.push('export type DRAW_OP = typeof DRAW_OP;');
+  lines.push('');
+
+  lines.push('export const DRAW_PAINT_FIELD = {');
+  for (const field of proto.draw_paint_fields ?? []) {
+    lines.push(`  ${field.name}: ${field.value},`);
+  }
+  lines.push('} as const;');
+  lines.push('export type DRAW_PAINT_FIELD = typeof DRAW_PAINT_FIELD;');
+  lines.push('');
+
   lines.push('export const TAG = {');
   for (const tag of proto.style_tags ?? []) {
     lines.push(`  ${tag.name}: ${tag.value},`);

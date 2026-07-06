@@ -44,7 +44,7 @@ export class StubHayate implements RawHayate {
   element_set_pseudo_style(id: number, state: number, packed: Float32Array): void {
     this.pseudoStyleCalls.push([id, state, Array.from(packed)]);
   }
-  apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[]): void {
+  apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[], _draws: Float32Array): void {
     this.mutations.push({
       ops: Array.from(ops),
       styles: Array.from(styles),

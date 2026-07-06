@@ -69,6 +69,8 @@ fn perf_probe() {
             Group { .. } => groups += 1,
             Clip { .. } => clips += 1,
             Image { .. } => images += 1,
+            // fixture ツリーは draw を使わない。集計対象外（#724）。
+            DrawList { .. } => {}
             ElementAnchor { .. } => anchors += 1,
         }
     }

@@ -33,10 +33,10 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ## apply_mutations（host → Hayate）
 
 ### PROTO-04 — apply_mutations 署名
-**規範文:** `apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[])` の3引数。hot path（1回/frame）のため typed array で転送効率を最優先する。
-**出典:** ADR-0052（supersedes ADR-0039 の2引数署名）
-**状況:** ✅ — Rust `element_renderer.rs:504`、TS `hayate-mutation-packet.ts:181`。
-**備考:** [履歴] 0039 は `(ops, styles)` の2引数だった。string table 導入（PROTO-07）で `texts` を追加。
+**規範文:** `apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[], draws: Float32Array)` の4引数。hot path（1回/frame）のため typed array で転送効率を最優先する。
+**出典:** ADR-0052（supersedes ADR-0039 の2引数署名）、ADR-0141（`draws` チャネル）
+**状況:** ✅ — Rust `wire.rs::apply_mutations`、TS `hayate-mutation-packet.ts`。
+**備考:** [履歴] 0039 は `(ops, styles)` の2引数だった。string table 導入（PROTO-07）で `texts` を、draw display list 導入（PROTO-21）で `draws` を追加。
 
 ### PROTO-05 — ops 固定長レコード
 **規範文:** `ops` は `op_kind` 始まりの固定長レコード列。各 op 種別の slot 数は `OP_SLOTS` テーブルが駆動する。不明な `op_kind` はそのフレームの残りを捨てる（固定長前提のためズレを波及させない）。
@@ -146,13 +146,19 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 **状況:** ✅ — `style_tags.json` 全 entry に `domCss`（写像なしは省略可）。`proto/generator/src/lib.rs` が `dom_style_mapper.rs`（Rust・Hayate HTML Mode）、`gen-catalog.mjs` が `catalog.ts`（TS・Tsubame DOM Renderer）を spec 駆動生成。Rust ハンドコード dispatch と `gen-catalog.mjs` の `DOM_EXTRAS` config は撤去済み。parity テスト `hayate-css-parity.test.ts`。
 **備考:** DOM 写像は web 専用だが、単一化で Hayate HTML Mode と Tsubame DOM Renderer が一致し web の Canvas↔DOM デザイン比較（ADR-0012）が信用できる。
 
+### PROTO-21 — draw display list（draws チャネル）
+**規範文:** draw display list（ADR-0141/0142）は `texts` と同格の第4チャネル `draws: Float32Array` に載り、`OP_SET_DRAW=22`（`op, id, draw_offset, draw_len`）がオフセット/長さで参照する（styles と同じ参照モデル）。op 表（パス動詞・描画命令）は `draw_ops.json`、Paint フィールドは `draw_paint_fields.json` が正本で、`style_tags` と同様に Rust decode（`decode_draw_list`）/ TS encode（`appendDraw*`）を両側 codegen する。エンコーディングはパス動詞＝固定スロット、描画命令（FILL）＝`paint_len` プレフィックス付き tagged paint packet で、将来の op / Paint フィールド追加が表への行追加で済む（契約破壊にしない）。`draw` property は `element_kinds.json` の `carriesDraw` タグで view 限定（carrier 文化）。
+**出典:** ADR-0141, ADR-0142（PRD #723 / #724）
+**状況:** ✅ — `draw_ops.json` / `draw_paint_fields.json` / `opcodes.json` SET_DRAW=22 / `element_kinds.json` carriesDraw、共有 fixture `draw_encode.json`（TS encode ↔ Rust decode roundtrip）、wire→golden `draw_wire_golden.rs`。
+**備考:** Android JSI/C++ ホストは未だ `draws` を運ばない（js_host が空チャネルを渡す・follow-up）。HTML Mode は v1 で draw 非対応（decode は受けて捨てる）。
+
 ---
 
 ## このパートの集計
 
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 19 | PROTO-01〜08, 10〜20 |
+| ✅実装済み | 20 | PROTO-01〜08, 10〜21 |
 | 🟡部分 | 1 | PROTO-09 |
 | ⬜未実装 | 0 | — |
 

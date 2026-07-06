@@ -2,6 +2,7 @@
   {
     "name": "view",
     "value": 0,
+    "carriesDraw": true,
     "defaultUserSelect": "text"
   },
   {

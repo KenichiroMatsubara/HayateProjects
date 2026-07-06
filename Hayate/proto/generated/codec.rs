@@ -305,6 +305,12 @@ pub fn encode_op(buf: &mut Vec<f64>, op: &Op) {
             buf.push(*id as f64);
             buf.push(*text_index as f64);
         }
+        Op::SetDraw { id, draw_offset, draw_len } => {
+            buf.push(OP_SET_DRAW as f64);
+            buf.push(*id as f64);
+            buf.push(*draw_offset as f64);
+            buf.push(*draw_len as f64);
+        }
     }
 }
 
@@ -644,6 +650,9 @@ buf.push(encode_dim_unit(d.unit));
                 buf.push(p.end.wire_kind());
                 buf.push(p.end.wire_value());
             }
+            // draw display list は style packet ではなく draws チャネルに載る
+            // （OP_SET_DRAW・ADR-0141）。style tag を持たないため encode 対象外。
+            StyleProp::Draw(..) => {}
         }
     }
 }

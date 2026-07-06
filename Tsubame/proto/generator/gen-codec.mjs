@@ -233,6 +233,69 @@ function generateAppendOps(proto) {
   return lines.join('\n');
 }
 
+function drawAppendOpName(opName) {
+  const pascal = opName
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join('');
+  return `appendDraw${pascal}`;
+}
+
+// draw display list（`draws` チャネル・ADR-0141/0142）の表駆動 encoder。
+// path verb は固定スロット、draw command（FILL）は paint_len プレフィックス付きの
+// tagged paint packet を後続に持つ（Rust decode `decode_draw_list` と対）。
+function generateDrawAppendOps(proto) {
+  const lines = [];
+
+  lines.push('export interface DrawPaint {');
+  for (const field of proto.draw_paint_fields ?? []) {
+    const key = tagToPatchKey(field.name);
+    const slots = (field.params ?? []).reduce((n, p) => n + (p.count > 1 ? p.count : 1), 0);
+    const tsType =
+      (field.params ?? []).length > 1
+        ? `readonly [${Array(slots).fill('number').join(', ')}]`
+        : 'number';
+    lines.push(`  readonly ${key}?: ${tsType};`);
+  }
+  lines.push('}');
+  lines.push('');
+
+  for (const op of proto.draw_ops ?? []) {
+    const fnName = drawAppendOpName(op.name);
+    if (op.drawRole === 'path-verb') {
+      const params = (op.params ?? []).map((p) => `${toCamelCase(p.name)}: number`);
+      const sig = params.length > 0 ? `draws: number[], ${params.join(', ')}` : 'draws: number[]';
+      const pushes = (op.params ?? []).map((p) => toCamelCase(p.name));
+      lines.push(`export function ${fnName}(${sig}): void {`);
+      lines.push(`  draws.push(${[`DRAW_OP.${op.name}`, ...pushes].join(', ')});`);
+      lines.push('}');
+      lines.push('');
+      continue;
+    }
+    if (op.name !== 'FILL') {
+      throw new Error(`draw_ops.${op.name}: unhandled draw-command encoder (add an arm)`);
+    }
+    lines.push(`export function ${fnName}(draws: number[], paint: DrawPaint): void {`);
+    lines.push(`  draws.push(DRAW_OP.${op.name});`);
+    lines.push('  const lenIndex = draws.length;');
+    lines.push('  draws.push(0);');
+    for (const field of proto.draw_paint_fields ?? []) {
+      const key = tagToPatchKey(field.name);
+      lines.push(`  if (paint.${key} !== undefined) {`);
+      if ((field.params ?? []).length > 1) {
+        lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, ...paint.${key});`);
+      } else {
+        lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, paint.${key});`);
+      }
+      lines.push('  }');
+    }
+    lines.push('  draws[lenIndex] = draws.length - lenIndex - 1;');
+    lines.push('}');
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
 export function generateCodec() {
   const proto = loadProtocolSpec();
 
@@ -255,7 +318,7 @@ export function generateCodec() {
     '// 生成元: @hayate/protocol-spec',
     '',
     "import type { StylePatch } from '@tsubame/renderer-protocol';",
-    "import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';",
+    "import { OP, DRAW_OP, DRAW_PAINT_FIELD, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',
     '',
@@ -301,6 +364,7 @@ export function generateCodec() {
     '}',
     '',
     generateAppendOps(proto),
+    generateDrawAppendOps(proto),
   ];
 
   mkdirSync(outDir, { recursive: true });

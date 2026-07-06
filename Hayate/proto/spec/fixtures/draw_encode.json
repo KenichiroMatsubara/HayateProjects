@@ -1,0 +1,42 @@
+[
+  {
+    "name": "triangle-solid-fill",
+    "commands": [
+      { "op": "moveTo", "x": 10, "y": 10 },
+      { "op": "lineTo", "x": 90, "y": 10 },
+      { "op": "lineTo", "x": 50, "y": 70 },
+      { "op": "close" },
+      { "op": "fill", "paint": { "color": [1, 0, 0, 1] } }
+    ],
+    "wire": [0, 10, 10, 1, 90, 10, 1, 50, 70, 2, 3, 5, 0, 1, 0, 0, 1]
+  },
+  {
+    "name": "open-path-fill-default-paint",
+    "commands": [
+      { "op": "moveTo", "x": 0, "y": 0 },
+      { "op": "lineTo", "x": 40, "y": 0 },
+      { "op": "lineTo", "x": 40, "y": 40 },
+      { "op": "fill", "paint": {} }
+    ],
+    "wire": [0, 0, 0, 1, 40, 0, 1, 40, 40, 3, 0]
+  },
+  {
+    "name": "two-fills-reset-path-between-commands",
+    "commands": [
+      { "op": "moveTo", "x": 0, "y": 0 },
+      { "op": "lineTo", "x": 10, "y": 0 },
+      { "op": "lineTo", "x": 10, "y": 10 },
+      { "op": "close" },
+      { "op": "fill", "paint": { "color": [0, 0, 1, 1] } },
+      { "op": "moveTo", "x": 20, "y": 20 },
+      { "op": "lineTo", "x": 30, "y": 20 },
+      { "op": "lineTo", "x": 30, "y": 30 },
+      { "op": "close" },
+      { "op": "fill", "paint": { "color": [0, 1, 0, 0.5] } }
+    ],
+    "wire": [
+      0, 0, 0, 1, 10, 0, 1, 10, 10, 2, 3, 5, 0, 0, 0, 1, 1,
+      0, 20, 20, 1, 30, 20, 1, 30, 30, 2, 3, 5, 0, 0, 1, 0, 0.5
+    ]
+  }
+]

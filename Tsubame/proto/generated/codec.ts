@@ -2,7 +2,7 @@
 // 生成元: @hayate/protocol-spec
 
 import type { StylePatch } from '@tsubame/renderer-protocol';
-import { OP, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';
+import { OP, DRAW_OP, DRAW_PAINT_FIELD, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
 
@@ -894,4 +894,37 @@ export function appendSetFontFamily(buf: number[], id: number, textIndex: number
   buf.push(OP.SET_FONT_FAMILY);
   buf.push(id);
   buf.push(textIndex);
+}
+
+export function appendSetDraw(buf: number[], id: number, drawOffset: number, drawLen: number): void {
+  buf.push(OP.SET_DRAW);
+  buf.push(id);
+  buf.push(drawOffset);
+  buf.push(drawLen);
+}
+
+export interface DrawPaint {
+  readonly color?: readonly [number, number, number, number];
+}
+
+export function appendDrawMoveTo(draws: number[], x: number, y: number): void {
+  draws.push(DRAW_OP.MOVE_TO, x, y);
+}
+
+export function appendDrawLineTo(draws: number[], x: number, y: number): void {
+  draws.push(DRAW_OP.LINE_TO, x, y);
+}
+
+export function appendDrawClose(draws: number[]): void {
+  draws.push(DRAW_OP.CLOSE);
+}
+
+export function appendDrawFill(draws: number[], paint: DrawPaint): void {
+  draws.push(DRAW_OP.FILL);
+  const lenIndex = draws.length;
+  draws.push(0);
+  if (paint.color !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.COLOR, ...paint.color);
+  }
+  draws[lenIndex] = draws.length - lenIndex - 1;
 }

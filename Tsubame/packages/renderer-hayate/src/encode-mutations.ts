@@ -14,6 +14,7 @@ import {
   appendChild,
   insertBefore,
   appendRemove,
+  appendSetDraw,
   appendSetStyle,
   appendSetText,
   appendSetTextContent,
@@ -90,6 +91,12 @@ export type SemanticMutation =
       readonly id: ElementId;
       readonly condition: ViewportCondition;
       readonly style: StylePatch;
+    }
+  | {
+      /** 記録済み draw display list（draw_ops.json の op 列・#724 / ADR-0141）。 */
+      readonly kind: 'setDraw';
+      readonly id: ElementId;
+      readonly list: readonly number[];
     };
 
 /** `apply_mutations` が消費するワイヤバッファ（ADR-0052）。 */
@@ -97,6 +104,9 @@ export interface EncodedMutations {
   readonly ops: Float64Array;
   readonly styles: Float32Array;
   readonly texts: string[];
+  /** draw display list チャネル（texts と同格・#724 / ADR-0141）。`OP_SET_DRAW` が
+   * オフセット/長さで参照する f32 フラットバッファ（op 表は draw_ops.json）。 */
+  readonly draws: Float32Array;
 }
 
 /** ADR-0081: 未設定のビューポート条件軸はワイヤ上で -1 として符号化する。 */
@@ -130,6 +140,7 @@ export function encodeMutations(
   const ops: number[] = [];
   const styles: number[] = [];
   const texts: string[] = [];
+  const draws: number[] = [];
 
   for (const mutation of mutations) {
     switch (mutation.kind) {
@@ -167,6 +178,13 @@ export function encodeMutations(
         for (const unsetKind of unsetKindsOf(mutation.style)) {
           appendUnsetStyle(ops, mutation.id as number, unsetKind);
         }
+        break;
+      }
+      case 'setDraw': {
+        // styles と同じオフセット/長さ参照モデル（texts の index 参照とは異なる）。
+        const offset = draws.length;
+        draws.push(...mutation.list);
+        appendSetDraw(ops, mutation.id as number, offset, mutation.list.length);
         break;
       }
       case 'setText': {
@@ -250,5 +268,6 @@ export function encodeMutations(
     ops: new Float64Array(ops),
     styles: new Float32Array(styles),
     texts,
+    draws: new Float32Array(draws),
   };
 }

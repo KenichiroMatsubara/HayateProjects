@@ -86,6 +86,13 @@ impl ElementKind {
     pub fn accepts_text_input(self) -> bool {
         tables::accepts_text_input(self)
     }
+
+    /// この種別が `draw` display list property を運ぶか（Draw Carrier・#724 /
+    /// ADR-0141）。`view` のみ `true`。carrier 以外への draw は no-op
+    /// （carriesTextLocal と同じ carrier 文化）。`proto/spec/element_kinds.json` 由来。
+    pub fn carries_draw(self) -> bool {
+        tables::carries_draw(self)
+    }
 }
 
 impl ElementKind {

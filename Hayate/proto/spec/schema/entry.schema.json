@@ -8,6 +8,11 @@
     "name": { "type": "string", "minLength": 1 },
     "value": { "type": "integer", "minimum": 0 },
     "variable_length": { "type": "boolean" },
+    "drawRole": {
+      "type": "string",
+      "enum": ["path-verb", "draw-command"],
+      "description": "Draw display-list role (draw_ops only): path-verb accumulates into the current path, draw-command consumes it."
+    },
     "wireRole": {
       "type": "string",
       "enum": ["interaction", "ime", "hayate-internal", "host-echo"]

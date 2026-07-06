@@ -1137,12 +1137,15 @@ impl HayateElementRenderer {
 
     /// バッチ適用。Tsubame Canvas Mode がフレームごとに一度呼ぶ（ADR-0052）。`ops` は固定長
     /// レコードのフラットな Float64Array、`styles` は OP_SET_STYLE レコードが参照する
-    /// style_packet の Float32Array、`texts` は OP_SET_TEXT レコードが参照する文字列テーブル。
+    /// style_packet の Float32Array、`texts` は OP_SET_TEXT レコードが参照する文字列テーブル、
+    /// `draws` は OP_SET_DRAW レコードが参照する draw display list の Float32Array
+    /// （texts と同格のチャネル・#724 / ADR-0141）。
     pub fn apply_mutations(
         &mut self,
         ops: &[f64],
         styles: &[f32],
         texts: js_sys::Array,
+        draws: &[f32],
     ) -> Result<(), JsValue> {
         // 中立 apply_mutations（ADR-0112）は core が単一所有し（hayate_core::wire）、
         // 文字列テーブルを `&[String]` で受け取りエラーを `String` で返す。Web 境界で
@@ -1151,7 +1154,7 @@ impl HayateElementRenderer {
             .iter()
             .map(|v| v.as_string().unwrap_or_default())
             .collect();
-        hayate_core::wire::apply_mutations(&mut self.tree, ops, styles, &texts)
+        hayate_core::wire::apply_mutations(&mut self.tree, ops, styles, &texts, draws)
             .map_err(|e| JsValue::from_str(&e))
     }
 

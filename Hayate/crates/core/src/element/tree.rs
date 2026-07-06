@@ -48,6 +48,10 @@ pub struct Visual {
     /// 子要素のオーバーフロー処理。`Hidden` は子を（角丸込みの）border box に
     /// クリップする。既定は `Visible`。
     pub overflow: OverflowValue,
+    /// draw display list（#724 / ADR-0141）。ボーダーボックス左上原点・論理 px の
+    /// decode 済みコマンド列。空なら描画なし。描画順は background → border →
+    /// draw → children で、はみ出しは `overflow` に従う（既定 visible）。
+    pub draw: std::sync::Arc<Vec<crate::wire::protocol::DrawCommand>>,
     /// 切り詰めまでの最大テキスト行数。`None` は無制限。テキスト切り詰めの唯一の
     /// トリガで、これがなければ `text_overflow` は効かない。
     pub max_lines: Option<u32>,
@@ -86,6 +90,7 @@ impl Default for Visual {
             border_style: BorderStyleValue::None,
             box_shadow: Vec::new(),
             overflow: OverflowValue::Visible,
+            draw: std::sync::Arc::new(Vec::new()),
             max_lines: None,
             text_overflow: TextOverflowValue::Clip,
             text_color: None,
@@ -1297,6 +1302,24 @@ impl ElementTree {
         self.apply_change_at(id, change);
     }
 
+    /// 要素の draw display list を設定する（#724 / ADR-0141）。decode 済みコマンド列を
+    /// `StyleProp::Draw` として visual へ格納し、既存の分類経路（visual dirty のみ・
+    /// layout 不干渉）に乗せる。`view` 限定（Draw Carrier・`carriesDraw`）: carrier
+    /// 以外への draw は no-op（carriesTextLocal と同じ carrier 文化）。
+    pub fn element_set_draw(
+        &mut self,
+        id: ElementId,
+        commands: Vec<crate::wire::protocol::DrawCommand>,
+    ) {
+        let Some(el) = self.elements.get(&id) else {
+            return;
+        };
+        if !el.kind.carries_draw() {
+            return;
+        }
+        self.element_set_style(id, &[StyleProp::Draw(std::sync::Arc::new(commands))]);
+    }
+
     /// スタイル変更中の全非レイアウトプロパティの無効化を、要素のコンテキストに
     /// 照らしてマージする（*何を*）。空/全レイアウトのリストは scene のみの自己
     /// 再描画にフォールバックする。
@@ -2333,6 +2356,7 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
         StyleProp::BorderStyle(v) => visual.border_style = *v,
         StyleProp::BoxShadow(shadows) => visual.box_shadow = shadows.clone(),
         StyleProp::Overflow(v) => visual.overflow = *v,
+        StyleProp::Draw(commands) => visual.draw = commands.clone(),
         StyleProp::MaxLines(v) => {
             visual.max_lines = if *v == 0 { None } else { Some(*v) };
             *text_dirty = true;

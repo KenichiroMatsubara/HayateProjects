@@ -38,6 +38,9 @@ pub use audio_output::{
 // capability scaffold（ADR-0119）。契約の正本は Core。leaf stub は `Unimplemented` を返す。
 // wave-2 ストリーム capability（ADR-0120）: battery が共有契約土台のトレーサーバレット。
 pub use battery::{Battery, BatteryStatus};
+// draw display list（#724 / ADR-0141/0142）: wire 生成物の decode 型を crate 根で公開する
+// （生成 sink / アダプタ / painter が `hayate_core::DrawCommand` で参照する）。
+pub use wire::protocol::{DrawCommand, DrawPaint, PathVerb};
 pub use biometric::Biometric;
 pub use capability::CapabilityError;
 // wave-2 ストリーム capability（ADR-0120）。connectivity は battery の共有契約土台を再利用する。

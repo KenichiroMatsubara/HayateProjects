@@ -344,7 +344,8 @@ pub(crate) fn invalidation_reach_for_prop(prop: &StyleProp) -> VisualInvalidatio
         | StyleProp::Opacity(_)
         | StyleProp::BorderRadius(_)
         | StyleProp::BorderWidth(_)
-        | StyleProp::BorderColor(_) => VisualInvalidationReach::SelfOnly,
+        | StyleProp::BorderColor(_)
+        | StyleProp::Draw(_) => VisualInvalidationReach::SelfOnly,
         StyleProp::ZIndex(_) => VisualInvalidationReach::ZIndex,
         StyleProp::Color(_) | StyleProp::FontStyle(_) | StyleProp::TextDecoration(_) => {
             VisualInvalidationReach::TextLocal
@@ -528,6 +529,17 @@ mod tests {
         );
         assert_eq!(c.dirty_kind, DirtyKind::Visual);
         assert_eq!(c.reach, VisualInvalidationReach::SelfOnly);
+    }
+
+    // draw（display list の差し替え）は visual dirty のみ・SelfOnly。layout にも
+    // text shaping にも不干渉（#724 / ADR-0141: painting is not layout）。
+    #[test]
+    fn classify_draw_is_self_only_visual() {
+        let prop = StyleProp::Draw(std::sync::Arc::new(Vec::new()));
+        let c = classify(&prop, ctx(ElementKind::View, false, false));
+        assert_eq!(c.dirty_kind, DirtyKind::Visual);
+        assert_eq!(c.reach, VisualInvalidationReach::SelfOnly);
+        assert!(!prop.is_layout(), "draw must never route to Taffy");
     }
 
     #[test]

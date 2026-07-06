@@ -3,7 +3,7 @@
 
 use hayate_core::{ElementId, ElementKind, PseudoState, StylePropKind, UserSelectValue, ViewportCondition};
 
-use super::protocol::{Op, decode_style_packet, parse_next_op};
+use super::protocol::{Op, decode_draw_list, decode_style_packet, parse_next_op};
 use super::mutation_sink::MutationSink;
 
 pub fn unset_kind_from_u32(v: u32) -> Result<StylePropKind, String> {
@@ -27,12 +27,13 @@ pub fn apply_mutations_to_sink<S: MutationSink + ?Sized>(
     ops: &[f64],
     styles: &[f32],
     texts: &[String],
+    draws: &[f32],
 ) -> Result<(), String> {
     let mut i = 0usize;
     while i < ops.len() {
         let (op, next) = parse_next_op(ops, i).map_err(|e| e.to_string())?;
         i = next;
-        apply_parsed_op(sink, op, styles, texts)?;
+        apply_parsed_op(sink, op, styles, texts, draws)?;
     }
     Ok(())
 }
@@ -42,6 +43,7 @@ fn apply_parsed_op<S: MutationSink + ?Sized>(
     op: Op,
     styles: &[f32],
     texts: &[String],
+    draws: &[f32],
 ) -> Result<(), String> {
     match op {
         Op::AppendChild { parent_id, child_id } => {
@@ -192,6 +194,14 @@ fn apply_parsed_op<S: MutationSink + ?Sized>(
                 .get(text_index)
                 .ok_or_else(|| "text index out of bounds in OP_SET_FONT_FAMILY".to_string())?;
             sink.set_font_family(ElementId::from_u64(id), family);
+            Ok(())
+        }
+        Op::SetDraw { id, draw_offset, draw_len } => {
+            let slice = draws
+                .get(draw_offset..draw_offset + draw_len)
+                .ok_or_else(|| "draws slice out of bounds in OP_SET_DRAW".to_string())?;
+            let commands = decode_draw_list(slice)?;
+            sink.set_draw(ElementId::from_u64(id), commands);
             Ok(())
         }
     }
