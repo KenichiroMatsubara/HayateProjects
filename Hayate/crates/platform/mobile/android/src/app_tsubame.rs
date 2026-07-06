@@ -74,20 +74,23 @@ fn read_bundle_protocol_version(hermes: &cxx::UniquePtr<HermesApp>) -> Option<u3
     }
 }
 
-/// boot 失敗を明示ログにする（mount もクラッシュもさせない・#530）。不一致は両版数を、取得失敗は
-/// その種別を出す。pump には進めない（current=None のまま）。
-fn report_boot_error(error: &BootError) {
-    match error {
-        BootError::ProtocolMismatch(mismatch) => log::error!(
+/// boot 失敗をログと画面向けの読める文言にする（mount もクラッシュもさせない・#530）。不一致は
+/// 両版数を、取得失敗はその種別を出す。pump には進めない（current=None のまま）。返した文言は
+/// 呼び出し側が `error_overlay::show_error` でそのまま画面に描画する——Web ホストの built-in
+/// error panel と対称に、consumer（アプリ側）の実装にも Hayate/GPU パイプラインにも依存せず
+/// 画面に出す保証（Hayate 自身の初期化が壊れていても呼べるネイティブ View オーバーレイ）。
+fn report_boot_error(error: &BootError) -> String {
+    let message = match error {
+        BootError::ProtocolMismatch(mismatch) => format!(
             "Miharashi: protocol version 不一致のため mount しません — {}（host v{}, bundle {:?}）",
-            mismatch.message,
-            mismatch.host_version,
-            mismatch.bundle_version,
+            mismatch.message, mismatch.host_version, mismatch.bundle_version,
         ),
-        BootError::Fetch(err) => log::error!(
+        BootError::Fetch(err) => format!(
             "Miharashi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}"
         ),
-    }
+    };
+    log::error!("{message}");
+    message
 }
 
 pub(crate) fn run(app: AndroidApp) {
@@ -127,7 +130,7 @@ pub(crate) fn run(app: AndroidApp) {
     let mut current: Option<Runtime> = match boot() {
         Ok(runtime) => Some(runtime),
         Err(error) => {
-            report_boot_error(&error);
+            crate::error_overlay::show_error(&report_boot_error(&error));
             None
         }
     };
@@ -354,17 +357,20 @@ pub(crate) fn run(app: AndroidApp) {
                         runtime.tree.borrow_mut().set_viewport(vw, vh);
                     }
                     current = Some(runtime);
+                    crate::error_overlay::clear_error();
                     // 新ツリーは未描画。冷間始動を要求して最初のフレームを必ず出す。
                     frame_loop.request_wake();
                 }
                 Err(error) => {
-                    report_boot_error(&error);
+                    crate::error_overlay::show_error(&report_boot_error(&error));
                     current = None;
                 }
             }
         }
 
-        // ランタイム未確立（boot 失敗 / 不一致 / reload 待ち）なら入力も描画もしない（謎クラッシュ回避）。
+        // ランタイム未確立（boot 失敗 / 不一致 / reload 待ち）なら入力も JS pump もしない
+        // （謎クラッシュ回避）。エラー表示自体は上の `error_overlay` が Hayate/GPU パイプラインを
+        // 経由せず既に出しているので、ここでは何もしなくてよい。
         let Some(runtime) = current.as_mut() else {
             continue;
         };

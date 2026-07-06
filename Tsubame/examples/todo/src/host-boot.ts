@@ -36,9 +36,6 @@ const CANVAS_ID = 'miharashi-canvas';
  */
 const HOST_PROTOCOL_VERSION_OVERRIDE_PARAM = 'protocolVersion';
 
-/** protocol 不一致の明示エラー UI を載せる要素の id。e2e はこれの可視と本文を検証する。 */
-const ERROR_PANEL_ID = 'miharashi-error';
-
 /** URL ピッカー（カメラ QR スキャン + 手入力）の root id。 */
 const PICKER_ID = 'miharashi-picker';
 
@@ -56,24 +53,9 @@ function normalizeDevServerUrl(raw: string): string {
   return /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 
-/**
- * protocol 不一致の明示エラー UI を表示する。謎クラッシュにせず「このホストは protocol vX、
- * バンドルは vY」を画面に出す（#530）。canvas は mount しないまま残す。
- */
-function showProtocolMismatch(error: ProtocolMismatchError): void {
-  root.dataset.miharashiStatus = 'protocol-mismatch';
-  let panel = document.getElementById(ERROR_PANEL_ID);
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = ERROR_PANEL_ID;
-    panel.setAttribute('role', 'alert');
-    panel.style.cssText =
-      'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;' +
-      'padding:24px;color:#fca5a5;background:#0b1020;font:16px/1.6 system-ui,sans-serif;text-align:center;';
-    document.body.appendChild(panel);
-  }
-  panel.textContent = `protocol version 不一致: ${error.message}`;
-}
+// エラーの可視化（boot 失敗・protocol 不一致・mount 後の未捕捉例外）は `startMiharashiHost`
+// （`@miharashi/host-web`）が既定で保証する。消費側のこのファイルは data 属性の記帳だけを担う
+// （e2e 用。#miharashi-error パネル自体はホストが必ず出すので、ここでの実装は不要）。
 
 // e2e / デバッグが「何回 mount まで貫けたか」を観測できるよう mount 回数を data 属性に出す。
 // full reload が効くと、ソース編集のたびにこの数が増える。
@@ -227,8 +209,8 @@ function boot(devServerUrl: string): void {
         root.dataset.miharashiMountCount = String(mountCount);
         root.dataset.miharashiStatus = 'mounted';
       } else if (result.error instanceof ProtocolMismatchError) {
-        // 不一致は mount もクラッシュもさせず、明示エラー UI に落とす（#530）。
-        showProtocolMismatch(result.error);
+        // 不一致は mount もクラッシュもさせない（#530）。明示エラー UI 自体はホストが必ず出す。
+        root.dataset.miharashiStatus = 'protocol-mismatch';
         console.error('Miharashi host protocol mismatch', result.error);
       } else {
         root.dataset.miharashiStatus = 'error';

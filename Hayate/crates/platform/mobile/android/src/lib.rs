@@ -71,6 +71,16 @@ mod js_host;
 mod app;
 #[cfg(target_os = "android")]
 mod ime_bridge;
+// Rust↔Kotlin JNI の共通下地（ADR-0125 の「封じ込め」方針の一般化）。`jni::`/`ndk_context::`
+// の直接使用はここ 1 ファイルに封じ込め、`qr_scanner` / `error_overlay` はこれだけを使う
+// （`tests/qr_scanner_encapsulation.rs` が強制）。
+#[cfg(target_os = "android")]
+mod jni_bridge;
+// boot 失敗・panic を画面に出すネイティブ View オーバーレイ（#530 系）。Hayate（要素ツリー→
+// GPU パイプライン）に一切依存しない「潰れない土台」なので、Hayate/GPU 自体の初期化が壊れて
+// いても呼べる（Web ホストの生 DOM error panel と対称）。JNI 依存のため device 専用。
+#[cfg(target_os = "android")]
+mod error_overlay;
 
 // JS 駆動ループと Hermes(JSI) ブリッジ（ADR-0112）。device 専用（C++/libhermes が
 // 要る）なので android かつ feature のときだけコンパイルする。ホスト検証には載らない。

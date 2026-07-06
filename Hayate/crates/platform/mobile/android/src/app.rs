@@ -33,6 +33,22 @@ use crate::touch_scroll::TouchScrollState;
 /// スモークテスト用の RGBA クリアカラー。
 pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
 
+/// 未捕捉 panic を logcat へ明示ログし、ネイティブ View オーバーレイ（`error_overlay`）にも
+/// 出してから既定フックへ委譲する。既定の panic hook はメッセージを stderr に書くだけで、
+/// Android アプリの stderr は logcat にリダイレクトされていないため、`.unwrap()` 等からの
+/// panic はログにも画面にも何も出ず「エラーメッセージなく落ちる」ように見えていた。
+/// オーバーレイは Hayate（このアプリの GPU 描画パイプライン）を一切経由しないネイティブ
+/// Android View なので、panic の原因が描画パイプライン自身にあっても表示できる。
+fn install_panic_logger() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let message = format!("hayate-adapter-android: 未捕捉 panic でアプリが異常終了します — {info}");
+        log::error!("{message}");
+        crate::error_overlay::show_error(&message);
+        default_hook(info);
+    }));
+}
+
 pub(crate) struct GpuSurface {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -66,6 +82,7 @@ pub fn android_main(app: AndroidApp) {
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
+    install_panic_logger();
     crate::app_tsubame::run(app);
 }
 
@@ -75,6 +92,7 @@ pub fn android_main(app: AndroidApp) {
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
+    install_panic_logger();
 
     // #635: raster/composite は専用 Raster スレッドが所有する GpuSurface で走る（ADR-0128）。UI
     // スレッドは handoff を送るだけで raster 完了を待たない。surface 作成/破棄はこのハンドルの

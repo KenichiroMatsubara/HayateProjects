@@ -24,9 +24,8 @@ pub use platform::AndroidQrScanner;
 #[cfg(target_os = "android")]
 mod platform {
     use super::*;
+    use crate::jni_bridge::JString;
     use hayate_core::capability::CapabilityError;
-    use jni::objects::{JObject, JString};
-    use jni::JavaVM;
 
     /// Kotlin の橋渡しクラス（android-app の `QrScannerBridge`）の JNI 名と署名。`scanBlocking` は
     /// 渡した Activity 上で Code Scanner を起動し、読み取り（or キャンセル）まで**呼び出しスレッドを
@@ -51,32 +50,25 @@ mod platform {
 
     impl QrScanner for AndroidQrScanner {
         fn scan(&mut self) -> Result<Option<ScannedCode>, CapabilityError> {
-            // ndk_context が android-activity から受け取った JavaVM と Activity(Context) を使う。
-            let ctx = ndk_context::android_context();
-            let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(platform_err)?;
-            // capability は worker スレッドから呼ばれる前提。現在スレッドを VM にアタッチする。
-            let mut env = vm.attach_current_thread().map_err(platform_err)?;
-            let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
-
-            // Kotlin: Code Scanner を UI スレッドで起動し、結果まで native スレッドをブロックして返す。
-            let result = env
-                .call_static_method(
-                    BRIDGE_CLASS,
-                    BRIDGE_METHOD,
-                    BRIDGE_SIG,
-                    &[(&activity).into()],
-                )
-                .map_err(platform_err)?;
-            let obj = result.l().map_err(platform_err)?;
-            if obj.is_null() {
-                // ユーザがスキャナを閉じた（キャンセル）。
-                return Ok(None);
-            }
-            let value: String = env
-                .get_string(&JString::from(obj))
-                .map_err(platform_err)?
-                .into();
-            Ok(Some(ScannedCode { value }))
+            // JavaVM/Activity への attach は共通下地（`jni_bridge`）に任せる（capability は worker
+            // スレッドから呼ばれる前提。`jni_bridge::with_activity_env` が現在スレッドを attach する）。
+            crate::jni_bridge::with_activity_env(|env, activity| {
+                // Kotlin: Code Scanner を UI スレッドで起動し、結果まで native スレッドをブロックして返す。
+                let result = env
+                    .call_static_method(BRIDGE_CLASS, BRIDGE_METHOD, BRIDGE_SIG, &[activity.into()])
+                    .map_err(|e| e.to_string())?;
+                let obj = result.l().map_err(|e| e.to_string())?;
+                if obj.is_null() {
+                    // ユーザがスキャナを閉じた（キャンセル）。
+                    return Ok(None);
+                }
+                let value: String = env
+                    .get_string(&JString::from(obj))
+                    .map_err(|e| e.to_string())?
+                    .into();
+                Ok(Some(ScannedCode { value }))
+            })
+            .map_err(platform_err)
         }
     }
 }
