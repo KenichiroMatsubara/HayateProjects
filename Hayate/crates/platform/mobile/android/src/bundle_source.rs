@@ -39,7 +39,7 @@ pub enum BundleFetchError {
 }
 
 #[cfg(target_os = "android")]
-pub use platform::fetch_from;
+pub use platform::{fetch_from, fetch_url};
 
 /// target が指すバンドルのフル URL（純粋シーム・契約テスト対象）。path 無し（`/`）は
 /// バンドルルートの wire 契約（[`BUNDLE_ROUTE`]）へ広げ、path 付きはそれをそのまま使う
@@ -79,7 +79,14 @@ mod platform {
     /// 正規化し、実 I/O は OS スタック（Kotlin・ADR-0002）が担う。route / timeout は名前付き定数、
     /// scheme / host / port / path は target が持つ（同じ target が reload 購読も駆動する＝保持・#534）。
     pub fn fetch_from(target: &DevServerTarget) -> Result<String, BundleFetchError> {
-        platform_fetch(&bundle_url(target), FETCH_TIMEOUT)
+        fetch_url(&bundle_url(target))
+    }
+
+    /// 任意の URL を OS スタック（Kotlin・ADR-0002）で GET してテキストを返す共通入口。バンドル取得
+    /// （[`fetch_from`]）と Demo Manifest 取得（`demo_manifest::fetch_manifest`・#743）が同じ委譲実装・
+    /// 同じ名前付き timeout を共有する（手書き HTTP を再導入しない）。
+    pub fn fetch_url(url: &str) -> Result<String, BundleFetchError> {
+        platform_fetch(url, FETCH_TIMEOUT)
     }
 
     /// OS のネットワークスタックで `url` を GET し、JS ソース String を受け取る（ADR-0002）。

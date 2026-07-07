@@ -27,6 +27,13 @@ pub(crate) const DEFAULT_DEV_SERVER_PORT: u16 = 5179;
 /// `https://` の scheme 既定ポート。公開 Demo Endpoint（ADR-0003）の URL はポート無しで
 /// 貼られるので、標準の 443 に広げる。
 pub(crate) const HTTPS_DEFAULT_PORT: u16 = 443;
+
+/// release ビルドの既定接続先＝公開 Demo Endpoint（ADR-0003）の URL。テスター・審査者が
+/// ゼロ入力でデモに到達するための落とし先で、初回起動はここから Demo Manifest を取って先頭
+/// デモを自動ロードする（#743）。**ビルド構成で差し替え可能** — 実際の workers.dev サブドメイン
+/// （account 依存）はビルド時に `MIHARASHI_DEMO_ENDPOINT_URL` で上書きする（[`release_demo_endpoint_url`]）。
+/// 既定値は Worker 名（`miharashi-demo-endpoint`・wrangler.jsonc）由来のプレースホルダ。
+pub const DEFAULT_DEMO_ENDPOINT_URL: &str = "https://miharashi-demo-endpoint.workers.dev";
 /// path 無し入力の正規化先。「バンドルルートは既定の wire 契約に任せる」の意（`bundle_source`
 /// が既定ルートへ広げる）。
 const ROOT_PATH: &str = "/";
@@ -152,11 +159,40 @@ fn split_path(rest: &str) -> (&str, &str) {
     }
 }
 
-/// 端末 UI が入力した URL（無ければ `None`）を target に解決する。入力が無ければ既定 target に落とす。
-/// バンドル fetch と reload 購読はどちらもこの解決済み target を使う（単一の source of truth = 保持）。
+/// release ビルドが差し込む Demo Endpoint URL。既定は [`DEFAULT_DEMO_ENDPOINT_URL`] だが、
+/// **ビルド構成で差し替え可能** にするためコンパイル時 env `MIHARASHI_DEMO_ENDPOINT_URL` があれば
+/// それを使う（account 依存の実サブドメインを AAB ビルドで注入する・ADR-0003 / #743）。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn release_demo_endpoint_url() -> &'static str {
+    option_env!("MIHARASHI_DEMO_ENDPOINT_URL").unwrap_or(DEFAULT_DEMO_ENDPOINT_URL)
+}
+
+/// release ビルドの既定 target＝公開 Demo Endpoint（ADR-0003）。ここを起点に Demo Manifest を
+/// 取り先頭デモを自動ロードする（#743）。URL が壊れていてもホストを殺さないよう、解釈不能なら
+/// エミュレータ loopback（[`DevServerTarget::default`]）に落ちる。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn release_default_target() -> DevServerTarget {
+    parse(release_demo_endpoint_url()).unwrap_or_default()
+}
+
+/// ビルド既定の接続先。**release は公開 Demo Endpoint、debug はエミュレータ loopback** に分ける
+/// （ADR-0003 / #743）。debug 既定（[`DevServerTarget::default`]）は #534 のまま不変で、LAN dev の
+/// 従来経路（URL 入力／QR）はこの分岐に一切影響されない。
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub fn build_default_target() -> DevServerTarget {
+    if cfg!(debug_assertions) {
+        DevServerTarget::default()
+    } else {
+        release_default_target()
+    }
+}
+
+/// 端末 UI が入力した URL（無ければ `None`）を target に解決する。入力が無ければ**ビルド既定** target
+/// に落とす（release=Demo Endpoint / debug=loopback・#743）。バンドル fetch と reload 購読はどちらも
+/// この解決済み target を使う（単一の source of truth = 保持）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn resolve(entered: Option<&str>) -> DevServerTarget {
-    entered.and_then(parse).unwrap_or_default()
+    entered.and_then(parse).unwrap_or_else(build_default_target)
 }
 
 /// 端末 UI が internal data dir に書いた dev-server URL を読み戻す。data dir が無い（`None`）/ ファイル
@@ -267,6 +303,30 @@ mod tests {
         assert_eq!(target.host(), "10.0.2.2");
         assert_eq!(target.port(), 5179);
         assert_eq!(target.path(), "/");
+    }
+
+    #[test]
+    fn the_release_default_is_the_public_demo_endpoint_as_a_named_constant() {
+        // release 既定接続先は公開 Demo Endpoint（ADR-0003）で、名前付き定数（ビルド構成で差し替え可）。
+        // 既定値は https の workers.dev サブドメインで、443 に正規化される（scheme 既定ポート・#740）。
+        let url = release_demo_endpoint_url();
+        assert!(url.starts_with("https://"), "release default must be an https Demo Endpoint URL: {url}");
+        let target = release_default_target();
+        assert_eq!(target.scheme(), Scheme::Https);
+        assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
+        // 既定定数（未上書き時）は Worker 名由来の workers.dev サブドメイン。
+        assert_eq!(DEFAULT_DEMO_ENDPOINT_URL, "https://miharashi-demo-endpoint.workers.dev");
+    }
+
+    #[test]
+    fn the_debug_default_is_the_emulator_loopback_unchanged() {
+        // debug 既定（エミュレータ loopback）は #534 のまま不変で、release の Demo Endpoint とは別物。
+        // host の cargo test は debug ビルドなので、ビルド既定はこの loopback に一致する。
+        assert!(cfg!(debug_assertions), "host tests run in debug");
+        assert_eq!(build_default_target(), DevServerTarget::default());
+        assert_eq!(build_default_target().host(), "10.0.2.2");
+        // release 既定は明確に別物（loopback ではない）。
+        assert_ne!(release_default_target(), DevServerTarget::default());
     }
 
     #[test]

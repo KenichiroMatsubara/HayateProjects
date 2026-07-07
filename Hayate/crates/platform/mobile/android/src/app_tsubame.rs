@@ -40,6 +40,7 @@ use hayate_layer_compositor::RasterCommand;
 use crate::bundle_source;
 use crate::frame_schedule::OnDemandFrameLoop;
 use crate::dev_server_target;
+use crate::demo_manifest;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
 use crate::miharashi_reload::{
     boot_runtime, subscribe_reload, BootError, ReloadSocket, SubscribeReloadOptions,
@@ -99,11 +100,26 @@ pub(crate) fn run(app: AndroidApp) {
     // （生成物）から取る（#530/#533 共有）。
     let host_version = hayate_core::wire::PROTOCOL_VERSION;
 
-    // 接続先 dev-server：端末 UI（Kotlin の EditText）が internal data dir に書いた URL を読み戻して
-    // 1 つの target に解決する（未入力 / 不正なら既定 = エミュレータ loopback、#534）。この target が
-    // バンドル fetch（HTTP）と reload 購読（WS）の**両方**を駆動する＝同じ dev-server を指す（保持）。
-    // 毎 boot/reload で読み直されるので、再接続でも入力値が効く（再接続）。
-    let target = dev_server_target::resolve_entered(app.internal_data_path().as_deref());
+    // 接続先の決定（#534 / #743）。端末 UI（Kotlin の EditText / QR）が internal data dir に書いた URL を
+    // 読み戻し、`demo_manifest::plan_boot` で boot 経路を分ける：
+    //   - URL 入力済み（QR 含む）／debug の未入力（エミュレータ loopback）→ 単一バンドル直 boot（既存経路・不変）。
+    //   - release の**接続先未設定の初回起動** → 公開 Demo Endpoint（ADR-0003）の Demo Manifest を
+    //     OS スタック（#740）で取り、**先頭デモを自動ロード**する（ゼロ入力でデモが動く）。
+    // 解決した 1 つの target が、バンドル fetch（HTTP）と reload 購読（WS）の**両方**を駆動する（保持）。
+    // マニフェスト取得/解釈の失敗は明示エラー＋ URL 入力経路への誘導にして謎クラッシュにしない。
+    let entered = dev_server_target::read_entered_url(app.internal_data_path().as_deref());
+    let (target, autoload_error): (dev_server_target::DevServerTarget, Option<String>) =
+        match demo_manifest::plan_boot(entered.as_deref(), !cfg!(debug_assertions)) {
+            demo_manifest::BootPlan::Direct(t) => (t, None),
+            demo_manifest::BootPlan::ManifestAutoload(endpoint) => {
+                match demo_manifest::first_boot_target_fetched(&endpoint) {
+                    Ok(demo_target) => (demo_target, None),
+                    // 取得/解釈失敗：reload は Demo Endpoint origin に張ったまま（同一 origin・path 非依存）、
+                    // boot は下で明示エラー表示のうえ current=None に留める（URL 入力画面へ誘導）。
+                    Err(err) => (endpoint, Some(err.message())),
+                }
+            }
+        };
 
     // 1 boot：dev-server からバンドルを取得 → Hermes ランタイムを構築（= eval。eval シームは
     // 不変 `new_hermes_app(make_bridge(tree.clone()), bundle)`）→ バンドルの protocol version を
@@ -127,11 +143,18 @@ pub(crate) fn run(app: AndroidApp) {
     };
 
     // 現在駆動中のランタイム（boot 失敗 / 不一致のあいだは None で、pump せず明示エラーのまま回す）。
-    let mut current: Option<Runtime> = match boot() {
-        Ok(runtime) => Some(runtime),
-        Err(error) => {
-            crate::error_overlay::show_error(&report_boot_error(&error));
-            None
+    // マニフェスト取得/解釈に失敗した初回起動（`autoload_error`）は boot せず、その明示エラーを出して
+    // URL 入力経路へ誘導する（謎クラッシュにしない・#743）。
+    let mut current: Option<Runtime> = if let Some(message) = autoload_error {
+        crate::error_overlay::show_error(&message);
+        None
+    } else {
+        match boot() {
+            Ok(runtime) => Some(runtime),
+            Err(error) => {
+                crate::error_overlay::show_error(&report_boot_error(&error));
+                None
+            }
         }
     };
 

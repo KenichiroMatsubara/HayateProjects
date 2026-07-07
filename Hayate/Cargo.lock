@@ -973,6 +973,8 @@ dependencies = [
  "ndk",
  "ndk-context",
  "pollster",
+ "serde",
+ "serde_json",
  "wgpu",
 ]
 

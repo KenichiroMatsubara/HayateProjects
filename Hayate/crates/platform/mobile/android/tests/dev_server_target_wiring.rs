@@ -22,10 +22,15 @@ fn app_tsubame_src() -> String {
 #[test]
 fn host_resolves_the_dev_server_from_the_url_the_device_ui_entered() {
     let src = app_tsubame_src();
-    // 端末 UI が internal data dir に書いた URL を読み戻して target に解決する単一の入口。
+    // 端末 UI が internal data dir に書いた URL を読み戻し（#534）、boot 経路を分ける入口に渡す（#743）。
+    // 入力済み URL は従来どおり単一バンドル直 boot（Direct・既存経路不変）に解決される。
     assert!(
-        src.contains("dev_server_target::resolve_entered"),
-        "the host must resolve the dev-server target from the entered URL (#534)"
+        src.contains("dev_server_target::read_entered_url"),
+        "the host must read the entered dev-server URL back from the device UI (#534/#743)"
+    );
+    assert!(
+        src.contains("demo_manifest::plan_boot"),
+        "the entered URL routes through plan_boot, which keeps entered URLs on the Direct path (#743)"
     );
     // 入力の在り処は `AndroidApp::internal_data_path`（Kotlin の EditText が書く dir）。
     assert!(
