@@ -84,10 +84,10 @@ async fn canvas_and_html_sinks_agree_on_text_content_for_one_op_stream() {
     ];
 
     canvas_renderer
-        .apply_mutations(&ops, &[], texts(&["hi"]))
+        .apply_mutations(&ops, &[], texts(&["hi"]), &[])
         .expect("canvas apply_mutations");
     html_renderer
-        .apply_mutations(&ops, &[], texts(&["hi"]))
+        .apply_mutations(&ops, &[], texts(&["hi"]), &[])
         .expect("html apply_mutations");
 
     // HTML Mode は唯一のフラッシュ境界 render() で DOM を実体化する（ADR-0030）。

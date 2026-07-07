@@ -37,7 +37,7 @@ const OP_SET_MULTILINE: f64 = 18.0;
 /// 1 要素のスタイルを `apply_mutations` で適用する（`OP_SET_STYLE` 1 件）。
 fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
     let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
-    r.apply_mutations(&ops, packed, js_sys::Array::new()).unwrap();
+    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[]).unwrap();
 }
 
 /// 編集可能テキスト内容を `apply_mutations` で設定する（`OP_SET_TEXT_CONTENT` 1 件）。
@@ -45,13 +45,13 @@ fn apply_text_content(r: &mut HayateElementRenderer, id: f64, text: &str) {
     let texts = js_sys::Array::new();
     texts.push(&JsValue::from_str(text));
     let ops = [OP_SET_TEXT_CONTENT, id, 0.0];
-    r.apply_mutations(&ops, &[], texts).unwrap();
+    r.apply_mutations(&ops, &[], texts, &[]).unwrap();
 }
 
 /// 複数行フラグを `apply_mutations` で設定する（`OP_SET_MULTILINE` 1 件）。
 fn apply_multiline(r: &mut HayateElementRenderer, id: f64, multiline: bool) {
     let ops = [OP_SET_MULTILINE, id, if multiline { 1.0 } else { 0.0 }];
-    r.apply_mutations(&ops, &[], js_sys::Array::new()).unwrap();
+    r.apply_mutations(&ops, &[], js_sys::Array::new(), &[]).unwrap();
 }
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {

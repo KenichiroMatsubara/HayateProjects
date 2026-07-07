@@ -410,7 +410,7 @@ fn append_arc_to<S: PathSink>(
 /// 中心 `(cx, cy)`・半径 `r` の円弧を `a0`→`a1`（ラジアン）で 3 次ベジェ列として追加する。
 /// 最短方向へ回り、各セグメントは 90° 以下。始点 `(a0)` へは呼び出し側が既に到達している
 /// 前提（lineTo 済み）。
-fn append_arc<S: PathSink>(sink: &mut S, cx: f32, cy: f32, r: f32, a0: f32, mut a1: f32) {
+fn append_arc<S: PathSink>(sink: &mut S, cx: f32, cy: f32, r: f32, a0: f32, a1: f32) {
     use std::f32::consts::PI;
     // 最短方向の掃引角へ正規化（-π..π）。
     let mut sweep = a1 - a0;
@@ -423,7 +423,6 @@ fn append_arc<S: PathSink>(sink: &mut S, cx: f32, cy: f32, r: f32, a0: f32, mut 
     if sweep.abs() < 1e-6 {
         return;
     }
-    a1 = a0 + sweep;
     let segments = (sweep.abs() / (PI * 0.5)).ceil().max(1.0) as usize;
     let delta = sweep / segments as f32;
     let mut theta = a0;

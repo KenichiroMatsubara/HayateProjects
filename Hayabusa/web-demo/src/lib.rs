@@ -124,7 +124,7 @@ pub async fn boot(canvas: HtmlCanvasElement) -> Result<(), JsValue> {
 
     // ── 2. adapter-web：canvas 上に CPU(tiny-skia) present レンダラ ───────────
     // init() が canvas へポインタ listener を attach する（hit-test → Click は render() で発火）。
-    let mut renderer = HayateElementRenderer::init(canvas).await?;
+    let mut renderer = HayateElementRenderer::init(canvas, None).await?;
     renderer.register_font_bytes(DEFAULT_FONT_FAMILY, NOTO_SANS_JP);
     renderer.set_background_color(0.043, 0.063, 0.125); // #0b1020
 
