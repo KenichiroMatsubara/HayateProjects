@@ -2,6 +2,7 @@
 
 import { generateCatalog } from './gen-catalog.mjs';
 import { generateCodec } from './gen-codec.mjs';
+import { generateRecorder } from './gen-recorder.mjs';
 import { generateDelivery } from './gen-delivery.mjs';
 import { generateWire } from './gen-wire.mjs';
 import { writeIndex } from './gen-index.mjs';
@@ -15,6 +16,7 @@ import { generateElementKind } from './gen-element-kind.mjs';
 generateWire();
 generateCatalog();
 generateCodec();
+generateRecorder();
 generateDelivery();
 writeIndex();
 generateStyleTypes();

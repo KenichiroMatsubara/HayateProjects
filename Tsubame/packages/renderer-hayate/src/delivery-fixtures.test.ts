@@ -45,6 +45,10 @@ function eventFields(ev: EventPayload): Record<string, string | number> {
       return { x: ev.x, y: ev.y, pointer_kind: ev.pointerKind };
     case 'fetch_font':
       return { family: ev.family };
+    case 'selection_change':
+      return {};
+    case 'layout_resize':
+      return { target_id: ev.targetId, width: ev.width, height: ev.height };
     default: {
       const _exhaustive: never = ev;
       return _exhaustive;
