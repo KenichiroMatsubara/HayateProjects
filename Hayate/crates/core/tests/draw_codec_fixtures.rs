@@ -18,6 +18,41 @@ fn f32_at(v: &serde_json::Value) -> f32 {
     v.as_f64().expect("number") as f32
 }
 
+/// fixture の semantic `paint` を `DrawPaint` へ解釈する（未指定フィールドは既定）。
+fn parse_paint(paint: &serde_json::Value) -> DrawPaint {
+    let mut out = DrawPaint::default();
+    if let Some(color) = paint["color"].as_array() {
+        out.color = [
+            f32_at(&color[0]),
+            f32_at(&color[1]),
+            f32_at(&color[2]),
+            f32_at(&color[3]),
+        ];
+    }
+    if let Some(v) = paint["fillRule"].as_f64() {
+        out.fill_rule = v as f32;
+    }
+    if let Some(v) = paint["strokeWidth"].as_f64() {
+        out.stroke_width = v as f32;
+    }
+    if let Some(v) = paint["cap"].as_f64() {
+        out.cap = v as f32;
+    }
+    if let Some(v) = paint["join"].as_f64() {
+        out.join = v as f32;
+    }
+    if let Some(v) = paint["miterLimit"].as_f64() {
+        out.miter_limit = v as f32;
+    }
+    if let Some(dash) = paint["dash"].as_array() {
+        out.dash = dash.iter().map(f32_at).collect();
+    }
+    if let Some(v) = paint["dashOffset"].as_f64() {
+        out.dash_offset = v as f32;
+    }
+    out
+}
+
 /// fixture の semantic `commands` を decode 期待値（`Vec<DrawCommand>`）へ解釈する。
 fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
     let mut out = Vec::new();
@@ -79,24 +114,14 @@ fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
                 cy: f32_at(&command["cy"]),
                 radius: f32_at(&command["radius"]),
             }),
-            "fill" => {
-                let mut paint = DrawPaint::default();
-                if let Some(color) = command["paint"]["color"].as_array() {
-                    paint.color = [
-                        f32_at(&color[0]),
-                        f32_at(&color[1]),
-                        f32_at(&color[2]),
-                        f32_at(&color[3]),
-                    ];
-                }
-                if let Some(rule) = command["paint"]["fillRule"].as_f64() {
-                    paint.fill_rule = rule as f32;
-                }
-                out.push(DrawCommand::FillPath {
-                    verbs: std::mem::take(&mut verbs),
-                    paint,
-                });
-            }
+            "fill" => out.push(DrawCommand::FillPath {
+                verbs: std::mem::take(&mut verbs),
+                paint: parse_paint(&command["paint"]),
+            }),
+            "stroke" => out.push(DrawCommand::StrokePath {
+                verbs: std::mem::take(&mut verbs),
+                paint: parse_paint(&command["paint"]),
+            }),
             other => panic!("fixture uses unknown draw command {other}"),
         }
     }

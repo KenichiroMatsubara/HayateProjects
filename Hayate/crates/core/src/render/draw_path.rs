@@ -27,6 +27,69 @@ impl DrawFillRule {
     }
 }
 
+/// stroke の線端（`line_cap` enum・#727）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrawLineCap {
+    Butt,
+    Round,
+    Square,
+}
+
+impl DrawLineCap {
+    pub fn from_wire(raw: f32) -> Self {
+        match raw as u32 {
+            1 => Self::Round,
+            2 => Self::Square,
+            _ => Self::Butt,
+        }
+    }
+}
+
+/// stroke の頂点の継ぎ方（`line_join` enum・#727）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrawLineJoin {
+    Miter,
+    Round,
+    Bevel,
+}
+
+impl DrawLineJoin {
+    pub fn from_wire(raw: f32) -> Self {
+        match raw as u32 {
+            1 => Self::Round,
+            2 => Self::Bevel,
+            _ => Self::Miter,
+        }
+    }
+}
+
+/// STROKE が描く輪郭のスタイル（#727）。painter に渡す前に `DrawPaint` の wire 値
+/// （enum は f32）を意味型へ解決したもの。
+#[derive(Debug, Clone, PartialEq)]
+pub struct StrokeStyle {
+    pub width: f32,
+    pub cap: DrawLineCap,
+    pub join: DrawLineJoin,
+    pub miter_limit: f32,
+    /// on/off 間隔の並び（論理 px）。空なら実線。
+    pub dash: Vec<f32>,
+    pub dash_offset: f32,
+}
+
+impl StrokeStyle {
+    /// tagged paint packet（`DrawPaint`）の stroke フィールドから解決する。
+    pub fn from_paint(paint: &crate::wire::protocol::DrawPaint) -> Self {
+        Self {
+            width: paint.stroke_width,
+            cap: DrawLineCap::from_wire(paint.cap),
+            join: DrawLineJoin::from_wire(paint.join),
+            miter_limit: paint.miter_limit,
+            dash: paint.dash.clone(),
+            dash_offset: paint.dash_offset,
+        }
+    }
+}
+
 /// painter 側パスビルダの最小サーフェス。各 painter は自前のパス型
 /// （tiny-skia `PathBuilder` / kurbo `BezPath`）にこの 5 プリミティブだけを橋渡しし、
 /// 曲線・便宜形状・arcTo の展開は [`build_draw_path`] に任せる。

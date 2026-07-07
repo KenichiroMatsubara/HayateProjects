@@ -120,5 +120,15 @@
       { "name": "radius", "type": "f32" }
     ],
     "description": "Append a closed circle subpath centred at (cx, cy) (convenience shape; #726)."
+  },
+  {
+    "name": "STROKE",
+    "value": 11,
+    "drawRole": "draw-command",
+    "variable_length": true,
+    "params": [
+      { "name": "paint_len", "type": "usize" }
+    ],
+    "description": "Stroke the path accumulated since the previous draw command (#727). Shares the tagged draw-paint packet with FILL; the stroke fields (strokeWidth / cap / join / miterLimit / dash / dashOffset) drive the outline, `color` its ink. `paint_len` slots of tagged draw-paint fields follow inline; unspecified fields take their defaults."
   }
 ]

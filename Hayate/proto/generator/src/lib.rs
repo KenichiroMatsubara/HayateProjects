@@ -836,6 +836,13 @@ fn generate_draw_codec(proto: &Proto) -> String {
             "COLOR" => "[0.0, 0.0, 0.0, 1.0]".to_string(),
             // fill_rule enum 既定 nonZero（0）。
             "FILL_RULE" => "0.0".to_string(),
+            // stroke 既定（#727）: width 1・cap butt(0)・join miter(0)・miterLimit 4・dash なし・offset 0。
+            "STROKE_WIDTH" => "1.0".to_string(),
+            "CAP" => "0.0".to_string(),
+            "JOIN" => "0.0".to_string(),
+            "MITER_LIMIT" => "4.0".to_string(),
+            "DASH" => "Vec::new()".to_string(),
+            "DASH_OFFSET" => "0.0".to_string(),
             other => panic!("draw_paint_fields.{other}: unhandled default (add an arm)"),
         };
         out.push_str(&format!(
@@ -857,6 +864,9 @@ fn generate_draw_codec(proto: &Proto) -> String {
             "FILL" => out.push_str(
                 "    FillPath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
             ),
+            "STROKE" => out.push_str(
+                "    StrokePath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
+            ),
             other => panic!("draw_ops.{other}: unhandled draw-command variant (add an arm)"),
         }
     }
@@ -871,6 +881,27 @@ fn generate_draw_codec(proto: &Proto) -> String {
     out.push_str("        i += 1;\n");
     out.push_str("        match field {\n");
     for field in &proto.draw_paint_fields {
+        if field.variable_length {
+            // count プレフィックス付き f32 リスト（dash 間隔・#727）。style tag の可変長列と同型。
+            out.push_str(&format!("            DRAW_PAINT_{} => {{\n", field.name));
+            out.push_str(&format!(
+                "                if i >= packed.len() {{ return Err(\"draw paint field {} truncated\".to_string()); }}\n",
+                field.name
+            ));
+            out.push_str("                let count = packed[i] as usize;\n");
+            out.push_str("                i += 1;\n");
+            out.push_str(&format!(
+                "                if i + count > packed.len() {{ return Err(\"draw paint field {} list truncated\".to_string()); }}\n",
+                field.name
+            ));
+            out.push_str(&format!(
+                "                paint.{} = packed[i..i + count].to_vec();\n",
+                field.name.to_lowercase()
+            ));
+            out.push_str("                i += count;\n");
+            out.push_str("            }\n");
+            continue;
+        }
         let slots: usize = field.params.iter().map(param_slots).sum();
         out.push_str(&format!("            DRAW_PAINT_{} => {{\n", field.name));
         out.push_str(&format!(
@@ -951,6 +982,17 @@ fn generate_draw_codec(proto: &Proto) -> String {
                 out.push_str("                out.push(DrawCommand::FillPath { verbs: std::mem::take(&mut verbs), paint });\n");
                 out.push_str("            }\n");
             }
+            "STROKE" => {
+                out.push_str("            DRAW_OP_STROKE => {\n");
+                out.push_str("                if i >= data.len() { return Err(\"draw op STROKE truncated\".to_string()); }\n");
+                out.push_str("                let paint_len = data[i] as usize;\n");
+                out.push_str("                i += 1;\n");
+                out.push_str("                if i + paint_len > data.len() { return Err(\"draw op STROKE paint packet truncated\".to_string()); }\n");
+                out.push_str("                let paint = decode_draw_paint(&data[i..i + paint_len])?;\n");
+                out.push_str("                i += paint_len;\n");
+                out.push_str("                out.push(DrawCommand::StrokePath { verbs: std::mem::take(&mut verbs), paint });\n");
+                out.push_str("            }\n");
+            }
             other => panic!("draw_ops.{other}: unhandled draw-command decode (add an arm)"),
         }
     }
@@ -963,8 +1005,11 @@ fn generate_draw_codec(proto: &Proto) -> String {
     out
 }
 
-/// draw paint field の Rust 型（複数 param は f32 配列に平坦化）。
+/// draw paint field の Rust 型（複数 param は f32 配列に平坦化。variable_length は Vec<f32>）。
 fn draw_paint_field_rust_type(field: &Entry) -> String {
+    if field.variable_length {
+        return "Vec<f32>".to_string();
+    }
     let slots: usize = field.params.iter().map(param_slots).sum();
     if field.params.len() > 1 {
         format!("[f32; {}]", slots)

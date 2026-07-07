@@ -1,6 +1,6 @@
 use hayate_core::{
-    DrawFillRule, PathSink, PathVerb, RenderImage, ScenePainter, ShadowOccluder, TextRunData,
-    build_draw_path, is_notdef, missing_glyph_placeholder,
+    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, ScenePainter,
+    ShadowOccluder, StrokeStyle, TextRunData, build_draw_path, is_notdef, missing_glyph_placeholder,
 };
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
@@ -178,6 +178,52 @@ impl ScenePainter for VelloPainter<'_> {
         // verbs はボーダーボックス相対。原点 `(x, y)` は平行移動で与える。
         scene.fill(
             rule,
+            Affine::translate((f64::from(x), f64::from(y))),
+            brush,
+            None,
+            &sink.path,
+        );
+    }
+
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    ) {
+        use vello::kurbo::{Cap, Join, Stroke};
+        if stroke.width <= 0.0 {
+            return;
+        }
+        let mut sink = KurboPathSink::default();
+        build_draw_path(verbs, &mut sink);
+        if sink.path.is_empty() {
+            return;
+        }
+        let mut style = Stroke::new(f64::from(stroke.width));
+        style.miter_limit = f64::from(stroke.miter_limit);
+        style.join = match stroke.join {
+            DrawLineJoin::Miter => Join::Miter,
+            DrawLineJoin::Round => Join::Round,
+            DrawLineJoin::Bevel => Join::Bevel,
+        };
+        let cap = match stroke.cap {
+            DrawLineCap::Butt => Cap::Butt,
+            DrawLineCap::Round => Cap::Round,
+            DrawLineCap::Square => Cap::Square,
+        };
+        style.start_cap = cap;
+        style.end_cap = cap;
+        if !stroke.dash.is_empty() {
+            style.dash_pattern = stroke.dash.iter().map(|d| f64::from(*d)).collect();
+            style.dash_offset = f64::from(stroke.dash_offset);
+        }
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        scene.stroke(
+            &style,
             Affine::translate((f64::from(x), f64::from(y))),
             brush,
             None,

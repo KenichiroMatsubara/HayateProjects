@@ -14,6 +14,7 @@ import {
   appendDrawQuadraticTo,
   appendDrawRect,
   appendDrawRrect,
+  appendDrawStroke,
   type DrawPaint,
 } from '@tsubame/protocol-generated/codec';
 
@@ -31,6 +32,7 @@ interface DrawFixtureCommand {
     | 'lineTo'
     | 'close'
     | 'fill'
+    | 'stroke'
     | 'quadraticTo'
     | 'cubicTo'
     | 'arcTo'
@@ -118,6 +120,9 @@ function encodeCommands(commands: readonly DrawFixtureCommand[]): number[] {
         break;
       case 'fill':
         appendDrawFill(draws, command.paint ?? {});
+        break;
+      case 'stroke':
+        appendDrawStroke(draws, command.paint ?? {});
         break;
     }
   }

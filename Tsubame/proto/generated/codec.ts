@@ -906,6 +906,12 @@ export function appendSetDraw(buf: number[], id: number, drawOffset: number, dra
 export interface DrawPaint {
   readonly color?: readonly [number, number, number, number];
   readonly fillRule?: number;
+  readonly strokeWidth?: number;
+  readonly cap?: number;
+  readonly join?: number;
+  readonly miterLimit?: number;
+  readonly dash?: readonly number[];
+  readonly dashOffset?: number;
 }
 
 export function appendDrawMoveTo(draws: number[], x: number, y: number): void {
@@ -929,6 +935,24 @@ export function appendDrawFill(draws: number[], paint: DrawPaint): void {
   }
   if (paint.fillRule !== undefined) {
     draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+  }
+  if (paint.strokeWidth !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+  }
+  if (paint.cap !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+  }
+  if (paint.join !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+  }
+  if (paint.miterLimit !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+  }
+  if (paint.dash !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH, paint.dash.length, ...paint.dash);
+  }
+  if (paint.dashOffset !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
   }
   draws[lenIndex] = draws.length - lenIndex - 1;
 }
@@ -959,4 +983,35 @@ export function appendDrawOval(draws: number[], x: number, y: number, width: num
 
 export function appendDrawCircle(draws: number[], cx: number, cy: number, radius: number): void {
   draws.push(DRAW_OP.CIRCLE, cx, cy, radius);
+}
+
+export function appendDrawStroke(draws: number[], paint: DrawPaint): void {
+  draws.push(DRAW_OP.STROKE);
+  const lenIndex = draws.length;
+  draws.push(0);
+  if (paint.color !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.COLOR, ...paint.color);
+  }
+  if (paint.fillRule !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+  }
+  if (paint.strokeWidth !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+  }
+  if (paint.cap !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+  }
+  if (paint.join !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+  }
+  if (paint.miterLimit !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+  }
+  if (paint.dash !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH, paint.dash.length, ...paint.dash);
+  }
+  if (paint.dashOffset !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
+  }
+  draws[lenIndex] = draws.length - lenIndex - 1;
 }

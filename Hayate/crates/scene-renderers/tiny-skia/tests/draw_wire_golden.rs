@@ -11,9 +11,10 @@ use std::path::PathBuf;
 
 use hayate_core::wire::{
     apply_mutations, DRAW_OP_ARC_TO, DRAW_OP_CIRCLE, DRAW_OP_CLOSE, DRAW_OP_CUBIC_TO, DRAW_OP_FILL,
-    DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT, DRAW_OP_RRECT, DRAW_PAINT_COLOR,
-    DRAW_PAINT_FILL_RULE, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW, OP_SET_ROOT,
-    OP_SET_STYLE, TAG_BACKGROUND_COLOR, TAG_HEIGHT, TAG_OVERFLOW, TAG_WIDTH,
+    DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT, DRAW_OP_RRECT, DRAW_OP_STROKE, DRAW_PAINT_CAP,
+    DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE, DRAW_PAINT_JOIN, DRAW_PAINT_MITER_LIMIT,
+    DRAW_PAINT_STROKE_WIDTH, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW,
+    OP_SET_ROOT, OP_SET_STYLE, TAG_BACKGROUND_COLOR, TAG_HEIGHT, TAG_OVERFLOW, TAG_WIDTH,
 };
 use hayate_core::ElementTree;
 use hayate_scene_test_support::golden::assert_pixels_match_golden;
@@ -327,4 +328,95 @@ fn wire_arc_to_rounds_a_corner_matches_golden() {
     assert_near(pixel(&pixels, CANVAS_W, 15, 15), [0, 102, 204, 255], 3, "the sharp top-left corner is filled");
     assert_clear(pixel(&pixels, CANVAS_W, 86, 14), "the arc-rounded top-right corner is cut away");
     assert_pixels_match_golden(&golden_path("draw_wire_arc_to_corner"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+/// [STROKE, paint_len, ...paint] を組む（#727）。
+fn stroke_cmd(paint: &[f32]) -> Vec<f32> {
+    let mut v = vec![DRAW_OP_STROKE as f32, paint.len() as f32];
+    v.extend_from_slice(paint);
+    v
+}
+
+// cap 3 種（#727）: butt は端点で止まり、square / round は width/2 分だけ端点の外へ伸びる。
+#[test]
+fn wire_stroke_caps_match_golden() {
+    let black = [DRAW_PAINT_COLOR as f32, 0.0, 0.0, 0.0, 1.0];
+    let mut draws: Vec<f32> = Vec::new();
+    for (row_y, cap) in [(20.0_f32, 0.0_f32), (50.0, 2.0), (80.0, 1.0)] {
+        // 30..70 の太さ 12 の水平線。
+        draws.extend([DRAW_OP_MOVE_TO as f32, 30.0, row_y, DRAW_OP_LINE_TO as f32, 70.0, row_y]);
+        let mut paint = black.to_vec();
+        paint.extend([DRAW_PAINT_STROKE_WIDTH as f32, 12.0, DRAW_PAINT_CAP as f32, cap]);
+        draws.extend(stroke_cmd(&paint));
+    }
+    let pixels = single_view_draw(&draws);
+    // 線の本体はどれも塗られる。
+    assert_near(pixel(&pixels, CANVAS_W, 50, 20), [0, 0, 0, 255], 2, "butt line body");
+    // 端点 (70) の 3px 外側: butt は無し、square / round は張り出す。
+    assert_clear(pixel(&pixels, CANVAS_W, 73, 20), "butt cap stops at the endpoint");
+    assert_near(pixel(&pixels, CANVAS_W, 73, 50), [0, 0, 0, 255], 2, "square cap extends past the endpoint");
+    assert_near(pixel(&pixels, CANVAS_W, 72, 80), [0, 0, 0, 255], 2, "round cap extends past the endpoint");
+    assert_pixels_match_golden(&golden_path("draw_wire_stroke_caps"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// join 3 種（#727）: 直角の外側コーナーで miter は尖り、bevel は削られる。
+#[test]
+fn wire_stroke_joins_match_golden() {
+    let black = [DRAW_PAINT_COLOR as f32, 0.0, 0.0, 0.0, 1.0];
+    let mut draws: Vec<f32> = Vec::new();
+    // (miter, bevel, round) を x でずらして 3 つの L 字を描く。
+    for (cx, join) in [(30.0_f32, 0.0_f32), (55.0, 2.0), (80.0, 1.0)] {
+        draws.extend([
+            DRAW_OP_MOVE_TO as f32, cx - 15.0, 40.0,
+            DRAW_OP_LINE_TO as f32, cx, 40.0,
+            DRAW_OP_LINE_TO as f32, cx, 55.0,
+        ]);
+        let mut paint = black.to_vec();
+        paint.extend([
+            DRAW_PAINT_STROKE_WIDTH as f32, 10.0,
+            DRAW_PAINT_JOIN as f32, join,
+            DRAW_PAINT_MITER_LIMIT as f32, 10.0,
+        ]);
+        draws.extend(stroke_cmd(&paint));
+    }
+    let pixels = single_view_draw(&draws);
+    // 外側コーナー (cx+4, 36): miter は塗られ、bevel は削れて背景。
+    assert_near(pixel(&pixels, CANVAS_W, 34, 36), [0, 0, 0, 255], 2, "miter join fills the sharp corner");
+    assert_clear(pixel(&pixels, CANVAS_W, 59, 36), "bevel join cuts the corner");
+    assert_pixels_match_golden(&golden_path("draw_wire_stroke_joins"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// dash（破線）+ 曲線パス（#727）: 上段は直線破線（on/off を厳密に検証）、下段は
+// 破線を載せた 3 次ベジェ曲線（golden で模様を固定）。
+#[test]
+fn wire_stroke_dash_on_line_and_curve_matches_golden() {
+    let mut draws: Vec<f32> = Vec::new();
+    // dash [12,8]: on 12 / off 8。stroke width 5、黒。
+    let dash_paint = |extra: &[f32]| -> Vec<f32> {
+        let mut p = vec![
+            DRAW_PAINT_COLOR as f32, 0.0, 0.0, 0.0, 1.0,
+            DRAW_PAINT_STROKE_WIDTH as f32, 5.0,
+            DRAW_PAINT_DASH as f32, 2.0, 12.0, 8.0,
+        ];
+        p.extend_from_slice(extra);
+        p
+    };
+    // 上段: 直線破線 y=25, x 10..90。
+    draws.extend([DRAW_OP_MOVE_TO as f32, 10.0, 25.0, DRAW_OP_LINE_TO as f32, 90.0, 25.0]);
+    draws.extend(stroke_cmd(&dash_paint(&[])));
+    // 下段: 破線を載せた曲線。
+    draws.extend([
+        DRAW_OP_MOVE_TO as f32, 10.0, 70.0,
+        DRAW_OP_CUBIC_TO as f32, 35.0, 45.0, 65.0, 95.0, 90.0, 70.0,
+    ]);
+    draws.extend(stroke_cmd(&dash_paint(&[])));
+
+    let pixels = single_view_draw(&draws);
+    // 直線: on(10..22) / off(22..30) / on(30..42)。
+    assert_near(pixel(&pixels, CANVAS_W, 14, 25), [0, 0, 0, 255], 2, "first dash is inked");
+    assert_clear(pixel(&pixels, CANVAS_W, 26, 25), "the gap between dashes is empty");
+    assert_near(pixel(&pixels, CANVAS_W, 36, 25), [0, 0, 0, 255], 2, "second dash is inked");
+    // 曲線: 先頭の dash が塗られている。
+    assert_near(pixel(&pixels, CANVAS_W, 11, 70), [0, 0, 0, 255], 3, "the dashed curve starts inked");
+    assert_pixels_match_golden(&golden_path("draw_wire_stroke_dash"), &pixels, CANVAS_W, CANVAS_H);
 }

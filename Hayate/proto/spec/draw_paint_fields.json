@@ -15,5 +15,42 @@
     "value": 1,
     "params": [{ "name": "rule", "type": "f32" }],
     "description": "Fill rule for FILL (fill_rule enum: 0 = nonZero winding, 1 = evenOdd; #726). Default nonZero. evenOdd leaves a hole where an odd number of contours overlap."
+  },
+  {
+    "name": "STROKE_WIDTH",
+    "value": 2,
+    "params": [{ "name": "width", "type": "f32" }],
+    "description": "Stroke width in logical px for STROKE (#727). Default 1."
+  },
+  {
+    "name": "CAP",
+    "value": 3,
+    "params": [{ "name": "cap", "type": "f32" }],
+    "description": "Stroke line cap (line_cap enum: 0 = butt, 1 = round, 2 = square; #727). Default butt."
+  },
+  {
+    "name": "JOIN",
+    "value": 4,
+    "params": [{ "name": "join", "type": "f32" }],
+    "description": "Stroke line join (line_join enum: 0 = miter, 1 = round, 2 = bevel; #727). Default miter."
+  },
+  {
+    "name": "MITER_LIMIT",
+    "value": 5,
+    "params": [{ "name": "limit", "type": "f32" }],
+    "description": "Miter limit for miter joins (#727). Default 4."
+  },
+  {
+    "name": "DASH",
+    "value": 6,
+    "variable_length": true,
+    "params": [{ "name": "intervals", "type": "f32" }],
+    "description": "Stroke dash pattern (#727): a count-prefixed list of on/off interval lengths in logical px. Empty = solid. Encoded as [DASH, count, i0, i1, …]; pair with DASH_OFFSET for the starting phase."
+  },
+  {
+    "name": "DASH_OFFSET",
+    "value": 7,
+    "params": [{ "name": "offset", "type": "f32" }],
+    "description": "Starting phase offset into the dash pattern in logical px (#727). Default 0."
   }
 ]

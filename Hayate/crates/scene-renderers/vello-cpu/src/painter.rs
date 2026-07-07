@@ -1,6 +1,6 @@
 use hayate_core::{
-    build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, PathSink, PathVerb,
-    RenderImage, RenderImageAlphaType, ScenePainter, TextRunData,
+    build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
+    PathSink, PathVerb, RenderImage, RenderImageAlphaType, ScenePainter, StrokeStyle, TextRunData,
 };
 use skrifa::{
     instance::{LocationRef, NormalizedCoord, Size},
@@ -129,6 +129,47 @@ impl ScenePainter for VelloCpuPainter<'_> {
         self.context.set_paint(to_color(color));
         self.context.set_fill_rule(rule);
         self.context.fill_path(&sink.path);
+    }
+
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    ) {
+        if stroke.width <= 0.0 {
+            return;
+        }
+        let mut sink = CpuKurboPathSink { path: BezPath::new() };
+        build_draw_path(verbs, &mut sink);
+        if sink.path.is_empty() {
+            return;
+        }
+        let mut style = Stroke::new(f64::from(stroke.width));
+        style.miter_limit = f64::from(stroke.miter_limit);
+        style.join = match stroke.join {
+            DrawLineJoin::Miter => Join::Miter,
+            DrawLineJoin::Round => Join::Round,
+            DrawLineJoin::Bevel => Join::Bevel,
+        };
+        let cap = match stroke.cap {
+            DrawLineCap::Butt => Cap::Butt,
+            DrawLineCap::Round => Cap::Round,
+            DrawLineCap::Square => Cap::Square,
+        };
+        style.start_cap = cap;
+        style.end_cap = cap;
+        if !stroke.dash.is_empty() {
+            style.dash_pattern = stroke.dash.iter().map(|d| f64::from(*d)).collect();
+            style.dash_offset = f64::from(stroke.dash_offset);
+        }
+        self.context
+            .set_transform(self.state.transform * Affine::translate((f64::from(x), f64::from(y))));
+        self.context.set_paint(to_color(color));
+        self.context.set_stroke(style);
+        self.context.stroke_path(&sink.path);
     }
 
     fn stroke_dashed_border(

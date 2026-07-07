@@ -42,12 +42,19 @@ export const DRAW_OP = {
   RRECT: 8,
   OVAL: 9,
   CIRCLE: 10,
+  STROKE: 11,
 } as const;
 export type DRAW_OP = typeof DRAW_OP;
 
 export const DRAW_PAINT_FIELD = {
   COLOR: 0,
   FILL_RULE: 1,
+  STROKE_WIDTH: 2,
+  CAP: 3,
+  JOIN: 4,
+  MITER_LIMIT: 5,
+  DASH: 6,
+  DASH_OFFSET: 7,
 } as const;
 export type DRAW_PAINT_FIELD = typeof DRAW_PAINT_FIELD;
 
@@ -418,6 +425,20 @@ export const FILL_RULE = {
   evenOdd: 1,
 } as const;
 export type FILL_RULE = typeof FILL_RULE;
+
+export const LINE_CAP = {
+  butt: 0,
+  round: 1,
+  square: 2,
+} as const;
+export type LINE_CAP = typeof LINE_CAP;
+
+export const LINE_JOIN = {
+  miter: 0,
+  round: 1,
+  bevel: 2,
+} as const;
+export type LINE_JOIN = typeof LINE_JOIN;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

@@ -1,6 +1,7 @@
 use hayate_core::{
-    DrawFillRule, PathSink, PathVerb, RenderImage, RenderImageAlphaType, ScenePainter,
-    ShadowOccluder, TextRunData, build_draw_path, is_notdef, missing_glyph_placeholder,
+    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, RenderImageAlphaType,
+    ScenePainter, ShadowOccluder, StrokeStyle, TextRunData, build_draw_path, is_notdef,
+    missing_glyph_placeholder,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -128,6 +129,44 @@ impl ScenePainter for TinySkiaPainter<'_> {
             DrawFillRule::EvenOdd => FillRule::EvenOdd,
         };
         self.pixmap.fill_path(&path, &paint, rule, transform, mask);
+    }
+
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    ) {
+        if stroke.width <= 0.0 {
+            return;
+        }
+        let Some(path) = verbs_to_path(verbs) else {
+            return;
+        };
+        let transform = self.state.transform.pre_translate(x, y);
+        let mask = self.state.clip_masks.last();
+        let paint = color_to_paint(color);
+        let mut sk = Stroke {
+            width: stroke.width,
+            miter_limit: stroke.miter_limit,
+            line_cap: match stroke.cap {
+                DrawLineCap::Butt => LineCap::Butt,
+                DrawLineCap::Round => LineCap::Round,
+                DrawLineCap::Square => LineCap::Square,
+            },
+            line_join: match stroke.join {
+                DrawLineJoin::Miter => LineJoin::Miter,
+                DrawLineJoin::Round => LineJoin::Round,
+                DrawLineJoin::Bevel => LineJoin::Bevel,
+            },
+            ..Stroke::default()
+        };
+        if !stroke.dash.is_empty() {
+            sk.dash = tiny_skia::StrokeDash::new(stroke.dash.clone(), stroke.dash_offset);
+        }
+        self.pixmap.stroke_path(&path, &paint, &sk, transform, mask);
     }
 
     fn fill_blurred_rounded_rect(

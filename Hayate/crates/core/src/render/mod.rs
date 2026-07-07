@@ -12,7 +12,9 @@ pub use missing_glyph::{
     FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, is_notdef,
     missing_glyph_placeholder,
 };
-pub use draw_path::{DrawFillRule, PathSink, build_draw_path};
+pub use draw_path::{
+    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, StrokeStyle, build_draw_path,
+};
 pub use painter::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,
     render_scene_graph,

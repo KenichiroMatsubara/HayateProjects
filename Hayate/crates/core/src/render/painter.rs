@@ -1,5 +1,5 @@
 use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
-use crate::render::draw_path::DrawFillRule;
+use crate::render::draw_path::{DrawFillRule, StrokeStyle};
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
 
@@ -71,6 +71,13 @@ pub enum DrawOp {
         y: f32,
         verbs: Vec<PathVerb>,
         fill_rule: DrawFillRule,
+        color: [f32; 4],
+    },
+    StrokePath {
+        x: f32,
+        y: f32,
+        verbs: Vec<PathVerb>,
+        stroke: StrokeStyle,
         color: [f32; 4],
     },
     PushTransform {
@@ -209,6 +216,19 @@ pub trait ScenePainter {
         y: f32,
         verbs: &[PathVerb],
         fill_rule: DrawFillRule,
+        color: [f32; 4],
+    );
+
+    /// draw display list のパスを輪郭描画する（#727）。`stroke` は幅・cap・join・
+    /// miterLimit・dash を解決済みの [`StrokeStyle`]。`(x, y)` はボーダーボックス左上、
+    /// `verbs` はその相対パス。曲線・便宜形状・arcTo は `fill_path` と同じく
+    /// [`crate::render::build_draw_path`] が展開する。
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
         color: [f32; 4],
     );
 
@@ -385,6 +405,23 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    ) {
+        self.ops.push(DrawOp::StrokePath {
+            x,
+            y,
+            verbs: verbs.to_vec(),
+            stroke: stroke.clone(),
+            color,
+        });
+    }
+
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
         self.ops.push(DrawOp::DrawTextRun {
             x,
@@ -508,6 +545,16 @@ impl ScenePainter for NullPainter {
         _y: f32,
         _verbs: &[PathVerb],
         _fill_rule: DrawFillRule,
+        _color: [f32; 4],
+    ) {
+    }
+
+    fn stroke_path(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _verbs: &[PathVerb],
+        _stroke: &StrokeStyle,
         _color: [f32; 4],
     ) {
     }
@@ -705,6 +752,15 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
                             *y,
                             verbs,
                             DrawFillRule::from_wire(paint.fill_rule),
+                            paint.color,
+                        );
+                    }
+                    crate::wire::protocol::DrawCommand::StrokePath { verbs, paint } => {
+                        painter.stroke_path(
+                            *x,
+                            *y,
+                            verbs,
+                            &StrokeStyle::from_paint(paint),
                             paint.color,
                         );
                     }

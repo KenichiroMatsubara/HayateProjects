@@ -1465,10 +1465,17 @@ pub const DRAW_OP_RECT: u32 = 7;
 pub const DRAW_OP_RRECT: u32 = 8;
 pub const DRAW_OP_OVAL: u32 = 9;
 pub const DRAW_OP_CIRCLE: u32 = 10;
+pub const DRAW_OP_STROKE: u32 = 11;
 
 // Draw paint field constants (tagged paint packet; draw_paint_fields.json)
 pub const DRAW_PAINT_COLOR: u32 = 0;
 pub const DRAW_PAINT_FILL_RULE: u32 = 1;
+pub const DRAW_PAINT_STROKE_WIDTH: u32 = 2;
+pub const DRAW_PAINT_CAP: u32 = 3;
+pub const DRAW_PAINT_JOIN: u32 = 4;
+pub const DRAW_PAINT_MITER_LIMIT: u32 = 5;
+pub const DRAW_PAINT_DASH: u32 = 6;
+pub const DRAW_PAINT_DASH_OFFSET: u32 = 7;
 
 // Path verb of a draw display list (drawRole=path-verb)
 #[derive(Debug, Clone, PartialEq)]
@@ -1535,6 +1542,12 @@ pub enum PathVerb {
 pub struct DrawPaint {
     pub color: [f32; 4],
     pub fill_rule: f32,
+    pub stroke_width: f32,
+    pub cap: f32,
+    pub join: f32,
+    pub miter_limit: f32,
+    pub dash: Vec<f32>,
+    pub dash_offset: f32,
 }
 
 impl Default for DrawPaint {
@@ -1542,6 +1555,12 @@ impl Default for DrawPaint {
         Self {
             color: [0.0, 0.0, 0.0, 1.0],
             fill_rule: 0.0,
+            stroke_width: 1.0,
+            cap: 0.0,
+            join: 0.0,
+            miter_limit: 4.0,
+            dash: Vec::new(),
+            dash_offset: 0.0,
         }
     }
 }
@@ -1550,6 +1569,10 @@ impl Default for DrawPaint {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DrawCommand {
     FillPath {
+        verbs: Vec<PathVerb>,
+        paint: DrawPaint,
+    },
+    StrokePath {
         verbs: Vec<PathVerb>,
         paint: DrawPaint,
     },
@@ -1570,6 +1593,39 @@ pub fn decode_draw_paint(packed: &[f32]) -> Result<DrawPaint, String> {
             DRAW_PAINT_FILL_RULE => {
                 if i + 1 > packed.len() { return Err("draw paint field FILL_RULE truncated".to_string()); }
                 paint.fill_rule = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_STROKE_WIDTH => {
+                if i + 1 > packed.len() { return Err("draw paint field STROKE_WIDTH truncated".to_string()); }
+                paint.stroke_width = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_CAP => {
+                if i + 1 > packed.len() { return Err("draw paint field CAP truncated".to_string()); }
+                paint.cap = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_JOIN => {
+                if i + 1 > packed.len() { return Err("draw paint field JOIN truncated".to_string()); }
+                paint.join = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_MITER_LIMIT => {
+                if i + 1 > packed.len() { return Err("draw paint field MITER_LIMIT truncated".to_string()); }
+                paint.miter_limit = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_DASH => {
+                if i >= packed.len() { return Err("draw paint field DASH truncated".to_string()); }
+                let count = packed[i] as usize;
+                i += 1;
+                if i + count > packed.len() { return Err("draw paint field DASH list truncated".to_string()); }
+                paint.dash = packed[i..i + count].to_vec();
+                i += count;
+            }
+            DRAW_PAINT_DASH_OFFSET => {
+                if i + 1 > packed.len() { return Err("draw paint field DASH_OFFSET truncated".to_string()); }
+                paint.dash_offset = packed[i + 0];
                 i += 1;
             }
             other => return Err(format!("unknown draw paint field {other}")),
@@ -1642,6 +1698,15 @@ pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
                 let paint = decode_draw_paint(&data[i..i + paint_len])?;
                 i += paint_len;
                 out.push(DrawCommand::FillPath { verbs: std::mem::take(&mut verbs), paint });
+            }
+            DRAW_OP_STROKE => {
+                if i >= data.len() { return Err("draw op STROKE truncated".to_string()); }
+                let paint_len = data[i] as usize;
+                i += 1;
+                if i + paint_len > data.len() { return Err("draw op STROKE paint packet truncated".to_string()); }
+                let paint = decode_draw_paint(&data[i..i + paint_len])?;
+                i += paint_len;
+                out.push(DrawCommand::StrokePath { verbs: std::mem::take(&mut verbs), paint });
             }
             other => return Err(format!("unknown draw op {other}")),
         }
