@@ -153,8 +153,8 @@ pub(crate) fn run(app: AndroidApp) {
     let pending_for_schedule = Rc::clone(&pending_reconnect);
 
     let _reload_subscription = subscribe_reload(SubscribeReloadOptions {
-        host: target.host().to_owned(),
-        port: target.port(),
+        // バンドル fetch と同じ target を共有する＝同じ配信点を指す（https 由来なら wss・#742）。
+        target: target.clone(),
         on_reload: Box::new(move || reload_flag.set(true)),
         connect: Box::new(move |url| {
             let socket = connect_reload_ws(url);

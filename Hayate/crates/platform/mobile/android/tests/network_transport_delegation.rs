@@ -1,4 +1,4 @@
-//! バンドル取得 transport の OS スタック委譲（ADR-0002 前半・#740）のホスト可読ガード。
+//! ネットワーク transport の OS スタック委譲（ADR-0002・#740 前半 / #742 後半）のホスト可読ガード。
 //!
 //! `bundle_source` の実 I/O は device 専用（JNI で Kotlin を呼ぶ）でホストでは実行できない。
 //! そこで apk_packaging.rs / bundle_source_wiring.rs と同じくソース走査で契約を固定する：
@@ -11,6 +11,10 @@
 //!    が HTTP(S) を担う。Rust ホストに TLS 依存は入れない。
 //! 4. **cleartext は LAN dev 用途に限定**：networkSecurityConfig が base で cleartext を禁じ、
 //!    エミュレータ loopback 等の dev ホストだけ明示許可する（既定は https）。
+//!
+//! 後半（#742）は reload 購読の WS を同じ形で委譲する：手書き RFC6455（ハンドシェイク組み立て・
+//! フレーム解釈）を撤去し、Kotlin の `ReloadSocketBridge`（OkHttp の WebSocket）が WS(S) を担い、
+//! Rust は注入シーム（`subscribe_reload` のポート）経由でシグナルだけを受け取る。
 //!
 //! 実機での通し確認（https の Demo Endpoint / LAN dev の双方）はローカル検証の領分（ADR-0001）。
 
@@ -115,6 +119,92 @@ fn fetch_timeout_stays_a_named_constant_passed_to_the_platform() {
     assert!(
         src.contains("FETCH_TIMEOUT"),
         "fetch_from must pass the named timeout to the platform fetch"
+    );
+}
+
+fn reload_socket_src() -> String {
+    read_relative("src/reload_socket.rs")
+}
+
+fn kotlin_reload_bridge_src() -> String {
+    read_relative(
+        "android-app/app/src/main/kotlin/com/hayateprojects/hayate/adapter_android_demo/ReloadSocketBridge.kt",
+    )
+}
+
+/// コメント行（撤去の経緯を記す doc）を除いたコードだけを走査する（qr_scanner_encapsulation
+/// と同じ流儀）。
+fn code_lines(src: &str) -> String {
+    src.lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn the_handwritten_rfc6455_websocket_is_gone() {
+    let code = code_lines(&reload_socket_src());
+    // 素の TCP 上の RFC6455（ハンドシェイク組み立て・フレーム解釈）は委譲完了をもって撤去
+    // （ADR-0002 / #742）。
+    for marker in [
+        "TcpStream",
+        "Sec-WebSocket-Key",
+        "WS_HANDSHAKE_KEY",
+        "WS_OPCODE",
+        "open_ws",
+        "read_frames",
+    ] {
+        assert!(
+            !code.contains(marker),
+            "reload_socket.rs must no longer hand-roll the RFC6455 transport (found {marker:?})"
+        );
+    }
+}
+
+#[test]
+fn rust_delegates_the_reload_ws_to_the_kotlin_bridge_over_the_common_jni_seam() {
+    let src = reload_socket_src();
+    // JNI leaf は共通下地（jni_bridge）だけを使う（bundle_source と同型・ADR-0125）。
+    assert!(
+        src.contains("jni_bridge::with_activity_env"),
+        "the platform reload WS must go through the shared JNI seam"
+    );
+    assert!(
+        src.contains("ReloadSocketBridge"),
+        "the reload WS must be delegated to the Kotlin ReloadSocketBridge (OS network stack)"
+    );
+}
+
+#[test]
+fn the_kotlin_reload_bridge_uses_the_platform_websocket() {
+    let src = kotlin_reload_bridge_src();
+    // OkHttp の WebSocket（= OS プラットフォームのネットワークスタック）が WS(S) を担う。
+    // TLS（wss）は OS の信頼ストアから無償で得る（Rust に TLS 依存を入れない・ADR-0002）。
+    assert!(
+        src.contains("okhttp3"),
+        "the Kotlin bridge must ride on OkHttp (the platform network stack)"
+    );
+    assert!(
+        src.contains("newWebSocket"),
+        "the Kotlin bridge must open the WebSocket via OkHttp"
+    );
+    // Rust の呼び出し（JNI）とシグネチャで出会う同期入口（open / awaitEvent / close）。
+    for entry in ["fun open", "fun awaitEvent", "fun close"] {
+        assert!(
+            src.contains(entry),
+            "the bridge must expose the blocking JNI entry `{entry}` the Rust host calls"
+        );
+    }
+}
+
+#[test]
+fn the_app_declares_the_okhttp_dependency_for_the_reload_ws() {
+    let gradle = read_relative("android-app/app/build.gradle.kts");
+    // HttpURLConnection と違い WebSocket はプラットフォーム標準 API に無いので、OS スタック側
+    // （Kotlin）の実装として OkHttp を明示依存する（ADR-0002 の「Android は OkHttp 系」）。
+    assert!(
+        gradle.contains("com.squareup.okhttp3:okhttp"),
+        "the android app must declare the OkHttp dependency for the reload WS"
     );
 }
 

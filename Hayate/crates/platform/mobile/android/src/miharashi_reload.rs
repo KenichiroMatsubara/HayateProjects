@@ -17,6 +17,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::bundle_source::BundleFetchError;
+use crate::dev_server_target::{DevServerTarget, Scheme};
 use crate::protocol_handshake::{check_protocol_version, ProtocolMismatch};
 
 /// dev-server がホストに full reload を促す WS メッセージ本文。`@miharashi/dev-server` の
@@ -71,16 +72,24 @@ pub fn boot_runtime<R>(
     }
 }
 
-/// dev-server の reload WS URL（`ws://host:port/reload`）を組み立てる。Web ホストが
+/// reload WS の URL を、バンドル fetch と共有する target（ADR-0002 / #740）から組み立てる。
+/// scheme は target の HTTP(S) を WS(S) へ写す — `https` 由来の接続（公開 Demo Endpoint・
+/// ADR-0003）では `wss` になる（#742）。route はサーバルートの [`RELOAD_ROUTE`] 固定
+/// （target の path はバンドルの置き場所であって reload の場所ではない）。Web ホストが
 /// `new URL(reloadRoute, devServerUrl).href.replace(/^http/, 'ws')` で作る URL と同形の wire。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn reload_ws_url(host: &str, port: u16) -> String {
-    format!("ws://{host}:{port}{RELOAD_ROUTE}")
+pub fn reload_ws_url(target: &DevServerTarget) -> String {
+    let ws_scheme = match target.scheme() {
+        Scheme::Http => "ws",
+        Scheme::Https => "wss",
+    };
+    format!("{ws_scheme}://{}:{}{RELOAD_ROUTE}", target.host(), target.port())
 }
 
-/// reload シグナルを運ぶ WS への最小ポート。device 既定は WS over TCP を包む薄いアダプタだが、
-/// テストはこれを注入して実 WS / 実 socket を巻き込まずに配線を観測する（Web の `ReloadSocket`
-/// と対称）。`Rc` 越しに後から配線するので各メソッドは `&self`。
+/// reload シグナルを運ぶ WS への最小ポート。device 既定は OS スタック（Kotlin・ADR-0002）へ
+/// 委譲する薄いアダプタ（`reload_socket`）だが、テストはこれを注入して実 WS / 実 socket を
+/// 巻き込まずに配線を観測する（Web の `ReloadSocket` と対称）。`Rc` 越しに後から配線するので
+/// 各メソッドは `&self`。
 pub trait ReloadSocket {
     /// テキストメッセージ受信時のコールバックを登録する。
     fn on_message(&self, cb: Box<dyn FnMut(&str)>);
@@ -93,13 +102,12 @@ pub trait ReloadSocket {
 /// {@link subscribe_reload} の注入シーム / コールバック束。device グルーは実 WS connect と
 /// 実タイマーを、テストは偽 socket と手動スケジューラを渡す。
 pub struct SubscribeReloadOptions {
-    /// dev-server のホスト（reload WS の接続先）。
-    pub host: String,
-    /// dev-server のポート。
-    pub port: u16,
+    /// 接続先（バンドル fetch と同じ target を共有する＝同じ配信点を指す・保持）。
+    pub target: DevServerTarget,
     /// `reload` 受信時に呼ぶ。ホストはここで full reload（boot_runtime 再実行）を起こす。
     pub on_reload: Box<dyn FnMut()>,
-    /// WS を張るシーム。既定は WS over TCP。テストは偽 socket を返す。
+    /// WS を張るシーム。既定は OS スタック委譲（`reload_socket::connect_reload_ws`）。テストは
+    /// 偽 socket を返す。
     pub connect: Box<dyn Fn(&str) -> Rc<dyn ReloadSocket>>,
     /// 再接続の遅延スケジュールシーム。既定は実タイマー。テストは手動で発火する。
     pub schedule_reconnect: Box<dyn Fn(Box<dyn FnOnce()>, Duration)>,
@@ -174,7 +182,7 @@ impl ReloadController {
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn subscribe_reload(options: SubscribeReloadOptions) -> ReloadSubscription {
     let controller = Rc::new(ReloadController {
-        ws_url: reload_ws_url(&options.host, options.port),
+        ws_url: reload_ws_url(&options.target),
         connect: options.connect,
         schedule_reconnect: options.schedule_reconnect,
         on_reload: RefCell::new(options.on_reload),
@@ -322,7 +330,18 @@ mod tests {
 
     #[test]
     fn ws_url_targets_the_reload_route_over_the_ws_scheme() {
-        assert_eq!(reload_ws_url("10.0.2.2", 5179), "ws://10.0.2.2:5179/reload");
+        // LAN dev（http target）は従来どおり ws。reload WS はサーバルートの RELOAD_ROUTE 固定
+        // （target の path はバンドルの置き場所であって reload の場所ではない）。
+        let lan = crate::dev_server_target::resolve(Some("10.0.2.2:5179"));
+        assert_eq!(reload_ws_url(&lan), "ws://10.0.2.2:5179/reload");
+    }
+
+    #[test]
+    fn an_https_target_subscribes_over_wss() {
+        // 公開 Demo Endpoint（ADR-0003）は https で貼られる — reload 購読は wss に乗る
+        // （ADR-0002 / #742。バンドル fetch と同じ target を共有し、scheme だけ WS へ写す）。
+        let demo = crate::dev_server_target::resolve(Some("https://demo.example/solid/bundle.js"));
+        assert_eq!(reload_ws_url(&demo), "wss://demo.example:443/reload");
     }
 
     #[test]
@@ -333,8 +352,7 @@ mod tests {
         let socket_for_connect = Rc::clone(&socket);
 
         subscribe_reload(SubscribeReloadOptions {
-            host: "dev.example".to_owned(),
-            port: 5179,
+            target: crate::dev_server_target::resolve(Some("dev.example:5179")),
             on_reload: Box::new(move || reloads_cb.set(reloads_cb.get() + 1)),
             connect: Box::new(move |_url| Rc::clone(&socket_for_connect) as Rc<dyn ReloadSocket>),
             schedule_reconnect: Box::new(|_fire, _delay| {}),
@@ -352,8 +370,7 @@ mod tests {
         let socket_for_connect = Rc::clone(&socket);
 
         subscribe_reload(SubscribeReloadOptions {
-            host: "dev.example".to_owned(),
-            port: 5179,
+            target: crate::dev_server_target::resolve(Some("dev.example:5179")),
             on_reload: Box::new(move || reloads_cb.set(reloads_cb.get() + 1)),
             connect: Box::new(move |_url| Rc::clone(&socket_for_connect) as Rc<dyn ReloadSocket>),
             schedule_reconnect: Box::new(|_fire, _delay| {}),
@@ -369,8 +386,7 @@ mod tests {
         let connected_cb = Rc::clone(&connected);
 
         subscribe_reload(SubscribeReloadOptions {
-            host: "127.0.0.1".to_owned(),
-            port: 5181,
+            target: crate::dev_server_target::resolve(Some("127.0.0.1:5181")),
             on_reload: Box::new(|| {}),
             connect: Box::new(move |url| {
                 connected_cb.borrow_mut().push(url.to_owned());
@@ -393,8 +409,7 @@ mod tests {
         let schedule_cb = Rc::clone(&schedule);
 
         subscribe_reload(SubscribeReloadOptions {
-            host: "dev.example".to_owned(),
-            port: 5179,
+            target: crate::dev_server_target::resolve(Some("dev.example:5179")),
             on_reload: Box::new(|| {}),
             connect: Box::new(move |_url| {
                 connect_count_cb.set(connect_count_cb.get() + 1);
@@ -428,8 +443,7 @@ mod tests {
         let scheduled_cb = Rc::clone(&scheduled);
 
         let subscription = subscribe_reload(SubscribeReloadOptions {
-            host: "dev.example".to_owned(),
-            port: 5179,
+            target: crate::dev_server_target::resolve(Some("dev.example:5179")),
             on_reload: Box::new(|| {}),
             connect: Box::new(move |_url| Rc::clone(&socket_for_connect) as Rc<dyn ReloadSocket>),
             schedule_reconnect: Box::new(move |_fire, _delay| scheduled_cb.set(true)),
