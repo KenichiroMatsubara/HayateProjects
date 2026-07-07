@@ -31,6 +31,10 @@ mod bundle_source;
 // 正規化し、fetch / reload の両方を同じ target で駆動する。純粋なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod dev_server_target;
+// Demo Manifest（`/demos.json`）のパース・エントリ選択 → boot target 解決・取得失敗の明示エラー
+// （ADR-0003 / #743）。プラットフォーム非依存の純 Rust なのでホストでもコンパイル・テストされる。
+#[cfg(feature = "tsubame-js")]
+mod demo_manifest;
 // Miharashi Android ホストの protocol version 突き合わせ（#533）。Web #530 と同じ contract の
 // 純 Rust ミラー。プラットフォーム非依存なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
