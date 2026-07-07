@@ -317,6 +317,9 @@ importers:
       '@tsubame/hayate-css-catalog':
         specifier: workspace:*
         version: link:../hayate-css-catalog
+      '@tsubame/protocol-generated':
+        specifier: workspace:*
+        version: link:../../proto
       '@tsubame/renderer-protocol':
         specifier: workspace:*
         version: link:../renderer-protocol
