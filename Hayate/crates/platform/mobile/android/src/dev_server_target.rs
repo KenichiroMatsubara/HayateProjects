@@ -1,13 +1,14 @@
-//! Miharashi の Android ホストが接続する dev-server の指定（#534）。
+//! Miharashi の Android ホストが接続する dev-server / Demo Endpoint の指定（#534, #740）。
 //!
-//! #532/#533 までは接続先 dev-server が `bundle_source` のハードコード定数だった。本 issue は
-//! それを**端末上で入力**できるようにする：端末 UI が入れた URL 文字列を `host:port` へ正規化し、
-//! バンドル fetch（HTTP）と reload 購読（WS）の**両方を同じ target で駆動**する（保持）。入力が
-//! 無ければ既定 target（エミュレータ loopback）に落ちる。
+//! #532/#533 までは接続先 dev-server が `bundle_source` のハードコード定数だった。#534 で
+//! **端末上で入力**できるようにし、#740（ADR-0002 前半）で target を `host:port`（path 破棄・
+//! scheme 破棄）から **scheme-aware かつ path 保持のフル URL** に広げた——複数デモをパスで
+//! 区別する Demo Endpoint（ADR-0003）の前提。バンドル fetch（HTTP(S)）と reload 購読（WS）は
+//! **同じ target で駆動**する（保持）。入力が無ければ既定 target（エミュレータ loopback）に落ちる。
 //!
-//! ここはプラットフォーム非依存のピュアなシーム（パース・既定・入力読み）なのでホストで契約テスト
-//! する。実 UI（Kotlin の EditText）と実機 fetch/boot はローカル実機で検証する（本 issue 外）。
-//! QR 読み取りは将来スコープ（本 issue は URL 直指定まで）。
+//! ここはプラットフォーム非依存のピュアなシーム（URL 正規化・既定・入力読み）なのでホストで
+//! 契約テストする。実 UI（Kotlin の EditText）と実機 fetch/boot はローカル実機で検証する
+//! （本 issue 外）。
 
 use std::path::Path;
 
@@ -21,26 +22,73 @@ pub(crate) const DEV_SERVER_URL_FILE: &str = "miharashi-dev-server-url.txt";
 /// 端末 UI で URL を入れなかったときの落とし先（#532 のハードコード値を target の既定として引き継ぐ）。
 pub(crate) const DEFAULT_DEV_SERVER_HOST: &str = "10.0.2.2";
 /// 既定の dev-server ポート（#528 Web ホストの docstring 例 `http://127.0.0.1:5179` と同値）。
+/// `http://` の scheme 既定ポートもこれ（LAN dev の従来入力の意味を変えない・ADR-0002）。
 pub(crate) const DEFAULT_DEV_SERVER_PORT: u16 = 5179;
+/// `https://` の scheme 既定ポート。公開 Demo Endpoint（ADR-0003）の URL はポート無しで
+/// 貼られるので、標準の 443 に広げる。
+pub(crate) const HTTPS_DEFAULT_PORT: u16 = 443;
+/// path 無し入力の正規化先。「バンドルルートは既定の wire 契約に任せる」の意（`bundle_source`
+/// が既定ルートへ広げる）。
+const ROOT_PATH: &str = "/";
 
-/// 端末 UI が入力した dev-server URL から正規化した接続先。バンドル fetch（HTTP）と reload 購読（WS）の
-/// 単一の source of truth で、両方をこの host/port で駆動する（保持）。
+/// target の scheme。cleartext http は LAN dev 用途、公開配信は https（ADR-0002）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scheme {
+    Http,
+    Https,
+}
+
+impl Scheme {
+    /// URL に載せる scheme 文字列。
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Scheme::Http => "http",
+            Scheme::Https => "https",
+        }
+    }
+
+    /// ポートを省いた入力に使う scheme 既定ポート（https → 443 / http → dev-server 既定）。
+    fn default_port(self) -> u16 {
+        match self {
+            Scheme::Http => DEFAULT_DEV_SERVER_PORT,
+            Scheme::Https => HTTPS_DEFAULT_PORT,
+        }
+    }
+}
+
+/// 端末 UI が入力した URL から正規化した接続先（scheme-aware・path 保持のフル URL・ADR-0002）。
+/// バンドル fetch（HTTP(S)）と reload 購読（WS）の単一の source of truth で、両方をこの target で
+/// 駆動する（保持）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DevServerTarget {
+    scheme: Scheme,
     host: String,
     port: u16,
+    path: String,
 }
 
 impl DevServerTarget {
-    /// バンドル fetch / reload WS が接続する dev-server ホスト。
+    /// バンドル fetch の scheme（http = LAN dev / https = 公開 Demo Endpoint）。
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn scheme(&self) -> Scheme {
+        self.scheme
+    }
+    /// バンドル fetch / reload WS が接続するホスト。
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub fn host(&self) -> &str {
         &self.host
     }
-    /// dev-server ポート。
+    /// 接続ポート（明示が無ければ scheme 既定）。
     #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub fn port(&self) -> u16 {
         self.port
+    }
+    /// 入力 URL の path（保持）。`/` は「path 指定なし＝既定バンドルルート」の意。
+    /// 複数デモをパスで区別する Demo Endpoint（ADR-0003）の前提。
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub fn path(&self) -> &str {
+        &self.path
     }
 }
 
@@ -48,45 +96,59 @@ impl Default for DevServerTarget {
     /// 端末 UI で URL を入れなかったときの落とし先（エミュレータ loopback）。
     fn default() -> Self {
         DevServerTarget {
+            scheme: Scheme::Http,
             host: DEFAULT_DEV_SERVER_HOST.to_owned(),
             port: DEFAULT_DEV_SERVER_PORT,
+            path: ROOT_PATH.to_owned(),
         }
     }
 }
 
-/// 端末 UI が入力した dev-server URL 文字列を [`DevServerTarget`] に正規化する。空 / host 欠落 /
-/// ポート不正など使えない入力は `None`（呼び出し側 [`resolve`] が既定 target に落とす）。
+/// 端末 UI が入力した URL 文字列を [`DevServerTarget`] に正規化する。空 / host 欠落 / ポート不正 /
+/// 未知 scheme など使えない入力は `None`（呼び出し側 [`resolve`] が既定 target に落とす）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn parse(input: &str) -> Option<DevServerTarget> {
-    let authority = strip_path(strip_scheme(input.trim()));
+    let (scheme, rest) = split_scheme(input.trim())?;
+    let (authority, path) = split_path(rest);
     let (host, port) = match authority.split_once(':') {
         Some((host, port)) => (host, port.parse().ok()?),
-        None => (authority, DEFAULT_DEV_SERVER_PORT),
+        None => (authority, scheme.default_port()),
     };
     if host.is_empty() {
         return None;
     }
     Some(DevServerTarget {
+        scheme,
         host: host.to_owned(),
         port,
+        path: path.to_owned(),
     })
 }
 
-/// `scheme://` 前置（http/https/ws/wss）を落として authority 以降を返す。端末で origin を貼っても
-/// host:port が取れるようにする（Web ホストの `new URL` 相当を依存追加なしで）。
-fn strip_scheme(input: &str) -> &str {
+/// `scheme://` 前置を scheme と authority 以降に分ける。scheme 無しは従来の LAN dev 入力
+/// （`host:port`）として http。reload WS の URL を貼っても同じ target に解決できるよう
+/// ws/wss は対応する http/https に写す。未知 scheme は `None`（既定 target への fallback へ）。
+fn split_scheme(input: &str) -> Option<(Scheme, &str)> {
     match input.find("://") {
-        Some(i) => &input[i + "://".len()..],
-        None => input,
+        None => Some((Scheme::Http, input)),
+        Some(i) => {
+            let scheme = match &input[..i] {
+                "http" | "ws" => Scheme::Http,
+                "https" | "wss" => Scheme::Https,
+                _ => return None,
+            };
+            Some((scheme, &input[i + "://".len()..]))
+        }
     }
 }
 
-/// authority（`host[:port]`）以降の path（最初の `/` から先）を落とす。バンドル / reload ルートは
-/// 固定の wire 契約なので、ユーザが入れた path 部分は採らない。
-fn strip_path(authority: &str) -> &str {
-    match authority.find('/') {
-        Some(i) => &authority[..i],
-        None => authority,
+/// authority（`host[:port]`）と path（最初の `/` から先）に分ける。path は**保持**する
+/// （ADR-0002 / ADR-0003：複数デモをパスで区別する）。無し・素の `/` は [`ROOT_PATH`] に正規化。
+fn split_path(rest: &str) -> (&str, &str) {
+    match rest.find('/') {
+        Some(i) if rest.len() > i + 1 => (&rest[..i], &rest[i..]),
+        Some(i) => (&rest[..i], ROOT_PATH),
+        None => (rest, ROOT_PATH),
     }
 }
 
@@ -123,27 +185,68 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_a_plain_host_and_port() {
+    fn parses_a_plain_host_and_port_as_cleartext_http() {
+        // scheme を書かない LAN dev 入力（従来形式）は http のまま扱う（cleartext は LAN dev 用途・ADR-0002）。
         let target = parse("10.0.2.2:5179").unwrap();
+        assert_eq!(target.scheme(), Scheme::Http);
         assert_eq!(target.host(), "10.0.2.2");
         assert_eq!(target.port(), 5179);
+        assert_eq!(target.path(), "/");
     }
 
     #[test]
-    fn strips_a_url_scheme_so_a_pasted_origin_works() {
-        // 端末で `http://192.168.1.5:8080` を貼っても host:port が取れる（Web ホストの new URL と対称）。
+    fn a_pasted_http_origin_keeps_its_scheme_host_and_port() {
         let target = parse("http://192.168.1.5:8080").unwrap();
+        assert_eq!(target.scheme(), Scheme::Http);
         assert_eq!(target.host(), "192.168.1.5");
         assert_eq!(target.port(), 8080);
     }
 
     #[test]
-    fn drops_a_trailing_path_keeping_only_host_and_port() {
-        // バンドル / reload ルートは固定の wire 契約。ユーザが入れた path 部分は捨て、host:port だけ取る。
-        assert_eq!(parse("http://192.168.1.5:8080/").unwrap().host(), "192.168.1.5");
-        let with_route = parse("192.168.1.5:8080/bundle.js").unwrap();
-        assert_eq!(with_route.host(), "192.168.1.5");
-        assert_eq!(with_route.port(), 8080);
+    fn https_defaults_to_port_443() {
+        // 公開 Demo Endpoint（ADR-0003）の URL はポート無しで貼られる。scheme 既定ポートに広げる（ADR-0002）。
+        let target = parse("https://miharashi-demo.example.workers.dev").unwrap();
+        assert_eq!(target.scheme(), Scheme::Https);
+        assert_eq!(target.host(), "miharashi-demo.example.workers.dev");
+        assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
+        assert_eq!(target.port(), 443);
+    }
+
+    #[test]
+    fn http_without_a_port_defaults_to_the_dev_server_port() {
+        // http の既定は dev-server の既定ポート（5179）。従来の bare-host 入力の意味を変えない。
+        let target = parse("http://192.168.1.5").unwrap();
+        assert_eq!(target.port(), DEFAULT_DEV_SERVER_PORT);
+        assert_eq!(target.port(), 5179);
+    }
+
+    #[test]
+    fn preserves_the_url_path_so_demos_can_be_told_apart() {
+        // 複数デモをパスで区別する Demo Endpoint（ADR-0003）の前提：path は捨てず保持する
+        // （従来の「host:port だけ取り path 破棄」を広げる・ADR-0002）。
+        let target = parse("https://demo.example/solid/bundle.js").unwrap();
+        assert_eq!(target.path(), "/solid/bundle.js");
+        assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
+
+        let lan = parse("192.168.1.5:8080/react/bundle.js").unwrap();
+        assert_eq!(lan.scheme(), Scheme::Http);
+        assert_eq!(lan.path(), "/react/bundle.js");
+        assert_eq!(lan.port(), 8080);
+    }
+
+    #[test]
+    fn a_bare_or_trailing_slash_normalizes_to_the_root_path() {
+        // path 無し / 素の `/` は「バンドルルートは既定の wire 契約に任せる」の意で root に正規化する。
+        assert_eq!(parse("192.168.1.5:8080").unwrap().path(), "/");
+        assert_eq!(parse("http://192.168.1.5:8080/").unwrap().path(), "/");
+    }
+
+    #[test]
+    fn ws_schemes_map_onto_the_matching_http_scheme() {
+        // reload の WS URL（ws://…/reload）を貼っても同じ target に解決できる（従来挙動の継承）。
+        assert_eq!(parse("ws://192.168.1.5:5179").unwrap().scheme(), Scheme::Http);
+        assert_eq!(parse("wss://demo.example").unwrap().scheme(), Scheme::Https);
+        assert_eq!(parse("wss://demo.example").unwrap().port(), HTTPS_DEFAULT_PORT);
     }
 
     #[test]
@@ -158,16 +261,19 @@ mod tests {
     fn falls_back_to_the_named_default_when_nothing_is_entered() {
         // 端末 UI で URL を入れなかった経路。既定はエミュレータ loopback（#532 のハードコード値を継承）。
         let target = resolve(None);
+        assert_eq!(target.scheme(), Scheme::Http);
         assert_eq!(target.host(), DEFAULT_DEV_SERVER_HOST);
         assert_eq!(target.port(), DEFAULT_DEV_SERVER_PORT);
         assert_eq!(target.host(), "10.0.2.2");
         assert_eq!(target.port(), 5179);
+        assert_eq!(target.path(), "/");
     }
 
     #[test]
     fn blank_or_malformed_input_falls_back_to_the_default() {
-        // 不正な端末入力（空・空白のみ・host 欠落・ポート非数値）はホストをクラッシュさせず既定へ。
-        for bad in ["", "   ", ":5179", "http://", "10.0.2.2:not-a-port"] {
+        // 不正な端末入力（空・空白のみ・host 欠落・ポート非数値・未知 scheme）はホストを
+        // クラッシュさせず既定へ。
+        for bad in ["", "   ", ":5179", "http://", "10.0.2.2:not-a-port", "ftp://x.example"] {
             assert_eq!(parse(bad), None, "{bad:?} must not parse to a target");
             assert_eq!(resolve(Some(bad)), DevServerTarget::default(), "{bad:?} resolves to default");
         }

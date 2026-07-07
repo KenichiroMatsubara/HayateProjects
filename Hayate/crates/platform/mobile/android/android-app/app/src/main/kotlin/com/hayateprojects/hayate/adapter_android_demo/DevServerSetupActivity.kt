@@ -13,11 +13,13 @@ import java.io.File
  *
  * Miharashi is a framework-agnostic dev-client (Expo Go 相当): the prebuilt native host
  * fetches the App Bundle from a dev-server at runtime rather than reading a baked-in asset.
- * This launcher screen lets the user type the dev-server URL on the device itself — e.g.
- * `192.168.1.5:5179` or `http://192.168.1.5:5179` — and persists it to the app's internal
- * files dir. The Rust host reads it back (`dev_server_target`) and uses the one resolved
- * target to drive BOTH the bundle fetch (HTTP) and the reload subscription (WS); leaving it
- * blank falls back to the emulator-loopback default on the native side.
+ * This launcher screen lets the user type the target URL on the device itself — a LAN
+ * dev-server (`192.168.1.5:5179`) or a full HTTPS bundle URL on the public Demo Endpoint
+ * (`https://….workers.dev/solid/bundle.js`; scheme-aware, path-preserving — ADR-0002/#740)
+ * — and persists it to the app's internal files dir. The Rust host reads it back
+ * (`dev_server_target`) and uses the one resolved target to drive BOTH the bundle fetch
+ * (HTTP(S)) and the reload subscription (WS); leaving it blank falls back to the
+ * emulator-loopback default on the native side.
  *
  * Deliberately no networking / parsing here — the field's last value is shown again on the
  * next launch (retention), and the URL handling (parse / retention / reconnection) is
@@ -40,7 +42,7 @@ class DevServerSetupActivity : AppCompatActivity() {
         // ネイティブが読むのと同じファイル（共有 wire 契約名）。前回値を読み戻して field に出す（保持）。
         val urlFile = File(filesDir, DEV_SERVER_URL_FILE)
         val input = EditText(this).apply {
-            hint = "dev-server URL（例 192.168.1.5:5179）"
+            hint = "dev-server / デモ URL（例 192.168.1.5:5179 や https://…/solid/bundle.js）"
             setSingleLine(true)
             setText(if (urlFile.exists()) urlFile.readText().trim() else "")
         }
