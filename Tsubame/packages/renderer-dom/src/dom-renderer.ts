@@ -1,4 +1,5 @@
 import type {
+  DrawProperty,
   ElementId,
   ElementKind,
   EventHandler,
@@ -206,6 +207,10 @@ export class DomRenderer implements IRenderer {
 
   setText(id: ElementId, text: string): void {
     this.node(id).textContent = text;
+  }
+
+  setDraw(_id: ElementId, _value: DrawProperty | null): void {
+    // DOM Renderer の draw（同一 painter の canvas 2D replay・Tsubame ADR-0014）は #731。
   }
 
   setProperty(id: ElementId, name: string, value: unknown): void {

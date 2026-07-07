@@ -1,4 +1,6 @@
 import type {
+  DrawProperty,
+  DrawSize,
   ElementId,
   ElementKind,
   EventHandler,
@@ -14,9 +16,13 @@ import {
   assertKnownElementProperty,
   coerceElementProperty,
   dispatchElementPropertyOp,
+  drawNeedsRepaint,
+  invokePainter,
 } from '@tsubame/renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
+import { EVENT_KIND } from '@tsubame/protocol-generated/protocol';
+import { Canvas } from '@tsubame/protocol-generated/recorder';
 import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
 
 /**
@@ -37,10 +43,20 @@ interface ListenerEntry {
   elementId: ElementId;
 }
 
+/** draw property の要素ごとの状態。`size` はレイアウト確定前は null（ADR-0143）。 */
+interface DrawState {
+  value: DrawProperty;
+  size: DrawSize | null;
+}
+
 export class HayateRenderer implements IRenderer {
   private readonly raw: RawHayate;
   /** Hayate が発行したリスナ id → ホストのハンドラ（ADR-0053）。 */
   private readonly listeners = new Map<number, ListenerEntry>();
+  /** draw property を持つ要素の状態（#730）。 */
+  private readonly drawStates = new Map<ElementId, DrawState>();
+  /** 内部購読した layout size イベント（#725）のリスナ id → 要素 id。 */
+  private readonly drawListeners = new Map<number, ElementId>();
   private nextId = 1;
 
   private readonly packet = new HayateMutationPacket();
@@ -138,6 +154,45 @@ export class HayateRenderer implements IRenderer {
     this.scheduleFrame();
   }
 
+  /**
+   * `view` の draw property（painter・#730 / ADR-0141）。wire 経路はレイアウト確定
+   * サイズを同期では知れないため、per-element layout size イベント（#725）を内部購読し、
+   * 受信時（初回確定・サイズ変化）に painter を実サイズで呼んで display list を記録、
+   * 次フレームの mutation で `draws` チャネルに載せる（1 フレーム遅延は仕様・ADR-0143）。
+   */
+  setDraw(id: ElementId, value: DrawProperty | null): void {
+    const state = this.drawStates.get(id);
+    if (value === null) {
+      if (state === undefined) return;
+      this.drawStates.delete(id);
+      this.packet.enqueueSetDraw(id, []);
+      this.scheduleFrame();
+      return;
+    }
+    if (state === undefined) {
+      const listenerId = this.raw.register_listener(
+        id as unknown as number,
+        EVENT_KIND.LAYOUT_RESIZE,
+      );
+      this.drawListeners.set(listenerId, id);
+      this.drawStates.set(id, { value, size: null });
+      return;
+    }
+    const repaint = drawNeedsRepaint(value, state.value);
+    state.value = value;
+    if (repaint && state.size !== null) {
+      this.recordDraw(id, state);
+    }
+  }
+
+  /** painter を現サイズで走らせ、記録した display list を次フレームの mutation に積む。 */
+  private recordDraw(id: ElementId, state: DrawState): void {
+    const canvas = new Canvas();
+    invokePainter(state.value, canvas, state.size!);
+    this.packet.enqueueSetDraw(id, canvas.finish());
+    this.scheduleFrame();
+  }
+
   setProperty(id: ElementId, name: string, value: unknown): void {
     assertKnownElementProperty(name);
     const op = coerceElementProperty(name, value);
@@ -179,6 +234,12 @@ export class HayateRenderer implements IRenderer {
   private dispatchDeliveries(rows: unknown[]): void {
     for (const row of rows) {
       const { listenerId, event } = parseDelivery(row as unknown[]);
+      // per-element layout size イベント（#725）は adapter へは配らず、draw の
+      // paint タイミング源として renderer 内で消費する（wireRole: hayate-internal）。
+      if (event.kind === 'layout_resize') {
+        this.onLayoutResize(listenerId, event.width, event.height);
+        continue;
+      }
       const entry = this.listeners.get(listenerId);
       if (entry === undefined) continue;
       const interaction = toInteractionEvent(event);
@@ -191,6 +252,21 @@ export class HayateRenderer implements IRenderer {
         entry.handler(interaction);
       }
     }
+  }
+
+  /** レイアウト確定・サイズ変化の通知で painter を実サイズで走らせる（#730）。 */
+  private onLayoutResize(listenerId: number, width: number, height: number): void {
+    const id = this.drawListeners.get(listenerId);
+    if (id === undefined) return;
+    const state = this.drawStates.get(id);
+    if (state === undefined) return;
+    // core は size 非変化 commit では発火しない（#725）が、同サイズ通知を無駄な
+    // 再記録・再送信に増幅しないよう renderer 側でも守る。
+    if (state.size !== null && state.size.width === width && state.size.height === height) {
+      return;
+    }
+    state.size = { width, height };
+    this.recordDraw(id, state);
   }
 
   private readonly frame = (timestampMs: number): void => {

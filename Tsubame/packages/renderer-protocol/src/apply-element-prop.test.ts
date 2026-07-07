@@ -87,6 +87,18 @@ describe('applyElementProp (shared Tsubame Adapter seam)', () => {
     expect(r.calls.some((c) => c.method === 'addEventListener')).toBe(false);
   });
 
+  it('routes the draw prop to setDraw, and clears it with null on removal (#730)', () => {
+    const r = new RecordingRenderer();
+    const t = target(r, 'view');
+    const painter = () => {};
+    applyElementProp(r, t, 'draw', painter);
+    expect(r.calls).toContainEqual({ method: 'setDraw', id: t.id, value: painter });
+
+    // prop 削除（undefined / null）は null に正規化して描画を消す。
+    applyElementProp(r, t, 'draw', undefined);
+    expect(r.calls).toContainEqual({ method: 'setDraw', id: t.id, value: null });
+  });
+
   it('ignores structural props (children / ref / key)', () => {
     const r = new RecordingRenderer();
     const t = target(r, 'view');

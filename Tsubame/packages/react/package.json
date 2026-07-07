@@ -36,6 +36,7 @@
     "react-reconciler": "^0.32.0"
   },
   "devDependencies": {
+    "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-hayate": "workspace:*",
     "@types/react": "^19.1.0",
     "@types/react-reconciler": "^0.32.0",

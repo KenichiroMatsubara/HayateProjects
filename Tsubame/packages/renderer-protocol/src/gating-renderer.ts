@@ -1,4 +1,5 @@
 import type { ElementId, ElementKind } from './element.js';
+import type { DrawProperty } from './draw.js';
 import type { PseudoStyleKey } from './pseudo-style.js';
 import type { StylePatch } from './style.js';
 import type { ViewportCondition } from './viewport-condition.js';
@@ -56,6 +57,10 @@ class GatingRenderer implements IRenderer {
 
   setText(id: ElementId, text: string): void {
     this.inner.setText(id, text);
+  }
+
+  setDraw(id: ElementId, value: DrawProperty | null): void {
+    this.inner.setDraw(id, value);
   }
 
   setProperty(id: ElementId, name: string, value: unknown): void {

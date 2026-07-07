@@ -1,4 +1,5 @@
 import type { ElementId, ElementKind } from './element.js';
+import type { DrawProperty } from './draw.js';
 import type { PseudoStyleKey, PseudoStylePatch } from './pseudo-style.js';
 import type { StylePatch } from './style.js';
 import type { ViewportCondition } from './viewport-condition.js';
@@ -22,6 +23,14 @@ export interface IRenderer {
   /** ビューポート条件付きのスタイル上書き。プロパティごとに 1 バリアント（ADR-0081）。 */
   setStyleVariant(id: ElementId, condition: ViewportCondition, style: StylePatch): void;
   setText(id: ElementId, text: string): void;
+
+  /**
+   * `view` の命令的 2D 描画 property（ADR-0141 / #730）。値は painter
+   *（`{ paint, shouldRepaint? }` または関数糖衣）、`null` で描画を消す。
+   * レイアウト確定サイズで painter を呼ぶタイミングは renderer が所有する
+   *（wire 経路は per-element layout size イベント受信時・ADR-0143）。
+   */
+  setDraw(id: ElementId, value: DrawProperty | null): void;
 
   /**
    * 閉じたセマンティックプロップ（`value` / `placeholder` / `disabled` / `src`）を適用する。
