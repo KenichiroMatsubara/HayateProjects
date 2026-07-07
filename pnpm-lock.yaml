@@ -60,9 +60,9 @@ importers:
 
   Hayate/wasm-pkgs/pkg-vello-cpu: {}
 
-  Miharashi/demo-endpoint:
+  Torimi/demo-endpoint:
     dependencies:
-      '@miharashi/dev-server-contract':
+      '@torimi/dev-server-contract':
         specifier: workspace:*
         version: link:../dev-server-contract
     devDependencies:
@@ -79,9 +79,9 @@ importers:
         specifier: ^4.107.0
         version: 4.107.0(@cloudflare/workers-types@5.20260705.1)
 
-  Miharashi/dev-server:
+  Torimi/dev-server:
     dependencies:
-      '@miharashi/dev-server-contract':
+      '@torimi/dev-server-contract':
         specifier: workspace:*
         version: link:../dev-server-contract
     devDependencies:
@@ -101,7 +101,7 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
-  Miharashi/dev-server-contract:
+  Torimi/dev-server-contract:
     devDependencies:
       rimraf:
         specifier: ^6.1.3
@@ -113,15 +113,15 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
-  Miharashi/host-web:
+  Torimi/host-web:
     dependencies:
       '@hayate/host':
         specifier: workspace:*
         version: link:../../Hayate/host
-      '@miharashi/dev-server-contract':
+      '@torimi/dev-server-contract':
         specifier: workspace:*
         version: link:../dev-server-contract
-      '@miharashi/protocol-handshake':
+      '@torimi/protocol-handshake':
         specifier: workspace:*
         version: link:../protocol-handshake
     devDependencies:
@@ -135,18 +135,18 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
-  Miharashi/integration:
+  Torimi/integration:
     devDependencies:
       '@hayate/host':
         specifier: workspace:*
         version: link:../../Hayate/host
-      '@miharashi/dev-server':
+      '@torimi/dev-server':
         specifier: workspace:*
         version: link:../dev-server
-      '@miharashi/host-web':
+      '@torimi/host-web':
         specifier: workspace:*
         version: link:../host-web
-      '@miharashi/protocol-handshake':
+      '@torimi/protocol-handshake':
         specifier: workspace:*
         version: link:../protocol-handshake
       '@types/node':
@@ -159,7 +159,7 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
 
-  Miharashi/protocol-handshake:
+  Torimi/protocol-handshake:
     devDependencies:
       rimraf:
         specifier: ^6.1.3
@@ -225,9 +225,9 @@ importers:
       '@hayate/host':
         specifier: workspace:*
         version: link:../../../Hayate/host
-      '@miharashi/host-web':
+      '@torimi/host-web':
         specifier: workspace:*
-        version: link:../../../Miharashi/host-web
+        version: link:../../../Torimi/host-web
       '@tsubame/app':
         specifier: workspace:*
         version: link:../../packages/app
@@ -250,12 +250,12 @@ importers:
         specifier: ^0.32.0
         version: 0.32.0(react@19.2.7)
     devDependencies:
-      '@miharashi/dev-server':
-        specifier: workspace:*
-        version: link:../../../Miharashi/dev-server
       '@playwright/test':
         specifier: ^1.61.0
         version: 1.61.0
+      '@torimi/dev-server':
+        specifier: workspace:*
+        version: link:../../../Torimi/dev-server
       '@types/react':
         specifier: ^19.1.0
         version: 19.2.17
@@ -274,9 +274,9 @@ importers:
       '@hayate/host':
         specifier: workspace:*
         version: link:../../../Hayate/host
-      '@miharashi/host-web':
+      '@torimi/host-web':
         specifier: workspace:*
-        version: link:../../../Miharashi/host-web
+        version: link:../../../Torimi/host-web
       '@tsubame/app':
         specifier: workspace:*
         version: link:../../packages/app
@@ -296,12 +296,12 @@ importers:
         specifier: ^1.9.13
         version: 1.9.13
     devDependencies:
-      '@miharashi/dev-server':
-        specifier: workspace:*
-        version: link:../../../Miharashi/dev-server
       '@playwright/test':
         specifier: ^1.61.0
         version: 1.61.0
+      '@torimi/dev-server':
+        specifier: workspace:*
+        version: link:../../../Torimi/dev-server
       '@tsubame/hayate-css-catalog':
         specifier: workspace:*
         version: link:../../packages/hayate-css-catalog

@@ -23,11 +23,11 @@ pub mod qr_scanner;
 // wave-1 capability scaffold stub（ADR-0119）。Family Adapter が cfg(target_os) でリンクし
 // `MobileXxx` facade として露出するため pub。純粋 stub なのでホストでもコンパイル/テストされる。
 pub mod capability_stubs;
-// Miharashi Android ホストのバンドル源（#532）。dev-server からの HTTP fetch + marshalling。
+// Torimi Android ホストのバンドル源（#532）。dev-server からの HTTP fetch + marshalling。
 // プラットフォーム非依存（素の TCP / std）なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod bundle_source;
-// Miharashi Android ホストが接続する dev-server の指定（#534）。端末 UI が入れた URL を host:port へ
+// Torimi Android ホストが接続する dev-server の指定（#534）。端末 UI が入れた URL を host:port へ
 // 正規化し、fetch / reload の両方を同じ target で駆動する。純粋なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod dev_server_target;
@@ -35,14 +35,14 @@ mod dev_server_target;
 // （ADR-0003 / #743）。プラットフォーム非依存の純 Rust なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod demo_manifest;
-// Miharashi Android ホストの protocol version 突き合わせ（#533）。Web #530 と同じ contract の
+// Torimi Android ホストの protocol version 突き合わせ（#533）。Web #530 と同じ contract の
 // 純 Rust ミラー。プラットフォーム非依存なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod protocol_handshake;
-// Miharashi Android ホストの full reload ループ orchestration（#533）。device 依存を注入シームに
+// Torimi Android ホストの full reload ループ orchestration（#533）。device 依存を注入シームに
 // 逃がした純 Rust なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
-mod miharashi_reload;
+mod torimi_reload;
 // reload WS クライアント（#533）。subscribe_reload の device connect シーム。中身は素の std なので
 // ホストでコンパイル検証はできるが、実駆動は device の app_tsubame のみ。
 #[cfg(feature = "tsubame-js")]

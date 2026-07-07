@@ -1,4 +1,4 @@
-//! Miharashi Android ホストの「端末入力 dev-server URL が fetch と reload の両方を駆動する」配線契約（#534）。
+//! Torimi Android ホストの「端末入力 dev-server URL が fetch と reload の両方を駆動する」配線契約（#534）。
 //!
 //! パース・既定・入力読み戻しの純ロジック（`dev_server_target`）はホスト単体テストで緑
 //! （src/dev_server_target.rs の `#[cfg(test)]`）。一方 `app_tsubame` は device 専用でホストには
@@ -76,11 +76,11 @@ fn the_url_filename_is_a_shared_wire_contract_between_kotlin_and_native() {
     let target_src = read_relative("src/dev_server_target.rs");
     let kotlin = setup_activity_src();
     assert!(
-        target_src.contains("miharashi-dev-server-url.txt"),
+        target_src.contains("torimi-dev-server-url.txt"),
         "native reads the entered URL from a named file under the internal data dir (#534)"
     );
     assert!(
-        kotlin.contains("miharashi-dev-server-url.txt"),
+        kotlin.contains("torimi-dev-server-url.txt"),
         "the Kotlin UI must write to the same file the native host reads (shared wire contract, #534)"
     );
 }

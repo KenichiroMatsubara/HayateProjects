@@ -12,7 +12,7 @@ import android.widget.TextView
  * Hayate（要素ツリー→GPU パイプライン）に一切依存しない、素の Android View によるエラー
  * オーバーレイ（#530 系）。
  *
- * Miharashi の Web ホスト（`Miharashi/host-web` の built-in error panel）は生 DOM/CSS で
+ * Torimi の Web ホスト（`Torimi/host-web` の built-in error panel）は生 DOM/CSS で
  * エラーを描く——Hayate/WebGPU 自体の初期化が失敗しても描画できる「潰れない土台」が要るため。
  * Android には元々それに相当する GPU 非依存の表示手段が無く、boot 失敗・panic を画面に出す
  * 唯一の経路が Hayate 自身の GPU パイプラインだった（= Hayate/GPU init 自体が壊れると何も

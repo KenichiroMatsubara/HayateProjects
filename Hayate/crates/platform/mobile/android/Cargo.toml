@@ -27,7 +27,7 @@ hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
 wgpu = { workspace = true }
 log.workspace = true
 pollster.workspace = true
-# Demo Manifest（`/demos.json`）の wire JSON を解釈する（Miharashi ADR-0003 / #743）。
+# Demo Manifest（`/demos.json`）の wire JSON を解釈する（Torimi ADR-0003 / #743）。
 # 手書きパーサではなく、Web ホストと同じ純 Rust JSON（`serde_json`）で wire を読む。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

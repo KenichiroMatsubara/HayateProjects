@@ -1,4 +1,4 @@
-//! Miharashi Android ホストのバンドル源契約のホスト側検証（#532）。
+//! Torimi Android ホストのバンドル源契約のホスト側検証（#532）。
 //!
 //! `app_tsubame` は device 専用（埋め込み Hermes / JSI が要る）でホストにはコンパイルされない
 //! （ADR-0112）。そこで apk_packaging.rs と同じく、ソースを読んで「バンドル源を APK asset →

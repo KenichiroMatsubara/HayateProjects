@@ -9,7 +9,7 @@
       "autoPort": false
     },
     {
-      "name": "miharashi-host",
+      "name": "torimi-host",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@tsubame/example-react-todo", "exec", "vite", "--port", "5182", "--strictPort"],
       "port": 5182,

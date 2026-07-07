@@ -8,7 +8,7 @@
 //! デコーダ実装が要り非現実的・ADR-0125）。JNI glue は `#[cfg(target_os="android")]` に封じ込め、
 //! Kotlin 側の実体は `QrScannerBridge`（android-app）に置く。
 //!
-//! Web は family-of-1 として別 leaf（`@miharashi/host-web` の `scanQrFromCamera`、`BarcodeDetector`）
+//! Web は family-of-1 として別 leaf（`@torimi/host-web` の `scanQrFromCamera`、`BarcodeDetector`）
 //! を直接持つ（ADR-0117）。本 leaf と iOS leaf（VisionKit・未実装）は `MobileQrScanner` facade に
 //! 載り、上位は iOS/Android を単一 API で扱う。
 //!

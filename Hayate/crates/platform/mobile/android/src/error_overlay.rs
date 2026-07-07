@@ -1,7 +1,7 @@
 //! ネイティブ View によるエラーオーバーレイの JNI ブリッジ（#530 系）。
 //!
 //! Hayate（要素ツリー→GPU パイプライン）に一切依存せず、boot 失敗・panic を画面に出す——Web
-//! ホストの生 DOM error panel（`Miharashi/host-web` の built-in error panel）と対称の「潰れない
+//! ホストの生 DOM error panel（`Torimi/host-web` の built-in error panel）と対称の「潰れない
 //! 土台」。エラー報告の仕組みが、報告対象になり得るサブシステム（Hayate 自身の初期化・GPU
 //! surface・レンダリング）に依存してはいけない、という原則（Vite のエラーオーバーレイ・React
 //! の Error Boundary と同じ）。Kotlin 側の素の Android View（`ErrorOverlayBridge`）を、共通下地

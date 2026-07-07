@@ -14,5 +14,5 @@ export {
 } from '@tsubame/protocol-generated/codec';
 export { OP, ELEMENT_KIND } from '@tsubame/protocol-generated/protocol';
 // wire の protocol version（バンドル encoder ↔ ホスト decoder の整合トークン）。App Bundle は内包する
-// renderer-hayate のこの版数を Miharashi 起動時の突き合わせ用に埋める（#530 / CONTEXT「Protocol Version」）。
+// renderer-hayate のこの版数を Torimi 起動時の突き合わせ用に埋める（#530 / CONTEXT「Protocol Version」）。
 export { PROTOCOL_VERSION } from '@tsubame/protocol-generated/protocol';

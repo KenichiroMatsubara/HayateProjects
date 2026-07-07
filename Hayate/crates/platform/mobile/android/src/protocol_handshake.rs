@@ -1,8 +1,8 @@
-//! protocol version 突き合わせ（Miharashi Android ホスト, #533）。
+//! protocol version 突き合わせ（Torimi Android ホスト, #533）。
 //!
 //! バンドル（encoder）が埋めた wire 定数バージョンと、ホスト（decoder）に焼き込まれた
 //! バージョンを突き合わせ、一致時のみ mount を許す。不一致は両バージョンを含む明示エラーに
-//! して謎クラッシュにしない。これは Web の `@miharashi/protocol-handshake`（#530）の純関数
+//! して謎クラッシュにしない。これは Web の `@torimi/protocol-handshake`（#530）の純関数
 //! `checkProtocolVersion` と**同じ contract**（同じ突き合わせ規則・同じメッセージ・同じ wire
 //! global 名）を Rust に写したもの。両ホストは同じ source of truth
 //! （`@hayate/protocol-spec` の manifest version＝`hayate_core::wire::PROTOCOL_VERSION`）を
@@ -13,10 +13,10 @@
 //! なのでホストで `cargo test` できる。
 
 /// eval 済みバンドルが自身の wire 定数バージョンを露出する JS global プロパティ名。Web の
-/// `MIHARASHI_PROTOCOL_VERSION_GLOBAL`（`@miharashi/protocol-handshake`）と一致させる wire 契約。
-/// mount を渡す `__miharashiMount` と対称の、バンドル → ホストの受け渡しシーム。
+/// `TORIMI_PROTOCOL_VERSION_GLOBAL`（`@torimi/protocol-handshake`）と一致させる wire 契約。
+/// mount を渡す `__torimiMount` と対称の、バンドル → ホストの受け渡しシーム。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub const MIHARASHI_PROTOCOL_VERSION_GLOBAL: &str = "__miharashiProtocolVersion";
+pub const TORIMI_PROTOCOL_VERSION_GLOBAL: &str = "__torimiProtocolVersion";
 
 /// protocol version 不一致。ホスト/バンドル両方の版数と、表示用の明示メッセージを構造化して運ぶ。
 /// 合成ルート（Android ホスト）はこれを使い、mount もクラッシュもさせず明示エラーを出す（#530）。
@@ -89,8 +89,8 @@ mod tests {
 
     #[test]
     fn protocol_version_global_matches_the_web_wire_contract() {
-        // Web の MIHARASHI_PROTOCOL_VERSION_GLOBAL（@miharashi/protocol-handshake）と同値の wire 契約。
-        assert_eq!(MIHARASHI_PROTOCOL_VERSION_GLOBAL, "__miharashiProtocolVersion");
+        // Web の TORIMI_PROTOCOL_VERSION_GLOBAL（@torimi/protocol-handshake）と同値の wire 契約。
+        assert_eq!(TORIMI_PROTOCOL_VERSION_GLOBAL, "__torimiProtocolVersion");
     }
 
     #[test]

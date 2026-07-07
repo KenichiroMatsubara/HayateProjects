@@ -5,7 +5,7 @@
 //! 契約の正本はここ（platform 非依存）。leaf（android = Google Code Scanner / ios = VisionKit
 //! `DataScannerViewController`）はこの trait を満たすだけで別契約を切らない。Mobile Family Adapter
 //! （ADR-0117）の `MobileQrScanner` facade が `cfg(target_os)` で leaf を解決するので、上位は
-//! iOS/Android を**単一 API**で扱える。Web は family-of-1 として別 leaf（`@miharashi/host-web` の
+//! iOS/Android を**単一 API**で扱える。Web は family-of-1 として別 leaf（`@torimi/host-web` の
 //! `scanQrFromCamera`、`BarcodeDetector`）を直接置く（ADR-0117）。
 
 use crate::capability::CapabilityError;

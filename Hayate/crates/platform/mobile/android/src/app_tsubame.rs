@@ -2,13 +2,13 @@
 //!
 //! 既存の `app::android_main`（デモツリー直挿し）を非破壊で温存したまま、こちらは
 //! ネイティブ Hayate を `__hayateHost` として Hermes に注入し、dev-server から**実行時
-//! ネットワーク fetch** した Tsubame バンドルを eval して描画する（Miharashi, #532）。源は
+//! ネットワーク fetch** した Tsubame バンドルを eval して描画する（Torimi, #532）。源は
 //! `bundle_source` に切り出してホストで契約テストする。eval シームは不変。
 //!
 //! #533 で full reload と protocol version 整合を移植した（Web #529/#530 と対称）:
-//!   - boot（fetch → ランタイム構築/eval → version 突き合わせ）は `miharashi_reload::boot_runtime`。
+//!   - boot（fetch → ランタイム構築/eval → version 突き合わせ）は `torimi_reload::boot_runtime`。
 //!     不一致／取得失敗はランタイムの pump に進めず明示エラーにする（謎クラッシュ回避）。
-//!   - dev-server の WS `reload` を `miharashi_reload::subscribe_reload`（device connect は
+//!   - dev-server の WS `reload` を `torimi_reload::subscribe_reload`（device connect は
 //!     `reload_socket`）で購読し、受信ごとに **Hermes ランタイムを作り直して再 eval** する
 //!     （full reload。tree も作り直すので state は飛ぶ）。
 //!   - 突き合わせの純ロジックと再構築の orchestration はホストで契約テスト済み。実描画と reload
@@ -42,7 +42,7 @@ use crate::frame_schedule::OnDemandFrameLoop;
 use crate::dev_server_target;
 use crate::demo_manifest;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
-use crate::miharashi_reload::{
+use crate::torimi_reload::{
     boot_runtime, subscribe_reload, BootError, ReloadSocket, SubscribeReloadOptions,
 };
 use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
@@ -63,8 +63,8 @@ struct Runtime {
     touch_scroll: TouchScrollState,
 }
 
-/// eval 済みバンドルが立てた protocol version（`__miharashiProtocolVersion`）を読み、`Option<u32>`
-/// に正規化する。C++ 側は未埋め込み / 非数値を負値で返す（`@miharashi/protocol-handshake` の
+/// eval 済みバンドルが立てた protocol version（`__torimiProtocolVersion`）を読み、`Option<u32>`
+/// に正規化する。C++ 側は未埋め込み / 非数値を負値で返す（`@torimi/protocol-handshake` の
 /// `readBundleProtocolVersion` が `undefined` を返すのと同型）。
 fn read_bundle_protocol_version(hermes: &cxx::UniquePtr<HermesApp>) -> Option<u32> {
     let version = hermes.protocol_version();
@@ -83,11 +83,11 @@ fn read_bundle_protocol_version(hermes: &cxx::UniquePtr<HermesApp>) -> Option<u3
 fn report_boot_error(error: &BootError) -> String {
     let message = match error {
         BootError::ProtocolMismatch(mismatch) => format!(
-            "Miharashi: protocol version 不一致のため mount しません — {}（host v{}, bundle {:?}）",
+            "Torimi: protocol version 不一致のため mount しません — {}（host v{}, bundle {:?}）",
             mismatch.message, mismatch.host_version, mismatch.bundle_version,
         ),
         BootError::Fetch(err) => format!(
-            "Miharashi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}"
+            "Torimi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}"
         ),
     };
     log::error!("{message}");
@@ -372,7 +372,7 @@ pub(crate) fn run(app: AndroidApp) {
         // する（tree ごと作り直すので state は飛ぶ）。不一致／取得失敗は明示エラーで pump させない。
         if reload_requested.replace(false) {
             log::info!(
-                "Miharashi: reload を受信 — Hermes ランタイムを再構築します（full reload。state は飛びます）"
+                "Torimi: reload を受信 — Hermes ランタイムを再構築します（full reload。state は飛びます）"
             );
             match boot() {
                 Ok(mut runtime) => {

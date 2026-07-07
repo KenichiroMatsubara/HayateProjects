@@ -352,7 +352,7 @@ double HermesApp::protocol_version() const {
   if (!impl_->ready) return -1.0;
   jsi::Runtime& rt = *impl_->runtime;
   try {
-    jsi::Value value = rt.global().getProperty(rt, "__miharashiProtocolVersion");
+    jsi::Value value = rt.global().getProperty(rt, "__torimiProtocolVersion");
     if (!value.isNumber()) return -1.0;
     double v = value.asNumber();
     // 非有限（NaN/Inf）は壊れた埋め込み → 未埋め込み扱い。

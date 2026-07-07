@@ -1,8 +1,8 @@
-//! Miharashi の Android ホストが App Bundle を取得する源（#532, #740）。
+//! Torimi の Android ホストが App Bundle を取得する源（#532, #740）。
 //!
 //! ADR-0112 の `app_tsubame` は当初、ビルド時に APK へ焼いた `assets/tsubame.js` を
-//! 読んで Hermes に eval していた。Miharashi（見晴らし）はホストを再ビルドせずバンドルだけ
-//! 差し替える dev-client なので、源を**実行時ネットワーク fetch** に替えた（Miharashi
+//! 読んで Hermes に eval していた。Torimi（鳥見）はホストを再ビルドせずバンドルだけ
+//! 差し替える dev-client なので、源を**実行時ネットワーク fetch** に替えた（Torimi
 //! CONTEXT.md / #528 Web ホストと対称）。eval シームは不変 — 取得した JS ソース String を
 //! そのまま `new_hermes_app(.., &bundle)` に渡す。
 //!
@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use crate::dev_server_target::DevServerTarget;
 
-/// dev-server がバンドルを配信する HTTP ルート。`@miharashi/dev-server` の `BUNDLE_ROUTE`
+/// dev-server がバンドルを配信する HTTP ルート。`@torimi/dev-server` の `BUNDLE_ROUTE`
 /// と一致させる wire 契約（node 依存をネイティブへ持ち込まないため値で複製する）。
 /// target が path を持たないとき（従来の `host:port` 入力・既定 target）の落とし先。
 const BUNDLE_ROUTE: &str = "/bundle.js";
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn tunables_are_named_constants_matching_the_dev_server_contract() {
-        // dev-server の BUNDLE_ROUTE（`@miharashi/dev-server`）と一致する wire 契約。
+        // dev-server の BUNDLE_ROUTE（`@torimi/dev-server`）と一致する wire 契約。
         assert_eq!(BUNDLE_ROUTE, "/bundle.js");
         // #528 Web ホストの BUNDLE_FETCH_TIMEOUT_MS = 10_000 と対称。
         assert_eq!(FETCH_TIMEOUT, Duration::from_secs(10));

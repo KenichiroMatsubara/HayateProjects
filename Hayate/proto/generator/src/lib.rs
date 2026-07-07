@@ -2163,7 +2163,7 @@ mod generator_tests {
     fn protocol_rs_bakes_the_manifest_version() {
         // ホスト（decoder）の wire 版数の source of truth は manifest.json の `version`。
         // Web ホストの `HOST_PROTOCOL_VERSION = manifest.version`（@hayate/host）と同じ source を
-        // ネイティブ decoder（`hayate_core::wire`）にも露出し、Miharashi Android ホストが
+        // ネイティブ decoder（`hayate_core::wire`）にも露出し、Torimi Android ホストが
         // protocol 突き合わせに使う（#530 / #533）。
         let spec_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../spec");
         let proto = load_spec(&spec_dir);

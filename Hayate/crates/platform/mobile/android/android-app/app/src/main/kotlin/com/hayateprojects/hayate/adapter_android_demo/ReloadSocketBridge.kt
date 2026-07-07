@@ -13,12 +13,12 @@ import okhttp3.WebSocketListener
 /**
  * reload 購読 WS の Android leaf（ADR-0002 後半・#742）。
  *
- * Miharashi の reload 購読 transport は OS プラットフォームのネットワークスタックに委譲する：
+ * Torimi の reload 購読 transport は OS プラットフォームのネットワークスタックに委譲する：
  * OkHttp の [WebSocket] が WS(S)（TLS・OS 信頼ストア）を無償で供給する。Rust ホスト
  * （`reload_socket.rs`）は URL（https 由来なら wss）を渡して [open] し、[awaitEvent] で受信
  * イベントだけを受け取る——Rust に TLS 依存は入れない（ADR-0002）。reload の意味づけ
  * （`reload` メッセージで full reload・切断時の backoff 再接続）は Rust 純粋シーム
- * （`miharashi_reload`）の領分で、ここは受けたものを右から左へ渡すだけ（HMR を解さない・
+ * （`torimi_reload`）の領分で、ここは受けたものを右から左へ渡すだけ（HMR を解さない・
  * ADR-0001）。
  *
  * [BundleFetchBridge] / [ErrorOverlayBridge] と同じ Rust↔Kotlin JNI seam パターン。OkHttp の

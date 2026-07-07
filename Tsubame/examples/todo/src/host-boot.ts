@@ -1,19 +1,19 @@
 import {
   isCameraScanSupported,
   scanQrFromCamera,
-  startMiharashiHost,
+  startTorimiHost,
   ProtocolMismatchError,
-} from '@miharashi/host-web';
+} from '@torimi/host-web';
 import { HOST_PROTOCOL_VERSION } from '@hayate/host';
 
 /**
- * Miharashi ホストページのブート（ADR-0001）。host bootstrap だけを持つ素のシェルとして、
+ * Torimi ホストページのブート（ADR-0001）。host bootstrap だけを持つ素のシェルとして、
  * dev-server URL から App Bundle を fetch → eval し、canvas 上に `createHayateWebHost` で
  * raw + frame-clock を確立してバンドルの mount に渡す。さらに dev-server の reload WS を購読し、
  * バンドル変更ごとに **full reload**（新しい canvas で再 mount。state は飛ぶ）する。
  *
  * フレームワークも `@tsubame/renderer-hayate` もここには無い — eval するバンドルが持ち込む。
- * reload の意味づけはホスト側（`@miharashi/host-web`）に閉じ、ネイティブ契約は不変（ADR-0001）。
+ * reload の意味づけはホスト側（`@torimi/host-web`）に閉じ、ネイティブ契約は不変（ADR-0001）。
  *
  * dev-server URL は `?dev=` で渡せるが、未指定ならスマホで使える URL ピッカー（カメラ QR スキャン
  * ＋手入力）を出す。起動コマンドが端末に出した LAN URL の QR をスマホのカメラで読めば、`?dev=` を
@@ -24,10 +24,10 @@ import { HOST_PROTOCOL_VERSION } from '@hayate/host';
 const DEFAULT_DEV_SERVER_URL = 'http://localhost:5181';
 
 /** 直近に使った dev-server URL を覚えておく localStorage キー（次回起動の手間を省く）。 */
-const LAST_URL_STORAGE_KEY = 'miharashi.devServerUrl';
+const LAST_URL_STORAGE_KEY = 'torimi.devServerUrl';
 
 /** host.html の surface canvas の id。full reload で差し替える新 canvas にも同じ id を付ける。 */
-const CANVAS_ID = 'miharashi-canvas';
+const CANVAS_ID = 'torimi-canvas';
 
 /**
  * このホスト（decoder）の protocol version を上書きする dev-only クエリ。既定は焼き込みの
@@ -37,7 +37,7 @@ const CANVAS_ID = 'miharashi-canvas';
 const HOST_PROTOCOL_VERSION_OVERRIDE_PARAM = 'protocolVersion';
 
 /** URL ピッカー（カメラ QR スキャン + 手入力）の root id。 */
-const PICKER_ID = 'miharashi-picker';
+const PICKER_ID = 'torimi-picker';
 
 const params = new URLSearchParams(window.location.search);
 const root = document.documentElement;
@@ -53,9 +53,9 @@ function normalizeDevServerUrl(raw: string): string {
   return /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 
-// エラーの可視化（boot 失敗・protocol 不一致・mount 後の未捕捉例外）は `startMiharashiHost`
-// （`@miharashi/host-web`）が既定で保証する。消費側のこのファイルは data 属性の記帳だけを担う
-// （e2e 用。#miharashi-error パネル自体はホストが必ず出すので、ここでの実装は不要）。
+// エラーの可視化（boot 失敗・protocol 不一致・mount 後の未捕捉例外）は `startTorimiHost`
+// （`@torimi/host-web`）が既定で保証する。消費側のこのファイルは data 属性の記帳だけを担う
+// （e2e 用。#torimi-error パネル自体はホストが必ず出すので、ここでの実装は不要）。
 
 // e2e / デバッグが「何回 mount まで貫けたか」を観測できるよう mount 回数を data 属性に出す。
 // full reload が効くと、ソース編集のたびにこの数が増える。
@@ -101,7 +101,7 @@ function pickDevServerUrl(): Promise<string> {
       'font:16px/1.6 system-ui,sans-serif;';
 
     const title = document.createElement('div');
-    title.textContent = 'Miharashi に接続';
+    title.textContent = 'Torimi に接続';
     title.style.cssText = 'font-size:20px;font-weight:600;';
 
     const hint = document.createElement('div');
@@ -199,23 +199,23 @@ function pickDevServerUrl(): Promise<string> {
 
 /** ホストを起動する。reload 購読まで張る（full reload ループ）。 */
 function boot(devServerUrl: string): void {
-  startMiharashiHost({
+  startTorimiHost({
     devServerUrl,
     hostProtocolVersion,
     acquireCanvas,
     onBootSettled: (result) => {
       if (result.ok) {
         mountCount += 1;
-        root.dataset.miharashiMountCount = String(mountCount);
-        root.dataset.miharashiStatus = 'mounted';
+        root.dataset.torimiMountCount = String(mountCount);
+        root.dataset.torimiStatus = 'mounted';
       } else if (result.error instanceof ProtocolMismatchError) {
         // 不一致は mount もクラッシュもさせない（#530）。明示エラー UI 自体はホストが必ず出す。
-        root.dataset.miharashiStatus = 'protocol-mismatch';
-        console.error('Miharashi host protocol mismatch', result.error);
+        root.dataset.torimiStatus = 'protocol-mismatch';
+        console.error('Torimi host protocol mismatch', result.error);
       } else {
-        root.dataset.miharashiStatus = 'error';
-        root.dataset.miharashiError = String(result.error);
-        console.error('Miharashi host boot failed', result.error);
+        root.dataset.torimiStatus = 'error';
+        root.dataset.torimiError = String(result.error);
+        console.error('Torimi host boot failed', result.error);
       }
     },
   });

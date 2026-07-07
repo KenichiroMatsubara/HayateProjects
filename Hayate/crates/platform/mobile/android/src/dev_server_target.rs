@@ -1,4 +1,4 @@
-//! Miharashi の Android ホストが接続する dev-server / Demo Endpoint の指定（#534, #740）。
+//! Torimi の Android ホストが接続する dev-server / Demo Endpoint の指定（#534, #740）。
 //!
 //! #532/#533 までは接続先 dev-server が `bundle_source` のハードコード定数だった。#534 で
 //! **端末上で入力**できるようにし、#740（ADR-0002 前半）で target を `host:port`（path 破棄・
@@ -16,7 +16,7 @@ use std::path::Path;
 /// アプリの internal data dir（`AndroidApp::internal_data_path`）直下に置く、Kotlin（writer）↔ Rust
 /// （reader）間の wire 契約。再起動・reload を跨いで読み戻すので入力値が保持される（保持・再接続）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub(crate) const DEV_SERVER_URL_FILE: &str = "miharashi-dev-server-url.txt";
+pub(crate) const DEV_SERVER_URL_FILE: &str = "torimi-dev-server-url.txt";
 
 /// 既定の dev-server ホスト。Android エミュレータからホスト機の loopback へ抜ける別名アドレス。
 /// 端末 UI で URL を入れなかったときの落とし先（#532 のハードコード値を target の既定として引き継ぐ）。
@@ -31,9 +31,9 @@ pub(crate) const HTTPS_DEFAULT_PORT: u16 = 443;
 /// release ビルドの既定接続先＝公開 Demo Endpoint（ADR-0003）の URL。テスター・審査者が
 /// ゼロ入力でデモに到達するための落とし先で、初回起動はここから Demo Manifest を取って先頭
 /// デモを自動ロードする（#743）。**ビルド構成で差し替え可能** — 実際の workers.dev サブドメイン
-/// （account 依存）はビルド時に `MIHARASHI_DEMO_ENDPOINT_URL` で上書きする（[`release_demo_endpoint_url`]）。
-/// 既定値は Worker 名（`miharashi-demo-endpoint`・wrangler.jsonc）由来のプレースホルダ。
-pub const DEFAULT_DEMO_ENDPOINT_URL: &str = "https://miharashi-demo-endpoint.workers.dev";
+/// （account 依存）はビルド時に `TORIMI_DEMO_ENDPOINT_URL` で上書きする（[`release_demo_endpoint_url`]）。
+/// 既定値は Worker 名（`torimi-demo-endpoint`・wrangler.jsonc）由来のプレースホルダ。
+pub const DEFAULT_DEMO_ENDPOINT_URL: &str = "https://torimi-demo-endpoint.workers.dev";
 /// path 無し入力の正規化先。「バンドルルートは既定の wire 契約に任せる」の意（`bundle_source`
 /// が既定ルートへ広げる）。
 const ROOT_PATH: &str = "/";
@@ -160,11 +160,11 @@ fn split_path(rest: &str) -> (&str, &str) {
 }
 
 /// release ビルドが差し込む Demo Endpoint URL。既定は [`DEFAULT_DEMO_ENDPOINT_URL`] だが、
-/// **ビルド構成で差し替え可能** にするためコンパイル時 env `MIHARASHI_DEMO_ENDPOINT_URL` があれば
+/// **ビルド構成で差し替え可能** にするためコンパイル時 env `TORIMI_DEMO_ENDPOINT_URL` があれば
 /// それを使う（account 依存の実サブドメインを AAB ビルドで注入する・ADR-0003 / #743）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn release_demo_endpoint_url() -> &'static str {
-    option_env!("MIHARASHI_DEMO_ENDPOINT_URL").unwrap_or(DEFAULT_DEMO_ENDPOINT_URL)
+    option_env!("TORIMI_DEMO_ENDPOINT_URL").unwrap_or(DEFAULT_DEMO_ENDPOINT_URL)
 }
 
 /// release ビルドの既定 target＝公開 Demo Endpoint（ADR-0003）。ここを起点に Demo Manifest を
@@ -241,9 +241,9 @@ mod tests {
     #[test]
     fn https_defaults_to_port_443() {
         // 公開 Demo Endpoint（ADR-0003）の URL はポート無しで貼られる。scheme 既定ポートに広げる（ADR-0002）。
-        let target = parse("https://miharashi-demo.example.workers.dev").unwrap();
+        let target = parse("https://torimi-demo.example.workers.dev").unwrap();
         assert_eq!(target.scheme(), Scheme::Https);
-        assert_eq!(target.host(), "miharashi-demo.example.workers.dev");
+        assert_eq!(target.host(), "torimi-demo.example.workers.dev");
         assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
         assert_eq!(target.port(), 443);
     }
@@ -315,7 +315,7 @@ mod tests {
         assert_eq!(target.scheme(), Scheme::Https);
         assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
         // 既定定数（未上書き時）は Worker 名由来の workers.dev サブドメイン。
-        assert_eq!(DEFAULT_DEMO_ENDPOINT_URL, "https://miharashi-demo-endpoint.workers.dev");
+        assert_eq!(DEFAULT_DEMO_ENDPOINT_URL, "https://torimi-demo-endpoint.workers.dev");
     }
 
     #[test]
@@ -341,7 +341,7 @@ mod tests {
 
     /// テスト専用の使い捨て data dir（Kotlin が書く internal data dir の代役）。
     fn temp_data_dir(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("miharashi-dst-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("torimi-dst-{}-{tag}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

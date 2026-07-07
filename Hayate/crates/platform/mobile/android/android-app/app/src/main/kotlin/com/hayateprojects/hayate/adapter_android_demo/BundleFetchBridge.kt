@@ -7,7 +7,7 @@ import java.net.URL
 /**
  * App Bundle fetch の Android leaf（ADR-0002 前半・#740）。
  *
- * Miharashi のバンドル取得 transport は OS プラットフォームのネットワークスタックに委譲する：
+ * Torimi のバンドル取得 transport は OS プラットフォームのネットワークスタックに委譲する：
  * Android の [HttpURLConnection] は OkHttp 系実装で、HTTPS（TLS・OS 信頼ストア・リダイレクト
  * 追従）を無償で供給する。Rust ホスト（`bundle_source.rs`）は正規化済みのフル URL を渡し、
  * fetch 済み JS ソース文字列だけを受け取る——Rust に TLS 依存は入れない（ADR-0002）。
