@@ -834,6 +834,8 @@ fn generate_draw_codec(proto: &Proto) -> String {
         let default = match field.name.as_str() {
             // Flutter Paint 既定と同じ不透明黒。
             "COLOR" => "[0.0, 0.0, 0.0, 1.0]".to_string(),
+            // fill_rule enum 既定 nonZero（0）。
+            "FILL_RULE" => "0.0".to_string(),
             other => panic!("draw_paint_fields.{other}: unhandled default (add an arm)"),
         };
         out.push_str(&format!(

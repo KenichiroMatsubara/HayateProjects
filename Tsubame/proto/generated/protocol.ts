@@ -35,11 +35,19 @@ export const DRAW_OP = {
   LINE_TO: 1,
   CLOSE: 2,
   FILL: 3,
+  QUADRATIC_TO: 4,
+  CUBIC_TO: 5,
+  ARC_TO: 6,
+  RECT: 7,
+  RRECT: 8,
+  OVAL: 9,
+  CIRCLE: 10,
 } as const;
 export type DRAW_OP = typeof DRAW_OP;
 
 export const DRAW_PAINT_FIELD = {
   COLOR: 0,
+  FILL_RULE: 1,
 } as const;
 export type DRAW_PAINT_FIELD = typeof DRAW_PAINT_FIELD;
 
@@ -404,6 +412,12 @@ export const JUSTIFY_SELF = {
   stretch: 4,
 } as const;
 export type JUSTIFY_SELF = typeof JUSTIFY_SELF;
+
+export const FILL_RULE = {
+  nonZero: 0,
+  evenOdd: 1,
+} as const;
+export type FILL_RULE = typeof FILL_RULE;
 
 export const UNIT_CODE = DIMENSION_UNIT;
 

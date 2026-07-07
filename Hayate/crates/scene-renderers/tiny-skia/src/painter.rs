@@ -1,6 +1,6 @@
 use hayate_core::{
-    PathVerb, RenderImage, RenderImageAlphaType, ScenePainter, ShadowOccluder, TextRunData,
-    is_notdef, missing_glyph_placeholder,
+    DrawFillRule, PathSink, PathVerb, RenderImage, RenderImageAlphaType, ScenePainter,
+    ShadowOccluder, TextRunData, build_draw_path, is_notdef, missing_glyph_placeholder,
 };
 use skrifa::{
     GlyphId, MetadataProvider,
@@ -108,7 +108,14 @@ impl ScenePainter for TinySkiaPainter<'_> {
         }
     }
 
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    ) {
         let Some(path) = verbs_to_path(verbs) else {
             return;
         };
@@ -116,8 +123,11 @@ impl ScenePainter for TinySkiaPainter<'_> {
         let transform = self.state.transform.pre_translate(x, y);
         let mask = self.state.clip_masks.last();
         let paint = color_to_paint(color);
-        self.pixmap
-            .fill_path(&path, &paint, FillRule::Winding, transform, mask);
+        let rule = match fill_rule {
+            DrawFillRule::NonZero => FillRule::Winding,
+            DrawFillRule::EvenOdd => FillRule::EvenOdd,
+        };
+        self.pixmap.fill_path(&path, &paint, rule, transform, mask);
     }
 
     fn fill_blurred_rounded_rect(
@@ -772,27 +782,38 @@ fn rounded_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     pb.finish()
 }
 
-/// draw display list のパス動詞列（ボーダーボックス相対）を tiny-skia Path へ変換する。
-/// MoveTo で開いた subpath の中でだけ LineTo / Close を受け付け（退化列は黙って
-/// 捨てる。3 painter 共通の意味論）、空・退化パスは `None`。
-fn verbs_to_path(verbs: &[PathVerb]) -> Option<Path> {
-    let mut pb = PathBuilder::new();
-    let mut open = false;
-    for verb in verbs {
-        match verb {
-            PathVerb::MoveTo { x, y } => {
-                pb.move_to(*x, *y);
-                open = true;
-            }
-            PathVerb::LineTo { x, y } if open => pb.line_to(*x, *y),
-            PathVerb::Close if open => {
-                pb.close();
-                open = false;
-            }
-            PathVerb::LineTo { .. } | PathVerb::Close => {}
-        }
+/// tiny-skia `PathBuilder` を [`PathSink`] として橋渡しする（曲線・便宜形状・arcTo の
+/// 展開は共有 [`build_draw_path`] が行う）。
+struct TinySkiaPathSink {
+    pb: PathBuilder,
+}
+
+impl PathSink for TinySkiaPathSink {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.pb.move_to(x, y);
     }
-    pb.finish()
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.pb.line_to(x, y);
+    }
+    fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+        self.pb.quad_to(cx, cy, x, y);
+    }
+    fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
+        self.pb.cubic_to(c1x, c1y, c2x, c2y, x, y);
+    }
+    fn close(&mut self) {
+        self.pb.close();
+    }
+}
+
+/// draw display list のパス動詞列（ボーダーボックス相対）を tiny-skia Path へ変換する。
+/// 空・退化パスは `None`。
+fn verbs_to_path(verbs: &[PathVerb]) -> Option<Path> {
+    let mut sink = TinySkiaPathSink {
+        pb: PathBuilder::new(),
+    };
+    build_draw_path(verbs, &mut sink);
+    sink.pb.finish()
 }
 
 fn draw_text_run(

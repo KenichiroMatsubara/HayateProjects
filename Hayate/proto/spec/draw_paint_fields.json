@@ -9,5 +9,11 @@
       { "name": "a", "type": "f32" }
     ],
     "description": "Solid paint color (straight RGBA, 0..1). Default opaque black."
+  },
+  {
+    "name": "FILL_RULE",
+    "value": 1,
+    "params": [{ "name": "rule", "type": "f32" }],
+    "description": "Fill rule for FILL (fill_rule enum: 0 = nonZero winding, 1 = evenOdd; #726). Default nonZero. evenOdd leaves a hole where an odd number of contours overlap."
   }
 ]

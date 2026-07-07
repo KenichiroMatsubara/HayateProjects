@@ -33,6 +33,52 @@ fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
                 y: f32_at(&command["y"]),
             }),
             "close" => verbs.push(PathVerb::Close),
+            "quadraticTo" => verbs.push(PathVerb::QuadraticTo {
+                cx: f32_at(&command["cx"]),
+                cy: f32_at(&command["cy"]),
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+            }),
+            "cubicTo" => verbs.push(PathVerb::CubicTo {
+                c1x: f32_at(&command["c1x"]),
+                c1y: f32_at(&command["c1y"]),
+                c2x: f32_at(&command["c2x"]),
+                c2y: f32_at(&command["c2y"]),
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+            }),
+            "arcTo" => verbs.push(PathVerb::ArcTo {
+                x1: f32_at(&command["x1"]),
+                y1: f32_at(&command["y1"]),
+                x2: f32_at(&command["x2"]),
+                y2: f32_at(&command["y2"]),
+                radius: f32_at(&command["radius"]),
+            }),
+            "rect" => verbs.push(PathVerb::Rect {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+            }),
+            "rrect" => verbs.push(PathVerb::Rrect {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+                rx: f32_at(&command["rx"]),
+                ry: f32_at(&command["ry"]),
+            }),
+            "oval" => verbs.push(PathVerb::Oval {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+            }),
+            "circle" => verbs.push(PathVerb::Circle {
+                cx: f32_at(&command["cx"]),
+                cy: f32_at(&command["cy"]),
+                radius: f32_at(&command["radius"]),
+            }),
             "fill" => {
                 let mut paint = DrawPaint::default();
                 if let Some(color) = command["paint"]["color"].as_array() {
@@ -42,6 +88,9 @@ fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
                         f32_at(&color[2]),
                         f32_at(&color[3]),
                     ];
+                }
+                if let Some(rule) = command["paint"]["fillRule"].as_f64() {
+                    paint.fill_rule = rule as f32;
                 }
                 out.push(DrawCommand::FillPath {
                     verbs: std::mem::take(&mut verbs),

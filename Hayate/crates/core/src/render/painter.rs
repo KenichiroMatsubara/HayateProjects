@@ -1,4 +1,5 @@
 use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
+use crate::render::draw_path::DrawFillRule;
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
 
@@ -69,6 +70,7 @@ pub enum DrawOp {
         x: f32,
         y: f32,
         verbs: Vec<PathVerb>,
+        fill_rule: DrawFillRule,
         color: [f32; 4],
     },
     PushTransform {
@@ -198,9 +200,17 @@ pub trait ScenePainter {
     /// draw display list のパスを単色で塗る（#724 / ADR-0141）。`(x, y)` は要素の
     /// ボーダーボックス左上（絶対・論理 px）、`verbs` はボーダーボックス相対のパス
     /// 動詞列（fill rule は nonZero）。painter が `(x, y)` の平行移動を適用する。
-    /// 将来の stroke / fill rule / グラデーション等は verbs・Paint 語彙の拡張として
-    /// 生える（PRD #723「後回しは封印ではない」）。
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]);
+    /// `fill_rule` は巻き数規則（nonZero / evenOdd・#726）。曲線・便宜形状・arcTo は
+    /// [`crate::render::build_draw_path`] が verbs をプリミティブへ展開して painter へ渡す。
+    /// 将来の stroke / グラデーション等は verbs・Paint 語彙の拡張として生える。
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    );
 
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
 
@@ -358,11 +368,19 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    ) {
         self.ops.push(DrawOp::FillPath {
             x,
             y,
             verbs: verbs.to_vec(),
+            fill_rule,
             color,
         });
     }
@@ -484,7 +502,15 @@ impl ScenePainter for NullPainter {
     ) {
     }
 
-    fn fill_path(&mut self, _x: f32, _y: f32, _verbs: &[PathVerb], _color: [f32; 4]) {}
+    fn fill_path(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _verbs: &[PathVerb],
+        _fill_rule: DrawFillRule,
+        _color: [f32; 4],
+    ) {
+    }
 
     fn draw_text_run(&mut self, _x: f32, _y: f32, _color: [f32; 4], _data: &TextRunData) {}
 
@@ -674,7 +700,13 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             for command in commands.iter() {
                 match command {
                     crate::wire::protocol::DrawCommand::FillPath { verbs, paint } => {
-                        painter.fill_path(*x, *y, verbs, paint.color);
+                        painter.fill_path(
+                            *x,
+                            *y,
+                            verbs,
+                            DrawFillRule::from_wire(paint.fill_rule),
+                            paint.color,
+                        );
                     }
                 }
             }

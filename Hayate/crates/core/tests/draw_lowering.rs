@@ -20,7 +20,10 @@ fn triangle(color: [f32; 4]) -> Vec<DrawCommand> {
             PathVerb::LineTo { x: 50.0, y: 70.0 },
             PathVerb::Close,
         ],
-        paint: DrawPaint { color },
+        paint: DrawPaint {
+            color,
+            ..Default::default()
+        },
     }]
 }
 
@@ -84,8 +87,9 @@ fn draw_paints_after_background_at_border_box_origin() {
     );
 
     match &ops[draw_index] {
-        DrawOp::FillPath { x, y, verbs, color } => {
+        DrawOp::FillPath { x, y, verbs, fill_rule, color } => {
             assert_eq!((*x, *y), (20.0, 20.0), "border-box origin (parent padding)");
+            assert_eq!(*fill_rule, hayate_core::DrawFillRule::NonZero, "default fill rule");
             assert_eq!(color, &[0.0, 0.0, 1.0, 1.0]);
             assert_eq!(
                 verbs,

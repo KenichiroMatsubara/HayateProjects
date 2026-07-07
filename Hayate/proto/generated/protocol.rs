@@ -1458,9 +1458,17 @@ pub const DRAW_OP_MOVE_TO: u32 = 0;
 pub const DRAW_OP_LINE_TO: u32 = 1;
 pub const DRAW_OP_CLOSE: u32 = 2;
 pub const DRAW_OP_FILL: u32 = 3;
+pub const DRAW_OP_QUADRATIC_TO: u32 = 4;
+pub const DRAW_OP_CUBIC_TO: u32 = 5;
+pub const DRAW_OP_ARC_TO: u32 = 6;
+pub const DRAW_OP_RECT: u32 = 7;
+pub const DRAW_OP_RRECT: u32 = 8;
+pub const DRAW_OP_OVAL: u32 = 9;
+pub const DRAW_OP_CIRCLE: u32 = 10;
 
 // Draw paint field constants (tagged paint packet; draw_paint_fields.json)
 pub const DRAW_PAINT_COLOR: u32 = 0;
+pub const DRAW_PAINT_FILL_RULE: u32 = 1;
 
 // Path verb of a draw display list (drawRole=path-verb)
 #[derive(Debug, Clone, PartialEq)]
@@ -1474,18 +1482,66 @@ pub enum PathVerb {
         y: f32,
     },
     Close,
+    QuadraticTo {
+        cx: f32,
+        cy: f32,
+        x: f32,
+        y: f32,
+    },
+    CubicTo {
+        c1x: f32,
+        c1y: f32,
+        c2x: f32,
+        c2y: f32,
+        x: f32,
+        y: f32,
+    },
+    ArcTo {
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        radius: f32,
+    },
+    Rect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Rrect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        rx: f32,
+        ry: f32,
+    },
+    Oval {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Circle {
+        cx: f32,
+        cy: f32,
+        radius: f32,
+    },
 }
 
 // Paint of a draw command (tagged packet; unspecified fields keep defaults)
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawPaint {
     pub color: [f32; 4],
+    pub fill_rule: f32,
 }
 
 impl Default for DrawPaint {
     fn default() -> Self {
         Self {
             color: [0.0, 0.0, 0.0, 1.0],
+            fill_rule: 0.0,
         }
     }
 }
@@ -1510,6 +1566,11 @@ pub fn decode_draw_paint(packed: &[f32]) -> Result<DrawPaint, String> {
                 if i + 4 > packed.len() { return Err("draw paint field COLOR truncated".to_string()); }
                 paint.color = [packed[i + 0], packed[i + 1], packed[i + 2], packed[i + 3]];
                 i += 4;
+            }
+            DRAW_PAINT_FILL_RULE => {
+                if i + 1 > packed.len() { return Err("draw paint field FILL_RULE truncated".to_string()); }
+                paint.fill_rule = packed[i + 0];
+                i += 1;
             }
             other => return Err(format!("unknown draw paint field {other}")),
         }
@@ -1537,6 +1598,41 @@ pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
             }
             DRAW_OP_CLOSE => {
                 verbs.push(PathVerb::Close);
+            }
+            DRAW_OP_QUADRATIC_TO => {
+                if i + 4 > data.len() { return Err("draw op QUADRATIC_TO truncated".to_string()); }
+                verbs.push(PathVerb::QuadraticTo { cx: data[i + 0], cy: data[i + 1], x: data[i + 2], y: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_CUBIC_TO => {
+                if i + 6 > data.len() { return Err("draw op CUBIC_TO truncated".to_string()); }
+                verbs.push(PathVerb::CubicTo { c1x: data[i + 0], c1y: data[i + 1], c2x: data[i + 2], c2y: data[i + 3], x: data[i + 4], y: data[i + 5] });
+                i += 6;
+            }
+            DRAW_OP_ARC_TO => {
+                if i + 5 > data.len() { return Err("draw op ARC_TO truncated".to_string()); }
+                verbs.push(PathVerb::ArcTo { x1: data[i + 0], y1: data[i + 1], x2: data[i + 2], y2: data[i + 3], radius: data[i + 4] });
+                i += 5;
+            }
+            DRAW_OP_RECT => {
+                if i + 4 > data.len() { return Err("draw op RECT truncated".to_string()); }
+                verbs.push(PathVerb::Rect { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_RRECT => {
+                if i + 6 > data.len() { return Err("draw op RRECT truncated".to_string()); }
+                verbs.push(PathVerb::Rrect { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3], rx: data[i + 4], ry: data[i + 5] });
+                i += 6;
+            }
+            DRAW_OP_OVAL => {
+                if i + 4 > data.len() { return Err("draw op OVAL truncated".to_string()); }
+                verbs.push(PathVerb::Oval { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_CIRCLE => {
+                if i + 3 > data.len() { return Err("draw op CIRCLE truncated".to_string()); }
+                verbs.push(PathVerb::Circle { cx: data[i + 0], cy: data[i + 1], radius: data[i + 2] });
+                i += 3;
             }
             DRAW_OP_FILL => {
                 if i >= data.len() { return Err("draw op FILL truncated".to_string()); }

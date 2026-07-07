@@ -32,5 +32,93 @@
       { "name": "paint_len", "type": "usize" }
     ],
     "description": "Fill the path accumulated since the previous draw command. `paint_len` slots of tagged draw-paint fields (draw_paint_fields.json) follow inline; unspecified fields take their defaults."
+  },
+  {
+    "name": "QUADRATIC_TO",
+    "value": 4,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "cx", "type": "f32" },
+      { "name": "cy", "type": "f32" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" }
+    ],
+    "description": "Append a quadratic Bézier from the current point through control (cx, cy) to (x, y) (#726)."
+  },
+  {
+    "name": "CUBIC_TO",
+    "value": 5,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "c1x", "type": "f32" },
+      { "name": "c1y", "type": "f32" },
+      { "name": "c2x", "type": "f32" },
+      { "name": "c2y", "type": "f32" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" }
+    ],
+    "description": "Append a cubic Bézier from the current point via controls (c1x, c1y) and (c2x, c2y) to (x, y) (#726)."
+  },
+  {
+    "name": "ARC_TO",
+    "value": 6,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x1", "type": "f32" },
+      { "name": "y1", "type": "f32" },
+      { "name": "x2", "type": "f32" },
+      { "name": "y2", "type": "f32" },
+      { "name": "radius", "type": "f32" }
+    ],
+    "description": "Append a circular arc of `radius` tangent to the line from the current point to (x1, y1) and the line from (x1, y1) to (x2, y2), like the HTML canvas `arcTo` (#726). A leading line segment connects the current point to the arc's first tangent point. `radius <= 0` or collinear points degenerate to a lineTo (x1, y1)."
+  },
+  {
+    "name": "RECT",
+    "value": 7,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
+    ],
+    "description": "Append a closed rectangle subpath (convenience shape; #726)."
+  },
+  {
+    "name": "RRECT",
+    "value": 8,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" },
+      { "name": "rx", "type": "f32" },
+      { "name": "ry", "type": "f32" }
+    ],
+    "description": "Append a closed rounded-rectangle subpath with corner radii (rx, ry) (convenience shape; #726). Radii clamp to half the corresponding side."
+  },
+  {
+    "name": "OVAL",
+    "value": 9,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
+    ],
+    "description": "Append a closed ellipse subpath inscribed in the (x, y, width, height) box (convenience shape; #726)."
+  },
+  {
+    "name": "CIRCLE",
+    "value": 10,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "cx", "type": "f32" },
+      { "name": "cy", "type": "f32" },
+      { "name": "radius", "type": "f32" }
+    ],
+    "description": "Append a closed circle subpath centred at (cx, cy) (convenience shape; #726)."
   }
 ]

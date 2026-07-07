@@ -905,6 +905,7 @@ export function appendSetDraw(buf: number[], id: number, drawOffset: number, dra
 
 export interface DrawPaint {
   readonly color?: readonly [number, number, number, number];
+  readonly fillRule?: number;
 }
 
 export function appendDrawMoveTo(draws: number[], x: number, y: number): void {
@@ -926,5 +927,36 @@ export function appendDrawFill(draws: number[], paint: DrawPaint): void {
   if (paint.color !== undefined) {
     draws.push(DRAW_PAINT_FIELD.COLOR, ...paint.color);
   }
+  if (paint.fillRule !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+  }
   draws[lenIndex] = draws.length - lenIndex - 1;
+}
+
+export function appendDrawQuadraticTo(draws: number[], cx: number, cy: number, x: number, y: number): void {
+  draws.push(DRAW_OP.QUADRATIC_TO, cx, cy, x, y);
+}
+
+export function appendDrawCubicTo(draws: number[], c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void {
+  draws.push(DRAW_OP.CUBIC_TO, c1x, c1y, c2x, c2y, x, y);
+}
+
+export function appendDrawArcTo(draws: number[], x1: number, y1: number, x2: number, y2: number, radius: number): void {
+  draws.push(DRAW_OP.ARC_TO, x1, y1, x2, y2, radius);
+}
+
+export function appendDrawRect(draws: number[], x: number, y: number, width: number, height: number): void {
+  draws.push(DRAW_OP.RECT, x, y, width, height);
+}
+
+export function appendDrawRrect(draws: number[], x: number, y: number, width: number, height: number, rx: number, ry: number): void {
+  draws.push(DRAW_OP.RRECT, x, y, width, height, rx, ry);
+}
+
+export function appendDrawOval(draws: number[], x: number, y: number, width: number, height: number): void {
+  draws.push(DRAW_OP.OVAL, x, y, width, height);
+}
+
+export function appendDrawCircle(draws: number[], cx: number, cy: number, radius: number): void {
+  draws.push(DRAW_OP.CIRCLE, cx, cy, radius);
 }

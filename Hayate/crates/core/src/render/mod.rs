@@ -1,3 +1,4 @@
+mod draw_path;
 mod missing_glyph;
 mod painter;
 pub(crate) mod shadow;
@@ -11,6 +12,7 @@ pub use missing_glyph::{
     FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, is_notdef,
     missing_glyph_placeholder,
 };
+pub use draw_path::{DrawFillRule, PathSink, build_draw_path};
 pub use painter::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,
     render_scene_graph,

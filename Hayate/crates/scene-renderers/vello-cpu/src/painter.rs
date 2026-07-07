@@ -1,6 +1,6 @@
 use hayate_core::{
-    is_notdef, missing_glyph_placeholder, PathVerb, RenderImage, RenderImageAlphaType,
-    ScenePainter, TextRunData,
+    build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, PathSink, PathVerb,
+    RenderImage, RenderImageAlphaType, ScenePainter, TextRunData,
 };
 use skrifa::{
     instance::{LocationRef, NormalizedCoord, Size},
@@ -106,36 +106,29 @@ impl ScenePainter for VelloCpuPainter<'_> {
         self.context.set_fill_rule(Fill::NonZero);
     }
 
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
-        let mut path = BezPath::new();
-        // MoveTo で開いた subpath の中でだけ LineTo / Close を受け付ける（退化列を
-        // 黙って捨てる。3 painter 共通の意味論）。
-        let mut open = false;
-        for verb in verbs {
-            match verb {
-                PathVerb::MoveTo { x, y } => {
-                    path.move_to((f64::from(*x), f64::from(*y)));
-                    open = true;
-                }
-                PathVerb::LineTo { x, y } if open => {
-                    path.line_to((f64::from(*x), f64::from(*y)));
-                }
-                PathVerb::Close if open => {
-                    path.close_path();
-                    open = false;
-                }
-                PathVerb::LineTo { .. } | PathVerb::Close => {}
-            }
-        }
-        if path.is_empty() {
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    ) {
+        let mut sink = CpuKurboPathSink { path: BezPath::new() };
+        build_draw_path(verbs, &mut sink);
+        if sink.path.is_empty() {
             return;
         }
+        let rule = match fill_rule {
+            DrawFillRule::NonZero => Fill::NonZero,
+            DrawFillRule::EvenOdd => Fill::EvenOdd,
+        };
         // verbs はボーダーボックス相対。原点 `(x, y)` は transform の平行移動で与える。
         self.context
             .set_transform(self.state.transform * Affine::translate((f64::from(x), f64::from(y))));
         self.context.set_paint(to_color(color));
-        self.context.set_fill_rule(Fill::NonZero);
-        self.context.fill_path(&path);
+        self.context.set_fill_rule(rule);
+        self.context.fill_path(&sink.path);
     }
 
     fn stroke_dashed_border(
@@ -371,6 +364,35 @@ fn to_color(color: [f32; 4]) -> vello_cpu::peniko::Color {
         b.clamp(0.0, 1.0),
         a.clamp(0.0, 1.0),
     ])
+}
+
+/// kurbo `BezPath` を [`PathSink`] として橋渡しする（曲線・便宜形状・arcTo の展開は
+/// 共有 [`build_draw_path`] が行う）。
+struct CpuKurboPathSink {
+    path: BezPath,
+}
+
+impl PathSink for CpuKurboPathSink {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to((f64::from(x), f64::from(y)));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to((f64::from(x), f64::from(y)));
+    }
+    fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+        self.path
+            .quad_to((f64::from(cx), f64::from(cy)), (f64::from(x), f64::from(y)));
+    }
+    fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
+        self.path.curve_to(
+            (f64::from(c1x), f64::from(c1y)),
+            (f64::from(c2x), f64::from(c2y)),
+            (f64::from(x), f64::from(y)),
+        );
+    }
+    fn close(&mut self) {
+        self.path.close_path();
+    }
 }
 
 fn push_rect(path: &mut BezPath, x: f32, y: f32, w: f32, h: f32) {

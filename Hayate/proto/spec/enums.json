@@ -553,5 +553,18 @@
         "value": 4
       }
     ]
+  },
+  {
+    "name": "fill_rule",
+    "values": [
+      {
+        "name": "nonZero",
+        "value": 0
+      },
+      {
+        "name": "evenOdd",
+        "value": 1
+      }
+    ]
   }
 ]

@@ -10,8 +10,9 @@
 use std::path::PathBuf;
 
 use hayate_core::wire::{
-    apply_mutations, DRAW_OP_CLOSE, DRAW_OP_FILL, DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO,
-    DRAW_PAINT_COLOR, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW, OP_SET_ROOT,
+    apply_mutations, DRAW_OP_ARC_TO, DRAW_OP_CIRCLE, DRAW_OP_CLOSE, DRAW_OP_CUBIC_TO, DRAW_OP_FILL,
+    DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT, DRAW_OP_RRECT, DRAW_PAINT_COLOR,
+    DRAW_PAINT_FILL_RULE, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW, OP_SET_ROOT,
     OP_SET_STYLE, TAG_BACKGROUND_COLOR, TAG_HEIGHT, TAG_OVERFLOW, TAG_WIDTH,
 };
 use hayate_core::ElementTree;
@@ -219,4 +220,111 @@ fn wire_draw_is_clipped_by_overflow_hidden() {
         pixel(&pixels, CANVAS_W, 70, 70),
         "outside the box is clipped by overflow: hidden",
     );
+}
+
+/// root 100x100 view に `draws` の display list を載せて 1 枚描く（#726 の曲線/形状/
+/// fill rule golden 共通の足場）。
+fn single_view_draw(draws: &[f32]) -> Vec<u8> {
+    let mut styles: Vec<f32> = Vec::new();
+    styles.extend(dim(TAG_WIDTH, 100.0));
+    styles.extend(dim(TAG_HEIGHT, 100.0));
+    let style_len = styles.len();
+    let ops: Vec<f64> = vec![
+        OP_CREATE as f64,
+        1.0,
+        ELEMENT_KIND_VIEW as f64,
+        OP_SET_ROOT as f64,
+        1.0,
+        OP_SET_STYLE as f64,
+        1.0,
+        0.0,
+        style_len as f64,
+        OP_SET_DRAW as f64,
+        1.0,
+        0.0,
+        draws.len() as f64,
+    ];
+    render_wire(&ops, &styles, draws)
+}
+
+// 3 次ベジェで縁取った塗り（#726）。曲線動詞が painter まで通ることの golden。
+#[test]
+fn wire_cubic_fill_matches_golden() {
+    let draws: Vec<f32> = vec![
+        DRAW_OP_MOVE_TO as f32, 20.0, 50.0,
+        DRAW_OP_CUBIC_TO as f32, 20.0, 10.0, 80.0, 10.0, 80.0, 50.0,
+        DRAW_OP_CUBIC_TO as f32, 80.0, 90.0, 20.0, 90.0, 20.0, 50.0,
+        DRAW_OP_CLOSE as f32,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 1.0, 0.0, 0.0, 1.0,
+    ];
+    let pixels = single_view_draw(&draws);
+    assert_near(pixel(&pixels, CANVAS_W, 50, 50), [255, 0, 0, 255], 2, "inside the cubic blob");
+    assert_clear(pixel(&pixels, CANVAS_W, 3, 3), "outside the blob");
+    assert_pixels_match_golden(&golden_path("draw_wire_cubic_fill"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// evenOdd の fill rule（#726）: 入れ子の矩形で内側が穴になる。同じジオメトリを
+// 既定 nonZero で塗ると穴は塞がる — その差が evenOdd の観測点。
+#[test]
+fn wire_even_odd_fill_leaves_a_hole_where_nonzero_fills() {
+    // 外 (20,20,60,60) + 内 (40,40,20,20) を evenOdd で塗る → 内側は穴。
+    let even_odd: Vec<f32> = vec![
+        DRAW_OP_RECT as f32, 20.0, 20.0, 60.0, 60.0,
+        DRAW_OP_RECT as f32, 40.0, 40.0, 20.0, 20.0,
+        DRAW_OP_FILL as f32, 7.0,
+        DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        DRAW_PAINT_FILL_RULE as f32, 1.0,
+    ];
+    let pixels = single_view_draw(&even_odd);
+    assert_near(pixel(&pixels, CANVAS_W, 25, 25), [0, 0, 255, 255], 2, "the ring is filled");
+    assert_clear(pixel(&pixels, CANVAS_W, 50, 50), "evenOdd punches a hole in the middle");
+    assert_pixels_match_golden(&golden_path("draw_wire_even_odd_hole"), &pixels, CANVAS_W, CANVAS_H);
+
+    // 対照: 同じジオメトリ・既定 nonZero では穴が塞がる。
+    let non_zero: Vec<f32> = vec![
+        DRAW_OP_RECT as f32, 20.0, 20.0, 60.0, 60.0,
+        DRAW_OP_RECT as f32, 40.0, 40.0, 20.0, 20.0,
+        DRAW_OP_FILL as f32, 5.0,
+        DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+    ];
+    let solid = single_view_draw(&non_zero);
+    assert_near(pixel(&solid, CANVAS_W, 50, 50), [0, 0, 255, 255], 2, "nonZero fills the middle");
+}
+
+// 便宜形状（#726）: 角丸矩形と円を 1 呼び出しずつで塗る。角丸コーナー・円外は背景。
+#[test]
+fn wire_convenience_shapes_match_golden() {
+    let draws: Vec<f32> = vec![
+        // 左: 角丸矩形 (5,5,45,90) r=18 緑
+        DRAW_OP_RRECT as f32, 5.0, 5.0, 45.0, 90.0, 18.0, 18.0,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.6, 0.0, 1.0,
+        // 右: 円 中心 (75,50) r=20 赤
+        DRAW_OP_CIRCLE as f32, 75.0, 50.0, 20.0,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 1.0, 0.0, 0.0, 1.0,
+    ];
+    let pixels = single_view_draw(&draws);
+    assert_near(pixel(&pixels, CANVAS_W, 27, 50), [0, 153, 0, 255], 3, "inside the rounded rect");
+    assert_clear(pixel(&pixels, CANVAS_W, 6, 6), "the rounded corner is cut away");
+    assert_near(pixel(&pixels, CANVAS_W, 75, 50), [255, 0, 0, 255], 2, "inside the circle");
+    assert_clear(pixel(&pixels, CANVAS_W, 58, 33), "outside the circle");
+    assert_pixels_match_golden(&golden_path("draw_wire_convenience_shapes"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// arcTo（#726）: 上辺と右辺に接する円弧で右上コーナーを丸めた正方形。内部は塗られ、
+// 丸められたコーナーの外側は背景。
+#[test]
+fn wire_arc_to_rounds_a_corner_matches_golden() {
+    let draws: Vec<f32> = vec![
+        DRAW_OP_MOVE_TO as f32, 10.0, 90.0,
+        DRAW_OP_LINE_TO as f32, 10.0, 10.0,
+        DRAW_OP_ARC_TO as f32, 90.0, 10.0, 90.0, 90.0, 30.0,
+        DRAW_OP_LINE_TO as f32, 90.0, 90.0,
+        DRAW_OP_CLOSE as f32,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.4, 0.8, 1.0,
+    ];
+    let pixels = single_view_draw(&draws);
+    assert_near(pixel(&pixels, CANVAS_W, 50, 50), [0, 102, 204, 255], 3, "inside the shape");
+    assert_near(pixel(&pixels, CANVAS_W, 15, 15), [0, 102, 204, 255], 3, "the sharp top-left corner is filled");
+    assert_clear(pixel(&pixels, CANVAS_W, 86, 14), "the arc-rounded top-right corner is cut away");
+    assert_pixels_match_golden(&golden_path("draw_wire_arc_to_corner"), &pixels, CANVAS_W, CANVAS_H);
 }

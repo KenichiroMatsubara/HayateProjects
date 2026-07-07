@@ -108,8 +108,8 @@ pub use render_scale::{
 };
 pub use viewport_metrics::{viewport_size_changed, ViewportMetrics};
 pub use render::{
-    Blob, DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, NullPainter,
-    RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage, RenderImageAlphaType,
-    RenderImageFormat, ScenePainter, SceneRecorder, is_notdef, missing_glyph_placeholder,
-    render_scene_graph,
+    Blob, DrawFillRule, DrawOp, FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID,
+    NullPainter, PathSink, RecordedFrame, RecordingPainter, RenderFont, RenderGlyph, RenderImage,
+    RenderImageAlphaType, RenderImageFormat, ScenePainter, SceneRecorder, build_draw_path,
+    is_notdef, missing_glyph_placeholder, render_scene_graph,
 };

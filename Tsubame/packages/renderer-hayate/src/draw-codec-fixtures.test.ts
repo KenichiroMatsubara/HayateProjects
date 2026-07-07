@@ -3,10 +3,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  appendDrawArcTo,
+  appendDrawCircle,
   appendDrawClose,
+  appendDrawCubicTo,
   appendDrawFill,
   appendDrawLineTo,
   appendDrawMoveTo,
+  appendDrawOval,
+  appendDrawQuadraticTo,
+  appendDrawRect,
+  appendDrawRrect,
   type DrawPaint,
 } from '@tsubame/protocol-generated/codec';
 
@@ -19,9 +26,35 @@ const fixturesPath = join(
 );
 
 interface DrawFixtureCommand {
-  readonly op: 'moveTo' | 'lineTo' | 'close' | 'fill';
+  readonly op:
+    | 'moveTo'
+    | 'lineTo'
+    | 'close'
+    | 'fill'
+    | 'quadraticTo'
+    | 'cubicTo'
+    | 'arcTo'
+    | 'rect'
+    | 'rrect'
+    | 'oval'
+    | 'circle';
   readonly x?: number;
   readonly y?: number;
+  readonly cx?: number;
+  readonly cy?: number;
+  readonly c1x?: number;
+  readonly c1y?: number;
+  readonly c2x?: number;
+  readonly c2y?: number;
+  readonly x1?: number;
+  readonly y1?: number;
+  readonly x2?: number;
+  readonly y2?: number;
+  readonly radius?: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly rx?: number;
+  readonly ry?: number;
   readonly paint?: DrawPaint;
 }
 
@@ -45,6 +78,43 @@ function encodeCommands(commands: readonly DrawFixtureCommand[]): number[] {
         break;
       case 'close':
         appendDrawClose(draws);
+        break;
+      case 'quadraticTo':
+        appendDrawQuadraticTo(draws, command.cx!, command.cy!, command.x!, command.y!);
+        break;
+      case 'cubicTo':
+        appendDrawCubicTo(
+          draws,
+          command.c1x!,
+          command.c1y!,
+          command.c2x!,
+          command.c2y!,
+          command.x!,
+          command.y!,
+        );
+        break;
+      case 'arcTo':
+        appendDrawArcTo(draws, command.x1!, command.y1!, command.x2!, command.y2!, command.radius!);
+        break;
+      case 'rect':
+        appendDrawRect(draws, command.x!, command.y!, command.width!, command.height!);
+        break;
+      case 'rrect':
+        appendDrawRrect(
+          draws,
+          command.x!,
+          command.y!,
+          command.width!,
+          command.height!,
+          command.rx!,
+          command.ry!,
+        );
+        break;
+      case 'oval':
+        appendDrawOval(draws, command.x!, command.y!, command.width!, command.height!);
+        break;
+      case 'circle':
+        appendDrawCircle(draws, command.cx!, command.cy!, command.radius!);
         break;
       case 'fill':
         appendDrawFill(draws, command.paint ?? {});
