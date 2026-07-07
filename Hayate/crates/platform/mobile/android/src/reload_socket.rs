@@ -1,13 +1,13 @@
-//! Miharashi Android ホストの reload WS クライアント（#533, #742）。
+//! Torimi Android ホストの reload WS クライアント（#533, #742）。
 //!
-//! `miharashi_reload::subscribe_reload` の `connect` シームの device 既定実装。当初は
+//! `torimi_reload::subscribe_reload` の `connect` シームの device 既定実装。当初は
 //! 「依存追加なし」の素の TCP 上に RFC6455 ハンドシェイクを手書きしていたが、公開 Demo
 //! Endpoint（wss・ADR-0003）を機に **OS プラットフォームのネットワークスタックへ委譲**した
 //! （ADR-0002 後半・#742）。Kotlin 側（`ReloadSocketBridge`・OkHttp の WebSocket）が WS(S) と
-//! TLS を担い、Rust は URL（純粋シーム `miharashi_reload::reload_ws_url`。https 由来は wss）を
+//! TLS を担い、Rust は URL（純粋シーム `torimi_reload::reload_ws_url`。https 由来は wss）を
 //! 渡して受信イベント（テキスト / 切断）だけを受け取る。Rust に TLS 依存は入れない。reload の
 //! 意味づけ（`reload` で full reload・切断時の backoff 再接続 orchestration）は
-//! `miharashi_reload` の純粋シームに残る — ホストは WS を中継するだけで HMR を解さない
+//! `torimi_reload` の純粋シームに残る — ホストは WS を中継するだけで HMR を解さない
 //! （CONTEXT.md「Reload」/ ADR-0001 不変）。
 //!
 //! 単一スレッド契約（ADR-0003）を守るため、Kotlin のイベント待ち（blocking）は背景スレッドが
@@ -20,7 +20,7 @@
 use std::cell::{Cell, RefCell};
 use std::sync::mpsc::Receiver;
 
-use crate::miharashi_reload::ReloadSocket;
+use crate::torimi_reload::ReloadSocket;
 
 /// 背景スレッド → main へ渡す reload 受信イベント。
 enum WsEvent {

@@ -2,9 +2,9 @@ import { PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * #739：react の Android（native, ADR-0112）バンドルが Miharashi の受け渡し契約を満たすことの
+ * #739：react の Android（native, ADR-0112）バンドルが Torimi の受け渡し契約を満たすことの
  * ガード。solid 版（`examples/todo/src/main.android.test.ts`, #533）と同じ契約 — eval 時に
- * encoder の wire 版数を `__miharashiProtocolVersion` へ立て、mount グローバル（`__tsubame`：
+ * encoder の wire 版数を `__torimiProtocolVersion` へ立て、mount グローバル（`__tsubame`：
  * native vsync が叩く pumpFrame / stop）を露出する。ホストは中身の FW を解さないので、
  * この 2 つの wire シームが solid と同一であることが「Viewer 一本で全 JS FW が動く」の実体
  * （ADR-0001 / ADR-0003）。
@@ -18,19 +18,19 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete g.__miharashiProtocolVersion;
+  delete g.__torimiProtocolVersion;
   delete g.__hayateHost;
   delete g.__tsubame;
 });
 
-describe('react Android App Bundle embeds the Miharashi protocol version (#739)', () => {
+describe('react Android App Bundle embeds the Torimi protocol version (#739)', () => {
   it('exposes the renderer-hayate protocol version for the native host handshake', async () => {
     await import('./main.android').catch(() => {
       // ホスト未注入の単体環境では `__hayateHost` 不在で throw する。version 埋め込みは
       // その前の副作用なので握りつぶしてよい（solid 版 #533 と同型）。
     });
 
-    expect(g.__miharashiProtocolVersion).toBe(PROTOCOL_VERSION);
+    expect(g.__torimiProtocolVersion).toBe(PROTOCOL_VERSION);
   });
 });
 

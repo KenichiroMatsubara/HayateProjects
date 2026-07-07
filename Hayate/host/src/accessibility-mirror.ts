@@ -125,7 +125,7 @@ interface AccessKitTreeUpdate {
  * 共有される。frame-clock がアプリ全体で 1 本になる（診断 `docs/perf-android-chrome-vello-jank-*` 要因 1）。
  *
  * このシームは `createHayateWebHost` が canvas boot のたびに 1 箇所で呼ぶ（#591）。標準アプリの
- * 直 boot（`main.tsx`）も Miharashi dev ホストも `createHayateWebHost` を通るため、全 Canvas アプリ
+ * 直 boot（`main.tsx`）も Torimi dev ホストも `createHayateWebHost` を通るため、全 Canvas アプリ
  * がここを 1 回通り、host-boot 毎の配線なしにミラーを得る（ADR-0124）。
  */
 export function attachAccessibilityMirror(

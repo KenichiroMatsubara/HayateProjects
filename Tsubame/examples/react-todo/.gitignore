@@ -1,5 +1,5 @@
 # vite lib build outputs（単一バンドル）。生成物は配信時にビルドする。
-dist-miharashi/
+dist-torimi/
 
 # Playwright 診断スクショの出力（生成物・追跡しない）。
 e2e/__screens__/

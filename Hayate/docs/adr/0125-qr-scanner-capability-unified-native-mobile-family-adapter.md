@@ -1,5 +1,7 @@
 # QR スキャナを Mobile Family Adapter の capability として iOS/Android 単一 API で扱い、Android は Google Code Scanner（本アプリ初の Rust↔Kotlin JNI seam）・iOS は VisionKit DataScannerViewController で両ネイティブ実機実装する
 
+> **用語更新（ADR-0004・2026-07-07）**: 本 ADR が言及する "Miharashi" は **Torimi（鳥見）** に改名された（ディレクトリ・`@torimi/*` パッケージスコープ・wire グローバル等の全面リネーム）。本文は決定当時の記録として原文のまま。
+
 status: accepted
 
 Date: 2026-06-29

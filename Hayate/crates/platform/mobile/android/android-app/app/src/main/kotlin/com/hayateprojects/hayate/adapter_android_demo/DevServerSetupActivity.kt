@@ -13,9 +13,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Minimal on-device dev-server URL entry + **Demo selection menu** for Miharashi (#534 / #743).
+ * Minimal on-device dev-server URL entry + **Demo selection menu** for Torimi (#534 / #743).
  *
- * Miharashi is a framework-agnostic dev-client (Expo Go 相当): the prebuilt native host
+ * Torimi is a framework-agnostic dev-client (Expo Go 相当): the prebuilt native host
  * fetches the App Bundle from a dev-server / Demo Endpoint at runtime rather than reading a
  * baked-in asset. This launcher screen offers two ways to point the host at a bundle:
  *
@@ -25,7 +25,7 @@ import java.net.URL
  *     display name. Tapping an entry persists that entry's resolved bundle URL and launches
  *     the native host, which boots exactly that bundle (the entry → boot-target resolution is
  *     host-contract-tested in Rust `demo_manifest`). Demos can be added/renamed by updating the
- *     manifest — no Play review needed (Miharashi CONTEXT.md「Demo Manifest」).
+ *     manifest — no Play review needed (Torimi CONTEXT.md「Demo Manifest」).
  *  2. **URL / QR (#534)** — type a LAN dev-server (`192.168.1.5:5179`) or a full HTTPS bundle
  *     URL, or scan a QR. Unchanged from #534.
  *
@@ -122,7 +122,7 @@ class DevServerSetupActivity : AppCompatActivity() {
 
     /**
      * `<Demo Endpoint>/demos.json` を GET してパースし、(表示名, 解決済みバンドル URL) の並びを返す。
-     * wire フィールドは `name` / `bundleUrl`（TS `@miharashi/dev-server-contract` の値複製）。origin 相対
+     * wire フィールドは `name` / `bundleUrl`（TS `@torimi/dev-server-contract` の値複製）。origin 相対
      * URL は Demo Endpoint origin に載せてフル URL 化する（ネイティブの Direct boot がそのまま fetch する）。
      * **UI スレッドから呼んではならない**（ネットワークは OS スタック＝別スレッド・ADR-0002）。
      */
@@ -153,14 +153,14 @@ class DevServerSetupActivity : AppCompatActivity() {
 
     companion object {
         /** Rust reader (`dev_server_target::DEV_SERVER_URL_FILE`) と一致させる wire 契約のファイル名。 */
-        const val DEV_SERVER_URL_FILE = "miharashi-dev-server-url.txt"
+        const val DEV_SERVER_URL_FILE = "torimi-dev-server-url.txt"
 
         /**
          * 公開 Demo Endpoint（ADR-0003）の URL。Rust の `dev_server_target::DEFAULT_DEMO_ENDPOINT_URL`
          * と一致させる wire 値（ネイティブへ node/Rust 依存を持ち込まないため値で複製する）。実際の
          * workers.dev サブドメイン（account 依存）はビルド構成で差し替え可能にする想定（#743）。
          */
-        const val DEMO_ENDPOINT_URL = "https://miharashi-demo-endpoint.workers.dev"
+        const val DEMO_ENDPOINT_URL = "https://torimi-demo-endpoint.workers.dev"
 
         /** Demo Manifest のルート。Rust `demo_manifest::DEMO_MANIFEST_ROUTE` / TS `demoManifestRoute` と同値。 */
         const val DEMO_MANIFEST_ROUTE = "/demos.json"

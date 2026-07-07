@@ -18,8 +18,8 @@ const executablePath = existsSync(PREINSTALLED_CHROMIUM) ? PREINSTALLED_CHROMIUM
  * WebGPU/WASM が要るため、別途ビルド済み wasm-pkgs と GPU 環境が必要。
  */
 const PORT = Number(process.env.E2E_PORT ?? 5180);
-// Miharashi 最小 dev server のポート（host.html がバンドルを fetch する先）。
-const MIHARASHI_DEV_PORT = Number(process.env.MIHARASHI_DEV_PORT ?? 5181);
+// Torimi 最小 dev server のポート（host.html がバンドルを fetch する先）。
+const TORIMI_DEV_PORT = Number(process.env.TORIMI_DEV_PORT ?? 5181);
 
 export default defineConfig({
   testDir: './e2e',
@@ -49,12 +49,12 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      // Miharashi の最小 dev server。`vite build --watch` が単一 App Bundle を作り続け、dev server
+      // Torimi の最小 dev server。`vite build --watch` が単一 App Bundle を作り続け、dev server
       // がそれを HTTP 配信 + bundle 変更を WS で `reload` 中継する（full reload ループ・ADR-0001）。
       // 初回ビルド完了は `/bundle.js` の 200 で待つ（それまでは 404）。host.html はこのポートから
       // バンドルを fetch → eval し、reload WS を購読する（CORS は dev server が許可）。
-      command: `MIHARASHI_DEV_PORT=${MIHARASHI_DEV_PORT} node scripts/miharashi-dev-server.mjs`,
-      url: `http://localhost:${MIHARASHI_DEV_PORT}/bundle.js`,
+      command: `TORIMI_DEV_PORT=${TORIMI_DEV_PORT} node scripts/torimi-dev-server.mjs`,
+      url: `http://localhost:${TORIMI_DEV_PORT}/bundle.js`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

@@ -20,7 +20,7 @@
     "clean": "cargo clean && node scripts/clean-wasm-pkgs.mjs && node ../scripts/bootstrap-wasm-pkgs.mjs",
     "android:build": "bash scripts/build-android.sh assembleDebug",
     "android:build:release": "bash scripts/build-android.sh assembleRelease",
-    "miharashi:android:install": "bash scripts/build-android.sh installDebug",
+    "torimi:android:install": "bash scripts/build-android.sh installDebug",
     "android:nativedemo": "bash scripts/build-android.sh installDebug -Pnativedemo",
     "android:clean": "bash scripts/build-android.sh clean"
   },

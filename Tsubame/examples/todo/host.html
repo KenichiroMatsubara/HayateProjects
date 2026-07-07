@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Miharashi Host — Tsubame Todo</title>
+    <title>Torimi Host — Tsubame Todo</title>
     <style>
       html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1020; }
       /*
-       * Miharashi ホストページ。フレームワークも renderer-hayate も持たない素のシェル：
-       * surface（canvas）を 1 枚置き、@miharashi/host-web が dev-server からバンドルを
+       * Torimi ホストページ。フレームワークも renderer-hayate も持たない素のシェル：
+       * surface（canvas）を 1 枚置き、@torimi/host-web が dev-server からバンドルを
        * fetch → eval し、createHayateWebHost でこの canvas 上に host bootstrap を確立して
        * バンドルの mount に渡す（ADR-0001）。
        */
-      #miharashi-canvas {
+      #torimi-canvas {
         position: fixed;
         inset: 0;
         width: 100vw;
@@ -23,7 +23,7 @@
     </style>
   </head>
   <body>
-    <canvas id="miharashi-canvas"></canvas>
+    <canvas id="torimi-canvas"></canvas>
     <script type="module" src="/src/host-boot.ts"></script>
   </body>
 </html>

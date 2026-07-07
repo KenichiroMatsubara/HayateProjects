@@ -14,8 +14,8 @@
     "dev:hayate": "pnpm --filter hayate dev",
 
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
-    "miharashi:android:dev":     "pnpm --filter @tsubame/example-todo run miharashi:android:serve",
-    "miharashi:android:install": "pnpm --filter hayate run miharashi:android:install"
+    "torimi:android:dev":     "pnpm --filter @tsubame/example-todo run torimi:android:serve",
+    "torimi:android:install": "pnpm --filter hayate run torimi:android:install"
   },
   "devDependencies": {
     "tsup": "^8.5.1",

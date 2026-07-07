@@ -79,7 +79,7 @@ mod ffi {
         /// 読んで消費する。native のループは毎イテレーション呼び、true なら wake する。
         fn consume_wants_pump(self: Pin<&mut HermesApp>) -> bool;
 
-        /// eval 済みバンドルが立てた `globalThis.__miharashiProtocolVersion` を読む（#533）。
+        /// eval 済みバンドルが立てた `globalThis.__torimiProtocolVersion` を読む（#533）。
         /// 有限数ならその値、未埋め込み / 非数値なら `-1.0`。`app_tsubame` がこれを `Option<u32>`
         /// に直し、`protocol_handshake::check_protocol_version` にかける。
         fn protocol_version(self: &HermesApp) -> f64;

@@ -20,7 +20,7 @@ import { expect, test } from '@playwright/test';
  *
  * tiny-skia CPU backend（`?renderer=tiny-skia`）なら WebGPU の無いヘッドレス Chromium でも Canvas
  * モードに入れる。EditContext 非対応ブラウザは DOM モードへ自動フォールバックするので skip する
- * （prior art: `canvas-text-cursor.spec.ts` / `miharashi-host.spec.ts`）。
+ * （prior art: `canvas-text-cursor.spec.ts` / `torimi-host.spec.ts`）。
  */
 test.describe('Canvas a11y mirror — AI queries, drives, and re-asserts the canvas app (ADR-0124)', () => {
   test.beforeEach(async ({ page }) => {

@@ -1,17 +1,17 @@
-//! Miharashi の Android ホストが消費する **Demo Manifest**（`/demos.json`・ADR-0003, #743）。
+//! Torimi の Android ホストが消費する **Demo Manifest**（`/demos.json`・ADR-0003, #743）。
 //!
 //! 公開 Demo Endpoint（Cloudflare Worker・#738）は、テスター・審査者向けにデモ一覧
 //! （各エントリ＝表示名 + バンドル URL）を `/demos.json` で配る。ホストは起動時にこれを取得して
 //! デモ選択メニューを構成し、**初回起動（接続先未設定）は先頭デモを自動ロード**する（ゼロ入力で
 //! デモが動く）。デモの追加・改名はマニフェスト更新であり、ホストの Play 審査を要しない
-//! （Miharashi CONTEXT.md「Demo Manifest」）。
+//! （Torimi CONTEXT.md「Demo Manifest」）。
 //!
 //! ここは **プラットフォーム非依存のピュアなシーム**（wire JSON のパース・エントリ選択 → boot
 //! target 解決・取得失敗の明示エラー）なのでホストで契約テストする（`dev_server_target` /
 //! `protocol_handshake` と同じ流儀）。実 UI（右上メニュー）と実機 fetch/boot はローカル実機で
 //! 検証する（本 issue 外・ADR-0001）。
 //!
-//! wire 型の正本は TS の `@miharashi/dev-server-contract`（`DemoManifest` / `DemoManifestEntry`・
+//! wire 型の正本は TS の `@torimi/dev-server-contract`（`DemoManifest` / `DemoManifestEntry`・
 //! `demoEndpointContract.demoManifestRoute`）。TS パッケージは Rust から直接使えないため、
 //! `protocol_handshake` の wire global 名複製・`bundle_source` の `BUNDLE_ROUTE` 複製と同じ方針で
 //! フィールド名（`bundleUrl`）とルート（`/demos.json`）を値で複製し、JSON 自体は純 Rust の
@@ -23,7 +23,7 @@ use serde::Deserialize;
 use crate::dev_server_target::{self, DevServerTarget};
 
 /// Demo Endpoint が Demo Manifest を配る HTTP ルート。TS の `demoEndpointContract.demoManifestRoute`
-/// （`@miharashi/dev-server-contract`）と一致させる wire 契約（node 依存を持ち込まないため値で複製）。
+/// （`@torimi/dev-server-contract`）と一致させる wire 契約（node 依存を持ち込まないため値で複製）。
 /// マニフェストは常に Demo Endpoint の origin 直下にあり、target の path とは無関係（[`manifest_url`]）。
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub const DEMO_MANIFEST_ROUTE: &str = "/demos.json";
@@ -100,7 +100,7 @@ impl DemoManifestError {
                 format!("デモのバンドル URL を解決できませんでした（{url:?}）")
             }
         };
-        format!("Miharashi: {detail}。URL 入力画面から接続先を指定してください。")
+        format!("Torimi: {detail}。URL 入力画面から接続先を指定してください。")
     }
 }
 
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn the_manifest_route_matches_the_ts_wire_contract() {
-        // TS `demoEndpointContract.demoManifestRoute`（@miharashi/dev-server-contract）と同値の wire 契約。
+        // TS `demoEndpointContract.demoManifestRoute`（@torimi/dev-server-contract）と同値の wire 契約。
         assert_eq!(DEMO_MANIFEST_ROUTE, "/demos.json");
     }
 
@@ -286,11 +286,11 @@ mod tests {
         // エントリ選択 → boot target 解決（ADR-0003）：origin 相対 bundleUrl を Demo Endpoint の
         // scheme/host/port に載せ、path を保持して target 化する。得た target は既存の fetch/reload を駆動。
         let manifest = parse(WIRE).unwrap();
-        let base = dev_server_target::parse("https://miharashi-demo-endpoint.workers.dev").unwrap();
+        let base = dev_server_target::parse("https://torimi-demo-endpoint.workers.dev").unwrap();
 
         let solid = resolve_entry_target(&manifest.entries()[0], &base).unwrap();
         assert_eq!(solid.scheme(), Scheme::Https);
-        assert_eq!(solid.host(), "miharashi-demo-endpoint.workers.dev");
+        assert_eq!(solid.host(), "torimi-demo-endpoint.workers.dev");
         assert_eq!(solid.port(), 443);
         assert_eq!(solid.path(), "/solid/bundle.js");
 
@@ -315,11 +315,11 @@ mod tests {
     #[test]
     fn first_launch_auto_loads_the_head_demo() {
         // 初回起動（接続先未設定）は manifest 先頭デモを自動ロードする（ADR-0003）。
-        let base = dev_server_target::parse("https://miharashi-demo-endpoint.workers.dev").unwrap();
+        let base = dev_server_target::parse("https://torimi-demo-endpoint.workers.dev").unwrap();
         let target = first_boot_target(WIRE, &base).unwrap();
         // 先頭 = Solid の path に解決される。
         assert_eq!(target.path(), "/solid/bundle.js");
-        assert_eq!(target.host(), "miharashi-demo-endpoint.workers.dev");
+        assert_eq!(target.host(), "torimi-demo-endpoint.workers.dev");
     }
 
     #[test]

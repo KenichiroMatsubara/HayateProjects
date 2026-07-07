@@ -1,0 +1,22 @@
+{
+  "name": "@torimi/integration",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Torimi の Dev Server と Host を実ネットワーク経由で繋いで通しで検証する統合テスト。どちらのパッケージにも属さない、両者が噛み合っていることだけを確認する場所（ADR-0001）。",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@hayate/host": "workspace:*",
+    "@torimi/dev-server": "workspace:*",
+    "@torimi/host-web": "workspace:*",
+    "@torimi/protocol-handshake": "workspace:*",
+    "@types/node": "^22.19.0",
+    "vitest": "^3.2.0",
+    "yaml": "^2.9.0"
+  }
+}

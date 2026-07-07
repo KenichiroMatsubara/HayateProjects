@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:android": "vite build --config vite.config.android.ts && node ../../scripts/lower-for-hermes.mjs dist-android/tsubame.js",
-    "build:miharashi": "vite build --config vite.config.miharashi.ts",
+    "build:torimi": "vite build --config vite.config.torimi.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@hayate/host": "workspace:*",
-    "@miharashi/host-web": "workspace:*",
+    "@torimi/host-web": "workspace:*",
     "@tsubame/app": "workspace:*",
     "@tsubame/react": "workspace:*",
     "@tsubame/renderer-hayate": "workspace:*",
@@ -26,7 +26,7 @@
     "react-reconciler": "^0.32.0"
   },
   "devDependencies": {
-    "@miharashi/dev-server": "workspace:*",
+    "@torimi/dev-server": "workspace:*",
     "@playwright/test": "^1.61.0",
     "@types/react": "^19.1.0",
     "@types/react-reconciler": "^0.32.0",

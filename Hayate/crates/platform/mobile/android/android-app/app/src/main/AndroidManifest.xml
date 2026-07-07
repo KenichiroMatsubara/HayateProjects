@@ -7,7 +7,7 @@
         android:version="1"
         android:required="true" />
 
-    <!-- Miharashi のバンドル fetch / reload 購読（OS スタック委譲・Miharashi ADR-0002）。 -->
+    <!-- Torimi のバンドル fetch / reload 購読（OS スタック委譲・Torimi ADR-0002）。 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -23,7 +23,7 @@
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode_ui" />
 
-        <!-- Miharashi の最小 dev-server URL 入力画面（#534）。端末で接続先 URL を入力し、
+        <!-- Torimi の最小 dev-server URL 入力画面（#534）。端末で接続先 URL を入力し、
              internal files dir に書いてからネイティブの GameActivity を明示 Intent で起動する。
              ネイティブはそのファイルを読み戻して fetch / reload の両方を駆動する。 -->
         <activity

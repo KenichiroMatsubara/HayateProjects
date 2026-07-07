@@ -29,15 +29,15 @@ declare global {
       }
     | undefined;
   // eslint-disable-next-line no-var
-  var __miharashiProtocolVersion: number | undefined;
+  var __torimiProtocolVersion: number | undefined;
 }
 
 // 内包する `@tsubame/renderer-hayate` の wire 定数バージョンを protocol version として埋める
-// （#530 / #533）。global 名は `@miharashi/protocol-handshake` の MIHARASHI_PROTOCOL_VERSION_GLOBAL
-// （'__miharashiProtocolVersion'）と一致させる wire 契約。native ホスト（hayate-adapter-android の
+// （#530 / #533）。global 名は `@torimi/protocol-handshake` の TORIMI_PROTOCOL_VERSION_GLOBAL
+// （'__torimiProtocolVersion'）と一致させる wire 契約。native ホスト（hayate-adapter-android の
 // app_tsubame）は eval 後にこれを読み、自身に焼き込んだ decoder 版数（hayate_core::wire::
-// PROTOCOL_VERSION）と突き合わせて一致時のみ mount する。Web の `main.miharashi.tsx` と対称。
-globalThis.__miharashiProtocolVersion = PROTOCOL_VERSION;
+// PROTOCOL_VERSION）と突き合わせて一致時のみ mount する。Web の `main.torimi.tsx` と対称。
+globalThis.__torimiProtocolVersion = PROTOCOL_VERSION;
 
 const raw = globalThis.__hayateHost;
 if (raw === undefined) {
@@ -57,7 +57,7 @@ const detected: DetectModeResult = {
 
 // native host（注入 raw + vsync pump）を Host adapter に包む。target は Hayate 固定で、
 // createRenderer は host-blind HayateRenderer を構築するだけ（ADR-0012）。web の bundle 経路
-// （main.miharashi.tsx）と同型 — 押し込まれた host を `Host` に包んで `runTsubameApp` を呼ぶ。
+// （main.torimi.tsx）と同型 — 押し込まれた host を `Host` に包んで `runTsubameApp` を呼ぶ。
 const nativeHost = createHayateNativeHost(raw);
 let hayateRenderer: HayateRenderer | undefined;
 const host: Host = {

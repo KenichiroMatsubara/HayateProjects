@@ -51,7 +51,7 @@ export {
 } from './accessibility-mirror.js';
 
 /**
- * このホストに焼き込まれた decoder の wire 定数バージョン。Miharashi はこれをバンドルの encoder
+ * このホストに焼き込まれた decoder の wire 定数バージョン。Torimi はこれをバンドルの encoder
  * 版数と起動時に突き合わせ、一致時のみ mount する（#530 / CONTEXT「Protocol Version」）。decoder
  * （WASM）と同じ `@hayate/protocol-spec` の manifest version を source of truth とする。
  */
@@ -70,7 +70,7 @@ export interface WebHost {
   /**
    * host のライフサイクル teardown。現状は Accessibility Mirror（ADR-0124）の root 除去を畳む。
    * ミラーは独立ループを持たず frame-clock に相乗りするため（#645）、レンダラ停止でミラーの tick も
-   * 止まる。full reload 時に古い host を捨てる前に呼ぶ（`startMiharashiHost` が結線）。
+   * 止まる。full reload 時に古い host を捨てる前に呼ぶ（`startTorimiHost` が結線）。
    */
   readonly detach: () => void;
 }

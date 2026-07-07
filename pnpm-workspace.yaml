@@ -11,12 +11,12 @@ packages:
   - 'Tsubame/proto'
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
-  - 'Miharashi/demo-endpoint'
-  - 'Miharashi/dev-server'
-  - 'Miharashi/dev-server-contract'
-  - 'Miharashi/host-web'
-  - 'Miharashi/integration'
-  - 'Miharashi/protocol-handshake'
+  - 'Torimi/demo-endpoint'
+  - 'Torimi/dev-server'
+  - 'Torimi/dev-server-contract'
+  - 'Torimi/host-web'
+  - 'Torimi/integration'
+  - 'Torimi/protocol-handshake'
   - 'fonts'
 
 allowBuilds:

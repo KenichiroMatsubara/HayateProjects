@@ -1,5 +1,7 @@
 # 合成ルートを deep module 化し、`Host` ポートと唯一の FW 固有 `mount` seam に畳む
 
+> **用語更新（ADR-0004・2026-07-07）**: 本 ADR が言及する "Miharashi" は **Torimi（鳥見）** に改名された（ディレクトリ・`@torimi/*` パッケージスコープ・wire グローバル等の全面リネーム）。本文は決定当時の記録として原文のまま。
+
 **Status: accepted**
 
 **Date: 2026-06-27**

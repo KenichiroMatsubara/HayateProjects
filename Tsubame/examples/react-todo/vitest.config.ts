@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
-// react-todo のユニットテスト。App Bundle エントリ（main.miharashi.tsx）が JSX を含むため、
+// react-todo のユニットテスト。App Bundle エントリ（main.torimi.tsx）が JSX を含むため、
 // ブラウザビルド（vite.config.ts）と同じ automatic runtime / jsxImportSource で変換する。
 export default defineConfig({
   esbuild: {

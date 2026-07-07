@@ -10,8 +10,8 @@ import { App } from './App';
 /**
  * react の Android 用エントリ（#739）。solid 版（`examples/todo/src/main.android.tsx`）と
  * 同型の薄い合成ルート「host→raw(+clock)→HayateRenderer→mount」で、FW だけが react に
- * 替わる。露出する wire シーム（`__miharashiProtocolVersion` / `__tsubame`）は solid と
- * 同一 — Miharashi ホストは中身の FW を解さないので、この対称性が「Viewer 一本で全 JS FW
+ * 替わる。露出する wire シーム（`__torimiProtocolVersion` / `__tsubame`）は solid と
+ * 同一 — Torimi ホストは中身の FW を解さないので、この対称性が「Viewer 一本で全 JS FW
  * が動く」の実体（ADR-0001 / ADR-0003）。
  *
  * ネイティブ Hayate ホスト（JSI HostObject 等）が `globalThis.__hayateHost` として注入した
@@ -30,13 +30,13 @@ declare global {
       }
     | undefined;
   // eslint-disable-next-line no-var
-  var __miharashiProtocolVersion: number | undefined;
+  var __torimiProtocolVersion: number | undefined;
 }
 
 // 内包する `@tsubame/renderer-hayate` の wire 定数バージョンを protocol version として埋める
 // （#530 / #533）。native ホスト（hayate-adapter-android の app_tsubame）は eval 後にこれを
 // 読み、自身に焼き込んだ decoder 版数と突き合わせて一致時のみ mount する（solid 版と対称）。
-globalThis.__miharashiProtocolVersion = PROTOCOL_VERSION;
+globalThis.__torimiProtocolVersion = PROTOCOL_VERSION;
 
 const raw = globalThis.__hayateHost;
 if (raw === undefined) {

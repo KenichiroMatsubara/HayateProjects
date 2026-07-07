@@ -1,4 +1,4 @@
-//! Miharashi Android ホストの Demo Manifest 駆動（初回自動ロード＋デモ選択メニュー）の device 配線契約（#743）。
+//! Torimi Android ホストの Demo Manifest 駆動（初回自動ロード＋デモ選択メニュー）の device 配線契約（#743）。
 //!
 //! パース・エントリ選択 → boot target 解決・取得失敗の明示エラーの純ロジック（`demo_manifest`）と、
 //! release/debug 既定の分離（`dev_server_target`）はホスト単体テストで緑（src/*.rs の `#[cfg(test)]`）。
@@ -117,8 +117,8 @@ fn the_demo_endpoint_and_manifest_route_are_shared_wire_between_rust_and_kotlin(
         "the manifest route must match between the Rust seam and the Kotlin launcher (#743)"
     );
     assert!(
-        target_src.contains("miharashi-demo-endpoint.workers.dev")
-            && kotlin.contains("miharashi-demo-endpoint.workers.dev"),
+        target_src.contains("torimi-demo-endpoint.workers.dev")
+            && kotlin.contains("torimi-demo-endpoint.workers.dev"),
         "the Demo Endpoint URL constant must match between Rust and Kotlin (#743)"
     );
 }

@@ -1,0 +1,13 @@
+// Torimi Demo Endpoint（ADR-0003）。デモ App Bundle は静的アセット（public/、
+// build:demos が生成）、Demo Manifest と /reload WS は Worker が担う。
+// デプロイはリリース lockstep CI の領分（main push ではデプロイしない）。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "torimi-demo-endpoint",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-05",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  }
+}

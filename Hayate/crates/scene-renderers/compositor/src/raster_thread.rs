@@ -64,7 +64,7 @@ pub enum RasterCommand {
     },
     /// surface が失われた（Android TerminateWindow）。以後の Frame は present をスキップする。
     SurfaceLost,
-    /// surface を再構築する（新規作成 / Miharashi full reload）。sink が握る factory を起動する。
+    /// surface を再構築する（新規作成 / Torimi full reload）。sink が握る factory を起動する。
     RebuildSurface,
 }
 
@@ -468,7 +468,7 @@ mod tests {
 
     #[test]
     fn rebuild_after_shutdown_uses_a_fresh_thread() {
-        // AC: reload（Miharashi full reload）で Raster スレッドを安全に停止 → 再構築できる。
+        // AC: reload（Torimi full reload）で Raster スレッドを安全に停止 → 再構築できる。
         let trace = Arc::new(std::sync::Mutex::new(SurfaceTrace::default()));
         let mut rt = RasterThread::spawn(drive(&trace));
         rt.send(RasterCommand::RebuildSurface).unwrap();

@@ -7693,7 +7693,7 @@ function _toPrimitive(t, r) { if ("object" != _typeof2(t) || !t) return t; var e
   }
   //#endregion
   //#region src/main.android.tsx
-  globalThis.__miharashiProtocolVersion = 1;
+  globalThis.__torimiProtocolVersion = 1;
   var raw = globalThis.__hayateHost;
   if (raw === void 0) throw new Error("Android: globalThis.__hayateHost (native RawHayate) が注入されていません");
   var detected = {

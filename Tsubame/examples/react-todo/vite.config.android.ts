@@ -5,7 +5,7 @@ import { defineConfig } from 'vite';
 //
 // solid 版（`examples/todo/vite.config.android.ts`）と同型：エントリを `main.android.tsx` に
 // し、DOM/HTML を伴わない単一の IIFE として出力する。生成物（`dist-android/tsubame.js`）を
-// Miharashi Android ホストがネットワーク fetch して Hermes へロードする。JSX 変換はブラウザ用
+// Torimi Android ホストがネットワーク fetch して Hermes へロードする。JSX 変換はブラウザ用
 // `vite.config.ts` と同じ automatic runtime（`jsxImportSource` → `@tsubame/react`）。
 export default defineConfig({
   esbuild: {
@@ -13,7 +13,7 @@ export default defineConfig({
     jsxImportSource: '@tsubame/react',
   },
   // React は `process.env.NODE_ENV` で prod/dev エントリを分岐する。Hermes に `process` は
-  // 無いため、未置換だと eval 時に `ReferenceError` で落ちる（`vite.config.miharashi.ts` と
+  // 無いため、未置換だと eval 時に `ReferenceError` で落ちる（`vite.config.torimi.ts` と
   // 同じ理由・同じ対処）。
   define: {
     'process.env.NODE_ENV': JSON.stringify('production'),

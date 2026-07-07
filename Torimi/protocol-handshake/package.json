@@ -1,0 +1,32 @@
+{
+  "name": "@torimi/protocol-handshake",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Torimi protocol version ハンドシェイク — バンドル（encoder）とホスト（decoder）の wire 整合を取る、FW/プラットフォーム非依存の突き合わせロジック。Web/Android のホストが共有する（#530 / #6）。",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "vitest": "^3.2.0"
+  }
+}
