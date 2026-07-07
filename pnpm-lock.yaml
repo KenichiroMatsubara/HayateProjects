@@ -168,7 +168,14 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
 
-  Tsubame: {}
+  Tsubame:
+    devDependencies:
+      '@babel/core':
+        specifier: ^8.0.1
+        version: 8.0.1
+      '@babel/preset-env':
+        specifier: ^8.0.2
+        version: 8.0.2(@babel/core@8.0.1)
 
   Tsubame/examples/react-todo:
     dependencies:
@@ -246,12 +253,6 @@ importers:
         specifier: ^1.9.13
         version: 1.9.13
     devDependencies:
-      '@babel/core':
-        specifier: ^8.0.1
-        version: 8.0.1
-      '@babel/preset-env':
-        specifier: ^8.0.2
-        version: 8.0.2(@babel/core@8.0.1)
       '@miharashi/dev-server':
         specifier: workspace:*
         version: link:../../../Miharashi/dev-server

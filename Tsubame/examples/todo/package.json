@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:android": "vite build --config vite.config.android.ts && node scripts/lower-for-hermes.mjs",
+    "build:android": "vite build --config vite.config.android.ts && node ../../scripts/lower-for-hermes.mjs dist-android/tsubame.js",
     "build:miharashi": "vite build --config vite.config.miharashi.ts",
     "miharashi:android:serve": "node scripts/miharashi-android-dev-server.mjs",
     "preview": "vite preview",
@@ -28,8 +28,6 @@
     "solid-js": "^1.9.13"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.1",
-    "@babel/preset-env": "^8.0.2",
     "@miharashi/dev-server": "workspace:*",
     "@playwright/test": "^1.61.0",
     "@tsubame/hayate-css-catalog": "workspace:*",

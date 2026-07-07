@@ -8,6 +8,14 @@
         "workspacePackage": "@tsubame/example-todo",
         "artifactPath": "Tsubame/examples/todo/dist-android/tsubame.js"
       }
+    },
+    {
+      "name": "Todo (React)",
+      "bundleUrl": "/react/bundle.js",
+      "source": {
+        "workspacePackage": "@tsubame/example-react-todo",
+        "artifactPath": "Tsubame/examples/react-todo/dist-android/tsubame.js"
+      }
     }
   ]
 }
