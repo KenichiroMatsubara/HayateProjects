@@ -33,6 +33,7 @@ function fakeRaw(overrides: Partial<RawHayate> = {}): RawHayate {
     on_text_input: noop,
     poll_accessibility: () => null,
     render: noop,
+    has_pending_visual_work: () => false,
     poll_events: () => [],
     register_listener: () => 0,
     set_background_color: noop,

@@ -7,10 +7,14 @@
         android:version="1"
         android:required="true" />
 
+    <!-- Miharashi のバンドル fetch / reload 購読（OS スタック委譲・Miharashi ADR-0002）。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="Hayate Stage B"
         android:theme="@style/Theme.AppCompat.NoActionBar"
-        android:hasCode="true">
+        android:hasCode="true"
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <!-- Google Play services の barcode scanner モジュールを（必要なら）事前に取得させる。
              これで DevServerSetupActivity の「QR スキャン」が初回でも待ち時間少なく開く。

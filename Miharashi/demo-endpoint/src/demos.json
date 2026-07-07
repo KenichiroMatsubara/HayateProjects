@@ -1,0 +1,21 @@
+{
+  "$comment": "Demo Endpoint が配るデモの単一の正本。name / bundleUrl は wire（Demo Manifest）へ、source は build:demos（どのパッケージの Android バンドルをどこから copy するか）へ。先頭エントリがホストの初回自動ロード対象（ADR-0003）。",
+  "demos": [
+    {
+      "name": "Todo (Solid)",
+      "bundleUrl": "/solid/bundle.js",
+      "source": {
+        "workspacePackage": "@tsubame/example-todo",
+        "artifactPath": "Tsubame/examples/todo/dist-android/tsubame.js"
+      }
+    },
+    {
+      "name": "Todo (React)",
+      "bundleUrl": "/react/bundle.js",
+      "source": {
+        "workspacePackage": "@tsubame/example-react-todo",
+        "artifactPath": "Tsubame/examples/react-todo/dist-android/tsubame.js"
+      }
+    }
+  ]
+}

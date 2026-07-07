@@ -162,6 +162,8 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     element_get_bounds: () => [0, 0, 0, 0],
     element_subtree_ids: () => new Float64Array(),
     has_selection: () => false,
+    // 描画は Worker が所有するので、main 側 proxy に pending visual work は存在しない。
+    has_pending_visual_work: () => false,
     poll_accessibility: () => null,
     poll_events: () => [],
     element_effective_visual: () => null,

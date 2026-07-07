@@ -28,6 +28,11 @@ export interface RawHayate {
   on_text_input(id: number, text: string): void;
   poll_accessibility(): string | null;
   render(timestampMs: number): void;
+  /** ADR-0126: 直近の `render()` 後に継続すべき pending visual work（進行中 transition /
+   * カーソル点滅 / スクロール物理 = `visual_dirty`）が残るか。consumer（`@tsubame/
+   * renderer-hayate` の `RawHayate` ポート）はこれを必須とする — web（canvas.rs）/
+   * native（js_host.rs）とも実装済みで、生成物の契約にも載る。 */
+  has_pending_visual_work(): boolean;
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;

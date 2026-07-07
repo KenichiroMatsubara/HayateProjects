@@ -1,0 +1,25 @@
+{
+  "name": "@miharashi/demo-endpoint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Miharashi Demo Endpoint — ビルド済みデモ App Bundle と Demo Manifest を常時 HTTPS 配信する Cloudflare Worker（ADR-0003）。watch もビルドも行わず、/reload の WS は受けて保持するだけ。",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build:demos": "node scripts/build-demos.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@miharashi/dev-server-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.12.21",
+    "@cloudflare/workers-types": "^5.20260705.1",
+    "vitest": "^3.2.0",
+    "wrangler": "^4.107.0"
+  }
+}

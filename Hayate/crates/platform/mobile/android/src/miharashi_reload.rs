@@ -238,7 +238,7 @@ mod tests {
         let mut built = false;
         let result = boot_runtime(
             1,
-            || Err(BundleFetchError::HttpStatus(404)),
+            || Err(BundleFetchError::Platform("HTTP 404 from http://10.0.2.2:5179/bundle.js".to_owned())),
             |src| {
                 built = true;
                 FakeRuntime { bundle: src.to_owned() }
@@ -246,7 +246,12 @@ mod tests {
             |_rt| Some(1),
         );
         assert!(!built, "the runtime must not be built when the bundle fetch fails");
-        assert_eq!(result, Err(BootError::Fetch(BundleFetchError::HttpStatus(404))));
+        assert_eq!(
+            result,
+            Err(BootError::Fetch(BundleFetchError::Platform(
+                "HTTP 404 from http://10.0.2.2:5179/bundle.js".to_owned()
+            )))
+        );
     }
 
     #[test]

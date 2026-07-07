@@ -62,7 +62,8 @@ describe('DomRenderer setProperty (ADR-0071)', () => {
     expect(container.querySelector('input')).toBeNull();
     const textarea = container.querySelector('textarea');
     expect(textarea).not.toBeNull();
-    expect(textarea!.value).toBe('line one', 'the live value carries across the swap');
+    // the live value carries across the swap
+    expect(textarea!.value).toBe('line one');
     expect(textarea!.getAttribute('data-tsubame-id')).toBe(String(id as unknown as number));
   });
 
@@ -90,9 +91,10 @@ describe('DomRenderer setProperty (ADR-0071)', () => {
 
     renderer.setProperty(id, 'multiline', true);
     const textarea = container.querySelector('textarea')!;
-    textarea.dispatchEvent(new (textarea.ownerDocument.defaultView as Window).Event('input'));
+    textarea.dispatchEvent(new (textarea.ownerDocument.defaultView as unknown as { Event: typeof Event }).Event('input'));
 
-    expect(fired).toBe(1, 'the listener re-binds to the swapped-in textarea');
+    // the listener re-binds to the swapped-in textarea
+    expect(fired).toBe(1);
   });
 
   it('reflects the shared coerceElementProperty payload to the DOM (issue #235)', () => {
