@@ -44,7 +44,7 @@ const OP_SET_STYLE: f64 = 4.0;
 /// 1 要素のスタイルを `apply_mutations` で適用するテストヘルパ（`OP_SET_STYLE` 1 件）。
 fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
     let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
-    r.apply_mutations(&ops, packed, js_sys::Array::new()).unwrap();
+    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[]).unwrap();
 }
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {

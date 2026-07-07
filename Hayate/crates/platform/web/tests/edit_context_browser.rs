@@ -33,14 +33,14 @@ const OP_SET_TEXT_CONTENT: f64 = 12.0;
 
 fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
     let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
-    r.apply_mutations(&ops, packed, js_sys::Array::new()).unwrap();
+    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[]).unwrap();
 }
 
 fn apply_text_content(r: &mut HayateElementRenderer, id: f64, text: &str) {
     let texts = js_sys::Array::new();
     texts.push(&JsValue::from_str(text));
     let ops = [OP_SET_TEXT_CONTENT, id, 0.0];
-    r.apply_mutations(&ops, &[], texts).unwrap();
+    r.apply_mutations(&ops, &[], texts, &[]).unwrap();
 }
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {
