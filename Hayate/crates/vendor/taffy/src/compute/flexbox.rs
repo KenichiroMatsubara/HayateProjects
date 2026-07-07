@@ -309,7 +309,7 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
 
     // 8. Calculate the cross size of each flex line.
     debug_log!("calculate_cross_size");
-    calculate_cross_size(&mut flex_lines, known_dimensions, &constants);
+    let cross_size_clamped_smaller = calculate_cross_size(&mut flex_lines, known_dimensions, &constants);
 
     // 9. Handle 'align-content: stretch'.
     debug_log!("handle_align_content_stretch");
@@ -353,6 +353,28 @@ fn compute_preliminary(tree: &mut impl LayoutFlexboxContainer, node: NodeId, inp
     // We have the container size.
     // If our caller does not care about performing layout we are done now.
     if run_mode == RunMode::ComputeSize {
+        // If the container's min/max cross size clamped the line's cross size *below* its
+        // content-derived value (`cross_size_clamped_smaller`, e.g. a column whose `max-width`
+        // bites), the items' main sizes in `constants.container_size` were measured against the
+        // unclamped cross-axis space, so the returned (width, height) pair is self-inconsistent:
+        // it reports the clamped width paired with a height measured at the wider, unclamped
+        // width (i.e. with less line wrapping). Callers cache this pair and reuse the height for
+        // a layout at exactly that width (`Cache::get` treats `known.width == cached_size.width`
+        // as a hit), which under-sizes wrap-line cross sizes and lets children overflow their
+        // flex line. Re-run the sizing pass with the clamped cross size as a known dimension so
+        // the returned pair is self-consistent. The recursion is bounded: the cross axis is
+        // `Some` on the retry, so the clamp branch resolves against a definite cross size and
+        // this path cannot recurse again.
+        let dir = constants.dir;
+        if cross_size_clamped_smaller && known_dimensions.cross(dir).is_none() {
+            let retry_known =
+                known_dimensions.with_cross(dir, Some(constants.container_size.cross(dir)));
+            return compute_preliminary(
+                tree,
+                node,
+                LayoutInput { known_dimensions: retry_known, ..inputs },
+            );
+        }
         return LayoutOutput::from_outer_size(constants.container_size);
     }
 
@@ -1468,7 +1490,14 @@ fn calculate_children_base_lines(
 ///
 /// - [**Calculate the cross size of each flex line**](https://www.w3.org/TR/css-flexbox-1/#algo-cross-line).
 #[inline]
-fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
+/// Returns whether the single-line min/max clamp reduced the line's cross size below its
+/// content-derived value. In that case the items' main sizes (measured against the unclamped
+/// cross-axis space) are stale — see the `RunMode::ComputeSize` retry in [`compute_preliminary`].
+fn calculate_cross_size(
+    flex_lines: &mut [FlexLine],
+    node_size: Size<Option<f32>>,
+    constants: &AlgoConstants,
+) -> bool {
     // If the flex container is single-line and has a definite cross size,
     // the cross size of the flex line is the flex container’s inner cross size.
     if !constants.is_wrap && node_size.cross(constants.dir).is_some() {
@@ -1481,6 +1510,7 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
             .maybe_sub(cross_axis_padding_border)
             .maybe_max(0.0)
             .unwrap_or(0.0);
+        false
     } else {
         // Otherwise, for each flex line:
         //
@@ -1519,10 +1549,14 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
             let cross_axis_padding_border = constants.content_box_inset.cross_axis_sum(constants.dir);
             let cross_min_size = constants.min_size.cross(constants.dir);
             let cross_max_size = constants.max_size.cross(constants.dir);
-            flex_lines[0].cross_size = flex_lines[0].cross_size.maybe_clamp(
+            let unclamped = flex_lines[0].cross_size;
+            flex_lines[0].cross_size = unclamped.maybe_clamp(
                 cross_min_size.maybe_sub(cross_axis_padding_border),
                 cross_max_size.maybe_sub(cross_axis_padding_border),
             );
+            flex_lines[0].cross_size < unclamped - 0.001
+        } else {
+            false
         }
     }
 }
