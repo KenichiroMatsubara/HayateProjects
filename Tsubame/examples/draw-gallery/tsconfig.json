@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "noEmit": true,
+    "types": ["@tsubame/solid"]
+  },
+  "include": ["src", "vite.config.ts"]
+}
