@@ -1,3 +1,4 @@
+import type { DrawProperty } from './draw.js';
 import type { ElementId, ElementKind } from './element.js';
 import type { IRenderer } from './renderer.js';
 import type { ViewportCondition } from './viewport-condition.js';
@@ -66,6 +67,14 @@ export function applyElementProp(
 
   // text 要素は style 以外のプロパティを持たない。
   if (target.kind === 'text') return;
+
+  // view の命令的 2D 描画（painter・#730 / ADR-0141）。値は painter そのもので、
+  // 再描画判定（shouldRepaint / identity）と paint タイミングは renderer が所有する。
+  // prop 削除（undefined / null）は null に正規化して描画を消す。
+  if (name === 'draw') {
+    renderer.setDraw(target.id, (value ?? null) as DrawProperty | null);
+    return;
+  }
 
   if (REJECTED_EVENT_PROPS.has(name)) {
     throw new Error(

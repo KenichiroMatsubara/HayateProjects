@@ -1,4 +1,5 @@
 import type {
+  DrawProperty,
   HayateCssStyle,
   EventHandler,
   UserSelect,
@@ -47,7 +48,8 @@ declare global {
       children: Record<string, never>;
     }
     interface IntrinsicElements {
-      view: TsubameProps & { 'user-select'?: UserSelect };
+      /** `draw`: 命令的 2D 描画の painter（#730 / ADR-0141）。view 限定（carriesDraw）。 */
+      view: TsubameProps & { 'user-select'?: UserSelect; draw?: DrawProperty | null };
       text: TsubameProps & { 'user-select'?: UserSelect };
       image: TsubameProps & { src?: string; 'user-select'?: UserSelect };
       button: TsubameProps & { 'user-select'?: UserSelect };

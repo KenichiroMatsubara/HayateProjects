@@ -29,6 +29,7 @@ import {
   appendDrawTranslate,
   type DrawPaint,
 } from './codec.js';
+import type { DrawCanvas } from '@tsubame/renderer-protocol';
 
 /** Flutter PaintingStyle（fill = 塗り、stroke = 輪郭）。 */
 export enum PaintingStyle {
@@ -170,9 +171,11 @@ export class Path {
 /**
  * draws バッファへの記録面。Flutter/Skia 流ステートレス設計: canvas 自体の
  * 状態は save/restore の変換・クリップスタックのみ。座標操作・クリップ矩形の
- * メソッドは draw_ops の構造 command から生成される。
+ * メソッドは draw_ops の構造 command から生成される。painter へは Renderer
+ * Protocol の `DrawCanvas`（同じ op 表から生成・#730）として渡り、implements で
+ * 型サーフェスとの drift をコンパイル時に検出する。
  */
-export class Canvas {
+export class Canvas implements DrawCanvas {
   private readonly buf: number[] = [];
 
   /** `path` を `paint` で塗る / 輪郭描画する（paint.style で分岐）。 */

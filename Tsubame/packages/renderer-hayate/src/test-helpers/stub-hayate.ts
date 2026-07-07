@@ -6,7 +6,7 @@ import type { RawHayate } from '../hayate.js';
  * `HayateRenderer` に対して検証する統合テストの双方で使う唯一の実装。
  */
 export class StubHayate implements RawHayate {
-  mutations: Array<{ ops: number[]; styles: number[]; texts: string[] }> = [];
+  mutations: Array<{ ops: number[]; styles: number[]; texts: string[]; draws: number[] }> = [];
   renders: number[] = [];
   events: unknown[][] = [];
   listenerSeq = 1;
@@ -44,11 +44,12 @@ export class StubHayate implements RawHayate {
   element_set_pseudo_style(id: number, state: number, packed: Float32Array): void {
     this.pseudoStyleCalls.push([id, state, Array.from(packed)]);
   }
-  apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[], _draws: Float32Array): void {
+  apply_mutations(ops: Float64Array, styles: Float32Array, texts: string[], draws: Float32Array): void {
     this.mutations.push({
       ops: Array.from(ops),
       styles: Array.from(styles),
       texts: Array.from(texts),
+      draws: Array.from(draws),
     });
   }
   on_pointer_move(): void {}

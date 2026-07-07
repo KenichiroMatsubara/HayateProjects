@@ -1,4 +1,5 @@
 import { asElementId, type ElementId, type ElementKind } from './element.js';
+import type { DrawProperty } from './draw.js';
 import type { PseudoStyleKey } from './pseudo-style.js';
 import type { StylePatch } from './style.js';
 import type { ViewportCondition } from './viewport-condition.js';
@@ -20,6 +21,7 @@ export type RecordedCall =
   | { method: 'setPseudoStyle'; id: ElementId; pseudo: PseudoStyleKey; style: StylePatch }
   | { method: 'setStyleVariant'; id: ElementId; condition: ViewportCondition; style: StylePatch }
   | { method: 'setText'; id: ElementId; text: string }
+  | { method: 'setDraw'; id: ElementId; value: DrawProperty | null }
   | { method: 'setProperty'; id: ElementId; name: string; value: unknown }
   | { method: 'addEventListener'; id: ElementId; event: EventKind }
   | { method: 'removeEventListener'; id: ElementId; event: EventKind };
@@ -69,6 +71,10 @@ export class RecordingRenderer implements IRenderer {
 
   setText(id: ElementId, text: string): void {
     this.calls.push({ method: 'setText', id, text });
+  }
+
+  setDraw(id: ElementId, value: DrawProperty | null): void {
+    this.calls.push({ method: 'setDraw', id, value });
   }
 
   setProperty(id: ElementId, name: string, value: unknown): void {

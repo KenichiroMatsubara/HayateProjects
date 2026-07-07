@@ -28,7 +28,9 @@ const PATH_METHODS = {
   CIRCLE: 'addCircle',
   CLOSE: 'close',
 };
-const CANVAS_METHODS = {
+// gen-draw-canvas（painter 向け DrawCanvas インターフェース）と共有し、
+// recorder 実装と型サーフェスのメソッド名が機械的に一致するようにする（#730）。
+export const CANVAS_METHODS = {
   SAVE: 'save',
   RESTORE: 'restore',
   TRANSLATE: 'translate',
@@ -39,7 +41,7 @@ const CANVAS_METHODS = {
 };
 
 // drawPath / clipPath / fill / stroke は Path・Paint を取る意味的な特別扱い。
-const SPECIAL_COMMANDS = new Set(['FILL', 'STROKE', 'CLIP_PATH']);
+export const SPECIAL_COMMANDS = new Set(['FILL', 'STROKE', 'CLIP_PATH']);
 
 export function generateRecorder() {
   const proto = loadProtocolSpec();
@@ -63,6 +65,7 @@ export function generateRecorder() {
   lines.push('');
   lines.push('/* eslint-disable */');
   lines.push(`import {\n  ${[...imports].sort().join(',\n  ')},\n  type DrawPaint,\n} from './codec.js';`);
+  lines.push("import type { DrawCanvas } from '@tsubame/renderer-protocol';");
   lines.push('');
   lines.push('/** Flutter PaintingStyle（fill = 塗り、stroke = 輪郭）。 */');
   lines.push('export enum PaintingStyle {\n  fill = 0,\n  stroke = 1,\n}');
@@ -155,9 +158,11 @@ export function generateRecorder() {
   lines.push('/**');
   lines.push(' * draws バッファへの記録面。Flutter/Skia 流ステートレス設計: canvas 自体の');
   lines.push(' * 状態は save/restore の変換・クリップスタックのみ。座標操作・クリップ矩形の');
-  lines.push(' * メソッドは draw_ops の構造 command から生成される。');
+  lines.push(' * メソッドは draw_ops の構造 command から生成される。painter へは Renderer');
+  lines.push(' * Protocol の `DrawCanvas`（同じ op 表から生成・#730）として渡り、implements で');
+  lines.push(' * 型サーフェスとの drift をコンパイル時に検出する。');
   lines.push(' */');
-  lines.push('export class Canvas {');
+  lines.push('export class Canvas implements DrawCanvas {');
   lines.push('  private readonly buf: number[] = [];');
   lines.push('');
   lines.push('  /** `path` を `paint` で塗る / 輪郭描画する（paint.style で分岐）。 */');

@@ -26,6 +26,20 @@ export { EVENT_PROP, REJECTED_EVENT_PROPS } from './event.js';
 export type { IRenderer } from './renderer.js';
 
 export type {
+  DrawSize,
+  DrawPainter,
+  DrawPaintFunction,
+  DrawProperty,
+} from './draw.js';
+export { drawNeedsRepaint, invokePainter } from './draw.js';
+export type {
+  DrawCanvas,
+  DrawRecordedPath,
+  DrawPaintSource,
+  DrawPaintPacket,
+} from './generated/draw-canvas.js';
+
+export type {
   ElementPropertyName,
   ElementPropertyOp,
   ElementPropertyEffects,

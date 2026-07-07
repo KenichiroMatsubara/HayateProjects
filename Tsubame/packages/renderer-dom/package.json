@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@tsubame/hayate-css-catalog": "workspace:*",
+    "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*"
   },
   "devDependencies": {

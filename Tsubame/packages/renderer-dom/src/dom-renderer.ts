@@ -1,4 +1,6 @@
 import type {
+  DrawProperty,
+  DrawSize,
   ElementId,
   ElementKind,
   EventHandler,
@@ -14,10 +16,14 @@ import {
   assertKnownElementProperty,
   coerceElementProperty,
   dispatchElementPropertyOp,
+  drawNeedsRepaint,
+  invokePainter,
   PSEUDO_STATE_PRIORITY,
   PSEUDO_STYLE_KEYS,
   type PseudoStyleKey,
 } from '@tsubame/renderer-protocol';
+import { Canvas2DReplay, type Draw2DContext } from './draw-canvas-2d.js';
+import { drawSurfaceGeometry, type DrawSurfaceOverflow } from './draw-surface.js';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 import {
@@ -28,9 +34,50 @@ import { DOM_EVENT_NAME } from './event-mapping.js';
 import { warnZOrderDivergence } from './z-order-divergence.js';
 import { resolveUserSelect } from './user-select.js';
 
+/**
+ * 要素のボーダーボックスサイズ観測の注入口。ブラウザ既定は ResizeObserver
+ * （{@link observeWithResizeObserver}）。戻り値は観測解除。draw（#731）の
+ * paint タイミング源で、レイアウトを持たないテスト環境はここからサイズを発火する。
+ */
+export type ObserveElementSize = (
+  target: HTMLElement,
+  onSize: (size: DrawSize) => void,
+) => () => void;
+
 export interface DomRendererOptions {
   container?: HTMLElement;
   document?: Document;
+  observeElementSize?: ObserveElementSize;
+}
+
+/** 既定の観測実装: ResizeObserver でボーダーボックスを追う（#725 の DOM 対応物）。 */
+function observeWithResizeObserver(
+  target: HTMLElement,
+  onSize: (size: DrawSize) => void,
+): () => void {
+  const ResizeObserverCtor = target.ownerDocument.defaultView?.ResizeObserver;
+  if (ResizeObserverCtor === undefined) return () => {};
+  const observer = new ResizeObserverCtor((entries) => {
+    for (const entry of entries) {
+      const box = entry.borderBoxSize?.[0];
+      if (box !== undefined) {
+        onSize({ width: box.inlineSize, height: box.blockSize });
+      } else {
+        const rect = entry.target.getBoundingClientRect();
+        onSize({ width: rect.width, height: rect.height });
+      }
+    }
+  });
+  observer.observe(target, { box: 'border-box' });
+  return () => observer.disconnect();
+}
+
+/** draw property を持つ要素ごとの状態。`size` はレイアウト確定前は null。 */
+interface DomDrawState {
+  value: DrawProperty;
+  canvas: HTMLCanvasElement;
+  unobserve: () => void;
+  size: DrawSize | null;
 }
 
 function isTextInputLike(el: EventTarget | null): el is HTMLInputElement | HTMLTextAreaElement {
@@ -87,11 +134,15 @@ export class DomRenderer implements IRenderer {
   private readonly variantRuleKeys = new Map<string, number>();
   private readonly variantMediaByElement = new Map<ElementId, Set<string>>();
   private readonly variantStyleEl: HTMLStyleElement;
+  /** draw property を持つ要素の状態（#731）。 */
+  private readonly drawStates = new Map<ElementId, DomDrawState>();
+  private readonly observeElementSize: ObserveElementSize;
   private nextId = 1;
 
   constructor(options: DomRendererOptions = {}) {
     this.doc = options.document ?? globalThis.document;
     this.container = options.container ?? this.doc.body;
+    this.observeElementSize = options.observeElementSize ?? observeWithResizeObserver;
     this.pseudoStyleEl = this.doc.createElement('style');
     this.pseudoStyleEl.setAttribute('data-tsubame-pseudo', '');
     this.doc.head.appendChild(this.pseudoStyleEl);
@@ -206,6 +257,72 @@ export class DomRenderer implements IRenderer {
 
   setText(id: ElementId, text: string): void {
     this.node(id).textContent = text;
+  }
+
+  /**
+   * `view` の draw property（painter・#731 / Tsubame ADR-0014）。draw 付き view に
+   * `<canvas>` を敷き、同一 painter を CanvasRenderingContext2D へ直接 replay する
+   * （wire は通らない）。paint タイミングはサイズ観測（ResizeObserver 相当）が源で、
+   * 再描画判定は Hayate Renderer と共有の `drawNeedsRepaint`。
+   */
+  setDraw(id: ElementId, value: DrawProperty | null): void {
+    const state = this.drawStates.get(id);
+    if (value === null) {
+      if (state === undefined) return;
+      this.teardownDrawSurface(id, state);
+      return;
+    }
+    if (state === undefined) {
+      const el = this.node(id);
+      const canvas = this.doc.createElement('canvas');
+      // 描画順 background → border → draw → children（ADR-0141）: 先頭に敷けば、
+      // position: relative + z-index: 0 の子（ADR-0006 のベース）が DOM 順で上に乗る。
+      canvas.style.position = 'absolute';
+      // hit-test は view の box 判定のまま: canvas は入力を拾わない。
+      canvas.style.pointerEvents = 'none';
+      el.insertBefore(canvas, el.firstChild);
+      const next: DomDrawState = { value, canvas, size: null, unobserve: () => {} };
+      next.unobserve = this.observeElementSize(el, (size) => {
+        next.size = size;
+        this.repaintDrawSurface(id, next);
+      });
+      this.drawStates.set(id, next);
+      return;
+    }
+    const repaint = drawNeedsRepaint(value, state.value);
+    state.value = value;
+    if (repaint && state.size !== null) {
+      this.repaintDrawSurface(id, state);
+    }
+  }
+
+  /** canvas を敷き直してクリアし、painter を全 replay する（差分管理はしない）。 */
+  private repaintDrawSurface(id: ElementId, state: DomDrawState): void {
+    const el = this.node(id);
+    const size = state.size!;
+    const dpr = this.doc.defaultView?.devicePixelRatio ?? 1;
+    const overflow: DrawSurfaceOverflow = el.style.overflow === 'hidden' ? 'hidden' : 'visible';
+    const g = drawSurfaceGeometry(size, dpr, overflow);
+    const { canvas } = state;
+    canvas.style.left = `${g.cssLeft}px`;
+    canvas.style.top = `${g.cssTop}px`;
+    canvas.style.width = `${g.cssWidth}px`;
+    canvas.style.height = `${g.cssHeight}px`;
+    canvas.width = g.deviceWidth;
+    canvas.height = g.deviceHeight;
+    const ctx = canvas.getContext('2d') as Draw2DContext | null;
+    if (ctx === null) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, g.deviceWidth, g.deviceHeight);
+    // DPR と余白は変換で吸収し、painter からは不可視（原点 = box 左上・論理 px）。
+    ctx.setTransform(dpr, 0, 0, dpr, g.originX * dpr, g.originY * dpr);
+    invokePainter(state.value, new Canvas2DReplay(ctx), size);
+  }
+
+  private teardownDrawSurface(id: ElementId, state: DomDrawState): void {
+    state.unobserve();
+    state.canvas.remove();
+    this.drawStates.delete(id);
   }
 
   setProperty(id: ElementId, name: string, value: unknown): void {
@@ -377,6 +494,10 @@ export class DomRenderer implements IRenderer {
             this.variantRuleKeys.delete(`${id as number}|${media}`);
           }
           this.variantMediaByElement.delete(id);
+        }
+        const drawState = this.drawStates.get(id);
+        if (drawState !== undefined) {
+          this.teardownDrawSurface(id, drawState);
         }
         this.nodes.delete(id);
         this.kinds.delete(id);
