@@ -11,6 +11,7 @@ packages:
   - 'Tsubame/proto'
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
+  - 'Miharashi/demo-endpoint'
   - 'Miharashi/dev-server'
   - 'Miharashi/dev-server-contract'
   - 'Miharashi/host-web'
