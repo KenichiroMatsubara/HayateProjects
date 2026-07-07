@@ -18,6 +18,41 @@ fn f32_at(v: &serde_json::Value) -> f32 {
     v.as_f64().expect("number") as f32
 }
 
+/// fixture の semantic `paint` を `DrawPaint` へ解釈する（未指定フィールドは既定）。
+fn parse_paint(paint: &serde_json::Value) -> DrawPaint {
+    let mut out = DrawPaint::default();
+    if let Some(color) = paint["color"].as_array() {
+        out.color = [
+            f32_at(&color[0]),
+            f32_at(&color[1]),
+            f32_at(&color[2]),
+            f32_at(&color[3]),
+        ];
+    }
+    if let Some(v) = paint["fillRule"].as_f64() {
+        out.fill_rule = v as f32;
+    }
+    if let Some(v) = paint["strokeWidth"].as_f64() {
+        out.stroke_width = v as f32;
+    }
+    if let Some(v) = paint["cap"].as_f64() {
+        out.cap = v as f32;
+    }
+    if let Some(v) = paint["join"].as_f64() {
+        out.join = v as f32;
+    }
+    if let Some(v) = paint["miterLimit"].as_f64() {
+        out.miter_limit = v as f32;
+    }
+    if let Some(dash) = paint["dash"].as_array() {
+        out.dash = dash.iter().map(f32_at).collect();
+    }
+    if let Some(v) = paint["dashOffset"].as_f64() {
+        out.dash_offset = v as f32;
+    }
+    out
+}
+
 /// fixture の semantic `commands` を decode 期待値（`Vec<DrawCommand>`）へ解釈する。
 fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
     let mut out = Vec::new();
@@ -33,21 +68,90 @@ fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
                 y: f32_at(&command["y"]),
             }),
             "close" => verbs.push(PathVerb::Close),
-            "fill" => {
-                let mut paint = DrawPaint::default();
-                if let Some(color) = command["paint"]["color"].as_array() {
-                    paint.color = [
-                        f32_at(&color[0]),
-                        f32_at(&color[1]),
-                        f32_at(&color[2]),
-                        f32_at(&color[3]),
-                    ];
-                }
-                out.push(DrawCommand::FillPath {
-                    verbs: std::mem::take(&mut verbs),
-                    paint,
-                });
-            }
+            "quadraticTo" => verbs.push(PathVerb::QuadraticTo {
+                cx: f32_at(&command["cx"]),
+                cy: f32_at(&command["cy"]),
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+            }),
+            "cubicTo" => verbs.push(PathVerb::CubicTo {
+                c1x: f32_at(&command["c1x"]),
+                c1y: f32_at(&command["c1y"]),
+                c2x: f32_at(&command["c2x"]),
+                c2y: f32_at(&command["c2y"]),
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+            }),
+            "arcTo" => verbs.push(PathVerb::ArcTo {
+                x1: f32_at(&command["x1"]),
+                y1: f32_at(&command["y1"]),
+                x2: f32_at(&command["x2"]),
+                y2: f32_at(&command["y2"]),
+                radius: f32_at(&command["radius"]),
+            }),
+            "rect" => verbs.push(PathVerb::Rect {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+            }),
+            "rrect" => verbs.push(PathVerb::Rrect {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+                rx: f32_at(&command["rx"]),
+                ry: f32_at(&command["ry"]),
+            }),
+            "oval" => verbs.push(PathVerb::Oval {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+            }),
+            "circle" => verbs.push(PathVerb::Circle {
+                cx: f32_at(&command["cx"]),
+                cy: f32_at(&command["cy"]),
+                radius: f32_at(&command["radius"]),
+            }),
+            "fill" => out.push(DrawCommand::FillPath {
+                verbs: std::mem::take(&mut verbs),
+                paint: parse_paint(&command["paint"]),
+            }),
+            "stroke" => out.push(DrawCommand::StrokePath {
+                verbs: std::mem::take(&mut verbs),
+                paint: parse_paint(&command["paint"]),
+            }),
+            "save" => out.push(DrawCommand::Save),
+            "restore" => out.push(DrawCommand::Restore),
+            "translate" => out.push(DrawCommand::Translate {
+                dx: f32_at(&command["dx"]),
+                dy: f32_at(&command["dy"]),
+            }),
+            "rotate" => out.push(DrawCommand::Rotate {
+                radians: f32_at(&command["radians"]),
+            }),
+            "scale" => out.push(DrawCommand::Scale {
+                sx: f32_at(&command["sx"]),
+                sy: f32_at(&command["sy"]),
+            }),
+            "transform" => out.push(DrawCommand::Transform {
+                a: f32_at(&command["a"]),
+                b: f32_at(&command["b"]),
+                c: f32_at(&command["c"]),
+                d: f32_at(&command["d"]),
+                e: f32_at(&command["e"]),
+                f: f32_at(&command["f"]),
+            }),
+            "clipRect" => out.push(DrawCommand::ClipRect {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+            }),
+            "clipPath" => out.push(DrawCommand::ClipPath {
+                verbs: std::mem::take(&mut verbs),
+            }),
             other => panic!("fixture uses unknown draw command {other}"),
         }
     }

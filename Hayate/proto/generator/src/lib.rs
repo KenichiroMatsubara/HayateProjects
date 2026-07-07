@@ -834,6 +834,15 @@ fn generate_draw_codec(proto: &Proto) -> String {
         let default = match field.name.as_str() {
             // Flutter Paint 既定と同じ不透明黒。
             "COLOR" => "[0.0, 0.0, 0.0, 1.0]".to_string(),
+            // fill_rule enum 既定 nonZero（0）。
+            "FILL_RULE" => "0.0".to_string(),
+            // stroke 既定（#727）: width 1・cap butt(0)・join miter(0)・miterLimit 4・dash なし・offset 0。
+            "STROKE_WIDTH" => "1.0".to_string(),
+            "CAP" => "0.0".to_string(),
+            "JOIN" => "0.0".to_string(),
+            "MITER_LIMIT" => "4.0".to_string(),
+            "DASH" => "Vec::new()".to_string(),
+            "DASH_OFFSET" => "0.0".to_string(),
             other => panic!("draw_paint_fields.{other}: unhandled default (add an arm)"),
         };
         out.push_str(&format!(
@@ -846,7 +855,9 @@ fn generate_draw_codec(proto: &Proto) -> String {
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
-    // DrawCommand enum
+    // DrawCommand enum。draw-command は 3 系統: path + paint（FILL / STROKE）、
+    // path のみ（CLIP_PATH）、構造 op（params → f32 フィールド。SAVE / RESTORE /
+    // TRANSLATE / ROTATE / SCALE / TRANSFORM / CLIP_RECT）。
     out.push_str("// Draw command of a display list (drawRole=draw-command)\n");
     out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
     out.push_str("pub enum DrawCommand {\n");
@@ -855,7 +866,22 @@ fn generate_draw_codec(proto: &Proto) -> String {
             "FILL" => out.push_str(
                 "    FillPath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
             ),
-            other => panic!("draw_ops.{other}: unhandled draw-command variant (add an arm)"),
+            "STROKE" => out.push_str(
+                "    StrokePath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
+            ),
+            "CLIP_PATH" => out.push_str("    ClipPath {\n        verbs: Vec<PathVerb>,\n    },\n"),
+            _ => {
+                let variant = to_pascal(&command.name);
+                if command.params.is_empty() {
+                    out.push_str(&format!("    {variant},\n"));
+                } else {
+                    out.push_str(&format!("    {variant} {{\n"));
+                    for p in &command.params {
+                        out.push_str(&format!("        {}: f32,\n", p.name));
+                    }
+                    out.push_str("    },\n");
+                }
+            }
         }
     }
     out.push_str("}\n\n");
@@ -869,6 +895,27 @@ fn generate_draw_codec(proto: &Proto) -> String {
     out.push_str("        i += 1;\n");
     out.push_str("        match field {\n");
     for field in &proto.draw_paint_fields {
+        if field.variable_length {
+            // count プレフィックス付き f32 リスト（dash 間隔・#727）。style tag の可変長列と同型。
+            out.push_str(&format!("            DRAW_PAINT_{} => {{\n", field.name));
+            out.push_str(&format!(
+                "                if i >= packed.len() {{ return Err(\"draw paint field {} truncated\".to_string()); }}\n",
+                field.name
+            ));
+            out.push_str("                let count = packed[i] as usize;\n");
+            out.push_str("                i += 1;\n");
+            out.push_str(&format!(
+                "                if i + count > packed.len() {{ return Err(\"draw paint field {} list truncated\".to_string()); }}\n",
+                field.name
+            ));
+            out.push_str(&format!(
+                "                paint.{} = packed[i..i + count].to_vec();\n",
+                field.name.to_lowercase()
+            ));
+            out.push_str("                i += count;\n");
+            out.push_str("            }\n");
+            continue;
+        }
         let slots: usize = field.params.iter().map(param_slots).sum();
         out.push_str(&format!("            DRAW_PAINT_{} => {{\n", field.name));
         out.push_str(&format!(
@@ -949,7 +996,49 @@ fn generate_draw_codec(proto: &Proto) -> String {
                 out.push_str("                out.push(DrawCommand::FillPath { verbs: std::mem::take(&mut verbs), paint });\n");
                 out.push_str("            }\n");
             }
-            other => panic!("draw_ops.{other}: unhandled draw-command decode (add an arm)"),
+            "STROKE" => {
+                out.push_str("            DRAW_OP_STROKE => {\n");
+                out.push_str("                if i >= data.len() { return Err(\"draw op STROKE truncated\".to_string()); }\n");
+                out.push_str("                let paint_len = data[i] as usize;\n");
+                out.push_str("                i += 1;\n");
+                out.push_str("                if i + paint_len > data.len() { return Err(\"draw op STROKE paint packet truncated\".to_string()); }\n");
+                out.push_str("                let paint = decode_draw_paint(&data[i..i + paint_len])?;\n");
+                out.push_str("                i += paint_len;\n");
+                out.push_str("                out.push(DrawCommand::StrokePath { verbs: std::mem::take(&mut verbs), paint });\n");
+                out.push_str("            }\n");
+            }
+            "CLIP_PATH" => {
+                out.push_str("            DRAW_OP_CLIP_PATH => {\n");
+                out.push_str("                out.push(DrawCommand::ClipPath { verbs: std::mem::take(&mut verbs) });\n");
+                out.push_str("            }\n");
+            }
+            _ => {
+                // 構造 op（SAVE / RESTORE / TRANSLATE / ROTATE / SCALE / TRANSFORM /
+                // CLIP_RECT）。params を固定スロットで読み、path は消費しない。
+                let variant = to_pascal(&command.name);
+                let slots: usize = command.params.iter().map(param_slots).sum();
+                out.push_str(&format!("            DRAW_OP_{} => {{\n", command.name));
+                if command.params.is_empty() {
+                    out.push_str(&format!("                out.push(DrawCommand::{variant});\n"));
+                } else {
+                    out.push_str(&format!(
+                        "                if i + {} > data.len() {{ return Err(\"draw op {} truncated\".to_string()); }}\n",
+                        slots, command.name
+                    ));
+                    let fields: Vec<String> = command
+                        .params
+                        .iter()
+                        .enumerate()
+                        .map(|(s, p)| format!("{}: data[i + {}]", p.name, s))
+                        .collect();
+                    out.push_str(&format!(
+                        "                out.push(DrawCommand::{variant} {{ {} }});\n",
+                        fields.join(", ")
+                    ));
+                    out.push_str(&format!("                i += {};\n", slots));
+                }
+                out.push_str("            }\n");
+            }
         }
     }
     out.push_str("            other => return Err(format!(\"unknown draw op {other}\")),\n");
@@ -961,8 +1050,11 @@ fn generate_draw_codec(proto: &Proto) -> String {
     out
 }
 
-/// draw paint field の Rust 型（複数 param は f32 配列に平坦化）。
+/// draw paint field の Rust 型（複数 param は f32 配列に平坦化。variable_length は Vec<f32>）。
 fn draw_paint_field_rust_type(field: &Entry) -> String {
+    if field.variable_length {
+        return "Vec<f32>".to_string();
+    }
     let slots: usize = field.params.iter().map(param_slots).sum();
     if field.params.len() > 1 {
         format!("[f32; {}]", slots)

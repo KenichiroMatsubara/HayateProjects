@@ -10,7 +10,8 @@
     "./codec": "./generated/codec.ts",
     "./catalog": "./generated/catalog.ts",
     "./catalog.json": "./generated/catalog.json",
-    "./delivery": "./generated/delivery.ts"
+    "./delivery": "./generated/delivery.ts",
+    "./recorder": "./generated/recorder.ts"
   },
   "files": ["generated"],
   "scripts": {

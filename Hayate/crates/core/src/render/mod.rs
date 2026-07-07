@@ -1,3 +1,4 @@
+mod draw_path;
 mod missing_glyph;
 mod painter;
 pub(crate) mod shadow;
@@ -10,6 +11,10 @@ pub use linebender_resource_handle::Blob;
 pub use missing_glyph::{
     FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, is_notdef,
     missing_glyph_placeholder,
+};
+pub use draw_path::{
+    Affine2, DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, StrokeStyle, build_draw_path,
+    transform_verbs,
 };
 pub use painter::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,

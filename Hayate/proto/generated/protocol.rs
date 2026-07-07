@@ -143,6 +143,7 @@ pub const EVENT_KIND_ACTIVE_START: f64 = 13.0;
 pub const EVENT_KIND_POINTER_MOVE: f64 = 14.0;
 pub const EVENT_KIND_FETCH_FONT: f64 = 15.0;
 pub const EVENT_KIND_SELECTION_CHANGE: f64 = 16.0;
+pub const EVENT_KIND_LAYOUT_RESIZE: f64 = 17.0;
 
 // Event wire metadata (from event_kinds.json)
 pub const EVENT_WIRE_ROLE_CLICK: &str = "interaction";
@@ -179,6 +180,8 @@ pub const EVENT_WIRE_ROLE_FETCH_FONT: &str = "hayate-internal";
 pub const EVENT_ADAPTER_TIER_FETCH_FONT: &str = "none";
 pub const EVENT_WIRE_ROLE_SELECTION_CHANGE: &str = "interaction";
 pub const EVENT_ADAPTER_TIER_SELECTION_CHANGE: &str = "none";
+pub const EVENT_WIRE_ROLE_LAYOUT_RESIZE: &str = "hayate-internal";
+pub const EVENT_ADAPTER_TIER_LAYOUT_RESIZE: &str = "none";
 
 // Element kind constants
 pub const ELEMENT_KIND_VIEW: u32 = 0;
@@ -1455,9 +1458,32 @@ pub const DRAW_OP_MOVE_TO: u32 = 0;
 pub const DRAW_OP_LINE_TO: u32 = 1;
 pub const DRAW_OP_CLOSE: u32 = 2;
 pub const DRAW_OP_FILL: u32 = 3;
+pub const DRAW_OP_QUADRATIC_TO: u32 = 4;
+pub const DRAW_OP_CUBIC_TO: u32 = 5;
+pub const DRAW_OP_ARC_TO: u32 = 6;
+pub const DRAW_OP_RECT: u32 = 7;
+pub const DRAW_OP_RRECT: u32 = 8;
+pub const DRAW_OP_OVAL: u32 = 9;
+pub const DRAW_OP_CIRCLE: u32 = 10;
+pub const DRAW_OP_STROKE: u32 = 11;
+pub const DRAW_OP_SAVE: u32 = 12;
+pub const DRAW_OP_RESTORE: u32 = 13;
+pub const DRAW_OP_TRANSLATE: u32 = 14;
+pub const DRAW_OP_ROTATE: u32 = 15;
+pub const DRAW_OP_SCALE: u32 = 16;
+pub const DRAW_OP_TRANSFORM: u32 = 17;
+pub const DRAW_OP_CLIP_RECT: u32 = 18;
+pub const DRAW_OP_CLIP_PATH: u32 = 19;
 
 // Draw paint field constants (tagged paint packet; draw_paint_fields.json)
 pub const DRAW_PAINT_COLOR: u32 = 0;
+pub const DRAW_PAINT_FILL_RULE: u32 = 1;
+pub const DRAW_PAINT_STROKE_WIDTH: u32 = 2;
+pub const DRAW_PAINT_CAP: u32 = 3;
+pub const DRAW_PAINT_JOIN: u32 = 4;
+pub const DRAW_PAINT_MITER_LIMIT: u32 = 5;
+pub const DRAW_PAINT_DASH: u32 = 6;
+pub const DRAW_PAINT_DASH_OFFSET: u32 = 7;
 
 // Path verb of a draw display list (drawRole=path-verb)
 #[derive(Debug, Clone, PartialEq)]
@@ -1471,18 +1497,78 @@ pub enum PathVerb {
         y: f32,
     },
     Close,
+    QuadraticTo {
+        cx: f32,
+        cy: f32,
+        x: f32,
+        y: f32,
+    },
+    CubicTo {
+        c1x: f32,
+        c1y: f32,
+        c2x: f32,
+        c2y: f32,
+        x: f32,
+        y: f32,
+    },
+    ArcTo {
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        radius: f32,
+    },
+    Rect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Rrect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        rx: f32,
+        ry: f32,
+    },
+    Oval {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    Circle {
+        cx: f32,
+        cy: f32,
+        radius: f32,
+    },
 }
 
 // Paint of a draw command (tagged packet; unspecified fields keep defaults)
 #[derive(Debug, Clone, PartialEq)]
 pub struct DrawPaint {
     pub color: [f32; 4],
+    pub fill_rule: f32,
+    pub stroke_width: f32,
+    pub cap: f32,
+    pub join: f32,
+    pub miter_limit: f32,
+    pub dash: Vec<f32>,
+    pub dash_offset: f32,
 }
 
 impl Default for DrawPaint {
     fn default() -> Self {
         Self {
             color: [0.0, 0.0, 0.0, 1.0],
+            fill_rule: 0.0,
+            stroke_width: 1.0,
+            cap: 0.0,
+            join: 0.0,
+            miter_limit: 4.0,
+            dash: Vec::new(),
+            dash_offset: 0.0,
         }
     }
 }
@@ -1493,6 +1579,40 @@ pub enum DrawCommand {
     FillPath {
         verbs: Vec<PathVerb>,
         paint: DrawPaint,
+    },
+    StrokePath {
+        verbs: Vec<PathVerb>,
+        paint: DrawPaint,
+    },
+    Save,
+    Restore,
+    Translate {
+        dx: f32,
+        dy: f32,
+    },
+    Rotate {
+        radians: f32,
+    },
+    Scale {
+        sx: f32,
+        sy: f32,
+    },
+    Transform {
+        a: f32,
+        b: f32,
+        c: f32,
+        d: f32,
+        e: f32,
+        f: f32,
+    },
+    ClipRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    ClipPath {
+        verbs: Vec<PathVerb>,
     },
 }
 
@@ -1507,6 +1627,44 @@ pub fn decode_draw_paint(packed: &[f32]) -> Result<DrawPaint, String> {
                 if i + 4 > packed.len() { return Err("draw paint field COLOR truncated".to_string()); }
                 paint.color = [packed[i + 0], packed[i + 1], packed[i + 2], packed[i + 3]];
                 i += 4;
+            }
+            DRAW_PAINT_FILL_RULE => {
+                if i + 1 > packed.len() { return Err("draw paint field FILL_RULE truncated".to_string()); }
+                paint.fill_rule = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_STROKE_WIDTH => {
+                if i + 1 > packed.len() { return Err("draw paint field STROKE_WIDTH truncated".to_string()); }
+                paint.stroke_width = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_CAP => {
+                if i + 1 > packed.len() { return Err("draw paint field CAP truncated".to_string()); }
+                paint.cap = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_JOIN => {
+                if i + 1 > packed.len() { return Err("draw paint field JOIN truncated".to_string()); }
+                paint.join = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_MITER_LIMIT => {
+                if i + 1 > packed.len() { return Err("draw paint field MITER_LIMIT truncated".to_string()); }
+                paint.miter_limit = packed[i + 0];
+                i += 1;
+            }
+            DRAW_PAINT_DASH => {
+                if i >= packed.len() { return Err("draw paint field DASH truncated".to_string()); }
+                let count = packed[i] as usize;
+                i += 1;
+                if i + count > packed.len() { return Err("draw paint field DASH list truncated".to_string()); }
+                paint.dash = packed[i..i + count].to_vec();
+                i += count;
+            }
+            DRAW_PAINT_DASH_OFFSET => {
+                if i + 1 > packed.len() { return Err("draw paint field DASH_OFFSET truncated".to_string()); }
+                paint.dash_offset = packed[i + 0];
+                i += 1;
             }
             other => return Err(format!("unknown draw paint field {other}")),
         }
@@ -1535,6 +1693,41 @@ pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
             DRAW_OP_CLOSE => {
                 verbs.push(PathVerb::Close);
             }
+            DRAW_OP_QUADRATIC_TO => {
+                if i + 4 > data.len() { return Err("draw op QUADRATIC_TO truncated".to_string()); }
+                verbs.push(PathVerb::QuadraticTo { cx: data[i + 0], cy: data[i + 1], x: data[i + 2], y: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_CUBIC_TO => {
+                if i + 6 > data.len() { return Err("draw op CUBIC_TO truncated".to_string()); }
+                verbs.push(PathVerb::CubicTo { c1x: data[i + 0], c1y: data[i + 1], c2x: data[i + 2], c2y: data[i + 3], x: data[i + 4], y: data[i + 5] });
+                i += 6;
+            }
+            DRAW_OP_ARC_TO => {
+                if i + 5 > data.len() { return Err("draw op ARC_TO truncated".to_string()); }
+                verbs.push(PathVerb::ArcTo { x1: data[i + 0], y1: data[i + 1], x2: data[i + 2], y2: data[i + 3], radius: data[i + 4] });
+                i += 5;
+            }
+            DRAW_OP_RECT => {
+                if i + 4 > data.len() { return Err("draw op RECT truncated".to_string()); }
+                verbs.push(PathVerb::Rect { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_RRECT => {
+                if i + 6 > data.len() { return Err("draw op RRECT truncated".to_string()); }
+                verbs.push(PathVerb::Rrect { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3], rx: data[i + 4], ry: data[i + 5] });
+                i += 6;
+            }
+            DRAW_OP_OVAL => {
+                if i + 4 > data.len() { return Err("draw op OVAL truncated".to_string()); }
+                verbs.push(PathVerb::Oval { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_CIRCLE => {
+                if i + 3 > data.len() { return Err("draw op CIRCLE truncated".to_string()); }
+                verbs.push(PathVerb::Circle { cx: data[i + 0], cy: data[i + 1], radius: data[i + 2] });
+                i += 3;
+            }
             DRAW_OP_FILL => {
                 if i >= data.len() { return Err("draw op FILL truncated".to_string()); }
                 let paint_len = data[i] as usize;
@@ -1543,6 +1736,49 @@ pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
                 let paint = decode_draw_paint(&data[i..i + paint_len])?;
                 i += paint_len;
                 out.push(DrawCommand::FillPath { verbs: std::mem::take(&mut verbs), paint });
+            }
+            DRAW_OP_STROKE => {
+                if i >= data.len() { return Err("draw op STROKE truncated".to_string()); }
+                let paint_len = data[i] as usize;
+                i += 1;
+                if i + paint_len > data.len() { return Err("draw op STROKE paint packet truncated".to_string()); }
+                let paint = decode_draw_paint(&data[i..i + paint_len])?;
+                i += paint_len;
+                out.push(DrawCommand::StrokePath { verbs: std::mem::take(&mut verbs), paint });
+            }
+            DRAW_OP_SAVE => {
+                out.push(DrawCommand::Save);
+            }
+            DRAW_OP_RESTORE => {
+                out.push(DrawCommand::Restore);
+            }
+            DRAW_OP_TRANSLATE => {
+                if i + 2 > data.len() { return Err("draw op TRANSLATE truncated".to_string()); }
+                out.push(DrawCommand::Translate { dx: data[i + 0], dy: data[i + 1] });
+                i += 2;
+            }
+            DRAW_OP_ROTATE => {
+                if i + 1 > data.len() { return Err("draw op ROTATE truncated".to_string()); }
+                out.push(DrawCommand::Rotate { radians: data[i + 0] });
+                i += 1;
+            }
+            DRAW_OP_SCALE => {
+                if i + 2 > data.len() { return Err("draw op SCALE truncated".to_string()); }
+                out.push(DrawCommand::Scale { sx: data[i + 0], sy: data[i + 1] });
+                i += 2;
+            }
+            DRAW_OP_TRANSFORM => {
+                if i + 6 > data.len() { return Err("draw op TRANSFORM truncated".to_string()); }
+                out.push(DrawCommand::Transform { a: data[i + 0], b: data[i + 1], c: data[i + 2], d: data[i + 3], e: data[i + 4], f: data[i + 5] });
+                i += 6;
+            }
+            DRAW_OP_CLIP_RECT => {
+                if i + 4 > data.len() { return Err("draw op CLIP_RECT truncated".to_string()); }
+                out.push(DrawCommand::ClipRect { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_CLIP_PATH => {
+                out.push(DrawCommand::ClipPath { verbs: std::mem::take(&mut verbs) });
             }
             other => return Err(format!("unknown draw op {other}")),
         }
@@ -1670,6 +1906,14 @@ pub fn encode_event_wire(ev: &hayate_core::Event) -> Vec<EventWireValue> {
         hayate_core::Event::SelectionChange => {
             let mut out = Vec::new();
             out.push(EventWireValue::Number(16.0));
+            out
+        }
+        hayate_core::Event::LayoutResize { target_id, width, height } => {
+            let mut out = Vec::new();
+            out.push(EventWireValue::Number(17.0));
+            out.push(EventWireValue::Number(target_id.to_u64() as f64));
+            out.push(EventWireValue::Number(*width as f64));
+            out.push(EventWireValue::Number(*height as f64));
             out
         }
     }

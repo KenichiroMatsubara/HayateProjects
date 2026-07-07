@@ -905,6 +905,13 @@ export function appendSetDraw(buf: number[], id: number, drawOffset: number, dra
 
 export interface DrawPaint {
   readonly color?: readonly [number, number, number, number];
+  readonly fillRule?: number;
+  readonly strokeWidth?: number;
+  readonly cap?: number;
+  readonly join?: number;
+  readonly miterLimit?: number;
+  readonly dash?: readonly number[];
+  readonly dashOffset?: number;
 }
 
 export function appendDrawMoveTo(draws: number[], x: number, y: number): void {
@@ -926,5 +933,117 @@ export function appendDrawFill(draws: number[], paint: DrawPaint): void {
   if (paint.color !== undefined) {
     draws.push(DRAW_PAINT_FIELD.COLOR, ...paint.color);
   }
+  if (paint.fillRule !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+  }
+  if (paint.strokeWidth !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+  }
+  if (paint.cap !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+  }
+  if (paint.join !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+  }
+  if (paint.miterLimit !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+  }
+  if (paint.dash !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH, paint.dash.length, ...paint.dash);
+  }
+  if (paint.dashOffset !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
+  }
   draws[lenIndex] = draws.length - lenIndex - 1;
+}
+
+export function appendDrawQuadraticTo(draws: number[], cx: number, cy: number, x: number, y: number): void {
+  draws.push(DRAW_OP.QUADRATIC_TO, cx, cy, x, y);
+}
+
+export function appendDrawCubicTo(draws: number[], c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void {
+  draws.push(DRAW_OP.CUBIC_TO, c1x, c1y, c2x, c2y, x, y);
+}
+
+export function appendDrawArcTo(draws: number[], x1: number, y1: number, x2: number, y2: number, radius: number): void {
+  draws.push(DRAW_OP.ARC_TO, x1, y1, x2, y2, radius);
+}
+
+export function appendDrawRect(draws: number[], x: number, y: number, width: number, height: number): void {
+  draws.push(DRAW_OP.RECT, x, y, width, height);
+}
+
+export function appendDrawRrect(draws: number[], x: number, y: number, width: number, height: number, rx: number, ry: number): void {
+  draws.push(DRAW_OP.RRECT, x, y, width, height, rx, ry);
+}
+
+export function appendDrawOval(draws: number[], x: number, y: number, width: number, height: number): void {
+  draws.push(DRAW_OP.OVAL, x, y, width, height);
+}
+
+export function appendDrawCircle(draws: number[], cx: number, cy: number, radius: number): void {
+  draws.push(DRAW_OP.CIRCLE, cx, cy, radius);
+}
+
+export function appendDrawStroke(draws: number[], paint: DrawPaint): void {
+  draws.push(DRAW_OP.STROKE);
+  const lenIndex = draws.length;
+  draws.push(0);
+  if (paint.color !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.COLOR, ...paint.color);
+  }
+  if (paint.fillRule !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.FILL_RULE, paint.fillRule);
+  }
+  if (paint.strokeWidth !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.STROKE_WIDTH, paint.strokeWidth);
+  }
+  if (paint.cap !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.CAP, paint.cap);
+  }
+  if (paint.join !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.JOIN, paint.join);
+  }
+  if (paint.miterLimit !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.MITER_LIMIT, paint.miterLimit);
+  }
+  if (paint.dash !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH, paint.dash.length, ...paint.dash);
+  }
+  if (paint.dashOffset !== undefined) {
+    draws.push(DRAW_PAINT_FIELD.DASH_OFFSET, paint.dashOffset);
+  }
+  draws[lenIndex] = draws.length - lenIndex - 1;
+}
+
+export function appendDrawSave(draws: number[]): void {
+  draws.push(DRAW_OP.SAVE);
+}
+
+export function appendDrawRestore(draws: number[]): void {
+  draws.push(DRAW_OP.RESTORE);
+}
+
+export function appendDrawTranslate(draws: number[], dx: number, dy: number): void {
+  draws.push(DRAW_OP.TRANSLATE, dx, dy);
+}
+
+export function appendDrawRotate(draws: number[], radians: number): void {
+  draws.push(DRAW_OP.ROTATE, radians);
+}
+
+export function appendDrawScale(draws: number[], sx: number, sy: number): void {
+  draws.push(DRAW_OP.SCALE, sx, sy);
+}
+
+export function appendDrawTransform(draws: number[], a: number, b: number, c: number, d: number, e: number, f: number): void {
+  draws.push(DRAW_OP.TRANSFORM, a, b, c, d, e, f);
+}
+
+export function appendDrawClipRect(draws: number[], x: number, y: number, width: number, height: number): void {
+  draws.push(DRAW_OP.CLIP_RECT, x, y, width, height);
+}
+
+export function appendDrawClipPath(draws: number[]): void {
+  draws.push(DRAW_OP.CLIP_PATH);
 }

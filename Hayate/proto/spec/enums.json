@@ -553,5 +553,52 @@
         "value": 4
       }
     ]
+  },
+  {
+    "name": "fill_rule",
+    "values": [
+      {
+        "name": "nonZero",
+        "value": 0
+      },
+      {
+        "name": "evenOdd",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "name": "line_cap",
+    "values": [
+      {
+        "name": "butt",
+        "value": 0
+      },
+      {
+        "name": "round",
+        "value": 1
+      },
+      {
+        "name": "square",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "name": "line_join",
+    "values": [
+      {
+        "name": "miter",
+        "value": 0
+      },
+      {
+        "name": "round",
+        "value": 1
+      },
+      {
+        "name": "bevel",
+        "value": 2
+      }
+    ]
   }
 ]

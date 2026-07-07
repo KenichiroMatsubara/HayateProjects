@@ -251,18 +251,25 @@ function generateDrawAppendOps(proto) {
   for (const field of proto.draw_paint_fields ?? []) {
     const key = tagToPatchKey(field.name);
     const slots = (field.params ?? []).reduce((n, p) => n + (p.count > 1 ? p.count : 1), 0);
-    const tsType =
-      (field.params ?? []).length > 1
-        ? `readonly [${Array(slots).fill('number').join(', ')}]`
-        : 'number';
+    let tsType;
+    if (field.variable_length === true) {
+      tsType = 'readonly number[]';
+    } else if ((field.params ?? []).length > 1) {
+      tsType = `readonly [${Array(slots).fill('number').join(', ')}]`;
+    } else {
+      tsType = 'number';
+    }
     lines.push(`  readonly ${key}?: ${tsType};`);
   }
   lines.push('}');
   lines.push('');
 
+  const PAINT_COMMANDS = new Set(['FILL', 'STROKE']);
   for (const op of proto.draw_ops ?? []) {
     const fnName = drawAppendOpName(op.name);
-    if (op.drawRole === 'path-verb') {
+    // path-verb と、paint packet を持たない draw-command（save/translate/clipRect/
+    // clipPath…）はどちらも [OP, ...params] の素直な encoder（#728）。
+    if (op.drawRole === 'path-verb' || !PAINT_COMMANDS.has(op.name)) {
       const params = (op.params ?? []).map((p) => `${toCamelCase(p.name)}: number`);
       const sig = params.length > 0 ? `draws: number[], ${params.join(', ')}` : 'draws: number[]';
       const pushes = (op.params ?? []).map((p) => toCamelCase(p.name));
@@ -272,7 +279,8 @@ function generateDrawAppendOps(proto) {
       lines.push('');
       continue;
     }
-    if (op.name !== 'FILL') {
+    // path + tagged paint packet を取る draw-command（FILL / STROKE・#724/#727）。
+    if (op.name !== 'FILL' && op.name !== 'STROKE') {
       throw new Error(`draw_ops.${op.name}: unhandled draw-command encoder (add an arm)`);
     }
     lines.push(`export function ${fnName}(draws: number[], paint: DrawPaint): void {`);
@@ -282,7 +290,10 @@ function generateDrawAppendOps(proto) {
     for (const field of proto.draw_paint_fields ?? []) {
       const key = tagToPatchKey(field.name);
       lines.push(`  if (paint.${key} !== undefined) {`);
-      if ((field.params ?? []).length > 1) {
+      if (field.variable_length === true) {
+        // count プレフィックス付きリスト（dash 間隔・#727）。
+        lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, paint.${key}.length, ...paint.${key});`);
+      } else if ((field.params ?? []).length > 1) {
         lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, ...paint.${key});`);
       } else {
         lines.push(`    draws.push(DRAW_PAINT_FIELD.${field.name}, paint.${key});`);

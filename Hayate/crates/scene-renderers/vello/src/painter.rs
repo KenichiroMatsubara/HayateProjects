@@ -1,6 +1,6 @@
 use hayate_core::{
-    PathVerb, RenderImage, ScenePainter, ShadowOccluder, TextRunData, is_notdef,
-    missing_glyph_placeholder,
+    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, ScenePainter,
+    ShadowOccluder, StrokeStyle, TextRunData, build_draw_path, is_notdef, missing_glyph_placeholder,
 };
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
@@ -13,6 +13,36 @@ use vello::{
 };
 
 use crate::to_vello_image;
+
+/// kurbo `BezPath` を [`PathSink`] として橋渡しする（曲線・便宜形状・arcTo の展開は
+/// 共有 [`build_draw_path`] が行う）。
+#[derive(Default)]
+struct KurboPathSink {
+    path: vello::kurbo::BezPath,
+}
+
+impl PathSink for KurboPathSink {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.path.move_to((f64::from(x), f64::from(y)));
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.path.line_to((f64::from(x), f64::from(y)));
+    }
+    fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+        self.path
+            .quad_to((f64::from(cx), f64::from(cy)), (f64::from(x), f64::from(y)));
+    }
+    fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
+        self.path.curve_to(
+            (f64::from(c1x), f64::from(c1y)),
+            (f64::from(c2x), f64::from(c2y)),
+            (f64::from(x), f64::from(y)),
+        );
+    }
+    fn close(&mut self) {
+        self.path.close_path();
+    }
+}
 
 struct GroupLayer {
     scene: Scene,
@@ -126,41 +156,78 @@ impl ScenePainter for VelloPainter<'_> {
         scene.fill(Fill::EvenOdd, Affine::IDENTITY, brush, None, &path);
     }
 
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
-        use vello::kurbo::BezPath;
-
-        let mut path = BezPath::new();
-        // MoveTo で開いた subpath の中でだけ LineTo / Close を受け付ける（退化列を
-        // 黙って捨てる。3 painter 共通の意味論）。
-        let mut open = false;
-        for verb in verbs {
-            match verb {
-                PathVerb::MoveTo { x, y } => {
-                    path.move_to((f64::from(*x), f64::from(*y)));
-                    open = true;
-                }
-                PathVerb::LineTo { x, y } if open => {
-                    path.line_to((f64::from(*x), f64::from(*y)));
-                }
-                PathVerb::Close if open => {
-                    path.close_path();
-                    open = false;
-                }
-                PathVerb::LineTo { .. } | PathVerb::Close => {}
-            }
-        }
-        if path.is_empty() {
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    ) {
+        let mut sink = KurboPathSink::default();
+        build_draw_path(verbs, &mut sink);
+        if sink.path.is_empty() {
             return;
         }
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
+        let rule = match fill_rule {
+            DrawFillRule::NonZero => Fill::NonZero,
+            DrawFillRule::EvenOdd => Fill::EvenOdd,
+        };
         // verbs はボーダーボックス相対。原点 `(x, y)` は平行移動で与える。
         scene.fill(
-            Fill::NonZero,
+            rule,
             Affine::translate((f64::from(x), f64::from(y))),
             brush,
             None,
-            &path,
+            &sink.path,
+        );
+    }
+
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    ) {
+        use vello::kurbo::{Cap, Join, Stroke};
+        if stroke.width <= 0.0 {
+            return;
+        }
+        let mut sink = KurboPathSink::default();
+        build_draw_path(verbs, &mut sink);
+        if sink.path.is_empty() {
+            return;
+        }
+        let mut style = Stroke::new(f64::from(stroke.width));
+        style.miter_limit = f64::from(stroke.miter_limit);
+        style.join = match stroke.join {
+            DrawLineJoin::Miter => Join::Miter,
+            DrawLineJoin::Round => Join::Round,
+            DrawLineJoin::Bevel => Join::Bevel,
+        };
+        let cap = match stroke.cap {
+            DrawLineCap::Butt => Cap::Butt,
+            DrawLineCap::Round => Cap::Round,
+            DrawLineCap::Square => Cap::Square,
+        };
+        style.start_cap = cap;
+        style.end_cap = cap;
+        if !stroke.dash.is_empty() {
+            style.dash_pattern = stroke.dash.iter().map(|d| f64::from(*d)).collect();
+            style.dash_offset = f64::from(stroke.dash_offset);
+        }
+        let scene = self.target();
+        let brush = AlphaColor::<Srgb>::new(color);
+        scene.stroke(
+            &style,
+            Affine::translate((f64::from(x), f64::from(y))),
+            brush,
+            None,
+            &sink.path,
         );
     }
 
@@ -435,6 +502,15 @@ impl ScenePainter for VelloPainter<'_> {
         } else {
             scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &rect);
         }
+        self.clip_depth += 1;
+    }
+
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
+        let mut sink = KurboPathSink::default();
+        build_draw_path(verbs, &mut sink);
+        let scene = self.target();
+        // verbs は walk が原点 + draw CTM を焼き込み済み（グループローカル空間）。
+        scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &sink.path);
         self.clip_depth += 1;
     }
 

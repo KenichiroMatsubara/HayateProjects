@@ -201,5 +201,20 @@
     "bubbles": false,
     "interactionKind": null,
     "description": "The document-global unified Selection (ADR-0097) changed — set, moved, or cleared. Carries no payload (like the DOM `selectionchange` event); poll the runtime's `selection()` for the new state. Document-global rather than a per-element interaction, so it rides the raw event queue (`poll_events`)."
+  },
+  {
+    "name": "layout_resize",
+    "value": 17,
+    "params": [
+      { "name": "target_id", "type": "element_id" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
+    ],
+    "wireRole": "hayate-internal",
+    "adapterTier": "none",
+    "documentRuntime": true,
+    "bubbles": false,
+    "interactionKind": null,
+    "description": "A listening element's border-box size was first resolved or changed (browser ResizeObserver equivalent; #725 / ADR-0143). Values are logical-px border-box width/height. Sourced internally by Hayate's layout commit — not host-echoed — and delivered only to elements with a registered listener (register_listener / DocumentEventKind::LayoutResize), so it rides Event Delivery (poll_deliveries), not the raw queue. Fires on first layout and on every commit where the resolved size changes; a commit that leaves the size unchanged does not fire."
   }
 ]

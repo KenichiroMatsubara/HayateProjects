@@ -32,5 +32,177 @@
       { "name": "paint_len", "type": "usize" }
     ],
     "description": "Fill the path accumulated since the previous draw command. `paint_len` slots of tagged draw-paint fields (draw_paint_fields.json) follow inline; unspecified fields take their defaults."
+  },
+  {
+    "name": "QUADRATIC_TO",
+    "value": 4,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "cx", "type": "f32" },
+      { "name": "cy", "type": "f32" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" }
+    ],
+    "description": "Append a quadratic Bézier from the current point through control (cx, cy) to (x, y) (#726)."
+  },
+  {
+    "name": "CUBIC_TO",
+    "value": 5,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "c1x", "type": "f32" },
+      { "name": "c1y", "type": "f32" },
+      { "name": "c2x", "type": "f32" },
+      { "name": "c2y", "type": "f32" },
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" }
+    ],
+    "description": "Append a cubic Bézier from the current point via controls (c1x, c1y) and (c2x, c2y) to (x, y) (#726)."
+  },
+  {
+    "name": "ARC_TO",
+    "value": 6,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x1", "type": "f32" },
+      { "name": "y1", "type": "f32" },
+      { "name": "x2", "type": "f32" },
+      { "name": "y2", "type": "f32" },
+      { "name": "radius", "type": "f32" }
+    ],
+    "description": "Append a circular arc of `radius` tangent to the line from the current point to (x1, y1) and the line from (x1, y1) to (x2, y2), like the HTML canvas `arcTo` (#726). A leading line segment connects the current point to the arc's first tangent point. `radius <= 0` or collinear points degenerate to a lineTo (x1, y1)."
+  },
+  {
+    "name": "RECT",
+    "value": 7,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
+    ],
+    "description": "Append a closed rectangle subpath (convenience shape; #726)."
+  },
+  {
+    "name": "RRECT",
+    "value": 8,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" },
+      { "name": "rx", "type": "f32" },
+      { "name": "ry", "type": "f32" }
+    ],
+    "description": "Append a closed rounded-rectangle subpath with corner radii (rx, ry) (convenience shape; #726). Radii clamp to half the corresponding side."
+  },
+  {
+    "name": "OVAL",
+    "value": 9,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
+    ],
+    "description": "Append a closed ellipse subpath inscribed in the (x, y, width, height) box (convenience shape; #726)."
+  },
+  {
+    "name": "CIRCLE",
+    "value": 10,
+    "drawRole": "path-verb",
+    "params": [
+      { "name": "cx", "type": "f32" },
+      { "name": "cy", "type": "f32" },
+      { "name": "radius", "type": "f32" }
+    ],
+    "description": "Append a closed circle subpath centred at (cx, cy) (convenience shape; #726)."
+  },
+  {
+    "name": "STROKE",
+    "value": 11,
+    "drawRole": "draw-command",
+    "variable_length": true,
+    "params": [
+      { "name": "paint_len", "type": "usize" }
+    ],
+    "description": "Stroke the path accumulated since the previous draw command (#727). Shares the tagged draw-paint packet with FILL; the stroke fields (strokeWidth / cap / join / miterLimit / dash / dashOffset) drive the outline, `color` its ink. `paint_len` slots of tagged draw-paint fields follow inline; unspecified fields take their defaults."
+  },
+  {
+    "name": "SAVE",
+    "value": 12,
+    "drawRole": "draw-command",
+    "params": [],
+    "description": "Push the canvas state (current transform + clip) onto the save stack (#728). The only mutable state a draw canvas has."
+  },
+  {
+    "name": "RESTORE",
+    "value": 13,
+    "drawRole": "draw-command",
+    "params": [],
+    "description": "Pop the canvas state from the save stack, restoring the transform and clip (#728). A restore with an empty stack is a no-op."
+  },
+  {
+    "name": "TRANSLATE",
+    "value": 14,
+    "drawRole": "draw-command",
+    "params": [
+      { "name": "dx", "type": "f32" },
+      { "name": "dy", "type": "f32" }
+    ],
+    "description": "Post-translate the current transform by (dx, dy) logical px (#728)."
+  },
+  {
+    "name": "ROTATE",
+    "value": 15,
+    "drawRole": "draw-command",
+    "params": [{ "name": "radians", "type": "f32" }],
+    "description": "Post-rotate the current transform by `radians` about the current origin (#728)."
+  },
+  {
+    "name": "SCALE",
+    "value": 16,
+    "drawRole": "draw-command",
+    "params": [
+      { "name": "sx", "type": "f32" },
+      { "name": "sy", "type": "f32" }
+    ],
+    "description": "Post-scale the current transform by (sx, sy) (#728)."
+  },
+  {
+    "name": "TRANSFORM",
+    "value": 17,
+    "drawRole": "draw-command",
+    "params": [
+      { "name": "a", "type": "f32" },
+      { "name": "b", "type": "f32" },
+      { "name": "c", "type": "f32" },
+      { "name": "d", "type": "f32" },
+      { "name": "e", "type": "f32" },
+      { "name": "f", "type": "f32" }
+    ],
+    "description": "Post-concat an affine matrix onto the current transform (#728). Column convention matches CSS/canvas matrix(a,b,c,d,e,f): x' = a·x + c·y + e, y' = b·x + d·y + f."
+  },
+  {
+    "name": "CLIP_RECT",
+    "value": 18,
+    "drawRole": "draw-command",
+    "params": [
+      { "name": "x", "type": "f32" },
+      { "name": "y", "type": "f32" },
+      { "name": "width", "type": "f32" },
+      { "name": "height", "type": "f32" }
+    ],
+    "description": "Intersect the clip with an axis-aligned rectangle in the current transform (#728). Cleared by the matching restore."
+  },
+  {
+    "name": "CLIP_PATH",
+    "value": 19,
+    "drawRole": "draw-command",
+    "params": [],
+    "description": "Intersect the clip with the path accumulated since the previous draw command, under the current transform (#728). Consumes the path (like FILL). Cleared by the matching restore."
   }
 ]

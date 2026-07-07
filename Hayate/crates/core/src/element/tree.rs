@@ -270,6 +270,11 @@ pub struct ElementTree {
     /// `poll_accessibility_update` が最後に `TreeUpdate` を構築した世代（#642）。これが
     /// `a11y_generation` と一致していれば a11y ツリーは前回 poll から不変で、再構築を省ける。
     pub(crate) a11y_polled_generation: u64,
+    /// `DocumentEventKind::LayoutResize` リスナ登録要素ごとに、直近で配送済みの
+    /// ボーダーボックスサイズ（#725 / ADR-0143）。`commit_frame` がレイアウト確定後に
+    /// 現在サイズと突き合わせ、初回確定・サイズ変化の commit でのみ発火する（サイズ
+    /// 非変化の commit では発火しない）。リスナのある要素だけを追跡する。
+    pub(crate) layout_size_notified: HashMap<ElementId, (f32, f32)>,
 }
 
 impl ElementTree {
@@ -299,6 +304,7 @@ impl ElementTree {
             frame_layer_chrome_dirty: HashSet::new(),
             a11y_generation: 0,
             a11y_polled_generation: 0,
+            layout_size_notified: HashMap::new(),
         }
     }
 
@@ -1886,6 +1892,34 @@ impl ElementTree {
                 self.viewport,
                 &mut self.event_queue,
             );
+        }
+        self.emit_layout_resize_events();
+    }
+
+    /// レイアウト確定後、`DocumentEventKind::LayoutResize` リスナを持つ各要素の
+    /// ボーダーボックスサイズを直近配送値と突き合わせ、初回確定・サイズ変化の
+    /// commit でのみ `Event::LayoutResize` を配送する（#725 / ADR-0143）。サイズ
+    /// 非変化の commit では発火しない。リスナ未登録の要素は追跡せず発火もしない。
+    fn emit_layout_resize_events(&mut self) {
+        for id in self.runtime.elements_listening(DocumentEventKind::LayoutResize) {
+            let Some((_, _, width, height)) = self.layout.geometry(id) else {
+                continue; // まだレイアウトされていない要素は確定を待つ
+            };
+            let changed = self
+                .layout_size_notified
+                .get(&id)
+                .is_none_or(|&(w, h)| w != width || h != height);
+            if changed {
+                self.layout_size_notified.insert(id, (width, height));
+                self.dispatch_event(
+                    DocumentEventKind::LayoutResize,
+                    Event::LayoutResize {
+                        target_id: id,
+                        width,
+                        height,
+                    },
+                );
+            }
         }
     }
 

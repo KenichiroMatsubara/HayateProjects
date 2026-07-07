@@ -1,4 +1,5 @@
 use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
+use crate::render::draw_path::{Affine2, DrawFillRule, StrokeStyle, transform_verbs};
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
 
@@ -69,6 +70,14 @@ pub enum DrawOp {
         x: f32,
         y: f32,
         verbs: Vec<PathVerb>,
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    },
+    StrokePath {
+        x: f32,
+        y: f32,
+        verbs: Vec<PathVerb>,
+        stroke: StrokeStyle,
         color: [f32; 4],
     },
     PushTransform {
@@ -81,6 +90,9 @@ pub enum DrawOp {
         width: f32,
         height: f32,
         corner_radii: [f32; 4],
+    },
+    PushClipDrawPath {
+        verbs: Vec<PathVerb>,
     },
     PopClip,
 }
@@ -198,9 +210,30 @@ pub trait ScenePainter {
     /// draw display list のパスを単色で塗る（#724 / ADR-0141）。`(x, y)` は要素の
     /// ボーダーボックス左上（絶対・論理 px）、`verbs` はボーダーボックス相対のパス
     /// 動詞列（fill rule は nonZero）。painter が `(x, y)` の平行移動を適用する。
-    /// 将来の stroke / fill rule / グラデーション等は verbs・Paint 語彙の拡張として
-    /// 生える（PRD #723「後回しは封印ではない」）。
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]);
+    /// `fill_rule` は巻き数規則（nonZero / evenOdd・#726）。曲線・便宜形状・arcTo は
+    /// [`crate::render::build_draw_path`] が verbs をプリミティブへ展開して painter へ渡す。
+    /// 将来の stroke / グラデーション等は verbs・Paint 語彙の拡張として生える。
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    );
+
+    /// draw display list のパスを輪郭描画する（#727）。`stroke` は幅・cap・join・
+    /// miterLimit・dash を解決済みの [`StrokeStyle`]。`(x, y)` はボーダーボックス左上、
+    /// `verbs` はその相対パス。曲線・便宜形状・arcTo は `fill_path` と同じく
+    /// [`crate::render::build_draw_path`] が展開する。
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    );
 
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
 
@@ -220,6 +253,12 @@ pub trait ScenePainter {
     /// クリップ領域を push する。`corner_radii`（TL, TR, BR, BL）で角を丸める。
     /// 全て 0 なら矩形クリップ。
     fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]);
+
+    /// draw の clipPath / clipRect（#728）。`verbs` は walk が state 変換の元空間へ
+    /// 変換済み（ボーダーボックス原点 + draw CTM 適用済み）のパス。既存クリップとの
+    /// 交差を 1 つ push し、対応する restore / DrawList 末尾で `pop_clip` される。
+    /// 呼び出しごとにちょうど 1 つ push すること（walk のクリップ計数と一致させる）。
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]);
 
     fn pop_clip(&mut self);
 }
@@ -358,11 +397,36 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
-    fn fill_path(&mut self, x: f32, y: f32, verbs: &[PathVerb], color: [f32; 4]) {
+    fn fill_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        fill_rule: DrawFillRule,
+        color: [f32; 4],
+    ) {
         self.ops.push(DrawOp::FillPath {
             x,
             y,
             verbs: verbs.to_vec(),
+            fill_rule,
+            color,
+        });
+    }
+
+    fn stroke_path(
+        &mut self,
+        x: f32,
+        y: f32,
+        verbs: &[PathVerb],
+        stroke: &StrokeStyle,
+        color: [f32; 4],
+    ) {
+        self.ops.push(DrawOp::StrokePath {
+            x,
+            y,
+            verbs: verbs.to_vec(),
+            stroke: stroke.clone(),
             color,
         });
     }
@@ -408,6 +472,12 @@ impl ScenePainter for RecordingPainter {
             width,
             height,
             corner_radii,
+        });
+    }
+
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
+        self.ops.push(DrawOp::PushClipDrawPath {
+            verbs: verbs.to_vec(),
         });
     }
 
@@ -484,7 +554,25 @@ impl ScenePainter for NullPainter {
     ) {
     }
 
-    fn fill_path(&mut self, _x: f32, _y: f32, _verbs: &[PathVerb], _color: [f32; 4]) {}
+    fn fill_path(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _verbs: &[PathVerb],
+        _fill_rule: DrawFillRule,
+        _color: [f32; 4],
+    ) {
+    }
+
+    fn stroke_path(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _verbs: &[PathVerb],
+        _stroke: &StrokeStyle,
+        _color: [f32; 4],
+    ) {
+    }
 
     fn draw_text_run(&mut self, _x: f32, _y: f32, _color: [f32; 4], _data: &TextRunData) {}
 
@@ -503,6 +591,8 @@ impl ScenePainter for NullPainter {
     fn pop_transform(&mut self) {}
 
     fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _corner_radii: [f32; 4]) {}
+
+    fn push_clip_draw_path(&mut self, _verbs: &[PathVerb]) {}
 
     fn pop_clip(&mut self) {}
 }
@@ -671,12 +761,85 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             painter.pop_clip();
         }
         NodeKind::DrawList { x, y, commands } => {
+            use crate::wire::protocol::DrawCommand;
+            // canvas の唯一の可変状態: 変換 CTM（ボーダーボックス原点相対）と
+            // クリップスタック（#728）。座標操作は verbs へソフト適用し、クリップは
+            // painter の既存クリップスタックへ push/pop する。原点 `(x, y)` は
+            // fill_path/stroke_path が適用するので fill/stroke は CTM のみ、clip は
+            // 原点 + CTM を焼き込む。
+            let origin = Affine2::translate(*x, *y);
+            let mut ctm = Affine2::IDENTITY;
+            let mut save_stack: Vec<(Affine2, usize)> = Vec::new();
+            let mut clip_depth: usize = 0;
             for command in commands.iter() {
                 match command {
-                    crate::wire::protocol::DrawCommand::FillPath { verbs, paint } => {
-                        painter.fill_path(*x, *y, verbs, paint.color);
+                    DrawCommand::FillPath { verbs, paint } => {
+                        let tv = transform_verbs(verbs, ctm);
+                        painter.fill_path(
+                            *x,
+                            *y,
+                            &tv,
+                            DrawFillRule::from_wire(paint.fill_rule),
+                            paint.color,
+                        );
+                    }
+                    DrawCommand::StrokePath { verbs, paint } => {
+                        let tv = transform_verbs(verbs, ctm);
+                        let mut stroke = StrokeStyle::from_paint(paint);
+                        // 幅も CTM のスケールに追従させる（近似・回転/平行移動では不変）。
+                        stroke.width *= ctm.scale_factor();
+                        painter.stroke_path(*x, *y, &tv, &stroke, paint.color);
+                    }
+                    DrawCommand::Save => save_stack.push((ctm, clip_depth)),
+                    DrawCommand::Restore => {
+                        if let Some((t, depth)) = save_stack.pop() {
+                            ctm = t;
+                            while clip_depth > depth {
+                                painter.pop_clip();
+                                clip_depth -= 1;
+                            }
+                        }
+                    }
+                    DrawCommand::Translate { dx, dy } => {
+                        ctm = ctm.then(Affine2::translate(*dx, *dy));
+                    }
+                    DrawCommand::Rotate { radians } => {
+                        ctm = ctm.then(Affine2::rotate(*radians));
+                    }
+                    DrawCommand::Scale { sx, sy } => {
+                        ctm = ctm.then(Affine2::scale(*sx, *sy));
+                    }
+                    DrawCommand::Transform { a, b, c, d, e, f } => {
+                        ctm = ctm.then(Affine2([*a, *b, *c, *d, *e, *f]));
+                    }
+                    DrawCommand::ClipRect {
+                        x: cx,
+                        y: cy,
+                        width,
+                        height,
+                    } => {
+                        let rect = [
+                            PathVerb::MoveTo { x: *cx, y: *cy },
+                            PathVerb::LineTo { x: cx + width, y: *cy },
+                            PathVerb::LineTo { x: cx + width, y: cy + height },
+                            PathVerb::LineTo { x: *cx, y: cy + height },
+                            PathVerb::Close,
+                        ];
+                        let tv = transform_verbs(&rect, origin.then(ctm));
+                        painter.push_clip_draw_path(&tv);
+                        clip_depth += 1;
+                    }
+                    DrawCommand::ClipPath { verbs } => {
+                        let tv = transform_verbs(verbs, origin.then(ctm));
+                        painter.push_clip_draw_path(&tv);
+                        clip_depth += 1;
                     }
                 }
+            }
+            // DrawList 内で開いたままのクリップを閉じる（unbalanced save も安全に片付く）。
+            while clip_depth > 0 {
+                painter.pop_clip();
+                clip_depth -= 1;
             }
         }
         NodeKind::ElementAnchor { .. } => {
