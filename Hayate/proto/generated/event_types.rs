@@ -71,6 +71,12 @@ pub enum Event {
     },
     /// The document-global unified Selection (ADR-0097) changed — set, moved, or cleared. Carries no payload (like the DOM `selectionchange` event); poll the runtime's `selection()` for the new state. Document-global rather than a per-element interaction, so it rides the raw event queue (`poll_events`).
     SelectionChange,
+    /// A listening element's border-box size was first resolved or changed (browser ResizeObserver equivalent; #725 / ADR-0143). Values are logical-px border-box width/height. Sourced internally by Hayate's layout commit — not host-echoed — and delivered only to elements with a registered listener (register_listener / DocumentEventKind::LayoutResize), so it rides Event Delivery (poll_deliveries), not the raw queue. Fires on first layout and on every commit where the resolved size changes; a commit that leaves the size unchanged does not fire.
+    LayoutResize {
+        target_id: ElementId,
+        width: f32,
+        height: f32,
+    },
 }
 
 /// Event kinds registerable via `register_listener`.
@@ -89,6 +95,7 @@ pub enum DocumentEventKind {
     HoverLeave,
     KeyDown,
     ActiveStart,
+    LayoutResize,
 }
 
 impl DocumentEventKind {
@@ -107,6 +114,7 @@ impl DocumentEventKind {
             Self::HoverLeave => false,
             Self::KeyDown => true,
             Self::ActiveStart => false,
+            Self::LayoutResize => false,
         }
     }
 
@@ -125,6 +133,7 @@ impl DocumentEventKind {
             11 => Some(Self::HoverLeave),
             12 => Some(Self::KeyDown),
             13 => Some(Self::ActiveStart),
+            17 => Some(Self::LayoutResize),
             _ => None,
         }
     }
@@ -146,6 +155,7 @@ pub fn event_document_kind(event: &Event) -> Option<DocumentEventKind> {
         Event::HoverLeave { .. } => Some(DocumentEventKind::HoverLeave),
         Event::KeyDown { .. } => Some(DocumentEventKind::KeyDown),
         Event::ActiveStart { .. } => Some(DocumentEventKind::ActiveStart),
+        Event::LayoutResize { .. } => Some(DocumentEventKind::LayoutResize),
         _ => None,
     }
 }

@@ -85,6 +85,16 @@ impl DocumentRuntime {
         }
     }
 
+    /// `kind` のリスナーを持つ要素を列挙する（順不同）。layout commit が
+    /// per-element な layout size イベント（#725）を発火する対象集合の唯一の source。
+    pub fn elements_listening(&self, kind: DocumentEventKind) -> Vec<ElementId> {
+        self.by_element
+            .iter()
+            .filter(|(_, kinds)| kinds.get(&kind).is_some_and(|keys| !keys.is_empty()))
+            .map(|(&element_id, _)| element_id)
+            .collect()
+    }
+
     /// `path`（ターゲット起点の祖先チェーン）上のリスナーへ `event` を配送する。
     pub fn dispatch_to_path(
         &mut self,
@@ -133,7 +143,8 @@ pub(crate) fn event_target(event: &Event) -> Option<ElementId> {
         | Event::HoverLeave { target_id }
         | Event::ActiveStart { target_id }
         | Event::ActiveEnd { target_id }
-        | Event::KeyDown { target_id, .. } => Some(*target_id),
+        | Event::KeyDown { target_id, .. }
+        | Event::LayoutResize { target_id, .. } => Some(*target_id),
         Event::Resize { .. }
         | Event::PointerMove { .. }
         | Event::FetchFont { .. }

@@ -35,6 +35,7 @@ const IGNORED_KINDS: ReadonlySet<EventPayload['kind']> = new Set([
   'pointer_move',
   'fetch_font',
   'selection_change',
+  'layout_resize',
 ]);
 
 export interface EventDelivery {

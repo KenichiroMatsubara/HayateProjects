@@ -132,6 +132,7 @@ export const EVENT_KIND = {
   POINTER_MOVE: 14,
   FETCH_FONT: 15,
   SELECTION_CHANGE: 16,
+  LAYOUT_RESIZE: 17,
 } as const;
 export type EVENT_KIND = typeof EVENT_KIND;
 
@@ -153,6 +154,7 @@ export const EVENT_WIRE_ROLE = {
   POINTER_MOVE: 'interaction',
   FETCH_FONT: 'hayate-internal',
   SELECTION_CHANGE: 'interaction',
+  LAYOUT_RESIZE: 'hayate-internal',
 } as const;
 export type EVENT_WIRE_ROLE = typeof EVENT_WIRE_ROLE;
 
@@ -174,6 +176,7 @@ export const EVENT_ADAPTER_TIER = {
   POINTER_MOVE: 'deferred',
   FETCH_FONT: 'none',
   SELECTION_CHANGE: 'none',
+  LAYOUT_RESIZE: 'none',
 } as const;
 export type EVENT_ADAPTER_TIER = typeof EVENT_ADAPTER_TIER;
 
@@ -426,6 +429,7 @@ export type EventPayload =
   | { kind: 'pointer_move'; value: 14; x: number; y: number; pointerKind: number }
   | { kind: 'fetch_font'; value: 15; family: string }
   | { kind: 'selection_change'; value: 16 }
+  | { kind: 'layout_resize'; value: 17; targetId: number; width: number; height: number }
 ;
 
 export function parseEvent(ev: unknown[]): EventPayload {
@@ -481,6 +485,9 @@ export function parseEvent(ev: unknown[]): EventPayload {
     }
     case 16: { // selection_change
       return { kind: 'selection_change' as const, value: 16 };
+    }
+    case 17: { // layout_resize
+      return { kind: 'layout_resize' as const, value: 17, targetId: ev[1] as number, width: ev[2] as number, height: ev[3] as number };
     }
     default:
       throw new Error(`parseEvent: unknown event kind ${kind}`);
