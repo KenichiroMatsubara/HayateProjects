@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Tsubame Draw Gallery</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1020; }
+      #dom-host, #canvas-stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
+      #dom-host[hidden], #canvas-stage[hidden] { display: none; }
+      #canvas-stage { display: block; cursor: default; }
+
+      /* Renderer 切替 UI（Hayate アプリの外側に置く素の HTML オーバーレイ）。
+         同一 painter を DOM / Hayate（vello・tiny-skia）の各経路で描き比べる。 */
+      #renderer-switch {
+        position: fixed;
+        top: max(10px, env(safe-area-inset-top));
+        right: max(10px, env(safe-area-inset-right));
+        z-index: 1000;
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        border: 1px solid #31425b;
+        background: rgba(17, 24, 39, 0.9);
+        backdrop-filter: blur(6px);
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      #renderer-switch button {
+        padding: 4px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        color: #8ea1bb;
+        cursor: pointer;
+      }
+      #renderer-switch button.active { background: #14b8a6; color: #04110f; }
+      #renderer-switch button:hover:not(.active) { color: #eef4ff; background: #21344e; }
+    </style>
+  </head>
+  <body>
+    <div id="renderer-switch" role="group" aria-label="レンダラ切替">
+      <button type="button" data-renderer="auto">auto</button>
+      <button type="button" data-renderer="dom">dom</button>
+      <button type="button" data-renderer="tiny-skia">tiny-skia</button>
+      <button type="button" data-renderer="vello">vello</button>
+    </div>
+    <div id="dom-host" hidden></div>
+    <canvas id="canvas-stage" hidden></canvas>
+    <script>
+      (function initRendererSwitch() {
+        const params = new URLSearchParams(window.location.search);
+        const current = params.get('renderer') ?? 'auto';
+        const root = document.getElementById('renderer-switch');
+        for (const button of root.querySelectorAll('button[data-renderer]')) {
+          const value = button.getAttribute('data-renderer');
+          if (value === current) button.classList.add('active');
+          button.addEventListener('click', () => {
+            const next = new URLSearchParams(window.location.search);
+            next.set('renderer', value);
+            const query = next.toString();
+            window.location.search = query ? `?${query}` : '';
+          });
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
