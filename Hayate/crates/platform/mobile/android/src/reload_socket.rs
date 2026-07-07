@@ -1,50 +1,40 @@
-//! Miharashi Android ホストの reload WS クライアント（#533）。**device 未検証**。
+//! Miharashi Android ホストの reload WS クライアント（#533, #742）。
 //!
-//! `miharashi_reload::subscribe_reload` の `connect` シームの device 既定実装。dev-server の
-//! reload WS（`@miharashi/dev-server` の RELOAD_ROUTE。Web ホストは `WebSocket` で繋ぐ）へ素の
-//! TCP 上で RFC6455 ハンドシェイクを張り、サーバ → クライアントのテキストフレーム（`reload`）を
-//! 受ける薄いアダプタ。依存追加なし。
+//! `miharashi_reload::subscribe_reload` の `connect` シームの device 既定実装。当初は
+//! 「依存追加なし」の素の TCP 上に RFC6455 ハンドシェイクを手書きしていたが、公開 Demo
+//! Endpoint（wss・ADR-0003）を機に **OS プラットフォームのネットワークスタックへ委譲**した
+//! （ADR-0002 後半・#742）。Kotlin 側（`ReloadSocketBridge`・OkHttp の WebSocket）が WS(S) と
+//! TLS を担い、Rust は URL（純粋シーム `miharashi_reload::reload_ws_url`。https 由来は wss）を
+//! 渡して受信イベント（テキスト / 切断）だけを受け取る。Rust に TLS 依存は入れない。reload の
+//! 意味づけ（`reload` で full reload・切断時の backoff 再接続 orchestration）は
+//! `miharashi_reload` の純粋シームに残る — ホストは WS を中継するだけで HMR を解さない
+//! （CONTEXT.md「Reload」/ ADR-0001 不変）。
 //!
-//! 単一スレッド契約（ADR-0003）を守るため、フレーム読みは背景スレッドが行い、受信を mpsc で
-//! main へ渡す。main の poll ループが毎フレーム [`ReloadWsSocket::pump`] を呼んで、登録済みの
-//! `on_message` / `on_close` を **main スレッドで** 発火する（boot_runtime 再実行＝ Hermes/tree に
-//! 触るため main で動かす必要がある）。実 WS 配線は実機で検証する（本 issue 外）。
-//!
-//! 中身は素の std（TCP / スレッド / mpsc）なので、実際に駆動するのは device の `app_tsubame`
-//! だけでもホスト `cargo check` でコンパイル検証はできる（host では未使用なので dead_code は許可）。
+//! 単一スレッド契約（ADR-0003）を守るため、Kotlin のイベント待ち（blocking）は背景スレッドが
+//! 行い、受信を mpsc で main へ渡す。main の poll ループが毎フレーム [`ReloadWsSocket::pump`] を
+//! 呼んで、登録済みの `on_message` / `on_close` を **main スレッドで** 発火する（boot_runtime
+//! 再実行＝ Hermes/tree に触るため main で動かす必要がある）。実 WS 配線は実機で検証する
+//! （ローカル検証の領分・ADR-0001）。
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
 
 use std::cell::{Cell, RefCell};
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpStream};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread;
+use std::sync::mpsc::Receiver;
 
 use crate::miharashi_reload::ReloadSocket;
-
-/// RFC6455 ハンドシェイクの `Sec-WebSocket-Key`（16 byte を base64 した固定値）。サーバは値の
-/// ランダム性を要求せず Accept ハッシュを返すだけなので、固定キーで足りる（依存追加回避）。
-const WS_HANDSHAKE_KEY: &str = "dGhlIHNhbXBsZSBub25jZQ==";
-/// 期待する WS アップグレード成功 status line の断片。
-const WS_SWITCHING_PROTOCOLS: &str = " 101 ";
-/// WS フレーム opcode：テキスト。
-const WS_OPCODE_TEXT: u8 = 0x1;
-/// WS フレーム opcode：close。
-const WS_OPCODE_CLOSE: u8 = 0x8;
 
 /// 背景スレッド → main へ渡す reload 受信イベント。
 enum WsEvent {
     /// サーバが送ったテキストフレーム本文（`reload` か否かは購読側が判定する）。
     Message(String),
-    /// 接続が閉じた（EOF / close フレーム / I/O エラー）。main は backoff 再接続する。
+    /// 接続が閉じた（サーバ close / 接続・TLS 失敗 / I/O エラー）。main は backoff 再接続する。
     Closed,
 }
 
 /// reload WS への接続ハンドル。`subscribe_reload` の `connect` が返す [`ReloadSocket`]。
 pub struct ReloadWsSocket {
     events: Receiver<WsEvent>,
-    /// 読みスレッドを解くための shutdown 用クローン（接続失敗時は `None`）。
-    shutdown_handle: Option<TcpStream>,
+    /// Kotlin 側 WS のハンドル（close の宛先。open が JNI 段階で失敗したら `None`）。
+    handle: Option<i64>,
     on_message: RefCell<Option<Box<dyn FnMut(&str)>>>,
     on_close: RefCell<Option<Box<dyn FnMut()>>>,
     closed: Cell<bool>,
@@ -52,7 +42,7 @@ pub struct ReloadWsSocket {
 
 impl ReloadWsSocket {
     /// 背景スレッドが mpsc に積んだ受信を main で排出し、登録済みコールバックを発火する。
-    /// poll ループが毎フレーム呼ぶ（blocking read を main から外すための drain シーム）。
+    /// poll ループが毎フレーム呼ぶ（blocking なイベント待ちを main から外すための drain シーム）。
     pub fn pump(&self) {
         while let Ok(event) = self.events.try_recv() {
             match event {
@@ -82,124 +72,138 @@ impl ReloadSocket for ReloadWsSocket {
         *self.on_close.borrow_mut() = Some(cb);
     }
     fn close(&self) {
-        // 読みスレッドの blocking read を解く。次の pump で Closed が（再接続抑止下で）流れる。
-        if let Some(stream) = self.shutdown_handle.as_ref() {
-            let _ = stream.shutdown(Shutdown::Both);
+        // Kotlin 側 WS を閉じる。閉じたことは Kotlin のイベントとして返り、背景スレッドが解けて
+        // 次の pump で Closed が（再接続抑止下で）流れる。
+        #[cfg(target_os = "android")]
+        if let Some(handle) = self.handle {
+            platform::close_ws(handle);
         }
     }
 }
 
-/// `ws://host:port/path` を素の TCP + RFC6455 ハンドシェイクで開き、読みスレッドを起こす。
-/// 接続 / ハンドシェイク失敗時も「即 Closed を積んだ」socket を返す — 購読側はそれを backoff
-/// 再接続のトリガにする（Web の `WebSocket` が onclose を出すのと同型）。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
-pub fn connect_reload_ws(ws_url: &str) -> std::rc::Rc<ReloadWsSocket> {
-    let (tx, rx): (Sender<WsEvent>, Receiver<WsEvent>) = channel();
+#[cfg(target_os = "android")]
+pub use platform::connect_reload_ws;
 
-    match open_ws(ws_url) {
-        Ok(stream) => {
-            let shutdown_handle = stream.try_clone().ok();
-            thread::spawn(move || read_frames(stream, &tx));
-            std::rc::Rc::new(ReloadWsSocket {
-                events: rx,
-                shutdown_handle,
-                on_message: RefCell::new(None),
-                on_close: RefCell::new(None),
-                closed: Cell::new(false),
-            })
-        }
-        Err(err) => {
-            log::warn!("hayate-adapter-android: reload WS 接続に失敗（backoff 再試行）: {err}");
-            let _ = tx.send(WsEvent::Closed);
-            std::rc::Rc::new(ReloadWsSocket {
-                events: rx,
-                shutdown_handle: None,
-                on_message: RefCell::new(None),
-                on_close: RefCell::new(None),
-                closed: Cell::new(false),
-            })
-        }
-    }
-}
+/// OS スタック委譲の JNI glue（device 専用）。bundle_source と同じ leaf パターン
+/// （`jni::` の直接使用は `jni_bridge` に封じ込め、leaf はそれだけを使う・ADR-0125）。
+#[cfg(target_os = "android")]
+mod platform {
+    use std::sync::mpsc::{channel, Sender};
+    use std::thread;
 
-/// `ws://host:port/path` をパースし、TCP connect → RFC6455 GET Upgrade を送って 101 を確認する。
-fn open_ws(ws_url: &str) -> std::io::Result<TcpStream> {
-    let rest = ws_url.strip_prefix("ws://").ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "reload URL must be ws://")
-    })?;
-    let (authority, path) = match rest.find('/') {
-        Some(i) => (&rest[..i], &rest[i..]),
-        None => (rest, "/"),
-    };
+    use super::*;
+    use crate::jni_bridge::JString;
 
-    let mut stream = TcpStream::connect(authority)?;
-    let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
-         Sec-WebSocket-Key: {WS_HANDSHAKE_KEY}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    );
-    stream.write_all(request.as_bytes())?;
+    /// Kotlin の橋渡しクラス（android-app の `ReloadSocketBridge`）の JNI 名。
+    const BRIDGE_CLASS: &str = "com/hayateprojects/hayate/adapter_android_demo/ReloadSocketBridge";
+    /// `String url` を受けて WS を開き、ハンドル `long` を返す（接続は非同期・失敗はイベントで返る）。
+    const OPEN_METHOD: &str = "open";
+    const OPEN_SIG: &str = "(Ljava/lang/String;)J";
+    /// ハンドルの次イベントまで**呼び出しスレッドをブロック**して `String` を返す。
+    const AWAIT_METHOD: &str = "awaitEvent";
+    const AWAIT_SIG: &str = "(J)Ljava/lang/String;";
+    /// ハンドルの WS を閉じる（イベント待ちは Closed イベントで解ける）。
+    const CLOSE_METHOD: &str = "close";
+    const CLOSE_SIG: &str = "(J)V";
 
-    // ハンドシェイク応答のヘッダブロック（\r\n\r\n まで）を読み、101 を確認する。
-    let mut head = Vec::new();
-    let mut byte = [0u8; 1];
-    while !head.ends_with(b"\r\n\r\n") {
-        if stream.read(&mut byte)? == 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "reload WS handshake closed early",
-            ));
-        }
-        head.push(byte[0]);
-    }
-    let head_text = String::from_utf8_lossy(&head);
-    if !head_text.contains(WS_SWITCHING_PROTOCOLS) {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "reload WS did not switch protocols (no 101)",
-        ));
-    }
-    Ok(stream)
-}
+    /// Kotlin → Rust のイベント符号（wire 契約：`ReloadSocketBridge` と値で一致させる）。
+    /// テキストフレームは本文を prefix の後ろに乗せる。タブは WS テキストに現れ得るが
+    /// prefix 位置（先頭）の判定にしか使わないので衝突しない。
+    const EVENT_TEXT_PREFIX: &str = "text\t";
 
-/// サーバ → クライアントのフレーム（unmasked）を読み続け、テキストは [`WsEvent::Message`]、
-/// close / EOF / エラーは [`WsEvent::Closed`] で main へ渡す。
-fn read_frames(mut stream: TcpStream, tx: &Sender<WsEvent>) {
-    loop {
-        let mut header = [0u8; 2];
-        if stream.read_exact(&mut header).is_err() {
-            let _ = tx.send(WsEvent::Closed);
-            return;
-        }
-        let opcode = header[0] & 0x0F;
-        let mut len = (header[1] & 0x7F) as usize;
-        if len == 126 {
-            let mut ext = [0u8; 2];
-            if stream.read_exact(&mut ext).is_err() {
-                let _ = tx.send(WsEvent::Closed);
-                return;
+    /// reload WS を OS スタック（Kotlin・ADR-0002）で開き、イベント待ちの背景スレッドを起こす。
+    /// open が JNI 段階で失敗しても「即 Closed を積んだ」socket を返す — 購読側はそれを backoff
+    /// 再接続のトリガにする（Web の `WebSocket` が onclose を出すのと同型。接続・TLS の失敗は
+    /// Kotlin 側から Closed イベントとして返る）。
+    pub fn connect_reload_ws(ws_url: &str) -> std::rc::Rc<ReloadWsSocket> {
+        let (tx, rx) = channel();
+
+        let handle = match open_platform_ws(ws_url) {
+            Ok(handle) => {
+                thread::spawn(move || await_events(handle, &tx));
+                Some(handle)
             }
-            len = u16::from_be_bytes(ext) as usize;
-        } else if len == 127 {
-            let mut ext = [0u8; 8];
-            if stream.read_exact(&mut ext).is_err() {
+            Err(err) => {
+                log::warn!("hayate-adapter-android: reload WS の open に失敗（backoff 再試行）: {err}");
                 let _ = tx.send(WsEvent::Closed);
-                return;
+                None
             }
-            len = u64::from_be_bytes(ext) as usize;
+        };
+        std::rc::Rc::new(ReloadWsSocket {
+            events: rx,
+            handle,
+            on_message: RefCell::new(None),
+            on_close: RefCell::new(None),
+            closed: Cell::new(false),
+        })
+    }
+
+    /// Kotlin 側で WS を開き、イベント取り出し用のハンドルを得る。
+    fn open_platform_ws(url: &str) -> Result<i64, String> {
+        crate::jni_bridge::with_activity_env(|env, activity| {
+            let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
+            let jurl = match env.new_string(url) {
+                Ok(s) => s,
+                Err(e) => return Err(crate::jni_bridge::describe_java_error(env, e)),
+            };
+            match env
+                .call_static_method(&class, OPEN_METHOD, OPEN_SIG, &[(&jurl).into()])
+                .and_then(|value| value.j())
+            {
+                Ok(handle) => Ok(handle),
+                Err(e) => Err(crate::jni_bridge::describe_java_error(env, e)),
+            }
+        })
+    }
+
+    /// Kotlin 側のイベントを取り出し続け、テキストは [`WsEvent::Message`]、切断（および JNI
+    /// エラー・未知イベント）は [`WsEvent::Closed`] で main へ渡して抜ける。取り出しは
+    /// ブロッキングなので専用の背景スレッドで回す（attach はスレッドの寿命で 1 回）。
+    fn await_events(handle: i64, tx: &Sender<WsEvent>) {
+        let result = crate::jni_bridge::with_activity_env(|env, activity| {
+            let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
+            loop {
+                let obj = match env
+                    .call_static_method(&class, AWAIT_METHOD, AWAIT_SIG, &[handle.into()])
+                    .and_then(|value| value.l())
+                {
+                    Ok(obj) => obj,
+                    Err(e) => return Err(crate::jni_bridge::describe_java_error(env, e)),
+                };
+                let jevent = JString::from(obj);
+                let event: String = match env.get_string(&jevent) {
+                    Ok(s) => s.into(),
+                    Err(e) => return Err(crate::jni_bridge::describe_java_error(env, e)),
+                };
+                // このスレッドは attach したままループするので、イベントごとの local 参照は
+                // 明示的に返す（返さないと JNI local reference table が接続の寿命で溢れる）。
+                let _ = env.delete_local_ref(jevent);
+                match event.strip_prefix(EVENT_TEXT_PREFIX) {
+                    Some(text) => {
+                        let _ = tx.send(WsEvent::Message(text.to_owned()));
+                    }
+                    // "closed"（と未知イベント）は切断として扱い、スレッドを解く。
+                    None => return Ok(()),
+                }
+            }
+        });
+        if let Err(err) = result {
+            log::warn!("hayate-adapter-android: reload WS のイベント待ちが失敗: {err}");
         }
-        // サーバフレームは unmasked（RFC6455）なので mask key は無い。
-        let mut payload = vec![0u8; len];
-        if stream.read_exact(&mut payload).is_err() {
-            let _ = tx.send(WsEvent::Closed);
-            return;
+        let _ = tx.send(WsEvent::Closed);
+    }
+
+    /// Kotlin 側 WS を閉じる。イベント待ちスレッドには Kotlin から Closed イベントが流れて解ける。
+    pub(super) fn close_ws(handle: i64) {
+        let result = crate::jni_bridge::with_activity_env(|env, activity| {
+            let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
+            match env.call_static_method(&class, CLOSE_METHOD, CLOSE_SIG, &[handle.into()]) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(crate::jni_bridge::describe_java_error(env, e)),
+            }
+        });
+        if let Err(err) = result {
+            log::warn!("hayate-adapter-android: reload WS の close に失敗: {err}");
         }
-        if opcode == WS_OPCODE_CLOSE {
-            let _ = tx.send(WsEvent::Closed);
-            return;
-        }
-        if opcode == WS_OPCODE_TEXT {
-            let _ = tx.send(WsEvent::Message(String::from_utf8_lossy(&payload).into_owned()));
-        }
-        // ping/pong 等は無視して読み続ける（reload には不要）。
     }
 }

@@ -10,7 +10,7 @@ importers:
     devDependencies:
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -44,7 +44,7 @@ importers:
         version: 6.1.3
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Hayate/proto:
     devDependencies:
@@ -68,13 +68,13 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.12.21
-        version: 0.12.21(@cloudflare/workers-types@5.20260705.1)(@vitest/runner@3.2.6)(@vitest/snapshot@3.2.6)(vitest@3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0))
+        version: 0.12.21(@cloudflare/workers-types@5.20260705.1)(@vitest/runner@3.2.6)(@vitest/snapshot@3.2.6)(vitest@3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0))
       '@cloudflare/workers-types':
         specifier: ^5.20260705.1
         version: 5.20260705.1
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
       wrangler:
         specifier: ^4.107.0
         version: 4.107.0(@cloudflare/workers-types@5.20260705.1)
@@ -96,10 +96,10 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Miharashi/dev-server-contract:
     devDependencies:
@@ -108,10 +108,10 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Miharashi/host-web:
     dependencies:
@@ -130,10 +130,10 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Miharashi/integration:
     devDependencies:
@@ -154,7 +154,10 @@ importers:
         version: 22.19.19
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
 
   Miharashi/protocol-handshake:
     devDependencies:
@@ -163,10 +166,10 @@ importers:
         version: 6.1.3
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame:
     devDependencies:
@@ -221,10 +224,10 @@ importers:
         version: 0.32.3(@types/react@19.2.17)
       vite:
         specifier: ^8.0.14
-        version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)
+        version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/examples/todo:
     dependencies:
@@ -264,13 +267,13 @@ importers:
         version: link:../../packages/hayate-css-catalog
       vite:
         specifier: ^8.0.14
-        version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)
+        version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)
       vite-plugin-solid:
         specifier: ^2.11.12
-        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1))
+        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0))
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/packages/app:
     dependencies:
@@ -286,7 +289,7 @@ importers:
         version: 6.1.3
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/packages/hayate-css-catalog:
     dependencies:
@@ -327,7 +330,7 @@ importers:
         version: 6.1.3
       vitest:
         specifier: ^3.2.6
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/packages/renderer-dom:
     dependencies:
@@ -349,7 +352,7 @@ importers:
         version: 6.1.3
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/packages/renderer-hayate:
     dependencies:
@@ -383,7 +386,7 @@ importers:
         version: 1.9.13
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/packages/renderer-protocol:
     devDependencies:
@@ -392,7 +395,7 @@ importers:
         version: 6.1.3
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/packages/solid:
     dependencies:
@@ -408,7 +411,7 @@ importers:
         version: 1.9.13
       vitest:
         specifier: ^3.2.6
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   Tsubame/proto:
     dependencies:
@@ -421,7 +424,7 @@ importers:
     devDependencies:
       vitest:
         specifier: ^3.2.0
-        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
   fonts:
     devDependencies:
@@ -2973,6 +2976,11 @@ packages:
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
+  yaml@2.9.0:
+    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   youch-core@0.3.3:
     resolution: {integrity: sha512-ho7XuGjLaJ2hWHoK8yFnsUGy2Y5uDpqSTq1FkHLK4/oqKtyUU1AFbOOxY4IpC9f0fTLjwYbslUz0Po5BpD1wrA==}
 
@@ -3669,14 +3677,14 @@ snapshots:
     optionalDependencies:
       workerd: 1.20260701.1
 
-  '@cloudflare/vitest-pool-workers@0.12.21(@cloudflare/workers-types@5.20260705.1)(@vitest/runner@3.2.6)(@vitest/snapshot@3.2.6)(vitest@3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0))':
+  '@cloudflare/vitest-pool-workers@0.12.21(@cloudflare/workers-types@5.20260705.1)(@vitest/runner@3.2.6)(@vitest/snapshot@3.2.6)(vitest@3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0))':
     dependencies:
       '@vitest/runner': 3.2.6
       '@vitest/snapshot': 3.2.6
       cjs-module-lexer: 1.4.3
       esbuild: 0.27.3
       miniflare: 4.20260310.0
-      vitest: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)
+      vitest: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
       wrangler: 4.72.0(@cloudflare/workers-types@5.20260705.1)
     transitivePeerDependencies:
       - '@cloudflare/workers-types'
@@ -4303,13 +4311,13 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 2.0.0
 
-  '@vitest/mocker@3.2.6(vite@7.3.5(@types/node@22.19.19)(lightningcss@1.32.0))':
+  '@vitest/mocker@3.2.6(vite@7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 3.2.6
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0)
 
   '@vitest/pretty-format@3.2.6':
     dependencies:
@@ -4766,11 +4774,12 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.2
 
-  postcss-load-config@6.0.1(postcss@8.5.15):
+  postcss-load-config@6.0.1(postcss@8.5.15)(yaml@2.9.0):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       postcss: 8.5.15
+      yaml: 2.9.0
 
   postcss@8.5.15:
     dependencies:
@@ -4983,7 +4992,7 @@ snapshots:
   tslib@2.8.1:
     optional: true
 
-  tsup@8.5.1(postcss@8.5.15)(typescript@6.0.3):
+  tsup@8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -4994,7 +5003,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(postcss@8.5.15)
+      postcss-load-config: 6.0.1(postcss@8.5.15)(yaml@2.9.0)
       resolve-from: 5.0.0
       rollup: 4.60.4
       source-map: 0.7.6
@@ -5042,13 +5051,13 @@ snapshots:
       escalade: 3.2.0
       picocolors: 1.1.1
 
-  vite-node@3.2.4(@types/node@22.19.19)(lightningcss@1.32.0):
+  vite-node@3.2.4(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0):
     dependencies:
       cac: 6.7.14
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -5063,7 +5072,7 @@ snapshots:
       - tsx
       - yaml
 
-  vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)):
+  vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)):
     dependencies:
       '@babel/core': 7.29.7
       '@types/babel__core': 7.20.5
@@ -5071,12 +5080,12 @@ snapshots:
       merge-anything: 5.1.7
       solid-js: 1.9.13
       solid-refresh: 0.6.3(solid-js@1.9.13)
-      vite: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)
-      vitefu: 1.1.3(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1))
+      vite: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)
+      vitefu: 1.1.3(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0))
     transitivePeerDependencies:
       - supports-color
 
-  vite@7.3.5(@types/node@22.19.19)(lightningcss@1.32.0):
+  vite@7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -5088,8 +5097,9 @@ snapshots:
       '@types/node': 22.19.19
       fsevents: 2.3.3
       lightningcss: 1.32.0
+      yaml: 2.9.0
 
-  vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1):
+  vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -5100,16 +5110,17 @@ snapshots:
       '@types/node': 22.19.19
       esbuild: 0.28.1
       fsevents: 2.3.3
+      yaml: 2.9.0
 
-  vitefu@1.1.3(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)):
+  vitefu@1.1.3(vite@8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)):
     optionalDependencies:
-      vite: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)
+      vite: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)
 
-  vitest@3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0):
+  vitest@3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0):
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/expect': 3.2.6
-      '@vitest/mocker': 3.2.6(vite@7.3.5(@types/node@22.19.19)(lightningcss@1.32.0))
+      '@vitest/mocker': 3.2.6(vite@7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0))
       '@vitest/pretty-format': 3.2.6
       '@vitest/runner': 3.2.6
       '@vitest/snapshot': 3.2.6
@@ -5127,8 +5138,8 @@ snapshots:
       tinyglobby: 0.2.17
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
-      vite: 7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)
-      vite-node: 3.2.4(@types/node@22.19.19)(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0)
+      vite-node: 3.2.4(@types/node@22.19.19)(lightningcss@1.32.0)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.19
@@ -5211,6 +5222,8 @@ snapshots:
   ws@8.21.0: {}
 
   yallist@3.1.1: {}
+
+  yaml@2.9.0: {}
 
   youch-core@0.3.3:
     dependencies:

@@ -64,6 +64,11 @@ dependencies {
         implementation("com.facebook.fbjni:fbjni:0.7.0")
     }
 
+    // Miharashi: reload 購読 WS の OS スタック実装（ADR-0002 後半・#742）。HttpURLConnection と
+    // 違い WebSocket はプラットフォーム標準 API に無いので、OkHttp を明示依存する（ADR-0002 の
+    // 「Android は OkHttp 系」）。TLS（wss）は OS の信頼ストアから得る。
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Miharashi: DevServerSetupActivity の「QR スキャン」で dev-server の LAN URL を読む。
     // Google Code Scanner は Play services のスキャナ UI を使うので、CameraX も独自カメラ権限も
     // 要らず、起動コマンドが端末に出した QR をそのまま読み取って URL 欄に入れられる。

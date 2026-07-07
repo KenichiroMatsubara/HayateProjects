@@ -51,11 +51,13 @@ fn the_resolved_target_drives_the_bundle_fetch() {
 #[test]
 fn the_same_target_drives_the_reload_subscription() {
     let src = app_tsubame_src();
-    // reload 購読の host/port も同じ解決済み target から取る（保持：fetch と reload が同じ dev-server を指す）。
-    // ハードコード定数（bundle_source::DEV_SERVER_HOST/PORT）はもう参照しない。
+    // reload 購読も同じ解決済み target で駆動する（保持：fetch と reload が同じ配信点を指す。
+    // #742 で host/port の切り出しをやめ、target 丸ごとを共有——https 由来なら wss も含めて
+    // scheme が purely に写る）。ハードコード定数（bundle_source::DEV_SERVER_HOST/PORT）は
+    // もう参照しない。
     assert!(
-        src.contains("target.host()") && src.contains("target.port()"),
-        "the reload subscription must target the same resolved dev-server as the fetch (#534)"
+        src.contains("target: target.clone()"),
+        "the reload subscription must share the same resolved target as the fetch (#534/#742)"
     );
     assert!(
         !src.contains("bundle_source::DEV_SERVER_HOST"),
