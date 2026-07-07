@@ -505,6 +505,15 @@ impl ScenePainter for VelloPainter<'_> {
         self.clip_depth += 1;
     }
 
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
+        let mut sink = KurboPathSink::default();
+        build_draw_path(verbs, &mut sink);
+        let scene = self.target();
+        // verbs は walk が原点 + draw CTM を焼き込み済み（グループローカル空間）。
+        scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &sink.path);
+        self.clip_depth += 1;
+    }
+
     fn pop_clip(&mut self) {
         if self.clip_depth == 0 {
             return;

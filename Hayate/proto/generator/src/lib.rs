@@ -855,7 +855,9 @@ fn generate_draw_codec(proto: &Proto) -> String {
     out.push_str("    }\n");
     out.push_str("}\n\n");
 
-    // DrawCommand enum
+    // DrawCommand enum。draw-command は 3 系統: path + paint（FILL / STROKE）、
+    // path のみ（CLIP_PATH）、構造 op（params → f32 フィールド。SAVE / RESTORE /
+    // TRANSLATE / ROTATE / SCALE / TRANSFORM / CLIP_RECT）。
     out.push_str("// Draw command of a display list (drawRole=draw-command)\n");
     out.push_str("#[derive(Debug, Clone, PartialEq)]\n");
     out.push_str("pub enum DrawCommand {\n");
@@ -867,7 +869,19 @@ fn generate_draw_codec(proto: &Proto) -> String {
             "STROKE" => out.push_str(
                 "    StrokePath {\n        verbs: Vec<PathVerb>,\n        paint: DrawPaint,\n    },\n",
             ),
-            other => panic!("draw_ops.{other}: unhandled draw-command variant (add an arm)"),
+            "CLIP_PATH" => out.push_str("    ClipPath {\n        verbs: Vec<PathVerb>,\n    },\n"),
+            _ => {
+                let variant = to_pascal(&command.name);
+                if command.params.is_empty() {
+                    out.push_str(&format!("    {variant},\n"));
+                } else {
+                    out.push_str(&format!("    {variant} {{\n"));
+                    for p in &command.params {
+                        out.push_str(&format!("        {}: f32,\n", p.name));
+                    }
+                    out.push_str("    },\n");
+                }
+            }
         }
     }
     out.push_str("}\n\n");
@@ -993,7 +1007,38 @@ fn generate_draw_codec(proto: &Proto) -> String {
                 out.push_str("                out.push(DrawCommand::StrokePath { verbs: std::mem::take(&mut verbs), paint });\n");
                 out.push_str("            }\n");
             }
-            other => panic!("draw_ops.{other}: unhandled draw-command decode (add an arm)"),
+            "CLIP_PATH" => {
+                out.push_str("            DRAW_OP_CLIP_PATH => {\n");
+                out.push_str("                out.push(DrawCommand::ClipPath { verbs: std::mem::take(&mut verbs) });\n");
+                out.push_str("            }\n");
+            }
+            _ => {
+                // 構造 op（SAVE / RESTORE / TRANSLATE / ROTATE / SCALE / TRANSFORM /
+                // CLIP_RECT）。params を固定スロットで読み、path は消費しない。
+                let variant = to_pascal(&command.name);
+                let slots: usize = command.params.iter().map(param_slots).sum();
+                out.push_str(&format!("            DRAW_OP_{} => {{\n", command.name));
+                if command.params.is_empty() {
+                    out.push_str(&format!("                out.push(DrawCommand::{variant});\n"));
+                } else {
+                    out.push_str(&format!(
+                        "                if i + {} > data.len() {{ return Err(\"draw op {} truncated\".to_string()); }}\n",
+                        slots, command.name
+                    ));
+                    let fields: Vec<String> = command
+                        .params
+                        .iter()
+                        .enumerate()
+                        .map(|(s, p)| format!("{}: data[i + {}]", p.name, s))
+                        .collect();
+                    out.push_str(&format!(
+                        "                out.push(DrawCommand::{variant} {{ {} }});\n",
+                        fields.join(", ")
+                    ));
+                    out.push_str(&format!("                i += {};\n", slots));
+                }
+                out.push_str("            }\n");
+            }
         }
     }
     out.push_str("            other => return Err(format!(\"unknown draw op {other}\")),\n");

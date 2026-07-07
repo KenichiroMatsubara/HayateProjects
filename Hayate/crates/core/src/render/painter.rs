@@ -1,5 +1,5 @@
 use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
-use crate::render::draw_path::{DrawFillRule, StrokeStyle};
+use crate::render::draw_path::{Affine2, DrawFillRule, StrokeStyle, transform_verbs};
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
 
@@ -90,6 +90,9 @@ pub enum DrawOp {
         width: f32,
         height: f32,
         corner_radii: [f32; 4],
+    },
+    PushClipDrawPath {
+        verbs: Vec<PathVerb>,
     },
     PopClip,
 }
@@ -250,6 +253,12 @@ pub trait ScenePainter {
     /// クリップ領域を push する。`corner_radii`（TL, TR, BR, BL）で角を丸める。
     /// 全て 0 なら矩形クリップ。
     fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]);
+
+    /// draw の clipPath / clipRect（#728）。`verbs` は walk が state 変換の元空間へ
+    /// 変換済み（ボーダーボックス原点 + draw CTM 適用済み）のパス。既存クリップとの
+    /// 交差を 1 つ push し、対応する restore / DrawList 末尾で `pop_clip` される。
+    /// 呼び出しごとにちょうど 1 つ push すること（walk のクリップ計数と一致させる）。
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]);
 
     fn pop_clip(&mut self);
 }
@@ -466,6 +475,12 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
+        self.ops.push(DrawOp::PushClipDrawPath {
+            verbs: verbs.to_vec(),
+        });
+    }
+
     fn pop_clip(&mut self) {
         self.ops.push(DrawOp::PopClip);
     }
@@ -576,6 +591,8 @@ impl ScenePainter for NullPainter {
     fn pop_transform(&mut self) {}
 
     fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _corner_radii: [f32; 4]) {}
+
+    fn push_clip_draw_path(&mut self, _verbs: &[PathVerb]) {}
 
     fn pop_clip(&mut self) {}
 }
@@ -744,27 +761,85 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             painter.pop_clip();
         }
         NodeKind::DrawList { x, y, commands } => {
+            use crate::wire::protocol::DrawCommand;
+            // canvas の唯一の可変状態: 変換 CTM（ボーダーボックス原点相対）と
+            // クリップスタック（#728）。座標操作は verbs へソフト適用し、クリップは
+            // painter の既存クリップスタックへ push/pop する。原点 `(x, y)` は
+            // fill_path/stroke_path が適用するので fill/stroke は CTM のみ、clip は
+            // 原点 + CTM を焼き込む。
+            let origin = Affine2::translate(*x, *y);
+            let mut ctm = Affine2::IDENTITY;
+            let mut save_stack: Vec<(Affine2, usize)> = Vec::new();
+            let mut clip_depth: usize = 0;
             for command in commands.iter() {
                 match command {
-                    crate::wire::protocol::DrawCommand::FillPath { verbs, paint } => {
+                    DrawCommand::FillPath { verbs, paint } => {
+                        let tv = transform_verbs(verbs, ctm);
                         painter.fill_path(
                             *x,
                             *y,
-                            verbs,
+                            &tv,
                             DrawFillRule::from_wire(paint.fill_rule),
                             paint.color,
                         );
                     }
-                    crate::wire::protocol::DrawCommand::StrokePath { verbs, paint } => {
-                        painter.stroke_path(
-                            *x,
-                            *y,
-                            verbs,
-                            &StrokeStyle::from_paint(paint),
-                            paint.color,
-                        );
+                    DrawCommand::StrokePath { verbs, paint } => {
+                        let tv = transform_verbs(verbs, ctm);
+                        let mut stroke = StrokeStyle::from_paint(paint);
+                        // 幅も CTM のスケールに追従させる（近似・回転/平行移動では不変）。
+                        stroke.width *= ctm.scale_factor();
+                        painter.stroke_path(*x, *y, &tv, &stroke, paint.color);
+                    }
+                    DrawCommand::Save => save_stack.push((ctm, clip_depth)),
+                    DrawCommand::Restore => {
+                        if let Some((t, depth)) = save_stack.pop() {
+                            ctm = t;
+                            while clip_depth > depth {
+                                painter.pop_clip();
+                                clip_depth -= 1;
+                            }
+                        }
+                    }
+                    DrawCommand::Translate { dx, dy } => {
+                        ctm = ctm.then(Affine2::translate(*dx, *dy));
+                    }
+                    DrawCommand::Rotate { radians } => {
+                        ctm = ctm.then(Affine2::rotate(*radians));
+                    }
+                    DrawCommand::Scale { sx, sy } => {
+                        ctm = ctm.then(Affine2::scale(*sx, *sy));
+                    }
+                    DrawCommand::Transform { a, b, c, d, e, f } => {
+                        ctm = ctm.then(Affine2([*a, *b, *c, *d, *e, *f]));
+                    }
+                    DrawCommand::ClipRect {
+                        x: cx,
+                        y: cy,
+                        width,
+                        height,
+                    } => {
+                        let rect = [
+                            PathVerb::MoveTo { x: *cx, y: *cy },
+                            PathVerb::LineTo { x: cx + width, y: *cy },
+                            PathVerb::LineTo { x: cx + width, y: cy + height },
+                            PathVerb::LineTo { x: *cx, y: cy + height },
+                            PathVerb::Close,
+                        ];
+                        let tv = transform_verbs(&rect, origin.then(ctm));
+                        painter.push_clip_draw_path(&tv);
+                        clip_depth += 1;
+                    }
+                    DrawCommand::ClipPath { verbs } => {
+                        let tv = transform_verbs(verbs, origin.then(ctm));
+                        painter.push_clip_draw_path(&tv);
+                        clip_depth += 1;
                     }
                 }
+            }
+            // DrawList 内で開いたままのクリップを閉じる（unbalanced save も安全に片付く）。
+            while clip_depth > 0 {
+                painter.pop_clip();
+                clip_depth -= 1;
             }
         }
         NodeKind::ElementAnchor { .. } => {

@@ -122,6 +122,36 @@ fn expected_commands(commands: &[serde_json::Value]) -> Vec<DrawCommand> {
                 verbs: std::mem::take(&mut verbs),
                 paint: parse_paint(&command["paint"]),
             }),
+            "save" => out.push(DrawCommand::Save),
+            "restore" => out.push(DrawCommand::Restore),
+            "translate" => out.push(DrawCommand::Translate {
+                dx: f32_at(&command["dx"]),
+                dy: f32_at(&command["dy"]),
+            }),
+            "rotate" => out.push(DrawCommand::Rotate {
+                radians: f32_at(&command["radians"]),
+            }),
+            "scale" => out.push(DrawCommand::Scale {
+                sx: f32_at(&command["sx"]),
+                sy: f32_at(&command["sy"]),
+            }),
+            "transform" => out.push(DrawCommand::Transform {
+                a: f32_at(&command["a"]),
+                b: f32_at(&command["b"]),
+                c: f32_at(&command["c"]),
+                d: f32_at(&command["d"]),
+                e: f32_at(&command["e"]),
+                f: f32_at(&command["f"]),
+            }),
+            "clipRect" => out.push(DrawCommand::ClipRect {
+                x: f32_at(&command["x"]),
+                y: f32_at(&command["y"]),
+                width: f32_at(&command["width"]),
+                height: f32_at(&command["height"]),
+            }),
+            "clipPath" => out.push(DrawCommand::ClipPath {
+                verbs: std::mem::take(&mut verbs),
+            }),
             other => panic!("fixture uses unknown draw command {other}"),
         }
     }

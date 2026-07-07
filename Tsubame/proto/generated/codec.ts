@@ -1015,3 +1015,35 @@ export function appendDrawStroke(draws: number[], paint: DrawPaint): void {
   }
   draws[lenIndex] = draws.length - lenIndex - 1;
 }
+
+export function appendDrawSave(draws: number[]): void {
+  draws.push(DRAW_OP.SAVE);
+}
+
+export function appendDrawRestore(draws: number[]): void {
+  draws.push(DRAW_OP.RESTORE);
+}
+
+export function appendDrawTranslate(draws: number[], dx: number, dy: number): void {
+  draws.push(DRAW_OP.TRANSLATE, dx, dy);
+}
+
+export function appendDrawRotate(draws: number[], radians: number): void {
+  draws.push(DRAW_OP.ROTATE, radians);
+}
+
+export function appendDrawScale(draws: number[], sx: number, sy: number): void {
+  draws.push(DRAW_OP.SCALE, sx, sy);
+}
+
+export function appendDrawTransform(draws: number[], a: number, b: number, c: number, d: number, e: number, f: number): void {
+  draws.push(DRAW_OP.TRANSFORM, a, b, c, d, e, f);
+}
+
+export function appendDrawClipRect(draws: number[], x: number, y: number, width: number, height: number): void {
+  draws.push(DRAW_OP.CLIP_RECT, x, y, width, height);
+}
+
+export function appendDrawClipPath(draws: number[]): void {
+  draws.push(DRAW_OP.CLIP_PATH);
+}

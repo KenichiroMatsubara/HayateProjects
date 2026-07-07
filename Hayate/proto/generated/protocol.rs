@@ -1466,6 +1466,14 @@ pub const DRAW_OP_RRECT: u32 = 8;
 pub const DRAW_OP_OVAL: u32 = 9;
 pub const DRAW_OP_CIRCLE: u32 = 10;
 pub const DRAW_OP_STROKE: u32 = 11;
+pub const DRAW_OP_SAVE: u32 = 12;
+pub const DRAW_OP_RESTORE: u32 = 13;
+pub const DRAW_OP_TRANSLATE: u32 = 14;
+pub const DRAW_OP_ROTATE: u32 = 15;
+pub const DRAW_OP_SCALE: u32 = 16;
+pub const DRAW_OP_TRANSFORM: u32 = 17;
+pub const DRAW_OP_CLIP_RECT: u32 = 18;
+pub const DRAW_OP_CLIP_PATH: u32 = 19;
 
 // Draw paint field constants (tagged paint packet; draw_paint_fields.json)
 pub const DRAW_PAINT_COLOR: u32 = 0;
@@ -1575,6 +1583,36 @@ pub enum DrawCommand {
     StrokePath {
         verbs: Vec<PathVerb>,
         paint: DrawPaint,
+    },
+    Save,
+    Restore,
+    Translate {
+        dx: f32,
+        dy: f32,
+    },
+    Rotate {
+        radians: f32,
+    },
+    Scale {
+        sx: f32,
+        sy: f32,
+    },
+    Transform {
+        a: f32,
+        b: f32,
+        c: f32,
+        d: f32,
+        e: f32,
+        f: f32,
+    },
+    ClipRect {
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    },
+    ClipPath {
+        verbs: Vec<PathVerb>,
     },
 }
 
@@ -1707,6 +1745,40 @@ pub fn decode_draw_list(data: &[f32]) -> Result<Vec<DrawCommand>, String> {
                 let paint = decode_draw_paint(&data[i..i + paint_len])?;
                 i += paint_len;
                 out.push(DrawCommand::StrokePath { verbs: std::mem::take(&mut verbs), paint });
+            }
+            DRAW_OP_SAVE => {
+                out.push(DrawCommand::Save);
+            }
+            DRAW_OP_RESTORE => {
+                out.push(DrawCommand::Restore);
+            }
+            DRAW_OP_TRANSLATE => {
+                if i + 2 > data.len() { return Err("draw op TRANSLATE truncated".to_string()); }
+                out.push(DrawCommand::Translate { dx: data[i + 0], dy: data[i + 1] });
+                i += 2;
+            }
+            DRAW_OP_ROTATE => {
+                if i + 1 > data.len() { return Err("draw op ROTATE truncated".to_string()); }
+                out.push(DrawCommand::Rotate { radians: data[i + 0] });
+                i += 1;
+            }
+            DRAW_OP_SCALE => {
+                if i + 2 > data.len() { return Err("draw op SCALE truncated".to_string()); }
+                out.push(DrawCommand::Scale { sx: data[i + 0], sy: data[i + 1] });
+                i += 2;
+            }
+            DRAW_OP_TRANSFORM => {
+                if i + 6 > data.len() { return Err("draw op TRANSFORM truncated".to_string()); }
+                out.push(DrawCommand::Transform { a: data[i + 0], b: data[i + 1], c: data[i + 2], d: data[i + 3], e: data[i + 4], f: data[i + 5] });
+                i += 6;
+            }
+            DRAW_OP_CLIP_RECT => {
+                if i + 4 > data.len() { return Err("draw op CLIP_RECT truncated".to_string()); }
+                out.push(DrawCommand::ClipRect { x: data[i + 0], y: data[i + 1], width: data[i + 2], height: data[i + 3] });
+                i += 4;
+            }
+            DRAW_OP_CLIP_PATH => {
+                out.push(DrawCommand::ClipPath { verbs: std::mem::take(&mut verbs) });
             }
             other => return Err(format!("unknown draw op {other}")),
         }

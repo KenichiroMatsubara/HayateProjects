@@ -10,11 +10,13 @@
 use std::path::PathBuf;
 
 use hayate_core::wire::{
-    apply_mutations, DRAW_OP_ARC_TO, DRAW_OP_CIRCLE, DRAW_OP_CLOSE, DRAW_OP_CUBIC_TO, DRAW_OP_FILL,
-    DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT, DRAW_OP_RRECT, DRAW_OP_STROKE, DRAW_PAINT_CAP,
-    DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE, DRAW_PAINT_JOIN, DRAW_PAINT_MITER_LIMIT,
-    DRAW_PAINT_STROKE_WIDTH, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW,
-    OP_SET_ROOT, OP_SET_STYLE, TAG_BACKGROUND_COLOR, TAG_HEIGHT, TAG_OVERFLOW, TAG_WIDTH,
+    apply_mutations, DRAW_OP_ARC_TO, DRAW_OP_CIRCLE, DRAW_OP_CLIP_PATH, DRAW_OP_CLIP_RECT,
+    DRAW_OP_CLOSE, DRAW_OP_CUBIC_TO, DRAW_OP_FILL, DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT,
+    DRAW_OP_RESTORE, DRAW_OP_ROTATE, DRAW_OP_RRECT, DRAW_OP_SAVE, DRAW_OP_STROKE, DRAW_OP_TRANSLATE,
+    DRAW_PAINT_CAP, DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE, DRAW_PAINT_JOIN,
+    DRAW_PAINT_MITER_LIMIT, DRAW_PAINT_STROKE_WIDTH, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE,
+    OP_SET_DRAW, OP_SET_ROOT, OP_SET_STYLE, TAG_BACKGROUND_COLOR, TAG_HEIGHT, TAG_OVERFLOW,
+    TAG_WIDTH,
 };
 use hayate_core::ElementTree;
 use hayate_scene_test_support::golden::assert_pixels_match_golden;
@@ -419,4 +421,97 @@ fn wire_stroke_dash_on_line_and_curve_matches_golden() {
     // 曲線: 先頭の dash が塗られている。
     assert_near(pixel(&pixels, CANVAS_W, 11, 70), [0, 0, 0, 255], 3, "the dashed curve starts inked");
     assert_pixels_match_golden(&golden_path("draw_wire_stroke_dash"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// 座標操作 + save/restore（#728）: save 内で translate + rotate した青い正方形を描き、
+// restore 後に緑の正方形を素の座標で描く。restore で CTM が戻ることを同一画像内で検証。
+#[test]
+fn wire_transform_save_restore_match_golden() {
+    let draws: Vec<f32> = vec![
+        DRAW_OP_SAVE as f32,
+        DRAW_OP_TRANSLATE as f32, 50.0, 50.0,
+        DRAW_OP_ROTATE as f32, 0.785398, // 45°
+        // 原点中心の 20x20 → translate+rotate で (50,50) 中心の 45° 回転正方形。
+        DRAW_OP_RECT as f32, -10.0, -10.0, 20.0, 20.0,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        DRAW_OP_RESTORE as f32,
+        // restore 後は素の座標。CTM が戻っていれば緑は (5..25) に出る。
+        DRAW_OP_RECT as f32, 5.0, 5.0, 20.0, 20.0,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.6, 0.0, 1.0,
+    ];
+    let pixels = single_view_draw(&draws);
+    // restore が効いた: 緑は素の座標 (5..25) にある。
+    assert_near(pixel(&pixels, CANVAS_W, 15, 15), [0, 153, 0, 255], 3, "green is drawn at identity coords after restore");
+    // 回転正方形の中心は青。
+    assert_near(pixel(&pixels, CANVAS_W, 50, 50), [0, 0, 255, 255], 2, "the rotated square center is blue");
+    // 45° 回転の証拠: 非回転なら (58,58) は塗られるが、回転済みでは角が外れて背景。
+    assert_clear(pixel(&pixels, CANVAS_W, 58, 58), "the 45°-rotated square does not fill the axis-aligned corner");
+    assert_pixels_match_golden(&golden_path("draw_wire_transform_save_restore"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// clipPath（#728）: 三角形にクリップした fill と stroke。三角形の外は切り取られる。
+#[test]
+fn wire_clip_path_clips_fill_and_stroke_match_golden() {
+    let draws: Vec<f32> = vec![
+        // 三角形 (20,20)-(80,20)-(20,80) にクリップ。
+        DRAW_OP_MOVE_TO as f32, 20.0, 20.0,
+        DRAW_OP_LINE_TO as f32, 80.0, 20.0,
+        DRAW_OP_LINE_TO as f32, 20.0, 80.0,
+        DRAW_OP_CLOSE as f32,
+        DRAW_OP_CLIP_PATH as f32,
+        // 全面 fill → 三角形のみ見える。
+        DRAW_OP_RECT as f32, 0.0, 0.0, 100.0, 100.0,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        // 横断する赤い太線 → 三角形内だけ見える。
+        DRAW_OP_MOVE_TO as f32, 10.0, 50.0,
+        DRAW_OP_LINE_TO as f32, 90.0, 50.0,
+        DRAW_OP_STROKE as f32, 7.0,
+        DRAW_PAINT_COLOR as f32, 1.0, 0.0, 0.0, 1.0, DRAW_PAINT_STROKE_WIDTH as f32, 6.0,
+    ];
+    let pixels = single_view_draw(&draws);
+    assert_near(pixel(&pixels, CANVAS_W, 30, 30), [0, 0, 255, 255], 2, "fill shows inside the clip triangle");
+    assert_clear(pixel(&pixels, CANVAS_W, 70, 70), "fill is clipped outside the triangle");
+    assert_near(pixel(&pixels, CANVAS_W, 35, 50), [255, 0, 0, 255], 2, "stroke shows inside the clip");
+    assert_clear(pixel(&pixels, CANVAS_W, 75, 50), "stroke is clipped outside the triangle");
+    assert_pixels_match_golden(&golden_path("draw_wire_clip_path"), &pixels, CANVAS_W, CANVAS_H);
+}
+
+// overflow クリップと clipPath の併用（#728）: overflow:hidden の 40x40 子に、box を
+// はみ出す clipRect(10,10,50,50) を掛けて全面 fill する。両クリップが交差適用される。
+#[test]
+fn wire_overflow_and_clip_rect_intersect() {
+    let mut styles: Vec<f32> = Vec::new();
+    styles.extend(dim(TAG_WIDTH, 100.0));
+    styles.extend(dim(TAG_HEIGHT, 100.0));
+    let root_len = styles.len();
+    // 子: 40x40 overflow:hidden。
+    let mut child_styles: Vec<f32> = Vec::new();
+    child_styles.extend(dim(TAG_WIDTH, 40.0));
+    child_styles.extend(dim(TAG_HEIGHT, 40.0));
+    child_styles.extend_from_slice(&[TAG_OVERFLOW as f32, 1.0]); // hidden
+    styles.extend_from_slice(&child_styles);
+
+    // 子の draw: box をはみ出す clipRect(10,10,50,50) → 全面青 fill。
+    let draws: Vec<f32> = vec![
+        DRAW_OP_CLIP_RECT as f32, 10.0, 10.0, 50.0, 50.0,
+        DRAW_OP_RECT as f32, 0.0, 0.0, 100.0, 100.0,
+        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+    ];
+
+    let ops: Vec<f64> = vec![
+        OP_CREATE as f64, 1.0, ELEMENT_KIND_VIEW as f64,
+        OP_SET_ROOT as f64, 1.0,
+        OP_SET_STYLE as f64, 1.0, 0.0, root_len as f64,
+        OP_CREATE as f64, 2.0, ELEMENT_KIND_VIEW as f64,
+        OP_APPEND_CHILD as f64, 1.0, 2.0,
+        OP_SET_STYLE as f64, 2.0, root_len as f64, child_styles.len() as f64,
+        OP_SET_DRAW as f64, 2.0, 0.0, draws.len() as f64,
+    ];
+    let pixels = render_wire(&ops, &styles, &draws);
+
+    // fill 領域 = overflow(0..40) ∩ clipRect(10..60) = 10..40。
+    assert_near(pixel(&pixels, CANVAS_W, 25, 25), [0, 0, 255, 255], 2, "inside both clips");
+    assert_clear(pixel(&pixels, CANVAS_W, 5, 5), "the draw clipRect cuts inside the overflow box");
+    assert_clear(pixel(&pixels, CANVAS_W, 50, 50), "the element overflow cuts outside the box even within clipRect");
+    assert_pixels_match_golden(&golden_path("draw_wire_overflow_clip_intersection"), &pixels, CANVAS_W, CANVAS_H);
 }

@@ -360,6 +360,15 @@ impl ScenePainter for VelloCpuPainter<'_> {
         self.context.push_clip_path(&path);
     }
 
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
+        let mut sink = CpuKurboPathSink { path: BezPath::new() };
+        build_draw_path(verbs, &mut sink);
+        // verbs は walk が原点 + draw CTM を焼き込み済み（state 変換の元空間）。
+        self.context.set_transform(self.state.transform);
+        self.context.set_fill_rule(Fill::NonZero);
+        self.context.push_clip_path(&sink.path);
+    }
+
     fn pop_clip(&mut self) {
         self.context.pop_clip_path();
     }

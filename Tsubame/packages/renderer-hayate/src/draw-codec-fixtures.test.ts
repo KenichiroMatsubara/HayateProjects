@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   appendDrawArcTo,
   appendDrawCircle,
+  appendDrawClipPath,
+  appendDrawClipRect,
   appendDrawClose,
   appendDrawCubicTo,
   appendDrawFill,
@@ -13,8 +15,14 @@ import {
   appendDrawOval,
   appendDrawQuadraticTo,
   appendDrawRect,
+  appendDrawRestore,
+  appendDrawRotate,
   appendDrawRrect,
+  appendDrawSave,
+  appendDrawScale,
   appendDrawStroke,
+  appendDrawTransform,
+  appendDrawTranslate,
   type DrawPaint,
 } from '@tsubame/protocol-generated/codec';
 
@@ -39,11 +47,30 @@ interface DrawFixtureCommand {
     | 'rect'
     | 'rrect'
     | 'oval'
-    | 'circle';
+    | 'circle'
+    | 'save'
+    | 'restore'
+    | 'translate'
+    | 'rotate'
+    | 'scale'
+    | 'transform'
+    | 'clipRect'
+    | 'clipPath';
   readonly x?: number;
   readonly y?: number;
   readonly cx?: number;
   readonly cy?: number;
+  readonly dx?: number;
+  readonly dy?: number;
+  readonly sx?: number;
+  readonly sy?: number;
+  readonly radians?: number;
+  readonly a?: number;
+  readonly b?: number;
+  readonly c?: number;
+  readonly d?: number;
+  readonly e?: number;
+  readonly f?: number;
   readonly c1x?: number;
   readonly c1y?: number;
   readonly c2x?: number;
@@ -123,6 +150,38 @@ function encodeCommands(commands: readonly DrawFixtureCommand[]): number[] {
         break;
       case 'stroke':
         appendDrawStroke(draws, command.paint ?? {});
+        break;
+      case 'save':
+        appendDrawSave(draws);
+        break;
+      case 'restore':
+        appendDrawRestore(draws);
+        break;
+      case 'translate':
+        appendDrawTranslate(draws, command.dx!, command.dy!);
+        break;
+      case 'rotate':
+        appendDrawRotate(draws, command.radians!);
+        break;
+      case 'scale':
+        appendDrawScale(draws, command.sx!, command.sy!);
+        break;
+      case 'transform':
+        appendDrawTransform(
+          draws,
+          command.a!,
+          command.b!,
+          command.c!,
+          command.d!,
+          command.e!,
+          command.f!,
+        );
+        break;
+      case 'clipRect':
+        appendDrawClipRect(draws, command.x!, command.y!, command.width!, command.height!);
+        break;
+      case 'clipPath':
+        appendDrawClipPath(draws);
         break;
     }
   }

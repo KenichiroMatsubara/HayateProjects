@@ -264,9 +264,12 @@ function generateDrawAppendOps(proto) {
   lines.push('}');
   lines.push('');
 
+  const PAINT_COMMANDS = new Set(['FILL', 'STROKE']);
   for (const op of proto.draw_ops ?? []) {
     const fnName = drawAppendOpName(op.name);
-    if (op.drawRole === 'path-verb') {
+    // path-verb と、paint packet を持たない draw-command（save/translate/clipRect/
+    // clipPath…）はどちらも [OP, ...params] の素直な encoder（#728）。
+    if (op.drawRole === 'path-verb' || !PAINT_COMMANDS.has(op.name)) {
       const params = (op.params ?? []).map((p) => `${toCamelCase(p.name)}: number`);
       const sig = params.length > 0 ? `draws: number[], ${params.join(', ')}` : 'draws: number[]';
       const pushes = (op.params ?? []).map((p) => toCamelCase(p.name));

@@ -43,6 +43,14 @@ export const DRAW_OP = {
   OVAL: 9,
   CIRCLE: 10,
   STROKE: 11,
+  SAVE: 12,
+  RESTORE: 13,
+  TRANSLATE: 14,
+  ROTATE: 15,
+  SCALE: 16,
+  TRANSFORM: 17,
+  CLIP_RECT: 18,
+  CLIP_PATH: 19,
 } as const;
 export type DRAW_OP = typeof DRAW_OP;
 

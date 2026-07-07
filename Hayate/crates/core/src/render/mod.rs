@@ -13,7 +13,8 @@ pub use missing_glyph::{
     missing_glyph_placeholder,
 };
 pub use draw_path::{
-    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, StrokeStyle, build_draw_path,
+    Affine2, DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, StrokeStyle, build_draw_path,
+    transform_verbs,
 };
 pub use painter::{
     DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,

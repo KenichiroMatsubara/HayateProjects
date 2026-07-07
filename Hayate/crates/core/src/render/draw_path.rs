@@ -27,6 +27,107 @@ impl DrawFillRule {
     }
 }
 
+/// 2×3 アフィン変換 `[a, b, c, d, e, f]`（#728）。点 `(x, y)` を
+/// `(a·x + c·y + e, b·x + d·y + f)` へ写す（CSS / canvas の matrix(a,b,c,d,e,f) と同順）。
+/// draw の座標操作（translate / rotate / scale / transform）を walk 側で verbs に
+/// ソフト適用するために使う。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Affine2(pub [f32; 6]);
+
+impl Affine2 {
+    pub const IDENTITY: Affine2 = Affine2([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+
+    pub fn translate(tx: f32, ty: f32) -> Self {
+        Affine2([1.0, 0.0, 0.0, 1.0, tx, ty])
+    }
+
+    pub fn scale(sx: f32, sy: f32) -> Self {
+        Affine2([sx, 0.0, 0.0, sy, 0.0, 0.0])
+    }
+
+    pub fn rotate(radians: f32) -> Self {
+        let (s, c) = radians.sin_cos();
+        Affine2([c, s, -s, c, 0.0, 0.0])
+    }
+
+    /// 点を写す。
+    pub fn apply(&self, x: f32, y: f32) -> (f32, f32) {
+        let [a, b, c, d, e, f] = self.0;
+        (a * x + c * y + e, b * x + d * y + f)
+    }
+
+    /// `self` の後に `rhs` を適用する合成（`apply(self.then(rhs), p) == self.apply(rhs.apply(p))`）。
+    /// canvas の translate/rotate/scale は現在の CTM に**後置**で積むので `ctm = ctm.then(op)`。
+    pub fn then(self, rhs: Affine2) -> Affine2 {
+        let [a, b, c, d, e, f] = self.0;
+        let [a2, b2, c2, d2, e2, f2] = rhs.0;
+        Affine2([
+            a * a2 + c * b2,
+            b * a2 + d * b2,
+            a * c2 + c * d2,
+            b * c2 + d * d2,
+            a * e2 + c * f2 + e,
+            b * e2 + d * f2 + f,
+        ])
+    }
+
+    /// 面積スケール係数 `sqrt(|det|)`。stroke 幅を近似的に変換へ追従させるのに使う。
+    pub fn scale_factor(&self) -> f32 {
+        let [a, b, c, d, _, _] = self.0;
+        (a * d - b * c).abs().sqrt()
+    }
+}
+
+/// verbs をアフィン変換し、プリミティブ（move/line/quad/cubic/close）の PathVerb 列へ
+/// 平坦化して集める PathSink（#728）。便宜形状・arcTo は [`build_draw_path`] が cubic へ
+/// 展開してから変換されるので、回転下でも正しい（矩形が回転した四辺形になる）。
+struct VerbTransformer {
+    m: Affine2,
+    out: Vec<PathVerb>,
+}
+
+impl PathSink for VerbTransformer {
+    fn move_to(&mut self, x: f32, y: f32) {
+        let (x, y) = self.m.apply(x, y);
+        self.out.push(PathVerb::MoveTo { x, y });
+    }
+    fn line_to(&mut self, x: f32, y: f32) {
+        let (x, y) = self.m.apply(x, y);
+        self.out.push(PathVerb::LineTo { x, y });
+    }
+    fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
+        let (cx, cy) = self.m.apply(cx, cy);
+        let (x, y) = self.m.apply(x, y);
+        self.out.push(PathVerb::QuadraticTo { cx, cy, x, y });
+    }
+    fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
+        let (c1x, c1y) = self.m.apply(c1x, c1y);
+        let (c2x, c2y) = self.m.apply(c2x, c2y);
+        let (x, y) = self.m.apply(x, y);
+        self.out.push(PathVerb::CubicTo {
+            c1x,
+            c1y,
+            c2x,
+            c2y,
+            x,
+            y,
+        });
+    }
+    fn close(&mut self) {
+        self.out.push(PathVerb::Close);
+    }
+}
+
+/// `verbs` をアフィン `m` で写した、プリミティブのみの PathVerb 列を返す（#728）。
+pub fn transform_verbs(verbs: &[PathVerb], m: Affine2) -> Vec<PathVerb> {
+    let mut t = VerbTransformer {
+        m,
+        out: Vec::new(),
+    };
+    build_draw_path(verbs, &mut t);
+    t.out
+}
+
 /// stroke の線端（`line_cap` enum・#727）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DrawLineCap {

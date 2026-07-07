@@ -346,6 +346,31 @@ impl ScenePainter for TinySkiaPainter<'_> {
         }
     }
 
+    fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
+        let transform = self.state.transform;
+        let Some(path) = verbs_to_path(verbs) else {
+            // 退化クリップ（空パス）は何も通さない。空マスクを push して walk の
+            // クリップ計数と一致させる。
+            if let Some(mask) = Mask::new(self.pixmap.width(), self.pixmap.height()) {
+                self.state.clip_masks.push(mask);
+            }
+            return;
+        };
+        match self.state.clip_masks.last() {
+            Some(parent) => {
+                let mut clip_mask = parent.clone();
+                clip_mask.intersect_path(&path, FillRule::Winding, true, transform);
+                self.state.clip_masks.push(clip_mask);
+            }
+            None => {
+                if let Some(mut clip_mask) = Mask::new(self.pixmap.width(), self.pixmap.height()) {
+                    clip_mask.fill_path(&path, FillRule::Winding, true, transform);
+                    self.state.clip_masks.push(clip_mask);
+                }
+            }
+        }
+    }
+
     fn pop_clip(&mut self) {
         self.state.clip_masks.pop();
     }
