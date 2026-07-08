@@ -124,9 +124,16 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
     types: 'hayate_adapter_web.d.ts',
     sideEffects: ['./snippets/*'],
   });
-  // name is always the crate's own package name, even for aliased pkg dirs
-  // like pkg-tiny-skia (consumers alias it differently in their own deps).
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, 'hayate-adapter-web');
+  // Each pkg dir's package name is its own npmName, NOT the shared crate name
+  // (#765). When several sibling file: deps (host imports pkg / pkg-tiny-skia /
+  // pkg-vello-cpu) all declared name "hayate-adapter-web", pnpm saw a name
+  // collision and routed one alias (hayate-adapter-web-cpu) through a
+  // .pnpm virtual-store copy that only carried package.json — Rolldown then
+  // failed to resolve the dynamic import in the Pages demo build. Distinct
+  // names make every alias link straight to its source dir.
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, 'hayate-adapter-web-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, 'hayate-adapter-web-vello-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
   assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n');
 });

@@ -9,8 +9,17 @@ import { join } from 'node:path';
 
 import { GITIGNORE_CONTENTS, loadManifest, outDirFor } from '../Hayate/scripts/wasm-manifest.mjs';
 
-export const PACKAGE_JSON = `{
-  "name": "hayate-adapter-web",
+// The stub package name is the target's own npmName, not the shared crate name
+// (#765). host imports pkg / pkg-tiny-skia / pkg-vello-cpu as three sibling
+// file: deps under distinct alias keys; if every stub declared the same name
+// "hayate-adapter-web", pnpm collided on the name at install time and routed one
+// alias through a .pnpm virtual-store copy holding only package.json (no .js),
+// which broke Rolldown's dynamic-import resolution in the Pages demo build. This
+// stub is written at preinstall — before any wasm build — so it, not just the
+// post-build package.json, has to carry the distinct name.
+export function packageJsonStub(npmName) {
+  return `{
+  "name": "${npmName}",
   "type": "module",
   "version": "0.1.0",
   "license": "Apache-2.0",
@@ -18,6 +27,7 @@ export const PACKAGE_JSON = `{
   "types": "hayate_adapter_web.d.ts"
 }
 `;
+}
 
 export const JS_STUB = `export default async function init() {}
 export class HayateElementRenderer {
@@ -53,7 +63,7 @@ export async function bootstrapWasmPkgs({ hayateRoot, manifest = loadManifest() 
     if (await exists(join(dir, 'hayate_adapter_web_bg.wasm'))) continue;
 
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, 'package.json'), PACKAGE_JSON);
+    await writeFile(join(dir, 'package.json'), packageJsonStub(target.npmName));
     await writeFile(join(dir, 'hayate_adapter_web.js'), JS_STUB);
     await writeFile(join(dir, 'hayate_adapter_web.d.ts'), DTS_STUB);
     await writeFile(join(dir, '.gitignore'), GITIGNORE_CONTENTS);

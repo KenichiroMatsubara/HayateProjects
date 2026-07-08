@@ -1,5 +1,5 @@
 {
-  "name": "hayate-adapter-web",
+  "name": "hayate-adapter-web-null",
   "type": "module",
   "description": "Hayate — GPU-native UI substrate",
   "version": "0.1.0",
