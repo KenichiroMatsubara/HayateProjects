@@ -53,3 +53,7 @@ MITM がそのままテスター端末上の任意コード実行になるため
 - Kotlin↔Rust の受け渡しシームが transport の wire 契約になる（従来の「HTTP バイト列の解釈」から
   「取得済み文字列/シグナルの受け渡し」へ契約の高度が上がる）。契約テストは Rust 純粋シーム側で維持する。
 - Android で cleartext を許可する範囲は networkSecurityConfig で LAN dev 用途に限定する（既定は https）。
+  - **訂正（2026-07-07）**: networkSecurityConfig は IP レンジ（192.168.0.0/16 等）を表現できず、
+    「LAN dev 用途に限定」は設定で実装不可能だった。本 ADR の本旨（Expo Go と同型：dev は http、
+    公開配信は https）に従い、アプリは release を含め cleartext を全面許可する（Expo Go の Play
+    配布版と同じ）。公開 Demo Endpoint 側が HTTPS であることは変わらない。
