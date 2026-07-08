@@ -1866,7 +1866,7 @@ exports[`golden frame semantic parity (ADR-0079, #151) > nested text elements in
               "y0": 0,
               "y1": 100,
             },
-            "value": "Hi ",
+            "value": "Hi there",
           },
           "role": "label",
         },

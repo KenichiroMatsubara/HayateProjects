@@ -118,10 +118,21 @@ export const GITIGNORE_CONTENTS = '*\n!package.json\n';
 // package.json for a wasm-pkgs dir" instead of one per build script.
 // `sideEffects` must stay — it's required for bundlers to not tree-shake
 // wasm-bindgen's snippets.
+//
+// The package name is the target's own npmName, not the shared crate-level
+// npmPackageName (#765). host depends on pkg / pkg-tiny-skia / pkg-vello-cpu as
+// three sibling file: deps under three alias keys
+// (hayate-adapter-web[-cpu|-vello-cpu]). When all three package.jsons declared
+// the same name "hayate-adapter-web", pnpm hit a name collision and routed one
+// alias through a .pnpm virtual-store copy that only carried package.json (no
+// .js), so Rolldown failed to resolve the dynamic import('hayate-adapter-web-cpu')
+// in the Pages demo build. Naming each dir after its npmName removes the
+// collision so every alias links straight to its source dir.
 export function packageJsonFor(target, manifest) {
+  void manifest;
   return `${JSON.stringify(
     {
-      name: manifest.npmPackageName,
+      name: target.npmName,
       type: 'module',
       description: target.description,
       version: '0.1.0',

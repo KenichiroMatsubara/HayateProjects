@@ -17,9 +17,10 @@ async function withTempHayateRoot(fn) {
   }
 }
 
-function fakeTarget(name) {
+function fakeTarget(name, npmName = `hayate-adapter-web-${name}`) {
   return {
     name,
+    npmName,
     outDir: `wasm-pkgs/${name}`,
     targetDir: `target/wasm-${name}`,
     cargoFeatures: { mode: 'inherit', names: [] },
@@ -41,7 +42,9 @@ test('creates a stub package for every manifest target', () =>
     for (const name of ['pkg', 'pkg-tiny-skia']) {
       const dir = join(hayateRoot, 'wasm-pkgs', name);
       const pkgJson = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
-      assert.equal(pkgJson.name, 'hayate-adapter-web');
+      // The stub carries the target's own npmName, so pnpm links each alias to
+      // its source dir instead of colliding on a shared name (#765).
+      assert.equal(pkgJson.name, `hayate-adapter-web-${name}`);
       const js = await readFile(join(dir, 'hayate_adapter_web.js'), 'utf8');
       assert.match(js, /WASM not built/);
       await readFile(join(dir, 'hayate_adapter_web.d.ts'), 'utf8'); // does not throw
@@ -71,5 +74,5 @@ test('a brand new manifest entry gets a stub with no special-casing', () =>
     await bootstrapWasmPkgs({ hayateRoot, manifest });
 
     const pkgJson = JSON.parse(await readFile(join(hayateRoot, 'wasm-pkgs/pkg-quantum/package.json'), 'utf8'));
-    assert.equal(pkgJson.name, 'hayate-adapter-web');
+    assert.equal(pkgJson.name, 'hayate-adapter-web-pkg-quantum');
   }));
