@@ -26,6 +26,10 @@ _Avoid_: フレームワークをバンドルから除く設計, 現行ルート
 開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
 _Avoid_: ホスト側に FW 固有 fast-refresh を持たせる設計
 
+**Bundle Registration（`@torimi/bundle` / `registerTorimiApp`）**:
+App Bundle 側の合成ルート。アプリは `registerTorimiApp(mount: TsubameMount)` を呼ぶ**全ターゲット共通の 1 エントリ**だけを書き、protocol version の焼き込み・mount seam（`__torimiMount` / `__tsubame`）の登録・native prelude といった wire 契約の配線はこのパッケージが隠す。ターゲット差はランタイム判定（`__hayateHost` の有無）で内部分岐する。FW 知識は `TsubameMount` 型の引数として受けるのみ（FW 盲目）。依存方向は Torimi → Tsubame（CONTEXT-MAP 準拠）で、内部で `runTsubameApp` を呼ぶ上位層。
+_Avoid_: アプリに seam 名・protocol version 焼き込みを手書きさせる設計, ターゲット別の 2 エントリ強制, FW ごとの register 関数
+
 **Torimi CLI（`torimi`）**:
 外部アプリの開発ループを 1 コマンドに束ねるオーケストレータ。npm の**無スコープパッケージ `torimi`**（bin も `torimi`、設定は `torimi.config.*`）で、Expo における `expo` コマンドと同じ立ち位置。アプリが宣言したビルドコマンドを watch 付きで回し、ターゲットに応じた降格（Hermes 用 lowering はターゲット固有＝CLI の責務）を施し、`@torimi/dev-server` による配信・reload・QR まで面倒を見る。**FW もビルドツールも解さない**（ビルドコマンドは不透明な設定値）— FW 知識は Tsubame 側の preset に、配信は下層の Dev Server に、それぞれ隔離されたままにする。
 _Avoid_: CLI がバンドラ・FW プラグインを内蔵する Expo/metro 型の理解, `@torimi/dev-server` との同一視（CLI はその上のオーケストレーション層）, Tsubame 所属のツールとする理解（FW 非依存であり所属は Torimi）
