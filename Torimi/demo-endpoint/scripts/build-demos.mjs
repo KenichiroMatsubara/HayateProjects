@@ -7,8 +7,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import demosSource from '../src/demos.json' with { type: 'json' };
 
-/** 各デモパッケージ側の、Hermes 降格済み単一バンドルを作るスクリプト名（ADR-0112 の流儀）。 */
-const ANDROID_BUILD_SCRIPT = 'build:android';
+/** 各デモパッケージ側の、Hermes 降格済み単一バンドル（Native Host 向け）を作るスクリプト名（ADR-0112 の流儀）。 */
+const NATIVE_BUILD_SCRIPT = 'torimi:native:build';
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = join(packageRoot, '..', '..');
@@ -16,7 +16,7 @@ const repoRoot = join(packageRoot, '..', '..');
 for (const demo of demosSource.demos) {
   const { workspacePackage, artifactPath } = demo.source;
   console.log(`build:demos: ${demo.name} (${workspacePackage})`);
-  execFileSync('pnpm', ['--filter', workspacePackage, 'run', ANDROID_BUILD_SCRIPT], {
+  execFileSync('pnpm', ['--filter', workspacePackage, 'run', NATIVE_BUILD_SCRIPT], {
     cwd: repoRoot,
     stdio: 'inherit',
   });

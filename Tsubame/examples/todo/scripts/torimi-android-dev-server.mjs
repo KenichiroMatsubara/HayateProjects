@@ -7,11 +7,11 @@
 // main.torimi.tsx）とは配信物が異なる点が要点。
 //
 // full reload ループ（Torimi ADR-0001）を端から端まで繋ぐ：
-//   1. ソース（src/）を watch し、変更ごとに `build:android`（vite build + Hermes 降格）を
+//   1. ソース（src/）を watch し、変更ごとに `torimi:native:build`（vite build + Hermes 降格）を
 //      回して単一 App Bundle（dist-android/tsubame.js）を更新し続ける。ビルドは外部の責務。
 //   2. `@torimi/dev-server` がその bundle を HTTP 配信し、bundle の更新を watch して
 //      接続中のホスト（端末）に WS で `reload` を送る（FW/ビルドツール非依存）。降格後の
-//      最終成果物だけが書かれるよう、降格まで含む build:android を 1 ステップで回してから
+//      最終成果物だけが書かれるよう、降格まで含む torimi:native:build を 1 ステップで回してから
 //      dev-server の file watch が発火する（中途半端な未降格 bundle を配らない）。
 //
 // 既定ポートはネイティブ既定（dev_server_target.rs の DEFAULT_DEV_SERVER_PORT=5179）に合わせる。
@@ -111,17 +111,17 @@ let building = false;
 let queued = false;
 let debounceTimer;
 
-/** `build:android`（vite build + Hermes 降格）を完走させる。成功で dist-android/tsubame.js を更新。 */
+/** `torimi:native:build`（vite build + Hermes 降格）を完走させる。成功で dist-android/tsubame.js を更新。 */
 function runBuild() {
   return new Promise((resolve) => {
-    const child = spawn('pnpm', ['run', 'build:android'], {
+    const child = spawn('pnpm', ['run', 'torimi:native:build'], {
       cwd: todoRoot,
       stdio: 'inherit',
     });
     child.on('exit', (code) => {
       if (code !== 0) {
         // ビルド失敗は致命ではない（直してまた保存すれば次の watch で再ビルドされる）。
-        console.error(`Torimi android dev: build:android が exit ${code} で失敗しました（保存で再試行）`);
+        console.error(`Torimi android dev: torimi:native:build が exit ${code} で失敗しました（保存で再試行）`);
       }
       resolve();
     });
@@ -152,7 +152,7 @@ function scheduleRebuild() {
 }
 
 // 初回ビルド（dist-android/tsubame.js を最初に用意する）。完了を待ってから watch を張る。
-console.log('Torimi android dev: 初回ビルド中（build:android）…');
+console.log('Torimi android dev: 初回ビルド中（torimi:native:build）…');
 await rebuild();
 
 // ソース変更で再ビルド。recursive watch は Node 20+ で Linux/macOS/Windows いずれも対応。

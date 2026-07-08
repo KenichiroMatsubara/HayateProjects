@@ -11,10 +11,14 @@
     "clean":      "pnpm -r --filter \"!tsubame-monorepo\" run clean",
 
     "dev":        "pnpm --filter @tsubame/example-todo dev",
-    "dev:hayate": "pnpm --filter hayate dev",
 
     "check:proto":    "pnpm --filter hayate run check:proto && pnpm --filter tsubame-monorepo run check:proto",
-    "torimi:android:dev":     "pnpm --filter @tsubame/example-todo run torimi:android:serve",
+
+    "hayate:desktop:run":     "pnpm --filter hayate run hayate:desktop:run",
+    "hayate:desktop:build":   "pnpm --filter hayate run hayate:desktop:build",
+
+    "torimi:native:dev":      "pnpm --filter @tsubame/example-todo run torimi:native:dev",
+    "torimi:web:dev":         "pnpm --filter @tsubame/example-todo run torimi:web:dev",
     "torimi:android:install": "pnpm --filter hayate run torimi:android:install"
   },
   "devDependencies": {
