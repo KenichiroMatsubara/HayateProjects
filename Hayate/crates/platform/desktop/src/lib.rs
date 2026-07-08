@@ -47,6 +47,17 @@ pub const DEFAULT_WINDOW_SIZE: (u32, u32) = (1024, 1080);
 /// content がカバーしない余白も意図した色で塗る。値の調整は人力フォローアップ（ADR-0118）。
 pub const CLEAR_COLOR: [f32; 4] = [0.945, 0.929, 0.890, 1.0];
 
+/// 起動時の winit `WindowAttributes`。**非表示（`visible: false`）で作るのが要点**で、初回
+/// フレームの present 後に `RedrawRequested` ハンドラが一度だけ `set_visible(true)` する。
+/// 可視のまま作ると、GPU 初期化（wgpu adapter/device・vello シェーダコンパイル）と初回
+/// フレームが終わるまで OS の未描画ウィンドウ（暗い画面）が約 1 秒見えてしまう。
+pub fn initial_window_attributes() -> winit::window::WindowAttributes {
+    Window::default_attributes()
+        .with_title(WINDOW_TITLE)
+        .with_inner_size(LogicalSize::new(DEFAULT_WINDOW_SIZE.0, DEFAULT_WINDOW_SIZE.1))
+        .with_visible(false)
+}
+
 /// winit の物理サイズ・`scale_factor` を Core の [`ViewportMetrics`] に橋渡しする（ADR-0080）。
 ///
 /// `scale_factor` を 1.0 に潰さず `content_scale` へ素通しするのが HiDPI でぼやけない要点で、
@@ -236,6 +247,9 @@ pub struct DesktopApp {
     window: Option<Arc<Window>>,
     app_host: Option<AppHost<WindowSurface>>,
     start: Option<Instant>,
+    /// 初回フレーム present 済みでウィンドウを可視化したか。非表示で作成したウィンドウを
+    /// 最初の `tick`（= 初回 present）直後に一度だけ `set_visible(true)` するためのラッチ。
+    shown: bool,
     /// 直近の `CursorMoved` 由来の論理（レイアウト）ポインタ座標。winit の `MouseInput` は
     /// 座標を運ばないので、press/release dispatch にこれを載せる。
     last_pointer_pos: (f32, f32),
@@ -263,10 +277,7 @@ impl ApplicationHandler for DesktopApp {
             return;
         }
 
-        let attrs = Window::default_attributes()
-            .with_title(WINDOW_TITLE)
-            .with_inner_size(LogicalSize::new(DEFAULT_WINDOW_SIZE.0, DEFAULT_WINDOW_SIZE.1));
-        let window = match event_loop.create_window(attrs) {
+        let window = match event_loop.create_window(initial_window_attributes()) {
             Ok(w) => Arc::new(w),
             Err(e) => {
                 log::error!("create_window: {e}");
@@ -323,6 +334,15 @@ impl ApplicationHandler for DesktopApp {
                     (self.window.as_ref(), self.app_host.as_mut())
                 {
                     app_host.tick(ts);
+                    // 初回フレームを present し終えてから可視化する（暗転防止・
+                    // `initial_window_attributes` 参照）。直後にもう 1 フレーム要求するのは、
+                    // 非表示中の swapchain が present を `Occluded` 等で落とすプラットフォーム
+                    // でも、可視化後に必ず 1 枚描き直して空ウィンドウを残さないため。
+                    if !self.shown {
+                        self.shown = true;
+                        window.set_visible(true);
+                        window.request_redraw();
+                    }
                     // tick 後（レイアウト確定後）に IME を一度駆動する。focus/blur の enable/
                     // disable と、候補ウィンドウのキャレット追従（`set_ime_cursor_area`）を
                     // Core の `drive_ime` が決め、`WinitImeBridge` が winit へ転写する
@@ -426,6 +446,16 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn initial_window_is_hidden_until_first_present() {
+        // 起動時の暗転（未描画ウィンドウが ~1s 見える）の回帰テスト。非表示で作るのが
+        // 暗転防止の前半で、後半（初回 present 後の `set_visible(true)`）は live event loop
+        // が要るためヘッドレスには固定できない（`RedrawRequested` ハンドラ参照）。
+        let attrs = initial_window_attributes();
+        assert!(!attrs.visible, "window must start hidden (dark-screen prevention)");
+        assert_eq!(attrs.title, WINDOW_TITLE);
+    }
 
     #[test]
     fn window_defaults_are_named_constants() {

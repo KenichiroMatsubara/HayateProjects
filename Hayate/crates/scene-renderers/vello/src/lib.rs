@@ -53,7 +53,16 @@ impl VelloSceneRenderer {
             RendererOptions {
                 use_cpu: false,
                 antialiasing_support: AaSupport::area_only(),
-                num_init_threads: NonZeroUsize::new(1),
+                // シェーダ init のスレッド数は vello 既定に追従する: macOS のみ single thread
+                // 推奨（vello の RendererOptions ドキュメント参照）、それ以外は None（並列
+                // init ヒューリスティック）。`Some(1)` を全プラットフォームに固定すると native
+                // の起動時シェーダコンパイルが直列化し、初回フレームまでの時間を数百 ms 延ばす
+                // （wasm では本オプションは無効なので web 経路の挙動は変わらない）。
+                num_init_threads: if cfg!(target_os = "macos") {
+                    NonZeroUsize::new(1)
+                } else {
+                    None
+                },
                 pipeline_cache: None,
             },
         )
