@@ -15,6 +15,7 @@
 
 pub mod ime_input;
 pub mod keyboard_input;
+pub mod pipeline_disk_cache;
 pub mod pointer_input;
 
 use std::sync::Arc;
@@ -46,6 +47,17 @@ pub const DEFAULT_WINDOW_SIZE: (u32, u32) = (1024, 1080);
 /// surface の clear color（vello `base_color`）。demo fixture の背景 `#f1ede3` に合わせ、
 /// content がカバーしない余白も意図した色で塗る。値の調整は人力フォローアップ（ADR-0118）。
 pub const CLEAR_COLOR: [f32; 4] = [0.945, 0.929, 0.890, 1.0];
+
+/// 起動時の winit `WindowAttributes`。**非表示（`visible: false`）で作るのが要点**で、初回
+/// フレームの present 後に `RedrawRequested` ハンドラが一度だけ `set_visible(true)` する。
+/// 可視のまま作ると、GPU 初期化（wgpu adapter/device・vello シェーダコンパイル）と初回
+/// フレームが終わるまで OS の未描画ウィンドウ（暗い画面）が約 1 秒見えてしまう。
+pub fn initial_window_attributes() -> winit::window::WindowAttributes {
+    Window::default_attributes()
+        .with_title(WINDOW_TITLE)
+        .with_inner_size(LogicalSize::new(DEFAULT_WINDOW_SIZE.0, DEFAULT_WINDOW_SIZE.1))
+        .with_visible(false)
+}
 
 /// winit の物理サイズ・`scale_factor` を Core の [`ViewportMetrics`] に橋渡しする（ADR-0080）。
 ///
@@ -102,9 +114,22 @@ impl WindowSurface {
             .await
             .map_err(|e| format!("no compatible wgpu adapter: {e}"))?;
 
+        // 永続パイプラインキャッシュ（ADR-0130b・issue #777）。対応 backend（現状 Vulkan のみ）
+        // なら feature を要求し、前回起動の blob をディスクから読んで vello に注入する。
+        // 非対応・破損・キー不一致はすべてキャッシュ無しにフォールバックし、起動は壊さない。
+        let adapter_info = adapter.get_info();
+        let supports_pipeline_cache = adapter
+            .features()
+            .contains(wgpu::Features::PIPELINE_CACHE);
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("hayate-desktop"),
+                required_features: if supports_pipeline_cache {
+                    wgpu::Features::PIPELINE_CACHE
+                } else {
+                    wgpu::Features::empty()
+                },
                 ..Default::default()
             })
             .await
@@ -124,7 +149,55 @@ impl WindowSurface {
 
         let target_view = create_target_view(&device, width, height);
         let blitter = create_blitter(&device, surface_config.format);
-        let renderer = VelloSceneRenderer::new(&device)?;
+
+        let disk_cache = supports_pipeline_cache
+            .then(|| {
+                pipeline_disk_cache::DiskPipelineCache::discover(
+                    &adapter_info,
+                    hayate_scene_renderer_vello::shader_set_fingerprint(),
+                )
+            })
+            .flatten();
+        let gpu_cache = disk_cache.as_ref().map(|dc| {
+            match dc.loaded_blob() {
+                Some(blob) => log::info!(
+                    "pipeline cache: hit ({} bytes, {})",
+                    blob.len(),
+                    dc.path().display()
+                ),
+                None => log::info!("pipeline cache: miss ({})", dc.path().display()),
+            }
+            // Safety: `data` は同一 adapter・同一キー（ドライバ/シェーダ指紋）で過去の
+            // `get_data()` が返した blob（ADR-0130b の load がキー検証済み）。万一無効でも
+            // `fallback: true` で wgpu が空キャッシュに落とす。
+            unsafe {
+                device.create_pipeline_cache(&wgpu::PipelineCacheDescriptor {
+                    label: Some("hayate-desktop-pipeline-cache"),
+                    data: dc.loaded_blob(),
+                    fallback: true,
+                })
+            }
+        });
+
+        let init_start = Instant::now();
+        let renderer =
+            VelloSceneRenderer::new_with_pipeline_cache(&device, gpu_cache.as_ref())?;
+        log::info!(
+            "vello renderer init: {:.0}ms (pipeline cache: {})",
+            init_start.elapsed().as_secs_f64() * 1000.0,
+            match &disk_cache {
+                Some(dc) if dc.loaded_blob().is_some() => "hit",
+                Some(_) => "miss",
+                None => "unavailable",
+            }
+        );
+
+        // 次回起動用に blob を永続化する（読めた blob と同一なら書かない）。
+        if let (Some(dc), Some(cache)) = (&disk_cache, &gpu_cache) {
+            if let Some(data) = cache.get_data() {
+                dc.persist(&data);
+            }
+        }
 
         Ok(Self {
             device,
@@ -236,6 +309,9 @@ pub struct DesktopApp {
     window: Option<Arc<Window>>,
     app_host: Option<AppHost<WindowSurface>>,
     start: Option<Instant>,
+    /// 初回フレーム present 済みでウィンドウを可視化したか。非表示で作成したウィンドウを
+    /// 最初の `tick`（= 初回 present）直後に一度だけ `set_visible(true)` するためのラッチ。
+    shown: bool,
     /// 直近の `CursorMoved` 由来の論理（レイアウト）ポインタ座標。winit の `MouseInput` は
     /// 座標を運ばないので、press/release dispatch にこれを載せる。
     last_pointer_pos: (f32, f32),
@@ -263,10 +339,7 @@ impl ApplicationHandler for DesktopApp {
             return;
         }
 
-        let attrs = Window::default_attributes()
-            .with_title(WINDOW_TITLE)
-            .with_inner_size(LogicalSize::new(DEFAULT_WINDOW_SIZE.0, DEFAULT_WINDOW_SIZE.1));
-        let window = match event_loop.create_window(attrs) {
+        let window = match event_loop.create_window(initial_window_attributes()) {
             Ok(w) => Arc::new(w),
             Err(e) => {
                 log::error!("create_window: {e}");
@@ -323,6 +396,15 @@ impl ApplicationHandler for DesktopApp {
                     (self.window.as_ref(), self.app_host.as_mut())
                 {
                     app_host.tick(ts);
+                    // 初回フレームを present し終えてから可視化する（暗転防止・
+                    // `initial_window_attributes` 参照）。直後にもう 1 フレーム要求するのは、
+                    // 非表示中の swapchain が present を `Occluded` 等で落とすプラットフォーム
+                    // でも、可視化後に必ず 1 枚描き直して空ウィンドウを残さないため。
+                    if !self.shown {
+                        self.shown = true;
+                        window.set_visible(true);
+                        window.request_redraw();
+                    }
                     // tick 後（レイアウト確定後）に IME を一度駆動する。focus/blur の enable/
                     // disable と、候補ウィンドウのキャレット追従（`set_ime_cursor_area`）を
                     // Core の `drive_ime` が決め、`WinitImeBridge` が winit へ転写する
@@ -426,6 +508,16 @@ pub fn run() -> Result<(), winit::error::EventLoopError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn initial_window_is_hidden_until_first_present() {
+        // 起動時の暗転（未描画ウィンドウが ~1s 見える）の回帰テスト。非表示で作るのが
+        // 暗転防止の前半で、後半（初回 present 後の `set_visible(true)`）は live event loop
+        // が要るためヘッドレスには固定できない（`RedrawRequested` ハンドラ参照）。
+        let attrs = initial_window_attributes();
+        assert!(!attrs.visible, "window must start hidden (dark-screen prevention)");
+        assert_eq!(attrs.title, WINDOW_TITLE);
+    }
 
     #[test]
     fn window_defaults_are_named_constants() {

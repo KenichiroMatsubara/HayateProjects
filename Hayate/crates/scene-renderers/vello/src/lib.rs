@@ -46,15 +46,91 @@ pub struct VelloSceneRenderer {
     scene: Scene,
 }
 
+#[cfg(test)]
+mod fingerprint_tests {
+    #[test]
+    fn shader_set_fingerprint_is_deterministic_and_nonzero() {
+        // 永続キャッシュキー（ADR-0130b）に載るので、呼ぶたび同値・自明値でないことを固定。
+        let a = super::shader_set_fingerprint();
+        assert_eq!(a, super::shader_set_fingerprint());
+        assert_ne!(a, 0);
+    }
+}
+
+/// vello のシェーダ集合（`vello_shaders::SHADERS` の全 WGSL ソース）の決定的指紋。
+/// 永続パイプラインキャッシュ（ADR-0130b・issue #777）の `shader_hash` キーに使い、vello
+/// 更新でシェーダが変わったとき古いキャッシュファイルを丸ごと無効化する。exhaustive
+/// destructuring なので、vello 更新でシェーダの増減があればここがコンパイルエラーになり、
+/// 指紋の取りこぼしを型で防ぐ。
+pub fn shader_set_fingerprint() -> u64 {
+    let vello_shaders::Shaders {
+        backdrop,
+        backdrop_dyn,
+        bbox_clear,
+        binning,
+        clip_leaf,
+        clip_reduce,
+        coarse,
+        draw_leaf,
+        draw_reduce,
+        fine_area,
+        fine_msaa16,
+        fine_msaa8,
+        flatten,
+        path_count,
+        path_count_setup,
+        path_tiling,
+        path_tiling_setup,
+        pathtag_reduce,
+        pathtag_reduce2,
+        pathtag_scan1,
+        pathtag_scan_large,
+        pathtag_scan_small,
+        tile_alloc,
+    } = vello_shaders::SHADERS;
+    let shaders = [
+        backdrop, backdrop_dyn, bbox_clear, binning, clip_leaf, clip_reduce, coarse, draw_leaf,
+        draw_reduce, fine_area, fine_msaa16, fine_msaa8, flatten, path_count, path_count_setup,
+        path_tiling, path_tiling_setup, pathtag_reduce, pathtag_reduce2, pathtag_scan1,
+        pathtag_scan_large, pathtag_scan_small, tile_alloc,
+    ];
+    hayate_layer_compositor::pipeline_cache::fnv1a_hash(
+        shaders
+            .iter()
+            .flat_map(|s| [s.name.as_bytes(), s.wgsl.code.as_bytes()]),
+    )
+}
+
 impl VelloSceneRenderer {
     pub fn new(device: &wgpu::Device) -> Result<Self, String> {
+        Self::new_with_pipeline_cache(device, None)
+    }
+
+    /// 永続パイプラインキャッシュ（ADR-0130b・issue #777）を差して初期化する。`cache` は
+    /// `wgpu::Features::PIPELINE_CACHE` が使える環境（現状 Vulkan のみ）で呼び出し側が
+    /// `create_pipeline_cache` したもの。`None` なら従来どおり（web/wasm・非対応 backend）。
+    /// キャッシュの読み書き・永続化は呼び出し側（Platform Front）の責務で、本 crate は
+    /// vello へ注入するだけ。
+    pub fn new_with_pipeline_cache(
+        device: &wgpu::Device,
+        cache: Option<&wgpu::PipelineCache>,
+    ) -> Result<Self, String> {
         let renderer = Renderer::new(
             device,
             RendererOptions {
                 use_cpu: false,
                 antialiasing_support: AaSupport::area_only(),
-                num_init_threads: NonZeroUsize::new(1),
-                pipeline_cache: None,
+                // シェーダ init のスレッド数は vello 既定に追従する: macOS のみ single thread
+                // 推奨（vello の RendererOptions ドキュメント参照）、それ以外は None（並列
+                // init ヒューリスティック）。`Some(1)` を全プラットフォームに固定すると native
+                // の起動時シェーダコンパイルが直列化し、初回フレームまでの時間を数百 ms 延ばす
+                // （wasm では本オプションは無効なので web 経路の挙動は変わらない）。
+                num_init_threads: if cfg!(target_os = "macos") {
+                    NonZeroUsize::new(1)
+                } else {
+                    None
+                },
+                pipeline_cache: cache.cloned(),
             },
         )
         .map_err(|e| format!("Vello init failed: {e}"))?;

@@ -30,6 +30,25 @@ pub struct PipelineCacheKey {
     pub format_version: u32,
 }
 
+/// FNV-1a による決定的 64bit ハッシュ。[`PipelineCacheKey`] の `driver_version` / `shader_hash`
+/// をドライバ情報文字列やシェーダソースから導くための共有ヘルパー。`std` の `DefaultHasher` は
+/// シード・実装が安定保証されず**永続**キーに使えないため、自前の安定ハッシュを持つ。
+pub fn fnv1a_hash<'a>(parts: impl IntoIterator<Item = &'a [u8]>) -> u64 {
+    const OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut hash = OFFSET_BASIS;
+    for part in parts {
+        for &b in part {
+            hash ^= u64::from(b);
+            hash = hash.wrapping_mul(PRIME);
+        }
+        // part 境界にも 1 バイト混ぜ、["ab","c"] と ["a","bc"] を区別する。
+        hash ^= 0xff;
+        hash = hash.wrapping_mul(PRIME);
+    }
+    hash
+}
+
 fn read_u32(bytes: &[u8]) -> u32 {
     u32::from_le_bytes(bytes.try_into().expect("4 bytes"))
 }
@@ -104,6 +123,18 @@ mod tests {
         p.push(format!("hayate_pipeline_cache_test_{name}"));
         let _ = fs::remove_file(&p);
         p
+    }
+
+    #[test]
+    fn fnv1a_is_deterministic_and_boundary_sensitive() {
+        // 永続キーに使うので、プロセス・ビルドをまたいで同値であることが本質。
+        assert_eq!(fnv1a_hash([b"abc".as_slice()]), fnv1a_hash([b"abc".as_slice()]));
+        assert_ne!(fnv1a_hash([b"a".as_slice()]), fnv1a_hash([b"b".as_slice()]));
+        // part 境界が異なれば別ハッシュ（["ab","c"] ≠ ["a","bc"]）。
+        assert_ne!(
+            fnv1a_hash([b"ab".as_slice(), b"c".as_slice()]),
+            fnv1a_hash([b"a".as_slice(), b"bc".as_slice()]),
+        );
     }
 
     #[test]

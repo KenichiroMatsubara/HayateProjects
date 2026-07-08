@@ -17,11 +17,16 @@ path = "src/main.rs"
 hayate-core = { path = "../../core" }
 hayate-app-host = { path = "../../app-host" }
 hayate-demo-fixtures = { path = "../../demo-fixtures" }
+# 永続パイプラインキャッシュの GPU 非依存基盤（ADR-0130b・issue #777）。
+hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
 wgpu = { workspace = true }
 winit = { workspace = true }
 pollster = { workspace = true }
 log = { workspace = true }
+# デモバイナリのロガー実装。`npm run hayate:desktop:run` が渡す RUST_LOG を実際に効かせ、
+# 起動時の pipeline cache hit/miss・vello init 時間（#777）を stderr に出す。
+env_logger = { workspace = true }
 
 [dev-dependencies]
 hayate-scene-test-support = { path = "../../scene-renderers/test-support" }
