@@ -56,11 +56,11 @@ fn wrap_row_line_cross_size_accounts_for_minmax_clamped_card() {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
                 gap: Size {
-                    width: LengthPercentage::Length(12.0),
-                    height: LengthPercentage::Length(12.0),
+                    width: LengthPercentage::length(12.0),
+                    height: LengthPercentage::length(12.0),
                 },
-                min_size: Size { width: Dimension::Length(200.0), height: Dimension::Auto },
-                max_size: Size { width: Dimension::Length(268.0), height: Dimension::Auto },
+                min_size: Size { width: Dimension::length(200.0), height: Dimension::auto() },
+                max_size: Size { width: Dimension::length(268.0), height: Dimension::auto() },
                 padding: Rect::length(16.0),
                 ..Default::default()
             },
@@ -75,8 +75,8 @@ fn wrap_row_line_cross_size_accounts_for_minmax_clamped_card() {
                 display: Display::Flex,
                 flex_wrap: FlexWrap::Wrap,
                 gap: Size {
-                    width: LengthPercentage::Length(14.0),
-                    height: LengthPercentage::Length(14.0),
+                    width: LengthPercentage::length(14.0),
+                    height: LengthPercentage::length(14.0),
                 },
                 ..Default::default()
             },
@@ -90,7 +90,7 @@ fn wrap_row_line_cross_size_accounts_for_minmax_clamped_card() {
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                size: Size { width: Dimension::Length(412.0), height: Dimension::Length(892.0) },
+                size: Size { width: Dimension::length(412.0), height: Dimension::length(892.0) },
                 ..Default::default()
             },
             &[row],

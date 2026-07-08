@@ -497,8 +497,8 @@ mod tests {
         root.layout_style = TaffyStyle {
             flex_direction: taffy::FlexDirection::Column,
             size: TaffySize {
-                width: TaffyDim::Length(box_w),
-                height: TaffyDim::Auto,
+                width: TaffyDim::length(box_w),
+                height: TaffyDim::auto(),
             },
             ..Default::default()
         };

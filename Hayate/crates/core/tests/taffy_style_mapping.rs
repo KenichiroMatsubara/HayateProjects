@@ -22,9 +22,11 @@ fn flex_basis_maps_to_taffy_style() {
         &mut style,
         &StyleProp::FlexBasis(Dimension::px(120.0))
     ));
-    match style.flex_basis {
-        taffy::style::Dimension::Length(v) => assert!((v - 120.0).abs() < f32::EPSILON),
-        other => panic!("expected Length, got {other:?}"),
+    // taffy 0.12 で `Dimension` は不透明化しパターンマッチ不可。Length 値は `into_option`
+    // （Length のみ Some）で取り出して照合する。
+    match style.flex_basis.into_option() {
+        Some(v) => assert!((v - 120.0).abs() < f32::EPSILON),
+        None => panic!("expected Length, got {:?}", style.flex_basis),
     }
 }
 
@@ -35,13 +37,13 @@ fn align_self_maps_to_taffy_style() {
         &mut style,
         &StyleProp::AlignSelf(AlignSelfValue::Center)
     ));
-    assert_eq!(style.align_self, Some(AlignItems::Center));
+    assert_eq!(style.align_self, Some(AlignItems::CENTER));
 }
 
 #[test]
 fn align_self_auto_clears_taffy_override() {
     let mut style = Style::default();
-    style.align_self = Some(AlignItems::FlexEnd);
+    style.align_self = Some(AlignItems::FLEX_END);
     assert!(apply_to_style(
         &mut style,
         &StyleProp::AlignSelf(AlignSelfValue::Auto)
@@ -100,10 +102,10 @@ fn inset_maps_each_edge_to_taffy_style() {
         &mut style,
         &StyleProp::Bottom(Dimension::px(40.0))
     ));
-    assert_eq!(style.inset.top, LengthPercentageAuto::Length(10.0));
-    assert_eq!(style.inset.left, LengthPercentageAuto::Length(20.0));
-    assert_eq!(style.inset.right, LengthPercentageAuto::Length(30.0));
-    assert_eq!(style.inset.bottom, LengthPercentageAuto::Length(40.0));
+    assert_eq!(style.inset.top, LengthPercentageAuto::length(10.0));
+    assert_eq!(style.inset.left, LengthPercentageAuto::length(20.0));
+    assert_eq!(style.inset.right, LengthPercentageAuto::length(30.0));
+    assert_eq!(style.inset.bottom, LengthPercentageAuto::length(40.0));
 }
 
 #[test]
@@ -157,7 +159,7 @@ fn align_content_maps_to_taffy_style() {
         &mut style,
         &StyleProp::AlignContent(AlignContentValue::SpaceBetween)
     ));
-    assert_eq!(style.align_content, Some(AlignContent::SpaceBetween));
+    assert_eq!(style.align_content, Some(AlignContent::SPACE_BETWEEN));
 }
 
 #[test]
@@ -222,10 +224,10 @@ fn justify_items_maps_each_value_to_taffy_style() {
 
     // grid 専用の語彙なので flex-start/flex-end ではなく start/end を使う。
     let cases = [
-        (JustifyItemsValue::Start, AlignItems::Start),
-        (JustifyItemsValue::End, AlignItems::End),
-        (JustifyItemsValue::Center, AlignItems::Center),
-        (JustifyItemsValue::Stretch, AlignItems::Stretch),
+        (JustifyItemsValue::Start, AlignItems::START),
+        (JustifyItemsValue::End, AlignItems::END),
+        (JustifyItemsValue::Center, AlignItems::CENTER),
+        (JustifyItemsValue::Stretch, AlignItems::STRETCH),
     ];
     for (input, expected) in cases {
         let mut style = Style::default();
@@ -244,10 +246,10 @@ fn justify_self_maps_each_value_to_taffy_style() {
     assert_eq!(style.justify_self, None);
 
     let cases = [
-        (JustifySelfValue::Start, AlignItems::Start),
-        (JustifySelfValue::End, AlignItems::End),
-        (JustifySelfValue::Center, AlignItems::Center),
-        (JustifySelfValue::Stretch, AlignItems::Stretch),
+        (JustifySelfValue::Start, AlignItems::START),
+        (JustifySelfValue::End, AlignItems::END),
+        (JustifySelfValue::Center, AlignItems::CENTER),
+        (JustifySelfValue::Stretch, AlignItems::STRETCH),
     ];
     for (input, expected) in cases {
         let mut style = Style::default();

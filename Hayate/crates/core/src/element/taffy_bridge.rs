@@ -1,8 +1,8 @@
 use taffy::{
-    style_helpers::{fr, length, line, percent, FromFlex, FromLength, FromPercent, TaffyAuto},
+    style_helpers::{fr, length, line, percent, FromFr, FromLength, FromPercent, TaffyAuto},
     AlignContent, AlignItems, BoxSizing, Dimension as TaffyDim, Display, FlexDirection, FlexWrap,
     GridAutoFlow, GridPlacement, JustifyContent, LengthPercentage, LengthPercentageAuto, Line,
-    Position, Rect as TaffyRect, Size, Style, TrackSizingFunction,
+    Position, Rect as TaffyRect, Size, Style,
 };
 
 use crate::element::id::ElementId;
@@ -43,22 +43,22 @@ pub enum MeasureCtx {
 
 fn to_taffy_dim(d: Dimension) -> TaffyDim {
     match d.unit {
-        DimensionUnit::Px => TaffyDim::Length(d.value),
+        DimensionUnit::Px => TaffyDim::length(d.value),
         // Hayate は percent を 0..100 で受けるが Taffy は 0..1 を期待する。
-        DimensionUnit::Percent => TaffyDim::Percent(d.value / 100.0),
-        DimensionUnit::Auto => TaffyDim::Auto,
+        DimensionUnit::Percent => TaffyDim::percent(d.value / 100.0),
+        DimensionUnit::Auto => TaffyDim::AUTO,
         // Taffy `Dimension` はグリッドトラック以外で `Fr` 表現を持たないため
         // ここでは Auto にフォールバックする。
-        DimensionUnit::Fr => TaffyDim::Auto,
+        DimensionUnit::Fr => TaffyDim::AUTO,
     }
 }
 
 fn to_taffy_lp(d: Dimension) -> LengthPercentage {
     match d.unit {
-        DimensionUnit::Px => LengthPercentage::Length(d.value),
-        DimensionUnit::Percent => LengthPercentage::Percent(d.value / 100.0),
+        DimensionUnit::Px => LengthPercentage::length(d.value),
+        DimensionUnit::Percent => LengthPercentage::percent(d.value / 100.0),
         // Padding/gap は Auto を受け付けないため 0 にクランプする。
-        DimensionUnit::Auto | DimensionUnit::Fr => LengthPercentage::Length(0.0),
+        DimensionUnit::Auto | DimensionUnit::Fr => LengthPercentage::length(0.0),
     }
 }
 
@@ -66,7 +66,7 @@ fn to_taffy_lp(d: Dimension) -> LengthPercentage {
 /// (`grid-template-*`, `TrackSizingFunction`) と暗黙トラック (`grid-auto-*`,
 /// `NonRepeatedTrackSizingFunction`) の双方を同じ語彙で賄えるよう、`fr` / `length`
 /// / `percent` / `Auto` を出力型ジェネリックで構築する。
-fn to_taffy_track<T: FromLength + FromPercent + FromFlex + TaffyAuto>(d: Dimension) -> T {
+fn to_taffy_track<T: FromLength + FromPercent + FromFr + TaffyAuto>(d: Dimension) -> T {
     match d.unit {
         DimensionUnit::Px => length(d.value),
         DimensionUnit::Percent => percent(d.value / 100.0),
@@ -77,10 +77,10 @@ fn to_taffy_track<T: FromLength + FromPercent + FromFlex + TaffyAuto>(d: Dimensi
 
 fn to_taffy_lp_auto(d: Dimension) -> LengthPercentageAuto {
     match d.unit {
-        DimensionUnit::Px => LengthPercentageAuto::Length(d.value),
-        DimensionUnit::Percent => LengthPercentageAuto::Percent(d.value / 100.0),
-        DimensionUnit::Auto => LengthPercentageAuto::Auto,
-        DimensionUnit::Fr => LengthPercentageAuto::Auto,
+        DimensionUnit::Px => LengthPercentageAuto::length(d.value),
+        DimensionUnit::Percent => LengthPercentageAuto::percent(d.value / 100.0),
+        DimensionUnit::Auto => LengthPercentageAuto::AUTO,
+        DimensionUnit::Fr => LengthPercentageAuto::AUTO,
     }
 }
 
@@ -152,21 +152,21 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         }
         StyleProp::AlignItems(v) => {
             style.align_items = Some(match v {
-                AlignValue::FlexStart => AlignItems::FlexStart,
-                AlignValue::FlexEnd => AlignItems::FlexEnd,
-                AlignValue::Center => AlignItems::Center,
-                AlignValue::Stretch => AlignItems::Stretch,
-                AlignValue::Baseline => AlignItems::Baseline,
+                AlignValue::FlexStart => AlignItems::FLEX_START,
+                AlignValue::FlexEnd => AlignItems::FLEX_END,
+                AlignValue::Center => AlignItems::CENTER,
+                AlignValue::Stretch => AlignItems::STRETCH,
+                AlignValue::Baseline => AlignItems::BASELINE,
             });
         }
         StyleProp::JustifyContent(v) => {
             style.justify_content = Some(match v {
-                JustifyValue::FlexStart => JustifyContent::FlexStart,
-                JustifyValue::FlexEnd => JustifyContent::FlexEnd,
-                JustifyValue::Center => JustifyContent::Center,
-                JustifyValue::SpaceBetween => JustifyContent::SpaceBetween,
-                JustifyValue::SpaceAround => JustifyContent::SpaceAround,
-                JustifyValue::SpaceEvenly => JustifyContent::SpaceEvenly,
+                JustifyValue::FlexStart => JustifyContent::FLEX_START,
+                JustifyValue::FlexEnd => JustifyContent::FLEX_END,
+                JustifyValue::Center => JustifyContent::CENTER,
+                JustifyValue::SpaceBetween => JustifyContent::SPACE_BETWEEN,
+                JustifyValue::SpaceAround => JustifyContent::SPACE_AROUND,
+                JustifyValue::SpaceEvenly => JustifyContent::SPACE_EVENLY,
             });
         }
         StyleProp::Gap(d) => {
@@ -218,22 +218,22 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         StyleProp::AlignSelf(v) => {
             style.align_self = match v {
                 AlignSelfValue::Auto => None,
-                AlignSelfValue::FlexStart => Some(AlignItems::FlexStart),
-                AlignSelfValue::FlexEnd => Some(AlignItems::FlexEnd),
-                AlignSelfValue::Center => Some(AlignItems::Center),
-                AlignSelfValue::Stretch => Some(AlignItems::Stretch),
-                AlignSelfValue::Baseline => Some(AlignItems::Baseline),
+                AlignSelfValue::FlexStart => Some(AlignItems::FLEX_START),
+                AlignSelfValue::FlexEnd => Some(AlignItems::FLEX_END),
+                AlignSelfValue::Center => Some(AlignItems::CENTER),
+                AlignSelfValue::Stretch => Some(AlignItems::STRETCH),
+                AlignSelfValue::Baseline => Some(AlignItems::BASELINE),
             };
         }
         StyleProp::AlignContent(v) => {
             style.align_content = Some(match v {
-                AlignContentValue::FlexStart => AlignContent::FlexStart,
-                AlignContentValue::FlexEnd => AlignContent::FlexEnd,
-                AlignContentValue::Center => AlignContent::Center,
-                AlignContentValue::Stretch => AlignContent::Stretch,
-                AlignContentValue::SpaceBetween => AlignContent::SpaceBetween,
-                AlignContentValue::SpaceAround => AlignContent::SpaceAround,
-                AlignContentValue::SpaceEvenly => AlignContent::SpaceEvenly,
+                AlignContentValue::FlexStart => AlignContent::FLEX_START,
+                AlignContentValue::FlexEnd => AlignContent::FLEX_END,
+                AlignContentValue::Center => AlignContent::CENTER,
+                AlignContentValue::Stretch => AlignContent::STRETCH,
+                AlignContentValue::SpaceBetween => AlignContent::SPACE_BETWEEN,
+                AlignContentValue::SpaceAround => AlignContent::SPACE_AROUND,
+                AlignContentValue::SpaceEvenly => AlignContent::SPACE_EVENLY,
             });
         }
         StyleProp::GridTemplateColumns(tracks) => {
@@ -269,20 +269,20 @@ pub fn apply_to_style(style: &mut Style, prop: &StyleProp) -> bool {
         // grid セル内インライン軸のコンテナ既定。grid 専用なので start/end を使う。
         StyleProp::JustifyItems(v) => {
             style.justify_items = Some(match v {
-                JustifyItemsValue::Start => AlignItems::Start,
-                JustifyItemsValue::End => AlignItems::End,
-                JustifyItemsValue::Center => AlignItems::Center,
-                JustifyItemsValue::Stretch => AlignItems::Stretch,
+                JustifyItemsValue::Start => AlignItems::START,
+                JustifyItemsValue::End => AlignItems::END,
+                JustifyItemsValue::Center => AlignItems::CENTER,
+                JustifyItemsValue::Stretch => AlignItems::STRETCH,
             });
         }
         // grid アイテム個別のインライン軸整列。`auto` は None（コンテナ既定に従う）。
         StyleProp::JustifySelf(v) => {
             style.justify_self = match v {
                 JustifySelfValue::Auto => None,
-                JustifySelfValue::Start => Some(AlignItems::Start),
-                JustifySelfValue::End => Some(AlignItems::End),
-                JustifySelfValue::Center => Some(AlignItems::Center),
-                JustifySelfValue::Stretch => Some(AlignItems::Stretch),
+                JustifySelfValue::Start => Some(AlignItems::START),
+                JustifySelfValue::End => Some(AlignItems::END),
+                JustifySelfValue::Center => Some(AlignItems::CENTER),
+                JustifySelfValue::Stretch => Some(AlignItems::STRETCH),
             };
         }
         _ => return false,
