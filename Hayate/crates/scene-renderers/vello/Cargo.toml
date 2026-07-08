@@ -10,6 +10,9 @@ hayate-core = { path = "../../core" }
 hayate-layer-compositor = { path = "../compositor" }
 skrifa = { workspace = true }
 vello = { workspace = true }
+# vendored 経由（[patch.crates-io]）。永続パイプラインキャッシュ（ADR-0130b・#777）の
+# shader_hash キーに全 WGSL ソースの指紋を使うため。wgsl feature だけで足りる。
+vello_shaders = { version = "0.9", default-features = false, features = ["wgsl"] }
 wgpu = { workspace = true }
 
 [dev-dependencies]

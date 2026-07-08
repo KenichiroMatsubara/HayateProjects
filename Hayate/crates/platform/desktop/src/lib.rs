@@ -15,6 +15,7 @@
 
 pub mod ime_input;
 pub mod keyboard_input;
+pub mod pipeline_disk_cache;
 pub mod pointer_input;
 
 use std::sync::Arc;
@@ -113,9 +114,22 @@ impl WindowSurface {
             .await
             .map_err(|e| format!("no compatible wgpu adapter: {e}"))?;
 
+        // 永続パイプラインキャッシュ（ADR-0130b・issue #777）。対応 backend（現状 Vulkan のみ）
+        // なら feature を要求し、前回起動の blob をディスクから読んで vello に注入する。
+        // 非対応・破損・キー不一致はすべてキャッシュ無しにフォールバックし、起動は壊さない。
+        let adapter_info = adapter.get_info();
+        let supports_pipeline_cache = adapter
+            .features()
+            .contains(wgpu::Features::PIPELINE_CACHE);
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("hayate-desktop"),
+                required_features: if supports_pipeline_cache {
+                    wgpu::Features::PIPELINE_CACHE
+                } else {
+                    wgpu::Features::empty()
+                },
                 ..Default::default()
             })
             .await
@@ -135,7 +149,55 @@ impl WindowSurface {
 
         let target_view = create_target_view(&device, width, height);
         let blitter = create_blitter(&device, surface_config.format);
-        let renderer = VelloSceneRenderer::new(&device)?;
+
+        let disk_cache = supports_pipeline_cache
+            .then(|| {
+                pipeline_disk_cache::DiskPipelineCache::discover(
+                    &adapter_info,
+                    hayate_scene_renderer_vello::shader_set_fingerprint(),
+                )
+            })
+            .flatten();
+        let gpu_cache = disk_cache.as_ref().map(|dc| {
+            match dc.loaded_blob() {
+                Some(blob) => log::info!(
+                    "pipeline cache: hit ({} bytes, {})",
+                    blob.len(),
+                    dc.path().display()
+                ),
+                None => log::info!("pipeline cache: miss ({})", dc.path().display()),
+            }
+            // Safety: `data` は同一 adapter・同一キー（ドライバ/シェーダ指紋）で過去の
+            // `get_data()` が返した blob（ADR-0130b の load がキー検証済み）。万一無効でも
+            // `fallback: true` で wgpu が空キャッシュに落とす。
+            unsafe {
+                device.create_pipeline_cache(&wgpu::PipelineCacheDescriptor {
+                    label: Some("hayate-desktop-pipeline-cache"),
+                    data: dc.loaded_blob(),
+                    fallback: true,
+                })
+            }
+        });
+
+        let init_start = Instant::now();
+        let renderer =
+            VelloSceneRenderer::new_with_pipeline_cache(&device, gpu_cache.as_ref())?;
+        log::info!(
+            "vello renderer init: {:.0}ms (pipeline cache: {})",
+            init_start.elapsed().as_secs_f64() * 1000.0,
+            match &disk_cache {
+                Some(dc) if dc.loaded_blob().is_some() => "hit",
+                Some(_) => "miss",
+                None => "unavailable",
+            }
+        );
+
+        // 次回起動用に blob を永続化する（読めた blob と同一なら書かない）。
+        if let (Some(dc), Some(cache)) = (&disk_cache, &gpu_cache) {
+            if let Some(data) = cache.get_data() {
+                dc.persist(&data);
+            }
+        }
 
         Ok(Self {
             device,
