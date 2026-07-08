@@ -1,8 +1,11 @@
 //! `platform/` grouping doctrine のホスト可読契約（ADR-0117 / issue #454）。
 //!
 //! capability を「全 platform 共通 / family 共通 / leaf 固有」の三段階へ振り分ける規律と、
-//! その枠（`platform/common` ・ `platform/desktop`）を構造として固定する。Rust サンドボックス
-//! では desktop leaf を実体化できず、doctrine は本来ドキュメントなので、`*_packaging` /
+//! その枠（`platform/common`）と desktop の実態を構造として固定する。`platform/common` は
+//! いまも空の枠（capability 実装が 2 つ揃うまで crate 化しない）。`platform/desktop` は
+//! ADR-0118 で windowing leaf（`hayate-platform-desktop`）に着手して実 crate になったが、
+//! capability facade（audio 等）は依然 0 で「契約の正本は Core・空 facade を先置きしない」
+//! という ADR-0117 の芯は維持する。doctrine は本来ドキュメントなので、`*_packaging` /
 //! `*_encapsulation` と同じくソース／ドキュメント走査でフレームと doctrine を pin する。
 //!
 //! 本 crate（mobile Family Adapter）は doctrine に参加する唯一の既存 Family Adapter なので、
@@ -20,27 +23,76 @@ fn platform_root() -> PathBuf {
 }
 
 #[test]
-fn desktop_family_frame_exists_without_a_capability_trait() {
+fn desktop_is_a_windowing_leaf_crate_without_a_capability_facade() {
+    // ADR-0118 で desktop は **最初の windowing leaf**（`hayate-platform-desktop`）に着手した。
+    // よって desktop はもはや空の枠ではなく、winit window + vello/wgpu Surface + App Host tick を
+    // 束ねる実 crate である。ただし ADR-0117 の芯の規律 —— **capability facade（audio 等）は
+    // 先置きしない・契約（trait）の正本は常に Core** —— は維持される。この doctrine テストは
+    // 「crate 化した実態」と「capability facade は依然 0」の両方を同時に pin する。
     let desktop = platform_root().join("desktop");
     assert!(
         desktop.is_dir(),
-        "desktop family frame ディレクトリが存在しなければならない（前払いの枠）"
+        "desktop family frame ディレクトリが存在しなければならない"
     );
-    // 枠のみ。desktop は leaf 0 なので crate 化（Cargo.toml/src）も capability trait 定義もしない。
-    // trait は最初の desktop leaf 着手時に Core へ足す（空 facade / 空 trait を先置きしない）。
+
+    // windowing leaf 着手（ADR-0118）: desktop は Cargo.toml と src を持つ実 crate になった。
+    let manifest_path = desktop.join("Cargo.toml");
     assert!(
-        !desktop.join("Cargo.toml").exists(),
-        "desktop は枠であって crate ではない（空 facade を先置きしない・ADR-0117）"
+        manifest_path.exists(),
+        "desktop は ADR-0118 で windowing leaf に着手した実 crate（Cargo.toml を持つ）"
     );
     assert!(
-        !desktop.join("src").exists(),
-        "desktop は leaf も capability trait も持たない（src 無し）"
+        desktop.join("src").exists(),
+        "windowing leaf の実装ソース（src）が存在する"
     );
+
+    // crate は windowing Platform Front であって capability facade ではない: パッケージ名は
+    // `hayate-platform-desktop`、native window を開く `hayate-desktop` bin を持つ。
+    let manifest = fs::read_to_string(&manifest_path).expect("desktop/Cargo.toml を読める");
+    assert!(
+        manifest.contains("name = \"hayate-platform-desktop\""),
+        "desktop crate は windowing Platform Front `hayate-platform-desktop`"
+    );
+    assert!(
+        manifest.contains("hayate-desktop"),
+        "desktop crate は native window を開く `hayate-desktop` bin を持つ（windowing leaf）"
+    );
+
+    // 芯の規律の構造的 pin: capability の契約（trait）は Core 所有なので、desktop crate 側は
+    // capability trait（facade）を **一切定義しない**。src のどのソースにも `trait` 宣言が無いことで
+    // 「空 facade / capability trait を adapter 側に切らない」を固定する（ADR-0117）。
+    let mut trait_decls = Vec::new();
+    for entry in fs::read_dir(desktop.join("src")).expect("desktop/src を列挙できる") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+            continue;
+        }
+        let src = fs::read_to_string(&path).expect("desktop src file を読める");
+        for line in src.lines() {
+            let t = line.trim_start();
+            // doc/コメント行を除いた実コードの trait 宣言だけを拾う。
+            if !t.starts_with("//") && (t.starts_with("trait ") || t.starts_with("pub trait ")) {
+                trait_decls.push(format!("{}: {}", path.display(), t));
+            }
+        }
+    }
+    assert!(
+        trait_decls.is_empty(),
+        "desktop crate は capability trait/facade を定義しない（契約の正本は Core・ADR-0117）。\
+         見つかった trait 宣言: {trait_decls:?}"
+    );
+
+    // doctrine の文言も README で pin する: windowing leaf に着手したこと（ADR-0118）と、
+    // capability facade は依然 0・契約正本は Core であること。
     let readme =
         fs::read_to_string(desktop.join("README.md")).expect("desktop/README.md が doctrine を述べる");
     assert!(
-        readme.contains("leaf 0") || readme.contains("leaf が 0"),
-        "desktop README は leaf 0 の枠であることを明記する"
+        readme.contains("windowing leaf") && readme.contains("ADR-0118"),
+        "desktop README は ADR-0118 で windowing leaf に着手したことを明記する"
+    );
+    assert!(
+        readme.contains("capability facade") && readme.contains("0"),
+        "desktop README は capability facade が依然 0 であることを明記する"
     );
     assert!(
         readme.contains("Core"),
