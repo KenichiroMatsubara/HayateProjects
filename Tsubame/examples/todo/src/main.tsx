@@ -67,6 +67,10 @@ const host: Host =
             requestFrame: webHost.requestFrame,
             cancelFrame: webHost.cancelFrame,
           });
+          // e2e が Hayate のレイアウト正本（element_get_bounds / element_subtree_ids 等）を
+          // 照会するための debug seam。canvas は DOM から黒箱なので、レイアウト回帰の
+          // 数値アサートはこれを使う（e2e/canvas-gallery-section-overlap.spec.ts）。
+          (window as unknown as { __hayateRaw?: unknown }).__hayateRaw = webHost.raw;
           hayateRenderer.start();
           return hayateRenderer;
         },
