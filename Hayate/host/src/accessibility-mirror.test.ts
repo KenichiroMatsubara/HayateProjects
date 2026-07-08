@@ -259,6 +259,36 @@ describe('attachAccessibilityMirror', () => {
     expect(button.style.height).toBe('40px');
   });
 
+  it('positions nested bounded nodes relative to their bounded parent so absolute coords do not compound (#756)', () => {
+    // 退行防止（#756）: AccessKit bounds は content 絶対座標。ミラーは各ノードを DOM で親の
+    // **子として入れ子**にし、かつ全ノードを `position:absolute` にするため、子の `left/top` は
+    // 直近の位置指定祖先（＝親ノード）の padding box を基準に解決される。絶対座標をそのまま
+    // 載せると入れ子ごとにオフセットが**加算**され、深いノードほど描画位置が右下へずれる
+    // （AppBar「CSS Gallery」タブ: 実測 x0=663 が 588 の行に入れ子で 1251 に化ける）。
+    // 各ノードは「直近の bounds 持ち祖先」からの**相対**オフセットで配置しなければならない。
+    const { canvas, container } = mountCanvas();
+    const raw = fakeRawPolling(
+      treeUpdate(1, [
+        [1, node('window', { children: [10], bounds: { x0: 0, y0: 0, x1: 1280, y1: 720 } })],
+        [10, node('generic', { children: [12], bounds: { x0: 588, y0: 15, x1: 1280, y1: 49 } })],
+        [12, node('button', { label: 'CSS Gallery', bounds: { x0: 663, y0: 15, x1: 764, y1: 49 } })],
+      ]),
+    );
+    const mirror = attachAccessibilityMirror(raw, canvas);
+    mirror.poll();
+
+    const row = container.querySelector(`#${A11Y_NODE_ID_PREFIX}10`) as HTMLElement;
+    const button = container.querySelector(`#${A11Y_NODE_ID_PREFIX}12`) as HTMLElement;
+    // 行は window(@0,0) 直下 → 絶対 588,15 のまま。
+    expect(row.style.left).toBe('588px');
+    expect(row.style.top).toBe('15px');
+    // ボタンは行(@588,15)に入れ子 → 相対オフセット 75,0 を載せ、描画は真の 663,15 になる。
+    expect(button.style.left).toBe('75px');
+    expect(button.style.top).toBe('0px');
+    expect(button.style.width).toBe('101px');
+    expect(button.style.height).toBe('34px');
+  });
+
   it('reflects TreeUpdate.focus via aria-activedescendant on the mirror root (ADR-0124)', () => {
     const { canvas, container } = mountCanvas();
     // focus = 3（textInput）。

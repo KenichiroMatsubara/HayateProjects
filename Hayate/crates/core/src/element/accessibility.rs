@@ -168,6 +168,34 @@ fn build_node(el: &Element, bounds: (f32, f32, f32, f32), is_root: bool) -> Node
     node
 }
 
+/// IFC ルート `text` の accessible name を集約する（自身の `text` ＋ インライン子孫 `text` の連結）。
+///
+/// インライン text 要素（親が `text` の `text`）は box を持たず Taffy ノードも持たないため、
+/// [`walk_accessibility`] で独立 a11y ノードとして落ちる（geometry 無し・ADR-0063/0064）。文字列を
+/// インライン子に載せる経路（JSX `<text>{title}</text>` 由来のセクション見出し等）では、集約しないと
+/// IFC ルートの value が空になり accessible name が失われる（#756）。IFC ルートの accessible name は
+/// 「自身の text ＋ インライン子孫 text を文書順に連結したもの」でなければならない。
+fn ifc_accessible_text(tree: &ElementTree, id: ElementId) -> String {
+    fn collect(tree: &ElementTree, id: ElementId, out: &mut String) {
+        let Some(el) = tree.elements.get(&id) else {
+            return;
+        };
+        // text サブツリー（IFC）だけを辿る。非 text 子（block box）は独自の a11y ノードを持つので含めない。
+        if el.kind != ElementKind::Text {
+            return;
+        }
+        if let Some(t) = &el.text {
+            out.push_str(t);
+        }
+        for &child in &el.children {
+            collect(tree, child, out);
+        }
+    }
+    let mut out = String::new();
+    collect(tree, id, &mut out);
+    out
+}
+
 /// Canonical Tree を辿って AccessKit ノードを構築し、`id` のサブツリーから生成した
 /// トップレベルノードの id を返す（呼び出し側が子として接続できるように）。
 ///
@@ -201,6 +229,18 @@ fn walk_accessibility(
     };
 
     let mut node = build_node(el, (x, y, w, h), id == root_id);
+
+    // #756: IFC ルート text の accessible name に、box を持たず a11y ノードとして落ちるインライン
+    // 子孫 text の文字列を集約する。これがないと `<text>{title}</text>` 由来の見出し（文字列を
+    // インライン子に載せる経路）が accessible name 抜きで投影される。own-text 経路（自身の text）は
+    // 集約結果に自身の text が含まれるため不変。
+    if el.kind == ElementKind::Text {
+        let name = ifc_accessible_text(tree, id);
+        if !name.is_empty() {
+            node.set_value(name);
+        }
+    }
+
     let this_id = node_id(id);
 
     for &child in &el.children {
@@ -1167,6 +1207,79 @@ mod tests {
             .expect("input node");
         assert_eq!(input_node.role(), Role::TextInput);
         assert_eq!(input_node.value(), Some("hello"));
+    }
+
+    #[test]
+    fn accessibility_update_aggregates_inline_text_into_ifc_root_accessible_name() {
+        // #756 の付随観測: プレーン `text` 見出し（gallery のセクション見出し等）が accessible name
+        // 抜きで投影される問題。JSX `<text>{title}</text>` は IFC ルート text 自身の `text` を空のまま、
+        // 文字列を **インライン子 text**（親が text の text・box 無し・ADR-0063/0064）に載せる。その
+        // インライン子は Taffy ノードを持たず walk_accessibility に落とされる（geometry 無し）ため、
+        // 集約しないと IFC ルートの value（accessible name）が空になり、スクリーンリーダー／ミラーから
+        // 見出しの名前が消える。IFC ルートの accessible name は「自身の text ＋ インライン子孫 text の
+        // 連結」でなければならない。
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+
+        // 見出し: IFC ルート text（自身の text は空）。
+        let heading = tree.element_create(2, ElementKind::Text);
+        tree.element_append_child(root, heading);
+        // 文字列はインライン子 text が運ぶ（box 無し → a11y ノードとしては落ちる）。
+        let inline = tree.element_create(3, ElementKind::Text);
+        tree.element_append_child(heading, inline);
+        tree.element_set_text(inline, "Visual");
+        tree.render(0.0);
+
+        let update = tree.accessibility_update().expect("tree update");
+        let heading_node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(heading))
+            .map(|(_, n)| n)
+            .expect("IFC root heading node must be present");
+        assert_eq!(
+            heading_node.value(),
+            Some("Visual"),
+            "IFC root の accessible name はインライン子孫 text を集約して埋めなければならない",
+        );
+
+        // インライン子自体は box を持たず a11y ノードとしては落ちる（ADR-0063/0064・意図どおり）。
+        assert!(
+            !update.nodes.iter().any(|(id, _)| *id == node_id(inline)),
+            "box を持たないインライン text は独立 a11y ノードにしない（意図）",
+        );
+        assert_eq!(
+            tree.element_layout_rect(inline),
+            None,
+            "インライン text の element_get_bounds は box 無し（0,0,0,0）＝仕様（ADR-0063/0064）",
+        );
+    }
+
+    #[test]
+    fn accessibility_update_keeps_own_text_when_ifc_root_carries_its_own_string() {
+        // 回帰: IFC ルートが自身の text を直接持つ経路（`<text>` に setText）でも accessible name は
+        // 正しく出る。集約は「自身の text ＋ インライン子孫 text」なので own-text 経路を壊さない。
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(1, ElementKind::View);
+        tree.set_root(root);
+        tree.set_viewport(400.0, 300.0);
+        tree.element_set_style(root, &[StyleProp::Display(DisplayValue::Flex)]);
+        let heading = tree.element_create(2, ElementKind::Text);
+        tree.element_append_child(root, heading);
+        tree.element_set_text(heading, "Sizing");
+        tree.render(0.0);
+
+        let update = tree.accessibility_update().expect("tree update");
+        let heading_node = update
+            .nodes
+            .iter()
+            .find(|(id, _)| *id == node_id(heading))
+            .map(|(_, n)| n)
+            .expect("heading node");
+        assert_eq!(heading_node.value(), Some("Sizing"));
     }
 
     #[test]

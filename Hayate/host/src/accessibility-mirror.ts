@@ -253,14 +253,41 @@ export function attachAccessibilityMirror(
    * 書き換えがレイアウトを無効化するため、スクロール中はこの適用を間引く。
    */
   const applyBounds = (update: AccessKitTreeUpdate, at: number): void => {
+    // AccessKit bounds は content **絶対**座標。ミラーは a11y ツリーの親子を DOM の入れ子で
+    // 再現し（`applyStructure`）、bounds を持つ各ノードを `position:absolute` にする。すると子の
+    // `left/top` は直近の位置指定祖先（＝ bounds を持つ直近の祖先ノード）の padding box を基準に
+    // 解決されるため、絶対座標をそのまま載せると入れ子ごとにオフセットが**加算**され、深いノード
+    // ほど描画位置が右下へずれる（#756: AppBar「CSS Gallery」タブの x0=663 が 588 の行に入れ子で
+    // 1251 に化ける）。各ノードを「直近の bounds 持ち祖先」からの**相対**オフセットで配置して
+    // 加算を相殺し、実描画位置を真の絶対 bounds に一致させる。
+    //
+    // bounds を持たないノードは `position:absolute` にならない（下で continue）＝ containing block に
+    // ならないので、直近の位置指定祖先は「bounds を持つ直近の祖先」と厳密に一致する。よって
+    // ここでの原点探索は DOM の containing block 連鎖をそのまま辿る。
+    const boundsOf = new Map<number, AccessKitRect>();
+    const parentOf = new Map<number, number>();
+    for (const [id, node] of update.nodes) {
+      const b = node.properties?.bounds;
+      if (b) boundsOf.set(id, b);
+      for (const child of node.properties?.children ?? []) parentOf.set(child, id);
+    }
+    // `id` の配置基準となる、直近の bounds 持ち祖先の原点。無ければ (0,0)＝ミラー root（fixed・inset:0）。
+    const originOf = (id: number): { ox: number; oy: number } => {
+      for (let p = parentOf.get(id); p != null; p = parentOf.get(p)) {
+        const pb = boundsOf.get(p);
+        if (pb) return { ox: pb.x0, oy: pb.y0 };
+      }
+      return { ox: 0, oy: 0 };
+    };
     for (const [id, node] of update.nodes) {
       const bounds = node.properties?.bounds;
       if (!bounds) continue;
       const el = nodeEls.get(id);
       if (!el) continue;
+      const { ox, oy } = originOf(id);
       el.style.position = 'absolute';
-      el.style.left = `${bounds.x0}px`;
-      el.style.top = `${bounds.y0}px`;
+      el.style.left = `${bounds.x0 - ox}px`;
+      el.style.top = `${bounds.y0 - oy}px`;
       el.style.width = `${bounds.x1 - bounds.x0}px`;
       el.style.height = `${bounds.y1 - bounds.y0}px`;
     }
