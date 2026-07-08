@@ -45,8 +45,8 @@ impl ElementKind {
     pub fn base_layout_style(self) -> taffy::Style {
         match self {
             Self::Button => taffy::Style {
-                align_items: Some(taffy::AlignItems::Center),
-                justify_content: Some(taffy::JustifyContent::FlexStart),
+                align_items: Some(taffy::AlignItems::CENTER),
+                justify_content: Some(taffy::JustifyContent::FLEX_START),
                 ..taffy::Style::default()
             },
             // scroll-view 種別の UA デフォルト: CSS スクロールコンテナであり、DOM レンダラが

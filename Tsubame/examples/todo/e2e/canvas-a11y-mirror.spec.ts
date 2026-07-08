@@ -69,4 +69,39 @@ test.describe('Canvas a11y mirror — AI queries, drives, and re-asserts the can
     expect(textboxId, 'mirror textbox id').toBeTruthy();
     await expect(mirror).toHaveAttribute('aria-activedescendant', textboxId!);
   });
+
+  test('deep AppBar タブの矩形座標クリックが実描画位置に当たり画面遷移する（#756: 入れ子座標の加算回帰ガード）', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const editContextSupported = await page.evaluate(
+      () => typeof (globalThis as { EditContext?: unknown }).EditContext !== 'undefined',
+    );
+    test.skip(!editContextSupported, 'EditContext 非対応ブラウザ（Canvas モードに入れない）');
+
+    const canvas = page.locator('#canvas-stage');
+    await expect(canvas).toBeVisible();
+    const mirror = page.locator('[data-hayate-a11y]');
+    await expect(mirror).toHaveCount(1);
+
+    // #756 の回帰ガード: AppBar「CSS Gallery」タブは a11y ツリーの深い入れ子ノード。ミラーが各ノードを
+    // 絶対座標のまま `position:absolute` で入れ子配置すると、親のオフセットが加算され boundingBox が
+    // 実描画位置の右下へ大きくずれる（実測: 実描画 x0≈663 が 1251 に化ける）。座標クリックは実 canvas の
+    // 何もない所に落ち、タブは反応しない。ミラー矩形の中心をクリックして **実際に画面が切り替わる**
+    // ことを、CSS Gallery ページ固有の投影テキスト（セクション見出し "Visual"）の出現で証拠化する。
+    const galleryTab = mirror.getByRole('button', { name: 'CSS Gallery' });
+    await expect(galleryTab).toBeVisible();
+
+    // 遷移前は Tasks ページなので gallery 見出しは無い。
+    await expect(mirror.getByText('Visual', { exact: true })).toHaveCount(0);
+
+    const box = await galleryTab.boundingBox();
+    expect(box, 'CSS Gallery tab bounding box').not.toBeNull();
+    if (!box) return;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+    // クリックが実タブに当たっていれば CSS Gallery ページへ遷移し、セクション見出しがミラーに現れる。
+    // 座標が加算でずれていれば canvas の余白に落ち、遷移せずこの assert が落ちる（回帰を捕捉）。
+    await expect(mirror.getByText('Visual', { exact: true }).first()).toBeVisible();
+  });
 });

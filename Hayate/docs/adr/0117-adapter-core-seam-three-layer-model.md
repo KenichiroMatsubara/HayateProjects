@@ -2,6 +2,8 @@
 
 status: accepted
 
+> **更新（ADR-0118 / issue #757）**: 本 ADR 制定時「`desktop` は枠のみ（leaf 0、capability trait 未定義）」だったが、ADR-0118 が **最初の windowing leaf**（`hayate-platform-desktop` — winit window + vello/wgpu Surface + App Host tick）に着手したため、`platform/desktop/` は空の枠ではなく実 crate になった。ただし本 ADR の芯 —— **capability facade（audio 等）は依然 0・契約（trait）の正本は常に Core・空 facade を先置きしない** —— は不変。windowing は capability ではなく Platform Front（`Surface`/`PresentTarget` は Core 所有契約）なので、この着手は「trait を先置きしない」規律に抵触しない。doctrine テスト（`crates/platform/mobile/tests/grouping_doctrine.rs`）はこの実態に合わせて更新済み。以下の本文で `desktop` を「枠のみ / leaf 0」と述べる箇所はこの更新で読み替える。
+
 ## Context
 
 これまでアダプターは `adapters/{web,android,ios}` のフラット構成で、各 leaf が薄い直バインディング（ADR-0087/0114）だった。一方で「共通を Core 所有」の流れが進み、scroll 物理（ADR-0113）・edit model（ADR-0069）・Render Host/Font（ADR-0068）が Core / 共有層へ寄ってきた。

@@ -3,12 +3,13 @@
 pub use crate::{
     geometry::{Line, Rect, Size},
     style::{
-        AlignContent, AlignItems, AlignSelf, AvailableSpace, BoxSizing, Dimension, Display, JustifyContent,
-        JustifyItems, JustifySelf, LengthPercentage, LengthPercentageAuto, Position, Style,
+        AlignContent, AlignContentKeyword, AlignItems, AlignItemsKeyword, AlignSelf, AlignmentSafety, AvailableSpace,
+        BoxSizing, CompactLength, Dimension, Display, JustifyContent, JustifyItems, JustifySelf, LengthPercentage,
+        LengthPercentageAuto, Position, Style,
     },
     style_helpers::{
-        auto, fit_content, length, max_content, min_content, percent, zero, FromFlex, FromLength, FromPercent,
-        TaffyAuto, TaffyFitContent, TaffyMaxContent, TaffyMinContent, TaffyZero,
+        auto, fit_content, length, max_content, min_content, percent, zero, FromFr, FromLength, FromPercent, TaffyAuto,
+        TaffyFitContent, TaffyMaxContent, TaffyMinContent, TaffyZero,
     },
     tree::{Layout, LayoutPartialTree, NodeId, PrintTree, RoundTree, TraversePartialTree, TraverseTree},
 };
@@ -18,8 +19,8 @@ pub use crate::style::{FlexDirection, FlexWrap};
 
 #[cfg(feature = "grid")]
 pub use crate::style::{
-    GridAutoFlow, GridPlacement, GridTrackRepetition, MaxTrackSizingFunction, MinTrackSizingFunction,
-    NonRepeatedTrackSizingFunction, TrackSizingFunction,
+    GridAutoFlow, GridPlacement, GridTemplateComponent, MaxTrackSizingFunction, MinTrackSizingFunction,
+    RepetitionCount, TrackSizingFunction,
 };
 #[cfg(feature = "grid")]
 pub use crate::style_helpers::{

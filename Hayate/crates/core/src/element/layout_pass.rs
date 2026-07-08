@@ -243,15 +243,17 @@ impl LayoutPass {
         // ルートに明示された px Length 値はそのまま残す。
         if let Ok(mut style) = self.projection.taffy.style(root_taffy).cloned() {
             let mut changed = false;
-            if !matches!(root_source_size.width, TaffyDim::Length(_)) {
-                let pinned = TaffyDim::Length(viewport.0);
+            // taffy 0.12 で `Dimension` は不透明化し enum variant マッチ不可。定 Length（px）かは
+            // `into_option()`（Length のみ Some）で判定する。
+            if root_source_size.width.into_option().is_none() {
+                let pinned = TaffyDim::length(viewport.0);
                 if style.size.width != pinned {
                     style.size.width = pinned;
                     changed = true;
                 }
             }
-            if !matches!(root_source_size.height, TaffyDim::Length(_)) {
-                let pinned = TaffyDim::Length(viewport.1);
+            if root_source_size.height.into_option().is_none() {
+                let pinned = TaffyDim::length(viewport.1);
                 if style.size.height != pinned {
                     style.size.height = pinned;
                     changed = true;
