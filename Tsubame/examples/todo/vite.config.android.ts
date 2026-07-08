@@ -20,7 +20,7 @@ export default defineConfig({
   build: {
     // Hermes は匿名 class 式（`var X = class {}`）を正しく評価できないため、ビルド後に
     // scripts/lower-for-hermes.mjs（Babel preset-env）で class/modern 構文を ES5 相当へ
-    // 降格する（build:android スクリプト, ADR-0112）。vite の target はここでは通常値。
+    // 降格する（torimi:native:build スクリプト, ADR-0112）。vite の target はここでは通常値。
     target: 'es2020',
     outDir: 'dist-android',
     emptyOutDir: true,

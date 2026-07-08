@@ -2,7 +2,7 @@
 // Hermes は匿名 class 式（var X = class{}）を正しく評価できない（device で undefined 化）。
 // preset-env で class/arrow/spread/?? 等を ES5 相当へ transpile し、class キーワードを消す。
 //
-// 各 example の `build:android` から `node ../../scripts/lower-for-hermes.mjs <bundle path>` で
+// 各 example の `torimi:native:build` から `node ../../scripts/lower-for-hermes.mjs <bundle path>` で
 // 呼ぶ共有ステップ（#739：solid ローカルコピーから共有化）。対象パスは呼び出し元パッケージの
 // cwd 起点で解決する。@babel 依存は tsubame-monorepo（Tsubame/package.json）が持つ。
 import { readFileSync, writeFileSync } from 'node:fs';

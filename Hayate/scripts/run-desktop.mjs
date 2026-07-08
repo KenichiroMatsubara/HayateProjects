@@ -7,9 +7,9 @@
 // それを避けるため、ビルド前に残存プロセスを終了する（無ければ無視）。
 //
 // 使い方:
-//   npm run desktop                 # ビルドして窓を起動（既定 RUST_LOG=info）
-//   npm run desktop -- --release    # release ビルドで起動
-//   npm run desktop:build           # ビルドのみ（起動しない・CI/動作確認向け）
+//   npm run hayate:desktop:run              # ビルドして窓を起動（既定 RUST_LOG=info）
+//   npm run hayate:desktop:run -- --release # release ビルドで起動
+//   npm run hayate:desktop:build            # ビルドのみ（起動しない・CI/動作確認向け）
 import { spawnSync } from "node:child_process";
 
 const argv = process.argv.slice(2);

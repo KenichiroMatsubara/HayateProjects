@@ -55,7 +55,7 @@ describe('release lockstep workflow (ADR-0003)', () => {
     const runs = deploy.steps.map((step) => String(step['run'] ?? ''));
 
     // デモバンドルは demo-endpoint の build:demos が demos.json（solid / react の正本）を
-    // 読んで各パッケージの build:android を回す — ワークフローにデモ一覧を複製しない。
+    // 読んで各パッケージの torimi:native:build を回す — ワークフローにデモ一覧を複製しない。
     expect(runs.some((run) => run.includes('build:demos'))).toBe(true);
 
     // デプロイは wrangler（demo-endpoint の deploy スクリプト）。

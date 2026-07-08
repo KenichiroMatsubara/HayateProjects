@@ -51,18 +51,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # ── デモバンドルの workspace 依存を組み立てる（deploy-pages.yml と同じ順序）─────────
-      # example の build:android は @hayate/host / Tsubame packages の dist を import する。
-      # Android バンドルはネイティブホスト前提なので WASM ビルドは要らない。
+      # example の torimi:native:build は @hayate/host / Tsubame packages の dist を import する。
+      # Native Host バンドルはネイティブホスト前提なので WASM ビルドは要らない。
       - name: Build @hayate/host
         run: pnpm --filter @hayate/host build
 
       - name: Build Tsubame packages
         run: pnpm --filter "./Tsubame/packages/*" build
 
-      # ── デモバンドル：solid / react の build:android（Hermes 降格済み）────────────────
+      # ── デモバンドル：solid / react の torimi:native:build（Hermes 降格済み）────────────
       # デモ一覧の正本は demo-endpoint の demos.json。build:demos がそれを読んで各パッケージの
-      # build:android を回し、成果物を public/ に集める — ワークフローにデモ一覧を複製しない。
-      - name: Build demo bundles (solid / react build:android)
+      # torimi:native:build を回し、成果物を public/ に集める — ワークフローにデモ一覧を複製しない。
+      - name: Build demo bundles (solid / react torimi:native:build)
         run: pnpm --filter "$DEMO_ENDPOINT_FILTER" run build:demos
 
       # ── デプロイ：静的アセット（public/）＋ Worker を wrangler で Demo Endpoint へ ─────

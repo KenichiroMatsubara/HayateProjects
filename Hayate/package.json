@@ -7,8 +7,8 @@
   "scripts": {
     "build": "node scripts/build-wasm.mjs",
     "build:all": "node scripts/build-wasm.mjs --all",
-    "desktop": "node scripts/run-desktop.mjs",
-    "desktop:build": "node scripts/run-desktop.mjs --build-only",
+    "hayate:desktop:run": "node scripts/run-desktop.mjs",
+    "hayate:desktop:build": "node scripts/run-desktop.mjs --build-only",
     "check": "cargo check -p hayate-core -p hayate-adapter-web --target wasm32-unknown-unknown",
     "check:fonts": "node scripts/check-font-urls.mjs",
     "test:fonts": "node --test scripts/*.test.mjs",

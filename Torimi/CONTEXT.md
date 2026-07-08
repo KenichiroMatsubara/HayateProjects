@@ -10,9 +10,13 @@
 事前ビルド済みのネイティブホストに、Tsubame Adapter の JS バンドルをネットワーク経由で流し込んで実行・プレビューする dev-client App。フレームワーク非依存で、solid / react / vue のいずれのアプリも*別のバンドル*として同一ホストで動かす。Expo Go と同じ立ち位置（ホストは再ビルドせず、バンドルだけ差し替える）。
 _Avoid_: Tsubame Viewer（Tsubame context の一部だと誤読される）, フレームワーク, ランタイム, example ギャラリー
 
-**Host（Torimi ホスト）**:
-端末側に常駐する事前ビルド済みシェル。JS エンジン（Hermes）・ネイティブ Hayate・`RawHayate` ブリッジ・frame clock（host bootstrap）だけを提供し、**フレームワークも `@tsubame/renderer-canvas` も持たない**。ADR-0112 の `hayate-adapter-android` cdylib 能力を*再利用*する（複製しない）。
-_Avoid_: フレームワークをホストに焼き込む設計, renderer-canvas をホスト側に置く設計
+**Host（Torimi ホスト／Native Host）**:
+端末側に常駐する事前ビルド済みシェル。JS エンジン（Hermes）・ネイティブ Hayate・`RawHayate` ブリッジ・frame clock（host bootstrap）だけを提供し、**フレームワークも `@tsubame/renderer-canvas` も持たない**。ADR-0112 の `hayate-adapter-android` cdylib 能力を*再利用*する（複製しない）。Web Host と対をなすホスト種別の一方で、無印の「ホスト」はこちら（ネイティブ）を指す。消費する App Bundle は **Hermes 用に降格済み**でなければならない点が Web Host との差。ホスト種別の軸は OS（Android / iOS）とは別軸 — 現行実装が Android のみなのは実装状況であって、Native Host の定義は OS を固定しない。
+_Avoid_: フレームワークをホストに焼き込む設計, renderer-canvas をホスト側に置く設計, Android Host（OS 軸との混同 — Native Host の現行実装が Android というだけ）
+
+**Web Host（Torimi Web ホスト）**:
+ブラウザ上で App Bundle を実行するもう一方のホスト種別（`@torimi/host-web`）。Dev Server からバンドルを fetch → eval し、protocol handshake の後、host bootstrap を mount に渡す。Native Host と同じ Dev Server 契約・同じ mount 契約（`__torimiMount`）を見るが、消費するバンドルは **es2020 のまま**（Hermes 降格不要）で、Native Host 用バンドルとは**別成果物**。E2E テストと開発機上の即時確認が主用途。
+_Avoid_: Hayate の HTML Mode との混同, DOM Renderer 経路との混同（Web Host は Hayate Renderer 経路のホスト）, Native Host 用の降格済みバンドルを流用する運用
 
 **App Bundle（アプリバンドル）**:
 Torimi に流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid / react / vue ランタイム）＋ `@tsubame/renderer-canvas` を 1 つにまとめたもの。ホストは中身のフレームワークを解さず、`RawHayate` を満たす JS として実行するだけ。Hayabusa（WASM／ネイティブ）は**現行（Hermes/JSI 直結・非 webview）ルートの**バンドル対象外（現ルートでは iOS で配って実行できない）。ただしこれは**恒久ではない** — Hayabusa 自体がまだ未完成のため未来の話だが、WebView+wasm ルート（ADR-0121：webview 上の canvas に wasm を wgpu 描画・IME はネイティブ API・native は wasm→js→native ブリッジ）を使えば、**原理的には iOS でも Hayabusa を載せられる**。
