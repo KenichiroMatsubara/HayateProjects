@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- cleartext（平文 http）を許可する（ADR-0002・#740）。
+<!-- cleartext（平文 http）を許可する（Torimi ADR-0002・#740）。
 
      このアプリは Expo Go と同型の dev client：QR スキャンで LAN 上の dev-server
      （http://192.168.x.x:5179 等）へ平文 http で繋ぐのが release 配布版を含む一級機能。
      networkSecurityConfig は IP レンジ（192.168.0.0/16 等）を表現できないため、
      「LAN だけ許可」は設定では書けず、Expo Go と同じく全面許可が唯一の現実解。
-     公開 Demo Endpoint（ADR-0003）は HTTPS で、OS スタック（HttpURLConnection）が
+     公開 Demo Endpoint（Torimi ADR-0003）は HTTPS で、OS スタック（HttpURLConnection）が
      TLS を担う（こちらは配信側が HTTP を 301 で HTTPS へ誘導するので平文にならない）。 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="true" />
