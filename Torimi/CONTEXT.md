@@ -26,6 +26,10 @@ _Avoid_: フレームワークをバンドルから除く設計, 現行ルート
 開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
 _Avoid_: ホスト側に FW 固有 fast-refresh を持たせる設計
 
+**Torimi CLI（`torimi`）**:
+外部アプリの開発ループを 1 コマンドに束ねるオーケストレータ。npm の**無スコープパッケージ `torimi`**（bin も `torimi`、設定は `torimi.config.*`）で、Expo における `expo` コマンドと同じ立ち位置。アプリが宣言したビルドコマンドを watch 付きで回し、ターゲットに応じた降格（Hermes 用 lowering はターゲット固有＝CLI の責務）を施し、`@torimi/dev-server` による配信・reload・QR まで面倒を見る。**FW もビルドツールも解さない**（ビルドコマンドは不透明な設定値）— FW 知識は Tsubame 側の preset に、配信は下層の Dev Server に、それぞれ隔離されたままにする。
+_Avoid_: CLI がバンドラ・FW プラグインを内蔵する Expo/metro 型の理解, `@torimi/dev-server` との同一視（CLI はその上のオーケストレーション層）, Tsubame 所属のツールとする理解（FW 非依存であり所属は Torimi）
+
 **Demo Endpoint（デモ配信点）**:
 テスター・審査者向けに、ビルド済みデモ App Bundle と Demo Manifest を常時 HTTPS 配信する公開点。watch もビルドも行わず、reload シグナルも発しない（WS は受けて保持するだけ）点で Dev Server とは**別物**。Play 配布ホストの既定接続先であり、開発機の稼働と無関係に「いつでも」応答する。
 _Avoid_: Dev Server と混同（Dev Server は開発機上で watch して動くツール）, main 追従の自動更新（配信物はリリースと lockstep・ADR-0003）
