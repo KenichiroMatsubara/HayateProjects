@@ -222,22 +222,15 @@ fn the_app_declares_internet_access_and_the_network_security_config() {
 }
 
 #[test]
-fn cleartext_is_scoped_to_lan_dev_and_https_is_the_default() {
+fn cleartext_is_permitted_for_lan_dev_like_expo_go() {
     let config = network_security_config_src();
-    // 既定は https（base-config で cleartext を禁じる）。
+    // このアプリは Expo Go と同型の dev client：実機から LAN の dev-server（http://192.168.x.x）
+    // へ平文で繋ぐのが release 配布版を含む一級機能（Torimi ADR-0002）。networkSecurityConfig は
+    // IP レンジ（192.168.0.0/16 等）を表現できず「LAN だけ許可」は設定で書けないため、Expo Go の
+    // Play 配布版と同じく base-config で cleartext を全面許可する。公開 Demo Endpoint 側が HTTPS
+    // であること（配信側が enforce）は変わらない。
     assert!(
-        config.contains("<base-config cleartextTrafficPermitted=\"false\""),
-        "cleartext must be off by default"
+        config.contains("<base-config cleartextTrafficPermitted=\"true\""),
+        "cleartext must be permitted so real devices can reach the LAN dev-server over http"
     );
-    // LAN dev（エミュレータ loopback / 端末 loopback）だけ平文 http を明示許可する。
-    assert!(
-        config.contains("cleartextTrafficPermitted=\"true\""),
-        "LAN dev must keep an explicit cleartext allowance"
-    );
-    for dev_host in ["10.0.2.2", "localhost", "127.0.0.1"] {
-        assert!(
-            config.contains(dev_host),
-            "the cleartext allowance must cover the {dev_host} dev host"
-        );
-    }
 }
