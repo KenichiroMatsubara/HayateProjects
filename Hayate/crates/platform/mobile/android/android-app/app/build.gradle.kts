@@ -25,7 +25,7 @@ android {
         // GameActivity / GameTextInput supported floor (ADR-0094).
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
+        versionCode = 3
         versionName = "0.1.0"
         // wgpu uses Vulkan on Android; ship arm64-v8a only for now.
         ndk { abiFilters += "arm64-v8a" }
