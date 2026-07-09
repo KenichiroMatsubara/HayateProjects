@@ -19,9 +19,16 @@
 
     "torimi:native:dev":      "pnpm --filter @tsubame/example-todo run torimi:native:dev",
     "torimi:web:dev":         "pnpm --filter @tsubame/example-todo run torimi:web:dev",
-    "torimi:android:install": "pnpm --filter hayate run torimi:android:install"
+    "torimi:android:install": "pnpm --filter hayate run torimi:android:install",
+
+    "changeset":              "changeset",
+    "version:packages":       "changeset version",
+    "check:wasm-not-stub":    "node scripts/check-wasm-not-stub.mjs",
+    "release":                "node scripts/check-wasm-not-stub.mjs && changeset publish",
+    "release:dry-run":        "node scripts/check-wasm-not-stub.mjs && pnpm -r publish --dry-run --no-git-checks"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.7",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   },

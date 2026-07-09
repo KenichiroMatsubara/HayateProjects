@@ -1,0 +1,33 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@hayate/adapter-web",
+      "@hayate/adapter-web-cpu",
+      "@hayate/adapter-web-vello-cpu",
+      "@hayate/host",
+      "@hayate/protocol-spec",
+      "@torimi/bundle",
+      "@torimi/dev-server",
+      "@torimi/dev-server-contract",
+      "@torimi/host-web",
+      "@torimi/protocol-handshake",
+      "@tsubame/app",
+      "@tsubame/hayate-css-catalog",
+      "@tsubame/protocol-generated",
+      "@tsubame/react",
+      "@tsubame/renderer-dom",
+      "@tsubame/renderer-hayate",
+      "@tsubame/renderer-protocol",
+      "@tsubame/solid",
+      "torimi"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}

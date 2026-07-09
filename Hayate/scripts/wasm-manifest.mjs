@@ -128,6 +128,12 @@ export const GITIGNORE_CONTENTS = '*\n!package.json\n';
 // .js), so Rolldown failed to resolve the dynamic import('hayate-adapter-web-cpu')
 // in the Pages demo build. Naming each dir after its npmName removes the
 // collision so every alias links straight to its source dir.
+// 手元 publish を拒否するガード（ADR-0007 §4）。publish は GitHub Actions のリリース
+// ワークフロー一本で、GITHUB_ACTIONS 環境変数が無い場所からの publish は fail-closed で止める。
+// パス非依存にするためインライン node で書く（公開パッケージ全体で同一文字列）。
+export const CI_ONLY_PUBLISH_GUARD =
+  "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"";
+
 export function packageJsonFor(target, manifest) {
   void manifest;
   return `${JSON.stringify(
@@ -145,7 +151,9 @@ export function packageJsonFor(target, manifest) {
       // publishConfig.access "public", ADR-0007) or a test-only backend kept
       // out of publish entirely (pkg-null → private). The manifest's `private`
       // flag is the single source of truth for that split.
-      ...(target.private ? { private: true } : { publishConfig: { access: 'public' } }),
+      ...(target.private
+        ? { private: true }
+        : { publishConfig: { access: 'public' }, scripts: { prepublishOnly: CI_ONLY_PUBLISH_GUARD } }),
       files: ['hayate_adapter_web_bg.wasm', 'hayate_adapter_web.js', 'hayate_adapter_web.d.ts'],
       main: 'hayate_adapter_web.js',
       types: 'hayate_adapter_web.d.ts',

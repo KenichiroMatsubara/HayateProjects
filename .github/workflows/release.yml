@@ -1,0 +1,122 @@
+name: Release (npm lockstep)
+
+# npm α配布のリリース列車（ADR-0007）。publish は GitHub Actions 一本、手元 publish 禁止。
+#   - PR / 手動: dry-run ジョブが Rust → wasm 実ビルド → スタブ検査 → JS ビルド →
+#     `pnpm -r publish --dry-run`（publish 直前まで）を回して常時緑にする。NPM_TOKEN 不要。
+#   - main への push: changesets/action が version PR を作成/更新し、その PR が merge されたら
+#     （＝保留 changeset が無くなったら）`pnpm release`（スタブ検査 → changeset publish）で
+#     npm provenance 付き publish する。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - '**/package.json'
+      - '.changeset/**'
+      - 'Hayate/scripts/wasm-build-manifest.json'
+      - 'scripts/check-wasm-not-stub*.mjs'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 常時緑の検証: publish 直前まで全部回して止まる（NPM_TOKEN 未登録でも通る）。
+  dry-run:
+    name: Release dry-run (wasm → stub check → build → publish --dry-run)
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust (wasm32 target)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build WASM (all manifest targets → real artifacts)
+        env:
+          RUSTFLAGS: ''
+        run: pnpm --filter hayate run build:all
+
+      - name: Build the JS publish closure
+        run: pnpm -r --filter "!hayate" --filter "!tsubame-monorepo" --filter "!./Tsubame/examples/*" run build
+
+      # スタブ検査 → `pnpm -r publish --dry-run`。スタブが残っていれば fail-closed で止まる。
+      - name: Release dry-run (stub check + pnpm publish --dry-run)
+        run: pnpm run release:dry-run
+
+  # main への push: version PR の作成/更新、または（version PR merge 後）実 publish。
+  publish:
+    name: Version PR / publish
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust (wasm32 target)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # wasm を実ビルドしてから publish 判定に入る。changesets/action が publish を走らせる
+      # のは「保留 changeset が無い＝version PR が merge された」ときだけ（それ以外は version PR
+      # を作成/更新して終わる）ので、その publish が本物の wasm を掴めるよう先にビルドしておく。
+      - name: Build WASM (all manifest targets → real artifacts)
+        env:
+          RUSTFLAGS: ''
+        run: pnpm --filter hayate run build:all
+
+      - name: Build the JS publish closure
+        run: pnpm -r --filter "!hayate" --filter "!tsubame-monorepo" --filter "!./Tsubame/examples/*" run build
+
+      - name: Create Version PR or publish (changesets)
+        uses: changesets/action@v1
+        with:
+          version: pnpm run version:packages
+          publish: pnpm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

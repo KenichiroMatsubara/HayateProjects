@@ -17,6 +17,7 @@
   },
   "files": ["dist"],
   "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",

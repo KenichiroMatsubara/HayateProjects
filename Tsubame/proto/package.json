@@ -31,6 +31,7 @@
     }
   },
   "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "generate": "node generator/generate.mjs",
     "prebuild": "pnpm run generate",
     "build": "tsup",

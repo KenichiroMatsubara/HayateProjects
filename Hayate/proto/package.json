@@ -21,6 +21,7 @@
     "./load": "./scripts/load-spec.mjs"
   },
   "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "validate": "node scripts/validate-spec.mjs"
   },
   "devDependencies": {

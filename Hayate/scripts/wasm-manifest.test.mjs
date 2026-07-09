@@ -120,6 +120,10 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
     license: 'Apache-2.0',
     repository: { type: 'git', url: 'https://github.com/KenichiroMatsubara/HayateProjects' },
     publishConfig: { access: 'public' },
+    scripts: {
+      prepublishOnly:
+        "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
+    },
     files: ['hayate_adapter_web_bg.wasm', 'hayate_adapter_web.js', 'hayate_adapter_web.d.ts'],
     main: 'hayate_adapter_web.js',
     types: 'hayate_adapter_web.d.ts',
