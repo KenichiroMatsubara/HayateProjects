@@ -1,7 +1,7 @@
 // Torimi 最小 dev server の起動ラッパ（e2e / ローカル用）。
 //
 // full reload ループ（ADR-0001）を端から端まで繋ぐ：
-//   1. `vite build --watch` で main.torimi.tsx をソース変更ごとに再ビルドし、単一 App Bundle
+//   1. `vite build --watch` で main.bundle.tsx をソース変更ごとに再ビルドし、単一 App Bundle
 //      （dist-torimi/bundle.js）を更新し続ける（ビルドは外部の責務）。
 //   2. `@torimi/dev-server` がその bundle を HTTP 配信し、bundle の更新を watch して
 //      接続中のホストに WS で `reload` を送る（FW/ビルドツール非依存）。

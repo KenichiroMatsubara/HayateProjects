@@ -2,9 +2,9 @@
 //
 // Android ホスト（事前ビルド済みネイティブシェル）は dev-server から `/bundle.js` を
 // 実行時 fetch し、埋め込み Hermes で eval する（bundle_source.rs / Torimi CONTEXT.md）。
-// そのため配信する App Bundle は **Hermes 用に降格済み**（main.android.tsx → vite build →
+// そのため配信する App Bundle は **Hermes 用に降格済み**（main.bundle.tsx → vite build →
 // lower-for-hermes）でなければならない。Web ホスト用の `torimi-dev-server.mjs`（es2020 の
-// main.torimi.tsx）とは配信物が異なる点が要点。
+// main.bundle.tsx）とは配信物が異なる点が要点。
 //
 // full reload ループ（Torimi ADR-0001）を端から端まで繋ぐ：
 //   1. ソース（src/）を watch し、変更ごとに `torimi:native:build`（vite build + Hermes 降格）を

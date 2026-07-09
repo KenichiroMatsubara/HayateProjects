@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 // Torimi react App Bundle（#531：FW 非依存の実証）向けの単一ファイルバンドル。
 //
 // ブラウザ用 `vite.config.ts` と同じ React automatic runtime（`jsxImportSource` を
-// `@tsubame/react` に向ける）を使いつつ、エントリを `main.torimi.tsx` にし、DOM/HTML を
+// `@tsubame/react` に向ける）を使いつつ、エントリを全ターゲット共通の `main.bundle.tsx`（#767）にし、DOM/HTML を
 // 伴わない単一の IIFE として出力する。生成物（`dist-torimi/bundle.js`）を Torimi
 // dev-server が HTTP 配信し、Web ホストが fetch → eval して `globalThis.__torimiMount` を拾う。
 //
@@ -31,7 +31,7 @@ export default defineConfig({
     // デバッグしやすさ優先で非圧縮。
     minify: false,
     lib: {
-      entry: fileURLToPath(new URL('./src/main.torimi.tsx', import.meta.url)),
+      entry: fileURLToPath(new URL('./src/main.bundle.tsx', import.meta.url)),
       formats: ['iife'],
       name: 'TsubameReactTodoTorimi',
       fileName: () => 'bundle.js',

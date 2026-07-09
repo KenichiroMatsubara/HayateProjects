@@ -1,0 +1,39 @@
+{
+  "name": "@torimi/bundle",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bundle Registration — App Bundle 側の合成ルート。アプリは registerTorimiApp(mount) を呼ぶ全ターゲット共通の 1 エントリだけを書き、protocol version 焼き込み・mount seam（__torimiMount / __tsubame）・native prelude といった wire 契約の配線はこのパッケージが隠す。ターゲット差は __hayateHost の有無でランタイム内部分岐する（ADR-0008 §4 / CONTEXT.md「Bundle Registration」）。",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@hayate/host": "workspace:*",
+    "@torimi/protocol-handshake": "workspace:*",
+    "@tsubame/app": "workspace:*",
+    "@tsubame/renderer-hayate": "workspace:*"
+  },
+  "devDependencies": {
+    "@torimi/host-web": "workspace:*",
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "vitest": "^3.2.0"
+  }
+}

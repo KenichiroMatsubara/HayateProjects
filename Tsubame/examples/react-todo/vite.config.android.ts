@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 
 // Android（埋め込み Hermes, ADR-0112）向けの単一ファイルバンドル（react 版, #739）。
 //
-// solid 版（`examples/todo/vite.config.android.ts`）と同型：エントリを `main.android.tsx` に
+// solid 版（`examples/todo/vite.config.android.ts`）と同型：エントリを全ターゲット共通の `main.bundle.tsx`（#767）に
 // し、DOM/HTML を伴わない単一の IIFE として出力する。生成物（`dist-android/tsubame.js`）を
 // Torimi Android ホストがネットワーク fetch して Hermes へロードする。JSX 変換はブラウザ用
 // `vite.config.ts` と同じ automatic runtime（`jsxImportSource` → `@tsubame/react`）。
@@ -29,7 +29,7 @@ export default defineConfig({
     // デバッグしやすさ優先で非圧縮。サイズ最適化は後段（hermesc/リリース）で。
     minify: false,
     lib: {
-      entry: fileURLToPath(new URL('./src/main.android.tsx', import.meta.url)),
+      entry: fileURLToPath(new URL('./src/main.bundle.tsx', import.meta.url)),
       formats: ['iife'],
       name: 'TsubameReactTodoAndroid',
       fileName: () => 'tsubame.js',

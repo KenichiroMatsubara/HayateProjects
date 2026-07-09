@@ -72,10 +72,14 @@ describe('release lockstep workflow (ADR-0003)', () => {
     const bundleBuildIndex = runs.findIndex((run) => run.includes('build:demos'));
     const hostBuildIndex = runs.findIndex((run) => run.includes('@hayate/host'));
     const tsubameBuildIndex = runs.findIndex((run) => run.includes('./Tsubame/packages/*'));
+    // 単一エントリ（#767）は `@torimi/bundle` の dist を import する — これも build:demos より先。
+    const torimiBundleBuildIndex = runs.findIndex((run) => run.includes('@torimi/bundle'));
     expect(hostBuildIndex).toBeGreaterThanOrEqual(0);
     expect(tsubameBuildIndex).toBeGreaterThanOrEqual(0);
+    expect(torimiBundleBuildIndex).toBeGreaterThanOrEqual(0);
     expect(hostBuildIndex).toBeLessThan(bundleBuildIndex);
     expect(tsubameBuildIndex).toBeLessThan(bundleBuildIndex);
+    expect(torimiBundleBuildIndex).toBeLessThan(bundleBuildIndex);
   });
 
   it('documents the required Cloudflare secrets and how to register them in the demo-endpoint README', () => {

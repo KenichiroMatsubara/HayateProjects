@@ -16,11 +16,12 @@
   },
   "dependencies": {
     "@hayate/host": "workspace:*",
+    "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",
     "@tsubame/app": "workspace:*",
     "@tsubame/react": "workspace:*",
-    "@tsubame/renderer-hayate": "workspace:*",
     "@tsubame/renderer-dom": "workspace:*",
+    "@tsubame/renderer-hayate": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
     "react": "^19.1.0",
     "react-reconciler": "^0.32.0"
