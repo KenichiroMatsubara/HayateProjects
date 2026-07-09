@@ -80,6 +80,22 @@ describe('release lockstep workflow (ADR-0003)', () => {
     expect(hostBuildIndex).toBeLessThan(bundleBuildIndex);
     expect(tsubameBuildIndex).toBeLessThan(bundleBuildIndex);
     expect(torimiBundleBuildIndex).toBeLessThan(bundleBuildIndex);
+
+    // build:demos は各デモの `torimi build native`（torimi CLI の bin）を回す。CLI の bin 実体
+    // （dist/cli.js）は fresh clone では最初の install 時点で未ビルドで、pnpm は bin ターゲットが
+    // 無いと `.bin/torimi` の作成を黙ってスキップする。よって CLI ビルドと、その後の bin 張り直し
+    // （demo パッケージの node_modules を落として再 install）は build:demos より前になければ
+    // build:demos が `torimi: not found` で落ちる。この順序を構造で固定する。
+    const cliBuildIndex = runs.findIndex((run) => run.includes('torimi...'));
+    const relinkIndex = runs.findIndex(
+      (run) => run.includes('Tsubame/examples/*/node_modules') && run.includes('pnpm install'),
+    );
+    expect(cliBuildIndex, 'the Torimi CLI must be built for build:demos').toBeGreaterThanOrEqual(0);
+    expect(relinkIndex, 'the demo bins must be re-linked after the CLI build').toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(cliBuildIndex).toBeLessThan(relinkIndex);
+    expect(relinkIndex).toBeLessThan(bundleBuildIndex);
   });
 
   it('documents the required Cloudflare secrets and how to register them in the demo-endpoint README', () => {
