@@ -91,6 +91,34 @@ importers:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
 
+  Torimi/cli:
+    dependencies:
+      '@babel/core':
+        specifier: ^8.0.1
+        version: 8.0.1
+      '@babel/preset-env':
+        specifier: ^8.0.2
+        version: 8.0.2(@babel/core@8.0.1)
+      '@torimi/dev-server':
+        specifier: workspace:*
+        version: link:../dev-server
+    devDependencies:
+      '@types/babel__core':
+        specifier: ^7.20.5
+        version: 7.20.5
+      '@types/node':
+        specifier: ^22.19.0
+        version: 22.19.19
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.2.0
+        version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)
+
   Torimi/demo-endpoint:
     dependencies:
       '@torimi/dev-server-contract':
@@ -287,15 +315,15 @@ importers:
       '@playwright/test':
         specifier: ^1.61.0
         version: 1.61.0
-      '@torimi/dev-server':
-        specifier: workspace:*
-        version: link:../../../Torimi/dev-server
       '@types/react':
         specifier: ^19.1.0
         version: 19.2.17
       '@types/react-reconciler':
         specifier: ^0.32.0
         version: 0.32.3(@types/react@19.2.17)
+      torimi:
+        specifier: workspace:*
+        version: link:../../../Torimi/cli
       vite:
         specifier: ^8.0.14
         version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)
@@ -336,12 +364,12 @@ importers:
       '@playwright/test':
         specifier: ^1.61.0
         version: 1.61.0
-      '@torimi/dev-server':
-        specifier: workspace:*
-        version: link:../../../Torimi/dev-server
       '@tsubame/hayate-css-catalog':
         specifier: workspace:*
         version: link:../../packages/hayate-css-catalog
+      torimi:
+        specifier: workspace:*
+        version: link:../../../Torimi/cli
       vite:
         specifier: ^8.0.14
         version: 8.0.14(@types/node@22.19.19)(esbuild@0.28.1)(yaml@2.9.0)

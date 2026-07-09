@@ -9,8 +9,7 @@
 // The npm publish closure (ADR-0007 §1). This is the single source of truth the
 // workspace is checked against: a package that forgets to drop `private`, or one
 // that should stay private but doesn't, diverges from this list and fails the
-// guardrail test. `torimi` (#770) and `create-torimi` (#772) join this list when
-// those slices land.
+// guardrail test. `create-torimi` (#772) joins this list when that slice lands.
 export const EXPECTED_PUBLIC_PACKAGES = [
   '@hayate/adapter-web',
   '@hayate/adapter-web-cpu',
@@ -30,6 +29,7 @@ export const EXPECTED_PUBLIC_PACKAGES = [
   '@tsubame/renderer-hayate',
   '@tsubame/renderer-protocol',
   '@tsubame/solid',
+  'torimi',
 ];
 
 // The three imports an external app reaches for first: the FW adapter, the host
