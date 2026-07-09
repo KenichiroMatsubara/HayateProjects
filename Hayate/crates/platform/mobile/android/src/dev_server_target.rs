@@ -31,9 +31,10 @@ pub(crate) const HTTPS_DEFAULT_PORT: u16 = 443;
 /// release ビルドの既定接続先＝公開 Demo Endpoint（ADR-0003）の URL。テスター・審査者が
 /// ゼロ入力でデモに到達するための落とし先で、初回起動はここから Demo Manifest を取って先頭
 /// デモを自動ロードする（#743）。**ビルド構成で差し替え可能** — 実際の workers.dev サブドメイン
-/// （account 依存）はビルド時に `TORIMI_DEMO_ENDPOINT_URL` で上書きする（[`release_demo_endpoint_url`]）。
-/// 既定値は Worker 名（`torimi-demo-endpoint`・wrangler.jsonc）由来のプレースホルダ。
-pub const DEFAULT_DEMO_ENDPOINT_URL: &str = "https://torimi-demo-endpoint.workers.dev";
+/// （account 依存）は別 account でビルドするときビルド時 `TORIMI_DEMO_ENDPOINT_URL` で上書きする
+/// （[`release_demo_endpoint_url`]）。既定値は Worker 名（`torimi-demo-endpoint`・wrangler.jsonc）と
+/// この repo が配信する account の workers.dev サブドメイン（`pinara`）由来。
+pub const DEFAULT_DEMO_ENDPOINT_URL: &str = "https://torimi-demo-endpoint.pinara.workers.dev";
 /// path 無し入力の正規化先。「バンドルルートは既定の wire 契約に任せる」の意（`bundle_source`
 /// が既定ルートへ広げる）。
 const ROOT_PATH: &str = "/";
@@ -314,8 +315,8 @@ mod tests {
         let target = release_default_target();
         assert_eq!(target.scheme(), Scheme::Https);
         assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
-        // 既定定数（未上書き時）は Worker 名由来の workers.dev サブドメイン。
-        assert_eq!(DEFAULT_DEMO_ENDPOINT_URL, "https://torimi-demo-endpoint.workers.dev");
+        // 既定定数（未上書き時）は Worker 名＋配信 account（pinara）の workers.dev サブドメイン。
+        assert_eq!(DEFAULT_DEMO_ENDPOINT_URL, "https://torimi-demo-endpoint.pinara.workers.dev");
     }
 
     #[test]

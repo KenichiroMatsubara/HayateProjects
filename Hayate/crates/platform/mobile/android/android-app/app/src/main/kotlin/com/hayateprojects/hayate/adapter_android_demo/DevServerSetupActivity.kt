@@ -158,9 +158,10 @@ class DevServerSetupActivity : AppCompatActivity() {
         /**
          * 公開 Demo Endpoint（ADR-0003）の URL。Rust の `dev_server_target::DEFAULT_DEMO_ENDPOINT_URL`
          * と一致させる wire 値（ネイティブへ node/Rust 依存を持ち込まないため値で複製する）。実際の
-         * workers.dev サブドメイン（account 依存）はビルド構成で差し替え可能にする想定（#743）。
+         * workers.dev サブドメイン（account 依存）は配信 account（`pinara`）由来。別 account で
+         * ビルドするときは Rust 側 `TORIMI_DEMO_ENDPOINT_URL` と併せてここも差し替える（#743）。
          */
-        const val DEMO_ENDPOINT_URL = "https://torimi-demo-endpoint.workers.dev"
+        const val DEMO_ENDPOINT_URL = "https://torimi-demo-endpoint.pinara.workers.dev"
 
         /** Demo Manifest のルート。Rust `demo_manifest::DEMO_MANIFEST_ROUTE` / TS `demoManifestRoute` と同値。 */
         const val DEMO_MANIFEST_ROUTE = "/demos.json"
