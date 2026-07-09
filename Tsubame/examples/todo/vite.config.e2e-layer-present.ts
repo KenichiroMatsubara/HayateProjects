@@ -1,22 +1,17 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
-import solid from 'vite-plugin-solid';
 
-// #697 専用: `?renderer=vello` が読み込む `hayate-adapter-web` の解決先を、既定の
+import { defineConfig } from 'vite';
+
+import { tsubameSolid } from '@tsubame/solid/vite';
+
+// #697 専用: `?renderer=vello` が読み込む `@hayate/adapter-web` の解決先を、既定の
 // `Hayate/wasm-pkgs/pkg`（layer-present feature OFF）から `Hayate/wasm-pkgs/pkg-layer-present`
 // （同じ default features + `layer-present` feature のみ追加、`pnpm --filter hayate
 // build:layer-present` が生成）へ差し替える。`@hayate/host` 側の bare specifier import
-// （`await import('hayate-adapter-web')`）はそのままに、alias で物理的な解決先だけを
+// （`await import('@hayate/adapter-web')`）はそのままに、alias で物理的な解決先だけを
 // 切り替えるので本番コードには一切手を入れない（vite.config.ts と地続きの通常ビルド）。
 export default defineConfig({
-  plugins: [
-    solid({
-      solid: {
-        moduleName: '@tsubame/solid',
-        generate: 'universal',
-      },
-    }),
-  ],
+  plugins: [tsubameSolid()],
   resolve: {
     alias: {
       '@hayate/adapter-web': fileURLToPath(

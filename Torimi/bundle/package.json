@@ -13,6 +13,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
     }
   },
   "files": [
@@ -31,10 +35,17 @@
     "@tsubame/app": "workspace:*",
     "@tsubame/renderer-hayate": "workspace:*"
   },
+  "peerDependencies": {
+    "vite": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": { "optional": true }
+  },
   "devDependencies": {
     "@torimi/host-web": "workspace:*",
     "rimraf": "^6.1.3",
     "tsup": "^8.5.1",
+    "vite": "^8.0.14",
     "vitest": "^3.2.0"
   }
 }

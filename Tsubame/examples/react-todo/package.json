@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "torimi:native:build": "vite build --config vite.config.android.ts && node ../../scripts/lower-for-hermes.mjs dist-android/tsubame.js",
+    "torimi:native:build": "TORIMI_TARGET=native vite build --config vite.config.torimi.ts && node ../../scripts/lower-for-hermes.mjs dist-android/tsubame.js",
     "torimi:web:build": "vite build --config vite.config.torimi.ts",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

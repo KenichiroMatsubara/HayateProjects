@@ -13,6 +13,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
     }
   },
   "files": ["dist"],
@@ -26,13 +30,21 @@
     "@tsubame/renderer-protocol": "workspace:*"
   },
   "peerDependencies": {
-    "solid-js": "^1.9.0"
+    "solid-js": "^1.9.0",
+    "vite": "^8.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  },
+  "peerDependenciesMeta": {
+    "vite": { "optional": true },
+    "vite-plugin-solid": { "optional": true }
   },
   "devDependencies": {
     "@tsubame/protocol-generated": "workspace:*",
     "@tsubame/renderer-hayate": "workspace:*",
     "rimraf": "^6.1.3",
     "solid-js": "^1.9.13",
+    "vite": "^8.0.14",
+    "vite-plugin-solid": "^2.11.12",
     "vitest": "^3.2.6"
   }
 }
