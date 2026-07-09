@@ -27,9 +27,45 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    // ── Play 内部テスト向けリリース署名 ─────────────────────────────────────────────
+    // keystore とパスワードはリポジトリに絶対に置かない。CI は環境変数、ローカルは
+    // ~/.gradle/gradle.properties か local.properties（= Gradle プロパティ）から読む。
+    // 4 つすべて揃ったときだけ release 署名を構成し、未設定なら署名を付けない
+    // （assembleDebug など従来のデバッグビルドは一切影響を受けない）。keystore 生成と
+    // 各値の設定・署名 AAB ビルド・Play Console 初回アップロード手順は同ディレクトリの
+    // RELEASE-SIGNING.md を参照。
+    val releaseStoreFile = (project.findProperty("hayate.release.storeFile") as String?)
+        ?: System.getenv("HAYATE_RELEASE_STORE_FILE")
+    val releaseStorePassword = (project.findProperty("hayate.release.storePassword") as String?)
+        ?: System.getenv("HAYATE_RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = (project.findProperty("hayate.release.keyAlias") as String?)
+        ?: System.getenv("HAYATE_RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = (project.findProperty("hayate.release.keyPassword") as String?)
+        ?: System.getenv("HAYATE_RELEASE_KEY_PASSWORD")
+    val hasReleaseSigning = listOf(
+        releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword,
+    ).all { !it.isNullOrBlank() }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 署名が構成されているときだけ release に紐付ける。未設定なら bundleRelease は
+            // 未署名 AAB を作る（Play には出せないが、CI/ローカルの構成ミスを黙って壊れた
+            // 署名で通すよりは、未署名で明示的に失敗させる方が安全）。
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
