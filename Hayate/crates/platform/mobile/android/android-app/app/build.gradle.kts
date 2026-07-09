@@ -8,7 +8,9 @@ plugins {
 
 android {
     namespace = "com.hayateprojects.hayate.adapter_android_demo"
-    compileSdk = 34
+    // Play は targetSdk 35 以上を要求する（内部テストでも必須）。targetSdk ≤ compileSdk なので
+    // compileSdk も 35 に上げる（AGP 8.13 対応・SDK Platform 35 が必要）。
+    compileSdk = 35
     // 既定はこれまで動作実績のあるバージョン。マシンによって異なる場合は
     // Gradle プロパティ `hayate.ndkVersion` か環境変数 `HAYATE_NDK_VERSION` で
     // 上書きできる（ADR-0112）。未指定でもこの既定で従来どおりビルドできる。
@@ -22,7 +24,7 @@ android {
         applicationId = "com.hayateprojects.torimi"
         // GameActivity / GameTextInput supported floor (ADR-0094).
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
         // wgpu uses Vulkan on Android; ship arm64-v8a only for now.
