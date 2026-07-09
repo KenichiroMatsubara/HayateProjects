@@ -16,7 +16,8 @@
 - **ABI は arm64-v8a のみ**（wgpu が Android では Vulkan 前提・`build.gradle.kts`）。x86/armeabi 端末・
   多くのエミュレータでは動かない。内部テスターの実機が arm64（現行 Android 端末はほぼこれ）である
   こと。
-- 現在の `applicationId` は `com.hayateprojects.hayate.adapter_android_demo`、`versionName=0.1.0` /
+- 現在の `applicationId`（Play 公開パッケージ名・永久固定）は `com.hayateprojects.torimi`
+  （code パッケージ／namespace は `com.hayateprojects.hayate.adapter_android_demo` のまま）、`versionName=0.1.0` /
   `versionCode=1`。**`applicationId` は Play 公開後は永久固定**なので、内部テストとはいえ最初の
   アップロード前に「これを正式パッケージ名にしてよいか」を確定させること（変える場合は
   `build.gradle.kts` の `namespace` と `applicationId` を先に直す）。

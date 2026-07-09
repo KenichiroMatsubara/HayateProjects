@@ -17,7 +17,9 @@ android {
         ?: "30.0.14904198")
 
     defaultConfig {
-        applicationId = "com.hayateprojects.hayate.adapter_android_demo"
+        // Play 公開パッケージ名（永久固定）。code パッケージ（namespace）とは別で、JNI が使う
+        // namespace（com.hayateprojects.hayate.adapter_android_demo）は据え置き、公開 id だけ製品名に。
+        applicationId = "com.hayateprojects.torimi"
         // GameActivity / GameTextInput supported floor (ADR-0094).
         minSdk = 24
         targetSdk = 34
