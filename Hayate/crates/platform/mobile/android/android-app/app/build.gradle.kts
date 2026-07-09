@@ -8,7 +8,9 @@ plugins {
 
 android {
     namespace = "com.hayateprojects.hayate.adapter_android_demo"
-    compileSdk = 34
+    // Play は targetSdk 35 以上を要求する（内部テストでも必須）。targetSdk ≤ compileSdk なので
+    // compileSdk も 35 に上げる（AGP 8.13 対応・SDK Platform 35 が必要）。
+    compileSdk = 35
     // 既定はこれまで動作実績のあるバージョン。マシンによって異なる場合は
     // Gradle プロパティ `hayate.ndkVersion` か環境変数 `HAYATE_NDK_VERSION` で
     // 上書きできる（ADR-0112）。未指定でもこの既定で従来どおりビルドできる。
@@ -17,19 +19,57 @@ android {
         ?: "30.0.14904198")
 
     defaultConfig {
-        applicationId = "com.hayateprojects.hayate.adapter_android_demo"
+        // Play 公開パッケージ名（永久固定）。code パッケージ（namespace）とは別で、JNI が使う
+        // namespace（com.hayateprojects.hayate.adapter_android_demo）は据え置き、公開 id だけ製品名に。
+        applicationId = "com.hayateprojects.torimi"
         // GameActivity / GameTextInput supported floor (ADR-0094).
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
+        targetSdk = 35
+        versionCode = 3
         versionName = "0.1.0"
         // wgpu uses Vulkan on Android; ship arm64-v8a only for now.
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    // ── Play 内部テスト向けリリース署名 ─────────────────────────────────────────────
+    // keystore とパスワードはリポジトリに絶対に置かない。CI は環境変数、ローカルは
+    // ~/.gradle/gradle.properties か local.properties（= Gradle プロパティ）から読む。
+    // 4 つすべて揃ったときだけ release 署名を構成し、未設定なら署名を付けない
+    // （assembleDebug など従来のデバッグビルドは一切影響を受けない）。keystore 生成と
+    // 各値の設定・署名 AAB ビルド・Play Console 初回アップロード手順は同ディレクトリの
+    // RELEASE-SIGNING.md を参照。
+    val releaseStoreFile = (project.findProperty("hayate.release.storeFile") as String?)
+        ?: System.getenv("HAYATE_RELEASE_STORE_FILE")
+    val releaseStorePassword = (project.findProperty("hayate.release.storePassword") as String?)
+        ?: System.getenv("HAYATE_RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = (project.findProperty("hayate.release.keyAlias") as String?)
+        ?: System.getenv("HAYATE_RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = (project.findProperty("hayate.release.keyPassword") as String?)
+        ?: System.getenv("HAYATE_RELEASE_KEY_PASSWORD")
+    val hasReleaseSigning = listOf(
+        releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword,
+    ).all { !it.isNullOrBlank() }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            // 署名が構成されているときだけ release に紐付ける。未設定なら bundleRelease は
+            // 未署名 AAB を作る（Play には出せないが、CI/ローカルの構成ミスを黙って壊れた
+            // 署名で通すよりは、未署名で明示的に失敗させる方が安全）。
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

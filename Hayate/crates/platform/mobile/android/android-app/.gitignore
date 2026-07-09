@@ -3,3 +3,6 @@ build/
 local.properties
 *.iml
 .idea/
+# 署名/リリース成果物（Studio の Generate Signed Bundle は app/release/ に出す）。再生成物なので追跡しない。
+*.aab
+*.apk

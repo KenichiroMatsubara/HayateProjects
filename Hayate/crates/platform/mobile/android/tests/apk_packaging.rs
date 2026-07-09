@@ -16,7 +16,12 @@ fn android_cargo_toml() -> String {
     read_relative("Cargo.toml")
 }
 
-const PACKAGE_ID: &str = "com.hayateprojects.hayate.adapter_android_demo";
+/// Play 公開パッケージ名（AGP の applicationId）。永久固定。code パッケージとは別物（AGP は
+/// applicationId と namespace を別に扱える）。
+const PACKAGE_ID: &str = "com.hayateprojects.torimi";
+/// Kotlin code パッケージ（= namespace）。ソースのディレクトリ構成と JNI クラス名がこれ由来。
+/// applicationId（[`PACKAGE_ID`]）を製品名に変えても code パッケージは据え置くので別定数にする。
+const CODE_PACKAGE: &str = "com.hayateprojects.hayate.adapter_android_demo";
 /// GameActivity が `android.app.lib_name` で読み込む cdylib 名（`lib`/`.so` なし）。
 const LIB_NAME: &str = "hayate_adapter_android";
 
@@ -76,14 +81,14 @@ fn manifest_declares_vulkan_and_loads_the_cdylib() {
 fn main_activity_is_a_thin_game_activity_host() {
     let rel = format!(
         "android-app/app/src/main/kotlin/{}/MainActivity.kt",
-        PACKAGE_ID.replace('.', "/")
+        CODE_PACKAGE.replace('.', "/")
     );
     let kotlin = read_relative(&rel);
     assert!(
         kotlin.contains("class MainActivity : GameActivity()"),
         "the Kotlin host must subclass GameActivity"
     );
-    // パスの存在確認は Kotlin パッケージディレクトリがパッケージ ID と一致することも保証する。
+    // パスの存在確認は Kotlin パッケージディレクトリが code パッケージ（namespace）と一致することも保証する。
     assert!(Path::new(env!("CARGO_MANIFEST_DIR")).join(&rel).exists());
 }
 
