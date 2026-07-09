@@ -7,7 +7,7 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { GITIGNORE_CONTENTS, loadManifest, outDirFor } from '../Hayate/scripts/wasm-manifest.mjs';
+import { GITIGNORE_CONTENTS, loadManifest, outDirFor, readmeFor } from '../Hayate/scripts/wasm-manifest.mjs';
 
 // The stub package name is the target's own npmName, not the shared crate name
 // (#765). host imports pkg / pkg-tiny-skia / pkg-vello-cpu as three sibling
@@ -17,12 +17,18 @@ import { GITIGNORE_CONTENTS, loadManifest, outDirFor } from '../Hayate/scripts/w
 // which broke Rolldown's dynamic-import resolution in the Pages demo build. This
 // stub is written at preinstall — before any wasm build — so it, not just the
 // post-build package.json, has to carry the distinct name.
-export function packageJsonStub(npmName) {
+export function packageJsonStub(target) {
+  // Mirror the publish split that packageJsonFor bakes into the built
+  // package.json (public → publishConfig.access, private → private), so a
+  // `pnpm -r publish --dry-run` run against a fresh clone (stubs, no wasm yet)
+  // sees the same public/private closure the real release build would.
+  const publishField = target.private ? '  "private": true,' : '  "publishConfig": { "access": "public" },';
   return `{
-  "name": "${npmName}",
+  "name": "${target.npmName}",
   "type": "module",
   "version": "0.1.0",
   "license": "Apache-2.0",
+${publishField}
   "main": "hayate_adapter_web.js",
   "types": "hayate_adapter_web.d.ts"
 }
@@ -63,9 +69,12 @@ export async function bootstrapWasmPkgs({ hayateRoot, manifest = loadManifest() 
     if (await exists(join(dir, 'hayate_adapter_web_bg.wasm'))) continue;
 
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, 'package.json'), packageJsonStub(target.npmName));
+    await writeFile(join(dir, 'package.json'), packageJsonStub(target));
     await writeFile(join(dir, 'hayate_adapter_web.js'), JS_STUB);
     await writeFile(join(dir, 'hayate_adapter_web.d.ts'), DTS_STUB);
     await writeFile(join(dir, '.gitignore'), GITIGNORE_CONTENTS);
+    // README is committed (the .gitignore whitelists it) so a fresh clone always
+    // has it; write it here too so a brand-new backend dir gets one (#773).
+    await writeFile(join(dir, 'README.md'), readmeFor(target));
   }
 }

@@ -1,8 +1,10 @@
 {
   "name": "@tsubame/renderer-hayate",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Tsubame Canvas Renderer — フレーム単位で mutation をバッチ化し Hayate WASM の apply_mutations へ渡す IRenderer 実装",
   "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
+  "publishConfig": { "access": "public" },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -21,6 +23,7 @@
     "dist"
   ],
   "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
     "pretypecheck": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
@@ -40,7 +43,7 @@
     "@tsubame/renderer-dom": "workspace:*",
     "@tsubame/solid": "workspace:*",
     "happy-dom": "^17.6.3",
-    "hayate-adapter-web-null": "file:../../../Hayate/wasm-pkgs/pkg-null",
+    "hayate-adapter-web-null": "workspace:*",
     "rimraf": "^6.1.3",
     "solid-js": "^1.9.13",
     "vitest": "^3.2.0"

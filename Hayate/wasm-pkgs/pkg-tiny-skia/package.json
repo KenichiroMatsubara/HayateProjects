@@ -1,5 +1,5 @@
 {
-  "name": "hayate-adapter-web-cpu",
+  "name": "@hayate/adapter-web-cpu",
   "type": "module",
   "description": "Hayate — GPU-native UI substrate",
   "version": "0.1.0",
@@ -7,6 +7,12 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\""
   },
   "files": [
     "hayate_adapter_web_bg.wasm",

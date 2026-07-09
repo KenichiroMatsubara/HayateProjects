@@ -32,6 +32,7 @@ _Avoid_: アプリに seam 名・protocol version 焼き込みを手書きさせ
 
 **Torimi CLI（`torimi`）**:
 外部アプリの開発ループを 1 コマンドに束ねるオーケストレータ。npm の**無スコープパッケージ `torimi`**（bin も `torimi`、設定は `torimi.config.*`）で、Expo における `expo` コマンドと同じ立ち位置。アプリが宣言したビルドコマンドを watch 付きで回し、ターゲットに応じた降格（Hermes 用 lowering はターゲット固有＝CLI の責務）を施し、`@torimi/dev-server` による配信・reload・QR まで面倒を見る。**FW もビルドツールも解さない**（ビルドコマンドは不透明な設定値）— FW 知識は Tsubame 側の preset に、配信は下層の Dev Server に、それぞれ隔離されたままにする。
+コマンド面は α 最小の 3 つ：`torimi dev [target]`（既定 native。build 1 回 → ソース変更ごとに再ビルド、native はビルド後に降格して**降格済みの別パス**を配信し、接続中ホストへ WS reload）・`torimi build [target]`（一発ビルド、native は降格込み）・`torimi lower <file>`（降格単体のエスケープハッチ）。`torimi.config.*` はフラットに `{ build, bundle }`（+ optional `watch`、既定 `src`）だけで per-target 分岐は持たない（native/web の差＝降格の有無と既定ポート native 5179 / web 5181 は CLI 側の知識）。
 _Avoid_: CLI がバンドラ・FW プラグインを内蔵する Expo/metro 型の理解, `@torimi/dev-server` との同一視（CLI はその上のオーケストレーション層）, Tsubame 所属のツールとする理解（FW 非依存であり所属は Torimi）
 
 **Demo Endpoint（デモ配信点）**:

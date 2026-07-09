@@ -129,12 +129,12 @@ test('the real manifest reproduces the original hand-written loadCanvasBackend b
   const source = generateLoadCanvasBackend(manifest);
 
   assert.match(source, /if \(backend === 'vello'\)/);
-  assert.match(source, /await import\('hayate-adapter-web'\)/);
+  assert.match(source, /await import\('@hayate\/adapter-web'\)/);
   assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, layerPresent\)/);
   assert.match(source, /if \(backend === 'tiny-skia'\)/);
-  assert.match(source, /await import\('hayate-adapter-web-cpu'\)/);
+  assert.match(source, /await import\('@hayate\/adapter-web-cpu'\)/);
   assert.match(source, /if \(backend === 'vello-cpu'\)/);
-  assert.match(source, /await import\('hayate-adapter-web-vello-cpu'\)/);
+  assert.match(source, /await import\('@hayate\/adapter-web-vello-cpu'\)/);
   // ADR-0138 (#710): tiny-skia/vello_cpu get their own runtime layer-present toggle.
   assert.match(source, /cpuLayerPresent = true/);
   assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, cpuLayerPresent\)/g);

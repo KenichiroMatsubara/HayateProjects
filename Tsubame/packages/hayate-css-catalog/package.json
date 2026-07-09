@@ -1,8 +1,9 @@
 {
   "name": "@tsubame/hayate-css-catalog",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Hayate CSS Catalog — protocol spec 駆動の style prop 正本（Canvas encode / DOM CSS / Rust mapper 共通）",
   "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -11,11 +12,23 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./catalog.json": "@tsubame/protocol-generated/catalog.json"
+    }
   },
   "files": ["dist"],
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",

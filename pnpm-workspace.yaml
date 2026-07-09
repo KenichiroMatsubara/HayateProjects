@@ -12,6 +12,8 @@ packages:
   - 'Tsubame/packages/*'
   - 'Tsubame/examples/*'
   - 'Torimi/bundle'
+  - 'Torimi/cli'
+  - 'Torimi/create-torimi'
   - 'Torimi/demo-endpoint'
   - 'Torimi/dev-server'
   - 'Torimi/dev-server-contract'

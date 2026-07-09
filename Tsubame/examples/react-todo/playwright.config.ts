@@ -48,11 +48,11 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      // Torimi の最小 dev server。`vite build --watch` が react の単一 App Bundle を作り続け、
-      // dev server がそれを HTTP 配信 + bundle 変更を WS で `reload` 中継する（full reload ループ・
-      // ADR-0001）。初回ビルド完了は `/bundle.js` の 200 で待つ（それまでは 404）。host.html は
-      // このポートからバンドルを fetch → eval し、reload WS を購読する（CORS は dev server が許可）。
-      command: `TORIMI_DEV_PORT=${TORIMI_DEV_PORT} node scripts/torimi-dev-server.mjs`,
+      // Torimi CLI の web dev。`torimi dev web` が build（vite）→ 配信（@torimi/dev-server）→
+      // bundle 変更を WS で `reload` 中継まで面倒を見る（full reload ループ・ADR-0008）。初回ビルド
+      // 完了は `/bundle.js` の 200 で待つ（それまでは 404）。host.html はこのポートからバンドルを
+      // fetch → eval し、reload WS を購読する（CORS は dev server が許可）。
+      command: `TORIMI_DEV_PORT=${TORIMI_DEV_PORT} pnpm exec torimi dev web`,
       url: `http://localhost:${TORIMI_DEV_PORT}/bundle.js`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

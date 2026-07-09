@@ -113,17 +113,26 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
 
   const pkgJson = JSON.parse(packageJsonFor(byName['pkg'], manifest));
   assert.deepEqual(pkgJson, {
-    name: 'hayate-adapter-web',
+    name: '@hayate/adapter-web',
     type: 'module',
     description: 'Hayate — GPU-native UI substrate',
     version: '0.1.0',
     license: 'Apache-2.0',
     repository: { type: 'git', url: 'https://github.com/KenichiroMatsubara/HayateProjects' },
+    publishConfig: { access: 'public' },
+    scripts: {
+      prepublishOnly:
+        "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
+    },
     files: ['hayate_adapter_web_bg.wasm', 'hayate_adapter_web.js', 'hayate_adapter_web.d.ts'],
     main: 'hayate_adapter_web.js',
     types: 'hayate_adapter_web.d.ts',
     sideEffects: ['./snippets/*'],
   });
+  // pkg-null is the test-only null backend — kept out of the public npm
+  // closure via `private`, never `publishConfig.access` (ADR-0007 §1).
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).private, true);
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).publishConfig, undefined);
   // Each pkg dir's package name is its own npmName, NOT the shared crate name
   // (#765). When several sibling file: deps (host imports pkg / pkg-tiny-skia /
   // pkg-vello-cpu) all declared name "hayate-adapter-web", pnpm saw a name
@@ -131,11 +140,11 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   // .pnpm virtual-store copy that only carried package.json — Rolldown then
   // failed to resolve the dynamic import in the Pages demo build. Distinct
   // names make every alias link straight to its source dir.
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, 'hayate-adapter-web-cpu');
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, 'hayate-adapter-web-vello-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, '@hayate/adapter-web-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, '@hayate/adapter-web-vello-cpu');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
-  assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n');
+  assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n!README.md\n');
 });
 
 // No args = today's `pnpm run build` (the 4 non-layer-present backends);
@@ -188,13 +197,13 @@ test('npmName/host mapping matches what Hayate/host/src actually imports', () =>
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
-  assert.equal(byName['pkg'].npmName, 'hayate-adapter-web');
+  assert.equal(byName['pkg'].npmName, '@hayate/adapter-web');
   assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });
 
-  assert.equal(byName['pkg-tiny-skia'].npmName, 'hayate-adapter-web-cpu');
+  assert.equal(byName['pkg-tiny-skia'].npmName, '@hayate/adapter-web-cpu');
   assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
-  assert.equal(byName['pkg-vello-cpu'].npmName, 'hayate-adapter-web-vello-cpu');
+  assert.equal(byName['pkg-vello-cpu'].npmName, '@hayate/adapter-web-vello-cpu');
   assert.deepEqual(byName['pkg-vello-cpu'].host, { backend: 'vello-cpu', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
   assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');

@@ -5,6 +5,13 @@ Tsubame/.git-merged/
 node_modules/
 .claude/worktrees/
 
+# Build outputs (tsup / vite). Rebuilt from source; the release CI builds them
+# before packing, so they're never committed (npm pack reads the working tree).
+dist/
+dist-torimi/
+dist-android/
+*.tsbuildinfo
+
 # Cloudflare Workers local dev state
 .wrangler/
 

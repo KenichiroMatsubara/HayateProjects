@@ -1,36 +1,15 @@
-import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import solid from 'vite-plugin-solid';
 
-// Torimi App Bundle（ADR-0001 のスライス #1）向けの単一ファイルバンドル。
+import { appBundle } from '@torimi/bundle/vite';
+import { tsubameSolid } from '@tsubame/solid/vite';
+
+// Torimi App Bundle（単一 IIFE）を preset 2 部品の合成で作る（ADR-0008 §5, #769）:
+//   - FW 変換: `@tsubame/solid/vite`（solid-js/universal → @tsubame/solid）
+//   - App Bundle 形状: `@torimi/bundle/vite`（単一 IIFE・es2020・非圧縮・DOM/HTML なし）
 //
-// ブラウザ用 `vite.config.ts` と同じ solid-js/universal 変換を使いつつ、エントリを
-// 全ターゲット共通の `main.bundle.tsx`（#767）にし、DOM/HTML を伴わない単一の IIFE として出力する。生成物
-// （`dist-torimi/bundle.js`）を Torimi dev-server が HTTP 配信し、Web ホストが
-// fetch → eval して `globalThis.__torimiMount` を拾う。
-//
-// android（Hermes）と違いブラウザの eval で実行するため、class/modern 構文の降格は不要。
+// 出力は target 非依存の 1 本（dist-torimi/bundle.js）。native の Hermes 降格と降格済み別パス
+// 配信は torimi CLI（#770）がビルド後に施すので、この config には target 分岐が無い。
 export default defineConfig({
-  plugins: [
-    solid({
-      solid: {
-        moduleName: '@tsubame/solid',
-        generate: 'universal',
-      },
-    }),
-  ],
-  build: {
-    target: 'es2020',
-    outDir: 'dist-torimi',
-    emptyOutDir: true,
-    cssCodeSplit: false,
-    // デバッグしやすさ優先で非圧縮。
-    minify: false,
-    lib: {
-      entry: fileURLToPath(new URL('./src/main.bundle.tsx', import.meta.url)),
-      formats: ['iife'],
-      name: 'TsubameTodoTorimi',
-      fileName: () => 'bundle.js',
-    },
-  },
+  plugins: [tsubameSolid()],
+  ...appBundle({ entry: new URL('./src/main.bundle.tsx', import.meta.url), name: 'TsubameTodo', outDir: 'dist-torimi' }),
 });

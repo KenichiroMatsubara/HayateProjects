@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/jsx-runtime.ts', 'src/jsx-dev-runtime.ts'],
+  entry: ['src/index.ts', 'src/jsx-runtime.ts', 'src/jsx-dev-runtime.ts', 'src/vite.ts'],
   format: ['esm'],
   dts: true,
   clean: true,
@@ -13,5 +13,6 @@ export default defineConfig({
     'react/jsx-dev-runtime',
     'react-reconciler',
     'react-reconciler/constants',
+    'vite',
   ],
 });
