@@ -112,6 +112,7 @@ jobs:
         run: pnpm -r --filter "!hayate" --filter "!tsubame-monorepo" --filter "!./Tsubame/examples/*" run build
 
       - name: Create Version PR or publish (changesets)
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version:packages
@@ -120,3 +121,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
+
+      # After a real publish, mirror the release-baked template (create-torimi's
+      # dist/template, pinned to this train) to the public template repo so
+      # "Use this template" / browsability is covered (ADR-0008 §6). Target repo
+      # and token are workflow variables so the destination is swappable.
+      - name: Mirror template to the public template repository
+        if: steps.changesets.outputs.published == 'true' && vars.TEMPLATE_MIRROR_REPO != ''
+        env:
+          MIRROR_REPO: ${{ vars.TEMPLATE_MIRROR_REPO }}
+          MIRROR_TOKEN: ${{ secrets.TEMPLATE_MIRROR_TOKEN }}
+        run: bash scripts/mirror-template.sh

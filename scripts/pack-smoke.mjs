@@ -17,6 +17,7 @@ import {
   SMOKE_IMPORTS,
   buildSmokeProjectManifest,
   publicPackages,
+  tarballName,
 } from './pack-smoke.lib.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,13 +45,13 @@ if (JSON.stringify(names) !== JSON.stringify(expected)) {
 log(`public closure OK (${names.length} packages)`);
 
 // 2. Pack every public package into a staging dir.
+const versionByName = Object.fromEntries(rows.filter((r) => r.name).map((r) => [r.name, r.version]));
 const staging = mkdtempSync(join(tmpdir(), 'pack-smoke-tgz-'));
 const tarballs = {};
 for (const name of names) {
   run('pnpm', ['--filter', name, 'pack', '--pack-destination', staging], { cwd: repoRoot });
-  // pnpm names tarballs <sanitized-name>-<version>.tgz; match by scanning the dir.
-  const file = readdirSync(staging).find((f) => f.endsWith('.tgz') && !Object.values(tarballs).some((p) => p.endsWith(f)));
-  if (!file) throw new Error(`pack-smoke: could not find packed tarball for ${name}`);
+  const file = tarballName(name, versionByName[name]);
+  if (!readdirSync(staging).includes(file)) throw new Error(`pack-smoke: expected tarball ${file} for ${name}`);
   tarballs[name] = join(staging, file);
 }
 log(`packed ${Object.keys(tarballs).length} tarballs`);
@@ -58,19 +59,25 @@ log(`packed ${Object.keys(tarballs).length} tarballs`);
 // 3. Install the whole closure offline in a throwaway project outside the monorepo.
 const project = mkdtempSync(join(tmpdir(), 'pack-smoke-proj-'));
 writeFileSync(join(project, 'package.json'), `${JSON.stringify(buildSmokeProjectManifest(tarballs), null, 2)}\n`);
+// Verify each entry point's export map RESOLVES from outside the monorepo — the
+// packaging guarantee (files/exports/deps are whole). We use import.meta.resolve
+// rather than executing the module: @hayate/host is a bundler-consumed package
+// whose transitive JSON imports need `with { type: 'json' }` under raw Node ESM,
+// which is orthogonal to whether it's packaged correctly. Its real end-to-end
+// execution outside the monorepo is proven by scaffold-smoke.mjs (`torimi build`).
 writeFileSync(
   join(project, 'smoke.mjs'),
-  `${SMOKE_IMPORTS.map((n, i) => `import * as m${i} from ${JSON.stringify(n)};`).join('\n')}\n` +
-    `for (const [name, mod] of ${JSON.stringify(SMOKE_IMPORTS)}.map((n, i) => [n, [${SMOKE_IMPORTS.map((_, i) => `m${i}`).join(', ')}][i]])) {\n` +
-    `  if (!mod || typeof mod !== 'object') { throw new Error('pack-smoke: import failed for ' + name); }\n` +
-    `  console.log('[pack-smoke] imported ' + name + ' (' + Object.keys(mod).length + ' exports)');\n` +
+  `for (const name of ${JSON.stringify(SMOKE_IMPORTS)}) {\n` +
+    `  const url = import.meta.resolve(name);\n` +
+    `  if (!url) throw new Error('pack-smoke: could not resolve ' + name);\n` +
+    `  console.log('[pack-smoke] resolved ' + name + ' -> ' + url);\n` +
     `}\n`,
 );
 
 log('installing packed closure (offline, --ignore-workspace)…');
 run('pnpm', ['install', '--ignore-workspace', '--config.confirmModulesPurge=false'], { cwd: project, stdio: 'inherit' });
 
-log('importing smoke entry points…');
+log('resolving smoke entry points…');
 run('node', ['smoke.mjs'], { cwd: project, stdio: 'inherit' });
 
 log('OK — public packages install and import outside the monorepo.');

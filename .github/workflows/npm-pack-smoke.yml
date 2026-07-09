@@ -12,14 +12,20 @@ on:
       - '**/package.json'
       - 'Hayate/scripts/wasm-build-manifest.json'
       - 'scripts/pack-smoke*.mjs'
+      - 'scripts/scaffold-smoke.mjs'
       - 'scripts/bootstrap-wasm-pkgs*.mjs'
+      - 'Torimi/templates/**'
+      - 'Torimi/create-torimi/**'
       - '.github/workflows/npm-pack-smoke.yml'
   pull_request:
     paths:
       - '**/package.json'
       - 'Hayate/scripts/wasm-build-manifest.json'
       - 'scripts/pack-smoke*.mjs'
+      - 'scripts/scaffold-smoke.mjs'
       - 'scripts/bootstrap-wasm-pkgs*.mjs'
+      - 'Torimi/templates/**'
+      - 'Torimi/create-torimi/**'
       - '.github/workflows/npm-pack-smoke.yml'
   workflow_dispatch:
 
@@ -75,3 +81,8 @@ jobs:
 
       - name: Pack the public closure and import it outside the monorepo
         run: node scripts/pack-smoke.mjs
+
+      # ADR-0008 §6 acceptance: `npm create torimi` → install (packed) → `torimi build`
+      # both targets, all outside the monorepo with published packages only.
+      - name: Scaffold smoke (create-torimi → install → torimi build web/native)
+        run: node scripts/scaffold-smoke.mjs

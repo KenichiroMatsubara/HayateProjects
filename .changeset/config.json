@@ -22,6 +22,7 @@
       "@tsubame/renderer-hayate",
       "@tsubame/renderer-protocol",
       "@tsubame/solid",
+      "create-torimi",
       "torimi"
     ]
   ],

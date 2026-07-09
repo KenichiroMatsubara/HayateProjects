@@ -11,7 +11,16 @@ import {
   SMOKE_IMPORTS,
   buildSmokeProjectManifest,
   publicPackages,
+  tarballName,
 } from './pack-smoke.lib.mjs';
+
+test('tarballName matches npm scheme and disambiguates torimi from create-torimi', () => {
+  assert.equal(tarballName('@hayate/host', '0.1.0'), 'hayate-host-0.1.0.tgz');
+  assert.equal(tarballName('torimi', '0.1.0'), 'torimi-0.1.0.tgz');
+  assert.equal(tarballName('create-torimi', '0.1.0'), 'create-torimi-0.1.0.tgz');
+  // the two must be distinct filenames (the endsWith bug they replace)
+  assert.notEqual(tarballName('torimi', '0.1.0'), tarballName('create-torimi', '0.1.0'));
+});
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 

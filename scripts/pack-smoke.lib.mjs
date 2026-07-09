@@ -9,7 +9,7 @@
 // The npm publish closure (ADR-0007 §1). This is the single source of truth the
 // workspace is checked against: a package that forgets to drop `private`, or one
 // that should stay private but doesn't, diverges from this list and fails the
-// guardrail test. `create-torimi` (#772) joins this list when that slice lands.
+// guardrail test.
 export const EXPECTED_PUBLIC_PACKAGES = [
   '@hayate/adapter-web',
   '@hayate/adapter-web-cpu',
@@ -29,6 +29,7 @@ export const EXPECTED_PUBLIC_PACKAGES = [
   '@tsubame/renderer-hayate',
   '@tsubame/renderer-protocol',
   '@tsubame/solid',
+  'create-torimi',
   'torimi',
 ];
 
@@ -36,6 +37,14 @@ export const EXPECTED_PUBLIC_PACKAGES = [
 // glue (the un-hideable direct dep, ADR-0004), and the dev server. If the packed
 // tarballs install and these resolve outside the monorepo, the closure is whole.
 export const SMOKE_IMPORTS = ['@tsubame/solid', '@hayate/host', '@torimi/dev-server'];
+
+// The tarball filename `pnpm pack` writes for a package — npm's scheme: drop the
+// leading `@`, turn `/` into `-`, append `-<version>.tgz`. Computed (not matched by
+// suffix) so `torimi` and `create-torimi` don't collide (create-torimi-X.tgz ends
+// with torimi-X.tgz).
+export function tarballName(name, version) {
+  return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
+}
 
 // `pnpm ls -r --depth -1 --json` rows → the names pnpm would publish. A package is
 // public iff it is not private; unnamed rows (defensive) are skipped.

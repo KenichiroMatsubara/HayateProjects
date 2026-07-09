@@ -1,0 +1,37 @@
+{
+  "name": "create-torimi",
+  "version": "0.1.0",
+  "description": "`npm create torimi` — Torimi アプリの雛形スキャフォルダ（ADR-0008 §6）。テンプレートを同梱し、生成時にネットワーク fetch しない。`create-torimi@X` は必ず X リリース列車の雛形を吐く。",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
+  "publishConfig": { "access": "public" },
+  "type": "module",
+  "bin": {
+    "create-torimi": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
+    "build": "tsup && node scripts/bake-template.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "rimraf": "^6.1.3",
+    "tsup": "^8.5.1",
+    "vitest": "^3.2.0"
+  }
+}
