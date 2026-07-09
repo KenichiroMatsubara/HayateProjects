@@ -20,10 +20,11 @@
   },
   "dependencies": {
     "@hayate/host": "workspace:*",
+    "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",
     "@tsubame/app": "workspace:*",
-    "@tsubame/renderer-hayate": "workspace:*",
     "@tsubame/renderer-dom": "workspace:*",
+    "@tsubame/renderer-hayate": "workspace:*",
     "@tsubame/renderer-protocol": "workspace:*",
     "@tsubame/solid": "workspace:*",
     "solid-js": "^1.9.13"

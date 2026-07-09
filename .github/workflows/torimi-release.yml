@@ -59,6 +59,11 @@ jobs:
       - name: Build Tsubame packages
         run: pnpm --filter "./Tsubame/packages/*" build
 
+      # 単一エントリ（#767）は `@torimi/bundle`（Bundle Registration）の dist を import する。
+      # `...` サフィックスで依存（@torimi/protocol-handshake 等）も一緒に組み立てる。
+      - name: Build @torimi/bundle (Bundle Registration)
+        run: pnpm --filter "@torimi/bundle..." build
+
       # ── デモバンドル：solid / react の torimi:native:build（Hermes 降格済み）────────────
       # デモ一覧の正本は demo-endpoint の demos.json。build:demos がそれを読んで各パッケージの
       # torimi:native:build を回し、成果物を public/ に集める — ワークフローにデモ一覧を複製しない。

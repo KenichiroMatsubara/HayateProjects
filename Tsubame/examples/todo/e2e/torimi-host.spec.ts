@@ -19,7 +19,7 @@ const TORIMI_DEV_PORT = Number(process.env.TORIMI_DEV_PORT ?? 5181);
 const DEV_SERVER_URL = `http://localhost:${TORIMI_DEV_PORT}`;
 
 /** full reload e2e が編集する App Bundle のソース。コメント追記で再ビルドを誘発する。 */
-const RELOAD_EDIT_TARGET = fileURLToPath(new URL('../src/main.torimi.tsx', import.meta.url));
+const RELOAD_EDIT_TARGET = fileURLToPath(new URL('../src/main.bundle.tsx', import.meta.url));
 
 test.describe('Torimi host — renders the HTTP-served Tsubame bundle', () => {
   test.beforeEach(async ({ page }) => {
