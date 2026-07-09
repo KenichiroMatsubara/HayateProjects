@@ -64,6 +64,22 @@ jobs:
       - name: Build @torimi/bundle (Bundle Registration)
         run: pnpm --filter "@torimi/bundle..." build
 
+      # 各デモの torimi:native:build は `torimi build native`（torimi CLI の bin）を回す。
+      # CLI の bin 実体は dist/cli.js で、fresh clone では最初の `pnpm install` 時点で未ビルド。
+      # pnpm は bin ターゲットが無いと `.bin/torimi` の作成を warning で黙ってスキップするため、
+      # ここで CLI をビルドしないと build:demos が `torimi: not found` で落ち、deploy に到達しない。
+      - name: Build the Torimi CLI (its bin drives each demo's `torimi build native`)
+        run: pnpm --filter "torimi..." build
+
+      # CLI を後からビルドしても、既に完了した install は link フェーズを再実行しない
+      # （`pnpm install` は "Already up to date" で bin を張り直さない）。demo パッケージの
+      # node_modules を落として install し直すと、dist/cli.js が在る状態で link が走り .bin/torimi が
+      # 作られる。契約は Torimi/integration の release-lockstep-workflow.test.ts が固定する。
+      - name: Re-link the demo packages' bins now that the Torimi CLI is built
+        run: |
+          rm -rf Tsubame/examples/*/node_modules
+          pnpm install --frozen-lockfile
+
       # ── デモバンドル：solid / react の torimi:native:build（Hermes 降格済み）────────────
       # デモ一覧の正本は demo-endpoint の demos.json。build:demos がそれを読んで各パッケージの
       # torimi:native:build を回し、成果物を public/ に集める — ワークフローにデモ一覧を複製しない。
