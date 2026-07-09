@@ -117,8 +117,8 @@ fn the_demo_endpoint_and_manifest_route_are_shared_wire_between_rust_and_kotlin(
         "the manifest route must match between the Rust seam and the Kotlin launcher (#743)"
     );
     assert!(
-        target_src.contains("torimi-demo-endpoint.workers.dev")
-            && kotlin.contains("torimi-demo-endpoint.workers.dev"),
+        target_src.contains("torimi-demo-endpoint.pinara.workers.dev")
+            && kotlin.contains("torimi-demo-endpoint.pinara.workers.dev"),
         "the Demo Endpoint URL constant must match between Rust and Kotlin (#743)"
     );
 }

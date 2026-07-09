@@ -1,7 +1,7 @@
 [
   {
     "family": "Noto Sans JP",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-jp.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-jp.ttf",
     "scripts": [
       "cjk",
       "japanese"
@@ -9,7 +9,7 @@
   },
   {
     "family": "Noto Sans KR",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-kr.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-kr.ttf",
     "scripts": [
       "cjk",
       "korean"
@@ -17,7 +17,7 @@
   },
   {
     "family": "Noto Sans SC",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-sc.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-sc.ttf",
     "scripts": [
       "cjk",
       "simplified-chinese"
@@ -25,7 +25,7 @@
   },
   {
     "family": "Noto Sans TC",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-tc.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-tc.ttf",
     "scripts": [
       "cjk",
       "traditional-chinese"
@@ -33,121 +33,121 @@
   },
   {
     "family": "Noto Sans Arabic",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-arabic.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-arabic.ttf",
     "scripts": [
       "arabic"
     ]
   },
   {
     "family": "Noto Sans Thai",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-thai.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-thai.ttf",
     "scripts": [
       "thai"
     ]
   },
   {
     "family": "Noto Sans Devanagari",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-devanagari.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-devanagari.ttf",
     "scripts": [
       "devanagari"
     ]
   },
   {
     "family": "Noto Sans Hebrew",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-hebrew.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-hebrew.ttf",
     "scripts": [
       "hebrew"
     ]
   },
   {
     "family": "Noto Emoji",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-emoji.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-emoji.ttf",
     "scripts": [
       "emoji"
     ]
   },
   {
     "family": "Noto Color Emoji",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-color-emoji.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-color-emoji.ttf",
     "scripts": [
       "emoji"
     ]
   },
   {
     "family": "Noto Serif",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-serif.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-serif.ttf"
   },
   {
     "family": "Noto Sans Mono",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/noto-sans-mono.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/noto-sans-mono.ttf"
   },
   {
     "family": "Inter",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/inter.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/inter.ttf"
   },
   {
     "family": "Roboto",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/roboto.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/roboto.ttf"
   },
   {
     "family": "Open Sans",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/open-sans.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/open-sans.ttf"
   },
   {
     "family": "Lato",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/lato.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/lato.ttf"
   },
   {
     "family": "Poppins",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/poppins.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/poppins.ttf"
   },
   {
     "family": "Montserrat",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/montserrat.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/montserrat.ttf"
   },
   {
     "family": "Raleway",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/raleway.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/raleway.ttf"
   },
   {
     "family": "Nunito",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/nunito.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/nunito.ttf"
   },
   {
     "family": "Oswald",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/oswald.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/oswald.ttf"
   },
   {
     "family": "Source Sans 3",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/source-sans-3.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/source-sans-3.ttf"
   },
   {
     "family": "Playfair Display",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/playfair-display.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/playfair-display.ttf"
   },
   {
     "family": "Merriweather",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/merriweather.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/merriweather.ttf"
   },
   {
     "family": "Lora",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/lora.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/lora.ttf"
   },
   {
     "family": "JetBrains Mono",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/jetbrains-mono.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/jetbrains-mono.ttf"
   },
   {
     "family": "Fira Code",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/fira-code.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/fira-code.ttf"
   },
   {
     "family": "Source Code Pro",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/source-code-pro.ttf"
+    "url": "https://hayate-fonts.pinara.workers.dev/source-code-pro.ttf"
   },
   {
     "family": "M PLUS Rounded 1c",
-    "url": "https://hayate-fonts.kenmatsu331.workers.dev/m-plus-rounded-1c.ttf",
+    "url": "https://hayate-fonts.pinara.workers.dev/m-plus-rounded-1c.ttf",
     "scripts": [
       "cjk",
       "japanese"
