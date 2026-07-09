@@ -23,7 +23,7 @@ Torimi に流し込まれる JS。アプリコード ＋ Tsubame Adapter（solid
 _Avoid_: フレームワークをバンドルから除く設計, 現行ルートで Hayabusa をバンドルする設計, Hayabusa の iOS 不可を恒久／原理的と読む理解（現行ルート限定であり webview+wasm で将来可能・ADR-0121）, `.hbc` 固定（配信形式は別決定）
 
 **Dev Server**:
-開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
+開発機上で動き、ファイル変更を監視して App Bundle を生成し、HTTP で配信、WS で reload／更新シグナルを送るツール。加えて Native Host からの Device Log の受け口でもある。HMR 時は差分モジュールを WS で送り、HMR ランタイムは**バンドル側**が持ち込む（ホストは WS を JS に中継するだけで HMR を解さない）。
 _Avoid_: ホスト側に FW 固有 fast-refresh を持たせる設計
 
 **Bundle Registration（`@torimi/bundle` / `registerTorimiApp`）**:
@@ -42,6 +42,14 @@ _Avoid_: Dev Server と混同（Dev Server は開発機上で watch して動く
 **Demo Manifest（デモマニフェスト）**:
 Demo Endpoint が配信するデモ一覧（各エントリ＝表示名とバンドル URL）。ホストはこれを取得してデモ選択メニューを構成し、初回起動は先頭デモを自動ロードする。デモの追加・改名はマニフェスト更新であり、ホストのアプリ更新（Play 審査）を要しない。
 _Avoid_: デモ一覧のホストへのハードコード, フレームワーク知識のホスト側持ち込み（エントリは不透明なバンドル URL）
+
+**Device Log（端末ログ）**:
+Native Host 上で起きたことを、USB/adb 接続なしに開発機の Dev Server へ届ける仕組み、およびそのログ自体。ログ源は 2 系統 — **js**（App Bundle 内の `console.*`・JS ランタイムエラー）と **host**（bundle 取得失敗・protocol version 不一致・native エラー等、JS が起動する前に死ぬケースを含むホスト側イベント）。logcat への出力を置き換えるのではなく併存する。送り先は Dev Server のみで、Demo Endpoint には決して送らない。
+_Avoid_: logcat の置き換えとする理解, `console.*` のみをログと呼ぶ狭い理解（host 系統を含む）, Demo Endpoint への送信, Web Host を対象に含める理解（ブラウザ devtools がその席に居る）
+
+**Device ID（端末ID）**:
+Native Host のインスタンスを dev セッション横断で識別する、ホスト発行・インストール単位の不透明 ID。初回起動時にホストが生成してローカル永続化する。ハードウェア由来ではなく、再インストールで変わってよい（dev 用途の識別が目的）。人間向けの表示は Device Label（端末モデル名等）を別に添えて補い、ID 自体に意味を持たせない。
+_Avoid_: Android ID 等ハードウェア固有 ID との混同, サーバ割当 ID（Dev Server はステートレスに受けるだけ）, ID 文字列に意味を焼き込む設計
 
 **Protocol Version**:
 App Bundle 内の `@tsubame/renderer-canvas` が内包する wire 定数のバージョンと、ホストに焼き込まれたネイティブ decoder のバージョンの整合トークン。バンドルに埋め、Torimi 起動時に突き合わせ、不一致は明示エラーにする（Expo Go の "SDK version" 整合と同型）。
