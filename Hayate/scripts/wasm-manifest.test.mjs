@@ -144,7 +144,7 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, '@hayate/adapter-web-vello-cpu');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
-  assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n');
+  assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n!README.md\n');
 });
 
 // No args = today's `pnpm run build` (the 4 non-layer-present backends);

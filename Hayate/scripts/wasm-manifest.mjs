@@ -109,7 +109,26 @@ export function targetDirFor(target, rootDir) {
   return join(rootDir, target.targetDir);
 }
 
-export const GITIGNORE_CONTENTS = '*\n!package.json\n';
+export const GITIGNORE_CONTENTS = '*\n!package.json\n!README.md\n';
+
+// A minimal per-package README for the published wasm adapter packages (#773).
+// Backend-aware, but every variant points at the `torimi` landing README so the
+// closure reads as one system. Manifest-driven like package.json so a new backend
+// gets a README with nothing to hand-maintain.
+export function readmeFor(target) {
+  return `# ${target.npmName}
+
+Hayate — a GPU-native UI substrate — compiled to WebAssembly (web backend: \`${target.host?.backend ?? 'null (test-only)'}\`).
+This is a low-level adapter loaded by [\`@hayate/host\`](https://www.npmjs.com/package/@hayate/host); you normally
+depend on it transitively, not directly.
+
+Part of the Torimi / Tsubame lockstep release train — keep every \`@hayate/*\`,
+\`@tsubame/*\`, \`@torimi/*\`, and \`torimi\` package on the **same version**. Start
+at the [\`torimi\`](https://www.npmjs.com/package/torimi) README.
+
+Alpha (0.x): no backward-compatibility guarantees.
+`;
+}
 
 // wasm-pack regenerates package.json on every build but its shape drifts
 // across wasm-pack versions (0.15 drops description/repository/files/

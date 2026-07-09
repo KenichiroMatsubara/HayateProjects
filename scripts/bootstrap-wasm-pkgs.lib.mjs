@@ -7,7 +7,7 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { GITIGNORE_CONTENTS, loadManifest, outDirFor } from '../Hayate/scripts/wasm-manifest.mjs';
+import { GITIGNORE_CONTENTS, loadManifest, outDirFor, readmeFor } from '../Hayate/scripts/wasm-manifest.mjs';
 
 // The stub package name is the target's own npmName, not the shared crate name
 // (#765). host imports pkg / pkg-tiny-skia / pkg-vello-cpu as three sibling
@@ -73,5 +73,8 @@ export async function bootstrapWasmPkgs({ hayateRoot, manifest = loadManifest() 
     await writeFile(join(dir, 'hayate_adapter_web.js'), JS_STUB);
     await writeFile(join(dir, 'hayate_adapter_web.d.ts'), DTS_STUB);
     await writeFile(join(dir, '.gitignore'), GITIGNORE_CONTENTS);
+    // README is committed (the .gitignore whitelists it) so a fresh clone always
+    // has it; write it here too so a brand-new backend dir gets one (#773).
+    await writeFile(join(dir, 'README.md'), readmeFor(target));
   }
 }
