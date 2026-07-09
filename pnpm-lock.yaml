@@ -23,18 +23,18 @@ importers:
 
   Hayate/host:
     dependencies:
+      '@hayate/adapter-web':
+        specifier: workspace:*
+        version: link:../wasm-pkgs/pkg
+      '@hayate/adapter-web-cpu':
+        specifier: workspace:*
+        version: link:../wasm-pkgs/pkg-tiny-skia
+      '@hayate/adapter-web-vello-cpu':
+        specifier: workspace:*
+        version: link:../wasm-pkgs/pkg-vello-cpu
       '@hayate/protocol-spec':
         specifier: workspace:*
         version: link:../proto
-      hayate-adapter-web:
-        specifier: file:../wasm-pkgs/pkg
-        version: link:../wasm-pkgs/pkg
-      hayate-adapter-web-cpu:
-        specifier: file:../wasm-pkgs/pkg-tiny-skia
-        version: link:../wasm-pkgs/pkg-tiny-skia
-      hayate-adapter-web-vello-cpu:
-        specifier: file:../wasm-pkgs/pkg-vello-cpu
-        version: link:../wasm-pkgs/pkg-vello-cpu
     devDependencies:
       happy-dom:
         specifier: ^17.4.4
@@ -456,7 +456,7 @@ importers:
         specifier: ^17.6.3
         version: 17.6.3
       hayate-adapter-web-null:
-        specifier: file:../../../Hayate/wasm-pkgs/pkg-null
+        specifier: workspace:*
         version: link:../../../Hayate/wasm-pkgs/pkg-null
       rimraf:
         specifier: ^6.1.3
@@ -508,6 +508,12 @@ importers:
         specifier: workspace:*
         version: link:../packages/renderer-protocol
     devDependencies:
+      rimraf:
+        specifier: ^6.1.3
+        version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.15)(typescript@6.0.3)(yaml@2.9.0)
       vitest:
         specifier: ^3.2.0
         version: 3.2.6(@types/node@22.19.19)(happy-dom@17.6.3)(lightningcss@1.32.0)(yaml@2.9.0)

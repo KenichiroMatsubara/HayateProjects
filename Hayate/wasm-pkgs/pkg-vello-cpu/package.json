@@ -1,5 +1,5 @@
 {
-  "name": "hayate-adapter-web-vello-cpu",
+  "name": "@hayate/adapter-web-vello-cpu",
   "type": "module",
   "description": "Hayate — GPU-native UI substrate",
   "version": "0.1.0",
@@ -7,6 +7,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "hayate_adapter_web_bg.wasm",

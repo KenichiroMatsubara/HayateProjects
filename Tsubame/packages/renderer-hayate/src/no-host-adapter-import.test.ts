@@ -36,7 +36,7 @@ function shippedSources(dir: string): string[] {
 /** コード中の `import`/`import()`/`export ... from` 文だけを拾う（コメントの言及は除く）。 */
 function importsHostAdapter(source: string): boolean {
   const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-  return /\b(?:import|export)\b[^\n;]*['"]hayate-adapter-web[^'"]*['"]/.test(code);
+  return /\b(?:import|export)\b[^\n;]*['"]@?hayate[-/]adapter-web[^'"]*['"]/.test(code);
 }
 
 describe('renderer-hayate shipped code is decoupled from the host adapter (#477)', () => {

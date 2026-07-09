@@ -19,7 +19,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      'hayate-adapter-web': fileURLToPath(
+      '@hayate/adapter-web': fileURLToPath(
         new URL('../../../Hayate/wasm-pkgs/pkg-layer-present/hayate_adapter_web.js', import.meta.url),
       ),
     },

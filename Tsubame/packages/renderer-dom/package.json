@@ -1,8 +1,10 @@
 {
   "name": "@tsubame/renderer-dom",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Tsubame DOM Renderer — Hayate 不使用・純 JS の IRenderer 実装（CSR）",
   "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
+  "publishConfig": { "access": "public" },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

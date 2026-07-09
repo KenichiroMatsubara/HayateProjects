@@ -1,0 +1,77 @@
+name: npm pack smoke
+
+# Proves the ADR-0007 acceptance condition — an external app can install the
+# public packages and import them from OUTSIDE the monorepo — on every change to
+# publish surface (package.json metadata, the wasm manifest, or the smoke tooling).
+# The packed wasm tarballs must carry real artifacts, so this builds Rust → wasm
+# first (the bootstrap stubs would pack an empty .wasm and hide breakage).
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/package.json'
+      - 'Hayate/scripts/wasm-build-manifest.json'
+      - 'scripts/pack-smoke*.mjs'
+      - 'scripts/bootstrap-wasm-pkgs*.mjs'
+      - '.github/workflows/npm-pack-smoke.yml'
+  pull_request:
+    paths:
+      - '**/package.json'
+      - 'Hayate/scripts/wasm-build-manifest.json'
+      - 'scripts/pack-smoke*.mjs'
+      - 'scripts/bootstrap-wasm-pkgs*.mjs'
+      - '.github/workflows/npm-pack-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-pack-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack-smoke:
+    name: Pack public closure and import outside the monorepo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Rust / wasm-pack (real @hayate/adapter-web artifacts, not bootstrap stubs) ──
+      - name: Set up Rust (wasm32 target)
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        # Pin from crates.io like deploy-pages.yml / wasm-c3.yml — the marketplace
+        # action falls back to a wasm-pack too old to parse workspace-inherited manifests.
+        run: cargo install wasm-pack --locked
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # setup-rust-toolchain defaults to RUSTFLAGS=-Dwarnings; the web path has
+      # unrelated dead_code warnings (same as deploy-pages.yml / android-adapter.yml).
+      - name: Build WASM (all manifest targets)
+        env:
+          RUSTFLAGS: ""
+        run: pnpm --filter hayate run build:all
+
+      - name: Build the JS publish closure (dist for every public package)
+        run: pnpm -r --filter "!hayate" --filter "!tsubame-monorepo" --filter "!./Tsubame/examples/*" run build
+
+      - name: Unit-test the pack tooling (closure guardrail, no wasm needed)
+        run: node --test scripts/pack-smoke.test.mjs
+
+      - name: Pack the public closure and import it outside the monorepo
+        run: node scripts/pack-smoke.mjs

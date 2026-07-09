@@ -7,17 +7,17 @@ import { describe, expect, it, vi } from 'vitest';
 // imports the right bare specifier for each backend, and threads each
 // backend's own runtime layer-present arg into init() (#717/#718).
 const velloInit = vi.fn(async () => 'raw:vello');
-vi.mock('hayate-adapter-web', () => ({
+vi.mock('@hayate/adapter-web', () => ({
   default: vi.fn(async () => {}),
   HayateElementRenderer: { init: velloInit },
 }));
 const tinySkiaInit = vi.fn(async () => 'raw:tiny-skia');
-vi.mock('hayate-adapter-web-cpu', () => ({
+vi.mock('@hayate/adapter-web-cpu', () => ({
   default: vi.fn(async () => {}),
   HayateElementRenderer: { init: tinySkiaInit },
 }));
 const velloCpuInit = vi.fn(async () => 'raw:vello-cpu');
-vi.mock('hayate-adapter-web-vello-cpu', () => ({
+vi.mock('@hayate/adapter-web-vello-cpu', () => ({
   default: vi.fn(async () => {}),
   HayateElementRenderer: { init: velloCpuInit },
 }));
@@ -27,7 +27,7 @@ import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 const canvas = {} as HTMLCanvasElement;
 
 describe('loadCanvasBackend (generated from wasm-build-manifest.json, #703)', () => {
-  it('vello always loads hayate-adapter-web, regardless of layerPresent (no separate layer-present package, #718)', async () => {
+  it('vello always loads @hayate/adapter-web, regardless of layerPresent (no separate layer-present package, #718)', async () => {
     await expect(loadCanvasBackend('vello', canvas)).resolves.toBe('raw:vello');
     await expect(loadCanvasBackend('vello', canvas, false)).resolves.toBe('raw:vello');
   });
@@ -42,11 +42,11 @@ describe('loadCanvasBackend (generated from wasm-build-manifest.json, #703)', ()
     expect(velloInit).toHaveBeenCalledWith(canvas, false);
   });
 
-  it('tiny-skia loads hayate-adapter-web-cpu (not hayate-adapter-web-tiny-skia)', async () => {
+  it('tiny-skia loads @hayate/adapter-web-cpu (not @hayate/adapter-web-tiny-skia)', async () => {
     await expect(loadCanvasBackend('tiny-skia', canvas)).resolves.toBe('raw:tiny-skia');
   });
 
-  it('vello-cpu loads hayate-adapter-web-vello-cpu', async () => {
+  it('vello-cpu loads @hayate/adapter-web-vello-cpu', async () => {
     await expect(loadCanvasBackend('vello-cpu', canvas)).resolves.toBe('raw:vello-cpu');
   });
 

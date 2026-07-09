@@ -141,6 +141,11 @@ export function packageJsonFor(target, manifest) {
         type: 'git',
         url: 'https://github.com/KenichiroMatsubara/HayateProjects',
       },
+      // A wasm target is either part of the public npm closure (scoped name →
+      // publishConfig.access "public", ADR-0007) or a test-only backend kept
+      // out of publish entirely (pkg-null → private). The manifest's `private`
+      // flag is the single source of truth for that split.
+      ...(target.private ? { private: true } : { publishConfig: { access: 'public' } }),
       files: ['hayate_adapter_web_bg.wasm', 'hayate_adapter_web.js', 'hayate_adapter_web.d.ts'],
       main: 'hayate_adapter_web.js',
       types: 'hayate_adapter_web.d.ts',
