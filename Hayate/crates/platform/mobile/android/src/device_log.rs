@@ -179,6 +179,18 @@ impl<P: LogSendPort> DeviceLog<P> {
         }
     }
 
+    /// JS ログ（`source: "js"`）を積む。`__hayateLog`（`console.*`・JS ランタイムエラー）の合流点。
+    pub fn record_js(&mut self, level: LogLevel, message: String, ts_ms: f64) {
+        self.record(LogSource::Js, level, message, ts_ms);
+    }
+
+    /// host イベント（`source: "host"`）を積む（#789）。bundle 取得失敗・protocol version 不一致・
+    /// native エラーなど、JS が起動する前に死ぬケースを含むホスト側の失敗の合流点。host 系統は
+    /// [`record`](Self::record) の即時フラッシュ経路に乗る（真っ黒障害ほど早く外へ出したい）。
+    pub fn record_host(&mut self, level: LogLevel, message: String, ts_ms: f64) {
+        self.record(LogSource::Host, level, message, ts_ms);
+    }
+
     /// clock tick。前回フラッシュから [`FLUSH_INTERVAL_MS`] 以上経っていれば、バッファが空でない限り
     /// まとめて 1 バッチにして送る（空なら送らない）。
     pub fn tick(&mut self, now_ms: f64) {
@@ -569,6 +581,34 @@ mod tests {
     #[test]
     fn the_ring_buffer_capacity_is_a_named_constant() {
         assert_eq!(RING_BUFFER_CAPACITY, 1_000);
+    }
+
+    #[test]
+    fn a_host_event_merges_as_a_source_host_entry_and_flushes_immediately() {
+        // bundle 取得失敗・version 不一致・native エラーは host 系統として合流し、即時フラッシュ経路に
+        // 乗る（真っ黒障害の診断・#789）。合流点を Rust シームで観測できる形にする。
+        let port = MockPort::default();
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        log.record_host(LogLevel::Error, "protocol version 不一致".to_owned(), 7.0);
+
+        let sent = port.sent.borrow();
+        assert_eq!(sent.len(), 1, "a host event flushes immediately (no tick)");
+        let entry = &sent[0].1.entries[0];
+        assert_eq!(entry.source, LogSource::Host);
+        assert_eq!(entry.message, "protocol version 不一致");
+    }
+
+    #[test]
+    fn record_js_tags_the_entry_as_source_js() {
+        // JS ログ（__hayateLog 由来）は source:js として合流する（#789）。
+        let port = MockPort::default();
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        log.record_js(LogLevel::Log, "from console".to_owned(), 3.0);
+        log.tick(FLUSH_INTERVAL_MS);
+
+        assert_eq!(port.sent.borrow()[0].1.entries[0].source, LogSource::Js);
     }
 
     #[test]

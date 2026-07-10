@@ -60,6 +60,11 @@ mod ffi {
         /// C++ 側の `__hayateLog` は従来どおり logcat にも出しつつ（併存・置き換えない）これを呼ぶ。
         /// バッファ・seq 採番・定期/即時フラッシュは Rust の純粋シーム（`device_log`）が所有する。
         fn log(self: &JsHostBridge, level: &str, message: &str);
+
+        /// host イベント（`source: "host"`）を Device Log シームへ流す（#789）。bundle が eval すら
+        /// できないケース（真っ黒障害）など、C++ 側が捕まえた host 由来の失敗を即時フラッシュ経路に
+        /// 乗せる。JS が動いている間の uncaught JS 例外は [`log`](Self::log)（source: js）で流す。
+        fn log_host(self: &JsHostBridge, level: &str, message: &str);
     }
 
     unsafe extern "C++" {
@@ -148,17 +153,29 @@ impl JsHostBridge {
     /// ここで焼く（フラッシュ間隔は別の monotonic clock で計るので混同しない）。level 未知は log に
     /// 丸める（additive-only・ADR-0005）。RefCell の interior mutability で `&self` から積める。
     fn log(&self, level: &str, message: &str) {
-        let ts_ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_millis() as f64)
-            .unwrap_or(0.0);
-        self.device_log.borrow_mut().record(
-            LogSource::Js,
+        self.device_log.borrow_mut().record_js(
             LogLevel::from_wire(level),
             message.to_owned(),
-            ts_ms,
+            wall_clock_epoch_ms(),
         );
     }
+
+    /// host イベント（`source: "host"`）を積む（#789）。C++ 側が捕まえた eval 失敗・native エラー用。
+    fn log_host(&self, level: &str, message: &str) {
+        self.device_log.borrow_mut().record_host(
+            LogLevel::from_wire(level),
+            message.to_owned(),
+            wall_clock_epoch_ms(),
+        );
+    }
+}
+
+/// 端末側 wall-clock epoch ms（Device Log エントリの `ts`）。フラッシュ間隔の monotonic clock とは別軸。
+fn wall_clock_epoch_ms() -> f64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0)
 }
 
 fn ffi_row_from(row: EventRow) -> ffi::FfiEventRow {

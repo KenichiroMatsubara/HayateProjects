@@ -261,6 +261,9 @@ struct HermesApp::Impl {
   std::shared_ptr<RedrawSlot> redraw_slot = std::make_shared<RedrawSlot>();
   // `request_pump` が立てたフラグの置き場（`consume_wants_pump` が読んで消す）。
   std::shared_ptr<PumpFlag> pump_flag = std::make_shared<PumpFlag>();
+  // Device Log シームへの非所有ポインタ（#789）。host_obj が Box を所有し runtime の寿命の間
+  // 有効。pumpFrame で捕まえた uncaught JS 例外を source: js として Device Log に流すのに使う。
+  JsHostBridge* log_bridge = nullptr;
 };
 
 HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
@@ -272,6 +275,7 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   // move は heap 上の JsHostBridge 実体を動かさない（Box はポインタ）ので、退避したポインタは
   // host_obj（＝runtime）の寿命の間ずっと有効。__hayateLog から Device Log シームへ流すのに使う。
   JsHostBridge* log_bridge = &*host;
+  impl_->log_bridge = log_bridge;  // pumpFrame の JS 例外を Device Log へ流すため保持（#789）。
   auto host_obj = std::make_shared<HayateHostObject>(
       std::move(host), impl_->redraw_slot, impl_->pump_flag);
   rt.global().setProperty(rt, "__hayateHost",
@@ -304,8 +308,16 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   } catch (const jsi::JSError& e) {
     HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
                 e.getMessage().c_str(), e.getStack().c_str());
+    // bundle が eval すらできない＝真っ黒障害。host イベント（source: host）として Device Log へ
+    // 流し、USB なしで診断できるようにする（#789）。JS は起動していないので js ではなく host。
+    log_bridge->log_host(
+        rust::Str("error"),
+        rust::Str("Tsubame バンドルの eval で JS 例外: " + e.getMessage()));
   } catch (const std::exception& e) {
     HAYATE_LOGE("Tsubame バンドルの eval で例外: %s", e.what());
+    log_bridge->log_host(
+        rust::Str("error"),
+        rust::Str(std::string("Tsubame バンドルの eval で例外: ") + e.what()));
   }
 }
 
@@ -325,6 +337,12 @@ void HermesApp::pump_frame(double timestamp_ms) {
   } catch (const jsi::JSError& e) {
     HAYATE_LOGE("pumpFrame で JS 例外: %s\nJS stack:\n%s", e.getMessage().c_str(),
                 e.getStack().c_str());
+    // JS が動いている最中の uncaught 例外。source: js として Device Log へ流す（#789）。bare Hermes
+    // には JS 側 uncaught フックが無いため、host（C++）が捕まえた地点で js としてタグ付けする。
+    if (impl_->log_bridge) {
+      impl_->log_bridge->log(rust::Str("error"),
+                             rust::Str("uncaught: " + e.getMessage()));
+    }
     impl_->ready = false;  // 毎フレームのスパムを避けて止める。
   } catch (const std::exception& e) {
     HAYATE_LOGE("pumpFrame で例外: %s", e.what());

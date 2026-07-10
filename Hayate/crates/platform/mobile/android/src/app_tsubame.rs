@@ -95,6 +95,15 @@ fn report_boot_error(error: &BootError) -> String {
     message
 }
 
+/// host イベントの記録時刻（端末側 wall-clock epoch ms）。Device Log の `ts` に載る（#789）。
+/// フラッシュ間隔の monotonic clock（`start.elapsed`）とは別軸。
+fn now_epoch_ms() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0)
+}
+
 pub(crate) fn run(app: AndroidApp) {
     // このホスト（decoder）に焼き込んだ wire 版数。Web ホストの HOST_PROTOCOL_VERSION と同じ
     // source of truth（`@hayate/protocol-spec` の manifest version）をネイティブ decoder
@@ -172,13 +181,26 @@ pub(crate) fn run(app: AndroidApp) {
     // マニフェスト取得/解釈に失敗した初回起動（`autoload_error`）は boot せず、その明示エラーを出して
     // URL 入力経路へ誘導する（謎クラッシュにしない・#743）。
     let mut current: Option<Runtime> = if let Some(message) = autoload_error {
+        // Demo Endpoint 経路の manifest 失敗。host イベントとして合流させる（送信は Demo Endpoint
+        // 経由なので実際には出ないが、合流点を一様にして扱いを分岐させない・#789）。
+        device_log
+            .borrow_mut()
+            .record_host(device_log::LogLevel::Error, message.clone(), now_epoch_ms());
         crate::error_overlay::show_error(&message);
         None
     } else {
         match boot() {
             Ok(runtime) => Some(runtime),
             Err(error) => {
-                crate::error_overlay::show_error(&report_boot_error(&error));
+                // bundle 取得失敗・protocol version 不一致は host イベント（source: "host"）として
+                // Device Log に合流し、即時フラッシュ経路（#788）で USB なしに dev-server へ届く（#789）。
+                let message = report_boot_error(&error);
+                device_log.borrow_mut().record_host(
+                    device_log::LogLevel::Error,
+                    message.clone(),
+                    now_epoch_ms(),
+                );
+                crate::error_overlay::show_error(&message);
                 None
             }
         }
@@ -411,7 +433,14 @@ pub(crate) fn run(app: AndroidApp) {
                     frame_loop.request_wake();
                 }
                 Err(error) => {
-                    crate::error_overlay::show_error(&report_boot_error(&error));
+                    // reload 後の boot 失敗（取得失敗・version 不一致）も host イベントとして合流させる（#789）。
+                    let message = report_boot_error(&error);
+                    device_log.borrow_mut().record_host(
+                        device_log::LogLevel::Error,
+                        message.clone(),
+                        now_epoch_ms(),
+                    );
+                    crate::error_overlay::show_error(&message);
                     current = None;
                 }
             }
