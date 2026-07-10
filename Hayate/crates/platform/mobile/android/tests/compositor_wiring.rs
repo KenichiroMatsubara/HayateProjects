@@ -80,10 +80,13 @@ fn present_renders_the_whole_scene_with_the_vello_scene_renderer() {
         src.contains("create_target_view") && src.contains("create_blitter"),
         "GpuSurface must build its offscreen target_view/blitter the same way the web backend does (#687)"
     );
+    // b2（edge-to-edge, issue #794・ADR-0144）: 全画面 raster をシーンの安全領域平行移動込みで
+    // 1 回だけ呼ぶ（`render_scene_with_offset`。インセット push が無いフレームは offset 0）。
     assert_eq!(
-        src.matches(".render_scene(").count(),
+        src.matches(".render_scene_with_offset(").count(),
         1,
-        "app.rs must call render_scene exactly once (inside the needs_raster branch, #687)"
+        "app.rs must raster the whole scene exactly once via render_scene_with_offset \
+         (needs_raster branch, #687 + b2 safe-area shift #794)"
     );
 }
 

@@ -23,9 +23,9 @@ use hayate_core::element::ime_reconcile::{
     apply_ime_action, translate_text_input, TextInputState, TextSpan,
 };
 use crate::scene_demo::build_demo_tree;
+use crate::safe_area::SafeAreaInsets;
 use crate::surface_lifecycle::{
-    safe_window_dimensions, viewport_for_surface, window_dimensions, SurfaceLifecycleAction,
-    SurfaceLifecycleState,
+    window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
 };
 use crate::touch_input::{translate_touch, TouchAction};
 use crate::touch_scroll::TouchScrollState;
@@ -177,11 +177,8 @@ pub fn android_main(app: AndroidApp) {
                                     content_scale: scale,
                                 });
                             }
-                            let rect = app.content_rect();
-                            let (safe_w, safe_h) = safe_window_dimensions(
-                                width, height, rect.left, rect.top, rect.right, rect.bottom,
-                            );
-                            let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
+                            let (vw, vh) =
+                                effective_insets(&app, width, height).layout_viewport(width, height, scale);
                             tree.set_viewport(vw, vh);
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
@@ -308,9 +305,13 @@ pub(crate) fn process_touch_input(
         }
     };
 
-    // タッチ座標は物理pxで届くが、レイアウト/ヒットテストは論理px空間（`viewport_for_surface`
-    // と同じ content_scale）で動く。揃えないと高密度端末でタップ位置がずれる。
+    // タッチ座標は物理pxで届くが、レイアウト/ヒットテストは論理px空間（`safe_viewport` と同じ
+    // content_scale）で動く。揃えないと高密度端末でタップ位置がずれる。
     let content_scale = crate::surface_lifecycle::content_scale(app);
+    // b2（edge-to-edge, issue #794・ADR-0144）: 描画は安全領域インセット分だけ内側へずれているので、
+    // タッチもウィンドウ座標から左/上インセットを差し引いてから論理px化する。Kotlin 側の
+    // MotionEvent 平行移動（旧 offsetLocation）は撤去し、補正を Rust 側へ一本化した。
+    let insets = crate::safe_area::pushed_insets().unwrap_or_default();
 
     let mut dispatched = false;
     loop {
@@ -318,8 +319,9 @@ pub(crate) fn process_touch_input(
             if let InputEvent::MotionEvent(motion) = event {
                 if let Some(action) = motion_action_to_touch(motion.action()) {
                     let pointer = motion.pointer_at_index(motion.pointer_index());
-                    let x = pointer.x() / content_scale;
-                    let y = pointer.y() / content_scale;
+                    let (cx, cy) = insets.correct_touch(pointer.x(), pointer.y());
+                    let x = cx / content_scale;
+                    let y = cy / content_scale;
                     scroll.apply(tree, translate_touch(action, x, y), now_ms);
                     dispatched = true;
                 }
@@ -345,20 +347,39 @@ fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
     }
 }
 
-/// ネイティブウィンドウ全体の物理サイズと `content_rect()`（システムUIを除いた実表示領域）
-/// から、レイアウトに渡す論理ビューポートを導く。GPU surface のサイズはウィンドウ全体の
-/// ままで変えない（`window_dimensions` を別途使う）——ここで縮めるのはレイアウトが使う
-/// ビューポートだけ（最下点固定ピクセルずれバグの修正、`safe_window_dimensions` 参照）。
+/// 現在有効な安全領域インセット（edge-to-edge / b2, issue #794・ADR-0144）。
+///
+/// Kotlin から JNI で push された値（`safe_area::pushed_insets`）を一次ソースにする。まだ一度も
+/// push されていない（初回レイアウト前など）ときだけ、`content_rect()` 由来のインセットに
+/// フォールバックする——`content_rect()` はフルウィンドウを返す端末があり信頼できないため、
+/// あくまで push が来るまでの保険（`MainActivity` は onCreate 後に rootWindowInsets スナップ
+/// ショットを push するので、この保険期間は短い）。
+pub(crate) fn effective_insets(app: &AndroidApp, window_width: u32, window_height: u32) -> SafeAreaInsets {
+    if let Some(pushed) = crate::safe_area::pushed_insets() {
+        return pushed;
+    }
+    let rect = app.content_rect();
+    SafeAreaInsets::from_content_rect(
+        window_width,
+        window_height,
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.bottom,
+    )
+}
+
+/// ネイティブウィンドウ全体の物理サイズと安全領域インセットから、レイアウトに渡す論理
+/// ビューポートを導く。GPU surface のサイズはウィンドウ全体のままで変えない（b2：edge-to-edge。
+/// `window_dimensions` を別途使う）——ここで縮めるのはレイアウトが使うビューポートだけ。
+/// 上端がステータスバー裏に潜り最下点がナビゲーションバー裏へずれるバグの修正（issue #794）。
 fn safe_viewport(
     app: &AndroidApp,
     window: &ndk::native_window::NativeWindow,
     content_scale: f32,
 ) -> (f32, f32) {
     let (w, h) = window_dimensions(window.width(), window.height());
-    let rect = app.content_rect();
-    let (safe_w, safe_h) =
-        safe_window_dimensions(w, h, rect.left, rect.top, rect.right, rect.bottom);
-    viewport_for_surface(safe_w, safe_h, content_scale)
+    effective_insets(app, w, h).layout_viewport(w, h, content_scale)
 }
 
 pub(crate) async fn init_gpu_surface(
@@ -483,8 +504,22 @@ impl GpuSurface {
             width: self.width,
             height: self.height,
         };
-        self.scene_renderer
-            .render_scene(scene, &target, CLEAR_COLOR, self.content_scale)?;
+        // b2（edge-to-edge, issue #794・ADR-0144）: GPU ターゲットはフルウィンドウのまま、シーンを
+        // 安全領域インセット分だけ右下へ平行移動する。バー裏の空き領域は vello が base_color
+        // （= ルート背景色 CLEAR_COLOR）でターゲット全面をクリアするのでそのまま塗られる。JNI push が
+        // まだ無いフレームは (0,0)（フルウィンドウ描画）で、直後の rootWindowInsets スナップショット
+        // push で安全領域へ収まる。
+        let (origin_x, origin_y) = crate::safe_area::pushed_insets()
+            .map(|insets| insets.scene_origin(self.content_scale))
+            .unwrap_or((0.0, 0.0));
+        self.scene_renderer.render_scene_with_offset(
+            scene,
+            &target,
+            CLEAR_COLOR,
+            self.content_scale,
+            origin_x,
+            origin_y,
+        )?;
         self.present_target()?;
         self.planner.note_full_raster(layers);
         Ok(())

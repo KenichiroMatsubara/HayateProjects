@@ -57,6 +57,11 @@ mod scene_demo;
 // 判定器なので、ホストの cargo test で振る舞いを固定する（app_tsubame の実ループが利用）。
 mod frame_schedule;
 mod surface_lifecycle;
+// 安全領域インセット（edge-to-edge / b2, issue #794・ADR-0144）。Kotlin から JNI で push された
+// WindowInsets（systemBars + displayCutout）の格納庫＋純粋計算（レイアウトビューポート縮小・
+// シーン平行移動原点・タッチ座標補正）。android 非依存なのでホストでコンパイル・テストされ、
+// `app.rs`（android のみ）がフレームループから消費する。
+mod safe_area;
 // 実機発音検証用のテストトーン生成器（ADR-0117 / #562）。NDK 非依存の純粋計算なので
 // ホストでもコンパイル・テストされ、AAudio glue（audio_output.rs）はこのバッファを書く
 // だけの薄いグルーに保つ。

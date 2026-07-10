@@ -191,7 +191,7 @@ impl VelloSceneRenderer {
         clear_color: [f32; 4],
         content_scale: f32,
     ) -> Result<(), String> {
-        self.render_scene_at(graph, target, clear_color, content_scale, 0.0)
+        self.render_scene_with_offset(graph, target, clear_color, content_scale, 0.0, 0.0)
     }
 
     /// Like [`Self::render_scene`] but additionally shifts the encoded content up by `origin_y`
@@ -211,8 +211,29 @@ impl VelloSceneRenderer {
         content_scale: f32,
         origin_y: f32,
     ) -> Result<(), String> {
+        // scroll band は content を上へ（-y）ずらして band の上端をテクスチャ行 0 に合わせる。
+        self.render_scene_with_offset(graph, target, clear_color, content_scale, 0.0, -origin_y)
+    }
+
+    /// Like [`Self::render_scene`] but translates the encoded content by `(offset_x, offset_y)`
+    /// logical px (applied *before* `content_scale`). Positive values push content right/down.
+    ///
+    /// Android の edge-to-edge / b2（issue #794・ADR-0144）で使う：GPU ターゲットはフルウィンドウ
+    /// のまま、シーンを安全領域インセット分だけ右下へ平行移動して systemBars/カットアウトの裏を
+    /// 空ける。バー裏の空き領域は vello が `base_color`（= ルート背景色 `clear_color`）でターゲット
+    /// 全面をクリアするので、そのまま塗られる。`render_scene_at` の scroll band shift（0, -origin_y）
+    /// もこの一般化経路を通る。
+    pub fn render_scene_with_offset(
+        &mut self,
+        graph: &SceneGraph,
+        target: &VelloRenderTarget<'_>,
+        clear_color: [f32; 4],
+        content_scale: f32,
+        offset_x: f32,
+        offset_y: f32,
+    ) -> Result<(), String> {
         // #649: 毎フレーム `Scene::new()` せず、常駐 Scene を reset して再エンコードする（alloc churn 削減）。
-        encode_frame(&mut self.scene, graph, content_scale, origin_y);
+        encode_frame(&mut self.scene, graph, content_scale, offset_x, offset_y);
         self.renderer
             .render_to_texture(
                 target.device,
@@ -233,19 +254,20 @@ impl VelloSceneRenderer {
 /// `graph` を `scene` へエンコードする（#649）。冒頭で `Scene::reset()` して前フレームの内容を消して
 /// から再エンコードするので、常駐 Scene をフレーム間で再利用しても内容は毎フレーム新規 Scene と同値。
 /// `content_scale != 1.0` のときは content scale の transform を被せる（ADR-0129 のバッファ縮小と同経路）。
-/// `origin_y != 0.0` のときは、その **内側**（content_scale 適用前の論理座標）で追加の
-/// `translate(0, -origin_y)` を被せる（ADR-0127 の scroll band 平行移動 — ネストした
-/// push_transform は outer∘inner で合成されるため、scale は shift 後の量にも一様に掛かる）。
-fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32, origin_y: f32) {
+/// `(offset_x, offset_y) != (0,0)` のときは、その **内側**（content_scale 適用前の論理座標）で追加の
+/// `translate(offset_x, offset_y)` を被せる（ADR-0127 の scroll band 平行移動と ADR-0144 の
+/// 安全領域シフトが共有する経路 — ネストした push_transform は outer∘inner で合成されるため、
+/// scale は shift 後の量にも一様に掛かる）。
+fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32, offset_x: f32, offset_y: f32) {
     scene.reset();
     let mut painter = VelloPainter::new(scene);
     let scaled = content_scale != 1.0;
     if scaled {
         painter.push_transform([content_scale as f64, 0.0, 0.0, content_scale as f64, 0.0, 0.0]);
     }
-    let shifted = origin_y != 0.0;
+    let shifted = offset_x != 0.0 || offset_y != 0.0;
     if shifted {
-        painter.push_transform([1.0, 0.0, 0.0, 1.0, 0.0, -origin_y as f64]);
+        painter.push_transform([1.0, 0.0, 0.0, 1.0, offset_x as f64, offset_y as f64]);
     }
     render_scene_graph(graph, &mut painter);
     if shifted {
@@ -261,7 +283,7 @@ fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32, origi
 #[doc(hidden)]
 pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
     let mut scene = Scene::new();
-    encode_frame(&mut scene, graph, content_scale, 0.0);
+    encode_frame(&mut scene, graph, content_scale, 0.0, 0.0);
     scene
 }
 
@@ -270,7 +292,7 @@ pub fn debug_encode_scene(graph: &SceneGraph, content_scale: f32) -> Scene {
 // 前フレームを持ち越さないことを GPU 抜きで固定できる。
 #[doc(hidden)]
 pub fn debug_encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32) {
-    encode_frame(scene, graph, content_scale, 0.0);
+    encode_frame(scene, graph, content_scale, 0.0, 0.0);
 }
 
 pub fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
