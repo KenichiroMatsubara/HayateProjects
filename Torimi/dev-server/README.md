@@ -1,6 +1,6 @@
 # @torimi/dev-server
 
-Torimi's minimal dev server: it serves a single App Bundle over HTTP, watches it, and relays reload signals to connected hosts over WebSocket. It is framework- and build-tool independent — the bundle is an opaque single JS file it never inspects.
+Torimi's minimal dev server: it serves a single App Bundle over HTTP, watches it, relays reload signals to connected hosts over WebSocket, and receives Device Log batches from native hosts over `POST /log/<deviceId>` (ADR-0005). It is framework- and build-tool independent — the bundle is an opaque single JS file it never inspects.
 
 It sits below the `torimi` CLI, which orchestrates the build and drives this server; the wire routes and messages it speaks live in `@torimi/dev-server-contract`.
 

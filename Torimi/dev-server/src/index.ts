@@ -1,10 +1,21 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, watch, type FSWatcher } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
 import { basename, dirname } from 'node:path';
-import { devServerContract } from '@torimi/dev-server-contract';
+import {
+  devServerContract,
+  type LogBatch,
+  type LogEntry,
+  type LogLevel,
+  type LogSource,
+} from '@torimi/dev-server-contract';
 
 export { ALL_INTERFACES_HOSTNAME, localNetworkUrls, type LocalNetworkUrl } from './network.js';
 export { encodeQr, qrToTerminalString, type QrMatrix, type QrTerminalOptions } from './qr.js';
@@ -19,6 +30,12 @@ export {
  * 連続イベントを 1 回の reload にまとめる。**プレースホルダ値**（実値調整は #8, ADR-0001）。
  */
 export const WATCH_DEBOUNCE_MS = 80;
+
+/**
+ * Device Log の POST ボディ上限（bytes）。超過は 413 で拒否する。**プレースホルダ値**
+ * 1MB（実値調整は運用を見て、ADR-0005）。
+ */
+export const LOG_BODY_LIMIT_BYTES = 1024 * 1024;
 
 /** WebSocket ハンドシェイクの magic GUID（RFC 6455）。Sec-WebSocket-Accept の算出に使う。 */
 const WS_ACCEPT_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
@@ -70,6 +87,12 @@ export interface BundleDevServerOptions {
   readonly watchPath?: string;
   /** watch のデバウンス時間（ms）。既定は {@link WATCH_DEBOUNCE_MS}。 */
   readonly debounceMs?: number;
+  /**
+   * Device Log バッチ受理時のコールバック。検証・重複排除を通った綺麗なエントリだけを
+   * (deviceId, batch) で受け取る。sink（ターミナル/ファイル）への配線は呼び出し側の責務
+   * （ADR-0005）。
+   */
+  readonly onLogBatch?: (deviceId: string, batch: LogBatch) => void;
 }
 
 export interface BundleDevServer {
@@ -77,6 +100,26 @@ export interface BundleDevServer {
   listen(): Promise<string>;
   /** listen を解除する。 */
   close(): Promise<void>;
+}
+
+/**
+ * wire から来た 1 エントリを、既知フィールドだけの綺麗な {@link LogEntry} に写す。
+ * 未知フィールドは黙って無視、既知フィールドの欠落・型不一致はエントリ単位で
+ * スキップ（undefined を返す）— additive-only 互換（ADR-0005）。
+ */
+function toCleanLogEntry(raw: unknown): LogEntry | undefined {
+  if (typeof raw !== 'object' || raw == null) return undefined;
+  const { seq, ts, source, level, message } = raw as Record<string, unknown>;
+  if (
+    typeof seq !== 'number' ||
+    typeof ts !== 'number' ||
+    typeof source !== 'string' ||
+    typeof level !== 'string' ||
+    typeof message !== 'string'
+  ) {
+    return undefined;
+  }
+  return { seq, ts, source: source as LogSource, level: level as LogLevel, message };
 }
 
 /** 既定 bind ホスト。loopback に固定し、dev server を外部公開しない。 */
@@ -92,6 +135,11 @@ class NodeBundleDevServer implements BundleDevServer {
   readonly #debounceMs: number;
   /** reload を待つ接続中ホストの WS ソケット群。 */
   readonly #clients = new Set<Socket>();
+  /**
+   * 端末ごと「最後に受理した seq」。at-least-once 再送の重複排除に使う。メモリ上にだけ
+   * 保持し永続化しない — dev-server はステートレスを崩さない（ADR-0005）。
+   */
+  readonly #lastAcceptedSeq = new Map<string, number>();
   #watcher: FSWatcher | undefined;
   #debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -102,6 +150,11 @@ class NodeBundleDevServer implements BundleDevServer {
     this.#debounceMs = options.debounceMs ?? WATCH_DEBOUNCE_MS;
     this.#server = createServer((req, res) => {
       res.setHeader('access-control-allow-origin', ACCESS_CONTROL_ALLOW_ORIGIN);
+      if (req.method === 'POST' && req.url?.startsWith(devServerContract.logRoutePrefix)) {
+        const deviceId = req.url.slice(devServerContract.logRoutePrefix.length);
+        this.#handleLogPost(req, res, deviceId, options.onLogBatch);
+        return;
+      }
       if (req.url === devServerContract.bundleRoute) {
         readFile(options.bundlePath).then(
           (body) => {
@@ -120,6 +173,62 @@ class NodeBundleDevServer implements BundleDevServer {
       res.end();
     });
     this.#server.on('upgrade', (req, socket) => this.#handleUpgrade(req, socket as Socket));
+  }
+
+  /**
+   * devServerContract.logRoutePrefix への Device Log POST を受理する（ADR-0005）。
+   * 受理 204／壊れた JSON・非配列 entries 400／ボディ上限超 413。受理済み seq 以下は
+   * 黙って捨て（at-least-once の重複排除）、綺麗なエントリだけを onLogBatch へ渡す。
+   */
+  #handleLogPost(
+    req: IncomingMessage,
+    res: ServerResponse,
+    deviceId: string,
+    onLogBatch: ((deviceId: string, batch: LogBatch) => void) | undefined,
+  ): void {
+    const chunks: Buffer[] = [];
+    let received = 0;
+    req.on('data', (chunk: Buffer) => {
+      received += chunk.length;
+      // 超過分は捨てつつ読み切る（途中切断は client 側の fetch をエラーにするため、応答は end 後）。
+      if (received > LOG_BODY_LIMIT_BYTES) {
+        chunks.length = 0;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (received > LOG_BODY_LIMIT_BYTES) {
+        res.statusCode = 413;
+        res.end();
+        return;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        res.statusCode = 400;
+        res.end();
+        return;
+      }
+      const body = parsed as { deviceLabel?: unknown; entries?: unknown };
+      if (typeof body !== 'object' || body == null || !Array.isArray(body.entries)) {
+        res.statusCode = 400;
+        res.end();
+        return;
+      }
+      const lastSeq = this.#lastAcceptedSeq.get(deviceId) ?? -Infinity;
+      const entries = (body.entries as unknown[])
+        .flatMap((raw) => toCleanLogEntry(raw) ?? [])
+        .filter((entry) => entry.seq > lastSeq);
+      if (entries.length > 0) {
+        this.#lastAcceptedSeq.set(deviceId, Math.max(...entries.map((entry) => entry.seq)));
+        const deviceLabel = typeof body.deviceLabel === 'string' ? body.deviceLabel : '';
+        onLogBatch?.(deviceId, { deviceLabel, entries });
+      }
+      res.statusCode = 204;
+      res.end();
+    });
   }
 
   /** devServerContract.reloadRoute への WS ハンドシェイクを受理し、ソケットを reload 配信対象に加える。 */
