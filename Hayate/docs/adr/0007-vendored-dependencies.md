@@ -12,6 +12,12 @@ Vello・Taffy・parley・fontique・skrifa を `crates/vendor/` として worksp
 
 wgpu は対象外。GPU API 抽象として巨大すぎ、プラットフォーム対応の追従コストが高い。wgpu は Cargo.toml 依存として維持し、メジャーバージョンで評価して移行する。
 
+skia-safe も対象外（wgpu 同類の例外。2026-07 追記、ADR-0146 / issue #799）。Skia は巨大な C++ ツリーで、ソースベンダリングの保守コスト（ビルドシステム・プラットフォーム追従）が利益を上回る。そもそも導入動機が「Android HWUI / Chrome で Google が実証した実績をそのまま使う」ことにあり、Skia に手を入れる意図が無い — 手を入れないなら本 ADR の眼目（所有権・選択的取り込みの判断権）を得る必要も無いため、**fork もしない**。運用は次のとおり:
+
+- Cargo.toml 依存として維持し、crates.io の skia-safe＋ビルド済みバイナリを使う。版は**厳密ピン**（`^` を使わない）。
+- CI はビルド済みバイナリをキャッシュし、バイナリ取得込みのクリーンビルドを CI で検証する（ビルド時ネットワーク依存が壊れたらすぐ検知する）。
+- hardening 選択肢: GitHub Releases からのバイナリ取得が問題（消失・帯域・到達性）を起こした場合、`SKIA_BINARIES_URL` 系の環境変数でセルフホストミラーへ切り替えられる。記録のみで、既定では使わない。
+
 ## Considered Options
 
 - **Cargo.toml 依存として使い続ける**: upstream の破壊的変更に強制追従させられる。substrate の安定性が外部に依存する。
