@@ -11,6 +11,7 @@
 //! JSI/`__hayateLog` 配線は既存 fetch / reload ポートと同じ薄い I/O 委譲で、実駆動は実機で検証する。
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
 
+use std::collections::VecDeque;
 use std::path::Path;
 
 use crate::dev_server_target::DevServerTarget;
@@ -22,6 +23,10 @@ pub const FLUSH_INTERVAL_MS: f64 = 2_000.0;
 /// dev-server が Device Log を受ける HTTP ルート接頭辞。`@torimi/dev-server-contract` の
 /// `logRoutePrefix` と一致させる wire 契約（node 依存を持ち込まないため値で複製する）。
 pub const LOG_ROUTE_PREFIX: &str = "/log/";
+
+/// 未送信エントリのリングバッファ上限（件数）。送信失敗時に保持し、これを超えると古い方から捨てる。
+/// **プレースホルダ値** 1000（実値調整は運用を見て・ADR-0005）。マジックナンバー禁止のため名前付き定数。
+pub const RING_BUFFER_CAPACITY: usize = 1_000;
 
 /// Device Log 1 エントリのログレベル（`console.*` の別名・wire 契約 `LogLevel` のミラー）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,8 +103,9 @@ pub struct LogBatch {
 /// バッチを Dev Server へ送る注入ポート。device では Kotlin/OkHttp の `POST /log/<deviceId>`、
 /// テストではモック。fetch / reload ポートと同じ席（薄い I/O 委譲）。
 pub trait LogSendPort {
-    /// `device_id` のバッチを送る。
-    fn send(&self, device_id: &str, batch: &LogBatch);
+    /// `device_id` のバッチを送り、成功可否を返す。`false`（dev-server が落ちている／再起動中）なら
+    /// 送り側はエントリをリングバッファに保持し次間隔で再送する（#788）。バックオフは入れない。
+    fn send(&self, device_id: &str, batch: &LogBatch) -> bool;
 }
 
 /// bundle 取得元の種別。Device Log を送るのは Dev Server 経由のときだけで、Demo Endpoint 経由は
@@ -120,7 +126,9 @@ pub struct DeviceLog<P: LogSendPort> {
     /// （ログがどこへも出ていかない・ADR-0005）。
     enabled: bool,
     next_seq: u64,
-    buffer: Vec<LogEntry>,
+    /// 未送信エントリの上限付きリングバッファ。送信失敗（dev-server が落ちている／再起動中）でも
+    /// 保持し、上限超過は古い方から捨てる（#788）。
+    buffer: VecDeque<LogEntry>,
     last_flush_ms: f64,
 }
 
@@ -144,7 +152,7 @@ impl<P: LogSendPort> DeviceLog<P> {
             port,
             enabled: matches!(origin, BundleOrigin::DevServer),
             next_seq: 1,
-            buffer: Vec::new(),
+            buffer: VecDeque::new(),
             last_flush_ms: start_ms,
         }
     }
@@ -152,13 +160,23 @@ impl<P: LogSendPort> DeviceLog<P> {
     /// 1 エントリを積む。seq を採番し、エントリの記録時刻 `ts_ms`（端末側 wall-clock epoch ms）を
     /// 焼き、バッファに載せる。送信無効（Demo Endpoint 経由）なら何もしない。フラッシュ間隔は
     /// [`tick`](Self::tick) が別途 monotonic clock で計るので、この `ts_ms` は間隔判定に使わない。
+    ///
+    /// `error` レベルと `host` 系統は定期間隔を待たず**即時フラッシュ**する（#788）：クラッシュ直前・
+    /// 真っ黒障害ほど早く外へ出したい瞬間を取りこぼさないため。
     pub fn record(&mut self, source: LogSource, level: LogLevel, message: String, ts_ms: f64) {
         if !self.enabled {
             return;
         }
         let seq = self.next_seq;
         self.next_seq += 1;
-        self.buffer.push(LogEntry { seq, ts_ms, source, level, message });
+        self.buffer.push_back(LogEntry { seq, ts_ms, source, level, message });
+        // 上限超過は古い方から捨てる（クラッシュ耐性より新しいログ優先・#788）。
+        if self.buffer.len() > RING_BUFFER_CAPACITY {
+            self.buffer.pop_front();
+        }
+        if matches!(level, LogLevel::Error) || matches!(source, LogSource::Host) {
+            self.flush();
+        }
     }
 
     /// clock tick。前回フラッシュから [`FLUSH_INTERVAL_MS`] 以上経っていれば、バッファが空でない限り
@@ -171,16 +189,20 @@ impl<P: LogSendPort> DeviceLog<P> {
         self.flush();
     }
 
-    /// バッファが空でなければ 1 バッチにまとめて送り、バッファを空にする。
+    /// バッファが空でなければ 1 バッチにまとめて送る。**送信成功時のみ**バッファから確定除去し、
+    /// 失敗時はエントリを残して次間隔で再送する（at-least-once・#788）。重複は受け側（#785）が
+    /// `(deviceId, seq)` で捨てるので、送り側は再送を恐れない。
     fn flush(&mut self) {
         if self.buffer.is_empty() {
             return;
         }
         let batch = LogBatch {
             device_label: self.device_label.clone(),
-            entries: std::mem::take(&mut self.buffer),
+            entries: self.buffer.iter().cloned().collect(),
         };
-        self.port.send(&self.device_id, &batch);
+        if self.port.send(&self.device_id, &batch) {
+            self.buffer.clear();
+        }
     }
 }
 
@@ -302,12 +324,13 @@ mod platform {
     }
 
     impl LogSendPort for KotlinLogPort {
-        fn send(&self, device_id: &str, batch: &LogBatch) {
+        fn send(&self, device_id: &str, batch: &LogBatch) -> bool {
             let url = log_url(&self.target, device_id);
             let body = to_wire_json(batch);
-            // fire-and-forget（#787）。成否は #788 のリングバッファ再送が使う。失敗は握って
-            // ホストを止めない（LAN dev の空振りは安い・dev-server 復帰で自然回復・ADR-0005）。
-            let _ = post_blocking(&url, &body, LOG_POST_TIMEOUT);
+            // 成否を返す：失敗（dev-server が落ちている／再起動中）はシームがリングバッファ保持＋
+            // 次間隔の再送で吸収する（#788）。バックオフは入れない（LAN dev の空振り POST は安く、
+            // dev-server 復帰で自然回復・ADR-0005）。例外はポート側で握ってホストを止めない。
+            post_blocking(&url, &body, LOG_POST_TIMEOUT)
         }
     }
 
@@ -369,8 +392,24 @@ mod tests {
     }
 
     impl LogSendPort for &MockPort {
-        fn send(&self, device_id: &str, batch: &LogBatch) {
+        fn send(&self, device_id: &str, batch: &LogBatch) -> bool {
             self.sent.borrow_mut().push((device_id.to_owned(), batch.clone()));
+            true
+        }
+    }
+
+    /// 送信失敗を注入できるモックポート（#788 の失敗保持・再送を検証する）。`fail=true` の間は
+    /// バッチを記録しつつ `false` を返す（受け側は落ちているが送信自体は試みられている）。
+    #[derive(Default)]
+    struct FlakyPort {
+        fail: std::cell::Cell<bool>,
+        attempts: RefCell<Vec<LogBatch>>,
+    }
+
+    impl LogSendPort for &FlakyPort {
+        fn send(&self, _device_id: &str, batch: &LogBatch) -> bool {
+            self.attempts.borrow_mut().push(batch.clone());
+            !self.fail.get()
         }
     }
 
@@ -443,6 +482,93 @@ mod tests {
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[0].1.entries[0].seq, 1);
         assert_eq!(sent[1].1.entries[0].seq, 2, "seq does not reset between batches");
+    }
+
+    #[test]
+    fn an_error_entry_flushes_immediately_without_waiting_for_the_interval() {
+        // クラッシュ直前ほど早く外へ出したい：error は間隔を待たず即フラッシュ（#788）。
+        let port = MockPort::default();
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        log.record(LogSource::Js, LogLevel::Error, "crash".to_owned(), 5.0);
+        // tick せずに送られている。
+        assert_eq!(port.sent.borrow().len(), 1, "error should flush immediately");
+        assert_eq!(port.sent.borrow()[0].1.entries[0].message, "crash");
+    }
+
+    #[test]
+    fn a_host_event_flushes_immediately() {
+        // host 系統（真っ黒障害の診断・#789）も即時フラッシュ経路に乗る（#788）。
+        let port = MockPort::default();
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        log.record(LogSource::Host, LogLevel::Info, "native boom".to_owned(), 5.0);
+        assert_eq!(port.sent.borrow().len(), 1, "host events should flush immediately");
+    }
+
+    #[test]
+    fn a_normal_js_log_still_waits_for_the_periodic_interval() {
+        // 通常の js ログは即時経路に乗せない（定期フラッシュのまま・#787 回帰ガード）。
+        let port = MockPort::default();
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        log.record(LogSource::Js, LogLevel::Log, "chatter".to_owned(), 5.0);
+        assert!(port.sent.borrow().is_empty(), "a normal log must not flush before the interval");
+        log.tick(FLUSH_INTERVAL_MS);
+        assert_eq!(port.sent.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_failed_send_retains_entries_and_resends_them_on_the_next_interval() {
+        // dev-server が落ちている間は保持し、復帰したら溜まった分をまとめて再送する（#788）。
+        let port = FlakyPort::default();
+        port.fail.set(true);
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        log.record(LogSource::Js, LogLevel::Log, "a".to_owned(), 1.0);
+        log.tick(FLUSH_INTERVAL_MS); // 送信試行 → 失敗（保持）
+        assert_eq!(port.attempts.borrow().len(), 1, "one attempt was made");
+
+        port.fail.set(false); // dev-server 復帰
+        log.tick(FLUSH_INTERVAL_MS * 2.0); // 再送 → 成功
+        assert_eq!(port.attempts.borrow().len(), 2, "the retained entry is resent");
+        // 両試行とも同じエントリ（seq 1）を運ぶ（保持したものをそのまま再送）。
+        assert_eq!(port.attempts.borrow()[0].entries[0].seq, 1);
+        assert_eq!(port.attempts.borrow()[1].entries[0].seq, 1);
+
+        // 成功後はバッファが空くので、以降の tick では何も送らない。
+        log.tick(FLUSH_INTERVAL_MS * 3.0);
+        assert_eq!(port.attempts.borrow().len(), 2, "nothing left to resend after success");
+    }
+
+    #[test]
+    fn the_ring_buffer_drops_the_oldest_entries_past_the_named_cap() {
+        // 送信できない間に上限を超えたら古い方から捨てる（新しいログ優先・#788）。
+        let port = FlakyPort::default();
+        port.fail.set(true); // ずっと失敗させて溜め込む
+        let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
+
+        // cap を 5 件超える通常ログ（即時フラッシュしない js/log）を積む。
+        for i in 0..(RING_BUFFER_CAPACITY + 5) {
+            log.record(LogSource::Js, LogLevel::Log, format!("{i}"), i as f64);
+        }
+
+        port.fail.set(false);
+        log.tick(FLUSH_INTERVAL_MS);
+        let last = port.attempts.borrow();
+        let batch = &last[last.len() - 1];
+        assert_eq!(batch.entries.len(), RING_BUFFER_CAPACITY, "buffer is capped at the named limit");
+        // 先頭 5 件（0..=4）は捨てられ、最古は 6 件目（"5"）になる。
+        assert_eq!(batch.entries.first().unwrap().message, "5");
+        assert_eq!(
+            batch.entries.last().unwrap().message,
+            format!("{}", RING_BUFFER_CAPACITY + 4),
+        );
+    }
+
+    #[test]
+    fn the_ring_buffer_capacity_is_a_named_constant() {
+        assert_eq!(RING_BUFFER_CAPACITY, 1_000);
     }
 
     #[test]
