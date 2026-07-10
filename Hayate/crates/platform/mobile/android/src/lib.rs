@@ -39,6 +39,11 @@ mod demo_manifest;
 // 純 Rust ミラー。プラットフォーム非依存なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]
 mod protocol_handshake;
+// Torimi Android ホストの Device Log 送信シーム（#787-789・ADR-0005）。JS/host ログをバッファに
+// 積み seq を採番、定期／即時にバッチ化して注入ポートで POST する純 Rust シーム。注入 clock ＋
+// モック送信ポートでホスト上でコンパイル・テストされ、OkHttp/JSI 配線は device 専用の薄いグルー。
+#[cfg(feature = "tsubame-js")]
+mod device_log;
 // Torimi Android ホストの full reload ループ orchestration（#533）。device 依存を注入シームに
 // 逃がした純 Rust なのでホストでもコンパイル・テストされる。
 #[cfg(feature = "tsubame-js")]

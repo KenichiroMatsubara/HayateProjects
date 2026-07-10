@@ -261,6 +261,9 @@ struct HermesApp::Impl {
   std::shared_ptr<RedrawSlot> redraw_slot = std::make_shared<RedrawSlot>();
   // `request_pump` が立てたフラグの置き場（`consume_wants_pump` が読んで消す）。
   std::shared_ptr<PumpFlag> pump_flag = std::make_shared<PumpFlag>();
+  // Device Log シームへの非所有ポインタ（#789）。host_obj が Box を所有し runtime の寿命の間
+  // 有効。pumpFrame で捕まえた uncaught JS 例外を source: js として Device Log に流すのに使う。
+  JsHostBridge* log_bridge = nullptr;
 };
 
 HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
@@ -268,23 +271,29 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   impl_->runtime = facebook::hermes::makeHermesRuntime();
   jsi::Runtime& rt = *impl_->runtime;
 
-  // __hayateHost を注入。
+  // __hayateHost を注入。bridge を host_obj に move する前に生ポインタを退避する：rust::Box の
+  // move は heap 上の JsHostBridge 実体を動かさない（Box はポインタ）ので、退避したポインタは
+  // host_obj（＝runtime）の寿命の間ずっと有効。__hayateLog から Device Log シームへ流すのに使う。
+  JsHostBridge* log_bridge = &*host;
+  impl_->log_bridge = log_bridge;  // pumpFrame の JS 例外を Device Log へ流すため保持（#789）。
   auto host_obj = std::make_shared<HayateHostObject>(
       std::move(host), impl_->redraw_slot, impl_->pump_flag);
   rt.global().setProperty(rt, "__hayateHost",
                           jsi::Object::createFromHostObject(rt, host_obj));
 
-  // console.log 等が呼ぶ __hayateLog を logcat へ橋渡しする（android-prelude.ts 参照）。
-  // 未実装のままだと console.* が完全な no-op になり JS 側の診断ができない。
+  // console.log 等が呼ぶ __hayateLog を **logcat と Device Log の両方** へ橋渡しする（#787）。
+  // 従来の logcat 出力はそのまま残し（置き換えない・併存）、加えて Device Log シームへ積んで
+  // USB なしで dev-server へ届ける。バッファ・seq 採番・フラッシュは Rust の純粋シームが所有する。
   rt.global().setProperty(
       rt, "__hayateLog",
       jsi::Function::createFromHostFunction(
           rt, jsi::PropNameID::forAscii(rt, "__hayateLog"), 2,
-          [](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
+          [log_bridge](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
              size_t count) -> jsi::Value {
             std::string level = count > 0 ? args[0].toString(rt).utf8(rt) : "log";
             std::string message = count > 1 ? args[1].toString(rt).utf8(rt) : "";
             HAYATE_LOGE("[JS %s] %s", level.c_str(), message.c_str());
+            log_bridge->log(rust::Str(level), rust::Str(message));
             return jsi::Value::undefined();
           }));
 
@@ -299,8 +308,16 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   } catch (const jsi::JSError& e) {
     HAYATE_LOGE("Tsubame バンドルの eval で JS 例外: %s\nJS stack:\n%s",
                 e.getMessage().c_str(), e.getStack().c_str());
+    // bundle が eval すらできない＝真っ黒障害。host イベント（source: host）として Device Log へ
+    // 流し、USB なしで診断できるようにする（#789）。JS は起動していないので js ではなく host。
+    log_bridge->log_host(
+        rust::Str("error"),
+        rust::Str("Tsubame バンドルの eval で JS 例外: " + e.getMessage()));
   } catch (const std::exception& e) {
     HAYATE_LOGE("Tsubame バンドルの eval で例外: %s", e.what());
+    log_bridge->log_host(
+        rust::Str("error"),
+        rust::Str(std::string("Tsubame バンドルの eval で例外: ") + e.what()));
   }
 }
 
@@ -320,6 +337,12 @@ void HermesApp::pump_frame(double timestamp_ms) {
   } catch (const jsi::JSError& e) {
     HAYATE_LOGE("pumpFrame で JS 例外: %s\nJS stack:\n%s", e.getMessage().c_str(),
                 e.getStack().c_str());
+    // JS が動いている最中の uncaught 例外。source: js として Device Log へ流す（#789）。bare Hermes
+    // には JS 側 uncaught フックが無いため、host（C++）が捕まえた地点で js としてタグ付けする。
+    if (impl_->log_bridge) {
+      impl_->log_bridge->log(rust::Str("error"),
+                             rust::Str("uncaught: " + e.getMessage()));
+    }
     impl_->ready = false;  // 毎フレームのスパムを避けて止める。
   } catch (const std::exception& e) {
     HAYATE_LOGE("pumpFrame で例外: %s", e.what());

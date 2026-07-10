@@ -38,6 +38,7 @@ use crate::app::{
 use crate::touch_scroll::TouchScrollState;
 use hayate_layer_compositor::RasterCommand;
 use crate::bundle_source;
+use crate::device_log::{self, DeviceLog, KotlinLogPort};
 use crate::frame_schedule::OnDemandFrameLoop;
 use crate::dev_server_target;
 use crate::demo_manifest;
@@ -94,6 +95,15 @@ fn report_boot_error(error: &BootError) -> String {
     message
 }
 
+/// host イベントの記録時刻（端末側 wall-clock epoch ms）。Device Log の `ts` に載る（#789）。
+/// フラッシュ間隔の monotonic clock（`start.elapsed`）とは別軸。
+fn now_epoch_ms() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as f64)
+        .unwrap_or(0.0)
+}
+
 pub(crate) fn run(app: AndroidApp) {
     // このホスト（decoder）に焼き込んだ wire 版数。Web ホストの HOST_PROTOCOL_VERSION と同じ
     // source of truth（`@hayate/protocol-spec` の manifest version）をネイティブ decoder
@@ -108,30 +118,55 @@ pub(crate) fn run(app: AndroidApp) {
     // 解決した 1 つの target が、バンドル fetch（HTTP）と reload 購読（WS）の**両方**を駆動する（保持）。
     // マニフェスト取得/解釈の失敗は明示エラー＋ URL 入力経路への誘導にして謎クラッシュにしない。
     let entered = dev_server_target::read_entered_url(app.internal_data_path().as_deref());
-    let (target, autoload_error): (dev_server_target::DevServerTarget, Option<String>) =
-        match demo_manifest::plan_boot(entered.as_deref(), !cfg!(debug_assertions)) {
-            demo_manifest::BootPlan::Direct(t) => (t, None),
-            demo_manifest::BootPlan::ManifestAutoload(endpoint) => {
-                match demo_manifest::first_boot_target_fetched(&endpoint) {
-                    Ok(demo_target) => (demo_target, None),
-                    // 取得/解釈失敗：reload は Demo Endpoint origin に張ったまま（同一 origin・path 非依存）、
-                    // boot は下で明示エラー表示のうえ current=None に留める（URL 入力画面へ誘導）。
-                    Err(err) => (endpoint, Some(err.message())),
-                }
+    let plan = demo_manifest::plan_boot(entered.as_deref(), !cfg!(debug_assertions));
+    // Device Log を送るのは bundle 取得元が Dev Server（`Direct`）のときだけ。Demo Endpoint 経由
+    // （`ManifestAutoload`）はログ送信自体をしない（CONTEXT.md「Device Log」・ADR-0005）。
+    let log_origin = match &plan {
+        demo_manifest::BootPlan::Direct(_) => device_log::BundleOrigin::DevServer,
+        demo_manifest::BootPlan::ManifestAutoload(_) => device_log::BundleOrigin::DemoEndpoint,
+    };
+    let (target, autoload_error): (dev_server_target::DevServerTarget, Option<String>) = match plan {
+        demo_manifest::BootPlan::Direct(t) => (t, None),
+        demo_manifest::BootPlan::ManifestAutoload(endpoint) => {
+            match demo_manifest::first_boot_target_fetched(&endpoint) {
+                Ok(demo_target) => (demo_target, None),
+                // 取得/解釈失敗：reload は Demo Endpoint origin に張ったまま（同一 origin・path 非依存）、
+                // boot は下で明示エラー表示のうえ current=None に留める（URL 入力画面へ誘導）。
+                Err(err) => (endpoint, Some(err.message())),
             }
-        };
+        }
+    };
+
+    // Device Log シーム（#787-789・ADR-0005）。Device ID はインストール単位でローカル永続化（初回だけ
+    // ランダム生成、再起動後も同じ）、Device Label は端末モデル名。送信先 base（scheme/host/port）は
+    // 解決済み target を共有する（bundle fetch / reload と同じ配信点）。reload を跨いで seq 連番・Device ID
+    // を継続させるため `Rc<RefCell>` で持ち、boot ごとに作り直す bridge へ同じ `Rc` を渡す。
+    let device_id = device_log::load_or_create_device_id(
+        app.internal_data_path().as_deref(),
+        device_log::random_device_id,
+    );
+    let device_log = Rc::new(RefCell::new(DeviceLog::with_origin(
+        device_id,
+        device_log::device_label(),
+        KotlinLogPort::new(target.clone()),
+        0.0,
+        log_origin,
+    )));
 
     // 1 boot：dev-server からバンドルを取得 → Hermes ランタイムを構築（= eval。eval シームは
     // 不変 `new_hermes_app(make_bridge(tree.clone()), bundle)`）→ バンドルの protocol version を
     // 読みホスト版数と突き合わせる。一致時のみランタイムを返す（#532 の源 + #530 の突き合わせ）。
     // full reload は単にこれをもう一度呼ぶだけで、tree ごと作り直されて state が飛ぶ。
+    let device_log_for_boot = Rc::clone(&device_log);
     let boot = || {
         boot_runtime(
             host_version,
             || bundle_source::fetch_from(&target),
             |bundle: &str| {
                 let tree: Rc<RefCell<ElementTree>> = Rc::new(RefCell::new(ElementTree::new()));
-                let hermes = new_hermes_app(make_bridge(tree.clone()), bundle);
+                // reload を跨ぐ Device Log シームは同じ Rc を共有する（seq 連番・Device ID 継続）。
+                let hermes =
+                    new_hermes_app(make_bridge(tree.clone(), Rc::clone(&device_log_for_boot)), bundle);
                 Runtime {
                     hermes,
                     tree,
@@ -146,13 +181,26 @@ pub(crate) fn run(app: AndroidApp) {
     // マニフェスト取得/解釈に失敗した初回起動（`autoload_error`）は boot せず、その明示エラーを出して
     // URL 入力経路へ誘導する（謎クラッシュにしない・#743）。
     let mut current: Option<Runtime> = if let Some(message) = autoload_error {
+        // Demo Endpoint 経路の manifest 失敗。host イベントとして合流させる（送信は Demo Endpoint
+        // 経由なので実際には出ないが、合流点を一様にして扱いを分岐させない・#789）。
+        device_log
+            .borrow_mut()
+            .record_host(device_log::LogLevel::Error, message.clone(), now_epoch_ms());
         crate::error_overlay::show_error(&message);
         None
     } else {
         match boot() {
             Ok(runtime) => Some(runtime),
             Err(error) => {
-                crate::error_overlay::show_error(&report_boot_error(&error));
+                // bundle 取得失敗・protocol version 不一致は host イベント（source: "host"）として
+                // Device Log に合流し、即時フラッシュ経路（#788）で USB なしに dev-server へ届く（#789）。
+                let message = report_boot_error(&error);
+                device_log.borrow_mut().record_host(
+                    device_log::LogLevel::Error,
+                    message.clone(),
+                    now_epoch_ms(),
+                );
+                crate::error_overlay::show_error(&message);
                 None
             }
         }
@@ -385,11 +433,26 @@ pub(crate) fn run(app: AndroidApp) {
                     frame_loop.request_wake();
                 }
                 Err(error) => {
-                    crate::error_overlay::show_error(&report_boot_error(&error));
+                    // reload 後の boot 失敗（取得失敗・version 不一致）も host イベントとして合流させる（#789）。
+                    let message = report_boot_error(&error);
+                    device_log.borrow_mut().record_host(
+                        device_log::LogLevel::Error,
+                        message.clone(),
+                        now_epoch_ms(),
+                    );
+                    crate::error_overlay::show_error(&message);
                     current = None;
                 }
             }
         }
+
+        // Device Log の定期フラッシュ（#787）。monotonic clock（boot 起点の経過 ms）で間隔を計り、
+        // 溜まっていれば 1 バッチにまとめて送る。runtime の有無に関わらず毎イテレーション呼ぶ——idle
+        // でも `poll_events` の最大 16ms 間隔で回るので 2 秒間隔は満たせるし、boot 失敗中でも host
+        // イベント（#789）を外へ出せる。空バッファなら送らない。
+        device_log
+            .borrow_mut()
+            .tick(start.elapsed().as_secs_f64() * 1000.0);
 
         // ランタイム未確立（boot 失敗 / 不一致 / reload 待ち）なら入力も JS pump もしない
         // （謎クラッシュ回避）。エラー表示自体は上の `error_overlay` が Hayate/GPU パイプラインを
