@@ -268,23 +268,28 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
   impl_->runtime = facebook::hermes::makeHermesRuntime();
   jsi::Runtime& rt = *impl_->runtime;
 
-  // __hayateHost を注入。
+  // __hayateHost を注入。bridge を host_obj に move する前に生ポインタを退避する：rust::Box の
+  // move は heap 上の JsHostBridge 実体を動かさない（Box はポインタ）ので、退避したポインタは
+  // host_obj（＝runtime）の寿命の間ずっと有効。__hayateLog から Device Log シームへ流すのに使う。
+  JsHostBridge* log_bridge = &*host;
   auto host_obj = std::make_shared<HayateHostObject>(
       std::move(host), impl_->redraw_slot, impl_->pump_flag);
   rt.global().setProperty(rt, "__hayateHost",
                           jsi::Object::createFromHostObject(rt, host_obj));
 
-  // console.log 等が呼ぶ __hayateLog を logcat へ橋渡しする（android-prelude.ts 参照）。
-  // 未実装のままだと console.* が完全な no-op になり JS 側の診断ができない。
+  // console.log 等が呼ぶ __hayateLog を **logcat と Device Log の両方** へ橋渡しする（#787）。
+  // 従来の logcat 出力はそのまま残し（置き換えない・併存）、加えて Device Log シームへ積んで
+  // USB なしで dev-server へ届ける。バッファ・seq 採番・フラッシュは Rust の純粋シームが所有する。
   rt.global().setProperty(
       rt, "__hayateLog",
       jsi::Function::createFromHostFunction(
           rt, jsi::PropNameID::forAscii(rt, "__hayateLog"), 2,
-          [](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
+          [log_bridge](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
              size_t count) -> jsi::Value {
             std::string level = count > 0 ? args[0].toString(rt).utf8(rt) : "log";
             std::string message = count > 1 ? args[1].toString(rt).utf8(rt) : "";
             HAYATE_LOGE("[JS %s] %s", level.c_str(), message.c_str());
+            log_bridge->log(rust::Str(level), rust::Str(message));
             return jsi::Value::undefined();
           }));
 

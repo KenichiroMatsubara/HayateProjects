@@ -13,9 +13,11 @@
 //! ある（この環境ではコンパイル検証できない）。
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::SystemTime;
 
 use hayate_core::ElementTree;
 
+use crate::device_log::{DeviceLog, KotlinLogPort, LogLevel, LogSource};
 use crate::js_host::{EventRow, JsHost};
 
 #[cxx::bridge(namespace = "hayate")]
@@ -53,6 +55,11 @@ mod ffi {
         fn element_get_bounds(self: &JsHostBridge, id: f64) -> Vec<f32>;
         fn poll_events(self: &JsHostBridge) -> Vec<FfiEventRow>;
         fn has_pending_visual_work(self: &JsHostBridge) -> bool;
+
+        /// JS の `console.*`（`__hayateLog(level, message)`）を Device Log シームへ流す（#787）。
+        /// C++ 側の `__hayateLog` は従来どおり logcat にも出しつつ（併存・置き換えない）これを呼ぶ。
+        /// バッファ・seq 採番・定期/即時フラッシュは Rust の純粋シーム（`device_log`）が所有する。
+        fn log(self: &JsHostBridge, level: &str, message: &str);
     }
 
     unsafe extern "C++" {
@@ -86,9 +93,13 @@ mod ffi {
     }
 }
 
-/// `JsHost` を cxx 越しに公開するためのラッパー。app.rs と tree を共有する。
+/// `JsHost` を cxx 越しに公開するためのラッパー。app.rs と tree を共有する。Device Log シーム
+/// （`device_log`）も握り、`__hayateLog` から来た JS ログをそこへ流す（#787）。シーム自体は
+/// reload を跨いで生き続ける（seq 連番・Device ID 継続）ので、boot ごとに作り直す bridge には
+/// `Rc` 共有で渡す。
 pub struct JsHostBridge {
     host: JsHost,
+    device_log: Rc<RefCell<DeviceLog<KotlinLogPort>>>,
 }
 
 impl JsHostBridge {
@@ -132,6 +143,22 @@ impl JsHostBridge {
     fn has_pending_visual_work(&self) -> bool {
         self.host.has_pending_visual_work()
     }
+
+    /// JS ログ（`source: "js"`）を Device Log シームへ積む。ts は端末側 wall-clock epoch ms を
+    /// ここで焼く（フラッシュ間隔は別の monotonic clock で計るので混同しない）。level 未知は log に
+    /// 丸める（additive-only・ADR-0005）。RefCell の interior mutability で `&self` から積める。
+    fn log(&self, level: &str, message: &str) {
+        let ts_ms = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_millis() as f64)
+            .unwrap_or(0.0);
+        self.device_log.borrow_mut().record(
+            LogSource::Js,
+            LogLevel::from_wire(level),
+            message.to_owned(),
+            ts_ms,
+        );
+    }
 }
 
 fn ffi_row_from(row: EventRow) -> ffi::FfiEventRow {
@@ -148,10 +175,16 @@ fn ffi_row_from(row: EventRow) -> ffi::FfiEventRow {
     }
 }
 
-/// app.rs から: 共有 tree を握るブリッジを Box 化して C++ へ渡す。
-pub(crate) fn make_bridge(tree: Rc<RefCell<ElementTree>>) -> Box<JsHostBridge> {
+/// app_tsubame から: 共有 tree ＋ reload を跨ぐ Device Log シームを握るブリッジを Box 化して
+/// C++ へ渡す。boot（＝reload）ごとに新しい bridge を作るが、`device_log` は同じ `Rc` を共有して
+/// seq 連番・Device ID を継続させる。
+pub(crate) fn make_bridge(
+    tree: Rc<RefCell<ElementTree>>,
+    device_log: Rc<RefCell<DeviceLog<KotlinLogPort>>>,
+) -> Box<JsHostBridge> {
     Box::new(JsHostBridge {
         host: JsHost::new(tree),
+        device_log,
     })
 }
 
