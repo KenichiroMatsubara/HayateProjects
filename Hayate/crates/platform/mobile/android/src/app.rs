@@ -388,8 +388,19 @@ pub(crate) async fn init_gpu_surface(
 ) -> Result<GpuSurface, String> {
     let (width, height) = window_dimensions(window.width(), window.height());
 
+    // 描画バックエンド（Vulkan/GL）・AA 方式（Area/MSAA8/MSAA16）は intent extra 由来の
+    // ランタイム選択（#795・ADR-0145）。既定は Vulkan + Area（名前付き定数）。Nothing Phone 3a
+    // （Adreno 710）の描画破綻切り分けを再ビルドなしで回すためのスイッチ。
+    let backend = crate::render_config::effective_backend();
+    let aa = crate::render_config::effective_aa();
+    log::info!(
+        "hayate-adapter-android: render config — backend={} aa={}",
+        backend.as_str(),
+        aa.as_str()
+    );
+
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::VULKAN,
+        backends: backend.to_wgpu(),
         ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
 
@@ -422,6 +433,17 @@ pub(crate) async fn init_gpu_surface(
         .await
         .map_err(|e| format!("no compatible wgpu adapter: {e}"))?;
 
+    // 選択された GPU アダプタ情報（名前・ドライバ）を logcat に出す（#795）。実機実験の記録と
+    // 上流報告（wgpu/naga）にそのまま使えるようにする。
+    let info = adapter.get_info();
+    log::info!(
+        "hayate-adapter-android: GPU adapter — name={} backend={:?} driver={} driver_info={}",
+        info.name,
+        info.backend,
+        info.driver,
+        info.driver_info
+    );
+
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
             label: Some("hayate-android"),
@@ -448,7 +470,9 @@ pub(crate) async fn init_gpu_surface(
 
     let target_view = create_target_view(&device, width, height);
     let blitter = create_blitter(&device, surface_config.format);
-    let mut scene_renderer = VelloSceneRenderer::new(&device)?;
+    // AA 方式を注入して構築する（#795）。選んだ方式のパイプラインだけをコンパイルし、warmup /
+    // render も同じ config で回す（web/iOS は既定 Area のまま）。
+    let mut scene_renderer = VelloSceneRenderer::new_with_options(&device, None, aa)?;
     // init 直後・最初の実アプリフレーム前に vello パイプラインを warmup する（#644/ADR-0130a）。
     // warmup 失敗は boot を落とさず、初回フレームで従来どおりコンパイル遅延が出るだけで続行する
     // （Web の SelectedBackend::init と同じ扱い、#687）。

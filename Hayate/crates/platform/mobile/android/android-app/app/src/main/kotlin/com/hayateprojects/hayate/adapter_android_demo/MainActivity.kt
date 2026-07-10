@@ -37,6 +37,14 @@ class MainActivity : GameActivity() {
 
         /** logcat タグ（端末別のインセット配送問題の診断用）。 */
         const val TAG = "HayateSafeArea"
+
+        /**
+         * 描画バックエンド（Vulkan/GL）・AA 方式（Area/MSAA8/MSAA16）の実行時上書き intent extra
+         * キー（issue #795・ADR-0145）。`adb shell am start -e hayate.backend gl -e hayate.aa msaa8`
+         * で再ビルドなしに切り替える。未指定は空文字で push し、Rust 側で既定へ落とす。
+         */
+        const val BACKEND_EXTRA = "hayate.backend"
+        const val AA_EXTRA = "hayate.aa"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,8 +52,22 @@ class MainActivity : GameActivity() {
         // Rust 側から見える前に登録しておく。
         CurrentActivity.set(this)
         super.onCreate(savedInstanceState)
+        // GPU surface 初期化（CreateSurface）より前に描画設定の上書きを Rust へ届ける。
+        pushRenderConfig()
         enableEdgeToEdge()
         installInsetPush()
+    }
+
+    /**
+     * 描画バックエンド / AA 方式の実行時上書き（intent extra）を Rust へ push する（#795）。
+     * 未指定（extra 無し）は空文字で渡し、Rust 側（`render_config`）で既定（Vulkan・Area）へ
+     * 落とす。APK を作り直さずに 3 実験（MSAA8/16・GL）を回すための口。
+     */
+    private fun pushRenderConfig() {
+        val backend = intent.getStringExtra(BACKEND_EXTRA) ?: ""
+        val aa = intent.getStringExtra(AA_EXTRA) ?: ""
+        Log.i(TAG, "render config override: backend=\"$backend\" aa=\"$aa\"")
+        nativePushRenderConfig(backend, aa)
     }
 
     /**
@@ -96,4 +118,10 @@ class MainActivity : GameActivity() {
      * `hayate_adapter_android` cdylib が export する。
      */
     private external fun nativePushSafeAreaInsets(left: Int, top: Int, right: Int, bottom: Int)
+
+    /**
+     * 描画バックエンド / AA 方式の上書き（intent extra 由来、未指定は空文字）を Rust
+     * （`jni_bridge.rs` の `Java_..._nativePushRenderConfig`）へ push する（#795）。
+     */
+    private external fun nativePushRenderConfig(backend: String, aa: String)
 }

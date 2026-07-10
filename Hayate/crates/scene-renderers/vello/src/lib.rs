@@ -38,12 +38,101 @@ const WARMUP_FILL_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 /// warmup のクリア色（不透明黒、#644）。オフスクリーンで捨てるので値に意味はない。
 const WARMUP_CLEAR_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
+/// vello のアンチエイリアス方式（issue #795）。Nothing Phone 3a（Adreno 710）で CSS Gallery
+/// ページのパス描画が破綻する切り分けのため、Area / MSAA8 / MSAA16 をランタイム注入可能にする
+/// （ADR-0138/0140 の「常時コンパイル＋ランタイムフラグ」流儀。cargo feature や別ビルドは作らない）。
+///
+/// Area AA はコンピュートシェーダの atomics に最も依存する経路で、「複雑なシーンでだけ破綻」という
+/// 症状と整合する。web 経路（`hayate-adapter-web`）は既定 [`DEFAULT_AA_METHOD`]（Area）のまま挙動不変。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VelloAaMethod {
+    /// Area AA（既定）。解析的カバレッジ。
+    Area,
+    /// 8x MSAA。
+    Msaa8,
+    /// 16x MSAA。
+    Msaa16,
+}
+
+/// 既定の AA 方式（現行どおり Area）。名前付き定数（マジック値の禁止）。後続の完全人力 issue
+/// （実機実験）が実験結果でこの定数を確定させる。
+pub const DEFAULT_AA_METHOD: VelloAaMethod = VelloAaMethod::Area;
+
+impl VelloAaMethod {
+    /// 実行時上書き文字列（Android の intent extra `adb am start -e` 等）から解釈する。
+    /// 未知値は `None`（呼び元は [`DEFAULT_AA_METHOD`] へフォールバックする）。
+    pub fn from_str_opt(s: &str) -> Option<Self> {
+        match s {
+            "area" => Some(Self::Area),
+            "msaa8" => Some(Self::Msaa8),
+            "msaa16" => Some(Self::Msaa16),
+            _ => None,
+        }
+    }
+
+    /// logcat / 実験記録・上流報告（wgpu/naga）用の安定名。`from_str_opt` と往復する。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Area => "area",
+            Self::Msaa8 => "msaa8",
+            Self::Msaa16 => "msaa16",
+        }
+    }
+
+    /// `RenderParams::antialiasing_method` に渡す vello の AA config。
+    fn config(self) -> AaConfig {
+        match self {
+            Self::Area => AaConfig::Area,
+            Self::Msaa8 => AaConfig::Msaa8,
+            Self::Msaa16 => AaConfig::Msaa16,
+        }
+    }
+
+    /// `RendererOptions::antialiasing_support`：選んだ方式のパイプラインだけをコンパイルする
+    /// （`AaSupport: FromIterator<AaConfig>` で該当フラグのみ立てる）。render 時の `config()` と
+    /// 必ず一致させる（有効化していない方式で render すると vello がエラーになる）。
+    fn support(self) -> AaSupport {
+        std::iter::once(self.config()).collect()
+    }
+}
+
 pub struct VelloSceneRenderer {
     renderer: Renderer,
+    /// このレンダラがコンパイル・使用する AA 方式（#795）。`RendererOptions` の support と
+    /// 各 render の config を一致させるため保持する。
+    aa: VelloAaMethod,
     /// フレーム間で再利用する Scene（#649）。毎フレーム `Scene::new()` すると内部エンコードバッファを
     /// 作り直して alloc churn（GC 圧）になる。`Scene::reset()` でバッファ容量を保ったまま内容だけ
     /// クリアして再エンコードすることで、毎フレームの新規確保を消す（描画出力は不変）。
     scene: Scene,
+}
+
+#[cfg(test)]
+mod aa_method_tests {
+    use super::{VelloAaMethod, DEFAULT_AA_METHOD};
+
+    #[test]
+    fn default_aa_method_is_area_so_the_web_path_is_unchanged() {
+        // web 経路（hayate-adapter-web）は VelloSceneRenderer::new を使う＝既定 Area のまま。
+        assert_eq!(DEFAULT_AA_METHOD, VelloAaMethod::Area);
+    }
+
+    #[test]
+    fn aa_method_parses_the_runtime_override_strings() {
+        // intent extra（adb am start -e）等の実行時上書き。3 実験（MSAA8/16）を再ビルドなしで回す。
+        assert_eq!(VelloAaMethod::from_str_opt("area"), Some(VelloAaMethod::Area));
+        assert_eq!(VelloAaMethod::from_str_opt("msaa8"), Some(VelloAaMethod::Msaa8));
+        assert_eq!(VelloAaMethod::from_str_opt("msaa16"), Some(VelloAaMethod::Msaa16));
+        // 未知値は None（呼び元は既定へフォールバック）。
+        assert_eq!(VelloAaMethod::from_str_opt("msaa32"), None);
+    }
+
+    #[test]
+    fn aa_method_names_round_trip_for_logcat_and_experiment_records() {
+        for m in [VelloAaMethod::Area, VelloAaMethod::Msaa8, VelloAaMethod::Msaa16] {
+            assert_eq!(VelloAaMethod::from_str_opt(m.as_str()), Some(m));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -110,16 +199,28 @@ impl VelloSceneRenderer {
     /// `wgpu::Features::PIPELINE_CACHE` が使える環境（現状 Vulkan のみ）で呼び出し側が
     /// `create_pipeline_cache` したもの。`None` なら従来どおり（web/wasm・非対応 backend）。
     /// キャッシュの読み書き・永続化は呼び出し側（Platform Front）の責務で、本 crate は
-    /// vello へ注入するだけ。
+    /// vello へ注入するだけ。AA 方式は既定（[`DEFAULT_AA_METHOD`]＝Area）。
     pub fn new_with_pipeline_cache(
         device: &wgpu::Device,
         cache: Option<&wgpu::PipelineCache>,
+    ) -> Result<Self, String> {
+        Self::new_with_options(device, cache, DEFAULT_AA_METHOD)
+    }
+
+    /// パイプラインキャッシュに加えて AA 方式を注入して初期化する（#795）。`aa` で選んだ方式の
+    /// パイプラインだけをコンパイルし（`support()`）、warmup / render も同じ config で回す。
+    /// web/desktop/iOS は `new` / `new_with_pipeline_cache` 経由で既定 Area のまま。Android
+    /// アダプタだけが実験用に intent extra 由来の `aa` を渡す。
+    pub fn new_with_options(
+        device: &wgpu::Device,
+        cache: Option<&wgpu::PipelineCache>,
+        aa: VelloAaMethod,
     ) -> Result<Self, String> {
         let renderer = Renderer::new(
             device,
             RendererOptions {
                 use_cpu: false,
-                antialiasing_support: AaSupport::area_only(),
+                antialiasing_support: aa.support(),
                 // シェーダ init のスレッド数は vello 既定に追従する: macOS のみ single thread
                 // 推奨（vello の RendererOptions ドキュメント参照）、それ以外は None（並列
                 // init ヒューリスティック）。`Some(1)` を全プラットフォームに固定すると native
@@ -136,6 +237,7 @@ impl VelloSceneRenderer {
         .map_err(|e| format!("Vello init failed: {e}"))?;
         Ok(Self {
             renderer,
+            aa,
             scene: Scene::new(),
         })
     }
@@ -178,7 +280,8 @@ impl VelloSceneRenderer {
                     base_color: AlphaColor::<Srgb>::new(WARMUP_CLEAR_COLOR),
                     width: WARMUP_TARGET_SIZE,
                     height: WARMUP_TARGET_SIZE,
-                    antialiasing_method: AaConfig::Area,
+                    // 選択中の AA 方式のパイプラインを warmup する（support と一致必須、#795）。
+                    antialiasing_method: self.aa.config(),
                 },
             )
             .map_err(|e| format!("vello warmup render failed: {e}"))
@@ -244,7 +347,8 @@ impl VelloSceneRenderer {
                     base_color: AlphaColor::<Srgb>::new(clear_color),
                     width: target.width,
                     height: target.height,
-                    antialiasing_method: AaConfig::Area,
+                    // 注入された AA 方式（#795）。既定は Area（web/desktop/iOS 不変）。
+                    antialiasing_method: self.aa.config(),
                 },
             )
             .map_err(|e| format!("render_to_texture: {e}"))
