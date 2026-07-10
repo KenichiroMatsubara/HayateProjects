@@ -80,11 +80,11 @@
 **状況:** ✅ — `scene-renderers/vello`。公開 API は `VelloSceneRenderer::render_scene` と surface 補助（`VelloRenderTarget`/`create_target_view`/`create_blitter`、Render Host が使用）。`VelloPainter`（`ScenePainter` 実装＝walk コールバック）は crate 内部。
 **備考:** [訂正 2026-06-09] 旧実装は `VelloPainter`/`TinySkiaPainter` を `pub use` 公開していたが（外部利用なし、ADR-0054「walk/Painter は内部」違反）非公開化。ADR-0054 を amend し「公開 API＝`render_scene` + surface 補助」を明文化。
 
-### REND-11 — tiny-skia を CPU フォールバックとする
-**規範文:** Vello が使えない環境（GPU/WebGPU 不可）向けに tiny-skia を CPU レンダリングの Scene Renderer として持つ。feature-gate で1つだけ link し、二 WASM バイナリを維持する。
-**出典:** ADR-0048
-**状況:** ✅ — `scene-renderers/tiny-skia`（`TinySkiaPainter` + `render_scene`）。`backend-vello` / `backend-tiny-skia` feature。
-**備考:** GPU バックエンドではなく CPU 代替（§1 CORE-02 と整合）。
+### REND-11 — tiny-skia を web 専用 CPU フォールバックとする
+**規範文:** tiny-skia は **web 専用**の CPU フォールバック Scene Renderer とする。Vello が使えない web 環境（GPU/WebGPU 不可）向けに feature-gate で1つだけ link し、二 WASM バイナリを維持する。ネイティブの代替経路は skia（REND-14/15）が担い、tiny-skia をネイティブに結線しない。
+**出典:** ADR-0048, ADR-0146
+**状況:** ✅ — `scene-renderers/tiny-skia`（`TinySkiaPainter` + `render_scene`）。`backend-vello` / `backend-tiny-skia` feature。実装は従来から web のみで、住み分けと整合。
+**備考:** GPU バックエンドではなく CPU 代替（§1 CORE-02 と整合）。[更新 2026-07-10] ADR-0146 がネイティブの standard alternative を skia-safe と定め、tiny-skia の守備範囲を web 専用へ明文化（旧規範文は環境を限定していなかった）。
 
 ---
 
@@ -108,9 +108,25 @@
 
 ---
 
+## ネイティブ Scene Renderer 戦略（skia-safe、ADR-0146）
+
+### REND-14 — skia-safe Scene Renderer（ネイティブ専用）
+**規範文:** ネイティブ（desktop + Android）は Google Skia（skia-safe バインディング）による Scene Renderer を `scene-renderers/skia` crate として持つ。crate は `ScenePainter` と `LayerRasterizer`/`LayerCompositor`（ADR-0125。キャッシュ面 = SkSurface、合成 = drawImage）の実装＋per-renderer golden だけを持ち、walk・planning は共有実装のまま（REND-04/05 維持）。painter は **surface 非依存**（渡された Skia Canvas に描くだけ）とし、surface は CPU raster を導入形、Android は Ganesh GL（EGL）surface を早期フォローアップとして platform adapter 側に置く（EGL 管理を core に持ち込まない = REND-07 維持。Skia Vulkan / Graphite は棄却）。テキストはレイアウト正本を parley のまま、確定済みグリフ ID・位置を SkTextBlob でラスタライズのみ行う（SkParagraph / SkShaper 不使用。SkTypeface は fontique と同一のフォントバイト列から生成）。`paints_color_glyphs()` = true（Vello 以外で初のカラーグリフ対応）。wasm32 は対象外。ビルド供給は crates.io ＋ビルド済みバイナリの厳密ピン（ソースベンダリングしない、ADR-0007 例外）。
+**出典:** ADR-0146（PRD #798）、ADR-0125、ADR-0007
+**状況:** ⬜ — 実装スライス（crate 新設 → desktop 結線 → Android raster → Android GL）は #798 の子 issue が担う。
+**備考:** golden は per-renderer 方式（自分の過去出力との回帰のみ・クロスレンダラのピクセル比較なし）＋共有 demo-fixtures。CI golden は Linux desktop raster 経路のみ、Android GL は完全人力・実機確認 issue で担保。
+
+### REND-15 — ネイティブ Renderer Selection Policy（vello → skia）
+**規範文:** Renderer Selection Policy（REND-09）をネイティブにも通す。既定は vello を preferred default、skia をネイティブの standard alternative とする**一方向 fallback**（vello 初期化失敗 → skia）。両レンダラを常時リンクし、ランタイム上書き（Android: intent extra / desktop: env・CLI フラグ）で強制指定できる（ADR-0138/0140/0145 の「常時コンパイル＋ランタイムフラグ」流儀。web の「1バイナリ1レンダラ」排他はネイティブでは採らない）。選択されたレンダラ・選択理由（`RendererSelectionReason`）・GL 時は EGL/GPU 情報を logcat / stderr に記録する。`backend-vello` feature（default on）で vello/wgpu をネイティブビルドから外せる出口を持つ。
+**出典:** ADR-0146（PRD #798）、ADR-0050
+**状況:** ⬜ — 前提工事は desktop への Render Host 芯導入（REND-08 / ADR-0068・ADR-0132 の hoist 継続）。
+**備考:** skia を preferred default へ昇格するかは実測後の別 ADR。web の selection policy と同一の観測可能な語彙で採否を追う。
+
+---
+
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
 | ✅実装済み | 12 | REND-01〜07, 09〜13 |
 | 🟡部分 | 1 | REND-08（Render Host 芯の共有層 hoist、ADR-0068） |
-| ⬜未実装 | 0 | — |
+| ⬜未実装 | 2 | REND-14〜15（skia-safe ネイティブ導入、ADR-0146 / PRD #798） |

@@ -26,7 +26,7 @@
 | §1 | [Hayate Core 原則](./01-core.md) | 5 | – | – |
 | §2 | [Element Layer](./02-element-layer.md) | 6 | – | – |
 | §3 | [Layout](./03-layout.md) | 7 | – | – |
-| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 12 | 1 | – |
+| §4 | [Raw Layer / Scene Graph / Rendering](./04-rendering.md) | 12 | 1 | 2 |
 | §5 | [Text / Font / IME](./05-text-font-ime.md) | 10 | – | – |
 | §6 | [Event Model](./06-event-model.md) | 9 | – | – |
 | §7 | [Scroll](./07-scroll.md) | 3 | 1 | – |
@@ -36,9 +36,9 @@
 | §11 | [Tsubame](./11-tsubame.md) | 5 | 3 | – |
 | §12 | [Hayabusa【凍結】](./12-hayabusa.md) | – | – | 5 |
 | §13 | [Mobile Capabilities](./13-mobile-capabilities.md) | – | – | 2 |
-| | **合計** | **90** | **11** | **10** |
+| | **合計** | **90** | **11** | **12** |
 
-全 **111 要件**。⬜ 10 件のうち 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外、2 件（PLAT-07 AccessKit inbound / PLAT-10 desktop winit leaf）は設計確定・未着手の作業対象、2 件（MOBL-01 wave-2 ストリーム capability 契約 / MOBL-02 capability 公開境界）は ADR-0120 で設計確定・後続 scaffold 待ち。
+全 **113 要件**。⬜ 12 件のうち 6 件は歴史（WEBA-08）または凍結（HAYA-01〜05）で徹底実装フェーズの対象外、2 件（PLAT-07 AccessKit inbound / PLAT-10 desktop winit leaf）は設計確定・未着手の作業対象、2 件（MOBL-01 wave-2 ストリーム capability 契約 / MOBL-02 capability 公開境界）は ADR-0120 で設計確定・後続 scaffold 待ち、2 件（REND-14 skia-safe Scene Renderer / REND-15 ネイティブ selection policy）は ADR-0146 で設計確定・実装スライスは PRD #798 の子 issue が担う。
 
 ## 実装ステータス・ダッシュボード（未完了の要件 = 徹底実装フェーズの作業対象）
 
@@ -57,9 +57,11 @@
 | TSUB-05 | adapter は既存ランタイム持込 | solid✅・react✅（ADR-0010）、vue未実装 |
 | TSUB-08 | viewport/resize は host adapter 責務 | Tsubame 退去✅、Hayate web adapter の resize 抽象化は follow-up（ADR-0004） |
 
-### ⬜ 未実装（10件・うち2件が作業対象）
+### ⬜ 未実装（12件・うち2件が作業対象）
 | ID | 規範文要約 | 種別 |
 |---|---|---|
+| REND-14 | skia-safe Scene Renderer（ネイティブ専用・surface 非依存 painter・SkTextBlob） | 設計確定（ADR-0146）・実装スライスは PRD #798 の子 issue |
+| REND-15 | ネイティブ Renderer Selection Policy（vello → skia fallback・ランタイム切替） | 設計確定（ADR-0146）・前提工事は Render Host 芯 hoist（REND-08） |
 | PLAT-07 | AccessKit inbound action の Core 写像 | 設計確定（ADR-0098）・ネイティブ adapter 前提で未着手（作業対象） |
 | PLAT-10 | Desktop winit 単一 crate leaf | 設計確定（ADR-0118）・`hayate-platform-desktop` crate 未実装（作業対象） |
 | WEBA-08 | ADR-0010/0011 は歴史的 | 歴史（実装不要） |
