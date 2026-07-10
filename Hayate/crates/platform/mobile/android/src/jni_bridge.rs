@@ -10,6 +10,47 @@
 use jni::objects::JObject;
 use jni::{JNIEnv, JavaVM};
 
+/// Kotlin（`MainActivity.nativePushSafeAreaInsets`）→ Rust の JNI エクスポート（edge-to-edge /
+/// b2, issue #794・ADR-0144）。WindowInsets（systemBars + displayCutout、物理px）を受け取り、
+/// フレームループ（`app.rs`）が読むグローバル（`safe_area`）へ格納する。JNI 封じ込め方針
+/// （`qr_scanner_encapsulation.rs`）に従い、`jni::` を直接使える唯一のファイルであるここに置く。
+/// シンボル名は `com.hayateprojects.hayate.adapter_android_demo.MainActivity` の JNI 変換
+/// （パッケージ名の `_` は `_1` にエスケープ）。`hayate_adapter_android` cdylib が export し、
+/// GameActivity がロードした後 Kotlin の `external fun` から呼ばれる。
+#[no_mangle]
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushSafeAreaInsets<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    left: jni::sys::jint,
+    top: jni::sys::jint,
+    right: jni::sys::jint,
+    bottom: jni::sys::jint,
+) {
+    // jint は i32。systemBars + displayCutout の物理px（IME は含まない）。
+    crate::safe_area::store_pushed_insets(left, top, right, bottom);
+}
+
+/// Kotlin（`MainActivity.nativePushRenderConfig`）→ Rust の JNI エクスポート（描画バックエンド /
+/// AA 方式のランタイム切替, issue #795・ADR-0145）。intent extra 由来の上書き文字列（未指定は空文字）
+/// を受け取り、`render_config` のグローバルへ格納する（`init_gpu_surface` が読む）。JNI 封じ込め
+/// 方針に従いここに置く。
+#[no_mangle]
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushRenderConfig<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    backend: JString<'local>,
+    aa: JString<'local>,
+) {
+    let backend = jstring_to_owned(&mut env, &backend);
+    let aa = jstring_to_owned(&mut env, &aa);
+    crate::render_config::store_pushed_config(&backend, &aa);
+}
+
+/// `JString` を Rust の `String` に写す。null / 変換失敗は空文字（未指定扱い → 既定へ）。
+fn jstring_to_owned(env: &mut JNIEnv<'_>, s: &JString<'_>) -> String {
+    env.get_string(s).map(|js| js.into()).unwrap_or_default()
+}
+
 // JNI leaf（`qr_scanner.rs` / `error_overlay.rs`）が値の受け渡しに要る型の再エクスポート。
 // `jni::` の直接使用をこのファイルへ封じ込めるため、leaf 側はこちら経由で参照する。
 pub(crate) use jni::objects::{JClass, JString};

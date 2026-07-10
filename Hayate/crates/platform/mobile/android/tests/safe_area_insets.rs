@@ -1,16 +1,17 @@
-//! 最下点固定ピクセルずれの回帰防止（安全領域インセットの契約）。
+//! 安全領域インセットの契約（edge-to-edge / b2, issue #794・ADR-0144）。
 //!
-//! GameActivity の SurfaceView はフルウィンドウ（edge-to-edge）に配置され、実機
-//! （実測: ColorOS / 1080x2400・ステータスバー110px・ナビバー132px）では
-//! `AndroidApp::content_rect()` もフルウィンドウ (0,0,1080,2400) を返す——インセットは
-//! onContentRectChanged ではなく WindowInsets 経由でしか届かない。そのため Rust 側の
-//! `safe_window_dimensions`（content_rect 由来）だけでは補正が no-op になり、最下点が
-//! ナビゲーションバー分だけ固定ピクセルずれて到達不能・上端がステータスバーの裏に潜る。
+//! **b2 方式**: GameActivity の SurfaceView はフルウィンドウ（edge-to-edge）のまま、GPU
+//! surface/swapchain もフルウィンドウ。WindowInsets（systemBars + displayCutout。IME は含めない
+//! — GameTextInput が別途処理する）を JNI で Rust へ push し、レイアウトビューポート縮小・シーン
+//! 平行移動・バー裏のルート背景色クリア・タッチ座標補正を **アダプタ内（Rust）で完結**する。
 //!
-//! 根治は Kotlin 側: MainActivity が WindowInsets（systemBars + displayCutout）を
-//! SurfaceView のマージンとして適用し、ANativeWindow 自体を安全領域サイズにする。
-//! これで Rust の window 寸法・レイアウトビューポート・タッチ座標が全て一致する。
-//! Gradle/AGP はサンドボックスで実行できないため、ソースを読んで契約を固定する
+//! 旧「マージン方式」（WindowInsets を SurfaceView の `setMargins` にして ANativeWindow 自体を
+//! 縮め、Kotlin 側で MotionEvent を平行移動）は Nothing Phone 3a（Android 15 世代）でリスナーが
+//! 端末依存で不発になりステータスバー侵食を起こしたため撤去した（ADR-0144）。`AndroidApp::
+//! content_rect()` はフルウィンドウを返す端末があるため、Rust 側 content_rect フォールバックだけ
+//! でも補正できず、JNI push を一次ソースにする必要がある。
+//!
+//! Gradle/AGP・wgpu はサンドボックスで実行できないため、ソースを読んで契約を固定する
 //! （`apk_packaging.rs` と同じ方式）。
 
 use std::fs;
@@ -23,36 +24,54 @@ fn main_activity() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+fn src(rel: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src").join(rel);
+    fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+// ── Kotlin (MainActivity) の b2 契約 ────────────────────────────────────────
+
 #[test]
-fn main_activity_fits_the_surface_view_to_the_safe_area() {
+fn surface_view_stays_edge_to_edge_without_margins_or_kotlin_touch_correction() {
     let kt = main_activity();
     assert!(
-        kt.contains("setOnApplyWindowInsetsListener"),
-        "MainActivity must listen to WindowInsets — content_rect() はフルウィンドウを返す端末が\
-         あり、Rust 側だけでは最下点の固定ピクセルずれを補正できない"
+        !kt.contains("setMargins"),
+        "b2: SurfaceView はフルウィンドウのまま。マージン方式（ANativeWindow を縮める）は\
+         端末依存で不発になりステータスバー侵食を起こしたため撤去する（ADR-0144）"
     );
     assert!(
-        kt.contains("systemBars()") && kt.contains("displayCutout()"),
-        "systemBars + displayCutout を安全領域として扱う"
+        !kt.contains("offsetLocation"),
+        "b2: Kotlin 側のタッチ平行移動（MotionEvent の SurfaceView 相対補正）は撤去し、\
+         タッチ座標補正を Rust 側（safe_area::correct_touch）へ一本化する"
     );
     assert!(
-        kt.contains("setMargins"),
-        "インセットは SurfaceView のマージンとして適用し、ANativeWindow 自体を安全領域サイズにする"
+        kt.contains("setDecorFitsSystemWindows") || kt.contains("enableEdgeToEdge"),
+        "b2: SurfaceView をフルウィンドウに広げる edge-to-edge を明示的に有効化する"
     );
 }
 
 #[test]
-fn touch_events_are_translated_into_surface_local_coordinates() {
+fn insets_are_pushed_to_rust_over_jni_per_listener_and_as_a_snapshot() {
     let kt = main_activity();
     assert!(
-        kt.contains("onTouchEvent") && kt.contains("offsetLocation"),
-        "GameActivity はタッチを Activity.onTouchEvent（ウィンドウ座標）で受けるため、\
-         SurfaceView をマージンで下げたら MotionEvent も SurfaceView 相対へ平行移動しないと\
-         タッチが systemBars.top 分だけ下にずれる"
+        kt.contains("setOnApplyWindowInsetsListener"),
+        "WindowInsets はリスナー発火ごとに取得する"
     );
     assert!(
-        kt.contains("onGenericMotionEvent"),
-        "ホイール/ホバー等の generic motion も同じ座標系ずれの対象"
+        kt.contains("systemBars()") && kt.contains("displayCutout()"),
+        "安全領域は systemBars + displayCutout（IME は GameTextInput が別途処理するので含めない）"
+    );
+    assert!(
+        !kt.contains("Type.ime()"),
+        "IME インセットは含めない（GameTextInput が別途処理する）"
+    );
+    assert!(
+        kt.contains("external fun") && kt.contains("nativePushSafeAreaInsets"),
+        "取得したインセットは JNI native 関数（nativePushSafeAreaInsets）で Rust へ push する"
+    );
+    assert!(
+        kt.contains("rootWindowInsets"),
+        "リスナー不発端末への保険として onCreate 後に rootWindowInsets スナップショットも一度 push する"
     );
 }
 
@@ -63,5 +82,64 @@ fn the_insets_listener_does_not_consume_the_insets() {
         !kt.contains("CONSUMED"),
         "インセットを消費すると GameActivity 自身の SurfaceView リスナー（GameTextInput の \
          IME インセット処理）に届かなくなる — 下流へ流すこと"
+    );
+}
+
+#[test]
+fn received_insets_are_logged_for_per_device_diagnosis() {
+    let kt = main_activity();
+    assert!(
+        kt.contains("Log.") || kt.contains("android.util.Log"),
+        "受信したインセット値は logcat に記録し、端末別のインセット配送問題を診断可能にする"
+    );
+}
+
+#[test]
+fn status_bar_icon_appearance_is_set_from_a_named_constant() {
+    let kt = main_activity();
+    assert!(
+        kt.contains("isAppearanceLightStatusBars"),
+        "ステータスバーのアイコン色は isAppearanceLightStatusBars で静的に設定する"
+    );
+    assert!(
+        kt.contains("LIGHT_STATUS_BAR_ICONS") || kt.contains("const val"),
+        "isAppearanceLightStatusBars の値は名前付き定数（マジック真偽値の禁止）"
+    );
+}
+
+// ── Rust (JNI push の着地点 + アダプタ内完結) の b2 契約 ─────────────────────
+
+#[test]
+fn jni_bridge_exposes_the_native_inset_push_entry_point() {
+    let bridge = src("jni_bridge.rs");
+    assert!(
+        bridge.contains("nativePushSafeAreaInsets"),
+        "Kotlin→Rust の JNI エクスポート（Java_..._nativePushSafeAreaInsets）は JNI 封じ込め方針に\
+         従い jni_bridge.rs に置く（jni:: を直接使える唯一のファイル）"
+    );
+    assert!(
+        bridge.contains("store_pushed_insets"),
+        "push された値は safe_area::store_pushed_insets でフレームループ可読なグローバルに格納する"
+    );
+}
+
+#[test]
+fn app_completes_safe_area_handling_inside_the_adapter() {
+    let app = src("app.rs");
+    assert!(
+        app.contains("render_scene_with_offset"),
+        "b2: シーンを安全領域インセット分だけ平行移動して描画する（バー裏はルート背景色でクリア）"
+    );
+    assert!(
+        app.contains("scene_origin"),
+        "描画の平行移動原点は safe_area::SafeAreaInsets::scene_origin から導く"
+    );
+    assert!(
+        app.contains("correct_touch"),
+        "タッチ座標補正は Rust 側（safe_area::correct_touch）で行う（Kotlin から一本化）"
+    );
+    assert!(
+        app.contains("pushed_insets"),
+        "JNI push 値を一次ソースにし、content_rect 由来はフォールバックへ降格する"
     );
 }

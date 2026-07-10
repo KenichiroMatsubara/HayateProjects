@@ -49,8 +49,7 @@ use crate::torimi_reload::{
 use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
 use hayate_core::element::ime_reconcile::TextInputState;
 use crate::surface_lifecycle::{
-    safe_window_dimensions, viewport_for_surface, window_dimensions, SurfaceLifecycleAction,
-    SurfaceLifecycleState,
+    window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
 };
 
 /// 1 boot 分の Hermes ランタイムと、それと共有する ElementTree。full reload では丸ごと作り直して
@@ -305,11 +304,8 @@ pub(crate) fn run(app: AndroidApp) {
                         if let Some(window) = app.native_window() {
                             let scale = crate::surface_lifecycle::content_scale(&app);
                             let (w, h) = window_dimensions(window.width(), window.height());
-                            let rect = app.content_rect();
-                            let (safe_w, safe_h) = safe_window_dimensions(
-                                w, h, rect.left, rect.top, rect.right, rect.bottom,
-                            );
-                            let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
+                            let (vw, vh) =
+                                crate::app::effective_insets(&app, w, h).layout_viewport(w, h, scale);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
                                 let mut tree = runtime.tree.borrow_mut();
@@ -331,11 +327,8 @@ pub(crate) fn run(app: AndroidApp) {
                             if let Some(window) = app.native_window() {
                                 let scale = crate::surface_lifecycle::content_scale(&app);
                                 let (w, h) = window_dimensions(window.width(), window.height());
-                                let rect = app.content_rect();
-                                let (safe_w, safe_h) = safe_window_dimensions(
-                                    w, h, rect.left, rect.top, rect.right, rect.bottom,
-                                );
-                                let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
+                                let (vw, vh) = crate::app::effective_insets(&app, w, h)
+                                    .layout_viewport(w, h, scale);
                                 last_viewport = Some((vw, vh));
                                 if let Some(runtime) = current.as_ref() {
                                     let mut tree = runtime.tree.borrow_mut();
@@ -370,11 +363,8 @@ pub(crate) fn run(app: AndroidApp) {
                                     content_scale: scale,
                                 });
                             }
-                            let rect = app.content_rect();
-                            let (safe_w, safe_h) = safe_window_dimensions(
-                                width, height, rect.left, rect.top, rect.right, rect.bottom,
-                            );
-                            let (vw, vh) = viewport_for_surface(safe_w, safe_h, scale);
+                            let (vw, vh) = crate::app::effective_insets(&app, width, height)
+                                .layout_viewport(width, height, scale);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
                                 let mut tree = runtime.tree.borrow_mut();

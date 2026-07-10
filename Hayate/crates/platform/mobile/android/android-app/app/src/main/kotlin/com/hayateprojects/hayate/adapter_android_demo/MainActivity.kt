@@ -1,10 +1,10 @@
 package com.hayateprojects.hayate.adapter_android_demo
 
 import android.os.Bundle
-import android.view.MotionEvent
-import android.view.View
+import android.util.Log
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.androidgamesdk.GameActivity
 
@@ -20,66 +20,108 @@ import com.google.androidgamesdk.GameActivity
  * Kotlin 挙動は 2 つ:
  *  - [CurrentActivity] への自己登録：Rust の JNI ブリッジ（エラーオーバーレイ・
  *    QR スキャナ）が Application Context しか持たないため、Activity 実体をここで供給する。
- *  - SurfaceView をシステムバーの安全領域内に収めるインセット適用（下記）。
+ *  - **edge-to-edge ＋ WindowInsets の JNI push（b2, issue #794・ADR-0144）**：SurfaceView は
+ *    フルウィンドウのまま（マージンで縮めない）、systemBars + displayCutout のインセットを Rust へ
+ *    push し、安全領域処理（レイアウトビューポート縮小・シーン平行移動・タッチ座標補正）は
+ *    アダプタ内（Rust）で完結する。旧マージン方式は Nothing Phone 3a でリスナーが端末依存で
+ *    不発になりステータスバー侵食を起こしたため撤去した。
  */
 class MainActivity : GameActivity() {
+    private companion object {
+        /**
+         * ステータスバーのアイコンを暗色（明るい背景向け）にするか。b2 では静的に固定する
+         * （アプリテーマからの動的導出は将来の別 issue）。ルート背景は暗色系
+         * （`STAGE_A_CLEAR_COLOR`）なので、明色アイコン＝ `isAppearanceLightStatusBars = false`。
+         */
+        const val LIGHT_STATUS_BAR_ICONS = false
+
+        /** logcat タグ（端末別のインセット配送問題の診断用）。 */
+        const val TAG = "HayateSafeArea"
+
+        /**
+         * 描画バックエンド（Vulkan/GL）・AA 方式（Area/MSAA8/MSAA16）の実行時上書き intent extra
+         * キー（issue #795・ADR-0145）。`adb shell am start -e hayate.backend gl -e hayate.aa msaa8`
+         * で再ビルドなしに切り替える。未指定は空文字で push し、Rust 側で既定へ落とす。
+         */
+        const val BACKEND_EXTRA = "hayate.backend"
+        const val AA_EXTRA = "hayate.aa"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // super.onCreate が native ライブラリをロードして android_main を始動するため、
         // Rust 側から見える前に登録しておく。
         CurrentActivity.set(this)
         super.onCreate(savedInstanceState)
-        fitSurfaceViewToSafeArea()
+        // GPU surface 初期化（CreateSurface）より前に描画設定の上書きを Rust へ届ける。
+        pushRenderConfig()
+        enableEdgeToEdge()
+        installInsetPush()
     }
 
     /**
-     * GameActivity の SurfaceView はフルウィンドウ（edge-to-edge）に配置され、実機では
-     * ステータスバー/ナビゲーションバーの裏まで広がる。`AndroidApp::content_rect()` も
-     * フルウィンドウを返すため（インセットは onContentRectChanged ではなく WindowInsets
-     * 経由でしか届かない）、Rust 側だけでは補正できない——最下点がナビゲーションバー分
-     * だけ固定ピクセルずれて到達不能になるバグの根本原因。
-     *
-     * WindowInsets の systemBars + displayCutout を SurfaceView のマージンとして適用し、
-     * ANativeWindow 自体を安全領域サイズにする。これで Rust の window 寸法・レイアウト
-     * ビューポート・タッチ座標が全て安全領域基準で自動的に一致する。インセットは消費
-     * しない（GameActivity 自身が SurfaceView 上のリスナーで GameTextInput の IME
-     * インセットを処理するため、下流へ流す）。
+     * 描画バックエンド / AA 方式の実行時上書き（intent extra）を Rust へ push する（#795）。
+     * 未指定（extra 無し）は空文字で渡し、Rust 側（`render_config`）で既定（Vulkan・Area）へ
+     * 落とす。APK を作り直さずに 3 実験（MSAA8/16・GL）を回すための口。
      */
-    private fun fitSurfaceViewToSafeArea() {
+    private fun pushRenderConfig() {
+        val backend = intent.getStringExtra(BACKEND_EXTRA) ?: ""
+        val aa = intent.getStringExtra(AA_EXTRA) ?: ""
+        Log.i(TAG, "render config override: backend=\"$backend\" aa=\"$aa\"")
+        nativePushRenderConfig(backend, aa)
+    }
+
+    /**
+     * SurfaceView をシステムバー/ディスプレイカットアウトの裏までフルウィンドウに広げる（b2）。
+     * 安全領域の処理は Rust 側（アダプタ内）で完結するので、ここではバーの裏まで描けるように
+     * するだけ。ステータスバーのアイコン色は名前付き定数で静的に設定する。
+     */
+    private fun enableEdgeToEdge() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars =
+            LIGHT_STATUS_BAR_ICONS
+    }
+
+    /**
+     * WindowInsets（systemBars + displayCutout）を JNI で Rust へ push する。リスナー発火ごとに
+     * 加え、リスナー不発端末（Nothing Phone 3a 実例）への保険として onCreate 後に
+     * `rootWindowInsets` スナップショットも一度 push する。インセットは消費しない
+     * （GameActivity 自身が SurfaceView 上のリスナーで GameTextInput の IME インセットを処理
+     * するため、下流へ流す）。
+     */
+    private fun installInsetPush() {
         val content = findViewById<ViewGroup>(android.R.id.content)
-        val surface: View = content.getChildAt(0) ?: return
         ViewCompat.setOnApplyWindowInsetsListener(content) { _, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
-            )
-            val lp = surface.layoutParams as ViewGroup.MarginLayoutParams
-            if (lp.leftMargin != bars.left || lp.topMargin != bars.top ||
-                lp.rightMargin != bars.right || lp.bottomMargin != bars.bottom
-            ) {
-                lp.setMargins(bars.left, bars.top, bars.right, bars.bottom)
-                surface.layoutParams = lp
-            }
-            insets
+            pushInsets(insets)
+            insets // 消費しない（下流へ流す）
         }
+        // リスナーが発火しない端末への保険。レイアウト確定後に一度スナップショットを push。
+        content.post { ViewCompat.getRootWindowInsets(content)?.let { pushInsets(it) } }
+    }
+
+    private fun pushInsets(insets: WindowInsetsCompat) {
+        // systemBars + displayCutout。IME インセット（ソフトキーボード）は含めない
+        // — GameTextInput が別途処理する。
+        val bars = insets.getInsets(
+            WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+        )
+        Log.i(
+            TAG,
+            "WindowInsets → Rust: left=${bars.left} top=${bars.top} " +
+                "right=${bars.right} bottom=${bars.bottom}",
+        )
+        nativePushSafeAreaInsets(bars.left, bars.top, bars.right, bars.bottom)
     }
 
     /**
-     * GameActivity はタッチを SurfaceView ではなく **Activity.onTouchEvent（ウィンドウ座標）**
-     * で受けてネイティブへ流す。SurfaceView を安全領域マージンで下げた分、描画とタッチの
-     * 座標系がずれる（タッチが systemBars.top 分だけ下に着弾する）ため、ネイティブへ渡す前に
-     * MotionEvent を SurfaceView 相対へ平行移動して描画と一致させる。
+     * インセット（物理px）を Rust（`jni_bridge.rs` の
+     * `Java_..._nativePushSafeAreaInsets`）へ push する。実体は
+     * `hayate_adapter_android` cdylib が export する。
      */
-    override fun onTouchEvent(event: MotionEvent): Boolean =
-        super.onTouchEvent(offsetToSurface(event))
+    private external fun nativePushSafeAreaInsets(left: Int, top: Int, right: Int, bottom: Int)
 
-    override fun onGenericMotionEvent(event: MotionEvent): Boolean =
-        super.onGenericMotionEvent(offsetToSurface(event))
-
-    private fun offsetToSurface(event: MotionEvent): MotionEvent {
-        val surface: View = findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
-            ?: return event
-        val loc = IntArray(2)
-        surface.getLocationInWindow(loc)
-        event.offsetLocation(-loc[0].toFloat(), -loc[1].toFloat())
-        return event
-    }
+    /**
+     * 描画バックエンド / AA 方式の上書き（intent extra 由来、未指定は空文字）を Rust
+     * （`jni_bridge.rs` の `Java_..._nativePushRenderConfig`）へ push する（#795）。
+     */
+    private external fun nativePushRenderConfig(backend: String, aa: String)
 }

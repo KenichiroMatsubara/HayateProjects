@@ -57,7 +57,11 @@ pub fn window_dimensions(width: i32, height: i32) -> (u32, u32) {
 /// ウィンドウ全体のサイズを使う（`window_dimensions` のまま）が、レイアウト用ビューポートだけ
 /// この安全領域サイズに差し替える。`content_rect` が空/不正（初回レイアウト前など）なら
 /// ウィンドウ全体にフォールバックする。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+///
+/// **注（ADR-0144 / issue #794・b2）**: edge-to-edge 化に伴い、live 経路の安全領域計算は
+/// `safe_area::SafeAreaInsets`（JNI push 優先・content_rect フォールバック）へ移行した。本関数は
+/// 実機実測（content_rect 由来のサイズ縮小）の回帰テストのために残す（live 経路からは外れた）。
+#[allow(dead_code)]
 pub fn safe_window_dimensions(
     window_width: u32,
     window_height: u32,
@@ -79,7 +83,11 @@ pub fn safe_window_dimensions(
 /// 描画は Vello（`hayate-scene-renderer-vello`）側で同じ content_scale を掛けて物理バッファへ
 /// 引き伸ばす（`VelloLayerRasterizer`）。タッチ座標も `process_touch_input` が同じ scale で
 /// 論理px化してから `translate_touch` に渡し、ヒットテストと描画を揃える。
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+///
+/// **注（ADR-0144 / issue #794・b2）**: live 経路の論理ビューポート導出は
+/// `safe_area::SafeAreaInsets::layout_viewport` へ移行した。本関数は密度スケール除算の
+/// 回帰テストのために残す（live 経路からは外れた）。
+#[allow(dead_code)]
 pub fn viewport_for_surface(width: u32, height: u32, content_scale: f32) -> (f32, f32) {
     surface_metrics(width as i32, height as i32, content_scale).viewport_size()
 }
