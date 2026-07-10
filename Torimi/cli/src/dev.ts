@@ -1,7 +1,12 @@
 import { watch } from 'node:fs';
 import { join } from 'node:path';
 
-import { ALL_INTERFACES_HOSTNAME, createBundleDevServer, printStartupBanner } from '@torimi/dev-server';
+import {
+  ALL_INTERFACES_HOSTNAME,
+  createBundleDevServer,
+  createDeviceLogSink,
+  printStartupBanner,
+} from '@torimi/dev-server';
 
 import { buildForTarget } from './build.js';
 import type { TorimiConfig } from './config.js';
@@ -67,7 +72,14 @@ export async function dev(config: TorimiConfig, target: Target, cwd: string, opt
 
   // 0.0.0.0 で listen して同じ LAN の端末からも到達可能に（dev-only）。起動バナーが LAN URL と
   // QR を出すので端末のカメラで読んで host へ入力できる。
-  const server = createBundleDevServer({ bundlePath: servedPath, port, hostname: ALL_INTERFACES_HOSTNAME });
+  // Device Log は sink 本体を dev-server に置き、CLI は出力先ディレクトリ（プロジェクト cwd 配下
+  // `.torimi/logs`）を渡すだけ — 置き場所を知るのは CLI なので配線は CLI 側（#786・ADR-0005）。
+  const server = createBundleDevServer({
+    bundlePath: servedPath,
+    port,
+    hostname: ALL_INTERFACES_HOSTNAME,
+    onLogBatch: createDeviceLogSink({ logsDir: join(cwd, '.torimi', 'logs') }),
+  });
   try {
     await server.listen();
   } catch (err) {

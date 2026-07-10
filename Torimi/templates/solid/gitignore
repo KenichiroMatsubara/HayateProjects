@@ -1,3 +1,4 @@
 node_modules
 dist-torimi
 *.log
+.torimi/
