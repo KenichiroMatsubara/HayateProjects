@@ -74,7 +74,19 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            // R8/ProGuard は使わない（isMinifyEnabled=false）。理由: fbjni のリフレクションや
+            // JNI/GameActivity 経由のクラス参照を R8 が削ると ClassNotFoundException で落ちる。
+            // そのため Play が言う「難読化解除(mapping)ファイル」はそもそも生成されず、
+            // あの警告はこのアプリでは無視してよい（難読化していないので解除ファイルも不要）。
             isMinifyEnabled = false
+            // 代わりに、クラッシュの大半が出る Rust ネイティブ（libhayate_adapter_android.so）と
+            // vendored .so のスタックトレースを Play Console で関数名付きに解決できるよう、
+            // ネイティブ デバッグシンボルを AAB に同梱する（mapping ファイルの native 相当物）。
+            // cargo の release ビルドは DWARF を出さない（profile.release は debug=0）ので
+            // FULL にしても file:line までは付かない。関数名が分かる SYMBOL_TABLE で十分かつ軽量。
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
             // 署名が構成されているときだけ release に紐付ける。未設定なら bundleRelease は
             // 未署名 AAB を作る（Play には出せないが、CI/ローカルの構成ミスを黙って壊れた
             // 署名で通すよりは、未署名で明示的に失敗させる方が安全）。
