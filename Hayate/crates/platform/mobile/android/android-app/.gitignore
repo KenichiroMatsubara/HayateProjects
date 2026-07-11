@@ -6,3 +6,5 @@ local.properties
 # 署名/リリース成果物（Studio の Generate Signed Bundle は app/release/ に出す）。再生成物なので追跡しない。
 *.aab
 *.apk
+# torimi-android-play-release.sh が Play 用 versionCode を採番するローカル状態（各マシン固有・追跡しない）。
+.torimi-play-versioncode

@@ -21,6 +21,7 @@
     "android:build": "bash scripts/build-android.sh assembleDebug",
     "android:build:release": "bash scripts/build-android.sh assembleRelease",
     "torimi:android:install": "bash scripts/build-android.sh installDebug",
+    "torimi:android:play:release": "bash scripts/torimi-android-play-release.sh",
     "android:nativedemo": "bash scripts/build-android.sh installDebug -Pnativedemo",
     "android:clean": "bash scripts/build-android.sh clean"
   },
