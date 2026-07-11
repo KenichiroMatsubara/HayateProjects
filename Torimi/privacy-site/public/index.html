@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="index,follow" />
+  <title>Torimi プライバシーポリシー</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #1a1a1a;
+      --muted: #5a5f66;
+      --border: #e3e6ea;
+      --accent: #2b6cb0;
+      --card: #f7f8fa;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14171a;
+        --fg: #e7eaee;
+        --muted: #9aa2ac;
+        --border: #2a2f36;
+        --accent: #7db4e6;
+        --card: #1c2126;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo, sans-serif;
+      line-height: 1.8;
+      font-size: 16px;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 40px 20px 96px; }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+    h1 { font-size: 1.7rem; margin: 0 0 8px; letter-spacing: .01em; }
+    h2 { font-size: 1.2rem; margin: 40px 0 12px; padding-top: 4px; }
+    h3 { font-size: 1.02rem; margin: 24px 0 8px; }
+    p, li { color: var(--fg); }
+    .muted { color: var(--muted); font-size: .9rem; }
+    a { color: var(--accent); }
+    ul { padding-left: 1.3em; }
+    li { margin: 6px 0; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 16px 0;
+    }
+    .meta { font-size: .88rem; color: var(--muted); margin-top: 4px; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: .94rem; }
+    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: var(--card); font-weight: 600; }
+    footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: .85rem; }
+    code { background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: .88em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Torimi プライバシーポリシー</h1>
+      <p class="meta">最終更新日: 2026年7月11日</p>
+    </header>
+
+    <p>
+      本プライバシーポリシー（以下「本ポリシー」）は、Torimi（鳥見）（以下「本アプリ」）における
+      利用者情報の取り扱いについて定めるものです。本アプリは、開発者がアプリの表示を実機で確認するための
+      <strong>開発者向けプレビューツール（dev-client）</strong>であり、一般消費者向けのサービスではありません。
+    </p>
+
+    <div class="card">
+      <p style="margin:0"><strong>要点</strong></p>
+      <ul style="margin:8px 0 0">
+        <li>本アプリは、氏名・メールアドレス・電話番号・位置情報・広告 ID などの<strong>個人情報を収集しません</strong>。</li>
+        <li>アクセス解析やトラッキングを行う SDK は<strong>一切組み込んでいません</strong>。</li>
+        <li>本アプリが端末内に保存する情報を、開発者のサーバへ収集・送信することはありません。</li>
+      </ul>
+    </div>
+
+    <h2>1. 事業者の名称・連絡先</h2>
+    <ul>
+      <li>提供者: HayateProjects</li>
+      <li>連絡先: <a href="mailto:kenmatsu331@gmail.com">kenmatsu331@gmail.com</a></li>
+    </ul>
+
+    <h2>2. 取り扱う情報</h2>
+    <p>本アプリは、その性質上、以下の情報を取り扱います。いずれも本アプリの機能提供のためにのみ用います。</p>
+
+    <h3>2.1 端末内にのみ保存する情報</h3>
+    <p>次の情報は、利用者の端末内にローカル保存されるもので、開発者のサーバへ送信・収集されることはありません。</p>
+    <ul>
+      <li><strong>Device ID（端末識別子）</strong> — 開発セッションを識別するために本アプリが発行する、インストール単位の不透明な識別子です。ハードウェア固有の識別子（Android ID など）ではなく、再インストールにより変化します。</li>
+      <li><strong>接続先 Dev Server の URL</strong> — 利用者が入力した接続先アドレスを、次回以降の接続のために端末内に保存します。</li>
+    </ul>
+
+    <h3>2.2 ネットワーク通信</h3>
+    <p>
+      本アプリは、利用者が指定した接続先（利用者自身の開発サーバ、またはデモ配信エンドポイント）から、
+      プレビュー対象の JavaScript バンドルを HTTP(S) で取得します。この通信は、接続先サーバに対して、
+      一般的な Web アクセスと同様の情報（IP アドレス、リクエスト日時、User-Agent 等）を伴う場合があります。
+      これらは接続先サーバの運用者の管理下にあります。デモ配信エンドポイントは HayateProjects が運用します。
+    </p>
+    <p>
+      また、本アプリは開発支援のためのログ（<strong>Device Log</strong>）を、
+      <strong>利用者自身が指定した開発サーバに対してのみ</strong>送信することがあります。
+      デモ配信エンドポイントに対して Device Log を送信することはありません。
+    </p>
+
+    <h3>2.3 カメラの利用（QR コード読み取り）</h3>
+    <p>
+      接続先 URL を入力する手段として、QR コードの読み取り機能を提供します。
+      読み取りには Google Play services のコードスキャナ（ML Kit）を利用します。
+      カメラ映像は端末上でオンデバイス処理され、<strong>本アプリが画像を保存したり外部へ送信したりすることはありません</strong>。
+      本機能は Google Play services が提供するスキャナ画面が扱うため、本アプリはカメラ権限（<code>CAMERA</code>）を宣言していません。
+    </p>
+
+    <h2>3. 利用する端末の権限</h2>
+    <table>
+      <thead>
+        <tr><th>権限</th><th>目的</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>INTERNET</code></td>
+          <td>プレビュー対象バンドルの取得、および更新（reload）シグナルの購読のため。</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. 第三者サービス</h2>
+    <p>
+      本アプリは、QR コード読み取り機能のために <strong>Google Play services</strong>（コードスキャナ）を利用します。
+      当該サービスの情報の取り扱いについては、Google のプライバシーポリシーをご確認ください。
+    </p>
+    <ul>
+      <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google プライバシーポリシー</a></li>
+    </ul>
+
+    <h2>5. 第三者への提供・販売</h2>
+    <p>本アプリは、利用者に関する情報を第三者に販売・提供・共有することはありません。</p>
+
+    <h2>6. 収集しない情報</h2>
+    <p>
+      本アプリは、氏名、メールアドレス、電話番号、住所、精確な位置情報、連絡先、写真・メディア、
+      広告識別子（Advertising ID）その他の個人を特定しうる情報を収集しません。
+    </p>
+
+    <h2>7. 子どもの利用について</h2>
+    <p>
+      本アプリは開発者向けのツールであり、13 歳未満の子どもを対象としていません。
+      また、子どもから意図的に個人情報を収集することはありません。
+    </p>
+
+    <h2>8. 本ポリシーの変更</h2>
+    <p>
+      本ポリシーの内容は、法令の変更や本アプリの機能変更に応じて改定することがあります。
+      重要な変更を行う場合は、本ページ上で改定後の内容を掲示します。
+    </p>
+
+    <h2>9. お問い合わせ</h2>
+    <p>
+      本ポリシーおよび本アプリの情報の取り扱いに関するお問い合わせは、
+      <a href="mailto:kenmatsu331@gmail.com">kenmatsu331@gmail.com</a> までご連絡ください。
+    </p>
+
+    <footer>
+      <p>Torimi（鳥見） / HayateProjects<br />制定日: 2026年7月11日</p>
+    </footer>
+  </div>
+</body>
+</html>

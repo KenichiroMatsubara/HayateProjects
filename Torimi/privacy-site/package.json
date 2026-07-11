@@ -1,0 +1,13 @@
+{
+  "name": "@torimi/privacy-site",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Torimi のプライバシーポリシー静的ページ（Google Play 掲載用）を配信する Cloudflare Worker",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.110.0"
+  }
+}
