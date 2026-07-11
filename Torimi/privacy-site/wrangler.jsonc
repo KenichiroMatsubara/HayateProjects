@@ -1,0 +1,11 @@
+// Torimi のプライバシーポリシー静的配信 Worker。
+// Google Play 掲載用の公開 URL を提供する（本文は public/index.html）。
+// アセットのみの Worker（main スクリプトなし）で、public/ をそのまま HTTPS 配信する。
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "torimi-privacy",
+  "compatibility_date": "2026-07-05",
+  "assets": {
+    "directory": "./public"
+  }
+}
