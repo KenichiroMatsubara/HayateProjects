@@ -62,6 +62,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 本番（Play 内部テスト）版と debug 版は署名鍵が異なり、同じ applicationId では
+            // 同一端末に共存できず installDebug が INSTALL_FAILED_UPDATE_INCOMPATIBLE で落ちる。
+            // debug の applicationId にだけ .debug を付けて別アプリ扱いにし、Play 版
+            // （com.hayateprojects.torimi）を残したまま入れられるようにする。
+            //   - release/bundleRelease の applicationId は無変更（Play 公開 id は永久固定）。
+            //   - namespace（JNI/R クラスが使う com.hayateprojects.hayate.adapter_android_demo）
+            //     とは別物なので native には一切影響しない。
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             // 署名が構成されているときだけ release に紐付ける。未設定なら bundleRelease は
