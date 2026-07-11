@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { OP, TAG, ELEMENT_KIND } from '@tsubame/protocol-generated/protocol';
-import { UNSET_KIND } from '@tsubame/protocol-generated/protocol';
+import { OP, TAG, ELEMENT_KIND } from '@torimi/tsubame-protocol-generated/protocol';
+import { UNSET_KIND } from '@torimi/tsubame-protocol-generated/protocol';
 import {
   encodeMutations,
   splitStyleVariant,

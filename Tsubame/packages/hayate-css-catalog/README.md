@@ -1,4 +1,4 @@
-# @tsubame/hayate-css-catalog
+# @torimi/tsubame-hayate-css-catalog
 
 The Hayate CSS Catalog: the protocol-spec-driven source of truth for style props, shared so the Canvas encode path, the DOM CSS path, and the Rust mapper all agree on one vocabulary and its semantics. It is derived from the protocol spec rather than hand-maintained per renderer.
 

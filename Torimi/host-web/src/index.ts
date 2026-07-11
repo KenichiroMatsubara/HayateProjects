@@ -1,4 +1,4 @@
-import type { CreateHayateWebHostOptions, WebHost } from '@hayate/host';
+import type { CreateHayateWebHostOptions, WebHost } from '@torimi/hayate-host';
 import { devServerContract } from '@torimi/dev-server-contract';
 import {
   checkProtocolVersion,
@@ -6,7 +6,7 @@ import {
   readBundleProtocolVersion,
 } from '@torimi/protocol-handshake';
 
-export type { WebHost } from '@hayate/host';
+export type { WebHost } from '@torimi/hayate-host';
 export { ProtocolMismatchError } from '@torimi/protocol-handshake';
 export {
   isCameraScanSupported,
@@ -42,7 +42,7 @@ export interface BootTorimiHostOptions {
   /**
    * このホスト（decoder）に焼き込まれた protocol version。eval 後にバンドル（encoder）が
    * 埋めた版数と突き合わせ、一致時のみ mount する。不一致は {@link ProtocolMismatchError} で
-   * 明示エラーにし、mount もクラッシュもさせない（#530）。合成ルートが `@hayate/host` の
+   * 明示エラーにし、mount もクラッシュもさせない（#530）。合成ルートが `@torimi/hayate-host` の
    * `HOST_PROTOCOL_VERSION` を渡す。
    */
   readonly hostProtocolVersion: number;
@@ -61,7 +61,7 @@ export interface BootTorimiHostOptions {
    * （`__torimiProtocolVersion`）を読む。未埋め込み（契約違反）は `undefined`。
    */
   readonly readBundleVersion?: () => number | undefined;
-  /** host bootstrap を確立する seam。既定は `@hayate/host` の `createHayateWebHost`。 */
+  /** host bootstrap を確立する seam。既定は `@torimi/hayate-host` の `createHayateWebHost`。 */
   readonly createHost?: (
     canvas: HTMLCanvasElement,
     options?: CreateHayateWebHostOptions,
@@ -98,19 +98,19 @@ function defaultReadBundleVersion(): number | undefined {
   return readBundleProtocolVersion(globalThis);
 }
 
-/** `@hayate/host` の `createHayateWebHost` を遅延 import する既定実装。 */
+/** `@torimi/hayate-host` の `createHayateWebHost` を遅延 import する既定実装。 */
 async function defaultCreateHost(
   canvas: HTMLCanvasElement,
   options?: CreateHayateWebHostOptions,
 ): Promise<WebHost> {
-  const { createHayateWebHost } = await import('@hayate/host');
+  const { createHayateWebHost } = await import('@torimi/hayate-host');
   return createHayateWebHost(canvas, options);
 }
 
 /**
  * Torimi Web ホストを起動する：dev-server からバンドルを fetch → eval し、
  * `createHayateWebHost(canvas)` で host bootstrap（`raw` / `requestFrame` / `cancelFrame`）を
- * 確立して、バンドルが露出した mount に渡す。ホストは FW も `@tsubame/renderer-hayate` も
+ * 確立して、バンドルが露出した mount に渡す。ホストは FW も `@torimi/tsubame-renderer-hayate` も
  * 持たず、それらは流し込むバンドル側が持ち込む（ADR-0001）。
  */
 export async function bootTorimiHost(options: BootTorimiHostOptions): Promise<WebHost> {
@@ -317,7 +317,7 @@ export interface StartTorimiHostOptions {
   readonly devServerUrl: string;
   /**
    * このホスト（decoder）の protocol version。boot 時にバンドルの encoder 版数と突き合わせ、
-   * 不一致は明示エラーにする（#530）。合成ルートが `@hayate/host` の `HOST_PROTOCOL_VERSION`
+   * 不一致は明示エラーにする（#530）。合成ルートが `@torimi/hayate-host` の `HOST_PROTOCOL_VERSION`
    * を渡す。
    */
   readonly hostProtocolVersion: number;

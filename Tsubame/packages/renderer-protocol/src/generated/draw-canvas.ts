@@ -1,9 +1,9 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec（draw_ops / draw_paint_fields）
+// 生成元: @torimi/hayate-protocol-spec（draw_ops / draw_paint_fields）
 //
 // painter（`draw` property の値）が受け取る記録面の構造的インターフェース
 //（#730 / ADR-0141）。実体は Hayate Renderer では wire 記録の recorder Canvas
-//（@tsubame/protocol-generated/recorder）、DOM Renderer では canvas 2D への
+//（@torimi/tsubame-protocol-generated/recorder）、DOM Renderer では canvas 2D への
 // replay（Tsubame ADR-0014）。recorder と同じ op 表から生成するため、spec に
 // op が増えても手書き修正なしで painter の型が追随する（Script Adapter 規律）。
 // `finish()` はフレームワーク側の口なので意図的に含めない（painter はバッファに

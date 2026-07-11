@@ -1,6 +1,6 @@
 import { createRenderer } from 'solid-js/universal';
-import type { ElementKind } from '@tsubame/renderer-protocol';
-import { applyElementProp } from '@tsubame/renderer-protocol';
+import type { ElementKind } from '@torimi/tsubame-renderer-protocol';
+import { applyElementProp } from '@torimi/tsubame-renderer-protocol';
 import { activeRenderer } from './active-renderer.js';
 import { createElementNode, type TsubameNode } from './node.js';
 

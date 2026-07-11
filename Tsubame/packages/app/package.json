@@ -1,10 +1,15 @@
 {
-  "name": "@tsubame/app",
+  "name": "@torimi/tsubame-app",
   "version": "0.1.0",
-  "description": "Tsubame 合成ルート — runTsubameApp（Host が renderer を産み、唯一の FW 固有 mount seam に畳む）と web 専用の detectMode。@tsubame/renderer-protocol だけに依存し、具体 renderer も Hayate ランタイムも知らない（ADR-0012）。",
+  "description": "Tsubame 合成ルート — runTsubameApp（Host が renderer を産み、唯一の FW 固有 mount seam に畳む）と web 専用の detectMode。@torimi/tsubame-renderer-protocol だけに依存し、具体 renderer も Hayate ランタイムも知らない（ADR-0012）。",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -15,7 +20,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "build": "tsup",
@@ -25,7 +32,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@tsubame/renderer-protocol": "workspace:*"
+    "@torimi/tsubame-renderer-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

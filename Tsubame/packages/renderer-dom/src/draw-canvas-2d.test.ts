@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Paint, PaintingStyle, Path, PathFillType, StrokeCap, StrokeJoin } from '@tsubame/protocol-generated/recorder';
+import { Paint, PaintingStyle, Path, PathFillType, StrokeCap, StrokeJoin } from '@torimi/tsubame-protocol-generated/recorder';
 import { Canvas2DReplay, type Draw2DContext } from './draw-canvas-2d.js';
 
 // #731 / Tsubame ADR-0014: 同一 painter を CanvasRenderingContext2D へ直接 replay

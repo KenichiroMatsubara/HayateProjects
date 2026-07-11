@@ -1,6 +1,6 @@
 # Tsubame をフレームワークではなく Signal ランタイムとし、Adapter 群をその上に構築する
 
-> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `@tsubame/renderer-canvas` は **Hayate Renderer** / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `@tsubame/renderer-canvas` は **Hayate Renderer** / `@torimi/tsubame-renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
 
 superseded by: ADR-0040
 

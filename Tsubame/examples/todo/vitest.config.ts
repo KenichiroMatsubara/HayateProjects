@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     solid({
       solid: {
-        moduleName: '@tsubame/solid',
+        moduleName: '@torimi/tsubame-solid',
         generate: 'universal',
       },
     }),

@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-// 自パッケージの `@tsubame/react/jsx-(dev-)runtime` を dist ではなく src へ解決する。
+// 自パッケージの `@torimi/tsubame-react/jsx-(dev-)runtime` を dist ではなく src へ解決する。
 const jsxRuntime = fileURLToPath(new URL('./src/jsx-runtime.ts', import.meta.url));
 const jsxDevRuntime = fileURLToPath(new URL('./src/jsx-dev-runtime.ts', import.meta.url));
 
@@ -13,13 +13,13 @@ export default defineConfig({
   },
   esbuild: {
     jsx: 'automatic',
-    jsxImportSource: '@tsubame/react',
+    jsxImportSource: '@torimi/tsubame-react',
   },
   resolve: {
     alias: {
       // dev を先に並べて prefix 衝突を避ける
-      '@tsubame/react/jsx-dev-runtime': jsxDevRuntime,
-      '@tsubame/react/jsx-runtime': jsxRuntime,
+      '@torimi/tsubame-react/jsx-dev-runtime': jsxDevRuntime,
+      '@torimi/tsubame-react/jsx-runtime': jsxRuntime,
     },
   },
 });

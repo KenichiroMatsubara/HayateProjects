@@ -1,10 +1,15 @@
 {
-  "name": "@tsubame/renderer-dom",
+  "name": "@torimi/tsubame-renderer-dom",
   "version": "0.1.0",
   "description": "Tsubame DOM Renderer — Hayate 不使用・純 JS の IRenderer 実装（CSR）",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -15,10 +20,12 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
-    "prebuild": "pnpm --filter @tsubame/protocol-generated run generate",
+    "prebuild": "pnpm --filter @torimi/tsubame-protocol-generated run generate",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -26,9 +33,9 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@tsubame/hayate-css-catalog": "workspace:*",
-    "@tsubame/protocol-generated": "workspace:*",
-    "@tsubame/renderer-protocol": "workspace:*"
+    "@torimi/tsubame-hayate-css-catalog": "workspace:*",
+    "@torimi/tsubame-protocol-generated": "workspace:*",
+    "@torimi/tsubame-renderer-protocol": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

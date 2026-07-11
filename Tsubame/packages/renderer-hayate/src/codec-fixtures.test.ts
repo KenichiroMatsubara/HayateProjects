@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import type { StylePatch } from '@tsubame/renderer-protocol';
-import { encodeStylePatch } from '@tsubame/protocol-generated/codec';
+import type { StylePatch } from '@torimi/tsubame-renderer-protocol';
+import { encodeStylePatch } from '@torimi/tsubame-protocol-generated/codec';
 
 const fixturesPath = join(
   dirname(fileURLToPath(import.meta.url)),

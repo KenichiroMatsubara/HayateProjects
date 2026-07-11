@@ -1,5 +1,5 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec
+// 生成元: @torimi/hayate-protocol-spec
 
 import type { HayateDimension, HayateGridPlacement, HayateShadow } from '../style-primitives.js';
 

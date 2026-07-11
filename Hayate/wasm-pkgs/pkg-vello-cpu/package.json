@@ -1,27 +1,9 @@
 {
-  "name": "@hayate/adapter-web-vello-cpu",
+  "name": "@torimi/hayate-adapter-web-vello-cpu",
   "type": "module",
-  "description": "Hayate — GPU-native UI substrate",
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
-  "scripts": {
-    "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\""
-  },
-  "files": [
-    "hayate_adapter_web_bg.wasm",
-    "hayate_adapter_web.js",
-    "hayate_adapter_web.d.ts"
-  ],
+  "publishConfig": { "access": "public" },
   "main": "hayate_adapter_web.js",
-  "types": "hayate_adapter_web.d.ts",
-  "sideEffects": [
-    "./snippets/*"
-  ]
+  "types": "hayate_adapter_web.d.ts"
 }

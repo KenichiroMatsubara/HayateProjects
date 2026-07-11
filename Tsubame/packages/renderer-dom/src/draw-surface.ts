@@ -1,4 +1,4 @@
-import type { DrawSize } from '@tsubame/renderer-protocol';
+import type { DrawSize } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * `overflow: visible`（既定）の view で box 外への描画が切れないよう、draw 用

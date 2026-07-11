@@ -1,9 +1,12 @@
 {
-  "name": "@tsubame/protocol-generated",
+  "name": "@torimi/tsubame-protocol-generated",
   "version": "0.1.0",
-  "description": "Tsubame protocol codegen — wire constants and adapter vocabulary from @hayate/protocol-spec",
+  "description": "Tsubame protocol codegen — wire constants and adapter vocabulary from @torimi/hayate-protocol-spec",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
   "type": "module",
   "exports": {
     ".": "./generated/index.ts",
@@ -14,20 +17,40 @@
     "./delivery": "./generated/delivery.ts",
     "./recorder": "./generated/recorder.ts"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "publishConfig": {
     "access": "public",
     "main": "./dist/index.js",
     "module": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
-      ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-      "./protocol": { "types": "./dist/protocol.d.ts", "import": "./dist/protocol.js" },
-      "./codec": { "types": "./dist/codec.d.ts", "import": "./dist/codec.js" },
-      "./catalog": { "types": "./dist/catalog.d.ts", "import": "./dist/catalog.js" },
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./protocol": {
+        "types": "./dist/protocol.d.ts",
+        "import": "./dist/protocol.js"
+      },
+      "./codec": {
+        "types": "./dist/codec.d.ts",
+        "import": "./dist/codec.js"
+      },
+      "./catalog": {
+        "types": "./dist/catalog.d.ts",
+        "import": "./dist/catalog.js"
+      },
       "./catalog.json": "./dist/catalog.json",
-      "./delivery": { "types": "./dist/delivery.d.ts", "import": "./dist/delivery.js" },
-      "./recorder": { "types": "./dist/recorder.d.ts", "import": "./dist/recorder.js" }
+      "./delivery": {
+        "types": "./dist/delivery.d.ts",
+        "import": "./dist/delivery.js"
+      },
+      "./recorder": {
+        "types": "./dist/recorder.d.ts",
+        "import": "./dist/recorder.js"
+      }
     }
   },
   "scripts": {
@@ -39,8 +62,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@hayate/protocol-spec": "workspace:*",
-    "@tsubame/renderer-protocol": "workspace:*"
+    "@torimi/hayate-protocol-spec": "workspace:*",
+    "@torimi/tsubame-renderer-protocol": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^6.1.3",

@@ -5,7 +5,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   esbuild: {
     jsx: 'automatic',
-    jsxImportSource: '@tsubame/react',
+    jsxImportSource: '@torimi/tsubame-react',
   },
   test: {
     environment: 'node',

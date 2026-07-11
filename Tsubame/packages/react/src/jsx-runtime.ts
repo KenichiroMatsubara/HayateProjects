@@ -5,7 +5,7 @@ import type { TsubameIntrinsicElements } from './jsx.js';
 export { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 
 /**
- * `jsxImportSource: "@tsubame/react"` のときに TypeScript が参照する JSX 名前空間。
+ * `jsxImportSource: "@torimi/tsubame-react"` のときに TypeScript が参照する JSX 名前空間。
  *
  * `IntrinsicElements` だけを Tsubame の Element 語彙へ差し替え、それ以外の構造的な
  * JSX 型は React のものを再利用する。これにより `@types/react` の SVG/HTML intrinsic

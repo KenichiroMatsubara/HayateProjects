@@ -1,10 +1,15 @@
 {
-  "name": "torimi",
+  "name": "@torimi/cli",
   "version": "0.1.0",
   "description": "Torimi orchestrator CLI（Expo の `expo` 相当）— アプリが宣言したビルドを回し、ターゲット固有の Hermes 降格を施し、@torimi/dev-server で配信・reload・QR まで面倒を見る。バンドラも FW も解さない（ADR-0008）。",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "torimi": "./dist/cli.js"

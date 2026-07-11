@@ -40,14 +40,14 @@ jobs:
 
       - name: Install dependencies
         # preinstall（bootstrap-wasm-pkgs）が WASM 成果物の stub を用意するので、Rust を
-        # 積まなくても @hayate/host / vite の import は解決できる（tiny-skia 経路は実行時に
+        # 積まなくても @torimi/hayate-host / vite の import は解決できる（tiny-skia 経路は実行時に
         # 「WASM not built」で spec が skip する）。
         run: pnpm install --frozen-lockfile
 
-      - name: Build @hayate/host
-        # main.tsx が `import('@hayate/host')` で取り込む。exports は dist を向くので、
+      - name: Build @torimi/hayate-host
+        # main.tsx が `import('@torimi/hayate-host')` で取り込む。exports は dist を向くので、
         # 先に tsup 成果物を作らないと vite が解決できない（deploy-pages と同じ理由）。
-        run: pnpm --filter @hayate/host build
+        run: pnpm --filter @torimi/hayate-host build
 
       - name: Build Tsubame packages
         run: pnpm --filter "./Tsubame/packages/*" build

@@ -113,7 +113,7 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
 
   const pkgJson = JSON.parse(packageJsonFor(byName['pkg'], manifest));
   assert.deepEqual(pkgJson, {
-    name: '@hayate/adapter-web',
+    name: '@torimi/hayate-adapter-web',
     type: 'module',
     description: 'Hayate — GPU-native UI substrate',
     version: '0.1.0',
@@ -140,8 +140,8 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   // .pnpm virtual-store copy that only carried package.json — Rolldown then
   // failed to resolve the dynamic import in the Pages demo build. Distinct
   // names make every alias link straight to its source dir.
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, '@hayate/adapter-web-cpu');
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, '@hayate/adapter-web-vello-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, '@torimi/hayate-adapter-web-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, '@torimi/hayate-adapter-web-vello-cpu');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
   assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n!README.md\n');
@@ -197,13 +197,13 @@ test('npmName/host mapping matches what Hayate/host/src actually imports', () =>
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
-  assert.equal(byName['pkg'].npmName, '@hayate/adapter-web');
+  assert.equal(byName['pkg'].npmName, '@torimi/hayate-adapter-web');
   assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });
 
-  assert.equal(byName['pkg-tiny-skia'].npmName, '@hayate/adapter-web-cpu');
+  assert.equal(byName['pkg-tiny-skia'].npmName, '@torimi/hayate-adapter-web-cpu');
   assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
-  assert.equal(byName['pkg-vello-cpu'].npmName, '@hayate/adapter-web-vello-cpu');
+  assert.equal(byName['pkg-vello-cpu'].npmName, '@torimi/hayate-adapter-web-vello-cpu');
   assert.deepEqual(byName['pkg-vello-cpu'].host, { backend: 'vello-cpu', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
   assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');

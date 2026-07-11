@@ -1,4 +1,4 @@
-import type { IRenderer } from '@tsubame/renderer-protocol';
+import type { IRenderer } from '@torimi/tsubame-renderer-protocol';
 
 /** ツリー破棄や frame-clock 解除を行う後始末関数。 */
 export type Dispose = () => void;
@@ -12,7 +12,7 @@ export type Dispose = () => void;
  * （web-vello / web-tinyskia / Android / 将来 iOS・Desktop）はすべて Host を 1 つ足す仕事に縮む。
  *
  * - **DOM Host**: `createRenderer` は `new DomRenderer({ container })` を即時に返す。`stop` は不要。
- * - **Hayate Host（web）**: `createRenderer` は `@hayate/host` の `createHayateWebHost` を await し
+ * - **Hayate Host（web）**: `createRenderer` は `@torimi/hayate-host` の `createHayateWebHost` を await し
  *   `new HayateRenderer({ raw, requestFrame, cancelFrame })` を `start()` して返す。`stop` で
  *   frame-clock / WASM を畳む。
  * - **Hayate Host（native / bundle）**: 注入された `raw`(+clock) を包んで同形に返す。

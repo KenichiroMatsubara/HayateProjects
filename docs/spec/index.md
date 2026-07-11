@@ -51,7 +51,7 @@
 | PLAT-06 | Android ネイティブ Platform Adapter | (A)描画/(B)タッチ着手、(C)フルパリティ（IME/AccessKit/clipboard）未着手 |
 | PLAT-08 | iOS ネイティブ Platform Adapter | 純粋シーム＋契約テスト✅、Metal/FFI グルー・Swift ホスト・実機 IME は Mac 検証残（ADR-0114〜0116） |
 | PLAT-11 | mobile capability scaffold | wave-1 の 9 capability を型＋`Err(Unimplemented)` で scaffold✅、実機実装未着手（ADR-0119） |
-| WEBA-01 | モード自動判定 | backend probe は `@hayate/host` へ移管✅、Canvas↔HTML 自動判定（EditContext probe→HTML）未配線 |
+| WEBA-01 | モード自動判定 | backend probe は `@torimi/hayate-host` へ移管✅、Canvas↔HTML 自動判定（EditContext probe→HTML）未配線 |
 | PROTO-09 | wire codec 単一正本 | 手書き `hayate.ts` の `parseColor`/`parseDimension` 残存（dead code 削除待ち） |
 | TSUB-02 | property 閉じた語彙 | `value`/`placeholder`/`disabled`/`src` ✅。`aria-label`/`role` first-class 未接続 |
 | TSUB-05 | adapter は既存ランタイム持込 | solid✅・react✅（ADR-0010）、vue未実装 |
@@ -107,8 +107,8 @@
 | C-8.2 | root `CONTEXT.md`「WIT＝現行の公開 API 単一ソース・Raw Layer 公開」 vs ADR-0049（WIT 廃止→JSON proto）/ ADR-0072（Raw Layer 公開棄却） | ADR↔実装乖離監査 2026-06-09。WIT エントリを【歴史】化（Hayate/CONTEXT.md と整合）。Tsubame「別リポジトリ」記述も ADR-0001 モノレポへ更新 |
 | C-8.3 | §8 WEBA-01「probeWebGPU で Canvas/HTML モード自動判定」 vs 実装は GPU/CPU バックエンド選択のみ（HTML renderer は Tsubame init から到達不能） | ADR↔実装乖離監査 2026-06-09。WEBA-01 状況を実態（モード自動判定は未配線、HTML renderer は dead path）に訂正。★ Tsubame init への EditContext probe + HTML 経路追加は実装ギャップとして残置 |
 | C-idx | index.md の集計・ダッシュボードが part files（§4/§7/§9/§11）と乖離（§9 は PLAT-06〜08 追加済みなのに index 行は 4/2/0 のまま 等） | Spec↔part 同期監査 2026-06-25。matrix 行・合計・🟡/⬜ ダッシュボードを part files に再同期（90✅ / 11🟡 / 8⬜・全 109 要件） |
-| C-11.4 | §11 TSUB-08「ビューポートのサイズ追従は CanvasRenderer の責務（`ResizeObserver`＋DPR）」＋ PROTO-16/18「resize＝Renderer Protocol surface・`IRenderer.resize` を正」 vs ADR-0004（host bootstrap 退去・resize は host adapter 所有・CanvasRenderer は `{raw,clock}` のみの host 盲目コア） | Spec↔ADR/実装乖離監査 2026-06-25。実コード（`canvas-renderer.ts` から canvas/resize/ResizeObserver/DPR/RAF 撤去済み）を確認。TSUB-08 を host adapter 責務へ書き換え（ADR-0007 を supersede）、TSUB-02/04 を host-blind clock 注入へ、PROTO-16/18 の resize 記述を訂正、`init.ts` 退去を WEBA-01 に反映（`@hayate/host`） |
-| C-11.5 | §11 TSUB-05 / §6 EVT-06「tsubame-react は ⬜未実装」 vs 実装（`@tsubame/react` の react-reconciler HostConfig 実装済み、Tsubame ADR-0010） | 監査 2026-06-25。TSUB-05/EVT-06/TSUB-01 を react 実装済みへ更新。イベント語彙拒否は renderer-protocol 共有へ移管済みも反映 |
+| C-11.4 | §11 TSUB-08「ビューポートのサイズ追従は CanvasRenderer の責務（`ResizeObserver`＋DPR）」＋ PROTO-16/18「resize＝Renderer Protocol surface・`IRenderer.resize` を正」 vs ADR-0004（host bootstrap 退去・resize は host adapter 所有・CanvasRenderer は `{raw,clock}` のみの host 盲目コア） | Spec↔ADR/実装乖離監査 2026-06-25。実コード（`canvas-renderer.ts` から canvas/resize/ResizeObserver/DPR/RAF 撤去済み）を確認。TSUB-08 を host adapter 責務へ書き換え（ADR-0007 を supersede）、TSUB-02/04 を host-blind clock 注入へ、PROTO-16/18 の resize 記述を訂正、`init.ts` 退去を WEBA-01 に反映（`@torimi/hayate-host`） |
+| C-11.5 | §11 TSUB-05 / §6 EVT-06「tsubame-react は ⬜未実装」 vs 実装（`@torimi/tsubame-react` の react-reconciler HostConfig 実装済み、Tsubame ADR-0010） | 監査 2026-06-25。TSUB-05/EVT-06/TSUB-01 を react 実装済みへ更新。イベント語彙拒否は renderer-protocol 共有へ移管済みも反映 |
 | C-9.1 | §9 が Android（PLAT-06）/iOS（PLAT-08）のみで、desktop・三層アダプターモデル・mobile capability・App Host seam を欠く vs ADR-0117（三層 + app-host）/ADR-0118（desktop winit）/ADR-0119（mobile capability scaffold） | 監査 2026-06-25。PLAT-09（三層モデル）/PLAT-10（desktop winit leaf）/PLAT-11（mobile capability scaffold）/REND-13（App Host boot seam）を新設。「winit 不採用」を mobile native leaf 限定と明記し desktop family の winit 採用と非矛盾化（ADR-0118） |
 
 ## 運用（governance）

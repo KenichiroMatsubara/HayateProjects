@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { loadProtocolSpec } from '@hayate/protocol-spec/load';
+import { loadProtocolSpec } from '@torimi/hayate-protocol-spec/load';
 
 const outDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -85,7 +85,7 @@ export function renderElementProperty(model) {
 
   return [
     '// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと',
-    '// 生成元: @hayate/protocol-spec（element_properties）',
+    '// 生成元: @torimi/hayate-protocol-spec（element_properties）',
     '',
     '/** 閉じた要素プロパティ語彙（ADR-0071）。`aria-*` は専用 API のみを使用する。 */',
     `export const ELEMENT_PROPERTY_NAMES = ${JSON.stringify(model.names)} as const;`,

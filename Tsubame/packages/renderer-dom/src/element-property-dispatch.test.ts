@@ -3,7 +3,7 @@ import {
   coerceElementProperty,
   dispatchElementPropertyOp,
   type ElementPropertyEffects,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 
 describe('dispatchElementPropertyOp (shared prop-op dispatch, ADR-0008)', () => {
   it('routes a coerced op to the effect handler for its kind, passing the op', () => {

@@ -9,7 +9,7 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
-    "generate": "pnpm --filter @tsubame/protocol-generated run generate",
+    "generate": "pnpm --filter @torimi/tsubame-protocol-generated run generate",
     "check:proto": "pnpm run generate && git diff --exit-code proto/generated packages/renderer-protocol/src/generated",
     "clean": "pnpm -r run clean",
     "dev": "pnpm --filter @tsubame/example-todo dev"

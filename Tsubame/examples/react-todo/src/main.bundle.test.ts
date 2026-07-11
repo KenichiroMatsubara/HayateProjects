@@ -1,5 +1,5 @@
 import { TORIMI_MOUNT_GLOBAL } from '@torimi/host-web';
-import { PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**

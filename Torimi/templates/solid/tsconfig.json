@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "preserve",
-    "types": ["@tsubame/solid"]
+    "types": ["@torimi/tsubame-solid"]
   },
   "include": ["src", "vite.config.torimi.ts"]
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Paint, Path } from '@tsubame/protocol-generated/recorder';
-import type { DrawCanvas, DrawSize } from '@tsubame/renderer-protocol';
+import { Paint, Path } from '@torimi/tsubame-protocol-generated/recorder';
+import type { DrawCanvas, DrawSize } from '@torimi/tsubame-renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import { DRAW_OVERFLOW_VISIBLE_MARGIN_PX } from './draw-surface.js';
 

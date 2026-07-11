@@ -1,5 +1,5 @@
-import type { IRenderer } from '@tsubame/renderer-protocol';
-import { applyElementProp } from '@tsubame/renderer-protocol';
+import type { IRenderer } from '@torimi/tsubame-renderer-protocol';
+import { applyElementProp } from '@torimi/tsubame-renderer-protocol';
 import type { TsubameInstance } from './instance.js';
 
 /** React が予約する／構造に関与する prop（差分ループでスキップする）。 */

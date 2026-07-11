@@ -1,6 +1,6 @@
-# @tsubame/protocol-generated
+# @torimi/tsubame-protocol-generated
 
-Tsubame's protocol codegen output: wire constants and adapter vocabulary (e.g. `StylePatch`, `EventKind`, the semantic mutation surface) generated from `@hayate/protocol-spec` and shipped as a `dist` build. It is the generated, committed projection of the Hayate–Tsubame Protocol Contract.
+Tsubame's protocol codegen output: wire constants and adapter vocabulary (e.g. `StylePatch`, `EventKind`, the semantic mutation surface) generated from `@torimi/hayate-protocol-spec` and shipped as a `dist` build. It is the generated, committed projection of the Hayate–Tsubame Protocol Contract.
 
 This is a generated artifact consumed transitively by the renderers and adapters, not installed directly by app authors.
 

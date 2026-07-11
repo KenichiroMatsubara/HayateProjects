@@ -1,5 +1,5 @@
-import type { ElementKind } from '@tsubame/renderer-protocol';
-import { elementKindDefaultCursor } from '@tsubame/renderer-protocol';
+import type { ElementKind } from '@torimi/tsubame-renderer-protocol';
+import { elementKindDefaultCursor } from '@torimi/tsubame-renderer-protocol';
 
 type StyleDefaults = Partial<Record<keyof CSSStyleDeclaration, string>>;
 

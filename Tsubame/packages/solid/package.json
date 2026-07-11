@@ -1,10 +1,15 @@
 {
-  "name": "@tsubame/solid",
+  "name": "@torimi/tsubame-solid",
   "version": "0.1.0",
   "description": "tsubame-solid — solid-js/universal を Tsubame Renderer Protocol に向け替える Adapter",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -19,7 +24,9 @@
       "import": "./dist/vite.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "build": "tsup",
@@ -28,7 +35,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@tsubame/renderer-protocol": "workspace:*"
+    "@torimi/tsubame-renderer-protocol": "workspace:*"
   },
   "peerDependencies": {
     "solid-js": "^1.9.0",
@@ -36,12 +43,16 @@
     "vite-plugin-solid": "^2.11.0"
   },
   "peerDependenciesMeta": {
-    "vite": { "optional": true },
-    "vite-plugin-solid": { "optional": true }
+    "vite": {
+      "optional": true
+    },
+    "vite-plugin-solid": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@tsubame/protocol-generated": "workspace:*",
-    "@tsubame/renderer-hayate": "workspace:*",
+    "@torimi/tsubame-protocol-generated": "workspace:*",
+    "@torimi/tsubame-renderer-hayate": "workspace:*",
     "rimraf": "^6.1.3",
     "solid-js": "^1.9.13",
     "vite": "^8.0.14",

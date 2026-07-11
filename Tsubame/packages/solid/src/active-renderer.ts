@@ -1,4 +1,4 @@
-import type { IRenderer } from '@tsubame/renderer-protocol';
+import type { IRenderer } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * tsubame-solid のコンパイル済み JSX は固定モジュール（このパッケージ）から

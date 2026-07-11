@@ -11,24 +11,24 @@
 // that should stay private but doesn't, diverges from this list and fails the
 // guardrail test.
 export const EXPECTED_PUBLIC_PACKAGES = [
-  '@hayate/adapter-web',
-  '@hayate/adapter-web-cpu',
-  '@hayate/adapter-web-vello-cpu',
-  '@hayate/host',
-  '@hayate/protocol-spec',
+  '@torimi/hayate-adapter-web',
+  '@torimi/hayate-adapter-web-cpu',
+  '@torimi/hayate-adapter-web-vello-cpu',
+  '@torimi/hayate-host',
+  '@torimi/hayate-protocol-spec',
   '@torimi/bundle',
   '@torimi/dev-server',
   '@torimi/dev-server-contract',
   '@torimi/host-web',
   '@torimi/protocol-handshake',
-  '@tsubame/app',
-  '@tsubame/hayate-css-catalog',
-  '@tsubame/protocol-generated',
-  '@tsubame/react',
-  '@tsubame/renderer-dom',
-  '@tsubame/renderer-hayate',
-  '@tsubame/renderer-protocol',
-  '@tsubame/solid',
+  '@torimi/tsubame-app',
+  '@torimi/tsubame-hayate-css-catalog',
+  '@torimi/tsubame-protocol-generated',
+  '@torimi/tsubame-react',
+  '@torimi/tsubame-renderer-dom',
+  '@torimi/tsubame-renderer-hayate',
+  '@torimi/tsubame-renderer-protocol',
+  '@torimi/tsubame-solid',
   'create-torimi',
   'torimi',
 ];
@@ -36,7 +36,7 @@ export const EXPECTED_PUBLIC_PACKAGES = [
 // The three imports an external app reaches for first: the FW adapter, the host
 // glue (the un-hideable direct dep, ADR-0004), and the dev server. If the packed
 // tarballs install and these resolve outside the monorepo, the closure is whole.
-export const SMOKE_IMPORTS = ['@tsubame/solid', '@hayate/host', '@torimi/dev-server'];
+export const SMOKE_IMPORTS = ['@torimi/tsubame-solid', '@torimi/hayate-host', '@torimi/dev-server'];
 
 // The tarball filename `pnpm pack` writes for a package — npm's scheme: drop the
 // leading `@`, turn `/` into `-`, append `-<version>.tgz`. Computed (not matched by
@@ -57,7 +57,7 @@ export function publicPackages(rows) {
 
 // The throwaway consumer's package.json. The three SMOKE_IMPORTS are direct file:
 // deps; every public tarball is pinned through pnpm `overrides` so the inter-package
-// deps (e.g. @hayate/host → @hayate/adapter-web) resolve to the LOCAL tarballs and
+// deps (e.g. @torimi/hayate-host → @torimi/hayate-adapter-web) resolve to the LOCAL tarballs and
 // never touch the network — the whole closure installs offline, exactly as an
 // external consumer would get it from a registry after a real release.
 export function buildSmokeProjectManifest(tarballs) {

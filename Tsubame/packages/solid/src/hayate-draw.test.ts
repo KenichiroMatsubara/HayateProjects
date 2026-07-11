@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { DRAW_OP, EVENT_KIND, OP } from '@tsubame/protocol-generated/protocol';
-import { Paint, Path } from '@tsubame/protocol-generated/recorder';
-import type { DrawCanvas, DrawSize } from '@tsubame/renderer-protocol';
-import { HayateRenderer } from '@tsubame/renderer-hayate';
-import { StubHayate, manualScheduler } from '@tsubame/renderer-hayate/test-helpers';
+import { DRAW_OP, EVENT_KIND, OP } from '@torimi/tsubame-protocol-generated/protocol';
+import { Paint, Path } from '@torimi/tsubame-protocol-generated/recorder';
+import type { DrawCanvas, DrawSize } from '@torimi/tsubame-renderer-protocol';
+import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
+import { StubHayate, manualScheduler } from '@torimi/tsubame-renderer-hayate/test-helpers';
 import { renderTsubame } from './mount.js';
 import { createElement, setProp } from './renderer.js';
 import type { ElementNode } from './renderer.js';

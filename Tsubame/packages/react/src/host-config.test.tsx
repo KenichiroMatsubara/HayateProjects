@@ -4,7 +4,7 @@ import {
   EVENT_PROP as PROTOCOL_EVENT_PROP,
   REJECTED_EVENT_PROPS as PROTOCOL_REJECTED_EVENT_PROPS,
   type RecordedCall,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import type { ReactNode } from 'react';
 import { createTsubameRoot, renderTsubame } from './mount.js';
 import { applyProp } from './props.js';
@@ -43,7 +43,7 @@ function kindById(calls: readonly RecordedCall[]): Map<number, string> {
   return m;
 }
 
-describe('@tsubame/react host config (IRenderer boundary)', () => {
+describe('@torimi/tsubame-react host config (IRenderer boundary)', () => {
   it('mounts <view/> as root view + child createElement + appendChild', () => {
     const { calls } = mount(<view />);
 
@@ -120,7 +120,7 @@ function wrapperIdFor(calls: readonly RecordedCall[], value: string): number | u
   return link?.parent;
 }
 
-describe('@tsubame/react keyed list reconciliation (IRenderer boundary)', () => {
+describe('@torimi/tsubame-react keyed list reconciliation (IRenderer boundary)', () => {
   it('appends/inserts list items via appendChild / insertBefore', () => {
     const m = mount(<List items={['a', 'b']} />);
     const idA = wrapperIdFor(m.calls, 'a')!;
@@ -185,7 +185,7 @@ describe('@tsubame/react keyed list reconciliation (IRenderer boundary)', () => 
   });
 });
 
-describe('@tsubame/react conditional rendering (IRenderer boundary)', () => {
+describe('@torimi/tsubame-react conditional rendering (IRenderer boundary)', () => {
   it('removes an element via removeChild when the condition turns false', () => {
     function Conditional({ show }: { show: boolean }) {
       return (
@@ -210,7 +210,7 @@ describe('@tsubame/react conditional rendering (IRenderer boundary)', () => {
   });
 });
 
-describe('@tsubame/react element vocabulary (TSX typing, react-jsx)', () => {
+describe('@torimi/tsubame-react element vocabulary (TSX typing, react-jsx)', () => {
   it('types and creates all Element-vocabulary intrinsics', () => {
     // 6 つの Element 語彙が標準 react-jsx でコンパイルでき、それぞれの kind で
     // createElement される（型が通ること自体が IntrinsicElements 拡張の検証）。
@@ -241,7 +241,7 @@ describe('@tsubame/react element vocabulary (TSX typing, react-jsx)', () => {
   });
 });
 
-describe('@tsubame/react style channels (IRenderer boundary, ADR-0008)', () => {
+describe('@torimi/tsubame-react style channels (IRenderer boundary, ADR-0008)', () => {
   it('records the base style as setStyle', () => {
     // backgroundColor / width はどちらも text-local ではないので view にそのまま適用される。
     const { calls } = mount(<view style={{ width: 120, backgroundColor: '#222' }} />);
@@ -335,7 +335,7 @@ function soleIdOfKind(calls: readonly RecordedCall[], kind: string): number {
   return created[0]!.id;
 }
 
-describe('@tsubame/react element properties (IRenderer boundary, ADR-0071)', () => {
+describe('@torimi/tsubame-react element properties (IRenderer boundary, ADR-0071)', () => {
   it('records text-input semantic props (value/placeholder/disabled/multiline) as setProperty', () => {
     const { calls } = mount(<text-input value="hi" placeholder="名前" disabled multiline />);
     const inputId = soleIdOfKind(calls, 'text-input');
@@ -416,7 +416,7 @@ describe('@tsubame/react element properties (IRenderer boundary, ADR-0071)', () 
   });
 });
 
-describe('@tsubame/react event handling (IRenderer boundary, ADR-0008)', () => {
+describe('@torimi/tsubame-react event handling (IRenderer boundary, ADR-0008)', () => {
   it('maps every EVENT_PROP entry to addEventListener with its EventKind', () => {
     // onClick/onInput/onKeyDown/onFocus/onBlur は renderer-protocol の EVENT_PROP で
     // EventKind に対応し、IRenderer.addEventListener として記録される（react 側で語彙を
@@ -530,7 +530,7 @@ describe('@tsubame/react event handling (IRenderer boundary, ADR-0008)', () => {
   });
 });
 
-describe('@tsubame/react renderTsubame lifecycle', () => {
+describe('@torimi/tsubame-react renderTsubame lifecycle', () => {
   it('mounts the root view and returns a dispose that tears down the tree', () => {
     const recorder = new RecordingRenderer();
     const dispose = renderTsubame(<view />, recorder);

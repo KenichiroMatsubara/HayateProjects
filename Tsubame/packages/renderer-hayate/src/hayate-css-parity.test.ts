@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
-import type { StylePatch } from "@tsubame/renderer-protocol";
+import type { StylePatch } from "@torimi/tsubame-renderer-protocol";
 import {
   HAYATE_CSS_CATALOG,
   CATALOG_BY_KEY,
   formatDomCSSValue,
   applyDomExtras,
-} from "@tsubame/hayate-css-catalog";
-import { encodeStylePatch } from "@tsubame/protocol-generated/codec";
-import { TAG, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from "@tsubame/protocol-generated/protocol";
+} from "@torimi/tsubame-hayate-css-catalog";
+import { encodeStylePatch } from "@torimi/tsubame-protocol-generated/codec";
+import { TAG, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from "@torimi/tsubame-protocol-generated/protocol";
 
 /** セマンティック等価チェック用に、wireKind ごとの代表サンプル値。 */
 const SAMPLES: Record<string, unknown> = {

@@ -1,7 +1,7 @@
 import ReactReconciler from 'react-reconciler';
 import { DefaultEventPriority, NoEventPriority } from 'react-reconciler/constants';
 import { createContext } from 'react';
-import type { ElementId, ElementKind, IRenderer } from '@tsubame/renderer-protocol';
+import type { ElementId, ElementKind, IRenderer } from '@torimi/tsubame-renderer-protocol';
 import {
   createInstance as makeInstance,
   type TsubameInstance,

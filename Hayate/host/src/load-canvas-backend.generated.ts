@@ -24,17 +24,17 @@ export async function loadCanvasBackend(
   cpuLayerPresent = true,
 ): Promise<RawHayate> {
   if (backend === 'vello') {
-    const mod = await import('@hayate/adapter-web');
+    const mod = await import('@torimi/hayate-adapter-web');
     await mod.default();
     return (await mod.HayateElementRenderer.init(canvas, layerPresent)) as unknown as RawHayate;
   }
   if (backend === 'tiny-skia') {
-    const mod = await import('@hayate/adapter-web-cpu');
+    const mod = await import('@torimi/hayate-adapter-web-cpu');
     await mod.default();
     return (await mod.HayateElementRenderer.init(canvas, cpuLayerPresent)) as unknown as RawHayate;
   }
   if (backend === 'vello-cpu') {
-    const mod = await import('@hayate/adapter-web-vello-cpu');
+    const mod = await import('@torimi/hayate-adapter-web-vello-cpu');
     await mod.default();
     return (await mod.HayateElementRenderer.init(canvas, cpuLayerPresent)) as unknown as RawHayate;
   }

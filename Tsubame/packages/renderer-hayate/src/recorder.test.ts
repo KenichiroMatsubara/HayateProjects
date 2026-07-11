@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DRAW_OP } from '@tsubame/protocol-generated/protocol';
+import { DRAW_OP } from '@torimi/tsubame-protocol-generated/protocol';
 import {
   Canvas,
   Paint,
@@ -10,7 +10,7 @@ import {
   Path,
   PathFillType,
   StrokeCap,
-} from '@tsubame/protocol-generated/recorder';
+} from '@torimi/tsubame-protocol-generated/recorder';
 
 // #729: Flutter 流 Canvas / Path / Paint recorder。#724 の共有 roundtrip fixture の
 // 期待 op 列（wire）を、記録 API で組んだ結果が再現することを検証する。

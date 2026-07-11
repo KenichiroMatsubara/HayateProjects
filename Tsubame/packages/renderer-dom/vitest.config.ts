@@ -7,8 +7,8 @@ export default defineConfig({
     server: {
       deps: {
         inline: [
-          '@tsubame/protocol-generated',
-          '@tsubame/hayate-css-catalog',
+          '@torimi/tsubame-protocol-generated',
+          '@torimi/tsubame-hayate-css-catalog',
         ],
       },
     },

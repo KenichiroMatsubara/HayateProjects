@@ -1,4 +1,4 @@
-import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
+import type { ElementKind, StylePatch } from '@torimi/tsubame-renderer-protocol';
 import { declarationsFromStylePatch } from './style-declarations.js';
 
 export function applyStylePatch(el: HTMLElement, kind: ElementKind, patch: StylePatch): void {

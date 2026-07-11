@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import manifest from '@hayate/protocol-spec/manifest' with { type: 'json' };
+import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
 import { HOST_PROTOCOL_VERSION } from './index.js';
 
 /**

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { HayateCssStyle } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 
 interface Todo {
   id: number;

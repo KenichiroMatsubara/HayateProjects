@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadProtocolSpec } from '@hayate/protocol-spec/load';
+import { loadProtocolSpec } from '@torimi/hayate-protocol-spec/load';
 import { PROTOCOL_VERSION } from '../generated/protocol.ts';
 
 /**

@@ -1,6 +1,6 @@
-import type { HayateCssStyle } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 import type { Page } from '../App';
-import type { DetectModeResult } from '@tsubame/app';
+import type { DetectModeResult } from '@torimi/tsubame-app';
 import { ACCENT_KEYS, accentColor, type AccentKey, type Palette, type Theme } from '../theme';
 import { EASE, glow } from '../ui/styles';
 

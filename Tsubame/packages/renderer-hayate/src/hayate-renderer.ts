@@ -10,7 +10,7 @@ import type {
   StylePatch,
   Unsubscribe,
   ViewportCondition,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import {
   asElementId,
   assertKnownElementProperty,
@@ -18,12 +18,12 @@ import {
   dispatchElementPropertyOp,
   drawNeedsRepaint,
   invokePainter,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { HayateMutationPacket } from './hayate-mutation-packet.js';
-import { EVENT_KIND } from '@tsubame/protocol-generated/protocol';
-import { Canvas } from '@tsubame/protocol-generated/recorder';
-import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@tsubame/protocol-generated/delivery';
+import { EVENT_KIND } from '@torimi/tsubame-protocol-generated/protocol';
+import { Canvas } from '@torimi/tsubame-protocol-generated/recorder';
+import { HAYATE_LISTENER_KIND, parseDelivery, toInteractionEvent } from '@torimi/tsubame-protocol-generated/delivery';
 
 /**
  * host-blind コアの構築入力（#476, ADR-0004）。`raw` は Hayate ランタイムの

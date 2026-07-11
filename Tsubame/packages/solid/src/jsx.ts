@@ -4,7 +4,7 @@ import type {
   EventHandler,
   UserSelect,
   ViewportCondition,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 
 /**
  * ビューポート条件付きスタイル変種（ADR-0081）。DOM Renderer では本物の

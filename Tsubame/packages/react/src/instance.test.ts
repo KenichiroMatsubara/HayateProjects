@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { asElementId } from '@tsubame/renderer-protocol';
+import { asElementId } from '@torimi/tsubame-renderer-protocol';
 import { createInstance } from './instance.js';
 
-describe('@tsubame/react host instance', () => {
+describe('@torimi/tsubame-react host instance', () => {
   it('is structure-zero: holds id/kind/listeners but no parent/children (ADR-0062)', () => {
     const inst = createInstance(asElementId(1), 'view');
 

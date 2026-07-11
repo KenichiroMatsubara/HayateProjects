@@ -1,4 +1,4 @@
-import type { EventKind } from '@tsubame/renderer-protocol';
+import type { EventKind } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * Tsubame の {@link EventKind} からネイティブ DOM イベント名へのマッピング。

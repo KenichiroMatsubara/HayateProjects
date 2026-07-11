@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { WebHost } from '@hayate/host';
+import type { WebHost } from '@torimi/hayate-host';
 import { createBundleDevServer, type BundleDevServer } from '@torimi/dev-server';
 import {
   TORIMI_MOUNT_GLOBAL,

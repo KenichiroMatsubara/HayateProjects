@@ -15,7 +15,7 @@ import {
 } from './pack-smoke.lib.mjs';
 
 test('tarballName matches npm scheme and disambiguates torimi from create-torimi', () => {
-  assert.equal(tarballName('@hayate/host', '0.1.0'), 'hayate-host-0.1.0.tgz');
+  assert.equal(tarballName('@torimi/hayate-host', '0.1.0'), 'hayate-host-0.1.0.tgz');
   assert.equal(tarballName('torimi', '0.1.0'), 'torimi-0.1.0.tgz');
   assert.equal(tarballName('create-torimi', '0.1.0'), 'create-torimi-0.1.0.tgz');
   // the two must be distinct filenames (the endsWith bug they replace)
@@ -26,13 +26,13 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('publicPackages keeps non-private named rows and drops the rest', () => {
   const rows = [
-    { name: '@hayate/host', private: false },
+    { name: '@torimi/hayate-host', private: false },
     { name: 'hayate-adapter-web-null', private: true },
     { name: 'hayate-projects', private: true },
     { private: false }, // unnamed root-ish row — skipped
     { name: '@torimi/bundle', private: false },
   ];
-  assert.deepEqual(publicPackages(rows), ['@hayate/host', '@torimi/bundle']);
+  assert.deepEqual(publicPackages(rows), ['@torimi/hayate-host', '@torimi/bundle']);
 });
 
 test('the SMOKE_IMPORTS are all inside the public closure', () => {
@@ -43,10 +43,10 @@ test('the SMOKE_IMPORTS are all inside the public closure', () => {
 
 test('buildSmokeProjectManifest pins every tarball via overrides and depends on the smoke imports', () => {
   const tarballs = {
-    '@tsubame/solid': '/tmp/a.tgz',
-    '@hayate/host': '/tmp/b.tgz',
+    '@torimi/tsubame-solid': '/tmp/a.tgz',
+    '@torimi/hayate-host': '/tmp/b.tgz',
     '@torimi/dev-server': '/tmp/c.tgz',
-    '@hayate/adapter-web': '/tmp/d.tgz',
+    '@torimi/hayate-adapter-web': '/tmp/d.tgz',
   };
   const manifest = buildSmokeProjectManifest(tarballs);
 
@@ -54,21 +54,21 @@ test('buildSmokeProjectManifest pins every tarball via overrides and depends on 
   // Every tarball is pinned as an override so inter-package deps resolve to the
   // local tarballs, never the network.
   assert.deepEqual(manifest.pnpm.overrides, {
-    '@tsubame/solid': 'file:/tmp/a.tgz',
-    '@hayate/host': 'file:/tmp/b.tgz',
+    '@torimi/tsubame-solid': 'file:/tmp/a.tgz',
+    '@torimi/hayate-host': 'file:/tmp/b.tgz',
     '@torimi/dev-server': 'file:/tmp/c.tgz',
-    '@hayate/adapter-web': 'file:/tmp/d.tgz',
+    '@torimi/hayate-adapter-web': 'file:/tmp/d.tgz',
   });
   // The three smoke imports are direct file: deps.
   assert.deepEqual(manifest.dependencies, {
-    '@tsubame/solid': 'file:/tmp/a.tgz',
-    '@hayate/host': 'file:/tmp/b.tgz',
+    '@torimi/tsubame-solid': 'file:/tmp/a.tgz',
+    '@torimi/hayate-host': 'file:/tmp/b.tgz',
     '@torimi/dev-server': 'file:/tmp/c.tgz',
   });
 });
 
 test('buildSmokeProjectManifest throws if a smoke import was not packed', () => {
-  assert.throws(() => buildSmokeProjectManifest({ '@tsubame/solid': '/tmp/a.tgz' }), /no packed tarball/);
+  assert.throws(() => buildSmokeProjectManifest({ '@torimi/tsubame-solid': '/tmp/a.tgz' }), /no packed tarball/);
 });
 
 // The guardrail that makes #768 stick: the workspace's actual public/private

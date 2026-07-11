@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { withTextLocalGate } from '@tsubame/renderer-protocol';
+import { withTextLocalGate } from '@torimi/tsubame-renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 

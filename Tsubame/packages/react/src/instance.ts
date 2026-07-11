@@ -1,7 +1,7 @@
-import type { ElementId, ElementKind, Unsubscribe } from '@tsubame/renderer-protocol';
+import type { ElementId, ElementKind, Unsubscribe } from '@torimi/tsubame-renderer-protocol';
 
 /**
- * `@tsubame/react` のホスト instance は**構造ゼロ**である（ADR-0010 / ADR-0062）。
+ * `@torimi/tsubame-react` のホスト instance は**構造ゼロ**である（ADR-0010 / ADR-0062）。
  *
  * React の Fiber tree が構造の記帳（親子・兄弟）を担うため、ホスト instance に
  * `parent` / `children` を持たせる必要がない。instance が保持するのは要素 id・kind と、

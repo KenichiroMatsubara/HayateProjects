@@ -1,5 +1,5 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec
+// 生成元: @torimi/hayate-protocol-spec
 
 export const PROTOCOL_VERSION = 1;
 
