@@ -103,11 +103,27 @@ echo
 # 署名済み AAB を作る。JDK/SDK/cargo env の解決は build-android.sh に委譲。
 bash "$SCRIPT_DIR/build-android.sh" bundleRelease "${GRADLE_EXTRA[@]}"
 
-# ここに来たらビルド成功。カウンタファイルを新しい値へ進める（失敗時は trap→restore だけで
-# ここは実行されず、番号は消費されない）。
-echo "$NEW" > "$COUNTER_FILE"
-
 AAB="$ANDROID_APP_DIR/app/build/outputs/bundle/release/app-release.aab"
+
+# ── 署名検証ガード ────────────────────────────────────────────────────────────
+# build.gradle.kts は署名情報（hayate.release.* 4 つ）が揃わないと bundleRelease を
+# 「未署名 AAB」として黙って成功させる。その未署名 AAB は Play にアップして初めて拒否され、
+# しかもここまで来ると下でカウンタが +1 進むため versionCode だけ無駄に消費してズレる。
+# それを防ぐため、カウンタを進める前に AAB が実際に署名されているかを検証し、
+# 未署名なら die → EXIT trap が gradle を復元し、カウンタは進めない（＝番号を消費しない）。
+[ -f "$AAB" ] || die "AAB が生成されていません: $AAB（build-android.sh の出力を確認）"
+# 署名済み AAB は jarsigner 署名（v1）の証跡として META-INF に *.RSA/*.DSA/*.EC を持つ。
+if ! unzip -l "$AAB" 2>/dev/null | grep -qiE 'META-INF/.*\.(RSA|DSA|EC)$'; then
+  die "生成された AAB が未署名です: $AAB
+  → 署名情報（hayate.release.storeFile/storePassword/keyAlias/keyPassword）が
+    ~/.gradle/gradle.properties か環境変数に揃っているか確認してください（RELEASE-SIGNING.md）。
+  → カウンタ($COUNTER_FILE)は進めていないので、設定を直して再実行すれば同じ versionCode=$NEW で採番されます。"
+fi
+echo -e "${GREEN}✓ 署名を確認しました（署名済み AAB）${RESET}"
+
+# ここに来たらビルド成功かつ署名済み。カウンタファイルを新しい値へ進める（失敗時は
+# trap→restore だけでここは実行されず、番号は消費されない）。
+echo "$NEW" > "$COUNTER_FILE"
 echo
 echo -e "${GREEN}${BOLD}✓ Done! versionCode=$NEW の署名済み AAB を作成しました${RESET}"
 echo    "  AAB      : $AAB"
