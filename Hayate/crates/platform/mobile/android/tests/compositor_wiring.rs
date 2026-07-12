@@ -135,11 +135,20 @@ fn present_runs_raster_on_a_dedicated_thread() {
         src.contains("scene: tree.scene_graph().clone()"),
         "the handoff must carry an owned SceneGraph snapshot across the thread boundary (#635)"
     );
+    // issue #802: surface 初期化とスレッド起動の選択(vello→skia の Renderer Selection Policy
+    // loop)は `init_and_spawn_raster`(app.rs)に一本化された。両スポナー自体は app.rs が持つ。
+    assert!(
+        src.contains("spawn_raster_thread(") && src.contains("spawn_skia_raster_thread("),
+        "app.rs must own both raster-thread spawners (vello and skia, issue #802) behind the \
+         Renderer Selection Policy loop in init_and_spawn_raster"
+    );
     for (name, path) in [("app.rs", "src/app.rs"), ("app_tsubame.rs", "src/app_tsubame.rs")] {
         let s = read_relative(path);
         assert!(
-            s.contains("spawn_raster_thread(") && s.contains(".send("),
-            "{name} present loop must produce onto the Raster thread (non-blocking, ADR-0128) (#635)"
+            s.contains("init_and_spawn_raster(") && s.contains(".send("),
+            "{name} present loop must produce onto the Raster thread via the shared Renderer \
+             Selection Policy entry point (non-blocking, ADR-0128; issue #802 centralizes vello/skia \
+             surface init behind init_and_spawn_raster)"
         );
     }
 }

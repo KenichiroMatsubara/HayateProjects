@@ -45,6 +45,15 @@ class MainActivity : GameActivity() {
          */
         const val BACKEND_EXTRA = "hayate.backend"
         const val AA_EXTRA = "hayate.aa"
+
+        /**
+         * レンダラ（vello/skia）の実行時強制指定 intent extra キー（issue #802・
+         * ADR-0146/0147）。`adb shell am start -e hayate.renderer skia` で APK を作り直さずに
+         * vello ⇄ skia を切り替える（#795 の `hayate.backend`/`hayate.aa` と同じ操作感）。
+         * 未指定は空文字で push し、Rust 側（`renderer_config` → Renderer Selection Policy）で
+         * 既定順序（vello → skia の一方向 fallback）へ落とす。
+         */
+        const val RENDERER_EXTRA = "hayate.renderer"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +63,7 @@ class MainActivity : GameActivity() {
         super.onCreate(savedInstanceState)
         // GPU surface 初期化（CreateSurface）より前に描画設定の上書きを Rust へ届ける。
         pushRenderConfig()
+        pushRendererOverride()
         enableEdgeToEdge()
         installInsetPush()
     }
@@ -68,6 +78,18 @@ class MainActivity : GameActivity() {
         val aa = intent.getStringExtra(AA_EXTRA) ?: ""
         Log.i(TAG, "render config override: backend=\"$backend\" aa=\"$aa\"")
         nativePushRenderConfig(backend, aa)
+    }
+
+    /**
+     * レンダラ（vello/skia）の実行時強制指定（intent extra）を Rust へ push する（issue #802）。
+     * 未指定（extra 無し）は空文字で渡し、Rust 側（`renderer_config` → Renderer Selection
+     * Policy）で既定順序（vello → skia の一方向 fallback）へ落とす。GPU surface 初期化
+     * （CreateSurface）より前に届ける必要があるため `pushRenderConfig()` と同じ場所で呼ぶ。
+     */
+    private fun pushRendererOverride() {
+        val renderer = intent.getStringExtra(RENDERER_EXTRA) ?: ""
+        Log.i(TAG, "renderer override: \"$renderer\"")
+        nativePushRendererConfig(renderer)
     }
 
     /**
@@ -124,4 +146,10 @@ class MainActivity : GameActivity() {
      * （`jni_bridge.rs` の `Java_..._nativePushRenderConfig`）へ push する（#795）。
      */
     private external fun nativePushRenderConfig(backend: String, aa: String)
+
+    /**
+     * レンダラ（vello/skia）の強制指定（intent extra 由来、未指定は空文字）を Rust
+     * （`jni_bridge.rs` の `Java_..._nativePushRendererConfig`）へ push する（issue #802）。
+     */
+    private external fun nativePushRendererConfig(renderer: String)
 }

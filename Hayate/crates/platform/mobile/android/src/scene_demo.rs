@@ -23,8 +23,10 @@ pub const TEXT_INPUT_ID: u64 = 3;
 pub const PARAGRAPH_ID: u64 = 4;
 pub const PARAGRAPH_TEXT_ID: u64 = 5;
 
-/// selectable デモ段落の文言。
-pub const PARAGRAPH_TEXT: &str = "Drag to select this text";
+/// selectable デモ段落の文言。末尾の絵文字は skia 選択時のカラーグリフ実機確認用
+/// （issue #802・ADR-0146 §4: `paints_color_glyphs()` = true な skia がカラーで描けるか、
+/// 先頭語("Drag")に依存する既存テスト・タッチ座標には影響しない位置に追加した）。
+pub const PARAGRAPH_TEXT: &str = "Drag to select this text 🎉😀🚀";
 
 /// 非押下時のボタン背景。
 pub const BUTTON_IDLE: Color = Color::new(0.16, 0.45, 0.92, 1.0);
