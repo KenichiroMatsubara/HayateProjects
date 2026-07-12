@@ -1,18 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { DRAW_OP } from '@tsubame/protocol-generated/protocol';
+import { DRAW_OP } from '@torimi/tsubame-protocol-generated/protocol';
 import {
   PaintingStyle,
   PathFillType,
   StrokeCap,
   StrokeJoin,
-} from '@tsubame/protocol-generated/recorder';
+} from '@torimi/tsubame-protocol-generated/recorder';
 import type {
   DrawCanvas,
   DrawRecordedPath,
   DrawPaintSource,
   DrawPaintPacket,
   DrawSize,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import {
   curveChart,
   evenOddDonut,

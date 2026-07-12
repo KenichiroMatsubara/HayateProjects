@@ -1,6 +1,6 @@
 # @tsubame/example-react-todo
 
-`@tsubame/react`（react-reconciler ベースの Adapter）の最小デモ。React Fiber の更新を
+`@torimi/tsubame-react`（react-reconciler ベースの Adapter）の最小デモ。React Fiber の更新を
 Tsubame Renderer Protocol 経由で **DOM Renderer** に流し、素の TODO を描画する。
 
 `examples/todo`（SolidJS 版・Canvas/DOM 両対応の大きめのデモ）と対になる、React 経路の
@@ -37,7 +37,7 @@ pnpm test:e2e          # 実 Chromium で host.html に react バンドルを流
 ## 動かす
 
 ワークスペースの Tsubame パッケージをビルドしてから dev サーバを起動する
-（`@tsubame/react` などは `dist` を参照するため）。
+（`@torimi/tsubame-react` などは `dist` を参照するため）。
 
 ```sh
 # リポジトリルートで一度だけ
@@ -60,7 +60,7 @@ pnpm typecheck  # 型チェック
 ## 仕組み
 
 - JSX は React 標準の automatic runtime で変換し、`jsxImportSource` を
-  `@tsubame/react` に向けるだけ（`vite.config.ts` / `tsconfig.json`、ADR-0010）。
+  `@torimi/tsubame-react` に向けるだけ（`vite.config.ts` / `tsconfig.json`、ADR-0010）。
 - `<view>` / `<text>` / `<button>` / `<text-input>` / `<scroll-view>` は
   Tsubame の Element 語彙。スタイルは `HayateCssStyle`。
 - `renderTsubame(<App />, new DomRenderer({ container }))` で DOM に mount する。

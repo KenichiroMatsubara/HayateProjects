@@ -1,6 +1,6 @@
 import { createSignal } from 'solid-js';
-import type { DetectModeResult } from '@tsubame/app';
-import type { DrawPaintFunction } from '@tsubame/renderer-protocol';
+import type { DetectModeResult } from '@torimi/tsubame-app';
+import type { DrawPaintFunction } from '@torimi/tsubame-renderer-protocol';
 import { GALLERY_PAINTERS, responsiveGrid } from './painters';
 
 /**

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { ConcurrentRoot } from 'react-reconciler/constants';
-import type { IRenderer } from '@tsubame/renderer-protocol';
-import { withTextLocalGate } from '@tsubame/renderer-protocol';
+import type { IRenderer } from '@torimi/tsubame-renderer-protocol';
+import { withTextLocalGate } from '@torimi/tsubame-renderer-protocol';
 import { createReconciler, type TsubameContainer } from './host-config.js';
 
 /** {@link createTsubameRoot} が返すルートハンドル。 */

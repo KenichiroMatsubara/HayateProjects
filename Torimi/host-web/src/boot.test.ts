@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootTorimiHost, TORIMI_MOUNT_GLOBAL } from './index.js';
-import type { WebHost } from '@hayate/host';
+import type { WebHost } from '@torimi/hayate-host';
 
 /**
  * Torimi Web ホストの配線契約テスト。実 WASM / 実ブラウザ / 実ネットワークを巻き込まず、
  * fetch / eval / createHayateWebHost を注入 seam で差し替え、「dev-server URL からバンドルを
  * 取得 → eval → host bootstrap を確立 → バンドルの mount に渡す」順序と受け渡しを観測する
- * （ADR-0001。@hayate/host の web-host.test.ts と同型）。
+ * （ADR-0001。@torimi/hayate-host の web-host.test.ts と同型）。
  */
 function fakeHost(): WebHost {
   return {

@@ -1,4 +1,4 @@
-import manifest from '@hayate/protocol-spec/manifest' with { type: 'json' };
+import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
 import { resolveCanvasBackend, type CanvasBackend } from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 import {
@@ -53,7 +53,7 @@ export {
 /**
  * このホストに焼き込まれた decoder の wire 定数バージョン。Torimi はこれをバンドルの encoder
  * 版数と起動時に突き合わせ、一致時のみ mount する（#530 / CONTEXT「Protocol Version」）。decoder
- * （WASM）と同じ `@hayate/protocol-spec` の manifest version を source of truth とする。
+ * （WASM）と同じ `@torimi/hayate-protocol-spec` の manifest version を source of truth とする。
  */
 export const HOST_PROTOCOL_VERSION: number = manifest.version;
 
@@ -107,7 +107,7 @@ export interface CreateHayateWebHostOptions {
     canvas: HTMLCanvasElement,
   ) => Promise<RawHayate>;
   /**
-   * テスト注入 seam。既定は `@hayate/host` の {@link attachAccessibilityMirror}（ADR-0124）。
+   * テスト注入 seam。既定は `@torimi/hayate-host` の {@link attachAccessibilityMirror}（ADR-0124）。
    * canvas boot のたびに `(raw, canvas)` で呼ぶ。返った {@link AccessibilityMirror} の `poll` は
    * host が frame-clock に相乗りさせ（#645）、`detach` を `WebHost.detach` に通す。
    */

@@ -5,9 +5,9 @@ import type {
   StylePatch,
   UserSelect,
   ViewportCondition,
-} from '@tsubame/renderer-protocol';
-import { PSEUDO_STATE_CODE } from '@tsubame/renderer-protocol';
-import { ELEMENT_KIND, USER_SELECT } from '@tsubame/protocol-generated/protocol';
+} from '@torimi/tsubame-renderer-protocol';
+import { PSEUDO_STATE_CODE } from '@torimi/tsubame-renderer-protocol';
+import { ELEMENT_KIND, USER_SELECT } from '@torimi/tsubame-protocol-generated/protocol';
 import {
   appendCreate,
   appendSetRoot,
@@ -27,7 +27,7 @@ import {
   appendUnsetStyle,
   encodeStylePatch,
   unsetKindsOf,
-} from '@tsubame/protocol-generated/codec';
+} from '@torimi/tsubame-protocol-generated/codec';
 
 /**
  * HayateRenderer → Hayate WASM 境界へ向けて順序付きでキューされる意味操作1件。

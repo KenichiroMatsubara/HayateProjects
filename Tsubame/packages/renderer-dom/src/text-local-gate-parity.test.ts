@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { ElementKind } from '@tsubame/renderer-protocol';
-import { withTextLocalGate, carriesTextLocal } from '@tsubame/renderer-protocol';
+import type { ElementKind } from '@torimi/tsubame-renderer-protocol';
+import { withTextLocalGate, carriesTextLocal } from '@torimi/tsubame-renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 

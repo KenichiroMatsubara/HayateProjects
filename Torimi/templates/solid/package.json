@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@torimi/bundle": "__TORIMI_VERSION__",
-    "@tsubame/solid": "__TORIMI_VERSION__",
+    "@torimi/tsubame-solid": "__TORIMI_VERSION__",
     "solid-js": "^1.9.0"
   },
   "devDependencies": {
-    "torimi": "__TORIMI_VERSION__",
+    "@torimi/cli": "__TORIMI_VERSION__",
     "vite": "^8.0.0",
     "vite-plugin-solid": "^2.11.0"
   }

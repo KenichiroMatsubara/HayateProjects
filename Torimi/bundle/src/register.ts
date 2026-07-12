@@ -1,8 +1,8 @@
-import type { WebHost } from '@hayate/host';
-import { createHayateNativeHost, type RawHayate } from '@hayate/host/native';
+import type { WebHost } from '@torimi/hayate-host';
+import { createHayateNativeHost, type RawHayate } from '@torimi/hayate-host/native';
 import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/protocol-handshake';
-import { runTsubameApp, type Host, type TsubameMount } from '@tsubame/app';
-import { HayateRenderer, PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { runTsubameApp, type Host, type TsubameMount } from '@torimi/tsubame-app';
+import { HayateRenderer, PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
 
 /**
  * App Bundle が mount を露出する global プロパティ名。`@torimi/host-web` の
@@ -57,7 +57,7 @@ function mountWithBootstrap(bootstrap: HostBootstrap, mount: TsubameMount): () =
 export function registerTorimiApp(mount: TsubameMount): void {
   const g = globalThis as Record<string, unknown>;
 
-  // 内包する `@tsubame/renderer-hayate` の wire 定数バージョンを protocol version として
+  // 内包する `@torimi/tsubame-renderer-hayate` の wire 定数バージョンを protocol version として
   // 焼き込む（#530 / #533）。ホスト（Web/Native）は eval 後にこれを読み、自身の decoder
   // 版数と突き合わせて一致時のみ mount する。
   g[TORIMI_PROTOCOL_VERSION_GLOBAL] = PROTOCOL_VERSION;

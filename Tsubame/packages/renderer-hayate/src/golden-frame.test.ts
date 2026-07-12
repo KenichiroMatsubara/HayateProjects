@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createElement, renderTsubame, setProp } from '@tsubame/solid';
+import { createElement, renderTsubame, setProp } from '@torimi/tsubame-solid';
 import { HayateRenderer } from './hayate-renderer.js';
 import { createNullHayate, type WasmHayateFixture } from './test-helpers/wasm-hayate.js';
 import { manualScheduler } from './test-helpers/manual-scheduler.js';

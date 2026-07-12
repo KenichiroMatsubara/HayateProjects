@@ -1,6 +1,6 @@
 # tsubame-react は react-reconciler HostConfig（write-only・構造ゼロ instance）とし、リスナのライフサイクルを backend に寄せる
 
-> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@torimi/tsubame-renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
 
 **Status: accepted**
 
@@ -26,7 +26,7 @@ React の Fiber tree が Solid の shadow tree の役目（構造の記帳）を
 
 ## Decision
 
-1. **`@tsubame/react` は `IRenderer` 上に載せた `react-reconciler` の HostConfig**（mutation モード・write-only）として実装する。react-three-fiber / Ink と同型。
+1. **`@torimi/tsubame-react` は `IRenderer` 上に載せた `react-reconciler` の HostConfig**（mutation モード・write-only）として実装する。react-three-fiber / Ink と同型。
 2. **ホスト instance は構造ゼロ**: `{ id: ElementId; kind: ElementKind }`（＋自身のリスナ差し替え用の最小情報のみ）。`parent` / `children` は持たない。subtree の構造片付けは `IRenderer.removeChild` に委ねる。
 3. **リスナのライフサイクルは backend が所有する**方向に寄せる。adapter は構造を辿らない。
 4. **意味論は集約しない（共有ランタイムは作らない）**。framework 固有ランタイム（solid universal / react-reconciler / 将来の vue）は各 adapter が独立して持つ（CONTEXT.md の _Avoid: shared component runtime_）。共有が必要なのは「prop/要素語彙の翻訳」だけで、重い部分（`splitHayateStyle` / `assertKnownElementProperty` / `coerceElementProperty` / `dispatchElementPropertyOp`）は既に `renderer-protocol` にある。残る `EVENT_PROP` / `REJECTED_EVENT_PROPS`（イベント語彙表）を `renderer-protocol` の adapter vocabulary（`EventKind` の隣）へ移し、`tsubame-solid` はそこからの再 export に縮める。新パッケージ（adapter-core / adapter-jsx）は作らない。

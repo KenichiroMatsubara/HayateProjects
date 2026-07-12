@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Rust / wasm-pack (real @hayate/adapter-web artifacts, not bootstrap stubs) ──
+      # ── Rust / wasm-pack (real @torimi/hayate-adapter-web artifacts, not bootstrap stubs) ──
       - name: Set up Rust (wasm32 target)
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:

@@ -1,4 +1,4 @@
-import type { HayateCssStyle } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 import type { StorageLike } from './todo-model.js';
 
 /**

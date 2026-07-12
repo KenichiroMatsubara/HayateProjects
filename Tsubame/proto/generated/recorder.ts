@@ -1,5 +1,5 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec（draw_ops / draw_paint_fields）。
+// 生成元: @torimi/hayate-protocol-spec（draw_ops / draw_paint_fields）。
 // アプリ作者が painter 内で使う Flutter 流ステートレス記録 API（#729 / ADR-0143）。
 // Path / Paint は第一級オブジェクト、canvas.drawPath(path, paint) で呼び出しごとに
 // paint を明示する。中身は spec の op 表から表駆動で生成した薄い encoder で、
@@ -29,7 +29,7 @@ import {
   appendDrawTranslate,
   type DrawPaint,
 } from './codec.js';
-import type { DrawCanvas } from '@tsubame/renderer-protocol';
+import type { DrawCanvas } from '@torimi/tsubame-renderer-protocol';
 
 /** Flutter PaintingStyle（fill = 塗り、stroke = 輪郭）。 */
 export enum PaintingStyle {

@@ -24,7 +24,7 @@ import {
   appendDrawTransform,
   appendDrawTranslate,
   type DrawPaint,
-} from '@tsubame/protocol-generated/codec';
+} from '@torimi/tsubame-protocol-generated/codec';
 
 // draw display list の codec fixture（#724 / ADR-0142）。TS encode（本テスト）と
 // Rust decode（Hayate/crates/core/tests/draw_codec_fixtures.rs）が同じ fixture を

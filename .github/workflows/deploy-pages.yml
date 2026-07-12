@@ -62,13 +62,13 @@ jobs:
           RUSTFLAGS: ""
         run: pnpm --filter hayate run build:all
 
-      - name: Build @hayate/host
-        # todo example は `import('@hayate/host')` で host bootstrap を取り込む（#477）。
+      - name: Build @torimi/hayate-host
+        # todo example は `import('@torimi/hayate-host')` で host bootstrap を取り込む（#477）。
         # exports は dist/index.js（tsup 成果物）だけを向くので、ここで build しないと
         # Rolldown が import を解決できずビルドが落ちる。
         # NOTE: ルートの `build:host` スクリプトは cbdcc10（Windows ビルド整理）で
         # 撤去されたため、`build:wasm`（133bf39）と同様にフィルタを直接呼ぶ。
-        run: pnpm --filter @hayate/host build
+        run: pnpm --filter @torimi/hayate-host build
 
       - name: Build Tsubame packages
         # `build:tsubame` も cbdcc10 で撤去済み。Tsubame/packages/* を直接フィルタする。

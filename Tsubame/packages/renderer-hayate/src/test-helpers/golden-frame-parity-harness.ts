@@ -1,4 +1,4 @@
-import { createElement, insertNode, renderTsubame, setProp, type TsubameNode } from '@tsubame/solid';
+import { createElement, insertNode, renderTsubame, setProp, type TsubameNode } from '@torimi/tsubame-solid';
 import { HayateRenderer } from '../hayate-renderer.js';
 import {
   captureGoldenFrame,

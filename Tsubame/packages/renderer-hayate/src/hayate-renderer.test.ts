@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EVENT_KIND, OP, TAG, USER_SELECT } from '@tsubame/protocol-generated/protocol';
-import { coerceElementProperty, withTextLocalGate } from '@tsubame/renderer-protocol';
+import { EVENT_KIND, OP, TAG, USER_SELECT } from '@torimi/tsubame-protocol-generated/protocol';
+import { coerceElementProperty, withTextLocalGate } from '@torimi/tsubame-renderer-protocol';
 import { HayateRenderer } from './hayate-renderer.js';
 import { StubHayate, manualScheduler } from './test-helpers/stub-hayate.js';
 

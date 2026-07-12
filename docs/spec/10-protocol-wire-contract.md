@@ -11,9 +11,9 @@ Hayate（Rust + WASM）と Tsubame（TypeScript）の**唯一の結合点**。Ha
 ## 単一正本と生成
 
 ### PROTO-01 — JSON spec 単一正本
-**規範文:** Hayate⇄Tsubame 契約の正本は `Hayate/proto/spec/` の JSON 8 セクション（`opcodes` / `style_tags` / `event_kinds` / `element_kinds` / `unset_kinds` / `modifier_keys` / `types` / `enums`）である。Tsubame は正本を持たず、npm パッケージ `@hayate/protocol-spec` を workspace 依存として取り込む。
+**規範文:** Hayate⇄Tsubame 契約の正本は `Hayate/proto/spec/` の JSON 8 セクション（`opcodes` / `style_tags` / `event_kinds` / `element_kinds` / `unset_kinds` / `modifier_keys` / `types` / `enums`）である。Tsubame は正本を持たず、npm パッケージ `@torimi/hayate-protocol-spec` を workspace 依存として取り込む。
 **出典:** ADR-0049, ADR-0053
-**状況:** ✅ — `Hayate/proto/spec/*.json`（8ファイル + `schema/`）。Tsubame 生成器は `@hayate/protocol-spec/load` を import（`Tsubame/proto/generator/gen-*.mjs`）。
+**状況:** ✅ — `Hayate/proto/spec/*.json`（8ファイル + `schema/`）。Tsubame 生成器は `@torimi/hayate-protocol-spec/load` を import（`Tsubame/proto/generator/gen-*.mjs`）。
 **備考:** —
 
 ### PROTO-02 — WIT は契約正本ではない

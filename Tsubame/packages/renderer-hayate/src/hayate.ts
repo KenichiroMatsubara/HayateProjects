@@ -1,4 +1,4 @@
-import type { HayateColorRecord } from '@tsubame/protocol-generated/codec';
+import type { HayateColorRecord } from '@torimi/tsubame-protocol-generated/codec';
 
 // パース/型強制は生成 codec の一箇所だけに置く。既存の `./hayate.js`
 // インポータが parseColor/parseDimension を再実装せず動き続けるよう re-export する。
@@ -7,12 +7,12 @@ export {
   parseDimension,
   finiteNumber,
   finiteInteger,
-} from '@tsubame/protocol-generated/codec';
+} from '@torimi/tsubame-protocol-generated/codec';
 export type {
   HayateColorRecord,
   HayateDimensionRecord,
   HayateDimensionUnit,
-} from '@tsubame/protocol-generated/codec';
+} from '@torimi/tsubame-protocol-generated/codec';
 
 /**
  * 実 Hayate WASM（`HayateElementRenderer`）が公開する WIT element-layer の

@@ -19,10 +19,10 @@ const reactHostHtml = fileURLToPath(new URL('../host.html', import.meta.url));
 
 /** ホストが import したら FW / renderer がホストに焼き込まれた証拠になるパッケージ群。 */
 const FRAMEWORK_PACKAGES = new Set([
-  '@tsubame/react',
-  '@tsubame/solid',
-  '@tsubame/renderer-hayate',
-  '@tsubame/renderer-dom',
+  '@torimi/tsubame-react',
+  '@torimi/tsubame-solid',
+  '@torimi/tsubame-renderer-hayate',
+  '@torimi/tsubame-renderer-dom',
   'react',
   'react-reconciler',
   'solid-js',

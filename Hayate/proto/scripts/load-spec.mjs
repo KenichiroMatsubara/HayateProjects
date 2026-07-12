@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Default spec directory bundled with @hayate/protocol-spec. */
+/** Default spec directory bundled with @torimi/hayate-protocol-spec. */
 export const DEFAULT_SPEC_DIR = join(__dirname, '../spec');
 
 export const SPEC_SECTIONS = [

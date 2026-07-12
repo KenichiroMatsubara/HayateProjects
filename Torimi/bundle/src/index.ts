@@ -5,4 +5,4 @@
 import './native-prelude.js';
 
 export { registerTorimiApp, TORIMI_MOUNT_GLOBAL } from './register.js';
-export type { TsubameMount } from '@tsubame/app';
+export type { TsubameMount } from '@torimi/tsubame-app';

@@ -1,6 +1,6 @@
 # Renderer Protocol + DOM Renderer + Canvas Renderer の 3 層構成とする
 
-> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。3 層構成の決定自体は不変。本文は決定当時の記録として原文のまま。
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@torimi/tsubame-renderer-hayate` に改名された。3 層構成の決定自体は不変。本文は決定当時の記録として原文のまま。
 
 _origin: Hayate ADR-0036_
 

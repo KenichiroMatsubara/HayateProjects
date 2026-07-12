@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
  * Accessibility Mirror（ADR-0124）の capstone e2e（#595）。「クラウド実行の AI が Canvas アプリを
  * 照会・駆動・回帰ガードできる」状態をエンドツーエンドで証拠化する縦スライス。
  *
- * Canvas モードの `<canvas>` はアクセシビリティツリーから黒箱だが、`@hayate/host` の
+ * Canvas モードの `<canvas>` はアクセシビリティツリーから黒箱だが、`@torimi/hayate-host` の
  * `attachAccessibilityMirror`（#591-#594）が `poll_accessibility()` の AccessKit `TreeUpdate` を
  * `<canvas>` 兄弟の不可視 ARIA DOM（`data-hayate-a11y`）へ投影する。これにより Playwright の
  * `getByRole` / `toMatchAriaSnapshot` で **照会** でき、bounds から得た座標で **駆動** でき、

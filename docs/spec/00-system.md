@@ -15,7 +15,7 @@ HayateProjects 全体の構造と、ドキュメント体系の運用規範。
 ### SYS-02 — 一方向依存（Hayate は上位を知らない）
 **規範文:** Hayate Core は Tsubame・Hayabusa を知らない。結合点は Hayate が所有する `apply_mutations` / `poll_events` 契約（§10）のみ。モノレポ化は AI/クラウド作業都合であり、アーキテクチャ上の結合点ではない。
 **出典:** ROOT ADR-0001, ADR-0053, ADR-0035
-**状況:** ✅ — `Hayate/crates/core` に Tsubame/Hayabusa 参照なし。Tsubame は `@hayate/protocol-spec` を片方向で消費。
+**状況:** ✅ — `Hayate/crates/core` に Tsubame/Hayabusa 参照なし。Tsubame は `@torimi/hayate-protocol-spec` を片方向で消費。
 **備考:** この不変条件が設計書の Hayate / §10 / Tsubame の三分割の根拠。
 
 ### SYS-03 — CONTEXT.md は語彙のみ

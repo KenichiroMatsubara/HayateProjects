@@ -1,5 +1,5 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec（style_tags.inherit / element_kinds.carriesTextLocal）
+// 生成元: @torimi/hayate-protocol-spec（style_tags.inherit / element_kinds.carriesTextLocal）
 
 import type { StylePatch } from '../style.js';
 import type { ElementKind } from '../element.js';

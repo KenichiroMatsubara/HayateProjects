@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HAYATE_CSS_CATALOG } from '@tsubame/hayate-css-catalog';
+import { HAYATE_CSS_CATALOG } from '@torimi/tsubame-hayate-css-catalog';
 import { GALLERY_LIVE_PROPERTIES, GALLERY_ROADMAP_PROPERTIES } from './CssGallery';
 
 // The CSS Gallery promises a *live* card for every Hayate CSS property in the

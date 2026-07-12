@@ -1,4 +1,4 @@
-import type { HayateCssStyle } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 import { type Palette } from '../theme';
 import { type Filter, type SortMode } from '../todo-model';
 import { FILTERS, SORTS } from '../ui/labels';

@@ -4,8 +4,8 @@ import {
   parseDimension as codecParseDimension,
   finiteNumber as codecFiniteNumber,
   finiteInteger as codecFiniteInteger,
-} from '@tsubame/protocol-generated/codec';
-import { coerceElementProperty } from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-protocol-generated/codec';
+import { coerceElementProperty } from '@torimi/tsubame-renderer-protocol';
 import * as canvasPkg from './index.js';
 import {
   parseColor,

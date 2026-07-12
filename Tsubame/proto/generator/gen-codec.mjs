@@ -5,7 +5,7 @@ import {
   loadProtocolSpec,
   tagToPatchKey,
   toCamelCase,
-} from '@hayate/protocol-spec/load';
+} from '@torimi/hayate-protocol-spec/load';
 import { classify, styleEncoderLines } from './value-type.mjs';
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '../generated');
@@ -60,7 +60,7 @@ export function finiteInteger(key: string, value: unknown): number {
   return numeric;
 }
 
-export function parseDimension(value: import('@tsubame/renderer-protocol').HayateDimension): HayateDimensionRecord {
+export function parseDimension(value: import('@torimi/tsubame-renderer-protocol').HayateDimension): HayateDimensionRecord {
   if (typeof value === 'number') {
     return { value, unit: 'px' };
   }
@@ -326,9 +326,9 @@ export function generateCodec() {
 
   const lines = [
     '// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと',
-    '// 生成元: @hayate/protocol-spec',
+    '// 生成元: @torimi/hayate-protocol-spec',
     '',
-    "import type { StylePatch } from '@tsubame/renderer-protocol';",
+    "import type { StylePatch } from '@torimi/tsubame-renderer-protocol';",
     "import { OP, DRAW_OP, DRAW_PAINT_FIELD, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';",
     '',
     'export { TAG, UNSET_KIND } from \'./protocol.js\';',

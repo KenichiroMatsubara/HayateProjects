@@ -19,9 +19,9 @@ export default defineConfig({
           server: {
             deps: {
               inline: [
-                '@tsubame/protocol-generated',
-                '@tsubame/hayate-css-catalog',
-                '@tsubame/renderer-dom',
+                '@torimi/tsubame-protocol-generated',
+                '@torimi/tsubame-hayate-css-catalog',
+                '@torimi/tsubame-renderer-dom',
               ],
             },
           },
@@ -40,9 +40,9 @@ export default defineConfig({
           server: {
             deps: {
               inline: [
-                '@tsubame/protocol-generated',
+                '@torimi/tsubame-protocol-generated',
                 'hayate-adapter-web-null',
-                '@tsubame/solid',
+                '@torimi/tsubame-solid',
               ],
             },
           },

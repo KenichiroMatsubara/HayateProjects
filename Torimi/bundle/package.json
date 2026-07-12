@@ -3,8 +3,13 @@
   "version": "0.1.0",
   "description": "Bundle Registration — App Bundle 側の合成ルート。アプリは registerTorimiApp(mount) を呼ぶ全ターゲット共通の 1 エントリだけを書き、protocol version 焼き込み・mount seam（__torimiMount / __tsubame）・native prelude といった wire 契約の配線はこのパッケージが隠す。ターゲット差は __hayateHost の有無でランタイム内部分岐する（ADR-0008 §4 / CONTEXT.md「Bundle Registration」）。",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -31,16 +36,18 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@hayate/host": "workspace:*",
+    "@torimi/hayate-host": "workspace:*",
     "@torimi/protocol-handshake": "workspace:*",
-    "@tsubame/app": "workspace:*",
-    "@tsubame/renderer-hayate": "workspace:*"
+    "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-renderer-hayate": "workspace:*"
   },
   "peerDependencies": {
     "vite": "^8.0.0"
   },
   "peerDependenciesMeta": {
-    "vite": { "optional": true }
+    "vite": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@torimi/host-web": "workspace:*",

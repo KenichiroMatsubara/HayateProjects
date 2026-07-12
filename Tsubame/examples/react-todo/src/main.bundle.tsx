@@ -3,7 +3,7 @@
 // react の scheduler は module 評価時に `setTimeout` 等を capture する。
 import { registerTorimiApp } from '@torimi/bundle';
 
-import { renderTsubame } from '@tsubame/react';
+import { renderTsubame } from '@torimi/tsubame-react';
 import { App } from './App';
 
 /**

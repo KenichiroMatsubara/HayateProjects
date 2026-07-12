@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { OP } from '@tsubame/protocol-generated/protocol';
+import { OP } from '@torimi/tsubame-protocol-generated/protocol';
 import { HayateRenderer } from './hayate-renderer.js';
 import type { RawHayate } from './hayate.js';
 import { createNullHayate, type WasmHayateFixture } from './test-helpers/wasm-hayate.js';

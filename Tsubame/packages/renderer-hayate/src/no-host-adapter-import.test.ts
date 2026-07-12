@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 
 // 「Tsubame は host を知らない」の依存不変条件（#477, CONTEXT-MAP の依存境界）。
-// `@tsubame/renderer-hayate` の **出荷コード**（公開ライブラリ surface）は Hayate の
+// `@torimi/tsubame-renderer-hayate` の **出荷コード**（公開ライブラリ surface）は Hayate の
 // web ランタイム adapter（`hayate-adapter-web*`）を import しない。surface 取得・WASM
 // ロード・WebGPU プローブ・backend 選択は host bootstrap の責務で、それは Hayate 側
-// （`@hayate/host`）または App（合成ルート）が持つ。
+// （`@torimi/hayate-host`）または App（合成ルート）が持つ。
 //
 // 対象外: テスト（`*.test.ts`）と `test-helpers/`。null backend（`hayate-adapter-web-null`）
 // は ADR-0055 の codec/golden 結合テスト専用 fixture（devDependency）であって、出荷時の

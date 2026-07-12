@@ -61,7 +61,7 @@ const project = mkdtempSync(join(tmpdir(), 'pack-smoke-proj-'));
 writeFileSync(join(project, 'package.json'), `${JSON.stringify(buildSmokeProjectManifest(tarballs), null, 2)}\n`);
 // Verify each entry point's export map RESOLVES from outside the monorepo — the
 // packaging guarantee (files/exports/deps are whole). We use import.meta.resolve
-// rather than executing the module: @hayate/host is a bundler-consumed package
+// rather than executing the module: @torimi/hayate-host is a bundler-consumed package
 // whose transitive JSON imports need `with { type: 'json' }` under raw Node ESM,
 // which is orthogonal to whether it's packaged correctly. Its real end-to-end
 // execution outside the monorepo is proven by scaffold-smoke.mjs (`torimi build`).

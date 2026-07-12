@@ -1,4 +1,4 @@
-import type { ElementId, ElementKind, Unsubscribe } from '@tsubame/renderer-protocol';
+import type { ElementId, ElementKind, Unsubscribe } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * Hayate / DOM 要素（`ElementId`）に紐づく Solid のホストハンドル。

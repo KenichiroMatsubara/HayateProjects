@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import { CssGallery } from './CssGallery';
-import type { DetectModeResult } from '@tsubame/app';
+import type { DetectModeResult } from '@torimi/tsubame-app';
 import { AddForm } from './components/AddForm';
 import { AppBar } from './components/AppBar';
 import { EmptyState, Footer, Header, SelectableNote } from './components/TaskCard';

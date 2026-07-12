@@ -1,6 +1,6 @@
 # Miharashi は独立 context：Hayate ネイティブ runtime を再利用し、FW 非依存ホストへバンドルが FW＋renderer-canvas を持ち込む
 
-> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された（タイトル含む）。host 契約・wire 契約は不変。本文は決定当時の記録として原文のまま。
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@torimi/tsubame-renderer-hayate` に改名された（タイトル含む）。host 契約・wire 契約は不変。本文は決定当時の記録として原文のまま。
 
 > **用語更新（ADR-0004・2026-07-07）**: 本 ADR の "Miharashi" は **Torimi（鳥見）** に改名された（タイトル含む。ディレクトリ・`@torimi/*` パッケージスコープ・wire グローバル等の全面リネーム）。本文は決定当時の記録として原文のまま。
 

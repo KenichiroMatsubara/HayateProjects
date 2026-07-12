@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { IRenderer } from '@tsubame/renderer-protocol';
+import type { IRenderer } from '@torimi/tsubame-renderer-protocol';
 import { runTsubameApp } from './run.js';
 import type { Host, TsubameMount } from './host.js';
 

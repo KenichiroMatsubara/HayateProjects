@@ -1,8 +1,8 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec（event_kinds の wireRole / adapterTier / interactionKind）
+// 生成元: @torimi/hayate-protocol-spec（event_kinds の wireRole / adapterTier / interactionKind）
 
-import type { EventKind, InteractionEvent } from '@tsubame/renderer-protocol';
-import { asElementId } from '@tsubame/renderer-protocol';
+import type { EventKind, InteractionEvent } from '@torimi/tsubame-renderer-protocol';
+import { asElementId } from '@torimi/tsubame-renderer-protocol';
 import { EVENT_KIND, type EventPayload, parseEvent } from './protocol.js';
 
 /** Hayate の `register_listener` で登録可能な EventKind（adapterTier: forward）。 */

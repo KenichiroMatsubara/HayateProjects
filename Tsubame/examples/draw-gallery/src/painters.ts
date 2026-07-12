@@ -5,8 +5,8 @@ import {
   PathFillType,
   StrokeCap,
   StrokeJoin,
-} from '@tsubame/protocol-generated/recorder';
-import type { DrawCanvas, DrawSize } from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-protocol-generated/recorder';
+import type { DrawCanvas, DrawSize } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * draw ギャラリーのサンプル painter 群（issue #732）。draw v1 語彙を横断する

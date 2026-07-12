@@ -1,6 +1,6 @@
-import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
-import { PSEUDO_STYLE_KEYS_BY_PRIORITY, gateTextLocalPatch } from '@tsubame/renderer-protocol';
-import type { PseudoStyleKey } from '@tsubame/renderer-protocol';
+import type { ElementKind, StylePatch } from '@torimi/tsubame-renderer-protocol';
+import { PSEUDO_STYLE_KEYS_BY_PRIORITY, gateTextLocalPatch } from '@torimi/tsubame-renderer-protocol';
+import type { PseudoStyleKey } from '@torimi/tsubame-renderer-protocol';
 import {
   declarationsFromStylePatch,
   type StylePatchDeclaration,

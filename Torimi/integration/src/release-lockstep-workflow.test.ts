@@ -67,10 +67,10 @@ describe('release lockstep workflow (ADR-0003)', () => {
     expect(deployEnv['CLOUDFLARE_API_TOKEN']).toBe('${{ secrets.CLOUDFLARE_API_TOKEN }}');
     expect(deployEnv['CLOUDFLARE_ACCOUNT_ID']).toBe('${{ secrets.CLOUDFLARE_ACCOUNT_ID }}');
 
-    // build:demos は example の vite build を回す — workspace 依存（@hayate/host / Tsubame
+    // build:demos は example の vite build を回す — workspace 依存（@torimi/hayate-host / Tsubame
     // packages）の dist が要るので、先に組み立てる（deploy-pages.yml と同じ順序）。
     const bundleBuildIndex = runs.findIndex((run) => run.includes('build:demos'));
-    const hostBuildIndex = runs.findIndex((run) => run.includes('@hayate/host'));
+    const hostBuildIndex = runs.findIndex((run) => run.includes('@torimi/hayate-host'));
     const tsubameBuildIndex = runs.findIndex((run) => run.includes('./Tsubame/packages/*'));
     // 単一エントリ（#767）は `@torimi/bundle` の dist を import する — これも build:demos より先。
     const torimiBundleBuildIndex = runs.findIndex((run) => run.includes('@torimi/bundle'));

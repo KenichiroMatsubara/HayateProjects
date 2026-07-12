@@ -23,7 +23,7 @@
 
 ## Decision
 
-1. **`Canvas Renderer` → `Hayate Renderer` に改名する。** ターゲット名規約に揃える（`DomRenderer`→DOM、`HayateRenderer`→Hayate）。クラス `CanvasRenderer` → `HayateRenderer`、パッケージ `@tsubame/renderer-canvas` → `@tsubame/renderer-hayate`。
+1. **`Canvas Renderer` → `Hayate Renderer` に改名する。** ターゲット名規約に揃える（`DomRenderer`→DOM、`HayateRenderer`→Hayate）。クラス `CanvasRenderer` → `HayateRenderer`、パッケージ `@tsubame/renderer-canvas` → `@torimi/tsubame-renderer-hayate`。
 2. **改名対象は語「Canvas Renderer」「`CanvasRenderer`」のみ。** `Canvas Mode`・`Canvas 経路`・`GPU Canvas`・`Canvas/HTML 経路`・h-canvas・HTML `<canvas>` は不変（別概念）。
 3. **生きた語彙は完全改名、歴史記録は追記注記。**
    - **CONTEXT.md（root / Hayate / Tsubame）・コード・コメント・proto・パッケージ名**: 完全改名（語彙の正本がドリフトの震源なので必ず直す）。
@@ -40,7 +40,7 @@
 ## Consequences
 
 - `DomRenderer` / `HayateRenderer` がターゲット名で対称になり、「`HayateRenderer` 採用＝自動 Android 対応」という誤読が構造的に言えなくなる（Hayate が走る全 platform を指すのが自明）。
-- パッケージ rename（`@tsubame/renderer-canvas` → `@tsubame/renderer-hayate`）に伴い、import・`package.json`・`tsup`/`vite` 設定・型 re-export の機械的更新が必要。これは別 PR の実装スコープ。
+- パッケージ rename（`@tsubame/renderer-canvas` → `@torimi/tsubame-renderer-hayate`）に伴い、import・`package.json`・`tsup`/`vite` 設定・型 re-export の機械的更新が必要。これは別 PR の実装スコープ。
 - 既存 ADR は本文不変＋forward 注記。`_Avoid_: Canvas Renderer（旧称）` を CONTEXT.md の Hayate Renderer 項に明記済み。
 - **monorepo `docs/adr/0004`（Tsubame–Hayate 境界・status: proposed）§5「命名」は「`Canvas Renderer` / `@tsubame/renderer-canvas` は維持する」と決めていた。本 ADR はその命名サブ決定のみを覆す**（境界・host bootstrap 退去の本筋は維持）。同 ADR には forward 注記済み。
-- 関連: ADR-0002（3 層構成・命名元）、ADR-0007（`canvas-renderer-owns-viewport`・撤去済み挙動）、docs/adr/0004 §5（命名維持の旧決定・本 ADR が反転）、ADR-0012（合成ルート・本改名を前提に `@tsubame/renderer-hayate` を host adapter が new する）。
+- 関連: ADR-0002（3 層構成・命名元）、ADR-0007（`canvas-renderer-owns-viewport`・撤去済み挙動）、docs/adr/0004 §5（命名維持の旧決定・本 ADR が反転）、ADR-0012（合成ルート・本改名を前提に `@torimi/tsubame-renderer-hayate` を host adapter が new する）。

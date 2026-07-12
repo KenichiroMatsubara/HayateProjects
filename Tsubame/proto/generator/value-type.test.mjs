@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loadProtocolSpec } from '@hayate/protocol-spec/load';
+import { loadProtocolSpec } from '@torimi/hayate-protocol-spec/load';
 import { classify, tsType, wireKind } from './value-type.mjs';
 
 function sampleTag(encodeFrom, params, variableLength = false) {
