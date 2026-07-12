@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ProtocolMismatchError } from '@torimi/protocol-handshake';
 import { bootTorimiHost } from './index.js';
-import type { WebHost } from '@hayate/host';
+import type { WebHost } from '@torimi/hayate-host';
 
 /**
  * Torimi 起動時の protocol version ハンドシェイク契約（#530）。バンドル（encoder）が埋めた

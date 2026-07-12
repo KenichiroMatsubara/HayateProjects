@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DRAW_OP, EVENT_KIND, OP } from '@tsubame/protocol-generated/protocol';
-import { Paint, Path } from '@tsubame/protocol-generated/recorder';
-import type { DrawCanvas, DrawSize } from '@tsubame/renderer-protocol';
+import { DRAW_OP, EVENT_KIND, OP } from '@torimi/tsubame-protocol-generated/protocol';
+import { Paint, Path } from '@torimi/tsubame-protocol-generated/recorder';
+import type { DrawCanvas, DrawSize } from '@torimi/tsubame-renderer-protocol';
 import { HayateRenderer } from './hayate-renderer.js';
 import { StubHayate, manualScheduler } from './test-helpers/stub-hayate.js';
 

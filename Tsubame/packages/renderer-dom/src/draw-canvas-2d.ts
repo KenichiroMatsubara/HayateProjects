@@ -3,8 +3,8 @@ import type {
   DrawPaintPacket,
   DrawPaintSource,
   DrawRecordedPath,
-} from '@tsubame/renderer-protocol';
-import { DRAW_OP } from '@tsubame/protocol-generated/protocol';
+} from '@torimi/tsubame-renderer-protocol';
+import { DRAW_OP } from '@torimi/tsubame-protocol-generated/protocol';
 
 /**
  * 2D replay が使う `CanvasRenderingContext2D` の最小サブセット（#731 /

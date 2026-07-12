@@ -11,7 +11,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "@hayate/host": "workspace:*",
+    "@torimi/hayate-host": "workspace:*",
     "@torimi/dev-server": "workspace:*",
     "@torimi/host-web": "workspace:*",
     "@torimi/protocol-handshake": "workspace:*",

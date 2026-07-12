@@ -6,7 +6,7 @@
 
 ## Context
 
-Hayate には Hayabusa と Tsubame という二つの文脈がある。Hayabusa は ADR-0045 により Rust crate 依存の長期構想として整理された。一方で短期的に契約整備が必要なのは、Hayate-Tsubame 間の `@hayate/protocol-spec`・`apply_mutations`・`poll_events` である。文書上は依然として Hayabusa 中心、WIT 中心の説明が多く、現行の実装優先度を誤解しやすい。
+Hayate には Hayabusa と Tsubame という二つの文脈がある。Hayabusa は ADR-0045 により Rust crate 依存の長期構想として整理された。一方で短期的に契約整備が必要なのは、Hayate-Tsubame 間の `@torimi/hayate-protocol-spec`・`apply_mutations`・`poll_events` である。文書上は依然として Hayabusa 中心、WIT 中心の説明が多く、現行の実装優先度を誤解しやすい。
 
 ## Decision
 
@@ -20,7 +20,7 @@ Hayate には Hayabusa と Tsubame という二つの文脈がある。Hayabusa 
 ### Positive
 
 - 現行の実装契約と文書の重心が一致する。
-- `@hayate/protocol-spec` 正本化以降の説明が読みやすくなる。
+- `@torimi/hayate-protocol-spec` 正本化以降の説明が読みやすくなる。
 - Hayabusa 構想を残しつつ、短期タスクの判断を迷いにくくできる。
 
 ### Negative

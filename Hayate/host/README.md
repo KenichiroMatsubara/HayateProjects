@@ -1,4 +1,4 @@
-# @hayate/host
+# @torimi/hayate-host
 
 Hayate's JS host glue. On web it does the **host bootstrap** — WebGPU probe, backend select, WASM load, and surface acquisition (`createHayateWebHost(canvas)`); on native it pumps an injected `RawHayate` (`./native`, `createHayateNativeHost(raw)`). Either way it returns a `RawHayate` (plus `requestFrame` / `cancelFrame`) that a composition root hands to Tsubame's host-blind Hayate Renderer.
 

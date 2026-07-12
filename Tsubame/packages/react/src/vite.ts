@@ -1,8 +1,8 @@
 import type { UserConfig } from 'vite';
 
 // FW 変換 preset（ADR-0008 §5）。React automatic runtime の JSX を Tsubame Renderer
-// Protocol へ向け替える（`jsxImportSource` を `@tsubame/react` に向ける）vite 設定断片を
-// 返す。solid 版（`@tsubame/solid/vite`）と対称に、FW 固有の知識を adapter パッケージへ
+// Protocol へ向け替える（`jsxImportSource` を `@torimi/tsubame-react` に向ける）vite 設定断片を
+// 返す。solid 版（`@torimi/tsubame-solid/vite`）と対称に、FW 固有の知識を adapter パッケージへ
 // 局在させる。
 //
 // `process.env.NODE_ENV` の静的置換も同梱する: React は prod/dev エントリを
@@ -13,7 +13,7 @@ export function tsubameReact(): UserConfig {
   return {
     esbuild: {
       jsx: 'automatic',
-      jsxImportSource: '@tsubame/react',
+      jsxImportSource: '@torimi/tsubame-react',
     },
     define: {
       'process.env.NODE_ENV': JSON.stringify('production'),

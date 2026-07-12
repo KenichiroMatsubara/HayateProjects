@@ -3,7 +3,7 @@
   "compilerOptions": {
     "jsx": "preserve",
     "noEmit": true,
-    "types": ["@tsubame/solid"]
+    "types": ["@torimi/tsubame-solid"]
   },
   "include": ["src", "vite.config.ts"]
 }

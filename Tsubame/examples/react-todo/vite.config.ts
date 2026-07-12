@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 // tsubame-react は react-reconciler ベースの Adapter。JSX は React 標準の automatic
-// runtime で変換し、import 先だけ `@tsubame/react/jsx-runtime` に向け替える
+// runtime で変換し、import 先だけ `@torimi/tsubame-react/jsx-runtime` に向け替える
 // （`jsxImportSource`）。compile プラグインは不要（ADR-0010）。
 export default defineConfig({
   // GitHub Pages の project site（/HayateProjects/ 配下）へ置く場合に base を合わせる。
@@ -9,6 +9,6 @@ export default defineConfig({
   base: process.env.VITE_BASE ?? '/',
   esbuild: {
     jsx: 'automatic',
-    jsxImportSource: '@tsubame/react',
+    jsxImportSource: '@torimi/tsubame-react',
   },
 });

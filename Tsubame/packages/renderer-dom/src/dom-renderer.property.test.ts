@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { coerceElementProperty } from '@tsubame/renderer-protocol';
+import { coerceElementProperty } from '@torimi/tsubame-renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import { createHappyDomFixture } from './test-helpers/happy-dom-fixture.js';
 

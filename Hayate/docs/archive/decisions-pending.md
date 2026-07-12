@@ -5,7 +5,7 @@
 ## Closed
 
 - Hayate-Tsubame 間プロトコル定数の機械可読な単一正本を導入する。
-  根拠: ADR-0049（形式は ADR-0053 により `proto/spec/*.json` + `@hayate/protocol-spec` へ移行）
+  根拠: ADR-0049（形式は ADR-0053 により `proto/spec/*.json` + `@torimi/hayate-protocol-spec` へ移行）
 - Element Document Runtime を hayate-core に置き、poll deliveries で host に通知する。
   根拠: ADR-0053
 - Tsubame は signal ランタイムではなく renderer target 基盤とする。

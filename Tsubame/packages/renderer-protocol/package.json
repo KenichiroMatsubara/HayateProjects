@@ -1,10 +1,15 @@
 {
-  "name": "@tsubame/renderer-protocol",
+  "name": "@torimi/tsubame-renderer-protocol",
   "version": "0.1.0",
   "description": "Tsubame Renderer Protocol — IRenderer インターフェースと型定義（DOM / Canvas Renderer 共通の境界）",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -15,7 +20,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "prepublishOnly": "node -e \"process.env.GITHUB_ACTIONS||(console.error('publish only via the release workflow (ADR-0007 §4)'),process.exit(1))\"",
     "build": "tsup",

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { HayateRenderer } from '@tsubame/renderer-hayate';
-import { StubHayate, manualScheduler } from '@tsubame/renderer-hayate/test-helpers';
+import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
+import { StubHayate, manualScheduler } from '@torimi/tsubame-renderer-hayate/test-helpers';
 import { createTsubameRoot } from './mount.js';
 
 /**

@@ -5,7 +5,7 @@ import type {
   StylePatch,
   UserSelect,
   ViewportCondition,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import type { RawHayate } from './hayate.js';
 import { encodeMutations, type SemanticMutation } from './encode-mutations.js';
 

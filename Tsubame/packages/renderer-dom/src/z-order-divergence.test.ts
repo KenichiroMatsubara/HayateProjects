@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { asElementId } from '@tsubame/renderer-protocol';
+import { asElementId } from '@torimi/tsubame-renderer-protocol';
 import { DomRenderer } from './dom-renderer.js';
 import {
   warnZOrderDivergence,

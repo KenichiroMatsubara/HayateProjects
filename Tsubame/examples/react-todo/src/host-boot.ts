@@ -4,7 +4,7 @@ import {
   startTorimiHost,
   ProtocolMismatchError,
 } from '@torimi/host-web';
-import { HOST_PROTOCOL_VERSION } from '@hayate/host';
+import { HOST_PROTOCOL_VERSION } from '@torimi/hayate-host';
 
 /**
  * Torimi ホストページのブート（ADR-0001）。host bootstrap だけを持つ素のシェルとして、
@@ -12,7 +12,7 @@ import { HOST_PROTOCOL_VERSION } from '@hayate/host';
  * raw + frame-clock を確立してバンドルの mount に渡す。さらに dev-server の reload WS を購読し、
  * バンドル変更ごとに **full reload**（新しい canvas で再 mount。state は飛ぶ）する。
  *
- * フレームワークも `@tsubame/renderer-hayate` もここには無い — eval するバンドルが持ち込む。
+ * フレームワークも `@torimi/tsubame-renderer-hayate` もここには無い — eval するバンドルが持ち込む。
  * reload の意味づけはホスト側（`@torimi/host-web`）に閉じ、ネイティブ契約は不変（ADR-0001）。
  *
  * dev-server URL は `?dev=` で渡せるが、未指定ならスマホで使える URL ピッカー（カメラ QR スキャン

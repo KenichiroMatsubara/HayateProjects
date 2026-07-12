@@ -4,7 +4,7 @@ import type {
   EventHandler,
   UserSelect,
   ViewportCondition,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import type { ReactNode, Key } from 'react';
 
 /**
@@ -39,7 +39,7 @@ export interface TsubameProps {
  * これらは独自の `jsx-runtime` が export する `JSX` 名前空間で使う（{@link ./jsx-runtime.js}）。
  * `@types/react` の `JSX.IntrinsicElements` は `view` / `text` / `image`（SVG）や
  * `button`（HTML）を既に別の型で宣言しているため module augmentation では上書きできない。
- * そこで `jsxImportSource: "@tsubame/react"` で専用 JSX 名前空間に差し替える（標準
+ * そこで `jsxImportSource: "@torimi/tsubame-react"` で専用 JSX 名前空間に差し替える（標準
  * `jsx: "react-jsx"`、compile プラグイン不要。ADR-0010）。
  */
 export interface TsubameIntrinsicElements {

@@ -1,6 +1,6 @@
 # Tsubame と Hayate の境界を引き直し、host bootstrap を Tsubame から退去させる
 
-> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+> **用語更新（Tsubame ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@torimi/tsubame-renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
 
 **Status: proposed**
 
@@ -52,7 +52,7 @@ Tsubame の renderer は host を *掴みに行かない* — 注入されたハ
 | **App / demo** | `main.tsx` / `main.android.tsx`（host から `raw`(+clock) を得 → `new CanvasRenderer({raw, clock})` → `renderTsubame(App, r)`） |
 
 - **Hayate → Tsubame: 依存なし（永久, ADR-0001 維持）。**
-- **Tsubame → Hayate: Contract 経由のみ。** `@hayate/protocol-spec` と自前定義の
+- **Tsubame → Hayate: Contract 経由のみ。** `@torimi/hayate-protocol-spec` と自前定義の
   `RawHayate` ポート型だけ。**Hayate のランタイム/WASM adapter パッケージには依存しない。**
 - **App が合成ルート。** 具体 adapter を Tsubame の renderer に注入するのは App。
 

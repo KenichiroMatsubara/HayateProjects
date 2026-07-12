@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ElementKind } from '@tsubame/renderer-protocol';
+import type { ElementKind } from '@torimi/tsubame-renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 
 const ALL_KINDS: ElementKind[] = [

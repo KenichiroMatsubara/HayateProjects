@@ -19,20 +19,20 @@
     "test:e2e:layer-present": "playwright test --config playwright.config.layer-present.ts"
   },
   "dependencies": {
-    "@hayate/host": "workspace:*",
+    "@torimi/hayate-host": "workspace:*",
     "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",
-    "@tsubame/app": "workspace:*",
-    "@tsubame/renderer-dom": "workspace:*",
-    "@tsubame/renderer-hayate": "workspace:*",
-    "@tsubame/renderer-protocol": "workspace:*",
-    "@tsubame/solid": "workspace:*",
+    "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-renderer-dom": "workspace:*",
+    "@torimi/tsubame-renderer-hayate": "workspace:*",
+    "@torimi/tsubame-renderer-protocol": "workspace:*",
+    "@torimi/tsubame-solid": "workspace:*",
     "solid-js": "^1.9.13"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
-    "@tsubame/hayate-css-catalog": "workspace:*",
-    "torimi": "workspace:*",
+    "@torimi/tsubame-hayate-css-catalog": "workspace:*",
+    "@torimi/cli": "workspace:*",
     "vite": "^8.0.14",
     "vite-plugin-solid": "^2.11.12",
     "vitest": "^3.2.0"

@@ -1,12 +1,12 @@
-import { DomRenderer } from '@tsubame/renderer-dom';
-import { HayateRenderer } from '@tsubame/renderer-hayate';
-import { renderTsubame } from '@tsubame/solid';
+import { DomRenderer } from '@torimi/tsubame-renderer-dom';
+import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
+import { renderTsubame } from '@torimi/tsubame-solid';
 import {
   runTsubameApp,
   detectModeFromSearch,
   type DetectModeResult,
   type Host,
-} from '@tsubame/app';
+} from '@torimi/tsubame-app';
 import { DrawGalleryApp } from './App';
 
 function detectModeFromWindow(): DetectModeResult {
@@ -40,7 +40,7 @@ const host: Host =
         // `draws` チャネルで運ばれ GPU/CPU ラスタライザが描く。tiny-skia は WebGPU の
         // 無いヘッドレスでも Canvas モードに入れる（e2e の Hayate 経路が使う）。
         async createRenderer() {
-          const { createHayateWebHost } = await import('@hayate/host');
+          const { createHayateWebHost } = await import('@torimi/hayate-host');
           canvas.hidden = false;
           const webHost = await createHayateWebHost(canvas, { backend: detected.backend });
           hayateRenderer = new HayateRenderer({

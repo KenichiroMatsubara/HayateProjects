@@ -1,4 +1,4 @@
-import type { ElementId, HayateStyle } from '@tsubame/renderer-protocol';
+import type { ElementId, HayateStyle } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * ブラウザの暗黙的なスタッキングコンテキストを生み、Canvas/Hayate の Z-Order セマンティクスと

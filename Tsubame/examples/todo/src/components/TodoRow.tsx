@@ -1,4 +1,4 @@
-import type { HayateCssStyle } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 import { inputStyle, type Palette } from '../theme';
 import { type Todo } from '../todo-model';
 import { editKeyAction, PRIORITY_LABEL } from '../ui/labels';

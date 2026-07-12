@@ -17,14 +17,14 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@hayate/host": "workspace:*",
+    "@torimi/hayate-host": "workspace:*",
     "@torimi/bundle": "workspace:*",
     "@torimi/host-web": "workspace:*",
-    "@tsubame/app": "workspace:*",
-    "@tsubame/react": "workspace:*",
-    "@tsubame/renderer-dom": "workspace:*",
-    "@tsubame/renderer-hayate": "workspace:*",
-    "@tsubame/renderer-protocol": "workspace:*",
+    "@torimi/tsubame-app": "workspace:*",
+    "@torimi/tsubame-react": "workspace:*",
+    "@torimi/tsubame-renderer-dom": "workspace:*",
+    "@torimi/tsubame-renderer-hayate": "workspace:*",
+    "@torimi/tsubame-renderer-protocol": "workspace:*",
     "react": "^19.1.0",
     "react-reconciler": "^0.32.0"
   },
@@ -32,7 +32,7 @@
     "@playwright/test": "^1.61.0",
     "@types/react": "^19.1.0",
     "@types/react-reconciler": "^0.32.0",
-    "torimi": "workspace:*",
+    "@torimi/cli": "workspace:*",
     "vite": "^8.0.14",
     "vitest": "^3.2.0"
   }

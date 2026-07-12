@@ -19,15 +19,15 @@ renderer に platform への結合点を与える側。Tsubame は host を *掴
 _Avoid_: renderer が canvas / global / DOM を掴みに行く設計、`canvas: null` で host 知識を無効化して native を成立させる構造（知識が型に残るため原則破り）
 
 **Composition Root（合成ルート / `runTsubameApp`）**:
-target 選択・`Host` 配線・renderer 取得・mount を一つの interface の裏へ畳む App 階層の deep module。`@tsubame/app` に置き、`@tsubame/renderer-protocol` だけに依存する（`renderer-dom` / `renderer-hayate` も `@hayate/host` も import しない＝Hayate ランタイム盲目）。`runTsubameApp(host: Host, mount: TsubameMount): Dispose` を公開し、`Host.createRenderer(): IRenderer | Promise<IRenderer>`（＋optional `stop()`）で得た renderer を `mount` に渡すだけ。具体 renderer 名（`DomRenderer` / `HayateRenderer`）も platform も知らない — それらは `Host` 実装に局在する。web 専用の DOM/Canvas 判定は依存ゼロの純粋関数 `detectMode` が担い、orchestrator の外に置く。`mountCanvasApp` / `detect-mode` の example 開コードを昇格した先（ADR-0012）。
-_Avoid_: orchestrator が `renderer-dom` / `renderer-hayate` / `@hayate/host` を import する設計、FW ごとに別合成ルートを書く設計、Canvas/DOM 分岐を orchestrator に持たせる設計、`detectMode` を orchestrator 内に埋める設計
+target 選択・`Host` 配線・renderer 取得・mount を一つの interface の裏へ畳む App 階層の deep module。`@torimi/tsubame-app` に置き、`@torimi/tsubame-renderer-protocol` だけに依存する（`renderer-dom` / `renderer-hayate` も `@torimi/hayate-host` も import しない＝Hayate ランタイム盲目）。`runTsubameApp(host: Host, mount: TsubameMount): Dispose` を公開し、`Host.createRenderer(): IRenderer | Promise<IRenderer>`（＋optional `stop()`）で得た renderer を `mount` に渡すだけ。具体 renderer 名（`DomRenderer` / `HayateRenderer`）も platform も知らない — それらは `Host` 実装に局在する。web 専用の DOM/Canvas 判定は依存ゼロの純粋関数 `detectMode` が担い、orchestrator の外に置く。`mountCanvasApp` / `detect-mode` の example 開コードを昇格した先（ADR-0012）。
+_Avoid_: orchestrator が `renderer-dom` / `renderer-hayate` / `@torimi/hayate-host` を import する設計、FW ごとに別合成ルートを書く設計、Canvas/DOM 分岐を orchestrator に持たせる設計、`detectMode` を orchestrator 内に埋める設計
 
 **Tsubame Mount（`TsubameMount`）**:
 合成ルートにおける唯一の FW 固有 seam。`(renderer: IRenderer) => Dispose` 型で、各 `Tsubame Adapter`（solid / react / vue）が自分の reactivity でツリーを `IRenderer` に mount する 1 関数として供給する。solid は `() => JSX`、react は `ReactNode` という `renderTsubame` の呼び形の差を内側に閉じ込め、合成ルートには一様な形で現れる。FW を増やすコストはこの 1 関数に縮む（platform 増殖は `Host`、renderer は Dom/Hayate の二つで固定・ADR-0012）。
 _Avoid_: mount の呼び形差を orchestrator に漏らす設計、FW ごとに host 配線・mode 検出を再実装する設計、`renderTsubame` の thunk/element 差を不当な非対称とみなし統一しようとする設計
 
 **Host bootstrap**:
-surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。具体的には Hayate 側 JS パッケージ `@hayate/host`（`createHayateWebHost(canvas) → {raw, requestFrame, cancelFrame}` と `./native` の `createHayateNativeHost(raw)`）が web/native の host を供給する（#477）。App は host から `RawHayate`（+ clock）を受け、`new HayateRenderer({ raw, requestFrame, cancelFrame })` して mount する（合成ルート helper は `examples/todo` の `mountCanvasApp`、`@tsubame/app` の `runTsubameApp` へ昇格予定・ADR-0012）。browser/native はこの形で対称（docs/adr/0004）。
+surface 取得・Hayate ランタイム構築（WASM ロード / WebGPU プローブ / backend 選択 / native RawHayate 注入）・clock 源の確立を行う配線。**Tsubame の renderer パッケージには属さない** — Hayate ランタイム側（web adapter / native）または App（合成ルート）が持つ。具体的には Hayate 側 JS パッケージ `@torimi/hayate-host`（`createHayateWebHost(canvas) → {raw, requestFrame, cancelFrame}` と `./native` の `createHayateNativeHost(raw)`）が web/native の host を供給する（#477）。App は host から `RawHayate`（+ clock）を受け、`new HayateRenderer({ raw, requestFrame, cancelFrame })` して mount する（合成ルート helper は `examples/todo` の `mountCanvasApp`、`@torimi/tsubame-app` の `runTsubameApp` へ昇格予定・ADR-0012）。browser/native はこの形で対称（docs/adr/0004）。
 _Avoid_: `@tsubame/renderer-canvas` 内に `init.ts` / `init-android.ts` 等の host bootstrap を置く設計、Tsubame が `hayate-adapter-web` に依存する設計、WASM 巻き込み回避のための `/android` サブパス分離
 
 **Hayate Renderer**:
@@ -41,7 +41,7 @@ _Avoid_: SSR, hydration, Hayate HTML Mode（Hayate 不使用のため）, DomSty
 ## Integration Terms
 
 **Hayate Protocol Contract**:
-Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@hayate/protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API は Renderer Protocol 独自 surface として Contract 外（codegen 対象外）。`resize` も spec codegen 対象外である点は同じだが、**もはや Renderer Protocol surface ではない** — host→adapter→core が所有し Tsubame は resize 経路から外れる（web は `hayate-adapter-web` の自己配線 ResizeObserver、android は native ループが `tree.set_viewport` を直接駆動。ADR-0080 を native へ延長, issue #475）。`HayateRenderer.resize()` と `RawHayate.on_resize` は撤去済み。Tsubame が将来 viewport を要する場合のみ spec Contract の API として供給する（当面は入れない）。
+Hayate リポジトリ `proto/spec/` の JSON 契約定義群（JSON Schema で検証）。Tsubame は npm パッケージ `@torimi/hayate-protocol-spec` 経由で取り込み、`Tsubame/proto/generator/` から wire 定数と adapter vocabulary（`StylePatch`・`EventKind`・semantic mutation surface 等）を `Tsubame/proto/generated/` に生成し commit する。`setProperty`・`addEventListener` 購読 API は Renderer Protocol 独自 surface として Contract 外（codegen 対象外）。`resize` も spec codegen 対象外である点は同じだが、**もはや Renderer Protocol surface ではない** — host→adapter→core が所有し Tsubame は resize 経路から外れる（web は `hayate-adapter-web` の自己配線 ResizeObserver、android は native ループが `tree.set_viewport` を直接駆動。ADR-0080 を native へ延長, issue #475）。`HayateRenderer.resize()` と `RawHayate.on_resize` は撤去済み。Tsubame が将来 viewport を要する場合のみ spec Contract の API として供給する（当面は入れない）。
 _Avoid_: wire only 生成、adapter 向け型の手書き維持、Contract から Renderer 実装まで生成する設計、`resize` を Renderer Protocol surface と呼ぶ説明、Tsubame が `raw.on_resize` を直接叩く設計
 
 **apply_mutations**:
@@ -66,7 +66,7 @@ _Avoid_: 仮想 TextNode、親への `setText` 集約、Hayate 未登録の負 I
 ## Related Products
 
 **Hayate**:
-Tsubame が Hayate Renderer 経由で利用する描画基盤。Tsubame は Hayate の内部実装にも**ランタイム/WASM adapter パッケージ（`hayate-adapter-web` 等）にも依存せず**、`@hayate/protocol-spec`（`proto/spec/*.json`）と自前定義の `RawHayate` ポート、`apply_mutations` / `poll_events` 契約だけを見る。具体 adapter は App が注入する（docs/adr/0004）。
+Tsubame が Hayate Renderer 経由で利用する描画基盤。Tsubame は Hayate の内部実装にも**ランタイム/WASM adapter パッケージ（`hayate-adapter-web` 等）にも依存せず**、`@torimi/hayate-protocol-spec`（`proto/spec/*.json`）と自前定義の `RawHayate` ポート、`apply_mutations` / `poll_events` 契約だけを見る。具体 adapter は App が注入する（docs/adr/0004）。
 
 **Hayabusa**:
 Rust 側の長期構想。Tsubame は Hayabusa の JS 版ではない。
@@ -77,4 +77,4 @@ Rust 側の長期構想。Tsubame は Hayabusa の JS 版ではない。
 > → 「違う。framework 固有ランタイムをそのまま使い、描画先を差し替える基盤」
 
 > 「Hayate との結合点は？」
-> → 「`@hayate/protocol-spec` と `apply_mutations` / `poll_events`」
+> → 「`@torimi/hayate-protocol-spec` と `apply_mutations` / `poll_events`」

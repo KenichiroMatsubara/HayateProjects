@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { ElementKind } from '@tsubame/renderer-protocol';
-import { elementKindDefaultCursor } from '@tsubame/renderer-protocol';
+import type { ElementKind } from '@torimi/tsubame-renderer-protocol';
+import { elementKindDefaultCursor } from '@torimi/tsubame-renderer-protocol';
 import { createDomElement } from './dom-elements.js';
 import { applyStylePatch } from './style-mapping.js';
 

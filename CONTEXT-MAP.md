@@ -12,7 +12,7 @@ This monorepo has multiple domain contexts. Read the `CONTEXT.md` relevant to th
 ## Context relationships (dependency boundary)
 
 - **Hayate → Tsubame: 依存なし（永久）.** Hayate は Tsubame を知らない（ADR-0001 維持）。
-- **Tsubame → Hayate: Contract 経由のみ.** Tsubame は `@hayate/protocol-spec`（Protocol Contract）と、自前定義の `RawHayate` ポート型だけを通じて Hayate に触れる。Hayate の**ランタイム/WASM adapter パッケージ（`hayate-adapter-web` 等）には依存しない**。具体 adapter は **App（合成ルート）が注入**する。
+- **Tsubame → Hayate: Contract 経由のみ.** Tsubame は `@torimi/hayate-protocol-spec`（Protocol Contract）と、自前定義の `RawHayate` ポート型だけを通じて Hayate に触れる。Hayate の**ランタイム/WASM adapter パッケージ（`hayate-adapter-web` 等）には依存しない**。具体 adapter は **App（合成ルート）が注入**する。
 - **App → Tsubame + Hayate ランタイム.** host bootstrap（surface 取得・WASM ロード・backend 選択・clock 源・native glue）は **Hayate ランタイム側または App** が持ち、**Tsubame の renderer パッケージには置かない**（docs/adr/0004）。
 - **Torimi → Hayate ランタイム ＋ Tsubame.** Torimi は App（合成ルート）の一種で、Hayate のネイティブ runtime（ADR-0112 の Hermes 埋め込み＋`RawHayate` ブリッジ）に依存し、Tsubame Adapter ＋ `@tsubame/renderer-canvas` を内包した App Bundle をネットワーク経由で流し込んで実行する。ホストはフレームワークも renderer-canvas も持たない（バンドル側が持ち込む）。
 

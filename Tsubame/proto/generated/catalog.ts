@@ -1,7 +1,7 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec
+// 生成元: @torimi/hayate-protocol-spec
 
-import type { HayateDimension, HayateShadow } from '@tsubame/renderer-protocol';
+import type { HayateDimension, HayateShadow } from '@torimi/tsubame-renderer-protocol';
 
 export type WireKind = 'color' | 'dimension' | 'dimensionList' | 'shadowList' | 'display' | 'flexDirection' | 'flexWrap' | 'alignItems' | 'alignSelf' | 'alignContent' | 'justifyContent' | 'fontStyle' | 'textDecoration' | 'borderStyle' | 'cursor' | 'overflow' | 'textOverflow' | 'position' | 'transitionTiming' | 'boxSizing' | 'gridAutoFlow' | 'justifyItems' | 'justifySelf' | 'gridPlacement' | 'f32' | 'u32' | 'zIndex' | 'fontFamily';
 export type DomFormat = 'dimension' | 'dimension-list' | 'shadow-list' | 'px' | 'ms' | 'number' | 'integer' | 'color' | 'enum' | 'string' | 'grid-placement';

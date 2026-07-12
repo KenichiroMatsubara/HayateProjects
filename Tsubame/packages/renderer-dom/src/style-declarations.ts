@@ -1,6 +1,6 @@
-import type { ElementKind, StylePatch } from '@tsubame/renderer-protocol';
-import { CATALOG_BY_KEY, formatDomCSSValue } from '@tsubame/hayate-css-catalog';
-import type { CatalogEntry } from '@tsubame/hayate-css-catalog';
+import type { ElementKind, StylePatch } from '@torimi/tsubame-renderer-protocol';
+import { CATALOG_BY_KEY, formatDomCSSValue } from '@torimi/tsubame-hayate-css-catalog';
+import type { CatalogEntry } from '@torimi/tsubame-hayate-css-catalog';
 
 export interface StylePatchDeclaration {
   /** CSSOM `style` オブジェクト用の camelCase キー */

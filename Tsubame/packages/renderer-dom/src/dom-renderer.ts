@@ -10,7 +10,7 @@ import type {
   StylePatch,
   Unsubscribe,
   ViewportCondition,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import {
   asElementId,
   assertKnownElementProperty,
@@ -21,7 +21,7 @@ import {
   PSEUDO_STATE_PRIORITY,
   PSEUDO_STYLE_KEYS,
   type PseudoStyleKey,
-} from '@tsubame/renderer-protocol';
+} from '@torimi/tsubame-renderer-protocol';
 import { Canvas2DReplay, type Draw2DContext } from './draw-canvas-2d.js';
 import { drawSurfaceGeometry, type DrawSurfaceOverflow } from './draw-surface.js';
 import { createDomElement } from './dom-elements.js';

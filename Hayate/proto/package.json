@@ -1,12 +1,22 @@
 {
-  "name": "@hayate/protocol-spec",
+  "name": "@torimi/hayate-protocol-spec",
   "version": "0.1.0",
   "description": "Hayate-Tsubame Protocol Contract — JSON spec (ADR-0053)",
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/KenichiroMatsubara/HayateProjects" },
-  "publishConfig": { "access": "public" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenichiroMatsubara/HayateProjects"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
-  "files": ["spec", "scripts/load-spec.mjs", "scripts/validate-spec.mjs", "generated"],
+  "files": [
+    "spec",
+    "scripts/load-spec.mjs",
+    "scripts/validate-spec.mjs",
+    "generated"
+  ],
   "exports": {
     "./manifest": "./spec/manifest.json",
     "./types": "./spec/types.json",

@@ -1,4 +1,4 @@
-import type { HayateCssStyle, ViewportCondition } from '@tsubame/renderer-protocol';
+import type { HayateCssStyle, ViewportCondition } from '@torimi/tsubame-renderer-protocol';
 import { DEFAULT_ACCENT, DEFAULT_THEME, inputStyle, palette, type Palette } from '../theme';
 
 // ─────────────────────────────────────────────────────────────────────────────

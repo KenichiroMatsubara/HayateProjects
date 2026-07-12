@@ -10,7 +10,7 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 ### TSUB-01 — レンダラーターゲット基盤（signal ランタイムではない）
 **規範文:** Tsubame は Hayate と独立した pure JS モノレポであり、`Renderer Protocol`（`IRenderer`）・DOM Renderer・Canvas Renderer の3層のみを責務とする。signal・component model・scheduler は各フレームワークが持ち込む。
 **出典:** Tsubame ADR-0002, Hayate ADR-0040（ADR-0038 を supersede）
-**状況:** ✅ — `Tsubame/packages/`：renderer-protocol / renderer-dom / renderer-canvas / solid / react。`tsubame-spec.md` が責務を明示。host bootstrap（WASM ロード・backend 選択・surface 取得）は ADR-0004 で Tsubame から退去し Hayate 側（`@hayate/host`）と App entry が所有する。
+**状況:** ✅ — `Tsubame/packages/`：renderer-protocol / renderer-dom / renderer-canvas / solid / react。`tsubame-spec.md` が責務を明示。host bootstrap（WASM ロード・backend 選択・surface 取得）は ADR-0004 で Tsubame から退去し Hayate 側（`@torimi/hayate-host`）と App entry が所有する。
 **備考:** [履歴 C-11.2] Hayate ADR-0038「Tsubame を signal 統一ランタイムに」は ADR-0040 が supersede（記法差で adapter 間共有不可、Vue/React ecosystem が全滅するため）。
 
 ### TSUB-02 — Renderer Protocol（IRenderer）／property は閉じた語彙
@@ -29,7 +29,7 @@ Hayate との結合点（apply_mutations / poll_events）の wire は §10。
 **規範文:** Canvas Renderer は JS 内でフレーム分の mutations を `HayateMutationPacket` に積み、frame-clock の tick ごとに `apply_mutations(ops, styles, texts)` を1回呼ぶ。これで JS→WASM 境界を O(1)/frame にする。Canvas Renderer は **host 盲目**のコアであり、構築入力は `{ raw, requestFrame, cancelFrame }` のみ（surface/canvas・resize・IME・pointer・DPR・`ResizeObserver`・RAF 既定は持たない）。frame-clock は host が確立し注入する。構築は副作用なしで、ループは明示 `start()`/`stop()` でのみ駆動する（native は vsync 準備後に開始）。
 **出典:** Tsubame ADR-0002, ADR-0003（→§10）, ADR-0004（host-blind コア・clock 注入）
 **状況:** ✅ — `renderer-canvas/src/canvas-renderer.ts`（`CanvasRenderer({ raw, requestFrame, cancelFrame })`・`start()`/`stop()`・`frame()` で flush→`render`→`poll_events`）+ `hayate-mutation-packet.ts`（enqueue→flush）。`HTMLCanvasElement` 型・`canvas` 参照・`ResizeObserver` はコアに不在（#476/#477、ADR-0004）。
-**備考:** wire 詳細・検証は §10（PROTO-04〜11）。host bootstrap（surface 取得・WASM ロード・backend 選択・clock 源）は App entry ＋ Hayate `@hayate/host` が所有（ADR-0004・WEBA-01）。
+**備考:** wire 詳細・検証は §10（PROTO-04〜11）。host bootstrap（surface 取得・WASM ロード・backend 選択・clock 源）は App entry ＋ Hayate `@torimi/hayate-host` が所有（ADR-0004・WEBA-01）。
 
 ### TSUB-05 — adapter は既存ランタイムを持ち込む
 **規範文:** 各 Tsubame Adapter は自身のフレームワークの既存ランタイム（SolidJS signals / Vue reactivity / React Fiber）をそのまま維持し、レンダリング先のみ Renderer Protocol に向け替える。signal 統一はしない。

@@ -1,5 +1,5 @@
 import { TORIMI_PROTOCOL_VERSION_GLOBAL } from '@torimi/protocol-handshake';
-import { PROTOCOL_VERSION } from '@tsubame/renderer-hayate';
+import { PROTOCOL_VERSION } from '@torimi/tsubame-renderer-hayate';
 import { afterEach, describe, expect, it } from 'vitest';
 import { registerTorimiApp } from './register.js';
 

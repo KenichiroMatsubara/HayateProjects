@@ -24,9 +24,9 @@ tsubame-solid         tsubame-vue              tsubame-react
 
 | Phase | 内容 | パッケージ |
 |-------|------|------------|
-| T1 | `IRenderer` + 型定義 | `@tsubame/renderer-protocol` |
-| T2 | DOM Renderer | `@tsubame/renderer-dom` |
-| T3 | tsubame-solid | `@tsubame/solid` |
+| T1 | `IRenderer` + 型定義 | `@torimi/tsubame-renderer-protocol` |
+| T2 | DOM Renderer | `@torimi/tsubame-renderer-dom` |
+| T3 | tsubame-solid | `@torimi/tsubame-solid` |
 | T4 | Canvas Renderer（`apply_mutations` バッチ） | `@tsubame/renderer-canvas` |
 | T5 | バインディング検証（node:test） | `packages/renderer-canvas/test/` |
 | T6 | DOM / Canvas ワンボタン切替デモ（Todo） | `examples/todo` |

@@ -5,7 +5,7 @@ import {
   loadProtocolSpec,
   tagToPatchKey,
   toCamelCase,
-} from '@hayate/protocol-spec/load';
+} from '@torimi/hayate-protocol-spec/load';
 import { CANVAS_METHODS, SPECIAL_COMMANDS } from './gen-recorder.mjs';
 
 const outDir = join(
@@ -23,11 +23,11 @@ export function generateDrawCanvas() {
 
   const lines = [];
   lines.push('// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと');
-  lines.push('// 生成元: @hayate/protocol-spec（draw_ops / draw_paint_fields）');
+  lines.push('// 生成元: @torimi/hayate-protocol-spec（draw_ops / draw_paint_fields）');
   lines.push('//');
   lines.push('// painter（`draw` property の値）が受け取る記録面の構造的インターフェース');
   lines.push('//（#730 / ADR-0141）。実体は Hayate Renderer では wire 記録の recorder Canvas');
-  lines.push('//（@tsubame/protocol-generated/recorder）、DOM Renderer では canvas 2D への');
+  lines.push('//（@torimi/tsubame-protocol-generated/recorder）、DOM Renderer では canvas 2D への');
   lines.push('// replay（Tsubame ADR-0014）。recorder と同じ op 表から生成するため、spec に');
   lines.push('// op が増えても手書き修正なしで painter の型が追随する（Script Adapter 規律）。');
   lines.push('// `finish()` はフレームワーク側の口なので意図的に含めない（painter はバッファに');

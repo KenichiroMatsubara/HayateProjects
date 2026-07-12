@@ -1,12 +1,12 @@
-import { DomRenderer } from '@tsubame/renderer-dom';
-import { HayateRenderer } from '@tsubame/renderer-hayate';
-import { renderTsubame } from '@tsubame/solid';
+import { DomRenderer } from '@torimi/tsubame-renderer-dom';
+import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
+import { renderTsubame } from '@torimi/tsubame-solid';
 import {
   runTsubameApp,
   detectModeFromSearch,
   type DetectModeResult,
   type Host,
-} from '@tsubame/app';
+} from '@torimi/tsubame-app';
 import { TodoApp } from './App';
 
 function detectModeFromWindow(): DetectModeResult {
@@ -36,11 +36,11 @@ const host: Host =
         },
       }
     : {
-        // Hayate 経路：host bootstrap は Hayate 側（`@hayate/host`）が持つ。host が WebGPU を
+        // Hayate 経路：host bootstrap は Hayate 側（`@torimi/hayate-host`）が持つ。host が WebGPU を
         // プローブし backend を選び WASM をロードして surface 上に raw を確立し、frame-clock も
         // 供給する。App は host から raw(+clock) を得て host-blind HayateRenderer に結線するだけ。
         async createRenderer() {
-          const { createHayateWebHost } = await import('@hayate/host');
+          const { createHayateWebHost } = await import('@torimi/hayate-host');
           canvas.hidden = false;
           // Dev-only: 配信ルートの手書き `tuning.jsonc` を拾い、F5 だけで感触定数を較正できる
           // （WASM 再ビルド不要）。404 / parse 失敗はコンパイル既定のまま。
@@ -48,7 +48,7 @@ const host: Host =
             .then((r) => (r.ok ? r.text() : undefined))
             .catch(() => undefined);
           // ADR-0137 により Web は既定 ON。index.html の「最適化」行が
-          // `?layerPresent=0` を書くと明示的にフルraster版へ戻せる。`@tsubame/app` の
+          // `?layerPresent=0` を書くと明示的にフルraster版へ戻せる。`@torimi/tsubame-app` の
           // detectMode は host-blind のまま保つため（ADR-0012）、この web/Hayate 固有
           // フラグはここで直接読む。
           const query = new URLSearchParams(window.location.search);

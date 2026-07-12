@@ -1,12 +1,12 @@
-import { renderTsubame } from '@tsubame/react';
-import { DomRenderer } from '@tsubame/renderer-dom';
-import { HayateRenderer } from '@tsubame/renderer-hayate';
+import { renderTsubame } from '@torimi/tsubame-react';
+import { DomRenderer } from '@torimi/tsubame-renderer-dom';
+import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
 import {
   runTsubameApp,
   detectModeFromSearch,
   type DetectModeResult,
   type Host,
-} from '@tsubame/app';
+} from '@torimi/tsubame-app';
 import { App } from './App';
 
 // react も solid と同じ合成ルートに乗る。target（DOM / Hayate）の選択は Host に局在し、
@@ -38,7 +38,7 @@ const host: Host =
       }
     : {
         async createRenderer() {
-          const { createHayateWebHost } = await import('@hayate/host');
+          const { createHayateWebHost } = await import('@torimi/hayate-host');
           canvas.hidden = false;
           const tuning = await fetch(new URL('tuning.jsonc', document.baseURI).href)
             .then((r) => (r.ok ? r.text() : undefined))

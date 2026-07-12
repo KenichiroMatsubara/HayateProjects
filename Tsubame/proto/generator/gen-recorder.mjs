@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { loadProtocolSpec, toCamelCase } from '@hayate/protocol-spec/load';
+import { loadProtocolSpec, toCamelCase } from '@torimi/hayate-protocol-spec/load';
 
 const outDir = join(dirname(fileURLToPath(import.meta.url)), '../generated');
 const outPath = join(outDir, 'recorder.ts');
@@ -57,7 +57,7 @@ export function generateRecorder() {
 
   const lines = [];
   lines.push('// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと');
-  lines.push('// 生成元: @hayate/protocol-spec（draw_ops / draw_paint_fields）。');
+  lines.push('// 生成元: @torimi/hayate-protocol-spec（draw_ops / draw_paint_fields）。');
   lines.push('// アプリ作者が painter 内で使う Flutter 流ステートレス記録 API（#729 / ADR-0143）。');
   lines.push('// Path / Paint は第一級オブジェクト、canvas.drawPath(path, paint) で呼び出しごとに');
   lines.push('// paint を明示する。中身は spec の op 表から表駆動で生成した薄い encoder で、');
@@ -65,7 +65,7 @@ export function generateRecorder() {
   lines.push('');
   lines.push('/* eslint-disable */');
   lines.push(`import {\n  ${[...imports].sort().join(',\n  ')},\n  type DrawPaint,\n} from './codec.js';`);
-  lines.push("import type { DrawCanvas } from '@tsubame/renderer-protocol';");
+  lines.push("import type { DrawCanvas } from '@torimi/tsubame-renderer-protocol';");
   lines.push('');
   lines.push('/** Flutter PaintingStyle（fill = 塗り、stroke = 輪郭）。 */');
   lines.push('export enum PaintingStyle {\n  fill = 0,\n  stroke = 1,\n}');

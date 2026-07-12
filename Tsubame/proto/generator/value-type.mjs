@@ -1,6 +1,6 @@
 /** Closed vocabulary for style-tag wire/codec/DOM codegen (generator-internal). */
 
-import { toCamelCase } from '@hayate/protocol-spec/load';
+import { toCamelCase } from '@torimi/hayate-protocol-spec/load';
 
 /**
  * @typedef {{ type: 'color' }} ColorValueType
@@ -48,7 +48,7 @@ function enumKindFromEncodeFrom(encodeFrom) {
 
 /**
  * Derive value type from spec fields only (`encodeFrom` + param type + `variable_length`).
- * @param {import('@hayate/protocol-spec/load').StyleTag} tag
+ * @param {import('@torimi/hayate-protocol-spec/load').StyleTag} tag
  * @returns {import('./value-type.mjs').ValueType}
  */
 export function classify(tag) {
@@ -230,7 +230,7 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       ];
     case 'dimension':
       return [
-        `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {`,
+        `function ${fnName}(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {`,
         `  const d = parseDimension(value);`,
         `  out.push(TAG.${tagName}, d.value, UNIT_CODE[d.unit]!);`,
         '}',
@@ -263,7 +263,7 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       ];
     case 'dimensionList':
       return [
-        `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {`,
+        `function ${fnName}(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension[]): void {`,
         `  if (!Array.isArray(value)) {`,
         `    throw new Error(\`HayateRenderer: "${patchKey}" must be an array of dimensions\`);`,
         `  }`,
@@ -276,7 +276,7 @@ export function styleEncoderLines(valueType, tagName, patchKey) {
       ];
     case 'shadowList':
       return [
-        `function ${fnName}(out: number[], value: import('@tsubame/renderer-protocol').HayateShadow[]): void {`,
+        `function ${fnName}(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateShadow[]): void {`,
         `  if (!Array.isArray(value)) {`,
         `    throw new Error(\`HayateRenderer: "${patchKey}" must be an array of shadows\`);`,
         `  }`,

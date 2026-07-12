@@ -5,7 +5,7 @@ import {
   type ReloadSubscription,
   type SubscribeReloadOptions,
 } from './index.js';
-import type { WebHost } from '@hayate/host';
+import type { WebHost } from '@torimi/hayate-host';
 
 /**
  * full reload ループの合成ルート（ホスト側）の配線契約テスト。初回 boot と、reload 受信ごとの

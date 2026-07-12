@@ -1,5 +1,5 @@
 // solid-js/universal のコンパイル済み JSX が import する関数群。
-// vite-plugin-solid を `generate: 'universal'` / `moduleName: '@tsubame/solid'`
+// vite-plugin-solid を `generate: 'universal'` / `moduleName: '@torimi/tsubame-solid'`
 // で構成すると、これらが呼び出される。
 export {
   render,

@@ -1,7 +1,7 @@
 // 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと
-// 生成元: @hayate/protocol-spec
+// 生成元: @torimi/hayate-protocol-spec
 
-import type { StylePatch } from '@tsubame/renderer-protocol';
+import type { StylePatch } from '@torimi/tsubame-renderer-protocol';
 import { OP, DRAW_OP, DRAW_PAINT_FIELD, TAG, UNSET_KIND, UNIT_CODE, DISPLAY, FLEX_DIRECTION, FLEX_WRAP, ALIGN_ITEMS, ALIGN_SELF, ALIGN_CONTENT, JUSTIFY_CONTENT, FONT_STYLE, TEXT_DECORATION, BORDER_STYLE, CURSOR, OVERFLOW, TEXT_OVERFLOW, POSITION, TRANSITION_TIMING, BOX_SIZING, GRID_AUTO_FLOW, JUSTIFY_ITEMS, JUSTIFY_SELF } from './protocol.js';
 
 export { TAG, UNSET_KIND } from './protocol.js';
@@ -36,7 +36,7 @@ export function finiteInteger(key: string, value: unknown): number {
   return numeric;
 }
 
-export function parseDimension(value: import('@tsubame/renderer-protocol').HayateDimension): HayateDimensionRecord {
+export function parseDimension(value: import('@torimi/tsubame-renderer-protocol').HayateDimension): HayateDimensionRecord {
   if (typeof value === 'number') {
     return { value, unit: 'px' };
   }
@@ -289,32 +289,32 @@ function encode_borderColor(out: number[], value: string): void {
   out.push(TAG.BORDER_COLOR, c.r, c.g, c.b, c.a);
 }
 
-function encode_width(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_width(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.WIDTH, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_height(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_height(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.HEIGHT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_minWidth(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_minWidth(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MIN_WIDTH, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_minHeight(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_minHeight(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MIN_HEIGHT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_maxWidth(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_maxWidth(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MAX_WIDTH, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_maxHeight(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_maxHeight(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MAX_HEIGHT, d.value, UNIT_CODE[d.unit]!);
 }
@@ -343,57 +343,57 @@ function encode_justifyContent(out: number[], value: string): void {
   out.push(TAG.JUSTIFY_CONTENT, code);
 }
 
-function encode_gap(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_gap(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.GAP, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_padding(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_padding(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.PADDING, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_paddingTop(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_paddingTop(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.PADDING_TOP, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_paddingRight(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_paddingRight(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.PADDING_RIGHT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_paddingBottom(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_paddingBottom(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.PADDING_BOTTOM, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_paddingLeft(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_paddingLeft(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.PADDING_LEFT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_margin(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_margin(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MARGIN, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_marginTop(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_marginTop(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MARGIN_TOP, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_marginRight(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_marginRight(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MARGIN_RIGHT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_marginBottom(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_marginBottom(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MARGIN_BOTTOM, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_marginLeft(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_marginLeft(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.MARGIN_LEFT, d.value, UNIT_CODE[d.unit]!);
 }
@@ -456,7 +456,7 @@ function encode_defaultFontWeight(out: number[], value: unknown): void {
   out.push(TAG.DEFAULT_FONT_WEIGHT, finiteNumber('defaultFontWeight', value));
 }
 
-function encode_gridTemplateColumns(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+function encode_gridTemplateColumns(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
     throw new Error(`HayateRenderer: "gridTemplateColumns" must be an array of dimensions`);
   }
@@ -467,7 +467,7 @@ function encode_gridTemplateColumns(out: number[], value: import('@tsubame/rende
   }
 }
 
-function encode_gridTemplateRows(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+function encode_gridTemplateRows(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
     throw new Error(`HayateRenderer: "gridTemplateRows" must be an array of dimensions`);
   }
@@ -482,7 +482,7 @@ function encode_flexShrink(out: number[], value: unknown): void {
   out.push(TAG.FLEX_SHRINK, finiteNumber('flexShrink', value));
 }
 
-function encode_flexBasis(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_flexBasis(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.FLEX_BASIS, d.value, UNIT_CODE[d.unit]!);
 }
@@ -523,22 +523,22 @@ function encode_position(out: number[], value: string): void {
   out.push(TAG.POSITION, code);
 }
 
-function encode_top(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_top(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.TOP, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_left(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_left(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.LEFT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_right(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_right(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.RIGHT, d.value, UNIT_CODE[d.unit]!);
 }
 
-function encode_bottom(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension): void {
+function encode_bottom(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension): void {
   const d = parseDimension(value);
   out.push(TAG.BOTTOM, d.value, UNIT_CODE[d.unit]!);
 }
@@ -569,7 +569,7 @@ function encode_transitionTiming(out: number[], value: string): void {
   out.push(TAG.TRANSITION_TIMING, code);
 }
 
-function encode_boxShadow(out: number[], value: import('@tsubame/renderer-protocol').HayateShadow[]): void {
+function encode_boxShadow(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateShadow[]): void {
   if (!Array.isArray(value)) {
     throw new Error(`HayateRenderer: "boxShadow" must be an array of shadows`);
   }
@@ -597,7 +597,7 @@ function encode_boxSizing(out: number[], value: string): void {
   out.push(TAG.BOX_SIZING, code);
 }
 
-function encode_gridAutoRows(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+function encode_gridAutoRows(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
     throw new Error(`HayateRenderer: "gridAutoRows" must be an array of dimensions`);
   }
@@ -608,7 +608,7 @@ function encode_gridAutoRows(out: number[], value: import('@tsubame/renderer-pro
   }
 }
 
-function encode_gridAutoColumns(out: number[], value: import('@tsubame/renderer-protocol').HayateDimension[]): void {
+function encode_gridAutoColumns(out: number[], value: import('@torimi/tsubame-renderer-protocol').HayateDimension[]): void {
   if (!Array.isArray(value)) {
     throw new Error(`HayateRenderer: "gridAutoColumns" must be an array of dimensions`);
   }

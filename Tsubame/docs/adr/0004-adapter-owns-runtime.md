@@ -1,6 +1,6 @@
 # Tsubame をレンダラーターゲット基盤とし、各 Adapter が既存ランタイムを持ち込む
 
-> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@torimi/tsubame-renderer-hayate` に改名された。本文は決定当時の記録として原文のまま。
 
 _origin: Hayate ADR-0040（ADR-0038 を supersede）_
 

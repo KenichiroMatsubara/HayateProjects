@@ -2,8 +2,8 @@
 // グローバル shim）が FW / アプリのモジュール評価より先に効くのはこの順序があるため。
 import { registerTorimiApp } from '@torimi/bundle';
 
-import type { DetectModeResult } from '@tsubame/app';
-import { renderTsubame } from '@tsubame/solid';
+import type { DetectModeResult } from '@torimi/tsubame-app';
+import { renderTsubame } from '@torimi/tsubame-solid';
 import { TodoApp } from './App';
 
 /**

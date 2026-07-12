@@ -1,5 +1,5 @@
-import type { IRenderer } from '@tsubame/renderer-protocol';
-import { withTextLocalGate } from '@tsubame/renderer-protocol';
+import type { IRenderer } from '@torimi/tsubame-renderer-protocol';
+import { withTextLocalGate } from '@torimi/tsubame-renderer-protocol';
 import { render } from './renderer.js';
 import { setActiveRenderer } from './active-renderer.js';
 import { createElementNode, type TsubameNode } from './node.js';

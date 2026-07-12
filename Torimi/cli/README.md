@@ -10,7 +10,7 @@ target-specific lowering, and serves the bundle with live reload and a QR code.
 
 ## What Torimi is
 
-You write a UI once (Solid or React, via [Tsubame](https://www.npmjs.com/package/@tsubame/solid)).
+You write a UI once (Solid or React, via [Tsubame](https://www.npmjs.com/package/@torimi/tsubame-solid)).
 `torimi` bundles it into a single **App Bundle** and serves it; a **Torimi host**
 app on your device fetches that bundle and renders it on Hayate's GPU canvas —
 exactly like Expo Go loads your project. The CLI itself is a bundler-agnostic

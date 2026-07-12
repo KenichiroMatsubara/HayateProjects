@@ -1,6 +1,6 @@
 {
   "crateDir": "crates/platform/web",
-  "npmPackageName": "@hayate/adapter-web",
+  "npmPackageName": "@torimi/hayate-adapter-web",
   "targets": [
     {
       "name": "pkg",
@@ -9,7 +9,7 @@
       "cargoFeatures": { "mode": "inherit", "names": [] },
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
-      "npmName": "@hayate/adapter-web",
+      "npmName": "@torimi/hayate-adapter-web",
       "host": { "backend": "vello", "runtimeLayerPresentArg": "layerPresent" }
     },
     {
@@ -19,7 +19,7 @@
       "cargoFeatures": { "mode": "exclusive", "names": ["backend-tiny-skia"] },
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
-      "npmName": "@hayate/adapter-web-cpu",
+      "npmName": "@torimi/hayate-adapter-web-cpu",
       "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
@@ -29,7 +29,7 @@
       "cargoFeatures": { "mode": "exclusive", "names": ["backend-vello-cpu"] },
       "description": "Hayate — GPU-native UI substrate",
       "includeInDefaultBuild": true,
-      "npmName": "@hayate/adapter-web-vello-cpu",
+      "npmName": "@torimi/hayate-adapter-web-vello-cpu",
       "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {

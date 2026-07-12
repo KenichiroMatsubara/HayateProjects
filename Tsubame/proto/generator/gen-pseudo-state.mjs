@@ -1,7 +1,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { loadProtocolSpec } from '@hayate/protocol-spec/load';
+import { loadProtocolSpec } from '@torimi/hayate-protocol-spec/load';
 
 const outDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -23,7 +23,7 @@ export function generatePseudoState() {
 
   const lines = [
     '// 自動生成ファイル（Tsubame/proto/generator） — 手動で編集しないこと',
-    '// 生成元: @hayate/protocol-spec',
+    '// 生成元: @torimi/hayate-protocol-spec',
     '',
     "import type { StylePatch } from '../style.js';",
     '',

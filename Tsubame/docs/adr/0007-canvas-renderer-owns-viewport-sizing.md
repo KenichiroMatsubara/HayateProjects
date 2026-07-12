@@ -1,6 +1,6 @@
 # ビューポートのサイズ追従は CanvasRenderer の責務（ResizeObserver ＋ devicePixelRatio）
 
-> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@tsubame/renderer-hayate` に改名された（タイトル含む）。なお本 ADR の resize 責務は ADR-0080（host/adapter が viewport を所有）で既に supersede 済み。本文は決定当時の記録として原文のまま。
+> **用語更新（ADR-0011・2026-06-27）**: 本 ADR の "Canvas Renderer" / `CanvasRenderer` / `@tsubame/renderer-canvas` は **Hayate Renderer** / `HayateRenderer` / `@torimi/tsubame-renderer-hayate` に改名された（タイトル含む）。なお本 ADR の resize 責務は ADR-0080（host/adapter が viewport を所有）で既に supersede 済み。本文は決定当時の記録として原文のまま。
 
 **Status: accepted**
 

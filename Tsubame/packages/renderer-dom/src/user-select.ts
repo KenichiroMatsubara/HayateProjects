@@ -1,5 +1,5 @@
-import type { ElementKind, UserSelect } from '@tsubame/renderer-protocol';
-import { elementKindDefaultUserSelect } from '@tsubame/renderer-protocol';
+import type { ElementKind, UserSelect } from '@torimi/tsubame-renderer-protocol';
+import { elementKindDefaultUserSelect } from '@torimi/tsubame-renderer-protocol';
 
 /**
  * 要素の CSS `user-select` 値を解決する（ADR-0108）。DOM Mode はブラウザの
