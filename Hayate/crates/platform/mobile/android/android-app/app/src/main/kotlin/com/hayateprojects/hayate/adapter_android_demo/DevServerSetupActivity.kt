@@ -70,9 +70,19 @@ class DevServerSetupActivity : AppCompatActivity() {
         setContentView(layout)
 
         // 起動先を保存してネイティブ描画へ渡す共通処理（デモ選択／URL 入力／QR で共有）。
+        // MainActivity は android:exported="false"（このアクティビティだけが LAUNCHER）なので、
+        // `adb shell am start -n .../.DevServerSetupActivity -e hayate.renderer skia` 等の
+        // ランタイム切替 intent extra（#795 の hayate.backend/hayate.aa、issue #802 の
+        // hayate.renderer）は必ずここを経由して届く。転送しないと MainActivity 側の
+        // `intent.getStringExtra(...)` が常に空を見て「adb 経由の切替が効かない」ことになるため、
+        // 受け取った extras をそのまま転送する。
         fun persistAndLaunch(target: String) {
             urlFile.writeText(target.trim())
-            startActivity(Intent(this, MainActivity::class.java))
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    intent.extras?.let { putExtras(it) }
+                },
+            )
             finish()
         }
 

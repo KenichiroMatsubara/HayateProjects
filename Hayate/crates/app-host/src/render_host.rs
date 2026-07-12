@@ -127,6 +127,16 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
     ) -> Result<Self, Error> {
         let plan = selection_policy.choose(capabilities);
 
+        // 見送ったレンダラーと理由（RendererSelectionReason 語彙）を成功時にも観測可能に
+        // する（issue #801: 選択レンダラ・選択理由を stderr / console ログで確認できる）。
+        for rejection in plan.rejected() {
+            log::info!(
+                "scene renderer rejected: {} ({:?})",
+                rejection.renderer.name(),
+                rejection.reason
+            );
+        }
+
         let mut attempts: Vec<String> = plan
             .rejected()
             .iter()

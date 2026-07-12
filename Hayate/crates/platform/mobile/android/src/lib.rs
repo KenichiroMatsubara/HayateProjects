@@ -67,6 +67,19 @@ mod safe_area;
 // android 非依存の純粋部（enum・resolve・格納）はホストでコンパイル・テストされ、intent extra の
 // 取得（Kotlin→Rust JNI push）と wgpu instance への適用は device 専用の薄いグルー。
 mod render_config;
+// レンダラ（vello/skia）のランタイム選択（issue #802、spec §4 REND-15、ADR-0146/0147）。
+// intent extra（`hayate.renderer`）由来の強制指定解釈・グローバル格納。実際の選択ロジックは
+// `hayate_app_host::renderer_selection::native_renderer_selection_policy`（issue #801）を
+// 再利用する——本モジュールはその入力（forced override）を用意するだけ。android 非依存の
+// 純粋部はホストでコンパイル・テストされ、intent extra の取得（Kotlin→Rust JNI push）は
+// device 専用の薄いグルー。
+mod renderer_config;
+// skia raster フレームの CPU present 用ピクセル変換（issue #802・ADR-0146 §3）。desktop の
+// `skia_present.rs`（softbuffer 0RGB）と同型——ANativeWindow へは RGBX_8888 で直接書く。
+// hayate-scene-renderer-skia の raster surface 生成・読み戻しだけに依存し ndk には触れない
+// ので、android 非依存でホストでもコンパイル・テストされる（`skia_window.rs` が device 専用の
+// ANativeWindow 提示面を持つ）。
+mod skia_present;
 // 実機発音検証用のテストトーン生成器（ADR-0117 / #562）。NDK 非依存の純粋計算なので
 // ホストでもコンパイル・テストされ、AAudio glue（audio_output.rs）はこのバッファを書く
 // だけの薄いグルーに保つ。
@@ -90,6 +103,16 @@ mod js_host;
 mod app;
 #[cfg(target_os = "android")]
 mod ime_bridge;
+// skia raster の ANativeWindow 提示面（issue #802・ADR-0146 §3）。wgpu 非依存の CPU present —
+// vello の GpuSurface（GPU）と並立し、Renderer Selection Policy の一方向 fallback 先。
+#[cfg(target_os = "android")]
+mod skia_window;
+// skia GL（Ganesh/EGL）の ANativeWindow 提示面（issue #803・ADR-0146 §3）。EGL コンテキスト・
+// EGLSurface の管理をこのアダプタに封じ込め（REND-07）、painter（scene→Canvas 変換層）は
+// 不変のまま Canvas の出自だけを FBO0 wrap に替える。intent extra（`hayate.skia_surface`）で
+// raster と切替可能、EGL 初期化失敗時は skia raster へ一方向 fallback（boot は落とさない）。
+#[cfg(target_os = "android")]
+mod skia_gl_window;
 // Rust↔Kotlin JNI の共通下地（ADR-0125 の「封じ込め」方針の一般化）。`jni::`/`ndk_context::`
 // の直接使用はここ 1 ファイルに封じ込め、`qr_scanner` / `error_overlay` はこれだけを使う
 // （`tests/qr_scanner_encapsulation.rs` が強制）。

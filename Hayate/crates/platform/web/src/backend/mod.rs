@@ -96,6 +96,10 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
                     Err(not_compiled_error(kind))
                 }
             }
+            // skia はネイティブ専用（ADR-0146）。skia-safe は wasm32 非対応で、web の
+            // selection policy（PRODUCTION_RENDERERS）にも現れない — 防御的に typed
+            // エラーを返すのみ。
+            SceneRendererKind::Skia => Err(not_compiled_error(kind)),
             SceneRendererKind::TinySkia => {
                 #[cfg(feature = "backend-tiny-skia")]
                 {
@@ -167,6 +171,8 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
                 "renderer cannot be initialized synchronously for runtime fallback: {}",
                 kind.name()
             )),
+            // skia はネイティブ専用（ADR-0146）— wasm32 に存在しない。防御的な typed エラー。
+            SceneRendererKind::Skia => Err(not_compiled_error(kind)),
             SceneRendererKind::TinySkia => {
                 #[cfg(feature = "backend-tiny-skia")]
                 {

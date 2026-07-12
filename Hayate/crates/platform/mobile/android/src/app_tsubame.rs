@@ -31,10 +31,7 @@ use std::time::{Duration, Instant};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementId, ElementTree};
 
-use crate::app::{
-    frame_handoff, init_gpu_surface, process_touch_input, spawn_raster_thread, sync_ime,
-    RasterHandle,
-};
+use crate::app::{frame_handoff, process_touch_input, sync_ime, RasterHandle};
 use crate::touch_scroll::TouchScrollState;
 use hayate_layer_compositor::RasterCommand;
 use crate::bundle_source;
@@ -343,13 +340,11 @@ pub(crate) fn run(app: AndroidApp) {
                                     // 永久に残る）。
                                     let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                                 }
-                                match pollster::block_on(init_gpu_surface(&window, scale)) {
-                                    // 生成した surface を Raster スレッドへ move（#635）。
-                                    Ok(surface) => raster = Some(spawn_raster_thread(surface)),
-                                    Err(err) => log::error!(
-                                        "hayate-adapter-android: GPU init failed: {err}"
-                                    ),
-                                }
+                                // Renderer Selection Policy（vello → skia の一方向 fallback、
+                                // issue #801/#802）越しに初期化し、対応する Raster スレッドを
+                                // 起動する（#635 の move-after-creation はどちらの経路でも内部
+                                // で行う）。
+                                raster = crate::app::init_and_spawn_raster(&window, scale);
                             }
                         }
                         // surface 破棄：Raster スレッドを drop → 送信済みを処理して join（安全停止）。

@@ -17,6 +17,10 @@
 pub enum SceneRendererKind {
     Vello,
     TinySkia,
+    /// skia-safe によるネイティブ専用（desktop + Android）Scene Renderer（ADR-0146/0147）。
+    /// ネイティブの standard alternative — 既定順序は vello → skia の一方向 fallback。
+    /// wasm32 対象外（web の policy には現れない）。
+    Skia,
     /// tiny-skia の置き換え候補として検証中の CPU レンダラ（vello_cpu、Web限定スパイク）。
     VelloCpu,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
@@ -32,13 +36,14 @@ impl SceneRendererKind {
         matches!(self, Self::Vello)
     }
 
-    /// カラーグリフ（COLR/CPAL、ビットマップストライク）を描けるか。描けるのは
-    /// Vello だけ（`draw_glyphs().draw()` が COLR/CPAL フォントを `try_draw_colr` に
-    /// 流す）。CPU ペインタはアウトラインのみなので、そこではカラー絵文字がモノクロに
-    /// 退化する（ADR-0101）。アダプタはフォント調達時にカラー版/モノクロ版を選ぶため
+    /// カラーグリフ（COLR/CPAL、ビットマップストライク）を描けるか。Vello
+    /// （`draw_glyphs().draw()` が COLR/CPAL フォントを `try_draw_colr` に流す）と
+    /// skia（scaler がカラーグリフを処理・ADR-0146。Vello 以外で初）が描ける。他の
+    /// CPU ペインタはアウトラインのみなので、そこではカラー絵文字がモノクロに退化
+    /// する（ADR-0101）。アダプタはフォント調達時にカラー版/モノクロ版を選ぶため
     /// これを参照する。
     pub fn paints_color_glyphs(self) -> bool {
-        matches!(self, Self::Vello)
+        matches!(self, Self::Vello | Self::Skia)
     }
 
     /// ログ・エラーメッセージ用の安定したレンダラ ID。
@@ -46,6 +51,7 @@ impl SceneRendererKind {
         match self {
             Self::Vello => "vello",
             Self::TinySkia => "tiny-skia",
+            Self::Skia => "skia",
             Self::VelloCpu => "vello-cpu",
             Self::Recording => "recording",
             Self::Null => "null",
@@ -227,6 +233,40 @@ const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
 const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Recording, SceneRendererKind::Null];
 
+/// ネイティブ（desktop + Android）の標準順序（ADR-0146 §2・spec §4 REND-15）:
+/// vello を preferred default、skia を standard alternative とする一方向 fallback。
+pub const NATIVE_RENDERER_ORDER: &[SceneRendererKind] =
+    &[SceneRendererKind::Vello, SceneRendererKind::Skia];
+
+const NATIVE_VELLO_ONLY: &[SceneRendererKind] = &[SceneRendererKind::Vello];
+const NATIVE_SKIA_ONLY: &[SceneRendererKind] = &[SceneRendererKind::Skia];
+
+/// ネイティブ Platform Front（desktop winit / Android）用の選択ポリシー（issue #801、
+/// spec §4 REND-15）。
+///
+/// - `vello_linked`: このビルドが vello/wgpu をリンクしているか（`backend-vello`
+///   feature、default on）。off ビルドでは skia が唯一のレンダラとして起動し、vello の
+///   不在は `DisabledByPolicy` として観測可能に残る。
+/// - `forced`: ランタイム上書き（desktop: env / CLI フラグ、Android: intent extra）。
+///   強制されたレンダラだけを許可し、他は `DisabledByPolicy` で観測可能に見送る。
+///   リンクされていない vello の強制は未指定と同じ既定へ落とす（ADR-0145 の
+///   「未知値は既定へ」流儀。呼び出し側が warn ログを出す）。
+///
+/// preferred 順序は常に [`NATIVE_RENDERER_ORDER`]（vello → skia）で、runtime 失敗時の
+/// 一方向 fallback もこの順序に従う（ADR-0050）。
+pub fn native_renderer_selection_policy(
+    vello_linked: bool,
+    forced: Option<SceneRendererKind>,
+) -> RendererSelectionPolicy {
+    let allowed = match forced {
+        Some(SceneRendererKind::Vello) if vello_linked => NATIVE_VELLO_ONLY,
+        Some(SceneRendererKind::Skia) => NATIVE_SKIA_ONLY,
+        _ if vello_linked => NATIVE_RENDERER_ORDER,
+        _ => NATIVE_SKIA_ONLY,
+    };
+    RendererSelectionPolicy::new(allowed, NATIVE_RENDERER_ORDER)
+}
+
 #[cfg(any(
     feature = "backend-vello",
     feature = "backend-tiny-skia",
@@ -254,14 +294,41 @@ mod tests {
     }
 
     #[test]
-    fn only_vello_paints_color_glyphs() {
-        // カラー/モノクロ絵文字の分岐を駆動する。GPU ペインタは COLR/CPAL を
-        // try_draw_colr に流し、CPU/診断ペインタはアウトラインのみ描く。
+    fn only_vello_and_skia_paint_color_glyphs() {
+        // カラー/モノクロ絵文字の分岐を駆動する。Vello は COLR/CPAL を try_draw_colr に
+        // 流し、skia は scaler がカラーグリフを処理する（ADR-0146）。他の CPU/診断
+        // ペインタはアウトラインのみ描く。
         assert!(SceneRendererKind::Vello.paints_color_glyphs());
+        assert!(SceneRendererKind::Skia.paints_color_glyphs());
         assert!(!SceneRendererKind::TinySkia.paints_color_glyphs());
         assert!(!SceneRendererKind::VelloCpu.paints_color_glyphs());
         assert!(!SceneRendererKind::Recording.paints_color_glyphs());
         assert!(!SceneRendererKind::Null.paints_color_glyphs());
+    }
+
+    #[test]
+    fn skia_is_a_cpu_renderer_that_does_not_require_webgpu() {
+        // skia raster は wgpu 非依存の CPU present 経路（issue #801）。WebGPU / GPU の
+        // 有無で policy に却下されてはならない。
+        assert!(!SceneRendererKind::Skia.requires_webgpu());
+        assert_eq!(SceneRendererKind::Skia.name(), "skia");
+    }
+
+    #[test]
+    fn skia_color_glyph_capability_drives_emoji_font_procurement_seam() {
+        // ADR-0101 のシーム: アダプタは `paints_color_glyphs()` を core の
+        // `upgrades_to_color_emoji` に渡してカラー版/モノクロ版フォントを選ぶ。
+        // skia が true を返すことで、emoji フォールバックファミリがカラービルドへ
+        // 格上げされる（Vello 以外で初）。
+        use hayate_core::element::font_coverage::{upgrades_to_color_emoji, EMOJI_FALLBACK_FAMILY};
+        assert!(upgrades_to_color_emoji(
+            EMOJI_FALLBACK_FAMILY,
+            SceneRendererKind::Skia.paints_color_glyphs()
+        ));
+        assert!(!upgrades_to_color_emoji(
+            EMOJI_FALLBACK_FAMILY,
+            SceneRendererKind::TinySkia.paints_color_glyphs()
+        ));
     }
 
     #[test]
@@ -339,5 +406,71 @@ mod tests {
         webgpu_available: bool,
     ) -> RendererSelectionPlan {
         RendererSelectionPolicy::new(order, order).choose(RendererCapabilities { webgpu_available })
+    }
+
+    /// ネイティブ（issue #801）: capability は「wgpu adapter の有無は init を試すまで
+    /// 分からない」ため常に true を渡し、失敗は init フェーズの一方向 fallback が拾う。
+    const NATIVE_CAPS: RendererCapabilities = RendererCapabilities {
+        webgpu_available: true,
+    };
+
+    #[test]
+    fn native_default_order_is_vello_then_skia_one_way_fallback() {
+        // ADR-0146 §2: vello が preferred default、skia が standard alternative。
+        let plan = native_renderer_selection_policy(true, None).choose(NATIVE_CAPS);
+        assert_eq!(
+            plan.attempt_order(),
+            [SceneRendererKind::Vello, SceneRendererKind::Skia],
+        );
+        assert_eq!(
+            plan.next_after(SceneRendererKind::Vello),
+            Some(SceneRendererKind::Skia),
+        );
+        assert_eq!(plan.next_after(SceneRendererKind::Skia), None);
+    }
+
+    #[test]
+    fn native_forced_skia_rejects_vello_as_disabled_by_policy() {
+        // env / CLI / intent extra の強制指定（issue #801/#802）。見送った vello は
+        // 既存の RendererSelectionReason 語彙で観測可能。
+        let plan = native_renderer_selection_policy(true, Some(SceneRendererKind::Skia))
+            .choose(NATIVE_CAPS);
+        assert_eq!(plan.attempt_order(), [SceneRendererKind::Skia]);
+        assert_eq!(
+            plan.rejection_reason(SceneRendererKind::Vello),
+            Some(RendererSelectionReason::DisabledByPolicy),
+        );
+    }
+
+    #[test]
+    fn native_forced_vello_rejects_skia_as_disabled_by_policy() {
+        let plan = native_renderer_selection_policy(true, Some(SceneRendererKind::Vello))
+            .choose(NATIVE_CAPS);
+        assert_eq!(plan.attempt_order(), [SceneRendererKind::Vello]);
+        assert_eq!(
+            plan.rejection_reason(SceneRendererKind::Skia),
+            Some(RendererSelectionReason::DisabledByPolicy),
+        );
+    }
+
+    #[test]
+    fn native_without_vello_linked_boots_skia_alone() {
+        // `backend-vello` feature off ビルド（issue #801）: skia が唯一のレンダラとして
+        // 起動し、vello の不在は DisabledByPolicy として観測可能。
+        let plan = native_renderer_selection_policy(false, None).choose(NATIVE_CAPS);
+        assert_eq!(plan.attempt_order(), [SceneRendererKind::Skia]);
+        assert_eq!(
+            plan.rejection_reason(SceneRendererKind::Vello),
+            Some(RendererSelectionReason::DisabledByPolicy),
+        );
+    }
+
+    #[test]
+    fn native_forcing_an_unlinked_vello_falls_back_to_the_default_policy() {
+        // vello をリンクしないビルドで vello を強制されても壊れない — 未指定と同じ
+        // 既定（この構成では skia 単独）へ落とす（ADR-0145 の「未知値は既定へ」流儀）。
+        let plan = native_renderer_selection_policy(false, Some(SceneRendererKind::Vello))
+            .choose(NATIVE_CAPS);
+        assert_eq!(plan.attempt_order(), [SceneRendererKind::Skia]);
     }
 }

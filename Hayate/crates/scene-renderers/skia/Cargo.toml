@@ -1,0 +1,21 @@
+[package]
+name = "hayate-scene-renderer-skia"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "skia-safe Scene Renderer for Hayate (ADR-0146/0147, native only)"
+
+[dependencies]
+hayate-core = { path = "../../core" }
+hayate-layer-compositor = { path = "../compositor" }
+# ADR-0007 / ADR-0146: skia-safe is a wgpu-class vendoring exception — crates.io +
+# prebuilt binaries, version strictly pinned (`=`), no source vendoring/fork.
+skia-safe = "=0.99.0"
+# variable font の normalized 座標→design 座標変換（fvar/avar 読み）に使う。
+# tiny-skia/vello-cpu painter と同じ workspace 版（vendored skrifa）。
+skrifa = { workspace = true }
+
+[dev-dependencies]
+hayate-scene-test-support = { path = "../test-support" }
+hayate-demo-fixtures = { path = "../../demo-fixtures" }
+png = "0.18"

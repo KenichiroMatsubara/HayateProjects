@@ -89,6 +89,22 @@ describe('createHayateWebHost', () => {
     expect(loaded).toEqual(['tiny-skia']);
   });
 
+  it('honours a ?renderer= deep link over the WebGPU probe (am start -e equivalent)', async () => {
+    const loaded: CanvasBackend[] = [];
+    await createHayateWebHost(canvas, {
+      // WebGPU があっても、ディープリンクの強制指定が勝つ。detectMode を通さず host を
+      // 直接叩く呼び出し元（deep link）でも tiny-skia を選べる。
+      locationSearch: '?renderer=tiny-skia',
+      probeWebGPU: async () => true,
+      loadBackend: async (backend) => {
+        loaded.push(backend);
+        return fakeRaw();
+      },
+    });
+
+    expect(loaded).toEqual(['tiny-skia']);
+  });
+
   it('passes the surface canvas to the backend loader', async () => {
     const loadBackend = vi.fn(async () => fakeRaw());
     await createHayateWebHost(canvas, {

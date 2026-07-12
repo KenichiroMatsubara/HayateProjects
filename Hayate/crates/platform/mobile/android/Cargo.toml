@@ -22,7 +22,11 @@ tsubame-js = []
 
 [dependencies]
 hayate-core = { path = "../../../core" }
+hayate-app-host = { path = "../../../app-host" }
 hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
+# Android の standard alternative（issue #802・ADR-0146/0147）。vello/wgpu 初期化失敗時の
+# 一方向 fallback 先で、wgpu 非依存の CPU raster + ANativeWindow 直接 present。
+hayate-scene-renderer-skia = { path = "../../../scene-renderers/skia" }
 hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
 wgpu = { workspace = true }
 log.workspace = true
@@ -33,6 +37,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
+# skia GL（Ganesh/EGL）surface（issue #803・ADR-0146 §3）。`gl` feature は Ganesh の GL
+# バインディング（gpu::gl / DirectContext / wrap_backend_render_target）を有効にする。
+# device 専用の target-scoped 依存なので、ホスト・CI（desktop raster golden）のリンク要件は
+# 増えない（feature 単位のプリビルトバイナリは aarch64-linux-android-gl-… で供給される）。
+# 版は hayate-scene-renderer-skia と同じ厳密ピン（ADR-0007 の wgpu 同類例外）。
+skia-safe = { version = "=0.99.0", features = ["gl"] }
 # GameActivity backend (ADR-0094): GameTextInput surfaces the soft-keyboard
 # InputConnection to native code for the stage C IME bridge. Packaging is the
 # Gradle project under `android-app/`, not cargo-apk.

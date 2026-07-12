@@ -4,6 +4,9 @@
 //! （`tasks_tree`）を 1 枚 offscreen に焼き、Tasks の風景が実際にインクとして現れることを
 //! 確認する。`try_vello_harness()` 方式で、wgpu アダプタの無い環境（CI 等）では skip する。
 
+// vello/wgpu 経路のテスト — `backend-vello`（default on）を外したビルドでは対象外。
+#![cfg(feature = "backend-vello")]
+
 use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
 use hayate_scene_test_support::vello::{render_scene_to_pixels_scaled, try_vello_harness};
 
