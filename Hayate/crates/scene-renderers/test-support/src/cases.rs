@@ -80,6 +80,10 @@ pub struct CssPixelCase {
 
 // ── ビジュアル ──────────────────────────────────────────────────────────────
 
+/// 中間調（0.2, 0.4, 0.8）を使う。純色（0/1 端点）はガンマの二重適用・linear 誤解釈の
+/// どちらでもバイト値が動かず素通りするため、退色バグ（vello desktop 1b29f3c / android
+/// babee2b の「白っぽくなる」二重 sRGB エンコード）をこのケースで検出できなかった。
+/// 中間調なら二重エンコードで (51,102,204)→(122,168,231) 級に動き、±3 の完全一致が破れる。
 fn build_background_color() -> ElementTree {
     let mut tree = ElementTree::new();
     let root = root_view(&mut tree, 1);
@@ -88,16 +92,22 @@ fn build_background_color() -> ElementTree {
         &[
             StyleProp::Width(Dimension::px(60.0)),
             StyleProp::Height(Dimension::px(60.0)),
-            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+            StyleProp::BackgroundColor(Color::new(0.2, 0.4, 0.8, 1.0)),
         ],
     );
     tree
 }
 
 fn check_background_color(data: &[u8]) {
+    // シーン色 [f32;4] は sRGB エンコード済み値であり、レンダラはバイト値そのまま
+    // （×255 丸めのみ）で格納する規約。ズレは色空間の誤変換を意味する。
     let px = pixel(data, CANVAS_W, 30, 30);
-    assert_channel_min(px, 0, 200, "background-color center red");
-    assert_channel_max(px, 1, 30, "background-color center red");
+    crate::pixel::assert_near(
+        px,
+        [51, 102, 204, 255],
+        3,
+        "background-color mid-tone must pass through as sRGB bytes (gamma-shift detector)",
+    );
 }
 
 fn build_opacity() -> ElementTree {
@@ -1057,12 +1067,51 @@ fn check_font_family(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 4, 20), "font-family renders");
 }
 
+/// wght=100（Thin）と wght=900（Black）を上下に並べる。バンドルフォント
+/// （NotoSansJP.ttf）は variable font で **fvar の既定インスタンスが wght=100**
+/// なので、レンダラが `TextRunData::normalized_coords` を無視すると両方 Thin で
+/// 描かれ、下段のインク量が上段と同じになって検出できる（skia 導入時の実回帰）。
 fn build_font_weight() -> ElementTree {
-    text_tree(&[StyleProp::FontWeight(700.0)])
+    let mut tree = ElementTree::new();
+    register_bundled_font(&mut tree);
+    let root = root_view(&mut tree, 60);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
+    );
+    for (id, weight) in [(61, 100.0), (62, 900.0)] {
+        let text = child_text(&mut tree, id);
+        tree.element_append_child(root, text);
+        tree.element_set_style(
+            text,
+            &[
+                StyleProp::FontSize(30.0),
+                StyleProp::FontWeight(weight),
+                StyleProp::Height(Dimension::px(VH / 2.0)),
+            ],
+        );
+        tree.element_set_text(text, "AAA");
+    }
+    tree
 }
 
 fn check_font_weight(data: &[u8]) {
-    assert_not_clear(pixel(data, CANVAS_W, 4, 20), "font-weight bold renders");
+    let thin = crate::pixel::ink_count(data, CANVAS_W, 0, 50);
+    let heavy = crate::pixel::ink_count(data, CANVAS_W, 50, 100);
+    assert!(
+        thin > 0 && heavy > 0,
+        "font-weight: both weights must render ink (thin={thin}, heavy={heavy})"
+    );
+    assert!(
+        heavy as f32 >= thin as f32 * 1.5,
+        "font-weight: wght=900 must lay substantially more ink than wght=100 \
+         (thin={thin}, heavy={heavy}) — equal ink means the renderer ignored \
+         TextRunData::normalized_coords (variable-font axes)"
+    );
 }
 
 fn build_text_decoration_underline() -> ElementTree {

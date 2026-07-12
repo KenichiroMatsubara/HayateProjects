@@ -1338,6 +1338,7 @@ dependencies = [
  "hayate-scene-test-support",
  "png",
  "skia-safe",
+ "skrifa",
 ]
 
 [[package]]

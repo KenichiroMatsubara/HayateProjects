@@ -87,3 +87,18 @@ pub fn distinct_saturated_hues(data: &[u8], width: u32, height: u32, sat_min: u8
     }
     seen.iter().filter(|&&s| s).count()
 }
+
+/// 行帯 `y0..y1` に含まれる「描画された（白背景でない）」ピクセル数。テキストの
+/// インク量比較（font-weight の可変軸検証など）に使う。
+pub fn ink_count(data: &[u8], width: u32, y0: u32, y1: u32) -> usize {
+    let mut count = 0;
+    for y in y0..y1 {
+        for x in 0..width {
+            let px = pixel(data, width, x, y);
+            if px[0] < 240 || px[1] < 240 || px[2] < 240 {
+                count += 1;
+            }
+        }
+    }
+    count
+}
