@@ -13,16 +13,29 @@ crate-type = ["rlib"]
 name = "hayate-desktop"
 path = "src/main.rs"
 
+[features]
+# vello/wgpu を desktop ビルドに含める（issue #801・ADR-0146 §5、spec §4 REND-15）。
+# default on。off にすると skia が唯一のレンダラとして起動し、バイナリは vello/wgpu を
+# 含まない（レンダラ戦略転換の確定時にバイナリサイズを相殺する出口）。
+default = ["backend-vello"]
+backend-vello = ["dep:hayate-scene-renderer-vello", "dep:wgpu", "dep:hayate-layer-compositor"]
+
 [dependencies]
 hayate-core = { path = "../../core" }
 hayate-app-host = { path = "../../app-host" }
 hayate-demo-fixtures = { path = "../../demo-fixtures" }
-# 永続パイプラインキャッシュの GPU 非依存基盤（ADR-0130b・issue #777）。
-hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
-hayate-scene-renderer-vello = { path = "../../scene-renderers/vello" }
-wgpu = { workspace = true }
+# 永続パイプラインキャッシュの GPU 非依存基盤（ADR-0130b・issue #777、vello 経路専用）。
+hayate-layer-compositor = { path = "../../scene-renderers/compositor", optional = true }
+hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional = true }
+# ネイティブの standard alternative（ADR-0146）。vello 初期化失敗時の一方向 fallback 先で、
+# CPU raster + softbuffer present なので GPU の無い環境でも desktop が起動する（issue #801）。
+hayate-scene-renderer-skia = { path = "../../scene-renderers/skia" }
+wgpu = { workspace = true, optional = true }
 winit = { workspace = true }
+# skia raster フレームの wgpu 非依存 CPU present（winit window への software blit）。
+softbuffer = { workspace = true }
 pollster = { workspace = true }
+anyhow = { workspace = true }
 log = { workspace = true }
 # デモバイナリのロガー実装。`npm run hayate:desktop:run` が渡す RUST_LOG を実際に効かせ、
 # 起動時の pipeline cache hit/miss・vello init 時間（#777）を stderr に出す。

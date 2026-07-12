@@ -13,6 +13,9 @@
 //! - 新経路（非 sRGB）: 読み戻し == 入力（色は忠実に保たれる）。
 //! - 旧経路（sRGB）   : 読み戻し != 入力（中間調が明るく＝淡くなる、二重エンコード）。
 
+// vello/wgpu 経路のテスト — `backend-vello`（default on）を外したビルドでは対象外。
+#![cfg(feature = "backend-vello")]
+
 use hayate_scene_renderer_vello::create_blitter;
 
 fn try_device() -> Option<(wgpu::Device, wgpu::Queue)> {

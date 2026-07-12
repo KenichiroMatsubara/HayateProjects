@@ -1,8 +1,14 @@
-//! Desktop Platform Front（ADR-0118）。
+//! Desktop Platform Front（ADR-0118 → issue #801）。
 //!
 //! winit single crate で macos / windows / linux を windowing / event-loop / GPU surface の
-//! 層に畳み、winit window + vello/wgpu の [`PresentTarget`] 実装 + `App Host::tick` 駆動を最小配線して、
+//! 層に畳み、winit window + Render Host（[`hayate_app_host::render_host::RenderHost`]、
+//! ADR-0068/0132 の hoist をネイティブへ延長）+ `App Host::tick` 駆動を配線して、
 //! 共有 demo fixture（`hayate_demo_fixtures::tasks_tree`）を native window に present する。
+//! レンダラは Renderer Selection Policy（spec §4 REND-15）が選ぶ — 既定順序は
+//! vello → skia の一方向 fallback（vello 初期化失敗・runtime 失敗時に skia raster へ）、
+//! env / CLI フラグ（[`renderer_config`]）で再ビルドなしに強制指定できる。skia raster は
+//! softbuffer による wgpu 非依存の CPU present（[`skia_window`]）なので、GPU が使えない
+//! 環境でも desktop が起動する。
 //! 静的 1 枚を見せる tracer bullet（issue #505）に、winit pointer 入力（`CursorMoved` /
 //! `MouseInput`）を Core の座標 pointer dispatch（`PointerKind = Mouse`）へ配線して
 //! hover / active / focus を効かせ（issue #506）、さらに winit keyboard 入力
@@ -15,19 +21,27 @@
 
 pub mod ime_input;
 pub mod keyboard_input;
+#[cfg(feature = "backend-vello")]
 pub mod pipeline_disk_cache;
 pub mod pointer_input;
+pub mod renderer_config;
+pub mod skia_present;
+pub mod skia_window;
+#[cfg(feature = "backend-vello")]
+pub mod vello_window;
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use hayate_app_host::{AppHost, PresentTarget};
-use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, SceneGraph, ViewportMetrics};
-use hayate_demo_fixtures::tasks_tree;
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
+use anyhow::{anyhow, Error};
+use hayate_app_host::render_host::{RenderHost, RendererInit, SceneRenderer};
+use hayate_app_host::renderer_selection::{
+    native_renderer_selection_policy, RendererCapabilities, RendererSelectionReason,
+    SceneRendererKind,
 };
-use wgpu::util::TextureBlitter;
+use hayate_app_host::{AppHost, PresentTarget};
+use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, SceneGraph, Surface, ViewportMetrics};
+use hayate_demo_fixtures::tasks_tree;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
@@ -35,11 +49,16 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
-/// renderer label shown in the demo fixture's AppBar badge — desktop presents with vello.
-const RENDERER_LABEL: &str = "vello";
+use skia_window::SkiaWindowRenderer;
 
-/// native window のタイトル。
-pub const WINDOW_TITLE: &str = "Hayate — Tasks (vello)";
+/// native window のタイトル（選択レンダラ名は起動後に [`window_title_for`] で付く）。
+pub const WINDOW_TITLE: &str = "Hayate — Tasks";
+
+/// 選択されたレンダラを含む window タイトル。レンダラは Renderer Selection Policy が
+/// 実行時に決めるため、タイトルの確定も起動後になる。
+pub fn window_title_for(kind: SceneRendererKind) -> String {
+    format!("{WINDOW_TITLE} ({})", kind.name())
+}
 
 /// 既定のウィンドウサイズ（論理 px）。値の調整は人力フォローアップ（ADR-0118）。
 pub const DEFAULT_WINDOW_SIZE: (u32, u32) = (1024, 1080);
@@ -67,214 +86,148 @@ pub fn viewport_metrics(physical_width: u32, physical_height: u32, scale_factor:
     ViewportMetrics::from_physical_size(physical_width as i32, physical_height as i32, scale_factor as f32)
 }
 
-/// winit の wgpu surface へ present する vello/wgpu の [`PresentTarget`] 実装（ADR-0118）。
-///
-/// 1 フレームの `SceneGraph` を、vello の `render_to_texture` で offscreen target に焼き、
-/// `TextureBlitter` で winit の swapchain surface に blit する。web の vello backend と同型で、
-/// 違いは surface の供給元が `HtmlCanvasElement` ではなく winit `Window` である点だけ。
-pub struct WindowSurface {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
-    target_view: wgpu::TextureView,
-    blitter: TextureBlitter,
-    renderer: VelloSceneRenderer,
-    /// 論理→物理の変換係数（HiDPI）。render 時に vello painter を拡大して crisp に描く。
-    content_scale: f32,
-    /// バッキングストア寸法（物理 px）。
-    width: u32,
-    height: u32,
+/// [`hayate_core::Surface`] の desktop 実装 — winit `Window` の薄い clone ハンドル。
+/// `RenderHost` はレンダラー初期化を試すたびにこれを複製して [`DesktopRendererInit`] へ
+/// 渡し、実行時フォールバックでの再サイズ確認（物理 px）に使う（web の
+/// `WebCanvasSurface(HtmlCanvasElement)` と同型、ADR-0132 スライス3）。
+#[derive(Clone)]
+pub struct DesktopWindowSurface {
+    window: Arc<Window>,
 }
 
-impl WindowSurface {
-    /// winit `Window` から wgpu surface を立て、vello renderer を初期化する。
-    /// `metrics` の `buffer_size`（物理 px）で surface を configure し、`content_scale` を保持する。
-    pub fn new(window: Arc<Window>, metrics: ViewportMetrics) -> Result<Self, String> {
-        pollster::block_on(Self::new_async(window, metrics))
+impl Surface for DesktopWindowSurface {
+    fn width(&self) -> u32 {
+        self.window.inner_size().width
     }
 
-    async fn new_async(window: Arc<Window>, metrics: ViewportMetrics) -> Result<Self, String> {
-        let (width, height) = metrics.buffer_size();
+    fn height(&self) -> u32 {
+        self.window.inner_size().height
+    }
+}
 
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::from_env().unwrap_or(wgpu::Backends::all()),
-            ..wgpu::InstanceDescriptor::new_without_display_handle()
-        });
+/// レンダラーがこのビルドにリンクされていないときの init エラー文言。
+/// [`classify_error_message`] が `DisabledByPolicy` へ分類する（コンパイル構成の帰結で
+/// あって実行時失敗ではないため、runtime fallback 対象にならない語彙を選ぶ）。
+const NOT_LINKED_MSG: &str = "renderer not linked into this desktop build";
 
-        let surface = instance
-            .create_surface(window)
-            .map_err(|e| format!("create_surface: {e}"))?;
+/// desktop アダプタの init エラー分類（ADR-0132: `classify_init_error` は adapter 個別
+/// 実装のまま共有しない）。エラー文字列だけに依存する純関数で、実 GPU なしでテストする。
+/// swapchain の喪失・陳腐化だけを `SurfaceLost` とし、それ以外の初期化・描画失敗は
+/// `RendererInitFailed`（どちらも runtime fallback 対象の語彙・ADR-0050）。
+pub fn classify_error_message(message: &str) -> RendererSelectionReason {
+    if message.contains(NOT_LINKED_MSG) {
+        RendererSelectionReason::DisabledByPolicy
+    } else if message.contains("surface lost") || message.contains("Outdated") {
+        RendererSelectionReason::SurfaceLost
+    } else {
+        RendererSelectionReason::RendererInitFailed
+    }
+}
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                compatible_surface: Some(&surface),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| format!("no compatible wgpu adapter: {e}"))?;
+/// desktop アダプタによる [`RendererInit`] 実装（issue #801）。`RenderHost` はこれ越しに
+/// しか winit / wgpu / softbuffer の具体資源へ触れない。vello はプランの先頭（preferred
+/// default）、skia raster が一方向 fallback 先（spec §4 REND-15）。
+pub struct DesktopRendererInit;
 
-        // 永続パイプラインキャッシュ（ADR-0130b・issue #777）。対応 backend（現状 Vulkan のみ）
-        // なら feature を要求し、前回起動の blob をディスクから読んで vello に注入する。
-        // 非対応・破損・キー不一致はすべてキャッシュ無しにフォールバックし、起動は壊さない。
-        let adapter_info = adapter.get_info();
-        let supports_pipeline_cache = adapter
-            .features()
-            .contains(wgpu::Features::PIPELINE_CACHE);
-
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("hayate-desktop"),
-                required_features: if supports_pipeline_cache {
-                    wgpu::Features::PIPELINE_CACHE
-                } else {
-                    wgpu::Features::empty()
-                },
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| format!("request_device: {e}"))?;
-
-        let mut surface_config = surface
-            .get_default_config(&adapter, width, height)
-            .ok_or_else(|| "surface not supported by adapter".to_string())?;
-        surface_config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
-        // vello は offscreen target（`Rgba8Unorm`・非 sRGB）へ sRGB エンコード済みのバイトを書く。
-        // surface が *Srgb 形式（Windows の `get_default_config` 既定は `Rgba8UnormSrgb`）だと、
-        // blit の書き込みで linear→sRGB エンコードが二重にかかり色が淡く（washed out）見える。
-        // surface を非 sRGB 形式に揃えて二重エンコードを防ぐ（web の canvas は既定が非 sRGB なので
-        // この問題が出ない）。blitter は下でこの `surface_config.format` で生成するので整合する。
-        surface_config.format = surface_config.format.remove_srgb_suffix();
-        surface.configure(&device, &surface_config);
-
-        let target_view = create_target_view(&device, width, height);
-        let blitter = create_blitter(&device, surface_config.format);
-
-        let disk_cache = supports_pipeline_cache
-            .then(|| {
-                pipeline_disk_cache::DiskPipelineCache::discover(
-                    &adapter_info,
-                    hayate_scene_renderer_vello::shader_set_fingerprint(),
-                )
-            })
-            .flatten();
-        let gpu_cache = disk_cache.as_ref().map(|dc| {
-            match dc.loaded_blob() {
-                Some(blob) => log::info!(
-                    "pipeline cache: hit ({} bytes, {})",
-                    blob.len(),
-                    dc.path().display()
-                ),
-                None => log::info!("pipeline cache: miss ({})", dc.path().display()),
+impl DesktopRendererInit {
+    fn build(
+        &self,
+        kind: SceneRendererKind,
+        surface: &DesktopWindowSurface,
+    ) -> Result<Box<dyn SceneRenderer>, Error> {
+        match kind {
+            #[cfg(feature = "backend-vello")]
+            SceneRendererKind::Vello => Ok(Box::new(vello_window::VelloWindowRenderer::new_sync(
+                surface.window.clone(),
+            )?)),
+            SceneRendererKind::Skia => {
+                Ok(Box::new(SkiaWindowRenderer::new(surface.window.clone())?))
             }
-            // Safety: `data` は同一 adapter・同一キー（ドライバ/シェーダ指紋）で過去の
-            // `get_data()` が返した blob（ADR-0130b の load がキー検証済み）。万一無効でも
-            // `fallback: true` で wgpu が空キャッシュに落とす。
-            unsafe {
-                device.create_pipeline_cache(&wgpu::PipelineCacheDescriptor {
-                    label: Some("hayate-desktop-pipeline-cache"),
-                    data: dc.loaded_blob(),
-                    fallback: true,
-                })
-            }
-        });
-
-        let init_start = Instant::now();
-        let renderer =
-            VelloSceneRenderer::new_with_pipeline_cache(&device, gpu_cache.as_ref())?;
-        log::info!(
-            "vello renderer init: {:.0}ms (pipeline cache: {})",
-            init_start.elapsed().as_secs_f64() * 1000.0,
-            match &disk_cache {
-                Some(dc) if dc.loaded_blob().is_some() => "hit",
-                Some(_) => "miss",
-                None => "unavailable",
-            }
-        );
-
-        // 次回起動用に blob を永続化する（読めた blob と同一なら書かない）。
-        if let (Some(dc), Some(cache)) = (&disk_cache, &gpu_cache) {
-            if let Some(data) = cache.get_data() {
-                dc.persist(&data);
-            }
+            other => Err(anyhow!("{NOT_LINKED_MSG}: {}", other.name())),
         }
+    }
+}
 
-        Ok(Self {
-            device,
-            queue,
-            surface,
-            surface_config,
-            target_view,
-            blitter,
-            renderer,
-            content_scale: metrics.content_scale,
-            width,
-            height,
-        })
+impl RendererInit<DesktopWindowSurface> for DesktopRendererInit {
+    async fn try_init(
+        &self,
+        kind: SceneRendererKind,
+        surface: DesktopWindowSurface,
+    ) -> Result<Box<dyn SceneRenderer>, Error> {
+        match kind {
+            // 非同期 init は vello（wgpu adapter/device 要求）だけが本来の async。
+            #[cfg(feature = "backend-vello")]
+            SceneRendererKind::Vello => Ok(Box::new(
+                vello_window::VelloWindowRenderer::new_async(surface.window.clone()).await?,
+            )),
+            _ => self.build(kind, &surface),
+        }
     }
 
-    /// winit リサイズ時に wgpu surface を再 configure し、offscreen target と content scale を
-    /// 更新する。`metrics` は `viewport_metrics()` で物理サイズ・`scale_factor` から導いたもの。
+    fn try_init_sync_for_fallback(
+        &self,
+        kind: SceneRendererKind,
+        surface: DesktopWindowSurface,
+    ) -> Result<Box<dyn SceneRenderer>, Error> {
+        self.build(kind, &surface)
+    }
+
+    fn classify_init_error(
+        &self,
+        _kind: SceneRendererKind,
+        error: &Error,
+    ) -> RendererSelectionReason {
+        classify_error_message(&error.to_string())
+    }
+}
+
+/// Render Host を [`PresentTarget`] として App Host に差し込む desktop の提示面
+/// （issue #801）。毎フレームの `SceneGraph` を `RenderHost::render_scene` へ流すだけで、
+/// 実行時失敗時の skia raster への一方向 fallback は `RenderHost` が処理する（ADR-0050）。
+pub struct RenderHostSurface {
+    host: RenderHost<DesktopWindowSurface, DesktopRendererInit>,
+}
+
+impl RenderHostSurface {
+    /// Renderer Selection Policy を通してレンダラを選び初期化する。`forced` は env / CLI
+    /// からの強制指定（[`renderer_config`]）。選択・却下は `RenderHost` が
+    /// `RendererSelectionReason` 語彙で stderr（`log`）に出す。
+    pub fn init(
+        window: Arc<Window>,
+        forced: Option<SceneRendererKind>,
+    ) -> Result<Self, Error> {
+        let policy = native_renderer_selection_policy(renderer_config::VELLO_LINKED, forced);
+        // ネイティブでは GPU（wgpu adapter）の有無は init を試すまで分からないため
+        // capability は常に true を渡し、失敗は init フェーズの一方向 fallback が拾う。
+        let capabilities = RendererCapabilities {
+            webgpu_available: true,
+        };
+        let host = pollster::block_on(RenderHost::init_with_policy(
+            DesktopWindowSurface { window },
+            policy,
+            capabilities,
+            DesktopRendererInit,
+        ))?;
+        Ok(Self { host })
+    }
+
+    /// 現在アクティブなレンダラ種別（demo fixture のバッジ・window タイトル用）。
+    pub fn renderer_kind(&self) -> SceneRendererKind {
+        self.host.kind()
+    }
+
+    /// winit リサイズの反映。物理 px と HiDPI 係数を `RenderHost` 経由でレンダラへ渡す。
     pub fn resize(&mut self, metrics: ViewportMetrics) {
         let (width, height) = metrics.buffer_size();
-        self.content_scale = metrics.content_scale;
-        if width == 0 || height == 0 || (width == self.width && height == self.height) {
-            return;
-        }
-        self.width = width;
-        self.height = height;
-        self.surface_config.width = width;
-        self.surface_config.height = height;
-        self.surface.configure(&self.device, &self.surface_config);
-        self.target_view = create_target_view(&self.device, width, height);
+        self.host.resize(width, height, metrics.content_scale);
     }
 }
 
-impl PresentTarget for WindowSurface {
+impl PresentTarget for RenderHostSurface {
     fn present(&mut self, scene: &SceneGraph) {
-        let render = self.renderer.render_scene(
-            scene,
-            &VelloRenderTarget {
-                device: &self.device,
-                queue: &self.queue,
-                target_view: &self.target_view,
-                width: self.width,
-                height: self.height,
-            },
-            CLEAR_COLOR,
-            self.content_scale,
-        );
-        if let Err(e) = render {
-            log::error!("vello render_scene failed: {e}");
-            return;
+        if let Err(e) = self.host.render_scene(scene, CLEAR_COLOR) {
+            log::error!("render_scene failed (no further fallback): {e}");
         }
-
-        let surface_texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            // surface が陳腐化したら次フレームで再 configure に委ねる。
-            wgpu::CurrentSurfaceTexture::Outdated => {
-                self.surface.configure(&self.device, &self.surface_config);
-                return;
-            }
-            wgpu::CurrentSurfaceTexture::Occluded => return,
-            other => {
-                log::warn!("get_current_texture: {other:?}");
-                return;
-            }
-        };
-
-        let surface_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("hayate-desktop-blit"),
-            });
-        self.blitter
-            .copy(&self.device, &mut encoder, &self.target_view, &surface_view);
-        self.queue.submit(std::iter::once(encoder.finish()));
-        surface_texture.present();
     }
 }
 
@@ -307,7 +260,7 @@ impl ImeBridge for WinitImeBridge<'_> {
 #[derive(Default)]
 pub struct DesktopApp {
     window: Option<Arc<Window>>,
-    app_host: Option<AppHost<WindowSurface>>,
+    app_host: Option<AppHost<RenderHostSurface>>,
     start: Option<Instant>,
     /// 初回フレーム present 済みでウィンドウを可視化したか。非表示で作成したウィンドウを
     /// 最初の `tick`（= 初回 present）直後に一度だけ `set_visible(true)` するためのラッチ。
@@ -351,20 +304,39 @@ impl ApplicationHandler for DesktopApp {
         let size = window.inner_size();
         let metrics = viewport_metrics(size.width, size.height, window.scale_factor());
 
-        let surface = match WindowSurface::new(window.clone(), metrics) {
+        // レンダラ強制指定（env / CLI・再ビルド不要、ADR-0138/0140/0145 の流儀）。
+        let forced = renderer_config::forced_renderer(
+            std::env::args().skip(1),
+            std::env::var(renderer_config::RENDERER_ENV_VAR).ok().as_deref(),
+        );
+        if let Some(kind) = forced {
+            log::info!(
+                "renderer forced via {} / {}: {}",
+                renderer_config::RENDERER_CLI_FLAG,
+                renderer_config::RENDERER_ENV_VAR,
+                kind.name()
+            );
+        }
+
+        // Renderer Selection Policy（vello → skia の一方向 fallback、spec §4 REND-15）を
+        // 通してレンダラを初期化する。選択・却下理由は RenderHost が stderr ログに出す。
+        let surface = match RenderHostSurface::init(window.clone(), forced) {
             Ok(s) => s,
             Err(e) => {
-                log::error!("WindowSurface init failed: {e}");
+                log::error!("no scene renderer could be initialized: {e}");
                 event_loop.exit();
                 return;
             }
         };
+        let renderer_kind = surface.renderer_kind();
+        window.set_title(&window_title_for(renderer_kind));
 
         // request_redraw は App Host の唯一の wake 入口（ADR-0117）。winit window に配線する。
         let redraw_window = window.clone();
         let mut app_host = AppHost::new(surface, Box::new(move || redraw_window.request_redraw()));
         // 共有 demo fixture を App Host の tree に載せる（consumer は mount しない・ADR-0118）。
-        *app_host.tree_mut() = tasks_tree(RENDERER_LABEL);
+        // AppBar のバッジには選択されたレンダラ名を出す。
+        *app_host.tree_mut() = tasks_tree(renderer_kind.name());
         let (vw, vh) = metrics.viewport_size();
         app_host.tree_mut().set_viewport(vw, vh);
 
@@ -525,6 +497,43 @@ mod tests {
         let (w, h) = DEFAULT_WINDOW_SIZE;
         assert!(w > 0 && h > 0, "default window size must be positive, got {w}x{h}");
         assert_eq!(CLEAR_COLOR[3], 1.0, "clear color must be opaque");
+    }
+
+    #[test]
+    fn window_title_carries_the_selected_renderer() {
+        // レンダラは selection policy が実行時に決めるため、タイトルも実行時に確定する。
+        assert_eq!(window_title_for(SceneRendererKind::Vello), "Hayate — Tasks (vello)");
+        assert_eq!(window_title_for(SceneRendererKind::Skia), "Hayate — Tasks (skia)");
+    }
+
+    #[test]
+    fn init_errors_classify_into_the_selection_reason_vocabulary() {
+        // 観測可能な語彙（RendererSelectionReason）への分類（ADR-0132: adapter 個別実装）。
+        // 「リンクされていない」はコンパイル構成の帰結 → DisabledByPolicy（runtime
+        // fallback 対象にしない）。それ以外の init/runtime 失敗は fallback 対象。
+        assert_eq!(
+            classify_error_message("renderer not linked into this desktop build: vello"),
+            RendererSelectionReason::DisabledByPolicy,
+        );
+        assert_eq!(
+            classify_error_message("swapchain surface lost"),
+            RendererSelectionReason::SurfaceLost,
+        );
+        assert_eq!(
+            classify_error_message("surface not supported by adapter"),
+            RendererSelectionReason::RendererInitFailed,
+            "init 段階の surface 非対応は喪失ではなく初期化失敗",
+        );
+        assert_eq!(
+            classify_error_message("no compatible wgpu adapter: NotFound"),
+            RendererSelectionReason::RendererInitFailed,
+        );
+        assert!(
+            hayate_app_host::renderer_selection::is_runtime_fallback_reason(
+                classify_error_message("no compatible wgpu adapter: NotFound")
+            ),
+            "vello init failure must drive the one-way fallback to skia"
+        );
     }
 
     #[test]

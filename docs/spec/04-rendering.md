@@ -65,8 +65,8 @@
 ### REND-08 — Render Host（surface / 選択 / fallback）
 **規範文:** `Render Host` が renderer の surface 初期化・present・resize・選択・資源寿命管理・一方向 fallback を担う。
 **出典:** ADR-0050, ADR-0054
-**状況:** 🟡 — `backend/mod.rs` の `RenderHost`（`init_with_policy`、runtime 失敗時の `fallback_after_runtime_failure`）は実装済みだが **adapter-web 内**。ADR-0068 により**プラットフォーム非依存の Render Host 芯（policy/orchestration/資源寿命）と Font ロードを共有層へ hoist し、`Surface`/`FontFetcher` trait で web 特有部分を分離**する設計が確定（実装は残）。
-**備考:** ADR-0054 H1「surface は adapter-web 残留」は ADR-0068 が revisit — surface **生成**は `impl Surface`（web: canvas / native: window）として platform に残るが Host 芯は共有。native は2 trait 実装＋binding の薄い adapter。
+**状況:** ✅ — Render Host 芯は `crates/app-host/src/render_host.rs` へ hoist 済み（ADR-0132）: `RenderHost::init_with_policy`（policy の試行順で init）＋ runtime 失敗時の `fallback_after_runtime_failure`（一方向）。web（`backend/mod.rs` の `WebRendererInit` / `WebCanvasSurface`）と desktop（`crates/platform/desktop` の `DesktopRendererInit` / `DesktopWindowSurface`、issue #801）の2アダプタが同一の芯を駆動する。Android 結線は #802。
+**備考:** ADR-0054 H1「surface は adapter-web 残留」は ADR-0068 が revisit — surface **生成**は `impl Surface`（web: canvas / desktop: winit window）として platform に残り Host 芯は共有。`classify_init_error` は adapter 個別実装のまま（#672）。
 
 ### REND-09 — Renderer Selection Policy
 **規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
@@ -113,13 +113,13 @@
 ### REND-14 — skia-safe Scene Renderer（ネイティブ専用）
 **規範文:** ネイティブ（desktop + Android）は Google Skia（skia-safe バインディング）による Scene Renderer を `scene-renderers/skia` crate として持つ。crate は `ScenePainter` と `LayerRasterizer`/`LayerCompositor`（ADR-0125。キャッシュ面 = SkSurface、合成 = drawImage）の実装＋per-renderer golden だけを持ち、walk・planning は共有実装のまま（REND-04/05 維持）。painter は **surface 非依存**（渡された Skia Canvas に描くだけ）とし、surface は CPU raster を導入形、Android は Ganesh GL（EGL）surface を早期フォローアップとして platform adapter 側に置く（EGL 管理を core に持ち込まない = REND-07 維持。Skia Vulkan / Graphite は棄却）。テキストはレイアウト正本を parley のまま、確定済みグリフ ID・位置を SkTextBlob でラスタライズのみ行う（SkParagraph / SkShaper 不使用。SkTypeface は fontique と同一のフォントバイト列から生成）。`paints_color_glyphs()` = true（Vello 以外で初のカラーグリフ対応）。wasm32 は対象外。ビルド供給は crates.io ＋ビルド済みバイナリの厳密ピン（ソースベンダリングしない、ADR-0007 例外）。
 **出典:** ADR-0146（PRD #798）、ADR-0125、ADR-0007
-**状況:** ⬜ — 実装スライス（crate 新設 → desktop 結線 → Android raster → Android GL）は #798 の子 issue が担う。
+**状況:** 🟡 — crate 新設（#800: `crates/scene-renderers/skia`、surface 非依存 painter・SkTextBlob・LayerRasterizer/LayerCompositor・per-renderer golden）と desktop 結線（#801: CPU raster + softbuffer present、`SceneRendererKind::Skia` の `paints_color_glyphs()` = true / `requires_webgpu()` = false）は実装済み。Android raster（#802）・Android GL（#803）が残。
 **備考:** golden は per-renderer 方式（自分の過去出力との回帰のみ・クロスレンダラのピクセル比較なし）＋共有 demo-fixtures。CI golden は Linux desktop raster 経路のみ、Android GL は完全人力・実機確認 issue で担保。
 
 ### REND-15 — ネイティブ Renderer Selection Policy（vello → skia）
 **規範文:** Renderer Selection Policy（REND-09）をネイティブにも通す。既定は vello を preferred default、skia をネイティブの standard alternative とする**一方向 fallback**（vello 初期化失敗 → skia）。両レンダラを常時リンクし、ランタイム上書き（Android: intent extra / desktop: env・CLI フラグ）で強制指定できる（ADR-0138/0140/0145 の「常時コンパイル＋ランタイムフラグ」流儀。web の「1バイナリ1レンダラ」排他はネイティブでは採らない）。選択されたレンダラ・選択理由（`RendererSelectionReason`）・GL 時は EGL/GPU 情報を logcat / stderr に記録する。`backend-vello` feature（default on）で vello/wgpu をネイティブビルドから外せる出口を持つ。
 **出典:** ADR-0146（PRD #798）、ADR-0050
-**状況:** ⬜ — 前提工事は desktop への Render Host 芯導入（REND-08 / ADR-0068・ADR-0132 の hoist 継続）。
+**状況:** 🟡 — desktop は実装済み（#801）: 前提工事の Render Host 芯導入（REND-08）を経て、`native_renderer_selection_policy`（`crates/app-host/src/renderer_selection.rs`、vello → skia の一方向 fallback・強制指定の DisabledByPolicy 観測）を desktop Platform Front が実行する。強制切替は env `HAYATE_RENDERER` / CLI `--renderer`（`crates/platform/desktop/src/renderer_config.rs` の名前付き定数、CLI 優先）、`backend-vello` feature（default on）off で vello/wgpu を含まず skia 単独起動。選択・却下は `RendererSelectionReason` 語彙で stderr ログ。Android（intent extra、#802）が残。
 **備考:** skia を preferred default へ昇格するかは実測後の別 ADR。web の selection policy と同一の観測可能な語彙で採否を追う。
 
 ---
@@ -127,6 +127,5 @@
 ## 集計
 | 状況 | 件数 | ID |
 |---|---|---|
-| ✅実装済み | 12 | REND-01〜07, 09〜13 |
-| 🟡部分 | 1 | REND-08（Render Host 芯の共有層 hoist、ADR-0068） |
-| ⬜未実装 | 2 | REND-14〜15（skia-safe ネイティブ導入、ADR-0146 / PRD #798） |
+| ✅実装済み | 13 | REND-01〜13 |
+| 🟡部分 | 2 | REND-14〜15（skia-safe ネイティブ導入 — desktop 済・Android 残、ADR-0146 / PRD #798） |
