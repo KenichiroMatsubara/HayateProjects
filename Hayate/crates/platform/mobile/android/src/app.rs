@@ -660,6 +660,40 @@ pub(crate) fn spawn_skia_raster_thread(mut surface: crate::skia_window::SkiaGpuS
     })
 }
 
+/// 生成済み `SkiaGlSurface`（Ganesh GL/EGL raster + `eglSwapBuffers` present）を所有する
+/// Raster スレッドを起動する（issue #803）。`spawn_skia_raster_thread`（CPU raster）と対で、
+/// 同じ `RasterCommand` チャネル契約を共有する。EGL コンテキストはこのスレッドに束縛される
+/// （`SkiaGlSurface::render_frame` が初回フレームで make-current する）。
+pub(crate) fn spawn_skia_gl_raster_thread(
+    mut surface: crate::skia_gl_window::SkiaGlSurface,
+) -> RasterHandle {
+    let mut surface_ready = true;
+    RasterThread::spawn(move |cmd: RasterCommand| match cmd {
+        RasterCommand::Frame(handoff) => {
+            if !surface_ready {
+                return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
+            }
+            let RasterHandoff {
+                scene,
+                layers,
+                layer_dirty,
+                transform_dirty,
+                chrome_dirty,
+            } = handoff;
+            if let Err(err) =
+                surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
+            {
+                log::error!("hayate-adapter-android: raster-thread render failed (skia gl): {err}");
+            }
+        }
+        RasterCommand::Resize { width, height, content_scale } => {
+            surface.resize(width, height, content_scale)
+        }
+        RasterCommand::SurfaceLost => surface_ready = false,
+        RasterCommand::RebuildSurface => surface_ready = true,
+    })
+}
+
 /// Renderer Selection Policy（issue #801/#802、spec §4 REND-15）越しにレンダラを初期化し、
 /// 対応する Raster スレッドを起動する。既定順序は vello → skia の一方向 fallback
 /// （[`hayate_app_host::renderer_selection::NATIVE_RENDERER_ORDER`]）。intent extra
@@ -711,9 +745,34 @@ pub(crate) fn init_and_spawn_raster(
                 }
             }
             SceneRendererKind::Skia => {
+                // skia 内 surface（raster/GL）は intent extra（`hayate.skia_surface`）由来の
+                // ランタイム選択（issue #803・ADR-0146 §3）。GL（Ganesh/EGL）は EGL 不調端末で
+                // 初期化に失敗しうるため、失敗理由をログに残して skia raster へ一方向 fallback
+                // する（boot は落とさない——vello→skia fallback と同じ姿勢）。
+                let surface_kind = crate::renderer_config::effective_skia_surface();
+                log::info!(
+                    "hayate-adapter-android: skia surface config: {}",
+                    surface_kind.as_str()
+                );
+                if surface_kind == crate::renderer_config::SkiaSurfaceKind::Gl {
+                    match crate::skia_gl_window::init_skia_gl_surface(window, content_scale) {
+                        Ok(surface) => {
+                            log::info!("selected scene renderer: {}", SceneRendererKind::Skia.name());
+                            log::info!("hayate-adapter-android: skia surface: gl (Ganesh/EGL)");
+                            return Some(spawn_skia_gl_raster_thread(surface));
+                        }
+                        Err(err) => {
+                            log::warn!(
+                                "hayate-adapter-android: skia GL surface init failed: {err} — \
+                                 falling back to skia raster"
+                            );
+                        }
+                    }
+                }
                 match crate::skia_window::init_skia_surface(window, content_scale) {
                     Ok(surface) => {
                         log::info!("selected scene renderer: {}", SceneRendererKind::Skia.name());
+                        log::info!("hayate-adapter-android: skia surface: raster (CPU)");
                         return Some(spawn_skia_raster_thread(surface));
                     }
                     Err(err) => {

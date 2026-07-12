@@ -279,11 +279,51 @@ impl PathSink for SkiaPathSink {
     }
 }
 
-/// `RenderFont` のバイト列から SkTypeface を作る。フォントごとに毎回構築する
-/// （呼び出し側でキャッシュしない）—— v1 はシンプルさを優先し、最適化は後日。
+thread_local! {
+    /// スレッドごとに 1 度だけ構築する SkFontMgr。`FontMgr::default()`（`FontMgr::new` 相当）は
+    /// 呼ぶたびに新しい SkFontMgr を生成し、Android では system font config XML のパース＋全
+    /// システムフォントの列挙が走る。TextRun ごとに毎フレーム生成していたところ、実機
+    /// （issue #803 の on-device 検証・OPPO A101OP）でフレームごとの `[SkFontMgr Android
+    /// Parser]` ログ洪水とネイティブメモリ膨張→LMK kill（テキストの多いシーンで起動 15 秒後に
+    /// プロセス死）を起こした。raster / GL の両 surface に共通の painter 品質問題であり、GL 対応
+    /// （surface 非依存契約 ADR-0146 §3）とは独立の修正。
+    static FONT_MGR: FontMgr = FontMgr::default();
+}
+
+/// スレッド共有の SkFontMgr で `f` を実行する（生成は重いので使い回す）。
+fn shared_font_mgr<R>(f: impl FnOnce(&FontMgr) -> R) -> R {
+    FONT_MGR.with(f)
+}
+
+thread_local! {
+    /// `Blob::id()`＋face index をキーにした typeface の常駐キャッシュ。
+    /// `new_from_data` はフォントバイト列全体を SkData へコピーするため、TextRun ごと・
+    /// フレームごとの再構築は実機でネイティブメモリ膨張→LMK kill を起こした（issue #803 の
+    /// on-device 検証）。core の画像アトラス（`RenderImage`）と同じ「Blob が生きている間は
+    /// id が安定」という前提でキーにする。フォント数はたかだか数個〜十数個なので無制限で
+    /// 保持する（vello の画像アトラスと同じ姿勢）。
+    static TYPEFACE_CACHE: std::cell::RefCell<
+        std::collections::HashMap<(u64, u32), Option<skia_safe::Typeface>>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// `RenderFont` のバイト列から SkTypeface を作る（`Blob::id()` キーの常駐キャッシュ越し）。
+fn cached_typeface(font: &hayate_core::RenderFont) -> Option<skia_safe::Typeface> {
+    let key = (font.data.id(), font.index);
+    TYPEFACE_CACHE.with(|cache| {
+        cache
+            .borrow_mut()
+            .entry(key)
+            .or_insert_with(|| {
+                let bytes: &[u8] = font.data.as_ref();
+                shared_font_mgr(|mgr| mgr.new_from_data(bytes, font.index as usize))
+            })
+            .clone()
+    })
+}
+
 fn typeface_for(data: &TextRunData) -> Option<skia_safe::Typeface> {
-    let bytes: &[u8] = data.font.data.as_ref();
-    FontMgr::default().new_from_data(bytes, data.font.index as usize)
+    cached_typeface(&data.font)
 }
 
 fn draw_text_run(canvas: &Canvas, run_x: f32, run_y: f32, color: [f32; 4], data: &TextRunData) {
@@ -392,4 +432,55 @@ fn draw_image(canvas: &Canvas, x: f32, y: f32, width: f32, height: f32, image: &
         SamplingOptions::default(),
         &paint,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// RCHandle の native ポインタ（同一 SkFontMgr インスタンスかの同定用）。
+    /// SAFETY: `RCHandle<N>` は `NonNull<N>` の透明ラッパ（skia-safe は `=0.99.0` に厳密ピン）。
+    fn native_ptr(mgr: &FontMgr) -> *const std::ffi::c_void {
+        unsafe { std::mem::transmute_copy::<FontMgr, *const std::ffi::c_void>(mgr) }
+    }
+
+    #[test]
+    fn typefaces_are_cached_per_font_blob_and_reused_across_frames() {
+        // `FontMgr::new_from_data` はフォントバイト列全体を SkData へコピーする。TextRun ごと・
+        // フレームごとに typeface を作り直すと、実機（issue #803 検証・OPPO A101OP）でネイティブ
+        // メモリが伸び続け起動 ~70 秒で LMK kill された。`Blob::id()`（同一フォントが生きて
+        // いる間は安定、core の画像アトラスと同じキー設計）で typeface を使い回すことを固定する。
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/assets/twemoji_smiley_sbix.ttf"
+        ))
+        .expect("test font asset");
+        let font = hayate_core::RenderFont::new(
+            hayate_core::Blob::new(std::sync::Arc::new(bytes)),
+            0,
+        );
+        let a = cached_typeface(&font).expect("typeface from valid font bytes");
+        let b = cached_typeface(&font).expect("typeface from valid font bytes");
+        assert_eq!(
+            unsafe { std::mem::transmute_copy::<skia_safe::Typeface, *const std::ffi::c_void>(&a) },
+            unsafe { std::mem::transmute_copy::<skia_safe::Typeface, *const std::ffi::c_void>(&b) },
+            "the same RenderFont (same Blob id + index) must reuse the cached SkTypeface"
+        );
+    }
+
+    #[test]
+    fn the_font_mgr_is_constructed_once_per_thread_and_reused() {
+        // SkFontMgr の生成は重い（Android では system font config XML のパース＋全システム
+        // フォントの列挙）。TextRun ごとに毎フレーム生成すると、実機（issue #803 の検証）で
+        // フレームごとの XML パースとネイティブメモリ膨張→LMK kill を起こした。同一スレッド
+        // 内では同じインスタンスが返ることを固定する（clone を両方生かしたまま native
+        // ポインタを比較——毎回生成する誤実装ならこの 2 つは別インスタンスになる）。
+        let a = shared_font_mgr(|mgr| mgr.clone());
+        let b = shared_font_mgr(|mgr| mgr.clone());
+        assert_eq!(
+            native_ptr(&a),
+            native_ptr(&b),
+            "shared_font_mgr must hand out the same per-thread SkFontMgr instance"
+        );
+    }
 }

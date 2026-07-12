@@ -47,7 +47,8 @@ pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_Mai
 }
 
 /// Kotlin（`MainActivity.nativePushRendererConfig`）→ Rust の JNI エクスポート（レンダラ
-/// （vello/skia）の実行時強制指定, issue #802・ADR-0146/0147）。intent extra 由来の上書き文字列
+/// （vello/skia）の実行時強制指定, issue #802・ADR-0146/0147、および skia 内 surface
+/// （raster/GL）の切替, issue #803・ADR-0146 §3）。intent extra 由来の上書き文字列
 /// （未指定は空文字）を受け取り、`renderer_config` のグローバルへ格納する
 /// （`init_and_spawn_raster` が読む）。JNI 封じ込め方針に従いここに置く。
 #[no_mangle]
@@ -55,9 +56,12 @@ pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_Mai
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     renderer: JString<'local>,
+    skia_surface: JString<'local>,
 ) {
     let renderer = jstring_to_owned(&mut env, &renderer);
     crate::renderer_config::store_pushed_renderer(&renderer);
+    let skia_surface = jstring_to_owned(&mut env, &skia_surface);
+    crate::renderer_config::store_pushed_skia_surface(&skia_surface);
 }
 
 /// `JString` を Rust の `String` に写す。null / 変換失敗は空文字（未指定扱い → 既定へ）。

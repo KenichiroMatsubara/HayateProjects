@@ -54,6 +54,15 @@ class MainActivity : GameActivity() {
          * 既定順序（vello → skia の一方向 fallback）へ落とす。
          */
         const val RENDERER_EXTRA = "hayate.renderer"
+
+        /**
+         * skia 内 surface（raster/GL）の実行時切替 intent extra キー（issue #803・ADR-0146 §3）。
+         * `adb shell am start -e hayate.renderer skia -e hayate.skia_surface gl` で APK を
+         * 作り直さずに CPU raster と Ganesh GL(EGL) を切り替える。`hayate.renderer`（vello/skia）
+         * とは独立の直交軸。未指定は空文字で push し、Rust 側（`renderer_config`）で既定
+         * （名前付き定数 `DEFAULT_SKIA_SURFACE`）へ落とす。
+         */
+        const val SKIA_SURFACE_EXTRA = "hayate.skia_surface"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -88,8 +97,9 @@ class MainActivity : GameActivity() {
      */
     private fun pushRendererOverride() {
         val renderer = intent.getStringExtra(RENDERER_EXTRA) ?: ""
-        Log.i(TAG, "renderer override: \"$renderer\"")
-        nativePushRendererConfig(renderer)
+        val skiaSurface = intent.getStringExtra(SKIA_SURFACE_EXTRA) ?: ""
+        Log.i(TAG, "renderer override: \"$renderer\" skia surface: \"$skiaSurface\"")
+        nativePushRendererConfig(renderer, skiaSurface)
     }
 
     /**
@@ -148,8 +158,9 @@ class MainActivity : GameActivity() {
     private external fun nativePushRenderConfig(backend: String, aa: String)
 
     /**
-     * レンダラ（vello/skia）の強制指定（intent extra 由来、未指定は空文字）を Rust
-     * （`jni_bridge.rs` の `Java_..._nativePushRendererConfig`）へ push する（issue #802）。
+     * レンダラ（vello/skia）の強制指定と skia 内 surface（raster/GL）の切替
+     * （intent extra 由来、未指定は空文字）を Rust（`jni_bridge.rs` の
+     * `Java_..._nativePushRendererConfig`）へ push する（issue #802 / #803）。
      */
-    private external fun nativePushRendererConfig(renderer: String)
+    private external fun nativePushRendererConfig(renderer: String, skiaSurface: String)
 }

@@ -107,6 +107,12 @@ mod ime_bridge;
 // vello の GpuSurface（GPU）と並立し、Renderer Selection Policy の一方向 fallback 先。
 #[cfg(target_os = "android")]
 mod skia_window;
+// skia GL（Ganesh/EGL）の ANativeWindow 提示面（issue #803・ADR-0146 §3）。EGL コンテキスト・
+// EGLSurface の管理をこのアダプタに封じ込め（REND-07）、painter（scene→Canvas 変換層）は
+// 不変のまま Canvas の出自だけを FBO0 wrap に替える。intent extra（`hayate.skia_surface`）で
+// raster と切替可能、EGL 初期化失敗時は skia raster へ一方向 fallback（boot は落とさない）。
+#[cfg(target_os = "android")]
+mod skia_gl_window;
 // Rust↔Kotlin JNI の共通下地（ADR-0125 の「封じ込め」方針の一般化）。`jni::`/`ndk_context::`
 // の直接使用はここ 1 ファイルに封じ込め、`qr_scanner` / `error_overlay` はこれだけを使う
 // （`tests/qr_scanner_encapsulation.rs` が強制）。

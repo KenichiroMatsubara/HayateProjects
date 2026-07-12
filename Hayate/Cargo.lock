@@ -1204,6 +1204,7 @@ dependencies = [
  "pollster",
  "serde",
  "serde_json",
+ "skia-safe",
  "wgpu",
 ]
 
