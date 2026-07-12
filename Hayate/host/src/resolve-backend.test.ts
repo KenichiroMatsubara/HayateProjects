@@ -15,6 +15,8 @@ describe('parseRendererQueryBackend', () => {
     expect(parseRendererQueryBackend('?renderer=vello')).toBe('vello');
     expect(parseRendererQueryBackend('?renderer=tiny-skia')).toBe('tiny-skia');
     expect(parseRendererQueryBackend('?renderer=vello-cpu')).toBe('vello-cpu');
+    // skia-safe は wasm 非対応（ADR-0146）なので web では tiny-skia backend へ委譲する。
+    expect(parseRendererQueryBackend('?renderer=skia-safe')).toBe('tiny-skia');
   });
 
   it('defers (undefined) for auto, dom, unknown, or missing values', () => {

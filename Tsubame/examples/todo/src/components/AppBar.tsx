@@ -177,7 +177,7 @@ export function AppBar(props: {
             <view style={{ width: 1, height: 16, backgroundColor: props.colors.line }} />
             {SpX(10)}
             <text style={{ color: props.colors.muted, fontSize: 12 }}>
-              {props.detected.source === 'query' ? props.detected.renderer : 'auto'}
+              {props.detected.source === 'auto' ? 'auto' : props.detected.renderer}
             </text>
             {SpX(12)}
           </view>

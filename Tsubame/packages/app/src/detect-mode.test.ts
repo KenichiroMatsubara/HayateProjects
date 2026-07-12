@@ -4,6 +4,7 @@ import { detectMode, detectModeFromSearch, parseRendererQuery } from './detect-m
 describe('parseRendererQuery', () => {
   it('parses supported renderer query values', () => {
     expect(parseRendererQuery('?renderer=dom')).toBe('dom');
+    expect(parseRendererQuery('?renderer=skia-safe')).toBe('skia-safe');
     expect(parseRendererQuery('?renderer=vello')).toBe('vello');
     expect(parseRendererQuery('?renderer=tiny-skia')).toBe('tiny-skia');
     expect(parseRendererQuery('?renderer=vello-cpu')).toBe('vello-cpu');
@@ -23,6 +24,32 @@ describe('detectMode', () => {
       hasEditContext: true,
       hasWebGPU: true,
     })).toEqual({ mode: 'DOM', source: 'query', renderer: 'dom' });
+  });
+
+  it('forces skia-safe canvas (tiny-skia backend on web) when renderer=skia-safe', () => {
+    expect(detectMode({
+      rendererQuery: 'skia-safe',
+      hasEditContext: true,
+      hasWebGPU: true,
+    })).toEqual({
+      mode: 'Canvas',
+      backend: 'tiny-skia',
+      source: 'query',
+      renderer: 'skia-safe',
+    });
+  });
+
+  it('defaults to skia-safe (tiny-skia backend on web) when no renderer query is present', () => {
+    expect(detectMode({
+      rendererQuery: null,
+      hasEditContext: false,
+      hasWebGPU: false,
+    })).toEqual({
+      mode: 'Canvas',
+      backend: 'tiny-skia',
+      source: 'default',
+      renderer: 'skia-safe',
+    });
   });
 
   it('forces vello canvas when renderer=vello', () => {
@@ -66,7 +93,7 @@ describe('detectMode', () => {
 
   it('auto-selects DOM when EditContext is unavailable', () => {
     expect(detectMode({
-      rendererQuery: null,
+      rendererQuery: 'auto',
       hasEditContext: false,
       hasWebGPU: true,
     })).toEqual({ mode: 'DOM', source: 'auto', renderer: 'auto' });
@@ -80,7 +107,7 @@ describe('detectMode', () => {
 
   it('auto-selects vello canvas when EditContext and WebGPU are available', () => {
     expect(detectMode({
-      rendererQuery: null,
+      rendererQuery: 'auto',
       hasEditContext: true,
       hasWebGPU: true,
     })).toEqual({
@@ -93,7 +120,7 @@ describe('detectMode', () => {
 
   it('auto-selects tiny-skia canvas when EditContext exists but WebGPU does not', () => {
     expect(detectMode({
-      rendererQuery: null,
+      rendererQuery: 'auto',
       hasEditContext: true,
       hasWebGPU: false,
     })).toEqual({

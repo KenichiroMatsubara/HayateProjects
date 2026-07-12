@@ -18,9 +18,16 @@ export const RENDERER_QUERY_PARAM = 'renderer';
 export const RENDERER_VALUE_VELLO = 'vello';
 export const RENDERER_VALUE_TINY_SKIA = 'tiny-skia';
 export const RENDERER_VALUE_VELLO_CPU = 'vello-cpu';
+/**
+ * skia-safe（rust-skia）はネイティブ専用で wasm32 非対応（ADR-0146）。web では
+ * skia 系 CPU ラスタライザの tiny-skia backend へ委譲する（deep link
+ * `?renderer=skia-safe` を tiny-skia の強制指定として解釈）。
+ */
+export const RENDERER_VALUE_SKIA_SAFE = 'skia-safe';
 
 /**
- * `?renderer=vello|tiny-skia|vello-cpu` を canvas backend の強制指定として解釈する。
+ * `?renderer=vello|tiny-skia|vello-cpu|skia-safe` を canvas backend の強制指定として
+ * 解釈する（`skia-safe` は web で動けないため tiny-skia へ委譲・ADR-0146）。
  * `auto` / `dom` / 未知値 / 未指定は canvas backend の強制ではないので `undefined`
  * （＝ WebGPU プローブ結果に委ねる）。`dom` の DOM/Canvas モード判定は Tsubame の
  * `detectMode` が別軸で持つ（host は canvas backend のみ扱う）。
@@ -34,6 +41,9 @@ export function parseRendererQueryBackend(search: string): CanvasBackend | undef
       return 'tiny-skia';
     case RENDERER_VALUE_VELLO_CPU:
       return 'vello-cpu';
+    // skia-safe は web で動けないため tiny-skia backend へ委譲する（ADR-0146）。
+    case RENDERER_VALUE_SKIA_SAFE:
+      return 'tiny-skia';
     default:
       return undefined;
   }

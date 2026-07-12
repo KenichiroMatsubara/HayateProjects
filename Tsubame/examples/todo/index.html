@@ -145,6 +145,12 @@
       <div class="rsw-panel" id="renderer-panel">
         <div class="rsw-options" id="renderer-options" role="group" aria-label="レンダラ">
           <button type="button" data-renderer="auto">auto</button>
+          <!--
+            skia-safe は Web デモの既定レンダラ（プロジェクト主力）。ただし rust-skia は
+            wasm32 非対応（ADR-0146）なので、Web では skia 系 CPU ラスタライザの tiny-skia
+            backend へ委譲する（detect-mode.ts の SKIA_SAFE_WEB_BACKEND）。
+          -->
+          <button type="button" data-renderer="skia-safe">skia-safe</button>
           <button type="button" data-renderer="vello">vello</button>
           <button type="button" data-renderer="tiny-skia">tiny-skia</button>
           <button type="button" data-renderer="vello-cpu">vello-cpu</button>
@@ -185,7 +191,8 @@
     <script>
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
-        const current = params.get('renderer') ?? 'auto';
+        // 既定は skia-safe（detect-mode.ts の DEFAULT_RENDERER と一致させる）。
+        const current = params.get('renderer') ?? 'skia-safe';
         const layerPresentOn = params.get('layerPresent') !== '0';
         const root = document.getElementById('renderer-switch');
         const toggle = document.getElementById('renderer-toggle');
@@ -239,6 +246,30 @@
             window.location.search = query ? `?${query}` : '';
           });
         }
+
+        // 「最適化(layer-present)」行の二重表示バグ修正。vello 行（`layerPresent`）と
+        // tiny-skia/vello-cpu 行（`cpuLayerPresent`）は対象レンダラも効くキーも別なのに
+        // 両方を常時表示していたため、同一に見えるトグルが二段重なっていた。選択中の
+        // レンダラに対応する 1 行だけを見せる（detect-mode.ts の backend 解決と同規則）。
+        const velloRow = document.getElementById('layer-present-options');
+        const cpuRow = document.getElementById('cpu-layer-present-options');
+        const layerFamilyFor = (renderer) => {
+          if (renderer === 'vello') return 'vello';
+          // skia-safe は Web では tiny-skia backend（ADR-0146）＝ cpu 系トグルが効く。
+          if (renderer === 'tiny-skia' || renderer === 'vello-cpu' || renderer === 'skia-safe') {
+            return 'cpu';
+          }
+          if (renderer === 'dom') return 'none';
+          if (renderer === 'auto') {
+            // auto は detect-mode と同じ判定で実効 backend を先読みする。
+            if (!('EditContext' in window)) return 'none'; // DOM 経路
+            return 'gpu' in navigator ? 'vello' : 'cpu';
+          }
+          return 'cpu'; // 既定 skia-safe
+        };
+        const family = layerFamilyFor(current);
+        velloRow.style.display = family === 'vello' ? 'flex' : 'none';
+        cpuRow.style.display = family === 'cpu' ? 'flex' : 'none';
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
