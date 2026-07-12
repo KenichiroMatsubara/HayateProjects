@@ -1,5 +1,5 @@
 import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
-import { resolveCanvasBackend, type CanvasBackend } from './resolve-backend.js';
+import { resolveCanvasBackendSelection, type CanvasBackend } from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 import {
   attachAccessibilityMirror,
@@ -222,7 +222,16 @@ export async function createHayateWebHost(
   const attachMirror = options?.attachMirror ?? attachAccessibilityMirror;
 
   const webgpuAvailable = await probe();
-  const backend = resolveCanvasBackend(options, webgpuAvailable);
+  // backend 選択（どの WASM バンドル＝ Scene Renderer をロードするか）を「どれを / なぜ」
+  // の両方で決める。`search` を渡すことで host 自体が `?renderer=vello|tiny-skia|vello-cpu`
+  // のディープリンク（Android の `am start -e hayate.renderer` 相当）に追従する。選択は
+  // ネイティブの `selected scene renderer:` ログに倣い console に観測点を残す（WASM 側は
+  // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
+  const selection = resolveCanvasBackendSelection(options, webgpuAvailable, search ?? '');
+  console.info(
+    `hayate host: scene renderer bundle = ${selection.backend} (${selection.reason})`,
+  );
+  const backend = selection.backend;
   const raw = await load(backend, canvas);
 
   // 開発時専用の味付け定数の上書き。最初のフレーム前に一度だけ適用する。不正な JSON は

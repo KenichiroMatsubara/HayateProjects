@@ -72,7 +72,7 @@
 **規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
 **出典:** ADR-0050
 **状況:** ✅ — `SceneRendererKind::{name, try_init, try_init_sync_for_fallback, classify_init_error}`（`backend/mod.rs`）；`RenderHost::init_with_policy` が preference list を反復。
-**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。
+**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。[追加 2026-07-12] web もネイティブ（REND-15）と同じくランタイム上書きを持つ：`?renderer=vello|tiny-skia|vello-cpu`（`SceneRendererKind::name()` と同一語彙）を `@torimi/hayate-host` の `resolveCanvasBackendSelection` が deep-link として honor し、選択 renderer と選択理由を console へ出す（Rust 側 `render_host.rs` の `selected scene renderer:` / `scene renderer rejected:` ログが console_log 経由でブラウザに届く）。web は「1バイナリ1レンダラ」排他（REND-11）なので上書きはロードする WASM バンドルの選択として効く。
 
 ### REND-10 — Vello を主候補 renderer とする
 **規範文:** GPU 描画の主候補 renderer は Vello（Linebender, wgpu ベース）とし、`SceneGraph`→Vello Scene 変換は薄い独立 crate（`scene-renderers/vello`）に置く。公開 API は `render_scene` のみ。
