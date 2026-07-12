@@ -33,6 +33,17 @@
       "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
+      "name": "pkg-canvaskit",
+      "outDir": "wasm-pkgs/pkg-canvaskit",
+      "targetDir": "target/wasm-canvaskit",
+      "cargoFeatures": { "mode": "exclusive", "names": ["backend-canvaskit"] },
+      "description": "Hayate — GPU-native UI substrate",
+      "includeInDefaultBuild": false,
+      "npmName": "@torimi/hayate-adapter-web-skia",
+      "comment": "ADR-0148 DRAFT / Phase 2: Skia CanvasKit backend. host は null のまま — 実 npm パッケージがビルドできてから host:{backend:'canvaskit',runtimeLayerPresentArg:'cpuLayerPresent'} に切替え、generate:canvas-backend でローダを再生成する。CanvasKit(canvaskit-wasm)の asset 配信も要結線。既定ビルド対象外。",
+      "host": null
+    },
+    {
       "name": "pkg-null",
       "outDir": "wasm-pkgs/pkg-null",
       "targetDir": "target/wasm-null",

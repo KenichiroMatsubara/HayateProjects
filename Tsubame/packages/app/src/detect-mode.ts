@@ -1,7 +1,16 @@
 export type Mode = 'DOM' | 'Canvas';
 export type ModeSource = 'query' | 'auto' | 'default';
-export type RendererQuery = 'auto' | 'skia-safe' | 'vello' | 'tiny-skia' | 'vello-cpu' | 'dom';
-export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu';
+export type RendererQuery =
+  | 'auto'
+  | 'skia-safe'
+  | 'canvaskit'
+  | 'vello'
+  | 'tiny-skia'
+  | 'vello-cpu'
+  | 'dom';
+// `canvaskit` は ADR-0148（DRAFT）の Skia CanvasKit backend。実 wasm パッケージ
+// （pkg-canvaskit）がビルドされるまでは host のローダが明示エラーを返す（Phase 2 で結線）。
+export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu' | 'canvaskit';
 
 /**
  * クエリ未指定時の Web デモ既定レンダラ。skia-safe をプロジェクトの主力レンダラとして
@@ -50,6 +59,12 @@ export function detectMode(input: DetectModeInput): DetectModeResult {
   if (rendererQuery === 'skia-safe') {
     return { mode: 'Canvas', backend: SKIA_SAFE_WEB_BACKEND, source: 'query', renderer: 'skia-safe' };
   }
+  if (rendererQuery === 'canvaskit') {
+    // ADR-0148（DRAFT）: 本物の Skia（CanvasKit）web backend。pkg-canvaskit がビルド・結線
+    // されるまで host のローダが明示エラーを返す（backend 'canvaskit' に対応する wasm ターゲット
+    // が未マップのため）。ビルド後は既定/skia-safe をこれへ remap する（Phase 5）。
+    return { mode: 'Canvas', backend: 'canvaskit', source: 'query', renderer: 'canvaskit' };
+  }
   if (rendererQuery === 'vello') {
     return { mode: 'Canvas', backend: 'vello', source: 'query', renderer: 'vello' };
   }
@@ -79,6 +94,7 @@ export function parseRendererQuery(search: string): RendererQuery | null {
   if (
     value === 'auto' ||
     value === 'skia-safe' ||
+    value === 'canvaskit' ||
     value === 'vello' ||
     value === 'tiny-skia' ||
     value === 'vello-cpu' ||

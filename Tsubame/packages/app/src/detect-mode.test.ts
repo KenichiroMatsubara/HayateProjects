@@ -5,6 +5,7 @@ describe('parseRendererQuery', () => {
   it('parses supported renderer query values', () => {
     expect(parseRendererQuery('?renderer=dom')).toBe('dom');
     expect(parseRendererQuery('?renderer=skia-safe')).toBe('skia-safe');
+    expect(parseRendererQuery('?renderer=canvaskit')).toBe('canvaskit');
     expect(parseRendererQuery('?renderer=vello')).toBe('vello');
     expect(parseRendererQuery('?renderer=tiny-skia')).toBe('tiny-skia');
     expect(parseRendererQuery('?renderer=vello-cpu')).toBe('vello-cpu');
@@ -36,6 +37,20 @@ describe('detectMode', () => {
       backend: 'tiny-skia',
       source: 'query',
       renderer: 'skia-safe',
+    });
+  });
+
+  it('forces canvaskit canvas (its own backend) when renderer=canvaskit', () => {
+    // ADR-0148（DRAFT）: 本物の Skia backend。tiny-skia へは委譲せず backend='canvaskit'。
+    expect(detectMode({
+      rendererQuery: 'canvaskit',
+      hasEditContext: true,
+      hasWebGPU: true,
+    })).toEqual({
+      mode: 'Canvas',
+      backend: 'canvaskit',
+      source: 'query',
+      renderer: 'canvaskit',
     });
   });
 

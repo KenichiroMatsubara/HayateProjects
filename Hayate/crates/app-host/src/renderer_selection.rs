@@ -23,6 +23,10 @@ pub enum SceneRendererKind {
     Skia,
     /// tiny-skia の置き換え候補として検証中の CPU レンダラ（vello_cpu、Web限定スパイク）。
     VelloCpu,
+    /// Skia CanvasKit（Google Skia 公式 wasm）による web 専用 Scene Renderer（ADR-0148・DRAFT）。
+    /// skia-safe（ネイティブ）の web 対応版で、web で初の `paints_color_glyphs()` = true。
+    /// wasm 専用（ネイティブの policy には現れない — native の match は catch-all で受ける）。
+    Canvaskit,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
     Recording,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
@@ -43,7 +47,7 @@ impl SceneRendererKind {
     /// する（ADR-0101）。アダプタはフォント調達時にカラー版/モノクロ版を選ぶため
     /// これを参照する。
     pub fn paints_color_glyphs(self) -> bool {
-        matches!(self, Self::Vello | Self::Skia)
+        matches!(self, Self::Vello | Self::Skia | Self::Canvaskit)
     }
 
     /// ログ・エラーメッセージ用の安定したレンダラ ID。
@@ -53,6 +57,7 @@ impl SceneRendererKind {
             Self::TinySkia => "tiny-skia",
             Self::Skia => "skia",
             Self::VelloCpu => "vello-cpu",
+            Self::Canvaskit => "canvaskit",
             Self::Recording => "recording",
             Self::Null => "null",
         }
@@ -210,12 +215,16 @@ impl RendererSelectionPolicy {
 #[cfg(any(
     feature = "backend-vello",
     feature = "backend-tiny-skia",
-    feature = "backend-vello-cpu"
+    feature = "backend-vello-cpu",
+    feature = "backend-canvaskit"
 ))]
 const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[
     SceneRendererKind::Vello,
     SceneRendererKind::TinySkia,
     SceneRendererKind::VelloCpu,
+    // ADR-0148（DRAFT）: canvaskit-only ビルドはここまで fall-through して Canvaskit を選ぶ。
+    // 他 backend のビルドでは not-compiled で見送られる（既存の Vello/TinySkia と同じ流儀）。
+    SceneRendererKind::Canvaskit,
 ];
 
 /// C3 コーデック統合テストは `--features backend-null` のみでビルドする。
@@ -224,7 +233,8 @@ const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[
     not(any(
         feature = "backend-vello",
         feature = "backend-tiny-skia",
-        feature = "backend-vello-cpu"
+        feature = "backend-vello-cpu",
+        feature = "backend-canvaskit"
     ))
 ))]
 const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
@@ -271,6 +281,7 @@ pub fn native_renderer_selection_policy(
     feature = "backend-vello",
     feature = "backend-tiny-skia",
     feature = "backend-vello-cpu",
+    feature = "backend-canvaskit",
     feature = "backend-null"
 ))]
 pub fn standard_renderer_selection_policy() -> RendererSelectionPolicy {

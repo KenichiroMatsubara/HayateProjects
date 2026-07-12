@@ -35,6 +35,13 @@ mod vello_cpu_backend;
 #[cfg(feature = "backend-vello-cpu")]
 use vello_cpu_backend::SelectedBackend as VelloCpuBackend;
 
+// ADR-0148（DRAFT / Phase 2-3・未検証）: Skia CanvasKit backend。
+#[cfg(feature = "backend-canvaskit")]
+mod canvaskit_backend;
+
+#[cfg(feature = "backend-canvaskit")]
+use canvaskit_backend::SelectedBackend as CanvaskitBackend;
+
 #[cfg(feature = "backend-null")]
 mod null;
 
@@ -46,10 +53,11 @@ use null::SelectedBackend as NullBackend;
     feature = "backend-recording",
     feature = "backend-tiny-skia",
     feature = "backend-vello-cpu",
+    feature = "backend-canvaskit",
     feature = "backend-null"
 )))]
 compile_error!(
-    "Enable one of: backend-vello, backend-recording, backend-tiny-skia, backend-vello-cpu, backend-null"
+    "Enable one of: backend-vello, backend-recording, backend-tiny-skia, backend-vello-cpu, backend-canvaskit, backend-null"
 );
 
 /// `hayate_core::Surface`（GPU 経路専用の提示サーフェス契約、ADR-0132 スライス3）の web 実装。
@@ -128,6 +136,21 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
                     Err(not_compiled_error(kind))
                 }
             }
+            // ADR-0148（DRAFT）: CanvasKit init は wasm ロードを伴い本来 async。
+            SceneRendererKind::Canvaskit => {
+                #[cfg(feature = "backend-canvaskit")]
+                {
+                    return CanvaskitBackend::init(canvas)
+                        .await
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-canvaskit"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
             SceneRendererKind::Recording => {
                 #[cfg(feature = "backend-recording")]
                 {
@@ -173,6 +196,12 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
             )),
             // skia はネイティブ専用（ADR-0146）— wasm32 に存在しない。防御的な typed エラー。
             SceneRendererKind::Skia => Err(not_compiled_error(kind)),
+            // CanvasKit は async init（wasm ロード）専用。同期 fallback 経路では初期化できない
+            // （vello と同じ扱い・ADR-0148 DRAFT）。
+            SceneRendererKind::Canvaskit => Err(anyhow::anyhow!(
+                "renderer cannot be initialized synchronously for runtime fallback: {}",
+                kind.name()
+            )),
             SceneRendererKind::TinySkia => {
                 #[cfg(feature = "backend-tiny-skia")]
                 {

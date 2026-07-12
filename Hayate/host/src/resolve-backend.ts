@@ -1,4 +1,4 @@
-export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu';
+export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu' | 'canvaskit';
 
 export interface ResolveCanvasBackendOptions {
   backend?: CanvasBackend;
@@ -24,10 +24,18 @@ export const RENDERER_VALUE_VELLO_CPU = 'vello-cpu';
  * `?renderer=skia-safe` を tiny-skia の強制指定として解釈）。
  */
 export const RENDERER_VALUE_SKIA_SAFE = 'skia-safe';
+/**
+ * Skia CanvasKit backend（ADR-0148・DRAFT）。skia-safe と違い web で本物の Skia を動かす。
+ * `?renderer=canvaskit` を canvas backend 'canvaskit' の強制指定として解釈する。pkg-canvaskit
+ * がビルド・結線される（loadCanvasBackend に分岐が生える）まで、host のローダは backend
+ * 'canvaskit' に対し明示エラー（未マップ）を返す。
+ */
+export const RENDERER_VALUE_CANVASKIT = 'canvaskit';
 
 /**
- * `?renderer=vello|tiny-skia|vello-cpu|skia-safe` を canvas backend の強制指定として
- * 解釈する（`skia-safe` は web で動けないため tiny-skia へ委譲・ADR-0146）。
+ * `?renderer=vello|tiny-skia|vello-cpu|skia-safe|canvaskit` を canvas backend の強制指定
+ * として解釈する（`skia-safe` は web で動けないため tiny-skia へ委譲・ADR-0146。`canvaskit`
+ * は本物の Skia を直接ロード・ADR-0148 DRAFT）。
  * `auto` / `dom` / 未知値 / 未指定は canvas backend の強制ではないので `undefined`
  * （＝ WebGPU プローブ結果に委ねる）。`dom` の DOM/Canvas モード判定は Tsubame の
  * `detectMode` が別軸で持つ（host は canvas backend のみ扱う）。
@@ -44,6 +52,10 @@ export function parseRendererQueryBackend(search: string): CanvasBackend | undef
     // skia-safe は web で動けないため tiny-skia backend へ委譲する（ADR-0146）。
     case RENDERER_VALUE_SKIA_SAFE:
       return 'tiny-skia';
+    // canvaskit は本物の Skia（CanvasKit）を直接ロードする（ADR-0148・DRAFT、未ビルド時は
+    // ローダが明示エラー）。委譲せず 'canvaskit' のまま返す。
+    case RENDERER_VALUE_CANVASKIT:
+      return 'canvaskit';
     default:
       return undefined;
   }

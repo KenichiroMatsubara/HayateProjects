@@ -10,6 +10,9 @@ repository.workspace = true
 backend-vello = []
 backend-tiny-skia = []
 backend-vello-cpu = []
+# ADR-0148: Skia CanvasKit web backend（DRAFT / Phase 2）。空フラグ — 選択ポリシーの
+# cfg ゲートにだけ効く（wasm-adapter 側が dep を持つ）。
+backend-canvaskit = []
 backend-recording = []
 backend-null = []
 

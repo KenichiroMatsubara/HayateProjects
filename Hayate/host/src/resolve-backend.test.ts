@@ -17,6 +17,8 @@ describe('parseRendererQueryBackend', () => {
     expect(parseRendererQueryBackend('?renderer=vello-cpu')).toBe('vello-cpu');
     // skia-safe は wasm 非対応（ADR-0146）なので web では tiny-skia backend へ委譲する。
     expect(parseRendererQueryBackend('?renderer=skia-safe')).toBe('tiny-skia');
+    // canvaskit は本物の Skia を直接ロードする（ADR-0148 DRAFT）— 委譲しない。
+    expect(parseRendererQueryBackend('?renderer=canvaskit')).toBe('canvaskit');
   });
 
   it('defers (undefined) for auto, dom, unknown, or missing values', () => {

@@ -259,6 +259,9 @@
           if (renderer === 'tiny-skia' || renderer === 'vello-cpu' || renderer === 'skia-safe') {
             return 'cpu';
           }
+          // canvaskit(ADR-0148 DRAFT)は per-layer present を持たない(supports_layer_present=false)
+          // ので最適化行は出さない。
+          if (renderer === 'canvaskit') return 'none';
           if (renderer === 'dom') return 'none';
           if (renderer === 'auto') {
             // auto は detect-mode と同じ判定で実効 backend を先読みする。

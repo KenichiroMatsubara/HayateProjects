@@ -17,11 +17,12 @@ import {
   cargoArgsFor,
 } from './wasm-manifest.mjs';
 
-test('the manifest declares exactly the 4 known wasm-pkgs targets', () => {
+test('the manifest declares exactly the 5 known wasm-pkgs targets', () => {
   const manifest = loadManifest();
   const names = manifest.targets.map((t) => t.name);
 
-  assert.deepEqual(names, ['pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null']);
+  // pkg-canvaskit は ADR-0148（DRAFT）の opt-in ターゲット（includeInDefaultBuild:false）。
+  assert.deepEqual(names, ['pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-canvaskit', 'pkg-null']);
 });
 
 // Pins the exact `wasm-pack build` argv the two legacy scripts used to hardcode,
@@ -175,9 +176,9 @@ test('selectTargets: an unknown name throws a clear error', () => {
 
 // CI's Pages deploy needs every target built, not just the default set — { all: true } is the
 // seam that guarantees a manifest entry can never be silently missing from that build,
-// regardless of its includeInDefaultBuild value. Since ADR-0140 (#718) removed the manifest's
-// one opt-in target (pkg-layer-present), the current manifest happens to have { all: true }
-// equal the default-build set — the seam itself still exists for the next opt-in target.
+// regardless of its includeInDefaultBuild value. ADR-0148 (DRAFT) reintroduced an opt-in target
+// (pkg-canvaskit, includeInDefaultBuild:false), so { all: true } now genuinely diverges from the
+// default-build set again — canvaskit appears here but not in the default build.
 test('selectTargets: { all: true } selects every target, default or opt-in', () => {
   const manifest = loadManifest();
 
@@ -185,6 +186,7 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
     'pkg',
     'pkg-tiny-skia',
     'pkg-vello-cpu',
+    'pkg-canvaskit',
     'pkg-null',
   ]);
 });

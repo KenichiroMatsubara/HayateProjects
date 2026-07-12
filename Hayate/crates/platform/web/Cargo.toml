@@ -14,6 +14,10 @@ default = ["backend-vello", "backend-tiny-skia"]
 backend-vello = ["dep:wgpu", "dep:hayate-scene-renderer-vello", "hayate-app-host/backend-vello"]
 backend-tiny-skia = ["dep:tiny-skia", "dep:hayate-scene-renderer-tiny-skia", "hayate-app-host/backend-tiny-skia"]
 backend-vello-cpu = ["dep:vello_cpu", "dep:hayate-scene-renderer-vello-cpu", "hayate-app-host/backend-vello-cpu"]
+# ADR-0148（DRAFT / Phase 2）: Skia CanvasKit backend。CanvasKit は JS/asset 依存
+# （`canvaskit-wasm`、js/canvaskit_glue.js 経由）なので cargo 依存は増えない — 既存の
+# wasm-bindgen/js-sys/web-sys だけで動く。default には未追加（別 wasm-pkg でビルドする）。
+backend-canvaskit = ["hayate-app-host/backend-canvaskit"]
 backend-recording = ["hayate-app-host/backend-recording"]
 backend-null = ["hayate-app-host/backend-null"]
 
