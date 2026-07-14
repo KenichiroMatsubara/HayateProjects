@@ -1719,7 +1719,19 @@ impl ElementTree {
         self.capture_frame_layers(&dirty);
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
+        #[cfg(any(debug_assertions, feature = "scene-validation"))]
+        let scene_changed = dirty.full_rebuild
+            || !dirty.elements.is_empty()
+            || !dirty.z_index_reorder_parents.is_empty();
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
+        // retained lowering が変更したフレームだけ共通 SceneGraph 契約を検証する。不変フレームは
+        // この分岐自体に到達せず、release（feature 無効）では validator のコードも含まれない。
+        #[cfg(any(debug_assertions, feature = "scene-validation"))]
+        if scene_changed {
+            if let Err(error) = crate::validate_scene_graph(&scene_cache) {
+                log::error!("scene graph validation failed: {error:?}");
+            }
+        }
         // トランジションは lowering seam で進む。まだ補間中の要素は visual-dirty の
         // まま保ち、次フレームで再 lowering して進める。最後のトラックが本フレームで
         // 落ち着くと要素は再マークされず、フレームループは静止する（ADR-0086/0093）。
@@ -2782,4 +2794,3 @@ mod value_guard_tests {
         assert!(!tree.element_set_text_content_if_idle(view, "x"));
     }
 }
-
