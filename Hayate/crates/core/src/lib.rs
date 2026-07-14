@@ -19,6 +19,8 @@ pub mod local_notification;
 pub mod node;
 pub mod qr_scanner;
 pub mod render;
+#[cfg(any(debug_assertions, feature = "scene-validation"))]
+mod scene_validation;
 pub mod scroll;
 pub mod secure_storage;
 pub mod sensors;
@@ -95,6 +97,8 @@ pub use node::{
     Node, NodeId, NodeKind, SceneGraph, ShadowOccluder, TextDecorationLine, TextRunData,
     TextSynthesis,
 };
+#[cfg(any(debug_assertions, feature = "scene-validation"))]
+pub use scene_validation::{validate_scene_graph, SceneValidationError};
 pub use scroll::{
     MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
