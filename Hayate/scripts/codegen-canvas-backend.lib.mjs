@@ -33,9 +33,10 @@ function branchFor(backend, targets) {
   // ADR-0138 (#710)/ADR-0140 (#718): a target opts into a runtime per-layer-present toggle by
   // naming the init() variable it wants (e.g. `cpuLayerPresent`, `layerPresent`).
   const initArgs = target.host.runtimeLayerPresentArg ? `canvas, ${target.host.runtimeLayerPresentArg}` : 'canvas';
+  const bootstrap = target.host.bootstrap === 'canvaskit' ? '    await prepareCanvasKitSurface(canvas);\n' : '';
 
   return `  if (backend === '${backend}') {
-    const mod = await import('${target.npmName}');
+${bootstrap}    const mod = await import('${target.npmName}');
     await mod.default();
     return (await mod.HayateElementRenderer.init(${initArgs})) as unknown as RawHayate;
   }`;
@@ -43,6 +44,7 @@ function branchFor(backend, targets) {
 
 export function generateLoadCanvasBackend(manifest) {
   const targets = hostTargets(manifest);
+  const needsCanvasKitBootstrap = targets.some((target) => target.host.bootstrap === 'canvaskit');
   const backends = [...new Set(targets.map((t) => t.host.backend))];
   const branches = backends.map((backend) => branchFor(backend, targets.filter((t) => t.host.backend === backend)));
   // `layerPresent` always exists as its own parameter (vello's own runtime toggle, see the
@@ -57,11 +59,13 @@ export function generateLoadCanvasBackend(manifest) {
 // Source: Hayate/scripts/wasm-build-manifest.json (#700/#703)
 import type { CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
+${needsCanvasKitBootstrap ? "import { prepareCanvasKitSurface } from './canvaskit-bridge.js';" : ''}
 
 /**
  * 選択した backend の WASM を動的 import し、surface（canvas）上で \`HayateElementRenderer\`
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
+${needsCanvasKitBootstrap ? ' * CanvasKit は Host が先に surface を確立し、WASM 側は opaque な frame replay 境界だけを使う。\n' : ''}
  *
  * \`layerPresent\` は vello 専用のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
  * \`HayateElementRenderer.init\` にランタイムフラグとして渡す。ADR-0137 により Web は既定

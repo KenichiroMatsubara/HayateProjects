@@ -1,4 +1,4 @@
-export type CanvasBackend = 'vello' | 'tiny-skia' | 'vello-cpu';
+export type CanvasBackend = 'canvaskit' | 'vello' | 'tiny-skia' | 'vello-cpu';
 
 export interface ResolveCanvasBackendOptions {
   backend?: CanvasBackend;
@@ -47,12 +47,42 @@ export function parseRendererQueryBackend(search: string): CanvasBackend | undef
 export type BackendSelectionReason =
   | 'options-override'
   | 'query-override'
-  | 'webgpu-auto'
-  | 'webgpu-unavailable-fallback';
+  | 'canvaskit-auto'
+  | 'webgpu-fallback'
+  | 'webgpu-unavailable-skip';
 
 export interface ResolvedCanvasBackend {
   backend: CanvasBackend;
   reason: BackendSelectionReason;
+}
+
+/**
+ * Web の初回 boot でだけ試す候補。CanvasKit の初期化失敗は、同じ boot 中にこの配列の
+ * 未選択候補へ一方向に進める。選択済み CanvasKit の runtime failure はこの関数へ戻らず、
+ * Rust の RenderHost が terminal failure として扱う（ADR-0148）。
+ */
+export function resolveCanvasBackendAttemptOrder(
+  options: ResolveCanvasBackendOptions | undefined,
+  webgpuAvailable: boolean,
+  search = '',
+): ResolvedCanvasBackend[] {
+  if (options?.backend !== undefined) {
+    return [{ backend: options.backend, reason: 'options-override' }];
+  }
+  const forced = parseRendererQueryBackend(search);
+  if (forced !== undefined) {
+    return [{ backend: forced, reason: 'query-override' }];
+  }
+
+  const order: ResolvedCanvasBackend[] = [{ backend: 'canvaskit', reason: 'canvaskit-auto' }];
+  if (webgpuAvailable) {
+    order.push({ backend: 'vello', reason: 'webgpu-fallback' });
+  }
+  order.push({
+    backend: 'tiny-skia',
+    reason: webgpuAvailable ? 'webgpu-fallback' : 'webgpu-unavailable-skip',
+  });
+  return order;
 }
 
 /**
@@ -67,16 +97,7 @@ export function resolveCanvasBackendSelection(
   webgpuAvailable: boolean,
   search = '',
 ): ResolvedCanvasBackend {
-  if (options?.backend !== undefined) {
-    return { backend: options.backend, reason: 'options-override' };
-  }
-  const forced = parseRendererQueryBackend(search);
-  if (forced !== undefined) {
-    return { backend: forced, reason: 'query-override' };
-  }
-  return webgpuAvailable
-    ? { backend: 'vello', reason: 'webgpu-auto' }
-    : { backend: 'tiny-skia', reason: 'webgpu-unavailable-fallback' };
+  return resolveCanvasBackendAttemptOrder(options, webgpuAvailable, search)[0]!;
 }
 
 /**

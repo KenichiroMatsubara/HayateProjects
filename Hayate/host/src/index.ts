@@ -1,5 +1,5 @@
 import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
-import { resolveCanvasBackendSelection, type CanvasBackend } from './resolve-backend.js';
+import { resolveCanvasBackendAttemptOrder, type CanvasBackend } from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 import {
   attachAccessibilityMirror,
@@ -227,12 +227,29 @@ export async function createHayateWebHost(
   // のディープリンク（Android の `am start -e hayate.renderer` 相当）に追従する。選択は
   // ネイティブの `selected scene renderer:` ログに倣い console に観測点を残す（WASM 側は
   // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
-  const selection = resolveCanvasBackendSelection(options, webgpuAvailable, search ?? '');
-  console.info(
-    `hayate host: scene renderer bundle = ${selection.backend} (${selection.reason})`,
-  );
-  const backend = selection.backend;
-  const raw = await load(backend, canvas);
+  const attempts = resolveCanvasBackendAttemptOrder(options, webgpuAvailable, search ?? '');
+  let raw: RawHayate | undefined;
+  let lastError: unknown;
+  for (const selection of attempts) {
+    console.info(
+      `hayate host: scene renderer bundle = ${selection.backend} (${selection.reason})`,
+    );
+    try {
+      raw = await load(selection.backend, canvas);
+      break;
+    } catch (error) {
+      lastError = error;
+      console.warn(
+        `hayate host: scene renderer init failed = ${selection.backend} (${selection.reason})`,
+        error,
+      );
+    }
+  }
+  if (!raw) {
+    throw new Error('createHayateWebHost: no scene renderer could be initialized', {
+      cause: lastError,
+    });
+  }
 
   // 開発時専用の味付け定数の上書き。最初のフレーム前に一度だけ適用する。不正な JSON は
   // WASM のセッタ内で throw するが、握りつぶしてコンパイル済みデフォルトへフォール

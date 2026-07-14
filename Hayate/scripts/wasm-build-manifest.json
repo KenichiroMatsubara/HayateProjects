@@ -3,6 +3,16 @@
   "npmPackageName": "@torimi/hayate-adapter-web",
   "targets": [
     {
+      "name": "pkg-canvaskit",
+      "outDir": "wasm-pkgs/pkg-canvaskit",
+      "targetDir": "target/wasm-canvaskit",
+      "cargoFeatures": { "mode": "exclusive", "names": ["backend-canvaskit"] },
+      "description": "Hayate — CanvasKit Web scene renderer",
+      "includeInDefaultBuild": true,
+      "npmName": "@torimi/hayate-adapter-web-canvaskit",
+      "host": { "backend": "canvaskit", "bootstrap": "canvaskit" }
+    },
+    {
       "name": "pkg",
       "outDir": "wasm-pkgs/pkg",
       "targetDir": "target/wasm",

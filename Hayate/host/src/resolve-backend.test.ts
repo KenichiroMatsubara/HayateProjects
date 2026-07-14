@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseRendererQueryBackend,
   resolveCanvasBackend,
+  resolveCanvasBackendAttemptOrder,
   resolveCanvasBackendSelection,
   RENDERER_QUERY_PARAM,
 } from './resolve-backend.js';
@@ -51,23 +52,40 @@ describe('resolveCanvasBackendSelection', () => {
     });
   });
 
-  it('auto-selects vello with reason webgpu-auto when WebGPU is available', () => {
+  it('selects CanvasKit as the first automatic boot candidate', () => {
     expect(resolveCanvasBackendSelection(undefined, true, '')).toEqual({
-      backend: 'vello',
-      reason: 'webgpu-auto',
+      backend: 'canvaskit',
+      reason: 'canvaskit-auto',
     });
     // auto/dom クエリは強制ではないので自動判定に委ねる。
     expect(resolveCanvasBackendSelection(undefined, true, '?renderer=auto')).toEqual({
-      backend: 'vello',
-      reason: 'webgpu-auto',
+      backend: 'canvaskit',
+      reason: 'canvaskit-auto',
     });
   });
 
-  it('falls back to tiny-skia with reason webgpu-unavailable-fallback', () => {
+  it('keeps CanvasKit first when WebGPU is unavailable', () => {
     expect(resolveCanvasBackendSelection(undefined, false, '')).toEqual({
-      backend: 'tiny-skia',
-      reason: 'webgpu-unavailable-fallback',
+      backend: 'canvaskit',
+      reason: 'canvaskit-auto',
     });
+  });
+});
+
+describe('resolveCanvasBackendAttemptOrder', () => {
+  it('uses CanvasKit → Vello → tiny-skia during automatic WebGPU boot', () => {
+    expect(resolveCanvasBackendAttemptOrder(undefined, true)).toEqual([
+      { backend: 'canvaskit', reason: 'canvaskit-auto' },
+      { backend: 'vello', reason: 'webgpu-fallback' },
+      { backend: 'tiny-skia', reason: 'webgpu-fallback' },
+    ]);
+  });
+
+  it('skips Vello but retains CanvasKit → tiny-skia without WebGPU', () => {
+    expect(resolveCanvasBackendAttemptOrder(undefined, false)).toEqual([
+      { backend: 'canvaskit', reason: 'canvaskit-auto' },
+      { backend: 'tiny-skia', reason: 'webgpu-unavailable-skip' },
+    ]);
   });
 });
 
@@ -87,13 +105,13 @@ describe('resolveCanvasBackend', () => {
     expect(resolveCanvasBackend({ backend: 'vello-cpu' }, false)).toBe('vello-cpu');
   });
 
-  it('auto-selects vello when WebGPU is available and no override', () => {
-    expect(resolveCanvasBackend(undefined, true)).toBe('vello');
-    expect(resolveCanvasBackend({}, true)).toBe('vello');
+  it('auto-selects CanvasKit first when WebGPU is available and no override', () => {
+    expect(resolveCanvasBackend(undefined, true)).toBe('canvaskit');
+    expect(resolveCanvasBackend({}, true)).toBe('canvaskit');
   });
 
-  it('auto-selects tiny-skia when WebGPU is unavailable and no override', () => {
-    expect(resolveCanvasBackend(undefined, false)).toBe('tiny-skia');
-    expect(resolveCanvasBackend({}, false)).toBe('tiny-skia');
+  it('auto-selects CanvasKit first when WebGPU is unavailable and no override', () => {
+    expect(resolveCanvasBackend(undefined, false)).toBe('canvaskit');
+    expect(resolveCanvasBackend({}, false)).toBe('canvaskit');
   });
 });
