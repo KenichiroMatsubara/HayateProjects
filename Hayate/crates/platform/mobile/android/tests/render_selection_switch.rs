@@ -2,7 +2,7 @@
 //! ADR-0146/0147）。
 //!
 //! #801 が確立した `hayate_app_host::renderer_selection::native_renderer_selection_policy`
-//! （vello → skia の一方向 fallback、forced-override の却下、vello 不在時の skia 単独起動）を
+//! （skia → vello の一方向 init fallback、forced-override の却下、vello 不在時の skia 単独起動）を
 //! Android アダプタでも再利用し、intent extra（`hayate.renderer`）で再ビルドなしに切り替えられる
 //! ことを固定する。#795 の `render_backend_switch.rs`（backend/AA スイッチ）と同じ「ソース走査で
 //! 契約を固定する」方式——Gradle/AGP・skia-safe cross link・ndk はサンドボックス実行不可のため。
@@ -102,17 +102,16 @@ fn switch_key_and_value_vocabulary_are_named_constants() {
     );
 }
 
-// ── 既定順序（vello → skia の名前付き定数） ─────────────────────────────────────────
+// ── 既定順序（skia → vello の名前付き定数） ─────────────────────────────────────────
 
 #[test]
 fn default_order_is_the_shared_native_renderer_order_constant() {
-    // 確定値（既定 preferred renderer）自体は後続の完全人力 issue が決める——#802 の責務は
-    // 「vello→skia の一方向 fallback」という順序そのものを名前付き定数で持つこと
-    // （#801 が定義した NATIVE_RENDERER_ORDER を Android も共有する）。
+    // issue #804 / ADR-0149 が確定した「skia→vello」の順序を、desktop と Android が
+    // NATIVE_RENDERER_ORDER として共有する。
     use hayate_app_host::renderer_selection::{SceneRendererKind, NATIVE_RENDERER_ORDER};
     assert_eq!(
         NATIVE_RENDERER_ORDER,
-        [SceneRendererKind::Vello, SceneRendererKind::Skia]
+        [SceneRendererKind::Skia, SceneRendererKind::Vello]
     );
 }
 
@@ -166,10 +165,10 @@ fn skia_present_uses_the_color_glyph_capable_renderer() {
     );
 }
 
-// ── vello 既定構成の挙動不変（skia は opt-in / fallback でのみ動く） ─────────────────
+// ── issue #804 で確定した skia-safe 既定 ─────────────────────────────────────────────
 
 #[test]
-fn vello_remains_the_first_attempt_when_nothing_is_forced() {
+fn skia_is_the_first_attempt_when_nothing_is_forced() {
     use hayate_app_host::renderer_selection::{
         native_renderer_selection_policy, RendererCapabilities, SceneRendererKind,
     };
@@ -178,7 +177,7 @@ fn vello_remains_the_first_attempt_when_nothing_is_forced() {
     });
     assert_eq!(
         plan.attempt_order().first().copied(),
-        Some(SceneRendererKind::Vello),
-        "強制指定が無ければ vello が既定の第一候補のまま（skia は fallback 専用）"
+        Some(SceneRendererKind::Skia),
+        "強制指定が無ければ skia-safe がネイティブ既定の第一候補（issue #804 / ADR-0149）"
     );
 }

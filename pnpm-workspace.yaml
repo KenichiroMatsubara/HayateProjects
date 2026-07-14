@@ -3,6 +3,7 @@ packages:
   - 'Hayate/host'
   - 'Hayate/proto'
   - 'Hayate/wasm-pkgs/pkg'
+  - 'Hayate/wasm-pkgs/pkg-canvaskit'
   - 'Hayate/wasm-pkgs/pkg-tiny-skia'
   - 'Hayate/wasm-pkgs/pkg-vello-cpu'
   - 'Hayate/wasm-pkgs/pkg-null'

@@ -20,8 +20,8 @@ pub enum SceneRendererKind {
     CanvasKit,
     Vello,
     TinySkia,
-    /// skia-safe によるネイティブ専用（desktop + Android）Scene Renderer（ADR-0146/0147）。
-    /// ネイティブの standard alternative — 既定順序は vello → skia の一方向 fallback。
+    /// skia-safe によるネイティブ専用（desktop + Android）Scene Renderer（ADR-0146/0147/0149）。
+    /// ネイティブの preferred default — 既定順序は skia → vello の一方向 fallback。
     /// wasm32 対象外（web の policy には現れない）。
     Skia,
     /// tiny-skia の置き換え候補として検証中の CPU レンダラ（vello_cpu、Web限定スパイク）。
@@ -257,10 +257,10 @@ const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
 const DIAGNOSTIC_RENDERERS: &[SceneRendererKind] =
     &[SceneRendererKind::Recording, SceneRendererKind::Null];
 
-/// ネイティブ（desktop + Android）の標準順序（ADR-0146 §2・spec §4 REND-15）:
-/// vello を preferred default、skia を standard alternative とする一方向 fallback。
+/// ネイティブ（desktop + Android）の標準順序（ADR-0149・spec §4 REND-15）:
+/// skia を preferred default、vello を standard alternative とする一方向 fallback。
 pub const NATIVE_RENDERER_ORDER: &[SceneRendererKind] =
-    &[SceneRendererKind::Vello, SceneRendererKind::Skia];
+    &[SceneRendererKind::Skia, SceneRendererKind::Vello];
 
 const NATIVE_VELLO_ONLY: &[SceneRendererKind] = &[SceneRendererKind::Vello];
 const NATIVE_SKIA_ONLY: &[SceneRendererKind] = &[SceneRendererKind::Skia];
@@ -276,8 +276,8 @@ const NATIVE_SKIA_ONLY: &[SceneRendererKind] = &[SceneRendererKind::Skia];
 ///   リンクされていない vello の強制は未指定と同じ既定へ落とす（ADR-0145 の
 ///   「未知値は既定へ」流儀。呼び出し側が warn ログを出す）。
 ///
-/// preferred 順序は常に [`NATIVE_RENDERER_ORDER`]（vello → skia）で、runtime 失敗時の
-/// 一方向 fallback もこの順序に従う（ADR-0050）。
+/// preferred 順序は常に [`NATIVE_RENDERER_ORDER`]（skia → vello）で、boot 中の init
+/// failure に限る一方向 fallback もこの順序に従う（ADR-0148/0149）。
 pub fn native_renderer_selection_policy(
     vello_linked: bool,
     forced: Option<SceneRendererKind>,
@@ -456,18 +456,18 @@ mod tests {
     };
 
     #[test]
-    fn native_default_order_is_vello_then_skia_one_way_fallback() {
-        // ADR-0146 §2: vello が preferred default、skia が standard alternative。
+    fn native_default_order_is_skia_then_vello_one_way_fallback() {
+        // ADR-0149: skia が preferred default、vello が standard alternative。
         let plan = native_renderer_selection_policy(true, None).choose(NATIVE_CAPS);
         assert_eq!(
             plan.attempt_order(),
-            [SceneRendererKind::Vello, SceneRendererKind::Skia],
+            [SceneRendererKind::Skia, SceneRendererKind::Vello],
         );
         assert_eq!(
-            plan.next_after(SceneRendererKind::Vello),
-            Some(SceneRendererKind::Skia),
+            plan.next_after(SceneRendererKind::Skia),
+            Some(SceneRendererKind::Vello),
         );
-        assert_eq!(plan.next_after(SceneRendererKind::Skia), None);
+        assert_eq!(plan.next_after(SceneRendererKind::Vello), None);
     }
 
     #[test]

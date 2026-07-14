@@ -7,7 +7,7 @@
 //! 解釈・既定値（未指定/未知値は selection policy の既定へ委ねる）はここに置く純関数で、
 //! JNI push（Kotlin→Rust）の着地点だけが device 専用（`jni_bridge.rs`）。
 //!
-//! `hayate_app_host::renderer_selection::native_renderer_selection_policy` が vello→skia の
+//! `hayate_app_host::renderer_selection::native_renderer_selection_policy` が skia→vello の
 //! 一方向 fallback・forced-override の却下・vello 不在時の skia 単独起動をすでに決めている
 //! （issue #801）。本モジュールは policy を再導出せず、その入力（`forced` / `vello_linked`）を
 //! 用意するだけ。
@@ -60,10 +60,9 @@ pub enum SkiaSurfaceKind {
     Gl,
 }
 
-/// 既定の skia surface（名前付き定数）。GL は HWUI/Chrome が長年叩いたドライバ成熟経路であり
-/// skia エスカレーション（ADR-0146/0147・#796）の完成形なので既定に据える——EGL 初期化に失敗
-/// する端末は skia raster へ自動で落ちるため boot は死なない（`init_and_spawn_raster`）。
-/// 確定値（品質実測に基づく最終判断）は後続の完全人力 issue が決める。
+/// 既定の skia surface（名前付き定数）。GL は HWUI/Chrome が長年叩いたドライバ成熟経路であり、
+/// issue #804 で OPPO A101OP / Nothing Phone (3a) の実アプリ描画が正常だったため既定に据える
+/// （ADR-0149）。EGL 初期化に失敗する端末は skia raster へ自動で落ちるため boot は死なない。
 pub const DEFAULT_SKIA_SURFACE: SkiaSurfaceKind = SkiaSurfaceKind::Gl;
 
 impl SkiaSurfaceKind {
@@ -214,7 +213,7 @@ mod tests {
     #[test]
     fn skia_surface_switch_key_values_and_default_are_named_constants() {
         // issue #803 受け入れ条件: skia 内 raster/GL 切替キー・値語彙・既定値が名前付き定数で
-        // あること（確定既定値は後続の完全人力 issue が決める）。
+        // あること（確定既定値は issue #804 / ADR-0149）。
         assert_eq!(SKIA_SURFACE_INTENT_EXTRA, "hayate.skia_surface");
         assert_eq!(SKIA_SURFACE_VALUE_RASTER, SkiaSurfaceKind::Raster.as_str());
         assert_eq!(SKIA_SURFACE_VALUE_GL, SkiaSurfaceKind::Gl.as_str());

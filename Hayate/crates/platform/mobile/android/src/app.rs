@@ -155,7 +155,7 @@ pub fn android_main(app: AndroidApp) {
                                 let scale = crate::surface_lifecycle::content_scale(&app);
                                 let (vw, vh) = safe_viewport(&app, &window, scale);
                                 tree.set_viewport(vw, vh);
-                                // Renderer Selection Policy（vello → skia の一方向 fallback、
+                                // Renderer Selection Policy（skia → vello の一方向 fallback、
                                 // issue #801/#802）越しに初期化し、対応する Raster スレッドを
                                 // 起動する（move-after-creation はどちらの経路でも内部で行う）。
                                 raster = init_and_spawn_raster(&window, scale);
@@ -695,7 +695,7 @@ pub(crate) fn spawn_skia_gl_raster_thread(
 }
 
 /// Renderer Selection Policy（issue #801/#802、spec §4 REND-15）越しにレンダラを初期化し、
-/// 対応する Raster スレッドを起動する。既定順序は vello → skia の一方向 fallback
+/// 対応する Raster スレッドを起動する。既定順序は skia → vello の一方向 fallback
 /// （[`hayate_app_host::renderer_selection::NATIVE_RENDERER_ORDER`]）。intent extra
 /// （`hayate.renderer`、[`crate::renderer_config::forced_renderer`]）で再ビルドなしに強制指定
 /// できる。選択・却下・失敗はどれも logcat に出す（`RendererSelectionReason` 語彙、
@@ -748,7 +748,7 @@ pub(crate) fn init_and_spawn_raster(
                 // skia 内 surface（raster/GL）は intent extra（`hayate.skia_surface`）由来の
                 // ランタイム選択（issue #803・ADR-0146 §3）。GL（Ganesh/EGL）は EGL 不調端末で
                 // 初期化に失敗しうるため、失敗理由をログに残して skia raster へ一方向 fallback
-                // する（boot は落とさない——vello→skia fallback と同じ姿勢）。
+                // する（boot は落とさない——renderer init fallback と同じ姿勢）。
                 let surface_kind = crate::renderer_config::effective_skia_surface();
                 log::info!(
                     "hayate-adapter-android: skia surface config: {}",

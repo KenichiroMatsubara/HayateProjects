@@ -17,11 +17,11 @@ import {
   cargoArgsFor,
 } from './wasm-manifest.mjs';
 
-test('the manifest declares exactly the 4 known wasm-pkgs targets', () => {
+test('the manifest declares exactly the 5 known wasm-pkgs targets', () => {
   const manifest = loadManifest();
   const names = manifest.targets.map((t) => t.name);
 
-  assert.deepEqual(names, ['pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null']);
+  assert.deepEqual(names, ['pkg-canvaskit', 'pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null']);
 });
 
 // Pins the exact `wasm-pack build` argv the two legacy scripts used to hardcode,
@@ -31,6 +31,19 @@ test('wasmPackArgsFor reproduces each legacy script\'s exact argv', () => {
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
   const crateDir = 'crates/platform/web';
+
+  assert.deepEqual(wasmPackArgsFor(byName['pkg-canvaskit'], crateDir, 'wasm-pkgs/pkg-canvaskit'), [
+    'build',
+    crateDir,
+    '--target',
+    'web',
+    '--out-dir',
+    'wasm-pkgs/pkg-canvaskit',
+    '--',
+    '--no-default-features',
+    '--features',
+    'backend-canvaskit',
+  ]);
 
   assert.deepEqual(wasmPackArgsFor(byName['pkg'], crateDir, 'wasm-pkgs/pkg'), [
     'build',
@@ -91,6 +104,7 @@ test('outDirFor and targetDirFor reproduce the legacy OUT_DIR*/TARGET_DIR* paths
   const root = '/repo/Hayate';
 
   const expected = {
+    'pkg-canvaskit': ['wasm-pkgs/pkg-canvaskit', 'target/wasm-canvaskit'],
     pkg: ['wasm-pkgs/pkg', 'target/wasm'],
     'pkg-tiny-skia': ['wasm-pkgs/pkg-tiny-skia', 'target/wasm-tiny-skia'],
     'pkg-vello-cpu': ['wasm-pkgs/pkg-vello-cpu', 'target/wasm-vello-cpu'],
@@ -141,13 +155,14 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   // failed to resolve the dynamic import in the Pages demo build. Distinct
   // names make every alias link straight to its source dir.
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, '@torimi/hayate-adapter-web-cpu');
+  assert.equal(JSON.parse(packageJsonFor(byName['pkg-canvaskit'], manifest)).name, '@torimi/hayate-adapter-web-canvaskit');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, '@torimi/hayate-adapter-web-vello-cpu');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
   assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n!README.md\n');
 });
 
-// No args = today's `pnpm run build` (the 4 non-layer-present backends);
+// No args = today's `pnpm run build` (the 5 non-layer-present backends);
 // an explicit name = today's `pnpm run build:layer-present` (one target only).
 // This is what lets the two legacy scripts collapse into one CLI.
 test('selectTargets: no names selects the default-build set, in manifest order', () => {
@@ -156,7 +171,7 @@ test('selectTargets: no names selects the default-build set, in manifest order',
 
   assert.deepEqual(
     selected.map((t) => t.name),
-    ['pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null'],
+    ['pkg-canvaskit', 'pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null'],
   );
 });
 
@@ -182,6 +197,7 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
   const manifest = loadManifest();
 
   assert.deepEqual(selectTargets(manifest, [], { all: true }).map((t) => t.name), [
+    'pkg-canvaskit',
     'pkg',
     'pkg-tiny-skia',
     'pkg-vello-cpu',
@@ -196,6 +212,9 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
 test('npmName/host mapping matches what Hayate/host/src actually imports', () => {
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
+
+  assert.equal(byName['pkg-canvaskit'].npmName, '@torimi/hayate-adapter-web-canvaskit');
+  assert.deepEqual(byName['pkg-canvaskit'].host, { backend: 'canvaskit', bootstrap: 'canvaskit' });
 
   assert.equal(byName['pkg'].npmName, '@torimi/hayate-adapter-web');
   assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });
@@ -269,6 +288,14 @@ test('validateManifest rejects a host object missing backend', () => {
   });
 
   assert.throws(() => validateManifest(manifest), /host\.backend/);
+});
+
+test('validateManifest rejects an unknown host bootstrap', () => {
+  const manifest = validManifestFixture({
+    targets: [{ ...validManifestFixture().targets[0], host: { backend: 'vello', bootstrap: 'unknown' } }],
+  });
+
+  assert.throws(() => validateManifest(manifest), /host\.bootstrap/);
 });
 
 test('validateManifest rejects duplicate target names', () => {

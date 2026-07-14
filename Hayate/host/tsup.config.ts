@@ -9,4 +9,8 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'es2022',
+  // CanvasKit's JS loader and its WASM binary must be included in the published Host package;
+  // leaving the dependency external would make `locateFile` point into a consumer's node_modules.
+  noExternal: ['canvaskit-wasm'],
+  loader: { '.wasm': 'file' },
 });

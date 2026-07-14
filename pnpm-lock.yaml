@@ -29,6 +29,9 @@ importers:
       '@torimi/hayate-adapter-web':
         specifier: workspace:*
         version: link:../wasm-pkgs/pkg
+      '@torimi/hayate-adapter-web-canvaskit':
+        specifier: workspace:*
+        version: link:../wasm-pkgs/pkg-canvaskit
       '@torimi/hayate-adapter-web-cpu':
         specifier: workspace:*
         version: link:../wasm-pkgs/pkg-tiny-skia
@@ -38,6 +41,9 @@ importers:
       '@torimi/hayate-protocol-spec':
         specifier: workspace:*
         version: link:../proto
+      canvaskit-wasm:
+        specifier: 0.41.1
+        version: 0.41.1
     devDependencies:
       happy-dom:
         specifier: ^17.4.4
@@ -56,6 +62,8 @@ importers:
         version: 8.18.0
 
   Hayate/wasm-pkgs/pkg: {}
+
+  Hayate/wasm-pkgs/pkg-canvaskit: {}
 
   Hayate/wasm-pkgs/pkg-null: {}
 
@@ -2321,6 +2329,9 @@ packages:
   '@vitest/utils@3.2.6':
     resolution: {integrity: sha512-lI23nIs4bnT3T8NIoh+vFaz5s2/DdP0Jgt2jxwgWljvwn82cLJtyi/If+fjFyoLMGIOz0U/fKvWE0d4jsNQEfg==}
 
+  '@webgpu/types@0.1.21':
+    resolution: {integrity: sha512-pUrWq3V5PiSGFLeLxoGqReTZmiiXwY3jRkIG5sLLKjyqNxrwm/04b4nw7LSmGWJcKk59XOM/YRTUwOzo4MMlow==}
+
   acorn@8.16.0:
     resolution: {integrity: sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw==}
     engines: {node: '>=0.4.0'}
@@ -2415,6 +2426,9 @@ packages:
 
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
+
+  canvaskit-wasm@0.41.1:
+    resolution: {integrity: sha512-gO2rNMIE0lOQ8MaarM4qNeq2zZAEknAObKP2XAKidMSAY8P5sURGdFkrx1TSdHuBFqTf5w35JqjuUzjibqkD5g==}
 
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
@@ -5036,6 +5050,8 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
+  '@webgpu/types@0.1.21': {}
+
   acorn@8.16.0: {}
 
   ajv@8.18.0:
@@ -5117,6 +5133,10 @@ snapshots:
   cac@6.7.14: {}
 
   caniuse-lite@1.0.30001793: {}
+
+  canvaskit-wasm@0.41.1:
+    dependencies:
+      '@webgpu/types': 0.1.21
 
   chai@5.3.3:
     dependencies:

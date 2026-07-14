@@ -105,6 +105,24 @@ test('leaves init() at a single canvas arg for a backend that does not opt in', 
   assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas\)/);
 });
 
+test('boots CanvasKit before importing its opaque WASM renderer', () => {
+  const manifest = {
+    targets: [
+      {
+        name: 'pkg-canvaskit',
+        npmName: 'hayate-adapter-web-canvaskit',
+        host: { backend: 'canvaskit', bootstrap: 'canvaskit' },
+      },
+    ],
+  };
+
+  const source = generateLoadCanvasBackend(manifest);
+
+  assert.match(source, /import \{ prepareCanvasKitSurface \} from '\.\/canvaskit-bridge\.js';/);
+  assert.match(source, /if \(backend === 'canvaskit'\) \{\n    await prepareCanvasKitSurface\(canvas\);/);
+  assert.match(source, /await import\('hayate-adapter-web-canvaskit'\)/);
+});
+
 // The whole point of #703: every import() must stay a literal string a bundler
 // can statically analyze — never a computed/dynamic specifier.
 test('every import() call in the generated source is a static string literal', () => {
@@ -128,13 +146,16 @@ test('the real manifest reproduces the original hand-written loadCanvasBackend b
   const manifest = loadManifest();
   const source = generateLoadCanvasBackend(manifest);
 
+  assert.match(source, /if \(backend === 'canvaskit'\)/);
+  assert.match(source, /await prepareCanvasKitSurface\(canvas\)/);
+  assert.match(source, /await import\('@torimi\/hayate-adapter-web-canvaskit'\)/);
   assert.match(source, /if \(backend === 'vello'\)/);
-  assert.match(source, /await import\('@hayate\/adapter-web'\)/);
+  assert.match(source, /await import\('@torimi\/hayate-adapter-web'\)/);
   assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, layerPresent\)/);
   assert.match(source, /if \(backend === 'tiny-skia'\)/);
-  assert.match(source, /await import\('@hayate\/adapter-web-cpu'\)/);
+  assert.match(source, /await import\('@torimi\/hayate-adapter-web-cpu'\)/);
   assert.match(source, /if \(backend === 'vello-cpu'\)/);
-  assert.match(source, /await import\('@hayate\/adapter-web-vello-cpu'\)/);
+  assert.match(source, /await import\('@torimi\/hayate-adapter-web-vello-cpu'\)/);
   // ADR-0138 (#710): tiny-skia/vello_cpu get their own runtime layer-present toggle.
   assert.match(source, /cpuLayerPresent = true/);
   assert.match(source, /await mod\.HayateElementRenderer\.init\(canvas, cpuLayerPresent\)/g);

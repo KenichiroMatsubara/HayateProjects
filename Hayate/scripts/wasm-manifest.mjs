@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 const MANIFEST_PATH = join(dirname(fileURLToPath(import.meta.url)), 'wasm-build-manifest.json');
 
 const FEATURE_MODES = new Set(['inherit', 'exclusive', 'additive']);
+const HOST_BOOTSTRAPS = new Set(['canvaskit']);
 
 function invalid(target, message) {
   const where = target ? `target "${target.name ?? JSON.stringify(target)}"` : 'manifest';
@@ -32,6 +33,12 @@ function validateTarget(target) {
   if (target.host !== null) {
     if (typeof target.host !== 'object') invalid(target, 'host must be null or an object');
     if (typeof target.host.backend !== 'string') invalid(target, 'host.backend must be a string');
+    if (
+      target.host.bootstrap !== undefined &&
+      (typeof target.host.bootstrap !== 'string' || !HOST_BOOTSTRAPS.has(target.host.bootstrap))
+    ) {
+      invalid(target, `host.bootstrap must be one of ${[...HOST_BOOTSTRAPS].join(', ')}`);
+    }
   }
 
   const { cargoFeatures } = target;

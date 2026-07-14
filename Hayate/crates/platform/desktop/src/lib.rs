@@ -5,7 +5,7 @@
 //! ADR-0068/0132 の hoist をネイティブへ延長）+ `App Host::tick` 駆動を配線して、
 //! 共有 demo fixture（`hayate_demo_fixtures::tasks_tree`）を native window に present する。
 //! レンダラは Renderer Selection Policy（spec §4 REND-15）が選ぶ — 既定順序は
-//! vello → skia の一方向 fallback（vello 初期化失敗・runtime 失敗時に skia raster へ）、
+//! skia → vello の一方向 init fallback（ADR-0149）、
 //! env / CLI フラグ（[`renderer_config`]）で再ビルドなしに強制指定できる。skia raster は
 //! softbuffer による wgpu 非依存の CPU present（[`skia_window`]）なので、GPU が使えない
 //! 環境でも desktop が起動する。
@@ -318,7 +318,7 @@ impl ApplicationHandler for DesktopApp {
             );
         }
 
-        // Renderer Selection Policy（vello → skia の一方向 fallback、spec §4 REND-15）を
+        // Renderer Selection Policy（skia → vello の一方向 init fallback、spec §4 REND-15）を
         // 通してレンダラを初期化する。選択・却下理由は RenderHost が stderr ログに出す。
         let surface = match RenderHostSurface::init(window.clone(), forced) {
             Ok(s) => s,

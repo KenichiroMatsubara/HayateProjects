@@ -51,7 +51,7 @@ class MainActivity : GameActivity() {
          * ADR-0146/0147）。`adb shell am start -e hayate.renderer skia` で APK を作り直さずに
          * vello ⇄ skia を切り替える（#795 の `hayate.backend`/`hayate.aa` と同じ操作感）。
          * 未指定は空文字で push し、Rust 側（`renderer_config` → Renderer Selection Policy）で
-         * 既定順序（vello → skia の一方向 fallback）へ落とす。
+         * 既定順序（skia → vello の一方向 init fallback）へ落とす。
          */
         const val RENDERER_EXTRA = "hayate.renderer"
 
@@ -92,7 +92,7 @@ class MainActivity : GameActivity() {
     /**
      * レンダラ（vello/skia）の実行時強制指定（intent extra）を Rust へ push する（issue #802）。
      * 未指定（extra 無し）は空文字で渡し、Rust 側（`renderer_config` → Renderer Selection
-     * Policy）で既定順序（vello → skia の一方向 fallback）へ落とす。GPU surface 初期化
+     * Policy）で既定順序（skia → vello の一方向 init fallback）へ落とす。GPU surface 初期化
      * （CreateSurface）より前に届ける必要があるため `pushRenderConfig()` と同じ場所で呼ぶ。
      */
     private fun pushRendererOverride() {

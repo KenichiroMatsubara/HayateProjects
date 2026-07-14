@@ -46,7 +46,24 @@ function fakeRaw(overrides: Partial<RawHayate> = {}): RawHayate {
 const canvas = {} as HTMLCanvasElement;
 
 describe('createHayateWebHost', () => {
-  it('loads vello when WebGPU is available and no backend override', async () => {
+  it('tries CanvasKit first, then advances through unselected boot candidates after init failure', async () => {
+    const loaded: CanvasBackend[] = [];
+    const raw = fakeRaw();
+
+    const host = await createHayateWebHost(canvas, {
+      probeWebGPU: async () => true,
+      loadBackend: async (backend) => {
+        loaded.push(backend);
+        if (backend === 'canvaskit') throw new Error('CanvasKit surface unavailable');
+        return raw;
+      },
+    });
+
+    expect(loaded).toEqual(['canvaskit', 'vello']);
+    expect(host.raw).toBe(raw);
+  });
+
+  it('loads CanvasKit first when no backend override is present', async () => {
     const loaded: CanvasBackend[] = [];
     const raw = fakeRaw();
     const host = await createHayateWebHost(canvas, {
@@ -57,11 +74,11 @@ describe('createHayateWebHost', () => {
       },
     });
 
-    expect(loaded).toEqual(['vello']);
+    expect(loaded).toEqual(['canvaskit']);
     expect(host.raw).toBe(raw);
   });
 
-  it('falls back to tiny-skia when WebGPU is unavailable', async () => {
+  it('still starts with CanvasKit when WebGPU is unavailable', async () => {
     const loaded: CanvasBackend[] = [];
     const host = await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
@@ -71,7 +88,7 @@ describe('createHayateWebHost', () => {
       },
     });
 
-    expect(loaded).toEqual(['tiny-skia']);
+    expect(loaded).toEqual(['canvaskit']);
     expect(host.raw).toBeDefined();
   });
 
@@ -112,7 +129,7 @@ describe('createHayateWebHost', () => {
       loadBackend,
     });
 
-    expect(loadBackend).toHaveBeenCalledWith('tiny-skia', canvas);
+    expect(loadBackend).toHaveBeenCalledWith('canvaskit', canvas);
   });
 
   it('returns a RawHayate satisfying the HayateRenderer drive surface', async () => {

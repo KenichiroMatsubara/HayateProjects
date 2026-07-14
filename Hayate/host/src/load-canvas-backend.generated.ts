@@ -2,11 +2,14 @@
 // Source: Hayate/scripts/wasm-build-manifest.json (#700/#703)
 import type { CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
+import { prepareCanvasKitSurface } from './canvaskit-bridge.js';
 
 /**
  * 選択した backend の WASM を動的 import し、surface（canvas）上で `HayateElementRenderer`
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
+ * CanvasKit は Host が先に surface を確立し、WASM 側は opaque な frame replay 境界だけを使う。
+
  *
  * `layerPresent` は vello 専用のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
  * `HayateElementRenderer.init` にランタイムフラグとして渡す。ADR-0137 により Web は既定
@@ -23,6 +26,12 @@ export async function loadCanvasBackend(
   layerPresent = true,
   cpuLayerPresent = true,
 ): Promise<RawHayate> {
+  if (backend === 'canvaskit') {
+    await prepareCanvasKitSurface(canvas);
+    const mod = await import('@torimi/hayate-adapter-web-canvaskit');
+    await mod.default();
+    return (await mod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+  }
   if (backend === 'vello') {
     const mod = await import('@torimi/hayate-adapter-web');
     await mod.default();

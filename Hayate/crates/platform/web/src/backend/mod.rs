@@ -11,6 +11,12 @@ use hayate_app_host::renderer_selection::{
     RendererCapabilities, RendererSelectionReason, SceneRendererKind,
 };
 
+#[cfg(feature = "backend-canvaskit")]
+mod canvaskit;
+
+#[cfg(feature = "backend-canvaskit")]
+use canvaskit::SelectedBackend as CanvasKitBackend;
+
 #[cfg(feature = "backend-vello")]
 mod vello;
 
@@ -43,13 +49,14 @@ use null::SelectedBackend as NullBackend;
 
 #[cfg(not(any(
     feature = "backend-vello",
+    feature = "backend-canvaskit",
     feature = "backend-recording",
     feature = "backend-tiny-skia",
     feature = "backend-vello-cpu",
     feature = "backend-null"
 )))]
 compile_error!(
-    "Enable one of: backend-vello, backend-recording, backend-tiny-skia, backend-vello-cpu, backend-null"
+    "Enable one of: backend-canvaskit, backend-vello, backend-recording, backend-tiny-skia, backend-vello-cpu, backend-null"
 );
 
 /// `hayate_core::Surface`（GPU 経路専用の提示サーフェス契約、ADR-0132 スライス3）の web 実装。
@@ -82,9 +89,19 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
         let canvas = surface.0;
         match kind {
-            // CanvasKit の実装は backend-canvaskit feature が供給する（#813）。feature が
-            // 無いビルドでは boot 中の初期化失敗として Vello へだけ進む。
-            SceneRendererKind::CanvasKit => Err(not_compiled_error(kind)),
+            SceneRendererKind::CanvasKit => {
+                #[cfg(feature = "backend-canvaskit")]
+                {
+                    return CanvasKitBackend::init(canvas)
+                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
+                        .map_err(js_to_anyhow);
+                }
+                #[cfg(not(feature = "backend-canvaskit"))]
+                {
+                    let _ = canvas;
+                    Err(not_compiled_error(kind))
+                }
+            }
             SceneRendererKind::Vello => {
                 #[cfg(feature = "backend-vello")]
                 {
