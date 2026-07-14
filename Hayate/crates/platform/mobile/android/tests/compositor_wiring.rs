@@ -135,7 +135,7 @@ fn present_runs_raster_on_a_dedicated_thread() {
         src.contains("scene: tree.scene_graph().clone()"),
         "the handoff must carry an owned SceneGraph snapshot across the thread boundary (#635)"
     );
-    // issue #802: surface 初期化とスレッド起動の選択(vello→skia の Renderer Selection Policy
+    // issue #802/#804: surface 初期化とスレッド起動の選択(skia→vello の Renderer Selection Policy
     // loop)は `init_and_spawn_raster`(app.rs)に一本化された。両スポナー自体は app.rs が持つ。
     assert!(
         src.contains("spawn_raster_thread(") && src.contains("spawn_skia_raster_thread("),

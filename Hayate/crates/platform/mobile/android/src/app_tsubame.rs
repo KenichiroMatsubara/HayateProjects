@@ -340,7 +340,7 @@ pub(crate) fn run(app: AndroidApp) {
                                     // 永久に残る）。
                                     let _ = tree.render(start.elapsed().as_secs_f64() * 1000.0);
                                 }
-                                // Renderer Selection Policy（vello → skia の一方向 fallback、
+                                // Renderer Selection Policy（skia → vello の一方向 fallback、
                                 // issue #801/#802）越しに初期化し、対応する Raster スレッドを
                                 // 起動する（#635 の move-after-creation はどちらの経路でも内部
                                 // で行う）。

@@ -7,7 +7,7 @@
 //! winit にも触れない純関数で、プロセス環境を偽装せずテストできる（ADR-0145 の
 //! `render_config` と同じ着地パターン）。
 //!
-//! 未知値・リンクされていないレンダラの強制は既定（vello → skia の一方向 fallback、
+//! 未知値・リンクされていないレンダラの強制は既定（skia → vello の一方向 init fallback、
 //! [`hayate_app_host::renderer_selection::NATIVE_RENDERER_ORDER`]）へ落とす。
 
 use hayate_app_host::renderer_selection::SceneRendererKind;

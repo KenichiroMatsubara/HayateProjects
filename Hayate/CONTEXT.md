@@ -76,7 +76,7 @@ _Avoid_: Virtual DOM, Component Tree
 `NodeKind::ElementAnchor` — element ごとの構造専用 retained Node。詳細はルート `CONTEXT.md` の Rendering Terms。
 
 **Scene Renderer**:
-`SceneGraph` を消費して描画結果を生成する実装単位。現行の標準候補は Vello、代替候補は `tiny-skia`。実装は `crates/scene-renderers/{vello,tiny-skia}` に置く。`SceneGraph` の walk は `hayate-core` の `render_scene_graph` が一度だけ行い、実装は内部 `ScenePainter` への委譲のみ（ADR-0054）。
+`SceneGraph` を消費して描画結果を生成する実装単位。Web は CanvasKit / Vello / tiny-skia、Native は skia-safe / Vello を候補とし、`SceneGraph` の walk は `hayate-core` の `render_scene_graph` が一度だけ行う。
 _Avoid_: Backend, Driver, adapter 内での SceneGraph walk
 
 **CanvasKit Scene Renderer**:
@@ -118,6 +118,10 @@ _Avoid_: host に埋め込まれた if 文連鎖
 **Web Renderer Selection Order**:
 Web の既定 `Scene Renderer` 試行順。CanvasKit を第一候補、環境エラー時の一方向 fallback として Vello、最後に tiny-skia を置く。共通契約エラーは fallback の理由にせず、その入力を失敗として扱う。
 _Avoid_: Web と Native の同一順序、契約エラーを別 backend で黙って描く fallback、毎フレームの再選択
+
+**Native Renderer Selection Order**:
+Desktop / Android の既定 `Scene Renderer` 試行順。skia-safe を第一候補、boot 中の初期化失敗時だけ Vello を次候補とし、Android の skia-safe surface は GL を既定、GL 初期化失敗時は raster を使う（ADR-0149）。
+_Avoid_: Web と同じ選択順、選択後の runtime fallback、Vello を Native の既定とする説明
 
 **Renderer Selection Reason**:
 `Render Host` が renderer を採用しなかった、または切り替えた理由を表す共通語彙。`WebGpuUnavailable` / `RendererInitFailed` / `SurfaceLost` / `CapabilityUnsupported` / `DisabledByPolicy` など。

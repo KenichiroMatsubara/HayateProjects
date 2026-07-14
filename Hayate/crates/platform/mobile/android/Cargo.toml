@@ -24,8 +24,8 @@ tsubame-js = []
 hayate-core = { path = "../../../core" }
 hayate-app-host = { path = "../../../app-host" }
 hayate-scene-renderer-vello = { path = "../../../scene-renderers/vello" }
-# Android の standard alternative（issue #802・ADR-0146/0147）。vello/wgpu 初期化失敗時の
-# 一方向 fallback 先で、wgpu 非依存の CPU raster + ANativeWindow 直接 present。
+# Android の preferred default（issue #804・ADR-0149）。Ganesh/EGL GL を既定 surface とし、
+# EGL 初期化失敗時は wgpu 非依存の CPU raster + ANativeWindow 直接 present へ落とす。
 hayate-scene-renderer-skia = { path = "../../../scene-renderers/skia" }
 hayate-layer-compositor = { path = "../../../scene-renderers/compositor" }
 wgpu = { workspace = true }
