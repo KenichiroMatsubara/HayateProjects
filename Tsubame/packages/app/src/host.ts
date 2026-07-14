@@ -9,7 +9,7 @@ export type Dispose = () => void;
  * 「DOM か Hayate か」「web か native か bundle か」の分岐は **この実装の内側に局在する** —
  * `createRenderer()` は `DomRenderer` か `HayateRenderer` を構築して `IRenderer` として返す。
  * 合成ルート（{@link runTsubameApp}）は具体 renderer 名も platform も知らない。platform 増殖
- * （web-vello / web-tinyskia / Android / 将来 iOS・Desktop）はすべて Host を 1 つ足す仕事に縮む。
+ * （Web / Android / 将来 iOS・Desktop）はすべて Host を 1 つ足す仕事に縮む。
  *
  * - **DOM Host**: `createRenderer` は `new DomRenderer({ container })` を即時に返す。`stop` は不要。
  * - **Hayate Host（web）**: `createRenderer` は `@torimi/hayate-host` の `createHayateWebHost` を await し

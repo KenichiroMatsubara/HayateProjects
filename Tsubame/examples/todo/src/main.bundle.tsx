@@ -2,7 +2,6 @@
 // グローバル shim）が FW / アプリのモジュール評価より先に効くのはこの順序があるため。
 import { registerTorimiApp } from '@torimi/bundle';
 
-import type { DetectModeResult } from '@torimi/tsubame-app';
 import { renderTsubame } from '@torimi/tsubame-solid';
 import { TodoApp } from './App';
 
@@ -18,14 +17,6 @@ import { TodoApp } from './App';
  * （`torimi:native:build`）。
  */
 
-// どちらのホストも Canvas モード固定で、backend はホスト側が決める。バンドルは知らない
-// （badge は 'Canvas' 表示）。
-const detected: DetectModeResult = {
-  mode: 'Canvas',
-  source: 'auto',
-  renderer: 'auto',
-};
-
 registerTorimiApp((renderer) =>
-  renderTsubame(() => <TodoApp detected={detected} />, renderer),
+  renderTsubame(() => <TodoApp />, renderer),
 );

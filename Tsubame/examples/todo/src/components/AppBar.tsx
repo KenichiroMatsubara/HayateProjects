@@ -1,22 +1,14 @@
 import type { HayateCssStyle } from '@torimi/tsubame-renderer-protocol';
 import type { Page } from '../App';
-import type { DetectModeResult } from '@torimi/tsubame-app';
 import { ACCENT_KEYS, accentColor, type AccentKey, type Palette, type Theme } from '../theme';
 import { EASE, glow } from '../ui/styles';
 
 /** 水平スペーサ（幅 w の不可視 view）。AppBar の左右インセット調整に使う。 */
 const SpX = (w: number) => <view style={{ width: w, height: 1 }} />;
 
-/** 検出済みレンダラの表示名（DOM ならそのまま、Canvas はバックエンド名）。 */
-function rendererBadge(detected: DetectModeResult): string {
-  if (detected.mode === 'DOM') return 'DOM';
-  return detected.backend ?? 'Canvas';
-}
-
 export function AppBar(props: {
   page: Page;
   setPage: (page: Page) => void;
-  detected: DetectModeResult;
   colors: Palette;
   theme: Theme;
   accent: AccentKey;
@@ -151,37 +143,6 @@ export function AppBar(props: {
           {props.theme === 'dark' ? '☀' : '🌙'}
         </button>
 
-        {/*
-          読み取り専用の renderer バッジ。右上の格納式切替UI（index.html）と役割が
-          重複するため、狭幅では隠してツールバーの過密を解消する（ADR-0081）。
-        */}
-        <view
-          style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}
-          styleVariants={[{ condition: { maxWidth: 719 }, style: { display: 'none' } }]}
-        >
-          <text style={{ color: props.colors.quiet, fontSize: 11 }}>renderer</text>
-          <view style={{
-            height: 28,
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: props.colors.panel,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderStyle: 'solid',
-            borderColor: props.colors.line,
-          }}>
-            {SpX(12)}
-            <text style={{ color: props.colors.accent, fontSize: 13 }}>{rendererBadge(props.detected)}</text>
-            {SpX(10)}
-            <view style={{ width: 1, height: 16, backgroundColor: props.colors.line }} />
-            {SpX(10)}
-            <text style={{ color: props.colors.muted, fontSize: 12 }}>
-              {props.detected.source === 'query' ? props.detected.renderer : 'auto'}
-            </text>
-            {SpX(12)}
-          </view>
-        </view>
         {/*
           右上の固定切替UI（index.html）はチップ幅ぶん右端を占有する。右寄せの
           コントロールが被らないよう、末尾にチップ幅相当のクリアランスを確保する。

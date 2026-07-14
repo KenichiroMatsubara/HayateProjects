@@ -81,7 +81,7 @@
 **備考:** [訂正 2026-06-09] 旧実装は `VelloPainter`/`TinySkiaPainter` を `pub use` 公開していたが（外部利用なし、ADR-0054「walk/Painter は内部」違反）非公開化。ADR-0054 を amend し「公開 API＝`render_scene` + surface 補助」を明文化。
 
 ### REND-11 — tiny-skia を web 専用 CPU フォールバックとする
-**規範文:** tiny-skia は **web 専用**の CPU フォールバック Scene Renderer とする。Vello が使えない web 環境（GPU/WebGPU 不可）向けに feature-gate で1つだけ link し、二 WASM バイナリを維持する。ネイティブの代替経路は skia（REND-14/15）が担い、tiny-skia をネイティブに結線しない。
+**規範文:** tiny-skia は **web 専用**の最終 CPU フォールバック Scene Renderer とする。Auto は CanvasKit → Vello → tiny-skia の順で初回 boot 候補を試し、CanvasKit の初期化失敗または Vello が使えない web 環境（GPU/WebGPU 不可）でのみ tiny-skia へ進む。ネイティブの代替経路は skia-safe（REND-14/15）が担い、tiny-skia をネイティブに結線しない。
 **出典:** ADR-0048, ADR-0146
 **状況:** ✅ — `scene-renderers/tiny-skia`（`TinySkiaPainter` + `render_scene`）。`backend-vello` / `backend-tiny-skia` feature。実装は従来から web のみで、住み分けと整合。
 **備考:** GPU バックエンドではなく CPU 代替（§1 CORE-02 と整合）。[更新 2026-07-10] ADR-0146 がネイティブの standard alternative を skia-safe と定め、tiny-skia の守備範囲を web 専用へ明文化（旧規範文は環境を限定していなかった）。

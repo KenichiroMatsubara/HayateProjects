@@ -38,7 +38,7 @@ function runTsubameApp(host: Host, mount: TsubameMount): Dispose;
 1. **合成ルート `runTsubameApp` は純粋 orchestrator**。`@torimi/tsubame-app` に置き、`@torimi/tsubame-renderer-protocol` だけに依存する。`renderer-dom` / `renderer-hayate` も `@torimi/hayate-host` も import しない。具体 renderer 名も platform も知らず、見るのは `IRenderer` だけ。これにより CONTEXT.md の依存境界「Tsubame → Hayate は Contract のみ／host bootstrap を Tsubame renderer パッケージに置かない」を破らない。
 2. **`Host` ポートが renderer を産む**。`createRenderer()` の中で `DomRenderer` か `HayateRenderer` を `new` し（Hayate なら `start()` まで）、`IRenderer` を返す。**「DOM か Hayate か」「web か native か bundle か」の分岐は Host 実装に局在する**。platform 増殖（web-vello / web-tinyskia / Android / 将来 iOS・Desktop）はすべて `Host` を 1 つ足す仕事に縮み、renderer は Dom / Hayate の二つで固定。
 3. **`mount` が唯一の FW 固有 seam**。`(renderer: IRenderer) => Dispose`。各 `Tsubame Adapter`（solid / react / vue）はこの 1 関数を供給するだけ。`renderTsubame` の呼び形の差（solid=`() => JSX`、react=`ReactNode`）は reactivity に内在する**正当な非対称**で、この seam の内側に閉じ込める（統一しない）。FW を足すコストはこの 1 関数。
-4. **web の DOM/Canvas 判定 `detectMode` は依存ゼロの純粋関数**として orchestrator の外に置く。`detected` を App が読める（example は `<App detected>` で表示に使う）よう、entry が `detectMode` を呼んで結果を Host 構築と mount クロージャの両方へ渡す。
+4. **web の helper は DOM 退避だけを知る。** `shouldUseDomRenderer` は明示 `?renderer=dom` または EditContext 欠如だけを判定する。Canvas backend の名前・query parser・Auto 順序・検出結果は Hayate Web Host の責務であり、Tsubame の型や App へ持ち込まない。
 5. **Host adapter の置き場所は段階的**。`@torimi/tsubame-app`（純粋）にも `@torimi/hayate-host`（Hayate→Tsubame は永久に依存なし）にも置けないため、host adapter は App 階層のグルー。各 5 行程度なので**当面は各 example に inline**。solid-todo と react-todo で `webHost` が同一になった時点＝2 つ目の adapter＝そこで初めて中立 App 階層パッケージへ抽出する（「1 adapter は仮の seam、2 adapter は本物の seam」）。
 
 ## 逆向き経路（Miharashi / native）の収まり

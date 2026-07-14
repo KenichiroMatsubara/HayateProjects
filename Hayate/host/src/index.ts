@@ -1,5 +1,9 @@
 import manifest from '@torimi/hayate-protocol-spec/manifest' with { type: 'json' };
-import { resolveCanvasBackendAttemptOrder, type CanvasBackend } from './resolve-backend.js';
+import {
+  parseRendererOptimizationOptions,
+  resolveCanvasBackendAttemptOrder,
+  type CanvasBackend,
+} from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
 import {
   attachAccessibilityMirror,
@@ -207,19 +211,30 @@ export async function createHayateWebHost(
   const search =
     options?.locationSearch ??
     (typeof location !== 'undefined' ? location.search : undefined);
-  if (shouldUseWorkerEngine(options?.workerEngine, search)) {
-    const worker = tryCreateWorkerEngineHost(canvas, options);
+  const queryOptimization = parseRendererOptimizationOptions(search ?? '');
+  const effectiveOptions: CreateHayateWebHostOptions = {
+    ...options,
+    layerPresent: options?.layerPresent ?? queryOptimization.layerPresent,
+    cpuLayerPresent: options?.cpuLayerPresent ?? queryOptimization.cpuLayerPresent,
+  };
+  if (shouldUseWorkerEngine(effectiveOptions.workerEngine, search)) {
+    const worker = tryCreateWorkerEngineHost(canvas, effectiveOptions);
     if (worker) return worker;
     // spawnWorker 未提供（実 Worker を作れない）等では従来 main 経路へフォールバックする。
     console.warn('createHayateWebHost: worker engine opt-in requested but unavailable; using main-thread path');
   }
 
-  const probe = options?.probeWebGPU ?? probeWebGPU;
+  const probe = effectiveOptions.probeWebGPU ?? probeWebGPU;
   const load =
-    options?.loadBackend ??
+    effectiveOptions.loadBackend ??
     ((backend: CanvasBackend, canvas: HTMLCanvasElement) =>
-      loadCanvasBackend(backend, canvas, options?.layerPresent, options?.cpuLayerPresent));
-  const attachMirror = options?.attachMirror ?? attachAccessibilityMirror;
+      loadCanvasBackend(
+        backend,
+        canvas,
+        effectiveOptions.layerPresent,
+        effectiveOptions.cpuLayerPresent,
+      ));
+  const attachMirror = effectiveOptions.attachMirror ?? attachAccessibilityMirror;
 
   const webgpuAvailable = await probe();
   // backend 選択（どの WASM バンドル＝ Scene Renderer をロードするか）を「どれを / なぜ」
@@ -227,7 +242,7 @@ export async function createHayateWebHost(
   // のディープリンク（Android の `am start -e hayate.renderer` 相当）に追従する。選択は
   // ネイティブの `selected scene renderer:` ログに倣い console に観測点を残す（WASM 側は
   // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
-  const attempts = resolveCanvasBackendAttemptOrder(options, webgpuAvailable, search ?? '');
+  const attempts = resolveCanvasBackendAttemptOrder(effectiveOptions, webgpuAvailable, search ?? '');
   let raw: RawHayate | undefined;
   let lastError: unknown;
   for (const selection of attempts) {
@@ -254,9 +269,9 @@ export async function createHayateWebHost(
   // 開発時専用の味付け定数の上書き。最初のフレーム前に一度だけ適用する。不正な JSON は
   // WASM のセッタ内で throw するが、握りつぶしてコンパイル済みデフォルトへフォール
   // バックさせ、アプリを壊さない。
-  if (options?.tuning != null) {
+  if (effectiveOptions.tuning != null) {
     try {
-      raw.set_tuning(options.tuning);
+      raw.set_tuning(effectiveOptions.tuning);
     } catch (err) {
       console.warn('createHayateWebHost: ignoring invalid tuning.json', err);
     }
@@ -265,9 +280,9 @@ export async function createHayateWebHost(
   // 既定 clock はブラウザの rAF。lookup は tick 時まで遅延させ、非ブラウザ環境での
   // 構築（テスト等）が落ちないようにする。clock 源の確立は host bootstrap の責務。
   const baseRequestFrame =
-    options?.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
+    effectiveOptions.requestFrame ?? ((cb: FrameRequestCallback) => globalThis.requestAnimationFrame(cb));
   const cancelFrame =
-    options?.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
+    effectiveOptions.cancelFrame ?? ((handle: number) => globalThis.cancelAnimationFrame(handle));
 
   // Accessibility Mirror（ADR-0124）の attach 点。canvas+raw を握るこの 1 箇所で attach し、
   // teardown 用の detach を host に通す。本体は #592 が実装し、全 Canvas アプリへ自動で効く。

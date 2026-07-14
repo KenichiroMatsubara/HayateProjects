@@ -1,6 +1,5 @@
 import { createEffect, createMemo, createSignal } from 'solid-js';
 import { CssGallery } from './CssGallery';
-import type { DetectModeResult } from '@torimi/tsubame-app';
 import { AddForm } from './components/AddForm';
 import { AppBar } from './components/AppBar';
 import { EmptyState, Footer, Header, SelectableNote } from './components/TaskCard';
@@ -34,15 +33,11 @@ import {
 /** タスク画面とギャラリー画面のどちらを表示するか。 */
 export type Page = 'tasks' | 'gallery';
 
-export interface TodoAppProps {
-  detected: DetectModeResult;
-}
-
 function seedTodos(): Todo[] {
   return SEED.map((todo) => ({ ...todo }));
 }
 
-export function TodoApp(props: TodoAppProps) {
+export function TodoApp() {
   const initialPage: Page =
     new URLSearchParams(window.location.search).get('page') === 'gallery' ? 'gallery' : 'tasks';
   const [page, setPage] = createSignal<Page>(initialPage);
@@ -123,7 +118,6 @@ export function TodoApp(props: TodoAppProps) {
       <AppBar
         page={page()}
         setPage={setPage}
-        detected={props.detected}
         colors={colors()}
         theme={theme()}
         accent={accent()}

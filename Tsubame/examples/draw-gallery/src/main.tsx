@@ -3,20 +3,14 @@ import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
 import { renderTsubame } from '@torimi/tsubame-solid';
 import {
   runTsubameApp,
-  detectModeFromSearch,
-  type DetectModeResult,
+  shouldUseDomRenderer,
   type Host,
 } from '@torimi/tsubame-app';
 import { DrawGalleryApp } from './App';
 
-function detectModeFromWindow(): DetectModeResult {
-  return detectModeFromSearch(window.location.search, {
-    hasEditContext: 'EditContext' in window,
-    hasWebGPU: 'gpu' in navigator,
-  });
-}
-
-const detected = detectModeFromWindow();
+const useDomRenderer = shouldUseDomRenderer(window.location.search, {
+  hasEditContext: 'EditContext' in window,
+});
 const dom = document.getElementById('dom-host') as HTMLDivElement;
 const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 
@@ -25,7 +19,7 @@ const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 // Host adapter の縮小版で、layer-present / tuning などのチューニング口は持たない。
 let hayateRenderer: HayateRenderer | undefined;
 const host: Host =
-  detected.mode === 'DOM'
+  useDomRenderer
     ? {
         // DOM 経路: draw は各 view に敷いた `<canvas>` へ canvas 2D で replay される
         // （Tsubame ADR-0014）。wire も WASM も通らない。
@@ -42,7 +36,7 @@ const host: Host =
         async createRenderer() {
           const { createHayateWebHost } = await import('@torimi/hayate-host');
           canvas.hidden = false;
-          const webHost = await createHayateWebHost(canvas, { backend: detected.backend });
+          const webHost = await createHayateWebHost(canvas);
           hayateRenderer = new HayateRenderer({
             raw: webHost.raw,
             requestFrame: webHost.requestFrame,
@@ -54,6 +48,4 @@ const host: Host =
         stop: () => hayateRenderer?.stop(),
       };
 
-runTsubameApp(host, (renderer) =>
-  renderTsubame(() => <DrawGalleryApp detected={detected} />, renderer),
-);
+runTsubameApp(host, (renderer) => renderTsubame(() => <DrawGalleryApp />, renderer));

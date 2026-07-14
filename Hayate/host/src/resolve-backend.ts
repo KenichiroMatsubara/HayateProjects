@@ -15,19 +15,61 @@ export const RENDERER_QUERY_PARAM = 'renderer';
  * 強制指定の値語彙。`SceneRendererKind::name()`（Rust）および Android の
  * `RENDERER_VALUE_*` と同一の安定 ID を使う。
  */
+export const RENDERER_VALUE_CANVASKIT = 'canvaskit';
 export const RENDERER_VALUE_VELLO = 'vello';
 export const RENDERER_VALUE_TINY_SKIA = 'tiny-skia';
 export const RENDERER_VALUE_VELLO_CPU = 'vello-cpu';
 
+/** Web Host が公開する backend 選択 UI の安定語彙（表示順も policy の一部）。 */
+export const WEB_RENDERER_QUERY_VALUES = [
+  'auto',
+  RENDERER_VALUE_CANVASKIT,
+  RENDERER_VALUE_VELLO,
+  RENDERER_VALUE_TINY_SKIA,
+  RENDERER_VALUE_VELLO_CPU,
+] as const;
+
+export type WebRendererOptimizationQueryParam = 'layerPresent' | 'cpuLayerPresent';
+
+/** 選択中 backend に対応する比較用 optimization query。UI は対応表を複製しない。 */
+export function rendererOptimizationQueryParam(
+  renderer: string,
+): WebRendererOptimizationQueryParam | undefined {
+  switch (renderer) {
+    case RENDERER_VALUE_VELLO:
+      return 'layerPresent';
+    case RENDERER_VALUE_TINY_SKIA:
+    case RENDERER_VALUE_VELLO_CPU:
+      return 'cpuLayerPresent';
+    default:
+      return undefined;
+  }
+}
+
+export interface RendererOptimizationOptions {
+  layerPresent: boolean;
+  cpuLayerPresent: boolean;
+}
+
+/** URL の比較用 optimization flags も Host 内で解釈する。両経路とも既定は ON。 */
+export function parseRendererOptimizationOptions(search: string): RendererOptimizationOptions {
+  const params = new URLSearchParams(search);
+  return {
+    layerPresent: params.get('layerPresent') !== '0',
+    cpuLayerPresent: params.get('cpuLayerPresent') !== '0',
+  };
+}
+
 /**
- * `?renderer=vello|tiny-skia|vello-cpu` を canvas backend の強制指定として解釈する。
+ * `?renderer=canvaskit|vello|tiny-skia|vello-cpu` を強制指定として解釈する。
  * `auto` / `dom` / 未知値 / 未指定は canvas backend の強制ではないので `undefined`
- * （＝ WebGPU プローブ結果に委ねる）。`dom` の DOM/Canvas モード判定は Tsubame の
- * `detectMode` が別軸で持つ（host は canvas backend のみ扱う）。
+ * （＝自動選択に委ねる）。`dom` は Web entry が Hayate Host を起動しないための退避値。
  */
 export function parseRendererQueryBackend(search: string): CanvasBackend | undefined {
   const value = new URLSearchParams(search).get(RENDERER_QUERY_PARAM);
   switch (value) {
+    case RENDERER_VALUE_CANVASKIT:
+      return 'canvaskit';
     case RENDERER_VALUE_VELLO:
       return 'vello';
     case RENDERER_VALUE_TINY_SKIA:

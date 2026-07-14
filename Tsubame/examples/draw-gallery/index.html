@@ -43,18 +43,25 @@
   </head>
   <body>
     <div id="renderer-switch" role="group" aria-label="レンダラ切替">
-      <button type="button" data-renderer="auto">auto</button>
       <button type="button" data-renderer="dom">dom</button>
-      <button type="button" data-renderer="tiny-skia">tiny-skia</button>
-      <button type="button" data-renderer="vello">vello</button>
     </div>
     <div id="dom-host" hidden></div>
     <canvas id="canvas-stage" hidden></canvas>
-    <script>
+    <script type="module">
+      import { WEB_RENDERER_QUERY_VALUES } from '@torimi/hayate-host/renderer-policy';
+
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
         const current = params.get('renderer') ?? 'auto';
         const root = document.getElementById('renderer-switch');
+        const domButton = root.querySelector('[data-renderer="dom"]');
+        for (const value of WEB_RENDERER_QUERY_VALUES) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.renderer = value;
+          button.textContent = value;
+          root.insertBefore(button, domButton);
+        }
         for (const button of root.querySelectorAll('button[data-renderer]')) {
           const value = button.getAttribute('data-renderer');
           if (value === current) button.classList.add('active');

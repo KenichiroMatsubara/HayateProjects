@@ -1,7 +1,7 @@
 {
   "name": "@torimi/tsubame-app",
   "version": "0.1.0",
-  "description": "Tsubame 合成ルート — runTsubameApp（Host が renderer を産み、唯一の FW 固有 mount seam に畳む）と web 専用の detectMode。@torimi/tsubame-renderer-protocol だけに依存し、具体 renderer も Hayate ランタイムも知らない（ADR-0012）。",
+  "description": "Tsubame 合成ルート — runTsubameApp と web の DOM 退避判定。Canvas backend の語彙・選択は Hayate Host に委譲し、具体 renderer も Hayate ランタイムも知らない（ADR-0012）。",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

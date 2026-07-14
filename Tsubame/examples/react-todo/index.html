@@ -77,20 +77,27 @@
         <span id="renderer-current">auto</span>
       </button>
       <div class="rsw-options" id="renderer-options" role="group">
-        <button type="button" data-renderer="auto">auto</button>
-        <button type="button" data-renderer="vello">vello</button>
-        <button type="button" data-renderer="tiny-skia">tiny-skia</button>
-        <button type="button" data-renderer="vello-cpu">vello-cpu</button>
         <button type="button" data-renderer="dom">dom</button>
       </div>
     </div>
     <div id="dom-host" hidden></div>
     <canvas id="canvas-stage" hidden></canvas>
-    <script>
+    <script type="module">
+      import { WEB_RENDERER_QUERY_VALUES } from '@torimi/hayate-host/renderer-policy';
+
       (function initRendererSwitch() {
         const params = new URLSearchParams(window.location.search);
         const current = params.get('renderer') ?? 'auto';
         const root = document.getElementById('renderer-switch');
+        const options = document.getElementById('renderer-options');
+        const domButton = options.querySelector('[data-renderer="dom"]');
+        for (const value of WEB_RENDERER_QUERY_VALUES) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.dataset.renderer = value;
+          button.textContent = value;
+          options.insertBefore(button, domButton);
+        }
         const toggle = document.getElementById('renderer-toggle');
         document.getElementById('renderer-current').textContent = current;
         const setOpen = (open) => {
