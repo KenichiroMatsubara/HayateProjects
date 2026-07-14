@@ -634,9 +634,10 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
 /// 返っても同じ `RasterHandle` として扱える。
 pub(crate) fn spawn_skia_raster_thread(mut surface: crate::skia_window::SkiaGpuSurface) -> RasterHandle {
     let mut surface_ready = true;
+    let mut terminal_failure = false;
     RasterThread::spawn(move |cmd: RasterCommand| match cmd {
         RasterCommand::Frame(handoff) => {
-            if !surface_ready {
+            if !surface_ready || terminal_failure {
                 return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
             }
             let RasterHandoff {
@@ -649,7 +650,8 @@ pub(crate) fn spawn_skia_raster_thread(mut surface: crate::skia_window::SkiaGpuS
             if let Err(err) =
                 surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
             {
-                log::error!("hayate-adapter-android: raster-thread render failed (skia): {err}");
+                log_terminal_skia_failure(&err);
+                terminal_failure = true;
             }
         }
         RasterCommand::Resize { width, height, content_scale } => {
@@ -668,9 +670,10 @@ pub(crate) fn spawn_skia_gl_raster_thread(
     mut surface: crate::skia_gl_window::SkiaGlSurface,
 ) -> RasterHandle {
     let mut surface_ready = true;
+    let mut terminal_failure = false;
     RasterThread::spawn(move |cmd: RasterCommand| match cmd {
         RasterCommand::Frame(handoff) => {
-            if !surface_ready {
+            if !surface_ready || terminal_failure {
                 return; // surface 無し＝present をスキップ（次の RebuildSurface で復帰）。
             }
             let RasterHandoff {
@@ -683,7 +686,8 @@ pub(crate) fn spawn_skia_gl_raster_thread(
             if let Err(err) =
                 surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
             {
-                log::error!("hayate-adapter-android: raster-thread render failed (skia gl): {err}");
+                log_terminal_skia_failure(&err);
+                terminal_failure = true;
             }
         }
         RasterCommand::Resize { width, height, content_scale } => {
@@ -692,6 +696,26 @@ pub(crate) fn spawn_skia_gl_raster_thread(
         RasterCommand::SurfaceLost => surface_ready = false,
         RasterCommand::RebuildSurface => surface_ready = true,
     })
+}
+
+fn classify_skia_runtime_failure(error: &str) -> hayate_app_host::renderer_selection::RendererSelectionReason {
+    use hayate_app_host::renderer_selection::RendererSelectionReason;
+
+    let message = error.to_ascii_lowercase();
+    if message.contains("surface")
+        || message.contains("context")
+        || message.contains("egl")
+        || message.contains("anativewindow")
+    {
+        RendererSelectionReason::SurfaceLost
+    } else {
+        RendererSelectionReason::RendererInitFailed
+    }
+}
+
+fn log_terminal_skia_failure(error: &str) {
+    let reason = classify_skia_runtime_failure(error);
+    log::error!("terminal scene renderer failure: skia ({reason:?}): {error}");
 }
 
 /// Renderer Selection Policy（issue #801/#802、spec §4 REND-15）越しにレンダラを初期化し、

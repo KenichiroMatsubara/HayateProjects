@@ -113,6 +113,9 @@ pub struct RenderHost<S: Surface, I: RendererInit<S>> {
     /// 棄却されたか。ホストは実行するだけで再導出はしない。
     selection_plan: RendererSelectionPlan,
     init: I,
+    /// CanvasKit/skia-safe の選択後 failure。設定後は renderer を二度と呼ばず、同じ terminal
+    /// category を App Host へ返し続ける（暗黙 retry/restart を型の状態として封じる）。
+    terminal_failure: Option<String>,
 }
 
 impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
@@ -152,6 +155,7 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
                         renderer: Some(renderer),
                         selection_plan: plan,
                         init,
+                        terminal_failure: None,
                     });
                 }
                 Err(error) => {
@@ -181,10 +185,12 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
         };
         let reason = self.init.classify_init_error(failed_kind, &error);
         if has_terminal_runtime_failure(failed_kind) {
-            return Err(anyhow::anyhow!(
+            let failure = format!(
                 "terminal scene renderer failure: {} ({reason:?}): {error}",
                 failed_kind.name(),
-            ));
+            );
+            self.terminal_failure = Some(failure.clone());
+            return Err(anyhow::anyhow!(failure));
         }
         if !is_runtime_fallback_reason(reason) {
             return Err(error);
@@ -240,6 +246,9 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
     }
 
     fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), Error> {
+        if let Some(failure) = &self.terminal_failure {
+            return Err(anyhow::anyhow!(failure.clone()));
+        }
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
@@ -259,6 +268,9 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
     }
 
     fn set_layer_present_enabled(&mut self, enabled: bool) {
+        if self.terminal_failure.is_some() {
+            return;
+        }
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.set_layer_present_enabled(enabled);
         }
@@ -272,6 +284,9 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
+        if let Some(failure) = &self.terminal_failure {
+            return Err(anyhow::anyhow!(failure.clone()));
+        }
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
@@ -286,6 +301,9 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
     }
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), Error> {
+        if let Some(failure) = &self.terminal_failure {
+            return Err(anyhow::anyhow!(failure.clone()));
+        }
         let Some(renderer) = self.renderer.as_mut() else {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
@@ -299,6 +317,9 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
     }
 
     fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+        if self.terminal_failure.is_some() {
+            return;
+        }
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.resize(width, height, content_scale);
         }
@@ -582,7 +603,7 @@ mod tests {
             let fails = Rc::new(RefCell::new(HashSet::from([SceneRendererKind::Skia])));
             let sync_init_calls = Rc::new(RefCell::new(Vec::new()));
             let init = FakeInit {
-                fails,
+                fails: fails.clone(),
                 unavailable: HashSet::new(),
                 resized: Rc::new(RefCell::new(Vec::new())),
                 sync_init_calls: sync_init_calls.clone(),
@@ -604,6 +625,12 @@ mod tests {
             assert!(result.is_err(), "a selected skia clear failure must be terminal");
             assert_eq!(host.kind(), SceneRendererKind::Skia);
             assert!(sync_init_calls.borrow().is_empty());
+
+            // terminal failure はラッチされる。下層の一時的な原因が消えても、選択済み
+            // skia を暗黙 restart/retry してはならない。
+            fails.borrow_mut().clear();
+            let retry = host.clear([0.0, 0.0, 0.0, 1.0]);
+            assert!(retry.is_err(), "terminal skia failure must stay latched");
         });
     }
 
