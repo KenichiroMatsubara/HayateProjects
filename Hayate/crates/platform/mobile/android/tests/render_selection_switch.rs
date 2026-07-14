@@ -181,3 +181,20 @@ fn skia_is_the_first_attempt_when_nothing_is_forced() {
         "強制指定が無ければ skia-safe がネイティブ既定の第一候補（issue #804 / ADR-0149）"
     );
 }
+
+#[test]
+fn selected_skia_failure_is_terminal_and_latched_on_android() {
+    let app = src("app.rs");
+    assert!(
+        app.contains("classify_skia_runtime_failure"),
+        "Android skia errors must be normalized to the shared RendererSelectionReason vocabulary",
+    );
+    assert!(
+        app.matches("terminal_failure").count() >= 4,
+        "both skia raster and skia GL threads must latch a terminal failure and skip later commands",
+    );
+    assert!(
+        app.contains("terminal scene renderer failure: skia"),
+        "the selected renderer and normalized failure category must be observable in logcat",
+    );
+}

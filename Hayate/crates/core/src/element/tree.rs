@@ -206,6 +206,10 @@ pub struct ElementTree {
     pub(crate) viewport: (f32, f32),
     pub(crate) scene_cache: SceneGraph,
     pub(crate) scene_lowering: SceneLowering,
+    #[cfg(any(debug_assertions, feature = "scene-validation"))]
+    pub(crate) scene_validator: crate::SceneGraphValidator,
+    #[cfg(any(debug_assertions, feature = "scene-validation"))]
+    pub(crate) last_scene_validation_visited: usize,
     pub(crate) event_queue: Vec<Event>,
     /// 横断的 interaction state を所有する deep module（ADR-0122）。この slice では
     /// focus state（`render` のカーソル点滅を進めるための focus 要素、ADR-0032）を
@@ -287,6 +291,10 @@ impl ElementTree {
             viewport: (800.0, 600.0),
             scene_cache: SceneGraph::new(),
             scene_lowering: SceneLowering::default(),
+            #[cfg(any(debug_assertions, feature = "scene-validation"))]
+            scene_validator: crate::SceneGraphValidator::new(),
+            #[cfg(any(debug_assertions, feature = "scene-validation"))]
+            last_scene_validation_visited: 0,
             event_queue: Vec::new(),
             interaction: crate::element::interaction::Interaction::default(),
             runtime: DocumentRuntime::new(),
@@ -1720,18 +1728,14 @@ impl ElementTree {
         let mut scene_cache = std::mem::take(&mut self.scene_cache);
         let mut scene_lowering = std::mem::take(&mut self.scene_lowering);
         #[cfg(any(debug_assertions, feature = "scene-validation"))]
-        let scene_changed = dirty.full_rebuild
-            || !dirty.elements.is_empty()
-            || !dirty.z_index_reorder_parents.is_empty();
+        let validation_elements: HashSet<ElementId> = dirty
+            .elements
+            .keys()
+            .copied()
+            .chain(dirty.z_index_reorder_parents.iter().copied())
+            .chain(self.engine.transform_dirty.iter().copied())
+            .collect();
         scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
-        // retained lowering が変更したフレームだけ共通 SceneGraph 契約を検証する。不変フレームは
-        // この分岐自体に到達せず、release（feature 無効）では validator のコードも含まれない。
-        #[cfg(any(debug_assertions, feature = "scene-validation"))]
-        if scene_changed {
-            if let Err(error) = crate::validate_scene_graph(&scene_cache) {
-                log::error!("scene graph validation failed: {error:?}");
-            }
-        }
         // トランジションは lowering seam で進む。まだ補間中の要素は visual-dirty の
         // まま保ち、次フレームで再 lowering して進める。最後のトラックが本フレームで
         // 落ち着くと要素は再マークされず、フレームループは静止する（ADR-0086/0093）。
@@ -1744,6 +1748,19 @@ impl ElementTree {
         // transform 係数だけの変化（Some→Some）を保持シーンへ patch する（#633）。re-lower なしで
         // 全面 raster 経路（FramePlan が raster を選んだフレーム）の出力を正しく保つ。
         self.patch_transform_groups();
+        #[cfg(any(debug_assertions, feature = "scene-validation"))]
+        {
+            let changed_roots = validation_elements
+                .into_iter()
+                .filter_map(|id| self.scene_lowering.anchors.get(&id).map(|entry| entry.anchor_id));
+            match self.scene_validator.validate(&self.scene_cache, changed_roots) {
+                Ok(report) => self.last_scene_validation_visited = report.visited_nodes(),
+                Err(error) => {
+                    self.last_scene_validation_visited = 0;
+                    log::error!("scene graph validation failed: {error:?}");
+                }
+            }
+        }
         &self.scene_cache
     }
 
@@ -2473,6 +2490,11 @@ impl ElementTree {
 
     pub fn test_scene_lowering_walk_count(&self) -> usize {
         self.scene_lowering.walk_count
+    }
+
+    #[cfg(any(debug_assertions, feature = "scene-validation"))]
+    pub fn test_scene_validation_visited_nodes(&self) -> usize {
+        self.last_scene_validation_visited
     }
 
     pub fn test_visual_dirty_contains(&self, id: ElementId) -> bool {

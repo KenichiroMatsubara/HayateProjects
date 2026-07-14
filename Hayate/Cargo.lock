@@ -1237,6 +1237,7 @@ dependencies = [
  "console_log",
  "hayate-app-host",
  "hayate-core",
+ "hayate-demo-fixtures",
  "hayate-layer-compositor",
  "hayate-scene-renderer-tiny-skia",
  "hayate-scene-renderer-vello",

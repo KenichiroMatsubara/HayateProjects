@@ -92,6 +92,7 @@ serde_json = "1"
 
 [dev-dependencies]
 serde_json = "1"
+hayate-demo-fixtures = { path = "../../demo-fixtures" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
