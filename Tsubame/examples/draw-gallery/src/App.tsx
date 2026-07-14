@@ -1,5 +1,4 @@
 import { createSignal } from 'solid-js';
-import type { DetectModeResult } from '@torimi/tsubame-app';
 import type { DrawPaintFunction } from '@torimi/tsubame-renderer-protocol';
 import { GALLERY_PAINTERS, responsiveGrid } from './painters';
 
@@ -57,7 +56,7 @@ function PainterCard(props: { title: string; blurb: string; paint: DrawPaintFunc
   );
 }
 
-export function DrawGalleryApp(props: { detected: DetectModeResult }) {
+export function DrawGalleryApp() {
   const [step, setStep] = createSignal(1);
   const current = () => RESIZE_STEPS[step()]!;
 
@@ -76,8 +75,7 @@ export function DrawGalleryApp(props: { detected: DetectModeResult }) {
       <view style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <text style={{ color: INK, fontSize: 24, fontWeight: 700 }}>Draw Gallery</text>
         <text style={{ color: MUTED, fontSize: 13 }}>
-          {`${GALLERY_PAINTERS.length} sample painters — 同一 painter を `}
-          {`${props.detected.renderer} renderer で描画中（?renderer= で切替）`}
+          {`${GALLERY_PAINTERS.length} sample painters — 同一 painter を選択中の renderer で描画`}
         </text>
       </view>
 

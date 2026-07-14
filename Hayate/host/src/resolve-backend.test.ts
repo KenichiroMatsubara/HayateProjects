@@ -5,6 +5,9 @@ import {
   resolveCanvasBackendAttemptOrder,
   resolveCanvasBackendSelection,
   RENDERER_QUERY_PARAM,
+  WEB_RENDERER_QUERY_VALUES,
+  rendererOptimizationQueryParam,
+  parseRendererOptimizationOptions,
 } from './resolve-backend.js';
 
 // Web の「タップで Scene Renderer を切り替える」操作面（Android の
@@ -13,6 +16,7 @@ import {
 // 値語彙は `SceneRendererKind::name()`（Rust）と同一。
 describe('parseRendererQueryBackend', () => {
   it('parses a forced canvas backend from the renderer query param', () => {
+    expect(parseRendererQueryBackend('?renderer=canvaskit')).toBe('canvaskit');
     expect(parseRendererQueryBackend('?renderer=vello')).toBe('vello');
     expect(parseRendererQueryBackend('?renderer=tiny-skia')).toBe('tiny-skia');
     expect(parseRendererQueryBackend('?renderer=vello-cpu')).toBe('vello-cpu');
@@ -42,6 +46,10 @@ describe('resolveCanvasBackendSelection', () => {
   });
 
   it('reports query-override when the renderer query forces a backend', () => {
+    expect(resolveCanvasBackendSelection(undefined, true, '?renderer=canvaskit')).toEqual({
+      backend: 'canvaskit',
+      reason: 'query-override',
+    });
     expect(resolveCanvasBackendSelection(undefined, true, '?renderer=tiny-skia')).toEqual({
       backend: 'tiny-skia',
       reason: 'query-override',
@@ -68,6 +76,42 @@ describe('resolveCanvasBackendSelection', () => {
     expect(resolveCanvasBackendSelection(undefined, false, '')).toEqual({
       backend: 'canvaskit',
       reason: 'canvaskit-auto',
+    });
+  });
+});
+
+describe('WEB_RENDERER_QUERY_VALUES', () => {
+  it('publishes the Host-owned renderer switch order', () => {
+    expect(WEB_RENDERER_QUERY_VALUES).toEqual([
+      'auto',
+      'canvaskit',
+      'vello',
+      'tiny-skia',
+      'vello-cpu',
+    ]);
+  });
+});
+
+describe('rendererOptimizationQueryParam', () => {
+  it('keeps backend-specific optimization query mapping in the Host policy', () => {
+    expect(rendererOptimizationQueryParam('vello')).toBe('layerPresent');
+    expect(rendererOptimizationQueryParam('tiny-skia')).toBe('cpuLayerPresent');
+    expect(rendererOptimizationQueryParam('vello-cpu')).toBe('cpuLayerPresent');
+    expect(rendererOptimizationQueryParam('canvaskit')).toBeUndefined();
+    expect(rendererOptimizationQueryParam('auto')).toBeUndefined();
+    expect(rendererOptimizationQueryParam('dom')).toBeUndefined();
+  });
+});
+
+describe('parseRendererOptimizationOptions', () => {
+  it('parses optimization query flags inside the Host boundary', () => {
+    expect(parseRendererOptimizationOptions('')).toEqual({
+      layerPresent: true,
+      cpuLayerPresent: true,
+    });
+    expect(parseRendererOptimizationOptions('?layerPresent=0&cpuLayerPresent=0')).toEqual({
+      layerPresent: false,
+      cpuLayerPresent: false,
     });
   });
 });

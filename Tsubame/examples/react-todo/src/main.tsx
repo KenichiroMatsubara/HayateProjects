@@ -3,25 +3,19 @@ import { DomRenderer } from '@torimi/tsubame-renderer-dom';
 import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
 import {
   runTsubameApp,
-  detectModeFromSearch,
-  type DetectModeResult,
+  shouldUseDomRenderer,
   type Host,
 } from '@torimi/tsubame-app';
 import { App } from './App';
 
 // react も solid と同じ合成ルートに乗る。target（DOM / Hayate）の選択は Host に局在し、
 // FW 固有なのは mount の 1 行（`renderTsubame(<App/>, renderer)`）だけ（ADR-0012）。
-// これで `vite dev` でも EditContext+WebGPU があれば Hayate に描画する（?renderer=vello で明示）。
+// `vite dev` でも EditContext があれば Hayate に描画し、Auto の backend 順序は Host に委ねる。
 // 以前の「react は DOM でしか描かれない」は、Canvas エントリが無く DomRenderer 固定だった
 // から（adapter の欠陥ではない）。
-function detectModeFromWindow(): DetectModeResult {
-  return detectModeFromSearch(window.location.search, {
-    hasEditContext: 'EditContext' in window,
-    hasWebGPU: 'gpu' in navigator,
-  });
-}
-
-const detected = detectModeFromWindow();
+const useDomRenderer = shouldUseDomRenderer(window.location.search, {
+  hasEditContext: 'EditContext' in window,
+});
 const dom = document.getElementById('dom-host') as HTMLDivElement;
 const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 
@@ -29,7 +23,7 @@ const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 // 次の機会に中立 App 階層パッケージへ抽出する（ADR-0012「1 adapter は仮の seam、2 で本物」）。
 let hayateRenderer: HayateRenderer | undefined;
 const host: Host =
-  detected.mode === 'DOM'
+  useDomRenderer
     ? {
         createRenderer() {
           dom.hidden = false;
@@ -44,7 +38,6 @@ const host: Host =
             .then((r) => (r.ok ? r.text() : undefined))
             .catch(() => undefined);
           const webHost = await createHayateWebHost(canvas, {
-            backend: detected.backend,
             tuning,
           });
           hayateRenderer = new HayateRenderer({

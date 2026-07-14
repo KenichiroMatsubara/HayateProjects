@@ -3,20 +3,14 @@ import { HayateRenderer } from '@torimi/tsubame-renderer-hayate';
 import { renderTsubame } from '@torimi/tsubame-solid';
 import {
   runTsubameApp,
-  detectModeFromSearch,
-  type DetectModeResult,
+  shouldUseDomRenderer,
   type Host,
 } from '@torimi/tsubame-app';
 import { TodoApp } from './App';
 
-function detectModeFromWindow(): DetectModeResult {
-  return detectModeFromSearch(window.location.search, {
-    hasEditContext: 'EditContext' in window,
-    hasWebGPU: 'gpu' in navigator,
-  });
-}
-
-const detected = detectModeFromWindow();
+const useDomRenderer = shouldUseDomRenderer(window.location.search, {
+  hasEditContext: 'EditContext' in window,
+});
 const dom = document.getElementById('dom-host') as HTMLDivElement;
 const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 
@@ -26,7 +20,7 @@ const canvas = document.getElementById('canvas-stage') as HTMLCanvasElement;
 // 時点で中立 App 階層パッケージへ抽出する（ADR-0012「1 adapter は仮の seam、2 で本物」）。
 let hayateRenderer: HayateRenderer | undefined;
 const host: Host =
-  detected.mode === 'DOM'
+  useDomRenderer
     ? {
         // DOM 経路：Hayate を迂回し、native IME と CSS リフローに委ねる。viewport 追従は
         // ブラウザの CSS / `@media` が担い、Tsubame は resize を配線しない（ADR-0080）。
@@ -47,20 +41,8 @@ const host: Host =
           const tuning = await fetch(new URL('tuning.jsonc', document.baseURI).href)
             .then((r) => (r.ok ? r.text() : undefined))
             .catch(() => undefined);
-          // ADR-0137 により Web は既定 ON。index.html の「最適化」行が
-          // `?layerPresent=0` を書くと明示的にフルraster版へ戻せる。`@torimi/tsubame-app` の
-          // detectMode は host-blind のまま保つため（ADR-0012）、この web/Hayate 固有
-          // フラグはここで直接読む。
-          const query = new URLSearchParams(window.location.search);
-          const layerPresent = query.get('layerPresent') !== '0';
-          // tiny-skia/vello-cpu 選択時のみ効く per-layer 経路の比較用トグル（ADR-0138）。
-          // vello の `layerPresent` とは別のクエリキー — 既定は逆（こちらは既定 ON）。
-          const cpuLayerPresent = query.get('cpuLayerPresent') !== '0';
           const webHost = await createHayateWebHost(canvas, {
-            backend: detected.backend,
             tuning,
-            layerPresent,
-            cpuLayerPresent,
           });
           hayateRenderer = new HayateRenderer({
             raw: webHost.raw,
@@ -77,6 +59,4 @@ const host: Host =
         stop: () => hayateRenderer?.stop(),
       };
 
-runTsubameApp(host, (renderer) =>
-  renderTsubame(() => <TodoApp detected={detected} />, renderer),
-);
+runTsubameApp(host, (renderer) => renderTsubame(() => <TodoApp />, renderer));

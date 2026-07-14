@@ -3,14 +3,5 @@
 export { runTsubameApp } from './run.js';
 export type { Host, TsubameMount, Dispose } from './host.js';
 
-// web 専用の DOM/Canvas 判定（依存ゼロの純粋関数）。orchestrator は呼ばない — App の entry が
-// 呼んで結果を Host 構築と mount クロージャの両方へ渡す（CONTEXT「Composition Root」）。
-export { detectMode, detectModeFromSearch, parseRendererQuery } from './detect-mode.js';
-export type {
-  Mode,
-  ModeSource,
-  RendererQuery,
-  CanvasBackend,
-  DetectModeInput,
-  DetectModeResult,
-} from './detect-mode.js';
+// web 専用の DOM 退避判定。Canvas backend の語彙・選択順・query 解釈は Hayate Host が持つ。
+export { shouldUseDomRenderer } from './web-target.js';
