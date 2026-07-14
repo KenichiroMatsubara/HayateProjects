@@ -15,6 +15,9 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[allow(dead_code)] // feature セットごとに有効なバックエンドは 1 つだけ
 pub enum SceneRendererKind {
+    /// CanvasKit による Web 専用 Scene Renderer（ADR-0148）。CanvasKit の JS/WASM
+    /// surface は Web Host が所有し、ここには選択語彙だけを置く。
+    CanvasKit,
     Vello,
     TinySkia,
     /// skia-safe によるネイティブ専用（desktop + Android）Scene Renderer（ADR-0146/0147）。
@@ -49,6 +52,7 @@ impl SceneRendererKind {
     /// ログ・エラーメッセージ用の安定したレンダラ ID。
     pub fn name(self) -> &'static str {
         match self {
+            Self::CanvasKit => "canvaskit",
             Self::Vello => "vello",
             Self::TinySkia => "tiny-skia",
             Self::Skia => "skia",
@@ -57,6 +61,19 @@ impl SceneRendererKind {
             Self::Null => "null",
         }
     }
+}
+
+/// Web の既定初期選択順（ADR-0148）。初回 boot で未選択候補だけをこの順に試す。
+pub const WEB_RENDERER_ORDER: &[SceneRendererKind] = &[
+    SceneRendererKind::CanvasKit,
+    SceneRendererKind::Vello,
+    SceneRendererKind::TinySkia,
+];
+
+/// Web Host 用の Renderer Selection Policy。CanvasKit のロード・surface 初期化が失敗した
+/// 場合に限り、同じ boot 中で次の候補へ進む。選択後の terminal failure は RenderHost が扱う。
+pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
+    RendererSelectionPolicy::new(WEB_RENDERER_ORDER, WEB_RENDERER_ORDER)
 }
 
 /// `Render Host` がレンダラを採用しなかった、あるいは切り替えた理由。
@@ -80,6 +97,13 @@ pub fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
             | RendererSelectionReason::CapabilityUnsupported
             | RendererSelectionReason::RendererInitFailed
     )
+}
+
+/// 初回選択後に runtime fallback を許さない renderer。CanvasKit と Native skia-safe は
+/// surface/context の寿命を Host 側で透過的に取り直せないため、描画・clear・present の
+/// 失敗を App Host へ terminal failure として返す（ADR-0148）。
+pub fn has_terminal_runtime_failure(kind: SceneRendererKind) -> bool {
+    matches!(kind, SceneRendererKind::CanvasKit | SceneRendererKind::Skia)
 }
 
 /// [`RendererSelectionPolicy`] が参照する、ホスト環境について静的に分かる事実。
@@ -399,6 +423,23 @@ mod tests {
             Some(SceneRendererKind::TinySkia),
         );
         assert_eq!(plan.next_after(SceneRendererKind::TinySkia), None);
+    }
+
+    #[test]
+    fn web_boot_attempts_canvaskit_then_vello_then_tiny_skia() {
+        let plan = web_renderer_selection_policy().choose(RendererCapabilities {
+            webgpu_available: true,
+        });
+
+        assert_eq!(
+            plan.attempt_order(),
+            [
+                SceneRendererKind::CanvasKit,
+                SceneRendererKind::Vello,
+                SceneRendererKind::TinySkia,
+            ],
+            "web boot must only advance through unselected candidates in ADR-0148 order",
+        );
     }
 
     fn plan_for(

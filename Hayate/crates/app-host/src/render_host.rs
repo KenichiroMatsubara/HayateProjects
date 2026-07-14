@@ -17,8 +17,8 @@ use hayate_core::{SceneGraph, Surface};
 use hayate_layer_compositor::ScrollLayerGeometry;
 
 use crate::renderer_selection::{
-    is_runtime_fallback_reason, RendererCapabilities, RendererSelectionPlan,
-    RendererSelectionPolicy, RendererSelectionReason, SceneRendererKind,
+    has_terminal_runtime_failure, is_runtime_fallback_reason, RendererCapabilities,
+    RendererSelectionPlan, RendererSelectionPolicy, RendererSelectionReason, SceneRendererKind,
 };
 
 pub type ClearColor = [f32; 4];
@@ -180,6 +180,12 @@ impl<S: Surface, I: RendererInit<S>> RenderHost<S, I> {
             return Err(error);
         };
         let reason = self.init.classify_init_error(failed_kind, &error);
+        if has_terminal_runtime_failure(failed_kind) {
+            return Err(anyhow::anyhow!(
+                "terminal scene renderer failure: {} ({reason:?}): {error}",
+                failed_kind.name(),
+            ));
+        }
         if !is_runtime_fallback_reason(reason) {
             return Err(error);
         }
@@ -342,7 +348,11 @@ mod tests {
             }
         }
         fn clear(&mut self, _clear_color: ClearColor) -> Result<(), Error> {
-            Ok(())
+            if self.fails.borrow().contains(&self.kind) {
+                Err(anyhow::anyhow!("surface lost"))
+            } else {
+                Ok(())
+            }
         }
         fn resize(&mut self, _width: u32, _height: u32, _content_scale: f32) {
             self.resized.borrow_mut().push(self.kind);
@@ -521,6 +531,79 @@ mod tests {
             assert_eq!(host.kind(), SceneRendererKind::TinySkia);
             assert_eq!(*sync_init_calls.borrow(), vec![SceneRendererKind::TinySkia]);
             assert_eq!(*resized.borrow(), vec![SceneRendererKind::TinySkia]);
+        });
+    }
+
+    #[test]
+    fn canvaskit_runtime_failure_is_terminal_and_never_initializes_vello() {
+        pollster::block_on(async {
+            let fails = Rc::new(RefCell::new(HashSet::from([SceneRendererKind::CanvasKit])));
+            let sync_init_calls = Rc::new(RefCell::new(Vec::new()));
+            let init = FakeInit {
+                fails,
+                unavailable: HashSet::new(),
+                resized: Rc::new(RefCell::new(Vec::new())),
+                sync_init_calls: sync_init_calls.clone(),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
+            };
+            let mut host = RenderHost::init_with_policy(
+                FakeSurface { width: 800, height: 600 },
+                RendererSelectionPolicy::new(
+                    &[
+                        SceneRendererKind::CanvasKit,
+                        SceneRendererKind::Vello,
+                        SceneRendererKind::TinySkia,
+                    ],
+                    &[
+                        SceneRendererKind::CanvasKit,
+                        SceneRendererKind::Vello,
+                        SceneRendererKind::TinySkia,
+                    ],
+                ),
+                RendererCapabilities { webgpu_available: true },
+                init,
+            )
+            .await
+            .expect("CanvasKit must be selected during boot");
+
+            let result = host.render_scene(&SceneGraph::default(), [0.0, 0.0, 0.0, 1.0]);
+            assert!(result.is_err(), "a selected CanvasKit failure must be terminal");
+            assert_eq!(host.kind(), SceneRendererKind::CanvasKit);
+            assert!(
+                sync_init_calls.borrow().is_empty(),
+                "terminal failure must not start an unselected renderer",
+            );
+        });
+    }
+
+    #[test]
+    fn skia_clear_failure_is_terminal_and_never_restarts_another_renderer() {
+        pollster::block_on(async {
+            let fails = Rc::new(RefCell::new(HashSet::from([SceneRendererKind::Skia])));
+            let sync_init_calls = Rc::new(RefCell::new(Vec::new()));
+            let init = FakeInit {
+                fails,
+                unavailable: HashSet::new(),
+                resized: Rc::new(RefCell::new(Vec::new())),
+                sync_init_calls: sync_init_calls.clone(),
+                layer_present_enabled: Rc::new(RefCell::new(true)),
+            };
+            let mut host = RenderHost::init_with_policy(
+                FakeSurface { width: 800, height: 600 },
+                RendererSelectionPolicy::new(
+                    &[SceneRendererKind::Skia, SceneRendererKind::Vello],
+                    &[SceneRendererKind::Skia, SceneRendererKind::Vello],
+                ),
+                RendererCapabilities { webgpu_available: true },
+                init,
+            )
+            .await
+            .expect("skia must be selected during boot");
+
+            let result = host.clear([0.0, 0.0, 0.0, 1.0]);
+            assert!(result.is_err(), "a selected skia clear failure must be terminal");
+            assert_eq!(host.kind(), SceneRendererKind::Skia);
+            assert!(sync_init_calls.borrow().is_empty());
         });
     }
 

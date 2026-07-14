@@ -7,7 +7,7 @@ use hayate_app_host::render_host::{
 };
 pub(crate) use hayate_app_host::render_host::SceneRenderer as CanvasBackend;
 use hayate_app_host::renderer_selection::{
-    diagnostic_renderer_selection_policy, standard_renderer_selection_policy,
+    diagnostic_renderer_selection_policy, web_renderer_selection_policy,
     RendererCapabilities, RendererSelectionReason, SceneRendererKind,
 };
 
@@ -82,6 +82,9 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
         let canvas = surface.0;
         match kind {
+            // CanvasKit の実装は backend-canvaskit feature が供給する（#813）。feature が
+            // 無いビルドでは boot 中の初期化失敗として Vello へだけ進む。
+            SceneRendererKind::CanvasKit => Err(not_compiled_error(kind)),
             SceneRendererKind::Vello => {
                 #[cfg(feature = "backend-vello")]
                 {
@@ -167,6 +170,9 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
         let canvas = surface.0;
         match kind {
+            // CanvasKit は選択後の runtime failure が terminal なので、同期 fallback
+            // 初期化に到達しない（RenderHost が保証）。防御的に typed error を返す。
+            SceneRendererKind::CanvasKit => Err(not_compiled_error(kind)),
             SceneRendererKind::Vello => Err(anyhow::anyhow!(
                 "renderer cannot be initialized synchronously for runtime fallback: {}",
                 kind.name()
@@ -324,7 +330,7 @@ pub(crate) type RenderHost = GenericRenderHost<WebCanvasSurface, WebRendererInit
 pub(crate) type SelectedBackend = RenderHost;
 
 pub(crate) async fn init_render_host(canvas: HtmlCanvasElement) -> Result<RenderHost, anyhow::Error> {
-    init_render_host_with_policy(canvas, standard_renderer_selection_policy()).await
+    init_render_host_with_policy(canvas, web_renderer_selection_policy()).await
 }
 
 /// テスト・診断用（ADR-0050）。本番は `init_render_host` を使う。
