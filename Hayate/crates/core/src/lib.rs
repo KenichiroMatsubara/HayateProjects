@@ -98,7 +98,9 @@ pub use node::{
     TextSynthesis,
 };
 #[cfg(any(debug_assertions, feature = "scene-validation"))]
-pub use scene_validation::{validate_scene_graph, SceneValidationError};
+pub use scene_validation::{
+    validate_scene_graph, SceneGraphValidator, SceneValidationError, SceneValidationReport,
+};
 pub use scroll::{
     MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
