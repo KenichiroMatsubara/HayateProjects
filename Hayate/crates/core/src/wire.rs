@@ -9,10 +9,11 @@
 //! `dispatch.rs`（wire を decode して `MutationSink` を駆動する中立 decode）を
 //! 生成し、ここに include する。
 //!
-//! 適用先は [`MutationSink`] で抽象化する。即時 `&mut ElementTree` 適用（Canvas
-//! Mode / Android）は [`TreeSink`] が、遅延コマンド enqueue（HTML Mode）は web
-//! アダプタの sink が実装する。decode 自体は一度だけ生成され、sink が「即時木適用 /
-//! 遅延 enqueue」という irreducible な差だけを供給する。
+//! 適用先は [`MutationSink`] で抽象化する。packet 全体をまず owned な semantic mutation
+//! 列へ decode・検証し、成功した列だけを sink へ順序通り適用する（ADR-0150）。即時
+//! `&mut ElementTree` 適用（Canvas Mode / Android）は [`TreeSink`] が、遅延コマンド
+//! enqueue（HTML Mode）は web アダプタの sink が実装する。sink が供給するのは
+//! 「即時木適用 / 遅延 enqueue」という irreducible な差だけである。
 //!
 //! 各プラットフォームアダプタは本モジュールの公開 API（[`apply_mutations`]・
 //! [`apply_mutations_to_sink`]・[`MutationSink`]・[`TreeSink`]）を使い、
@@ -48,9 +49,155 @@ mod dispatch {
     ));
 }
 
-pub use dispatch::{apply_mutations_to_sink, unset_kind_from_u32};
+pub use dispatch::unset_kind_from_u32;
 pub use mutation_sink::MutationSink;
 pub use protocol::*;
+
+/// Fully validated, owned mutation. A packet is decoded entirely into this
+/// semantic sequence before any target sink is allowed to observe it.
+enum SemanticMutation {
+    AppendChild(ElementId, ElementId),
+    InsertBefore(ElementId, ElementId, ElementId),
+    Remove(ElementId),
+    SetRoot(ElementId),
+    SetStyle(ElementId, Vec<StyleProp>),
+    SetTransform(ElementId, Option<[f64; 6]>),
+    SetScrollOffset(ElementId, f32, f32),
+    Focus(ElementId),
+    Blur(ElementId),
+    Create(ElementId, ElementKind),
+    SetText(ElementId, String),
+    UnsetStyle(ElementId, StylePropKind),
+    SetTextContent(ElementId, String),
+    SetDisabled(ElementId, bool),
+    SetSrc(ElementId, String),
+    SetPseudoStyle(ElementId, PseudoState, Vec<StyleProp>),
+    SetStyleVariant(ElementId, ViewportCondition, StyleProp),
+    SetUserSelect(ElementId, UserSelectValue),
+    SetMultiline(ElementId, bool),
+    SetAriaLabel(ElementId, String),
+    SetRole(ElementId, String),
+    SetFontFamily(ElementId, String),
+    SetDraw(ElementId, Vec<protocol::DrawCommand>),
+}
+
+impl SemanticMutation {
+    fn apply(self, sink: &mut (impl MutationSink + ?Sized)) {
+        match self {
+            Self::AppendChild(parent, child) => sink.append_child(parent, child),
+            Self::InsertBefore(parent, child, before) => sink.insert_before(parent, child, before),
+            Self::Remove(id) => sink.remove(id),
+            Self::SetRoot(id) => sink.set_root(id),
+            Self::SetStyle(id, props) => sink.set_style(id, props),
+            Self::SetTransform(id, matrix) => sink.set_transform(id, matrix),
+            Self::SetScrollOffset(id, x, y) => sink.set_scroll_offset(id, x, y),
+            Self::Focus(id) => sink.apply_focus(id),
+            Self::Blur(id) => sink.apply_blur(id),
+            Self::Create(id, kind) => sink.create(id, kind),
+            Self::SetText(id, text) => sink.set_text(id, &text),
+            Self::UnsetStyle(id, kind) => sink.unset_style(id, kind),
+            Self::SetTextContent(id, text) => sink.set_text_content(id, &text),
+            Self::SetDisabled(id, disabled) => sink.set_disabled(id, disabled),
+            Self::SetSrc(id, url) => sink.set_src(id, &url),
+            Self::SetPseudoStyle(id, state, props) => sink.set_pseudo_style(id, state, props),
+            Self::SetStyleVariant(id, condition, prop) => {
+                sink.set_style_variant(id, condition, prop)
+            }
+            Self::SetUserSelect(id, value) => sink.set_user_select(id, value),
+            Self::SetMultiline(id, multiline) => sink.set_multiline(id, multiline),
+            Self::SetAriaLabel(id, label) => sink.set_aria_label(id, &label),
+            Self::SetRole(id, role) => sink.set_role(id, &role),
+            Self::SetFontFamily(id, family) => sink.set_font_family(id, &family),
+            Self::SetDraw(id, commands) => sink.set_draw(id, commands),
+        }
+    }
+}
+
+#[derive(Default)]
+struct SemanticMutationBuffer {
+    mutations: Vec<SemanticMutation>,
+}
+
+impl MutationSink for SemanticMutationBuffer {
+    fn append_child(&mut self, parent: ElementId, child: ElementId) {
+        self.mutations.push(SemanticMutation::AppendChild(parent, child));
+    }
+    fn insert_before(&mut self, parent: ElementId, child: ElementId, before: ElementId) {
+        self.mutations.push(SemanticMutation::InsertBefore(parent, child, before));
+    }
+    fn remove(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::Remove(id)); }
+    fn set_root(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::SetRoot(id)); }
+    fn set_style(&mut self, id: ElementId, props: Vec<StyleProp>) {
+        self.mutations.push(SemanticMutation::SetStyle(id, props));
+    }
+    fn set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
+        self.mutations.push(SemanticMutation::SetTransform(id, matrix));
+    }
+    fn set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
+        self.mutations.push(SemanticMutation::SetScrollOffset(id, x, y));
+    }
+    fn apply_focus(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::Focus(id)); }
+    fn apply_blur(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::Blur(id)); }
+    fn create(&mut self, id: ElementId, kind: ElementKind) {
+        self.mutations.push(SemanticMutation::Create(id, kind));
+    }
+    fn set_text(&mut self, id: ElementId, text: &str) {
+        self.mutations.push(SemanticMutation::SetText(id, text.to_owned()));
+    }
+    fn unset_style(&mut self, id: ElementId, kind: StylePropKind) {
+        self.mutations.push(SemanticMutation::UnsetStyle(id, kind));
+    }
+    fn set_text_content(&mut self, id: ElementId, text: &str) {
+        self.mutations.push(SemanticMutation::SetTextContent(id, text.to_owned()));
+    }
+    fn set_disabled(&mut self, id: ElementId, disabled: bool) {
+        self.mutations.push(SemanticMutation::SetDisabled(id, disabled));
+    }
+    fn set_src(&mut self, id: ElementId, url: &str) {
+        self.mutations.push(SemanticMutation::SetSrc(id, url.to_owned()));
+    }
+    fn set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: Vec<StyleProp>) {
+        self.mutations.push(SemanticMutation::SetPseudoStyle(id, state, props));
+    }
+    fn set_style_variant(&mut self, id: ElementId, condition: ViewportCondition, prop: StyleProp) {
+        self.mutations.push(SemanticMutation::SetStyleVariant(id, condition, prop));
+    }
+    fn set_user_select(&mut self, id: ElementId, value: UserSelectValue) {
+        self.mutations.push(SemanticMutation::SetUserSelect(id, value));
+    }
+    fn set_multiline(&mut self, id: ElementId, multiline: bool) {
+        self.mutations.push(SemanticMutation::SetMultiline(id, multiline));
+    }
+    fn set_aria_label(&mut self, id: ElementId, label: &str) {
+        self.mutations.push(SemanticMutation::SetAriaLabel(id, label.to_owned()));
+    }
+    fn set_role(&mut self, id: ElementId, role: &str) {
+        self.mutations.push(SemanticMutation::SetRole(id, role.to_owned()));
+    }
+    fn set_font_family(&mut self, id: ElementId, family: &str) {
+        self.mutations.push(SemanticMutation::SetFontFamily(id, family.to_owned()));
+    }
+    fn set_draw(&mut self, id: ElementId, commands: Vec<protocol::DrawCommand>) {
+        self.mutations.push(SemanticMutation::SetDraw(id, commands));
+    }
+}
+
+/// Validate and decode a complete packet, then apply the semantic sequence in
+/// wire order. Validation errors occur before the target sink is touched.
+pub fn apply_mutations_to_sink<S: MutationSink + ?Sized>(
+    sink: &mut S,
+    ops: &[f64],
+    styles: &[f32],
+    texts: &[String],
+    draws: &[f32],
+) -> Result<(), String> {
+    let mut buffer = SemanticMutationBuffer::default();
+    dispatch::apply_mutations_to_sink(&mut buffer, ops, styles, texts, draws)?;
+    for mutation in buffer.mutations {
+        mutation.apply(sink);
+    }
+    Ok(())
+}
 
 /// 即時 `&mut ElementTree` 適用 sink（Canvas Mode / Android）。中立 decode が以前
 /// インライン展開していた op→tree 本体をここに集約する。木へ直接適用する唯一の
@@ -163,10 +310,11 @@ impl MutationSink for TreeSink<'_> {
     }
 }
 
-/// 中立 `apply_mutations`（ADR-0052 / ADR-0112）。wire ops（op レコード列・style
+/// 中立 `apply_mutations`（ADR-0052 / ADR-0112 / ADR-0150）。wire ops（op レコード列・style
 /// packet の f32 列・`OP_SET_TEXT` 等が参照する文字列テーブル・`OP_SET_DRAW` が
 /// 参照する draw display list の f32 列）を decode して `ElementTree` に即時適用
-/// する。Web Canvas（wasm 境界）と Android（埋め込み Hermes）の両アダプタが共有
+/// する。全体検証に成功するまで tree は変更しない。Web Canvas（wasm 境界）と Android
+/// （埋め込み Hermes）の両アダプタが共有
 /// する木即時適用の経路。HTML Mode は自身の遅延 sink を
 /// [`apply_mutations_to_sink`] に渡す。
 pub fn apply_mutations(
@@ -387,6 +535,69 @@ mod tests {
         );
     }
 
+    #[test]
+    fn malformed_packet_tail_leaves_deferred_sink_unchanged() {
+        let mut sink = RecordingSink::default();
+        let ops = vec![
+            OP_CREATE as f64,
+            7.0,
+            ELEMENT_KIND_TEXT as f64,
+            OP_SET_TEXT as f64,
+            7.0,
+            99.0,
+        ];
+
+        assert!(apply_mutations_to_sink(&mut sink, &ops, &[], &[], &[]).is_err());
+        assert!(sink.calls.is_empty(), "validation failure must happen before dispatch starts");
+    }
+
+    #[test]
+    fn malformed_packet_tail_leaves_element_tree_unchanged() {
+        let mut tree = ElementTree::new();
+        let text = tree.element_create(7, ElementKind::Text);
+        tree.set_root(text);
+        tree.element_set_text(text, "before");
+        let ops = vec![OP_SET_TEXT as f64, 7.0, 0.0, 999_999.0];
+        let texts = vec!["after".to_string()];
+
+        assert!(apply_mutations(&mut tree, &ops, &[], &texts, &[]).is_err());
+        assert_eq!(tree.element_get_text(text), "before");
+    }
+
+    #[test]
+    fn malformed_style_payload_is_rejected_before_any_dispatch() {
+        let mut sink = RecordingSink::default();
+        let ops = vec![
+            OP_CREATE as f64,
+            7.0,
+            ELEMENT_KIND_TEXT as f64,
+            OP_SET_STYLE as f64,
+            7.0,
+            0.0,
+            1.0,
+        ];
+
+        assert!(apply_mutations_to_sink(&mut sink, &ops, &[f32::NAN], &[], &[]).is_err());
+        assert!(sink.calls.is_empty());
+    }
+
+    #[test]
+    fn overflowing_style_reference_is_rejected_before_any_dispatch() {
+        let mut sink = RecordingSink::default();
+        let ops = vec![
+            OP_CREATE as f64,
+            7.0,
+            ELEMENT_KIND_TEXT as f64,
+            OP_SET_STYLE as f64,
+            7.0,
+            usize::MAX as f64,
+            1.0,
+        ];
+
+        assert!(apply_mutations_to_sink(&mut sink, &ops, &[], &[], &[]).is_err());
+        assert!(sink.calls.is_empty());
+    }
+
     // 新規 opcode（aria-label / role / font-family）が wire を1往復し、文字列
     // テーブル参照込みで sink の意味メソッドへ届く。
     #[test]
@@ -450,8 +661,17 @@ mod tests {
     #[test]
     fn set_draw_out_of_bounds_is_an_error() {
         let mut sink = RecordingSink::default();
-        let ops = vec![OP_SET_DRAW as f64, 5.0, 0.0, 4.0];
+        let ops = vec![
+            OP_CREATE as f64,
+            5.0,
+            ELEMENT_KIND_VIEW as f64,
+            OP_SET_DRAW as f64,
+            5.0,
+            0.0,
+            4.0,
+        ];
         assert!(apply_mutations_to_sink(&mut sink, &ops, &[], &[], &[]).is_err());
+        assert!(sink.calls.is_empty());
     }
 
     // user-select の wire 値（text=0 / none=1 / contains=2）が意味 enum へ decode される。
