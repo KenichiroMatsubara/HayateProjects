@@ -9,8 +9,9 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   target: 'es2022',
-  // CanvasKit's JS loader and its WASM binary must be included in the published Host package;
-  // leaving the dependency external would make `locateFile` point into a consumer's node_modules.
-  noExternal: ['canvaskit-wasm'],
-  loader: { '.wasm': 'file' },
+  // CanvasKit は dependency のまま consumer bundler に渡す。ここで JS/WASM を Host に
+  // 焼き込むと `.wasm?url` が単なる相対文字列に変わり、後段の Vite が asset dependency
+  // として追跡できない。最終アプリの bundler に解決させることで、その base / assetsDir
+  // に対応した URL と WASM 配信物を同時に生成させる。
+  external: ['canvaskit-wasm', 'canvaskit-wasm/*'],
 });
