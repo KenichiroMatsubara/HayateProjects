@@ -77,3 +77,22 @@ pnpm test:e2e:layer-present
 - Playwright 管理の chromium が未インストールの環境では `/opt/pw-browsers/chromium` →
   システムの `google-chrome`（`/usr/bin/google-chrome`）の順にフォールバックする
   （`playwright.config.layer-present.ts`）。
+
+## CanvasKit performance feedback loop（#832）
+
+共有 Task Studio fixture を実 Chromium + CanvasKit WebGL surface で駆動し、静止、text editing、
+scroll、theme transition animation を同じ harness で計測する。
+
+```bash
+# 通常 CI / agent 実行。WASM を先に再ビルドし、環境差を許容する baseline contract を判定する。
+pnpm test:e2e:canvaskit-perf
+
+# 現行の editing / scroll replay または allocation を RED にする改善目標。
+pnpm test:e2e:canvaskit-perf:strict
+```
+
+各 scenario は frame replay 時間、full-scene replay 回数、command payload bytes、Paint / Font /
+scratch allocation 回数、WebGL version / renderer / software 判定を JSON attachment と標準出力へ
+記録する。端末依存の frame time はレポート専用で閾値判定せず、CI は
+`CANVASKIT_PERFORMANCE_BUDGET` の replay/allocation contract だけを判定する。厳格モードは
+`CANVASKIT_STRICT_RED_BUDGET` を使い、hardware 固有の数値較正は #816 に委ねる。

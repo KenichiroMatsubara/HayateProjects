@@ -9,6 +9,62 @@ import {
 afterEach(resetCanvasKitBridgeForTesting);
 
 describe('prepareCanvasKitSurface', () => {
+  it('reports deterministic replay metrics and reuses frame Paint allocation', async () => {
+    const paint = { setAntiAlias() {}, setStyle() {}, setColor() {}, delete: vi.fn() };
+    const paintAllocations = vi.fn();
+    class Paint {
+      constructor() {
+        paintAllocations();
+        return paint;
+      }
+    }
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn(() => ({
+        getCanvas: () => ({ clear: vi.fn() }), flush: vi.fn(), delete: vi.fn(),
+      })),
+      Paint,
+      PaintStyle: { Fill: 0 },
+      Color4f: (...color: number[]) => color,
+    };
+    const gl = {
+      VERSION: 1,
+      RENDERER: 2,
+      getExtension: vi.fn(() => ({ UNMASKED_RENDERER_WEBGL: 3 })),
+      getParameter: vi.fn((key: number) =>
+        key === 1 ? 'WebGL 2.0 test' : 'Google SwiftShader'),
+    };
+    const canvas = { getContext: vi.fn(() => gl) } as unknown as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      replay(target: HTMLCanvasElement, commands: Float32Array): void;
+      performanceSnapshot(target: HTMLCanvasElement): {
+        replayCount: number;
+        fullSceneReplayCount: number;
+        commandPayloadBytes: number;
+        paintAllocationCount: number;
+        frameTimeMs: readonly number[];
+      };
+    };
+    const commands = new Float32Array([0, 0.1, 0.2, 0.3, 1]);
+
+    bridge.replay(canvas, commands);
+    bridge.replay(canvas, commands);
+
+    expect(bridge.performanceSnapshot(canvas)).toMatchObject({
+      replayCount: 2,
+      fullSceneReplayCount: 0,
+      commandPayloadBytes: commands.byteLength * 2,
+      paintAllocationCount: 1,
+      frameTimeMs: [expect.any(Number), expect.any(Number)],
+      webgl: {
+        version: 'WebGL 2.0 test',
+        renderer: 'Google SwiftShader',
+        software: true,
+      },
+    });
+    expect(paintAllocations).toHaveBeenCalledOnce();
+  });
+
   it('owns CanvasKit surface setup and replays clear/rect as one frame boundary', async () => {
     const clear = vi.fn();
     const drawRect = vi.fn();
@@ -41,7 +97,7 @@ describe('prepareCanvasKitSurface', () => {
     ]);
     expect(drawRect).toHaveBeenCalledWith([2, 3, 6, 8], paint);
     expect(flush).toHaveBeenCalledOnce();
-    expect(paint.delete).toHaveBeenCalledOnce();
+    expect(paint.delete).not.toHaveBeenCalled();
   });
 
   it('decodes an image resource once and reuses it across frame replays', async () => {
@@ -173,6 +229,10 @@ describe('prepareCanvasKitSurface', () => {
     await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
     const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
       replay(target: HTMLCanvasElement, commands: Float32Array, resources: Array<Record<string, unknown>>): void;
+      performanceSnapshot(target: HTMLCanvasElement): {
+        fontAllocationCount: number;
+        scratchAllocationCount: number;
+      };
     };
 
     const regular = new Float32Array([
@@ -205,6 +265,10 @@ describe('prepareCanvasKitSurface', () => {
     expect(fonts[1]!.setSkewX).toHaveBeenCalledWith(0.25);
     expect(fonts[1]!.setEmbolden).toHaveBeenCalledWith(true);
     expect(drawGlyphs).toHaveBeenCalledTimes(3);
+    expect(bridge.performanceSnapshot(canvas)).toMatchObject({
+      fontAllocationCount: 2,
+      scratchAllocationCount: 2,
+    });
   });
 
   it('renders the shared missing-glyph placeholder and text decorations instead of glyph zero', async () => {
