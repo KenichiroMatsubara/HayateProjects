@@ -12,13 +12,12 @@ use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile
 
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
-    ElementTree, FontFetcher, FontStyleValue, RenderImage, RenderScaleDriver,
+    CommittedFrame, ElementTree, FontFetcher, FontStyleValue, RenderImage, RenderScaleDriver,
     StyleProp, TextDecorationValue, effective_content_scale,
 };
 use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
 use hayate_app_host::renderer_selection::SceneRendererKind;
 use hayate_app_host::{FontFetchResult, FontMailbox, FontMailboxHandle};
-use crate::frame_surface;
 use crate::image_decode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -506,12 +505,18 @@ impl HayateElementRenderer {
         for (id, text) in pasted {
             self.tree.element_paste(id, &text);
         }
-        let _ = self.tree.render(timestamp_ms);
-
-        // #666: 前フレームで測ったスケール変更（あれば）をこのフレームの present より前に適用してから
-        // present する（frame_surface::advance_frame 経由。resize→present の順序を型で固定する）。
+        // #666: 前フレームで測ったスケール変更（あれば）を present より前に適用する。
         let pending_render_scale = self.pending_render_scale.take();
-        let present = frame_surface::advance_frame(self, pending_render_scale);
+        if let Some(render_scale) = pending_render_scale {
+            self.apply_render_scale(render_scale);
+        }
+        let frame = self.tree.commit_rendered_frame(timestamp_ms);
+        let present = Self::present_frame(
+            &mut self.backend,
+            &mut self.planner,
+            self.background,
+            &frame,
+        );
 
         // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
         // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
@@ -556,41 +561,43 @@ impl HayateElementRenderer {
     /// （#634 で content dirty から分離した chrome dirty）は単一 Pixmap/texture 経路では offset が
     /// キャッシュ面へ焼き込まれるため、保守的に raster トリガへ含める（stale フレーム回避）。transform
     /// 係数だけの変化は quad が適用するので per-layer 経路では raster トリガに含めない（composite-only）。
-    fn present_frame(&mut self) -> Result<(), JsValue> {
-        if self.backend.supports_layer_present() {
-            let mut layer_dirty = self.tree.frame_layer_dirty().clone();
-            layer_dirty.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
+    fn present_frame(
+        backend: &mut SelectedBackend,
+        planner: &mut hayate_layer_compositor::PresentPlanner,
+        background: [f32; 4],
+        frame: &CommittedFrame<'_>,
+    ) -> Result<(), JsValue> {
+        if backend.supports_layer_present() {
+            let mut layer_dirty = frame.content_dirty_layers().clone();
+            layer_dirty.extend(frame.chrome_dirty_layers().iter().copied());
             // ADR-0127 scroll overscan サイジングの配線（#707）: `present_layers` は
             // `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、scroll
             // レイヤごとの帯ジオメトリをここで一度だけ計算して渡す（vello バックエンドはこれを
             // 使って scroll 内容レイヤを可視域＋overscan の帯サイズだけ raster する。対応しない
             // バックエンドは無視して従来どおりフルサーフェス raster する）。
-            let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_table(
-                &self.tree,
-                self.tree.frame_layers(),
+            let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_from_inputs(
+                frame.scroll_inputs(),
             );
-            self.backend
+            backend
                 .present_layers(
-                    self.tree.scene_graph(),
-                    self.tree.frame_layers(),
+                    frame.scene(),
+                    frame.layers(),
                     &layer_dirty,
                     &scroll_geometry,
-                    self.background,
+                    background,
                 )
                 .map_err(anyhow_to_js)
         } else {
             // 単一 root 経路は quad 合成を持たないため、transform 係数だけの変化（#633 で content
             // dirty から分離）と scroll chrome（#634）も保守的に raster トリガへ含める。
-            let mut raster_trigger = self.tree.frame_layer_dirty().clone();
-            raster_trigger.extend(self.tree.frame_layer_transform_dirty().iter().copied());
-            raster_trigger.extend(self.tree.frame_layer_chrome_dirty().iter().copied());
-            let plan = self.planner.plan(self.tree.frame_layers(), &raster_trigger);
+            let mut raster_trigger = frame.content_dirty_layers().clone();
+            raster_trigger.extend(frame.transform_dirty_layers().iter().copied());
+            raster_trigger.extend(frame.chrome_dirty_layers().iter().copied());
+            let plan = planner.plan(frame.layers(), &raster_trigger);
             if plan.needs_raster {
-                let result = self
-                    .backend
-                    .render_scene(self.tree.scene_graph(), self.background);
+                let result = backend.render_scene(frame.scene(), background);
                 if result.is_ok() {
-                    self.planner.note_full_raster(self.tree.frame_layers());
+                    planner.note_full_raster(frame.layers());
                 }
                 result.map_err(anyhow_to_js)
             } else {
@@ -1196,18 +1203,6 @@ impl HayateElementRenderer {
             },
             hayate_core::AccessibilityPoll::Unchanged => JsValue::NULL,
         }
-    }
-}
-
-impl frame_surface::FrameSurface for HayateElementRenderer {
-    type Present = Result<(), JsValue>;
-
-    fn apply_render_scale(&mut self, render_scale: f32) {
-        HayateElementRenderer::apply_render_scale(self, render_scale);
-    }
-
-    fn present(&mut self) -> Result<(), JsValue> {
-        self.present_frame()
     }
 }
 

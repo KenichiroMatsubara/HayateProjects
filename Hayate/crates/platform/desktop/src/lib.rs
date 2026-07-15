@@ -40,7 +40,7 @@ use hayate_app_host::renderer_selection::{
     SceneRendererKind,
 };
 use hayate_app_host::{AppHost, PresentTarget};
-use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, SceneGraph, Surface, ViewportMetrics};
+use hayate_core::{ImeBridge, ImeBuffer, ImePresentation, Surface, ViewportMetrics};
 use hayate_demo_fixtures::tasks_tree;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
@@ -224,10 +224,10 @@ impl RenderHostSurface {
 }
 
 impl PresentTarget for RenderHostSurface {
-    fn present(&mut self, scene: &SceneGraph) {
-        if let Err(e) = self.host.render_scene(scene, CLEAR_COLOR) {
-            log::error!("render_scene failed (no further fallback): {e}");
-        }
+    type Error = anyhow::Error;
+
+    fn present(&mut self, frame: &hayate_core::CommittedFrame<'_>) -> Result<(), Self::Error> {
+        self.host.render_scene(frame.scene(), CLEAR_COLOR)
     }
 }
 
@@ -367,7 +367,11 @@ impl ApplicationHandler for DesktopApp {
                 if let (Some(window), Some(app_host)) =
                     (self.window.as_ref(), self.app_host.as_mut())
                 {
-                    app_host.tick(ts);
+                    if let Err(error) = app_host.tick(ts) {
+                        log::error!("present failed (no further fallback): {error}");
+                        event_loop.exit();
+                        return;
+                    }
                     // 初回フレームを present し終えてから可視化する（暗転防止・
                     // `initial_window_attributes` 参照）。直後にもう 1 フレーム要求するのは、
                     // 非表示中の swapchain が present を `Occluded` 等で落とすプラットフォーム

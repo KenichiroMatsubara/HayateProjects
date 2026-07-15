@@ -70,8 +70,11 @@ fn apply_parsed_op<S: MutationSink + ?Sized>(
             Ok(())
         }
         Op::SetStyle { id, style_offset, style_len } => {
+            let style_end = style_offset
+                .checked_add(style_len)
+                .ok_or_else(|| "styles slice range overflow in OP_SET_STYLE".to_string())?;
             let slice = styles
-                .get(style_offset..style_offset + style_len)
+                .get(style_offset..style_end)
                 .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
             sink.set_style(ElementId::from_u64(id), props);
@@ -137,16 +140,22 @@ fn apply_parsed_op<S: MutationSink + ?Sized>(
         Op::SetPseudoStyle { id, state, style_offset, style_len } => {
             let pseudo = PseudoState::from_u32(state)
                 .ok_or_else(|| format!("unknown pseudo-state {state}"))?;
+            let style_end = style_offset
+                .checked_add(style_len)
+                .ok_or_else(|| "styles slice range overflow in OP_SET_PSEUDO_STYLE".to_string())?;
             let slice = styles
-                .get(style_offset..style_offset + style_len)
+                .get(style_offset..style_end)
                 .ok_or_else(|| "styles slice out of bounds in OP_SET_PSEUDO_STYLE".to_string())?;
             let props = decode_style_packet(slice)?;
             sink.set_pseudo_style(ElementId::from_u64(id), pseudo, props);
             Ok(())
         }
         Op::SetStyleVariant { id, min_width, max_width, min_height, max_height, style_offset, style_len } => {
+            let style_end = style_offset
+                .checked_add(style_len)
+                .ok_or_else(|| "styles slice range overflow in OP_SET_STYLE_VARIANT".to_string())?;
             let slice = styles
-                .get(style_offset..style_offset + style_len)
+                .get(style_offset..style_end)
                 .ok_or_else(|| "styles slice out of bounds in OP_SET_STYLE_VARIANT".to_string())?;
             let mut props = decode_style_packet(slice)?;
             if props.len() != 1 {
@@ -197,8 +206,11 @@ fn apply_parsed_op<S: MutationSink + ?Sized>(
             Ok(())
         }
         Op::SetDraw { id, draw_offset, draw_len } => {
+            let draw_end = draw_offset
+                .checked_add(draw_len)
+                .ok_or_else(|| "draws slice range overflow in OP_SET_DRAW".to_string())?;
             let slice = draws
-                .get(draw_offset..draw_offset + draw_len)
+                .get(draw_offset..draw_end)
                 .ok_or_else(|| "draws slice out of bounds in OP_SET_DRAW".to_string())?;
             let commands = decode_draw_list(slice)?;
             sink.set_draw(ElementId::from_u64(id), commands);

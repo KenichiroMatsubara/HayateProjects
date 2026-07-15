@@ -1764,6 +1764,40 @@ impl ElementTree {
         &self.scene_cache
     }
 
+    /// Advance, settle, and lower one frame into the invariant view consumed by
+    /// presentation code. Projections add platform and backend policy separately.
+    pub fn commit_rendered_frame(&mut self, timestamp_ms: f64) -> crate::CommittedFrame<'_> {
+        let _ = self.render(timestamp_ms);
+        let scroll_inputs = self
+            .frame_layers
+            .iter()
+            .copied()
+            .filter(|&layer| self.element_kind(layer) == Some(ElementKind::ScrollView))
+            .filter_map(|layer| {
+                let (_, absolute_top, _, viewport_height) = self.element_layout_rect(layer)?;
+                let (_, scroll_offset) = self.element_get_scroll_offset(layer);
+                let (_, max_scroll_offset) = self.element_scroll_max_offset(layer);
+                Some(crate::ScrollCompositorInput {
+                    layer,
+                    absolute_top,
+                    viewport_height,
+                    scroll_offset,
+                    max_scroll_offset,
+                    content_dirty: self.frame_layer_dirty.contains(&layer),
+                })
+            })
+            .collect();
+        crate::CommittedFrame::new(
+            &self.scene_cache,
+            &self.frame_layers,
+            &self.frame_layer_dirty,
+            &self.frame_layer_chrome_dirty,
+            &self.frame_layer_transform_dirty,
+            scroll_inputs,
+            self.has_pending_visual_work(),
+        )
+    }
+
     /// transform 係数だけが変わった要素の保持シーン Group ノードを patch する（#633）。anchor 直下の
     /// 最初の Group が transform ラッパ（`scene_build` の attach_point と同じ規約）。同フレームで
     /// re-lower もされた要素は lowering が新係数で emit 済みなので、patch は冪等。

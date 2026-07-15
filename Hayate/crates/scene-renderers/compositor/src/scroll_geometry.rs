@@ -48,7 +48,7 @@
 
 use std::collections::HashMap;
 
-use hayate_core::{ElementId, ElementKind, ElementTree};
+use hayate_core::{ElementId, ElementKind, ElementTree, ScrollCompositorInput};
 
 use crate::{scroll_content_visible_top, scroll_layer_extent, tunables, ScrollLayerExtent};
 
@@ -159,6 +159,35 @@ pub fn scroll_layer_geometry_table(
     layers
         .iter()
         .filter_map(|&layer| scroll_layer_geometry(tree, layer).map(|g| (layer, g)))
+        .collect()
+}
+
+/// Project Core's committed scroll facts into this compositor's overscan policy.
+pub fn scroll_layer_geometry_from_inputs(
+    inputs: &[ScrollCompositorInput],
+) -> HashMap<ElementId, ScrollLayerGeometry> {
+    inputs
+        .iter()
+        .map(|input| {
+            let visible_top = scroll_content_visible_top(input.scroll_offset, input.max_scroll_offset);
+            let content_height = input.viewport_height + input.max_scroll_offset;
+            let band = scroll_layer_extent(
+                visible_top,
+                input.viewport_height,
+                content_height,
+                tunables::OVERSCAN_MARGIN_PX,
+            );
+            (
+                input.layer,
+                ScrollLayerGeometry {
+                    visible_top,
+                    viewport_height: input.viewport_height,
+                    band,
+                    absolute_top: input.absolute_top,
+                    content_dirty: input.content_dirty,
+                },
+            )
+        })
         .collect()
 }
 
