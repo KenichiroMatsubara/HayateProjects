@@ -14,12 +14,12 @@ import {
   tarballName,
 } from './pack-smoke.lib.mjs';
 
-test('tarballName matches npm scheme and disambiguates torimi from create-torimi', () => {
-  assert.equal(tarballName('@torimi/hayate-host', '0.1.0'), 'hayate-host-0.1.0.tgz');
-  assert.equal(tarballName('torimi', '0.1.0'), 'torimi-0.1.0.tgz');
+test('tarballName matches npm scheme and disambiguates scoped packages from create-torimi', () => {
+  assert.equal(tarballName('@torimi/hayate-host', '0.1.0'), 'torimi-hayate-host-0.1.0.tgz');
+  assert.equal(tarballName('@torimi/cli', '0.1.0'), 'torimi-cli-0.1.0.tgz');
   assert.equal(tarballName('create-torimi', '0.1.0'), 'create-torimi-0.1.0.tgz');
   // the two must be distinct filenames (the endsWith bug they replace)
-  assert.notEqual(tarballName('torimi', '0.1.0'), tarballName('create-torimi', '0.1.0'));
+  assert.notEqual(tarballName('@torimi/cli', '0.1.0'), tarballName('create-torimi', '0.1.0'));
 });
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,7 +32,7 @@ test('publicPackages keeps non-private named rows and drops the rest', () => {
     { private: false }, // unnamed root-ish row — skipped
     { name: '@torimi/bundle', private: false },
   ];
-  assert.deepEqual(publicPackages(rows), ['@torimi/hayate-host', '@torimi/bundle']);
+  assert.deepEqual(publicPackages(rows), ['@torimi/bundle', '@torimi/hayate-host']);
 });
 
 test('the SMOKE_IMPORTS are all inside the public closure', () => {
