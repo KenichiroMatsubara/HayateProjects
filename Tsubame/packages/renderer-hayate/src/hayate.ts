@@ -52,6 +52,7 @@ export interface RawHayate {
   on_pointer_up(x: number, y: number): void;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   on_key_down(key: string, modifiers: number): void;
+  dispatch_edit_intent(target: number, intent: Float64Array): number;
   /** document 全体のテキスト選択が有効かどうか（ADR-0097）。 */
   has_selection(): boolean;
   // IME（EditContext 着脱・preedit/commit・候補窓 rect）は hayate-adapter-web が

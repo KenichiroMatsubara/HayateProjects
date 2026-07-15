@@ -13,6 +13,7 @@ import { generateStyleChannel } from './gen-style-channel.mjs';
 import { generateElementProperty } from './gen-element-property.mjs';
 import { generateElementKind } from './gen-element-kind.mjs';
 import { generateDrawCanvas } from './gen-draw-canvas.mjs';
+import { generateEditIntent } from './gen-edit-intent.mjs';
 
 generateWire();
 generateCatalog();
@@ -27,5 +28,6 @@ generateStyleChannel();
 generateElementProperty();
 generateElementKind();
 generateDrawCanvas();
+generateEditIntent();
 console.log('Generated Tsubame/proto/generated/*');
 console.log('Generated Tsubame/packages/renderer-protocol/src/generated/*');

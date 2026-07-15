@@ -24,9 +24,13 @@ export interface RawHayate {
   on_pointer_up(x: number, y: number): void;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   on_key_down(key: string, modifiers: number): void;
+  dispatch_edit_intent(target: number, intent: Float64Array): number;
   has_selection(): boolean;
   on_text_input(id: number, text: string): void;
   poll_accessibility(): string | null;
+  prepare_frame(timestampMs: number): unknown[];
+  commit_frame(frameId: number): void;
+  abort_frame(frameId: number): void;
   render(timestampMs: number): void;
   /** ADR-0126: 直近の `render()` 後に継続すべき pending visual work（進行中 transition /
    * カーソル点滅 / スクロール物理 = `visual_dirty`）が残るか。consumer（`@tsubame/

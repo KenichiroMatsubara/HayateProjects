@@ -1,0 +1,10 @@
+[
+  { "name": "move", "value": 0, "params": [{ "name": "granularity", "type": "edit_granularity" }, { "name": "direction", "type": "edit_direction" }] },
+  { "name": "extend", "value": 1, "params": [{ "name": "granularity", "type": "edit_granularity" }, { "name": "direction", "type": "edit_direction" }] },
+  { "name": "delete", "value": 2, "params": [{ "name": "granularity", "type": "edit_granularity" }, { "name": "direction", "type": "edit_direction" }] },
+  { "name": "insert_line_break", "value": 3 },
+  { "name": "select_all", "value": 4 },
+  { "name": "copy", "value": 5 },
+  { "name": "cut", "value": 6 },
+  { "name": "paste", "value": 7 }
+]

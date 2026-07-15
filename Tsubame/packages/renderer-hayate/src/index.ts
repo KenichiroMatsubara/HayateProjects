@@ -1,5 +1,10 @@
 export { HayateRenderer } from './hayate-renderer.js';
 export type { HayateRendererOptions } from './hayate-renderer.js';
+export {
+  dispatchEditIntent,
+  dispatchEditIntentWithKeyFallback,
+} from './edit-intent.js';
+export type { EditDispatchOutcome, EditIntent } from './edit-intent.js';
 export type { RawHayate } from './hayate.js';
 export { parseColor } from './hayate.js';
 // host bootstrap（surface 取得・WASM ロード・WebGPU プローブ・backend 選択・clock 源・

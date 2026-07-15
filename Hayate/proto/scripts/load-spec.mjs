@@ -17,6 +17,7 @@ export const SPEC_SECTIONS = [
   'draw_paint_fields',
   'style_tags',
   'event_kinds',
+  'edit_intents',
   'element_kinds',
   'element_properties',
   'unset_kinds',

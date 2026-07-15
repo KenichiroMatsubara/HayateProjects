@@ -145,6 +145,7 @@ export function bootWorkerEngineBridge(
  */
 export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
   const noop = (): void => undefined;
+  let frameId = 0;
   return {
     // tree 構築・変異・描画は Worker が所有する（main では走らない）。
     element_create: noop,
@@ -154,6 +155,9 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     element_remove: noop,
     apply_mutations: noop,
     render: noop,
+    prepare_frame: () => [++frameId],
+    commit_frame: noop,
+    abort_frame: noop,
     set_background_color: noop,
     set_tuning: noop,
     register_listener: () => 0,
@@ -173,6 +177,10 @@ export function createWorkerInputProxy(shim: MainThreadShim): RawHayate {
     on_pointer_up: (x, y) => shim.pointer('up', x, y),
     on_wheel: (x, y, dx, dy) => shim.wheel(x, y, dx, dy),
     on_key_down: (key, modifiers) => shim.key(key, modifiers),
+    dispatch_edit_intent: (target, intent) => {
+      shim.editIntent(target, intent);
+      return 2;
+    },
     on_text_input: (id, text) => shim.composition(id, text),
   };
 }

@@ -24,6 +24,7 @@
     "./opcodes": "./spec/opcodes.json",
     "./style_tags": "./spec/style_tags.json",
     "./event_kinds": "./spec/event_kinds.json",
+    "./edit_intents": "./spec/edit_intents.json",
     "./element_kinds": "./spec/element_kinds.json",
     "./unset_kinds": "./spec/unset_kinds.json",
     "./modifier_keys": "./spec/modifier_keys.json",

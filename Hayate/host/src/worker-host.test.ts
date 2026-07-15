@@ -24,6 +24,10 @@ function recordingEngine(presentation: ImePresentation = { keyboardVisible: fals
     onPointer: (a, x, y) => calls.push(`pointer(${a},${x},${y})`),
     onWheel: (x, y, dx, dy) => calls.push(`wheel(${x},${y},${dx},${dy})`),
     onKey: (k, m) => calls.push(`key(${k},${m})`),
+    dispatchEditIntent: (target, intent) => {
+      calls.push(`editIntent(${target},${Array.from(intent).join(',')})`);
+      return 0;
+    },
     onComposition: (t, text) => calls.push(`composition(${t},${text})`),
     imePresentation: () => presentation,
   };
@@ -86,6 +90,12 @@ describe('OffscreenCanvas + Worker host bridge (ADR-0128 web)', () => {
       'wheel(5,5,0,-120)',
       'key(a,0)',
     ]);
+  });
+
+  it('routes semantic EditIntent to the worker engine without a main-thread keymap', () => {
+    const { shim, calls } = wireBridge();
+    shim.editIntent(7, new Float64Array([0, 1, 0]));
+    expect(calls).toContain('editIntent(7,0,1,0)');
   });
 
   it('round-trips IME(EditContext) through the main<->worker bridge (ADR-0069)', () => {

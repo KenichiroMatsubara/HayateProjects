@@ -1808,31 +1808,11 @@ impl ElementTree {
     /// は触らず、キャレットキーが変換を壊さない。text-input 選択の変更は読み取り
     /// 専用 SelectionArea 選択をクリアする（単一 active 規則、ADR-0097）。
     pub fn apply_edit_intent(&mut self, target: ElementId, intent: EditIntent) -> bool {
-        let Some(el) = self.elements.get(&target) else {
-            return false;
-        };
-        if el.kind != crate::element::kind::ElementKind::TextInput {
-            return false;
-        }
-        let Some(edit) = el.edit.as_ref() else {
-            return false;
-        };
-        if edit.preedit.is_some() {
-            return false;
-        }
-        if intent == EditIntent::InsertLineBreak && !el.multiline {
+        if !self.can_apply_edit_intent(target, intent) {
             return false;
         }
         // 語彙のうちクリップボード系は Platform Adapter 境界を跨ぐ（ADR-0097）。
-        // システムクリップボードは EditState でなくこの継ぎ目にあるので、ここで
-        // ツールバーのクリップボードアクション（既に focus 中 text-input の編集選択に
-        // 作用する）を再利用して解決する。純粋状態系（Move / Extend / Delete /
-        // SelectAll）は EditState 継ぎ目へ直行する。
-        // *複数行*フィールドの垂直移動（↑/↓）と表示行 Home/End は Parley の行
-        // ジオメトリを要し、それは純粋 `EditState` でなくここのツリー継ぎ目にある
-        // （ADR-0103）。それらを先に解決する。単一行（または未レイアウト）は
-        // `EditState::apply` へ落ち、↑/↓ はフィールド端、Home/End はフィールド境界へ
-        // 飛ぶ（Chromium `<input>`）。
+        // 以下の分岐は eligibility 検証後だけ実行する。
         if self.element_is_multiline(target) {
             let geometric = match intent {
                 EditIntent::Move { direction, .. } | EditIntent::Extend { direction, .. }
@@ -1858,6 +1838,45 @@ impl ElementTree {
                 return true;
             }
         }
+        self.apply_edit_intent_after_eligibility(target, intent)
+    }
+
+    /// Platform Adapter が非同期処理（Web paste）を開始する前に、同期 seam と同じ
+    /// target/composition/multiline eligibility を問い合わせる。
+    pub fn can_apply_edit_intent(&self, target: ElementId, intent: EditIntent) -> bool {
+        let Some(el) = self.elements.get(&target) else {
+            return false;
+        };
+        if el.kind != crate::element::kind::ElementKind::TextInput {
+            return false;
+        }
+        let Some(edit) = el.edit.as_ref() else {
+            return false;
+        };
+        if edit.preedit.is_some() {
+            return false;
+        }
+        if intent == EditIntent::InsertLineBreak && !el.multiline {
+            return false;
+        }
+        true
+    }
+
+    fn apply_edit_intent_after_eligibility(
+        &mut self,
+        target: ElementId,
+        intent: EditIntent,
+    ) -> bool {
+        // 語彙のうちクリップボード系は Platform Adapter 境界を跨ぐ（ADR-0097）。
+        // システムクリップボードは EditState でなくこの継ぎ目にあるので、ここで
+        // ツールバーのクリップボードアクション（既に focus 中 text-input の編集選択に
+        // 作用する）を再利用して解決する。純粋状態系（Move / Extend / Delete /
+        // SelectAll）は EditState 継ぎ目へ直行する。
+        // *複数行*フィールドの垂直移動（↑/↓）と表示行 Home/End は Parley の行
+        // ジオメトリを要し、それは純粋 `EditState` でなくここのツリー継ぎ目にある
+        // （ADR-0103）。それらを先に解決する。単一行（または未レイアウト）は
+        // `EditState::apply` へ落ち、↑/↓ はフィールド端、Home/End はフィールド境界へ
+        // 飛ぶ（Chromium `<input>`）。
         match intent {
             EditIntent::InsertLineBreak => {
                 let applied = self

@@ -1084,8 +1084,10 @@ impl HayateElementRenderer {
                 // `navigator.clipboard.readText()` を開始し、解決したテキストを次フレームの
                 // `element_paste` へ戻す（ADR-0097）。
                 if intent == EditIntent::Paste {
-                    self.spawn_clipboard_paste(focused);
-                    return;
+                    if self.tree.can_apply_edit_intent(focused, intent) {
+                        self.spawn_clipboard_paste(focused);
+                        return;
+                    }
                 }
                 if self.tree.apply_edit_intent(focused, intent) {
                     return;
@@ -1093,6 +1095,33 @@ impl HayateElementRenderer {
             }
         }
         self.tree.on_key_down(key, modifiers);
+    }
+
+    /// external semantic producer 向けの公開 EditIntent capability（#828）。
+    /// 戻り値は consumed=0 / unhandled=1 / deferred=2。
+    pub fn dispatch_edit_intent(
+        &mut self,
+        raw_target: f64,
+        raw_intent: &[f64],
+    ) -> Result<u32, JsValue> {
+        let intent = hayate_core::wire::decode_edit_intent(raw_intent)
+            .map_err(|error| JsValue::from_str(&format!("edit intent protocol: {error:?}")))?;
+        if intent == EditIntent::Paste {
+            let target_id = wire_frame_id(raw_target)
+                .map(|id| ElementId::from_u64(id.get()))?;
+            if !self.tree.can_apply_edit_intent(target_id, intent) {
+                return Ok(1);
+            }
+            self.spawn_clipboard_paste(target_id);
+            return Ok(2);
+        }
+        hayate_core::wire::dispatch_edit_intent(&mut self.tree, raw_target, raw_intent)
+            .map(|outcome| match outcome {
+                hayate_core::wire::EditDispatchOutcome::Consumed => 0,
+                hayate_core::wire::EditDispatchOutcome::Unhandled => 1,
+                hayate_core::wire::EditDispatchOutcome::Deferred => 2,
+            })
+            .map_err(|error| JsValue::from_str(&format!("edit intent protocol: {error:?}")))
     }
 
     /// `target` への Ctrl/Cmd+V のため非同期クリップボード読み取りを開始し、解決したテキストを

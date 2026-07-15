@@ -12,6 +12,7 @@ export function writeIndex() {
     "export * from './codec.js';",
     "export * from './catalog.js';",
     "export * from './delivery.js';",
+    "export * from './edit-intent.js';",
     '',
   ];
   mkdirSync(dirname(outPath), { recursive: true });

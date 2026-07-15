@@ -18,6 +18,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use hayate_core::{DocumentEventKind, ElementId, ElementTree};
+use hayate_app_host::{FrameId, FrameTransaction};
 
 use hayate_core::wire::{encode_event_wire, EventWireValue};
 use crate::js_apply;
@@ -44,15 +45,24 @@ pub(crate) struct EventRow {
     pub atoms: Vec<WireAtom>,
 }
 
+pub(crate) struct NativePreparedFrame {
+    pub frame_id: f64,
+    pub deliveries: Vec<EventRow>,
+}
+
 /// Tsubame Canvas Renderer が駆動するネイティブ Hayate ホスト。`tree` は
 /// app.rs の vsync ループと共有する（単一スレッド, ADR-0003）。
 pub(crate) struct JsHost {
     tree: Rc<RefCell<ElementTree>>,
+    frame_transaction: RefCell<FrameTransaction>,
 }
 
 impl JsHost {
     pub(crate) fn new(tree: Rc<RefCell<ElementTree>>) -> Self {
-        Self { tree }
+        Self {
+            tree,
+            frame_transaction: RefCell::new(FrameTransaction::default()),
+        }
     }
 
     /// バッチ適用（ADR-0052）。共有の中立 dispatch を通す。
@@ -69,10 +79,54 @@ impl JsHost {
         js_apply::apply_mutations(&mut self.tree.borrow_mut(), ops, styles, texts, &[])
     }
 
+    pub(crate) fn dispatch_edit_intent(
+        &self,
+        target: f64,
+        intent: &[f64],
+    ) -> Result<u32, String> {
+        hayate_core::wire::dispatch_edit_intent(&mut self.tree.borrow_mut(), target, intent)
+            .map(|outcome| match outcome {
+                hayate_core::wire::EditDispatchOutcome::Consumed => 0,
+                hayate_core::wire::EditDispatchOutcome::Unhandled => 1,
+                hayate_core::wire::EditDispatchOutcome::Deferred => 2,
+            })
+            .map_err(|error| format!("edit intent protocol: {error:?}"))
+    }
+
     /// レイアウト + 保持シーンの lower（ADR-0086）。戻り値の `&SceneGraph` は
     /// `RefMut` に紐づくためここでは保持しない。app.rs が present 時に再取得する。
     pub(crate) fn render(&self, timestamp_ms: f64) {
         let _ = self.tree.borrow_mut().render(timestamp_ms);
+    }
+
+    pub(crate) fn prepare_frame(&self, timestamp_ms: f64) -> Result<NativePreparedFrame, String> {
+        let frame_id = self
+            .frame_transaction
+            .borrow_mut()
+            .prepare(timestamp_ms)
+            .map_err(|error| format!("frame protocol: {error:?}"))?;
+        Ok(NativePreparedFrame {
+            frame_id: frame_id.get() as f64,
+            deliveries: self.drain_event_rows(),
+        })
+    }
+
+    pub(crate) fn commit_frame(&self, raw_frame_id: f64) -> Result<(), String> {
+        let frame_id = native_frame_id(raw_frame_id)?;
+        let timestamp_ms = self
+            .frame_transaction
+            .borrow_mut()
+            .commit(frame_id)
+            .map_err(|error| format!("frame protocol: {error:?}"))?;
+        let _ = self.tree.borrow_mut().render(timestamp_ms);
+        Ok(())
+    }
+
+    pub(crate) fn abort_frame(&self, raw_frame_id: f64) -> Result<(), String> {
+        self.frame_transaction
+            .borrow_mut()
+            .abort(native_frame_id(raw_frame_id)?)
+            .map_err(|error| format!("frame protocol: {error:?}"))
     }
 
     /// リスナ登録（ADR-0053）。未知の event kind は Err。
@@ -130,6 +184,10 @@ impl JsHost {
     /// `FetchFont` 等の内部イベントはここで吸い出して握りつぶす（Android の
     /// フォントはネイティブ調達: 後続スライスで native 登録へ橋渡しする）。
     pub(crate) fn poll_events(&self) -> Vec<EventRow> {
+        self.drain_event_rows()
+    }
+
+    fn drain_event_rows(&self) -> Vec<EventRow> {
         let mut tree = self.tree.borrow_mut();
         // 内部イベントキューを排出（web の poll_events と対称。FetchFont は将来
         // ネイティブフォント登録へ回す）。
@@ -147,6 +205,14 @@ impl JsHost {
             })
             .collect()
     }
+}
+
+fn native_frame_id(value: f64) -> Result<FrameId, String> {
+    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+    if !value.is_finite() || value.fract() != 0.0 || !(1.0..=MAX_SAFE_INTEGER).contains(&value) {
+        return Err("frame protocol: invalid frame id".to_string());
+    }
+    Ok(FrameId::from_u64(value as u64))
 }
 
 fn wire_atom_from(v: EventWireValue) -> WireAtom {
@@ -177,5 +243,18 @@ mod tests {
     fn unknown_event_kind_errors() {
         let h = host();
         assert!(h.register_listener(1.0, 9999).is_err());
+    }
+
+    #[test]
+    fn native_projection_dispatches_edit_intent_and_uses_two_phase_frames() {
+        let h = host();
+        let input = h.tree.borrow_mut().element_create(1, hayate_core::ElementKind::TextInput);
+        h.tree.borrow_mut().set_root(input);
+        assert_eq!(h.dispatch_edit_intent(1.0, &[4.0]).unwrap(), 0);
+
+        let prepared = h.prepare_frame(16.0).unwrap();
+        assert_eq!(prepared.frame_id, 1.0);
+        h.commit_frame(prepared.frame_id).unwrap();
+        assert!(h.abort_frame(prepared.frame_id).is_err());
     }
 }

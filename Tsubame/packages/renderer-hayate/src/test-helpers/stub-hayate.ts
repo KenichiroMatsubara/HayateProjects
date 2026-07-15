@@ -59,6 +59,7 @@ export class StubHayate implements RawHayate {
   on_pointer_up(): void {}
   on_wheel(): void {}
   on_key_down(): void {}
+  dispatch_edit_intent(): number { return 1; }
   has_selection(): boolean {
     return false;
   }

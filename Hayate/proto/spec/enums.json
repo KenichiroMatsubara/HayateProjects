@@ -600,5 +600,31 @@
         "value": 2
       }
     ]
+  },
+  {
+    "name": "edit_direction",
+    "values": [
+      { "name": "backward", "value": 0 },
+      { "name": "forward", "value": 1 },
+      { "name": "up", "value": 2 },
+      { "name": "down", "value": 3 }
+    ]
+  },
+  {
+    "name": "edit_granularity",
+    "values": [
+      { "name": "grapheme", "value": 0 },
+      { "name": "word", "value": 1 },
+      { "name": "line_boundary", "value": 2 },
+      { "name": "doc_boundary", "value": 3 }
+    ]
+  },
+  {
+    "name": "edit_dispatch_outcome",
+    "values": [
+      { "name": "consumed", "value": 0 },
+      { "name": "unhandled", "value": 1 },
+      { "name": "deferred", "value": 2 }
+    ]
   }
 ]

@@ -15,6 +15,7 @@
     "./catalog": "./generated/catalog.ts",
     "./catalog.json": "./generated/catalog.json",
     "./delivery": "./generated/delivery.ts",
+    "./edit-intent": "./generated/edit-intent.ts",
     "./recorder": "./generated/recorder.ts"
   },
   "files": [

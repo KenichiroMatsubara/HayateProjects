@@ -33,6 +33,14 @@ pub mod protocol {
     ));
 }
 
+/// semantic input command の closed decode/outcome vocabulary（edit_intents.json 生成物）。
+mod edit_intent {
+    include!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../proto/generated/edit_intent.rs"
+    ));
+}
+
 /// mode 非依存のバッチミューテーション sink trait（生成物。opcodes.json から1メソッド/op）。
 pub mod mutation_sink {
     include!(concat!(
@@ -52,6 +60,9 @@ mod dispatch {
 pub use dispatch::unset_kind_from_u32;
 pub use mutation_sink::MutationSink;
 pub use protocol::*;
+pub use edit_intent::{
+    decode_edit_intent, dispatch_edit_intent, EditDispatchOutcome, EditIntentProtocolError,
+};
 
 /// Fully validated, owned mutation. A packet is decoded entirely into this
 /// semantic sequence before any target sink is allowed to observe it.
@@ -697,6 +708,96 @@ mod tests {
                 "set_user_select(2, Contains)".to_string(),
                 "set_user_select(3, Text)".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn edit_intent_wire_decodes_every_closed_variant_and_payload() {
+        use crate::{Direction, EditIntent, Granularity};
+        let granularities = [
+            (0.0, Granularity::Grapheme),
+            (1.0, Granularity::Word),
+            (2.0, Granularity::LineBoundary),
+            (3.0, Granularity::DocBoundary),
+        ];
+        let directions = [
+            (0.0, Direction::Backward),
+            (1.0, Direction::Forward),
+            (2.0, Direction::Up),
+            (3.0, Direction::Down),
+        ];
+        for (tag, kind) in [(0.0, "move"), (1.0, "extend"), (2.0, "delete")] {
+            for (granularity_wire, granularity) in granularities {
+                for (direction_wire, direction) in directions {
+                    let decoded = decode_edit_intent(&[tag, granularity_wire, direction_wire]).unwrap();
+                    let expected = match kind {
+                        "move" => EditIntent::Move { granularity, direction },
+                        "extend" => EditIntent::Extend { granularity, direction },
+                        _ => EditIntent::Delete { granularity, direction },
+                    };
+                    assert_eq!(decoded, expected);
+                }
+            }
+        }
+        for (wire, expected) in [
+            (3.0, EditIntent::InsertLineBreak),
+            (4.0, EditIntent::SelectAll),
+            (5.0, EditIntent::Copy),
+            (6.0, EditIntent::Cut),
+            (7.0, EditIntent::Paste),
+        ] {
+            assert_eq!(decode_edit_intent(&[wire]).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn edit_intent_protocol_errors_are_not_unhandled_outcomes() {
+        assert_eq!(
+            decode_edit_intent(&[99.0]),
+            Err(EditIntentProtocolError::UnknownIntentTag(99))
+        );
+        assert_eq!(
+            decode_edit_intent(&[0.0, 4.0, 0.0]),
+            Err(EditIntentProtocolError::InvalidGranularity(4))
+        );
+        assert_eq!(
+            decode_edit_intent(&[0.0, 0.0, 4.0]),
+            Err(EditIntentProtocolError::InvalidDirection(4))
+        );
+        assert!(matches!(
+            decode_edit_intent(&[0.0, 0.0]),
+            Err(EditIntentProtocolError::InvalidPayloadLength { .. })
+        ));
+        let mut tree = ElementTree::new();
+        assert_eq!(
+            dispatch_edit_intent(&mut tree, f64::NAN, &[4.0]),
+            Err(EditIntentProtocolError::InvalidTarget)
+        );
+    }
+
+    #[test]
+    fn edit_dispatch_distinguishes_consumed_and_unhandled() {
+        let mut tree = ElementTree::new();
+        let input = tree.element_create(1, ElementKind::TextInput);
+        tree.set_root(input);
+        tree.element_set_text_content(input, "ab");
+
+        assert_eq!(
+            dispatch_edit_intent(&mut tree, 1.0, &[4.0]).unwrap(),
+            EditDispatchOutcome::Consumed
+        );
+        assert_eq!(
+            dispatch_edit_intent(&mut tree, 999.0, &[4.0]).unwrap(),
+            EditDispatchOutcome::Unhandled
+        );
+        assert_eq!(
+            dispatch_edit_intent(&mut tree, 1.0, &[3.0]).unwrap(),
+            EditDispatchOutcome::Unhandled
+        );
+        tree.on_composition_start(input, "x");
+        assert_eq!(
+            dispatch_edit_intent(&mut tree, 1.0, &[4.0]).unwrap(),
+            EditDispatchOutcome::Unhandled
         );
     }
 }
