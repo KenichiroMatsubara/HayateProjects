@@ -34,7 +34,8 @@ pub mod raster_thread;
 pub use raster_thread::{RasterCommand, RasterHandoff, RasterHandoffError, RasterThread};
 pub mod scroll_geometry;
 pub use scroll_geometry::{
-    scroll_layer_geometry, scroll_layer_geometry_table, RasterBand, ScrollLayerGeometry,
+    scroll_layer_geometry, scroll_layer_geometry_from_inputs, scroll_layer_geometry_table,
+    RasterBand, ScrollLayerGeometry,
 };
 
 /// 名前付き tunable（ADR-0127）。オーバースキャン余白・GPU 予算・ピクセルバイトの単一正本。値は

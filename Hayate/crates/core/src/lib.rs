@@ -8,6 +8,7 @@ pub mod battery;
 pub mod biometric;
 pub mod capability;
 pub mod color;
+mod committed_frame;
 pub mod connectivity;
 pub mod device_info;
 pub mod element;
@@ -69,6 +70,7 @@ pub use share::Share;
 pub use subscription::{Subscription, SubscriptionSource};
 pub use url_launcher::UrlLauncher;
 pub use color::Color;
+pub use committed_frame::{CommittedFrame, ScrollCompositorInput};
 pub use element::chrome_tuning::ChromeTuning;
 pub use element::{
     AccessibilityPoll,

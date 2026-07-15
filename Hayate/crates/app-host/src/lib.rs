@@ -14,10 +14,10 @@
 //!
 //! ADR-0068 の Render Host は [`render_host`] へ hoist 済み（ADR-0132 スライス3）。GPU
 //! サーフェス資源の契約は [`hayate_core::Surface`] が core 所有で持つ。App Host 自身は
-//! `Render Host` を「フレームごとに scene graph を提示できる何か」としてのみ扱い、その
+//! `Render Host` を「フレームごとに committed frame を提示できる何か」としてのみ扱い、その
 //! 最小 seam を [`PresentTarget`] trait の裏に置く（テストは no-op 実装を渡す）。
 
-use hayate_core::{ElementTree, EventDelivery, SceneGraph};
+use hayate_core::{CommittedFrame, ElementTree, EventDelivery};
 
 mod font_mailbox;
 pub mod render_host;
@@ -25,18 +25,25 @@ pub mod renderer_selection;
 
 pub use font_mailbox::{FontFetchResult, FontMailbox, FontMailboxHandle};
 
-/// 1 フレーム分の `SceneGraph` の提示先。`Render Host`（[`render_host::RenderHost`]）を
+/// 1 フレーム分の [`CommittedFrame`] の提示先。`Render Host`（[`render_host::RenderHost`]）を
 /// App Host から見た最小 seam。headless・テストでは no-op 実装を渡す。
 pub trait PresentTarget {
-    /// 本フレームの scene graph を提示する。
-    fn present(&mut self, scene: &SceneGraph);
+    /// Projection-specific execution failure, observable by headless callers.
+    type Error;
+
+    /// 本フレームの一貫した commit view を提示する。
+    fn present(&mut self, frame: &CommittedFrame<'_>) -> Result<(), Self::Error>;
 }
 
 /// `()` を提示先とする no-op `PresentTarget`。headless 実行やテストで使う。
 pub struct HeadlessPresentTarget;
 
 impl PresentTarget for HeadlessPresentTarget {
-    fn present(&mut self, _scene: &SceneGraph) {}
+    type Error = std::convert::Infallible;
+
+    fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 /// consumer が mount 時に渡す push 型 delivery 受け口（ADR-0117）。
@@ -111,11 +118,10 @@ impl<S: PresentTarget> AppHost<S> {
     /// 1. **drain**：App Host が `poll_deliveries()` を drain する（delivery 所有）。
     /// 2. **advance**：DeliverySink を毎フレーム無条件に呼ぶ（空 batch でも）。consumer が
     ///    handler 実行＋reactive flush＋mutation 発行を return 前に済ます。
-    /// 3+4. **commit_frame ＋ render**：`ElementTree::render` が内部で `commit_frame()` を
-    ///    呼ぶので（layout settling → scene lowering）、App Host は `render` 一回で両フェーズを
-    ///    回し、得た scene を `PresentTarget` へ present する。
+    /// 3+4. **commit_frame ＋ render**：Core の renderer-ready な `CommittedFrame` を一度だけ
+    ///    確定し、その invariant view を `PresentTarget` へ渡す。
     /// 5. **再要求判定**：pending visual work（進行中 transition 等）が残れば `request_redraw`。
-    pub fn tick(&mut self, timestamp_ms: f64) {
+    pub fn tick(&mut self, timestamp_ms: f64) -> Result<(), S::Error> {
         // 0. font mailbox drain — layout より前。
         for result in self.font_mailbox.drain() {
             match result {
@@ -134,14 +140,15 @@ impl<S: PresentTarget> AppHost<S> {
             sink.handle(&deliveries, &mut self.tree);
         }
 
-        // 3+4. commit_frame（render 内）→ scene lowering → present。
-        let scene = self.tree.render(timestamp_ms);
-        self.surface.present(scene);
+        // 3+4. commit → scene lowering → invariant frame view → present。
+        let frame = self.tree.commit_rendered_frame(timestamp_ms);
+        self.surface.present(&frame)?;
 
         // 5. 再要求判定 — 残っていれば次フレームを要求し、無ければ idle。
-        if self.tree.has_pending_visual_work() {
+        if frame.has_pending_visual_work() {
             (self.request_redraw)();
         }
+        Ok(())
     }
 }
 
@@ -158,8 +165,11 @@ mod tests {
     }
 
     impl PresentTarget for CountingSurface {
-        fn present(&mut self, _scene: &SceneGraph) {
+        type Error = std::convert::Infallible;
+
+        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
             *self.present_count.borrow_mut() += 1;
+            Ok(())
         }
     }
 
@@ -169,7 +179,27 @@ mod tests {
     }
 
     impl PresentTarget for ReconfigurableSurface {
-        fn present(&mut self, _scene: &SceneGraph) {}
+        type Error = std::convert::Infallible;
+
+        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> { Ok(()) }
+    }
+
+    struct FailingSurface;
+
+    impl PresentTarget for FailingSurface {
+        type Error = &'static str;
+
+        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+            Err("surface lost")
+        }
+    }
+
+    #[test]
+    fn headless_host_observes_typed_present_failure() {
+        let mut app = AppHost::new(FailingSurface, Box::new(|| {}));
+        build_min_tree(app.tree_mut());
+
+        assert_eq!(app.tick(16.0), Err("surface lost"));
     }
 
     #[test]

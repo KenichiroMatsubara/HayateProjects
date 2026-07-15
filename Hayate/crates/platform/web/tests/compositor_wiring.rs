@@ -28,14 +28,14 @@ fn render_gates_raster_behind_a_frame_plan() {
         "a completed raster must be recorded so clean frames become composite-only"
     );
     assert!(
-        src.contains("frame_layers()") && src.contains("frame_layer_dirty()"),
-        "the present path must consume tree.frame_layers()/frame_layer_dirty() (#632)"
+        src.contains("frame.layers()") && src.contains("frame.content_dirty_layers()"),
+        "the present path must consume the CommittedFrame layer view (#824)"
     );
     // 単一 root 経路は per-layer quad 合成を持たないので、transform 係数だけの変化（#633 で
     // content dirty から分離された）も保守的に raster トリガへ含めないと stale frame になる。
     assert!(
-        src.contains("frame_layer_transform_dirty()"),
-        "the single-root present path must union frame_layer_transform_dirty into its raster trigger (#633)"
+        src.contains("frame.transform_dirty_layers()"),
+        "the single-root present path must union committed transform dirty into its raster trigger (#633)"
     );
 }
 
