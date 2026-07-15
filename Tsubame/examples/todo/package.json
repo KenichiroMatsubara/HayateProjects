@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node ../../../Hayate/scripts/verify-canvaskit-web-asset.mjs dist",
     "torimi:native:build": "torimi build native",
     "torimi:web:build": "torimi build web",
     "torimi:native:dev": "torimi dev native",
