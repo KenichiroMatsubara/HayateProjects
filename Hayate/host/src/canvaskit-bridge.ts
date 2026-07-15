@@ -59,13 +59,19 @@ interface CanvasKitSurface {
   readonly glyphScratch: Map<number, { glyphs: Uint16Array; positions: Float32Array }>;
   dashScratch: number[];
   readonly images: Map<number, Image>;
+  readonly layers: Map<number, { surface: Surface; image?: Image }>;
   commandPayload?: Float32Array;
+  layerUpdatesSinceComposite: number;
+  pendingLayerTimeMs: number;
   performance: CanvasKitPerformanceMetrics;
 }
 
 export interface CanvasKitPerformanceSnapshot {
   readonly replayCount: number;
   readonly fullSceneReplayCount: number;
+  readonly layerReplayCount: number;
+  readonly compositeFrameCount: number;
+  readonly compositeOnlyFrameCount: number;
   readonly commandPayloadBytes: number;
   readonly commandPayloadAllocationCount: number;
   readonly paintAllocationCount: number;
@@ -95,6 +101,19 @@ interface CanvasKitBridge {
     commands: Float32Array,
     resources?: CanvasKitResource[],
     commandLength?: number,
+  ): void;
+  replayLayer(
+    canvas: HTMLCanvasElement,
+    layer: number,
+    commands: Float32Array,
+    resources?: CanvasKitResource[],
+    commandLength?: number,
+  ): void;
+  compositeLayers(
+    canvas: HTMLCanvasElement,
+    placements: Float64Array,
+    background: Float32Array,
+    contentScale: number,
   ): void;
   resize(canvas: HTMLCanvasElement): void;
   detach(canvas: HTMLCanvasElement): void;
@@ -133,9 +152,15 @@ function createSurface(canvas: HTMLCanvasElement, canvasKit: CanvasKit): CanvasK
     glyphScratch: new Map(),
     dashScratch: [],
     images: new Map(),
+    layers: new Map(),
+    layerUpdatesSinceComposite: 0,
+    pendingLayerTimeMs: 0,
     performance: {
       replayCount: 0,
       fullSceneReplayCount: 0,
+      layerReplayCount: 0,
+      compositeFrameCount: 0,
+      compositeOnlyFrameCount: 0,
       commandPayloadBytes: 0,
       commandPayloadAllocationCount: 0,
       paintAllocationCount: 1,
@@ -159,15 +184,22 @@ function replay(
   commands: Float32Array,
   resources: CanvasKitResource[] = [],
   commandLength = commands.length,
+  targetSurface?: Surface,
 ): void {
   const resourceCache = requireSurface(canvas);
   if (!Number.isInteger(commandLength) || commandLength < 0 || commandLength > commands.length) {
     throw new CanvasKitReplayError('contract', 'CanvasKit command length is invalid');
   }
-  const { canvasKit, surface } = resourceCache;
+  const { canvasKit } = resourceCache;
+  const surface = targetSurface ?? resourceCache.surface;
+  const layerReplay = targetSurface !== undefined;
   const startedAt = monotonicNow();
   resourceCache.performance.replayCount += 1;
-  resourceCache.performance.fullSceneReplayCount += commands.length > 5 ? 1 : 0;
+  if (layerReplay) {
+    resourceCache.performance.layerReplayCount += 1;
+  } else {
+    resourceCache.performance.fullSceneReplayCount += commandLength > 5 ? 1 : 0;
+  }
   resourceCache.performance.commandPayloadBytes += commandLength * Float32Array.BYTES_PER_ELEMENT;
   if (resourceCache.commandPayload !== commands) {
     resourceCache.commandPayload = commands;
@@ -484,7 +516,120 @@ function replay(
     releaseSurface(resourceCache);
     throw error;
   } finally {
-    resourceCache.performance.frameTimeMs.push(monotonicNow() - startedAt);
+    const elapsed = monotonicNow() - startedAt;
+    if (layerReplay) {
+      resourceCache.pendingLayerTimeMs += elapsed;
+    } else {
+      resourceCache.performance.frameTimeMs.push(elapsed);
+    }
+  }
+}
+
+const LAYER_PLACEMENT_SLOTS = 12;
+
+function replayLayer(
+  canvas: HTMLCanvasElement,
+  layer: number,
+  commands: Float32Array,
+  resources: CanvasKitResource[] = [],
+  commandLength = commands.length,
+): void {
+  const resource = requireSurface(canvas);
+  try {
+    let cached = resource.layers.get(layer);
+    if (!cached) {
+      const surface = resource.surface.makeSurface(resource.surface.imageInfo());
+      if (!surface) throw new CanvasKitReplayError('environment', `CanvasKit layer surface ${layer} unavailable`);
+      cached = { surface };
+      resource.layers.set(layer, cached);
+    }
+    replay(canvas, commands, resources, commandLength, cached.surface);
+    const image = cached.surface.makeImageSnapshot();
+    cached.image?.delete();
+    cached.image = image;
+    resource.layerUpdatesSinceComposite += 1;
+  } catch (error) {
+    if (surfaces.get(canvas) === resource) {
+      surfaces.delete(canvas);
+      releaseSurface(resource);
+    }
+    throw error;
+  }
+}
+
+function compositeLayers(
+  canvas: HTMLCanvasElement,
+  placements: Float64Array,
+  background: Float32Array,
+  contentScale: number,
+): void {
+  const resource = requireSurface(canvas);
+  const startedAt = monotonicNow();
+  try {
+    if (placements.length % LAYER_PLACEMENT_SLOTS !== 0) {
+      throw new CanvasKitReplayError('contract', 'CanvasKit layer placement payload is invalid');
+    }
+    if (background.length !== 4 || !Number.isFinite(contentScale) || contentScale <= 0) {
+      throw new CanvasKitReplayError('contract', 'CanvasKit layer composite parameters are invalid');
+    }
+    const { canvasKit, surface, paint } = resource;
+    const target = surface.getCanvas();
+    target.clear(canvasKit.Color4f(background[0]!, background[1]!, background[2]!, background[3]!));
+    // Replay leaves the shared Paint configured for its last draw op. CanvasKit image drawing
+    // modulates snapshots by that Paint color/filter, so normalize it before layer composition;
+    // otherwise a final translucent shadow/text color tints the entire cached layer (ADR-0136's
+    // real-browser alpha class, expressed through CanvasKit's Paint state).
+    paint.setStyle(canvasKit.PaintStyle.Fill);
+    paint.setColor(canvasKit.Color4f(1, 1, 1, 1));
+    paint.setMaskFilter(null);
+    paint.setPathEffect(null);
+    const retained = new Set<number>();
+    for (let start = 0; start < placements.length; start += LAYER_PLACEMENT_SLOTS) {
+      const layer = placements[start]!;
+      const cached = resource.layers.get(layer);
+      if (!cached?.image) {
+        throw new CanvasKitReplayError('contract', `CanvasKit layer ${layer} is unresolved`);
+      }
+      retained.add(layer);
+      target.save();
+      if (placements[start + 7] === 1) {
+        target.clipRect(
+          canvasKit.LTRBRect(
+            placements[start + 8]! * contentScale,
+            placements[start + 9]! * contentScale,
+            (placements[start + 8]! + placements[start + 10]!) * contentScale,
+            (placements[start + 9]! + placements[start + 11]!) * contentScale,
+          ),
+          canvasKit.ClipOp.Intersect,
+          true,
+        );
+      }
+      target.concat([
+        placements[start + 1]!, placements[start + 3]!, placements[start + 5]! * contentScale,
+        placements[start + 2]!, placements[start + 4]!, placements[start + 6]! * contentScale,
+        0, 0, 1,
+      ]);
+      target.drawImage(cached.image, 0, 0, paint);
+      target.restore();
+    }
+    surface.flush();
+    for (const [layer, cached] of resource.layers) {
+      if (retained.has(layer)) continue;
+      cached.image?.delete();
+      cached.surface.delete();
+      resource.layers.delete(layer);
+    }
+    resource.performance.compositeFrameCount += 1;
+    if (resource.layerUpdatesSinceComposite === 0) {
+      resource.performance.compositeOnlyFrameCount += 1;
+    }
+    resource.layerUpdatesSinceComposite = 0;
+    resource.performance.frameTimeMs.push(resource.pendingLayerTimeMs + monotonicNow() - startedAt);
+    resource.pendingLayerTimeMs = 0;
+  } catch (error) {
+    surfaces.delete(canvas);
+    releaseSurface(resource);
+    throw error;
   }
 }
 
@@ -517,6 +662,9 @@ function resetPerformance(canvas: HTMLCanvasElement): void {
   resource.performance = {
     replayCount: 0,
     fullSceneReplayCount: 0,
+    layerReplayCount: 0,
+    compositeFrameCount: 0,
+    compositeOnlyFrameCount: 0,
     commandPayloadBytes: 0,
     commandPayloadAllocationCount: 0,
     paintAllocationCount: 0,
@@ -526,6 +674,8 @@ function resetPerformance(canvas: HTMLCanvasElement): void {
     frameTimeMs: [],
     webgl: resource.performance.webgl,
   };
+  resource.layerUpdatesSinceComposite = 0;
+  resource.pendingLayerTimeMs = 0;
 }
 
 function registerResources(resource: CanvasKitSurface, packets: CanvasKitResource[]): void {
@@ -642,6 +792,10 @@ function resize(canvas: HTMLCanvasElement): void {
 }
 
 function releaseSurface(resource: CanvasKitSurface): void {
+  for (const layer of resource.layers.values()) {
+    layer.image?.delete();
+    layer.surface.delete();
+  }
   for (const font of resource.fontInstances.values()) font.delete();
   for (const typeface of resource.fonts.values()) typeface.delete();
   for (const image of resource.images.values()) image.delete();
@@ -650,6 +804,7 @@ function releaseSurface(resource: CanvasKitSurface): void {
   resource.glyphScratch.clear();
   resource.dashScratch = [];
   resource.images.clear();
+  resource.layers.clear();
   resource.paint.delete();
   resource.surface.delete();
 }
@@ -669,7 +824,15 @@ export function detachCanvasKitSurface(canvas: HTMLCanvasElement): void {
 function installBridge(): void {
   const target = globalThis as Record<string, unknown>;
   if (target[CANVASKIT_BRIDGE_KEY]) return;
-  const bridge: CanvasKitBridge = { replay, resize, detach, performanceSnapshot, resetPerformance };
+  const bridge: CanvasKitBridge = {
+    replay,
+    replayLayer,
+    compositeLayers,
+    resize,
+    detach,
+    performanceSnapshot,
+    resetPerformance,
+  };
   target[CANVASKIT_BRIDGE_KEY] = bridge;
 }
 

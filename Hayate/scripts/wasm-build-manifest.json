@@ -10,7 +10,7 @@
       "description": "Hayate — CanvasKit Web scene renderer",
       "includeInDefaultBuild": true,
       "npmName": "@torimi/hayate-adapter-web-canvaskit",
-      "host": { "backend": "canvaskit", "bootstrap": "canvaskit" }
+      "host": { "backend": "canvaskit", "bootstrap": "canvaskit", "runtimeLayerPresentArg": "layerPresent" }
     },
     {
       "name": "pkg",

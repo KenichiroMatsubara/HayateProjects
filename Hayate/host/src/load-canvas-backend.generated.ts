@@ -11,7 +11,7 @@ import { prepareCanvasKitSurface } from './canvaskit-bridge.js';
  * CanvasKit は Host が先に surface を確立し、WASM 側は opaque な frame replay 境界だけを使う。
 
  *
- * `layerPresent` は vello 専用のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
+ * `layerPresent` は CanvasKit / vello のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
  * `HayateElementRenderer.init` にランタイムフラグとして渡す。ADR-0137 により Web は既定
  * ON — `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残す。
  * native は本パスを経由しないため既定 OFF のまま変更なし。
@@ -30,7 +30,7 @@ export async function loadCanvasBackend(
     await prepareCanvasKitSurface(canvas);
     const mod = await import('@torimi/hayate-adapter-web-canvaskit');
     await mod.default();
-    return (await mod.HayateElementRenderer.init(canvas)) as unknown as RawHayate;
+    return (await mod.HayateElementRenderer.init(canvas, layerPresent)) as unknown as RawHayate;
   }
   if (backend === 'vello') {
     const mod = await import('@torimi/hayate-adapter-web');

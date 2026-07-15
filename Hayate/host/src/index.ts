@@ -84,8 +84,8 @@ export interface CreateHayateWebHostOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
   /**
-   * `backend === 'vello'` の時だけ効く、layer-present（per-layer 経路、ADR-0125/0127・
-   * ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
+   * `backend === 'canvaskit' | 'vello'` の時に効く、layer-present（per-layer 経路、
+   * ADR-0125/0127・ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
    *
    * `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残している。
    * native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。

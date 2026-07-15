@@ -45,7 +45,10 @@ impl ResourceRegistry {
         if let Some(&id) = self.ids.get(&key) {
             return (id, false);
         }
-        self.next_id = self.next_id.checked_add(1).expect("CanvasKit resource id exhausted");
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("CanvasKit resource id exhausted");
         let id = self.next_id;
         self.ids.insert(key, id);
         (id, true)
@@ -79,6 +82,26 @@ pub(crate) fn encode_scene(
     content_scale: f32,
     registry: &mut ResourceRegistry,
 ) -> CanvasKitFrame {
+    encode_scene_with_origin(scene, clear_color, content_scale, None, registry)
+}
+
+pub(crate) fn encode_scene_at(
+    scene: &SceneGraph,
+    clear_color: [f32; 4],
+    content_scale: f32,
+    origin_y: f32,
+    registry: &mut ResourceRegistry,
+) -> CanvasKitFrame {
+    encode_scene_with_origin(scene, clear_color, content_scale, Some(origin_y), registry)
+}
+
+fn encode_scene_with_origin(
+    scene: &SceneGraph,
+    clear_color: [f32; 4],
+    content_scale: f32,
+    origin_y: Option<f32>,
+    registry: &mut ResourceRegistry,
+) -> CanvasKitFrame {
     let mut frame = CanvasKitFrame {
         commands: vec![
             CLEAR,
@@ -94,7 +117,13 @@ pub(crate) fn encode_scene(
         content_scale,
         registry,
     };
+    if let Some(origin_y) = origin_y {
+        painter.push_transform([1.0, 0.0, 0.0, 1.0, 0.0, -f64::from(origin_y)]);
+    }
     render_scene_graph(scene, &mut painter);
+    if origin_y.is_some() {
+        painter.pop_transform();
+    }
     frame
 }
 
@@ -178,8 +207,12 @@ impl ScenePainter for CommandPainter<'_> {
     ) {
         self.frame.commands.extend_from_slice(&[
             FILL_ROUNDED_RING,
-            self.scaled(x), self.scaled(y), self.scaled(width), self.scaled(height),
-            self.scaled(outer_radius), self.scaled(border_width),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(width),
+            self.scaled(height),
+            self.scaled(outer_radius),
+            self.scaled(border_width),
         ]);
         self.color(color);
     }
@@ -197,15 +230,22 @@ impl ScenePainter for CommandPainter<'_> {
     ) {
         self.frame.commands.extend_from_slice(&[
             BLURRED_RECT,
-            self.scaled(x), self.scaled(y), self.scaled(width), self.scaled(height),
-            self.scaled(corner_radius), self.scaled(std_dev),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(width),
+            self.scaled(height),
+            self.scaled(corner_radius),
+            self.scaled(std_dev),
         ]);
         self.color(color);
         match occluder {
             Some(value) => self.frame.commands.extend_from_slice(&[
                 1.0,
-                self.scaled(value.x), self.scaled(value.y), self.scaled(value.width),
-                self.scaled(value.height), self.scaled(value.corner_radius),
+                self.scaled(value.x),
+                self.scaled(value.y),
+                self.scaled(value.width),
+                self.scaled(value.height),
+                self.scaled(value.corner_radius),
             ]),
             None => self.frame.commands.push(0.0),
         }
@@ -226,9 +266,15 @@ impl ScenePainter for CommandPainter<'_> {
     ) {
         self.frame.commands.extend_from_slice(&[
             INSET_BLURRED_RECT,
-            self.scaled(x), self.scaled(y), self.scaled(width), self.scaled(height),
-            self.scaled(corner_radius), self.scaled(offset_x), self.scaled(offset_y),
-            self.scaled(spread), self.scaled(std_dev),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(width),
+            self.scaled(height),
+            self.scaled(corner_radius),
+            self.scaled(offset_x),
+            self.scaled(offset_y),
+            self.scaled(spread),
+            self.scaled(std_dev),
         ]);
         self.color(color);
     }
@@ -245,8 +291,12 @@ impl ScenePainter for CommandPainter<'_> {
     ) {
         self.frame.commands.extend_from_slice(&[
             DASHED_BORDER,
-            self.scaled(x), self.scaled(y), self.scaled(width), self.scaled(height),
-            self.scaled(outer_radius), self.scaled(border_width),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(width),
+            self.scaled(height),
+            self.scaled(outer_radius),
+            self.scaled(border_width),
         ]);
         self.color(color);
     }
@@ -286,7 +336,9 @@ impl ScenePainter for CommandPainter<'_> {
             stroke.dash.len() as f32,
         ]);
         let scale = self.content_scale;
-        self.frame.commands.extend(stroke.dash.iter().map(|value| value * scale));
+        self.frame
+            .commands
+            .extend(stroke.dash.iter().map(|value| value * scale));
         self.frame.commands.push(self.scaled(stroke.dash_offset));
         self.path(x, y, verbs);
     }
@@ -306,7 +358,9 @@ impl ScenePainter for CommandPainter<'_> {
         self.frame.commands.extend_from_slice(&[
             DRAW_TEXT,
             id as f32,
-            self.scaled(x), self.scaled(y), self.scaled(data.font_size),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(data.font_size),
         ]);
         self.color(color);
         match data.synthesis.skew_tangent {
@@ -317,8 +371,12 @@ impl ScenePainter for CommandPainter<'_> {
             Some(value) => self.frame.commands.extend_from_slice(&[1.0, value]),
             None => self.frame.commands.extend_from_slice(&[0.0, 0.0]),
         }
-        self.frame.commands.push(data.normalized_coords.len() as f32);
-        self.frame.commands.extend(data.normalized_coords.iter().map(|&coord| coord as f32));
+        self.frame
+            .commands
+            .push(data.normalized_coords.len() as f32);
+        self.frame
+            .commands
+            .extend(data.normalized_coords.iter().map(|&coord| coord as f32));
         self.frame.commands.push(data.glyphs.len() as f32);
         let scale = self.content_scale;
         for glyph in &data.glyphs {
@@ -351,15 +409,10 @@ impl ScenePainter for CommandPainter<'_> {
         }
     }
 
-    fn draw_image(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        data: &RenderImage,
-    ) {
-        let (id, is_new) = self.registry.resolve(ResourceKey::Image { blob: data.data.id() });
+    fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
+        let (id, is_new) = self.registry.resolve(ResourceKey::Image {
+            blob: data.data.id(),
+        });
         if is_new {
             self.frame.resources.push(ResourcePacket::Image {
                 id,
@@ -376,7 +429,10 @@ impl ScenePainter for CommandPainter<'_> {
         self.frame.commands.extend_from_slice(&[
             DRAW_IMAGE,
             id as f32,
-            self.scaled(x), self.scaled(y), self.scaled(width), self.scaled(height),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(width),
+            self.scaled(height),
         ]);
     }
 
@@ -384,8 +440,12 @@ impl ScenePainter for CommandPainter<'_> {
         let scale = self.content_scale as f64;
         self.frame.commands.extend_from_slice(&[
             PUSH_TRANSFORM,
-            transform[0] as f32, transform[1] as f32, transform[2] as f32, transform[3] as f32,
-            (transform[4] * scale) as f32, (transform[5] * scale) as f32,
+            transform[0] as f32,
+            transform[1] as f32,
+            transform[2] as f32,
+            transform[3] as f32,
+            (transform[4] * scale) as f32,
+            (transform[5] * scale) as f32,
         ]);
     }
 
@@ -393,19 +453,17 @@ impl ScenePainter for CommandPainter<'_> {
         self.frame.commands.push(POP_TRANSFORM);
     }
 
-    fn push_clip_rect(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        corner_radii: [f32; 4],
-    ) {
+    fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         self.frame.commands.extend_from_slice(&[
             PUSH_CLIP_RECT,
-            self.scaled(x), self.scaled(y), self.scaled(width), self.scaled(height),
-            self.scaled(corner_radii[0]), self.scaled(corner_radii[1]),
-            self.scaled(corner_radii[2]), self.scaled(corner_radii[3]),
+            self.scaled(x),
+            self.scaled(y),
+            self.scaled(width),
+            self.scaled(height),
+            self.scaled(corner_radii[0]),
+            self.scaled(corner_radii[1]),
+            self.scaled(corner_radii[2]),
+            self.scaled(corner_radii[3]),
         ]);
     }
 
@@ -446,14 +504,18 @@ struct EncodedPath<'a> {
 impl PathSink for EncodedPath<'_> {
     fn move_to(&mut self, x: f32, y: f32) {
         self.commands.extend_from_slice(&[
-            PATH_MOVE, (x + self.x) * self.scale, (y + self.y) * self.scale,
+            PATH_MOVE,
+            (x + self.x) * self.scale,
+            (y + self.y) * self.scale,
         ]);
         self.count += 1;
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
         self.commands.extend_from_slice(&[
-            PATH_LINE, (x + self.x) * self.scale, (y + self.y) * self.scale,
+            PATH_LINE,
+            (x + self.x) * self.scale,
+            (y + self.y) * self.scale,
         ]);
         self.count += 1;
     }
@@ -461,8 +523,10 @@ impl PathSink for EncodedPath<'_> {
     fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
         self.commands.extend_from_slice(&[
             PATH_QUAD,
-            (cx + self.x) * self.scale, (cy + self.y) * self.scale,
-            (x + self.x) * self.scale, (y + self.y) * self.scale,
+            (cx + self.x) * self.scale,
+            (cy + self.y) * self.scale,
+            (x + self.x) * self.scale,
+            (y + self.y) * self.scale,
         ]);
         self.count += 1;
     }
@@ -470,9 +534,12 @@ impl PathSink for EncodedPath<'_> {
     fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
         self.commands.extend_from_slice(&[
             PATH_CUBIC,
-            (c1x + self.x) * self.scale, (c1y + self.y) * self.scale,
-            (c2x + self.x) * self.scale, (c2y + self.y) * self.scale,
-            (x + self.x) * self.scale, (y + self.y) * self.scale,
+            (c1x + self.x) * self.scale,
+            (c1y + self.y) * self.scale,
+            (c2x + self.x) * self.scale,
+            (c2y + self.y) * self.scale,
+            (x + self.x) * self.scale,
+            (y + self.y) * self.scale,
         ]);
         self.count += 1;
     }
@@ -496,13 +563,26 @@ mod tests {
 
     fn text_frame(synthesis: TextSynthesis, normalized_coords: Vec<i16>) -> CanvasKitFrame {
         let data = Arc::new(TextRunData {
-            font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0), font_size: 12.0,
-            glyphs: vec![RenderGlyph { id: 7, x: 1.0, y: 2.0 }], decorations: Vec::new(),
-            text: Arc::from("a"), synthesis, normalized_coords,
+            font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0),
+            font_size: 12.0,
+            glyphs: vec![RenderGlyph {
+                id: 7,
+                x: 1.0,
+                y: 2.0,
+            }],
+            decorations: Vec::new(),
+            text: Arc::from("a"),
+            synthesis,
+            normalized_coords,
         });
         let mut graph = SceneGraph::new();
         graph.insert(Node {
-            kind: NodeKind::TextRun { x: 3.0, y: 4.0, color: [1.0; 4], data },
+            kind: NodeKind::TextRun {
+                x: 3.0,
+                y: 4.0,
+                color: [1.0; 4],
+                data,
+            },
             children: Vec::new(),
         });
         encode_scene(&graph, [0.0; 4], 1.0, &mut ResourceRegistry::default())
@@ -512,37 +592,94 @@ mod tests {
     fn text_command_preserves_synthesis_and_normalized_variation_coordinates() {
         let regular = text_frame(TextSynthesis::default(), Vec::new());
         let synthesized = text_frame(
-            TextSynthesis { skew_tangent: Some(0.25), embolden: Some(18.0) },
+            TextSynthesis {
+                skew_tangent: Some(0.25),
+                embolden: Some(18.0),
+            },
             vec![4096, -8192],
         );
 
         assert_ne!(regular.commands, synthesized.commands);
         assert!(
-            synthesized.commands.windows(8).any(|values| values == [1.0, 0.25, 1.0, 18.0, 2.0, 4096.0, -8192.0, 1.0]),
-            "text payload must carry synthesis and normalized coordinates: {:?}", synthesized.commands,
+            synthesized
+                .commands
+                .windows(8)
+                .any(|values| values == [1.0, 0.25, 1.0, 18.0, 2.0, 4096.0, -8192.0, 1.0]),
+            "text payload must carry synthesis and normalized coordinates: {:?}",
+            synthesized.commands,
+        );
+    }
+
+    #[test]
+    fn scroll_band_encoding_translates_content_to_band_local_coordinates() {
+        let frame = encode_scene_at(
+            &SceneGraph::new(),
+            [0.0; 4],
+            2.0,
+            30.0,
+            &mut ResourceRegistry::default(),
+        );
+        assert_eq!(
+            frame.commands,
+            vec![
+                CLEAR,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                PUSH_TRANSFORM,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                -60.0,
+                POP_TRANSFORM
+            ],
         );
     }
 
     #[test]
     fn text_command_preserves_missing_glyphs_and_decorations() {
         let data = Arc::new(TextRunData {
-            font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0), font_size: 20.0,
-            glyphs: vec![RenderGlyph { id: 0, x: 2.0, y: 3.0 }],
-            decorations: vec![TextDecorationLine { x0: 1.0, x1: 11.0, y: 5.0, thickness: 2.0 }],
-            text: Arc::from("missing"), synthesis: TextSynthesis::default(), normalized_coords: Vec::new(),
+            font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0),
+            font_size: 20.0,
+            glyphs: vec![RenderGlyph {
+                id: 0,
+                x: 2.0,
+                y: 3.0,
+            }],
+            decorations: vec![TextDecorationLine {
+                x0: 1.0,
+                x1: 11.0,
+                y: 5.0,
+                thickness: 2.0,
+            }],
+            text: Arc::from("missing"),
+            synthesis: TextSynthesis::default(),
+            normalized_coords: Vec::new(),
         });
         let mut graph = SceneGraph::new();
         graph.insert(Node {
-            kind: NodeKind::TextRun { x: 7.0, y: 9.0, color: [1.0; 4], data },
+            kind: NodeKind::TextRun {
+                x: 7.0,
+                y: 9.0,
+                color: [1.0; 4],
+                data,
+            },
             children: Vec::new(),
         });
 
         let frame = encode_scene(&graph, [0.0; 4], 2.0, &mut ResourceRegistry::default());
 
-        assert!(frame.commands.windows(10).any(|values| values.iter().zip(
-            [1.0, 0.0, 4.0, 6.0, 1.0, 7.2, -19.6, 18.8, 24.8, 2.4],
-        ).all(|(actual, expected)| (actual - expected).abs() < 0.001)));
-        assert!(frame.commands.windows(5).any(|values| values == [1.0, 2.0, 22.0, 10.0, 4.0]));
+        assert!(frame.commands.windows(10).any(|values| values
+            .iter()
+            .zip([1.0, 0.0, 4.0, 6.0, 1.0, 7.2, -19.6, 18.8, 24.8, 2.4],)
+            .all(|(actual, expected)| (actual - expected).abs() < 0.001)));
+        assert!(frame
+            .commands
+            .windows(5)
+            .any(|values| values == [1.0, 2.0, 22.0, 10.0, 4.0]));
     }
 
     #[test]
@@ -575,9 +712,28 @@ mod tests {
         assert_eq!(
             frame.commands,
             vec![
-                CLEAR, 0.0, 0.0, 0.0, 1.0,
-                PUSH_TRANSFORM, 1.0, 0.0, 0.0, 1.0, 8.0, 10.0,
-                FILL_RECT, 2.0, 4.0, 6.0, 8.0, 0.1, 0.2, 0.3, 1.0, 10.0,
+                CLEAR,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                PUSH_TRANSFORM,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                8.0,
+                10.0,
+                FILL_RECT,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                0.1,
+                0.2,
+                0.3,
+                1.0,
+                10.0,
                 POP_TRANSFORM,
             ]
         );
@@ -638,16 +794,47 @@ mod tests {
         assert_eq!(
             frame.commands,
             vec![
-                CLEAR, 0.0, 0.0, 0.0, 0.0,
-                PUSH_CLIP_RECT, 1.0, 2.0, 30.0, 40.0, 3.0, 3.0, 3.0, 3.0,
-                FILL_PATH, 1.0, 0.0, 0.0, 1.0, 0.0,
+                CLEAR,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                PUSH_CLIP_RECT,
+                1.0,
+                2.0,
+                30.0,
+                40.0,
                 3.0,
-                PATH_MOVE, 10.0, 20.0,
-                PATH_LINE, 12.0, 23.0,
+                3.0,
+                3.0,
+                3.0,
+                FILL_PATH,
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                3.0,
+                PATH_MOVE,
+                10.0,
+                20.0,
+                PATH_LINE,
+                12.0,
+                23.0,
                 PATH_CLOSE,
                 POP_CLIP,
-                BLURRED_RECT, 4.0, 5.0, 6.0, 7.0, 2.0, 1.5,
-                0.0, 0.0, 0.0, 0.5, 0.0,
+                BLURRED_RECT,
+                4.0,
+                5.0,
+                6.0,
+                7.0,
+                2.0,
+                1.5,
+                0.0,
+                0.0,
+                0.0,
+                0.5,
+                0.0,
             ]
         );
     }
@@ -659,7 +846,11 @@ mod tests {
         let text = Arc::new(TextRunData {
             font: RenderFont::new(font_blob, 0),
             font_size: 12.0,
-            glyphs: vec![RenderGlyph { id: 7, x: 1.0, y: 2.0 }],
+            glyphs: vec![RenderGlyph {
+                id: 7,
+                x: 1.0,
+                y: 2.0,
+            }],
             decorations: Vec::new(),
             text: Arc::from("a"),
             synthesis: TextSynthesis::default(),
@@ -674,11 +865,22 @@ mod tests {
         });
         let mut graph = SceneGraph::new();
         graph.insert(Node {
-            kind: NodeKind::TextRun { x: 0.0, y: 0.0, color: [1.0; 4], data: text },
+            kind: NodeKind::TextRun {
+                x: 0.0,
+                y: 0.0,
+                color: [1.0; 4],
+                data: text,
+            },
             children: Vec::new(),
         });
         graph.insert(Node {
-            kind: NodeKind::Image { x: 0.0, y: 0.0, width: 1.0, height: 1.0, data: image },
+            kind: NodeKind::Image {
+                x: 0.0,
+                y: 0.0,
+                width: 1.0,
+                height: 1.0,
+                data: image,
+            },
             children: Vec::new(),
         });
         let mut registry = ResourceRegistry::default();
@@ -686,10 +888,22 @@ mod tests {
         let first = encode_scene(&graph, [0.0; 4], 1.0, &mut registry);
         let second = encode_scene(&graph, [0.0; 4], 1.0, &mut registry);
 
-        assert!(matches!(first.resources[0], ResourcePacket::Font { id: 1, .. }));
-        assert!(matches!(first.resources[1], ResourcePacket::Image { id: 2, .. }));
-        assert!(second.resources.is_empty(), "cached resources do not resend payload bytes");
-        assert_eq!(first.commands, second.commands, "each frame keeps stable ResourceId references");
+        assert!(matches!(
+            first.resources[0],
+            ResourcePacket::Font { id: 1, .. }
+        ));
+        assert!(matches!(
+            first.resources[1],
+            ResourcePacket::Image { id: 2, .. }
+        ));
+        assert!(
+            second.resources.is_empty(),
+            "cached resources do not resend payload bytes"
+        );
+        assert_eq!(
+            first.commands, second.commands,
+            "each frame keeps stable ResourceId references"
+        );
     }
 
     #[test]
@@ -704,7 +918,10 @@ mod tests {
         assert!(frame.commands.iter().any(|&opcode| opcode == FILL_RECT));
         assert!(frame.commands.iter().any(|&opcode| opcode == DRAW_TEXT));
         assert!(
-            frame.resources.iter().any(|resource| matches!(resource, ResourcePacket::Font { .. })),
+            frame
+                .resources
+                .iter()
+                .any(|resource| matches!(resource, ResourcePacket::Font { .. })),
             "the shared renderer fixture registers its text resource",
         );
     }
