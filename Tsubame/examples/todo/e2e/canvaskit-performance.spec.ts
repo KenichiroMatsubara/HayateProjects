@@ -21,9 +21,11 @@ interface CanvasKitPerformanceSnapshot {
   replayCount: number;
   fullSceneReplayCount: number;
   commandPayloadBytes: number;
+  commandPayloadAllocationCount: number;
   paintAllocationCount: number;
   fontAllocationCount: number;
   scratchAllocationCount: number;
+  commandDecodeAllocationCount: number;
   frameTimeMs: number[];
   webgl: { version: string; renderer: string; software: boolean };
 }
@@ -85,7 +87,10 @@ function assertDeterministicBudget(scenario: Scenario, metrics: CanvasKitPerform
     ? CANVASKIT_STRICT_RED_BUDGET[scenario]
     : CANVASKIT_PERFORMANCE_BUDGET[scenario];
   const allocations =
-    metrics.paintAllocationCount + metrics.fontAllocationCount + metrics.scratchAllocationCount;
+    metrics.paintAllocationCount +
+    metrics.fontAllocationCount +
+    metrics.scratchAllocationCount +
+    metrics.commandDecodeAllocationCount;
   expect(metrics.fullSceneReplayCount, `${scenario}: full-scene replay budget`).toBeLessThanOrEqual(
     budget.fullSceneReplays,
   );

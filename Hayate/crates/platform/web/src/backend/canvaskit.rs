@@ -8,10 +8,10 @@ use js_sys::{Array, Float32Array, Function, Object, Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::HtmlCanvasElement;
 
+use super::{CanvasBackend, ClearColor, SceneRendererKind};
 use crate::canvaskit_command::{
     encode_clear, encode_scene, CanvasKitFrame, ResourcePacket, ResourceRegistry,
 };
-use super::{CanvasBackend, ClearColor, SceneRendererKind};
 
 const HOST_BRIDGE_KEY: &str = "__hayateCanvasKitBridge";
 const REPLAY_METHOD: &str = "replay";
@@ -21,6 +21,8 @@ pub(crate) struct SelectedBackend {
     canvas: HtmlCanvasElement,
     content_scale: f32,
     resources: ResourceRegistry,
+    command_payload: Option<Float32Array>,
+    resource_packets: Array,
 }
 
 impl SelectedBackend {
@@ -32,20 +34,34 @@ impl SelectedBackend {
             canvas,
             content_scale: 1.0,
             resources: ResourceRegistry::default(),
+            command_payload: None,
+            resource_packets: Array::new(),
         })
     }
 
-    fn replay(&self, frame: &CanvasKitFrame) -> Result<(), anyhow::Error> {
+    fn replay(&mut self, frame: &CanvasKitFrame) -> Result<(), anyhow::Error> {
         let bridge = host_bridge().map_err(super::js_to_anyhow)?;
         let replay = bridge_method_from(&bridge, REPLAY_METHOD).map_err(super::js_to_anyhow)?;
-        let payload = Float32Array::new_with_length(frame.commands.len() as u32);
+        let payload = self
+            .command_payload
+            .get_or_insert_with(|| Float32Array::new_with_length(frame.commands.len() as u32));
+        if payload.length() != frame.commands.len() as u32 {
+            *payload = Float32Array::new_with_length(frame.commands.len() as u32);
+        }
         payload.copy_from(&frame.commands);
-        let resources = Array::new();
+        self.resource_packets.set_length(0);
         for packet in &frame.resources {
-            resources.push(&resource_js_value(packet).map_err(super::js_to_anyhow)?);
+            self.resource_packets
+                .push(&resource_js_value(packet).map_err(super::js_to_anyhow)?);
         }
         replay
-            .call3(&bridge, self.canvas.as_ref(), payload.as_ref(), resources.as_ref())
+            .call4(
+                &bridge,
+                self.canvas.as_ref(),
+                payload.as_ref(),
+                self.resource_packets.as_ref(),
+                &JsValue::from_f64(frame.commands.len() as f64),
+            )
             .map(|_| ())
             .map_err(super::js_to_anyhow)
     }
@@ -56,13 +72,18 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::CanvasKit
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), anyhow::Error> {
+    fn render_scene(
+        &mut self,
+        scene: &SceneGraph,
+        clear_color: ClearColor,
+    ) -> Result<(), anyhow::Error> {
         let frame = encode_scene(scene, clear_color, self.content_scale, &mut self.resources);
         self.replay(&frame)
     }
 
     fn clear(&mut self, clear_color: ClearColor) -> Result<(), anyhow::Error> {
-        self.replay(&encode_clear(clear_color))
+        let frame = encode_clear(clear_color);
+        self.replay(&frame)
     }
 
     fn resize(&mut self, _width: u32, _height: u32, content_scale: f32) {
@@ -77,14 +98,22 @@ impl CanvasBackend for SelectedBackend {
 
 fn resource_js_value(packet: &ResourcePacket) -> Result<JsValue, JsValue> {
     let object = Object::new();
-    let set = |key: &str, value: &JsValue| Reflect::set(&object, &JsValue::from_str(key), value).map(|_| ());
+    let set = |key: &str, value: &JsValue| {
+        Reflect::set(&object, &JsValue::from_str(key), value).map(|_| ())
+    };
     match packet {
         ResourcePacket::Font { id, bytes } => {
             set("kind", &JsValue::from_str("font"))?;
             set("id", &JsValue::from_f64(*id as f64))?;
             set("bytes", Uint8Array::from(bytes.as_slice()).as_ref())?;
         }
-        ResourcePacket::Image { id, width, height, alpha_type, bytes } => {
+        ResourcePacket::Image {
+            id,
+            width,
+            height,
+            alpha_type,
+            bytes,
+        } => {
             set("kind", &JsValue::from_str("image"))?;
             set("id", &JsValue::from_f64(*id as f64))?;
             set("width", &JsValue::from_f64(*width as f64))?;
@@ -111,5 +140,7 @@ fn bridge_method(name: &str) -> Result<Function, JsValue> {
 fn bridge_method_from(bridge: &JsValue, name: &str) -> Result<Function, JsValue> {
     Reflect::get(bridge, &JsValue::from_str(name))?
         .dyn_into::<Function>()
-        .map_err(|_| JsValue::from_str(&format!("CanvasKit Host bridge method unavailable: {name}")))
+        .map_err(|_| {
+            JsValue::from_str(&format!("CanvasKit Host bridge method unavailable: {name}"))
+        })
 }

@@ -5,6 +5,7 @@ import {
   type CanvasBackend,
 } from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
+import { detachCanvasKitSurface } from './canvaskit-bridge.js';
 import {
   attachAccessibilityMirror,
   type AccessibilityMirror,
@@ -244,6 +245,7 @@ export async function createHayateWebHost(
   // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
   const attempts = resolveCanvasBackendAttemptOrder(effectiveOptions, webgpuAvailable, search ?? '');
   let raw: RawHayate | undefined;
+  let selectedBackend: CanvasBackend | undefined;
   let lastError: unknown;
   for (const selection of attempts) {
     console.info(
@@ -251,6 +253,7 @@ export async function createHayateWebHost(
     );
     try {
       raw = await load(selection.backend, canvas);
+      selectedBackend = selection.backend;
       break;
     } catch (error) {
       lastError = error;
@@ -299,5 +302,13 @@ export async function createHayateWebHost(
       mirror.poll();
     });
 
-  return { raw, requestFrame, cancelFrame, detach: mirror.detach };
+  let detached = false;
+  const detach = (): void => {
+    if (detached) return;
+    detached = true;
+    mirror.detach();
+    if (selectedBackend === 'canvaskit') detachCanvasKitSurface(canvas);
+  };
+
+  return { raw, requestFrame, cancelFrame, detach };
 }

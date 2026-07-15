@@ -57,7 +57,9 @@ interface CanvasKitSurface {
   readonly fonts: Map<number, Typeface>;
   readonly fontInstances: Map<string, Font>;
   readonly glyphScratch: Map<number, { glyphs: Uint16Array; positions: Float32Array }>;
+  dashScratch: number[];
   readonly images: Map<number, Image>;
+  commandPayload?: Float32Array;
   performance: CanvasKitPerformanceMetrics;
 }
 
@@ -65,9 +67,12 @@ export interface CanvasKitPerformanceSnapshot {
   readonly replayCount: number;
   readonly fullSceneReplayCount: number;
   readonly commandPayloadBytes: number;
+  readonly commandPayloadAllocationCount: number;
   readonly paintAllocationCount: number;
   readonly fontAllocationCount: number;
   readonly scratchAllocationCount: number;
+  /** Temporary JS arrays created while decoding the command stream. Hot replay keeps this zero. */
+  readonly commandDecodeAllocationCount: number;
   readonly frameTimeMs: readonly number[];
   readonly webgl: CanvasKitWebGlInfo;
 }
@@ -89,8 +94,10 @@ interface CanvasKitBridge {
     canvas: HTMLCanvasElement,
     commands: Float32Array,
     resources?: CanvasKitResource[],
+    commandLength?: number,
   ): void;
   resize(canvas: HTMLCanvasElement): void;
+  detach(canvas: HTMLCanvasElement): void;
   performanceSnapshot(canvas: HTMLCanvasElement): CanvasKitPerformanceSnapshot;
   resetPerformance(canvas: HTMLCanvasElement): void;
 }
@@ -124,14 +131,17 @@ function createSurface(canvas: HTMLCanvasElement, canvasKit: CanvasKit): CanvasK
     fonts: new Map(),
     fontInstances: new Map(),
     glyphScratch: new Map(),
+    dashScratch: [],
     images: new Map(),
     performance: {
       replayCount: 0,
       fullSceneReplayCount: 0,
       commandPayloadBytes: 0,
+      commandPayloadAllocationCount: 0,
       paintAllocationCount: 1,
       fontAllocationCount: 0,
       scratchAllocationCount: 0,
+      commandDecodeAllocationCount: 0,
       frameTimeMs: [],
       webgl: readWebGlInfo(canvas),
     },
@@ -148,28 +158,40 @@ function replay(
   canvas: HTMLCanvasElement,
   commands: Float32Array,
   resources: CanvasKitResource[] = [],
+  commandLength = commands.length,
 ): void {
   const resourceCache = requireSurface(canvas);
+  if (!Number.isInteger(commandLength) || commandLength < 0 || commandLength > commands.length) {
+    throw new CanvasKitReplayError('contract', 'CanvasKit command length is invalid');
+  }
   const { canvasKit, surface } = resourceCache;
   const startedAt = monotonicNow();
   resourceCache.performance.replayCount += 1;
   resourceCache.performance.fullSceneReplayCount += commands.length > 5 ? 1 : 0;
-  resourceCache.performance.commandPayloadBytes += commands.byteLength;
+  resourceCache.performance.commandPayloadBytes += commandLength * Float32Array.BYTES_PER_ELEMENT;
+  if (resourceCache.commandPayload !== commands) {
+    resourceCache.commandPayload = commands;
+    resourceCache.performance.commandPayloadAllocationCount += 1;
+  }
   registerResources(resourceCache, resources);
   const skCanvas = surface.getCanvas();
   const { paint } = resourceCache;
   let offset = 0;
 
-  const take = (count: number, command: string): number[] => {
-    if (offset + count > commands.length) {
+  const take = (count: number, command: string): number => {
+    if (offset + count > commandLength) {
       throw new CanvasKitReplayError('contract', `CanvasKit command buffer: truncated ${command}`);
     }
-    const values = Array.from(commands.subarray(offset, offset + count));
+    const start = offset;
     offset += count;
-    return values;
+    return start;
   };
 
-  const color = (command: string) => canvasKit.Color4f(...take(4, command) as [number, number, number, number]);
+  const value = (start: number, index = 0): number => commands[start + index]!;
+  const color = (command: string) => {
+    const start = take(4, command);
+    return canvasKit.Color4f(value(start), value(start, 1), value(start, 2), value(start, 3));
+  };
   const rect = (x: number, y: number, width: number, height: number) =>
     canvasKit.LTRBRect(x, y, x + width, y + height);
   const setFill = (value: ReturnType<typeof canvasKit.Color4f>) => {
@@ -178,42 +200,52 @@ function replay(
   };
 
   try {
-    while (offset < commands.length) {
+    while (offset < commandLength) {
       const opcode = commands[offset++]!;
       if (opcode === CLEAR) {
         skCanvas.clear(color('clear'));
         continue;
       }
       if (opcode === FILL_RECT) {
-        const [x, y, width, height] = take(4, 'fillRect bounds');
+        const boundsStart = take(4, 'fillRect bounds');
+        const x = value(boundsStart);
+        const y = value(boundsStart, 1);
+        const width = value(boundsStart, 2);
+        const height = value(boundsStart, 3);
         const fillColor = color('fillRect color');
-        const [cornerRadius] = take(1, 'fillRect radius');
-        const bounds = rect(x!, y!, width!, height!);
+        const cornerRadius = value(take(1, 'fillRect radius'));
+        const bounds = rect(x, y, width, height);
         setFill(fillColor);
-        if (cornerRadius! > 0) {
-          skCanvas.drawRRect(canvasKit.RRectXY(bounds, cornerRadius!, cornerRadius!), paint);
+        if (cornerRadius > 0) {
+          skCanvas.drawRRect(canvasKit.RRectXY(bounds, cornerRadius, cornerRadius), paint);
         } else {
           skCanvas.drawRect(bounds, paint);
         }
         continue;
       }
       if (opcode === FILL_ROUNDED_RING || opcode === DASHED_BORDER) {
-        const [x, y, width, height, radius, borderWidth] = take(6, 'ring');
+        const ringStart = take(6, 'ring');
+        const x = value(ringStart);
+        const y = value(ringStart, 1);
+        const width = value(ringStart, 2);
+        const height = value(ringStart, 3);
+        const radius = value(ringStart, 4);
+        const borderWidth = value(ringStart, 5);
         const ringColor = color('ring color');
-        const outer = canvasKit.RRectXY(rect(x!, y!, width!, height!), radius!, radius!);
+        const outer = canvasKit.RRectXY(rect(x, y, width, height), radius, radius);
         setFill(ringColor);
         if (opcode === FILL_ROUNDED_RING) {
-          const inset = borderWidth!;
+          const inset = borderWidth;
           const inner = canvasKit.RRectXY(
-            rect(x! + inset, y! + inset, Math.max(0, width! - inset * 2), Math.max(0, height! - inset * 2)),
-            Math.max(0, radius! - inset),
-            Math.max(0, radius! - inset),
+            rect(x + inset, y + inset, Math.max(0, width - inset * 2), Math.max(0, height - inset * 2)),
+            Math.max(0, radius - inset),
+            Math.max(0, radius - inset),
           );
           skCanvas.drawDRRect(outer, inner, paint);
         } else {
           paint.setStyle(canvasKit.PaintStyle.Stroke);
-          paint.setStrokeWidth(borderWidth!);
-          const dash = canvasKit.PathEffect.MakeDash([borderWidth! * 3, borderWidth! * 2], 0);
+          paint.setStrokeWidth(borderWidth);
+          const dash = canvasKit.PathEffect.MakeDash([borderWidth * 3, borderWidth * 2], 0);
           paint.setPathEffect(dash);
           skCanvas.drawRRect(outer, paint);
           paint.setPathEffect(null);
@@ -224,24 +256,42 @@ function replay(
       if (opcode === FILL_PATH || opcode === STROKE_PATH) {
         const pathColor = color('path color');
         if (opcode === FILL_PATH) {
-          const [fillRule] = take(1, 'fill path rule');
-          const path = readPath(canvasKit, commands, { get offset() { return offset; }, set offset(value) { offset = value; } });
+          const fillRule = value(take(1, 'fill path rule'));
+          const path = readPath(canvasKit, commands, commandLength, { get offset() { return offset; }, set offset(value) { offset = value; } });
           path.setFillType(fillRule === 1 ? canvasKit.FillType.EvenOdd : canvasKit.FillType.Winding);
           setFill(pathColor);
           skCanvas.drawPath(path, paint);
           path.delete();
         } else {
-          const [width, cap, join, miter, dashCount] = take(5, 'stroke style');
-          const dash = take(dashCount!, 'stroke dash');
-          const [dashOffset] = take(1, 'stroke dash offset');
-          const path = readPath(canvasKit, commands, { get offset() { return offset; }, set offset(value) { offset = value; } });
+          const styleStart = take(5, 'stroke style');
+          const width = value(styleStart);
+          const cap = value(styleStart, 1);
+          const join = value(styleStart, 2);
+          const miter = value(styleStart, 3);
+          const dashCount = value(styleStart, 4);
+          const dashStart = take(dashCount, 'stroke dash');
+          const dashOffset = value(take(1, 'stroke dash offset'));
+          const path = readPath(canvasKit, commands, commandLength, { get offset() { return offset; }, set offset(value) { offset = value; } });
           paint.setStyle(canvasKit.PaintStyle.Stroke);
           paint.setColor(pathColor);
-          paint.setStrokeWidth(width!);
-          paint.setStrokeCap([canvasKit.StrokeCap.Butt, canvasKit.StrokeCap.Round, canvasKit.StrokeCap.Square][cap!]!);
-          paint.setStrokeJoin([canvasKit.StrokeJoin.Miter, canvasKit.StrokeJoin.Round, canvasKit.StrokeJoin.Bevel][join!]!);
-          paint.setStrokeMiter(miter!);
-          const effect = dash.length > 0 ? canvasKit.PathEffect.MakeDash(dash, dashOffset!) : null;
+          paint.setStrokeWidth(width);
+          paint.setStrokeCap([canvasKit.StrokeCap.Butt, canvasKit.StrokeCap.Round, canvasKit.StrokeCap.Square][cap]!);
+          paint.setStrokeJoin([canvasKit.StrokeJoin.Miter, canvasKit.StrokeJoin.Round, canvasKit.StrokeJoin.Bevel][join]!);
+          paint.setStrokeMiter(miter);
+          let dash: number[] | null = null;
+          if (dashCount > 0) {
+            if (resourceCache.dashScratch.length < dashCount) {
+              resourceCache.dashScratch = new Array<number>(dashCount);
+              resourceCache.performance.scratchAllocationCount += 1;
+            } else {
+              resourceCache.dashScratch.length = dashCount;
+            }
+            dash = resourceCache.dashScratch;
+            for (let index = 0; index < dashCount; index += 1) {
+              dash[index] = value(dashStart, index);
+            }
+          }
+          const effect = dash ? canvasKit.PathEffect.MakeDash(dash, dashOffset) : null;
           paint.setPathEffect(effect);
           skCanvas.drawPath(path, paint);
           paint.setPathEffect(null);
@@ -251,71 +301,89 @@ function replay(
         continue;
       }
       if (opcode === DRAW_TEXT) {
-        const [id, x, y, size] = take(4, 'text header');
+        const headerStart = take(4, 'text header');
+        const id = value(headerStart);
+        const x = value(headerStart, 1);
+        const y = value(headerStart, 2);
+        const size = value(headerStart, 3);
         const textColor = color('text color');
-        const [hasSkew, skew] = take(2, 'text skew synthesis');
-        const [hasEmbolden, embolden] = take(2, 'text embolden synthesis');
-        const [coordinateCount] = take(1, 'text variation coordinate count');
-        const normalizedCoordinates = take(coordinateCount!, 'text variation coordinates');
-        const [glyphCount] = take(1, 'glyph count');
-        let scratch = resourceCache.glyphScratch.get(glyphCount!);
+        const skewStart = take(2, 'text skew synthesis');
+        const hasSkew = value(skewStart);
+        const skew = value(skewStart, 1);
+        const emboldenStart = take(2, 'text embolden synthesis');
+        const hasEmbolden = value(emboldenStart);
+        const embolden = value(emboldenStart, 1);
+        const coordinateCount = value(take(1, 'text variation coordinate count'));
+        const coordinateStart = take(coordinateCount, 'text variation coordinates');
+        let fontKey = `${id}:${size}:${hasSkew}:${skew}:${hasEmbolden}:${embolden}`;
+        for (let index = 0; index < coordinateCount; index += 1) {
+          fontKey += `:${value(coordinateStart, index)}`;
+        }
+        const glyphCount = value(take(1, 'glyph count'));
+        const glyphStart = take(glyphCount * 3, 'glyphs');
+        let realGlyphCount = 0;
+        for (let index = 0; index < glyphCount; index += 1) {
+          if (value(glyphStart, index * 3) !== 0) realGlyphCount += 1;
+        }
+        let scratch = resourceCache.glyphScratch.get(realGlyphCount);
         if (!scratch) {
           scratch = {
-            glyphs: new Uint16Array(glyphCount!),
-            positions: new Float32Array(glyphCount! * 2),
+            glyphs: new Uint16Array(realGlyphCount),
+            positions: new Float32Array(realGlyphCount * 2),
           };
-          resourceCache.glyphScratch.set(glyphCount!, scratch);
+          resourceCache.glyphScratch.set(realGlyphCount, scratch);
           resourceCache.performance.scratchAllocationCount += 2;
         }
-        let realGlyphCount = 0;
-        for (let index = 0; index < glyphCount!; index += 1) {
-          const [glyph, gx, gy] = take(3, 'glyph');
+        let outputIndex = 0;
+        for (let index = 0; index < glyphCount; index += 1) {
+          const entryStart = glyphStart + index * 3;
+          const glyph = value(entryStart);
           if (glyph !== 0) {
-            scratch.glyphs[realGlyphCount] = glyph!;
-            scratch.positions[realGlyphCount * 2] = gx!;
-            scratch.positions[realGlyphCount * 2 + 1] = gy!;
-            realGlyphCount += 1;
+            scratch.glyphs[outputIndex] = glyph;
+            scratch.positions[outputIndex * 2] = value(entryStart, 1);
+            scratch.positions[outputIndex * 2 + 1] = value(entryStart, 2);
+            outputIndex += 1;
           }
         }
-        const [placeholderCount] = take(1, 'missing glyph placeholder count');
-        const placeholders = Array.from({ length: placeholderCount! }, () => take(5, 'missing glyph placeholder'));
-        const [decorationCount] = take(1, 'text decoration count');
-        const decorations = Array.from({ length: decorationCount! }, () => take(4, 'text decoration'));
-        const typeface = resourceCache.fonts.get(id!);
+        const typeface = resourceCache.fonts.get(id);
         if (!typeface) throw new CanvasKitReplayError('contract', `CanvasKit font resource ${id} is unresolved`);
-        const fontKey = [id, size, hasSkew, skew, hasEmbolden, embolden, ...normalizedCoordinates].join(':');
         let font = resourceCache.fontInstances.get(fontKey);
         if (!font) {
-          font = new canvasKit.Font(typeface, size!);
+          font = new canvasKit.Font(typeface, size);
           font.setSubpixel(CANVASKIT_FONT_SUBPIXEL_POSITIONING);
-          if (hasSkew) font.setSkewX(skew!);
+          if (hasSkew) font.setSkewX(skew);
           if (hasEmbolden) font.setEmbolden(true);
           resourceCache.fontInstances.set(fontKey, font);
           resourceCache.performance.fontAllocationCount += 1;
         }
         setFill(textColor);
         if (realGlyphCount > 0) {
-          skCanvas.drawGlyphs(
-            realGlyphCount === scratch.glyphs.length
-              ? scratch.glyphs
-              : scratch.glyphs.subarray(0, realGlyphCount),
-            realGlyphCount * 2 === scratch.positions.length
-              ? scratch.positions
-              : scratch.positions.subarray(0, realGlyphCount * 2),
-            x!, y!, font, paint,
-          );
+          skCanvas.drawGlyphs(scratch.glyphs, scratch.positions, x, y, font, paint);
         }
-        for (const [px, py, width, height, strokeWidth] of placeholders) {
+        const placeholderCount = value(take(1, 'missing glyph placeholder count'));
+        for (let index = 0; index < placeholderCount; index += 1) {
+          const placeholderStart = take(5, 'missing glyph placeholder');
+          const px = value(placeholderStart);
+          const py = value(placeholderStart, 1);
+          const width = value(placeholderStart, 2);
+          const height = value(placeholderStart, 3);
+          const strokeWidth = value(placeholderStart, 4);
           paint.setStyle(canvasKit.PaintStyle.Stroke);
-          paint.setStrokeWidth(strokeWidth!);
-          skCanvas.drawRect(rect(x! + px!, y! + py!, width!, height!), paint);
+          paint.setStrokeWidth(strokeWidth);
+          skCanvas.drawRect(rect(x + px, y + py, width, height), paint);
         }
         setFill(textColor);
-        for (const [x0, x1, decorationY, thickness] of decorations) {
+        const decorationCount = value(take(1, 'text decoration count'));
+        for (let index = 0; index < decorationCount; index += 1) {
+          const decorationStart = take(4, 'text decoration');
+          const x0 = value(decorationStart);
+          const x1 = value(decorationStart, 1);
+          const decorationY = value(decorationStart, 2);
+          const thickness = value(decorationStart, 3);
           skCanvas.drawRect(
             canvasKit.LTRBRect(
-              x! + x0!, y! + decorationY! - thickness! * 0.5,
-              x! + x1!, y! + decorationY! + thickness! * 0.5,
+              x + x0, y + decorationY - thickness * 0.5,
+              x + x1, y + decorationY + thickness * 0.5,
             ),
             paint,
           );
@@ -323,21 +391,30 @@ function replay(
         continue;
       }
       if (opcode === DRAW_IMAGE) {
-        const [id, x, y, width, height] = take(5, 'image');
-        const image = resourceCache.images.get(id!);
+        const imageStart = take(5, 'image');
+        const id = value(imageStart);
+        const x = value(imageStart, 1);
+        const y = value(imageStart, 2);
+        const width = value(imageStart, 3);
+        const height = value(imageStart, 4);
+        const image = resourceCache.images.get(id);
         if (!image) throw new CanvasKitReplayError('contract', `CanvasKit image resource ${id} is unresolved`);
         skCanvas.drawImageRect(
           image,
           canvasKit.LTRBRect(0, 0, image.width(), image.height()),
-          rect(x!, y!, width!, height!),
+          rect(x, y, width, height),
           paint,
         );
         continue;
       }
       if (opcode === PUSH_TRANSFORM) {
-        const [a, b, c, d, e, f] = take(6, 'transform');
+        const transformStart = take(6, 'transform');
         skCanvas.save();
-        skCanvas.concat([a!, c!, e!, b!, d!, f!, 0, 0, 1]);
+        skCanvas.concat([
+          value(transformStart), value(transformStart, 2), value(transformStart, 4),
+          value(transformStart, 1), value(transformStart, 3), value(transformStart, 5),
+          0, 0, 1,
+        ]);
         continue;
       }
       if (opcode === POP_TRANSFORM || opcode === POP_CLIP) {
@@ -345,14 +422,23 @@ function replay(
         continue;
       }
       if (opcode === PUSH_CLIP_RECT) {
-        const [x, y, width, height, tl, tr, br, bl] = take(8, 'clip rect');
+        const clipStart = take(8, 'clip rect');
+        const x = value(clipStart);
+        const y = value(clipStart, 1);
+        const width = value(clipStart, 2);
+        const height = value(clipStart, 3);
+        const tl = value(clipStart, 4);
+        const tr = value(clipStart, 5);
+        const br = value(clipStart, 6);
+        const bl = value(clipStart, 7);
         skCanvas.save();
-        const bounds = rect(x!, y!, width!, height!);
+        const bounds = rect(x, y, width, height);
         if (tl === tr && tr === br && br === bl) {
-          skCanvas.clipRRect(canvasKit.RRectXY(bounds, tl!, tl!), canvasKit.ClipOp.Intersect, true);
+          skCanvas.clipRRect(canvasKit.RRectXY(bounds, tl, tl), canvasKit.ClipOp.Intersect, true);
         } else {
           const builder = new canvasKit.PathBuilder();
-          builder.addRRect(canvasKit.RRectXY(bounds, Math.max(tl!, tr!, br!, bl!), Math.max(tl!, tr!, br!, bl!)));
+          const radius = Math.max(tl, tr, br, bl);
+          builder.addRRect(canvasKit.RRectXY(bounds, radius, radius));
           const path = builder.detachAndDelete();
           skCanvas.clipPath(path, canvasKit.ClipOp.Intersect, true);
           path.delete();
@@ -360,7 +446,7 @@ function replay(
         continue;
       }
       if (opcode === PUSH_CLIP_PATH) {
-        const path = readPath(canvasKit, commands, { get offset() { return offset; }, set offset(value) { offset = value; } });
+        const path = readPath(canvasKit, commands, commandLength, { get offset() { return offset; }, set offset(value) { offset = value; } });
         skCanvas.save();
         skCanvas.clipPath(path, canvasKit.ClipOp.Intersect, true);
         path.delete();
@@ -368,18 +454,22 @@ function replay(
       }
       if (opcode === BLURRED_RECT || opcode === INSET_BLURRED_RECT) {
         const count = opcode === BLURRED_RECT ? 6 : 9;
-        const values = take(count, 'shadow geometry');
+        const shadowStart = take(count, 'shadow geometry');
         const shadowColor = color('shadow color');
-        const [x, y, width, height, radius] = values;
-        const sigma = opcode === BLURRED_RECT ? values[5]! : values[8]!;
+        const x = value(shadowStart);
+        const y = value(shadowStart, 1);
+        const width = value(shadowStart, 2);
+        const height = value(shadowStart, 3);
+        const radius = value(shadowStart, 4);
+        const sigma = value(shadowStart, opcode === BLURRED_RECT ? 5 : 8);
         const mask = canvasKit.MaskFilter.MakeBlur(canvasKit.BlurStyle.Normal, sigma, true);
         setFill(shadowColor);
         paint.setMaskFilter(mask);
-        skCanvas.drawRRect(canvasKit.RRectXY(rect(x!, y!, width!, height!), radius!, radius!), paint);
+        skCanvas.drawRRect(canvasKit.RRectXY(rect(x, y, width, height), radius, radius), paint);
         paint.setMaskFilter(null);
         mask.delete();
         if (opcode === BLURRED_RECT) {
-          const [hasOccluder] = take(1, 'shadow occluder flag');
+          const hasOccluder = value(take(1, 'shadow occluder flag'));
           if (hasOccluder === 1) take(5, 'shadow occluder');
         }
         continue;
@@ -387,6 +477,12 @@ function replay(
       throw new CanvasKitReplayError('contract', `CanvasKit command buffer: unknown opcode ${opcode}`);
     }
     surface.flush();
+  } catch (error) {
+    // A selected CanvasKit renderer never restarts or falls back after replay/surface failure.
+    // Remove the Host-owned state before releasing it so re-entrant or later calls cannot double free.
+    surfaces.delete(canvas);
+    releaseSurface(resourceCache);
+    throw error;
   } finally {
     resourceCache.performance.frameTimeMs.push(monotonicNow() - startedAt);
   }
@@ -422,9 +518,11 @@ function resetPerformance(canvas: HTMLCanvasElement): void {
     replayCount: 0,
     fullSceneReplayCount: 0,
     commandPayloadBytes: 0,
+    commandPayloadAllocationCount: 0,
     paintAllocationCount: 0,
     fontAllocationCount: 0,
     scratchAllocationCount: 0,
+    commandDecodeAllocationCount: 0,
     frameTimeMs: [],
     webgl: resource.performance.webgl,
   };
@@ -467,26 +565,41 @@ function registerResources(resource: CanvasKitSurface, packets: CanvasKitResourc
 function readPath(
   canvasKit: CanvasKit,
   commands: Float32Array,
+  commandLength: number,
   cursor: { offset: number },
 ) {
-  if (cursor.offset >= commands.length) throw new CanvasKitReplayError('contract', 'CanvasKit path is truncated');
+  if (cursor.offset >= commandLength) throw new CanvasKitReplayError('contract', 'CanvasKit path is truncated');
   const count = commands[cursor.offset++]!;
   const builder = new canvasKit.PathBuilder();
   const take = (amount: number) => {
-    if (cursor.offset + amount > commands.length) {
+    if (cursor.offset + amount > commandLength) {
       builder.delete();
       throw new CanvasKitReplayError('contract', 'CanvasKit path is truncated');
     }
-    const values = Array.from(commands.subarray(cursor.offset, cursor.offset + amount));
+    const start = cursor.offset;
     cursor.offset += amount;
-    return values;
+    return start;
   };
   for (let index = 0; index < count; index += 1) {
-    const verb = take(1)[0];
-    if (verb === 0) builder.moveTo(...take(2) as [number, number]);
-    else if (verb === 1) builder.lineTo(...take(2) as [number, number]);
-    else if (verb === 2) builder.quadTo(...take(4) as [number, number, number, number]);
-    else if (verb === 3) builder.cubicTo(...take(6) as [number, number, number, number, number, number]);
+    const verb = commands[take(1)]!;
+    if (verb === 0) {
+      const start = take(2);
+      builder.moveTo(commands[start]!, commands[start + 1]!);
+    } else if (verb === 1) {
+      const start = take(2);
+      builder.lineTo(commands[start]!, commands[start + 1]!);
+    } else if (verb === 2) {
+      const start = take(4);
+      builder.quadTo(
+        commands[start]!, commands[start + 1]!, commands[start + 2]!, commands[start + 3]!,
+      );
+    } else if (verb === 3) {
+      const start = take(6);
+      builder.cubicTo(
+        commands[start]!, commands[start + 1]!, commands[start + 2]!,
+        commands[start + 3]!, commands[start + 4]!, commands[start + 5]!,
+      );
+    }
     else if (verb === 4) builder.close();
     else {
       builder.delete();
@@ -499,13 +612,26 @@ function readPath(
 function resize(canvas: HTMLCanvasElement): void {
   const previous = requireSurface(canvas);
   const performance = previous.performance;
-  previous.surface.delete();
-  previous.paint.delete();
-  const replacement = createSurface(canvas, previous.canvasKit);
+  let replacement: CanvasKitSurface;
+  try {
+    replacement = createSurface(canvas, previous.canvasKit);
+  } catch (error) {
+    surfaces.delete(canvas);
+    releaseSurface(previous);
+    throw error;
+  }
   for (const [id, font] of previous.fonts) replacement.fonts.set(id, font);
   for (const [key, font] of previous.fontInstances) replacement.fontInstances.set(key, font);
   for (const [count, scratch] of previous.glyphScratch) replacement.glyphScratch.set(count, scratch);
+  replacement.dashScratch = previous.dashScratch;
   for (const [id, image] of previous.images) replacement.images.set(id, image);
+  replacement.commandPayload = previous.commandPayload;
+  previous.fonts.clear();
+  previous.fontInstances.clear();
+  previous.glyphScratch.clear();
+  previous.dashScratch = [];
+  previous.images.clear();
+  releaseSurface(previous);
   replacement.performance = {
     ...performance,
     paintAllocationCount: performance.paintAllocationCount + 1,
@@ -515,10 +641,35 @@ function resize(canvas: HTMLCanvasElement): void {
   surfaces.set(canvas, replacement);
 }
 
+function releaseSurface(resource: CanvasKitSurface): void {
+  for (const font of resource.fontInstances.values()) font.delete();
+  for (const typeface of resource.fonts.values()) typeface.delete();
+  for (const image of resource.images.values()) image.delete();
+  resource.fontInstances.clear();
+  resource.fonts.clear();
+  resource.glyphScratch.clear();
+  resource.dashScratch = [];
+  resource.images.clear();
+  resource.paint.delete();
+  resource.surface.delete();
+}
+
+function detach(canvas: HTMLCanvasElement): void {
+  const resource = surfaces.get(canvas);
+  if (!resource) return;
+  surfaces.delete(canvas);
+  releaseSurface(resource);
+}
+
+/** Releases the CanvasKit surface/cache owned for one WebHost canvas. Safe to call repeatedly. */
+export function detachCanvasKitSurface(canvas: HTMLCanvasElement): void {
+  detach(canvas);
+}
+
 function installBridge(): void {
   const target = globalThis as Record<string, unknown>;
   if (target[CANVASKIT_BRIDGE_KEY]) return;
-  const bridge: CanvasKitBridge = { replay, resize, performanceSnapshot, resetPerformance };
+  const bridge: CanvasKitBridge = { replay, resize, detach, performanceSnapshot, resetPerformance };
   target[CANVASKIT_BRIDGE_KEY] = bridge;
 }
 
