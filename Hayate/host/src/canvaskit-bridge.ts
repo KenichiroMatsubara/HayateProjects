@@ -1,6 +1,8 @@
 import CanvasKitInit, {
   type CanvasKit,
+  type Font,
   type Image,
+  type Paint,
   type Surface,
   type Typeface,
 } from 'canvaskit-wasm';
@@ -25,6 +27,9 @@ const POP_CLIP = 12;
 const BLURRED_RECT = 13;
 const INSET_BLURRED_RECT = 14;
 
+const CANVASKIT_TEXT_ANTIALIAS = true;
+const CANVASKIT_FONT_SUBPIXEL_POSITIONING = true;
+
 type ReplayErrorCategory = 'contract' | 'environment';
 
 export class CanvasKitReplayError extends Error {
@@ -48,9 +53,36 @@ type CanvasKitResource =
 interface CanvasKitSurface {
   readonly canvasKit: CanvasKit;
   readonly surface: Surface;
+  readonly paint: Paint;
   readonly fonts: Map<number, Typeface>;
+  readonly fontInstances: Map<string, Font>;
+  readonly glyphScratch: Map<number, { glyphs: Uint16Array; positions: Float32Array }>;
   readonly images: Map<number, Image>;
+  performance: CanvasKitPerformanceMetrics;
 }
+
+export interface CanvasKitPerformanceSnapshot {
+  readonly replayCount: number;
+  readonly fullSceneReplayCount: number;
+  readonly commandPayloadBytes: number;
+  readonly paintAllocationCount: number;
+  readonly fontAllocationCount: number;
+  readonly scratchAllocationCount: number;
+  readonly frameTimeMs: readonly number[];
+  readonly webgl: CanvasKitWebGlInfo;
+}
+
+interface CanvasKitWebGlInfo {
+  readonly version: string;
+  readonly renderer: string;
+  readonly software: boolean;
+}
+
+type CanvasKitPerformanceMetrics = {
+  -readonly [Key in keyof CanvasKitPerformanceSnapshot]: Key extends 'frameTimeMs'
+    ? number[]
+    : CanvasKitPerformanceSnapshot[Key];
+};
 
 interface CanvasKitBridge {
   replay(
@@ -59,6 +91,8 @@ interface CanvasKitBridge {
     resources?: CanvasKitResource[],
   ): void;
   resize(canvas: HTMLCanvasElement): void;
+  performanceSnapshot(canvas: HTMLCanvasElement): CanvasKitPerformanceSnapshot;
+  resetPerformance(canvas: HTMLCanvasElement): void;
 }
 
 type CanvasKitInitializer = typeof CanvasKitInit;
@@ -81,7 +115,27 @@ async function loadCanvasKit(initialize: CanvasKitInitializer): Promise<CanvasKi
 function createSurface(canvas: HTMLCanvasElement, canvasKit: CanvasKit): CanvasKitSurface {
   const surface = canvasKit.MakeWebGLCanvasSurface(canvas);
   if (surface == null) throw new Error('CanvasKit surface unavailable');
-  return { canvasKit, surface, fonts: new Map(), images: new Map() };
+  const paint = new canvasKit.Paint();
+  paint.setAntiAlias?.(CANVASKIT_TEXT_ANTIALIAS);
+  return {
+    canvasKit,
+    surface,
+    paint,
+    fonts: new Map(),
+    fontInstances: new Map(),
+    glyphScratch: new Map(),
+    images: new Map(),
+    performance: {
+      replayCount: 0,
+      fullSceneReplayCount: 0,
+      commandPayloadBytes: 0,
+      paintAllocationCount: 1,
+      fontAllocationCount: 0,
+      scratchAllocationCount: 0,
+      frameTimeMs: [],
+      webgl: readWebGlInfo(canvas),
+    },
+  };
 }
 
 function requireSurface(canvas: HTMLCanvasElement): CanvasKitSurface {
@@ -97,9 +151,13 @@ function replay(
 ): void {
   const resourceCache = requireSurface(canvas);
   const { canvasKit, surface } = resourceCache;
+  const startedAt = monotonicNow();
+  resourceCache.performance.replayCount += 1;
+  resourceCache.performance.fullSceneReplayCount += commands.length > 5 ? 1 : 0;
+  resourceCache.performance.commandPayloadBytes += commands.byteLength;
   registerResources(resourceCache, resources);
   const skCanvas = surface.getCanvas();
-  const paint = new canvasKit.Paint();
+  const { paint } = resourceCache;
   let offset = 0;
 
   const take = (count: number, command: string): number[] => {
@@ -195,21 +253,73 @@ function replay(
       if (opcode === DRAW_TEXT) {
         const [id, x, y, size] = take(4, 'text header');
         const textColor = color('text color');
+        const [hasSkew, skew] = take(2, 'text skew synthesis');
+        const [hasEmbolden, embolden] = take(2, 'text embolden synthesis');
+        const [coordinateCount] = take(1, 'text variation coordinate count');
+        const normalizedCoordinates = take(coordinateCount!, 'text variation coordinates');
         const [glyphCount] = take(1, 'glyph count');
-        const glyphs = new Uint16Array(glyphCount!);
-        const positions = new Float32Array(glyphCount! * 2);
+        let scratch = resourceCache.glyphScratch.get(glyphCount!);
+        if (!scratch) {
+          scratch = {
+            glyphs: new Uint16Array(glyphCount!),
+            positions: new Float32Array(glyphCount! * 2),
+          };
+          resourceCache.glyphScratch.set(glyphCount!, scratch);
+          resourceCache.performance.scratchAllocationCount += 2;
+        }
+        let realGlyphCount = 0;
         for (let index = 0; index < glyphCount!; index += 1) {
           const [glyph, gx, gy] = take(3, 'glyph');
-          glyphs[index] = glyph!;
-          positions[index * 2] = gx!;
-          positions[index * 2 + 1] = gy!;
+          if (glyph !== 0) {
+            scratch.glyphs[realGlyphCount] = glyph!;
+            scratch.positions[realGlyphCount * 2] = gx!;
+            scratch.positions[realGlyphCount * 2 + 1] = gy!;
+            realGlyphCount += 1;
+          }
         }
+        const [placeholderCount] = take(1, 'missing glyph placeholder count');
+        const placeholders = Array.from({ length: placeholderCount! }, () => take(5, 'missing glyph placeholder'));
+        const [decorationCount] = take(1, 'text decoration count');
+        const decorations = Array.from({ length: decorationCount! }, () => take(4, 'text decoration'));
         const typeface = resourceCache.fonts.get(id!);
         if (!typeface) throw new CanvasKitReplayError('contract', `CanvasKit font resource ${id} is unresolved`);
-        const font = new canvasKit.Font(typeface, size!);
+        const fontKey = [id, size, hasSkew, skew, hasEmbolden, embolden, ...normalizedCoordinates].join(':');
+        let font = resourceCache.fontInstances.get(fontKey);
+        if (!font) {
+          font = new canvasKit.Font(typeface, size!);
+          font.setSubpixel(CANVASKIT_FONT_SUBPIXEL_POSITIONING);
+          if (hasSkew) font.setSkewX(skew!);
+          if (hasEmbolden) font.setEmbolden(true);
+          resourceCache.fontInstances.set(fontKey, font);
+          resourceCache.performance.fontAllocationCount += 1;
+        }
         setFill(textColor);
-        skCanvas.drawGlyphs(glyphs, positions, x!, y!, font, paint);
-        font.delete();
+        if (realGlyphCount > 0) {
+          skCanvas.drawGlyphs(
+            realGlyphCount === scratch.glyphs.length
+              ? scratch.glyphs
+              : scratch.glyphs.subarray(0, realGlyphCount),
+            realGlyphCount * 2 === scratch.positions.length
+              ? scratch.positions
+              : scratch.positions.subarray(0, realGlyphCount * 2),
+            x!, y!, font, paint,
+          );
+        }
+        for (const [px, py, width, height, strokeWidth] of placeholders) {
+          paint.setStyle(canvasKit.PaintStyle.Stroke);
+          paint.setStrokeWidth(strokeWidth!);
+          skCanvas.drawRect(rect(x! + px!, y! + py!, width!, height!), paint);
+        }
+        setFill(textColor);
+        for (const [x0, x1, decorationY, thickness] of decorations) {
+          skCanvas.drawRect(
+            canvasKit.LTRBRect(
+              x! + x0!, y! + decorationY! - thickness! * 0.5,
+              x! + x1!, y! + decorationY! + thickness! * 0.5,
+            ),
+            paint,
+          );
+        }
         continue;
       }
       if (opcode === DRAW_IMAGE) {
@@ -278,8 +388,46 @@ function replay(
     }
     surface.flush();
   } finally {
-    paint.delete();
+    resourceCache.performance.frameTimeMs.push(monotonicNow() - startedAt);
   }
+}
+
+function monotonicNow(): number {
+  return globalThis.performance?.now() ?? Date.now();
+}
+
+function readWebGlInfo(canvas: HTMLCanvasElement): CanvasKitWebGlInfo {
+  const gl = canvas.getContext?.('webgl2') ?? canvas.getContext?.('webgl');
+  if (!gl) return { version: 'unavailable', renderer: 'unavailable', software: true };
+  const extension = gl.getExtension('WEBGL_debug_renderer_info') as {
+    UNMASKED_RENDERER_WEBGL: number;
+  } | null;
+  const version = String(gl.getParameter(gl.VERSION) ?? 'unknown');
+  const renderer = String(gl.getParameter(extension?.UNMASKED_RENDERER_WEBGL ?? gl.RENDERER) ?? 'unknown');
+  return {
+    version,
+    renderer,
+    software: /swiftshader|llvmpipe|lavapipe|software/i.test(renderer),
+  };
+}
+
+function performanceSnapshot(canvas: HTMLCanvasElement): CanvasKitPerformanceSnapshot {
+  const metrics = requireSurface(canvas).performance;
+  return { ...metrics, frameTimeMs: [...metrics.frameTimeMs], webgl: { ...metrics.webgl } };
+}
+
+function resetPerformance(canvas: HTMLCanvasElement): void {
+  const resource = requireSurface(canvas);
+  resource.performance = {
+    replayCount: 0,
+    fullSceneReplayCount: 0,
+    commandPayloadBytes: 0,
+    paintAllocationCount: 0,
+    fontAllocationCount: 0,
+    scratchAllocationCount: 0,
+    frameTimeMs: [],
+    webgl: resource.performance.webgl,
+  };
 }
 
 function registerResources(resource: CanvasKitSurface, packets: CanvasKitResource[]): void {
@@ -350,17 +498,27 @@ function readPath(
 
 function resize(canvas: HTMLCanvasElement): void {
   const previous = requireSurface(canvas);
+  const performance = previous.performance;
   previous.surface.delete();
+  previous.paint.delete();
   const replacement = createSurface(canvas, previous.canvasKit);
   for (const [id, font] of previous.fonts) replacement.fonts.set(id, font);
+  for (const [key, font] of previous.fontInstances) replacement.fontInstances.set(key, font);
+  for (const [count, scratch] of previous.glyphScratch) replacement.glyphScratch.set(count, scratch);
   for (const [id, image] of previous.images) replacement.images.set(id, image);
+  replacement.performance = {
+    ...performance,
+    paintAllocationCount: performance.paintAllocationCount + 1,
+    frameTimeMs: [...performance.frameTimeMs],
+    webgl: replacement.performance.webgl,
+  };
   surfaces.set(canvas, replacement);
 }
 
 function installBridge(): void {
   const target = globalThis as Record<string, unknown>;
   if (target[CANVASKIT_BRIDGE_KEY]) return;
-  const bridge: CanvasKitBridge = { replay, resize };
+  const bridge: CanvasKitBridge = { replay, resize, performanceSnapshot, resetPerformance };
   target[CANVASKIT_BRIDGE_KEY] = bridge;
 }
 
