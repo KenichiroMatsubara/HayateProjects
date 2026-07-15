@@ -1,5 +1,6 @@
 import CanvasKitInit, {
   type CanvasKit,
+  type Font,
   type Image,
   type Surface,
   type Typeface,
@@ -25,6 +26,9 @@ const POP_CLIP = 12;
 const BLURRED_RECT = 13;
 const INSET_BLURRED_RECT = 14;
 
+const CANVASKIT_TEXT_ANTIALIAS = true;
+const CANVASKIT_FONT_SUBPIXEL_POSITIONING = true;
+
 type ReplayErrorCategory = 'contract' | 'environment';
 
 export class CanvasKitReplayError extends Error {
@@ -49,6 +53,7 @@ interface CanvasKitSurface {
   readonly canvasKit: CanvasKit;
   readonly surface: Surface;
   readonly fonts: Map<number, Typeface>;
+  readonly fontInstances: Map<string, Font>;
   readonly images: Map<number, Image>;
 }
 
@@ -81,7 +86,7 @@ async function loadCanvasKit(initialize: CanvasKitInitializer): Promise<CanvasKi
 function createSurface(canvas: HTMLCanvasElement, canvasKit: CanvasKit): CanvasKitSurface {
   const surface = canvasKit.MakeWebGLCanvasSurface(canvas);
   if (surface == null) throw new Error('CanvasKit surface unavailable');
-  return { canvasKit, surface, fonts: new Map(), images: new Map() };
+  return { canvasKit, surface, fonts: new Map(), fontInstances: new Map(), images: new Map() };
 }
 
 function requireSurface(canvas: HTMLCanvasElement): CanvasKitSurface {
@@ -100,6 +105,7 @@ function replay(
   registerResources(resourceCache, resources);
   const skCanvas = surface.getCanvas();
   const paint = new canvasKit.Paint();
+  paint.setAntiAlias?.(CANVASKIT_TEXT_ANTIALIAS);
   let offset = 0;
 
   const take = (count: number, command: string): number[] => {
@@ -195,21 +201,58 @@ function replay(
       if (opcode === DRAW_TEXT) {
         const [id, x, y, size] = take(4, 'text header');
         const textColor = color('text color');
+        const [hasSkew, skew] = take(2, 'text skew synthesis');
+        const [hasEmbolden, embolden] = take(2, 'text embolden synthesis');
+        const [coordinateCount] = take(1, 'text variation coordinate count');
+        const normalizedCoordinates = take(coordinateCount!, 'text variation coordinates');
         const [glyphCount] = take(1, 'glyph count');
-        const glyphs = new Uint16Array(glyphCount!);
-        const positions = new Float32Array(glyphCount! * 2);
+        const glyphValues: number[] = [];
+        const positionValues: number[] = [];
         for (let index = 0; index < glyphCount!; index += 1) {
           const [glyph, gx, gy] = take(3, 'glyph');
-          glyphs[index] = glyph!;
-          positions[index * 2] = gx!;
-          positions[index * 2 + 1] = gy!;
+          if (glyph !== 0) {
+            glyphValues.push(glyph!);
+            positionValues.push(gx!, gy!);
+          }
         }
+        const [placeholderCount] = take(1, 'missing glyph placeholder count');
+        const placeholders = Array.from({ length: placeholderCount! }, () => take(5, 'missing glyph placeholder'));
+        const [decorationCount] = take(1, 'text decoration count');
+        const decorations = Array.from({ length: decorationCount! }, () => take(4, 'text decoration'));
         const typeface = resourceCache.fonts.get(id!);
         if (!typeface) throw new CanvasKitReplayError('contract', `CanvasKit font resource ${id} is unresolved`);
-        const font = new canvasKit.Font(typeface, size!);
+        const fontKey = [id, size, hasSkew, skew, hasEmbolden, embolden, ...normalizedCoordinates].join(':');
+        let font = resourceCache.fontInstances.get(fontKey);
+        if (!font) {
+          font = new canvasKit.Font(typeface, size!);
+          font.setSubpixel(CANVASKIT_FONT_SUBPIXEL_POSITIONING);
+          if (hasSkew) font.setSkewX(skew!);
+          if (hasEmbolden) font.setEmbolden(true);
+          resourceCache.fontInstances.set(fontKey, font);
+        }
         setFill(textColor);
-        skCanvas.drawGlyphs(glyphs, positions, x!, y!, font, paint);
-        font.delete();
+        if (glyphValues.length > 0) {
+          skCanvas.drawGlyphs(
+            Uint16Array.from(glyphValues),
+            Float32Array.from(positionValues),
+            x!, y!, font, paint,
+          );
+        }
+        for (const [px, py, width, height, strokeWidth] of placeholders) {
+          paint.setStyle(canvasKit.PaintStyle.Stroke);
+          paint.setStrokeWidth(strokeWidth!);
+          skCanvas.drawRect(rect(x! + px!, y! + py!, width!, height!), paint);
+        }
+        setFill(textColor);
+        for (const [x0, x1, decorationY, thickness] of decorations) {
+          skCanvas.drawRect(
+            canvasKit.LTRBRect(
+              x! + x0!, y! + decorationY! - thickness! * 0.5,
+              x! + x1!, y! + decorationY! + thickness! * 0.5,
+            ),
+            paint,
+          );
+        }
         continue;
       }
       if (opcode === DRAW_IMAGE) {
@@ -353,6 +396,7 @@ function resize(canvas: HTMLCanvasElement): void {
   previous.surface.delete();
   const replacement = createSurface(canvas, previous.canvasKit);
   for (const [id, font] of previous.fonts) replacement.fonts.set(id, font);
+  for (const [key, font] of previous.fontInstances) replacement.fontInstances.set(key, font);
   for (const [id, image] of previous.images) replacement.images.set(id, image);
   surfaces.set(canvas, replacement);
 }

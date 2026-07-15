@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use hayate_core::{
-    build_draw_path, render_scene_graph, DrawFillRule, DrawLineCap, DrawLineJoin, PathSink,
-    PathVerb, RenderImage, RenderImageAlphaType, SceneGraph, ScenePainter, ShadowOccluder,
-    StrokeStyle, TextRunData,
+    build_draw_path, is_notdef, missing_glyph_placeholder, render_scene_graph, DrawFillRule,
+    DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, RenderImageAlphaType, SceneGraph,
+    ScenePainter, ShadowOccluder, StrokeStyle, TextRunData,
 };
 
 pub(crate) const CLEAR: f32 = 0.0;
@@ -309,6 +309,16 @@ impl ScenePainter for CommandPainter<'_> {
             self.scaled(x), self.scaled(y), self.scaled(data.font_size),
         ]);
         self.color(color);
+        match data.synthesis.skew_tangent {
+            Some(value) => self.frame.commands.extend_from_slice(&[1.0, value]),
+            None => self.frame.commands.extend_from_slice(&[0.0, 0.0]),
+        }
+        match data.synthesis.embolden {
+            Some(value) => self.frame.commands.extend_from_slice(&[1.0, value]),
+            None => self.frame.commands.extend_from_slice(&[0.0, 0.0]),
+        }
+        self.frame.commands.push(data.normalized_coords.len() as f32);
+        self.frame.commands.extend(data.normalized_coords.iter().map(|&coord| coord as f32));
         self.frame.commands.push(data.glyphs.len() as f32);
         let scale = self.content_scale;
         for glyph in &data.glyphs {
@@ -316,6 +326,27 @@ impl ScenePainter for CommandPainter<'_> {
                 glyph.id as f32,
                 glyph.x * scale,
                 glyph.y * scale,
+            ]);
+        }
+        let missing_count = data.glyphs.iter().filter(|glyph| is_notdef(glyph)).count();
+        self.frame.commands.push(missing_count as f32);
+        for glyph in data.glyphs.iter().filter(|glyph| is_notdef(glyph)) {
+            let placeholder = missing_glyph_placeholder(glyph, data.font_size);
+            self.frame.commands.extend_from_slice(&[
+                placeholder.x * scale,
+                placeholder.y * scale,
+                placeholder.width * scale,
+                placeholder.height * scale,
+                placeholder.stroke_width * scale,
+            ]);
+        }
+        self.frame.commands.push(data.decorations.len() as f32);
+        for decoration in &data.decorations {
+            self.frame.commands.extend_from_slice(&[
+                decoration.x0 * scale,
+                decoration.x1 * scale,
+                decoration.y * scale,
+                decoration.thickness * scale,
             ]);
         }
     }
@@ -459,8 +490,60 @@ mod tests {
 
     use hayate_core::{
         Blob, DrawCommand, DrawPaint, Node, NodeKind, RenderFont, RenderGlyph, RenderImage,
-        RenderImageAlphaType, RenderImageFormat, SceneGraph, TextRunData, TextSynthesis,
+        RenderImageAlphaType, RenderImageFormat, SceneGraph, TextDecorationLine, TextRunData,
+        TextSynthesis,
     };
+
+    fn text_frame(synthesis: TextSynthesis, normalized_coords: Vec<i16>) -> CanvasKitFrame {
+        let data = Arc::new(TextRunData {
+            font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0), font_size: 12.0,
+            glyphs: vec![RenderGlyph { id: 7, x: 1.0, y: 2.0 }], decorations: Vec::new(),
+            text: Arc::from("a"), synthesis, normalized_coords,
+        });
+        let mut graph = SceneGraph::new();
+        graph.insert(Node {
+            kind: NodeKind::TextRun { x: 3.0, y: 4.0, color: [1.0; 4], data },
+            children: Vec::new(),
+        });
+        encode_scene(&graph, [0.0; 4], 1.0, &mut ResourceRegistry::default())
+    }
+
+    #[test]
+    fn text_command_preserves_synthesis_and_normalized_variation_coordinates() {
+        let regular = text_frame(TextSynthesis::default(), Vec::new());
+        let synthesized = text_frame(
+            TextSynthesis { skew_tangent: Some(0.25), embolden: Some(18.0) },
+            vec![4096, -8192],
+        );
+
+        assert_ne!(regular.commands, synthesized.commands);
+        assert!(
+            synthesized.commands.windows(8).any(|values| values == [1.0, 0.25, 1.0, 18.0, 2.0, 4096.0, -8192.0, 1.0]),
+            "text payload must carry synthesis and normalized coordinates: {:?}", synthesized.commands,
+        );
+    }
+
+    #[test]
+    fn text_command_preserves_missing_glyphs_and_decorations() {
+        let data = Arc::new(TextRunData {
+            font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0), font_size: 20.0,
+            glyphs: vec![RenderGlyph { id: 0, x: 2.0, y: 3.0 }],
+            decorations: vec![TextDecorationLine { x0: 1.0, x1: 11.0, y: 5.0, thickness: 2.0 }],
+            text: Arc::from("missing"), synthesis: TextSynthesis::default(), normalized_coords: Vec::new(),
+        });
+        let mut graph = SceneGraph::new();
+        graph.insert(Node {
+            kind: NodeKind::TextRun { x: 7.0, y: 9.0, color: [1.0; 4], data },
+            children: Vec::new(),
+        });
+
+        let frame = encode_scene(&graph, [0.0; 4], 2.0, &mut ResourceRegistry::default());
+
+        assert!(frame.commands.windows(10).any(|values| values.iter().zip(
+            [1.0, 0.0, 4.0, 6.0, 1.0, 7.2, -19.6, 18.8, 24.8, 2.4],
+        ).all(|(actual, expected)| (actual - expected).abs() < 0.001)));
+        assert!(frame.commands.windows(5).any(|values| values == [1.0, 2.0, 22.0, 10.0, 4.0]));
+    }
 
     #[test]
     fn scene_walk_order_is_preserved_in_the_frame_command_buffer() {

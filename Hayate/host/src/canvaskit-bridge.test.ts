@@ -140,6 +140,118 @@ describe('prepareCanvasKitSurface', () => {
     ]);
   });
 
+  it('replays text with antialiasing, subpixel positioning, synthesis, and a variation-specific font instance', async () => {
+    const drawGlyphs = vi.fn();
+    const paint = {
+      setStyle: vi.fn(),
+      setColor: vi.fn(),
+      setAntiAlias: vi.fn(),
+      delete: vi.fn(),
+    };
+    const fonts: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
+    class Font {
+      setSubpixel = vi.fn();
+      setSkewX = vi.fn();
+      setEmbolden = vi.fn();
+      delete = vi.fn();
+      constructor() { fonts.push(this as never); }
+    }
+    const typeface = { delete: vi.fn() };
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn(() => ({
+        getCanvas: () => ({ drawGlyphs }),
+        flush: vi.fn(),
+        delete: vi.fn(),
+      })),
+      Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => typeface) },
+      Paint: class { constructor() { return paint; } },
+      Font,
+      PaintStyle: { Fill: 0 },
+      Color4f: (...color: number[]) => color,
+    };
+    const canvas = {} as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      replay(target: HTMLCanvasElement, commands: Float32Array, resources: Array<Record<string, unknown>>): void;
+    };
+
+    const regular = new Float32Array([
+      6, 1, 3, 4, 12,
+      0.1, 0.2, 0.3, 1,
+      0, 0,
+      0, 0,
+      0,
+      1, 7, 1, 2,
+      0,
+      0,
+    ]);
+    const synthesizedVariable = new Float32Array([
+      6, 1, 3, 4, 12,
+      0.1, 0.2, 0.3, 1,
+      1, 0.25,
+      1, 18,
+      2, 4096, -8192,
+      1, 7, 1, 2,
+      0,
+      0,
+    ]);
+    bridge.replay(canvas, regular, [{ kind: 'font', id: 1, bytes: new Uint8Array([1, 2, 3, 4]) }]);
+    bridge.replay(canvas, synthesizedVariable, []);
+    bridge.replay(canvas, synthesizedVariable, []);
+
+    expect(paint.setAntiAlias).toHaveBeenCalledWith(true);
+    expect(fonts).toHaveLength(2);
+    expect(fonts[1]!.setSubpixel).toHaveBeenCalledWith(true);
+    expect(fonts[1]!.setSkewX).toHaveBeenCalledWith(0.25);
+    expect(fonts[1]!.setEmbolden).toHaveBeenCalledWith(true);
+    expect(drawGlyphs).toHaveBeenCalledTimes(3);
+  });
+
+  it('renders the shared missing-glyph placeholder and text decorations instead of glyph zero', async () => {
+    const drawGlyphs = vi.fn();
+    const drawRect = vi.fn();
+    const paint = {
+      setStyle: vi.fn(), setColor: vi.fn(), setAntiAlias: vi.fn(),
+      setStrokeWidth: vi.fn(), delete: vi.fn(),
+    };
+    class Font {
+      setSubpixel() {}
+      delete() {}
+    }
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn(() => ({
+        getCanvas: () => ({ drawGlyphs, drawRect }),
+        flush: vi.fn(), delete: vi.fn(),
+      })),
+      Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => ({})) },
+      Paint: class { constructor() { return paint; } },
+      Font,
+      PaintStyle: { Fill: 0, Stroke: 1 },
+      Color4f: (...color: number[]) => color,
+      LTRBRect: (...bounds: number[]) => bounds,
+    };
+    const canvas = {} as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      replay(target: HTMLCanvasElement, commands: Float32Array, resources: Array<Record<string, unknown>>): void;
+    };
+
+    bridge.replay(canvas, new Float32Array([
+      6, 1, 7, 9, 20,
+      1, 0, 0, 1,
+      0, 0, 0, 0, 0,
+      2, 0, 2, 3, 7, 4, 5,
+      1, 3.6, -9.8, 9.4, 12.4, 1.2,
+      1, 1, 11, 5, 2,
+    ]), [{ kind: 'font', id: 1, bytes: new Uint8Array([1]) }]);
+
+    expect(drawGlyphs.mock.calls[0]![0]).toEqual(new Uint16Array([7]));
+    expect(drawRect).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.closeTo(10.6), expect.closeTo(-0.8), expect.closeTo(20), expect.closeTo(11.6),
+    ]), paint);
+    expect(drawRect).toHaveBeenCalledWith([8, 13, 18, 15], paint);
+  });
+
   it('classifies malformed payload as contract and decode failure as environment', async () => {
     const canvasKit = {
       MakeWebGLCanvasSurface: vi.fn(() => ({ getCanvas: () => ({}), flush: vi.fn(), delete: vi.fn() })),
