@@ -47,8 +47,9 @@ export function generateLoadCanvasBackend(manifest) {
   const needsCanvasKitBootstrap = targets.some((target) => target.host.bootstrap === 'canvaskit');
   const backends = [...new Set(targets.map((t) => t.host.backend))];
   const branches = backends.map((backend) => branchFor(backend, targets.filter((t) => t.host.backend === backend)));
-  // `layerPresent` always exists as its own parameter (vello's own runtime toggle, see the
-  // JSDoc below) — a target naming its runtime arg `layerPresent` would be a redundant
+  // `layerPresent` always exists as the shared CanvasKit/Vello runtime toggle (see the JSDoc
+  // below) — targets naming their runtime arg `layerPresent` reuse that parameter rather than add
+  // a duplicate
   // duplicate param.
   const runtimeArgs = [...new Set(targets.map((t) => t.host.runtimeLayerPresentArg).filter(Boolean))].filter(
     (name) => name !== 'layerPresent',
@@ -67,7 +68,7 @@ ${needsCanvasKitBootstrap ? "import { prepareCanvasKitSurface } from './canvaski
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
 ${needsCanvasKitBootstrap ? ' * CanvasKit は Host が先に surface を確立し、WASM 側は opaque な frame replay 境界だけを使う。\n' : ''}
  *
- * \`layerPresent\` は vello 専用のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
+ * \`layerPresent\` は CanvasKit / vello のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
  * \`HayateElementRenderer.init\` にランタイムフラグとして渡す。ADR-0137 により Web は既定
  * ON — \`false\` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残す。
  * native は本パスを経由しないため既定 OFF のまま変更なし。${

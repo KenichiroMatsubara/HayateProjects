@@ -5,6 +5,7 @@ import {
   type CanvasBackend,
 } from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
+import { detachCanvasKitSurface } from './canvaskit-bridge.js';
 import {
   attachAccessibilityMirror,
   type AccessibilityMirror,
@@ -83,8 +84,8 @@ export interface CreateHayateWebHostOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
   /**
-   * `backend === 'vello'` の時だけ効く、layer-present（per-layer 経路、ADR-0125/0127・
-   * ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
+   * `backend === 'canvaskit' | 'vello'` の時に効く、layer-present（per-layer 経路、
+   * ADR-0125/0127・ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
    *
    * `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残している。
    * native（Android/iOS）は本パスを経由しないため既定 OFF のまま変更なし。
@@ -244,6 +245,7 @@ export async function createHayateWebHost(
   // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
   const attempts = resolveCanvasBackendAttemptOrder(effectiveOptions, webgpuAvailable, search ?? '');
   let raw: RawHayate | undefined;
+  let selectedBackend: CanvasBackend | undefined;
   let lastError: unknown;
   for (const selection of attempts) {
     console.info(
@@ -251,6 +253,7 @@ export async function createHayateWebHost(
     );
     try {
       raw = await load(selection.backend, canvas);
+      selectedBackend = selection.backend;
       break;
     } catch (error) {
       lastError = error;
@@ -299,5 +302,13 @@ export async function createHayateWebHost(
       mirror.poll();
     });
 
-  return { raw, requestFrame, cancelFrame, detach: mirror.detach };
+  let detached = false;
+  const detach = (): void => {
+    if (detached) return;
+    detached = true;
+    mirror.detach();
+    if (selectedBackend === 'canvaskit') detachCanvasKitSurface(canvas);
+  };
+
+  return { raw, requestFrame, cancelFrame, detach };
 }

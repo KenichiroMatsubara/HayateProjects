@@ -214,7 +214,11 @@ test('npmName/host mapping matches what Hayate/host/src actually imports', () =>
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
   assert.equal(byName['pkg-canvaskit'].npmName, '@torimi/hayate-adapter-web-canvaskit');
-  assert.deepEqual(byName['pkg-canvaskit'].host, { backend: 'canvaskit', bootstrap: 'canvaskit' });
+  assert.deepEqual(byName['pkg-canvaskit'].host, {
+    backend: 'canvaskit',
+    bootstrap: 'canvaskit',
+    runtimeLayerPresentArg: 'layerPresent',
+  });
 
   assert.equal(byName['pkg'].npmName, '@torimi/hayate-adapter-web');
   assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });

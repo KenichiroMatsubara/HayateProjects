@@ -41,6 +41,7 @@ describe('prepareCanvasKitSurface', () => {
         replayCount: number;
         fullSceneReplayCount: number;
         commandPayloadBytes: number;
+        commandPayloadAllocationCount: number;
         paintAllocationCount: number;
         frameTimeMs: readonly number[];
       };
@@ -54,6 +55,7 @@ describe('prepareCanvasKitSurface', () => {
       replayCount: 2,
       fullSceneReplayCount: 0,
       commandPayloadBytes: commands.byteLength * 2,
+      commandPayloadAllocationCount: 1,
       paintAllocationCount: 1,
       frameTimeMs: [expect.any(Number), expect.any(Number)],
       webgl: {
@@ -230,9 +232,12 @@ describe('prepareCanvasKitSurface', () => {
     const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
       replay(target: HTMLCanvasElement, commands: Float32Array, resources: Array<Record<string, unknown>>): void;
       performanceSnapshot(target: HTMLCanvasElement): {
+        paintAllocationCount: number;
         fontAllocationCount: number;
         scratchAllocationCount: number;
+        commandDecodeAllocationCount: number;
       };
+      resetPerformance(target: HTMLCanvasElement): void;
     };
 
     const regular = new Float32Array([
@@ -268,6 +273,17 @@ describe('prepareCanvasKitSurface', () => {
     expect(bridge.performanceSnapshot(canvas)).toMatchObject({
       fontAllocationCount: 2,
       scratchAllocationCount: 2,
+      commandDecodeAllocationCount: 0,
+    });
+
+    bridge.resetPerformance(canvas);
+    bridge.replay(canvas, synthesizedVariable, []);
+    bridge.replay(canvas, synthesizedVariable, []);
+    expect(bridge.performanceSnapshot(canvas)).toMatchObject({
+      paintAllocationCount: 0,
+      fontAllocationCount: 0,
+      scratchAllocationCount: 0,
+      commandDecodeAllocationCount: 0,
     });
   });
 
@@ -338,5 +354,192 @@ describe('prepareCanvasKitSurface', () => {
     expect(() => bridge.replay(canvas, new Float32Array(), [
       { ...base, id: 2, bytes: new Uint8Array([1, 2, 3, 4]) },
     ])).toThrowError(expect.objectContaining({ category: 'environment' }));
+  });
+
+  it('releases replaced surfaces and cached resources exactly once on detach', async () => {
+    const surfaces = Array.from({ length: 2 }, () => ({
+      getCanvas: () => ({ drawGlyphs: vi.fn() }),
+      flush: vi.fn(),
+      delete: vi.fn(),
+    }));
+    const paints = Array.from({ length: 2 }, () => ({
+      setAntiAlias: vi.fn(), setStyle: vi.fn(), setColor: vi.fn(), delete: vi.fn(),
+    }));
+    const typeface = { delete: vi.fn() };
+    const image = { width: () => 1, height: () => 1, delete: vi.fn() };
+    const fontDelete = vi.fn();
+    let surfaceIndex = 0;
+    let paintIndex = 0;
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn(() => surfaces[surfaceIndex++]!),
+      MakeImage: vi.fn(() => image),
+      Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => typeface) },
+      Paint: class { constructor() { return paints[paintIndex++]!; } },
+      Font: class { setSubpixel() {} delete() { fontDelete(); } },
+      PaintStyle: { Fill: 0 },
+      Color4f: (...color: number[]) => color,
+      AlphaType: { Opaque: 0, Unpremul: 1, Premul: 2 },
+      ColorType: { RGBA_8888: 0 },
+      ColorSpace: { SRGB: {} },
+    };
+    const canvas = {} as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      replay(target: HTMLCanvasElement, commands: Float32Array, resources: Array<Record<string, unknown>>): void;
+      resize(target: HTMLCanvasElement): void;
+      detach(target: HTMLCanvasElement): void;
+    };
+    bridge.replay(canvas, new Float32Array([
+      6, 1, 0, 0, 12,
+      0, 0, 0, 1,
+      0, 0, 0, 0, 0,
+      0,
+      0,
+      0,
+    ]), [
+      { kind: 'font', id: 1, bytes: new Uint8Array([1]) },
+      { kind: 'image', id: 2, width: 1, height: 1, alphaType: 1, bytes: new Uint8Array(4) },
+    ]);
+
+    bridge.resize(canvas);
+    bridge.detach(canvas);
+    bridge.detach(canvas);
+
+    expect(surfaces[0]!.delete).toHaveBeenCalledOnce();
+    expect(surfaces[1]!.delete).toHaveBeenCalledOnce();
+    expect(paints[0]!.delete).toHaveBeenCalledOnce();
+    expect(paints[1]!.delete).toHaveBeenCalledOnce();
+    expect(typeface.delete).toHaveBeenCalledOnce();
+    expect(image.delete).toHaveBeenCalledOnce();
+    expect(fontDelete).toHaveBeenCalledOnce();
+  });
+
+  it('releases the cache once and refuses replay after a terminal surface failure', async () => {
+    const surface = {
+      getCanvas: () => ({ clear: vi.fn() }),
+      flush: vi.fn(() => { throw new Error('context lost'); }),
+      delete: vi.fn(),
+    };
+    const paint = {
+      setAntiAlias: vi.fn(), setStyle: vi.fn(), setColor: vi.fn(), delete: vi.fn(),
+    };
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn(() => surface),
+      Paint: class { constructor() { return paint; } },
+      PaintStyle: { Fill: 0 },
+      Color4f: (...color: number[]) => color,
+    };
+    const canvas = {} as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      replay(target: HTMLCanvasElement, commands: Float32Array): void;
+    };
+    const clear = new Float32Array([0, 0, 0, 0, 1]);
+
+    expect(() => bridge.replay(canvas, clear)).toThrow('context lost');
+    expect(() => bridge.replay(canvas, clear)).toThrow('CanvasKit surface was not prepared');
+
+    expect(surface.flush).toHaveBeenCalledOnce();
+    expect(surface.delete).toHaveBeenCalledOnce();
+    expect(paint.delete).toHaveBeenCalledOnce();
+  });
+
+  it('releases the previous cache when surface replacement fails', async () => {
+    const surface = {
+      getCanvas: () => ({}), flush: vi.fn(), delete: vi.fn(),
+    };
+    const paint = {
+      setAntiAlias: vi.fn(), setStyle: vi.fn(), setColor: vi.fn(), setMaskFilter: vi.fn(),
+      setPathEffect: vi.fn(), delete: vi.fn(),
+    };
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn()
+        .mockReturnValueOnce(surface)
+        .mockReturnValueOnce(null),
+      Paint: class { constructor() { return paint; } },
+    };
+    const canvas = {} as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      resize(target: HTMLCanvasElement): void;
+      replay(target: HTMLCanvasElement, commands: Float32Array): void;
+    };
+
+    expect(() => bridge.resize(canvas)).toThrow('CanvasKit surface unavailable');
+    expect(() => bridge.replay(canvas, new Float32Array())).toThrow('CanvasKit surface was not prepared');
+    expect(surface.delete).toHaveBeenCalledOnce();
+    expect(paint.delete).toHaveBeenCalledOnce();
+  });
+
+  it('replays a dirty layer once and composites its clean snapshot on later frames', async () => {
+    const drawImage = vi.fn();
+    const clipRect = vi.fn();
+    const concat = vi.fn();
+    const snapshot = { delete: vi.fn() };
+    const layerSurface = {
+      getCanvas: () => ({ clear: vi.fn() }),
+      flush: vi.fn(),
+      makeImageSnapshot: vi.fn(() => snapshot),
+      delete: vi.fn(),
+    };
+    const mainSurface = {
+      getCanvas: () => ({
+        clear: vi.fn(), save: vi.fn(), concat, clipRect, drawImage, restore: vi.fn(),
+      }),
+      flush: vi.fn(),
+      imageInfo: vi.fn(() => ({ width: 100, height: 80 })),
+      makeSurface: vi.fn(() => layerSurface),
+      delete: vi.fn(),
+    };
+    const paint = {
+      setAntiAlias: vi.fn(), setStyle: vi.fn(), setColor: vi.fn(), setMaskFilter: vi.fn(),
+      setPathEffect: vi.fn(), delete: vi.fn(),
+    };
+    const canvasKit = {
+      MakeWebGLCanvasSurface: vi.fn(() => mainSurface),
+      Paint: class { constructor() { return paint; } },
+      Color4f: (...color: number[]) => color,
+      LTRBRect: (...rect: number[]) => rect,
+      ClipOp: { Intersect: 0 },
+      PaintStyle: { Fill: 0 },
+    };
+    const canvas = {} as HTMLCanvasElement;
+    await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
+      replayLayer(target: HTMLCanvasElement, layer: number, commands: Float32Array): void;
+      compositeLayers(
+        target: HTMLCanvasElement,
+        placements: Float64Array,
+        background: Float32Array,
+        contentScale: number,
+      ): void;
+      performanceSnapshot(target: HTMLCanvasElement): {
+        fullSceneReplayCount: number;
+        layerReplayCount: number;
+        compositeFrameCount: number;
+        compositeOnlyFrameCount: number;
+      };
+    };
+    const placement = new Float64Array([1, 1, 0, 0, 1, 4, 5, 1, 1, 2, 3, 4]);
+    const background = new Float32Array([0.1, 0.2, 0.3, 1]);
+
+    bridge.replayLayer(canvas, 1, new Float32Array([0, 0, 0, 0, 0]));
+    bridge.compositeLayers(canvas, placement, background, 2);
+    bridge.compositeLayers(canvas, placement, background, 2);
+    bridge.compositeLayers(canvas, new Float64Array(), background, 2);
+
+    expect(layerSurface.makeImageSnapshot).toHaveBeenCalledOnce();
+    expect(drawImage).toHaveBeenCalledTimes(2);
+    expect(paint.setColor).toHaveBeenCalledWith([1, 1, 1, 1]);
+    expect(clipRect).toHaveBeenCalledWith([2, 4, 8, 12], 0, true);
+    expect(concat).toHaveBeenCalledWith([1, 0, 8, 0, 1, 10, 0, 0, 1]);
+    expect(snapshot.delete).toHaveBeenCalledOnce();
+    expect(layerSurface.delete).toHaveBeenCalledOnce();
+    expect(bridge.performanceSnapshot(canvas)).toMatchObject({
+      fullSceneReplayCount: 0,
+      layerReplayCount: 1,
+      compositeFrameCount: 3,
+      compositeOnlyFrameCount: 2,
+    });
   });
 });
