@@ -24,86 +24,6 @@ const POINTER_MOVE_DEDUP_PX: f32 = 1.0;
 /// 揺らさないようにする。
 const SCROLLBAR_DRAG_MIN_DELTA_PX: f32 = 1e-6;
 
-/// 編集キーストロークを [`EditIntent`] に対応付ける（ADR-0103）。水平矢印は
-/// キャレットを移動（Shift で拡張、Alt/Ctrl で1書記素から単語単位へ拡幅）し、
-/// Backspace / Delete は前後1文字を削除する。それ以外のキーは `None` を返し、
-/// 呼び出し側は生の `on_key_down` 経路へ落ちる。OS 非依存のコア橋渡しで、
-/// 完全な OS キーマップは Platform Adapter が持つ。
-fn key_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
-    // プライマリ修飾（Win/Linux は Ctrl、macOS は Cmd）でのクリップボード／全選択。
-    // これらは矢印と同じ継ぎ目で focus 中の text-input に届く。文書選択経路は
-    // 読み取り専用 Selection があるときしか処理しないため、これが無いと focus 中の
-    // フィールドは Ctrl/Cmd+A/C/X/V を受け取れない。
-    if modifiers & MOD_PRIMARY != 0 {
-        if let Some(intent) = clipboard_edit_intent(key) {
-            return Some(intent);
-        }
-    }
-    // 前後方向の削除。Alt（macOS Option）または Ctrl（Win/Linux）で書記素から
-    // 単語単位へ拡幅する（矢印と同じ「単語単位」修飾）。
-    if let Some(direction) = match key {
-        "Backspace" => Some(Direction::Backward),
-        "Delete" => Some(Direction::Forward),
-        _ => None,
-    } {
-        let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0 {
-            Granularity::Word
-        } else {
-            Granularity::Grapheme
-        };
-        return Some(EditIntent::Delete {
-            granularity,
-            direction,
-        });
-    }
-    let direction = match key {
-        "ArrowLeft" => Direction::Backward,
-        "ArrowRight" => Direction::Forward,
-        // 垂直移動（素の ↑/↓）。複数行フィールドは表示行間を移動し、単一行は
-        // フィールド端へ飛ぶ（下流で解決）。
-        "ArrowUp" => Direction::Up,
-        "ArrowDown" => Direction::Down,
-        _ => return None,
-    };
-    // Alt/Ctrl は*水平*ステップを単語へ拡幅する。垂直移動には効かず、常に表示行
-    // 1行ぶん動く。
-    let granularity = if modifiers & (MOD_ALT | MOD_CTRL) != 0
-        && matches!(direction, Direction::Backward | Direction::Forward)
-    {
-        Granularity::Word
-    } else {
-        Granularity::Grapheme
-    };
-    Some(if modifiers & MOD_SHIFT != 0 {
-        EditIntent::Extend {
-            granularity,
-            direction,
-        }
-    } else {
-        EditIntent::Move {
-            granularity,
-            direction,
-        }
-    })
-}
-
-/// プライマリ修飾＋文字をクリップボード／全選択の [`EditIntent`] に対応付ける
-/// （ADR-0103）。プライマリ修飾の保持は呼び出し側で確認済みなので、ここは文字
-/// だけを見る。それ以外のキーは `None`。
-fn clipboard_edit_intent(key: &str) -> Option<EditIntent> {
-    if key.eq_ignore_ascii_case("a") {
-        Some(EditIntent::SelectAll)
-    } else if key.eq_ignore_ascii_case("c") {
-        Some(EditIntent::Copy)
-    } else if key.eq_ignore_ascii_case("x") {
-        Some(EditIntent::Cut)
-    } else if key.eq_ignore_ascii_case("v") {
-        Some(EditIntent::Paste)
-    } else {
-        None
-    }
-}
-
 /// `on_pointer_move` の出力（ADR-0088）。`moved` は 1px dedup で合流されたか
 /// レイアウト未準備でスキップされたとき false。`resolved_cursor` はポインタ下の
 /// 要素から解決したカーソルで、Platform Adapter がスタイルに触れず OS／ブラウザ
@@ -874,45 +794,6 @@ impl ElementTree {
         let Some(focused) = self.interaction.focused_element else {
             return;
         };
-        // focus 中の text-input 内の編集キーは EditIntent に解釈され、単一の編集
-        // 継ぎ目で適用される（ADR-0103）。素の矢印はキャレットを移動し（選択は端へ
-        // 畳む）、Shift は選択を拡張、Alt/Ctrl は単語単位へ拡幅、Backspace/Delete は
-        // 1文字削除する。適用時に消費する（IME 変換中は決して消費せず、削除キーが
-        // 変換を壊さない）。
-        if let Some(intent) = key_edit_intent(key, modifiers) {
-            // 編集は `InteractionIntent::Edit` 封筒として単一 seam を通す（ADR-0122）。
-            // pointer/key 経路と accessibility 経路が同じ値型を生産する。
-            if self.apply_interaction_intent(InteractionIntent::Edit {
-                target: focused,
-                intent,
-            }) {
-                return;
-            }
-        }
-        // Enter は複数行フィールドでのみキャレット位置に改行を挿入する。単一行は
-        // テキストに触れず、下記の末尾 KeyDown がアプリの submit シグナルになる。
-        // Enter 単体は `apply_key_down` が処理する。
-        let multiline = self
-            .elements
-            .get(&focused)
-            .map(|el| el.multiline)
-            .unwrap_or(false);
-        if key == "Enter" && multiline {
-            let inserted = self
-                .elements
-                .get_mut(&focused)
-                .and_then(|el| el.edit.as_mut())
-                .map(|edit| edit.apply_key_down(key))
-                .unwrap_or(false);
-            if inserted {
-                // 断片 "\n" ではなく改行挿入後の全文を載せる（上の on_text_input と同型）。
-                let value = self.element_get_text_content(focused);
-                self.emit_interaction(Event::TextInput {
-                    target_id: focused,
-                    text: value,
-                });
-            }
-        }
         self.emit_interaction(Event::KeyDown {
             target_id: focused,
             key: key.to_string(),
@@ -1939,6 +1820,9 @@ impl ElementTree {
         if edit.preedit.is_some() {
             return false;
         }
+        if intent == EditIntent::InsertLineBreak && !el.multiline {
+            return false;
+        }
         // 語彙のうちクリップボード系は Platform Adapter 境界を跨ぐ（ADR-0097）。
         // システムクリップボードは EditState でなくこの継ぎ目にあるので、ここで
         // ツールバーのクリップボードアクション（既に focus 中 text-input の編集選択に
@@ -1975,6 +1859,24 @@ impl ElementTree {
             }
         }
         match intent {
+            EditIntent::InsertLineBreak => {
+                let applied = self
+                    .elements
+                    .get_mut(&target)
+                    .and_then(|el| el.edit.as_mut())
+                    .is_some_and(|edit| edit.apply(intent));
+                if !applied {
+                    return false;
+                }
+                self.engine
+                    .mark_visual_dirty(target, VisualInvalidationReach::SelfOnly);
+                self.bump_a11y_generation();
+                let value = self.element_get_text_content(target);
+                self.emit_interaction(Event::TextInput {
+                    target_id: target,
+                    text: value,
+                });
+            }
             EditIntent::Copy => self.copy_active_selection(),
             EditIntent::Cut => self.cut_active_selection(),
             EditIntent::Paste => self.paste_into_text_input(target),
