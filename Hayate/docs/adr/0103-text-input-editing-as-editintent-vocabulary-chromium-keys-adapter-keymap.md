@@ -6,6 +6,8 @@ status: accepted
 
 **Date: 2026-06-17**
 
+> **追補（ADR-0151）:** Decision 2 の「`interaction.rs` はキー → EditIntent 写像に徹する」は Decision 4 と矛盾するため、「`interaction.rs` は Platform Adapter から受け取った EditIntent を dispatch する」と訂正する。Core の text-input 経路は raw key を編集操作へ写像しない。
+
 > 本 ADR は決定のみを記録する（実装は後続）。`EditState`（ADR-0069）には
 > `insert` / `backspace` / `delete_selection` / `cut` / `paste` / `move_focus` /
 > `set_selection` 等の変異プリミティブが既にあり、`selection.rs` に
