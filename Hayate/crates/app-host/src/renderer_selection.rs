@@ -72,8 +72,33 @@ pub const WEB_RENDERER_ORDER: &[SceneRendererKind] = &[
 
 /// Web Host 用の Renderer Selection Policy。CanvasKit のロード・surface 初期化が失敗した
 /// 場合に限り、同じ boot 中で次の候補へ進む。選択後の terminal failure は RenderHost が扱う。
+#[cfg(not(all(
+    feature = "backend-null",
+    not(any(
+        feature = "backend-canvaskit",
+        feature = "backend-vello",
+        feature = "backend-tiny-skia",
+        feature = "backend-vello-cpu"
+    ))
+)))]
 pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(WEB_RENDERER_ORDER, WEB_RENDERER_ORDER)
+}
+
+/// C3/実ブラウザ検査の `backend-null` 専用ビルドは、本番 Web renderer を一つも
+/// コンパイルしない。この構成だけは Null を通常 init から選び、実 DOM wiring を
+/// renderer 初期化より先に失敗させない。
+#[cfg(all(
+    feature = "backend-null",
+    not(any(
+        feature = "backend-canvaskit",
+        feature = "backend-vello",
+        feature = "backend-tiny-skia",
+        feature = "backend-vello-cpu"
+    ))
+))]
+pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
+    RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
 }
 
 /// `Render Host` がレンダラを採用しなかった、あるいは切り替えた理由。
@@ -425,6 +450,15 @@ mod tests {
         assert_eq!(plan.next_after(SceneRendererKind::TinySkia), None);
     }
 
+    #[cfg(not(all(
+        feature = "backend-null",
+        not(any(
+            feature = "backend-canvaskit",
+            feature = "backend-vello",
+            feature = "backend-tiny-skia",
+            feature = "backend-vello-cpu"
+        ))
+    )))]
     #[test]
     fn web_boot_attempts_canvaskit_then_vello_then_tiny_skia() {
         let plan = web_renderer_selection_policy().choose(RendererCapabilities {
@@ -440,6 +474,24 @@ mod tests {
             ],
             "web boot must only advance through unselected candidates in ADR-0148 order",
         );
+    }
+
+    #[cfg(all(
+        feature = "backend-null",
+        not(any(
+            feature = "backend-canvaskit",
+            feature = "backend-vello",
+            feature = "backend-tiny-skia",
+            feature = "backend-vello-cpu"
+        ))
+    ))]
+    #[test]
+    fn backend_null_only_web_build_selects_null_for_browser_contract_tests() {
+        let plan = web_renderer_selection_policy().choose(RendererCapabilities {
+            webgpu_available: false,
+        });
+
+        assert_eq!(plan.attempt_order(), [SceneRendererKind::Null]);
     }
 
     fn plan_for(

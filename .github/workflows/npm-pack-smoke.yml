@@ -12,6 +12,8 @@ on:
       - '**/package.json'
       - 'Hayate/scripts/wasm-build-manifest.json'
       - 'scripts/pack-smoke*.mjs'
+      - 'scripts/release-config.test.mjs'
+      - '.changeset/config.json'
       - 'scripts/scaffold-smoke.mjs'
       - 'scripts/bootstrap-wasm-pkgs*.mjs'
       - 'Torimi/templates/**'
@@ -22,6 +24,8 @@ on:
       - '**/package.json'
       - 'Hayate/scripts/wasm-build-manifest.json'
       - 'scripts/pack-smoke*.mjs'
+      - 'scripts/release-config.test.mjs'
+      - '.changeset/config.json'
       - 'scripts/scaffold-smoke.mjs'
       - 'scripts/bootstrap-wasm-pkgs*.mjs'
       - 'Torimi/templates/**'
@@ -76,8 +80,8 @@ jobs:
       - name: Build the JS publish closure (dist for every public package)
         run: pnpm -r --filter "!hayate" --filter "!tsubame-monorepo" --filter "!./Tsubame/examples/*" run build
 
-      - name: Unit-test the pack tooling (closure guardrail, no wasm needed)
-        run: node --test scripts/pack-smoke.test.mjs
+      - name: Unit-test the publish closure and release configuration
+        run: node --test scripts/pack-smoke.test.mjs scripts/release-config.test.mjs
 
       - name: Pack the public closure and import it outside the monorepo
         run: node scripts/pack-smoke.mjs

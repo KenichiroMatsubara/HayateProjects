@@ -29,6 +29,9 @@ jobs:
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Install Skia host link dependencies
+        run: sudo apt-get update && sudo apt-get install --yes libfontconfig1-dev libfreetype6-dev
+
       - name: Run adapter unit and packaging tests
         # Host CI uses -Dwarnings from setup-rust-toolchain; hayate-core has
         # unrelated dead_code on the host path. Match the cross-compile seam (#194).
