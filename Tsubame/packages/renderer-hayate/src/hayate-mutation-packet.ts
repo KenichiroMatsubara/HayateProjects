@@ -113,4 +113,9 @@ export class HayateMutationPacket {
     }
     this.mutations.length = 0;
   }
+
+  /** prepared frame を abort するとき、handler が積んだ未送信 mutation を漏らさない。 */
+  discard(): void {
+    this.mutations.length = 0;
+  }
 }

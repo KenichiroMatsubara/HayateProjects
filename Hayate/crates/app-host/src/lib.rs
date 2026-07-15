@@ -58,6 +58,117 @@ pub trait DeliverySink {
     fn handle(&mut self, deliveries: &[EventDelivery], tree: &mut ElementTree);
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FrameId(u64);
+
+impl FrameId {
+    pub fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct PreparedFrame {
+    frame_id: FrameId,
+    deliveries: Vec<EventDelivery>,
+}
+
+impl PreparedFrame {
+    pub fn frame_id(&self) -> FrameId {
+        self.frame_id
+    }
+
+    pub fn deliveries(&self) -> &[EventDelivery] {
+        &self.deliveries
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum FrameState {
+    Idle,
+    Prepared {
+        frame_id: FrameId,
+        timestamp_ms: f64,
+    },
+}
+
+/// AppHost と wire projection が共有する唯一の frame protocol state。
+pub struct FrameTransaction {
+    state: FrameState,
+    next_frame_id: u64,
+}
+
+impl Default for FrameTransaction {
+    fn default() -> Self {
+        Self {
+            state: FrameState::Idle,
+            next_frame_id: 1,
+        }
+    }
+}
+
+impl FrameTransaction {
+    pub fn prepare(&mut self, timestamp_ms: f64) -> Result<FrameId, FrameProtocolError> {
+        if let FrameState::Prepared { frame_id, .. } = self.state {
+            return Err(FrameProtocolError::AlreadyPrepared { frame_id });
+        }
+        let frame_id = FrameId(self.next_frame_id);
+        self.next_frame_id = self.next_frame_id.wrapping_add(1);
+        self.state = FrameState::Prepared {
+            frame_id,
+            timestamp_ms,
+        };
+        Ok(frame_id)
+    }
+
+    pub fn commit(&mut self, frame_id: FrameId) -> Result<f64, FrameProtocolError> {
+        match self.state {
+            FrameState::Idle => Err(FrameProtocolError::NotPrepared),
+            FrameState::Prepared {
+                frame_id: expected, ..
+            } if expected != frame_id => Err(FrameProtocolError::MismatchedFrameId {
+                expected,
+                received: frame_id,
+            }),
+            FrameState::Prepared { timestamp_ms, .. } => {
+                self.state = FrameState::Idle;
+                Ok(timestamp_ms)
+            }
+        }
+    }
+
+    pub fn abort(&mut self, frame_id: FrameId) -> Result<(), FrameProtocolError> {
+        self.commit(frame_id).map(|_| ())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameProtocolError {
+    AlreadyPrepared {
+        frame_id: FrameId,
+    },
+    NotPrepared,
+    MismatchedFrameId {
+        expected: FrameId,
+        received: FrameId,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct FrameExecutionError<E> {
+    pub source: E,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum FrameCommitError<E> {
+    Protocol(FrameProtocolError),
+    Execution(FrameExecutionError<E>),
+}
+
 /// platform 非依存の最上位協調層。`ElementTree` 実体を所有し、`tick` でフレームを進める。
 pub struct AppHost<S: PresentTarget> {
     tree: ElementTree,
@@ -65,6 +176,7 @@ pub struct AppHost<S: PresentTarget> {
     request_redraw: Box<dyn Fn()>,
     sink: Option<Box<dyn DeliverySink>>,
     font_mailbox: FontMailbox,
+    frame_transaction: FrameTransaction,
 }
 
 impl<S: PresentTarget> AppHost<S> {
@@ -77,6 +189,7 @@ impl<S: PresentTarget> AppHost<S> {
             request_redraw,
             sink: None,
             font_mailbox: FontMailbox::new(),
+            frame_transaction: FrameTransaction::default(),
         }
     }
 
@@ -110,6 +223,47 @@ impl<S: PresentTarget> AppHost<S> {
         self.sink = Some(sink);
     }
 
+    pub fn prepare_frame(
+        &mut self,
+        timestamp_ms: f64,
+    ) -> Result<PreparedFrame, FrameProtocolError> {
+        let frame_id = self.frame_transaction.prepare(timestamp_ms)?;
+        for result in self.font_mailbox.drain() {
+            match result {
+                FontFetchResult::Loaded { family, bytes } => {
+                    self.tree.register_font(&family, bytes)
+                }
+                FontFetchResult::Failed { family } => {
+                    self.tree.font_fetch_failed(&family);
+                }
+            }
+        }
+        let deliveries = self.tree.poll_deliveries();
+        Ok(PreparedFrame {
+            frame_id,
+            deliveries,
+        })
+    }
+
+    pub fn commit_frame(&mut self, frame_id: FrameId) -> Result<(), FrameCommitError<S::Error>> {
+        let timestamp_ms = self
+            .frame_transaction
+            .commit(frame_id)
+            .map_err(FrameCommitError::Protocol)?;
+        let frame = self.tree.commit_rendered_frame(timestamp_ms);
+        self.surface
+            .present(&frame)
+            .map_err(|source| FrameCommitError::Execution(FrameExecutionError { source }))?;
+        if frame.has_pending_visual_work() {
+            (self.request_redraw)();
+        }
+        Ok(())
+    }
+
+    pub fn abort_frame(&mut self, frame_id: FrameId) -> Result<(), FrameProtocolError> {
+        self.frame_transaction.abort(frame_id)
+    }
+
     /// 1 フレーム進める。Platform Front が毎フレーム呼ぶ（ADR-0117 のフェーズ順）。
     ///
     /// 0. **font mailbox drain**：アダプタが非同期取得を完了した font を、layout（3+4）
@@ -122,33 +276,23 @@ impl<S: PresentTarget> AppHost<S> {
     ///    確定し、その invariant view を `PresentTarget` へ渡す。
     /// 5. **再要求判定**：pending visual work（進行中 transition 等）が残れば `request_redraw`。
     pub fn tick(&mut self, timestamp_ms: f64) -> Result<(), S::Error> {
-        // 0. font mailbox drain — layout より前。
-        for result in self.font_mailbox.drain() {
-            match result {
-                FontFetchResult::Loaded { family, bytes } => self.tree.register_font(&family, bytes),
-                FontFetchResult::Failed { family } => {
-                    self.tree.font_fetch_failed(&family);
-                }
-            }
-        }
-
-        // 1. drain — poll_deliveries は所有 Vec を返すので以降 tree は再借用できる。
-        let deliveries = self.tree.poll_deliveries();
+        let prepared = self
+            .prepare_frame(timestamp_ms)
+            .expect("tick starts and ends a frame transaction synchronously");
+        let frame_id = prepared.frame_id();
 
         // 2. advance — sink へ同期 push（disjoint なフィールド借用）。
         if let Some(sink) = self.sink.as_mut() {
-            sink.handle(&deliveries, &mut self.tree);
+            sink.handle(prepared.deliveries(), &mut self.tree);
         }
 
-        // 3+4. commit → scene lowering → invariant frame view → present。
-        let frame = self.tree.commit_rendered_frame(timestamp_ms);
-        self.surface.present(&frame)?;
-
-        // 5. 再要求判定 — 残っていれば次フレームを要求し、無ければ idle。
-        if frame.has_pending_visual_work() {
-            (self.request_redraw)();
+        match self.commit_frame(frame_id) {
+            Ok(()) => Ok(()),
+            Err(FrameCommitError::Execution(error)) => Err(error.source),
+            Err(FrameCommitError::Protocol(error)) => {
+                unreachable!("tick created a matching frame id: {error:?}")
+            }
         }
-        Ok(())
     }
 }
 
@@ -282,6 +426,109 @@ mod tests {
         assert_eq!(app.tree().element_get_text(text), "clicked");
         // present は毎 tick 1 回。
         assert_eq!(*present_count.borrow(), 1);
+    }
+
+    #[test]
+    fn prepare_then_matching_commit_presents_once() {
+        let present_count = Rc::new(RefCell::new(0));
+        let surface = CountingSurface {
+            present_count: present_count.clone(),
+        };
+        let mut app = AppHost::new(surface, Box::new(|| {}));
+        let (button, _text) = build_min_tree(app.tree_mut());
+        app.tree_mut().dispatch_event(
+            DocumentEventKind::Click,
+            Event::Click {
+                target_id: button,
+                x: 0.0,
+                y: 0.0,
+            },
+        );
+
+        let prepared = app.prepare_frame(16.0).expect("prepare from Idle");
+        assert_eq!(prepared.deliveries().len(), 1);
+        assert_eq!(*present_count.borrow(), 0);
+        app.commit_frame(prepared.frame_id())
+            .expect("matching commit");
+        assert_eq!(*present_count.borrow(), 1);
+    }
+
+    #[test]
+    fn protocol_errors_do_not_consume_the_prepared_frame() {
+        let present_count = Rc::new(RefCell::new(0));
+        let mut app = AppHost::new(
+            CountingSurface {
+                present_count: present_count.clone(),
+            },
+            Box::new(|| {}),
+        );
+        build_min_tree(app.tree_mut());
+
+        assert_eq!(
+            app.commit_frame(FrameId(1)),
+            Err(FrameCommitError::Protocol(FrameProtocolError::NotPrepared))
+        );
+        let prepared = app.prepare_frame(16.0).unwrap();
+        assert_eq!(
+            app.prepare_frame(17.0).unwrap_err(),
+            FrameProtocolError::AlreadyPrepared {
+                frame_id: prepared.frame_id()
+            }
+        );
+        assert_eq!(
+            app.commit_frame(FrameId(prepared.frame_id().get() + 1)),
+            Err(FrameCommitError::Protocol(
+                FrameProtocolError::MismatchedFrameId {
+                    expected: prepared.frame_id(),
+                    received: FrameId(prepared.frame_id().get() + 1),
+                }
+            ))
+        );
+
+        app.commit_frame(prepared.frame_id()).unwrap();
+        assert_eq!(*present_count.borrow(), 1);
+    }
+
+    #[test]
+    fn matching_abort_returns_to_idle_without_presenting() {
+        let present_count = Rc::new(RefCell::new(0));
+        let mut app = AppHost::new(
+            CountingSurface {
+                present_count: present_count.clone(),
+            },
+            Box::new(|| {}),
+        );
+        build_min_tree(app.tree_mut());
+
+        let prepared = app.prepare_frame(16.0).unwrap();
+        assert_eq!(
+            app.abort_frame(FrameId(prepared.frame_id().get() + 1)),
+            Err(FrameProtocolError::MismatchedFrameId {
+                expected: prepared.frame_id(),
+                received: FrameId(prepared.frame_id().get() + 1),
+            })
+        );
+        app.abort_frame(prepared.frame_id()).unwrap();
+        assert_eq!(*present_count.borrow(), 0);
+        assert!(app.prepare_frame(32.0).is_ok());
+    }
+
+    #[test]
+    fn execution_failure_is_typed_and_ends_the_transaction() {
+        let mut app = AppHost::new(FailingSurface, Box::new(|| {}));
+        build_min_tree(app.tree_mut());
+        let prepared = app.prepare_frame(16.0).unwrap();
+
+        assert_eq!(
+            app.commit_frame(prepared.frame_id()),
+            Err(FrameCommitError::Execution(FrameExecutionError {
+                source: "surface lost"
+            }))
+        );
+        assert_eq!(
+            app.commit_frame(prepared.frame_id()),
+            Err(FrameCommitError::Protocol(FrameProtocolError::NotPrepared))
+        );
     }
 
     #[test]

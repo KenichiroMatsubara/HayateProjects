@@ -129,6 +129,45 @@ describe('HayateRenderer on-demand frame loop (ADR-0126, #608)', () => {
 
 // 配信ポーリングのみ。apply_mutations のワイヤ統合は wasm-integration.test.ts にある。
 describe('HayateRenderer delivery poll (ADR-0053)', () => {
+  it('flushes delivery-handler mutations before committing the prepared frame (#827)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+    const button = renderer.createElement('button');
+    const label = renderer.createElement('text');
+    renderer.addEventListener(button, 'click', () => renderer.setText(label, 'clicked'));
+    hayate.events = [[1, EVENT_KIND.CLICK, button, 0, 0]];
+
+    sched.tick(16);
+
+    expect(hayate.mutations.flatMap((batch) => batch.texts)).toContain('clicked');
+    expect(hayate.committedFrames).toEqual([1]);
+  });
+
+  it('aborts a prepared frame and discards its mutation packet when a handler throws (#827)', () => {
+    const hayate = new StubHayate();
+    const sched = manualScheduler();
+    const renderer = new HayateRenderer({ raw: hayate, ...sched });
+    renderer.start();
+    const button = renderer.createElement('button');
+    const label = renderer.createElement('text');
+    renderer.addEventListener(button, 'click', () => {
+      renderer.setText(label, 'must-not-leak');
+      throw new Error('handler failed');
+    });
+    hayate.events = [[1, EVENT_KIND.CLICK, button, 0, 0]];
+
+    expect(() => sched.tick(16)).toThrow('handler failed');
+    expect(hayate.abortedFrames).toEqual([1]);
+    expect(hayate.committedFrames).toEqual([]);
+
+    hayate.events = [];
+    renderer.start();
+    sched.tick(32);
+    expect(hayate.mutations.flatMap((batch) => batch.texts)).not.toContain('must-not-leak');
+  });
+
   it('registers Hayate listeners and dispatches poll deliveries', () => {
     const hayate = new StubHayate();
     const sched = manualScheduler();

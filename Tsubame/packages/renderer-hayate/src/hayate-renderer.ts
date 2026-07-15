@@ -273,11 +273,24 @@ export class HayateRenderer implements IRenderer {
     // このコールバックは消費された。継続 pending があるときだけ末尾で再武装する
     // （無条件の自己再スケジュールを撤廃, ADR-0126）。
     this.frameHandle = null;
-    this.flush();
-    // IME（EditContext 着脱・preedit・候補窓 rect）は hayate-adapter-web が
-    // `render()` 内で自己配線・自己同期する（ADR-0069）。ホストは IME 経路に関与しない。
-    this.raw.render(timestampMs);
-    this.dispatchDeliveries(this.raw.poll_events());
+    const [rawFrameId, ...deliveries] = this.raw.prepare_frame(timestampMs);
+    if (typeof rawFrameId !== 'number' || !Number.isSafeInteger(rawFrameId)) {
+      this.packet.discard();
+      throw new TypeError('Hayate prepare_frame returned an invalid frame id');
+    }
+    try {
+      this.dispatchDeliveries(deliveries);
+      // prepare が drain した delivery の handler mutation まで、この matching commit
+      // より前に同じ packet として境界へ流す（ADR-0151 / #827）。
+      this.flush();
+    } catch (error) {
+      this.packet.discard();
+      this.raw.abort_frame(rawFrameId);
+      throw error;
+    }
+    // commit の execution failure は AppHost 側ですでに transaction を終端している。
+    // abort を重ねて元の型付き failure を上書きしない。
+    this.raw.commit_frame(rawFrameId);
     // ADR-0126: idle（visual_dirty 空）では次フレームを出さない。継続すべき pending
     // （進行中 transition / カーソル点滅 / スクロール物理）があるときだけ再武装する。
     // delivery ハンドラが mutation を積んだ場合は dispatchDeliveries→scheduleFrame で
