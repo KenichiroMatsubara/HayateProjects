@@ -17,7 +17,7 @@ use hayate_core::{
 };
 use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
 use hayate_app_host::renderer_selection::SceneRendererKind;
-use hayate_app_host::{FontFetchResult, FontMailbox, FontMailboxHandle};
+use hayate_app_host::{FrameId, FrameTransaction, FontFetchResult, FontMailbox, FontMailboxHandle};
 use crate::image_decode;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -43,6 +43,14 @@ type PendingPaste = Rc<RefCell<Vec<(ElementId, String)>>>;
 /// 早く、以降は徐々に間隔を空ける。
 const FETCH_BACKOFF_BASE_MS: i32 = 400;
 const FETCH_BACKOFF_MAX_MS: i32 = 5_000;
+
+fn wire_frame_id(value: f64) -> Result<FrameId, JsValue> {
+    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+    if !value.is_finite() || value.fract() != 0.0 || !(1.0..=MAX_SAFE_INTEGER).contains(&value) {
+        return Err(JsValue::from_str("frame protocol: frame id must be a positive safe integer"));
+    }
+    Ok(FrameId::from_u64(value as u64))
+}
 
 /// `setTimeout` で `ms` 後に解決する。fetch future が失敗報告前にバックオフ遅延を
 /// await できるようにする。
@@ -131,6 +139,8 @@ pub struct HayateElementRenderer {
     canvas: HtmlCanvasElement,
     backend: SelectedBackend,
     tree: ElementTree,
+    /// AppHost と共有する Idle/Prepared(frame_id) protocol state（ADR-0151）。
+    frame_transaction: FrameTransaction,
     /// wgpu サーフェスのクリア色。WIT の `render` 署名がこれを持たなくなったため
     /// `render(timestamp_ms)` から分離されている（ADR-0032 で render は timestamp のみ）。
     /// `set_background_color` で別途設定する。
@@ -223,6 +233,51 @@ impl HayateElementRenderer {
     pub fn tree_mut(&mut self) -> &mut ElementTree {
         &mut self.tree
     }
+
+    fn prepare_frame_contents(&mut self, timestamp_ms: f64) {
+        let pending = self.pending_resize.borrow_mut().take();
+        if let Some(metrics) = pending {
+            self.apply_resize(metrics);
+        }
+        self.drain_pointer_inputs(timestamp_ms);
+        self.drain_edit_inputs();
+        for result in self.font_mailbox.drain() {
+            match result {
+                FontFetchResult::Loaded { family, bytes } => {
+                    self.font_fetch_attempts.borrow_mut().remove(&family);
+                    self.tree.register_font(&family, bytes);
+                }
+                FontFetchResult::Failed { family } => {
+                    if !self.tree.font_fetch_failed(&family) {
+                        self.font_fetch_attempts.borrow_mut().remove(&family);
+                    }
+                }
+            }
+        }
+        let pasted: Vec<(ElementId, String)> = self.pending_paste.borrow_mut().drain(..).collect();
+        for (id, text) in pasted {
+            self.tree.element_paste(id, &text);
+        }
+        if let Some(render_scale) = self.pending_render_scale.take() {
+            self.apply_render_scale(render_scale);
+        }
+    }
+
+    fn commit_frame_contents(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
+        let frame = self.tree.commit_rendered_frame(timestamp_ms);
+        let present = Self::present_frame(
+            &mut self.backend,
+            &mut self.planner,
+            self.background,
+            &frame,
+        );
+        self.tree.drive_ime(&mut self.ime);
+        self.sync_edit_context();
+        if let Some(render_scale) = self.render_scale.note_frame(timestamp_ms, false) {
+            self.pending_render_scale = Some(render_scale);
+        }
+        present
+    }
 }
 
 #[wasm_bindgen]
@@ -297,6 +352,7 @@ impl HayateElementRenderer {
             canvas,
             backend,
             tree,
+            frame_transaction: FrameTransaction::default(),
             background: [0.0, 0.0, 0.0, 1.0],
             font_mailbox: FontMailbox::new(),
             font_fetch_attempts: Rc::new(RefCell::new(HashMap::new())),
@@ -469,69 +525,40 @@ impl HayateElementRenderer {
     /// （例: `performance.now()`）であること。ミューテーションは `element_*` セッタが即時適用
     /// するため（ADR-0037）、`render` はレイアウトのみを駆動する。
     pub fn render(&mut self, timestamp_ms: f64) -> Result<(), JsValue> {
-        let pending = self.pending_resize.borrow_mut().take();
-        if let Some(metrics) = pending {
-            self.apply_resize(metrics);
-        }
-        self.drain_pointer_inputs(timestamp_ms);
-        // ポインタの後で編集入力（composition / keydown）を排出する。pointerdown が
-        // 先に focus を確定してから、続くキー入力がそのターゲットに乗るようにする。
-        self.drain_edit_inputs();
-        // リリース済み慣性スクロールの積分は Core が `render(timestamp_ms)` 内で所有する
-        // （新規押下がアニメーションを中断し、pointer-up が `start_scroll_momentum` で起動する）。
-        // adapter はもうフレーム間 dt もアニメ状態も持たない——`tree.render` 越しに Core が
-        // 進める（慣性は `rubber_band_offset` 等と同じく `scroll` モジュールの純物理）。
-        // フォント取得完了報告（成功／失敗）を mailbox から layout より前に流し込む
-        // （ADR-0132 スライス2）。失敗報告はフォントを dirty にするので、下の
-        // commit_layout が再シェイプし、欠落を再検出し、次の poll_events で FetchFont を
-        // 再発行する。core が断念したファミリは再要求しなくなるので、そのバックオフ
-        // カウンタも破棄する。
-        for result in self.font_mailbox.drain() {
-            match result {
-                FontFetchResult::Loaded { family, bytes } => {
-                    self.font_fetch_attempts.borrow_mut().remove(&family);
-                    self.tree.register_font(&family, bytes);
-                }
-                FontFetchResult::Failed { family } => {
-                    if !self.tree.font_fetch_failed(&family) {
-                        self.font_fetch_attempts.borrow_mut().remove(&family);
-                    }
-                }
-            }
-        }
-        // 前フレーム以降に非同期 Ctrl/Cmd+V の読み取りが解決したクリップボードテキストを、
-        // レイアウト前に適用する。貼り付けテキストがこのフレームでシェイプされる。
-        let pasted: Vec<(ElementId, String)> = self.pending_paste.borrow_mut().drain(..).collect();
-        for (id, text) in pasted {
-            self.tree.element_paste(id, &text);
-        }
-        // #666: 前フレームで測ったスケール変更（あれば）を present より前に適用する。
-        let pending_render_scale = self.pending_render_scale.take();
-        if let Some(render_scale) = pending_render_scale {
-            self.apply_render_scale(render_scale);
-        }
-        let frame = self.tree.commit_rendered_frame(timestamp_ms);
-        let present = Self::present_frame(
-            &mut self.backend,
-            &mut self.planner,
-            self.background,
-            &frame,
-        );
+        self.prepare_frame_contents(timestamp_ms);
+        self.commit_frame_contents(timestamp_ms)
+    }
 
-        // ソフトキーボードの表示可否と候補ウィンドウ境界は core が一括で決める（ADR-0069）。
-        // ブリッジにレイアウト後の最新 presentation を取り込み、その場で EditContext へ反映する。
-        self.tree.drive_ime(&mut self.ime);
-        self.sync_edit_context();
-
-        // 適応的レンダースケール（ADR-0129・#647）。このフレームの timestamp 差分から frame 時間を
-        // 導出して governor を駆動する。逼迫が続いてスケールが変わったら、次フレームの `advance_frame`
-        // が present より前に buffer を実効 content scale で resize する（余裕が続けばヒステリシス付きで
-        // 1 段ずつ復帰）。CSS/レイアウトビューポートは不変なのでブラウザが拡大表示し、ヒットテストは
-        // 論理座標のまま整合する。熱シグナルは web では未接続（false）で、フレーム時間予算超過のみで判定する。
-        if let Some(render_scale) = self.render_scale.note_frame(timestamp_ms, false) {
-            self.pending_render_scale = Some(render_scale);
+    /// ingress と delivery drain を行い、`[frame_id, ...delivery_rows]` を返す。
+    pub fn prepare_frame(&mut self, timestamp_ms: f64) -> Result<js_sys::Array, JsValue> {
+        let frame_id = self
+            .frame_transaction
+            .prepare(timestamp_ms)
+            .map_err(|error| JsValue::from_str(&format!("frame protocol: {error:?}")))?;
+        self.prepare_frame_contents(timestamp_ms);
+        let deliveries = self.poll_events();
+        let prepared = js_sys::Array::new();
+        prepared.push(&JsValue::from_f64(frame_id.get() as f64));
+        for row in deliveries.iter() {
+            prepared.push(&row);
         }
-        present
+        Ok(prepared)
+    }
+
+    /// matching prepared frame のみを描画・提示する。
+    pub fn commit_frame(&mut self, raw_frame_id: f64) -> Result<(), JsValue> {
+        let frame_id = wire_frame_id(raw_frame_id)?;
+        let timestamp_ms = self
+            .frame_transaction
+            .commit(frame_id)
+            .map_err(|error| JsValue::from_str(&format!("frame protocol: {error:?}")))?;
+        self.commit_frame_contents(timestamp_ms)
+    }
+
+    pub fn abort_frame(&mut self, raw_frame_id: f64) -> Result<(), JsValue> {
+        self.frame_transaction
+            .abort(wire_frame_id(raw_frame_id)?)
+            .map_err(|error| JsValue::from_str(&format!("frame protocol: {error:?}")))
     }
 
     /// レンダースケール変更（ADR-0129・#647）を buffer に適用する。CSS ビューポート（レイアウト）は
@@ -1057,8 +1084,10 @@ impl HayateElementRenderer {
                 // `navigator.clipboard.readText()` を開始し、解決したテキストを次フレームの
                 // `element_paste` へ戻す（ADR-0097）。
                 if intent == EditIntent::Paste {
-                    self.spawn_clipboard_paste(focused);
-                    return;
+                    if self.tree.can_apply_edit_intent(focused, intent) {
+                        self.spawn_clipboard_paste(focused);
+                        return;
+                    }
                 }
                 if self.tree.apply_edit_intent(focused, intent) {
                     return;
@@ -1066,6 +1095,33 @@ impl HayateElementRenderer {
             }
         }
         self.tree.on_key_down(key, modifiers);
+    }
+
+    /// external semantic producer 向けの公開 EditIntent capability（#828）。
+    /// 戻り値は consumed=0 / unhandled=1 / deferred=2。
+    pub fn dispatch_edit_intent(
+        &mut self,
+        raw_target: f64,
+        raw_intent: &[f64],
+    ) -> Result<u32, JsValue> {
+        let intent = hayate_core::wire::decode_edit_intent(raw_intent)
+            .map_err(|error| JsValue::from_str(&format!("edit intent protocol: {error:?}")))?;
+        if intent == EditIntent::Paste {
+            let target_id = wire_frame_id(raw_target)
+                .map(|id| ElementId::from_u64(id.get()))?;
+            if !self.tree.can_apply_edit_intent(target_id, intent) {
+                return Ok(1);
+            }
+            self.spawn_clipboard_paste(target_id);
+            return Ok(2);
+        }
+        hayate_core::wire::dispatch_edit_intent(&mut self.tree, raw_target, raw_intent)
+            .map(|outcome| match outcome {
+                hayate_core::wire::EditDispatchOutcome::Consumed => 0,
+                hayate_core::wire::EditDispatchOutcome::Unhandled => 1,
+                hayate_core::wire::EditDispatchOutcome::Deferred => 2,
+            })
+            .map_err(|error| JsValue::from_str(&format!("edit intent protocol: {error:?}")))
     }
 
     /// `target` への Ctrl/Cmd+V のため非同期クリップボード読み取りを開始し、解決したテキストを

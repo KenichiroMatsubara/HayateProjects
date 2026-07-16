@@ -34,6 +34,11 @@ mod ffi {
         atoms: Vec<FfiWireAtom>,
     }
 
+    struct FfiPreparedFrame {
+        frame_id: f64,
+        deliveries: Vec<FfiEventRow>,
+    }
+
     extern "Rust" {
         /// JSI HostObject が叩くネイティブ Hayate ハンドル。
         type JsHostBridge;
@@ -44,7 +49,15 @@ mod ffi {
             styles: &[f32],
             texts: &CxxVector<CxxString>,
         ) -> Result<()>;
+        fn dispatch_edit_intent(
+            self: &JsHostBridge,
+            target: f64,
+            intent: &[f64],
+        ) -> Result<u32>;
         fn render(self: &JsHostBridge, timestamp_ms: f64);
+        fn prepare_frame(self: &JsHostBridge, timestamp_ms: f64) -> Result<FfiPreparedFrame>;
+        fn commit_frame(self: &JsHostBridge, frame_id: f64) -> Result<()>;
+        fn abort_frame(self: &JsHostBridge, frame_id: f64) -> Result<()>;
         fn register_listener(
             self: &JsHostBridge,
             element_id: f64,
@@ -121,8 +134,28 @@ impl JsHostBridge {
         self.host.apply_mutations(ops, styles, &texts)
     }
 
+    fn dispatch_edit_intent(&self, target: f64, intent: &[f64]) -> Result<u32, String> {
+        self.host.dispatch_edit_intent(target, intent)
+    }
+
     fn render(&self, timestamp_ms: f64) {
         self.host.render(timestamp_ms);
+    }
+
+    fn prepare_frame(&self, timestamp_ms: f64) -> Result<ffi::FfiPreparedFrame, String> {
+        let prepared = self.host.prepare_frame(timestamp_ms)?;
+        Ok(ffi::FfiPreparedFrame {
+            frame_id: prepared.frame_id,
+            deliveries: prepared.deliveries.into_iter().map(ffi_row_from).collect(),
+        })
+    }
+
+    fn commit_frame(&self, frame_id: f64) -> Result<(), String> {
+        self.host.commit_frame(frame_id)
+    }
+
+    fn abort_frame(&self, frame_id: f64) -> Result<(), String> {
+        self.host.abort_frame(frame_id)
     }
 
     fn register_listener(&self, element_id: f64, event_kind: u32) -> Result<f64, String> {

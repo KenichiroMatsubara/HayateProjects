@@ -52,6 +52,7 @@ export interface RawHayate {
   on_pointer_up(x: number, y: number): void;
   on_wheel(x: number, y: number, deltaX: number, deltaY: number): void;
   on_key_down(key: string, modifiers: number): void;
+  dispatch_edit_intent(target: number, intent: Float64Array): number;
   /** document 全体のテキスト選択が有効かどうか（ADR-0097）。 */
   has_selection(): boolean;
   // IME（EditContext 着脱・preedit/commit・候補窓 rect）は hayate-adapter-web が
@@ -61,8 +62,15 @@ export interface RawHayate {
   on_text_input(id: number, text: string): void;
   /** JSON エンコードした AccessKit `TreeUpdate`（ADR-0041）。レイアウト前は `null`。 */
   poll_accessibility(): string | null;
+  /** フレームを prepare し、`[frame_id, ...delivery_rows]` を返す。 */
+  prepare_frame(timestampMs: number): unknown[];
+  /** matching id の prepared frame を一度だけ描画・提示する。 */
+  commit_frame(frameId: number): void;
+  /** handler / mutation flush 失敗時に matching transaction を破棄する。 */
+  abort_frame(frameId: number): void;
+  /** @deprecated legacy direct WASM consumers; HayateRenderer uses the two-phase API. */
   render(timestampMs: number): void;
-  /** ADR-0126: 直近の `render()` 後に継続すべき pending visual work（進行中
+  /** ADR-0126: 直近の `commit_frame()` 後に継続すべき pending visual work（進行中
    * transition / カーソル点滅 / スクロール物理 = `visual_dirty`）が残るか。アダプタは
    * これが真のときだけ次フレームを要求し、偽なら idle に落ちる（毎フレーム自己再
    * スケジュールしない）。 */
@@ -86,6 +94,7 @@ export interface RawHayate {
    * 入力 ingress を持たない front（native ループが入力を直接駆動しない Web 等）では
    * 実装されないため optional。 */
   request_pump?(): void;
+  /** @deprecated legacy direct WASM consumers; prepare_frame returns deliveries. */
   poll_events(): unknown[];
   register_listener(element_id: number, event_kind: number): number;
   set_background_color(r: number, g: number, b: number): void;

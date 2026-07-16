@@ -422,3 +422,25 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
         "Ctrl+V pasted the clipboard text into the focused field via the async read",
     );
 }
+
+#[wasm_bindgen_test]
+async fn public_edit_intent_wire_reports_all_outcomes_and_protocol_errors() {
+    let canvas = make_canvas(100);
+    let mut renderer = HayateElementRenderer::init(canvas, None).await.unwrap();
+    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer.set_root(1.0);
+    apply_text_content(&mut renderer, 1.0, "ab");
+
+    assert_eq!(renderer.dispatch_edit_intent(1.0, &[4.0]).unwrap(), 0);
+    assert_eq!(renderer.dispatch_edit_intent(999.0, &[4.0]).unwrap(), 1);
+    assert_eq!(renderer.dispatch_edit_intent(1.0, &[3.0]).unwrap(), 1);
+
+    renderer.on_composition_start(1.0, "x");
+    assert_eq!(renderer.dispatch_edit_intent(1.0, &[4.0]).unwrap(), 1);
+    renderer.on_composition_end(1.0, "x");
+
+    stub_clipboard_read_text("deferred");
+    assert_eq!(renderer.dispatch_edit_intent(1.0, &[7.0]).unwrap(), 2);
+    assert!(renderer.dispatch_edit_intent(1.0, &[99.0]).is_err());
+    assert!(renderer.dispatch_edit_intent(f64::NAN, &[4.0]).is_err());
+}

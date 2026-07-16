@@ -448,6 +448,29 @@ export const LINE_JOIN = {
 } as const;
 export type LINE_JOIN = typeof LINE_JOIN;
 
+export const EDIT_DIRECTION = {
+  backward: 0,
+  forward: 1,
+  up: 2,
+  down: 3,
+} as const;
+export type EDIT_DIRECTION = typeof EDIT_DIRECTION;
+
+export const EDIT_GRANULARITY = {
+  grapheme: 0,
+  word: 1,
+  lineBoundary: 2,
+  docBoundary: 3,
+} as const;
+export type EDIT_GRANULARITY = typeof EDIT_GRANULARITY;
+
+export const EDIT_DISPATCH_OUTCOME = {
+  consumed: 0,
+  unhandled: 1,
+  deferred: 2,
+} as const;
+export type EDIT_DISPATCH_OUTCOME = typeof EDIT_DISPATCH_OUTCOME;
+
 export const UNIT_CODE = DIMENSION_UNIT;
 
 export const OP_SLOTS: readonly number[] = [2, 3, 1, 1, 3, 8, 3, 1, 1, 2, 2, 2, 2, 2, 2, 4, 7, 2, 2, 2, 2, 2, 3];

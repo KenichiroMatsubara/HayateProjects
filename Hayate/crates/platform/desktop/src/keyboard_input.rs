@@ -31,6 +31,10 @@ pub fn key_to_edit_intent(key: &Key, modifiers: ModifiersState) -> Option<EditIn
     let alt = modifiers.alt_key();
     let meta = modifiers.super_key();
 
+    if matches!(key, Key::Named(NamedKey::Enter)) {
+        return Some(EditIntent::InsertLineBreak);
+    }
+
     // 主修飾（Ctrl=Win/Linux または Super/Cmd=macOS）でのクリップボード／全選択（ADR-0103）。
     // 先に判定することで Ctrl/Cmd+A/C/X/V がテキスト入力へ漏れず、修飾なしの a/c/x/v は
     // 印字可能なまま残る。
@@ -146,10 +150,14 @@ pub fn apply_key_input(
     modifiers: ModifiersState,
 ) -> bool {
     if let Some(intent) = key_to_edit_intent(key, modifiers) {
-        return match tree.focused_element() {
-            Some(focused) => tree.apply_edit_intent(focused, intent),
-            None => false,
+        let Some(focused) = tree.focused_element() else {
+            return false;
         };
+        if tree.apply_edit_intent(focused, intent) {
+            return true;
+        }
+        tree.on_key_down(&raw_key_name(key), raw_modifiers(modifiers));
+        return true;
     }
 
     // 印字可能文字。主修飾なしの文字キーだけが focus 中 text-input にそのまま入る。
@@ -162,6 +170,22 @@ pub fn apply_key_input(
         }
     }
     false
+}
+
+fn raw_key_name(key: &Key) -> String {
+    match key {
+        Key::Character(value) => value.to_string(),
+        Key::Named(value) => format!("{value:?}"),
+        Key::Unidentified(_) => "Unidentified".to_string(),
+        Key::Dead(value) => value.map_or_else(|| "Dead".to_string(), |c| c.to_string()),
+    }
+}
+
+fn raw_modifiers(modifiers: ModifiersState) -> u32 {
+    u32::from(modifiers.shift_key())
+        | (u32::from(modifiers.control_key()) << 1)
+        | (u32::from(modifiers.alt_key()) << 2)
+        | (u32::from(modifiers.super_key()) << 3)
 }
 
 #[cfg(test)]
@@ -387,9 +411,16 @@ mod tests {
 
     #[test]
     fn non_editing_keys_are_not_edit_intents() {
-        // Enter や印字キーは編集 intent ではない（印字テキスト経路へフォールスルー）。
-        assert_eq!(key_to_edit_intent(&Key::Named(NamedKey::Enter), NONE), None);
+        // 印字キーは編集 intent ではない（印字テキスト経路へフォールスルー）。
         assert_eq!(key_to_edit_intent(&ch("a"), NONE), None);
+    }
+
+    #[test]
+    fn enter_maps_to_insert_line_break() {
+        assert_eq!(
+            key_to_edit_intent(&Key::Named(NamedKey::Enter), NONE),
+            Some(EditIntent::InsertLineBreak),
+        );
     }
 
     #[test]
@@ -468,6 +499,36 @@ mod tests {
         let (mut tree, input) = focused_input("hello");
         assert!(apply_key_input(&mut tree, &Key::Named(NamedKey::Backspace), None, NONE));
         assert_eq!(tree.element_get_text_content(input), "hell");
+    }
+
+    #[test]
+    fn enter_in_a_multiline_field_inserts_a_line_break_through_the_seam() {
+        let (mut tree, input) = focused_input("ab");
+        tree.element_set_multiline(input, true);
+        assert!(apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::Enter),
+            None,
+            NONE,
+        ));
+        assert_eq!(tree.element_get_text_content(input), "ab\n");
+    }
+
+    #[test]
+    fn unhandled_line_break_falls_back_to_raw_key_down() {
+        let (mut tree, input) = focused_input("ab");
+        let listener = tree.register_listener(input, hayate_core::DocumentEventKind::KeyDown);
+        assert!(apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::Enter),
+            None,
+            NONE,
+        ));
+        assert_eq!(tree.element_get_text_content(input), "ab");
+        assert!(tree.poll_deliveries().iter().any(|delivery| {
+            delivery.listener_id == listener
+                && matches!(&delivery.event, hayate_core::Event::KeyDown { key, .. } if key == "Enter")
+        }));
     }
 
     #[test]

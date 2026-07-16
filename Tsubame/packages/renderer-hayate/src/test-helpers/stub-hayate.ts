@@ -8,6 +8,8 @@ import type { RawHayate } from '../hayate.js';
 export class StubHayate implements RawHayate {
   mutations: Array<{ ops: number[]; styles: number[]; texts: string[]; draws: number[] }> = [];
   renders: number[] = [];
+  committedFrames: number[] = [];
+  abortedFrames: number[] = [];
   events: unknown[][] = [];
   listenerSeq = 1;
   registeredListeners: Array<{ elementId: number; eventKind: number; listenerId: number }> = [];
@@ -57,6 +59,7 @@ export class StubHayate implements RawHayate {
   on_pointer_up(): void {}
   on_wheel(): void {}
   on_key_down(): void {}
+  dispatch_edit_intent(): number { return 1; }
   has_selection(): boolean {
     return false;
   }
@@ -74,6 +77,18 @@ export class StubHayate implements RawHayate {
   pendingVisualWork = false;
   has_pending_visual_work(): boolean {
     return this.pendingVisualWork;
+  }
+  prepare_frame(timestampMs: number): unknown[] {
+    this.renders.push(timestampMs);
+    const current = this.events;
+    this.events = [];
+    return [this.renders.length, ...current];
+  }
+  commit_frame(frameId: number): void {
+    this.committedFrames.push(frameId);
+  }
+  abort_frame(frameId: number): void {
+    this.abortedFrames.push(frameId);
   }
   render(timestampMs: number): void {
     this.renders.push(timestampMs);

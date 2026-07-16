@@ -23,6 +23,7 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
     let event_types = generate_event_types(&proto);
     let pseudo_state_tables = generate_pseudo_state_tables(&proto);
     let element_kind_tables = generate_element_kind_tables(&proto);
+    let edit_intent = generate_edit_intent(&proto);
 
     fs::write(out_dir.join("protocol.rs"), code).unwrap();
     fs::write(out_dir.join("codec.rs"), codec).unwrap();
@@ -35,6 +36,7 @@ pub fn generate_all(spec_dir: &Path, out_dir: &Path) {
     fs::write(out_dir.join("event_types.rs"), event_types).unwrap();
     fs::write(out_dir.join("pseudo_state_tables.rs"), pseudo_state_tables).unwrap();
     fs::write(out_dir.join("element_kind_tables.rs"), element_kind_tables).unwrap();
+    fs::write(out_dir.join("edit_intent.rs"), edit_intent).unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,7 @@ struct Proto {
     draw_paint_fields: Vec<Entry>,
     style_tags: Vec<Entry>,
     event_kinds: Vec<Entry>,
+    edit_intents: Vec<Entry>,
     element_kinds: Vec<SimpleEntry>,
     unset_kinds: Vec<SimpleEntry>,
     modifier_keys: Vec<SimpleEntry>,
@@ -290,6 +293,7 @@ fn load_spec(spec_dir: &Path) -> Proto {
     let draw_paint_fields: Vec<EntryJson> = read_json(spec_dir, "draw_paint_fields.json");
     let style_tags: Vec<EntryJson> = read_json(spec_dir, "style_tags.json");
     let event_kinds: Vec<EntryJson> = read_json(spec_dir, "event_kinds.json");
+    let edit_intents: Vec<EntryJson> = read_json(spec_dir, "edit_intents.json");
     let element_kinds: Vec<SimpleJson> = read_json(spec_dir, "element_kinds.json");
     let unset_kinds: Vec<SimpleJson> = read_json(spec_dir, "unset_kinds.json");
     let modifier_keys: Vec<SimpleJson> = read_json(spec_dir, "modifier_keys.json");
@@ -333,6 +337,7 @@ fn load_spec(spec_dir: &Path) -> Proto {
         draw_paint_fields: entries_from_json(draw_paint_fields),
         style_tags: entries_from_json(style_tags),
         event_kinds: entries_from_json(event_kinds),
+        edit_intents: entries_from_json(edit_intents),
         element_kinds: simple_from_json(element_kinds),
         unset_kinds: simple_from_json(unset_kinds),
         modifier_keys: simple_from_json(modifier_keys),
@@ -403,6 +408,105 @@ fn simple_from_json(entries: Vec<SimpleJson>) -> Vec<SimpleEntry> {
             accepts_text_input: e.accepts_text_input,
         })
         .collect()
+}
+
+fn generate_edit_intent(proto: &Proto) -> String {
+    let tag = |name: &str| {
+        proto
+            .edit_intents
+            .iter()
+            .find(|entry| entry.name == name)
+            .unwrap_or_else(|| panic!("edit_intents.json missing {name}"))
+            .value
+    };
+    format!(
+        r#"{GENERATED_HEADER}use hayate_core::{{Direction, EditIntent, ElementId, ElementTree, Granularity}};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditDispatchOutcome {{ Consumed, Unhandled, Deferred }}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EditIntentProtocolError {{
+    EmptyIntent,
+    InvalidTarget,
+    NonInteger {{ index: usize }},
+    UnknownIntentTag(u32),
+    InvalidPayloadLength {{ tag: u32, expected: usize, actual: usize }},
+    InvalidGranularity(u32),
+    InvalidDirection(u32),
+}}
+
+fn wire_u32(raw: f64, index: usize) -> Result<u32, EditIntentProtocolError> {{
+    if !raw.is_finite() || raw.fract() != 0.0 || raw < 0.0 || raw > u32::MAX as f64 {{
+        return Err(EditIntentProtocolError::NonInteger {{ index }});
+    }}
+    Ok(raw as u32)
+}}
+
+fn payload_len(tag: u32, raw: &[f64], expected: usize) -> Result<(), EditIntentProtocolError> {{
+    if raw.len() != expected {{
+        return Err(EditIntentProtocolError::InvalidPayloadLength {{ tag, expected, actual: raw.len() }});
+    }}
+    Ok(())
+}}
+
+pub fn decode_edit_intent(raw: &[f64]) -> Result<EditIntent, EditIntentProtocolError> {{
+    let Some(first) = raw.first() else {{ return Err(EditIntentProtocolError::EmptyIntent); }};
+    let tag = wire_u32(*first, 0)?;
+    match tag {{
+        {move_tag} | {extend_tag} | {delete_tag} => {{
+            payload_len(tag, raw, 3)?;
+            let granularity = match wire_u32(raw[1], 1)? {{
+                0 => Granularity::Grapheme, 1 => Granularity::Word,
+                2 => Granularity::LineBoundary, 3 => Granularity::DocBoundary,
+                value => return Err(EditIntentProtocolError::InvalidGranularity(value)),
+            }};
+            let direction = match wire_u32(raw[2], 2)? {{
+                0 => Direction::Backward, 1 => Direction::Forward,
+                2 => Direction::Up, 3 => Direction::Down,
+                value => return Err(EditIntentProtocolError::InvalidDirection(value)),
+            }};
+            Ok(match tag {{
+                {move_tag} => EditIntent::Move {{ granularity, direction }},
+                {extend_tag} => EditIntent::Extend {{ granularity, direction }},
+                _ => EditIntent::Delete {{ granularity, direction }},
+            }})
+        }}
+        {line_break_tag} => {{ payload_len(tag, raw, 1)?; Ok(EditIntent::InsertLineBreak) }}
+        {select_all_tag} => {{ payload_len(tag, raw, 1)?; Ok(EditIntent::SelectAll) }}
+        {copy_tag} => {{ payload_len(tag, raw, 1)?; Ok(EditIntent::Copy) }}
+        {cut_tag} => {{ payload_len(tag, raw, 1)?; Ok(EditIntent::Cut) }}
+        {paste_tag} => {{ payload_len(tag, raw, 1)?; Ok(EditIntent::Paste) }}
+        value => Err(EditIntentProtocolError::UnknownIntentTag(value)),
+    }}
+}}
+
+pub fn dispatch_edit_intent(
+    tree: &mut ElementTree,
+    raw_target: f64,
+    raw_intent: &[f64],
+) -> Result<EditDispatchOutcome, EditIntentProtocolError> {{
+    const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+    if !raw_target.is_finite() || raw_target.fract() != 0.0 || raw_target < 1.0 || raw_target > MAX_SAFE_INTEGER {{
+        return Err(EditIntentProtocolError::InvalidTarget);
+    }}
+    let intent = decode_edit_intent(raw_intent)?;
+    Ok(if tree.apply_edit_intent(ElementId::from_u64(raw_target as u64), intent) {{
+        EditDispatchOutcome::Consumed
+    }} else {{
+        EditDispatchOutcome::Unhandled
+    }})
+}}
+"#,
+        move_tag = tag("move"),
+        extend_tag = tag("extend"),
+        delete_tag = tag("delete"),
+        line_break_tag = tag("insert_line_break"),
+        select_all_tag = tag("select_all"),
+        copy_tag = tag("copy"),
+        cut_tag = tag("cut"),
+        paste_tag = tag("paste"),
+    )
 }
 
 // ---------------------------------------------------------------------------

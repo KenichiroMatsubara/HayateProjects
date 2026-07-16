@@ -23,6 +23,7 @@ export type MainToWorker =
   | { kind: 'pointer'; action: 'down' | 'move' | 'up'; x: number; y: number }
   | { kind: 'wheel'; x: number; y: number; deltaX: number; deltaY: number }
   | { kind: 'key'; key: string; modifiers: number }
+  | { kind: 'edit-intent'; targetId: number; intent: number[] }
   | { kind: 'composition'; targetId: number; text: string };
 
 /** レイアウト後の IME presentation（ADR-0069）。Worker が決め、main の EditContext へ橋渡しする。 */
@@ -48,6 +49,7 @@ export interface WorkerEngine {
   onPointer(action: 'down' | 'move' | 'up', x: number, y: number): void;
   onWheel(x: number, y: number, deltaX: number, deltaY: number): void;
   onKey(key: string, modifiers: number): void;
+  dispatchEditIntent?(targetId: number, intent: Float64Array): number;
   onComposition(targetId: number, text: string): void;
   /** レイアウト後の IME presentation（ADR-0069）。main の EditContext へブリッジする。 */
   imePresentation(): ImePresentation;
@@ -82,6 +84,10 @@ export class WorkerEngineDispatcher {
         break;
       case 'key':
         this.engine.onKey(msg.key, msg.modifiers);
+        this.emitIme();
+        break;
+      case 'edit-intent':
+        this.engine.dispatchEditIntent?.(msg.targetId, new Float64Array(msg.intent));
         this.emitIme();
         break;
       case 'composition':
@@ -134,6 +140,10 @@ export class MainThreadShim {
 
   key(key: string, modifiers: number): void {
     this.postToWorker({ kind: 'key', key, modifiers });
+  }
+
+  editIntent(targetId: number, intent: Float64Array): void {
+    this.postToWorker({ kind: 'edit-intent', targetId, intent: Array.from(intent) });
   }
 
   composition(targetId: number, text: string): void {

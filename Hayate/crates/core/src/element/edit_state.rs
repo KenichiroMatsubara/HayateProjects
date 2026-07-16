@@ -120,6 +120,8 @@ pub enum EditIntent {
         granularity: Granularity,
         direction: Direction,
     },
+    /// 複数行フィールドの現在選択を改行で置換する。
+    InsertLineBreak,
     /// フィールド内容全体を選択（Ctrl/Cmd+A）。
     SelectAll,
     /// 選択をシステムクリップボードへコピー（Ctrl/Cmd+C）。状態変化なし。
@@ -545,6 +547,10 @@ impl EditState {
                 self.collapse_to(start);
                 true
             }
+            EditIntent::InsertLineBreak => {
+                self.insert("\n");
+                true
+            }
             EditIntent::SelectAll => {
                 // アンカーを先頭、focus を末尾に — フィールド全体が選択範囲になる
                 // （空フィールドでは 0 で縮退）。
@@ -560,50 +566,11 @@ impl EditState {
         }
     }
 
-    pub fn apply_key_down(&mut self, key: &str) -> bool {
-        // 文字編集（Backspace/Delete）やキャレット移動は上流で EditIntent に解釈される
-        // （ADR-0103）。ここに生のキーとして残るのは Enter のみ。
-        match key {
-            "Enter" => {
-                // 末尾追加ではなくキャレット位置に挿入（選択があれば置換）。改行は
-                // 他の入力文字と同様に振る舞う。そもそも Enter がここに届くかは要素の
-                // `multiline` プロパティで上流ゲートされ、単一行フィールドでは submit 扱い。
-                self.insert("\n");
-                true
-            }
-            _ => false,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn enter_inserts_a_newline_at_the_caret_not_at_the_end() {
-        // Enter は他の入力文字と同様にキャレット位置へ `\n` を挿入する
-        // — 末尾に追加しない。
-        let mut edit = EditState::default();
-        edit.set("ab"); // キャレットは末尾(2)で縮退
-        edit.set_selection(1, 1); // 'a' と 'b' の間にキャレット
-        assert!(edit.apply_key_down("Enter"));
-        assert_eq!(edit.text_content, "a\nb", "newline lands at the caret");
-        assert_eq!(edit.cursor_byte_index, 2, "caret sits after the inserted newline");
-        assert!(edit.is_caret());
-    }
-
-    #[test]
-    fn enter_replaces_the_selected_range() {
-        // replace-on-type: 選択上で Enter を押すと範囲を破棄し、その位置に改行を挿入する。
-        let mut edit = EditState::default();
-        edit.set("hello");
-        edit.set_selection(1, 4); // "ell" を選択
-        assert!(edit.apply_key_down("Enter"));
-        assert_eq!(edit.text_content, "h\no");
-        assert_eq!(edit.cursor_byte_index, 2, "caret after the newline");
-        assert!(edit.is_caret());
-    }
 
     #[test]
     fn backspace_removes_last_scalar() {

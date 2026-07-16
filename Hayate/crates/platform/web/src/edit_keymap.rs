@@ -26,6 +26,9 @@ const MOD_META: u32 = 8;
 /// - `Backspace`/`Delete`: 後方／前方へ1文字削除。Alt（macOS Option）または
 ///   Ctrl（Win/Linux）で単語単位へ拡大。
 pub fn key_to_edit_intent(key: &str, modifiers: u32) -> Option<EditIntent> {
+    if key == "Enter" {
+        return Some(EditIntent::InsertLineBreak);
+    }
     // プライマリ修飾（Ctrl=Win/Linux または Meta/Cmd=macOS）でのクリップボード
     // ／全選択（ADR-0103）。先に判定することで Ctrl/Cmd+A/C/X/V がテキスト入力へ
     // 漏れず、修飾なしの a/c/x/v は印字可能なまま残る。
@@ -347,9 +350,16 @@ mod tests {
 
     #[test]
     fn non_editing_keys_are_not_edit_intents() {
-        // Enter や印字キーは生の on_key_down へフォールスルーする。
-        assert_eq!(key_to_edit_intent("Enter", 0), None);
+        // 印字キーは生の on_key_down へフォールスルーする。
         assert_eq!(key_to_edit_intent("a", 0), None);
+    }
+
+    #[test]
+    fn enter_maps_to_insert_line_break() {
+        assert_eq!(
+            key_to_edit_intent("Enter", 0),
+            Some(EditIntent::InsertLineBreak),
+        );
     }
 
     #[test]

@@ -36,6 +36,7 @@ const validators = {
   draw_paint_fields: validatorFor('entry.schema.json'),
   style_tags: validatorFor('style_tag.schema.json'),
   event_kinds: validatorFor('event_kind.schema.json'),
+  edit_intents: validatorFor('entry.schema.json'),
   element_kinds: validatorFor('simple_entry.schema.json'),
   element_properties: validatorFor('element_property.schema.json'),
   unset_kinds: validatorFor('unset_kind.schema.json'),

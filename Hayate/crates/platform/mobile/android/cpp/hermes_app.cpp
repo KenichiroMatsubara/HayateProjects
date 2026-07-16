@@ -144,6 +144,57 @@ class HayateHostObject : public jsi::HostObject {
           });
     }
 
+    if (prop == "prepare_frame") {
+      return jsi::Function::createFromHostFunction(
+          rt, name, 1,
+          [&b](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
+               size_t) -> jsi::Value {
+            FfiPreparedFrame prepared = b.prepare_frame(args[0].asNumber());
+            jsi::Array out(rt, prepared.deliveries.size() + 1);
+            out.setValueAtIndex(rt, 0, jsi::Value(prepared.frame_id));
+            for (size_t i = 0; i < prepared.deliveries.size(); ++i) {
+              const FfiEventRow& row = prepared.deliveries[i];
+              jsi::Array jsrow(rt, row.atoms.size());
+              for (size_t j = 0; j < row.atoms.size(); ++j) {
+                const FfiWireAtom& a = row.atoms[j];
+                if (a.is_text) {
+                  jsrow.setValueAtIndex(rt, j,
+                      jsi::String::createFromUtf8(rt, std::string(a.text)));
+                } else {
+                  jsrow.setValueAtIndex(rt, j, jsi::Value(a.number));
+                }
+              }
+              out.setValueAtIndex(rt, i + 1, std::move(jsrow));
+            }
+            return out;
+          });
+    }
+
+    if (prop == "commit_frame" || prop == "abort_frame") {
+      const bool commit = prop == "commit_frame";
+      return jsi::Function::createFromHostFunction(
+          rt, name, 1,
+          [&b, commit](jsi::Runtime&, const jsi::Value&, const jsi::Value* args,
+                       size_t) -> jsi::Value {
+            if (commit) b.commit_frame(args[0].asNumber());
+            else b.abort_frame(args[0].asNumber());
+            return jsi::Value::undefined();
+          });
+    }
+
+    if (prop == "dispatch_edit_intent") {
+      return jsi::Function::createFromHostFunction(
+          rt, name, 2,
+          [&b](jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
+               size_t) -> jsi::Value {
+            auto intent = typed_array_to_vec<double>(rt, args[1]);
+            uint32_t outcome = b.dispatch_edit_intent(
+                args[0].asNumber(),
+                rust::Slice<const double>(intent.data(), intent.size()));
+            return jsi::Value(static_cast<double>(outcome));
+          });
+    }
+
     if (prop == "register_listener") {
       return jsi::Function::createFromHostFunction(
           rt, name, 2,
