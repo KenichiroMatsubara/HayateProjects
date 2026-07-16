@@ -79,6 +79,8 @@ pub struct VelloLayerRasterizer {
     queue: wgpu::Queue,
     renderer: VelloSceneRenderer,
     textures: HashMap<ElementId, LayerTexture>,
+    /// Scrollbar など viewport 固定 chrome。content band とは別 texture に保持する。
+    scroll_chrome_textures: HashMap<ElementId, LayerTexture>,
     width: u32,
     height: u32,
     /// 論理座標（layout ビューポート単位）を物理バッファへ引き伸ばす倍率（DPI 対応）。
@@ -101,6 +103,7 @@ impl VelloLayerRasterizer {
             queue,
             renderer,
             textures: HashMap::new(),
+            scroll_chrome_textures: HashMap::new(),
             width,
             height,
             content_scale: content_scale.max(1.0),
@@ -113,6 +116,7 @@ impl VelloLayerRasterizer {
         self.height = height;
         self.content_scale = content_scale.max(1.0);
         self.textures.clear();
+        self.scroll_chrome_textures.clear();
     }
 
     /// `width`×`height`（device px）のキャッシュ texture を確保する。既定（非 scroll レイヤ）は
@@ -134,7 +138,12 @@ impl VelloLayerRasterizer {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        LayerTexture { texture, view, width, height }
+        LayerTexture {
+            texture,
+            view,
+            width,
+            height,
+        }
     }
 
     /// `band`（論理 px の帯高）が device px で占めるキャッシュ texture の高さ（ADR-0127）。
@@ -152,7 +161,48 @@ impl VelloLayerRasterizer {
     /// の [`Self::band_device_height`] 呼び出しが分岐すると、予算計上と実 texture サイズが
     /// ずれてしまう。
     pub fn scroll_band_bytes(&self, band: ScrollLayerExtent) -> u64 {
-        u64::from(self.width) * u64::from(self.band_device_height(band.height)) * tunables::BYTES_PER_PIXEL
+        u64::from(self.width)
+            * u64::from(self.band_device_height(band.height))
+            * tunables::BYTES_PER_PIXEL
+    }
+
+    /// Scroll content band と viewport 固定 chrome texture を合わせた実キャッシュ量。
+    pub fn scroll_cache_bytes(&self, band: ScrollLayerExtent) -> u64 {
+        self.scroll_band_bytes(band) + self.texture_bytes_per_layer()
+    }
+
+    /// Scrollbar 等の固定 chrome は full-surface texture へ別 raster し、content band 用の
+    /// compensating translate を掛けずに合成する。
+    pub fn rasterize_scroll_chrome(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+    ) -> Result<(), String> {
+        let needs_new_texture = self
+            .scroll_chrome_textures
+            .get(&layer)
+            .is_none_or(|existing| existing.width != self.width || existing.height != self.height);
+        if needs_new_texture {
+            let texture = self.create_texture(self.width, self.height);
+            self.scroll_chrome_textures.insert(layer, texture);
+        }
+        let target_view = &self.scroll_chrome_textures[&layer].view;
+        self.renderer.render_scene(
+            scene,
+            &VelloRenderTarget {
+                device: &self.device,
+                queue: &self.queue,
+                target_view,
+                width: self.width,
+                height: self.height,
+            },
+            TRANSPARENT,
+            self.content_scale,
+        )
+    }
+
+    pub fn scroll_chrome_texture(&self, layer: ElementId) -> Option<&LayerTexture> {
+        self.scroll_chrome_textures.get(&layer)
     }
 }
 
@@ -164,15 +214,23 @@ impl LayerRasterizer for VelloLayerRasterizer {
     /// texture 行 0 に来るよう内容を平行移動して raster する。キャッシュ済み texture の寸法が
     /// 要求と食い違えば（帯が動いた／非 scroll へ戻った等）作り直す。`None` は従来どおり
     /// サーフェスサイズで raster する（既存レイヤの挙動は無変更）。
-    fn rasterize(&mut self, layer: ElementId, scene: &SceneGraph, band: Option<RasterBand>) -> Result<(), String> {
+    fn rasterize(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        band: Option<RasterBand>,
+    ) -> Result<(), String> {
         let (texture_width, texture_height, origin_y) = match band {
-            Some(band) => (self.width, self.band_device_height(band.height), band.origin_y),
+            Some(band) => (
+                self.width,
+                self.band_device_height(band.height),
+                band.origin_y,
+            ),
             None => (self.width, self.height, 0.0),
         };
-        let needs_new_texture = self
-            .textures
-            .get(&layer)
-            .is_none_or(|existing| existing.width != texture_width || existing.height != texture_height);
+        let needs_new_texture = self.textures.get(&layer).is_none_or(|existing| {
+            existing.width != texture_width || existing.height != texture_height
+        });
         if needs_new_texture {
             let texture = self.create_texture(texture_width, texture_height);
             self.textures.insert(layer, texture);
@@ -203,10 +261,12 @@ impl LayerRasterizer for VelloLayerRasterizer {
 
     fn discard(&mut self, layer: ElementId) {
         self.textures.remove(&layer);
+        self.scroll_chrome_textures.remove(&layer);
     }
 
     fn discard_all(&mut self) {
         self.textures.clear();
+        self.scroll_chrome_textures.clear();
     }
 }
 
@@ -273,6 +333,13 @@ pub struct WgpuQuadCompositor {
     pipeline_layout: wgpu::PipelineLayout,
     sampler: wgpu::Sampler,
     pipelines: HashMap<PipelineVariant, wgpu::RenderPipeline>,
+    /// placement / clip は logical px、texture / target は device px。線形部は texture の
+    /// device 解像度で相殺されるため、translation と clip だけへこの倍率を適用する。
+    content_scale: f32,
+    /// WebGPU では小さい buffer でも `mappedAtCreation` が device-lost 状態で例外になり得る。
+    /// 合成 hot path は未 map の COPY_DST buffer を再利用し、queue write だけで更新する。
+    vertex_buffer: Option<wgpu::Buffer>,
+    vertex_buffer_capacity: u64,
 }
 
 impl WgpuQuadCompositor {
@@ -321,6 +388,9 @@ impl WgpuQuadCompositor {
             pipeline_layout,
             sampler,
             pipelines: HashMap::new(),
+            content_scale: 1.0,
+            vertex_buffer: None,
+            vertex_buffer_capacity: 0,
         }
     }
 
@@ -336,6 +406,10 @@ impl WgpuQuadCompositor {
     /// warmup 済み variant 数（契約テスト用）。
     pub fn warmed_variant_count(&self) -> usize {
         self.pipelines.len()
+    }
+
+    pub fn set_content_scale(&mut self, content_scale: f32) {
+        self.content_scale = content_scale.max(1.0);
     }
 
     fn build_pipeline(&self, variant: PipelineVariant) -> wgpu::RenderPipeline {
@@ -414,15 +488,20 @@ impl WgpuQuadCompositor {
     /// も帯サイズでなければ全体を surface へ引き伸ばしてしまう。NDC 正規化（`dx/target_w` 等）は
     /// 引き続き合成先 `target` の寸法を使う（NDC は render target 基準——`quad.transform` の
     /// 「素の矩形→絶対シーン座標」変換とは独立な軸）。
-    fn quad_vertices(&self, quad: &CompositeQuad<'_, LayerTexture>, target: &CompositeTarget) -> [QuadVertex; VERTICES_PER_QUAD] {
+    fn quad_vertices(
+        &self,
+        quad: &CompositeQuad<'_, LayerTexture>,
+        target: &CompositeTarget,
+    ) -> [QuadVertex; VERTICES_PER_QUAD] {
         let tex_w = quad.texture.width as f64;
         let tex_h = quad.texture.height as f64;
         let target_w = target.width as f64;
         let target_h = target.height as f64;
         let t = quad.transform;
+        let s = self.content_scale as f64;
         let corner = |cx: f64, cy: f64, u: f32, v: f32| {
-            let dx = t[0] * cx + t[2] * cy + t[4];
-            let dy = t[1] * cx + t[3] * cy + t[5];
+            let dx = t[0] * cx + t[2] * cy + t[4] * s;
+            let dy = t[1] * cx + t[3] * cy + t[5] * s;
             QuadVertex {
                 pos: [
                     (dx / target_w * 2.0 - 1.0) as f32,
@@ -461,7 +540,8 @@ impl LayerCompositor for WgpuQuadCompositor {
             .ok_or("compositor pipeline not warmed up (ADR-0130a violation)")?;
 
         // 全 quad の頂点を 1 本の vertex buffer に詰める（draw は quad ごと＝bind group/scissor 切替）。
-        let mut vertex_data: Vec<f32> = Vec::with_capacity(quads.len() * VERTICES_PER_QUAD * VERTEX_FLOATS);
+        let mut vertex_data: Vec<f32> =
+            Vec::with_capacity(quads.len() * VERTICES_PER_QUAD * VERTEX_FLOATS);
         for quad in quads {
             for v in self.quad_vertices(quad, target) {
                 vertex_data.extend_from_slice(&v.pos);
@@ -470,22 +550,26 @@ impl LayerCompositor for WgpuQuadCompositor {
             }
         }
         let vertex_bytes: Vec<u8> = vertex_data.iter().flat_map(|f| f.to_le_bytes()).collect();
-        let vertex_buffer = if vertex_bytes.is_empty() {
-            None
-        } else {
-            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("hayate_layer_compositor_quads"),
-                size: vertex_bytes.len() as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: true,
-            });
-            buffer
-                .slice(..)
-                .get_mapped_range_mut()
-                .copy_from_slice(&vertex_bytes);
-            buffer.unmap();
-            Some(buffer)
-        };
+        if !vertex_bytes.is_empty() {
+            let required = vertex_bytes.len() as u64;
+            if self.vertex_buffer_capacity < required {
+                let capacity = required.next_power_of_two();
+                self.vertex_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("hayate_layer_compositor_quads"),
+                    size: capacity,
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }));
+                self.vertex_buffer_capacity = capacity;
+            }
+            self.queue.write_buffer(
+                self.vertex_buffer
+                    .as_ref()
+                    .expect("vertex buffer allocated"),
+                0,
+                &vertex_bytes,
+            );
+        }
 
         let bind_groups: Vec<wgpu::BindGroup> = quads
             .iter()
@@ -536,17 +620,18 @@ impl LayerCompositor for WgpuQuadCompositor {
                 multiview_mask: None,
             });
             pass.set_pipeline(pipeline);
-            if let Some(buffer) = &vertex_buffer {
+            if let Some(buffer) = &self.vertex_buffer {
                 pass.set_vertex_buffer(0, buffer.slice(..));
             }
             for (index, quad) in quads.iter().enumerate() {
                 // 軸並行 clip は scissor で適用する（ADR-0125 Decision 4。角丸は内容へ焼き込み済み）。
                 let (sx, sy, sw, sh) = match quad.clip {
                     Some([x, y, w, h]) => {
-                        let x0 = x.max(0.0).min(target.width as f32) as u32;
-                        let y0 = y.max(0.0).min(target.height as f32) as u32;
-                        let x1 = (x + w).max(0.0).min(target.width as f32) as u32;
-                        let y1 = (y + h).max(0.0).min(target.height as f32) as u32;
+                        let s = self.content_scale;
+                        let x0 = (x * s).max(0.0).min(target.width as f32) as u32;
+                        let y0 = (y * s).max(0.0).min(target.height as f32) as u32;
+                        let x1 = ((x + w) * s).max(0.0).min(target.width as f32) as u32;
+                        let y1 = ((y + h) * s).max(0.0).min(target.height as f32) as u32;
                         (x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0))
                     }
                     None => (0, 0, target.width, target.height),

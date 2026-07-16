@@ -1,12 +1,8 @@
 import { existsSync } from 'node:fs';
 import { defineConfig, devices } from '@playwright/test';
 
-// #697 専用の Playwright 設定。既定の `playwright.config.ts`（DOM レンダラー中心のスモーク群）
-// とは別出しにしてある: このスペックは (1) `layer-present` feature ON の追加 WASM ビルド
-// （`pnpm --filter hayate build:layer-present` → `Hayate/wasm-pkgs/pkg-layer-present`）を要求し、
-// (2) 実 GPU（`navigator.gpu.requestAdapter()`）が要る診断的スペックで、他のスモークと同じ
-// webServer 起動列に混ぜると「pkg-layer-present 未ビルド」で無関係なテストまで巻き込んで
-// 待たせる／落とすため。
+// Vello の layer-present 実ブラウザ検証専用設定。通常の E2E とは分離し、WebGPU を有効にした
+// Chromium で同じ WASM の runtime flag (`?layerPresent=0/1`) を比較する。
 //
 // `--enable-unsafe-webgpu` / `--ignore-gpu-blocklist` / `--use-angle=vulkan` を試す（README 参照）。
 // Playwright 管理の chromium（`playwright install`）がこの環境には無く、代わりに実 Chrome
@@ -19,10 +15,7 @@ const executablePath = existsSync(PREINSTALLED_CHROMIUM)
     ? SYSTEM_CHROME
     : undefined;
 
-// OFF: 既定ビルド（`Hayate/wasm-pkgs/pkg`、layer-present feature OFF）を素の vite.config.ts で配信。
-const OFF_PORT = Number(process.env.E2E_LAYER_PRESENT_OFF_PORT ?? 5185);
-// ON: `vite.config.e2e-layer-present.ts`（`hayate-adapter-web` を pkg-layer-present へ alias）で配信。
-const ON_PORT = Number(process.env.E2E_LAYER_PRESENT_ON_PORT ?? 5186);
+const PORT = Number(process.env.E2E_LAYER_PRESENT_PORT ?? 5185);
 
 export default defineConfig({
   testDir: './e2e',
@@ -33,6 +26,8 @@ export default defineConfig({
   timeout: 60_000,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
+    ...devices['Desktop Chrome'],
+    baseURL: `http://localhost:${PORT}`,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
@@ -40,7 +35,6 @@ export default defineConfig({
     {
       name: 'chromium-webgpu',
       use: {
-        ...devices['Desktop Chrome'],
         launchOptions: {
           executablePath,
           args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=vulkan'],
@@ -48,18 +42,10 @@ export default defineConfig({
       },
     },
   ],
-  webServer: [
-    {
-      command: `pnpm exec vite --port ${OFF_PORT} --strictPort`,
-      url: `http://localhost:${OFF_PORT}`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-    },
-    {
-      command: `pnpm exec vite --config vite.config.e2e-layer-present.ts --port ${ON_PORT} --strictPort`,
-      url: `http://localhost:${ON_PORT}`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-    },
-  ],
+  webServer: {
+    command: `./node_modules/.bin/vite --port ${PORT} --strictPort`,
+    url: `http://localhost:${PORT}`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
 });

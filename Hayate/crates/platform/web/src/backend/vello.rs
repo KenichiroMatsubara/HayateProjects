@@ -6,16 +6,16 @@ use wgpu::util::TextureBlitter;
 
 use hayate_core::ElementId;
 use hayate_core::SceneGraph;
-use hayate_scene_renderer_vello::{
-    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
-};
 use hayate_layer_compositor::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene, layer_scene::compose,
-    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerPlacement, LayerRasterizer,
-    PresentPlanner, ScrollLayerGeometry,
+    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
+    extract_scroll_layer_scene, layer_scene::compose, tunables, CompositeQuad, GpuBudget,
+    LayerCompositor, LayerPlacement, LayerRasterizer, PresentPlanner, ScrollLayerGeometry,
 };
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, LayerTexture, VelloLayerRasterizer, WgpuQuadCompositor,
+};
+use hayate_scene_renderer_vello::{
+    create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
 };
 
 use super::{js_to_anyhow, CanvasBackend, ClearColor, SceneRendererKind};
@@ -34,9 +34,17 @@ struct LayerPresentState {
 }
 
 impl LayerPresentState {
-    fn new(device: wgpu::Device, queue: wgpu::Queue, width: u32, height: u32, content_scale: f32) -> Result<Self, String> {
-        let rasterizer = VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height, content_scale)?;
+    fn new(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        width: u32,
+        height: u32,
+        content_scale: f32,
+    ) -> Result<Self, String> {
+        let rasterizer =
+            VelloLayerRasterizer::new(device.clone(), queue.clone(), width, height, content_scale)?;
         let mut compositor = WgpuQuadCompositor::new(device, queue);
+        compositor.set_content_scale(content_scale);
         // construct 時に全パイプライン variant を前倒し生成し、初回合成フレームの遅延生成
         // スパイクを消す（ADR-0130a）。
         compositor.warmup();
@@ -81,8 +89,8 @@ struct VelloSurfaceHost {
 impl SelectedBackend {
     pub(crate) async fn init(canvas: HtmlCanvasElement) -> Result<Self, JsValue> {
         let surface_host = VelloSurfaceHost::init(canvas).await?;
-        let mut scene_renderer = VelloSceneRenderer::new(surface_host.device())
-            .map_err(|e| JsValue::from_str(&e))?;
+        let mut scene_renderer =
+            VelloSceneRenderer::new(surface_host.device()).map_err(|e| JsValue::from_str(&e))?;
         // init 直後・最初の実アプリフレーム前に vello パイプラインを warmup する（#644）。ブラウザ
         // （Dawn）は非同期にパイプラインをコンパイルするため、warmup が無いと初回タップ/スクロールの
         // フレームにコンパイル遅延が乗る。warmup の失敗は boot を落とさず、警告のみで続行する
@@ -206,7 +214,9 @@ impl VelloSurfaceHost {
 
     /// 次に present するサーフェス texture とその view を取得する。`Occluded` は「今フレームは
     /// 何もしない」を表すため `Ok(None)` を返す（present_target/present_layers 共通の分岐）。
-    fn acquire_surface_view(&self) -> Result<Option<(wgpu::SurfaceTexture, wgpu::TextureView)>, JsValue> {
+    fn acquire_surface_view(
+        &self,
+    ) -> Result<Option<(wgpu::SurfaceTexture, wgpu::TextureView)>, JsValue> {
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t)
             | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
@@ -300,10 +310,16 @@ fn quad_transform(
     planner: &PresentPlanner,
     scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
 ) -> [f64; 6] {
-    match (planner.cached_scroll_band(placement.layer), scroll_geometry.get(&placement.layer)) {
+    match (
+        planner.cached_scroll_band(placement.layer),
+        scroll_geometry.get(&placement.layer),
+    ) {
         (Some(cached_band), Some(geometry)) => {
             let screen_top = geometry.screen_top_for_band(cached_band);
-            compose(placement.transform, [1.0, 0.0, 0.0, 1.0, 0.0, screen_top as f64])
+            compose(
+                placement.transform,
+                [1.0, 0.0, 0.0, 1.0, 0.0, screen_top as f64],
+            )
         }
         _ => placement.transform,
     }
@@ -314,7 +330,11 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::Vello
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), anyhow::Error> {
+    fn render_scene(
+        &mut self,
+        scene: &SceneGraph,
+        clear_color: ClearColor,
+    ) -> Result<(), anyhow::Error> {
         let target = self.surface_host.render_target();
         self.scene_renderer
             .render_scene(scene, &target, clear_color, self.content_scale)
@@ -366,7 +386,12 @@ impl CanvasBackend for SelectedBackend {
         };
         let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
 
-        for stale in state.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
+        for stale in state
+            .prev_layers
+            .difference(&boundaries)
+            .copied()
+            .collect::<Vec<_>>()
+        {
             state.rasterizer.discard(stale);
             state.planner.evict(stale);
         }
@@ -411,38 +436,69 @@ impl CanvasBackend for SelectedBackend {
             let Some(geometry) = scroll_geometry.get(&layer) else {
                 continue; // 非 scroll レイヤは上のループで処理済み
             };
-            if !geometry.content_dirty
-                && !state
-                    .planner
-                    .scroll_layer_needs_raster(layer, geometry.visible_top, geometry.viewport_height)
-            {
-                continue; // キャッシュ済み帯がまだ可視域を覆っている
+            let needs_content_raster = geometry.content_dirty
+                || state.planner.scroll_layer_needs_raster(
+                    layer,
+                    geometry.visible_top,
+                    geometry.viewport_height,
+                );
+            if needs_content_raster {
+                let Some(extracted) = (if layer == root {
+                    Some(extract_root_scene(scene, root, &boundaries))
+                } else {
+                    extract_scroll_layer_scene(scene, layer, &boundaries)
+                }) else {
+                    continue;
+                };
+                state
+                    .rasterizer
+                    .rasterize(layer, &extracted, Some(geometry.raster_band()))
+                    .map_err(|e| anyhow::anyhow!(e))?;
             }
-            let Some(extracted) = extract(layer) else {
-                continue;
-            };
-            let raster_band = geometry.raster_band();
-            state
-                .rasterizer
-                .rasterize(layer, &extracted, Some(raster_band))
-                .map_err(|e| anyhow::anyhow!(e))?;
-            let bytes = state.rasterizer.scroll_band_bytes(geometry.band);
-            state.planner.note_scroll_rasterized(layer, geometry.band, bytes);
+
+            // Scrollbar は viewport 固定 chrome であり、content band と同じ compensating
+            // translate を掛けるとスクロールに追随して移動・欠落する。別 texture として毎フレーム
+            // 更新し、通常 placement で content の後ろから重ねる。
+            if layer != root {
+                if let Some(chrome) = extract_scroll_chrome_scene(scene, layer, &boundaries) {
+                    state
+                        .rasterizer
+                        .rasterize_scroll_chrome(layer, &chrome)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                }
+            }
+            if needs_content_raster {
+                let bytes = state.rasterizer.scroll_cache_bytes(geometry.band);
+                state
+                    .planner
+                    .note_scroll_rasterized(layer, geometry.band, bytes);
+            }
         }
 
         let placements = collect_layer_placements(scene, root, &boundaries);
-        let quads: Vec<CompositeQuad<'_, LayerTexture>> = placements
-            .iter()
-            .filter_map(|placement| {
-                state.rasterizer.texture(placement.layer).map(|texture| CompositeQuad {
+        let mut quads: Vec<CompositeQuad<'_, LayerTexture>> = Vec::new();
+        for placement in &placements {
+            if let Some(texture) = state.rasterizer.texture(placement.layer) {
+                quads.push(CompositeQuad {
                     layer: placement.layer,
                     transform: quad_transform(placement, &state.planner, scroll_geometry),
                     opacity: 1.0,
                     clip: placement.clip,
                     texture,
-                })
-            })
-            .collect();
+                });
+            }
+            if scroll_geometry.contains_key(&placement.layer) {
+                if let Some(texture) = state.rasterizer.scroll_chrome_texture(placement.layer) {
+                    quads.push(CompositeQuad {
+                        layer: placement.layer,
+                        transform: placement.transform,
+                        opacity: 1.0,
+                        clip: placement.clip,
+                        texture,
+                    });
+                }
+            }
+        }
         self.surface_host
             .present_composite(&mut state.compositor, &quads, clear_color)
             .map_err(js_to_anyhow)?;
@@ -469,9 +525,12 @@ impl CanvasBackend for SelectedBackend {
         if let Some(state) = self.layer_present.as_mut() {
             // レイヤ texture はサーフェスサイズなので作り直し＝台帳ごと invalidate する
             // （invalidate しないと古いサイズの内容を合成し続ける）。
-            state
-                .rasterizer
-                .resize(self.surface_host.width, self.surface_host.height, self.content_scale);
+            state.rasterizer.resize(
+                self.surface_host.width,
+                self.surface_host.height,
+                self.content_scale,
+            );
+            state.compositor.set_content_scale(self.content_scale);
             state.planner.invalidate();
         }
     }

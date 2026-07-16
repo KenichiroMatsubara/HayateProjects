@@ -10,8 +10,9 @@ use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, compose, extract_layer_scene, extract_root_scene,
+    extract_scroll_layer_scene,
 };
-use hayate_layer_compositor::{PresentPlanner, ScrollLayerExtent, ScrollLayerGeometry};
+use hayate_layer_compositor::{PresentPlanner, ScrollLayerGeometry};
 use js_sys::{Array, Float32Array, Float64Array, Function, Object, Reflect, Uint8Array};
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::HtmlCanvasElement;
@@ -223,20 +224,19 @@ impl CanvasBackend for SelectedBackend {
             let extracted = if layer == root {
                 extract_root_scene(scene, root, &boundaries)
             } else {
-                extract_layer_scene(scene, layer, &boundaries).ok_or_else(|| {
+                extract_scroll_layer_scene(scene, layer, &boundaries).ok_or_else(|| {
                     anyhow::anyhow!("CanvasKit layer {} is missing", layer.to_u64())
                 })?
             };
-            // CanvasKit uses a full-surface compatible offscreen Surface. Record only the part of
-            // the requested overscan band that this texture can actually hold, so coverage never
-            // over-promises and a later scroll re-rasterizes before exposing truncated pixels.
-            let cached_band = ScrollLayerExtent {
-                top: geometry.band.top,
-                height: geometry
-                    .band
-                    .height
-                    .min(self.canvas.height() as f32 / self.content_scale),
-            };
+            // CanvasKit uses a full-surface compatible offscreen Surface. When the requested
+            // overscan band is taller than that fixed surface, slide the recorded band around the
+            // current viewport instead of truncating only its tail. Otherwise a scroll can expose
+            // rows beyond the texture even on the very frame that re-rasterized it.
+            let cached_band = geometry.band.fit_to_capacity(
+                geometry.visible_top,
+                geometry.viewport_height,
+                self.canvas.height() as f32 / self.content_scale,
+            );
             let origin_y = geometry.screen_top_for_band(cached_band);
             let frame = encode_scene_at(
                 &extracted,

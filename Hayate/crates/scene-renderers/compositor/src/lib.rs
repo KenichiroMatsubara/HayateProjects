@@ -252,6 +252,22 @@ impl ScrollLayerExtent {
     pub fn covers(&self, visible_top: f32, viewport_height: f32) -> bool {
         self.top <= visible_top && (self.top + self.height) >= (visible_top + viewport_height)
     }
+
+    /// この要求帯を高さ `capacity` の固定サイズ texture に収める。texture に余る高さは可視域の
+    /// 上下へ均等に振り、content 端では要求帯内へスライドする。元の帯が可視域を覆い、かつ
+    /// `capacity >= viewport_height` なら、返す帯も可視域を必ず覆う。
+    pub fn fit_to_capacity(
+        self,
+        visible_top: f32,
+        viewport_height: f32,
+        capacity: f32,
+    ) -> Self {
+        let height = capacity.max(0.0).min(self.height.max(0.0));
+        let max_top = (self.top + self.height - height).max(self.top);
+        let overscan = (height - viewport_height).max(0.0) / 2.0;
+        let top = (visible_top - overscan).clamp(self.top, max_top);
+        Self { top, height }
+    }
 }
 
 /// スクロール offset・可視域・content 全高・オーバースキャンから、raster すべき縦帯を計算する
@@ -566,6 +582,35 @@ mod tests {
         assert!(band.covers(0.0, 800.0));
         // overscan(600) を超えて 700px スクロール → 可視域下端 1500 > band 下端 1400 で未カバー。
         assert!(!band.covers(700.0, 800.0));
+    }
+
+    #[test]
+    fn capacity_limited_band_slides_to_keep_the_visible_viewport_covered() {
+        // CanvasKit の compatible surface は画面高に固定される。要求帯の先頭を単純に切ると、
+        // 186px スクロール後の可視下端 842 が cache 下端 720 を越えて欠ける。
+        let requested = ScrollLayerExtent {
+            top: 0.0,
+            height: 1442.0,
+        };
+        let fitted = requested.fit_to_capacity(186.0, 656.0, 720.0);
+        assert_eq!(fitted, ScrollLayerExtent { top: 154.0, height: 720.0 });
+        assert!(fitted.covers(186.0, 656.0));
+    }
+
+    #[test]
+    fn capacity_limited_band_stays_inside_the_requested_content_range() {
+        let requested = ScrollLayerExtent {
+            top: 0.0,
+            height: 1000.0,
+        };
+        assert_eq!(
+            requested.fit_to_capacity(0.0, 656.0, 720.0),
+            ScrollLayerExtent { top: 0.0, height: 720.0 },
+        );
+        assert_eq!(
+            requested.fit_to_capacity(344.0, 656.0, 720.0),
+            ScrollLayerExtent { top: 280.0, height: 720.0 },
+        );
     }
 
     // ── #639: overscroll（バウンス）中の content-visible 帯 ─────────────────────
