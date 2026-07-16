@@ -36,6 +36,7 @@ export function rendererOptimizationQueryParam(
   renderer: string,
 ): WebRendererOptimizationQueryParam | undefined {
   switch (renderer) {
+    case RENDERER_VALUE_CANVASKIT:
     case RENDERER_VALUE_VELLO:
       return 'layerPresent';
     case RENDERER_VALUE_TINY_SKIA:
