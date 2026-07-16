@@ -146,6 +146,83 @@ test.describe('CanvasKit real Chromium performance feedback loop', () => {
     expect(layered.equals(singleRoot), 'CanvasKit layer order/clip/shadow parity').toBe(true);
   });
 
+  for (const device of [
+    { name: 'desktop-dpr1', viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 },
+    { name: 'mobile-dpr3', viewport: { width: 400, height: 720 }, deviceScaleFactor: 3 },
+  ] as const) {
+    test(`composite-only scroll-first-frame output matches single-root (${device.name})`, async ({
+      browser,
+    }, testInfo) => {
+      const context = await browser.newContext({
+        baseURL: testInfo.project.use.baseURL,
+        viewport: device.viewport,
+        deviceScaleFactor: device.deviceScaleFactor,
+        isMobile: device.name.startsWith('mobile'),
+        hasTouch: device.name.startsWith('mobile'),
+      });
+
+      const capture = async (layerPresent: 0 | 1): Promise<Buffer> => {
+        const page = await context.newPage();
+        await page.addInitScript(() => window.localStorage.clear());
+        await page.goto(`/?renderer=canvaskit&layerPresent=${layerPresent}`);
+        await expect(page.locator('#canvas-stage')).toBeVisible();
+        await page.waitForFunction(() => {
+          const target = globalThis as unknown as { __hayateCanvasKitBridge?: unknown };
+          return target.__hayateCanvasKitBridge !== undefined;
+        });
+        await settle(page, 3);
+        // Initial transitions/font resolution must not race the wheel frame. Capture inside the
+        // first backend present call after arming so a later kinetic-scroll frame cannot replace
+        // the broken transient frame before Playwright takes its screenshot.
+        await page.waitForTimeout(400);
+        await settle(page, 3);
+        await page.evaluate((layered) => {
+          const canvas = document.querySelector('#canvas-stage') as HTMLCanvasElement;
+          const target = globalThis as unknown as {
+            __hayateFirstScrollFrame?: string;
+            __hayateCanvasKitBridge: Record<string, (...args: unknown[]) => unknown>;
+          };
+          const method = layered === 1 ? 'compositeLayers' : 'replay';
+          const bridge = target.__hayateCanvasKitBridge;
+          const original = bridge[method]!;
+          target.__hayateFirstScrollFrame = undefined;
+          bridge[method] = function (...args: unknown[]): unknown {
+            const result = original.apply(this, args);
+            if (args[0] === canvas && target.__hayateFirstScrollFrame === undefined) {
+              target.__hayateFirstScrollFrame = canvas.toDataURL('image/png');
+              bridge[method] = original;
+            }
+            return result;
+          };
+        }, layerPresent);
+        await page.mouse.move(device.viewport.width / 2, device.viewport.height * 0.7);
+        // 24px stays inside the initial cache band on both fixtures. This must exercise the
+        // composite-only path; a larger jump can re-raster and hide a viewport clip baked into
+        // the old texture.
+        await page.mouse.wheel(0, 24);
+        const dataUrl = await page.waitForFunction(
+          () => (globalThis as unknown as { __hayateFirstScrollFrame?: string })
+            .__hayateFirstScrollFrame,
+        ).then((handle) => handle.jsonValue() as Promise<string>);
+        const image = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+        await testInfo.attach(`${device.name}-layer-present-${layerPresent}.png`, {
+          body: image,
+          contentType: 'image/png',
+        });
+        await page.close();
+        return image;
+      };
+
+      const singleRoot = await capture(0);
+      const layered = await capture(1);
+      expect(
+        layered.equals(singleRoot),
+        `${device.name}: first rendered frame after scroll must match layerPresent=0`,
+      ).toBe(true);
+      await context.close();
+    });
+  }
+
   test('text editing does not replay or allocate excessively', async ({ page }, testInfo) => {
     const mirror = page.locator('[data-hayate-a11y]');
     await expect(mirror).toHaveCount(1);

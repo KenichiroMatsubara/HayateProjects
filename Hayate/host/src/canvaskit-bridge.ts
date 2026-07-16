@@ -159,7 +159,13 @@ async function loadCanvasKit(initialize: CanvasKitInitializer): Promise<CanvasKi
 }
 
 function createSurface(canvas: HTMLCanvasElement, canvasKit: CanvasKit): CanvasKitSurface {
-  const surface = canvasKit.MakeWebGLCanvasSurface(canvas);
+  // Layer snapshots need a real alpha channel. CanvasKit derives compatible offscreen surface
+  // alpha semantics from this context; the default opaque WebGL canvas turns transparent clears
+  // into black pixels when those snapshots are later composited.
+  const surface = canvasKit.MakeWebGLCanvasSurface(canvas, undefined, {
+    alpha: 1,
+    premultipliedAlpha: 1,
+  });
   if (surface == null) throw new Error('CanvasKit surface unavailable');
   const paint = new canvasKit.Paint();
   paint.setAntiAlias?.(CANVASKIT_TEXT_ANTIALIAS);

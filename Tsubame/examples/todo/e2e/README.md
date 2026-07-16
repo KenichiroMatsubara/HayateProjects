@@ -44,34 +44,25 @@ WSL2 / 素の Linux では `libnss3 libnspr4 libasound2` 等が無いと Chromiu
   Accessibility Mirror（ADR-0124、`[data-hayate-a11y]`）経由で `getByRole` 照会 →
   `boundingBox()` の座標で canvas をクリックする駆動パターンは `canvas-a11y-mirror.spec.ts` 参照。
 
-## `layer-present` feature の実 Chromium 検証（#697）
+## `layer-present` の実 Chromium 検証（#697）
 
-> ⚠️ **ADR-0135 により `layer-present` feature 自体が封印中（有効化禁止）**。#697 の実
-> Chromium 検証で描画バグが確認され、実用段階にないと判定された。以下の harness は
-> 削除せず維持するが、再開（性能上の実害が具体的に発生した時）までは実行対象として
-> 使わない — 再開時の回帰ガード／出発点として保存してある。
-
-`layer-present`（#690・ADR-0125/0127、既定 OFF）は cargo feature なのでランタイムに切り替え
-不可 — ON/OFF は別 WASM バイナリになる。`layer-present-webgpu.spec.ts` はこの2ビルドを実
+`layer-present`（#690・ADR-0125/0127/0140）は同じ WASM を `?layerPresent=0/1` で切り替える。
+`layer-present-webgpu.spec.ts` は両経路を実
 Chromium（Playwright、`--enable-unsafe-webgpu --ignore-gpu-blocklist --use-angle=vulkan`）で
-起動し、`navigator.gpu.requestAdapter()` の成否・`selected scene renderer` ログ・優先度
-セグメントトグル後の canvas 画素一致・クリック→フレームのレイテンシ p50/p95 を記録する。
+起動し、`navigator.gpu.requestAdapter()` の成否・`selected scene renderer` ログ・scroll
+compositor の panic/device loss・優先度セグメントの interaction・フレーム遅延を検証する。
+WebGPU canvas の画素パリティは `hayate-scene-renderer-vello` の GPU readback tests が担当する。
 
 **本番の `pnpm test:e2e` には含まれない**（既定ビルド `wasm-pkgs/pkg` しか無い環境でも他の
 スモークを止めずに走らせるため、専用の config/script に分離してある）。
 
 ```bash
-# 1. ON 版 WASM ビルド（Hayate/wasm-pkgs/pkg-layer-present、default features + layer-present）
-pnpm --filter hayate build:layer-present
-
-# 2. Tsubame/examples/todo で
+# Tsubame/examples/todo で（標準 pkg の再ビルド込み）
 pnpm test:e2e:layer-present
 ```
 
-- OFF は既定ビルド（`Hayate/wasm-pkgs/pkg`、`vite.config.ts` そのまま）、ON は
-  `vite.config.e2e-layer-present.ts`（`hayate-adapter-web` を `pkg-layer-present` へ alias、
-  本番コードは無変更）で配信する別 dev server（既定ポート 5185/5186、`E2E_LAYER_PRESENT_OFF_PORT`
-  / `E2E_LAYER_PRESENT_ON_PORT` で変更可）。
+- 標準ビルド `Hayate/wasm-pkgs/pkg` を1つの dev server で配信する（既定ポート 5185、
+  `E2E_LAYER_PRESENT_PORT` で変更可）。
 - WebGPU アダプタが取れない環境では `test.skip` で理由を明示してテスト出力に残す
   （黙って green にはしない）。
 - Playwright 管理の chromium が未インストールの環境では `/opt/pw-browsers/chromium` →

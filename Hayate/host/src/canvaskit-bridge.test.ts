@@ -35,6 +35,10 @@ describe('prepareCanvasKitSurface', () => {
     };
     const canvas = { getContext: vi.fn(() => gl) } as unknown as HTMLCanvasElement;
     await prepareCanvasKitSurface(canvas, vi.fn(async () => canvasKit) as never);
+    expect(canvasKit.MakeWebGLCanvasSurface).toHaveBeenCalledWith(canvas, undefined, {
+      alpha: 1,
+      premultipliedAlpha: 1,
+    });
     const bridge = (globalThis as Record<string, unknown>)[CANVASKIT_BRIDGE_KEY] as {
       replay(target: HTMLCanvasElement, commands: Float32Array): void;
       performanceSnapshot(target: HTMLCanvasElement): {
