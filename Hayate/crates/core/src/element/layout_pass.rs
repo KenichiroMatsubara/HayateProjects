@@ -349,9 +349,10 @@ impl LayoutPass {
                 event_queue.push(Event::FetchFont { family });
             }
         }
-        for eid in outcome.finalized {
-            shape_dirty.remove(&eid);
-        }
+        // この settle が受け取った shape request は、layout を retain したかに関係なく
+        // 解決済み。空 text や display:none で measure されなかった text を次フレームへ
+        // 持ち越さない。欠落 font の retry は独立した fonts_dirty が駆動する。
+        shape_dirty.clear();
 
         // finalize 後の後処理: 新しく整形した text-input コンテンツのキャレット/選択を範囲内へ
         // クランプする。整形意味論ではない編集状態（EditState・ADR-0069）なので `TextShaper` には
