@@ -18,14 +18,14 @@ path = "src/main.rs"
 # default on。off にすると skia が唯一のレンダラとして起動し、バイナリは vello/wgpu を
 # 含まない（レンダラ戦略転換の確定時にバイナリサイズを相殺する出口）。
 default = ["backend-vello"]
-backend-vello = ["dep:hayate-scene-renderer-vello", "dep:wgpu", "dep:hayate-layer-compositor"]
+backend-vello = ["dep:hayate-scene-renderer-vello", "dep:wgpu"]
 
 [dependencies]
 hayate-core = { path = "../../core" }
 hayate-app-host = { path = "../../app-host" }
 hayate-demo-fixtures = { path = "../../demo-fixtures" }
 # 永続パイプラインキャッシュの GPU 非依存基盤（ADR-0130b・issue #777、vello 経路専用）。
-hayate-layer-compositor = { path = "../../scene-renderers/compositor", optional = true }
+hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional = true }
 # ネイティブの standard alternative（ADR-0146）。vello 初期化失敗時の一方向 fallback 先で、
 # CPU raster + softbuffer present なので GPU の無い環境でも desktop が起動する（issue #801）。

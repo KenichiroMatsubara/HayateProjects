@@ -9,14 +9,21 @@
 //! 保持する — raster 直後に `image_snapshot()` でスナップショットを取ることで、tiny-skia の
 //! `Pixmap` 保持と同じ「backend が texture を所有・再利用する」契約を保ったまま `Send` を満たす。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, RasterBand};
+use hayate_layer_compositor::layer_scene::{
+    collect_layer_placements, compose, extract_layer_scene, extract_root_scene,
+    extract_scroll_chrome_scene, extract_scroll_layer_scene,
+};
+use hayate_layer_compositor::{
+    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner,
+    RasterBand, ScrollLayerExtent, ScrollLayerGeometry,
+};
 use skia_safe::{Color4f, Image, Matrix, Rect, Surface};
 
-use crate::{SkiaSceneRenderer, new_raster_surface};
+use crate::{new_raster_surface, SkiaSceneRenderer};
 
 /// レイヤキャッシュ面は透明クリアで raster する（背景は合成の clear / root レイヤが持つ）。
 const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
@@ -48,6 +55,16 @@ impl SkiaLayerRasterizer {
         self.content_scale = content_scale;
         self.textures.clear();
     }
+
+    fn band_device_height(&self, height: f32) -> i32 {
+        (height * self.content_scale).ceil().max(1.0) as i32
+    }
+
+    pub fn scroll_band_bytes(&self, band: ScrollLayerExtent) -> u64 {
+        u64::from(self.width as u32)
+            * u64::from(self.band_device_height(band.height) as u32)
+            * tunables::BYTES_PER_PIXEL
+    }
 }
 
 impl LayerRasterizer for SkiaLayerRasterizer {
@@ -57,14 +74,20 @@ impl LayerRasterizer for SkiaLayerRasterizer {
         &mut self,
         layer: ElementId,
         scene: &SceneGraph,
-        // #707 (ADR-0127) 同様、scroll-band サイジングは未対応（tiny-skia と同じ v1 スコープ
-        // 外の選択）。band は trait 契約を満たすため受け取るが無視し、常にフルサーフェスで
-        // raster する。
-        _band: Option<RasterBand>,
+        band: Option<RasterBand>,
     ) -> Result<(), String> {
-        let mut surface = new_raster_surface(self.width, self.height)
-            .ok_or_else(|| format!("skia layer surface {}x{}", self.width, self.height))?;
-        SkiaSceneRenderer::new().render_scene(scene, surface.canvas(), TRANSPARENT, self.content_scale);
+        let (height, origin_y) = band
+            .map(|band| (self.band_device_height(band.height), band.origin_y))
+            .unwrap_or((self.height, 0.0));
+        let mut surface = new_raster_surface(self.width, height)
+            .ok_or_else(|| format!("skia layer surface {}x{height}", self.width))?;
+        SkiaSceneRenderer::new().render_scene_at(
+            scene,
+            surface.canvas(),
+            TRANSPARENT,
+            self.content_scale,
+            origin_y,
+        );
         self.textures.insert(layer, surface.image_snapshot());
         Ok(())
     }
@@ -146,10 +169,17 @@ impl LayerCompositor for SkiaLayerCompositor {
         canvas.clear(Color4f::new(r, g, b, a));
         for quad in quads {
             canvas.save();
-            canvas.concat(&self.device_matrix(quad.transform));
+            // placement clip は collect_layer_placements が target/device 空間へ写した矩形。
+            // quad transform より先に固定しないと、composite-only scroll の平行移動で clip まで
+            // 動いてしまい、viewport の途中から内容が欠ける。
             if let Some([x, y, w, h]) = quad.clip {
-                canvas.clip_rect(Rect::from_xywh(x * s, y * s, w * s, h * s), None, Some(true));
+                canvas.clip_rect(
+                    Rect::from_xywh(x * s, y * s, w * s, h * s),
+                    None,
+                    Some(true),
+                );
             }
+            canvas.concat(&self.device_matrix(quad.transform));
             let mut paint = skia_safe::Paint::default();
             paint.set_alpha_f(quad.opacity.clamp(0.0, 1.0));
             canvas.draw_image(quad.texture, (0, 0), Some(&paint));
@@ -157,5 +187,228 @@ impl LayerCompositor for SkiaLayerCompositor {
         }
         canvas.restore();
         Ok(())
+    }
+}
+
+/// skia-safe の per-layer raster/cache/composite を Native platform から共通利用する presenter。
+/// 最終 `Surface` の出自だけを platform が決め、CPU raster と Ganesh/EGL は同じ planning を通る。
+pub struct SkiaLayerPresenter {
+    planner: PresentPlanner,
+    rasterizer: SkiaLayerRasterizer,
+    chrome_rasterizer: SkiaLayerRasterizer,
+    compositor: SkiaLayerCompositor,
+    previous_layers: HashSet<ElementId>,
+    width: u32,
+    height: u32,
+    content_scale: f32,
+    last_raster_count: usize,
+}
+
+impl SkiaLayerPresenter {
+    pub fn new(width: u32, height: u32, content_scale: f32) -> Self {
+        let content_scale = content_scale.max(1.0);
+        Self {
+            planner: PresentPlanner::new(),
+            rasterizer: SkiaLayerRasterizer::new(width, height, content_scale),
+            chrome_rasterizer: SkiaLayerRasterizer::new(width, height, content_scale),
+            compositor: SkiaLayerCompositor::new(content_scale),
+            previous_layers: HashSet::new(),
+            width: width.max(1),
+            height: height.max(1),
+            content_scale,
+            last_raster_count: 0,
+        }
+    }
+
+    /// 直近の [`Self::present`] で更新した content cache layer 数。固定 chrome の更新は
+    /// composite-only scroll の主要 work-count に含めない。
+    pub fn last_raster_count(&self) -> usize {
+        self.last_raster_count
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
+        let content_scale = content_scale.max(1.0);
+        if width == 0
+            || height == 0
+            || (width == self.width && height == self.height && content_scale == self.content_scale)
+        {
+            return;
+        }
+        self.width = width;
+        self.height = height;
+        self.content_scale = content_scale;
+        self.rasterizer.resize(width, height, content_scale);
+        self.chrome_rasterizer.resize(width, height, content_scale);
+        self.compositor.set_content_scale(content_scale);
+        self.planner.invalidate();
+        self.previous_layers.clear();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn present(
+        &mut self,
+        scene: &SceneGraph,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+        clear: [f32; 4],
+        scene_origin: (f32, f32),
+        budget: GpuBudget,
+        surface: Surface,
+    ) -> Result<Surface, String> {
+        self.last_raster_count = 0;
+        let Some(&root) = layers.first() else {
+            let mut surface = surface;
+            SkiaSceneRenderer::new().render_scene_with_offset(
+                scene,
+                surface.canvas(),
+                clear,
+                self.content_scale,
+                scene_origin.0,
+                scene_origin.1,
+            );
+            return Ok(surface);
+        };
+        let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+        for stale in self
+            .previous_layers
+            .difference(&boundaries)
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.rasterizer.discard(stale);
+            self.chrome_rasterizer.discard(stale);
+            self.planner.evict(stale);
+        }
+        self.previous_layers = boundaries.clone();
+
+        let non_scroll_layers: Vec<ElementId> = layers
+            .iter()
+            .copied()
+            .filter(|layer| !scroll_geometry.contains_key(layer))
+            .collect();
+        let plan = self.planner.plan_layers(&non_scroll_layers, layer_dirty);
+        for &layer in &plan.raster {
+            let extracted = if layer == root {
+                extract_root_scene(scene, root, &boundaries)
+            } else {
+                extract_layer_scene(scene, layer, &boundaries)
+                    .ok_or_else(|| format!("skia layer {} is missing", layer.to_u64()))?
+            };
+            self.rasterizer.rasterize(layer, &extracted, None)?;
+            self.last_raster_count += 1;
+            self.planner
+                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+        }
+
+        for &layer in layers {
+            let Some(geometry) = scroll_geometry.get(&layer) else {
+                continue;
+            };
+            if layer_dirty.contains(&layer) || self.chrome_rasterizer.texture(layer).is_none() {
+                let chrome = extract_scroll_chrome_scene(scene, layer, &boundaries)
+                    .ok_or_else(|| format!("skia scroll chrome {} is missing", layer.to_u64()))?;
+                self.chrome_rasterizer.rasterize(
+                    layer,
+                    &chrome,
+                    Some(RasterBand {
+                        origin_y: geometry.absolute_top,
+                        height: geometry.viewport_height,
+                    }),
+                )?;
+            }
+            if !geometry.content_dirty
+                && !self.planner.scroll_layer_needs_raster(
+                    layer,
+                    geometry.visible_top,
+                    geometry.viewport_height,
+                )
+            {
+                continue;
+            }
+            let extracted = if layer == root {
+                extract_root_scene(scene, root, &boundaries)
+            } else {
+                extract_scroll_layer_scene(scene, layer, &boundaries)
+                    .ok_or_else(|| format!("skia scroll layer {} is missing", layer.to_u64()))?
+            };
+            self.rasterizer
+                .rasterize(layer, &extracted, Some(geometry.raster_band()))?;
+            self.last_raster_count += 1;
+            self.planner.note_scroll_rasterized(
+                layer,
+                geometry.band,
+                self.rasterizer.scroll_band_bytes(geometry.band),
+            );
+        }
+
+        let placements = collect_layer_placements(scene, root, &boundaries);
+        let mut quads: Vec<CompositeQuad<'_, Image>> = Vec::new();
+        for placement in &placements {
+            if let Some(texture) = self.rasterizer.texture(placement.layer) {
+                let transform = match (
+                    self.planner.cached_scroll_band(placement.layer),
+                    scroll_geometry.get(&placement.layer),
+                ) {
+                    (Some(cached_band), Some(geometry)) => compose(
+                        placement.transform,
+                        [
+                            1.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            0.0,
+                            f64::from(geometry.screen_top_for_band(cached_band)),
+                        ],
+                    ),
+                    _ => placement.transform,
+                };
+                quads.push(CompositeQuad {
+                    layer: placement.layer,
+                    transform,
+                    opacity: 1.0,
+                    clip: placement.clip,
+                    texture,
+                });
+            }
+            if scroll_geometry.contains_key(&placement.layer) {
+                if let Some(texture) = self.chrome_rasterizer.texture(placement.layer) {
+                    let geometry = &scroll_geometry[&placement.layer];
+                    quads.push(CompositeQuad {
+                        layer: placement.layer,
+                        transform: compose(
+                            placement.transform,
+                            [
+                                1.0,
+                                0.0,
+                                0.0,
+                                1.0,
+                                0.0,
+                                f64::from(geometry.absolute_top),
+                            ],
+                        ),
+                        opacity: 1.0,
+                        clip: placement.clip,
+                        texture,
+                    });
+                }
+            }
+        }
+
+        let mut target = SkiaCompositeTarget { surface, clear };
+        target.surface.canvas().save();
+        target.surface.canvas().translate((
+            scene_origin.0 * self.content_scale,
+            scene_origin.1 * self.content_scale,
+        ));
+        self.compositor.composite(&mut target, &quads)?;
+        target.surface.canvas().restore();
+        for quad in &quads {
+            self.planner.note_composited(quad.layer);
+        }
+        for evicted in self.planner.enforce_budget(budget) {
+            self.rasterizer.discard(evicted);
+        }
+        Ok(target.surface)
     }
 }

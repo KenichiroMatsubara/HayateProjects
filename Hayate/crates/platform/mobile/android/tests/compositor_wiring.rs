@@ -115,11 +115,33 @@ fn present_consumes_core_captured_frame_layers() {
         src.contains("frame_layer_transform_dirty()"),
         "frame_handoff must also carry tree.frame_layer_transform_dirty() (#687)"
     );
+    assert!(
+        src.contains("frame_scroll_compositor_inputs()"),
+        "frame_handoff must carry committed scroll facts to the Raster thread"
+    );
     let tsubame = read_relative("src/app_tsubame.rs");
     assert!(
         tsubame.contains("frame_handoff("),
         "the tsubame-js present path must build a handoff from the captured frame layers (#635)"
     );
+}
+
+#[test]
+fn both_android_skia_surfaces_enable_the_shared_layer_presenter() {
+    for (name, path) in [
+        ("CPU raster", "src/skia_window.rs"),
+        ("Ganesh/EGL GL", "src/skia_gl_window.rs"),
+    ] {
+        let src = read_relative(path);
+        assert!(
+            src.contains("SkiaLayerPresenter") && src.contains(".present("),
+            "{name} skia-safe path must use the shared per-layer presenter"
+        );
+        assert!(
+            src.contains("scroll_layer_geometry_from_inputs"),
+            "{name} skia-safe path must reuse scroll overscan geometry"
+        );
+    }
 }
 
 #[test]

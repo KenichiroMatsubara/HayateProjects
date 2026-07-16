@@ -13,12 +13,14 @@
 mod layer_compositor;
 mod painter;
 
-use hayate_core::{SceneGraph, render_scene_graph};
-use skia_safe::{Canvas, Color4f, ColorType, ISize, ImageInfo, Surface, surfaces};
+use hayate_core::{render_scene_graph, SceneGraph};
+use skia_safe::{surfaces, Canvas, Color4f, ColorType, ISize, ImageInfo, Surface};
 
 use painter::SkiaPainter;
 
-pub use layer_compositor::{SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerRasterizer};
+pub use layer_compositor::{
+    SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
+};
 
 pub struct SkiaSceneRenderer;
 
@@ -43,15 +45,45 @@ impl SkiaSceneRenderer {
         clear_color: [f32; 4],
         content_scale: f32,
     ) {
+        self.render_scene_with_offset(graph, canvas, clear_color, content_scale, 0.0, 0.0);
+    }
+
+    /// [`Self::render_scene`] と同じ painter を使い、logical px の平行移動を DPI scale より前に
+    /// 適用して描く。Native の safe-area 原点と scroll overscan 帯の raster を同じ座標契約へ
+    /// 揃えるための surface 非依存 seam。
+    pub fn render_scene_with_offset(
+        &mut self,
+        graph: &SceneGraph,
+        canvas: &Canvas,
+        clear_color: [f32; 4],
+        content_scale: f32,
+        offset_x: f32,
+        offset_y: f32,
+    ) {
         canvas.save();
         let [r, g, b, a] = clear_color;
         canvas.clear(Color4f::new(r, g, b, a));
         if content_scale != 1.0 {
             canvas.scale((content_scale, content_scale));
         }
+        if offset_x != 0.0 || offset_y != 0.0 {
+            canvas.translate((offset_x, offset_y));
+        }
         let mut painter = SkiaPainter::new(canvas);
         render_scene_graph(graph, &mut painter);
         canvas.restore();
+    }
+
+    /// scroll content の `origin_y` が texture row 0 に来るよう、内容を上へずらして描く。
+    pub fn render_scene_at(
+        &mut self,
+        graph: &SceneGraph,
+        canvas: &Canvas,
+        clear_color: [f32; 4],
+        content_scale: f32,
+        origin_y: f32,
+    ) {
+        self.render_scene_with_offset(graph, canvas, clear_color, content_scale, 0.0, -origin_y);
     }
 }
 

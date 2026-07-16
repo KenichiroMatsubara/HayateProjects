@@ -28,7 +28,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{SceneGraph, ScrollCompositorInput};
 
 /// UI スレッド → Raster スレッドのハンドオフ（ADR-0128）。スレッド境界はこれ 1 つで、lower 済み
 /// SceneGraph と全レイヤ（描画順）・`layer_dirty`・`chrome_dirty` を owned で渡す。`Send + Sync` 境界。
@@ -44,6 +44,8 @@ pub struct RasterHandoff {
     pub transform_dirty: HashSet<ElementId>,
     /// scroll フレームの chrome dirty（#634）。単一 texture 経路では content と union して扱う。
     pub chrome_dirty: HashSet<ElementId>,
+    /// Core が commit 時に捕捉した scroll facts。Raster スレッド側で overscan geometry へ射影する。
+    pub scroll_inputs: Vec<ScrollCompositorInput>,
 }
 
 /// UI スレッド → Raster スレッドのメッセージ（ADR-0128）。フレーム提示だけでなく surface ライフ
@@ -83,6 +85,10 @@ impl Coalesce for RasterCommand {
                 existing.layer_dirty.extend(new.layer_dirty);
                 existing.transform_dirty.extend(new.transform_dirty);
                 existing.chrome_dirty.extend(new.chrome_dirty);
+                existing.scroll_inputs = new.scroll_inputs;
+                for input in &mut existing.scroll_inputs {
+                    input.content_dirty |= existing.layer_dirty.contains(&input.layer);
+                }
                 Ok(())
             }
             (_, incoming) => Err(incoming),
@@ -262,6 +268,7 @@ mod tests {
             layer_dirty: dirty.iter().map(|&r| id(r)).collect(),
             transform_dirty: HashSet::new(),
             chrome_dirty: HashSet::new(),
+            scroll_inputs: Vec::new(),
         }
     }
 
@@ -520,6 +527,34 @@ mod tests {
         let mut h = handoff(&[]);
         h.transform_dirty = dirty.iter().map(|&r| id(r)).collect();
         h
+    }
+
+    #[test]
+    fn merging_frames_keeps_old_scroll_content_dirty_on_the_latest_geometry() {
+        let mut old = handoff(&[7]);
+        old.scroll_inputs.push(ScrollCompositorInput {
+            layer: id(7),
+            absolute_top: 0.0,
+            viewport_height: 100.0,
+            scroll_offset: 0.0,
+            max_scroll_offset: 500.0,
+            content_dirty: true,
+        });
+        let mut latest = handoff(&[]);
+        latest.scroll_inputs.push(ScrollCompositorInput {
+            layer: id(7),
+            absolute_top: 0.0,
+            viewport_height: 100.0,
+            scroll_offset: 40.0,
+            max_scroll_offset: 500.0,
+            content_dirty: false,
+        });
+
+        let mut merged = RasterCommand::Frame(old);
+        assert!(merged.merge(RasterCommand::Frame(latest)).is_ok());
+        let RasterCommand::Frame(merged) = merged else { unreachable!() };
+        assert_eq!(merged.scroll_inputs[0].scroll_offset, 40.0);
+        assert!(merged.scroll_inputs[0].content_dirty);
     }
 
     // ── backlog coalescing（raster が入力より遅くなったときの挙動）────────────────────────

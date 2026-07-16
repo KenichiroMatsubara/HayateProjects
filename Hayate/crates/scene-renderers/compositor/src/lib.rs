@@ -25,7 +25,10 @@ use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
 
 pub mod layer_scene;
-pub use layer_scene::{collect_layer_placements, extract_layer_scene, extract_root_scene, LayerPlacement};
+pub use layer_scene::{
+    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
+    extract_scroll_layer_scene, LayerPlacement,
+};
 pub mod pipeline_cache;
 pub use pipeline_cache::PipelineCacheKey;
 pub mod present;

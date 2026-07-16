@@ -9,9 +9,9 @@
 //! （`app.rs::init_and_spawn_raster`）が skia raster へ一方向 fallback する。
 //!
 //! painter は不変（ADR-0146 §3 の surface 非依存設計）: `SceneGraph`→Canvas の変換層
-//! （`hayate-scene-renderer-skia::painter`）には一切手を入れず、GL 化は「`render_scene` に
-//! 渡す Canvas の出自が CPU raster surface から Ganesh の FBO0 wrap
-//! （`gpu::surfaces::wrap_backend_render_target`）に変わる」だけ。
+//! （`hayate-scene-renderer-skia::painter`）は CPU/GL で共有する。dirty layer は同じ
+//! `SkiaLayerPresenter` で cache 更新し、最終 quad 合成先だけを Ganesh の FBO0 wrap
+//! （`gpu::surfaces::wrap_backend_render_target`）へ差し替える。
 //!
 //! スレッド規約（ADR-0128 / `RasterThread`）: EGL 初期化・観測ログ（EGL vendor / GL renderer）
 //! は UI スレッドで行い（fallback 判定を spawn 前に済ませるため）、直後に unbind して
@@ -23,9 +23,11 @@ use std::collections::HashSet;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
-use hayate_core::{ElementId, SceneGraph};
-use hayate_layer_compositor::PresentPlanner;
-use hayate_scene_renderer_skia::SkiaSceneRenderer;
+use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, tunables, GpuBudget,
+};
+use hayate_scene_renderer_skia::SkiaLayerPresenter;
 use ndk::native_window::NativeWindow;
 use skia_safe::gpu;
 
@@ -237,8 +239,7 @@ pub(crate) struct SkiaGlSurface {
     width: u32,
     height: u32,
     content_scale: f32,
-    /// present 側 raster gating（vello / skia raster と同型、#632/#687）。
-    planner: PresentPlanner,
+    presenter: SkiaLayerPresenter,
     /// この Raster スレッドで EGL コンテキストを bind 済みか（初回フレームで bind）。
     bound: bool,
 }
@@ -348,7 +349,7 @@ pub(crate) fn init_skia_gl_surface(
             width,
             height,
             content_scale,
-            planner: PresentPlanner::new(),
+            presenter: SkiaLayerPresenter::new(width, height, content_scale),
             bound: false,
         })
     }
@@ -363,16 +364,13 @@ impl SkiaGlSurface {
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
-        transform_dirty: &HashSet<ElementId>,
+        _transform_dirty: &HashSet<ElementId>,
         chrome_dirty: &HashSet<ElementId>,
+        scroll_inputs: &[ScrollCompositorInput],
     ) -> Result<(), String> {
-        let mut raster_trigger: HashSet<ElementId> = layer_dirty.clone();
-        raster_trigger.extend(transform_dirty.iter().copied());
-        raster_trigger.extend(chrome_dirty.iter().copied());
-        let plan = self.planner.plan(layers, &raster_trigger);
-        if !plan.needs_raster {
-            return Ok(());
-        }
+        let mut present_dirty = layer_dirty.clone();
+        present_dirty.extend(chrome_dirty.iter().copied());
+        let scroll_geometry = scroll_layer_geometry_from_inputs(scroll_inputs);
 
         if self.ganesh_failed {
             // Ganesh 生成に一度失敗している（初回フレームでログ済み）。ログ洪水を避けて
@@ -398,6 +396,8 @@ impl SkiaGlSurface {
 
         // ANativeWindow の実サイズに追随する（resize は EGLSurface が追いかける）。
         let (surface_w, surface_h) = self.egl.surface_size()?;
+        self.presenter
+            .resize(surface_w as u32, surface_h as u32, self.content_scale);
         let target = gpu::backend_render_targets::make_gl(
             (surface_w, surface_h),
             None,
@@ -408,7 +408,7 @@ impl SkiaGlSurface {
                 protected: gpu::Protected::No,
             },
         );
-        let mut surface = gpu::surfaces::wrap_backend_render_target(
+        let surface = gpu::surfaces::wrap_backend_render_target(
             &mut ganesh.context,
             &target,
             gpu::SurfaceOrigin::BottomLeft,
@@ -423,21 +423,24 @@ impl SkiaGlSurface {
             .map(|insets| insets.scene_origin(self.content_scale))
             .unwrap_or((0.0, 0.0));
 
-        let canvas = surface.canvas();
-        canvas.save();
-        canvas.translate((origin_x, origin_y));
-        SkiaSceneRenderer::new().render_scene(
+        let surface = self.presenter.present(
             scene,
-            canvas,
+            layers,
+            &present_dirty,
+            &scroll_geometry,
             crate::app::CLEAR_COLOR,
-            self.content_scale,
-        );
-        canvas.restore();
+            (origin_x, origin_y),
+            GpuBudget::from_viewports(
+                surface_w as u32,
+                surface_h as u32,
+                tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+            ),
+            surface,
+        )?;
         ganesh.context.flush_and_submit();
         drop(surface);
 
         self.egl.swap_buffers()?;
-        self.planner.note_full_raster(layers);
         Ok(())
     }
 
@@ -453,8 +456,8 @@ impl SkiaGlSurface {
         self.height = height;
         self.content_scale = content_scale;
         // EGL window surface は ANativeWindow の resize に自動追随する（毎フレーム
-        // `surface_size()` で実サイズを取る）ので、ここではキャッシュ面の invalidate だけ。
-        self.planner.invalidate();
+        // `surface_size()` で実サイズを取る）ので、ここではレイヤキャッシュを resize する。
+        self.presenter.resize(width, height, content_scale);
     }
 }
 
