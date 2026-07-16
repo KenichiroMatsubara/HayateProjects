@@ -91,7 +91,7 @@ describe('prepareCanvasKitSurface', () => {
 
     expect(initialize).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledOnce();
-    expect(clear.mock.calls[0]![0]).toEqual([
+    expect(clear).toHaveBeenCalledWith([
       expect.closeTo(0.1),
       expect.closeTo(0.2),
       expect.closeTo(0.3),
@@ -209,12 +209,28 @@ describe('prepareCanvasKitSurface', () => {
     const fonts: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
     class Font {
       setSubpixel = vi.fn();
+      setEdging = vi.fn();
+      setHinting = vi.fn();
+      setLinearMetrics = vi.fn();
       setSkewX = vi.fn();
       setEmbolden = vi.fn();
       delete = vi.fn();
       constructor() { fonts.push(this as never); }
     }
     const typeface = { delete: vi.fn() };
+    const regularTypeface = { delete: vi.fn() };
+    const boldTypeface = { delete: vi.fn() };
+    const matchFamilyStyle = vi.fn((_family: string, style: { weight: { value: number } }) =>
+      style.weight.value === 700 ? boldTypeface : regularTypeface);
+    const fontManager = {
+      countFamilies: () => 1,
+      getFamilyName: () => 'Noto Sans JP',
+      matchFamilyStyle,
+      delete: vi.fn(),
+    };
+    const fontWeight = (value: number) => ({ value });
+    const fontWidth = (value: number) => ({ value });
+    const fontSlant = (value: number) => ({ value });
     const canvasKit = {
       MakeWebGLCanvasSurface: vi.fn(() => ({
         getCanvas: () => ({ drawGlyphs }),
@@ -222,8 +238,23 @@ describe('prepareCanvasKitSurface', () => {
         delete: vi.fn(),
       })),
       Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => typeface) },
+      FontMgr: { FromData: vi.fn(() => fontManager) },
       Paint: class { constructor() { return paint; } },
       Font,
+      FontWeight: {
+        Thin: fontWeight(100), ExtraLight: fontWeight(200), Light: fontWeight(300),
+        Normal: fontWeight(400), Medium: fontWeight(500), SemiBold: fontWeight(600),
+        Bold: fontWeight(700), ExtraBold: fontWeight(800), Black: fontWeight(900),
+      },
+      FontWidth: {
+        UltraCondensed: fontWidth(0.5), ExtraCondensed: fontWidth(0.625),
+        Condensed: fontWidth(0.75), SemiCondensed: fontWidth(0.875), Normal: fontWidth(1),
+        SemiExpanded: fontWidth(1.125), Expanded: fontWidth(1.25),
+        ExtraExpanded: fontWidth(1.5), UltraExpanded: fontWidth(2),
+      },
+      FontSlant: { Upright: fontSlant(0), Italic: fontSlant(1), Oblique: fontSlant(2) },
+      FontEdging: { SubpixelAntiAlias: { value: 2 } },
+      FontHinting: { Normal: { value: 2 } },
       PaintStyle: { Fill: 0 },
       Color4f: (...color: number[]) => color,
     };
@@ -246,6 +277,7 @@ describe('prepareCanvasKitSurface', () => {
       0, 0,
       0, 0,
       0,
+      400, 1, 0,
       1, 7, 1, 2,
       0,
       0,
@@ -256,6 +288,7 @@ describe('prepareCanvasKitSurface', () => {
       1, 0.25,
       1, 18,
       2, 4096, -8192,
+      700, 1, 0,
       1, 7, 1, 2,
       0,
       0,
@@ -266,9 +299,15 @@ describe('prepareCanvasKitSurface', () => {
 
     expect(paint.setAntiAlias).toHaveBeenCalledWith(true);
     expect(fonts).toHaveLength(2);
+    expect(fonts[0]!.setEmbolden).toHaveBeenCalledWith(true);
     expect(fonts[1]!.setSubpixel).toHaveBeenCalledWith(true);
+    expect(fonts[1]!.setEdging).toHaveBeenCalledWith(canvasKit.FontEdging.SubpixelAntiAlias);
+    expect(fonts[1]!.setHinting).toHaveBeenCalledWith(canvasKit.FontHinting.Normal);
+    expect(fonts[1]!.setLinearMetrics).toHaveBeenCalledWith(false);
     expect(fonts[1]!.setSkewX).toHaveBeenCalledWith(0.25);
     expect(fonts[1]!.setEmbolden).toHaveBeenCalledWith(true);
+    expect(matchFamilyStyle.mock.calls.map(([family, style]) => [family, style.weight.value]))
+      .toEqual([['Noto Sans JP', 400], ['Noto Sans JP', 400], ['Noto Sans JP', 700]]);
     expect(drawGlyphs).toHaveBeenCalledTimes(3);
     expect(bridge.performanceSnapshot(canvas)).toMatchObject({
       fontAllocationCount: 2,
@@ -296,6 +335,10 @@ describe('prepareCanvasKitSurface', () => {
     };
     class Font {
       setSubpixel() {}
+      setEdging() {}
+      setHinting() {}
+      setLinearMetrics() {}
+      setEmbolden() {}
       delete() {}
     }
     const canvasKit = {
@@ -303,10 +346,11 @@ describe('prepareCanvasKitSurface', () => {
         getCanvas: () => ({ drawGlyphs, drawRect }),
         flush: vi.fn(), delete: vi.fn(),
       })),
-      Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => ({})) },
+      Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => ({ delete: vi.fn() })) },
       Paint: class { constructor() { return paint; } },
       Font,
       PaintStyle: { Fill: 0, Stroke: 1 },
+      FontEdging: { SubpixelAntiAlias: {} }, FontHinting: { Normal: {} },
       Color4f: (...color: number[]) => color,
       LTRBRect: (...bounds: number[]) => bounds,
     };
@@ -320,6 +364,7 @@ describe('prepareCanvasKitSurface', () => {
       6, 1, 7, 9, 20,
       1, 0, 0, 1,
       0, 0, 0, 0, 0,
+      400, 1, 0,
       2, 0, 2, 3, 7, 4, 5,
       1, 3.6, -9.8, 9.4, 12.4, 1.2,
       1, 1, 11, 5, 2,
@@ -375,7 +420,11 @@ describe('prepareCanvasKitSurface', () => {
       MakeImage: vi.fn(() => image),
       Typeface: { MakeFreeTypeFaceFromData: vi.fn(() => typeface) },
       Paint: class { constructor() { return paints[paintIndex++]!; } },
-      Font: class { setSubpixel() {} delete() { fontDelete(); } },
+      Font: class {
+        setSubpixel() {} setEdging() {} setHinting() {} setLinearMetrics() {} setEmbolden() {}
+        delete() { fontDelete(); }
+      },
+      FontEdging: { SubpixelAntiAlias: {} }, FontHinting: { Normal: {} },
       PaintStyle: { Fill: 0 },
       Color4f: (...color: number[]) => color,
       AlphaType: { Opaque: 0, Unpremul: 1, Premul: 2 },
@@ -393,6 +442,7 @@ describe('prepareCanvasKitSurface', () => {
       6, 1, 0, 0, 12,
       0, 0, 0, 1,
       0, 0, 0, 0, 0,
+      400, 1, 0,
       0,
       0,
       0,

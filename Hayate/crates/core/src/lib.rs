@@ -97,7 +97,7 @@ pub use element::{
 };
 pub use node::{
     Node, NodeId, NodeKind, SceneGraph, ShadowOccluder, TextDecorationLine, TextRunData,
-    TextSynthesis,
+    TextFontAttributes, TextFontSlant, TextSynthesis,
 };
 #[cfg(any(debug_assertions, feature = "scene-validation"))]
 pub use scene_validation::{

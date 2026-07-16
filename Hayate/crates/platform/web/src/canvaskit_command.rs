@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use hayate_core::{
     build_draw_path, is_notdef, missing_glyph_placeholder, render_scene_graph, DrawFillRule,
     DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, RenderImageAlphaType, SceneGraph,
-    ScenePainter, ShadowOccluder, StrokeStyle, TextRunData,
+    ScenePainter, ShadowOccluder, StrokeStyle, TextFontSlant, TextRunData,
 };
 
 pub(crate) const CLEAR: f32 = 0.0;
@@ -377,6 +377,15 @@ impl ScenePainter for CommandPainter<'_> {
         self.frame
             .commands
             .extend(data.normalized_coords.iter().map(|&coord| coord as f32));
+        self.frame.commands.extend_from_slice(&[
+            data.font_attributes.weight,
+            data.font_attributes.width,
+            match data.font_attributes.slant {
+                TextFontSlant::Upright => 0.0,
+                TextFontSlant::Italic => 1.0,
+                TextFontSlant::Oblique => 2.0,
+            },
+        ]);
         self.frame.commands.push(data.glyphs.len() as f32);
         let scale = self.content_scale;
         for glyph in &data.glyphs {
@@ -557,14 +566,15 @@ mod tests {
 
     use hayate_core::{
         Blob, DrawCommand, DrawPaint, Node, NodeKind, RenderFont, RenderGlyph, RenderImage,
-        RenderImageAlphaType, RenderImageFormat, SceneGraph, TextDecorationLine, TextRunData,
-        TextSynthesis,
+        RenderImageAlphaType, RenderImageFormat, SceneGraph, TextDecorationLine,
+        TextFontAttributes, TextRunData, TextSynthesis,
     };
 
     fn text_frame(synthesis: TextSynthesis, normalized_coords: Vec<i16>) -> CanvasKitFrame {
         let data = Arc::new(TextRunData {
             font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0),
             font_size: 12.0,
+            font_attributes: TextFontAttributes::default(),
             glyphs: vec![RenderGlyph {
                 id: 7,
                 x: 1.0,
@@ -603,9 +613,10 @@ mod tests {
         assert!(
             synthesized
                 .commands
-                .windows(8)
-                .any(|values| values == [1.0, 0.25, 1.0, 18.0, 2.0, 4096.0, -8192.0, 1.0]),
-            "text payload must carry synthesis and normalized coordinates: {:?}",
+                .windows(10)
+                .any(|values| values
+                    == [1.0, 0.25, 1.0, 18.0, 2.0, 4096.0, -8192.0, 400.0, 1.0, 0.0,]),
+            "text payload must carry synthesis, normalized coordinates, and font attributes: {:?}",
             synthesized.commands,
         );
     }
@@ -644,6 +655,7 @@ mod tests {
         let data = Arc::new(TextRunData {
             font: RenderFont::new(Blob::from(vec![1, 2, 3, 4]), 0),
             font_size: 20.0,
+            font_attributes: TextFontAttributes::default(),
             glyphs: vec![RenderGlyph {
                 id: 0,
                 x: 2.0,
@@ -846,6 +858,7 @@ mod tests {
         let text = Arc::new(TextRunData {
             font: RenderFont::new(font_blob, 0),
             font_size: 12.0,
+            font_attributes: TextFontAttributes::default(),
             glyphs: vec![RenderGlyph {
                 id: 7,
                 x: 1.0,

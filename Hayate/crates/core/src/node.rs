@@ -17,6 +17,35 @@ pub struct TextSynthesis {
     pub embolden: Option<f32>,
 }
 
+/// Renderer-ready font matching attributes for selecting an instance from a variable font.
+/// These travel with the shaped glyph run because normalized variation coordinates alone are
+/// not consumable by every backend (notably CanvasKit's public low-level glyph API).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextFontAttributes {
+    pub weight: f32,
+    /// Width relative to the normal face (`1.0` = normal).
+    pub width: f32,
+    pub slant: TextFontSlant,
+}
+
+impl Default for TextFontAttributes {
+    fn default() -> Self {
+        Self {
+            weight: 400.0,
+            width: 1.0,
+            slant: TextFontSlant::Upright,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextFontSlant {
+    #[default]
+    Upright,
+    Italic,
+    Oblique,
+}
+
 #[derive(Debug, Clone)]
 pub struct TextDecorationLine {
     pub x0: f32,
@@ -30,6 +59,7 @@ pub struct TextDecorationLine {
 pub struct TextRunData {
     pub font: RenderFont,
     pub font_size: f32,
+    pub font_attributes: TextFontAttributes,
     pub glyphs: Vec<RenderGlyph>,
     pub decorations: Vec<TextDecorationLine>,
     pub text: Arc<str>,
