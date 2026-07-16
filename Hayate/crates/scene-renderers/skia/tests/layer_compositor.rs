@@ -11,9 +11,12 @@ use hayate_core::{Color, ElementId, ElementKind, ElementTree};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_table, CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner,
+};
 use hayate_scene_renderer_skia::{
-    SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerRasterizer, new_raster_surface, read_rgba,
+    SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
+    new_raster_surface, read_rgba,
 };
 
 const W: u32 = 200;
@@ -129,6 +132,126 @@ fn transform_layer_skia_composite_matches_full_raster() {
     let root = ElementId::from_u64(0);
     let _ = tree.render(0.0);
     assert_pixels_equal(&render_full(&tree), &render_layered(&tree, root), "skia transform layer");
+}
+
+#[test]
+fn native_shared_presenter_matches_full_raster() {
+    let (mut tree, _boxed, _inner) = transform_tree();
+    let _ = tree.render(0.0);
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let target = new_raster_surface(W as i32, H as i32).unwrap();
+    let mut target = presenter
+        .present(
+            tree.scene_graph(),
+            tree.frame_layers(),
+            tree.frame_layer_dirty(),
+            &Default::default(),
+            CLEAR,
+            (0.0, 0.0),
+            hayate_layer_compositor::GpuBudget::from_viewports(W, H, 8.0),
+            target,
+        )
+        .unwrap();
+    assert_pixels_equal(
+        &render_full(&tree),
+        &read_rgba(&mut target),
+        "shared native skia presenter",
+    );
+}
+
+fn scroll_tree() -> (ElementTree, ElementId) {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let scroll = tree.element_create(1, ElementKind::ScrollView);
+    let content = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::BackgroundColor(Color::new(0.9, 0.9, 0.9, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(W as f32)), StyleProp::Height(px(H as f32))],
+    );
+    tree.element_set_style(
+        content,
+        &[
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::FlexDirection(hayate_core::FlexDirectionValue::Column),
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(2000.0)),
+        ],
+    );
+    for i in 0..20 {
+        let row = tree.element_create(10 + i, ElementKind::View);
+        tree.element_append_child(content, row);
+        let tone = i as f64 / 19.0;
+        tree.element_set_style(
+            row,
+            &[
+                StyleProp::Width(px(W as f32)),
+                StyleProp::Height(px(100.0)),
+                StyleProp::BackgroundColor(Color::new(tone, 1.0 - tone, 0.5, 1.0)),
+            ],
+        );
+    }
+    (tree, scroll)
+}
+
+#[test]
+fn shared_presenter_scrolls_inside_the_cached_band_without_raster() {
+    let (mut tree, scroll) = scroll_tree();
+    let _ = tree.render(0.0);
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let first_geometry = scroll_layer_geometry_table(&tree, tree.frame_layers());
+    let mut first_dirty = tree.frame_layer_dirty().clone();
+    first_dirty.extend(tree.frame_layer_chrome_dirty().iter().copied());
+    let first_target = new_raster_surface(W as i32, H as i32).unwrap();
+    let _ = presenter
+        .present(
+            tree.scene_graph(),
+            tree.frame_layers(),
+            &first_dirty,
+            &first_geometry,
+            CLEAR,
+            (0.0, 0.0),
+            hayate_layer_compositor::GpuBudget::from_viewports(W, H, 8.0),
+            first_target,
+        )
+        .unwrap();
+    assert!(presenter.last_raster_count() > 0);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 150.0);
+    let _ = tree.render(16.0);
+    let geometry = scroll_layer_geometry_table(&tree, tree.frame_layers());
+    let mut dirty = tree.frame_layer_dirty().clone();
+    dirty.extend(tree.frame_layer_chrome_dirty().iter().copied());
+    let target = new_raster_surface(W as i32, H as i32).unwrap();
+    let mut target = presenter
+        .present(
+            tree.scene_graph(),
+            tree.frame_layers(),
+            &dirty,
+            &geometry,
+            CLEAR,
+            (0.0, 0.0),
+            hayate_layer_compositor::GpuBudget::from_viewports(W, H, 8.0),
+            target,
+        )
+        .unwrap();
+    assert_eq!(presenter.last_raster_count(), 0, "in-band scroll must be composite-only");
+    assert_pixels_equal(
+        &render_full(&tree),
+        &read_rgba(&mut target),
+        "composite-only native skia scroll",
+    );
 }
 
 /// per-layer present を 1 フレーム回し、raster したレイヤ数を返す（work-count 用）。

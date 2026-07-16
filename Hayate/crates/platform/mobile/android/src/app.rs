@@ -613,6 +613,7 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
                 layer_dirty,
                 transform_dirty,
                 chrome_dirty,
+                scroll_inputs: _,
             } = handoff;
             if let Err(err) =
                 surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
@@ -646,9 +647,17 @@ pub(crate) fn spawn_skia_raster_thread(mut surface: crate::skia_window::SkiaGpuS
                 layer_dirty,
                 transform_dirty,
                 chrome_dirty,
+                scroll_inputs,
             } = handoff;
             if let Err(err) =
-                surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
+                surface.render_frame(
+                    &scene,
+                    &layers,
+                    &layer_dirty,
+                    &transform_dirty,
+                    &chrome_dirty,
+                    &scroll_inputs,
+                )
             {
                 log_terminal_skia_failure(&err);
                 terminal_failure = true;
@@ -682,9 +691,17 @@ pub(crate) fn spawn_skia_gl_raster_thread(
                 layer_dirty,
                 transform_dirty,
                 chrome_dirty,
+                scroll_inputs,
             } = handoff;
             if let Err(err) =
-                surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
+                surface.render_frame(
+                    &scene,
+                    &layers,
+                    &layer_dirty,
+                    &transform_dirty,
+                    &chrome_dirty,
+                    &scroll_inputs,
+                )
             {
                 log_terminal_skia_failure(&err);
                 terminal_failure = true;
@@ -825,5 +842,6 @@ pub(crate) fn frame_handoff(tree: &ElementTree) -> RasterCommand {
         layer_dirty: tree.frame_layer_dirty().clone(),
         transform_dirty: tree.frame_layer_transform_dirty().clone(),
         chrome_dirty: tree.frame_layer_chrome_dirty().clone(),
+        scroll_inputs: tree.frame_scroll_compositor_inputs(),
     })
 }

@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use hayate_core::element::style::{Dimension, StyleProp};
 use hayate_core::{Color, ElementId, ElementKind, ElementTree};
 use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
+    collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_layer_scene,
 };
 use hayate_scene_renderer_tiny_skia::TinySkiaSceneRenderer;
 use tiny_skia::{Pixmap, PixmapPaint, Transform};
@@ -95,6 +95,60 @@ fn assert_pixmaps_equal(full: &Pixmap, layered: &Pixmap, label: &str) {
     assert!(
         worst <= 2,
         "{label}: 全面 raster とレイヤ合成の出力が一致しない（byte {worst_at} で {worst} 差）"
+    );
+}
+
+#[test]
+fn scroll_layer_placement_keeps_its_own_viewport_clip() {
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let header = tree.element_create(1, ElementKind::View);
+    let scroll = tree.element_create(2, ElementKind::ScrollView);
+    let content = tree.element_create(3, ElementKind::View);
+    tree.element_append_child(root, header);
+    tree.element_append_child(root, scroll);
+    tree.element_append_child(scroll, content);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::FlexDirection(hayate_core::FlexDirectionValue::Column),
+        ],
+    );
+    tree.element_set_style(
+        header,
+        &[StyleProp::Width(px(W as f32)), StyleProp::Height(px(64.0))],
+    );
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(W as f32)), StyleProp::Height(px(136.0))],
+    );
+    tree.element_set_style(
+        content,
+        &[StyleProp::Width(px(W as f32)), StyleProp::Height(px(400.0))],
+    );
+    let _ = tree.render(0.0);
+
+    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+    let placements = collect_layer_placements(tree.scene_graph(), root, &boundaries);
+    let placement = placements.iter().find(|placement| placement.layer == scroll).unwrap();
+    assert_eq!(
+        placement.clip,
+        Some([0.0, 64.0, 200.0, 136.0]),
+        "a translated scroll cache must remain clipped to its viewport at composite time",
+    );
+
+    let extracted = extract_scroll_layer_scene(tree.scene_graph(), scroll, &boundaries).unwrap();
+    let mut painter = hayate_core::RecordingPainter::new();
+    hayate_core::render_scene_graph(&extracted, &mut painter);
+    assert!(
+        !painter
+            .ops()
+            .iter()
+            .any(|op| matches!(op, hayate_core::DrawOp::PushClipRect { .. })),
+        "the scroll viewport clip must not be baked into an overscan cache texture",
     );
 }
 

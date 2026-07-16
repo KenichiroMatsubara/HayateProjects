@@ -42,8 +42,8 @@ pub fn compose(outer: [f64; 6], inner: [f64; 6]) -> [f64; 6] {
 }
 
 /// 1 レイヤ quad の合成配置。`transform` は祖先レイヤの transform / scroll Group を合成した
-/// accumulated アフィン（texture の絶対座標内容へそのまま適用する）。`clip` は祖先の軸並行
-/// Clip をデバイス空間へ写した交差矩形 `[x, y, w, h]`（なければ None）。
+/// accumulated アフィン（texture の絶対座標内容へそのまま適用する）。`clip` は祖先および
+/// レイヤ境界自身の軸並行 Clip をデバイス空間へ写した交差矩形 `[x, y, w, h]`（なければ None）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LayerPlacement {
     pub layer: ElementId,
@@ -105,6 +105,26 @@ fn anchor_node_of(graph: &SceneGraph, layer: ElementId) -> Option<NodeId> {
     })
 }
 
+/// レイヤ境界自身が確立する overflow/scroll clip。scene lowering の規約は
+/// `ElementAnchor -> [CSS transform Group] -> Clip` なので、外側 transform を剥がした
+/// 直下だけを調べればよい。scroll の overscan texture からはこの Clip を剥がすため、
+/// viewport 外へ動く quad を合成時に必ずこの clip で制限する。
+fn own_boundary_clip(
+    graph: &SceneGraph,
+    anchor: &Node,
+    placement_transform: [f64; 6],
+) -> Option<[f32; 4]> {
+    let parent = outer_transform_group(graph, anchor)
+        .and_then(|(id, _)| graph.get(id))
+        .unwrap_or(anchor);
+    parent.children.iter().find_map(|child| match graph.get(*child).map(|node| &node.kind) {
+        Some(NodeKind::Clip { x, y, width, height, .. }) => {
+            Some(transform_rect(placement_transform, [*x, *y, *width, *height]))
+        }
+        _ => None,
+    })
+}
+
 /// レイヤ quad の配置（accumulated transform / clip）をペイント順に集める。root レイヤ
 /// （恒等・clip なし）が先頭。ネスト境界は祖先境界の transform / scroll Group / Clip を
 /// 合成した placement を持つ。
@@ -157,9 +177,13 @@ fn walk_placements(
             let own = outer_transform_group(graph, node)
                 .map(|(_, t)| t)
                 .unwrap_or(IDENTITY);
+            let transform = compose(acc, own);
+            let clip = own_boundary_clip(graph, node, transform)
+                .map(|own_clip| intersect(clip, own_clip))
+                .or(clip);
             out.push(LayerPlacement {
                 layer: *element_id,
-                transform: compose(acc, own),
+                transform,
                 clip,
             });
             for &child in &node.children {
@@ -200,6 +224,66 @@ fn copy_subtree(
     }
 }
 
+/// `parent` 直下にあるレイヤ境界自身の Clip だけを剥がし、その内容を texture へコピーする。
+/// scroll cache は viewport 外の overscan も保持する必要があるため、境界 Clip は
+/// [`LayerPlacement::clip`] として合成時にだけ適用する。子孫側の Clip は `copy_subtree` が保持する。
+fn copy_layer_contents(
+    src: &SceneGraph,
+    parent: &Node,
+    dst: &mut SceneGraph,
+    exclude: &HashSet<ElementId>,
+    strip_boundary_clip: bool,
+) {
+    for &child in &parent.children {
+        let Some(node) = src.get(child) else { continue };
+        if strip_boundary_clip && matches!(&node.kind, NodeKind::Clip { .. }) {
+            for &grand_child in &node.children {
+                copy_subtree(src, grand_child, dst, None, exclude);
+            }
+        } else {
+            copy_subtree(src, child, dst, None, exclude);
+        }
+    }
+}
+
+/// scroll boundary の viewport Clip 配下だけをコピーする。scrollbar 等の固定 chrome は
+/// Clip の sibling として lowering されるため、overscan と一緒に平行移動させない。
+fn copy_scroll_contents(
+    src: &SceneGraph,
+    parent: &Node,
+    dst: &mut SceneGraph,
+    exclude: &HashSet<ElementId>,
+) {
+    if let Some(clip) = parent.children.iter().find_map(|child| {
+        src.get(*child)
+            .filter(|node| matches!(&node.kind, NodeKind::Clip { .. }))
+    }) {
+        for &child in &clip.children {
+            copy_subtree(src, child, dst, None, exclude);
+        }
+        return;
+    }
+
+    // lowering 規約外の入力でも内容を消さない。合成 clip は無いが、従来の抽出と同じ
+    // sub-scene を返す安全側の fallback。
+    copy_layer_contents(src, parent, dst, exclude, false);
+}
+
+/// scroll boundary の viewport Clip 外にある固定 chrome だけをコピーする。
+fn copy_scroll_chrome(
+    src: &SceneGraph,
+    parent: &Node,
+    dst: &mut SceneGraph,
+    exclude: &HashSet<ElementId>,
+) {
+    for &child in &parent.children {
+        let Some(node) = src.get(child) else { continue };
+        if !matches!(&node.kind, NodeKind::Clip { .. }) {
+            copy_subtree(src, child, dst, None, exclude);
+        }
+    }
+}
+
 /// root 暗黙レイヤの sub-scene：グラフ全 roots（overlay 含む）からレイヤ境界 anchor を除いた残り。
 pub fn extract_root_scene(
     graph: &SceneGraph,
@@ -215,9 +299,47 @@ pub fn extract_root_scene(
     out
 }
 
+fn extract_layer_scene_inner(
+    graph: &SceneGraph,
+    layer: ElementId,
+    boundaries: &HashSet<ElementId>,
+    strip_boundary_clip: bool,
+) -> Option<SceneGraph> {
+    let anchor_id = anchor_node_of(graph, layer)?;
+    let anchor = graph.get(anchor_id)?;
+    let mut exclude = boundaries.clone();
+    exclude.remove(&layer);
+
+    let mut out = SceneGraph::new();
+    // CSS transform ラッパがあればその内側を content root とする。そこからさらに direct Clip
+    // （overflow / scroll viewport）だけを剥がし、overscan 内容を cache texture に残す。
+    let content_root = outer_transform_group(graph, anchor)
+        .and_then(|(id, _)| graph.get(id))
+        .unwrap_or(anchor);
+    copy_layer_contents(
+        graph,
+        content_root,
+        &mut out,
+        &exclude,
+        strip_boundary_clip,
+    );
+    Some(out)
+}
+
 /// レイヤ境界要素の anchor 配下の sub-scene（texture へ raster する内容）。外側 transform Group は
-/// 含めず（quad が適用）、子孫の別レイヤ境界は除外する。anchor が未 lowering なら `None`。
+/// 含めず（quad が適用）、境界自身と子孫の Clip は保持し、子孫の別レイヤ境界は除外する。
+/// anchor が未 lowering なら `None`。
 pub fn extract_layer_scene(
+    graph: &SceneGraph,
+    layer: ElementId,
+    boundaries: &HashSet<ElementId>,
+) -> Option<SceneGraph> {
+    extract_layer_scene_inner(graph, layer, boundaries, false)
+}
+
+/// scroll overscan cache 用の sub-scene。境界自身の viewport Clip だけを剥がして帯全体を texture に
+/// 保持する。viewport Clip は [`collect_layer_placements`] が合成時に適用する。
+pub fn extract_scroll_layer_scene(
     graph: &SceneGraph,
     layer: ElementId,
     boundaries: &HashSet<ElementId>,
@@ -226,21 +348,30 @@ pub fn extract_layer_scene(
     let anchor = graph.get(anchor_id)?;
     let mut exclude = boundaries.clone();
     exclude.remove(&layer);
-
+    let content_root = outer_transform_group(graph, anchor)
+        .and_then(|(id, _)| graph.get(id))
+        .unwrap_or(anchor);
     let mut out = SceneGraph::new();
-    let outer_group = outer_transform_group(graph, anchor).map(|(id, _)| id);
-    for &child in &anchor.children {
-        if Some(child) == outer_group {
-            // transform ラッパは剥がして子を直接コピー（transform は placement/quad が適用）。
-            if let Some(group) = graph.get(child) {
-                for &grand_child in &group.children {
-                    copy_subtree(graph, grand_child, &mut out, None, &exclude);
-                }
-            }
-        } else {
-            copy_subtree(graph, child, &mut out, None, &exclude);
-        }
-    }
+    copy_scroll_contents(graph, content_root, &mut out, &exclude);
+    Some(out)
+}
+
+/// scroll layer の固定 chrome（scrollbar 等）用 sub-scene。viewport Clip の sibling だけを
+/// 抽出し、overscan content texture とは別に通常 placement で合成する。
+pub fn extract_scroll_chrome_scene(
+    graph: &SceneGraph,
+    layer: ElementId,
+    boundaries: &HashSet<ElementId>,
+) -> Option<SceneGraph> {
+    let anchor_id = anchor_node_of(graph, layer)?;
+    let anchor = graph.get(anchor_id)?;
+    let mut exclude = boundaries.clone();
+    exclude.remove(&layer);
+    let content_root = outer_transform_group(graph, anchor)
+        .and_then(|(id, _)| graph.get(id))
+        .unwrap_or(anchor);
+    let mut out = SceneGraph::new();
+    copy_scroll_chrome(graph, content_root, &mut out, &exclude);
     Some(out)
 }
 

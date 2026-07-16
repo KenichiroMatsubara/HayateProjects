@@ -1768,7 +1768,22 @@ impl ElementTree {
     /// presentation code. Projections add platform and backend policy separately.
     pub fn commit_rendered_frame(&mut self, timestamp_ms: f64) -> crate::CommittedFrame<'_> {
         let _ = self.render(timestamp_ms);
-        let scroll_inputs = self
+        let scroll_inputs = self.frame_scroll_compositor_inputs();
+        crate::CommittedFrame::new(
+            &self.scene_cache,
+            &self.frame_layers,
+            &self.frame_layer_dirty,
+            &self.frame_layer_chrome_dirty,
+            &self.frame_layer_transform_dirty,
+            scroll_inputs,
+            self.has_pending_visual_work(),
+        )
+    }
+
+    /// 直近に commit 済みのフレームから、Raster スレッド等へ owned で渡せる scroll compositor
+    /// 入力を作る。`commit_rendered_frame` と Android の handoff が同じ Core 正本を使う。
+    pub fn frame_scroll_compositor_inputs(&self) -> Vec<crate::ScrollCompositorInput> {
+        self
             .frame_layers
             .iter()
             .copied()
@@ -1786,16 +1801,7 @@ impl ElementTree {
                     content_dirty: self.frame_layer_dirty.contains(&layer),
                 })
             })
-            .collect();
-        crate::CommittedFrame::new(
-            &self.scene_cache,
-            &self.frame_layers,
-            &self.frame_layer_dirty,
-            &self.frame_layer_chrome_dirty,
-            &self.frame_layer_transform_dirty,
-            scroll_inputs,
-            self.has_pending_visual_work(),
-        )
+            .collect()
     }
 
     /// transform 係数だけが変わった要素の保持シーン Group ノードを patch する（#633）。anchor 直下の

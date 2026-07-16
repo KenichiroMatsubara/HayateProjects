@@ -1,10 +1,10 @@
 //! skia raster の `ANativeWindow` 提示面（issue #802・ADR-0146 §3）。
 //!
-//! wgpu 非依存の CPU present 経路——skia の CPU raster surface へ 1 フレーム焼き
-//! （[`crate::skia_present::raster_frame_rgbx`]、ホストテストと同一経路）、`ANativeWindow_lock`
-//! / `ANativeWindow_unlockAndPost`（`ndk::native_window::NativeWindow::lock`）で直接 present
-//! する。vello の `GpuSurface`（`app.rs`）と並立する Renderer Selection Policy の一方向
-//! fallback 先——GPU adapter が一切無い/初期化に失敗する端末でも Android が描画を出せる。
+//! wgpu 非依存の CPU present 経路——skia-safe のレイヤ cache/composite surface を
+//! `ANativeWindow_lock` / `ANativeWindow_unlockAndPost`
+//! （`ndk::native_window::NativeWindow::lock`）で直接 present する。vello の `GpuSurface`
+//! （`app.rs`）と並立する Renderer Selection Policy の一方向 fallback 先——GPU adapter が
+//! 一切無い/初期化に失敗する端末でも Android が描画を出せる。
 //!
 //! present 形式は RGBX_8888（4byte/px、アルファ無視。`skia_present::copy_rgba_to_rgbx` 参照）。
 //! `set_buffers_geometry` で surface 作成時・resize 時にだけ形式/寸法を通知し、毎フレームは
@@ -13,12 +13,15 @@
 use std::collections::HashSet;
 use std::mem::MaybeUninit;
 
-use hayate_core::{ElementId, SceneGraph};
-use hayate_layer_compositor::PresentPlanner;
+use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, tunables, GpuBudget,
+};
+use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use ndk::hardware_buffer_format::HardwareBufferFormat;
 use ndk::native_window::NativeWindow;
 
-use crate::skia_present::raster_frame_rgbx;
+use crate::skia_present::copy_rgba_to_rgbx;
 
 /// skia raster の一方向 fallback 先が使う CPU present 面。`GpuSurface`（`app.rs`）と対の型で、
 /// 同じ `RasterCommand` チャネル越しに専用 Raster スレッド上で駆動される（ADR-0128）。
@@ -29,8 +32,7 @@ pub(crate) struct SkiaGpuSurface {
     width: u32,
     height: u32,
     content_scale: f32,
-    /// present 側 raster gating（vello の `GpuSurface::planner` と同型、#632/#687）。
-    planner: PresentPlanner,
+    presenter: SkiaLayerPresenter,
 }
 
 /// `window` を skia raster 用の CPU present 面として立てる（RGBX_8888、フルウィンドウ）。
@@ -55,28 +57,25 @@ pub(crate) fn init_skia_surface(
         width,
         height,
         content_scale,
-        planner: PresentPlanner::new(),
+        presenter: SkiaLayerPresenter::new(width, height, content_scale),
     })
 }
 
 impl SkiaGpuSurface {
-    /// 1 フレームの提示（vello 側 `GpuSurface::render_frame` と同じ raster gating・safe-area
-    /// offset の扱い）。`plan().needs_raster` なら skia で全面 raster してから present する。
+    /// 1 フレームの提示。dirty layer だけを再 raster し、clean layer と scroll overscan 帯は
+    /// skia-safe image cache から合成する。safe-area offset は vello 経路と同じ値を使う。
     pub(crate) fn render_frame(
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
-        transform_dirty: &HashSet<ElementId>,
+        _transform_dirty: &HashSet<ElementId>,
         chrome_dirty: &HashSet<ElementId>,
+        scroll_inputs: &[ScrollCompositorInput],
     ) -> Result<(), String> {
-        let mut raster_trigger: HashSet<ElementId> = layer_dirty.clone();
-        raster_trigger.extend(transform_dirty.iter().copied());
-        raster_trigger.extend(chrome_dirty.iter().copied());
-        let plan = self.planner.plan(layers, &raster_trigger);
-        if !plan.needs_raster {
-            return Ok(());
-        }
+        let mut present_dirty = layer_dirty.clone();
+        present_dirty.extend(chrome_dirty.iter().copied());
+        let scroll_geometry = scroll_layer_geometry_from_inputs(scroll_inputs);
 
         // b2（edge-to-edge, issue #794・ADR-0144）: vello 経路（`GpuSurface::render_frame`）と
         // 同じ安全領域平行移動を skia 側でも適用する。
@@ -84,17 +83,26 @@ impl SkiaGpuSurface {
             .map(|insets| insets.scene_origin(self.content_scale))
             .unwrap_or((0.0, 0.0));
 
-        let rgbx = raster_frame_rgbx(
+        let target = new_raster_surface(self.width as i32, self.height as i32)
+            .ok_or_else(|| format!("skia present surface {}x{}", self.width, self.height))?;
+        let mut target = self.presenter.present(
             scene,
-            self.width,
-            self.height,
-            self.content_scale,
+            layers,
+            &present_dirty,
+            &scroll_geometry,
             crate::app::CLEAR_COLOR,
-            origin_x,
-            origin_y,
-        );
+            (origin_x, origin_y),
+            GpuBudget::from_viewports(
+                self.width,
+                self.height,
+                tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+            ),
+            target,
+        )?;
+        let rgba = read_rgba(&mut target);
+        let mut rgbx = vec![0u8; rgba.len()];
+        copy_rgba_to_rgbx(&rgba, &mut rgbx);
         present_rgbx(&self.window, self.width, &rgbx)?;
-        self.planner.note_full_raster(layers);
         Ok(())
     }
 
@@ -116,7 +124,7 @@ impl SkiaGpuSurface {
         ) {
             log::warn!("hayate-adapter-android: skia set_buffers_geometry (resize) failed: {e}");
         }
-        self.planner.invalidate();
+        self.presenter.resize(width, height, content_scale);
     }
 }
 
