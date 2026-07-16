@@ -13,7 +13,7 @@ use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowVal
 
 use skrifa::raw::{FontRef, TableProvider};
 
-use crate::node::{TextDecorationLine, TextRunData};
+use crate::node::{TextDecorationLine, TextFontAttributes, TextFontSlant, TextRunData};
 use crate::render::{text_synthesis, RenderFont, RenderGlyph};
 
 /// 合成ボールド量の算出に使うフォントの `units_per_em`。head テーブルが読めない場合の
@@ -490,9 +490,20 @@ fn lower_glyph_runs(
             }
             let synthesis =
                 text_synthesis::resolve_synthesis(&run.synthesis(), font_units_per_em(&font));
+            let font_attrs = run.font_attrs();
+            let slant = match font_attrs.style {
+                FontStyle::Normal => TextFontSlant::Upright,
+                FontStyle::Italic => TextFontSlant::Italic,
+                FontStyle::Oblique(_) => TextFontSlant::Oblique,
+            };
             out.push(Arc::new(TextRunData {
                 font,
                 font_size: run.font_size().max(font_size),
+                font_attributes: TextFontAttributes {
+                    weight: font_attrs.weight.value(),
+                    width: font_attrs.width.ratio(),
+                    slant,
+                },
                 glyphs: positioned,
                 decorations,
                 text: Arc::<str>::from(""),
@@ -631,6 +642,8 @@ mod tests {
         );
         let regular_coords = regular.runs.first().map(|r| r.normalized_coords.as_slice());
         let semibold_coords = semibold.runs.first().map(|r| r.normalized_coords.as_slice());
+        assert_eq!(regular.runs.first().unwrap().font_attributes.weight, 400.0);
+        assert_eq!(semibold.runs.first().unwrap().font_attributes.weight, 600.0);
         assert!(
             regular_coords.is_some() && semibold_coords.is_some(),
             "expected shaped text runs"

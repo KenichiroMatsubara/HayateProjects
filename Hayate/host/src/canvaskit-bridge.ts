@@ -1,6 +1,11 @@
 import CanvasKitInit, {
   type CanvasKit,
   type Font,
+  type FontMgr,
+  type FontSlant,
+  type FontStyle,
+  type FontWeight,
+  type FontWidth,
   type Image,
   type Paint,
   type Surface,
@@ -29,6 +34,9 @@ const INSET_BLURRED_RECT = 14;
 
 const CANVASKIT_TEXT_ANTIALIAS = true;
 const CANVASKIT_FONT_SUBPIXEL_POSITIONING = true;
+// CanvasKit's Web rasterizer does not apply the stem darkening used by the
+// reference backends, so the same Typeface otherwise looks uniformly lighter.
+const CANVASKIT_FONT_STEM_DARKENING = true;
 
 type ReplayErrorCategory = 'contract' | 'environment';
 
@@ -54,8 +62,8 @@ interface CanvasKitSurface {
   readonly canvasKit: CanvasKit;
   readonly surface: Surface;
   readonly paint: Paint;
-  readonly fonts: Map<number, Typeface>;
-  readonly fontInstances: Map<string, Font>;
+  readonly fonts: Map<number, CanvasKitFontResource>;
+  readonly fontInstances: Map<string, CanvasKitFontInstance>;
   readonly glyphScratch: Map<number, { glyphs: Uint16Array; positions: Float32Array }>;
   dashScratch: number[];
   readonly images: Map<number, Image>;
@@ -64,6 +72,18 @@ interface CanvasKitSurface {
   layerUpdatesSinceComposite: number;
   pendingLayerTimeMs: number;
   performance: CanvasKitPerformanceMetrics;
+}
+
+interface CanvasKitFontResource {
+  readonly base: Typeface;
+  readonly manager?: FontMgr;
+  readonly familyName?: string;
+}
+
+interface CanvasKitFontInstance {
+  readonly font: Font;
+  /** A style-matched Typeface is owned by this instance; the shared base is not. */
+  readonly typeface?: Typeface;
 }
 
 export interface CanvasKitPerformanceSnapshot {
@@ -177,6 +197,50 @@ function requireSurface(canvas: HTMLCanvasElement): CanvasKitSurface {
   const resource = surfaces.get(canvas);
   if (!resource) throw new Error('CanvasKit surface was not prepared for this canvas');
   return resource;
+}
+
+function nearestEnum<T>(value: number, candidates: readonly (readonly [number, T])[]): T {
+  let nearest = candidates[0]!;
+  for (const candidate of candidates.slice(1)) {
+    if (Math.abs(candidate[0] - value) < Math.abs(nearest[0] - value)) nearest = candidate;
+  }
+  return nearest[1];
+}
+
+function canvasKitFontStyle(
+  canvasKit: CanvasKit,
+  weight: number,
+  width: number,
+  slant: number,
+): FontStyle {
+  const fontWeight = nearestEnum<FontWeight>(weight, [
+    [100, canvasKit.FontWeight.Thin],
+    [200, canvasKit.FontWeight.ExtraLight],
+    [300, canvasKit.FontWeight.Light],
+    [400, canvasKit.FontWeight.Normal],
+    [500, canvasKit.FontWeight.Medium],
+    [600, canvasKit.FontWeight.SemiBold],
+    [700, canvasKit.FontWeight.Bold],
+    [800, canvasKit.FontWeight.ExtraBold],
+    [900, canvasKit.FontWeight.Black],
+  ]);
+  const fontWidth = nearestEnum<FontWidth>(width, [
+    [0.5, canvasKit.FontWidth.UltraCondensed],
+    [0.625, canvasKit.FontWidth.ExtraCondensed],
+    [0.75, canvasKit.FontWidth.Condensed],
+    [0.875, canvasKit.FontWidth.SemiCondensed],
+    [1, canvasKit.FontWidth.Normal],
+    [1.125, canvasKit.FontWidth.SemiExpanded],
+    [1.25, canvasKit.FontWidth.Expanded],
+    [1.5, canvasKit.FontWidth.ExtraExpanded],
+    [2, canvasKit.FontWidth.UltraExpanded],
+  ]);
+  const fontSlant: FontSlant = [
+    canvasKit.FontSlant.Upright,
+    canvasKit.FontSlant.Italic,
+    canvasKit.FontSlant.Oblique,
+  ][slant] ?? canvasKit.FontSlant.Upright;
+  return { weight: fontWeight, width: fontWidth, slant: fontSlant };
 }
 
 function replay(
@@ -351,6 +415,16 @@ function replay(
         for (let index = 0; index < coordinateCount; index += 1) {
           fontKey += `:${value(coordinateStart, index)}`;
         }
+        const attributesStart = take(3, 'text font attributes');
+        const fontWeight = value(attributesStart);
+        const fontWidth = value(attributesStart, 1);
+        const fontSlant = value(attributesStart, 2);
+        if (!Number.isFinite(fontWeight) || !Number.isFinite(fontWidth)
+          || !Number.isInteger(fontSlant) || fontWeight <= 0 || fontWidth <= 0
+          || fontSlant < 0 || fontSlant > 2) {
+          throw new CanvasKitReplayError('contract', 'CanvasKit text font attributes are invalid');
+        }
+        fontKey += `:${fontWeight}:${fontWidth}:${fontSlant}`;
         const glyphCount = value(take(1, 'glyph count'));
         const glyphStart = take(glyphCount * 3, 'glyphs');
         let realGlyphCount = 0;
@@ -377,17 +451,28 @@ function replay(
             outputIndex += 1;
           }
         }
-        const typeface = resourceCache.fonts.get(id);
-        if (!typeface) throw new CanvasKitReplayError('contract', `CanvasKit font resource ${id} is unresolved`);
-        let font = resourceCache.fontInstances.get(fontKey);
-        if (!font) {
-          font = new canvasKit.Font(typeface, size);
+        const fontResource = resourceCache.fonts.get(id);
+        if (!fontResource) throw new CanvasKitReplayError('contract', `CanvasKit font resource ${id} is unresolved`);
+        let fontInstance = resourceCache.fontInstances.get(fontKey);
+        if (!fontInstance) {
+          const matchedTypeface = fontResource.manager && fontResource.familyName
+            ? fontResource.manager.matchFamilyStyle(
+              fontResource.familyName,
+              canvasKitFontStyle(canvasKit, fontWeight, fontWidth, fontSlant),
+            )
+            : undefined;
+          const font = new canvasKit.Font(matchedTypeface ?? fontResource.base, size);
           font.setSubpixel(CANVASKIT_FONT_SUBPIXEL_POSITIONING);
+          font.setEdging(canvasKit.FontEdging.SubpixelAntiAlias);
+          font.setHinting(canvasKit.FontHinting.Normal);
+          font.setLinearMetrics(false);
           if (hasSkew) font.setSkewX(skew);
-          if (hasEmbolden) font.setEmbolden(true);
-          resourceCache.fontInstances.set(fontKey, font);
+          font.setEmbolden(Boolean(hasEmbolden) || CANVASKIT_FONT_STEM_DARKENING);
+          fontInstance = { font, typeface: matchedTypeface };
+          resourceCache.fontInstances.set(fontKey, fontInstance);
           resourceCache.performance.fontAllocationCount += 1;
         }
+        const { font } = fontInstance;
         setFill(textColor);
         if (realGlyphCount > 0) {
           skCanvas.drawGlyphs(scratch.glyphs, scratch.positions, x, y, font, paint);
@@ -687,9 +772,21 @@ function registerResources(resource: CanvasKitSurface, packets: CanvasKitResourc
         packet.bytes.byteOffset,
         packet.bytes.byteOffset + packet.bytes.byteLength,
       ) as ArrayBuffer;
-      const typeface = canvasKit.Typeface.MakeFreeTypeFaceFromData(bytes);
-      if (!typeface) throw new CanvasKitReplayError('environment', `CanvasKit font ${packet.id} decode failed`);
-      resource.fonts.set(packet.id, typeface);
+      let manager = (canvasKit.FontMgr as typeof canvasKit.FontMgr | undefined)
+        ?.FromData(bytes) ?? undefined;
+      const familyName = manager && manager.countFamilies() > 0 ? manager.getFamilyName(0) : undefined;
+      if (!familyName) {
+        manager?.delete();
+        manager = undefined;
+      }
+      const typeface = manager && familyName
+        ? manager.matchFamilyStyle(familyName, canvasKitFontStyle(canvasKit, 400, 1, 0))
+        : canvasKit.Typeface.MakeFreeTypeFaceFromData(bytes);
+      if (!typeface) {
+        manager?.delete();
+        throw new CanvasKitReplayError('environment', `CanvasKit font ${packet.id} decode failed`);
+      }
+      resource.fonts.set(packet.id, { base: typeface, manager, familyName });
       continue;
     }
     if (packet.kind === 'image') {
@@ -796,8 +893,14 @@ function releaseSurface(resource: CanvasKitSurface): void {
     layer.image?.delete();
     layer.surface.delete();
   }
-  for (const font of resource.fontInstances.values()) font.delete();
-  for (const typeface of resource.fonts.values()) typeface.delete();
+  for (const instance of resource.fontInstances.values()) {
+    instance.font.delete();
+    instance.typeface?.delete();
+  }
+  for (const font of resource.fonts.values()) {
+    font.base.delete();
+    font.manager?.delete();
+  }
   for (const image of resource.images.values()) image.delete();
   resource.fontInstances.clear();
   resource.fonts.clear();
