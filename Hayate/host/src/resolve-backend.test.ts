@@ -97,7 +97,7 @@ describe('rendererOptimizationQueryParam', () => {
     expect(rendererOptimizationQueryParam('vello')).toBe('layerPresent');
     expect(rendererOptimizationQueryParam('tiny-skia')).toBe('cpuLayerPresent');
     expect(rendererOptimizationQueryParam('vello-cpu')).toBe('cpuLayerPresent');
-    expect(rendererOptimizationQueryParam('canvaskit')).toBeUndefined();
+    expect(rendererOptimizationQueryParam('canvaskit')).toBe('layerPresent');
     expect(rendererOptimizationQueryParam('auto')).toBeUndefined();
     expect(rendererOptimizationQueryParam('dom')).toBeUndefined();
   });
