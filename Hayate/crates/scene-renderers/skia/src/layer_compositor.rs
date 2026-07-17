@@ -28,6 +28,22 @@ use crate::{new_raster_surface, SkiaResourceWorkCounts, SkiaSceneRenderer};
 /// レイヤキャッシュ面は透明クリアで raster する（背景は合成の clear / root レイヤが持つ）。
 const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
+/// Layer cache 用 `SkSurface` の出自を差し替える seam。CPU raster と Ganesh は同じ
+/// ScenePainter / raster planning を通り、この adapter だけが surface allocation を担う。
+pub trait SkiaLayerSurfaceFactory {
+    fn create_layer_surface(&mut self, width: i32, height: i32) -> Result<Surface, String>;
+}
+
+/// CPU raster fallback の layer-surface adapter。
+pub struct SkiaRasterLayerSurfaceFactory;
+
+impl SkiaLayerSurfaceFactory for SkiaRasterLayerSurfaceFactory {
+    fn create_layer_surface(&mut self, width: i32, height: i32) -> Result<Surface, String> {
+        new_raster_surface(width, height)
+            .ok_or_else(|| format!("skia raster layer surface {width}x{height}"))
+    }
+}
+
 /// Skia レイヤ rasterizer（[`LayerRasterizer`] の Skia 実装）。キャッシュ面は device
 /// サイズの `SkImage`（`content_scale` を掛けて raster するので wgpu 経路の surface
 /// サイズ texture と対応・tiny-skia の `Pixmap` キャッシュと同型）。
@@ -71,6 +87,28 @@ impl SkiaLayerRasterizer {
     pub fn resource_work_counts(&self) -> SkiaResourceWorkCounts {
         self.renderer.resource_work_counts()
     }
+
+    pub fn rasterize_with_layer_surface_factory(
+        &mut self,
+        factory: &mut dyn SkiaLayerSurfaceFactory,
+        layer: ElementId,
+        scene: &SceneGraph,
+        band: Option<RasterBand>,
+    ) -> Result<(), String> {
+        let (height, origin_y) = band
+            .map(|band| (self.band_device_height(band.height), band.origin_y))
+            .unwrap_or((self.height, 0.0));
+        let mut surface = factory.create_layer_surface(self.width, height)?;
+        self.renderer.render_scene_at(
+            scene,
+            surface.canvas(),
+            TRANSPARENT,
+            self.content_scale,
+            origin_y,
+        );
+        self.textures.insert(layer, surface.image_snapshot());
+        Ok(())
+    }
 }
 
 impl LayerRasterizer for SkiaLayerRasterizer {
@@ -82,20 +120,12 @@ impl LayerRasterizer for SkiaLayerRasterizer {
         scene: &SceneGraph,
         band: Option<RasterBand>,
     ) -> Result<(), String> {
-        let (height, origin_y) = band
-            .map(|band| (self.band_device_height(band.height), band.origin_y))
-            .unwrap_or((self.height, 0.0));
-        let mut surface = new_raster_surface(self.width, height)
-            .ok_or_else(|| format!("skia layer surface {}x{height}", self.width))?;
-        self.renderer.render_scene_at(
+        self.rasterize_with_layer_surface_factory(
+            &mut SkiaRasterLayerSurfaceFactory,
+            layer,
             scene,
-            surface.canvas(),
-            TRANSPARENT,
-            self.content_scale,
-            origin_y,
-        );
-        self.textures.insert(layer, surface.image_snapshot());
-        Ok(())
+            band,
+        )
     }
 
     fn texture(&self, layer: ElementId) -> Option<&Image> {
@@ -262,6 +292,32 @@ impl SkiaLayerPresenter {
         budget: GpuBudget,
         surface: Surface,
     ) -> Result<Surface, String> {
+        self.present_with_layer_surface_factory(
+            scene,
+            layers,
+            layer_dirty,
+            scroll_geometry,
+            clear,
+            scene_origin,
+            budget,
+            &mut SkiaRasterLayerSurfaceFactory,
+            surface,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn present_with_layer_surface_factory(
+        &mut self,
+        scene: &SceneGraph,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+        clear: [f32; 4],
+        scene_origin: (f32, f32),
+        budget: GpuBudget,
+        factory: &mut dyn SkiaLayerSurfaceFactory,
+        surface: Surface,
+    ) -> Result<Surface, String> {
         self.last_raster_count = 0;
         let Some(&root) = layers.first() else {
             let mut surface = surface;
@@ -301,7 +357,8 @@ impl SkiaLayerPresenter {
                 extract_layer_scene(scene, layer, &boundaries)
                     .ok_or_else(|| format!("skia layer {} is missing", layer.to_u64()))?
             };
-            self.rasterizer.rasterize(layer, &extracted, None)?;
+            self.rasterizer
+                .rasterize_with_layer_surface_factory(factory, layer, &extracted, None)?;
             self.last_raster_count += 1;
             self.planner
                 .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
@@ -314,14 +371,16 @@ impl SkiaLayerPresenter {
             if layer_dirty.contains(&layer) || self.chrome_rasterizer.texture(layer).is_none() {
                 let chrome = extract_scroll_chrome_scene(scene, layer, &boundaries)
                     .ok_or_else(|| format!("skia scroll chrome {} is missing", layer.to_u64()))?;
-                self.chrome_rasterizer.rasterize(
-                    layer,
-                    &chrome,
-                    Some(RasterBand {
-                        origin_y: geometry.absolute_top,
-                        height: geometry.viewport_height,
-                    }),
-                )?;
+                self.chrome_rasterizer
+                    .rasterize_with_layer_surface_factory(
+                        factory,
+                        layer,
+                        &chrome,
+                        Some(RasterBand {
+                            origin_y: geometry.absolute_top,
+                            height: geometry.viewport_height,
+                        }),
+                    )?;
             }
             if !geometry.content_dirty
                 && !self.planner.scroll_layer_needs_raster(
@@ -338,8 +397,12 @@ impl SkiaLayerPresenter {
                 extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
                     .ok_or_else(|| format!("skia scroll layer {} is missing", layer.to_u64()))?
             };
-            self.rasterizer
-                .rasterize(layer, &extracted, Some(geometry.raster_band()))?;
+            self.rasterizer.rasterize_with_layer_surface_factory(
+                factory,
+                layer,
+                &extracted,
+                Some(geometry.raster_band()),
+            )?;
             self.last_raster_count += 1;
             self.planner.note_scroll_rasterized(
                 layer,
