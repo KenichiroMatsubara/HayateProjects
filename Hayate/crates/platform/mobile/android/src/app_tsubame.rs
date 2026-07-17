@@ -508,7 +508,8 @@ pub(crate) fn run(app: AndroidApp) {
             // 保持シーンの owned スナップショットを Raster スレッドへ送る（#635）。UI スレッドは
             // raster を待たず、続けて次の JS フレーム / 入力処理へ進める（ADR-0128）。
             let tree_ref = runtime.tree.borrow();
-            let _ = rt.send(frame_handoff(&tree_ref));
+            let frame = tree_ref.committed_frame();
+            let _ = rt.send(frame_handoff(&frame));
         }
 
         // 描画後に残る pending visual work（進行中 transition / カーソル点滅 / スクロール物理）を

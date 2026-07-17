@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use android_activity::input::{InputEvent, MotionAction};
 use android_activity::{AndroidApp, MainEvent, PollEvent};
-use hayate_core::{ElementTree, SceneGraph};
+use hayate_core::{CommittedFrame, ElementTree, SceneGraph};
 use hayate_layer_compositor::{PresentPlanner, RasterCommand, RasterHandoff, RasterThread};
 use hayate_scene_renderer_vello::{
     create_blitter, create_target_view, VelloRenderTarget, VelloSceneRenderer,
@@ -197,11 +197,11 @@ pub fn android_main(app: AndroidApp) {
         if let Some(rt) = raster.as_ref() {
             // 単調増加クロックでレイアウトとカーソル点滅を駆動し、lower した
             // シーンを提示する（`hayate-adapter-web` の `render` に対応）。
-            let _ = tree.render(timestamp_ms);
+            let frame = tree.commit_rendered_frame(timestamp_ms);
             // render() が捕捉した保持シーン + frame_layers / frame_layer_dirty / chrome_dirty を
             // owned handoff にして Raster スレッドへ送る（#635）。UI スレッドは raster を待たず、
             // 続けて入力処理・次フレーム生成へ進める（ADR-0128）。
-            let _ = rt.send(frame_handoff(&tree));
+            let _ = rt.send(frame_handoff(&frame));
         }
     }
 }
@@ -861,15 +861,8 @@ pub(crate) fn init_and_spawn_raster(
     None
 }
 
-/// UI スレッドが握る保持シーンから 1 フレーム分の owned ハンドオフを組む（#635）。scene は境界を
-/// 越えて move するので clone（ADR-0128：スレッド境界＝lower 済み SceneGraph の owned スナップショット）。
-pub(crate) fn frame_handoff(tree: &ElementTree) -> RasterCommand {
-    RasterCommand::Frame(RasterHandoff {
-        scene: tree.scene_graph().clone(),
-        layers: tree.frame_layers().to_vec(),
-        layer_dirty: tree.frame_layer_dirty().clone(),
-        transform_dirty: tree.frame_layer_transform_dirty().clone(),
-        chrome_dirty: tree.frame_layer_chrome_dirty().clone(),
-        scroll_inputs: tree.frame_scroll_compositor_inputs(),
-    })
+/// Freeze one Core commit into the owned value shared by both native renderer families. The
+/// SceneGraph snapshot structurally shares retained nodes and detaches changed nodes lazily.
+pub(crate) fn frame_handoff(frame: &CommittedFrame<'_>) -> RasterCommand {
+    RasterCommand::Frame(RasterHandoff::from_committed_frame(frame))
 }

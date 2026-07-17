@@ -28,7 +28,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::{SceneGraph, ScrollCompositorInput};
+use hayate_core::{CommittedFrame, SceneGraph, ScrollCompositorInput};
 
 /// UI スレッド → Raster スレッドのハンドオフ（ADR-0128）。スレッド境界はこれ 1 つで、lower 済み
 /// SceneGraph と全レイヤ（描画順）・`layer_dirty`・`chrome_dirty` を owned で渡す。`Send + Sync` 境界。
@@ -46,6 +46,23 @@ pub struct RasterHandoff {
     pub chrome_dirty: HashSet<ElementId>,
     /// Core が commit 時に捕捉した scroll facts。Raster スレッド側で overscan geometry へ射影する。
     pub scroll_inputs: Vec<ScrollCompositorInput>,
+}
+
+impl RasterHandoff {
+    /// Freeze every renderer-visible fact from one Core commit into the single owned value sent
+    /// across the native raster seam. `SceneGraph::clone` is a structurally-shared snapshot: it
+    /// clones Arc handles, not the retained nodes, and later UI mutations detach only changed
+    /// nodes.
+    pub fn from_committed_frame(frame: &CommittedFrame<'_>) -> Self {
+        Self {
+            scene: frame.scene().clone(),
+            layers: frame.layers().to_vec(),
+            layer_dirty: frame.content_dirty_layers().clone(),
+            transform_dirty: frame.transform_dirty_layers().clone(),
+            chrome_dirty: frame.chrome_dirty_layers().clone(),
+            scroll_inputs: frame.scroll_inputs().to_vec(),
+        }
+    }
 }
 
 /// UI スレッド → Raster スレッドのメッセージ（ADR-0128）。フレーム提示だけでなく surface ライフ
@@ -254,6 +271,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hayate_core::{ElementKind, ElementTree};
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
     use std::sync::{mpsc, Arc};
 
@@ -523,6 +541,34 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<RasterCommand>();
         assert_send::<RasterHandoff>();
+    }
+
+    #[test]
+    fn committed_frame_becomes_one_immutable_owned_handoff() {
+        let mut tree = ElementTree::new();
+        let root = tree.element_create(0, ElementKind::View);
+        tree.set_root(root);
+
+        let frame = tree.commit_rendered_frame(0.0);
+        let snapshot = RasterHandoff::from_committed_frame(&frame);
+        assert_eq!(snapshot.layers, frame.layers());
+        assert_eq!(snapshot.layer_dirty, *frame.content_dirty_layers());
+        assert_eq!(snapshot.chrome_dirty, *frame.chrome_dirty_layers());
+        assert_eq!(snapshot.transform_dirty, *frame.transform_dirty_layers());
+        assert_eq!(snapshot.scroll_inputs, frame.scroll_inputs());
+        let committed_node_count = snapshot.scene.len();
+        drop(frame);
+
+        let child = tree.element_create(1, ElementKind::View);
+        tree.element_append_child(root, child);
+        let _next = tree.render(16.0);
+
+        assert_eq!(
+            snapshot.scene.len(),
+            committed_node_count,
+            "the UI thread's next-frame mutation must not alter the Raster snapshot"
+        );
+        assert!(tree.scene_graph().len() > snapshot.scene.len());
     }
 
     #[test]

@@ -1760,6 +1760,13 @@ impl ElementTree {
     /// presentation code. Projections add platform and backend policy separately.
     pub fn commit_rendered_frame(&mut self, timestamp_ms: f64) -> crate::CommittedFrame<'_> {
         let _ = self.render(timestamp_ms);
+        self.committed_frame()
+    }
+
+    /// Borrow the most recently rendered frame as one invariant presentation view without
+    /// running layout/lowering again. Native hosts use this after an embedded runtime has already
+    /// performed the commit, so every handoff field is captured from that same commit.
+    pub fn committed_frame(&self) -> crate::CommittedFrame<'_> {
         let scroll_inputs = self.frame_scroll_compositor_inputs();
         crate::CommittedFrame::new(
             &self.scene_cache,
