@@ -4,8 +4,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wgpu::util::TextureBlitter;
 
-use hayate_core::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{ElementId, LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::{
     collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
     extract_scroll_layer_scene, layer_scene::compose, tunables, CompositeQuad, GpuBudget,
@@ -363,6 +362,7 @@ impl CanvasBackend for SelectedBackend {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        _layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,

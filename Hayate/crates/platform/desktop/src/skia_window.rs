@@ -12,7 +12,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Error};
 use hayate_app_host::render_host::{ClearColor, SceneRenderer};
 use hayate_app_host::renderer_selection::SceneRendererKind;
-use hayate_core::{ElementId, SceneGraph};
+use hayate_core::{ElementId, LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::{tunables, GpuBudget, ScrollLayerGeometry};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use winit::window::Window;
@@ -99,6 +99,7 @@ impl SceneRenderer for SkiaWindowRenderer {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        _layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,

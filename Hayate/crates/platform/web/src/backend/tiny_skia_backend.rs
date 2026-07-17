@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
+    collect_layer_placements, compose, extract_layer_scene, extract_root_scene,
+    extract_scroll_chrome_scene, extract_scroll_layer_scene,
 };
 use hayate_layer_compositor::{
-    CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner, ScrollLayerGeometry,
+    tunables, CompositeQuad, GpuBudget, LayerCompositor, LayerRasterizer, PresentPlanner,
+    ScrollLayerGeometry,
 };
 use hayate_scene_renderer_tiny_skia::{
     premultiplied_to_straight, TinySkiaCompositeTarget, TinySkiaLayerCompositor,
@@ -29,6 +31,7 @@ pub(crate) struct SelectedBackend {
     // draw_pixmap 合成する。planner は backend 非依存の台帳（`plan_raster` / 予算）を握る。
     planner: PresentPlanner,
     rasterizer: TinySkiaLayerRasterizer,
+    chrome_rasterizer: TinySkiaLayerRasterizer,
     compositor: TinySkiaLayerCompositor,
     prev_layers: HashSet<ElementId>,
     // ADR-0138 比較用トグル。既定 ON（#636 の per-layer 経路を維持）——`HayateElementRenderer::init`
@@ -65,6 +68,7 @@ impl SelectedBackend {
             content_scale: 1.0,
             planner: PresentPlanner::new(),
             rasterizer: TinySkiaLayerRasterizer::new(width, height, 1.0),
+            chrome_rasterizer: TinySkiaLayerRasterizer::new(width, height, 1.0),
             compositor: TinySkiaLayerCompositor::new(1.0),
             prev_layers: HashSet::new(),
             layer_present_enabled: true,
@@ -109,17 +113,19 @@ impl CanvasBackend for SelectedBackend {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
-        // #707 (ADR-0127): scroll-band overscan sizing is vello-only for now (see vello.rs's
-        // `present_layers`) — tiny-skia's per-layer path stays exactly as before this parameter
-        // existed (every layer, including `ScrollView`s, gets a full-surface `Pixmap`).
-        _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
+        scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
         let Some(&root) = layers.first() else {
             return Ok(());
         };
         let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+        let raster_bounds: HashMap<ElementId, LayerRasterBounds> = layer_raster_bounds
+            .iter()
+            .map(|bounds| (bounds.layer, *bounds))
+            .collect();
 
         // 消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
         for stale in self
@@ -129,12 +135,19 @@ impl CanvasBackend for SelectedBackend {
             .collect::<Vec<_>>()
         {
             self.rasterizer.discard(stale);
+            self.chrome_rasterizer.discard(stale);
             self.planner.evict(stale);
         }
         self.prev_layers = boundaries.clone();
 
-        // dirty / 未キャッシュのレイヤだけ Pixmap へ再 raster（plan_raster の raster/reuse どおり）。
-        let plan = self.planner.plan_layers(layers, layer_dirty);
+        // Non-scroll layers use Core's full conservative 2D extent. Scroll content/chrome are
+        // handled separately below so their band and viewport surfaces retain that actual width.
+        let non_scroll_layers: Vec<ElementId> = layers
+            .iter()
+            .copied()
+            .filter(|layer| *layer == root || !scroll_geometry.contains_key(layer))
+            .collect();
+        let plan = self.planner.plan_layers(&non_scroll_layers, layer_dirty);
         for &layer in &plan.raster {
             let extracted = if layer == root {
                 extract_root_scene(scene, root, &boundaries)
@@ -144,30 +157,111 @@ impl CanvasBackend for SelectedBackend {
                     None => continue, // 未 lowering（次フレームで raster される）
                 }
             };
-            self.rasterizer
-                .rasterize(layer, &extracted, None)
-                .map_err(|e| anyhow::anyhow!(e))?;
+            if layer == root {
+                self.rasterizer
+                    .rasterize(layer, &extracted, None)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            } else {
+                let bounds = raster_bounds.get(&layer).copied().ok_or_else(|| {
+                    anyhow::anyhow!("missing Core raster bounds for layer {layer:?}")
+                })?;
+                self.rasterizer
+                    .rasterize_with_bounds(layer, &extracted, bounds, None)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
             self.planner
-                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+                .note_layer_rasterized(layer, self.rasterizer.texture_bytes(layer));
+        }
+
+        for &layer in layers {
+            if layer == root {
+                continue; // The implicit root cache deliberately remains full-surface.
+            }
+            let Some(geometry) = scroll_geometry.get(&layer) else {
+                continue;
+            };
+            let bounds = raster_bounds.get(&layer).copied().ok_or_else(|| {
+                anyhow::anyhow!("missing Core raster bounds for scroll layer {layer:?}")
+            })?;
+
+            if layer_dirty.contains(&layer) || self.chrome_rasterizer.texture(layer).is_none() {
+                if let Some(chrome) = extract_scroll_chrome_scene(scene, layer, &boundaries) {
+                    let chrome_bounds = LayerRasterBounds {
+                        origin_y: geometry.absolute_top,
+                        height: geometry.viewport_height,
+                        ..bounds
+                    };
+                    self.chrome_rasterizer
+                        .rasterize_with_bounds(layer, &chrome, chrome_bounds, None)
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                }
+            }
+
+            let needs_content_raster = geometry.content_dirty
+                || self.planner.scroll_layer_needs_raster(
+                    layer,
+                    geometry.visible_top,
+                    geometry.viewport_height,
+                );
+            if needs_content_raster {
+                let extracted = if layer == root {
+                    extract_root_scene(scene, root, &boundaries)
+                } else {
+                    extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
+                        .ok_or_else(|| anyhow::anyhow!("scroll layer {layer:?} is missing"))?
+                };
+                self.rasterizer
+                    .rasterize_with_bounds(layer, &extracted, bounds, Some(geometry.raster_band()))
+                    .map_err(|e| anyhow::anyhow!(e))?;
+                self.planner.note_scroll_rasterized(
+                    layer,
+                    geometry.band,
+                    self.rasterizer.texture_bytes(layer)
+                        + self.chrome_rasterizer.texture_bytes(layer),
+                );
+            }
         }
 
         // キャッシュ Pixmap を placement quad（transform/clip、保持シーンから毎フレーム導出）で
         // 合成する。composite-only フレームは上の raster ループが空＝全面 render_scene は走らない。
         let placements = collect_layer_placements(scene, root, &boundaries);
-        let quads: Vec<CompositeQuad<'_, Pixmap>> = placements
-            .iter()
-            .filter_map(|p| {
-                self.rasterizer
-                    .texture(p.layer)
-                    .map(|texture| CompositeQuad {
-                        layer: p.layer,
-                        transform: p.transform,
-                        opacity: 1.0,
-                        clip: p.clip,
-                        texture,
-                    })
-            })
-            .collect();
+        let mut quads = Vec::new();
+        for placement in &placements {
+            if let Some(texture) = self.rasterizer.texture(placement.layer) {
+                let transform = match (
+                    self.planner.cached_scroll_band(placement.layer),
+                    scroll_geometry.get(&placement.layer),
+                ) {
+                    // TinySkiaLayerTexture restores its absolute cached-band origin itself;
+                    // unlike the wgpu/Skia textures whose row 0 is local, only the live scroll
+                    // affine remains to apply here.
+                    (Some(_), Some(geometry)) => {
+                        compose(placement.transform, geometry.scroll_affine)
+                    }
+                    _ => placement.transform,
+                };
+                quads.push(CompositeQuad {
+                    layer: placement.layer,
+                    transform,
+                    opacity: 1.0,
+                    clip: placement.clip,
+                    texture,
+                });
+            }
+            if let (Some(_geometry), Some(texture)) = (
+                scroll_geometry.get(&placement.layer),
+                self.chrome_rasterizer.texture(placement.layer),
+            ) {
+                quads.push(CompositeQuad {
+                    layer: placement.layer,
+                    // Chrome texture also carries its absolute layer-local origin.
+                    transform: placement.transform,
+                    opacity: 1.0,
+                    clip: placement.clip,
+                    texture,
+                });
+            }
+        }
         let mut target = TinySkiaCompositeTarget {
             pixmap: std::mem::replace(&mut self.pixmap, Pixmap::new(1, 1).expect("1x1 pixmap")),
             clear: clear_color,
@@ -177,6 +271,15 @@ impl CanvasBackend for SelectedBackend {
         result.map_err(|e| anyhow::anyhow!(e))?;
         for quad in &quads {
             self.planner.note_composited(quad.layer);
+        }
+        let budget = GpuBudget::from_viewports(
+            self.width,
+            self.height,
+            tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
+        );
+        for evicted in self.planner.enforce_budget(budget) {
+            self.rasterizer.discard(evicted);
+            self.chrome_rasterizer.discard(evicted);
         }
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
     }
@@ -188,6 +291,8 @@ impl CanvasBackend for SelectedBackend {
             // DPR だけ変わっても content_scale は反映済み。キャッシュ面はスケール込みなので作り直す。
             self.rasterizer
                 .resize(self.width, self.height, self.content_scale);
+            self.chrome_rasterizer
+                .resize(self.width, self.height, self.content_scale);
             self.planner.invalidate();
             return;
         }
@@ -198,6 +303,8 @@ impl CanvasBackend for SelectedBackend {
             // レイヤキャッシュ面はサーフェスサイズ＝作り直し。台帳ごと invalidate（古いサイズを
             // 合成し続けない）。
             self.rasterizer.resize(width, height, self.content_scale);
+            self.chrome_rasterizer
+                .resize(width, height, self.content_scale);
             self.planner.invalidate();
         }
     }

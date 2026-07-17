@@ -243,6 +243,7 @@ impl PresentTarget for RenderHostSurface {
             self.host.present_layers(
                 frame.scene(),
                 frame.layers(),
+                frame.layer_raster_bounds(),
                 &layer_dirty,
                 &scroll_geometry,
                 CLEAR_COLOR,
