@@ -72,7 +72,7 @@
 **規範文:** どの renderer を許可しどの順で試すかは `Renderer Selection Policy` が決める。Vello を preferred default、tiny-skia を standard alternative とし、recording/null は非標準（診断）として分離する。各 backend の `name` / `try_init` / `try_init_sync_for_fallback` / `classify_init_error` は `SceneRendererKind` に集約し、`RenderHost` は policy の preference list を回すのみ。
 **出典:** ADR-0050
 **状況:** ✅ — `SceneRendererKind::{name, try_init, try_init_sync_for_fallback, classify_init_error}`（`backend/mod.rs`）；`RenderHost::init_with_policy` が preference list を反復。
-**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。[追加 2026-07-12] web もネイティブ（REND-15）と同じくランタイム上書きを持つ：`?renderer=vello|tiny-skia|vello-cpu`（`SceneRendererKind::name()` と同一語彙）を `@torimi/hayate-host` の `resolveCanvasBackendSelection` が deep-link として honor し、選択 renderer と選択理由を console へ出す（Rust 側 `render_host.rs` の `selected scene renderer:` / `scene renderer rejected:` ログが console_log 経由でブラウザに届く）。web は「1バイナリ1レンダラ」排他（REND-11）なので上書きはロードする WASM バンドルの選択として効く。
+**備考:** 新 backend 追加は enum variant + `SceneRendererKind` impl の1箇所 + backend crate。[更新 2026-07-18] web もネイティブ（REND-15）と同じくランタイム上書きを持つ：`?renderer=vello|tiny-skia`（`SceneRendererKind::name()` と同一語彙）を `@torimi/hayate-host` の `resolveCanvasBackendSelection` が deep-link として honor し、選択 renderer と選択理由を console へ出す（Rust 側 `render_host.rs` の `selected scene renderer:` / `scene renderer rejected:` ログが console_log 経由でブラウザに届く）。web は「1バイナリ1レンダラ」排他（REND-11）なので上書きはロードする WASM バンドルの選択として効く。
 
 ### REND-10 — Vello を主候補 renderer とする
 **規範文:** GPU 描画の主候補 renderer は Vello（Linebender, wgpu ベース）とし、`SceneGraph`→Vello Scene 変換は薄い独立 crate（`scene-renderers/vello`）に置く。公開 API は `render_scene` のみ。
@@ -81,7 +81,7 @@
 **備考:** [訂正 2026-06-09] 旧実装は `VelloPainter`/`TinySkiaPainter` を `pub use` 公開していたが（外部利用なし、ADR-0054「walk/Painter は内部」違反）非公開化。ADR-0054 を amend し「公開 API＝`render_scene` + surface 補助」を明文化。
 
 ### REND-11 — tiny-skia を web 専用 CPU フォールバックとする
-**規範文:** tiny-skia は **web 専用**の最終 CPU フォールバック Scene Renderer とする。Auto は CanvasKit → Vello → tiny-skia の順で初回 boot 候補を試し、CanvasKit の初期化失敗または Vello が使えない web 環境（GPU/WebGPU 不可）でのみ tiny-skia へ進む。ネイティブの代替経路は skia-safe（REND-14/15）が担い、tiny-skia をネイティブに結線しない。
+**規範文:** tiny-skia は **web 専用**の最終 CPU フォールバック Scene Renderer とする。Auto は WebGPU が使えるとき Vello → tiny-skia の順で初回 boot 候補を試し、WebGPU が使えない環境では tiny-skia を直接選ぶ。ネイティブの代替経路は skia-safe（REND-14/15）が担い、tiny-skia をネイティブに結線しない。
 **出典:** ADR-0048, ADR-0146
 **状況:** ✅ — `scene-renderers/tiny-skia`（`TinySkiaPainter` + `render_scene`）。`backend-vello` / `backend-tiny-skia` feature。実装は従来から web のみで、住み分けと整合。
 **備考:** GPU バックエンドではなく CPU 代替（§1 CORE-02 と整合）。[更新 2026-07-10] ADR-0146 がネイティブの standard alternative を skia-safe と定め、tiny-skia の守備範囲を web 専用へ明文化（旧規範文は環境を限定していなかった）。

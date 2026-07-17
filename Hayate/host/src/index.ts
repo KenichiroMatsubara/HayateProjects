@@ -5,7 +5,6 @@ import {
   type CanvasBackend,
 } from './resolve-backend.js';
 import { loadCanvasBackend } from './load-canvas-backend.generated.js';
-import { detachCanvasKitSurface } from './canvaskit-bridge.js';
 import {
   attachAccessibilityMirror,
   type AccessibilityMirror,
@@ -84,7 +83,7 @@ export interface CreateHayateWebHostOptions {
   /** WebGPU プローブ結果に関わらずロードする WASM バックエンド。 */
   backend?: CanvasBackend;
   /**
-   * `backend === 'canvaskit' | 'vello'` の時に効く、layer-present（per-layer 経路、
+   * `backend === 'vello'` の時に効く、layer-present（per-layer 経路、
    * ADR-0125/0127・ADR-0140）のランタイムトグル。既定 `true`（ADR-0137）。
    *
    * `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残している。
@@ -92,7 +91,7 @@ export interface CreateHayateWebHostOptions {
    */
   layerPresent?: boolean;
   /**
-   * `backend === 'tiny-skia' | 'vello-cpu'` の時だけ効く、per-layer 経路の比較用トグル
+   * `backend === 'tiny-skia'` の時だけ効く、per-layer 経路の比較用トグル
    * （ADR-0138）。既定 `true`。vello の `layerPresent`（上記）とは別物の意味を持つ、
    * 独立したランタイムフラグ。`false` で全面 raster にフォールバックする。
    */
@@ -239,13 +238,12 @@ export async function createHayateWebHost(
 
   const webgpuAvailable = await probe();
   // backend 選択（どの WASM バンドル＝ Scene Renderer をロードするか）を「どれを / なぜ」
-  // の両方で決める。`search` を渡すことで host 自体が `?renderer=vello|tiny-skia|vello-cpu`
+  // の両方で決める。`search` を渡すことで host 自体が `?renderer=vello|tiny-skia`
   // のディープリンク（Android の `am start -e hayate.renderer` 相当）に追従する。選択は
   // ネイティブの `selected scene renderer:` ログに倣い console に観測点を残す（WASM 側は
   // 初期化後に Rust の `render_host.rs` が最終選択レンダラ／却下理由を console_log へ出す）。
   const attempts = resolveCanvasBackendAttemptOrder(effectiveOptions, webgpuAvailable, search ?? '');
   let raw: RawHayate | undefined;
-  let selectedBackend: CanvasBackend | undefined;
   let lastError: unknown;
   for (const selection of attempts) {
     console.info(
@@ -253,7 +251,6 @@ export async function createHayateWebHost(
     );
     try {
       raw = await load(selection.backend, canvas);
-      selectedBackend = selection.backend;
       break;
     } catch (error) {
       lastError = error;
@@ -307,7 +304,6 @@ export async function createHayateWebHost(
     if (detached) return;
     detached = true;
     mirror.detach();
-    if (selectedBackend === 'canvaskit') detachCanvasKitSurface(canvas);
   };
 
   return { raw, requestFrame, cancelFrame, detach };

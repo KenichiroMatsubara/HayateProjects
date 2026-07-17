@@ -41,11 +41,8 @@
   },
   "dependencies": {
     "@torimi/hayate-protocol-spec": "workspace:*",
-    "@torimi/hayate-adapter-web-canvaskit": "workspace:*",
     "@torimi/hayate-adapter-web": "workspace:*",
-    "@torimi/hayate-adapter-web-cpu": "workspace:*",
-    "@torimi/hayate-adapter-web-vello-cpu": "workspace:*",
-    "canvaskit-wasm": "0.41.1"
+    "@torimi/hayate-adapter-web-cpu": "workspace:*"
   },
   "devDependencies": {
     "happy-dom": "^17.4.4",

@@ -1,6 +1,6 @@
-//! tiny-skia/vello_cpu の per-layer 比較用トグル配線契約（ADR-0138・#710）。
+//! tiny-skia の per-layer 比較用トグル配線契約（ADR-0138・#710）。
 //!
-//! `canvas.rs`・`backend/tiny_skia_backend.rs`・`backend/vello_cpu_backend.rs` は wasm 専用で
+//! `canvas.rs`・`backend/tiny_skia_backend.rs` は wasm 専用で
 //! ホストにはコンパイルされないため、`compositor_wiring.rs` と同じくソースを読んで配線を
 //! 固定する（実描画は e2e が守る）。
 
@@ -28,25 +28,6 @@ fn canvas_init_takes_and_forwards_the_runtime_toggle() {
 #[test]
 fn tiny_skia_backend_reads_a_runtime_field_instead_of_a_hardcoded_true() {
     let src = read("src/backend/tiny_skia_backend.rs");
-    assert!(
-        src.contains("layer_present_enabled: bool"),
-        "SelectedBackend must own a settable layer_present_enabled field"
-    );
-    assert!(
-        src.contains(
-            "fn supports_layer_present(&self) -> bool {\n        self.layer_present_enabled\n    }"
-        ),
-        "supports_layer_present must read the runtime field, not return a hardcoded true"
-    );
-    assert!(
-        src.contains("fn set_layer_present_enabled(&mut self, enabled: bool) {\n        self.layer_present_enabled = enabled;\n    }"),
-        "SelectedBackend must implement the SceneRenderer::set_layer_present_enabled setter"
-    );
-}
-
-#[test]
-fn vello_cpu_backend_reads_a_runtime_field_instead_of_a_hardcoded_true() {
-    let src = read("src/backend/vello_cpu_backend.rs");
     assert!(
         src.contains("layer_present_enabled: bool"),
         "SelectedBackend must own a settable layer_present_enabled field"

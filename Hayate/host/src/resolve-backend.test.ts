@@ -12,14 +12,12 @@ import {
 
 // Web の「タップで Scene Renderer を切り替える」操作面（Android の
 // `adb shell am start -e hayate.renderer skia` と同じ操作感）の口。クエリ
-// パラメータ `?renderer=vello|tiny-skia|vello-cpu` を強制指定として解釈する純ロジック。
+// パラメータ `?renderer=vello|tiny-skia` を強制指定として解釈する純ロジック。
 // 値語彙は `SceneRendererKind::name()`（Rust）と同一。
 describe('parseRendererQueryBackend', () => {
   it('parses a forced canvas backend from the renderer query param', () => {
-    expect(parseRendererQueryBackend('?renderer=canvaskit')).toBe('canvaskit');
     expect(parseRendererQueryBackend('?renderer=vello')).toBe('vello');
     expect(parseRendererQueryBackend('?renderer=tiny-skia')).toBe('tiny-skia');
-    expect(parseRendererQueryBackend('?renderer=vello-cpu')).toBe('vello-cpu');
   });
 
   it('defers (undefined) for auto, dom, unknown, or missing values', () => {
@@ -29,6 +27,8 @@ describe('parseRendererQueryBackend', () => {
     expect(parseRendererQueryBackend('?renderer=canvas')).toBeUndefined();
     expect(parseRendererQueryBackend('')).toBeUndefined();
     expect(parseRendererQueryBackend(`?${RENDERER_QUERY_PARAM}=skia`)).toBeUndefined();
+    expect(parseRendererQueryBackend('?renderer=canvaskit')).toBeUndefined();
+    expect(parseRendererQueryBackend('?renderer=vello-cpu')).toBeUndefined();
   });
 });
 
@@ -46,10 +46,6 @@ describe('resolveCanvasBackendSelection', () => {
   });
 
   it('reports query-override when the renderer query forces a backend', () => {
-    expect(resolveCanvasBackendSelection(undefined, true, '?renderer=canvaskit')).toEqual({
-      backend: 'canvaskit',
-      reason: 'query-override',
-    });
     expect(resolveCanvasBackendSelection(undefined, true, '?renderer=tiny-skia')).toEqual({
       backend: 'tiny-skia',
       reason: 'query-override',
@@ -60,22 +56,22 @@ describe('resolveCanvasBackendSelection', () => {
     });
   });
 
-  it('selects CanvasKit as the first automatic boot candidate', () => {
+  it('selects Vello as the first automatic boot candidate when WebGPU is available', () => {
     expect(resolveCanvasBackendSelection(undefined, true, '')).toEqual({
-      backend: 'canvaskit',
-      reason: 'canvaskit-auto',
+      backend: 'vello',
+      reason: 'webgpu-primary',
     });
     // auto/dom クエリは強制ではないので自動判定に委ねる。
     expect(resolveCanvasBackendSelection(undefined, true, '?renderer=auto')).toEqual({
-      backend: 'canvaskit',
-      reason: 'canvaskit-auto',
+      backend: 'vello',
+      reason: 'webgpu-primary',
     });
   });
 
-  it('keeps CanvasKit first when WebGPU is unavailable', () => {
+  it('selects tiny-skia when WebGPU is unavailable', () => {
     expect(resolveCanvasBackendSelection(undefined, false, '')).toEqual({
-      backend: 'canvaskit',
-      reason: 'canvaskit-auto',
+      backend: 'tiny-skia',
+      reason: 'webgpu-unavailable-skip',
     });
   });
 });
@@ -84,10 +80,8 @@ describe('WEB_RENDERER_QUERY_VALUES', () => {
   it('publishes the Host-owned renderer switch order', () => {
     expect(WEB_RENDERER_QUERY_VALUES).toEqual([
       'auto',
-      'canvaskit',
       'vello',
       'tiny-skia',
-      'vello-cpu',
     ]);
   });
 });
@@ -96,8 +90,8 @@ describe('rendererOptimizationQueryParam', () => {
   it('keeps backend-specific optimization query mapping in the Host policy', () => {
     expect(rendererOptimizationQueryParam('vello')).toBe('layerPresent');
     expect(rendererOptimizationQueryParam('tiny-skia')).toBe('cpuLayerPresent');
-    expect(rendererOptimizationQueryParam('vello-cpu')).toBe('cpuLayerPresent');
-    expect(rendererOptimizationQueryParam('canvaskit')).toBe('layerPresent');
+    expect(rendererOptimizationQueryParam('vello-cpu')).toBeUndefined();
+    expect(rendererOptimizationQueryParam('canvaskit')).toBeUndefined();
     expect(rendererOptimizationQueryParam('auto')).toBeUndefined();
     expect(rendererOptimizationQueryParam('dom')).toBeUndefined();
   });
@@ -117,17 +111,15 @@ describe('parseRendererOptimizationOptions', () => {
 });
 
 describe('resolveCanvasBackendAttemptOrder', () => {
-  it('uses CanvasKit → Vello → tiny-skia during automatic WebGPU boot', () => {
+  it('uses Vello → tiny-skia during automatic WebGPU boot', () => {
     expect(resolveCanvasBackendAttemptOrder(undefined, true)).toEqual([
-      { backend: 'canvaskit', reason: 'canvaskit-auto' },
-      { backend: 'vello', reason: 'webgpu-fallback' },
+      { backend: 'vello', reason: 'webgpu-primary' },
       { backend: 'tiny-skia', reason: 'webgpu-fallback' },
     ]);
   });
 
-  it('skips Vello but retains CanvasKit → tiny-skia without WebGPU', () => {
+  it('skips Vello and starts with tiny-skia without WebGPU', () => {
     expect(resolveCanvasBackendAttemptOrder(undefined, false)).toEqual([
-      { backend: 'canvaskit', reason: 'canvaskit-auto' },
       { backend: 'tiny-skia', reason: 'webgpu-unavailable-skip' },
     ]);
   });
@@ -144,18 +136,13 @@ describe('resolveCanvasBackend', () => {
     expect(resolveCanvasBackend({ backend: 'tiny-skia' }, false)).toBe('tiny-skia');
   });
 
-  it('honours an explicit vello-cpu override regardless of WebGPU', () => {
-    expect(resolveCanvasBackend({ backend: 'vello-cpu' }, true)).toBe('vello-cpu');
-    expect(resolveCanvasBackend({ backend: 'vello-cpu' }, false)).toBe('vello-cpu');
+  it('auto-selects Vello first when WebGPU is available and no override', () => {
+    expect(resolveCanvasBackend(undefined, true)).toBe('vello');
+    expect(resolveCanvasBackend({}, true)).toBe('vello');
   });
 
-  it('auto-selects CanvasKit first when WebGPU is available and no override', () => {
-    expect(resolveCanvasBackend(undefined, true)).toBe('canvaskit');
-    expect(resolveCanvasBackend({}, true)).toBe('canvaskit');
-  });
-
-  it('auto-selects CanvasKit first when WebGPU is unavailable and no override', () => {
-    expect(resolveCanvasBackend(undefined, false)).toBe('canvaskit');
-    expect(resolveCanvasBackend({}, false)).toBe('canvaskit');
+  it('auto-selects tiny-skia when WebGPU is unavailable and no override', () => {
+    expect(resolveCanvasBackend(undefined, false)).toBe('tiny-skia');
+    expect(resolveCanvasBackend({}, false)).toBe('tiny-skia');
   });
 });

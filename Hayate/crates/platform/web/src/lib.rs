@@ -2,8 +2,6 @@
 mod backend;
 #[cfg(any(target_arch = "wasm32", test))]
 mod builtin_fonts;
-#[cfg(any(target_arch = "wasm32", test))]
-mod canvaskit_command;
 #[cfg(test)]
 mod delivery_codec_fixtures;
 #[cfg(any(target_arch = "wasm32", test))]

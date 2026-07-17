@@ -383,7 +383,7 @@ fn design_coords_from_normalized(
 /// 焼き込んだ SkTypeface を作る（`Blob::id()`＋座標キーの常駐キャッシュ越し）。
 /// 座標を無視すると variable font は fvar 既定インスタンスで描かれる——バンドルの
 /// NotoSansJP は既定が wght=100（Thin）なので、全テキストがヘアラインになり UI 全体が
-/// 「淡く」見える実回帰があった（vello/tiny-skia/vello-cpu は座標を消費する。共有
+/// 「淡く」見える実回帰があった（vello/tiny-skia は座標を消費する。共有
 /// css_pixels の font-weight ケースがこの契約を固定する）。
 fn cached_typeface(
     font: &hayate_core::RenderFont,

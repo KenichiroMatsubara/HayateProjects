@@ -35,6 +35,5 @@ test('publicWasmTargets excludes the private pkg-null but includes the scoped pu
   const names = publicWasmTargets(loadManifest()).map((t) => t.npmName);
   assert.ok(names.includes('@torimi/hayate-adapter-web'));
   assert.ok(names.includes('@torimi/hayate-adapter-web-cpu'));
-  assert.ok(names.includes('@torimi/hayate-adapter-web-vello-cpu'));
   assert.ok(!names.includes('hayate-adapter-web-null'));
 });

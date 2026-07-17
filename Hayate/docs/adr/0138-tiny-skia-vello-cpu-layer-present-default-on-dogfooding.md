@@ -4,6 +4,8 @@
 
 **Date: 2026-07-05**
 
+> 2026-07-18: vello_cpu Web backend は撤去した。本 ADR の tiny-skia に関するランタイムトグル決定のみ現行。
+
 ## Context
 
 issue #705: ADR-0135 の `layer-present` 封印は `platform/web/src/backend/vello.rs` の

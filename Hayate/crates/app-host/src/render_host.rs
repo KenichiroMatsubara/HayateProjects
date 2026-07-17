@@ -43,7 +43,7 @@ pub trait SceneRenderer {
         false
     }
 
-    /// per-layer present の有効・無効をランタイムで切り替える（ADR-0138、tiny-skia/vello_cpu
+    /// per-layer present の有効・無効をランタイムで切り替える（ADR-0138、tiny-skia
     /// の比較トグル用）。既定（no-op）はコンパイル時にしか対応を決めないバックエンド
     /// （vello の `layer-present` feature 等）向け——切り替え可能なバックエンドだけが
     /// override して [`supports_layer_present`](Self::supports_layer_present) が読む
@@ -117,7 +117,7 @@ pub struct RenderHost<S: Surface, I: RendererInit<S>> {
     /// 棄却されたか。ホストは実行するだけで再導出はしない。
     selection_plan: RendererSelectionPlan,
     init: I,
-    /// CanvasKit/skia-safe の選択後 failure。設定後は renderer を二度と呼ばず、同じ terminal
+    /// skia-safe の選択後 failure。設定後は renderer を二度と呼ばず、同じ terminal
     /// category を App Host へ返し続ける（暗黙 retry/restart を型の状態として封じる）。
     terminal_failure: Option<String>,
 }
@@ -588,56 +588,6 @@ mod tests {
             assert_eq!(host.kind(), SceneRendererKind::TinySkia);
             assert_eq!(*sync_init_calls.borrow(), vec![SceneRendererKind::TinySkia]);
             assert_eq!(*resized.borrow(), vec![SceneRendererKind::TinySkia]);
-        });
-    }
-
-    #[test]
-    fn canvaskit_runtime_failure_is_terminal_and_never_initializes_vello() {
-        pollster::block_on(async {
-            let fails = Rc::new(RefCell::new(HashSet::from([SceneRendererKind::CanvasKit])));
-            let sync_init_calls = Rc::new(RefCell::new(Vec::new()));
-            let init = FakeInit {
-                fails,
-                unavailable: HashSet::new(),
-                resized: Rc::new(RefCell::new(Vec::new())),
-                sync_init_calls: sync_init_calls.clone(),
-                layer_present_enabled: Rc::new(RefCell::new(true)),
-            };
-            let mut host = RenderHost::init_with_policy(
-                FakeSurface {
-                    width: 800,
-                    height: 600,
-                },
-                RendererSelectionPolicy::new(
-                    &[
-                        SceneRendererKind::CanvasKit,
-                        SceneRendererKind::Vello,
-                        SceneRendererKind::TinySkia,
-                    ],
-                    &[
-                        SceneRendererKind::CanvasKit,
-                        SceneRendererKind::Vello,
-                        SceneRendererKind::TinySkia,
-                    ],
-                ),
-                RendererCapabilities {
-                    webgpu_available: true,
-                },
-                init,
-            )
-            .await
-            .expect("CanvasKit must be selected during boot");
-
-            let result = host.render_scene(&SceneGraph::default(), [0.0, 0.0, 0.0, 1.0]);
-            assert!(
-                result.is_err(),
-                "a selected CanvasKit failure must be terminal"
-            );
-            assert_eq!(host.kind(), SceneRendererKind::CanvasKit);
-            assert!(
-                sync_init_calls.borrow().is_empty(),
-                "terminal failure must not start an unselected renderer",
-            );
         });
     }
 

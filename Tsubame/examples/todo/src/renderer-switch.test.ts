@@ -13,7 +13,7 @@ describe('Web renderer switch', () => {
   it('sources backend choices from Hayate Host in every Web demo', () => {
     for (const demoHtml of [html, ...otherWebDemos]) {
       expect(demoHtml).toContain('@torimi/hayate-host/renderer-policy');
-      expect(demoHtml).not.toMatch(/data-renderer="(?:canvaskit|vello|tiny-skia|vello-cpu)"/);
+      expect(demoHtml).not.toMatch(/data-renderer="(?:vello|tiny-skia)"/);
       expect(demoHtml).toContain('data-renderer="dom"');
     }
   });

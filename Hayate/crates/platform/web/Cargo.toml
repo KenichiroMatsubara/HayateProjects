@@ -11,10 +11,8 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["backend-vello", "backend-tiny-skia"]
-backend-canvaskit = ["hayate-app-host/backend-canvaskit"]
 backend-vello = ["dep:wgpu", "dep:hayate-scene-renderer-vello", "hayate-app-host/backend-vello"]
 backend-tiny-skia = ["dep:tiny-skia", "dep:hayate-scene-renderer-tiny-skia", "hayate-app-host/backend-tiny-skia"]
-backend-vello-cpu = ["dep:vello_cpu", "dep:hayate-scene-renderer-vello-cpu", "hayate-app-host/backend-vello-cpu"]
 backend-recording = ["hayate-app-host/backend-recording"]
 backend-null = ["hayate-app-host/backend-null"]
 
@@ -24,10 +22,8 @@ hayate-app-host = { path = "../../app-host" }
 hayate-layer-compositor = { path = "../../scene-renderers/compositor" }
 hayate-scene-renderer-vello = { path = "../../scene-renderers/vello", optional = true }
 hayate-scene-renderer-tiny-skia = { path = "../../scene-renderers/tiny-skia", optional = true }
-hayate-scene-renderer-vello-cpu = { path = "../../scene-renderers/vello-cpu", optional = true }
 wgpu = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
-vello_cpu = { workspace = true, optional = true }
 slotmap.workspace = true
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true

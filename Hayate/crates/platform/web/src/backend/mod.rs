@@ -11,12 +11,6 @@ use hayate_app_host::renderer_selection::{
     RendererSelectionReason, SceneRendererKind,
 };
 
-#[cfg(feature = "backend-canvaskit")]
-mod canvaskit;
-
-#[cfg(feature = "backend-canvaskit")]
-use canvaskit::SelectedBackend as CanvasKitBackend;
-
 #[cfg(feature = "backend-vello")]
 mod vello;
 
@@ -35,12 +29,6 @@ mod tiny_skia_backend;
 #[cfg(feature = "backend-tiny-skia")]
 use tiny_skia_backend::SelectedBackend as TinySkiaBackend;
 
-#[cfg(feature = "backend-vello-cpu")]
-mod vello_cpu_backend;
-
-#[cfg(feature = "backend-vello-cpu")]
-use vello_cpu_backend::SelectedBackend as VelloCpuBackend;
-
 #[cfg(feature = "backend-null")]
 mod null;
 
@@ -49,15 +37,11 @@ use null::SelectedBackend as NullBackend;
 
 #[cfg(not(any(
     feature = "backend-vello",
-    feature = "backend-canvaskit",
     feature = "backend-recording",
     feature = "backend-tiny-skia",
-    feature = "backend-vello-cpu",
     feature = "backend-null"
 )))]
-compile_error!(
-    "Enable one of: backend-canvaskit, backend-vello, backend-recording, backend-tiny-skia, backend-vello-cpu, backend-null"
-);
+compile_error!("Enable one of: backend-vello, backend-recording, backend-tiny-skia, backend-null");
 
 /// `hayate_core::Surface`（GPU 経路専用の提示サーフェス契約、ADR-0132 スライス3）の web 実装。
 /// `RenderHost`（hoist 済み、`hayate-app-host`）が必要とする最小面（clone・width・height）だけを
@@ -89,19 +73,6 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
         let canvas = surface.0;
         match kind {
-            SceneRendererKind::CanvasKit => {
-                #[cfg(feature = "backend-canvaskit")]
-                {
-                    return CanvasKitBackend::init(canvas)
-                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
-                        .map_err(js_to_anyhow);
-                }
-                #[cfg(not(feature = "backend-canvaskit"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(kind))
-                }
-            }
             SceneRendererKind::Vello => {
                 #[cfg(feature = "backend-vello")]
                 {
@@ -129,20 +100,6 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
                         .map_err(js_to_anyhow);
                 }
                 #[cfg(not(feature = "backend-tiny-skia"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(kind))
-                }
-            }
-            SceneRendererKind::VelloCpu => {
-                #[cfg(feature = "backend-vello-cpu")]
-                {
-                    return VelloCpuBackend::init(canvas)
-                        .await
-                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
-                        .map_err(js_to_anyhow);
-                }
-                #[cfg(not(feature = "backend-vello-cpu"))]
                 {
                     let _ = canvas;
                     Err(not_compiled_error(kind))
@@ -187,9 +144,6 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
     ) -> Result<Box<dyn SceneRenderer>, anyhow::Error> {
         let canvas = surface.0;
         match kind {
-            // CanvasKit は選択後の runtime failure が terminal なので、同期 fallback
-            // 初期化に到達しない（RenderHost が保証）。防御的に typed error を返す。
-            SceneRendererKind::CanvasKit => Err(not_compiled_error(kind)),
             SceneRendererKind::Vello => Err(anyhow::anyhow!(
                 "renderer cannot be initialized synchronously for runtime fallback: {}",
                 kind.name()
@@ -204,19 +158,6 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
                         .map_err(js_to_anyhow);
                 }
                 #[cfg(not(feature = "backend-tiny-skia"))]
-                {
-                    let _ = canvas;
-                    Err(not_compiled_error(kind))
-                }
-            }
-            SceneRendererKind::VelloCpu => {
-                #[cfg(feature = "backend-vello-cpu")]
-                {
-                    return VelloCpuBackend::init_sync(canvas)
-                        .map(|backend| Box::new(backend) as Box<dyn SceneRenderer>)
-                        .map_err(js_to_anyhow);
-                }
-                #[cfg(not(feature = "backend-vello-cpu"))]
                 {
                     let _ = canvas;
                     Err(not_compiled_error(kind))

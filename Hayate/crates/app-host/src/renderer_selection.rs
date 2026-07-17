@@ -15,17 +15,12 @@
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 #[allow(dead_code)] // feature セットごとに有効なバックエンドは 1 つだけ
 pub enum SceneRendererKind {
-    /// CanvasKit による Web 専用 Scene Renderer（ADR-0148）。CanvasKit の JS/WASM
-    /// surface は Web Host が所有し、ここには選択語彙だけを置く。
-    CanvasKit,
     Vello,
     TinySkia,
     /// skia-safe によるネイティブ専用（desktop + Android）Scene Renderer（ADR-0146/0147/0149）。
     /// ネイティブの preferred default — 既定順序は skia → vello の一方向 fallback。
     /// wasm32 対象外（web の policy には現れない）。
     Skia,
-    /// tiny-skia の置き換え候補として検証中の CPU レンダラ（vello_cpu、Web限定スパイク）。
-    VelloCpu,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
     Recording,
     /// 非本番レンダラ（ADR-0050）。`init_diagnostic` 経由で使う。
@@ -52,34 +47,23 @@ impl SceneRendererKind {
     /// ログ・エラーメッセージ用の安定したレンダラ ID。
     pub fn name(self) -> &'static str {
         match self {
-            Self::CanvasKit => "canvaskit",
             Self::Vello => "vello",
             Self::TinySkia => "tiny-skia",
             Self::Skia => "skia",
-            Self::VelloCpu => "vello-cpu",
             Self::Recording => "recording",
             Self::Null => "null",
         }
     }
 }
 
-/// Web の既定初期選択順（ADR-0148）。初回 boot で未選択候補だけをこの順に試す。
-pub const WEB_RENDERER_ORDER: &[SceneRendererKind] = &[
-    SceneRendererKind::CanvasKit,
-    SceneRendererKind::Vello,
-    SceneRendererKind::TinySkia,
-];
+/// Web の既定初期選択順。WebGPU の Vello を優先し、tiny-skia を CPU fallback とする。
+pub const WEB_RENDERER_ORDER: &[SceneRendererKind] =
+    &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
 
-/// Web Host 用の Renderer Selection Policy。CanvasKit のロード・surface 初期化が失敗した
-/// 場合に限り、同じ boot 中で次の候補へ進む。選択後の terminal failure は RenderHost が扱う。
+/// Web Host 用の Renderer Selection Policy。Vello の初期化失敗時だけ tiny-skia へ進む。
 #[cfg(not(all(
     feature = "backend-null",
-    not(any(
-        feature = "backend-canvaskit",
-        feature = "backend-vello",
-        feature = "backend-tiny-skia",
-        feature = "backend-vello-cpu"
-    ))
+    not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
 )))]
 pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(WEB_RENDERER_ORDER, WEB_RENDERER_ORDER)
@@ -90,12 +74,7 @@ pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
 /// renderer 初期化より先に失敗させない。
 #[cfg(all(
     feature = "backend-null",
-    not(any(
-        feature = "backend-canvaskit",
-        feature = "backend-vello",
-        feature = "backend-tiny-skia",
-        feature = "backend-vello-cpu"
-    ))
+    not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
 ))]
 pub fn web_renderer_selection_policy() -> RendererSelectionPolicy {
     RendererSelectionPolicy::new(PRODUCTION_RENDERERS, PRODUCTION_RENDERERS)
@@ -124,11 +103,10 @@ pub fn is_runtime_fallback_reason(reason: RendererSelectionReason) -> bool {
     )
 }
 
-/// 初回選択後に runtime fallback を許さない renderer。CanvasKit と Native skia-safe は
-/// surface/context の寿命を Host 側で透過的に取り直せないため、描画・clear・present の
-/// 失敗を App Host へ terminal failure として返す（ADR-0148）。
+/// 初回選択後に runtime fallback を許さない renderer。Native skia-safe は surface/context
+/// の寿命を Host 側で透過的に取り直せないため、描画・clear・present の失敗を App Host へ返す。
 pub fn has_terminal_runtime_failure(kind: SceneRendererKind) -> bool {
-    matches!(kind, SceneRendererKind::CanvasKit | SceneRendererKind::Skia)
+    matches!(kind, SceneRendererKind::Skia)
 }
 
 /// [`RendererSelectionPolicy`] が参照する、ホスト環境について静的に分かる事実。
@@ -256,25 +234,14 @@ impl RendererSelectionPolicy {
     }
 }
 
-#[cfg(any(
-    feature = "backend-vello",
-    feature = "backend-tiny-skia",
-    feature = "backend-vello-cpu"
-))]
-const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[
-    SceneRendererKind::Vello,
-    SceneRendererKind::TinySkia,
-    SceneRendererKind::VelloCpu,
-];
+#[cfg(any(feature = "backend-vello", feature = "backend-tiny-skia"))]
+const PRODUCTION_RENDERERS: &[SceneRendererKind] =
+    &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
 
 /// C3 コーデック統合テストは `--features backend-null` のみでビルドする。
 #[cfg(all(
     feature = "backend-null",
-    not(any(
-        feature = "backend-vello",
-        feature = "backend-tiny-skia",
-        feature = "backend-vello-cpu"
-    ))
+    not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
 ))]
 const PRODUCTION_RENDERERS: &[SceneRendererKind] = &[SceneRendererKind::Null];
 
@@ -319,7 +286,6 @@ pub fn native_renderer_selection_policy(
 #[cfg(any(
     feature = "backend-vello",
     feature = "backend-tiny-skia",
-    feature = "backend-vello-cpu",
     feature = "backend-null"
 ))]
 pub fn standard_renderer_selection_policy() -> RendererSelectionPolicy {
@@ -350,7 +316,6 @@ mod tests {
         assert!(SceneRendererKind::Vello.paints_color_glyphs());
         assert!(SceneRendererKind::Skia.paints_color_glyphs());
         assert!(!SceneRendererKind::TinySkia.paints_color_glyphs());
-        assert!(!SceneRendererKind::VelloCpu.paints_color_glyphs());
         assert!(!SceneRendererKind::Recording.paints_color_glyphs());
         assert!(!SceneRendererKind::Null.paints_color_glyphs());
     }
@@ -452,38 +417,24 @@ mod tests {
 
     #[cfg(not(all(
         feature = "backend-null",
-        not(any(
-            feature = "backend-canvaskit",
-            feature = "backend-vello",
-            feature = "backend-tiny-skia",
-            feature = "backend-vello-cpu"
-        ))
+        not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
     )))]
     #[test]
-    fn web_boot_attempts_canvaskit_then_vello_then_tiny_skia() {
+    fn web_boot_attempts_vello_then_tiny_skia() {
         let plan = web_renderer_selection_policy().choose(RendererCapabilities {
             webgpu_available: true,
         });
 
         assert_eq!(
             plan.attempt_order(),
-            [
-                SceneRendererKind::CanvasKit,
-                SceneRendererKind::Vello,
-                SceneRendererKind::TinySkia,
-            ],
-            "web boot must only advance through unselected candidates in ADR-0148 order",
+            [SceneRendererKind::Vello, SceneRendererKind::TinySkia,],
+            "web boot must prefer Vello and retain tiny-skia as its fallback",
         );
     }
 
     #[cfg(all(
         feature = "backend-null",
-        not(any(
-            feature = "backend-canvaskit",
-            feature = "backend-vello",
-            feature = "backend-tiny-skia",
-            feature = "backend-vello-cpu"
-        ))
+        not(any(feature = "backend-vello", feature = "backend-tiny-skia"))
     ))]
     #[test]
     fn backend_null_only_web_build_selects_null_for_browser_contract_tests() {

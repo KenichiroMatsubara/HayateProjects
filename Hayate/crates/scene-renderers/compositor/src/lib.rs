@@ -601,7 +601,7 @@ mod tests {
 
     #[test]
     fn capacity_limited_band_slides_to_keep_the_visible_viewport_covered() {
-        // CanvasKit の compatible surface は画面高に固定される。要求帯の先頭を単純に切ると、
+        // 画面高に固定された compatible surface では、要求帯の先頭を単純に切ると、
         // 186px スクロール後の可視下端 842 が cache 下端 720 を越えて欠ける。
         let requested = ScrollLayerExtent {
             top: 0.0,

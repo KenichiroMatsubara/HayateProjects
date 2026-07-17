@@ -33,10 +33,8 @@ function branchFor(backend, targets) {
   // ADR-0138 (#710)/ADR-0140 (#718): a target opts into a runtime per-layer-present toggle by
   // naming the init() variable it wants (e.g. `cpuLayerPresent`, `layerPresent`).
   const initArgs = target.host.runtimeLayerPresentArg ? `canvas, ${target.host.runtimeLayerPresentArg}` : 'canvas';
-  const bootstrap = target.host.bootstrap === 'canvaskit' ? '    await prepareCanvasKitSurface(canvas);\n' : '';
-
   return `  if (backend === '${backend}') {
-${bootstrap}    const mod = await import('${target.npmName}');
+    const mod = await import('${target.npmName}');
     await mod.default();
     return (await mod.HayateElementRenderer.init(${initArgs})) as unknown as RawHayate;
   }`;
@@ -44,10 +42,9 @@ ${bootstrap}    const mod = await import('${target.npmName}');
 
 export function generateLoadCanvasBackend(manifest) {
   const targets = hostTargets(manifest);
-  const needsCanvasKitBootstrap = targets.some((target) => target.host.bootstrap === 'canvaskit');
   const backends = [...new Set(targets.map((t) => t.host.backend))];
   const branches = backends.map((backend) => branchFor(backend, targets.filter((t) => t.host.backend === backend)));
-  // `layerPresent` always exists as the shared CanvasKit/Vello runtime toggle (see the JSDoc
+  // `layerPresent` always exists as the Vello runtime toggle (see the JSDoc
   // below) — targets naming their runtime arg `layerPresent` reuse that parameter rather than add
   // a duplicate
   // duplicate param.
@@ -60,22 +57,20 @@ export function generateLoadCanvasBackend(manifest) {
 // Source: Hayate/scripts/wasm-build-manifest.json (#700/#703)
 import type { CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
-${needsCanvasKitBootstrap ? "import { prepareCanvasKitSurface } from './canvaskit-bridge.js';" : ''}
 
 /**
  * 選択した backend の WASM を動的 import し、surface（canvas）上で \`HayateElementRenderer\`
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
-${needsCanvasKitBootstrap ? ' * CanvasKit は Host が先に surface を確立し、WASM 側は opaque な frame replay 境界だけを使う。\n' : ''}
  *
- * \`layerPresent\` は CanvasKit / vello のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
+ * \`layerPresent\` は vello のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
  * \`HayateElementRenderer.init\` にランタイムフラグとして渡す。ADR-0137 により Web は既定
  * ON — \`false\` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残す。
  * native は本パスを経由しないため既定 OFF のまま変更なし。${
    needsCpuLayerPresent
      ? `
  *
- * \`cpuLayerPresent\` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル（ADR-0138）。
+ * \`cpuLayerPresent\` は tiny-skia の per-layer 経路の比較用トグル（ADR-0138）。
  * vello の \`layerPresent\`（上記）とは別物の意味を持つが、同じ機構（\`HayateElementRenderer.init\`
  * へのランタイムフラグ）で渡す。既定 ON、\`false\` で全面 raster にフォールバックする。`
      : ''

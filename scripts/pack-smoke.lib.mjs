@@ -13,9 +13,7 @@
 export const EXPECTED_PUBLIC_PACKAGES = [
   '@torimi/cli',
   '@torimi/hayate-adapter-web',
-  '@torimi/hayate-adapter-web-canvaskit',
   '@torimi/hayate-adapter-web-cpu',
-  '@torimi/hayate-adapter-web-vello-cpu',
   '@torimi/hayate-host',
   '@torimi/hayate-protocol-spec',
   '@torimi/bundle',

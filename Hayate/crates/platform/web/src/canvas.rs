@@ -287,7 +287,7 @@ impl HayateElementRenderer {
 
 #[wasm_bindgen]
 impl HayateElementRenderer {
-    /// `layer_present_enabled` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル
+    /// `layer_present_enabled` は tiny-skia の per-layer 経路の比較用トグル
     /// （ADR-0138）。未指定（`None`）は既定 ON。vello など、コンパイル時にしか
     /// per-layer 対応を決めないバックエンドには無害（`SceneRenderer::set_layer_present_enabled`
     /// の既定実装が no-op）。

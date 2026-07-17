@@ -95,7 +95,7 @@ impl SceneGraphValidator {
 }
 
 /// retained SceneGraph の木構造を検証する。root/child 参照、循環、複数親、孤立ノードを
-/// 同一語彙で返すため、CanvasKit と skia-safe を含む backend は個別に解釈しない。
+/// 同一語彙で返すため、skia-safe を含む backend は個別に解釈しない。
 pub fn validate_scene_graph(graph: &SceneGraph) -> Result<(), SceneValidationError> {
     let mut parents = HashMap::new();
     let mut visited = HashSet::new();
