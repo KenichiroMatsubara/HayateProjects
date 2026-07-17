@@ -48,7 +48,11 @@ pub const DEFAULT_FONT_FAMILY: &str = "Noto Sans";
 /// フォールバックを取得した途端に全 CJK グリフが `.notdef` に落ちた(テキストが正しく描画され
 /// た後、最初の取得で □ になる豆腐化現象)。ジェネリックへ追加すればバンドルフェイスが先頭に
 /// 残り、クラスタ単位で常に先に試され、取得フォントは本当の欠落だけを埋める。
-pub fn register_collection_font(collection: &mut Collection, family_name: &str, data: Arc<Vec<u8>>) {
+pub fn register_collection_font(
+    collection: &mut Collection,
+    family_name: &str,
+    data: Arc<Vec<u8>>,
+) {
     let override_info = FontInfoOverride {
         family_name: Some(family_name),
         ..Default::default()
@@ -236,7 +240,14 @@ pub(crate) fn text_input_default_width(
 ) -> f32 {
     let sample: String = "0".repeat(TEXT_INPUT_DEFAULT_SIZE_CHARS);
     let layout = build_text_layout(
-        font_cx, layout_cx, &sample, font_size, None, font_family, font_weight, font_style,
+        font_cx,
+        layout_cx,
+        &sample,
+        font_size,
+        None,
+        font_family,
+        font_weight,
+        font_style,
     );
     layout.layout.width()
 }
@@ -331,7 +342,8 @@ pub fn build_ranged_text_layout(
                 let kept = text[..cut].trim_end();
                 (kept.to_string(), clip_spans(spans, kept.len()))
             };
-            layout = build_broken_ranged_layout(font_cx, layout_cx, &new_text, &new_spans, max_advance);
+            layout =
+                build_broken_ranged_layout(font_cx, layout_cx, &new_text, &new_spans, max_advance);
             truncated_text = Some(new_text);
         }
     }
@@ -409,7 +421,13 @@ fn fit_ellipsis(
         let candidate = format!("{}…", &text[..keep]);
         let mut candidate_spans = clip_spans(spans, keep);
         push_ellipsis_span(&mut candidate_spans, keep);
-        let probe = build_broken_ranged_layout(font_cx, layout_cx, &candidate, &candidate_spans, max_advance);
+        let probe = build_broken_ranged_layout(
+            font_cx,
+            layout_cx,
+            &candidate,
+            &candidate_spans,
+            max_advance,
+        );
         if keep == 0 || probe.lines().count() <= max {
             return (candidate, candidate_spans);
         }
@@ -641,7 +659,10 @@ mod tests {
             None,
         );
         let regular_coords = regular.runs.first().map(|r| r.normalized_coords.as_slice());
-        let semibold_coords = semibold.runs.first().map(|r| r.normalized_coords.as_slice());
+        let semibold_coords = semibold
+            .runs
+            .first()
+            .map(|r| r.normalized_coords.as_slice());
         assert_eq!(regular.runs.first().unwrap().font_attributes.weight, 400.0);
         assert_eq!(semibold.runs.first().unwrap().font_attributes.weight, 600.0);
         assert!(
@@ -649,8 +670,7 @@ mod tests {
             "expected shaped text runs"
         );
         assert_ne!(
-            regular_coords,
-            semibold_coords,
+            regular_coords, semibold_coords,
             "font-weight 600 should change variable font coordinates"
         );
         assert!(
@@ -723,7 +743,12 @@ mod tests {
         // 空白・引用符・末尾のジェネリックはすべてエントリ単位で処理される。
         assert_eq!(
             parse_font_family_list("Inter, \"Segoe UI\" , system-ui, sans-serif"),
-            vec!["Inter", "Segoe UI", DEFAULT_FONT_FAMILY, DEFAULT_FONT_FAMILY],
+            vec![
+                "Inter",
+                "Segoe UI",
+                DEFAULT_FONT_FAMILY,
+                DEFAULT_FONT_FAMILY
+            ],
         );
         // 空エントリ(例: 末尾のカンマ)は捨てる。
         assert_eq!(parse_font_family_list("Inter,,"), vec!["Inter"]);
@@ -735,7 +760,10 @@ mod tests {
         // 名前付きファミリは最終フォールバックとしてバンドルデフォルトを得る。
         assert_eq!(build_font_stack(Some("Inter")), "Inter, Noto Sans");
         // すでにデフォルトで終わるリストは重複しない。
-        assert_eq!(build_font_stack(Some("Inter, sans-serif")), "Inter, Noto Sans");
+        assert_eq!(
+            build_font_stack(Some("Inter, sans-serif")),
+            "Inter, Noto Sans"
+        );
         // sans-serif 単体は素のデフォルトに収束する。
         assert_eq!(build_font_stack(Some("sans-serif")), DEFAULT_FONT_FAMILY);
         assert_eq!(build_font_stack(None), DEFAULT_FONT_FAMILY);

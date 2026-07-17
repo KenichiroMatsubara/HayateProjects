@@ -1,8 +1,6 @@
 //! ADR-0065: 2チャネルのテキスト継承（text-local + ambient default）。
 
-use hayate_core::{
-    Color, Dimension, ElementId, ElementKind, ElementTree, NodeKind, StyleProp,
-};
+use hayate_core::{Color, Dimension, ElementId, ElementKind, ElementTree, NodeKind, StyleProp};
 
 fn text_run_font_sizes(sg: &hayate_core::SceneGraph) -> Vec<f32> {
     sg.iter()
@@ -13,7 +11,11 @@ fn text_run_font_sizes(sg: &hayate_core::SceneGraph) -> Vec<f32> {
         .collect()
 }
 
-fn setup_view_with_text(tree: &mut ElementTree, view_id: u64, text_id: u64) -> (ElementId, ElementId) {
+fn setup_view_with_text(
+    tree: &mut ElementTree,
+    view_id: u64,
+    text_id: u64,
+) -> (ElementId, ElementId) {
     let view = tree.element_create(view_id, ElementKind::View);
     let text = tree.element_create(text_id, ElementKind::Text);
     tree.set_root(view);
@@ -106,7 +108,10 @@ fn own_default_color_applies_to_self_text() {
         ],
     );
     // text 自身の default-color = 緑（muted 相当）。
-    tree.element_set_style(text, &[StyleProp::DefaultColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        text,
+        &[StyleProp::DefaultColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
     tree.element_set_text(text, "done");
     let sg = tree.render(0.0);
     let colors: Vec<[f32; 4]> = sg
@@ -170,7 +175,9 @@ fn default_color_penetrates_block_to_text() {
         .collect();
     assert!(!colors.is_empty());
     assert!(
-        colors.iter().any(|c| (c[0] - 1.0).abs() < 0.05 && (c[1] - 0.0).abs() < 0.05),
+        colors
+            .iter()
+            .any(|c| (c[0] - 1.0).abs() < 0.05 && (c[1] - 0.0).abs() < 0.05),
         "ambient default-color must reach child text: {colors:?}"
     );
 }

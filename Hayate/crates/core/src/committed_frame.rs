@@ -21,6 +21,10 @@ pub struct ScrollCompositorInput {
     pub viewport_height: f32,
     pub scroll_offset: f32,
     pub max_scroll_offset: f32,
+    /// Profile-resolved scroll Group affine for this committed frame. The compositor applies
+    /// this to a scroll texture whose pixels are cached without the Group baked in, preserving
+    /// both iOS rubber-band translation and Android edge stretch on composite-only frames.
+    pub scroll_affine: [f64; 6],
     pub content_dirty: bool,
 }
 

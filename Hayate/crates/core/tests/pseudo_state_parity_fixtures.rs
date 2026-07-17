@@ -12,7 +12,8 @@ use hayate_core::{BorderStyleValue, Color, ElementId, ElementKind, StyleProp};
 use serde_json::Value;
 
 fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../proto/spec/fixtures/pseudo_state_parity.json")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../proto/spec/fixtures/pseudo_state_parity.json")
 }
 
 fn load_fixtures() -> Vec<Value> {
@@ -33,7 +34,9 @@ fn style_props_from_patch(obj: &serde_json::Map<String, Value>) -> Vec<StyleProp
     let mut props = Vec::new();
     for (key, value) in obj {
         let prop = match key.as_str() {
-            "backgroundColor" => StyleProp::BackgroundColor(parse_hex_color(value.as_str().unwrap())),
+            "backgroundColor" => {
+                StyleProp::BackgroundColor(parse_hex_color(value.as_str().unwrap()))
+            }
             "borderWidth" => StyleProp::BorderWidth(value.as_f64().unwrap() as f32),
             "borderStyle" => StyleProp::BorderStyle(parse_border_style(value.as_str().unwrap())),
             "borderRadius" => StyleProp::BorderRadius(value.as_f64().unwrap() as f32),
@@ -134,13 +137,19 @@ fn visual_to_parity_map(visual: &Visual, element_kind: ElementKind) -> HashMap<S
         map.insert("opacity".into(), format!("{}", visual.opacity));
     }
     if visual.border_radius > f32::EPSILON {
-        map.insert("border-radius".into(), format!("{}px", visual.border_radius));
+        map.insert(
+            "border-radius".into(),
+            format!("{}px", visual.border_radius),
+        );
     }
     if visual.border_width > f32::EPSILON {
         map.insert("border-width".into(), format!("{}px", visual.border_width));
     }
     if visual.border_style != BorderStyleValue::None {
-        map.insert("border-style".into(), border_style_css(visual.border_style).into());
+        map.insert(
+            "border-style".into(),
+            border_style_css(visual.border_style).into(),
+        );
     }
     if element_kind == ElementKind::Text {
         if let Some(c) = visual.text_color {
@@ -187,11 +196,7 @@ fn pseudo_state_parity_corpus_resolve_visual() {
             "{name}: property count mismatch\n  actual: {actual:?}\n  expected: {expected:?}"
         );
         for (property, value) in &expected {
-            assert_eq!(
-                actual.get(property),
-                Some(value),
-                "{name}: {property}"
-            );
+            assert_eq!(actual.get(property), Some(value), "{name}: {property}");
         }
     }
 }
@@ -214,6 +219,9 @@ fn corpus_catches_flipped_pseudo_priority() {
         .get("background-color")
         .cloned()
         .unwrap();
-    assert_ne!(actual, expected, "flipped priority must diverge from corpus");
+    assert_ne!(
+        actual, expected,
+        "flipped priority must diverge from corpus"
+    );
     assert_eq!(actual, "#00ff00");
 }

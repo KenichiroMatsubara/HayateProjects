@@ -120,10 +120,7 @@ impl PathSink for VerbTransformer {
 
 /// `verbs` をアフィン `m` で写した、プリミティブのみの PathVerb 列を返す（#728）。
 pub fn transform_verbs(verbs: &[PathVerb], m: Affine2) -> Vec<PathVerb> {
-    let mut t = VerbTransformer {
-        m,
-        out: Vec::new(),
-    };
+    let mut t = VerbTransformer { m, out: Vec::new() };
     build_draw_path(verbs, &mut t);
     t.out
 }
@@ -282,7 +279,13 @@ pub fn build_draw_path<S: PathSink>(verbs: &[PathVerb], sink: &mut S) {
                 open = true;
             }
             PathVerb::Circle { cx, cy, radius } => {
-                append_oval(sink, *cx - *radius, *cy - *radius, *radius * 2.0, *radius * 2.0);
+                append_oval(
+                    sink,
+                    *cx - *radius,
+                    *cy - *radius,
+                    *radius * 2.0,
+                    *radius * 2.0,
+                );
                 cur = (*cx + *radius, *cy);
                 open = true;
             }
@@ -324,7 +327,14 @@ fn append_rrect<S: PathSink>(sink: &mut S, x: f32, y: f32, w: f32, h: f32, rx: f
     sink.line_to(x + w - rx, y);
     sink.cubic_to(x + w - rx + kx, y, x + w, y + ry - ky, x + w, y + ry);
     sink.line_to(x + w, y + h - ry);
-    sink.cubic_to(x + w, y + h - ry + ky, x + w - rx + kx, y + h, x + w - rx, y + h);
+    sink.cubic_to(
+        x + w,
+        y + h - ry + ky,
+        x + w - rx + kx,
+        y + h,
+        x + w - rx,
+        y + h,
+    );
     sink.line_to(x + rx, y + h);
     sink.cubic_to(x + rx - kx, y + h, x, y + h - ry + ky, x, y + h - ry);
     sink.line_to(x, y + ry);
@@ -468,7 +478,8 @@ mod tests {
             self.last = (x, y);
         }
         fn cubic_to(&mut self, c1x: f32, c1y: f32, c2x: f32, c2y: f32, x: f32, y: f32) {
-            self.calls.push(format!("C {c1x} {c1y} {c2x} {c2y} {x} {y}"));
+            self.calls
+                .push(format!("C {c1x} {c1y} {c2x} {c2y} {x} {y}"));
             self.last = (x, y);
         }
         fn close(&mut self) {
@@ -496,7 +507,11 @@ mod tests {
                 y: 2.0,
             },
         ]);
-        assert!(r.calls.is_empty(), "verbs before MoveTo are dropped: {:?}", r.calls);
+        assert!(
+            r.calls.is_empty(),
+            "verbs before MoveTo are dropped: {:?}",
+            r.calls
+        );
     }
 
     #[test]
@@ -518,10 +533,7 @@ mod tests {
                 y: 0.0,
             },
         ]);
-        assert_eq!(
-            r.calls,
-            vec!["M 0 0", "Q 5 10 10 0", "C 12 2 14 8 16 0"],
-        );
+        assert_eq!(r.calls, vec!["M 0 0", "Q 5 10 10 0", "C 12 2 14 8 16 0"],);
     }
 
     #[test]
@@ -532,10 +544,7 @@ mod tests {
             width: 3.0,
             height: 4.0,
         }]);
-        assert_eq!(
-            r.calls,
-            vec!["M 1 2", "L 4 2", "L 4 6", "L 1 6", "Z"],
-        );
+        assert_eq!(r.calls, vec!["M 1 2", "L 4 2", "L 4 6", "L 1 6", "Z"],);
     }
 
     #[test]
@@ -565,10 +574,17 @@ mod tests {
             },
         ]);
         assert_eq!(r.calls[0], "M 0 0");
-        assert_eq!(r.calls[1], "L 5 0", "leading line to the first tangent point");
+        assert_eq!(
+            r.calls[1], "L 5 0",
+            "leading line to the first tangent point"
+        );
         // 円弧は cubic で近似され、終点は第 2 接点 (10,5) 付近。
         assert!(r.calls[2].starts_with('C'));
-        assert!((r.last.0 - 10.0).abs() < 1e-3 && (r.last.1 - 5.0).abs() < 1e-3, "ends at (10,5), got {:?}", r.last);
+        assert!(
+            (r.last.0 - 10.0).abs() < 1e-3 && (r.last.1 - 5.0).abs() < 1e-3,
+            "ends at (10,5), got {:?}",
+            r.last
+        );
     }
 
     #[test]

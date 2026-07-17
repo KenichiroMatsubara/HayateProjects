@@ -8,8 +8,8 @@
 use std::sync::Arc;
 
 use hayate_core::{
-    Color, Dimension, DrawCommand, DrawOp, DrawPaint, ElementKind, ElementTree, PathVerb,
-    RecordingPainter, StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawCommand, DrawOp, DrawPaint, ElementKind, ElementTree,
+    PathVerb, RecordingPainter, StyleProp,
 };
 
 fn triangle(color: [f32; 4]) -> Vec<DrawCommand> {
@@ -71,7 +71,15 @@ fn draw_paints_after_background_at_border_box_origin() {
     let ops = recorded_ops(&tree);
     let bg_index = ops
         .iter()
-        .position(|op| matches!(op, DrawOp::FillRect { color: [1.0, 0.0, 0.0, 1.0], .. }))
+        .position(|op| {
+            matches!(
+                op,
+                DrawOp::FillRect {
+                    color: [1.0, 0.0, 0.0, 1.0],
+                    ..
+                }
+            )
+        })
         .expect("child background fill");
     let draw_index = ops
         .iter()
@@ -79,7 +87,15 @@ fn draw_paints_after_background_at_border_box_origin() {
         .expect("draw display list fill");
     let child_bg_index = ops
         .iter()
-        .position(|op| matches!(op, DrawOp::FillRect { color: [0.0, 1.0, 0.0, 1.0], .. }))
+        .position(|op| {
+            matches!(
+                op,
+                DrawOp::FillRect {
+                    color: [0.0, 1.0, 0.0, 1.0],
+                    ..
+                }
+            )
+        })
         .expect("grandchild background fill");
     assert!(
         bg_index < draw_index && draw_index < child_bg_index,
@@ -87,9 +103,19 @@ fn draw_paints_after_background_at_border_box_origin() {
     );
 
     match &ops[draw_index] {
-        DrawOp::FillPath { x, y, verbs, fill_rule, color } => {
+        DrawOp::FillPath {
+            x,
+            y,
+            verbs,
+            fill_rule,
+            color,
+        } => {
             assert_eq!((*x, *y), (20.0, 20.0), "border-box origin (parent padding)");
-            assert_eq!(*fill_rule, hayate_core::DrawFillRule::NonZero, "default fill rule");
+            assert_eq!(
+                *fill_rule,
+                hayate_core::DrawFillRule::NonZero,
+                "default fill rule"
+            );
             assert_eq!(color, &[0.0, 0.0, 1.0, 1.0]);
             assert_eq!(
                 verbs,
@@ -155,7 +181,11 @@ fn replacing_the_draw_list_updates_the_retained_scene() {
             _ => None,
         })
         .collect();
-    assert_eq!(colors, vec![[1.0, 1.0, 0.0, 1.0]], "old list replaced, not appended");
+    assert_eq!(
+        colors,
+        vec![[1.0, 1.0, 0.0, 1.0]],
+        "old list replaced, not appended"
+    );
 }
 
 // 空リストへの差し替えで描画が消える（空 = 描画なしの縮退）。

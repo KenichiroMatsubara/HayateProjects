@@ -96,12 +96,7 @@ impl DocumentRuntime {
     }
 
     /// `path`（ターゲット起点の祖先チェーン）上のリスナーへ `event` を配送する。
-    pub fn dispatch_to_path(
-        &mut self,
-        path: &[ElementId],
-        kind: DocumentEventKind,
-        event: Event,
-    ) {
+    pub fn dispatch_to_path(&mut self, path: &[ElementId], kind: DocumentEventKind, event: Event) {
         for &element_id in path {
             if let Some(listeners) = self
                 .by_element
@@ -223,12 +218,7 @@ mod tests {
         let l_root = tree.register_listener(root, DocumentEventKind::Focus);
         let l_leaf = tree.register_listener(leaf, DocumentEventKind::Focus);
 
-        tree.dispatch_event(
-            DocumentEventKind::Focus,
-            Event::Focus {
-                target_id: leaf,
-            },
-        );
+        tree.dispatch_event(DocumentEventKind::Focus, Event::Focus { target_id: leaf });
 
         let deliveries = tree.poll_deliveries();
         assert_eq!(deliveries.len(), 1);
@@ -269,7 +259,10 @@ mod tests {
 
         tree.apply_wheel_delta(child, 0.0, 50.0);
         let (_, y) = tree.element_get_scroll_offset(sv);
-        assert!((y - 200.0).abs() < 1e-3, "expected clamp at max_y=200, got {y}");
+        assert!(
+            (y - 200.0).abs() < 1e-3,
+            "expected clamp at max_y=200, got {y}"
+        );
 
         tree.apply_wheel_delta(child, 0.0, -500.0);
         let (_, y) = tree.element_get_scroll_offset(sv);

@@ -12,9 +12,12 @@
 
 use hayate_core::element::style::{Dimension, StyleProp};
 use hayate_core::{Color, ElementId, ElementKind, ElementTree};
+use hayate_layer_compositor::layer_scene::{collect_layer_placements, compose};
 use hayate_layer_compositor::{
-    scroll_content_visible_top, scroll_layer_extent, tunables, PresentPlanner, ScrollLayerExtent,
+    scroll_content_visible_top, scroll_layer_extent, scroll_layer_geometry, tunables,
+    PresentPlanner, ScrollLayerExtent,
 };
+use std::collections::HashSet;
 
 const VW: f32 = 200.0;
 const VH: f32 = 200.0;
@@ -33,7 +36,10 @@ fn scroll_tree() -> (ElementTree, ElementId) {
     tree.set_viewport(VW, VH);
     tree.element_set_style(
         scroll,
-        &[StyleProp::Width(Dimension::px(VW)), StyleProp::Height(Dimension::px(VH))],
+        &[
+            StyleProp::Width(Dimension::px(VW)),
+            StyleProp::Height(Dimension::px(VH)),
+        ],
     );
     tree.element_set_style(
         content,
@@ -100,7 +106,11 @@ fn settle_then_release(
     tree.element_set_scroll_offset(scroll, 0.0, edge);
     let _ = pump(tree, planner, scroll, FRAME_MS);
     // 端を越えた位置で解放 → スプリングバック起動。下端は +、上端は - へ越境。
-    let release = if to_bottom { edge + overshoot_px } else { edge - overshoot_px };
+    let release = if to_bottom {
+        edge + overshoot_px
+    } else {
+        edge - overshoot_px
+    };
     tree.element_set_scroll_offset(scroll, 0.0, release);
     tree.start_scroll_momentum(scroll, 0.0, 0.0);
     assert!(
@@ -134,14 +144,42 @@ fn drive_bounce(
     (frames, rasters)
 }
 
+/// Web/Vello の optimized present が scroll texture に適用する quad affine を再現する。
+fn presented_scroll_affine(
+    tree: &ElementTree,
+    planner: &PresentPlanner,
+    scroll: ElementId,
+) -> [f64; 6] {
+    let root = tree.frame_layers()[0];
+    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+    let placement = collect_layer_placements(tree.scene_graph(), root, &boundaries)
+        .into_iter()
+        .find(|placement| placement.layer == scroll)
+        .expect("scroll layer has a placement");
+    let geometry = scroll_layer_geometry(tree, scroll).expect("scroll layer has geometry");
+    let cached_band = planner
+        .cached_scroll_band(scroll)
+        .expect("edge band is cached");
+    compose(
+        placement.transform,
+        geometry.composite_affine_for_band(cached_band),
+    )
+}
+
 #[test]
 fn springback_from_bottom_edge_rasters_zero() {
     let (mut tree, scroll) = scroll_tree();
     let mut planner = PresentPlanner::new();
     let ts = settle_then_release(&mut tree, &mut planner, scroll, true, 120.0);
     let (frames, rasters) = drive_bounce(&mut tree, &mut planner, scroll, ts);
-    assert!(frames >= 10, "スプリングバックは複数フレームにわたりアニメーションする（{frames}）");
-    assert_eq!(rasters, 0, "下端バウンスの全 {frames} フレームが composite-only（raster 0）");
+    assert!(
+        frames >= 10,
+        "スプリングバックは複数フレームにわたりアニメーションする（{frames}）"
+    );
+    assert_eq!(
+        rasters, 0,
+        "下端バウンスの全 {frames} フレームが composite-only（raster 0）"
+    );
 }
 
 #[test]
@@ -151,8 +189,45 @@ fn springback_from_top_edge_rasters_zero() {
     // 上端（offset 0）は cold 帯がすでに覆う。0 を -120 越えて解放 → 上向きスプリングバック。
     let ts = settle_then_release(&mut tree, &mut planner, scroll, false, 120.0);
     let (frames, rasters) = drive_bounce(&mut tree, &mut planner, scroll, ts);
-    assert!(frames >= 10, "スプリングバックは複数フレームにわたりアニメーションする（{frames}）");
-    assert_eq!(rasters, 0, "上端バウンスの全 {frames} フレームが composite-only（raster 0）");
+    assert!(
+        frames >= 10,
+        "スプリングバックは複数フレームにわたりアニメーションする（{frames}）"
+    );
+    assert_eq!(
+        rasters, 0,
+        "上端バウンスの全 {frames} フレームが composite-only（raster 0）"
+    );
+}
+
+#[test]
+fn composite_only_overscroll_changes_the_presented_affine() {
+    let (mut tree, scroll) = scroll_tree();
+    let mut planner = PresentPlanner::new();
+
+    assert!(pump(&mut tree, &mut planner, scroll, 0.0));
+    let (_, max_y) = tree.element_scroll_max_offset(scroll);
+    tree.element_set_scroll_offset(scroll, 0.0, max_y);
+    let _ = pump(&mut tree, &mut planner, scroll, FRAME_MS);
+    let edge_core_affine = tree.element_scroll_group_affine(scroll);
+    let edge_presented_affine = presented_scroll_affine(&tree, &planner, scroll);
+
+    tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
+    let rastered = pump(&mut tree, &mut planner, scroll, 2.0 * FRAME_MS);
+    let overscroll_core_affine = tree.element_scroll_group_affine(scroll);
+    let overscroll_presented_affine = presented_scroll_affine(&tree, &planner, scroll);
+
+    assert!(
+        !rastered,
+        "overscroll frame must reuse the cached edge band"
+    );
+    assert_ne!(
+        edge_core_affine, overscroll_core_affine,
+        "core must encode the rubber movement in its scroll Group affine"
+    );
+    assert_ne!(
+        edge_presented_affine, overscroll_presented_affine,
+        "composite-only present must visibly move the cached texture at the edge"
+    );
 }
 
 /// #639 の芯の回帰ガード：生 offset（クランプ無し）で帯カバレッジを判定すると、越境フレームは
@@ -175,9 +250,15 @@ fn raw_offset_coverage_would_regress_to_reraster() {
     let raw_offset = max_y + 120.0; // バウンスフレーム。
 
     // 生 offset を可視域上端に使うと覆えない（#634 だけではバウンスが再 raster に落ちる）。
-    assert!(!cached.covers(raw_offset, vh), "生 offset では端の帯が可視域を覆えない");
+    assert!(
+        !cached.covers(raw_offset, vh),
+        "生 offset では端の帯が可視域を覆えない"
+    );
     // content-visible top（クランプ）なら覆う ＝ composite-only を維持。
     let top = scroll_content_visible_top(raw_offset, max_y);
-    assert!(cached.covers(top, vh), "content-visible top なら端の帯が可視域を覆う");
+    assert!(
+        cached.covers(top, vh),
+        "content-visible top なら端の帯が可視域を覆う"
+    );
     let _ = &mut tree;
 }

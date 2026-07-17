@@ -53,12 +53,7 @@ pub struct LayerPlacement {
 
 fn transform_rect(t: [f64; 6], rect: [f32; 4]) -> [f32; 4] {
     let [x, y, w, h] = rect;
-    let corners = [
-        (x, y),
-        (x + w, y),
-        (x, y + h),
-        (x + w, y + h),
-    ];
+    let corners = [(x, y), (x + w, y), (x, y + h), (x + w, y + h)];
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     let mut max_x = f32::MIN;
@@ -71,7 +66,12 @@ fn transform_rect(t: [f64; 6], rect: [f32; 4]) -> [f32; 4] {
         max_x = max_x.max(dx);
         max_y = max_y.max(dy);
     }
-    [min_x, min_y, (max_x - min_x).max(0.0), (max_y - min_y).max(0.0)]
+    [
+        min_x,
+        min_y,
+        (max_x - min_x).max(0.0),
+        (max_y - min_y).max(0.0),
+    ]
 }
 
 fn intersect(a: Option<[f32; 4]>, b: [f32; 4]) -> [f32; 4] {
@@ -90,12 +90,14 @@ fn intersect(a: Option<[f32; 4]>, b: [f32; 4]) -> [f32; 4] {
 /// anchor 直下の最初の Group 子（`scene_build` の transform ラッパ規約）。あればその
 /// (NodeId, transform) を返す。
 fn outer_transform_group(graph: &SceneGraph, anchor: &Node) -> Option<(NodeId, [f64; 6])> {
-    anchor.children.iter().copied().find_map(|child| {
-        match graph.get(child).map(|n| &n.kind) {
+    anchor
+        .children
+        .iter()
+        .copied()
+        .find_map(|child| match graph.get(child).map(|n| &n.kind) {
             Some(&NodeKind::Group { transform }) => Some((child, transform)),
             _ => None,
-        }
-    })
+        })
 }
 
 fn anchor_node_of(graph: &SceneGraph, layer: ElementId) -> Option<NodeId> {
@@ -117,12 +119,22 @@ fn own_boundary_clip(
     let parent = outer_transform_group(graph, anchor)
         .and_then(|(id, _)| graph.get(id))
         .unwrap_or(anchor);
-    parent.children.iter().find_map(|child| match graph.get(*child).map(|node| &node.kind) {
-        Some(NodeKind::Clip { x, y, width, height, .. }) => {
-            Some(transform_rect(placement_transform, [*x, *y, *width, *height]))
-        }
-        _ => None,
-    })
+    parent
+        .children
+        .iter()
+        .find_map(|child| match graph.get(*child).map(|node| &node.kind) {
+            Some(NodeKind::Clip {
+                x,
+                y,
+                width,
+                height,
+                ..
+            }) => Some(transform_rect(
+                placement_transform,
+                [*x, *y, *width, *height],
+            )),
+            _ => None,
+        })
 }
 
 /// レイヤ quad の配置（accumulated transform / clip）をペイント順に集める。root レイヤ
@@ -153,7 +165,9 @@ fn walk_placements(
     clip: Option<[f32; 4]>,
     out: &mut Vec<LayerPlacement>,
 ) {
-    let Some(node) = graph.get(node_id) else { return };
+    let Some(node) = graph.get(node_id) else {
+        return;
+    };
     match &node.kind {
         NodeKind::Group { transform } => {
             let acc = compose(acc, *transform);
@@ -161,7 +175,13 @@ fn walk_placements(
                 walk_placements(graph, child, root, boundaries, acc, clip, out);
             }
         }
-        NodeKind::Clip { x, y, width, height, .. } => {
+        NodeKind::Clip {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => {
             let device = transform_rect(acc, [*x, *y, *width, *height]);
             let clip = Some(intersect(clip, device));
             for &child in &node.children {
@@ -253,11 +273,27 @@ fn copy_scroll_contents(
     parent: &Node,
     dst: &mut SceneGraph,
     exclude: &HashSet<ElementId>,
+    scroll_affine: [f64; 6],
 ) {
     if let Some(clip) = parent.children.iter().find_map(|child| {
         src.get(*child)
             .filter(|node| matches!(&node.kind, NodeKind::Clip { .. }))
     }) {
+        // A non-identity scroll affine is lowered as the Clip's sole Group child. Do not bake
+        // that live transform into the cache texture: composite-only frames must be able to
+        // update it (including Android stretch) without re-rastering. Identity is omitted by
+        // scene lowering, so an identity Group here could belong to authored child content and
+        // must not be stripped.
+        if scroll_affine != IDENTITY && clip.children.len() == 1 {
+            if let Some(group) = src.get(clip.children[0]).filter(|node| {
+                matches!(&node.kind, NodeKind::Group { transform } if *transform == scroll_affine)
+            }) {
+                for &child in &group.children {
+                    copy_subtree(src, child, dst, None, exclude);
+                }
+                return;
+            }
+        }
         for &child in &clip.children {
             copy_subtree(src, child, dst, None, exclude);
         }
@@ -316,13 +352,7 @@ fn extract_layer_scene_inner(
     let content_root = outer_transform_group(graph, anchor)
         .and_then(|(id, _)| graph.get(id))
         .unwrap_or(anchor);
-    copy_layer_contents(
-        graph,
-        content_root,
-        &mut out,
-        &exclude,
-        strip_boundary_clip,
-    );
+    copy_layer_contents(graph, content_root, &mut out, &exclude, strip_boundary_clip);
     Some(out)
 }
 
@@ -343,6 +373,7 @@ pub fn extract_scroll_layer_scene(
     graph: &SceneGraph,
     layer: ElementId,
     boundaries: &HashSet<ElementId>,
+    scroll_affine: [f64; 6],
 ) -> Option<SceneGraph> {
     let anchor_id = anchor_node_of(graph, layer)?;
     let anchor = graph.get(anchor_id)?;
@@ -352,7 +383,7 @@ pub fn extract_scroll_layer_scene(
         .and_then(|(id, _)| graph.get(id))
         .unwrap_or(anchor);
     let mut out = SceneGraph::new();
-    copy_scroll_contents(graph, content_root, &mut out, &exclude);
+    copy_scroll_contents(graph, content_root, &mut out, &exclude, scroll_affine);
     Some(out)
 }
 
@@ -382,10 +413,16 @@ mod tests {
     #[test]
     fn compose_applies_inner_then_outer() {
         // translate(10,0) ∘ translate(0,5) = translate(10,5)
-        let t = compose([1.0, 0.0, 0.0, 1.0, 10.0, 0.0], [1.0, 0.0, 0.0, 1.0, 0.0, 5.0]);
+        let t = compose(
+            [1.0, 0.0, 0.0, 1.0, 10.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0, 0.0, 5.0],
+        );
         assert_eq!(t, [1.0, 0.0, 0.0, 1.0, 10.0, 5.0]);
         // scale(2) ∘ translate(3,0)：先に translate、次に scale → 実座標 +6
-        let t = compose([2.0, 0.0, 0.0, 2.0, 0.0, 0.0], [1.0, 0.0, 0.0, 1.0, 3.0, 0.0]);
+        let t = compose(
+            [2.0, 0.0, 0.0, 2.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 1.0, 3.0, 0.0],
+        );
         assert_eq!(t, [2.0, 0.0, 0.0, 2.0, 6.0, 0.0]);
     }
 

@@ -7,11 +7,11 @@ use hayate_core::{
     render_scene_graph, RenderImage, RenderImageAlphaType, RenderImageFormat, SceneGraph,
     ScenePainter,
 };
+use vello::peniko::color::{AlphaColor, Srgb};
 use vello::{
     peniko::{ImageAlphaType, ImageData, ImageFormat},
     AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene,
 };
-use vello::peniko::color::{AlphaColor, Srgb};
 use wgpu::util::TextureBlitter;
 
 // ADR-0054: ScenePainter は crate 内部 seam。host 向け公開契約ではない。
@@ -120,16 +120,29 @@ mod aa_method_tests {
     #[test]
     fn aa_method_parses_the_runtime_override_strings() {
         // intent extra（adb am start -e）等の実行時上書き。3 実験（MSAA8/16）を再ビルドなしで回す。
-        assert_eq!(VelloAaMethod::from_str_opt("area"), Some(VelloAaMethod::Area));
-        assert_eq!(VelloAaMethod::from_str_opt("msaa8"), Some(VelloAaMethod::Msaa8));
-        assert_eq!(VelloAaMethod::from_str_opt("msaa16"), Some(VelloAaMethod::Msaa16));
+        assert_eq!(
+            VelloAaMethod::from_str_opt("area"),
+            Some(VelloAaMethod::Area)
+        );
+        assert_eq!(
+            VelloAaMethod::from_str_opt("msaa8"),
+            Some(VelloAaMethod::Msaa8)
+        );
+        assert_eq!(
+            VelloAaMethod::from_str_opt("msaa16"),
+            Some(VelloAaMethod::Msaa16)
+        );
         // 未知値は None（呼び元は既定へフォールバック）。
         assert_eq!(VelloAaMethod::from_str_opt("msaa32"), None);
     }
 
     #[test]
     fn aa_method_names_round_trip_for_logcat_and_experiment_records() {
-        for m in [VelloAaMethod::Area, VelloAaMethod::Msaa8, VelloAaMethod::Msaa16] {
+        for m in [
+            VelloAaMethod::Area,
+            VelloAaMethod::Msaa8,
+            VelloAaMethod::Msaa16,
+        ] {
             assert_eq!(VelloAaMethod::from_str_opt(m.as_str()), Some(m));
         }
     }
@@ -178,10 +191,29 @@ pub fn shader_set_fingerprint() -> u64 {
         tile_alloc,
     } = vello_shaders::SHADERS;
     let shaders = [
-        backdrop, backdrop_dyn, bbox_clear, binning, clip_leaf, clip_reduce, coarse, draw_leaf,
-        draw_reduce, fine_area, fine_msaa16, fine_msaa8, flatten, path_count, path_count_setup,
-        path_tiling, path_tiling_setup, pathtag_reduce, pathtag_reduce2, pathtag_scan1,
-        pathtag_scan_large, pathtag_scan_small, tile_alloc,
+        backdrop,
+        backdrop_dyn,
+        bbox_clear,
+        binning,
+        clip_leaf,
+        clip_reduce,
+        coarse,
+        draw_leaf,
+        draw_reduce,
+        fine_area,
+        fine_msaa16,
+        fine_msaa8,
+        flatten,
+        path_count,
+        path_count_setup,
+        path_tiling,
+        path_tiling_setup,
+        pathtag_reduce,
+        pathtag_reduce2,
+        pathtag_scan1,
+        pathtag_scan_large,
+        pathtag_scan_small,
+        tile_alloc,
     ];
     hayate_layer_compositor::pipeline_cache::fnv1a_hash(
         shaders
@@ -362,12 +394,25 @@ impl VelloSceneRenderer {
 /// `translate(offset_x, offset_y)` を被せる（ADR-0127 の scroll band 平行移動と ADR-0144 の
 /// 安全領域シフトが共有する経路 — ネストした push_transform は outer∘inner で合成されるため、
 /// scale は shift 後の量にも一様に掛かる）。
-fn encode_frame(scene: &mut Scene, graph: &SceneGraph, content_scale: f32, offset_x: f32, offset_y: f32) {
+fn encode_frame(
+    scene: &mut Scene,
+    graph: &SceneGraph,
+    content_scale: f32,
+    offset_x: f32,
+    offset_y: f32,
+) {
     scene.reset();
     let mut painter = VelloPainter::new(scene);
     let scaled = content_scale != 1.0;
     if scaled {
-        painter.push_transform([content_scale as f64, 0.0, 0.0, content_scale as f64, 0.0, 0.0]);
+        painter.push_transform([
+            content_scale as f64,
+            0.0,
+            0.0,
+            content_scale as f64,
+            0.0,
+            0.0,
+        ]);
     }
     let shifted = offset_x != 0.0 || offset_y != 0.0;
     if shifted {
@@ -417,7 +462,10 @@ pub fn create_target_view(device: &wgpu::Device, width: u32, height: u32) -> wgp
     target_texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
-pub fn create_blitter(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> TextureBlitter {
+pub fn create_blitter(
+    device: &wgpu::Device,
+    surface_format: wgpu::TextureFormat,
+) -> TextureBlitter {
     TextureBlitter::new(device, surface_format)
 }
 

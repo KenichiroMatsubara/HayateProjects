@@ -30,9 +30,18 @@ pub enum TouchAction {
 /// 渡した空間（iOS = 論理 points / Android = サーフェスピクセル）のまま。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PointerInput {
-    Down { x: f32, y: f32 },
-    Move { x: f32, y: f32 },
-    Up { x: f32, y: f32 },
+    Down {
+        x: f32,
+        y: f32,
+    },
+    Move {
+        x: f32,
+        y: f32,
+    },
+    Up {
+        x: f32,
+        y: f32,
+    },
     /// システムジェスチャ奪取・割り込み等によるキャンセル。座標非依存で
     /// `ElementTree::on_pointer_cancel` へ写す。
     Cancel,

@@ -65,9 +65,7 @@ impl VelloWindowRenderer {
         // なら feature を要求し、前回起動の blob をディスクから読んで vello に注入する。
         // 非対応・破損・キー不一致はすべてキャッシュ無しにフォールバックし、起動は壊さない。
         let adapter_info = adapter.get_info();
-        let supports_pipeline_cache = adapter
-            .features()
-            .contains(wgpu::Features::PIPELINE_CACHE);
+        let supports_pipeline_cache = adapter.features().contains(wgpu::Features::PIPELINE_CACHE);
 
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -205,7 +203,8 @@ impl SceneRenderer for VelloWindowRenderer {
             .map_err(|e| anyhow!("vello render_scene failed: {e}"))?;
 
         let surface_texture = match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
             // surface が陳腐化したら次フレームで再 configure に委ねる。
             wgpu::CurrentSurfaceTexture::Outdated => {
                 self.surface.configure(&self.device, &self.surface_config);

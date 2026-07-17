@@ -7,9 +7,7 @@ use crate::element::inline_text::{is_ifc_root, is_inline_text_element};
 use crate::element::kind::ElementKind;
 use crate::element::taffy_bridge::MeasureCtx;
 use crate::element::tree::Element;
-use crate::element::visual_invalidation::{
-    self, ElementMapTopology, VisualInvalidationReach,
-};
+use crate::element::visual_invalidation::{self, ElementMapTopology, VisualInvalidationReach};
 
 /// [`TaffyProjection::traversal_step`] の結果。
 pub(crate) enum TraversalStep<'a> {
@@ -239,9 +237,7 @@ fn sync_node_from_element(
         projection.viewport,
     );
     let _ = projection.taffy.set_style(node, style);
-    let _ = projection
-        .taffy
-        .set_node_context(node, Some(measure_ctx));
+    let _ = projection.taffy.set_node_context(node, Some(measure_ctx));
 }
 
 /// `id` の Taffy 葉の measure ディスパッチコンテキスト。IFC ルートはテキストを
@@ -262,7 +258,9 @@ fn create_projected_node(
     elements: &HashMap<ElementId, Element>,
     id: ElementId,
 ) -> NodeId {
-    let el = elements.get(&id).expect("create_projected_node: missing element");
+    let el = elements
+        .get(&id)
+        .expect("create_projected_node: missing element");
     let measure_ctx = measure_ctx_for(elements, id);
     let style = crate::element::layout_pass::effective_layout_style(
         &el.layout_style,
@@ -380,11 +378,7 @@ mod tests {
         let (inline_id, inline) = make_text(2, Some(root_id), "inner");
         elements.insert(root_id, root);
         elements.insert(inline_id, inline);
-        elements
-            .get_mut(&root_id)
-            .unwrap()
-            .children
-            .push(inline_id);
+        elements.get_mut(&root_id).unwrap().children.push(inline_id);
 
         projection.reconcile(&elements, root_id, &mut HashSet::new());
 
@@ -404,11 +398,7 @@ mod tests {
         elements.insert(root_id, root);
         elements.insert(branch_id, branch);
         elements.insert(leaf_id, leaf);
-        elements
-            .get_mut(&branch_id)
-            .unwrap()
-            .children
-            .push(leaf_id);
+        elements.get_mut(&branch_id).unwrap().children.push(leaf_id);
 
         projection.reconcile(&elements, root_id, &mut HashSet::new());
         assert!(projection.has_node(branch_id));

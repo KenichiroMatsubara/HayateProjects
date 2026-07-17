@@ -301,7 +301,11 @@ mod tests {
         assert_eq!(tree.element_get_text_content(input), "helloXworld");
 
         // 確定: 文字がキャレット位置に入り、preedit は消える。
-        assert!(apply_ime_input(&mut tree, &Ime::Commit("X".into()), &mut buf));
+        assert!(apply_ime_input(
+            &mut tree,
+            &Ime::Commit("X".into()),
+            &mut buf
+        ));
         assert_eq!(
             tree.element_get_text_content(input),
             "helloXworld",

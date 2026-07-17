@@ -222,15 +222,27 @@ mod tests {
 
     #[test]
     fn skia_surface_parses_known_values_and_falls_to_the_default_otherwise() {
-        assert_eq!(SkiaSurfaceKind::from_str_opt("raster"), Some(SkiaSurfaceKind::Raster));
-        assert_eq!(SkiaSurfaceKind::from_str_opt("gl"), Some(SkiaSurfaceKind::Gl));
-        assert_eq!(SkiaSurfaceKind::from_str_opt(" GL "), Some(SkiaSurfaceKind::Gl));
+        assert_eq!(
+            SkiaSurfaceKind::from_str_opt("raster"),
+            Some(SkiaSurfaceKind::Raster)
+        );
+        assert_eq!(
+            SkiaSurfaceKind::from_str_opt("gl"),
+            Some(SkiaSurfaceKind::Gl)
+        );
+        assert_eq!(
+            SkiaSurfaceKind::from_str_opt(" GL "),
+            Some(SkiaSurfaceKind::Gl)
+        );
         assert_eq!(SkiaSurfaceKind::from_str_opt(""), None);
         assert_eq!(SkiaSurfaceKind::from_str_opt("vulkan"), None);
         // 未指定/未知値は既定（名前付き定数）へ（#795 の resolve_backend と同じ流儀）。
         assert_eq!(resolve_skia_surface(None), DEFAULT_SKIA_SURFACE);
         assert_eq!(resolve_skia_surface(Some("bogus")), DEFAULT_SKIA_SURFACE);
-        assert_eq!(resolve_skia_surface(Some("raster")), SkiaSurfaceKind::Raster);
+        assert_eq!(
+            resolve_skia_surface(Some("raster")),
+            SkiaSurfaceKind::Raster
+        );
     }
 
     #[test]

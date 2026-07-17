@@ -98,6 +98,9 @@ mod tests {
         // ホストの焼き込み版数は Web と同じ source of truth（manifest version）＝ネイティブ decoder の
         // `hayate_core::wire::PROTOCOL_VERSION`。突き合わせがその版数で通ることを固定する（#530 共有）。
         let host_version = hayate_core::wire::PROTOCOL_VERSION;
-        assert_eq!(check_protocol_version(host_version, Some(host_version)), Ok(()));
+        assert_eq!(
+            check_protocol_version(host_version, Some(host_version)),
+            Ok(())
+        );
     }
 }

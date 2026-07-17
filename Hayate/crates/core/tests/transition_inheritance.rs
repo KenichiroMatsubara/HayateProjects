@@ -6,8 +6,8 @@
 //! `DrawTextRun` の色で end-to-end に検証する。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, RecordingPainter, StyleProp,
-    render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree,
+    RecordingPainter, StyleProp,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {

@@ -33,7 +33,8 @@ const OP_SET_TEXT_CONTENT: f64 = 12.0;
 
 fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
     let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
-    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[]).unwrap();
+    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[])
+        .unwrap();
 }
 
 fn apply_text_content(r: &mut HayateElementRenderer, id: f64, text: &str) {
@@ -86,7 +87,9 @@ async fn focused_text_input() -> (HayateElementRenderer, HtmlCanvasElement) {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,

@@ -133,6 +133,9 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(map.get("background-color").map(String::as_str), Some("#0000ff"));
+        assert_eq!(
+            map.get("background-color").map(String::as_str),
+            Some("#0000ff")
+        );
     }
 }

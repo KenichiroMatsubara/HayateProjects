@@ -67,7 +67,12 @@ impl SafeAreaInsets {
     /// GPU surface はフルウィンドウのままだが、レイアウトが使うビューポートは「ウィンドウ −
     /// インセット」に縮める。これで bottom-anchored 要素がナビゲーションバーの裏に潜らず、
     /// 上端がステータスバーの裏に潜らない。論理px（Web の CSS px 相当）なので content_scale で割る。
-    pub fn layout_viewport(self, window_width: u32, window_height: u32, content_scale: f32) -> (f32, f32) {
+    pub fn layout_viewport(
+        self,
+        window_width: u32,
+        window_height: u32,
+        content_scale: f32,
+    ) -> (f32, f32) {
         let visible_w = (window_width as i32 - self.left.max(0) - self.right.max(0)).max(1) as f32;
         let visible_h = (window_height as i32 - self.top.max(0) - self.bottom.max(0)).max(1) as f32;
         let scale = content_scale.max(1.0);
@@ -82,7 +87,10 @@ impl SafeAreaInsets {
     /// レンダラは content_scale を後段で掛けるため、ここは物理インセットを scale で割った論理px。
     pub fn scene_origin(self, content_scale: f32) -> (f32, f32) {
         let scale = content_scale.max(1.0);
-        (self.left.max(0) as f32 / scale, self.top.max(0) as f32 / scale)
+        (
+            self.left.max(0) as f32 / scale,
+            self.top.max(0) as f32 / scale,
+        )
     }
 
     /// ウィンドウ座標（物理px）のタッチ点を、シーンと同じ安全領域原点へ平行移動する。
@@ -93,7 +101,10 @@ impl SafeAreaInsets {
     /// 着弾点が systemBars.top 分だけ下へずれる。Kotlin 側のタッチ補正（旧 `offsetLocation`）を
     /// 撤去し、補正を Rust 側へ一本化する（b2）。
     pub fn correct_touch(self, x_physical: f32, y_physical: f32) -> (f32, f32) {
-        (x_physical - self.left.max(0) as f32, y_physical - self.top.max(0) as f32)
+        (
+            x_physical - self.left.max(0) as f32,
+            y_physical - self.top.max(0) as f32,
+        )
     }
 
     /// `AndroidApp::content_rect()`（ウィンドウ内の可視領域、物理px）からインセットを導く。
@@ -129,28 +140,48 @@ mod tests {
     fn layout_viewport_shrinks_by_the_system_bar_insets() {
         // Nothing Phone 3a 相当: 1080x2400、ステータスバー上 110px・ナビバー下 132px。
         // レイアウトビューポートはその分縮む（等倍）。
-        let insets = SafeAreaInsets { left: 0, top: 110, right: 0, bottom: 132 };
+        let insets = SafeAreaInsets {
+            left: 0,
+            top: 110,
+            right: 0,
+            bottom: 132,
+        };
         assert_eq!(insets.layout_viewport(1080, 2400, 1.0), (1080.0, 2158.0));
     }
 
     #[test]
     fn scene_origin_shifts_content_below_the_top_inset() {
         // 上 110px・左 40px（横向きカットアウト相当）を安全領域の原点に。等倍なら物理=論理。
-        let insets = SafeAreaInsets { left: 40, top: 110, right: 0, bottom: 132 };
+        let insets = SafeAreaInsets {
+            left: 40,
+            top: 110,
+            right: 0,
+            bottom: 132,
+        };
         assert_eq!(insets.scene_origin(1.0), (40.0, 110.0));
     }
 
     #[test]
     fn scene_origin_is_logical_px_after_dividing_by_content_scale() {
         // 3x 密度: 物理 330px の上インセットは論理 110px（レンダラが後段で 3x 掛け直す）。
-        let insets = SafeAreaInsets { left: 0, top: 330, right: 0, bottom: 0 };
+        let insets = SafeAreaInsets {
+            left: 0,
+            top: 330,
+            right: 0,
+            bottom: 0,
+        };
         assert_eq!(insets.scene_origin(3.0), (0.0, 110.0));
     }
 
     #[test]
     fn correct_touch_subtracts_the_top_left_insets_in_physical_px() {
         // 上 110px 下げた描画に合わせ、ウィンドウ座標 y=200 のタッチは安全領域 y=90 に着弾。
-        let insets = SafeAreaInsets { left: 40, top: 110, right: 0, bottom: 132 };
+        let insets = SafeAreaInsets {
+            left: 40,
+            top: 110,
+            right: 0,
+            bottom: 132,
+        };
         assert_eq!(insets.correct_touch(100.0, 200.0), (60.0, 90.0));
     }
 
@@ -162,13 +193,23 @@ mod tests {
         store_pushed_insets(0, 110, 0, 132);
         assert_eq!(
             pushed_insets(),
-            Some(SafeAreaInsets { left: 0, top: 110, right: 0, bottom: 132 })
+            Some(SafeAreaInsets {
+                left: 0,
+                top: 110,
+                right: 0,
+                bottom: 132
+            })
         );
         // 後続の push は最新値で上書きする（リスナー発火のたび更新）。
         store_pushed_insets(5, 111, 6, 133);
         assert_eq!(
             pushed_insets(),
-            Some(SafeAreaInsets { left: 5, top: 111, right: 6, bottom: 133 })
+            Some(SafeAreaInsets {
+                left: 5,
+                top: 111,
+                right: 6,
+                bottom: 133
+            })
         );
     }
 
@@ -176,7 +217,15 @@ mod tests {
     fn from_content_rect_derives_insets_as_the_fallback() {
         // ウィンドウ 1080x2400、可視 (0,110)-(1080,2268) → 上 110・下 132・左右 0。
         let insets = SafeAreaInsets::from_content_rect(1080, 2400, 0, 110, 1080, 2268);
-        assert_eq!(insets, SafeAreaInsets { left: 0, top: 110, right: 0, bottom: 132 });
+        assert_eq!(
+            insets,
+            SafeAreaInsets {
+                left: 0,
+                top: 110,
+                right: 0,
+                bottom: 132
+            }
+        );
     }
 
     #[test]

@@ -150,7 +150,7 @@ impl ValueType {
                 for byte in bytes {\n\
                     buf.push(*byte as f32);\n\
                 }\n"
-                .to_string(),
+            .to_string(),
             ValueType::ZIndex => "                buf.push(*z as f32);\n".to_string(),
             ValueType::GridPlacement => [
                 "                buf.push(p.start.wire_kind());",
@@ -180,9 +180,7 @@ impl ValueType {
                 "tracks.into_iter().map(|(value, unit)| codec_dim(value, unit)).collect()"
                     .to_string()
             }
-            ValueType::ShadowList => {
-                "shadows.into_iter().map(codec_shadow).collect()".to_string()
-            }
+            ValueType::ShadowList => "shadows.into_iter().map(codec_shadow).collect()".to_string(),
             ValueType::FontFamily => "family".to_string(),
             ValueType::ZIndex => "value as i32".to_string(),
             ValueType::GridPlacement => {

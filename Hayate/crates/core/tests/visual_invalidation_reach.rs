@@ -1,10 +1,12 @@
 //! ビジュアル無効化の到達範囲における prop-class 精度。
 
-use hayate_core::{
-    Color, Dimension, ElementKind, ElementTree, PseudoState, StyleProp,
-};
+use hayate_core::{Color, Dimension, ElementKind, ElementTree, PseudoState, StyleProp};
 
-fn tree_with_parent_and_children() -> (ElementTree, hayate_core::ElementId, Vec<hayate_core::ElementId>) {
+fn tree_with_parent_and_children() -> (
+    ElementTree,
+    hayate_core::ElementId,
+    Vec<hayate_core::ElementId>,
+) {
     let mut tree = ElementTree::new();
     let parent = tree.element_create(1, ElementKind::View);
     let mut children = Vec::new();
@@ -118,7 +120,10 @@ fn ch1_text_local_color_relowers_only_ifc_text_descendants() {
     tree.element_append_child(ifc_root, inline);
     tree.element_set_text(ifc_root, "Hello ");
     tree.element_set_text(inline, "world");
-    tree.element_set_style(ifc_root, &[StyleProp::Color(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        ifc_root,
+        &[StyleProp::Color(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
     tree.element_set_style(
         sibling_view,
         &[

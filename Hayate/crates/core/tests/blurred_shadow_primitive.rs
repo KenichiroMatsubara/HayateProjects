@@ -5,8 +5,8 @@
 //! tiny-skia の box-shadow ゴールデン（`parity_box_shadow_drop`）が別途担保する。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, RecordingPainter, Shadow,
-    ShadowOccluder, StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind,
+    RecordingPainter, Shadow, ShadowOccluder, StyleProp,
 };
 
 fn tree_with_shadow(shadow: Shadow) -> ElementTree {
@@ -38,7 +38,16 @@ fn blurred_shadow() -> Shadow {
     }
 }
 
-type BlurredNode = (f32, f32, f32, f32, f32, f32, [f32; 4], Option<ShadowOccluder>);
+type BlurredNode = (
+    f32,
+    f32,
+    f32,
+    f32,
+    f32,
+    f32,
+    [f32; 4],
+    Option<ShadowOccluder>,
+);
 
 fn blurred_rect_nodes(tree: &ElementTree) -> Vec<BlurredNode> {
     tree.scene_graph()
@@ -74,15 +83,29 @@ fn blurred_drop_shadow_lowers_to_a_single_primitive_node() {
 
     // 外形は spread=0 なのでオフセット済みのボーダーボックス、σ = blur/2、色は不透明度適用済み。
     let (x, y, w, h, radius, std_dev, color, occluder) = blurred[0];
-    assert_eq!((x, y, w, h), (8.0, 8.0, 50.0, 50.0), "shadow outline geometry");
+    assert_eq!(
+        (x, y, w, h),
+        (8.0, 8.0, 50.0, 50.0),
+        "shadow outline geometry"
+    );
     assert_eq!(radius, 8.0, "corner radius follows the box");
     assert_eq!(std_dev, 3.0, "std_dev is blur/2");
-    assert_eq!(color, [0.0, 0.0, 0.0, 0.5], "shadow colour with opacity applied");
+    assert_eq!(
+        color,
+        [0.0, 0.0, 0.0, 0.5],
+        "shadow colour with opacity applied"
+    );
     // 背景が不透明（白）なので occluder = ボーダーボックス内側（border 無し = 全ボックス）を
     // AA 帯ぶん（1px）内側へ縮めた矩形。
     assert_eq!(
         occluder,
-        Some(ShadowOccluder { x: 1.0, y: 1.0, width: 48.0, height: 48.0, corner_radius: 7.0 }),
+        Some(ShadowOccluder {
+            x: 1.0,
+            y: 1.0,
+            width: 48.0,
+            height: 48.0,
+            corner_radius: 7.0
+        }),
         "opaque owner sets a border-box occluder inset by the AA margin"
     );
 }
@@ -130,7 +153,10 @@ fn semi_transparent_owner_gets_no_occluder() {
     let mut tree = tree_with_bg_and_shadow(Some(Color::new(1.0, 1.0, 1.0, 0.5)));
     tree.render(0.0);
     let (.., occluder) = blurred_rect_nodes(&tree)[0];
-    assert_eq!(occluder, None, "a translucent owner must not occlude its shadow");
+    assert_eq!(
+        occluder, None,
+        "a translucent owner must not occlude its shadow"
+    );
 }
 
 #[test]
@@ -139,7 +165,10 @@ fn transparent_owner_gets_no_occluder() {
     let mut tree = tree_with_bg_and_shadow(None);
     tree.render(0.0);
     let (.., occluder) = blurred_rect_nodes(&tree)[0];
-    assert_eq!(occluder, None, "a background-less owner must not occlude its shadow");
+    assert_eq!(
+        occluder, None,
+        "a background-less owner must not occlude its shadow"
+    );
 }
 
 fn inset_tree(blur: f32) -> ElementTree {
@@ -168,7 +197,10 @@ fn inset_tree(blur: f32) -> ElementTree {
 }
 
 fn count_kind(tree: &ElementTree, pred: impl Fn(&NodeKind) -> bool) -> usize {
-    tree.scene_graph().iter().filter(|(_, n)| pred(&n.kind)).count()
+    tree.scene_graph()
+        .iter()
+        .filter(|(_, n)| pred(&n.kind))
+        .count()
 }
 
 #[test]
@@ -176,11 +208,19 @@ fn blurred_inset_shadow_lowers_to_one_primitive_clipped_to_the_border_box() {
     let mut tree = inset_tree(8.0);
     tree.render(0.0);
 
-    let inset_nodes = count_kind(&tree, |k| matches!(k, NodeKind::InsetBlurredRoundedRect { .. }));
-    assert_eq!(inset_nodes, 1, "a blurred inset shadow lowers to exactly one primitive node");
+    let inset_nodes = count_kind(&tree, |k| {
+        matches!(k, NodeKind::InsetBlurredRoundedRect { .. })
+    });
+    assert_eq!(
+        inset_nodes, 1,
+        "a blurred inset shadow lowers to exactly one primitive node"
+    );
     // シェルの `RoundedRing` は出さない（10 段から 1 ノードへ削減、issue #660）。
     let rings = count_kind(&tree, |k| matches!(k, NodeKind::RoundedRing { .. }));
-    assert_eq!(rings, 0, "the blurred inset must not fall back to shell rings");
+    assert_eq!(
+        rings, 0,
+        "the blurred inset must not fall back to shell rings"
+    );
 
     // painter からは border-box クリップの中で 1 op として見える。
     let mut painter = RecordingPainter::new();
@@ -191,17 +231,24 @@ fn blurred_inset_shadow_lowers_to_one_primitive_clipped_to_the_border_box() {
         .position(|op| matches!(op, DrawOp::FillInsetBlurredRoundedRect { .. }))
         .expect("one inset blurred op");
     assert_eq!(
-        ops.iter().filter(|op| matches!(op, DrawOp::FillInsetBlurredRoundedRect { .. })).count(),
+        ops.iter()
+            .filter(|op| matches!(op, DrawOp::FillInsetBlurredRoundedRect { .. }))
+            .count(),
         1,
         "exactly one inset op per shadow"
     );
     // 直前に border-box クリップが積まれ、直後に外される。
     assert!(
-        ops[..inset_pos].iter().rev().any(|op| matches!(op, DrawOp::PushClipRect { .. })),
+        ops[..inset_pos]
+            .iter()
+            .rev()
+            .any(|op| matches!(op, DrawOp::PushClipRect { .. })),
         "the inset shadow is clipped to the border-box"
     );
     assert!(
-        ops[inset_pos + 1..].iter().any(|op| matches!(op, DrawOp::PopClip)),
+        ops[inset_pos + 1..]
+            .iter()
+            .any(|op| matches!(op, DrawOp::PopClip)),
         "the border-box clip is popped after the inset shadow"
     );
 }
@@ -212,7 +259,10 @@ fn hard_inset_shadow_stays_a_rounded_ring() {
     let mut tree = inset_tree(0.0);
     tree.render(0.0);
     assert_eq!(
-        count_kind(&tree, |k| matches!(k, NodeKind::InsetBlurredRoundedRect { .. })),
+        count_kind(&tree, |k| matches!(
+            k,
+            NodeKind::InsetBlurredRoundedRect { .. }
+        )),
         0,
         "a hard inset shadow must not use the blurred primitive"
     );

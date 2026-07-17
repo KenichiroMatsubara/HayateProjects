@@ -61,7 +61,8 @@ fn android_reuses_the_native_selection_policy_instead_of_re_deriving_it() {
          native_renderer_selection_policy を再利用する（policy をアダプタ内で再導出しない）"
     );
     assert!(
-        app.contains("renderer_config::VELLO_LINKED") && app.contains("renderer_config::forced_renderer()"),
+        app.contains("renderer_config::VELLO_LINKED")
+            && app.contains("renderer_config::forced_renderer()"),
         "policy への入力（vello_linked / forced）は renderer_config が用意する"
     );
 }

@@ -36,22 +36,54 @@ pub fn hex(s: &str) -> Color {
 pub struct Palette;
 
 impl Palette {
-    pub fn bg(&self) -> Color { hex("#f1ede3") }
-    pub fn rail(&self) -> Color { hex("#fbf8f1") }
-    pub fn panel(&self) -> Color { hex("#fdfdfb") }
-    pub fn panel2(&self) -> Color { hex("#ece6d8") }
-    pub fn panel3(&self) -> Color { hex("#e0d8c7") }
-    pub fn ink(&self) -> Color { hex("#262130") }
-    pub fn text(&self) -> Color { hex("#322c3f") }
-    pub fn muted(&self) -> Color { hex("#6f6878") }
-    pub fn quiet(&self) -> Color { hex("#9a93a3") }
-    pub fn line(&self) -> Color { hex("#d9d3c6") }
-    pub fn accent(&self) -> Color { hex("#14b8a6") }
-    pub fn danger(&self) -> Color { hex("#e5484d") }
-    pub fn success(&self) -> Color { hex("#2fa86a") }
-    pub fn blue(&self) -> Color { hex("#4b8ef0") }
-    pub fn black(&self) -> Color { hex("#14101c") }
-    pub fn shadow(&self) -> Color { hex("#2621301f") }
+    pub fn bg(&self) -> Color {
+        hex("#f1ede3")
+    }
+    pub fn rail(&self) -> Color {
+        hex("#fbf8f1")
+    }
+    pub fn panel(&self) -> Color {
+        hex("#fdfdfb")
+    }
+    pub fn panel2(&self) -> Color {
+        hex("#ece6d8")
+    }
+    pub fn panel3(&self) -> Color {
+        hex("#e0d8c7")
+    }
+    pub fn ink(&self) -> Color {
+        hex("#262130")
+    }
+    pub fn text(&self) -> Color {
+        hex("#322c3f")
+    }
+    pub fn muted(&self) -> Color {
+        hex("#6f6878")
+    }
+    pub fn quiet(&self) -> Color {
+        hex("#9a93a3")
+    }
+    pub fn line(&self) -> Color {
+        hex("#d9d3c6")
+    }
+    pub fn accent(&self) -> Color {
+        hex("#14b8a6")
+    }
+    pub fn danger(&self) -> Color {
+        hex("#e5484d")
+    }
+    pub fn success(&self) -> Color {
+        hex("#2fa86a")
+    }
+    pub fn blue(&self) -> Color {
+        hex("#4b8ef0")
+    }
+    pub fn black(&self) -> Color {
+        hex("#14101c")
+    }
+    pub fn shadow(&self) -> Color {
+        hex("#2621301f")
+    }
 }
 
 pub fn prio_tone(p: &Palette, prio: u8) -> Color {
@@ -209,76 +241,103 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
         StyleProp::BackgroundColor(p.accent()),
         StyleProp::BorderRadius(12.0),
     ]);
-    let logo_t = b.text("TS", &[StyleProp::FontSize(18.0), StyleProp::Color(p.black())]);
+    let logo_t = b.text(
+        "TS",
+        &[StyleProp::FontSize(18.0), StyleProp::Color(p.black())],
+    );
     b.child(logo, logo_t);
     let titles = b.view(&col(2.0));
-    let t1 = b.text("Tsubame Task Studio", &[StyleProp::FontSize(20.0), StyleProp::Color(p.ink())]);
-    let t2 = b.text("POP TODO + Hayate CSS gallery", &[StyleProp::FontSize(12.0), StyleProp::Color(p.muted())]);
+    let t1 = b.text(
+        "Tsubame Task Studio",
+        &[StyleProp::FontSize(20.0), StyleProp::Color(p.ink())],
+    );
+    let t2 = b.text(
+        "POP TODO + Hayate CSS gallery",
+        &[StyleProp::FontSize(12.0), StyleProp::Color(p.muted())],
+    );
     b.children(titles, &[t1, t2]);
     b.children(brand, &[logo, titles]);
 
     // Right cluster
     let right = b.view(&row(10.0));
-    let tab_tasks = b.button("Tasks", &[
-        StyleProp::Height(Dimension::px(34.0)),
-        StyleProp::PaddingLeft(Dimension::px(16.0)),
-        StyleProp::PaddingRight(Dimension::px(16.0)),
-        StyleProp::Display(hayate_core::DisplayValue::Flex),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::JustifyContent(JustifyValue::Center),
-        StyleProp::BackgroundColor(p.accent()),
-        StyleProp::Color(p.black()),
-        StyleProp::BorderRadius(10.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.accent()),
-        StyleProp::FontSize(13.0),
-    ]);
-    let tab_gallery = b.button("CSS Gallery", &[
-        StyleProp::Height(Dimension::px(34.0)),
-        StyleProp::PaddingLeft(Dimension::px(16.0)),
-        StyleProp::PaddingRight(Dimension::px(16.0)),
-        StyleProp::Display(hayate_core::DisplayValue::Flex),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::JustifyContent(JustifyValue::Center),
-        StyleProp::BackgroundColor(p.panel()),
-        StyleProp::Color(p.text()),
-        StyleProp::BorderRadius(10.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.line()),
-        StyleProp::FontSize(13.0),
-    ]);
+    let tab_tasks = b.button(
+        "Tasks",
+        &[
+            StyleProp::Height(Dimension::px(34.0)),
+            StyleProp::PaddingLeft(Dimension::px(16.0)),
+            StyleProp::PaddingRight(Dimension::px(16.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(p.accent()),
+            StyleProp::Color(p.black()),
+            StyleProp::BorderRadius(10.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.accent()),
+            StyleProp::FontSize(13.0),
+        ],
+    );
+    let tab_gallery = b.button(
+        "CSS Gallery",
+        &[
+            StyleProp::Height(Dimension::px(34.0)),
+            StyleProp::PaddingLeft(Dimension::px(16.0)),
+            StyleProp::PaddingRight(Dimension::px(16.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(p.panel()),
+            StyleProp::Color(p.text()),
+            StyleProp::BorderRadius(10.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.line()),
+            StyleProp::FontSize(13.0),
+        ],
+    );
     // Accent colour swatches
     let swatches = b.view(&row(6.0));
-    for (i, c) in ["#14b8a6", "#e84d8a", "#ef8f3c", "#5ca80f", "#7c5cf0"].iter().enumerate() {
+    for (i, c) in ["#14b8a6", "#e84d8a", "#ef8f3c", "#5ca80f", "#7c5cf0"]
+        .iter()
+        .enumerate()
+    {
         let selected = i == 0;
-        let sw = b.button(" ", &[
-            StyleProp::Width(Dimension::px(22.0)),
-            StyleProp::Height(Dimension::px(22.0)),
-            StyleProp::BackgroundColor(hex(c)),
-            StyleProp::BorderRadius(999.0),
-            StyleProp::BorderWidth(if selected { 3.0 } else { 1.0 }),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(if selected { p.ink() } else { p.line() }),
-        ]);
+        let sw = b.button(
+            " ",
+            &[
+                StyleProp::Width(Dimension::px(22.0)),
+                StyleProp::Height(Dimension::px(22.0)),
+                StyleProp::BackgroundColor(hex(c)),
+                StyleProp::BorderRadius(999.0),
+                StyleProp::BorderWidth(if selected { 3.0 } else { 1.0 }),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(if selected { p.ink() } else { p.line() }),
+            ],
+        );
         b.child(swatches, sw);
     }
-    let theme_btn = b.button("🌙", &[
-        StyleProp::Width(Dimension::px(34.0)),
-        StyleProp::Height(Dimension::px(34.0)),
-        StyleProp::Display(hayate_core::DisplayValue::Flex),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::JustifyContent(JustifyValue::Center),
-        StyleProp::BackgroundColor(p.panel()),
-        StyleProp::Color(p.text()),
-        StyleProp::BorderRadius(10.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.line()),
-        StyleProp::FontSize(15.0),
-    ]);
-    let rlabel = b.text("renderer", &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)]);
+    let theme_btn = b.button(
+        "🌙",
+        &[
+            StyleProp::Width(Dimension::px(34.0)),
+            StyleProp::Height(Dimension::px(34.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(p.panel()),
+            StyleProp::Color(p.text()),
+            StyleProp::BorderRadius(10.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.line()),
+            StyleProp::FontSize(15.0),
+        ],
+    );
+    let rlabel = b.text(
+        "renderer",
+        &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)],
+    );
     let badge = b.view(&[
         StyleProp::Height(Dimension::px(28.0)),
         StyleProp::Display(hayate_core::DisplayValue::Flex),
@@ -293,10 +352,19 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
         StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
     ]);
-    let badge_t = b.text(renderer_label, &[StyleProp::Color(p.accent()), StyleProp::FontSize(13.0)]);
-    let badge_t2 = b.text(renderer_label, &[StyleProp::Color(p.muted()), StyleProp::FontSize(12.0)]);
+    let badge_t = b.text(
+        renderer_label,
+        &[StyleProp::Color(p.accent()), StyleProp::FontSize(13.0)],
+    );
+    let badge_t2 = b.text(
+        renderer_label,
+        &[StyleProp::Color(p.muted()), StyleProp::FontSize(12.0)],
+    );
     b.children(badge, &[badge_t, badge_t2]);
-    b.children(right, &[tab_tasks, tab_gallery, swatches, theme_btn, rlabel, badge]);
+    b.children(
+        right,
+        &[tab_tasks, tab_gallery, swatches, theme_btn, rlabel, badge],
+    );
     b.children(appbar, &[brand, right]);
 
     // ── Content panel ─────────────────────────────────────────────────────
@@ -321,8 +389,12 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
         StyleProp::BorderStyle(BorderStyleValue::Solid),
         StyleProp::BorderColor(p.line()),
         StyleProp::BoxShadow(vec![Shadow {
-            offset_x: 0.0, offset_y: 18.0, blur: 40.0, spread: -8.0,
-            color: p.shadow(), inset: false,
+            offset_x: 0.0,
+            offset_y: 18.0,
+            blur: 40.0,
+            spread: -8.0,
+            color: p.shadow(),
+            inset: false,
         }]),
     ]);
 
@@ -334,8 +406,14 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
         StyleProp::AlignItems(AlignValue::Center),
         StyleProp::JustifyContent(JustifyValue::SpaceBetween),
     ]);
-    let htitle = b.text("きょうのタスク", &[StyleProp::Color(p.ink()), StyleProp::FontSize(24.0)]);
-    let hsub = b.text("残り 3 件 / 全 5 件", &[StyleProp::Color(p.muted()), StyleProp::FontSize(13.0)]);
+    let htitle = b.text(
+        "きょうのタスク",
+        &[StyleProp::Color(p.ink()), StyleProp::FontSize(24.0)],
+    );
+    let hsub = b.text(
+        "残り 3 件 / 全 5 件",
+        &[StyleProp::Color(p.muted()), StyleProp::FontSize(13.0)],
+    );
     b.children(hrow, &[htitle, hsub]);
     // Progress bar (40%)
     let pbar = b.view(&[
@@ -383,54 +461,63 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
 
     // AddForm
     let addform = b.view(&row(8.0));
-    let input = b.el(ElementKind::TextInput, &[
-        StyleProp::FlexGrow(1.0),
-        StyleProp::Height(Dimension::px(38.0)),
-        StyleProp::PaddingLeft(Dimension::px(12.0)),
-        StyleProp::PaddingRight(Dimension::px(12.0)),
-        StyleProp::BackgroundColor(p.panel2()),
-        StyleProp::Color(p.text()),
-        StyleProp::BorderRadius(8.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.line()),
-        StyleProp::FontSize(13.0),
-    ]);
+    let input = b.el(
+        ElementKind::TextInput,
+        &[
+            StyleProp::FlexGrow(1.0),
+            StyleProp::Height(Dimension::px(38.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingRight(Dimension::px(12.0)),
+            StyleProp::BackgroundColor(p.panel2()),
+            StyleProp::Color(p.text()),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.line()),
+            StyleProp::FontSize(13.0),
+        ],
+    );
     b.tree.element_set_text(input, "新しいタスクを入力…");
     let segs = b.view(&row(4.0));
     for (prio, active) in [(3u8, false), (2u8, true), (1u8, false)] {
         let tone = prio_tone(&p, prio);
-        let seg = b.button(PRIO_LABEL[prio as usize], &[
+        let seg = b.button(
+            PRIO_LABEL[prio as usize],
+            &[
+                StyleProp::Height(Dimension::px(38.0)),
+                StyleProp::MinWidth(Dimension::px(40.0)),
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::JustifyContent(JustifyValue::Center),
+                StyleProp::BackgroundColor(if active { tone } else { p.panel2() }),
+                StyleProp::Color(if active { p.black() } else { p.muted() }),
+                StyleProp::BorderRadius(9.0),
+                StyleProp::BorderWidth(1.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(if active { tone } else { p.line() }),
+                StyleProp::FontSize(13.0),
+            ],
+        );
+        b.child(segs, seg);
+    }
+    let addbtn = b.button(
+        "追加",
+        &[
             StyleProp::Height(Dimension::px(38.0)),
-            StyleProp::MinWidth(Dimension::px(40.0)),
+            StyleProp::PaddingLeft(Dimension::px(18.0)),
+            StyleProp::PaddingRight(Dimension::px(18.0)),
             StyleProp::Display(hayate_core::DisplayValue::Flex),
             StyleProp::AlignItems(AlignValue::Center),
             StyleProp::JustifyContent(JustifyValue::Center),
-            StyleProp::BackgroundColor(if active { tone } else { p.panel2() }),
-            StyleProp::Color(if active { p.black() } else { p.muted() }),
+            StyleProp::BackgroundColor(p.accent()),
+            StyleProp::Color(p.black()),
             StyleProp::BorderRadius(9.0),
             StyleProp::BorderWidth(1.0),
             StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(if active { tone } else { p.line() }),
+            StyleProp::BorderColor(p.accent()),
             StyleProp::FontSize(13.0),
-        ]);
-        b.child(segs, seg);
-    }
-    let addbtn = b.button("追加", &[
-        StyleProp::Height(Dimension::px(38.0)),
-        StyleProp::PaddingLeft(Dimension::px(18.0)),
-        StyleProp::PaddingRight(Dimension::px(18.0)),
-        StyleProp::Display(hayate_core::DisplayValue::Flex),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::JustifyContent(JustifyValue::Center),
-        StyleProp::BackgroundColor(p.accent()),
-        StyleProp::Color(p.black()),
-        StyleProp::BorderRadius(9.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.accent()),
-        StyleProp::FontSize(13.0),
-    ]);
+        ],
+    );
     b.children(addform, &[input, segs, addbtn]);
 
     // Toolbar
@@ -442,44 +529,56 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
         StyleProp::PaddingTop(Dimension::px(10.0)),
         StyleProp::PaddingBottom(Dimension::px(10.0)),
     ]);
-    let tl1 = b.text("表示", &[StyleProp::Color(p.quiet()), StyleProp::FontSize(12.0)]);
+    let tl1 = b.text(
+        "表示",
+        &[StyleProp::Color(p.quiet()), StyleProp::FontSize(12.0)],
+    );
     b.child(toolbar, tl1);
     for (label, active) in [("すべて", true), ("未完了", false), ("完了済み", false)] {
-        let chip = b.button(label, &[
-            StyleProp::Height(Dimension::px(30.0)),
-            StyleProp::PaddingLeft(Dimension::px(12.0)),
-            StyleProp::PaddingRight(Dimension::px(12.0)),
-            StyleProp::Display(hayate_core::DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::JustifyContent(JustifyValue::Center),
-            StyleProp::BackgroundColor(if active { p.accent() } else { p.panel2() }),
-            StyleProp::Color(if active { p.black() } else { p.text() }),
-            StyleProp::BorderRadius(999.0),
-            StyleProp::BorderWidth(1.0),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(if active { p.accent() } else { p.line() }),
-            StyleProp::FontSize(12.0),
-        ]);
+        let chip = b.button(
+            label,
+            &[
+                StyleProp::Height(Dimension::px(30.0)),
+                StyleProp::PaddingLeft(Dimension::px(12.0)),
+                StyleProp::PaddingRight(Dimension::px(12.0)),
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::JustifyContent(JustifyValue::Center),
+                StyleProp::BackgroundColor(if active { p.accent() } else { p.panel2() }),
+                StyleProp::Color(if active { p.black() } else { p.text() }),
+                StyleProp::BorderRadius(999.0),
+                StyleProp::BorderWidth(1.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(if active { p.accent() } else { p.line() }),
+                StyleProp::FontSize(12.0),
+            ],
+        );
         b.child(toolbar, chip);
     }
-    let tl2 = b.text("並び", &[StyleProp::Color(p.quiet()), StyleProp::FontSize(12.0)]);
+    let tl2 = b.text(
+        "並び",
+        &[StyleProp::Color(p.quiet()), StyleProp::FontSize(12.0)],
+    );
     b.child(toolbar, tl2);
     for (label, active) in [("手動", true), ("名前", false), ("優先度", false)] {
-        let chip = b.button(label, &[
-            StyleProp::Height(Dimension::px(30.0)),
-            StyleProp::PaddingLeft(Dimension::px(12.0)),
-            StyleProp::PaddingRight(Dimension::px(12.0)),
-            StyleProp::Display(hayate_core::DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::JustifyContent(JustifyValue::Center),
-            StyleProp::BackgroundColor(if active { p.accent() } else { p.panel2() }),
-            StyleProp::Color(if active { p.black() } else { p.text() }),
-            StyleProp::BorderRadius(999.0),
-            StyleProp::BorderWidth(1.0),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(if active { p.accent() } else { p.line() }),
-            StyleProp::FontSize(12.0),
-        ]);
+        let chip = b.button(
+            label,
+            &[
+                StyleProp::Height(Dimension::px(30.0)),
+                StyleProp::PaddingLeft(Dimension::px(12.0)),
+                StyleProp::PaddingRight(Dimension::px(12.0)),
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::JustifyContent(JustifyValue::Center),
+                StyleProp::BackgroundColor(if active { p.accent() } else { p.panel2() }),
+                StyleProp::Color(if active { p.black() } else { p.text() }),
+                StyleProp::BorderRadius(999.0),
+                StyleProp::BorderWidth(1.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(if active { p.accent() } else { p.line() }),
+                StyleProp::FontSize(12.0),
+            ],
+        );
         b.child(toolbar, chip);
     }
 
@@ -506,24 +605,31 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
             StyleProp::BorderColor(p.line()),
             StyleProp::Opacity(if done { 0.62 } else { 1.0 }),
             StyleProp::BoxShadow(vec![Shadow {
-                offset_x: 0.0, offset_y: 2.0, blur: 6.0, spread: -1.0,
-                color: p.shadow(), inset: false,
+                offset_x: 0.0,
+                offset_y: 2.0,
+                blur: 6.0,
+                spread: -1.0,
+                color: p.shadow(),
+                inset: false,
             }]),
         ]);
-        let check = b.button(if done { "✓" } else { " " }, &[
-            StyleProp::Width(Dimension::px(24.0)),
-            StyleProp::Height(Dimension::px(24.0)),
-            StyleProp::Display(hayate_core::DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::JustifyContent(JustifyValue::Center),
-            StyleProp::BackgroundColor(if done { p.success() } else { p.panel() }),
-            StyleProp::Color(p.black()),
-            StyleProp::BorderRadius(7.0),
-            StyleProp::BorderWidth(1.0),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(if done { p.success() } else { p.line() }),
-            StyleProp::FontSize(14.0),
-        ]);
+        let check = b.button(
+            if done { "✓" } else { " " },
+            &[
+                StyleProp::Width(Dimension::px(24.0)),
+                StyleProp::Height(Dimension::px(24.0)),
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::JustifyContent(JustifyValue::Center),
+                StyleProp::BackgroundColor(if done { p.success() } else { p.panel() }),
+                StyleProp::Color(p.black()),
+                StyleProp::BorderRadius(7.0),
+                StyleProp::BorderWidth(1.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(if done { p.success() } else { p.line() }),
+                StyleProp::FontSize(14.0),
+            ],
+        );
         let dot = b.view(&[
             StyleProp::Width(Dimension::px(10.0)),
             StyleProp::Height(Dimension::px(10.0)),
@@ -535,32 +641,40 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
             StyleProp::Display(hayate_core::DisplayValue::Flex),
             StyleProp::FlexDirection(FlexDirectionValue::Column),
         ]);
-        let label = b.button(txt, &[
-            StyleProp::Display(hayate_core::DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::BackgroundColor(Color::TRANSPARENT),
-            StyleProp::Color(if done { p.quiet() } else { p.ink() }),
-            StyleProp::FontSize(15.0),
-            StyleProp::BorderWidth(0.0),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-        ]);
+        let label = b.button(
+            txt,
+            &[
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::BackgroundColor(Color::TRANSPARENT),
+                StyleProp::Color(if done { p.quiet() } else { p.ink() }),
+                StyleProp::FontSize(15.0),
+                StyleProp::BorderWidth(0.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+            ],
+        );
         b.child(labelwrap, label);
-        let prio_t = b.text(&format!("優先度 {}", PRIO_LABEL[prio as usize]),
-            &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)]);
-        let del = b.button(DELETE_GLYPH, &[
-            StyleProp::Width(Dimension::px(30.0)),
-            StyleProp::Height(Dimension::px(30.0)),
-            StyleProp::Display(hayate_core::DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::JustifyContent(JustifyValue::Center),
-            StyleProp::BackgroundColor(p.panel()),
-            StyleProp::Color(p.muted()),
-            StyleProp::BorderRadius(8.0),
-            StyleProp::BorderWidth(1.0),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(p.line()),
-            StyleProp::FontSize(14.0),
-        ]);
+        let prio_t = b.text(
+            &format!("優先度 {}", PRIO_LABEL[prio as usize]),
+            &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)],
+        );
+        let del = b.button(
+            DELETE_GLYPH,
+            &[
+                StyleProp::Width(Dimension::px(30.0)),
+                StyleProp::Height(Dimension::px(30.0)),
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::JustifyContent(JustifyValue::Center),
+                StyleProp::BackgroundColor(p.panel()),
+                StyleProp::Color(p.muted()),
+                StyleProp::BorderRadius(8.0),
+                StyleProp::BorderWidth(1.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(p.line()),
+                StyleProp::FontSize(14.0),
+            ],
+        );
         b.children(r, &[check, dot, labelwrap, prio_t, del]);
         b.child(list, r);
     }
@@ -576,28 +690,40 @@ pub fn tasks_tree(renderer_label: &str) -> ElementTree {
         StyleProp::AlignItems(AlignValue::Center),
         StyleProp::JustifyContent(JustifyValue::SpaceBetween),
     ]);
-    let f1 = b.text("40% 完了", &[StyleProp::Color(p.muted()), StyleProp::FontSize(13.0)]);
+    let f1 = b.text(
+        "40% 完了",
+        &[StyleProp::Color(p.muted()), StyleProp::FontSize(13.0)],
+    );
     let fright = b.view(&row(12.0));
-    let f2 = b.text(&format!("クリックで完了 / {DELETE_GLYPH} で削除"), &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)]);
-    let clearbtn = b.button("完了を消す", &[
-        StyleProp::Height(Dimension::px(30.0)),
-        StyleProp::PaddingLeft(Dimension::px(12.0)),
-        StyleProp::PaddingRight(Dimension::px(12.0)),
-        StyleProp::Display(hayate_core::DisplayValue::Flex),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::JustifyContent(JustifyValue::Center),
-        StyleProp::BackgroundColor(p.panel2()),
-        StyleProp::Color(p.text()),
-        StyleProp::BorderRadius(8.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.line()),
-        StyleProp::FontSize(12.0),
-    ]);
+    let f2 = b.text(
+        &format!("クリックで完了 / {DELETE_GLYPH} で削除"),
+        &[StyleProp::Color(p.quiet()), StyleProp::FontSize(11.0)],
+    );
+    let clearbtn = b.button(
+        "完了を消す",
+        &[
+            StyleProp::Height(Dimension::px(30.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingRight(Dimension::px(12.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(p.panel2()),
+            StyleProp::Color(p.text()),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.line()),
+            StyleProp::FontSize(12.0),
+        ],
+    );
     b.children(fright, &[f2, clearbtn]);
     b.children(footer, &[f1, fright]);
 
-    b.children(panel, &[header, note, addform, toolbar, list, divider, footer]);
+    b.children(
+        panel,
+        &[header, note, addform, toolbar, list, divider, footer],
+    );
     b.child(stage, panel);
     b.children(root, &[appbar, stage]);
 
@@ -651,8 +777,20 @@ pub fn dual_transition_tree() -> ElementTree {
     b.children(root, &[a, bx]);
 
     let _ = b.tree.render(0.0);
-    b.tree.element_set_style(a, &[StyleProp::BackgroundColor(inactive), StyleProp::BorderColor(inactive)]);
-    b.tree.element_set_style(bx, &[StyleProp::BackgroundColor(active), StyleProp::BorderColor(active)]);
+    b.tree.element_set_style(
+        a,
+        &[
+            StyleProp::BackgroundColor(inactive),
+            StyleProp::BorderColor(inactive),
+        ],
+    );
+    b.tree.element_set_style(
+        bx,
+        &[
+            StyleProp::BackgroundColor(active),
+            StyleProp::BorderColor(active),
+        ],
+    );
     b.tree
 }
 
@@ -717,7 +855,8 @@ mod tests {
             "brand title missing; got {runs:?}"
         );
         assert!(
-            runs.iter().any(|t| t == "レイアウトエンジンに flex-wrap を実装"),
+            runs.iter()
+                .any(|t| t == "レイアウトエンジンに flex-wrap を実装"),
             "seeded todo label missing; got {runs:?}"
         );
     }
@@ -728,7 +867,10 @@ mod tests {
         // (vello) and the tiny-skia test can share the fixture without forking it.
         let mut tree = tasks_tree("vello");
         let runs = text_runs(&mut tree);
-        assert!(runs.iter().any(|t| t == "vello"), "badge should say 'vello'; got {runs:?}");
+        assert!(
+            runs.iter().any(|t| t == "vello"),
+            "badge should say 'vello'; got {runs:?}"
+        );
         assert!(
             !runs.iter().any(|t| t == "tiny-skia"),
             "tiny-skia label must not leak when building for another renderer; got {runs:?}"

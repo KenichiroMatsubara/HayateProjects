@@ -47,7 +47,11 @@ fn composite_without_warmup_errors_instead_of_lazily_creating() {
     let mut compositor = WgpuQuadCompositor::new(harness.device.clone(), harness.queue.clone());
     let texture = harness.device.create_texture(&wgpu::TextureDescriptor {
         label: None,
-        size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: W,
+            height: H,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -117,7 +121,8 @@ fn wgpu_layered_composite_matches_full_raster() {
     let graph = tree.scene_graph();
     let boundaries: HashSet<_> = tree.frame_layers().iter().copied().collect();
     let mut rasterizer =
-        VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0).unwrap();
+        VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0)
+            .unwrap();
     let root_scene = extract_root_scene(graph, root, &boundaries);
     rasterizer.rasterize(root, &root_scene, None).unwrap();
     let boxed_scene = extract_layer_scene(graph, boxed, &boundaries).unwrap();
@@ -128,7 +133,11 @@ fn wgpu_layered_composite_matches_full_raster() {
 
     let target_texture = harness.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("layered_target"),
-        size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: W,
+            height: H,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -173,5 +182,8 @@ fn wgpu_layered_composite_matches_full_raster() {
         .map(|(a, b)| a.abs_diff(*b))
         .max()
         .unwrap_or(0);
-    assert!(worst <= 2, "wgpu レイヤ合成が全面 raster と一致しない（最大 {worst} 差）");
+    assert!(
+        worst <= 2,
+        "wgpu レイヤ合成が全面 raster と一致しない（最大 {worst} 差）"
+    );
 }

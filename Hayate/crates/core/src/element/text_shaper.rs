@@ -177,7 +177,9 @@ impl TextShaper {
         let ifc_eids: Vec<ElementId> = self.shape_memo.keys().copied().collect();
         for eid in ifc_eids {
             let layout = match unrounded_inner_width(projection, eid) {
-                Some(w) if w.is_finite() && w > 0.0 => self.take_or_shape(elements, eid, w, viewport),
+                Some(w) if w.is_finite() && w > 0.0 => {
+                    self.take_or_shape(elements, eid, w, viewport)
+                }
                 // box幅不明: measure 済みの last-wins レイアウトを使う（reshape しない）。
                 _ => self.take_last(eid),
             };
@@ -187,7 +189,9 @@ impl TextShaper {
             }
             // HTML モードが DOM テキストノードへ戻せるよう、各 lowered run に元テキストを刻み直す。
             restamp_run_text(&mut layout);
-            let named = elements.get(&eid).and_then(|el| el.visual.font_family.clone());
+            let named = elements
+                .get(&eid)
+                .and_then(|el| el.visual.font_family.clone());
             self.collect_missing_into(&layout, named.as_deref(), &mut missing_families);
             if let Some(el) = elements.get_mut(&eid) {
                 el.text_layout = Some(layout);
@@ -202,7 +206,9 @@ impl TextShaper {
             .collect();
         for eid in textinput_eids {
             let ambient = ambient_defaults::ambient_at(elements, eid);
-            let Some(el) = elements.get(&eid) else { continue };
+            let Some(el) = elements.get(&eid) else {
+                continue;
+            };
             let display_text = el
                 .edit
                 .as_ref()
@@ -211,7 +217,11 @@ impl TextShaper {
             let font_size = el.visual.font_size.unwrap_or(ambient.font_size);
             let font_weight = el.visual.font_weight.or(ambient.font_weight);
             let font_style = el.visual.font_style;
-            let font_family = el.visual.font_family.clone().or(ambient.font_family.clone());
+            let font_family = el
+                .visual
+                .font_family
+                .clone()
+                .or(ambient.font_family.clone());
             let placeholder = el.text.clone();
 
             // 確定（unrounded）ボックス幅。IFC と同じソースで box幅を 1 箇所に決める。
@@ -371,7 +381,10 @@ impl TextShaper {
             family_name: Some(text::DEFAULT_FONT_FAMILY),
             ..Default::default()
         };
-        let registered = self.font_cx.collection.register_fonts(blob, Some(override_info));
+        let registered = self
+            .font_cx
+            .collection
+            .register_fonts(blob, Some(override_info));
         let ids: Vec<_> = registered.into_iter().map(|(id, _)| id).collect();
         if !ids.is_empty() {
             self.font_cx
@@ -643,7 +656,11 @@ mod tests {
                 .lines()
                 .count()
         };
-        assert_eq!(lines(), lines(), "finalize line count must be deterministic");
+        assert_eq!(
+            lines(),
+            lines(),
+            "finalize line count must be deterministic"
+        );
     }
 
     /// `finalize_ifc` は欠落 family を値で返す: collection 未登録の名前付き `font-family` は
@@ -654,10 +671,7 @@ mod tests {
         let (mut elements, root, _text_id) = one_text_in_box("hello", Some("Inter"), 600.0);
         let outcome = lay_out(&mut shaper, &mut elements, root);
         assert!(
-            outcome
-                .missing_families
-                .iter()
-                .any(|f| f == "Inter"),
+            outcome.missing_families.iter().any(|f| f == "Inter"),
             "an unregistered named family must be returned as missing, got {:?}",
             outcome.missing_families
         );

@@ -4,20 +4,21 @@ use parley::{FontContext, LayoutContext};
 
 use crate::color::Color;
 use crate::element::ambient_defaults;
-use crate::element::effective_visual::{
-    self, child_inherited_context, InheritedVisualContext,
-};
+use crate::element::effective_visual::{self, child_inherited_context, InheritedVisualContext};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pseudo_state::InteractionSnapshot;
 use crate::element::style::{FontStyleValue, TextDecorationValue, TextOverflowValue};
 use crate::element::text::{
-    self, RangeMap, TextBrush, TextLayout, build_ranged_text_layout, RangedTextSpan,
+    self, build_ranged_text_layout, RangeMap, RangedTextSpan, TextBrush, TextLayout,
 };
 use crate::element::tree::{Element, Visual};
 
 /// 親も `text` である `text` 要素 — Taffy ボックスを持たない（ADR-0063）。
-pub(crate) fn is_inline_text_element(elements: &HashMap<ElementId, Element>, id: ElementId) -> bool {
+pub(crate) fn is_inline_text_element(
+    elements: &HashMap<ElementId, Element>,
+    id: ElementId,
+) -> bool {
     let el = match elements.get(&id) {
         Some(e) => e,
         None => return false,
@@ -137,18 +138,10 @@ impl CollectCtx<'_> {
             self.append_segment(id, t, &style);
         }
         let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
-        let child_inherited = child_inherited_context(
-            &inherited,
-            el.kind,
-            &inherited_base,
-            &el.visual,
-        );
+        let child_inherited =
+            child_inherited_context(&inherited, el.kind, &inherited_base, &el.visual);
         let mut children = el.children.clone();
-        children.sort_by_key(|cid| {
-            self.elements
-                .get(cid)
-                .map_or(0, |c| c.visual.z_index)
-        });
+        children.sort_by_key(|cid| self.elements.get(cid).map_or(0, |c| c.visual.z_index));
         for child in children {
             self.walk_ifc_subtree(child, child_inherited.clone());
         }
@@ -207,9 +200,7 @@ pub(crate) fn shape(
 
     if ctx.text.is_empty() {
         return TextLayout {
-            layout: layout_cx
-                .ranged_builder(font_cx, "", 1.0, true)
-                .build(""),
+            layout: layout_cx.ranged_builder(font_cx, "", 1.0, true).build(""),
             runs: Vec::new(),
             font_size: 16.0,
             text: std::sync::Arc::from(""),
@@ -273,7 +264,12 @@ mod tests {
     use super::*;
     use crate::element::tree::Visual;
 
-    fn make_text(id: u64, parent: Option<ElementId>, content: &str, font_size: f32) -> (ElementId, Element) {
+    fn make_text(
+        id: u64,
+        parent: Option<ElementId>,
+        content: &str,
+        font_size: f32,
+    ) -> (ElementId, Element) {
         let eid = ElementId::from_u64(id);
         let mut visual = Visual::default();
         visual.font_size = Some(font_size);

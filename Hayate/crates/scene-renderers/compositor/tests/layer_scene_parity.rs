@@ -65,7 +65,12 @@ fn render_layered(tree: &ElementTree, root: ElementId) -> Pixmap {
             let mut mask = tiny_skia::Mask::new(W, H).unwrap();
             let rect = tiny_skia::Rect::from_xywh(x, y, w, h).unwrap();
             let path = tiny_skia::PathBuilder::from_rect(rect);
-            mask.fill_path(&path, tiny_skia::FillRule::Winding, true, Transform::identity());
+            mask.fill_path(
+                &path,
+                tiny_skia::FillRule::Winding,
+                true,
+                Transform::identity(),
+            );
             mask
         });
         out.draw_pixmap(
@@ -133,14 +138,23 @@ fn scroll_layer_placement_keeps_its_own_viewport_clip() {
 
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let placements = collect_layer_placements(tree.scene_graph(), root, &boundaries);
-    let placement = placements.iter().find(|placement| placement.layer == scroll).unwrap();
+    let placement = placements
+        .iter()
+        .find(|placement| placement.layer == scroll)
+        .unwrap();
     assert_eq!(
         placement.clip,
         Some([0.0, 64.0, 200.0, 136.0]),
         "a translated scroll cache must remain clipped to its viewport at composite time",
     );
 
-    let extracted = extract_scroll_layer_scene(tree.scene_graph(), scroll, &boundaries).unwrap();
+    let extracted = extract_scroll_layer_scene(
+        tree.scene_graph(),
+        scroll,
+        &boundaries,
+        tree.element_scroll_group_affine(scroll),
+    )
+    .unwrap();
     let mut painter = hayate_core::RecordingPainter::new();
     hayate_core::render_scene_graph(&extracted, &mut painter);
     assert!(
@@ -190,7 +204,11 @@ fn transform_layer_composite_matches_full_raster() {
     );
     let _ = tree.render(0.0);
 
-    assert_pixmaps_equal(&render_full(&tree), &render_layered(&tree, root), "transform layer");
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "transform layer",
+    );
 }
 
 #[test]
@@ -242,9 +260,16 @@ fn nested_transform_layers_composite_matches_full_raster() {
     let has_red = painter.ops().iter().any(|op| {
         matches!(op, hayate_core::DrawOp::FillRect { color, .. } if color[0] > 0.9 && color[2] < 0.1)
     });
-    assert!(!has_red, "ネストレイヤ（赤）の内容は親レイヤ texture から除外される");
+    assert!(
+        !has_red,
+        "ネストレイヤ（赤）の内容は親レイヤ texture から除外される"
+    );
 
-    assert_pixmaps_equal(&render_full(&tree), &render_layered(&tree, root), "nested layers");
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "nested layers",
+    );
 }
 
 #[test]
@@ -275,7 +300,10 @@ fn layer_extraction_strips_the_outer_transform_group() {
         .ops()
         .iter()
         .any(|op| matches!(op, hayate_core::DrawOp::PushTransform { .. }));
-    assert!(!has_transform, "外側 transform Group は texture に焼き込まない");
+    assert!(
+        !has_transform,
+        "外側 transform Group は texture に焼き込まない"
+    );
 
     // placement 側が transform を持つ。
     let placements = collect_layer_placements(tree.scene_graph(), root, &boundaries);
@@ -329,7 +357,10 @@ fn ios_bottom_overscroll_composite_matches_full_raster() {
     // iOS プロファイル：下端を 80px 越えたバウンス位置。content は整数 translate で丸ごと上へ動き、
     // 下端に背景（黄）が露出する。合成（テクスチャ quad）と全面 raster がピクセル一致することで、
     // 「overscroll 域のカバレッジ＋背景露出が従来（全面描画）と一致」を固定する（#639 AC）。
-    let (tree, root, _) = overscroll_tree(hayate_core::scroll::ScrollPhysicsProfile::Auto, 300.0 + 80.0);
+    let (tree, root, _) = overscroll_tree(
+        hayate_core::scroll::ScrollPhysicsProfile::Auto,
+        300.0 + 80.0,
+    );
     assert_pixmaps_equal(
         &render_full(&tree),
         &render_layered(&tree, root),
@@ -355,11 +386,16 @@ fn android_stretch_bottom_overscroll_composite_matches_full_raster() {
     // 一様スケール（scale_y > 1・端ピン）に現れる。レイヤ合成はその Group を含む sub-scene をベクタ
     // 再 raster するので、全面 raster と同じ crisp なスケール結果になりピクセル一致する（テクスチャ
     // 拡大のリサンプリングではない）。stretch profile の合成出力が従来の全面描画と一致することを固定。
-    let (tree, root, scroll) =
-        overscroll_tree(hayate_core::scroll::ScrollPhysicsProfile::Android, 300.0 + 80.0);
+    let (tree, root, scroll) = overscroll_tree(
+        hayate_core::scroll::ScrollPhysicsProfile::Android,
+        300.0 + 80.0,
+    );
     // 越境がスケールとして affine に載っていることを確認（profile が効いている前提の担保）。
     let affine = tree.element_scroll_group_affine(scroll);
-    assert!(affine[3] > 1.0, "Android 越境は一様 stretch scale（scale_y > 1）: {affine:?}");
+    assert!(
+        affine[3] > 1.0,
+        "Android 越境は一様 stretch scale（scale_y > 1）: {affine:?}"
+    );
     assert_pixmaps_equal(
         &render_full(&tree),
         &render_layered(&tree, root),

@@ -367,8 +367,14 @@ mod tests {
         // プライマリ修飾（Ctrl=Win/Linux または Meta/Cmd=macOS）が a/c/x/v を
         // クリップボード／全選択 intent に変える（ADR-0103）。両修飾・大小文字とも対応。
         for primary in [MOD_CTRL, MOD_META] {
-            assert_eq!(key_to_edit_intent("a", primary), Some(EditIntent::SelectAll));
-            assert_eq!(key_to_edit_intent("A", primary), Some(EditIntent::SelectAll));
+            assert_eq!(
+                key_to_edit_intent("a", primary),
+                Some(EditIntent::SelectAll)
+            );
+            assert_eq!(
+                key_to_edit_intent("A", primary),
+                Some(EditIntent::SelectAll)
+            );
             assert_eq!(key_to_edit_intent("c", primary), Some(EditIntent::Copy));
             assert_eq!(key_to_edit_intent("x", primary), Some(EditIntent::Cut));
             assert_eq!(key_to_edit_intent("v", primary), Some(EditIntent::Paste));

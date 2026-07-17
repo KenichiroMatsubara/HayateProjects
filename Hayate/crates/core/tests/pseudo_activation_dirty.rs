@@ -1,8 +1,8 @@
 //! 擬似状態の発火が dirty パイプラインへ反映されることを検証する。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter,
-    StyleProp, StylePropKind, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState,
+    RecordingPainter, StyleProp, StylePropKind,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -69,10 +69,7 @@ fn hover_incremental_draw_ops_match_full_rebuild() {
     assert_eq!(incremental_ops.len(), reference_ops.len());
     for (got, expected) in incremental_ops.iter().zip(reference_ops.iter()) {
         match (got, expected) {
-            (
-                DrawOp::FillRect { color: gc, .. },
-                DrawOp::FillRect { color: ec, .. },
-            ) => {
+            (DrawOp::FillRect { color: gc, .. }, DrawOp::FillRect { color: ec, .. }) => {
                 for (a, b) in gc.iter().zip(ec.iter()) {
                     assert!((a - b).abs() < 1e-3);
                 }
@@ -228,11 +225,7 @@ fn unset_pseudo_style_marks_visual_dirty() {
     let root = tree.element_create(50, ElementKind::View);
     tree.set_root(root);
     tree.set_viewport(200.0, 200.0);
-    tree.element_set_pseudo_style(
-        root,
-        PseudoState::Hover,
-        &[StyleProp::FontSize(20.0)],
-    );
+    tree.element_set_pseudo_style(root, PseudoState::Hover, &[StyleProp::FontSize(20.0)]);
     tree.render(0.0);
 
     tree.element_unset_pseudo_style(root, PseudoState::Hover, &[StylePropKind::FontSize]);
@@ -270,7 +263,10 @@ fn hover_transition_keeps_visual_dirty_until_complete() {
 
     // hover 後の最初の render が resolve 境界で transition を起点に固定する。
     tree.render(0.0);
-    assert!(tree.test_transition_active(root), "hover starts a transition");
+    assert!(
+        tree.test_transition_active(root),
+        "hover starts a transition"
+    );
 
     // ウィンドウ内の各フレームは次フレーム分の visual-dirty を維持し、
     // ホストのフレームループを回し続ける。
@@ -284,7 +280,10 @@ fn hover_transition_keeps_visual_dirty_until_complete() {
 
     // 終端に達したフレームは最終値を描画し、トラックを破棄する。
     tree.render(200.0);
-    assert!(!tree.test_transition_active(root), "transition is dropped when done");
+    assert!(
+        !tree.test_transition_active(root),
+        "transition is dropped when done"
+    );
 
     // 完了後はループが静止し、再マークは起きない。
     assert!(

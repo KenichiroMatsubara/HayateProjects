@@ -249,7 +249,10 @@ fn cap_release_velocity(v: f32, t: &ScrollPhysicsTuning) -> f32 {
 /// 離す前に止めた指は静止状態で解放される。推定値はそのウィンドウ全体（最初→最後）の平均速度で、
 /// 軸ごとに [`physics::MAX_RELEASE_VELOCITY`] で上限を切る。ウィンドウ内サンプルが 2 未満、
 /// または所要時間が 0 の場合は fling なし `(0.0, 0.0)`。
-pub fn estimate_release_velocity(samples: &[(f32, f32, f64)], t: &ScrollPhysicsTuning) -> (f32, f32) {
+pub fn estimate_release_velocity(
+    samples: &[(f32, f32, f64)],
+    t: &ScrollPhysicsTuning,
+) -> (f32, f32) {
     let Some(&(last_x, last_y, last_t)) = samples.last() else {
         return (0.0, 0.0);
     };
@@ -289,7 +292,12 @@ pub fn momentum_step(velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32
 /// [`physics::SPRING_DAMPING`]——が変位を 0 へ引く：オーバースクロール中に解放された指は
 /// 緩やかに戻り、エッジを越えてバウンスした fling（外向き速度で進入）は行き過ぎてから振動せず戻る。
 /// 次の `(displacement, velocity)` を返し、両者が rest 閾値に入ると `(0.0, 0.0)`（home、アニメ終了）へスナップする。
-pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
+pub fn spring_step(
+    displacement: f32,
+    velocity: f32,
+    dt_ms: f32,
+    t: &ScrollPhysicsTuning,
+) -> (f32, f32) {
     // 半陰的（シンプレクティック）オイラー：先に速度、次に位置を積分し、
     // フレームサイズの dt でばねを安定に保つ。
     let accel = -t.spring_stiffness * displacement - t.spring_damping * velocity;
@@ -313,7 +321,13 @@ pub fn spring_step(displacement: f32, velocity: f32, dt_ms: f32, t: &ScrollPhysi
 /// 戻そうとする時、残った内向き速度を [`momentum_step`] に渡さず、オフセットを速度 0 でエッジへ
 /// スナップする。よって fling は境界をちょうど 1 回だけ行き過ぎてそこで静止する——ばねをどう
 /// チューニングしても、境界を再度越えて両エッジ間でピンポンすることはない。
-pub fn scroll_motion_step(offset: f32, velocity: f32, max: f32, dt_ms: f32, t: &ScrollPhysicsTuning) -> (f32, f32) {
+pub fn scroll_motion_step(
+    offset: f32,
+    velocity: f32,
+    max: f32,
+    dt_ms: f32,
+    t: &ScrollPhysicsTuning,
+) -> (f32, f32) {
     let max = max.max(0.0);
     if offset < 0.0 {
         // 上のエッジ（edge = 0）を越えた：そこへばねで戻す。非負の結果は
@@ -415,7 +429,10 @@ mod tests {
         // placeholder 0.15（実機校正待ち）。マジックナンバーにしない。
         assert_eq!(physics::STRETCH_MAX, 0.15);
         // default チューニングが定数を反映するので、`tuning.json` で再ビルドなしに上書きできる。
-        assert_eq!(ScrollPhysicsTuning::default().stretch_max, physics::STRETCH_MAX);
+        assert_eq!(
+            ScrollPhysicsTuning::default().stretch_max,
+            physics::STRETCH_MAX
+        );
     }
 
     #[test]
@@ -437,7 +454,9 @@ mod tests {
             "bounded at 1 + STRETCH_MAX (got {capped})",
         );
         // ちょうど dimension で頭打ちに達する。
-        assert!((overscroll_stretch_scale(dim, dim, &t) - (1.0 + physics::STRETCH_MAX)).abs() < 1e-6);
+        assert!(
+            (overscroll_stretch_scale(dim, dim, &t) - (1.0 + physics::STRETCH_MAX)).abs() < 1e-6
+        );
         // 両端対称: 同じ大きさの正負の変位は同じスケール。
         assert_eq!(
             overscroll_stretch_scale(-50.0, dim, &t),
@@ -514,7 +533,10 @@ mod tests {
     fn release_velocity_needs_two_in_window_samples_with_a_real_time_span() {
         // サンプルなし、または 1 個だけでは速度を測る基準がない。
         assert_eq!(estimate_release_velocity(&[], &t()), (0.0, 0.0));
-        assert_eq!(estimate_release_velocity(&[(0.0, 0.0, 5.0)], &t()), (0.0, 0.0));
+        assert_eq!(
+            estimate_release_velocity(&[(0.0, 0.0, 5.0)], &t()),
+            (0.0, 0.0)
+        );
         // 同一時刻のサンプル 2 個：経過時間ゼロでの位置ジャンプは測定可能な速度ではない
         // （ゼロ除算を回避）。
         assert_eq!(
@@ -533,7 +555,10 @@ mod tests {
             (0.0, 40.0, 560.0),
         ];
         let (_, vy) = estimate_release_velocity(&samples, &t());
-        assert_eq!(vy, 0.0, "a finger that paused before lifting releases at rest");
+        assert_eq!(
+            vy, 0.0,
+            "a finger that paused before lifting releases at rest"
+        );
     }
 
     #[test]
@@ -550,7 +575,10 @@ mod tests {
         // （反転せず減速）。
         let (delta, next) = momentum_step(2.0, 16.0, &t());
         assert!(delta > 0.0, "offset advances in the velocity direction");
-        assert!(next > 0.0 && next < 2.0, "friction bleeds speed, keeps sign (next = {next})");
+        assert!(
+            next > 0.0 && next < 2.0,
+            "friction bleeds speed, keeps sign (next = {next})"
+        );
         // 下向きの fling でも対称。
         let (delta_neg, next_neg) = momentum_step(-2.0, 16.0, &t());
         assert!(delta_neg < 0.0);
@@ -597,10 +625,16 @@ mod tests {
         // エッジのオーバースクロール側に留まる。
         let shown = rubber_band_offset(-100.0, 400.0, 200.0, &t());
         assert!(shown < 0.0, "overscroll is past the top edge (got {shown})");
-        assert!(shown > -100.0, "resisted: content lags the finger (got {shown})");
+        assert!(
+            shown > -100.0,
+            "resisted: content lags the finger (got {shown})"
+        );
         // 下のエッジ（max = 400）を越えても対称。
         let shown_bottom = rubber_band_offset(500.0, 400.0, 200.0, &t());
-        assert!(shown_bottom > 400.0 && shown_bottom < 500.0, "got {shown_bottom}");
+        assert!(
+            shown_bottom > 400.0 && shown_bottom < 500.0,
+            "got {shown_bottom}"
+        );
         assert!(
             (shown_bottom - 400.0 + shown).abs() < 1e-3,
             "the curve is symmetric at both edges",
@@ -626,7 +660,10 @@ mod tests {
     fn overscroll_is_bounded_so_the_content_never_tears_off_screen() {
         // 巨大な引きでも `dimension` を超えるオーバースクロールは現れない。
         let extreme = rubber_band_offset(-100_000.0, 400.0, 200.0, &t());
-        assert!(extreme > -200.0, "overscroll asymptotes to the dimension (got {extreme})");
+        assert!(
+            extreme > -200.0,
+            "overscroll asymptotes to the dimension (got {extreme})"
+        );
     }
 
     #[test]
@@ -634,7 +671,10 @@ mod tests {
         // 上のエッジを 60px 越えた位置で静止のまま解放：ばねが変位を 0 へ引き戻す
         // （絶対値が小さくなり、内向きに動く）。
         let (x, v) = spring_step(-60.0, 0.0, 16.0, &t());
-        assert!(x > -60.0 && x < 0.0, "displacement shrinks toward the edge (got {x})");
+        assert!(
+            x > -60.0 && x < 0.0,
+            "displacement shrinks toward the edge (got {x})"
+        );
         assert!(v > 0.0, "velocity points back toward the edge (got {v})");
     }
 
@@ -671,7 +711,10 @@ mod tests {
                 break;
             }
         }
-        assert!(min_x < 0.0, "the bounce carried the content past the edge (min {min_x})");
+        assert!(
+            min_x < 0.0,
+            "the bounce carried the content past the edge (min {min_x})"
+        );
         assert_eq!((x, v), (0.0, 0.0), "and eased back to rest at the edge");
     }
 
@@ -695,15 +738,24 @@ mod tests {
         // 下のエッジを行き過ぎる fling は外向きに動いたままオーバースクロール（offset > max）へ
         // 渡るので、次フレームでバウンスして戻せる。
         let (offset, v) = scroll_motion_step(395.0, 2.0, 400.0, 16.0, &t());
-        assert!(offset > 400.0, "inertia carries past the edge (got {offset})");
-        assert!(v > 0.0, "still moving outward, to be sprung back next frame (got {v})");
+        assert!(
+            offset > 400.0,
+            "inertia carries past the edge (got {offset})"
+        );
+        assert!(
+            v > 0.0,
+            "still moving outward, to be sprung back next frame (got {v})"
+        );
     }
 
     #[test]
     fn motion_in_overscroll_springs_back_toward_the_edge() {
         // 下のエッジを越えた静止状態：ばね戻しがオフセットを max へ引き、速度は内向きを指す。
         let (offset, v) = scroll_motion_step(440.0, 0.0, 400.0, 16.0, &t());
-        assert!(offset < 440.0 && offset > 400.0, "eases back toward the edge (got {offset})");
+        assert!(
+            offset < 440.0 && offset > 400.0,
+            "eases back toward the edge (got {offset})"
+        );
         assert!(v < 0.0, "velocity points back inward (got {v})");
         // 上のエッジを越えても対称。
         let (top_offset, top_v) = scroll_motion_step(-40.0, 0.0, 400.0, 16.0, &t());
@@ -730,9 +782,15 @@ mod tests {
                 break;
             }
         }
-        assert!(max_seen > max, "the fling bounced into overscroll (peak {max_seen})");
+        assert!(
+            max_seen > max,
+            "the fling bounced into overscroll (peak {max_seen})"
+        );
         assert!(settled.is_some(), "and the bounce settled");
-        assert!((offset - max).abs() < 1.0, "resting at the edge (got {offset})");
+        assert!(
+            (offset - max).abs() < 1.0,
+            "resting at the edge (got {offset})"
+        );
     }
 
     #[test]
@@ -760,22 +818,38 @@ mod tests {
                 break;
             }
         }
-        assert!(!re_entered_with_speed, "the bounce re-crossed the boundary carrying speed");
-        assert_eq!(rest_offset, Some(max), "the fling settled exactly at the edge it hit");
+        assert!(
+            !re_entered_with_speed,
+            "the bounce re-crossed the boundary carrying speed"
+        );
+        assert_eq!(
+            rest_offset,
+            Some(max),
+            "the fling settled exactly at the edge it hit"
+        );
     }
 
     #[test]
     fn a_move_within_slop_keeps_the_gesture_a_pending_tap() {
         let mut g = ScrollGesture::new(sv(), (100.0, 100.0));
-        assert_eq!(g.on_move((104.0, 100.0), SCROLL_SLOP_PX), MoveOutcome::Pending);
-        assert!(g.is_tap(), "an unresolved press is still a tap → click on release");
+        assert_eq!(
+            g.on_move((104.0, 100.0), SCROLL_SLOP_PX),
+            MoveOutcome::Pending
+        );
+        assert!(
+            g.is_tap(),
+            "an unresolved press is still a tap → click on release"
+        );
     }
 
     #[test]
     fn crossing_slop_takes_over_scrolling_without_applying_a_delta() {
         let mut g = ScrollGesture::new(sv(), (100.0, 100.0));
         // 上へ 20px は 8px デッドゾーンを越える。
-        assert_eq!(g.on_move((100.0, 80.0), SCROLL_SLOP_PX), MoveOutcome::StartScroll);
+        assert_eq!(
+            g.on_move((100.0, 80.0), SCROLL_SLOP_PX),
+            MoveOutcome::StartScroll
+        );
         assert!(!g.is_tap(), "after takeover a release must not click");
     }
 
@@ -783,7 +857,7 @@ mod tests {
     fn while_scrolling_content_follows_the_finger_one_to_one() {
         let mut g = ScrollGesture::new(sv(), (100.0, 100.0));
         g.on_move((100.0, 80.0), SCROLL_SLOP_PX); // 移行、last = (100,80)
-        // 指が y=60 まで上昇し続ける：コンテンツが追従 → オフセットが 20 増える。
+                                                  // 指が y=60 まで上昇し続ける：コンテンツが追従 → オフセットが 20 増える。
         assert_eq!(
             g.on_move((100.0, 60.0), SCROLL_SLOP_PX),
             MoveOutcome::Scroll { dx: 0.0, dy: 20.0 },
@@ -794,5 +868,4 @@ mod tests {
             MoveOutcome::Scroll { dx: 0.0, dy: -10.0 },
         );
     }
-
 }

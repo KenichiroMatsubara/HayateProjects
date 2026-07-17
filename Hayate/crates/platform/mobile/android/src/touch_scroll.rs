@@ -58,7 +58,10 @@ impl TouchScrollState {
         if now_ms - started_ms < scroll::PRESS_TIMEOUT_MS {
             return false;
         }
-        let (x, y, _) = self.pending_pointer_down.take().expect("pending press checked above");
+        let (x, y, _) = self
+            .pending_pointer_down
+            .take()
+            .expect("pending press checked above");
         tree.on_pointer_down_with_kind(x, y, 0, PointerKind::Touch);
         true
     }
@@ -223,7 +226,9 @@ mod tests {
 
     fn scrollable_with_active_style() -> (ElementTree, ElementId) {
         let (mut tree, scroll) = scrollable();
-        let content = tree.hit_test(100.0, 50.0).expect("fixture content must be hittable");
+        let content = tree
+            .hit_test(100.0, 50.0)
+            .expect("fixture content must be hittable");
         tree.element_set_pseudo_style(
             content,
             PseudoState::Active,
@@ -240,7 +245,11 @@ mod tests {
 
         state.apply(&mut tree, PointerInput::Down { x: 100.0, y: 50.0 }, 0.0);
         tree.render(0.0);
-        assert_eq!(tree.active_element(), None, "scroll と競合中の tap はまだ active でない");
+        assert_eq!(
+            tree.active_element(),
+            None,
+            "scroll と競合中の tap はまだ active でない"
+        );
         assert!(
             tree.frame_layer_dirty().is_empty(),
             "保留中の press は scroll content cache を dirty にしてはならない",
@@ -248,7 +257,11 @@ mod tests {
 
         state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 30.0 }, 16.0);
         tree.render(16.0);
-        assert_eq!(tree.active_element(), None, "fast drag は pending tap を棄却する");
+        assert_eq!(
+            tree.active_element(),
+            None,
+            "fast drag は pending tap を棄却する"
+        );
         assert!(
             !tree.frame_layer_dirty().contains(&scroll),
             "slop 超過時にも active cancel の content raster を発生させてはならない",
@@ -265,7 +278,10 @@ mod tests {
         assert_eq!(tree.active_element(), None, "timeout 前は press を保留する");
 
         assert!(state.advance_press(&mut tree, 100.0));
-        assert!(tree.active_element().is_some(), "100ms hold で active を表示する");
+        assert!(
+            tree.active_element().is_some(),
+            "100ms hold で active を表示する"
+        );
         tree.render(100.0);
         assert!(
             tree.frame_layer_dirty().contains(&scroll),
@@ -273,7 +289,11 @@ mod tests {
         );
 
         state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 30.0 }, 116.0);
-        assert_eq!(tree.active_element(), None, "active 後に drag と確定したら cancel する");
+        assert_eq!(
+            tree.active_element(),
+            None,
+            "active 後に drag と確定したら cancel する"
+        );
     }
 
     #[test]
@@ -289,7 +309,10 @@ mod tests {
         state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 10.0 }, 32.0);
 
         let (_, oy) = tree.element_get_scroll_offset(scroll);
-        assert_eq!(oy, 20.0, "スクロール中のドラッグは範囲内で 1:1 追従するはず");
+        assert_eq!(
+            oy, 20.0,
+            "スクロール中のドラッグは範囲内で 1:1 追従するはず"
+        );
     }
 
     #[test]
@@ -308,7 +331,11 @@ mod tests {
             .into_iter()
             .filter(|d| matches!(d.event, Event::Click { .. }))
             .collect();
-        assert_eq!(clicks.len(), 1, "slop 未満のドラッグは通常のタップ→クリックのはず");
+        assert_eq!(
+            clicks.len(),
+            1,
+            "slop 未満のドラッグは通常のタップ→クリックのはず"
+        );
         assert_eq!(clicks[0].listener_id, listener);
 
         let (_, oy) = tree.element_get_scroll_offset(scroll);
@@ -365,7 +392,10 @@ mod tests {
             tree.render(t);
             t += 16.0;
         }
-        assert!(tree.has_pending_visual_work(), "この時点でまだ慣性が続いているはず");
+        assert!(
+            tree.has_pending_visual_work(),
+            "この時点でまだ慣性が続いているはず"
+        );
         let (_, oy_mid_momentum) = tree.element_get_scroll_offset(scroll);
 
         // 慣性が止まる前に、新しい指で掴んで下方向にドラッグする
@@ -401,7 +431,14 @@ mod tests {
         // 遷移フレーム（slop 消費、オフセット不変）。
         state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 40.0 }, 16.0);
         // 端（400px）を 200px 越える生ドラッグ（400 + 200 = 600px 相当）。
-        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: -560.0 }, 32.0);
+        state.apply(
+            &mut tree,
+            PointerInput::Move {
+                x: 100.0,
+                y: -560.0,
+            },
+            32.0,
+        );
 
         let (_, oy) = tree.element_get_scroll_offset(scroll);
         assert!(

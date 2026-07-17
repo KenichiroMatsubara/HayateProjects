@@ -37,28 +37,37 @@ impl Studio {
     /// row[align:center] > col[flexGrow:1] > button[titleStyle] > text。
     /// タイトル text 要素の id を返す。`list` 末尾へ append する（実測の add op 列と同じ）。
     fn add_row(&mut self, text: &str) -> ElementId {
-        let row = self.mk(ElementKind::View, &[
-            StyleProp::Display(DisplayValue::Flex),
-            StyleProp::FlexDirection(FlexDirectionValue::Row),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::Gap(Dimension::px(12.0)),
-            StyleProp::Padding(Dimension::px(12.0)),
-        ]);
-        let col = self.mk(ElementKind::View, &[
-            StyleProp::FlexGrow(1.0),
-            StyleProp::Display(DisplayValue::Flex),
-            StyleProp::FlexDirection(FlexDirectionValue::Column),
-        ]);
+        let row = self.mk(
+            ElementKind::View,
+            &[
+                StyleProp::Display(DisplayValue::Flex),
+                StyleProp::FlexDirection(FlexDirectionValue::Row),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::Gap(Dimension::px(12.0)),
+                StyleProp::Padding(Dimension::px(12.0)),
+            ],
+        );
+        let col = self.mk(
+            ElementKind::View,
+            &[
+                StyleProp::FlexGrow(1.0),
+                StyleProp::Display(DisplayValue::Flex),
+                StyleProp::FlexDirection(FlexDirectionValue::Column),
+            ],
+        );
         self.tree.element_append_child(row, col);
         // titleStyle: overflow:hidden + maxLines:1 + textOverflow:ellipsis。
-        let title_btn = self.mk(ElementKind::Button, &[
-            StyleProp::Display(DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::DefaultFontSize(15.0),
-            StyleProp::Overflow(OverflowValue::Hidden),
-            StyleProp::MaxLines(1),
-            StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
-        ]);
+        let title_btn = self.mk(
+            ElementKind::Button,
+            &[
+                StyleProp::Display(DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::DefaultFontSize(15.0),
+                StyleProp::Overflow(OverflowValue::Hidden),
+                StyleProp::MaxLines(1),
+                StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
+            ],
+        );
         self.tree.element_append_child(col, title_btn);
         let title = self.mk(ElementKind::Text, &[StyleProp::DefaultFontSize(15.0)]);
         self.tree.element_set_text(title, text);
@@ -77,9 +86,10 @@ impl Studio {
             .find(|&r| {
                 // row > col > button > title
                 self.tree.ordered_children(r).iter().any(|&col| {
-                    self.tree.ordered_children(col).iter().any(|&btn| {
-                        self.tree.ordered_children(btn).contains(&title)
-                    })
+                    self.tree
+                        .ordered_children(col)
+                        .iter()
+                        .any(|&btn| self.tree.ordered_children(btn).contains(&title))
                 })
             })
             .expect("row containing title");
@@ -100,33 +110,45 @@ fn studio() -> Studio {
         id
     };
 
-    let shell = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::percent(100.0)),
-        StyleProp::Height(Dimension::percent(100.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::DefaultColor(ink),
-        StyleProp::DefaultFontSize(14.0),
-    ]);
+    let shell = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::percent(100.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::DefaultColor(ink),
+            StyleProp::DefaultFontSize(14.0),
+        ],
+    );
     tree.set_root(shell);
     tree.set_viewport(900.0, 720.0);
 
-    let card = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::px(620.0)),
-        StyleProp::MaxWidth(Dimension::percent(100.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::Gap(Dimension::px(16.0)),
-        StyleProp::Padding(Dimension::px(22.0)),
-    ]);
+    let card = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::px(620.0)),
+            StyleProp::MaxWidth(Dimension::percent(100.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::Gap(Dimension::px(16.0)),
+            StyleProp::Padding(Dimension::px(22.0)),
+        ],
+    );
     tree.element_append_child(shell, card);
 
-    let list = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::Gap(Dimension::px(8.0)),
-    ]);
+    let list = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::Gap(Dimension::px(8.0)),
+        ],
+    );
     tree.element_append_child(card, list);
 
     Studio { tree, next, list }
@@ -136,7 +158,11 @@ fn studio() -> Studio {
 fn assert_title_intact(tree: &ElementTree, title: ElementId, full: &str, label: &str) {
     let lines = tree.test_text_line_count(title);
     let shaped = tree.test_shaped_text(title);
-    assert_eq!(lines, Some(1), "{label}: タイトルは 1 行（line_count）。shaped={shaped:?}");
+    assert_eq!(
+        lines,
+        Some(1),
+        "{label}: タイトルは 1 行（line_count）。shaped={shaped:?}"
+    );
     assert_eq!(
         shaped.as_deref(),
         Some(full),

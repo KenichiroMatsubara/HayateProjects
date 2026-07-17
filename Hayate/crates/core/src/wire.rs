@@ -58,11 +58,11 @@ mod dispatch {
 }
 
 pub use dispatch::unset_kind_from_u32;
-pub use mutation_sink::MutationSink;
-pub use protocol::*;
 pub use edit_intent::{
     decode_edit_intent, dispatch_edit_intent, EditDispatchOutcome, EditIntentProtocolError,
 };
+pub use mutation_sink::MutationSink;
+pub use protocol::*;
 
 /// Fully validated, owned mutation. A packet is decoded entirely into this
 /// semantic sequence before any target sink is allowed to observe it.
@@ -131,62 +131,85 @@ struct SemanticMutationBuffer {
 
 impl MutationSink for SemanticMutationBuffer {
     fn append_child(&mut self, parent: ElementId, child: ElementId) {
-        self.mutations.push(SemanticMutation::AppendChild(parent, child));
+        self.mutations
+            .push(SemanticMutation::AppendChild(parent, child));
     }
     fn insert_before(&mut self, parent: ElementId, child: ElementId, before: ElementId) {
-        self.mutations.push(SemanticMutation::InsertBefore(parent, child, before));
+        self.mutations
+            .push(SemanticMutation::InsertBefore(parent, child, before));
     }
-    fn remove(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::Remove(id)); }
-    fn set_root(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::SetRoot(id)); }
+    fn remove(&mut self, id: ElementId) {
+        self.mutations.push(SemanticMutation::Remove(id));
+    }
+    fn set_root(&mut self, id: ElementId) {
+        self.mutations.push(SemanticMutation::SetRoot(id));
+    }
     fn set_style(&mut self, id: ElementId, props: Vec<StyleProp>) {
         self.mutations.push(SemanticMutation::SetStyle(id, props));
     }
     fn set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
-        self.mutations.push(SemanticMutation::SetTransform(id, matrix));
+        self.mutations
+            .push(SemanticMutation::SetTransform(id, matrix));
     }
     fn set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
-        self.mutations.push(SemanticMutation::SetScrollOffset(id, x, y));
+        self.mutations
+            .push(SemanticMutation::SetScrollOffset(id, x, y));
     }
-    fn apply_focus(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::Focus(id)); }
-    fn apply_blur(&mut self, id: ElementId) { self.mutations.push(SemanticMutation::Blur(id)); }
+    fn apply_focus(&mut self, id: ElementId) {
+        self.mutations.push(SemanticMutation::Focus(id));
+    }
+    fn apply_blur(&mut self, id: ElementId) {
+        self.mutations.push(SemanticMutation::Blur(id));
+    }
     fn create(&mut self, id: ElementId, kind: ElementKind) {
         self.mutations.push(SemanticMutation::Create(id, kind));
     }
     fn set_text(&mut self, id: ElementId, text: &str) {
-        self.mutations.push(SemanticMutation::SetText(id, text.to_owned()));
+        self.mutations
+            .push(SemanticMutation::SetText(id, text.to_owned()));
     }
     fn unset_style(&mut self, id: ElementId, kind: StylePropKind) {
         self.mutations.push(SemanticMutation::UnsetStyle(id, kind));
     }
     fn set_text_content(&mut self, id: ElementId, text: &str) {
-        self.mutations.push(SemanticMutation::SetTextContent(id, text.to_owned()));
+        self.mutations
+            .push(SemanticMutation::SetTextContent(id, text.to_owned()));
     }
     fn set_disabled(&mut self, id: ElementId, disabled: bool) {
-        self.mutations.push(SemanticMutation::SetDisabled(id, disabled));
+        self.mutations
+            .push(SemanticMutation::SetDisabled(id, disabled));
     }
     fn set_src(&mut self, id: ElementId, url: &str) {
-        self.mutations.push(SemanticMutation::SetSrc(id, url.to_owned()));
+        self.mutations
+            .push(SemanticMutation::SetSrc(id, url.to_owned()));
     }
     fn set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: Vec<StyleProp>) {
-        self.mutations.push(SemanticMutation::SetPseudoStyle(id, state, props));
+        self.mutations
+            .push(SemanticMutation::SetPseudoStyle(id, state, props));
     }
     fn set_style_variant(&mut self, id: ElementId, condition: ViewportCondition, prop: StyleProp) {
-        self.mutations.push(SemanticMutation::SetStyleVariant(id, condition, prop));
+        self.mutations
+            .push(SemanticMutation::SetStyleVariant(id, condition, prop));
     }
     fn set_user_select(&mut self, id: ElementId, value: UserSelectValue) {
-        self.mutations.push(SemanticMutation::SetUserSelect(id, value));
+        self.mutations
+            .push(SemanticMutation::SetUserSelect(id, value));
     }
     fn set_multiline(&mut self, id: ElementId, multiline: bool) {
-        self.mutations.push(SemanticMutation::SetMultiline(id, multiline));
+        self.mutations
+            .push(SemanticMutation::SetMultiline(id, multiline));
     }
     fn set_aria_label(&mut self, id: ElementId, label: &str) {
-        self.mutations.push(SemanticMutation::SetAriaLabel(id, label.to_owned()));
+        self.mutations
+            .push(SemanticMutation::SetAriaLabel(id, label.to_owned()));
     }
     fn set_role(&mut self, id: ElementId, role: &str) {
-        self.mutations.push(SemanticMutation::SetRole(id, role.to_owned()));
+        self.mutations
+            .push(SemanticMutation::SetRole(id, role.to_owned()));
     }
     fn set_font_family(&mut self, id: ElementId, family: &str) {
-        self.mutations.push(SemanticMutation::SetFontFamily(id, family.to_owned()));
+        self.mutations
+            .push(SemanticMutation::SetFontFamily(id, family.to_owned()));
     }
     fn set_draw(&mut self, id: ElementId, commands: Vec<protocol::DrawCommand>) {
         self.mutations.push(SemanticMutation::SetDraw(id, commands));
@@ -427,8 +450,11 @@ mod tests {
 
     impl MutationSink for RecordingSink {
         fn append_child(&mut self, parent: ElementId, child: ElementId) {
-            self.calls
-                .push(format!("append_child({}, {})", parent.to_u64(), child.to_u64()));
+            self.calls.push(format!(
+                "append_child({}, {})",
+                parent.to_u64(),
+                child.to_u64()
+            ));
         }
         fn insert_before(&mut self, parent: ElementId, child: ElementId, before: ElementId) {
             self.calls.push(format!(
@@ -449,8 +475,11 @@ mod tests {
                 .push(format!("set_style({}, {} props)", id.to_u64(), props.len()));
         }
         fn set_transform(&mut self, id: ElementId, matrix: Option<[f64; 6]>) {
-            self.calls
-                .push(format!("set_transform({}, {})", id.to_u64(), matrix.is_some()));
+            self.calls.push(format!(
+                "set_transform({}, {})",
+                id.to_u64(),
+                matrix.is_some()
+            ));
         }
         fn set_scroll_offset(&mut self, id: ElementId, x: f32, y: f32) {
             self.calls
@@ -467,7 +496,8 @@ mod tests {
                 .push(format!("create({}, {kind:?})", id.to_u64()));
         }
         fn set_text(&mut self, id: ElementId, text: &str) {
-            self.calls.push(format!("set_text({}, {text:?})", id.to_u64()));
+            self.calls
+                .push(format!("set_text({}, {text:?})", id.to_u64()));
         }
         fn unset_style(&mut self, id: ElementId, kind: StylePropKind) {
             self.calls
@@ -482,7 +512,8 @@ mod tests {
                 .push(format!("set_disabled({}, {disabled})", id.to_u64()));
         }
         fn set_src(&mut self, id: ElementId, url: &str) {
-            self.calls.push(format!("set_src({}, {url:?})", id.to_u64()));
+            self.calls
+                .push(format!("set_src({}, {url:?})", id.to_u64()));
         }
         fn set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: Vec<StyleProp>) {
             self.calls.push(format!(
@@ -513,15 +544,19 @@ mod tests {
                 .push(format!("set_aria_label({}, {label:?})", id.to_u64()));
         }
         fn set_role(&mut self, id: ElementId, role: &str) {
-            self.calls.push(format!("set_role({}, {role:?})", id.to_u64()));
+            self.calls
+                .push(format!("set_role({}, {role:?})", id.to_u64()));
         }
         fn set_font_family(&mut self, id: ElementId, family: &str) {
             self.calls
                 .push(format!("set_font_family({}, {family:?})", id.to_u64()));
         }
         fn set_draw(&mut self, id: ElementId, commands: Vec<protocol::DrawCommand>) {
-            self.calls
-                .push(format!("set_draw({}, {} commands)", id.to_u64(), commands.len()));
+            self.calls.push(format!(
+                "set_draw({}, {} commands)",
+                id.to_u64(),
+                commands.len()
+            ));
         }
     }
 
@@ -542,7 +577,10 @@ mod tests {
         apply_mutations_to_sink(&mut sink, &ops, &[], &texts, &[]).unwrap();
         assert_eq!(
             sink.calls,
-            vec!["create(7, Text)".to_string(), "set_text(7, \"hello\")".to_string()]
+            vec![
+                "create(7, Text)".to_string(),
+                "set_text(7, \"hello\")".to_string()
+            ]
         );
     }
 
@@ -559,7 +597,10 @@ mod tests {
         ];
 
         assert!(apply_mutations_to_sink(&mut sink, &ops, &[], &[], &[]).is_err());
-        assert!(sink.calls.is_empty(), "validation failure must happen before dispatch starts");
+        assert!(
+            sink.calls.is_empty(),
+            "validation failure must happen before dispatch starts"
+        );
     }
 
     #[test]
@@ -625,7 +666,11 @@ mod tests {
             1.0,
             2.0,
         ];
-        let texts = vec!["Close".to_string(), "button".to_string(), "Inter".to_string()];
+        let texts = vec![
+            "Close".to_string(),
+            "button".to_string(),
+            "Inter".to_string(),
+        ];
         apply_mutations_to_sink(&mut sink, &ops, &[], &texts, &[]).unwrap();
         assert_eq!(
             sink.calls,
@@ -729,11 +774,21 @@ mod tests {
         for (tag, kind) in [(0.0, "move"), (1.0, "extend"), (2.0, "delete")] {
             for (granularity_wire, granularity) in granularities {
                 for (direction_wire, direction) in directions {
-                    let decoded = decode_edit_intent(&[tag, granularity_wire, direction_wire]).unwrap();
+                    let decoded =
+                        decode_edit_intent(&[tag, granularity_wire, direction_wire]).unwrap();
                     let expected = match kind {
-                        "move" => EditIntent::Move { granularity, direction },
-                        "extend" => EditIntent::Extend { granularity, direction },
-                        _ => EditIntent::Delete { granularity, direction },
+                        "move" => EditIntent::Move {
+                            granularity,
+                            direction,
+                        },
+                        "extend" => EditIntent::Extend {
+                            granularity,
+                            direction,
+                        },
+                        _ => EditIntent::Delete {
+                            granularity,
+                            direction,
+                        },
                     };
                     assert_eq!(decoded, expected);
                 }

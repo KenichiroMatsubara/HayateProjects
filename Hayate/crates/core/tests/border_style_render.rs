@@ -2,8 +2,8 @@
 //! draw op へ、`solid` は従来のエッジ描画を維持する。
 
 use hayate_core::{
-    BorderStyleValue, Color, Dimension, DrawOp, ElementKind, ElementTree, RecordingPainter,
-    StyleProp, render_scene_graph,
+    render_scene_graph, BorderStyleValue, Color, Dimension, DrawOp, ElementKind, ElementTree,
+    RecordingPainter, StyleProp,
 };
 
 fn draw_ops(tree: &mut ElementTree) -> Vec<DrawOp> {

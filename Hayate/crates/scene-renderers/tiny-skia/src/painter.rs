@@ -1,17 +1,17 @@
 use hayate_core::{
-    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, RenderImageAlphaType,
-    ScenePainter, ShadowOccluder, StrokeStyle, TextRunData, build_draw_path, is_notdef,
-    missing_glyph_placeholder,
+    build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
+    PathSink, PathVerb, RenderImage, RenderImageAlphaType, ScenePainter, ShadowOccluder,
+    StrokeStyle, TextRunData,
 };
 use skrifa::{
-    GlyphId, MetadataProvider,
     instance::{LocationRef, NormalizedCoord, Size},
     outline::{DrawSettings, OutlinePen},
     raw::FontRef,
+    GlyphId, MetadataProvider,
 };
 use tiny_skia::{
-    Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap,
-    PixmapPaint, PixmapRef, PremultipliedColorU8, Stroke, Transform,
+    Color, FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint,
+    PixmapRef, PremultipliedColorU8, Stroke, Transform,
 };
 
 fn normalized_coords_ref(coords: &[i16]) -> &[NormalizedCoord] {
@@ -48,7 +48,6 @@ impl<'a> TinySkiaPainter<'a> {
             },
         }
     }
-
 }
 
 impl ScenePainter for TinySkiaPainter<'_> {
@@ -278,26 +277,10 @@ impl ScenePainter for TinySkiaPainter<'_> {
         draw_text_run(&mut self.pixmap, x, y, color, data, transform, mask);
     }
 
-    fn draw_image(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        data: &RenderImage,
-    ) {
+    fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
         let transform = self.state.transform;
         let mask = self.state.clip_masks.last();
-        draw_image(
-            &mut self.pixmap,
-            x,
-            y,
-            width,
-            height,
-            data,
-            transform,
-            mask,
-        );
+        draw_image(&mut self.pixmap, x, y, width, height, data, transform, mask);
     }
 
     fn push_transform(&mut self, transform: [f64; 6]) {
@@ -545,10 +528,8 @@ fn draw_inset_blurred_rounded_rect(
     let cx = x + offset_x + width * 0.5;
     let cy = y + offset_y + height * 0.5;
 
-    let no_skew = transform.kx == 0.0
-        && transform.ky == 0.0
-        && transform.sx > 0.0
-        && transform.sy > 0.0;
+    let no_skew =
+        transform.kx == 0.0 && transform.ky == 0.0 && transform.sx > 0.0 && transform.sy > 0.0;
 
     // hole が潰れていれば border-box 全面が影（被覆 = 1）。
     if hole_w <= 0.0 || hole_h <= 0.0 {
@@ -584,11 +565,33 @@ fn draw_inset_blurred_rounded_rect(
     };
     if no_skew {
         composite_blur_direct(
-            pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, None, inset_coverage,
+            pixmap,
+            mask,
+            transform,
+            bx0,
+            by0,
+            bx1,
+            by1,
+            cx,
+            cy,
+            color,
+            None,
+            inset_coverage,
         );
     } else {
         composite_blur_via_temp(
-            pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, None, inset_coverage,
+            pixmap,
+            mask,
+            transform,
+            bx0,
+            by0,
+            bx1,
+            by1,
+            cx,
+            cy,
+            color,
+            None,
+            inset_coverage,
         );
     }
 }
@@ -648,10 +651,8 @@ fn draw_blurred_rounded_rect(
     // 回転・スキュー・非正スケールが無ければ（Hayate の実利用: content_scale ＋ scroll 平行移動）、
     // 一時 pixmap を介さず対象 pixmap へ直接 1 パス合成する——大きな影 bbox の alloc＋blit を避け、
     // かつ画面外の帯は反転写像で clamp して走査しない。それ以外の affine は一時 pixmap にフォールバック。
-    let no_skew = transform.kx == 0.0
-        && transform.ky == 0.0
-        && transform.sx > 0.0
-        && transform.sy > 0.0;
+    let no_skew =
+        transform.kx == 0.0 && transform.ky == 0.0 && transform.sx > 0.0 && transform.sy > 0.0;
     if no_skew {
         composite_blur_direct(
             pixmap, mask, transform, bx0, by0, bx1, by1, cx, cy, color, occluder, coverage,
@@ -911,7 +912,9 @@ fn draw_text_run(
         // フォント任せの無音ボックスではなく意図的なプレースホルダ箱を描き、欠落が
         // 消えずに見えるようにする。
         if is_notdef(glyph) {
-            draw_missing_glyph(pixmap, run_x, run_y, &paint, glyph, font_size, transform, mask);
+            draw_missing_glyph(
+                pixmap, run_x, run_y, &paint, glyph, font_size, transform, mask,
+            );
             continue;
         }
         let outline = match outlines.get(GlyphId::new(glyph.id)) {
@@ -935,8 +938,8 @@ fn draw_text_run(
             .pre_translate(run_x + glyph.x, run_y + glyph.y)
             .pre_scale(1.0, -1.0);
         if let Some(tangent) = skew {
-            glyph_transform = glyph_transform
-                .pre_concat(Transform::from_row(1.0, 0.0, tangent, 1.0, 0.0, 0.0));
+            glyph_transform =
+                glyph_transform.pre_concat(Transform::from_row(1.0, 0.0, tangent, 1.0, 0.0, 0.0));
         }
 
         pixmap.fill_path(&path, &paint, FillRule::Winding, glyph_transform, mask);
@@ -1098,7 +1101,16 @@ mod shadow_tests {
         let adj_h = height - delta.max(0.0);
         let scale = 0.5 * erf7(inv_std_dev * 0.5 * (adj_w.max(adj_h) - 0.5 * radius));
         blurred_rrect_coverage(
-            lx, ly, adj_w, adj_h, min_edge, r1, exponent, inv_exponent, inv_std_dev, scale,
+            lx,
+            ly,
+            adj_w,
+            adj_h,
+            min_edge,
+            r1,
+            exponent,
+            inv_exponent,
+            inv_std_dev,
+            scale,
         )
     }
 
@@ -1106,7 +1118,10 @@ mod shadow_tests {
     fn coverage_is_high_inside_and_fades_to_zero_outside() {
         // 40x40 の矩形、角丸なし、σ=6。中心は実質不透明、外へ大きく離れると 0 へ。
         let center = coverage_at(40.0, 40.0, 0.0, 6.0, 0.0, 0.0);
-        assert!(center > 0.9, "interior coverage should be near 1, got {center}");
+        assert!(
+            center > 0.9,
+            "interior coverage should be near 1, got {center}"
+        );
         let far = coverage_at(40.0, 40.0, 0.0, 6.0, 60.0, 0.0);
         assert!(far < 0.02, "coverage far outside should vanish, got {far}");
     }

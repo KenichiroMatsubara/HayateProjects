@@ -29,7 +29,7 @@ pub(crate) fn apply_props_to_dom(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{DimensionUnit, DisplayValue, FlexDirectionValue, AlignValue, JustifyValue};
+    use hayate_core::{AlignValue, DimensionUnit, DisplayValue, FlexDirectionValue, JustifyValue};
 
     fn ok(packed: &[f32]) -> Vec<StyleProp> {
         decode(packed).expect("decode should not fail")
@@ -390,9 +390,9 @@ mod tests {
     fn multiple_props_in_sequence() {
         // background_color + width + display の組み合わせ
         let packet = [
-            0.0_f32, 1.0, 0.0, 0.0, 1.0,  // TAG_BACKGROUND_COLOR=0 + rgba
-            5.0, 100.0, 0.0,               // TAG_WIDTH=5 + px
-            11.0, 0.0,                     // TAG_DISPLAY=11 + flex
+            0.0_f32, 1.0, 0.0, 0.0, 1.0, // TAG_BACKGROUND_COLOR=0 + rgba
+            5.0, 100.0, 0.0, // TAG_WIDTH=5 + px
+            11.0, 0.0, // TAG_DISPLAY=11 + flex
         ];
         let props = ok(&packet);
         assert_eq!(props.len(), 3);
@@ -411,4 +411,3 @@ mod tests {
     // wasm32 外では JsValue::from_str() が process::abort() を呼ぶスタブのため。
     // これらの経路は wasm-pack テストでカバーする。
 }
-

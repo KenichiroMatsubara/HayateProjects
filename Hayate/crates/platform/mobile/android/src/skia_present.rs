@@ -66,7 +66,11 @@ mod tests {
     fn raster_frame_rgbx_produces_tightly_packed_rows_of_the_requested_size() {
         let graph = SceneGraph::default();
         let pixels = raster_frame_rgbx(&graph, 4, 3, 1.0, [1.0, 0.0, 0.0, 1.0], 0.0, 0.0);
-        assert_eq!(pixels.len(), 4 * 3 * 4, "tightly packed RGBX8888, no stride padding");
+        assert_eq!(
+            pixels.len(),
+            4 * 3 * 4,
+            "tightly packed RGBX8888, no stride padding"
+        );
         // clear color 赤・不透明 → 全ピクセルが RGBX(255,0,0,255)。
         for px in pixels.chunks_exact(4) {
             assert_eq!(px, [255, 0, 0, 255]);

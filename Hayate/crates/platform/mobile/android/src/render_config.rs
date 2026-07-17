@@ -153,7 +153,10 @@ mod tests {
 
     #[test]
     fn backend_parses_and_round_trips() {
-        assert_eq!(WgpuBackend::from_str_opt("vulkan"), Some(WgpuBackend::Vulkan));
+        assert_eq!(
+            WgpuBackend::from_str_opt("vulkan"),
+            Some(WgpuBackend::Vulkan)
+        );
         assert_eq!(WgpuBackend::from_str_opt("gl"), Some(WgpuBackend::Gl));
         assert_eq!(WgpuBackend::from_str_opt("metal"), None);
         for b in [WgpuBackend::Vulkan, WgpuBackend::Gl] {

@@ -124,7 +124,9 @@ mod platform {
                 Some(handle)
             }
             Err(err) => {
-                log::warn!("hayate-adapter-android: reload WS の open に失敗（backoff 再試行）: {err}");
+                log::warn!(
+                    "hayate-adapter-android: reload WS の open に失敗（backoff 再試行）: {err}"
+                );
                 let _ = tx.send(WsEvent::Closed);
                 None
             }

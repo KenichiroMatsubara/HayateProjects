@@ -11,8 +11,8 @@
 //! 前後で検証する。
 
 use hayate_core::{
-    Color, Dimension, DisplayValue, DrawOp, ElementKind, ElementTree, FlexDirectionValue,
-    RecordingPainter, StyleProp, ViewportCondition, render_scene_graph,
+    render_scene_graph, Color, Dimension, DisplayValue, DrawOp, ElementKind, ElementTree,
+    FlexDirectionValue, RecordingPainter, StyleProp, ViewportCondition,
 };
 
 fn retained_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -24,9 +24,14 @@ fn retained_ops(tree: &ElementTree) -> Vec<DrawOp> {
 fn fill_rects(ops: &[DrawOp]) -> Vec<([f32; 4], f32, f32, f32, f32)> {
     ops.iter()
         .filter_map(|op| match op {
-            DrawOp::FillRect { x, y, width, height, color, .. } => {
-                Some((*color, *x, *y, *width, *height))
-            }
+            DrawOp::FillRect {
+                x,
+                y,
+                width,
+                height,
+                color,
+                ..
+            } => Some((*color, *x, *y, *width, *height)),
             _ => None,
         })
         .collect()
@@ -37,11 +42,18 @@ fn ephemeral_fill_rects(tree: &ElementTree) -> Vec<([f32; 4], f32, f32, f32, f32
 }
 
 fn text_run_count(ops: &[DrawOp]) -> usize {
-    ops.iter().filter(|op| matches!(op, DrawOp::DrawTextRun { .. })).count()
+    ops.iter()
+        .filter(|op| matches!(op, DrawOp::DrawTextRun { .. }))
+        .count()
 }
 
 fn max_width(w: f32) -> ViewportCondition {
-    ViewportCondition { min_width: None, max_width: Some(w), min_height: None, max_height: None }
+    ViewportCondition {
+        min_width: None,
+        max_width: Some(w),
+        min_height: None,
+        max_height: None,
+    }
 }
 
 /// `display:none` のレイアウト系 variant が、狭幅でサブツリー（box＋子 text）ごと消え、
@@ -50,7 +62,10 @@ fn max_width(w: f32) -> ViewportCondition {
 fn display_none_variant_hides_subtree_across_resize() {
     let mut next = 1u64;
     let mut tree = ElementTree::new();
-    tree.register_font("Inter", include_bytes!("../assets/fonts/NotoSansJP.ttf").to_vec());
+    tree.register_font(
+        "Inter",
+        include_bytes!("../assets/fonts/NotoSansJP.ttf").to_vec(),
+    );
 
     let mut mk = |tree: &mut ElementTree, kind, styles: &[StyleProp]| {
         let id = tree.element_create(next, kind);
@@ -59,33 +74,49 @@ fn display_none_variant_hides_subtree_across_resize() {
         id
     };
 
-    let root = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::percent(100.0)),
-        StyleProp::Height(Dimension::px(40.0)),
-        StyleProp::FlexDirection(FlexDirectionValue::Row),
-        StyleProp::BackgroundColor(Color::new(0.9, 0.9, 0.9, 1.0)),
-        StyleProp::DefaultFontFamily("Inter".to_string()),
-        StyleProp::DefaultColor(Color::BLACK),
-        StyleProp::DefaultFontSize(14.0),
-    ]);
+    let root = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+            StyleProp::BackgroundColor(Color::new(0.9, 0.9, 0.9, 1.0)),
+            StyleProp::DefaultFontFamily("Inter".to_string()),
+            StyleProp::DefaultColor(Color::BLACK),
+            StyleProp::DefaultFontSize(14.0),
+        ],
+    );
     tree.set_root(root);
     tree.set_viewport(800.0, 600.0);
 
     // 常に見えるアンカー（青）。
-    let anchor = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::px(60.0)),
-        StyleProp::Height(Dimension::px(40.0)),
-        StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
-    ]);
+    let anchor = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::px(60.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+        ],
+    );
     tree.element_append_child(root, anchor);
 
     // 優先度ラベル相当: maxWidth:719 で display:none になる View＋子 text（緑の箱）。
-    let wrap = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::px(120.0)),
-        StyleProp::Height(Dimension::px(40.0)),
-        StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
-    ]);
-    tree.element_set_style_variant(wrap, max_width(719.0), StyleProp::Display(DisplayValue::None));
+    let wrap = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::px(120.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style_variant(
+        wrap,
+        max_width(719.0),
+        StyleProp::Display(DisplayValue::None),
+    );
     let label = mk(&mut tree, ElementKind::Text, &[StyleProp::FontSize(11.0)]);
     tree.element_set_text(label, "優先度 中");
     tree.element_append_child(wrap, label);
@@ -93,7 +124,9 @@ fn display_none_variant_hides_subtree_across_resize() {
 
     const GREEN: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
     let has_green = |rects: &[([f32; 4], f32, f32, f32, f32)]| {
-        rects.iter().any(|(c, _, _, w, h)| *c == GREEN && *w > 0.0 && *h > 0.0)
+        rects
+            .iter()
+            .any(|(c, _, _, w, h)| *c == GREEN && *w > 0.0 && *h > 0.0)
     };
 
     // ── 広幅 (800 > 719): variant 不成立 → ラベルは見える ──
@@ -101,23 +134,42 @@ fn display_none_variant_hides_subtree_across_resize() {
     let wide = retained_ops(&tree);
     assert!(has_green(&fill_rects(&wide)), "@800 緑の box が見える");
     assert_eq!(text_run_count(&wide), 1, "@800 ラベル text が描かれる");
-    assert_eq!(fill_rects(&wide), ephemeral_fill_rects(&tree), "@800 retained==ephemeral");
+    assert_eq!(
+        fill_rects(&wide),
+        ephemeral_fill_rects(&tree),
+        "@800 retained==ephemeral"
+    );
 
     // ── 狭幅 (390 <= 719): variant 成立 → サブツリーごと消える ──
     tree.set_viewport(390.0, 600.0);
     tree.render(16.0);
     let narrow = retained_ops(&tree);
     assert!(!has_green(&fill_rects(&narrow)), "@390 緑の box は消える");
-    assert_eq!(text_run_count(&narrow), 0, "@390 子 text のグリフも漏れない");
-    assert_eq!(fill_rects(&narrow), ephemeral_fill_rects(&tree), "@390 retained==ephemeral");
+    assert_eq!(
+        text_run_count(&narrow),
+        0,
+        "@390 子 text のグリフも漏れない"
+    );
+    assert_eq!(
+        fill_rects(&narrow),
+        ephemeral_fill_rects(&tree),
+        "@390 retained==ephemeral"
+    );
 
     // ── 広幅へ戻す: ラベルが復活する ──
     tree.set_viewport(800.0, 600.0);
     tree.render(32.0);
     let back = retained_ops(&tree);
-    assert!(has_green(&fill_rects(&back)), "@800 に戻すと緑の box が復活");
+    assert!(
+        has_green(&fill_rects(&back)),
+        "@800 に戻すと緑の box が復活"
+    );
     assert_eq!(text_run_count(&back), 1, "@800 に戻すとラベル text が復活");
-    assert_eq!(fill_rects(&back), ephemeral_fill_rects(&tree), "戻し後も retained==ephemeral");
+    assert_eq!(
+        fill_rects(&back),
+        ephemeral_fill_rects(&tree),
+        "戻し後も retained==ephemeral"
+    );
 }
 
 /// `display` 以外のレイアウト系 variant（`width`）もリサイズで実レイアウトへ効く。
@@ -132,21 +184,31 @@ fn dimension_variant_applies_to_layout_on_resize() {
         id
     };
 
-    let root = mk(&mut tree, &[
-        StyleProp::Width(Dimension::percent(100.0)),
-        StyleProp::Height(Dimension::px(40.0)),
-        StyleProp::FlexDirection(FlexDirectionValue::Row),
-    ]);
+    let root = mk(
+        &mut tree,
+        &[
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+        ],
+    );
     tree.set_root(root);
     tree.set_viewport(800.0, 600.0);
 
     // 既定幅 100、maxWidth:719 で幅 40 に縮む箱。
-    let box_id = mk(&mut tree, &[
-        StyleProp::Width(Dimension::px(100.0)),
-        StyleProp::Height(Dimension::px(40.0)),
-        StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
-    ]);
-    tree.element_set_style_variant(box_id, max_width(719.0), StyleProp::Width(Dimension::px(40.0)));
+    let box_id = mk(
+        &mut tree,
+        &[
+            StyleProp::Width(Dimension::px(100.0)),
+            StyleProp::Height(Dimension::px(40.0)),
+            StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0)),
+        ],
+    );
+    tree.element_set_style_variant(
+        box_id,
+        max_width(719.0),
+        StyleProp::Width(Dimension::px(40.0)),
+    );
     tree.element_append_child(root, box_id);
 
     let width_of = |tree: &ElementTree| -> f32 {
@@ -162,5 +224,9 @@ fn dimension_variant_applies_to_layout_on_resize() {
 
     tree.set_viewport(390.0, 600.0);
     tree.render(16.0);
-    assert_eq!(width_of(&tree), 40.0, "@390 variant width applies to layout");
+    assert_eq!(
+        width_of(&tree),
+        40.0,
+        "@390 variant width applies to layout"
+    );
 }

@@ -1,5 +1,5 @@
 use crate::node::{NodeId, NodeKind, SceneGraph, TextRunData};
-use crate::render::draw_path::{Affine2, DrawFillRule, StrokeStyle, transform_verbs};
+use crate::render::draw_path::{transform_verbs, Affine2, DrawFillRule, StrokeStyle};
 use crate::render::RenderImage;
 use crate::wire::protocol::PathVerb;
 
@@ -237,14 +237,7 @@ pub trait ScenePainter {
 
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData);
 
-    fn draw_image(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        data: &RenderImage,
-    );
+    fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage);
 
     fn push_transform(&mut self, transform: [f64; 6]);
 
@@ -440,14 +433,7 @@ impl ScenePainter for RecordingPainter {
         });
     }
 
-    fn draw_image(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        data: &RenderImage,
-    ) {
+    fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
         self.ops.push(DrawOp::DrawImage {
             x,
             y,
@@ -576,21 +562,21 @@ impl ScenePainter for NullPainter {
 
     fn draw_text_run(&mut self, _x: f32, _y: f32, _color: [f32; 4], _data: &TextRunData) {}
 
-    fn draw_image(
-        &mut self,
-        _x: f32,
-        _y: f32,
-        _width: f32,
-        _height: f32,
-        _data: &RenderImage,
-    ) {
-    }
+    fn draw_image(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _data: &RenderImage) {}
 
     fn push_transform(&mut self, _transform: [f64; 6]) {}
 
     fn pop_transform(&mut self) {}
 
-    fn push_clip_rect(&mut self, _x: f32, _y: f32, _width: f32, _height: f32, _corner_radii: [f32; 4]) {}
+    fn push_clip_rect(
+        &mut self,
+        _x: f32,
+        _y: f32,
+        _width: f32,
+        _height: f32,
+        _corner_radii: [f32; 4],
+    ) {
+    }
 
     fn push_clip_draw_path(&mut self, _verbs: &[PathVerb]) {}
 
@@ -820,9 +806,18 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
                     } => {
                         let rect = [
                             PathVerb::MoveTo { x: *cx, y: *cy },
-                            PathVerb::LineTo { x: cx + width, y: *cy },
-                            PathVerb::LineTo { x: cx + width, y: cy + height },
-                            PathVerb::LineTo { x: *cx, y: cy + height },
+                            PathVerb::LineTo {
+                                x: cx + width,
+                                y: *cy,
+                            },
+                            PathVerb::LineTo {
+                                x: cx + width,
+                                y: cy + height,
+                            },
+                            PathVerb::LineTo {
+                                x: *cx,
+                                y: cy + height,
+                            },
                             PathVerb::Close,
                         ];
                         let tv = transform_verbs(&rect, origin.then(ctm));

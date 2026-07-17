@@ -122,7 +122,10 @@ fn permanently_failing_family_is_given_up_and_not_re_requested() {
             break;
         }
     }
-    assert!(gave_up, "a family that always fails must eventually be given up on");
+    assert!(
+        gave_up,
+        "a family that always fails must eventually be given up on"
+    );
 
     // 諦めた後は、再シェイプを強制してもファミリを再リクエストしない。
     tree.element_set_text(label, "あい");

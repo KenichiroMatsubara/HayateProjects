@@ -852,7 +852,9 @@ fn subtree_element_ids_returns_root_and_descendants() {
     assert_eq!(ids.len(), 2);
     assert!(ids.contains(&child.to_u64()));
     assert!(ids.contains(&grandchild.to_u64()));
-    assert!(tree.subtree_element_ids(ElementId::from_u64(999)).is_empty());
+    assert!(tree
+        .subtree_element_ids(ElementId::from_u64(999))
+        .is_empty());
 }
 
 // ── TextInput + IME テスト ──────────────────────────────────────
@@ -1016,8 +1018,14 @@ fn preedit_text_run_respects_padding() {
             }
         })
         .expect("preedit TextRun with padding");
-    assert!((run_x - 12.0).abs() < 0.5, "preedit x should include padding-left");
-    assert!((run_y - 8.0).abs() < 0.5, "preedit y should include padding-top");
+    assert!(
+        (run_x - 12.0).abs() < 0.5,
+        "preedit x should include padding-left"
+    );
+    assert!(
+        (run_y - 8.0).abs() < 0.5,
+        "preedit y should include padding-top"
+    );
 }
 
 #[test]
@@ -1739,7 +1747,10 @@ fn pseudo_hover_applies_to_ancestor_when_pointer_over_child() {
     tree.render(0.0);
 
     let (entered, left) = tree.update_pointer_hover(Some(child));
-    assert!(entered.contains(&root), "parent must enter :hover with child");
+    assert!(
+        entered.contains(&root),
+        "parent must enter :hover with child"
+    );
     assert!(entered.contains(&child));
     assert!(left.is_empty());
 
@@ -1794,8 +1805,12 @@ fn viewport_resize_reflows_percent_children() {
 
     tree.set_viewport(300.0, 600.0);
     tree.render(0.0);
-    let left_narrow = tree.element_layout_rect(left).expect("left layout after resize");
-    let right_narrow = tree.element_layout_rect(right).expect("right layout after resize");
+    let left_narrow = tree
+        .element_layout_rect(left)
+        .expect("left layout after resize");
+    let right_narrow = tree
+        .element_layout_rect(right)
+        .expect("right layout after resize");
     assert!(
         (left_narrow.2 - 201.0).abs() < 1.0,
         "67% of 300 should be ~201 after resize, got {}",
@@ -1829,7 +1844,9 @@ fn viewport_resize_does_not_override_explicit_root_px_size() {
 
     tree.set_viewport(300.0, 200.0);
     tree.render(0.0);
-    let rect = tree.element_layout_rect(root).expect("root layout after resize");
+    let rect = tree
+        .element_layout_rect(root)
+        .expect("root layout after resize");
     assert!(
         (rect.2 - 100.0).abs() < 0.5,
         "explicit root px width must not track viewport, got {}",
@@ -1858,7 +1875,10 @@ fn commit_frame_resolves_layout_without_render() {
         ],
     );
 
-    assert!(!tree.has_layout(), "layout cache should be empty before commit_frame");
+    assert!(
+        !tree.has_layout(),
+        "layout cache should be empty before commit_frame"
+    );
 
     tree.commit_frame();
 
@@ -1930,5 +1950,8 @@ fn commit_frame_then_effective_visual_reflects_pseudo_hover_state() {
     let visual = tree
         .element_effective_visual(root)
         .expect("root should resolve effective visual");
-    assert_eq!(visual.background_color, Some(Color::new(1.0, 0.0, 0.0, 1.0)));
+    assert_eq!(
+        visual.background_color,
+        Some(Color::new(1.0, 0.0, 0.0, 1.0))
+    );
 }

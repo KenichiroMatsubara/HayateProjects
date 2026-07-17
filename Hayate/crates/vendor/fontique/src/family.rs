@@ -3,7 +3,7 @@
 
 //! Model for font families.
 
-use super::{FontStyle, FontWeight, FontWidth, family_name::FamilyName, font::FontInfo};
+use super::{family_name::FamilyName, font::FontInfo, FontStyle, FontWeight, FontWidth};
 use crate::AtomicCounter;
 use alloc::sync::Arc;
 use core::sync::atomic::Ordering;

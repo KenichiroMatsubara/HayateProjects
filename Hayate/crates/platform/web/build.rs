@@ -76,12 +76,7 @@ fn generate_builtin_fonts(fonts_json: &PathBuf) {
     writeln!(file, "    match family {{").unwrap();
 
     for entry in &entries {
-        writeln!(
-            file,
-            "        {:?} => Some({:?}),",
-            entry.family, entry.url
-        )
-        .unwrap();
+        writeln!(file, "        {:?} => Some({:?}),", entry.family, entry.url).unwrap();
     }
 
     writeln!(file, "        _ => None,").unwrap();

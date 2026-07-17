@@ -25,7 +25,10 @@ pub fn assert_channel_max(px: [u8; 4], ch: usize, max: u8, label: &str) {
 pub fn assert_near(px: [u8; 4], expected: [u8; 4], tol: u8, label: &str) {
     for (i, (&got, &want)) in px.iter().zip(expected.iter()).enumerate() {
         let diff = got.abs_diff(want);
-        assert!(diff <= tol, "{label}: ch{i} got {got} want {want}±{tol} (full {px:?})");
+        assert!(
+            diff <= tol,
+            "{label}: ch{i} got {got} want {want}±{tol} (full {px:?})"
+        );
     }
 }
 

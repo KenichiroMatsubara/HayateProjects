@@ -4,8 +4,8 @@
 //! `&self` で副作用がなく、render のメモ化済みトランジション状態を進めない。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter, StyleProp,
-    render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState,
+    RecordingPainter, StyleProp,
 };
 
 /// retained scene が描く最初の塗りつぶし矩形の背景色。

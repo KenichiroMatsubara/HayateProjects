@@ -86,7 +86,10 @@ impl ShadowOccluder {
         if px < self.x || py < self.y || px > self.x + self.width || py > self.y + self.height {
             return false;
         }
-        let r = self.corner_radius.min(self.width * 0.5).min(self.height * 0.5);
+        let r = self
+            .corner_radius
+            .min(self.width * 0.5)
+            .min(self.height * 0.5);
         if r <= 0.0 {
             return true;
         }

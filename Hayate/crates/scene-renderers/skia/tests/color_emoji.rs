@@ -113,5 +113,8 @@ fn skia_does_not_fabricate_saturation_for_plain_black_text() {
     let graph = tree.render(0.0).clone();
     let pixels = render_scene_to_pixels(&graph);
     let sat = max_saturation(&pixels);
-    assert!(sat < 20, "plain black text must stay near-grayscale, got max spread {sat}");
+    assert!(
+        sat < 20,
+        "plain black text must stay near-grayscale, got max spread {sat}"
+    );
 }

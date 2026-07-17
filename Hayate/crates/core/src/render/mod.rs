@@ -8,17 +8,17 @@ use linebender_resource_handle::FontData;
 
 pub use linebender_resource_handle::Blob;
 
-pub use missing_glyph::{
-    FALLBACK_FONT_CHAIN, MissingGlyphPlaceholder, NOTDEF_GLYPH_ID, is_notdef,
-    missing_glyph_placeholder,
-};
 pub use draw_path::{
-    Affine2, DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, StrokeStyle, build_draw_path,
-    transform_verbs,
+    build_draw_path, transform_verbs, Affine2, DrawFillRule, DrawLineCap, DrawLineJoin, PathSink,
+    StrokeStyle,
+};
+pub use missing_glyph::{
+    is_notdef, missing_glyph_placeholder, MissingGlyphPlaceholder, FALLBACK_FONT_CHAIN,
+    NOTDEF_GLYPH_ID,
 };
 pub use painter::{
-    DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter, SceneRecorder,
-    render_scene_graph,
+    render_scene_graph, DrawOp, NullPainter, RecordedFrame, RecordingPainter, ScenePainter,
+    SceneRecorder,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]

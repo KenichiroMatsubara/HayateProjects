@@ -9,18 +9,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::closure::Closure;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{HtmlCanvasElement, ResizeObserver, ResizeObserverEntry};
 
+/// リサイズ通知を出すべきか（サブピクセルの揺れは無視する）。core の正本へ委譲する。
+pub use hayate_core::viewport_size_changed;
 /// レイアウトビューポート（CSS px）、バッキングストアサイズ（物理 px）、コンテンツスケール（dpr）。
 ///
 /// Web/Android で共有する `hayate_core::ViewportMetrics` の別名。寸法導出の正本は core 側。
 pub use hayate_core::ViewportMetrics as CanvasResizeMetrics;
-/// リサイズ通知を出すべきか（サブピクセルの揺れは無視する）。core の正本へ委譲する。
-pub use hayate_core::viewport_size_changed;
 
 /// CSS コンテンツボックスと DPR からビューポートとバッファの寸法を導出する。
 ///

@@ -207,9 +207,7 @@ pub(crate) fn hover_set_for_hit(
     elements: &std::collections::HashMap<ElementId, Element>,
     deepest_hit: ElementId,
 ) -> HashSet<ElementId> {
-    ancestor_chain(elements, deepest_hit)
-        .into_iter()
-        .collect()
+    ancestor_chain(elements, deepest_hit).into_iter().collect()
 }
 
 /// 2 つの hover 集合の差分を (entered, left) の要素 id に分ける。

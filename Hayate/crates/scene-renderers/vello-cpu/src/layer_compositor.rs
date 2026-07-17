@@ -73,7 +73,12 @@ impl LayerRasterizer for VelloCpuLayerRasterizer {
     ) -> Result<(), String> {
         let (w, h) = (clamp_u16(self.width), clamp_u16(self.height));
         let mut pixmap = Pixmap::new(w, h);
-        VelloCpuSceneRenderer::new().render_scene(scene, &mut pixmap, TRANSPARENT, self.content_scale);
+        VelloCpuSceneRenderer::new().render_scene(
+            scene,
+            &mut pixmap,
+            TRANSPARENT,
+            self.content_scale,
+        );
         self.textures.insert(layer, Arc::new(pixmap));
         Ok(())
     }
@@ -83,7 +88,9 @@ impl LayerRasterizer for VelloCpuLayerRasterizer {
     }
 
     fn texture_bytes_per_layer(&self) -> u64 {
-        u64::from(self.width) * u64::from(self.height) * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+        u64::from(self.width)
+            * u64::from(self.height)
+            * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
     }
 
     fn discard(&mut self, layer: ElementId) {

@@ -8,17 +8,19 @@ use std::sync::Arc;
 use crate::edit_context::{self, EditContextHandle, EditInput};
 use crate::pointer_input::{self, PointerInput, PointerInputGuard};
 use crate::resize_observer::{self, ResizeObserverGuard};
-use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning};
-
-use hayate_core::{
-    BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
-    CommittedFrame, ElementTree, FontFetcher, FontStyleValue, RenderImage, RenderScaleDriver,
-    PointerKind, StyleProp, TextDecorationValue, effective_content_scale,
+use hayate_core::scroll::{
+    self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile, ScrollPhysicsTuning,
 };
-use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
-use hayate_app_host::renderer_selection::SceneRendererKind;
-use hayate_app_host::{FrameId, FrameTransaction, FontFetchResult, FontMailbox, FontMailboxHandle};
+
 use crate::image_decode;
+use hayate_app_host::renderer_selection::SceneRendererKind;
+use hayate_app_host::{FontFetchResult, FontMailbox, FontMailboxHandle, FrameId, FrameTransaction};
+use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
+use hayate_core::{
+    effective_content_scale, BorderStyleValue, Color, CommittedFrame, CursorValue,
+    DocumentEventKind, EditIntent, ElementId, ElementTree, FontFetcher, FontStyleValue,
+    PointerKind, RenderImage, RenderScaleDriver, StyleProp, TextDecorationValue,
+};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::HtmlCanvasElement;
@@ -47,7 +49,9 @@ const FETCH_BACKOFF_MAX_MS: i32 = 5_000;
 fn wire_frame_id(value: f64) -> Result<FrameId, JsValue> {
     const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
     if !value.is_finite() || value.fract() != 0.0 || !(1.0..=MAX_SAFE_INTEGER).contains(&value) {
-        return Err(JsValue::from_str("frame protocol: frame id must be a positive safe integer"));
+        return Err(JsValue::from_str(
+            "frame protocol: frame id must be a positive safe integer",
+        ));
     }
     Ok(FrameId::from_u64(value as u64))
 }
@@ -60,10 +64,8 @@ async fn backoff_sleep(ms: i32) {
             let cb = Closure::once_into_js(move || {
                 let _ = resolve.call0(&JsValue::NULL);
             });
-            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(
-                cb.unchecked_ref(),
-                ms,
-            );
+            let _ =
+                win.set_timeout_with_callback_and_timeout_and_arguments_0(cb.unchecked_ref(), ms);
         }
     });
     let _ = JsFuture::from(promise).await;
@@ -302,7 +304,9 @@ impl HayateElementRenderer {
         canvas.set_width(metrics.buffer_width);
         canvas.set_height(metrics.buffer_height);
 
-        let mut backend: SelectedBackend = init_render_host(canvas.clone()).await.map_err(anyhow_to_js)?;
+        let mut backend: SelectedBackend = init_render_host(canvas.clone())
+            .await
+            .map_err(anyhow_to_js)?;
         backend.set_layer_present_enabled(layer_present_enabled.unwrap_or(true));
         backend.resize(
             metrics.buffer_width,
@@ -489,7 +493,10 @@ impl HayateElementRenderer {
         };
         set("backgroundColor", color_to_js(visual.background_color));
         set("opacity", JsValue::from_f64(visual.opacity as f64));
-        set("borderRadius", JsValue::from_f64(visual.border_radius as f64));
+        set(
+            "borderRadius",
+            JsValue::from_f64(visual.border_radius as f64),
+        );
         set("borderWidth", JsValue::from_f64(visual.border_width as f64));
         set("borderColor", color_to_js(visual.border_color));
         set("borderStyle", border_style_to_js(visual.border_style));
@@ -509,7 +516,10 @@ impl HayateElementRenderer {
                 .unwrap_or(JsValue::NULL),
         );
         set("fontStyle", font_style_to_js(visual.font_style));
-        set("textDecoration", text_decoration_to_js(visual.text_decoration));
+        set(
+            "textDecoration",
+            text_decoration_to_js(visual.text_decoration),
+        );
         set("zIndex", JsValue::from_f64(visual.z_index as f64));
         set(
             "fontFamily",
@@ -579,8 +589,11 @@ impl HayateElementRenderer {
         self.canvas.set_height(metrics.buffer_height);
         // buffer 寸法と content scale だけを差し替える。viewport（CSS px）は据え置き＝layout・
         // ヒットテストは論理座標のまま。描画サーフェスを作り直したのでキャッシュ面を invalidate。
-        self.backend
-            .resize(metrics.buffer_width, metrics.buffer_height, metrics.content_scale);
+        self.backend.resize(
+            metrics.buffer_width,
+            metrics.buffer_height,
+            metrics.content_scale,
+        );
         self.planner.invalidate();
     }
 
@@ -606,9 +619,8 @@ impl HayateElementRenderer {
             // レイヤごとの帯ジオメトリをここで一度だけ計算して渡す（vello バックエンドはこれを
             // 使って scroll 内容レイヤを可視域＋overscan の帯サイズだけ raster する。対応しない
             // バックエンドは無視して従来どおりフルサーフェス raster する）。
-            let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_from_inputs(
-                frame.scroll_inputs(),
-            );
+            let scroll_geometry =
+                hayate_layer_compositor::scroll_layer_geometry_from_inputs(frame.scroll_inputs());
             backend
                 .present_layers(
                     frame.scene(),
@@ -857,9 +869,8 @@ impl HayateElementRenderer {
                         if let Some((down_x, down_y, modifiers, down_kind, _)) =
                             self.pending_pointer_down.take()
                         {
-                            self.tree.on_pointer_down_with_kind(
-                                down_x, down_y, modifiers, down_kind,
-                            );
+                            self.tree
+                                .on_pointer_down_with_kind(down_x, down_y, modifiers, down_kind);
                         }
                         self.tree.on_pointer_up_with_kind(x, y, kind);
                     }
@@ -1144,8 +1155,7 @@ impl HayateElementRenderer {
         let intent = hayate_core::wire::decode_edit_intent(raw_intent)
             .map_err(|error| JsValue::from_str(&format!("edit intent protocol: {error:?}")))?;
         if intent == EditIntent::Paste {
-            let target_id = wire_frame_id(raw_target)
-                .map(|id| ElementId::from_u64(id.get()))?;
+            let target_id = wire_frame_id(raw_target).map(|id| ElementId::from_u64(id.get()))?;
             if !self.tree.can_apply_edit_intent(target_id, intent) {
                 return Ok(1);
             }
@@ -1290,7 +1300,8 @@ impl HayateElementRenderer {
     /// 比較なしにスキップできる。レイアウト前も同様に `null`。core が世代を追うため `&mut self`。
     pub fn poll_accessibility(&mut self) -> JsValue {
         match self.tree.poll_accessibility_update() {
-            hayate_core::AccessibilityPoll::Changed(update) => match serde_json::to_string(&update) {
+            hayate_core::AccessibilityPoll::Changed(update) => match serde_json::to_string(&update)
+            {
                 Ok(json) => JsValue::from_str(&json),
                 Err(_) => JsValue::NULL,
             },
@@ -1413,8 +1424,7 @@ fn image_bitmap_to_rgba(
     let canvas: HtmlCanvasElement = document.create_element("canvas").ok()?.dyn_into().ok()?;
     canvas.set_width(width);
     canvas.set_height(height);
-    let ctx: web_sys::CanvasRenderingContext2d =
-        canvas.get_context("2d").ok()??.dyn_into().ok()?;
+    let ctx: web_sys::CanvasRenderingContext2d = canvas.get_context("2d").ok()??.dyn_into().ok()?;
     ctx.draw_image_with_image_bitmap(bitmap, 0.0, 0.0).ok()?;
     // getImageData はストレート α（非 premultiplied）で返すため、image クレートの
     // into_rgba8() とアルファ扱いが一致する（parity）。

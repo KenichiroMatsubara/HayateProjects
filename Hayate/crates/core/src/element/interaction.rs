@@ -342,7 +342,11 @@ impl Interaction {
     /// 無効化を view に記録させる（ADR-0100/0089）。dirty マークはフィールド書き込みに
     /// 先行するので、`:active` トランジションは切替前の見た目から始まる。`active_element`
     /// を書くのはこの経路のみ。`None` への切替は保留タップ起点もクリアする（#572）。
-    pub(crate) fn set_active(&mut self, view: &mut dyn InteractionTreeView, next: Option<ElementId>) {
+    pub(crate) fn set_active(
+        &mut self,
+        view: &mut dyn InteractionTreeView,
+        next: Option<ElementId>,
+    ) {
         if self.active_element == next {
             return;
         }
@@ -397,16 +401,12 @@ impl Interaction {
     /// 分類器が単独所有し、三者（スクロールバーつまみ／編集選択／読み取り専用選択）は
     /// 排他なので単一 match で分岐する。幾何（Scroll Offset コミット・point→byte）は
     /// view（tree）側に置き、`Interaction` はドラッグ種別だけを所有する。
-    pub(crate) fn drive_active_drag(
-        &mut self,
-        view: &mut dyn InteractionTreeView,
-        x: f32,
-        y: f32,
-    ) {
+    pub(crate) fn drive_active_drag(&mut self, view: &mut dyn InteractionTreeView, x: f32, y: f32) {
         match self.pointer_gesture.drag() {
             DragMode::Scrollbar(drag) => {
                 if let Some(updated) = view.drag_scrollbar(drag, x, y) {
-                    self.pointer_gesture.begin_drag(DragMode::Scrollbar(updated));
+                    self.pointer_gesture
+                        .begin_drag(DragMode::Scrollbar(updated));
                 }
             }
             DragMode::Edit(input) => view.extend_edit_drag(input, x, y),
@@ -485,13 +485,7 @@ impl ElementTree {
     /// が DOM `PointerEvent.pointerType` を転送し、Core は操作ごとに保持する
     /// (`last_pointer_kind`)。選択／active 挙動は
     /// [`on_pointer_down_with`](Self::on_pointer_down_with) と同一。
-    pub fn on_pointer_down_with_kind(
-        &mut self,
-        x: f32,
-        y: f32,
-        modifiers: u32,
-        kind: PointerKind,
-    ) {
+    pub fn on_pointer_down_with_kind(&mut self, x: f32, y: f32, modifiers: u32, kind: PointerKind) {
         self.interaction.last_pointer_kind = kind;
         self.on_pointer_down_with(x, y, modifiers);
     }
@@ -1154,9 +1148,7 @@ impl ElementTree {
     /// スタイルでテーマ付けされる。これらはモバイルジェスチャ面（ドラッグでその端点
     /// を調整）なので Touch モダリティでのみ出る。Mouse/Pen 選択は出さない
     /// （ADR-0104）。
-    pub fn selection_handles(
-        &self,
-    ) -> Option<crate::element::selection_chrome::SelectionHandles> {
+    pub fn selection_handles(&self) -> Option<crate::element::selection_chrome::SelectionHandles> {
         if !self.touch_chrome_visible() {
             return None;
         }
@@ -1205,7 +1197,9 @@ impl ElementTree {
             SelectionHandleEnd::End => (start, end),
         };
         self.set_selection(Some(Selection { anchor, focus }));
-        self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
+        self.interaction
+            .pointer_gesture
+            .begin_drag(DragMode::Selection);
         true
     }
 
@@ -1238,12 +1232,14 @@ impl ElementTree {
                 ScrollAxis::Vertical => y,
                 ScrollAxis::Horizontal => x,
             };
-            self.interaction.pointer_gesture.begin_drag(DragMode::Scrollbar(ScrollbarDrag {
-                scroll_view: sv,
-                axis: axis.axis,
-                last_pos,
-                offset_per_px,
-            }));
+            self.interaction
+                .pointer_gesture
+                .begin_drag(DragMode::Scrollbar(ScrollbarDrag {
+                    scroll_view: sv,
+                    axis: axis.axis,
+                    last_pos,
+                    offset_per_px,
+                }));
         } else {
             // トラック余白: クリック方向へページする。サムの遠端を越えれば前方、
             // 近端より手前なら後方へ、どちらも名前付きステップ1つぶん。
@@ -1467,7 +1463,11 @@ impl ElementTree {
         let Some(input) = self.edit_selection_owner() else {
             return;
         };
-        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&input)
+            .and_then(|el| el.edit.as_mut())
+        {
             let len = edit.text_content.len();
             edit.set_selection(0, len);
         }
@@ -1486,7 +1486,12 @@ impl ElementTree {
         crate::element::selection_chrome::ToolbarRect,
     )> {
         use crate::element::selection_chrome::ToolbarAction;
-        if self.interaction.selection.get().is_some_and(|s| !s.is_caret()) {
+        if self
+            .interaction
+            .selection
+            .get()
+            .is_some_and(|s| !s.is_caret())
+        {
             let bounds = self.read_only_selection_bounds()?;
             return Some((vec![ToolbarAction::Copy, ToolbarAction::SelectAll], bounds));
         }
@@ -1591,14 +1596,18 @@ impl ElementTree {
         if modifiers & MOD_SHIFT != 0 && self.extend_focus_to(point) {
             // Shift+クリックは focus を調整。ドラッグを続けられるよう drag に留まる
             // が、マルチクリック周期は進めない。
-            self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
+            self.interaction
+                .pointer_gesture
+                .begin_drag(DragMode::Selection);
             self.interaction.pointer_gesture.note_single_tap(x, y);
             return;
         }
 
         match self.interaction.pointer_gesture.classify_tap(x, y) {
             TapPhase::Caret => {
-                self.interaction.pointer_gesture.begin_drag(DragMode::Selection);
+                self.interaction
+                    .pointer_gesture
+                    .begin_drag(DragMode::Selection);
                 self.set_selection(Some(Selection::caret(point)));
             }
             TapPhase::Word => {
@@ -1628,12 +1637,9 @@ impl ElementTree {
         modifiers: u32,
     ) -> bool {
         let Some(input) = hit else { return false };
-        let is_text_input = self
-            .elements
-            .get(&input)
-            .is_some_and(|el| {
-                el.kind == crate::element::kind::ElementKind::TextInput && el.edit.is_some()
-            });
+        let is_text_input = self.elements.get(&input).is_some_and(|el| {
+            el.kind == crate::element::kind::ElementKind::TextInput && el.edit.is_some()
+        });
         if !is_text_input {
             return false;
         }
@@ -1645,10 +1651,16 @@ impl ElementTree {
         // （範囲拡張）、マルチクリック周期を進めない。読み取り専用
         // `begin_selection_at` の Shift 経路を写す。
         if modifiers & MOD_SHIFT != 0 {
-            if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+            if let Some(edit) = self
+                .elements
+                .get_mut(&input)
+                .and_then(|el| el.edit.as_mut())
+            {
                 edit.move_focus(offset);
             }
-            self.interaction.pointer_gesture.begin_drag(DragMode::Edit(input));
+            self.interaction
+                .pointer_gesture
+                .begin_drag(DragMode::Edit(input));
             self.interaction.pointer_gesture.note_single_tap(x, y);
             self.finish_edit_selection(input);
             return true;
@@ -1657,13 +1669,19 @@ impl ElementTree {
         // 同じ箇所付近の押下回数でキャレット → 単語 → 行を巡回する。単語と行は
         // Mouse/Pen の拡張で、Touch ではどの押下もキャレットのまま留まる。
         let phase = self.interaction.pointer_gesture.classify_tap(x, y);
-        let bounds: Option<fn(&str, usize) -> (usize, usize)> =
-            match (phase, self.interaction.last_pointer_kind == PointerKind::Touch) {
-                (TapPhase::Word, false) => Some(selection::word_bounds),
-                (TapPhase::Paragraph, false) => Some(selection::line_bounds),
-                _ => None,
-            };
-        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+        let bounds: Option<fn(&str, usize) -> (usize, usize)> = match (
+            phase,
+            self.interaction.last_pointer_kind == PointerKind::Touch,
+        ) {
+            (TapPhase::Word, false) => Some(selection::word_bounds),
+            (TapPhase::Paragraph, false) => Some(selection::line_bounds),
+            _ => None,
+        };
+        if let Some(edit) = self
+            .elements
+            .get_mut(&input)
+            .and_then(|el| el.edit.as_mut())
+        {
             match bounds {
                 Some(bounds) => {
                     let (start, end) = bounds(&edit.text_content, offset);
@@ -1674,11 +1692,13 @@ impl ElementTree {
         }
         // 単語／行選択はドラッグ拡張不可（読み取り専用経路と同等）。キャレットは
         // ユーザが拡張できるようドラッグを構える。
-        self.interaction.pointer_gesture.begin_drag(if bounds.is_none() {
-            DragMode::Edit(input)
-        } else {
-            DragMode::None
-        });
+        self.interaction
+            .pointer_gesture
+            .begin_drag(if bounds.is_none() {
+                DragMode::Edit(input)
+            } else {
+                DragMode::None
+            });
         self.finish_edit_selection(input);
         true
     }
@@ -1721,7 +1741,11 @@ impl ElementTree {
         let Some(offset) = self.edit_offset_at(input, x, y) else {
             return;
         };
-        if let Some(edit) = self.elements.get_mut(&input).and_then(|el| el.edit.as_mut()) {
+        if let Some(edit) = self
+            .elements
+            .get_mut(&input)
+            .and_then(|el| el.edit.as_mut())
+        {
             if edit.cursor_byte_index == offset {
                 return;
             }
@@ -1747,7 +1771,11 @@ impl ElementTree {
 
     /// 選択を、IFC の整形済みテキスト内で `bounds` が `point` 周りに計算したバイト
     /// 範囲で置き換える。IFC に整形テキストが無ければキャレットへフォールバックする。
-    fn select_bounds_at(&mut self, point: SelectionPoint, bounds: fn(&str, usize) -> (usize, usize)) {
+    fn select_bounds_at(
+        &mut self,
+        point: SelectionPoint,
+        bounds: fn(&str, usize) -> (usize, usize),
+    ) {
         let Some(text) = self.ifc_text(point.element) else {
             self.set_selection(Some(Selection::caret(point)));
             return;
@@ -1832,13 +1860,18 @@ impl ElementTree {
                         matches!(intent, EditIntent::Extend { .. }),
                     )
                 }
-                EditIntent::Move { granularity: Granularity::LineBoundary, direction }
-                | EditIntent::Extend { granularity: Granularity::LineBoundary, direction } => self
-                    .apply_display_line_boundary(
-                        target,
-                        direction,
-                        matches!(intent, EditIntent::Extend { .. }),
-                    ),
+                EditIntent::Move {
+                    granularity: Granularity::LineBoundary,
+                    direction,
+                }
+                | EditIntent::Extend {
+                    granularity: Granularity::LineBoundary,
+                    direction,
+                } => self.apply_display_line_boundary(
+                    target,
+                    direction,
+                    matches!(intent, EditIntent::Extend { .. }),
+                ),
                 _ => false,
             };
             if geometric {
@@ -1926,7 +1959,10 @@ impl ElementTree {
     /// `id` が複数行 text-input（`<textarea>` 相当）か。そうなら ↑/↓ は表示行間を
     /// 移動し Home/End は表示行端にスナップする。
     fn element_is_multiline(&self, id: ElementId) -> bool {
-        self.elements.get(&id).map(|el| el.multiline).unwrap_or(false)
+        self.elements
+            .get(&id)
+            .map(|el| el.multiline)
+            .unwrap_or(false)
     }
 
     /// 複数行フィールドでキャレットを表示行1行ぶん上下させ、粘着するゴール列を
@@ -2511,7 +2547,11 @@ mod seam_tests {
         interaction.apply_intent(&mut view, InteractionIntent::Focus(a));
 
         assert_eq!(interaction.focused_element(), Some(a));
-        assert!(view.events.is_empty(), "no events on re-focus, got {:?}", view.events);
+        assert!(
+            view.events.is_empty(),
+            "no events on re-focus, got {:?}",
+            view.events
+        );
         assert!(view.focus_effects.is_empty());
         assert!(view.blur_effects.is_empty());
     }
@@ -2530,7 +2570,11 @@ mod seam_tests {
 
         interaction.apply_intent(&mut view, InteractionIntent::Focus(b));
 
-        assert_eq!(view.collapsed, vec![a], "touch blur collapses the blurred input");
+        assert_eq!(
+            view.collapsed,
+            vec![a],
+            "touch blur collapses the blurred input"
+        );
     }
 
     #[test]
@@ -2542,7 +2586,10 @@ mod seam_tests {
 
         interaction.apply_intent(&mut view, InteractionIntent::Focus(b));
 
-        assert!(view.collapsed.is_empty(), "mouse blur keeps the range in EditState");
+        assert!(
+            view.collapsed.is_empty(),
+            "mouse blur keeps the range in EditState"
+        );
     }
 
     #[test]
@@ -2583,10 +2630,15 @@ mod seam_tests {
             direction: Direction::Up,
         };
 
-        let consumed = interaction.apply_intent(&mut view, InteractionIntent::Edit { target, intent });
+        let consumed =
+            interaction.apply_intent(&mut view, InteractionIntent::Edit { target, intent });
 
         assert!(consumed, "apply_edit が true を返せば intent も消費扱い");
-        assert_eq!(view.edits, vec![(target, intent)], "EditIntent が seam を通って届く");
+        assert_eq!(
+            view.edits,
+            vec![(target, intent)],
+            "EditIntent が seam を通って届く"
+        );
     }
 
     #[test]
@@ -2603,8 +2655,13 @@ mod seam_tests {
             direction: Direction::Backward,
         };
 
-        let consumed =
-            interaction.apply_intent(&mut view, InteractionIntent::Edit { target: id(9), intent });
+        let consumed = interaction.apply_intent(
+            &mut view,
+            InteractionIntent::Edit {
+                target: id(9),
+                intent,
+            },
+        );
 
         assert!(!consumed, "apply_edit が false なら未消費");
     }
@@ -2621,7 +2678,12 @@ mod seam_tests {
         interaction.active_element = Some(t);
         interaction.active_press_pos = Some((3.0, 4.0));
 
-        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: None });
+        interaction.apply_intent(
+            &mut view,
+            InteractionIntent::PointerUp {
+                explicit_target: None,
+            },
+        );
 
         assert!(
             matches!(
@@ -2641,9 +2703,18 @@ mod seam_tests {
         let mut interaction = Interaction::default();
         let mut view = FakeView::default();
 
-        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: None });
+        interaction.apply_intent(
+            &mut view,
+            InteractionIntent::PointerUp {
+                explicit_target: None,
+            },
+        );
 
-        assert!(view.events.is_empty(), "no live press → no click, got {:?}", view.events);
+        assert!(
+            view.events.is_empty(),
+            "no live press → no click, got {:?}",
+            view.events
+        );
     }
 
     #[test]
@@ -2654,7 +2725,12 @@ mod seam_tests {
         let mut view = FakeView::default();
         let t = id(9);
 
-        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: Some(t) });
+        interaction.apply_intent(
+            &mut view,
+            InteractionIntent::PointerUp {
+                explicit_target: Some(t),
+            },
+        );
 
         assert!(
             matches!(view.events.as_slice(), [Event::ActiveEnd { target_id }] if *target_id == t),
@@ -2675,7 +2751,10 @@ mod seam_tests {
 
         interaction.apply_intent(&mut view, InteractionIntent::PointerCancel);
 
-        assert_eq!(interaction.active_element, None, "cancel clears the live press");
+        assert_eq!(
+            interaction.active_element, None,
+            "cancel clears the live press"
+        );
         assert!(
             matches!(view.events.as_slice(), [Event::ActiveEnd { target_id }] if *target_id == t),
             "cancel emits ActiveEnd, got {:?}",
@@ -2683,7 +2762,12 @@ mod seam_tests {
         );
 
         view.events.clear();
-        interaction.apply_intent(&mut view, InteractionIntent::PointerUp { explicit_target: None });
+        interaction.apply_intent(
+            &mut view,
+            InteractionIntent::PointerUp {
+                explicit_target: None,
+            },
+        );
         assert!(
             view.events.is_empty(),
             "a cancelled press fires no click on release, got {:?}",
@@ -2697,7 +2781,9 @@ mod seam_tests {
         // ADR-0066）。
         let input = id(4);
         let mut interaction = Interaction::default();
-        interaction.pointer_gesture.begin_drag(DragMode::Edit(input));
+        interaction
+            .pointer_gesture
+            .begin_drag(DragMode::Edit(input));
         let mut view = FakeView::default();
         interaction.drive_active_drag(&mut view, 10.0, 20.0);
         assert_eq!(view.edit_drives, vec![(input, 10.0, 20.0)]);
@@ -2781,12 +2867,18 @@ mod seam_tests {
             offset_per_px: 1.0,
         };
         let mut interaction = Interaction::default();
-        interaction.pointer_gesture.begin_drag(DragMode::Scrollbar(drag));
+        interaction
+            .pointer_gesture
+            .begin_drag(DragMode::Scrollbar(drag));
         let mut view = FakeView::default();
 
         interaction.drive_active_drag(&mut view, 0.0, 25.0);
 
-        assert_eq!(view.scrollbar_drives, vec![(0.0, 25.0)], "scrollbar drag driven via view");
+        assert_eq!(
+            view.scrollbar_drives,
+            vec![(0.0, 25.0)],
+            "scrollbar drag driven via view"
+        );
         assert!(
             matches!(interaction.pointer_gesture.drag(), DragMode::Scrollbar(d) if d.scroll_view == sv),
             "the updated scrollbar drag is retained for the next move",

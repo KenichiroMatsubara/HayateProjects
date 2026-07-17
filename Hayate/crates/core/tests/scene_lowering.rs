@@ -1,8 +1,8 @@
 //! Retained な差分シーン lowering と Element Anchor。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind, OverflowValue, RecordingPainter,
-    StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, NodeKind,
+    OverflowValue, RecordingPainter, StyleProp,
 };
 
 fn clip_nodes(tree: &ElementTree) -> Vec<[f32; 4]> {
@@ -158,7 +158,11 @@ fn overflow_hidden_view_emits_rounded_clip() {
     tree.render(0.0);
 
     let clips = clip_nodes(&tree);
-    assert_eq!(clips.len(), 1, "overflow:hidden View must emit one Clip node");
+    assert_eq!(
+        clips.len(),
+        1,
+        "overflow:hidden View must emit one Clip node"
+    );
     for r in clips[0] {
         assert!(
             (r - 12.0).abs() < 0.01,

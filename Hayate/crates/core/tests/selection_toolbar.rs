@@ -6,8 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use hayate_core::{
-    ChromeTuning, Clipboard, Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind,
-    RecordingPainter, StyleProp, ToolbarAction, render_scene_graph,
+    render_scene_graph, ChromeTuning, Clipboard, Dimension, DrawOp, ElementId, ElementKind,
+    ElementTree, PointerKind, RecordingPainter, StyleProp, ToolbarAction,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -152,7 +152,11 @@ fn toolbar_disappears_from_the_scene_when_the_selection_clears() {
             })
             .count()
     };
-    assert_eq!(panel_count(&draw_ops(&tree)), 1, "toolbar present while selecting");
+    assert_eq!(
+        panel_count(&draw_ops(&tree)),
+        1,
+        "toolbar present while selecting"
+    );
 
     // 空白部分をクリックして選択を解除し、再描画する。
     tree.on_pointer_down(2.0, 150.0);
@@ -192,7 +196,10 @@ fn chrome_style_switch_changes_the_toolbar_panel_and_is_additive() {
 
     // Material が既定。Cupertino への切り替えは加算的（enum がツールバーモデルを
     // 変えずに別テーマを選ぶ）で、見た目の異なるパネルになる。
-    assert_eq!(SelectionChromeStyle::default(), SelectionChromeStyle::Material);
+    assert_eq!(
+        SelectionChromeStyle::default(),
+        SelectionChromeStyle::Material
+    );
     assert_ne!(
         panel_color(SelectionChromeStyle::Material),
         panel_color(SelectionChromeStyle::Cupertino),
@@ -273,7 +280,9 @@ fn tapping_cut_copies_then_removes_the_editable_range() {
     tree.on_pointer_move(60.0, 20.0);
     tree.on_pointer_up(60.0, 20.0);
     let content = tree.element_get_text_content(input);
-    let (s, e) = tree.element_text_selection(input).expect("a non-empty range");
+    let (s, e) = tree
+        .element_text_selection(input)
+        .expect("a non-empty range");
     let cut_text = content[s..e].to_string();
     let mut expected = content.clone();
     expected.replace_range(s..e, "");
@@ -294,9 +303,14 @@ fn fill_rects(tree: &ElementTree) -> Vec<(usize, f32, f32, f32, f32, [f32; 4], f
         .into_iter()
         .enumerate()
         .filter_map(|(i, op)| match op {
-            DrawOp::FillRect { x, y, width, height, color, corner_radius } => {
-                Some((i, x, y, width, height, color, corner_radius))
-            }
+            DrawOp::FillRect {
+                x,
+                y,
+                width,
+                height,
+                color,
+                corner_radius,
+            } => Some((i, x, y, width, height, color, corner_radius)),
             _ => None,
         })
         .collect()
@@ -342,7 +356,10 @@ fn the_panel_is_drawn_with_a_material_elevation_drop_shadow() {
         .map(|t| t.0)
         .expect("the toolbar panel rect");
     // 影はパネルより先に（背面に）描かれる。
-    assert!(shadow_idx < panel_idx, "the drop shadow is painted behind the panel");
+    assert!(
+        shadow_idx < panel_idx,
+        "the drop shadow is painted behind the panel"
+    );
 }
 
 #[test]
@@ -367,7 +384,10 @@ fn material_dividers_are_drawn_between_buttons() {
             && (*h - tb.bounds.height).abs() < 0.5
             && (*x - (boundary - 1.0)).abs() < 0.6
     });
-    assert!(divider.is_some(), "a thin divider is drawn at the button boundary");
+    assert!(
+        divider.is_some(),
+        "a thin divider is drawn at the button boundary"
+    );
 }
 
 #[test]
@@ -382,9 +402,15 @@ fn toolbar_visual_height_comes_from_tuning() {
     tree.render(0.0);
 
     let bounds = tree.selection_toolbar().expect("a toolbar").bounds;
-    assert_eq!(bounds.height, 60.0, "the laid-out toolbar uses the tuned height");
+    assert_eq!(
+        bounds.height, 60.0,
+        "the laid-out toolbar uses the tuned height"
+    );
     let panel = fill_rects(&tree).into_iter().find(|(_, x, y, _, h, _, r)| {
-        (*x - bounds.x).abs() < 0.5 && (*y - bounds.y).abs() < 0.5 && *r > 0.0 && (*h - 60.0).abs() < 0.5
+        (*x - bounds.x).abs() < 0.5
+            && (*y - bounds.y).abs() < 0.5
+            && *r > 0.0
+            && (*h - 60.0).abs() < 0.5
     });
     assert!(panel.is_some(), "the drawn panel honors the tuned height");
 }
@@ -398,8 +424,13 @@ fn a_too_wide_action_set_folds_into_an_overflow_menu_and_taps_route_through_it()
     tree.on_pointer_move(60.0, 20.0);
     tree.on_pointer_up(60.0, 20.0);
 
-    let tb = tree.selection_toolbar().expect("a toolbar over the editable selection");
-    let overflow = tb.overflow.clone().expect("the bar overflows the narrow viewport");
+    let tb = tree
+        .selection_toolbar()
+        .expect("a toolbar over the editable selection");
+    let overflow = tb
+        .overflow
+        .clone()
+        .expect("the bar overflows the narrow viewport");
     assert!(!overflow.open, "the submenu starts closed");
     // 畳まれていても全アクションは順序どおり提供される。
     assert_eq!(
@@ -412,15 +443,27 @@ fn a_too_wide_action_set_folds_into_an_overflow_menu_and_taps_route_through_it()
         ],
     );
     assert!(
-        overflow.items.iter().any(|b| b.action == ToolbarAction::SelectAll),
+        overflow
+            .items
+            .iter()
+            .any(|b| b.action == ToolbarAction::SelectAll),
         "Select All is folded into the overflow menu",
     );
 
     // ⋮ トグルを押すと副メニューが開く（選択は触らない）。
     let toggle = overflow.toggle;
-    tree.on_pointer_down(toggle.x + toggle.width / 2.0, toggle.y + toggle.height / 2.0);
-    tree.on_pointer_up(toggle.x + toggle.width / 2.0, toggle.y + toggle.height / 2.0);
-    assert!(tree.element_text_selection(input).is_some(), "tapping ⋮ keeps the selection");
+    tree.on_pointer_down(
+        toggle.x + toggle.width / 2.0,
+        toggle.y + toggle.height / 2.0,
+    );
+    tree.on_pointer_up(
+        toggle.x + toggle.width / 2.0,
+        toggle.y + toggle.height / 2.0,
+    );
+    assert!(
+        tree.element_text_selection(input).is_some(),
+        "tapping ⋮ keeps the selection"
+    );
 
     let opened = tree.selection_toolbar().expect("toolbar still showing");
     let opened_overflow = opened.overflow.expect("still overflowing");
@@ -437,7 +480,11 @@ fn a_too_wide_action_set_folds_into_an_overflow_menu_and_taps_route_through_it()
 
     let (s, e) = tree.element_text_selection(input).expect("a selection");
     let content = tree.element_get_text_content(input);
-    assert_eq!((s, e), (0, content.len()), "the folded Select All ran from the submenu");
+    assert_eq!(
+        (s, e),
+        (0, content.len()),
+        "the folded Select All ran from the submenu"
+    );
 }
 
 #[test]
@@ -462,8 +509,14 @@ fn the_overflow_submenu_panel_is_drawn_only_when_open() {
 
     // ⋮ を開く。
     let toggle = tb.overflow.unwrap().toggle;
-    tree.on_pointer_down(toggle.x + toggle.width / 2.0, toggle.y + toggle.height / 2.0);
-    tree.on_pointer_up(toggle.x + toggle.width / 2.0, toggle.y + toggle.height / 2.0);
+    tree.on_pointer_down(
+        toggle.x + toggle.width / 2.0,
+        toggle.y + toggle.height / 2.0,
+    );
+    tree.on_pointer_up(
+        toggle.x + toggle.width / 2.0,
+        toggle.y + toggle.height / 2.0,
+    );
     tree.render(0.0);
     assert!(panel_drawn(&tree), "open: the submenu panel is drawn");
 }
@@ -480,7 +533,9 @@ fn tapping_paste_replaces_the_editable_range_with_clipboard_text() {
     tree.on_pointer_move(60.0, 20.0);
     tree.on_pointer_up(60.0, 20.0);
     let content = tree.element_get_text_content(input);
-    let (s, e) = tree.element_text_selection(input).expect("a non-empty range");
+    let (s, e) = tree
+        .element_text_selection(input)
+        .expect("a non-empty range");
     let mut expected = content.clone();
     expected.replace_range(s..e, "X");
 

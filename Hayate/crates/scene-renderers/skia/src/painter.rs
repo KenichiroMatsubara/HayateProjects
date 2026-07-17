@@ -8,23 +8,23 @@
 //! 描画メソッドはローカル座標をそのまま Skia へ渡し、CTM の適用は Canvas に任せる。
 
 use hayate_core::{
-    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderGlyph, RenderImage,
-    RenderImageAlphaType, ScenePainter, StrokeStyle, TextRunData, build_draw_path, is_notdef,
-    missing_glyph_placeholder,
+    build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
+    PathSink, PathVerb, RenderGlyph, RenderImage, RenderImageAlphaType, ScenePainter, StrokeStyle,
+    TextRunData,
 };
 use skia_safe::{
+    canvas::SrcRectConstraint,
+    dash_path_effect,
+    font_arguments::{variation_position::Coordinate, FontArguments, VariationPosition},
+    images,
+    paint::{Cap as PaintCap, Join as PaintJoin, Style as PaintStyle},
     AlphaType, Canvas, Color4f, ColorType, Data, Font, FontMgr, FourByteTag, ImageInfo, Paint,
     Path, PathBuilder as SkPathBuilder, PathFillType, Point, RRect, Rect, SamplingOptions,
     TextBlobBuilder,
-    canvas::SrcRectConstraint,
-    dash_path_effect,
-    font_arguments::{FontArguments, VariationPosition, variation_position::Coordinate},
-    images,
-    paint::{Cap as PaintCap, Join as PaintJoin, Style as PaintStyle},
 };
 use skrifa::{
+    raw::{tables::avar::SegmentMaps, FontRef, TableProvider},
     MetadataProvider,
-    raw::{FontRef, TableProvider, tables::avar::SegmentMaps},
 };
 
 pub struct SkiaPainter<'a> {
@@ -61,7 +61,8 @@ impl ScenePainter for SkiaPainter<'_> {
     ) {
         let paint = paint_for(color);
         if corner_radius <= 0.0 {
-            self.canvas.draw_rect(Rect::from_xywh(x, y, width, height), &paint);
+            self.canvas
+                .draw_rect(Rect::from_xywh(x, y, width, height), &paint);
         } else {
             self.canvas
                 .draw_rrect(rrect_uniform(x, y, width, height, corner_radius), &paint);
@@ -213,11 +214,8 @@ impl ScenePainter for SkiaPainter<'_> {
         self.canvas.save();
         let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
         if radius > 0.0 {
-            self.canvas.clip_rrect(
-                rrect_uniform(x, y, width, height, radius),
-                None,
-                Some(true),
-            );
+            self.canvas
+                .clip_rrect(rrect_uniform(x, y, width, height, radius), None, Some(true));
         } else {
             self.canvas
                 .clip_rect(Rect::from_xywh(x, y, width, height), None, Some(true));
@@ -231,7 +229,8 @@ impl ScenePainter for SkiaPainter<'_> {
         } else {
             // 退化クリップ（空パス）は何も通さない。walk のクリップ計数は save() で
             // すでに一致しているので、空矩形クリップで無 op を保証する。
-            self.canvas.clip_rect(Rect::from_xywh(0.0, 0.0, 0.0, 0.0), None, None);
+            self.canvas
+                .clip_rect(Rect::from_xywh(0.0, 0.0, 0.0, 0.0), None, None);
         }
     }
 
@@ -372,7 +371,10 @@ fn design_coords_from_normalized(
             def + pre * (def - min)
         };
         let tag = FourByteTag::from(u32::from_be_bytes(axis.tag().to_be_bytes()));
-        out.push(Coordinate { axis: tag, value: design });
+        out.push(Coordinate {
+            axis: tag,
+            value: design,
+        });
     }
     out
 }
@@ -402,8 +404,9 @@ fn cached_typeface(
                 if coords.is_empty() {
                     return Some(base);
                 }
-                let args = FontArguments::new()
-                    .set_variation_design_position(VariationPosition { coordinates: &coords });
+                let args = FontArguments::new().set_variation_design_position(VariationPosition {
+                    coordinates: &coords,
+                });
                 // clone 失敗（非 variable font 等）は既定インスタンスへフォールバック。
                 base.clone_with_arguments(&args).or(Some(base))
             })
@@ -544,10 +547,8 @@ mod tests {
             "/tests/assets/twemoji_smiley_sbix.ttf"
         ))
         .expect("test font asset");
-        let font = hayate_core::RenderFont::new(
-            hayate_core::Blob::new(std::sync::Arc::new(bytes)),
-            0,
-        );
+        let font =
+            hayate_core::RenderFont::new(hayate_core::Blob::new(std::sync::Arc::new(bytes)), 0);
         let a = cached_typeface(&font, &[]).expect("typeface from valid font bytes");
         let b = cached_typeface(&font, &[]).expect("typeface from valid font bytes");
         assert_eq!(

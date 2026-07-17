@@ -7,7 +7,7 @@
 #![allow(dead_code)]
 
 use hayate_core::SceneGraph;
-use hayate_scene_renderer_skia::{SkiaSceneRenderer, new_raster_surface, read_rgba};
+use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaSceneRenderer};
 
 pub const CANVAS_W: u32 = 100;
 pub const CANVAS_H: u32 = 100;

@@ -2,13 +2,13 @@ use hayate_core::Surface;
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 
+pub(crate) use hayate_app_host::render_host::SceneRenderer as CanvasBackend;
 use hayate_app_host::render_host::{
     ClearColor, RenderHost as GenericRenderHost, RendererInit, SceneRenderer,
 };
-pub(crate) use hayate_app_host::render_host::SceneRenderer as CanvasBackend;
 use hayate_app_host::renderer_selection::{
-    diagnostic_renderer_selection_policy, web_renderer_selection_policy,
-    RendererCapabilities, RendererSelectionReason, SceneRendererKind,
+    diagnostic_renderer_selection_policy, web_renderer_selection_policy, RendererCapabilities,
+    RendererSelectionReason, SceneRendererKind,
 };
 
 #[cfg(feature = "backend-canvaskit")]
@@ -251,7 +251,11 @@ impl RendererInit<WebCanvasSurface> for WebRendererInit {
         }
     }
 
-    fn classify_init_error(&self, kind: SceneRendererKind, error: &anyhow::Error) -> RendererSelectionReason {
+    fn classify_init_error(
+        &self,
+        kind: SceneRendererKind,
+        error: &anyhow::Error,
+    ) -> RendererSelectionReason {
         let message = error.to_string().to_ascii_lowercase();
 
         if kind == SceneRendererKind::Vello
@@ -346,7 +350,9 @@ async fn webgpu_adapter_available() -> bool {
 pub(crate) type RenderHost = GenericRenderHost<WebCanvasSurface, WebRendererInit>;
 pub(crate) type SelectedBackend = RenderHost;
 
-pub(crate) async fn init_render_host(canvas: HtmlCanvasElement) -> Result<RenderHost, anyhow::Error> {
+pub(crate) async fn init_render_host(
+    canvas: HtmlCanvasElement,
+) -> Result<RenderHost, anyhow::Error> {
     init_render_host_with_policy(canvas, web_renderer_selection_policy()).await
 }
 

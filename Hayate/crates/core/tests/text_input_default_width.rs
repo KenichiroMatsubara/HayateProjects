@@ -111,11 +111,17 @@ fn default_width_scales_with_font_size() {
     // UA デフォルトは現在のフォントでの N 文字分なので、font-size が大きいほど
     // フィールドは比例して広がる(固定 px ではなくブラウザ `<input>` の挙動)。
     let small = input_border_box_width(
-        &[StyleProp::Height(Dimension::px(38.0)), StyleProp::FontSize(13.0)],
+        &[
+            StyleProp::Height(Dimension::px(38.0)),
+            StyleProp::FontSize(13.0),
+        ],
         "x",
     );
     let large = input_border_box_width(
-        &[StyleProp::Height(Dimension::px(60.0)), StyleProp::FontSize(26.0)],
+        &[
+            StyleProp::Height(Dimension::px(60.0)),
+            StyleProp::FontSize(26.0),
+        ],
         "x",
     );
     // font-size を倍にすればデフォルト幅もおおむね倍になるはず。

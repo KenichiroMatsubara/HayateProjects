@@ -51,7 +51,10 @@ fn max_lines_one_with_ellipsis_fits_one_line_and_appends_ellipsis() {
     );
     assert_eq!(tree.test_text_line_count(ifc), Some(1));
     let text = tree.test_shaped_text(ifc).expect("shaped IFC");
-    assert!(text.ends_with('…'), "expected trailing ellipsis, got {text:?}");
+    assert!(
+        text.ends_with('…'),
+        "expected trailing ellipsis, got {text:?}"
+    );
 }
 
 #[test]
@@ -65,7 +68,10 @@ fn max_lines_three_with_ellipsis_keeps_three_lines_and_appends_ellipsis() {
     );
     assert_eq!(tree.test_text_line_count(ifc), Some(3));
     let text = tree.test_shaped_text(ifc).expect("shaped IFC");
-    assert!(text.ends_with('…'), "expected trailing ellipsis, got {text:?}");
+    assert!(
+        text.ends_with('…'),
+        "expected trailing ellipsis, got {text:?}"
+    );
 }
 
 #[test]
@@ -84,7 +90,10 @@ fn ellipsis_without_max_lines_has_no_effect() {
         "text-overflow without max-lines must not truncate"
     );
     let text = tree.test_shaped_text(ifc).expect("shaped IFC");
-    assert!(!text.ends_with('…'), "no max-lines ⇒ no ellipsis, got {text:?}");
+    assert!(
+        !text.ends_with('…'),
+        "no max-lines ⇒ no ellipsis, got {text:?}"
+    );
 }
 
 /// 回帰: `max_lines` を**テキストを内包するボックス**（todo カードのタイトルは
@@ -120,7 +129,10 @@ fn max_lines_on_containing_box_clamps_child_text() {
         "max-lines declared on the containing box must clamp the child text"
     );
     let shaped = tree.test_shaped_text(text).expect("shaped IFC");
-    assert!(shaped.ends_with('…'), "expected trailing ellipsis, got {shaped:?}");
+    assert!(
+        shaped.ends_with('…'),
+        "expected trailing ellipsis, got {shaped:?}"
+    );
 }
 
 /// 一般化①: クランプはテキストを**直接内包するブロック**（包含ブロック）に置けば、
@@ -135,11 +147,14 @@ fn max_lines_on_inner_containing_block_clamps() {
     tree.set_root(root);
     tree.set_viewport(120.0, 600.0);
     tree.element_set_style(outer, &[StyleProp::Width(Dimension::px(120.0))]);
-    tree.element_set_style(inner, &[
-        StyleProp::Width(Dimension::px(120.0)),
-        StyleProp::MaxLines(1),
-        StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
-    ]);
+    tree.element_set_style(
+        inner,
+        &[
+            StyleProp::Width(Dimension::px(120.0)),
+            StyleProp::MaxLines(1),
+            StyleProp::TextOverflow(TextOverflowValue::Ellipsis),
+        ],
+    );
     tree.element_append_child(root, outer);
     tree.element_append_child(outer, inner);
     tree.element_append_child(inner, text);
@@ -160,7 +175,13 @@ fn max_lines_does_not_pierce_intermediate_block() {
     let text = tree.element_create(4, ElementKind::Text);
     tree.set_root(root);
     tree.set_viewport(120.0, 600.0);
-    tree.element_set_style(outer, &[StyleProp::Width(Dimension::px(120.0)), StyleProp::MaxLines(1)]);
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(Dimension::px(120.0)),
+            StyleProp::MaxLines(1),
+        ],
+    );
     tree.element_set_style(inner, &[StyleProp::Width(Dimension::px(120.0))]);
     tree.element_append_child(root, outer);
     tree.element_append_child(outer, inner);
@@ -168,7 +189,10 @@ fn max_lines_does_not_pierce_intermediate_block() {
     tree.element_set_text(text, LONG_TEXT);
     tree.render(0.0);
     let lines = tree.test_text_line_count(text).expect("shaped IFC");
-    assert!(lines > 1, "must not clamp through an intermediate block, got {lines}");
+    assert!(
+        lines > 1,
+        "must not clamp through an intermediate block, got {lines}"
+    );
 }
 
 /// 一般化③: IFC ルートテキスト自身の `max_lines` は内包ボックスの宣言に勝つ。
@@ -180,13 +204,23 @@ fn text_own_max_lines_overrides_containing_box() {
     let text = tree.element_create(3, ElementKind::Text);
     tree.set_root(root);
     tree.set_viewport(120.0, 600.0);
-    tree.element_set_style(box_id, &[StyleProp::Width(Dimension::px(120.0)), StyleProp::MaxLines(1)]);
+    tree.element_set_style(
+        box_id,
+        &[
+            StyleProp::Width(Dimension::px(120.0)),
+            StyleProp::MaxLines(1),
+        ],
+    );
     tree.element_set_style(text, &[StyleProp::MaxLines(3)]);
     tree.element_append_child(root, box_id);
     tree.element_append_child(box_id, text);
     tree.element_set_text(text, LONG_TEXT);
     tree.render(0.0);
-    assert_eq!(tree.test_text_line_count(text), Some(3), "text's own max-lines wins");
+    assert_eq!(
+        tree.test_text_line_count(text),
+        Some(3),
+        "text's own max-lines wins"
+    );
 }
 
 #[test]
@@ -233,9 +267,7 @@ fn hit_test_resolves_inline_text_element_inside_ifc() {
     tree.element_set_text(inline, "BBBB");
     tree.render(0.0);
 
-    let (ex, ey, ew, eh) = tree
-        .element_layout_rect(ifc)
-        .expect("IFC layout");
+    let (ex, ey, ew, eh) = tree.element_layout_rect(ifc).expect("IFC layout");
     let hit_x = ex + ew * 0.85;
     let hit_y = ey + eh * 0.5;
     let hit = tree.hit_test(hit_x, hit_y);

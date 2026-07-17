@@ -124,13 +124,27 @@ impl LayoutPass {
         fonts_dirty: &mut bool,
     ) -> HashSet<ElementId> {
         self.projection.reconcile(&*elements, root, structure_dirty);
-        self.compute(elements, root, viewport, event_queue, shape_dirty, fonts_dirty);
+        self.compute(
+            elements,
+            root,
+            viewport,
+            event_queue,
+            shape_dirty,
+            fonts_dirty,
+        );
         // 再構築前に旧ジオメトリをスナップショットして差分を取る。ボックス `(x, y, w, h)` が
         // 移動・リサイズ（または新規出現）した要素が返す集合に入る。挿入や選択による flex 再フローは
         // 自身は structure/visual dirty にならない祖先・兄弟へ波及するが、絶対座標なので移動した子孫が
         // それぞれ独立に差分へ入る。よって id 単位の再 lowering で十分。
         let previous = std::mem::take(&mut self.layout_cache);
-        cache_layout(elements, &self.projection, root, 0.0, 0.0, &mut self.layout_cache);
+        cache_layout(
+            elements,
+            &self.projection,
+            root,
+            0.0,
+            0.0,
+            &mut self.layout_cache,
+        );
         let mut geometry_dirty = HashSet::new();
         for (&id, geometry) in &self.layout_cache {
             if previous.get(&id) != Some(geometry) {
@@ -302,7 +316,10 @@ impl LayoutPass {
                                 el.visual.font_size.unwrap_or(ambient.font_size),
                                 el.visual.font_weight.or(ambient.font_weight),
                                 el.visual.font_style,
-                                el.visual.font_family.clone().or(ambient.font_family.clone()),
+                                el.visual
+                                    .font_family
+                                    .clone()
+                                    .or(ambient.font_family.clone()),
                             )
                         };
                         let width = shaper.text_input_default_width(
@@ -311,10 +328,7 @@ impl LayoutPass {
                             font_weight,
                             font_style,
                         );
-                        return TaffySize {
-                            width,
-                            height: 0.0,
-                        };
+                        return TaffySize { width, height: 0.0 };
                     }
                     let eid = match ctx {
                         Some(MeasureCtx::Text(eid)) => *eid,
@@ -485,17 +499,30 @@ mod tests {
 
         // 最初の settle ではすべてのボックスが新規として差分に現れる。
         let appeared = layout.settle(
-            &mut elements, root_id, viewport, &mut events,
-            &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
+            &mut elements,
+            root_id,
+            viewport,
+            &mut events,
+            &mut structure_dirty,
+            &mut shape_dirty,
+            &mut fonts_dirty,
         );
         assert!(appeared.contains(&child_id));
 
         // 変更なしで再 settle。安定レイアウトは空の差分を返す。
         let stable = layout.settle(
-            &mut elements, root_id, viewport, &mut events,
-            &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
+            &mut elements,
+            root_id,
+            viewport,
+            &mut events,
+            &mut structure_dirty,
+            &mut shape_dirty,
+            &mut fonts_dirty,
         );
-        assert!(stable.is_empty(), "stable layout must report no geometry diff");
+        assert!(
+            stable.is_empty(),
+            "stable layout must report no geometry diff"
+        );
 
         // 縮約 set インターフェース経由でリサイズしてから settle する。
         {
@@ -507,10 +534,18 @@ mod tests {
             );
         }
         let resized = layout.settle(
-            &mut elements, root_id, viewport, &mut events,
-            &mut structure_dirty, &mut shape_dirty, &mut fonts_dirty,
+            &mut elements,
+            root_id,
+            viewport,
+            &mut events,
+            &mut structure_dirty,
+            &mut shape_dirty,
+            &mut fonts_dirty,
         );
-        assert!(resized.contains(&child_id), "resized box must be in geometry diff");
+        assert!(
+            resized.contains(&child_id),
+            "resized box must be in geometry diff"
+        );
         let rect = layout.geometry(child_id).expect("child geometry");
         assert!((rect.3 - 90.0).abs() < 0.5, "height was {}", rect.3);
     }
@@ -526,8 +561,14 @@ mod tests {
 
         let applied = layout.set_layout_prop(id, &mut style, &StyleProp::Opacity(0.5));
 
-        assert!(!applied, "visual prop must not be accepted by the layout seam");
-        assert_eq!(style, before, "non-layout prop must not mutate layout_style");
+        assert!(
+            !applied,
+            "visual prop must not be accepted by the layout seam"
+        );
+        assert_eq!(
+            style, before,
+            "non-layout prop must not mutate layout_style"
+        );
     }
 }
 

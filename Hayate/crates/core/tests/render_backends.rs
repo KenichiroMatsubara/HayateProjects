@@ -1,6 +1,6 @@
 use hayate_core::{
-    DrawOp, Node, NodeKind, NullPainter, RecordingPainter, SceneGraph, SceneRecorder,
-    render_scene_graph,
+    render_scene_graph, DrawOp, Node, NodeKind, NullPainter, RecordingPainter, SceneGraph,
+    SceneRecorder,
 };
 
 #[test]

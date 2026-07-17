@@ -26,9 +26,15 @@ fn apply_move(
     extend: bool,
 ) {
     let intent = if extend {
-        EditIntent::Extend { granularity, direction }
+        EditIntent::Extend {
+            granularity,
+            direction,
+        }
     } else {
-        EditIntent::Move { granularity, direction }
+        EditIntent::Move {
+            granularity,
+            direction,
+        }
     };
     assert!(tree.apply_edit_intent(input, intent));
 }
@@ -39,7 +45,13 @@ fn apply_delete(
     granularity: Granularity,
     direction: Direction,
 ) {
-    assert!(tree.apply_edit_intent(input, EditIntent::Delete { granularity, direction }));
+    assert!(tree.apply_edit_intent(
+        input,
+        EditIntent::Delete {
+            granularity,
+            direction
+        }
+    ));
 }
 
 #[test]
@@ -48,13 +60,43 @@ fn bare_arrow_moves_the_caret_one_grapheme() {
     // grapheme 単位の移動を確認する。
     let (mut tree, input) = focused_input("aあb"); // キャレットは末尾 (5)
 
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, false);
-    assert_eq!(tree.element_caret_byte_index(input), Some(4), "retreats past 'b'");
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, false);
-    assert_eq!(tree.element_caret_byte_index(input), Some(1), "retreats past 'あ'");
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        false,
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(4),
+        "retreats past 'b'"
+    );
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        false,
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(1),
+        "retreats past 'あ'"
+    );
 
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Forward, false);
-    assert_eq!(tree.element_caret_byte_index(input), Some(4), "advances past 'あ'");
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Forward,
+        false,
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(4),
+        "advances past 'あ'"
+    );
 
     // 素の矢印は選択を折りたたんだまま（範囲ではなくキャレット）にする。
     assert!(tree.element_text_selection(input).is_none());
@@ -65,11 +107,29 @@ fn bare_arrow_over_a_selection_collapses_to_its_edge() {
     // 範囲選択中の素の矢印は、端を越えて移動せず端へ折りたたむ
     // （Chromium <input> の挙動）。
     let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        true,
+    );
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        true,
+    );
     assert_eq!(tree.element_text_selection(input), Some((3, 5)));
 
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, false);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        false,
+    );
     assert_eq!(
         tree.element_caret_byte_index(input),
         Some(3),
@@ -118,8 +178,15 @@ fn boundary_intents_move_and_extend_the_caret_to_the_field_ends() {
             direction: Direction::Backward,
         },
     ));
-    assert_eq!(tree.element_caret_byte_index(input), Some(0), "Home → field start");
-    assert!(tree.element_text_selection(input).is_none(), "a Move stays collapsed");
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(0),
+        "Home → field start"
+    );
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "a Move stays collapsed"
+    );
 
     // Shift+End (Extend/LineBoundary/Forward) はキャレットから末尾まで選択する。
     assert!(tree.apply_edit_intent(
@@ -166,7 +233,11 @@ fn arrow_keys_do_not_disturb_an_active_ime_composition() {
         },
     );
     assert!(!consumed, "composition 中は intent を拒否する");
-    assert_eq!(tree.element_caret_byte_index(input), Some(2), "キャレットは不動");
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(2),
+        "キャレットは不動"
+    );
     assert_eq!(
         tree.element_get_text_content(input),
         "abきゅ",
@@ -205,8 +276,20 @@ fn shift_arrow_extends_text_input_selection_then_typing_replaces_it() {
     tree.element_append_text_content(input, "hello"); // キャレットは末尾
 
     // Shift+ArrowLeft 2回で末尾2文字 ("lo") を選択する。
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        true,
+    );
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        true,
+    );
 
     // 範囲に上書き入力すると置換される（replace-on-type）。
     tree.on_text_input(input, "X");
@@ -245,7 +328,10 @@ fn drag_within_text_input_selects_a_range() {
     let (start, end) = tree
         .element_text_selection(input)
         .expect("a non-empty edit selection after dragging");
-    assert!(start < end, "drag should select a non-empty range, got {start}..{end}");
+    assert!(
+        start < end,
+        "drag should select a non-empty range, got {start}..{end}"
+    );
 }
 
 #[test]
@@ -316,7 +402,10 @@ fn a_relayout_after_a_click_does_not_move_the_caret_or_forge_a_selection() {
 
     tree.on_pointer_down(15.0, 20.0); // キャレットは単語の途中に着地
     let caret = tree.element_caret_byte_index(input);
-    assert!(tree.element_text_selection(input).is_none(), "クリックはキャレット");
+    assert!(
+        tree.element_text_selection(input).is_none(),
+        "クリックはキャレット"
+    );
 
     // 定常状態の rAF フレーム同様にレイアウトをやり直させる。
     tree.element_set_style(input, &[StyleProp::FontSize(16.0)]);
@@ -377,8 +466,8 @@ fn double_click_under_touch_modality_stays_a_caret() {
 
 /// フォーカス済みテキスト入力を `selectable` 段落（独立した Selection Region）の
 /// 上に配置した列。(tree, input, 段落テキスト) を返す。両者ともレイアウト済み。
-fn input_above_selectable_paragraph() -> (ElementTree, hayate_core::ElementId, hayate_core::ElementId)
-{
+fn input_above_selectable_paragraph(
+) -> (ElementTree, hayate_core::ElementId, hayate_core::ElementId) {
     use hayate_core::FlexDirectionValue;
     let mut tree = ElementTree::new();
     let root = tree.element_create(30, ElementKind::View);
@@ -493,34 +582,84 @@ fn delete_key_removes_the_grapheme_after_the_caret() {
     // Delete（前方）は EditIntent seam を通してキャレット右側の文字を削除する
     // （ADR-0103）。
     let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, false);
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, false);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        false,
+    );
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        false,
+    );
 
     apply_delete(&mut tree, input, Granularity::Grapheme, Direction::Forward);
-    assert_eq!(tree.element_get_text_content(input), "helo", "右側の 'l' を削除する");
-    assert_eq!(tree.element_caret_byte_index(input), Some(3), "キャレットは削除位置に留まる");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "helo",
+        "右側の 'l' を削除する"
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(3),
+        "キャレットは削除位置に留まる"
+    );
     assert!(tree.element_text_selection(input).is_none());
 }
 
 #[test]
 fn backspace_key_removes_the_grapheme_before_the_caret() {
     let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, false);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        false,
+    );
 
     apply_delete(&mut tree, input, Granularity::Grapheme, Direction::Backward);
-    assert_eq!(tree.element_get_text_content(input), "helo", "左側の 'l' を削除する");
-    assert_eq!(tree.element_caret_byte_index(input), Some(3), "キャレットは 'l' の開始位置へ戻る");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "helo",
+        "左側の 'l' を削除する"
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(3),
+        "キャレットは 'l' の開始位置へ戻る"
+    );
 }
 
 #[test]
 fn backspace_and_delete_over_a_selection_remove_the_whole_range() {
     let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
-    apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        true,
+    );
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Grapheme,
+        Direction::Backward,
+        true,
+    );
     assert_eq!(tree.element_text_selection(input), Some((3, 5)));
 
     apply_delete(&mut tree, input, Granularity::Grapheme, Direction::Forward);
-    assert_eq!(tree.element_get_text_content(input), "hel", "1文字ではなく範囲が消える");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "hel",
+        "1文字ではなく範囲が消える"
+    );
     assert_eq!(tree.element_caret_byte_index(input), Some(3));
     assert!(tree.element_text_selection(input).is_none());
 }
@@ -532,8 +671,16 @@ fn ctrl_backspace_deletes_the_word_before_the_caret() {
     let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
 
     apply_delete(&mut tree, input, Granularity::Word, Direction::Backward);
-    assert_eq!(tree.element_get_text_content(input), "hello ", "末尾の単語が消える");
-    assert_eq!(tree.element_caret_byte_index(input), Some(6), "キャレットは単語先頭に着く");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "hello ",
+        "末尾の単語が消える"
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(6),
+        "キャレットは単語先頭に着く"
+    );
     assert!(tree.element_text_selection(input).is_none());
 }
 
@@ -542,13 +689,33 @@ fn ctrl_delete_deletes_the_word_after_the_caret() {
     // Ctrl+Delete は `next_word` でキャレット右側の単語全体を削除し、キャレットは
     // その場に留まる。
     let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
-    apply_move(&mut tree, input, Granularity::Word, Direction::Backward, false);
-    apply_move(&mut tree, input, Granularity::Word, Direction::Backward, false);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Word,
+        Direction::Backward,
+        false,
+    );
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Word,
+        Direction::Backward,
+        false,
+    );
     assert_eq!(tree.element_caret_byte_index(input), Some(0));
 
     apply_delete(&mut tree, input, Granularity::Word, Direction::Forward);
-    assert_eq!(tree.element_get_text_content(input), " world", "先頭の単語が消える");
-    assert_eq!(tree.element_caret_byte_index(input), Some(0), "キャレットは削除位置に留まる");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        " world",
+        "先頭の単語が消える"
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(0),
+        "キャレットは削除位置に留まる"
+    );
     assert!(tree.element_text_selection(input).is_none());
 }
 
@@ -559,11 +726,25 @@ fn alt_backspace_and_delete_delete_by_word_on_macos() {
     let (mut tree, input) = focused_input("alpha beta"); // キャレットは末尾 (10)
 
     apply_delete(&mut tree, input, Granularity::Word, Direction::Backward);
-    assert_eq!(tree.element_get_text_content(input), "alpha ", "Option+Backspace で 'beta' が消える");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "alpha ",
+        "Option+Backspace で 'beta' が消える"
+    );
 
-    apply_move(&mut tree, input, Granularity::Word, Direction::Backward, false);
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Word,
+        Direction::Backward,
+        false,
+    );
     apply_delete(&mut tree, input, Granularity::Word, Direction::Forward);
-    assert_eq!(tree.element_get_text_content(input), " ", "Option+Delete で 'alpha' が消える");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        " ",
+        "Option+Delete で 'alpha' が消える"
+    );
 }
 
 #[test]
@@ -582,7 +763,11 @@ fn ctrl_backspace_word_boundary_matches_the_shared_word_logic_in_mixed_text() {
 
     // 2回目の Ctrl+Backspace は空白を越えて CJK 単語を削除する。
     apply_delete(&mut tree, input, Granularity::Word, Direction::Backward);
-    assert_eq!(tree.element_get_text_content(input), "", "次に CJK 単語が消える");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "",
+        "次に CJK 単語が消える"
+    );
 }
 
 #[test]
@@ -591,11 +776,31 @@ fn ctrl_arrow_moves_and_extends_the_caret_by_word() {
     // フォーカス済みフィールドに届く（EditState の単体テストを補完する統合テスト）。
     let (mut tree, input) = focused_input("hello world"); // キャレットは末尾 (11)
 
-    apply_move(&mut tree, input, Granularity::Word, Direction::Backward, false);
-    assert_eq!(tree.element_caret_byte_index(input), Some(6), "'world' の先頭に着く");
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Word,
+        Direction::Backward,
+        false,
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(6),
+        "'world' の先頭に着く"
+    );
 
-    apply_move(&mut tree, input, Granularity::Word, Direction::Backward, true);
-    assert_eq!(tree.element_text_selection(input), Some((0, 6)), "選択が1単語分広がる");
+    apply_move(
+        &mut tree,
+        input,
+        Granularity::Word,
+        Direction::Backward,
+        true,
+    );
+    assert_eq!(
+        tree.element_text_selection(input),
+        Some((0, 6)),
+        "選択が1単語分広がる"
+    );
 }
 
 #[test]
@@ -618,8 +823,16 @@ fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
 
     assert!(tree.apply_edit_intent(input, EditIntent::InsertLineBreak));
 
-    assert_eq!(tree.element_get_text_content(input), "a\nb", "キャレット位置に改行");
-    assert_eq!(tree.element_caret_byte_index(input), Some(2), "キャレットは改行の後");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "a\nb",
+        "キャレット位置に改行"
+    );
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(2),
+        "キャレットは改行の後"
+    );
     assert!(tree.poll_deliveries().iter().any(|delivery| {
         delivery.listener_id == listener
             && matches!(&delivery.event, hayate_core::Event::TextInput { text, .. } if text == "a\nb")
@@ -636,16 +849,18 @@ fn enter_in_a_single_line_field_does_not_insert_a_newline_and_signals_submit() {
     tree.element_focus(input);
     tree.element_append_text_content(input, "ab");
 
-    let key_listener =
-        tree.register_listener(input, hayate_core::DocumentEventKind::KeyDown);
-    let text_listener =
-        tree.register_listener(input, hayate_core::DocumentEventKind::TextInput);
+    let key_listener = tree.register_listener(input, hayate_core::DocumentEventKind::KeyDown);
+    let text_listener = tree.register_listener(input, hayate_core::DocumentEventKind::TextInput);
 
     assert!(!tree.apply_edit_intent(input, EditIntent::InsertLineBreak));
     // Adapter は Unhandled のときだけ raw KeyDown へフォールバックする。
     tree.on_key_down("Enter", 0);
 
-    assert_eq!(tree.element_get_text_content(input), "ab", "改行は挿入されない");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "ab",
+        "改行は挿入されない"
+    );
     let deliveries = tree.poll_deliveries();
     assert!(
         deliveries.iter().any(|d| d.listener_id == key_listener
@@ -813,7 +1028,11 @@ fn enter_in_a_multiline_field_replaces_the_selection() {
 
     assert!(tree.apply_edit_intent(input, EditIntent::InsertLineBreak));
 
-    assert_eq!(tree.element_get_text_content(input), "hel\n", "範囲が改行に置換される");
+    assert_eq!(
+        tree.element_get_text_content(input),
+        "hel\n",
+        "範囲が改行に置換される"
+    );
     assert_eq!(tree.element_caret_byte_index(input), Some(4));
     assert!(tree.element_text_selection(input).is_none());
 }
@@ -904,10 +1123,18 @@ fn single_line_arrow_up_down_jumps_to_the_field_ends() {
     let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
-    assert_eq!(tree.element_caret_byte_index(input), Some(0), "↑ → フィールド先頭");
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(0),
+        "↑ → フィールド先頭"
+    );
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Down)));
-    assert_eq!(tree.element_caret_byte_index(input), Some(5), "↓ → フィールド末尾");
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(5),
+        "↓ → フィールド末尾"
+    );
 }
 
 #[test]
@@ -937,7 +1164,11 @@ fn multiline_home_end_snap_to_the_display_line_ends() {
             direction: Direction::Forward,
         },
     ));
-    assert_eq!(tree.element_caret_byte_index(input), Some(14), "End → 表示行の末尾");
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(14),
+        "End → 表示行の末尾"
+    );
 }
 
 #[test]
@@ -969,7 +1200,11 @@ fn vertical_move_intent_moves_the_caret_up_a_line() {
 
     assert!(tree.apply_edit_intent(input, move_vertical(Direction::Up)));
 
-    assert_eq!(tree.element_caret_byte_index(input), Some(6), "↑ キーで1行上へ移動した");
+    assert_eq!(
+        tree.element_caret_byte_index(input),
+        Some(6),
+        "↑ キーで1行上へ移動した"
+    );
 }
 
 #[test]
@@ -1048,10 +1283,7 @@ fn on_text_input_appends_via_edit_state() {
 
 /// アクティブな preedit を持つフォーカス済み・レイアウト済みテキスト入力。
 /// その draw ops を返す。
-fn render_with_preedit(
-    preedit: &str,
-    clauses: Vec<CompositionClause>,
-) -> Vec<hayate_core::DrawOp> {
+fn render_with_preedit(preedit: &str, clauses: Vec<CompositionClause>) -> Vec<hayate_core::DrawOp> {
     let mut tree = ElementTree::new();
     let input = tree.element_create(30, ElementKind::TextInput);
     tree.set_root(input);
@@ -1079,11 +1311,9 @@ fn underline_rects(ops: &[hayate_core::DrawOp]) -> Vec<(f32, f32, f32)> {
     let mut rects: Vec<(f32, f32, f32)> = ops
         .iter()
         .filter_map(|op| match op {
-            hayate_core::DrawOp::FillRect { x, width, height, .. }
-                if *height <= 3.0 && *width >= 5.0 =>
-            {
-                Some((*x, *width, *height))
-            }
+            hayate_core::DrawOp::FillRect {
+                x, width, height, ..
+            } if *height <= 3.0 && *width >= 5.0 => Some((*x, *width, *height)),
             _ => None,
         })
         .collect();
@@ -1106,8 +1336,16 @@ fn clause_split_draws_a_thick_and_thin_underline() {
     let ops = render_with_preedit(
         "ぎゅうにゅう",
         vec![
-            CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick },
-            CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
+            CompositionClause {
+                start: 0,
+                end: 9,
+                underline: CompositionUnderline::Thick,
+            },
+            CompositionClause {
+                start: 9,
+                end: 18,
+                underline: CompositionUnderline::Thin,
+            },
         ],
     );
     let rects = underline_rects(&ops);
@@ -1279,7 +1517,13 @@ fn ctrl_x_cuts_the_text_input_selection() {
     tree.set_clipboard(Box::new(clipboard.clone()));
     // 末尾の "world" を選択: 末尾から Shift+Left を5回。
     for _ in 0..5 {
-        apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
+        apply_move(
+            &mut tree,
+            input,
+            Granularity::Grapheme,
+            Direction::Backward,
+            true,
+        );
     }
     assert_eq!(tree.element_text_selection(input), Some((6, 11)));
 
@@ -1307,7 +1551,13 @@ fn ctrl_v_pastes_clipboard_text_replacing_the_selection() {
     tree.set_clipboard(Box::new(clipboard.clone()));
     // 末尾の "world" を選択する。
     for _ in 0..5 {
-        apply_move(&mut tree, input, Granularity::Grapheme, Direction::Backward, true);
+        apply_move(
+            &mut tree,
+            input,
+            Granularity::Grapheme,
+            Direction::Backward,
+            true,
+        );
     }
 
     assert!(tree.apply_edit_intent(input, EditIntent::Paste));

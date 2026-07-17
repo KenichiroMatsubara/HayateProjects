@@ -87,7 +87,10 @@ fn fires_again_when_the_resolved_size_changes() {
     tree.element_set_style(box_, &[StyleProp::Width(Dimension::px(120.0))]);
     tree.render(16.0);
 
-    assert_eq!(resize_sizes(&tree.poll_deliveries()), vec![(2, 120.0, 40.0)]);
+    assert_eq!(
+        resize_sizes(&tree.poll_deliveries()),
+        vec![(2, 120.0, 40.0)]
+    );
 }
 
 #[test]

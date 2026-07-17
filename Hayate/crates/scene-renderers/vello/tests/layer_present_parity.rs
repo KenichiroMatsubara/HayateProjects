@@ -19,7 +19,7 @@ use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
 };
 use hayate_scene_test_support::vello::{
-    render_scene_to_pixels_scaled, try_vello_harness, readback_rgba8, VelloHarness,
+    readback_rgba8, render_scene_to_pixels_scaled, try_vello_harness, VelloHarness,
 };
 
 const W: u32 = 200;
@@ -33,13 +33,19 @@ fn px(v: f32) -> Dimension {
 /// レイヤ分解 raster + wgpu quad 合成が全面 raster と画素単位で一致することを検査する。
 /// `tree.frame_layers()`（root 暗黙レイヤ込み）をそのままレイヤ集合として使う——#690 の
 /// `present_layers` が実運用で通す経路と同じ分解。
-fn assert_layered_matches_full(harness: &mut VelloHarness, tree: &ElementTree, root: ElementId, label: &str) {
+fn assert_layered_matches_full(
+    harness: &mut VelloHarness,
+    tree: &ElementTree,
+    root: ElementId,
+    label: &str,
+) {
     let graph = tree.scene_graph();
     let full = render_scene_to_pixels_scaled(harness, graph, W, H, 1.0).expect("full raster");
 
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let mut rasterizer =
-        VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0).unwrap();
+        VelloLayerRasterizer::new(harness.device.clone(), harness.queue.clone(), W, H, 1.0)
+            .unwrap();
     for &layer in tree.frame_layers() {
         let extracted = if layer == root {
             Some(extract_root_scene(graph, root, &boundaries))
@@ -56,7 +62,11 @@ fn assert_layered_matches_full(harness: &mut VelloHarness, tree: &ElementTree, r
 
     let target_texture = harness.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("layer_present_parity_target"),
-        size: wgpu::Extent3d { width: W, height: H, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: W,
+            height: H,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -86,9 +96,15 @@ fn assert_layered_matches_full(harness: &mut VelloHarness, tree: &ElementTree, r
         .collect();
     compositor.composite(&mut target, &quads).unwrap();
 
-    let layered = readback_rgba8(&harness.device, &harness.queue, &target_texture, W, H).expect("readback");
+    let layered =
+        readback_rgba8(&harness.device, &harness.queue, &target_texture, W, H).expect("readback");
 
-    let worst = full.iter().zip(layered.iter()).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
+    let worst = full
+        .iter()
+        .zip(layered.iter())
+        .map(|(a, b)| a.abs_diff(*b))
+        .max()
+        .unwrap_or(0);
     assert!(
         worst <= 2,
         "{label}: レイヤ分解 raster + wgpu quad 合成が全面 raster と一致しない（最大 {worst} 差）"
@@ -153,7 +169,12 @@ fn layered_present_matches_full_raster_during_and_after_dual_transition() {
     tree.element_set_style(b, &[StyleProp::BackgroundColor(active)]);
     let _ = tree.render(16.0); // transition 開始
 
-    assert_layered_matches_full(&mut harness, &tree, root, "dual transition mid-frame (t=16ms of 160ms)");
+    assert_layered_matches_full(
+        &mut harness,
+        &tree,
+        root,
+        "dual transition mid-frame (t=16ms of 160ms)",
+    );
 
     // on-demand ループが idle に落ちるまで駆動する（転送完了・レイヤ降格まで）。
     let mut t = 32.0;
@@ -165,7 +186,12 @@ fn layered_present_matches_full_raster_during_and_after_dual_transition() {
         assert!(frames < 200, "有限フレームで idle に落ちなければならない");
     }
 
-    assert_layered_matches_full(&mut harness, &tree, root, "dual transition settled (post-transition)");
+    assert_layered_matches_full(
+        &mut harness,
+        &tree,
+        root,
+        "dual transition settled (post-transition)",
+    );
 }
 
 /// scroll(150x100) 直下に可視域を超える内容(400px)を持つツリーをスクロール済み状態で render する。
@@ -186,7 +212,10 @@ fn scrolled_scroll_view_tree() -> (ElementTree, ElementId) {
             StyleProp::BackgroundColor(Color::new(0.9, 0.85, 0.2, 1.0)),
         ],
     );
-    tree.element_set_style(scroll, &[StyleProp::Width(px(150.0)), StyleProp::Height(px(100.0))]);
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(150.0)), StyleProp::Height(px(100.0))],
+    );
     tree.element_set_style(
         content,
         &[
@@ -273,7 +302,10 @@ fn layered_present_matches_full_raster_for_translucent_box_shadow_during_transit
     // `frame_layers()` への反映は 1 フレーム遅れる（`capture_frame_layers` は scene_build 直前の
     // dirty スナップショットから捕捉するため）——render(16.0) 直後はまだ root だけで、a が
     // 実際にレイヤとして分解 raster されるのは次の render 呼び出し以降。
-    tree.element_set_style(a, &[StyleProp::BackgroundColor(Color::new(0.2, 0.2, 0.2, 1.0))]);
+    tree.element_set_style(
+        a,
+        &[StyleProp::BackgroundColor(Color::new(0.2, 0.2, 0.2, 1.0))],
+    );
     let _ = tree.render(16.0); // transition 開始（この時点ではまだ a はレイヤ化されていない）
     let _ = tree.render(32.0); // a がレイヤへ昇格し、分解 raster + quad 合成の経路を通る
 

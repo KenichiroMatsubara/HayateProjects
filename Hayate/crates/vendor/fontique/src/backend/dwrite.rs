@@ -6,21 +6,21 @@ use alloc::sync::Arc;
 use alloc::{vec, vec::Vec};
 use hashbrown::HashMap;
 use std::{
-    ffi::{OsString, c_void},
+    ffi::{c_void, OsString},
     os::windows::ffi::OsStringExt,
     path::PathBuf,
 };
 use windows::Win32::Foundation::STATUS_NOT_FOUND;
 use windows::{
+    core::{implement, Interface, OutRef, PCWSTR},
     Win32::Graphics::DirectWrite::{
-        DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-        DWRITE_FONT_WEIGHT_REGULAR, DWRITE_READING_DIRECTION,
-        DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory, IDWriteFactory,
-        IDWriteFactory2, IDWriteFont, IDWriteFontCollection, IDWriteFontFace, IDWriteFontFallback,
-        IDWriteFontFamily, IDWriteFontFile, IDWriteLocalFontFileLoader, IDWriteNumberSubstitution,
-        IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
+        DWriteCreateFactory, IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection,
+        IDWriteFontFace, IDWriteFontFallback, IDWriteFontFamily, IDWriteFontFile,
+        IDWriteLocalFontFileLoader, IDWriteNumberSubstitution, IDWriteTextAnalysisSource,
+        IDWriteTextAnalysisSource_Impl, DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH_NORMAL,
+        DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_REGULAR, DWRITE_READING_DIRECTION,
+        DWRITE_READING_DIRECTION_LEFT_TO_RIGHT,
     },
-    core::{Interface, OutRef, PCWSTR, implement},
 };
 
 use super::{

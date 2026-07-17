@@ -137,7 +137,8 @@ fn pump_scroll_layer(
         let extracted = if scroll == root {
             extract_root_scene(graph, root, &boundaries)
         } else {
-            extract_scroll_layer_scene(graph, scroll, &boundaries).expect("scroll view is lowered")
+            extract_scroll_layer_scene(graph, scroll, &boundaries, geometry.scroll_affine)
+                .expect("scroll view is lowered")
         };
         rasterizer
             .rasterize(scroll, &extracted, Some(geometry.raster_band()))
@@ -182,8 +183,8 @@ fn rasterize_non_scroll_layers(
 }
 
 /// Composites `tree`'s **current** frame from whatever `rasterizer`/`planner` already hold —
-/// mirrors `present_layers`'s compositing step exactly, including the per-frame-recomputed
-/// compensating translate (`ScrollLayerGeometry::screen_top_for_band`) for banded scroll layers.
+/// mirrors `present_layers`'s compositing step exactly, including the per-frame-recomputed live
+/// scroll affine for banded scroll layers.
 /// Deliberately takes no raster step itself, so callers can composite frames that reuse a cache
 /// texture rastered on an *earlier* call (proving composite-only correctness, not just "it
 /// compiles the frame it was rastered on").
@@ -231,19 +232,15 @@ fn composite_frame_scaled(
         if let Some(texture) = rasterizer.texture(placement.layer) {
             // Same formula as `vello.rs`'s `present_layers`: the CACHED band (what's
             // actually in the texture, possibly from an earlier raster) composed with
-            // *this frame's* geometry (fresh every call) — see `screen_top_for_band`'s doc
-            // comment for why both matter.
+            // *this frame's* geometry (fresh every call).
             let transform = match (
                 planner.cached_scroll_band(placement.layer),
                 scroll_geometry.get(&placement.layer),
             ) {
-                (Some(cached_band), Some(geometry)) => {
-                    let screen_top = geometry.screen_top_for_band(cached_band);
-                    compose(
-                        placement.transform,
-                        [1.0, 0.0, 0.0, 1.0, 0.0, screen_top as f64],
-                    )
-                }
+                (Some(cached_band), Some(geometry)) => compose(
+                    placement.transform,
+                    geometry.composite_affine_for_band(cached_band),
+                ),
                 _ => placement.transform,
             };
             quads.push(CompositeQuad {
@@ -492,7 +489,7 @@ fn banded_present_tracks_further_in_band_scrolling_without_a_reraster() {
     );
 
     // The composited output on this LATER, un-rastered frame must still match a full raster of
-    // THIS frame's (scrolled-further) tree state — proving `screen_top_for_band` correctly
+    // THIS frame's (scrolled-further) tree state — proving the composite affine correctly
     // recomputes the on-screen position from the cached band + this frame's (not the
     // raster-time) geometry, instead of freezing the picture at the raster-time offset.
     let full = render_scene_to_pixels_scaled(&mut harness, tree.scene_graph(), W, SURFACE_H, 1.0)

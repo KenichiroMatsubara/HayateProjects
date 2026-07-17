@@ -3,8 +3,8 @@
 //! Touch はキャレットに潰す（Android の挙動）。
 
 use hayate_core::{
-    Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue, PointerKind,
-    RecordingPainter, StyleProp, render_scene_graph,
+    render_scene_graph, Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue,
+    PointerKind, RecordingPainter, StyleProp,
 };
 
 /// 編集選択ハイライトの色（Material の選択色、ADR-0097）。
@@ -26,9 +26,9 @@ fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
     draw_ops(tree)
         .iter()
         .filter_map(|op| match op {
-            DrawOp::FillRect { y, height, color, .. } if *color == HIGHLIGHT_COLOR => {
-                Some((*y, *y + *height))
-            }
+            DrawOp::FillRect {
+                y, height, color, ..
+            } if *color == HIGHLIGHT_COLOR => Some((*y, *y + *height)),
             _ => None,
         })
         .collect()
@@ -87,7 +87,10 @@ fn highlight_is_drawn_only_while_the_input_is_focused() {
 
     drag_select(&mut tree);
     tree.render(0.0);
-    assert!(tree.element_text_selection(input).is_some(), "a range is selected");
+    assert!(
+        tree.element_text_selection(input).is_some(),
+        "a range is selected"
+    );
     assert!(
         has_highlight(&tree),
         "the focused input paints its selection highlight",
@@ -114,8 +117,14 @@ fn touch_blur_collapses_the_selection_and_dismisses_chrome() {
 
     drag_select(&mut tree);
     tree.render(0.0);
-    assert!(tree.element_text_selection(input).is_some(), "a range is selected");
-    assert!(tree.selection_toolbar().is_some(), "the selection shows chrome");
+    assert!(
+        tree.element_text_selection(input).is_some(),
+        "a range is selected"
+    );
+    assert!(
+        tree.selection_toolbar().is_some(),
+        "the selection shows chrome"
+    );
 
     // Touch ポインタでフィールド外をタップ（Android の挙動）: 編集選択はキャレットに
     // 潰れ、選択 chrome は消える。
@@ -141,7 +150,9 @@ fn mouse_blur_remembers_the_range_and_refocus_restores_the_highlight() {
 
     drag_select(&mut tree);
     tree.render(0.0);
-    let range = tree.element_text_selection(input).expect("a range is selected");
+    let range = tree
+        .element_text_selection(input)
+        .expect("a range is selected");
 
     // Mouse ポインタで外をタップするとフィールドは blur するが範囲は保持される
     // （Chromium のフォームコントロール準拠）。非フォーカス中はハイライトが隠れる。
@@ -163,7 +174,10 @@ fn mouse_blur_remembers_the_range_and_refocus_restores_the_highlight() {
         Some(range),
         "the range is unchanged on refocus",
     );
-    assert!(has_highlight(&tree), "refocusing restores the selection highlight");
+    assert!(
+        has_highlight(&tree),
+        "refocusing restores the selection highlight"
+    );
 }
 
 #[test]
@@ -172,7 +186,10 @@ fn unfocused_input_shows_no_chrome_even_when_it_remembers_a_range() {
 
     drag_select(&mut tree);
     tree.render(0.0);
-    assert!(tree.selection_toolbar().is_some(), "the focused selection shows chrome");
+    assert!(
+        tree.selection_toolbar().is_some(),
+        "the focused selection shows chrome"
+    );
 
     // 新たなポインタ操作なしにフォーカスを失う（例: フォーカスが他へ移る）と、Touch の
     // 範囲は残るが chrome は隠れる（active = focused、ADR-0104）。toolbar は非フォーカスの
@@ -192,7 +209,10 @@ fn unfocused_input_shows_no_chrome_even_when_it_remembers_a_range() {
     // chrome はフォーカス連動で、blur で消費されない。
     tree.element_focus(input);
     tree.render(0.0);
-    assert!(tree.selection_toolbar().is_some(), "refocus restores the chrome");
+    assert!(
+        tree.selection_toolbar().is_some(),
+        "refocus restores the chrome"
+    );
 }
 
 /// 200×240 ビューポート上、80px スペーサで隔てた高さ 40px の text-input 2 つの縦並び。
@@ -249,7 +269,10 @@ fn switching_text_inputs_never_lights_two_at_once() {
     tree.on_pointer_down(2.0, 20.0);
     tree.on_pointer_move(70.0, 20.0);
     tree.render(0.0);
-    assert!(tree.element_text_selection(top).is_some(), "top has a range");
+    assert!(
+        tree.element_text_selection(top).is_some(),
+        "top has a range"
+    );
     let bands = highlight_bands(&tree);
     assert!(!bands.is_empty(), "the top input is highlighted");
     assert!(
@@ -262,7 +285,10 @@ fn switching_text_inputs_never_lights_two_at_once() {
     tree.on_pointer_down(2.0, 140.0);
     tree.on_pointer_move(70.0, 140.0);
     tree.render(0.0);
-    assert!(tree.element_text_selection(bottom).is_some(), "bottom has a range");
+    assert!(
+        tree.element_text_selection(bottom).is_some(),
+        "bottom has a range"
+    );
     let bands = highlight_bands(&tree);
     assert!(!bands.is_empty(), "the bottom input is highlighted");
     assert!(

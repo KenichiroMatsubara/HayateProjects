@@ -13,8 +13,8 @@
 //! `TextInputState`/`TextSpan`、将来の Web/iOS は各々の composition イベント）。
 //! これにより差分・適用ロジックを一度だけ実装・テストし、全アダプタで共有する。
 
-use super::tree::ElementTree;
 use super::id::ElementId;
+use super::tree::ElementTree;
 
 /// 報告テキストへのバイトオフセット範囲。オフセットは [`TextInputState::text`] への
 /// UTF-8 バイトインデックス（android-activity の `TextSpan` 等に対応）。
@@ -99,10 +99,7 @@ fn map_offset_excluding(offset: usize, cs: usize, ce: usize) -> usize {
 }
 
 /// 報告された selection（あれば）を、確定テキスト座標へ写像した `(anchor, focus)` にする。
-fn map_selection(
-    state: &TextInputState,
-    map: impl Fn(usize) -> usize,
-) -> Option<(usize, usize)> {
+fn map_selection(state: &TextInputState, map: impl Fn(usize) -> usize) -> Option<(usize, usize)> {
     let span = state.selection?;
     let len = state.text.len();
     if span.start > len
@@ -206,7 +203,10 @@ mod tests {
         let actions = translate_text_input(&composing("かん", 0, 6), &committed("感"));
         assert_eq!(
             actions,
-            vec![ImeAction::SetText("感".into()), ImeAction::SetPreedit(String::new())]
+            vec![
+                ImeAction::SetText("感".into()),
+                ImeAction::SetPreedit(String::new())
+            ]
         );
     }
 
@@ -224,7 +224,10 @@ mod tests {
         let actions = translate_text_input(&composing("aか", 1, 4), &composing("bか", 1, 4));
         assert_eq!(
             actions,
-            vec![ImeAction::SetText("b".into()), ImeAction::SetPreedit("か".into())]
+            vec![
+                ImeAction::SetText("b".into()),
+                ImeAction::SetPreedit("か".into())
+            ]
         );
     }
 
@@ -247,7 +250,13 @@ mod tests {
         let prev = with_selection(committed("helloworld"), 10, 10);
         let next = with_selection(committed("helloworld"), 5, 5);
         let actions = translate_text_input(&prev, &next);
-        assert_eq!(actions, vec![ImeAction::SetSelection { anchor: 5, focus: 5 }]);
+        assert_eq!(
+            actions,
+            vec![ImeAction::SetSelection {
+                anchor: 5,
+                focus: 5
+            }]
+        );
     }
 
     #[test]
@@ -262,7 +271,10 @@ mod tests {
         assert_eq!(
             actions,
             vec![
-                ImeAction::SetSelection { anchor: 5, focus: 5 },
+                ImeAction::SetSelection {
+                    anchor: 5,
+                    focus: 5
+                },
                 ImeAction::SetPreedit("X".into()),
             ],
             "preedit lands at the mid caret, not the tail",

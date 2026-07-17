@@ -34,10 +34,7 @@ fn scale_1_paints_rect_at_css_pixel_extent() {
     TinySkiaSceneRenderer::new().render_scene(&sg, &mut pixmap, CLEAR, 1.0);
     let inside = pixel(pixmap.data(), 100, 49, 25);
     let outside = pixel(pixmap.data(), 100, 51, 25);
-    assert!(
-        inside[0] > 200,
-        "inside rect should be red, got {inside:?}"
-    );
+    assert!(inside[0] > 200, "inside rect should be red, got {inside:?}");
     assert!(
         outside[0] > 240 && outside[1] > 240,
         "outside rect should be clear, got {outside:?}"

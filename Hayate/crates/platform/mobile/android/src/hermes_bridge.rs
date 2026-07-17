@@ -49,20 +49,12 @@ mod ffi {
             styles: &[f32],
             texts: &CxxVector<CxxString>,
         ) -> Result<()>;
-        fn dispatch_edit_intent(
-            self: &JsHostBridge,
-            target: f64,
-            intent: &[f64],
-        ) -> Result<u32>;
+        fn dispatch_edit_intent(self: &JsHostBridge, target: f64, intent: &[f64]) -> Result<u32>;
         fn render(self: &JsHostBridge, timestamp_ms: f64);
         fn prepare_frame(self: &JsHostBridge, timestamp_ms: f64) -> Result<FfiPreparedFrame>;
         fn commit_frame(self: &JsHostBridge, frame_id: f64) -> Result<()>;
         fn abort_frame(self: &JsHostBridge, frame_id: f64) -> Result<()>;
-        fn register_listener(
-            self: &JsHostBridge,
-            element_id: f64,
-            event_kind: u32,
-        ) -> Result<f64>;
+        fn register_listener(self: &JsHostBridge, element_id: f64, event_kind: u32) -> Result<f64>;
         fn element_get_text_content(self: &JsHostBridge, id: f64) -> String;
         fn element_subtree_ids(self: &JsHostBridge, id: f64) -> Vec<f64>;
         fn element_get_bounds(self: &JsHostBridge, id: f64) -> Vec<f32>;
@@ -175,7 +167,11 @@ impl JsHostBridge {
     }
 
     fn poll_events(&self) -> Vec<ffi::FfiEventRow> {
-        self.host.poll_events().into_iter().map(ffi_row_from).collect()
+        self.host
+            .poll_events()
+            .into_iter()
+            .map(ffi_row_from)
+            .collect()
     }
 
     fn has_pending_visual_work(&self) -> bool {

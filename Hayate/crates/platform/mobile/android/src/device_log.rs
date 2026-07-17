@@ -135,7 +135,13 @@ pub struct DeviceLog<P: LogSendPort> {
 impl<P: LogSendPort> DeviceLog<P> {
     /// Dev Server 経由の送り側シームを作る（送信有効）。`start_ms` は最初のフラッシュ間隔の起点。
     pub fn new(device_id: String, device_label: String, port: P, start_ms: f64) -> Self {
-        Self::with_origin(device_id, device_label, port, start_ms, BundleOrigin::DevServer)
+        Self::with_origin(
+            device_id,
+            device_label,
+            port,
+            start_ms,
+            BundleOrigin::DevServer,
+        )
     }
 
     /// bundle 取得元を指定して作る。Demo Endpoint 経由なら送信を無効化する（ADR-0005）。
@@ -169,7 +175,13 @@ impl<P: LogSendPort> DeviceLog<P> {
         }
         let seq = self.next_seq;
         self.next_seq += 1;
-        self.buffer.push_back(LogEntry { seq, ts_ms, source, level, message });
+        self.buffer.push_back(LogEntry {
+            seq,
+            ts_ms,
+            source,
+            level,
+            message,
+        });
         // 上限超過は古い方から捨てる（クラッシュ耐性より新しいログ優先・#788）。
         if self.buffer.len() > RING_BUFFER_CAPACITY {
             self.buffer.pop_front();
@@ -405,7 +417,9 @@ mod tests {
 
     impl LogSendPort for &MockPort {
         fn send(&self, device_id: &str, batch: &LogBatch) -> bool {
-            self.sent.borrow_mut().push((device_id.to_owned(), batch.clone()));
+            self.sent
+                .borrow_mut()
+                .push((device_id.to_owned(), batch.clone()));
             true
         }
     }
@@ -458,7 +472,10 @@ mod tests {
         log.tick(FLUSH_INTERVAL_MS);
         log.tick(FLUSH_INTERVAL_MS * 5.0);
 
-        assert!(port.sent.borrow().is_empty(), "no batch should be sent while the buffer is empty");
+        assert!(
+            port.sent.borrow().is_empty(),
+            "no batch should be sent while the buffer is empty"
+        );
     }
 
     #[test]
@@ -469,7 +486,10 @@ mod tests {
         log.record(LogSource::Js, LogLevel::Log, "one".to_owned(), 100.0);
         // 間隔前の tick では送らない（バッファに溜め続ける）。
         log.tick(FLUSH_INTERVAL_MS - 1.0);
-        assert!(port.sent.borrow().is_empty(), "nothing flushes before the interval elapses");
+        assert!(
+            port.sent.borrow().is_empty(),
+            "nothing flushes before the interval elapses"
+        );
 
         log.record(LogSource::Js, LogLevel::Warn, "two".to_owned(), 200.0);
         log.tick(FLUSH_INTERVAL_MS);
@@ -493,7 +513,10 @@ mod tests {
         let sent = port.sent.borrow();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[0].1.entries[0].seq, 1);
-        assert_eq!(sent[1].1.entries[0].seq, 2, "seq does not reset between batches");
+        assert_eq!(
+            sent[1].1.entries[0].seq, 2,
+            "seq does not reset between batches"
+        );
     }
 
     #[test]
@@ -504,7 +527,11 @@ mod tests {
 
         log.record(LogSource::Js, LogLevel::Error, "crash".to_owned(), 5.0);
         // tick せずに送られている。
-        assert_eq!(port.sent.borrow().len(), 1, "error should flush immediately");
+        assert_eq!(
+            port.sent.borrow().len(),
+            1,
+            "error should flush immediately"
+        );
         assert_eq!(port.sent.borrow()[0].1.entries[0].message, "crash");
     }
 
@@ -514,8 +541,17 @@ mod tests {
         let port = MockPort::default();
         let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
 
-        log.record(LogSource::Host, LogLevel::Info, "native boom".to_owned(), 5.0);
-        assert_eq!(port.sent.borrow().len(), 1, "host events should flush immediately");
+        log.record(
+            LogSource::Host,
+            LogLevel::Info,
+            "native boom".to_owned(),
+            5.0,
+        );
+        assert_eq!(
+            port.sent.borrow().len(),
+            1,
+            "host events should flush immediately"
+        );
     }
 
     #[test]
@@ -525,7 +561,10 @@ mod tests {
         let mut log = DeviceLog::new("dev-abc".to_owned(), "Pixel".to_owned(), &port, 0.0);
 
         log.record(LogSource::Js, LogLevel::Log, "chatter".to_owned(), 5.0);
-        assert!(port.sent.borrow().is_empty(), "a normal log must not flush before the interval");
+        assert!(
+            port.sent.borrow().is_empty(),
+            "a normal log must not flush before the interval"
+        );
         log.tick(FLUSH_INTERVAL_MS);
         assert_eq!(port.sent.borrow().len(), 1);
     }
@@ -543,14 +582,22 @@ mod tests {
 
         port.fail.set(false); // dev-server 復帰
         log.tick(FLUSH_INTERVAL_MS * 2.0); // 再送 → 成功
-        assert_eq!(port.attempts.borrow().len(), 2, "the retained entry is resent");
+        assert_eq!(
+            port.attempts.borrow().len(),
+            2,
+            "the retained entry is resent"
+        );
         // 両試行とも同じエントリ（seq 1）を運ぶ（保持したものをそのまま再送）。
         assert_eq!(port.attempts.borrow()[0].entries[0].seq, 1);
         assert_eq!(port.attempts.borrow()[1].entries[0].seq, 1);
 
         // 成功後はバッファが空くので、以降の tick では何も送らない。
         log.tick(FLUSH_INTERVAL_MS * 3.0);
-        assert_eq!(port.attempts.borrow().len(), 2, "nothing left to resend after success");
+        assert_eq!(
+            port.attempts.borrow().len(),
+            2,
+            "nothing left to resend after success"
+        );
     }
 
     #[test]
@@ -569,7 +616,11 @@ mod tests {
         log.tick(FLUSH_INTERVAL_MS);
         let last = port.attempts.borrow();
         let batch = &last[last.len() - 1];
-        assert_eq!(batch.entries.len(), RING_BUFFER_CAPACITY, "buffer is capped at the named limit");
+        assert_eq!(
+            batch.entries.len(),
+            RING_BUFFER_CAPACITY,
+            "buffer is capped at the named limit"
+        );
         // 先頭 5 件（0..=4）は捨てられ、最古は 6 件目（"5"）になる。
         assert_eq!(batch.entries.first().unwrap().message, "5");
         assert_eq!(
@@ -624,10 +675,18 @@ mod tests {
             BundleOrigin::DemoEndpoint,
         );
 
-        log.record(LogSource::Js, LogLevel::Error, "should not leave the device".to_owned(), 10.0);
+        log.record(
+            LogSource::Js,
+            LogLevel::Error,
+            "should not leave the device".to_owned(),
+            10.0,
+        );
         log.tick(FLUSH_INTERVAL_MS * 3.0);
 
-        assert!(port.sent.borrow().is_empty(), "Demo Endpoint boots must not POST logs anywhere");
+        assert!(
+            port.sent.borrow().is_empty(),
+            "Demo Endpoint boots must not POST logs anywhere"
+        );
     }
 
     /// テスト専用の使い捨て data dir（Kotlin が書く internal data dir の代役・dev_server_target と同流儀）。
@@ -654,7 +713,10 @@ mod tests {
     #[test]
     fn device_id_without_a_data_dir_is_generated_but_not_persisted() {
         // data dir が無ければ生成値をそのまま返す（永続化はできないがホストは殺さない）。
-        assert_eq!(load_or_create_device_id(None, || "ephemeral".to_owned()), "ephemeral");
+        assert_eq!(
+            load_or_create_device_id(None, || "ephemeral".to_owned()),
+            "ephemeral"
+        );
     }
 
     #[test]
@@ -662,7 +724,10 @@ mod tests {
         // ログは常に Dev Server ルート `/log/<deviceId>` へ。bundle 選択の path（/solid/bundle.js）は
         // 使わない（bundle_url が path を保持するのと対をなす）。scheme 既定ポートは URL 正規化済み。
         let target = crate::dev_server_target::resolve(Some("192.168.1.5:8080/solid/bundle.js"));
-        assert_eq!(log_url(&target, "dev-abc"), "http://192.168.1.5:8080/log/dev-abc");
+        assert_eq!(
+            log_url(&target, "dev-abc"),
+            "http://192.168.1.5:8080/log/dev-abc"
+        );
 
         let https = crate::dev_server_target::resolve(Some("https://demo.example/react/bundle.js"));
         assert_eq!(log_url(&https, "xyz"), "https://demo.example:443/log/xyz");
@@ -670,7 +735,13 @@ mod tests {
 
     #[test]
     fn wire_level_strings_round_trip_and_unknown_aliases_fall_back_to_log() {
-        for level in [LogLevel::Log, LogLevel::Info, LogLevel::Warn, LogLevel::Error, LogLevel::Debug] {
+        for level in [
+            LogLevel::Log,
+            LogLevel::Info,
+            LogLevel::Warn,
+            LogLevel::Error,
+            LogLevel::Debug,
+        ] {
             assert_eq!(LogLevel::from_wire(level.as_str()), level);
         }
         // 未知の別名（将来レベル）は落とさず log に丸める（additive-only 互換）。
@@ -689,8 +760,20 @@ mod tests {
         let batch = LogBatch {
             device_label: "Pixel 8".to_owned(),
             entries: vec![
-                LogEntry { seq: 1, ts_ms: 1_720_000_000_000.0, source: LogSource::Js, level: LogLevel::Warn, message: "hi \"quoted\"".to_owned() },
-                LogEntry { seq: 2, ts_ms: 1_720_000_000_001.0, source: LogSource::Host, level: LogLevel::Error, message: "boom".to_owned() },
+                LogEntry {
+                    seq: 1,
+                    ts_ms: 1_720_000_000_000.0,
+                    source: LogSource::Js,
+                    level: LogLevel::Warn,
+                    message: "hi \"quoted\"".to_owned(),
+                },
+                LogEntry {
+                    seq: 2,
+                    ts_ms: 1_720_000_000_001.0,
+                    source: LogSource::Host,
+                    level: LogLevel::Error,
+                    message: "boom".to_owned(),
+                },
             ],
         };
 

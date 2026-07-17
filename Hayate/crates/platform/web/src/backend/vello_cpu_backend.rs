@@ -80,13 +80,13 @@ impl CanvasBackend for SelectedBackend {
         SceneRendererKind::VelloCpu
     }
 
-    fn render_scene(&mut self, scene: &SceneGraph, clear_color: ClearColor) -> Result<(), anyhow::Error> {
-        self.scene_renderer.render_scene(
-            scene,
-            &mut self.pixmap,
-            clear_color,
-            self.content_scale,
-        );
+    fn render_scene(
+        &mut self,
+        scene: &SceneGraph,
+        clear_color: ClearColor,
+    ) -> Result<(), anyhow::Error> {
+        self.scene_renderer
+            .render_scene(scene, &mut self.pixmap, clear_color, self.content_scale);
         blit_to_canvas(&self.ctx, &self.pixmap, self.width, self.height).map_err(js_to_anyhow)
     }
 
@@ -125,7 +125,12 @@ impl CanvasBackend for SelectedBackend {
         let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
 
         // 消えたレイヤ（transition 終了等）のキャッシュ面と台帳を掃除する。
-        for stale in self.prev_layers.difference(&boundaries).copied().collect::<Vec<_>>() {
+        for stale in self
+            .prev_layers
+            .difference(&boundaries)
+            .copied()
+            .collect::<Vec<_>>()
+        {
             self.rasterizer.discard(stale);
             self.planner.evict(stale);
         }
@@ -155,13 +160,15 @@ impl CanvasBackend for SelectedBackend {
         let quads: Vec<CompositeQuad<'_, std::sync::Arc<Pixmap>>> = placements
             .iter()
             .filter_map(|p| {
-                self.rasterizer.texture(p.layer).map(|texture| CompositeQuad {
-                    layer: p.layer,
-                    transform: p.transform,
-                    opacity: 1.0,
-                    clip: p.clip,
-                    texture,
-                })
+                self.rasterizer
+                    .texture(p.layer)
+                    .map(|texture| CompositeQuad {
+                        layer: p.layer,
+                        transform: p.transform,
+                        opacity: 1.0,
+                        clip: p.clip,
+                        texture,
+                    })
             })
             .collect();
         let mut target = VelloCpuCompositeTarget {
@@ -182,7 +189,8 @@ impl CanvasBackend for SelectedBackend {
         self.compositor.set_content_scale(self.content_scale);
         if width == 0 || height == 0 || (width == self.width && height == self.height) {
             // DPR だけ変わっても content_scale は反映済み。キャッシュ面はスケール込みなので作り直す。
-            self.rasterizer.resize(self.width, self.height, self.content_scale);
+            self.rasterizer
+                .resize(self.width, self.height, self.content_scale);
             self.planner.invalidate();
             return;
         }

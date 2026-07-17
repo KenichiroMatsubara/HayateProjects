@@ -16,9 +16,7 @@ use std::collections::HashMap;
 use hayate_core::element::id::ElementId;
 use hayate_core::SceneGraph;
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, RasterBand};
-use tiny_skia::{
-    Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Rect, Transform,
-};
+use tiny_skia::{Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
 
 use crate::TinySkiaSceneRenderer;
 
@@ -80,7 +78,12 @@ impl LayerRasterizer for TinySkiaLayerRasterizer {
         let mut pixmap = Pixmap::new(self.width, self.height)
             .ok_or_else(|| format!("tiny-skia layer pixmap {}x{}", self.width, self.height))?;
         // 透明クリアのキャッシュ面へ抽出済み sub-scene を raster（content_scale は render_scene が適用）。
-        TinySkiaSceneRenderer::new().render_scene(scene, &mut pixmap, TRANSPARENT, self.content_scale);
+        TinySkiaSceneRenderer::new().render_scene(
+            scene,
+            &mut pixmap,
+            TRANSPARENT,
+            self.content_scale,
+        );
         self.textures.insert(layer, pixmap);
         Ok(())
     }
@@ -90,7 +93,9 @@ impl LayerRasterizer for TinySkiaLayerRasterizer {
     }
 
     fn texture_bytes_per_layer(&self) -> u64 {
-        u64::from(self.width) * u64::from(self.height) * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+        u64::from(self.width)
+            * u64::from(self.height)
+            * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
     }
 
     fn discard(&mut self, layer: ElementId) {

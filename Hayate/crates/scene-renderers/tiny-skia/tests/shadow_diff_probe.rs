@@ -68,12 +68,8 @@ fn shadow_diff_probe() {
     strip_shadows(&mut without);
     let (r_wo, od_wo) = stats(&mut without, vw as f64, vh as f64);
 
-    println!(
-        "WITH shadows : rect nodes {r_with}, overdraw {od_with:.2} viewports"
-    );
-    println!(
-        "NO   shadows : rect nodes {r_wo}, overdraw {od_wo:.2} viewports"
-    );
+    println!("WITH shadows : rect nodes {r_with}, overdraw {od_with:.2} viewports");
+    println!("NO   shadows : rect nodes {r_wo}, overdraw {od_wo:.2} viewports");
     println!(
         "shadow tax   : +{} rect nodes, +{:.2} viewports overdraw",
         r_with - r_wo,
@@ -95,7 +91,11 @@ fn shadow_diff_probe() {
     let top12: f64 = areas.iter().take(12).sum();
     println!(
         "top-12 rect areas (viewports): {:?}",
-        areas.iter().take(12).map(|a| (a / vp * 100.0).round() / 100.0).collect::<Vec<_>>()
+        areas
+            .iter()
+            .take(12)
+            .map(|a| (a / vp * 100.0).round() / 100.0)
+            .collect::<Vec<_>>()
     );
     println!(
         "top-12 rects sum = {:.2} vp of {:.2} vp total overdraw",

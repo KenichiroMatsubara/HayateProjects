@@ -14,9 +14,7 @@ use std::collections::HashSet;
 use std::mem::MaybeUninit;
 
 use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
-use hayate_layer_compositor::{
-    scroll_layer_geometry_from_inputs, tunables, GpuBudget,
-};
+use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use ndk::hardware_buffer_format::HardwareBufferFormat;
 use ndk::native_window::NativeWindow;
@@ -49,7 +47,11 @@ pub(crate) fn init_skia_surface(
     // 安全に生き続ける（`app.rs::init_gpu_surface` の SAFETY コメントと同じ前提）。
     let window = window.clone();
     window
-        .set_buffers_geometry(width as i32, height as i32, Some(HardwareBufferFormat::R8G8B8X8_UNORM))
+        .set_buffers_geometry(
+            width as i32,
+            height as i32,
+            Some(HardwareBufferFormat::R8G8B8X8_UNORM),
+        )
         .map_err(|e| format!("ANativeWindow_setBuffersGeometry: {e}"))?;
 
     Ok(SkiaGpuSurface {
@@ -132,7 +134,9 @@ impl SkiaGpuSurface {
 /// バッファへ、stride を気にせず行単位で書いて present する（`ANativeWindow_lock` /
 /// `ANativeWindow_unlockAndPost`、`NativeWindowBufferLockGuard::lines()` 越し）。
 fn present_rgbx(window: &NativeWindow, width: u32, rgbx: &[u8]) -> Result<(), String> {
-    let mut guard = window.lock(None).map_err(|e| format!("ANativeWindow_lock: {e}"))?;
+    let mut guard = window
+        .lock(None)
+        .map_err(|e| format!("ANativeWindow_lock: {e}"))?;
     let Some(lines) = guard.lines() else {
         return Err("ANativeWindow buffer format has no known bytes_per_pixel".to_string());
     };

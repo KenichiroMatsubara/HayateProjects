@@ -100,7 +100,11 @@ pub trait RendererInit<S: Surface> {
     ) -> Result<Box<dyn SceneRenderer>, Error>;
 
     /// 初期化・実行時エラーを共通語彙 [`RendererSelectionReason`] へ分類する。
-    fn classify_init_error(&self, kind: SceneRendererKind, error: &Error) -> RendererSelectionReason;
+    fn classify_init_error(
+        &self,
+        kind: SceneRendererKind,
+        error: &Error,
+    ) -> RendererSelectionReason;
 }
 
 /// `RendererSelectionPolicy` の決定を実行するホスト。ポリシー決定の実行と実行時
@@ -361,7 +365,11 @@ mod tests {
         fn kind(&self) -> SceneRendererKind {
             self.kind
         }
-        fn render_scene(&mut self, _scene: &SceneGraph, _clear_color: ClearColor) -> Result<(), Error> {
+        fn render_scene(
+            &mut self,
+            _scene: &SceneGraph,
+            _clear_color: ClearColor,
+        ) -> Result<(), Error> {
             if self.fails.borrow().contains(&self.kind) {
                 Err(anyhow::anyhow!("surface lost"))
             } else {
@@ -429,7 +437,11 @@ mod tests {
             }))
         }
 
-        fn classify_init_error(&self, kind: SceneRendererKind, error: &Error) -> RendererSelectionReason {
+        fn classify_init_error(
+            &self,
+            kind: SceneRendererKind,
+            error: &Error,
+        ) -> RendererSelectionReason {
             let message = error.to_string();
             if message.contains("not compiled") {
                 RendererSelectionReason::DisabledByPolicy
@@ -441,7 +453,8 @@ mod tests {
         }
     }
 
-    const PREFERRED: &[SceneRendererKind] = &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
+    const PREFERRED: &[SceneRendererKind] =
+        &[SceneRendererKind::Vello, SceneRendererKind::TinySkia];
 
     fn policy() -> RendererSelectionPolicy {
         RendererSelectionPolicy::new(PREFERRED, PREFERRED)
@@ -458,9 +471,14 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 policy(),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await
@@ -483,9 +501,14 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 policy(),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await
@@ -509,14 +532,22 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let result = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 policy(),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await;
 
-            assert!(result.is_err(), "no feasible renderer must surface as an error");
+            assert!(
+                result.is_err(),
+                "no feasible renderer must surface as an error"
+            );
         });
     }
 
@@ -535,9 +566,14 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 policy(),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await
@@ -568,7 +604,10 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 RendererSelectionPolicy::new(
                     &[
                         SceneRendererKind::CanvasKit,
@@ -581,14 +620,19 @@ mod tests {
                         SceneRendererKind::TinySkia,
                     ],
                 ),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await
             .expect("CanvasKit must be selected during boot");
 
             let result = host.render_scene(&SceneGraph::default(), [0.0, 0.0, 0.0, 1.0]);
-            assert!(result.is_err(), "a selected CanvasKit failure must be terminal");
+            assert!(
+                result.is_err(),
+                "a selected CanvasKit failure must be terminal"
+            );
             assert_eq!(host.kind(), SceneRendererKind::CanvasKit);
             assert!(
                 sync_init_calls.borrow().is_empty(),
@@ -610,19 +654,27 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 RendererSelectionPolicy::new(
                     &[SceneRendererKind::Skia, SceneRendererKind::Vello],
                     &[SceneRendererKind::Skia, SceneRendererKind::Vello],
                 ),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await
             .expect("skia must be selected during boot");
 
             let result = host.clear([0.0, 0.0, 0.0, 1.0]);
-            assert!(result.is_err(), "a selected skia clear failure must be terminal");
+            assert!(
+                result.is_err(),
+                "a selected skia clear failure must be terminal"
+            );
             assert_eq!(host.kind(), SceneRendererKind::Skia);
             assert!(sync_init_calls.borrow().is_empty());
 
@@ -648,12 +700,17 @@ mod tests {
                 layer_present_enabled: Rc::new(RefCell::new(true)),
             };
             let mut host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 RendererSelectionPolicy::new(
                     &[SceneRendererKind::TinySkia],
                     &[SceneRendererKind::TinySkia],
                 ),
-                RendererCapabilities { webgpu_available: false },
+                RendererCapabilities {
+                    webgpu_available: false,
+                },
                 init,
             )
             .await
@@ -680,9 +737,14 @@ mod tests {
                 layer_present_enabled: layer_present_enabled.clone(),
             };
             let mut host = RenderHost::init_with_policy(
-                FakeSurface { width: 800, height: 600 },
+                FakeSurface {
+                    width: 800,
+                    height: 600,
+                },
                 policy(),
-                RendererCapabilities { webgpu_available: true },
+                RendererCapabilities {
+                    webgpu_available: true,
+                },
                 init,
             )
             .await

@@ -33,69 +33,102 @@ fn title_row_line_counts(align: AlignValue) -> (Option<usize>, Option<usize>) {
     };
     let ink = Color::new(0.9, 0.93, 0.97, 1.0);
 
-    let shell = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::percent(100.0)),
-        StyleProp::Height(Dimension::percent(100.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::DefaultColor(ink),
-        StyleProp::DefaultFontSize(14.0),
-        StyleProp::DefaultFontFamily("Inter, Segoe UI, system-ui, sans-serif".to_string()),
-    ]);
+    let shell = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::percent(100.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::DefaultColor(ink),
+            StyleProp::DefaultFontSize(14.0),
+            StyleProp::DefaultFontFamily("Inter, Segoe UI, system-ui, sans-serif".to_string()),
+        ],
+    );
     tree.set_root(shell);
     tree.set_viewport(1280.0, 720.0);
 
     // page: scroll-view, alignItems:center（card は中央寄せ、cross 方向は stretch しない）。
-    let page = mk(&mut tree, ElementKind::ScrollView, &[
-        StyleProp::FlexGrow(1.0),
-        StyleProp::Width(Dimension::percent(100.0)),
-        StyleProp::Height(Dimension::percent(100.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::PaddingTop(Dimension::px(36.0)),
-    ]);
+    let page = mk(
+        &mut tree,
+        ElementKind::ScrollView,
+        &[
+            StyleProp::FlexGrow(1.0),
+            StyleProp::Width(Dimension::percent(100.0)),
+            StyleProp::Height(Dimension::percent(100.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::PaddingTop(Dimension::px(36.0)),
+        ],
+    );
     tree.element_append_child(shell, page);
 
     // card: width 520 / maxWidth 100% の column。
-    let card = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::px(520.0)),
-        StyleProp::MaxWidth(Dimension::percent(100.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::Gap(Dimension::px(16.0)),
-        StyleProp::Padding(Dimension::px(22.0)),
-    ]);
+    let card = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::px(520.0)),
+            StyleProp::MaxWidth(Dimension::percent(100.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::Gap(Dimension::px(16.0)),
+            StyleProp::Padding(Dimension::px(22.0)),
+        ],
+    );
     tree.element_append_child(page, card);
 
     // title-row: row, align-items=引数, gap 10。子は幅指定なしの text 2 つ（App.tsx と同型）。
-    let title_row = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Row),
-        StyleProp::AlignItems(align),
-        StyleProp::Gap(Dimension::px(10.0)),
-    ]);
+    let title_row = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+            StyleProp::AlignItems(align),
+            StyleProp::Gap(Dimension::px(10.0)),
+        ],
+    );
     tree.element_append_child(card, title_row);
 
-    let title = mk(&mut tree, ElementKind::Text, &[
-        StyleProp::DefaultColor(ink),
-        StyleProp::DefaultFontSize(22.0),
-        StyleProp::FontWeight(700.0),
-    ]);
+    let title = mk(
+        &mut tree,
+        ElementKind::Text,
+        &[
+            StyleProp::DefaultColor(ink),
+            StyleProp::DefaultFontSize(22.0),
+            StyleProp::FontWeight(700.0),
+        ],
+    );
     tree.element_set_text(title, "React TODO");
     tree.element_append_child(title_row, title);
 
-    let sub = mk(&mut tree, ElementKind::Text, &[StyleProp::DefaultFontSize(13.0)]);
+    let sub = mk(
+        &mut tree,
+        ElementKind::Text,
+        &[StyleProp::DefaultFontSize(13.0)],
+    );
     tree.element_set_text(sub, "残り 2 / 3 件");
     tree.element_append_child(title_row, sub);
 
     tree.render(0.0);
 
     // ボックス幅は十分（card 内 476px）あることを確認しておく（折り返す物理的理由がない）。
-    let row_w = tree.element_layout_rect(title_row).map(|r| r.2).unwrap_or(0.0);
-    assert!(row_w > 400.0, "title-row must be wide ({row_w}); 折返しの物理的理由はない");
+    let row_w = tree
+        .element_layout_rect(title_row)
+        .map(|r| r.2)
+        .unwrap_or(0.0);
+    assert!(
+        row_w > 400.0,
+        "title-row must be wide ({row_w}); 折返しの物理的理由はない"
+    );
 
-    (tree.test_text_line_count(title), tree.test_text_line_count(sub))
+    (
+        tree.test_text_line_count(title),
+        tree.test_text_line_count(sub),
+    )
 }
 
 #[test]

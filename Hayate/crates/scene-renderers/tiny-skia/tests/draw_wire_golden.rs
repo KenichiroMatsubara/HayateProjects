@@ -12,11 +12,11 @@ use std::path::PathBuf;
 use hayate_core::wire::{
     apply_mutations, DRAW_OP_ARC_TO, DRAW_OP_CIRCLE, DRAW_OP_CLIP_PATH, DRAW_OP_CLIP_RECT,
     DRAW_OP_CLOSE, DRAW_OP_CUBIC_TO, DRAW_OP_FILL, DRAW_OP_LINE_TO, DRAW_OP_MOVE_TO, DRAW_OP_RECT,
-    DRAW_OP_RESTORE, DRAW_OP_ROTATE, DRAW_OP_RRECT, DRAW_OP_SAVE, DRAW_OP_STROKE, DRAW_OP_TRANSLATE,
-    DRAW_PAINT_CAP, DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE, DRAW_PAINT_JOIN,
-    DRAW_PAINT_MITER_LIMIT, DRAW_PAINT_STROKE_WIDTH, ELEMENT_KIND_VIEW, OP_APPEND_CHILD, OP_CREATE,
-    OP_SET_DRAW, OP_SET_ROOT, OP_SET_STYLE, TAG_BACKGROUND_COLOR, TAG_HEIGHT, TAG_OVERFLOW,
-    TAG_WIDTH,
+    DRAW_OP_RESTORE, DRAW_OP_ROTATE, DRAW_OP_RRECT, DRAW_OP_SAVE, DRAW_OP_STROKE,
+    DRAW_OP_TRANSLATE, DRAW_PAINT_CAP, DRAW_PAINT_COLOR, DRAW_PAINT_DASH, DRAW_PAINT_FILL_RULE,
+    DRAW_PAINT_JOIN, DRAW_PAINT_MITER_LIMIT, DRAW_PAINT_STROKE_WIDTH, ELEMENT_KIND_VIEW,
+    OP_APPEND_CHILD, OP_CREATE, OP_SET_DRAW, OP_SET_ROOT, OP_SET_STYLE, TAG_BACKGROUND_COLOR,
+    TAG_HEIGHT, TAG_OVERFLOW, TAG_WIDTH,
 };
 use hayate_core::ElementTree;
 use hayate_scene_test_support::golden::assert_pixels_match_golden;
@@ -254,16 +254,46 @@ fn single_view_draw(draws: &[f32]) -> Vec<u8> {
 #[test]
 fn wire_cubic_fill_matches_golden() {
     let draws: Vec<f32> = vec![
-        DRAW_OP_MOVE_TO as f32, 20.0, 50.0,
-        DRAW_OP_CUBIC_TO as f32, 20.0, 10.0, 80.0, 10.0, 80.0, 50.0,
-        DRAW_OP_CUBIC_TO as f32, 80.0, 90.0, 20.0, 90.0, 20.0, 50.0,
+        DRAW_OP_MOVE_TO as f32,
+        20.0,
+        50.0,
+        DRAW_OP_CUBIC_TO as f32,
+        20.0,
+        10.0,
+        80.0,
+        10.0,
+        80.0,
+        50.0,
+        DRAW_OP_CUBIC_TO as f32,
+        80.0,
+        90.0,
+        20.0,
+        90.0,
+        20.0,
+        50.0,
         DRAW_OP_CLOSE as f32,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 1.0, 0.0, 0.0, 1.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
     ];
     let pixels = single_view_draw(&draws);
-    assert_near(pixel(&pixels, CANVAS_W, 50, 50), [255, 0, 0, 255], 2, "inside the cubic blob");
+    assert_near(
+        pixel(&pixels, CANVAS_W, 50, 50),
+        [255, 0, 0, 255],
+        2,
+        "inside the cubic blob",
+    );
     assert_clear(pixel(&pixels, CANVAS_W, 3, 3), "outside the blob");
-    assert_pixels_match_golden(&golden_path("draw_wire_cubic_fill"), &pixels, CANVAS_W, CANVAS_H);
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_cubic_fill"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // evenOdd の fill rule（#726）: 入れ子の矩形で内側が穴になる。同じジオメトリを
@@ -272,26 +302,71 @@ fn wire_cubic_fill_matches_golden() {
 fn wire_even_odd_fill_leaves_a_hole_where_nonzero_fills() {
     // 外 (20,20,60,60) + 内 (40,40,20,20) を evenOdd で塗る → 内側は穴。
     let even_odd: Vec<f32> = vec![
-        DRAW_OP_RECT as f32, 20.0, 20.0, 60.0, 60.0,
-        DRAW_OP_RECT as f32, 40.0, 40.0, 20.0, 20.0,
-        DRAW_OP_FILL as f32, 7.0,
-        DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
-        DRAW_PAINT_FILL_RULE as f32, 1.0,
+        DRAW_OP_RECT as f32,
+        20.0,
+        20.0,
+        60.0,
+        60.0,
+        DRAW_OP_RECT as f32,
+        40.0,
+        40.0,
+        20.0,
+        20.0,
+        DRAW_OP_FILL as f32,
+        7.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        DRAW_PAINT_FILL_RULE as f32,
+        1.0,
     ];
     let pixels = single_view_draw(&even_odd);
-    assert_near(pixel(&pixels, CANVAS_W, 25, 25), [0, 0, 255, 255], 2, "the ring is filled");
-    assert_clear(pixel(&pixels, CANVAS_W, 50, 50), "evenOdd punches a hole in the middle");
-    assert_pixels_match_golden(&golden_path("draw_wire_even_odd_hole"), &pixels, CANVAS_W, CANVAS_H);
+    assert_near(
+        pixel(&pixels, CANVAS_W, 25, 25),
+        [0, 0, 255, 255],
+        2,
+        "the ring is filled",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 50, 50),
+        "evenOdd punches a hole in the middle",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_even_odd_hole"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 
     // 対照: 同じジオメトリ・既定 nonZero では穴が塞がる。
     let non_zero: Vec<f32> = vec![
-        DRAW_OP_RECT as f32, 20.0, 20.0, 60.0, 60.0,
-        DRAW_OP_RECT as f32, 40.0, 40.0, 20.0, 20.0,
-        DRAW_OP_FILL as f32, 5.0,
-        DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        DRAW_OP_RECT as f32,
+        20.0,
+        20.0,
+        60.0,
+        60.0,
+        DRAW_OP_RECT as f32,
+        40.0,
+        40.0,
+        20.0,
+        20.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
     ];
     let solid = single_view_draw(&non_zero);
-    assert_near(pixel(&solid, CANVAS_W, 50, 50), [0, 0, 255, 255], 2, "nonZero fills the middle");
+    assert_near(
+        pixel(&solid, CANVAS_W, 50, 50),
+        [0, 0, 255, 255],
+        2,
+        "nonZero fills the middle",
+    );
 }
 
 // 便宜形状（#726）: 角丸矩形と円を 1 呼び出しずつで塗る。角丸コーナー・円外は背景。
@@ -299,18 +374,57 @@ fn wire_even_odd_fill_leaves_a_hole_where_nonzero_fills() {
 fn wire_convenience_shapes_match_golden() {
     let draws: Vec<f32> = vec![
         // 左: 角丸矩形 (5,5,45,90) r=18 緑
-        DRAW_OP_RRECT as f32, 5.0, 5.0, 45.0, 90.0, 18.0, 18.0,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.6, 0.0, 1.0,
+        DRAW_OP_RRECT as f32,
+        5.0,
+        5.0,
+        45.0,
+        90.0,
+        18.0,
+        18.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.6,
+        0.0,
+        1.0,
         // 右: 円 中心 (75,50) r=20 赤
-        DRAW_OP_CIRCLE as f32, 75.0, 50.0, 20.0,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 1.0, 0.0, 0.0, 1.0,
+        DRAW_OP_CIRCLE as f32,
+        75.0,
+        50.0,
+        20.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
     ];
     let pixels = single_view_draw(&draws);
-    assert_near(pixel(&pixels, CANVAS_W, 27, 50), [0, 153, 0, 255], 3, "inside the rounded rect");
-    assert_clear(pixel(&pixels, CANVAS_W, 6, 6), "the rounded corner is cut away");
-    assert_near(pixel(&pixels, CANVAS_W, 75, 50), [255, 0, 0, 255], 2, "inside the circle");
+    assert_near(
+        pixel(&pixels, CANVAS_W, 27, 50),
+        [0, 153, 0, 255],
+        3,
+        "inside the rounded rect",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 6, 6),
+        "the rounded corner is cut away",
+    );
+    assert_near(
+        pixel(&pixels, CANVAS_W, 75, 50),
+        [255, 0, 0, 255],
+        2,
+        "inside the circle",
+    );
     assert_clear(pixel(&pixels, CANVAS_W, 58, 33), "outside the circle");
-    assert_pixels_match_golden(&golden_path("draw_wire_convenience_shapes"), &pixels, CANVAS_W, CANVAS_H);
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_convenience_shapes"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // arcTo（#726）: 上辺と右辺に接する円弧で右上コーナーを丸めた正方形。内部は塗られ、
@@ -318,18 +432,53 @@ fn wire_convenience_shapes_match_golden() {
 #[test]
 fn wire_arc_to_rounds_a_corner_matches_golden() {
     let draws: Vec<f32> = vec![
-        DRAW_OP_MOVE_TO as f32, 10.0, 90.0,
-        DRAW_OP_LINE_TO as f32, 10.0, 10.0,
-        DRAW_OP_ARC_TO as f32, 90.0, 10.0, 90.0, 90.0, 30.0,
-        DRAW_OP_LINE_TO as f32, 90.0, 90.0,
+        DRAW_OP_MOVE_TO as f32,
+        10.0,
+        90.0,
+        DRAW_OP_LINE_TO as f32,
+        10.0,
+        10.0,
+        DRAW_OP_ARC_TO as f32,
+        90.0,
+        10.0,
+        90.0,
+        90.0,
+        30.0,
+        DRAW_OP_LINE_TO as f32,
+        90.0,
+        90.0,
         DRAW_OP_CLOSE as f32,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.4, 0.8, 1.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.4,
+        0.8,
+        1.0,
     ];
     let pixels = single_view_draw(&draws);
-    assert_near(pixel(&pixels, CANVAS_W, 50, 50), [0, 102, 204, 255], 3, "inside the shape");
-    assert_near(pixel(&pixels, CANVAS_W, 15, 15), [0, 102, 204, 255], 3, "the sharp top-left corner is filled");
-    assert_clear(pixel(&pixels, CANVAS_W, 86, 14), "the arc-rounded top-right corner is cut away");
-    assert_pixels_match_golden(&golden_path("draw_wire_arc_to_corner"), &pixels, CANVAS_W, CANVAS_H);
+    assert_near(
+        pixel(&pixels, CANVAS_W, 50, 50),
+        [0, 102, 204, 255],
+        3,
+        "inside the shape",
+    );
+    assert_near(
+        pixel(&pixels, CANVAS_W, 15, 15),
+        [0, 102, 204, 255],
+        3,
+        "the sharp top-left corner is filled",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 86, 14),
+        "the arc-rounded top-right corner is cut away",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_arc_to_corner"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 /// [STROKE, paint_len, ...paint] を組む（#727）。
@@ -346,19 +495,54 @@ fn wire_stroke_caps_match_golden() {
     let mut draws: Vec<f32> = Vec::new();
     for (row_y, cap) in [(20.0_f32, 0.0_f32), (50.0, 2.0), (80.0, 1.0)] {
         // 30..70 の太さ 12 の水平線。
-        draws.extend([DRAW_OP_MOVE_TO as f32, 30.0, row_y, DRAW_OP_LINE_TO as f32, 70.0, row_y]);
+        draws.extend([
+            DRAW_OP_MOVE_TO as f32,
+            30.0,
+            row_y,
+            DRAW_OP_LINE_TO as f32,
+            70.0,
+            row_y,
+        ]);
         let mut paint = black.to_vec();
-        paint.extend([DRAW_PAINT_STROKE_WIDTH as f32, 12.0, DRAW_PAINT_CAP as f32, cap]);
+        paint.extend([
+            DRAW_PAINT_STROKE_WIDTH as f32,
+            12.0,
+            DRAW_PAINT_CAP as f32,
+            cap,
+        ]);
         draws.extend(stroke_cmd(&paint));
     }
     let pixels = single_view_draw(&draws);
     // 線の本体はどれも塗られる。
-    assert_near(pixel(&pixels, CANVAS_W, 50, 20), [0, 0, 0, 255], 2, "butt line body");
+    assert_near(
+        pixel(&pixels, CANVAS_W, 50, 20),
+        [0, 0, 0, 255],
+        2,
+        "butt line body",
+    );
     // 端点 (70) の 3px 外側: butt は無し、square / round は張り出す。
-    assert_clear(pixel(&pixels, CANVAS_W, 73, 20), "butt cap stops at the endpoint");
-    assert_near(pixel(&pixels, CANVAS_W, 73, 50), [0, 0, 0, 255], 2, "square cap extends past the endpoint");
-    assert_near(pixel(&pixels, CANVAS_W, 72, 80), [0, 0, 0, 255], 2, "round cap extends past the endpoint");
-    assert_pixels_match_golden(&golden_path("draw_wire_stroke_caps"), &pixels, CANVAS_W, CANVAS_H);
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 73, 20),
+        "butt cap stops at the endpoint",
+    );
+    assert_near(
+        pixel(&pixels, CANVAS_W, 73, 50),
+        [0, 0, 0, 255],
+        2,
+        "square cap extends past the endpoint",
+    );
+    assert_near(
+        pixel(&pixels, CANVAS_W, 72, 80),
+        [0, 0, 0, 255],
+        2,
+        "round cap extends past the endpoint",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_stroke_caps"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // join 3 種（#727）: 直角の外側コーナーで miter は尖り、bevel は削られる。
@@ -369,23 +553,45 @@ fn wire_stroke_joins_match_golden() {
     // (miter, bevel, round) を x でずらして 3 つの L 字を描く。
     for (cx, join) in [(30.0_f32, 0.0_f32), (55.0, 2.0), (80.0, 1.0)] {
         draws.extend([
-            DRAW_OP_MOVE_TO as f32, cx - 15.0, 40.0,
-            DRAW_OP_LINE_TO as f32, cx, 40.0,
-            DRAW_OP_LINE_TO as f32, cx, 55.0,
+            DRAW_OP_MOVE_TO as f32,
+            cx - 15.0,
+            40.0,
+            DRAW_OP_LINE_TO as f32,
+            cx,
+            40.0,
+            DRAW_OP_LINE_TO as f32,
+            cx,
+            55.0,
         ]);
         let mut paint = black.to_vec();
         paint.extend([
-            DRAW_PAINT_STROKE_WIDTH as f32, 10.0,
-            DRAW_PAINT_JOIN as f32, join,
-            DRAW_PAINT_MITER_LIMIT as f32, 10.0,
+            DRAW_PAINT_STROKE_WIDTH as f32,
+            10.0,
+            DRAW_PAINT_JOIN as f32,
+            join,
+            DRAW_PAINT_MITER_LIMIT as f32,
+            10.0,
         ]);
         draws.extend(stroke_cmd(&paint));
     }
     let pixels = single_view_draw(&draws);
     // 外側コーナー (cx+4, 36): miter は塗られ、bevel は削れて背景。
-    assert_near(pixel(&pixels, CANVAS_W, 34, 36), [0, 0, 0, 255], 2, "miter join fills the sharp corner");
-    assert_clear(pixel(&pixels, CANVAS_W, 59, 36), "bevel join cuts the corner");
-    assert_pixels_match_golden(&golden_path("draw_wire_stroke_joins"), &pixels, CANVAS_W, CANVAS_H);
+    assert_near(
+        pixel(&pixels, CANVAS_W, 34, 36),
+        [0, 0, 0, 255],
+        2,
+        "miter join fills the sharp corner",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 59, 36),
+        "bevel join cuts the corner",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_stroke_joins"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // dash（破線）+ 曲線パス（#727）: 上段は直線破線（on/off を厳密に検証）、下段は
@@ -396,31 +602,77 @@ fn wire_stroke_dash_on_line_and_curve_matches_golden() {
     // dash [12,8]: on 12 / off 8。stroke width 5、黒。
     let dash_paint = |extra: &[f32]| -> Vec<f32> {
         let mut p = vec![
-            DRAW_PAINT_COLOR as f32, 0.0, 0.0, 0.0, 1.0,
-            DRAW_PAINT_STROKE_WIDTH as f32, 5.0,
-            DRAW_PAINT_DASH as f32, 2.0, 12.0, 8.0,
+            DRAW_PAINT_COLOR as f32,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            DRAW_PAINT_STROKE_WIDTH as f32,
+            5.0,
+            DRAW_PAINT_DASH as f32,
+            2.0,
+            12.0,
+            8.0,
         ];
         p.extend_from_slice(extra);
         p
     };
     // 上段: 直線破線 y=25, x 10..90。
-    draws.extend([DRAW_OP_MOVE_TO as f32, 10.0, 25.0, DRAW_OP_LINE_TO as f32, 90.0, 25.0]);
+    draws.extend([
+        DRAW_OP_MOVE_TO as f32,
+        10.0,
+        25.0,
+        DRAW_OP_LINE_TO as f32,
+        90.0,
+        25.0,
+    ]);
     draws.extend(stroke_cmd(&dash_paint(&[])));
     // 下段: 破線を載せた曲線。
     draws.extend([
-        DRAW_OP_MOVE_TO as f32, 10.0, 70.0,
-        DRAW_OP_CUBIC_TO as f32, 35.0, 45.0, 65.0, 95.0, 90.0, 70.0,
+        DRAW_OP_MOVE_TO as f32,
+        10.0,
+        70.0,
+        DRAW_OP_CUBIC_TO as f32,
+        35.0,
+        45.0,
+        65.0,
+        95.0,
+        90.0,
+        70.0,
     ]);
     draws.extend(stroke_cmd(&dash_paint(&[])));
 
     let pixels = single_view_draw(&draws);
     // 直線: on(10..22) / off(22..30) / on(30..42)。
-    assert_near(pixel(&pixels, CANVAS_W, 14, 25), [0, 0, 0, 255], 2, "first dash is inked");
-    assert_clear(pixel(&pixels, CANVAS_W, 26, 25), "the gap between dashes is empty");
-    assert_near(pixel(&pixels, CANVAS_W, 36, 25), [0, 0, 0, 255], 2, "second dash is inked");
+    assert_near(
+        pixel(&pixels, CANVAS_W, 14, 25),
+        [0, 0, 0, 255],
+        2,
+        "first dash is inked",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 26, 25),
+        "the gap between dashes is empty",
+    );
+    assert_near(
+        pixel(&pixels, CANVAS_W, 36, 25),
+        [0, 0, 0, 255],
+        2,
+        "second dash is inked",
+    );
     // 曲線: 先頭の dash が塗られている。
-    assert_near(pixel(&pixels, CANVAS_W, 11, 70), [0, 0, 0, 255], 3, "the dashed curve starts inked");
-    assert_pixels_match_golden(&golden_path("draw_wire_stroke_dash"), &pixels, CANVAS_W, CANVAS_H);
+    assert_near(
+        pixel(&pixels, CANVAS_W, 11, 70),
+        [0, 0, 0, 255],
+        3,
+        "the dashed curve starts inked",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_stroke_dash"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // 座標操作 + save/restore（#728）: save 内で translate + rotate した青い正方形を描き、
@@ -429,24 +681,65 @@ fn wire_stroke_dash_on_line_and_curve_matches_golden() {
 fn wire_transform_save_restore_match_golden() {
     let draws: Vec<f32> = vec![
         DRAW_OP_SAVE as f32,
-        DRAW_OP_TRANSLATE as f32, 50.0, 50.0,
-        DRAW_OP_ROTATE as f32, 0.785398, // 45°
+        DRAW_OP_TRANSLATE as f32,
+        50.0,
+        50.0,
+        DRAW_OP_ROTATE as f32,
+        0.785398, // 45°
         // 原点中心の 20x20 → translate+rotate で (50,50) 中心の 45° 回転正方形。
-        DRAW_OP_RECT as f32, -10.0, -10.0, 20.0, 20.0,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        DRAW_OP_RECT as f32,
+        -10.0,
+        -10.0,
+        20.0,
+        20.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
         DRAW_OP_RESTORE as f32,
         // restore 後は素の座標。CTM が戻っていれば緑は (5..25) に出る。
-        DRAW_OP_RECT as f32, 5.0, 5.0, 20.0, 20.0,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.6, 0.0, 1.0,
+        DRAW_OP_RECT as f32,
+        5.0,
+        5.0,
+        20.0,
+        20.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.6,
+        0.0,
+        1.0,
     ];
     let pixels = single_view_draw(&draws);
     // restore が効いた: 緑は素の座標 (5..25) にある。
-    assert_near(pixel(&pixels, CANVAS_W, 15, 15), [0, 153, 0, 255], 3, "green is drawn at identity coords after restore");
+    assert_near(
+        pixel(&pixels, CANVAS_W, 15, 15),
+        [0, 153, 0, 255],
+        3,
+        "green is drawn at identity coords after restore",
+    );
     // 回転正方形の中心は青。
-    assert_near(pixel(&pixels, CANVAS_W, 50, 50), [0, 0, 255, 255], 2, "the rotated square center is blue");
+    assert_near(
+        pixel(&pixels, CANVAS_W, 50, 50),
+        [0, 0, 255, 255],
+        2,
+        "the rotated square center is blue",
+    );
     // 45° 回転の証拠: 非回転なら (58,58) は塗られるが、回転済みでは角が外れて背景。
-    assert_clear(pixel(&pixels, CANVAS_W, 58, 58), "the 45°-rotated square does not fill the axis-aligned corner");
-    assert_pixels_match_golden(&golden_path("draw_wire_transform_save_restore"), &pixels, CANVAS_W, CANVAS_H);
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 58, 58),
+        "the 45°-rotated square does not fill the axis-aligned corner",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_transform_save_restore"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // clipPath（#728）: 三角形にクリップした fill と stroke。三角形の外は切り取られる。
@@ -454,26 +747,74 @@ fn wire_transform_save_restore_match_golden() {
 fn wire_clip_path_clips_fill_and_stroke_match_golden() {
     let draws: Vec<f32> = vec![
         // 三角形 (20,20)-(80,20)-(20,80) にクリップ。
-        DRAW_OP_MOVE_TO as f32, 20.0, 20.0,
-        DRAW_OP_LINE_TO as f32, 80.0, 20.0,
-        DRAW_OP_LINE_TO as f32, 20.0, 80.0,
+        DRAW_OP_MOVE_TO as f32,
+        20.0,
+        20.0,
+        DRAW_OP_LINE_TO as f32,
+        80.0,
+        20.0,
+        DRAW_OP_LINE_TO as f32,
+        20.0,
+        80.0,
         DRAW_OP_CLOSE as f32,
         DRAW_OP_CLIP_PATH as f32,
         // 全面 fill → 三角形のみ見える。
-        DRAW_OP_RECT as f32, 0.0, 0.0, 100.0, 100.0,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        DRAW_OP_RECT as f32,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
         // 横断する赤い太線 → 三角形内だけ見える。
-        DRAW_OP_MOVE_TO as f32, 10.0, 50.0,
-        DRAW_OP_LINE_TO as f32, 90.0, 50.0,
-        DRAW_OP_STROKE as f32, 7.0,
-        DRAW_PAINT_COLOR as f32, 1.0, 0.0, 0.0, 1.0, DRAW_PAINT_STROKE_WIDTH as f32, 6.0,
+        DRAW_OP_MOVE_TO as f32,
+        10.0,
+        50.0,
+        DRAW_OP_LINE_TO as f32,
+        90.0,
+        50.0,
+        DRAW_OP_STROKE as f32,
+        7.0,
+        DRAW_PAINT_COLOR as f32,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        DRAW_PAINT_STROKE_WIDTH as f32,
+        6.0,
     ];
     let pixels = single_view_draw(&draws);
-    assert_near(pixel(&pixels, CANVAS_W, 30, 30), [0, 0, 255, 255], 2, "fill shows inside the clip triangle");
-    assert_clear(pixel(&pixels, CANVAS_W, 70, 70), "fill is clipped outside the triangle");
-    assert_near(pixel(&pixels, CANVAS_W, 35, 50), [255, 0, 0, 255], 2, "stroke shows inside the clip");
-    assert_clear(pixel(&pixels, CANVAS_W, 75, 50), "stroke is clipped outside the triangle");
-    assert_pixels_match_golden(&golden_path("draw_wire_clip_path"), &pixels, CANVAS_W, CANVAS_H);
+    assert_near(
+        pixel(&pixels, CANVAS_W, 30, 30),
+        [0, 0, 255, 255],
+        2,
+        "fill shows inside the clip triangle",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 70, 70),
+        "fill is clipped outside the triangle",
+    );
+    assert_near(
+        pixel(&pixels, CANVAS_W, 35, 50),
+        [255, 0, 0, 255],
+        2,
+        "stroke shows inside the clip",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 75, 50),
+        "stroke is clipped outside the triangle",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_clip_path"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }
 
 // overflow クリップと clipPath の併用（#728）: overflow:hidden の 40x40 子に、box を
@@ -493,25 +834,71 @@ fn wire_overflow_and_clip_rect_intersect() {
 
     // 子の draw: box をはみ出す clipRect(10,10,50,50) → 全面青 fill。
     let draws: Vec<f32> = vec![
-        DRAW_OP_CLIP_RECT as f32, 10.0, 10.0, 50.0, 50.0,
-        DRAW_OP_RECT as f32, 0.0, 0.0, 100.0, 100.0,
-        DRAW_OP_FILL as f32, 5.0, DRAW_PAINT_COLOR as f32, 0.0, 0.0, 1.0, 1.0,
+        DRAW_OP_CLIP_RECT as f32,
+        10.0,
+        10.0,
+        50.0,
+        50.0,
+        DRAW_OP_RECT as f32,
+        0.0,
+        0.0,
+        100.0,
+        100.0,
+        DRAW_OP_FILL as f32,
+        5.0,
+        DRAW_PAINT_COLOR as f32,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
     ];
 
     let ops: Vec<f64> = vec![
-        OP_CREATE as f64, 1.0, ELEMENT_KIND_VIEW as f64,
-        OP_SET_ROOT as f64, 1.0,
-        OP_SET_STYLE as f64, 1.0, 0.0, root_len as f64,
-        OP_CREATE as f64, 2.0, ELEMENT_KIND_VIEW as f64,
-        OP_APPEND_CHILD as f64, 1.0, 2.0,
-        OP_SET_STYLE as f64, 2.0, root_len as f64, child_styles.len() as f64,
-        OP_SET_DRAW as f64, 2.0, 0.0, draws.len() as f64,
+        OP_CREATE as f64,
+        1.0,
+        ELEMENT_KIND_VIEW as f64,
+        OP_SET_ROOT as f64,
+        1.0,
+        OP_SET_STYLE as f64,
+        1.0,
+        0.0,
+        root_len as f64,
+        OP_CREATE as f64,
+        2.0,
+        ELEMENT_KIND_VIEW as f64,
+        OP_APPEND_CHILD as f64,
+        1.0,
+        2.0,
+        OP_SET_STYLE as f64,
+        2.0,
+        root_len as f64,
+        child_styles.len() as f64,
+        OP_SET_DRAW as f64,
+        2.0,
+        0.0,
+        draws.len() as f64,
     ];
     let pixels = render_wire(&ops, &styles, &draws);
 
     // fill 領域 = overflow(0..40) ∩ clipRect(10..60) = 10..40。
-    assert_near(pixel(&pixels, CANVAS_W, 25, 25), [0, 0, 255, 255], 2, "inside both clips");
-    assert_clear(pixel(&pixels, CANVAS_W, 5, 5), "the draw clipRect cuts inside the overflow box");
-    assert_clear(pixel(&pixels, CANVAS_W, 50, 50), "the element overflow cuts outside the box even within clipRect");
-    assert_pixels_match_golden(&golden_path("draw_wire_overflow_clip_intersection"), &pixels, CANVAS_W, CANVAS_H);
+    assert_near(
+        pixel(&pixels, CANVAS_W, 25, 25),
+        [0, 0, 255, 255],
+        2,
+        "inside both clips",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 5, 5),
+        "the draw clipRect cuts inside the overflow box",
+    );
+    assert_clear(
+        pixel(&pixels, CANVAS_W, 50, 50),
+        "the element overflow cuts outside the box even within clipRect",
+    );
+    assert_pixels_match_golden(
+        &golden_path("draw_wire_overflow_clip_intersection"),
+        &pixels,
+        CANVAS_W,
+        CANVAS_H,
+    );
 }

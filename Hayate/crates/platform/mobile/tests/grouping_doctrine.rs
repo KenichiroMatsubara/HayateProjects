@@ -84,8 +84,8 @@ fn desktop_is_a_windowing_leaf_crate_without_a_capability_facade() {
 
     // doctrine の文言も README で pin する: windowing leaf に着手したこと（ADR-0118）と、
     // capability facade は依然 0・契約正本は Core であること。
-    let readme =
-        fs::read_to_string(desktop.join("README.md")).expect("desktop/README.md が doctrine を述べる");
+    let readme = fs::read_to_string(desktop.join("README.md"))
+        .expect("desktop/README.md が doctrine を述べる");
     assert!(
         readme.contains("windowing leaf") && readme.contains("ADR-0118"),
         "desktop README は ADR-0118 で windowing leaf に着手したことを明記する"
@@ -151,7 +151,13 @@ fn doctrine_classifies_the_flutter_rn_taxonomy_examples() {
     let doctrine = fs::read_to_string(platform_root().join("README.md")).unwrap();
     // Flutter plugin / RN TurboModule の taxonomy から写した分類例。借りるのは
     // カタログ（どの機能がどの段に属するか）であって機構ではない。
-    for capability in ["audio", "clipboard", "notification", "haptics", "file picker"] {
+    for capability in [
+        "audio",
+        "clipboard",
+        "notification",
+        "haptics",
+        "file picker",
+    ] {
         assert!(
             doctrine.contains(capability),
             "doctrine は taxonomy 分類例として `{capability}` を含める"

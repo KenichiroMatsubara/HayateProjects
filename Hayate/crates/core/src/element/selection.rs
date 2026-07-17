@@ -452,7 +452,11 @@ mod tests {
         assert!(!sel.is_empty());
         sel.collapse_to_caret();
         assert!(sel.is_empty(), "縮退でハイライト消失");
-        assert_eq!(sel.get().unwrap().focus, point(1, 7), "focus 位置のキャレットに残る");
+        assert_eq!(
+            sel.get().unwrap().focus,
+            point(1, 7),
+            "focus 位置のキャレットに残る"
+        );
     }
 
     #[test]

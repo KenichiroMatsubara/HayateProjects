@@ -47,7 +47,9 @@ mod platform {
                 return Ok(None);
             }
             // C 文字列を Rust 文字列へコピーしてから、Swift が malloc した領域を解放する。
-            let value = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+            let value = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
             unsafe { hayate_ios_qr_free(ptr) };
             Ok(Some(ScannedCode { value }))
         }

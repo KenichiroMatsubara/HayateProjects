@@ -1,11 +1,11 @@
 use hayate_core::{
-    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension, DisplayValue,
-    ElementId, ElementKind, ElementTree, FlexDirectionValue, FlexWrapValue, JustifyValue,
-    OverflowValue, Shadow, StyleProp, TextDecorationValue,
+    AlignContentValue, AlignSelfValue, AlignValue, BorderStyleValue, Color, Dimension,
+    DisplayValue, ElementId, ElementKind, ElementTree, FlexDirectionValue, FlexWrapValue,
+    JustifyValue, OverflowValue, Shadow, StyleProp, TextDecorationValue,
 };
 
-use crate::pixel::{assert_channel_min, assert_channel_max, assert_clear, assert_not_clear, pixel};
 use crate::pixel::CANVAS_W;
+use crate::pixel::{assert_channel_max, assert_channel_min, assert_clear, assert_not_clear, pixel};
 
 const VW: f32 = 100.0;
 const VH: f32 = 100.0;
@@ -149,7 +149,10 @@ fn build_border_radius() -> ElementTree {
 }
 
 fn check_border_radius(data: &[u8]) {
-    assert_clear(pixel(data, CANVAS_W, 2, 2), "border-radius outer corner clear");
+    assert_clear(
+        pixel(data, CANVAS_W, 2, 2),
+        "border-radius outer corner clear",
+    );
     let center = pixel(data, CANVAS_W, 30, 30);
     assert_channel_min(center, 2, 200, "border-radius center blue");
 }
@@ -264,7 +267,10 @@ fn check_box_shadow_inset(data: &[u8]) {
     // …一方で中央は明るいまま、シャドウはボックスから出ない。
     let center = pixel(data, CANVAS_W, 30, 30);
     assert_channel_min(center, 0, 200, "box-shadow inset center light");
-    assert_clear(pixel(data, CANVAS_W, 80, 30), "box-shadow inset stays inside box");
+    assert_clear(
+        pixel(data, CANVAS_W, 80, 30),
+        "box-shadow inset stays inside box",
+    );
 }
 
 fn build_box_shadow_inset_radius() -> ElementTree {
@@ -296,7 +302,12 @@ fn check_box_shadow_inset_radius(data: &[u8]) {
     // コーナー対角線上（中心(16,16)から半径~14px、リング帯 12..16 内）は暗い。
     // 直線エッジの帯クリップでは届かず空くため、これが border-radius 追従の回帰点。
     let corner = pixel(data, CANVAS_W, 6, 6);
-    assert_channel_max(corner, 0, 200, "inset ring follows the rounded corner (diagonal)");
+    assert_channel_max(
+        corner,
+        0,
+        200,
+        "inset ring follows the rounded corner (diagonal)",
+    );
     // 直線エッジの帯も暗い。
     let edge = pixel(data, CANVAS_W, 30, 2);
     assert_channel_max(edge, 0, 200, "inset ring darkens the straight edge");
@@ -304,7 +315,10 @@ fn check_box_shadow_inset_radius(data: &[u8]) {
     let center = pixel(data, CANVAS_W, 30, 30);
     assert_channel_min(center, 0, 230, "inset ring leaves the interior light");
     // 角丸コーナーの外側はクリア（ボックス外）。
-    assert_clear(pixel(data, CANVAS_W, 2, 2), "inset ring stays inside the rounded box");
+    assert_clear(
+        pixel(data, CANVAS_W, 2, 2),
+        "inset ring stays inside the rounded box",
+    );
 }
 
 fn build_border_style() -> ElementTree {
@@ -336,8 +350,14 @@ fn check_border_style(data: &[u8]) {
             gaps += 1;
         }
     }
-    assert!(dashes > 0, "border-style dashed paints blue dashes on the top edge");
-    assert!(gaps > 0, "border-style dashed leaves white gaps between dashes");
+    assert!(
+        dashes > 0,
+        "border-style dashed paints blue dashes on the top edge"
+    );
+    assert!(
+        gaps > 0,
+        "border-style dashed leaves white gaps between dashes"
+    );
 }
 
 // ── ボーダー / フォーカスリングのラスタライズ ──────────────────────────────
@@ -404,7 +424,12 @@ fn build_border_hairline_1px() -> ElementTree {
 fn check_border_hairline_1px(data: &[u8]) {
     // 最上行（y=0）は 1px ボーダー。塗りではなく不透明な黒の列。
     let edge = pixel(data, CANVAS_W, 30, 0);
-    assert_channel_max(edge, 1, 70, "1px border top edge is black (independent column)");
+    assert_channel_max(
+        edge,
+        1,
+        70,
+        "1px border top edge is black (independent column)",
+    );
     // 1行内側は緑の塗り。ボーダーがにじんで消していない。
     let inside = pixel(data, CANVAS_W, 30, 3);
     assert_channel_min(inside, 1, 120, "fill just inside the 1px border is green");
@@ -765,8 +790,14 @@ fn build_flex_direction() -> ElementTree {
 }
 
 fn check_flex_direction(data: &[u8]) {
-    assert_not_clear(pixel(data, CANVAS_W, 10, 10), "flex-direction first child top");
-    assert_not_clear(pixel(data, CANVAS_W, 10, 48), "flex-direction second child below");
+    assert_not_clear(
+        pixel(data, CANVAS_W, 10, 10),
+        "flex-direction first child top",
+    );
+    assert_not_clear(
+        pixel(data, CANVAS_W, 10, 48),
+        "flex-direction second child below",
+    );
     assert_clear(pixel(data, CANVAS_W, 10, 32), "flex-direction gap between");
 }
 
@@ -828,8 +859,14 @@ fn build_justify_content() -> ElementTree {
 }
 
 fn check_justify_content(data: &[u8]) {
-    assert_clear(pixel(data, CANVAS_W, 5, 15), "justify-content left margin clear");
-    assert_not_clear(pixel(data, CANVAS_W, 50, 15), "justify-content centered child");
+    assert_clear(
+        pixel(data, CANVAS_W, 5, 15),
+        "justify-content left margin clear",
+    );
+    assert_not_clear(
+        pixel(data, CANVAS_W, 50, 15),
+        "justify-content centered child",
+    );
 }
 
 fn build_gap() -> ElementTree {
@@ -906,7 +943,10 @@ fn build_padding_top() -> ElementTree {
 
 fn check_padding_top(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 18, 22), "padding-top child lowered");
-    assert_clear(pixel(data, CANVAS_W, 80, 80), "padding-top outside outer box");
+    assert_clear(
+        pixel(data, CANVAS_W, 80, 80),
+        "padding-top outside outer box",
+    );
 }
 
 fn build_padding_right() -> ElementTree {
@@ -915,7 +955,10 @@ fn build_padding_right() -> ElementTree {
 
 fn check_padding_right(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 5, 18), "padding-right child left");
-    assert_clear(pixel(data, CANVAS_W, 80, 80), "padding-right outside outer box");
+    assert_clear(
+        pixel(data, CANVAS_W, 80, 80),
+        "padding-right outside outer box",
+    );
 }
 
 fn build_padding_bottom() -> ElementTree {
@@ -924,7 +967,10 @@ fn build_padding_bottom() -> ElementTree {
 
 fn check_padding_bottom(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 5, 5), "padding-bottom child top");
-    assert_clear(pixel(data, CANVAS_W, 80, 80), "padding-bottom outside outer box");
+    assert_clear(
+        pixel(data, CANVAS_W, 80, 80),
+        "padding-bottom outside outer box",
+    );
 }
 
 fn build_padding_left() -> ElementTree {
@@ -933,7 +979,10 @@ fn build_padding_left() -> ElementTree {
 
 fn check_padding_left(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 25, 18), "padding-left child shifted");
-    assert_clear(pixel(data, CANVAS_W, 80, 80), "padding-left outside outer box");
+    assert_clear(
+        pixel(data, CANVAS_W, 80, 80),
+        "padding-left outside outer box",
+    );
 }
 
 fn margined_child_tree(margin: StyleProp) -> ElementTree {
@@ -1124,8 +1173,14 @@ fn build_text_decoration_underline() -> ElementTree {
 fn check_text_decoration_underline(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 4, 20), "underline glyph body");
     // 下線はアルファベットのベースライン下（24px "A" で約 y=27）に来る。取り消し線の高さではない。
-    assert_clear(pixel(data, CANVAS_W, 4, 24), "underline not at strikethrough height");
-    assert_not_clear(pixel(data, CANVAS_W, 4, 30), "underline decoration below baseline");
+    assert_clear(
+        pixel(data, CANVAS_W, 4, 24),
+        "underline not at strikethrough height",
+    );
+    assert_not_clear(
+        pixel(data, CANVAS_W, 4, 30),
+        "underline decoration below baseline",
+    );
 }
 
 fn build_text_decoration_line_through() -> ElementTree {
@@ -1154,7 +1209,10 @@ fn build_text_decoration_line_through() -> ElementTree {
 
 fn check_text_decoration_line_through(data: &[u8]) {
     assert_not_clear(pixel(data, CANVAS_W, 8, 20), "line-through decoration ink");
-    assert_clear(pixel(data, CANVAS_W, 8, 35), "line-through not at glyph bottom");
+    assert_clear(
+        pixel(data, CANVAS_W, 8, 35),
+        "line-through not at glyph bottom",
+    );
 }
 
 // ── 重なり / flex ─────────────────────────────────────────────────────────
@@ -1223,7 +1281,10 @@ fn build_flex_grow() -> ElementTree {
 }
 
 fn check_flex_grow(data: &[u8]) {
-    assert_not_clear(pixel(data, CANVAS_W, 60, 5), "flex-grow expanded second child");
+    assert_not_clear(
+        pixel(data, CANVAS_W, 60, 5),
+        "flex-grow expanded second child",
+    );
 }
 
 fn build_flex_shrink() -> ElementTree {
@@ -1300,8 +1361,14 @@ fn build_align_self() -> ElementTree {
 }
 
 fn check_align_self(data: &[u8]) {
-    assert_clear(pixel(data, CANVAS_W, 10, 10), "align-self left margin clear");
-    assert_not_clear(pixel(data, CANVAS_W, 70, 10), "align-self child at cross-axis flex-end");
+    assert_clear(
+        pixel(data, CANVAS_W, 10, 10),
+        "align-self left margin clear",
+    );
+    assert_not_clear(
+        pixel(data, CANVAS_W, 70, 10),
+        "align-self child at cross-axis flex-end",
+    );
 }
 
 fn build_align_content() -> ElementTree {
@@ -1695,7 +1762,8 @@ mod catalog_coverage {
                     c.css_property == *prop
                         || (c.css_property == "display-none" && *prop == "display")
                         || (c.css_property == "display-grid" && *prop == "display")
-                        || (c.css_property.starts_with("text-decoration-") && *prop == "text-decoration")
+                        || (c.css_property.starts_with("text-decoration-")
+                            && *prop == "text-decoration")
                 }),
                 "missing pixel case for {prop}"
             );

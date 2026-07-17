@@ -421,7 +421,12 @@ mod tests {
 
         rt.send(RasterCommand::RebuildSurface).unwrap();
         rt.send(RasterCommand::Frame(handoff(&[1]))).unwrap();
-        rt.send(RasterCommand::Resize { width: 800, height: 600, content_scale: 1.0 }).unwrap();
+        rt.send(RasterCommand::Resize {
+            width: 800,
+            height: 600,
+            content_scale: 1.0,
+        })
+        .unwrap();
         rt.send(RasterCommand::Frame(handoff(&[2]))).unwrap();
         drop(rt); // 送信済みメッセージを全部処理してから join。
 
@@ -448,10 +453,20 @@ mod tests {
         drop(rt);
 
         let t = trace.lock().unwrap();
-        assert_eq!(t.presented_frames, 2, "present は surface 生存中の 2 フレームだけ");
+        assert_eq!(
+            t.presented_frames, 2,
+            "present は surface 生存中の 2 フレームだけ"
+        );
         assert_eq!(
             t.events,
-            vec!["rebuild", "present [1]", "lost", "skip [2]", "rebuild", "present [3]"],
+            vec![
+                "rebuild",
+                "present [1]",
+                "lost",
+                "skip [2]",
+                "rebuild",
+                "present [3]"
+            ],
         );
     }
 
@@ -465,7 +480,11 @@ mod tests {
         rt.send(RasterCommand::Frame(handoff(&[1]))).unwrap();
         rt.shutdown(); // 送信済みを処理して join。
 
-        assert_eq!(trace.lock().unwrap().presented_frames, 1, "停止前の送信済みフレームは処理される");
+        assert_eq!(
+            trace.lock().unwrap().presented_frames,
+            1,
+            "停止前の送信済みフレームは処理される"
+        );
         assert_eq!(
             rt.send(RasterCommand::Frame(handoff(&[2]))),
             Err(RasterHandoffError::Disconnected),
@@ -489,8 +508,14 @@ mod tests {
         drop(rt2);
 
         let t = trace.lock().unwrap();
-        assert_eq!(t.presented_frames, 2, "停止前 1 + 再構築後 1 の計 2 フレームが present される");
-        assert!(t.events.contains(&"present [9]".to_string()), "再構築後のフレームが処理される");
+        assert_eq!(
+            t.presented_frames, 2,
+            "停止前 1 + 再構築後 1 の計 2 フレームが present される"
+        );
+        assert!(
+            t.events.contains(&"present [9]".to_string()),
+            "再構築後のフレームが処理される"
+        );
     }
 
     #[test]
@@ -538,6 +563,7 @@ mod tests {
             viewport_height: 100.0,
             scroll_offset: 0.0,
             max_scroll_offset: 500.0,
+            scroll_affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             content_dirty: true,
         });
         let mut latest = handoff(&[]);
@@ -547,13 +573,17 @@ mod tests {
             viewport_height: 100.0,
             scroll_offset: 40.0,
             max_scroll_offset: 500.0,
+            scroll_affine: [1.0, 0.0, 0.0, 1.0, 0.0, -40.0],
             content_dirty: false,
         });
 
         let mut merged = RasterCommand::Frame(old);
         assert!(merged.merge(RasterCommand::Frame(latest)).is_ok());
-        let RasterCommand::Frame(merged) = merged else { unreachable!() };
+        let RasterCommand::Frame(merged) = merged else {
+            unreachable!()
+        };
         assert_eq!(merged.scroll_inputs[0].scroll_offset, 40.0);
+        assert_eq!(merged.scroll_inputs[0].scroll_affine[5], -40.0);
         assert!(merged.scroll_inputs[0].content_dirty);
     }
 
@@ -622,7 +652,11 @@ mod tests {
             "raster 呼び出しは「詰まっていた最初の 1 件」+「合成された最終 1 件」の 2 回だけ\
              （51 件を順に再生する退行を防ぐ）"
         );
-        assert_eq!(done[0], vec![0], "1 件目はゲートで足止めした最初の送信そのまま");
+        assert_eq!(
+            done[0],
+            vec![0],
+            "1 件目はゲートで足止めした最初の送信そのまま"
+        );
         assert_eq!(
             done[1],
             (1..=50).collect::<Vec<u64>>(),

@@ -117,11 +117,7 @@ mod tests {
                 .map(wire_value_to_json)
                 .collect();
 
-            assert_eq!(
-                wire,
-                *expected_wire,
-                "{name}: encode_event_wire mismatch"
-            );
+            assert_eq!(wire, *expected_wire, "{name}: encode_event_wire mismatch");
         }
     }
 }

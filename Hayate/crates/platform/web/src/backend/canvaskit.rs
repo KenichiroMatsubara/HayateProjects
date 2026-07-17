@@ -224,9 +224,10 @@ impl CanvasBackend for SelectedBackend {
             let extracted = if layer == root {
                 extract_root_scene(scene, root, &boundaries)
             } else {
-                extract_scroll_layer_scene(scene, layer, &boundaries).ok_or_else(|| {
-                    anyhow::anyhow!("CanvasKit layer {} is missing", layer.to_u64())
-                })?
+                extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("CanvasKit layer {} is missing", layer.to_u64())
+                    })?
             };
             // CanvasKit uses a full-surface compatible offscreen Surface. When the requested
             // overscan band is taller than that fixed surface, slide the recorded band around the
@@ -237,7 +238,7 @@ impl CanvasBackend for SelectedBackend {
                 geometry.viewport_height,
                 self.canvas.height() as f32 / self.content_scale,
             );
-            let origin_y = geometry.screen_top_for_band(cached_band);
+            let origin_y = geometry.absolute_top + cached_band.top;
             let frame = encode_scene_at(
                 &extracted,
                 TRANSPARENT,
@@ -263,14 +264,7 @@ impl CanvasBackend for SelectedBackend {
             ) {
                 (Some(cached_band), Some(geometry)) => compose(
                     placement.transform,
-                    [
-                        1.0,
-                        0.0,
-                        0.0,
-                        1.0,
-                        0.0,
-                        f64::from(geometry.screen_top_for_band(cached_band)),
-                    ],
+                    geometry.composite_affine_for_band(cached_band),
                 ),
                 _ => placement.transform,
             };

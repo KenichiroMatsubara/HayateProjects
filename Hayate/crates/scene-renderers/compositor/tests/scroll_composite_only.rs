@@ -69,7 +69,12 @@ fn band_bytes(tree: &ElementTree, scroll: ElementId) -> u64 {
 
 /// scroll レイヤ present を 1 フレーム回し、raster したかどうかを返す。帯がまだ可視域を覆って
 /// いれば raster せず（composite-only）、外れていれば帯を差分 raster してキャッシュを更新する。
-fn pump_scroll(tree: &mut ElementTree, planner: &mut PresentPlanner, scroll: ElementId, ts: f64) -> bool {
+fn pump_scroll(
+    tree: &mut ElementTree,
+    planner: &mut PresentPlanner,
+    scroll: ElementId,
+    ts: f64,
+) -> bool {
     let _ = tree.render(ts);
     let (_, oy) = tree.element_get_scroll_offset(scroll);
     let (_, _, _, vh) = tree.element_layout_rect(scroll).unwrap();
@@ -91,13 +96,19 @@ fn scroll_within_overscan_band_rasters_zero() {
     let (mut tree, scroll) = scroll_tree();
     let mut planner = PresentPlanner::new();
     // cold フレーム：初回は帯を raster する。
-    assert!(pump_scroll(&mut tree, &mut planner, scroll, 0.0), "cold フレームは raster");
+    assert!(
+        pump_scroll(&mut tree, &mut planner, scroll, 0.0),
+        "cold フレームは raster"
+    );
 
     // overscan 帯内の小さなスクロール（overscan = 600px なので 100px ずつは帯内）。
     for frame in 1..=5 {
         tree.element_set_scroll_offset(scroll, 0.0, frame as f32 * 100.0);
         let rastered = pump_scroll(&mut tree, &mut planner, scroll, frame as f64 * 16.0);
-        assert!(!rastered, "帯内スクロールのフレーム {frame} で raster が走った（composite-only 違反）");
+        assert!(
+            !rastered,
+            "帯内スクロールのフレーム {frame} で raster が走った（composite-only 違反）"
+        );
     }
 }
 
@@ -116,7 +127,10 @@ fn scrolling_past_the_band_rerasters_and_recovers_coverage() {
     // 新帯は可視域を覆う。
     let (_, _, _, vh) = tree.element_layout_rect(scroll).unwrap();
     let band = band_for(&tree, scroll);
-    assert!(band.covers(jump, vh), "差分 raster 後の新帯が可視域をカバーする");
+    assert!(
+        band.covers(jump, vh),
+        "差分 raster 後の新帯が可視域をカバーする"
+    );
 }
 
 #[test]
@@ -135,7 +149,10 @@ fn scroll_layer_texture_is_band_sized_not_full_content() {
         band_bytes(&tree, scroll),
         "キャッシュバイトは帯サイズで計上される"
     );
-    assert!(planner.cached_bytes() < full_content_bytes, "content 全高分は確保しない");
+    assert!(
+        planner.cached_bytes() < full_content_bytes,
+        "content 全高分は確保しない"
+    );
     let _ = vh;
 }
 
@@ -145,7 +162,10 @@ fn over_budget_evicts_least_recently_composited_scroll_layer() {
     let mut planner = PresentPlanner::new();
     let a = ElementId::from_u64(1);
     let b = ElementId::from_u64(2);
-    let extent = ScrollLayerExtent { top: 0.0, height: 100.0 };
+    let extent = ScrollLayerExtent {
+        top: 0.0,
+        height: 100.0,
+    };
     planner.note_scroll_rasterized(a, extent, 1000);
     planner.note_scroll_rasterized(b, extent, 1000);
     // A を最近 composite（B は古いまま）。
@@ -154,9 +174,19 @@ fn over_budget_evicts_least_recently_composited_scroll_layer() {
 
     // 予算 = 1 枚分だけ → LRU（B）が退避される。
     let evicted = planner.enforce_budget(GpuBudget::from_bytes(1000));
-    assert_eq!(evicted, vec![b], "最も長く composite に使われていない B が退避される");
+    assert_eq!(
+        evicted,
+        vec![b],
+        "最も長く composite に使われていない B が退避される"
+    );
     assert!(planner.cached_bytes() <= 1000, "退避後は合計が予算内");
     // 退避されたレイヤは次フレーム未キャッシュ扱い＝再 raster が要る。
-    assert!(planner.scroll_layer_needs_raster(b, 0.0, 100.0), "退避レイヤは再 raster 対象");
-    assert!(!planner.scroll_layer_needs_raster(a, 0.0, 100.0), "残ったレイヤは帯カバーで composite-only");
+    assert!(
+        planner.scroll_layer_needs_raster(b, 0.0, 100.0),
+        "退避レイヤは再 raster 対象"
+    );
+    assert!(
+        !planner.scroll_layer_needs_raster(a, 0.0, 100.0),
+        "残ったレイヤは帯カバーで composite-only"
+    );
 }

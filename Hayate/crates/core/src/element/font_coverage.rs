@@ -67,7 +67,7 @@ pub const FONT_COVERAGE: &[Coverage] = &[
     cov(0xAC00, 0xD7AF, "Noto Sans KR"),         // Hangul Syllables
     cov(0xD7B0, 0xD7FF, "Noto Sans KR"),         // Hangul Jamo Extended-B
     // ── CJK Compatibility / presentation forms ───────────────────────────
-    cov(0xF900, 0xFAFF, "Noto Sans JP"),     // CJK Compatibility Ideographs
+    cov(0xF900, 0xFAFF, "Noto Sans JP"), // CJK Compatibility Ideographs
     cov(0xFB1D, 0xFB4F, "Noto Sans Hebrew"), // Hebrew Presentation Forms
     cov(0xFB50, 0xFDFF, "Noto Sans Arabic"), // Arabic Presentation Forms-A
     cov(0xFE70, 0xFEFF, "Noto Sans Arabic"), // Arabic Presentation Forms-B

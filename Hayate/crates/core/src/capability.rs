@@ -52,11 +52,17 @@ impl fmt::Display for CapabilityError {
             Self::Unimplemented {
                 capability,
                 platform,
-            } => write!(f, "capability `{capability}` is not yet implemented on {platform}"),
+            } => write!(
+                f,
+                "capability `{capability}` is not yet implemented on {platform}"
+            ),
             Self::Unsupported {
                 capability,
                 platform,
-            } => write!(f, "capability `{capability}` is not supported on {platform}"),
+            } => write!(
+                f,
+                "capability `{capability}` is not supported on {platform}"
+            ),
             Self::Platform { code, message } => {
                 write!(f, "platform error {code}: {message}")
             }

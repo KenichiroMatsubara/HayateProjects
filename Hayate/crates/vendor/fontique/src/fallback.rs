@@ -3,7 +3,7 @@
 
 //! Support for script/language based font fallback.
 
-use super::{Language, Script, family::FamilyId};
+use super::{family::FamilyId, Language, Script};
 use alloc::vec::Vec;
 use hashbrown::HashMap;
 use smallvec::SmallVec;

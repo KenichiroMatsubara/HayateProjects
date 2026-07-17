@@ -109,7 +109,10 @@ fn dashed_border_leaves_gaps_along_the_edge() {
             gaps += 1;
         }
     }
-    assert!(dashes > 0, "dashed border must paint blue dashes on the top edge");
+    assert!(
+        dashes > 0,
+        "dashed border must paint blue dashes on the top edge"
+    );
     assert!(
         gaps > 0,
         "dashed border must leave white gaps between dashes on the top edge"

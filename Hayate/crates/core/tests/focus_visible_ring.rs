@@ -4,8 +4,8 @@
 //! シーンに描くため、Canvas バックエンドはレンダラ個別の作業なしで描画できる。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, NodeKind, PseudoState,
-    RecordingPainter, StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, NodeKind,
+    PseudoState, RecordingPainter, StyleProp,
 };
 
 /// シーン内の全フィル色を描画順で返す。
@@ -146,12 +146,19 @@ fn app_focus_background_switch_still_works_alongside_the_ring() {
             StyleProp::BackgroundColor(RED),
         ],
     );
-    tree.element_set_pseudo_style(input, PseudoState::Focus, &[StyleProp::BackgroundColor(GREEN)]);
+    tree.element_set_pseudo_style(
+        input,
+        PseudoState::Focus,
+        &[StyleProp::BackgroundColor(GREEN)],
+    );
     tree.element_append_child(root, input);
     tree.render(0.0);
 
     let green = GREEN.to_array_f32();
-    assert!(!fill_colors(&tree).contains(&green), "unfocused: background is the base colour");
+    assert!(
+        !fill_colors(&tree).contains(&green),
+        "unfocused: background is the base colour"
+    );
 
     tree.on_pointer_down_on(input, 10.0, 10.0);
     tree.render(16.0);

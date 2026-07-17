@@ -8,10 +8,7 @@ use taffy::prelude::*;
 #[test]
 fn flex_shrink_maps_to_taffy_style() {
     let mut style = Style::default();
-    assert!(apply_to_style(
-        &mut style,
-        &StyleProp::FlexShrink(2.5)
-    ));
+    assert!(apply_to_style(&mut style, &StyleProp::FlexShrink(2.5)));
     assert!((style.flex_shrink - 2.5).abs() < f32::EPSILON);
 }
 
@@ -95,9 +92,18 @@ fn position_relative_maps_to_taffy_style() {
 #[test]
 fn inset_maps_each_edge_to_taffy_style() {
     let mut style = Style::default();
-    assert!(apply_to_style(&mut style, &StyleProp::Top(Dimension::px(10.0))));
-    assert!(apply_to_style(&mut style, &StyleProp::Left(Dimension::px(20.0))));
-    assert!(apply_to_style(&mut style, &StyleProp::Right(Dimension::px(30.0))));
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::Top(Dimension::px(10.0))
+    ));
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::Left(Dimension::px(20.0))
+    ));
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::Right(Dimension::px(30.0))
+    ));
     assert!(apply_to_style(
         &mut style,
         &StyleProp::Bottom(Dimension::px(40.0))
@@ -242,7 +248,10 @@ fn justify_self_maps_each_value_to_taffy_style() {
 
     // `auto` はコンテナ既定に従うので None。それ以外は Some(AlignItems) へ写る。
     let mut style = Style::default();
-    assert!(apply_to_style(&mut style, &StyleProp::JustifySelf(JustifySelfValue::Auto)));
+    assert!(apply_to_style(
+        &mut style,
+        &StyleProp::JustifySelf(JustifySelfValue::Auto)
+    ));
     assert_eq!(style.justify_self, None);
 
     let cases = [

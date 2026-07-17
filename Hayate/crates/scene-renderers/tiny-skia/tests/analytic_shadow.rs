@@ -73,7 +73,11 @@ fn drop_shadow_fades_smoothly_and_monotonically_outside_the_box() {
     }
 
     // 縁近くは実質的な影、遠方は消える。
-    assert!(samples[0] > 0.2, "just outside the edge should be shadowed, got {}", samples[0]);
+    assert!(
+        samples[0] > 0.2,
+        "just outside the edge should be shadowed, got {}",
+        samples[0]
+    );
     assert!(
         *samples.last().unwrap() < 0.05,
         "far from the box the shadow should vanish, got {}",
@@ -136,7 +140,10 @@ fn occluder_skips_the_covered_interior_but_keeps_the_falloff_ring() {
     // 外形の外（x=75, box 右縁 70 の外・occluder 外）の falloff 帯は両方で描かれる。
     let ring_occ = pixel(&occluded, CANVAS_W, 75, 50);
     let ring_full = pixel(&full, CANVAS_W, 75, 50);
-    assert!(ring_occ[0] < 250, "the falloff ring outside the owner must still be painted, got {ring_occ:?}");
+    assert!(
+        ring_occ[0] < 250,
+        "the falloff ring outside the owner must still be painted, got {ring_occ:?}"
+    );
     assert_eq!(
         ring_occ, ring_full,
         "outside the occluder the shadow is identical with or without occlusion"
@@ -173,11 +180,20 @@ fn inset_shadow_darkens_the_inner_edge_and_fades_to_a_clear_center() {
     let data = inset_scene(16.0);
 
     // 内縁の帯（左辺内側 x=0..8, 縦中央 y=30）に暗い影ピクセルがある（ピーク ~170 前後）。
-    let edge_min = (0..8u32).map(|x| pixel(&data, CANVAS_W, x, 30)[0]).min().unwrap();
-    assert!(edge_min < 185, "the inner edge must be darkened by the inset shadow, got {edge_min}");
+    let edge_min = (0..8u32)
+        .map(|x| pixel(&data, CANVAS_W, x, 30)[0])
+        .min()
+        .unwrap();
+    assert!(
+        edge_min < 185,
+        "the inner edge must be darkened by the inset shadow, got {edge_min}"
+    );
     // 中央 (30,30) は白いボックスのまま（影は中央へ届かない）。
     let center = pixel(&data, CANVAS_W, 30, 30);
-    assert!(center[0] > 235, "the box centre stays light, got {center:?}");
+    assert!(
+        center[0] > 235,
+        "the box centre stays light, got {center:?}"
+    );
     // 縁は中央よりはっきり暗い（内向きフェードが効いている）。
     assert!(
         (center[0] as i32 - edge_min as i32) > 50,
@@ -188,12 +204,18 @@ fn inset_shadow_darkens_the_inner_edge_and_fades_to_a_clear_center() {
     let mut prev = -1.0_f32;
     for x in 3..=30u32 {
         let v = pixel(&data, CANVAS_W, x, 30)[0] as f32;
-        assert!(v >= prev - 4.0, "inset shadow must lighten inward at x={x}: {v} < {prev}");
+        assert!(
+            v >= prev - 4.0,
+            "inset shadow must lighten inward at x={x}: {v} < {prev}"
+        );
         prev = v;
     }
     // ボックスの外（x=70）は影が漏れない（border-box クリップ）。
     let outside = pixel(&data, CANVAS_W, 70, 30);
-    assert!(outside[0] >= 250, "inset shadow must stay inside the border box, got {outside:?}");
+    assert!(
+        outside[0] >= 250,
+        "inset shadow must stay inside the border box, got {outside:?}"
+    );
 }
 
 #[test]

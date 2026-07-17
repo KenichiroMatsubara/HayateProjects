@@ -46,7 +46,11 @@ fn retained_validation_visits_only_changed_subtrees_and_skips_clean_frames() {
     let initial = validator
         .validate(&graph, std::iter::empty())
         .expect("initial graph is valid");
-    assert_eq!(initial.visited_nodes(), 4, "cold validation walks the full graph");
+    assert_eq!(
+        initial.visited_nodes(),
+        4,
+        "cold validation walks the full graph"
+    );
 
     graph.get_mut(left_child).expect("child exists").kind = NodeKind::Rect {
         x: 1.0,
@@ -59,12 +63,20 @@ fn retained_validation_visits_only_changed_subtrees_and_skips_clean_frames() {
     let changed = validator
         .validate(&graph, [left])
         .expect("changed subtree is valid");
-    assert_eq!(changed.visited_nodes(), 2, "only the left subtree is revisited");
+    assert_eq!(
+        changed.visited_nodes(),
+        2,
+        "only the left subtree is revisited"
+    );
 
     let clean = validator
         .validate(&graph, std::iter::empty())
         .expect("an unchanged frame stays valid without work");
-    assert_eq!(clean.visited_nodes(), 0, "clean frames do not run validation");
+    assert_eq!(
+        clean.visited_nodes(),
+        0,
+        "clean frames do not run validation"
+    );
 }
 
 #[test]

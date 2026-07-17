@@ -164,7 +164,10 @@ fn present_runs_raster_on_a_dedicated_thread() {
         "app.rs must own both raster-thread spawners (vello and skia, issue #802) behind the \
          Renderer Selection Policy loop in init_and_spawn_raster"
     );
-    for (name, path) in [("app.rs", "src/app.rs"), ("app_tsubame.rs", "src/app_tsubame.rs")] {
+    for (name, path) in [
+        ("app.rs", "src/app.rs"),
+        ("app_tsubame.rs", "src/app_tsubame.rs"),
+    ] {
         let s = read_relative(path);
         assert!(
             s.contains("init_and_spawn_raster(") && s.contains(".send("),
@@ -179,7 +182,10 @@ fn present_runs_raster_on_a_dedicated_thread() {
 fn surface_teardown_stops_the_raster_thread() {
     // surface 破棄（TerminateWindow）で Raster スレッドを安全に停止する＝ハンドルを None にして
     // drop → 送信済みを処理して join。両経路で DestroySurface が raster を畳む。
-    for (name, path) in [("app.rs", "src/app.rs"), ("app_tsubame.rs", "src/app_tsubame.rs")] {
+    for (name, path) in [
+        ("app.rs", "src/app.rs"),
+        ("app_tsubame.rs", "src/app_tsubame.rs"),
+    ] {
         let s = read_relative(path);
         assert!(
             s.contains("DestroySurface => raster = None"),

@@ -102,7 +102,11 @@ impl LayerCache {
     /// 本フレームの raster 計画を立てる。レイヤは (a) 未キャッシュ（cache miss / 退避済み）、または
     /// (b) `layer_dirty` に含まれる（内容が変わった）なら raster、それ以外はキャッシュ再利用。
     /// `layers` は現在の全レイヤ（描画順 = ADR-0021 の子順序）。
-    pub fn plan_raster(&self, layers: &[ElementId], layer_dirty: &HashSet<ElementId>) -> RasterPlan {
+    pub fn plan_raster(
+        &self,
+        layers: &[ElementId],
+        layer_dirty: &HashSet<ElementId>,
+    ) -> RasterPlan {
         let mut plan = RasterPlan::default();
         for &layer in layers {
             if !self.cached.contains_key(&layer) || layer_dirty.contains(&layer) {
@@ -136,7 +140,12 @@ impl LayerCache {
     /// scroll レイヤの帯 raster を記録する（#634）。texture は帯サイズ（可視域＋overscan）なので
     /// `bytes` は帯サイズで渡す。以後この帯が可視域を覆う間は [`scroll_needs_raster`] が false を返し、
     /// present は quad 平行移動だけで済ませる（composite-only スクロール）。
-    pub fn mark_scroll_rasterized(&mut self, layer: ElementId, band: ScrollLayerExtent, bytes: u64) {
+    pub fn mark_scroll_rasterized(
+        &mut self,
+        layer: ElementId,
+        band: ScrollLayerExtent,
+        bytes: u64,
+    ) {
         let tick = self.tick;
         self.cached.insert(
             layer,
@@ -150,7 +159,12 @@ impl LayerCache {
 
     /// scroll レイヤが本フレームで（差分）raster を要するか（#634）。未キャッシュ（cache miss /
     /// LRU 退避）か、キャッシュ帯が現在の可視域を覆っていなければ true。覆っていれば composite-only。
-    pub fn scroll_needs_raster(&self, layer: ElementId, visible_top: f32, viewport_height: f32) -> bool {
+    pub fn scroll_needs_raster(
+        &self,
+        layer: ElementId,
+        visible_top: f32,
+        viewport_height: f32,
+    ) -> bool {
         match self.cached.get(&layer).and_then(|e| e.scroll_band) {
             Some(band) => !band.covers(visible_top, viewport_height),
             None => true, // 未キャッシュ、または帯情報を持たない（非 scroll として記録された）。
@@ -256,12 +270,7 @@ impl ScrollLayerExtent {
     /// この要求帯を高さ `capacity` の固定サイズ texture に収める。texture に余る高さは可視域の
     /// 上下へ均等に振り、content 端では要求帯内へスライドする。元の帯が可視域を覆い、かつ
     /// `capacity >= viewport_height` なら、返す帯も可視域を必ず覆う。
-    pub fn fit_to_capacity(
-        self,
-        visible_top: f32,
-        viewport_height: f32,
-        capacity: f32,
-    ) -> Self {
+    pub fn fit_to_capacity(self, visible_top: f32, viewport_height: f32, capacity: f32) -> Self {
         let height = capacity.max(0.0).min(self.height.max(0.0));
         let max_top = (self.top + self.height - height).max(self.top);
         let overscan = (height - viewport_height).max(0.0) / 2.0;
@@ -477,7 +486,10 @@ mod tests {
             cache.mark_rasterized(l);
         }
         let plan = cache.plan_raster(&layers, &dirty(&[]));
-        assert!(plan.raster.is_empty(), "clean フレームでレイヤ再 raster はゼロ");
+        assert!(
+            plan.raster.is_empty(),
+            "clean フレームでレイヤ再 raster はゼロ"
+        );
         assert_eq!(plan.reuse, vec![id(1), id(2), id(3)]);
     }
 
@@ -533,7 +545,10 @@ mod tests {
     fn warmup_enumerates_all_format_blend_variants_uniquely() {
         // 初回遅延生成を消すため、surface format × blend の全直積を前倒し生成する（ADR-0130a）。
         let variants = warmup_variants();
-        assert_eq!(variants.len(), SurfaceFormat::ALL.len() * BlendMode::ALL.len());
+        assert_eq!(
+            variants.len(),
+            SurfaceFormat::ALL.len() * BlendMode::ALL.len()
+        );
         let unique: HashSet<_> = variants.iter().copied().collect();
         assert_eq!(unique.len(), variants.len(), "variant に重複が無い");
         assert!(variants.contains(&PipelineVariant {
@@ -593,7 +608,13 @@ mod tests {
             height: 1442.0,
         };
         let fitted = requested.fit_to_capacity(186.0, 656.0, 720.0);
-        assert_eq!(fitted, ScrollLayerExtent { top: 154.0, height: 720.0 });
+        assert_eq!(
+            fitted,
+            ScrollLayerExtent {
+                top: 154.0,
+                height: 720.0
+            }
+        );
         assert!(fitted.covers(186.0, 656.0));
     }
 
@@ -605,11 +626,17 @@ mod tests {
         };
         assert_eq!(
             requested.fit_to_capacity(0.0, 656.0, 720.0),
-            ScrollLayerExtent { top: 0.0, height: 720.0 },
+            ScrollLayerExtent {
+                top: 0.0,
+                height: 720.0
+            },
         );
         assert_eq!(
             requested.fit_to_capacity(344.0, 656.0, 720.0),
-            ScrollLayerExtent { top: 280.0, height: 720.0 },
+            ScrollLayerExtent {
+                top: 280.0,
+                height: 720.0
+            },
         );
     }
 
@@ -628,8 +655,16 @@ mod tests {
         // バウンス中（offset が [0, max] の外）でも、露出するのは背景であって新しい content
         // ではない。覆うべき content 帯は端にクランプした位置で決まる（overshoot は合成 affine
         // が担う・ADR-0131）。下端越境は max、上端越境は 0 にクランプ。
-        assert_eq!(scroll_content_visible_top(4920.0, 4800.0), 4800.0, "下端越境は max へ");
-        assert_eq!(scroll_content_visible_top(-120.0, 4800.0), 0.0, "上端越境は 0 へ");
+        assert_eq!(
+            scroll_content_visible_top(4920.0, 4800.0),
+            4800.0,
+            "下端越境は max へ"
+        );
+        assert_eq!(
+            scroll_content_visible_top(-120.0, 4800.0),
+            0.0,
+            "上端越境は 0 へ"
+        );
     }
 
     #[test]
@@ -639,11 +674,17 @@ mod tests {
         let (max, vh, content_h) = (4800.0f32, 200.0f32, 5000.0f32);
         let raw_offset = max + 120.0; // 下端を 120px 越えたバウンスフレーム。
         let raw_band = scroll_layer_extent(raw_offset, vh, content_h, tunables::OVERSCAN_MARGIN_PX);
-        assert!(!raw_band.covers(raw_offset, vh), "生 offset の帯は可視域を覆えない（回帰の芯）");
+        assert!(
+            !raw_band.covers(raw_offset, vh),
+            "生 offset の帯は可視域を覆えない（回帰の芯）"
+        );
 
         let top = scroll_content_visible_top(raw_offset, max);
         let band = scroll_layer_extent(top, vh, content_h, tunables::OVERSCAN_MARGIN_PX);
-        assert!(band.covers(top, vh), "content-visible top の帯は可視域を覆う（composite-only）");
+        assert!(
+            band.covers(top, vh),
+            "content-visible top の帯は可視域を覆う（composite-only）"
+        );
     }
 
     #[test]
@@ -676,7 +717,11 @@ mod tests {
         cache.note_composited(id(2));
         // → last_composited 昇順は 3(最古) < 1 < 2。予算超過分を 3 から退避。
         let evicted = cache.enforce_budget(GpuBudget::from_bytes(2500));
-        assert_eq!(evicted, vec![id(3)], "最も長く composite に使われていない面から LRU 退避");
+        assert_eq!(
+            evicted,
+            vec![id(3)],
+            "最も長く composite に使われていない面から LRU 退避"
+        );
         assert!(cache.total_bytes() <= 2500, "合計が予算内に収まる");
         // 退避された 3 は次フレームで再 raster 対象になる。
         let plan = cache.plan_raster(&[id(1), id(2), id(3)], &dirty(&[]));

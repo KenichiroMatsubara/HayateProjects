@@ -19,16 +19,14 @@ use wgpu::util::TextureBlitter;
 use hayate_core::ElementId;
 
 use crate::ime_bridge::AndroidImeBridge;
+use crate::safe_area::SafeAreaInsets;
+use crate::scene_demo::build_demo_tree;
+use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
+use crate::touch_input::{translate_touch, TouchAction};
+use crate::touch_scroll::TouchScrollState;
 use hayate_core::element::ime_reconcile::{
     apply_ime_action, translate_text_input, TextInputState, TextSpan,
 };
-use crate::scene_demo::build_demo_tree;
-use crate::safe_area::SafeAreaInsets;
-use crate::surface_lifecycle::{
-    window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
-};
-use crate::touch_input::{translate_touch, TouchAction};
-use crate::touch_scroll::TouchScrollState;
 
 /// スモークテスト用の RGBA クリアカラー。
 pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
@@ -42,7 +40,8 @@ pub const CLEAR_COLOR: [f32; 4] = crate::STAGE_A_CLEAR_COLOR;
 fn install_panic_logger() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let message = format!("hayate-adapter-android: 未捕捉 panic でアプリが異常終了します — {info}");
+        let message =
+            format!("hayate-adapter-android: 未捕捉 panic でアプリが異常終了します — {info}");
         log::error!("{message}");
         crate::error_overlay::show_error(&message);
         default_hook(info);
@@ -172,8 +171,8 @@ pub fn android_main(app: AndroidApp) {
                                     content_scale: scale,
                                 });
                             }
-                            let (vw, vh) =
-                                effective_insets(&app, width, height).layout_viewport(width, height, scale);
+                            let (vw, vh) = effective_insets(&app, width, height)
+                                .layout_viewport(width, height, scale);
                             tree.set_viewport(vw, vh);
                         }
                         SurfaceLifecycleAction::Quit => quit = true,
@@ -350,7 +349,11 @@ fn motion_action_to_touch(action: MotionAction) -> Option<TouchAction> {
 /// フォールバックする——`content_rect()` はフルウィンドウを返す端末があり信頼できないため、
 /// あくまで push が来るまでの保険（`MainActivity` は onCreate 後に rootWindowInsets スナップ
 /// ショットを push するので、この保険期間は短い）。
-pub(crate) fn effective_insets(app: &AndroidApp, window_width: u32, window_height: u32) -> SafeAreaInsets {
+pub(crate) fn effective_insets(
+    app: &AndroidApp,
+    window_width: u32,
+    window_height: u32,
+) -> SafeAreaInsets {
     if let Some(pushed) = crate::safe_area::pushed_insets() {
         return pushed;
     }
@@ -616,15 +619,21 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
                 chrome_dirty,
                 scroll_inputs: _,
             } = handoff;
-            if let Err(err) =
-                surface.render_frame(&scene, &layers, &layer_dirty, &transform_dirty, &chrome_dirty)
-            {
+            if let Err(err) = surface.render_frame(
+                &scene,
+                &layers,
+                &layer_dirty,
+                &transform_dirty,
+                &chrome_dirty,
+            ) {
                 log::error!("hayate-adapter-android: raster-thread render failed: {err}");
             }
         }
-        RasterCommand::Resize { width, height, content_scale } => {
-            surface.resize(width, height, content_scale)
-        }
+        RasterCommand::Resize {
+            width,
+            height,
+            content_scale,
+        } => surface.resize(width, height, content_scale),
         RasterCommand::SurfaceLost => surface_ready = false,
         RasterCommand::RebuildSurface => surface_ready = true,
     })
@@ -634,7 +643,9 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
 /// スレッドを起動する（issue #802）。`spawn_raster_thread`（vello/wgpu）と対で、同じ
 /// `RasterCommand` チャネル契約を共有する——呼び出し側（`init_and_spawn_raster`）はどちらが
 /// 返っても同じ `RasterHandle` として扱える。
-pub(crate) fn spawn_skia_raster_thread(mut surface: crate::skia_window::SkiaGpuSurface) -> RasterHandle {
+pub(crate) fn spawn_skia_raster_thread(
+    mut surface: crate::skia_window::SkiaGpuSurface,
+) -> RasterHandle {
     let mut surface_ready = true;
     let mut terminal_failure = false;
     RasterThread::spawn(move |cmd: RasterCommand| match cmd {
@@ -650,23 +661,23 @@ pub(crate) fn spawn_skia_raster_thread(mut surface: crate::skia_window::SkiaGpuS
                 chrome_dirty,
                 scroll_inputs,
             } = handoff;
-            if let Err(err) =
-                surface.render_frame(
-                    &scene,
-                    &layers,
-                    &layer_dirty,
-                    &transform_dirty,
-                    &chrome_dirty,
-                    &scroll_inputs,
-                )
-            {
+            if let Err(err) = surface.render_frame(
+                &scene,
+                &layers,
+                &layer_dirty,
+                &transform_dirty,
+                &chrome_dirty,
+                &scroll_inputs,
+            ) {
                 log_terminal_skia_failure(&err);
                 terminal_failure = true;
             }
         }
-        RasterCommand::Resize { width, height, content_scale } => {
-            surface.resize(width, height, content_scale)
-        }
+        RasterCommand::Resize {
+            width,
+            height,
+            content_scale,
+        } => surface.resize(width, height, content_scale),
         RasterCommand::SurfaceLost => surface_ready = false,
         RasterCommand::RebuildSurface => surface_ready = true,
     })
@@ -694,29 +705,31 @@ pub(crate) fn spawn_skia_gl_raster_thread(
                 chrome_dirty,
                 scroll_inputs,
             } = handoff;
-            if let Err(err) =
-                surface.render_frame(
-                    &scene,
-                    &layers,
-                    &layer_dirty,
-                    &transform_dirty,
-                    &chrome_dirty,
-                    &scroll_inputs,
-                )
-            {
+            if let Err(err) = surface.render_frame(
+                &scene,
+                &layers,
+                &layer_dirty,
+                &transform_dirty,
+                &chrome_dirty,
+                &scroll_inputs,
+            ) {
                 log_terminal_skia_failure(&err);
                 terminal_failure = true;
             }
         }
-        RasterCommand::Resize { width, height, content_scale } => {
-            surface.resize(width, height, content_scale)
-        }
+        RasterCommand::Resize {
+            width,
+            height,
+            content_scale,
+        } => surface.resize(width, height, content_scale),
         RasterCommand::SurfaceLost => surface_ready = false,
         RasterCommand::RebuildSurface => surface_ready = true,
     })
 }
 
-fn classify_skia_runtime_failure(error: &str) -> hayate_app_host::renderer_selection::RendererSelectionReason {
+fn classify_skia_runtime_failure(
+    error: &str,
+) -> hayate_app_host::renderer_selection::RendererSelectionReason {
     use hayate_app_host::renderer_selection::RendererSelectionReason;
 
     let message = error.to_ascii_lowercase();
@@ -760,7 +773,9 @@ pub(crate) fn init_and_spawn_raster(
     );
     // ネイティブでは GPU（wgpu adapter）の有無は init を試すまで分からないため常に true を渡し、
     // 失敗は下の一方向 fallback ループが拾う（desktop の RenderHostSurface::init と同じ規約）。
-    let plan = policy.choose(RendererCapabilities { webgpu_available: true });
+    let plan = policy.choose(RendererCapabilities {
+        webgpu_available: true,
+    });
 
     for rejection in plan.rejected() {
         log::info!(
@@ -775,7 +790,10 @@ pub(crate) fn init_and_spawn_raster(
             SceneRendererKind::Vello => {
                 match pollster::block_on(init_gpu_surface(window, content_scale)) {
                     Ok(surface) => {
-                        log::info!("selected scene renderer: {}", SceneRendererKind::Vello.name());
+                        log::info!(
+                            "selected scene renderer: {}",
+                            SceneRendererKind::Vello.name()
+                        );
                         return Some(spawn_raster_thread(surface));
                     }
                     Err(err) => {
@@ -799,7 +817,10 @@ pub(crate) fn init_and_spawn_raster(
                 if surface_kind == crate::renderer_config::SkiaSurfaceKind::Gl {
                     match crate::skia_gl_window::init_skia_gl_surface(window, content_scale) {
                         Ok(surface) => {
-                            log::info!("selected scene renderer: {}", SceneRendererKind::Skia.name());
+                            log::info!(
+                                "selected scene renderer: {}",
+                                SceneRendererKind::Skia.name()
+                            );
                             log::info!("hayate-adapter-android: skia surface: gl (Ganesh/EGL)");
                             return Some(spawn_skia_gl_raster_thread(surface));
                         }
@@ -813,7 +834,10 @@ pub(crate) fn init_and_spawn_raster(
                 }
                 match crate::skia_window::init_skia_surface(window, content_scale) {
                     Ok(surface) => {
-                        log::info!("selected scene renderer: {}", SceneRendererKind::Skia.name());
+                        log::info!(
+                            "selected scene renderer: {}",
+                            SceneRendererKind::Skia.name()
+                        );
                         log::info!("hayate-adapter-android: skia surface: raster (CPU)");
                         return Some(spawn_skia_raster_thread(surface));
                     }
@@ -825,7 +849,10 @@ pub(crate) fn init_and_spawn_raster(
             other => {
                 // NATIVE_RENDERER_ORDER は vello/skia のみを含むはずだが、将来の拡張に備えて
                 // 明示的に警告する（無音での取りこぼしを防ぐ）。
-                log::warn!("hayate-adapter-android: renderer {} is not wired on Android", other.name());
+                log::warn!(
+                    "hayate-adapter-android: renderer {} is not wired on Android",
+                    other.name()
+                );
             }
         }
     }

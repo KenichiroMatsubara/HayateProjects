@@ -10,8 +10,8 @@ use hayate_core::element::scene_build::{
     SCROLLBAR_THICKNESS, SCROLLBAR_THUMB_COLOR, SCROLLBAR_THUMB_OPACITY,
 };
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, NodeId, NodeKind,
-    RecordingPainter, StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, NodeId,
+    NodeKind, RecordingPainter, StyleProp,
 };
 
 /// 合成後のサム塗り色（オーバーレイ不透明度を乗せた RGB）。
@@ -173,10 +173,17 @@ fn only_the_overflowing_axis_is_drawn() {
     // 縦サムなし。
     let (tree, scroll) = scroll_view_with_content(100.0, 100.0, 300.0, 100.0);
     let thumbs = thumb_nodes(&tree);
-    assert_eq!(thumbs.len(), 1, "only the overflowing (horizontal) axis is drawn");
+    assert_eq!(
+        thumbs.len(),
+        1,
+        "only the overflowing (horizontal) axis is drawn"
+    );
 
     let (_, _, ty, tw, th) = thumbs[0];
-    assert_eq!(th, SCROLLBAR_THICKNESS, "a horizontal thumb is THICKNESS tall");
+    assert_eq!(
+        th, SCROLLBAR_THICKNESS,
+        "a horizontal thumb is THICKNESS tall"
+    );
     assert!(tw > th, "and runs along the horizontal axis");
     let (_, sy, _, sh) = tree.element_layout_rect(scroll).unwrap();
     assert!(
@@ -253,7 +260,11 @@ fn nested_inner_thumb_is_anchored_and_clipped_inside_the_outer_box() {
     tree.render(0.0);
 
     let thumbs = thumb_nodes(&tree);
-    assert_eq!(thumbs.len(), 1, "only the overflowing inner scroll-view draws a thumb");
+    assert_eq!(
+        thumbs.len(),
+        1,
+        "only the overflowing inner scroll-view draws a thumb"
+    );
     let inner_thumb = thumbs[0].0;
 
     assert!(

@@ -41,7 +41,11 @@ mod tests {
             self.tree.element_append_child(parent, child);
         }
 
-        fn register_listener(&mut self, element_id: ElementId, kind: DocumentEventKind) -> ListenerId {
+        fn register_listener(
+            &mut self,
+            element_id: ElementId,
+            kind: DocumentEventKind,
+        ) -> ListenerId {
             self.tree.register_listener(element_id, kind)
         }
 

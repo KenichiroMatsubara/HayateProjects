@@ -16,8 +16,8 @@ use hayate_layer_compositor::{
     PresentPlanner,
 };
 use hayate_scene_renderer_skia::{
-    SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
-    new_raster_surface, read_rgba,
+    new_raster_surface, read_rgba, SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter,
+    SkiaLayerRasterizer,
 };
 
 const W: u32 = 200;
@@ -132,7 +132,11 @@ fn transform_layer_skia_composite_matches_full_raster() {
     let (mut tree, _boxed, _inner) = transform_tree();
     let root = ElementId::from_u64(0);
     let _ = tree.render(0.0);
-    assert_pixels_equal(&render_full(&tree), &render_layered(&tree, root), "skia transform layer");
+    assert_pixels_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "skia transform layer",
+    );
 }
 
 #[test]
@@ -183,7 +187,10 @@ fn scroll_tree() -> (ElementTree, ElementId) {
     );
     tree.element_set_style(
         scroll,
-        &[StyleProp::Width(px(W as f32)), StyleProp::Height(px(H as f32))],
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+        ],
     );
     tree.element_set_style(
         content,
@@ -274,6 +281,75 @@ fn native_presenter_keeps_app_like_in_band_scroll_composite_only() {
         &render_full(&tree),
         &pixels,
         "composite-only native skia scroll",
+    );
+}
+
+#[test]
+fn native_presenter_moves_the_cached_texture_during_ios_rubber_overscroll() {
+    let (mut tree, scroll) = scroll_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+    let (_, max_y) = tree.element_scroll_max_offset(scroll);
+
+    // Cache the bottom-edge band first. The next overscroll frame must reuse this texture.
+    tree.element_set_scroll_offset(scroll, 0.0, max_y);
+    let frame = tree.commit_rendered_frame(16.0);
+    let edge_pixels = present_committed_frame(&frame, &mut presenter, budget);
+
+    tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
+    let frame = tree.commit_rendered_frame(32.0);
+    let overscroll_pixels = present_committed_frame(&frame, &mut presenter, budget);
+
+    assert_eq!(
+        presenter.last_raster_count(),
+        0,
+        "rubber overscroll must remain composite-only"
+    );
+    assert_ne!(
+        edge_pixels, overscroll_pixels,
+        "the cached edge texture must visibly move during rubber overscroll"
+    );
+    assert_pixels_equal(
+        &render_full(&tree),
+        &overscroll_pixels,
+        "composite-only iOS rubber overscroll",
+    );
+}
+
+#[test]
+fn android_overscroll_projects_stretch_into_the_compositor_affine() {
+    let (mut tree, scroll) = scroll_tree();
+    tree.set_scroll_profile(hayate_core::scroll::ScrollPhysicsProfile::Android);
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+    let (_, max_y) = tree.element_scroll_max_offset(scroll);
+    tree.element_set_scroll_offset(scroll, 0.0, max_y);
+    let frame = tree.commit_rendered_frame(16.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+
+    tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
+    let frame = tree.commit_rendered_frame(32.0);
+    let input = frame
+        .scroll_inputs()
+        .iter()
+        .find(|input| input.layer == scroll)
+        .expect("scroll compositor input");
+    assert!(
+        input.scroll_affine[3] > 1.0,
+        "Android edge motion must reach the compositor as a Y stretch: {:?}",
+        input.scroll_affine
+    );
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+    assert_eq!(
+        presenter.last_raster_count(),
+        0,
+        "Android edge stretch must remain composite-only"
     );
 }
 
@@ -394,7 +470,12 @@ fn native_presenter_rerasters_clean_layers_after_cache_eviction() {
 }
 
 /// per-layer present を 1 フレーム回し、raster したレイヤ数を返す（work-count 用）。
-fn pump(tree: &mut ElementTree, planner: &mut PresentPlanner, rz: &mut SkiaLayerRasterizer, ts: f64) -> usize {
+fn pump(
+    tree: &mut ElementTree,
+    planner: &mut PresentPlanner,
+    rz: &mut SkiaLayerRasterizer,
+    ts: f64,
+) -> usize {
     let _ = tree.render(ts);
     let graph = tree.scene_graph().clone();
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
@@ -420,12 +501,18 @@ fn transform_only_frames_do_not_raster_on_skia() {
     let (mut tree, boxed, _inner) = transform_tree();
     let mut planner = PresentPlanner::new();
     let mut rz = SkiaLayerRasterizer::new(W, H, 1.0);
-    assert!(pump(&mut tree, &mut planner, &mut rz, 0.0) > 0, "cold フレームは raster");
+    assert!(
+        pump(&mut tree, &mut planner, &mut rz, 0.0) > 0,
+        "cold フレームは raster"
+    );
 
     for frame in 1..=4 {
         tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, frame as f64 * 10.0, 0.0]));
         let rasters = pump(&mut tree, &mut planner, &mut rz, frame as f64 * 16.0);
-        assert_eq!(rasters, 0, "skia: transform のみのフレーム {frame} で全面ラスタが走った");
+        assert_eq!(
+            rasters, 0,
+            "skia: transform のみのフレーム {frame} で全面ラスタが走った"
+        );
     }
 }
 
@@ -436,9 +523,19 @@ fn content_change_rerasters_only_the_dirty_layer_on_skia() {
     let mut rz = SkiaLayerRasterizer::new(W, H, 1.0);
     let _ = pump(&mut tree, &mut planner, &mut rz, 0.0);
 
-    tree.element_set_style(inner, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        inner,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
     let _ = tree.render(16.0);
     let plan = planner.plan_layers(tree.frame_layers(), tree.frame_layer_dirty());
-    assert_eq!(plan.raster, vec![boxed], "skia: dirty レイヤ（boxed）だけ raster");
-    assert!(plan.reuse.contains(&tree.frame_layers()[0]), "root レイヤは reuse（キャッシュ面合成）");
+    assert_eq!(
+        plan.raster,
+        vec![boxed],
+        "skia: dirty レイヤ（boxed）だけ raster"
+    );
+    assert!(
+        plan.reuse.contains(&tree.frame_layers()[0]),
+        "root レイヤは reuse（キャッシュ面合成）"
+    );
 }

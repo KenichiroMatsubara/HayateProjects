@@ -4,7 +4,9 @@
 
 mod support;
 
-use hayate_scene_test_support::cases::{render_tree_to_scene, CssPixelCase, BORDER_RASTER_CASES, CSS_PIXEL_CASES};
+use hayate_scene_test_support::cases::{
+    render_tree_to_scene, CssPixelCase, BORDER_RASTER_CASES, CSS_PIXEL_CASES,
+};
 use support::render_scene_to_pixels;
 
 fn run(case: &CssPixelCase) {
@@ -62,8 +64,14 @@ fn color_reaches_the_glyph() {
             }
         }
     }
-    assert!(reddest[0] > 150, "glyph ink should be red-dominant, got {reddest:?}");
-    assert!(reddest[1] < 100, "glyph ink should not be washed out green, got {reddest:?}");
+    assert!(
+        reddest[0] > 150,
+        "glyph ink should be red-dominant, got {reddest:?}"
+    );
+    assert!(
+        reddest[1] < 100,
+        "glyph ink should not be washed out green, got {reddest:?}"
+    );
 }
 
 /// 1px ボーダーは不透明な列として描かれ、フォーカスリングは重ねたコンテンツを
