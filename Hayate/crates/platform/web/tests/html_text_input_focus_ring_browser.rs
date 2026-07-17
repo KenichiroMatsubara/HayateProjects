@@ -19,11 +19,7 @@ const ELEMENT_KIND_TEXT_INPUT: u32 = 4;
 
 fn make_container() -> HtmlElement {
     let document = web_sys::window().unwrap().document().unwrap();
-    let container: HtmlElement = document
-        .create_element("div")
-        .unwrap()
-        .dyn_into()
-        .unwrap();
+    let container: HtmlElement = document.create_element("div").unwrap().dyn_into().unwrap();
     document.body().unwrap().append_child(&container).unwrap();
     container
 }
@@ -34,7 +30,9 @@ fn text_input_baseline_does_not_suppress_outline() {
     let mut renderer = HayateElementHtmlRenderer::new(container.clone()).unwrap();
 
     // 最初に生成した要素は自動でルート化されコンテナにマウントされる。
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     renderer.render(0.0).unwrap();
 
     let input: HtmlInputElement = container

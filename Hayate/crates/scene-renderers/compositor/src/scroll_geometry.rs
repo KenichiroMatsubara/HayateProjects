@@ -11,27 +11,13 @@
 //! content so the band's own top lands at texture row 0. [`RasterBand`] is that rasterizer-facing
 //! type.
 //!
-//! **Why the band's screen position must be recomputed every frame, not just once at raster
-//! time** (this is the crux of composite-only scrolling — #634/ADR-0127's whole premise — and the
-//! part that's easy to get wrong): the extracted scene `present_layers` hands the rasterizer
-//! already contains the `ScrollView`'s own scroll-offset `Group` transform (`scene_build.rs`'s
-//! `scroll_group_affine`, baked in as `translate(-scroll_offset)` — `extract_layer_scene` only
-//! strips a *CSS* `transform` group, not this one, since it isn't a direct child of the layer's
-//! anchor). So the texture, if rastered with no further adjustment, would show content positioned
-//! for *whatever scroll offset was current at raster time* — correct for that one frame, but wrong
-//! for any later frame with a different (still in-band) offset, which is exactly the case
-//! composite-only reuse depends on. [`ScrollLayerGeometry::screen_top_for_band`] is the one
-//! formula behind both directions of this: at raster time it picks the texture-side translate so
-//! the texture becomes a *pure content-local snapshot* (row 0 == `band.top`, independent of
-//! offset); at composite time (every frame, cached or fresh) it's evaluated again with *this
-//! frame's* `visible_top` to find where that snapshot currently belongs on screen. A previous
-//! draft of this module computed the raster-time shift as `absolute_top + band.top` (no
-//! `visible_top` term) — that's only correct for the exact frame it was rastered on, and silently
-//! wrong for every composite-only frame after a scroll within the same band. Caught by hand-tracing
-//! the coordinate math against `scene_build.rs`, not by a failing test — there was no test that
-//! rastered once and then checked pixels after a *later*, different-offset composite-only frame
-//! (see `scroll_overscan_present.rs`'s `banded_present_tracks_further_in_band_scrolling_without_a_reraster`,
-//! added once this was found).
+//! **Why the live scroll Group must not be baked into the cache texture:** composite-only reuse
+//! spans multiple offsets, including overscroll frames. `extract_scroll_layer_scene` therefore
+//! removes the profile-resolved scroll Group and rasterizes a canonical absolute content band.
+//! [`ScrollLayerGeometry::composite_affine_for_band`] reapplies this frame's Group when placing
+//! the cached texture. This keeps ordinary in-band scrolling live and also preserves the
+//! overscroll residual that a clamped coverage coordinate cannot represent: iOS rubber-band
+//! translation and Android anchored stretch.
 //!
 //! `ScrollLayerGeometry` also carries the scroll element's own absolute scene position —
 //! `ElementTree::element_layout_rect` is absolute (document) coordinates, but scroll offset /
@@ -54,12 +40,10 @@ use crate::{scroll_content_visible_top, scroll_layer_extent, tunables, ScrollLay
 
 /// Where a [`crate::LayerRasterizer`] should render a layer's content and how large to make its
 /// cache texture, for a scroll-content band (ADR-0127). `origin_y` is in the same coordinate
-/// space as the extracted `SceneGraph` handed to `rasterize` (which already includes the scroll
-/// element's own offset `Group` — see this module's doc comment) — it is the shift that turns
-/// that scene into a pure content-local snapshot, so the resulting texture's row 0 always holds
-/// content-local `band.top`, regardless of scroll position. Content outside `[origin_y, origin_y
-/// + height)` simply isn't rendered (vello has no sub-rect/viewport concept; the texture's own
-/// extent *is* the render bounds).
+/// space as the canonical extracted `SceneGraph` handed to `rasterize` (the live scroll Group is
+/// omitted). The resulting texture's row 0 always holds content-local `band.top`, independent of
+/// scroll position. Content outside `[origin_y, origin_y + height)` simply isn't rendered (vello
+/// has no sub-rect/viewport concept; the texture's own extent *is* the render bounds).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RasterBand {
     pub origin_y: f32,
@@ -76,8 +60,8 @@ pub struct RasterBand {
 pub struct ScrollLayerGeometry {
     /// Content-visible scroll top (`scroll_content_visible_top`-clamped, so overscroll/bounce
     /// frames don't spuriously look uncovered — #639). Content-local: 0 = the scroll element's
-    /// own top edge, matching [`ScrollLayerExtent`]'s vocabulary. **This frame's** value — used
-    /// every frame (not just when rastering) to place the (possibly reused) band correctly.
+    /// own top edge, matching [`ScrollLayerExtent`]'s vocabulary. Used for cache coverage only;
+    /// visual placement uses the unclamped [`Self::scroll_affine`].
     pub visible_top: f32,
     pub viewport_height: f32,
     /// This frame's band, content-local (`PresentPlanner::scroll_layer_needs_raster` /
@@ -87,6 +71,10 @@ pub struct ScrollLayerGeometry {
     /// The scroll element's own absolute scene top (logical px, from
     /// `ElementTree::element_layout_rect`).
     pub absolute_top: f32,
+    /// Profile-resolved scroll Group affine for this frame. Scroll cache textures deliberately
+    /// omit this affine so the compositor can update rubber-band translation / Android stretch
+    /// without re-rastering their content.
+    pub scroll_affine: [f64; 6],
     /// This layer is in `ElementTree::frame_layer_dirty()` — its **content** (not just scroll
     /// chrome like a scrollbar fade, tracked separately by `frame_layer_chrome_dirty()`) actually
     /// changed this frame, so it must raster even if the cached band still covers the visible
@@ -99,28 +87,35 @@ pub struct ScrollLayerGeometry {
 }
 
 impl ScrollLayerGeometry {
-    /// Where `band.top` (content-local) currently belongs in absolute screen coordinates — the
-    /// one formula behind both raster-time translation and composite-time placement (see this
-    /// module's doc comment). `band` is usually [`Self::band`] (this frame's fresh band, when
-    /// about to raster) or a stale cached band from an earlier raster (when compositing a
-    /// composite-only reused texture); either way this uses **this** `ScrollLayerGeometry`'s
-    /// `absolute_top`/`visible_top` (i.e. *this frame's*, always) — that's what makes a reused
-    /// band still track live scrolling: the band's content-local coordinates don't change once
-    /// rastered, only where they currently land on screen does.
-    pub fn screen_top_for_band(&self, band: ScrollLayerExtent) -> f32 {
-        self.absolute_top + band.top - self.visible_top
-    }
-
     /// The `RasterBand` a `LayerRasterizer` should use to raster [`Self::band`] this frame.
-    /// `origin_y` is [`Self::screen_top_for_band`] of `self.band` — the shift that cancels out
-    /// both the scroll element's absolute position *and* its current scroll offset (both already
-    /// baked into the extracted scene, see the module doc comment), leaving a pure content-local
-    /// snapshot.
+    /// The extracted scene omits the live scroll Group, so `origin_y` is the canonical band's
+    /// absolute scene top and never depends on the current offset.
     pub fn raster_band(&self) -> RasterBand {
         RasterBand {
-            origin_y: self.screen_top_for_band(self.band),
+            // `extract_scroll_layer_scene` removes the live scroll Group, leaving absolute scene
+            // coordinates. Cache row 0 therefore starts at the content band's absolute top;
+            // the live affine is applied later by `composite_affine_for_band`.
+            origin_y: self.absolute_top + self.band.top,
             height: self.band.height,
         }
+    }
+
+    /// Transform a canonical cached band (scroll Group omitted at raster time) into this frame's
+    /// screen position. For ordinary scrolling this reduces to the historical
+    /// `absolute_top + band.top - visible_top` translation. During overscroll it additionally
+    /// carries the profile-specific residual: iOS translation or Android anchored scale.
+    pub fn composite_affine_for_band(&self, band: ScrollLayerExtent) -> [f64; 6] {
+        crate::layer_scene::compose(
+            self.scroll_affine,
+            [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                f64::from(self.absolute_top + band.top),
+            ],
+        )
     }
 }
 
@@ -146,6 +141,7 @@ pub fn scroll_layer_geometry(tree: &ElementTree, layer: ElementId) -> Option<Scr
         viewport_height,
         band,
         absolute_top,
+        scroll_affine: tree.element_scroll_group_affine(layer),
         content_dirty: tree.frame_layer_dirty().contains(&layer),
     })
 }
@@ -169,7 +165,8 @@ pub fn scroll_layer_geometry_from_inputs(
     inputs
         .iter()
         .map(|input| {
-            let visible_top = scroll_content_visible_top(input.scroll_offset, input.max_scroll_offset);
+            let visible_top =
+                scroll_content_visible_top(input.scroll_offset, input.max_scroll_offset);
             let content_height = input.viewport_height + input.max_scroll_offset;
             let band = scroll_layer_extent(
                 visible_top,
@@ -184,6 +181,7 @@ pub fn scroll_layer_geometry_from_inputs(
                     viewport_height: input.viewport_height,
                     band,
                     absolute_top: input.absolute_top,
+                    scroll_affine: input.scroll_affine,
                     content_dirty: input.content_dirty,
                 },
             )
@@ -216,7 +214,10 @@ mod tests {
         tree.element_append_child(scroll, content);
         tree.set_root(root);
         tree.set_viewport(VW, SCROLL_H);
-        tree.element_set_style(scroll, &[StyleProp::Width(px(VW)), StyleProp::Height(px(SCROLL_H))]);
+        tree.element_set_style(
+            scroll,
+            &[StyleProp::Width(px(VW)), StyleProp::Height(px(SCROLL_H))],
+        );
         tree.element_set_style(
             content,
             &[
@@ -253,8 +254,14 @@ mod tests {
                 StyleProp::FlexDirection(FlexDirectionValue::Column),
             ],
         );
-        tree.element_set_style(header, &[StyleProp::Width(px(VW)), StyleProp::Height(px(HEADER_H))]);
-        tree.element_set_style(scroll, &[StyleProp::Width(px(VW)), StyleProp::Height(px(SCROLL_H))]);
+        tree.element_set_style(
+            header,
+            &[StyleProp::Width(px(VW)), StyleProp::Height(px(HEADER_H))],
+        );
+        tree.element_set_style(
+            scroll,
+            &[StyleProp::Width(px(VW)), StyleProp::Height(px(SCROLL_H))],
+        );
         tree.element_set_style(
             content,
             &[
@@ -271,7 +278,11 @@ mod tests {
     fn non_scroll_layer_has_no_geometry() {
         let (tree, _scroll) = scroll_tree_at_document_top();
         let root = ElementId::from_u64(0);
-        assert_eq!(scroll_layer_geometry(&tree, root), None, "root is a plain View, not a ScrollView");
+        assert_eq!(
+            scroll_layer_geometry(&tree, root),
+            None,
+            "root is a plain View, not a ScrollView"
+        );
     }
 
     #[test]
@@ -281,13 +292,23 @@ mod tests {
         let _ = tree.render(16.0);
 
         let geometry = scroll_layer_geometry(&tree, scroll).expect("scroll view has geometry");
-        assert_eq!(geometry.absolute_top, 0.0, "scroll view sits at the document's own top edge");
+        assert_eq!(
+            geometry.absolute_top, 0.0,
+            "scroll view sits at the document's own top edge"
+        );
         assert_eq!(geometry.viewport_height, SCROLL_H);
-        assert_eq!(geometry.visible_top, 2000.0, "in-bounds offset needs no #639 clamping");
+        assert_eq!(
+            geometry.visible_top, 2000.0,
+            "in-bounds offset needs no #639 clamping"
+        );
 
-        let expected = scroll_layer_extent(2000.0, SCROLL_H, CONTENT_H, tunables::OVERSCAN_MARGIN_PX);
+        let expected =
+            scroll_layer_extent(2000.0, SCROLL_H, CONTENT_H, tunables::OVERSCAN_MARGIN_PX);
         assert_eq!(geometry.band, expected);
-        assert!(geometry.band.height < CONTENT_H, "band is not the full content height");
+        assert!(
+            geometry.band.height < CONTENT_H,
+            "band is not the full content height"
+        );
     }
 
     #[test]
@@ -301,16 +322,15 @@ mod tests {
     }
 
     #[test]
-    fn raster_band_composes_absolute_top_band_top_and_visible_top() {
+    fn raster_band_uses_the_canonical_absolute_content_band() {
         let (tree, scroll) = scroll_tree_below_header();
         let geometry = scroll_layer_geometry(&tree, scroll).unwrap();
         let raster_band = geometry.raster_band();
         assert_eq!(
             raster_band.origin_y,
-            geometry.absolute_top + geometry.band.top - geometry.visible_top,
-            "the extracted scene already bakes in the scroll element's own offset Group \
-             (scene_build.rs's scroll_group_affine) — origin_y must cancel it out, not just add \
-             absolute_top, or the raster would be shifted by the current scroll offset"
+            geometry.absolute_top + geometry.band.top,
+            "the extracted cache scene omits the live scroll Group, so row 0 is the absolute \
+             content-band top and remains reusable across composite-only frames"
         );
         assert_eq!(raster_band.height, geometry.band.height);
     }
@@ -330,13 +350,13 @@ mod tests {
         assert_eq!(geometry.band.height, 1400.0);
         assert_eq!(
             geometry.raster_band().origin_y,
-            -600.0,
-            "abs_y(0.0) + band.top(3400.0) - visible_top(4000.0) == -600.0"
+            3400.0,
+            "abs_y(0.0) + band.top(3400.0) == 3400.0"
         );
     }
 
     #[test]
-    fn screen_top_for_band_tracks_further_in_band_scrolling_without_a_reraster() {
+    fn composite_affine_tracks_further_in_band_scrolling_without_a_reraster() {
         // The crux of composite-only scrolling (#634/ADR-0127): raster once at offset 4000
         // (caching band [3400, 4800)), then scroll further to 4050 WITHOUT re-rastering (still
         // covered) — the SAME cached band's on-screen position must shift by exactly the further
@@ -356,8 +376,8 @@ mod tests {
             "test setup: the further scroll must stay within the cached band"
         );
 
-        let position_at_raster = at_raster.screen_top_for_band(cached_band);
-        let position_later = later.screen_top_for_band(cached_band);
+        let position_at_raster = at_raster.composite_affine_for_band(cached_band)[5];
+        let position_later = later.composite_affine_for_band(cached_band)[5];
         assert_eq!(
             position_later,
             position_at_raster - 50.0,
@@ -378,9 +398,14 @@ mod tests {
         let _ = tree.render(16.0);
 
         let geometry = scroll_layer_geometry(&tree, scroll).unwrap();
-        assert_eq!(geometry.visible_top, max_offset, "clamped to the content edge, not the raw overshoot");
+        assert_eq!(
+            geometry.visible_top, max_offset,
+            "clamped to the content edge, not the raw overshoot"
+        );
         assert!(
-            geometry.band.covers(geometry.visible_top, geometry.viewport_height),
+            geometry
+                .band
+                .covers(geometry.visible_top, geometry.viewport_height),
             "clamped band must cover the (clamped) visible region"
         );
     }
@@ -406,7 +431,10 @@ mod tests {
         tree.element_set_scroll_offset(scroll, 0.0, 100.0);
         let _ = tree.render(16.0);
         let geometry = scroll_layer_geometry(&tree, scroll).unwrap();
-        assert!(!geometry.content_dirty, "scroll offset alone must not mark content dirty");
+        assert!(
+            !geometry.content_dirty,
+            "scroll offset alone must not mark content dirty"
+        );
     }
 
     #[test]
@@ -414,9 +442,15 @@ mod tests {
         let (mut tree, scroll) = scroll_tree_at_document_top();
         // Mutate the scrolled content itself (not the scroll offset).
         let content = ElementId::from_u64(2);
-        tree.element_set_style(content, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+        tree.element_set_style(
+            content,
+            &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+        );
         let _ = tree.render(16.0);
         let geometry = scroll_layer_geometry(&tree, scroll).unwrap();
-        assert!(geometry.content_dirty, "a content mutation must mark the scroll layer content dirty");
+        assert!(
+            geometry.content_dirty,
+            "a content mutation must mark the scroll layer content dirty"
+        );
     }
 }

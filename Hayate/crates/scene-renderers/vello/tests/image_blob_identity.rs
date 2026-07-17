@@ -118,7 +118,11 @@ fn reused_scene_resets_between_frames_and_matches_a_fresh_scene() {
 
     // フレーム 1：画像 1 枚 → image patch が 1 つ。
     debug_encode_frame(&mut scene, &scene_graph_with(Arc::new(test_image())), 1.0);
-    assert_eq!(image_blob_ids(&scene).len(), 1, "frame 1 should encode one image patch");
+    assert_eq!(
+        image_blob_ids(&scene).len(),
+        1,
+        "frame 1 should encode one image patch"
+    );
 
     // フレーム 2（同じ Scene を再利用）：空グラフ → reset が前フレームの patch を消すので 0。
     debug_encode_frame(&mut scene, &SceneGraph::new(), 1.0);

@@ -3,9 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::element::id::ElementId;
 use crate::element::transition::ElementTransitions;
 use crate::element::tree::{ElementTree, Visual};
-use crate::element::visual_invalidation::{
-    self, VisualInvalidationReach,
-};
+use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::node::{NodeId, SceneGraph};
 
 #[derive(Debug, Clone)]

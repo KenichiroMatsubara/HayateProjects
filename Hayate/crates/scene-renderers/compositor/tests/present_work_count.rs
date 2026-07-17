@@ -41,7 +41,10 @@ fn clean_frame_calls_raster_zero_times() {
     let mut planner = PresentPlanner::new();
 
     // 初回はキャッシュ未生成＝raster 1 回（cold）。
-    assert!(pump_frame(&mut tree, &mut planner, 0.0), "cold フレームは raster する");
+    assert!(
+        pump_frame(&mut tree, &mut planner, 0.0),
+        "cold フレームは raster する"
+    );
 
     // 変化のないフレーム：layer_dirty 空・キャッシュ有効 → raster 0 回。
     let mut rasters = 0;
@@ -60,9 +63,18 @@ fn dirty_frame_calls_raster_exactly_once() {
     let _ = pump_frame(&mut tree, &mut planner, 0.0); // warm
 
     // 変化フレーム：スタイル変更 → その 1 フレームだけ raster 1 回、以後 0 回。
-    tree.element_set_style(child, &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
-    assert!(pump_frame(&mut tree, &mut planner, 16.0), "dirty フレームは raster 1 回");
-    assert!(!pump_frame(&mut tree, &mut planner, 32.0), "直後の clean フレームは raster 0 回");
+    tree.element_set_style(
+        child,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
+    assert!(
+        pump_frame(&mut tree, &mut planner, 16.0),
+        "dirty フレームは raster 1 回"
+    );
+    assert!(
+        !pump_frame(&mut tree, &mut planner, 32.0),
+        "直後の clean フレームは raster 0 回"
+    );
 }
 
 #[test]
@@ -78,5 +90,8 @@ fn surface_invalidation_forces_reraster() {
         pump_frame(&mut tree, &mut planner, 32.0),
         "invalidate 後の最初のフレームは全面 raster"
     );
-    assert!(!pump_frame(&mut tree, &mut planner, 48.0), "その後は再び composite-only");
+    assert!(
+        !pump_frame(&mut tree, &mut planner, 48.0),
+        "その後は再び composite-only"
+    );
 }

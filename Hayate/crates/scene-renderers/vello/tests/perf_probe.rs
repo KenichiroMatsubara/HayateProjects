@@ -12,16 +12,20 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use hayate_core::ElementId;
-use hayate_demo_fixtures::{dual_transition_tree, tasks_tree, DUAL_TRANSITION_VIEWPORT, TASKS_VIEWPORT};
+use hayate_demo_fixtures::{
+    dual_transition_tree, tasks_tree, DUAL_TRANSITION_VIEWPORT, TASKS_VIEWPORT,
+};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
+use hayate_scene_renderer_vello::debug_encode_scene;
 use hayate_scene_renderer_vello::layer_compositor::{
     CompositeTarget, VelloLayerRasterizer, WgpuQuadCompositor,
 };
-use hayate_scene_renderer_vello::debug_encode_scene;
-use hayate_scene_test_support::vello::{readback_rgba8, render_scene_to_pixels_scaled, VelloHarness};
+use hayate_scene_test_support::vello::{
+    readback_rgba8, render_scene_to_pixels_scaled, VelloHarness,
+};
 
 /// #690/#692: 1 フレーム分のレイヤ raster + wgpu quad 合成（persistent キャッシュ）。呼び出し側が
 /// `cached`（既に raster 済みのレイヤ集合）を跨フレームで持ち回すことで、`present_layers()` の実運用
@@ -37,7 +41,9 @@ fn layered_gpu_frame(
     w: u32,
     hgt: u32,
 ) -> Option<Vec<u8>> {
-    let Some(&root) = layers.first() else { return None };
+    let Some(&root) = layers.first() else {
+        return None;
+    };
     let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
     for &layer in layers {
         if cached.contains(&layer) && !layer_dirty.contains(&layer) {
@@ -68,7 +74,11 @@ fn layered_gpu_frame(
         .collect();
     let target_texture = h.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("perf_probe_layered_target"),
-        size: wgpu::Extent3d { width: w, height: hgt, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: w,
+            height: hgt,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -156,10 +166,14 @@ fn perf_probe() {
     // （保持シーンから quad 配置を導出）だけ。差がスクロール/transform フレームの短縮分。
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let root = tree.frame_layers()[0];
-    bench("layer placements collect (composite-only frame CPU)", 200, || {
-        let p = collect_layer_placements(&graph, root, &boundaries);
-        std::hint::black_box(&p);
-    });
+    bench(
+        "layer placements collect (composite-only frame CPU)",
+        200,
+        || {
+            let p = collect_layer_placements(&graph, root, &boundaries);
+            std::hint::black_box(&p);
+        },
+    );
     // dirty レイヤ 1 枚だけを再 raster するフレームのエンコードコスト（full encode との対比）。
     let layer_scene = if tree.frame_layers().len() > 1 {
         extract_layer_scene(&graph, tree.frame_layers()[1], &boundaries)
@@ -167,10 +181,14 @@ fn perf_probe() {
         Some(extract_root_scene(&graph, root, &boundaries))
     }
     .unwrap_or_else(|| extract_root_scene(&graph, root, &boundaries));
-    bench("vello single-layer encode scale=1.0 (dirty-layer reraster)", 100, || {
-        let s = debug_encode_scene(&layer_scene, 1.0);
-        std::hint::black_box(&s);
-    });
+    bench(
+        "vello single-layer encode scale=1.0 (dirty-layer reraster)",
+        100,
+        || {
+            let s = debug_encode_scene(&layer_scene, 1.0);
+            std::hint::black_box(&s);
+        },
+    );
 
     // ── 3. GPU render（アダプタがあれば。llvmpipe なら CPU 実行だが per-frame の
     //      パイプライン異常（atlas 肥大・バッファ churn・フレーム毎の成長）を検出できる）──
@@ -230,7 +248,15 @@ fn perf_probe() {
 
                 let t = Instant::now();
                 let px = layered_gpu_frame(
-                    &mut h, &mut rasterizer, &mut compositor, &mut cached, &graph, &layers, &dirty, w, hgt,
+                    &mut h,
+                    &mut rasterizer,
+                    &mut compositor,
+                    &mut cached,
+                    &graph,
+                    &layers,
+                    &dirty,
+                    w,
+                    hgt,
                 );
                 assert!(px.is_some());
                 layered_samples.push(ms(t.elapsed()));
@@ -280,7 +306,15 @@ fn perf_probe() {
 
                 let bt = Instant::now();
                 let px = layered_gpu_frame(
-                    &mut h, &mut rasterizer, &mut compositor, &mut cached, &graph, &layers, &dirty, w, hgt,
+                    &mut h,
+                    &mut rasterizer,
+                    &mut compositor,
+                    &mut cached,
+                    &graph,
+                    &layers,
+                    &dirty,
+                    w,
+                    hgt,
                 );
                 assert!(px.is_some());
                 layered_samples.push(ms(bt.elapsed()));

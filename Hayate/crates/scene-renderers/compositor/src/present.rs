@@ -38,7 +38,11 @@ impl PresentPlanner {
     /// per-layer の raster 計画（#633）。dirty レイヤと未キャッシュレイヤだけを `raster` に、残りを
     /// `reuse` に置く。transform 係数だけが変わったレイヤ（`frame_layer_transform_dirty`）は
     /// ここに渡さない——内容キャッシュは有効なままで、合成時の quad transform 更新だけが要る。
-    pub fn plan_layers(&self, layers: &[ElementId], content_dirty: &HashSet<ElementId>) -> RasterPlan {
+    pub fn plan_layers(
+        &self,
+        layers: &[ElementId],
+        content_dirty: &HashSet<ElementId>,
+    ) -> RasterPlan {
         self.cache.plan_raster(layers, content_dirty)
     }
 
@@ -55,14 +59,25 @@ impl PresentPlanner {
 
     /// scroll レイヤの帯 raster をサイズ付きで記録する（#634）。`band` は今回 raster した縦帯
     /// （可視域＋overscan）、`bytes` は帯サイズの texture バイト（content 全高でなく帯サイズ）。
-    pub fn note_scroll_rasterized(&mut self, layer: ElementId, band: ScrollLayerExtent, bytes: u64) {
+    pub fn note_scroll_rasterized(
+        &mut self,
+        layer: ElementId,
+        band: ScrollLayerExtent,
+        bytes: u64,
+    ) {
         self.cache.mark_scroll_rasterized(layer, band, bytes);
     }
 
     /// scroll レイヤが本フレームで（差分）raster を要するか（#634）。キャッシュ帯が現在の可視域
     /// `[visible_top, visible_top + viewport_height]` を覆っていれば false（composite-only スクロール）。
-    pub fn scroll_layer_needs_raster(&self, layer: ElementId, visible_top: f32, viewport_height: f32) -> bool {
-        self.cache.scroll_needs_raster(layer, visible_top, viewport_height)
+    pub fn scroll_layer_needs_raster(
+        &self,
+        layer: ElementId,
+        visible_top: f32,
+        viewport_height: f32,
+    ) -> bool {
+        self.cache
+            .scroll_needs_raster(layer, visible_top, viewport_height)
     }
 
     /// レイヤの現在キャッシュ済み scroll 帯（content-local、#707）。合成時の compensating
@@ -119,7 +134,10 @@ mod tests {
     #[test]
     fn cold_planner_needs_raster() {
         let planner = PresentPlanner::new();
-        assert!(planner.plan(&[id(1)], &dirty(&[])).needs_raster, "cold cache は全面 raster");
+        assert!(
+            planner.plan(&[id(1)], &dirty(&[])).needs_raster,
+            "cold cache は全面 raster"
+        );
     }
 
     #[test]
@@ -127,7 +145,10 @@ mod tests {
         let mut planner = PresentPlanner::new();
         planner.note_full_raster(&[id(1), id(2)]);
         let plan = planner.plan(&[id(1), id(2)], &dirty(&[]));
-        assert!(plan.is_composite_only(), "layer_dirty 空・キャッシュ有効 → raster を呼ばない");
+        assert!(
+            plan.is_composite_only(),
+            "layer_dirty 空・キャッシュ有効 → raster を呼ばない"
+        );
     }
 
     #[test]
@@ -171,7 +192,10 @@ mod tests {
     #[test]
     fn cached_scroll_band_reflects_the_last_rastered_band_not_this_frames() {
         let mut planner = PresentPlanner::new();
-        let first = ScrollLayerExtent { top: 0.0, height: 800.0 };
+        let first = ScrollLayerExtent {
+            top: 0.0,
+            height: 800.0,
+        };
         planner.note_scroll_rasterized(id(1), first, 1000);
         assert_eq!(planner.cached_scroll_band(id(1)), Some(first));
 
@@ -179,9 +203,16 @@ mod tests {
         // 前回のまま——`cached_scroll_band` は常にそれを返す（このフレームの新規帯ではない）。
         assert_eq!(planner.cached_scroll_band(id(1)), Some(first));
 
-        let second = ScrollLayerExtent { top: 200.0, height: 800.0 };
+        let second = ScrollLayerExtent {
+            top: 200.0,
+            height: 800.0,
+        };
         planner.note_scroll_rasterized(id(1), second, 1000);
-        assert_eq!(planner.cached_scroll_band(id(1)), Some(second), "再 raster 後は新しい帯を返す");
+        assert_eq!(
+            planner.cached_scroll_band(id(1)),
+            Some(second),
+            "再 raster 後は新しい帯を返す"
+        );
     }
 
     #[test]
@@ -195,7 +226,10 @@ mod tests {
     #[test]
     fn cached_scroll_band_is_cleared_on_eviction() {
         let mut planner = PresentPlanner::new();
-        let band = ScrollLayerExtent { top: 0.0, height: 800.0 };
+        let band = ScrollLayerExtent {
+            top: 0.0,
+            height: 800.0,
+        };
         planner.note_scroll_rasterized(id(1), band, 1000);
         planner.evict(id(1));
         assert_eq!(planner.cached_scroll_band(id(1)), None);

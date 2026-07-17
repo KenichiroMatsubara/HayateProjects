@@ -1,17 +1,15 @@
 use crate::color::Color;
-use crate::element::effective_visual::{
-    self, child_inherited_context, InheritedVisualContext,
-};
-use crate::element::style::{BorderStyleValue, OverflowValue, Shadow};
+use crate::element::effective_visual::{self, child_inherited_context, InheritedVisualContext};
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pointer::PointerKind;
 use crate::element::scene_lowering::{
     clear_lowered_content, AnchorEntry, LoweringDirtySnapshot, SceneLowering,
 };
-use crate::element::visual_invalidation::{self, VisualInvalidationReach};
+use crate::element::style::{BorderStyleValue, OverflowValue, Shadow};
 use crate::element::taffy_projection::TraversalStep;
 use crate::element::tree::{ElementTree, Visual};
+use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 use crate::node::{Node, NodeId, NodeKind, SceneGraph, ShadowOccluder};
 use crate::render::shadow::{shadow_sigma, HARD_SHADOW_BLUR_THRESHOLD};
 use std::collections::HashSet;
@@ -56,7 +54,14 @@ pub(crate) fn scroll_group_affine(
 /// なら scale 1.0・素の `translate(-offset)`（iOS とパリティ）。越境時はピン端（`near`/`far` の
 /// シーン座標ビューポート境界）を固定するアンカー scale を、端クランプ translate に畳み込む:
 ///   `final = scale·(content − clamped − anchor) + anchor = scale·content + (−scale·clamped + anchor·(1 − scale))`
-fn stretch_axis(offset: f32, max: f32, near: f32, far: f32, dimension: f32, t: &ScrollPhysicsTuning) -> (f64, f64) {
+fn stretch_axis(
+    offset: f32,
+    max: f32,
+    near: f32,
+    far: f32,
+    dimension: f32,
+    t: &ScrollPhysicsTuning,
+) -> (f64, f64) {
     let max = max.max(0.0);
     if max <= 0.0 {
         // スクロール不可な軸は伸ばさない（軸独立）。iOS と同じ素の translate。
@@ -247,7 +252,12 @@ impl AnchorSink for RetainedSink<'_> {
         self.lowering.walk_count += 1;
     }
 
-    fn begin(&mut self, ctx: &mut WalkCtx, cursor: RetainedCursor, id: ElementId) -> Option<NodeId> {
+    fn begin(
+        &mut self,
+        ctx: &mut WalkCtx,
+        cursor: RetainedCursor,
+        id: ElementId,
+    ) -> Option<NodeId> {
         let tree = ctx.tree;
         let anchor_id = ensure_anchor(tree, ctx.sg, self.lowering, id, cursor.parent_anchor);
         let children = tree.ordered_children(id);
@@ -307,7 +317,12 @@ impl AnchorSink for EphemeralSink {
 
     fn enter_node(&mut self) {}
 
-    fn begin(&mut self, _ctx: &mut WalkCtx, cursor: Option<NodeId>, _id: ElementId) -> Option<NodeId> {
+    fn begin(
+        &mut self,
+        _ctx: &mut WalkCtx,
+        cursor: Option<NodeId>,
+        _id: ElementId,
+    ) -> Option<NodeId> {
         cursor
     }
 
@@ -330,7 +345,13 @@ impl AnchorSink for EphemeralSink {
             .collect()
     }
 
-    fn end_element(&mut self, _ctx: &mut WalkCtx, _effective_parent: Option<NodeId>, _id: ElementId) {}
+    fn end_element(
+        &mut self,
+        _ctx: &mut WalkCtx,
+        _effective_parent: Option<NodeId>,
+        _id: ElementId,
+    ) {
+    }
 }
 
 /// retained アンカー無しの ephemeral 全再構築（パリティ参照／テスト用）。
@@ -435,7 +456,12 @@ pub(crate) fn update(
                 .elements
                 .get(&patch_root)
                 .and_then(|el| el.parent)
-                .and_then(|parent| sink.lowering.anchors.get(&parent).map(|entry| entry.anchor_id));
+                .and_then(|parent| {
+                    sink.lowering
+                        .anchors
+                        .get(&parent)
+                        .map(|entry| entry.anchor_id)
+                });
             let (ox, oy) = tree
                 .elements
                 .get(&patch_root)
@@ -468,11 +494,7 @@ pub(crate) fn update(
 
 /// コア描画の選択オーバーレイを再エミットする（ADR-0097）。先にドラッグハンドル、次に浮動
 /// ツールバー。ツールバーを最後に挿入することでハンドルの上に描かれる。
-fn refresh_selection_chrome(
-    tree: &ElementTree,
-    sg: &mut SceneGraph,
-    lowering: &mut SceneLowering,
-) {
+fn refresh_selection_chrome(tree: &ElementTree, sg: &mut SceneGraph, lowering: &mut SceneLowering) {
     refresh_selection_handles(tree, sg, lowering);
     refresh_selection_toolbar(tree, sg, lowering);
 }
@@ -704,11 +726,27 @@ fn emit_selection_toolbar(
     // 可視行のボタン間に縦ディバイダ。境界 = 各ボタンの左端（先頭を除く）と、
     // オーバーフローがあれば ⋮ トグルの左端。
     for button in toolbar.buttons.iter().skip(1) {
-        emit_toolbar_divider(sg, group, button.bounds.x, b.y, ct.toolbar_divider_width, b.height, divider_color);
+        emit_toolbar_divider(
+            sg,
+            group,
+            button.bounds.x,
+            b.y,
+            ct.toolbar_divider_width,
+            b.height,
+            divider_color,
+        );
     }
     if let Some(of) = &toolbar.overflow {
         if !toolbar.buttons.is_empty() {
-            emit_toolbar_divider(sg, group, of.toggle.x, b.y, ct.toolbar_divider_width, b.height, divider_color);
+            emit_toolbar_divider(
+                sg,
+                group,
+                of.toggle.x,
+                b.y,
+                ct.toolbar_divider_width,
+                b.height,
+                divider_color,
+            );
         }
         // ⋮ トグルグリフ。
         if let Some(label) = tree.toolbar_overflow_label_layout() {
@@ -760,16 +798,17 @@ fn reorder_children_for_z_index(
     }
 }
 
-
 fn first_child_matching(
     sg: &SceneGraph,
     parent: NodeId,
     pred: impl Fn(&NodeKind) -> bool,
 ) -> Option<NodeId> {
     let parent_node = sg.get(parent)?;
-    parent_node.children.iter().copied().find(|&child| {
-        sg.get(child).is_some_and(|n| pred(&n.kind))
-    })
+    parent_node
+        .children
+        .iter()
+        .copied()
+        .find(|&child| sg.get(child).is_some_and(|n| pred(&n.kind)))
 }
 
 /// 子要素アンカーを接続すべきノード。親が ScrollView のときは Clip/scroll Group ラッパを辿る。
@@ -995,12 +1034,8 @@ fn emit_element<S: AnchorSink>(
 ) {
     let tree = ctx.tree;
     let inherited_base = effective_visual::apply_text_inheritance(&ctx.inherited, &el.visual);
-    let child_inherited = child_inherited_context(
-        &ctx.inherited,
-        el.kind,
-        &inherited_base,
-        &el.visual,
-    );
+    let child_inherited =
+        child_inherited_context(&ctx.inherited, el.kind, &inherited_base, &el.visual);
     let resolved = effective_visual::resolve_effective(
         &ctx.inherited,
         &el.visual,
@@ -1188,9 +1223,7 @@ fn emit_element<S: AnchorSink>(
     } else if el.kind == ElementKind::TextInput {
         let content_x = x + layout.border.left + layout.padding.left;
         let content_y = y + layout.border.top + layout.padding.top;
-        let color = confirmed_color
-            .with_opacity(visual.opacity)
-            .to_array_f32();
+        let color = confirmed_color.with_opacity(visual.opacity).to_array_f32();
         // 選択ハイライトはテキストの背後に描くが（ADR-0097）、フォーカス中の text-input に
         // 限る（ADR-0104）。非フォーカスのフィールドは範囲を EditState に覚えていてもハイライトを
         // 隠すので、Mouse/Pen のフォーカス喪失は「隠す＋記憶」となり、ドキュメント全体で点灯する
@@ -1216,9 +1249,10 @@ fn emit_element<S: AnchorSink>(
         let (runs, run_color) = if let Some(cl) = el.content_layout.as_ref() {
             (Some(cl.runs.as_slice()), color)
         } else {
-            let muted = placeholder_muted_color(confirmed_color, tree.chrome_tuning().placeholder_alpha)
-                .with_opacity(visual.opacity)
-                .to_array_f32();
+            let muted =
+                placeholder_muted_color(confirmed_color, tree.chrome_tuning().placeholder_alpha)
+                    .with_opacity(visual.opacity)
+                    .to_array_f32();
             (el.text_layout.as_ref().map(|tl| tl.runs.as_slice()), muted)
         };
         if let Some(runs) = runs {
@@ -1293,9 +1327,7 @@ fn emit_element<S: AnchorSink>(
                             y: content_y,
                             width: 1.5,
                             height: confirmed_font_size * 1.2,
-                            color: confirmed_color
-                                .with_opacity(visual.opacity)
-                                .to_array_f32(),
+                            color: confirmed_color.with_opacity(visual.opacity).to_array_f32(),
                             corner_radius: 0.0,
                         },
                         children: Vec::new(),
@@ -1304,9 +1336,7 @@ fn emit_element<S: AnchorSink>(
             }
         }
     } else if let Some(tl) = el.text_layout.as_ref() {
-        let color = confirmed_color
-            .with_opacity(visual.opacity)
-            .to_array_f32();
+        let color = confirmed_color.with_opacity(visual.opacity).to_array_f32();
         emit_selection_highlight(tree, id, &tl.layout, x, y, ctx.sg, effective_parent);
         for run in &tl.runs {
             emit(
@@ -1579,7 +1609,11 @@ pub(crate) const PLACEHOLDER_ALPHA: f64 = 0.54;
 
 fn placeholder_muted_color(body: Color, alpha: f64) -> Color {
     let luma = 0.299 * body.r + 0.587 * body.g + 0.114 * body.b;
-    let base = if luma < 0.5 { Color::BLACK } else { Color::WHITE };
+    let base = if luma < 0.5 {
+        Color::BLACK
+    } else {
+        Color::WHITE
+    };
     Color::new(base.r, base.g, base.b, alpha)
 }
 
@@ -1674,7 +1708,11 @@ pub(crate) const COMPOSITION_UNDERLINE_THICK: f32 = 2.0;
 #[allow(clippy::too_many_arguments)]
 fn emit_composition_underlines(
     layout: &parley::Layout<crate::element::text::TextBrush>,
-    underlines: &[(usize, usize, crate::element::edit_state::CompositionUnderline)],
+    underlines: &[(
+        usize,
+        usize,
+        crate::element::edit_state::CompositionUnderline,
+    )],
     content_x: f32,
     content_y: f32,
     color: [f32; 4],
@@ -1802,16 +1840,7 @@ fn emit_visual_box(
         }
 
         if let Some(bg) = background {
-            emit_fill_rect(
-                sg,
-                parent_group,
-                x,
-                y,
-                width,
-                height,
-                border_rgba,
-                radius,
-            );
+            emit_fill_rect(sg, parent_group, x, y, width, height, border_rgba, radius);
             let inner_w = (width - 2.0 * border_w).max(0.0);
             let inner_h = (height - 2.0 * border_w).max(0.0);
             if inner_w > 0.0 && inner_h > 0.0 {
@@ -1853,7 +1882,12 @@ fn emit_visual_box(
         for (bx, by, bw2, bh2) in [
             (x, y, width, border_w),
             (x, y + height - border_w, width, border_w),
-            (x, y + border_w, border_w, (height - 2.0 * border_w).max(0.0)),
+            (
+                x,
+                y + border_w,
+                border_w,
+                (height - 2.0 * border_w).max(0.0),
+            ),
             (
                 x + width - border_w,
                 y + border_w,
@@ -1929,7 +1963,18 @@ fn emit_box_shadows(
         if want_inset {
             emit_inset_shadow(sg, parent_group, x, y, width, height, radius, shadow, color);
         } else {
-            emit_drop_shadow(sg, parent_group, x, y, width, height, radius, shadow, color, occluder);
+            emit_drop_shadow(
+                sg,
+                parent_group,
+                x,
+                y,
+                width,
+                height,
+                radius,
+                shadow,
+                color,
+                occluder,
+            );
         }
     }
 }
@@ -2136,12 +2181,24 @@ mod scroll_group_affine_tests {
         // iOS 風は overshoot 込みで content を丸ごと translate、scale 無し（従来挙動を厳密維持）。
         // 範囲内。
         assert_eq!(
-            scroll_group_affine(ScrollPhysicsProfile::Auto, (0.0, 50.0), (0.0, 400.0), VP, &t()),
+            scroll_group_affine(
+                ScrollPhysicsProfile::Auto,
+                (0.0, 50.0),
+                (0.0, 400.0),
+                VP,
+                &t()
+            ),
             [1.0, 0.0, 0.0, 1.0, 0.0, -50.0],
         );
         // 下端を 20px overscroll していても、iOS は overshoot をそのまま translate に含める。
         assert_eq!(
-            scroll_group_affine(ScrollPhysicsProfile::Auto, (0.0, 420.0), (0.0, 400.0), VP, &t()),
+            scroll_group_affine(
+                ScrollPhysicsProfile::Auto,
+                (0.0, 420.0),
+                (0.0, 400.0),
+                VP,
+                &t()
+            ),
             [1.0, 0.0, 0.0, 1.0, 0.0, -420.0],
         );
     }
@@ -2150,7 +2207,13 @@ mod scroll_group_affine_tests {
     fn android_in_range_matches_ios_translate_with_no_scale() {
         // 範囲内は stretch 無し: iOS と同じ素の translate、scale 1.0。パリティ。
         assert_eq!(
-            scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, 50.0), (0.0, 400.0), VP, &t()),
+            scroll_group_affine(
+                ScrollPhysicsProfile::Android,
+                (0.0, 50.0),
+                (0.0, 400.0),
+                VP,
+                &t()
+            ),
             [1.0, 0.0, 0.0, 1.0, 0.0, -50.0],
         );
     }
@@ -2159,51 +2222,105 @@ mod scroll_group_affine_tests {
     fn android_bottom_overscroll_pins_the_bottom_edge_and_scales_content() {
         // 下端を 20px 越えて overscroll: 端クランプ translate（clamped=max=400）＋ ピン端
         // アンカー scale（far 端 = ビューポート下端 y=100）に分割する。
-        let m = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, 420.0), (0.0, 400.0), VP, &t());
+        let m = scroll_group_affine(
+            ScrollPhysicsProfile::Android,
+            (0.0, 420.0),
+            (0.0, 400.0),
+            VP,
+            &t(),
+        );
         // 縦のスケール = overscroll_stretch_scale(20, dim=100) = 1 + 0.2*0.15 = 1.03。
         let scale_y = 1.0 + (20.0f64 / 100.0) * physics::STRETCH_MAX as f64;
-        assert!((m[3] - scale_y).abs() < 1e-6, "y scale = {} (want {scale_y})", m[3]);
+        assert!(
+            (m[3] - scale_y).abs() < 1e-6,
+            "y scale = {} (want {scale_y})",
+            m[3]
+        );
         // 横はスクロール不可（max_x=0）→ 伸びない（軸独立）。
         assert_eq!(m[0], 1.0, "x is not stretched");
         assert_eq!(m[4], 0.0, "x translate stays 0");
         // ピン留めした下端はビューポート下端 (シーン y=100) に固定されたまま。
         // 範囲内 max では content-bottom は content-y=500（500-400=100）にある。
         let pinned = m[3] * 500.0 + m[5];
-        assert!((pinned - 100.0).abs() < 1e-4, "bottom edge pinned at viewport bottom (got {pinned})");
+        assert!(
+            (pinned - 100.0).abs() < 1e-4,
+            "bottom edge pinned at viewport bottom (got {pinned})"
+        );
     }
 
     #[test]
     fn android_top_overscroll_pins_the_top_edge_and_scales_content() {
         // 上端を 30px 越えて overscroll（offset 負）: 端クランプ translate（clamped=0）＋
         // ピン端アンカー scale（near 端 = ビューポート上端 y=0）。
-        let m = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, -30.0), (0.0, 400.0), VP, &t());
+        let m = scroll_group_affine(
+            ScrollPhysicsProfile::Android,
+            (0.0, -30.0),
+            (0.0, 400.0),
+            VP,
+            &t(),
+        );
         let scale_y = 1.0 + (30.0f64 / 100.0) * physics::STRETCH_MAX as f64;
-        assert!((m[3] - scale_y).abs() < 1e-6, "y scale = {} (want {scale_y})", m[3]);
+        assert!(
+            (m[3] - scale_y).abs() < 1e-6,
+            "y scale = {} (want {scale_y})",
+            m[3]
+        );
         // ピン留めした上端はビューポート上端 (シーン y=0) に固定: content-top は content-y=0。
         let pinned = m[3] * 0.0 + m[5];
-        assert!(pinned.abs() < 1e-4, "top edge pinned at viewport top (got {pinned})");
+        assert!(
+            pinned.abs() < 1e-4,
+            "top edge pinned at viewport top (got {pinned})"
+        );
     }
 
     #[test]
     fn android_stretch_is_symmetric_at_both_edges() {
         // 同じ大きさの上端／下端 overscroll は同じスケールを生む（両端対称）。
-        let top = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, -40.0), (0.0, 400.0), VP, &t());
-        let bottom = scroll_group_affine(ScrollPhysicsProfile::Android, (0.0, 440.0), (0.0, 400.0), VP, &t());
-        assert!((top[3] - bottom[3]).abs() < 1e-6, "scale symmetric at both edges");
+        let top = scroll_group_affine(
+            ScrollPhysicsProfile::Android,
+            (0.0, -40.0),
+            (0.0, 400.0),
+            VP,
+            &t(),
+        );
+        let bottom = scroll_group_affine(
+            ScrollPhysicsProfile::Android,
+            (0.0, 440.0),
+            (0.0, 400.0),
+            VP,
+            &t(),
+        );
+        assert!(
+            (top[3] - bottom[3]).abs() < 1e-6,
+            "scale symmetric at both edges"
+        );
     }
 
     #[test]
     fn android_horizontal_overscroll_stretches_only_the_scrollable_axis() {
         // 横スクロール可能・縦不可のページ: 右端 overscroll は横だけ伸ばし縦は伸ばさない。
-        let m = scroll_group_affine(ScrollPhysicsProfile::Android, (240.0, 0.0), (200.0, 0.0), VP, &t());
+        let m = scroll_group_affine(
+            ScrollPhysicsProfile::Android,
+            (240.0, 0.0),
+            (200.0, 0.0),
+            VP,
+            &t(),
+        );
         // dim_x = ビューポート幅 200、overshoot = 40 → scale_x = 1 + 0.2*0.15 = 1.03。
         let scale_x = 1.0 + (40.0f64 / 200.0) * physics::STRETCH_MAX as f64;
-        assert!((m[0] - scale_x).abs() < 1e-6, "x scale = {} (want {scale_x})", m[0]);
+        assert!(
+            (m[0] - scale_x).abs() < 1e-6,
+            "x scale = {} (want {scale_x})",
+            m[0]
+        );
         assert_eq!(m[3], 1.0, "y is not stretched (vertical not scrollable)");
         assert_eq!(m[5], 0.0, "y translate stays 0");
         // ピン留めした右端はビューポート右端 (シーン x=200) に固定。max では content-right は
         // content-x=400（400-200=200）。
         let pinned = m[0] * 400.0 + m[4];
-        assert!((pinned - 200.0).abs() < 1e-4, "right edge pinned at viewport right (got {pinned})");
+        assert!(
+            (pinned - 200.0).abs() < 1e-4,
+            "right edge pinned at viewport right (got {pinned})"
+        );
     }
 }

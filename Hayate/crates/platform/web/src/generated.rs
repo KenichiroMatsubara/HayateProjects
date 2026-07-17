@@ -15,8 +15,8 @@ use wasm_bindgen::prelude::*;
 // 後続の include（codec / dom_style_mapper / event_encode_web）が `Op`・`TAG_*`・
 // `decode_style_packet` 等の protocol シンボルと core スタイル型を同一スコープで
 // 参照でき、外部の `crate::generated::*` 参照も従来どおり解決する。
-use hayate_core::*;
 pub use hayate_core::wire::*;
+use hayate_core::*;
 
 include!(concat!(
     env!("CARGO_MANIFEST_DIR"),

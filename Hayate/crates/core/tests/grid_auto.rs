@@ -34,7 +34,9 @@ fn grid_auto_rows_sizes_implicit_rows_beyond_explicit_tracks() {
     tree.render(0.0);
 
     let first_rect = tree.element_layout_rect(first).expect("first child layout");
-    let second_rect = tree.element_layout_rect(second).expect("second child layout");
+    let second_rect = tree
+        .element_layout_rect(second)
+        .expect("second child layout");
 
     // 明示行: y=0, 高さ 50。
     assert!(

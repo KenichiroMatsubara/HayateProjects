@@ -46,7 +46,8 @@ const OP_SET_STYLE: f64 = 4.0;
 /// 1 要素のスタイルを `apply_mutations` で適用するテストヘルパ（`OP_SET_STYLE` 1 件）。
 fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
     let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
-    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[]).unwrap();
+    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[])
+        .unwrap();
 }
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {
@@ -202,10 +203,20 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    renderer
+        .element_create(1.0, ELEMENT_KIND_SCROLLVIEW)
+        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
-    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        2.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0],
+    );
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
@@ -253,10 +264,20 @@ async fn held_touch_over_scroll_content_starts_pressed_feedback_after_100ms() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    renderer
+        .element_create(1.0, ELEMENT_KIND_SCROLLVIEW)
+        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.element_create(2.0, ELEMENT_KIND_BUTTON).unwrap();
-    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        2.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0],
+    );
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     let active_listener = renderer
@@ -276,7 +297,10 @@ async fn held_touch_over_scroll_content_starts_pressed_feedback_after_100ms() {
         !has_delivery(&renderer.poll_events(), active_listener, ACTIVE_START_KIND),
         "pressed feedback must remain deferred before 100ms"
     );
-    assert!(renderer.has_pending_visual_work(), "timeout must keep the frame loop armed");
+    assert!(
+        renderer.has_pending_visual_work(),
+        "timeout must keep the frame loop armed"
+    );
 
     renderer.render(116.0).unwrap();
     assert!(
@@ -299,10 +323,20 @@ async fn wheel_over_canvas_suppresses_the_native_scroll() {
         .expect("renderer init");
 
     // wheel が canvas 内で行き先を持てるよう、スクロール可能な view を置く。
-    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    renderer
+        .element_create(1.0, ELEMENT_KIND_SCROLLVIEW)
+        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
-    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        2.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0],
+    );
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
@@ -333,10 +367,20 @@ async fn scrollable_renderer(canvas: &HtmlCanvasElement) -> (HayateElementRender
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    renderer
+        .element_create(1.0, ELEMENT_KIND_SCROLLVIEW)
+        .unwrap();
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.element_create(2.0, ELEMENT_KIND_VIEW).unwrap();
-    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        2.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0],
+    );
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
@@ -506,7 +550,11 @@ async fn pointer_type_is_forwarded_to_core_as_pointer_kind() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
 
@@ -549,7 +597,11 @@ async fn pointer_move_over_button_applies_pointer_cursor_to_the_canvas() {
 
     // サーフェスを埋めるボタン、明示的な cursor スタイルなし。
     renderer.element_create(1.0, ELEMENT_KIND_BUTTON).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
 
@@ -578,7 +630,11 @@ async fn a_buffered_pointer_input_wakes_the_on_demand_frame_loop() {
         .expect("renderer init");
 
     renderer.element_create(1.0, ELEMENT_KIND_VIEW).unwrap();
-    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    apply_style(
+        &mut renderer,
+        1.0,
+        &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0],
+    );
     renderer.set_root(1.0);
     renderer.render(0.0).unwrap();
 
@@ -593,7 +649,12 @@ async fn a_buffered_pointer_input_wakes_the_on_demand_frame_loop() {
 
     let rect = canvas.get_bounding_client_rect();
     // 本物の touch pointerdown。render は呼ばない — wake だけを見る。
-    dispatch_touch_event(&canvas, "pointerdown", rect.left() + 50.0, rect.top() + 50.0);
+    dispatch_touch_event(
+        &canvas,
+        "pointerdown",
+        rect.left() + 50.0,
+        rect.top() + 50.0,
+    );
     assert!(
         count.get() >= 1,
         "a touch pointerdown must wake the on-demand frame loop via request_redraw"
@@ -640,7 +701,12 @@ async fn dispatched_pointerleave_delivers_hover_leave() {
 
     // サーフェスから離脱: 自前配線の `pointerleave` がホバーをクリアし、
     // 直前にホバーしていたルートへ HoverLeave を配信する。
-    dispatch_pointer_event(&canvas, "pointerleave", rect.left() + 10.0, rect.top() + 10.0);
+    dispatch_pointer_event(
+        &canvas,
+        "pointerleave",
+        rect.left() + 10.0,
+        rect.top() + 10.0,
+    );
     renderer.render(32.0).unwrap();
     assert!(
         has_delivery(&renderer.poll_events(), leave_listener, HOVER_LEAVE_KIND),

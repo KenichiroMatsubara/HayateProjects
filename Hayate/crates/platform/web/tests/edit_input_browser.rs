@@ -37,7 +37,8 @@ const OP_SET_MULTILINE: f64 = 18.0;
 /// 1 要素のスタイルを `apply_mutations` で適用する（`OP_SET_STYLE` 1 件）。
 fn apply_style(r: &mut HayateElementRenderer, id: f64, packed: &[f32]) {
     let ops = [OP_SET_STYLE, id, 0.0, packed.len() as f64];
-    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[]).unwrap();
+    r.apply_mutations(&ops, packed, js_sys::Array::new(), &[])
+        .unwrap();
 }
 
 /// 編集可能テキスト内容を `apply_mutations` で設定する（`OP_SET_TEXT_CONTENT` 1 件）。
@@ -51,7 +52,8 @@ fn apply_text_content(r: &mut HayateElementRenderer, id: f64, text: &str) {
 /// 複数行フラグを `apply_mutations` で設定する（`OP_SET_MULTILINE` 1 件）。
 fn apply_multiline(r: &mut HayateElementRenderer, id: f64, multiline: bool) {
     let ops = [OP_SET_MULTILINE, id, if multiline { 1.0 } else { 0.0 }];
-    r.apply_mutations(&ops, &[], js_sys::Array::new(), &[]).unwrap();
+    r.apply_mutations(&ops, &[], js_sys::Array::new(), &[])
+        .unwrap();
 }
 
 fn make_canvas(size: u32) -> HtmlCanvasElement {
@@ -128,7 +130,9 @@ async fn arrow_key_moves_the_caret_through_the_canvas_keymap() {
         .expect("renderer init");
 
     // 画面いっぱいの text-input に "hello"（キャレットは末尾）。
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -182,7 +186,9 @@ async fn enter_in_a_multiline_field_inserts_a_newline_at_the_caret() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -221,7 +227,9 @@ async fn enter_in_a_single_line_field_does_not_insert_a_newline() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -251,7 +259,9 @@ async fn home_and_end_jump_to_the_field_boundaries_through_the_canvas_keymap() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -293,7 +303,9 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -306,7 +318,11 @@ async fn delete_keys_remove_chars_through_the_canvas_keymap() {
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
     renderer.render(16.0).unwrap();
-    assert_eq!(renderer.focused_element_id(), 1.0, "the pointerdown should focus the input");
+    assert_eq!(
+        renderer.focused_element_id(),
+        1.0,
+        "the pointerdown should focus the input"
+    );
 
     // キャレットを末尾へ動かし、Backspace で末尾の 'o' を削除する。
     // キーは wasm 境界を越えて Delete/Backward に変換され内容を編集する。
@@ -342,7 +358,9 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -355,7 +373,11 @@ async fn ctrl_delete_keys_remove_words_through_the_canvas_keymap() {
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
     renderer.render(16.0).unwrap();
-    assert_eq!(renderer.focused_element_id(), 1.0, "the pointerdown should focus the input");
+    assert_eq!(
+        renderer.focused_element_id(),
+        1.0,
+        "the pointerdown should focus the input"
+    );
 
     // キャレットを末尾へ動かし、Ctrl+Backspace で末尾の単語を削除する。
     for _ in 0..20 {
@@ -392,7 +414,9 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
         .await
         .expect("renderer init");
 
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     apply_style(
         &mut renderer,
         1.0,
@@ -405,7 +429,11 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
     let rect = canvas.get_bounding_client_rect();
     dispatch_pointer_down(&canvas, rect.left() + 10.0, rect.top() + 10.0);
     renderer.render(16.0).unwrap();
-    assert_eq!(renderer.focused_element_id(), 1.0, "pointerdown focuses the input");
+    assert_eq!(
+        renderer.focused_element_id(),
+        1.0,
+        "pointerdown focuses the input"
+    );
 
     stub_clipboard_read_text("PASTED");
 
@@ -427,7 +455,9 @@ async fn ctrl_v_pastes_clipboard_text_through_the_canvas_async_read() {
 async fn public_edit_intent_wire_reports_all_outcomes_and_protocol_errors() {
     let canvas = make_canvas(100);
     let mut renderer = HayateElementRenderer::init(canvas, None).await.unwrap();
-    renderer.element_create(1.0, ELEMENT_KIND_TEXT_INPUT).unwrap();
+    renderer
+        .element_create(1.0, ELEMENT_KIND_TEXT_INPUT)
+        .unwrap();
     renderer.set_root(1.0);
     apply_text_content(&mut renderer, 1.0, "ab");
 

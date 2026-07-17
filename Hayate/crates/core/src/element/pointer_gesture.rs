@@ -161,7 +161,7 @@ mod tests {
         let mut g = PointerGesture::default();
         g.classify_tap(10.0, 10.0);
         g.classify_tap(10.0, 10.0); // Word
-        // long-press 後など、周期を再開すると同じ箇所でもキャレットから始まる。
+                                    // long-press 後など、周期を再開すると同じ箇所でもキャレットから始まる。
         g.reset_taps();
         assert_eq!(g.classify_tap(10.0, 10.0), TapPhase::Caret);
     }

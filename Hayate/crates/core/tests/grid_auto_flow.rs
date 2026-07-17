@@ -106,7 +106,10 @@ fn second_item_origin(flow: GridAutoFlowValue) -> (f32, f32) {
 fn grid_auto_flow_row_fills_rows_first() {
     // row: item1 は最初の行の次の列 → (col1,row0) = (50, 0)。
     let (x, y) = second_item_origin(GridAutoFlowValue::Row);
-    assert!((x - 50.0).abs() < 1.0, "row flow places item1 at col1, x={x}");
+    assert!(
+        (x - 50.0).abs() < 1.0,
+        "row flow places item1 at col1, x={x}"
+    );
     assert!((y - 0.0).abs() < 1.0, "row flow keeps item1 in row0, y={y}");
 }
 

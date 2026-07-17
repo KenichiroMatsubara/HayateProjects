@@ -180,7 +180,9 @@ pub enum BootPlan {
 pub fn plan_boot(entered: Option<&str>, is_release: bool) -> BootPlan {
     match entered {
         Some(url) => BootPlan::Direct(dev_server_target::resolve(Some(url))),
-        None if is_release => BootPlan::ManifestAutoload(dev_server_target::release_default_target()),
+        None if is_release => {
+            BootPlan::ManifestAutoload(dev_server_target::release_default_target())
+        }
         None => BootPlan::Direct(dev_server_target::build_default_target()),
     }
 }
@@ -327,10 +329,19 @@ mod tests {
         // オフライン等でボディが空 / 壊れた JSON でも謎クラッシュにせず、明示エラー＋URL 入力誘導にする。
         for bad in ["", "   ", "not json", "{ \"demos\": ", "{ \"demos\": {} }"] {
             let err = first_boot_target(bad, &demo_endpoint()).unwrap_err();
-            assert!(matches!(err, DemoManifestError::Malformed(_)), "{bad:?} -> {err:?}");
+            assert!(
+                matches!(err, DemoManifestError::Malformed(_)),
+                "{bad:?} -> {err:?}"
+            );
             let msg = err.message();
-            assert!(msg.contains(DEMO_MANIFEST_ROUTE), "message names the route: {msg}");
-            assert!(msg.contains("URL 入力"), "message guides to the URL-entry path: {msg}");
+            assert!(
+                msg.contains(DEMO_MANIFEST_ROUTE),
+                "message names the route: {msg}"
+            );
+            assert!(
+                msg.contains("URL 入力"),
+                "message guides to the URL-entry path: {msg}"
+            );
         }
     }
 
@@ -339,7 +350,11 @@ mod tests {
         // デモ 0 件は自動ロード対象が無い明示エラー（先頭 unwrap でパニックさせない）。
         let err = first_boot_target(r#"{ "demos": [] }"#, &demo_endpoint()).unwrap_err();
         assert_eq!(err, DemoManifestError::Empty);
-        assert!(err.message().contains("URL 入力"), "empty also guides to URL entry: {}", err.message());
+        assert!(
+            err.message().contains("URL 入力"),
+            "empty also guides to URL entry: {}",
+            err.message()
+        );
         // parse 自体は成功する（空は壊れではない）。first() が None を返すだけ。
         assert!(parse(r#"{ "demos": [] }"#).unwrap().first().is_none());
     }
@@ -350,14 +365,20 @@ mod tests {
         let err = DemoManifestError::Fetch("HTTP 503 from demo endpoint".to_owned());
         let msg = err.message();
         assert!(msg.contains(DEMO_MANIFEST_ROUTE), "names the route: {msg}");
-        assert!(msg.contains("URL 入力"), "guides to the URL-entry path: {msg}");
+        assert!(
+            msg.contains("URL 入力"),
+            "guides to the URL-entry path: {msg}"
+        );
     }
 
     #[test]
     fn entered_url_plans_a_direct_boot_unchanged() {
         // URL 入力済み（QR 含む）は従来どおり単一バンドル直 boot。release/debug いずれでも既存経路不変。
         let lan = plan_boot(Some("192.168.1.5:5179"), false);
-        assert_eq!(lan, BootPlan::Direct(dev_server_target::parse("192.168.1.5:5179").unwrap()));
+        assert_eq!(
+            lan,
+            BootPlan::Direct(dev_server_target::parse("192.168.1.5:5179").unwrap())
+        );
         // 貼られた公開デモのフル URL も Direct（その path を直 boot）。release でも Direct のまま。
         let pasted = plan_boot(Some("https://demo.example/react/bundle.js"), true);
         match pasted {
@@ -381,7 +402,10 @@ mod tests {
     #[test]
     fn first_launch_on_debug_keeps_the_loopback_direct_boot_unchanged() {
         // debug 既定（エミュレータ loopback）は #534 のまま：manifest 経路に入らず単一バンドル直 boot。
-        assert_eq!(plan_boot(None, false), BootPlan::Direct(DevServerTarget::default()));
+        assert_eq!(
+            plan_boot(None, false),
+            BootPlan::Direct(DevServerTarget::default())
+        );
     }
 
     #[test]
@@ -392,7 +416,10 @@ mod tests {
             bundle_url: "ftp://nope".to_owned(),
         };
         let err = resolve_entry_target(&entry, &demo_endpoint()).unwrap_err();
-        assert!(matches!(err, DemoManifestError::UnresolvableEntry(_)), "{err:?}");
+        assert!(
+            matches!(err, DemoManifestError::UnresolvableEntry(_)),
+            "{err:?}"
+        );
         assert!(err.message().contains("URL 入力"), "{}", err.message());
     }
 }

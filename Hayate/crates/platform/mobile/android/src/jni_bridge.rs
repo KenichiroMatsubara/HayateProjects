@@ -18,7 +18,9 @@ use jni::{JNIEnv, JavaVM};
 /// （パッケージ名の `_` は `_1` にエスケープ）。`hayate_adapter_android` cdylib が export し、
 /// GameActivity がロードした後 Kotlin の `external fun` から呼ばれる。
 #[no_mangle]
-pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushSafeAreaInsets<'local>(
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushSafeAreaInsets<
+    'local,
+>(
     _env: JNIEnv<'local>,
     _class: JClass<'local>,
     left: jni::sys::jint,
@@ -35,7 +37,9 @@ pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_Mai
 /// を受け取り、`render_config` のグローバルへ格納する（`init_gpu_surface` が読む）。JNI 封じ込め
 /// 方針に従いここに置く。
 #[no_mangle]
-pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushRenderConfig<'local>(
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushRenderConfig<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     backend: JString<'local>,
@@ -52,7 +56,9 @@ pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_Mai
 /// （未指定は空文字）を受け取り、`renderer_config` のグローバルへ格納する
 /// （`init_and_spawn_raster` が読む）。JNI 封じ込め方針に従いここに置く。
 #[no_mangle]
-pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushRendererConfig<'local>(
+pub extern "system" fn Java_com_hayateprojects_hayate_adapter_1android_1demo_MainActivity_nativePushRendererConfig<
+    'local,
+>(
     mut env: JNIEnv<'local>,
     _class: JClass<'local>,
     renderer: JString<'local>,
@@ -127,7 +133,10 @@ pub(crate) fn app_class<'local>(
         .and_then(|v| v.l())
     {
         Ok(class) => Ok(JClass::from(class)),
-        Err(e) => Err(format!("{dotted} の解決に失敗: {}", describe_java_error(env, e))),
+        Err(e) => Err(format!(
+            "{dotted} の解決に失敗: {}",
+            describe_java_error(env, e)
+        )),
     }
 }
 

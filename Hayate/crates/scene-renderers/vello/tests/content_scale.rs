@@ -34,10 +34,7 @@ fn scale_1_paints_rect_at_css_pixel_extent() {
         .expect("vello render");
     let inside = pixel(&pixels, 100, 49, 25);
     let outside = pixel(&pixels, 100, 51, 25);
-    assert!(
-        inside[0] > 200,
-        "inside rect should be red, got {inside:?}"
-    );
+    assert!(inside[0] > 200, "inside rect should be red, got {inside:?}");
     assert!(
         outside[0] > 240 && outside[1] > 240,
         "outside rect should be clear, got {outside:?}"

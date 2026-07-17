@@ -73,7 +73,11 @@ mod tests {
     use super::*;
 
     fn glyph(id: u32) -> RenderGlyph {
-        RenderGlyph { id, x: 10.0, y: 30.0 }
+        RenderGlyph {
+            id,
+            x: 10.0,
+            y: 30.0,
+        }
     }
 
     #[test]
@@ -93,11 +97,17 @@ mod tests {
     fn placeholder_box_is_visible_and_above_baseline() {
         let g = glyph(0);
         let ph = missing_glyph_placeholder(&g, 40.0);
-        assert!(ph.width > 0.0 && ph.height > 0.0, "placeholder must have area");
+        assert!(
+            ph.width > 0.0 && ph.height > 0.0,
+            "placeholder must have area"
+        );
         assert!(ph.stroke_width >= 1.0, "stroke must be at least 1px");
         // 箱はベースラインより上（画面 y が小さい）かつペン原点より右にある。
         assert!(ph.y < g.y, "box top must be above the baseline");
-        assert!(ph.y + ph.height <= g.y, "box must not dip below the baseline");
+        assert!(
+            ph.y + ph.height <= g.y,
+            "box must not dip below the baseline"
+        );
         assert!(ph.x >= g.x, "box must be inset from the pen origin");
     }
 

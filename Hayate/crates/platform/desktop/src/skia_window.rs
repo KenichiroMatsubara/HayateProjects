@@ -78,13 +78,15 @@ impl SceneRenderer for SkiaWindowRenderer {
         // 寸法・HiDPI 係数は window から毎フレーム自給する（resize の取りこぼしや
         // fallback 直後でも常に現在値で描ける）。
         let size = self.window.inner_size();
-        let (Some(width), Some(height)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
+        let (Some(width), Some(height)) =
+            (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
         else {
             return Ok(()); // 最小化等でゼロ寸法のフレームは描かない。
         };
         let content_scale = self.window.scale_factor() as f32;
 
-        let pixels = raster_frame_xrgb(scene, width.get(), height.get(), content_scale, clear_color);
+        let pixels =
+            raster_frame_xrgb(scene, width.get(), height.get(), content_scale, clear_color);
 
         self.present_pixels(width, height, &pixels)
     }
@@ -108,24 +110,27 @@ impl SceneRenderer for SkiaWindowRenderer {
             return Ok(()); // 最小化等でゼロ寸法のフレームは描かない。
         };
         let content_scale = self.window.scale_factor() as f32;
-        self.presenter.resize(width.get(), height.get(), content_scale);
+        self.presenter
+            .resize(width.get(), height.get(), content_scale);
         let target = new_raster_surface(width.get() as i32, height.get() as i32)
             .ok_or_else(|| anyhow!("skia present surface {}x{}", width, height))?;
-        let mut target = self.presenter.present(
-            scene,
-            layers,
-            layer_dirty,
-            scroll_geometry,
-            clear_color,
-            (0.0, 0.0),
-            GpuBudget::from_viewports(
-                width.get(),
-                height.get(),
-                tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
-            ),
-            target,
-        )
-        .map_err(|e| anyhow!("skia layer present: {e}"))?;
+        let mut target = self
+            .presenter
+            .present(
+                scene,
+                layers,
+                layer_dirty,
+                scroll_geometry,
+                clear_color,
+                (0.0, 0.0),
+                GpuBudget::from_viewports(
+                    width.get(),
+                    height.get(),
+                    tunables::GPU_BUDGET_VIEWPORTS_DESKTOP,
+                ),
+                target,
+            )
+            .map_err(|e| anyhow!("skia layer present: {e}"))?;
         let rgba = read_rgba(&mut target);
         let mut pixels = vec![0u32; width.get() as usize * height.get() as usize];
         copy_rgba_to_xrgb(&rgba, &mut pixels);

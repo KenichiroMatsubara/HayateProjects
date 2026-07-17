@@ -1,13 +1,13 @@
 use hayate_core::{
-    DrawFillRule, DrawLineCap, DrawLineJoin, PathSink, PathVerb, RenderImage, ScenePainter,
-    ShadowOccluder, StrokeStyle, TextRunData, build_draw_path, is_notdef, missing_glyph_placeholder,
+    build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
+    PathSink, PathVerb, RenderImage, ScenePainter, ShadowOccluder, StrokeStyle, TextRunData,
 };
 use vello::{
     kurbo::{Affine, Rect, RoundedRect},
     peniko::{
-        BlendMode, Compose, Fill, FontData, ImageBrush, Mix,
         color::{AlphaColor, Srgb},
         kurbo::Diagonal2,
+        BlendMode, Compose, Fill, FontData, ImageBrush, Mix,
     },
     FontEmbolden, Scene,
 };
@@ -142,15 +142,9 @@ impl ScenePainter for VelloPainter<'_> {
         use vello::kurbo::{BezPath, RoundedRect, Shape};
 
         let mut path = BezPath::new();
-        path.extend(
-            RoundedRect::new(x0, y0, x1, y1, outer_r)
-                .path_elements(0.1),
-        );
+        path.extend(RoundedRect::new(x0, y0, x1, y1, outer_r).path_elements(0.1));
         let mut inner = BezPath::new();
-        inner.extend(
-            RoundedRect::new(ix0, iy0, ix1, iy1, inner_r)
-                .path_elements(0.1),
-        );
+        inner.extend(RoundedRect::new(ix0, iy0, ix1, iy1, inner_r).path_elements(0.1));
         inner.reverse_subpaths();
         path.extend(inner);
         scene.fill(Fill::EvenOdd, Affine::IDENTITY, brush, None, &path);
@@ -247,12 +241,7 @@ impl ScenePainter for VelloPainter<'_> {
         // （影外形）、ぼかしはこの周りに解析的に広がる。
         let scene = self.target();
         let brush = AlphaColor::<Srgb>::new(color);
-        let rect = Rect::new(
-            x as f64,
-            y as f64,
-            (x + width) as f64,
-            (y + height) as f64,
-        );
+        let rect = Rect::new(x as f64, y as f64, (x + width) as f64, (y + height) as f64);
         match occluder {
             // 不透明 owner が覆う border-box 内側を塗りから除外する（issue #659）。ぼかしを
             // 「外側 bbox − occluder 角丸矩形」のリング形状にクリップして描く。覆われて見えない
@@ -343,7 +332,13 @@ impl ScenePainter for VelloPainter<'_> {
             scene.push_layer(Fill::NonZero, blend, 1.0, Affine::IDENTITY, &border);
             // DestOut は src のアルファ（= hole 被覆）だけを見るので、不透明ブラシで塗る。
             let opaque = AlphaColor::<Srgb>::new([0.0, 0.0, 0.0, 1.0]);
-            scene.draw_blurred_rounded_rect(Affine::IDENTITY, hole, opaque, hole_radius, std_dev as f64);
+            scene.draw_blurred_rounded_rect(
+                Affine::IDENTITY,
+                hole,
+                opaque,
+                hole_radius,
+                std_dev as f64,
+            );
             scene.pop_layer();
         }
     }
@@ -414,7 +409,8 @@ impl ScenePainter for VelloPainter<'_> {
         }
         if let Some(tangent) = data.synthesis.skew_tangent {
             let tangent = tangent as f64;
-            builder = builder.glyph_transform(Some(Affine::new([1.0, 0.0, tangent, 1.0, 0.0, 0.0])));
+            builder =
+                builder.glyph_transform(Some(Affine::new([1.0, 0.0, tangent, 1.0, 0.0, 0.0])));
         }
         if let Some(amount) = data.synthesis.embolden {
             let amount = amount as f64;
@@ -450,14 +446,7 @@ impl ScenePainter for VelloPainter<'_> {
         }
     }
 
-    fn draw_image(
-        &mut self,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        data: &RenderImage,
-    ) {
+    fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
         let scene = self.target();
         let img_w = data.width as f32;
         let img_h = data.height as f32;
@@ -480,7 +469,9 @@ impl ScenePainter for VelloPainter<'_> {
             return;
         };
         if let Some(parent_layer) = self.groups.last_mut() {
-            parent_layer.scene.append(&layer.scene, Some(layer.transform));
+            parent_layer
+                .scene
+                .append(&layer.scene, Some(layer.transform));
         } else {
             self.root.append(&layer.scene, Some(layer.transform));
         }
@@ -488,12 +479,7 @@ impl ScenePainter for VelloPainter<'_> {
 
     fn push_clip_rect(&mut self, x: f32, y: f32, width: f32, height: f32, corner_radii: [f32; 4]) {
         let scene = self.target();
-        let rect = Rect::new(
-            x as f64,
-            y as f64,
-            (x + width) as f64,
-            (y + height) as f64,
-        );
+        let rect = Rect::new(x as f64, y as f64, (x + width) as f64, (y + height) as f64);
         // 均一な角丸半径（Hayate が現在発行する唯一の形状）。0 なら矩形クリップ。
         let radius = corner_radii.iter().copied().fold(0.0_f32, f32::max);
         if radius > 0.0 {

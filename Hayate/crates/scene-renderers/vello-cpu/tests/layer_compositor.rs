@@ -13,7 +13,8 @@ use hayate_layer_compositor::layer_scene::{
 };
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_vello_cpu::{
-    VelloCpuCompositeTarget, VelloCpuLayerCompositor, VelloCpuLayerRasterizer, VelloCpuSceneRenderer,
+    VelloCpuCompositeTarget, VelloCpuLayerCompositor, VelloCpuLayerRasterizer,
+    VelloCpuSceneRenderer,
 };
 use vello_cpu::Pixmap;
 

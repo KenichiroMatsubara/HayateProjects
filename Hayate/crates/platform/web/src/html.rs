@@ -13,10 +13,15 @@ use hayate_core::{
     UserSelectValue, ViewportCondition,
 };
 use wasm_bindgen::prelude::*;
-use web_sys::{CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement, HtmlStyleElement, HtmlTextAreaElement, Node, NodeList};
+use web_sys::{
+    CssStyleRule, CssStyleSheet, Document, Element, HtmlElement, HtmlInputElement,
+    HtmlStyleElement, HtmlTextAreaElement, Node, NodeList,
+};
 
 use crate::generated::encode_deliveries;
-use crate::pseudo_style_dom::{pseudo_patch_rule_body, pseudo_state_css_priority, pseudo_state_css_suffix};
+use crate::pseudo_style_dom::{
+    pseudo_patch_rule_body, pseudo_state_css_priority, pseudo_state_css_suffix,
+};
 use crate::style_packet;
 use crate::user_select::resolve_user_select;
 
@@ -831,15 +836,16 @@ impl HayateElementHtmlRenderer {
         }
         new_el.set_attribute("data-element-id", &format!("{}", id.to_u64()))?;
         // 入れ替えを跨いでライブ値を保つ（まず DOM、次にミラー）。
-        let value = text_field_value(&old)
-            .or_else(|| self.nodes.get(&id).and_then(|n| n.text.clone()));
+        let value =
+            text_field_value(&old).or_else(|| self.nodes.get(&id).and_then(|n| n.text.clone()));
         if let Some(v) = value.as_deref() {
             set_text_field_value(&new_el, v);
         }
         // 解決済みインラインスタイル（baseline + user + selection）を引き継ぐ。
-        if let (Some(old_h), Some(new_h)) =
-            (old.dyn_ref::<HtmlElement>(), new_el.dyn_ref::<HtmlElement>())
-        {
+        if let (Some(old_h), Some(new_h)) = (
+            old.dyn_ref::<HtmlElement>(),
+            new_el.dyn_ref::<HtmlElement>(),
+        ) {
             let _ = new_h.style().set_css_text(&old_h.style().css_text());
         }
         if let Some(parent) = old.parent_node() {
@@ -935,11 +941,7 @@ impl HayateElementHtmlRenderer {
     }
 
     fn remove_all_pseudo_rules_for(&mut self, id: ElementId) -> Result<(), JsValue> {
-        for state in [
-            PseudoState::Focus,
-            PseudoState::Hover,
-            PseudoState::Active,
-        ] {
+        for state in [PseudoState::Focus, PseudoState::Hover, PseudoState::Active] {
             self.remove_pseudo_rule(id, state)?;
         }
         Ok(())
@@ -1151,7 +1153,9 @@ fn ensure_pseudo_stylesheet() -> Result<HtmlStyleElement, JsValue> {
             .map_err(|_| JsValue::from_str("hayate-pseudo is not a style element"));
     }
     let head = doc.head().ok_or("no head")?;
-    let style_el = doc.create_element("style")?.dyn_into::<HtmlStyleElement>()?;
+    let style_el = doc
+        .create_element("style")?
+        .dyn_into::<HtmlStyleElement>()?;
     style_el.set_id("hayate-pseudo");
     let _ = style_el.set_attribute("data-hayate-pseudo", "");
     head.append_child(&style_el)?;
@@ -1205,7 +1209,8 @@ fn text_field_value(dom: &Element) -> Option<String> {
     if let Some(input) = dom.dyn_ref::<HtmlInputElement>() {
         Some(input.value())
     } else {
-        dom.dyn_ref::<HtmlTextAreaElement>().map(|area| area.value())
+        dom.dyn_ref::<HtmlTextAreaElement>()
+            .map(|area| area.value())
     }
 }
 

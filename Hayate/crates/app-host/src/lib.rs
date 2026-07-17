@@ -325,7 +325,9 @@ mod tests {
     impl PresentTarget for ReconfigurableSurface {
         type Error = std::convert::Infallible;
 
-        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> { Ok(()) }
+        fn present(&mut self, _frame: &CommittedFrame<'_>) -> Result<(), Self::Error> {
+            Ok(())
+        }
     }
 
     struct FailingSurface;
@@ -567,7 +569,11 @@ mod tests {
         // transition も blink も無い静的ツリー：render 後に pending visual work は残らない。
         app.tick(16.0);
 
-        assert_eq!(*redraws.borrow(), 0, "静止フレームでは request_redraw を出さない");
+        assert_eq!(
+            *redraws.borrow(),
+            0,
+            "静止フレームでは request_redraw を出さない"
+        );
     }
 
     /// WASM 相当のバンドル代役（CI 常設の DejaVu Sans、Latin のみ）。
@@ -586,9 +592,11 @@ mod tests {
         app.tree_mut().element_append_child(root, label);
         app.tree_mut().set_root(root);
         app.tree_mut().set_viewport(400.0, 300.0);
-        app.tree_mut().test_set_wasm_like_fonts(latin_only_default());
+        app.tree_mut()
+            .test_set_wasm_like_fonts(latin_only_default());
         app.tree_mut().element_set_text(label, "あ");
-        app.tree_mut().element_set_font_family(label, "Noto Sans JP");
+        app.tree_mut()
+            .element_set_font_family(label, "Noto Sans JP");
         (app, label)
     }
 
@@ -600,7 +608,10 @@ mod tests {
 
         app.tick(0.0);
         assert!(
-            app.tree().test_element_glyph_ids(label).iter().any(|&id| id == 0),
+            app.tree()
+                .test_element_glyph_ids(label)
+                .iter()
+                .any(|&id| id == 0),
             "font がまだ届く前は .notdef（tofu）のはず"
         );
 

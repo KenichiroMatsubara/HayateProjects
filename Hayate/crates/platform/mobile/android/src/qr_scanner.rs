@@ -59,9 +59,12 @@ mod platform {
                 // アプリ classloader 経由で解決する（`jni_bridge::app_class` のコメント参照）。
                 let class = crate::jni_bridge::app_class(env, activity, BRIDGE_CLASS)?;
                 // Kotlin: Code Scanner を UI スレッドで起動し、結果まで native スレッドをブロックして返す。
-                let result = match env
-                    .call_static_method(&class, BRIDGE_METHOD, BRIDGE_SIG, &[activity.into()])
-                {
+                let result = match env.call_static_method(
+                    &class,
+                    BRIDGE_METHOD,
+                    BRIDGE_SIG,
+                    &[activity.into()],
+                ) {
                     Ok(r) => r,
                     Err(e) => return Err(crate::jni_bridge::describe_java_error(env, e)),
                 };

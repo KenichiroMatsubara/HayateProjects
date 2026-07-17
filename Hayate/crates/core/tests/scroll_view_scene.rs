@@ -96,14 +96,21 @@ fn android_profile_overscroll_pins_edge_and_scales_content() {
     let m = scroll_group_transform(&tree, content);
     // 縦は伸びる: scale_y = 1 + (20/100)*STRETCH_MAX。
     let want_scale = 1.0 + (20.0 / 100.0) * ScrollPhysicsTuning::default().stretch_max as f64;
-    assert!((m[3] - want_scale).abs() < 1e-4, "y scale = {} (want {want_scale})", m[3]);
+    assert!(
+        (m[3] - want_scale).abs() < 1e-4,
+        "y scale = {} (want {want_scale})",
+        m[3]
+    );
     // 横はスクロール不可（content 幅 == view 幅）→ 伸びない（軸独立）。
     assert_eq!(m[0], 1.0, "x is not stretched");
     assert_eq!(m[4], 0.0, "x translate stays 0");
     // ピン留めした下端はビューポート下端（シーン y=100）に固定されたまま。範囲内 max では
     // content-bottom は content-y = 100 + max_y（100 + max_y − max_y = 100）。
     let pinned = m[3] * (100.0 + max_y as f64) + m[5];
-    assert!((pinned - 100.0).abs() < 1e-3, "bottom edge pinned at viewport bottom (got {pinned})");
+    assert!(
+        (pinned - 100.0).abs() < 1e-3,
+        "bottom edge pinned at viewport bottom (got {pinned})"
+    );
     // scale が入っている以上、恒等 translate ではない。
     assert!(m[3] > 1.0, "content is stretched past the edge");
 }

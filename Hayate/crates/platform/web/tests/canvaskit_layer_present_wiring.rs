@@ -19,7 +19,7 @@ fn canvaskit_uses_present_planner_and_dirty_layer_bridge_methods() {
     assert!(src.contains("plan_layers(&non_scroll_layers, layer_dirty)"));
     assert!(src.contains("scroll_layer_needs_raster"));
     assert!(src.contains("note_scroll_rasterized"));
-    assert!(src.contains("geometry.screen_top_for_band(cached_band)"));
+    assert!(src.contains("geometry.composite_affine_for_band(cached_band)"));
     assert!(src.contains("extract_root_scene") && src.contains("extract_layer_scene"));
     assert!(src.contains("REPLAY_LAYER_METHOD") && src.contains("COMPOSITE_LAYERS_METHOD"));
     assert!(src.contains("fn supports_layer_present(&self) -> bool"));

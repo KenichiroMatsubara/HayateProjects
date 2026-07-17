@@ -74,7 +74,10 @@ pub const CLEAR_COLOR: [f32; 4] = [0.945, 0.929, 0.890, 1.0];
 pub fn initial_window_attributes() -> winit::window::WindowAttributes {
     Window::default_attributes()
         .with_title(WINDOW_TITLE)
-        .with_inner_size(LogicalSize::new(DEFAULT_WINDOW_SIZE.0, DEFAULT_WINDOW_SIZE.1))
+        .with_inner_size(LogicalSize::new(
+            DEFAULT_WINDOW_SIZE.0,
+            DEFAULT_WINDOW_SIZE.1,
+        ))
         .with_visible(false)
 }
 
@@ -82,8 +85,16 @@ pub fn initial_window_attributes() -> winit::window::WindowAttributes {
 ///
 /// `scale_factor` を 1.0 に潰さず `content_scale` へ素通しするのが HiDPI でぼやけない要点で、
 /// 論理ビューポート（`set_viewport` 入力）とバッキングストア（wgpu surface 設定）を同じ規約で導く。
-pub fn viewport_metrics(physical_width: u32, physical_height: u32, scale_factor: f64) -> ViewportMetrics {
-    ViewportMetrics::from_physical_size(physical_width as i32, physical_height as i32, scale_factor as f32)
+pub fn viewport_metrics(
+    physical_width: u32,
+    physical_height: u32,
+    scale_factor: f64,
+) -> ViewportMetrics {
+    ViewportMetrics::from_physical_size(
+        physical_width as i32,
+        physical_height as i32,
+        scale_factor as f32,
+    )
 }
 
 /// [`hayate_core::Surface`] の desktop 実装 — winit `Window` の薄い clone ハンドル。
@@ -192,10 +203,7 @@ impl RenderHostSurface {
     /// Renderer Selection Policy を通してレンダラを選び初期化する。`forced` は env / CLI
     /// からの強制指定（[`renderer_config`]）。選択・却下は `RenderHost` が
     /// `RendererSelectionReason` 語彙で stderr（`log`）に出す。
-    pub fn init(
-        window: Arc<Window>,
-        forced: Option<SceneRendererKind>,
-    ) -> Result<Self, Error> {
+    pub fn init(window: Arc<Window>, forced: Option<SceneRendererKind>) -> Result<Self, Error> {
         let policy = native_renderer_selection_policy(renderer_config::VELLO_LINKED, forced);
         // ネイティブでは GPU（wgpu adapter）の有無は init を試すまで分からないため
         // capability は常に true を渡し、失敗は init フェーズの一方向 fallback が拾う。
@@ -230,9 +238,8 @@ impl PresentTarget for RenderHostSurface {
         if self.host.supports_layer_present() {
             let mut layer_dirty = frame.content_dirty_layers().clone();
             layer_dirty.extend(frame.chrome_dirty_layers().iter().copied());
-            let scroll_geometry = hayate_layer_compositor::scroll_layer_geometry_from_inputs(
-                frame.scroll_inputs(),
-            );
+            let scroll_geometry =
+                hayate_layer_compositor::scroll_layer_geometry_from_inputs(frame.scroll_inputs());
             self.host.present_layers(
                 frame.scene(),
                 frame.layers(),
@@ -322,7 +329,9 @@ impl ApplicationHandler for DesktopApp {
         // レンダラ強制指定（env / CLI・再ビルド不要、ADR-0138/0140/0145 の流儀）。
         let forced = renderer_config::forced_renderer(
             std::env::args().skip(1),
-            std::env::var(renderer_config::RENDERER_ENV_VAR).ok().as_deref(),
+            std::env::var(renderer_config::RENDERER_ENV_VAR)
+                .ok()
+                .as_deref(),
         );
         if let Some(kind) = forced {
             log::info!(
@@ -506,7 +515,10 @@ mod tests {
         // 暗転防止の前半で、後半（初回 present 後の `set_visible(true)`）は live event loop
         // が要るためヘッドレスには固定できない（`RedrawRequested` ハンドラ参照）。
         let attrs = initial_window_attributes();
-        assert!(!attrs.visible, "window must start hidden (dark-screen prevention)");
+        assert!(
+            !attrs.visible,
+            "window must start hidden (dark-screen prevention)"
+        );
         assert_eq!(attrs.title, WINDOW_TITLE);
     }
 
@@ -514,15 +526,24 @@ mod tests {
     fn window_defaults_are_named_constants() {
         assert!(!WINDOW_TITLE.is_empty(), "window title must be set");
         let (w, h) = DEFAULT_WINDOW_SIZE;
-        assert!(w > 0 && h > 0, "default window size must be positive, got {w}x{h}");
+        assert!(
+            w > 0 && h > 0,
+            "default window size must be positive, got {w}x{h}"
+        );
         assert_eq!(CLEAR_COLOR[3], 1.0, "clear color must be opaque");
     }
 
     #[test]
     fn window_title_carries_the_selected_renderer() {
         // レンダラは selection policy が実行時に決めるため、タイトルも実行時に確定する。
-        assert_eq!(window_title_for(SceneRendererKind::Vello), "Hayate — Tasks (vello)");
-        assert_eq!(window_title_for(SceneRendererKind::Skia), "Hayate — Tasks (skia)");
+        assert_eq!(
+            window_title_for(SceneRendererKind::Vello),
+            "Hayate — Tasks (vello)"
+        );
+        assert_eq!(
+            window_title_for(SceneRendererKind::Skia),
+            "Hayate — Tasks (skia)"
+        );
     }
 
     #[test]

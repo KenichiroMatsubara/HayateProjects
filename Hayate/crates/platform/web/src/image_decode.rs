@@ -64,7 +64,8 @@ mod tests {
         ];
         let img = RgbaImage::from_raw(2, 2, pixels.clone()).expect("2x2 image");
         let mut bytes = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut bytes, ImageFormat::Png).expect("encode png");
+        img.write_to(&mut bytes, ImageFormat::Png)
+            .expect("encode png");
         (bytes.into_inner(), pixels)
     }
 
@@ -72,9 +73,16 @@ mod tests {
     fn decode_png_preserves_dimensions_and_straight_alpha_pixels() {
         let (png, expected) = sample_png();
         let decoded = decode_image_bytes(&png).expect("decode");
-        assert_eq!((decoded.width, decoded.height), (2, 2), "dimensions must match");
+        assert_eq!(
+            (decoded.width, decoded.height),
+            (2, 2),
+            "dimensions must match"
+        );
         // PNG はロスレスなので、ストレート α のピクセルがそのまま戻る（半透明も premultiply されない）。
-        assert_eq!(decoded.raw, expected, "RGBA pixels must round-trip unchanged");
+        assert_eq!(
+            decoded.raw, expected,
+            "RGBA pixels must round-trip unchanged"
+        );
     }
 
     #[test]
@@ -90,6 +98,10 @@ mod tests {
         assert_eq!(image.format, RenderImageFormat::Rgba8);
         assert_eq!(image.alpha_type, RenderImageAlphaType::Alpha);
         assert_eq!((image.width, image.height), (2, 1));
-        assert_eq!(image.data.data(), expected_raw.as_slice(), "pixels must transfer verbatim");
+        assert_eq!(
+            image.data.data(),
+            expected_raw.as_slice(),
+            "pixels must transfer verbatim"
+        );
     }
 }

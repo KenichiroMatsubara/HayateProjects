@@ -8,8 +8,8 @@
 //! `selection_toolbar` / `selection_handles` とレンダリング済み SceneGraph）。
 
 use hayate_core::{
-    Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind, RecordingPainter,
-    StyleProp, render_scene_graph,
+    render_scene_graph, Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind,
+    RecordingPainter, StyleProp,
 };
 
 /// Material 選択の色味（ADR-0097）。選択ハイライト矩形の色。

@@ -55,11 +55,7 @@ pub fn assert_pixels_match_golden(golden_path: &Path, pixels: &[u8], width: u32,
         "golden size mismatch for {}",
         golden_path.display()
     );
-    assert_eq!(
-        expected, pixels,
-        "pixel diff for {}",
-        golden_path.display()
-    );
+    assert_eq!(expected, pixels, "pixel diff for {}", golden_path.display());
 }
 
 #[cfg(test)]
@@ -77,7 +73,11 @@ mod tests {
         let mut encoder = Encoder::new(&mut buf, width, height);
         encoder.set_color(ColorType::Rgba);
         encoder.set_depth(BitDepth::Eight);
-        encoder.write_header().unwrap().write_image_data(&pixels).unwrap();
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&pixels)
+            .unwrap();
         let (decoded, w, h) = decode_png(&buf);
         assert_eq!((w, h), (width, height));
         assert_eq!(decoded, pixels);

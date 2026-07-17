@@ -5,7 +5,9 @@
 //! （flex-start）。これは button の base レイアウトスタイルに焼き込まれた core
 //! 内のみの element-kind デフォルトで、アプリが指定する明示スタイルの下に位置する。
 
-use hayate_core::{AlignValue, Dimension, ElementId, ElementKind, ElementTree, JustifyValue, StyleProp};
+use hayate_core::{
+    AlignValue, Dimension, ElementId, ElementKind, ElementTree, JustifyValue, StyleProp,
+};
 
 static FONT: &[u8] = include_bytes!("../assets/fonts/NotoSansJP.ttf");
 
@@ -55,7 +57,8 @@ fn button_with_label(extra: &[StyleProp]) -> (ElementTree, ElementId, ElementId)
 }
 
 fn rect(tree: &ElementTree, id: ElementId) -> (f32, f32, f32, f32) {
-    tree.element_layout_rect(id).expect("element must have a resolved rect")
+    tree.element_layout_rect(id)
+        .expect("element must have a resolved rect")
 }
 
 #[test]
@@ -96,8 +99,7 @@ fn button_left_aligns_label_on_main_axis_by_default() {
 fn explicit_align_items_overrides_button_default() {
     // アプリ指定の `align-items: flex-start` は kind デフォルト（`center`）に勝ち、
     // label を上端へ戻す（明示スタイル > kind デフォルト）。
-    let (tree, button, label) =
-        button_with_label(&[StyleProp::AlignItems(AlignValue::FlexStart)]);
+    let (tree, button, label) = button_with_label(&[StyleProp::AlignItems(AlignValue::FlexStart)]);
     let (_bx, by, _bw, _bh) = rect(&tree, button);
     let (_lx, ly, _lw, _lh) = rect(&tree, label);
 

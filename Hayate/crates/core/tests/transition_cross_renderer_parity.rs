@@ -10,8 +10,8 @@
 //! どちらのレンダラーの内部にも触れない。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter, StyleProp,
-    TransitionTimingValue, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState,
+    RecordingPainter, StyleProp, TransitionTimingValue,
 };
 
 /// 独立に計算された2つの色チャンネルを一致とみなす許容誤差。
@@ -219,7 +219,10 @@ fn set_style_change_has_canvas_dom_parity() {
     tree.render(300.0);
     let end = canvas_background(&tree);
     assert_parity("settled", end, dom.render(300.0));
-    assert!(end[2] > 0.999 && end[0].abs() < PARITY_EPS, "settles on blue: {end:?}");
+    assert!(
+        end[2] > 0.999 && end[0].abs() < PARITY_EPS,
+        "settles on blue: {end:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +246,10 @@ fn reverse_interrupt_has_canvas_dom_parity() {
     tree.render(200.0); // 中間
     let mid = canvas_background(&tree);
     assert_parity("midway", mid, dom.render(200.0));
-    assert!(mid[0] > 0.0 && mid[1] > 0.0, "captured a mid value: {mid:?}");
+    assert!(
+        mid[0] > 0.0 && mid[1] > 0.0,
+        "captured a mid value: {mid:?}"
+    );
 
     // 同一時刻で逆転: ターゲットが赤に戻る。両側とも表示中の中間値を保つ
     // （連続的な反転）べきで、赤や緑へジャンプしてはならない。
@@ -261,12 +267,20 @@ fn reverse_interrupt_has_canvas_dom_parity() {
     tree.render(300.0);
     let back = canvas_background(&tree);
     assert_parity("reverse-midway", back, dom.render(300.0));
-    assert!(back[0] > reversed[0], "red channel climbs back: {} -> {}", reversed[0], back[0]);
+    assert!(
+        back[0] > reversed[0],
+        "red channel climbs back: {} -> {}",
+        reversed[0],
+        back[0]
+    );
 
     tree.render(400.0);
     let done = canvas_background(&tree);
     assert_parity("reverse-settled", done, dom.render(400.0));
-    assert!((done[0] - 1.0).abs() < PARITY_EPS, "settles back on red: {done:?}");
+    assert!(
+        (done[0] - 1.0).abs() < PARITY_EPS,
+        "settles back on red: {done:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +312,11 @@ fn hover_duration_zero_asymmetry_has_canvas_dom_parity() {
     tree.update_pointer_hover(None);
     dom.set_target(RED, 500.0);
     tree.render(200.0); // アンカー
-    assert_parity("hover-out-anchor", canvas_background(&tree), dom.render(200.0));
+    assert_parity(
+        "hover-out-anchor",
+        canvas_background(&tree),
+        dom.render(200.0),
+    );
     tree.render(450.0); // 500ms ウィンドウの 250ms 地点
     let mid = canvas_background(&tree);
     assert_parity("hover-out-midway", mid, dom.render(450.0));
@@ -310,5 +328,8 @@ fn hover_duration_zero_asymmetry_has_canvas_dom_parity() {
     tree.render(700.0);
     let done = canvas_background(&tree);
     assert_parity("hover-out-settled", done, dom.render(700.0));
-    assert!((done[0] - 1.0).abs() < PARITY_EPS, "settles back on red: {done:?}");
+    assert!(
+        (done[0] - 1.0).abs() < PARITY_EPS,
+        "settles back on red: {done:?}"
+    );
 }

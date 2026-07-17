@@ -33,7 +33,9 @@ fn tiny_skia_backend_reads_a_runtime_field_instead_of_a_hardcoded_true() {
         "SelectedBackend must own a settable layer_present_enabled field"
     );
     assert!(
-        src.contains("fn supports_layer_present(&self) -> bool {\n        self.layer_present_enabled\n    }"),
+        src.contains(
+            "fn supports_layer_present(&self) -> bool {\n        self.layer_present_enabled\n    }"
+        ),
         "supports_layer_present must read the runtime field, not return a hardcoded true"
     );
     assert!(
@@ -50,7 +52,9 @@ fn vello_cpu_backend_reads_a_runtime_field_instead_of_a_hardcoded_true() {
         "SelectedBackend must own a settable layer_present_enabled field"
     );
     assert!(
-        src.contains("fn supports_layer_present(&self) -> bool {\n        self.layer_present_enabled\n    }"),
+        src.contains(
+            "fn supports_layer_present(&self) -> bool {\n        self.layer_present_enabled\n    }"
+        ),
         "supports_layer_present must read the runtime field, not return a hardcoded true"
     );
     assert!(

@@ -83,7 +83,11 @@ pub fn reload_ws_url(target: &DevServerTarget) -> String {
         Scheme::Http => "ws",
         Scheme::Https => "wss",
     };
-    format!("{ws_scheme}://{}:{}{RELOAD_ROUTE}", target.host(), target.port())
+    format!(
+        "{ws_scheme}://{}:{}{RELOAD_ROUTE}",
+        target.host(),
+        target.port()
+    )
 }
 
 /// reload シグナルを運ぶ WS への最小ポート。device 既定は OS スタック（Kotlin・ADR-0002）へ
@@ -210,7 +214,9 @@ mod tests {
         let runtime = boot_runtime(
             1,
             || Ok("globalThis.__torimiProtocolVersion = 1;".to_owned()),
-            |src| FakeRuntime { bundle: src.to_owned() },
+            |src| FakeRuntime {
+                bundle: src.to_owned(),
+            },
             |_rt| Some(1),
         )
         .expect("matching versions should boot");
@@ -227,11 +233,16 @@ mod tests {
             || Ok("src".to_owned()),
             |src| {
                 built = true;
-                FakeRuntime { bundle: src.to_owned() }
+                FakeRuntime {
+                    bundle: src.to_owned(),
+                }
             },
             |_rt| Some(2),
         );
-        assert!(built, "runtime is still built (bundle eval'd) before the handshake");
+        assert!(
+            built,
+            "runtime is still built (bundle eval'd) before the handshake"
+        );
         match result {
             Err(BootError::ProtocolMismatch(m)) => {
                 assert_eq!(m.host_version, 1);
@@ -246,14 +257,23 @@ mod tests {
         let mut built = false;
         let result = boot_runtime(
             1,
-            || Err(BundleFetchError::Platform("HTTP 404 from http://10.0.2.2:5179/bundle.js".to_owned())),
+            || {
+                Err(BundleFetchError::Platform(
+                    "HTTP 404 from http://10.0.2.2:5179/bundle.js".to_owned(),
+                ))
+            },
             |src| {
                 built = true;
-                FakeRuntime { bundle: src.to_owned() }
+                FakeRuntime {
+                    bundle: src.to_owned(),
+                }
             },
             |_rt| Some(1),
         );
-        assert!(!built, "the runtime must not be built when the bundle fetch fails");
+        assert!(
+            !built,
+            "the runtime must not be built when the bundle fetch fails"
+        );
         assert_eq!(
             result,
             Err(BootError::Fetch(BundleFetchError::Platform(
@@ -273,7 +293,9 @@ mod tests {
                 || Ok(bundle.to_owned()),
                 |src| {
                     *builds.borrow_mut() += 1;
-                    FakeRuntime { bundle: src.to_owned() }
+                    FakeRuntime {
+                        bundle: src.to_owned(),
+                    }
                 },
                 |_rt| Some(1),
             )
@@ -282,8 +304,15 @@ mod tests {
         let first = boot("globalThis.__tsubame = /* v1 */ {};").unwrap();
         let second = boot("globalThis.__tsubame = /* edited */ {};").unwrap();
 
-        assert_eq!(*builds.borrow(), 2, "each reload rebuilds the Hermes runtime");
-        assert_ne!(first.bundle, second.bundle, "the new (re-fetched) bundle is re-eval'd");
+        assert_eq!(
+            *builds.borrow(),
+            2,
+            "each reload rebuilds the Hermes runtime"
+        );
+        assert_ne!(
+            first.bundle, second.bundle,
+            "the new (re-fetched) bundle is re-eval'd"
+        );
     }
 
     // ── subscribe_reload（Web の reload.test.ts と対称）──────────────────────────
@@ -395,7 +424,10 @@ mod tests {
             schedule_reconnect: Box::new(|_fire, _delay| {}),
         });
 
-        assert_eq!(connected.borrow().as_slice(), ["ws://127.0.0.1:5181/reload"]);
+        assert_eq!(
+            connected.borrow().as_slice(),
+            ["ws://127.0.0.1:5181/reload"]
+        );
     }
 
     #[test]
@@ -430,7 +462,11 @@ mod tests {
         assert_eq!(schedule.delay.get(), Some(WS_RECONNECT_BACKOFF));
 
         // スケジュールされた再接続が走ると、新しい接続が張られる。
-        let fire = schedule.fire.borrow_mut().take().expect("a reconnect was scheduled");
+        let fire = schedule
+            .fire
+            .borrow_mut()
+            .take()
+            .expect("a reconnect was scheduled");
         fire();
         assert_eq!(connect_count.get(), 2);
     }
@@ -450,7 +486,10 @@ mod tests {
         });
 
         subscription.close();
-        assert!(socket.closed.get(), "closing the subscription closes the socket");
+        assert!(
+            socket.closed.get(),
+            "closing the subscription closes the socket"
+        );
 
         // 閉じた後の切断イベントでは再接続をスケジュールしない。
         socket.emit_close();

@@ -72,8 +72,16 @@ pub fn safe_window_dimensions(
 ) -> (u32, u32) {
     let visible_width = (content_right - content_left).max(0) as u32;
     let visible_height = (content_bottom - content_top).max(0) as u32;
-    let width = if visible_width == 0 { window_width } else { visible_width.min(window_width) };
-    let height = if visible_height == 0 { window_height } else { visible_height.min(window_height) };
+    let width = if visible_width == 0 {
+        window_width
+    } else {
+        visible_width.min(window_width)
+    };
+    let height = if visible_height == 0 {
+        window_height
+    } else {
+        visible_height.min(window_height)
+    };
     (width, height)
 }
 
@@ -139,8 +147,10 @@ mod tests {
     #[test]
     fn keeps_srgb_format_when_no_non_srgb_variant_is_available() {
         // present 不能になるくらいなら退色の方がまし。
-        let picked =
-            prefer_non_srgb_format(TextureFormat::Bgra8UnormSrgb, &[TextureFormat::Bgra8UnormSrgb]);
+        let picked = prefer_non_srgb_format(
+            TextureFormat::Bgra8UnormSrgb,
+            &[TextureFormat::Bgra8UnormSrgb],
+        );
         assert_eq!(picked, TextureFormat::Bgra8UnormSrgb);
     }
 
@@ -167,7 +177,10 @@ mod tests {
     fn safe_window_dimensions_shrinks_by_the_navigation_bar_inset() {
         // ウィンドウ 1080x2400 のうち下 120px がジェスチャーバー（content_rect.bottom=2280）。
         // 最下点がその裏へずれるバグの回帰防止（issue 報告: 最下点固定ピクセルずれ）。
-        assert_eq!(safe_window_dimensions(1080, 2400, 0, 0, 1080, 2280), (1080, 2280));
+        assert_eq!(
+            safe_window_dimensions(1080, 2400, 0, 0, 1080, 2280),
+            (1080, 2280)
+        );
     }
 
     #[test]
@@ -178,6 +191,9 @@ mod tests {
 
     #[test]
     fn safe_window_dimensions_clamps_to_the_window_even_if_content_rect_overshoots() {
-        assert_eq!(safe_window_dimensions(1080, 2400, 0, 0, 2000, 3000), (1080, 2400));
+        assert_eq!(
+            safe_window_dimensions(1080, 2400, 0, 0, 2000, 3000),
+            (1080, 2400)
+        );
     }
 }

@@ -16,7 +16,8 @@ use hayate_layer_compositor::layer_scene::{
 };
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner};
 use hayate_scene_renderer_tiny_skia::{
-    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer, TinySkiaSceneRenderer,
+    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer,
+    TinySkiaSceneRenderer,
 };
 use tiny_skia::Pixmap;
 
@@ -135,7 +136,11 @@ fn transform_layer_cpu_composite_matches_full_raster() {
     let (mut tree, _boxed, _inner) = transform_tree();
     let root = ElementId::from_u64(0);
     let _ = tree.render(0.0);
-    assert_pixmaps_equal(&render_full(&tree), &render_layered(&tree, root), "cpu transform layer");
+    assert_pixmaps_equal(
+        &render_full(&tree),
+        &render_layered(&tree, root),
+        "cpu transform layer",
+    );
 }
 
 /// #699 追加確認用（vello/wgpu 経路の premultiplied/straight alpha 取り違えバグが CPU 経路にも
@@ -217,7 +222,10 @@ fn layer_inside_scroll_container_cpu_composite_matches_full_raster() {
             StyleProp::BackgroundColor(Color::new(0.9, 0.9, 0.9, 1.0)),
         ],
     );
-    tree.element_set_style(scroll, &[StyleProp::Width(px(150.0)), StyleProp::Height(px(100.0))]);
+    tree.element_set_style(
+        scroll,
+        &[StyleProp::Width(px(150.0)), StyleProp::Height(px(100.0))],
+    );
     tree.element_set_style(
         filler,
         &[
@@ -246,7 +254,12 @@ fn layer_inside_scroll_container_cpu_composite_matches_full_raster() {
 }
 
 /// per-layer present を 1 フレーム回し、raster したレイヤ数を返す（work-count 用）。
-fn pump(tree: &mut ElementTree, planner: &mut PresentPlanner, rz: &mut TinySkiaLayerRasterizer, ts: f64) -> usize {
+fn pump(
+    tree: &mut ElementTree,
+    planner: &mut PresentPlanner,
+    rz: &mut TinySkiaLayerRasterizer,
+    ts: f64,
+) -> usize {
     let _ = tree.render(ts);
     let graph = tree.scene_graph().clone();
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
@@ -274,12 +287,18 @@ fn transform_only_frames_do_not_raster_on_cpu() {
     let (mut tree, boxed, _inner) = transform_tree();
     let mut planner = PresentPlanner::new();
     let mut rz = TinySkiaLayerRasterizer::new(W, H, 1.0);
-    assert!(pump(&mut tree, &mut planner, &mut rz, 0.0) > 0, "cold フレームは raster");
+    assert!(
+        pump(&mut tree, &mut planner, &mut rz, 0.0) > 0,
+        "cold フレームは raster"
+    );
 
     for frame in 1..=4 {
         tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, frame as f64 * 10.0, 0.0]));
         let rasters = pump(&mut tree, &mut planner, &mut rz, frame as f64 * 16.0);
-        assert_eq!(rasters, 0, "CPU: transform のみのフレーム {frame} で全面ラスタが走った");
+        assert_eq!(
+            rasters, 0,
+            "CPU: transform のみのフレーム {frame} で全面ラスタが走った"
+        );
     }
 }
 
@@ -290,9 +309,19 @@ fn content_change_rerasters_only_the_dirty_layer_on_cpu() {
     let mut rz = TinySkiaLayerRasterizer::new(W, H, 1.0);
     let _ = pump(&mut tree, &mut planner, &mut rz, 0.0);
 
-    tree.element_set_style(inner, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        inner,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
     let _ = tree.render(16.0);
     let plan = planner.plan_layers(tree.frame_layers(), tree.frame_layer_dirty());
-    assert_eq!(plan.raster, vec![boxed], "CPU: dirty レイヤ（boxed）だけ raster");
-    assert!(plan.reuse.contains(&tree.frame_layers()[0]), "root レイヤは reuse（キャッシュ Pixmap 合成）");
+    assert_eq!(
+        plan.raster,
+        vec![boxed],
+        "CPU: dirty レイヤ（boxed）だけ raster"
+    );
+    assert!(
+        plan.reuse.contains(&tree.frame_layers()[0]),
+        "root レイヤは reuse（キャッシュ Pixmap 合成）"
+    );
 }

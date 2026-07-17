@@ -402,11 +402,7 @@ impl EditState {
 
     /// preedit テキストを変換文節のフォーマット範囲と共に設定する（ADR-0102）。
     /// テキストを空にすると変換と文節ごと破棄される。
-    pub fn set_preedit_with_clauses(
-        &mut self,
-        preedit: &str,
-        clauses: Vec<CompositionClause>,
-    ) {
+    pub fn set_preedit_with_clauses(&mut self, preedit: &str, clauses: Vec<CompositionClause>) {
         self.preedit = if preedit.is_empty() {
             None
         } else {
@@ -474,8 +470,12 @@ impl EditState {
             Direction::Backward | Direction::Forward => {}
         }
         match (granularity, direction) {
-            (Granularity::Grapheme, Direction::Backward) => prev_grapheme(&self.text_content, offset),
-            (Granularity::Grapheme, Direction::Forward) => next_grapheme(&self.text_content, offset),
+            (Granularity::Grapheme, Direction::Backward) => {
+                prev_grapheme(&self.text_content, offset)
+            }
+            (Granularity::Grapheme, Direction::Forward) => {
+                next_grapheme(&self.text_content, offset)
+            }
             (Granularity::Word, Direction::Backward) => prev_word(&self.text_content, offset),
             (Granularity::Word, Direction::Forward) => next_word(&self.text_content, offset),
             // 単一行セマンティクス: 行も文書もフィールド全体を覆うので、どちらの
@@ -502,7 +502,9 @@ impl EditState {
                 // 保つ。境界モーション（Home/End）や垂直ジャンプは選択を無視してターゲットへ
                 // 直行する（単一行 ↑ = フィールド先頭、↓ = 末尾）。
                 match self.selection_range() {
-                    Some((start, end)) if !granularity.is_boundary() && !direction.is_vertical() => {
+                    Some((start, end))
+                        if !granularity.is_boundary() && !direction.is_vertical() =>
+                    {
                         let edge = match direction {
                             Direction::Backward => start,
                             Direction::Forward => end,
@@ -565,7 +567,6 @@ impl EditState {
             EditIntent::Copy | EditIntent::Cut | EditIntent::Paste => false,
         }
     }
-
 }
 
 #[cfg(test)]
@@ -604,7 +605,10 @@ mod tests {
         edit.set_selection(13, 13); // 末尾、行1 の列 60px
 
         assert!(edit.vertical_motion(&geo, Direction::Up, false));
-        assert_eq!(edit.cursor_byte_index, 6, "↑ は上の行の同じ列（byte 6, 60px）へ");
+        assert_eq!(
+            edit.cursor_byte_index, 6,
+            "↑ は上の行の同じ列（byte 6, 60px）へ"
+        );
         assert!(edit.is_caret());
 
         assert!(edit.vertical_motion(&geo, Direction::Down, false));
@@ -631,7 +635,10 @@ mod tests {
         assert_eq!(edit.desired_x, Some(50.0), "goal column は保持される");
 
         assert!(edit.vertical_motion(&geo, Direction::Up, false));
-        assert_eq!(edit.cursor_byte_index, 5, "再度 ↑ で元の列(50px→byte 5)へ戻る");
+        assert_eq!(
+            edit.cursor_byte_index, 5,
+            "再度 ↑ で元の列(50px→byte 5)へ戻る"
+        );
     }
 
     #[test]
@@ -667,7 +674,10 @@ mod tests {
         let mut edit = EditState::default();
         edit.set("abc");
         edit.set_selection(1, 1);
-        assert!(!edit.vertical_motion(&geo, Direction::Up, false), "行が無ければ false");
+        assert!(
+            !edit.vertical_motion(&geo, Direction::Up, false),
+            "行が無ければ false"
+        );
         assert_eq!(edit.cursor_byte_index, 1, "状態は変わらない");
     }
 
@@ -772,7 +782,10 @@ mod tests {
             edit.set_selection(1, 4); // "ell" を選択
             assert!(edit.apply(delete_grapheme(direction)));
             assert_eq!(edit.text_content, "ho", "{direction:?}: the range is gone");
-            assert_eq!(edit.cursor_byte_index, 1, "{direction:?}: collapses to range start");
+            assert_eq!(
+                edit.cursor_byte_index, 1,
+                "{direction:?}: collapses to range start"
+            );
             assert!(edit.is_caret(), "{direction:?}: collapsed");
         }
     }
@@ -784,7 +797,10 @@ mod tests {
         edit.set_selection(0, 0); // キャレットは先頭
         assert!(edit.apply(delete_grapheme(Direction::Forward)));
         assert_eq!(edit.text_content, "あb", "removes the leading 'a'");
-        assert_eq!(edit.cursor_byte_index, 0, "caret stays at the deletion point");
+        assert_eq!(
+            edit.cursor_byte_index, 0,
+            "caret stays at the deletion point"
+        );
         assert!(edit.apply(delete_grapheme(Direction::Forward)));
         assert_eq!(edit.text_content, "b", "removes the 3-byte 'あ' whole");
         assert_eq!(edit.cursor_byte_index, 0);
@@ -795,10 +811,16 @@ mod tests {
     fn delete_at_the_text_boundary_is_a_no_op() {
         let mut edit = EditState::default();
         edit.set("hi"); // キャレットは末尾(2)
-        assert!(!edit.apply(delete_grapheme(Direction::Forward)), "nothing past the end");
+        assert!(
+            !edit.apply(delete_grapheme(Direction::Forward)),
+            "nothing past the end"
+        );
         assert_eq!(edit.text_content, "hi");
         edit.set_selection(0, 0); // キャレットは先頭
-        assert!(!edit.apply(delete_grapheme(Direction::Backward)), "nothing before the start");
+        assert!(
+            !edit.apply(delete_grapheme(Direction::Backward)),
+            "nothing before the start"
+        );
         assert_eq!(edit.text_content, "hi");
     }
 
@@ -863,7 +885,10 @@ mod tests {
             granularity: Granularity::Grapheme,
             direction: Direction::Down,
         }));
-        assert_eq!(edit.cursor_byte_index, 5, "↓ jumps past the selection to the end");
+        assert_eq!(
+            edit.cursor_byte_index, 5,
+            "↓ jumps past the selection to the end"
+        );
         assert!(edit.is_caret());
     }
 
@@ -880,7 +905,10 @@ mod tests {
             direction: Direction::Up,
         }));
         assert_eq!(edit.selection_anchor, 2, "anchor stays put");
-        assert_eq!(edit.cursor_byte_index, 0, "Shift+↑ extends to the field start");
+        assert_eq!(
+            edit.cursor_byte_index, 0,
+            "Shift+↑ extends to the field start"
+        );
         assert_eq!(edit.selection_range(), Some((0, 2)));
     }
 
@@ -892,7 +920,10 @@ mod tests {
         edit.set("hello");
         edit.desired_x = Some(42.0);
         assert!(edit.apply(move_grapheme(Direction::Backward)));
-        assert_eq!(edit.desired_x, None, "a horizontal step resets the goal column");
+        assert_eq!(
+            edit.desired_x, None,
+            "a horizontal step resets the goal column"
+        );
     }
 
     #[test]
@@ -989,12 +1020,18 @@ mod tests {
         edit.set("hello"); // キャレットは末尾(5)
         assert!(edit.apply(extend_grapheme(Direction::Backward)));
         assert!(edit.apply(extend_grapheme(Direction::Backward)));
-        assert_eq!(edit.selection_anchor, 5, "anchor stays fixed at the start point");
+        assert_eq!(
+            edit.selection_anchor, 5,
+            "anchor stays fixed at the start point"
+        );
         assert_eq!(edit.cursor_byte_index, 3, "focus retreats two chars");
         assert_eq!(edit.selection_range(), Some((3, 5)), "selects 'lo'");
         // 逆向きに前方へ拡張すると、範囲はアンカーへ向かって縮む。
         assert!(edit.apply(extend_grapheme(Direction::Forward)));
-        assert_eq!(edit.cursor_byte_index, 4, "focus advances, shrinking the range");
+        assert_eq!(
+            edit.cursor_byte_index, 4,
+            "focus advances, shrinking the range"
+        );
     }
 
     #[test]
@@ -1006,12 +1043,18 @@ mod tests {
             granularity: Granularity::Word,
             direction: Direction::Forward,
         }));
-        assert_eq!(edit.cursor_byte_index, 5, "word move lands at end of 'hello'");
+        assert_eq!(
+            edit.cursor_byte_index, 5,
+            "word move lands at end of 'hello'"
+        );
         assert!(edit.apply(EditIntent::Extend {
             granularity: Granularity::Word,
             direction: Direction::Forward,
         }));
-        assert_eq!(edit.cursor_byte_index, 11, "word extend reaches end of 'world'");
+        assert_eq!(
+            edit.cursor_byte_index, 11,
+            "word extend reaches end of 'world'"
+        );
         assert_eq!(edit.selection_range(), Some((5, 11)));
     }
 
@@ -1025,8 +1068,14 @@ mod tests {
             granularity: Granularity::Word,
             direction: Direction::Backward,
         }));
-        assert_eq!(edit.text_content, "hello ", "the word before the caret goes");
-        assert_eq!(edit.cursor_byte_index, 6, "caret collapses to the word start");
+        assert_eq!(
+            edit.text_content, "hello ",
+            "the word before the caret goes"
+        );
+        assert_eq!(
+            edit.cursor_byte_index, 6,
+            "caret collapses to the word start"
+        );
 
         edit.set_selection(0, 0); // キャレットをフィールド先頭へ
         assert!(edit.apply(EditIntent::Delete {
@@ -1034,7 +1083,10 @@ mod tests {
             direction: Direction::Forward,
         }));
         assert_eq!(edit.text_content, " ", "the word after the caret goes");
-        assert_eq!(edit.cursor_byte_index, 0, "caret stays at the deletion point");
+        assert_eq!(
+            edit.cursor_byte_index, 0,
+            "caret stays at the deletion point"
+        );
     }
 
     #[test]
@@ -1058,7 +1110,10 @@ mod tests {
             direction: Direction::Backward,
         }));
         assert_eq!(edit.selection_anchor, 6, "anchor still fixed");
-        assert_eq!(edit.cursor_byte_index, 0, "focus crosses to the field start");
+        assert_eq!(
+            edit.cursor_byte_index, 0,
+            "focus crosses to the field start"
+        );
         assert_eq!(edit.selection_range(), Some((0, 6)), "now selects 'hello '");
     }
 
@@ -1080,7 +1135,10 @@ mod tests {
         assert!(!edit.is_caret());
         edit.insert("X");
         assert_eq!(edit.text_content, "hXo");
-        assert_eq!(edit.cursor_byte_index, 2, "caret sits after the inserted text");
+        assert_eq!(
+            edit.cursor_byte_index, 2,
+            "caret sits after the inserted text"
+        );
         assert!(edit.is_caret(), "the range collapses once it is replaced");
     }
 
@@ -1091,7 +1149,10 @@ mod tests {
         edit.set_selection(1, 4); // "ell" を選択
         assert!(edit.backspace());
         assert_eq!(edit.text_content, "ho");
-        assert_eq!(edit.cursor_byte_index, 1, "caret collapses to the range start");
+        assert_eq!(
+            edit.cursor_byte_index, 1,
+            "caret collapses to the range start"
+        );
         assert!(edit.is_caret());
     }
 
@@ -1173,8 +1234,16 @@ mod tests {
         edit.set_preedit_with_clauses(
             "ぎゅうにゅう",
             vec![
-                CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick },
-                CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
+                CompositionClause {
+                    start: 0,
+                    end: 9,
+                    underline: CompositionUnderline::Thick,
+                },
+                CompositionClause {
+                    start: 9,
+                    end: 18,
+                    underline: CompositionUnderline::Thin,
+                },
             ],
         );
         assert_eq!(
@@ -1200,8 +1269,16 @@ mod tests {
         assert_eq!(
             clauses,
             vec![
-                CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick },
-                CompositionClause { start: 9, end: 18, underline: CompositionUnderline::Thin },
+                CompositionClause {
+                    start: 0,
+                    end: 9,
+                    underline: CompositionUnderline::Thick
+                },
+                CompositionClause {
+                    start: 9,
+                    end: 18,
+                    underline: CompositionUnderline::Thin
+                },
             ],
         );
         // 退化した（空/反転）範囲と末尾の不完全な3つ組は破棄される。
@@ -1214,7 +1291,11 @@ mod tests {
         edit.append("ab");
         edit.set_preedit_with_clauses(
             "ぎゅう",
-            vec![CompositionClause { start: 0, end: 9, underline: CompositionUnderline::Thick }],
+            vec![CompositionClause {
+                start: 0,
+                end: 9,
+                underline: CompositionUnderline::Thick,
+            }],
         );
         edit.commit_preedit();
         assert_eq!(edit.text_content, "abぎゅう");
@@ -1233,15 +1314,25 @@ mod tests {
         edit.set("helloworld"); // キャレットは末尾(10)で縮退
         edit.set_selection(5, 5); // hello|world
         edit.set_preedit("X");
-        assert_eq!(edit.display_text(), "helloXworld", "preedit shows at the caret");
+        assert_eq!(
+            edit.display_text(),
+            "helloXworld",
+            "preedit shows at the caret"
+        );
         assert_eq!(
             edit.display_cursor_byte_index(),
             6,
             "display caret sits at the end of the preedit",
         );
         edit.commit_preedit();
-        assert_eq!(edit.text_content, "helloXworld", "commit lands at the caret");
-        assert_eq!(edit.cursor_byte_index, 6, "caret advances past the inserted text");
+        assert_eq!(
+            edit.text_content, "helloXworld",
+            "commit lands at the caret"
+        );
+        assert_eq!(
+            edit.cursor_byte_index, 6,
+            "caret advances past the inserted text"
+        );
         assert!(edit.is_caret());
     }
 
@@ -1253,7 +1344,11 @@ mod tests {
         edit.set_selection(2, 2); // ab|XY
         edit.set_preedit_with_clauses(
             "き",
-            vec![CompositionClause { start: 0, end: 3, underline: CompositionUnderline::Thick }],
+            vec![CompositionClause {
+                start: 0,
+                end: 3,
+                underline: CompositionUnderline::Thick,
+            }],
         );
         assert_eq!(edit.display_text(), "abきXY");
         assert_eq!(

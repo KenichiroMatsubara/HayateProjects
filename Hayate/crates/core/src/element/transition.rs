@@ -28,7 +28,12 @@ impl Lerp for f32 {
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
     let t = t as f64;
     let lerp = |x: f64, y: f64| x + (y - x) * t;
-    Color::new(lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b), lerp(a.a, b.a))
+    Color::new(
+        lerp(a.r, b.r),
+        lerp(a.g, b.g),
+        lerp(a.b, b.b),
+        lerp(a.a, b.a),
+    )
 }
 
 impl Lerp for Option<Color> {
@@ -377,7 +382,10 @@ mod tests {
             assert!(ease(timing, 0.0).abs() < 1e-4);
             assert!((ease(timing, 1.0) - 1.0).abs() < 1e-4);
             let mid = ease(timing, 0.5);
-            assert!(mid > 0.0 && mid < 1.0, "mid out of range for {timing:?}: {mid}");
+            assert!(
+                mid > 0.0 && mid < 1.0,
+                "mid out of range for {timing:?}: {mid}"
+            );
         }
     }
 }

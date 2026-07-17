@@ -84,7 +84,11 @@ fn aspect_ratio_derives_height_from_width() {
     let rect = tree
         .element_layout_rect(child)
         .expect("child must have layout");
-    assert!((rect.2 - 100.0).abs() < 0.5, "width stays 100, got {}", rect.2);
+    assert!(
+        (rect.2 - 100.0).abs() < 0.5,
+        "width stays 100, got {}",
+        rect.2
+    );
     assert!(
         (rect.3 - 50.0).abs() < 0.5,
         "height is width / ratio = 100 / 2 = 50, got {}",

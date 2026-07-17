@@ -23,10 +23,7 @@ const FORMAT_VERSION: u32 = 1;
 /// プラットフォーム標準のユーザーキャッシュディレクトリ配下の hayate 用サブディレクトリ。
 /// 環境変数から純粋に導く（テスト可能にするため実 I/O・実 `std::env` から分離）。
 /// 返り値のディレクトリは存在しないことがある（呼び出し側が `create_dir_all` する）。
-pub fn cache_dir_from(
-    os: &str,
-    var: impl Fn(&str) -> Option<String>,
-) -> Option<PathBuf> {
+pub fn cache_dir_from(os: &str, var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let base = match os {
         "linux" => var("XDG_CACHE_HOME")
             .map(PathBuf::from)
@@ -159,7 +156,11 @@ mod tests {
     #[test]
     fn cache_key_invalidates_on_driver_or_shader_change() {
         let base = driver_cache_key("gpu", "drv", "1.0", 42);
-        assert_eq!(base, driver_cache_key("gpu", "drv", "1.0", 42), "同一入力で決定的");
+        assert_eq!(
+            base,
+            driver_cache_key("gpu", "drv", "1.0", 42),
+            "同一入力で決定的"
+        );
         assert_ne!(
             base,
             driver_cache_key("gpu", "drv", "2.0", 42),

@@ -52,8 +52,20 @@ fn perf_probe() {
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("tiny-skia");
     let graph = tree.render(0.0).clone();
-    let (mut rects, mut rings, mut texts, mut glyphs, mut groups, mut clips, mut images, mut anchors, mut dashed, mut blurred) =
-        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let (
+        mut rects,
+        mut rings,
+        mut texts,
+        mut glyphs,
+        mut groups,
+        mut clips,
+        mut images,
+        mut anchors,
+        mut dashed,
+        mut blurred,
+    ) = (
+        0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize,
+    );
     for (_, node) in graph.iter() {
         use hayate_core::NodeKind::*;
         match &node.kind {
@@ -127,15 +139,11 @@ fn perf_probe() {
                 renderer.render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], scale);
             },
         );
-        bench(
-            &format!("blit copy+unpremultiply {w}x{h}"),
-            20,
-            || {
-                let mut data = pixmap.data().to_vec();
-                premultiplied_to_straight(&mut data);
-                std::hint::black_box(&data);
-            },
-        );
+        bench(&format!("blit copy+unpremultiply {w}x{h}"), 20, || {
+            let mut data = pixmap.data().to_vec();
+            premultiplied_to_straight(&mut data);
+            std::hint::black_box(&data);
+        });
     }
 
     // #636: composite-only フレーム（スクロール/transform）の CPU コストを全面ラスタと並べて計測する。
@@ -166,7 +174,10 @@ fn perf_probe() {
             clear: [1.0, 1.0, 1.0, 1.0],
         };
         bench(
-            &format!("tiny-skia COMPOSITE-ONLY {w}x{h} (scale {scale}, {} layers)", placements.len()),
+            &format!(
+                "tiny-skia COMPOSITE-ONLY {w}x{h} (scale {scale}, {} layers)",
+                placements.len()
+            ),
             20,
             || {
                 let quads: Vec<CompositeQuad<'_, Pixmap>> = placements

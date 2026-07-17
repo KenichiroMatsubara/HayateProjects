@@ -20,9 +20,7 @@
 
 use std::time::Instant;
 
-use hayate_core::{
-    Color, Dimension, ElementKind, ElementTree, FlexDirectionValue, StyleProp,
-};
+use hayate_core::{Color, Dimension, ElementKind, ElementTree, FlexDirectionValue, StyleProp};
 use hayate_demo_fixtures::TreeBuilder;
 use hayate_scene_renderer_vello::debug_encode_scene;
 
@@ -237,7 +235,11 @@ fn perf_probe_rubber_bounce() {
                 // バウンス中の連続 12 フレーム: 毎フレーム物理を 1 ステップ進めて
                 // scroll group アフィンだけ変えた graph を都度フル render する
                 // （web backend の present 経路と同型）。
-                tree.element_set_scroll_offset(sv, 0.0, tree.element_scroll_max_offset(sv).1 + 120.0);
+                tree.element_set_scroll_offset(
+                    sv,
+                    0.0,
+                    tree.element_scroll_max_offset(sv).1 + 120.0,
+                );
                 tree.start_scroll_momentum(sv, 0.0, 0.0);
                 let mut bounce = Vec::new();
                 for _ in 0..12 {

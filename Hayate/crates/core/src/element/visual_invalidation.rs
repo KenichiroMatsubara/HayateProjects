@@ -152,10 +152,7 @@ pub(crate) fn classify(prop: &StyleProp, _ctx: ElementContext) -> Change {
 
 /// 子の追加/取り外しを分類する。IFC への追加（IFC 根直下の `text` 子）が IFC を
 /// 再シェープするか、構造投影の reconcile で済むかはトポロジが決める。
-pub(crate) fn classify_attachment(
-    parent_ctx: ElementContext,
-    child_ctx: ElementContext,
-) -> Change {
+pub(crate) fn classify_attachment(parent_ctx: ElementContext, child_ctx: ElementContext) -> Change {
     if parent_ctx.is_ifc_root && child_ctx.kind == ElementKind::Text {
         Change {
             dirty_kind: DirtyKind::Shape,
@@ -372,10 +369,7 @@ pub(crate) fn merge_reach(
 }
 
 /// `z-index` 変更後に要素アンカーの子を並べ替えるべき親。
-pub(crate) fn z_index_reorder_parent(
-    tree: &ElementTree,
-    id: ElementId,
-) -> Option<ElementId> {
+pub(crate) fn z_index_reorder_parent(tree: &ElementTree, id: ElementId) -> Option<ElementId> {
     tree.elements.get(&id).and_then(|el| el.parent)
 }
 
@@ -556,10 +550,7 @@ mod tests {
 
     #[test]
     fn classify_z_index_is_visual_zindex_reach() {
-        let c = classify(
-            &StyleProp::ZIndex(3),
-            ctx(ElementKind::View, false, false),
-        );
+        let c = classify(&StyleProp::ZIndex(3), ctx(ElementKind::View, false, false));
         assert_eq!(c.dirty_kind, DirtyKind::Visual);
         assert_eq!(c.reach, VisualInvalidationReach::ZIndex);
     }
@@ -771,8 +762,7 @@ mod tests {
             (1, VisualInvalidationReach::Subtree),
             (3, VisualInvalidationReach::Subtree),
         ]);
-        let roots: HashSet<ElementId> =
-            minimal_patch_roots(&topo, &dirty).into_iter().collect();
+        let roots: HashSet<ElementId> = minimal_patch_roots(&topo, &dirty).into_iter().collect();
         assert_eq!(roots, id_set(&[1]));
     }
 
@@ -789,8 +779,7 @@ mod tests {
             (1, VisualInvalidationReach::SelfOnly),
             (3, VisualInvalidationReach::Subtree),
         ]);
-        let roots: HashSet<ElementId> =
-            minimal_patch_roots(&topo, &dirty).into_iter().collect();
+        let roots: HashSet<ElementId> = minimal_patch_roots(&topo, &dirty).into_iter().collect();
         assert_eq!(roots, id_set(&[1, 3]));
     }
 

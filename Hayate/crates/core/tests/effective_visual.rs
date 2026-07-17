@@ -408,7 +408,10 @@ fn query_and_scene_paths_share_inherited_context_for_own_ambient_default() {
         ],
     );
     // text 要素が自身の ambient default-color（子孫向けチャネル）を設定する。
-    tree.element_set_style(text, &[StyleProp::DefaultColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        text,
+        &[StyleProp::DefaultColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
     tree.element_set_text(text, "hi");
 
     let queried = tree

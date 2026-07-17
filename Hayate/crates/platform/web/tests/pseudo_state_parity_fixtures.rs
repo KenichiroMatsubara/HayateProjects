@@ -33,7 +33,9 @@ fn style_props_from_patch(obj: &serde_json::Map<String, Value>) -> Vec<StyleProp
     let mut props = Vec::new();
     for (key, value) in obj {
         let prop = match key.as_str() {
-            "backgroundColor" => StyleProp::BackgroundColor(parse_hex_color(value.as_str().unwrap())),
+            "backgroundColor" => {
+                StyleProp::BackgroundColor(parse_hex_color(value.as_str().unwrap()))
+            }
             "borderWidth" => StyleProp::BorderWidth(value.as_f64().unwrap() as f32),
             "borderStyle" => StyleProp::BorderStyle(parse_border_style(value.as_str().unwrap())),
             "borderRadius" => StyleProp::BorderRadius(value.as_f64().unwrap() as f32),
@@ -124,11 +126,7 @@ fn pseudo_state_parity_corpus_html_mode() {
             "{name}: property count mismatch\n  actual: {actual:?}\n  expected: {expected:?}"
         );
         for (property, value) in &expected {
-            assert_eq!(
-                actual.get(property),
-                Some(value),
-                "{name}: {property}"
-            );
+            assert_eq!(actual.get(property), Some(value), "{name}: {property}");
         }
     }
 }
@@ -148,7 +146,10 @@ fn corpus_catches_dropped_border_style() {
 
     let expected = expected_property_map(&fixture);
     assert!(actual.get("border-style").is_none());
-    assert_ne!(actual, expected, "dropped border-style must diverge from corpus");
+    assert_ne!(
+        actual, expected,
+        "dropped border-style must diverge from corpus"
+    );
 }
 
 #[test]
@@ -178,5 +179,8 @@ fn corpus_catches_flipped_pseudo_priority() {
         expected.get("background-color"),
         "flipped priority must diverge from corpus"
     );
-    assert_eq!(actual.get("background-color").map(String::as_str), Some("#00ff00"));
+    assert_eq!(
+        actual.get("background-color").map(String::as_str),
+        Some("#00ff00")
+    );
 }

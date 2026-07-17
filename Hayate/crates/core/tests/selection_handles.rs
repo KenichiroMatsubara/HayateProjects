@@ -3,8 +3,8 @@
 //! 公開 `ElementTree` 経由で検証する。
 
 use hayate_core::{
-    Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind, RecordingPainter,
-    SelectionHandleEnd, StyleProp, render_scene_graph,
+    render_scene_graph, Dimension, DrawOp, ElementId, ElementKind, ElementTree, PointerKind,
+    RecordingPainter, SelectionHandleEnd, StyleProp,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -86,11 +86,17 @@ fn chrome_style_switch_recolors_the_handles_and_is_additive() {
         draw_ops(&tree)
             .into_iter()
             .find_map(|op| match op {
-                DrawOp::FillRect { x, y, width, height, corner_radius, color }
-                    if (x + width / 2.0 - h.start.knob_x).abs() < 0.5
-                        && (y + height / 2.0 - h.start.knob_y).abs() < 0.5
-                        && (width - 2.0 * h.start.radius).abs() < 0.5
-                        && corner_radius == 0.0 =>
+                DrawOp::FillRect {
+                    x,
+                    y,
+                    width,
+                    height,
+                    corner_radius,
+                    color,
+                } if (x + width / 2.0 - h.start.knob_x).abs() < 0.5
+                    && (y + height / 2.0 - h.start.knob_y).abs() < 0.5
+                    && (width - 2.0 * h.start.radius).abs() < 0.5
+                    && corner_radius == 0.0 =>
                 {
                     Some(color)
                 }
@@ -101,7 +107,10 @@ fn chrome_style_switch_recolors_the_handles_and_is_additive() {
 
     // Material が既定。Cupertino への切り替えは加法的（同じハンドルモデルで
     // テーマだけ違う）で、ノブの色が変わる。
-    assert_eq!(SelectionChromeStyle::default(), SelectionChromeStyle::Material);
+    assert_eq!(
+        SelectionChromeStyle::default(),
+        SelectionChromeStyle::Material
+    );
     assert_ne!(
         knob_color(SelectionChromeStyle::Material),
         knob_color(SelectionChromeStyle::Cupertino),
@@ -128,11 +137,13 @@ fn knob_drawn_at(ops: &[DrawOp], kx: f32, ky: f32, r: f32) -> bool {
 fn handle_clips(ops: &[DrawOp]) -> Vec<([f32; 4], (f32, f32, f32, f32))> {
     ops.iter()
         .filter_map(|op| match op {
-            DrawOp::PushClipRect { x, y, width, height, corner_radii }
-                if *y > 15.0 && *width < 40.0 =>
-            {
-                Some((*corner_radii, (*x, *y, *width, *height)))
-            }
+            DrawOp::PushClipRect {
+                x,
+                y,
+                width,
+                height,
+                corner_radii,
+            } if *y > 15.0 && *width < 40.0 => Some((*corner_radii, (*x, *y, *width, *height))),
             _ => None,
         })
         .collect()
@@ -150,7 +161,11 @@ fn handles_are_mirrored_teardrops_framing_the_selection() {
     let h = tree.selection_handles().expect("handles");
     let r = h.start.radius;
     let clips = handle_clips(&draw_ops(&tree));
-    assert_eq!(clips.len(), 2, "exactly two teardrop handle clips are drawn");
+    assert_eq!(
+        clips.len(),
+        2,
+        "exactly two teardrop handle clips are drawn"
+    );
 
     // start = tip 右上（TR=0、他は r）、end = tip 左上（TL=0、他は r）の左右ミラー。
     let start = clips
@@ -181,11 +196,21 @@ fn handles_are_drawn_by_core_during_selection() {
     let handles = tree.selection_handles().expect("handles after selecting");
     let ops = draw_ops(&tree);
     assert!(
-        knob_drawn_at(&ops, handles.start.knob_x, handles.start.knob_y, handles.start.radius),
+        knob_drawn_at(
+            &ops,
+            handles.start.knob_x,
+            handles.start.knob_y,
+            handles.start.radius
+        ),
         "the start handle bulb is drawn at its position",
     );
     assert!(
-        knob_drawn_at(&ops, handles.end.knob_x, handles.end.knob_y, handles.end.radius),
+        knob_drawn_at(
+            &ops,
+            handles.end.knob_x,
+            handles.end.knob_y,
+            handles.end.radius
+        ),
         "the end handle bulb is drawn at its position",
     );
 }
@@ -196,8 +221,15 @@ fn handles_disappear_from_the_scene_when_the_selection_clears() {
     select_a_range(&mut tree);
     tree.render(0.0);
     let handles = tree.selection_handles().expect("handles");
-    let (sx, sy, sr) = (handles.start.knob_x, handles.start.knob_y, handles.start.radius);
-    assert!(knob_drawn_at(&draw_ops(&tree), sx, sy, sr), "knob present while selecting");
+    let (sx, sy, sr) = (
+        handles.start.knob_x,
+        handles.start.knob_y,
+        handles.start.radius,
+    );
+    assert!(
+        knob_drawn_at(&draw_ops(&tree), sx, sy, sr),
+        "knob present while selecting"
+    );
 
     // 空白部分をタップして選択を解除し、再描画する。
     tree.on_pointer_down(2.0, 150.0);
@@ -254,7 +286,10 @@ fn dragging_the_end_handle_extends_the_range() {
 
     let after = tree.selection().unwrap().range_within(text).unwrap();
     assert_eq!(after.0, before.0, "the left edge stays put");
-    assert!(after.1 > before.1, "dragging the end handle extends the range");
+    assert!(
+        after.1 > before.1,
+        "dragging the end handle extends the range"
+    );
 }
 
 #[test]
@@ -274,7 +309,10 @@ fn dragging_the_start_handle_moves_the_left_edge() {
 
     let after = tree.selection().unwrap().range_within(text).unwrap();
     assert_eq!(after.1, before.1, "the right edge stays put");
-    assert!(after.0 > before.0, "dragging the start handle moves the left edge in");
+    assert!(
+        after.0 > before.0,
+        "dragging the start handle moves the left edge in"
+    );
 }
 
 #[test]

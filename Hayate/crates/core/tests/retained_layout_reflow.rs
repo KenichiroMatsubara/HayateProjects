@@ -9,8 +9,8 @@
 //! fill rect が全描画要素を捉える。）
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue,
-    RecordingPainter, StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree,
+    FlexDirectionValue, RecordingPainter, StyleProp,
 };
 
 /// 各 FillRect の (color, x, y, w, h) を描画順で返す。
@@ -126,7 +126,10 @@ fn footer_follows_board_growth_on_incremental_insert() {
     tree.render(0.0);
     assert_parity(&tree, "initial render");
     let y0 = footer_y(&tree);
-    assert!((y0 - 20.0).abs() < 0.01, "footer starts below one card, got {y0}");
+    assert!(
+        (y0 - 20.0).abs() < 0.01,
+        "footer starts below one card, got {y0}"
+    );
 
     // 差分 insert: board が card 1 つ分伸び、footer は下へずれなければならない。
     let c2 = card(&mut tree, &mut next_id, Color::new(0.0, 0.0, 1.0, 1.0));

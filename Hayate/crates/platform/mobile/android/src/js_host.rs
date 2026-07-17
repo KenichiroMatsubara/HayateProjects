@@ -17,11 +17,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use hayate_core::{DocumentEventKind, ElementId, ElementTree};
 use hayate_app_host::{FrameId, FrameTransaction};
+use hayate_core::{DocumentEventKind, ElementId, ElementTree};
 
-use hayate_core::wire::{encode_event_wire, EventWireValue};
 use crate::js_apply;
+use hayate_core::wire::{encode_event_wire, EventWireValue};
 
 /// `poll_events` の配信行 1 要素（数値またはテキスト）。ADR-0053 の
 /// `[listener_id, kind, ...fields]` をプラットフォーム非依存に表したもの。
@@ -33,10 +33,18 @@ pub(crate) struct WireAtom {
 
 impl WireAtom {
     fn number(n: f64) -> Self {
-        Self { is_text: false, number: n, text: String::new() }
+        Self {
+            is_text: false,
+            number: n,
+            text: String::new(),
+        }
     }
     fn text(s: String) -> Self {
-        Self { is_text: true, number: 0.0, text: s }
+        Self {
+            is_text: true,
+            number: 0.0,
+            text: s,
+        }
     }
 }
 
@@ -79,11 +87,7 @@ impl JsHost {
         js_apply::apply_mutations(&mut self.tree.borrow_mut(), ops, styles, texts, &[])
     }
 
-    pub(crate) fn dispatch_edit_intent(
-        &self,
-        target: f64,
-        intent: &[f64],
-    ) -> Result<u32, String> {
+    pub(crate) fn dispatch_edit_intent(&self, target: f64, intent: &[f64]) -> Result<u32, String> {
         hayate_core::wire::dispatch_edit_intent(&mut self.tree.borrow_mut(), target, intent)
             .map(|outcome| match outcome {
                 hayate_core::wire::EditDispatchOutcome::Consumed => 0,
@@ -248,7 +252,10 @@ mod tests {
     #[test]
     fn native_projection_dispatches_edit_intent_and_uses_two_phase_frames() {
         let h = host();
-        let input = h.tree.borrow_mut().element_create(1, hayate_core::ElementKind::TextInput);
+        let input = h
+            .tree
+            .borrow_mut()
+            .element_create(1, hayate_core::ElementKind::TextInput);
         h.tree.borrow_mut().set_root(input);
         assert_eq!(h.dispatch_edit_intent(1.0, &[4.0]).unwrap(), 0);
 

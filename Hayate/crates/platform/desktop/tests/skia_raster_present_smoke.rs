@@ -40,5 +40,8 @@ fn shared_fixture_paints_tasks_scenery_through_skia_raster() {
     // 余白は clear color（#f1ede3 相当）で塗られている — 左上隅は content の外。
     let corner = pixels[0];
     let r = (corner >> 16) & 0xff;
-    assert!(r > 200, "corner must be the light clear color, got {corner:#010x}");
+    assert!(
+        r > 200,
+        "corner must be the light clear color, got {corner:#010x}"
+    );
 }

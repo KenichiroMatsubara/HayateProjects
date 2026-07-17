@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use core::{
-    ffi::{CStr, c_char},
+    ffi::{c_char, CStr},
     marker::PhantomData,
     ptr::NonNull,
 };
@@ -17,11 +17,10 @@ use std::{
 #[cfg(feature = "fontconfig-dlopen")]
 use fontconfig_sys::statics::{LIB, LIB_RESULT};
 use fontconfig_sys::{
-    FcChar8, FcCharSet, FcConfig, FcFontSet, FcLangSet, FcMatchKind, FcMatchPattern, FcPattern,
-    FcResult, FcResultMatch, FcResultNoId, FcResultNoMatch, FcResultOutOfMemory,
-    FcResultTypeMismatch, FcSetSystem,
     constants::{FC_CHARSET, FC_FAMILY, FC_FILE, FC_INDEX, FC_LANG, FC_SLANT, FC_WEIGHT, FC_WIDTH},
-    ffi_dispatch,
+    ffi_dispatch, FcChar8, FcCharSet, FcConfig, FcFontSet, FcLangSet, FcMatchKind, FcMatchPattern,
+    FcPattern, FcResult, FcResultMatch, FcResultNoId, FcResultNoMatch, FcResultOutOfMemory,
+    FcResultTypeMismatch, FcSetSystem,
 };
 #[cfg(not(feature = "fontconfig-dlopen"))]
 use fontconfig_sys::{
@@ -33,15 +32,15 @@ use fontconfig_sys::{
     FcPatternGetInteger, FcPatternGetString, FcPatternReference, FcStrFree,
 };
 
-use hashbrown::{HashMap, HashSet, hash_map::Entry};
+use hashbrown::{hash_map::Entry, HashMap, HashSet};
 use smallvec::SmallVec;
 
 use crate::{
-    FallbackKey, FamilyId, FamilyInfo, FontInfo, FontStyle, FontWeight, FontWidth,
-    FromFontconfig as _, GenericFamily, Script, ScriptExt,
     family_name::{FamilyName, FamilyNameMap},
     generic::GenericFamilyMap,
     source::SourcePathMap,
+    FallbackKey, FamilyId, FamilyInfo, FontInfo, FontStyle, FontWeight, FontWidth,
+    FromFontconfig as _, GenericFamily, Script, ScriptExt,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

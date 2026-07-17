@@ -6,8 +6,8 @@
 //! （ライトテーマ、teal アクセント）を、レイアウト/テキスト/スタイルの差異が出る程度に再現する。
 
 use hayate_core::{
-    AlignValue, BorderStyleValue, Color, Dimension, ElementId, ElementKind,
-    FlexDirectionValue, JustifyValue, PseudoState, StyleProp,
+    AlignValue, BorderStyleValue, Color, Dimension, ElementId, ElementKind, FlexDirectionValue,
+    JustifyValue, PseudoState, StyleProp,
 };
 use hayate_demo_fixtures::{
     col, prio_tone, row, tasks_tree, Palette as P, TreeBuilder as B, DELETE_GLYPH,
@@ -64,7 +64,10 @@ fn render_glyph_coverage() {
     b.tree.set_root(root);
     b.tree.set_viewport(W, H);
     for g in ["🌙", "☀", "✓", "✕", "↑", "↓", "あ", "A"] {
-        let t = b.text(g, &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)]);
+        let t = b.text(
+            g,
+            &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)],
+        );
         b.child(root, t);
     }
     let graph = b.tree.render(0.0).clone();
@@ -109,13 +112,19 @@ fn diagnose_glyph_ink() {
         ]);
         b.tree.set_root(root);
         b.tree.set_viewport(W as f32, H as f32);
-        let t = b.text(glyph, &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)]);
+        let t = b.text(
+            glyph,
+            &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)],
+        );
         b.child(root, t);
         let graph = b.tree.render(0.0).clone();
         let mut pixmap = Pixmap::new(W, H).expect("pixmap");
         TinySkiaSceneRenderer::new().render_scene(&graph, &mut pixmap, [1.0, 1.0, 1.0, 1.0], 1.0);
         let data = pixmap.data();
-        let ink = data.chunks_exact(4).filter(|p| p[0] < 200 || p[1] < 200 || p[2] < 200).count();
+        let ink = data
+            .chunks_exact(4)
+            .filter(|p| p[0] < 200 || p[1] < 200 || p[2] < 200)
+            .count();
         eprintln!("[GLYPH-INK] {ink:>5} px  {label}");
     }
 }
@@ -141,7 +150,10 @@ fn delete_glyph_renders_in_canvas() {
         "U+2715 ✕ is expected to be absent from NotoSansJP.ttf (the bug's cause)",
     );
     // example が実際に使うグリフは存在し、Canvas が描けなければならない。
-    let delete_char = DELETE_GLYPH.chars().next().expect("DELETE_GLYPH is non-empty");
+    let delete_char = DELETE_GLYPH
+        .chars()
+        .next()
+        .expect("DELETE_GLYPH is non-empty");
     assert!(
         font_has_glyph(delete_char),
         "delete glyph {DELETE_GLYPH:?} must exist in NotoSansJP.ttf, \
@@ -163,7 +175,10 @@ fn glyph_ink(s: &str) -> usize {
     ]);
     b.tree.set_root(root);
     b.tree.set_viewport(W as f32, H as f32);
-    let t = b.text(s, &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)]);
+    let t = b.text(
+        s,
+        &[StyleProp::FontSize(40.0), StyleProp::Color(Color::BLACK)],
+    );
     b.child(root, t);
     let graph = b.tree.render(0.0).clone();
     let mut pixmap = Pixmap::new(W, H).expect("pixmap");
@@ -188,7 +203,10 @@ fn missing_glyph_draws_visible_placeholder() {
     );
     // 存在するグリフが対照。引き続きインクを描く必要がある。
     let present = glyph_ink("A");
-    assert!(present > 0, "control glyph 'A' must render ink, got {present}");
+    assert!(
+        present > 0,
+        "control glyph 'A' must render ink, got {present}"
+    );
     // 欠落コードポイントは空白ではなく見えるプレースホルダを生成しなければならない。
     let missing = glyph_ink("\u{2715}");
     assert!(
@@ -229,10 +247,18 @@ fn convert_clauses(preedit: &str) -> Vec<hayate_core::CompositionClause> {
         .unwrap_or(preedit.len());
     let mut clauses = Vec::new();
     if mid > 0 {
-        clauses.push(CompositionClause { start: 0, end: mid, underline: CompositionUnderline::Thick });
+        clauses.push(CompositionClause {
+            start: 0,
+            end: mid,
+            underline: CompositionUnderline::Thick,
+        });
     }
     if mid < preedit.len() {
-        clauses.push(CompositionClause { start: mid, end: preedit.len(), underline: CompositionUnderline::Thin });
+        clauses.push(CompositionClause {
+            start: mid,
+            end: preedit.len(),
+            underline: CompositionUnderline::Thin,
+        });
     }
     clauses
 }
@@ -244,70 +270,90 @@ const PANEL_H: u32 = 96;
 /// AddForm に忠実に構築する。入力の `:focus` と追加ボタンの `:hover` バリアントを
 /// 登録し、インタラクション状態が解決されるようにする。(input, add_btn) を返す。
 fn build_addform(b: &mut B, p: &P, root: ElementId, label: &str) -> (ElementId, ElementId) {
-    let lbl = b.text(label, &[StyleProp::Color(p.muted()), StyleProp::FontSize(11.0)]);
+    let lbl = b.text(
+        label,
+        &[StyleProp::Color(p.muted()), StyleProp::FontSize(11.0)],
+    );
 
     let form = b.view(&row(8.0));
-    let input = b.el(ElementKind::TextInput, &[
-        StyleProp::FlexGrow(1.0),
-        StyleProp::Height(Dimension::px(38.0)),
-        StyleProp::PaddingLeft(Dimension::px(12.0)),
-        StyleProp::PaddingRight(Dimension::px(12.0)),
-        StyleProp::BackgroundColor(p.panel2()),
-        StyleProp::Color(p.text()),
-        StyleProp::BorderRadius(8.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.line()),
-        StyleProp::FontSize(13.0),
-    ]);
+    let input = b.el(
+        ElementKind::TextInput,
+        &[
+            StyleProp::FlexGrow(1.0),
+            StyleProp::Height(Dimension::px(38.0)),
+            StyleProp::PaddingLeft(Dimension::px(12.0)),
+            StyleProp::PaddingRight(Dimension::px(12.0)),
+            StyleProp::BackgroundColor(p.panel2()),
+            StyleProp::Color(p.text()),
+            StyleProp::BorderRadius(8.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.line()),
+            StyleProp::FontSize(13.0),
+        ],
+    );
     // アプリの `inputStyle()` 由来の `:focus` バリアント。
-    b.tree.element_set_pseudo_style(input, PseudoState::Focus, &[
-        StyleProp::BorderColor(p.accent()),
-        StyleProp::BackgroundColor(p.panel3()),
-    ]);
+    b.tree.element_set_pseudo_style(
+        input,
+        PseudoState::Focus,
+        &[
+            StyleProp::BorderColor(p.accent()),
+            StyleProp::BackgroundColor(p.panel3()),
+        ],
+    );
     // TextInput のプレースホルダテキストは `el.text` に置く（ADR-0058）。
     b.tree.element_set_text(input, "新しいタスクを入力…");
 
     let segs = b.view(&row(4.0));
     for (prio, active) in [(3u8, false), (2u8, true), (1u8, false)] {
         let tone = prio_tone(p, prio);
-        let seg = b.button(PRIO_LABEL[prio as usize], &[
-            StyleProp::Height(Dimension::px(38.0)),
-            StyleProp::MinWidth(Dimension::px(40.0)),
-            StyleProp::Display(hayate_core::DisplayValue::Flex),
-            StyleProp::AlignItems(AlignValue::Center),
-            StyleProp::JustifyContent(JustifyValue::Center),
-            StyleProp::BackgroundColor(if active { tone } else { p.panel2() }),
-            StyleProp::Color(if active { p.black() } else { p.muted() }),
-            StyleProp::BorderRadius(9.0),
-            StyleProp::BorderWidth(1.0),
-            StyleProp::BorderStyle(BorderStyleValue::Solid),
-            StyleProp::BorderColor(if active { tone } else { p.line() }),
-            StyleProp::FontSize(13.0),
-        ]);
+        let seg = b.button(
+            PRIO_LABEL[prio as usize],
+            &[
+                StyleProp::Height(Dimension::px(38.0)),
+                StyleProp::MinWidth(Dimension::px(40.0)),
+                StyleProp::Display(hayate_core::DisplayValue::Flex),
+                StyleProp::AlignItems(AlignValue::Center),
+                StyleProp::JustifyContent(JustifyValue::Center),
+                StyleProp::BackgroundColor(if active { tone } else { p.panel2() }),
+                StyleProp::Color(if active { p.black() } else { p.muted() }),
+                StyleProp::BorderRadius(9.0),
+                StyleProp::BorderWidth(1.0),
+                StyleProp::BorderStyle(BorderStyleValue::Solid),
+                StyleProp::BorderColor(if active { tone } else { p.line() }),
+                StyleProp::FontSize(13.0),
+            ],
+        );
         b.child(segs, seg);
     }
 
-    let add = b.button("追加", &[
-        StyleProp::Height(Dimension::px(38.0)),
-        StyleProp::PaddingLeft(Dimension::px(18.0)),
-        StyleProp::PaddingRight(Dimension::px(18.0)),
-        StyleProp::Display(hayate_core::DisplayValue::Flex),
-        StyleProp::AlignItems(AlignValue::Center),
-        StyleProp::JustifyContent(JustifyValue::Center),
-        StyleProp::BackgroundColor(p.accent()),
-        StyleProp::Color(p.black()),
-        StyleProp::BorderRadius(9.0),
-        StyleProp::BorderWidth(1.0),
-        StyleProp::BorderStyle(BorderStyleValue::Solid),
-        StyleProp::BorderColor(p.accent()),
-        StyleProp::FontSize(13.0),
-    ]);
+    let add = b.button(
+        "追加",
+        &[
+            StyleProp::Height(Dimension::px(38.0)),
+            StyleProp::PaddingLeft(Dimension::px(18.0)),
+            StyleProp::PaddingRight(Dimension::px(18.0)),
+            StyleProp::Display(hayate_core::DisplayValue::Flex),
+            StyleProp::AlignItems(AlignValue::Center),
+            StyleProp::JustifyContent(JustifyValue::Center),
+            StyleProp::BackgroundColor(p.accent()),
+            StyleProp::Color(p.black()),
+            StyleProp::BorderRadius(9.0),
+            StyleProp::BorderWidth(1.0),
+            StyleProp::BorderStyle(BorderStyleValue::Solid),
+            StyleProp::BorderColor(p.accent()),
+            StyleProp::FontSize(13.0),
+        ],
+    );
     // アプリの追加ボタンの `:hover` バリアント（bg/border → success）。
-    b.tree.element_set_pseudo_style(add, PseudoState::Hover, &[
-        StyleProp::BackgroundColor(p.success()),
-        StyleProp::BorderColor(p.success()),
-    ]);
+    b.tree.element_set_pseudo_style(
+        add,
+        PseudoState::Hover,
+        &[
+            StyleProp::BackgroundColor(p.success()),
+            StyleProp::BorderColor(p.success()),
+        ],
+    );
 
     b.children(form, &[input, segs, add]);
     b.children(root, &[lbl, form]);
@@ -399,11 +445,9 @@ fn preedit_underline_heights(preedit: &str, convert: bool) -> Vec<f32> {
         .ops()
         .iter()
         .filter_map(|op| match op {
-            hayate_core::DrawOp::FillRect { x, width, height, .. }
-                if *height <= 3.0 && *width >= 5.0 =>
-            {
-                Some((*x, *height))
-            }
+            hayate_core::DrawOp::FillRect {
+                x, width, height, ..
+            } if *height <= 3.0 && *width >= 5.0 => Some((*x, *height)),
             _ => None,
         })
         .collect();
@@ -414,13 +458,69 @@ fn preedit_underline_heights(preedit: &str, convert: bool) -> Vec<f32> {
 /// 比較のために描画するインタラクションの並び。
 fn interaction_states() -> Vec<InputState> {
     vec![
-        InputState { label: "1. rest — 未フォーカス（placeholder）", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false },
-        InputState { label: "2. click → focus（空・caret + :focus リング）", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false },
-        InputState { label: "3. type「牛乳を買う」（caret 末尾）", content: "牛乳を買う", preedit: "", focused: true, select_all: false, hover_add: false, convert: false },
-        InputState { label: "4. drag select all（選択ハイライト）", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false, convert: false },
-        InputState { label: "5. IME compose「ぎゅうにゅう」（preedit・変換前 単一下線）", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false, convert: false },
-        InputState { label: "5b. IME convert（clause 分割・太/細 下線）", content: "", preedit: "ぎゅうにゅう", focused: true, select_all: false, hover_add: false, convert: true },
-        InputState { label: "6. hover 追加ボタン（:hover）", content: "牛乳を買う", preedit: "", focused: false, select_all: false, hover_add: true, convert: false },
+        InputState {
+            label: "1. rest — 未フォーカス（placeholder）",
+            content: "",
+            preedit: "",
+            focused: false,
+            select_all: false,
+            hover_add: false,
+            convert: false,
+        },
+        InputState {
+            label: "2. click → focus（空・caret + :focus リング）",
+            content: "",
+            preedit: "",
+            focused: true,
+            select_all: false,
+            hover_add: false,
+            convert: false,
+        },
+        InputState {
+            label: "3. type「牛乳を買う」（caret 末尾）",
+            content: "牛乳を買う",
+            preedit: "",
+            focused: true,
+            select_all: false,
+            hover_add: false,
+            convert: false,
+        },
+        InputState {
+            label: "4. drag select all（選択ハイライト）",
+            content: "牛乳を買う",
+            preedit: "",
+            focused: true,
+            select_all: true,
+            hover_add: false,
+            convert: false,
+        },
+        InputState {
+            label: "5. IME compose「ぎゅうにゅう」（preedit・変換前 単一下線）",
+            content: "",
+            preedit: "ぎゅうにゅう",
+            focused: true,
+            select_all: false,
+            hover_add: false,
+            convert: false,
+        },
+        InputState {
+            label: "5b. IME convert（clause 分割・太/細 下線）",
+            content: "",
+            preedit: "ぎゅうにゅう",
+            focused: true,
+            select_all: false,
+            hover_add: false,
+            convert: true,
+        },
+        InputState {
+            label: "6. hover 追加ボタン（:hover）",
+            content: "牛乳を買う",
+            preedit: "",
+            focused: false,
+            select_all: false,
+            hover_add: true,
+            convert: false,
+        },
     ]
 }
 
@@ -429,7 +529,10 @@ fn render_interaction_states() {
     if std::env::var_os("HAYATE_WRITE_SCREENSHOT").is_none() {
         return;
     }
-    let panels: Vec<Pixmap> = interaction_states().iter().map(render_input_state).collect();
+    let panels: Vec<Pixmap> = interaction_states()
+        .iter()
+        .map(render_input_state)
+        .collect();
     let sep = 2u32;
     let total_h = panels.iter().map(|p| p.height()).sum::<u32>() + sep * (panels.len() as u32 - 1);
     let mut out = vec![0xffu8; (PANEL_W * total_h * 4) as usize];
@@ -494,15 +597,47 @@ fn diagnose_interaction_signals() {
     let (tx0, tx1) = (30u32, 360u32);
 
     // 1. プレースホルダ色: 空（プレースホルダ）と確定テキスト、同じグリフで比較。
-    let placeholder = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
-    let committed = render_input_state(&InputState { label: "", content: "新しいタスクを入力…", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
+    let placeholder = render_input_state(&InputState {
+        label: "",
+        content: "",
+        preedit: "",
+        focused: false,
+        select_all: false,
+        hover_add: false,
+        convert: false,
+    });
+    let committed = render_input_state(&InputState {
+        label: "",
+        content: "新しいタスクを入力…",
+        preedit: "",
+        focused: false,
+        select_all: false,
+        hover_add: false,
+        convert: false,
+    });
     let ph = darkest_text_rgb(&placeholder, tx0, ty0, tx1, ty1);
     let cm = darkest_text_rgb(&committed, tx0, ty0, tx1, ty1);
     eprintln!("[PLACEHOLDER-RGB] placeholder={:?} committed={:?}  (#334 fixed: Canvas now paints ::placeholder muted — Chromium UA ~54% black/white per ADR-0102 — distinct from committed body color {:?}; exact value pending real-Chromium calibration vs DOM ~#9a93a3)", ph, cm, (p.text().to_array_f32()));
 
     // 2. フォーカスリング: 入力の左ボーダー色、非フォーカス vs フォーカス。
-    let unfoc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
-    let foc = render_input_state(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
+    let unfoc = render_input_state(&InputState {
+        label: "",
+        content: "",
+        preedit: "",
+        focused: false,
+        select_all: false,
+        hover_add: false,
+        convert: false,
+    });
+    let foc = render_input_state(&InputState {
+        label: "",
+        content: "",
+        preedit: "",
+        focused: true,
+        select_all: false,
+        hover_add: false,
+        convert: false,
+    });
     // :focus 背景は panel2→panel3 に変わる。1px の line→accent ボーダー変化も
     // 読み取れる（`border-style: solid` を与え、ネイティブのフォーカスリングが
     // ボックスを消さなくなった）。ボーダー側は `addform_input_1px_border_renders`
@@ -517,15 +652,28 @@ fn diagnose_interaction_signals() {
     let ink = |pm: &Pixmap| -> u32 {
         let mut d = pm.data().to_vec();
         premultiplied_to_straight(&mut d);
-        d.chunks_exact(4).filter(|c| c[0] < 120 && c[1] < 120 && c[2] < 120).count() as u32
+        d.chunks_exact(4)
+            .filter(|c| c[0] < 120 && c[1] < 120 && c[2] < 120)
+            .count() as u32
     };
     eprintln!("[CARET-INK] focused-empty={} unfocused-empty={} (Δ≈caret px; Canvas core-draws the caret, DOM/EditContext uses the native caret)", ink(&foc), ink(&unfoc));
 
     // 4. 選択ハイライト: Material ブルーの色味のピクセル数を数え、色を報告する。
-    let sel = render_input_state(&InputState { label: "", content: "牛乳を買う", preedit: "", focused: true, select_all: true, hover_add: false, convert: false });
+    let sel = render_input_state(&InputState {
+        label: "",
+        content: "牛乳を買う",
+        preedit: "",
+        focused: true,
+        select_all: true,
+        hover_add: false,
+        convert: false,
+    });
     let mut sd = sel.data().to_vec();
     premultiplied_to_straight(&mut sd);
-    let sel_px = sd.chunks_exact(4).filter(|c| c[2] > c[0] && c[2] > 110 && c[0] < 170 && c[1] < 200).count();
+    let sel_px = sd
+        .chunks_exact(4)
+        .filter(|c| c[2] > c[0] && c[2] > 110 && c[0] < 170 && c[1] < 200)
+        .count();
     eprintln!("[SELECTION-PX] material-blue-tint px={} (Canvas paints a fixed Material tint #3373F2~0.35; DOM uses the OS/::selection colour — colour & semantics differ)", sel_px);
 
     // 5. IME preedit: Canvas は合成に下線を引く（ADR-0102）。変換前は単一の細い下線、
@@ -581,8 +729,24 @@ fn render_input_state_with_rect(st: &InputState) -> (Pixmap, (f32, f32, f32, f32
 #[test]
 fn addform_input_1px_border_renders() {
     let p = P;
-    let (unfoc, rect) = render_input_state_with_rect(&InputState { label: "", content: "", preedit: "", focused: false, select_all: false, hover_add: false, convert: false });
-    let (foc, _) = render_input_state_with_rect(&InputState { label: "", content: "", preedit: "", focused: true, select_all: false, hover_add: false, convert: false });
+    let (unfoc, rect) = render_input_state_with_rect(&InputState {
+        label: "",
+        content: "",
+        preedit: "",
+        focused: false,
+        select_all: false,
+        hover_add: false,
+        convert: false,
+    });
+    let (foc, _) = render_input_state_with_rect(&InputState {
+        label: "",
+        content: "",
+        preedit: "",
+        focused: true,
+        select_all: false,
+        hover_add: false,
+        convert: false,
+    });
     let (rx, ry, rw, rh) = rect;
     let bx = rx as u32; // 整数化した左端 — 1px ボーダーの列
     let my = (ry + rh / 2.0) as u32;
@@ -598,15 +762,29 @@ fn addform_input_1px_border_renders() {
     };
 
     // 非フォーカス: 左ボーダー列はパネルの塗りではなく `line` 色。
-    near(sample_rgb(&unfoc, bx, my), p.line(), 8, "unfocused 1px border = line colour");
+    near(
+        sample_rgb(&unfoc, bx, my),
+        p.line(),
+        8,
+        "unfocused 1px border = line colour",
+    );
     // フォーカス: アプリの `:focus` ボーダーは teal の `accent` に切り替わり、
     // 表示される（フォーカスリングが下のボーダー/塗りを消さなくなった）。
-    near(sample_rgb(&foc, bx, my), p.accent(), 8, "focused 1px border = accent teal");
+    near(
+        sample_rgb(&foc, bx, my),
+        p.accent(),
+        8,
+        "focused 1px border = accent teal",
+    );
 
     // フォーカス時の入力内側は不透明のまま — 透明な穴は空かない。
     let cx = (rx + rw / 2.0) as u32;
     let i = ((my * foc.width() + cx) * 4) as usize;
-    assert_eq!(foc.data()[i + 3], 255, "focused input interior must stay opaque");
+    assert_eq!(
+        foc.data()[i + 3],
+        255,
+        "focused input interior must stay opaque"
+    );
 }
 
 fn write_png(path: &std::path::Path, rgba: &[u8], w: u32, h: u32) {

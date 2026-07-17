@@ -161,7 +161,10 @@ mod tests {
         let url = font_url_for_renderer("Noto Emoji", SceneRendererKind::TinySkia)
             .expect("emoji family must resolve on tiny-skia");
         let lower = url.to_lowercase();
-        assert!(lower.contains("notoemoji"), "expected Noto Emoji, got {url}");
+        assert!(
+            lower.contains("notoemoji"),
+            "expected Noto Emoji, got {url}"
+        );
         assert!(
             !lower.contains("color"),
             "tiny-skia must stay monochrome, not a colour build: {url}"
@@ -199,7 +202,10 @@ mod tests {
             color.to_lowercase().contains("notocoloremoji"),
             "expected a Noto Color Emoji url, got {color}"
         );
-        assert_ne!(color, mono, "color and monochrome builds must be distinct urls");
+        assert_ne!(
+            color, mono,
+            "color and monochrome builds must be distinct urls"
+        );
     }
 
     #[test]

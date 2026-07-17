@@ -105,19 +105,52 @@ mod tests {
         let d = ChromeTuning::default();
         assert_eq!(d.scrollbar_thickness, scene_build::SCROLLBAR_THICKNESS);
         assert_eq!(d.scrollbar_thumb_color, scene_build::SCROLLBAR_THUMB_COLOR);
-        assert_eq!(d.selection_highlight_color, scene_build::SELECTION_HIGHLIGHT_COLOR);
+        assert_eq!(
+            d.selection_highlight_color,
+            scene_build::SELECTION_HIGHLIGHT_COLOR
+        );
         assert_eq!(d.placeholder_alpha, scene_build::PLACEHOLDER_ALPHA);
-        assert_eq!(d.composition_underline_thick, scene_build::COMPOSITION_UNDERLINE_THICK);
-        assert_eq!(d.toolbar_corner_radius, selection_chrome::TOOLBAR_CORNER_RADIUS);
+        assert_eq!(
+            d.composition_underline_thick,
+            scene_build::COMPOSITION_UNDERLINE_THICK
+        );
+        assert_eq!(
+            d.toolbar_corner_radius,
+            selection_chrome::TOOLBAR_CORNER_RADIUS
+        );
         assert_eq!(d.toolbar_height, selection_chrome::TOOLBAR_HEIGHT);
-        assert_eq!(d.toolbar_label_font_size, selection_chrome::TOOLBAR_LABEL_FONT_SIZE);
-        assert_eq!(d.toolbar_button_pad_x, selection_chrome::TOOLBAR_BUTTON_PAD_X);
+        assert_eq!(
+            d.toolbar_label_font_size,
+            selection_chrome::TOOLBAR_LABEL_FONT_SIZE
+        );
+        assert_eq!(
+            d.toolbar_button_pad_x,
+            selection_chrome::TOOLBAR_BUTTON_PAD_X
+        );
         assert_eq!(d.toolbar_gap, selection_chrome::TOOLBAR_GAP);
-        assert_eq!(d.toolbar_divider_color, selection_chrome::TOOLBAR_DIVIDER_COLOR);
-        assert_eq!(d.toolbar_divider_width, selection_chrome::TOOLBAR_DIVIDER_WIDTH);
-        assert_eq!(d.toolbar_elevation_offset_y, selection_chrome::TOOLBAR_ELEVATION_OFFSET_Y);
-        assert_eq!(d.toolbar_elevation_blur, selection_chrome::TOOLBAR_ELEVATION_BLUR);
-        assert_eq!(d.toolbar_elevation_spread, selection_chrome::TOOLBAR_ELEVATION_SPREAD);
-        assert_eq!(d.toolbar_shadow_color, selection_chrome::TOOLBAR_SHADOW_COLOR);
+        assert_eq!(
+            d.toolbar_divider_color,
+            selection_chrome::TOOLBAR_DIVIDER_COLOR
+        );
+        assert_eq!(
+            d.toolbar_divider_width,
+            selection_chrome::TOOLBAR_DIVIDER_WIDTH
+        );
+        assert_eq!(
+            d.toolbar_elevation_offset_y,
+            selection_chrome::TOOLBAR_ELEVATION_OFFSET_Y
+        );
+        assert_eq!(
+            d.toolbar_elevation_blur,
+            selection_chrome::TOOLBAR_ELEVATION_BLUR
+        );
+        assert_eq!(
+            d.toolbar_elevation_spread,
+            selection_chrome::TOOLBAR_ELEVATION_SPREAD
+        );
+        assert_eq!(
+            d.toolbar_shadow_color,
+            selection_chrome::TOOLBAR_SHADOW_COLOR
+        );
     }
 }

@@ -12,7 +12,6 @@ use crate::font::FontInfoOverride;
 use super::SourceCache;
 
 use super::{
-    Blob, FontStyle, FontWeight, FontWidth, GenericFamily, Language, Script,
     backend::SystemFonts,
     fallback::{FallbackKey, FallbackMap},
     family::{FamilyId, FamilyInfo},
@@ -20,6 +19,7 @@ use super::{
     font::FontInfo,
     generic::GenericFamilyMap,
     source::{SourceId, SourceInfo, SourceKind},
+    Blob, FontStyle, FontWeight, FontWidth, GenericFamily, Language, Script,
 };
 use crate::AtomicCounter;
 use alloc::{string::String, sync::Arc, vec::Vec};
@@ -28,7 +28,7 @@ use read_fonts::types::NameId;
 #[cfg(feature = "std")]
 use std::path::Path;
 #[cfg(feature = "std")]
-use std::sync::{Mutex, atomic::Ordering};
+use std::sync::{atomic::Ordering, Mutex};
 
 type FamilyMap = HashMap<FamilyId, Option<FamilyInfo>>;
 

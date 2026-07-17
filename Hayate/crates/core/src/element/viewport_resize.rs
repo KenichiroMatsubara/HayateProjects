@@ -145,8 +145,14 @@ mod tests {
             (900.0, 800.0),
         );
 
-        assert!(dirty.visual.contains(&id), "background variant marks visual");
-        assert!(!dirty.shape.contains(&id), "background variant is not shape");
+        assert!(
+            dirty.visual.contains(&id),
+            "background variant marks visual"
+        );
+        assert!(
+            !dirty.shape.contains(&id),
+            "background variant is not shape"
+        );
     }
 
     #[test]
@@ -166,7 +172,10 @@ mod tests {
         );
 
         assert!(dirty.shape.contains(&id), "font-size variant marks shape");
-        assert!(!dirty.visual.contains(&id), "font-size variant is not visual");
+        assert!(
+            !dirty.visual.contains(&id),
+            "font-size variant is not visual"
+        );
     }
 
     #[test]

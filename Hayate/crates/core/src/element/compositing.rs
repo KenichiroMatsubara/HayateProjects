@@ -136,8 +136,8 @@ where
 {
     let mut tree = LayerTree::default();
     for layer in boundaries_in_order {
-        let parent_layer = parent_of(layer)
-            .and_then(|p| nearest_enclosing_layer(p, boundaries, &parent_of));
+        let parent_layer =
+            parent_of(layer).and_then(|p| nearest_enclosing_layer(p, boundaries, &parent_of));
         tree.layers.push(layer);
         tree.parent.insert(layer, parent_layer);
     }
@@ -193,7 +193,10 @@ mod tests {
         };
         assert_eq!(
             facts.triggers(),
-            vec![CompositingTrigger::Transition, CompositingTrigger::Transform],
+            vec![
+                CompositingTrigger::Transition,
+                CompositingTrigger::Transform
+            ],
         );
     }
 
@@ -203,23 +206,35 @@ mod tests {
         let parent_of = parents(&[(2, 1), (3, 2), (4, 3), (5, 4)]);
         let boundaries = boundary_set(&[2, 4]);
         // leaf(5) は layerB(4) に内包される（最近接）。
-        assert_eq!(nearest_enclosing_layer(id(5), &boundaries, &parent_of), Some(id(4)));
+        assert_eq!(
+            nearest_enclosing_layer(id(5), &boundaries, &parent_of),
+            Some(id(4))
+        );
         // mid(3) は layerA(2) に内包される。
-        assert_eq!(nearest_enclosing_layer(id(3), &boundaries, &parent_of), Some(id(2)));
+        assert_eq!(
+            nearest_enclosing_layer(id(3), &boundaries, &parent_of),
+            Some(id(2))
+        );
     }
 
     #[test]
     fn boundary_element_is_its_own_layer() {
         let parent_of = parents(&[(2, 1)]);
         let boundaries = boundary_set(&[2]);
-        assert_eq!(nearest_enclosing_layer(id(2), &boundaries, &parent_of), Some(id(2)));
+        assert_eq!(
+            nearest_enclosing_layer(id(2), &boundaries, &parent_of),
+            Some(id(2))
+        );
     }
 
     #[test]
     fn element_outside_any_layer_has_no_enclosing_layer() {
         let parent_of = parents(&[(2, 1)]);
         let boundaries = boundary_set(&[]); // 境界なし
-        assert_eq!(nearest_enclosing_layer(id(2), &boundaries, &parent_of), None);
+        assert_eq!(
+            nearest_enclosing_layer(id(2), &boundaries, &parent_of),
+            None
+        );
     }
 
     #[test]

@@ -428,11 +428,23 @@ mod tests {
         // 主修飾（Ctrl=Win/Linux または Super/Cmd=macOS）が a/c/x/v をクリップボード／
         // 全選択 intent に変える（ADR-0103）。両修飾・大小文字とも対応。
         for primary in [CTRL, META] {
-            assert_eq!(key_to_edit_intent(&ch("a"), primary), Some(EditIntent::SelectAll));
-            assert_eq!(key_to_edit_intent(&ch("A"), primary), Some(EditIntent::SelectAll));
-            assert_eq!(key_to_edit_intent(&ch("c"), primary), Some(EditIntent::Copy));
+            assert_eq!(
+                key_to_edit_intent(&ch("a"), primary),
+                Some(EditIntent::SelectAll)
+            );
+            assert_eq!(
+                key_to_edit_intent(&ch("A"), primary),
+                Some(EditIntent::SelectAll)
+            );
+            assert_eq!(
+                key_to_edit_intent(&ch("c"), primary),
+                Some(EditIntent::Copy)
+            );
             assert_eq!(key_to_edit_intent(&ch("x"), primary), Some(EditIntent::Cut));
-            assert_eq!(key_to_edit_intent(&ch("v"), primary), Some(EditIntent::Paste));
+            assert_eq!(
+                key_to_edit_intent(&ch("v"), primary),
+                Some(EditIntent::Paste)
+            );
         }
     }
 
@@ -470,7 +482,12 @@ mod tests {
     fn a_bare_arrow_moves_the_caret_through_the_seam() {
         // criterion #2: 矢印が EditIntent seam 経由でキャレットを動かす。
         let (mut tree, input) = focused_input("hi"); // キャレットは末尾 (2)
-        assert!(apply_key_input(&mut tree, &Key::Named(NamedKey::ArrowLeft), None, NONE));
+        assert!(apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::ArrowLeft),
+            None,
+            NONE
+        ));
         assert_eq!(tree.element_caret_byte_index(input), Some(1));
     }
 
@@ -478,8 +495,18 @@ mod tests {
     fn shift_arrow_extends_a_selection_through_the_seam() {
         // criterion #5: Shift で選択拡張。
         let (mut tree, input) = focused_input("hello"); // キャレットは末尾 (5)
-        assert!(apply_key_input(&mut tree, &Key::Named(NamedKey::ArrowLeft), None, SHIFT));
-        assert!(apply_key_input(&mut tree, &Key::Named(NamedKey::ArrowLeft), None, SHIFT));
+        assert!(apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::ArrowLeft),
+            None,
+            SHIFT
+        ));
+        assert!(apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::ArrowLeft),
+            None,
+            SHIFT
+        ));
         assert_eq!(tree.element_text_selection(input), Some((3, 5)));
     }
 
@@ -497,7 +524,12 @@ mod tests {
     fn backspace_deletes_the_grapheme_before_the_caret_through_the_seam() {
         // criterion #4: Backspace で後方削除。
         let (mut tree, input) = focused_input("hello");
-        assert!(apply_key_input(&mut tree, &Key::Named(NamedKey::Backspace), None, NONE));
+        assert!(apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::Backspace),
+            None,
+            NONE
+        ));
         assert_eq!(tree.element_get_text_content(input), "hell");
     }
 
@@ -537,7 +569,11 @@ mod tests {
         // でないが、'b' をフィールドに入れてはならない（text 経路をゲートする）。
         let (mut tree, input) = focused_input("ab");
         assert!(!apply_key_input(&mut tree, &ch("b"), Some("b"), CTRL));
-        assert_eq!(tree.element_get_text_content(input), "ab", "Ctrl+B は何も挿入しない");
+        assert_eq!(
+            tree.element_get_text_content(input),
+            "ab",
+            "Ctrl+B は何も挿入しない"
+        );
     }
 
     #[test]
@@ -547,6 +583,11 @@ mod tests {
         let root = tree.element_create(1, ElementKind::View);
         tree.set_root(root);
         assert!(!apply_key_input(&mut tree, &ch("X"), Some("X"), NONE));
-        assert!(!apply_key_input(&mut tree, &Key::Named(NamedKey::ArrowLeft), None, NONE));
+        assert!(!apply_key_input(
+            &mut tree,
+            &Key::Named(NamedKey::ArrowLeft),
+            None,
+            NONE
+        ));
     }
 }

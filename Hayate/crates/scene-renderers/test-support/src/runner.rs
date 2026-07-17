@@ -1,4 +1,4 @@
-use crate::cases::{CssPixelCase, render_tree_to_scene};
+use crate::cases::{render_tree_to_scene, CssPixelCase};
 use crate::tiny_skia;
 use crate::vello::{self, VelloHarness};
 

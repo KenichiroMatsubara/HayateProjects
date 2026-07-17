@@ -15,11 +15,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(target_arch = "wasm32")]
+use js_sys::Function;
+#[cfg(target_arch = "wasm32")]
 use wasm_bindgen::closure::Closure;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use js_sys::Function;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{
     AddEventListenerOptions, Event, HtmlCanvasElement, MouseEvent, PointerEvent, WheelEvent,
@@ -80,12 +80,7 @@ pub enum PointerInput {
 /// ここでバッキングストア（CSS px × dpr）にスケールすると Core に物理ピクセル座標を
 /// 渡すことになり、HiDPI ディスプレイでヒットテストを外す（クリックが意図の `dpr×` の位置に着く）。
 /// dpr スケールはレンダリング側で `content_scale` により別途適用される（`backend::mod` 参照）。
-pub fn to_layout_coords(
-    client_x: f32,
-    client_y: f32,
-    rect_left: f32,
-    rect_top: f32,
-) -> (f32, f32) {
+pub fn to_layout_coords(client_x: f32, client_y: f32, rect_left: f32, rect_top: f32) -> (f32, f32) {
     (client_x - rect_left, client_y - rect_top)
 }
 
@@ -206,7 +201,10 @@ pub(crate) fn attach_pointer_input(
     }
 
     for (name, make) in [
-        ("pointermove", make_move as fn(f32, f32, PointerKind) -> PointerInput),
+        (
+            "pointermove",
+            make_move as fn(f32, f32, PointerKind) -> PointerInput,
+        ),
         ("pointerup", make_up),
     ] {
         let canvas_for_cb = canvas.clone();
@@ -240,7 +238,8 @@ pub(crate) fn attach_pointer_input(
             pending.borrow_mut().push(PointerInput::Leave);
             wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
-        canvas.add_event_listener_with_callback("pointerleave", closure.as_ref().unchecked_ref())?;
+        canvas
+            .add_event_listener_with_callback("pointerleave", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointerleave", closure));
     }
 
@@ -256,7 +255,8 @@ pub(crate) fn attach_pointer_input(
             pending.borrow_mut().push(PointerInput::Cancel);
             wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
-        canvas.add_event_listener_with_callback("pointercancel", closure.as_ref().unchecked_ref())?;
+        canvas
+            .add_event_listener_with_callback("pointercancel", closure.as_ref().unchecked_ref())?;
         listeners.push(("pointercancel", closure));
     }
 
@@ -350,9 +350,22 @@ mod tests {
     #[test]
     fn coalesce_preserves_arrival_order_of_distinct_inputs() {
         let inputs = vec![
-            PointerInput::Down { x: 10.0, y: 10.0, modifiers: 0, kind: PointerKind::Mouse },
-            PointerInput::Move { x: 20.0, y: 20.0, kind: PointerKind::Mouse },
-            PointerInput::Up { x: 20.0, y: 20.0, kind: PointerKind::Mouse },
+            PointerInput::Down {
+                x: 10.0,
+                y: 10.0,
+                modifiers: 0,
+                kind: PointerKind::Mouse,
+            },
+            PointerInput::Move {
+                x: 20.0,
+                y: 20.0,
+                kind: PointerKind::Mouse,
+            },
+            PointerInput::Up {
+                x: 20.0,
+                y: 20.0,
+                kind: PointerKind::Mouse,
+            },
         ];
         let out = coalesce_pointer_inputs(inputs.clone(), None);
         assert_eq!(out, inputs);
@@ -361,16 +374,36 @@ mod tests {
     #[test]
     fn coalesce_drops_consecutive_sub_pixel_moves() {
         let inputs = vec![
-            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
-            PointerInput::Move { x: 50.4, y: 50.2, kind: PointerKind::Mouse }, // (50,50) の 1px 以内 → 破棄
-            PointerInput::Move { x: 60.0, y: 50.0, kind: PointerKind::Mouse }, // 1px 超 → 残す
+            PointerInput::Move {
+                x: 50.0,
+                y: 50.0,
+                kind: PointerKind::Mouse,
+            },
+            PointerInput::Move {
+                x: 50.4,
+                y: 50.2,
+                kind: PointerKind::Mouse,
+            }, // (50,50) の 1px 以内 → 破棄
+            PointerInput::Move {
+                x: 60.0,
+                y: 50.0,
+                kind: PointerKind::Mouse,
+            }, // 1px 超 → 残す
         ];
         let out = coalesce_pointer_inputs(inputs, None);
         assert_eq!(
             out,
             vec![
-                PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
-                PointerInput::Move { x: 60.0, y: 50.0, kind: PointerKind::Mouse },
+                PointerInput::Move {
+                    x: 50.0,
+                    y: 50.0,
+                    kind: PointerKind::Mouse
+                },
+                PointerInput::Move {
+                    x: 60.0,
+                    y: 50.0,
+                    kind: PointerKind::Mouse
+                },
             ]
         );
     }
@@ -380,16 +413,38 @@ mod tests {
         // ほぼ同一位置の間にある押下は残らねばならない。down/up はコアレッシング
         // アンカーを動かさないが、順序は保つ必要がある。
         let inputs = vec![
-            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
-            PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, kind: PointerKind::Mouse },
-            PointerInput::Move { x: 50.2, y: 50.0, kind: PointerKind::Mouse }, // まだアンカーの 1px 以内 → 破棄
+            PointerInput::Move {
+                x: 50.0,
+                y: 50.0,
+                kind: PointerKind::Mouse,
+            },
+            PointerInput::Down {
+                x: 50.0,
+                y: 50.0,
+                modifiers: 0,
+                kind: PointerKind::Mouse,
+            },
+            PointerInput::Move {
+                x: 50.2,
+                y: 50.0,
+                kind: PointerKind::Mouse,
+            }, // まだアンカーの 1px 以内 → 破棄
         ];
         let out = coalesce_pointer_inputs(inputs, None);
         assert_eq!(
             out,
             vec![
-                PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
-                PointerInput::Down { x: 50.0, y: 50.0, modifiers: 0, kind: PointerKind::Mouse },
+                PointerInput::Move {
+                    x: 50.0,
+                    y: 50.0,
+                    kind: PointerKind::Mouse
+                },
+                PointerInput::Down {
+                    x: 50.0,
+                    y: 50.0,
+                    modifiers: 0,
+                    kind: PointerKind::Mouse
+                },
             ]
         );
     }
@@ -400,17 +455,33 @@ mod tests {
         // リセットするので、コアレッシングアンカーもリセットせねばならない。同座標への
         // 再入移動を通過させて `:hover` を再適用するため。
         let inputs = vec![
-            PointerInput::Move { x: 10.0, y: 10.0, kind: PointerKind::Mouse },
+            PointerInput::Move {
+                x: 10.0,
+                y: 10.0,
+                kind: PointerKind::Mouse,
+            },
             PointerInput::Cancel,
-            PointerInput::Move { x: 10.2, y: 10.0, kind: PointerKind::Mouse }, // (10,10) の 1px 以内だがアンカーリセット → 残す
+            PointerInput::Move {
+                x: 10.2,
+                y: 10.0,
+                kind: PointerKind::Mouse,
+            }, // (10,10) の 1px 以内だがアンカーリセット → 残す
         ];
         let out = coalesce_pointer_inputs(inputs, None);
         assert_eq!(
             out,
             vec![
-                PointerInput::Move { x: 10.0, y: 10.0, kind: PointerKind::Mouse },
+                PointerInput::Move {
+                    x: 10.0,
+                    y: 10.0,
+                    kind: PointerKind::Mouse
+                },
                 PointerInput::Cancel,
-                PointerInput::Move { x: 10.2, y: 10.0, kind: PointerKind::Mouse },
+                PointerInput::Move {
+                    x: 10.2,
+                    y: 10.0,
+                    kind: PointerKind::Mouse
+                },
             ],
         );
     }
@@ -418,7 +489,11 @@ mod tests {
     #[test]
     fn coalesce_uses_seed_to_drop_first_move_across_frame_boundary() {
         // 最初の移動は前回ドレインで適用した位置を繰り返す。
-        let inputs = vec![PointerInput::Move { x: 100.0, y: 100.0, kind: PointerKind::Mouse }];
+        let inputs = vec![PointerInput::Move {
+            x: 100.0,
+            y: 100.0,
+            kind: PointerKind::Mouse,
+        }];
         let out = coalesce_pointer_inputs(inputs, Some((100.0, 100.0)));
         assert!(out.is_empty());
     }
@@ -429,9 +504,17 @@ mod tests {
         // 同座標への再入は破棄してはならない。さもないと re-hover が Core に届かず
         // `:hover` が再適用されない。
         let inputs = vec![
-            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
+            PointerInput::Move {
+                x: 50.0,
+                y: 50.0,
+                kind: PointerKind::Mouse,
+            },
             PointerInput::Leave,
-            PointerInput::Move { x: 50.0, y: 50.0, kind: PointerKind::Mouse },
+            PointerInput::Move {
+                x: 50.0,
+                y: 50.0,
+                kind: PointerKind::Mouse,
+            },
         ];
         let out = coalesce_pointer_inputs(inputs.clone(), None);
         assert_eq!(out, inputs);
@@ -441,15 +524,27 @@ mod tests {
     fn final_anchor_carries_last_move_and_clears_on_leave() {
         // 最新の移動が次回ドレインのアンカーになる。移動以外の入力はならない。
         let moved = vec![
-            PointerInput::Move { x: 10.0, y: 20.0, kind: PointerKind::Mouse },
-            PointerInput::Up { x: 10.0, y: 20.0, kind: PointerKind::Mouse },
+            PointerInput::Move {
+                x: 10.0,
+                y: 20.0,
+                kind: PointerKind::Mouse,
+            },
+            PointerInput::Up {
+                x: 10.0,
+                y: 20.0,
+                kind: PointerKind::Mouse,
+            },
         ];
         assert_eq!(final_anchor(&moved, None), Some((10.0, 20.0)));
 
         // 末尾の leave はアンカーをクリアするので、次フレームの再入移動（同座標でも）が
         // 境界をまたいでコアレッシングされない。
         let left = vec![
-            PointerInput::Move { x: 10.0, y: 20.0, kind: PointerKind::Mouse },
+            PointerInput::Move {
+                x: 10.0,
+                y: 20.0,
+                kind: PointerKind::Mouse,
+            },
             PointerInput::Leave,
         ];
         assert_eq!(final_anchor(&left, None), None);

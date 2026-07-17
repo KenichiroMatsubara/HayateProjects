@@ -56,7 +56,10 @@ fn a_released_fling_keeps_pending_visual_work_until_it_settles() {
         tree.render(t);
         t += 16.0;
         frames += 1;
-        assert!(frames < 2000, "慣性は有限フレームで静止しなければならない（無限に這わない）");
+        assert!(
+            frames < 2000,
+            "慣性は有限フレームで静止しなければならない（無限に這わない）"
+        );
     }
 
     assert!(

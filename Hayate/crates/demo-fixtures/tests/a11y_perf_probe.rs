@@ -66,10 +66,14 @@ fn a11y_perf_probe() {
     // 「変更なし」を即返す。上の full-tree walk / serde 計測との差が、アイドル tick で消える Rust 側
     // コスト。まず初回の Changed を消費し、以降フレームを進めずに poll だけ繰り返す（＝変更なし）。
     let _ = tree.poll_accessibility_update();
-    bench("poll_accessibility_update (unchanged, dirty-gated)", 200, || {
-        let p = tree.poll_accessibility_update();
-        std::hint::black_box(&p);
-    });
+    bench(
+        "poll_accessibility_update (unchanged, dirty-gated)",
+        200,
+        || {
+            let p = tree.poll_accessibility_update();
+            std::hint::black_box(&p);
+        },
+    );
 
     // 参考: レンダラ側のアイドルフレーム（差分追跡が効く経路）との対比。
     let mut ts = 16.0f64;

@@ -1,6 +1,4 @@
-use hayate_core::{
-    Color, Dimension, DisplayValue, ElementKind, ElementTree, StyleProp,
-};
+use hayate_core::{Color, Dimension, DisplayValue, ElementKind, ElementTree, StyleProp};
 
 #[test]
 fn grid_template_columns_fr_splits_space_evenly() {
@@ -33,10 +31,26 @@ fn grid_template_columns_fr_splits_space_evenly() {
 
     let left_rect = tree.element_layout_rect(left).expect("left child layout");
     let right_rect = tree.element_layout_rect(right).expect("right child layout");
-    assert!((left_rect.0 - 0.0).abs() < 1.0, "left child x={}", left_rect.0);
-    assert!((left_rect.2 - 50.0).abs() < 1.0, "left child width={}", left_rect.2);
-    assert!((right_rect.0 - 50.0).abs() < 1.0, "right child x={}", right_rect.0);
-    assert!((right_rect.2 - 50.0).abs() < 1.0, "right child width={}", right_rect.2);
+    assert!(
+        (left_rect.0 - 0.0).abs() < 1.0,
+        "left child x={}",
+        left_rect.0
+    );
+    assert!(
+        (left_rect.2 - 50.0).abs() < 1.0,
+        "left child width={}",
+        left_rect.2
+    );
+    assert!(
+        (right_rect.0 - 50.0).abs() < 1.0,
+        "right child x={}",
+        right_rect.0
+    );
+    assert!(
+        (right_rect.2 - 50.0).abs() < 1.0,
+        "right child width={}",
+        right_rect.2
+    );
 }
 
 #[test]

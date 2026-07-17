@@ -4,29 +4,31 @@ use std::sync::Arc;
 use crate::color::Color;
 use crate::element::document_runtime::{self, DocumentRuntime, EventDelivery, ListenerId};
 use crate::element::edit_state::EditState;
-use crate::element::engine::ElementEngine;
 use crate::element::effective_visual::{self, child_inherited_context};
-use crate::element::viewport_resize;
+use crate::element::engine::ElementEngine;
+use crate::element::event_spec::DocumentEventKind;
 use crate::element::font_fetcher::FontFetcher;
 use crate::element::ime_bridge::{CharacterBounds, ImeBridge, ImePresentation};
-use crate::element::event_spec::DocumentEventKind;
+use crate::element::viewport_resize;
 
-pub use crate::element::event_spec::Event;
 use crate::element::compositing;
+pub use crate::element::event_spec::Event;
 use crate::element::id::ElementId;
-use crate::element::kind::ElementKind;
 use crate::element::inline_text::{self, ifc_root};
+use crate::element::kind::ElementKind;
 use crate::element::layout_pass::LayoutPass;
-use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::pseudo_state::{
     self, diff_hover_sets, hover_set_for_hit, InteractionSnapshot, PseudoState, PseudoStyles,
 };
 use crate::element::scene_build;
-use crate::element::scene_lowering::{collect_lowering_dirty, LoweringDirtySnapshot, SceneLowering};
+use crate::element::scene_lowering::{
+    collect_lowering_dirty, LoweringDirtySnapshot, SceneLowering,
+};
 use crate::element::style::{
     BorderStyleValue, CursorValue, FontStyleValue, OverflowValue, Shadow, StyleProp, StylePropKind,
     TextDecorationValue, TextOverflowValue, TransitionTimingValue, ViewportCondition,
 };
+use crate::element::taffy_projection::{TaffyProjection, TraversalStep};
 use crate::element::text;
 use crate::element::visual_invalidation::{
     self, Change, DirtyKind, DirtySink, ElementContext, VisualInvalidationReach,
@@ -299,7 +301,8 @@ impl ElementTree {
             interaction: crate::element::interaction::Interaction::default(),
             runtime: DocumentRuntime::new(),
             clipboard: None,
-            selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(),
+            selection_chrome_style: crate::element::selection_chrome::SelectionChromeStyle::default(
+            ),
             chrome_tuning: crate::element::chrome_tuning::ChromeTuning::default(),
             toolbar_label_cache: HashMap::new(),
             toolbar_overflow_label: None,
@@ -424,11 +427,13 @@ impl ElementTree {
         // ここでは返ってきた集合から dirty を立てるだけ。shape 変更は加えて Taffy
         // projection を仕込み、`commit_frame` が再シェイプするようにする。
         let dirty = viewport_resize::resolve_resize(
-            self.elements.iter().map(|(id, el)| viewport_resize::ElementResizeInput {
-                id: *id,
-                base: &el.visual,
-                variants: &el.viewport_variants,
-            }),
+            self.elements
+                .iter()
+                .map(|(id, el)| viewport_resize::ElementResizeInput {
+                    id: *id,
+                    base: &el.visual,
+                    variants: &el.viewport_variants,
+                }),
             old_viewport,
             new_viewport,
         );
@@ -607,10 +612,7 @@ impl ElementTree {
 
     /// TextInput 要素の編集可能テキスト内容を置き換える。
     pub fn element_set_text_content(&mut self, id: ElementId, text: &str) {
-        let changed = if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
+        let changed = if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut())
         {
             let before = edit.display_text();
             edit.set(text);
@@ -630,10 +632,7 @@ impl ElementTree {
     /// かつ IME 組成中（preedit あり）でないときだけ**適用する。毎キーストロークの echo は
     /// この差分・組成中ガードで no-op に倒れ、preedit / cursor を壊さない。適用したら `true`。
     pub fn element_set_text_content_if_idle(&mut self, id: ElementId, text: &str) -> bool {
-        let applied = if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
+        let applied = if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut())
         {
             // IME 組成中は書き戻さない（preedit / cursor を保護する）。
             if edit.preedit.is_some() {
@@ -656,10 +655,7 @@ impl ElementTree {
 
     /// TextInput の確定済み内容にテキストを追加する。
     pub fn element_append_text_content(&mut self, id: ElementId, text: &str) {
-        let changed = if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
+        let changed = if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut())
         {
             let before = edit.display_text();
             edit.append(text);
@@ -674,11 +670,7 @@ impl ElementTree {
 
     /// TextInput の確定済み内容から末尾の Unicode スカラー値を 1 つ削除する。
     pub fn element_backspace(&mut self, id: ElementId) {
-        if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
-        {
+        if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut()) {
             edit.backspace();
         }
     }
@@ -738,12 +730,14 @@ impl ElementTree {
     pub fn drive_ime(&self, ime: &mut impl ImeBridge) {
         let presentation = match self.focused_text_input() {
             Some(id) => {
-                let bounds = self.element_character_bounds(id).unwrap_or(CharacterBounds {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                });
+                let bounds = self
+                    .element_character_bounds(id)
+                    .unwrap_or(CharacterBounds {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                    });
                 ImePresentation::Shown { bounds }
             }
             None => ImePresentation::Hidden,
@@ -905,22 +899,14 @@ impl ElementTree {
     /// オフセット）で設定する。ソフトキーボード/IME の絶対状態（ADR-0094）から
     /// 報告される selection をコアへ反映し、preedit/確定をキャレット位置に置くために使う。
     pub fn element_set_selection(&mut self, id: ElementId, anchor: usize, focus: usize) {
-        if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
-        {
+        if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut()) {
             edit.set_selection(anchor, focus);
         }
     }
 
     /// TextInput の IME preedit（変換中・未確定）を設定する。
     pub fn element_set_preedit(&mut self, id: ElementId, preedit: &str) {
-        if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
-        {
+        if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut()) {
             edit.set_preedit(preedit);
         }
     }
@@ -934,22 +920,14 @@ impl ElementTree {
         preedit: &str,
         clauses: Vec<crate::element::edit_state::CompositionClause>,
     ) {
-        if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
-        {
+        if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut()) {
             edit.set_preedit_with_clauses(preedit, clauses);
         }
     }
 
     /// 現在の preedit テキストを text_content へ確定し、preedit をクリアする。
     pub fn element_commit_preedit(&mut self, id: ElementId) {
-        if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
-        {
+        if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut()) {
             edit.commit_preedit();
         }
     }
@@ -958,11 +936,7 @@ impl ElementTree {
     /// 置換）。増分コマンド経路（`ImeAction::CommitText`、ADR-0117）の適用先で、
     /// web 経路の `on_composition_end` と同じ `EditState::finish_composition` を駆動する。
     pub fn element_finish_composition(&mut self, id: ElementId, text: &str) {
-        if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
-        {
+        if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut()) {
             edit.finish_composition(text);
         }
     }
@@ -972,10 +946,7 @@ impl ElementTree {
     /// 増分コマンド経路（`ImeAction::DeleteBackward`、ADR-0117）の適用先。
     pub fn element_delete_backward(&mut self, id: ElementId) {
         use crate::element::edit_state::{Direction, EditIntent, Granularity};
-        let edited = if let Some(edit) = self
-            .elements
-            .get_mut(&id)
-            .and_then(|el| el.edit.as_mut())
+        let edited = if let Some(edit) = self.elements.get_mut(&id).and_then(|el| el.edit.as_mut())
         {
             edit.apply(EditIntent::Delete {
                 granularity: Granularity::Grapheme,
@@ -1054,7 +1025,11 @@ impl ElementTree {
     pub fn element_composition_underlines(
         &self,
         id: ElementId,
-    ) -> Vec<(usize, usize, crate::element::edit_state::CompositionUnderline)> {
+    ) -> Vec<(
+        usize,
+        usize,
+        crate::element::edit_state::CompositionUnderline,
+    )> {
         self.elements
             .get(&id)
             .and_then(|el| el.edit.as_ref())
@@ -1120,7 +1095,8 @@ impl ElementTree {
     /// （`advance_touch_scroll_indicators`）計算されるので lowering は独自クロックを
     /// 持たない。
     pub(crate) fn touch_scroll_indicator_opacity(&self, id: ElementId) -> f32 {
-        self.interaction.touch_scroll_indicators
+        self.interaction
+            .touch_scroll_indicators
             .get(&id)
             .map_or(0.0, |i| i.fade)
     }
@@ -1337,11 +1313,7 @@ impl ElementTree {
     /// スタイル変更中の全非レイアウトプロパティの無効化を、要素のコンテキストに
     /// 照らしてマージする（*何を*）。空/全レイアウトのリストは scene のみの自己
     /// 再描画にフォールバックする。
-    fn classify_style_props(
-        &self,
-        id: ElementId,
-        props: &[StyleProp],
-    ) -> Change {
+    fn classify_style_props(&self, id: ElementId, props: &[StyleProp]) -> Change {
         let ctx = self.element_context(id);
         props
             .iter()
@@ -1536,7 +1508,10 @@ impl ElementTree {
 
     /// ポインタ下の最深ヒットから CSS `:hover` 集合を更新する。イベントディスパッチ
     /// 用に `(entered, left)` を返す。
-    pub fn update_pointer_hover(&mut self, deepest_hit: Option<ElementId>) -> (Vec<ElementId>, Vec<ElementId>) {
+    pub fn update_pointer_hover(
+        &mut self,
+        deepest_hit: Option<ElementId>,
+    ) -> (Vec<ElementId>, Vec<ElementId>) {
         let next = match deepest_hit {
             Some(hit) => hover_set_for_hit(&self.elements, hit),
             None => HashSet::new(),
@@ -1576,7 +1551,12 @@ impl ElementTree {
         }
     }
 
-    pub fn element_set_pseudo_style(&mut self, id: ElementId, state: PseudoState, props: &[StyleProp]) {
+    pub fn element_set_pseudo_style(
+        &mut self,
+        id: ElementId,
+        state: PseudoState,
+        props: &[StyleProp],
+    ) {
         let el = match self.elements.get_mut(&id) {
             Some(e) => e,
             None => return,
@@ -1735,7 +1715,13 @@ impl ElementTree {
             .chain(dirty.z_index_reorder_parents.iter().copied())
             .chain(self.engine.transform_dirty.iter().copied())
             .collect();
-        scene_build::update(self, &mut scene_cache, &mut scene_lowering, dirty, timestamp_ms);
+        scene_build::update(
+            self,
+            &mut scene_cache,
+            &mut scene_lowering,
+            dirty,
+            timestamp_ms,
+        );
         // トランジションは lowering seam で進む。まだ補間中の要素は visual-dirty の
         // まま保ち、次フレームで再 lowering して進める。最後のトラックが本フレームで
         // 落ち着くと要素は再マークされず、フレームループは静止する（ADR-0086/0093）。
@@ -1750,10 +1736,16 @@ impl ElementTree {
         self.patch_transform_groups();
         #[cfg(any(debug_assertions, feature = "scene-validation"))]
         {
-            let changed_roots = validation_elements
-                .into_iter()
-                .filter_map(|id| self.scene_lowering.anchors.get(&id).map(|entry| entry.anchor_id));
-            match self.scene_validator.validate(&self.scene_cache, changed_roots) {
+            let changed_roots = validation_elements.into_iter().filter_map(|id| {
+                self.scene_lowering
+                    .anchors
+                    .get(&id)
+                    .map(|entry| entry.anchor_id)
+            });
+            match self
+                .scene_validator
+                .validate(&self.scene_cache, changed_roots)
+            {
                 Ok(report) => self.last_scene_validation_visited = report.visited_nodes(),
                 Err(error) => {
                     self.last_scene_validation_visited = 0;
@@ -1783,8 +1775,7 @@ impl ElementTree {
     /// 直近に commit 済みのフレームから、Raster スレッド等へ owned で渡せる scroll compositor
     /// 入力を作る。`commit_rendered_frame` と Android の handoff が同じ Core 正本を使う。
     pub fn frame_scroll_compositor_inputs(&self) -> Vec<crate::ScrollCompositorInput> {
-        self
-            .frame_layers
+        self.frame_layers
             .iter()
             .copied()
             .filter(|&layer| self.element_kind(layer) == Some(ElementKind::ScrollView))
@@ -1798,6 +1789,7 @@ impl ElementTree {
                     viewport_height,
                     scroll_offset,
                     max_scroll_offset,
+                    scroll_affine: self.element_scroll_group_affine(layer),
                     content_dirty: self.frame_layer_dirty.contains(&layer),
                 })
             })
@@ -1902,8 +1894,8 @@ impl ElementTree {
         let vx = if max_x > 0.0 { vx } else { 0.0 };
         let vy = if max_y > 0.0 { vy } else { 0.0 };
         let (ox, oy) = self.element_get_scroll_offset(sv);
-        let out_of_bounds = (max_x > 0.0 && (ox < 0.0 || ox > max_x))
-            || (max_y > 0.0 && (oy < 0.0 || oy > max_y));
+        let out_of_bounds =
+            (max_x > 0.0 && (ox < 0.0 || ox > max_x)) || (max_y > 0.0 && (oy < 0.0 || oy > max_y));
         let min_v = self.scroll_tuning.min_velocity;
         let has_fling = vx.abs() >= min_v || vy.abs() >= min_v;
         self.interaction.scroll_momentum = (has_fling || out_of_bounds).then_some((sv, (vx, vy)));
@@ -1970,7 +1962,10 @@ impl ElementTree {
     /// commit でのみ `Event::LayoutResize` を配送する（#725 / ADR-0143）。サイズ
     /// 非変化の commit では発火しない。リスナ未登録の要素は追跡せず発火もしない。
     fn emit_layout_resize_events(&mut self) {
-        for id in self.runtime.elements_listening(DocumentEventKind::LayoutResize) {
+        for id in self
+            .runtime
+            .elements_listening(DocumentEventKind::LayoutResize)
+        {
             let Some((_, _, width, height)) = self.layout.geometry(id) else {
                 continue; // まだレイアウトされていない要素は確定を待つ
             };
@@ -2125,11 +2120,8 @@ impl ElementTree {
         let content_x = ex + box_layout.border.left + box_layout.padding.left;
         let content_y = ey + box_layout.border.top + box_layout.padding.top;
         use parley::{Affinity, Cursor};
-        let cursor = Cursor::from_byte_index(
-            &cl.layout,
-            edit.cursor_byte_index,
-            Affinity::Upstream,
-        );
+        let cursor =
+            Cursor::from_byte_index(&cl.layout, edit.cursor_byte_index, Affinity::Upstream);
         let bbox = cursor.geometry(&cl.layout, 1.5_f32);
         Some(CharacterBounds {
             x: content_x + bbox.x0 as f32,
@@ -2281,7 +2273,6 @@ impl ElementTree {
     fn mark_child_detachment_dirty(&mut self, parent: ElementId, child: ElementId) {
         self.mark_child_attachment_dirty(parent, child);
     }
-
 }
 
 impl Default for ElementTree {
@@ -2307,12 +2298,7 @@ fn walk_resolved(
         None => return,
     };
     let inherited_base = effective_visual::apply_text_inheritance(&inherited, &el.visual);
-    let child_inherited = child_inherited_context(
-        &inherited,
-        el.kind,
-        &inherited_base,
-        &el.visual,
-    );
+    let child_inherited = child_inherited_context(&inherited, el.kind, &inherited_base, &el.visual);
     let taffy_node = match taffy_node {
         Some(n) => n,
         None => {
@@ -2398,7 +2384,12 @@ fn walk_resolved(
 /// 最深ヒット要素を、照会点を*その要素の*レイアウト座標空間で表したものとともに
 /// 返す。すなわち、降りてきた各 ScrollView の `scroll_offset` を累積してずらした
 /// 画面上の点。ローカル点が要る呼び出し側（インラインテキスト解決）はタプルから読む。
-fn hit_test_walk(tree: &ElementTree, id: ElementId, x: f32, y: f32) -> Option<(ElementId, f32, f32)> {
+fn hit_test_walk(
+    tree: &ElementTree,
+    id: ElementId,
+    x: f32,
+    y: f32,
+) -> Option<(ElementId, f32, f32)> {
     let (ex, ey, ew, eh) = tree.layout.geometry(id)?;
     if x < ex || y < ey || x >= ex + ew || y >= ey + eh {
         return None;
@@ -2499,11 +2490,7 @@ pub(crate) fn apply_visual(visual: &mut Visual, prop: &StyleProp, text_dirty: &m
             visual.default_font_weight = Some(v.clamp(1.0, 1000.0));
         }
         StyleProp::DefaultFontFamily(f) => {
-            visual.default_font_family = if f.is_empty() {
-                None
-            } else {
-                Some(f.clone())
-            };
+            visual.default_font_family = if f.is_empty() { None } else { Some(f.clone()) };
         }
         StyleProp::ZIndex(z) => visual.z_index = *z,
         StyleProp::TransitionDuration(v) => visual.transition_duration = v.max(0.0),
@@ -2655,32 +2642,31 @@ impl ElementTree {
             }
         }
         let chrome_only = self.engine.drain_scroll_chrome_only();
-        (self.frame_layer_dirty, self.frame_layer_chrome_dirty) = if dirty.full_rebuild
-            || !self.scene_lowering.built
-        {
-            // 全面（再）構築＝全レイヤの内容が作り直される。cold cache と同じ扱いで全レイヤ dirty
-            // （content dirty は chrome 面の再 raster も含意するので chrome dirty は空でよい）。
-            (boundaries.clone(), HashSet::new())
-        } else {
-            // scroll フレームだけが理由の ScrollView は chrome dirty へ分類（#634）。content band
-            // texture のピクセルは不変＝band は composite-only、再 raster はスクロールバー面だけ。
-            let demoted = prev_boundaries.difference(&boundaries).copied();
-            let marked = dirty
-                .elements
-                .keys()
-                .filter(|e| !chrome_only.contains(e))
-                .copied()
-                .chain(dirty.z_index_reorder_parents.iter().copied())
-                .chain(demoted);
-            let content = compositing::derive_layer_dirty(marked, &boundaries, |id| {
-                self.elements.get(&id).and_then(|e| e.parent)
-            });
-            let chrome = chrome_only
-                .into_iter()
-                .filter(|e| boundaries.contains(e) && !content.contains(e))
-                .collect();
-            (content, chrome)
-        };
+        (self.frame_layer_dirty, self.frame_layer_chrome_dirty) =
+            if dirty.full_rebuild || !self.scene_lowering.built {
+                // 全面（再）構築＝全レイヤの内容が作り直される。cold cache と同じ扱いで全レイヤ dirty
+                // （content dirty は chrome 面の再 raster も含意するので chrome dirty は空でよい）。
+                (boundaries.clone(), HashSet::new())
+            } else {
+                // scroll フレームだけが理由の ScrollView は chrome dirty へ分類（#634）。content band
+                // texture のピクセルは不変＝band は composite-only、再 raster はスクロールバー面だけ。
+                let demoted = prev_boundaries.difference(&boundaries).copied();
+                let marked = dirty
+                    .elements
+                    .keys()
+                    .filter(|e| !chrome_only.contains(e))
+                    .copied()
+                    .chain(dirty.z_index_reorder_parents.iter().copied())
+                    .chain(demoted);
+                let content = compositing::derive_layer_dirty(marked, &boundaries, |id| {
+                    self.elements.get(&id).and_then(|e| e.parent)
+                });
+                let chrome = chrome_only
+                    .into_iter()
+                    .filter(|e| boundaries.contains(e) && !content.contains(e))
+                    .collect();
+                (content, chrome)
+            };
         // transform 係数だけが変わったレイヤ（#633）。内容は不変＝再 raster 不要で、合成時の
         // quad transform 更新だけが要る。per-layer compositor を持たない backend（#632 の単一
         // root 経路）は content ∪ transform を保守的に raster トリガとして扱う。

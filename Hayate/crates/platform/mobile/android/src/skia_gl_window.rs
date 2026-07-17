@@ -24,9 +24,7 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
 
 use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
-use hayate_layer_compositor::{
-    scroll_layer_geometry_from_inputs, tunables, GpuBudget,
-};
+use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
 use hayate_scene_renderer_skia::SkiaLayerPresenter;
 use ndk::native_window::NativeWindow;
 use skia_safe::gpu;
@@ -136,7 +134,9 @@ fn c_str_or_unknown(ptr: *const c_char) -> String {
         return "?".to_string();
     }
     // SAFETY: EGL/GL のクエリ文字列は静的な nul 終端文字列。
-    unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 // ── EGL ハンドル束（display / context / ANativeWindow 結線 surface） ─────────────────────
@@ -289,11 +289,18 @@ pub(crate) fn init_skia_gl_surface(
         ];
         let mut config: EGLConfig = ptr::null_mut();
         let mut num_config: EGLint = 0;
-        if eglChooseConfig(display, config_attribs.as_ptr(), &mut config, 1, &mut num_config)
-            == EGL_FALSE
+        if eglChooseConfig(
+            display,
+            config_attribs.as_ptr(),
+            &mut config,
+            1,
+            &mut num_config,
+        ) == EGL_FALSE
             || num_config < 1
         {
-            return Err(egl_err("eglChooseConfig (no RGBA8888+stencil8 window config)"));
+            return Err(egl_err(
+                "eglChooseConfig (no RGBA8888+stencil8 window config)",
+            ));
         }
         let mut stencil_bits: EGLint = 0;
         if eglGetConfigAttrib(display, config, EGL_STENCIL_SIZE, &mut stencil_bits) == EGL_FALSE {
@@ -320,7 +327,12 @@ pub(crate) fn init_skia_gl_surface(
             return Err(egl_err("eglCreateWindowSurface"));
         }
 
-        let egl = EglHandles { display, context, surface, stencil_bits };
+        let egl = EglHandles {
+            display,
+            context,
+            surface,
+            stencil_bits,
+        };
 
         // 観測（issue #803 受け入れ条件）: EGL/GPU 情報を logcat へ。GL 文字列のクエリには
         // current なコンテキストが要るため、ここで一時 bind して読み、unbind して返す
@@ -392,7 +404,10 @@ impl SkiaGlSurface {
                 }
             }
         }
-        let ganesh = self.ganesh.as_mut().expect("ganesh context was just created");
+        let ganesh = self
+            .ganesh
+            .as_mut()
+            .expect("ganesh context was just created");
 
         // ANativeWindow の実サイズに追随する（resize は EGLSurface が追いかける）。
         let (surface_w, surface_h) = self.egl.surface_size()?;

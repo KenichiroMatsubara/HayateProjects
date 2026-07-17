@@ -84,9 +84,15 @@ mod tests {
         let mut t = FontFetchTracker::new();
         assert!(t.should_request("Noto Sans JP"));
         t.mark_requested("Noto Sans JP");
-        assert!(!t.should_request("Noto Sans JP"), "in-flight suppresses re-request");
+        assert!(
+            !t.should_request("Noto Sans JP"),
+            "in-flight suppresses re-request"
+        );
         t.mark_loaded("Noto Sans JP");
-        assert!(t.should_request("Noto Sans JP"), "a loaded family can be requested afresh");
+        assert!(
+            t.should_request("Noto Sans JP"),
+            "a loaded family can be requested afresh"
+        );
     }
 
     #[test]
@@ -95,10 +101,16 @@ mod tests {
         for _ in 0..MAX_FETCH_ATTEMPTS - 1 {
             t.mark_requested("Noto Sans JP");
             assert_eq!(t.mark_failed("Noto Sans JP"), FailureOutcome::WillRetry);
-            assert!(t.should_request("Noto Sans JP"), "a retryable failure reopens the request");
+            assert!(
+                t.should_request("Noto Sans JP"),
+                "a retryable failure reopens the request"
+            );
         }
         t.mark_requested("Noto Sans JP");
         assert_eq!(t.mark_failed("Noto Sans JP"), FailureOutcome::GaveUp);
-        assert!(!t.should_request("Noto Sans JP"), "an exhausted family is never requested again");
+        assert!(
+            !t.should_request("Noto Sans JP"),
+            "an exhausted family is never requested again"
+        );
     }
 }

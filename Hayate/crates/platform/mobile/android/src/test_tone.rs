@@ -119,7 +119,11 @@ mod tests {
 
         play_test_tone(&mut out, format, duration_ms);
 
-        assert_eq!(out.opened, Some(format), "must open the stream with the format");
+        assert_eq!(
+            out.opened,
+            Some(format),
+            "must open the stream with the format"
+        );
         let expected_buffers = buffers_for_duration(format, duration_ms);
         assert_eq!(
             out.submitted.len(),
@@ -185,7 +189,10 @@ mod tests {
         let buffer = tone.fill_buffer(format);
         // モノのトーンを全チャンネルへ複製する（ステレオでも位相差を持たせない）。
         for frame in buffer.chunks_exact(format.channel_count as usize) {
-            assert_eq!(frame[0], frame[1], "stereo channels must carry one mono tone");
+            assert_eq!(
+                frame[0], frame[1],
+                "stereo channels must carry one mono tone"
+            );
         }
     }
 
@@ -196,7 +203,8 @@ mod tests {
         assert_eq!(buffers_for_duration(format, 300), 15);
         // ちょうど割り切れる場合は端数バッファを足さない。
         // 1024 frames @48kHz ≈ 21.333ms。2 バッファ分ぴったり = 2048 frames。
-        let exact_ms = (2 * format.buffer_frames as u64 * 1000 / format.sample_rate_hz as u64) as u32;
+        let exact_ms =
+            (2 * format.buffer_frames as u64 * 1000 / format.sample_rate_hz as u64) as u32;
         assert_eq!(buffers_for_duration(format, exact_ms), 2);
         // 0ms は鳴らさない。
         assert_eq!(buffers_for_duration(format, 0), 0);

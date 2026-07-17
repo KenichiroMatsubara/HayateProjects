@@ -32,22 +32,20 @@ use android_activity::{AndroidApp, MainEvent, PollEvent};
 use hayate_core::{ElementId, ElementTree};
 
 use crate::app::{frame_handoff, process_touch_input, sync_ime, RasterHandle};
-use crate::touch_scroll::TouchScrollState;
-use hayate_layer_compositor::RasterCommand;
 use crate::bundle_source;
+use crate::demo_manifest;
+use crate::dev_server_target;
 use crate::device_log::{self, DeviceLog, KotlinLogPort};
 use crate::frame_schedule::OnDemandFrameLoop;
-use crate::dev_server_target;
-use crate::demo_manifest;
 use crate::hermes_bridge::{make_bridge, new_hermes_app, HermesApp};
+use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
+use crate::surface_lifecycle::{window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState};
 use crate::torimi_reload::{
     boot_runtime, subscribe_reload, BootError, ReloadSocket, SubscribeReloadOptions,
 };
-use crate::reload_socket::{connect_reload_ws, ReloadWsSocket};
+use crate::touch_scroll::TouchScrollState;
 use hayate_core::element::ime_reconcile::TextInputState;
-use crate::surface_lifecycle::{
-    window_dimensions, SurfaceLifecycleAction, SurfaceLifecycleState,
-};
+use hayate_layer_compositor::RasterCommand;
 
 /// 1 boot 分の Hermes ランタイムと、それと共有する ElementTree。full reload では丸ごと作り直して
 /// state を捨てる（CONTEXT.md「Reload」）。scroll-view 上のタッチドラッグ→スクロール
@@ -83,9 +81,9 @@ fn report_boot_error(error: &BootError) -> String {
             "Torimi: protocol version 不一致のため mount しません — {}（host v{}, bundle {:?}）",
             mismatch.message, mismatch.host_version, mismatch.bundle_version,
         ),
-        BootError::Fetch(err) => format!(
-            "Torimi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}"
-        ),
+        BootError::Fetch(err) => {
+            format!("Torimi: dev-server からのバンドル取得に失敗（mount しません）: {err:?}")
+        }
     };
     log::error!("{message}");
     message
@@ -121,7 +119,8 @@ pub(crate) fn run(app: AndroidApp) {
         demo_manifest::BootPlan::Direct(_) => device_log::BundleOrigin::DevServer,
         demo_manifest::BootPlan::ManifestAutoload(_) => device_log::BundleOrigin::DemoEndpoint,
     };
-    let (target, autoload_error): (dev_server_target::DevServerTarget, Option<String>) = match plan {
+    let (target, autoload_error): (dev_server_target::DevServerTarget, Option<String>) = match plan
+    {
         demo_manifest::BootPlan::Direct(t) => (t, None),
         demo_manifest::BootPlan::ManifestAutoload(endpoint) => {
             match demo_manifest::first_boot_target_fetched(&endpoint) {
@@ -161,8 +160,10 @@ pub(crate) fn run(app: AndroidApp) {
             |bundle: &str| {
                 let tree: Rc<RefCell<ElementTree>> = Rc::new(RefCell::new(ElementTree::new()));
                 // reload を跨ぐ Device Log シームは同じ Rc を共有する（seq 連番・Device ID 継続）。
-                let hermes =
-                    new_hermes_app(make_bridge(tree.clone(), Rc::clone(&device_log_for_boot)), bundle);
+                let hermes = new_hermes_app(
+                    make_bridge(tree.clone(), Rc::clone(&device_log_for_boot)),
+                    bundle,
+                );
                 Runtime {
                     hermes,
                     tree,
@@ -179,9 +180,11 @@ pub(crate) fn run(app: AndroidApp) {
     let mut current: Option<Runtime> = if let Some(message) = autoload_error {
         // Demo Endpoint 経路の manifest 失敗。host イベントとして合流させる（送信は Demo Endpoint
         // 経由なので実際には出ないが、合流点を一様にして扱いを分岐させない・#789）。
-        device_log
-            .borrow_mut()
-            .record_host(device_log::LogLevel::Error, message.clone(), now_epoch_ms());
+        device_log.borrow_mut().record_host(
+            device_log::LogLevel::Error,
+            message.clone(),
+            now_epoch_ms(),
+        );
         crate::error_overlay::show_error(&message);
         None
     } else {
@@ -301,8 +304,8 @@ pub(crate) fn run(app: AndroidApp) {
                         if let Some(window) = app.native_window() {
                             let scale = crate::surface_lifecycle::content_scale(&app);
                             let (w, h) = window_dimensions(window.width(), window.height());
-                            let (vw, vh) =
-                                crate::app::effective_insets(&app, w, h).layout_viewport(w, h, scale);
+                            let (vw, vh) = crate::app::effective_insets(&app, w, h)
+                                .layout_viewport(w, h, scale);
                             last_viewport = Some((vw, vh));
                             if let Some(runtime) = current.as_ref() {
                                 let mut tree = runtime.tree.borrow_mut();

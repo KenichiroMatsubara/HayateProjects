@@ -213,7 +213,10 @@ impl SelectionHandles {
             dx * dx + dy * dy
         };
         let reach = HANDLE_HIT_RADIUS * HANDLE_HIT_RADIUS;
-        let candidates = [(d2(&self.start), self.start.end), (d2(&self.end), self.end.end)];
+        let candidates = [
+            (d2(&self.start), self.start.end),
+            (d2(&self.end), self.end.end),
+        ];
         candidates
             .into_iter()
             .filter(|&(dist, _)| dist <= reach)
@@ -343,7 +346,12 @@ fn button_width(action: ToolbarAction, pad_x: f32) -> f32 {
 }
 
 fn rect(x: f32, y: f32, width: f32, height: f32) -> ToolbarRect {
-    ToolbarRect { x, y, width, height }
+    ToolbarRect {
+        x,
+        y,
+        width,
+        height,
+    }
 }
 
 /// `width` のバーを選択上に中央寄せし、`viewport` 幅内へ水平クランプした左 x。
@@ -512,7 +520,10 @@ mod tests {
         )
         .expect("non-empty actions produce a toolbar");
         assert_eq!(tb.actions(), actions.to_vec());
-        assert!(tb.overflow.is_none(), "everything fits, so no overflow menu");
+        assert!(
+            tb.overflow.is_none(),
+            "everything fits, so no overflow menu"
+        );
         // 各ボタンは前のボタンのすぐ右に並び、重ならない。
         let a = tb.buttons[0].bounds;
         let b = tb.buttons[1].bounds;
@@ -560,7 +571,12 @@ mod tests {
         // 右端付近の選択: バーは viewport をはみ出してはならない。
         let tb = layout(
             SelectionChromeStyle::Material,
-            &[ToolbarAction::Cut, ToolbarAction::Copy, ToolbarAction::Paste, ToolbarAction::SelectAll],
+            &[
+                ToolbarAction::Cut,
+                ToolbarAction::Copy,
+                ToolbarAction::Paste,
+                ToolbarAction::SelectAll,
+            ],
             sel(390.0, 80.0, 8.0, 20.0),
             (400.0, 200.0),
             metrics(),
@@ -593,17 +609,15 @@ mod tests {
 
     #[test]
     fn empty_actions_produce_no_toolbar() {
-        assert!(
-            layout(
-                SelectionChromeStyle::Material,
-                &[],
-                sel(0.0, 0.0, 0.0, 0.0),
-                (400.0, 200.0),
-                metrics(),
-                false,
-            )
-            .is_none()
-        );
+        assert!(layout(
+            SelectionChromeStyle::Material,
+            &[],
+            sel(0.0, 0.0, 0.0, 0.0),
+            (400.0, 200.0),
+            metrics(),
+            false,
+        )
+        .is_none());
     }
 
     /// オーバーフローを強制する、全アクションが収まらない狭い viewport を組む。
@@ -615,7 +629,10 @@ mod tests {
             ToolbarAction::SelectAll,
         ];
         let m = metrics();
-        let total: f32 = actions.iter().map(|&a| button_width(a, m.button_pad_x)).sum();
+        let total: f32 = actions
+            .iter()
+            .map(|&a| button_width(a, m.button_pad_x))
+            .sum();
         // 全ボタン幅の半分しか無い viewport にして必ず畳ませる。
         let viewport_w = total / 2.0;
         layout(
@@ -637,8 +654,11 @@ mod tests {
             ToolbarAction::Paste,
             ToolbarAction::SelectAll,
         ];
-        let viewport_w: f32 =
-            actions.iter().map(|&a| button_width(a, metrics().button_pad_x)).sum::<f32>() / 2.0;
+        let viewport_w: f32 = actions
+            .iter()
+            .map(|&a| button_width(a, metrics().button_pad_x))
+            .sum::<f32>()
+            / 2.0;
         let tb = overflowing_toolbar(false);
         let overflow = tb.overflow.as_ref().expect("a narrow bar overflows");
         // バーは viewport をはみ出さない（畳んだので水平クランプではなく ⋮ に収まる）。
@@ -656,7 +676,10 @@ mod tests {
             ],
         );
         // 末尾のアクションが畳まれる（先頭から詰めるので Select All は副メニュー側）。
-        assert_eq!(overflow.items.last().unwrap().action, ToolbarAction::SelectAll);
+        assert_eq!(
+            overflow.items.last().unwrap().action,
+            ToolbarAction::SelectAll
+        );
     }
 
     #[test]
@@ -734,4 +757,3 @@ mod tests {
         assert_eq!(h.handle_at(45.0, 400.0), None);
     }
 }
-

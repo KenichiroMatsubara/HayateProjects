@@ -58,6 +58,10 @@ mod tests {
         let rgba = [0x00, 0x00, 0x00, 0xff];
         let mut out = [0u32; 1];
         copy_rgba_to_xrgb(&rgba, &mut out);
-        assert_eq!(out, [0x0000_0000], "alpha must not leak into the unused high byte");
+        assert_eq!(
+            out,
+            [0x0000_0000],
+            "alpha must not leak into the unused high byte"
+        );
     }
 }

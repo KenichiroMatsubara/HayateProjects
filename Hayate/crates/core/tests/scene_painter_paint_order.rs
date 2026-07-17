@@ -1,6 +1,4 @@
-use hayate_core::{
-    DrawOp, Node, NodeKind, RecordingPainter, SceneGraph, render_scene_graph,
-};
+use hayate_core::{render_scene_graph, DrawOp, Node, NodeKind, RecordingPainter, SceneGraph};
 
 #[test]
 fn walk_visits_roots_in_paint_order() {

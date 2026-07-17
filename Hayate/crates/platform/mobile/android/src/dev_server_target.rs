@@ -281,9 +281,15 @@ mod tests {
     #[test]
     fn ws_schemes_map_onto_the_matching_http_scheme() {
         // reload の WS URL（ws://…/reload）を貼っても同じ target に解決できる（従来挙動の継承）。
-        assert_eq!(parse("ws://192.168.1.5:5179").unwrap().scheme(), Scheme::Http);
+        assert_eq!(
+            parse("ws://192.168.1.5:5179").unwrap().scheme(),
+            Scheme::Http
+        );
         assert_eq!(parse("wss://demo.example").unwrap().scheme(), Scheme::Https);
-        assert_eq!(parse("wss://demo.example").unwrap().port(), HTTPS_DEFAULT_PORT);
+        assert_eq!(
+            parse("wss://demo.example").unwrap().port(),
+            HTTPS_DEFAULT_PORT
+        );
     }
 
     #[test]
@@ -311,12 +317,18 @@ mod tests {
         // release 既定接続先は公開 Demo Endpoint（ADR-0003）で、名前付き定数（ビルド構成で差し替え可）。
         // 既定値は https の workers.dev サブドメインで、443 に正規化される（scheme 既定ポート・#740）。
         let url = release_demo_endpoint_url();
-        assert!(url.starts_with("https://"), "release default must be an https Demo Endpoint URL: {url}");
+        assert!(
+            url.starts_with("https://"),
+            "release default must be an https Demo Endpoint URL: {url}"
+        );
         let target = release_default_target();
         assert_eq!(target.scheme(), Scheme::Https);
         assert_eq!(target.port(), HTTPS_DEFAULT_PORT);
         // 既定定数（未上書き時）は Worker 名＋配信 account（pinara）の workers.dev サブドメイン。
-        assert_eq!(DEFAULT_DEMO_ENDPOINT_URL, "https://torimi-demo-endpoint.pinara.workers.dev");
+        assert_eq!(
+            DEFAULT_DEMO_ENDPOINT_URL,
+            "https://torimi-demo-endpoint.pinara.workers.dev"
+        );
     }
 
     #[test]
@@ -334,9 +346,20 @@ mod tests {
     fn blank_or_malformed_input_falls_back_to_the_default() {
         // 不正な端末入力（空・空白のみ・host 欠落・ポート非数値・未知 scheme）はホストを
         // クラッシュさせず既定へ。
-        for bad in ["", "   ", ":5179", "http://", "10.0.2.2:not-a-port", "ftp://x.example"] {
+        for bad in [
+            "",
+            "   ",
+            ":5179",
+            "http://",
+            "10.0.2.2:not-a-port",
+            "ftp://x.example",
+        ] {
             assert_eq!(parse(bad), None, "{bad:?} must not parse to a target");
-            assert_eq!(resolve(Some(bad)), DevServerTarget::default(), "{bad:?} resolves to default");
+            assert_eq!(
+                resolve(Some(bad)),
+                DevServerTarget::default(),
+                "{bad:?} resolves to default"
+            );
         }
     }
 
@@ -354,8 +377,14 @@ mod tests {
         std::fs::write(dir.join(DEV_SERVER_URL_FILE), "192.168.1.5:8080\n").unwrap();
 
         // 再起動・再接続のたびに読み直しても同じ値（保持）。
-        assert_eq!(read_entered_url(Some(&dir)).as_deref(), Some("192.168.1.5:8080"));
-        assert_eq!(read_entered_url(Some(&dir)).as_deref(), Some("192.168.1.5:8080"));
+        assert_eq!(
+            read_entered_url(Some(&dir)).as_deref(),
+            Some("192.168.1.5:8080")
+        );
+        assert_eq!(
+            read_entered_url(Some(&dir)).as_deref(),
+            Some("192.168.1.5:8080")
+        );
 
         let target = resolve_entered(Some(&dir));
         assert_eq!(target.host(), "192.168.1.5");
@@ -370,11 +399,17 @@ mod tests {
 
         let empty_dir = temp_data_dir("empty");
         assert_eq!(read_entered_url(Some(&empty_dir)), None);
-        assert_eq!(resolve_entered(Some(&empty_dir)), DevServerTarget::default());
+        assert_eq!(
+            resolve_entered(Some(&empty_dir)),
+            DevServerTarget::default()
+        );
 
         let blank_dir = temp_data_dir("blank");
         std::fs::write(blank_dir.join(DEV_SERVER_URL_FILE), "  \n").unwrap();
         assert_eq!(read_entered_url(Some(&blank_dir)), None);
-        assert_eq!(resolve_entered(Some(&blank_dir)), DevServerTarget::default());
+        assert_eq!(
+            resolve_entered(Some(&blank_dir)),
+            DevServerTarget::default()
+        );
     }
 }

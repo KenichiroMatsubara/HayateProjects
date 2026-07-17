@@ -329,7 +329,7 @@ impl SkiaLayerPresenter {
             let extracted = if layer == root {
                 extract_root_scene(scene, root, &boundaries)
             } else {
-                extract_scroll_layer_scene(scene, layer, &boundaries)
+                extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
                     .ok_or_else(|| format!("skia scroll layer {} is missing", layer.to_u64()))?
             };
             self.rasterizer
@@ -352,14 +352,7 @@ impl SkiaLayerPresenter {
                 ) {
                     (Some(cached_band), Some(geometry)) => compose(
                         placement.transform,
-                        [
-                            1.0,
-                            0.0,
-                            0.0,
-                            1.0,
-                            0.0,
-                            f64::from(geometry.screen_top_for_band(cached_band)),
-                        ],
+                        geometry.composite_affine_for_band(cached_band),
                     ),
                     _ => placement.transform,
                 };
@@ -378,14 +371,7 @@ impl SkiaLayerPresenter {
                         layer: placement.layer,
                         transform: compose(
                             placement.transform,
-                            [
-                                1.0,
-                                0.0,
-                                0.0,
-                                1.0,
-                                0.0,
-                                f64::from(geometry.absolute_top),
-                            ],
+                            [1.0, 0.0, 0.0, 1.0, 0.0, f64::from(geometry.absolute_top)],
                         ),
                         opacity: 1.0,
                         clip: placement.clip,

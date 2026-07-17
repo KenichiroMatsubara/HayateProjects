@@ -7,8 +7,8 @@
 
 use std::collections::HashSet;
 
-use hayate_core::{Color, ElementKind, ElementTree};
 use hayate_core::element::style::{Dimension, StyleProp};
+use hayate_core::{Color, ElementKind, ElementTree};
 
 #[test]
 fn scroll_view_and_transform_elements_become_layers() {
@@ -28,8 +28,14 @@ fn scroll_view_and_transform_elements_become_layers() {
     let set: HashSet<_> = layers.layers.iter().copied().collect();
 
     // compositing trigger（scroll コンテナ / transform group）を持つ要素だけがレイヤ境界。
-    assert!(set.contains(&scroll), "ScrollView は compositing layer になる");
-    assert!(set.contains(&boxed), "transform 要素は compositing layer になる");
+    assert!(
+        set.contains(&scroll),
+        "ScrollView は compositing layer になる"
+    );
+    assert!(
+        set.contains(&boxed),
+        "transform 要素は compositing layer になる"
+    );
     assert!(!set.contains(&root), "通常 view（root）はレイヤでない");
     assert!(!set.contains(&item), "通常 view（item）はレイヤでない");
 
@@ -96,7 +102,11 @@ fn clean_frame_captures_empty_layer_dirty() {
         tree.frame_layer_dirty().is_empty(),
         "変化のないフレームの捕捉 dirty は空（raster を呼ばない前提）"
     );
-    assert_eq!(tree.frame_layers().first(), Some(&root), "clean フレームでもレイヤ列は保持");
+    assert_eq!(
+        tree.frame_layers().first(),
+        Some(&root),
+        "clean フレームでもレイヤ列は保持"
+    );
 }
 
 #[test]
@@ -110,7 +120,10 @@ fn out_of_layer_dirty_routes_to_root_layer() {
     tree.set_root(root);
 
     let _ = tree.render(0.0);
-    tree.element_set_style(child, &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))]);
+    tree.element_set_style(
+        child,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+    );
     let _ = tree.render(16.0);
     assert!(
         tree.frame_layer_dirty().contains(&root),
@@ -131,12 +144,21 @@ fn dirty_inside_scroll_layer_is_captured_on_the_scroll_layer_not_root() {
     tree.set_root(root);
 
     let _ = tree.render(0.0);
-    tree.element_set_style(item, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        item,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
     let _ = tree.render(16.0);
     let dirty = tree.frame_layer_dirty();
-    assert!(dirty.contains(&scroll), "item の dirty は内包する scroll レイヤへ");
+    assert!(
+        dirty.contains(&scroll),
+        "item の dirty は内包する scroll レイヤへ"
+    );
     assert!(!dirty.contains(&root), "他レイヤ（root）は clean のまま");
-    assert!(tree.frame_layers().contains(&scroll), "scroll はレイヤ列に含まれる");
+    assert!(
+        tree.frame_layers().contains(&scroll),
+        "scroll はレイヤ列に含まれる"
+    );
 }
 
 #[test]
@@ -169,7 +191,7 @@ fn in_render_transition_continuation_is_captured() {
     let _ = tree.render(0.0);
     tree.update_pointer_hover(Some(boxed));
     let _ = tree.render(16.0); // transition 開始
-    // 以後の補間フレーム：外部からのマークは無いが、進行中 transition が捕捉され続ける。
+                               // 以後の補間フレーム：外部からのマークは無いが、進行中 transition が捕捉され続ける。
     let _ = tree.render(32.0);
     assert!(
         !tree.frame_layer_dirty().is_empty(),
@@ -220,7 +242,10 @@ fn layer_demotion_marks_the_enclosing_layer_dirty() {
 
     // 昇格中に他の兄弟（other）の視覚変化で root を再 raster させる（cursor blink 等の実際の
     // トリガを模す）。root は sibling を除外した「穴あき」キャッシュを持つことになる。
-    tree.element_set_style(other, &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))]);
+    tree.element_set_style(
+        other,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+    );
     let _ = tree.render(200.0);
     assert!(
         tree.frame_layers().contains(&sibling),
@@ -284,7 +309,10 @@ fn on_demand_loop_keeps_rendering_through_layer_demotion() {
 
     let _ = tree.render(0.0);
     tree.update_pointer_hover(Some(sibling)); // タップ相当
-    assert!(tree.has_pending_visual_work(), "hover 直後は継続フレームを要求する");
+    assert!(
+        tree.has_pending_visual_work(),
+        "hover 直後は継続フレームを要求する"
+    );
 
     // on-demand ループそのものを模す：継続要求がある間だけ render を回す。
     let mut t = 16.0;
@@ -343,7 +371,10 @@ fn on_demand_loop_settles_two_concurrent_sibling_transitions() {
     // 新しい `active` 値で呼ばれるのと同型）。
     tree.element_set_style(a, &[StyleProp::BackgroundColor(inactive)]);
     tree.element_set_style(b, &[StyleProp::BackgroundColor(active)]);
-    assert!(tree.has_pending_visual_work(), "スタイル変更直後は継続フレームを要求する");
+    assert!(
+        tree.has_pending_visual_work(),
+        "スタイル変更直後は継続フレームを要求する"
+    );
 
     let mut t = 16.0;
     let mut frames = 0;
@@ -393,7 +424,10 @@ fn on_demand_loop_settles_sibling_transitions_inside_a_scroll_view() {
     tree.set_viewport(200.0, 100.0);
     tree.element_set_style(
         scroll,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(100.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(100.0)),
+        ],
     );
 
     let active = Color::new(0.0, 1.0, 0.0, 1.0);
@@ -412,7 +446,10 @@ fn on_demand_loop_settles_sibling_transitions_inside_a_scroll_view() {
 
     tree.element_set_style(a, &[StyleProp::BackgroundColor(inactive)]);
     tree.element_set_style(b, &[StyleProp::BackgroundColor(active)]);
-    assert!(tree.has_pending_visual_work(), "スタイル変更直後は継続フレームを要求する");
+    assert!(
+        tree.has_pending_visual_work(),
+        "スタイル変更直後は継続フレームを要求する"
+    );
 
     let mut t = 16.0;
     let mut frames = 0;
@@ -423,8 +460,14 @@ fn on_demand_loop_settles_sibling_transitions_inside_a_scroll_view() {
         assert!(frames < 200, "有限フレームで idle に落ちなければならない");
     }
 
-    assert!(!tree.frame_layers().contains(&a), "idle 到達時点で a は降格済みのはず");
-    assert!(!tree.frame_layers().contains(&b), "idle 到達時点で b も降格済みのはず");
+    assert!(
+        !tree.frame_layers().contains(&a),
+        "idle 到達時点で a は降格済みのはず"
+    );
+    assert!(
+        !tree.frame_layers().contains(&b),
+        "idle 到達時点で b も降格済みのはず"
+    );
     assert!(
         tree.frame_layer_dirty().contains(&scroll),
         "a・b を内包する ScrollView が穴あきキャッシュを直すため content dirty に\
@@ -457,7 +500,10 @@ fn transform_coefficient_change_is_not_content_dirty() {
         "transform 係数だけの変化は content dirty にならない（composite-only 前提）"
     );
     // quad 用の現在値は公開 getter から読める。
-    assert_eq!(tree.element_transform(boxed), Some([1.0, 0.0, 0.0, 1.0, 20.0, 0.0]));
+    assert_eq!(
+        tree.element_transform(boxed),
+        Some([1.0, 0.0, 0.0, 1.0, 20.0, 0.0])
+    );
 }
 
 #[test]
@@ -482,7 +528,10 @@ fn transform_coefficient_change_still_updates_the_retained_scene() {
     let has_new = painter.ops().iter().any(|op| {
         matches!(op, DrawOp::PushTransform { transform } if *transform == [1.0, 0.0, 0.0, 1.0, 20.0, 0.0])
     });
-    assert!(has_new, "保持シーンの Group は新しい transform 係数へ patch される");
+    assert!(
+        has_new,
+        "保持シーンの Group は新しい transform 係数へ patch される"
+    );
 }
 
 #[test]
@@ -523,12 +572,21 @@ fn layer_dirty_routes_descendant_dirty_to_enclosing_layer() {
 
     // 初期構築の dirty を render で排出してから、item だけを visual-dirty にする。
     let _ = tree.render(0.0);
-    tree.element_set_style(item, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        item,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
 
     // item 自身はレイヤでないが、内包する scroll レイヤが再 raster 対象になる。
     let dirty = tree.layer_dirty();
-    assert!(dirty.contains(&scroll), "item の dirty は内包する scroll レイヤへ流れる");
-    assert!(!dirty.contains(&item), "layer_dirty はレイヤ id（境界要素）だけを含む");
+    assert!(
+        dirty.contains(&scroll),
+        "item の dirty は内包する scroll レイヤへ流れる"
+    );
+    assert!(
+        !dirty.contains(&item),
+        "layer_dirty はレイヤ id（境界要素）だけを含む"
+    );
 }
 
 // ── #634: scroll frame は chrome dirty（content 非 dirty＝composite-only スクロール前提）─────
@@ -584,7 +642,10 @@ fn scroll_offset_change_still_updates_the_retained_scene() {
     let has_new = painter.ops().iter().any(|op| {
         matches!(op, DrawOp::PushTransform { transform } if *transform == [1.0, 0.0, 0.0, 1.0, 0.0, -50.0])
     });
-    assert!(has_new, "保持シーンの scroll Group は新 offset の affine を持つ");
+    assert!(
+        has_new,
+        "保持シーンの scroll Group は新 offset の affine を持つ"
+    );
 }
 
 #[test]
@@ -596,11 +657,17 @@ fn scroll_offset_plus_other_visual_change_is_content_dirty() {
         let _ = tree.render(0.0);
 
         if style_first {
-            tree.element_set_style(scroll, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+            tree.element_set_style(
+                scroll,
+                &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+            );
             tree.element_set_scroll_offset(scroll, 0.0, 50.0);
         } else {
             tree.element_set_scroll_offset(scroll, 0.0, 50.0);
-            tree.element_set_style(scroll, &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))]);
+            tree.element_set_style(
+                scroll,
+                &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+            );
         }
         let _ = tree.render(16.0);
         assert!(
@@ -621,7 +688,10 @@ fn descendant_change_during_scroll_keeps_content_dirty() {
     let _ = tree.render(0.0);
 
     tree.element_set_scroll_offset(scroll, 0.0, 50.0);
-    tree.element_set_style(item, &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        item,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
     let _ = tree.render(16.0);
     assert!(
         tree.frame_layer_dirty().contains(&scroll),
@@ -672,11 +742,17 @@ fn scrollable_fixture() -> (ElementTree, hayate_core::ElementId) {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         scroll,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(200.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(200.0)),
+        ],
     );
     tree.element_set_style(
         content,
-        &[StyleProp::Width(Dimension::px(200.0)), StyleProp::Height(Dimension::px(5000.0))],
+        &[
+            StyleProp::Width(Dimension::px(200.0)),
+            StyleProp::Height(Dimension::px(5000.0)),
+        ],
     );
     (tree, scroll)
 }
@@ -723,7 +799,11 @@ fn overscroll_shows_up_in_scroll_group_affine_per_profile() {
     let (_, max_y) = tree.element_scroll_max_offset(scroll);
     tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
     let ios = tree.element_scroll_group_affine(scroll);
-    assert_eq!(ios, [1.0, 0.0, 0.0, 1.0, 0.0, -(max_y + 120.0) as f64], "iOS は overshoot 込みの素の translate");
+    assert_eq!(
+        ios,
+        [1.0, 0.0, 0.0, 1.0, 0.0, -(max_y + 120.0) as f64],
+        "iOS は overshoot 込みの素の translate"
+    );
 
     // Android stretch：越境軸は scale > 1 の一様スケール（端ピン）。translate だけでは表せない。
     let (mut tree, scroll) = scrollable_fixture();
@@ -732,7 +812,10 @@ fn overscroll_shows_up_in_scroll_group_affine_per_profile() {
     let (_, max_y) = tree.element_scroll_max_offset(scroll);
     tree.element_set_scroll_offset(scroll, 0.0, max_y + 120.0);
     let android = tree.element_scroll_group_affine(scroll);
-    assert!(android[3] > 1.0, "Android は越境軸を一様 stretch scale（scale_y > 1）: {android:?}");
+    assert!(
+        android[3] > 1.0,
+        "Android は越境軸を一様 stretch scale（scale_y > 1）: {android:?}"
+    );
 }
 
 #[test]

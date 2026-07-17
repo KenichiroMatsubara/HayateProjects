@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use super::{
-    FallbackKey, FamilyId, FamilyInfo, FamilyNameMap, GenericFamily, GenericFamilyMap, ScriptExt,
-    scan,
+    scan, FallbackKey, FamilyId, FamilyInfo, FamilyNameMap, GenericFamily, GenericFamilyMap,
+    ScriptExt,
 };
 use alloc::format;
 use alloc::string::ToString;
@@ -12,10 +12,10 @@ use alloc::vec::Vec;
 use core::ptr::{null, null_mut};
 use hashbrown::{HashMap, HashSet};
 use objc2_core_foundation::{
-    CFArray, CFDictionary, CFRange, CFRetained, CFString, CFType, CFURL, CFURLPathStyle,
+    CFArray, CFDictionary, CFRange, CFRetained, CFString, CFType, CFURLPathStyle, CFURL,
 };
 use objc2_core_text::{
-    CTFont, CTFontCollection, CTFontDescriptor, CTFontUIFontType, kCTFontURLAttribute,
+    kCTFontURLAttribute, CTFont, CTFontCollection, CTFontDescriptor, CTFontUIFontType,
 };
 use objc2_foundation::{
     NSSearchPathDirectory, NSSearchPathDomainMask, NSSearchPathForDirectoriesInDomains,

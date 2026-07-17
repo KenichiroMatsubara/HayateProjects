@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
+use crate::color::Color;
 use crate::element::ambient_defaults::AmbientDefaults;
 use crate::element::id::ElementId;
 use crate::element::kind::ElementKind;
 use crate::element::pseudo_state::{self, InteractionSnapshot, PseudoStyles};
 use crate::element::style::{FontStyleValue, StyleProp, TextDecorationValue, ViewportCondition};
 use crate::element::tree::{apply_visual, Element, Visual};
-use crate::color::Color;
 
 /// ch1 の text→text 継承テキストスタイルフィールド（ADR-0065）。
 #[derive(Clone, Debug)]
@@ -211,7 +211,12 @@ pub(crate) fn inherited_context_at(
     };
     let parent_ctx = inherited_context_at(elements, parent_id);
     let parent_inherited_base = apply_text_inheritance(&parent_ctx, &parent.visual);
-    child_inherited_context(&parent_ctx, parent.kind, &parent_inherited_base, &parent.visual)
+    child_inherited_context(
+        &parent_ctx,
+        parent.kind,
+        &parent_inherited_base,
+        &parent.visual,
+    )
 }
 
 /// 継承を 1 段畳み込む。親の継承コンテキストから子のものを導く。これが単一の継承
@@ -226,7 +231,9 @@ pub fn child_inherited_context(
     InheritedVisualContext {
         ambient: parent_ctx.ambient.merge_visual(parent_own),
         text_local: if parent_kind == ElementKind::Text {
-            Some(TextLocalInherited::from_inherited_base(parent_inherited_base))
+            Some(TextLocalInherited::from_inherited_base(
+                parent_inherited_base,
+            ))
         } else {
             None
         },

@@ -1,8 +1,6 @@
 //! ADR-0071: disabled はヒットテストとインタラクションを抑止する。
 
-use hayate_core::{
-    Dimension, ElementKind, ElementTree, StyleProp,
-};
+use hayate_core::{Dimension, ElementKind, ElementTree, StyleProp};
 
 #[test]
 fn disabled_element_is_not_hit_tested() {

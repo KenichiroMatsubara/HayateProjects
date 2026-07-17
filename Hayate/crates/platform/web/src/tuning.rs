@@ -47,12 +47,18 @@ impl TuningJson {
 
     /// マージ済みスクロール物理値（存在キーでデフォルトを上書き）。
     pub fn scroll_tuning(&self) -> ScrollPhysicsTuning {
-        self.scroll.as_ref().map(ScrollJson::merged).unwrap_or_default()
+        self.scroll
+            .as_ref()
+            .map(ScrollJson::merged)
+            .unwrap_or_default()
     }
 
     /// マージ済み chrome 値（存在キーでデフォルトを上書き）。
     pub fn chrome_tuning(&self) -> ChromeTuning {
-        self.chrome.as_ref().map(ChromeJson::merged).unwrap_or_default()
+        self.chrome
+            .as_ref()
+            .map(ChromeJson::merged)
+            .unwrap_or_default()
     }
 
     /// 稼働させる Scroll Physics Profile（ADR-0113/0131）。`android` は Android stretch、
@@ -245,15 +251,39 @@ impl ChromeJson {
         let mut d = ChromeTuning::default();
         overlay(&mut d.scrollbar_thickness, self.scrollbar_thickness);
         overlay(&mut d.scrollbar_track_margin, self.scrollbar_track_margin);
-        overlay(&mut d.scrollbar_min_thumb_length, self.scrollbar_min_thumb_length);
-        overlay(&mut d.scrollbar_thumb_color, self.scrollbar_thumb_color.map(color_from));
+        overlay(
+            &mut d.scrollbar_min_thumb_length,
+            self.scrollbar_min_thumb_length,
+        );
+        overlay(
+            &mut d.scrollbar_thumb_color,
+            self.scrollbar_thumb_color.map(color_from),
+        );
         overlay(&mut d.scrollbar_thumb_opacity, self.scrollbar_thumb_opacity);
-        overlay(&mut d.scrollbar_indicator_thickness, self.scrollbar_indicator_thickness);
-        overlay(&mut d.scrollbar_indicator_color, self.scrollbar_indicator_color.map(color_from));
-        overlay(&mut d.scrollbar_indicator_opacity, self.scrollbar_indicator_opacity);
-        overlay(&mut d.selection_highlight_color, self.selection_highlight_color);
-        overlay(&mut d.composition_underline_thin, self.composition_underline_thin);
-        overlay(&mut d.composition_underline_thick, self.composition_underline_thick);
+        overlay(
+            &mut d.scrollbar_indicator_thickness,
+            self.scrollbar_indicator_thickness,
+        );
+        overlay(
+            &mut d.scrollbar_indicator_color,
+            self.scrollbar_indicator_color.map(color_from),
+        );
+        overlay(
+            &mut d.scrollbar_indicator_opacity,
+            self.scrollbar_indicator_opacity,
+        );
+        overlay(
+            &mut d.selection_highlight_color,
+            self.selection_highlight_color,
+        );
+        overlay(
+            &mut d.composition_underline_thin,
+            self.composition_underline_thin,
+        );
+        overlay(
+            &mut d.composition_underline_thick,
+            self.composition_underline_thick,
+        );
         overlay(&mut d.placeholder_alpha, self.placeholder_alpha);
         overlay(&mut d.toolbar_corner_radius, self.toolbar_corner_radius);
         overlay(&mut d.toolbar_height, self.toolbar_height);
@@ -262,9 +292,15 @@ impl ChromeJson {
         overlay(&mut d.toolbar_gap, self.toolbar_gap);
         overlay(&mut d.toolbar_divider_color, self.toolbar_divider_color);
         overlay(&mut d.toolbar_divider_width, self.toolbar_divider_width);
-        overlay(&mut d.toolbar_elevation_offset_y, self.toolbar_elevation_offset_y);
+        overlay(
+            &mut d.toolbar_elevation_offset_y,
+            self.toolbar_elevation_offset_y,
+        );
         overlay(&mut d.toolbar_elevation_blur, self.toolbar_elevation_blur);
-        overlay(&mut d.toolbar_elevation_spread, self.toolbar_elevation_spread);
+        overlay(
+            &mut d.toolbar_elevation_spread,
+            self.toolbar_elevation_spread,
+        );
         overlay(&mut d.toolbar_shadow_color, self.toolbar_shadow_color);
         d
     }
@@ -289,7 +325,10 @@ mod tests {
         assert_eq!(s.deceleration_rate, 0.99);
         // …他はデフォルト const のまま。
         assert_eq!(s.slop_px, ScrollPhysicsTuning::default().slop_px);
-        assert_eq!(s.spring_damping, ScrollPhysicsTuning::default().spring_damping);
+        assert_eq!(
+            s.spring_damping,
+            ScrollPhysicsTuning::default().spring_damping
+        );
     }
 
     #[test]
@@ -301,14 +340,21 @@ mod tests {
     #[test]
     fn absent_or_ios_or_auto_profile_stays_auto_ios() {
         // profile 無しは既定 Auto（iOS 解決）。
-        assert_eq!(TuningJson::parse("{}").unwrap().scroll_profile(), ScrollPhysicsProfile::Auto);
+        assert_eq!(
+            TuningJson::parse("{}").unwrap().scroll_profile(),
+            ScrollPhysicsProfile::Auto
+        );
         // 明示 "ios" / "auto" も現状は Auto（core に明示 Ios variant は無く Auto が iOS 解決）。
         assert_eq!(
-            TuningJson::parse(r#"{ "profile": "ios" }"#).unwrap().scroll_profile(),
+            TuningJson::parse(r#"{ "profile": "ios" }"#)
+                .unwrap()
+                .scroll_profile(),
             ScrollPhysicsProfile::Auto,
         );
         assert_eq!(
-            TuningJson::parse(r#"{ "profile": "auto" }"#).unwrap().scroll_profile(),
+            TuningJson::parse(r#"{ "profile": "auto" }"#)
+                .unwrap()
+                .scroll_profile(),
             ScrollPhysicsProfile::Auto,
         );
     }
@@ -324,13 +370,21 @@ mod tests {
         let t = TuningJson::parse(r#"{ "scroll": { "stretch_max": 0.3 } }"#).unwrap();
         assert_eq!(t.scroll_tuning().stretch_max, 0.3);
         // 触れていないキーは既定のまま。
-        assert_eq!(t.scroll_tuning().slop_px, ScrollPhysicsTuning::default().slop_px);
+        assert_eq!(
+            t.scroll_tuning().slop_px,
+            ScrollPhysicsTuning::default().slop_px
+        );
     }
 
     #[test]
     fn color_arrays_become_core_colors() {
-        let t = TuningJson::parse(r#"{ "chrome": { "scrollbar_thumb_color": [1.0, 0.0, 0.0, 1.0] } }"#).unwrap();
-        assert_eq!(t.chrome_tuning().scrollbar_thumb_color, Color::new(1.0, 0.0, 0.0, 1.0));
+        let t =
+            TuningJson::parse(r#"{ "chrome": { "scrollbar_thumb_color": [1.0, 0.0, 0.0, 1.0] } }"#)
+                .unwrap();
+        assert_eq!(
+            t.chrome_tuning().scrollbar_thumb_color,
+            Color::new(1.0, 0.0, 0.0, 1.0)
+        );
     }
 
     #[test]
@@ -361,6 +415,9 @@ mod tests {
     fn a_slash_or_comma_inside_a_string_is_not_treated_as_a_comment() {
         // 防御的: 文字列値はプリプロセッサを無傷で通る必要がある（現状文字列値
         // のキーは無いが、ストリッパは安全でなければならない）。
-        assert_eq!(to_plain_json(r#"{"a":"http://x , y"}"#), r#"{"a":"http://x , y"}"#);
+        assert_eq!(
+            to_plain_json(r#"{"a":"http://x , y"}"#),
+            r#"{"a":"http://x , y"}"#
+        );
     }
 }

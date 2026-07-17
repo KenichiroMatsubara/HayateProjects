@@ -1,6 +1,6 @@
+use crate::pixel::{CANVAS_H, CANVAS_W, CLEAR_COLOR};
 use hayate_core::SceneGraph;
 use hayate_scene_renderer_vello::{VelloRenderTarget, VelloSceneRenderer};
-use crate::pixel::{CANVAS_H, CANVAS_W, CLEAR_COLOR};
 
 pub struct VelloHarness {
     pub device: wgpu::Device,
@@ -140,7 +140,7 @@ fn readback_texture_rgba8(
     );
     queue.submit(Some(encoder.finish()));
 
-  let slice = buffer.slice(..);
+    let slice = buffer.slice(..);
     let (tx, rx) = std::sync::mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |r| {
         tx.send(r).ok();

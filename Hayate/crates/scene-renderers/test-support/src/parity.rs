@@ -2,9 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use hayate_core::{
-    Color, Dimension, ElementKind, ElementTree, FontStyleValue, Shadow, StyleProp,
-};
+use hayate_core::{Color, Dimension, ElementKind, ElementTree, FontStyleValue, Shadow, StyleProp};
 
 use crate::cases::render_tree_to_scene;
 use crate::golden::assert_pixels_match_golden;
@@ -87,7 +85,6 @@ pub fn golden_path(name: &str) -> PathBuf {
         .join("../tiny-skia/tests/golden")
         .join(format!("{name}.png"))
 }
-
 
 fn assert_has_ink(data: &[u8]) {
     use crate::pixel::pixel;

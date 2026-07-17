@@ -357,7 +357,9 @@ fn pointer_move_skips_duplicate_coordinates() {
     tree.set_viewport(200.0, 200.0);
     tree.element_set_style(
         root,
-        &[hayate_core::StyleProp::Width(hayate_core::Dimension::px(200.0))],
+        &[hayate_core::StyleProp::Width(hayate_core::Dimension::px(
+            200.0,
+        ))],
     );
     tree.render(0.0);
 
@@ -675,7 +677,10 @@ fn pointer_move_event_carries_the_pointer_kind() {
     // 発行される PointerMove wire イベントはデバイスを運ぶので、ホストは座標だけでなく
     // どのポインタが move を駆動したかを知れる。
     let (mut tree, _root) = hoverable_root();
-    assert!(tree.on_pointer_move_with_kind(10.0, 10.0, PointerKind::Pen).moved);
+    assert!(
+        tree.on_pointer_move_with_kind(10.0, 10.0, PointerKind::Pen)
+            .moved
+    );
     let saw_pen = tree
         .poll_events()
         .into_iter()

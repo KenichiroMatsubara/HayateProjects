@@ -74,8 +74,7 @@ mod platform {
         unsafe extern "C" fn(*mut AAudioStreamBuilder, *mut *mut AAudioStream) -> i32;
     type BuilderDeleteFn = unsafe extern "C" fn(*mut AAudioStreamBuilder) -> i32;
     type StreamActionFn = unsafe extern "C" fn(*mut AAudioStream) -> i32;
-    type StreamWriteFn =
-        unsafe extern "C" fn(*mut AAudioStream, *const c_void, i32, i64) -> i32;
+    type StreamWriteFn = unsafe extern "C" fn(*mut AAudioStream, *const c_void, i32, i64) -> i32;
 
     /// `libaaudio.so` から `dlsym` で解決した必要関数群。`ime_bridge` 同様、この native
     /// 境界は本モジュールに封じ込める。

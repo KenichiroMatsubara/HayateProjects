@@ -43,22 +43,34 @@ fn item_origin(container_extra: Vec<StyleProp>, item_extra: Vec<StyleProp>) -> (
 #[test]
 fn justify_items_start_keeps_item_at_the_inline_start() {
     // start: アイテムはセルの左端 → x = 0。
-    let (x, _) = item_origin(vec![StyleProp::JustifyItems(JustifyItemsValue::Start)], vec![]);
+    let (x, _) = item_origin(
+        vec![StyleProp::JustifyItems(JustifyItemsValue::Start)],
+        vec![],
+    );
     assert!(x.abs() < 1.0, "start aligns item to x=0, got {x}");
 }
 
 #[test]
 fn justify_items_end_pushes_item_to_the_inline_end() {
     // end: アイテムはセルの右端 → x = 100 - 40 = 60。
-    let (x, _) = item_origin(vec![StyleProp::JustifyItems(JustifyItemsValue::End)], vec![]);
+    let (x, _) = item_origin(
+        vec![StyleProp::JustifyItems(JustifyItemsValue::End)],
+        vec![],
+    );
     assert!((x - 60.0).abs() < 1.0, "end aligns item to x=60, got {x}");
 }
 
 #[test]
 fn justify_items_center_centers_item_on_the_inline_axis() {
     // center: アイテムはセル中央 → x = (100 - 40) / 2 = 30。
-    let (x, _) = item_origin(vec![StyleProp::JustifyItems(JustifyItemsValue::Center)], vec![]);
-    assert!((x - 30.0).abs() < 1.0, "center aligns item to x=30, got {x}");
+    let (x, _) = item_origin(
+        vec![StyleProp::JustifyItems(JustifyItemsValue::Center)],
+        vec![],
+    );
+    assert!(
+        (x - 30.0).abs() < 1.0,
+        "center aligns item to x=30, got {x}"
+    );
 }
 
 #[test]

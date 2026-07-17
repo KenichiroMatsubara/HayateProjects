@@ -112,7 +112,9 @@ pub fn validate_scene_graph(graph: &SceneGraph) -> Result<(), SceneValidationErr
         .iter()
         .map(|(id, _)| id)
         .find(|id| !visited.contains(id))
-        .map_or(Ok(()), |node| Err(SceneValidationError::UnreachableNode { node }))
+        .map_or(Ok(()), |node| {
+            Err(SceneValidationError::UnreachableNode { node })
+        })
 }
 
 fn visit(
@@ -135,7 +137,10 @@ fn visit(
     }
     for &child in &current.children {
         if graph.get(child).is_none() {
-            return Err(SceneValidationError::MissingChild { parent: node, child });
+            return Err(SceneValidationError::MissingChild {
+                parent: node,
+                child,
+            });
         }
         visit(graph, child, Some(node), parents, visited, visiting)?;
     }
@@ -146,7 +151,14 @@ fn visit(
 
 fn valid_node_kind(kind: &NodeKind) -> bool {
     match kind {
-        NodeKind::Rect { x, y, width, height, color, corner_radius } => {
+        NodeKind::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+            corner_radius,
+        } => {
             finite([*x, *y, *width, *height, *corner_radius])
                 && *width >= 0.0
                 && *height >= 0.0
@@ -154,9 +166,22 @@ fn valid_node_kind(kind: &NodeKind) -> bool {
                 && valid_color(color)
         }
         NodeKind::RoundedRing {
-            x, y, width, height, outer_radius, border_width, color,
-        } | NodeKind::DashedBorder {
-            x, y, width, height, outer_radius, border_width, color,
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
+        }
+        | NodeKind::DashedBorder {
+            x,
+            y,
+            width,
+            height,
+            outer_radius,
+            border_width,
+            color,
         } => {
             finite([*x, *y, *width, *height, *outer_radius, *border_width])
                 && *width >= 0.0
@@ -166,7 +191,14 @@ fn valid_node_kind(kind: &NodeKind) -> bool {
                 && valid_color(color)
         }
         NodeKind::BlurredRoundedRect {
-            x, y, width, height, corner_radius, std_dev, color, occluder,
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            std_dev,
+            color,
+            occluder,
         } => {
             finite([*x, *y, *width, *height, *corner_radius, *std_dev])
                 && *width >= 0.0
@@ -175,17 +207,39 @@ fn valid_node_kind(kind: &NodeKind) -> bool {
                 && *std_dev >= 0.0
                 && valid_color(color)
                 && occluder.is_none_or(|value| {
-                    finite([value.x, value.y, value.width, value.height, value.corner_radius])
-                        && value.width >= 0.0
+                    finite([
+                        value.x,
+                        value.y,
+                        value.width,
+                        value.height,
+                        value.corner_radius,
+                    ]) && value.width >= 0.0
                         && value.height >= 0.0
                         && value.corner_radius >= 0.0
                 })
         }
         NodeKind::InsetBlurredRoundedRect {
-            x, y, width, height, corner_radius, offset_x, offset_y, spread, std_dev, color,
+            x,
+            y,
+            width,
+            height,
+            corner_radius,
+            offset_x,
+            offset_y,
+            spread,
+            std_dev,
+            color,
         } => {
             finite([
-                *x, *y, *width, *height, *corner_radius, *offset_x, *offset_y, *spread, *std_dev,
+                *x,
+                *y,
+                *width,
+                *height,
+                *corner_radius,
+                *offset_x,
+                *offset_y,
+                *spread,
+                *std_dev,
             ]) && *width >= 0.0
                 && *height >= 0.0
                 && *corner_radius >= 0.0
@@ -202,15 +256,27 @@ fn valid_node_kind(kind: &NodeKind) -> bool {
                 })
         }
         NodeKind::Group { transform } => transform.iter().all(|value| value.is_finite()),
-        NodeKind::Clip { x, y, width, height, corner_radii } => {
+        NodeKind::Clip {
+            x,
+            y,
+            width,
+            height,
+            corner_radii,
+        } => {
             finite([*x, *y, *width, *height])
                 && *width >= 0.0
                 && *height >= 0.0
-                && corner_radii.iter().all(|value| value.is_finite() && *value >= 0.0)
+                && corner_radii
+                    .iter()
+                    .all(|value| value.is_finite() && *value >= 0.0)
         }
-        NodeKind::Image { x, y, width, height, .. } => {
-            finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0
-        }
+        NodeKind::Image {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0,
         NodeKind::DrawList { x, y, commands } => {
             finite([*x, *y]) && commands.iter().all(valid_draw_command)
         }
@@ -228,9 +294,12 @@ fn valid_draw_command(command: &DrawCommand) -> bool {
         DrawCommand::Rotate { radians } => radians.is_finite(),
         DrawCommand::Scale { sx, sy } => finite([*sx, *sy]),
         DrawCommand::Transform { a, b, c, d, e, f } => finite([*a, *b, *c, *d, *e, *f]),
-        DrawCommand::ClipRect { x, y, width, height } => {
-            finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0
-        }
+        DrawCommand::ClipRect {
+            x,
+            y,
+            width,
+            height,
+        } => finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0,
         DrawCommand::ClipPath { verbs } => verbs.iter().all(valid_path_verb),
     }
 }
@@ -247,7 +316,10 @@ fn valid_paint(paint: &DrawPaint) -> bool {
         ])
         && paint.stroke_width >= 0.0
         && paint.miter_limit >= 0.0
-        && paint.dash.iter().all(|value| value.is_finite() && *value >= 0.0)
+        && paint
+            .dash
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0)
 }
 
 fn valid_path_verb(verb: &PathVerb) -> bool {
@@ -255,31 +327,55 @@ fn valid_path_verb(verb: &PathVerb) -> bool {
         PathVerb::MoveTo { x, y } | PathVerb::LineTo { x, y } => finite([*x, *y]),
         PathVerb::Close => true,
         PathVerb::QuadraticTo { cx, cy, x, y } => finite([*cx, *cy, *x, *y]),
-        PathVerb::CubicTo { c1x, c1y, c2x, c2y, x, y } => {
-            finite([*c1x, *c1y, *c2x, *c2y, *x, *y])
+        PathVerb::CubicTo {
+            c1x,
+            c1y,
+            c2x,
+            c2y,
+            x,
+            y,
+        } => finite([*c1x, *c1y, *c2x, *c2y, *x, *y]),
+        PathVerb::ArcTo {
+            x1,
+            y1,
+            x2,
+            y2,
+            radius,
+        } => finite([*x1, *y1, *x2, *y2, *radius]) && *radius >= 0.0,
+        PathVerb::Rect {
+            x,
+            y,
+            width,
+            height,
         }
-        PathVerb::ArcTo { x1, y1, x2, y2, radius } => {
-            finite([*x1, *y1, *x2, *y2, *radius]) && *radius >= 0.0
-        }
-        PathVerb::Rect { x, y, width, height }
-        | PathVerb::Oval { x, y, width, height } => {
-            finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0
-        }
-        PathVerb::Rrect { x, y, width, height, rx, ry } => {
+        | PathVerb::Oval {
+            x,
+            y,
+            width,
+            height,
+        } => finite([*x, *y, *width, *height]) && *width >= 0.0 && *height >= 0.0,
+        PathVerb::Rrect {
+            x,
+            y,
+            width,
+            height,
+            rx,
+            ry,
+        } => {
             finite([*x, *y, *width, *height, *rx, *ry])
                 && *width >= 0.0
                 && *height >= 0.0
                 && *rx >= 0.0
                 && *ry >= 0.0
         }
-        PathVerb::Circle { cx, cy, radius } => {
-            finite([*cx, *cy, *radius]) && *radius >= 0.0
-        }
+        PathVerb::Circle { cx, cy, radius } => finite([*cx, *cy, *radius]) && *radius >= 0.0,
     }
 }
 
 fn valid_color(color: &[f32; 4]) -> bool {
-    color.iter().all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+    color
+        .iter()
+        .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
 }
 
 fn finite<const N: usize>(values: [f32; N]) -> bool {

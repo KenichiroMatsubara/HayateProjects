@@ -4,9 +4,7 @@
 //! 当たった要素にフォーカスする（Chromium 互換、ADR-0102）が、キーボードを上げて
 //! よいのはフォーカス中の `text-input` のときだけ。
 
-use hayate_core::{
-    Dimension, ElementKind, ElementTree, ImeBridge, ImePresentation, StyleProp,
-};
+use hayate_core::{Dimension, ElementKind, ElementTree, ImeBridge, ImePresentation, StyleProp};
 
 /// core が最後に要求した presentation を記録する。
 #[derive(Default)]

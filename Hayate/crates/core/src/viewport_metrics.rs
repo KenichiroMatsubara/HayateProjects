@@ -50,7 +50,11 @@ impl ViewportMetrics {
     /// は `物理 / scale` の論理 px。`scale` は最低 1.0。content scale 1.0 では論理＝物理で、
     /// content scale 1.0 で描画する現行 Android 挙動と一致する。DPI 対応を入れる際は、
     /// ヒットテストと描画を揃えるためタッチ座標も同じ `scale` で再スケールすること。
-    pub fn from_physical_size(physical_width: i32, physical_height: i32, content_scale: f32) -> Self {
+    pub fn from_physical_size(
+        physical_width: i32,
+        physical_height: i32,
+        content_scale: f32,
+    ) -> Self {
         let scale = content_scale.max(1.0);
         let buffer_width = physical_width.max(1) as u32;
         let buffer_height = physical_height.max(1) as u32;

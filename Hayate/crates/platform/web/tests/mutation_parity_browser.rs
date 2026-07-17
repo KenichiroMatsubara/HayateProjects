@@ -40,11 +40,7 @@ fn make_canvas(size: u32) -> HtmlCanvasElement {
 
 fn make_container() -> HtmlElement {
     let document = web_sys::window().unwrap().document().unwrap();
-    let div: HtmlElement = document
-        .create_element("div")
-        .unwrap()
-        .dyn_into()
-        .unwrap();
+    let div: HtmlElement = document.create_element("div").unwrap().dyn_into().unwrap();
     document.body().unwrap().append_child(&div).unwrap();
     div
 }
@@ -69,8 +65,7 @@ async fn canvas_and_html_sinks_agree_on_text_content_for_one_op_stream() {
         .expect("canvas renderer init");
 
     let container = make_container();
-    let mut html_renderer =
-        HayateElementHtmlRenderer::new(container).expect("html renderer init");
+    let mut html_renderer = HayateElementHtmlRenderer::new(container).expect("html renderer init");
 
     let ops = [
         OP_CREATE,

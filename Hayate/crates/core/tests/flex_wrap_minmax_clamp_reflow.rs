@@ -40,7 +40,10 @@ fn title_measure(
             (w.min(426.9849), lines * 18.824)
         }
     };
-    TaffySize { width: w, height: h }
+    TaffySize {
+        width: w,
+        height: h,
+    }
 }
 
 #[test]
@@ -59,8 +62,14 @@ fn wrap_row_line_cross_size_accounts_for_minmax_clamped_card() {
                     width: LengthPercentage::length(12.0),
                     height: LengthPercentage::length(12.0),
                 },
-                min_size: Size { width: Dimension::length(200.0), height: Dimension::auto() },
-                max_size: Size { width: Dimension::length(268.0), height: Dimension::auto() },
+                min_size: Size {
+                    width: Dimension::length(200.0),
+                    height: Dimension::auto(),
+                },
+                max_size: Size {
+                    width: Dimension::length(268.0),
+                    height: Dimension::auto(),
+                },
                 padding: Rect::length(16.0),
                 ..Default::default()
             },
@@ -90,7 +99,10 @@ fn wrap_row_line_cross_size_accounts_for_minmax_clamped_card() {
             Style {
                 display: Display::Flex,
                 flex_direction: FlexDirection::Column,
-                size: Size { width: Dimension::length(412.0), height: Dimension::length(892.0) },
+                size: Size {
+                    width: Dimension::length(412.0),
+                    height: Dimension::length(892.0),
+                },
                 ..Default::default()
             },
             &[row],
@@ -118,7 +130,11 @@ fn wrap_row_line_cross_size_accounts_for_minmax_clamped_card() {
     let card_l = taffy.layout(card).unwrap();
 
     // カードは max-width 268 にクランプされ、タイトルは 2 行に折り返す。
-    assert!((card_l.size.width - 268.0).abs() < 0.5, "card width was {}", card_l.size.width);
+    assert!(
+        (card_l.size.width - 268.0).abs() < 0.5,
+        "card width was {}",
+        card_l.size.width
+    );
     assert!(
         card_l.size.height <= row_l.size.height + 0.5,
         "card (h {}) must fit in its wrap row (h {}) — row line cross size must be measured at the clamped width",

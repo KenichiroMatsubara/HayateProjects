@@ -19,7 +19,10 @@ use hayate_core::{
 /// (panel_bottom, footer_bottom, panel_width) を返す。
 fn layout_panel(width: StyleProp, max_width: Option<StyleProp>) -> (f32, f32, f32) {
     let mut tree = ElementTree::new();
-    tree.register_font("Inter", include_bytes!("../assets/fonts/NotoSansJP.ttf").to_vec());
+    tree.register_font(
+        "Inter",
+        include_bytes!("../assets/fonts/NotoSansJP.ttf").to_vec(),
+    );
     let mut next = 1u64;
     let mut mk = |tree: &mut ElementTree, kind, styles: &[StyleProp]| {
         let id = tree.element_create(next, kind);
@@ -28,15 +31,19 @@ fn layout_panel(width: StyleProp, max_width: Option<StyleProp>) -> (f32, f32, f3
         id
     };
 
-    let root = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::px(360.0)),
-        StyleProp::Height(Dimension::px(1000.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Column),
-        StyleProp::DefaultFontFamily("Inter".to_string()),
-        StyleProp::DefaultColor(Color::BLACK),
-        StyleProp::DefaultFontSize(13.0),
-    ]);
+    let root = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::px(360.0)),
+            StyleProp::Height(Dimension::px(1000.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+            StyleProp::DefaultFontFamily("Inter".to_string()),
+            StyleProp::DefaultColor(Color::BLACK),
+            StyleProp::DefaultFontSize(13.0),
+        ],
+    );
     tree.set_root(root);
     tree.set_viewport(360.0, 1000.0);
 
@@ -60,7 +67,11 @@ fn layout_panel(width: StyleProp, max_width: Option<StyleProp>) -> (f32, f32, f3
         "この段落は選択できます。ダブルクリックで単語、トリプルクリックで段落を選び、Shift+クリックや Shift+矢印で範囲を伸縮、Cmd/Ctrl+A で全選択できます。とても長い文章。",
     );
     tree.element_append_child(panel, para);
-    let footer = mk(&mut tree, ElementKind::View, &[StyleProp::Height(Dimension::px(30.0))]);
+    let footer = mk(
+        &mut tree,
+        ElementKind::View,
+        &[StyleProp::Height(Dimension::px(30.0))],
+    );
     tree.element_append_child(panel, footer);
 
     tree.render(0.0);
@@ -78,7 +89,10 @@ fn width_px_maxwidth_percent_contains_all_children() {
         StyleProp::Width(Dimension::px(620.0)),
         Some(StyleProp::MaxWidth(Dimension::percent(100.0))),
     );
-    assert!((panel_w - 360.0).abs() < 0.5, "panel clamps to parent width, got {panel_w}");
+    assert!(
+        (panel_w - 360.0).abs() < 0.5,
+        "panel clamps to parent width, got {panel_w}"
+    );
     assert!(
         footer_bottom + 14.0 <= panel_bottom + 0.5,
         "footer (+bottom padding) must sit inside the panel: footer_bottom={footer_bottom}, panel_bottom={panel_bottom}",
@@ -92,7 +106,10 @@ fn width100_maxwidth_px_contains_all_children() {
         StyleProp::Width(Dimension::percent(100.0)),
         Some(StyleProp::MaxWidth(Dimension::px(620.0))),
     );
-    assert!((panel_w - 360.0).abs() < 0.5, "panel clamps to parent width, got {panel_w}");
+    assert!(
+        (panel_w - 360.0).abs() < 0.5,
+        "panel clamps to parent width, got {panel_w}"
+    );
     assert!(footer_bottom + 14.0 <= panel_bottom + 0.5);
 }
 
@@ -113,7 +130,10 @@ fn min_width_wider_than_width_uses_clamped_width() {
         StyleProp::Width(Dimension::px(120.0)),
         Some(StyleProp::MinWidth(Dimension::px(320.0))),
     );
-    assert!((panel_w - 320.0).abs() < 0.5, "min-width forces 320, got {panel_w}");
+    assert!(
+        (panel_w - 320.0).abs() < 0.5,
+        "min-width forces 320, got {panel_w}"
+    );
     assert!(footer_bottom + 14.0 <= panel_bottom + 0.5);
 }
 
@@ -127,13 +147,19 @@ fn height_tracks_clamped_width_and_always_contains_footer() {
             StyleProp::Width(Dimension::px(620.0)),
             Some(StyleProp::MaxWidth(Dimension::px(maxw))),
         );
-        assert!((panel_w - maxw).abs() < 0.5, "panel clamps to {maxw}, got {panel_w}");
+        assert!(
+            (panel_w - maxw).abs() < 0.5,
+            "panel clamps to {maxw}, got {panel_w}"
+        );
         assert!(
             footer_bottom + 14.0 <= panel_bottom + 0.5,
             "maxw={maxw}: footer overflows (footer={footer_bottom}, panel={panel_bottom})",
         );
         // 幅を狭めるほどコンテナ高さは単調に増える（折り返し増）。
-        assert!(panel_bottom >= prev_bottom - 0.5, "narrower width must not shrink the panel");
+        assert!(
+            panel_bottom >= prev_bottom - 0.5,
+            "narrower width must not shrink the panel"
+        );
         prev_bottom = panel_bottom;
     }
 }
@@ -150,21 +176,31 @@ fn row_container_clamps_cross_height_by_max_height() {
         tree.element_set_style(id, styles);
         id
     };
-    let root = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Width(Dimension::px(800.0)),
-        StyleProp::Height(Dimension::px(400.0)),
-        StyleProp::Display(DisplayValue::Flex),
-        StyleProp::FlexDirection(FlexDirectionValue::Row),
-    ]);
+    let root = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Width(Dimension::px(800.0)),
+            StyleProp::Height(Dimension::px(400.0)),
+            StyleProp::Display(DisplayValue::Flex),
+            StyleProp::FlexDirection(FlexDirectionValue::Row),
+        ],
+    );
     tree.set_root(root);
     tree.set_viewport(800.0, 400.0);
-    let item = mk(&mut tree, ElementKind::View, &[
-        StyleProp::Height(Dimension::px(300.0)),
-        StyleProp::MaxHeight(Dimension::px(120.0)),
-    ]);
+    let item = mk(
+        &mut tree,
+        ElementKind::View,
+        &[
+            StyleProp::Height(Dimension::px(300.0)),
+            StyleProp::MaxHeight(Dimension::px(120.0)),
+        ],
+    );
     tree.element_append_child(root, item);
     tree.render(0.0);
     let h = tree.element_layout_rect(item).unwrap().3;
-    assert!((h - 120.0).abs() < 0.5, "row item height must clamp to max-height 120, got {h}");
+    assert!(
+        (h - 120.0).abs() < 0.5,
+        "row item height must clamp to max-height 120, got {h}"
+    );
 }
-

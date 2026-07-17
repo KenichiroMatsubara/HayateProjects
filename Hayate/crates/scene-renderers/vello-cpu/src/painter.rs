@@ -114,7 +114,9 @@ impl ScenePainter for VelloCpuPainter<'_> {
         fill_rule: DrawFillRule,
         color: [f32; 4],
     ) {
-        let mut sink = CpuKurboPathSink { path: BezPath::new() };
+        let mut sink = CpuKurboPathSink {
+            path: BezPath::new(),
+        };
         build_draw_path(verbs, &mut sink);
         if sink.path.is_empty() {
             return;
@@ -142,7 +144,9 @@ impl ScenePainter for VelloCpuPainter<'_> {
         if stroke.width <= 0.0 {
             return;
         }
-        let mut sink = CpuKurboPathSink { path: BezPath::new() };
+        let mut sink = CpuKurboPathSink {
+            path: BezPath::new(),
+        };
         build_draw_path(verbs, &mut sink);
         if sink.path.is_empty() {
             return;
@@ -245,7 +249,9 @@ impl ScenePainter for VelloCpuPainter<'_> {
                 None => continue,
             };
 
-            let mut pen = GlyphPen { path: BezPath::new() };
+            let mut pen = GlyphPen {
+                path: BezPath::new(),
+            };
             let settings = DrawSettings::unhinted(size, location);
             if outline.draw(settings, &mut pen).is_err() {
                 continue;
@@ -361,7 +367,9 @@ impl ScenePainter for VelloCpuPainter<'_> {
     }
 
     fn push_clip_draw_path(&mut self, verbs: &[PathVerb]) {
-        let mut sink = CpuKurboPathSink { path: BezPath::new() };
+        let mut sink = CpuKurboPathSink {
+            path: BezPath::new(),
+        };
         build_draw_path(verbs, &mut sink);
         // verbs は walk が原点 + draw CTM を焼き込み済み（state 変換の元空間）。
         self.context.set_transform(self.state.transform);
@@ -463,7 +471,11 @@ fn push_rounded_rect(path: &mut BezPath, x: f32, y: f32, w: f32, h: f32, r: f32)
     path.line_to(p(x + w - r, y));
     path.curve_to(p(x + w - r + k, y), p(x + w, y + r - k), p(x + w, y + r));
     path.line_to(p(x + w, y + h - r));
-    path.curve_to(p(x + w, y + h - r + k), p(x + w - r + k, y + h), p(x + w - r, y + h));
+    path.curve_to(
+        p(x + w, y + h - r + k),
+        p(x + w - r + k, y + h),
+        p(x + w - r, y + h),
+    );
     path.line_to(p(x + r, y + h));
     path.curve_to(p(x + r - k, y + h), p(x, y + h - r + k), p(x, y + h - r));
     path.line_to(p(x, y + r));

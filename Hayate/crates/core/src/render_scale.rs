@@ -209,7 +209,12 @@ mod tests {
     fn degradation_stops_at_minimum_step() {
         let mut g = governor();
         // 大量に逼迫しても最下段でクランプ。
-        feed(&mut g, 100.0, false, tunables::PRESSURE_FRAMES_TO_DEGRADE * 10);
+        feed(
+            &mut g,
+            100.0,
+            false,
+            tunables::PRESSURE_FRAMES_TO_DEGRADE * 10,
+        );
         assert_eq!(g.scale(), *tunables::SCALE_STEPS.last().unwrap());
     }
 
@@ -348,7 +353,10 @@ mod tests {
         let logical = (120.0_f32, 80.0_f32);
         for &render_scale in &tunables::SCALE_STEPS {
             let eff = effective_content_scale(base_dpr, render_scale);
-            assert!(eff >= 1.0, "モバイル DPR では実効スケールが 1.0 を下回らない");
+            assert!(
+                eff >= 1.0,
+                "モバイル DPR では実効スケールが 1.0 を下回らない"
+            );
             let physical = (logical.0 * eff, logical.1 * eff);
             let back = hit_test_logical(physical, eff);
             assert!((back.0 - logical.0).abs() < 1e-3);

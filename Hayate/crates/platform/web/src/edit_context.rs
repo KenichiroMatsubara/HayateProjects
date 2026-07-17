@@ -331,8 +331,10 @@ pub(crate) fn attach_edit_context(
             drop(c);
             crate::pointer_input::wake(&request_redraw);
         }) as Box<dyn FnMut(Event)>);
-        ec_target
-            .add_event_listener_with_callback("compositionstart", closure.as_ref().unchecked_ref())?;
+        ec_target.add_event_listener_with_callback(
+            "compositionstart",
+            closure.as_ref().unchecked_ref(),
+        )?;
         listeners.push(ListenerReg {
             target: ec_target.clone(),
             name: "compositionstart",
@@ -353,7 +355,9 @@ pub(crate) fn attach_edit_context(
                 c.base = reflect_u32(ev, "updateRangeStart").unwrap_or(0);
                 c.text = text.clone();
                 // フォーマット無しの更新を先に送る。変換下線は後続の textformatupdate で届く。
-                pending.borrow_mut().push(EditInput::CompositionUpdate(text));
+                pending
+                    .borrow_mut()
+                    .push(EditInput::CompositionUpdate(text));
             } else {
                 pending.borrow_mut().push(EditInput::Text(text));
             }
@@ -537,7 +541,15 @@ mod tests {
     #[test]
     fn maps_canvas_pixels_to_css_screen_coordinates() {
         // canvas 200x100、CSS rect が (10,20) 原点で 400x200 → 2倍スケール。
-        let rect = canvas_pixel_rect_to_screen((10.0, 20.0, 400.0, 200.0), 200, 100, 50.0, 25.0, 8.0, 16.0);
+        let rect = canvas_pixel_rect_to_screen(
+            (10.0, 20.0, 400.0, 200.0),
+            200,
+            100,
+            50.0,
+            25.0,
+            8.0,
+            16.0,
+        );
         assert_eq!(rect, (110.0, 70.0, 16.0, 32.0));
     }
 

@@ -59,7 +59,10 @@ fn dragging_plain_text_starts_a_selection() {
     let (start, end) = sel
         .range_within(text)
         .expect("both endpoints in the text element");
-    assert!(start < end, "expected a non-empty range, got {start}..{end}");
+    assert!(
+        start < end,
+        "expected a non-empty range, got {start}..{end}"
+    );
 }
 
 #[test]

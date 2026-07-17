@@ -109,14 +109,23 @@ fn diagnose_390() {
 
     let _ = tree.render(0.0);
 
-    let rect = |t: &ElementTree, id: ElementId| t.element_layout_rect(id).unwrap_or((-1.0, -1.0, -1.0, -1.0));
+    let rect = |t: &ElementTree, id: ElementId| {
+        t.element_layout_rect(id)
+            .unwrap_or((-1.0, -1.0, -1.0, -1.0))
+    };
     let (dx, _dy, dw, _dh) = rect(&tree, demo);
     let (ix, _iy, iw, ih) = rect(&tree, input);
     let (bx, by, bw, bh) = rect(&tree, button);
     let (lx, ly, lw, lh) = rect(&tree, label);
 
-    eprintln!("[D390] demo box: x={dx} w={dw} (content width = {})", dw - 28.0);
-    eprintln!("[D390] INPUT  box: x={ix} w={iw} h={ih}  (content width = {})", iw - 24.0 - 2.0);
+    eprintln!(
+        "[D390] demo box: x={dx} w={dw} (content width = {})",
+        dw - 28.0
+    );
+    eprintln!(
+        "[D390] INPUT  box: x={ix} w={iw} h={ih}  (content width = {})",
+        iw - 24.0 - 2.0
+    );
     eprintln!("[D390] BUTTON box: x={bx} y={by} w={bw} h={bh}");
     eprintln!(
         "[D390] LABEL  box: x={lx} y={ly} w={lw} h={lh}  (top gap above text = {}, bottom gap = {})",

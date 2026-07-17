@@ -296,15 +296,10 @@ impl VelloSurfaceHost {
 
 /// The compositing transform for one layer `placement` (ADR-0127・#707). For a banded scroll
 /// layer (present in both `planner`'s cache and `scroll_geometry`, this frame), this composes
-/// `placement.transform` with the compensating translate that places the cached (possibly
-/// several-frames-stale) band at *this frame's* correct screen position —
-/// `ScrollLayerGeometry::screen_top_for_band`'s doc comment has the full derivation of why both
-/// the **cached** band (what's actually in the texture right now — composite-only frames don't
-/// re-raster) and **this frame's** geometry (fresh every frame) are needed together: that pairing
-/// is what makes scrolling within an already-cached band keep tracking live scroll position
-/// instead of freezing at whatever offset was current when it was last rastered. Every other
-/// layer (non-scroll, or scroll but not yet rastered this present) is unaffected — returns
-/// `placement.transform` unchanged.
+/// `placement.transform` with this frame's profile-resolved scroll affine and the canonical
+/// cached-band origin. The cached texture omits the live scroll Group, so this per-frame affine
+/// keeps ordinary scrolling, iOS rubber translation, and Android stretch moving without a
+/// re-raster. Every other layer is unaffected.
 fn quad_transform(
     placement: &LayerPlacement,
     planner: &PresentPlanner,
@@ -314,13 +309,10 @@ fn quad_transform(
         planner.cached_scroll_band(placement.layer),
         scroll_geometry.get(&placement.layer),
     ) {
-        (Some(cached_band), Some(geometry)) => {
-            let screen_top = geometry.screen_top_for_band(cached_band);
-            compose(
-                placement.transform,
-                [1.0, 0.0, 0.0, 1.0, 0.0, screen_top as f64],
-            )
-        }
+        (Some(cached_band), Some(geometry)) => compose(
+            placement.transform,
+            geometry.composite_affine_for_band(cached_band),
+        ),
         _ => placement.transform,
     }
 }
@@ -446,7 +438,7 @@ impl CanvasBackend for SelectedBackend {
                 let Some(extracted) = (if layer == root {
                     Some(extract_root_scene(scene, root, &boundaries))
                 } else {
-                    extract_scroll_layer_scene(scene, layer, &boundaries)
+                    extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
                 }) else {
                     continue;
                 };

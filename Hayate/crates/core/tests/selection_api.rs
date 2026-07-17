@@ -35,10 +35,13 @@ fn selectable_paragraph(selectable: bool) -> (ElementTree, ElementId, ElementId)
 fn set_selection_range_makes_the_range_the_active_selection() {
     let (mut tree, _view, text) = selectable_paragraph(true);
 
-    let applied = tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
+    let applied =
+        tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
 
     assert!(applied, "a range within a selectable region should apply");
-    let sel = tree.selection().expect("an active selection after set_selection_range");
+    let sel = tree
+        .selection()
+        .expect("an active selection after set_selection_range");
     assert_eq!(sel.anchor, SelectionPoint::new(text, 0));
     assert_eq!(sel.focus, SelectionPoint::new(text, 5));
 }
@@ -50,10 +53,13 @@ fn set_selection_range_in_boundary_free_text_applies() {
     // ドキュメント領域を共有するため。
     let (mut tree, _view, text) = selectable_paragraph(false);
 
-    let applied = tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
+    let applied =
+        tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
 
     assert!(applied, "boundary-free plain text: the range should apply");
-    let sel = tree.selection().expect("an active selection after set_selection_range");
+    let sel = tree
+        .selection()
+        .expect("an active selection after set_selection_range");
     assert_eq!(sel.anchor, SelectionPoint::new(text, 0));
     assert_eq!(sel.focus, SelectionPoint::new(text, 5));
 }
@@ -66,7 +72,8 @@ fn set_selection_range_over_user_select_none_is_rejected() {
     tree.element_set_user_select(text, hayate_core::UserSelectValue::None);
     tree.render(0.0);
 
-    let applied = tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
+    let applied =
+        tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
 
     assert!(!applied, "user-select: none: the range should be rejected");
     assert!(
@@ -79,7 +86,10 @@ fn set_selection_range_over_user_select_none_is_rejected() {
 fn clear_selection_drops_the_active_selection() {
     let (mut tree, _view, text) = selectable_paragraph(true);
     tree.set_selection_range(SelectionPoint::new(text, 0), SelectionPoint::new(text, 5));
-    assert!(tree.selection().is_some(), "precondition: a selection is active");
+    assert!(
+        tree.selection().is_some(),
+        "precondition: a selection is active"
+    );
 
     tree.clear_selection();
 

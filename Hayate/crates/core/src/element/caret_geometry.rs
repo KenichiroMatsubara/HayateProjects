@@ -77,7 +77,8 @@ impl<'a> ParleyCaretGeometry<'a> {
             .find(|&i| {
                 self.layout.get(i).is_some_and(|line| {
                     let m = line.metrics();
-                    caret_mid_y >= m.block_min_coord as f64 && caret_mid_y < m.block_max_coord as f64
+                    caret_mid_y >= m.block_min_coord as f64
+                        && caret_mid_y < m.block_max_coord as f64
                 })
             })
             .unwrap_or_else(|| line_count.saturating_sub(1));
@@ -155,7 +156,11 @@ impl TableCaretGeometry {
         Self {
             lines: lines
                 .into_iter()
-                .map(|(start, end, columns)| TableLine { start, end, columns })
+                .map(|(start, end, columns)| TableLine {
+                    start,
+                    end,
+                    columns,
+                })
                 .collect(),
             line_height,
         }
@@ -224,13 +229,9 @@ impl CaretGeometry for TableCaretGeometry {
 
 /// `items` の中で `key` が最小の要素（同点は先勝ち＝小さい index）。
 fn nearest_by<T, K: PartialOrd>(items: &[T], key: impl Fn(&T) -> K) -> Option<&T> {
-    items.iter().reduce(|best, cur| {
-        if key(cur) < key(best) {
-            cur
-        } else {
-            best
-        }
-    })
+    items
+        .iter()
+        .reduce(|best, cur| if key(cur) < key(best) { cur } else { best })
 }
 
 /// `usize` の差の絶対値。

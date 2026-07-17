@@ -3,8 +3,8 @@
 //! fill rect（色＋位置、描画順）が一致しなければならない。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue, PseudoState,
-    RecordingPainter, StyleProp, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementId, ElementKind, ElementTree,
+    FlexDirectionValue, PseudoState, RecordingPainter, StyleProp,
 };
 
 type Rects = Vec<([f32; 4], f32, f32, f32, f32)>;
@@ -74,11 +74,7 @@ fn three_cards() -> (ElementTree, Vec<ElementId>) {
                 StyleProp::BackgroundColor(BLUE),
             ],
         );
-        tree.element_set_pseudo_style(
-            c,
-            PseudoState::Hover,
-            &[StyleProp::BackgroundColor(GREEN)],
-        );
+        tree.element_set_pseudo_style(c, PseudoState::Hover, &[StyleProp::BackgroundColor(GREEN)]);
         tree.element_append_child(root, c);
         cards.push(c);
     }

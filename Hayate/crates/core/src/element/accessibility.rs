@@ -4,9 +4,9 @@ use accesskit::{
     Action, ActionData, ActionRequest, Node, NodeId, Rect, Role, Tree, TreeId, TreeUpdate,
 };
 
+use super::interaction::InteractionIntent;
 use super::taffy_projection::TraversalStep;
 use super::tree::Element;
-use super::interaction::InteractionIntent;
 use super::{DocumentEventKind, ElementId, ElementKind, ElementTree, Event};
 
 fn node_id(id: ElementId) -> NodeId {
@@ -722,7 +722,11 @@ mod tests {
         let delivery = tree.poll_deliveries().pop().expect("a click delivery");
         match delivery.event {
             Event::Click { x, y, .. } => {
-                assert_eq!((x, y), (cx, cy), "click must land at the target's layout center");
+                assert_eq!(
+                    (x, y),
+                    (cx, cy),
+                    "click must land at the target's layout center"
+                );
             }
             other => panic!("expected a Click event, got {other:?}"),
         }
@@ -1044,7 +1048,10 @@ mod tests {
                 "idle frame must not advance the a11y generation",
             );
             assert!(
-                matches!(tree.poll_accessibility_update(), AccessibilityPoll::Unchanged),
+                matches!(
+                    tree.poll_accessibility_update(),
+                    AccessibilityPoll::Unchanged
+                ),
                 "idle frame poll must skip rebuild and report Unchanged",
             );
         }
@@ -1112,7 +1119,11 @@ mod tests {
             .find(|(id, _)| *id == node_id(input))
             .map(|(_, n)| n)
             .expect("input node");
-        assert_eq!(node.value(), Some("after"), "value change must reach the poll");
+        assert_eq!(
+            node.value(),
+            Some("after"),
+            "value change must reach the poll"
+        );
     }
 
     #[test]

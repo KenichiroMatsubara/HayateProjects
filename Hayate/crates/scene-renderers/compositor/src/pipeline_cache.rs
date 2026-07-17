@@ -128,7 +128,10 @@ mod tests {
     #[test]
     fn fnv1a_is_deterministic_and_boundary_sensitive() {
         // 永続キーに使うので、プロセス・ビルドをまたいで同値であることが本質。
-        assert_eq!(fnv1a_hash([b"abc".as_slice()]), fnv1a_hash([b"abc".as_slice()]));
+        assert_eq!(
+            fnv1a_hash([b"abc".as_slice()]),
+            fnv1a_hash([b"abc".as_slice()])
+        );
         assert_ne!(fnv1a_hash([b"a".as_slice()]), fnv1a_hash([b"b".as_slice()]));
         // part 境界が異なれば別ハッシュ（["ab","c"] ≠ ["a","bc"]）。
         assert_ne!(
@@ -150,7 +153,11 @@ mod tests {
         let bytes = encode(&key(), &[9, 9, 9]);
         let mut newer = key();
         newer.driver_version = 43; // ドライバ更新
-        assert_eq!(decode(&bytes, &newer), None, "ドライバ変更でキャッシュ無効化");
+        assert_eq!(
+            decode(&bytes, &newer),
+            None,
+            "ドライバ変更でキャッシュ無効化"
+        );
     }
 
     #[test]
@@ -158,7 +165,11 @@ mod tests {
         let bytes = encode(&key(), &[9, 9, 9]);
         let mut newer = key();
         newer.shader_hash = 0x1234; // シェーダ更新
-        assert_eq!(decode(&bytes, &newer), None, "シェーダ変更でキャッシュ無効化");
+        assert_eq!(
+            decode(&bytes, &newer),
+            None,
+            "シェーダ変更でキャッシュ無効化"
+        );
     }
 
     #[test]
@@ -174,7 +185,11 @@ mod tests {
         // 破損キャッシュで起動が壊れないこと（Err を投げず None に倒す）。
         assert_eq!(decode(&[], &key()), None, "空");
         assert_eq!(decode(&[0u8; 10], &key()), None, "ヘッダ未満");
-        assert_eq!(decode(b"XXXX....................", &key()), None, "magic 不一致");
+        assert_eq!(
+            decode(b"XXXX....................", &key()),
+            None,
+            "magic 不一致"
+        );
 
         // 正しいヘッダだが blob を切り詰めた（宣言 5 バイトに対し実 2 バイト）。
         let mut bytes = encode(&key(), &[1, 2, 3, 4, 5]);

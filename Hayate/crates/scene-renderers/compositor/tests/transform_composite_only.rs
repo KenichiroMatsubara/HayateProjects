@@ -54,14 +54,20 @@ fn transform_tree() -> (ElementTree, hayate_core::ElementId, hayate_core::Elemen
 fn transform_only_frames_raster_zero_layers() {
     let (mut tree, boxed, _inner) = transform_tree();
     let mut planner = PresentPlanner::new();
-    assert!(pump_frame(&mut tree, &mut planner, 0.0) > 0, "cold フレームは raster する");
+    assert!(
+        pump_frame(&mut tree, &mut planner, 0.0) > 0,
+        "cold フレームは raster する"
+    );
 
     // transform アニメーション相当：係数だけを毎フレーム変える → vello raster 0 回。
     for frame in 1..=5 {
         let x = frame as f64 * 10.0;
         tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, x, 0.0]));
         let rasters = pump_frame(&mut tree, &mut planner, frame as f64 * 16.0);
-        assert_eq!(rasters, 0, "transform のみのフレーム {frame} で raster が走った");
+        assert_eq!(
+            rasters, 0,
+            "transform のみのフレーム {frame} で raster が走った"
+        );
         // composite-only フレーム（FramePlan でも固定）。
         let plan = planner.plan_layers(tree.frame_layers(), tree.frame_layer_dirty());
         assert!(FramePlan::from_raster(&plan).is_composite_only());
@@ -87,7 +93,10 @@ fn content_change_rerasters_only_the_dirty_layer() {
     let _ = tree.render(16.0);
     let plan = planner.plan_layers(tree.frame_layers(), tree.frame_layer_dirty());
     assert_eq!(plan.raster, vec![boxed], "dirty レイヤ（boxed）だけ raster");
-    assert!(plan.reuse.contains(&tree.frame_layers()[0]), "root レイヤは reuse");
+    assert!(
+        plan.reuse.contains(&tree.frame_layers()[0]),
+        "root レイヤは reuse"
+    );
 }
 
 #[test]

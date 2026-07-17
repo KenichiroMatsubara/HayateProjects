@@ -4,8 +4,8 @@
 //! 特に統合対象の box-shadow と text-input は、以前は各走査で重複していた。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, FlexDirectionValue, Shadow, StyleProp,
-    RecordingPainter, render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, FlexDirectionValue,
+    RecordingPainter, Shadow, StyleProp,
 };
 
 /// draw op を Debug 文字列へ射影する（DrawOp は `PartialEq` でない）。`FillRect`

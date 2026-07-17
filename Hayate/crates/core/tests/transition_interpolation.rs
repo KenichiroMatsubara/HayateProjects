@@ -5,8 +5,8 @@
 //! duration/timing は変更後の解決済み visual から取る。
 
 use hayate_core::{
-    Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState, RecordingPainter, StyleProp,
-    render_scene_graph,
+    render_scene_graph, Color, Dimension, DrawOp, ElementKind, ElementTree, PseudoState,
+    RecordingPainter, StyleProp,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -87,14 +87,26 @@ fn hover_transition_interpolates_background_color_over_duration() {
     // 200ms ウィンドウの中間: 赤と緑の間。
     tree.render(200.0);
     let mid = background(&tree);
-    assert!(mid[0] < 1.0 && mid[0] > 0.0, "red channel mid-transition: {}", mid[0]);
-    assert!(mid[1] > 0.0 && mid[1] < 1.0, "green channel mid-transition: {}", mid[1]);
+    assert!(
+        mid[0] < 1.0 && mid[0] > 0.0,
+        "red channel mid-transition: {}",
+        mid[0]
+    );
+    assert!(
+        mid[1] > 0.0 && mid[1] < 1.0,
+        "green channel mid-transition: {}",
+        mid[1]
+    );
 
     // ウィンドウ通過後: 完全に緑。
     tree.render(300.0);
     let end = background(&tree);
     assert!((end[0]).abs() < 1e-3, "red channel done: {}", end[0]);
-    assert!((end[1] - 1.0).abs() < 1e-3, "green channel done: {}", end[1]);
+    assert!(
+        (end[1] - 1.0).abs() < 1e-3,
+        "green channel done: {}",
+        end[1]
+    );
 }
 
 #[test]
@@ -108,7 +120,10 @@ fn zero_duration_switches_immediately() {
         (after[0]).abs() < 1e-3 && (after[1] - 1.0).abs() < 1e-3,
         "zero-duration hover must switch straight to green: {after:?}"
     );
-    assert!(!tree.test_transition_active(root), "no transition is started");
+    assert!(
+        !tree.test_transition_active(root),
+        "no transition is started"
+    );
 }
 
 #[test]
@@ -119,7 +134,10 @@ fn set_style_interpolates_continuous_property_over_duration() {
     tree.render(0.0);
     assert_eq!(background(&tree)[0], 1.0, "starts fully red");
 
-    tree.element_set_style(root, &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))]);
+    tree.element_set_style(
+        root,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0))],
+    );
 
     // 変更後の最初のフレームがクロックを固定する。まだ赤。
     tree.render(100.0);
@@ -128,7 +146,10 @@ fn set_style_interpolates_continuous_property_over_duration() {
         (start[0] - 1.0).abs() < 1e-3 && start[2].abs() < 1e-3,
         "setStyle frame 0 still red: {start:?}"
     );
-    assert!(tree.test_transition_active(root), "setStyle starts a transition");
+    assert!(
+        tree.test_transition_active(root),
+        "setStyle starts a transition"
+    );
 
     // ウィンドウ中間: 赤と青の間。
     tree.render(200.0);
@@ -155,7 +176,10 @@ fn reverse_interrupt_continues_from_displayed_value() {
     tree.render(100.0); // 固定
     tree.render(200.0); // 赤 -> 緑 の中間
     let mid = background(&tree);
-    assert!(mid[0] > 0.0 && mid[1] > 0.0, "captured a mid value: {mid:?}");
+    assert!(
+        mid[0] > 0.0 && mid[1] > 0.0,
+        "captured a mid value: {mid:?}"
+    );
 
     // 同じ瞬間に反転: 表示値が飛んではならない。
     tree.update_pointer_hover(None);
@@ -169,7 +193,12 @@ fn reverse_interrupt_continues_from_displayed_value() {
     // 反転を続けると赤へ戻る（赤チャンネルが上昇する）。
     tree.render(300.0);
     let back = background(&tree);
-    assert!(back[0] > reversed[0], "red channel climbs back: {} -> {}", reversed[0], back[0]);
+    assert!(
+        back[0] > reversed[0],
+        "red channel climbs back: {} -> {}",
+        reversed[0],
+        back[0]
+    );
 }
 
 #[test]
@@ -208,7 +237,10 @@ fn duration_is_read_from_after_change_resolved_visual() {
         (hovered[1] - 1.0).abs() < 1e-3 && hovered[0].abs() < 1e-3,
         "hover-in is instant: {hovered:?}"
     );
-    assert!(!tree.test_transition_active(root), "instant hover-in starts no transition");
+    assert!(
+        !tree.test_transition_active(root),
+        "instant hover-in starts no transition"
+    );
 
     // hover-out: 変更後 duration が base 500ms → 赤へアニメーションで戻る。
     tree.update_pointer_hover(None);
@@ -219,7 +251,10 @@ fn duration_is_read_from_after_change_resolved_visual() {
         mid[0] > 0.0 && mid[0] < 1.0 && mid[1] > 0.0 && mid[1] < 1.0,
         "hover-out animates over 500ms: {mid:?}"
     );
-    assert!(tree.test_transition_active(root), "hover-out starts a transition");
+    assert!(
+        tree.test_transition_active(root),
+        "hover-out starts a transition"
+    );
 }
 
 #[test]
@@ -235,7 +270,10 @@ fn first_emit_shows_target_without_transition() {
         (first[1] - 1.0).abs() < 1e-3 && first[0].abs() < 1e-3,
         "first emit paints the target (green) with no interpolation: {first:?}"
     );
-    assert!(!tree.test_transition_active(root), "first emit starts no transition");
+    assert!(
+        !tree.test_transition_active(root),
+        "first emit starts no transition"
+    );
 }
 
 #[test]
@@ -259,7 +297,10 @@ fn properties_interpolate_from_independent_from_values() {
     tree.render(0.0);
 
     // 背景は t=100 で変化を開始する。
-    tree.element_set_style(root, &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))]);
+    tree.element_set_style(
+        root,
+        &[StyleProp::BackgroundColor(Color::new(0.0, 1.0, 0.0, 1.0))],
+    );
     tree.render(100.0);
 
     // border-radius は 1 フレーム遅れて t=200 で変化を開始する。

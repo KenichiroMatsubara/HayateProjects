@@ -89,7 +89,11 @@ fn only_text_input_accepts_text_input() {
 #[test]
 fn plain_text_tap_does_not_arm_the_keyboard() {
     let (mut tree, _view, text) = plain_text_doc();
-    assert_eq!(tree.focused_text_input(), None, "タップ前はどのフィールドも武装していない");
+    assert_eq!(
+        tree.focused_text_input(),
+        None,
+        "タップ前はどのフィールドも武装していない"
+    );
 
     tree.on_pointer_down_with_kind(20.0, 8.0, 0, PointerKind::Touch);
 

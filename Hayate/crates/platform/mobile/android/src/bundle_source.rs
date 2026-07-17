@@ -158,8 +158,12 @@ mod tests {
     fn a_full_url_target_fetches_exactly_the_entered_path() {
         // 複数デモをパスで区別する Demo Endpoint（ADR-0003）：貼られたフル URL の path を
         // そのまま fetch する（scheme 既定ポートは URL 正規化・dev_server_target が契約テスト済み）。
-        let target = crate::dev_server_target::resolve(Some("https://demo.example/solid/bundle.js"));
-        assert_eq!(bundle_url(&target), "https://demo.example:443/solid/bundle.js");
+        let target =
+            crate::dev_server_target::resolve(Some("https://demo.example/solid/bundle.js"));
+        assert_eq!(
+            bundle_url(&target),
+            "https://demo.example:443/solid/bundle.js"
+        );
 
         let lan = crate::dev_server_target::resolve(Some("192.168.1.5:8080/react/bundle.js"));
         assert_eq!(bundle_url(&lan), "http://192.168.1.5:8080/react/bundle.js");

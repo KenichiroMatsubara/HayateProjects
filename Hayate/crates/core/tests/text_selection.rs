@@ -2,8 +2,8 @@
 //! またがるドラッグ選択。
 
 use hayate_core::{
-    DrawOp, Dimension, ElementId, ElementKind, ElementTree, FlexDirectionValue, RecordingPainter,
-    SelectionPoint, StyleProp, UserSelectValue, render_scene_graph,
+    render_scene_graph, Dimension, DrawOp, ElementId, ElementKind, ElementTree, FlexDirectionValue,
+    RecordingPainter, SelectionPoint, StyleProp, UserSelectValue,
 };
 
 fn draw_ops(tree: &ElementTree) -> Vec<DrawOp> {
@@ -49,7 +49,10 @@ fn drag_within_selectable_selects_anchor_to_focus_range() {
     let (start, end) = sel
         .range_within(text)
         .expect("both endpoints in the text element");
-    assert!(start < end, "expected a non-empty range, got {start}..{end}");
+    assert!(
+        start < end,
+        "expected a non-empty range, got {start}..{end}"
+    );
     assert_eq!(start, sel.anchor.offset.min(sel.focus.offset));
     assert!(
         sel.focus.offset > sel.anchor.offset,
@@ -155,7 +158,11 @@ fn select_all_covers_the_whole_region() {
 
     let sel = tree.selection().expect("a selection after Ctrl+A");
     let (start, end) = sel.range_within(text).expect("both endpoints in text");
-    assert_eq!((start, end), (0, "Hello world".len()), "whole region selected");
+    assert_eq!(
+        (start, end),
+        (0, "Hello world".len()),
+        "whole region selected"
+    );
 }
 
 #[test]
@@ -168,15 +175,23 @@ fn shift_arrow_extends_the_focus_by_one_character() {
     tree.on_pointer_up(8.0, 8.0);
 
     tree.on_key_down("ArrowRight", SHIFT);
-    let sel = tree.selection().expect("a selection after Shift+ArrowRight");
+    let sel = tree
+        .selection()
+        .expect("a selection after Shift+ArrowRight");
     assert_eq!(sel.anchor, anchor, "anchor stays fixed");
-    assert!(sel.focus.offset > caret, "focus advances one character right");
+    assert!(
+        sel.focus.offset > caret,
+        "focus advances one character right"
+    );
 
     // Shift+ArrowLeft はアンカーへ向けて（アンカー上まで）縮む。
     let extended = sel.focus.offset;
     tree.on_key_down("ArrowLeft", SHIFT);
     let sel = tree.selection().unwrap();
-    assert!(sel.focus.offset < extended, "focus retreats, contracting the range");
+    assert!(
+        sel.focus.offset < extended,
+        "focus retreats, contracting the range"
+    );
     let _ = text;
 }
 
@@ -439,8 +454,14 @@ fn dragging_backwards_across_blocks_normalizes_to_document_order() {
     tree.on_pointer_move(20.0, block_mid_y(&tree, first));
 
     let sel = tree.selection().expect("a cross-block selection");
-    assert_eq!(sel.anchor.element, second, "anchor stays where the drag began");
-    assert_eq!(sel.focus.element, first, "focus follows the drag into block one");
+    assert_eq!(
+        sel.anchor.element, second,
+        "anchor stays where the drag began"
+    );
+    assert_eq!(
+        sel.focus.element, first,
+        "focus follows the drag into block one"
+    );
 
     let (start, end) = tree
         .selection_ordered()
@@ -655,7 +676,10 @@ fn contains_boundary_excludes_outside_blocks_from_copied_text() {
         SelectionPoint::new(in_a, 0),
         SelectionPoint::new(in_b, "Beta box".len()),
     );
-    assert!(inside, "both paragraphs lie inside the same `contains` boundary");
+    assert!(
+        inside,
+        "both paragraphs lie inside the same `contains` boundary"
+    );
     assert_eq!(
         tree.selected_text().as_deref(),
         Some("Alpha box\nBeta box"),
@@ -683,7 +707,9 @@ fn without_contains_a_drag_spans_freely_across_the_box() {
     tree.on_pointer_down(20.0, block_mid_y(&tree, inside));
     tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
 
-    let sel = tree.selection().expect("a selection started inside the box");
+    let sel = tree
+        .selection()
+        .expect("a selection started inside the box");
     assert_eq!(
         sel.focus.element, outside,
         "with no `contains` boundary the focus follows the drag into the sibling",
@@ -761,9 +787,9 @@ fn highlight_bands(tree: &ElementTree) -> Vec<(f32, f32)> {
     draw_ops(tree)
         .iter()
         .filter_map(|op| match op {
-            DrawOp::FillRect { y, height, color, .. } if *color == HIGHLIGHT_COLOR => {
-                Some((*y, *y + *height))
-            }
+            DrawOp::FillRect {
+                y, height, color, ..
+            } if *color == HIGHLIGHT_COLOR => Some((*y, *y + *height)),
             _ => None,
         })
         .collect()
@@ -782,11 +808,7 @@ fn dragging_across_blocks_highlights_every_covered_block() {
     let bands = highlight_bands(&tree);
     let (_, fy, _, fh) = tree.element_layout_rect(first).unwrap();
     let (_, sy, _, sh) = tree.element_layout_rect(second).unwrap();
-    let covers = |y0: f32, y1: f32| {
-        bands
-            .iter()
-            .any(|&(by0, by1)| by1 > y0 && by0 < y1)
-    };
+    let covers = |y0: f32, y1: f32| bands.iter().any(|&(by0, by1)| by1 > y0 && by0 < y1);
     assert!(covers(fy, fy + fh), "the first block must be highlighted");
     assert!(covers(sy, sy + sh), "the second block must be highlighted");
 }
@@ -836,13 +858,22 @@ fn dragging_across_two_text_blocks_highlights_both_and_copies_them_joined() {
         bands.iter().any(|&(by0, by1)| by0 <= mid && mid <= by1)
     };
     assert!(covered(first), "the first block is highlighted by the drag");
-    assert!(covered(second), "the second block is highlighted by the drag");
+    assert!(
+        covered(second),
+        "the second block is highlighted by the drag"
+    );
 
     // 同じドラッグは両ブロックをコピーし、ブロック境界に `\n` を1つだけ入れてドキュメント順で
     // 結合する。ドラッグ終端はピクセル依存のため、完全一致は上の API テストで固定し、ここでは
     // 構造だけを検証する: 1番目はブロック全体、2番目は先頭から。
-    let copied = tree.selected_text().expect("a cross-block drag copies text");
-    assert_eq!(copied.matches('\n').count(), 1, "one block-boundary newline: {copied:?}");
+    let copied = tree
+        .selected_text()
+        .expect("a cross-block drag copies text");
+    assert_eq!(
+        copied.matches('\n').count(),
+        1,
+        "one block-boundary newline: {copied:?}"
+    );
     let (lead, tail) = copied.split_once('\n').unwrap();
     assert_eq!(lead, "First block", "the first block is copied whole");
     assert!(
@@ -872,7 +903,10 @@ fn region_with_outside_block() -> (ElementTree, ElementId, ElementId) {
     );
     tree.element_set_style(
         inner,
-        &[StyleProp::Width(Dimension::px(400.0)), StyleProp::FlexDirection(FlexDirectionValue::Column)],
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
     );
     tree.element_set_style(inside, &[StyleProp::Width(Dimension::px(400.0))]);
     tree.element_set_style(outside, &[StyleProp::Width(Dimension::px(400.0))]);
@@ -895,7 +929,9 @@ fn selection_does_not_leak_past_the_selectable_boundary() {
     tree.on_pointer_move(80.0, block_mid_y(&tree, outside));
     tree.render(0.0);
 
-    let sel = tree.selection().expect("a selection started inside the region");
+    let sel = tree
+        .selection()
+        .expect("a selection started inside the region");
     assert_eq!(
         sel.focus.element, inside,
         "focus must stay clamped inside the Selection Region",
@@ -906,7 +942,10 @@ fn selection_does_not_leak_past_the_selectable_boundary() {
     let leaked = highlight_bands(&tree)
         .iter()
         .any(|&(by0, by1)| by1 > oy && by0 < oy + oh);
-    assert!(!leaked, "no highlight may appear outside the Selection Region");
+    assert!(
+        !leaked,
+        "no highlight may appear outside the Selection Region"
+    );
 }
 
 /// `outer_block` を持つ selectable な `outer` 列の下に、`inner_block` を持つネストした
@@ -930,7 +969,10 @@ fn nested_regions() -> (ElementTree, ElementId, ElementId) {
     );
     tree.element_set_style(
         inner,
-        &[StyleProp::Width(Dimension::px(400.0)), StyleProp::FlexDirection(FlexDirectionValue::Column)],
+        &[
+            StyleProp::Width(Dimension::px(400.0)),
+            StyleProp::FlexDirection(FlexDirectionValue::Column),
+        ],
     );
     tree.element_set_style(outer_block, &[StyleProp::Width(Dimension::px(400.0))]);
     tree.element_set_style(inner_block, &[StyleProp::Width(Dimension::px(400.0))]);

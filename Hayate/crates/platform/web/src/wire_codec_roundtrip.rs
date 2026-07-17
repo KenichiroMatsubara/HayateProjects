@@ -14,7 +14,8 @@ mod tests {
 
     #[test]
     fn style_wire_decode_encode_roundtrip() {
-        let text = fs::read_to_string(fixture_path("style_encode.json")).expect("read style fixtures");
+        let text =
+            fs::read_to_string(fixture_path("style_encode.json")).expect("read style fixtures");
         let fixtures: Vec<serde_json::Value> =
             serde_json::from_str(&text).expect("parse style fixtures");
 

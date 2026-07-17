@@ -1,11 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::element::id::ElementId;
-use crate::element::visual_invalidation::{
-    self, VisualInvalidationReach,
-};
 use crate::element::layout_pass::LayoutPass;
 use crate::element::tree::{Element, Event};
+use crate::element::visual_invalidation::{self, VisualInvalidationReach};
 
 /// `ElementTree::commit_frame()` を駆動する dirty 追跡集合
 /// （`structure_dirty` / `shape_dirty` / `fonts_dirty`）を保持する（ADR-0075）。
