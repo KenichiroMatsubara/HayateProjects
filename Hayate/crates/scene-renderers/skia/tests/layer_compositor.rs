@@ -17,7 +17,7 @@ use hayate_layer_compositor::{
 };
 use hayate_scene_renderer_skia::{
     new_raster_surface, read_rgba, SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter,
-    SkiaLayerRasterizer,
+    SkiaLayerRasterizer, SkiaLayerSurfaceFactory,
 };
 
 const W: u32 = 200;
@@ -88,6 +88,33 @@ fn assert_pixels_equal(full: &[u8], layered: &[u8], label: &str) {
         worst <= 2,
         "{label}: 全面 raster と Skia レイヤ合成の出力が一致しない（byte {worst_at} で {worst} 差）"
     );
+}
+
+struct FailingLayerSurfaceFactory;
+
+impl SkiaLayerSurfaceFactory for FailingLayerSurfaceFactory {
+    fn create_layer_surface(
+        &mut self,
+        _width: i32,
+        _height: i32,
+    ) -> Result<skia_safe::Surface, String> {
+        Err("layer surface unavailable".to_string())
+    }
+}
+
+#[test]
+fn layer_surface_failure_is_returned_to_the_render_host() {
+    let mut rasterizer = SkiaLayerRasterizer::new(W, H, 1.0);
+    let error = rasterizer
+        .rasterize_with_layer_surface_factory(
+            &mut FailingLayerSurfaceFactory,
+            ElementId::from_u64(1),
+            &Default::default(),
+            None,
+        )
+        .expect_err("surface allocation failure must escape the renderer");
+
+    assert_eq!(error, "layer surface unavailable");
 }
 
 fn transform_tree() -> (ElementTree, ElementId, ElementId) {

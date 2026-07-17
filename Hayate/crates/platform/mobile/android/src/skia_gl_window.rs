@@ -10,8 +10,8 @@
 //!
 //! painter は不変（ADR-0146 §3 の surface 非依存設計）: `SceneGraph`→Canvas の変換層
 //! （`hayate-scene-renderer-skia::painter`）は CPU/GL で共有する。dirty layer は同じ
-//! `SkiaLayerPresenter` で cache 更新し、最終 quad 合成先だけを Ganesh の FBO0 wrap
-//! （`gpu::surfaces::wrap_backend_render_target`）へ差し替える。
+//! `SkiaLayerPresenter` で cache 更新し、dirty layer と最終 quad 合成先の両方を同じ
+//! `DirectContext` 上の Ganesh surface にする。
 //!
 //! スレッド規約（ADR-0128 / `RasterThread`）: EGL 初期化・観測ログ（EGL vendor / GL renderer）
 //! は UI スレッドで行い（fallback 判定を spawn 前に済ませるため）、直後に unbind して
@@ -25,7 +25,7 @@ use std::ptr;
 
 use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
 use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
-use hayate_scene_renderer_skia::SkiaLayerPresenter;
+use hayate_scene_renderer_skia::{SkiaLayerPresenter, SkiaLayerSurfaceFactory};
 use ndk::native_window::NativeWindow;
 use skia_safe::gpu;
 
@@ -216,6 +216,37 @@ struct GaneshGl {
     context: gpu::DirectContext,
 }
 
+/// Dirty layer cache を final composite と同じ `DirectContext` 上へ確保する adapter。
+struct GaneshLayerSurfaceFactory<'a> {
+    context: &'a mut gpu::DirectContext,
+}
+
+impl SkiaLayerSurfaceFactory for GaneshLayerSurfaceFactory<'_> {
+    fn create_layer_surface(
+        &mut self,
+        width: i32,
+        height: i32,
+    ) -> Result<skia_safe::Surface, String> {
+        let info = skia_safe::ImageInfo::new(
+            (width, height),
+            skia_safe::ColorType::RGBA8888,
+            skia_safe::AlphaType::Premul,
+            None,
+        );
+        gpu::surfaces::render_target(
+            self.context,
+            gpu::Budgeted::Yes,
+            &info,
+            None,
+            gpu::SurfaceOrigin::TopLeft,
+            None,
+            false,
+            false,
+        )
+        .ok_or_else(|| format!("Ganesh layer render target {width}x{height} creation failed"))
+    }
+}
+
 // SAFETY: `GaneshGl` の生成・使用・drop はすべて Raster スレッド上（`render_frame` /
 // sink クロージャ drop）で起きる。この impl は「`SkiaGlSurface` がこのフィールドを `None` の
 // まま Raster スレッドへ move する」spawn 境界を型的に満たすためだけに要る（skia-safe の
@@ -226,6 +257,9 @@ unsafe impl Send for GaneshGl {}
 /// （`skia_window.rs`、CPU raster）と対の型で、同じ `RasterCommand` チャネル越しに専用
 /// Raster スレッド上で駆動される（ADR-0128）。
 pub(crate) struct SkiaGlSurface {
+    /// GPU-backed layer cache を所有する。Rust は field 宣言順に drop するため、Ganesh context
+    /// より前に置き、cache image を context より先に破棄する。
+    presenter: SkiaLayerPresenter,
     /// Ganesh `DirectContext`。Raster スレッド上の初回フレームで生成する（EGL bind 後で
     /// ないと作れず、bind 先スレッドに束縛されるため）。
     ganesh: Option<GaneshGl>,
@@ -239,7 +273,6 @@ pub(crate) struct SkiaGlSurface {
     width: u32,
     height: u32,
     content_scale: f32,
-    presenter: SkiaLayerPresenter,
     /// この Raster スレッドで EGL コンテキストを bind 済みか（初回フレームで bind）。
     bound: bool,
 }
@@ -354,6 +387,7 @@ pub(crate) fn init_skia_gl_surface(
         egl.unbind();
 
         Ok(SkiaGlSurface {
+            presenter: SkiaLayerPresenter::new(width, height, content_scale),
             ganesh: None,
             ganesh_failed: false,
             egl,
@@ -361,7 +395,6 @@ pub(crate) fn init_skia_gl_surface(
             width,
             height,
             content_scale,
-            presenter: SkiaLayerPresenter::new(width, height, content_scale),
             bound: false,
         })
     }
@@ -438,20 +471,26 @@ impl SkiaGlSurface {
             .map(|insets| insets.scene_origin(self.content_scale))
             .unwrap_or((0.0, 0.0));
 
-        let surface = self.presenter.present(
-            scene,
-            layers,
-            &present_dirty,
-            &scroll_geometry,
-            crate::app::CLEAR_COLOR,
-            (origin_x, origin_y),
-            GpuBudget::from_viewports(
-                surface_w as u32,
-                surface_h as u32,
-                tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
-            ),
-            surface,
-        )?;
+        let surface = {
+            let mut layer_surfaces = GaneshLayerSurfaceFactory {
+                context: &mut ganesh.context,
+            };
+            self.presenter.present_with_layer_surface_factory(
+                scene,
+                layers,
+                &present_dirty,
+                &scroll_geometry,
+                crate::app::CLEAR_COLOR,
+                (origin_x, origin_y),
+                GpuBudget::from_viewports(
+                    surface_w as u32,
+                    surface_h as u32,
+                    tunables::GPU_BUDGET_VIEWPORTS_MOBILE,
+                ),
+                &mut layer_surfaces,
+                surface,
+            )?
+        };
         ganesh.context.flush_and_submit();
         drop(surface);
 
