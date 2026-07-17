@@ -16,7 +16,7 @@ Flutter `Canvas` 同等の表現力（曲線・ベジェ・任意パスの塗り
 
 - `view` に property `draw` を追加する。新 element-kind は作らない。`element_kinds` の `carriesDraw` タグで view 限定（carrier 文化 = `carriesTextLocal` の踏襲）。
 - `draw` の値は painter（`{ paint(canvas, size), shouldRepaint?(old) }` または関数糖衣）。フレームワーク側が painter を呼んで display list を記録し、`apply_mutations` の新チャネル `draws: Float32Array`（`texts` と同格）で Hayate へ渡す。
-- Hayate 内部では display list を保持する retained node を `NodeKind` に追加し、`ScenePainter` にパス描画メソッドを追加する（vello / tiny-skia / vello-cpu 全実装）。「眠っていた下層の復活」は **Raw Layer の内部語彙拡張**として実現する。
+- Hayate 内部では display list を保持する retained node を `NodeKind` に追加し、`ScenePainter` にパス描画メソッドを追加する（vello / tiny-skia 全実装）。「眠っていた下層の復活」は **Raw Layer の内部語彙拡張**として実現する。
 - 描画順は background → border → draw → children（将来 `draw-foreground` で `foregroundPainter` 対応）。座標はボーダーボックス左上原点・論理 px・DPR 不可視。クリップは既存 `overflow` に従う（既定 visible = Flutter `CustomPaint` 既定と一致）。hit-test は view の box 判定のまま（Flutter の `hitTest` 既定と一致。パス hit-test は将来 opt-in）。draw 変更は visual dirty のみで layout 不干渉。
 - v1 スコープはパス幾何・単色 fill/stroke・座標操作/クリップ。グラデーション・blend・drawImage・テキスト・フィルタ/シェーダは**封印ではなく後回し**——encoding・enum 表・painter interface はこれらが契約破壊なしに生えることを合格条件とする。
 

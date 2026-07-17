@@ -10,7 +10,7 @@
 **規範文:** モード選択はランタイム自動判定とする。WebGPU と EditContext API の両方が使えれば Canvas Mode、いずれか欠ければ HTML Mode。判定は host（Hayate web host bootstrap = `@torimi/hayate-host`）が行い、Hayate は Canvas/HTML 両レンダラーを独立に export してアプリは意識しない。
 **出典:** ADR-0029, ADR-0037, ADR-0004（host bootstrap の所属確定）, `CONTEXT.md`
 **状況:** 🟢 — Canvas backend の probe・query 解釈・Auto 順序は Hayate 側 host bootstrap **`@torimi/hayate-host`**（`src/resolve-backend.ts`・`web-host.test.ts`）に局在する。Web entry は EditContext 欠如または明示 `dom` のときだけ DOM renderer へ退避し、それ以外を Host へ委譲する。Tsubame app パッケージは backend の名前も選択結果も持たない。
-**備考:** DOM 退避は Web entry が明示 `?renderer=dom` または EditContext 欏如を見て Hayate Host を起動しないことで実現する。Tsubame の helper はこの二値判定だけを持つ。Canvas backend の Auto 順序は ADR-0148 により **CanvasKit → Vello → tiny-skia**。`?renderer=canvaskit|vello|tiny-skia|vello-cpu` の解釈、候補語彙、選択結果はすべて `@torimi/hayate-host` が所有する。`createHayateWebHost` は明示 override＞クエリ強制＞Auto の順で解決し、Auto では `canvaskit-auto` から始め、初回 init failure の場合だけ Vello、次に tiny-skia へ進む。デモページの切替 UI も Host の `renderer-policy` export から選択肢を生成する。
+**備考:** DOM 退避は Web entry が明示 `?renderer=dom` または EditContext 欏如を見て Hayate Host を起動しないことで実現する。Tsubame の helper はこの二値判定だけを持つ。Canvas backend は **Vello → tiny-skia** の2候補に限定する。`?renderer=vello|tiny-skia` の解釈、候補語彙、選択結果はすべて `@torimi/hayate-host` が所有する。`createHayateWebHost` は明示 override＞クエリ強制＞Auto の順で解決し、Auto では WebGPU が使えれば Vello、使えなければ tiny-skia を選び、Vello の初回 init failure 時だけ tiny-skia へ進む。デモページの切替 UI も Host の `renderer-policy` export から選択肢を生成する。
 
 ### WEBA-02 — Canvas Mode は eager 変更
 **規範文:** Canvas Mode の変更（`element_create` / `element_set_style` / `element_append_child` 等）は `ElementTree` に即時反映する（遅延キューなし）。Tsubame が1フレーム分を JS 側でバッチ化し `apply_mutations` 1回で渡す。

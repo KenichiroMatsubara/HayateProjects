@@ -50,7 +50,7 @@ function fakeRaw(overrides: Partial<RawHayate> = {}): RawHayate {
 const canvas = {} as HTMLCanvasElement;
 
 describe('createHayateWebHost', () => {
-  it('tries CanvasKit first, then advances through unselected boot candidates after init failure', async () => {
+  it('tries Vello first, then advances to tiny-skia after init failure', async () => {
     const loaded: CanvasBackend[] = [];
     const raw = fakeRaw();
 
@@ -58,16 +58,16 @@ describe('createHayateWebHost', () => {
       probeWebGPU: async () => true,
       loadBackend: async (backend) => {
         loaded.push(backend);
-        if (backend === 'canvaskit') throw new Error('CanvasKit surface unavailable');
+        if (backend === 'vello') throw new Error('WebGPU surface unavailable');
         return raw;
       },
     });
 
-    expect(loaded).toEqual(['canvaskit', 'vello']);
+    expect(loaded).toEqual(['vello', 'tiny-skia']);
     expect(host.raw).toBe(raw);
   });
 
-  it('loads CanvasKit first when no backend override is present', async () => {
+  it('loads Vello first when WebGPU is available', async () => {
     const loaded: CanvasBackend[] = [];
     const raw = fakeRaw();
     const host = await createHayateWebHost(canvas, {
@@ -78,11 +78,11 @@ describe('createHayateWebHost', () => {
       },
     });
 
-    expect(loaded).toEqual(['canvaskit']);
+    expect(loaded).toEqual(['vello']);
     expect(host.raw).toBe(raw);
   });
 
-  it('still starts with CanvasKit when WebGPU is unavailable', async () => {
+  it('starts with tiny-skia when WebGPU is unavailable', async () => {
     const loaded: CanvasBackend[] = [];
     const host = await createHayateWebHost(canvas, {
       probeWebGPU: async () => false,
@@ -92,7 +92,7 @@ describe('createHayateWebHost', () => {
       },
     });
 
-    expect(loaded).toEqual(['canvaskit']);
+    expect(loaded).toEqual(['tiny-skia']);
     expect(host.raw).toBeDefined();
   });
 
@@ -133,7 +133,7 @@ describe('createHayateWebHost', () => {
       loadBackend,
     });
 
-    expect(loadBackend).toHaveBeenCalledWith('canvaskit', canvas);
+    expect(loadBackend).toHaveBeenCalledWith('tiny-skia', canvas);
   });
 
   it('returns a RawHayate satisfying the HayateRenderer drive surface', async () => {

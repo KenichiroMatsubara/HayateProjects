@@ -2,21 +2,18 @@
 // Source: Hayate/scripts/wasm-build-manifest.json (#700/#703)
 import type { CanvasBackend } from './resolve-backend.js';
 import type { RawHayate } from './raw-hayate.js';
-import { prepareCanvasKitSurface } from './canvaskit-bridge.js';
 
 /**
  * 選択した backend の WASM を動的 import し、surface（canvas）上で `HayateElementRenderer`
  * を初期化して {@link RawHayate} を得る。canvas のコンテキスト型は一度決まると変えられ
  * ないため、WebGPU の可否を判定してから WASM 初期化に進む。
- * CanvasKit は Host が先に surface を確立し、WASM 側は opaque な frame replay 境界だけを使う。
-
  *
- * `layerPresent` は CanvasKit / vello のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
+ * `layerPresent` は vello のランタイムトグル（per-layer 経路、ADR-0125/0127・ADR-0140）。
  * `HayateElementRenderer.init` にランタイムフラグとして渡す。ADR-0137 により Web は既定
  * ON — `false` を渡すと全面 raster にフォールバックできる、比較用の逃げ道として残す。
  * native は本パスを経由しないため既定 OFF のまま変更なし。
  *
- * `cpuLayerPresent` は tiny-skia/vello_cpu の per-layer 経路の比較用トグル（ADR-0138）。
+ * `cpuLayerPresent` は tiny-skia の per-layer 経路の比較用トグル（ADR-0138）。
  * vello の `layerPresent`（上記）とは別物の意味を持つが、同じ機構（`HayateElementRenderer.init`
  * へのランタイムフラグ）で渡す。既定 ON、`false` で全面 raster にフォールバックする。
  */
@@ -26,12 +23,6 @@ export async function loadCanvasBackend(
   layerPresent = true,
   cpuLayerPresent = true,
 ): Promise<RawHayate> {
-  if (backend === 'canvaskit') {
-    await prepareCanvasKitSurface(canvas);
-    const mod = await import('@torimi/hayate-adapter-web-canvaskit');
-    await mod.default();
-    return (await mod.HayateElementRenderer.init(canvas, layerPresent)) as unknown as RawHayate;
-  }
   if (backend === 'vello') {
     const mod = await import('@torimi/hayate-adapter-web');
     await mod.default();
@@ -39,11 +30,6 @@ export async function loadCanvasBackend(
   }
   if (backend === 'tiny-skia') {
     const mod = await import('@torimi/hayate-adapter-web-cpu');
-    await mod.default();
-    return (await mod.HayateElementRenderer.init(canvas, cpuLayerPresent)) as unknown as RawHayate;
-  }
-  if (backend === 'vello-cpu') {
-    const mod = await import('@torimi/hayate-adapter-web-vello-cpu');
     await mod.default();
     return (await mod.HayateElementRenderer.init(canvas, cpuLayerPresent)) as unknown as RawHayate;
   }

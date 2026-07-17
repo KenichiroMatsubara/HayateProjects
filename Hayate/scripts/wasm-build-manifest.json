@@ -3,16 +3,6 @@
   "npmPackageName": "@torimi/hayate-adapter-web",
   "targets": [
     {
-      "name": "pkg-canvaskit",
-      "outDir": "wasm-pkgs/pkg-canvaskit",
-      "targetDir": "target/wasm-canvaskit",
-      "cargoFeatures": { "mode": "exclusive", "names": ["backend-canvaskit"] },
-      "description": "Hayate — CanvasKit Web scene renderer",
-      "includeInDefaultBuild": true,
-      "npmName": "@torimi/hayate-adapter-web-canvaskit",
-      "host": { "backend": "canvaskit", "bootstrap": "canvaskit", "runtimeLayerPresentArg": "layerPresent" }
-    },
-    {
       "name": "pkg",
       "outDir": "wasm-pkgs/pkg",
       "targetDir": "target/wasm",
@@ -31,16 +21,6 @@
       "includeInDefaultBuild": true,
       "npmName": "@torimi/hayate-adapter-web-cpu",
       "host": { "backend": "tiny-skia", "runtimeLayerPresentArg": "cpuLayerPresent" }
-    },
-    {
-      "name": "pkg-vello-cpu",
-      "outDir": "wasm-pkgs/pkg-vello-cpu",
-      "targetDir": "target/wasm-vello-cpu",
-      "cargoFeatures": { "mode": "exclusive", "names": ["backend-vello-cpu"] },
-      "description": "Hayate — GPU-native UI substrate",
-      "includeInDefaultBuild": true,
-      "npmName": "@torimi/hayate-adapter-web-vello-cpu",
-      "host": { "backend": "vello-cpu", "runtimeLayerPresentArg": "cpuLayerPresent" }
     },
     {
       "name": "pkg-null",

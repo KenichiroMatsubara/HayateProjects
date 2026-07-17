@@ -29,21 +29,12 @@ importers:
       '@torimi/hayate-adapter-web':
         specifier: workspace:*
         version: link:../wasm-pkgs/pkg
-      '@torimi/hayate-adapter-web-canvaskit':
-        specifier: workspace:*
-        version: link:../wasm-pkgs/pkg-canvaskit
       '@torimi/hayate-adapter-web-cpu':
         specifier: workspace:*
         version: link:../wasm-pkgs/pkg-tiny-skia
-      '@torimi/hayate-adapter-web-vello-cpu':
-        specifier: workspace:*
-        version: link:../wasm-pkgs/pkg-vello-cpu
       '@torimi/hayate-protocol-spec':
         specifier: workspace:*
         version: link:../proto
-      canvaskit-wasm:
-        specifier: 0.41.1
-        version: 0.41.1
     devDependencies:
       happy-dom:
         specifier: ^17.4.4
@@ -63,13 +54,9 @@ importers:
 
   Hayate/wasm-pkgs/pkg: {}
 
-  Hayate/wasm-pkgs/pkg-canvaskit: {}
-
   Hayate/wasm-pkgs/pkg-null: {}
 
   Hayate/wasm-pkgs/pkg-tiny-skia: {}
-
-  Hayate/wasm-pkgs/pkg-vello-cpu: {}
 
   Torimi/bundle:
     dependencies:
@@ -2426,9 +2413,6 @@ packages:
 
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
-
-  canvaskit-wasm@0.41.1:
-    resolution: {integrity: sha512-gO2rNMIE0lOQ8MaarM4qNeq2zZAEknAObKP2XAKidMSAY8P5sURGdFkrx1TSdHuBFqTf5w35JqjuUzjibqkD5g==}
 
   chai@5.3.3:
     resolution: {integrity: sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw==}
@@ -5133,10 +5117,6 @@ snapshots:
   cac@6.7.14: {}
 
   caniuse-lite@1.0.30001793: {}
-
-  canvaskit-wasm@0.41.1:
-    dependencies:
-      '@webgpu/types': 0.1.21
 
   chai@5.3.3:
     dependencies:

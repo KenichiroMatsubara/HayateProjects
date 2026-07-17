@@ -1,6 +1,8 @@
 # CanvasKit と skia-safe の Cross-Renderer Parity
 
-**Status: accepted**
+**Status: partially superseded (Web CanvasKit removed 2026-07-18)**
+
+> 2026-07-18: Web renderer は Vello / tiny-skia の2候補へ縮小し、CanvasKit の実装・WASM package・Host bridge・選択語彙を撤去した。以下の CanvasKit 記述は導入時の履歴として残す。Native skia-safe と共通 validation / failure classification に関する決定は引き続き有効。
 
 Web の CanvasKit Renderer と Native の skia-safe Renderer は、API と surface が異なるため別実装として導入する。ただし両者は共通の `SceneGraph`、描画意味論、入力検証、失敗分類を共有し、同じ契約違反は同じ共通契約エラーとして失敗させる。CanvasKit の context 喪失や skia-safe の EGL 初期化失敗のような環境エラーは backend 固有の原因を許容しつつ、`RendererInitFailed` / `SurfaceLost` など共通カテゴリへ正規化する。
 

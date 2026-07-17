@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { GITIGNORE_CONTENTS, loadManifest, outDirFor, readmeFor } from '../Hayate/scripts/wasm-manifest.mjs';
 
 // The stub package name is the target's own npmName, not the shared crate name
-// (#765). host imports pkg / pkg-tiny-skia / pkg-vello-cpu as three sibling
+// (#765). host imports pkg / pkg-tiny-skia as sibling
 // file: deps under distinct alias keys; if every stub declared the same name
 // "hayate-adapter-web", pnpm collided on the name at install time and routed one
 // alias through a .pnpm virtual-store copy holding only package.json (no .js),

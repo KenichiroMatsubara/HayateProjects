@@ -17,33 +17,20 @@ import {
   cargoArgsFor,
 } from './wasm-manifest.mjs';
 
-test('the manifest declares exactly the 5 known wasm-pkgs targets', () => {
+test('the manifest declares exactly the 3 known wasm-pkgs targets', () => {
   const manifest = loadManifest();
   const names = manifest.targets.map((t) => t.name);
 
-  assert.deepEqual(names, ['pkg-canvaskit', 'pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null']);
+  assert.deepEqual(names, ['pkg', 'pkg-tiny-skia', 'pkg-null']);
 });
 
 // Pins the exact `wasm-pack build` argv the two legacy scripts used to hardcode,
 // so consolidating them into one manifest-driven script can't silently change
-// which cargo features get built for any of the 5 existing pkgs.
+// which cargo features get built for any existing pkg.
 test('wasmPackArgsFor reproduces each legacy script\'s exact argv', () => {
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
   const crateDir = 'crates/platform/web';
-
-  assert.deepEqual(wasmPackArgsFor(byName['pkg-canvaskit'], crateDir, 'wasm-pkgs/pkg-canvaskit'), [
-    'build',
-    crateDir,
-    '--target',
-    'web',
-    '--out-dir',
-    'wasm-pkgs/pkg-canvaskit',
-    '--',
-    '--no-default-features',
-    '--features',
-    'backend-canvaskit',
-  ]);
 
   assert.deepEqual(wasmPackArgsFor(byName['pkg'], crateDir, 'wasm-pkgs/pkg'), [
     'build',
@@ -65,19 +52,6 @@ test('wasmPackArgsFor reproduces each legacy script\'s exact argv', () => {
     '--no-default-features',
     '--features',
     'backend-tiny-skia',
-  ]);
-
-  assert.deepEqual(wasmPackArgsFor(byName['pkg-vello-cpu'], crateDir, 'wasm-pkgs/pkg-vello-cpu'), [
-    'build',
-    crateDir,
-    '--target',
-    'web',
-    '--out-dir',
-    'wasm-pkgs/pkg-vello-cpu',
-    '--',
-    '--no-default-features',
-    '--features',
-    'backend-vello-cpu',
   ]);
 
   assert.deepEqual(wasmPackArgsFor(byName['pkg-null'], crateDir, 'wasm-pkgs/pkg-null'), [
@@ -104,10 +78,8 @@ test('outDirFor and targetDirFor reproduce the legacy OUT_DIR*/TARGET_DIR* paths
   const root = '/repo/Hayate';
 
   const expected = {
-    'pkg-canvaskit': ['wasm-pkgs/pkg-canvaskit', 'target/wasm-canvaskit'],
     pkg: ['wasm-pkgs/pkg', 'target/wasm'],
     'pkg-tiny-skia': ['wasm-pkgs/pkg-tiny-skia', 'target/wasm-tiny-skia'],
-    'pkg-vello-cpu': ['wasm-pkgs/pkg-vello-cpu', 'target/wasm-vello-cpu'],
     'pkg-null': ['wasm-pkgs/pkg-null', 'target/wasm-null'],
   };
 
@@ -148,15 +120,13 @@ test('packageJsonFor reproduces the legacy canonical package.json, per-target de
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).private, true);
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).publishConfig, undefined);
   // Each pkg dir's package name is its own npmName, NOT the shared crate name
-  // (#765). When several sibling file: deps (host imports pkg / pkg-tiny-skia /
-  // pkg-vello-cpu) all declared name "hayate-adapter-web", pnpm saw a name
+  // (#765). When sibling file: deps (host imports pkg / pkg-tiny-skia) both
+  // declared name "hayate-adapter-web", pnpm saw a name
   // collision and routed one alias (hayate-adapter-web-cpu) through a
   // .pnpm virtual-store copy that only carried package.json — Rolldown then
   // failed to resolve the dynamic import in the Pages demo build. Distinct
   // names make every alias link straight to its source dir.
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-tiny-skia'], manifest)).name, '@torimi/hayate-adapter-web-cpu');
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-canvaskit'], manifest)).name, '@torimi/hayate-adapter-web-canvaskit');
-  assert.equal(JSON.parse(packageJsonFor(byName['pkg-vello-cpu'], manifest)).name, '@torimi/hayate-adapter-web-vello-cpu');
   assert.equal(JSON.parse(packageJsonFor(byName['pkg-null'], manifest)).name, 'hayate-adapter-web-null');
 
   assert.equal(GITIGNORE_CONTENTS, '*\n!package.json\n!README.md\n');
@@ -171,7 +141,7 @@ test('selectTargets: no names selects the default-build set, in manifest order',
 
   assert.deepEqual(
     selected.map((t) => t.name),
-    ['pkg-canvaskit', 'pkg', 'pkg-tiny-skia', 'pkg-vello-cpu', 'pkg-null'],
+    ['pkg', 'pkg-tiny-skia', 'pkg-null'],
   );
 });
 
@@ -197,10 +167,8 @@ test('selectTargets: { all: true } selects every target, default or opt-in', () 
   const manifest = loadManifest();
 
   assert.deepEqual(selectTargets(manifest, [], { all: true }).map((t) => t.name), [
-    'pkg-canvaskit',
     'pkg',
     'pkg-tiny-skia',
-    'pkg-vello-cpu',
     'pkg-null',
   ]);
 });
@@ -213,21 +181,11 @@ test('npmName/host mapping matches what Hayate/host/src actually imports', () =>
   const manifest = loadManifest();
   const byName = Object.fromEntries(manifest.targets.map((t) => [t.name, t]));
 
-  assert.equal(byName['pkg-canvaskit'].npmName, '@torimi/hayate-adapter-web-canvaskit');
-  assert.deepEqual(byName['pkg-canvaskit'].host, {
-    backend: 'canvaskit',
-    bootstrap: 'canvaskit',
-    runtimeLayerPresentArg: 'layerPresent',
-  });
-
   assert.equal(byName['pkg'].npmName, '@torimi/hayate-adapter-web');
   assert.deepEqual(byName['pkg'].host, { backend: 'vello', runtimeLayerPresentArg: 'layerPresent' });
 
   assert.equal(byName['pkg-tiny-skia'].npmName, '@torimi/hayate-adapter-web-cpu');
   assert.deepEqual(byName['pkg-tiny-skia'].host, { backend: 'tiny-skia', runtimeLayerPresentArg: 'cpuLayerPresent' });
-
-  assert.equal(byName['pkg-vello-cpu'].npmName, '@torimi/hayate-adapter-web-vello-cpu');
-  assert.deepEqual(byName['pkg-vello-cpu'].host, { backend: 'vello-cpu', runtimeLayerPresentArg: 'cpuLayerPresent' });
 
   assert.equal(byName['pkg-null'].npmName, 'hayate-adapter-web-null');
   assert.equal(byName['pkg-null'].host, null);

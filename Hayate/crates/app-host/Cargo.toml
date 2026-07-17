@@ -7,10 +7,8 @@ description = "Hayate App Host — platform-independent mount point and frame lo
 repository.workspace = true
 
 [features]
-backend-canvaskit = []
 backend-vello = []
 backend-tiny-skia = []
-backend-vello-cpu = []
 backend-recording = []
 backend-null = []
 

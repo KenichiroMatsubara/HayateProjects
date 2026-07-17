@@ -12,7 +12,7 @@ hayate-layer-compositor = { path = "../compositor" }
 # prebuilt binaries, version strictly pinned (`=`), no source vendoring/fork.
 skia-safe = "=0.99.0"
 # variable font の normalized 座標→design 座標変換（fvar/avar 読み）に使う。
-# tiny-skia/vello-cpu painter と同じ workspace 版（vendored skrifa）。
+# tiny-skia painter と同じ workspace 版（vendored skrifa）。
 skrifa = { workspace = true }
 
 [dev-dependencies]

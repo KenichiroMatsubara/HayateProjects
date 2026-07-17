@@ -29,7 +29,7 @@ const host: Host =
         },
       }
     : {
-        // Hayate 経路: host が backend（vello / tiny-skia / vello-cpu）を選び WASM を
+        // Hayate 経路: host が backend（vello / tiny-skia）を選び WASM を
         // ロードして surface 上に raw を確立、frame-clock も供給する。draw は wire の
         // `draws` チャネルで運ばれ GPU/CPU ラスタライザが描く。tiny-skia は WebGPU の
         // 無いヘッドレスでも Canvas モードに入れる（e2e の Hayate 経路が使う）。

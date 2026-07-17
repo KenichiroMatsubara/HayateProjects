@@ -1,4 +1,4 @@
-export type CanvasBackend = 'canvaskit' | 'vello' | 'tiny-skia' | 'vello-cpu';
+export type CanvasBackend = 'vello' | 'tiny-skia';
 
 export interface ResolveCanvasBackendOptions {
   backend?: CanvasBackend;
@@ -15,18 +15,14 @@ export const RENDERER_QUERY_PARAM = 'renderer';
  * 強制指定の値語彙。`SceneRendererKind::name()`（Rust）および Android の
  * `RENDERER_VALUE_*` と同一の安定 ID を使う。
  */
-export const RENDERER_VALUE_CANVASKIT = 'canvaskit';
 export const RENDERER_VALUE_VELLO = 'vello';
 export const RENDERER_VALUE_TINY_SKIA = 'tiny-skia';
-export const RENDERER_VALUE_VELLO_CPU = 'vello-cpu';
 
 /** Web Host が公開する backend 選択 UI の安定語彙（表示順も policy の一部）。 */
 export const WEB_RENDERER_QUERY_VALUES = [
   'auto',
-  RENDERER_VALUE_CANVASKIT,
   RENDERER_VALUE_VELLO,
   RENDERER_VALUE_TINY_SKIA,
-  RENDERER_VALUE_VELLO_CPU,
 ] as const;
 
 export type WebRendererOptimizationQueryParam = 'layerPresent' | 'cpuLayerPresent';
@@ -36,11 +32,9 @@ export function rendererOptimizationQueryParam(
   renderer: string,
 ): WebRendererOptimizationQueryParam | undefined {
   switch (renderer) {
-    case RENDERER_VALUE_CANVASKIT:
     case RENDERER_VALUE_VELLO:
       return 'layerPresent';
     case RENDERER_VALUE_TINY_SKIA:
-    case RENDERER_VALUE_VELLO_CPU:
       return 'cpuLayerPresent';
     default:
       return undefined;
@@ -62,21 +56,17 @@ export function parseRendererOptimizationOptions(search: string): RendererOptimi
 }
 
 /**
- * `?renderer=canvaskit|vello|tiny-skia|vello-cpu` を強制指定として解釈する。
+ * `?renderer=vello|tiny-skia` を強制指定として解釈する。
  * `auto` / `dom` / 未知値 / 未指定は canvas backend の強制ではないので `undefined`
  * （＝自動選択に委ねる）。`dom` は Web entry が Hayate Host を起動しないための退避値。
  */
 export function parseRendererQueryBackend(search: string): CanvasBackend | undefined {
   const value = new URLSearchParams(search).get(RENDERER_QUERY_PARAM);
   switch (value) {
-    case RENDERER_VALUE_CANVASKIT:
-      return 'canvaskit';
     case RENDERER_VALUE_VELLO:
       return 'vello';
     case RENDERER_VALUE_TINY_SKIA:
       return 'tiny-skia';
-    case RENDERER_VALUE_VELLO_CPU:
-      return 'vello-cpu';
     default:
       return undefined;
   }
@@ -90,7 +80,7 @@ export function parseRendererQueryBackend(search: string): CanvasBackend | undef
 export type BackendSelectionReason =
   | 'options-override'
   | 'query-override'
-  | 'canvaskit-auto'
+  | 'webgpu-primary'
   | 'webgpu-fallback'
   | 'webgpu-unavailable-skip';
 
@@ -100,9 +90,8 @@ export interface ResolvedCanvasBackend {
 }
 
 /**
- * Web の初回 boot でだけ試す候補。CanvasKit の初期化失敗は、同じ boot 中にこの配列の
- * 未選択候補へ一方向に進める。選択済み CanvasKit の runtime failure はこの関数へ戻らず、
- * Rust の RenderHost が terminal failure として扱う（ADR-0148）。
+ * Web の初回 boot でだけ試す候補。WebGPU が使える場合は Vello を試し、初期化に
+ * 失敗した場合だけ tiny-skia へ進む。WebGPU が使えなければ tiny-skia から始める。
  */
 export function resolveCanvasBackendAttemptOrder(
   options: ResolveCanvasBackendOptions | undefined,
@@ -117,15 +106,16 @@ export function resolveCanvasBackendAttemptOrder(
     return [{ backend: forced, reason: 'query-override' }];
   }
 
-  const order: ResolvedCanvasBackend[] = [{ backend: 'canvaskit', reason: 'canvaskit-auto' }];
   if (webgpuAvailable) {
-    order.push({ backend: 'vello', reason: 'webgpu-fallback' });
+    return [
+      { backend: 'vello', reason: 'webgpu-primary' },
+      { backend: 'tiny-skia', reason: 'webgpu-fallback' },
+    ];
   }
-  order.push({
+  return [{
     backend: 'tiny-skia',
-    reason: webgpuAvailable ? 'webgpu-fallback' : 'webgpu-unavailable-skip',
-  });
-  return order;
+    reason: 'webgpu-unavailable-skip',
+  }];
 }
 
 /**

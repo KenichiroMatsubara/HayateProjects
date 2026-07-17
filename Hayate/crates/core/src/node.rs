@@ -19,7 +19,7 @@ pub struct TextSynthesis {
 
 /// Renderer-ready font matching attributes for selecting an instance from a variable font.
 /// These travel with the shaped glyph run because normalized variation coordinates alone are
-/// not consumable by every backend (notably CanvasKit's public low-level glyph API).
+/// not consumable by every backend's public low-level glyph API.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextFontAttributes {
     pub weight: f32,

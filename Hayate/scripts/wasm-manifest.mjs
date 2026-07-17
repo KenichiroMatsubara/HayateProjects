@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url';
 const MANIFEST_PATH = join(dirname(fileURLToPath(import.meta.url)), 'wasm-build-manifest.json');
 
 const FEATURE_MODES = new Set(['inherit', 'exclusive', 'additive']);
-const HOST_BOOTSTRAPS = new Set(['canvaskit']);
 
 function invalid(target, message) {
   const where = target ? `target "${target.name ?? JSON.stringify(target)}"` : 'manifest';
@@ -33,12 +32,7 @@ function validateTarget(target) {
   if (target.host !== null) {
     if (typeof target.host !== 'object') invalid(target, 'host must be null or an object');
     if (typeof target.host.backend !== 'string') invalid(target, 'host.backend must be a string');
-    if (
-      target.host.bootstrap !== undefined &&
-      (typeof target.host.bootstrap !== 'string' || !HOST_BOOTSTRAPS.has(target.host.bootstrap))
-    ) {
-      invalid(target, `host.bootstrap must be one of ${[...HOST_BOOTSTRAPS].join(', ')}`);
-    }
+    if (target.host.bootstrap !== undefined) invalid(target, 'host.bootstrap is no longer supported');
   }
 
   const { cargoFeatures } = target;
@@ -146,9 +140,8 @@ Alpha (0.x): no backward-compatibility guarantees.
 // wasm-bindgen's snippets.
 //
 // The package name is the target's own npmName, not the shared crate-level
-// npmPackageName (#765). host depends on pkg / pkg-tiny-skia / pkg-vello-cpu as
-// three sibling file: deps under three alias keys
-// (hayate-adapter-web[-cpu|-vello-cpu]). When all three package.jsons declared
+// npmPackageName (#765). host depends on pkg / pkg-tiny-skia as
+// sibling file: deps under distinct package names. When both package.jsons declared
 // the same name "hayate-adapter-web", pnpm hit a name collision and routed one
 // alias through a .pnpm virtual-store copy that only carried package.json (no
 // .js), so Rolldown failed to resolve the dynamic import('hayate-adapter-web-cpu')
