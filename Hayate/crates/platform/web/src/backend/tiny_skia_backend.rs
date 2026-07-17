@@ -110,6 +110,7 @@ impl CanvasBackend for SelectedBackend {
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        _chrome_dirty: &HashSet<ElementId>,
         // #707 (ADR-0127): scroll-band overscan sizing is vello-only for now (see vello.rs's
         // `present_layers`) — tiny-skia's per-layer path stays exactly as before this parameter
         // existed (every layer, including `ScrollView`s, gets a full-surface `Pixmap`).
