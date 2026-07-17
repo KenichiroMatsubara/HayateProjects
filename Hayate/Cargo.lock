@@ -1331,6 +1331,7 @@ dependencies = [
 name = "hayate-scene-renderer-vello"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "hayate-core",
  "hayate-demo-fixtures",
  "hayate-layer-compositor",

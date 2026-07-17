@@ -166,6 +166,28 @@ fn wgpu_layered_composite_matches_full_raster() {
         })
         .collect();
     compositor.composite(&mut target, &quads).unwrap();
+    let cold_work = compositor.resource_work_count();
+    assert_eq!(
+        cold_work.bind_group_creations,
+        quads.len() as u64,
+        "cold composite creates one bind group per layer texture"
+    );
+    assert_eq!(cold_work.vertex_staging_allocations, 1);
+    assert_eq!(cold_work.vertex_buffer_allocations, 1);
+    compositor.composite(&mut target, &quads).unwrap();
+    let stable_work = compositor.resource_work_count();
+    assert_eq!(
+        stable_work.bind_group_creations,
+        cold_work.bind_group_creations
+    );
+    assert_eq!(
+        stable_work.vertex_staging_allocations, cold_work.vertex_staging_allocations,
+        "stable quad counts must reuse CPU vertex staging capacity"
+    );
+    assert_eq!(
+        stable_work.vertex_buffer_allocations, cold_work.vertex_buffer_allocations,
+        "stable quad counts must reuse the GPU vertex buffer"
+    );
 
     let layered = hayate_scene_test_support::vello::readback_rgba8(
         &harness.device,

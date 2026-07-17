@@ -70,6 +70,7 @@ pub struct LayerTexture {
     pub view: wgpu::TextureView,
     pub width: u32,
     pub height: u32,
+    cache_key: u64,
 }
 
 /// vello によるレイヤ rasterizer（`LayerRasterizer` の wgpu 実装）。キャッシュ texture は
@@ -81,6 +82,7 @@ pub struct VelloLayerRasterizer {
     textures: HashMap<ElementId, LayerTexture>,
     /// Scrollbar など viewport 固定 chrome。content band とは別 texture に保持する。
     scroll_chrome_textures: HashMap<ElementId, LayerTexture>,
+    next_texture_cache_key: u64,
     width: u32,
     height: u32,
     /// 論理座標（layout ビューポート単位）を物理バッファへ引き伸ばす倍率（DPI 対応）。
@@ -104,6 +106,7 @@ impl VelloLayerRasterizer {
             renderer,
             textures: HashMap::new(),
             scroll_chrome_textures: HashMap::new(),
+            next_texture_cache_key: 1,
             width,
             height,
             content_scale: content_scale.max(1.0),
@@ -122,7 +125,7 @@ impl VelloLayerRasterizer {
     /// `width`×`height`（device px）のキャッシュ texture を確保する。既定（非 scroll レイヤ）は
     /// 常に `self.width`×`self.height`（サーフェスサイズ）で呼ぶ；scroll 帯は
     /// [`Self::band_device_height`] で決めた、より小さい高さで呼ぶ（#707）。
-    fn create_texture(&self, width: u32, height: u32) -> LayerTexture {
+    fn create_texture(&mut self, width: u32, height: u32) -> LayerTexture {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("hayate_layer_cache"),
             size: wgpu::Extent3d {
@@ -138,11 +141,14 @@ impl VelloLayerRasterizer {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let cache_key = self.next_texture_cache_key;
+        self.next_texture_cache_key = self.next_texture_cache_key.wrapping_add(1);
         LayerTexture {
             texture,
             view,
             width,
             height,
+            cache_key,
         }
     }
 
@@ -280,9 +286,18 @@ pub struct CompositeTarget {
     pub clear: [f32; 4],
 }
 
+/// Composite-only frame の CPU/driver resource work。累積値なので、連続 frame 間の差分で
+/// hot-path の新規生成が無いことを検証できる。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CompositorResourceWorkCount {
+    pub bind_group_creations: u64,
+    pub vertex_staging_allocations: u64,
+    pub vertex_buffer_allocations: u64,
+}
+
 /// 頂点 1 個 = NDC 座標 + UV + opacity（CPU 側で変換済み。シェーダは通過＋サンプルのみ）。
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct QuadVertex {
     pos: [f32; 2],
     uv: [f32; 2],
@@ -333,13 +348,16 @@ pub struct WgpuQuadCompositor {
     pipeline_layout: wgpu::PipelineLayout,
     sampler: wgpu::Sampler,
     pipelines: HashMap<PipelineVariant, wgpu::RenderPipeline>,
+    bind_groups: HashMap<u64, wgpu::BindGroup>,
     /// placement / clip は logical px、texture / target は device px。線形部は texture の
     /// device 解像度で相殺されるため、translation と clip だけへこの倍率を適用する。
     content_scale: f32,
     /// WebGPU では小さい buffer でも `mappedAtCreation` が device-lost 状態で例外になり得る。
     /// 合成 hot path は未 map の COPY_DST buffer を再利用し、queue write だけで更新する。
+    vertex_staging: Vec<QuadVertex>,
     vertex_buffer: Option<wgpu::Buffer>,
     vertex_buffer_capacity: u64,
+    resource_work_count: CompositorResourceWorkCount,
 }
 
 impl WgpuQuadCompositor {
@@ -388,9 +406,12 @@ impl WgpuQuadCompositor {
             pipeline_layout,
             sampler,
             pipelines: HashMap::new(),
+            bind_groups: HashMap::new(),
             content_scale: 1.0,
+            vertex_staging: Vec::new(),
             vertex_buffer: None,
             vertex_buffer_capacity: 0,
+            resource_work_count: CompositorResourceWorkCount::default(),
         }
     }
 
@@ -406,6 +427,10 @@ impl WgpuQuadCompositor {
     /// warmup 済み variant 数（契約テスト用）。
     pub fn warmed_variant_count(&self) -> usize {
         self.pipelines.len()
+    }
+
+    pub fn resource_work_count(&self) -> CompositorResourceWorkCount {
+        self.resource_work_count
     }
 
     pub fn set_content_scale(&mut self, content_scale: f32) {
@@ -540,16 +565,17 @@ impl LayerCompositor for WgpuQuadCompositor {
             .ok_or("compositor pipeline not warmed up (ADR-0130a violation)")?;
 
         // 全 quad の頂点を 1 本の vertex buffer に詰める（draw は quad ごと＝bind group/scissor 切替）。
-        let mut vertex_data: Vec<f32> =
-            Vec::with_capacity(quads.len() * VERTICES_PER_QUAD * VERTEX_FLOATS);
-        for quad in quads {
-            for v in self.quad_vertices(quad, target) {
-                vertex_data.extend_from_slice(&v.pos);
-                vertex_data.extend_from_slice(&v.uv);
-                vertex_data.push(v.opacity);
-            }
+        self.vertex_staging.clear();
+        let required_vertices = quads.len() * VERTICES_PER_QUAD;
+        if self.vertex_staging.capacity() < required_vertices {
+            self.vertex_staging.reserve(required_vertices);
+            self.resource_work_count.vertex_staging_allocations += 1;
         }
-        let vertex_bytes: Vec<u8> = vertex_data.iter().flat_map(|f| f.to_le_bytes()).collect();
+        for quad in quads {
+            self.vertex_staging
+                .extend_from_slice(&self.quad_vertices(quad, target));
+        }
+        let vertex_bytes = bytemuck::cast_slice(&self.vertex_staging);
         if !vertex_bytes.is_empty() {
             let required = vertex_bytes.len() as u64;
             if self.vertex_buffer_capacity < required {
@@ -561,6 +587,7 @@ impl LayerCompositor for WgpuQuadCompositor {
                     mapped_at_creation: false,
                 }));
                 self.vertex_buffer_capacity = capacity;
+                self.resource_work_count.vertex_buffer_allocations += 1;
             }
             self.queue.write_buffer(
                 self.vertex_buffer
@@ -571,10 +598,14 @@ impl LayerCompositor for WgpuQuadCompositor {
             );
         }
 
-        let bind_groups: Vec<wgpu::BindGroup> = quads
-            .iter()
-            .map(|quad| {
-                self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        self.bind_groups.retain(|cache_key, _| {
+            quads
+                .iter()
+                .any(|quad| quad.texture.cache_key == *cache_key)
+        });
+        for quad in quads {
+            if !self.bind_groups.contains_key(&quad.texture.cache_key) {
+                let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some("hayate_layer_compositor_quad"),
                     layout: &self.bind_group_layout,
                     entries: &[
@@ -587,9 +618,11 @@ impl LayerCompositor for WgpuQuadCompositor {
                             resource: wgpu::BindingResource::Sampler(&self.sampler),
                         },
                     ],
-                })
-            })
-            .collect();
+                });
+                self.bind_groups.insert(quad.texture.cache_key, bind_group);
+                self.resource_work_count.bind_group_creations += 1;
+            }
+        }
 
         let mut encoder = self
             .device
@@ -640,7 +673,7 @@ impl LayerCompositor for WgpuQuadCompositor {
                     continue; // 完全にクリップ外
                 }
                 pass.set_scissor_rect(sx, sy, sw, sh);
-                pass.set_bind_group(0, &bind_groups[index], &[]);
+                pass.set_bind_group(0, &self.bind_groups[&quad.texture.cache_key], &[]);
                 let start = (index * VERTICES_PER_QUAD) as u32;
                 pass.draw(start..start + VERTICES_PER_QUAD as u32, 0..1);
             }
