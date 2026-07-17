@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
-use hayate_core::ElementId;
+use hayate_core::{ElementId, LayerRasterBounds};
 use hayate_demo_fixtures::{tasks_tree, TASKS_VIEWPORT};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
@@ -19,7 +19,7 @@ use hayate_layer_compositor::layer_scene::{
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer};
 use hayate_scene_renderer_tiny_skia::{
     premultiplied_to_straight, TinySkiaCompositeTarget, TinySkiaLayerCompositor,
-    TinySkiaLayerRasterizer, TinySkiaSceneRenderer,
+    TinySkiaLayerRasterizer, TinySkiaLayerTexture, TinySkiaSceneRenderer,
 };
 use tiny_skia::Pixmap;
 
@@ -51,6 +51,9 @@ fn perf_probe() {
     }
     let (vw, vh) = TASKS_VIEWPORT;
     let mut tree = tasks_tree("tiny-skia");
+    // Promote the app bar into a representative non-root layer so this probe measures the
+    // bounded-cache path rather than the fixture's otherwise single-root full-surface path.
+    tree.element_set_transform(ElementId::from_u64(2), Some([1.0, 0.0, 0.0, 1.0, 0.0, 0.0]));
     let graph = tree.render(0.0).clone();
     let (
         mut rects,
@@ -154,6 +157,12 @@ fn perf_probe() {
         let h = (vh * scale) as u32;
         let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
         let root = tree.frame_layers()[0];
+        let raster_bounds: std::collections::HashMap<ElementId, LayerRasterBounds> = tree
+            .committed_frame()
+            .layer_raster_bounds()
+            .iter()
+            .map(|bounds| (bounds.layer, *bounds))
+            .collect();
         // 全レイヤを一度 raster してキャッシュを温める（composite-only フレームの前提）。
         let mut rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
         for &layer in tree.frame_layers() {
@@ -165,9 +174,52 @@ fn perf_probe() {
                     None => continue,
                 }
             };
-            rasterizer.rasterize(layer, &scene, None).unwrap();
+            if layer == root {
+                rasterizer.rasterize(layer, &scene, None).unwrap();
+            } else {
+                rasterizer
+                    .rasterize_with_bounds(layer, &scene, raster_bounds[&layer], None)
+                    .unwrap();
+            }
         }
         let placements = collect_layer_placements(&graph, root, &boundaries);
+        let cached_source_px: u64 = placements
+            .iter()
+            .filter_map(|placement| rasterizer.texture(placement.layer))
+            .map(|texture| u64::from(texture.width()) * u64::from(texture.height()))
+            .sum();
+        let full_surface_source_px = u64::from(w) * u64::from(h) * placements.len() as u64;
+        println!(
+            "tiny-skia layer cache source px: {cached_source_px} / {full_surface_source_px} ({:.1}% reduction)",
+            (1.0 - cached_source_px as f64 / full_surface_source_px as f64) * 100.0
+        );
+        if let Some(&layer) = tree.frame_layers().iter().find(|&&layer| layer != root) {
+            let layer_scene = extract_layer_scene(&graph, layer, &boundaries).unwrap();
+            let mut full_rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
+            bench(
+                &format!("tiny-skia RASTER full-surface layer {w}x{h}"),
+                20,
+                || {
+                    full_rasterizer
+                        .rasterize(layer, &layer_scene, None)
+                        .unwrap()
+                },
+            );
+            let mut bounded_rasterizer = TinySkiaLayerRasterizer::new(w, h, scale);
+            bench(
+                &format!(
+                    "tiny-skia RASTER bounded layer {}x{}",
+                    rasterizer.texture(layer).unwrap().width(),
+                    rasterizer.texture(layer).unwrap().height()
+                ),
+                20,
+                || {
+                    bounded_rasterizer
+                        .rasterize_with_bounds(layer, &layer_scene, raster_bounds[&layer], None)
+                        .unwrap()
+                },
+            );
+        }
         let mut compositor = TinySkiaLayerCompositor::new(scale);
         let mut target = TinySkiaCompositeTarget {
             pixmap: Pixmap::new(w, h).expect("pixmap"),
@@ -175,12 +227,12 @@ fn perf_probe() {
         };
         bench(
             &format!(
-                "tiny-skia COMPOSITE-ONLY {w}x{h} (scale {scale}, {} layers)",
-                placements.len()
+                "tiny-skia COMPOSITE-ONLY {w}x{h} (scale {scale}, {} layers, {cached_source_px}/{full_surface_source_px} source px)",
+                placements.len(),
             ),
             20,
             || {
-                let quads: Vec<CompositeQuad<'_, Pixmap>> = placements
+                let quads: Vec<CompositeQuad<'_, TinySkiaLayerTexture>> = placements
                     .iter()
                     .filter_map(|p| {
                         rasterizer.texture(p.layer).map(|texture| CompositeQuad {

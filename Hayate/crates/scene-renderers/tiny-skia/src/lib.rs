@@ -8,7 +8,7 @@ use tiny_skia::{Color, Pixmap};
 use painter::TinySkiaPainter;
 
 pub use layer_compositor::{
-    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer,
+    TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer, TinySkiaLayerTexture,
 };
 
 pub struct TinySkiaSceneRenderer;
@@ -27,6 +27,19 @@ impl TinySkiaSceneRenderer {
     ) {
         pixmap.fill(to_premultiplied_color(clear_color));
         let mut painter = TinySkiaPainter::new(pixmap, content_scale);
+        render_scene_graph(graph, &mut painter);
+    }
+
+    pub(crate) fn render_scene_at(
+        &mut self,
+        graph: &SceneGraph,
+        pixmap: &mut Pixmap,
+        clear_color: [f32; 4],
+        content_scale: f32,
+        device_origin: (i32, i32),
+    ) {
+        pixmap.fill(to_premultiplied_color(clear_color));
+        let mut painter = TinySkiaPainter::new_at(pixmap, content_scale, device_origin);
         render_scene_graph(graph, &mut painter);
     }
 }

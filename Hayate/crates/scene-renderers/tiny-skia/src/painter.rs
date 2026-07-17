@@ -34,11 +34,21 @@ pub struct TinySkiaPainter<'a> {
 
 impl<'a> TinySkiaPainter<'a> {
     pub fn new(pixmap: &'a mut Pixmap, content_scale: f32) -> Self {
-        let transform = if content_scale == 1.0 {
-            Transform::identity()
-        } else {
-            Transform::from_scale(content_scale, content_scale)
-        };
+        Self::new_at(pixmap, content_scale, (0, 0))
+    }
+
+    /// Paint logical scene coordinates into a device-pixel region whose top-left is
+    /// `device_origin`. Keeping the pixel-aligned origin beside the texture makes raster and
+    /// composite use one coordinate contract at fractional DPRs.
+    pub fn new_at(pixmap: &'a mut Pixmap, content_scale: f32, device_origin: (i32, i32)) -> Self {
+        let transform = Transform::from_row(
+            content_scale,
+            0.0,
+            0.0,
+            content_scale,
+            -(device_origin.0 as f32),
+            -(device_origin.1 as f32),
+        );
         Self {
             pixmap,
             state: PainterState {

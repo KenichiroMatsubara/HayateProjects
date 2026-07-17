@@ -10,14 +10,18 @@
 use std::collections::HashSet;
 
 use hayate_core::element::style::{Dimension, Shadow, StyleProp};
-use hayate_core::{Color, ElementId, ElementKind, ElementTree};
+use hayate_core::{Color, ElementId, ElementKind, ElementTree, LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::layer_scene::{
-    collect_layer_placements, extract_layer_scene, extract_root_scene,
+    collect_layer_placements, compose, extract_layer_scene, extract_root_scene,
+    extract_scroll_chrome_scene, extract_scroll_layer_scene,
 };
-use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner};
+use hayate_layer_compositor::{
+    scroll_layer_geometry_from_inputs, CompositeQuad, LayerCompositor, LayerRasterizer,
+    PresentPlanner, RasterBand,
+};
 use hayate_scene_renderer_tiny_skia::{
     TinySkiaCompositeTarget, TinySkiaLayerCompositor, TinySkiaLayerRasterizer,
-    TinySkiaSceneRenderer,
+    TinySkiaLayerTexture, TinySkiaSceneRenderer,
 };
 use tiny_skia::Pixmap;
 
@@ -30,46 +34,106 @@ fn px(v: f32) -> Dimension {
 }
 
 fn render_full(tree: &ElementTree) -> Pixmap {
-    let mut pixmap = Pixmap::new(W, H).unwrap();
-    TinySkiaSceneRenderer::new().render_scene(tree.scene_graph(), &mut pixmap, CLEAR, 1.0);
+    render_full_at(tree, 1.0)
+}
+
+fn render_full_at(tree: &ElementTree, scale: f32) -> Pixmap {
+    let mut pixmap = Pixmap::new((W as f32 * scale) as u32, (H as f32 * scale) as u32).unwrap();
+    TinySkiaSceneRenderer::new().render_scene(tree.scene_graph(), &mut pixmap, CLEAR, scale);
     pixmap
 }
 
 /// 本 crate の `TinySkiaLayerRasterizer` / `TinySkiaLayerCompositor`（trait 実装）で合成する。
 fn render_layered(tree: &ElementTree, root: ElementId) -> Pixmap {
+    render_layered_at(tree, root, 1.0)
+}
+
+fn render_layered_at(tree: &ElementTree, root: ElementId, scale: f32) -> Pixmap {
     let graph = tree.scene_graph();
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let placements = collect_layer_placements(graph, root, &boundaries);
+    let frame = tree.committed_frame();
+    let bounds: std::collections::HashMap<ElementId, LayerRasterBounds> = frame
+        .layer_raster_bounds()
+        .iter()
+        .map(|bounds| (bounds.layer, *bounds))
+        .collect();
+    let scroll_geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+    let width = (W as f32 * scale) as u32;
+    let height = (H as f32 * scale) as u32;
 
-    let mut rasterizer = TinySkiaLayerRasterizer::new(W, H, 1.0);
+    let mut rasterizer = TinySkiaLayerRasterizer::new(width, height, scale);
+    let mut chrome_rasterizer = TinySkiaLayerRasterizer::new(width, height, scale);
     for &layer in tree.frame_layers() {
         let scene = if layer == root {
             extract_root_scene(graph, root, &boundaries)
+        } else if let Some(geometry) = scroll_geometry.get(&layer) {
+            match extract_scroll_layer_scene(graph, layer, &boundaries, geometry.scroll_affine) {
+                Some(s) => s,
+                None => continue,
+            }
         } else {
             match extract_layer_scene(graph, layer, &boundaries) {
                 Some(s) => s,
                 None => continue,
             }
         };
-        rasterizer.rasterize(layer, &scene, None).unwrap();
+        if layer == root {
+            rasterizer.rasterize(layer, &scene, None).unwrap();
+        } else if let Some(geometry) = scroll_geometry.get(&layer) {
+            rasterizer
+                .rasterize_with_bounds(layer, &scene, bounds[&layer], Some(geometry.raster_band()))
+                .unwrap();
+            if let Some(chrome) = extract_scroll_chrome_scene(graph, layer, &boundaries) {
+                chrome_rasterizer
+                    .rasterize_with_bounds(
+                        layer,
+                        &chrome,
+                        LayerRasterBounds {
+                            origin_y: geometry.absolute_top,
+                            height: geometry.viewport_height,
+                            ..bounds[&layer]
+                        },
+                        None,
+                    )
+                    .unwrap();
+            }
+        } else {
+            rasterizer
+                .rasterize_with_bounds(layer, &scene, bounds[&layer], None)
+                .unwrap();
+        }
     }
 
-    let quads: Vec<CompositeQuad<'_, Pixmap>> = placements
-        .iter()
-        .filter_map(|p| {
-            rasterizer.texture(p.layer).map(|texture| CompositeQuad {
-                layer: p.layer,
-                transform: p.transform,
+    let mut quads: Vec<CompositeQuad<'_, TinySkiaLayerTexture>> = Vec::new();
+    for placement in &placements {
+        if let Some(texture) = rasterizer.texture(placement.layer) {
+            quads.push(CompositeQuad {
+                layer: placement.layer,
+                transform: scroll_geometry
+                    .get(&placement.layer)
+                    .map_or(placement.transform, |geometry| {
+                        compose(placement.transform, geometry.scroll_affine)
+                    }),
                 opacity: 1.0,
-                clip: p.clip,
+                clip: placement.clip,
                 texture,
-            })
-        })
-        .collect();
+            });
+        }
+        if let Some(texture) = chrome_rasterizer.texture(placement.layer) {
+            quads.push(CompositeQuad {
+                layer: placement.layer,
+                transform: placement.transform,
+                opacity: 1.0,
+                clip: placement.clip,
+                texture,
+            });
+        }
+    }
 
-    let mut compositor = TinySkiaLayerCompositor::new(1.0);
+    let mut compositor = TinySkiaLayerCompositor::new(scale);
     let mut target = TinySkiaCompositeTarget {
-        pixmap: Pixmap::new(W, H).unwrap(),
+        pixmap: Pixmap::new(width, height).unwrap(),
         clear: CLEAR,
     };
     compositor.composite(&mut target, &quads).unwrap();
@@ -91,6 +155,58 @@ fn assert_pixmaps_equal(full: &Pixmap, layered: &Pixmap, label: &str) {
         worst <= 2,
         "{label}: 全面 raster と CPU レイヤ合成の出力が一致しない（byte {worst_at} で {worst} 差）"
     );
+}
+
+#[test]
+fn non_root_cache_uses_core_raster_bounds_at_device_scale() {
+    let layer = ElementId::from_u64(42);
+    let bounds = LayerRasterBounds {
+        layer,
+        origin_x: 10.25,
+        origin_y: 20.5,
+        width: 30.5,
+        height: 20.25,
+    };
+    let mut rasterizer = TinySkiaLayerRasterizer::new(W * 2, H * 2, 2.0);
+
+    rasterizer
+        .rasterize_with_bounds(layer, &SceneGraph::new(), bounds, None)
+        .unwrap();
+
+    let texture = rasterizer.texture(layer).expect("bounded layer texture");
+    assert_eq!((texture.width(), texture.height()), (62, 41));
+    assert_eq!(texture.device_origin(), (20, 41));
+    assert_eq!(rasterizer.texture_bytes(layer), 62 * 41 * 4);
+}
+
+#[test]
+fn scroll_content_band_keeps_actual_layer_width_and_band_height() {
+    let layer = ElementId::from_u64(43);
+    let bounds = LayerRasterBounds {
+        layer,
+        origin_x: 10.25,
+        origin_y: 0.0,
+        width: 30.5,
+        height: 200.0,
+    };
+    let mut rasterizer = TinySkiaLayerRasterizer::new(W * 2, H * 2, 2.0);
+
+    rasterizer
+        .rasterize_with_bounds(
+            layer,
+            &SceneGraph::new(),
+            bounds,
+            Some(RasterBand {
+                origin_y: 5.25,
+                height: 50.5,
+            }),
+        )
+        .unwrap();
+
+    let texture = rasterizer.texture(layer).expect("scroll content texture");
+    assert_eq!((texture.width(), texture.height()), (62, 102));
+    assert_eq!(texture.device_origin(), (20, 10));
+    assert_eq!(rasterizer.texture_bytes(layer), 62 * 102 * 4);
 }
 
 fn transform_tree() -> (ElementTree, ElementId, ElementId) {
@@ -202,6 +318,21 @@ fn translucent_box_shadow_layer_cpu_composite_matches_full_raster() {
 }
 
 #[test]
+fn bounded_cache_restores_transform_clip_and_origin_at_dpr_1_2_3() {
+    let (mut tree, _boxed) = transform_tree_with_translucent_shadow();
+    let root = ElementId::from_u64(0);
+    let _ = tree.render(0.0);
+
+    for scale in [1.0, 2.0, 3.0] {
+        assert_pixmaps_equal(
+            &render_full_at(&tree, scale),
+            &render_layered_at(&tree, root, scale),
+            &format!("bounded layer at DPR {scale}"),
+        );
+    }
+}
+
+#[test]
 fn layer_inside_scroll_container_cpu_composite_matches_full_raster() {
     // scroll(150x100, 内容 300) の中の transform レイヤ。スクロール済み状態でも一致する。
     let mut tree = ElementTree::new();
@@ -246,11 +377,13 @@ fn layer_inside_scroll_container_cpu_composite_matches_full_raster() {
     tree.element_set_scroll_offset(scroll, 0.0, 50.0);
     let _ = tree.render(0.0);
 
-    assert_pixmaps_equal(
-        &render_full(&tree),
-        &render_layered(&tree, root),
-        "cpu layer inside scrolled container",
-    );
+    for scale in [1.0, 2.0, 3.0] {
+        assert_pixmaps_equal(
+            &render_full_at(&tree, scale),
+            &render_layered_at(&tree, root, scale),
+            &format!("cpu layer inside scrolled container at DPR {scale}"),
+        );
+    }
 }
 
 /// per-layer present を 1 フレーム回し、raster したレイヤ数を返す（work-count 用）。

@@ -33,7 +33,9 @@ fn render_gates_raster_behind_a_frame_plan() {
         "a completed raster must be recorded so clean frames become composite-only"
     );
     assert!(
-        src.contains("frame.layers()") && src.contains("frame.content_dirty_layers()"),
+        src.contains("frame.layers()")
+            && src.contains("frame.layer_raster_bounds()")
+            && src.contains("frame.content_dirty_layers()"),
         "the present path must consume the CommittedFrame layer view (#824)"
     );
     // 単一 root 経路は per-layer quad 合成を持たないので、transform 係数だけの変化（#633 で

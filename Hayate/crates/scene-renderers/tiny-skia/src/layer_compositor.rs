@@ -14,9 +14,9 @@
 use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::{CompositeQuad, LayerCompositor, LayerRasterizer, RasterBand};
-use tiny_skia::{Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Rect, Transform};
+use tiny_skia::{Color, FillRule, Mask, PathBuilder, Pixmap, PixmapPaint, Point, Rect, Transform};
 
 use crate::TinySkiaSceneRenderer;
 
@@ -34,13 +34,38 @@ fn to_premultiplied_color(c: [f32; 4]) -> Color {
     .unwrap_or(Color::TRANSPARENT)
 }
 
-/// CPU レイヤ rasterizer（`LayerRasterizer` の tiny-skia 実装）。キャッシュ面は device サイズの
-/// `Pixmap`（`content_scale` を掛けて raster するので wgpu 経路の surface サイズ texture と対応）。
+/// CPU レイヤ rasterizer（`LayerRasterizer` の tiny-skia 実装）。root は device surface サイズ、
+/// 非 root は Core の [`LayerRasterBounds`] を device px へ外向き丸めした実寸 `Pixmap` を持つ。
 pub struct TinySkiaLayerRasterizer {
     width: u32,
     height: u32,
     content_scale: f32,
-    textures: HashMap<ElementId, Pixmap>,
+    textures: HashMap<ElementId, TinySkiaLayerTexture>,
+}
+
+/// A layer-local Pixmap plus the device-pixel scene origin represented by pixel (0, 0).
+/// Rasterization subtracts this origin; compositing restores it before applying placement.
+pub struct TinySkiaLayerTexture {
+    pixmap: Pixmap,
+    device_origin: (i32, i32),
+}
+
+impl TinySkiaLayerTexture {
+    pub fn width(&self) -> u32 {
+        self.pixmap.width()
+    }
+
+    pub fn height(&self) -> u32 {
+        self.pixmap.height()
+    }
+
+    pub fn device_origin(&self) -> (i32, i32) {
+        self.device_origin
+    }
+
+    pub fn pixmap(&self) -> &Pixmap {
+        &self.pixmap
+    }
 }
 
 impl TinySkiaLayerRasterizer {
@@ -60,19 +85,71 @@ impl TinySkiaLayerRasterizer {
         self.content_scale = content_scale;
         self.textures.clear();
     }
+
+    fn device_region(&self, bounds: LayerRasterBounds) -> ((i32, i32), u32, u32) {
+        let scale = self.content_scale;
+        let left = (bounds.origin_x * scale).floor() as i32;
+        let top = (bounds.origin_y * scale).floor() as i32;
+        let right = ((bounds.origin_x + bounds.width) * scale).ceil() as i32;
+        let bottom = ((bounds.origin_y + bounds.height) * scale).ceil() as i32;
+        (
+            (left, top),
+            (right - left).max(1) as u32,
+            (bottom - top).max(1) as u32,
+        )
+    }
+
+    /// Raster one extracted layer into Core's conservative logical bounds.
+    pub fn rasterize_with_bounds(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        mut bounds: LayerRasterBounds,
+        band: Option<RasterBand>,
+    ) -> Result<(), String> {
+        debug_assert_eq!(bounds.layer, layer);
+        if let Some(band) = band {
+            bounds.origin_y = band.origin_y;
+            bounds.height = band.height;
+        }
+        let (device_origin, width, height) = self.device_region(bounds);
+        let mut pixmap = Pixmap::new(width, height)
+            .ok_or_else(|| format!("tiny-skia layer pixmap {width}x{height}"))?;
+        TinySkiaSceneRenderer::new().render_scene_at(
+            scene,
+            &mut pixmap,
+            TRANSPARENT,
+            self.content_scale,
+            device_origin,
+        );
+        self.textures.insert(
+            layer,
+            TinySkiaLayerTexture {
+                pixmap,
+                device_origin,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn texture_bytes(&self, layer: ElementId) -> u64 {
+        self.textures.get(&layer).map_or(0, |texture| {
+            u64::from(texture.width())
+                * u64::from(texture.height())
+                * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+        })
+    }
 }
 
 impl LayerRasterizer for TinySkiaLayerRasterizer {
-    type Texture = Pixmap;
+    type Texture = TinySkiaLayerTexture;
 
     fn rasterize(
         &mut self,
         layer: ElementId,
         scene: &SceneGraph,
-        // #707 (ADR-0127): scroll-band sizing is vello-only for now — tiny-skia's CPU `Pixmap`
-        // is cheap to resize per-layer but that optimization is out of scope for this issue, so
-        // the band is accepted (to satisfy the shared trait) and intentionally ignored; every
-        // layer still gets a full-surface `Pixmap`, unchanged from before this parameter existed.
+        // Compatibility entry point for root/unbounded callers. The production tiny-skia
+        // present path uses `rasterize_with_bounds`, including scroll bands.
         _band: Option<RasterBand>,
     ) -> Result<(), String> {
         let mut pixmap = Pixmap::new(self.width, self.height)
@@ -84,11 +161,17 @@ impl LayerRasterizer for TinySkiaLayerRasterizer {
             TRANSPARENT,
             self.content_scale,
         );
-        self.textures.insert(layer, pixmap);
+        self.textures.insert(
+            layer,
+            TinySkiaLayerTexture {
+                pixmap,
+                device_origin: (0, 0),
+            },
+        );
         Ok(())
     }
 
-    fn texture(&self, layer: ElementId) -> Option<&Pixmap> {
+    fn texture(&self, layer: ElementId) -> Option<&TinySkiaLayerTexture> {
         self.textures.get(&layer)
     }
 
@@ -153,16 +236,47 @@ impl TinySkiaLayerCompositor {
         mask.fill_path(&path, FillRule::Winding, true, Transform::identity());
         Some(mask)
     }
+
+    /// A bounded texture wholly inside its clip needs no target-sized mask. This is the common
+    /// layer-local case and avoids clearing/filling one full-surface mask per quad.
+    fn clip_contains_texture(
+        &self,
+        clip: [f32; 4],
+        texture: &TinySkiaLayerTexture,
+        transform: Transform,
+    ) -> bool {
+        let (x, y) = texture.device_origin;
+        let x1 = x as f32 + texture.width() as f32;
+        let y1 = y as f32 + texture.height() as f32;
+        let corners = [
+            (x as f32, y as f32),
+            (x1, y as f32),
+            (x as f32, y1),
+            (x1, y1),
+        ];
+        let [cx, cy, cw, ch] = clip;
+        let (cx0, cy0, cx1, cy1) = (
+            cx * self.content_scale,
+            cy * self.content_scale,
+            (cx + cw) * self.content_scale,
+            (cy + ch) * self.content_scale,
+        );
+        corners.into_iter().all(|(px, py)| {
+            let mut point = Point::from_xy(px, py);
+            transform.map_point(&mut point);
+            point.x >= cx0 && point.x <= cx1 && point.y >= cy0 && point.y <= cy1
+        })
+    }
 }
 
 impl LayerCompositor for TinySkiaLayerCompositor {
-    type Texture = Pixmap;
+    type Texture = TinySkiaLayerTexture;
     type Target = TinySkiaCompositeTarget;
 
     fn composite(
         &mut self,
         target: &mut TinySkiaCompositeTarget,
-        quads: &[CompositeQuad<'_, Pixmap>],
+        quads: &[CompositeQuad<'_, TinySkiaLayerTexture>],
     ) -> Result<(), String> {
         let (width, height) = (target.pixmap.width(), target.pixmap.height());
         target.pixmap.fill(to_premultiplied_color(target.clear));
@@ -172,13 +286,15 @@ impl LayerCompositor for TinySkiaLayerCompositor {
                 ..PixmapPaint::default()
             };
             let transform = self.device_transform(quad.transform);
-            let mask = quad
-                .clip
-                .and_then(|clip| self.device_clip_mask(clip, width, height));
+            let mask = quad.clip.and_then(|clip| {
+                (!self.clip_contains_texture(clip, quad.texture, transform))
+                    .then(|| self.device_clip_mask(clip, width, height))
+                    .flatten()
+            });
             target.pixmap.draw_pixmap(
-                0,
-                0,
-                quad.texture.as_ref(),
+                quad.texture.device_origin.0,
+                quad.texture.device_origin.1,
+                quad.texture.pixmap.as_ref(),
                 &paint,
                 transform,
                 mask.as_ref(),
