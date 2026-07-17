@@ -23,7 +23,7 @@ use hayate_layer_compositor::{
 };
 use skia_safe::{Color4f, Image, Matrix, Rect, Surface};
 
-use crate::{new_raster_surface, SkiaSceneRenderer};
+use crate::{new_raster_surface, SkiaResourceWorkCounts, SkiaSceneRenderer};
 
 /// レイヤキャッシュ面は透明クリアで raster する（背景は合成の clear / root レイヤが持つ）。
 const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
@@ -36,6 +36,7 @@ pub struct SkiaLayerRasterizer {
     height: i32,
     content_scale: f32,
     textures: HashMap<ElementId, Image>,
+    renderer: SkiaSceneRenderer,
 }
 
 impl SkiaLayerRasterizer {
@@ -45,6 +46,7 @@ impl SkiaLayerRasterizer {
             height: (height.max(1)) as i32,
             content_scale,
             textures: HashMap::new(),
+            renderer: SkiaSceneRenderer::new(),
         }
     }
 
@@ -65,6 +67,10 @@ impl SkiaLayerRasterizer {
             * u64::from(self.band_device_height(band.height) as u32)
             * tunables::BYTES_PER_PIXEL
     }
+
+    pub fn resource_work_counts(&self) -> SkiaResourceWorkCounts {
+        self.renderer.resource_work_counts()
+    }
 }
 
 impl LayerRasterizer for SkiaLayerRasterizer {
@@ -81,7 +87,7 @@ impl LayerRasterizer for SkiaLayerRasterizer {
             .unwrap_or((self.height, 0.0));
         let mut surface = new_raster_surface(self.width, height)
             .ok_or_else(|| format!("skia layer surface {}x{height}", self.width))?;
-        SkiaSceneRenderer::new().render_scene_at(
+        self.renderer.render_scene_at(
             scene,
             surface.canvas(),
             TRANSPARENT,

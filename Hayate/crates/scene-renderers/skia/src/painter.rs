@@ -9,31 +9,31 @@
 
 use hayate_core::{
     build_draw_path, is_notdef, missing_glyph_placeholder, DrawFillRule, DrawLineCap, DrawLineJoin,
-    PathSink, PathVerb, RenderGlyph, RenderImage, RenderImageAlphaType, ScenePainter, StrokeStyle,
-    TextRunData,
+    PathSink, PathVerb, RenderGlyph, RenderImage, ScenePainter, StrokeStyle, TextRunData,
 };
 use skia_safe::{
     canvas::SrcRectConstraint,
     dash_path_effect,
     font_arguments::{variation_position::Coordinate, FontArguments, VariationPosition},
-    images,
     paint::{Cap as PaintCap, Join as PaintJoin, Style as PaintStyle},
-    AlphaType, Canvas, Color4f, ColorType, Data, Font, FontMgr, FourByteTag, ImageInfo, Paint,
-    Path, PathBuilder as SkPathBuilder, PathFillType, Point, RRect, Rect, SamplingOptions,
-    TextBlobBuilder,
+    Canvas, Color4f, Font, FontMgr, FourByteTag, Paint, Path, PathBuilder as SkPathBuilder,
+    PathFillType, Point, RRect, Rect, SamplingOptions,
 };
 use skrifa::{
     raw::{tables::avar::SegmentMaps, FontRef, TableProvider},
     MetadataProvider,
 };
 
+use crate::resource_cache::PaintResourceCache;
+
 pub struct SkiaPainter<'a> {
     canvas: &'a Canvas,
+    resources: &'a mut PaintResourceCache,
 }
 
 impl<'a> SkiaPainter<'a> {
-    pub fn new(canvas: &'a Canvas) -> Self {
-        Self { canvas }
+    pub fn new(canvas: &'a Canvas, resources: &'a mut PaintResourceCache) -> Self {
+        Self { canvas, resources }
     }
 }
 
@@ -190,11 +190,11 @@ impl ScenePainter for SkiaPainter<'_> {
     }
 
     fn draw_text_run(&mut self, x: f32, y: f32, color: [f32; 4], data: &TextRunData) {
-        draw_text_run(self.canvas, x, y, color, data);
+        draw_text_run(self.canvas, self.resources, x, y, color, data);
     }
 
     fn draw_image(&mut self, x: f32, y: f32, width: f32, height: f32, data: &RenderImage) {
-        draw_image(self.canvas, x, y, width, height, data);
+        draw_image(self.canvas, self.resources, x, y, width, height, data);
     }
 
     fn push_transform(&mut self, transform: [f64; 6]) {
@@ -418,7 +418,14 @@ fn typeface_for(data: &TextRunData) -> Option<skia_safe::Typeface> {
     cached_typeface(&data.font, &data.normalized_coords)
 }
 
-fn draw_text_run(canvas: &Canvas, run_x: f32, run_y: f32, color: [f32; 4], data: &TextRunData) {
+fn draw_text_run(
+    canvas: &Canvas,
+    resources: &mut PaintResourceCache,
+    run_x: f32,
+    run_y: f32,
+    color: [f32; 4],
+    data: &TextRunData,
+) {
     let Some(typeface) = typeface_for(data) else {
         return;
     };
@@ -439,25 +446,14 @@ fn draw_text_run(canvas: &Canvas, run_x: f32, run_y: f32, color: [f32; 4], data:
 
     // notdef グリフはフォールバックの無音アウトラインではなく、意図的なプレースホルダ
     // 箱を描く（vello / tiny-skia と同じ geometry を共有 `missing_glyph_placeholder` から借りる）。
-    let mut real_glyphs: Vec<&RenderGlyph> = Vec::with_capacity(data.glyphs.len());
     for glyph in &data.glyphs {
         if is_notdef(glyph) {
             draw_missing_glyph(canvas, run_x, run_y, &paint, glyph, data.font_size);
-        } else {
-            real_glyphs.push(glyph);
         }
     }
 
-    if !real_glyphs.is_empty() {
-        let mut builder = TextBlobBuilder::new();
-        let (glyph_ids, positions) = builder.alloc_run_pos(&font, real_glyphs.len(), None);
-        for (i, glyph) in real_glyphs.iter().enumerate() {
-            glyph_ids[i] = glyph.id as u16;
-            positions[i] = Point::new(glyph.x, glyph.y);
-        }
-        if let Some(blob) = builder.make() {
-            canvas.draw_text_blob(&blob, (run_x, run_y), &paint);
-        }
+    if let Some(blob) = resources.text_blob_for(data, &font) {
+        canvas.draw_text_blob(&blob, (run_x, run_y), &paint);
     }
 
     for deco in &data.decorations {
@@ -494,24 +490,16 @@ fn draw_missing_glyph(
     );
 }
 
-fn draw_image(canvas: &Canvas, x: f32, y: f32, width: f32, height: f32, image: &RenderImage) {
-    if image.width == 0 || image.height == 0 {
-        return;
-    }
-    let alpha_type = match image.alpha_type {
-        RenderImageAlphaType::Opaque => AlphaType::Opaque,
-        RenderImageAlphaType::Alpha => AlphaType::Unpremul,
-        RenderImageAlphaType::Premultiplied => AlphaType::Premul,
-    };
-    let info = ImageInfo::new(
-        (image.width as i32, image.height as i32),
-        ColorType::RGBA8888,
-        alpha_type,
-        None,
-    );
-    let row_bytes = info.min_row_bytes();
-    let data = Data::new_copy(image.data.data());
-    let Some(sk_image) = images::raster_from_data(&info, data, row_bytes) else {
+fn draw_image(
+    canvas: &Canvas,
+    resources: &mut PaintResourceCache,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    image: &RenderImage,
+) {
+    let Some(sk_image) = resources.image_for(image) else {
         return;
     };
     let dst = Rect::from_xywh(x, y, width, height);
