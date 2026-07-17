@@ -626,6 +626,7 @@ impl HayateElementRenderer {
                     frame.scene(),
                     frame.layers(),
                     &layer_dirty,
+                    frame.chrome_dirty_layers(),
                     &scroll_geometry,
                     background,
                 )

@@ -58,6 +58,8 @@ pub trait SceneRenderer {
     /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、
     /// scroll offset / viewport / content 高を自分では問い合わせられない（この小さな表がその境界を
     /// またぐ唯一の橋渡し）。対応しないバックエンド（既定実装含む）は無視してよい。
+    /// `chrome_dirty` は `layer_dirty` に union された互換用 raster trigger とは別に渡し、content と
+    /// texture を分離する backend が固定 chrome だけを gate できるようにする。
     ///
     /// ⚠️ ADR-0135 により封印中 — 詳細は [`supports_layer_present`](Self::supports_layer_present)。
     fn present_layers(
@@ -65,6 +67,7 @@ pub trait SceneRenderer {
         scene: &SceneGraph,
         _layers: &[ElementId],
         _layer_dirty: &HashSet<ElementId>,
+        _chrome_dirty: &HashSet<ElementId>,
         _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
@@ -285,6 +288,7 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         scene: &SceneGraph,
         layers: &[ElementId],
         layer_dirty: &HashSet<ElementId>,
+        chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {
@@ -295,11 +299,25 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
             return Err(anyhow::anyhow!("RenderHost has no active scene renderer"));
         };
         debug_assert!(self.selection_plan.includes(renderer.kind()));
-        match renderer.present_layers(scene, layers, layer_dirty, scroll_geometry, clear_color) {
+        match renderer.present_layers(
+            scene,
+            layers,
+            layer_dirty,
+            chrome_dirty,
+            scroll_geometry,
+            clear_color,
+        ) {
             Ok(()) => Ok(()),
             // ランタイムフォールバック時は次バックエンドの present（既定は全面 raster）へ委ねる。
             Err(error) => self.fallback_after_runtime_failure(error, |renderer| {
-                renderer.present_layers(scene, layers, layer_dirty, scroll_geometry, clear_color)
+                renderer.present_layers(
+                    scene,
+                    layers,
+                    layer_dirty,
+                    chrome_dirty,
+                    scroll_geometry,
+                    clear_color,
+                )
             }),
         }
     }

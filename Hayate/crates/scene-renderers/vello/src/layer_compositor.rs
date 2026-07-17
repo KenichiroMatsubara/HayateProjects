@@ -179,15 +179,21 @@ impl VelloLayerRasterizer {
 
     /// Scrollbar 等の固定 chrome は full-surface texture へ別 raster し、content band 用の
     /// compensating translate を掛けずに合成する。
-    pub fn rasterize_scroll_chrome(
+    /// viewport 固定 chrome texture を必要な frame だけ更新する。`chrome_dirty` が false でも
+    /// cache miss（resize / eviction 後を含む）なら raster し、更新を実行したかを返す。
+    pub fn update_scroll_chrome(
         &mut self,
         layer: ElementId,
         scene: &SceneGraph,
-    ) -> Result<(), String> {
+        chrome_dirty: bool,
+    ) -> Result<bool, String> {
         let needs_new_texture = self
             .scroll_chrome_textures
             .get(&layer)
             .is_none_or(|existing| existing.width != self.width || existing.height != self.height);
+        if !chrome_dirty && !needs_new_texture {
+            return Ok(false);
+        }
         if needs_new_texture {
             let texture = self.create_texture(self.width, self.height);
             self.scroll_chrome_textures.insert(layer, texture);
@@ -204,7 +210,8 @@ impl VelloLayerRasterizer {
             },
             TRANSPARENT,
             self.content_scale,
-        )
+        )?;
+        Ok(true)
     }
 
     pub fn scroll_chrome_texture(&self, layer: ElementId) -> Option<&LayerTexture> {
