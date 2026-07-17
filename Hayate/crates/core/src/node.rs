@@ -234,62 +234,82 @@ pub struct Node {
 }
 
 #[derive(Debug, Clone)]
-pub struct SceneGraph {
-    nodes: SlotMap<NodeId, Node>,
+struct SceneGraphData {
+    // Retained nodes are structurally shared by committed snapshots. When the UI detaches the
+    // scene index for its next frame, these Arc handles keep unchanged nodes shared.
+    nodes: SlotMap<NodeId, Arc<Node>>,
     /// 描画順のトップレベルノード（親なし）。Group/Clip の子はここに載らない。
     roots: Vec<NodeId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SceneGraph {
+    // A handoff clone is O(1). The first subsequent UI mutation detaches this small index, while
+    // individual retained nodes remain shared until that specific node changes.
+    data: Arc<SceneGraphData>,
 }
 
 impl SceneGraph {
     pub fn new() -> Self {
         Self {
-            nodes: SlotMap::new(),
-            roots: Vec::new(),
+            data: Arc::new(SceneGraphData {
+                nodes: SlotMap::new(),
+                roots: Vec::new(),
+            }),
         }
     }
 
     /// トップレベル（root）ノードを挿入する。
     pub fn insert(&mut self, node: Node) -> NodeId {
-        let id = self.nodes.insert(node);
-        self.roots.push(id);
+        let data = Arc::make_mut(&mut self.data);
+        let id = data.nodes.insert(Arc::new(node));
+        data.roots.push(id);
         id
     }
 
     /// 既存ノードの子としてノードを挿入する。
     pub fn insert_child(&mut self, parent: NodeId, node: Node) -> NodeId {
-        let id = self.nodes.insert(node);
-        if let Some(p) = self.nodes.get_mut(parent) {
-            p.children.push(id);
+        let data = Arc::make_mut(&mut self.data);
+        let id = data.nodes.insert(Arc::new(node));
+        if let Some(p) = data.nodes.get_mut(parent) {
+            Arc::make_mut(p).children.push(id);
         }
         id
     }
 
     pub fn get(&self, id: NodeId) -> Option<&Node> {
-        self.nodes.get(id)
+        self.data.nodes.get(id).map(Arc::as_ref)
     }
 
     pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
-        self.nodes.get_mut(id)
+        Arc::make_mut(&mut self.data)
+            .nodes
+            .get_mut(id)
+            .map(Arc::make_mut)
     }
 
     pub fn retain_roots(&mut self, mut keep: impl FnMut(NodeId) -> bool) {
-        self.roots.retain(|&id| keep(id));
+        Arc::make_mut(&mut self.data).roots.retain(|&id| keep(id));
     }
 
     pub fn remove(&mut self, id: NodeId) -> Option<Node> {
-        let node = self.nodes.remove(id)?;
-        self.roots.retain(|&root| root != id);
+        let node = {
+            let data = Arc::make_mut(&mut self.data);
+            let node = data.nodes.remove(id)?;
+            data.roots.retain(|&root| root != id);
+            node
+        };
         if let Some(parent) = self.parent_of(id) {
-            if let Some(p) = self.nodes.get_mut(parent) {
-                p.children.retain(|&child| child != id);
+            if let Some(p) = Arc::make_mut(&mut self.data).nodes.get_mut(parent) {
+                Arc::make_mut(p).children.retain(|&child| child != id);
             }
         }
-        Some(node)
+        Some(Arc::unwrap_or_clone(node))
     }
 
     /// Group / Clip / ElementAnchor 配下にネストしているときの `id` の親。
     pub fn parent_of(&self, id: NodeId) -> Option<NodeId> {
-        for (parent_id, parent) in self.nodes.iter() {
+        for (parent_id, parent) in self.data.nodes.iter() {
             if parent.children.contains(&id) {
                 return Some(parent_id);
             }
@@ -300,6 +320,7 @@ impl SceneGraph {
     /// `id` とその全子孫をグラフから削除する。
     pub fn remove_subtree(&mut self, id: NodeId) {
         let children = self
+            .data
             .nodes
             .get(id)
             .map(|n| n.children.clone())
@@ -312,29 +333,82 @@ impl SceneGraph {
 
     /// 最初の root ノード（後方互換）。
     pub fn root(&self) -> Option<NodeId> {
-        self.roots.first().copied()
+        self.data.roots.first().copied()
     }
 
     /// 描画順の全トップレベルノード。
     pub fn roots(&self) -> &[NodeId] {
-        &self.roots
+        &self.data.roots
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (NodeId, &Node)> {
-        self.nodes.iter()
+        self.data.nodes.iter().map(|(id, node)| (id, node.as_ref()))
     }
 
     pub fn len(&self) -> usize {
-        self.nodes.len()
+        self.data.nodes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
+        self.data.nodes.is_empty()
     }
 }
 
 impl Default for SceneGraph {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn group() -> Node {
+        Node {
+            kind: NodeKind::Group {
+                transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+            },
+            children: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn cloned_scene_reuses_unchanged_nodes_and_detaches_only_the_mutated_node() {
+        let mut ui_scene = SceneGraph::new();
+        let unchanged = ui_scene.insert(group());
+        let changed = ui_scene.insert(group());
+        let committed = ui_scene.clone();
+
+        assert!(
+            std::ptr::eq(ui_scene.get(unchanged).unwrap(), committed.get(unchanged).unwrap()),
+            "committing a scene must structurally share unchanged nodes instead of deep-cloning them"
+        );
+        assert!(
+            std::ptr::eq(
+                ui_scene.get(changed).unwrap(),
+                committed.get(changed).unwrap()
+            ),
+            "the initial committed snapshot must share every retained node"
+        );
+
+        ui_scene.get_mut(changed).unwrap().children.push(unchanged);
+
+        assert!(
+            std::ptr::eq(
+                ui_scene.get(unchanged).unwrap(),
+                committed.get(unchanged).unwrap()
+            ),
+            "updating the next frame must keep unrelated retained nodes shared"
+        );
+        assert!(
+            !std::ptr::eq(
+                ui_scene.get(changed).unwrap(),
+                committed.get(changed).unwrap()
+            ),
+            "the updated node must detach from the immutable committed snapshot"
+        );
+        assert!(committed.get(changed).unwrap().children.is_empty());
+        assert_eq!(ui_scene.get(changed).unwrap().children, vec![unchanged]);
     }
 }

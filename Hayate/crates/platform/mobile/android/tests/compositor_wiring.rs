@@ -108,16 +108,9 @@ fn present_consumes_core_captured_frame_layers() {
     // ＋捕捉レイヤ）。app.rs がその捕捉を握り、両経路が frame_handoff を通す。
     let src = app_src();
     assert!(
-        src.contains("frame_layers()") && src.contains("frame_layer_dirty()"),
-        "the present path must consume tree.frame_layers()/frame_layer_dirty() (#632)"
-    );
-    assert!(
-        src.contains("frame_layer_transform_dirty()"),
-        "frame_handoff must also carry tree.frame_layer_transform_dirty() (#687)"
-    );
-    assert!(
-        src.contains("frame_scroll_compositor_inputs()"),
-        "frame_handoff must carry committed scroll facts to the Raster thread"
+        src.contains("frame_handoff(frame: &CommittedFrame<'_>)")
+            && src.contains("RasterHandoff::from_committed_frame(frame)"),
+        "the present path must capture scene, layer order, dirty sets, and scroll facts from one Core commit (#855)"
     );
     let tsubame = read_relative("src/app_tsubame.rs");
     assert!(
@@ -154,8 +147,9 @@ fn present_runs_raster_on_a_dedicated_thread() {
         "app.rs must move the surface onto a RasterThread and present via RasterCommand::Frame (#635)"
     );
     assert!(
-        src.contains("scene: tree.scene_graph().clone()"),
-        "the handoff must carry an owned SceneGraph snapshot across the thread boundary (#635)"
+        !src.contains("scene: tree.scene_graph().clone()")
+            && src.contains("RasterHandoff::from_committed_frame"),
+        "native handoff must freeze one CommittedFrame without deep-cloning the SceneGraph (#855)"
     );
     // issue #802/#804: surface 初期化とスレッド起動の選択(skia→vello の Renderer Selection Policy
     // loop)は `init_and_spawn_raster`(app.rs)に一本化された。両スポナー自体は app.rs が持つ。
@@ -170,10 +164,12 @@ fn present_runs_raster_on_a_dedicated_thread() {
     ] {
         let s = read_relative(path);
         assert!(
-            s.contains("init_and_spawn_raster(") && s.contains(".send("),
+            s.contains("init_and_spawn_raster(")
+                && s.contains(".send(")
+                && s.contains("frame_handoff(&frame)"),
             "{name} present loop must produce onto the Raster thread via the shared Renderer \
-             Selection Policy entry point (non-blocking, ADR-0128; issue #802 centralizes vello/skia \
-             surface init behind init_and_spawn_raster)"
+             Selection Policy entry point from the same committed-frame interface (non-blocking, \
+             ADR-0128; issue #855)"
         );
     }
 }
