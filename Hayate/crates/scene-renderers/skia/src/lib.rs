@@ -12,17 +12,24 @@
 
 mod layer_compositor;
 mod painter;
+mod resource_cache;
 
 use hayate_core::{render_scene_graph, SceneGraph};
 use skia_safe::{surfaces, Canvas, Color4f, ColorType, ISize, ImageInfo, Surface};
 
 use painter::SkiaPainter;
+use resource_cache::PaintResourceCache;
+
+pub use resource_cache::{SkiaResourceWorkCounts, SKIA_PAINT_RESOURCE_CACHE_BUDGET_BYTES};
 
 pub use layer_compositor::{
     SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
+    SkiaLayerSurfaceFactory, SkiaRasterLayerSurfaceFactory,
 };
 
-pub struct SkiaSceneRenderer;
+pub struct SkiaSceneRenderer {
+    resources: PaintResourceCache,
+}
 
 impl Default for SkiaSceneRenderer {
     fn default() -> Self {
@@ -32,7 +39,13 @@ impl Default for SkiaSceneRenderer {
 
 impl SkiaSceneRenderer {
     pub fn new() -> Self {
-        Self
+        Self {
+            resources: PaintResourceCache::new(),
+        }
+    }
+
+    pub fn resource_work_counts(&self) -> SkiaResourceWorkCounts {
+        self.resources.work_counts()
     }
 
     /// `canvas` へ `graph` を描く。`canvas` の出自（CPU raster surface / 将来の GPU
@@ -69,7 +82,7 @@ impl SkiaSceneRenderer {
         if offset_x != 0.0 || offset_y != 0.0 {
             canvas.translate((offset_x, offset_y));
         }
-        let mut painter = SkiaPainter::new(canvas);
+        let mut painter = SkiaPainter::new(canvas, &mut self.resources);
         render_scene_graph(graph, &mut painter);
         canvas.restore();
     }

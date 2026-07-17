@@ -101,6 +101,7 @@ impl SceneRenderer for SkiaWindowRenderer {
         layers: &[ElementId],
         _layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
+        _chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), Error> {

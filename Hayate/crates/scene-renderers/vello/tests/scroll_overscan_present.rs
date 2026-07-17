@@ -147,7 +147,13 @@ fn pump_scroll_layer(
     if scroll != root {
         let chrome = extract_scroll_chrome_scene(graph, scroll, &boundaries)
             .expect("scroll chrome is lowered");
-        rasterizer.rasterize_scroll_chrome(scroll, &chrome).unwrap();
+        rasterizer
+            .update_scroll_chrome(
+                scroll,
+                &chrome,
+                tree.frame_layer_chrome_dirty().contains(&scroll),
+            )
+            .unwrap();
     }
     if needs_content_raster {
         let bytes = rasterizer.scroll_cache_bytes(geometry.band);
@@ -383,6 +389,59 @@ fn scrolling_within_the_cached_band_rasters_the_scroll_layer_zero_times() {
             "in-band scroll frame {frame} rastered the scroll layer (composite-only violation)"
         );
     }
+}
+
+#[test]
+fn scroll_chrome_rasters_only_for_cache_miss_resize_or_committed_dirty() {
+    let Some(harness) = try_vello_harness() else {
+        eprintln!("skip: no wgpu adapter");
+        return;
+    };
+    let (tree, scroll) = tall_list_tree();
+    let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
+    let chrome = extract_scroll_chrome_scene(tree.scene_graph(), scroll, &boundaries)
+        .expect("scroll chrome is lowered");
+    let mut rasterizer = VelloLayerRasterizer::new(
+        harness.device.clone(),
+        harness.queue.clone(),
+        W,
+        SURFACE_H,
+        1.0,
+    )
+    .unwrap();
+
+    assert!(
+        rasterizer
+            .update_scroll_chrome(scroll, &chrome, false)
+            .unwrap(),
+        "cache miss must raster chrome even when the committed frame is clean"
+    );
+    assert!(
+        !rasterizer
+            .update_scroll_chrome(scroll, &chrome, false)
+            .unwrap(),
+        "stable chrome must raster zero times after its texture is cached"
+    );
+    assert!(
+        rasterizer
+            .update_scroll_chrome(scroll, &chrome, true)
+            .unwrap(),
+        "committed chrome dirty must refresh the cached texture"
+    );
+    assert!(
+        !rasterizer
+            .update_scroll_chrome(scroll, &chrome, false)
+            .unwrap(),
+        "the frame after a dirty refresh must reuse chrome again"
+    );
+
+    rasterizer.resize(W, SURFACE_H, 1.0);
+    assert!(
+        rasterizer
+            .update_scroll_chrome(scroll, &chrome, false)
+            .unwrap(),
+        "resize invalidation must refresh chrome even when the committed frame is clean"
+    );
 }
 
 /// Renders `tree` two ways and asserts the pixels match: (a) full-surface raster of the whole

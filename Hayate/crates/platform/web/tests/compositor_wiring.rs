@@ -12,6 +12,11 @@ fn canvas_src() -> String {
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
+fn vello_backend_src() -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/backend/vello.rs");
+    fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
 #[test]
 fn render_gates_raster_behind_a_frame_plan() {
     let src = canvas_src();
@@ -57,5 +62,24 @@ fn no_unconditional_render_scene_remains() {
     assert_eq!(
         calls, 1,
         "canvas.rs must call backend.render_scene exactly once (inside the needs_raster branch)"
+    );
+}
+
+#[test]
+fn web_vello_gates_scroll_chrome_with_the_committed_dirty_fact() {
+    let canvas = canvas_src();
+    assert!(
+        canvas.contains("frame.chrome_dirty_layers(),"),
+        "CommittedFrame chrome dirty must cross the layer-present seam separately"
+    );
+
+    let vello = vello_backend_src();
+    assert!(
+        vello.contains("chrome_dirty.contains(&layer)") && vello.contains(".update_scroll_chrome("),
+        "Web Vello must gate chrome raster by committed dirty state and cache state"
+    );
+    assert!(
+        !vello.contains(".rasterize_scroll_chrome("),
+        "Web Vello must not unconditionally raster scroll chrome"
     );
 }

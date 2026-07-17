@@ -95,6 +95,35 @@ fn gl_present_swaps_the_egl_window_surface() {
     );
 }
 
+#[test]
+fn ganesh_layer_cache_rasters_on_gpu_surfaces_from_the_present_context() {
+    let gl = src("skia_gl_window.rs");
+    assert!(
+        gl.contains("gpu::surfaces::render_target"),
+        "Ganesh dirty-layer raster must allocate GPU-backed SkSurface objects"
+    );
+    assert!(
+        gl.contains("present_with_layer_surface_factory"),
+        "the Ganesh DirectContext must supply both layer-cache surfaces and the final composite"
+    );
+    assert!(
+        !gl.contains("new_raster_surface"),
+        "Ganesh layer raster must not pass through the CPU raster-surface adapter"
+    );
+    assert!(
+        !gl.contains("read_rgba") && !gl.contains("new_texture_image"),
+        "dirty layers must stay GPU-backed without CPU readback and re-upload"
+    );
+
+    let presenter = gl.find("presenter: SkiaLayerPresenter,").unwrap();
+    let context = gl.find("ganesh: Option<GaneshGl>,").unwrap();
+    let egl = gl.find("egl: EglHandles,").unwrap();
+    assert!(
+        presenter < context && context < egl,
+        "field drop order must release cached GPU images before DirectContext, then EGL"
+    );
+}
+
 // ── EGL 管理はアダプタに閉じる（REND-07: core に第二の GPU 抽象を持ち込まない） ─────────
 
 #[test]

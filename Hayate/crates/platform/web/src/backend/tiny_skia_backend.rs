@@ -115,6 +115,7 @@ impl CanvasBackend for SelectedBackend {
         layers: &[ElementId],
         layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
+        chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
@@ -184,7 +185,7 @@ impl CanvasBackend for SelectedBackend {
                 anyhow::anyhow!("missing Core raster bounds for scroll layer {layer:?}")
             })?;
 
-            if layer_dirty.contains(&layer) || self.chrome_rasterizer.texture(layer).is_none() {
+            if chrome_dirty.contains(&layer) || self.chrome_rasterizer.texture(layer).is_none() {
                 if let Some(chrome) = extract_scroll_chrome_scene(scene, layer, &boundaries) {
                     let chrome_bounds = LayerRasterBounds {
                         origin_y: geometry.absolute_top,

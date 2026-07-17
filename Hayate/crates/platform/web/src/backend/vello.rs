@@ -364,6 +364,7 @@ impl CanvasBackend for SelectedBackend {
         layers: &[ElementId],
         _layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
+        chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear_color: ClearColor,
     ) -> Result<(), anyhow::Error> {
@@ -449,13 +450,13 @@ impl CanvasBackend for SelectedBackend {
             }
 
             // Scrollbar は viewport 固定 chrome であり、content band と同じ compensating
-            // translate を掛けるとスクロールに追随して移動・欠落する。別 texture として毎フレーム
-            // 更新し、通常 placement で content の後ろから重ねる。
+            // translate を掛けず別 texture として重ねる。CommittedFrame の chrome dirty または
+            // cache miss/resize のときだけ更新し、stable frame では Vello raster を起動しない。
             if layer != root {
                 if let Some(chrome) = extract_scroll_chrome_scene(scene, layer, &boundaries) {
                     state
                         .rasterizer
-                        .rasterize_scroll_chrome(layer, &chrome)
+                        .update_scroll_chrome(layer, &chrome, chrome_dirty.contains(&layer))
                         .map_err(|e| anyhow::anyhow!(e))?;
                 }
             }

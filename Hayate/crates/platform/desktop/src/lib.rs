@@ -245,6 +245,7 @@ impl PresentTarget for RenderHostSurface {
                 frame.layers(),
                 frame.layer_raster_bounds(),
                 &layer_dirty,
+                frame.chrome_dirty_layers(),
                 &scroll_geometry,
                 CLEAR_COLOR,
             )
