@@ -16,6 +16,7 @@ pub mod file_picker;
 pub mod geolocation;
 pub mod haptics;
 pub mod key_value_store;
+mod layer_raster_bounds;
 pub mod local_notification;
 pub mod node;
 pub mod qr_scanner;
@@ -85,6 +86,7 @@ pub use element::{
     ToolbarAction, ToolbarButton, ToolbarHit, ToolbarRect, TransitionTimingValue, UserSelectValue,
     ViewportCondition,
 };
+pub use layer_raster_bounds::LayerRasterBounds;
 pub use node::{
     Node, NodeId, NodeKind, SceneGraph, ShadowOccluder, TextDecorationLine, TextFontAttributes,
     TextFontSlant, TextRunData, TextSynthesis,
