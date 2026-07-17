@@ -7,12 +7,13 @@ mod support;
 use std::collections::HashSet;
 
 use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{Color, ElementId, ElementKind, ElementTree};
+use hayate_core::{Color, CommittedFrame, ElementId, ElementKind, ElementTree};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, extract_layer_scene, extract_root_scene,
 };
 use hayate_layer_compositor::{
-    scroll_layer_geometry_table, CompositeQuad, LayerCompositor, LayerRasterizer, PresentPlanner,
+    scroll_layer_geometry_from_inputs, CompositeQuad, GpuBudget, LayerCompositor, LayerRasterizer,
+    PresentPlanner,
 };
 use hayate_scene_renderer_skia::{
     SkiaCompositeTarget, SkiaLayerCompositor, SkiaLayerPresenter, SkiaLayerRasterizer,
@@ -164,8 +165,12 @@ fn scroll_tree() -> (ElementTree, ElementId) {
     let root = tree.element_create(0, ElementKind::View);
     let scroll = tree.element_create(1, ElementKind::ScrollView);
     let content = tree.element_create(2, ElementKind::View);
+    let hidden_text = tree.element_create(3, ElementKind::Text);
+    let empty_text = tree.element_create(4, ElementKind::Text);
     tree.element_append_child(root, scroll);
+    tree.element_append_child(root, hidden_text);
     tree.element_append_child(scroll, content);
+    tree.element_append_child(content, empty_text);
     tree.set_root(root);
     tree.set_viewport(W as f32, H as f32);
     tree.element_set_style(
@@ -189,6 +194,15 @@ fn scroll_tree() -> (ElementTree, ElementId) {
             StyleProp::Height(px(2000.0)),
         ],
     );
+    // 実アプリでは conditional label が非表示・未計測になったり、空文字の text が
+    // scroll subtree に残る。どちらも安定後は shape request を持ち越さず、純粋な
+    // offset 更新を root / scroll content の dirty へ昇格させてはならない（#843/#844）。
+    tree.element_set_style(
+        hidden_text,
+        &[StyleProp::Display(hayate_core::DisplayValue::None)],
+    );
+    tree.element_set_text(hidden_text, "conditionally hidden");
+    tree.element_set_text(empty_text, "");
     for i in 0..20 {
         let row = tree.element_create(10 + i, ElementKind::View);
         tree.element_append_child(content, row);
@@ -205,52 +219,177 @@ fn scroll_tree() -> (ElementTree, ElementId) {
     (tree, scroll)
 }
 
-#[test]
-fn shared_presenter_scrolls_inside_the_cached_band_without_raster() {
-    let (mut tree, scroll) = scroll_tree();
-    let _ = tree.render(0.0);
-    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
-    let first_geometry = scroll_layer_geometry_table(&tree, tree.frame_layers());
-    let mut first_dirty = tree.frame_layer_dirty().clone();
-    first_dirty.extend(tree.frame_layer_chrome_dirty().iter().copied());
-    let first_target = new_raster_surface(W as i32, H as i32).unwrap();
-    let _ = presenter
-        .present(
-            tree.scene_graph(),
-            tree.frame_layers(),
-            &first_dirty,
-            &first_geometry,
-            CLEAR,
-            (0.0, 0.0),
-            hayate_layer_compositor::GpuBudget::from_viewports(W, H, 8.0),
-            first_target,
-        )
-        .unwrap();
-    assert!(presenter.last_raster_count() > 0);
-
-    tree.element_set_scroll_offset(scroll, 0.0, 150.0);
-    let _ = tree.render(16.0);
-    let geometry = scroll_layer_geometry_table(&tree, tree.frame_layers());
-    let mut dirty = tree.frame_layer_dirty().clone();
-    dirty.extend(tree.frame_layer_chrome_dirty().iter().copied());
+/// Platform wiring と同じ順序で、Core の committed dirty capture を scroll geometry へ
+/// projection し、Native Skia の共有 presenter へ渡す。
+fn present_committed_frame(
+    frame: &CommittedFrame<'_>,
+    presenter: &mut SkiaLayerPresenter,
+    budget: GpuBudget,
+) -> Vec<u8> {
+    let geometry = scroll_layer_geometry_from_inputs(frame.scroll_inputs());
+    let mut dirty = frame.content_dirty_layers().clone();
+    dirty.extend(frame.chrome_dirty_layers().iter().copied());
     let target = new_raster_surface(W as i32, H as i32).unwrap();
     let mut target = presenter
         .present(
-            tree.scene_graph(),
-            tree.frame_layers(),
+            frame.scene(),
+            frame.layers(),
             &dirty,
             &geometry,
             CLEAR,
             (0.0, 0.0),
-            hayate_layer_compositor::GpuBudget::from_viewports(W, H, 8.0),
+            budget,
             target,
         )
         .unwrap();
-    assert_eq!(presenter.last_raster_count(), 0, "in-band scroll must be composite-only");
+    read_rgba(&mut target)
+}
+
+#[test]
+fn native_presenter_keeps_app_like_in_band_scroll_composite_only() {
+    let (mut tree, scroll) = scroll_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+    assert!(presenter.last_raster_count() > 0);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 150.0);
+    let frame = tree.commit_rendered_frame(16.0);
+    assert!(
+        frame.content_dirty_layers().is_empty(),
+        "pure scroll must keep both the root and scroll content caches clean"
+    );
+    assert!(
+        frame.chrome_dirty_layers().contains(&scroll),
+        "the scroll offset must still schedule the fixed chrome update"
+    );
+    let pixels = present_committed_frame(&frame, &mut presenter, budget);
+    assert_eq!(
+        presenter.last_raster_count(),
+        0,
+        "in-band scroll must be composite-only"
+    );
     assert_pixels_equal(
         &render_full(&tree),
-        &read_rgba(&mut target),
+        &pixels,
         "composite-only native skia scroll",
+    );
+}
+
+#[test]
+fn native_presenter_rerasters_scroll_content_after_crossing_the_cached_band() {
+    let (mut tree, scroll) = scroll_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+
+    tree.element_set_scroll_offset(scroll, 0.0, 900.0);
+    let frame = tree.commit_rendered_frame(16.0);
+    assert!(
+        frame.content_dirty_layers().is_empty(),
+        "crossing an overscan band is a presenter cache miss, not a Core content mutation"
+    );
+    let pixels = present_committed_frame(&frame, &mut presenter, budget);
+
+    assert_eq!(
+        presenter.last_raster_count(),
+        1,
+        "leaving the cached overscan band must raster the scroll content once"
+    );
+    assert_pixels_equal(
+        &render_full(&tree),
+        &pixels,
+        "native skia scroll after overscan band refresh",
+    );
+}
+
+#[test]
+fn native_presenter_rerasters_scroll_content_after_a_real_content_change() {
+    let (mut tree, scroll) = scroll_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+
+    let first_row = ElementId::from_u64(10);
+    tree.element_set_style(
+        first_row,
+        &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+    );
+    let frame = tree.commit_rendered_frame(16.0);
+    assert!(
+        frame.content_dirty_layers().contains(&scroll),
+        "a descendant pixel change must dirty its enclosing scroll content layer"
+    );
+    let pixels = present_committed_frame(&frame, &mut presenter, budget);
+
+    assert_eq!(
+        presenter.last_raster_count(),
+        1,
+        "a real content change must refresh exactly the scroll content cache"
+    );
+    assert_pixels_equal(
+        &render_full(&tree),
+        &pixels,
+        "native skia scroll after content refresh",
+    );
+}
+
+#[test]
+fn native_presenter_rerasters_scroll_content_after_geometry_changes() {
+    let (mut tree, scroll) = scroll_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let budget = GpuBudget::from_viewports(W, H, 8.0);
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, budget);
+
+    let first_row = ElementId::from_u64(10);
+    tree.element_set_style(first_row, &[StyleProp::Height(px(140.0))]);
+    let frame = tree.commit_rendered_frame(16.0);
+    assert!(
+        frame.content_dirty_layers().contains(&scroll),
+        "a descendant reflow must dirty its enclosing scroll content layer"
+    );
+    let pixels = present_committed_frame(&frame, &mut presenter, budget);
+
+    assert_eq!(
+        presenter.last_raster_count(),
+        1,
+        "geometry changes must refresh exactly the scroll content cache"
+    );
+    assert_pixels_equal(
+        &render_full(&tree),
+        &pixels,
+        "native skia scroll after geometry refresh",
+    );
+}
+
+#[test]
+fn native_presenter_rerasters_clean_layers_after_cache_eviction() {
+    let (mut tree, _scroll) = scroll_tree();
+    let mut presenter = SkiaLayerPresenter::new(W, H, 1.0);
+    let frame = tree.commit_rendered_frame(0.0);
+    let _ = present_committed_frame(&frame, &mut presenter, GpuBudget::from_bytes(0));
+
+    let frame = tree.commit_rendered_frame(16.0);
+    assert!(
+        frame.content_dirty_layers().is_empty(),
+        "the second frame is clean at the Core seam; only eviction should force work"
+    );
+    let pixels =
+        present_committed_frame(&frame, &mut presenter, GpuBudget::from_viewports(W, H, 8.0));
+
+    assert_eq!(
+        presenter.last_raster_count(),
+        tree.frame_layers().len(),
+        "evicted root and scroll caches must be rebuilt even on a clean frame"
+    );
+    assert_pixels_equal(
+        &render_full(&tree),
+        &pixels,
+        "native skia after cache eviction",
     );
 }
 

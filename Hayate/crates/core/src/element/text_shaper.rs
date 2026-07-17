@@ -44,13 +44,11 @@ fn width_keys_match(a: Option<f32>, b: Option<f32>) -> bool {
 }
 
 /// `finalize` の戻り値。欠落フォント family（値で返し、`FetchFont` 発行は呼び出し側が 1 箇所で行う）
-/// と、retain した IFC ルート／text-input 集合。
+/// と、retain した text-input 集合。
 pub(crate) struct FinalizeOutcome {
     /// 取得すべき欠落 family 名（notdef 検出 + 名前付き先読みで collection 未登録のもの）。
     /// IFC と text-input の両経路を 1 つに de-dup した単一集合。
     pub(crate) missing_families: Vec<String>,
-    /// このパスで IFC の `text_layout` を retain した IFC ルート。呼び出し側が `shape_dirty` から外す。
-    pub(crate) finalized: Vec<ElementId>,
     /// `content_layout` を retain した text-input（プレースホルダではなく編集テキスト）。
     /// キャレット/選択クランプ（編集意味論・ADR-0069）は整形器の外＝Layout Pass 後処理で行うため、
     /// 対象集合だけを返す。
@@ -173,7 +171,6 @@ impl TextShaper {
         viewport: (f32, f32),
     ) -> FinalizeOutcome {
         let mut missing_families: Vec<String> = Vec::new();
-        let mut finalized: Vec<ElementId> = Vec::new();
         let mut content_finalized: Vec<ElementId> = Vec::new();
 
         // --- IFC の retained グリフ層（text_layout）---
@@ -195,7 +192,6 @@ impl TextShaper {
             if let Some(el) = elements.get_mut(&eid) {
                 el.text_layout = Some(layout);
             }
-            finalized.push(eid);
         }
         self.shape_memo.clear();
 
@@ -256,7 +252,6 @@ impl TextShaper {
 
         FinalizeOutcome {
             missing_families,
-            finalized,
             content_finalized,
         }
     }

@@ -65,6 +65,19 @@ async function settle(page: Page, frames = 2): Promise<void> {
   }, frames);
 }
 
+async function dispatchWheelWithoutPointerMove(page: Page, deltaY: number): Promise<void> {
+  await page.evaluate((wheelDeltaY) => {
+    const canvas = document.querySelector('#canvas-stage') as HTMLCanvasElement;
+    canvas.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: wheelDeltaY,
+      clientX: 1000,
+      clientY: 500,
+      bubbles: true,
+      cancelable: true,
+    }));
+  }, deltaY);
+}
+
 async function attachReport(
   scenario: Scenario,
   metrics: CanvasKitPerformanceSnapshot,
@@ -248,6 +261,45 @@ test.describe('CanvasKit real Chromium performance feedback loop', () => {
     const metrics = await snapshot(page);
     await attachReport('scroll', metrics, testInfo);
     assertDeterministicBudget('scroll', metrics);
+  });
+
+  test('in-band scroll reuses CanvasKit layer snapshots', async ({ page }) => {
+    // Let initial font resolution and transitions settle before isolating one small wheel input.
+    // 24px remains inside the initial 600px overscan band, so content replay would indicate that
+    // Core dirty state leaked into CanvasKit instead of taking the composite-only path.
+    await page.waitForTimeout(400);
+    await settle(page, 3);
+    await resetPerformance(page);
+
+    // Dispatch at a coordinate inside the scroll viewport without a preceding pointermove. A real
+    // mouse move changes :hover and can start an unrelated transform layer transition.
+    await dispatchWheelWithoutPointerMove(page, 24);
+    await settle(page, 3);
+
+    const metrics = await snapshot(page);
+    expect(metrics.fullSceneReplayCount, 'layer present must remain enabled').toBe(0);
+    expect(metrics.layerReplayCount, 'in-band pure scroll must not replay cached content').toBe(0);
+    expect(
+      metrics.compositeOnlyFrameCount,
+      'the scroll offset must still produce a cached-layer composite',
+    ).toBeGreaterThan(0);
+  });
+
+  test('scrolling beyond the cached band replays only CanvasKit scroll content', async ({ page }) => {
+    await page.waitForTimeout(400);
+    await settle(page, 3);
+    await resetPerformance(page);
+
+    await dispatchWheelWithoutPointerMove(page, 900);
+    await settle(page, 3);
+
+    const metrics = await snapshot(page);
+    expect(metrics.fullSceneReplayCount, 'overscan refresh must stay on layer present').toBe(0);
+    expect(metrics.layerReplayCount, 'only the expired scroll snapshot should replay').toBe(1);
+    expect(
+      metrics.compositeFrameCount,
+      'the refreshed snapshot must be composited',
+    ).toBeGreaterThan(0);
   });
 
   test('theme transition animation stays within its named replay budget', async ({ page }, testInfo) => {
