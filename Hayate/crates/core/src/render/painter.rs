@@ -725,9 +725,8 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             data,
         } => painter.draw_image(*x, *y, *width, *height, data.as_ref()),
         NodeKind::Group { transform } => {
-            let children = node.children.clone();
             painter.push_transform(*transform);
-            for child_id in children {
+            for &child_id in &node.children {
                 walk_node(graph, child_id, painter);
             }
             painter.pop_transform();
@@ -739,9 +738,8 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             height,
             corner_radii,
         } => {
-            let children = node.children.clone();
             painter.push_clip_rect(*x, *y, *width, *height, *corner_radii);
-            for child_id in children {
+            for &child_id in &node.children {
                 walk_node(graph, child_id, painter);
             }
             painter.pop_clip();
@@ -838,8 +836,7 @@ fn walk_node<P: ScenePainter>(graph: &SceneGraph, id: NodeId, painter: &mut P) {
             }
         }
         NodeKind::ElementAnchor { .. } => {
-            let children = node.children.clone();
-            for child_id in children {
+            for &child_id in &node.children {
                 walk_node(graph, child_id, painter);
             }
         }
