@@ -327,6 +327,7 @@ pub(crate) fn process_touch_input(
             break;
         }
     }
+    dispatched |= scroll.advance_press(tree, now_ms);
     dispatched
 }
 

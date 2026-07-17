@@ -18,6 +18,7 @@ use crate::touch_input::PointerInput;
 /// 1 ジェスチャ分で足りる。
 pub(crate) struct TouchScrollState {
     scroll_gesture: Option<ScrollGesture>,
+    pending_pointer_down: Option<(f32, f32, f64)>,
     scroll_samples: Vec<(f32, f32, f64)>,
     drag_raw: Option<(ElementId, (f32, f32))>,
     tuning: ScrollPhysicsTuning,
@@ -27,6 +28,7 @@ impl TouchScrollState {
     pub(crate) fn new() -> Self {
         Self {
             scroll_gesture: None,
+            pending_pointer_down: None,
             scroll_samples: Vec::new(),
             drag_raw: None,
             tuning: ScrollPhysicsTuning::default(),
@@ -36,27 +38,48 @@ impl TouchScrollState {
     /// 1 件の [`PointerInput`] を `tree` に適用する。`now_ms` は解放速度推定用の
     /// 指サンプルへ刻むタイムスタンプ（呼び元の単調クロック）。
     pub(crate) fn apply(&mut self, tree: &mut ElementTree, input: PointerInput, now_ms: f64) {
+        if !matches!(input, PointerInput::Down { .. }) {
+            self.advance_press(tree, now_ms);
+        }
         match input {
-            PointerInput::Down { x, y } => self.on_down(tree, x, y),
+            PointerInput::Down { x, y } => self.on_down(tree, x, y, now_ms),
             PointerInput::Move { x, y } => self.on_move(tree, x, y, now_ms),
             PointerInput::Up { x, y } => self.on_up(tree, x, y),
             PointerInput::Cancel => self.on_cancel(tree),
         }
     }
 
-    /// 押下は常に Core へ転送する（タップでも `:active` を出すため）。加えて、
-    /// ヒットした要素の最近接 scroll-view 祖先にドラッグ→スクロールジェスチャを
-    /// ロックする。slop を越えなければリリースは通常のクリックとして解決される。
-    fn on_down(&mut self, tree: &mut ElementTree, x: f32, y: f32) {
+    /// 保留中の tap が Flutter 相当の press timeout に達したら semantic pointer-down を
+    /// Core へ送る。新しい visual work を発生させた場合だけ `true`。
+    pub(crate) fn advance_press(&mut self, tree: &mut ElementTree, now_ms: f64) -> bool {
+        let Some((_, _, started_ms)) = self.pending_pointer_down else {
+            return false;
+        };
+        if now_ms - started_ms < scroll::PRESS_TIMEOUT_MS {
+            return false;
+        }
+        let (x, y, _) = self.pending_pointer_down.take().expect("pending press checked above");
         tree.on_pointer_down_with_kind(x, y, 0, PointerKind::Touch);
+        true
+    }
+
+    /// ヒットした要素の最近接 scroll-view 祖先にドラッグ→スクロールジェスチャを
+    /// ロックする。競合する押下は Flutter と同様に timeout／tap 確定まで保留し、
+    /// slop を越えなければリリース時に通常のクリックとして解決する。
+    fn on_down(&mut self, tree: &mut ElementTree, x: f32, y: f32, now_ms: f64) {
         self.scroll_gesture = None;
+        self.pending_pointer_down = None;
         self.drag_raw = None;
         self.scroll_samples.clear();
         if let Some(sv) = tree
             .hit_test(x, y)
             .and_then(|hit| tree.nearest_scroll_view(hit))
         {
+            tree.prepare_deferred_pointer_down(PointerKind::Touch);
             self.scroll_gesture = Some(ScrollGesture::new(sv, (x, y)));
+            self.pending_pointer_down = Some((x, y, now_ms));
+        } else {
+            tree.on_pointer_down_with_kind(x, y, 0, PointerKind::Touch);
         }
     }
 
@@ -71,7 +94,9 @@ impl TouchScrollState {
             // slop 超過: 押下を解除してスクロールへ移行し、リリースでクリックを
             // 発火させない。
             MoveOutcome::StartScroll => {
-                tree.on_pointer_cancel();
+                if self.pending_pointer_down.take().is_none() {
+                    tree.on_pointer_cancel();
+                }
                 self.scroll_samples.push((x, y, now_ms));
             }
             // ロックした scroll-view を指でドラッグする（範囲内は 1:1、端を越えると
@@ -89,15 +114,23 @@ impl TouchScrollState {
             Some(gesture) if !gesture.is_tap() => {
                 self.launch_scroll_motion(tree, gesture.scroll_view)
             }
-            _ => tree.on_pointer_up_with_kind(x, y, PointerKind::Touch),
+            _ => {
+                if let Some((down_x, down_y, _)) = self.pending_pointer_down.take() {
+                    tree.on_pointer_down_with_kind(down_x, down_y, 0, PointerKind::Touch);
+                }
+                tree.on_pointer_up_with_kind(x, y, PointerKind::Touch);
+            }
         }
     }
 
     fn on_cancel(&mut self, tree: &mut ElementTree) {
         self.scroll_gesture = None;
+        let pending = self.pending_pointer_down.take().is_some();
         self.drag_raw = None;
         self.scroll_samples.clear();
-        tree.on_pointer_cancel();
+        if !pending {
+            tree.on_pointer_cancel();
+        }
     }
 
     /// `sv` の軸別スクロール境界 `(max_x, max_y, dim_x, dim_y)`。`max` はスクロール
@@ -157,7 +190,9 @@ impl TouchScrollState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hayate_core::{Dimension, DocumentEventKind, ElementKind, Event, StyleProp};
+    use hayate_core::{
+        Color, Dimension, DocumentEventKind, ElementKind, Event, PseudoState, StyleProp,
+    };
 
     /// 縦 500px のコンテンツを高さ 100px の ScrollView に入れた、縦スクロール可能な
     /// ツリー（`scroll_momentum_continuation.rs` と同型のフィクスチャ）。
@@ -184,6 +219,61 @@ mod tests {
         tree.element_append_child(scroll, content);
         tree.render(0.0);
         (tree, scroll)
+    }
+
+    fn scrollable_with_active_style() -> (ElementTree, ElementId) {
+        let (mut tree, scroll) = scrollable();
+        let content = tree.hit_test(100.0, 50.0).expect("fixture content must be hittable");
+        tree.element_set_pseudo_style(
+            content,
+            PseudoState::Active,
+            &[StyleProp::BackgroundColor(Color::new(1.0, 0.0, 0.0, 1.0))],
+        );
+        tree.render(1.0);
+        (tree, scroll)
+    }
+
+    #[test]
+    fn fast_drag_never_activates_the_pending_tap_or_dirties_scroll_content() {
+        let (mut tree, scroll) = scrollable_with_active_style();
+        let mut state = TouchScrollState::new();
+
+        state.apply(&mut tree, PointerInput::Down { x: 100.0, y: 50.0 }, 0.0);
+        tree.render(0.0);
+        assert_eq!(tree.active_element(), None, "scroll と競合中の tap はまだ active でない");
+        assert!(
+            tree.frame_layer_dirty().is_empty(),
+            "保留中の press は scroll content cache を dirty にしてはならない",
+        );
+
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 30.0 }, 16.0);
+        tree.render(16.0);
+        assert_eq!(tree.active_element(), None, "fast drag は pending tap を棄却する");
+        assert!(
+            !tree.frame_layer_dirty().contains(&scroll),
+            "slop 超過時にも active cancel の content raster を発生させてはならない",
+        );
+    }
+
+    #[test]
+    fn held_touch_activates_after_press_timeout_and_later_drag_cancels_it() {
+        let (mut tree, scroll) = scrollable_with_active_style();
+        let mut state = TouchScrollState::new();
+
+        state.apply(&mut tree, PointerInput::Down { x: 100.0, y: 50.0 }, 0.0);
+        assert!(!state.advance_press(&mut tree, 99.0));
+        assert_eq!(tree.active_element(), None, "timeout 前は press を保留する");
+
+        assert!(state.advance_press(&mut tree, 100.0));
+        assert!(tree.active_element().is_some(), "100ms hold で active を表示する");
+        tree.render(100.0);
+        assert!(
+            tree.frame_layer_dirty().contains(&scroll),
+            "表示された active style は scroll content cache を更新する",
+        );
+
+        state.apply(&mut tree, PointerInput::Move { x: 100.0, y: 30.0 }, 116.0);
+        assert_eq!(tree.active_element(), None, "active 後に drag と確定したら cancel する");
     }
 
     #[test]

@@ -13,7 +13,7 @@ use hayate_core::scroll::{self, MoveOutcome, ScrollGesture, ScrollPhysicsProfile
 use hayate_core::{
     BorderStyleValue, Color, CursorValue, DocumentEventKind, EditIntent, ElementId,
     CommittedFrame, ElementTree, FontFetcher, FontStyleValue, RenderImage, RenderScaleDriver,
-    StyleProp, TextDecorationValue, effective_content_scale,
+    PointerKind, StyleProp, TextDecorationValue, effective_content_scale,
 };
 use hayate_core::render_scale::tunables::FRAME_BUDGET_60HZ_MS;
 use hayate_app_host::renderer_selection::SceneRendererKind;
@@ -165,6 +165,9 @@ pub struct HayateElementRenderer {
     /// scroll-view にロックされる（ADR-0082）。タッチ押下がない、または非スクロール領域
     /// への押下のときは `None`。
     scroll_gesture: Option<ScrollGesture>,
+    /// scroll gesture と競合している semantic pointer-down。Flutter と同じく slop 超過なら
+    /// 未発火のまま棄却し、100ms hold または tap 確定時だけ Core へ送る。
+    pending_pointer_down: Option<(f32, f32, u32, PointerKind, f64)>,
     /// スクロール中に記録する指のサンプル `(x, y, frame_ms)`。リリース時に
     /// `estimate_release_velocity` へ渡し慣性を起動する（ADR-0082 Amendment）。新規押下ごとにクリア。
     scroll_samples: Vec<(f32, f32, f64)>,
@@ -363,6 +366,7 @@ impl HayateElementRenderer {
             pending_pointer,
             last_pointer_move: None,
             scroll_gesture: None,
+            pending_pointer_down: None,
             scroll_samples: Vec::new(),
             drag_raw: None,
             planner: hayate_layer_compositor::PresentPlanner::new(),
@@ -758,6 +762,7 @@ impl HayateElementRenderer {
     /// `render()` 冒頭で自前配線のポインタバッファを排出し、各入力を到着順に 1px move
     /// コアレッシングしながらツリーへ適用する（ADR-0080）。
     fn drain_pointer_inputs(&mut self, now_ms: f64) {
+        self.advance_pending_press(now_ms);
         let buffered: Vec<PointerInput> = self.pending_pointer.borrow_mut().drain(..).collect();
         if buffered.is_empty() {
             return;
@@ -769,6 +774,21 @@ impl HayateElementRenderer {
         }
     }
 
+    fn advance_pending_press(&mut self, now_ms: f64) -> bool {
+        let Some((_, _, _, _, started_ms)) = self.pending_pointer_down else {
+            return false;
+        };
+        if now_ms - started_ms < scroll::PRESS_TIMEOUT_MS {
+            return false;
+        }
+        let (x, y, modifiers, kind, _) = self
+            .pending_pointer_down
+            .take()
+            .expect("pending press checked above");
+        self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
+        true
+    }
+
     fn apply_pointer_input(&mut self, input: PointerInput, now_ms: f64) {
         match input {
             PointerInput::Down {
@@ -777,25 +797,25 @@ impl HayateElementRenderer {
                 modifiers,
                 kind,
             } => {
-                // タップでも `:active` が出るよう、まず常に押下を送る。デバイスも転送し
-                // Core がインタラクション単位で保持する。scroll-view 上の touch/pen 押下は
-                // ドラッグ→スクロールジェスチャをロックする。slop を越えなければリリースは
-                // 通常のクリックとして解決される。
-                self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
                 self.scroll_gesture = None;
-                // 新規押下は惰性中のフリックやスプリングバックを中断する。慣性は Core が
-                // 所有するので、上の `on_pointer_down_with_kind` が既に `scroll_momentum` を
-                // クリア済み。adapter はドラッグ追跡状態だけリセットする。
+                self.pending_pointer_down = None;
                 self.drag_raw = None;
                 self.scroll_samples.clear();
+                let mut deferred = false;
                 if scroll::is_drag_scroll_pointer(kind) {
                     if let Some(sv) = self
                         .tree
                         .hit_test(x, y)
                         .and_then(|hit| self.tree.nearest_scroll_view(hit))
                     {
+                        self.tree.prepare_deferred_pointer_down(kind);
                         self.scroll_gesture = Some(ScrollGesture::new(sv, (x, y)));
+                        self.pending_pointer_down = Some((x, y, modifiers, kind, now_ms));
+                        deferred = true;
                     }
+                }
+                if !deferred {
+                    self.tree.on_pointer_down_with_kind(x, y, modifiers, kind);
                 }
             }
             PointerInput::Move { x, y, kind } => {
@@ -806,7 +826,9 @@ impl HayateElementRenderer {
                         // slop を越えた: 押下を解除してタッチをスクロールにし、リリースで
                         // クリックを発火させない。引き継ぎ位置から速度トラッカーをシードする。
                         MoveOutcome::StartScroll => {
-                            self.tree.on_pointer_cancel();
+                            if self.pending_pointer_down.take().is_none() {
+                                self.tree.on_pointer_cancel();
+                            }
                             self.scroll_samples.push((x, y, now_ms));
                         }
                         // ロックした scroll-view を指でドラッグし（範囲内は 1:1、端を越えると
@@ -831,15 +853,30 @@ impl HayateElementRenderer {
                     Some(gesture) if !gesture.is_tap() => {
                         self.launch_scroll_motion(gesture.scroll_view)
                     }
-                    _ => self.tree.on_pointer_up_with_kind(x, y, kind),
+                    _ => {
+                        if let Some((down_x, down_y, modifiers, down_kind, _)) =
+                            self.pending_pointer_down.take()
+                        {
+                            self.tree.on_pointer_down_with_kind(
+                                down_x, down_y, modifiers, down_kind,
+                            );
+                        }
+                        self.tree.on_pointer_up_with_kind(x, y, kind);
+                    }
                 }
             }
-            PointerInput::Leave => self.tree.on_pointer_leave(),
+            PointerInput::Leave => {
+                self.pending_pointer_down = None;
+                self.tree.on_pointer_leave();
+            }
             PointerInput::Cancel => {
                 self.scroll_gesture = None;
+                let pending = self.pending_pointer_down.take().is_some();
                 self.drag_raw = None;
                 self.scroll_samples.clear();
-                self.tree.on_pointer_cancel();
+                if !pending {
+                    self.tree.on_pointer_cancel();
+                }
             }
             PointerInput::Wheel {
                 x,
@@ -1064,7 +1101,7 @@ impl HayateElementRenderer {
     /// アダプタ（`HayateRenderer`）はこれが true のときだけ次フレームを要求し、false なら
     /// idle に落ちる。毎フレームの無条件再スケジュールを撤廃する唯一の継続判定点。
     pub fn has_pending_visual_work(&self) -> bool {
-        self.tree.has_pending_visual_work()
+        self.pending_pointer_down.is_some() || self.tree.has_pending_visual_work()
     }
 
     /// 直近のポインタ操作の物理デバイス。`PointerKind` のワイヤ値（`mouse=0`, `touch=1`,

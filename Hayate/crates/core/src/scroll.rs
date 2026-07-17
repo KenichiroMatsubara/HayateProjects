@@ -28,6 +28,10 @@ pub fn is_drag_scroll_pointer(kind: PointerKind) -> bool {
 /// マジックナンバーにせず一度だけ名前付き定義してチューニング可能にする。iOS 風の既定値。
 pub const SCROLL_SLOP_PX: f32 = 8.0;
 
+/// scroll gesture と競合する touch/pen の pressed feedback を保留する時間。
+/// Flutter の tap recognizer (`kPressTimeout`) と同じ 100ms。
+pub const PRESS_TIMEOUT_MS: f64 = 100.0;
+
 /// `current` が `start` から `slop` px 超（ユークリッド距離）動いたか。
 /// デッドゾーンを半径にすることで、斜めのドラッグも全軸で同じ距離で閾値を越える。
 pub fn exceeds_slop(start: (f32, f32), current: (f32, f32), slop: f32) -> bool {

@@ -468,6 +468,14 @@ pub struct ScrollbarDrag {
 }
 
 impl ElementTree {
+    /// スクロール競合の解決まで semantic pointer-down を保留する touch 接触を開始する。
+    /// pointer modality を記録して進行中の慣性を止めるが、hit-test／`:active`／focus は
+    /// 変更しない。Platform Adapter は tap と確定した時点で通常の pointer-down を送る。
+    pub fn prepare_deferred_pointer_down(&mut self, kind: PointerKind) {
+        self.interaction.last_pointer_kind = kind;
+        self.interaction.scroll_momentum = None;
+    }
+
     /// canvas 座標でのポインタダウン（ヒットテスト駆動）。
     pub fn on_pointer_down(&mut self, x: f32, y: f32) {
         self.on_pointer_down_with(x, y, 0);

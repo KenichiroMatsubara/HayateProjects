@@ -28,6 +28,8 @@ const HOVER_ENTER_KIND: f64 = 10.0;
 const HOVER_LEAVE_KIND: f64 = 11.0;
 /// `Scroll` の生成済みイベント種別判別子（proto/spec/event_kinds.json）。
 const SCROLL_KIND: f64 = 7.0;
+/// pressed feedback の開始（proto/spec/event_kinds.json）。
+const ACTIVE_START_KIND: f64 = 13.0;
 /// `ElementKind::View` の判別子（crates/core/src/element/kind.rs）。
 const ELEMENT_KIND_VIEW: u32 = 0;
 /// `ElementKind::Button` の判別子（crates/core/src/element/kind.rs）。
@@ -207,6 +209,9 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
     renderer.element_append_child(1.0, 2.0);
     renderer.set_root(1.0);
     let scroll_listener = renderer.register_listener(1.0, SCROLL_KIND as u32).unwrap();
+    let active_listener = renderer
+        .register_listener(2.0, ACTIVE_START_KIND as u32)
+        .unwrap();
 
     // ヒットテストとコンテンツサイズに形状を与えるためレイアウトする。
     renderer.render(0.0).unwrap();
@@ -230,9 +235,53 @@ async fn touch_drag_scrolls_the_scroll_view_and_fires_scroll() {
         "touch drag should scroll the view down (offset.y = {})",
         offset[1]
     );
+    let rows = renderer.poll_events();
     assert!(
-        has_delivery(&renderer.poll_events(), scroll_listener, SCROLL_KIND),
+        has_delivery(&rows, scroll_listener, SCROLL_KIND),
         "touch-driven scroll must fire Event::Scroll"
+    );
+    assert!(
+        !has_delivery(&rows, active_listener, ACTIVE_START_KIND),
+        "fast touch drag must discard the pending press before :active starts"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn held_touch_over_scroll_content_starts_pressed_feedback_after_100ms() {
+    let canvas = make_canvas(200);
+    let mut renderer = HayateElementRenderer::init(canvas.clone(), None)
+        .await
+        .expect("renderer init");
+
+    renderer.element_create(1.0, ELEMENT_KIND_SCROLLVIEW).unwrap();
+    apply_style(&mut renderer, 1.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 200.0, 0.0]);
+    renderer.element_create(2.0, ELEMENT_KIND_BUTTON).unwrap();
+    apply_style(&mut renderer, 2.0, &[TAG_WIDTH, 200.0, 0.0, TAG_HEIGHT, 600.0, 0.0]);
+    renderer.element_append_child(1.0, 2.0);
+    renderer.set_root(1.0);
+    let active_listener = renderer
+        .register_listener(2.0, ACTIVE_START_KIND as u32)
+        .unwrap();
+    renderer.render(0.0).unwrap();
+
+    let rect = canvas.get_bounding_client_rect();
+    dispatch_touch_event(
+        &canvas,
+        "pointerdown",
+        rect.left() + 100.0,
+        rect.top() + 100.0,
+    );
+    renderer.render(16.0).unwrap();
+    assert!(
+        !has_delivery(&renderer.poll_events(), active_listener, ACTIVE_START_KIND),
+        "pressed feedback must remain deferred before 100ms"
+    );
+    assert!(renderer.has_pending_visual_work(), "timeout must keep the frame loop armed");
+
+    renderer.render(116.0).unwrap();
+    assert!(
+        has_delivery(&renderer.poll_events(), active_listener, ACTIVE_START_KIND),
+        "100ms hold must start pressed feedback"
     );
 }
 
