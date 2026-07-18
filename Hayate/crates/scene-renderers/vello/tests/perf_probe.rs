@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 use std::time::Instant;
 
-use hayate_core::ElementId;
+use hayate_core::{ElementId, LayerRasterBounds};
 use hayate_demo_fixtures::{
     dual_transition_tree, tasks_tree, DUAL_TRANSITION_VIEWPORT, TASKS_VIEWPORT,
 };
@@ -37,6 +37,7 @@ fn layered_gpu_frame(
     cached: &mut HashSet<ElementId>,
     graph: &hayate_core::SceneGraph,
     layers: &[ElementId],
+    layer_raster_bounds: &[LayerRasterBounds],
     layer_dirty: &HashSet<ElementId>,
     w: u32,
     hgt: u32,
@@ -55,7 +56,18 @@ fn layered_gpu_frame(
             extract_layer_scene(graph, layer, &boundaries)
         };
         if let Some(extracted) = extracted {
-            rasterizer.rasterize(layer, &extracted, None).ok()?;
+            if layer == root {
+                rasterizer.rasterize(layer, &extracted, None).ok()?;
+            } else if let Some(&bounds) = layer_raster_bounds
+                .iter()
+                .find(|bounds| bounds.layer == layer)
+            {
+                rasterizer
+                    .rasterize_in_bounds(layer, &extracted, bounds, None)
+                    .ok()?;
+            } else {
+                rasterizer.rasterize(layer, &extracted, None).ok()?;
+            }
             cached.insert(layer);
         }
     }
@@ -232,6 +244,7 @@ fn perf_probe() {
             let w = vw as u32;
             let hgt = vh as u32;
             let layers = tree.frame_layers().to_vec();
+            let layer_raster_bounds = tree.committed_frame().layer_raster_bounds().to_vec();
             let dirty: HashSet<ElementId> = HashSet::new();
             let mut rasterizer =
                 VelloLayerRasterizer::new(h.device.clone(), h.queue.clone(), w, hgt, 1.0).unwrap();
@@ -254,6 +267,7 @@ fn perf_probe() {
                     &mut cached,
                     &graph,
                     &layers,
+                    &layer_raster_bounds,
                     &dirty,
                     w,
                     hgt,
@@ -289,6 +303,8 @@ fn perf_probe() {
             let mut cached = HashSet::new();
             let mut full_samples = Vec::new();
             let mut layered_samples = Vec::new();
+            let mut full_dispatch_px = 0u64;
+            let mut bounded_dispatch_px = 0u64;
 
             // 実際の transition が続く限り、毎フレーム 2 要素とも dirty（背景色補間中）——
             // `present_layers()` が実運用で受け取る dirty 集合と同じものを都度計測に渡す。
@@ -297,6 +313,7 @@ fn perf_probe() {
             while dtree.has_pending_visual_work() && frames < 60 {
                 let graph = dtree.render(t).clone();
                 let layers = dtree.frame_layers().to_vec();
+                let layer_raster_bounds = dtree.committed_frame().layer_raster_bounds().to_vec();
                 let dirty = dtree.frame_layer_dirty().clone();
 
                 let bt = Instant::now();
@@ -312,17 +329,46 @@ fn perf_probe() {
                     &mut cached,
                     &graph,
                     &layers,
+                    &layer_raster_bounds,
                     &dirty,
                     w,
                     hgt,
                 );
                 assert!(px.is_some());
                 layered_samples.push(ms(bt.elapsed()));
+                for &layer in &layers {
+                    if !dirty.contains(&layer) {
+                        continue;
+                    }
+                    full_dispatch_px += u64::from(w) * u64::from(hgt);
+                    if let Some(texture) = rasterizer.texture(layer) {
+                        bounded_dispatch_px += u64::from(texture.width) * u64::from(texture.height);
+                    }
+                }
 
                 t += 16.0;
                 frames += 1;
             }
             println!("[perf-probe] dual-transition animated for {frames} frames before settling");
+            let actual_cache_bytes: u64 = cached
+                .iter()
+                .filter_map(|&layer| rasterizer.texture_bytes(layer))
+                .sum();
+            let full_cache_bytes = cached.len() as u64
+                * u64::from(w)
+                * u64::from(hgt)
+                * hayate_layer_compositor::tunables::BYTES_PER_PIXEL;
+            println!(
+                "[perf-probe] layer bounds dispatch px {full_dispatch_px} -> {bounded_dispatch_px}; cache bytes {full_cache_bytes} -> {actual_cache_bytes}"
+            );
+            assert!(
+                bounded_dispatch_px < full_dispatch_px,
+                "Core layer bounds must reduce dirty-layer dispatch pixels"
+            );
+            assert!(
+                actual_cache_bytes < full_cache_bytes,
+                "Core layer bounds must reduce retained layer cache bytes"
+            );
             let (full_p50, full_p95) = percentiles(&mut full_samples);
             let (layered_p50, layered_p95) = percentiles(&mut layered_samples);
             println!(

@@ -8,7 +8,7 @@
 use std::collections::HashSet;
 
 use hayate_core::element::style::{Dimension, StyleProp};
-use hayate_core::{Color, ElementKind, ElementTree};
+use hayate_core::{Color, ElementKind, ElementTree, LayerRasterBounds, Shadow};
 use hayate_layer_compositor::{
     collect_layer_placements, extract_layer_scene, extract_root_scene, warmup_variants,
     CompositeQuad, LayerCompositor, LayerRasterizer,
@@ -73,6 +73,36 @@ fn composite_without_warmup_errors_instead_of_lazily_creating() {
     );
 }
 
+#[test]
+fn non_root_layer_texture_uses_core_raster_bounds_and_content_scale() {
+    let Some(harness) = try_vello_harness() else {
+        eprintln!("skip: no wgpu adapter");
+        return;
+    };
+    let layer = hayate_core::ElementId::from_u64(7);
+    let bounds = LayerRasterBounds {
+        layer,
+        origin_x: 12.25,
+        origin_y: 18.5,
+        width: 31.25,
+        height: 17.5,
+    };
+    let mut rasterizer =
+        VelloLayerRasterizer::new(harness.device, harness.queue, W, H, 2.0).unwrap();
+
+    rasterizer
+        .rasterize_in_bounds(layer, &hayate_core::SceneGraph::new(), bounds, None)
+        .unwrap();
+
+    let texture = rasterizer.texture(layer).expect("layer texture");
+    assert_eq!((texture.width, texture.height), (63, 35));
+    assert_eq!((texture.origin_x, texture.origin_y), (12.0, 18.5));
+    assert_eq!(
+        rasterizer.texture_bytes(layer),
+        Some(63 * 35 * hayate_layer_compositor::tunables::BYTES_PER_PIXEL)
+    );
+}
+
 /// レイヤ分解（vello raster + wgpu quad 合成）の出力が全面 raster と一致する（wgpu 実行版）。
 #[test]
 fn wgpu_layered_composite_matches_full_raster() {
@@ -102,6 +132,14 @@ fn wgpu_layered_composite_matches_full_raster() {
             StyleProp::Width(Dimension::px(50.0)),
             StyleProp::Height(Dimension::px(50.0)),
             StyleProp::BackgroundColor(Color::new(0.0, 0.0, 1.0, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: -4.0,
+                offset_y: -3.0,
+                blur: 3.0,
+                spread: 0.0,
+                color: Color::new(0.8, 0.2, 0.1, 0.5),
+                inset: false,
+            }]),
         ],
     );
     tree.element_set_transform(boxed, Some([1.0, 0.0, 0.0, 1.0, 30.0, 20.0]));
@@ -126,7 +164,17 @@ fn wgpu_layered_composite_matches_full_raster() {
     let root_scene = extract_root_scene(graph, root, &boundaries);
     rasterizer.rasterize(root, &root_scene, None).unwrap();
     let boxed_scene = extract_layer_scene(graph, boxed, &boundaries).unwrap();
-    rasterizer.rasterize(boxed, &boxed_scene, None).unwrap();
+    let boxed_bounds = tree
+        .committed_frame()
+        .layer_raster_bounds()
+        .iter()
+        .find(|bounds| bounds.layer == boxed)
+        .copied()
+        .expect("boxed raster bounds");
+    assert!(boxed_bounds.origin_x < 0.0 && boxed_bounds.origin_y < 0.0);
+    rasterizer
+        .rasterize_in_bounds(boxed, &boxed_scene, boxed_bounds, None)
+        .unwrap();
 
     let mut compositor = WgpuQuadCompositor::new(harness.device.clone(), harness.queue.clone());
     compositor.warmup();

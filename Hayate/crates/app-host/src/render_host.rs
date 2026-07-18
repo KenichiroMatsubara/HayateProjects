@@ -53,6 +53,8 @@ pub trait SceneRenderer {
     /// per-layer present（#636・ADR-0125）。既定は全面 `render_scene` にフォールバック
     /// （未対応バックエンド）。
     ///
+    /// `layer_raster_bounds` は Core が確定した各レイヤの logical raster extent。root を全面のまま
+    /// 保つ backend や、実寸 texture を未対応の backend は無視してよい。
     /// `scroll_geometry` は `ElementKind::ScrollView` レイヤごとの ADR-0127 overscan 帯ジオメトリ
     /// （#707）——呼び出し側（`present_frame`）が `ElementTree` から一度だけ計算して渡す。
     /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、

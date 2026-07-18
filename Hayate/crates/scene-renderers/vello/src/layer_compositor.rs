@@ -2,9 +2,10 @@
 //! scroll overscan サイジング配線）。
 //!
 //! - [`VelloLayerRasterizer`]: レイヤの抽出済み sub-scene を vello でレイヤ texture
-//!   （既定はサーフェスサイズ・Rgba8Unorm・透明クリア）へ raster してキャッシュする。scroll 内容
-//!   レイヤは [`RasterBand`] 付きで呼ばれると、texture を帯サイズに縮めて確保し、内容を
-//!   `origin_y` だけ平行移動してから raster する（#707）——vello に scissor/viewport の概念は無く
+//!   （root は surface 寸法、非 root は Core `LayerRasterBounds` 寸法、Rgba8Unorm・透明クリア）へ
+//!   raster してキャッシュする。scroll 内容レイヤは [`RasterBand`] 付きで呼ばれると、texture を
+//!   bounds 幅×帯高へ縮めて確保し、内容を layer-local origin だけ平行移動してから raster する——
+//!   vello に scissor/viewport の概念は無く
 //!   （`vello::RenderParams` は `{base_color, width, height, antialiasing_method}` のみ）、texture の
 //!   寸法そのものが render 範囲になるため、部分帯だけ欲しければ「小さい texture へ内容をずらして
 //!   焼く」以外の手段が無い。
@@ -29,7 +30,7 @@
 use std::collections::HashMap;
 
 use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::{
     tunables, warmup_variants, BlendMode, CompositeQuad, LayerCompositor, LayerRasterizer,
     PipelineVariant, RasterBand, ScrollLayerExtent, SurfaceFormat,
@@ -62,19 +63,21 @@ fn wgpu_format(format: SurfaceFormat) -> wgpu::TextureFormat {
 }
 
 /// レイヤ 1 枚のキャッシュ面（vello の raster 先 ＝ compositor のサンプル元）。`width`/`height` は
-/// device px の実サイズ（#707 以降、scroll 内容レイヤは帯サイズで full-surface より小さくなり得る
-/// ため、compositor 側が `target` の寸法を仮定できるように texture 自身が寸法を持つ）。
+/// device px の実サイズ、`origin_*` は texel (0,0) が表す logical scene 座標。raster offset と quad
+/// placement はこの同じ origin 契約を消費する。
 #[derive(Debug)]
 pub struct LayerTexture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub width: u32,
     pub height: u32,
+    /// Logical scene-space origin represented by texture texel (0, 0).
+    pub origin_x: f32,
+    pub origin_y: f32,
     cache_key: u64,
 }
 
-/// vello によるレイヤ rasterizer（`LayerRasterizer` の wgpu 実装）。キャッシュ texture は
-/// サーフェスサイズ（絶対座標のまま raster、transform は quad が適用）。
+/// vello によるレイヤ rasterizer（`LayerRasterizer` の wgpu 実装）。
 pub struct VelloLayerRasterizer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -122,10 +125,14 @@ impl VelloLayerRasterizer {
         self.scroll_chrome_textures.clear();
     }
 
-    /// `width`×`height`（device px）のキャッシュ texture を確保する。既定（非 scroll レイヤ）は
-    /// 常に `self.width`×`self.height`（サーフェスサイズ）で呼ぶ；scroll 帯は
-    /// [`Self::band_device_height`] で決めた、より小さい高さで呼ぶ（#707）。
-    fn create_texture(&mut self, width: u32, height: u32) -> LayerTexture {
+    /// `width`×`height`（device px）のキャッシュ texture を logical origin 付きで確保する。
+    fn create_texture(
+        &mut self,
+        width: u32,
+        height: u32,
+        origin_x: f32,
+        origin_y: f32,
+    ) -> LayerTexture {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("hayate_layer_cache"),
             size: wgpu::Extent3d {
@@ -148,8 +155,78 @@ impl VelloLayerRasterizer {
             view,
             width,
             height,
+            origin_x,
+            origin_y,
             cache_key,
         }
+    }
+
+    fn device_axis(&self, origin: f32, length: f32) -> (f32, u32) {
+        let scale = self.content_scale;
+        let min = (origin * scale).floor();
+        let max = ((origin + length) * scale).ceil();
+        (min / scale, (max - min).max(1.0) as u32)
+    }
+
+    /// Raster an extracted layer into the Core-provided logical extent. A scroll band may replace
+    /// the vertical extent while retaining the layer's horizontal bounds.
+    pub fn rasterize_in_bounds(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        bounds: LayerRasterBounds,
+        band: Option<RasterBand>,
+    ) -> Result<(), String> {
+        debug_assert_eq!(bounds.layer, layer);
+        let (requested_origin_y, logical_height) = band
+            .map(|band| (band.origin_y, band.height))
+            .unwrap_or((bounds.origin_y, bounds.height));
+        let (origin_x, texture_width) = self.device_axis(bounds.origin_x, bounds.width);
+        let (origin_y, texture_height) = self.device_axis(requested_origin_y, logical_height);
+        let needs_new_texture = self.textures.get(&layer).is_none_or(|existing| {
+            existing.width != texture_width
+                || existing.height != texture_height
+                || existing.origin_x != origin_x
+                || existing.origin_y != origin_y
+        });
+        if needs_new_texture {
+            let texture = self.create_texture(texture_width, texture_height, origin_x, origin_y);
+            self.textures.insert(layer, texture);
+        }
+        let target_view = &self.textures[&layer].view;
+        self.renderer.render_scene_with_offset(
+            scene,
+            &VelloRenderTarget {
+                device: &self.device,
+                queue: &self.queue,
+                target_view,
+                width: texture_width,
+                height: texture_height,
+            },
+            TRANSPARENT,
+            self.content_scale,
+            -origin_x,
+            -origin_y,
+        )
+    }
+
+    /// Actual bytes held by the content texture for `layer`.
+    pub fn texture_bytes(&self, layer: ElementId) -> Option<u64> {
+        self.textures.get(&layer).map(|texture| {
+            u64::from(texture.width) * u64::from(texture.height) * tunables::BYTES_PER_PIXEL
+        })
+    }
+
+    /// Actual bytes held by all content/chrome textures associated with `layer`.
+    pub fn cache_bytes(&self, layer: ElementId) -> u64 {
+        self.textures
+            .get(&layer)
+            .into_iter()
+            .chain(self.scroll_chrome_textures.get(&layer))
+            .map(|texture| {
+                u64::from(texture.width) * u64::from(texture.height) * tunables::BYTES_PER_PIXEL
+            })
+            .sum()
     }
 
     /// `band`（論理 px の帯高）が device px で占めるキャッシュ texture の高さ（ADR-0127）。
@@ -172,13 +249,14 @@ impl VelloLayerRasterizer {
             * tunables::BYTES_PER_PIXEL
     }
 
-    /// Scroll content band と viewport 固定 chrome texture を合わせた実キャッシュ量。
+    /// Legacy full-width scroll content band と full-surface chrome のキャッシュ量。
+    /// Core bounds 経路の実値は [`Self::cache_bytes`] を使う。
     pub fn scroll_cache_bytes(&self, band: ScrollLayerExtent) -> u64 {
         self.scroll_band_bytes(band) + self.texture_bytes_per_layer()
     }
 
-    /// Scrollbar 等の固定 chrome は full-surface texture へ別 raster し、content band 用の
-    /// compensating translate を掛けずに合成する。
+    /// Legacy fallback: Scrollbar 等の固定 chrome を full-surface texture へ別 raster する。
+    /// Core bounds 経路は [`Self::update_scroll_chrome_in_bounds`] を使う。
     /// viewport 固定 chrome texture を必要な frame だけ更新する。`chrome_dirty` が false でも
     /// cache miss（resize / eviction 後を含む）なら raster し、更新を実行したかを返す。
     pub fn update_scroll_chrome(
@@ -195,7 +273,7 @@ impl VelloLayerRasterizer {
             return Ok(false);
         }
         if needs_new_texture {
-            let texture = self.create_texture(self.width, self.height);
+            let texture = self.create_texture(self.width, self.height, 0.0, 0.0);
             self.scroll_chrome_textures.insert(layer, texture);
         }
         let target_view = &self.scroll_chrome_textures[&layer].view;
@@ -214,6 +292,51 @@ impl VelloLayerRasterizer {
         Ok(true)
     }
 
+    /// Update fixed scroll chrome in the Core-provided logical layer extent.
+    pub fn update_scroll_chrome_in_bounds(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        bounds: LayerRasterBounds,
+        chrome_dirty: bool,
+    ) -> Result<bool, String> {
+        debug_assert_eq!(bounds.layer, layer);
+        let (origin_x, width) = self.device_axis(bounds.origin_x, bounds.width);
+        let (origin_y, height) = self.device_axis(bounds.origin_y, bounds.height);
+        let needs_new_texture = self
+            .scroll_chrome_textures
+            .get(&layer)
+            .is_none_or(|existing| {
+                existing.width != width
+                    || existing.height != height
+                    || existing.origin_x != origin_x
+                    || existing.origin_y != origin_y
+            });
+        if !chrome_dirty && !needs_new_texture {
+            return Ok(false);
+        }
+        if needs_new_texture {
+            let texture = self.create_texture(width, height, origin_x, origin_y);
+            self.scroll_chrome_textures.insert(layer, texture);
+        }
+        let target_view = &self.scroll_chrome_textures[&layer].view;
+        self.renderer.render_scene_with_offset(
+            scene,
+            &VelloRenderTarget {
+                device: &self.device,
+                queue: &self.queue,
+                target_view,
+                width,
+                height,
+            },
+            TRANSPARENT,
+            self.content_scale,
+            -origin_x,
+            -origin_y,
+        )?;
+        Ok(true)
+    }
+
     pub fn scroll_chrome_texture(&self, layer: ElementId) -> Option<&LayerTexture> {
         self.scroll_chrome_textures.get(&layer)
     }
@@ -222,11 +345,11 @@ impl VelloLayerRasterizer {
 impl LayerRasterizer for VelloLayerRasterizer {
     type Texture = LayerTexture;
 
-    /// `band` が `Some` なら scroll 内容レイヤの overscan 帯サイジング（ADR-0127・#707）:
+    /// Legacy fallback。`band` が `Some` なら scroll 内容レイヤの overscan 帯サイジング:
     /// texture を `self.width`×帯高（device px）に確保し、`band.origin_y`（絶対シーン座標）が
     /// texture 行 0 に来るよう内容を平行移動して raster する。キャッシュ済み texture の寸法が
     /// 要求と食い違えば（帯が動いた／非 scroll へ戻った等）作り直す。`None` は従来どおり
-    /// サーフェスサイズで raster する（既存レイヤの挙動は無変更）。
+    /// サーフェスサイズで raster する。Core bounds 経路は [`Self::rasterize_in_bounds`] を使う。
     fn rasterize(
         &mut self,
         layer: ElementId,
@@ -245,7 +368,7 @@ impl LayerRasterizer for VelloLayerRasterizer {
             existing.width != texture_width || existing.height != texture_height
         });
         if needs_new_texture {
-            let texture = self.create_texture(texture_width, texture_height);
+            let texture = self.create_texture(texture_width, texture_height, 0.0, origin_y);
             self.textures.insert(layer, texture);
         }
         let target_view = &self.textures[&layer].view;
@@ -514,10 +637,8 @@ impl WgpuQuadCompositor {
     }
 
     /// quad の 6 頂点（2 三角形）を CPU 側でアフィン → NDC 変換して作る。「素の」矩形は
-    /// **texture 自身の寸法**（`quad.texture.width/height`、device px）を使う——レイヤは絶対座標の
-    /// まま raster されているので、full-surface レイヤ（従来どおり）は texture 寸法 == `target`
-    /// 寸法だが、scroll 帯レイヤ（#707・ADR-0127）は texture が帯サイズに縮んでいるため、素の矩形
-    /// も帯サイズでなければ全体を surface へ引き伸ばしてしまう。NDC 正規化（`dx/target_w` 等）は
+    /// **texture 自身の寸法**（`quad.texture.width/height`、device px）を使い、texel (0,0) は
+    /// `quad.texture.origin_*` の logical scene 座標へ戻す。NDC 正規化（`dx/target_w` 等）は
     /// 引き続き合成先 `target` の寸法を使う（NDC は render target 基準——`quad.transform` の
     /// 「素の矩形→絶対シーン座標」変換とは独立な軸）。
     fn quad_vertices(
@@ -531,9 +652,11 @@ impl WgpuQuadCompositor {
         let target_h = target.height as f64;
         let t = quad.transform;
         let s = self.content_scale as f64;
+        let origin_x = f64::from(quad.texture.origin_x);
+        let origin_y = f64::from(quad.texture.origin_y);
         let corner = |cx: f64, cy: f64, u: f32, v: f32| {
-            let dx = t[0] * cx + t[2] * cy + t[4] * s;
-            let dy = t[1] * cx + t[3] * cy + t[5] * s;
+            let dx = t[0] * cx + t[2] * cy + (t[0] * origin_x + t[2] * origin_y + t[4]) * s;
+            let dy = t[1] * cx + t[3] * cy + (t[1] * origin_x + t[3] * origin_y + t[5]) * s;
             QuadVertex {
                 pos: [
                     (dx / target_w * 2.0 - 1.0) as f32,

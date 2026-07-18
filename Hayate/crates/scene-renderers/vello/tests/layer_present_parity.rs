@@ -53,7 +53,20 @@ fn assert_layered_matches_full(
             extract_layer_scene(graph, layer, &boundaries)
         };
         if let Some(extracted) = extracted {
-            rasterizer.rasterize(layer, &extracted, None).unwrap();
+            if layer == root {
+                rasterizer.rasterize(layer, &extracted, None).unwrap();
+            } else {
+                let bounds = tree
+                    .committed_frame()
+                    .layer_raster_bounds()
+                    .iter()
+                    .find(|bounds| bounds.layer == layer)
+                    .copied()
+                    .expect("each promoted layer has Core raster bounds");
+                rasterizer
+                    .rasterize_in_bounds(layer, &extracted, bounds, None)
+                    .unwrap();
+            }
         }
     }
 
@@ -314,5 +327,65 @@ fn layered_present_matches_full_raster_for_translucent_box_shadow_during_transit
         &tree,
         root,
         "translucent box-shadow while element is layer-promoted (issue #699)",
+    );
+}
+
+#[test]
+fn layered_present_matches_full_raster_for_nested_layers_with_local_origins() {
+    let Some(mut harness) = try_vello_harness() else {
+        eprintln!("skip: no wgpu adapter");
+        return;
+    };
+    let mut tree = ElementTree::new();
+    let root = tree.element_create(0, ElementKind::View);
+    let outer = tree.element_create(1, ElementKind::View);
+    let inner = tree.element_create(2, ElementKind::View);
+    tree.element_append_child(root, outer);
+    tree.element_append_child(outer, inner);
+    tree.set_root(root);
+    tree.set_viewport(W as f32, H as f32);
+    tree.element_set_style(
+        root,
+        &[
+            StyleProp::Width(px(W as f32)),
+            StyleProp::Height(px(H as f32)),
+            StyleProp::BackgroundColor(Color::new(0.2, 0.2, 0.2, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        outer,
+        &[
+            StyleProp::Width(px(90.0)),
+            StyleProp::Height(px(80.0)),
+            StyleProp::BackgroundColor(Color::new(0.1, 0.6, 0.3, 1.0)),
+        ],
+    );
+    tree.element_set_style(
+        inner,
+        &[
+            StyleProp::Width(px(35.0)),
+            StyleProp::Height(px(30.0)),
+            StyleProp::BackgroundColor(Color::new(0.8, 0.2, 0.6, 1.0)),
+            StyleProp::BoxShadow(vec![Shadow {
+                offset_x: -5.0,
+                offset_y: 4.0,
+                blur: 4.0,
+                spread: 0.0,
+                color: Color::new(0.2, 0.4, 1.0, 0.4),
+                inset: false,
+            }]),
+        ],
+    );
+    tree.element_set_transform(outer, Some([1.0, 0.0, 0.0, 1.0, 35.0, 25.0]));
+    tree.element_set_transform(inner, Some([1.0, 0.0, 0.0, 1.0, 18.0, 12.0]));
+    let _ = tree.render(0.0);
+    assert!(tree.frame_layers().contains(&outer));
+    assert!(tree.frame_layers().contains(&inner));
+
+    assert_layered_matches_full(
+        &mut harness,
+        &tree,
+        root,
+        "nested layers with shadow-expanded local origin",
     );
 }
