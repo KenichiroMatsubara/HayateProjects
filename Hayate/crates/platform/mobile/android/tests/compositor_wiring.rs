@@ -127,8 +127,14 @@ fn both_android_skia_surfaces_enable_the_shared_layer_presenter() {
     ] {
         let src = read_relative(path);
         assert!(
-            src.contains("SkiaLayerPresenter") && src.contains(".present("),
+            src.contains("SkiaLayerPresenter")
+                && (src.contains(".present(")
+                    || src.contains(".present_with_layer_surface_factory(")),
             "{name} skia-safe path must use the shared per-layer presenter"
+        );
+        assert!(
+            src.contains("layer_raster_bounds"),
+            "{name} skia-safe path must consume Core layer raster bounds"
         );
         assert!(
             src.contains("scroll_layer_geometry_from_inputs"),

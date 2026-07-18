@@ -60,6 +60,8 @@ pub trait SceneRenderer {
     /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、
     /// scroll offset / viewport / content 高を自分では問い合わせられない（この小さな表がその境界を
     /// またぐ唯一の橋渡し）。対応しないバックエンド（既定実装含む）は無視してよい。
+    /// `layer_raster_bounds` は同じ commit で Core が導出した layer-local logical extent。
+    /// backend は texture の実寸化と raster origin の復元に使い、未対応なら無視してよい。
     /// `chrome_dirty` は `layer_dirty` に union された互換用 raster trigger とは別に渡し、content と
     /// texture を分離する backend が固定 chrome だけを gate できるようにする。
     ///

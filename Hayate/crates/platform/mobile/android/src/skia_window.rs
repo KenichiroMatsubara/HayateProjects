@@ -13,7 +13,7 @@
 use std::collections::HashSet;
 use std::mem::MaybeUninit;
 
-use hayate_core::{ElementId, SceneGraph, ScrollCompositorInput};
+use hayate_core::{ElementId, LayerRasterBounds, SceneGraph, ScrollCompositorInput};
 use hayate_layer_compositor::{scroll_layer_geometry_from_inputs, tunables, GpuBudget};
 use hayate_scene_renderer_skia::{new_raster_surface, read_rgba, SkiaLayerPresenter};
 use ndk::hardware_buffer_format::HardwareBufferFormat;
@@ -70,6 +70,7 @@ impl SkiaGpuSurface {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         _transform_dirty: &HashSet<ElementId>,
         chrome_dirty: &HashSet<ElementId>,
@@ -90,6 +91,7 @@ impl SkiaGpuSurface {
         let mut target = self.presenter.present(
             scene,
             layers,
+            layer_raster_bounds,
             &present_dirty,
             &scroll_geometry,
             crate::app::CLEAR_COLOR,

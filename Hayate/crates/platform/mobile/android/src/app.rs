@@ -614,6 +614,7 @@ pub(crate) fn spawn_raster_thread(mut surface: GpuSurface) -> RasterHandle {
             let RasterHandoff {
                 scene,
                 layers,
+                layer_raster_bounds: _,
                 layer_dirty,
                 transform_dirty,
                 chrome_dirty,
@@ -656,6 +657,7 @@ pub(crate) fn spawn_skia_raster_thread(
             let RasterHandoff {
                 scene,
                 layers,
+                layer_raster_bounds,
                 layer_dirty,
                 transform_dirty,
                 chrome_dirty,
@@ -664,6 +666,7 @@ pub(crate) fn spawn_skia_raster_thread(
             if let Err(err) = surface.render_frame(
                 &scene,
                 &layers,
+                &layer_raster_bounds,
                 &layer_dirty,
                 &transform_dirty,
                 &chrome_dirty,
@@ -700,6 +703,7 @@ pub(crate) fn spawn_skia_gl_raster_thread(
             let RasterHandoff {
                 scene,
                 layers,
+                layer_raster_bounds,
                 layer_dirty,
                 transform_dirty,
                 chrome_dirty,
@@ -708,6 +712,7 @@ pub(crate) fn spawn_skia_gl_raster_thread(
             if let Err(err) = surface.render_frame(
                 &scene,
                 &layers,
+                &layer_raster_bounds,
                 &layer_dirty,
                 &transform_dirty,
                 &chrome_dirty,

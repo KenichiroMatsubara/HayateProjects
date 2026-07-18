@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 
 use hayate_core::element::id::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::layer_scene::{
     collect_layer_placements, compose, extract_layer_scene, extract_root_scene,
     extract_scroll_chrome_scene, extract_scroll_layer_scene,
@@ -51,8 +51,28 @@ pub struct SkiaLayerRasterizer {
     width: i32,
     height: i32,
     content_scale: f32,
-    textures: HashMap<ElementId, Image>,
+    textures: HashMap<ElementId, SkiaLayerTexture>,
     renderer: SkiaSceneRenderer,
+}
+
+/// A layer-local Skia image plus the device-pixel scene origin represented by pixel (0, 0).
+pub struct SkiaLayerTexture {
+    image: Image,
+    device_origin: (i32, i32),
+}
+
+impl SkiaLayerTexture {
+    pub fn width(&self) -> i32 {
+        self.image.width()
+    }
+
+    pub fn height(&self) -> i32 {
+        self.image.height()
+    }
+
+    pub fn device_origin(&self) -> (i32, i32) {
+        self.device_origin
+    }
 }
 
 impl SkiaLayerRasterizer {
@@ -78,6 +98,15 @@ impl SkiaLayerRasterizer {
         (height * self.content_scale).ceil().max(1.0) as i32
     }
 
+    fn device_region(&self, bounds: LayerRasterBounds) -> ((i32, i32), i32, i32) {
+        let scale = self.content_scale;
+        let left = (bounds.origin_x * scale).floor() as i32;
+        let top = (bounds.origin_y * scale).floor() as i32;
+        let right = ((bounds.origin_x + bounds.width) * scale).ceil() as i32;
+        let bottom = ((bounds.origin_y + bounds.height) * scale).ceil() as i32;
+        ((left, top), (right - left).max(1), (bottom - top).max(1))
+    }
+
     pub fn scroll_band_bytes(&self, band: ScrollLayerExtent) -> u64 {
         u64::from(self.width as u32)
             * u64::from(self.band_device_height(band.height) as u32)
@@ -86,6 +115,62 @@ impl SkiaLayerRasterizer {
 
     pub fn resource_work_counts(&self) -> SkiaResourceWorkCounts {
         self.renderer.resource_work_counts()
+    }
+
+    pub fn rasterize_with_bounds(
+        &mut self,
+        layer: ElementId,
+        scene: &SceneGraph,
+        bounds: LayerRasterBounds,
+        band: Option<RasterBand>,
+    ) -> Result<(), String> {
+        self.rasterize_with_bounds_and_layer_surface_factory(
+            &mut SkiaRasterLayerSurfaceFactory,
+            layer,
+            scene,
+            bounds,
+            band,
+        )
+    }
+
+    pub fn rasterize_with_bounds_and_layer_surface_factory(
+        &mut self,
+        factory: &mut dyn SkiaLayerSurfaceFactory,
+        layer: ElementId,
+        scene: &SceneGraph,
+        mut bounds: LayerRasterBounds,
+        band: Option<RasterBand>,
+    ) -> Result<(), String> {
+        debug_assert_eq!(bounds.layer, layer);
+        if let Some(band) = band {
+            bounds.origin_y = band.origin_y;
+            bounds.height = band.height;
+        }
+        let (device_origin, width, height) = self.device_region(bounds);
+        let mut surface = factory.create_layer_surface(width, height)?;
+        self.renderer.render_scene_at(
+            scene,
+            surface.canvas(),
+            TRANSPARENT,
+            self.content_scale,
+            device_origin,
+        );
+        self.textures.insert(
+            layer,
+            SkiaLayerTexture {
+                image: surface.image_snapshot(),
+                device_origin,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn texture_bytes(&self, layer: ElementId) -> u64 {
+        self.textures.get(&layer).map_or(0, |texture| {
+            texture.width() as u64
+                * texture.height() as u64
+                * hayate_layer_compositor::tunables::BYTES_PER_PIXEL
+        })
     }
 
     pub fn rasterize_with_layer_surface_factory(
@@ -104,15 +189,21 @@ impl SkiaLayerRasterizer {
             surface.canvas(),
             TRANSPARENT,
             self.content_scale,
-            origin_y,
+            (0, (origin_y * self.content_scale).floor() as i32),
         );
-        self.textures.insert(layer, surface.image_snapshot());
+        self.textures.insert(
+            layer,
+            SkiaLayerTexture {
+                image: surface.image_snapshot(),
+                device_origin: (0, (origin_y * self.content_scale).floor() as i32),
+            },
+        );
         Ok(())
     }
 }
 
 impl LayerRasterizer for SkiaLayerRasterizer {
-    type Texture = Image;
+    type Texture = SkiaLayerTexture;
 
     fn rasterize(
         &mut self,
@@ -128,7 +219,7 @@ impl LayerRasterizer for SkiaLayerRasterizer {
         )
     }
 
-    fn texture(&self, layer: ElementId) -> Option<&Image> {
+    fn texture(&self, layer: ElementId) -> Option<&SkiaLayerTexture> {
         self.textures.get(&layer)
     }
 
@@ -190,13 +281,13 @@ impl SkiaLayerCompositor {
 }
 
 impl LayerCompositor for SkiaLayerCompositor {
-    type Texture = Image;
+    type Texture = SkiaLayerTexture;
     type Target = SkiaCompositeTarget;
 
     fn composite(
         &mut self,
         target: &mut SkiaCompositeTarget,
-        quads: &[CompositeQuad<'_, Image>],
+        quads: &[CompositeQuad<'_, SkiaLayerTexture>],
     ) -> Result<(), String> {
         let s = self.content_scale;
         let canvas = target.surface.canvas();
@@ -218,7 +309,11 @@ impl LayerCompositor for SkiaLayerCompositor {
             canvas.concat(&self.device_matrix(quad.transform));
             let mut paint = skia_safe::Paint::default();
             paint.set_alpha_f(quad.opacity.clamp(0.0, 1.0));
-            canvas.draw_image(quad.texture, (0, 0), Some(&paint));
+            canvas.draw_image(
+                &quad.texture.image,
+                quad.texture.device_origin,
+                Some(&paint),
+            );
             canvas.restore();
         }
         canvas.restore();
@@ -238,6 +333,7 @@ pub struct SkiaLayerPresenter {
     height: u32,
     content_scale: f32,
     last_raster_count: usize,
+    last_raster_pixels: u64,
 }
 
 impl SkiaLayerPresenter {
@@ -253,6 +349,7 @@ impl SkiaLayerPresenter {
             height: height.max(1),
             content_scale,
             last_raster_count: 0,
+            last_raster_pixels: 0,
         }
     }
 
@@ -260,6 +357,16 @@ impl SkiaLayerPresenter {
     /// composite-only scroll の主要 work-count に含めない。
     pub fn last_raster_count(&self) -> usize {
         self.last_raster_count
+    }
+
+    /// Device pixels rasterized into content caches by the most recent present.
+    pub fn last_raster_pixels(&self) -> u64 {
+        self.last_raster_pixels
+    }
+
+    /// Content cache bytes recorded in the shared budget ledger using actual texture dimensions.
+    pub fn cached_texture_bytes(&self) -> u64 {
+        self.planner.cached_bytes()
     }
 
     pub fn resize(&mut self, width: u32, height: u32, content_scale: f32) {
@@ -285,6 +392,7 @@ impl SkiaLayerPresenter {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear: [f32; 4],
@@ -295,6 +403,7 @@ impl SkiaLayerPresenter {
         self.present_with_layer_surface_factory(
             scene,
             layers,
+            layer_raster_bounds,
             layer_dirty,
             scroll_geometry,
             clear,
@@ -310,6 +419,7 @@ impl SkiaLayerPresenter {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
         clear: [f32; 4],
@@ -319,6 +429,7 @@ impl SkiaLayerPresenter {
         surface: Surface,
     ) -> Result<Surface, String> {
         self.last_raster_count = 0;
+        self.last_raster_pixels = 0;
         let Some(&root) = layers.first() else {
             let mut surface = surface;
             SkiaSceneRenderer::new().render_scene_with_offset(
@@ -332,6 +443,10 @@ impl SkiaLayerPresenter {
             return Ok(surface);
         };
         let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+        let raster_bounds: HashMap<ElementId, LayerRasterBounds> = layer_raster_bounds
+            .iter()
+            .map(|bounds| (bounds.layer, *bounds))
+            .collect();
         for stale in self
             .previous_layers
             .difference(&boundaries)
@@ -357,11 +472,26 @@ impl SkiaLayerPresenter {
                 extract_layer_scene(scene, layer, &boundaries)
                     .ok_or_else(|| format!("skia layer {} is missing", layer.to_u64()))?
             };
-            self.rasterizer
-                .rasterize_with_layer_surface_factory(factory, layer, &extracted, None)?;
+            if layer == root {
+                self.rasterizer
+                    .rasterize_with_layer_surface_factory(factory, layer, &extracted, None)?;
+            } else {
+                let bounds = raster_bounds.get(&layer).copied().ok_or_else(|| {
+                    format!(
+                        "missing Core raster bounds for skia layer {}",
+                        layer.to_u64()
+                    )
+                })?;
+                self.rasterizer
+                    .rasterize_with_bounds_and_layer_surface_factory(
+                        factory, layer, &extracted, bounds, None,
+                    )?;
+            }
             self.last_raster_count += 1;
+            self.last_raster_pixels += self.rasterizer.texture_bytes(layer)
+                / hayate_layer_compositor::tunables::BYTES_PER_PIXEL;
             self.planner
-                .note_layer_rasterized(layer, self.rasterizer.texture_bytes_per_layer());
+                .note_layer_rasterized(layer, self.rasterizer.texture_bytes(layer));
         }
 
         for &layer in layers {
@@ -371,15 +501,23 @@ impl SkiaLayerPresenter {
             if layer_dirty.contains(&layer) || self.chrome_rasterizer.texture(layer).is_none() {
                 let chrome = extract_scroll_chrome_scene(scene, layer, &boundaries)
                     .ok_or_else(|| format!("skia scroll chrome {} is missing", layer.to_u64()))?;
+                let bounds = raster_bounds.get(&layer).copied().ok_or_else(|| {
+                    format!(
+                        "missing Core raster bounds for skia scroll chrome {}",
+                        layer.to_u64()
+                    )
+                })?;
                 self.chrome_rasterizer
-                    .rasterize_with_layer_surface_factory(
+                    .rasterize_with_bounds_and_layer_surface_factory(
                         factory,
                         layer,
                         &chrome,
-                        Some(RasterBand {
+                        LayerRasterBounds {
                             origin_y: geometry.absolute_top,
                             height: geometry.viewport_height,
-                        }),
+                            ..bounds
+                        },
+                        None,
                     )?;
             }
             if !geometry.content_dirty
@@ -397,34 +535,43 @@ impl SkiaLayerPresenter {
                 extract_scroll_layer_scene(scene, layer, &boundaries, geometry.scroll_affine)
                     .ok_or_else(|| format!("skia scroll layer {} is missing", layer.to_u64()))?
             };
-            self.rasterizer.rasterize_with_layer_surface_factory(
-                factory,
-                layer,
-                &extracted,
-                Some(geometry.raster_band()),
-            )?;
+            let bounds = raster_bounds.get(&layer).copied().ok_or_else(|| {
+                format!(
+                    "missing Core raster bounds for skia scroll layer {}",
+                    layer.to_u64()
+                )
+            })?;
+            self.rasterizer
+                .rasterize_with_bounds_and_layer_surface_factory(
+                    factory,
+                    layer,
+                    &extracted,
+                    bounds,
+                    Some(geometry.raster_band()),
+                )?;
             self.last_raster_count += 1;
+            self.last_raster_pixels += self.rasterizer.texture_bytes(layer)
+                / hayate_layer_compositor::tunables::BYTES_PER_PIXEL;
             self.planner.note_scroll_rasterized(
                 layer,
                 geometry.band,
-                self.rasterizer.scroll_band_bytes(geometry.band),
+                self.rasterizer.texture_bytes(layer) + self.chrome_rasterizer.texture_bytes(layer),
             );
         }
 
         let placements = collect_layer_placements(scene, root, &boundaries);
-        let mut quads: Vec<CompositeQuad<'_, Image>> = Vec::new();
+        let mut quads: Vec<CompositeQuad<'_, SkiaLayerTexture>> = Vec::new();
         for placement in &placements {
             if let Some(texture) = self.rasterizer.texture(placement.layer) {
-                let transform = match (
-                    self.planner.cached_scroll_band(placement.layer),
-                    scroll_geometry.get(&placement.layer),
-                ) {
-                    (Some(cached_band), Some(geometry)) => compose(
-                        placement.transform,
-                        geometry.composite_affine_for_band(cached_band),
-                    ),
-                    _ => placement.transform,
-                };
+                let transform =
+                    scroll_geometry
+                        .get(&placement.layer)
+                        .map_or(placement.transform, |geometry| {
+                            // Bounded textures retain their canonical device origin. Reapply only
+                            // the live scroll affine; adding the cached band's origin here would
+                            // place that origin twice.
+                            compose(placement.transform, geometry.scroll_affine)
+                        });
                 quads.push(CompositeQuad {
                     layer: placement.layer,
                     transform,
@@ -435,13 +582,10 @@ impl SkiaLayerPresenter {
             }
             if scroll_geometry.contains_key(&placement.layer) {
                 if let Some(texture) = self.chrome_rasterizer.texture(placement.layer) {
-                    let geometry = &scroll_geometry[&placement.layer];
                     quads.push(CompositeQuad {
                         layer: placement.layer,
-                        transform: compose(
-                            placement.transform,
-                            [1.0, 0.0, 0.0, 1.0, 0.0, f64::from(geometry.absolute_top)],
-                        ),
+                        // Chrome's bounded texture already carries its absolute scene origin.
+                        transform: placement.transform,
                         opacity: 1.0,
                         clip: placement.clip,
                         texture,
@@ -463,6 +607,7 @@ impl SkiaLayerPresenter {
         }
         for evicted in self.planner.enforce_budget(budget) {
             self.rasterizer.discard(evicted);
+            self.chrome_rasterizer.discard(evicted);
         }
         Ok(target.surface)
     }
