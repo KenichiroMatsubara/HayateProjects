@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::Error;
 use hayate_core::element::id::ElementId;
-use hayate_core::{SceneGraph, Surface};
+use hayate_core::{LayerRasterBounds, SceneGraph, Surface};
 use hayate_layer_compositor::ScrollLayerGeometry;
 
 use crate::renderer_selection::{
@@ -53,6 +53,8 @@ pub trait SceneRenderer {
     /// per-layer present（#636・ADR-0125）。既定は全面 `render_scene` にフォールバック
     /// （未対応バックエンド）。
     ///
+    /// `layer_raster_bounds` は Core が確定した各レイヤの logical raster extent。root を全面のまま
+    /// 保つ backend や、実寸 texture を未対応の backend は無視してよい。
     /// `scroll_geometry` は `ElementKind::ScrollView` レイヤごとの ADR-0127 overscan 帯ジオメトリ
     /// （#707）——呼び出し側（`present_frame`）が `ElementTree` から一度だけ計算して渡す。
     /// `present_layers` は `&SceneGraph` とレイヤ id しか受け取らず `ElementTree` を持たないため、
@@ -66,6 +68,7 @@ pub trait SceneRenderer {
         &mut self,
         scene: &SceneGraph,
         _layers: &[ElementId],
+        _layer_raster_bounds: &[LayerRasterBounds],
         _layer_dirty: &HashSet<ElementId>,
         _chrome_dirty: &HashSet<ElementId>,
         _scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
@@ -287,6 +290,7 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
@@ -302,6 +306,7 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
         match renderer.present_layers(
             scene,
             layers,
+            layer_raster_bounds,
             layer_dirty,
             chrome_dirty,
             scroll_geometry,
@@ -313,6 +318,7 @@ impl<S: Surface, I: RendererInit<S>> SceneRenderer for RenderHost<S, I> {
                 renderer.present_layers(
                     scene,
                     layers,
+                    layer_raster_bounds,
                     layer_dirty,
                     chrome_dirty,
                     scroll_geometry,

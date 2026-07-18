@@ -3,8 +3,9 @@
 //! `compositor/tests/scroll_composite_only.rs` already proves the *planning* math (band
 //! coverage / raster-count gating) against `PresentPlanner` alone, with no real texture involved.
 //! This file proves the same scenario through a real `VelloLayerRasterizer` + `WgpuQuadCompositor`:
-//! the actual GPU cache texture is sized to the overscan band (not the full surface), the GPU
-//! budget byte accounting reflects that smaller size, and the rendered pixels still match a
+//! the actual GPU cache texture is sized to Core bounds × the overscan band (not the full surface),
+//! scroll chrome uses the same Core extent, GPU budget byte accounting reflects those actual
+//! sizes, and the rendered pixels still match a
 //! full-surface raster of the same scrolled scene — including, critically, on a **later**
 //! composite-only frame (scrolled further within the cached band, no re-raster) — proving the
 //! translate-at-raster / recompute-at-composite mechanism this issue introduces is correct, not
@@ -43,6 +44,7 @@ use hayate_scene_test_support::vello::{
 };
 
 const W: u32 = 64;
+const SCROLL_W: u32 = 40;
 /// "Canvas"/app surface height — deliberately much larger than any band this fixture produces
 /// (band is capped near `SCROLL_VIEWPORT_H + 2 * OVERSCAN_MARGIN_PX` ≈ 1400px, using the crate's
 /// real `tunables::OVERSCAN_MARGIN_PX`, not a fake smaller value) so the "band, not full surface"
@@ -82,7 +84,7 @@ fn tall_list_tree() -> (ElementTree, ElementId) {
     tree.element_set_style(
         scroll,
         &[
-            StyleProp::Width(px(W as f32)),
+            StyleProp::Width(px(SCROLL_W as f32)),
             StyleProp::Height(px(SCROLL_VIEWPORT_H)),
         ],
     );
@@ -91,7 +93,7 @@ fn tall_list_tree() -> (ElementTree, ElementId) {
         &[
             StyleProp::Display(hayate_core::DisplayValue::Flex),
             StyleProp::FlexDirection(hayate_core::FlexDirectionValue::Column),
-            StyleProp::Width(px(W as f32)),
+            StyleProp::Width(px(SCROLL_W as f32)),
             StyleProp::Height(px(CONTENT_H)),
         ],
     );
@@ -103,7 +105,7 @@ fn tall_list_tree() -> (ElementTree, ElementId) {
         tree.element_set_style(
             row,
             &[
-                StyleProp::Width(px(W as f32)),
+                StyleProp::Width(px(SCROLL_W as f32)),
                 StyleProp::Height(px(row_h)),
                 StyleProp::BackgroundColor(Color::new(hue, 1.0 - hue, 0.5, 1.0)),
             ],
@@ -127,6 +129,13 @@ fn pump_scroll_layer(
     let root = tree.frame_layers()[0];
     let boundaries: HashSet<ElementId> = tree.frame_layers().iter().copied().collect();
     let geometry = scroll_layer_geometry(tree, scroll).expect("scroll view has geometry");
+    let bounds = tree
+        .committed_frame()
+        .layer_raster_bounds()
+        .iter()
+        .find(|bounds| bounds.layer == scroll)
+        .copied()
+        .expect("scroll layer has Core raster bounds");
     let needs_content_raster = geometry.content_dirty
         || planner.scroll_layer_needs_raster(
             scroll,
@@ -141,22 +150,23 @@ fn pump_scroll_layer(
                 .expect("scroll view is lowered")
         };
         rasterizer
-            .rasterize(scroll, &extracted, Some(geometry.raster_band()))
+            .rasterize_in_bounds(scroll, &extracted, bounds, Some(geometry.raster_band()))
             .unwrap();
     }
     if scroll != root {
         let chrome = extract_scroll_chrome_scene(graph, scroll, &boundaries)
             .expect("scroll chrome is lowered");
         rasterizer
-            .update_scroll_chrome(
+            .update_scroll_chrome_in_bounds(
                 scroll,
                 &chrome,
+                bounds,
                 tree.frame_layer_chrome_dirty().contains(&scroll),
             )
             .unwrap();
     }
     if needs_content_raster {
-        let bytes = rasterizer.scroll_cache_bytes(geometry.band);
+        let bytes = rasterizer.cache_bytes(scroll);
         planner.note_scroll_rasterized(scroll, geometry.band, bytes);
     }
     needs_content_raster
@@ -243,10 +253,7 @@ fn composite_frame_scaled(
                 planner.cached_scroll_band(placement.layer),
                 scroll_geometry.get(&placement.layer),
             ) {
-                (Some(cached_band), Some(geometry)) => compose(
-                    placement.transform,
-                    geometry.composite_affine_for_band(cached_band),
-                ),
+                (Some(_), Some(geometry)) => compose(placement.transform, geometry.scroll_affine),
                 _ => placement.transform,
             };
             quads.push(CompositeQuad {
@@ -333,8 +340,8 @@ fn scroll_layer_texture_is_rastered_at_band_size_not_full_surface() {
         "AC #1: scroll layer texture must be sized to the overscan band"
     );
     assert_eq!(
-        texture.width, W,
-        "only the vertical axis is banded (ADR-0127 scope)"
+        texture.width, SCROLL_W,
+        "scroll band width must come from Core LayerRasterBounds"
     );
     assert!(
         texture.height < SURFACE_H,
@@ -346,14 +353,23 @@ fn scroll_layer_texture_is_rastered_at_band_size_not_full_surface() {
         "band ({}) must be far smaller than the full scrollable content height ({CONTENT_H})",
         texture.height
     );
+    let chrome = rasterizer
+        .scroll_chrome_texture(scroll)
+        .expect("scroll chrome has a bounded texture");
+    assert_eq!(
+        (chrome.width, chrome.height),
+        (SCROLL_W, SCROLL_VIEWPORT_H as u32),
+        "scroll chrome texture must use the same Core layer bounds"
+    );
 
     // AC #2: GPU budget byte accounting reflects the band size, not the full-surface size.
-    let full_surface_bytes = u64::from(W) * u64::from(SURFACE_H) * tunables::BYTES_PER_PIXEL;
+    let chrome_bytes =
+        u64::from(SCROLL_W) * u64::from(SCROLL_VIEWPORT_H as u32) * tunables::BYTES_PER_PIXEL;
     assert_eq!(
         planner.cached_bytes(),
-        u64::from(W) * u64::from(expected_band_height) * tunables::BYTES_PER_PIXEL
-            + full_surface_bytes,
-        "charged bytes must include the band texture plus the separate full-surface scroll chrome texture"
+        u64::from(SCROLL_W) * u64::from(expected_band_height) * tunables::BYTES_PER_PIXEL
+            + chrome_bytes,
+        "charged bytes must equal the actual band plus bounded chrome textures"
     );
 }
 

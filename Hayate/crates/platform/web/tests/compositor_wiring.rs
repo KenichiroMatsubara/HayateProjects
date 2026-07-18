@@ -81,3 +81,18 @@ fn web_vello_gates_scroll_chrome_with_the_committed_dirty_fact() {
         "Web Vello must not unconditionally raster scroll chrome"
     );
 }
+
+#[test]
+fn web_vello_consumes_committed_layer_raster_bounds() {
+    let canvas = canvas_src();
+    assert!(
+        canvas.contains("frame.layer_raster_bounds(),"),
+        "CommittedFrame LayerRasterBounds must cross the layer-present seam"
+    );
+
+    let vello = vello_backend_src();
+    assert!(
+        vello.contains("rasterize_in_bounds") && vello.contains("update_scroll_chrome_in_bounds"),
+        "Web Vello must apply Core bounds to content and scroll chrome textures"
+    );
+}

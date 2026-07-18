@@ -4,8 +4,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
 use wgpu::util::TextureBlitter;
 
-use hayate_core::ElementId;
-use hayate_core::SceneGraph;
+use hayate_core::{ElementId, LayerRasterBounds, SceneGraph};
 use hayate_layer_compositor::{
     collect_layer_placements, extract_layer_scene, extract_root_scene, extract_scroll_chrome_scene,
     extract_scroll_layer_scene, layer_scene::compose, tunables, CompositeQuad, GpuBudget,
@@ -296,10 +295,10 @@ impl VelloSurfaceHost {
 
 /// The compositing transform for one layer `placement` (ADR-0127・#707). For a banded scroll
 /// layer (present in both `planner`'s cache and `scroll_geometry`, this frame), this composes
-/// `placement.transform` with this frame's profile-resolved scroll affine and the canonical
-/// cached-band origin. The cached texture omits the live scroll Group, so this per-frame affine
-/// keeps ordinary scrolling, iOS rubber translation, and Android stretch moving without a
-/// re-raster. Every other layer is unaffected.
+/// `placement.transform` with this frame's profile-resolved scroll affine. The cached texture's
+/// logical origin is applied by `WgpuQuadCompositor`, so the band origin is not repeated here.
+/// The cached texture omits the live scroll Group, so this per-frame affine keeps ordinary
+/// scrolling, iOS rubber translation, and Android stretch moving without a re-raster.
 fn quad_transform(
     placement: &LayerPlacement,
     planner: &PresentPlanner,
@@ -309,10 +308,7 @@ fn quad_transform(
         planner.cached_scroll_band(placement.layer),
         scroll_geometry.get(&placement.layer),
     ) {
-        (Some(cached_band), Some(geometry)) => compose(
-            placement.transform,
-            geometry.composite_affine_for_band(cached_band),
-        ),
+        (Some(_), Some(geometry)) => compose(placement.transform, geometry.scroll_affine),
         _ => placement.transform,
     }
 }
@@ -363,6 +359,7 @@ impl CanvasBackend for SelectedBackend {
         &mut self,
         scene: &SceneGraph,
         layers: &[ElementId],
+        layer_raster_bounds: &[LayerRasterBounds],
         layer_dirty: &HashSet<ElementId>,
         chrome_dirty: &HashSet<ElementId>,
         scroll_geometry: &HashMap<ElementId, ScrollLayerGeometry>,
@@ -378,6 +375,11 @@ impl CanvasBackend for SelectedBackend {
             return Ok(());
         };
         let boundaries: HashSet<ElementId> = layers.iter().copied().collect();
+        let raster_bounds: HashMap<ElementId, LayerRasterBounds> = layer_raster_bounds
+            .iter()
+            .copied()
+            .map(|bounds| (bounds.layer, bounds))
+            .collect();
 
         for stale in state
             .prev_layers
@@ -410,13 +412,29 @@ impl CanvasBackend for SelectedBackend {
             let Some(extracted) = extract(layer) else {
                 continue; // 未 lowering（次フレームで raster される）
             };
-            state
-                .rasterizer
-                .rasterize(layer, &extracted, None)
-                .map_err(|e| anyhow::anyhow!(e))?;
-            state
-                .planner
-                .note_layer_rasterized(layer, state.rasterizer.texture_bytes_per_layer());
+            if layer == root {
+                state
+                    .rasterizer
+                    .rasterize(layer, &extracted, None)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            } else if let Some(&bounds) = raster_bounds.get(&layer) {
+                state
+                    .rasterizer
+                    .rasterize_in_bounds(layer, &extracted, bounds, None)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            } else {
+                state
+                    .rasterizer
+                    .rasterize(layer, &extracted, None)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
+            state.planner.note_layer_rasterized(
+                layer,
+                state
+                    .rasterizer
+                    .texture_bytes(layer)
+                    .unwrap_or_else(|| state.rasterizer.texture_bytes_per_layer()),
+            );
         }
 
         // scroll 内容レイヤ（ADR-0127・#707）: キャッシュ済み帯が現在の可視域を覆っていれば
@@ -443,10 +461,27 @@ impl CanvasBackend for SelectedBackend {
                 }) else {
                     continue;
                 };
-                state
-                    .rasterizer
-                    .rasterize(layer, &extracted, Some(geometry.raster_band()))
-                    .map_err(|e| anyhow::anyhow!(e))?;
+                if layer == root {
+                    state
+                        .rasterizer
+                        .rasterize(layer, &extracted, Some(geometry.raster_band()))
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                } else if let Some(&bounds) = raster_bounds.get(&layer) {
+                    state
+                        .rasterizer
+                        .rasterize_in_bounds(
+                            layer,
+                            &extracted,
+                            bounds,
+                            Some(geometry.raster_band()),
+                        )
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                } else {
+                    state
+                        .rasterizer
+                        .rasterize(layer, &extracted, Some(geometry.raster_band()))
+                        .map_err(|e| anyhow::anyhow!(e))?;
+                }
             }
 
             // Scrollbar は viewport 固定 chrome であり、content band と同じ compensating
@@ -454,14 +489,26 @@ impl CanvasBackend for SelectedBackend {
             // cache miss/resize のときだけ更新し、stable frame では Vello raster を起動しない。
             if layer != root {
                 if let Some(chrome) = extract_scroll_chrome_scene(scene, layer, &boundaries) {
-                    state
-                        .rasterizer
-                        .update_scroll_chrome(layer, &chrome, chrome_dirty.contains(&layer))
-                        .map_err(|e| anyhow::anyhow!(e))?;
+                    if let Some(&bounds) = raster_bounds.get(&layer) {
+                        state
+                            .rasterizer
+                            .update_scroll_chrome_in_bounds(
+                                layer,
+                                &chrome,
+                                bounds,
+                                chrome_dirty.contains(&layer),
+                            )
+                            .map_err(|e| anyhow::anyhow!(e))?;
+                    } else {
+                        state
+                            .rasterizer
+                            .update_scroll_chrome(layer, &chrome, chrome_dirty.contains(&layer))
+                            .map_err(|e| anyhow::anyhow!(e))?;
+                    }
                 }
             }
             if needs_content_raster {
-                let bytes = state.rasterizer.scroll_cache_bytes(geometry.band);
+                let bytes = state.rasterizer.cache_bytes(layer);
                 state
                     .planner
                     .note_scroll_rasterized(layer, geometry.band, bytes);
@@ -516,8 +563,8 @@ impl CanvasBackend for SelectedBackend {
         self.content_scale = content_scale.max(1.0);
         self.surface_host.resize(width, height);
         if let Some(state) = self.layer_present.as_mut() {
-            // レイヤ texture はサーフェスサイズなので作り直し＝台帳ごと invalidate する
-            // （invalidate しないと古いサイズの内容を合成し続ける）。
+            // root surface と content scale が変わると、Core bounds 由来の device-px texture 寸法も
+            // 作り直しになるため台帳ごと invalidate する。
             state.rasterizer.resize(
                 self.surface_host.width,
                 self.surface_host.height,
