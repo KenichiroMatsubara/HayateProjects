@@ -87,3 +87,24 @@ fn jsi_bridge_exposes_the_bundle_protocol_version_reader() {
         "the cxx bridge must expose HermesApp::protocol_version to Rust (#533)"
     );
 }
+
+#[test]
+fn embedded_hermes_provides_and_drains_set_immediate_for_react() {
+    // React 19 の Promise 継続は embedded Hermes で `setImmediate` を参照する。React Native
+    // を通さない Torimi host 自身が eval 前に注入し、次 frame で FIFO を排出しなければ
+    // React bundle の eval が `Property 'setImmediate' doesn't exist` で失敗する。
+    let cpp = read_relative("cpp/hermes_app.cpp");
+    assert!(
+        cpp.contains("\"setImmediate\"") && cpp.contains("immediate_queue"),
+        "the embedded Hermes host must provide a queued setImmediate for React"
+    );
+    assert!(
+        cpp.contains("auto immediate_queue = std::move(impl_->immediate_queue)")
+            && cpp.contains("callback.call(rt)"),
+        "queued setImmediate callbacks must drain at a native frame boundary"
+    );
+    assert!(
+        cpp.contains("pump_flag->wanted = true"),
+        "an enqueued setImmediate must wake the idle native frame loop"
+    );
+}

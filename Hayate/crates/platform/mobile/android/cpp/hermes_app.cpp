@@ -312,6 +312,12 @@ struct HermesApp::Impl {
   std::shared_ptr<RedrawSlot> redraw_slot = std::make_shared<RedrawSlot>();
   // `request_pump` が立てたフラグの置き場（`consume_wants_pump` が読んで消す）。
   std::shared_ptr<PumpFlag> pump_flag = std::make_shared<PumpFlag>();
+  // Hermes が Promise 継続の配送先として参照する `setImmediate` の FIFO。素の埋め込み
+  // Hermes はこの global を提供しないため、React 19 の初回スケジュールが eval 中に
+  // ReferenceError にならないようホストが所有する。コールバックは次の native frame で
+  // 実行するため、同期実行で React の scheduler を re-enter させない。
+  std::vector<jsi::Function> immediate_queue;
+  double next_immediate_handle = 1.0;
   // Device Log シームへの非所有ポインタ（#789）。host_obj が Box を所有し runtime の寿命の間
   // 有効。pumpFrame で捕まえた uncaught JS 例外を source: js として Device Log に流すのに使う。
   JsHostBridge* log_bridge = nullptr;
@@ -348,6 +354,26 @@ HermesApp::HermesApp(rust::Box<JsHostBridge> host, rust::Str bundle)
             return jsi::Value::undefined();
           }));
 
+  // React 19 は Promise 継続を scheduleImmediateRootScheduleTask から起動する。今回の
+  // Hermes build の Promise 実装は、その継続の配送に global `setImmediate` を使うが、
+  // React Native なしで埋め込む Hermes には同 global がない。eval より前に注入し、
+  // callback は pump_frame の frame 境界で FIFO 排出する。
+  rt.global().setProperty(
+      rt, "setImmediate",
+      jsi::Function::createFromHostFunction(
+          rt, jsi::PropNameID::forAscii(rt, "setImmediate"), 1,
+          [impl = impl_.get(), pump_flag = impl_->pump_flag](
+              jsi::Runtime& rt, const jsi::Value&, const jsi::Value* args,
+              size_t count) -> jsi::Value {
+            if (count > 0 && args[0].isObject() && args[0].getObject(rt).isFunction(rt)) {
+              impl->immediate_queue.push_back(args[0].getObject(rt).asFunction(rt));
+              // idle 中に Promise 継続だけが積まれた場合も、次 frame が無ければ FIFO を
+              // 排出できない。React の state update を次 frame で実行できるよう起床を要求する。
+              pump_flag->wanted = true;
+            }
+            return jsi::Value(impl->next_immediate_handle++);
+          }));
+
   // バンドルを eval（main.android.tsx 由来。__tsubame を公開する）。JS の例外
   // （jsi::JSError）はここで捕捉してメッセージと JS スタックをログに出す。捕まえない
   // と C++ 例外として android_main を抜け std::terminate でプロセスが落ちる。
@@ -378,6 +404,16 @@ void HermesApp::pump_frame(double timestamp_ms) {
   if (!impl_->ready) return;
   jsi::Runtime& rt = *impl_->runtime;
   try {
+    // `setImmediate` はこの frame の開始時点で積まれていた分だけを実行する。callback が
+    // さらに積んだ分は次 frame に回し、JS の macrotask と同様に re-entrant な無限再帰を避ける。
+    auto immediate_queue = std::move(impl_->immediate_queue);
+    impl_->immediate_queue.clear();
+    for (jsi::Function& callback : immediate_queue) {
+      callback.call(rt);
+    }
+    if (auto* hermesRt = dynamic_cast<facebook::hermes::HermesRuntime*>(&rt)) {
+      hermesRt->drainMicrotasks();
+    }
     jsi::Object tsubame = rt.global().getPropertyAsObject(rt, "__tsubame");
     jsi::Function pump = tsubame.getPropertyAsFunction(rt, "pumpFrame");
     pump.callWithThis(rt, tsubame, {jsi::Value(timestamp_ms)});
